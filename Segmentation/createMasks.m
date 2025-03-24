@@ -61,7 +61,7 @@ M0_ff_video_centered = M0_ff_video - mean(M0_ff_video, [1 2]);
 saveImage(M0_ff_img, ToolBox, 'all_10_M0.png', isStep = true)
 
 if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
-    writeGifOnDisc(rescale(M0_ff_video), "M0")
+    writeGifOnDisc(imresize(rescale(M0_ff_video), 0.5), "M0")
 end
 
 saveImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, ToolBox, 'all_11_maskDiaphragm.png', isStep = true)

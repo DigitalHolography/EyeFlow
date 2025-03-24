@@ -259,7 +259,7 @@ methods
                 bloodVolumeRateFigures(obj.Q_results_V, obj.maskVein, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx);
             end
 
-            generateHealthReport(ToolBox, obj.vRMS, obj.maskArtery, obj.maskVein)
+            generateHealthReport()
 
             fprintf("- Blood Volume Rate Figures took: %ds\n", round(toc(bloodVolumeRateTimer)));
         end

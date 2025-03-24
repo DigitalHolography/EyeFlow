@@ -104,7 +104,7 @@ parfor (frameIdx = startingFrame:numFrames, parforArg)
 end
 
 % Initialize signal plot
-signalPlot = figure(530);
+signalPlot = figure('Name', 'Signal Plot', "Color", 'w');
 signalPlot.Visible = opt.Visible;
 signalPlot.Position = [200 200 600 300];
 
@@ -135,7 +135,7 @@ imwrite(combinedFrames(:, :, :, end), fullfile(ToolBox.path_png, 'volumeRate', s
 % Save as GIF if not skipping frames
 if ~opt.skip
     writeGifOnDisc(mat2gray(signalPlotFrames), sprintf("%s_plot", dirname), 0.04);
-    writeGifOnDisc(combinedFrames, sprintf("%s_combined", dirname), 0.04);
+    writeGifOnDisc(imresize(combinedFrames, 0.5), sprintf("%s_combined", dirname), 0.04);
 end
 
 % Close figures

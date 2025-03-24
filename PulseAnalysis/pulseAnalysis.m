@@ -24,8 +24,10 @@ exportVideos = params.exportVideos;
 maskArterySection = maskArtery & maskSection;
 maskVeinSection = maskVein & maskSection;
 
-mkdir(ToolBox.path_png, 'pulseAnalysis')
-mkdir(ToolBox.path_eps, 'pulseAnalysis')
+if ~isfolder(fullfile(ToolBox.path_png, 'pulseAnalysis'))
+    mkdir(ToolBox.path_png, 'pulseAnalysis')
+    mkdir(ToolBox.path_eps, 'pulseAnalysis')
+end
 folder = 'pulseAnalysis';
 
 [numX, numY, numFrames] = size(f_RMS_video);
@@ -55,7 +57,7 @@ parfor frameIdx = 1:numFrames
     f_RMS_background(:, :, frameIdx) = single(maskedAverage(f_RMS_video(:, :, frameIdx), 10 * w * 2 ^ k, maskNeighbors, maskVessel));
 end
 
-imwrite(rescale(squeeze(mean(f_RMS_background, 3))), fullfile(ToolBox.path_png, 'pulseAnalysis', sprintf("%s_%s", ToolBox.main_foldername, '3_frequency_RMS_bkg.png')), 'png');
+imwrite(rescale(squeeze(mean(f_RMS_background, 3))), fullfile(ToolBox.path_png, 'pulseAnalysis', sprintf("%s_frequency_RMS_bkg.png", ToolBox.main_foldername)));
 
 graphSignal('1_Arteries_fRMS', folder, ...
     t, squeeze(sum(f_RMS_video .* maskArterySection, [1, 2]) / nnz(maskArterySection)), '-', cArtery, ...
@@ -133,7 +135,7 @@ LocalBackground_in_vessels = mean(f_RMS_background, 3) .* maskVessel + ones(numX
 imagesc(LocalBackground_in_vessels);
 colormap gray
 title('Local Background in vessels');
-fontsize(gca, 14, "points");
+fontsize(gca, 12, "points");
 set(gca, 'LineWidth', 2);
 c = colorbar('southoutside');
 c.Label.String = 'RMS Doppler frequency (kHz)';
@@ -168,7 +170,7 @@ in_vessels = mean(delta_f_RMS, 3) .* maskVessel;
 imagesc(in_vessels);
 colormap gray
 title('Delta f in vessels');
-fontsize(gca, 14, "points");
+fontsize(gca, 12, "points");
 set(gca, 'LineWidth', 2);
 c = colorbar('southoutside');
 c.Label.String = 'Delta Doppler RMS frequency (kHz)';
@@ -234,8 +236,8 @@ if exportVideos
     f_RMS_video_rescale = rescale(f_RMS_video);
     f_RMS_background_rescale = rescale(f_RMS_background);
 
-    writeGifOnDisc(f_RMS_background_rescale, "f_RMS_bkg")
-    writeGifOnDisc(f_RMS_video_rescale, "f_RMS")
+    writeGifOnDisc(imresize(f_RMS_background_rescale, 0.5), "f_RMS_bkg")
+    writeGifOnDisc(imresize(f_RMS_video_rescale, 0.5), "f_RMS")
 end
 
 clear LocalBackground_in_vessels f_RMS_background

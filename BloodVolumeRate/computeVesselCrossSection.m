@@ -53,7 +53,7 @@ curve1 = profile + dprofile;
 curve2 = profile - dprofile;
 
 % Create figure
-f = figure('Visible', 'off');
+f = figAspect;
 
 % Plot confidence interval
 Color_std = [0.7, 0.7, 0.7]; % Gray color for confidence interval
@@ -81,17 +81,12 @@ plot(r2 * 1000, -2, 'k|', 'MarkerSize', 10, 'LineWidth', 1.5);
 plot(linspace(r1 * 1000, r2 * 1000, 10), repmat(-2, 10), '-k', 'LineWidth', 1.5);
 
 % Adjust axes
-axis padded
-axP = axis;
-axis tight
 axT = axis;
-axis([axT(1), axT(2), - 5, axP(4) * 1.07])
+axis([axT(1), axT(2), - 5, 50])
 box on
 set(gca, 'LineWidth', 2)
 set(gca, 'PlotBoxAspectRatio', [1.618 1 1])
-
 % Add labels and title
-fontsize(gca, 12, "points");
 xlabel('Position (µm)');
 ylabel('Velocity (mm/s)');
 title('velocity profile and laminar flow model fit');

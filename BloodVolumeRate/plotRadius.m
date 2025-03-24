@@ -1,7 +1,12 @@
-function [Q_t, dQ_t] = plotRadius(Q_mat, dQ_mat, fullTime, rad, idx_start, idx_end, name)
+function [Q_t, dQ_t] = plotRadius(Q_mat, dQ_mat, fullTime, idx_start, idx_end, name)
 % Get global toolbox and parameters
 ToolBox = getGlobalToolBox;
-numCircles = size(Q_mat, 1); % Number of circles (radii)
+params = ToolBox.getParams;
+numCircles = params.json.BloodVolumeRateAnalysis.NumberOfCircles; % Number of circles (radii)
+r1 = params.json.SizeOfField.SmallRadiusRatio;
+r2 = params.json.SizeOfField.BigRadiusRatio;
+dr = (r2 - r1) / numCircles;
+rad = linspace(r1, r2 - dr, numCircles);
 
 % Define color for shaded regions
 Color_std = [0.7 0.7 0.7];
@@ -12,7 +17,7 @@ dQ_rt = squeeze(sqrt(sum(dQ_mat .^ 2, 2, "omitnan"))); % Quadratic sum of uncert
 
 % Compute time-averaged mean and standard deviation
 Q_r = squeeze(mean(Q_rt(:, idx_start:idx_end), 2))'; % Mean over time
-N = size(dQ_rt, 2);
+N = length(idx_start:idx_end);
 dQ_r = squeeze(sqrt(sum(dQ_rt(:, idx_start:idx_end) .^ 2, 2)))' / N; % RMS of uncertainties
 
 % Create shaded region for uncertainty
@@ -68,15 +73,15 @@ set(gca, 'PlotBoxAspectRatio', [1.618 1 1], 'LineWidth', 2);
 % Export plot
 exportgraphics(gca, fullfile(ToolBox.path_png, 'volumeRate', sprintf("%s_variance_%s_time.png", ToolBox.main_foldername, name)));
 
-% Compute total blood volume rate over time
-Q_t = squeeze(mean(Q_rt, 1)); % Mean over time
+% Compute total blood volume rate over circles
+Q_t = squeeze(mean(Q_rt, 1)); % Mean over circles
 N = size(dQ_rt, 1);
 dQ_t = squeeze(sqrt(sum(dQ_rt .^ 2, 1))) / N; % RMS of uncertainties
 
 % Compute statistics for the time range
 mean_Q = mean(Q_t(idx_start:idx_end)); % Time-averaged mean
 max_Q = max(Q_t(idx_start:idx_end)); % Maximum value in the range
-N = size(dQ_t(idx_start:idx_end), 1);
+N = length(idx_start:idx_end);
 mean_dQ = sqrt(sum(dQ_t(idx_start:idx_end) .^ 2)) / N; % RMS of the uncertainty
 
 % Plot total blood volume rate over time

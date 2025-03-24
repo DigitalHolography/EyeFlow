@@ -45,12 +45,10 @@ cVein = [18 23 255] / 255;
 t3 = tic;
 
 % Display and save AVG frequency heatmap
-figure("Visible", "off");
+figAspect;
 imagesc(f_AVG_mean);
 colormap gray;
 title('AVG Frequency Map RAW');
-fontsize(gca, 12, "points");
-set(gca, 'LineWidth', 2);
 c = colorbar('southoutside');
 c.Label.String = 'AVG Doppler Frequency (kHz)';
 c.Label.FontSize = 12;
@@ -62,16 +60,13 @@ imwrite(rescale(f_AVG_mean), fullfile(ToolBox.path_png, folder, sprintf("%s_%s",
 clear f_AVG_mean;
 
 % Create and save colorbar for AVG image
-colorfig = figure("Visible", "off");
-colorfig.Units = 'normalized';
+colorbarF = figAspect('LineWidth', 3, 'Fontsize', 15);
+colorbarF.Units = 'normalized';
 colormap gray;
 f_AVG_colorbar = colorbar('north');
 clim(range);
-set(gca, 'Visible', false);
-set(gca, 'LineWidth', 3);
 f_AVG_colorbar.Position = [0.10 0.3 0.81 0.35];
-colorfig.Position(4) = 0.1000;
-fontsize(gca, 15, "points");
+colorbarF.Position(4) = 0.1000;
 colorTitleHandle = get(f_AVG_colorbar, 'Title');
 titleString = 'AVG Doppler Frequency (kHz)';
 set(colorTitleHandle, 'String', titleString);
@@ -241,7 +236,7 @@ fprintf(fileID, '%f %f \r\n', tmp');
 fclose(fileID);
 
 % Plot RMS Doppler frequency for different cycles
-figure("Visible", "off");
+figAspect;
 
 for ii = 1:size(cycles_signal, 1)
 
@@ -255,12 +250,8 @@ for ii = 1:size(cycles_signal, 1)
 end
 
 plot(interp_t, movavgvar(squeeze(mean(cycles_signal(:, :), 1)), 5), 'k-', 'LineWidth', 2);
-fontsize(gca, 12, "points");
 xlabel('Average Cardiac Cycle Duration (s)');
-ylabel('RMS Doppler Frequency (kHz)');
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 2);
-axis tight;
+ylabel('RMS Doppler Frequency (kHz)')
 
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, '7_RMS_Doppler_frequency_for_different_cycles.png')));
 exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, '7_RMS_Doppler_frequency_for_different_cycles.eps')));
@@ -281,12 +272,10 @@ if ~isnan(onePulseVideoM0)
     heatmap_sys = flat_field_correction(heatmap_sys_raw, ceil(gwRatio * size(heatmap_sys_raw, 1)), border);
 
     % Plot and save diastolic and systolic heatmaps
-    figure("Visible", "off");
+    figAspect;
     imagesc(heatmap_dia_raw);
     colormap gray;
     title('Bottom Diastole RMS Frequency Map');
-    fontsize(gca, 12, "points");
-    set(gca, 'LineWidth', 2);
     c = colorbar('southoutside');
     c.Label.String = 'RMS Doppler Frequency (kHz)';
     c.Label.FontSize = 12;
@@ -297,12 +286,10 @@ if ~isnan(onePulseVideoM0)
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, 'diastoleHeatMapFig.png')));
     exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, 'diastoleHeatMapFig.eps')));
 
-    figure("Visible", "off");
+    figAspect;
     imagesc(heatmap_dia);
     colormap gray;
     title('Bottom Diastole RMS Frequency Map (Flatfield)');
-    fontsize(gca, 12, "points");
-    set(gca, 'LineWidth', 2);
     c = colorbar('southoutside');
     c.Label.String = 'RMS Doppler Frequency (kHz)';
     c.Label.FontSize = 12;
@@ -312,12 +299,10 @@ if ~isnan(onePulseVideoM0)
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, 'diastoleHeatMapFlatfieldFig.png')));
     exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, 'diastoleHeatMapFlatfieldFig.eps')));
 
-    figure("Visible", "off");
+    figAspect;
     imagesc(heatmap_sys_raw);
     colormap gray;
     title('Peak Systole RMS Frequency Map');
-    fontsize(gca, 12, "points");
-    set(gca, 'LineWidth', 2);
     c = colorbar('southoutside');
     c.Label.String = 'RMS Doppler Frequency (kHz)';
     c.Label.FontSize = 12;
@@ -328,12 +313,10 @@ if ~isnan(onePulseVideoM0)
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, 'systoleHeatMapFig.png')));
     exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, 'systoleHeatMapFig.eps')));
 
-    figure("Visible", "off");
+    figAspect;
     imagesc(heatmap_sys);
     colormap gray;
     title('Peak Systole RMS Frequency Map (Flatfield)');
-    fontsize(gca, 12, "points");
-    set(gca, 'LineWidth', 2);
     c = colorbar('southoutside');
     c.Label.String = 'RMS Doppler Frequency (kHz)';
     c.Label.FontSize = 12;

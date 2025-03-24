@@ -4,6 +4,10 @@ ToolBox = getGlobalToolBox;
 
 figure("Visible", "off")
 histogram(2 * sqrt(area(area ~= 0) / pi) * 1000, 50, FaceColor = 'k');
+hold on
+
+medianWidth = median(2 * sqrt(area(area ~= 0) / pi) * 1000, "omitnan");
+xline(medianWidth, '--', sprintf('%.0f µm', medianWidth), 'Linewidth', 2)
 set(gca, 'Linewidth', 2)
 
 aa = axis;

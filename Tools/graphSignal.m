@@ -30,8 +30,7 @@ arguments
     opt.xLineLabels = {}
 end
 
-ToolBox = getGlobalToolBox;
-f = figure(Visible = "off");
+f = figAspect('Fontsize', opt.Fontsize, 'LineWidth', opt.LineWidth);
 hold on
 
 for n = 1:length(y)
@@ -65,12 +64,8 @@ end
 
 title(opt.Title)
 
-fontsize(gca, opt.Fontsize, "points");
 xlabel(opt.xlabel, 'FontSize', opt.Fontsize);
 ylabel(opt.ylabel, 'FontSize', opt.Fontsize);
-
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', opt.LineWidth);
 
 if ~isempty(opt.Legends)
     legend(opt.Legends)
@@ -89,8 +84,8 @@ axP = axis;
 axis tight
 axT = axis;
 axis([axT(1), axT(2), axP(3), axP(4)])
-box on
 
+ToolBox = getGlobalToolBox;
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s_graph.png", ToolBox.main_foldername, filename)))
 exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s_graph.eps", ToolBox.main_foldername, filename)))
 

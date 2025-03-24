@@ -48,7 +48,7 @@ xAx = [0 numFrames * ToolBox.stride / (1000 * ToolBox.fs)];
 histo = zeros(n, numFrames);
 D = (v_max - v_min) / (n - 1);
 
-fDistrib = figure;
+fDistrib = figure("Visible", 'off', 'Color', 'w');
 fDistrib.Position(3:4) = [600 275];
 
 indexMin = find(X == v_min);

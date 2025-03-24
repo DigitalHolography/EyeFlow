@@ -77,8 +77,8 @@
       "SliceHalfThickness": 10
     },
     "BloodVolumeRateFigures": {
-      "sectionImage" : false,
-      "widthImage" : false,
+      "sectionImage" : true,
+      "widthImage" : true,
       "crossSectionImages" : true,
       "widthHistogram" : true,
       "BloodFlowProfiles" : true,

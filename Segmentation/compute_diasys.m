@@ -26,7 +26,7 @@ if isempty(sys_index_list)
     return;
 end
 
-figure('Visible', 'off')
+figAspect;
 hold on
 plot(fullTime, fullPulse, 'k--', 'LineWidth', 2)
 
@@ -108,9 +108,6 @@ axP = axis;
 axis tight
 axT = axis;
 axis([axT(1), axT(2), axP(3), axP(4) * 1.07])
-box on
-set(gca, 'LineWidth', 2)
-set(gca, 'PlotBoxAspectRatio', [1.618 1 1])
 title('diastole and systole')
 
 if export_img

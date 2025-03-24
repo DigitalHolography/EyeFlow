@@ -1,12 +1,11 @@
-function generateHealthReport(ToolBox, vRMS, maskArtery, ~)
+function generateHealthReport()
+
+ToolBox = getGlobalToolBox;
+
 % Define file paths
 dataFilePath = fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_EF_main_outputs.txt'));
 pdfPath = fullfile(ToolBox.path_pdf, sprintf("%s_EyeFlowReport.pdf", ToolBox.main_foldername));
 directoryName = ToolBox.main_foldername;
-%     params = ToolBox.getParams;
-%     veinsAnalysis = params.json.VeinsAnalysis;
-[~, ~, numFrames] = size(vRMS);
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 
 % Set A4 dimensions in centimeters
 a4Width = 21.0; % A4 width in cm
@@ -37,12 +36,13 @@ subtitleText = sprintf('Generated on: %s', currentDateTime);
 addSubtitle(fig, subtitleText, margin, a4Width, a4Height);
 
 % Add data fields
+t_factor = ToolBox.stride / ToolBox.fs / 1000;
 yPos = 0.85 - (margin / a4Height); % Starting vertical position for annotations (normalized units)
 yPos = addField(fig, sprintf('Heart Beat: %.1f bpm', data.heartBeat), yPos, margin, a4Width);
 yPos = addField(fig, sprintf('Systoles: %s', mat2str(round(data.systoleIndices * ToolBox.stride / ToolBox.fs / 1000, 2))), yPos, margin, a4Width); % 2 decimal places
 yPos = addField(fig, sprintf('Number of Cycles: %d', data.numCycles), yPos, margin, a4Width);
-yPos = addField(fig, sprintf('Max Systole Indices: %s', mat2str(round(data.maxSystoleIndices * ToolBox.stride / ToolBox.fs / 1000, 2))), yPos, margin, a4Width); % 2 decimal places
-yPos = addField(fig, sprintf('Min Systole Indices: %s', mat2str(round(data.minSystoleIndices * ToolBox.stride / ToolBox.fs / 1000, 2))), yPos, margin, a4Width); % 2 decimal places
+yPos = addField(fig, sprintf('Max Systole Indices: %s', mat2str(round(data.maxSystoleIndices * t_factor, 2))), yPos, margin, a4Width); % 2 decimal places
+yPos = addField(fig, sprintf('Min Systole Indices: %s', mat2str(round(data.minSystoleIndices * t_factor, 2))), yPos, margin, a4Width); % 2 decimal places
 yPos = addField(fig, sprintf('Mean Blood Volume Rate (Artery): %.1f ± %.1f µL/min', data.meanBloodVolumeRateArtery, data.stdBloodVolumeRateArtery / 2), yPos, margin, a4Width);
 yPos = addField(fig, sprintf('Mean Blood Volume Rate (Vein): %.1f ± %.1f µL/min', data.meanBloodVolumeRateVein, data.stdBloodVolumeRateVein / 2), yPos, margin, a4Width);
 yPos = addField(fig, sprintf('Max Systole Blood Volume Rate (Artery): %.1f µL/min', data.maxSystoleBloodVolumeRateArtery), yPos, margin, a4Width);
@@ -50,9 +50,8 @@ yPos = addField(fig, sprintf('Min Diastole Blood Volume Rate (Artery): %.1f µL/
 yPos = addField(fig, sprintf('Stroke Volume (Artery): %.1f nL', data.strokeVolumeArtery), yPos, margin, a4Width);
 yPos = addField(fig, sprintf('Total Volume (Artery): %.1f nL', data.totalVolumeArtery), yPos, margin, a4Width);
 
-% Add signal plot
-arterySignal = sum(vRMS .* maskArtery, [1 2]) / nnz(maskArtery);
-addSignalPlot(fig, squeeze(arterySignal), t, yPos, margin, a4Width, a4Height);
+addImage(fig, fullfile(ToolBox.path_png, 'mask', sprintf("%s_vesselMap.png", directoryName)), yPos, margin, a4Width)
+
 
 % Save the figure as a PDF using print
 print(fig, pdfPath, '-dpdf', '-fillpage'); % Export to PDF with A4 size and margins
@@ -116,31 +115,6 @@ annotation(fig, 'textbox', [fieldX fieldY 1 - 2 * fieldX 0.05], 'String', fieldT
 yPos = yPos - 0.02; % Move down for the next field
 end
 
-% Helper function to add the signal plot
-function addSignalPlot(fig, signal, t, yPos, margin, a4Width, a4Height)
-% Calculate normalized position for the plot
-plotX = margin / a4Width; % Normalized x position (2 cm margin)
-plotY = yPos - 0.3 - (margin / a4Height); % Normalized y position (2 cm margin)
-plotWidth = 1 - 2 * plotX; % Normalized width
-plotHeight = 0.25; % Normalized height
-
-axes('Parent', fig, 'Position', [plotX plotY plotWidth plotHeight]); % Position the plot
-plot(t, signal, 'r', 'LineWidth', 2);
-title('Arterial Signal');
-xlabel('Time (s)');
-ylabel('Velocity (mm/s)');
-
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 2);
-
-axis padded
-axP = axis;
-axis tight
-axT = axis;
-axis([axT(1), axT(2), 0, axP(4) * 1.07])
-box on
-end
-
 % Helper function to add the logo
 function addLogo(fig, logoPath, a4Width, a4Height)
 % Load the logo image
@@ -171,4 +145,47 @@ annotation(fig, 'textbox', [subtitleX subtitleY 1 - 2 * subtitleX 0.05], 'String
     'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
     'FontSize', 12, 'FontWeight', 'normal', 'FontAngle', 'italic', ...
     'Color', [0.3 0.3 0.3], 'EdgeColor', 'none', 'Interpreter', 'none'); % Dark gray color
+end
+
+function yPos = addImage(fig, imagePath, yPos, margin, a4Width)
+% ADDIMAGETOPDF Adds an image to the PDF report at specified position
+%   Inputs:
+%       fig - Figure handle of the report
+%       imagePath - Path to the PNG image file
+%       position - [x y width height] in centimeters from top-left corner
+%       a4Width - Width of A4 page in cm
+%       a4Height - Height of A4 page in cm
+%
+%   Example:
+%       addImageToPDF(fig, 'path/to/image.png', [5 10 8 6], a4Width, a4Height)
+%       would place the image starting 5cm from left, 10cm from top,
+%       with width 8cm and height 6cm
+
+% Check if image file exists
+if ~exist(imagePath, 'file')
+    error('Image file not found: %s', imagePath);
+end
+
+fieldX = margin / a4Width; % Normalized x position (2 cm margin)
+fieldY = yPos; % Normalized y position (2 cm margin)
+
+% Create axes for the image
+axes('Parent', fig, 'Units', 'normalized', 'Position', [fieldX fieldY 1 - 2 * fieldX 0.05]);
+
+% Read and display the image
+try
+    img = imread(imagePath);
+    h = imshow(img);
+    axis off;
+
+    % Add a subtle border around the image
+    rectangle('Position', [0.5, 0.5, size(img,2)-1, size(img,1)-1], ...
+        'EdgeColor', [0.7 0.7 0.7], 'LineWidth', 0.5);
+catch ME
+    warning(ME.identifier, 'Could not add image to report: %s', ME.message);
+    delete(gca); % Remove the axes if image loading failed
+end
+
+yPos = yPos - 0.02; % Move down for the next field
+
 end

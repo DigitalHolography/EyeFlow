@@ -16,7 +16,7 @@ params = ToolBox.getParams;
 initial = name(1);
 M0_ff_video = rescale(M0_ff_video);
 M0_ff_img = rescale(mean(M0_ff_video, 3));
-[numX, ~, numFrames] = size(M0_ff_video);
+[~, ~, numFrames] = size(M0_ff_video);
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 
 numSections = Q_results.numSections;
@@ -104,24 +104,12 @@ fprintf("    1. Sections Images Generation (%s) took %ds\n", name, round(toc))
 % 2. Blood Volume Rate Figures
 tic
 
-numCircles = params.json.BloodVolumeRateAnalysis.NumberOfCircles;
-px_size = params.px_size;
-r1 = params.json.SizeOfField.SmallRadiusRatio;
-r2 = params.json.SizeOfField.BigRadiusRatio;
-dr = (r2 - r1) / numCircles;
-rad = linspace(r1, r2 - dr, numCircles) * numX / px_size;
-
-[Q_t, dQ_t] = plotRadius(Q_mat, dQ_mat, t, rad, index_start, index_end, name);
+[Q_t, dQ_t] = plotRadius(Q_mat, dQ_mat, t, index_start, index_end, name);
 
 try
 
     if params.json.BloodVolumeRateFigures.BloodFlowProfiles
-
-        if ~isfolder(fullfile(ToolBox.path_png, 'volumeRate', 'velocityProfiles'))
-            mkdir(fullfile(ToolBox.path_png, 'volumeRate', 'velocityProfiles'));
-        end
-
-        interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, numSections, name, rad)
+        interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, numSections, name)
     end
 
 catch ME
@@ -146,6 +134,14 @@ fprintf("    2. Blood Volume Rate Figures (%s) took %ds\n", name, round(toc))
 % 3. Arterial Indicators
 tic
 
+try
+    if params.json.BloodVolumeRateFigures.strokeAndTotalVolume && ~isempty(systolesIndexes)
+        strokeAndTotalVolume(Q_t, dQ_t, systolesIndexes, t, 1000, name);
+    end
+catch ME
+    MEdisp(ME, ToolBox.path_dir)
+end
+
 if strcmp(name, 'Artery')
 
     try
@@ -158,17 +154,9 @@ if strcmp(name, 'Artery')
         MEdisp(ME, ToolBox.path_dir)
     end
 
-    try
-
-        if params.json.BloodVolumeRateFigures.strokeAndTotalVolume && ~isempty(systolesIndexes)
-            strokeAndTotalVolume(Q_t, dQ_t, systolesIndexes, t, 1000);
-        end
-
-    catch ME
-        MEdisp(ME, ToolBox.path_dir)
-    end
-
     fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
 end
+
+close all
 
 end

@@ -55,8 +55,8 @@ if ~isempty(etiquettes_locs)
 
         try
             % Calculate the new position for the text
-            new_x = x_center + ratio_etiquette * (etiquettes_locs(etIdx, 2) - x_center);
-            new_y = y_center + ratio_etiquette * (etiquettes_locs(etIdx, 1) - y_center);
+            new_x = x_center + ratio_etiquette * (etiquettes_locs(etIdx, 1) - x_center);
+            new_y = y_center + ratio_etiquette * (etiquettes_locs(etIdx, 2) - y_center);
 
             % Ensure the text is within the image bounds
             new_x = max(1, min(new_x, imgWidth)); % Clamp x to image width

@@ -86,7 +86,7 @@ else
 end
 
 if exportVideos
-    writeGifOnDisc(v_video_RGB, "flowMap");
+    writeGifOnDisc(imresize(v_video_RGB, 0.5), "flowMap");
 end
 
 end

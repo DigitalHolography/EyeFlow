@@ -132,7 +132,7 @@ disp('Video creation ok.')
 AVG_arterySpectrum = AVG_arterySpectrum / cubeFrameLength;
 AVG_backgroundSpectrum = AVG_backgroundSpectrum / cubeFrameLength;
 
-figure(94)
+figAspect;
 semilogy(frq_shift, AVG_arterySpectrum, ...
     frq_shift, AVG_backgroundSpectrum);
 mimim = 0.8 * min(min(AVG_backgroundSpectrum), min(AVG_arterySpectrum));
@@ -143,8 +143,6 @@ title('Average spectrum')
 xlabel('frequency (kHz)', 'FontSize', 14);
 ylabel('A.U.', 'FontSize', 14);
 legend('Artery', 'Background')
-set(gca, 'PlotBoxAspectRatio', [1.618 1 1])
-set(gca, 'Linewidth', 2)
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.main_foldername, 'Averaged_spectrum.png')));
 
 % DELTA

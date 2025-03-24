@@ -65,7 +65,7 @@ axis_x = linspace(-fs / 2, fs / 2, size(SH_artery, 3));
 
 % omegaAVG_left = [0.4 0.6];
 % omegaAVG_right = [0.4 0.4];
-figure(33533)
+figAspect('FigName', 33533);
 
 p_artery = plot(axis_x, fftshift(log(spectrumAVG_artery)), 'red', 'LineWidth', 1, 'DisplayName', 'Arteries');
 ylim([.99 * log(min(spectrumAVG_artery)) .7 * log(max(spectrumAVG_artery))])
@@ -93,11 +93,8 @@ title('Average spectrum')
 
 % plot(fullTime,fullArterialPulse,'-k', fullTime,fullBackgroundSignal,':k', fullTime, fullVenousSignal, '-.k', 'LineWidth',2) ;
 % title('arterial pulse waveform and background signal'); % averaged outside of segmented vessels
-fontsize(gca, 12, "points");
 xlabel('frequency (kHz)', 'FontSize', 14);
 ylabel('log S', 'FontSize', 14);
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 1);
 uistack(p_artery, 'top');
 uistack(gca, 'top');
 
