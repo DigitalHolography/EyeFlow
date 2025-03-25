@@ -74,6 +74,9 @@ methods (Access = public)
             app.OpenDirectoryButton.Enable = true;
             app.ReferenceDirectory.Value = path;
 
+            % Update lamp color to indicate success
+            app.statusLamp.Color = [0, 1, 0]; % Green
+
         catch ME
             MEdisp(ME, path)
             diary off
@@ -81,8 +84,6 @@ methods (Access = public)
             app.statusLamp.Color = [1, 0, 0]; % Red
         end
 
-        % Update lamp color to indicate success
-        app.statusLamp.Color = [0, 1, 0]; % Green
         % Update checkbox states after loading
         app.CheckboxValueChanged();
 
@@ -632,7 +633,7 @@ methods (Access = public)
             ToolBox = ToolBoxClass(app.file.directory, app.file.param_name, 1);
         end
 
-        if isempty(app.file)
+        if ~isempty(app.file)
 
             if ~isfolder(fullfile(ToolBox.path_main, 'mask'))
                 mkdir(fullfile(ToolBox.path_main, 'mask'))

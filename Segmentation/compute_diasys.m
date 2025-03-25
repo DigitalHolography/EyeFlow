@@ -110,6 +110,9 @@ axT = axis;
 axis([axT(1), axT(2), axP(3), axP(4) * 1.07])
 title('diastole and systole')
 
+xlabel('Time (s)')
+ylabel('Power Doppler (a.u.)')
+pbaspect([1.618 1 1])
 if export_img
 
     if isfolder(fullfile(ToolBox.path_png, 'mask'))

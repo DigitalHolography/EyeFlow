@@ -30,7 +30,7 @@ numFrames = size(v_cell{1}, 2);
 numInterp = params.json.BloodVolumeRateFigures.InterpolationPoints;
 
 w2w = linspace(-1, 1, numInterp);
-x_label = 'wall-to-wall distance (AU)';
+x_label = 'wall-to-wall distance (a.u.)';
 y_label = 'Velocity (mm/s)';
 
 % Preallocate interpolated profiles
@@ -164,7 +164,7 @@ hold off;
 
 box on;
 set(gca, 'Linewidth', 2);
-xlabel('Profile (AU)', 'FontSize', 14);
+xlabel('Profile (a.u.)', 'FontSize', 14);
 ylabel('Velocity (mm/s)', 'FontSize', 14);
 pbaspect([1.618 1 1]);
 
