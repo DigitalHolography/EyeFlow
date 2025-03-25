@@ -45,7 +45,7 @@ mask_background = mask_background .* circle_mask1;
 momentM2M0_background = momentM2M0 .* mask_background;
 omegaRMS_background = sum(momentM2M0_background, [1 2])/nnz(SH_background(:,:, 1));
 omegaRMS_index_background=omegaRMS_background*size(SH_artery,3)/fs;
-I_omega_background=log(spectrumAVG_background(round(omegaRMS_index_background)));
+I_omega_background=log10(spectrumAVG_background(round(omegaRMS_index_background)));
 
 
 %Calcul of Omega AVG artery
@@ -57,7 +57,7 @@ I_omega_background=log(spectrumAVG_background(round(omegaRMS_index_background)))
 momentM2M0_artery = momentM2M0 .* mask_artery;
 omegaRMS = sum(momentM2M0_artery, [1 2])/nnz(SH_artery(:,:, 1));
 omegaRMS_index=omegaRMS*size(SH_artery,3)/fs;
-I_omega=log(spectrumAVG_artery(round(omegaRMS_index)));
+I_omega=log10(spectrumAVG_artery(round(omegaRMS_index)));
 
 disp(omegaRMS);
 disp(omegaRMS_background);
@@ -70,12 +70,14 @@ axis_x=linspace(-fs/2,fs/2,size(SH_artery,3));
 % omegaAVG_right = [0.4 0.4];
 figure(33533)
 
-p_artery = plot(axis_x,fftshift(log(spectrumAVG_artery)),'red', 'LineWidth',1,'DisplayName','Arteries');
-ylim([.99*log(min(spectrumAVG_artery)) .7*log(max(spectrumAVG_artery))])
-xlim([-fs/2 fs/2])
-rectangle('Position', [-f1 .95*log(min(spectrumAVG_artery))  2*f1 (.7*log(max(spectrumAVG_artery))-.95*log(min(spectrumAVG_artery)))], 'FaceColor', [0.9 0.9 0.9], 'EdgeColor', 'none');
-rectangle('Position', [-fs/2 .95*log(min(spectrumAVG_artery)) (fs/2-f2) (.7*log(max(spectrumAVG_artery))-.95*log(min(spectrumAVG_artery)))], 'FaceColor', [0.9 0.9 0.9], 'EdgeColor', 'none');
-rectangle('Position', [f2 .95*log(min(spectrumAVG_artery)) (fs/2-f2) (.7*log(max(spectrumAVG_artery))-.95*log(min(spectrumAVG_artery)))], 'FaceColor', [0.9 0.9 0.9], 'EdgeColor', 'none');
+p_artery = plot(axis_x,fftshift(log10(spectrumAVG_artery)),'red', 'LineWidth',1,'DisplayName','Arteries');
+sclingrange = abs(fftshift(axis_x))>f1;
+yrange = [.99*log10(min(spectrumAVG_artery(sclingrange))) 1.01*log10(max(spectrumAVG_artery(sclingrange)))];
+ylim(yrange);
+xlim([-fs/2 fs/2]);
+rectangle('Position', [-f1 yrange(1)  2*f1 (yrange(2)-yrange(1))], 'FaceColor', [0.9 0.9 0.9], 'EdgeColor', 'none');
+rectangle('Position', [-fs/2 yrange(1) (fs/2-f2) (yrange(2)-yrange(1))], 'FaceColor', [0.9 0.9 0.9], 'EdgeColor', 'none');
+rectangle('Position', [f2 yrange(1) (fs/2-f2) (yrange(2)-yrange(1))], 'FaceColor', [0.9 0.9 0.9], 'EdgeColor', 'none');
 om_RMS_line = line([-omegaRMS omegaRMS],[I_omega I_omega]);
 om_RMS_line.Color = 'red';
 om_RMS_line.LineStyle = '-';
@@ -99,14 +101,14 @@ title('Average spectrum')
 % title('arterial pulse waveform and background signal'); % averaged outside of segmented vessels
 fontsize(gca,12,"points") ;
 xlabel('frequency (kHz)','FontSize',14) ;
-ylabel('log S','FontSize',14);
+ylabel('log10 S','FontSize',14);
 pbaspect([1.618 1 1]) ;
 set(gca, 'LineWidth', 1);
 uistack(p_artery,'top');
 uistack(gca, 'top');
 
 hold on
-p_background = plot(axis_x,fftshift(log(spectrumAVG_background)),'black--', 'LineWidth',1,'DisplayName','Background');
+p_background = plot(axis_x,fftshift(log10(spectrumAVG_background)),'black--', 'LineWidth',1,'DisplayName','Background');
 om_RMS_line = line([-omegaRMS_background omegaRMS_background],[I_omega_background I_omega_background]);
 om_RMS_line.Color = 'black';
 om_RMS_line.LineStyle = '-';
