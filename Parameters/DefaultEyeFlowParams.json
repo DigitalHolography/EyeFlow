@@ -18,7 +18,7 @@
         "FrameHeight": -1,
         "VideoLength": -1
       },
-      "RemoveOutliersFlag": false,
+      "RemoveOutliersFlag": true,
       "Interpolation Factor": 1
     },
     "FlatFieldCorrection": {

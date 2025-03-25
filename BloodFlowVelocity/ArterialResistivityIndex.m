@@ -5,37 +5,39 @@ ToolBox = getGlobalToolBox;
 cArtery = [255 22 18] / 255;
 v_video = v_video .* maskArtery;
 
-    arterial_signal = squeeze(sum(v_video .* maskArtery, [1 2])) / nnz(maskArtery)';
-    [~, ~, ~, ~, sysindexes, diasindexes] = compute_diasys(v_video, maskArtery);
-    vSys = mean(v_video(:, :, sysindexes), 3);
-    vDias = mean(v_video(:, :, diasindexes), 3);
+arterial_signal = squeeze(sum(v_video .* maskArtery, [1 2])) / nnz(maskArtery)';
+[~, ~, ~, ~, sysindexes, diasindexes] = compute_diasys(v_video, maskArtery);
+vSys = mean(v_video(:, :, sysindexes), 3);
+vDias = mean(v_video(:, :, diasindexes), 3);
 
 v_mean = mean(arterial_signal);
-vSys_mean = mean(vSys(maskArtery), 'all', 'omitnan');
-vDias_mean = mean(vDias(maskArtery), 'all', 'omitnan');
+vSys_mean = mean(arterial_signal(sysindexes));
+vDias_mean = mean(arterial_signal(diasindexes));
 
 ARI = (vSys - vDias) ./ vSys;
 ARI(ARI>1) = 1;
 ARI(ARI<0) = 0;
 ARI(isnan(ARI)) = 0;
-ARI_mean = mean(ARI(maskArtery), 'all', 'omitnan');
+
+ARI_mean = (vSys_mean - vDias_mean) ./ vSys_mean;
 
 API = (vSys - vDias) ./ v_mean;
 API(API<0) = 0;
 API(isnan(API)) = 0;
-API_mean = mean(API(maskArtery), 'all', 'omitnan');
+
+API_mean = (vSys_mean - vDias_mean) ./ v_mean;
 
 % ARI Graph
 graphSignal(sprintf('ARI_%s', name), folder, ...
     t, arterial_signal, '-', cArtery, ...
-    ylabel = 'Velocity (mm/s)', xlabel = 'Time (s)', ... 
+    ylabel = 'Velocity (mm/s)', xlabel = 'Time (s)', ...
     Title = sprintf('ARI %s = %0.2f', name, ARI_mean), ...
     yLines = [vDias_mean, vSys_mean], yLineLabels = {sprintf("%.0f mm/s", vDias_mean), sprintf("%.0f mm/s", vSys_mean)});
 
 % API Graph
 graphSignal(sprintf('API_%s', name), folder, ...
     t, arterial_signal, '-', cArtery, ...
-    ylabel = 'Velocity (mm/s)', xlabel = 'Time (s)', ... 
+    ylabel = 'Velocity (mm/s)', xlabel = 'Time (s)', ...
     Title = sprintf('API %s = %0.2f', name, API_mean), ...
     yLines = [vDias_mean, v_mean, vSys_mean], yLineLabels = {sprintf("%.0f mm/s", vDias_mean), sprintf("%.0f mm/s", v_mean), sprintf("%.0f mm/s", vSys_mean)});
 
