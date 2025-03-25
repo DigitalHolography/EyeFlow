@@ -27,6 +27,9 @@ vesselNum_video = zeros(465, 465, 3, numCircles);
 Q_video = zeros(465, 465, 3, numCircles);
 velocity_video = zeros(465, 465, 3, numCircles);
 
+cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
+cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
+
 % Plot cross-section widths
 for cIdx = 1:numCircles
     % Calculate cross-section widths in micrometers
@@ -34,8 +37,11 @@ for cIdx = 1:numCircles
     etiquettes_frame_values = append(string(round(crossSectionWidth, 0)), "µm");
 
     % Create RGB image with mask overlay
-    image_RGB = repmat(M0_ff_img - M0_ff_img .* mask(:, :, cIdx), 1, 1, 3) + ...
-        reshape(color, 1, 1, 3) .* mask(:, :, cIdx) .* M0_ff_img;
+    if strcmp(name, 'Artery') 
+        image_RGB = setcmap(M0_ff_img, mask(:, :, cIdx), cmapArtery) + M0_ff_img .* ~mask(:, :, cIdx);
+    else
+        image_RGB = setcmap(M0_ff_img, mask(:, :, cIdx), cmapVein) + M0_ff_img .* ~mask(:, :, cIdx);
+    end
 
     % Plot the image
     figure("Visible", "off");
@@ -48,8 +54,8 @@ for cIdx = 1:numCircles
         ratio_etiquette = 1.2;
 
         for etIdx = 1:size(locs{cIdx}, 1)
-            new_x = x_barycenter + ratio_etiquette * (locs{cIdx}(etIdx, 2) - x_barycenter);
-            new_y = y_barycenter + ratio_etiquette * (locs{cIdx}(etIdx, 1) - y_barycenter);
+            new_x = x_barycenter + ratio_etiquette * (locs{cIdx}(etIdx, 1) - x_barycenter);
+            new_y = y_barycenter + ratio_etiquette * (locs{cIdx}(etIdx, 2) - y_barycenter);
             text(new_x, new_y, etiquettes_frame_values(etIdx), ...
                 "FontWeight", "bold", "FontSize", 12, "Color", "white", "BackgroundColor", "black");
         end

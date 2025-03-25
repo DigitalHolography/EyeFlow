@@ -142,20 +142,20 @@ catch ME
     MEdisp(ME, ToolBox.path_dir)
 end
 
-if strcmp(name, 'Artery')
-
-    try
-
-        if params.json.BloodVolumeRateFigures.ARIBVR
-            ArterialResistivityIndex(t, Q_t, mask, 'BVR', 'volumeRate');
-        end
-
-    catch ME
-        MEdisp(ME, ToolBox.path_dir)
-    end
-
-    fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
-end
+% if strcmp(name, 'Artery')
+% 
+%     try
+% 
+%         if params.json.BloodVolumeRateFigures.ARIBVR
+%             ArterialResistivityIndex(t, Q_t, mask, 'BVR', 'volumeRate');
+%         end
+% 
+%     catch ME
+%         MEdisp(ME, ToolBox.path_dir)
+%     end
+% 
+%     fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
+% end
 
 close all
 
