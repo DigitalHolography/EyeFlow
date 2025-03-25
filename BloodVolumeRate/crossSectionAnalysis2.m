@@ -3,7 +3,7 @@ function [results] = crossSectionAnalysis2(ToolBox, locs, mask, v_RMS, circleNam
 % Perform cross-section analysis on blood vessels.
 %
 % Inputs:
-%   TB          - Struct, contains parameters and paths.
+%   ToolBox     - Struct, contains parameters and paths.
 %   locs        - Nx2 array, locations of vessel centers.
 %   mask        - 2D array, mask for the region of interest.
 %   v_RMS       - 3D array, velocity data over time.
@@ -25,17 +25,17 @@ results.subImg_cell = cell(1, numSections);
 
 % Velocity and Flow Rate
 results.v = zeros(numSections, numFrames); % Average velocity
-results.v_std = zeros(numSections, numFrames);
+results.dv = zeros(numSections, numFrames);
 results.Q = zeros(numSections, numFrames); % Volumetric flow rate
-results.Q_std = zeros(numSections, numFrames);
-results.v_profiles = cell(numSections, numFrames);
-results.v_profiles_std = cell(numSections, numFrames);
+results.dQ = zeros(numSections, numFrames);
+results.v_profiles = cell(numSections, numFrames); % Velocity profiles
+results.dv_profiles = cell(numSections, numFrames);
 
 % Vessel Dimensions
 results.D = zeros(numSections, 1);
-results.D_std = zeros(numSections, 1);
+results.dD = zeros(numSections, 1);
 results.A = zeros(numSections, 1);
-results.A_std = zeros(numSections, 1);
+results.dA = zeros(numSections, 1);
 
 % Masks
 results.mask_sections = zeros(numX, numY, numSections);
@@ -44,7 +44,7 @@ results.mask_sections = zeros(numX, numY, numSections);
 v_RMS_mean_masked = squeeze(mean(v_RMS, 3)) .* mask;
 
 % Define sub-image dimensions
-subImgHW = round(0.01 * size(v_RMS_mean_masked, 1) * params.cropSection_scaleFactorWidth);
+subImgHW = round(0.01 * size(v_RMS_mean_masked, 1) * params.json.BloodVolumeRateAnalysis.ScaleFactorWidth);
 
 % Initialize rejected masks
 rejected_masks = zeros(numX, numY, 3);
@@ -52,14 +52,14 @@ crossSectionMask = zeros(numX, numY);
 
 for n = 1:numSections
     % Define sub-image dimensions
-    xRange = max(round(-subImgHW / 2) + locs(n, 2), 1):min(round(subImgHW / 2) + locs(n, 2), numX);
-    yRange = max(round(-subImgHW / 2) + locs(n, 1), 1):min(round(subImgHW / 2) + locs(n, 1), numY);
+    xRange = max(round(-subImgHW / 2) + locs(n, 1), 1):min(round(subImgHW / 2) + locs(n, 1), numX);
+    yRange = max(round(-subImgHW / 2) + locs(n, 2), 1):min(round(subImgHW / 2) + locs(n, 2), numY);
     subImg = v_RMS_mean_masked(yRange, xRange);
 
     % Crop and rotate sub-image
     subImg = cropCircle(subImg);
     [subImg, tilt_angle] = rotateSubImage(subImg);
-    results.subImg_cell{n} = subImg;
+    results.subImg_cell{n} = rescale(subImg);
 
     % Update cross-section mask
     [crossSectionMask, maskCurrentSlice] = updateCrossSectionMask(crossSectionMask, mask, subImg, locs, n, tilt_angle, params);
@@ -67,14 +67,14 @@ for n = 1:numSections
 
     % Compute the Vessel Cross Section
     figName = sprintf('%s%d', circleName, n);
-    [D, D_std, A, A_std, c1, c2, rsquare] = computeVesselCrossSection(subImg, figName, ToolBox);
+    [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, figName, ToolBox);
     results.D(n) = D;
-    results.D_std(n) = D_std;
+    results.dD(n) = dD;
     results.A(n) = A;
-    results.A_std(n) = A_std;
+    results.dA(n) = dA;
 
     % Generate figures
-    saveCrossSectionFigure(subImg, D, ToolBox, circleName, figName);
+    saveCrossSectionFigure(subImg, D, ToolBox, figName);
 
     % Update rejected masks
     if rsquare < 0.6 || isnan(D) || D > mean(sum(subImg ~= 0, 2))
@@ -98,16 +98,16 @@ for n = 1:numSections
         v = mean(v_profile(c1:c2));
 
         % Compute standard deviation of velocity
-        v_std = std(v_cross);
+        dv = std(v_cross);
 
         % Compute volumetric flow rate
         Q = v * A * 60; % microL/min
 
         % Uncertainty in volumetric flow rate
         if v ~= 0 && A ~= 0
-            Q_std = Q * sqrt((v_std / v)^2 + (A_std / A)^2 + (A_std * v_std / (A * v))^2 );
+            dQ = Q * sqrt((dv / v) ^ 2 + (dA / A) ^ 2 + (dA * dv / (A * v)) ^ 2);
         else
-            Q_std = 0; % Handle division by zero
+            dQ = 0; % Handle division by zero
         end
 
         % Handle NaN values
@@ -119,22 +119,21 @@ for n = 1:numSections
             Q = 0;
         end
 
-        if isnan(v_std)
-            v_std = 0;
+        if isnan(dv)
+            dv = 0;
         end
 
-        if isnan(Q_std)
-            Q_std = 0;
+        if isnan(dQ)
+            dQ = 0;
         end
 
         % Store results
         results.v(n, t) = v;
-        results.v_std(n, t) = v_std;
+        results.dv(n, t) = dv;
         results.Q(n, t) = Q;
-        results.Q_std(n, t) = Q_std;
-        results.v_profiles{n, t} = v_profile;
-        results.v_profiles_std{n, t} = std(subFrame, [], 1);
-
+        results.dQ(n, t) = dQ;
+        results.v_profiles{n, t} = mean(subFrame, 1);
+        results.dv_profiles{n, t} = std(subFrame, [], 1);
     end
 
 end

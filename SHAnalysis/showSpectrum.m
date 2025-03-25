@@ -1,10 +1,10 @@
 function [spec_plot, delt_spec_plot] = showSpectrum(maskArtery, maskBackground, maskSection, SH)
 % Shows the spectrum of the preview batch if any
 
-TB = getGlobalToolBox;
-fs = TB.fs;
-f1 = TB.f1;
-f2 = TB.f2;
+ToolBox = getGlobalToolBox;
+fs = ToolBox.fs;
+f1 = ToolBox.f1;
+f2 = ToolBox.f2;
 
 SH = abs(SH) .^ 2;
 
@@ -20,7 +20,7 @@ arterySpectrum = squeeze(sum(SH .* maskArtery .* maskSection, [1, 2]) / nnz(mask
 backgroundSpectrum = squeeze(sum(SH .* maskBackground .* maskSection, [1, 2]) / nnz(maskBackground .* maskSection));
 deltaSpectrum = arterySpectrum - backgroundSpectrum;
 
-spec_plot = figure(57);
+spec_plot = figAspect;
 
 x = fullfreq;
 y = double(10 * log(fftshift(spectrum / sum(spectrum(fftshift(~exclude))))));
@@ -39,13 +39,10 @@ xline(f2, 'k--', 'LineWidth', 2)
 hold off
 legend('avg spectrum', ['fit model 1/(1+(x/a)^b)', 'a = ', num2str(f.a), ' b = ', num2str(f.b)]);
 title('Spectrum');
-fontsize(gca, 14, "points");
 xlabel("Frequency (kHz)", 'FontSize', 14);
 ylabel("S(f) (dB)", 'FontSize', 14);
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 2);
 
-delt_spec_plot = figure(59);
+delt_spec_plot = figAspect;
 
 ya = double(10 * log(fftshift(arterySpectrum / sum(arterySpectrum(fftshift(~exclude))))));
 yb = double(10 * log(fftshift(backgroundSpectrum / sum(backgroundSpectrum(fftshift(~exclude))))));
@@ -67,13 +64,10 @@ xline(f2, 'k--', 'LineWidth', 2)
 hold off
 legend('artery spectrum', 'background spectrum', 'delta spectrum', ['lorentz model 1/(1+(x/a)^2)', 'a = ', num2str(fl.a), ' b = ', num2str(fl.b)]);
 title('Spectrum');
-fontsize(gca, 14, "points");
 xlabel("Frequency (kHz)", 'FontSize', 14);
 ylabel("S(f) (dB)", 'FontSize', 14);
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 2);
 
-% figure(58)
+% figAspect;
 % spectrum_angle = squeeze(sum(SH_angle .* circle, [1, 2]) / nnz(circle));
 
 % plot(fullfreq / 1000, 180 / pi * fftshift(spectrum_angle), 'k-', 'LineWidth', 2)
@@ -84,11 +78,7 @@ set(gca, 'LineWidth', 2);
 % xline(-time_transform.f2, 'k--', 'LineWidth', 2)
 % hold off
 % title('Spectrum');
-% fontsize(gca, 14, "points");
 % xlabel("Frequency (kHz)", 'FontSize', 14);
 % ylabel("arg(S(f)) (°)", 'FontSize', 14);
-% pbaspect([1.618 1 1]);
-% set(gca, 'LineWidth', 2);
-% axis tight;
 
 end

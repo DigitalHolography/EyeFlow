@@ -1,8 +1,8 @@
-function [D, D_std, A, A_std, c1, c2, rsquare] = computeVesselCrossSection(subImg, figName, TB)
+function [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, figName, ToolBox)
 
 % Parameters
-params = TB.getParams;
-px_size = params.cropSection_pixelSize / (2 ^ params.k);
+params = ToolBox.getParams;
+px_size = params.px_size;
 
 % Compute velocity profile
 profile = mean(subImg, 1);
@@ -34,26 +34,26 @@ end
 % Determine cross-section width
 if rsquare < 0.6 || isnan(r1) || isnan(r2)
     D = mean(sum(subImg ~= 0, 2));
-    D_std = std(sum(subImg ~= 0, 2));
+    dD = std(sum(subImg ~= 0, 2));
 else
     D = abs(r1 - r2) / px_size;
-    D_std = sqrt(r1_err ^ 2 + r2_err ^ 2) / px_size;
+    dD = sqrt(r1_err ^ 2 + r2_err ^ 2) / px_size;
 end
 
 % Compute cross-sectional area
 A = pi * (px_size / 2) ^ 2 * D ^ 2;
-A_std = pi * (px_size / 2) ^ 2 * sqrt(D_std ^ 4 + 2 * D_std ^ 2 * D ^ 2);
+dA = pi * (px_size / 2) ^ 2 * sqrt(dD ^ 4 + 2 * dD ^ 2 * D ^ 2);
 
 % Calculate x-axis values (position in µm)
 r_ = ((1:L) - centt) * px_size * 1000;
 
 % Calculate standard deviation and confidence interval
-stdprofile = std(subImg, [], 1);
-curve1 = profile + 0.5 * stdprofile;
-curve2 = profile - 0.5 * stdprofile;
+dprofile = std(subImg, [], 1);
+curve1 = profile + dprofile;
+curve2 = profile - dprofile;
 
 % Create figure
-f = figure('Visible', 'off');
+f = figAspect;
 
 % Plot confidence interval
 Color_std = [0.7, 0.7, 0.7]; % Gray color for confidence interval
@@ -81,25 +81,20 @@ plot(r2 * 1000, -2, 'k|', 'MarkerSize', 10, 'LineWidth', 1.5);
 plot(linspace(r1 * 1000, r2 * 1000, 10), repmat(-2, 10), '-k', 'LineWidth', 1.5);
 
 % Adjust axes
-axis padded
-axP = axis;
-axis tight
 axT = axis;
-axis([axT(1), axT(2), - 5, axP(4) * 1.07])
+axis([axT(1), axT(2), - 5, 50])
 box on
 set(gca, 'LineWidth', 2)
 set(gca, 'PlotBoxAspectRatio', [1.618 1 1])
-
 % Add labels and title
-fontsize(gca, 12, "points");
 xlabel('Position (µm)');
 ylabel('Velocity (mm/s)');
 title('velocity profile and laminar flow model fit');
 
 % Save figure
 
-exportgraphics(gca, fullfile(TB.path_png, 'volumeRate', 'projection', ...
-    sprintf('%s_proj_poiseuille_%s.png', TB.main_foldername, figName)))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'volumeRate', 'projection', ...
+    sprintf('%s_proj_poiseuille_%s.png', ToolBox.main_foldername, figName)))
 
 % Close figure
 close(f);

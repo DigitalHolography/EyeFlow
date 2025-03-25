@@ -1,8 +1,8 @@
-function strokeAndTotalVolume(mean_BvrT, mean_std_BvrT, systolesIndexes, fullTime, numInterp)
+function strokeAndTotalVolume(mean_BvrT, mean_std_BvrT, systolesIndexes, fullTime, numInterp, name)
 
-TB = getGlobalToolBox;
+ToolBox = getGlobalToolBox;
 
-figure("Visible", "off");
+figAspect;
 
 [interp_BvrT, avgLength, interp_std_BvrT] = interpSignal(mean_BvrT, systolesIndexes, numInterp, mean_std_BvrT);
 
@@ -46,8 +46,8 @@ interp_std_BvrT2 = repmat(interp_std_BvrT, 1, 3);
 pulseTime2 = dt * (-numInterp + 1:numInterp * 2) * avgLength / numInterp;
 
 hold on
-curve1 = circshift(interp_BvrT2, cshiftn) + 0.5 * circshift(interp_std_BvrT2, cshiftn);
-curve2 = circshift(interp_BvrT2, cshiftn) - 0.5 * circshift(interp_std_BvrT2, cshiftn);
+curve1 = circshift(interp_BvrT2, cshiftn) + circshift(interp_std_BvrT2, cshiftn);
+curve2 = circshift(interp_BvrT2, cshiftn) - circshift(interp_std_BvrT2, cshiftn);
 ft2 = [pulseTime2, fliplr(pulseTime2)];
 inBetween = [curve1, fliplr(curve2)]';
 cSTD = [0.7 0.7 0.7];
@@ -63,10 +63,10 @@ axP = axis;
 axis tight
 axT = axis;
 axis([axT(1), axT(2), - 5, axP(4) * 1.07])
-xlim([pulseTime(1) - 1/2 * pulseTime(end), 3/2 * pulseTime(end)])
-box on
+lower_bound = pulseTime(1) - 1/2 * pulseTime(end);
+upper_bound =  3/2 * pulseTime(end);
+xlim([lower_bound, upper_bound])
 
-fontsize(gca, 12, "points");
 ylabel('Blood Volume Rate (µL/min)')
 xlabel('Time (s)')
 ccinterpBvrT = circshift(interp_BvrT, cshiftn);
@@ -74,13 +74,10 @@ dt2 = pulseTime2(2) - pulseTime2(1);
 stroke_volume_value = sum(ccinterpBvrT(1:min(amax + cshiftn, numInterp))) * dt2 / 60 * 1000; % in nL
 total_volume_value = sum(ccinterpBvrT) * dt2 / 60 * 1000;
 title(sprintf("Retinal Stroke Volume : %02.0f nL and Total Volume : %02.0f nL", stroke_volume_value, total_volume_value));
-set(gca, 'PlotBoxAspectRatio', [1.618 1 1])
-box on
-set(gca, 'LineWidth', 2)
 
-exportgraphics(gca, fullfile(TB.path_png, 'volumeRate', sprintf("%s_%s", TB.main_foldername, 'strokeAndTotalVolume.png')))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'volumeRate', sprintf("%s_strokeAndTotalVolume_%s.png", ToolBox.main_foldername, name)))
 
-fileID = fopen(fullfile(TB.path_txt, strcat(TB.main_foldername, '_', 'EF_main_outputs', '.txt')), 'a');
+fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_main_outputs', '.txt')), 'a');
 fprintf(fileID, 'MaxSystole Blood Volume Rate Artery : %f (µL/min) \r\n', maxsystole_bvr_value);
 fprintf(fileID, 'MinDiastole Blood Volume Rate Artery : %f (µL/min) \r\n', mindiastole_bvr_value);
 fprintf(fileID, 'Stroke Volume Artery : %f (nL) \r\n', stroke_volume_value);

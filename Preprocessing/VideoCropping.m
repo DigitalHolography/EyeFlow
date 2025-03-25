@@ -1,17 +1,20 @@
 function obj = VideoCropping(obj)
 %Crop a video (matrix dim 3)
 params = Parameters_json(obj.directory, obj.param_name);
-firstFrame = params.videoStartFrameIndex;
-lastFrame = params.videoEndFrameIndex;
+firstFrame = params.json.Preprocess.Crop.StartFrame;
+lastFrame = params.json.Preprocess.Crop.EndFrame;
 [~, ~, numFrames] = size(obj.M0_ff_video);
 
 if firstFrame > 0 && firstFrame < numFrames || lastFrame > 1 && lastFrame <= numFrames
+
     if lastFrame == -1
         lastFrame = numFrames;
     end
+
     if firstFrame == -1
         firstFrame = 1;
     end
+
     obj.M0_ff_video = obj.M0_ff_video(:, :, firstFrame:lastFrame);
     obj.M0_data_video = obj.M0_data_video(:, :, firstFrame:lastFrame);
     obj.M1_data_video = obj.M1_data_video(:, :, firstFrame:lastFrame);
