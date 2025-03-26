@@ -25,9 +25,9 @@ else
 end
 
 % Get sizes
-numCircles = params.json.BloodVolumeRateAnalysis.NumberOfCircles;
+numCircles = params.json.CrossSectionsAnalysis.NumberOfCircles;
 numFrames = size(v_cell{1}, 2);
-numInterp = params.json.BloodVolumeRateFigures.InterpolationPoints;
+numInterp = params.json.CrossSectionsFigures.InterpolationPoints;
 
 w2w = linspace(-1, 1, numInterp);
 x_label = 'wall-to-wall distance (a.u.)';
@@ -169,7 +169,7 @@ ylabel('Velocity (mm/s)', 'FontSize', 14);
 pbaspect([1.618 1 1]);
 
 % Export figure
-exportgraphics(gca, fullfile(ToolBox.path_png, 'volumeRate', sprintf("%s_diasys_%s.png", ToolBox.main_foldername, name)));
+exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_diasys_%s.png", ToolBox.main_foldername, name)));
 
 % Interpolated blood velocity profile and video export
 if exportVideos

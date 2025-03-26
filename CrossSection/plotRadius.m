@@ -2,7 +2,7 @@ function [Q_t, dQ_t] = plotRadius(Q_mat, dQ_mat, fullTime, idx_start, idx_end, n
 % Get global toolbox and parameters
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-numCircles = params.json.BloodVolumeRateAnalysis.NumberOfCircles; % Number of circles (radii)
+numCircles = params.json.CrossSectionsAnalysis.NumberOfCircles; % Number of circles (radii)
 r1 = params.json.SizeOfField.SmallRadiusRatio;
 r2 = params.json.SizeOfField.BigRadiusRatio;
 dr = (r2 - r1) / numCircles;
@@ -49,7 +49,7 @@ title("Time-Averaged Blood Volume Rate");
 set(gca, 'PlotBoxAspectRatio', [1.618 1 1], 'LineWidth', 2);
 
 % Export plot
-exportgraphics(gca, fullfile(ToolBox.path_png, 'volumeRate', sprintf("%s_mean_%s_radius.png", ToolBox.main_foldername, name)));
+exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_mean_%s_radius.png", ToolBox.main_foldername, name)));
 
 % Plot radial variations of blood volume rate over time
 figure("Visible", "off");
@@ -71,7 +71,7 @@ title("Radial Variations of Blood Volume Rate");
 set(gca, 'PlotBoxAspectRatio', [1.618 1 1], 'LineWidth', 2);
 
 % Export plot
-exportgraphics(gca, fullfile(ToolBox.path_png, 'volumeRate', sprintf("%s_variance_%s_time.png", ToolBox.main_foldername, name)));
+exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_variance_%s_time.png", ToolBox.main_foldername, name)));
 
 % Compute total blood volume rate over circles
 Q_t = squeeze(mean(Q_rt, 1)); % Mean over circles
@@ -117,7 +117,7 @@ title(sprintf("Total Blood Volume Rate (Avg. %0.2f µL/min)", mean_Q));
 set(gca, 'PlotBoxAspectRatio', [1.618 1 1], 'LineWidth', 2);
 
 % Export plot
-exportgraphics(gca, fullfile(ToolBox.path_png, 'volumeRate', sprintf("%s_allrad_%s_time.png", ToolBox.main_foldername, name)));
+exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_allrad_%s_time.png", ToolBox.main_foldername, name)));
 
 % Write results to a text file
 fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_main_outputs', '.txt')), 'a');

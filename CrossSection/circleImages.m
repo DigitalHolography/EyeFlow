@@ -1,4 +1,4 @@
-function crossSectionImages(M0_ff_img, xy_barycenter, area, Q, v, mask, locs, name)
+function circleImages(M0_ff_img, xy_barycenter, area, Q, v, mask, locs, name)
 
 % Get global toolbox and parameters
 ToolBox = getGlobalToolBox;
@@ -9,26 +9,19 @@ params = ToolBox.getParams;
 main_folder = ToolBox.main_foldername;
 exportVideos = params.exportVideos;
 
-% Determine color and title based on vessel type
-if strcmp(name, 'Artery')
-    color = [1, 0, 0]; % Red for arteries
-else
-    color = [0, 0, 1]; % Blue for veins
-end
-
 % Extract barycenter coordinates
 x_barycenter = xy_barycenter(1);
 y_barycenter = xy_barycenter(2);
 
-% Initialize video arrays
+% Initialize video arraysF
 numCircles = size(area, 1);
 vesselD_video = zeros(465, 465, 3, numCircles);
 vesselNum_video = zeros(465, 465, 3, numCircles);
 Q_video = zeros(465, 465, 3, numCircles);
 velocity_video = zeros(465, 465, 3, numCircles);
 
-cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
-cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
+cmapArtery = ToolBox.cmapArtery;
+cmapVein = ToolBox.cmapVein;
 
 % Plot cross-section widths
 for cIdx = 1:numCircles
@@ -37,7 +30,7 @@ for cIdx = 1:numCircles
     etiquettes_frame_values = append(string(round(crossSectionWidth, 0)), "µm");
 
     % Create RGB image with mask overlay
-    if strcmp(name, 'Artery') 
+    if strcmp(name, 'Artery')
         image_RGB = setcmap(M0_ff_img, mask(:, :, cIdx), cmapArtery) + M0_ff_img .* ~mask(:, :, cIdx);
     else
         image_RGB = setcmap(M0_ff_img, mask(:, :, cIdx), cmapVein) + M0_ff_img .* ~mask(:, :, cIdx);
@@ -71,9 +64,9 @@ for cIdx = 1:numCircles
     vesselD_video(:, :, :, cIdx) = rescale(resizedFrame);
 
     % Export plot
-    exportgraphics(gca, fullfile(path_png, 'volumeRate', 'sectionsImages', 'widths', ...
+    exportgraphics(gca, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'widths', ...
         sprintf("%s_circle_%d_crossSectionWidth_%s.png", main_folder, cIdx, name)));
-    exportgraphics(gca, fullfile(path_eps, 'volumeRate', 'sectionsImages', 'widths', ...
+    exportgraphics(gca, fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages', 'widths', ...
         sprintf("%s_circle_%d_crossSectionWidth_%s.eps", main_folder, cIdx, name)));
 end
 
@@ -94,9 +87,9 @@ parfor cIdx = 1:numCircles
     vesselNum_video(:, :, :, cIdx) = rescale(resizedFrame);
 
     % Export plot
-    exportgraphics(gca, fullfile(path_png, 'volumeRate', 'sectionsImages', 'num', ...
+    exportgraphics(gca, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'num', ...
         sprintf("%s_circle_%d_Numerotation%sImage.png", main_folder, cIdx, name)));
-    exportgraphics(gca, fullfile(path_eps, 'volumeRate', 'sectionsImages', 'num', ...
+    exportgraphics(gca, fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages', 'num', ...
         sprintf("%s_circle_%d_Numerotation%sImage.eps", main_folder, cIdx, name)));
 end
 
@@ -114,9 +107,9 @@ parfor cIdx = 1:numCircles
     Q_video(:, :, :, cIdx) = rescale(resizedFrame);
 
     % Export plot
-    exportgraphics(gca, fullfile(path_png, 'volumeRate', 'sectionsImages', 'bvr', ...
+    exportgraphics(gca, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'bvr', ...
         sprintf("%s_circle_%d_BVR_%s.png", main_folder, cIdx, name)));
-    exportgraphics(gca, fullfile(path_eps, 'volumeRate', 'sectionsImages', 'bvr', ...
+    exportgraphics(gca, fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages', 'bvr', ...
         sprintf("%s_circle_%d_BVR_%s.eps", main_folder, cIdx, name)));
 end
 
@@ -141,9 +134,9 @@ parfor cIdx = 1:numCircles
     velocity_video(:, :, :, cIdx) = rescale(resizedFrame);
 
     % Export plot
-    exportgraphics(gca, fullfile(path_png, 'volumeRate', 'sectionsImages', 'vel', ...
+    exportgraphics(gca, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'vel', ...
         sprintf("%s_circle_%d_velocity%sImage.png", main_folder, cIdx, name)));
-    exportgraphics(gca, fullfile(path_eps, 'volumeRate', 'sectionsImages', 'vel', ...
+    exportgraphics(gca, fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages', 'vel', ...
         sprintf("%s_circle_%d_velocity%sImage.eps", main_folder, cIdx, name)));
 end
 

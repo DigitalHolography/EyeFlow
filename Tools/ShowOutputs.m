@@ -30,30 +30,30 @@ for path_idx = 1:N
         segmentation_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'mask', [main_foldername, '_vesselMap.png']);
     end
 
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'volumeRate', [main_foldername, '_allrad_Artery_time.png']))
-        bvr_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'volumeRate', [main_foldername, '_allrad_Artery_time.png']);
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_allrad_Artery_time.png']))
+        bvr_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_allrad_Artery_time.png']);
     end
 
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'pulseAnalysis', [main_foldername, '_1_Arteries_fRMS_graph.png']))
-        Arteries_fRMS_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'pulseAnalysis', [main_foldername, '_1_Arteries_fRMS_graph.png']);
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_1_Arteries_fRMS_graph.png']))
+        Arteries_fRMS_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_1_Arteries_fRMS_graph.png']);
     end
 
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'pulseAnalysis', [main_foldername, '_ARI_velocity_graph.png']))
-        ARI_velocity_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'pulseAnalysis', [main_foldername, '_ARI_velocity_graph.png']);
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_ARI_velocity_graph.png']))
+        ARI_velocity_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_ARI_velocity_graph.png']);
     end
 
     if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_histogramVelocityArteries.png']))
         histo_art_velocity_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_histogramVelocityArteries.png']);
     end
 
-    %     if isfile(fullfile(ef_path,last_folder_name,'png','pulseAnalysis',[main_foldername,'_2_Arteries_velocity.png']))
-    %         art_velocity_paths{path_idx} = fullfile(ef_path,last_folder_name,'png','pulseAnalysis',[main_foldername,'_2_Arteries_velocity.png']);
+    %     if isfile(fullfile(ef_path,last_folder_name,'png','bloodFlowVelocity',[main_foldername,'_2_Arteries_velocity.png']))
+    %         art_velocity_paths{path_idx} = fullfile(ef_path,last_folder_name,'png','bloodFlowVelocity',[main_foldername,'_2_Arteries_velocity.png']);
     %     end
-    %     if isfile(fullfile(ef_path,last_folder_name,'png','volumeRate',[main_foldername,'_ARI_BVR.png']))
-    %         ARI_BVR_paths{path_idx} = fullfile(ef_path,last_folder_name,'png','volumeRate',[main_foldername,'_ARI_BVR.png']);
+    %     if isfile(fullfile(ef_path,last_folder_name,'png','crossSectionsAnalysis',[main_foldername,'_ARI_BVR.png']))
+    %         ARI_BVR_paths{path_idx} = fullfile(ef_path,last_folder_name,'png','crossSectionsAnalysis',[main_foldername,'_ARI_BVR.png']);
     %     end
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'volumeRate', [main_foldername, '_strokeAndTotalVolume.png']))
-        Stroke_total_volume{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'volumeRate', [main_foldername, '_strokeAndTotalVolume.png']);
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_strokeAndTotalVolume.png']))
+        Stroke_total_volume{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_strokeAndTotalVolume.png']);
     end
 
 end

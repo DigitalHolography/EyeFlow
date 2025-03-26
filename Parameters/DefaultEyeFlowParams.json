@@ -11,7 +11,7 @@
       },
       "Normalizing" : {
         "Alpha Convolve Norm" : 1,
-        "NormTempMode" : 1
+        "NormTempMode" : true
       },
       "Resize": {
         "FrameWidth": -1,
@@ -69,17 +69,17 @@
       "SmallRadiusRatio": 0.15,
       "BigRadiusRatio": 0.35
     },
-    "BloodVolumeRateAnalysis": {
+    "CrossSectionsAnalysis": {
       "NumberOfCircles": 10,
       "ScaleFactorWidth": 3,
       "MaskSliceThreshold": 0.01,
       "PixelSize": 0.0191,
-      "SliceHalfThickness": 10
+      "SliceHalfThickness": 10,
+      "sectionMontage" : true
     },
-    "BloodVolumeRateFigures": {
+    "CrossSectionsFigures": {
       "sectionImage" : true,
-      "widthImage" : true,
-      "crossSectionImages" : true,
+      "circleImages" : true,
       "widthHistogram" : true,
       "BloodFlowProfiles" : true,
       "ARIBVR" : true,

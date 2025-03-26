@@ -26,28 +26,37 @@ for i = 1:numClasses
 
 end
 
+[numX, numY] = size(image);
 image = rescale(image);
 level = multithresh(image(mask), numClasses - 1);
 graphThreshHistogram(image, level, mask, color, name)
 level = [-1 level];
 quantizedImage = imquantize(image - 2 * ~mask, level);
-imwrite(rescale(quantizedImage), fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s_Quantize.png", ToolBox.main_foldername, name)))
+quantizedRGB_Mask = repmat(quantizedImage, [1 1 3]);
+quantizedImageRGB = zeros(numX, numY, 3);
 
-maskArtery = zeros(size(image), 'logical');
-maskVein = zeros(size(image), 'logical');
-maskChoroid = zeros(size(image), 'logical');
+maskArtery = zeros(numX, numY, 'logical');
+maskVein = zeros(numX, numY, 'logical');
+maskChoroid = zeros(numX, numY, 'logical');
 
 for i = 1:numClasses
-
+    IDX = reshape([i+1; i+1; i+1], 1, 1, 3);
     if classes(i) == 1
         maskArtery = maskArtery + (quantizedImage == i + 1);
+        quantizedImageRGB = quantizedImageRGB + reshape(cArtery, 1, 1, 3)  .* (quantizedRGB_Mask == IDX);
     elseif classes(i) == -1
         maskVein = maskVein + (quantizedImage == i + 1);
+        quantizedImageRGB = quantizedImageRGB + reshape(cVein, 1, 1, 3) .* (quantizedRGB_Mask == IDX);
     elseif classes(i) == 2
         maskChoroid = maskChoroid + (quantizedImage == i + 1);
+        quantizedImageRGB = quantizedImageRGB + reshape(cChoroid, 1, 1, 3) .* (quantizedRGB_Mask == IDX);    
+    elseif classes(i) == 0
+        quantizedImageRGB = quantizedImageRGB + reshape([1 1 1], 1, 1, 3) .* (quantizedRGB_Mask == IDX);
     end
 
 end
+
+imwrite(rescale(quantizedImageRGB), fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s_Quantize.png", ToolBox.main_foldername, name)))
 
 maskArtery = logical(maskArtery);
 maskVein = logical(maskVein);

@@ -9,7 +9,7 @@ properties
     is_preprocessed = false; % tells if the data has been preprocessed
     is_segmented = false;
     is_pulseAnalyzed = false;
-    is_bloodVolumeRateAnalyzed = false;
+    is_crossSectionAnalyzed = false;
 
     f_RMS_video % RMS M2/M0
     f_AVG_video % AVG M1/M0
@@ -37,8 +37,8 @@ properties
     flag_segmentation
     flag_bloodFlowVelocity_analysis
     flag_bloodFlowVelocity_figures
-    flag_bloodVolumeRate_analysis
-    flag_bloodVolumeRate_figures
+    flag_crossSection_analysis
+    flag_crossSection_figures
     flag_spectral_analysis
 
     OverWrite logical
@@ -150,9 +150,9 @@ methods
                 createMasks(obj.M0_ff_video, f_AVG_mean);
 
             M0_ff_img = rescale(mean(obj.M0_ff_video, 3));
-            cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
-            cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
-            cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [1 1 1], 1);
+            cmapArtery = ToolBox.cmapArtery;
+            cmapVein = ToolBox.cmapVein;
+            cmapAV = ToolBox.cmapAV;
 
             M0_Artery = setcmap(M0_ff_img, obj.maskArtery, cmapArtery);
             M0_Vein = setcmap(M0_ff_img, obj.maskVein, cmapVein);
@@ -171,6 +171,12 @@ methods
         % Pulse Analysis
         if obj.flag_bloodFlowVelocity_analysis
             fprintf("\n----------------------------------\nFind Systole\n----------------------------------\n");
+
+            if ~isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
+                mkdir(ToolBox.path_png, 'bloodFlowVelocity')
+                mkdir(ToolBox.path_eps, 'bloodFlowVelocity')
+            end
+
             findSystoleTimer = tic;
 
             [obj.sysIdxList, ~, sysMaxList, sysMinList] = find_systole_index(obj.M0_ff_video, obj.maskArtery);
@@ -232,36 +238,36 @@ methods
             fprintf("- Blood Flow Velocity Figures calculation took: %ds\n", round(toc(bloodFlowVelocityTimer)));
         end
 
-        % Blood Volume Rate Analysis
-        if obj.flag_bloodVolumeRate_analysis
-            fprintf("\n----------------------------------\nBlood Volume Rate Analysis\n----------------------------------\n");
-            bloodVolumeRateTimer = tic;
+        % Cross-Section Analysis
+        if obj.flag_crossSection_analysis
+            fprintf("\n----------------------------------\nCross-Section Analysis\n----------------------------------\n");
+            crossSectionAnalysisTimer = tic;
 
-            [obj.Q_results_A] = bloodVolumeRate(obj.maskArtery, 'Artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter);
+            [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'Artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter);
 
             if veins_analysis
-                [obj.Q_results_V] = bloodVolumeRate(obj.maskVein, 'Vein', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter);
+                [obj.Q_results_V] = crossSectionsAnalysis(obj.maskVein, 'Vein', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter);
             end
 
-            obj.is_bloodVolumeRateAnalyzed = true;
+            obj.is_crossSectionAnalyzed = true;
 
-            fprintf("- Blood Volume Rate Analysis took: %ds\n", round(toc(bloodVolumeRateTimer)));
+            fprintf("- Cross-Section Analysis took: %ds\n", round(toc(crossSectionAnalysisTimer)));
         end
 
-        % Blood Volume Rate Analysis
-        if obj.flag_bloodVolumeRate_figures
-            fprintf("\n----------------------------------\nBlood Volume Rate Figures\n----------------------------------\n");
-            bloodVolumeRateTimer = tic;
+        % Cross-Section Figures
+        if obj.flag_crossSection_figures
+            fprintf("\n----------------------------------\nCross-Section Figures\n----------------------------------\n");
+            crossSectionFiguresTimer = tic;
 
-            bloodVolumeRateFigures(obj.Q_results_A, obj.maskArtery, 'Artery', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx);
+            crossSectionsFigures(obj.Q_results_A, obj.maskArtery, 'Artery', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx);
 
             if veins_analysis
-                bloodVolumeRateFigures(obj.Q_results_V, obj.maskVein, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx);
+                crossSectionsFigures(obj.Q_results_V, obj.maskVein, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx);
             end
 
             generateHealthReport()
 
-            fprintf("- Blood Volume Rate Figures took: %ds\n", round(toc(bloodVolumeRateTimer)));
+            fprintf("- Cross-Section Figures took: %ds\n", round(toc(crossSectionFiguresTimer)));
         end
 
         % Spectral Analysis

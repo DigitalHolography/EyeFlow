@@ -129,8 +129,8 @@ videoInterp = max(0, min(videoInterp, 1)); % Ensure values are within [0, 1]
 combinedFrames = cat(1, videoInterp, mat2gray(signalPlotFrames));
 
 % Save final frames as PNGs
-imwrite(mat2gray(signalPlotFrames(:, :, :, end)), fullfile(ToolBox.path_png, 'volumeRate', sprintf("%s_%s_plot.png", ToolBox.folder_name, dirname)));
-imwrite(combinedFrames(:, :, :, end), fullfile(ToolBox.path_png, 'volumeRate', sprintf("%s_%s_combined.png", ToolBox.folder_name, dirname)));
+imwrite(mat2gray(signalPlotFrames(:, :, :, end)), fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s_plot.png", ToolBox.folder_name, dirname)));
+imwrite(combinedFrames(:, :, :, end), fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s_combined.png", ToolBox.folder_name, dirname)));
 
 % Save as GIF if not skipping frames
 if ~opt.skip

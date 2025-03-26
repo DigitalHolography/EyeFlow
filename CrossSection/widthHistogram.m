@@ -15,7 +15,7 @@ aa(4) = aa(4) * 1.14;
 axis(aa);
 title(sprintf('Histogram of %s sections width (µm)', name));
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'volumeRate', sprintf("%s_%s", ToolBox.main_foldername, sprintf('histogram_of_%s_section_width.png', name))))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s", ToolBox.main_foldername, sprintf('histogram_of_%s_section_width.png', name))))
 
 %csv output of the widths
 T = table();

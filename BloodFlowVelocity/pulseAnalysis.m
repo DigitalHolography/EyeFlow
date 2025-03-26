@@ -24,11 +24,7 @@ exportVideos = params.exportVideos;
 maskArterySection = maskArtery & maskSection;
 maskVeinSection = maskVein & maskSection;
 
-if ~isfolder(fullfile(ToolBox.path_png, 'pulseAnalysis'))
-    mkdir(ToolBox.path_png, 'pulseAnalysis')
-    mkdir(ToolBox.path_eps, 'pulseAnalysis')
-end
-folder = 'pulseAnalysis';
+folder = 'bloodFlowVelocity';
 
 [numX, numY, numFrames] = size(f_RMS_video);
 strXlabel = 'Time(s)'; %createXlabelTime(1);
@@ -57,7 +53,7 @@ parfor frameIdx = 1:numFrames
     f_RMS_background(:, :, frameIdx) = single(maskedAverage(f_RMS_video(:, :, frameIdx), 10 * w * 2 ^ k, maskNeighbors, maskVessel));
 end
 
-imwrite(rescale(squeeze(mean(f_RMS_background, 3))), fullfile(ToolBox.path_png, 'pulseAnalysis', sprintf("%s_frequency_RMS_bkg.png", ToolBox.main_foldername)));
+imwrite(rescale(squeeze(mean(f_RMS_background, 3))), fullfile(ToolBox.path_png, folder, sprintf("%s_frequency_RMS_bkg.png", ToolBox.main_foldername)));
 
 graphSignal('1_Arteries_fRMS', folder, ...
     t, squeeze(sum(f_RMS_video .* maskArterySection, [1, 2]) / nnz(maskArterySection)), '-', cArtery, ...
@@ -167,7 +163,7 @@ axis off
 axis image
 range(1:2) = clim;
 
-imwrite(rescale(LocalBackground_in_vessels), fullfile(ToolBox.path_png, 'pulseAnalysis', sprintf("%s_%s", ToolBox.main_foldername, '3_LocalBackground_in_vessels.png')))
+imwrite(rescale(LocalBackground_in_vessels), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_LocalBackground_in_vessels.png')))
 
 colorfig = figure("Visible", "off");
 colorfig.Units = 'normalized';
@@ -184,8 +180,8 @@ colorTitleHandle = get(LocalBackground_colorbar, 'Title');
 titleString = 'Local Background RMS frequency (kHz)';
 set(colorTitleHandle, 'String', titleString);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'pulseAnalysis', sprintf("%s_%s", ToolBox.main_foldername, '3_ColorBarLocalBackground_in_vessels.png')))
-exportgraphics(gca, fullfile(ToolBox.path_eps, 'pulseAnalysis', sprintf("%s_%s", ToolBox.main_foldername, '3_ColorBarLocalBackground_in_vessels.eps')))
+exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_ColorBarLocalBackground_in_vessels.png')))
+exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_ColorBarLocalBackground_in_vessels.eps')))
 
 f18 = figure("Visible", "off");
 f18.Position = [1100 485 350 420];
@@ -201,7 +197,7 @@ c.Label.FontSize = 12;
 axis off
 axis image
 range(1:2) = clim;
-imwrite(rescale(in_vessels), fullfile(ToolBox.path_png, 'pulseAnalysis', sprintf("%s_%s", ToolBox.main_foldername, '3_Df_in_vessels.png')))
+imwrite(rescale(in_vessels), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_Df_in_vessels.png')))
 
 colorfig = figure("Visible", "off");
 colorfig.Units = 'normalized';
@@ -218,8 +214,8 @@ colorTitleHandle = get(Df_colorbar, 'Title');
 titleString = 'Delta Doppler RMS frequency (kHz)';
 set(colorTitleHandle, 'String', titleString);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'pulseAnalysis', sprintf("%s_%s", ToolBox.main_foldername, '3_ColorBarDf_in_vessels.png')))
-exportgraphics(gca, fullfile(ToolBox.path_eps, 'pulseAnalysis', sprintf("%s_%s", ToolBox.main_foldername, '3_ColorBarDf_in_vessels.eps')))
+exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_ColorBarDf_in_vessels.png')))
+exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_ColorBarDf_in_vessels.eps')))
 
 figure("Visible", "off")
 imagesc(squeeze(mean(f_RMS_video, 3)));
@@ -233,7 +229,7 @@ c.Label.FontSize = 12;
 axis off
 axis image
 range(1:2) = clim;
-imwrite(rescale(squeeze(mean(f_RMS_video, 3))), fullfile(ToolBox.path_png, 'pulseAnalysis', sprintf("%s_%s", ToolBox.main_foldername, '3_frequency_RMS.png')), 'png');
+imwrite(rescale(squeeze(mean(f_RMS_video, 3))), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_frequency_RMS.png')), 'png');
 
 colorfig = figure("Visible", "off");
 colorfig.Units = 'normalized';
@@ -250,8 +246,8 @@ colorTitleHandle = get(f_RMS_colorbar, 'Title');
 titleString = 'RMS frequency (kHz)';
 set(colorTitleHandle, 'String', titleString);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'pulseAnalysis', sprintf("%s_%s", ToolBox.main_foldername, '3_ColorbarRMSFrequency.png')))
-exportgraphics(gca, fullfile(ToolBox.path_eps, 'pulseAnalysis', sprintf("%s_%s", ToolBox.main_foldername, '3_ColorbarRMSFrequency.eps')))
+exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_ColorbarRMSFrequency.png')))
+exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_ColorbarRMSFrequency.eps')))
 
 fprintf("    3. Plotting heatmaps took %ds\n", round(toc))
 

@@ -16,21 +16,21 @@ else
     conv_size = round(alpha * (2 * D - 1));
     M0_data_convoluated = zeros([N, M, F]);
     conv_kern = ones(conv_size);
-    
+
     parfor i = 1:F
         M0_data_convoluated(:, :, i) = conv2(double(obj.M0_data_video(:, :, i)), conv_kern, 'same');
     end
-    
+
     S = sum(obj.M0_data_video, [1, 2]);
     S2 = sum(M0_data_convoluated, [1, 2]);
-    
+
     imwrite(rescale(mean(M0_data_convoluated,3)),fullfile(obj.directory, 'eyeflow', sprintf("%s_alpha=%s_%s", obj.filenames, num2str(alpha), 'M0_Convolution_Norm.png')), 'png');
-    
+
     M0_data_convoluated = M0_data_convoluated .* S ./ S2; % normalizing to get the average with alpha = 0;
 end
 
 if params.json.Preprocess.Normalizing.NormTempMode
-        M0_data_convoluated = mean(M0_data_convoluated, 3);
+    M0_data_convoluated = mean(M0_data_convoluated, 3);
 end
 
 obj.f_RMS_video = sqrt(double(obj.M2_data_video) ./ M0_data_convoluated);

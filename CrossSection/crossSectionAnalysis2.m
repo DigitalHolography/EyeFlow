@@ -44,7 +44,7 @@ results.mask_sections = zeros(numX, numY, numSections);
 v_RMS_mean_masked = squeeze(mean(v_RMS, 3)) .* mask;
 
 % Define sub-image dimensions
-subImgHW = round(0.01 * size(v_RMS_mean_masked, 1) * params.json.BloodVolumeRateAnalysis.ScaleFactorWidth);
+subImgHW = round(0.01 * size(v_RMS_mean_masked, 1) * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
 
 % Initialize rejected masks
 rejected_masks = zeros(numX, numY, 3);
@@ -62,6 +62,7 @@ for n = 1:numSections
     results.subImg_cell{n} = rescale(subImg);
 
     % Update cross-section mask
+    subImg(subImg < 0) = NaN;
     [crossSectionMask, maskCurrentSlice] = updateCrossSectionMask(crossSectionMask, mask, subImg, locs, n, tilt_angle, params);
     results.mask_sections(:, :, n) = maskCurrentSlice;
 
@@ -74,7 +75,7 @@ for n = 1:numSections
     results.dA(n) = dA;
 
     % Generate figures
-    saveCrossSectionFigure(subImg, D, ToolBox, figName);
+    saveCrossSectionFigure(subImg, c1, c2, ToolBox, figName);
 
     % Update rejected masks
     if rsquare < 0.6 || isnan(D) || D > mean(sum(subImg ~= 0, 2))

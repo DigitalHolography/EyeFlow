@@ -75,7 +75,7 @@ stroke_volume_value = sum(ccinterpBvrT(1:min(amax + cshiftn, numInterp))) * dt2 
 total_volume_value = sum(ccinterpBvrT) * dt2 / 60 * 1000;
 title(sprintf("Retinal Stroke Volume : %02.0f nL and Total Volume : %02.0f nL", stroke_volume_value, total_volume_value));
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'volumeRate', sprintf("%s_strokeAndTotalVolume_%s.png", ToolBox.main_foldername, name)))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_strokeAndTotalVolume_%s.png", ToolBox.main_foldername, name)))
 
 fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_main_outputs', '.txt')), 'a');
 fprintf(fileID, 'MaxSystole Blood Volume Rate Artery : %f (µL/min) \r\n', maxsystole_bvr_value);

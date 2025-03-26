@@ -6,11 +6,6 @@ params = ToolBox.getParams;
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
 
-if ~isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
-    mkdir(ToolBox.path_png, 'bloodFlowVelocity');
-    mkdir(ToolBox.path_eps, 'bloodFlowVelocity');
-end
-
 % Precompute masks
 maskAV = maskArtery & maskVein;
 maskArterySection = maskArtery & maskSection & ~maskAV;

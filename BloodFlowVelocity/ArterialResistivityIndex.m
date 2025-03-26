@@ -15,14 +15,14 @@ vSys_mean = mean(arterial_signal(sysindexes));
 vDias_mean = mean(arterial_signal(diasindexes));
 
 ARI = (vSys - vDias) ./ vSys;
-ARI(ARI>1) = 1;
-ARI(ARI<0) = 0;
+ARI(ARI > 1) = 1;
+ARI(ARI < 0) = 0;
 ARI(isnan(ARI)) = 0;
 
 ARI_mean = (vSys_mean - vDias_mean) ./ vSys_mean;
 
 API = (vSys - vDias) ./ v_mean;
-API(API<0) = 0;
+API(API < 0) = 0;
 API(isnan(API)) = 0;
 
 API_mean = (vSys_mean - vDias_mean) ./ v_mean;

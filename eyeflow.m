@@ -21,8 +21,8 @@ properties (Access = public)
     segmentationCheckBox matlab.ui.control.CheckBox
     bloodFlowAnalysisCheckBox matlab.ui.control.CheckBox
     bloodFlowVelocityFigCheckBox matlab.ui.control.CheckBox
-    bloodVolumeRateCheckBox matlab.ui.control.CheckBox
-    bloodVolumeRateFigCheckBox matlab.ui.control.CheckBox
+    crossSectionCheckBox matlab.ui.control.CheckBox
+    crossSectionFigCheckBox matlab.ui.control.CheckBox
     spectralAnalysisCheckBox matlab.ui.control.CheckBox
 
     % Execute
@@ -109,8 +109,8 @@ methods (Access = public)
         end
 
         % Add necessary paths
-        addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "BloodVolumeRate\", ...
-            "BloodVolumeRate\Rheology\", "Loading\", "Parameters\", "Preprocessing\", ...
+        addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\", ...
+            "Loading\", "Parameters\", "Preprocessing\", ...
             "PulseAnalysis\", "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\");
 
         % Set the UI title
@@ -233,8 +233,8 @@ methods (Access = public)
             app.file.flag_segmentation = app.segmentationCheckBox.Value;
             app.file.flag_bloodFlowVelocity_analysis = app.bloodFlowAnalysisCheckBox.Value;
             app.file.flag_bloodFlowVelocity_figures = app.bloodFlowVelocityFigCheckBox.Value;
-            app.file.flag_bloodVolumeRate_analysis = app.bloodVolumeRateCheckBox.Value;
-            app.file.flag_bloodVolumeRate_figures = app.bloodVolumeRateFigCheckBox.Value;
+            app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
+            app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
 
             app.file.OverWrite = app.OverWriteCheckBox.Value;
@@ -738,12 +738,12 @@ methods (Access = public)
         % Enable/disable bloodFlowAnalysisCheckBox and spectralAnalysisCheckBox
         is_segmented = false;
         is_pulseAnalyzed = false;
-        is_bloodVolumeRateAnalyzed = false;
+        is_crossSectionAnalyzed = false;
 
         if ~isempty(app.file)
             is_segmented = app.file.is_segmented;
             is_pulseAnalyzed = app.file.is_pulseAnalyzed;
-            is_bloodVolumeRateAnalyzed = app.file.is_bloodVolumeRateAnalyzed;
+            is_crossSectionAnalyzed = app.file.is_crossSectionAnalyzed;
         end
 
         if app.segmentationCheckBox.Value || is_segmented
@@ -756,23 +756,23 @@ methods (Access = public)
             app.spectralAnalysisCheckBox.Value = false; % Turn off if disabled
         end
 
-        % Enable/disable bloodFlowVelocityFigCheckBox and bloodVolumeRateCheckBox
+        % Enable/disable bloodFlowVelocityFigCheckBox and crossSectionCheckBox
         if app.bloodFlowAnalysisCheckBox.Value || is_pulseAnalyzed
             app.bloodFlowVelocityFigCheckBox.Enable = true;
-            app.bloodVolumeRateCheckBox.Enable = true;
+            app.crossSectionCheckBox.Enable = true;
         else
             app.bloodFlowVelocityFigCheckBox.Enable = false;
-            app.bloodVolumeRateCheckBox.Enable = false;
+            app.crossSectionCheckBox.Enable = false;
             app.bloodFlowVelocityFigCheckBox.Value = false; % Turn off if disabled
-            app.bloodVolumeRateCheckBox.Value = false; % Turn off if disabled
+            app.crossSectionCheckBox.Value = false; % Turn off if disabled
         end
 
-        % Enable/disable bloodVolumeRateFigCheckBox
-        if app.bloodVolumeRateCheckBox.Value || is_bloodVolumeRateAnalyzed
-            app.bloodVolumeRateFigCheckBox.Enable = true;
+        % Enable/disable crossSectionFigCheckBox
+        if app.crossSectionCheckBox.Value || is_crossSectionAnalyzed
+            app.crossSectionFigCheckBox.Enable = true;
         else
-            app.bloodVolumeRateFigCheckBox.Enable = false;
-            app.bloodVolumeRateFigCheckBox.Value = false; % Turn off if disabled
+            app.crossSectionFigCheckBox.Enable = false;
+            app.crossSectionFigCheckBox.Value = false; % Turn off if disabled
         end
 
     end
@@ -904,7 +904,7 @@ methods (Access = private)
         app.MaskToolButton.Layout.Column = 4;
         app.MaskToolButton.Text = 'Mask Tool';
 
-        % Checkboxes: Segmentation, Pulse analysis, Blood Flow Velocity, Blood Volume Rate, SH analysis
+        % Checkboxes: Segmentation, Pulse analysis, Blood Flow Velocity, Cross Section, SH analysis
         app.segmentationCheckBox = uicheckbox(grid);
         app.segmentationCheckBox.Text = 'Segmentation';
         app.segmentationCheckBox.FontSize = 16;
@@ -932,23 +932,23 @@ methods (Access = private)
         app.bloodFlowVelocityFigCheckBox.Value = true;
         app.bloodFlowVelocityFigCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
 
-        app.bloodVolumeRateCheckBox = uicheckbox(grid);
-        app.bloodVolumeRateCheckBox.Text = 'Blood Volume Rate Analysis';
-        app.bloodVolumeRateCheckBox.FontSize = 16;
-        app.bloodVolumeRateCheckBox.FontColor = [1 1 1];
-        app.bloodVolumeRateCheckBox.Layout.Row = 6;
-        app.bloodVolumeRateCheckBox.Layout.Column = [1, 2];
-        app.bloodVolumeRateCheckBox.Value = true;
-        app.bloodVolumeRateCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.crossSectionCheckBox = uicheckbox(grid);
+        app.crossSectionCheckBox.Text = 'Cross Section Analysis';
+        app.crossSectionCheckBox.FontSize = 16;
+        app.crossSectionCheckBox.FontColor = [1 1 1];
+        app.crossSectionCheckBox.Layout.Row = 6;
+        app.crossSectionCheckBox.Layout.Column = [1, 2];
+        app.crossSectionCheckBox.Value = true;
+        app.crossSectionCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
 
-        app.bloodVolumeRateFigCheckBox = uicheckbox(grid);
-        app.bloodVolumeRateFigCheckBox.Text = 'Blood Volume Rate Figures';
-        app.bloodVolumeRateFigCheckBox.FontSize = 16;
-        app.bloodVolumeRateFigCheckBox.FontColor = [1 1 1];
-        app.bloodVolumeRateFigCheckBox.Layout.Row = 6;
-        app.bloodVolumeRateFigCheckBox.Layout.Column = [3, 4];
-        app.bloodVolumeRateFigCheckBox.Value = true;
-        app.bloodVolumeRateFigCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.crossSectionFigCheckBox = uicheckbox(grid);
+        app.crossSectionFigCheckBox.Text = 'Cross Section Figures';
+        app.crossSectionFigCheckBox.FontSize = 16;
+        app.crossSectionFigCheckBox.FontColor = [1 1 1];
+        app.crossSectionFigCheckBox.Layout.Row = 6;
+        app.crossSectionFigCheckBox.Layout.Column = [3, 4];
+        app.crossSectionFigCheckBox.Value = true;
+        app.crossSectionFigCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
 
         app.spectralAnalysisCheckBox = uicheckbox(grid);
         app.spectralAnalysisCheckBox.Text = 'Spectral analysis';

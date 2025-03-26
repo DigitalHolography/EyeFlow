@@ -37,7 +37,7 @@ methods
             obj.veins_analysis = parsedData.VeinsAnalysis;
             obj.exportVideos = parsedData.ExportVideos;
             obj.timePeriodMin = parsedData.MinimumGifPeriod;
-            obj.px_size = parsedData.BloodVolumeRateAnalysis.PixelSize / (2 ^ parsedData.Preprocess.InterpolationFactor);
+            obj.px_size = parsedData.CrossSectionsAnalysis.PixelSize / (2 ^ parsedData.Preprocess.InterpolationFactor);
 
         else
             error('The json file could not be found.');

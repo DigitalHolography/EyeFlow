@@ -42,8 +42,8 @@ if isempty(maskVein)
 
     maskArterySection = maskArtery & maskSection;
 
-    cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
-    cmapArterySection = cmapLAB(256, [1 1 1], 0, [1 1 0], 1/3, [1 0 0], 2/3, [0 0 0], 1);
+    cmapArtery = ToolBox.cmapArtery;
+    cmapArterySection = flipud(cmapArtery);
     
     M0_Artery = setcmap(img, maskArtery, cmapArtery);
     M0_ArterySection = setcmap(img, maskArterySection, cmapArterySection);
@@ -62,8 +62,8 @@ elseif isempty(maskArtery)
 
     maskVeinSection = maskVein & maskSection;
 
-    cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
-    cmapVeinSection = cmapLAB(256, [1 1 1], 0, [0 1 1], 1/3, [0 0 1], 2/3, [0 0 0], 1);
+    cmapVein = ToolBox.cmapVein;
+    cmapVeinSection = flipud(ToolBox.cmapVein);
 
     M0_Vein = setcmap(img, maskVein, cmapVein);
     M0_VeinSection = setcmap(img, maskVeinSection, cmapVeinSection);
@@ -85,12 +85,12 @@ else
     maskAV = maskArtery & maskVein;
     maskAVSection = maskAV & maskSection;
 
-    cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
-    cmapArterySection = cmapLAB(256, [1 1 1], 0, [1 1 0], 1/3, [1 0 0], 2/3, [0 0 0], 1);
-    cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
-    cmapVeinSection = cmapLAB(256, [1 1 1], 0, [0 1 1], 1/3, [0 0 1], 2/3, [0 0 0], 1);
-    cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [1 1 1], 1);
-    cmapAVSection = cmapLAB(256, [0 0 0], 0, [0 1 0], 1/3, [1 1 1], 1);
+    cmapArtery = ToolBox.cmapArtery;
+    cmapArterySection = flipud(cmapArtery);
+    cmapVein = ToolBox.cmapVein;
+    cmapVeinSection = flipud(cmapVein);
+    cmapAV = ToolBox.cmapAV;
+    cmapAVSection = flipud(cmapAV);
 
     M0_Artery = setcmap(img, maskArtery, cmapArtery);
     M0_ArterySection = setcmap(img, maskArterySection, cmapArterySection);

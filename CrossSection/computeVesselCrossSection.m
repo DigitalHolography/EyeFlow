@@ -5,39 +5,26 @@ params = ToolBox.getParams;
 px_size = params.px_size;
 
 % Compute velocity profile
-profile = mean(subImg, 1);
+profile = mean(subImg, 1, 'omitnan');
 L = length(profile);
 
-if mean(profile) > 0
-    central_range = find(profile > 0.1 * max(profile));
-else
-    central_range = find(profile < 0.1 * min(profile));
-end
-
+central_range = find(profile > 0.1 * max(profile));
 centt = mean(central_range);
 
 r_range = (central_range - centt) * px_size;
 [p1, p2, p3, rsquare, p1_err, p2_err, p3_err] = customPoly2Fit(r_range', profile(central_range)');
 [r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3, p1_err, p2_err, p3_err);
 
-if isnan(r1)
-    c1 = 2;
-    c2 = L - 1;
-else
-    c1 = round(centt + (r1 / px_size));
-    c2 = round(centt + (r2 / px_size));
-    c3 = max(c1, c2);
-    c1 = max(min(c1, c2), 2);
-    c2 = min(c3, L - 1);
-end
+c1 = max(round(centt + (r1 / px_size)), 2);
+c2 = min(round(centt + (r2 / px_size)), L);
 
 % Determine cross-section width
-if rsquare < 0.6 || isnan(r1) || isnan(r2)
-    D = mean(sum(subImg ~= 0, 2));
-    dD = std(sum(subImg ~= 0, 2));
-else
-    D = abs(r1 - r2) / px_size;
-    dD = sqrt(r1_err ^ 2 + r2_err ^ 2) / px_size;
+D = abs(r1 - r2) / px_size;
+dD = sqrt(r1_err ^ 2 + r2_err ^ 2) / px_size;
+
+if (D > sqrt(2) * L) || (rsquare < 0.6)
+    D = NaN;
+    dD = NaN;
 end
 
 % Compute cross-sectional area
@@ -48,7 +35,7 @@ dA = pi * (px_size / 2) ^ 2 * sqrt(dD ^ 4 + 2 * dD ^ 2 * D ^ 2);
 r_ = ((1:L) - centt) * px_size * 1000;
 
 % Calculate standard deviation and confidence interval
-dprofile = std(subImg, [], 1);
+dprofile = std(subImg, [], 1, 'omitnan');
 curve1 = profile + dprofile;
 curve2 = profile - dprofile;
 
@@ -93,8 +80,8 @@ title('velocity profile and laminar flow model fit');
 
 % Save figure
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'volumeRate', 'projection', ...
-    sprintf('%s_proj_poiseuille_%s.png', ToolBox.main_foldername, figName)))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', 'profiles', ...
+    sprintf('%s_poiseuille_profile_%s.png', ToolBox.main_foldername, figName)))
 
 % Close figure
 close(f);

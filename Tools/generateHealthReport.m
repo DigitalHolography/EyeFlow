@@ -50,7 +50,7 @@ yPos = addField(fig, sprintf('Min Diastole Blood Volume Rate (Artery): %.1f µL/
 yPos = addField(fig, sprintf('Stroke Volume (Artery): %.1f nL', data.strokeVolumeArtery), yPos, margin, a4Width);
 yPos = addField(fig, sprintf('Total Volume (Artery): %.1f nL', data.totalVolumeArtery), yPos, margin, a4Width);
 
-addImage(fig, fullfile(ToolBox.path_png, 'mask', sprintf("%s_vesselMap.png", directoryName)), yPos, margin, a4Width)
+addImage(fig, fullfile(ToolBox.path_png, 'mask', sprintf("%s_vesselMap.png", directoryName)), yPos, margin, a4Width);
 
 
 % Save the figure as a PDF using print

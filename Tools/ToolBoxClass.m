@@ -24,6 +24,9 @@ properties
     fs double
     f1 double
     f2 double
+    cmapArtery
+    cmapVein
+    cmapAV
 end
 
 methods
@@ -47,6 +50,8 @@ methods
 
         % Copy input parameters to result folder
         obj.copyInputParameters();
+
+        obj.createColorMaps();
 
         obj.setGlobalToolBox;
 
@@ -199,6 +204,11 @@ methods
         Params = Parameters_json(obj.EF_path, obj.param_name);
     end
 
+    function obj = createColorMaps(obj)
+        obj.cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
+        obj.cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
+        obj.cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [1 1 1], 1);
+    end
 end
 
 end

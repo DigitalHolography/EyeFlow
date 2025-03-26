@@ -28,7 +28,7 @@ strYlabel = 'Frequency (kHz)';
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
-folder = 'pulseAnalysis';
+folder = 'bloodFlowVelocity';
 
 % Apply masks to isolate arteries, veins, and background
 maskArtery = maskArtery & maskSection;

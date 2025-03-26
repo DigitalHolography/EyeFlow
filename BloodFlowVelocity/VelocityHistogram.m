@@ -32,9 +32,9 @@ v_min = min(v_histo, [], 'all');
 v_max = max(v_histo, [], 'all');
 
 if strcmp(name, 'Arteries')
-    cmap = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
+    cmap = ToolBox.cmapArtery;
 elseif strcmp(name, 'Veins')
-    cmap = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
+    cmap = ToolBox.cmapVein;
 else
     cmap = cmapLAB(256, [0 0 0], 0, [0 1 0], 1/3, [1/2 1 1/2], 2/3, [1 1 1], 1);
 end

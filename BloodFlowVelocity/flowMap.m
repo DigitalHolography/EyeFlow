@@ -29,11 +29,11 @@ circle2 = diskMask(numX, numY, r2 - w, r2, center = [x_c, y_c]);
 circles = circle1 | circle2;
 
 % Precompute colormaps
-cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
+cmapArtery = ToolBox.cmapArtery;
 
 if veinsAnalysis
-    cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
-    cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [0 1 0], 2/3, [1 1 1], 1);
+    cmapVein = ToolBox.cmapVein;
+    cmapAV = ToolBox.cmapAV;
 end
 
 % Precompute v_rescaled
