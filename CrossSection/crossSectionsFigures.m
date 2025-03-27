@@ -21,6 +21,7 @@ D_cell = Q_results.D_cell;
 dD_cell = Q_results.dD_cell;
 mask_mat = Q_results.mask_mat;
 area_mat = Q_results.area_mat;
+Q_cell = Q_results.Q_cell;
 Q_mat = Q_results.Q_mat;
 dQ_mat = Q_results.dQ_mat;
 
