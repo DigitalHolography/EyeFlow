@@ -6,6 +6,7 @@ px_size = params.px_size;
 
 % Compute velocity profile
 profile = mean(subImg, 1, 'omitnan');
+profile(isnan(profile)) = 0;
 L = length(profile);
 
 central_range = find(profile > 0.1 * max(profile));
@@ -36,6 +37,7 @@ r_ = ((1:L) - centt) * px_size * 1000;
 
 % Calculate standard deviation and confidence interval
 dprofile = std(subImg, [], 1, 'omitnan');
+dprofile(isnan(dprofile)) = 0;
 curve1 = profile + dprofile;
 curve2 = profile - dprofile;
 
