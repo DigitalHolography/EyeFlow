@@ -62,7 +62,7 @@ try
             mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
         end
 
-        circleImages(M0_ff_img, xy_barycenter, area_mat, Q_mat, v_cell, mask_mat, locs, name)
+        circleImages(M0_ff_img, xy_barycenter, area_mat, Q_cell, v_cell, mask_mat, locs, name)
     end
 
 catch ME

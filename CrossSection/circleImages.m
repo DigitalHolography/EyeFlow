@@ -1,4 +1,4 @@
-function circleImages(M0_ff_img, xy_barycenter, area, Q, v, mask, locs, name)
+function circleImages(M0_ff_img, xy_barycenter, area, Q_cell, v_cell, mask, locs, name)
 
 % Get global toolbox and parameters
 ToolBox = getGlobalToolBox;
@@ -97,7 +97,14 @@ end
 figure(312)
 
 parfor cIdx = 1:numCircles
-    etiquettes_frame_values = round(mean(Q(cIdx, 1:find(area(cIdx, :), 1, 'last'), :), 3), 1);
+    Q = Q_cell{cIdx};
+
+    if ~isempty(Q)
+        etiquettes_frame_values = round(mean(Q, 2), 1);
+    else
+        etiquettes_frame_values = zeros(1, 0); % Handle empty Q case
+    end
+
     graphMaskTags(312, M0_ff_img, squeeze(mask(:, :, cIdx)), locs{cIdx}, etiquettes_frame_values, ...
         x_barycenter, y_barycenter, Color = name);
 
@@ -117,10 +124,10 @@ end
 figure(312)
 
 parfor cIdx = 1:numCircles
-    vel = v{cIdx};
+    v = v_cell{cIdx};
 
-    if ~isempty(vel)
-        etiquettes_frame_values = round(mean(max(vel, [], 2), 3), 1);
+    if ~isempty(v)
+        etiquettes_frame_values = round(mean(v, 2), 1);
     else
         etiquettes_frame_values = zeros(1, 0); % Handle empty velocity case
     end

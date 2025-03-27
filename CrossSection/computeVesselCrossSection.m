@@ -15,8 +15,8 @@ r_range = (central_range - centt) * px_size;
 [p1, p2, p3, rsquare, p1_err, p2_err, p3_err] = customPoly2Fit(r_range', profile(central_range)');
 [r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3, p1_err, p2_err, p3_err);
 
-c1 = max(round(centt + (r1 / px_size)), 2);
-c2 = min(round(centt + (r2 / px_size)), L);
+c1 = round(centt + (r1 / px_size));
+c2 = round(centt + (r2 / px_size));
 
 % Determine cross-section width
 D = abs(r1 - r2) / px_size;
@@ -28,7 +28,7 @@ if (D > sqrt(2) * L) || (rsquare < 0.6)
 end
 
 % Compute cross-sectional area
-A = pi * (px_size / 2) ^ 2 * D ^ 2;
+A = pi * (D * px_size / 2) ^ 2;
 dA = pi * (px_size / 2) ^ 2 * sqrt(dD ^ 4 + 2 * dD ^ 2 * D ^ 2);
 
 % Calculate x-axis values (position in µm)
