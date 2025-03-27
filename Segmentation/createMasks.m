@@ -321,8 +321,11 @@ saveImage(M0_RGB, ToolBox, 'RGB_img.png')
 
 % 4) 2) Neighbours Mask
 
-% maskNeighbors = imdilate(maskArtery | maskVein, strel('disk', bgWidth)) - (maskArtery | maskVein);
-maskNeighbors = (maskBackground & ~maskVesselness) .* maskDiaphragm;
+if params.json.Mask.AllNonVesselsAsBackground
+    maskNeighbors = (maskBackground & ~maskVesselness) .* maskDiaphragm;
+else
+    maskNeighbors = imdilate(maskArtery | maskVein, strel('disk', bgWidth)) - (maskArtery | maskVein);
+end
 
 cmapNeighbors = cmapLAB(256, [0 1 0], 0, [1 1 1], 1);
 

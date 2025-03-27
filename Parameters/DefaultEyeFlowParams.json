@@ -11,7 +11,7 @@
       },
       "Normalizing" : {
         "Alpha Convolve Norm" : 1,
-        "NormTempMode" : true
+        "NormTempMode" : false
       },
       "Resize": {
         "FrameWidth": -1,
@@ -52,7 +52,8 @@
       "Imclose Radius": 1,
       "Minimum Vessel Width": 3,
       "Final Dilation": 0,
-      "Force VesselWidth": 0
+      "Force VesselWidth": 0,
+      "All Non Vessels as Background" : false
     },
     "PulseAnalysis": {
       "DifferenceMethods": 0,
