@@ -9,7 +9,29 @@ profile = mean(subImg, 1, 'omitnan');
 profile(isnan(profile)) = 0;
 L = length(profile);
 
-central_range = find(profile > 0.1 * max(profile));
+% Find central peak (closest to L/2)
+[~, locs] = findpeaks(profile, 'MinPeakHeight', max(profile)/2);
+[~, central_peak_idx] = min(abs(locs - L/2));
+central_peak_loc = locs(central_peak_idx);
+
+% Find all points above 10% threshold
+above_thresh = find(profile > 0.1 * max(profile));
+
+% Find contiguous regions above threshold
+labeled_regions = bwlabel(above_thresh);
+
+% Find which region contains the central peak
+central_region = labeled_regions(central_peak_loc);
+
+% If central peak is in a valid region (not zero/below threshold)
+if central_region > 0
+    % Get all points in this region
+    central_range = find(labeled_regions == central_region);
+else
+    % Fallback: use all points above threshold
+    central_range = find(above_thresh);
+    warning('Central peak not in thresholded region - using all above-threshold points');
+end
 centt = mean(central_range);
 
 r_range = (central_range - centt) * px_size;
