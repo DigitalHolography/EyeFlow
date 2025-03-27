@@ -78,7 +78,7 @@ for n = 1:numSections
     saveCrossSectionFigure(subImg, c1, c2, ToolBox, figName);
 
     % Update rejected masks
-    if rsquare < 0.6 || isnan(D) || D > mean(sum(subImg ~= 0, 2))
+    if rsquare < 0.6 || isnan(D)
         rejected_masks(:, :, 1) = rejected_masks(:, :, 1) + maskCurrentSlice;
     else
         rejected_masks(:, :, 2) = rejected_masks(:, :, 2) + maskCurrentSlice;

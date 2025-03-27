@@ -37,4 +37,6 @@ elseif nargin == 4
     mask = (R > R1 ^ 2) & (R <= R2 ^ 2);
 end
 
+mask = logical(mask);
+
 end

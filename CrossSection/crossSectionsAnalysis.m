@@ -115,14 +115,8 @@ parfor c_idx = 1:numCircles
     subImg_cell{c_idx} = results.subImg_cell;
 end
 
-try
-
-    if params.json.CrossSectionsAnalysis.sectionMontage
-        sectionMontage(subImg_cell, numSections, vesselName)
-    end
-
-catch ME
-    MEdisp(ME, ToolBox.path_dir)
+if params.json.CrossSectionsAnalysis.sectionMontage
+    sectionMontage(subImg_cell, numSections, vesselName)
 end
 
 imwrite(rejected_mask, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_rejected_masks_%s.png", ToolBox.main_foldername, vesselName)))

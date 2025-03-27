@@ -36,48 +36,30 @@ else
     index_end = numFrames;
 end
 
-try
-
-    if params.json.CrossSectionsFigures.sectionImage
-        sectionImage(M0_ff_img, mask_mat, initial)
-    end
-
-catch ME
-    MEdisp(ME, ToolBox.path_dir)
+if params.json.CrossSectionsFigures.sectionImage
+    sectionImage(M0_ff_img, mask_mat, initial)
 end
 
-try
+if params.json.CrossSectionsFigures.circleImages
 
-    if params.json.CrossSectionsFigures.circleImages
-
-        if ~isfolder(fullfile(ToolBox.path_png, 'crossSectionsAnalysis', 'sectionsImages'))
-            mkdir(fullfile(path_png, 'crossSectionsAnalysis'), 'sectionsImages')
-            mkdir(fullfile(path_eps, 'crossSectionsAnalysis'), 'sectionsImages')
-            mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'widths')
-            mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'widths')
-            mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'num')
-            mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'num')
-            mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'bvr')
-            mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'bvr')
-            mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
-            mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
-        end
-
-        circleImages(M0_ff_img, xy_barycenter, area_mat, Q_cell, v_cell, mask_mat, locs, name)
+    if ~isfolder(fullfile(ToolBox.path_png, 'crossSectionsAnalysis', 'sectionsImages'))
+        mkdir(fullfile(path_png, 'crossSectionsAnalysis'), 'sectionsImages')
+        mkdir(fullfile(path_eps, 'crossSectionsAnalysis'), 'sectionsImages')
+        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'widths')
+        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'widths')
+        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'num')
+        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'num')
+        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'bvr')
+        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'bvr')
+        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
+        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
     end
 
-catch ME
-    MEdisp(ME, ToolBox.path_dir)
+    circleImages(M0_ff_img, xy_barycenter, area_mat, Q_cell, v_cell, mask_mat, locs, name)
 end
 
-try
-
-    if params.json.CrossSectionsFigures.widthHistogram
-        widthHistogram(D_cell, dD_cell, area_mat, name);
-    end
-
-catch ME
-    MEdisp(ME, ToolBox.path_dir)
+if params.json.CrossSectionsFigures.widthHistogram
+    widthHistogram(D_cell, dD_cell, area_mat, name);
 end
 
 fprintf("    1. Sections Images Generation (%s) took %ds\n", name, round(toc))
@@ -87,14 +69,8 @@ tic
 
 [Q_t, dQ_t] = plotRadius(Q_mat, dQ_mat, t, index_start, index_end, name);
 
-try
-
-    if params.json.CrossSectionsFigures.BloodFlowProfiles
-        interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, numSections, name)
-    end
-
-catch ME
-    MEdisp(ME, ToolBox.path_dir)
+if params.json.CrossSectionsFigures.BloodFlowProfiles
+    interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, numSections, name)
 end
 
 % Call for arterial analysis
@@ -115,27 +91,15 @@ fprintf("    2. Blood Volume Rate Figures (%s) took %ds\n", name, round(toc))
 % 3. Arterial Indicators
 tic
 
-try
-
-    if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesIndexes)
-        strokeAndTotalVolume(Q_t, dQ_t, systolesIndexes, t, 1000, name);
-    end
-
-catch ME
-    MEdisp(ME, ToolBox.path_dir)
+if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesIndexes)
+    strokeAndTotalVolume(Q_t, dQ_t, systolesIndexes, t, 1000, name);
 end
 
 % if strcmp(name, 'Artery')
 %
-%     try
-%
 %         if params.json.CrossSectionsFigures.ARIBVR
 %             ArterialResistivityIndex(t, Q_t, mask, 'BVR', 'crossSectionsAnalysis');
 %         end
-%
-%     catch ME
-%         MEdisp(ME, ToolBox.path_dir)
-%     end
 %
 %     fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
 % end

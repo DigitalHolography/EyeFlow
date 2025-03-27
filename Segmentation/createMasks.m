@@ -299,8 +299,8 @@ else
 end
 
 % 3) 5) Create Vessel and Background Mask
-maskArtery = maskArtery .* maskDiaphragm;
-maskVein = maskVein .* maskDiaphragm;
+maskArtery = maskArtery & maskDiaphragm;
+maskVein = maskVein & maskDiaphragm;
 maskVessel = maskArtery | maskVein;
 maskBackground = not(maskVessel);
 

@@ -248,6 +248,9 @@ methods (Access = public)
 
                 app.file = app.file.analyzeData(app);
 
+                % Update lamp color to indicate success
+                app.statusLamp.Color = [0, 1, 0]; % Green
+
             catch ME
                 err = ME;
                 MEdisp(ME, app.file.directory)
@@ -258,9 +261,6 @@ methods (Access = public)
             end
 
         end
-
-        % Update lamp color to indicate success
-        app.statusLamp.Color = [0, 1, 0]; % Green
 
         % Update checkbox states after execution
         app.CheckboxValueChanged();
