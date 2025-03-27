@@ -21,6 +21,7 @@ D_cell = Q_results.D_cell;
 dD_cell = Q_results.dD_cell;
 mask_mat = Q_results.mask_mat;
 area_mat = Q_results.area_mat;
+Q_cell = Q_results.Q_cell;
 Q_mat = Q_results.Q_mat;
 dQ_mat = Q_results.dQ_mat;
 
@@ -62,7 +63,7 @@ try
             mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
         end
 
-        circleImages(M0_ff_img, xy_barycenter, area_mat, Q_mat, v_cell, mask_mat, locs, name)
+        circleImages(M0_ff_img, xy_barycenter, area_mat, Q_cell, v_cell, mask_mat, locs, name)
     end
 
 catch ME

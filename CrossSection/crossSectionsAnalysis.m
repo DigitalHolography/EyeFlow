@@ -146,6 +146,7 @@ Q_results.D_cell = D_cell;
 Q_results.dD_cell = dD_cell;
 Q_results.mask_mat = mask_mat;
 Q_results.area_mat = area_mat;
+Q_results.Q_cell = Q_cell;
 Q_results.Q_mat = Q_mat;
 Q_results.dQ_mat = dQ_mat;
 

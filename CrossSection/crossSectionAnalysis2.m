@@ -41,10 +41,11 @@ results.dA = zeros(numSections, 1);
 results.mask_sections = zeros(numX, numY, numSections);
 
 % Compute mean velocity over time
-v_RMS_mean_masked = squeeze(mean(v_RMS, 3)) .* mask;
+v_masked = squeeze(mean(v_RMS, 3)) .* mask;
+v_masked(v_masked < 0) = NaN;
 
 % Define sub-image dimensions
-subImgHW = round(0.01 * size(v_RMS_mean_masked, 1) * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
+subImgHW = round(0.01 * size(v_masked, 1) * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
 
 % Initialize rejected masks
 rejected_masks = zeros(numX, numY, 3);
@@ -54,7 +55,7 @@ for n = 1:numSections
     % Define sub-image dimensions
     xRange = max(round(-subImgHW / 2) + locs(n, 1), 1):min(round(subImgHW / 2) + locs(n, 1), numX);
     yRange = max(round(-subImgHW / 2) + locs(n, 2), 1):min(round(subImgHW / 2) + locs(n, 2), numY);
-    subImg = v_RMS_mean_masked(yRange, xRange);
+    subImg = v_masked(yRange, xRange);
 
     % Crop and rotate sub-image
     subImg = cropCircle(subImg);
@@ -62,7 +63,6 @@ for n = 1:numSections
     results.subImg_cell{n} = rescale(subImg);
 
     % Update cross-section mask
-    subImg(subImg < 0) = NaN;
     [crossSectionMask, maskCurrentSlice] = updateCrossSectionMask(crossSectionMask, mask, subImg, locs, n, tilt_angle, params);
     results.mask_sections(:, :, n) = maskCurrentSlice;
 

@@ -6,16 +6,39 @@ px_size = params.px_size;
 
 % Compute velocity profile
 profile = mean(subImg, 1, 'omitnan');
+profile(isnan(profile)) = 0;
 L = length(profile);
 
-central_range = find(profile > 0.1 * max(profile));
+% Find central peak (closest to L/2)
+[~, locs] = findpeaks(profile, 'MinPeakHeight', max(profile)/2);
+[~, central_peak_idx] = min(abs(locs - L/2));
+central_peak_loc = locs(central_peak_idx);
+
+% Find all points above 10% threshold
+above_thresh = find(profile > 0.1 * max(profile));
+
+% Find contiguous regions above threshold
+labeled_regions = bwlabel(above_thresh);
+
+% Find which region contains the central peak
+central_region = labeled_regions(central_peak_loc);
+
+% If central peak is in a valid region (not zero/below threshold)
+if central_region > 0
+    % Get all points in this region
+    central_range = find(labeled_regions == central_region);
+else
+    % Fallback: use all points above threshold
+    central_range = find(above_thresh);
+    warning('Central peak not in thresholded region - using all above-threshold points');
+end
 centt = mean(central_range);
 
 r_range = (central_range - centt) * px_size;
 [p1, p2, p3, rsquare, p1_err, p2_err, p3_err] = customPoly2Fit(r_range', profile(central_range)');
 [r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3, p1_err, p2_err, p3_err);
 
-c1 = max(round(centt + (r1 / px_size)), 2);
+c1 = max(round(centt + (r1 / px_size)), 1);
 c2 = min(round(centt + (r2 / px_size)), L);
 
 % Determine cross-section width
@@ -28,7 +51,7 @@ if (D > sqrt(2) * L) || (rsquare < 0.6)
 end
 
 % Compute cross-sectional area
-A = pi * (px_size / 2) ^ 2 * D ^ 2;
+A = pi * (D * px_size / 2) ^ 2;
 dA = pi * (px_size / 2) ^ 2 * sqrt(dD ^ 4 + 2 * dD ^ 2 * D ^ 2);
 
 % Calculate x-axis values (position in µm)
@@ -36,6 +59,7 @@ r_ = ((1:L) - centt) * px_size * 1000;
 
 % Calculate standard deviation and confidence interval
 dprofile = std(subImg, [], 1, 'omitnan');
+dprofile(isnan(dprofile)) = 0;
 curve1 = profile + dprofile;
 curve2 = profile - dprofile;
 

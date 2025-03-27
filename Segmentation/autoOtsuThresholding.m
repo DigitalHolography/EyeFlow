@@ -1,4 +1,4 @@
-function [maskArtery, maskVein, maskChoroid] = autoOtsuThresholding(image, mask, classes, name)
+function [maskArtery, maskVein, maskChoroid, maskBackground] = autoOtsuThresholding(image, mask, classes, name)
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
 % classes = [0 0 1 1] a 0 and 1 matrix where 1 is the class selected and 0 the rejected
@@ -60,4 +60,7 @@ imwrite(rescale(quantizedImageRGB), fullfile(ToolBox.path_png, 'mask', 'steps', 
 
 maskArtery = logical(maskArtery);
 maskVein = logical(maskVein);
+maskChoroid = logical(maskChoroid);
+
+maskBackground = ~(mask);
 end

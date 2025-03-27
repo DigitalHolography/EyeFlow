@@ -150,12 +150,13 @@ saveImage(maskVein, ToolBox, 'vein_17_FirstMask.png', isStep = true, cmap = cmap
 % Remove small blobs
 maskArtery = bwareaopen(maskArtery, minPixelSize);
 maskVein = bwareaopen(maskVein, minPixelSize);
+maskChoroid = maskVesselness & ~(maskArtery | maskVein);
 
 saveImage(maskArtery, ToolBox, 'artery_18_FirstMaskClean.png', isStep = true, cmap = cmapArtery)
 saveImage(maskVein, ToolBox, 'vein_18_FirstMaskClean.png', isStep = true, cmap = cmapVein)
 
 RGBM0(:, :, 1) = rescale(M0_ff_img) + maskArtery;
-RGBM0(:, :, 2) = rescale(M0_ff_img);
+RGBM0(:, :, 2) = rescale(M0_ff_img) + maskChoroid;
 RGBM0(:, :, 3) = rescale(M0_ff_img) + maskVein;
 saveImage(RGBM0, ToolBox, 'all_19_RGB.png', isStep = true)
 
@@ -298,7 +299,8 @@ else
 end
 
 % 3) 5) Create Vessel and Background Mask
-
+maskArtery = maskArtery .* maskDiaphragm;
+maskVein = maskVein .* maskDiaphragm;
 maskVessel = maskArtery | maskVein;
 maskBackground = not(maskVessel);
 
@@ -319,7 +321,8 @@ saveImage(M0_RGB, ToolBox, 'RGB_img.png')
 
 % 4) 2) Neighbours Mask
 
-maskNeighbors = imdilate(maskArtery | maskVein, strel('disk', bgWidth)) - (maskArtery | maskVein);
+% maskNeighbors = imdilate(maskArtery | maskVein, strel('disk', bgWidth)) - (maskArtery | maskVein);
+maskNeighbors = (maskBackground & ~maskVesselness) .* maskDiaphragm;
 
 cmapNeighbors = cmapLAB(256, [0 1 0], 0, [1 1 1], 1);
 
