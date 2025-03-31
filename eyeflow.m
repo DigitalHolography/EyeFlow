@@ -111,7 +111,7 @@ methods (Access = public)
         % Add necessary paths
         addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\", ...
             "Loading\", "Parameters\", "Preprocessing\", ...
-            "PulseAnalysis\", "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\");
+            "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\");
 
         % Set the UI title
         app.EyeFlowUIFigure.Name = ['EyeFlow ', char(v(1))];

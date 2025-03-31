@@ -23,6 +23,7 @@ exportVideos = params.exportVideos;
 
 maskArterySection = maskArtery & maskSection;
 maskVeinSection = maskVein & maskSection;
+maskVesselSection = (maskVein | maskArtery) & maskSection;
 
 folder = 'bloodFlowVelocity';
 
@@ -48,42 +49,47 @@ end
 
 w = params.json.PulseAnalysis.LocalBackgroundWidth;
 k = params.json.Preprocess.InterpolationFactor;
+bkg_scaler = params.json.PulseAnalysis.bkgScaler;
 
 parfor frameIdx = 1:numFrames
-    f_RMS_background(:, :, frameIdx) = single(maskedAverage(f_RMS_video(:, :, frameIdx), 10 * w * 2 ^ k, maskNeighbors, maskVessel));
+    f_RMS_background(:, :, frameIdx) = single(maskedAverage(f_RMS_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
 end
 
 imwrite(rescale(squeeze(mean(f_RMS_background, 3))), fullfile(ToolBox.path_png, folder, sprintf("%s_frequency_RMS_bkg.png", ToolBox.main_foldername)));
 
-graphSignal('1_Arteries_fRMS', folder, ...
-    t, squeeze(sum(f_RMS_video .* maskArterySection, [1, 2]) / nnz(maskArterySection)), '-', cArtery, ...
-    t, squeeze(sum(f_RMS_background .* maskArterySection, [1, 2]) / nnz(maskArterySection)), '--', cBlack, ...
+f_RMS_Artery = squeeze(sum(f_RMS_video .* maskArterySection, [1, 2]) / nnz(maskArterySection));
+f_bkg_Artery = squeeze(sum(f_RMS_background .* maskArterySection, [1, 2]) / nnz(maskArterySection));
+
+graphSignal('Arteries_fRMS', folder, ...
+    t, f_RMS_Artery, '-', cArtery, ...
+    t, f_bkg_Artery, '--', cBlack, ...
     Title = 'Average f_{RMS} in Arteries', xlabel = strXlabel, ylabel = strYlabel, ...
     Legend = {'Arteries', 'Local Background'});
 
 fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_advanced_outputs', '.txt')), 'a');
-fprintf(fileID, 'Mean fRMS difference artery : %f (kHz) \r\n', mean(squeeze(sum(f_RMS_video .* maskArterySection, [1, 2]) / nnz(maskArterySection))) - mean(squeeze(sum(f_RMS_background .* maskArterySection, [1, 2]) / nnz(maskArterySection))));
+fprintf(fileID, 'Mean fRMS difference artery : %f (kHz) \r\n', mean(f_RMS_Artery) - mean(f_bkg_Artery));
 fclose(fileID);
 
 if veinsAnalysis
-    graphSignal('1_Veins_fRMS', folder, ...
-        t, squeeze(sum(f_RMS_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection)), '-', cVein, ...
-        t, squeeze(sum(f_RMS_background .* maskVeinSection, [1, 2]) / nnz(maskVeinSection)), '--', cBlack, ...
+    f_RMS_Vein = squeeze(sum(f_RMS_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
+    f_bkg_Vein = squeeze(sum(f_RMS_background .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
+    f_bkg_Vessel = squeeze(sum(f_RMS_background .* maskVesselSection, [1, 2]) / nnz(maskVesselSection));
+
+    graphSignal('Veins_fRMS', folder, ...
+        t, f_RMS_Vein, '-', cVein, ...
+        t, f_bkg_Vein, '--', cBlack, ...
         Title = 'Average f_{RMS} in Veins', xlabel = strXlabel, ylabel = strYlabel, ...
         Legend = {'Veins', 'Local Background'});
     fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_advanced_outputs', '.txt')), 'a');
-    fprintf(fileID, 'Mean fRMS difference vein : %f (kHz) \r\n', mean(squeeze(sum(f_RMS_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection))) - mean(squeeze(sum(maskVeinSection .* maskVeinSection, [1, 2]) / nnz(maskVeinSection))));
+    fprintf(fileID, 'Mean fRMS difference vein : %f (kHz) \r\n', mean(f_RMS_Vein) - mean(f_bkg_Vein));
     fclose(fileID);
 
-    graphSignal('1_Vascular_fRMS', folder, ...
-        t, squeeze(sum(f_RMS_video .* maskArterySection, [1, 2]) / nnz(maskArterySection)), '-', cArtery, ...
-        t, squeeze(sum(f_RMS_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection)), '-', cVein, ...
-        t, squeeze(sum(f_RMS_background .* maskVeinSection, [1, 2]) / nnz(maskVeinSection)), '--', cBlack, ...
+    graphSignal('Vascular_fRMS', folder, ...
+        t, f_RMS_Artery, '-', cArtery, ...
+        t, f_RMS_Vein, '-', cVein, ...
+        t, f_bkg_Vessel, '--', cBlack, ...
         Title = 'Average f_{RMS} in Vessels', xlabel = strXlabel, ylabel = strYlabel, ...
         Legend = {'Arteries', 'Veins', 'Local Background'});
-    fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_advanced_outputs', '.txt')), 'a');
-    fprintf(fileID, 'Mean fRMS difference vein : %f (kHz) \r\n', mean(squeeze(sum(f_RMS_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection))) - mean(squeeze(sum(maskVeinSection .* maskVeinSection, [1, 2]) / nnz(maskVeinSection))));
-    fclose(fileID);
 end
 
 fprintf("    1. Local BKG Artery and Veins calculation took %ds\n", round(toc))
@@ -111,38 +117,56 @@ else % DIFFERENCE LAST
 
 end
 
-scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
-v_RMS_video =  scalingFactor * delta_f_RMS;
+
+% Delta f_rms plots
+
+delta_f_RMS_Artery = delta_f_RMS .* maskArterySection;
+delta_f_RMS_Artery(~maskArterySection) = NaN;
+delta_f_RMS_Artery_Signal = squeeze(sum(delta_f_RMS_Artery, [1, 2], 'omitnan') / nnz(maskArterySection));
+delta_f_RMS_Artery_std = std(delta_f_RMS_Artery, [1, 2], 'omitnan');
 
 if veinsAnalysis
-    graphSignal('2_Vessels_velocity', folder, ...
-        t, squeeze(sum(v_RMS_video .* maskArterySection, [1, 2]) / nnz(maskArterySection)), '-', cArtery, ...
-        t, squeeze(sum(v_RMS_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection)), '-', cVein, ...
-        Title = 'Average estimated velocity in Arteries and Veins', xlabel = strXlabel, ylabel = 'Velocity (mm/s)');
+    delta_f_RMS_Vein = squeeze(sum(delta_f_RMS .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
 
-else
-    graphSignal('2_Arteries_velocity', folder, ...
-        t, squeeze(sum(v_RMS_video .* maskArterySection, [1, 2]) / nnz(maskArterySection)), '-', cArtery, ...
-        Title = 'Average estimated velocity in Arteries', xlabel = strXlabel, ylabel = 'Velocity (mm/s)');
-
-end
-
-if veinsAnalysis
     graphSignal('2_Vessels_frequency', folder, ...
-        t, squeeze(sum(delta_f_RMS .* maskArterySection, [1, 2]) / nnz(maskArterySection)), '-', cArtery, ...
-        t, squeeze(sum(delta_f_RMS .* maskVeinSection, [1, 2]) / nnz(maskVeinSection)), '-', cVein, ...
+        t, delta_f_RMS_Artery_Signal, '-', cArtery, ...
+        t, delta_f_RMS_Vein, '-', cVein, ...
         Title = 'Average estimated frequency in Arteries and Veins', xlabel = strXlabel, ylabel = 'frequency (kHz)');
 
 else
     graphSignal('2_Arteries_frequency', folder, ...
-        t, squeeze(sum(delta_f_RMS .* maskArterySection, [1, 2]) / nnz(maskArterySection)), '-', cArtery, ...
+        t, delta_f_RMS_Artery_Signal, '-', cArtery, ...
         Title = 'Average estimated frequency in Arteries', xlabel = strXlabel, ylabel = 'frequency (kHz)');
+
+end
+
+% Velocity
+
+scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
+v_RMS_video = scalingFactor * delta_f_RMS;
+
+% Velocity Plots
+
+v_Artery = squeeze(sum(v_RMS_video .* maskArterySection, [1, 2]) / nnz(maskArterySection));
+
+if veinsAnalysis
+    v_Vein = squeeze(sum(v_RMS_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
+    graphSignal('2_Vessels_velocity', folder, ...
+        t, v_Artery, '-', cArtery, ...
+        t, v_Vein, '-', cVein, ...
+        Title = 'Average estimated velocity in Arteries and Veins', xlabel = strXlabel, ylabel = 'Velocity (mm/s)');
+
+else
+    graphSignal('2_Arteries_velocity', folder, ...
+        t, v_Artery, '-', cArtery, ...
+        Title = 'Average estimated velocity in Arteries', xlabel = strXlabel, ylabel = 'Velocity (mm/s)');
 
 end
 
 fprintf("    2. Difference calculation took %ds\n", round(toc))
 
-ArterialResistivityIndex(t, v_RMS_video, maskArtery, 'velocity', folder);
+ArterialResistivityIndex(t, v_RMS_video, maskArtery, 'velocityArtery', folder);
+ArterialResistivityIndex(t, v_RMS_video, maskVein, 'velocityVein', folder);
 
 %% 3) Plots of f_RMS mean Local Background in vessels and Delta frequency in vessels and their colorbars
 tic

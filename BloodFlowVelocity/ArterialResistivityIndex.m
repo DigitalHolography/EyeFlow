@@ -1,18 +1,17 @@
-function [] = ArterialResistivityIndex(t, v_video, maskArtery, name, folder)
+function [] = ArterialResistivityIndex(t, v_video, mask, name, folder)
 
 ToolBox = getGlobalToolBox;
 % Color Maps
-cArtery = [255 22 18] / 255;
-v_video = v_video .* maskArtery;
+v_video = v_video .* mask;
 
-arterial_signal = squeeze(sum(v_video .* maskArtery, [1 2])) / nnz(maskArtery)';
-[~, ~, ~, ~, sysindexes, diasindexes] = compute_diasys(v_video, maskArtery);
+signal = squeeze(sum(v_video .* mask, [1 2])) / nnz(mask)';
+[~, ~, ~, ~, sysindexes, diasindexes] = compute_diasys(v_video, mask);
 vSys = mean(v_video(:, :, sysindexes), 3);
 vDias = mean(v_video(:, :, diasindexes), 3);
 
-v_mean = mean(arterial_signal);
-vSys_mean = mean(arterial_signal(sysindexes));
-vDias_mean = mean(arterial_signal(diasindexes));
+v_mean = mean(signal);
+vSys_mean = mean(signal(sysindexes));
+vDias_mean = mean(signal(diasindexes));
 
 ARI = (vSys - vDias) ./ vSys;
 ARI(ARI > 1) = 1;
@@ -29,16 +28,18 @@ API_mean = (vSys_mean - vDias_mean) ./ v_mean;
 
 % ARI Graph
 graphSignal(sprintf('ARI_%s', name), folder, ...
-    t, arterial_signal, '-', cArtery, ...
+    t, signal, '-', [0 0 0], ...
     ylabel = 'Velocity (mm/s)', xlabel = 'Time (s)', ...
     Title = sprintf('ARI %s = %0.2f', name, ARI_mean), ...
+    Fontsize = 12, ...
     yLines = [vDias_mean, vSys_mean], yLineLabels = {sprintf("%.0f mm/s", vDias_mean), sprintf("%.0f mm/s", vSys_mean)});
 
 % API Graph
 graphSignal(sprintf('API_%s', name), folder, ...
-    t, arterial_signal, '-', cArtery, ...
+    t, signal, '-', [0 0 0], ...
     ylabel = 'Velocity (mm/s)', xlabel = 'Time (s)', ...
     Title = sprintf('API %s = %0.2f', name, API_mean), ...
+    Fontsize = 12, ...
     yLines = [vDias_mean, v_mean, vSys_mean], yLineLabels = {sprintf("%.0f mm/s", vDias_mean), sprintf("%.0f mm/s", v_mean), sprintf("%.0f mm/s", vSys_mean)});
 
 % Save image

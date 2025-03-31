@@ -89,7 +89,6 @@ methods
 
     function obj = generate(obj)
         % Generate the gif from the current array of frames
-        h = waitbar(0, 'Generate GIF file...');
 
         if obj.numY > 1000
             num_X = round(size(obj.images, 1) * 1000 / size(obj.images, 2));
@@ -127,7 +126,6 @@ methods
             images_interp(images_interp > 256) = 256;
 
             for tt = 1:num_T
-                waitbar((tt - 1) / num_T, h);
 
                 if obj.isRGB
                     [A, map] = rgb2ind(images_interp(:, :, :, tt), 256);
@@ -172,8 +170,6 @@ methods
                     [A, map] = gray2ind(images_interp(:, :, :, tt), 256);
                 end
 
-                waitbar((tt - 1) / num_T, h);
-
                 if tt == 1
                     imwrite(A, map, obj.filename_gif, "gif", "LoopCount", Inf, "DelayTime", obj.timePeriod);
                 else
@@ -189,7 +185,6 @@ methods
 
         end
 
-        close(h)
 
         fprintf("    - %s.gif took %ds\n", obj.name, round(toc(obj.t)));
 

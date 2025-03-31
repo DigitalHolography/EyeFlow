@@ -18,7 +18,7 @@
         "FrameHeight": -1,
         "VideoLength": -1
       },
-      "RemoveOutliersFlag": true,
+      "RemoveOutliersFlag": false,
       "Interpolation Factor": 1
     },
     "FlatFieldCorrection": {
@@ -28,14 +28,14 @@
     },
     "VeinsAnalysis": 1,
     "ExportVideos": 1,
-    "MinimumGifPeriod": 0.04,
+    "MinimumGifPeriod": 0.07,
     "NumberOfWorkers": 0,
     "Mask": {
       "Vesselness Frangi Range": [4, 6],
       "Vesselness Frangi Step": 1,
       "Vesselness Gabor Range": [4, 6],
       "Vesselness Gabor Step": 1,
-      "Diaphragm Radius": 0.4,
+      "Diaphragm Radius": 0.7,
       "Force Barycenter": [],
       "Blur": 1.5,
       "Crop Choroid Radius": 0.1,
@@ -58,6 +58,7 @@
     "PulseAnalysis": {
       "DifferenceMethods": 0,
       "LocalBackgroundWidth": 2,
+      "bkgScaler" : 10,
       "Lambda": 8.52E-7,
       "Phi": 0.25,
       "OutOfNoiseThreshold": 4,
