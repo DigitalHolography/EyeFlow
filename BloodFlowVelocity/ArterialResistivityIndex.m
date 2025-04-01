@@ -100,6 +100,17 @@ else
     fprintf(fileID, 'Arterial Resistivity Index (%s) : %f  \r\n', name, ARI);
     fprintf(fileID, 'Arterial Pulsatility Index (%s) : %f  \r\n', name, API);
     fclose(fileID);
+
+    % Save json
+
+    if strcmp(name, 'velocity')
+        ToolBox.outputs.MeanVelocityArtery = v_mean;
+        ToolBox.outputs.SysVelocityArtery = vSys_mean;
+        ToolBox.outputs.DiaVelocityArtery = vDias_mean;
+    end
+
+    ToolBox.outputs.(sprintf('ARI(%s)',name)) = ARI;
+    ToolBox.outputs.(sprintf('API(%s)',name)) = API;
 end
 
 end
