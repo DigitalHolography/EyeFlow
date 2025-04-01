@@ -59,6 +59,12 @@ axis tight;
 
 if length(axss) == 4
     axis(axss);
+else
+    axis padded
+    axP = axis;
+    axis tight
+    axT = axis;
+    axis([axT(1), axT(2), axP(3), axP(4)])
 end
 
 fontsize(gca, 14, "points");
