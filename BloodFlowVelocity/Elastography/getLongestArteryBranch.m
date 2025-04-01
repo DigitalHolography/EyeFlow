@@ -39,7 +39,7 @@ for i = 1:n % for each individual branch
     label(bwareafilt(imdilate(sk_mask, strel('disk', floor(numX * maskRadius / 5))) & maskArtery, 1)) = i;
 end
 
-figure(72)
+figure("Visible","off")
 imagesc(label);
 foldername = ToolBox.main_foldername;
 imwrite(label, jet(max(label, [], 'all') + 1), fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s", foldername, 'maskSeparateBranchesLabeled.png')), 'png');
@@ -73,8 +73,8 @@ for i = 1:length(bp) % iterates over all branch points
 
 end
 
-figure(402); imshow(all_circles | skel2); saveas(402, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s", foldername, 'maskTree.png')));
-g = graph(adjMatrix); figure(403); plot(g); saveas(403, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s", foldername, 'graphTree.png')));
+fi=figure(Visible="off"); imshow(all_circles | skel2); saveas(fi, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s", foldername, 'maskTree.png')));
+g = graph(adjMatrix); fi=figure(Visible="off"); plot(g); saveas(fi, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s", foldername, 'graphTree.png')));
 %% get the graph's biggest connected component
 conn = conncomp(g);
 idx_most_frequent_conn = mode(conn);
@@ -150,6 +150,6 @@ for idx = 1:n
 
 end
 
-figure(408); imshow(maskLongArtery);
+fi=figure(Visible="off"); imshow(maskLongArtery);
 
 end

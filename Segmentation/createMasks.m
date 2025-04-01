@@ -363,7 +363,7 @@ createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMap', maskAr
 
 % 4) 6) Arteries tree
 
-% getLongestArteryBranch(maskArtery, xy_barycenter);
+getLongestArteryBranch(maskArtery, xy_barycenter);
 
 close all
 end
