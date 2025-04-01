@@ -27,6 +27,7 @@ properties
     cmapArtery
     cmapVein
     cmapAV
+    outputs %struct
 end
 
 methods

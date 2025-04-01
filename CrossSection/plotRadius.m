@@ -124,4 +124,8 @@ fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', '
 fprintf(fileID, 'Flow Rate %s : %f (µL/min) \r\n', name, mean_Q);
 fprintf(fileID, 'Flow Rate Standard Deviation %s : %f (µL/min) \r\n', name, mean_dQ);
 fclose(fileID);
+
+% Write results to json
+ToolBox.outputs.(sprintf('FlowRate%s',name)) = mean_Q;
+ToolBox.outputs.(sprintf('FlowRateStd%s',name)) = mean_dQ;
 end

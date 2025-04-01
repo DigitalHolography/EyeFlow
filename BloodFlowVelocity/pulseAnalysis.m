@@ -123,7 +123,7 @@ end
 delta_f_RMS_Artery = delta_f_RMS .* maskArterySection;
 delta_f_RMS_Artery(~maskArterySection) = NaN;
 delta_f_RMS_Artery_Signal = squeeze(sum(delta_f_RMS_Artery, [1, 2], 'omitnan') / nnz(maskArterySection));
-delta_f_RMS_Artery_std = std(delta_f_RMS_Artery, [1, 2], 'omitnan');
+delta_f_RMS_Artery_std = std(delta_f_RMS_Artery,[], [1, 2], 'omitnan');
 
 if veinsAnalysis
     delta_f_RMS_Vein = squeeze(sum(delta_f_RMS .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
