@@ -1,4 +1,4 @@
-function bloodFlowVelocity(v_video, maskArtery, maskVein, maskSection, M0_ff_video, xy_barycenter)
+function bloodFlowVelocity(v_video, maskArtery, maskVein, M0_ff_video, xy_barycenter)
 
 close all
 ToolBox = getGlobalToolBox;
@@ -6,14 +6,19 @@ params = ToolBox.getParams;
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
 
+% Rescale once
+M0_ff_video = rescale(M0_ff_video);
+[numX, numY, numFrames] = size(v_video);
+x_c = xy_barycenter(1) / numX;
+y_c = xy_barycenter(2) / numY;
+r1 = params.json.SizeOfField.SmallRadiusRatio;
+r2 = params.json.SizeOfField.BigRadiusRatio;
+maskSection = diskMask(numX, numY, r1, r2, center = [x_c, y_c]);
+
 % Precompute masks
 maskAV = maskArtery & maskVein;
 maskArterySection = maskArtery & maskSection & ~maskAV;
 maskVeinSection = maskVein & maskSection & ~maskAV;
-
-% Rescale once
-M0_ff_video = rescale(M0_ff_video);
-[~, ~, numFrames] = size(v_video);
 
 %% 1) VELOCITY VIDEO
 tVelocityVideo = tic;

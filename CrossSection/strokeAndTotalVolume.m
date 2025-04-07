@@ -25,8 +25,16 @@ curve1 = circshift(interp_BvrT, cshiftn);
 curve2 = 0 * ones(size(curve1));
 ft2 = [pulseTime, fliplr(pulseTime)];
 inBetween = [curve1, fliplr(curve2)]';
-cRose = [254, 191, 210] / 255;
-fill(ft2, inBetween, cRose, 'EdgeColor', 'none');
+
+if strcmp(name,'Artery')
+    cLight = [1, 1/2, 1/2];
+    cDark = [1, 0, 0];
+else
+    cLight = [1/2, 1/2, 1];
+    cDark = [0, 0, 1];
+end
+
+fill(ft2, inBetween, cLight, 'EdgeColor', 'none');
 xline(pulseTime(end), 'k--', 'LineWidth', 2)
 
 % Remaining Stroke Volume
@@ -36,9 +44,8 @@ curve1 = curve1(1:min(amax + cshiftn, numInterp));
 curve2 = 0 * ones(size(curve1));
 ft2 = [pulseTime(1:min(amax + cshiftn, numInterp)), fliplr(pulseTime(1:min(amax + cshiftn, numInterp)))];
 inBetween = [curve1, fliplr(curve2)]';
-cCrimson = [222, 49, 99] / 255;
 xline(pulseTime(min(amax + cshiftn, numInterp)), 'k--', 'LineWidth', 2)
-fill(ft2, inBetween, cCrimson, 'EdgeColor', 'none');
+fill(ft2, inBetween, cDark, 'EdgeColor', 'none');
 
 % Grey STD and Signal
 interp_BvrT2 = repmat(interp_BvrT, 1, 3);
@@ -73,7 +80,12 @@ ccinterpBvrT = circshift(interp_BvrT, cshiftn);
 dt2 = pulseTime2(2) - pulseTime2(1);
 stroke_volume_value = sum(ccinterpBvrT(1:min(amax + cshiftn, numInterp))) * dt2 / 60 * 1000; % in nL
 total_volume_value = sum(ccinterpBvrT) * dt2 / 60 * 1000;
-title(sprintf("Retinal Stroke Volume : %02.0f nL and Total Volume : %02.0f nL", stroke_volume_value, total_volume_value));
+
+if strcmp(name,'Artery')
+    title(sprintf("Retinal Stroke Volume : %02.0f nL and Total Volume : %02.0f nL", stroke_volume_value, total_volume_value));
+else
+    title(sprintf("Total Volume : %02.0f nL", total_volume_value));
+end
 
 exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_strokeAndTotalVolume_%s.png", ToolBox.main_foldername, name)))
 

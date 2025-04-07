@@ -9,7 +9,7 @@ strXlabel = 'Time(s)';
 v_masked = v_video .* mask;
 v_masked(~mask) = NaN;
 v_masked_signal = squeeze(sum(v_masked, [1, 2], 'omitnan') / nnz(mask))';
-v_masked_std = squeeze(std(v_masked, [],  [1, 2], 'omitnan'))';
+v_masked_std = squeeze(std(v_masked, [], [1, 2], 'omitnan'))';
 
 [~, ~, ~, ~, sysindexes, diasindexes] = compute_diasys(v_video, mask);
 vSys = mean(v_video(:, :, sysindexes), 3);
@@ -88,29 +88,29 @@ if size(v_video, 3) > 1 % if given a video, output the image of ARI / API
 
 else
 
-    % Save txt
-    fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_main_outputs', '.txt')), 'a');
-
-    if strcmp(name, 'velocity')
-        fprintf(fileID, 'Mean Velocity artery : %f (mm/s) \r\n', v_mean);
-        fprintf(fileID, 'Max Velocity artery : %f (mm/s) \r\n', vSys_mean);
-        fprintf(fileID, 'Min Velocity artery : %f (mm/s) \r\n', vDias_mean);
-    end
-
-    fprintf(fileID, 'Arterial Resistivity Index (%s) : %f  \r\n', name, ARI);
-    fprintf(fileID, 'Arterial Pulsatility Index (%s) : %f  \r\n', name, API);
-    fclose(fileID);
-
-    % Save json
-
-    if strcmp(name, 'velocity')
-        ToolBox.outputs.MeanVelocityArtery = v_mean;
-        ToolBox.outputs.SysVelocityArtery = vSys_mean;
-        ToolBox.outputs.DiaVelocityArtery = vDias_mean;
-    end
-
-    ToolBox.outputs.(sprintf('ARI(%s)',name)) = ARI;
-    ToolBox.outputs.(sprintf('API(%s)',name)) = API;
 end
 
+% Save txt
+fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_main_outputs', '.txt')), 'a');
+
+if strcmp(name, 'velocity')
+    fprintf(fileID, 'Mean Velocity artery : %f (mm/s) \r\n', v_mean);
+    fprintf(fileID, 'Max Velocity artery : %f (mm/s) \r\n', vSys_mean);
+    fprintf(fileID, 'Min Velocity artery : %f (mm/s) \r\n', vDias_mean);
+end
+
+fprintf(fileID, 'Arterial Resistivity Index (%s) : %f  \r\n', name, ARI_mean);
+fprintf(fileID, 'Arterial Pulsatility Index (%s) : %f  \r\n', name, API_mean);
+fclose(fileID);
+
+% Save json
+
+if strcmp(name, 'velocity')
+    ToolBox.outputs.MeanVelocityArtery = v_mean;
+    ToolBox.outputs.SysVelocityArtery = vSys_mean;
+    ToolBox.outputs.DiaVelocityArtery = vDias_mean;
+end
+
+ToolBox.outputs.(sprintf('ARI%s', name)) = ARI_mean;
+ToolBox.outputs.(sprintf('API%s', name)) = API_mean;
 end

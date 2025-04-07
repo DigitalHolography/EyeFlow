@@ -26,7 +26,6 @@ properties
 
     maskArtery
     maskVein
-    maskSection
     maskNeighbors
 
     directory char % directory of input data (from HoloDoppler or HoloVibes)
@@ -146,7 +145,7 @@ methods
             createMasksTimer = tic;
 
             f_AVG_mean = squeeze(mean(obj.f_AVG_video, 3));
-            [obj.maskArtery, obj.maskVein, obj.maskSection, obj.maskNeighbors, obj.xy_barycenter] = ...
+            [obj.maskArtery, obj.maskVein, obj.maskNeighbors, obj.xy_barycenter] = ...
                 createMasks(obj.M0_ff_video, f_AVG_mean);
 
             M0_ff_img = rescale(mean(obj.M0_ff_video, 3));
@@ -206,6 +205,7 @@ methods
                 ToolBox.outputs.MinSystoleIndices = strcat('[', sprintf("%d,", sysMinList), ']');
                 ToolBox.outputs.TimeDiastolicmintosystolicmaxderivative = 1000 * mean((obj.sysIdxList(2:end) - sysMinList)) * ToolBox.stride / ToolBox.fs / 1000;
                 ToolBox.outputs.TimeDiastolicmintosystolicmax = 1000 * mean((sysMaxList(2:end) - sysMinList(1:end - 1))) * ToolBox.stride / ToolBox.fs / 1000;
+
             end
 
             fprintf("- FindSystoleIndex took: %ds\n", round(toc(findSystoleTimer)));
@@ -214,10 +214,10 @@ methods
             pulseAnalysisTimer = tic;
 
             f_AVG_mean = squeeze(mean(obj.f_AVG_video, 3));
-            obj.vRMS = pulseAnalysis(obj.f_RMS_video, obj.maskArtery, obj.maskVein, obj.maskSection, obj.maskNeighbors);
+            obj.vRMS = pulseAnalysis(obj.f_RMS_video, obj.maskArtery, obj.maskVein, obj.maskNeighbors, obj.xy_barycenter);
 
             if params.json.PulseAnalysis.ExtendedFlag
-                extendedPulseAnalysis(obj.M0_ff_video, obj.f_RMS_video, f_AVG_mean, obj.vRMS, obj.maskArtery, obj.maskVein, obj.maskSection, obj.sysIdxList);
+                extendedPulseAnalysis(obj.M0_ff_video, obj.f_RMS_video, f_AVG_mean, obj.vRMS, obj.maskArtery, obj.maskVein, obj.xy_barycenter, obj.sysIdxList);
             end
 
             obj.is_pulseAnalyzed = true;
@@ -241,7 +241,7 @@ methods
             fprintf("\n----------------------------------\nBlood Flow Velocity Figures\n----------------------------------\n");
             bloodFlowVelocityTimer = tic;
 
-            bloodFlowVelocity(obj.vRMS, obj.maskArtery, obj.maskVein, obj.maskSection, obj.M0_ff_video, obj.xy_barycenter);
+            bloodFlowVelocity(obj.vRMS, obj.maskArtery, obj.maskVein, obj.M0_ff_video, obj.xy_barycenter);
 
             fprintf("- Blood Flow Velocity Figures calculation took: %ds\n", round(toc(bloodFlowVelocityTimer)));
         end
@@ -315,8 +315,8 @@ methods
 
         % Main Outputs Saving
 
-        fid = fopen(fullfile(ToolBox.path_json, strcat(ToolBox.main_foldername, '_EF_main_outputs.json')), 'w'); 
-        fwrite(fid, jsonencode(ToolBox.outputs,"PrettyPrint",true), 'char'); 
+        fid = fopen(fullfile(ToolBox.path_json, strcat(ToolBox.main_foldername, '_EF_main_outputs.json')), 'w');
+        fwrite(fid, jsonencode(ToolBox.outputs, "PrettyPrint", true), 'char');
         fclose(fid);
 
         % Final Output
@@ -330,6 +330,5 @@ methods
     end
 
 end
-
 
 end

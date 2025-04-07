@@ -1,4 +1,4 @@
-function extendedPulseAnalysis(M0_ff_video, f_RMS_video, f_AVG_mean, v_RMS, maskArtery, maskVein, maskSection, sysIdxList)
+function extendedPulseAnalysis(M0_ff_video, f_RMS_video, f_AVG_mean, v_RMS, maskArtery, maskVein, xy_barycenter, sysIdxList)
 % extendedPulseAnalysis - Performs extended pulse analysis on Doppler data.
 % Inputs:
 %   M0_ff_video: M0 flat-field corrected video.
@@ -22,7 +22,14 @@ tic;
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 numFramesInterp = params.PulseAnalysis.OneCycleInterpolationPoints;
-[~, ~, numFrames] = size(f_RMS_video);
+
+[numX, numY, numFrames] = size(f_RMS_video);
+x_c = xy_barycenter(1) / numX;
+y_c = xy_barycenter(2) / numY;
+r1 = params.json.SizeOfField.SmallRadiusRatio;
+r2 = params.json.SizeOfField.BigRadiusRatio;
+maskSection = diskMask(numX, numY, r1, r2, center = [x_c, y_c]);
+
 strXlabel = 'Time (s)';
 strYlabel = 'Frequency (kHz)';
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);

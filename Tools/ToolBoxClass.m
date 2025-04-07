@@ -93,6 +93,9 @@ methods
         obj.path_json = fullfile(obj.path_dir, 'json');
         obj.path_log = fullfile(obj.path_dir, 'log');
 
+        % Initialize empty outputs
+        obj.outputs = struct();
+
         % Create directories if they don't exist
         obj.createDirectories();
     end
@@ -210,6 +213,7 @@ methods
         obj.cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
         obj.cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [1 1 1], 1);
     end
+
 end
 
 end

@@ -1,4 +1,4 @@
-function [maskArtery, maskVein, maskSection, maskNeighbors, xy_barycenter] = createMasks(M0_ff_video, f_AVG_mean)
+function [maskArtery, maskVein, maskNeighbors, xy_barycenter] = createMasks(M0_ff_video, f_AVG_mean)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -358,7 +358,7 @@ saveImage(bwskel(maskVein), ToolBox, 'skeletonVein.png')
 % 4) 5) Mask Section & Force Barycenter
 
 xy_barycenter = [x_CRA, y_CRA];
-maskSection = createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMapArtery', maskArtery, thin = 0.01);
+createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMapArtery', maskArtery, thin = 0.01);
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMap', maskArtery, maskVein, thin = 0.01);
 
 % 4) 6) Arteries tree

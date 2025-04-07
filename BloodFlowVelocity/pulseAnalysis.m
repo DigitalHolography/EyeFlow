@@ -1,4 +1,4 @@
-function [v_RMS_video] = pulseAnalysis(f_RMS_video, maskArtery, maskVein, maskSection, maskNeighbors)
+function [v_RMS_video] = pulseAnalysis(f_RMS_video, maskArtery, maskVein, maskNeighbors, xy_barycenter)
 % pulseAnalysis.m computes the velocities
 % Inputs:
 %       VIDEOS:
@@ -8,7 +8,6 @@ function [v_RMS_video] = pulseAnalysis(f_RMS_video, maskArtery, maskVein, maskSe
 %   f_AVG_image     Size: numX x numY double
 %   maskArtery      Size: numX x numY logical
 %   maskBackground  Size: numX x numY logical
-%   maskSection     Size: numX x numY logical
 %   maskVein        Size: numX x numY logical
 %       TRIVIA:
 %   sysIdxList:     Size: numSystoles
@@ -21,13 +20,19 @@ params = ToolBox.getParams;
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
 
+[numX, numY, numFrames] = size(f_RMS_video);
+x_c = xy_barycenter(1) / numX;
+y_c = xy_barycenter(2) / numY;
+r1 = params.json.SizeOfField.SmallRadiusRatio;
+r2 = params.json.SizeOfField.BigRadiusRatio;
+maskSection = diskMask(numX, numY, r1, r2, center = [x_c, y_c]);
+
 maskArterySection = maskArtery & maskSection;
 maskVeinSection = maskVein & maskSection;
 maskVesselSection = (maskVein | maskArtery) & maskSection;
 
 folder = 'bloodFlowVelocity';
 
-[numX, numY, numFrames] = size(f_RMS_video);
 strXlabel = 'Time(s)'; %createXlabelTime(1);
 strYlabel = 'frequency (kHz)';
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
@@ -56,13 +61,17 @@ bkg_scaler = params.json.PulseAnalysis.bkgScaler;
 if params.json.Mask.AllNonVesselsAsBackground
     SE = strel('disk', params.json.PulseAnalysis.LocalBackgroundWidth);
     maskNeighbors = imerode(maskNeighbors, SE);
+
     parfor frameIdx = 1:numFrames
         f_RMS_background(:, :, frameIdx) = single(regionfill(f_RMS_video(:, :, frameIdx), ~maskNeighbors & maskDiaphragm));
     end
+
 else
+
     parfor frameIdx = 1:numFrames
         f_RMS_background(:, :, frameIdx) = single(maskedAverage(f_RMS_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
     end
+
 end
 
 imwrite(rescale(squeeze(mean(f_RMS_background, 3))), fullfile(ToolBox.path_png, folder, sprintf("%s_frequency_RMS_bkg.png", ToolBox.main_foldername)));
@@ -125,7 +134,7 @@ end
 delta_f_RMS_Artery = delta_f_RMS .* maskArterySection;
 delta_f_RMS_Artery(~maskArterySection) = NaN;
 delta_f_RMS_Artery_Signal = squeeze(sum(delta_f_RMS_Artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
-delta_f_RMS_Artery_std = squeeze(std(delta_f_RMS_Artery, [],  [1, 2], 'omitnan'))';
+delta_f_RMS_Artery_std = squeeze(std(delta_f_RMS_Artery, [], [1, 2], 'omitnan'))';
 
 % Create figure for delta f_RMS in arteries
 fig1 = figure;
@@ -138,7 +147,7 @@ if veinsAnalysis
     delta_f_RMS_Vein = delta_f_RMS .* maskVeinSection;
     delta_f_RMS_Vein(~maskVeinSection) = NaN;
     delta_f_RMS_Vein_Signal = squeeze(sum(delta_f_RMS_Vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
-    delta_f_RMS_Vein_std = squeeze(std(delta_f_RMS_Vein, [],  [1, 2], 'omitnan'))';
+    delta_f_RMS_Vein_std = squeeze(std(delta_f_RMS_Vein, [], [1, 2], 'omitnan'))';
 
     fig2 = figure;
     graphSignalStd(fig2, delta_f_RMS_Vein_Signal, delta_f_RMS_Vein_std, numFrames, ...
@@ -165,7 +174,7 @@ v_RMS_video = scalingFactor * delta_f_RMS;
 v_Artery = v_RMS_video .* maskArterySection;
 v_Artery(~maskArterySection) = NaN;
 v_Artery_Signal = squeeze(sum(v_Artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
-v_Artery_std = squeeze(std(v_Artery, [],  [1, 2], 'omitnan'))';
+v_Artery_std = squeeze(std(v_Artery, [], [1, 2], 'omitnan'))';
 
 % Create figure for velocity in arteries
 fig3 = figure;
@@ -178,7 +187,7 @@ if veinsAnalysis
     v_Vein = v_RMS_video .* maskVeinSection;
     v_Vein(~maskVeinSection) = NaN;
     v_Vein_Signal = squeeze(sum(v_Vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
-    v_Vein_std = squeeze(std(v_Vein, [],  [1, 2], 'omitnan'))';
+    v_Vein_std = squeeze(std(v_Vein, [], [1, 2], 'omitnan'))';
 
     fig4 = figure;
     graphSignalStd(fig4, v_Vein_Signal, v_Vein_std, numFrames, ...
@@ -199,8 +208,8 @@ end
 
 fprintf("    2. Difference calculation took %ds\n", round(toc))
 
-ArterialResistivityIndex(t, v_RMS_video, maskArtery, 'velocityArtery', folder);
-ArterialResistivityIndex(t, v_RMS_video, maskVein, 'velocityVein', folder);
+ArterialResistivityIndex(t, v_RMS_video, maskArtery .* maskSection, 'velocityArtery', folder);
+ArterialResistivityIndex(t, v_RMS_video, maskVein .* maskSection, 'velocityVein', folder);
 
 %% 3) Plots of f_RMS mean Local Background in vessels and Delta frequency in vessels and their colorbars
 tic
