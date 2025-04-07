@@ -142,7 +142,7 @@ end
 
 fprintf("    2. Difference calculation took %ds\n", round(toc))
 
-ArterialResistivityIndex(t, v_RMS_video, maskArtery, 'velocity', folder);
+ArterialResistivityIndex(t, v_RMS_video, maskArtery.*maskSection, 'velocity', folder);
 
 %% 3) Plots of f_RMS mean Local Background in vessels and Delta frequency in vessels and their colorbars
 tic

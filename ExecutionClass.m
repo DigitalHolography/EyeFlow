@@ -198,6 +198,16 @@ methods
                 fprintf(fileID, 'Time diastolic min to systolic max (ms): %f \r\n', ...
                     1000 * mean((sysMaxList(2:end) - sysMinList(1:end - 1)) * ToolBox.stride / ToolBox.fs / 1000));
                 fclose(fileID);
+
+                
+                ToolBox.outputs.HeartBeat = 60 / mean(diff(obj.sysIdxList) * ToolBox.stride / ToolBox.fs / 1000);
+                ToolBox.outputs.SystoleIndices = strcat('[', sprintf("%d,", obj.sysIdxList), ']');
+                ToolBox.outputs.NumberofCycles = numel(obj.sysIdxList) - 1;
+                ToolBox.outputs.MaxSystoleIndices = strcat('[', sprintf("%d,", sysMaxList), ']');
+                ToolBox.outputs.MinSystoleIndices = strcat('[', sprintf("%d,", sysMinList), ']');
+                ToolBox.outputs.TimeDiastolicmintosystolicmaxderivative = 1000 * mean((obj.sysIdxList(2:end) - sysMinList)) * ToolBox.stride / ToolBox.fs / 1000;
+                ToolBox.outputs.TimeDiastolicmintosystolicmax = 1000 * mean((sysMaxList(2:end) - sysMinList(1:end - 1))) * ToolBox.stride / ToolBox.fs / 1000;
+
             end
 
             fprintf("- FindSystoleIndex took: %ds\n", round(toc(findSystoleTimer)));

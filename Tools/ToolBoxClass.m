@@ -27,6 +27,7 @@ properties
     cmapArtery
     cmapVein
     cmapAV
+    outputs %struct
 end
 
 methods
@@ -52,6 +53,8 @@ methods
         obj.copyInputParameters();
 
         obj.createColorMaps();
+
+        
 
         obj.setGlobalToolBox;
 
@@ -91,6 +94,9 @@ methods
         obj.path_mp4 = fullfile(obj.path_dir, 'mp4');
         obj.path_json = fullfile(obj.path_dir, 'json');
         obj.path_log = fullfile(obj.path_dir, 'log');
+        
+        % Initialize empty outputs
+        obj.outputs = struct();
 
         % Create directories if they don't exist
         obj.createDirectories();
