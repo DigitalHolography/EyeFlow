@@ -1,4 +1,4 @@
-function [vessel_mask, combined_response] = gaborVesselness(input_image, name, TB)
+function [vessel_mask, combined_response] = gaborVesselness(input_image, name, ToolBox)
 %UNTITLED3 Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -16,7 +16,10 @@ smoothed_image = imgaussfilt(input_image, 2); % Adjust sigma as needed
 
 % Step 2: Gabor Filtering
 % Define Gabor filter parameters
-wavelength = 4:6; % Adjust based on vessel thickness
+params = ToolBox.getParams;
+range = params.json.Mask.VesselnessGaborRange;
+step = params.json.Mask.VesselnessGaborStep;
+wavelength = (range(1):step:range(2)); % Adjust based on vessel thickness
 orientation = 0:30:150; % Multiple orientations to capture all vessel directions
 gabor_bank = gabor(wavelength, orientation);
 
@@ -31,7 +34,6 @@ combined_response = mean(gabor_magnitude, 3);
 combined_response = mat2gray(combined_response);
 
 % Thresholding to create a binary mask
-threshold = graythresh(combined_response); % Otsu's method
 vessel_mask = imbinarize(combined_response, 'adaptive');
 
 % Step 4: Morphological Operations
@@ -39,9 +41,9 @@ vessel_mask = imbinarize(combined_response, 'adaptive');
 vessel_mask = bwareaopen(vessel_mask, 50); % Remove small objects
 vessel_mask = imclose(vessel_mask, strel('disk', 2)); % Close small gaps
 
-if nargin==3
-    saveImage(combined_response, TB, sprintf('%s_gabor_img.png', name), isStep = true)
-    saveImage(vessel_mask, TB, sprintf('%s_gabor_mask.png', name), isStep = true)
+if nargin == 3
+    saveImage(combined_response, ToolBox, sprintf('%s_gabor_img.png', name), isStep = true)
+    saveImage(vessel_mask, ToolBox, sprintf('%s_gabor_mask.png', name), isStep = true)
 end
 
 end
