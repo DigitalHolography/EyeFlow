@@ -97,7 +97,7 @@ fprintf(fileID, 'Total Volume Artery : %f (nL) \r\n', total_volume_value);
 fclose(fileID);
 
 ToolBox.outputs.(sprintf('MaxSystoleFlowRateArtery')) = maxsystole_bvr_value;
-ToolBox.outputs.(sprintf('MinSystoleFlowRateArtery')) = mindiastole_bvr_value;
+ToolBox.outputs.(sprintf('MinDiastoleFlowRateArtery')) = mindiastole_bvr_value;
 ToolBox.outputs.(sprintf('StrokeVolumeArteryArtery')) = stroke_volume_value;
 ToolBox.outputs.(sprintf('TotalVolumeArteryArtery')) = total_volume_value;
 end

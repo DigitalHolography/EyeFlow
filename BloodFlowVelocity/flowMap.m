@@ -9,13 +9,6 @@ M0_ff_video = rescale(M0_ff_video);
 M0_ff_image = rescale(mean(M0_ff_video, 3));
 [numX, numY, numFrames] = size(v_video);
 
-if veinsAnalysis
-    % Precompute masks
-    maskAV = maskArtery & maskVein;
-    maskArtery = maskArtery & ~maskAV;
-    maskVein = maskVein & ~maskAV;
-end
-
 % Precompute constants
 x_c = xy_barycenter(1) / numX;
 y_c = xy_barycenter(2) / numY;
@@ -53,6 +46,18 @@ if veinsAnalysis
     velocityIm(v_mean, maskVein, cmapVein, 'Vein', colorbarOn = true);
     velocityIm(v_mean, maskArtery | maskVein, turbo, 'Vessel', colorbarOn = true);
 
+    % Precompute masks
+    maskAV = maskArtery & maskVein;
+    maskArtery = maskArtery & ~maskAV;
+    maskVein = maskVein & ~maskAV;
+else
+
+    % Velocity Images
+    velocityIm(v_mean, maskArtery, cmapArtery, 'Artery', colorbarOn = true);
+    
+end
+
+if veinsAnalysis
     % velocity Colorbars of the gif
     velocityColorbar(cmapArtery, v_min, v_max, 'Artery');
     velocityColorbar(cmapVein, v_min, v_max, 'Vein');
@@ -67,9 +72,6 @@ if veinsAnalysis
     end
 
 else
-
-    % Velocity Images
-    velocityIm(v_mean, maskArtery, cmapArtery, 'Artery', colorbarOn = true);
 
     % velocity Colorbars of the gif
     velocityColorbar(cmapArtery, v_min, v_max, 'Artery');
