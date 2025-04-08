@@ -187,7 +187,7 @@ if exportVideos
 
     pbaspect([1.618 1 1]);
     axis tight;
-    ax.YLim = [-10; 30];
+    ax.YLim = [-5; 30];
     box on;
     set(gca, 'Linewidth', 2);
 
