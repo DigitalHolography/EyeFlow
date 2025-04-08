@@ -154,10 +154,6 @@ methods (Access = public)
         % Clearing before loading
         ClearButtonPushed(app)
 
-        % Store original WindowStyle
-        originalWindowStyle = app.EyeFlowUIFigure.WindowStyle;
-        app.EyeFlowUIFigure.WindowStyle = 'modal'; % Prevent minimizing
-
         selected_dir = uigetdir(last_dir);
 
         if selected_dir == 0
@@ -166,18 +162,12 @@ methods (Access = public)
             app.Load(selected_dir);
         end
 
-        app.EyeFlowUIFigure.WindowStyle = originalWindowStyle; % Restore
-
     end
 
     % Button pushed function: LoadHoloButton
     function LoadHoloButtonPushed(app, ~)
         % Clearing before loading
         ClearButtonPushed(app)
-
-        % Store original WindowStyle
-        originalWindowStyle = app.EyeFlowUIFigure.WindowStyle;
-        app.EyeFlowUIFigure.WindowStyle = 'modal'; % Prevent minimizing
 
         [selected_holo, path_holo] = uigetfile('*.holo');
 
@@ -186,8 +176,6 @@ methods (Access = public)
         else
             app.Load(fullfile(path_holo, selected_holo));
         end
-
-        app.EyeFlowUIFigure.WindowStyle = originalWindowStyle; % Restore
 
     end
 
@@ -328,7 +316,7 @@ methods (Access = public)
 
     % Button pushed function: FolderManagementButton
     function FolderManagementButtonPushed(app, ~)
-        d = dialog('Position', [300, 300, 750, 190 + length(app.drawer_list) * 14], ...
+        d = dialog('Position', [300, 300, 690, 190 + length(app.drawer_list) * 14], ...
             'Color', [0.2, 0.2, 0.2], ...
             'Name', 'Folder management', ...
             'Resize', 'on', ...
@@ -353,7 +341,7 @@ methods (Access = public)
             'Callback', @select);
 
         uicontrol('Parent', d, ...
-            'Position', [140, 20, 100, 25], ...
+            'Position', [130, 20, 100, 25], ...
             'FontName', 'Helvetica', ...
             'BackgroundColor', [0.5, 0.5, 0.5], ...
             'ForegroundColor', [0.9 0.9 0.9], ...
@@ -362,7 +350,7 @@ methods (Access = public)
             'Callback', @select_all);
 
         uicontrol('Parent', d, ...
-            'Position', [260, 20, 100, 25], ...
+            'Position', [240, 20, 100, 25], ...
             'FontName', 'Helvetica', ...
             'BackgroundColor', [0.5, 0.5, 0.5], ...
             'ForegroundColor', [0.9 0.9 0.9], ...
@@ -371,7 +359,7 @@ methods (Access = public)
             'Callback', @clear_drawer);
 
         uicontrol('Parent', d, ...
-            'Position', [380, 20, 100, 25], ...
+            'Position', [350, 20, 100, 25], ...
             'FontName', 'Helvetica', ...
             'BackgroundColor', [0.5, 0.5, 0.5], ...
             'ForegroundColor', [0.9 0.9 0.9], ...
@@ -380,7 +368,7 @@ methods (Access = public)
             'Callback', @load_from_txt);
 
         uicontrol('Parent', d, ...
-            'Position', [500, 70, 100, 25], ...
+            'Position', [460, 50, 100, 25], ...
             'FontName', 'Helvetica', ...
             'BackgroundColor', [0.5, 0.5, 0.5], ...
             'ForegroundColor', [0.9 0.9 0.9], ...
@@ -389,7 +377,7 @@ methods (Access = public)
             'Callback', @clear_params);
 
         uicontrol('Parent', d, ...
-            'Position', [500, 120, 100, 25], ...
+            'Position', [460, 80, 100, 25], ...
             'FontName', 'Helvetica', ...
             'BackgroundColor', [0.5, 0.5, 0.5], ...
             'ForegroundColor', [0.9 0.9 0.9], ...
@@ -398,7 +386,7 @@ methods (Access = public)
             'Callback', @import_param);
 
         uicontrol('Parent', d, ...
-            'Position', [500, 20, 100, 25], ...
+            'Position', [460, 20, 100, 25], ...
             'FontName', 'Helvetica', ...
             'BackgroundColor', [0.5, 0.5, 0.5], ...
             'ForegroundColor', [0.9 0.9 0.9], ...
@@ -407,7 +395,7 @@ methods (Access = public)
             'Callback', @render);
 
         uicontrol('Parent', d, ...
-            'Position', [620, 20, 100, 25], ...
+            'Position', [570, 20, 100, 25], ...
             'FontName', 'Helvetica', ...
             'BackgroundColor', [0.5, 0.5, 0.5], ...
             'ForegroundColor', [0.9 0.9 0.9], ...
@@ -415,10 +403,19 @@ methods (Access = public)
             'String', 'Show Results', ...
             'Callback', @show_outputs);
 
+        uicontrol('Parent', d, ...
+            'Position', [350, 50, 100, 25], ...
+            'FontName', 'Helvetica', ...
+            'BackgroundColor', [0.5, 0.5, 0.5], ...
+            'ForegroundColor', [0.9 0.9 0.9], ...
+            'FontWeight', 'bold', ...
+            'String', 'Save to text', ...
+            'Callback', @save_to_txt);
+
         uiwait(d);
 
         function select_all(~, ~)
-            %                 %% selection of one processed folder with uigetdir
+            %                 % selection of one processed folder with uigetdir
             %                 selected_dir = uigetdir();
             %                 if (selected_dir)
             %                     app.drawer_list{end + 1} = selected_dir;
@@ -427,7 +424,7 @@ methods (Access = public)
             %                 d.Position(4) = 100 + length(app.drawer_list) * 14;
             %                 txt.Position(4) = length(app.drawer_list) * 14;
 
-            %% selection of the measurement folder with uigetdir to analyze all processed folders
+            % selection of the measurement folder with uigetdir to analyze all processed folders
             selected_dir = uigetdir();
             % List of Subfolders within the measurement folder
             tmp_dir = dir(selected_dir);
@@ -451,7 +448,7 @@ methods (Access = public)
         end
 
         function select(~, ~)
-            %% selection of one processed folder with uigetdir
+            % selection of one processed folder with uigetdir
             selected_dir = uigetdir();
 
             if (selected_dir)
@@ -471,10 +468,59 @@ methods (Access = public)
         end
 
         function load_from_txt(~, ~)
-            app.LoadFromTxt();
+
+            [selected_file, path] = uigetfile('*.txt');
+
+            if (selected_file)
+                files_lines = readlines(fullfile(path, selected_file));
+
+                for nn = 1:length(files_lines)
+
+                    if ~isempty(files_lines(nn))
+                        app.drawer_list{end + 1} = files_lines(nn);
+                    end
+
+                end
+
+            end
+
             txt.String = app.drawer_list;
             d.Position(4) = 100 + length(app.drawer_list) * 14;
             txt.Position(4) = length(app.drawer_list) * 14;
+        end
+
+        function save_to_txt(~, ~)
+
+            if isempty(app.drawer_list)
+                warndlg('No folders to save!', 'Warning');
+                return;
+            end
+
+            % Get filename to save
+            [filename, pathname] = uiputfile('*.txt', 'Save folder list as');
+
+            if isequal(filename, 0) || isequal(pathname, 0)
+                return; % User cancelled
+            end
+
+            fullpath = fullfile(pathname, filename);
+
+            try
+                % Write each folder path to the file
+                fid = fopen(fullpath, 'w');
+
+                for i = 1:length(app.drawer_list)
+                    fprintf(fid, '%s\n', app.drawer_list{i});
+                end
+
+                fclose(fid);
+
+                msgbox(sprintf('Folder list saved to:\n%s', fullpath), 'Success');
+            catch ME
+                fclose(fid);
+                errordlg(sprintf('Error saving file:\n%s', ME.message), 'Error');
+            end
+
         end
 
         function clear_params(~, ~)
@@ -485,24 +531,14 @@ methods (Access = public)
 
         function import_param(app, ~)
             tic
-            % Store the current WindowStyle of the main GUI
-            originalWindowStyle = app.EyeFlowUIFigure.WindowStyle;
-
-            % Temporarily set the WindowStyle to 'modal' to prevent minimizing
-            app.EyeFlowUIFigure.WindowStyle = 'modal';
 
             % Open the file selection dialog
             [selected_json, json_path] = uigetfile('*.json');
 
             if selected_json == 0
-                disp('No file selected');
-                % Restore the original WindowStyle
-                app.EyeFlowUIFigure.WindowStyle = originalWindowStyle;
+                fprintf(2, 'No file selected');
                 return;
             end
-
-            % Restore the original WindowStyle
-            app.EyeFlowUIFigure.WindowStyle = originalWindowStyle;
 
             % Process the selected file
             for ind = 1:length(app.drawer_list)
