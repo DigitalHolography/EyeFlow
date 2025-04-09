@@ -529,7 +529,7 @@ methods (Access = public)
             toc
         end
 
-        function import_param(app, ~)
+        function import_param(~, ~)
             tic
 
             % Open the file selection dialog
