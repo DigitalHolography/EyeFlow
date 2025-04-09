@@ -136,7 +136,8 @@ df_artery_std = squeeze(std(df_artery, [], [1, 2], 'omitnan'))';
 % Create figure for delta f in arteries
 fig1 = figure;
 graphSignalStd(fig1, df_artery_signal, df_artery_std, numFrames, ...
-    'frequency (kHz)', strXlabel, 'Average estimated frequency in Arteries', 'kHz');
+    'frequency (kHz)', strXlabel, ...
+    'Average estimated frequency in Arteries', 'kHz', 'ToolBox', ToolBox);
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_f_artery.png", ToolBox.main_foldername)))
 exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_f_artery.eps", ToolBox.main_foldername)))
 
@@ -148,7 +149,8 @@ if veinsAnalysis
 
     fig2 = figure;
     graphSignalStd(fig2, df_vein_signal, df_vein_std, numFrames, ...
-        'frequency (kHz)', strXlabel, 'Average estimated frequency in Veins', 'kHz');
+        'frequency (kHz)', strXlabel, ...
+        'Average estimated frequency in Veins', 'kHz', 'ToolBox', ToolBox);
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_f_vein.png", ToolBox.main_foldername)))
     exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_f_vein.eps", ToolBox.main_foldername)))
 
@@ -176,7 +178,8 @@ v_Artery_std = squeeze(std(v_Artery, [], [1, 2], 'omitnan'))';
 % Create figure for velocity in arteries
 fig3 = figure;
 graphSignalStd(fig3, v_Artery_Signal, v_Artery_std, numFrames, ...
-    'Velocity (mm/s)', strXlabel, 'Average estimated velocity in Arteries', 'mm/s');
+    'Velocity (mm/s)', strXlabel, ...
+    'Average estimated velocity in Arteries', 'mm/s', 'ToolBox', ToolBox);
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_v_artery.png", ToolBox.main_foldername)))
 exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_v_artery.eps", ToolBox.main_foldername)))
 
@@ -188,7 +191,8 @@ if veinsAnalysis
 
     fig4 = figure;
     graphSignalStd(fig4, v_Vein_Signal, v_Vein_std, numFrames, ...
-        'Velocity (mm/s)', strXlabel, 'Average estimated velocity in Veins', 'mm/s');
+        'Velocity (mm/s)', strXlabel, ...
+        'Average estimated velocity in Veins', 'mm/s', 'ToolBox', ToolBox);
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_v_vein.png", ToolBox.main_foldername')))
     exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_v_vein.eps", ToolBox.main_foldername)))
 

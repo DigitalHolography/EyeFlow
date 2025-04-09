@@ -128,14 +128,21 @@ videoInterp = imresize(mat2gray(videoPlotFrames), [size(signalPlotFrames, 2), si
 videoInterp = max(0, min(videoInterp, 1)); % Ensure values are within [0, 1]
 combinedFrames = cat(1, videoInterp, mat2gray(signalPlotFrames));
 
+videoPlot = figure(411);
+graphMaskTags(videoPlot, mean(video, 3), mask, etiquette_locs, etiquettes_frame_values, x_c, y_c, Color = color, circles = maskCircles);
+set(gca, 'FontSize', 14);
+videoLastFrame = frame2im(getframe(gca));
+
+combinedLast = cat(1, mat2gray(imresize(videoLastFrame(:, 2:end, :), [600 600])), mat2gray(signalPlotFrames(:, :, :, end)));
+
 % Save final frames as PNGs
 imwrite(mat2gray(signalPlotFrames(:, :, :, end)), fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s_plot.png", ToolBox.folder_name, dirname)));
-imwrite(combinedFrames(:, :, :, end), fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s_combined.png", ToolBox.folder_name, dirname)));
+imwrite(combinedLast, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s_combined.png", ToolBox.folder_name, dirname)));
 
 % Save as GIF if not skipping frames
 if ~opt.skip
     writeGifOnDisc(mat2gray(signalPlotFrames), sprintf("%s_plot", dirname), 0.04);
-    writeGifOnDisc(imresize(combinedFrames, 0.5), sprintf("%s_combined", dirname), 0.04);
+    writeGifOnDisc(combinedFrames, sprintf("%s_combined", dirname), 0.04);
 end
 
 % Close figures

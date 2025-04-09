@@ -15,9 +15,9 @@ arguments
     opt.fullTime
     opt.xLines = []
     opt.xLineLabels = {}
+    opt.ToolBox = []
 end
 
-ToolBox = getGlobalToolBox;
 mean_signal = mean(U);
 
 if opt.cropIndx > 0
@@ -28,10 +28,16 @@ end
 Color_std = [0.7, 0.7, 0.7];
 figure(figId);
 
-if ~isempty(ToolBox)
+if ~isempty(opt.ToolBox)
     fullTime = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 else % in a parfor no ToolBox
     fullTime = opt.fullTime;
+end
+
+if isempty(opt.ylimm)
+    axss = [fullTime(1), fullTime(end), min(U), max(U)];
+else
+    axss = [fullTime(1), fullTime(end), opt.ylimm];
 end
 
 if length(U) ~= numFrames % for a variable length of the signal
@@ -55,12 +61,6 @@ ylabel(ylabl)
 xlabel(xlabl)
 title(sprintf("%s : %.0f %s", fig_title, round(mean_signal), unit))
 
-axis padded
-axP = axis;
-axis tight
-axT = axis;
-axis([axT(1), axT(2), 0, 1.07 * axP(4)])
-
 if ~isempty(opt.xLines)
 
     for n = 1:length(opt.xLines)
@@ -70,7 +70,6 @@ if ~isempty(opt.xLines)
 end
 
 if ~isempty(opt.ylimm)
-    axss = [fullTime(1), fullTime(end), opt.ylimm];
     axis(axss);
 else
     axis padded
