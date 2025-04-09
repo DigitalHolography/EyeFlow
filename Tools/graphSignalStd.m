@@ -53,7 +53,7 @@ hold off;
 
 ylabel(ylabl)
 xlabel(xlabl)
-title(sprintf("%s : %02.0f %s", fig_title, round(mean_signal), unit))
+title(sprintf("%s : %.0f %s", fig_title, round(mean_signal), unit))
 
 axis padded
 axP = axis;

@@ -5,7 +5,7 @@ ToolBox = getGlobalToolBox;
 v_video = v_video .* mask;
 
 if contains(name, 'Vein')
-    tmp = sysIdx;
+    tmp = diasIdx;
     diasIdx = sysIdx;
     sysIdx = tmp; clear tmp
 end
