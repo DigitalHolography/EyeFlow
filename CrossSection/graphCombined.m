@@ -124,7 +124,7 @@ parfor (frameIdx = startingFrame:numFrames, parforArg)
 end
 
 % Combine video and signal frames
-videoInterp = imresize(mat2gray(videoPlotFrames), [size(signalPlotFrames, 2), size(signalPlotFrames, 2)]);
+videoInterp = imresize(mat2gray(videoPlotFrames(:, 2:end, :, :)), [size(signalPlotFrames, 2), size(signalPlotFrames, 2)]);
 videoInterp = max(0, min(videoInterp, 1)); % Ensure values are within [0, 1]
 combinedFrames = cat(1, videoInterp, mat2gray(signalPlotFrames));
 

@@ -29,6 +29,7 @@ Color_std = [0.7, 0.7, 0.7];
 figure(figId);
 
 if ~isempty(opt.ToolBox)
+    ToolBox = opt.ToolBox;
     fullTime = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 else % in a parfor no ToolBox
     fullTime = opt.fullTime;

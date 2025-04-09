@@ -30,36 +30,36 @@ vDias_std = std(vDias_frames);
 
 v_mean = mean(signal);
 
-% Compute ARI and its uncertainty using error propagation
-ARI_mean = (vSys_mean - vDias_mean) / vSys_mean;
+% Compute RI and its uncertainty using error propagation
+RI_mean = (vSys_mean - vDias_mean) / vSys_mean;
 
 % Partial derivatives for error propagation
-dARI_dvSys = vDias_mean / (vSys_mean^2);
-dARI_dvDias = -1 / vSys_mean;
+dRI_dvSys = vDias_mean / (vSys_mean^2);
+dRI_dvDias = -1 / vSys_mean;
 
-ARI_uncertainty = sqrt( (dARI_dvSys * vSys_std)^2 + (dARI_dvDias * vDias_std)^2 );
+dRI = sqrt( (dRI_dvSys * vSys_std)^2 + (dRI_dvDias * vDias_std)^2 );
 
-% Clip ARI to [0, 1] and handle NaNs
-ARI = (vSys - vDias) ./ vSys;
-ARI(ARI > 1) = 1;
-ARI(ARI < 0) = 0;
-ARI(isnan(ARI)) = 0;
+% Clip RI to [0, 1] and handle NaNs
+RI = (vSys - vDias) ./ vSys;
+RI(RI > 1) = 1;
+RI(RI < 0) = 0;
+RI(isnan(RI)) = 0;
 
-% API calculation
-API_mean = (vSys_mean - vDias_mean) / v_mean;
+% PI calculation
+PI_mean = (vSys_mean - vDias_mean) / v_mean;
 
-% Partial derivatives for API uncertainty
-dAPI_dvSys = 1 / v_mean;
-dAPI_dvDias = -1 / v_mean;
-dAPI_dvMean = -(vSys_mean - vDias_mean) / (v_mean^2);
-API_uncertainty = sqrt( (dAPI_dvSys * vSys_std)^2 + (dAPI_dvDias * vDias_std)^2 + (dAPI_dvMean * std(signal))^2 );
+% Partial derivatives for PI uncertainty
+dPI_dvSys = 1 / v_mean;
+dPI_dvDias = -1 / v_mean;
+dPI_dvMean = -(vSys_mean - vDias_mean) / (v_mean^2);
+dPI = sqrt( (dPI_dvSys * vSys_std)^2 + (dPI_dvDias * vDias_std)^2 + (dPI_dvMean * std(signal))^2 );
 
-% Clip API to [0, -] and handle NaNs
-API = (vSys - vDias) ./ v_mean;
-API(API < 0) = 0;
-API(isnan(API)) = 0;
+% Clip PI to [0, -] and handle NaNs
+PI = (vSys - vDias) ./ v_mean;
+PI(PI < 0) = 0;
+PI(isnan(PI)) = 0;
 
-% ARI Graph
+% RI Graph
 
 figure('Visible', 'off');
 hold on;
@@ -78,13 +78,13 @@ plot(t, curve2, "Color", Color_std, 'LineWidth', 2);
 plot(t, signal, '-k', 'LineWidth', 2);
 
 % Add reference lines
-yline(vSys_mean, '--r', sprintf('%.1f mm/s', vSys_mean), ...
+yline(vSys_mean, '--k', sprintf('%.1f mm/s', vSys_mean), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'top');
-yline(vDias_mean, '--b', sprintf('%.1f mm/s', vDias_mean), ...
+yline(vDias_mean, '--k', sprintf('%.1f mm/s', vDias_mean), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom');
 
 % Formatting
-title(sprintf('%s - ARI: %.2f ± %.2f', name, ARI_mean, ARI_uncertainty));
+title(sprintf('%s - RI: %.2f ± %.2f', name, RI_mean, dRI));
 xlabel('Time (s)');
 ylabel('Velocity (mm/s)');
 
@@ -101,12 +101,12 @@ set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 
 % Export
 exportgraphics(gcf, fullfile(ToolBox.path_png, folder, ...
-    sprintf("%s_ARI_%s.png", ToolBox.main_foldername, name)));
+    sprintf("%s_RI_%s.png", ToolBox.main_foldername, name)));
 exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, ...
-    sprintf("%s_ARI_%s.eps", ToolBox.main_foldername, name)));
+    sprintf("%s_RI_%s.eps", ToolBox.main_foldername, name)));
 close;
 
-% API Graph
+% PI Graph
 
 figure('Visible', 'off');
 hold on;
@@ -125,15 +125,15 @@ plot(t, curve2, "Color", Color_std, 'LineWidth', 2);
 plot(t, signal, '-k', 'LineWidth', 2);
 
 % Add reference lines
-yline(vSys_mean, '--r', sprintf('Systolic: %.1f mm/s', vSys_mean), ...
+yline(vSys_mean, '--k', sprintf('%.1f mm/s', vSys_mean), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'top');
 yline(v_mean, '--k', sprintf('%.1f mm/s', v_mean), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'top');
-yline(vDias_mean, '--b', sprintf('Diastolic: %.1f mm/s', vDias_mean), ...
+yline(vDias_mean, '--k', sprintf('%.1f mm/s', vDias_mean), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom');
 
 % Formatting
-title(sprintf('%s - API: %.2f ± %.2f', name, API_mean, API_uncertainty));
+title(sprintf('%s - PI: %.2f ± %.2f', name, PI_mean, dPI));
 xlabel('Time (s)');
 ylabel('Velocity (mm/s)');
 
@@ -150,32 +150,32 @@ set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 
 % Export
 exportgraphics(gcf, fullfile(ToolBox.path_png, folder, ...
-    sprintf("%s_API_%s.png", ToolBox.main_foldername, name)));
+    sprintf("%s_PI_%s.png", ToolBox.main_foldername, name)));
 exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, ...
-    sprintf("%s_API_%s.eps", ToolBox.main_foldername, name)));
+    sprintf("%s_PI_%s.eps", ToolBox.main_foldername, name)));
 close;
 
 % Save image
 
-if size(v_video, 3) > 1 % if given a video, output the image of ARI / API
+if size(v_video, 3) > 1 % if given a video, output the image of RI / PI
     % Generate colormap
-    [cmapARI] = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
+    [cmap] = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
 
     % Create RGB images for visualization
 
-    % Display and save the ARI image
+    % Display and save the RI image
     fig = figure("Visible", "off");
-    imagesc(ARI), axis image; axis off;
-    colorbar, colormap(cmapARI)
-    title(sprintf('ARI %s = %0.2f', name, ARI_mean));
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_ARI_map_%s.png", ToolBox.main_foldername, name)));
+    imagesc(RI), axis image; axis off;
+    colorbar, colormap(cmap)
+    title(sprintf('RI %s = %0.2f', name, RI_mean));
+    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_RI_map_%s.png", ToolBox.main_foldername, name)));
 
-    % Display and save the API image
+    % Display and save the PI image
     f = figure("Visible", "off");
-    imagesc(API), axis image; axis off;
-    colorbar, colormap(cmapARI)
-    title(sprintf('API %s = %0.2f', name, API_mean));
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_API_map_%s.png", ToolBox.main_foldername, name)));
+    imagesc(PI), axis image; axis off;
+    colorbar, colormap(cmap)
+    title(sprintf('PI %s = %0.2f', name, PI_mean));
+    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_PI_map_%s.png", ToolBox.main_foldername, name)));
 
     % Close figures
     close(f), close(fig);
@@ -193,8 +193,8 @@ if strcmp(name, 'velocity')
     fprintf(fileID, 'Min Velocity artery : %f (mm/s) \r\n', vDias_mean);
 end
 
-fprintf(fileID, 'Arterial Resistivity Index (%s) : %f  \r\n', name, ARI_mean);
-fprintf(fileID, 'Arterial Pulsatility Index (%s) : %f  \r\n', name, API_mean);
+fprintf(fileID, 'Arterial Resistivity Index (%s) : %f  \r\n', name, RI_mean);
+fprintf(fileID, 'Arterial Pulsatility Index (%s) : %f  \r\n', name, PI_mean);
 fclose(fileID);
 
 % Save json
@@ -208,9 +208,9 @@ if strcmp(name, 'velocity')
     ToolBox.outputs.DiaVelocityArtery_std = vDias_std;
 end
 
-ToolBox.outputs.(sprintf('ARI%s', name)) = ARI_mean;
-ToolBox.outputs.(sprintf('ARI%s_uncertainty', name)) = ARI_uncertainty;
-ToolBox.outputs.(sprintf('API%s', name)) = API_mean;
-ToolBox.outputs.(sprintf('API%s_uncertainty', name)) = API_uncertainty;
+ToolBox.outputs.(sprintf('RI%s', name)) = RI_mean;
+ToolBox.outputs.(sprintf('dRI%s', name)) = dRI;
+ToolBox.outputs.(sprintf('PI%s', name)) = PI_mean;
+ToolBox.outputs.(sprintf('dPI%s', name)) = dPI;
 
 end
