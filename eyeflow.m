@@ -681,6 +681,10 @@ methods (Access = public)
                 disp("opening failed.")
             end
 
+            if ~app.file.is_preprocessed
+                app.file = app.file.preprocessData();
+            end
+
             try
                 list_dir = dir(ToolBox.path_main);
                 idx = 0;
@@ -735,17 +739,18 @@ methods (Access = public)
             end
 
             try
-                v = VideoReader(fullfile(ToolBox.EF_path, 'avi', sprintf("%s_M0.avi", ToolBox.main_foldername)));
-                M0_video = read(v); clear v;
-                M0_video = rescale(single(squeeze(mean(M0_video, 3))));
+
+                M0_video = app.file.M0_ff_video;
+                M0_video = rescale(single(M0_video));
                 sz = size(M0_video);
                 [M0_Systole_img, M0_Diastole_img] = compute_diasys(M0_video, diskMask(sz(1), sz(2), 0.45));
                 diasysArtery = M0_Systole_img - M0_Diastole_img;
-                RGBdiasys = labDuoImage(mean(M0_video, 3), diasysArtery);
+                [~, M0_Gabor] = gaborVesselness(mean(M0_video, 3), ToolBox);
+                RGBdiasys = labDuoImage(rescale(M0_Gabor), diasysArtery);
                 imwrite(RGBdiasys, fullfile(ToolBox.path_main, 'mask', 'DiaSysRGB.png'), 'png');
             catch
 
-                disp("Diasys png failed")
+                fprintf(2, "Diasys png failed")
 
             end
 

@@ -69,7 +69,7 @@ saveImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, ToolBox, 'all_11_maskDiaphr
 % 1) 1) Compute vesselness response
 
 [maskVesselnessFrangi] = frangiVesselness(M0_ff_img, 'all_12', ToolBox);
-[maskVesselnessGabor, M0_Gabor] = gaborVesselness(M0_ff_img, 'all_13', ToolBox);
+[maskVesselnessGabor, M0_Gabor] = gaborVesselness(M0_ff_img, ToolBox, 'all_13');
 
 maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
 
@@ -166,7 +166,7 @@ if params.json.Mask.ImproveMask
 
     % 2) 0) Computation of the M0 in Diastole and in Systole
 
-    [M0_Systole_img, M0_Diastole_img, M0_Systole_video] = compute_diasys(M0_ff_video, maskArtery, 'true');
+    [M0_Systole_img, M0_Diastole_img, M0_Systole_video] = compute_diasys(M0_ff_video, maskArtery, 'mask');
     saveImage(rescale(M0_Systole_img), ToolBox, 'artery_20_systole_img.png', isStep = true)
     saveImage(rescale(M0_Diastole_img), ToolBox, 'vein_20_diastole_img.png', isStep = true)
 
@@ -174,8 +174,8 @@ if params.json.Mask.ImproveMask
 
     Systole_Frangi = frangiVesselness(M0_Systole_img, 'artery_20', ToolBox);
     Diastole_Frangi = frangiVesselness(M0_Diastole_img, 'vein_20', ToolBox);
-    Systole_Gabor = gaborVesselness(M0_Systole_img, 'artery_20', ToolBox);
-    Diastole_Gabor = gaborVesselness(M0_Diastole_img, 'vein_20', ToolBox);
+    Systole_Gabor = gaborVesselness(M0_Systole_img, ToolBox, 'artery_20');
+    Diastole_Gabor = gaborVesselness(M0_Diastole_img, ToolBox, 'vein_20');
     maskVesselness = (Systole_Frangi | Diastole_Frangi | Systole_Gabor | Diastole_Gabor) & maskDiaphragm;
     maskVesselnessClean = removeDisconnected(maskVesselness, maskVesselness, maskCircle, 'all_20_VesselMask', ToolBox);
 

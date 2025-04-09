@@ -1,6 +1,10 @@
-function [vessel_mask, combined_response] = gaborVesselness(input_image, name, ToolBox)
-%UNTITLED3 Summary of this function goes here
-%   Detailed explanation goes here
+function [vessel_mask, combined_response] = gaborVesselness(input_image, ToolBox, name)
+
+arguments
+    input_image
+    ToolBox
+    name = ''
+end
 
 % Step 1: Preprocessing
 % Convert to grayscale if necessary
@@ -41,7 +45,7 @@ vessel_mask = imbinarize(combined_response, 'adaptive');
 vessel_mask = bwareaopen(vessel_mask, 50); % Remove small objects
 vessel_mask = imclose(vessel_mask, strel('disk', 2)); % Close small gaps
 
-if nargin == 3
+if ~isempty(name)
     saveImage(combined_response, ToolBox, sprintf('%s_gabor_img.png', name), isStep = true)
     saveImage(vessel_mask, ToolBox, sprintf('%s_gabor_mask.png', name), isStep = true)
 end
