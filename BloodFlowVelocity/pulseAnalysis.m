@@ -1,4 +1,4 @@
-function [v_RMS_video] = pulseAnalysis(f_RMS_video, maskArtery, maskVein, maskNeighbors, xy_barycenter)
+function [v_RMS_video, sysIdxList, sysIdx, diasIdx] = pulseAnalysis(f_RMS_video, maskArtery, maskVein, maskNeighbors, xy_barycenter)
 % pulseAnalysis.m computes the velocities
 % Inputs:
 %       VIDEOS:
@@ -9,8 +9,6 @@ function [v_RMS_video] = pulseAnalysis(f_RMS_video, maskArtery, maskVein, maskNe
 %   maskArtery      Size: numX x numY logical
 %   maskBackground  Size: numX x numY logical
 %   maskVein        Size: numX x numY logical
-%       TRIVIA:
-%   sysIdxList:     Size: numSystoles
 %
 % Output:
 %   v_RMS_video     Size: numX x numY x numFrames double
@@ -40,7 +38,7 @@ cBlack = [0 0 0];
 cArtery = [255 22 18] / 255;
 cVein = [18 23 255] / 255;
 
-%% 1) Local BKG Artery and Veins %~1min
+% 1) Local BKG Artery and Veins %~1min
 
 tic
 
@@ -57,6 +55,7 @@ end
 w = params.json.PulseAnalysis.LocalBackgroundWidth;
 k = params.json.Preprocess.InterpolationFactor;
 bkg_scaler = params.json.PulseAnalysis.bkgScaler;
+
 
 if params.json.Mask.AllNonVesselsAsBackground
     SE = strel('disk', params.json.PulseAnalysis.LocalBackgroundWidth);
@@ -113,7 +112,7 @@ end
 
 fprintf("    1. Local BKG Artery and Veins calculation took %ds\n", round(toc))
 
-%% 2) Difference calculation
+% 2) Difference calculation
 
 tic
 
@@ -208,10 +207,44 @@ end
 
 fprintf("    2. Difference calculation took %ds\n", round(toc))
 
-ArterialResistivityIndex(t, v_RMS_video, maskArtery .* maskSection, 'velocityArtery', folder);
-ArterialResistivityIndex(t, v_RMS_video, maskVein .* maskSection, 'velocityVein', folder);
+findSystoleTimer = tic;
 
-%% 3) Plots of f_RMS mean Local Background in vessels and Delta frequency in vessels and their colorbars
+[sysIdxList, ~, sysMaxList, sysMinList] = find_systole_index(v_RMS_video, maskArtery);
+[~, ~, ~, ~, sysIdx, diasIdx] = compute_diasys(v_RMS_video, maskArtery, 'bloodFlowVelocity');
+
+% Check if the output vectors are long enough
+if numel(sysIdxList) < 2 || numel(sysMaxList) < 2 || numel(sysMinList) < 2
+    warning('There isnt enough systoles.');
+else
+    % Log systole results
+    fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_EF_main_outputs.txt')), 'a');
+    fprintf(fileID, 'Heart beat: %f (bpm) \r\n', 60 / mean(diff(sysIdxList) * ToolBox.stride / ToolBox.fs / 1000));
+    fprintf(fileID, 'Systole Indices: %s \r\n', strcat('[', sprintf("%d,", sysIdxList), ']'));
+    fprintf(fileID, 'Number of Cycles: %d \r\n', numel(sysIdxList) - 1);
+    fprintf(fileID, 'Max Systole Indices: %s \r\n', strcat('[', sprintf("%d,", sysMaxList), ']'));
+    fprintf(fileID, 'Min Systole Indices: %s \r\n', strcat('[', sprintf("%d,", sysMinList), ']'));
+    fprintf(fileID, 'Time diastolic min to systolic max derivative (ms): %f \r\n', ...
+        1000 * mean((sysIdxList(2:end) - sysMinList) * ToolBox.stride / ToolBox.fs / 1000));
+    fprintf(fileID, 'Time diastolic min to systolic max (ms): %f \r\n', ...
+        1000 * mean((sysMaxList(2:end) - sysMinList(1:end - 1)) * ToolBox.stride / ToolBox.fs / 1000));
+    fclose(fileID);
+
+    ToolBox.outputs.HeartBeat = 60 / mean(diff(sysIdxList) * ToolBox.stride / ToolBox.fs / 1000);
+    ToolBox.outputs.SystoleIndices = strcat('[', sprintf("%d,", sysIdxList), ']');
+    ToolBox.outputs.NumberofCycles = numel(sysIdxList) - 1;
+    ToolBox.outputs.MaxSystoleIndices = strcat('[', sprintf("%d,", sysMaxList), ']');
+    ToolBox.outputs.MinSystoleIndices = strcat('[', sprintf("%d,", sysMinList), ']');
+    ToolBox.outputs.TimeDiastolicmintosystolicmaxderivative = 1000 * mean((sysIdxList(2:end) - sysMinList)) * ToolBox.stride / ToolBox.fs / 1000;
+    ToolBox.outputs.TimeDiastolicmintosystolicmax = 1000 * mean((sysMaxList(2:end) - sysMinList(1:end - 1))) * ToolBox.stride / ToolBox.fs / 1000;
+
+end
+
+fprintf("- FindSystoleIndex took: %ds\n", round(toc(findSystoleTimer)));
+
+ArterialResistivityIndex(t, v_RMS_video, maskArtery .* maskSection, sysIdx, diasIdx, 'velocityArtery', folder);
+ArterialResistivityIndex(t, v_RMS_video, maskVein .* maskSection, sysIdx, diasIdx, 'velocityVein', folder);
+
+% 3) Plots of f_RMS mean Local Background in vessels and Delta frequency in vessels and their colorbars
 tic
 
 f18 = figure("Visible", "off");
