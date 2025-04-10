@@ -1,4 +1,4 @@
-classdef Outputs
+classdef Outputs < handle
     %Class to hold the main outputs of the retinal flow analysis pipeline
     
     properties
@@ -67,14 +67,16 @@ classdef Outputs
     methods
         
         function obj = Outputs()
+        end
+
+        function initOutputs(obj)
             % Constructor for the class, fills the properties with default values
-            props = properties(OutputsClass);
+            props = properties(Outputs);
             for i = 1:length(props)
-                obj.(props{i}).value = Nan;
-                obj.(props{i}).standard_error = Nan;
+                obj.(props{i}).value = NaN;
+                obj.(props{i}).standard_error = NaN;
                 obj.(props{i}).unit = "";
             end
-            
         end
         
         function add(obj, name, value, unit, standard_error)
@@ -99,7 +101,7 @@ classdef Outputs
         
         
         function writeJson(obj,path)
-            props = properties(OutputsClass);
+            props = properties(Outputs);
             data = struct();
             for i = 1:length(props)
                 data.(props{i}) = obj.(props{i}).value;

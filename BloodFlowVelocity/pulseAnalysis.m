@@ -60,17 +60,17 @@ bkg_scaler = params.json.PulseAnalysis.bkgScaler;
 if params.json.Mask.AllNonVesselsAsBackground
     SE = strel('disk', params.json.PulseAnalysis.LocalBackgroundWidth);
     maskNeighbors = imerode(maskNeighbors, SE);
-
+    
     parfor frameIdx = 1:numFrames
         f_bkg(:, :, frameIdx) = single(regionfill(f_video(:, :, frameIdx), ~maskNeighbors & maskDiaphragm));
     end
-
+    
 else
-
+    
     parfor frameIdx = 1:numFrames
         f_bkg(:, :, frameIdx) = single(maskedAverage(f_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
     end
-
+    
 end
 
 f_artery = squeeze(sum(f_video .* maskArterySection, [1, 2]) / nnz(maskArterySection));
@@ -90,7 +90,7 @@ if veinsAnalysis
     f_vein = squeeze(sum(f_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
     f_vein_bkg = squeeze(sum(f_bkg .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
     f_vessel_bkg = squeeze(sum(f_bkg .* maskVesselSection, [1, 2]) / nnz(maskVesselSection));
-
+    
     graphSignal('f_vein', folder, ...
         t, f_vein, '-', cVein, ...
         t, f_vein_bkg, '--', cBlack, ...
@@ -99,7 +99,7 @@ if veinsAnalysis
     fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_advanced_outputs', '.txt')), 'a');
     fprintf(fileID, 'Mean fRMS difference vein : %f (kHz) \r\n', mean(f_vein) - mean(f_vein_bkg));
     fclose(fileID);
-
+    
     graphSignal('f_vascular', folder, ...
         t, f_artery, '-', cArtery, ...
         t, f_vein, '-', cVein, ...
@@ -146,14 +146,14 @@ if veinsAnalysis
     df_vein(~maskVeinSection) = NaN;
     df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
     df_vein_std = squeeze(std(df_vein, [], [1, 2], 'omitnan'))';
-
+    
     fig2 = figure;
     graphSignalStd(fig2, df_vein_signal, df_vein_std, numFrames, ...
         'frequency (kHz)', strXlabel, ...
         'Average frequency in Veins', 'kHz', 'ToolBox', ToolBox);
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_f_vein.png", ToolBox.main_foldername)))
     exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_f_vein.eps", ToolBox.main_foldername)))
-
+    
     % Combined plot for arteries and veins
     graphSignal('2_Vessels_frequency', folder, ...
         t, df_artery_signal, '-', cArtery, ...
@@ -188,14 +188,14 @@ if veinsAnalysis
     v_Vein(~maskVeinSection) = NaN;
     v_Vein_Signal = squeeze(sum(v_Vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
     v_Vein_std = squeeze(std(v_Vein, [], [1, 2], 'omitnan'))';
-
+    
     fig4 = figure;
     graphSignalStd(fig4, v_Vein_Signal, v_Vein_std, numFrames, ...
         'Velocity (mm/s)', strXlabel, ...
         'Average velocity in Veins', 'mm/s', 'ToolBox', ToolBox);
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_v_vein.png", ToolBox.main_foldername')))
     exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_v_vein.eps", ToolBox.main_foldername)))
-
+    
     % Combined plot for arteries and veins
     graphSignal('2_Vessels_velocity', folder, ...
         t, v_Artery_Signal, '-', cArtery, ...
@@ -211,7 +211,7 @@ fprintf("    2. Difference calculation took %ds\n", round(toc))
 
 findSystoleTimer = tic;
 
-[sysIdxList, ~, sysMaxList, sysMinList] = find_systole_index(v_RMS_video, maskArtery);
+[sysIdxList, fullPulse, sysMaxList, sysMinList] = find_systole_index(v_RMS_video, maskArtery);
 [~, ~, ~, ~, sysIdx, diasIdx] = compute_diasys(v_RMS_video, maskArtery, 'bloodFlowVelocity');
 
 % Check if the output vectors are long enough
@@ -219,26 +219,59 @@ if numel(sysIdxList) < 2 || numel(sysMaxList) < 2 || numel(sysMinList) < 2
     warning('There isnt enough systoles.');
 else
     % Log systole results
+    
+    DT = ToolBox.stride / (ToolBox.fs * 1000); % Period in seconds
+    HeartBeat = mean(60 / (diff(sysIdxList) * DT));
+    HeartBeatSTE = std(60 / (diff(sysIdxList) * DT));
+    ToolBox.Outputs.add('HeartBeat', HeartBeat, 'bpm', HeartBeatSTE);
+    ToolBox.Outputs.add('SystoleIndices', sysIdxList, '');
+    ToolBox.Outputs.add('MaximumSystoleIndices', sysMaxList, '');
+    ToolBox.Outputs.add('MinimumDiastoleIndices', sysMinList, '');
+    
+    TimeToPeakSystole = mean((sysMaxList - sysIdxList),"omitnan") * DT;
+    TimeToPeakSystoleSTE = std((sysMaxList- sysIdxList ),"omitnan") * DT;
+    ToolBox.Outputs.add('TimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE);
+    
+    TimeToMinimumDiastole = mean((sysMinList - sysIdxList),"omitnan") * DT;
+    TimeToMinimumDiastoleSTE = std((sysMinList - sysIdxList),"omitnan") * DT;
+    ToolBox.Outputs.add('TimeToMinimumDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE);
+    
+    TimeToPeakSystoleFromMinimumDiastole = abs(TimeToMinimumDiastole) + TimeToPeakSystole;
+    TimeToPeakSystoleFromMinimumDiastoleSTE = (TimeToPeakSystoleSTE + TimeToMinimumDiastoleSTE)/2;
+    ToolBox.Outputs.add('TimeToPeakSystoleFromMinimumDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE);
+    
+    Ninterp = 1000;
+    interpFullPulse = interpSignal(fullPulse, sysIdxList, Ninterp);
+    pMax = max(interpFullPulse);
+    pMin = min(interpFullPulse);
+    pRange = pMax - pMin;
+    
+    firstIndex = find(interpFullPulse-(pMin+0.05*pRange)<0,1); % Find the first index where the signal is 5% range wise close to the min
+    TimePeakToDescent = firstIndex/Ninterp * mean(diff(sysIdxList)) * DT;
+    ToolBox.Outputs.add('TimePeakToDescent', TimePeakToDescent, 's');
+
+
+
     fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_EF_main_outputs.txt')), 'a');
-    fprintf(fileID, 'Heart beat: %f (bpm) \r\n', 60 / mean(diff(sysIdxList) * ToolBox.stride / ToolBox.fs / 1000));
+    fprintf(fileID, 'Heart beat: %f (bpm) \r\n', HeartBeat);
     fprintf(fileID, 'Systole Indices: %s \r\n', strcat('[', sprintf("%d,", sysIdxList), ']'));
     fprintf(fileID, 'Number of Cycles: %d \r\n', numel(sysIdxList) - 1);
     fprintf(fileID, 'Max Systole Indices: %s \r\n', strcat('[', sprintf("%d,", sysMaxList), ']'));
     fprintf(fileID, 'Min Systole Indices: %s \r\n', strcat('[', sprintf("%d,", sysMinList), ']'));
     fprintf(fileID, 'Time diastolic min to systolic max derivative (ms): %f \r\n', ...
-        1000 * mean((sysIdxList(2:end) - sysMinList) * ToolBox.stride / ToolBox.fs / 1000));
+        - TimeToMinimumDiastole);
     fprintf(fileID, 'Time diastolic min to systolic max (ms): %f \r\n', ...
-        1000 * mean((sysMaxList(2:end) - sysMinList(1:end - 1)) * ToolBox.stride / ToolBox.fs / 1000));
+        TimeToPeakSystoleFromMinimumDiastole);
     fclose(fileID);
-
-    ToolBox.outputs.HeartBeat = 60 / mean(diff(sysIdxList) * ToolBox.stride / ToolBox.fs / 1000);
+    
+    ToolBox.outputs.HeartBeat = HeartBeat;
     ToolBox.outputs.SystoleIndices = strcat('[', sprintf("%d,", sysIdxList), ']');
     ToolBox.outputs.NumberofCycles = numel(sysIdxList) - 1;
     ToolBox.outputs.MaxSystoleIndices = strcat('[', sprintf("%d,", sysMaxList), ']');
     ToolBox.outputs.MinSystoleIndices = strcat('[', sprintf("%d,", sysMinList), ']');
-    ToolBox.outputs.TimeDiastolicmintosystolicmaxderivative = 1000 * mean((sysIdxList(2:end) - sysMinList)) * ToolBox.stride / ToolBox.fs / 1000;
-    ToolBox.outputs.TimeDiastolicmintosystolicmax = 1000 * mean((sysMaxList(2:end) - sysMinList(1:end - 1))) * ToolBox.stride / ToolBox.fs / 1000;
-
+    ToolBox.outputs.TimeDiastolicmintosystolicmaxderivative = - TimeToMinimumDiastole;
+    ToolBox.outputs.TimeDiastolicmintosystolicmax = TimeToPeakSystoleFromMinimumDiastole;
+    
 end
 
 fprintf("- FindSystoleIndex took: %ds\n", round(toc(findSystoleTimer)));
@@ -356,7 +389,7 @@ fprintf("    3. Plotting heatmaps took %ds\n", round(toc))
 if exportVideos
     f_video_rescale = rescale(f_video);
     f_bkg_rescale = rescale(f_bkg);
-
+    
     writeGifOnDisc(imresize(f_bkg_rescale, 0.5), "f_bkg")
     writeGifOnDisc(imresize(f_video_rescale, 0.5), "f")
 end
