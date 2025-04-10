@@ -100,4 +100,16 @@ ToolBox.outputs.(sprintf('MaxSystoleFlowRateArtery')) = maxsystole_bvr_value;
 ToolBox.outputs.(sprintf('MinDiastoleFlowRateArtery')) = mindiastole_bvr_value;
 ToolBox.outputs.(sprintf('StrokeVolumeArteryArtery')) = stroke_volume_value;
 ToolBox.outputs.(sprintf('TotalVolumeArteryArtery')) = total_volume_value;
+
+if contains(name, 'Artery')
+    ToolBox.Outputs.add('ArterialCycleVolume',total_volume_value,'nL');
+    ToolBox.Outputs.add('ArterialSystolicFraction',stroke_volume_value/total_volume_value,'');
+    ToolBox.Outputs.add('ArterialDiastolicFraction',(1-stroke_volume_value/total_volume_value),'');
+elseif contains(name,'Vein')
+    ToolBox.Outputs.add('VeinCycleVolume',total_volume_value,'nL');
+    ToolBox.Outputs.add('VeinSystolicFraction',stroke_volume_value/total_volume_value,'');
+    ToolBox.Outputs.add('VeinDiastolicFraction',(1-stroke_volume_value/total_volume_value),'');
+end
+
+
 end

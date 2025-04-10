@@ -37,9 +37,15 @@ classdef Outputs < handle
         ArterialResistivityIndexVelocity
         ArterialPulsatilityIndexVelocity
         ArterialMaxMinRatioVelocity
-        VenousResistivityIndexVolumeRate
-        VenousPulsatilityIndexVolumeRate
-        VenousMaxMinRatioVolumeRate
+        VenousResistivityIndexVelocity
+        VenousPulsatilityIndexVelocity
+        VenousMaxMinRatioVelocity
+        % ArterialResistivityIndexVolumeRate
+        % ArterialPulsatilityIndexVolumeRate
+        % ArterialMaxMinRatioVolumeRate
+        % VenousResistivityIndexVolumeRate
+        % VenousPulsatilityIndexVolumeRate
+        % VenousMaxMinRatioVolumeRate
         
         %
         ArterialCycleVolume

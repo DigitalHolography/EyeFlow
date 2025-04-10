@@ -277,7 +277,9 @@ end
 fprintf("- FindSystoleIndex took: %ds\n", round(toc(findSystoleTimer)));
 
 ArterialResistivityIndex(t, v_RMS_video, maskArtery .* maskSection, sysIdx, diasIdx, 'velocityArtery', folder);
-ArterialResistivityIndex(t, v_RMS_video, maskVein .* maskSection, sysIdx, diasIdx, 'velocityVein', folder);
+if veinsAnalysis
+    ArterialResistivityIndex(t, v_RMS_video, maskVein .* maskSection, sysIdx, diasIdx, 'velocityVein', folder);
+end
 
 % 3) Plots of f mean Local Background in vessels and Delta frequency in vessels and their colorbars
 tic

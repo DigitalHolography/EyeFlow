@@ -7,6 +7,8 @@ histogram(2 * sqrt(area(area ~= 0) / pi) * 1000, 50, FaceColor = 'k');
 hold on
 
 medianWidth = median(2 * sqrt(area(area ~= 0) / pi) * 1000, "omitnan");
+avgWidth = mean(2 * sqrt(area(area ~= 0) / pi) * 1000, "omitnan");
+stdWidth = std(2 * sqrt(area(area ~= 0) / pi) * 1000, "omitnan");
 xline(medianWidth, '--', sprintf('%.0f µm', medianWidth), 'Linewidth', 2)
 set(gca, 'Linewidth', 2)
 
@@ -32,5 +34,15 @@ for rIdx = 1:numR
 end
 
 writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'WidthTable', '_', name, '.csv')));
+
+
+% New
+if contains(name, 'Artery')
+    ToolBox.Outputs.add('ArterialDiameterAverage') = avgWidth;
+    ToolBox.Outputs.add('ArterialDiameterSpread') = stdWidth;
+else
+    ToolBox.Outputs.add('VenousDiameterAverage') = avgWidth;
+    ToolBox.Outputs.add('VenousDiameterSpread') = stdWidth;
+end
 
 end
