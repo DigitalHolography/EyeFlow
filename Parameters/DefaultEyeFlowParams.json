@@ -19,6 +19,7 @@
       "VideoLength": -1
     },
     "RemoveOutliersFlag": true,
+    "Outlier Analysis Window" : 10,
     "Interpolation Factor": 1
   },
   "FlatFieldCorrection": {

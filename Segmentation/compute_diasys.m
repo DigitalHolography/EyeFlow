@@ -46,7 +46,7 @@ for idx = 1:numSys
     try
         % Calculate sysindexes and ensure the values stay within the valid range
         start_idx = sys_index_list(idx) + round(fpCycle * 0.05);
-        end_idx = sys_index_list(idx) + round(fpCycle * 0.1);
+        end_idx = sys_index_list(idx) + round(fpCycle * 0.2);
         sys_range = start_idx:min(end_idx, numFrames);
         sysindexes = [sysindexes, sys_range];
         plot(fullTime(sys_range), fullPulse(sys_range), 'r-', 'LineWidth', 2)
@@ -76,7 +76,7 @@ for idx = 1:numSysMax
     try
         % Calculate sysindexes and ensure the values stay within the valid range
         start_idx = sys_max_list(idx);
-        end_idx = sys_max_list(idx) + round(fpCycleMax * 0.05);
+        end_idx = sys_max_list(idx) + round(fpCycleMax * 0.15);
         sys_range = start_idx:min(end_idx, numFrames);
         sysindexes = [sysindexes, sys_range];
 

@@ -1,18 +1,24 @@
 classdef ExecutionClass < handle
 
 properties
+
+    M0_raw_video % M0 raw
+    M1_raw_video % M1 raw
+    M2_raw_video % M2 raw
+    M0_ff_raw_video % M0 ff raw
+
     M0_data_video % M0 raw
     M1_data_video % M1 raw
     M2_data_video % M2 raw
+
+    f_RMS_video % RMS M2/M0
+    f_AVG_video % AVG M1/M0
     M0_ff_video % M0 AVI
 
     is_preprocessed = false; % tells if the data has been preprocessed
     is_segmented = false;
     is_pulseAnalyzed = false;
     is_crossSectionAnalyzed = false;
-
-    f_RMS_video % RMS M2/M0
-    f_AVG_video % AVG M1/M0
 
     sysIdxList % list of frame indexes counting cardiac cycles
     diasIdx
@@ -74,10 +80,10 @@ methods
             disp(['Reading moments in: ', strcat(obj.directory, '.holo')]);
             [videoM0, videoM1, videoM2] = readMoments(strcat(obj.directory, '.holo'));
             readMomentsFooter(obj.directory);
-            obj.M0_ff_video = pagetranspose(improve_video(ff_correction(videoM0, 35), 0.0005, 2, 0));
-            obj.M0_data_video = pagetranspose(videoM0);
-            obj.M1_data_video = pagetranspose(videoM1 / 1e3); % Rescale M1
-            obj.M2_data_video = pagetranspose(videoM2 / 1e6); % Rescale M2
+            obj.M0_ff_raw_video = pagetranspose(improve_video(ff_correction(videoM0, 35), 0.0005, 2, 0));
+            obj.M0_raw_video = pagetranspose(videoM0);
+            obj.M1_raw_video = pagetranspose(videoM1 / 1e3); % Rescale M1
+            obj.M2_raw_video = pagetranspose(videoM2 / 1e6); % Rescale M2
         else
             obj = readRaw(obj);
         end
@@ -89,6 +95,11 @@ methods
         % Preprocess video data.
 
         fprintf("\n----------------------------------\nVideo PreProcessing\n----------------------------------\n");
+
+        obj.M0_data_video = obj.M0_raw_video;
+        obj.M0_ff_video = obj.M0_ff_raw_video;
+        obj.M1_data_video = obj.M1_raw_video;
+        obj.M2_data_video = obj.M2_raw_video;
 
         % Register video
         tic;
