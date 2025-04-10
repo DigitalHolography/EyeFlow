@@ -59,6 +59,14 @@ PI = (vSys - vDias) ./ v_mean;
 PI(PI < 0) = 0;
 PI(isnan(PI)) = 0;
 
+% PR (Pulse Ratio) calculation
+PR_mean = vSys_mean / vDias_mean;
+
+% Partial derivatives for PR uncertainty
+dPR_dvSys = 1 / vDias_mean;
+dPR_dvDias = -vSys_mean / (vDias_mean^2);
+dPR = sqrt( (dPR_dvSys * vSys_std)^2 + (dPR_dvDias * vDias_std)^2 );
+
 % RI Graph
 
 figure('Visible', 'off');
@@ -184,33 +192,28 @@ else
 
 end
 
-% Save txt
-fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_main_outputs', '.txt')), 'a');
-
-if strcmp(name, 'velocity')
-    fprintf(fileID, 'Mean Velocity artery : %f (mm/s) \r\n', v_mean);
-    fprintf(fileID, 'Max Velocity artery : %f (mm/s) \r\n', vSys_mean);
-    fprintf(fileID, 'Min Velocity artery : %f (mm/s) \r\n', vDias_mean);
+if contains(name, 'Artery')
+    VesselName = 'arterial';
+else
+    VesselName = 'venous';
 end
-
-fprintf(fileID, 'Arterial Resistivity Index (%s) : %f  \r\n', name, RI_mean);
-fprintf(fileID, 'Arterial Pulsatility Index (%s) : %f  \r\n', name, PI_mean);
-fclose(fileID);
 
 % Save json
 
-if strcmp(name, 'velocity')
-    ToolBox.outputs.MeanVelocityArtery = v_mean;
-    ToolBox.outputs.MeanVelocityArtery_std = std(signal);
-    ToolBox.outputs.SysVelocityArtery = vSys_mean;
-    ToolBox.outputs.SysVelocityArtery_std = vSys_std;
-    ToolBox.outputs.DiaVelocityArtery = vDias_mean;
-    ToolBox.outputs.DiaVelocityArtery_std = vDias_std;
+if contains(name, 'velocity')
+    ToolBox.outputs.velocity.(sprintf('mean_%s', VesselName)) = round(v_mean, 2);
+    ToolBox.outputs.velocity.(sprintf('mean_%s_se', VesselName)) = round(std(signal), 2);
+    ToolBox.outputs.velocity.(sprintf('systolic_%s', VesselName))= round(vSys_mean, 2);
+    ToolBox.outputs.velocity.(sprintf('systolic_%s_se', VesselName)) = round(vSys_std, 2);
+    ToolBox.outputs.velocity.(sprintf('diastolic_%s', VesselName)) = round(vDias_mean, 2);
+    ToolBox.outputs.velocity.(sprintf('diastolic_%s_se', VesselName)) = round(vDias_std, 2);
 end
 
-ToolBox.outputs.(sprintf('RI%s', name)) = RI_mean;
-ToolBox.outputs.(sprintf('dRI%s', name)) = dRI;
-ToolBox.outputs.(sprintf('PI%s', name)) = PI_mean;
-ToolBox.outputs.(sprintf('dPI%s', name)) = dPI;
+ToolBox.outputs.indices.(sprintf('%s_RI', name)) = round(RI_mean, 2);
+ToolBox.outputs.indices.(sprintf('%s_RI_se', name)) = round(dRI, 2);
+ToolBox.outputs.indices.(sprintf('%s_PI', name)) = round(PI_mean, 2);
+ToolBox.outputs.indices.(sprintf('%s_PI_se', name)) = round(dPI, 2);
+ToolBox.outputs.indices.(sprintf('%s_PR', name)) = round(PR_mean, 2);
+ToolBox.outputs.indices.(sprintf('%s_PR_se', name)) = round(dPR, 2);
 
 end
