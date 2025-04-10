@@ -2,13 +2,30 @@ classdef Outputs
     %Class to hold the main outputs of the retinal flow analysis pipeline
     
     properties
+        
+        NumFrames
+        FrameRate
+        
+        % Arterial Wave form analysis
+        SystoleIndices
         HeartBeat
+        MaximumSystoleIndices
+        MinimumDiastoleIndices
+        TimeToPeakSystole
+        TimeToMinimumDiastole
+        TimeToPeakSystoleFromMinimumDiastole
+        TimePeakToDescent
+        
+        
+        % Velocity
         ArterialMeanVelocity
         ArterialMaximumVelocity
         ArterialMinimumVelocity
         VenousMeanVelocity
         VenousMaximumVelocity
         VenousMinimumVelocity
+        
+        % Volume Rate
         ArterialMeanVolumeRate
         ArterialMaximumVolumeRate
         ArterialMinimumVolumeRate
@@ -16,6 +33,34 @@ classdef Outputs
         VenousMaximumVolumeRate
         VenousMinimumVolumeRate
         
+        % Resistivity and Pulsatility Indices
+        ArterialResistivityIndexVelocity
+        ArterialPulsatilityIndexVelocity
+        ArterialMaxMinRatioVelocity
+        VenousResistivityIndexVolumeRate
+        VenousPulsatilityIndexVolumeRate
+        VenousMaxMinRatioVolumeRate
+        
+        %
+        ArterialCycleVolume
+        ArterialSystolicFraction
+        ArterialDiastolicFraction
+        VenousCycleVolume
+        VenousSystolicFraction
+        VenousDiastolicFraction
+        
+        % Vessel Diameters
+        ArterialDiameterAverage
+        ArterialDiameterSpread
+        VenousDiameterAverage
+        VenousDiameterSpread
+        
+        % Extra
+        PulseWaveVelocity
+        DicroticNotchVisibility
+        DynamicViscosityDuringSystole
+        DynamicViscosityDuringDiastole
+        DynamicViscosityAverage
         
     end
     
