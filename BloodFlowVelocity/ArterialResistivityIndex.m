@@ -168,28 +168,28 @@ close;
 if size(v_video, 3) > 1 % if given a video, output the image of RI / PI
     % Generate colormap
     [cmap] = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
-
+    
     % Create RGB images for visualization
-
+    
     % Display and save the RI image
     fig = figure("Visible", "off");
     imagesc(RI), axis image; axis off;
     colorbar, colormap(cmap)
     title(sprintf('RI %s = %0.2f', name, RI_mean));
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_RI_map_%s.png", ToolBox.main_foldername, name)));
-
+    
     % Display and save the PI image
     f = figure("Visible", "off");
     imagesc(PI), axis image; axis off;
     colorbar, colormap(cmap)
     title(sprintf('PI %s = %0.2f', name, PI_mean));
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_PI_map_%s.png", ToolBox.main_foldername, name)));
-
+    
     % Close figures
     close(f), close(fig);
-
+    
 else
-
+    
 end
 
 if contains(name, 'Artery')
@@ -207,6 +207,17 @@ if contains(name, 'velocity')
     ToolBox.outputs.velocity.(sprintf('systolic_%s_se', VesselName)) = round(vSys_std, 2);
     ToolBox.outputs.velocity.(sprintf('diastolic_%s', VesselName)) = round(vDias_mean, 2);
     ToolBox.outputs.velocity.(sprintf('diastolic_%s_se', VesselName)) = round(vDias_std, 2);
+    
+    % New
+    if contains(name, 'Vein')
+        ToolBox.Outputs.add('VenousMeanVelocity', v_mean, 'mm/s', std(signal));
+        ToolBox.Outputs.add('VenousMaximumVelocity', vDias_mean, 'mm/s', vDias_std);
+        ToolBox.Outputs.add('VenousMinimumVelocity', vSys_mean, 'mm/s', vSys_std);
+    elseif contains(name, 'Artery')
+        ToolBox.Outputs.add('ArterialMeanVelocity', v_mean, 'mm/s', std(signal));
+        ToolBox.Outputs.add('ArterialMinimumVelocity', vDias_mean, 'mm/s', vDias_std);
+        ToolBox.Outputs.add('ArterialMaximumVelocity', vSys_mean, 'mm/s', vSys_std);
+    end
 end
 
 ToolBox.outputs.indices.(sprintf('%s_RI', name)) = round(RI_mean, 2);
@@ -216,4 +227,14 @@ ToolBox.outputs.indices.(sprintf('%s_PI_se', name)) = round(dPI, 2);
 ToolBox.outputs.indices.(sprintf('%s_PR', name)) = round(PR_mean, 2);
 ToolBox.outputs.indices.(sprintf('%s_PR_se', name)) = round(dPR, 2);
 
+% New
+if contains(name, 'Vein')
+    ToolBox.Outputs.add('VenousResistivityIndexVelocity', RI_mean, '', dRI);
+    ToolBox.Outputs.add('VenousPulsatilityIndexVelocity', PI_mean, '', dPI);
+    ToolBox.Outputs.add('VenousMaxMinRatioVelocity', (vSys_mean / vDias_mean), '');
+elseif contains(name, 'Artery')
+    ToolBox.Outputs.add('ArterialResistivityIndexVelocity', RI_mean, '', dRI);
+    ToolBox.Outputs.add('ArterialPulsatilityIndexVelocity', PI_mean, '', dPI);
+    ToolBox.Outputs.add('ArterialMaxMinRatioVelocity', (vDias_mean / vSys_mean), '');
+end
 end
