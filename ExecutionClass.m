@@ -254,7 +254,14 @@ classdef ExecutionClass < handle
                     crossSectionsFigures(obj.Q_results_V, obj.maskVein, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx);
                 end
                 
-                generateHealthReport()
+                try
+                    generateHealthReport()
+                catch ME
+                    fprintf("Error generating health report: %s\n", ME.message);
+                    for i = 1:length(ME.stack)
+                        fprintf("Error in %s at line %d: %s\n", ME.stack(i).name, ME.stack(i).line, ME.message);
+                    end
+                end
                 
                 fprintf("- Cross-Section Figures took: %ds\n", round(toc(crossSectionFiguresTimer)));
             end
