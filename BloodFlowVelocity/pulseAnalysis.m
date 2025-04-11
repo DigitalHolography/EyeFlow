@@ -221,8 +221,8 @@ else
     % Log systole results
     
     DT = ToolBox.stride / (ToolBox.fs * 1000); % Period in seconds
-    HeartBeat = mean(60 / (diff(sysIdxList) * DT));
-    HeartBeatSTE = std(60 / (diff(sysIdxList) * DT));
+    HeartBeat = mean(60 ./ (diff(sysIdxList) * DT));
+    HeartBeatSTE = std(60 ./ (diff(sysIdxList) * DT));
     ToolBox.Outputs.add('HeartBeat', HeartBeat, 'bpm', HeartBeatSTE);
     ToolBox.Outputs.add('SystoleIndices', sysIdxList, '');
     ToolBox.Outputs.add('MaximumSystoleIndices', sysMaxList, '');
