@@ -56,6 +56,8 @@ classdef ToolBoxClass < handle
             obj.createColorMaps();
             
             obj.setGlobalToolBox;
+
+            
             
         end
         
