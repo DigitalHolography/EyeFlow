@@ -15,11 +15,10 @@ fullPulse = squeeze(sum(video .* maskArtery, [1 2]) / nnz(maskArtery));
 % Denoise
 detrendedPulse = detrend(fullPulse);
 noOutlier = filloutliers(detrendedPulse, "center");
-smoothPulse = smoothdata(noOutlier);
 
 % Step 2: Compute the derivative of the smoothed signal
-[~, peaks_idx] = findpeaks(smoothPulse);
-diff_signal = diff(smoothPulse);
+[~, peaks_idx] = findpeaks(noOutlier);
+diff_signal = gradient(noOutlier);
 
 % Step 3: Detect systole peaks using findpeaks
 min_peak_height = max(diff_signal) * 0.5; % Adaptive threshold
@@ -41,9 +40,8 @@ sys_min_list = zeros(1, numel(sys_index_list));
 if abs(amin-sys_index_list(1)) < 0.05 * mean_distance_between_peaks
     sys_min_list(1) = NaN; % Ignore if too close to the first peak
 else
-    sys_min_list(1) = sys_index_list(1) + amin;
+    sys_min_list(1) = amin;
 end
-
 
 for i = 1:(numel(sys_index_list) - 1)
     % Find the maximum within the current cycle
@@ -67,6 +65,15 @@ sys_min_list = sys_min_list';
 if isempty(sys_index_list)
     error('No systole peaks detected. Check signal quality or adjust parameters.');
 end
+
+% % UNCOMMENT FOR DEBUG
+% figure, plot(fullPulse, 'k')
+% hold on
+% scatter(sys_max_list, fullPulse(sys_max_list), 'r')
+% scatter(sys_min_list, fullPulse(sys_min_list), 'b')
+% scatter(sys_index_list, fullPulse(sys_index_list), 'k')
+% figure, plot(diff_signal, 'k')
+% hold on, scatter(sys_index_list, diff_signal(sys_index_list), 'k')
 
 end
 
