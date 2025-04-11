@@ -2,7 +2,6 @@ function [] = ArterialResistivityIndex(t, v_video, mask, sysIdx, diasIdx, name, 
 
 ToolBox = getGlobalToolBox;
 % Color Maps
-v_video = v_video .* mask;
 
 if contains(name, 'Vein')
     tmp = diasIdx;
@@ -10,14 +9,19 @@ if contains(name, 'Vein')
     sysIdx = tmp; clear tmp
 end
 
-v_masked = v_video .* mask;
-v_masked(~mask) = NaN;
-signal = squeeze(sum(v_masked, [1, 2], 'omitnan') / nnz(mask))';
-dsignal = squeeze(std(v_masked, [], [1, 2], 'omitnan'))';
+if size(v_video, 3) ~= 1
+    v_video = v_video .* mask;
+    v_video(~mask) = NaN;
+    signal = squeeze(sum(v_video, [1, 2], 'omitnan') / nnz(mask))';
+    dsignal = squeeze(std(v_video, [], [1, 2], 'omitnan'))';
 
-% Compute mean and standard deviation of vSys and vDias
-vSys = mean(v_video(:, :, sysIdx), 3);
-vDias = mean(v_video(:, :, diasIdx), 3);
+    % Compute mean and standard deviation of vSys and vDias
+    vSys = mean(v_video(:, :, sysIdx), 3);
+    vDias = mean(v_video(:, :, diasIdx), 3);
+else
+    signal = v_video;
+    dsignal = mask;
+end
 
 vSys_frames = signal(sysIdx);
 vDias_frames = signal(diasIdx);
@@ -39,12 +43,6 @@ dRI_dvDias = -1 / vSys_mean;
 
 dRI = sqrt( (dRI_dvSys * vSys_std)^2 + (dRI_dvDias * vDias_std)^2 );
 
-% Clip RI to [0, 1] and handle NaNs
-RI = (vSys - vDias) ./ vSys;
-RI(RI > 1) = 1;
-RI(RI < 0) = 0;
-RI(isnan(RI)) = 0;
-
 % PI calculation
 PI_mean = (vSys_mean - vDias_mean) / v_mean;
 
@@ -53,11 +51,6 @@ dPI_dvSys = 1 / v_mean;
 dPI_dvDias = -1 / v_mean;
 dPI_dvMean = -(vSys_mean - vDias_mean) / (v_mean^2);
 dPI = sqrt( (dPI_dvSys * vSys_std)^2 + (dPI_dvDias * vDias_std)^2 + (dPI_dvMean * std(signal))^2 );
-
-% Clip PI to [0, -] and handle NaNs
-PI = (vSys - vDias) ./ v_mean;
-PI(PI < 0) = 0;
-PI(isnan(PI)) = 0;
 
 % PR (Pulse Ratio) calculation
 PR_mean = vSys_mean / vDias_mean;
@@ -166,30 +159,42 @@ close;
 % Save image
 
 if size(v_video, 3) > 1 % if given a video, output the image of RI / PI
+
+    % Clip RI to [0, 1] and handle NaNs
+    RI = (vSys - vDias) ./ vSys;
+    RI(RI > 1) = 1;
+    RI(RI < 0) = 0;
+    RI(isnan(RI)) = 0;
+
+    % Clip PI to [0, -] and handle NaNs
+    PI = (vSys - vDias) ./ v_mean;
+    PI(PI < 0) = 0;
+    PI(isnan(PI)) = 0;
+
     % Generate colormap
     [cmap] = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
-    
+
     % Create RGB images for visualization
-    
+
     % Display and save the RI image
     fig = figure("Visible", "off");
     imagesc(RI), axis image; axis off;
     colorbar, colormap(cmap)
     title(sprintf('RI %s = %0.2f', name, RI_mean));
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_RI_map_%s.png", ToolBox.main_foldername, name)));
-    
+
     % Display and save the PI image
     f = figure("Visible", "off");
     imagesc(PI), axis image; axis off;
     colorbar, colormap(cmap)
     title(sprintf('PI %s = %0.2f', name, PI_mean));
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_PI_map_%s.png", ToolBox.main_foldername, name)));
-    
+
     % Close figures
     close(f), close(fig);
-    
+
 else
-    
+
 end
 
 if contains(name, 'Artery')
@@ -207,7 +212,7 @@ if contains(name, 'velocity')
     ToolBox.outputs.velocity.(sprintf('systolic_%s_se', VesselName)) = round(vSys_std, 2);
     ToolBox.outputs.velocity.(sprintf('diastolic_%s', VesselName)) = round(vDias_mean, 2);
     ToolBox.outputs.velocity.(sprintf('diastolic_%s_se', VesselName)) = round(vDias_std, 2);
-    
+
     % New
     if contains(name, 'Vein')
         ToolBox.Outputs.add('VenousMeanVelocity', v_mean, 'mm/s', std(signal));

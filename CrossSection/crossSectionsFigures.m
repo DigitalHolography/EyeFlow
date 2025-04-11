@@ -95,14 +95,11 @@ if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesInd
     strokeAndTotalVolume(Q_t, dQ_t, systolesIndexes, t, 1000, name);
 end
 
-% if strcmp(name, 'Artery')
-%
-%         if params.json.CrossSectionsFigures.ARIBVR
-%             ArterialResistivityIndex(t, Q_t, mask, 'BVR', 'crossSectionsAnalysis');
-%         end
-%
-%     fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
-% end
+if params.json.CrossSectionsFigures.ARIBVR
+    ArterialResistivityIndex(t, Q_t, dQ_t, sysIdx, diasIdx, sprintf('BVR%s', name), 'crossSectionsAnalysis');
+end
+
+fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
 
 close all
 
