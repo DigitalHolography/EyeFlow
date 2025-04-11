@@ -123,6 +123,7 @@ methods (Access = public)
 
         % Initialize checkbox states
         app.CheckboxValueChanged();
+        set(0,'defaultfigurecolor',[1 1 1]);
     end
 
     function LoadFromTxt(app)
