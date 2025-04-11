@@ -48,6 +48,7 @@ classdef ExecutionClass < handle
         
         OverWrite logical
         ToolBoxMaster ToolBoxClass
+        Outputs
     end
     
     methods
@@ -89,6 +90,9 @@ classdef ExecutionClass < handle
             end
             
             obj.is_preprocessed = false;
+
+            obj.Outputs = Outputs();
+            obj.Outputs.initOutputs();
         end
         
         function obj = preprocessData(obj)
@@ -138,6 +142,9 @@ classdef ExecutionClass < handle
             fprintf("- Video Outlier Cleaning took: %ds\n", round(toc));
             
             obj.is_preprocessed = true;
+
+            obj.Outputs.initOutputs();
+
         end
         
         function obj = analyzeData(obj, app)
@@ -149,8 +156,7 @@ classdef ExecutionClass < handle
             veins_analysis = params.veins_analysis;
             totalTime = tic;
             saveGit;
-            ToolBox.Outputs = Outputs();
-            ToolBox.Outputs.initOutputs();
+            ToolBox.Outputs = obj.Outputs;
             ToolBox.Outputs.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
             ToolBox.Outputs.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride , 'Hz', 0);
             
