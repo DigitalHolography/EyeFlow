@@ -58,6 +58,11 @@ classdef Outputs < handle
         VenousSystolicFraction
         VenousDiastolicFraction
         
+        SystoleDuration
+        DiastoleDuration
+        SystolicDownstroke
+        DiastolicRunoff
+        
         % Vessel Diameters
         ArterialDiameterAverage
         ArterialDiameterMedian
@@ -68,7 +73,7 @@ classdef Outputs < handle
         
         % Extra
         PulseWaveVelocity
-        DicroticNotchVisibility
+        % DicroticNotchVisibility
         DynamicViscosityDuringSystole
         DynamicViscosityDuringDiastole
         DynamicViscosityAverage
@@ -79,7 +84,7 @@ classdef Outputs < handle
         
         function obj = Outputs()
         end
-
+        
         function initOutputs(obj)
             % Constructor for the class, fills the properties with default values
             props = properties(Outputs);

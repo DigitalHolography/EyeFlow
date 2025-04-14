@@ -56,11 +56,11 @@ if length(locs_peaks) > 1
     T_notch_end = pulseTime(locs_peaks(2));
     xline(T_notch_end, 'k--', sprintf("Tnotch %.2f s", T_notch_end), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom');
     yline(peaks(2), 'k--', sprintf("Peak Diastolic %.2f µL/min", peaks(2)), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom');
-
+    
     T_notch = pulseTime(locs_notch);
     xline(T_notch, 'k--', sprintf("Systolic Phase Duration %.2f s", T_notch), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom');
     yline(notch(1), 'k--', sprintf("Dicrotic Notch %.2f µL/min", notch(1)), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom');
-
+    
     systoleDuration = T_notch - pulseTime(1);
     diastoleDuration = pulseTime(end - 1) - T_notch;
     systolicDownstroke = peaks(1) - notch(1);
@@ -68,5 +68,12 @@ if length(locs_peaks) > 1
 end
 
 exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.main_foldername, name)))
+
+% Export to JSON
+
+ToolBox.Outputs.add('SystoleDuration',systoleDuration, 's');
+ToolBox.Outputs.add('DiastoleDuration',diastoleDuration, 's');
+ToolBox.Outputs.add('SystolicDownstroke',systolicDownstroke, 'µL/min');
+ToolBox.Outputs.add('DiastolicRunoff',diastolicRunoff, 'µL/min');
 
 end
