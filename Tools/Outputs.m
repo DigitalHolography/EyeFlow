@@ -60,8 +60,10 @@ classdef Outputs < handle
         
         % Vessel Diameters
         ArterialDiameterAverage
+        ArterialDiameterMedian
         ArterialDiameterSpread
         VenousDiameterAverage
+        VenousDiameterMedian
         VenousDiameterSpread
         
         % Extra

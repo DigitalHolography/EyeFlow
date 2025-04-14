@@ -44,7 +44,7 @@ if contains(name, 'Artery')
 else
     ToolBox.Outputs.add('VenousDiameterAverage',avgWidth,'µm');
     ToolBox.Outputs.add('VenousDiameterMedian',medianWidth,'µm');
-    ToolBox.Outputs.add('VenouslDiameterSpread',stdWidth,'µm');
+    ToolBox.Outputs.add('VenousDiameterSpread',stdWidth,'µm');
 end
 
 end
