@@ -29,6 +29,7 @@ classdef ToolBoxClass < handle
         cmapAV
         outputs %struct
         Outputs % Outputs class handle
+        Signals
     end
     
     methods
@@ -56,7 +57,7 @@ classdef ToolBoxClass < handle
             obj.createColorMaps();
             
             obj.setGlobalToolBox;
-
+            
             
             
         end

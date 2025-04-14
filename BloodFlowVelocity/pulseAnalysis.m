@@ -180,6 +180,7 @@ fig3 = figure;
 graphSignalStd(fig3, v_Artery_Signal, v_Artery_std, numFrames, ...
     'Velocity (mm/s)', strXlabel, ...
     'Average velocity in Arteries', 'mm/s', 'ToolBox', ToolBox);
+ToolBox.Signals.add('ArterialVelocity',v_Artery_Signal, 'mm/s', t, 's', v_Artery_std);
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_v_artery.png", ToolBox.main_foldername)))
 exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_v_artery.eps", ToolBox.main_foldername)))
 
@@ -193,6 +194,7 @@ if veinsAnalysis
     graphSignalStd(fig4, v_Vein_Signal, v_Vein_std, numFrames, ...
         'Velocity (mm/s)', strXlabel, ...
         'Average velocity in Veins', 'mm/s', 'ToolBox', ToolBox);
+    ToolBox.Signals.add('VenousVelocity',v_Vein_Signal, 'mm/s', t, 's', v_Vein_std);
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_v_vein.png", ToolBox.main_foldername')))
     exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_v_vein.eps", ToolBox.main_foldername)))
     
@@ -227,7 +229,7 @@ else
     ToolBox.Outputs.add('SystoleIndices', sysIdxList, '');
     ToolBox.Outputs.add('MaximumSystoleIndices', sysMaxList, '');
     ToolBox.Outputs.add('MinimumDiastoleIndices', sysMinList, '');
-
+    
     ToolBox.Outputs.add('TimeToMaxIncreaseSystolic', 0, 's', 0); % ref
     
     TimeToPeakSystole = mean((sysMaxList - sysIdxList),"omitnan") * DT;
@@ -252,9 +254,9 @@ else
     TimePeakToDescent = firstIndex/Ninterp * mean(diff(sysIdxList)) * DT;
     ToolBox.Outputs.add('TimePeakToDescent', TimePeakToDescent, 's');
     ToolBox.Outputs.add('TimeToDescent', TimePeakToDescent+TimeToPeakSystole, 's');
-
-
-
+    
+    
+    
     fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_EF_main_outputs.txt')), 'a');
     fprintf(fileID, 'Heart beat: %f (bpm) \r\n', HeartBeat);
     fprintf(fileID, 'Systole Indices: %s \r\n', strcat('[', sprintf("%d,", sysIdxList), ']'));
