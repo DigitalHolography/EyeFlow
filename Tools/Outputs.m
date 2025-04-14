@@ -5,15 +5,18 @@ classdef Outputs < handle
         
         NumFrames
         FrameRate
+        InterFramePeriod
         
         % Arterial Wave form analysis
         SystoleIndices
         HeartBeat
         MaximumSystoleIndices
         MinimumDiastoleIndices
+        TimeToMaxIncreaseSystolic
         TimeToPeakSystole
         TimeToMinimumDiastole
         TimeToPeakSystoleFromMinimumDiastole
+        TimeToDescent
         TimePeakToDescent
         
         
@@ -111,7 +114,11 @@ classdef Outputs < handle
             data = struct();
             for i = 1:length(props)
                 data.(props{i}) = obj.(props{i}).value;
+            end
+            for i = 1:length(props)
                 data.(strcat(props{i},"_ste")) = obj.(props{i}).standard_error;
+            end
+            for i = 1:length(props)
                 data.(strcat(props{i},"_unit")) = obj.(props{i}).unit;
             end
             jsonText = jsonencode(data,"PrettyPrint",true);

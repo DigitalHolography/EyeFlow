@@ -227,6 +227,8 @@ else
     ToolBox.Outputs.add('SystoleIndices', sysIdxList, '');
     ToolBox.Outputs.add('MaximumSystoleIndices', sysMaxList, '');
     ToolBox.Outputs.add('MinimumDiastoleIndices', sysMinList, '');
+
+    ToolBox.Outputs.add('TimeToMaxIncreaseSystolic', 0, 's', 0); % ref
     
     TimeToPeakSystole = mean((sysMaxList - sysIdxList),"omitnan") * DT;
     TimeToPeakSystoleSTE = std((sysMaxList- sysIdxList ),"omitnan") * DT;
@@ -249,6 +251,7 @@ else
     firstIndex = find(interpFullPulse-(pMin+0.05*pRange)<0,1); % Find the first index where the signal is 5% range wise close to the min
     TimePeakToDescent = firstIndex/Ninterp * mean(diff(sysIdxList)) * DT;
     ToolBox.Outputs.add('TimePeakToDescent', TimePeakToDescent, 's');
+    ToolBox.Outputs.add('TimeToDescent', TimePeakToDescent+TimeToPeakSystole, 's');
 
 
 
