@@ -26,7 +26,7 @@ curve2 = 0 * ones(size(curve1));
 ft2 = [pulseTime, fliplr(pulseTime)];
 inBetween = [curve1, fliplr(curve2)]';
 
-if strcmp(name,'Artery')
+if strcmp(name, 'Artery')
     cLight = [1, 1/2, 1/2];
     cDark = [1, 0, 0];
 else
@@ -70,8 +70,8 @@ axP = axis;
 axis tight
 axT = axis;
 axis([axT(1), axT(2), - 5, axP(4) * 1.07])
-lower_bound = pulseTime(1) - 1/2 * pulseTime(end);
-upper_bound =  3/2 * pulseTime(end);
+lower_bound = pulseTime(1) -1/2 * pulseTime(end);
+upper_bound = 3/2 * pulseTime(end);
 xlim([lower_bound, upper_bound])
 
 ylabel('Blood Volume Rate (µL/min)')
@@ -81,7 +81,7 @@ dt2 = pulseTime2(2) - pulseTime2(1);
 stroke_volume_value = sum(ccinterpBvrT(1:min(amax + cshiftn, numInterp))) * dt2 / 60 * 1000; % in nL
 total_volume_value = sum(ccinterpBvrT) * dt2 / 60 * 1000;
 
-if strcmp(name,'Artery')
+if strcmp(name, 'Artery')
     title(sprintf("Retinal Stroke Volume : %02.0f nL and Total Volume : %02.0f nL", stroke_volume_value, total_volume_value));
 else
     title(sprintf("Total Volume : %02.0f nL", total_volume_value));
@@ -102,14 +102,15 @@ ToolBox.outputs.(sprintf('StrokeVolumeArteryArtery')) = stroke_volume_value;
 ToolBox.outputs.(sprintf('TotalVolumeArteryArtery')) = total_volume_value;
 
 if contains(name, 'Artery')
-    ToolBox.Outputs.add('ArterialCycleVolume',total_volume_value,'nL');
-    ToolBox.Outputs.add('ArterialSystolicFraction',stroke_volume_value/total_volume_value,'');
-    ToolBox.Outputs.add('ArterialDiastolicFraction',(1-stroke_volume_value/total_volume_value),'');
-elseif contains(name,'Vein')
-    ToolBox.Outputs.add('VenousCycleVolume',total_volume_value,'nL');
-    ToolBox.Outputs.add('VenousSystolicFraction',stroke_volume_value/total_volume_value,'');
-    ToolBox.Outputs.add('VenousDiastolicFraction',(1-stroke_volume_value/total_volume_value),'');
+    ToolBox.Outputs.add('ArterialCycleVolume', total_volume_value, 'nL');
+    ToolBox.Outputs.add('ArterialSystolicFraction', stroke_volume_value / total_volume_value, '');
+    ToolBox.Outputs.add('ArterialDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
+elseif contains(name, 'Vein')
+    ToolBox.Outputs.add('VenousCycleVolume', total_volume_value, 'nL');
+    ToolBox.Outputs.add('VenousSystolicFraction', stroke_volume_value / total_volume_value, '');
+    ToolBox.Outputs.add('VenousDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
 end
 
+ArterialWaveformAnalysis(mean_BvrT, mean_std_BvrT, fullTime, systolesIndexes, numInterp, sprintf('%s_bvr', name), ToolBox)
 
 end
