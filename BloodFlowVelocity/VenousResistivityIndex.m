@@ -155,6 +155,12 @@ close;
 
 if size(v_video, 3) > 1 % if given a video, output the image of RI / PI
 
+    v_video_interp = v_video(:,:,sysIdxList(1):sysIdxList(2)); % not really interp but ok for now
+    v_video_interp = imresize3(v_video_interp,[size(v_video_interp,1),size(v_video_interp,2),Ninterp]);
+
+    vMax = mean(v_video_interp(:,:,vMax_frames_indxs),3);
+    vMin = mean(v_video_interp(:,:,vMin_frames_indxs),3);
+
     % Clip RI to [0, 1] and handle NaNs
     RI = (vMax - vMin) ./ vMax;
     RI(RI > 1) = 1;
@@ -211,8 +217,8 @@ if contains(name, 'velocity')
     % New
     if contains(name, 'Vein')
         ToolBox.Outputs.add('VenousMeanVelocity', v_mean, 'mm/s', std(signal));
-        ToolBox.Outputs.add('VenousMaximumVelocity', vMin_mean, 'mm/s', vMin_std);
-        ToolBox.Outputs.add('VenousMinimumVelocity', vMax_mean, 'mm/s', vMax_std);
+        ToolBox.Outputs.add('VenousMaximumVelocity', vMax_mean, 'mm/s', vMin_std);
+        ToolBox.Outputs.add('VenousMinimumVelocity', vMin_mean, 'mm/s', vMax_std);
     end
 end
 

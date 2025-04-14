@@ -6,8 +6,8 @@ classdef Signals < handle
         VenousVelocity
         % ArterialVelocityInterpolated
         % VenousVelocityInterpolated
-        % ArterialVolumeRate
-        % VenousVolumeRate
+        ArterialVolumeRate
+        VenousVolumeRate
         % ArterialVolumeRateInterpolated
         % VenousVolumeRateInterpolated
     end
@@ -58,19 +58,19 @@ classdef Signals < handle
             props = properties(Signals);
             data = struct();
             for i = 1:length(props)
-                data.(props{i}) = obj.(props{i}).yvalues;
+                data.(strcat(props{i},"_y")) = obj.(props{i}).yvalues;
             end
             for i = 1:length(props)
                 data.(strcat(props{i},"_ste")) = obj.(props{i}).ystandard_errors;
             end
             for i = 1:length(props)
-                data.(props{i}) = obj.(props{i}).xvalues;
+                data.(strcat(props{i},"_x")) = obj.(props{i}).xvalues;
             end
             for i = 1:length(props)
-                data.(strcat(props{i},"_unit")) = obj.(props{i}).yunit;
+                data.(strcat(props{i},"_yunit")) = obj.(props{i}).yunit;
             end
             for i = 1:length(props)
-                data.(strcat(props{i},"_unit")) = obj.(props{i}).xunit;
+                data.(strcat(props{i},"_xunit")) = obj.(props{i}).xunit;
             end
             jsonText = jsonencode(data,"PrettyPrint",true);
             fid = fopen(path, 'w');

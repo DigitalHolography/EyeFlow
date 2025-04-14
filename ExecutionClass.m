@@ -315,11 +315,12 @@ classdef ExecutionClass < handle
             
             % Main Outputs Saving
             
-            fid = fopen(fullfile(ToolBox.path_json, strcat(ToolBox.main_foldername, '_EF_main_outputs.json')), 'w');
-            fwrite(fid, jsonencode(ToolBox.outputs, "PrettyPrint", true), 'char');
-            fclose(fid);
+            % fid = fopen(fullfile(ToolBox.path_json, strcat(ToolBox.main_foldername, '_EF_main_outputs.json')), 'w');
+            % fwrite(fid, jsonencode(ToolBox.outputs, "PrettyPrint", true), 'char');
+            % fclose(fid);
             
             ToolBox.Outputs.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_outputs.json')));
+            ToolBox.Signals.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_signals.json')));
             
             % Final Output
             tTotal = toc(totalTime);
