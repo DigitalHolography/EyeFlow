@@ -1,4 +1,4 @@
-function figFFT(x)
+function [X] = figFFT(x)
 
 % Compute the FFT
 X = fft(x);
