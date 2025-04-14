@@ -1,12 +1,7 @@
 function PreviewMasks(app)
 
-if ~app.flag_is_load
-    app.LoadfolderButtonPushed();
-
-    if ~app.flag_is_load
-        error("Please select a correct HoloDoppler folder")
-    end
-
+if isempty(app.file)
+    error("Please select your Input first")
 end
 
 params = Parameters_json(app.file.directory, app.file.param_name);
