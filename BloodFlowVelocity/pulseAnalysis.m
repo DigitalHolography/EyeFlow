@@ -56,21 +56,20 @@ w = params.json.PulseAnalysis.LocalBackgroundWidth;
 k = params.json.Preprocess.InterpolationFactor;
 bkg_scaler = params.json.PulseAnalysis.bkgScaler;
 
-
 if params.json.Mask.AllNonVesselsAsBackground
     SE = strel('disk', params.json.PulseAnalysis.LocalBackgroundWidth);
     maskNeighbors = imerode(maskNeighbors, SE);
-    
+
     parfor frameIdx = 1:numFrames
         f_bkg(:, :, frameIdx) = single(regionfill(f_video(:, :, frameIdx), ~maskNeighbors & maskDiaphragm));
     end
-    
+
 else
-    
+
     parfor frameIdx = 1:numFrames
         f_bkg(:, :, frameIdx) = single(maskedAverage(f_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
     end
-    
+
 end
 
 f_artery = squeeze(sum(f_video .* maskArterySection, [1, 2]) / nnz(maskArterySection));
@@ -90,7 +89,7 @@ if veinsAnalysis
     f_vein = squeeze(sum(f_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
     f_vein_bkg = squeeze(sum(f_bkg .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
     f_vessel_bkg = squeeze(sum(f_bkg .* maskVesselSection, [1, 2]) / nnz(maskVesselSection));
-    
+
     graphSignal('f_vein', folder, ...
         t, f_vein, '-', cVein, ...
         t, f_vein_bkg, '--', cBlack, ...
@@ -99,7 +98,7 @@ if veinsAnalysis
     fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_advanced_outputs', '.txt')), 'a');
     fprintf(fileID, 'Mean fRMS difference vein : %f (kHz) \r\n', mean(f_vein) - mean(f_vein_bkg));
     fclose(fileID);
-    
+
     graphSignal('f_vascular', folder, ...
         t, f_artery, '-', cArtery, ...
         t, f_vein, '-', cVein, ...
@@ -131,11 +130,11 @@ end
 df_artery = df .* maskArterySection;
 df_artery(~maskArterySection) = NaN;
 df_artery_signal = squeeze(sum(df_artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
-df_artery_std = squeeze(std(df_artery, [], [1, 2], 'omitnan'))';
+df_artery_ste = squeeze(std(df_artery, [], [1, 2], 'omitnan'))';
 
 % Create figure for delta f in arteries
-fig1 = figure;
-graphSignalStd(fig1, df_artery_signal, df_artery_std, numFrames, ...
+fig1 = figure("Visible", "off");
+graphSignalStd(fig1, df_artery_signal, df_artery_ste, numFrames, ...
     'frequency (kHz)', strXlabel, ...
     'Average frequency in Arteries', 'kHz', 'ToolBox', ToolBox);
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_f_artery.png", ToolBox.main_foldername)))
@@ -146,14 +145,14 @@ if veinsAnalysis
     df_vein(~maskVeinSection) = NaN;
     df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
     df_vein_std = squeeze(std(df_vein, [], [1, 2], 'omitnan'))';
-    
-    fig2 = figure;
+
+    fig2 = figure("Visible", "off");
     graphSignalStd(fig2, df_vein_signal, df_vein_std, numFrames, ...
         'frequency (kHz)', strXlabel, ...
         'Average frequency in Veins', 'kHz', 'ToolBox', ToolBox);
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_f_vein.png", ToolBox.main_foldername)))
     exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_f_vein.eps", ToolBox.main_foldername)))
-    
+
     % Combined plot for arteries and veins
     graphSignal('2_Vessels_frequency', folder, ...
         t, df_artery_signal, '-', cArtery, ...
@@ -170,42 +169,42 @@ scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.
 v_RMS_video = scalingFactor * df;
 
 % Velocity plots
-v_Artery = v_RMS_video .* maskArterySection;
-v_Artery(~maskArterySection) = NaN;
-v_Artery_Signal = squeeze(sum(v_Artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
-v_Artery_std = squeeze(std(v_Artery, [], [1, 2], 'omitnan'))';
+v_artery = v_RMS_video .* maskArterySection;
+v_artery(~maskArterySection) = NaN;
+v_artery_signal = squeeze(sum(v_artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
+v_artery_ste = squeeze(std(v_artery, [], [1, 2], 'omitnan'))';
 
 % Create figure for velocity in arteries
-fig3 = figure;
-graphSignalStd(fig3, v_Artery_Signal, v_Artery_std, numFrames, ...
+fig3 = figure("Visible", "off");
+graphSignalStd(fig3, v_artery_signal, v_artery_ste, numFrames, ...
     'Velocity (mm/s)', strXlabel, ...
     'Average velocity in Arteries', 'mm/s', 'ToolBox', ToolBox);
-ToolBox.Signals.add('ArterialVelocity',v_Artery_Signal, 'mm/s', t, 's', v_Artery_std);
+ToolBox.Signals.add('ArterialVelocity',v_artery_signal, 'mm/s', t, 's', v_artery_ste);
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_v_artery.png", ToolBox.main_foldername)))
 exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_v_artery.eps", ToolBox.main_foldername)))
 
 if veinsAnalysis
-    v_Vein = v_RMS_video .* maskVeinSection;
-    v_Vein(~maskVeinSection) = NaN;
-    v_Vein_Signal = squeeze(sum(v_Vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
-    v_Vein_std = squeeze(std(v_Vein, [], [1, 2], 'omitnan'))';
-    
-    fig4 = figure;
-    graphSignalStd(fig4, v_Vein_Signal, v_Vein_std, numFrames, ...
+    v_vein = v_RMS_video .* maskVeinSection;
+    v_vein(~maskVeinSection) = NaN;
+    v_vein_signal = squeeze(sum(v_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
+    v_vein_ste = squeeze(std(v_vein, [], [1, 2], 'omitnan'))';
+
+    fig4 = figure("Visible", "off");
+    graphSignalStd(fig4, v_vein_signal, v_vein_ste, numFrames, ...
         'Velocity (mm/s)', strXlabel, ...
         'Average velocity in Veins', 'mm/s', 'ToolBox', ToolBox);
-    ToolBox.Signals.add('VenousVelocity',v_Vein_Signal, 'mm/s', t, 's', v_Vein_std);
+    ToolBox.Signals.add('VenousVelocity',v_vein_signal, 'mm/s', t, 's', v_vein_ste);
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_v_vein.png", ToolBox.main_foldername')))
     exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_v_vein.eps", ToolBox.main_foldername)))
-    
+
     % Combined plot for arteries and veins
     graphSignal('2_Vessels_velocity', folder, ...
-        t, v_Artery_Signal, '-', cArtery, ...
-        t, v_Vein_Signal, '-', cVein, ...
+        t, v_artery_signal, '-', cArtery, ...
+        t, v_vein_signal, '-', cVein, ...
         Title = 'Average velocity in Arteries and Veins', xlabel = strXlabel, ylabel = 'Velocity (mm/s)');
 else
     graphSignal('2_Arteries_velocity', folder, ...
-        t, v_Artery_Signal, '-', cArtery, ...
+        t, v_artery_signal, '-', cArtery, ...
         Title = 'Average velocity in Arteries', xlabel = strXlabel, ylabel = 'Velocity (mm/s)');
 end
 
@@ -221,7 +220,7 @@ if numel(sysIdxList) < 2 || numel(sysMaxList) < 2 || numel(sysMinList) < 2
     warning('There isnt enough systoles.');
 else
     % Log systole results
-    
+
     DT = ToolBox.stride / (ToolBox.fs * 1000); % Period in seconds
     HeartBeat = mean(60 ./ (diff(sysIdxList) * DT));
     HeartBeatSTE = std(60 ./ (diff(sysIdxList) * DT));
@@ -229,34 +228,32 @@ else
     ToolBox.Outputs.add('SystoleIndices', sysIdxList, '');
     ToolBox.Outputs.add('MaximumSystoleIndices', sysMaxList, '');
     ToolBox.Outputs.add('MinimumDiastoleIndices', sysMinList, '');
-    
+
     ToolBox.Outputs.add('TimeToMaxIncreaseSystolic', 0, 's', 0); % ref
-    
+
     TimeToPeakSystole = mean((sysMaxList - sysIdxList),"omitnan") * DT;
     TimeToPeakSystoleSTE = std((sysMaxList- sysIdxList ),"omitnan") * DT;
     ToolBox.Outputs.add('TimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE);
-    
+
     TimeToMinimumDiastole = mean((sysMinList - sysIdxList),"omitnan") * DT;
     TimeToMinimumDiastoleSTE = std((sysMinList - sysIdxList),"omitnan") * DT;
     ToolBox.Outputs.add('TimeToMinimumDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE);
-    
+
     TimeToPeakSystoleFromMinimumDiastole = abs(TimeToMinimumDiastole) + TimeToPeakSystole;
     TimeToPeakSystoleFromMinimumDiastoleSTE = (TimeToPeakSystoleSTE + TimeToMinimumDiastoleSTE)/2;
     ToolBox.Outputs.add('TimeToPeakSystoleFromMinimumDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE);
-    
+
     Ninterp = 1000;
     interpFullPulse = interpSignal(fullPulse, sysIdxList, Ninterp);
     pMax = max(interpFullPulse);
     pMin = min(interpFullPulse);
     pRange = pMax - pMin;
-    
+
     firstIndex = find(interpFullPulse-(pMin+0.05*pRange)<0,1); % Find the first index where the signal is 5% range wise close to the min
     TimePeakToDescent = firstIndex/Ninterp * mean(diff(sysIdxList)) * DT;
     ToolBox.Outputs.add('TimePeakToDescent', TimePeakToDescent, 's');
     ToolBox.Outputs.add('TimeToDescent', TimePeakToDescent+TimeToPeakSystole, 's');
-    
-    
-    
+
     fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_EF_main_outputs.txt')), 'a');
     fprintf(fileID, 'Heart beat: %f (bpm) \r\n', HeartBeat);
     fprintf(fileID, 'Systole Indices: %s \r\n', strcat('[', sprintf("%d,", sysIdxList), ']'));
@@ -268,7 +265,7 @@ else
     fprintf(fileID, 'Time diastolic min to systolic max (ms): %f \r\n', ...
         TimeToPeakSystoleFromMinimumDiastole);
     fclose(fileID);
-    
+
     ToolBox.outputs.HeartBeat = HeartBeat;
     ToolBox.outputs.SystoleIndices = strcat('[', sprintf("%d,", sysIdxList), ']');
     ToolBox.outputs.NumberofCycles = numel(sysIdxList) - 1;
@@ -276,7 +273,7 @@ else
     ToolBox.outputs.MinSystoleIndices = strcat('[', sprintf("%d,", sysMinList), ']');
     ToolBox.outputs.TimeDiastolicmintosystolicmaxderivative = - TimeToMinimumDiastole;
     ToolBox.outputs.TimeDiastolicmintosystolicmax = TimeToPeakSystoleFromMinimumDiastole;
-    
+
 end
 
 fprintf("- FindSystoleIndex took: %ds\n", round(toc(findSystoleTimer)));
@@ -396,12 +393,14 @@ fprintf("    3. Plotting heatmaps took %ds\n", round(toc))
 if exportVideos
     f_video_rescale = rescale(f_video);
     f_bkg_rescale = rescale(f_bkg);
-    
+
     writeGifOnDisc(imresize(f_bkg_rescale, 0.5), "f_bkg")
     writeGifOnDisc(imresize(f_video_rescale, 0.5), "f")
 end
 
-clear LocalBackground_in_vessels f_bkg
+ArterialWaveformAnalysis(v_artery_signal, v_artery_ste, t, sysIdxList, 1000, 'v_artery', ToolBox)
+ArterialWaveformAnalysis(v_vein_signal, v_vein_ste, t, sysIdxList, 1000, 'v_vein', ToolBox)
+
 close all
 
 end
