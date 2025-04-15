@@ -399,7 +399,7 @@ if exportVideos
 end
 
 ArterialWaveformAnalysis(v_artery_signal, v_artery_ste, t, sysIdxList, 1000, 'v_artery', ToolBox)
-ArterialWaveformAnalysis(v_vein_signal, v_vein_ste, t, sysIdxList, 1000, 'v_vein', ToolBox)
+% ArterialWaveformAnalysis(v_vein_signal, v_vein_ste, t, sysIdxList, 1000, 'v_vein', ToolBox)
 
 close all
 
