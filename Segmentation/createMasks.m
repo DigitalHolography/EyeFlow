@@ -71,7 +71,11 @@ saveImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, ToolBox, 'all_11_maskDiaphr
 [maskVesselnessFrangi] = frangiVesselness(M0_ff_img, 'all_12', ToolBox);
 [maskVesselnessGabor, M0_Gabor] = gaborVesselness(M0_ff_img, ToolBox, 'all_13');
 
-maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
+if params.json.Mask.VesselnessHolonet
+    maskVesselness = getHolonetprediction(M0_ff_img);
+else
+    maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
+end
 
 % 1) 2) Compute the barycenters and the circle mask
 
@@ -176,7 +180,13 @@ if params.json.Mask.ImproveMask
     Diastole_Frangi = frangiVesselness(M0_Diastole_img, 'vein_20', ToolBox);
     Systole_Gabor = gaborVesselness(M0_Systole_img, ToolBox, 'artery_20');
     Diastole_Gabor = gaborVesselness(M0_Diastole_img, ToolBox, 'vein_20');
-    maskVesselness = (Systole_Frangi | Diastole_Frangi | Systole_Gabor | Diastole_Gabor) & maskDiaphragm;
+
+    if params.json.Mask.VesselnessHolonet
+        maskVesselness = maskVesselness & maskDiaphragm;
+    else
+        maskVesselness = (Systole_Frangi | Diastole_Frangi | Systole_Gabor | Diastole_Gabor) & maskDiaphragm;
+    end
+
     maskVesselnessClean = removeDisconnected(maskVesselness, maskVesselness, maskCircle, 'all_20_VesselMask', ToolBox);
 
     % 2) 2) Diastole-Systole Image
@@ -232,10 +242,12 @@ if params.json.Mask.ImproveMask
     maskVein = removeDisconnected(maskVein, maskVessel, maskCircle, 'vein_31_VesselMask', ToolBox);
 
     % 3) 1 prime) HoloNet intervention
-    % holonet_vessels = getHolonetprediction(M0_ff_img);
-    % maskVessel = maskVessel & holonet_vessels;
-    % maskArtery = maskArtery & holonet_vessels;
-    % maskVein = maskVein & holonet_vessels;
+    if params.json.Mask.ChoroidHolonet
+        holonet_vessels = getHolonetprediction(M0_ff_img);
+        maskVessel = maskVessel & holonet_vessels;
+        maskArtery = maskArtery & holonet_vessels;
+        maskVein = maskVein & holonet_vessels;
+    end
 
     % 3) 2) Force Create Masks in case they exist
 
