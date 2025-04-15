@@ -434,7 +434,13 @@ methods (Access = public)
             %                 txt.Position(4) = length(app.drawer_list) * 14;
 
             % selection of the measurement folder with uigetdir to analyze all processed folders
-            selected_dir = uigetdir();
+
+            if ~isempty(app.drawer_list)
+                last_dir = app.drawer_list{end};
+            else
+                last_dir = [];
+            end
+            selected_dir = uigetdir(last_dir);
             % List of Subfolders within the measurement folder
             tmp_dir = dir(selected_dir);
             % remove all files (isdir property is 0)
@@ -458,7 +464,12 @@ methods (Access = public)
 
         function select(~, ~)
             % selection of one processed folder with uigetdir
-            selected_dir = uigetdir();
+            if ~isempty(app.drawer_list)
+                last_dir = app.drawer_list{end};
+            else
+                last_dir = [];
+            end
+            selected_dir = uigetdir(last_dir);
 
             if (selected_dir)
                 app.drawer_list{end + 1} = selected_dir;
