@@ -126,6 +126,41 @@ else % DIFFERENCE LAST
     df = f_video - f_bkg;
 end
 
+% Outlier cleaning
+
+df_cleaned = df; % Initialize with the original video
+window_size = params.json.Preprocess.OutlierAnalysisWindow; % Compute the average profile over time (mean intensity per frame)
+frame_means = squeeze(mean(df, [1 2])); % 1D array: numFrames x 1
+outlier_frames_mask = isoutlier(frame_means, 'movmedian', window_size);
+
+% Find the indices of outlier frames
+outlier_indices = find(outlier_frames_mask)';
+
+% For each outlier frame, interpolate linearly using neighboring frames
+for idx = outlier_indices
+    % Find the previous and next non-outlier frames
+    prev_frame = find(~outlier_frames_mask(1:idx - 1), 1, 'last'); % Last non-outlier before idx
+    next_frame = find(~outlier_frames_mask(idx + 1:end), 1, 'first') + idx; % First non-outlier after idx
+
+    % Handle edge cases (e.g., first or last frame is an outlier)
+    if isempty(prev_frame)
+        prev_frame = next_frame; % If no previous frame, use the next frame
+    end
+
+    if isempty(next_frame)
+        next_frame = prev_frame; % If no next frame, use the previous frame
+    end
+
+    if prev_frame == next_frame
+        df_cleaned(:, :, idx) = df_cleaned(:, :, prev_frame);
+    else
+        % Linearly interpolate the outlier frame
+        alpha = (idx - prev_frame) / (next_frame - prev_frame); % Interpolation weight
+        df_cleaned(:, :, idx) = (1 - alpha) * df(:, :, prev_frame) + alpha * df(:, :, next_frame);
+    end
+
+end
+
 % Delta f plots
 df_artery = df .* maskArterySection;
 df_artery(~maskArterySection) = NaN;
@@ -179,7 +214,7 @@ fig3 = figure("Visible", "off");
 graphSignalStd(fig3, v_artery_signal, v_artery_ste, numFrames, ...
     'Velocity (mm/s)', strXlabel, ...
     'Average velocity in Arteries', 'mm/s', 'ToolBox', ToolBox);
-ToolBox.Signals.add('ArterialVelocity',v_artery_signal, 'mm/s', t, 's', v_artery_ste);
+ToolBox.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's', v_artery_ste);
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_v_artery.png", ToolBox.main_foldername)))
 exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_v_artery.eps", ToolBox.main_foldername)))
 
@@ -193,7 +228,7 @@ if veinsAnalysis
     graphSignalStd(fig4, v_vein_signal, v_vein_ste, numFrames, ...
         'Velocity (mm/s)', strXlabel, ...
         'Average velocity in Veins', 'mm/s', 'ToolBox', ToolBox);
-    ToolBox.Signals.add('VenousVelocity',v_vein_signal, 'mm/s', t, 's', v_vein_ste);
+    ToolBox.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's', v_vein_ste);
     exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_v_vein.png", ToolBox.main_foldername')))
     exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_v_vein.eps", ToolBox.main_foldername)))
 
@@ -231,16 +266,16 @@ else
 
     ToolBox.Outputs.add('TimeToMaxIncreaseSystolic', 0, 's', 0); % ref
 
-    TimeToPeakSystole = mean((sysMaxList - sysIdxList),"omitnan") * DT;
-    TimeToPeakSystoleSTE = std((sysMaxList- sysIdxList ),"omitnan") * DT;
+    TimeToPeakSystole = mean((sysMaxList - sysIdxList), "omitnan") * DT;
+    TimeToPeakSystoleSTE = std((sysMaxList - sysIdxList), "omitnan") * DT;
     ToolBox.Outputs.add('TimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE);
 
-    TimeToMinimumDiastole = mean((sysMinList - sysIdxList),"omitnan") * DT;
-    TimeToMinimumDiastoleSTE = std((sysMinList - sysIdxList),"omitnan") * DT;
+    TimeToMinimumDiastole = mean((sysMinList - sysIdxList), "omitnan") * DT;
+    TimeToMinimumDiastoleSTE = std((sysMinList - sysIdxList), "omitnan") * DT;
     ToolBox.Outputs.add('TimeToMinimumDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE);
 
     TimeToPeakSystoleFromMinimumDiastole = abs(TimeToMinimumDiastole) + TimeToPeakSystole;
-    TimeToPeakSystoleFromMinimumDiastoleSTE = (TimeToPeakSystoleSTE + TimeToMinimumDiastoleSTE)/2;
+    TimeToPeakSystoleFromMinimumDiastoleSTE = (TimeToPeakSystoleSTE + TimeToMinimumDiastoleSTE) / 2;
     ToolBox.Outputs.add('TimeToPeakSystoleFromMinimumDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE);
 
     Ninterp = 1000;
@@ -249,10 +284,10 @@ else
     pMin = min(interpFullPulse);
     pRange = pMax - pMin;
 
-    firstIndex = find(interpFullPulse-(pMin+0.05*pRange)<0,1); % Find the first index where the signal is 5% range wise close to the min
-    TimePeakToDescent = firstIndex/Ninterp * mean(diff(sysIdxList)) * DT;
+    firstIndex = find(interpFullPulse - (pMin + 0.05 * pRange) < 0, 1); % Find the first index where the signal is 5 % range wise close to the min
+    TimePeakToDescent = firstIndex / Ninterp * mean(diff(sysIdxList)) * DT;
     ToolBox.Outputs.add('TimePeakToDescent', TimePeakToDescent, 's');
-    ToolBox.Outputs.add('TimeToDescent', TimePeakToDescent+TimeToPeakSystole, 's');
+    ToolBox.Outputs.add('TimeToDescent', TimePeakToDescent + TimeToPeakSystole, 's');
 
     fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_EF_main_outputs.txt')), 'a');
     fprintf(fileID, 'Heart beat: %f (bpm) \r\n', HeartBeat);
@@ -271,7 +306,7 @@ else
     ToolBox.outputs.NumberofCycles = numel(sysIdxList) - 1;
     ToolBox.outputs.MaxSystoleIndices = strcat('[', sprintf("%d,", sysMaxList), ']');
     ToolBox.outputs.MinSystoleIndices = strcat('[', sprintf("%d,", sysMinList), ']');
-    ToolBox.outputs.TimeDiastolicmintosystolicmaxderivative = - TimeToMinimumDiastole;
+    ToolBox.outputs.TimeDiastolicmintosystolicmaxderivative =- TimeToMinimumDiastole;
     ToolBox.outputs.TimeDiastolicmintosystolicmax = TimeToPeakSystoleFromMinimumDiastole;
 
 end
@@ -279,6 +314,7 @@ end
 fprintf("- FindSystoleIndex took: %ds\n", round(toc(findSystoleTimer)));
 
 ArterialResistivityIndex(t, v_RMS_video, maskArtery .* maskSection, sysIdx, diasIdx, 'velocityArtery', folder);
+
 if veinsAnalysis
     VenousResistivityIndex(t, v_RMS_video, maskVein .* maskSection, sysIdxList, 'velocityVein', folder);
 end
