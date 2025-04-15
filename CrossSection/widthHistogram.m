@@ -38,9 +38,13 @@ writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'W
 
 % New
 if contains(name, 'Artery')
-    ToolBox.Outputs.add('ArterialDiameterAverage',avgWidth,'µm',stdWidth);
+    ToolBox.Outputs.add('ArterialDiameterAverage',avgWidth,'µm');
+    ToolBox.Outputs.add('ArterialDiameterMedian',medianWidth,'µm');
+    ToolBox.Outputs.add('ArterialDiameterSpread',stdWidth,'µm');
 else
-    ToolBox.Outputs.add('VenousDiameterAverage',avgWidth,'µm',stdWidth);
+    ToolBox.Outputs.add('VenousDiameterAverage',avgWidth,'µm');
+    ToolBox.Outputs.add('VenousDiameterMedian',medianWidth,'µm');
+    ToolBox.Outputs.add('VenousDiameterSpread',stdWidth,'µm');
 end
 
 end
