@@ -72,7 +72,14 @@ saveImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, ToolBox, 'all_11_maskDiaphr
 [maskVesselnessGabor, M0_Gabor] = gaborVesselness(M0_ff_img, ToolBox, 'all_13');
 
 if params.json.Mask.VesselnessHolonet
-    maskVesselness = getHolonetprediction(M0_ff_img);
+    try
+        maskVesselness = getHolonetprediction(M0_ff_img);
+    catch ME
+        for i = 1:length(ME.stack)
+            fprintf(2, "Error in getHolonetprediction: %s at line  %d\n", ME.stack(i).name, ME.stack(i).line)
+        end
+        maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
+    end
 else
     maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
 end
@@ -243,8 +250,14 @@ if params.json.Mask.ImproveMask
 
     % 3) 1 prime) HoloNet intervention
     if params.json.Mask.ChoroidHolonet
-        holonet_vessels = getHolonetprediction(M0_ff_img);
-        maskVessel = maskVessel & holonet_vessels;
+        try
+            holonet_vessels = getHolonetprediction(M0_ff_img);
+        catch
+            for i = 1:length(ME.stack)
+                fprintf(2, "Error in getHolonetprediction: %s at line  %d\n", ME.stack(i).name, ME.stack(i).line)
+            end
+            holonet_vessels = maskVesselnessClean;
+        end
         maskArtery = maskArtery & holonet_vessels;
         maskVein = maskVein & holonet_vessels;
     end
