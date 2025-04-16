@@ -15,12 +15,24 @@ if size(v_video, 3) ~= 1
     signal = squeeze(sum(v_video, [1, 2], 'omitnan') / nnz(mask))';
     dsignal = squeeze(std(v_video, [], [1, 2], 'omitnan'))';
 
+    try
+        signal = double(wdenoise(signal, 4));
+    catch
+        signal = double(signal);
+    end
+
     % Compute mean and standard deviation of vSys and vDias
     vSys = mean(v_video(:, :, sysIdx), 3);
     vDias = mean(v_video(:, :, diasIdx), 3);
 else
     signal = v_video;
     dsignal = mask;
+
+    try
+        signal = double(wdenoise(signal, 4));
+    catch
+        signal = double(signal);
+    end
 end
 
 vSys_frames = signal(sysIdx);

@@ -12,7 +12,12 @@ end
 
 % Cycle Analysis
 
-signal = double(wdenoise(signal, 4));
+try 
+    signal = double(wdenoise(signal, 4));
+catch
+    signal = double(signal);
+end
+
 [one_cycle_signal, avgLength, ~] = interpSignal(signal, systolesIndexes, numInterp, signal_ste);
 
 [~, amin] = min(one_cycle_signal);
