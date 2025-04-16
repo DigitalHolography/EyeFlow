@@ -1,4 +1,4 @@
-function ArterialWaveformAnalysis(signal, signal_ste, t, systolesIndexes, numInterp, name, ToolBox)
+function [cshiftn] = ArterialWaveformAnalysis(signal, signal_ste, t, systolesIndexes, numInterp, name, ToolBox)
 
 if strcmp(name, "bvr")
     y_label = 'Blood Volume Rate (µL/min)';

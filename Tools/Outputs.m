@@ -19,6 +19,11 @@ classdef Outputs < handle
         TimeToDescent
         TimePeakToDescent
 
+        % Vein Wave form analysis
+        TimetoPeakFromMinVein
+        TimetoAscentFromMinVein
+        TimetoDescentToMinVein
+
         % Velocity
         ArterialMeanVelocity
         ArterialMaximumVelocity
