@@ -12,7 +12,7 @@ end
 
 % Cycle Analysis
 
-signal = double(signal);
+signal = double(wdenoise(signal, 4));
 [one_cycle_signal, avgLength, ~] = interpSignal(signal, systolesIndexes, numInterp, signal_ste);
 
 [~, amin] = min(one_cycle_signal);
@@ -42,10 +42,7 @@ set(gca, 'LineWidth', 2), box on
 min_peak_height = max(signal_shifted) * 0.3; % Adaptive threshold
 min_peak_distance = floor(length(signal_shifted) / 4); % Minimum distance between peaks
 
-f = fit(pulseTime.', signal_shifted.', 'gauss4');
-y = feval(f, pulseTime);
-error = rmse(rescale(signal_shifted), rescale(y'));
-[peaks, locs_peaks] = findpeaks(y, 'MinPeakHeight', min_peak_height, 'MinPeakDistance', min_peak_distance);
+[peaks, locs_peaks] = findpeaks(signal_shifted, 'MinPeakHeight', min_peak_height, 'MinPeakDistance', min_peak_distance);
 [notch, locs_notch] = min(signal_shifted(locs_peaks(1):locs_peaks(2)));
 
 scatter(pulseTime(locs_peaks), peaks, 'r')
@@ -87,7 +84,5 @@ ToolBox.Outputs.add('DiastoleDuration', diastoleDuration, 's');
 ToolBox.Outputs.add('SystolicUpstroke', systolicUpstroke, unit);
 ToolBox.Outputs.add('SystolicDownstroke', systolicDownstroke, unit);
 ToolBox.Outputs.add('DiastolicRunoff', diastolicRunoff, unit);
-
-figure, plot(f, pulseTime, signal_shifted)
 
 end
