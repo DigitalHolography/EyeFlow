@@ -12,7 +12,7 @@ end
 
 % Cycle Analysis
 
-try 
+try
     signal = double(wdenoise(signal, 4));
 catch
     signal = double(signal);
@@ -69,11 +69,11 @@ if length(locs_peaks) > 1
     T_notch_end = pulseTime(locs_peaks(2));
     xline(T_notch_end, 'k--', sprintf("Tnotch %.2f s", T_notch_end), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4]);
     yline(peaks(2), 'k--', sprintf("Peak Diastolic %.2f %s", peaks(2), unit), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4]);
-
+    
     T_notch = pulseTime(locs_notch);
     xline(T_notch, 'k--', sprintf("Systolic Phase Duration %.2f s", T_notch), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4]);
     yline(notch(1), 'k--', sprintf("Dicrotic Notch %.2f %s", notch(1), unit), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4]);
-
+    
     systoleDuration = T_notch - pulseTime(1);
     diastoleDuration = pulseTime(end - 1) - T_notch;
     systolicDownstroke = peaks(1) - notch(1);
@@ -83,11 +83,20 @@ end
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.main_foldername, name)))
 
 % Export to JSON
+if ~strcmp(name, "bvr") % only for the velocity signal
+    
+    ToolBox.Outputs.add('SystoleDuration', systoleDuration, 's');
+    ToolBox.Outputs.add('DiastoleDuration', diastoleDuration, 's');
+    ToolBox.Outputs.add('SystolicUpstroke', systolicUpstroke, unit);
+    ToolBox.Outputs.add('SystolicDownstroke', systolicDownstroke, unit);
+    ToolBox.Outputs.add('DiastolicRunoff', diastolicRunoff, unit);
+end
 
-ToolBox.Outputs.add('SystoleDuration', systoleDuration, 's');
-ToolBox.Outputs.add('DiastoleDuration', diastoleDuration, 's');
-ToolBox.Outputs.add('SystolicUpstroke', systolicUpstroke, unit);
-ToolBox.Outputs.add('SystolicDownstroke', systolicDownstroke, unit);
-ToolBox.Outputs.add('DiastolicRunoff', diastolicRunoff, unit);
-
+if strcmp(name, "bvr")
+    % ToolBox.Outputs.add('SystoleDurationBvr', systoleDuration, 's'); % pour l'instant n'existe pas comme sortie car pas d'info en plus forcément
+    % ToolBox.Outputs.add('DiastoleDurationBvr', diastoleDuration, 's');
+    % ToolBox.Outputs.add('SystolicUpstrokeBvr', systolicUpstroke, unit);
+    % ToolBox.Outputs.add('SystolicDownstrokeBvr', systolicDownstroke, unit);
+    % ToolBox.Outputs.add('DiastolicRunoffBvr', diastolicRunoff, unit);
+end
 end
