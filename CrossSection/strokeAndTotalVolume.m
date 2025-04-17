@@ -111,6 +111,6 @@ elseif contains(name, 'Vein')
     ToolBox.Outputs.add('VenousDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
 end
 
-ArterialWaveformAnalysis(mean_BvrT, mean_std_BvrT, fullTime, systolesIndexes, numInterp, sprintf('%s_bvr', name), ToolBox)
+% ArterialWaveformAnalysis(mean_BvrT, mean_std_BvrT, fullTime, systolesIndexes, numInterp, sprintf('%s_bvr', name), ToolBox)
 
 end

@@ -24,8 +24,9 @@ end
 % we can use the cshiftn calculated for the veins to have a simultaneous interpolated waveforms plot
 if nargin < 8
     [~, amin] = min(one_cycle_signal);
-    cshiftn = mod(numInterp - amin, numInterp) + 1; 
+    cshiftn = mod(numInterp - amin, numInterp) + 1;
 end
+
 signal_shifted = circshift(one_cycle_signal, cshiftn);
 signal_shifted(end + 1) = signal_shifted(1);
 
@@ -55,20 +56,17 @@ Range = Max - Min;
 
 ascent_value = (Max - 0.05 * Range);
 
-[~,index_ascent] = min(signal_shifted - ascent_value < 0);
+[~, index_ascent] = min(signal_shifted - ascent_value < 0);
 
-yline(ascent_value, 'k--','LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
-xline(pulseTime(index_ascent), 'k--','LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
-
+yline(ascent_value, 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
+xline(pulseTime(index_ascent), 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
 
 descent_value = (Min + 0.05 * Range);
 
-l=find(signal_shifted - descent_value > 0);
-index_descent = l(end) ;
-yline(descent_value, 'k--','LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
-xline(pulseTime(index_descent), 'k--','LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
-
-
+l = find(signal_shifted - descent_value > 0);
+index_descent = l(end);
+yline(descent_value, 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
+xline(pulseTime(index_descent), 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
 
 scatter(pulseTime(locs_peaks), peaks, 'r')
 
@@ -80,7 +78,7 @@ exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_VenousWavefor
 
 % Export to JSON
 if ~strcmp(name, "bvr") % only for the velocity signal
-    
+
     ToolBox.Outputs.add('TimetoPeakFromMinVein', T_peak, 's');
     ToolBox.Outputs.add('TimetoAscentFromMinVein', T_ascent, 's');
     ToolBox.Outputs.add('TimetoDescentToMinVein', T_descent, 's');
@@ -94,7 +92,5 @@ if strcmp(name, "bvr")
     % ToolBox.Outputs.add('SystolicDownstrokeBvr', systolicDownstroke, unit);
     % ToolBox.Outputs.add('DiastolicRunoffBvr', diastolicRunoff, unit);
 end
-
-
 
 end

@@ -74,10 +74,8 @@ saveImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, ToolBox, 'all_11_maskDiaphr
 if params.json.Mask.VesselnessHolonet
     try
         maskVesselness = getHolonetprediction(M0_ff_img);
-    catch ME
-        for i = 1:length(ME.stack)
-            fprintf(2, "Error in getHolonetprediction: %s at line  %d\n", ME.stack(i).name, ME.stack(i).line)
-        end
+    catch
+        warning("The Holonet ONNX-model couldn't be found.")
         maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
     end
 else
@@ -253,9 +251,7 @@ if params.json.Mask.ImproveMask
         try
             holonet_vessels = getHolonetprediction(M0_ff_img);
         catch
-            for i = 1:length(ME.stack)
-                fprintf(2, "Error in getHolonetprediction: %s at line  %d\n", ME.stack(i).name, ME.stack(i).line)
-            end
+            warning("The Holonet ONNX-model couldn't be found.")
             holonet_vessels = maskVesselnessClean;
         end
         maskArtery = maskArtery & holonet_vessels;

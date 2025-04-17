@@ -18,8 +18,8 @@ interpSignal_ = interpSignal(signal, sysIdxList, Ninterp);
 
 vMax = max(interpSignal_);
 vMin = min(interpSignal_);
-vMax_frames_indxs = abs(interpSignal_-vMax)/abs(vMax) < 0.10; % use value close to the min and max for calculating pulsatility
-vMin_frames_indxs = abs(interpSignal_-vMin)/abs(vMin) < 0.10;
+vMax_frames_indxs = abs(interpSignal_ - vMax) / abs(vMax) < 0.10; % use value close to the min and max for calculating pulsatility
+vMin_frames_indxs = abs(interpSignal_ - vMin) / abs(vMin) < 0.10;
 
 vMax_mean = mean(interpSignal_(vMax_frames_indxs));
 vMin_mean = mean(interpSignal_(vMin_frames_indxs));
@@ -33,10 +33,10 @@ v_mean = mean(signal);
 RI_mean = (vMax_mean - vMin_mean) / vMax_mean;
 
 % Partial derivatives for error propagation
-dRI_dvMax = vMin_mean / (vMax_mean^2);
+dRI_dvMax = vMin_mean / (vMax_mean ^ 2);
 dRI_dvMin = -1 / vMax_mean;
 
-dRI = sqrt( (dRI_dvMax * vMax_std)^2 + (dRI_dvMin * vMin_std)^2 );
+dRI = sqrt((dRI_dvMax * vMax_std) ^ 2 + (dRI_dvMin * vMin_std) ^ 2);
 
 % PI calculation
 PI_mean = (vMax_mean - vMin_mean) / v_mean;
@@ -44,16 +44,16 @@ PI_mean = (vMax_mean - vMin_mean) / v_mean;
 % Partial derivatives for PI uncertainty
 dPI_dvMax = 1 / v_mean;
 dPI_dvMin = -1 / v_mean;
-dPI_dvMean = -(vMax_mean - vMin_mean) / (v_mean^2);
-dPI = sqrt( (dPI_dvMax * vMax_std)^2 + (dPI_dvMin * vMin_std)^2 + (dPI_dvMean * std(signal))^2 );
+dPI_dvMean =- (vMax_mean - vMin_mean) / (v_mean ^ 2);
+dPI = sqrt((dPI_dvMax * vMax_std) ^ 2 + (dPI_dvMin * vMin_std) ^ 2 + (dPI_dvMean * std(signal)) ^ 2);
 
 % PR (Pulse Ratio) calculation
 PR_mean = vMax_mean / vMin_mean;
 
 % Partial derivatives for PR uncertainty
 dPR_dvMax = 1 / vMin_mean;
-dPR_dvMin = -vMax_mean / (vMin_mean^2);
-dPR = sqrt( (dPR_dvMax * vMax_std)^2 + (dPR_dvMin * vMin_std)^2 );
+dPR_dvMin = -vMax_mean / (vMin_mean ^ 2);
+dPR = sqrt((dPR_dvMax * vMax_std) ^ 2 + (dPR_dvMin * vMin_std) ^ 2);
 
 % RI Graph
 
@@ -155,11 +155,11 @@ close;
 
 if size(v_video, 3) > 1 % if given a video, output the image of RI / PI
 
-    v_video_interp = v_video(:,:,sysIdxList(1):sysIdxList(2)); % not really interp but ok for now
-    v_video_interp = imresize3(v_video_interp,[size(v_video_interp,1),size(v_video_interp,2),Ninterp]);
+    v_video_interp = v_video(:, :, sysIdxList(1):sysIdxList(2)); % not really interp but ok for now
+    v_video_interp = imresize3(v_video_interp, [size(v_video_interp, 1), size(v_video_interp, 2), Ninterp]);
 
-    vMax = mean(v_video_interp(:,:,vMax_frames_indxs),3);
-    vMin = mean(v_video_interp(:,:,vMin_frames_indxs),3);
+    vMax = mean(v_video_interp(:, :, vMax_frames_indxs), 3);
+    vMin = mean(v_video_interp(:, :, vMin_frames_indxs), 3);
 
     % Clip RI to [0, 1] and handle NaNs
     RI = (vMax - vMin) ./ vMax;
@@ -209,7 +209,7 @@ end
 if contains(name, 'velocity')
     ToolBox.outputs.velocity.(sprintf('mean_%s', VesselName)) = round(v_mean, 2);
     ToolBox.outputs.velocity.(sprintf('mean_%s_se', VesselName)) = round(std(signal), 2);
-    ToolBox.outputs.velocity.(sprintf('systolic_%s', VesselName))= round(vMax_mean, 2);
+    ToolBox.outputs.velocity.(sprintf('systolic_%s', VesselName)) = round(vMax_mean, 2);
     ToolBox.outputs.velocity.(sprintf('systolic_%s_se', VesselName)) = round(vMax_std, 2);
     ToolBox.outputs.velocity.(sprintf('diastolic_%s', VesselName)) = round(vMin_mean, 2);
     ToolBox.outputs.velocity.(sprintf('diastolic_%s_se', VesselName)) = round(vMin_std, 2);
@@ -220,6 +220,7 @@ if contains(name, 'velocity')
         ToolBox.Outputs.add('VenousMaximumVelocity', vMax_mean, 'mm/s', vMin_std);
         ToolBox.Outputs.add('VenousMinimumVelocity', vMin_mean, 'mm/s', vMax_std);
     end
+
 end
 
 ToolBox.outputs.indices.(sprintf('%s_RI', name)) = round(RI_mean, 2);
@@ -235,4 +236,5 @@ if contains(name, 'Vein')
     ToolBox.Outputs.add('VenousPulsatilityIndexVelocity', PI_mean, '', dPI);
     ToolBox.Outputs.add('VenousMaxMinRatioVelocity', (vMax_mean / vMin_mean), '');
 end
+
 end
