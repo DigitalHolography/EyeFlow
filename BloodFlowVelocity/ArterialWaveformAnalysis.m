@@ -29,7 +29,7 @@ dt = (t(2) - t(1));
 pulseTime = linspace(0, dt * avgLength, numInterp);
 pulseTime(end + 1) = pulseTime(end) + dt;
 
-figure, plot(pulseTime, signal_shifted, 'k', 'LineWidth', 2)
+figure(Visible="off"), plot(pulseTime, signal_shifted, 'k', 'LineWidth', 2)
 hold on
 
 axis padded
@@ -48,7 +48,6 @@ min_peak_height = max(signal_shifted) * 0.3; % Adaptive threshold
 min_peak_distance = floor(length(signal_shifted) / 4); % Minimum distance between peaks
 
 [peaks, locs_peaks] = findpeaks(signal_shifted, 'MinPeakHeight', min_peak_height, 'MinPeakDistance', min_peak_distance);
-[notch, locs_notch] = min(signal_shifted(locs_peaks(1):locs_peaks(2)));
 
 scatter(pulseTime(locs_peaks), peaks, 'r')
 
@@ -78,6 +77,11 @@ if length(locs_peaks) > 1
     diastoleDuration = pulseTime(end - 1) - T_notch;
     systolicDownstroke = peaks(1) - notch(1);
     diastolicRunoff = notch(1) - signal_shifted(1);
+else
+    systoleDuration = NaN;
+    diastoleDuration = NaN;
+    systolicDownstroke = NaN;
+    diastolicRunoff = NaN;
 end
 
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.main_foldername, name)))
