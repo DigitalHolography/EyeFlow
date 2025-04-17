@@ -1,4 +1,4 @@
-function graphSignalStd(figId, U, dU, numFrames, ylabl, xlabl, fig_title, unit, NameValueArgs)
+function graphSignalStd(figId, U, dU, numFrames, ylabl, xlabl, fig_title, unit, opt)
 % Plots on an existing graph the signal and its std
 
 arguments
@@ -10,29 +10,36 @@ arguments
     xlabl
     fig_title
     unit
-    NameValueArgs.ylimm double = [min(U) max(U)]
-    NameValueArgs.cropIndx double = 0
-    NameValueArgs.fullTime
+    opt.ylimm double = []
+    opt.cropIndx double = 0
+    opt.fullTime
+    opt.xLines = []
+    opt.xLineLabels = {}
+    opt.ToolBox = []
 end
 
-ToolBox = getGlobalToolBox;
 mean_signal = mean(U);
 
-if NameValueArgs.cropIndx > 0
-    U = U(1:NameValueArgs.cropIndx);
-    dU = dU(1:NameValueArgs.cropIndx);
+if opt.cropIndx > 0
+    U = U(1:opt.cropIndx);
+    dU = dU(1:opt.cropIndx);
 end
 
 Color_std = [0.7, 0.7, 0.7];
 figure(figId);
 
-if ~isempty(ToolBox)
+if ~isempty(opt.ToolBox)
+    ToolBox = opt.ToolBox;
     fullTime = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 else % in a parfor no ToolBox
-    fullTime = NameValueArgs.fullTime;
+    fullTime = opt.fullTime;
 end
 
-axss = [fullTime(1), fullTime(end), NameValueArgs.ylimm];
+if isempty(opt.ylimm)
+    axss = [fullTime(1), fullTime(end), min(U), max(U)];
+else
+    axss = [fullTime(1), fullTime(end), opt.ylimm];
+end
 
 if length(U) ~= numFrames % for a variable length of the signal
     fullTime = fullTime(1:length(U));
@@ -53,11 +60,17 @@ hold off;
 
 ylabel(ylabl)
 xlabel(xlabl)
-title(sprintf("%s : %02.0f %s", fig_title, round(mean_signal), unit))
+title(sprintf("%s : %.0f %s", fig_title, round(mean_signal), unit))
 
-axis tight;
+if ~isempty(opt.xLines)
 
-if length(axss) == 4
+    for n = 1:length(opt.xLines)
+        xline(opt.xLines(n), ':', obj.xLineLabels{n}, LineWidth = opt.LineWidth);
+    end
+
+end
+
+if ~isempty(opt.ylimm)
     axis(axss);
 else
     axis padded

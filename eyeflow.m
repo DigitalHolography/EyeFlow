@@ -14,6 +14,7 @@ properties (Access = public)
     EditMasksButton matlab.ui.control.Button
     EditParametersButton matlab.ui.control.Button
     OpenDirectoryButton matlab.ui.control.Button
+    ReProcessButton matlab.ui.control.Button
     MaskToolButton matlab.ui.control.Button
     PlayMomentsButton matlab.ui.control.Button
 
@@ -58,7 +59,7 @@ methods (Access = public)
             fprintf("- Video Loading took : %ds\n", round(toc))
 
             % Compute the mean of M0_data_video along the third dimension
-            mean_M0 = mean(app.file.M0_data_video, 3);
+            mean_M0 = mean(app.file.M0_ff_raw_video, 3);
             % Display the mean image in the uiimage component
             img = repmat(rescale(mean_M0), [1 1 3]);
             [numX, numY] = size(img);
@@ -72,6 +73,7 @@ methods (Access = public)
             app.EditMasksButton.Enable = true;
             app.PlayMomentsButton.Enable = true;
             app.OpenDirectoryButton.Enable = true;
+            app.ReProcessButton.Enable = true;
             app.ReferenceDirectory.Value = path;
 
             % Update lamp color to indicate success
@@ -121,6 +123,7 @@ methods (Access = public)
 
         % Initialize checkbox states
         app.CheckboxValueChanged();
+        set(0,'defaultfigurecolor',[1 1 1]);
     end
 
     function LoadFromTxt(app)
@@ -294,6 +297,7 @@ methods (Access = public)
         app.EditParametersButton.Enable = false;
         app.OverWriteCheckBox.Enable = false;
         app.OpenDirectoryButton.Enable = false;
+        app.ReProcessButton.Enable = false;
         app.EditMasksButton.Enable = false;
         app.PlayMomentsButton.Enable = false;
 
@@ -312,6 +316,11 @@ methods (Access = public)
             fprintf(2, "No valid directory loaded.\n");
         end
 
+    end
+
+    % Callback function for Open Directory button
+    function ReProcessButtonPushed(app, ~)
+        app.file = app.file.preprocessData();
     end
 
     % Button pushed function: FolderManagementButton
@@ -425,7 +434,13 @@ methods (Access = public)
             %                 txt.Position(4) = length(app.drawer_list) * 14;
 
             % selection of the measurement folder with uigetdir to analyze all processed folders
-            selected_dir = uigetdir();
+
+            if ~isempty(app.drawer_list)
+                last_dir = app.drawer_list{end};
+            else
+                last_dir = [];
+            end
+            selected_dir = uigetdir(last_dir);
             % List of Subfolders within the measurement folder
             tmp_dir = dir(selected_dir);
             % remove all files (isdir property is 0)
@@ -449,7 +464,12 @@ methods (Access = public)
 
         function select(~, ~)
             % selection of one processed folder with uigetdir
-            selected_dir = uigetdir();
+            if ~isempty(app.drawer_list)
+                last_dir = app.drawer_list{end};
+            else
+                last_dir = [];
+            end
+            selected_dir = uigetdir(last_dir);
 
             if (selected_dir)
                 app.drawer_list{end + 1} = selected_dir;
@@ -529,7 +549,7 @@ methods (Access = public)
             toc
         end
 
-        function import_param(app, ~)
+        function import_param(~, ~)
             tic
 
             % Open the file selection dialog
@@ -681,6 +701,10 @@ methods (Access = public)
                 disp("opening failed.")
             end
 
+            if ~app.file.is_preprocessed
+                app.file = app.file.preprocessData();
+            end
+
             try
                 list_dir = dir(ToolBox.path_main);
                 idx = 0;
@@ -735,17 +759,18 @@ methods (Access = public)
             end
 
             try
-                v = VideoReader(fullfile(ToolBox.EF_path, 'avi', sprintf("%s_M0.avi", ToolBox.main_foldername)));
-                M0_video = read(v); clear v;
-                M0_video = rescale(single(squeeze(mean(M0_video, 3))));
+
+                M0_video = app.file.M0_ff_video;
+                M0_video = rescale(single(M0_video));
                 sz = size(M0_video);
                 [M0_Systole_img, M0_Diastole_img] = compute_diasys(M0_video, diskMask(sz(1), sz(2), 0.45));
                 diasysArtery = M0_Systole_img - M0_Diastole_img;
-                RGBdiasys = labDuoImage(mean(M0_video, 3), diasysArtery);
+                [~, M0_Gabor] = gaborVesselness(mean(M0_video, 3), ToolBox);
+                RGBdiasys = labDuoImage(rescale(M0_Gabor), diasysArtery);
                 imwrite(RGBdiasys, fullfile(ToolBox.path_main, 'mask', 'DiaSysRGB.png'), 'png');
             catch
 
-                disp("Diasys png failed")
+                fprintf(2, "Diasys png failed")
 
             end
 
@@ -1051,6 +1076,17 @@ methods (Access = private)
         app.OpenDirectoryButton.Layout.Column = 4; % Same column as Preview Masks
         app.OpenDirectoryButton.Text = 'Open Directory';
         app.OpenDirectoryButton.Enable = 'off'; % Disabled by default
+
+        % Add the new button under Preview Masks
+        app.ReProcessButton = uibutton(grid, 'push');
+        app.ReProcessButton.ButtonPushedFcn = createCallbackFcn(app, @ReProcessButtonPushed, true);
+        app.ReProcessButton.BackgroundColor = [0.502 0.502 0.502];
+        app.ReProcessButton.FontSize = 16;
+        app.ReProcessButton.FontColor = [0.9412 0.9412 0.9412];
+        app.ReProcessButton.Layout.Row = 4; % Adjust the row as needed
+        app.ReProcessButton.Layout.Column = 3; % Same column as Preview Masks
+        app.ReProcessButton.Text = 'Preprocess';
+        app.ReProcessButton.Enable = 'off'; % Disabled by default
 
         % Show the figure after all components are created
         app.EyeFlowUIFigure.Visible = 'on';

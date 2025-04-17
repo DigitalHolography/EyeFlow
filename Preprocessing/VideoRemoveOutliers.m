@@ -2,6 +2,7 @@ function obj = VideoRemoveOutliers(obj)
 %% Outlier Cleaning
 
 params = Parameters_json(obj.directory, obj.param_name);
+window_size = params.json.Preprocess.OutlierAnalysisWindow;
 
 if ~params.json.Preprocess.RemoveOutliersFlag
     return
@@ -11,14 +12,19 @@ end
 frame_means = squeeze(mean(obj.f_RMS_video, [1 2])); % 1D array: numFrames x 1
 
 % Detect outlier frames
-outlier_frames_mask = isoutlier(frame_means);
+outlier_frames_mask = isoutlier(frame_means, 'movmedian', window_size);
 
 % If no outliers detected, return early
 if ~any(outlier_frames_mask)
     return;
 end
 
+% figure, plot(frame_means), hold on, scatter((1:length(frame_means)), frame_means .* outlier_frames_mask)
+
 % Interpolate outlier frames for each video
+obj.M0_data_video = interpolateOutlierFrames(obj.M0_data_video, outlier_frames_mask);
+obj.M1_data_video = interpolateOutlierFrames(obj.M1_data_video, outlier_frames_mask);
+obj.M2_data_video = interpolateOutlierFrames(obj.M2_data_video, outlier_frames_mask);
 obj.M0_ff_video = interpolateOutlierFrames(obj.M0_ff_video, outlier_frames_mask);
 obj.f_RMS_video = interpolateOutlierFrames(obj.f_RMS_video, outlier_frames_mask);
 obj.f_AVG_video = interpolateOutlierFrames(obj.f_AVG_video, outlier_frames_mask);
@@ -52,9 +58,14 @@ for idx = outlier_indices
         next_frame = prev_frame; % If no next frame, use the previous frame
     end
 
-    % Linearly interpolate the outlier frame
-    alpha = (idx - prev_frame) / (next_frame - prev_frame); % Interpolation weight
-    video_cleaned(:, :, idx) = (1 - alpha) * video(:, :, prev_frame) + alpha * video(:, :, next_frame);
+    if prev_frame == next_frame
+        video_cleaned(:, :, idx) = video_cleaned(:, :, prev_frame);
+    else
+        % Linearly interpolate the outlier frame
+        alpha = (idx - prev_frame) / (next_frame - prev_frame); % Interpolation weight
+        video_cleaned(:, :, idx) = (1 - alpha) * video(:, :, prev_frame) + alpha * video(:, :, next_frame);
+    end
+
 end
 
 end

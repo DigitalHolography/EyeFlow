@@ -1,9 +1,9 @@
-function [M0_Systole_img, M0_Diastole_img, M0_Systole_video, M0_Diastole_video, sysindexes, diasindexes] = compute_diasys(M0_ff_video, maskArtery, export_img)
+function [M0_Systole_img, M0_Diastole_img, M0_Systole_video, M0_Diastole_video, sysindexes, diasindexes] = compute_diasys(M0_ff_video, maskArtery, export_folder)
 
 arguments
     M0_ff_video
     maskArtery
-    export_img = false
+    export_folder = ''
 end
 
 ToolBox = getGlobalToolBox;
@@ -42,11 +42,11 @@ sysindexes = [];
 diasindexes = [];
 
 for idx = 1:numSys
-
+    xline(fullTime(sys_index_list(idx)), 'k--', 'LineWidth', 2)
     try
         % Calculate sysindexes and ensure the values stay within the valid range
         start_idx = sys_index_list(idx) + round(fpCycle * 0.05);
-        end_idx = sys_index_list(idx) + round(fpCycle * 0.1);
+        end_idx = sys_index_list(idx) + round(fpCycle * 0.2);
         sys_range = start_idx:min(end_idx, numFrames);
         sysindexes = [sysindexes, sys_range];
         plot(fullTime(sys_range), fullPulse(sys_range), 'r-', 'LineWidth', 2)
@@ -76,7 +76,7 @@ for idx = 1:numSysMax
     try
         % Calculate sysindexes and ensure the values stay within the valid range
         start_idx = sys_max_list(idx);
-        end_idx = sys_max_list(idx) + round(fpCycleMax * 0.05);
+        end_idx = sys_max_list(idx) + round(fpCycleMax * 0.15);
         sys_range = start_idx:min(end_idx, numFrames);
         sysindexes = [sysindexes, sys_range];
 
@@ -111,7 +111,7 @@ for idx = 1:numSysMin
 
 end
 
-plot(fullTime, fullPulse, 'k--', 'LineWidth', 2)
+plot(fullTime, fullPulse, 'k', 'LineWidth', 2)
 
 % Ensure sysindexes and diaindexes are within the bounds of the video size
 sysindexes = sysindexes(sysindexes >= 1 & sysindexes <= numFrames);
@@ -136,13 +136,20 @@ axis([axT(1), axT(2), 0, axP(4) * 1.07])
 title('diastole and systole')
 
 xlabel('Time (s)')
-ylabel('Power Doppler (a.u.)')
 pbaspect([1.618 1 1])
 
-if export_img
+if strcmp(export_folder, 'mask')
 
     if isfolder(fullfile(ToolBox.path_png, 'mask'))
-        exportgraphics(gca, fullfile(ToolBox.path_png, 'mask', 'steps', sprintf('%s_vessel_20_plot_diasys.png', ToolBox.main_foldername)))
+        ylabel('Power Doppler (a.u.)')
+        exportgraphics(gca, fullfile(ToolBox.path_png, export_folder, 'steps', sprintf('%s_vessel_20_plot_diasys.png', ToolBox.main_foldername)))
+    end
+
+elseif strcmp(export_folder, 'bloodFlowVelocity')
+
+    if isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
+        ylabel('Velocity (mm/s)')
+        exportgraphics(gca, fullfile(ToolBox.path_png, export_folder, sprintf('%s_diasysIdx.png', ToolBox.main_foldername)))
     end
 
 end

@@ -80,9 +80,12 @@ dQ_t = squeeze(sqrt(sum(dQ_rt .^ 2, 1))) / N; % RMS of uncertainties
 
 % Compute statistics for the time range
 mean_Q = mean(Q_t(idx_start:idx_end)); % Time-averaged mean
-max_Q = max(Q_t(idx_start:idx_end)); % Maximum value in the range
+[max_Q, amax] = max(Q_t(idx_start:idx_end)); % Maximum value in the range
 N = length(idx_start:idx_end);
 mean_dQ = sqrt(sum(dQ_t(idx_start:idx_end) .^ 2)) / N; % RMS of the uncertainty
+[min_Q, amin] = min(Q_t(idx_start:idx_end)); % Minimum value in the range
+max_dQ = dQ_t(amax); 
+min_dQ = dQ_t(amin); 
 
 % Plot total blood volume rate over time
 figure("Visible", "off");
@@ -128,4 +131,15 @@ fclose(fileID);
 % Write results to json
 ToolBox.outputs.(sprintf('FlowRate%s',name)) = mean_Q;
 ToolBox.outputs.(sprintf('FlowRateStd%s',name)) = mean_dQ;
+
+% New
+if contains(name, 'Vein')
+    ToolBox.Outputs.add('VenousMeanVolumeRate', mean_Q, 'µL/min', mean_dQ);
+    ToolBox.Outputs.add('VenousMaximumVolumeRate', max_Q, 'µL/min', max_dQ);
+    ToolBox.Outputs.add('VenousMinimumVolumeRate', min_Q, 'µL/min', min_dQ);
+elseif contains(name, 'Artery')
+    ToolBox.Outputs.add('ArterialMeanVolumeRate', mean_Q, 'µL/min', mean_dQ);
+    ToolBox.Outputs.add('ArterialMinimumVolumeRate', min_Q, 'µL/min', min_dQ);
+    ToolBox.Outputs.add('ArterialMaximumVolumeRate', max_Q, 'µL/min', max_dQ);
+end
 end

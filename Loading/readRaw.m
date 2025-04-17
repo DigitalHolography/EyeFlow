@@ -16,11 +16,10 @@ for n = 1:V.NumFrames
     M0_disp_video(:, :, n) = rgb2gray(read(V, n));
 end
 
-obj.M0_ff_video = M0_disp_video;
-
+obj.M0_ff_raw_video = M0_disp_video;
 clear V M0_disp_video
 
-refvideosize = size(obj.M0_ff_video);
+refvideosize = size(obj.M0_ff_raw_video);
 dir_path_raw = fullfile(obj.directory, 'raw');
 ext = '.raw';
 
@@ -33,7 +32,7 @@ try
     fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
     M0_data_video = fread(fileID, 'float32');
     fclose(fileID);
-    obj.M0_data_video = reshape(M0_data_video, refvideosize);
+    obj.M0_raw_video = reshape(M0_data_video, refvideosize);
     clear M0_data_video
 
     % Import Moment 1
@@ -44,7 +43,7 @@ try
     fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
     M1_data_video = fread(fileID, 'float32');
     fclose(fileID);
-    obj.M1_data_video = reshape(M1_data_video, refvideosize);
+    obj.M1_raw_video = reshape(M1_data_video, refvideosize);
     clear M1_data_video
 
     % Import Moment 2
@@ -55,7 +54,7 @@ try
     fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
     M2_data_video = fread(fileID, 'float32');
     fclose(fileID);
-    obj.M2_data_video = reshape(M2_data_video, refvideosize);
+    obj.M2_raw_video = reshape(M2_data_video, refvideosize);
     clear M2_data_video
 
 catch ME

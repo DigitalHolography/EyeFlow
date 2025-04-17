@@ -69,9 +69,18 @@ saveImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, ToolBox, 'all_11_maskDiaphr
 % 1) 1) Compute vesselness response
 
 [maskVesselnessFrangi] = frangiVesselness(M0_ff_img, 'all_12', ToolBox);
-[maskVesselnessGabor, M0_Gabor] = gaborVesselness(M0_ff_img, 'all_13', ToolBox);
+[maskVesselnessGabor, M0_Gabor] = gaborVesselness(M0_ff_img, ToolBox, 'all_13');
 
-maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
+if params.json.Mask.VesselnessHolonet
+    try
+        maskVesselness = getHolonetprediction(M0_ff_img);
+    catch
+        warning("The Holonet ONNX-model couldn't be found.")
+        maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
+    end
+else
+    maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
+end
 
 % 1) 2) Compute the barycenters and the circle mask
 
@@ -166,7 +175,7 @@ if params.json.Mask.ImproveMask
 
     % 2) 0) Computation of the M0 in Diastole and in Systole
 
-    [M0_Systole_img, M0_Diastole_img, M0_Systole_video] = compute_diasys(M0_ff_video, maskArtery, 'true');
+    [M0_Systole_img, M0_Diastole_img, M0_Systole_video] = compute_diasys(M0_ff_video, maskArtery, 'mask');
     saveImage(rescale(M0_Systole_img), ToolBox, 'artery_20_systole_img.png', isStep = true)
     saveImage(rescale(M0_Diastole_img), ToolBox, 'vein_20_diastole_img.png', isStep = true)
 
@@ -174,9 +183,15 @@ if params.json.Mask.ImproveMask
 
     Systole_Frangi = frangiVesselness(M0_Systole_img, 'artery_20', ToolBox);
     Diastole_Frangi = frangiVesselness(M0_Diastole_img, 'vein_20', ToolBox);
-    Systole_Gabor = gaborVesselness(M0_Systole_img, 'artery_20', ToolBox);
-    Diastole_Gabor = gaborVesselness(M0_Diastole_img, 'vein_20', ToolBox);
-    maskVesselness = (Systole_Frangi | Diastole_Frangi | Systole_Gabor | Diastole_Gabor) & maskDiaphragm;
+    Systole_Gabor = gaborVesselness(M0_Systole_img, ToolBox, 'artery_20');
+    Diastole_Gabor = gaborVesselness(M0_Diastole_img, ToolBox, 'vein_20');
+
+    if params.json.Mask.VesselnessHolonet
+        maskVesselness = maskVesselness & maskDiaphragm;
+    else
+        maskVesselness = (Systole_Frangi | Diastole_Frangi | Systole_Gabor | Diastole_Gabor) & maskDiaphragm;
+    end
+
     maskVesselnessClean = removeDisconnected(maskVesselness, maskVesselness, maskCircle, 'all_20_VesselMask', ToolBox);
 
     % 2) 2) Diastole-Systole Image
@@ -232,10 +247,16 @@ if params.json.Mask.ImproveMask
     maskVein = removeDisconnected(maskVein, maskVessel, maskCircle, 'vein_31_VesselMask', ToolBox);
 
     % 3) 1 prime) HoloNet intervention
-    % holonet_vessels = getHolonetprediction(M0_ff_img);
-    % maskVessel = maskVessel & holonet_vessels;
-    % maskArtery = maskArtery & holonet_vessels;
-    % maskVein = maskVein & holonet_vessels;
+    if params.json.Mask.ChoroidHolonet
+        try
+            holonet_vessels = getHolonetprediction(M0_ff_img);
+        catch
+            warning("The Holonet ONNX-model couldn't be found.")
+            holonet_vessels = maskVesselnessClean;
+        end
+        maskArtery = maskArtery & holonet_vessels;
+        maskVein = maskVein & holonet_vessels;
+    end
 
     % 3) 2) Force Create Masks in case they exist
 
@@ -362,8 +383,16 @@ createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMapArtery', 
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMap', maskArtery, maskVein, thin = 0.01);
 
 % 4) 6) Arteries tree
+try
+    getLongestArteryBranch(maskArtery, xy_barycenter, 'Artery');
+    getLongestArteryBranch(maskVein, xy_barycenter, 'Vein');
+catch ME
 
-getLongestArteryBranch(maskArtery, xy_barycenter);
+    for i = 1:length(ME.stack)
+        disp("Error in getLongestArteryBranch: " + ME.stack(i).name + " at line " + ME.stack(i).line)
+    end
+
+end
 
 close all
 end

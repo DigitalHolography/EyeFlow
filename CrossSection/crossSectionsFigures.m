@@ -41,7 +41,7 @@ if params.json.CrossSectionsFigures.sectionImage
 end
 
 if params.json.CrossSectionsFigures.circleImages
-
+    
     if ~isfolder(fullfile(ToolBox.path_png, 'crossSectionsAnalysis', 'sectionsImages'))
         mkdir(fullfile(path_png, 'crossSectionsAnalysis'), 'sectionsImages')
         mkdir(fullfile(path_eps, 'crossSectionsAnalysis'), 'sectionsImages')
@@ -54,7 +54,7 @@ if params.json.CrossSectionsFigures.circleImages
         mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
         mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
     end
-
+    
     circleImages(M0_ff_img, xy_barycenter, area_mat, Q_cell, v_cell, mask_mat, locs, name)
 end
 
@@ -68,6 +68,11 @@ fprintf("    1. Sections Images Generation (%s) took %ds\n", name, round(toc))
 tic
 
 [Q_t, dQ_t] = plotRadius(Q_mat, dQ_mat, t, index_start, index_end, name);
+if contains(name, 'Artery')
+    ToolBox.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
+else
+    ToolBox.Signals.add('VenousVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
+end
 
 if params.json.CrossSectionsFigures.BloodFlowProfiles
     interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, numSections, name)
@@ -95,14 +100,11 @@ if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesInd
     strokeAndTotalVolume(Q_t, dQ_t, systolesIndexes, t, 1000, name);
 end
 
-% if strcmp(name, 'Artery')
-%
-%         if params.json.CrossSectionsFigures.ARIBVR
-%             ArterialResistivityIndex(t, Q_t, mask, 'BVR', 'crossSectionsAnalysis');
-%         end
-%
-%     fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
-% end
+if params.json.CrossSectionsFigures.ARIBVR
+    ArterialResistivityIndex(t, Q_t, dQ_t, sysIdx, diasIdx, sprintf('BVR%s', name), 'crossSectionsAnalysis');
+end
+
+fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
 
 close all
 

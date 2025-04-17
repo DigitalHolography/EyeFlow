@@ -1,76 +1,59 @@
-function [] = ArterialResistivityIndex(t, v_video, mask, sysIdx, diasIdx, name, folder)
+function [] = VenousResistivityIndex(t, v_video, mask, sysIdxList, name, folder)
 
 ToolBox = getGlobalToolBox;
 % Color Maps
-
-if contains(name, 'Vein')
-    tmp = diasIdx;
-    diasIdx = sysIdx;
-    sysIdx = tmp; clear tmp
-end
 
 if size(v_video, 3) ~= 1
     v_video = v_video .* mask;
     v_video(~mask) = NaN;
     signal = squeeze(sum(v_video, [1, 2], 'omitnan') / nnz(mask))';
     dsignal = squeeze(std(v_video, [], [1, 2], 'omitnan'))';
-
-    try
-        signal = double(wdenoise(signal, 4));
-    catch
-        signal = double(signal);
-    end
-
-    % Compute mean and standard deviation of vSys and vDias
-    vSys = mean(v_video(:, :, sysIdx), 3);
-    vDias = mean(v_video(:, :, diasIdx), 3);
 else
     signal = v_video;
     dsignal = mask;
-
-    try
-        signal = double(wdenoise(signal, 4));
-    catch
-        signal = double(signal);
-    end
 end
 
-vSys_frames = signal(sysIdx);
-vDias_frames = signal(diasIdx);
+Ninterp = 1000;
+interpSignal_ = interpSignal(signal, sysIdxList, Ninterp);
 
-vSys_mean = mean(vSys_frames);
-vDias_mean = mean(vDias_frames);
+vMax = max(interpSignal_);
+vMin = min(interpSignal_);
+vMax_frames_indxs = abs(interpSignal_ - vMax) / abs(vMax) < 0.10; % use value close to the min and max for calculating pulsatility
+vMin_frames_indxs = abs(interpSignal_ - vMin) / abs(vMin) < 0.10;
 
-vSys_std = std(vSys_frames);
-vDias_std = std(vDias_frames);
+vMax_mean = mean(interpSignal_(vMax_frames_indxs));
+vMin_mean = mean(interpSignal_(vMin_frames_indxs));
+
+vMax_std = std(interpSignal_(vMax_frames_indxs));
+vMin_std = std(interpSignal_(vMin_frames_indxs));
 
 v_mean = mean(signal);
 
 % Compute RI and its uncertainty using error propagation
-RI_mean = (vSys_mean - vDias_mean) / vSys_mean;
+RI_mean = (vMax_mean - vMin_mean) / vMax_mean;
 
 % Partial derivatives for error propagation
-dRI_dvSys = vDias_mean / (vSys_mean^2);
-dRI_dvDias = -1 / vSys_mean;
+dRI_dvMax = vMin_mean / (vMax_mean ^ 2);
+dRI_dvMin = -1 / vMax_mean;
 
-dRI = sqrt( (dRI_dvSys * vSys_std)^2 + (dRI_dvDias * vDias_std)^2 );
+dRI = sqrt((dRI_dvMax * vMax_std) ^ 2 + (dRI_dvMin * vMin_std) ^ 2);
 
 % PI calculation
-PI_mean = (vSys_mean - vDias_mean) / v_mean;
+PI_mean = (vMax_mean - vMin_mean) / v_mean;
 
 % Partial derivatives for PI uncertainty
-dPI_dvSys = 1 / v_mean;
-dPI_dvDias = -1 / v_mean;
-dPI_dvMean = -(vSys_mean - vDias_mean) / (v_mean^2);
-dPI = sqrt( (dPI_dvSys * vSys_std)^2 + (dPI_dvDias * vDias_std)^2 + (dPI_dvMean * std(signal))^2 );
+dPI_dvMax = 1 / v_mean;
+dPI_dvMin = -1 / v_mean;
+dPI_dvMean =- (vMax_mean - vMin_mean) / (v_mean ^ 2);
+dPI = sqrt((dPI_dvMax * vMax_std) ^ 2 + (dPI_dvMin * vMin_std) ^ 2 + (dPI_dvMean * std(signal)) ^ 2);
 
 % PR (Pulse Ratio) calculation
-PR_mean = vSys_mean / vDias_mean;
+PR_mean = vMax_mean / vMin_mean;
 
 % Partial derivatives for PR uncertainty
-dPR_dvSys = 1 / vDias_mean;
-dPR_dvDias = -vSys_mean / (vDias_mean^2);
-dPR = sqrt( (dPR_dvSys * vSys_std)^2 + (dPR_dvDias * vDias_std)^2 );
+dPR_dvMax = 1 / vMin_mean;
+dPR_dvMin = -vMax_mean / (vMin_mean ^ 2);
+dPR = sqrt((dPR_dvMax * vMax_std) ^ 2 + (dPR_dvMin * vMin_std) ^ 2);
 
 % RI Graph
 
@@ -91,9 +74,9 @@ plot(t, curve2, "Color", Color_std, 'LineWidth', 2);
 plot(t, signal, '-k', 'LineWidth', 2);
 
 % Add reference lines
-yline(vSys_mean, '--k', sprintf('%.1f mm/s', vSys_mean), ...
+yline(vMax_mean, '--k', sprintf('%.1f mm/s', vMax_mean), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'top');
-yline(vDias_mean, '--k', sprintf('%.1f mm/s', vDias_mean), ...
+yline(vMin_mean, '--k', sprintf('%.1f mm/s', vMin_mean), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom');
 
 % Formatting
@@ -138,11 +121,11 @@ plot(t, curve2, "Color", Color_std, 'LineWidth', 2);
 plot(t, signal, '-k', 'LineWidth', 2);
 
 % Add reference lines
-yline(vSys_mean, '--k', sprintf('%.1f mm/s', vSys_mean), ...
+yline(vMax_mean, '--k', sprintf('%.1f mm/s', vMax_mean), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'top');
 yline(v_mean, '--k', sprintf('%.1f mm/s', v_mean), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'top');
-yline(vDias_mean, '--k', sprintf('%.1f mm/s', vDias_mean), ...
+yline(vMin_mean, '--k', sprintf('%.1f mm/s', vMin_mean), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom');
 
 % Formatting
@@ -172,14 +155,20 @@ close;
 
 if size(v_video, 3) > 1 % if given a video, output the image of RI / PI
 
+    v_video_interp = v_video(:, :, sysIdxList(1):sysIdxList(2)); % not really interp but ok for now
+    v_video_interp = imresize3(v_video_interp, [size(v_video_interp, 1), size(v_video_interp, 2), Ninterp]);
+
+    vMax = mean(v_video_interp(:, :, vMax_frames_indxs), 3);
+    vMin = mean(v_video_interp(:, :, vMin_frames_indxs), 3);
+
     % Clip RI to [0, 1] and handle NaNs
-    RI = (vSys - vDias) ./ vSys;
+    RI = (vMax - vMin) ./ vMax;
     RI(RI > 1) = 1;
     RI(RI < 0) = 0;
     RI(isnan(RI)) = 0;
 
     % Clip PI to [0, -] and handle NaNs
-    PI = (vSys - vDias) ./ v_mean;
+    PI = (vMax - vMin) ./ v_mean;
     PI(PI < 0) = 0;
     PI(isnan(PI)) = 0;
 
@@ -220,21 +209,18 @@ end
 if contains(name, 'velocity')
     ToolBox.outputs.velocity.(sprintf('mean_%s', VesselName)) = round(v_mean, 2);
     ToolBox.outputs.velocity.(sprintf('mean_%s_se', VesselName)) = round(std(signal), 2);
-    ToolBox.outputs.velocity.(sprintf('systolic_%s', VesselName))= round(vSys_mean, 2);
-    ToolBox.outputs.velocity.(sprintf('systolic_%s_se', VesselName)) = round(vSys_std, 2);
-    ToolBox.outputs.velocity.(sprintf('diastolic_%s', VesselName)) = round(vDias_mean, 2);
-    ToolBox.outputs.velocity.(sprintf('diastolic_%s_se', VesselName)) = round(vDias_std, 2);
+    ToolBox.outputs.velocity.(sprintf('systolic_%s', VesselName)) = round(vMax_mean, 2);
+    ToolBox.outputs.velocity.(sprintf('systolic_%s_se', VesselName)) = round(vMax_std, 2);
+    ToolBox.outputs.velocity.(sprintf('diastolic_%s', VesselName)) = round(vMin_mean, 2);
+    ToolBox.outputs.velocity.(sprintf('diastolic_%s_se', VesselName)) = round(vMin_std, 2);
 
     % New
     if contains(name, 'Vein')
         ToolBox.Outputs.add('VenousMeanVelocity', v_mean, 'mm/s', std(signal));
-        ToolBox.Outputs.add('VenousMaximumVelocity', vDias_mean, 'mm/s', vDias_std);
-        ToolBox.Outputs.add('VenousMinimumVelocity', vSys_mean, 'mm/s', vSys_std);
-    elseif contains(name, 'Artery')
-        ToolBox.Outputs.add('ArterialMeanVelocity', v_mean, 'mm/s', std(signal));
-        ToolBox.Outputs.add('ArterialMinimumVelocity', vDias_mean, 'mm/s', vDias_std);
-        ToolBox.Outputs.add('ArterialMaximumVelocity', vSys_mean, 'mm/s', vSys_std);
+        ToolBox.Outputs.add('VenousMaximumVelocity', vMax_mean, 'mm/s', vMin_std);
+        ToolBox.Outputs.add('VenousMinimumVelocity', vMin_mean, 'mm/s', vMax_std);
     end
+
 end
 
 ToolBox.outputs.indices.(sprintf('%s_RI', name)) = round(RI_mean, 2);
@@ -248,10 +234,7 @@ ToolBox.outputs.indices.(sprintf('%s_PR_se', name)) = round(dPR, 2);
 if contains(name, 'Vein')
     ToolBox.Outputs.add('VenousResistivityIndexVelocity', RI_mean, '', dRI);
     ToolBox.Outputs.add('VenousPulsatilityIndexVelocity', PI_mean, '', dPI);
-    ToolBox.Outputs.add('VenousMaxMinRatioVelocity', (vSys_mean / vDias_mean), '');
-elseif contains(name, 'Artery')
-    ToolBox.Outputs.add('ArterialResistivityIndexVelocity', RI_mean, '', dRI);
-    ToolBox.Outputs.add('ArterialPulsatilityIndexVelocity', PI_mean, '', dPI);
-    ToolBox.Outputs.add('ArterialMaxMinRatioVelocity', (vDias_mean / vSys_mean), '');
+    ToolBox.Outputs.add('VenousMaxMinRatioVelocity', (vMax_mean / vMin_mean), '');
 end
+
 end

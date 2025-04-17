@@ -28,6 +28,7 @@ arguments
     opt.yLineLabels = {}
     opt.xLines = []
     opt.xLineLabels = {}
+    opt.zero_center = false
 end
 
 f = figAspect('Fontsize', opt.Fontsize, 'LineWidth', opt.LineWidth);
@@ -47,19 +48,22 @@ if ~isempty(opt.TxtFigX)
 end
 
 if ~isempty(opt.yLines)
-
     for n = 1:length(opt.yLines)
-        yline(opt.yLines(n), ':', opt.yLineLabels{n}, LineWidth = opt.LineWidth);
+        % Set common properties
+        lineProps = {':', 'LineWidth', opt.LineWidth};
+        
+        % Handle label positioning
+        if n == length(opt.yLines) && ~isscalar(opt.yLines)
+            % Last line gets default vertical alignment
+            yline(opt.yLines(n), lineProps{:}, ...
+                  'Label', opt.yLineLabels{n}, ...
+                  'LabelVerticalAlignment', 'bottom');
+        else
+            % Other lines get bottom alignment
+            yline(opt.yLines(n), lineProps{:}, ...
+                  'Label', opt.yLineLabels{n});
+        end
     end
-
-end
-
-if ~isempty(opt.xLines)
-
-    for n = 1:length(opt.xLines)
-        xline(opt.xLines(n), ':', obj.xLineLabels{n}, LineWidth = opt.LineWidth);
-    end
-
 end
 
 title(opt.Title)
@@ -83,7 +87,11 @@ axis padded
 axP = axis;
 axis tight
 axT = axis;
-axis([axT(1), axT(2), axP(3), axP(4)])
+if opt.zero_center
+    axis([axT(1), axT(2), 0, 1.07 * axP(4)])
+else
+    axis([axT(1), axT(2), axP(3), axP(4)])
+end
 
 ToolBox = getGlobalToolBox;
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s_graph.png", ToolBox.main_foldername, filename)))

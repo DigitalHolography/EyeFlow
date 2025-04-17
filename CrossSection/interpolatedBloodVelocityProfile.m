@@ -173,7 +173,7 @@ exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf(
 
 % Interpolated blood velocity profile and video export
 if exportVideos
-    fig = figure("Visible", "off");
+    fig = figure('Visible', 'off', 'Color', 'w');
     ax = axes(fig);
     hold(ax, "on");
 
@@ -187,7 +187,6 @@ if exportVideos
 
     pbaspect([1.618 1 1]);
     axis tight;
-    ax.YLim = [-5; 30];
     box on;
     set(gca, 'Linewidth', 2);
 
@@ -214,12 +213,18 @@ if exportVideos
         poiseuille_fit = f.p1 * r_range .^ 2 + f.p2 * r_range + f.p3;
         set(poiseuillePlot, 'XData', w2w, 'YData', poiseuille_fit);
         warning("on");
+        axis([axT(1), axT(2), axP(3), 1.07 * axP(4)]);
+        fontsize(gca, 14, 'points');
+        pbaspect([1.618 1 1]);
+        box on
+        set(gca, 'LineWidth', 2);
+
         % Capture frame
         video(:, :, :, frameIdx) = rescale(frame2im(getframe(fig)));
     end
 
     % Write video to disk
-    writeGifOnDisc(video, sprintf("interp_profile_%s", name), "ToolBox", ToolBox);
+    writeGifOnDisc(video, sprintf("wall2wall_profile_%s", name), "ToolBox", ToolBox);
 
 end
 
