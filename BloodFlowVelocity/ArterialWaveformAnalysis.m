@@ -29,7 +29,7 @@ dt = (t(2) - t(1));
 pulseTime = linspace(0, dt * avgLength, numInterp);
 pulseTime(end + 1) = pulseTime(end) + dt;
 
-figure, plot(pulseTime, signal_shifted, 'k', 'LineWidth', 2)
+figure(Visible = "off"), plot(pulseTime, signal_shifted, 'k', 'LineWidth', 2)
 hold on
 
 axis padded

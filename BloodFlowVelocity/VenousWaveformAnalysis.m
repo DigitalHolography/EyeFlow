@@ -69,8 +69,11 @@ yline(descent_value, 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 
 xline(pulseTime(index_descent), 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
 
 scatter(pulseTime(locs_peaks), peaks, 'r')
-
-T_peak = pulseTime(locs_peaks(1));
+if ~isempty(locs_peaks)
+    T_peak = pulseTime(locs_peaks(1));
+else
+    T_peak = Nan;
+end
 T_ascent = pulseTime(index_ascent);
 T_descent = pulseTime(index_descent);
 
