@@ -321,7 +321,9 @@ classdef ExecutionClass < handle
             
             ToolBox.Outputs.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_outputs.json')));
             ToolBox.Signals.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_signals.json')));
-            
+            ToolBox.Outputs.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_outputs.h5')));
+            ToolBox.Signals.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_signals.h5')));
+
             % Final Output
             tTotal = toc(totalTime);
             fprintf("\n----------------------------------\nTotal EyeFlow timing: %ds\n", round(tTotal));
