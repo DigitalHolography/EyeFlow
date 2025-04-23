@@ -1,38 +1,29 @@
-function spectrum_video(SH, maskArtery, maskNeighbors)
+function spectrum_video(SH, f_RMS_video, maskArtery, maskBkg)
 
 ToolBox = getGlobalToolBox;
+[numX, numY, ~, numFrames] = size(SH);
+f1 = ToolBox.f1;
+f2 = ToolBox.f2;
+fs = ToolBox.fs;
 
-[~, ~, batch_size, numFrames] = size(SH);
-[numX, numY] = size(maskArtery);
+f_signal = squeeze(sum(f_RMS_video .* maskArtery, [1 2]) / nnz(maskArtery));
+f_signal_bkg = squeeze(sum(f_RMS_video .* maskBkg, [1 2]) / nnz(maskBkg));
 
-if sz(1) ~= numX || sz(2) ~= numY
-    maskArtery = logical(imresize(maskArtery, [sz(1), sz(2)]));
-    maskNeighbors = logical(imresize(maskNeighbors, [sz(1), sz(2)])) & ~maskArtery;
-end
+maskArteryResized = logical(imresize(maskArtery, [numX, numY]));
+maskBkgResized = logical(imresize(maskBkg, [numX, numY])) & ~maskArteryResized;
 
-%% save new mask image
-SH_neighbors_rgb = zeros(sz(1), sz(2), 3);
+spectrum_video = zeros(420, 560, 3, numFrames);
+% make video
+parfor frameIdx = 1:numFrames
+    fi = figure("Visible", "off", "Color", 'w');
+    spectrum_ploting(SH(:, :, :, frameIdx), f_signal(frameIdx), f_signal_bkg(frameIdx), ...
+        maskArteryResized, maskBkgResized, fs, f1, f2);
 
-SH_neighbors_rgb(:, :, 1) = maskArtery;
-SH_neighbors_rgb(:, :, 2) = maskNeighbors;
-SH_neighbors_rgb(:, :, 3) = zeros(sz(1), sz(2));
-
-if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
-    mkdir(fullfile(ToolBox.path_png, 'mask'));
-end
-
-imwrite(SH_neighbors_rgb, fullfile(ToolBox.path_png, 'mask', strcat(ToolBox.main_foldername, '_SH_neighbors_rgb.png')));
-
-spectrum_video = zeros(numX, numY, batch_size, numFrames);
-%% make video
-for fri = 1:numFrames
-    clf;
-    spectrum_ploting(SH(:, :, :, fri), maskArtery, maskNeighbors, ToolBox.fs, ToolBox.f1, ToolBox.f2);
-    fi = figure(33533);
     frame = getframe(fi);
-    spectrum_video(:, :, :, fri) = frame.cdata;
+    spectrum_video(:, :, :, frameIdx) = frame.cdata;
+    close(fi)
 end
 
 writeVideoOnDisc(spectrum_video, fullfile(ToolBox.path_avi, strcat(ToolBox.main_foldername, '_spectrum_video')));
-
+writeGifOnDisc(mat2gray(spectrum_video), "spectrum_video.gif")
 end

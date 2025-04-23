@@ -10,6 +10,7 @@ classdef ExecutionClass < handle
         M0_data_video % M0 raw
         M1_data_video % M1 raw
         M2_data_video % M2 raw
+        SH_data_hypervideo % SH raw
         
         f_RMS_video % RMS M2/M0
         f_AVG_video % AVG M1/M0
@@ -27,8 +28,6 @@ classdef ExecutionClass < handle
         vRMS % video estimate of velocity map in retinal vessels
         Q_results_A
         Q_results_V
-        
-        SH_data_hypervideo % SH raw
         
         maskArtery
         maskVein
@@ -283,33 +282,21 @@ classdef ExecutionClass < handle
                 fprintf("\n----------------------------------\nSpectral Analysis\n----------------------------------\n");
                 timeSpectralAnalysis = tic;
                 
-                % Import SH data
-                tmpname = strcat(ToolBox.main_foldername, '_SH');
-                fileID = fopen(fullfile(ToolBox.EF_path, 'raw', [tmpname, '.raw']));
-                videoSH = fread(fileID, 'float32');
-                fclose(fileID);
-                
-                [numX, numY, numFrames] = size(obj.M0_data_video);
-                bin_x = 4; bin_y = 4; bin_t = 1;
-                SH_cube = reshape(videoSH, ceil(numX / (bin_x)), ceil(numY / (bin_y)), [], ceil(numFrames / bin_t));
-                
                 % Spectrum Analysis
                 fprintf("\n----------------------------------\nSpectrum Analysis\n----------------------------------\n");
                 spectrumAnalysisTimer = tic;
                 
-                spectrum_analysis(SH_cube, obj.M0_data_video);
+                spectrum_analysis(obj.SH_data_hypervideo, obj.M0_data_video);
                 
-                time_spectrumAnalysis = toc(spectrumAnalysisTimer);
-                fprintf("- Spectrum Analysis took : %ds\n", round(time_spectrumAnalysis))
+                fprintf("- Spectrum Analysis took : %ds\n", round(toc(spectrumAnalysisTimer)))
                 
                 % Spectrogram
                 fprintf("\n----------------------------------\nSpectrogram\n----------------------------------\n");
                 spectrogramTimer = tic;
                 
-                spectrum_video(SH_cube, obj.maskArtery, obj.maskNeighbors);
+                spectrum_video(obj.SH_data_hypervideo, obj.f_RMS_video, obj.maskArtery, obj.maskNeighbors);
                 
                 fprintf("- Spectrogram took: %ds\n", round(toc(spectrogramTimer)));
-                
                 fprintf("\n----------------------------------\nSpectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
             end
             

@@ -343,7 +343,7 @@ saveImage(M0_RGB, ToolBox, 'RGB_img.png')
 % 4) 2) Neighbours Mask
 
 if params.json.Mask.AllNonVesselsAsBackground
-    maskNeighbors = (maskBackground & ~maskVesselness) .* maskDiaphragm;
+    maskNeighbors = (maskBackground & ~maskVesselness) & maskDiaphragm;
 else
     maskNeighbors = imdilate(maskArtery | maskVein, strel('disk', bgWidth)) - (maskArtery | maskVein);
 end

@@ -435,7 +435,10 @@ if exportVideos
 end
 
 cshiftn = ArterialWaveformAnalysis(v_artery_signal, v_artery_ste, t, sysIdxList, 1000, 'v_artery', ToolBox);
-VenousWaveformAnalysis(v_vein_signal, v_vein_ste, t, sysIdxList, 1000, 'v_vein', ToolBox)
+
+if veinsAnalysis
+    VenousWaveformAnalysis(v_vein_signal, v_vein_ste, t, sysIdxList, 1000, 'v_vein', ToolBox)
+end
 
 close all
 

@@ -58,8 +58,27 @@ try
     clear M2_data_video
 
 catch ME
+    
     disp(['ID: ' ME.identifier])
-    %
+    rethrow(ME)
+
+end
+
+try
+    % Import SH data
+    NameRawFile = strcat(obj.filenames, '_SH');
+    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
+    fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
+    SH_data_video = fread(fileID, 'float32');
+    fclose(fileID);
+
+    [numX, numY, numFrames] = size(obj.M0_raw_video);
+    bin_x = 4; bin_y = 4;
+    obj.SH_data_hypervideo = reshape(SH_data_video, ceil(numX / bin_x), ceil(numY / bin_y), [], numFrames);
+
+catch ME
+
+    disp(['ID: ' ME.identifier])
     rethrow(ME)
 
 end
