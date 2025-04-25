@@ -72,6 +72,7 @@ end
 
 % % FOR DEBUG
 if savepng
+    try
     ff=figure(Visible='off'); plot(fullPulse, 'k');
     hold on
     scatter(sys_max_list, fullPulse(sys_max_list), 'r')
@@ -86,6 +87,10 @@ if savepng
     if ~isfile(fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.main_foldername, 'find_systoles_indices.png')))
         saveas(ff,fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.main_foldername, 'find_systoles_indices.png')),'png')
     end
+    catch E
+        disp(E)
+    end
+
 end
 end
 
