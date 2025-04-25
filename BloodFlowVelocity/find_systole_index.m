@@ -34,32 +34,26 @@ mean_distance_between_peaks = mean(diff(sys_index_list));
 sys_max_list = zeros(1, numel(sys_index_list));
 sys_min_list = zeros(1, numel(sys_index_list));
 
-% Find the minimum before the first cycle
-[~, amin] = min(fullPulse(1:sys_index_list(1)));
-
-if abs(amin-sys_index_list(1)) < 0.05 * mean_distance_between_peaks
-    sys_min_list(1) = NaN; % Ignore if too close to the first peak
-else
-    sys_min_list(1) = amin;
-end
-
 for i = 1:(numel(sys_index_list) - 1)
     % Find the maximum within the current cycle
     [~, amax] = max(fullPulse(sys_index_list(i):sys_index_list(i + 1) - 1));
     sys_max_list(i) = sys_index_list(i) + amax;
-    
+
     % Find the minimum within the current cycle
     [~, amin] = min(fullPulse(sys_index_list(i):sys_index_list(i + 1) - 1));
-    sys_min_list(i+1) = sys_index_list(i) + amin;
+    sys_min_list(i + 1) = sys_index_list(i) + amin;
 end
 
+% Find the minimum before the first cycle
+[~, amin] = min(fullPulse(1:sys_index_list(1)));
+sys_min_list(1) = amin;
+
 % Find the maximum after the end cycle
-[~, amax] = max(fullPulse(sys_index_list(i+1):end));
-sys_max_list(i+1) = sys_index_list(i+1) + amax;
+[~, amax] = max(fullPulse(sys_index_list(i + 1):end));
+sys_max_list(i + 1) = sys_index_list(i + 1) + amax;
 
 sys_max_list = sys_max_list';
 sys_min_list = sys_min_list';
-
 
 % Step 6: Error handling
 if isempty(sys_index_list)
@@ -82,13 +76,13 @@ function sys_index_list = validate_peaks(sys_index_list, min_distance)
 i = 1;
 
 while i < numel(sys_index_list)
-    
+
     if sys_index_list(i + 1) - sys_index_list(i) < min_distance
         sys_index_list(i + 1) = [];
     else
         i = i + 1;
     end
-    
+
 end
 
 end

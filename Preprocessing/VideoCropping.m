@@ -19,7 +19,10 @@ if firstFrame > 0 && firstFrame < numFrames || lastFrame > 1 && lastFrame <= num
     obj.M0_data_video = obj.M0_data_video(:, :, firstFrame:lastFrame);
     obj.M1_data_video = obj.M1_data_video(:, :, firstFrame:lastFrame);
     obj.M2_data_video = obj.M2_data_video(:, :, firstFrame:lastFrame);
-    obj.SH_data_hypervideo = obj.SH_data_hypervideo(:, :, :, firstFrame:lastFrame);
+
+    if ~isempty(obj.SH_data_hypervideo)
+        obj.SH_data_hypervideo = obj.SH_data_hypervideo(:, :, :, firstFrame:lastFrame);
+    end
 
     disp(['Data cube frame: ', num2str(firstFrame), '/', num2str(numFrames), ' to ', num2str(lastFrame), '/', num2str(numFrames)])
 else

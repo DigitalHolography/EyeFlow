@@ -10,7 +10,7 @@ end
 
 if ME.identifier == "MATLAB:audiovideo:VideoReader:FileNotFound"
 
-    fprintf(2, "No Raw File was found, please check 'save raw files' in HoloDoppler\n")
+    fprintf(2, "\nNo Raw File was found\n")
 
 end
 

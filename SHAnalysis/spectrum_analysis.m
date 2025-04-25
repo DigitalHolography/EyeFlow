@@ -1,108 +1,65 @@
-function [] = spectrum_analysis(SH_cube, data_M0)
+function [] = spectrum_analysis(SH_cube, M0_ff_video)
 
 ToolBox = getGlobalToolBox;
+
 fs = ToolBox.fs / 2;
 f1 = ToolBox.f1;
 f2 = (ToolBox.f1 + ToolBox.f2) / 2;
 f3 = ToolBox.f2;
-cubeFrameLength = size(SH_cube, 4);
-batch_size = size(SH_cube, 3);
-% gw = 3;
-SH_ColorVideoRGB = zeros(size(SH_cube, 1), size(SH_cube, 2), 3, size(SH_cube, 4));
-ImRef = imresize(mean(data_M0, 3), [size(SH_cube, 1), size(SH_cube, 2)]);
 
-%%
+[~, ~, numFreq, numFrames] = size(SH_cube);
+[numX, numY, ~] = size(M0_ff_video);
 
-%% integration intervals
-low_n1 = round(f1 * batch_size / fs) + 1;
-low_n2 = round(f2 * batch_size / fs);
-high_n1 = low_n2 + 1;
-high_n2 = round(f3 * batch_size / fs);
+% integration intervals
+low_n1 = round(f1 * numFreq / fs) + 1;
+low_n2 = floor(f2 * numFreq / fs);
+high_n1 = ceil(f2 * numFreq / fs);
+high_n2 = round(f3 * numFreq / fs);
 
-MeanFreqLow = mean(SH_cube(:, :, low_n1:low_n2, :), 4);
-MeanFreqHigh = mean(SH_cube(:, :, high_n1:high_n2, :), 4);
-MeanImLow = mat2gray(squeeze(sum(abs(MeanFreqLow), 3)));
-MeanImHigh = mat2gray(squeeze(sum(abs(MeanFreqHigh), 3)));
+I = rescale(mean(M0_ff_video, 3));
+MeanFreqLow = sum(SH_cube(:, :, low_n1:low_n2, :), [3 4]) / (low_n2 - low_n1) / numFrames;
+MeanFreqHigh = sum(SH_cube(:, :, high_n1:high_n2, :), [3 4]) / (high_n2 - high_n1) / numFrames;
 
-multiband_img = cat(3, MeanImLow, MeanImHigh);
-DCR_imgs = decorrstretch(multiband_img, 'tol', [0.002 0.999]);
-%imgAVG = imfuse(multiband_img(:,:,2), multiband_img(:,:,1), 'ColorChannels', 'red-cyan');
-%imgAVG = imfuse(DCR_imgs(:,:,2), DCR_imgs(:,:,1), 'ColorChannels', 'red-cyan');
+df = imresize(MeanFreqHigh - MeanFreqLow, [numX numY]);
+m = sum(df .* fftshift(diskMask(numX, numY, 0.1)), [1 2]) ./ nnz(fftshift(diskMask(numX, numY, 0.1)));
+I_lab = labDuoImage(I, (df - m));
 
-imgAVG = zeros(size(MeanImLow, 1), size(MeanImLow, 2), 3);
-imgAVG(:, :, 1) = DCR_imgs(:, :, 2);
-imgAVG(:, :, 2) = DCR_imgs(:, :, 1);
-imgAVG(:, :, 3) = DCR_imgs(:, :, 1);
+imwrite(I_lab, fullfile(ToolBox.path_png, 'spectralAnalysis', sprintf("%s_ColorImg.png", ToolBox.main_foldername)))
 
-low_high = stretchlim(imgAVG, [0, 1]);
-gamma_composite = 0.8;
-imgAVG = imadjust(imgAVG, low_high, low_high, gamma_composite);
-imgAVG = imsharpen(imgAVG, 'Radius', 10, 'Amount', 0.6);
+SH_ColorVideoRGB = zeros(numX, numY, 3, numFrames);
 
-figure(15)
-imagesc(imgAVG)
+parfor frameIdx = 1:numFrames
 
-ImHSV = rgb2hsv(imgAVG);
-ImHSVscaled = imresize(ImHSV, [size(SH_cube, 1) size(SH_cube, 2)], "nearest");
-figure(16)
-imshow(hsv2rgb(ImHSVscaled))
-
-ImHSVscaled(:, :, 3) = mat2gray(ImRef);
-ImHSVscaled = hsv2rgb(ImHSVscaled);
-figure(17)
-imshow(ImHSVscaled)
-
-for ii = 1:cubeFrameLength
-
-    %% integration
-    freq_low = squeeze(sum(abs(SH_cube(:, :, low_n1:low_n2, ii)), 3));
-    freq_high = squeeze(sum(abs(SH_cube(:, :, high_n1:high_n2, ii)), 3));
-
-    %     %% normalization
-    %     freq_low = freq_low ./ imgaussfilt(freq_low, gw);
-    %     freq_high = freq_high./ imgaussfilt(freq_high, gw);
-
-    M_freq_low = squeeze(freq_low);
-    M_freq_high = squeeze(freq_high);
-
-    avg_M0_low = mean(M_freq_low, 3);
-    avg_M0_high = mean(M_freq_high, 3);
-
-    avg_M0_low = mat2gray(avg_M0_low);
-    avg_M0_high = mat2gray(avg_M0_high);
-
-    %% composite generation
-    multiband_img = cat(3, avg_M0_low, avg_M0_high);
-    DCR_imgs = decorrstretch(multiband_img, 'tol', [0.02 0.998]);
-    img = imfuse(DCR_imgs(:, :, 2), DCR_imgs(:, :, 1), 'ColorChannels', 'red-cyan');
-    low_high = stretchlim(img, [0, 1]);
-    gamma_composite = 0.8;
-    img = imadjust(img, low_high, low_high, gamma_composite);
-    img = imsharpen(img, 'Radius', 10, 'Amount', 0.6);
-    ImHSV = rgb2hsv(img);
-    ImHSVscaled = imresize(ImHSV, [size(SH_cube, 1) size(SH_cube, 2)], "nearest");
-    ImHSVscaled(:, :, 3) = mat2gray(ImRef);
-    ImHSVscaled = hsv2rgb(ImHSVscaled);
-
-    %     tmp = zeros(2 * size(img, 1) -1, 2 * size(img, 2) - 1, size(img, 3));
-    %     for mm = 1:size(img, 3)
-    %         tmp(:,:,mm) = interp2(single(img(:,:,mm)), 1);
-    %     end
-
-    if mod(ii, 20) == 0
-        disp(['Frame : ', num2str(ii), '/', num2str(cubeFrameLength)])
-    end
-
-    SH_ColorVideoRGB(:, :, :, ii) = mat2gray(ImHSVscaled);
+    % integration
+    freq_low = squeeze(sum(abs(SH_cube(:, :, low_n1:low_n2, frameIdx)), 3)) / (low_n2 - low_n1);
+    freq_high = squeeze(sum(abs(SH_cube(:, :, high_n1:high_n2, frameIdx)), 3)) / (high_n2 - high_n1);
+    df = imresize(freq_high - freq_low, [numX numY]);
+    m = sum(df .* fftshift(diskMask(numX, numY, 0.1)), [1 2]) ./ nnz(fftshift(diskMask(numX, numY, 0.1)));
+    I_lab = labDuoImage(I, (df - m));
+    SH_ColorVideoRGB(:, :, :, frameIdx) = mat2gray(I_lab);
 
 end
 
-%% save video
-
+% save video
 writeVideoOnDisc(SH_ColorVideoRGB, fullfile(ToolBox.path_avi, strcat(ToolBox.main_foldername, '_SH_ColorVideo')));
-writeGifOnDisc(SH_ColorVideoRGB, (strcat('ColorVideo.gif')), 0.1);
+writeGifOnDisc(SH_ColorVideoRGB, 'ColorVideo');
 
-imwrite(ImHSVscaled, fullfile(ToolBox.path_png, [ToolBox.main_foldername, '_ColorDoppler.png']), 'png');
+SH_ColorSpectrumRGB = zeros(numX, numY, 3, numFreq - 2);
 
-close([15, 16 17])
+parfor freqIdx = low_n1 + 1:high_n2 - 1
+
+    % integration
+    freq_low = squeeze(sum(abs(SH_cube(:, :, low_n1:freqIdx, :)), [3 4])) / (freqIdx - low_n1) / numFrames;
+    freq_high = squeeze(sum(abs(SH_cube(:, :, freqIdx:high_n2, :)), [3 4])) / (high_n2 - freqIdx) / numFrames;
+    df = imresize(rescale(freq_high) - rescale(freq_low), [numX numY]);
+    m = sum(df .* fftshift(diskMask(numX, numY, 0.1)), [1 2]) ./ nnz(fftshift(diskMask(numX, numY, 0.1)));
+    I_lab = labDuoImage(I, (df - m), 180);
+    SH_ColorSpectrumRGB(:, :, :, freqIdx) = mat2gray(I_lab);
+
+end
+
+% save video
+writeVideoOnDisc(SH_ColorSpectrumRGB, fullfile(ToolBox.path_avi, strcat(ToolBox.main_foldername, '_SH_ColorSpectra')));
+writeGifOnDisc(SH_ColorSpectrumRGB(:, :, :, low_n1 + 1:high_n2 - 1), 'ColorSpectra', 0.1, high_n2 - low_n1 - 1);
+
 end

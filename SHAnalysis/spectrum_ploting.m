@@ -18,16 +18,17 @@ ymin = log10(min(SH_artery(sclingrange, :), [], 'all'));
 ymax = log10(max(SH_artery(sclingrange, :), [], 'all'));
 
 parfor frameIdx = 1:numFrames
-
+    Ninterp = 10;
+    axis_x = linspace(-fs / 2, fs / 2, Ninterp * numFreq);
     fi = figure("Visible", "on", "Color", 'w');
 
-    SH_t = SH_artery(:, frameIdx);
-    SH_bkg_t = SH_bkg(:, frameIdx);
+    SH_t = interp1(linspace(-fs / 2, fs / 2, numFreq), SH_artery(:, frameIdx), axis_x);
+    SH_bkg_t = interp1(linspace(-fs / 2, fs / 2, numFreq), SH_bkg(:, frameIdx), axis_x);
 
-    I_f = fftshift(log10(SH_t(round(f_signal_idx(frameIdx)))));
-    I_f_bkg = fftshift(log10(SH_bkg_t(round(f_signal_idx_bkg(frameIdx)))));
+    I_f = fftshift(log10(SH_t(round(Ninterp * f_signal_idx(frameIdx)))));
+    I_f_bkg = fftshift(log10(SH_bkg_t(round(Ninterp * f_signal_idx_bkg(frameIdx)))));
 
-    rectangle('Position', [-f1 ymin 2*f1 (ymax-ymin)], 'FaceColor', [0.9 0.9 0.9], 'EdgeColor', 'none');
+    rectangle('Position', [-f1 ymin 2 * f1 (ymax - ymin)], 'FaceColor', [0.9 0.9 0.9], 'EdgeColor', 'none');
     hold on
 
     plot(axis_x, fftshift(log10(SH_t)), 'red', 'LineWidth', 1.5, 'DisplayName', 'Arteries');

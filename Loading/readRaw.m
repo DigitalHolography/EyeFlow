@@ -7,7 +7,7 @@ dir_path_avi = fullfile(obj.directory, 'avi');
 NameRefAviFile = strcat(obj.filenames, '_M0');
 RefAviFilePath = fullfile(dir_path_avi, NameRefAviFile);
 ext = '.avi';
-fprintf('- reading : %s\n', RefAviFilePath);
+fprintf('- reading : %s\n', [RefAviFilePath, ext]);
 
 V = VideoReader(fullfile(dir_path_avi, [NameRefAviFile, ext]));
 M0_disp_video = zeros(V.Height, V.Width, V.NumFrames);
@@ -27,38 +27,41 @@ try
     % Import Moment 0
 
     NameRawFile = strcat(obj.filenames, '_moment0');
-    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
-
     fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
     M0_data_video = fread(fileID, 'float32');
     fclose(fileID);
+
+    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
+
     obj.M0_raw_video = reshape(M0_data_video, refvideosize);
     clear M0_data_video
 
     % Import Moment 1
 
     NameRawFile = strcat(obj.filenames, '_moment1');
-    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
-
     fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
     M1_data_video = fread(fileID, 'float32');
     fclose(fileID);
+
+    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
+
     obj.M1_raw_video = reshape(M1_data_video, refvideosize);
     clear M1_data_video
 
     % Import Moment 2
 
     NameRawFile = strcat(obj.filenames, '_moment2');
-    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
-
     fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
     M2_data_video = fread(fileID, 'float32');
     fclose(fileID);
+
+    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
+
     obj.M2_raw_video = reshape(M2_data_video, refvideosize);
     clear M2_data_video
 
 catch ME
-    
+
     disp(['ID: ' ME.identifier])
     rethrow(ME)
 
@@ -67,20 +70,18 @@ end
 try
     % Import SH data
     NameRawFile = strcat(obj.filenames, '_SH');
-    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
     fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
     SH_data_video = fread(fileID, 'float32');
     fclose(fileID);
+
+    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
 
     [numX, numY, numFrames] = size(obj.M0_raw_video);
     bin_x = 4; bin_y = 4;
     obj.SH_data_hypervideo = reshape(SH_data_video, ceil(numX / bin_x), ceil(numY / bin_y), [], numFrames);
 
-catch ME
-
-    disp(['ID: ' ME.identifier])
-    rethrow(ME)
-
+catch
+    warning('no SH was found')
 end
 
 end

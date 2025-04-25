@@ -17,6 +17,7 @@ ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
+scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
 
 [numX, numY, numFrames] = size(f_video);
 x_c = xy_barycenter(1) / numX;
@@ -39,6 +40,20 @@ cArtery = [255 22 18] / 255;
 cVein = [18 23 255] / 255;
 
 % 1) Local BKG Artery and Veins %~1min
+
+% Skeletonize and label the individual branches
+skel = bwskel(maskArtery);
+skel = skel & maskSection; % takes out arteries near the center
+[label, n] = bwlabel(skel & ~imdilate(bwmorph(skel, 'branchpoints'), strel('disk', 2))); % labeling the skeleton with branch points off to get individual branches
+
+% Get the label mask back to initial size
+masks = zeros(numX, numY, n);
+
+for i = 1:n % for each individual branch
+    sk_mask = label == i;
+    label(bwareafilt(imdilate(sk_mask, strel('disk', floor(numX * r1 / 10))) & maskArtery, 1)) = i;
+    masks(:, :, i) = label == i;
+end
 
 tic
 
@@ -71,6 +86,15 @@ else
     end
 
 end
+
+frequencies_artery = zeros(numFrames, n);
+
+for i = 1:n
+    frequencies_artery(:, i) = scalingFactor * squeeze(sum((f_video - f_bkg) .* masks(:, :, i), [1, 2]) / nnz(masks(:, :, i)));
+    % frequencies_artery(:, i) = wdenoise(frequencies_artery(:, i), 4);
+end
+
+imwrite(rescale(corrcoef(frequencies_artery)), fullfile(ToolBox.path_png, folder, sprintf("%s_corr_coeff_map.png", ToolBox.main_foldername)))
 
 f_artery = squeeze(sum(f_video .* maskArterySection, [1, 2]) / nnz(maskArterySection));
 f_artery_bkg = squeeze(sum(f_bkg .* maskArterySection, [1, 2]) / nnz(maskArterySection));
@@ -200,7 +224,6 @@ else
 end
 
 % Velocity calculation
-scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
 v_RMS_video = scalingFactor * df;
 
 % Velocity plots
