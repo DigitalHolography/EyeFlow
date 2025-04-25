@@ -247,7 +247,7 @@ fprintf("    2. Difference calculation took %ds\n", round(toc))
 
 findSystoleTimer = tic;
 
-[sysIdxList, fullPulse, sysMaxList, sysMinList] = find_systole_index(v_RMS_video, maskArtery);
+[sysIdxList, fullPulse, sysMaxList, sysMinList] = find_systole_index(v_RMS_video, maskArtery, true);
 [~, ~, ~, ~, sysIdx, diasIdx] = compute_diasys(v_RMS_video, maskArtery, 'bloodFlowVelocity');
 
 % Check if the output vectors are long enough

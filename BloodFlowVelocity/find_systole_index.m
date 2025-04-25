@@ -1,4 +1,4 @@
-function [sys_index_list, fullPulse, sys_max_list, sys_min_list] = find_systole_index(video, maskArtery)
+function [sys_index_list, fullPulse, sys_max_list, sys_min_list] = find_systole_index(video, maskArtery, savepng)
 % This function extracts systole and diastole indices from a noisy video signal.
 % Inputs:
 %   - video: 3D video data (height x width x time)
@@ -9,12 +9,16 @@ function [sys_index_list, fullPulse, sys_max_list, sys_min_list] = find_systole_
 %   - sys_max_list: Indices of local maxima within each cycle
 %   - sys_min_list: Indices of local minima within each cycle
 
+if nargin <3
+    savepng = false;
+end
+
 % Step 1: Extract the pulse signal from the video using the artery mask
 fullPulse = squeeze(sum(video .* maskArtery, [1 2]) / nnz(maskArtery));
 
 % Denoise
-detrendedPulse = detrend(fullPulse);
-noOutlier = filloutliers(detrendedPulse, "center");
+detrendedPulse = (fullPulse);
+noOutlier = (detrendedPulse);
 
 % Step 2: Compute the derivative of the smoothed signal
 [~, peaks_idx] = findpeaks(noOutlier);
@@ -66,15 +70,23 @@ if isempty(sys_index_list)
     error('No systole peaks detected. Check signal quality or adjust parameters.');
 end
 
-% % UNCOMMENT FOR DEBUG
-% figure, plot(fullPulse, 'k')
-% hold on
-% scatter(sys_max_list, fullPulse(sys_max_list), 'r')
-% scatter(sys_min_list, fullPulse(sys_min_list), 'b')
-% scatter(sys_index_list, fullPulse(sys_index_list), 'k')
-% figure, plot(diff_signal, 'k')
-% hold on, scatter(sys_index_list, diff_signal(sys_index_list), 'k')
-
+% % FOR DEBUG
+if savepng
+    ff=figure(Visible='off'); plot(fullPulse, 'k');
+    hold on
+    scatter(sys_max_list, fullPulse(sys_max_list), 'r')
+    scatter(sys_min_list, fullPulse(sys_min_list), 'b')
+    scatter(sys_index_list, fullPulse(sys_index_list), 'k')
+    hold on, plot(diff_signal, 'k')
+    hold on, scatter(sys_index_list, diff_signal(sys_index_list), 'k')
+    ToolBox = getGlobalToolBox();
+    if ~isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
+        mkdir(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
+    end
+    if ~isfile(fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.main_foldername, 'find_systoles_indices.png')))
+        saveas(ff,fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.main_foldername, 'find_systoles_indices.png')),'png')
+    end
+end
 end
 
 %% **Validate Peaks (Removes peaks that are too close)**
