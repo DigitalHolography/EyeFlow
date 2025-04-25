@@ -58,7 +58,7 @@ try
     clear M2_data_video
 
 catch ME
-    
+
     disp(['ID: ' ME.identifier])
     rethrow(ME)
 
@@ -78,8 +78,7 @@ try
 
 catch ME
 
-    disp(['ID: ' ME.identifier])
-    rethrow(ME)
+    disp(['- No SH found : ID: ' ME.identifier])
 
 end
 
