@@ -33,8 +33,8 @@ properties (Access = public)
     ExecuteButton matlab.ui.control.Button
     ImageDisplay matlab.ui.control.Image
 
-    % Files
-    file
+    % ExecutionClass
+    file ExecutionClass
     drawer_list = {}
 end
 
@@ -55,7 +55,7 @@ methods (Access = public)
             % Add file
             tic
             fprintf("\n----------------------------------\nVideo Loading\n----------------------------------\n")
-            app.file = ExecutionClass(path);
+            app.file.Load(path);
             fprintf("- Video Loading took : %ds\n", round(toc))
 
             % Compute the mean of M0_data_video along the third dimension
@@ -101,6 +101,8 @@ methods (Access = public)
     % Code that executes after component creation
     function startupFcn(app)
 
+        app.file = ExecutionClass();
+
         if exist("version.txt", 'file')
             v = readlines('version.txt');
             fprintf("==========================================\n " + ...
@@ -136,7 +138,7 @@ methods (Access = public)
             for nn = 1:length(files_lines)
 
                 if ~isempty(files_lines(nn))
-                    app.drawer_list{end + 1} = files_lines(nn);
+                    app.file.drawer_list{end + 1} = files_lines(nn);
                 end
 
             end
@@ -148,20 +150,18 @@ methods (Access = public)
     % Button pushed function: LoadfolderButton
     function LoadfolderButtonPushed(app, ~)
 
-        if ~isempty(app.file)
+        if ~isempty(app.file.directory)
             last_dir = app.file.directory;
         else
             last_dir = [];
         end
 
-        % Clearing before loading
-        ClearButtonPushed(app)
-
         selected_dir = uigetdir(last_dir);
 
         if selected_dir == 0
-            fprintf(2, 'No folder selected\n');
+            warning("No folder selected");
         else
+            ClearButtonPushed(app)
             app.Load(selected_dir);
         end
 
@@ -187,7 +187,7 @@ methods (Access = public)
 
         err = [];
 
-        if isempty(app.file)
+        if isempty(app.file.filenames)
             fprintf(2, "No input loaded.\n")
             return
         end
@@ -196,62 +196,7 @@ methods (Access = public)
         app.statusLamp.Color = [1, 1/2, 0]; % Orange
         drawnow;
 
-        % Actualizes the input Parameters
-        app.file.params_names = checkEyeFlowParamsFromJson(app.file.directory); % checks compatibility between found EF params and Default EF params of this version of EF.
-        params = Parameters_json(app.file.directory, app.file.params_names{1});
-
-        if params.json.NumberOfWorkers > 0 && params.json.NumberOfWorkers < app.NumberofWorkersSpinner.Limits(2)
-            app.NumberofWorkersSpinner.Value = params.json.NumberOfWorkers;
-        end
-
-        parfor_arg = app.NumberofWorkersSpinner.Value;
-
-        poolobj = gcp('nocreate'); % check if a pool already exist
-
-        if isempty(poolobj)
-            parpool(parfor_arg); % create a new pool
-        elseif poolobj.NumWorkers ~= parfor_arg
-            delete(poolobj); %close the current pool to create a new one with correct num of workers
-            parpool(parfor_arg);
-        end
-
-        for i = 1:length(app.file.params_names)
-
-            app.file.param_name = app.file.params_names{i};
-
-            fprintf("==========================================\n")
-
-            app.file.flag_segmentation = app.segmentationCheckBox.Value;
-            app.file.flag_bloodFlowVelocity_analysis = app.bloodFlowAnalysisCheckBox.Value;
-            app.file.flag_bloodFlowVelocity_figures = app.bloodFlowVelocityFigCheckBox.Value;
-            app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
-            app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
-            app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
-
-            app.file.OverWrite = app.OverWriteCheckBox.Value;
-
-            try
-                app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name, app.file.OverWrite);
-
-                if ~app.file.is_preprocessed
-                    app.file = app.file.preprocessData();
-                end
-
-                app.file = app.file.analyzeData(app);
-
-                % Update lamp color to indicate success
-                app.statusLamp.Color = [0, 1, 0]; % Green
-
-            catch ME
-                err = ME;
-                MEdisp(ME, app.file.directory)
-
-                % Update lamp color to indicate warning
-                app.statusLamp.Color = [1, 0, 0]; % Red
-                diary off
-            end
-
-        end
+        err = app.file.Execute(app);
 
         % Update checkbox states after execution
         app.CheckboxValueChanged();
@@ -289,7 +234,7 @@ methods (Access = public)
 
     % Button pushed function: ClearButton
     function ClearButtonPushed(app, ~)
-        app.file = [];
+        app.file = ExecutionClass();
         app.ReferenceDirectory.Value = "";
 
         app.ExecuteButton.Enable = false;
@@ -309,6 +254,9 @@ methods (Access = public)
     function OpenDirectoryButtonPushed(app, ~)
 
         try
+            if isempty(app.file.directory)
+                return
+            end
             % Open the directory in the system file explorer
             winopen(fullfile(app.file.directory, 'eyeflow')); % For Windows
             % Use `open(app.file.directory)` for macOS/Linux
@@ -325,7 +273,7 @@ methods (Access = public)
 
     % Button pushed function: FolderManagementButton
     function FolderManagementButtonPushed(app, ~)
-        d = dialog('Position', [300, 300, 690, 190 + length(app.drawer_list) * 14], ...
+        d = dialog('Position', [300, 300, 690, 190 + length(app.file.drawer_list) * 14], ...
             'Color', [0.2, 0.2, 0.2], ...
             'Name', 'Folder management', ...
             'Resize', 'on', ...
@@ -336,9 +284,9 @@ methods (Access = public)
             'FontName', 'Helvetica', ...
             'BackgroundColor', [0.2, 0.2, 0.2], ...
             'ForegroundColor', [0.8, 0.8, 0.8], ...
-            'Position', [20, 70, 710, length(app.drawer_list) * 14], ...
+            'Position', [20, 70, 710, length(app.file.drawer_list) * 14], ...
             'HorizontalAlignment', 'left', ...
-            'String', app.drawer_list);
+            'String', app.file.drawer_list);
 
         uicontrol('Parent', d, ...
             'Position', [20, 20, 100, 25], ...
@@ -421,22 +369,11 @@ methods (Access = public)
             'String', 'Save to text', ...
             'Callback', @save_to_txt);
 
-        uiwait(d);
-
         function select_all(~, ~)
-            %                 % selection of one processed folder with uigetdir
-            %                 selected_dir = uigetdir();
-            %                 if (selected_dir)
-            %                     app.drawer_list{end + 1} = selected_dir;
-            %                 end
-            %                 txt.String = app.drawer_list;
-            %                 d.Position(4) = 100 + length(app.drawer_list) * 14;
-            %                 txt.Position(4) = length(app.drawer_list) * 14;
-
             % selection of the measurement folder with uigetdir to analyze all processed folders
 
-            if ~isempty(app.drawer_list)
-                last_dir = app.drawer_list{end};
+            if ~isempty(app.file.drawer_list)
+                last_dir = app.file.drawer_list{end};
             else
                 last_dir = [];
             end
@@ -452,11 +389,12 @@ methods (Access = public)
             for ii = 1:length(subfoldersName)
 
                 if contains(subfoldersName{ii}, '_HD_') || contains(subfoldersName{ii}, '_HW_')
-                    app.drawer_list{end + 1} = fullfile(selected_dir, '\', subfoldersName{ii});
-                    txt.String = app.drawer_list;
-                    d.Position(4) = 100 + length(app.drawer_list) * 14;
-                    txt.Position(4) = length(app.drawer_list) * 14;
+                    app.file.drawer_list{end + 1} = fullfile(selected_dir, '\', subfoldersName{ii});
                 end
+
+                txt.String = app.file.drawer_list;
+                d.Position(4) = 100 + length(app.file.drawer_list) * 14;
+                txt.Position(4) = length(app.file.drawer_list) * 14;
 
             end
 
@@ -464,27 +402,27 @@ methods (Access = public)
 
         function select(~, ~)
             % selection of one processed folder with uigetdir
-            if ~isempty(app.drawer_list)
-                last_dir = app.drawer_list{end};
+            if ~isempty(app.file.drawer_list)
+                last_dir = app.file.drawer_list{end};
             else
                 last_dir = [];
             end
             selected_dir = uigetdir(last_dir);
 
             if (selected_dir)
-                app.drawer_list{end + 1} = selected_dir;
+                app.file.drawer_list{end + 1} = selected_dir;
             end
 
-            txt.String = app.drawer_list;
-            d.Position(4) = 100 + length(app.drawer_list) * 14;
-            txt.Position(4) = length(app.drawer_list) * 14;
+            txt.String = app.file.drawer_list;
+            d.Position(4) = 100 + length(app.file.drawer_list) * 14;
+            txt.Position(4) = length(app.file.drawer_list) * 14;
         end
 
         function clear_drawer(~, ~)
-            app.drawer_list = {};
-            txt.String = app.drawer_list;
-            d.Position(4) = 100 + length(app.drawer_list) * 14;
-            txt.Position(4) = length(app.drawer_list) * 14;
+            app.file.drawer_list = {};
+            txt.String = app.file.drawer_list;
+            d.Position(4) = 100 + length(app.file.drawer_list) * 14;
+            txt.Position(4) = length(app.file.drawer_list) * 14;
         end
 
         function load_from_txt(~, ~)
@@ -497,21 +435,21 @@ methods (Access = public)
                 for nn = 1:length(files_lines)
 
                     if ~isempty(files_lines(nn))
-                        app.drawer_list{end + 1} = files_lines(nn);
+                        app.file.drawer_list{end + 1} = files_lines(nn);
                     end
 
                 end
 
             end
 
-            txt.String = app.drawer_list;
-            d.Position(4) = 100 + length(app.drawer_list) * 14;
-            txt.Position(4) = length(app.drawer_list) * 14;
+            txt.String = app.file.drawer_list;
+            d.Position(4) = 100 + length(app.file.drawer_list) * 14;
+            txt.Position(4) = length(app.file.drawer_list) * 14;
         end
 
         function save_to_txt(~, ~)
 
-            if isempty(app.drawer_list)
+            if isempty(app.file.drawer_list)
                 warndlg('No folders to save!', 'Warning');
                 return;
             end
@@ -529,8 +467,8 @@ methods (Access = public)
                 % Write each folder path to the file
                 fid = fopen(fullpath, 'w');
 
-                for i = 1:length(app.drawer_list)
-                    fprintf(fid, '%s\n', app.drawer_list{i});
+                for i = 1:length(app.file.drawer_list)
+                    fprintf(fid, '%s\n', app.file.drawer_list{i});
                 end
 
                 fclose(fid);
@@ -545,7 +483,7 @@ methods (Access = public)
 
         function clear_params(~, ~)
             tic
-            ClearParams(app.drawer_list)
+            ClearParams(app.file.drawer_list)
             toc
         end
 
@@ -561,8 +499,8 @@ methods (Access = public)
             end
 
             % Process the selected file
-            for ind = 1:length(app.drawer_list)
-                path_json = fullfile(app.drawer_list{ind}, 'eyeflow', 'json');
+            for ind = 1:length(app.file.drawer_list)
+                path_json = fullfile(app.file.drawer_list{ind}, 'eyeflow', 'json');
 
                 if ~isfolder(path_json)
                     mkdir(path_json);
@@ -593,7 +531,7 @@ methods (Access = public)
 
         function render(~, ~)
 
-            num_drawers = length(app.drawer_list);
+            num_drawers = length(app.file.drawer_list);
             error_list = cell(1, num_drawers);
             faulty_folders = cell(1, num_drawers);
             error_count = 0;
@@ -601,7 +539,7 @@ methods (Access = public)
             for i = 1:num_drawers
                 tic
 
-                app.Load(app.drawer_list{i});
+                app.Load(app.file.drawer_list{i});
                 ME = app.ExecuteButtonPushed();
 
                 if ~isempty(ME)
@@ -636,14 +574,12 @@ methods (Access = public)
         end
 
         function show_outputs(~, ~)
-            out_dir_path = fullfile(app.drawer_list{1}, 'Multiple_Results');
+            out_dir_path = fullfile(app.file.drawer_list{1}, 'Multiple_Results');
             mkdir(out_dir_path) % creates if it doesn't exists
             tic
-            ShowOutputs(app.drawer_list, out_dir_path)
+            ShowOutputs(app.file.drawer_list, out_dir_path)
             toc
         end
-
-        delete(d);
     end
 
     % Button pushed function: MaskToolButtonPushed
@@ -676,117 +612,18 @@ methods (Access = public)
             end
 
         catch
-            fprintf(2, "no input loaded\n")
+            warning("No file was loaded")
         end
 
     end
 
     % Button pushed function: EditMasksButton
     function EditMasksButtonPushed(app, ~)
-        ToolBox = getGlobalToolBox;
-
-        if isempty(ToolBox) || ~strcmp(app.file.directory, ToolBox.EF_path)
-            ToolBox = ToolBoxClass(app.file.directory, app.file.param_name, 1);
-        end
-
         if ~isempty(app.file)
-
-            if ~isfolder(fullfile(ToolBox.path_main, 'mask'))
-                mkdir(fullfile(ToolBox.path_main, 'mask'))
-            end
-
-            try
-                winopen(fullfile(ToolBox.path_main, 'mask'));
-            catch
-                disp("opening failed.")
-            end
-
-            if ~app.file.is_preprocessed
-                app.file = app.file.preprocessData();
-            end
-
-            try
-                list_dir = dir(ToolBox.path_main);
-                idx = 0;
-
-                for i = 1:length(list_dir)
-
-                    if contains(list_dir(i).name, ToolBox.EF_name)
-                        match = regexp(list_dir(i).name, '\d+$', 'match');
-
-                        if ~isempty(match) && str2double(match{1}) >= idx
-                            idx = str2double(match{1}); %suffix
-                        end
-
-                    end
-
-                end
-
-                path_dir = fullfile(ToolBox.path_main, ToolBox.folder_name);
-
-                disp(['Copying from : ', fullfile(path_dir, 'png', 'mask')])
-                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskArtery.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'MaskArtery.png'));
-                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskVein.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'MaskVein.png'));
-            catch
-                disp("last auto mask copying failed.")
-            end
-
-            try
-
-                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'M0.png'));
-                folder_name = strcat(ToolBox.main_foldername, '_EF');
-                list_dir = dir(ToolBox.path_main);
-                idx = 0;
-
-                for i = 1:length(list_dir)
-
-                    if contains(list_dir(i).name, folder_name)
-                        match = regexp(list_dir(i).name, '\d+$', 'match');
-
-                        if ~isempty(match) && str2double(match{1}) >= idx
-                            idx = str2double(match{1}); %suffix
-                        end
-
-                    end
-
-                end
-
-                folder_name = sprintf('%s_%d', folder_name, idx);
-                copyfile(fullfile(path_dir, 'gif', sprintf("%s_M0.gif", folder_name)), fullfile(ToolBox.path_main, 'mask', 'M0.gif'));
-            catch
-
-                disp("last M0 png and gif copying failed")
-            end
-
-            try
-
-                M0_video = app.file.M0_ff_video;
-                M0_video = rescale(single(M0_video));
-                sz = size(M0_video);
-                [M0_Systole_img, M0_Diastole_img] = compute_diasys(M0_video, diskMask(sz(1), sz(2), 0.45));
-                diasysArtery = M0_Systole_img - M0_Diastole_img;
-                [~, M0_Gabor] = gaborVesselness(mean(M0_video, 3), ToolBox);
-                RGBdiasys = labDuoImage(rescale(M0_Gabor), diasysArtery);
-                imwrite(RGBdiasys, fullfile(ToolBox.path_main, 'mask', 'DiaSysRGB.png'), 'png');
-            catch
-
-                fprintf(2, "Diasys png failed")
-
-            end
-
-            % try
-            % %   Commented until further fixes MESSAGE TO ZACHARIE
-            %     openmaskinpaintnet(fullfile(ToolBox.path_main,'mask','M0.png'), fullfile(ToolBox.path_main,'mask','DiaSysRGB.png'));
-            % catch
-            %     disp("paint.net macro failed")
-            % end
-
+            app.file.EditMasksButton
         else
-
-            fprintf(2, "no input loaded\n")
-
+            warning("No file was loaded")
         end
-
     end
 
     function CheckboxValueChanged(app, ~)
