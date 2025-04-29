@@ -72,7 +72,7 @@ scatter(pulseTime(locs_peaks), peaks, 'r')
 if ~isempty(locs_peaks)
     T_peak = pulseTime(locs_peaks(1));
 else
-    T_peak = Nan;
+    T_peak = NaN;
 end
 T_ascent = pulseTime(index_ascent);
 T_descent = pulseTime(index_descent);
