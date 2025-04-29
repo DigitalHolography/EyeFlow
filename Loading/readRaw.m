@@ -3,8 +3,13 @@ function obj = readRaw(obj)
 % if ~exist(strcat(obj.filenames, '_moment0.raw')) | ~exist(strcat(obj.filenames, '_moment1.raw')) | ~exist(strcat(obj.filenames, '_moment2.raw'))
 %     error(' No raw moment files found. Please check folder path. Filenames should end with (_moment0.raw, _moment1.raw, _moment2.raw)) .')
 % end
-dir_path_avi = fullfile(obj.directory, 'avi');
-NameRefAviFile = strcat(obj.filenames, '_M0');
+dir_path_avi = fullfile(obj.directory, 'raw');
+NameRefAviFile = strcat(obj.filenames, '_moment0_raw');
+
+if ~isfile(fullfile(dir_path_avi, [NameRefAviFile '.avi'])) % For retro-compatibility
+    NameRefAviFile = strcat(obj.filenames, '_moment0');
+end
+
 RefAviFilePath = fullfile(dir_path_avi, NameRefAviFile);
 ext = '.avi';
 fprintf('- reading : %s\n', RefAviFilePath);
@@ -78,7 +83,7 @@ try
 
 catch ME
 
-    disp(['- No SH found : ID: ' ME.identifier])
+    disp(['- No SH found : ID: %s' ME.identifier])
 
 end
 

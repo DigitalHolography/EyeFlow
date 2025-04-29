@@ -465,6 +465,8 @@ methods
             parpool(parfor_arg);
         end
 
+        err = [];
+        
         for i = 1:length(obj.params_names)
 
             obj.param_name = obj.params_names{i};
