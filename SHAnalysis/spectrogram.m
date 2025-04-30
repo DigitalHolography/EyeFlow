@@ -1,4 +1,4 @@
-function [] = spectrogram(maskArtery, maskSection, SH_cube)
+function [] = spectrogram(maskArtery, xy_barycenter, SH_cube)
 
 %% Variables
 
@@ -7,9 +7,8 @@ params = ToolBox.getParams;
 
 maskNeighbors = imdilate(maskArtery, strel('disk', params.json.PulseAnalysis.LocalBackgroundWidth)) - maskArtery;
 
-cubeSize = size(SH_cube, 1);
-cubeFreqLength = size(SH_cube, 3);
-cubeFrameLength = size(SH_cube, 4);
+[numX, numY, cubeFreqLength, cubeFrameLength] = size(SH_cube);
+
 % f1 = ToolBox.f1;
 f2 = ToolBox.f2;
 fs = ToolBox.fs;
@@ -19,10 +18,15 @@ k_int = 4;
 minimumTreshold = 10000; % for the log plotting, we change all smallest value to greater one. In order to avoid log(0).
 
 %% Resize masks
+x_c = xy_barycenter(1) / numX;
+y_c = xy_barycenter(2) / numY;
+r1 = params.json.SizeOfField.SmallRadiusRatio;
+r2 = params.json.SizeOfField.BigRadiusRatio;
+maskSection = diskMask(numX, numY, r1, r2, center = [x_c, y_c]);
 
-maskArtery = logical(imresize(maskArtery, [cubeSize, cubeSize]));
-maskNeighbors = logical(imresize(maskNeighbors, [cubeSize, cubeSize])) - maskArtery; % fix to insure background is not mixed with arteries because of the resizing;
-maskSection = logical(imresize(maskSection, [cubeSize, cubeSize]));
+maskArtery = logical(imresize(maskArtery, [numX, numX]));
+maskNeighbors = logical(imresize(maskNeighbors, [numX, numX])) - maskArtery; % fix to insure background is not mixed with arteries because of the resizing;
+maskSection = logical(imresize(maskSection, [numX, numX]));
 
 %% Video
 video = VideoWriter(fullfile(ToolBox.path_avi, sprintf("%s_%s", ToolBox.main_foldername, "stdTemp.avi")));
@@ -244,7 +248,7 @@ for i = 1:cubeFrameLength
     specDeltVideo(:, :, :, i) = frame2im(getframe(delt_spec_plot));
 end
 
-writeGifOnDisc(specVideo, fullfile(ToolBox.path_gif, strcat(ToolBox.main_foldername, 'SH_Spectrogram.gif')), 0.1);
-writeGifOnDisc(specDeltVideo, fullfile(ToolBox.path_gif, strcat(ToolBox.main_foldername, 'SH_Delta_Spectrogram.gif')), 0.1);
+writeGifOnDisc(specVideo, 'SH_Spectrogram', 0.1);
+writeGifOnDisc(specDeltVideo, 'SH_Delta_Spectrogram', 0.1);
 
 end
