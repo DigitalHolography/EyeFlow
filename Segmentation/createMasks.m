@@ -72,14 +72,19 @@ saveImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, ToolBox, 'all_11_maskDiaphr
 [maskVesselnessGabor, M0_Gabor] = gaborVesselness(M0_ff_img, ToolBox, 'all_13');
 
 if params.json.Mask.VesselnessHolonet
+
     try
         maskVesselness = getHolonetprediction(M0_ff_img);
+        saveImage(maskVesselness, ToolBox, 'all_14_maskHoloNet.png', isStep = true)
     catch
         warning("The Holonet ONNX-model couldn't be found.")
         maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
+        saveImage(maskVesselness, ToolBox, 'all_14_maskDeterministic.png', isStep = true)
     end
+
 else
     maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
+    saveImage(maskVesselness, ToolBox, 'all_14_maskDeterministic.png', isStep = true)
 end
 
 % 1) 2) Compute the barycenters and the circle mask
@@ -105,7 +110,7 @@ end
 maskCircle = diskMask(numX, numY, cropChoroidRadius, 'center', [x_CRA / numX, y_CRA / numY]);
 maskCircle = maskCircle | diskMask(numX, numY, cropChoroidRadius, 'center', [x_CRV / numX, y_CRV / numY]);
 
-maskVesselnessClean = removeDisconnected(maskVesselness, maskVesselness, maskCircle, 'all_14_VesselMask', ToolBox);
+maskVesselnessClean = removeDisconnected(maskVesselness, maskVesselness, maskCircle, 'all_15_VesselMask', ToolBox);
 
 %  1) 3) Compute first correlation
 
@@ -248,12 +253,14 @@ if params.json.Mask.ImproveMask
 
     % 3) 1 prime) HoloNet intervention
     if params.json.Mask.ChoroidHolonet
+
         try
             holonet_vessels = getHolonetprediction(M0_ff_img);
         catch
             warning("The Holonet ONNX-model couldn't be found.")
             holonet_vessels = maskVesselnessClean;
         end
+
         maskArtery = maskArtery & holonet_vessels;
         maskVein = maskVein & holonet_vessels;
     end
@@ -339,6 +346,14 @@ M0_AV = setcmap(M0_ff_img, maskArtery & maskVein, cmapAV);
 M0_RGB = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + M0_AV + rescale(M0_ff_img) .* ~(maskArtery | maskVein);
 saveImage(M0_RGB, ToolBox, 'vessel_40_RGB.png', isStep = true)
 saveImage(M0_RGB, ToolBox, 'RGB_img.png')
+
+if isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskArtery.png')) || isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskVein.png'))
+    M0_Artery = setcmap(M0_ff_img, results{1}, cmapArtery);
+    M0_Vein = setcmap(M0_ff_img, results{2}, cmapVein);
+    M0_AV = setcmap(M0_ff_img, results{1} & results{2}, cmapAV);
+    M0_RGB = (M0_Artery + M0_Vein) .* ~(results{1} & results{2}) + M0_AV + rescale(M0_ff_img) .* ~(results{1} | results{2});
+    saveImage(M0_RGB, ToolBox, 'vessel_40_RGB_no_import.png', isStep = true)
+end
 
 % 4) 2) Neighbours Mask
 

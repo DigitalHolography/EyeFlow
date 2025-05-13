@@ -1,4 +1,4 @@
-function interpolatedBloodVelocityProfile(v_cell, dv_cell, sysIdx, diasIdx, numSections, name)
+function interpolatedBloodVelocityProfile(v_cell, dv_cell, sysIdx, diasIdx, name)
 % interpolatedBloodVelocityProfile - Combines and optimizes the computation and plotting of velocity profiles.
 % Inputs:
 %   v_cell: Cell array containing mean velocity profiles for each circle, section, and frame.
@@ -25,7 +25,7 @@ else
 end
 
 % Get sizes
-numCircles = params.json.CrossSectionsAnalysis.NumberOfCircles;
+[numCircles, numBranches] = size(v_cell);
 numFrames = size(v_cell{1}, 2);
 numInterp = params.json.CrossSectionsFigures.InterpolationPoints;
 
@@ -34,46 +34,48 @@ x_label = 'wall-to-wall distance (a.u.)';
 y_label = 'Velocity (mm/s)';
 
 % Preallocate interpolated profiles
-v_interp = cell(1, numCircles);
-dv_interp = cell(1, numCircles);
+v_interp = cell(numCircles, numBranches);
+vse_interp = cell(numCircles, numBranches);
 
 % Interpolate profiles for all circles, sections, and frames
 parfor cIdx = 1:numCircles
-    v_interp{cIdx} = zeros(numSections(cIdx), numFrames, numInterp); % Preallocate for mean velocity
-    dv_interp{cIdx} = zeros(numSections(cIdx), numFrames, numInterp); % Preallocate for uncertainties
 
-    for sectionIdx = 1:numSections(cIdx)
+    for bIdx = 1:numBranches
 
-        for frameIdx = 1:numFrames
-            v = v_cell{cIdx}{sectionIdx, frameIdx}; % Mean velocity profile
-            dv = dv_cell{cIdx}{sectionIdx, frameIdx}; % Velocity uncertainty profile
+        if ~isempty(v_cell{cIdx, bIdx})
 
-            % Handle edge case with negative velocities
-            if any(v < 0)
-                [~, locs] = findpeaks(-v); % Find peaks in negative velocities
+            for frameIdx = 1:numFrames
+                v = v_cell{cIdx, bIdx}{frameIdx}; % Mean velocity profile
+                dv = dv_cell{cIdx, bIdx}{frameIdx}; % Velocity uncertainty profile
 
-                if isempty(locs)
-                    indx = find(v > 0); % Use positive velocities if no peaks
-                elseif length(locs) > 1
-                    indx = locs(1):locs(end); % Use range between first and last peak
-                else
+                % Handle edge case with negative velocities
+                if any(v < 0)
+                    [~, locs] = findpeaks(-v); % Find peaks in negative velocities
 
-                    if locs(1) > length(v) / 2
-                        indx = 1:locs(1);
+                    if isempty(locs)
+                        indx = find(v > 0); % Use positive velocities if no peaks
+                    elseif length(locs) > 1
+                        indx = locs(1):locs(end); % Use range between first and last peak
                     else
-                        indx = locs(1):length(v);
+
+                        if locs(1) > length(v) / 2
+                            indx = 1:locs(1);
+                        else
+                            indx = locs(1):length(v);
+                        end
+
                     end
 
+                else
+                    indx = find(v > 0); % Use positive velocities
                 end
 
-            else
-                indx = find(v > 0); % Use positive velocities
+                % Interpolate profiles
+                L = length(indx);
+                v_interp{cIdx, bIdx}(frameIdx, :) = interp1(1:L, v(indx), linspace(1, L, numInterp)); % Interpolate mean velocity
+                vse_interp{cIdx, bIdx}(frameIdx, :) = interp1(1:L, dv(indx), linspace(1, L, numInterp)); % Interpolate uncertainty
             end
 
-            % Interpolate profiles
-            L = length(indx);
-            v_interp{cIdx}(sectionIdx, frameIdx, :) = interp1(1:L, v(indx), linspace(1, L, numInterp)); % Interpolate mean velocity
-            dv_interp{cIdx}(sectionIdx, frameIdx, :) = interp1(1:L, dv(indx), linspace(1, L, numInterp)); % Interpolate uncertainty
         end
 
     end
@@ -81,35 +83,39 @@ parfor cIdx = 1:numCircles
 end
 
 % Preallocate variables for systolic and diastolic profiles
-v_sys = zeros(numInterp, 1);
-dv_sys = zeros(numInterp, 1);
-v_dias = zeros(numInterp, 1);
-dv_dias = zeros(numInterp, 1);
+v_sys = zeros(1, numInterp);
+dv_sys = zeros(1, numInterp);
+v_dias = zeros(1, numInterp);
+dv_dias = zeros(1, numInterp);
 v_video = zeros(numFrames, numInterp);
 dv_video = zeros(numFrames, numInterp);
 
 for cIdx = 1:numCircles
 
-    for sectionIdx = 1:numSections(cIdx)
-        % Average profiles for systolic and diastolic frames
-        v_sys = v_sys + squeeze(sum(v_interp{cIdx}(sectionIdx, sysIdx, :), 2) / numSections(cIdx));
-        dv_sys = dv_sys + squeeze(sum(dv_interp{cIdx}(sectionIdx, sysIdx, :) .^ 2, 2) / numSections(cIdx));
-        v_dias = v_dias + squeeze(sum(v_interp{cIdx}(sectionIdx, diasIdx, :), 2) / numSections(cIdx));
-        dv_dias = dv_dias + squeeze(sum(dv_interp{cIdx}(sectionIdx, diasIdx, :) .^ 2, 2) / numSections(cIdx));
-        v_video = v_video + squeeze(v_interp{cIdx}(sectionIdx, :, :) / numSections(cIdx));
-        dv_video = dv_video + squeeze(dv_interp{cIdx}(sectionIdx, :, :) .^ 2 / numSections(cIdx));
+    for bIdx = 1:numBranches
+
+        if ~isempty(v_interp{cIdx, bIdx})
+            % Average profiles for systolic and diastolic frames
+            v_sys = v_sys + squeeze(sum(v_interp{cIdx, bIdx} (sysIdx, :), 1) / numBranches);
+            dv_sys = dv_sys + squeeze(sum(vse_interp{cIdx, bIdx} (sysIdx, :) .^ 2, 1) / numBranches);
+            v_dias = v_dias + squeeze(sum(v_interp{cIdx, bIdx} (sysIdx, :), 1) / numBranches);
+            dv_dias = dv_dias + squeeze(sum(vse_interp{cIdx, bIdx} (sysIdx, :) .^ 2, 1) / numBranches);
+            v_video = v_video + squeeze(v_interp{cIdx, bIdx}(:, :) / numBranches);
+            dv_video = dv_video + squeeze(vse_interp{cIdx, bIdx}(:, :) .^ 2 / numBranches);
+        end
+
     end
 
 end
 
 numSys = length(sysIdx);
 numDias = length(diasIdx);
-v_sys = (v_sys / (numSys * numCircles))';
-dv_sys = (sqrt(dv_sys) / (numSys * numCircles))';
-v_dias = (v_dias / (numDias * numCircles))';
-dv_dias = (sqrt(dv_dias) / (numDias * numCircles))';
-v_video = (v_video / numCircles)';
-dv_video = (sqrt(dv_video) / numCircles)';
+v_sys = (v_sys / (numSys * numCircles));
+dv_sys = (sqrt(dv_sys) / (numSys * numCircles));
+v_dias = (v_dias / (numDias * numCircles));
+dv_dias = (sqrt(dv_dias) / (numDias * numCircles));
+v_video = (v_video / numCircles);
+dv_video = (sqrt(dv_video) / numCircles);
 
 % Create curves for plotting
 curve1_sys = v_sys + dv_sys;
@@ -194,8 +200,8 @@ if exportVideos
 
     parfor frameIdx = 1:numFrames
         % Compute mean and RMS profiles
-        curve1_video = (v_video(:, frameIdx) + dv_video(:, frameIdx))';
-        curve2_video = (v_video(:, frameIdx) - dv_video(:, frameIdx))';
+        curve1_video = (v_video(frameIdx, :) + dv_video(frameIdx, :));
+        curve2_video = (v_video(frameIdx, :) - dv_video(frameIdx, :));
         inBetween_video = [curve1_video, flip(curve2_video)];
         ft2_video = [w2w, flip(w2w)];
 
@@ -203,13 +209,13 @@ if exportVideos
         set(fillPlot, 'XData', ft2_video, 'YData', inBetween_video);
         set(curve1Plot, 'XData', w2w, 'YData', curve1_video);
         set(curve2Plot, 'XData', w2w, 'YData', curve2_video);
-        set(meanPlot, 'XData', w2w, 'YData', v_video(:, frameIdx));
+        set(meanPlot, 'XData', w2w, 'YData', v_video(frameIdx, :));
 
         % Poiseuille fit
         warning("off");
-        [~, centt] = max(v_video(:, frameIdx));
+        [~, centt] = max(v_video(frameIdx, :));
         r_range = (1:numInterp) - centt;
-        f = fit(r_range', v_video(:, frameIdx), 'poly2');
+        f = fit(r_range', v_video(frameIdx, :)', 'poly2');
         poiseuille_fit = f.p1 * r_range .^ 2 + f.p2 * r_range + f.p3;
         set(poiseuillePlot, 'XData', w2w, 'YData', poiseuille_fit);
         warning("on");

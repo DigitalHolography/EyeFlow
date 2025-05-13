@@ -29,10 +29,10 @@ fprintf("- Velocity Map Timing : %ds\n", round(toc(tVelocityVideo)))
 
 %% 2) HISTOGRAM
 
-histoVideoArtery = VelocityHistogram(v_video, maskArterySection, 'Arteries');
+histoVideoArtery = VelocityHistogram(v_video, maskArterySection, 'artery');
 
 if veinsAnalysis
-    histoVideoVein = VelocityHistogram(v_video, maskVeinSection, 'Veins');
+    histoVideoVein = VelocityHistogram(v_video, maskVeinSection, 'vein');
 end
 
 %% 3) COMBINED

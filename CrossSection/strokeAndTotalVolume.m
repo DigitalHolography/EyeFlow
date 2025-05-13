@@ -30,8 +30,8 @@ if strcmp(name, 'Artery')
     cLight = [1, 1/2, 1/2];
     cDark = [1, 0, 0];
 else
-    cLight = [1/2, 1/2, 1];
-    cDark = [0, 0, 1];
+    cLight = [0, 0, 1];
+    cDark = [1/2, 1/2, 1];
 end
 
 fill(ft2, inBetween, cLight, 'EdgeColor', 'none');
@@ -69,7 +69,7 @@ axis padded
 axP = axis;
 axis tight
 axT = axis;
-axis([axT(1), axT(2), - 5, axP(4) * 1.07])
+axis([axT(1), axT(2), -2, axP(4) * 1.07])
 lower_bound = pulseTime(1) -1/2 * pulseTime(end);
 upper_bound = 3/2 * pulseTime(end);
 xlim([lower_bound, upper_bound])

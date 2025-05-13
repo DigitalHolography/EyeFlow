@@ -37,7 +37,7 @@ if ~isempty(opt.circles)
 end
 
 % image_RGB = repmat(Image - Image .* mask, 1, 1, 3) + reshape(NameValueArgs.Color, 1, 1, 3) .* mask .* Image; % adding the Red value to the mask pixels
-imagesc(image_RGB);
+imshow(image_RGB);
 axis image
 axis off
 

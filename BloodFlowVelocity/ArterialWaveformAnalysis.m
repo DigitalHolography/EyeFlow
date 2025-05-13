@@ -1,4 +1,4 @@
-function [cshiftn] = ArterialWaveformAnalysis(signal, signal_ste, t, systolesIndexes, numInterp, name, ToolBox)
+function [cshiftn] = ArterialWaveformAnalysis(signal, t, systolesIndexes, numInterp, name, ToolBox)
 
 if strcmp(name, "bvr")
     y_label = 'Blood Volume Rate (µL/min)';
@@ -18,7 +18,7 @@ catch
     signal = double(signal);
 end
 
-[one_cycle_signal, avgLength, ~] = interpSignal(signal, systolesIndexes, numInterp, signal_ste);
+[one_cycle_signal, avgLength] = interpSignal(signal, systolesIndexes, numInterp);
 
 [~, amin] = min(one_cycle_signal);
 cshiftn = mod(numInterp - amin, numInterp) + 1;

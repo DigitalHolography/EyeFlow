@@ -78,7 +78,7 @@ end
 
 % Precompute etiquettes frame values if provided
 if ~isempty(opt.etiquettes_locs)
-    etiquettes_frame_values = round(opt.etiquettes_values(:, 1), 1);
+    etiquettes_frame_values = round(opt.etiquettes_values, 1);
 else
     etiquettes_frame_values = [];
 end
@@ -91,14 +91,12 @@ videoPlot = figure(410);
 videoPlot.Visible = opt.Visible;
 graphMaskTags(videoPlot, video(:, :, end), mask, etiquette_locs, etiquettes_frame_values, x_c, y_c, Color = color, circles = maskCircles);
 
-videoPlot.Position = [200 200 600 600];
-
 % Preallocate video data array
 videoPlotFrames = zeros([size(getframe(gca).cdata), numFrames], 'single');
 
 % Generate video frames
 parfor (frameIdx = startingFrame:numFrames, parforArg)
-    graphMaskTags(videoPlot, video(:, :, frameIdx), mask, etiquette_locs, etiquettes_frame_values, x_c, y_c, Color = color, circles = maskCircles);
+    graphMaskTags(videoPlot, video(:, :, frameIdx), mask, etiquette_locs, etiquettes_frame_values(:, frameIdx), x_c, y_c, Color = color, circles = maskCircles);
     set(gca, 'FontSize', 14);
     videoPlotFrames(:, :, :, frameIdx) = frame2im(getframe(gca));
 end

@@ -1,64 +1,111 @@
-function circleImages(M0_ff_img, xy_barycenter, area, Q_cell, v_cell, mask, locs, name)
+function circleImages(M0_ff_img, xy_barycenter, A_cell, Q_cell, v_cell, mask, locsLabel, name)
 
 % Get global toolbox and parameters
 ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
+exportVideos = params.exportVideos;
+
+% Validate input name
+if ~ismember(name, {'Artery', 'Vein'})
+    error('Name must be either ''Artery'' or ''Vein''');
+end
+
 path_png = ToolBox.path_png;
 path_eps = ToolBox.path_eps;
 path_txt = ToolBox.path_txt;
-params = ToolBox.getParams;
 main_folder = ToolBox.main_foldername;
-exportVideos = params.exportVideos;
+initial = name(1);
 
-% Extract barycenter coordinates
-x_barycenter = xy_barycenter(1);
-y_barycenter = xy_barycenter(2);
+% Extract barycenter coordinates and image dimensions
+x_c = xy_barycenter(1);
+y_c = xy_barycenter(2);
+[numX, numY, ~] = size(M0_ff_img);
+[numCircles, numBranches] = size(A_cell);
 
-% Initialize video arraysF
-numCircles = size(area, 1);
-vesselD_video = zeros(465, 465, 3, numCircles);
-vesselNum_video = zeros(465, 465, 3, numCircles);
-Q_video = zeros(465, 465, 3, numCircles);
-velocity_video = zeros(465, 465, 3, numCircles);
+% Initialize video arrays with consistent size
+videoSize = [465, 465];
+vesselD_video = zeros([videoSize, 3, numCircles]);
+vesselNum_video = zeros([videoSize, 3, numCircles]);
+Q_video = zeros([videoSize, 3, numCircles]);
+velocity_video = zeros([videoSize, 3, numCircles]);
 
-cmapArtery = ToolBox.cmapArtery;
-cmapVein = ToolBox.cmapVein;
+% Precompute mask data
+maskMat = zeros(numX, numY, numCircles, numBranches);
 
-% Plot cross-section widths
-for cIdx = 1:numCircles
-    % Calculate cross-section widths in micrometers
-    crossSectionWidth = 2 * sqrt(squeeze(area(cIdx, :)) / pi) * 1000;
-    etiquettes_frame_values = append(string(round(crossSectionWidth, 0)), "µm");
+parfor cIdx = 1:numCircles
 
-    % Create RGB image with mask overlay
-    if strcmp(name, 'Artery')
-        image_RGB = setcmap(M0_ff_img, mask(:, :, cIdx), cmapArtery) + M0_ff_img .* ~mask(:, :, cIdx);
-    else
-        image_RGB = setcmap(M0_ff_img, mask(:, :, cIdx), cmapVein) + M0_ff_img .* ~mask(:, :, cIdx);
+    for bIdx = 1:numBranches
+        maskMat(:, :, cIdx, bIdx) = mask{cIdx, bIdx};
     end
 
-    % Plot the image
-    figure("Visible", "off");
-    imagesc(image_RGB);
-    axis image;
-    axis off;
+end
 
-    % Add labels for cross-section widths
-    if ~isempty(locs{cIdx})
-        ratio_etiquette = 1.2;
+maskRadius = squeeze(sum(maskMat, 4));
+inv_maskRadius = ~maskRadius;
 
-        for etIdx = 1:size(locs{cIdx}, 1)
-            new_x = x_barycenter + ratio_etiquette * (locs{cIdx}(etIdx, 1) - x_barycenter);
-            new_y = y_barycenter + ratio_etiquette * (locs{cIdx}(etIdx, 2) - y_barycenter);
-            text(new_x, new_y, etiquettes_frame_values(etIdx), ...
-                "FontWeight", "bold", "FontSize", 12, "Color", "white", "BackgroundColor", "black");
+% Get appropriate colormap
+cmap = ToolBox.(['cmap' name]);
+textOptions = {"FontWeight", "bold", "FontSize", 12, "Color", "white", "BackgroundColor", "black"};
+
+% Plot cross-section widths
+parfor cIdx = 1:numCircles
+
+    % Create RGB image with mask overlay
+    image_RGB = setcmap(M0_ff_img, maskRadius(:, :, cIdx), cmap) + M0_ff_img .* inv_maskRadius(:, :, cIdx);
+
+    % Create all figures at once
+    fig1 = figure("Visible", "off");
+    imshow(image_RGB);
+    fig2 = figure("Visible", "off");
+    imshow(image_RGB);
+    fig3 = figure("Visible", "off");
+    imshow(image_RGB);
+    fig4 = figure("Visible", "off");
+    imshow(image_RGB);
+
+    for bIdx = 1:numBranches
+
+        if ~isempty(A_cell{cIdx, bIdx}) && ~isnan(A_cell{cIdx, bIdx})
+
+            % Add labels for cross-section widths
+            x_l = locsLabel{cIdx, bIdx}(1);
+            y_l = locsLabel{cIdx, bIdx}(2);
+
+            c_x = (x_l - x_c) / sqrt((x_l - x_c) ^ 2 + (y_l - y_c) ^ 2);
+            c_y = (y_l - y_c) / sqrt((x_l - x_c) ^ 2 + (y_l - y_c) ^ 2);
+
+            new_x = x_l + c_x * numX / 20 - 15;
+            new_y = y_l + c_y * numY / 20 - 15;
+
+            % Width visualization
+            figure(fig1);
+            crossSectionWidth = 2 * sqrt(squeeze(A_cell{cIdx, bIdx}) / pi) * 1000;
+            text(new_x, new_y, sprintf("%d µm", round(crossSectionWidth, 0)), textOptions{:});
+
+            % Numerotation visualization
+            figure(fig2);
+            text(new_x, new_y, sprintf("%s%d", initial, bIdx), textOptions{:});
+
+            % BVR visualization (if data exists)
+            if ~isempty(Q_cell{cIdx, bIdx})
+                figure(fig3);
+                Q = Q_cell{cIdx, bIdx};
+                text(new_x, new_y, sprintf('%.1f', mean(Q, 2)), textOptions{:});
+            end
+
+            % Velocity visualization (if data exists)
+            if ~isempty(v_cell{cIdx, bIdx})
+                figure(fig4);
+                v = v_cell{cIdx, bIdx};
+                text(new_x, new_y, sprintf('%.1f', mean(v, 2)), textOptions{:});
+            end
+
         end
 
     end
 
-    % Add title and format plot
-    set(gca, 'FontSize', 12);
-
     % Capture and resize frame for video
+    figure(fig1);
     capturedFrame = frame2im(getframe(gca));
     resizedFrame = imresize(capturedFrame, [465, 465]);
     vesselD_video(:, :, :, cIdx) = rescale(resizedFrame);
@@ -68,20 +115,9 @@ for cIdx = 1:numCircles
         sprintf("%s_circle_%d_crossSectionWidth_%s.png", main_folder, cIdx, name)));
     exportgraphics(gca, fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages', 'widths', ...
         sprintf("%s_circle_%d_crossSectionWidth_%s.eps", main_folder, cIdx, name)));
-end
-
-% Plot vessel numeration
-numVesselMax = size(area, 2);
-NumVessel = (1:numVesselMax);
-Initial = name(1);
-figure(312)
-
-parfor cIdx = 1:numCircles
-    etiquettes_frame_values = append(sprintf("%s", Initial), string(NumVessel(1:find(area(cIdx, :), 1, 'last')))); % Last non-zero cross-section area
-    graphMaskTags(312, M0_ff_img, squeeze(mask(:, :, cIdx)), locs{cIdx}, etiquettes_frame_values, ...
-        x_barycenter, y_barycenter, Color = name);
 
     % Capture and resize frame for video
+    figure(fig2);
     capturedFrame = frame2im(getframe(gca));
     resizedFrame = imresize(capturedFrame, [465, 465]);
     vesselNum_video(:, :, :, cIdx) = rescale(resizedFrame);
@@ -91,24 +127,9 @@ parfor cIdx = 1:numCircles
         sprintf("%s_circle_%d_Numerotation%sImage.png", main_folder, cIdx, name)));
     exportgraphics(gca, fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages', 'num', ...
         sprintf("%s_circle_%d_Numerotation%sImage.eps", main_folder, cIdx, name)));
-end
-
-% Plot mean blood volume rate (Q)
-figure(312)
-
-parfor cIdx = 1:numCircles
-    Q = Q_cell{cIdx};
-
-    if ~isempty(Q)
-        etiquettes_frame_values = round(mean(Q, 2), 1);
-    else
-        etiquettes_frame_values = zeros(1, 0); % Handle empty Q case
-    end
-
-    graphMaskTags(312, M0_ff_img, squeeze(mask(:, :, cIdx)), locs{cIdx}, etiquettes_frame_values, ...
-        x_barycenter, y_barycenter, Color = name);
 
     % Capture and resize frame for video
+    figure(fig3);
     capturedFrame = frame2im(getframe(gca));
     resizedFrame = imresize(capturedFrame, [465, 465]);
     Q_video(:, :, :, cIdx) = rescale(resizedFrame);
@@ -118,24 +139,9 @@ parfor cIdx = 1:numCircles
         sprintf("%s_circle_%d_BVR_%s.png", main_folder, cIdx, name)));
     exportgraphics(gca, fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages', 'bvr', ...
         sprintf("%s_circle_%d_BVR_%s.eps", main_folder, cIdx, name)));
-end
-
-% Plot maximum velocity
-figure(312)
-
-parfor cIdx = 1:numCircles
-    v = v_cell{cIdx};
-
-    if ~isempty(v)
-        etiquettes_frame_values = round(mean(v, 2), 1);
-    else
-        etiquettes_frame_values = zeros(1, 0); % Handle empty velocity case
-    end
-
-    graphMaskTags(312, M0_ff_img, squeeze(mask(:, :, cIdx)), locs{cIdx}, etiquettes_frame_values, ...
-        x_barycenter, y_barycenter, Color = name);
 
     % Capture and resize frame for video
+    figure(fig4);
     capturedFrame = frame2im(getframe(gca));
     resizedFrame = imresize(capturedFrame, [465, 465]);
     velocity_video(:, :, :, cIdx) = rescale(resizedFrame);
@@ -149,11 +155,20 @@ end
 
 % Create and save table of vessel widths
 widthtable = table;
-widthtable.Label = (1:numVesselMax)';
+widthtable.Label = (1:numBranches)';
 
 for cIdx = 1:numCircles
-    crossSectionWidth = 2 * sqrt(squeeze(area(cIdx, :)) / pi) * 1000;
-    widthtable.(sprintf("circle_%d", cIdx)) = crossSectionWidth';
+    crossSectionWidth = zeros(numBranches, 1);
+
+    for bIdx = 1:numBranches
+
+        if ~isempty(A_cell{cIdx, bIdx})
+            crossSectionWidth(bIdx) = 2 * sqrt(squeeze(A_cell{cIdx, bIdx}) / pi) * 1000;
+        end
+
+    end
+
+    widthtable.(sprintf("circle_%d", cIdx)) = crossSectionWidth;
 end
 
 writetable(widthtable, fullfile(path_txt, strcat(main_folder, '_Vessels_Widths_Table.txt')));
@@ -165,7 +180,5 @@ if exportVideos
     writeGifOnDisc(Q_video, sprintf('BVR_%s', name), 0.15, 10);
     writeGifOnDisc(velocity_video, sprintf('velocity_%s', name), 0.15, 10);
 end
-
-close(312);
 
 end

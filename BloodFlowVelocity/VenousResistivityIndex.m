@@ -1,6 +1,7 @@
 function [] = VenousResistivityIndex(t, v_video, mask, sysIdxList, name, folder)
 
 ToolBox = getGlobalToolBox;
+numInterp = 60;
 % Color Maps
 
 if size(v_video, 3) ~= 1
@@ -13,19 +14,25 @@ else
     dsignal = mask;
 end
 
-Ninterp = 1000;
-interpSignal_ = interpSignal(signal, sysIdxList, Ninterp);
+try
+    signal = double(wdenoise(signal, 4));
+catch
+    signal = double(signal);
+end
 
-vMax = max(interpSignal_);
-vMin = min(interpSignal_);
-vMax_frames_indxs = abs(interpSignal_ - vMax) / abs(vMax) < 0.10; % use value close to the min and max for calculating pulsatility
-vMin_frames_indxs = abs(interpSignal_ - vMin) / abs(vMin) < 0.10;
+[interp_signal, avgLength, interp_signal_ste] = interpSignal(signal, systolesIndexes, numInterp, dsignal);
+interp_t = linspace(0, avgLength, numInterp);
 
-vMax_mean = mean(interpSignal_(vMax_frames_indxs));
-vMin_mean = mean(interpSignal_(vMin_frames_indxs));
+vMax = max(interp_signal);
+vMin = min(interp_signal);
+vMax_frames_indxs = abs(interp_signal - vMax) / abs(vMax) < 0.10; % use value close to the min and max for calculating pulsatility
+vMin_frames_indxs = abs(interp_signal - vMin) / abs(vMin) < 0.10;
 
-vMax_std = std(interpSignal_(vMax_frames_indxs));
-vMin_std = std(interpSignal_(vMin_frames_indxs));
+vMax_mean = mean(interp_signal(vMax_frames_indxs));
+vMin_mean = mean(interp_signal(vMin_frames_indxs));
+
+vMax_std = std(interp_signal(vMax_frames_indxs));
+vMin_std = std(interp_signal(vMin_frames_indxs));
 
 v_mean = mean(signal);
 

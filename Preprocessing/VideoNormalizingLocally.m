@@ -1,10 +1,10 @@
 function obj = VideoNormalizingLocally(obj)
 
-params = Parameters_json(obj.directory,obj.param_name);
+params = Parameters_json(obj.directory, obj.param_name);
 
-[N, M, F] = size(obj.M0_data_video);
+[numX, numY, numFrames] = size(obj.M0_data_video);
 alpha = params.json.Preprocess.Normalizing.AlphaConvolveNorm;
-D = (M + N) / 2;
+D = (numY + numX) / 2;
 
 if alpha == 1
     % behaves as if conv_size = alpha*(2*D-1) just faster;
@@ -14,17 +14,17 @@ elseif alpha == 0
     M0_data_convoluated = double(obj.M0_data_video);
 else
     conv_size = round(alpha * (2 * D - 1));
-    M0_data_convoluated = zeros([N, M, F]);
+    M0_data_convoluated = zeros([numX, numY, numFrames]);
     conv_kern = ones(conv_size);
 
-    parfor i = 1:F
+    parfor i = 1:numFrames
         M0_data_convoluated(:, :, i) = conv2(double(obj.M0_data_video(:, :, i)), conv_kern, 'same');
     end
 
     S = sum(obj.M0_data_video, [1, 2]);
     S2 = sum(M0_data_convoluated, [1, 2]);
 
-    imwrite(rescale(mean(M0_data_convoluated,3)),fullfile(obj.directory, 'eyeflow', sprintf("%s_alpha=%s_%s", obj.filenames, num2str(alpha), 'M0_Convolution_Norm.png')), 'png');
+    imwrite(rescale(mean(M0_data_convoluated, 3)), fullfile(obj.directory, 'eyeflow', sprintf("%s_alpha=%s_%s", obj.filenames, num2str(alpha), 'M0_Convolution_Norm.png')), 'png');
 
     M0_data_convoluated = M0_data_convoluated .* S ./ S2; % normalizing to get the average with alpha = 0;
 end

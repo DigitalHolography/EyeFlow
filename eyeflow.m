@@ -123,7 +123,8 @@ methods (Access = public)
 
         % Initialize checkbox states
         app.CheckboxValueChanged();
-        set(0,'defaultfigurecolor',[1 1 1]);
+        set(groot, 'defaultFigureColor', 'w');
+        set(groot, 'defaultAxesFontSize', 14);
     end
 
     function LoadFromTxt(app)
@@ -440,6 +441,7 @@ methods (Access = public)
             else
                 last_dir = [];
             end
+
             selected_dir = uigetdir(last_dir);
             % List of Subfolders within the measurement folder
             tmp_dir = dir(selected_dir);
@@ -469,6 +471,7 @@ methods (Access = public)
             else
                 last_dir = [];
             end
+
             selected_dir = uigetdir(last_dir);
 
             if (selected_dir)

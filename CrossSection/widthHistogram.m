@@ -2,49 +2,69 @@ function widthHistogram(width, width_std, area, name)
 
 ToolBox = getGlobalToolBox;
 
+[numCircles, numBranches] = size(area);
+area_mat = nan(numCircles, numBranches);
+
+for cIdx = 1:numCircles
+
+    for bIdx = 1:numBranches
+
+        if ~isempty(area{cIdx, bIdx})
+            area_mat(cIdx, bIdx) = area{cIdx, bIdx};
+        end
+
+    end
+
+end
+
+area_mat = reshape(area_mat, 1, []);
+
 figure("Visible", "off")
-histogram(2 * sqrt(area(area ~= 0) / pi) * 1000, 50, FaceColor = 'k');
+histogram(2 * sqrt(area_mat / pi) * 1000, 50, FaceColor = 'k', Normalization = 'probability');
 hold on
 
-medianWidth = median(2 * sqrt(area(area ~= 0) / pi) * 1000, "omitnan");
-avgWidth = mean(2 * sqrt(area(area ~= 0) / pi) * 1000, "omitnan");
-stdWidth = std(2 * sqrt(area(area ~= 0) / pi) * 1000, "omitnan");
+medianWidth = median(2 * sqrt(area_mat / pi) * 1000, "omitnan");
+avgWidth = mean(2 * sqrt(area_mat / pi) * 1000, "omitnan");
+stdWidth = std(2 * sqrt(area_mat / pi) * 1000, "omitnan");
 xline(medianWidth, '--', sprintf('%.0f µm', medianWidth), 'Linewidth', 2)
 set(gca, 'Linewidth', 2)
+pbaspect([1.618 1 1]);
+xlabel("lumen cross section width (µm)")
+ylabel("probability")
 
 aa = axis;
 aa(4) = aa(4) * 1.14;
 axis(aa);
-title(sprintf('Histogram of %s sections width (µm)', name));
 
 exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s", ToolBox.main_foldername, sprintf('histogram_of_%s_section_width.png', name))))
 
 %csv output of the widths
 T = table();
-numR = length(width); % number of radii
 
-for rIdx = 1:numR
-    numSection = length(width{rIdx});
+for cIdx = 1:numCircles
 
-    for sectionIdx = 1:numSection
-        T.(sprintf('Width_R%d_S%d_%s', rIdx, sectionIdx, name)) = squeeze(squeeze(width{rIdx}(sectionIdx)));
-        T.(sprintf('STD_Width_R%d_S%d_%s', rIdx, sectionIdx, name)) = squeeze(squeeze(width_std{rIdx}(sectionIdx)));
+    for bIdx = 1:numBranches
+
+        if ~isempty(width{cIdx, bIdx})
+            T.(sprintf('Width_R%d_S%d_%s', cIdx, bIdx, name)) = width{cIdx, bIdx};
+            T.(sprintf('STD_Width_R%d_S%d_%s', cIdx, bIdx, name)) = width_std{cIdx, bIdx};
+        end
+
     end
 
 end
 
 writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'WidthTable', '_', name, '.csv')));
 
-
 % New
 if contains(name, 'Artery')
-    ToolBox.Outputs.add('ArterialDiameterAverage',avgWidth,'µm');
-    ToolBox.Outputs.add('ArterialDiameterMedian',medianWidth,'µm');
-    ToolBox.Outputs.add('ArterialDiameterSpread',stdWidth,'µm');
+    ToolBox.Outputs.add('ArterialDiameterAverage', avgWidth, 'µm');
+    ToolBox.Outputs.add('ArterialDiameterMedian', medianWidth, 'µm');
+    ToolBox.Outputs.add('ArterialDiameterSpread', stdWidth, 'µm');
 else
-    ToolBox.Outputs.add('VenousDiameterAverage',avgWidth,'µm');
-    ToolBox.Outputs.add('VenousDiameterMedian',medianWidth,'µm');
-    ToolBox.Outputs.add('VenousDiameterSpread',stdWidth,'µm');
+    ToolBox.Outputs.add('VenousDiameterAverage', avgWidth, 'µm');
+    ToolBox.Outputs.add('VenousDiameterMedian', medianWidth, 'µm');
+    ToolBox.Outputs.add('VenousDiameterSpread', stdWidth, 'µm');
 end
 
 end

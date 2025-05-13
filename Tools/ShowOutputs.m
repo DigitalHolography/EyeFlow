@@ -50,6 +50,30 @@ for path_idx = 1:N
         Stroke_total_volume{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_strokeAndTotalVolume_Artery.png']);
     end
 
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_2_Vessels_velocity_graph.png']))
+        Vessels_velocity{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_2_Vessels_velocity_graph.png']);
+    end
+
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_RI_velocityVein.png']))
+        VRI_velocity_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_RI_velocityVein.png']);
+    end
+
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_A_sections.png']))
+        A_sections{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_A_sections.png']);
+    end
+
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_diasys_Artery.png']))
+        diasys_Artery{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_diasys_Artery.png']);
+    end
+
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_diasys_Vein.png']))
+        diasys_Vein{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_diasys_Vein.png']);
+    end
+
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_ArterialWaveformAnalysis_v_artery.png']))
+        ArterialWaveformAnalysis_artery{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_ArterialWaveformAnalysis_v_artery.png']);
+    end
+
 end
 
 [l, L] = bestMontageLayout(N);
@@ -60,9 +84,15 @@ exportgraphics(gca, fullfile(output_dir, 'segmentations.png'));
 figure(321)
 montage(Arteries_fRMS_paths, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, 'ArteriesfRMS.png'));
+figure(3211)
+montage(Vessels_velocity, Size = [l L]);
+exportgraphics(gca, fullfile(output_dir, 'Vessels_velocity.png'));
 figure(322)
 montage(ARI_velocity_paths, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, 'ARIvelocity.png'));
+figure(3221)
+montage(VRI_velocity_paths, Size = [l L]);
+exportgraphics(gca, fullfile(output_dir, 'VRIvelocity.png'));
 figure(323)
 montage(bvr_paths, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, 'bloodVolumeRate.png'));
@@ -72,5 +102,17 @@ exportgraphics(gca, fullfile(output_dir, 'histogramVelocityArteries.png'));
 figure(327)
 montage(Stroke_total_volume, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, '_strokeAndTotalVolume.png'));
+figure(328)
+montage(A_sections, Size = [l L]);
+exportgraphics(gca, fullfile(output_dir, 'A_sections.png'));
+figure(329)
+montage(diasys_Artery, Size = [l L]);
+exportgraphics(gca, fullfile(output_dir, 'diasys_Artery.png'));
+figure(330)
+montage(diasys_Vein, Size = [l L]);
+exportgraphics(gca, fullfile(output_dir, 'diasys_Vein.png'));
+figure(331)
+montage(ArterialWaveformAnalysis_artery, Size = [l L]);
+exportgraphics(gca, fullfile(output_dir, 'ArterialWaveformAnalysis_artery.png'));
 
 end

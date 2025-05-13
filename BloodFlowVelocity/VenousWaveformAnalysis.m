@@ -1,4 +1,4 @@
-function VenousWaveformAnalysis(signal, signal_ste, t, sysIdxList, numInterp, name, ToolBox, cshiftn)
+function VenousWaveformAnalysis(signal, t, sysIdxList, numInterp, name, ToolBox, cshiftn)
 %VenousWaveformAnalysis Output figures and signal from venous analysis
 
 if strcmp(name, "bvr")
@@ -19,7 +19,7 @@ catch
     signal = double(signal);
 end
 
-[one_cycle_signal, avgLength, ~] = interpSignal(signal, sysIdxList, numInterp, signal_ste);
+[one_cycle_signal, avgLength] = interpSignal(signal, sysIdxList, numInterp);
 
 % we can use the cshiftn calculated for the veins to have a simultaneous interpolated waveforms plot
 if nargin < 8
@@ -69,11 +69,13 @@ yline(descent_value, 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 
 xline(pulseTime(index_descent), 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
 
 scatter(pulseTime(locs_peaks), peaks, 'r')
+
 if ~isempty(locs_peaks)
     T_peak = pulseTime(locs_peaks(1));
 else
     T_peak = NaN;
 end
+
 T_ascent = pulseTime(index_ascent);
 T_descent = pulseTime(index_descent);
 

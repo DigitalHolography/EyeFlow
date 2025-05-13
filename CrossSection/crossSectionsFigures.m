@@ -1,4 +1,4 @@
-function crossSectionsFigures(Q_results, mask, name, M0_ff_video, xy_barycenter, systolesIndexes, sysIdx, diasIdx)
+function crossSectionsFigures(Q_results, name, M0_ff_video, xy_barycenter, systolesIndexes, sysIdx, diasIdx)
 
 % 0. Initialise Variables
 
@@ -9,21 +9,25 @@ params = ToolBox.getParams;
 initial = name(1);
 M0_ff_video = rescale(M0_ff_video);
 M0_ff_img = rescale(mean(M0_ff_video, 3));
-[~, ~, numFrames] = size(M0_ff_video);
+[numX, numY, numFrames] = size(M0_ff_video);
+x_c = xy_barycenter(1);
+y_c = xy_barycenter(2);
+
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 
-numSections = Q_results.numSections;
-locs = Q_results.locs;
 v_cell = Q_results.v_cell;
 v_profiles_cell = Q_results.v_profiles_cell;
 dv_profiles_cell = Q_results.dv_profiles_cell;
 D_cell = Q_results.D_cell;
 dD_cell = Q_results.dD_cell;
-mask_mat = Q_results.mask_mat;
-area_mat = Q_results.area_mat;
+locsLabel = Q_results.locsLabel;
+maskLabel = Q_results.maskLabel;
+A_cell = Q_results.A_cell;
 Q_cell = Q_results.Q_cell;
-Q_mat = Q_results.Q_mat;
-dQ_mat = Q_results.dQ_mat;
+radiusQ = Q_results.radiusQ;
+radiusQSE = Q_results.radiusQSE;
+branchQ = Q_results.branchQ;
+labeledVessels = Q_results.labeledVessels .* Q_results.labeledVessels ~= 0;
 
 % 1. Sections Image
 tic
@@ -37,11 +41,11 @@ else
 end
 
 if params.json.CrossSectionsFigures.sectionImage
-    sectionImage(M0_ff_img, mask_mat, initial)
+    sectionImage(M0_ff_img, maskLabel, initial)
 end
 
 if params.json.CrossSectionsFigures.circleImages
-    
+
     if ~isfolder(fullfile(ToolBox.path_png, 'crossSectionsAnalysis', 'sectionsImages'))
         mkdir(fullfile(path_png, 'crossSectionsAnalysis'), 'sectionsImages')
         mkdir(fullfile(path_eps, 'crossSectionsAnalysis'), 'sectionsImages')
@@ -54,12 +58,12 @@ if params.json.CrossSectionsFigures.circleImages
         mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
         mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
     end
-    
-    circleImages(M0_ff_img, xy_barycenter, area_mat, Q_cell, v_cell, mask_mat, locs, name)
+
+    circleImages(M0_ff_img, xy_barycenter, A_cell, Q_cell, v_cell, maskLabel, locsLabel, name)
 end
 
 if params.json.CrossSectionsFigures.widthHistogram
-    widthHistogram(D_cell, dD_cell, area_mat, name);
+    widthHistogram(D_cell, dD_cell, A_cell, name);
 end
 
 fprintf("    1. Sections Images Generation (%s) took %ds\n", name, round(toc))
@@ -67,7 +71,8 @@ fprintf("    1. Sections Images Generation (%s) took %ds\n", name, round(toc))
 % 2. Blood Volume Rate Figures
 tic
 
-[Q_t, dQ_t] = plotRadius(Q_mat, dQ_mat, t, index_start, index_end, name);
+[Q_t, dQ_t] = plotRadius(radiusQ, radiusQSE, t, index_start, index_end, name);
+
 if contains(name, 'Artery')
     ToolBox.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
 else
@@ -75,14 +80,19 @@ else
 end
 
 if params.json.CrossSectionsFigures.BloodFlowProfiles
-    interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, numSections, name)
+    interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, name)
 end
 
 % Call for arterial analysis
-graphCombined(M0_ff_video, imdilate(mask, strel('disk', params.json.PulseAnalysis.LocalBackgroundWidth)), ...
+r1 = params.json.SizeOfField.SmallRadiusRatio;
+r2 = params.json.SizeOfField.BigRadiusRatio;
+maskSection = diskMask(numX, numY, r1, r2, center = [x_c / numX y_c / numY]);
+s = regionprops(labeledVessels & maskSection, 'centroid');
+centroids = cat(1, s.Centroid);
+graphCombined(M0_ff_video, labeledVessels .* maskSection, ...
     Q_t, dQ_t, xy_barycenter, sprintf('%s_vr', name), ...
-    'etiquettes_locs', [], ...
-    'etiquettes_values', [], ...
+    'etiquettes_locs', centroids, ...
+    'etiquettes_values', branchQ, ...
     'ylabl', 'Volume Rate (µL/min)', ...
     'xlabl', 'Time (s)', ...
     'fig_title', 'Blood Volume Rate', ...
@@ -101,7 +111,7 @@ if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesInd
 end
 
 if params.json.CrossSectionsFigures.ARIBVR
-    ArterialResistivityIndex(t, Q_t, dQ_t, sysIdx, diasIdx, sprintf('BVR%s', name), 'crossSectionsAnalysis');
+    ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), 'crossSectionsAnalysis', dQ_t);
 end
 
 fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))

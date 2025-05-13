@@ -4,38 +4,40 @@ ToolBox = getGlobalToolBox;
 
 subImgSize = [];
 i = 1;
+n = 1;
 
 while isempty(subImgSize)
 
-    if ~isempty(subImg_cell{1, i})
-        subImgSize = size(subImg_cell{1, i}{1, 1});
+    if ~isempty(subImg_cell{i, n})
+        subImgSize = size(subImg_cell{i, n});
     end
 
     i = i + 1;
+    n = n + 1;
 end
 
-numCircles = size(subImg_cell, 2);
 figure("Visible", "off")
-numSectionMax = max(numSections);
+numCircles = size(subImg_cell, 1);
+numBranches = size(subImg_cell, 2);
 % fill with zero images the zeros parts
 
-sub_images_mat = zeros(subImgSize(1), subImgSize(2), numSectionMax * numCircles);
+sub_images_mat = zeros((subImgSize(1) * numBranches) + 1, (subImgSize(2) * numCircles) + 1);
 
 for circleIdx = 1:numCircles
 
-    for sectionIdx = 1:numSectionMax
+    for branchIdx = 1:numBranches
 
-        if size(subImg_cell{1, circleIdx}, 2) < numSectionMax
-            subImg_cell{1, circleIdx}(end + 1) = {zeros(subImgSize, 'single')};
+        if ~isempty(subImg_cell{circleIdx, branchIdx})
+            sub_images_mat( ...
+                1 + (branchIdx - 1) * subImgSize(1):branchIdx * subImgSize(1), ...
+                1 + (circleIdx - 1) * subImgSize(2):circleIdx * subImgSize(2)) = subImg_cell{circleIdx, branchIdx};
         end
-
-        sub_images_mat(:, :, ((sectionIdx - 1) * numCircles) + circleIdx) = subImg_cell{1, circleIdx}{1, sectionIdx};
 
     end
 
 end
 
-montage(sub_images_mat, "Size", [max(1, numSectionMax), max(1, numCircles)]);
-exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s", ToolBox.main_foldername, sprintf('%s_section_montage.png', name))))
+sub_images_mat(isnan(sub_images_mat)) = 0;
+imwrite(sub_images_mat, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s", ToolBox.main_foldername, sprintf('%s_section_montage.png', name))))
 
 end

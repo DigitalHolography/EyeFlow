@@ -1,18 +1,20 @@
 function obj = VideoRemoveOutliers(obj)
-%% Outlier Cleaning
+% Outlier Cleaning
 
 params = Parameters_json(obj.directory, obj.param_name);
-window_size = params.json.Preprocess.OutlierAnalysisWindow;
 
 if ~params.json.Preprocess.RemoveOutliersFlag
     return
 end
 
 % Compute the average profile over time (mean intensity per frame)
-frame_means = squeeze(mean(obj.f_RMS_video, [1 2])); % 1D array: numFrames x 1
+[numX, numY, ~] = size(obj.f_RMS_video);
+diaphragmRadius = params.json.Mask.DiaphragmRadius;
+maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
+frame_means = squeeze(sum(obj.f_RMS_video .* maskDiaphragm, [1, 2]) / sum(maskDiaphragm, 'all')); % 1D array: numFrames x 1
 
 % Detect outlier frames
-outlier_frames_mask = isoutlier(frame_means, 'movmedian', window_size);
+outlier_frames_mask = isoutlier(frame_means);
 
 % If no outliers detected, return early
 if ~any(outlier_frames_mask)

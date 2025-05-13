@@ -41,24 +41,8 @@ cVein = [18 23 255] / 255;
 
 % 1) Local BKG Artery and Veins %~1min
 
-% Skeletonize and label the individual branches
-skel = bwskel(maskArtery);
-skel = skel & maskSection; % takes out arteries near the center
-[label, n] = bwlabel(skel & ~imdilate(bwmorph(skel, 'branchpoints'), strel('disk', 2))); % labeling the skeleton with branch points off to get individual branches
-
-% Get the label mask back to initial size
-masks = zeros(numX, numY, n);
-
-for i = 1:n % for each individual branch
-    sk_mask = label == i;
-    label(bwareafilt(imdilate(sk_mask, strel('disk', floor(numX * r1 / 10))) & maskArtery, 1)) = i;
-    masks(:, :, i) = label == i;
-end
-
 tic
 
-diaphragmRadius = params.json.Mask.DiaphragmRadius;
-maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 f_bkg = zeros(numX, numY, numFrames, 'single');
 
 if veinsAnalysis
@@ -73,10 +57,9 @@ bkg_scaler = params.json.PulseAnalysis.bkgScaler;
 
 if params.json.Mask.AllNonVesselsAsBackground
     SE = strel('disk', params.json.PulseAnalysis.LocalBackgroundWidth);
-    maskNeighbors = imerode(maskNeighbors, SE);
 
     parfor frameIdx = 1:numFrames
-        f_bkg(:, :, frameIdx) = single(regionfill(f_video(:, :, frameIdx), ~maskNeighbors & maskDiaphragm));
+        f_bkg(:, :, frameIdx) = single(regionfill(f_video(:, :, frameIdx), imdilate(maskVessel, SE)));
     end
 
 else
@@ -86,15 +69,6 @@ else
     end
 
 end
-
-frequencies_artery = zeros(numFrames, n);
-
-for i = 1:n
-    frequencies_artery(:, i) = scalingFactor * squeeze(sum((f_video - f_bkg) .* masks(:, :, i), [1, 2]) / nnz(masks(:, :, i)));
-    % frequencies_artery(:, i) = wdenoise(frequencies_artery(:, i), 4);
-end
-
-imwrite(rescale(corrcoef(frequencies_artery)), fullfile(ToolBox.path_png, folder, sprintf("%s_corr_coeff_map.png", ToolBox.main_foldername)))
 
 f_artery = squeeze(sum(f_video .* maskArterySection, [1, 2]) / nnz(maskArterySection));
 f_artery_bkg = squeeze(sum(f_bkg .* maskArterySection, [1, 2]) / nnz(maskArterySection));
@@ -150,75 +124,23 @@ else % DIFFERENCE LAST
     df = f_video - f_bkg;
 end
 
-% Outlier cleaning
-
-df_cleaned = df; % Initialize with the original video
-window_size = params.json.Preprocess.OutlierAnalysisWindow; % Compute the average profile over time (mean intensity per frame)
-frame_means = squeeze(mean(df, [1 2])); % 1D array: numFrames x 1
-outlier_frames_mask = isoutlier(frame_means, 'movmedian', window_size);
-
-% Find the indices of outlier frames
-outlier_indices = find(outlier_frames_mask)';
-
-% For each outlier frame, interpolate linearly using neighboring frames
-for idx = outlier_indices
-    % Find the previous and next non-outlier frames
-    prev_frame = find(~outlier_frames_mask(1:idx - 1), 1, 'last'); % Last non-outlier before idx
-    next_frame = find(~outlier_frames_mask(idx + 1:end), 1, 'first') + idx; % First non-outlier after idx
-
-    % Handle edge cases (e.g., first or last frame is an outlier)
-    if isempty(prev_frame)
-        prev_frame = next_frame; % If no previous frame, use the next frame
-    end
-
-    if isempty(next_frame)
-        next_frame = prev_frame; % If no next frame, use the previous frame
-    end
-
-    if prev_frame == next_frame
-        df_cleaned(:, :, idx) = df_cleaned(:, :, prev_frame);
-    else
-        % Linearly interpolate the outlier frame
-        alpha = (idx - prev_frame) / (next_frame - prev_frame); % Interpolation weight
-        df_cleaned(:, :, idx) = (1 - alpha) * df(:, :, prev_frame) + alpha * df(:, :, next_frame);
-    end
-
-end
-
 % Delta f plots
 df_artery = df .* maskArterySection;
 df_artery(~maskArterySection) = NaN;
 df_artery_signal = squeeze(sum(df_artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
-df_artery_ste = squeeze(std(df_artery, [], [1, 2], 'omitnan'))';
-
-% Create figure for delta f in arteries
-fig1 = figure("Visible", "off");
-graphSignalStd(fig1, df_artery_signal, df_artery_ste, numFrames, ...
-    'frequency (kHz)', strXlabel, ...
-    'Average frequency in Arteries', 'kHz', 'ToolBox', ToolBox);
-exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_f_artery.png", ToolBox.main_foldername)))
-exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_f_artery.eps", ToolBox.main_foldername)))
 
 if veinsAnalysis
     df_vein = df .* maskVeinSection;
     df_vein(~maskVeinSection) = NaN;
     df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
-    df_vein_std = squeeze(std(df_vein, [], [1, 2], 'omitnan'))';
-
-    fig2 = figure("Visible", "off");
-    graphSignalStd(fig2, df_vein_signal, df_vein_std, numFrames, ...
-        'frequency (kHz)', strXlabel, ...
-        'Average frequency in Veins', 'kHz', 'ToolBox', ToolBox);
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_f_vein.png", ToolBox.main_foldername)))
-    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_f_vein.eps", ToolBox.main_foldername)))
 
     % Combined plot for arteries and veins
-    graphSignal('2_Vessels_frequency', folder, ...
+    graphSignal('vessels_frequency', folder, ...
         t, df_artery_signal, '-', cArtery, ...
         t, df_vein_signal, '-', cVein, ...
         Title = 'Average frequency in Arteries and Veins', xlabel = strXlabel, ylabel = 'frequency (kHz)');
 else
-    graphSignal('2_Arteries_frequency', folder, ...
+    graphSignal('arteries_frequency', folder, ...
         t, df_artery_signal, '-', cArtery, ...
         Title = 'Average frequency in Arteries', xlabel = strXlabel, ylabel = 'frequency (kHz)');
 end
@@ -230,48 +152,31 @@ v_RMS_video = scalingFactor * df;
 v_artery = v_RMS_video .* maskArterySection;
 v_artery(~maskArterySection) = NaN;
 v_artery_signal = squeeze(sum(v_artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
-v_artery_ste = squeeze(std(v_artery, [], [1, 2], 'omitnan'))';
 
 % Create figure for velocity in arteries
-fig3 = figure("Visible", "off");
-graphSignalStd(fig3, v_artery_signal, v_artery_ste, numFrames, ...
-    'Velocity (mm/s)', strXlabel, ...
-    'Average velocity in Arteries', 'mm/s', 'ToolBox', ToolBox);
-ToolBox.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's', v_artery_ste);
-exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_v_artery.png", ToolBox.main_foldername)))
-exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_v_artery.eps", ToolBox.main_foldername)))
 
 if veinsAnalysis
     v_vein = v_RMS_video .* maskVeinSection;
     v_vein(~maskVeinSection) = NaN;
     v_vein_signal = squeeze(sum(v_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
-    v_vein_ste = squeeze(std(v_vein, [], [1, 2], 'omitnan'))';
-
-    fig4 = figure("Visible", "off");
-    graphSignalStd(fig4, v_vein_signal, v_vein_ste, numFrames, ...
-        'Velocity (mm/s)', strXlabel, ...
-        'Average velocity in Veins', 'mm/s', 'ToolBox', ToolBox);
-    ToolBox.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's', v_vein_ste);
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_v_vein.png", ToolBox.main_foldername')))
-    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_v_vein.eps", ToolBox.main_foldername)))
 
     % Combined plot for arteries and veins
-    graphSignal('2_Vessels_velocity', folder, ...
+    graphSignal('vessels_velocity', folder, ...
         t, v_artery_signal, '-', cArtery, ...
         t, v_vein_signal, '-', cVein, ...
-        Title = 'Average velocity in Arteries and Veins', xlabel = strXlabel, ylabel = 'Velocity (mm/s)');
+        Title = 'average velocity in arteries and veins', xlabel = strXlabel, ylabel = 'Velocity (mm/s)');
 else
-    graphSignal('2_Arteries_velocity', folder, ...
+    graphSignal('arteries_velocity', folder, ...
         t, v_artery_signal, '-', cArtery, ...
-        Title = 'Average velocity in Arteries', xlabel = strXlabel, ylabel = 'Velocity (mm/s)');
+        Title = 'average velocity in arteries', xlabel = strXlabel, ylabel = 'Velocity (mm/s)');
 end
 
 fprintf("    2. Difference calculation took %ds\n", round(toc))
 
 findSystoleTimer = tic;
 
-[sysIdxList, fullPulse, sysMaxList, sysMinList] = find_systole_index(v_RMS_video, maskArtery, true);
-[~, ~, ~, ~, sysIdx, diasIdx] = compute_diasys(v_RMS_video, maskArtery, 'bloodFlowVelocity');
+[sysIdxList, fullPulse, sysMaxList, sysMinList] = find_systole_index(v_RMS_video, maskArterySection, true);
+[~, ~, ~, ~, sysIdx, diasIdx] = compute_diasys(v_RMS_video, maskArterySection, 'bloodFlowVelocity');
 
 % Check if the output vectors are long enough
 if numel(sysIdxList) < 2 || numel(sysMaxList) < 2 || numel(sysMinList) < 2
@@ -336,10 +241,10 @@ end
 
 fprintf("- FindSystoleIndex took: %ds\n", round(toc(findSystoleTimer)));
 
-ArterialResistivityIndex(t, v_RMS_video, maskArtery .* maskSection, sysIdx, diasIdx, 'velocityArtery', folder);
+ArterialResistivityIndex(v_artery_signal, sysIdxList, 'velocityArtery', folder);
 
 if veinsAnalysis
-    VenousResistivityIndex(t, v_RMS_video, maskVein .* maskSection, sysIdxList, 'velocityVein', folder);
+    ArterialResistivityIndex(v_vein_signal, sysIdxList, 'velocityVein', folder);
 end
 
 % 3) Plots of f mean Local Background in vessels and Delta frequency in vessels and their colorbars
@@ -457,10 +362,10 @@ if exportVideos
     writeGifOnDisc(imresize(f_video_rescale, 0.5), "f")
 end
 
-cshiftn = ArterialWaveformAnalysis(v_artery_signal, v_artery_ste, t, sysIdxList, 1000, 'v_artery', ToolBox);
+cshiftn = ArterialWaveformAnalysis(v_artery_signal, t, sysIdxList, 1000, 'v_artery', ToolBox);
 
 if veinsAnalysis
-    VenousWaveformAnalysis(v_vein_signal, v_vein_ste, t, sysIdxList, 1000, 'v_vein', ToolBox)
+    VenousWaveformAnalysis(v_vein_signal, t, sysIdxList, 1000, 'v_vein', ToolBox)
 end
 
 close all
