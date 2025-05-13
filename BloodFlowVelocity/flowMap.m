@@ -38,7 +38,7 @@ v_rescaled = (v_rescaled - v_min) / v_max;
 % Precompute v_mean and v_mean_rescaled
 v_mean = squeeze(mean(v_video, 3));
 v_mean_rescaled = squeeze(mean(v_rescaled, 3));
-v_video_RGB = zeros(numX, numY, 3, numFrames);
+v_video_RGB = zeros(numX, numY, 3, numFrames,'single');
 
 if veinsAnalysis
     % Velocity Images
