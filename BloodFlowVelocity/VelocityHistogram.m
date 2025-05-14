@@ -3,133 +3,99 @@ function histoVideo = VelocityHistogram(v_video, mask, name, n)
 % and passes the figure as a mat
 %
 % Inputs:
-%   v_video     : 3D array of velocities (x,y,frame)
-%   mask        : Logical mask to select velocities
-%   name        : 'Arteries' or 'Veins' for naming/coloring
-%   n           : Resolution of the histogram (default: 256)
+%   v_video     :   video of the velocities
+%   mask        :   a logical mask to locate the velocities
+%   name        :   'Arteries' or 'Veins' to change the name of the figs
+%               and the color maps
+%   n           :   Resolution of the Histrogram
 %
 % Outputs:
-%   histoVideo  : Matrix of the histogram figure
+%   histoVideo  :   Mat of the histogram figure
 
 arguments
-    v_video {mustBeNumeric}
-    mask {mustBeNumericOrLogical}
-    name {mustBeTextScalar, mustBeMember(name, {'Artery', 'Vein'})}
-    n (1, 1) {mustBeInteger, mustBePositive} = 256
+    v_video
+    mask
+    name
+    n = 256
 end
 
 tVelocityVideo = tic;
 
-% Get toolbox parameters
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 exportVideos = params.exportVideos;
 
-% Pre-process data
-v_histo = v_video .* mask;
-validPixels = mask ~= 0;
-v_min = min(v_histo(validPixels));
-v_max = max(v_histo(validPixels));
+[numX, numY, numFrames] = size(v_video);
 
-% Set colormap
+v_histo = v_video .* mask;
+v_min = min(v_histo, [], 'all');
+v_max = max(v_histo, [], 'all');
+
 if strcmp(name, 'Artery')
     cmap = ToolBox.cmapArtery;
-else % vein
+elseif strcmp(name, 'Vein')
     cmap = ToolBox.cmapVein;
-end
-
-% Initialize figure
-fig = figure("Visible", 'off', 'Color', 'w');
-fig.Position(3:4) = [600 275];
-ax = gca;
-
-% Set up axes and appearance
-xAx = [0, size(v_video, 3) * ToolBox.stride / (1000 * ToolBox.fs)];
-yAx = [v_min, v_max];
-set(ax, 'YDir', 'normal', 'PlotBoxAspectRatio', [2.5 1 1]);
-fontsize(ax, 14, "points");
-colormap(ax, cmap);
-ylabel(ax, 'Velocity (mm.s^{-1})');
-xlabel(ax, 'Time (s)');
-title(ax, sprintf("Velocity distribution in %s", name));
-
-% Initialize histogram matrix
-histo = zeros(n, size(v_video, 3));
-edges = linspace(v_min, v_max, n + 1);
-
-% Pre-compute bin indices for all frames
-if exportVideos
-    % For video export: process frame by frame
-    histoVideo = zeros(fig.Position(4), fig.Position(3), 3, size(v_video, 3));
-
-    for frameIdx = 1:size(v_video, 3)
-        frameData = v_histo(:, :, frameIdx);
-        validData = frameData(validPixels(:, :, min(frameIdx, size(validPixels, 3))));
-
-        % Vectorized histogram calculation
-        [counts, ~] = histcounts(validData, edges);
-        histo(:, frameIdx) = counts';
-
-        % Update display
-        imagesc(ax, xAx, yAx, histo);
-        drawnow;
-
-        set(ax, 'YDir', 'normal', 'PlotBoxAspectRatio', [2.5 1 1]);
-        fontsize(ax, 14, "points");
-        colormap(ax, cmap);
-        ylabel(ax, 'Velocity (mm.s^{-1})');
-        xlabel(ax, 'Time (s)');
-        title(ax, sprintf("Velocity distribution in %s", name));
-
-        % Capture frame
-        histoVideo(:, :, :, frameIdx) = frame2im(getframe(fig));
-    end
-
-    writeGifOnDisc(mat2gray(histoVideo), sprintf("histogramVelocity%s", name), "ToolBox", ToolBox);
 else
-    % For single image: process all frames at once
-    for frameIdx = 1:size(v_video, 3)
-        frameData = v_histo(:, :, frameIdx);
-        validData = frameData(validPixels(:, :, min(frameIdx, size(validPixels, 3))));
+    cmap = cmapLAB(256, [0 0 0], 0, [0 1 0], 1/3, [1/2 1 1/2], 2/3, [1 1 1], 1);
+end
 
-        % Vectorized histogram calculation
-        [counts, ~] = histcounts(validData, edges);
-        histo(:, frameIdx) = counts';
+yAx = [v_min v_max];
+
+%% Velocity Histogram
+
+X = linspace(v_min, v_max, n);
+xAx = [0 numFrames * ToolBox.stride / (1000 * ToolBox.fs)];
+histo = zeros(n, numFrames);
+D = (v_max - v_min) / (n);
+edges = linspace(v_min-D/2,v_max+D/2,n+1); % edges for the histcount bins so n+1 numbers
+
+
+fDistrib = figure("Visible", 'on', 'Color', 'w');
+fDistrib.Position(3:4) = [600 275];
+
+h_imagesc = imagesc(xAx, yAx, histo(:, :));
+set(gca, 'YDir', 'normal')
+ylabel('Velocity (mm.s^{-1})')
+xlabel('Time (s)')
+title(sprintf("velocity distribution in %s", name))
+set(gca, 'PlotBoxAspectRatio', [2.5 1 1])
+colormap(cmap)
+[numX_fig, numY_fig] = deal(fDistrib.Position(4),fDistrib.Position(3));
+
+
+if exportVideos
+    histoVideo = zeros(numX_fig, numY_fig, 3, numFrames);
+    gifWriter = GifWriter(sprintf("histogramVelocity%s", name), numFrames);
+
+    for frameIdx = 1:numFrames
+        data = v_histo(:,:,frameIdx);
+        histo(:, frameIdx) = histcounts(data(mask),edges); % histcount is faster than histogram or manual for loop counting
+        
+        h_imagesc.CData(:, frameIdx) = histo(:, frameIdx);
+
+        f = getframe(fDistrib);
+        histoVideo(:, :, :, frameIdx) = frame2im(f);
+        gifWriter.write(f, frameIdx);
     end
 
-    % Display final histogram
-    imagesc(ax, xAx, yAx, histo);
-    drawnow;
+    gifWriter.generate();
+    gifWriter.delete();
 
-    set(ax, 'YDir', 'normal', 'PlotBoxAspectRatio', [2.5 1 1]);
-    fontsize(ax, 14, "points");
-    colormap(ax, cmap);
-    ylabel(ax, 'Velocity (mm.s^{-1})');
-    xlabel(ax, 'Time (s)');
-    title(ax, sprintf("Velocity distribution in %s", name));
+    exportgraphics(gca, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_histogramVelocity%s.png", ToolBox.main_foldername, name)))
+    exportgraphics(gca, fullfile(ToolBox.path_eps, 'bloodFlowVelocity', sprintf("%s_histogramVelocity%s.eps", ToolBox.main_foldername, name)))
+else
 
-    % Capture final image
-    histoVideo = frame2im(getframe(fig));
+    for frameIdx = 1:numFrames
+        data = v_histo(:,:,frameIdx);
+        histo(:, frameIdx) = histcounts(data(mask),edges); % histcount is faster than histogram or manual for loop counting
+    end
+
+    h_imagesc.CData(:, :) = histo(:, :);
+
+    exportgraphics(gca, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_histogramVelocity%s.png", ToolBox.main_foldername, name)))
+    exportgraphics(gca, fullfile(ToolBox.path_eps, 'bloodFlowVelocity', sprintf("%s_histogramVelocity%s.eps", ToolBox.main_foldername, name)))
 end
 
-histoVideo = mat2gray(histoVideo);
+fprintf("- Velocity Histogram %s Timing : %ds\n", name, round(toc(tVelocityVideo)))
 
-% Export graphics
-outputDir = fullfile(ToolBox.path_png, 'bloodFlowVelocity');
-
-if ~exist(outputDir, 'dir')
-    mkdir(outputDir);
-end
-
-exportgraphics(ax, fullfile(outputDir, sprintf("%s_histogramVelocity%s.png", ToolBox.main_foldername, name)));
-
-outputDir = fullfile(ToolBox.path_eps, 'bloodFlowVelocity');
-
-if ~exist(outputDir, 'dir')
-    mkdir(outputDir);
-end
-
-exportgraphics(ax, fullfile(outputDir, sprintf("%s_histogramVelocity%s.eps", ToolBox.main_foldername, name)));
-
-fprintf("- Velocity Histogram %s Timing: %.2fs\n", name, toc(tVelocityVideo));
 end
