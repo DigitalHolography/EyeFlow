@@ -64,4 +64,6 @@ for cIdx = 1:numCircles
 
 end
 
+radiusQSE = sqrt(radiusQSE);
+
 end

@@ -1,4 +1,4 @@
-function [labeledVessels, n] = labelVesselBranches(vesselMask, xy_barycenter)
+function [labeledVessels, n] = labelVesselBranches(vesselMask, maskSection, xy_barycenter)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -33,5 +33,8 @@ for i = 1:n
     branchPixels = (L == i);
     labeledVessels(branchPixels) = i;
 end
+
+labeledVessels = labeledVessels .* maskSection;
+[~, n] = bwlabel(labeledVessels); % Label disconnected branchess
 
 end

@@ -21,6 +21,7 @@ results = struct();
 
 % Compute mean velocity over time
 v_masked = squeeze(mean(v_RMS, 3)) .* mask;
+v_masked(~mask) = NaN;
 
 % Define sub-image dimensions
 subImgHW = round(0.01 * size(v_masked, 1) * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
@@ -32,18 +33,18 @@ subImg = v_masked(yRange, xRange);
 
 % Crop and rotate sub-image
 subImg = cropCircle(subImg);
-[subImg, tilt_angle] = rotateSubImage(subImg);
-subImg(subImg < 0) = NaN;
-results.subImg_cell = rescale(subImg);
+[rotatedImg, tilt_angle] = rotateSubImage(subImg);
+rotatedImg(rotatedImg <= 0) = NaN;
+results.subImg_cell = rescale(rotatedImg);
 
 % Compute the Vessel Cross Section
-[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(subImg, patchName, ToolBox);
+[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox);
 results.D = D;
 results.D_se = D_se;
 results.A = A;
 
 % Generate figures
-saveCrossSectionFigure(subImg, c1, c2, ToolBox, patchName);
+saveCrossSectionFigure(rotatedImg, c1, c2, ToolBox, patchName);
 
 % Initialize rejected masks
 rejected_masks = zeros(numX, numY, 3);

@@ -10,36 +10,16 @@ profile(isnan(profile)) = 0;
 L = length(profile);
 
 % Find all points above 10% threshold
-above_thresh = find(profile > 0.1 * max(profile));
-
-% Find contiguous regions above threshold
-labeled_regions = bwlabel(profile > 0.1 * max(profile));
-
-% Find central peak (closest to L/2)
-[~, locs] = findpeaks(profile, 'MinPeakHeight', max(profile)/2);
-[~, central_peak_idx] = min(abs(locs - L/2));
-central_peak_loc = locs(central_peak_idx);
-
-% Find which region contains the central peak
-central_region = labeled_regions(central_peak_loc);
-
-% If central peak is in a valid region (not zero/below threshold)
-if central_region > 0
-    % Get all points in this region
-    central_range = find(labeled_regions == central_region);
-else
-    % Fallback: use all points above threshold
-    central_range = find(above_thresh);
-    warning('Central peak not in thresholded region - using all above-threshold points');
-end
+central_range = find(profile > 0.1 * max(profile));
 centt = mean(central_range);
 
 r_range = (central_range - centt) * px_size;
+
 [p1, p2, p3, rsquare, p1_err, p2_err, p3_err] = customPoly2Fit(r_range', profile(central_range)');
 [r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3, p1_err, p2_err, p3_err);
 
-c1 = max(round(centt + (r1 / px_size)), 1);
-c2 = min(round(centt + (r2 / px_size)), L);
+c1 = max(ceil(centt + (r1 / px_size)), 1);
+c2 = min(floor(centt + (r2 / px_size)), L);
 
 % Determine cross-section width
 D = abs(r1 - r2) / px_size;

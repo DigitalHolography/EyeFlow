@@ -89,7 +89,8 @@ color = opt.Color;
 
 videoPlot = figure(410);
 videoPlot.Visible = opt.Visible;
-graphMaskTags(videoPlot, video(:, :, end), mask, etiquette_locs, etiquettes_frame_values, x_c, y_c, Color = color, circles = maskCircles);
+graphMaskTags(videoPlot, mean(video, 3), mask, etiquette_locs, round(squeeze(mean(etiquettes_frame_values, 2)), 1), x_c, y_c, Color = color, circles = maskCircles);
+frame = frame2im(getframe(gca));
 
 % Preallocate video data array
 videoPlotFrames = zeros([size(getframe(gca).cdata), numFrames], 'single');
@@ -122,16 +123,15 @@ parfor (frameIdx = startingFrame:numFrames, parforArg)
 end
 
 % Combine video and signal frames
-videoInterp = imresize(mat2gray(videoPlotFrames(:, 2:end, :, :)), [size(signalPlotFrames, 2), size(signalPlotFrames, 2)]);
+videoInterp = imresize(mat2gray(videoPlotFrames), [size(signalPlotFrames, 2), size(signalPlotFrames, 2)]);
 videoInterp = max(0, min(videoInterp, 1)); % Ensure values are within [0, 1]
 combinedFrames = cat(1, videoInterp, mat2gray(signalPlotFrames));
 
 videoPlot = figure(411);
 graphMaskTags(videoPlot, mean(video, 3), mask, etiquette_locs, etiquettes_frame_values, x_c, y_c, Color = color, circles = maskCircles);
 set(gca, 'FontSize', 14);
-videoLastFrame = frame2im(getframe(gca));
 
-combinedLast = cat(1, mat2gray(imresize(videoLastFrame(:, 2:end, :), [600 600])), mat2gray(signalPlotFrames(:, :, :, end)));
+combinedLast = cat(1, mat2gray(imresize(frame, [600 600])), mat2gray(signalPlotFrames(:, :, :, end)));
 
 % Save final frames as PNGs
 imwrite(mat2gray(signalPlotFrames(:, :, :, end)), fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s_plot.png", ToolBox.folder_name, dirname)));

@@ -16,6 +16,7 @@ f = figure('Visible', 'off');
 % Compute Section Cut
 profile = mean(subImg, 1, 'omitnan');
 cross_section_profile = (profile ./ max(profile)) * size(profile, 2);
+cross_section_profile(cross_section_profile < 0) = 0;
 
 % Define x-axis values
 xAx = linspace(0, size(subImg, 1), size(subImg, 1));

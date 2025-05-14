@@ -34,8 +34,9 @@ else
     maskSection = createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, sprintf('mask%s_all_sections', vesselName), [], mask);
 end
 
-mask = mask & maskSection;
-[labeledVessels, numBranches] = labelVesselBranches(mask, xy_barycenter);
+[labeledVessels, numBranches] = labelVesselBranches(mask, maskSection, xy_barycenter);
+cmap = jet(numBranches + 1);
+imwrite(labeledVessels + 1, cmap, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_labeledVessels_%s.png", ToolBox.main_foldername, vesselName)))
 
 parfor circleIdx = 1:numCircles
     r_in = r1 + (circleIdx - 1) * dr;
@@ -112,7 +113,7 @@ parfor c_idx = 1:numCircles
 
         if ~isempty(locsLabel{c_idx, b_idx})
             % Call crossSectionAnalysis2
-            patchName = sprintf('B%dC%d_%s', b_idx, c_idx, initial);
+            patchName = sprintf('%s%d_C%d', initial, b_idx, c_idx);
             [results] = crossSectionAnalysis2(ToolBox, locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, v_RMS, patchName);
 
             % Map outputs to variables

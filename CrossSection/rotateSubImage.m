@@ -14,13 +14,14 @@ angles = linspace(0, 180, 181);
 
 % Initialize an array to store kurtosis values for each angle
 peak_ratio = zeros(1, length(angles));
+subImg(isnan(subImg)) = 0;
 [numX, ~] = size(subImg);
 rangeX = floor(numX / 3):ceil(2 * numX / 3);
 
 % Loop over each angle and compute the kurtosis of the horizontal projection
 for theta = 1:length(angles)
     % Rotate the image by the current angle
-    tmpImg = imrotate(subImg, angles(theta), 'bilinear', 'crop');
+    tmpImg = imrotate(subImg, angles(theta), 'nearest', 'crop');
 
     % Compute the horizontal projection (sum along rows)
     projx = sum(tmpImg(rangeX, :), 1);

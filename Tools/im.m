@@ -5,5 +5,8 @@ if size(A, 3)
     A = mean(A, 3);
 end
 
-figure, imshow(A, [], Colormap = ToolBox.cmapArtery)
+figure, imagesc(A), 
+axis image
+colormap(ToolBox.cmapArtery)
+colorbar
 end
