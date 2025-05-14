@@ -111,7 +111,7 @@ fprintf("    1. Local BKG Artery and Veins calculation took %ds\n", round(toc))
 
 tic
 
-if params.json.PulseAnalysis.DifferenceMethods == 0 %SIGNED DIFFERENCE FIRST
+if params.json.PulseAnalysis.DifferenceMethods == 0 % SIGNED DIFFERENCE FIRST
     tmp = f_video .^ 2 - f_bkg .^ 2;
     df = sign(tmp) .* sqrt(abs(tmp));
     clear tmp
@@ -123,6 +123,23 @@ elseif params.json.PulseAnalysis.DifferenceMethods == 1 % DIFFERENCE FIRST
 else % DIFFERENCE LAST
     df = f_video - f_bkg;
 end
+
+df_artery = df .* maskArterySection;
+df_artery_signal = squeeze(sum(df_artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
+
+% Detect outlier frames
+outlier_frames_mask = isoutlier(df_artery_signal, "movmedian", 10);
+
+df_vein = df .* maskVeinSection;
+df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
+
+% Detect outlier frames
+outlier_frames_mask = outlier_frames_mask | isoutlier(df_vein_signal, "movmedian", 10);
+
+% figure, plot(df_artery_signal), hold on, scatter((1:length(df_artery_signal)), df_artery_signal .* outlier_frames_mask)
+
+% Interpolate outlier frames for each video
+df = interpolateOutlierFrames(df, outlier_frames_mask');
 
 % Delta f plots
 df_artery = df .* maskArterySection;

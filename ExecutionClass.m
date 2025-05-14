@@ -195,14 +195,12 @@ methods
 
         % Pulse Analysis
         if obj.flag_bloodFlowVelocity_analysis
-            fprintf("\n----------------------------------\nFind Systole\n----------------------------------\n");
 
             if ~isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
                 mkdir(ToolBox.path_png, 'bloodFlowVelocity')
                 mkdir(ToolBox.path_eps, 'bloodFlowVelocity')
             end
 
-            fprintf("\n----------------------------------\nBlood Flow Velocity Analysis\n----------------------------------\n");
             pulseAnalysisTimer = tic;
 
             f_AVG_mean = squeeze(mean(obj.f_AVG_video, 3));
