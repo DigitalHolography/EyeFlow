@@ -20,14 +20,14 @@ maskAV = maskArtery & maskVein;
 maskArterySection = maskArtery & maskSection & ~maskAV;
 maskVeinSection = maskVein & maskSection & ~maskAV;
 
-%% 1) VELOCITY VIDEO
+% 1) VELOCITY VIDEO
 tVelocityVideo = tic;
 
 [v_video_RGB, v_mean_RGB] = flowMap(v_video, maskSection, maskArtery, maskVein, M0_ff_video, xy_barycenter, ToolBox);
 
 fprintf("- Velocity Map Timing : %ds\n", round(toc(tVelocityVideo)))
 
-%% 2) HISTOGRAM
+% 2) HISTOGRAM
 
 histoVideoArtery = VelocityHistogram(v_video, maskArterySection, 'Artery');
 
@@ -35,7 +35,7 @@ if veinsAnalysis
     histoVideoVein = VelocityHistogram(v_video, maskVeinSection, 'Vein');
 end
 
-%% 3) COMBINED
+% 3) COMBINED
 
 if exportVideos
 

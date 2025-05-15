@@ -89,7 +89,7 @@ color = opt.Color;
 
 videoPlot = figure(410);
 videoPlot.Visible = opt.Visible;
-graphMaskTags(videoPlot, mean(video, 3), mask, etiquette_locs, round(squeeze(mean(etiquettes_frame_values, 2)), 1), x_c, y_c, Color = color, circles = maskCircles);
+graphMaskTags(videoPlot, rescale(mean(video, 3)), mask, etiquette_locs, round(squeeze(mean(etiquettes_frame_values, 2)), 1), x_c, y_c, Color = color, circles = maskCircles);
 frame = frame2im(getframe(gca));
 
 % Preallocate video data array
@@ -129,7 +129,6 @@ combinedFrames = cat(1, videoInterp, mat2gray(signalPlotFrames));
 
 videoPlot = figure(411);
 graphMaskTags(videoPlot, mean(video, 3), mask, etiquette_locs, etiquettes_frame_values, x_c, y_c, Color = color, circles = maskCircles);
-set(gca, 'FontSize', 14);
 
 combinedLast = cat(1, mat2gray(imresize(frame, [600 600])), mat2gray(signalPlotFrames(:, :, :, end)));
 

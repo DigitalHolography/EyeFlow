@@ -16,13 +16,9 @@ end
 % Step 1: Extract the pulse signal from the video using the artery mask
 fullPulse = squeeze(sum(video .* maskArtery, [1 2], 'omitnan') / nnz(maskArtery));
 
-% Denoise
-detrendedPulse = (fullPulse);
-noOutlier = (detrendedPulse);
-
 % Step 2: Compute the derivative of the smoothed signal
-[~, peaks_idx] = findpeaks(noOutlier);
-diff_signal = gradient(noOutlier);
+[~, peaks_idx] = findpeaks(fullPulse);
+diff_signal = gradient(fullPulse);
 
 % Step 3: Detect systole peaks using findpeaks
 min_peak_height = max(diff_signal) * 0.5; % Adaptive threshold
@@ -32,8 +28,6 @@ min_peak_distance = floor(length(fullPulse) / length(peaks_idx)) * 0.6; % Minimu
 % Step 4: Validate and clean up the detected peaks
 sys_index_list = validate_peaks(sys_index_list, 10);
 
-mean_distance_between_peaks = mean(diff(sys_index_list));
-
 % Step 5: Find local maxima and minima within each cycle
 sys_max_list = zeros(1, numel(sys_index_list));
 sys_min_list = zeros(1, numel(sys_index_list));
@@ -41,11 +35,11 @@ sys_min_list = zeros(1, numel(sys_index_list));
 for i = 1:(numel(sys_index_list) - 1)
     % Find the maximum within the current cycle
     [~, amax] = max(fullPulse(sys_index_list(i):sys_index_list(i + 1) - 1));
-    sys_max_list(i) = sys_index_list(i) + amax;
+    sys_max_list(i) = sys_index_list(i) + amax - 1;
 
     % Find the minimum within the current cycle
     [~, amin] = min(fullPulse(sys_index_list(i):sys_index_list(i + 1) - 1));
-    sys_min_list(i + 1) = sys_index_list(i) + amin;
+    sys_min_list(i + 1) = sys_index_list(i) + amin - 1;
 end
 
 % Find the minimum before the first cycle
@@ -67,27 +61,40 @@ end
 % % FOR DEBUG
 if savepng
 
-    try
-        ff = figure(Visible = 'off'); plot(fullPulse, 'k');
-        hold on
-        scatter(sys_max_list, fullPulse(sys_max_list), 'r')
-        scatter(sys_min_list, fullPulse(sys_min_list), 'b')
-        scatter(sys_index_list, fullPulse(sys_index_list), 'k')
-        hold on, plot(diff_signal, 'k')
-        hold on, scatter(sys_index_list, diff_signal(sys_index_list), 'k')
-        ToolBox = getGlobalToolBox();
+    ToolBox = getGlobalToolBox();
+    T = ToolBox.stride / ToolBox.fs / 1000;
+    numFrames = size(video, 3);
+    fullTime = linspace(0, numFrames * T, numFrames);
 
-        if ~isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
-            mkdir(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
-        end
+    figure(Visible = 'off');
+    plot(fullTime, fullPulse, 'k-', 'LineWidth', 1.5);
+    hold on
+    scatter(sys_max_list * T, fullPulse(sys_max_list), 'r', "filled")
+    scatter(sys_min_list * T, fullPulse(sys_min_list), 'b', "filled")
+    scatter(sys_index_list * T, fullPulse(sys_index_list), 'k', "filled")
 
-        if ~isfile(fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.main_foldername, 'find_systoles_indices.png')))
-            saveas(ff, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.main_foldername, 'find_systoles_indices.png')), 'png')
-        end
+    plot(fullTime, diff_signal, 'k-', 'LineWidth', 1.5)
+    scatter(sys_index_list * T, diff_signal(sys_index_list), 'k', "filled")
 
-    catch E
-        disp(E)
+    xline(sys_index_list * T, 'k--')
+    xline(sys_min_list * T, 'b--')
+    xline(sys_max_list * T, 'r--')
+    hold off
+
+    axis padded;
+    axP = axis;
+    axis tight;
+    axT = axis;
+    axis([axT(1), axT(2), axP(3), axP(4)]);
+    set(gca, 'LineWidth', 2, 'PlotBoxAspect', [2.5 1 1])
+    xlabel("Time (s)")
+    ylabel("Velocity (mm/s)")
+
+    if ~isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
+        mkdir(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
     end
+
+    exportgraphics(gca, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.main_foldername, 'find_systoles_indices.png')))
 
 end
 
