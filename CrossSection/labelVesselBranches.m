@@ -35,6 +35,6 @@ for i = 1:n
 end
 
 labeledVessels = labeledVessels .* maskSection;
-[~, n] = bwlabel(labeledVessels); % Label disconnected branchess
+[labeledVessels, n] = bwlabel(labeledVessels); % Label disconnected branchess
 
 end
