@@ -90,6 +90,10 @@ methods
     function obj = generate(obj)
         % Generate the gif from the current array of frames
 
+        RGB = obj.isRGB;
+        gif_name = obj.filename_gif;
+        T = obj.timePeriod;
+
         if obj.numY > 1000
             num_X = round(size(obj.images, 1) * 1000 / size(obj.images, 2));
             num_Y = 1000;
@@ -98,28 +102,28 @@ methods
             num_Y = obj.numY;
         end
 
-        if obj.timePeriod < obj.timePeriodMin % in case you ask too fast gif
+        if T < obj.timePeriodMin % in case you ask too fast gif
 
             if isnan(obj.numFramesFixed)
-                num_T = floor(obj.numFrames * obj.timePeriod / obj.timePeriodMin);
+                num_T = floor(obj.numFrames * T / obj.timePeriodMin);
             else
                 num_T = obj.numFramesFixed;
             end
 
-            if obj.isRGB
+            if RGB
                 % time-interp
                 images_interp_t(:, :, 1, :) = imresize3(squeeze(obj.images(:, :, 1, :)), [obj.numX, obj.numY, num_T], "nearest");
                 images_interp_t(:, :, 2, :) = imresize3(squeeze(obj.images(:, :, 2, :)), [obj.numX, obj.numY, num_T], "nearest");
                 images_interp_t(:, :, 3, :) = imresize3(squeeze(obj.images(:, :, 3, :)), [obj.numX, obj.numY, num_T], "nearest");
                 % xy-interp
-                images_interp(:, :, 1, :) = imresize3(squeeze(images_interp_t(:, :, 1, :)), [num_X, num_Y, num_T], "cubic");
-                images_interp(:, :, 2, :) = imresize3(squeeze(images_interp_t(:, :, 2, :)), [num_X, num_Y, num_T], "cubic");
-                images_interp(:, :, 3, :) = imresize3(squeeze(images_interp_t(:, :, 3, :)), [num_X, num_Y, num_T], "cubic");
+                images_interp(:, :, 1, :) = imresize3(squeeze(images_interp_t(:, :, 1, :)), [num_X, num_Y, num_T], "linear");
+                images_interp(:, :, 2, :) = imresize3(squeeze(images_interp_t(:, :, 2, :)), [num_X, num_Y, num_T], "linear");
+                images_interp(:, :, 3, :) = imresize3(squeeze(images_interp_t(:, :, 3, :)), [num_X, num_Y, num_T], "linear");
             else
                 % time-interp
                 images_interp_t(:, :, 1, :) = imresize3(squeeze(obj.images(:, :, 1, :)), [obj.numX, obj.numY, num_T], "nearest");
                 % xy-interp
-                images_interp(:, :, 1, :) = imresize3(squeeze(images_interp_t(:, :, 1, :)), [num_X, num_Y, num_T], "cubic");
+                images_interp(:, :, 1, :) = imresize3(squeeze(images_interp_t(:, :, 1, :)), [num_X, num_Y, num_T], "linear");
             end
 
             images_interp(images_interp < 0) = 0;
@@ -127,16 +131,16 @@ methods
 
             for tt = 1:num_T
 
-                if obj.isRGB
-                    [A, map] = rgb2ind(images_interp(:, :, :, tt), 256);
+                if RGB
+                    [A, map] = rgb2ind(images_interp(:, :, :, tt), 256, 'nodither');
                 else
                     [A, map] = gray2ind(images_interp(:, :, :, tt), 256);
                 end
 
                 if tt == 1
-                    imwrite(A, map, obj.filename_gif, "gif", "LoopCount", Inf, "DelayTime", obj.timePeriodMin);
+                    imwrite(A, map, gif_name, "gif", "LoopCount", Inf, "DelayTime", obj.timePeriodMin);
                 else
-                    imwrite(A, map, obj.filename_gif, "gif", "WriteMode", "append", "DelayTime", obj.timePeriodMin);
+                    imwrite(A, map, gif_name, "gif", "WriteMode", "append", "DelayTime", obj.timePeriodMin);
                 end
 
             end
@@ -149,31 +153,31 @@ methods
         else
             num_T = obj.numFrames;
 
-            if obj.isRGB
+            if RGB
                 % xy-interp
-                images_interp(:, :, 1, :) = imresize3(squeeze(obj.images(:, :, 1, :)), [num_X, num_Y, num_T], "cubic");
-                images_interp(:, :, 2, :) = imresize3(squeeze(obj.images(:, :, 2, :)), [num_X, num_Y, num_T], "cubic");
-                images_interp(:, :, 3, :) = imresize3(squeeze(obj.images(:, :, 3, :)), [num_X, num_Y, num_T], "cubic");
+                images_interp(:, :, 1, :) = imresize3(squeeze(obj.images(:, :, 1, :)), [num_X, num_Y, num_T], "linear");
+                images_interp(:, :, 2, :) = imresize3(squeeze(obj.images(:, :, 2, :)), [num_X, num_Y, num_T], "linear");
+                images_interp(:, :, 3, :) = imresize3(squeeze(obj.images(:, :, 3, :)), [num_X, num_Y, num_T], "linear");
             else
                 % xy-interp
-                images_interp(:, :, 1, :) = imresize3(squeeze(obj.images(:, :, 1, :)), [num_X, num_Y, num_T], "cubic");
+                images_interp(:, :, 1, :) = imresize3(squeeze(obj.images(:, :, 1, :)), [num_X, num_Y, num_T], "linear");
             end
 
             images_interp(images_interp < 0) = 0;
             images_interp(images_interp > 256) = 256;
 
-            for tt = 1:num_T
+            parfor tt = 1:num_T
 
-                if obj.isRGB
-                    [A, map] = rgb2ind(images_interp(:, :, :, tt), 256);
+                if RGB
+                    [A, map] = rgb2ind(images_interp(:, :, :, tt), 256, 'nodither');
                 else
                     [A, map] = gray2ind(images_interp(:, :, :, tt), 256);
                 end
 
                 if tt == 1
-                    imwrite(A, map, obj.filename_gif, "gif", "LoopCount", Inf, "DelayTime", obj.timePeriod);
+                    imwrite(A, map, gif_name, "gif", "LoopCount", Inf, "DelayTime", T);
                 else
-                    imwrite(A, map, obj.filename_gif, "gif", "WriteMode", "append", "DelayTime", obj.timePeriod);
+                    imwrite(A, map, gif_name, "gif", "WriteMode", "append", "DelayTime", T);
                 end
 
             end

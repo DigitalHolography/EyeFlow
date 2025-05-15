@@ -153,6 +153,8 @@ methods
     function obj = analyzeData(obj, app)
         % Main routine for EyeFlow analysis.
 
+        profile on
+
         % Initialize ToolBox and parameters
         ToolBox = obj.ToolBoxMaster;
         params = ToolBox.getParams;
@@ -201,6 +203,7 @@ methods
                 mkdir(ToolBox.path_eps, 'bloodFlowVelocity')
             end
 
+            fprintf("\n----------------------------------\nBlood Flow Velocity Analysis\n----------------------------------\n");
             pulseAnalysisTimer = tic;
 
             f_AVG_mean = squeeze(mean(obj.f_AVG_video, 3));
@@ -325,6 +328,8 @@ methods
         clear ToolBox;
         diary off;
         displaySuccessMsg(1);
+        profile off
+        profile viewer
     end
 
 end

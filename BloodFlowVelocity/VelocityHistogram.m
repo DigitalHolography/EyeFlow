@@ -54,7 +54,7 @@ h_imagesc = imagesc(xAx, yAx, histo(:, :));
 set(gca, 'PlotBoxAspectRatio', [2.5 1 1])
 set(gca, 'YDir', 'normal')
 colormap(cmap)
-ylabel('Velocity (mm.s^{-1})')
+ylabel('Velocity (mm/s)')
 xlabel('Time (s)')
 title(sprintf("velocity distribution in %s", name))
 
