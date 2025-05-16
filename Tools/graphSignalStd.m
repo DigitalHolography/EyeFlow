@@ -1,13 +1,13 @@
-function graphSignalStd(figId, U, dU, numFrames, ylabl, xlabl, fig_title, unit, opt)
+function graphSignalStd(signalPlot, signal, stdsignal, numFrames, y_label, x_label, fig_title, unit, opt)
 % Plots on an existing graph the signal and its std
 
 arguments
-    figId
-    U % Signal
-    dU % Uncertainty of the Signal
+    signalPlot
+    signal % Signal
+    stdsignal % Uncertainty of the Signal
     numFrames
-    ylabl
-    xlabl
+    y_label
+    x_label
     fig_title
     unit
     opt.ylimm double = []
@@ -18,15 +18,15 @@ arguments
     opt.ToolBox = []
 end
 
-mean_signal = mean(U);
+mean_signal = mean(signal);
 
 if opt.cropIndx > 0
-    U = U(1:opt.cropIndx);
-    dU = dU(1:opt.cropIndx);
+    signal = signal(1:opt.cropIndx);
+    stdsignal = stdsignal(1:opt.cropIndx);
 end
 
 Color_std = [0.7, 0.7, 0.7];
-figure(figId);
+figure(signalPlot);
 
 if ~isempty(opt.ToolBox)
     ToolBox = opt.ToolBox;
@@ -36,17 +36,17 @@ else % in a parfor no ToolBox
 end
 
 if isempty(opt.ylimm)
-    axss = [fullTime(1), fullTime(end), min(U), max(U)];
+    axss = [fullTime(1), fullTime(end), min(signal), max(signal)];
 else
     axss = [fullTime(1), fullTime(end), opt.ylimm];
 end
 
-if length(U) ~= numFrames % for a variable length of the signal
-    fullTime = fullTime(1:length(U));
+if length(signal) ~= numFrames % for a variable length of the signal
+    fullTime = fullTime(1:length(signal));
 end
 
-curve1 = U + dU;
-curve2 = U - dU;
+curve1 = signal + stdsignal;
+curve2 = signal - stdsignal;
 tmp_fullTime = [fullTime, fliplr(fullTime)];
 inBetween = [curve1, fliplr(curve2)];
 
@@ -54,12 +54,12 @@ fill(tmp_fullTime, inBetween, Color_std);
 hold on;
 plot(fullTime, curve1, "Color", Color_std, 'LineWidth', 2);
 plot(fullTime, curve2, "Color", Color_std, 'LineWidth', 2);
-plot(fullTime, U, '-k', 'LineWidth', 2);
+plot(fullTime, signal, '-k', 'LineWidth', 2);
 yline(mean_signal, '--k', 'LineWidth', 2)
 hold off;
 
-ylabel(ylabl)
-xlabel(xlabl)
+ylabel(y_label)
+xlabel(x_label)
 title(sprintf("%s : %.0f %s", fig_title, round(mean_signal), unit))
 
 if ~isempty(opt.xLines)

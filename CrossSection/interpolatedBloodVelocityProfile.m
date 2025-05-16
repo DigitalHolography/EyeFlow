@@ -54,6 +54,7 @@ for cIdx = 1:numCircles
 
                 % Find valid indices (positive velocities)
                 indx = [];
+
                 if any(v < 0)
                     [~, locs] = findpeaks(-v);
 
@@ -133,7 +134,7 @@ dv_sys = sqrt(dv_sys_acc) / (numSys * validBranches);
 v_dias = v_dias_acc / (numDias * validBranches);
 dv_dias = sqrt(dv_dias_acc) / (numDias * validBranches);
 v_video = v_video_acc / validBranches;
-dv_video = sqrt(dv_video_acc / validBranches);
+dv_video = sqrt(dv_video_acc) / validBranches;
 
 % Create confidence bounds
 createBounds = @(v, dv) struct( ...
@@ -218,7 +219,7 @@ if exportVideos
     set(axVideo, 'LineWidth', 2);
 
     % Preallocate video
-    video = zeros(420, 560, 3, numFrames, 'uint8');
+    video = zeros(420, 560, 3, numFrames);
 
     % Process each frame
     for frameIdx = 1:numFrames
@@ -237,11 +238,11 @@ if exportVideos
             'YData', f_frame.p1 * r_range .^ 2 + f_frame.p2 * r_range + f_frame.p3);
 
         % Capture frame
-        video(:, :, :, frameIdx) = im2uint8(frame2im(getframe(figVideo)));
+        video(:, :, :, frameIdx) = frame2im(getframe(figVideo));
     end
 
     % Write video
-    writeGifOnDisc(video, sprintf("wall2wall_profile_%s", name), "ToolBox", ToolBox);
+    writeGifOnDisc(mat2gray(video), sprintf("wall2wall_profile_%s", name), "ToolBox", ToolBox);
 end
 
 end
