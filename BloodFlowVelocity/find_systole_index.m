@@ -73,7 +73,7 @@ if savepng
     scatter(sys_min_list * T, fullPulse(sys_min_list), 'b', "filled")
     scatter(sys_index_list * T, fullPulse(sys_index_list), 'k', "filled")
 
-    plot(fullTime, diff_signal, 'k-', 'LineWidth', 1.5)
+    plot(fullTime, diff_signal, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5)
     scatter(sys_index_list * T, diff_signal(sys_index_list), 'k', "filled")
 
     xline(sys_index_list * T, 'k--')

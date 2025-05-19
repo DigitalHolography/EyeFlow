@@ -189,7 +189,6 @@ methods
 
         end
 
-
         fprintf("    - %s.gif took %ds\n", obj.name, round(toc(obj.t)));
 
     end

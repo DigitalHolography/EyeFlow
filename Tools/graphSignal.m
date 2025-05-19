@@ -48,22 +48,25 @@ if ~isempty(opt.TxtFigX)
 end
 
 if ~isempty(opt.yLines)
+
     for n = 1:length(opt.yLines)
         % Set common properties
         lineProps = {':', 'LineWidth', opt.LineWidth};
-        
+
         % Handle label positioning
         if n == length(opt.yLines) && ~isscalar(opt.yLines)
             % Last line gets default vertical alignment
             yline(opt.yLines(n), lineProps{:}, ...
-                  'Label', opt.yLineLabels{n}, ...
-                  'LabelVerticalAlignment', 'bottom');
+                'Label', opt.yLineLabels{n}, ...
+                'LabelVerticalAlignment', 'bottom');
         else
             % Other lines get bottom alignment
             yline(opt.yLines(n), lineProps{:}, ...
-                  'Label', opt.yLineLabels{n});
+                'Label', opt.yLineLabels{n});
         end
+
     end
+
 end
 
 title(opt.Title)
@@ -87,6 +90,7 @@ axis padded
 axP = axis;
 axis tight
 axT = axis;
+
 if opt.zero_center
     axis([axT(1), axT(2), 0, 1.07 * axP(4)])
 else
@@ -94,12 +98,15 @@ else
 end
 
 ToolBox = getGlobalToolBox;
+
 if ~isfolder(fullfile(ToolBox.path_png, folder))
     mkdir(fullfile(ToolBox.path_png, folder))
 end
+
 if ~isfolder(fullfile(ToolBox.path_eps, folder))
     mkdir(fullfile(ToolBox.path_eps, folder))
 end
+
 exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s_graph.png", ToolBox.main_foldername, filename)))
 exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s_graph.eps", ToolBox.main_foldername, filename)))
 

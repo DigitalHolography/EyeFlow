@@ -29,7 +29,7 @@ end
 
 [numX, numY, ~] = size(img);
 
-layers = zeros(numX, numY, 3, N,'single');
+layers = zeros(numX, numY, 3, N, 'single');
 
 for i = 1:size(masks, 2)
     mask = masks{i};
@@ -37,18 +37,18 @@ for i = 1:size(masks, 2)
     layers(:, :, :, i) = setcmap(img, mask, cmap);
 end
 
-maskVessel = zeros(numX, numY,'single');
+maskVessel = zeros(numX, numY, 'single');
 
 for i = 1:N
     maskVessel = maskVessel + masks{i};
 end
 
 if isempty(opt.circles)
-    opt.circles = zeros(numX, numY,'single');
+    opt.circles = zeros(numX, numY, 'single');
 end
 
 if isempty(opt.background)
-    opt.background = zeros(numX, numY,'single');
+    opt.background = zeros(numX, numY, 'single');
 end
 
 combined_img = sum(layers, 4) + (opt.background .* ~maskVessel .* ~opt.circles) + opt.circles .* ~maskVessel;

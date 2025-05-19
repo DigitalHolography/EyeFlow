@@ -57,7 +57,6 @@ maskCircles = circle1 | circle2;
 
 % Set y-axis limits for the signal plot
 mean_signal = mean(signal);
-axss = [0, numFrames * T, min(-1, min(signal)), max(signal) * 1.07];
 
 % Determine starting frame based on skip option
 if opt.skip
@@ -150,9 +149,6 @@ signalPlot = figure('Name', 'Signal Plot', "Color", 'w');
 signalPlot.Visible = opt.Visible;
 signalPlot.Position = [200 200 600 300];
 
-% Preallocate signal plot data array
-signalPlotFrames = zeros([size(getframe(signalPlot).cdata), numFrames], 'single');
-
 % Generate signal plot frames
 curve1 = signal + stdsignal;
 curve2 = signal - stdsignal;
@@ -166,25 +162,40 @@ title(sprintf("Average Blood Volume Rate : %.0f %s", round(mean_signal), 'µL/mi
 fontsize(14, 'points')
 hold on;
 
-parfor frameIdx = startingFrame:numFrames
+if exportVideos
+    % Preallocate signal plot data array
+    signalPlotFrames = zeros([size(getframe(signalPlot).cdata), numFrames], 'single');
+
+    axss = [0, numFrames * T, min(-1, min(signal)), max(signal) * 1.07];
+
+    parfor frameIdx = startingFrame:numFrames
+        plot(fullTime, curve1, "Color", Color_std, 'LineWidth', 2);
+        plot(fullTime, curve2, "Color", Color_std, 'LineWidth', 2);
+        plot(fullTime, signal, '-k', 'LineWidth', 2);
+        yline(mean_signal, '--k', 'LineWidth', 2)
+        fill([T * frameIdx T * frameIdx numFrames * T numFrames * T], ...
+            [min(-1, min(signal)), max(signal) * 1.07, max(signal) * 1.07, min(-1, min(signal))], ...
+            'w', "EdgeColor", 'none');
+        axis(axss);
+        set(gca, 'Linewidth', 2)
+        set(gca, 'PlotBoxAspectRatio', [2.5, 1, 1])
+
+        signalPlotFrames(:, :, :, frameIdx) = frame2im(getframe(signalPlot));
+    end
+
+else
     plot(fullTime, curve1, "Color", Color_std, 'LineWidth', 2);
     plot(fullTime, curve2, "Color", Color_std, 'LineWidth', 2);
     plot(fullTime, signal, '-k', 'LineWidth', 2);
     yline(mean_signal, '--k', 'LineWidth', 2)
-    RGB = fill([T * frameIdx T * frameIdx numFrames * T numFrames * T], [axss(3) axss(4) axss(4) axss(3)], 'w', "EdgeColor", 'none');
-    axis(axss);
+    axis([0, numFrames * T, min(-1, min(signal)), max(signal) * 1.07]);
     set(gca, 'Linewidth', 2)
     set(gca, 'PlotBoxAspectRatio', [2.5, 1, 1])
 
-    signalPlotFrames(:, :, :, frameIdx) = frame2im(getframe(signalPlot));
+    signalPlotFrames = frame2im(getframe(signalPlot));
 end
 
 hold off;
-
-% Combine video and signal frames
-videoInterp = imresize(mat2gray(videoPlotFrames), [size(signalPlotFrames, 2), size(signalPlotFrames, 2)]);
-videoInterp = max(0, min(videoInterp, 1)); % Ensure values are within [0, 1]
-combinedFrames = cat(1, videoInterp, mat2gray(signalPlotFrames));
 
 combinedLast = cat(1, mat2gray(imresize(frame, [600 600])), mat2gray(signalPlotFrames(:, :, :, end)));
 
@@ -193,7 +204,11 @@ imwrite(mat2gray(signalPlotFrames(:, :, :, end)), fullfile(ToolBox.path_png, 'cr
 imwrite(combinedLast, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s_combined.png", ToolBox.folder_name, dirname)));
 
 % Save as GIF if not skipping frames
-if ~opt.skip
+if exportVideos
+    % Combine video and signal frames
+    videoInterp = imresize(mat2gray(videoPlotFrames), [size(signalPlotFrames, 2), size(signalPlotFrames, 2)]);
+    videoInterp = max(0, min(videoInterp, 1)); % Ensure values are within [0, 1]
+    combinedFrames = cat(1, videoInterp, mat2gray(signalPlotFrames));
     writeGifOnDisc(mat2gray(signalPlotFrames), sprintf("%s_plot", dirname), 0.04);
     writeGifOnDisc(combinedFrames, sprintf("%s_combined", dirname), 0.04);
 end

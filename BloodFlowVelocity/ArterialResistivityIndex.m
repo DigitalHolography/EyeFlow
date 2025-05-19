@@ -94,8 +94,10 @@ end
 plot(t, signal, '-k', 'LineWidth', 2);
 
 % Add reference lines
-yline(vMax, '--k', sprintf('%.1f %s', vMax, unit), 'LineWidth', 2, 'Color', 'r', 'LabelVerticalAlignment', 'bottom');
-yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, 'Color', 'r', 'LabelVerticalAlignment', 'top');
+yline(vMax, '--k', sprintf('%.1f %s', vMax, unit), 'LineWidth', 2, ...
+    'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'top', 'FontWeight', 'bold');
+yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, ...
+    'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'bottom', 'FontWeight', 'bold');
 
 % Formatting
 if ~isempty(signal_se)
@@ -111,7 +113,7 @@ axis padded
 axP = axis;
 axis tight
 axT = axis;
-axis([axT(1), axT(2), 0, axP(4)])
+axis([axT(1), axT(2), 0, 1.07 * axP(4)])
 
 fontsize(gca, 14, "points");
 box on
@@ -143,9 +145,9 @@ end
 plot(t, signal, '-k', 'LineWidth', 2);
 
 % Add reference lines
-yline(vMax, '--k', sprintf('%.1f %s', vMax, unit), 'LineWidth', 2, 'Color', 'r', 'LabelVerticalAlignment', 'bottom');
-yline(v_mean, '--k', sprintf('%.1f %s', v_mean, unit), 'LineWidth', 2, 'Color', 'r');
-yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, 'Color', 'r', 'LabelVerticalAlignment', 'top');
+yline(vMax, '--k', sprintf('%.1f %s', vMax, unit), 'LineWidth', 2, 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'top', 'FontWeight', 'bold');
+yline(v_mean, '--k', sprintf('%.1f %s', v_mean, unit), 'LineWidth', 2, 'Color', [0.5 0.5 0.5], 'FontWeight', 'bold');
+yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'bottom', 'FontWeight', 'bold');
 
 % Formatting
 if ~isempty(signal_se)
@@ -161,7 +163,7 @@ axis padded
 axP = axis;
 axis tight
 axT = axis;
-axis([axT(1), axT(2), 0, axP(4)])
+axis([axT(1), axT(2), 0, 1.07 * axP(4)])
 
 fontsize(gca, 14, "points");
 box on

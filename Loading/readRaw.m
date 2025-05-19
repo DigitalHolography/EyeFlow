@@ -7,10 +7,12 @@ dir_path_avi = fullfile(obj.directory, 'avi');
 NameRefAviFile = strcat(obj.filenames, '_moment0_raw');
 RefAviFilePath = fullfile(dir_path_avi, NameRefAviFile);
 ext = '.avi';
+
 if ~isfile([RefAviFilePath, ext])
     NameRefAviFile = strcat(obj.filenames, '_moment0');
     RefAviFilePath = fullfile(dir_path_avi, NameRefAviFile);
 end
+
 fprintf('- reading : %s\n', [RefAviFilePath, ext]);
 
 V = VideoReader(fullfile(dir_path_avi, [NameRefAviFile, ext]));

@@ -43,6 +43,7 @@ diasindexes = [];
 
 for idx = 1:numSys
     xline(fullTime(sys_index_list(idx)), 'k--', 'LineWidth', 2)
+
     try
         % Calculate sysindexes and ensure the values stay within the valid range
         start_idx = sys_index_list(idx) + round(fpCycle * 0.05);
@@ -84,7 +85,6 @@ for idx = 1:numSysMax
         Y = [fullPulse(sys_range), zeros(1, length(sys_range))];
 
         fill(X, Y, 'r', 'EdgeColor', 'none')
-
 
     catch
     end

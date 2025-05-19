@@ -59,8 +59,9 @@ xlabel('Time (s)')
 title(sprintf("velocity distribution in %s", name))
 
 % Pre-compute bin indices for all frames
+[numX_fig, numY_fig] = deal(fDistrib.Position(4), fDistrib.Position(3));
+
 if exportVideos
-    [numX_fig, numY_fig] = deal(fDistrib.Position(4), fDistrib.Position(3));
     histoVideo = zeros(numX_fig, numY_fig, 3, numFrames);
     gifWriter = GifWriter(sprintf("histogramVelocity%s", name), numFrames);
 
@@ -86,6 +87,8 @@ else
     end
 
     h_imagesc.CData(:, :) = histo(:, :);
+    f = getframe(fDistrib);
+    histoVideo = frame2im(f);
 
 end
 

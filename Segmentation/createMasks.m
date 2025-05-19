@@ -1,4 +1,4 @@
-function [maskArtery, maskVein, maskNeighbors, xy_barycenter] = createMasks(M0_ff_video, f_AVG_mean)
+function [maskArtery, maskVein, maskNeighbors] = createMasks(M0_ff_video, xy_barycenter)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -19,9 +19,9 @@ folder_steps = fullfile('mask', 'steps');
 [numX, numY, numFrames] = size(M0_ff_video);
 
 diaphragmRadius = params.json.Mask.DiaphragmRadius;
-forceBarycenter = params.json.Mask.ForceBarycenter;
-blur = params.json.Mask.Blur;
 cropChoroidRadius = params.json.Mask.CropChoroidRadius;
+x_c = xy_barycenter(1);
+y_c = xy_barycenter(2);
 
 % Parameters for arteries
 vesselParams.threshold = params.json.Mask.VascularThreshold;
@@ -38,19 +38,11 @@ veinParams.threshold = params.json.Mask.VenousThreshold;
 veinParams.classes = params.json.Mask.VenousClasses;
 
 minPixelSize = params.json.Mask.MinPixelSize;
-CRACRV_Threshold = params.json.Mask.CRACRVThreshold;
 forceVesselWidth = params.json.Mask.ForceVesselWidth;
 
 bgWidth = params.json.PulseAnalysis.LocalBackgroundWidth;
 r1 = params.json.SizeOfField.SmallRadiusRatio;
 r2 = params.json.SizeOfField.BigRadiusRatio;
-
-% 0) 2) Test the input for usual cases of wrong aquisition data
-
-if max(f_AVG_mean, [], 'all') <= 0
-    figure(3); imshow(rescale(f_AVG_mean));
-    error("Measurement error from the Moment 1 input. Check the input or re-do the measurement.")
-end
 
 %% 1) First Masks and Correlation
 
@@ -89,27 +81,7 @@ end
 
 % 1) 2) Compute the barycenters and the circle mask
 
-if ~isempty(forceBarycenter)
-    y_CRA = forceBarycenter(1);
-    x_CRA = forceBarycenter(2);
-    x_CRV = numX / 2;
-    y_CRV = numY / 2;
-else
-    saveImage(f_AVG_mean, ToolBox, 'all_13_fAVG.png', isStep = true)
-
-    if blur ~= 0
-        averaged_fAVG = imgaussfilt(f_AVG_mean, blur, 'Padding', 0) .* maskDiaphragm;
-    else
-        averaged_fAVG = f_AVG_mean;
-    end
-
-    [y_CRA, x_CRA] = find(averaged_fAVG == max(averaged_fAVG, [], 'all'));
-    [y_CRV, x_CRV] = find(averaged_fAVG == min(averaged_fAVG, [], 'all'));
-end
-
-maskCircle = diskMask(numX, numY, cropChoroidRadius, 'center', [x_CRA / numX, y_CRA / numY]);
-maskCircle = maskCircle | diskMask(numX, numY, cropChoroidRadius, 'center', [x_CRV / numX, y_CRV / numY]);
-
+maskCircle = diskMask(numX, numY, cropChoroidRadius, 'center', [x_c / numX, y_c / numY]);
 maskVesselnessClean = removeDisconnected(maskVesselness, maskVesselness, maskCircle, 'all_15_VesselMask', ToolBox);
 
 %  1) 3) Compute first correlation
@@ -372,15 +344,6 @@ neighborsMaskSeg = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + ...
     rescale(M0_ff_img) .* ~(maskArtery | maskVein | maskNeighbors);
 saveImage(neighborsMaskSeg, ToolBox, 'neighbors_img.png')
 
-% 4) 3) CRA and CRV Masks
-
-f_AVG_std = std2(f_AVG_mean);
-maskCRA = f_AVG_mean > (CRACRV_Threshold * f_AVG_std);
-maskCRV = f_AVG_mean < (-CRACRV_Threshold * f_AVG_std);
-
-saveImage(maskCRA, ToolBox, 'maskCRA.png')
-saveImage(maskCRV, ToolBox, 'maskCRV.png')
-
 % 4) 4) Save all images
 
 saveImage(maskArtery, ToolBox, 'maskArtery.png')
@@ -393,7 +356,7 @@ saveImage(bwskel(maskVein), ToolBox, 'skeletonVein.png')
 
 % 4) 5) Mask Section & Force Barycenter
 
-xy_barycenter = [x_CRA, y_CRA];
+xy_barycenter = [x_c, y_c];
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMapArtery', maskArtery, thin = 0.01);
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMap', maskArtery, maskVein, thin = 0.01);
 

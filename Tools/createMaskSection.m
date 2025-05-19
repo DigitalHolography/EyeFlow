@@ -44,7 +44,7 @@ if isempty(maskVein)
 
     cmapArtery = ToolBox.cmapArtery;
     cmapArterySection = flipud(cmapArtery);
-    
+
     M0_Artery = setcmap(img, maskArtery, cmapArtery);
     M0_ArterySection = setcmap(img, maskArterySection, cmapArterySection);
 

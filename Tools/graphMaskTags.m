@@ -18,7 +18,6 @@ end
 
 ratio_etiquette = 1.2;
 
-
 % image_RGB = repmat(Image - Image .* mask, 1, 1, 3) + reshape(NameValueArgs.Color, 1, 1, 3) .* mask .* Image; % adding the Red value to the mask pixels
 % Get the image dimensions
 

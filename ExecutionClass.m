@@ -172,9 +172,9 @@ methods
             fprintf("\n----------------------------------\nMask Creation\n----------------------------------\n");
             createMasksTimer = tic;
 
-            f_AVG_mean = squeeze(mean(obj.f_AVG_video, 3));
-            [obj.maskArtery, obj.maskVein, obj.maskNeighbors, obj.xy_barycenter] = ...
-                createMasks(obj.M0_ff_video, f_AVG_mean);
+            obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
+            [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
+                createMasks(obj.M0_ff_video, obj.xy_barycenter);
 
             M0_ff_img = rescale(mean(obj.M0_ff_video, 3));
             cmapArtery = ToolBox.cmapArtery;
