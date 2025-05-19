@@ -99,12 +99,12 @@ graphSignal('all_15_vascularSignal', folder_steps, t, squeeze(vascularSignal), '
 
 % compute local-to-average signal wave zero-lag correlation
 vascularSignal_centered = vascularSignal - mean(vascularSignal, 3);
-R_VascularSignal = mean(M0_ff_video_centered .* vascularSignal_centered, 3) ./ (std((M0_ff_video_centered), [], 3) * std(vascularSignal_centered, [], 3));
+R_VascularSignal = mean(M0_ff_video_centered .* vascularSignal_centered, 3) ./ (std((M0_ff_video_centered), [], 'all') * std(vascularSignal_centered, [], 3));
 saveImage(R_VascularSignal, ToolBox, 'all_15_Correlation.png', isStep = true)
 
-mR_vascular = sum(R_VascularSignal .* fftshift(diskMask(numX, numY, 0.1)), [1 2]) ./ nnz(fftshift(diskMask(numX, numY, 0.1)));
+% mR_vascular = sum(R_VascularSignal .* fftshift(diskMask(numX, numY, 0.1)), [1 2]) ./ nnz(fftshift(diskMask(numX, numY, 0.1)));
 
-RGBcorr = labDuoImage(M0_ff_img, R_VascularSignal - mR_vascular);
+RGBcorr = labDuoImage(M0_ff_img, R_VascularSignal);
 saveImage(RGBcorr, ToolBox, 'all_15_Correlation_rgb.png', isStep = true)
 
 % 1) 4) Segment Vessels
@@ -179,7 +179,7 @@ if params.json.Mask.ImproveMask
     saveImage(diasysArtery, ToolBox, 'artery_21_diasys_img.png', isStep = true)
     saveImage(diasysVein, ToolBox, 'vein_21_diasys_img.png', isStep = true)
 
-    RGBdiasys = labDuoImage(rescale(M0_Gabor), (diasysArtery - mDiasys));
+    RGBdiasys = labDuoImage(rescale(M0_Gabor), diasysArtery);
     saveImage(RGBdiasys, ToolBox, 'vessel_40_diasys_rgb.png', isStep = true)
     saveImage(RGBdiasys, ToolBox, 'DiaSysRGB.png')
 
@@ -320,10 +320,19 @@ saveImage(M0_RGB, ToolBox, 'vessel_40_RGB.png', isStep = true)
 saveImage(M0_RGB, ToolBox, 'RGB_img.png')
 
 if isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskArtery.png')) || isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskVein.png'))
-    M0_Artery = setcmap(M0_ff_img, results{1}, cmapArtery);
-    M0_Vein = setcmap(M0_ff_img, results{2}, cmapVein);
-    M0_AV = setcmap(M0_ff_img, results{1} & results{2}, cmapAV);
-    M0_RGB = (M0_Artery + M0_Vein) .* ~(results{1} & results{2}) + M0_AV + rescale(M0_ff_img) .* ~(results{1} | results{2});
+
+    maskArteryNoImport = results{1};
+    maskVeinNoImport = results{2};
+
+    maskVesselNoImport = maskArteryNoImport | maskVeinNoImport;
+    maskArteryNoImport = removeDisconnected(maskArteryNoImport, maskVesselNoImport, maskCircle, 'artery_31_VesselMask', ToolBox);
+    maskVeinNoImport = removeDisconnected(maskVeinNoImport, maskVesselNoImport, maskCircle, 'vein_31_VesselMask', ToolBox);
+
+
+    M0_Artery = setcmap(M0_ff_img, maskArteryNoImport, cmapArtery);
+    M0_Vein = setcmap(M0_ff_img, maskVeinNoImport, cmapVein);
+    M0_AV = setcmap(M0_ff_img, maskArteryNoImport & maskVeinNoImport, cmapAV);
+    M0_RGB = (M0_Artery + M0_Vein) .* ~(maskArteryNoImport & maskVeinNoImport) + M0_AV + rescale(M0_ff_img) .* ~(maskArteryNoImport | maskVeinNoImport);
     saveImage(M0_RGB, ToolBox, 'vessel_40_RGB_no_import.png', isStep = true)
 end
 
