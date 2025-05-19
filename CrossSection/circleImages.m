@@ -45,7 +45,10 @@ inv_maskRadius = ~maskRadius;
 
 % Get appropriate colormap
 cmap = ToolBox.(['cmap' name]);
-textOptions = {"FontWeight", "bold", "FontSize", 12, "Color", "white", "BackgroundColor", "black"};
+textOptions = {"FontWeight", "bold", ...
+    "Color", "white", ...
+    "BackgroundColor", "black", ...
+    "FontSize", 14};
 
 % Plot cross-section widths
 parfor cIdx = 1:numCircles
@@ -55,13 +58,13 @@ parfor cIdx = 1:numCircles
 
     % Create all figures at once
     fig1 = figure("Visible", "off");
-    imshow(image_RGB);
+    imagesc(image_RGB);
     fig2 = figure("Visible", "off");
-    imshow(image_RGB);
+    imagesc(image_RGB);
     fig3 = figure("Visible", "off");
-    imshow(image_RGB);
+    imagesc(image_RGB);
     fig4 = figure("Visible", "off");
-    imshow(image_RGB);
+    imagesc(image_RGB);
 
     for bIdx = 1:numBranches
 
