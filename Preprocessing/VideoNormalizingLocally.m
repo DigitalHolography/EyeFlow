@@ -50,7 +50,7 @@ if params.json.FlatFieldCorrection.FittedParameters
 
     obj.M0_ff_video = flat_field_correction(obj.M0_data_video, fitParams, border, 'fittedGaussian') ./ M0_data_convoluated;
 else
-    obj.M0_ff_video = flat_field_correction(obj.M0_ff_video, ceil(gwRatio * size(obj.M0_ff_video, 1)), border, 'gaussianBlur');
+    obj.M0_ff_video = flat_field_correction(obj.M0_data_video, ceil(gwRatio * size(obj.M0_data_video, 1)), border, 'gaussianBlur');
 end
 
 end

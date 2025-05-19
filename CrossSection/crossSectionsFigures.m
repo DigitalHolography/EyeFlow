@@ -80,7 +80,11 @@ else
 end
 
 if params.json.CrossSectionsFigures.BloodFlowProfiles
+    try 
     interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, name)
+    catch ME
+        disp(ME)
+    end
 end
 
 % Call for arterial analysis

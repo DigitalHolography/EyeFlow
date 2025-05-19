@@ -59,7 +59,7 @@ methods (Access = public)
             fprintf("- Video Loading took : %ds\n", round(toc))
 
             % Compute the mean of M0_data_video along the third dimension
-            mean_M0 = mean(app.file.M0_ff_raw_video, 3);
+            mean_M0 = mean(app.file.M0_raw_video, 3);
             % Display the mean image in the uiimage component
             img = repmat(rescale(mean_M0), [1 1 3]);
             [numX, numY] = size(img);
