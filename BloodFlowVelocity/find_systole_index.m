@@ -69,12 +69,12 @@ if savepng
     figure(Visible = 'off');
     plot(fullTime, fullPulse, 'k-', 'LineWidth', 1.5);
     hold on
-    scatter(sys_max_list * T, fullPulse(sys_max_list), 'r', "filled")
-    scatter(sys_min_list * T, fullPulse(sys_min_list), 'b', "filled")
-    scatter(sys_index_list * T, fullPulse(sys_index_list), 'k', "filled")
+    scatter((sys_max_list - 1) * T, fullPulse(sys_max_list), 'r', "filled")
+    scatter((sys_min_list - 1) * T, fullPulse(sys_min_list), 'b', "filled")
+    scatter((sys_index_list - 1) * T, fullPulse(sys_index_list), 'k', "filled")
 
     plot(fullTime, diff_signal, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5)
-    scatter(sys_index_list * T, diff_signal(sys_index_list), 'k', "filled")
+    scatter((sys_index_list - 1) * T, diff_signal(sys_index_list), 'k', "filled")
 
     xline(sys_index_list * T, 'k--')
     xline(sys_min_list * T, 'b--')
