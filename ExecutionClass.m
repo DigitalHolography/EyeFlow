@@ -86,7 +86,14 @@ methods
             obj.M1_raw_video = pagetranspose(videoM1 / 1e3); % Rescale M1
             obj.M2_raw_video = pagetranspose(videoM2 / 1e6); % Rescale M2
         else
-            obj = readRaw(obj);
+            dir_path_raw = fullfile(obj.directory, 'raw');
+            NameRefRawFile = strcat(obj.filenames, '_raw.h5');
+            RefRawFilePath = fullfile(dir_path_raw, NameRefRawFile);
+            if isfile(RefRawFilePath)
+                obj = readHDF5(obj);
+            else
+                obj = readRaw(obj);
+            end
         end
 
         obj.is_preprocessed = false;
