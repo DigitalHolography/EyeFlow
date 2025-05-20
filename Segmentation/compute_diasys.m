@@ -1,16 +1,16 @@
-function [M0_Systole_img, M0_Diastole_img, M0_Systole_video, M0_Diastole_video, sysindexes, diasindexes] = compute_diasys(M0_ff_video, maskArtery, export_folder)
+function [M0_Systole_img, M0_Diastole_img, M0_Systole_video, M0_Diastole_video, sysindexes, diasindexes] = compute_diasys(M0_video, maskArtery, export_folder)
 
 arguments
-    M0_ff_video
+    M0_video
     maskArtery
     export_folder = ''
 end
 
 ToolBox = getGlobalToolBox;
-[~, ~, numFrames] = size(M0_ff_video);
+[~, ~, numFrames] = size(M0_video);
 fullTime = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 
-[sys_index_list, fullPulse, sys_max_list, sys_min_list] = find_systole_index(M0_ff_video, maskArtery);
+[sys_index_list, fullPulse, sys_max_list, sys_min_list] = find_systole_index(M0_video, maskArtery);
 
 fullPulse = fullPulse';
 
@@ -18,13 +18,13 @@ fullPulse = fullPulse';
 if isempty(sys_index_list)
     warning('sys_index_list is empty. Skipping systole and diastole computation.');
 
-    [~, amin] = min(M0_ff_video, [], 3);
-    [~, amax] = max(M0_ff_video, [], 3);
+    [~, amin] = min(M0_video, [], 3);
+    [~, amax] = max(M0_video, [], 3);
 
-    M0_Systole_img = M0_ff_video(amax, 3);
-    M0_Diastole_img = M0_ff_video(amin, 3);
-    M0_Systole_video = M0_ff_video;
-    M0_Diastole_video = M0_ff_video;
+    M0_Systole_img = M0_video(amax, 3);
+    M0_Diastole_img = M0_video(amin, 3);
+    M0_Systole_video = M0_video;
+    M0_Diastole_video = M0_video;
     return;
 end
 
@@ -121,11 +121,11 @@ sysindexes = sort(unique(sysindexes));
 diasindexes = sort(unique(diasindexes));
 
 % Compute the mean images
-M0_Systole_img = mean(M0_ff_video(:, :, sysindexes), 3);
-M0_Diastole_img = mean(M0_ff_video(:, :, diasindexes), 3);
+M0_Systole_img = mean(M0_video(:, :, sysindexes), 3, 'omitnan');
+M0_Diastole_img = mean(M0_video(:, :, diasindexes), 3, 'omitnan');
 
-M0_Systole_video = M0_ff_video(:, :, sysindexes);
-M0_Diastole_video = M0_ff_video(:, :, diasindexes);
+M0_Systole_video = M0_video(:, :, sysindexes);
+M0_Diastole_video = M0_video(:, :, diasindexes);
 
 % Adjust axes
 axis padded
@@ -136,7 +136,7 @@ axis([axT(1), axT(2), 0, axP(4) * 1.07])
 title('diastole and systole')
 
 xlabel('Time (s)')
-pbaspect([1.618 1 1])
+pbaspect([2.5 1 1])
 
 if strcmp(export_folder, 'mask')
 

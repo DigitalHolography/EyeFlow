@@ -28,6 +28,7 @@ end
 
 [numX, numY] = size(image);
 image = rescale(image);
+image(isnan(image)) = 0;
 level = multithresh(image(mask), numClasses - 1);
 graphThreshHistogram(image, level, mask, color, name)
 level = [-1 level];

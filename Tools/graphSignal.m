@@ -31,7 +31,10 @@ arguments
     opt.zero_center = false
 end
 
-f = figAspect('Fontsize', opt.Fontsize, 'LineWidth', opt.LineWidth);
+f = figure('Visible', 'off');
+
+pbaspect([2.5 1 1]);
+box on
 hold on
 
 for n = 1:length(y)
@@ -96,6 +99,7 @@ if opt.zero_center
 else
     axis([axT(1), axT(2), axP(3), axP(4)])
 end
+set(gca, 'LineWidth', 2)
 
 ToolBox = getGlobalToolBox;
 

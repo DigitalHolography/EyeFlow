@@ -153,8 +153,6 @@ methods
     function obj = analyzeData(obj, app)
         % Main routine for EyeFlow analysis.
 
-        profile on
-
         % Initialize ToolBox and parameters
         ToolBox = obj.ToolBoxMaster;
         params = ToolBox.getParams;
@@ -171,6 +169,13 @@ methods
         if obj.flag_segmentation
             fprintf("\n----------------------------------\nMask Creation\n----------------------------------\n");
             createMasksTimer = tic;
+
+            if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
+                mkdir(ToolBox.path_png, 'mask')
+                mkdir(ToolBox.path_eps, 'mask')
+                mkdir(fullfile(ToolBox.path_png, 'mask'), 'steps')
+                mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
+            end
 
             obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
             [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
@@ -328,8 +333,6 @@ methods
         clear ToolBox;
         diary off;
         displaySuccessMsg(1);
-        profile off
-        profile viewer
     end
 
 end

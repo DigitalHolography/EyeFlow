@@ -43,6 +43,7 @@ M0_vesselness_img = FrangiFilter2D(M0_norm_img, ...
     "BlackWhite", opt.BlackWhite);
 
 % Thresholding to segment vessels (optional)
+M0_vesselness_img(isnan(M0_vesselness_img)) = 0;
 M0_binary_img = imbinarize(M0_vesselness_img, "adaptive");
 
 saveImage(M0_vesselness_img, ToolBox, sprintf('%s_frangi_img.png', name), isStep = true)

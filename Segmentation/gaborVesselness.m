@@ -12,6 +12,8 @@ if size(input_image, 3) == 3
     input_image = rgb2gray(input_image);
 end
 
+input_image(isnan(input_image)) = 0;
+
 % Normalize the image to the range [0, 1]
 input_image = im2double(input_image);
 

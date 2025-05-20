@@ -23,12 +23,15 @@ if isempty(opt.cmap)
     end
 
     imwrite(I, folderPath, 'png');
+    
 else
 
-    if size(I, 3) == 1 && ~islogical(I), I = (size(opt.cmap, 1) - 1) * rescale(I);
+    if size(I, 3) == 1 && ~islogical(I)
+        I = (size(opt.cmap, 1) - 1) * rescale(I);
     end
 
     imwrite(I, opt.cmap, folderPath, 'png');
+
 end
 
 end
