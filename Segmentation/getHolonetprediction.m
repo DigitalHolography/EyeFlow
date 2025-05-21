@@ -1,8 +1,14 @@
 function mask = getHolonetprediction(M0, net)
 
 if nargin < 2 || isempty(net)
-    url = 'https://huggingface.co/noTban/uresnet/resolve/main/uresnet.onnx';
-    websave('Models\uresnet.onnx', url);
+    if ~isfolder('Models')
+        mkdir('Models');
+    end
+    if ~isfile('Models\uresnet.onnx')
+        % Download the model from Hugging Face
+        url = 'https://huggingface.co/noTban/uresnet/resolve/main/uresnet.onnx';
+        websave('Models\uresnet.onnx', url);
+    end
     net = importONNXNetwork('Models\uresnet.onnx');
 end
 

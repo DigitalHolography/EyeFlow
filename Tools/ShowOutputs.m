@@ -85,7 +85,7 @@ figure(321)
 montage(Arteries_fRMS_paths, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, 'ArteriesfRMS.png'));
 figure(3211)
-montage(Vessels_velocity, Size = [l L]);
+%montage(Vessels_velocity, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, 'Vessels_velocity.png'));
 figure(322)
 montage(ARI_velocity_paths, Size = [l L]);
@@ -97,7 +97,7 @@ figure(323)
 montage(bvr_paths, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, 'bloodVolumeRate.png'));
 figure(324)
-montage(histo_art_velocity_paths, Size = [l L]);
+%montage(histo_art_velocity_paths, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, 'histogramVelocityArteries.png'));
 figure(327)
 montage(Stroke_total_volume, Size = [l L]);
