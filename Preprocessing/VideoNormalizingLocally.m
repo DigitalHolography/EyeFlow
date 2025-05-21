@@ -12,6 +12,14 @@ if alpha == 1
 elseif alpha == 0
     % forces the pixel M0 normaFlisation;
     M0_data_convoluated = double(obj.M0_data_video);
+elseif alpha == -1
+    diaphragmRadius = params.json.Mask.DiaphragmRadius;
+    maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
+    M0_data_convoluated = double(mean(obj.M0_data_video(maskDiaphragm))); % normalize by M0 inside the diaphragm
+elseif alpha == -2
+    diaphragmRadius = params.json.Mask.DiaphragmRadius+0.2;
+    maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
+    M0_data_convoluated = double(mean(obj.M0_data_video(~maskDiaphragm))); % normalize by M0 outside the diaphragm
 else
     conv_size = round(alpha * (2 * D - 1));
     M0_data_convoluated = zeros([numX, numY, numFrames]);

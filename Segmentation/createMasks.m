@@ -363,16 +363,16 @@ createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMapArtery', 
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMap', maskArtery, maskVein, thin = 0.01);
 
 % 4) 6) Arteries tree
-try
-    getLongestArteryBranch(maskArtery, xy_barycenter, 'Artery');
-    getLongestArteryBranch(maskVein, xy_barycenter, 'Vein');
-catch ME
-
-    for i = 1:length(ME.stack)
-        disp("Error in getLongestArteryBranch: " + ME.stack(i).name + " at line " + ME.stack(i).line)
-    end
-
-end
+% try
+%     getLongestArteryBranch(maskArtery, xy_barycenter, 'Artery');
+%     getLongestArteryBranch(maskVein, xy_barycenter, 'Vein');
+% catch ME
+% 
+%     for i = 1:length(ME.stack)
+%         disp("Error in getLongestArteryBranch: " + ME.stack(i).name + " at line " + ME.stack(i).line)
+%     end
+% 
+% end
 
 close all
 end
