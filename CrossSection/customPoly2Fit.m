@@ -22,7 +22,9 @@ x_scaled = (x - x_mean) / x_std;
 X = [x_scaled .^ 2, x_scaled, ones(length(x_scaled), 1)];
 
 % Solve for the coefficients using normal equations
+warning('off')
 p = (X' * X) \ (X' * y);
+warning('on')
 
 % Transform coefficients back to original scale
 p1 = p(1) / (x_std ^ 2); % Rescale p1

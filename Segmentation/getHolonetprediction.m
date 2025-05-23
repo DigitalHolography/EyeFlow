@@ -17,19 +17,22 @@ end
 
 % Handle network loading
 if nargin < 2 || isempty(net)
+
     if ~isfolder('Models')
         mkdir('Models');
     end
+
     if ~isfile('Models\uresnet.onnx')
         % Download the model from Hugging Face
         url = 'https://huggingface.co/noTban/uresnet/resolve/main/uresnet.onnx';
         websave('Models\uresnet.onnx', url);
     end
-    net = importONNXNetwork('Models\uresnet.onnx');
+
+    net = importNetworkFromONNX('Models\uresnet.onnx');
 end
 
 % if nargin<2 || isempty(net)
-%     net = importONNXNetwork("Models\unet_resnet34.onnx");
+%     net = importNetworkFromONNX("Models\unet_resnet34.onnx");
 % end
 
 [Nx, Ny] = size(M0);

@@ -1,4 +1,4 @@
-function [v_video_RGB, v_mean_RGB] = bloodFlowVelocity(v_video, maskArtery, maskVein, M0_ff_video, xy_barycenter)
+function [v_video_RGB, v_mean_RGB] = bloodFlowVelocity(v_RMS_video, maskArtery, maskVein, M0_ff_video, xy_barycenter)
 
 close all
 ToolBox = getGlobalToolBox;
@@ -8,7 +8,7 @@ exportVideos = params.exportVideos;
 
 % Rescale once
 M0_ff_video = rescale(M0_ff_video);
-[numX, numY, numFrames] = size(v_video);
+[numX, numY, numFrames] = size(v_RMS_video);
 x_c = xy_barycenter(1) / numX;
 y_c = xy_barycenter(2) / numY;
 r1 = params.json.SizeOfField.SmallRadiusRatio;
@@ -23,16 +23,16 @@ maskVeinSection = maskVein & maskSection & ~maskAV;
 % 1) VELOCITY VIDEO
 tVelocityVideo = tic;
 
-[v_video_RGB, v_mean_RGB] = flowMap(v_video, maskSection, maskArtery, maskVein, M0_ff_video, xy_barycenter, ToolBox);
+[v_video_RGB, v_mean_RGB] = flowMap(v_RMS_video, maskSection, maskArtery, maskVein, M0_ff_video, xy_barycenter, ToolBox);
 
 fprintf("- Velocity Map Timing : %ds\n", round(toc(tVelocityVideo)))
 
 % 2) HISTOGRAM
 
-histoVideoArtery = VelocityHistogram(v_video, maskArterySection, 'Artery');
+histoVideoArtery = VelocityHistogram(v_RMS_video, maskArterySection, 'Artery');
 
 if veinsAnalysis
-    histoVideoVein = VelocityHistogram(v_video, maskVeinSection, 'Vein');
+    histoVideoVein = VelocityHistogram(v_RMS_video, maskVeinSection, 'Vein');
 end
 
 % 3) COMBINED

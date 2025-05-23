@@ -119,37 +119,31 @@ methods
 
         % Register video
         tic;
-        fprintf("\n----------------------------------\nVideo Registering\n----------------------------------\n");
         obj = VideoRegistering(obj);
         fprintf("- Video Registering took: %ds\n", round(toc));
 
         % Crop video
         tic;
-        fprintf("\n----------------------------------\nVideo Cropping\n----------------------------------\n");
         obj = VideoCropping(obj);
         fprintf("- Video Cropping took: %ds\n", round(toc));
 
         % Normalize moments
         tic;
-        fprintf("\n----------------------------------\nMoment Normalizing\n----------------------------------\n");
         obj = VideoNormalizingLocally(obj);
         fprintf("- Moment Normalizing took: %ds\n", round(toc));
 
         % Resize video
         tic;
-        fprintf("\n----------------------------------\nVideo Resizing\n----------------------------------\n");
         obj = VideoResizing(obj);
         fprintf("- Video Resizing took: %ds\n", round(toc));
 
         % Interpolate video
         tic;
-        fprintf("\n----------------------------------\nVideo Interpolation\n----------------------------------\n");
         obj = VideoInterpolating(obj);
         fprintf("- Video Interpolation took: %ds\n", round(toc));
 
         % Remove outliers
         tic;
-        fprintf("\n----------------------------------\nVideo Outlier Cleaning\n----------------------------------\n");
         obj = VideoRemoveOutliers(obj);
         fprintf("- Video Outlier Cleaning took: %ds\n", round(toc));
 
@@ -165,6 +159,11 @@ methods
         % Initialize ToolBox and parameters
         ToolBox = obj.ToolBoxMaster;
         params = ToolBox.getParams;
+
+        if params.json.DebugMode
+            profile off
+            profile on
+        end
         veins_analysis = params.veins_analysis;
         totalTime = tic;
         saveGit;
@@ -221,7 +220,8 @@ methods
             pulseAnalysisTimer = tic;
 
             f_AVG_mean = squeeze(mean(obj.f_AVG_video, 3));
-            [obj.vRMS, obj.sysIdxList, obj.sysIdx, obj.diasIdx] = pulseAnalysis(obj.f_RMS_video, obj.maskArtery, obj.maskVein, obj.maskNeighbors, obj.xy_barycenter);
+            [obj.vRMS, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB] = pulseAnalysis(obj.f_RMS_video, obj.M0_ff_video, ...
+                obj.maskArtery, obj.maskVein, obj.maskNeighbors, obj.xy_barycenter);
 
             if params.json.PulseAnalysis.ExtendedFlag
                 extendedPulseAnalysis(obj.M0_ff_video, obj.f_RMS_video, f_AVG_mean, obj.vRMS, obj.maskArtery, obj.maskVein, obj.xy_barycenter, obj.sysIdxList);
@@ -243,15 +243,6 @@ methods
         %     fprintf("- Pulse Velocity Calculations took : %ds\n", round(time_pulsevelocity))
         % end
 
-        % Blood Flow Velocity Analysis
-        if obj.flag_bloodFlowVelocity_figures
-            fprintf("\n----------------------------------\nBlood Flow Velocity Figures\n----------------------------------\n");
-            bloodFlowVelocityTimer = tic;
-
-            [obj.v_video_RGB, obj.v_mean_RGB] = bloodFlowVelocity(obj.vRMS, obj.maskArtery, obj.maskVein, obj.M0_ff_video, obj.xy_barycenter);
-
-            fprintf("- Blood Flow Velocity Figures calculation took: %ds\n", round(toc(bloodFlowVelocityTimer)));
-        end
 
         % Cross-Section Analysis
         if obj.flag_crossSection_analysis
@@ -342,6 +333,11 @@ methods
         clear ToolBox;
         diary off;
         displaySuccessMsg(1);
+
+        if params.json.DebugMode
+            profile off
+            profile viewer
+        end
     end
 
 end

@@ -21,7 +21,6 @@ properties (Access = public)
     % Checkboxes
     segmentationCheckBox matlab.ui.control.CheckBox
     bloodFlowAnalysisCheckBox matlab.ui.control.CheckBox
-    bloodFlowVelocityFigCheckBox matlab.ui.control.CheckBox
     crossSectionCheckBox matlab.ui.control.CheckBox
     crossSectionFigCheckBox matlab.ui.control.CheckBox
     spectralAnalysisCheckBox matlab.ui.control.CheckBox
@@ -225,7 +224,6 @@ methods (Access = public)
 
             app.file.flag_segmentation = app.segmentationCheckBox.Value;
             app.file.flag_bloodFlowVelocity_analysis = app.bloodFlowAnalysisCheckBox.Value;
-            app.file.flag_bloodFlowVelocity_figures = app.bloodFlowVelocityFigCheckBox.Value;
             app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
             app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
@@ -821,14 +819,11 @@ methods (Access = public)
             app.spectralAnalysisCheckBox.Value = false; % Turn off if disabled
         end
 
-        % Enable/disable bloodFlowVelocityFigCheckBox and crossSectionCheckBox
+        % Enable/disable crossSectionCheckBox
         if app.bloodFlowAnalysisCheckBox.Value || is_pulseAnalyzed
-            app.bloodFlowVelocityFigCheckBox.Enable = true;
             app.crossSectionCheckBox.Enable = true;
         else
-            app.bloodFlowVelocityFigCheckBox.Enable = false;
             app.crossSectionCheckBox.Enable = false;
-            app.bloodFlowVelocityFigCheckBox.Value = false; % Turn off if disabled
             app.crossSectionCheckBox.Value = false; % Turn off if disabled
         end
 
@@ -987,15 +982,6 @@ methods (Access = private)
         app.bloodFlowAnalysisCheckBox.Layout.Column = [1, 2];
         app.bloodFlowAnalysisCheckBox.Value = true;
         app.bloodFlowAnalysisCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-
-        app.bloodFlowVelocityFigCheckBox = uicheckbox(grid);
-        app.bloodFlowVelocityFigCheckBox.Text = 'Blood Flow Velocity Figures';
-        app.bloodFlowVelocityFigCheckBox.FontSize = 16;
-        app.bloodFlowVelocityFigCheckBox.FontColor = [1 1 1];
-        app.bloodFlowVelocityFigCheckBox.Layout.Row = 5;
-        app.bloodFlowVelocityFigCheckBox.Layout.Column = [3, 4];
-        app.bloodFlowVelocityFigCheckBox.Value = true;
-        app.bloodFlowVelocityFigCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
 
         app.crossSectionCheckBox = uicheckbox(grid);
         app.crossSectionCheckBox.Text = 'Cross Section Analysis';

@@ -19,8 +19,6 @@ arguments
     n (1, 1) {mustBeInteger, mustBePositive} = 256
 end
 
-tVelocityVideo = tic;
-
 % Get toolbox parameters
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -102,7 +100,5 @@ if ~exist(outputDir, 'dir')
 end
 
 exportgraphics(gca, fullfile(outputDir, sprintf("%s_histogramVelocity%s.eps", ToolBox.main_foldername, name)));
-
-fprintf("- Velocity Histogram %s Timing : %ds\n", name, round(toc(tVelocityVideo)))
 
 end

@@ -105,5 +105,6 @@
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
     "InterpolationPoints": 50
-  }
+  },
+  "DebugMode": false
 }

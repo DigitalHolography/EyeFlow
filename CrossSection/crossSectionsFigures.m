@@ -29,7 +29,7 @@ radiusQSE = Q_results.radiusQSE;
 branchQ = Q_results.branchQ;
 labeledVessels = Q_results.labeledVessels .* Q_results.labeledVessels ~= 0;
 
-% 1. Sections Image
+% 1. SBlood Volume Rate Figures
 tic
 
 if ~isempty(systolesIndexes)
@@ -39,6 +39,36 @@ else
     index_start = 1;
     index_end = numFrames;
 end
+
+[Q_t, dQ_t] = plotRadius(radiusQ, radiusQSE, t, index_start, index_end, name);
+
+if contains(name, 'Artery')
+    ToolBox.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
+else
+    ToolBox.Signals.add('VenousVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
+end
+
+r1 = params.json.SizeOfField.SmallRadiusRatio;
+r2 = params.json.SizeOfField.BigRadiusRatio;
+maskSection = diskMask(numX, numY, r1, r2, center = [x_c / numX y_c / numY]);
+s = regionprops(labeledVessels & maskSection, 'centroid');
+centroids = cat(1, s.Centroid);
+
+graphCombined(M0_ff_video, v_video_RGB, v_mean_RGB, ...
+    labeledVessels .* maskSection, ...
+    Q_t, dQ_t, xy_barycenter, sprintf('%s_vr', name), ...
+    'etiquettes_locs', centroids, ...
+    'etiquettes_values', branchQ);
+
+if params.json.CrossSectionsFigures.BloodFlowProfiles
+    interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, name)
+end
+
+fprintf("    1. Blood Volume Rate Figures (%s) took %ds\n", name, round(toc))
+
+% 2. Sections Figures
+
+tic
 
 if params.json.CrossSectionsFigures.sectionImage
     sectionImage(M0_ff_img, maskLabel, initial)
@@ -66,40 +96,10 @@ if params.json.CrossSectionsFigures.widthHistogram
     widthHistogram(D_cell, dD_cell, A_cell, name);
 end
 
-fprintf("    1. Sections Images Generation (%s) took %ds\n", name, round(toc))
-
-% 2. Blood Volume Rate Figures
-tic
-
-[Q_t, dQ_t] = plotRadius(radiusQ, radiusQSE, t, index_start, index_end, name);
-
-if contains(name, 'Artery')
-    ToolBox.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
-else
-    ToolBox.Signals.add('VenousVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
-end
-
-if params.json.CrossSectionsFigures.BloodFlowProfiles
-    interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, name)
-end
-
-% Call for arterial analysis
-r1 = params.json.SizeOfField.SmallRadiusRatio;
-r2 = params.json.SizeOfField.BigRadiusRatio;
-maskSection = diskMask(numX, numY, r1, r2, center = [x_c / numX y_c / numY]);
-s = regionprops(labeledVessels & maskSection, 'centroid');
-centroids = cat(1, s.Centroid);
-graphCombined(M0_ff_video, v_video_RGB, v_mean_RGB, ...
-    labeledVessels .* maskSection, ...
-    Q_t, dQ_t, xy_barycenter, sprintf('%s_vr', name), ...
-    'etiquettes_locs', centroids, ...
-    'etiquettes_values', branchQ, ...
-    'skip', ~params.exportVideos, ...
-    'Visible', false);
-
-fprintf("    2. Blood Volume Rate Figures (%s) took %ds\n", name, round(toc))
+fprintf("    2. Sections Images Figures (%s) took %ds\n", name, round(toc))
 
 % 3. Arterial Indicators
+
 tic
 
 if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesIndexes)
