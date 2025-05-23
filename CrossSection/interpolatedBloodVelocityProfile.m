@@ -147,44 +147,43 @@ bounds_sys = createBounds(v_sys, dv_sys);
 bounds_dias = createBounds(v_dias, dv_dias);
 
 % Create figure for static plot
-figStatic = figure("Visible", "off");
-axStatic = axes(figStatic);
-hold(axStatic, 'on');
+figure("Visible", "off");
+hold('on');
 
 % Plot systolic data
-fill(axStatic, bounds_sys.x, bounds_sys.y, Color_err, 'EdgeColor', 'none');
-plot(axStatic, w2w, bounds_sys.upper, 'Color', Color_err, 'LineWidth', 2);
-plot(axStatic, w2w, bounds_sys.lower, 'Color', Color_err, 'LineWidth', 2);
-plot(axStatic, w2w, v_sys, '--', 'Color', Color_sys, 'LineWidth', 2);
+fill(bounds_sys.x, bounds_sys.y, Color_err, 'EdgeColor', 'none');
+plot(w2w, bounds_sys.upper, 'Color', Color_err, 'LineWidth', 2);
+plot(w2w, bounds_sys.lower, 'Color', Color_err, 'LineWidth', 2);
+plot(w2w, v_sys, '--', 'Color', Color_sys, 'LineWidth', 2);
 
 % Plot diastolic data
-fill(axStatic, bounds_dias.x, bounds_dias.y, Color_err, 'EdgeColor', 'none');
-plot(axStatic, w2w, bounds_dias.upper, 'Color', Color_err, 'LineWidth', 2);
-plot(axStatic, w2w, bounds_dias.lower, 'Color', Color_err, 'LineWidth', 2);
-plot(axStatic, w2w, v_dias, '--', 'Color', Color_dias, 'LineWidth', 2);
+fill(bounds_dias.x, bounds_dias.y, Color_err, 'EdgeColor', 'none');
+plot(w2w, bounds_dias.upper, 'Color', Color_err, 'LineWidth', 2);
+plot(w2w, bounds_dias.lower, 'Color', Color_err, 'LineWidth', 2);
+plot(w2w, v_dias, '--', 'Color', Color_dias, 'LineWidth', 2);
 
 % Add Poiseuille fits
 warning('off', 'curvefit:fit:noStartPoint');
-fitPoiseuille = @(v) fit((1:numInterp)' - find(v == max(v), 1), v', 'poly2');
+fitPoiseuille = @(v) fit((1:numInterp)' - (numInterp / 2), v', 'poly2');
 f_sys = fitPoiseuille(v_sys);
 f_dias = fitPoiseuille(v_dias);
 
 r_range = (1:numInterp) - (numInterp / 2); % Center around midpoint
-plot(axStatic, w2w, f_sys.p1 * r_range .^ 2 + f_sys.p2 * r_range + f_sys.p3, ...
+plot(w2w, f_sys.p1 * r_range .^ 2 + f_sys.p2 * r_range + f_sys.p3, ...
     'Color', Color_sys, 'LineWidth', 2);
-plot(axStatic, w2w, f_dias.p1 * r_range .^ 2 + f_dias.p2 * r_range + f_dias.p3, ...
+plot(w2w, f_dias.p1 * r_range .^ 2 + f_dias.p2 * r_range + f_dias.p3, ...
     'Color', Color_dias, 'LineWidth', 2);
 warning('on', 'curvefit:fit:noStartPoint');
 
 % Finalize static plot
-axis(axStatic, 'tight');
-ylim(axStatic, [min([bounds_sys.lower, bounds_dias.lower]), ...
-                         1.07 * max([bounds_sys.upper, bounds_dias.upper])]);
-xlabel(axStatic, 'wall-to-wall distance (a.u.)', 'FontSize', 14);
-ylabel(axStatic, 'Velocity (mm/s)', 'FontSize', 14);
-pbaspect(axStatic, [1.618 1 1]);
-box(axStatic, 'on');
-set(axStatic, 'LineWidth', 2);
+axis('tight');
+ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
+               1.07 * max([bounds_sys.upper, bounds_dias.upper])]);
+xlabel('wall-to-wall distance (a.u.)', 'FontSize', 14);
+ylabel('Velocity (mm/s)', 'FontSize', 14);
+pbaspect([1.618 1 1]);
+box('on');
+set(gca, 'LineWidth', 2);
 
 % Export static figure
 outputDir = fullfile(ToolBox.path_png, 'crossSectionsAnalysis');
@@ -193,33 +192,45 @@ if ~exist(outputDir, 'dir')
     mkdir(outputDir);
 end
 
-exportgraphics(axStatic, fullfile(outputDir, ...
+exportgraphics(gca, fullfile(outputDir, ...
     sprintf("%s_diasys_%s.png", ToolBox.main_foldername, name)), 'Resolution', 300);
 
 % Video export if requested
 if exportVideos
-    figVideo = figure('Visible', 'off', 'Color', 'w');
-    axVideo = axes(figVideo);
-    hold(axVideo, 'on');
+    figVideo = figure('Visible', 'off');
+    hold('on');
 
     % Create plot elements
-    fillPlot = fill(axVideo, NaN, NaN, Color_err, 'EdgeColor', 'none');
-    upperPlot = plot(axVideo, NaN, NaN, 'Color', Color_err, 'LineWidth', 2);
-    lowerPlot = plot(axVideo, NaN, NaN, 'Color', Color_err, 'LineWidth', 2);
-    meanPlot = plot(axVideo, NaN, NaN, '--', 'Color', Color_sys, 'LineWidth', 2);
-    fitPlot = plot(axVideo, NaN, NaN, '-', 'Color', Color_sys, 'LineWidth', 2);
+    fillPlot = fill(NaN, NaN, Color_err, 'EdgeColor', 'none');
+    upperPlot = plot(NaN, NaN, 'Color', Color_err, 'LineWidth', 2);
+    lowerPlot = plot(NaN, NaN, 'Color', Color_err, 'LineWidth', 2);
+    meanPlot = plot(NaN, NaN, '--', 'Color', Color_sys, 'LineWidth', 2);
+    fitPlot = plot(NaN, NaN, '-', 'Color', Color_sys, 'LineWidth', 2);
 
     % Configure axes
-    axis(axVideo, 'tight');
-    ylim(axVideo, get(axStatic, 'YLim'));
-    xlabel(axVideo, 'wall-to-wall distance (a.u.)', 'FontSize', 14);
-    ylabel(axVideo, 'Velocity (mm/s)', 'FontSize', 14);
-    pbaspect(axVideo, [1.618 1 1]);
-    box(axVideo, 'on');
-    set(axVideo, 'LineWidth', 2);
+    axis('tight');
+    ylim(get(gca, 'YLim'));
+    xlabel('wall-to-wall distance (a.u.)');
+    ylabel('Velocity (mm/s)');
+    pbaspect([1.618 1 1]);
+    box('on');
+    set(gca, 'LineWidth', 2);
 
     % Preallocate video
-    video = zeros(420, 560, 3, numFrames);
+    % Create bounds for this frame
+    bounds_frame = createBounds(v_video(1, :), dv_video(1, :));
+
+    % Update plots
+    set(fillPlot, 'XData', bounds_frame.x, 'YData', bounds_frame.y);
+    set(upperPlot, 'XData', w2w, 'YData', bounds_frame.upper);
+    set(lowerPlot, 'XData', w2w, 'YData', bounds_frame.lower);
+    set(meanPlot, 'XData', w2w, 'YData', v_video(1, :));
+
+    ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
+                   1.07 * max([bounds_sys.upper, bounds_dias.upper])]);
+
+    [numX_fig, numY_fig, ~] = size(frame2im(getframe(figVideo)));
+    video = zeros(numX_fig, numY_fig, 3, numFrames);
 
     % Process each frame
     for frameIdx = 1:numFrames

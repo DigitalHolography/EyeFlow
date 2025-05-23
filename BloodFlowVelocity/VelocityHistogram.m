@@ -40,7 +40,8 @@ else % vein
 end
 
 % Velocity Histogram
-xAx = [0 numFrames * ToolBox.stride / (1000 * ToolBox.fs)];
+T = ToolBox.stride / (1000 * ToolBox.fs); % time between frames
+xAx = [0 numFrames * T]; % time axis
 yAx = [v_min v_max];
 
 % Initialize histogram matrix
@@ -50,27 +51,30 @@ edges = linspace(v_min, v_max, n + 1); % edges for the histcount bins so n+1 num
 % Initialize figure
 fDistrib = figure("Visible", 'on', 'Color', 'w');
 fDistrib.Position(3:4) = [600 275];
-h_imagesc = imagesc(xAx, yAx, histo(:, :));
+
+for frameIdx = 1:numFrames
+    data = v_histo(:, :, frameIdx);
+    histo(:, frameIdx) = histcounts(data(mask), edges); % histcount is faster than histogram or manual for loop counting
+end
+
+imagesc(xAx, yAx, histo(:, :));
 set(gca, 'PlotBoxAspectRatio', [2.5 1 1])
 set(gca, 'YDir', 'normal')
 colormap(cmap)
 ylabel('Velocity (mm/s)')
 xlabel('Time (s)')
 title(sprintf("velocity distribution in %s", name))
-
-% Pre-compute bin indices for all frames
-[numX_fig, numY_fig] = deal(fDistrib.Position(4), fDistrib.Position(3));
+histoVideo = frame2im(getframe(fDistrib));
+hold on
+RGB = fill([0 0 xAx(2) xAx(2)], [yAx(1) yAx(2) yAx(2) yAx(1)], [0 0 0], 'EdgeColor', 'none');
 
 if exportVideos
+    [numX_fig, numY_fig, ~] = size(histoVideo);
     histoVideo = zeros(numX_fig, numY_fig, 3, numFrames);
     gifWriter = GifWriter(sprintf("histogramVelocity%s", name), numFrames);
 
     for frameIdx = 1:numFrames
-        data = v_histo(:, :, frameIdx);
-        histo(:, frameIdx) = histcounts(data(mask), edges); % histcount is faster than histogram or manual for loop counting
-
-        h_imagesc.CData(:, frameIdx) = histo(:, frameIdx);
-
+        RGB.XData = [frameIdx frameIdx numFrames numFrames] * T;
         f = getframe(fDistrib);
         histoVideo(:, :, :, frameIdx) = frame2im(f);
         gifWriter.write(f, frameIdx);
@@ -78,18 +82,6 @@ if exportVideos
 
     gifWriter.generate();
     gifWriter.delete();
-
-else
-
-    for frameIdx = 1:numFrames
-        data = v_histo(:, :, frameIdx);
-        histo(:, frameIdx) = histcounts(data(mask), edges); % histcount is faster than histogram or manual for loop counting
-    end
-
-    h_imagesc.CData(:, :) = histo(:, :);
-    f = getframe(fDistrib);
-    histoVideo = frame2im(f);
-
 end
 
 histoVideo = mat2gray(histoVideo);

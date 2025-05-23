@@ -45,7 +45,6 @@ axis([axT(1), axT(2), 0, axP(4)])
 ylabel(y_label)
 xlabel('Time (s)')
 pbaspect([1.618 1 1])
-fontsize(gca, 14, 'points')
 set(gca, 'LineWidth', 2), box on
 
 [peaks, locs_peaks] = findpeaks(signal_shifted, 'MinPeakWidth', numInterp / 2);

@@ -67,18 +67,16 @@ if savepng
     fullTime = linspace(0, numFrames * T, numFrames);
 
     figure(Visible = 'off');
-    plot(fullTime, fullPulse, 'k-', 'LineWidth', 1.5);
     hold on
+    plot(fullTime, diff_signal, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5)
+    plot(fullTime, fullPulse, 'k-', 'LineWidth', 1.5);
     scatter((sys_max_list - 1) * T, fullPulse(sys_max_list), 'r', "filled")
     scatter((sys_min_list - 1) * T, fullPulse(sys_min_list), 'b', "filled")
     scatter((sys_index_list - 1) * T, fullPulse(sys_index_list), 'k', "filled")
 
-    plot(fullTime, diff_signal, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5)
-    scatter((sys_index_list - 1) * T, diff_signal(sys_index_list), 'k', "filled")
-
-    xline(sys_index_list * T, 'k--')
-    xline(sys_min_list * T, 'b--')
-    xline(sys_max_list * T, 'r--')
+    xline((sys_index_list - 1) * T, 'k--')
+    xline((sys_min_list - 1) * T, 'b--')
+    xline((sys_max_list - 1) * T, 'r--')
     hold off
 
     axis padded;
@@ -86,6 +84,7 @@ if savepng
     axis tight;
     axT = axis;
     axis([axT(1), axT(2), axP(3), axP(4)]);
+    box on
     set(gca, 'LineWidth', 2, 'PlotBoxAspect', [2.5 1 1])
     xlabel("Time (s)")
     ylabel("Velocity (mm/s)")

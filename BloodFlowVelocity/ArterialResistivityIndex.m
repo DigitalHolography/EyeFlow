@@ -115,7 +115,6 @@ axis tight
 axT = axis;
 axis([axT(1), axT(2), axP(3) - 2, axP(4) + 2])
 
-fontsize(gca, 14, "points");
 box on
 set(gca, 'Linewidth', 2)
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
@@ -165,7 +164,6 @@ axis tight
 axT = axis;
 axis([axT(1), axT(2), axP(3) - 2, axP(4) + 2])
 
-fontsize(gca, 14, "points");
 box on
 set(gca, 'Linewidth', 2)
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])

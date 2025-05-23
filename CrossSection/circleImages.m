@@ -23,7 +23,7 @@ y_c = xy_barycenter(2);
 [numCircles, numBranches] = size(A_cell);
 
 % Initialize video arrays with consistent size
-videoSize = [465, 465];
+videoSize = [numX, numY];
 vesselD_video = zeros([videoSize, 3, numCircles]);
 vesselNum_video = zeros([videoSize, 3, numCircles]);
 Q_video = zeros([videoSize, 3, numCircles]);
@@ -44,11 +44,12 @@ maskRadius = squeeze(sum(maskMat, 4));
 inv_maskRadius = ~maskRadius;
 
 % Get appropriate colormap
+fontsize = round(numX / 75);
 cmap = ToolBox.(['cmap' name]);
 textOptions = {"FontWeight", "bold", ...
                    "Color", "white", ...
                    "BackgroundColor", "black", ...
-                   "FontSize", 18};
+                   "FontSize", fontsize};
 
 % Plot cross-section widths
 parfor cIdx = 1:numCircles
@@ -110,48 +111,48 @@ parfor cIdx = 1:numCircles
     % Capture and resize frame for video
     figure(fig1);
     capturedFrame = frame2im(getframe(gca));
-    resizedFrame = imresize(capturedFrame, [465, 465]);
-    vesselD_video(:, :, :, cIdx) = rescale(resizedFrame);
+    resizedFrame = rescale(imresize(capturedFrame, [numX, numY]));
+    vesselD_video(:, :, :, cIdx) = resizedFrame;
 
     % Export plot
-    exportgraphics(gca, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'widths', ...
-        sprintf("%s_circle_%d_crossSectionWidth_%s.png", main_folder, cIdx, name)));
+    imwrite(resizedFrame, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'widths', ...
+        sprintf("%s_circle_%d_crossSectionWidth_%s.png", main_folder, cIdx, name)), 'png');
     exportgraphics(gca, fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages', 'widths', ...
         sprintf("%s_circle_%d_crossSectionWidth_%s.eps", main_folder, cIdx, name)));
 
     % Capture and resize frame for video
     figure(fig2);
     capturedFrame = frame2im(getframe(gca));
-    resizedFrame = imresize(capturedFrame, [465, 465]);
-    vesselNum_video(:, :, :, cIdx) = rescale(resizedFrame);
+    resizedFrame = rescale(imresize(capturedFrame, [numX, numY]));
+    vesselNum_video(:, :, :, cIdx) = resizedFrame;
 
     % Export plot
-    exportgraphics(gca, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'num', ...
-        sprintf("%s_circle_%d_Numerotation%sImage.png", main_folder, cIdx, name)));
+    imwrite(resizedFrame, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'num', ...
+        sprintf("%s_circle_%d_Numerotation%sImage.png", main_folder, cIdx, name)), 'png');
     exportgraphics(gca, fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages', 'num', ...
         sprintf("%s_circle_%d_Numerotation%sImage.eps", main_folder, cIdx, name)));
 
     % Capture and resize frame for video
     figure(fig3);
     capturedFrame = frame2im(getframe(gca));
-    resizedFrame = imresize(capturedFrame, [465, 465]);
-    Q_video(:, :, :, cIdx) = rescale(resizedFrame);
+    resizedFrame = rescale(imresize(capturedFrame, [numX, numY]));
+    Q_video(:, :, :, cIdx) = resizedFrame;
 
     % Export plot
-    exportgraphics(gca, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'bvr', ...
-        sprintf("%s_circle_%d_BVR_%s.png", main_folder, cIdx, name)));
+    imwrite(resizedFrame, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'bvr', ...
+        sprintf("%s_circle_%d_BVR_%s.png", main_folder, cIdx, name)), 'png');
     exportgraphics(gca, fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages', 'bvr', ...
         sprintf("%s_circle_%d_BVR_%s.eps", main_folder, cIdx, name)));
 
     % Capture and resize frame for video
     figure(fig4);
     capturedFrame = frame2im(getframe(gca));
-    resizedFrame = imresize(capturedFrame, [465, 465]);
-    velocity_video(:, :, :, cIdx) = rescale(resizedFrame);
+    resizedFrame = rescale(imresize(capturedFrame, [numX, numY]));
+    velocity_video(:, :, :, cIdx) = resizedFrame;
 
     % Export plot
-    exportgraphics(gca, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'vel', ...
-        sprintf("%s_circle_%d_velocity%sImage.png", main_folder, cIdx, name)));
+    imwrite(resizedFrame, fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages', 'vel', ...
+        sprintf("%s_circle_%d_velocity%sImage.png", main_folder, cIdx, name)), 'png');
     exportgraphics(gca, fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages', 'vel', ...
         sprintf("%s_circle_%d_velocity%sImage.eps", main_folder, cIdx, name)));
 end

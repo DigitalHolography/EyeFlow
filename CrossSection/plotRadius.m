@@ -60,7 +60,6 @@ axis tight;
 axT = axis;
 axis([axT(1), axT(2), 0, 1.07 * axP(4)]);
 box on;
-fontsize(gca, 14, 'points')
 ylabel('Blood Volume Rate (µL/min)');
 xlabel('Time (s)');
 title("Radial Variations of Blood Volume Rate");
@@ -110,7 +109,6 @@ axis tight;
 axT = axis;
 axis([axT(1), axT(2), axP(3), 1.07 * axP(4)]);
 box on;
-fontsize(gca, 14, 'points')
 ylabel('Blood Volume Rate (µL/min)');
 xlabel('Time (s)');
 title(sprintf("Total Blood Volume Rate (Avg. %0.2f µL/min)", mean_Q));

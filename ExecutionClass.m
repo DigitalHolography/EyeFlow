@@ -28,6 +28,8 @@ properties
     vRMS % video estimate of velocity map in retinal vessels
     Q_results_A
     Q_results_V
+    v_video_RGB
+    v_mean_RGB
 
     maskArtery
     maskVein
@@ -246,7 +248,7 @@ methods
             fprintf("\n----------------------------------\nBlood Flow Velocity Figures\n----------------------------------\n");
             bloodFlowVelocityTimer = tic;
 
-            bloodFlowVelocity(obj.vRMS, obj.maskArtery, obj.maskVein, obj.M0_ff_video, obj.xy_barycenter);
+            [obj.v_video_RGB, obj.v_mean_RGB] = bloodFlowVelocity(obj.vRMS, obj.maskArtery, obj.maskVein, obj.M0_ff_video, obj.xy_barycenter);
 
             fprintf("- Blood Flow Velocity Figures calculation took: %ds\n", round(toc(bloodFlowVelocityTimer)));
         end
@@ -272,10 +274,10 @@ methods
             fprintf("\n----------------------------------\nCross-Section Figures\n----------------------------------\n");
             crossSectionFiguresTimer = tic;
 
-            crossSectionsFigures(obj.Q_results_A, 'Artery', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx);
+            crossSectionsFigures(obj.Q_results_A, 'Artery', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
 
             if veins_analysis
-                crossSectionsFigures(obj.Q_results_V, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx);
+                crossSectionsFigures(obj.Q_results_V, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
             end
 
             try

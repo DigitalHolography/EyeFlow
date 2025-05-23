@@ -1,5 +1,21 @@
 function mask = getHolonetprediction(M0, net)
+% GETHOLONETPREDICTION Generates a segmentation mask using a U-Net model
+%   Inputs:
+%       M0 - Input image (2D matrix)
+%       net - Optional pre-loaded neural network
+%   Output:
+%       mask - Binary segmentation mask
 
+% Validate input
+if nargin < 1 || isempty(M0)
+    error('Input image M0 is required');
+end
+
+if ~ismatrix(M0)
+    error('Input M0 must be a 2D matrix');
+end
+
+% Handle network loading
 if nargin < 2 || isempty(net)
     if ~isfolder('Models')
         mkdir('Models');

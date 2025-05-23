@@ -125,6 +125,7 @@ methods (Access = public)
         app.CheckboxValueChanged();
         set(groot, 'defaultFigureColor', 'w');
         set(groot, 'defaultAxesFontSize', 14);
+        set(groot, 'DefaultTextFontSize', 10); % For text objects (e.g., annotations)
     end
 
     function LoadFromTxt(app)

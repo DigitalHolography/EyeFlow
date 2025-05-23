@@ -1,4 +1,4 @@
-function graphCombined(video, mask, signal, stdsignal, xy_barycenter, dirname, opt)
+function graphCombined(video, v_video_RGB, v_mean_RGB, mask, signal, stdsignal, xy_barycenter, dirname, opt)
 % Combines a video and a signal into an animated GIF, overlaying them frame by frame.
 %
 % Inputs:
@@ -19,6 +19,8 @@ function graphCombined(video, mask, signal, stdsignal, xy_barycenter, dirname, o
 
 arguments
     video
+    v_video_RGB
+    v_mean_RGB
     mask
     signal
     stdsignal
@@ -27,7 +29,6 @@ arguments
     opt.etiquettes_locs = []
     opt.etiquettes_values = []
     opt.skip logical = false
-    opt.Color = 'none'
     opt.Visible logical = false
 end
 
@@ -40,6 +41,7 @@ exportVideos = params.exportVideos;
 [numX, numY, numFrames] = size(video);
 T = ToolBox.stride / ToolBox.fs / 1000;
 fullTime = linspace(0, numFrames * T, numFrames);
+fontsize = round(numX / 75);
 video = rescale(video);
 
 % Precompute constants
@@ -68,22 +70,13 @@ end
 % Initialize video plot
 locs = opt.etiquettes_locs;
 values = opt.etiquettes_values;
-color = opt.Color;
-
-if strcmp(color, 'Artery') == 1
-    cmap = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
-elseif strcmp(color, 'Vein') == 1
-    cmap = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
-else
-    cmap = cmapLAB(256, [0 0 0], 0, [1 1 1], 1);
-end
 
 videoPlot = figure(410);
 videoPlot.Position = [200 200 600 600];
 videoPlot.Visible = opt.Visible;
 
-im = rescale(mean(video, 3));
-image_RGB = setcmap(im, mask, cmap) + im .* ~mask;
+image = rescale(mean(video, 3));
+image_RGB = v_mean_RGB .* mask + image .* ~mask;
 image_RGB = image_RGB .* ~(maskCircles & ~mask) + maskCircles .* ~mask;
 imshow(image_RGB);
 
@@ -103,7 +96,7 @@ if ~isempty(locs)
         % Add the text
         t{etIdx} = text(new_x{etIdx}, new_y{etIdx}, sprintf('%0.1f', mean(values(etIdx), 2)), ...
             "FontWeight", "bold", ...
-            "FontSize", 14, ...
+            "FontSize", fontsize, ...
             "Color", "white", ...
             "BackgroundColor", "black");
 
@@ -115,12 +108,11 @@ frame = frame2im(getframe(gca));
 
 if exportVideos
     % Preallocate video data array
-    videoPlotFrames = zeros([size(getframe(gca).cdata), numFrames], 'single');
+    videoPlotFrames = zeros([numX, numY, 3, numFrames], 'single');
 
     % Generate video frames
     parfor frameIdx = startingFrame:numFrames
-        im = video(:, :, frameIdx);
-        image_RGB = setcmap(im, mask, cmap) + im .* ~mask;
+        image_RGB = v_video_RGB(:, :, :, frameIdx) .* mask + video(:, :, frameIdx) .* ~mask;
         image_RGB = image_RGB .* ~(maskCircles & ~mask) + maskCircles .* ~mask;
         imshow(image_RGB);
 
@@ -131,7 +123,7 @@ if exportVideos
                 % Add the text
                 text(new_x{etIdx}, new_y{etIdx}, sprintf('%0.1f', values(etIdx, frameIdx)), ...
                     "FontWeight", "bold", ...
-                    "FontSize", 14, ...
+                    "FontSize", fontsize, ...
                     "Color", "white", ...
                     "BackgroundColor", "black");
 
@@ -159,45 +151,44 @@ fill(tmp_fullTime, inBetween, Color_std);
 ylabel('Volume Rate (µL/min)')
 xlabel('Time (s)')
 title(sprintf("Average Blood Volume Rate : %.0f %s", round(mean_signal), 'µL/min'))
-fontsize(14, 'points')
 hold on;
+plot(fullTime, curve1, "Color", Color_std, 'LineWidth', 2);
+plot(fullTime, curve2, "Color", Color_std, 'LineWidth', 2);
+plot(fullTime, signal, '-k', 'LineWidth', 2);
+yline(mean_signal, '--k', 'LineWidth', 2)
+
+yAx = [min(-1, min(signal)), max(signal) * 1.07];
+axss = [0, numFrames * T, min(-1, min(signal)), max(signal) * 1.07];
+axis(axss);
+box on
+set(gca, 'Linewidth', 2)
+pbaspect([2.5, 1, 1])
+
+signalPlotFrames = frame2im(getframe(signalPlot));
+cache = fill([0 0 numFrames numFrames] * T, [yAx(1), yAx(2), yAx(2), yAx(1)], 'w', "EdgeColor", 'none');
+hold off;
 
 if exportVideos
     % Preallocate signal plot data array
-    signalPlotFrames = zeros([size(getframe(signalPlot).cdata), numFrames], 'single');
+    signalPlotFrames = zeros([size(signalPlotFrames), numFrames], 'single');
 
-    axss = [0, numFrames * T, min(-1, min(signal)), max(signal) * 1.07];
-
-    parfor frameIdx = startingFrame:numFrames
-        plot(fullTime, curve1, "Color", Color_std, 'LineWidth', 2);
-        plot(fullTime, curve2, "Color", Color_std, 'LineWidth', 2);
-        plot(fullTime, signal, '-k', 'LineWidth', 2);
-        yline(mean_signal, '--k', 'LineWidth', 2)
-        fill([T * frameIdx T * frameIdx numFrames * T numFrames * T], ...
-            [min(-1, min(signal)), max(signal) * 1.07, max(signal) * 1.07, min(-1, min(signal))], ...
-            'w', "EdgeColor", 'none');
+    for frameIdx = startingFrame:numFrames
+        % Update signal plot for each frame
+        cache.XData = [frameIdx * T, frameIdx * T, numFrames * T, numFrames * T];
         axis(axss);
+
         set(gca, 'Linewidth', 2)
-        set(gca, 'PlotBoxAspectRatio', [2.5, 1, 1])
+        pbaspect([2.5, 1, 1])
 
         signalPlotFrames(:, :, :, frameIdx) = frame2im(getframe(signalPlot));
     end
 
-else
-    plot(fullTime, curve1, "Color", Color_std, 'LineWidth', 2);
-    plot(fullTime, curve2, "Color", Color_std, 'LineWidth', 2);
-    plot(fullTime, signal, '-k', 'LineWidth', 2);
-    yline(mean_signal, '--k', 'LineWidth', 2)
-    axis([0, numFrames * T, min(-1, min(signal)), max(signal) * 1.07]);
-    set(gca, 'Linewidth', 2)
-    set(gca, 'PlotBoxAspectRatio', [2.5, 1, 1])
-
-    signalPlotFrames = frame2im(getframe(signalPlot));
 end
 
 hold off;
 
-combinedLast = cat(1, mat2gray(imresize(frame, [600 600])), mat2gray(signalPlotFrames(:, :, :, end)));
+[~, numY_fig, ~, ~] = size(signalPlotFrames);
+combinedLast = cat(1, mat2gray(imresize(frame, [numY_fig numY_fig])), mat2gray(signalPlotFrames(:, :, :, end)));
 
 % Save final frames as PNGs
 imwrite(mat2gray(signalPlotFrames(:, :, :, end)), fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s_plot.png", ToolBox.folder_name, dirname)));

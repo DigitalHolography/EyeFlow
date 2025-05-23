@@ -1,4 +1,4 @@
-function crossSectionsFigures(Q_results, name, M0_ff_video, xy_barycenter, systolesIndexes, sysIdx, diasIdx)
+function crossSectionsFigures(Q_results, name, M0_ff_video, xy_barycenter, systolesIndexes, sysIdx, diasIdx, v_video_RGB, v_mean_RGB)
 
 % 0. Initialise Variables
 
@@ -80,11 +80,7 @@ else
 end
 
 if params.json.CrossSectionsFigures.BloodFlowProfiles
-    try 
     interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, name)
-    catch ME
-        disp(ME)
-    end
 end
 
 % Call for arterial analysis
@@ -93,12 +89,12 @@ r2 = params.json.SizeOfField.BigRadiusRatio;
 maskSection = diskMask(numX, numY, r1, r2, center = [x_c / numX y_c / numY]);
 s = regionprops(labeledVessels & maskSection, 'centroid');
 centroids = cat(1, s.Centroid);
-graphCombined(M0_ff_video, labeledVessels .* maskSection, ...
+graphCombined(M0_ff_video, v_video_RGB, v_mean_RGB, ...
+    labeledVessels .* maskSection, ...
     Q_t, dQ_t, xy_barycenter, sprintf('%s_vr', name), ...
     'etiquettes_locs', centroids, ...
     'etiquettes_values', branchQ, ...
     'skip', ~params.exportVideos, ...
-    'Color', name, ...
     'Visible', false);
 
 fprintf("    2. Blood Volume Rate Figures (%s) took %ds\n", name, round(toc))

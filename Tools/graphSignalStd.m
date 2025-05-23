@@ -80,7 +80,6 @@ else
     axis([axT(1), axT(2), 0, 1.07 * axP(4)])
 end
 
-fontsize(gca, 14, "points");
 set(gca, 'Linewidth', 2)
 set(gca, 'PlotBoxAspectRatio', [2.5, 1, 1])
 
