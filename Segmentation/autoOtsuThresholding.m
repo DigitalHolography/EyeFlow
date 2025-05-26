@@ -1,14 +1,27 @@
-function [maskArtery, maskVein, maskChoroid, maskBackground] = autoOtsuThresholding(image, mask, classes, name)
-%UNTITLED Summary of this function goes here
-%   Detailed explanation goes here
-% classes = [0 0 1 1] a 0 and 1 matrix where 1 is the class selected and 0 the rejected
+function [quantizedImage, level, color] = autoOtsuThresholding(image, mask, classes)
+% autoOtsuThresholding - Segments an image using Otsu's method and returns quantized image, thresholds, and colors.
+% Inputs:
+% image = a 2D matrix where the segmentation is performed
+% mask = a binary mask where the segmentation is performed
+% classes = [-1 1] a 0 and 1 matrix where 1 is the class selected and 0 the rejected
+% Outputs:
+% quantizedImage = a 2D matrix where the segmentation is performed
+% level = the thresholds used for the segmentation
+% color = the colors used for the segmentation
 
-ToolBox = getGlobalToolBox;
+if nargin < 3
+    classes = [-1 1]; % Default classes: 0 = background, 1 = artery, -1 = vein, 2 = choroid
+end
+
+if nargin < 2
+    mask = true(size(image)); % Default mask is the whole image
+end
+
 cArtery = [255 22 18] / 255;
 cVein = [18 23 255] / 255;
 cChoroid = [0 179 0] / 255;
 
-numClasses = size(classes, 1);
+numClasses = length(classes);
 color = zeros(numClasses, 3);
 
 for i = 1:numClasses
@@ -26,43 +39,9 @@ for i = 1:numClasses
 
 end
 
-[numX, numY] = size(image);
 image = rescale(image);
 image(isnan(image)) = 0;
 level = multithresh(image(mask), numClasses - 1);
-graphThreshHistogram(image, level, mask, color, name)
-level = [-1 level];
-quantizedImage = imquantize(image - 2 * ~mask, level);
-quantizedRGB_Mask = repmat(quantizedImage, [1 1 3]);
-quantizedImageRGB = zeros(numX, numY, 3);
+quantizedImage = imquantize(image - 2 * ~mask, [-1 level]);
 
-maskArtery = zeros(numX, numY, 'logical');
-maskVein = zeros(numX, numY, 'logical');
-maskChoroid = zeros(numX, numY, 'logical');
-
-for i = 1:numClasses
-    IDX = reshape([i + 1; i + 1; i + 1], 1, 1, 3);
-
-    if classes(i) == 1
-        maskArtery = maskArtery + (quantizedImage == i + 1);
-        quantizedImageRGB = quantizedImageRGB + reshape(cArtery, 1, 1, 3) .* (quantizedRGB_Mask == IDX);
-    elseif classes(i) == -1
-        maskVein = maskVein + (quantizedImage == i + 1);
-        quantizedImageRGB = quantizedImageRGB + reshape(cVein, 1, 1, 3) .* (quantizedRGB_Mask == IDX);
-    elseif classes(i) == 2
-        maskChoroid = maskChoroid + (quantizedImage == i + 1);
-        quantizedImageRGB = quantizedImageRGB + reshape(cChoroid, 1, 1, 3) .* (quantizedRGB_Mask == IDX);
-    elseif classes(i) == 0
-        quantizedImageRGB = quantizedImageRGB + reshape([1 1 1], 1, 1, 3) .* (quantizedRGB_Mask == IDX);
-    end
-
-end
-
-imwrite(rescale(quantizedImageRGB), fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s_Quantize.png", ToolBox.main_foldername, name)))
-
-maskArtery = logical(maskArtery);
-maskVein = logical(maskVein);
-maskChoroid = logical(maskChoroid);
-
-maskBackground = ~(mask);
 end

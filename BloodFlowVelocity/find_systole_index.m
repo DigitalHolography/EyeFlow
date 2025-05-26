@@ -17,12 +17,11 @@ end
 fullPulse = squeeze(sum(video .* maskArtery, [1 2], 'omitnan') / nnz(maskArtery));
 
 % Step 2: Compute the derivative of the smoothed signal
-[~, peaks_idx] = findpeaks(fullPulse);
 diff_signal = gradient(fullPulse);
 
 % Step 3: Detect systole peaks using findpeaks
 min_peak_height = max(diff_signal) * 0.5; % Adaptive threshold
-min_peak_distance = floor(length(fullPulse) / length(peaks_idx)) * 0.6; % Minimum distance between peaks
+min_peak_distance = floor(length(fullPulse) / 10); % Minimum distance between peaks
 [~, sys_index_list] = findpeaks(diff_signal, 'MinPeakHeight', min_peak_height, 'MinPeakDistance', min_peak_distance);
 
 % Step 4: Validate and clean up the detected peaks

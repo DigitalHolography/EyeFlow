@@ -1,6 +1,19 @@
-function [mask1, mask2] = processDiaSysSignal(diasys, maskClean, params, cmap, suffix)
+function [mask1, mask2, quantizedImage] = processDiaSysSignal(diasys, maskClean, params, cmap, suffix)
+% This function processes the Diastolic-Systolic signal to segment arteries
+% and veins based on a provided threshold or using Otsu's method.
+% Inputs:
+%   diasys: 2D matrix of the Diastolic-Systolic signal
+%   maskClean: 2D binary mask indicating the area of interest
+%   params: structure containing parameters for segmentation
+%       .threshold: manual threshold for segmentation (-1 to 1)
+%       .classes: number of classes for automatic Otsu segmentation
+%   cmap: colormap for visualization
+%   suffix: string to append to the output files
+% Outputs:
+%   mask1: binary mask for arteries
+%   mask2: binary mask for veins
 
-if params.threshold >= -1 && params.threshold <= 1
+if ~isempty(params.threshold)
     % Manual threshold
     diasys = rescale(diasys);
     mask1 = diasys >= params.threshold;
@@ -8,10 +21,27 @@ if params.threshold >= -1 && params.threshold <= 1
     graphThreshHistogram(diasys, params.threshold, maskClean, cmap, suffix);
 else
     % Automatic Otsu thresholding
-    [mask1, mask2] = autoOtsuThresholding(diasys, maskClean, params.classes, suffix);
-end
+    [quantizedImage, level, color] = autoOtsuThresholding(diasys, maskClean, params.classes);
 
-mask1 = logical(mask1);
-mask2 = logical(mask2);
+    classes = params.classes;
+    numClasses = length(classes);
+    [numX, numY] = size(diasys);
+
+    mask1 = zeros(numX, numY, 'logical');
+    mask2 = zeros(numX, numY, 'logical');
+
+    for i = 1:numClasses
+
+        if classes(i) == 1
+            mask1 = mask1 | (quantizedImage == i + 1);
+        elseif classes(i) == -1
+            mask2 = mask2 | (quantizedImage == i + 1);
+        end
+
+    end
+
+    graphThreshHistogram(diasys, level, maskClean, color, suffix);
+
+end
 
 end

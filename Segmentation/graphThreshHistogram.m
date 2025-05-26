@@ -30,6 +30,7 @@ end
 
 m = min(R(mask));
 M = max(R(mask));
+thresholds = m + thresholds * (M - m);
 thresholds = [m thresholds M];
 
 % Bin the data and count occurrences

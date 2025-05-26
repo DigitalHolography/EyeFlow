@@ -1,4 +1,12 @@
 function [maskArtery, maskVein, maskNeighbors] = createMasks(M0_ff_video, xy_barycenter)
+% createMasks - Creates masks for arteries, veins, and neighbors from a video of retinal images.
+% Inputs:
+%   M0_ff_video: 3D matrix of the video data (height x width x time)
+%   xy_barycenter: 2-element vector specifying the barycenter coordinates [x, y]
+% Outputs:
+%   maskArtery: binary mask for arteries
+%   maskVein: binary mask for veins
+%   maskNeighbors: binary mask for neighboring pixels
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -90,50 +98,37 @@ maskVesselnessClean = removeDisconnected(maskVesselness, maskVesselness, maskCir
 %  1) 3) Compute first correlation
 
 cVascular = [0 0 0];
-% compute signal in 3 dimentions for correlation in all vessels
-vascularSignal = sum(M0_video .* maskVesselnessClean, [1 2], 'omitnan');
-vascularSignal = vascularSignal ./ nnz(maskVesselnessClean);
+[maskArtery, maskVein, R_VascularSignal, vascularSignal, quantizedImage, level, color] = correlationSegmentation(M0_video, maskVesselnessClean, vesselParams);
+
+% 1) 4) Save all images
 
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
-tLabel = 'Time(s)';
-yLabel = 'Power Doppler (a.u.)';
+graphSignal('all_15_vascularSignal', folder_steps, t, squeeze(vascularSignal), '-', cVascular, ...
+    Title = 'Vascular Signal', xlabel = 'Time(s)', ylabel = 'Power Doppler (a.u.)');
 
-graphSignal('all_15_vascularSignal', folder_steps, t, squeeze(vascularSignal), '-', cVascular, Title = 'Vascular Signal', xlabel = tLabel, ylabel = yLabel);
-
-% compute local-to-average signal wave zero-lag correlation
-vascularSignal_centered = vascularSignal - mean(vascularSignal, 3, 'omitnan');
-M0_video_centered = M0_video - mean(M0_video, 'all', 'omitnan');
-R_VascularSignal = mean(M0_video_centered .* vascularSignal_centered, 3) ./ ...
-    (std((M0_video_centered), [], 'all', 'omitnan') * std(vascularSignal_centered, [], 3));
 saveImage(R_VascularSignal, ToolBox, 'all_15_Correlation.png', isStep = true)
-
 RGBcorr = labDuoImage(M0_ff_img, R_VascularSignal);
 saveImage(RGBcorr, ToolBox, 'all_15_Correlation_rgb.png', isStep = true)
 
-% 1) 4) Segment Vessels
-if vesselParams.threshold >= -1 && vesselParams.threshold <= 1
+if ~isempty(vesselParams.threshold)
     % IF Manual Thresholds have been set between -1 and 1 then they are used
-
-    maskArtery = (R_VascularSignal > vesselParams.threshold) .* maskVesselnessClean;
-    maskVein = (R_VascularSignal < vesselParams.threshold) .* maskVesselnessClean;
     graphThreshHistogram(R_VascularSignal, vesselParams.threshold, maskVesselnessClean, cVessels, 'all_16')
-
 else
-    % ELSE automatic Otsu segmentation is performed
-    % Number of classes for Vessels: 4
-    % 1 & 2 = Veins & CoroidalVessels, 3 = CoroidalVessel, 4 = Arteries
-    [maskArtery, maskVein] = autoOtsuThresholding(R_VascularSignal, maskVesselnessClean, vesselParams.classes, 'all_16');
+    [quantizedImageRGB] = quantizeImageToRGB(quantizedImage, vesselParams.classes);
+    saveImage(quantizedImageRGB, ToolBox, 'all_16_quantizedImage.png', isStep = true, cmap = color);
+    graphThreshHistogram(R_VascularSignal, level, maskVesselnessClean, color, 'all_16');
+
 end
 
 saveImage(maskArtery, ToolBox, 'artery_17_FirstMask.png', isStep = true, cmap = cArtery)
 saveImage(maskVein, ToolBox, 'vein_17_FirstMask.png', isStep = true, cmap = cVein)
 
-% Remove small blobs
-maskArtery = bwareaopen(maskArtery, minPixelSize);
-maskVein = bwareaopen(maskVein, minPixelSize);
+% 1) 5) Remove small blobs
+maskArteryClean = bwareaopen(maskArtery, minPixelSize);
+maskVeinClean = bwareaopen(maskVein, minPixelSize);
 
-saveImage(maskArtery, ToolBox, 'artery_18_FirstMaskClean.png', isStep = true, cmap = cArtery)
-saveImage(maskVein, ToolBox, 'vein_18_FirstMaskClean.png', isStep = true, cmap = cVein)
+saveImage(maskArteryClean, ToolBox, 'artery_18_FirstMaskClean.png', isStep = true, cmap = cArtery)
+saveImage(maskVeinClean, ToolBox, 'vein_18_FirstMaskClean.png', isStep = true, cmap = cVein)
 
 M0_Artery = setcmap(M0_ff_img, maskArtery, cmapArtery);
 M0_Vein = setcmap(M0_ff_img, maskVein, cmapVein);
@@ -183,15 +178,35 @@ if params.json.Mask.ImproveMask
     if diasysAnalysis % Systole/Diastole Analysis
 
         % 2) 3) Diastole-Systole based Segmentation
-        maskArtery = processDiaSysSignal(diasysArtery, maskVesselnessClean, arteryParams, cArtery, 'artery_23');
-        [~, maskVein] = processDiaSysSignal(diasysVein, maskVesselnessClean, veinParams, cVein, 'vein_23');
+        [maskArtery, ~, quantizedImage] = processDiaSysSignal(diasysArtery, maskVesselnessClean, arteryParams, cArtery, 'artery_23');
+        saveImage(maskArtery, ToolBox, 'artery_23_DiaSysMask.png', isStep = true, cmap = cArtery);
+        saveImage(quantizedImage, ToolBox, 'artery_23_quantizedImage.png', isStep = true);
+        quantizedImageRGB = quantizeImageToRGB(quantizedImage, arteryParams.classes);
+        saveImage(quantizedImageRGB, ToolBox, 'artery_23_quantizedImage.png', isStep = true, cmap = cArtery);
+
+        [~, maskVein, quantizedImage] = processDiaSysSignal(diasysVein, maskVesselnessClean, veinParams, cVein, 'vein_23');
+        saveImage(maskVein, ToolBox, 'vein_23_DiaSysMask.png', isStep = true, cmap = cVein);
+        saveImage(quantizedImage, ToolBox, 'vein_23_quantizedImage.png', isStep = true);
+        quantizedImageRGB = quantizeImageToRGB(quantizedImage, veinParams.classes);
+        saveImage(quantizedImageRGB, ToolBox, 'vein_23_quantizedImage.png', isStep = true, cmap = cVein);
 
     else % Second Correlation Analysis
 
         % 2) 3) Artery-Vein correlation based Segmentation
-        maskArtery = processVascularSignal(M0_Systole_video, maskArtery, maskVesselnessClean, arteryParams, cArtery, 'artery_23', ToolBox);
-        %         maskVein = processVascularSignal(M0_Diastole_video, maskVein, maskVesselnessClean, veinParams, cmapVein, 'vein_23', ToolBox);
-        [~, maskVein] = processDiaSysSignal(diasysVein, maskVesselnessClean, veinParams, cVein, 'vein_23');
+        [maskArtery, ~, R, ~, quantizedImage, level, color] = correlationSegmentation(M0_Systole_video, maskVesselnessClean, arteryParams);
+        saveImage(R, ToolBox, 'artery_23_Correlation.png', isStep = true)
+        RGBcorr = labDuoImage(M0_ff_img, R);
+        saveImage(RGBcorr, ToolBox, 'artery_23_Correlation_rgb.png', isStep = true)
+        graphThreshHistogram(R, level, maskVesselnessClean, color, 'artery_23');
+        saveImage(quantizedImage, ToolBox, 'artery_23_quantizedImage.png', isStep = true);
+        quantizedImageRGB = quantizeImageToRGB(quantizedImage, arteryParams.classes);
+        saveImage(quantizedImageRGB, ToolBox, 'artery_23_quantizedImage_rgb.png', isStep = true, cmap = color);
+
+        [~, maskVein, quantizedImage] = processDiaSysSignal(diasysVein, maskVesselnessClean, veinParams, cVein, 'vein_23');
+        saveImage(maskVein, ToolBox, 'vein_23_DiaSysMask.png', isStep = true, cmap = cVein);
+        saveImage(quantizedImage, ToolBox, 'vein_23_quantizedImage.png', isStep = true);
+        quantizedImageRGB = quantizeImageToRGB(quantizedImage, veinParams.classes);
+        saveImage(quantizedImageRGB, ToolBox, 'vein_23_quantizedImage_rgb.png', isStep = true);
 
     end
 
@@ -321,7 +336,6 @@ if isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskArtery.png')) || isfile(
     maskArteryNoImport = removeDisconnected(maskArteryNoImport, maskVesselNoImport, maskCircle, 'artery_31_VesselMask', ToolBox);
     maskVeinNoImport = removeDisconnected(maskVeinNoImport, maskVesselNoImport, maskCircle, 'vein_31_VesselMask', ToolBox);
 
-
     M0_Artery = setcmap(M0_ff_img, maskArteryNoImport, cmapArtery);
     M0_Vein = setcmap(M0_ff_img, maskVeinNoImport, cmapVein);
     M0_AV = setcmap(M0_ff_img, maskArteryNoImport & maskVeinNoImport, cmapAV);
@@ -367,11 +381,11 @@ createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMap', maskAr
 %     getLongestArteryBranch(maskArtery, xy_barycenter, 'Artery');
 %     getLongestArteryBranch(maskVein, xy_barycenter, 'Vein');
 % catch ME
-% 
+%
 %     for i = 1:length(ME.stack)
 %         disp("Error in getLongestArteryBranch: " + ME.stack(i).name + " at line " + ME.stack(i).line)
 %     end
-% 
+%
 % end
 
 close all

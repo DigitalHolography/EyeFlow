@@ -48,19 +48,19 @@
     "Force Barycenter": [],
     "Blur": 1.5,
     "Crop Choroid Radius": 0.1,
-    "Vascular Threshold": -2,
+    "Vascular Threshold": null,
     "Vascular Classes": [
       -1,
       1
     ],
     "Improve Mask": 1,
     "DiaSys Analysis": 1,
-    "Arterial Threshold": -2,
+    "Arterial Threshold": null,
     "Arterial Classes": [
       -1,
       1
     ],
-    "Venous Threshold": -2,
+    "Venous Threshold": null,
     "Venous Classes": [
       1,
       -1
