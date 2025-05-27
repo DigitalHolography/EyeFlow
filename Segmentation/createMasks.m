@@ -235,39 +235,31 @@ if params.json.Mask.ImproveMask
     maskArtery = removeDisconnected(maskArtery, maskVessel, maskCircle, 'artery_31_VesselMask', ToolBox);
     maskVein = removeDisconnected(maskVein, maskVessel, maskCircle, 'vein_31_VesselMask', ToolBox);
 
-    % 3) 1 prime) HoloNet intervention
-    if params.json.Mask.ChoroidHolonet
-
-        try
-            holonet_vessels = getHolonetprediction(M0_ff_img);
-        catch
-            warning("The Holonet ONNX-model couldn't be found.")
-            holonet_vessels = maskVesselnessClean;
-        end
-
-        maskArtery = maskArtery & holonet_vessels;
-        maskVein = maskVein & holonet_vessels;
-    end
-
     % 3) 2) Force Create Masks in case they exist
+    if ismember(params.json.Mask.ForcedMasks, {-1,1})
 
-    if isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskArtery.png'))
-        maskArtery = mat2gray(mean(imread(fullfile(ToolBox.path_main, 'mask', 'forceMaskArtery.png')), 3)) > 0;
+        if isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskArtery.png'))
+            maskArtery = mat2gray(mean(imread(fullfile(ToolBox.path_main, 'mask', 'forceMaskArtery.png')), 3)) > 0;
 
-        if size(maskArtery, 1) ~= maskCircle
-            maskArtery = imresize(maskArtery, [numX, numY], "nearest");
+            if size(maskArtery, 1) ~= maskCircle
+                maskArtery = imresize(maskArtery, [numX, numY], "nearest");
+            end
+        elseif params.json.Mask.ForcedMasks == 1
+            error("Cannot force Artery Mask because none given in the mask folder. Please create a forceMaskArtery.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
         end
 
-    end
+        if isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskVein.png'))
+            maskVein = mat2gray(mean(imread(fullfile(ToolBox.path_main, 'mask', 'forceMaskVein.png')), 3)) > 0;
 
-    if isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskVein.png'))
-        maskVein = mat2gray(mean(imread(fullfile(ToolBox.path_main, 'mask', 'forceMaskVein.png')), 3)) > 0;
-
-        if size(maskVein, 1) ~= maskCircle
-            maskVein = imresize(maskVein, [numX, numY], "nearest");
+            if size(maskVein, 1) ~= maskCircle
+                maskVein = imresize(maskVein, [numX, numY], "nearest");
+            end
+        elseif params.json.Mask.ForcedMasks == 1
+            error("Cannot force Vein Mask because none given in the mask folder. Please create a forceMaskVein.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
         end
-
+        
     end
+    
 
     % 3) 3) Segmentation Scores Calculation
 

@@ -32,6 +32,7 @@
   "MinimumGifPeriod": 0.07,
   "NumberOfWorkers": 0,
   "Mask": {
+    "Forced Masks": -1,
     "Vesselness Frangi Range": [
       4,
       6
