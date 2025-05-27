@@ -45,7 +45,6 @@ r2 = params.json.SizeOfField.BigRadiusRatio;
 
 cArtery = [0, 0, 0; 255, 22, 18] / 255;
 cVein = [0, 0, 0; 18, 23, 255] / 255;
-cVessels = [18, 23, 255; 255, 22, 18] / 255;
 
 cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
 cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
@@ -98,6 +97,13 @@ maskVesselnessClean = removeDisconnected(maskVesselness, maskVesselness, maskCir
 %  1) 3) Compute first correlation
 
 cVascular = [0 0 0];
+
+if ~isempty(vesselParams.threshold)
+    if abs(vesselParams.threshold) <= 1
+        vesselParams.classes = [-1; 1];
+    end
+end
+
 [maskArtery, maskVein, R_VascularSignal, vascularSignal, quantizedImage, level, color] = correlationSegmentation(M0_video, maskVesselnessClean, vesselParams);
 
 % 1) 4) Save all images
@@ -110,15 +116,9 @@ saveImage(R_VascularSignal, ToolBox, 'all_15_Correlation.png', isStep = true)
 RGBcorr = labDuoImage(M0_ff_img, R_VascularSignal);
 saveImage(RGBcorr, ToolBox, 'all_15_Correlation_rgb.png', isStep = true)
 
-if ~isempty(vesselParams.threshold)
-    % IF Manual Thresholds have been set between -1 and 1 then they are used
-    graphThreshHistogram(R_VascularSignal, vesselParams.threshold, maskVesselnessClean, cVessels, 'all_16')
-else
-    [quantizedImageRGB] = quantizeImageToRGB(quantizedImage, vesselParams.classes);
-    saveImage(quantizedImageRGB, ToolBox, 'all_16_quantizedImage.png', isStep = true, cmap = color);
-    graphThreshHistogram(R_VascularSignal, level, maskVesselnessClean, color, 'all_16');
-
-end
+[quantizedImageRGB] = quantizeImageToRGB(quantizedImage, vesselParams.classes);
+saveImage(quantizedImageRGB, ToolBox, 'all_16_quantizedImage.png', isStep = true, cmap = color);
+graphThreshHistogram(R_VascularSignal, level, maskVesselnessClean, color, 'all_16')
 
 saveImage(maskArtery, ToolBox, 'artery_17_FirstMask.png', isStep = true, cmap = cArtery)
 saveImage(maskVein, ToolBox, 'vein_17_FirstMask.png', isStep = true, cmap = cVein)
@@ -175,36 +175,57 @@ if params.json.Mask.ImproveMask
     saveImage(RGBdiasys, ToolBox, 'vessel_40_diasys_rgb.png', isStep = true)
     saveImage(RGBdiasys, ToolBox, 'DiaSysRGB.png')
 
+
+    if ~isempty(arteryParams.threshold)
+        if abs(arteryParams.threshold) <= 1
+            arteryParams.classes = [-1; 1];
+        end
+    end
+
+    if ~isempty(veinParams.threshold)
+        if abs(veinParams.threshold) <= 1
+            veinParams.classes = [-1; 1];
+        end
+    end
+
     if diasysAnalysis % Systole/Diastole Analysis
 
-        % 2) 3) Diastole-Systole based Segmentation
+        % Artery
         [maskArtery, ~, quantizedImage] = processDiaSysSignal(diasysArtery, maskVesselnessClean, arteryParams, cArtery, 'artery_23');
         saveImage(maskArtery, ToolBox, 'artery_23_DiaSysMask.png', isStep = true, cmap = cArtery);
         saveImage(quantizedImage, ToolBox, 'artery_23_quantizedImage.png', isStep = true);
+
         quantizedImageRGB = quantizeImageToRGB(quantizedImage, arteryParams.classes);
         saveImage(quantizedImageRGB, ToolBox, 'artery_23_quantizedImage.png', isStep = true, cmap = cArtery);
 
+        % Vein
         [~, maskVein, quantizedImage] = processDiaSysSignal(diasysVein, maskVesselnessClean, veinParams, cVein, 'vein_23');
         saveImage(maskVein, ToolBox, 'vein_23_DiaSysMask.png', isStep = true, cmap = cVein);
         saveImage(quantizedImage, ToolBox, 'vein_23_quantizedImage.png', isStep = true);
+
         quantizedImageRGB = quantizeImageToRGB(quantizedImage, veinParams.classes);
         saveImage(quantizedImageRGB, ToolBox, 'vein_23_quantizedImage.png', isStep = true, cmap = cVein);
 
     else % Second Correlation Analysis
-
-        % 2) 3) Artery-Vein correlation based Segmentation
+        
+        % Artery
         [maskArtery, ~, R, ~, quantizedImage, level, color] = correlationSegmentation(M0_Systole_video, maskVesselnessClean, arteryParams);
         saveImage(R, ToolBox, 'artery_23_Correlation.png', isStep = true)
+
         RGBcorr = labDuoImage(M0_ff_img, R);
         saveImage(RGBcorr, ToolBox, 'artery_23_Correlation_rgb.png', isStep = true)
+
         graphThreshHistogram(R, level, maskVesselnessClean, color, 'artery_23');
         saveImage(quantizedImage, ToolBox, 'artery_23_quantizedImage.png', isStep = true);
+
         quantizedImageRGB = quantizeImageToRGB(quantizedImage, arteryParams.classes);
         saveImage(quantizedImageRGB, ToolBox, 'artery_23_quantizedImage_rgb.png', isStep = true, cmap = color);
 
+        % Vein
         [~, maskVein, quantizedImage] = processDiaSysSignal(diasysVein, maskVesselnessClean, veinParams, cVein, 'vein_23');
         saveImage(maskVein, ToolBox, 'vein_23_DiaSysMask.png', isStep = true, cmap = cVein);
         saveImage(quantizedImage, ToolBox, 'vein_23_quantizedImage.png', isStep = true);
+
         quantizedImageRGB = quantizeImageToRGB(quantizedImage, veinParams.classes);
         saveImage(quantizedImageRGB, ToolBox, 'vein_23_quantizedImage_rgb.png', isStep = true);
 
