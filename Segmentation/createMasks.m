@@ -236,7 +236,7 @@ if params.json.Mask.ImproveMask
     maskVein = removeDisconnected(maskVein, maskVessel, maskCircle, 'vein_31_VesselMask', ToolBox);
 
     % 3) 2) Force Create Masks in case they exist
-    if ismember(params.json.Mask.ForcedMasks, {-1,1})
+    if (params.json.Mask.ForcedMasks == -1 || params.json.Mask.ForcedMasks == 1)
 
         if isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskArtery.png'))
             maskArtery = mat2gray(mean(imread(fullfile(ToolBox.path_main, 'mask', 'forceMaskArtery.png')), 3)) > 0;
@@ -244,6 +244,7 @@ if params.json.Mask.ImproveMask
             if size(maskArtery, 1) ~= maskCircle
                 maskArtery = imresize(maskArtery, [numX, numY], "nearest");
             end
+
         elseif params.json.Mask.ForcedMasks == 1
             error("Cannot force Artery Mask because none given in the mask folder. Please create a forceMaskArtery.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
         end
@@ -254,12 +255,12 @@ if params.json.Mask.ImproveMask
             if size(maskVein, 1) ~= maskCircle
                 maskVein = imresize(maskVein, [numX, numY], "nearest");
             end
+
         elseif params.json.Mask.ForcedMasks == 1
             error("Cannot force Vein Mask because none given in the mask folder. Please create a forceMaskVein.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
         end
-        
+
     end
-    
 
     % 3) 3) Segmentation Scores Calculation
 
@@ -311,14 +312,6 @@ maskBackground = not(maskVessel);
 % 4) FINAL FIGURES
 
 % 4) 1) RGB Figures
-M0_Artery = setcmap(M0_ff_img, maskArtery, cmapArtery);
-M0_Vein = setcmap(M0_ff_img, maskVein, cmapVein);
-M0_AV = setcmap(M0_ff_img, maskArtery & maskVein, cmapAV);
-
-M0_RGB = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + M0_AV + rescale(M0_ff_img) .* ~(maskArtery | maskVein);
-saveImage(M0_RGB, ToolBox, 'vessel_40_RGB.png', isStep = true)
-saveImage(M0_RGB, ToolBox, 'RGB_img.png')
-
 if isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskArtery.png')) || isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskVein.png'))
 
     maskArteryNoImport = results{1};
@@ -335,12 +328,20 @@ if isfile(fullfile(ToolBox.path_main, 'mask', 'forceMaskArtery.png')) || isfile(
     saveImage(M0_RGB, ToolBox, 'vessel_40_RGB_no_import.png', isStep = true)
 end
 
+M0_Artery = setcmap(M0_ff_img, maskArtery, cmapArtery);
+M0_Vein = setcmap(M0_ff_img, maskVein, cmapVein);
+M0_AV = setcmap(M0_ff_img, maskArtery & maskVein, cmapAV);
+
+M0_RGB = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + M0_AV + rescale(M0_ff_img) .* ~(maskArtery | maskVein);
+saveImage(M0_RGB, ToolBox, 'vessel_40_RGB.png', isStep = true)
+saveImage(M0_RGB, ToolBox, 'RGB_img.png')
+
 % 4) 2) Neighbours Mask
 
 if params.json.Mask.AllNonVesselsAsBackground
     maskNeighbors = (maskBackground & ~maskVesselness) & maskDiaphragm;
 else
-    maskNeighbors = imdilate(maskArtery | maskVein, strel('disk', bgWidth)) - (maskArtery | maskVein);
+    maskNeighbors = imdilate(maskArtery | maskVein, strel('disk', bgWidth)) & ~(maskArtery | maskVein);
 end
 
 cmapNeighbors = cmapLAB(256, [0 1 0], 0, [1 1 1], 1);

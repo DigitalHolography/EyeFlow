@@ -19,6 +19,9 @@ if ~isempty(params.threshold)
     mask1 = diasys >= params.threshold;
     mask2 = diasys <= params.threshold;
     graphThreshHistogram(diasys, params.threshold, maskClean, cmap, suffix);
+    quantizedImage = zeros(size(diasys));
+    quantizedImage(mask1) = 1/2; % Arteries
+    quantizedImage(mask2) = 1; % Veins
 else
     % Automatic Otsu thresholding
     [quantizedImage, level, color] = autoOtsuThresholding(diasys, maskClean, params.classes);

@@ -89,10 +89,6 @@ for cIdx = 1:numCircles
 
 end
 
-% Compute average profiles
-numSys = numel(sysIdx);
-numDias = numel(diasIdx);
-
 % Initialize accumulation variables
 v_sys_acc = zeros(1, numInterp);
 dv_sys_acc = zeros(1, numInterp);
@@ -128,7 +124,16 @@ for cIdx = 1:numCircles
 
 end
 
-% Compute final averages
+% Check if any valid branches were found
+
+if validBranches == 0
+    warning('No valid branches found for the specified systolic and diastolic indices.');
+    return;
+end
+
+% Compute average profiles
+numSys = numel(sysIdx);
+numDias = numel(diasIdx);
 v_sys = v_sys_acc / (numSys * validBranches);
 dv_sys = sqrt(dv_sys_acc) / (numSys * validBranches);
 v_dias = v_dias_acc / (numDias * validBranches);
