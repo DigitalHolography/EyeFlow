@@ -98,10 +98,12 @@ if exportVideos
 
         end
 
-        if size(videoPlotFrames(:, :, :, frameIdx), 1) == size(frame2im(getframe(gca)), 1)
-            videoPlotFrames(:, :, :, frameIdx) = frame2im(getframe(gca));
+        frame = frame2im(getframe(gca));
+
+        if size(videoPlotFrames(:, :, :, frameIdx), 1) == size(frame, 1)
+            videoPlotFrames(:, :, :, frameIdx) = frame;
         else
-            videoPlotFrames(:, :, :, frameIdx) = imcrop(frame2im(getframe(gca)), [0 0 numX, numY]);
+            videoPlotFrames(:, :, :, frameIdx) = imresize(frame, [numX, numY]);
         end
 
     end

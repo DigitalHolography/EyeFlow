@@ -71,6 +71,9 @@ for cIdx = 1:numCircles
                 if isempty(indx)
                     temp_v(frameIdx, :) = zeros(1, numInterp);
                     temp_dv(frameIdx, :) = zeros(1, numInterp);
+                elseif numel(indx) == 1
+                    temp_v(frameIdx, :) = zeros(1, numInterp);
+                    temp_dv(frameIdx, :) = zeros(1, numInterp);
                 else
                     % Vectorized interpolation
                     L = numel(indx);

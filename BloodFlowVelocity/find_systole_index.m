@@ -47,7 +47,7 @@ sys_min_list(1) = amin;
 
 % Find the maximum after the end cycle
 [~, amax] = max(fullPulse(sys_index_list(i + 1):end));
-sys_max_list(i + 1) = sys_index_list(i + 1) + amax;
+sys_max_list(i + 1) = sys_index_list(i + 1) + amax - 1;
 
 sys_max_list = sys_max_list';
 sys_min_list = sys_min_list';
