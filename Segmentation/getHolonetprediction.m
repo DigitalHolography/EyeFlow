@@ -28,7 +28,7 @@ if nargin < 2 || isempty(net)
         websave('Models\uresnet.onnx', url);
     end
 
-    net = importNetworkFromONNX('Models\uresnet.onnx');
+    net = importONNXNetwork('Models\uresnet.onnx');
 end
 
 % if nargin<2 || isempty(net)
