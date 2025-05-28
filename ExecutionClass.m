@@ -91,11 +91,13 @@ methods
             dir_path_raw = fullfile(obj.directory, 'raw');
             NameRefRawFile = strcat(obj.filenames, '_raw.h5');
             RefRawFilePath = fullfile(dir_path_raw, NameRefRawFile);
+
             if isfile(RefRawFilePath)
                 obj = readHDF5(obj);
             else
                 obj = readRaw(obj);
             end
+
         end
 
         obj.is_preprocessed = false;
@@ -148,7 +150,6 @@ methods
         fprintf("- Video Outlier Cleaning took: %ds\n", round(toc));
 
         obj.is_preprocessed = true;
-
         obj.Outputs.initOutputs();
 
     end
@@ -164,6 +165,7 @@ methods
             profile off
             profile on
         end
+
         veins_analysis = params.veins_analysis;
         totalTime = tic;
         saveGit;
@@ -172,6 +174,10 @@ methods
         ToolBox.Outputs.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
         ToolBox.Outputs.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
         ToolBox.Outputs.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
+
+        if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
+            writeGifOnDisc(imresize(rescale(obj.M0_ff_video), 0.5), "M0")
+        end
 
         % Mask Creation
         if obj.flag_segmentation
@@ -242,7 +248,6 @@ methods
         %     time_pulsevelocity = toc(pulseVelocityTimer);
         %     fprintf("- Pulse Velocity Calculations took : %ds\n", round(time_pulsevelocity))
         % end
-
 
         % Cross-Section Analysis
         if obj.flag_crossSection_analysis
@@ -338,6 +343,7 @@ methods
             profile off
             profile viewer
         end
+
     end
 
 end

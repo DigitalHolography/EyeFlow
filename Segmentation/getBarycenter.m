@@ -34,7 +34,7 @@ else
         mkdir(fullfile(ToolBox.path_png, 'mask'), 'steps')
         mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
     end
-    saveImage(f_AVG_mean, ToolBox, 'all_13_fAVG.png', isStep = true)
+    saveImage(f_AVG_mean, 'all_10_fAVG.png', isStep = true)
 
     maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
     if blur ~= 0
@@ -51,8 +51,8 @@ f_AVG_std = std2(f_AVG_mean);
 maskCRA = f_AVG_mean > (CRACRV_Threshold * f_AVG_std);
 maskCRV = f_AVG_mean < (-CRACRV_Threshold * f_AVG_std);
 
-saveImage(maskCRA, ToolBox, 'maskCRA.png')
-saveImage(maskCRV, ToolBox, 'maskCRV.png')
+saveImage(maskCRA, 'maskCRA.png')
+saveImage(maskCRV, 'maskCRV.png')
 
 xy_barycenter = round([x_CRV + x_CRA, y_CRV + y_CRA] / 2);
 

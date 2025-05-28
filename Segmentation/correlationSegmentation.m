@@ -16,7 +16,6 @@ function [maskArtery, maskVein, R, signal, quantizedImage, level, color] = corre
 % Initialize output variables
 classes = params.classes;
 numClasses = length(classes);
-[numX, numY, ~] = size(video);
 
 %  1) Compute first correlation
 % compute signal in 3 dimentions for correlation in the mask
@@ -34,31 +33,51 @@ signal_centered = signal - mean(signal, 3, 'omitnan');
 video_centered = video - mean(video, 'all', 'omitnan');
 R = mean(video_centered .* signal_centered, 3) ./ (std((video_centered), [], 'all', 'omitnan') * std(signal_centered, [], 3));
 
-quantizedImage = zeros(numX, numY);
-
 % 2) Segment Vessels
-if ~isempty(params.threshold)
-    % IF manual threshold is provided
-    % Number of classes for Vessels: 2
+if isempty(params.threshold)
+    % Automatic Otsu segmentation is performed
+    [quantizedImage, level, color] = autoOtsuThresholding(R, mask, params.classes);
 
+    % Initialize masks
+    maskArtery = false(size(R));
+    maskVein = false(size(R));
+
+    % Process each class
+    for i = 1:numClasses
+
+        if classes(i) == 1
+            maskArtery = maskArtery | (quantizedImage == i + 1);
+        elseif classes(i) == -1
+            maskVein = maskVein | (quantizedImage == i + 1);
+        end
+
+    end
+
+elseif abs(params.threshold) <= 1
+
+    % Create masks based on threshold
     maskArtery = (R > params.threshold) & mask;
     maskVein = (R < params.threshold) & mask;
-    quantizedImage(maskArtery) = 1;
-    quantizedImage(maskVein) = 0.5;
+
+    % Create quantized image
+    quantizedImage = zeros(size(R));
+    quantizedImage(maskVein) = 0.5; % Veins
+    quantizedImage(maskArtery) = 1; % Arteries
 
     % Assign colors for visualization
     color = [255, 22, 18; % Red for arteries
              18, 23, 255] ./ 255; % Blue for veins
     level = [params.threshold]; % Threshold levels for visualization
 else
-    % ELSE automatic Otsu segmentation is performed
-    % Number of classes for Vessels: 4
-    % 1 & 2 = Veins & CoroidalVessels, 3 = CoroidalVessel, 4 = Arteries
+
+    % Automatic Otsu segmentation is performed
     [quantizedImage, level, color] = autoOtsuThresholding(R, mask, params.classes);
 
-    maskArtery = zeros(numX, numY, 'logical');
-    maskVein = zeros(numX, numY, 'logical');
+    % Initialize masks
+    maskArtery = false(size(R));
+    maskVein = false(size(R));
 
+    % Process each class
     for i = 1:numClasses
 
         if classes(i) == 1

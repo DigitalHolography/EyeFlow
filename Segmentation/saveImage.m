@@ -1,13 +1,13 @@
-function saveImage(I, ToolBox, suffix, opt)
+function saveImage(I, suffix, opt)
 
 arguments
     I
-    ToolBox
     suffix
     opt.cmap = []
     opt.isStep = false
 end
 
+ToolBox = getGlobalToolBox;
 main_folder = ToolBox.main_foldername;
 
 if opt.isStep

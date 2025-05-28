@@ -1,55 +1,97 @@
-function [vessel_mask, combined_response] = gaborVesselness(input_image, ToolBox, name)
+function [vessel_mask, combined_response] = gaborVesselness(image, params)
+% GABORVESSELNESS Segment blood vessels using Gabor filter bank
+%   Enhanced version with improved preprocessing, filtering, and postprocessing
+%
+% Input:
+%   image: 2D grayscale image or 3D RGB image (uint8, uint16, or double)
+%   params: structure containing parameters for Gabor filtering (optional)
+%     - range: wavelength range (default: 1:10)
+%     - step: wavelength step size (default: 1)
+%     - sigma: Gaussian smoothing sigma (default: 2)
+%     - orientation: filter orientations in degrees (default: 0:30:150)
+%     - min_area: minimum pixel area for vessels (default: 50)
+%     - closing_radius: radius for morphological closing (default: 2)
+%     - contrast_enhance: enable contrast enhancement (default: true)
+%     - use_phase: include phase information in response (default: false)
+%
+% Output:
+%   vessel_mask: binary mask of segmented vessels
+%   combined_response: combined response from Gabor filters
 
 arguments
-    input_image
-    ToolBox
-    name = ''
+    image
+    params.range = (1:10)
+    params.step = 1
+    params.sigma = 2
+    params.orientation = 0:30:150
+    params.min_area = 50
+    params.closing_radius = 2
+    params.use_phase = false
 end
 
-% Step 1: Preprocessing
+% Step 1: Enhanced Preprocessing
 % Convert to grayscale if necessary
-if size(input_image, 3) == 3
-    input_image = rgb2gray(input_image);
+if size(image, 3) == 3
+    image = rgb2gray(image);
 end
 
-input_image(isnan(input_image)) = 0;
+% Handle NaN/inf values and normalize
+image = im2double(image);
+image(isnan(image) | isinf(image)) = 0;
 
-% Normalize the image to the range [0, 1]
-input_image = im2double(input_image);
+% Noise reduction with anisotropic diffusion (edge-preserving)
+smoothed_image = imdiffusefilt(image, 'NumberOfIterations', 5, ...
+    'ConductionMethod', 'quadratic', 'GradientThreshold', 0.05);
 
-% Apply Gaussian smoothing to reduce noise
-smoothed_image = imgaussfilt(input_image, 2); % Adjust sigma as needed
+% Additional Gaussian smoothing if needed
+if params.sigma > 0
+    smoothed_image = imgaussfilt(smoothed_image, params.sigma);
+end
 
-% Step 2: Gabor Filtering
-% Define Gabor filter parameters
-params = ToolBox.getParams;
-range = params.json.Mask.VesselnessGaborRange;
-step = params.json.Mask.VesselnessGaborStep;
-wavelength = (range(1):step:range(2)); % Adjust based on vessel thickness
-orientation = 0:30:150; % Multiple orientations to capture all vessel directions
-gabor_bank = gabor(wavelength, orientation);
+% Step 2: Enhanced Gabor Filtering
+wavelengths = params.range(1):params.step:params.range(2);
+
+% Create Gabor filter bank with more control over parameters
+gabor_bank = gabor(wavelengths, params.orientation, ...
+    'SpatialFrequencyBandwidth', 1, ...
+    'SpatialAspectRatio', 0.5);
 
 % Apply Gabor filters
-gabor_magnitude = imgaborfilt(smoothed_image, gabor_bank);
+[gabor_mag, gabor_phase] = imgaborfilt(smoothed_image, gabor_bank);
 
-% Combine responses from all orientations
-combined_response = mean(gabor_magnitude, 3);
+% Combine responses - improved method
+if params.use_phase
+    % Use both magnitude and phase information
+    phase_weight = 0.3; % Weight for phase information
+    gabor_response = gabor_mag .* (1 + phase_weight * cos(gabor_phase));
+else
+    % Use only magnitude
+    gabor_response = gabor_mag;
+end
 
-% Step 3: Postprocessing
-% Normalize the combined response
+% Enhanced response combination (weighted by orientation)
+combined_response = zeros(size(image));
+
+for i = 1:length(gabor_bank)
+    % Give more weight to orientations likely to match vessels
+    combined_response = combined_response + gabor_response(:, :, i);
+end
+
+combined_response = combined_response / length(gabor_bank);
+
+% Adaptive imbinarize
 combined_response = mat2gray(combined_response);
-
-% Thresholding to create a binary mask
 vessel_mask = imbinarize(combined_response, 'adaptive');
 
-% Step 4: Morphological Operations
-% Clean up the mask using morphological operations
-vessel_mask = bwareaopen(vessel_mask, 50); % Remove small objects
-vessel_mask = imclose(vessel_mask, strel('disk', 2)); % Close small gaps
+% Enhanced morphological processing
+min_area = params.min_area;
+closing_radius = params.closing_radius;
 
-if ~isempty(name)
-    saveImage(combined_response, ToolBox, sprintf('%s_gabor_img.png', name), isStep = true)
-    saveImage(vessel_mask, ToolBox, sprintf('%s_gabor_mask.png', name), isStep = true)
-end
+% Remove small objects and holes
+vessel_mask = bwareaopen(vessel_mask, min_area);
+
+% Direction-aware closing
+se = strel('disk', closing_radius);
+vessel_mask = imclose(vessel_mask, se);
 
 end

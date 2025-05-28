@@ -1,12 +1,19 @@
-function [M0_binary_img] = frangiVesselness(M0_ff_img, name, ToolBox, opt)
-% Input: M0_ff_img - Noisy vessel image (numX x numY)
-% Output: M0_denoised_img - Denoised vessel image
+function [M0_binary_img, M0_vesselness_img] = frangiVesselness(M0_ff_img, params)
+% Input:
+% M0_ff_img - Vessel image (numX x numY)
+% params - Structure containing parameters for Frangi filter
+%   params.BlackWhite - Use black and white for Frangi filter (default: false)
+%   params.range - Frangi scale range (default: [1, 10])
+%   params.step - Frangi scale step (default: 1)
+% Output:
+%   M0_binary_img - Binary mask of segmented vessels
+%   M0_vesselness_img - Enhanced vessel image
 
 arguments
-    M0_ff_img
-    name
-    ToolBox
-    opt.BlackWhite = false
+    M0_ff_img % Input image (2D grayscale or 3D RGB)
+    params.BlackWhite = false % Use black and white for Frangi filter
+    params.range = [1, 10] % Frangi scale range
+    params.step = 1 % Frangi scale step
 end
 
 % Step 1: Preprocessing
@@ -20,32 +27,16 @@ end
 % Normalize the image to [0, 1]
 M0_norm_img = rescale(M0_gray_img);
 
-%     % Step 2: Denoising
-%     params = ToolBox.getParams;
-%     % Apply Gaussian smoothing
-%     sigma = params.gauss_filt_size_for_barycenter; % Standard deviation for Gaussian filter
-%     M0_gaussian_img = imgaussfilt(M0_norm_img, sigma);
-%
-%     % Apply Non-Local Means (NLM) denoising
-%     patch_size = 5; % Size of patches for NLM
-%     search_window = 11; % Size of search window for NLM
-%     M0_nlm_img = imnlmfilt(M0_gaussian_img, 'DegreeOfSmoothing', 0.05, ...
-%                            'SearchWindowSize', search_window, ...
-%                            'ComparisonWindowSize', patch_size);
-
-params = ToolBox.getParams();
-
 % Step 3: Vessel Enhancement
 % Apply Frangi Vesselness Filter
 M0_vesselness_img = FrangiFilter2D(M0_norm_img, ...
-    "FrangiScaleRange", params.json.Mask.VesselnessFrangiRange, ...
-    "FrangiScaleRatio", params.json.Mask.VesselnessFrangiStep, ...
-    "BlackWhite", opt.BlackWhite);
+    "FrangiScaleRange", params.range, ...
+    "FrangiScaleRatio", params.step, ...
+    "BlackWhite", params.BlackWhite);
 
-% Thresholding to segment vessels (optional)
+% Step 4: Binarization
+% Use adaptive thresholding to create a binary mask
 M0_vesselness_img(isnan(M0_vesselness_img)) = 0;
-M0_binary_img = imbinarize(M0_vesselness_img, "adaptive");
+M0_binary_img = imbinarize(rescale(M0_vesselness_img), "adaptive");
 
-saveImage(M0_vesselness_img, ToolBox, sprintf('%s_frangi_img.png', name), isStep = true)
-saveImage(M0_binary_img, ToolBox, sprintf('%s_frangi_mask.png', name), isStep = true)
 end
