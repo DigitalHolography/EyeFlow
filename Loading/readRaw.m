@@ -106,7 +106,9 @@ if isfile(sh_file)
         clear SH_data_video;
 
     catch ME
-        fclose(fileID);
+        try
+            fclose(fileID);
+        end
         warning('Failed to read SH data: %s\nError: %s', sh_file, ME.message);
     end
 
