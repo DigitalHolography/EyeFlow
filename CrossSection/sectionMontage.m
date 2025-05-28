@@ -3,17 +3,24 @@ function sectionMontage(subImg_cell, numSections, name)
 ToolBox = getGlobalToolBox;
 
 subImgSize = [];
-i = 1;
-n = 1;
 
-while isempty(subImgSize)
 
-    if ~isempty(subImg_cell{i, n})
-        subImgSize = size(subImg_cell{i, n});
+
+for i=1:size(subImg_cell,1) 
+    for n=1:size(subImg_cell,2) 
+        if ~isempty(subImg_cell{i, n})
+            subImgSize = size(subImg_cell{i, n});
+        end
+        if  ~isempty(subImgSize)
+            break;
+        end
     end
-
-    i = i + 1;
-    n = n + 1;
+    if  ~isempty(subImgSize)
+        break;
+    end
+end
+if isempty(subImgSize)
+    return
 end
 
 figure("Visible", "off")
