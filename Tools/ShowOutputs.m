@@ -42,16 +42,16 @@ for path_idx = 1:N
         ARI_velocity_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_RI_velocityArtery.png']);
     end
 
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_histogramVelocityArteries.png']))
-        histo_art_velocity_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_histogramVelocityArteries.png']);
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_histogramVelocityArtery.png']))
+        histo_art_velocity_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_histogramVelocityArtery.png']);
     end
 
     if isfile(fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_strokeAndTotalVolume_Artery.png']))
         Stroke_total_volume{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_strokeAndTotalVolume_Artery.png']);
     end
 
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_2_Vessels_velocity_graph.png']))
-        Vessels_velocity{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_2_Vessels_velocity_graph.png']);
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_vessels_velocity_graph.png']))
+        Vessels_velocity{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_vessels_velocity_graph.png']);
     end
 
     if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_RI_velocityVein.png']))
@@ -70,7 +70,7 @@ for path_idx = 1:N
         diasys_Vein{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_diasys_Vein.png']);
     end
 
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_ArterialWaveformAnalysis_v_artery.png']))
+    if isfile(fullfile(ef_path,d last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_ArterialWaveformAnalysis_v_artery.png']))
         ArterialWaveformAnalysis_artery{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_ArterialWaveformAnalysis_v_artery.png']);
     end
 
@@ -85,7 +85,7 @@ figure(321)
 montage(Arteries_fRMS_paths, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, 'ArteriesfRMS.png'));
 figure(3211)
-%montage(Vessels_velocity, Size = [l L]);
+montage(Vessels_velocity, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, 'Vessels_velocity.png'));
 figure(322)
 montage(ARI_velocity_paths, Size = [l L]);
@@ -97,7 +97,7 @@ figure(323)
 montage(bvr_paths, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, 'bloodVolumeRate.png'));
 figure(324)
-%montage(histo_art_velocity_paths, Size = [l L]);
+montage(histo_art_velocity_paths, Size = [l L]);
 exportgraphics(gca, fullfile(output_dir, 'histogramVelocityArteries.png'));
 figure(327)
 montage(Stroke_total_volume, Size = [l L]);
