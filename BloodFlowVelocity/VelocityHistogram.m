@@ -61,7 +61,6 @@ set(gca, 'YDir', 'normal')
 colormap(cmap)
 ylabel('Velocity (mm/s)')
 xlabel('Time (s)')
-title(sprintf("velocity distribution in %s", name))
 histoVideo = frame2im(getframe(fDistrib));
 hold on
 RGB = fill([0 0 xAx(2) xAx(2)], [yAx(1) yAx(2) yAx(2) yAx(1)], [0 0 0], 'EdgeColor', 'none');

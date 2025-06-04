@@ -31,6 +31,15 @@ xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1),
 yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
 subImg = v_masked(yRange, xRange);
 
+if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
+    xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);
+    yRange = round(-subImgHW / 2) + loc(2):round(subImgHW / 2) + loc(2);
+    tmp = NaN(length(xRange), length(yRange));
+    tmp(1:size(subImg, 1), 1:size(subImg, 2)) = subImg; 
+    subImg = tmp;
+    clear tmp
+end
+
 % Crop and rotate sub-image
 subImg = cropCircle(subImg);
 [rotatedImg, tilt_angle] = rotateSubImage(subImg);
@@ -58,13 +67,25 @@ end
 % Compute blood volume rate and average velocity
 
 for t = 1:numFrames
+    xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
+    yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
     tmp = v_RMS(:, :, t) .* mask;
     subFrame = tmp(yRange, xRange);
+
+    if size(subFrame, 1) < length(xRange) || size(subFrame, 2) < length(yRange)
+        xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);
+        yRange = round(-subImgHW / 2) + loc(2):round(subImgHW / 2) + loc(2);
+        tmp = NaN(length(xRange), length(yRange));
+        tmp(1:size(subFrame, 1), 1:size(subFrame, 2)) = subFrame;
+        subFrame = tmp;
+        clear tmp
+    end
+
     subFrame = cropCircle(subFrame);
     subFrame = imrotate(subFrame, tilt_angle, 'bilinear', 'crop');
 
-    v_profile = mean(subFrame, 1);
-    v_cross = mean(subFrame(c1:c2, :), 2);
+    v_profile = mean(subFrame, 1, 'omitnan');
+    v_cross = mean(subFrame(c1:c2, :), 2, 'omitnan');
 
     % Compute average velocity
     v = mean(v_profile(c1:c2));

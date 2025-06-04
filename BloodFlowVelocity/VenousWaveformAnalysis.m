@@ -53,17 +53,33 @@ Max = max(signal_shifted);
 Min = min(signal_shifted);
 Range = Max - Min;
 
+% --- Ascent Time Detection (Fixed) ---
 ascent_value = (Max - 0.05 * Range);
 
-[~, index_ascent] = min(signal_shifted - ascent_value < 0);
+% Find zero-crossings where signal_shifted rises above ascent_value
+crossings = find(diff(sign(signal_shifted - ascent_value)) > 0);
+
+if ~isempty(crossings)
+    index_ascent = crossings(1);
+else
+    % Fallback: Use the minimum if no crossing exists
+    [~, index_ascent] = min(signal_shifted);
+end
 
 yline(ascent_value, 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
 xline(pulseTime(index_ascent), 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
 
+% --- Descent Time Detection (Fixed) ---
 descent_value = (Min + 0.05 * Range);
+% Find last crossing where signal_shifted falls below descent_value
+crossings = find(diff(sign(signal_shifted - descent_value)) < 0);
 
-l = find(signal_shifted - descent_value > 0);
-index_descent = l(end);
+if ~isempty(crossings)
+    index_descent = crossings(end);
+else
+    % Fallback: Use the maximum if no crossing exists
+    [~, index_descent] = max(signal_shifted);
+end
 yline(descent_value, 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
 xline(pulseTime(index_descent), 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
 

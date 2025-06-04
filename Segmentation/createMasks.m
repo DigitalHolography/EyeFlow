@@ -11,35 +11,38 @@ function [maskArtery, maskVein, maskNeighbors] = createMasks(M0_ff_video, xy_bar
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 path = ToolBox.path_main;
-
 folder_steps = fullfile('mask', 'steps');
+
+if ~exist(folder_steps, 'dir')
+    mkdir(folder_steps);
+end
 
 % 0) Initialisation
 
 [numX, numY, numFrames] = size(M0_ff_video);
-
-diaphragmRadius = params.json.Mask.DiaphragmRadius;
-cropChoroidRadius = params.json.Mask.CropChoroidRadius;
 x_c = xy_barycenter(1);
 y_c = xy_barycenter(2);
 
-% Parameters for arteries
-vesselParams.threshold = params.json.Mask.VascularThreshold;
-vesselParams.classes = params.json.Mask.VascularClasses;
+% Load mask parameters
 
-diasysAnalysis = params.json.Mask.DiaSysAnalysis;
+if ~isfield(params.json, 'Mask')
+    error('Mask parameters are missing in the JSON file.');
+end
 
-% Parameters for arteries
-arteryParams.threshold = params.json.Mask.ArterialThreshold;
-arteryParams.classes = params.json.Mask.ArterialClasses;
+mask_params = params.json.Mask;
+diaphragmRadius = mask_params.DiaphragmRadius;
+cropChoroidRadius = mask_params.CropChoroidRadius;
+vesselParams.threshold = mask_params.VascularThreshold;
+vesselParams.classes = mask_params.VascularClasses;
+diasysAnalysis = mask_params.DiaSysAnalysis;
+arteryParams.threshold = mask_params.ArterialThreshold;
+arteryParams.classes = mask_params.ArterialClasses;
+veinParams.threshold = mask_params.VenousThreshold;
+veinParams.classes = mask_params.VenousClasses;
+minPixelSize = mask_params.MinPixelSize;
+forceVesselWidth = mask_params.ForceVesselWidth;
 
-% Parameters for veins
-veinParams.threshold = params.json.Mask.VenousThreshold;
-veinParams.classes = params.json.Mask.VenousClasses;
-
-minPixelSize = params.json.Mask.MinPixelSize;
-forceVesselWidth = params.json.Mask.ForceVesselWidth;
-
+% Load vesselness parameters
 bgWidth = params.json.PulseAnalysis.LocalBackgroundWidth;
 r1 = params.json.SizeOfField.SmallRadiusRatio;
 r2 = params.json.SizeOfField.BigRadiusRatio;
@@ -68,23 +71,29 @@ M0_img = squeeze(mean(M0_video, 3, 'omitnan'));
 % 1) 1) Compute vesselness response
 % Frangi and Gabor Vesselness
 
+% Matched Vesselness
+[~, maskMatchedFilter] = matchedFilterVesselDetection(M0_img, ...
+    'threshold', 0.6);
+
+saveImage(maskMatchedFilter, 'all_12_matched_filter_mask.png', isStep = true)
+
 % Frangi Vesselness
 [maskVesselnessFrangi, M0_Frangi] = frangiVesselness(M0_img, ...
-    'range', params.json.Mask.VesselnessFrangiRange, ...
-    'step', params.json.Mask.VesselnessFrangiStep);
+    'range', mask_params.VesselnessFrangiRange, ...
+    'step', mask_params.VesselnessFrangiStep);
 
 saveImage(maskVesselnessFrangi, 'all_12_frangi_mask.png', isStep = true)
 saveImage(M0_Frangi, 'all_12_frangi_img.png', isStep = true)
 
 % Gabor Vesselness
 [maskVesselnessGabor, M0_Gabor] = gaborVesselness(M0_ff_img, ...
-    'range', params.json.Mask.VesselnessGaborRange, ...
-    'step', params.json.Mask.VesselnessGaborStep);
+    'range', mask_params.VesselnessGaborRange, ...
+    'step', mask_params.VesselnessGaborStep);
 
 saveImage(maskVesselnessGabor & maskDiaphragm, 'all_12_gabor_mask.png', isStep = true)
 saveImage(M0_Gabor, 'all_12_gabor_img.png', isStep = true)
 
-if params.json.Mask.VesselnessHolonet
+if mask_params.VesselnessHolonet
 
     try
         maskVesselness = getHolonetprediction(M0_ff_img);
@@ -153,7 +162,7 @@ saveImage(M0_RGB, 'all_19_RGB.png', isStep = true)
 
 % 2)  Improvements of the first mask
 
-if params.json.Mask.ImproveMask
+if mask_params.ImproveMask
 
     % 2) 0) Computation of the M0 in Diastole and in Systole
 
@@ -165,26 +174,26 @@ if params.json.Mask.ImproveMask
     % 2) 1) New Vesselness Mask
 
     Systole_Frangi = frangiVesselness(M0_Systole_img, ...
-        'range', params.json.Mask.VesselnessFrangiRange, ...
-        'step', params.json.Mask.VesselnessFrangiStep);
+        'range', mask_params.VesselnessFrangiRange, ...
+        'step', mask_params.VesselnessFrangiStep);
     Diastole_Frangi = frangiVesselness(M0_Diastole_img, ...
-        'range', params.json.Mask.VesselnessFrangiRange, ...
-        'step', params.json.Mask.VesselnessFrangiStep);
+        'range', mask_params.VesselnessFrangiRange, ...
+        'step', mask_params.VesselnessFrangiStep);
 
     saveImage(Systole_Frangi, 'artery_20_frangi_mask.png', isStep = true)
     saveImage(Diastole_Frangi, 'vein_20_frangi_mask.png', isStep = true)
 
     Systole_Gabor = gaborVesselness(M0_Sys_img, ...
-        'range', params.json.Mask.VesselnessGaborRange, ...
-        'step', params.json.Mask.VesselnessGaborStep);
+        'range', mask_params.VesselnessGaborRange, ...
+        'step', mask_params.VesselnessGaborStep);
     Diastole_Gabor = gaborVesselness(M0_Dia_img, ...
-        'range', params.json.Mask.VesselnessGaborRange, ...
-        'step', params.json.Mask.VesselnessGaborStep);
+        'range', mask_params.VesselnessGaborRange, ...
+        'step', mask_params.VesselnessGaborStep);
 
     saveImage(Systole_Gabor & maskDiaphragm, 'artery_20_gabor_mask.png', isStep = true)
     saveImage(Diastole_Gabor & maskDiaphragm, 'vein_20_gabor_mask.png', isStep = true)
 
-    if params.json.Mask.VesselnessHolonet
+    if mask_params.VesselnessHolonet
         maskVesselness = maskVesselness & maskDiaphragm;
     else
         maskVesselness = (Systole_Frangi | Diastole_Frangi | Systole_Gabor | Diastole_Gabor) & maskDiaphragm;
@@ -267,10 +276,10 @@ if params.json.Mask.ImproveMask
 
     % 3) 0) Morphological Operations
     [mask_dilated, mask_closed, mask_opened, mask_widened] = clearMasks(maskArtery, ...
-        'min_area', params.json.Mask.MinPixelSize, ...
-        'imclose_radius', params.json.Mask.ImcloseRadius, ...
-        'min_width', params.json.Mask.MinimumVesselWidth, ...
-        'imdilate_size', params.json.Mask.FinalDilation);
+        'min_area', mask_params.MinPixelSize, ...
+        'imclose_radius', mask_params.ImcloseRadius, ...
+        'min_width', mask_params.MinimumVesselWidth, ...
+        'imdilate_size', mask_params.FinalDilation);
 
     saveImage(mask_dilated, 'artery_30_ClearedMask.png', isStep = true, cmap = cArtery);
     saveImage(mask_opened, 'artery_30_ClearedMask_opened.png', isStep = true, cmap = cArtery);
@@ -280,10 +289,10 @@ if params.json.Mask.ImproveMask
     maskArtery = mask_dilated;
 
     [mask_dilated, mask_closed, mask_opened, mask_widened] = clearMasks(maskVein, ...
-        'min_area', params.json.Mask.MinPixelSize, ...
-        'imclose_radius', params.json.Mask.ImcloseRadius, ...
-        'min_width', params.json.Mask.MinimumVesselWidth, ...
-        'imdilate_size', params.json.Mask.FinalDilation);
+        'min_area', mask_params.MinPixelSize, ...
+        'imclose_radius', mask_params.ImcloseRadius, ...
+        'min_width', mask_params.MinimumVesselWidth, ...
+        'imdilate_size', mask_params.FinalDilation);
 
     saveImage(mask_dilated, 'vein_30_ClearedMask.png', isStep = true, cmap = cVein);
     saveImage(mask_opened, 'vein_30_ClearedMask_opened.png', isStep = true, cmap = cVein);
@@ -305,7 +314,7 @@ if params.json.Mask.ImproveMask
     maskVein_no_import = maskVein;
 
     % 3) 2) Force Create Masks in case they exist
-    if (params.json.Mask.ForcedMasks == -1 || params.json.Mask.ForcedMasks == 1)
+    if (mask_params.ForcedMasks == -1 || mask_params.ForcedMasks == 1)
 
         if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
             maskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskArtery.png')), 3)) > 0;
@@ -314,7 +323,7 @@ if params.json.Mask.ImproveMask
                 maskArtery = imresize(maskArtery, [numX, numY], "nearest");
             end
 
-        elseif params.json.Mask.ForcedMasks == 1
+        elseif mask_params.ForcedMasks == 1
             error("Cannot force Artery Mask because none given in the mask folder. Please create a forceMaskArtery.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
         end
 
@@ -325,7 +334,7 @@ if params.json.Mask.ImproveMask
                 maskVein = imresize(maskVein, [numX, numY], "nearest");
             end
 
-        elseif params.json.Mask.ForcedMasks == 1
+        elseif mask_params.ForcedMasks == 1
             error("Cannot force Vein Mask because none given in the mask folder. Please create a forceMaskVein.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
         end
 
@@ -349,10 +358,10 @@ if params.json.Mask.ImproveMask
 else
 
     [mask_dilated, mask_closed, mask_opened, mask_widened] = clearMasks(maskArtery, ...
-        'min_area', params.json.Mask.MinPixelSize, ...
-        'imclose_radius', params.json.Mask.ImcloseRadius, ...
-        'min_width', params.json.Mask.MinimumVesselWidth, ...
-        'imdilate_size', params.json.Mask.FinalDilation);
+        'min_area', mask_params.MinPixelSize, ...
+        'imclose_radius', mask_params.ImcloseRadius, ...
+        'min_width', mask_params.MinimumVesselWidth, ...
+        'imdilate_size', mask_params.FinalDilation);
 
     saveImage(mask_dilated, 'artery_30_ClearedMask.png', isStep = true, cmap = cArtery);
     saveImage(mask_opened, 'artery_30_ClearedMask_opened.png', isStep = true, cmap = cArtery);
@@ -362,10 +371,10 @@ else
     maskArtery = mask_dilated;
 
     [mask_dilated, mask_closed, mask_opened, mask_widened] = clearMasks(maskVein, ...
-        'min_area', params.json.Mask.MinPixelSize, ...
-        'imclose_radius', params.json.Mask.ImcloseRadius, ...
-        'min_width', params.json.Mask.MinimumVesselWidth, ...
-        'imdilate_size', params.json.Mask.FinalDilation);
+        'min_area', mask_params.MinPixelSize, ...
+        'imclose_radius', mask_params.ImcloseRadius, ...
+        'min_width', mask_params.MinimumVesselWidth, ...
+        'imdilate_size', mask_params.FinalDilation);
 
     saveImage(mask_dilated, 'vein_30_ClearedMask.png', isStep = true, cmap = cVein);
     saveImage(mask_opened, 'vein_30_ClearedMask_opened.png', isStep = true, cmap = cVein);
@@ -386,7 +395,7 @@ else
     maskVein_no_import = maskVein;
 
     % 3) 2) Force Create Masks in case they exist
-    if (params.json.Mask.ForcedMasks == -1 || params.json.Mask.ForcedMasks == 1)
+    if (mask_params.ForcedMasks == -1 || mask_params.ForcedMasks == 1)
 
         if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
             maskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskArtery.png')), 3)) > 0;
@@ -395,7 +404,7 @@ else
                 maskArtery = imresize(maskArtery, [numX, numY], "nearest");
             end
 
-        elseif params.json.Mask.ForcedMasks == 1
+        elseif mask_params.ForcedMasks == 1
             error("Cannot force Artery Mask because none given in the mask folder. Please create a forceMaskArtery.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
         end
 
@@ -406,7 +415,7 @@ else
                 maskVein = imresize(maskVein, [numX, numY], "nearest");
             end
 
-        elseif params.json.Mask.ForcedMasks == 1
+        elseif mask_params.ForcedMasks == 1
             error("Cannot force Vein Mask because none given in the mask folder. Please create a forceMaskVein.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
         end
 
@@ -450,7 +459,7 @@ saveImage(M0_RGB, 'RGB_img.png')
 
 % 4) 2) Neighbours Mask
 
-if params.json.Mask.AllNonVesselsAsBackground
+if mask_params.AllNonVesselsAsBackground
     maskNeighbors = (maskBackground & ~maskVesselness) & maskDiaphragm;
 else
     maskNeighbors = imdilate(maskArtery | maskVein, strel('disk', bgWidth)) & ~(maskArtery | maskVein);
@@ -476,8 +485,6 @@ saveImage(bwskel(maskArtery), 'skeletonArtery.png')
 saveImage(bwskel(maskVein), 'skeletonVein.png')
 
 % 4) 5) Mask Section & Force Barycenter
-
-xy_barycenter = [x_c, y_c];
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMapArtery', maskArtery, thin = 0.01);
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMap', maskArtery, maskVein, thin = 0.01);
 

@@ -9,36 +9,41 @@ function [sys_index_list, fullPulse, sys_max_list, sys_min_list] = find_systole_
 %   - sys_max_list: Indices of local maxima within each cycle
 %   - sys_min_list: Indices of local minima within each cycle
 
+% Input validation
 if nargin < 3
     savepng = false;
 end
 
-% Step 1: Extract the pulse signal from the video using the artery mask
+% Step 1: Extract pulse signal
 fullPulse = squeeze(sum(video .* maskArtery, [1 2], 'omitnan') / nnz(maskArtery));
+fullPulseSmooth = smoothdata(filloutliers(fullPulse, "center", 'movmean', 5));
 
-% Step 2: Compute the derivative of the smoothed signal
-diff_signal = gradient(fullPulse);
+% Step 2: Compute derivative
+diff_signal = gradient(fullPulseSmooth);
 
-% Step 3: Detect systole peaks using findpeaks
-min_peak_height = max(diff_signal) * 0.5; % Adaptive threshold
-min_peak_distance = floor(length(fullPulse) / 10); % Minimum distance between peaks
+% Step 3: Detect peaks
+min_peak_height = prctile(diff_signal, 80);
+min_peak_distance = floor(length(fullPulse) / 10);
 [~, sys_index_list] = findpeaks(diff_signal, 'MinPeakHeight', min_peak_height, 'MinPeakDistance', min_peak_distance);
 
-% Step 4: Validate and clean up the detected peaks
+% Step 4: Validate peaks
 sys_index_list = validate_peaks(sys_index_list, 10);
 
-% Step 5: Find local maxima and minima within each cycle
-sys_max_list = zeros(1, numel(sys_index_list));
-sys_min_list = zeros(1, numel(sys_index_list));
+% Step 5: Find local maxima and minima
+num_peaks = numel(sys_index_list);
+sys_max_list = zeros(num_peaks, 1);
+sys_min_list = zeros(num_peaks, 1);
 
 for i = 1:(numel(sys_index_list) - 1)
+    L = sys_index_list(i + 1) - sys_index_list(i);
+    D = round(L / 2);
     % Find the maximum within the current cycle
-    [~, amax] = max(fullPulse(sys_index_list(i):sys_index_list(i + 1) - 1));
+    [~, amax] = max(fullPulse(sys_index_list(i):sys_index_list(i) + D));
     sys_max_list(i) = sys_index_list(i) + amax - 1;
 
     % Find the minimum within the current cycle
-    [~, amin] = min(fullPulse(sys_index_list(i):sys_index_list(i + 1) - 1));
-    sys_min_list(i + 1) = sys_index_list(i) + amin - 1;
+    [~, amin] = min(fullPulse(sys_index_list(i) + D:sys_index_list(i + 1) - 1));
+    sys_min_list(i + 1) = sys_index_list(i) + amin - 1 + D;
 end
 
 % Find the minimum before the first cycle
