@@ -201,7 +201,7 @@ if ~exist(outputDir, 'dir')
 end
 
 exportgraphics(gca, fullfile(outputDir, ...
-    sprintf("%s_diasys_%s.png", ToolBox.main_foldername, name)), 'Resolution', 300);
+    sprintf("%s_diasys_%s.png", ToolBox.folder_name, name)), 'Resolution', 300);
 
 % Video export if requested
 if exportVideos

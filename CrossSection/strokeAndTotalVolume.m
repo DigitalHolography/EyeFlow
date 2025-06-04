@@ -81,15 +81,21 @@ dt2 = pulseTime2(2) - pulseTime2(1);
 stroke_volume_value = sum(ccinterpBvrT(1:min(amax + cshiftn, numInterp))) * dt2 / 60 * 1000; % in nL
 total_volume_value = sum(ccinterpBvrT) * dt2 / 60 * 1000;
 
+dim = [0.2 0.5 0.3 0.3];
 if strcmp(name, 'Artery')
-    title(sprintf("Retinal Stroke Volume : %02.0f nL and Total Volume : %02.0f nL", stroke_volume_value, total_volume_value));
+    str = sprintf("Retinal Stroke Volume : %02.0f nL and Total Volume : %02.0f nL", stroke_volume_value, total_volume_value);
+    annotation('textbox',dim,'String',str,'FitBoxToText','on');
 else
-    title(sprintf("Total Volume : %02.0f nL", total_volume_value));
+    str = sprintf("Total Volume : %02.0f nL", total_volume_value);
+    annotation('textbox',dim,'String',str,'FitBoxToText','on');
 end
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_strokeAndTotalVolume_%s.png", ToolBox.main_foldername, name)))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', ...
+    sprintf("%s_strokeAndTotalVolume_%s.png", ToolBox.folder_name, name)))
+exportgraphics(gca, fullfile(ToolBox.path_eps, 'crossSectionsAnalysis', ...
+    sprintf("%s_strokeAndTotalVolume_%s.eps", ToolBox.folder_name, name)))
 
-fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_main_outputs', '.txt')), 'a');
+fileID = fopen(fullfile(ToolBox.path_txt, sprintf('%s_EF_main_outputs.txt', ToolBox.folder_name)), 'a');
 fprintf(fileID, 'MaxSystole Blood Volume Rate Artery : %f (µL/min) \r\n', maxsystole_bvr_value);
 fprintf(fileID, 'MinDiastole Blood Volume Rate Artery : %f (µL/min) \r\n', mindiastole_bvr_value);
 fprintf(fileID, 'Stroke Volume Artery : %f (nL) \r\n', stroke_volume_value);

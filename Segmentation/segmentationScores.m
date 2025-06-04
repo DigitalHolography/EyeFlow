@@ -55,7 +55,7 @@ PrecisionArtery = 100 * TPArtery / (TPArtery + FPArtery);
 PrecisionVein = 100 * TPVein / (TPVein + FPVein);
 
 % Define the log file path and open for writing
-logFilePath = fullfile(ToolBox.path_log, sprintf("%s_confusionMatrix.txt", ToolBox.main_foldername));
+logFilePath = fullfile(ToolBox.path_log, sprintf("%s_confusionMatrix.txt", ToolBox.folder_name));
 fileID = fopen(logFilePath, 'w+');
 
 if fileID == -1

@@ -142,14 +142,14 @@ if strcmp(export_folder, 'mask')
 
     if isfolder(fullfile(ToolBox.path_png, 'mask'))
         ylabel('Power Doppler (a.u.)')
-        exportgraphics(gca, fullfile(ToolBox.path_png, export_folder, 'steps', sprintf('%s_vessel_20_plot_diasys.png', ToolBox.main_foldername)))
+        exportgraphics(gca, fullfile(ToolBox.path_png, export_folder, 'steps', sprintf('%s_vessel_20_plot_diasys.png', ToolBox.folder_name)))
     end
 
 elseif strcmp(export_folder, 'bloodFlowVelocity')
 
     if isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
         ylabel('Velocity (mm/s)')
-        exportgraphics(gca, fullfile(ToolBox.path_png, export_folder, sprintf('%s_diasysIdx.png', ToolBox.main_foldername)))
+        exportgraphics(gca, fullfile(ToolBox.path_png, export_folder, sprintf('%s_diasysIdx.png', ToolBox.folder_name)))
     end
 
 end

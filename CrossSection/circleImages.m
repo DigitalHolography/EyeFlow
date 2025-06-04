@@ -13,7 +13,7 @@ end
 path_png = ToolBox.path_png;
 path_eps = ToolBox.path_eps;
 path_txt = ToolBox.path_txt;
-main_folder = ToolBox.main_foldername;
+main_folder = ToolBox.folder_name;
 initial = name(1);
 
 % Extract barycenter coordinates and image dimensions

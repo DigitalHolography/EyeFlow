@@ -103,9 +103,9 @@ set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 
 % Export
 exportgraphics(gcf, fullfile(ToolBox.path_png, folder, ...
-    sprintf("%s_RI_%s.png", ToolBox.main_foldername, name)));
+    sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
 exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, ...
-    sprintf("%s_RI_%s.eps", ToolBox.main_foldername, name)));
+    sprintf("%s_RI_%s.eps", ToolBox.folder_name, name)));
 close;
 
 % PI Graph
@@ -151,9 +151,9 @@ set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 
 % Export
 exportgraphics(gcf, fullfile(ToolBox.path_png, folder, ...
-    sprintf("%s_PI_%s.png", ToolBox.main_foldername, name)));
+    sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
 exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, ...
-    sprintf("%s_PI_%s.eps", ToolBox.main_foldername, name)));
+    sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
 close;
 
 % Save image
@@ -187,14 +187,14 @@ if size(v_video, 3) > 1 % if given a video, output the image of RI / PI
     imagesc(RI), axis image; axis off;
     colorbar, colormap(cmap)
     title(sprintf('RI %s = %0.2f', name, RI_mean));
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_RI_map_%s.png", ToolBox.main_foldername, name)));
+    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_RI_map_%s.png", ToolBox.folder_name, name)));
 
     % Display and save the PI image
     f = figure("Visible", "off");
     imagesc(PI), axis image; axis off;
     colorbar, colormap(cmap)
     title(sprintf('PI %s = %0.2f', name, PI_mean));
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_PI_map_%s.png", ToolBox.main_foldername, name)));
+    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_PI_map_%s.png", ToolBox.folder_name, name)));
 
     % Close figures
     close(f), close(fig);

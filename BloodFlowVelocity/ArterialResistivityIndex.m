@@ -120,8 +120,8 @@ set(gca, 'Linewidth', 2)
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 
 % Export
-exportgraphics(gcf, fullfile(ToolBox.path_png, folder, sprintf("%s_RI_%s.png", ToolBox.main_foldername, name)));
-exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, sprintf("%s_RI_%s.eps", ToolBox.main_foldername, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_png, folder, sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, sprintf("%s_RI_%s.eps", ToolBox.folder_name, name)));
 close;
 
 % PI Graph
@@ -169,8 +169,8 @@ set(gca, 'Linewidth', 2)
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 
 % Export
-exportgraphics(gcf, fullfile(ToolBox.path_png, folder, sprintf("%s_PI_%s.png", ToolBox.main_foldername, name)));
-exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, sprintf("%s_PI_%s.eps", ToolBox.main_foldername, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_png, folder, sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
 close;
 
 if contains(name, 'Artery')

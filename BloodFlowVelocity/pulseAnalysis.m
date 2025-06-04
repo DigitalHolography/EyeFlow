@@ -99,7 +99,7 @@ graphSignal('f_artery', folder, ...
     'Title', 'average f_{RMS} in arteries', 'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
     'Legend', {'arteries', 'local background'});
 
-fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_advanced_outputs', '.txt')), 'a');
+fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'advanced_outputs', '.txt')), 'a');
 fprintf(fileID, '%s : %f (%s) \r\n', 'Mean fRMS difference artery', mean(f_artery) - mean(f_artery_bkg), 'kHz');
 fclose(fileID);
 
@@ -114,7 +114,7 @@ if veinsAnalysis
         'Title', 'average f_{RMS} in veins', 'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
         'Legend', {'veins', 'local background'});
 
-    fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'EF_advanced_outputs', '.txt')), 'a');
+    fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'advanced_outputs', '.txt')), 'a');
     fprintf(fileID, '%s : %f (%s) \r\n', 'Mean fRMS difference vein', mean(f_vein) - mean(f_vein_bkg), 'kHz');
     fclose(fileID);
 
@@ -291,17 +291,17 @@ tic;
 % Local Background in vessels
 LocalBackground_in_vessels = mean(f_bkg, 3);
 createHeatmap(LocalBackground_in_vessels, 'Local Background in vessels', ...
-    'Local Background RMS frequency (kHz)', fullfile(ToolBox.path_png, folder, sprintf("%s_f_bkg_map.png", ToolBox.main_foldername)));
+    'Local Background RMS frequency (kHz)', fullfile(ToolBox.path_png, folder, sprintf("%s_f_bkg_map.png", ToolBox.folder_name)));
 
 % Delta f in vessels
 in_vessels = mean(df, 3) .* maskVesselSection;
 createHeatmap(in_vessels, 'Delta f in vessels', ...
-    'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, folder, sprintf("%s_df_map.png", ToolBox.main_foldername)));
+    'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, folder, sprintf("%s_df_map.png", ToolBox.folder_name)));
 
 % Raw RMS frequency map
 raw_map = squeeze(mean(f_video, 3));
 createHeatmap(raw_map, 'RMS frequency map RAW', ...
-    'RMS frequency (kHz)', fullfile(ToolBox.path_png, folder, sprintf("%s_f_map.png", ToolBox.main_foldername)));
+    'RMS frequency (kHz)', fullfile(ToolBox.path_png, folder, sprintf("%s_f_map.png", ToolBox.folder_name)));
 
 
 % Export videos if enabled
@@ -340,7 +340,7 @@ end
 function logDetailedResults(ToolBox, HeartBeat, sysIdxList, sysMaxList, sysMinList, ...
     TimeToMinimumDiastole, TimeToPeakSystoleFromMinimumDiastole)
 % Helper function to log detailed results
-fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_EF_main_outputs.txt')), 'a');
+fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_main_outputs.txt')), 'a');
 fprintf(fileID, 'Heart beat: %f (bpm) \r\n', HeartBeat);
 fprintf(fileID, 'Systole Indices: %s \r\n', strcat('[', sprintf("%d,", sysIdxList), ']'));
 fprintf(fileID, 'Number of Cycles: %d \r\n', numel(sysIdxList) - 1);
@@ -415,7 +415,7 @@ else
     combinedImg = cat(1, v_mean_RGB4Gif, mat2gray(histoVideoArtery(:, :, :, end)));
 end
 
-imwrite(combinedImg, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, 'AVGflowVideoCombined.png')));
+imwrite(combinedImg, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'AVGflowVideoCombined.png')));
 
 % Create video visualization if exporting
 if exportVideos

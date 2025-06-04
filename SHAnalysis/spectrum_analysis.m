@@ -24,7 +24,7 @@ df = imresize(MeanFreqHigh - MeanFreqLow, [numX numY]);
 m = sum(df .* fftshift(diskMask(numX, numY, 0.1)), [1 2]) ./ nnz(fftshift(diskMask(numX, numY, 0.1)));
 I_lab = labDuoImage(I, (df - m));
 
-imwrite(I_lab, fullfile(ToolBox.path_png, 'spectralAnalysis', sprintf("%s_ColorImg.png", ToolBox.main_foldername)))
+imwrite(I_lab, fullfile(ToolBox.path_png, 'spectralAnalysis', sprintf("%s_ColorImg.png", ToolBox.folder_name)))
 
 SH_ColorVideoRGB = zeros(numX, numY, 3, numFrames);
 
@@ -41,7 +41,7 @@ parfor frameIdx = 1:numFrames
 end
 
 % save video
-writeVideoOnDisc(SH_ColorVideoRGB, fullfile(ToolBox.path_avi, strcat(ToolBox.main_foldername, '_SH_ColorVideo')));
+writeVideoOnDisc(SH_ColorVideoRGB, fullfile(ToolBox.path_avi, strcat(ToolBox.folder_name, '_SH_ColorVideo')));
 writeGifOnDisc(SH_ColorVideoRGB, 'ColorVideo');
 
 SH_ColorSpectrumRGB = zeros(numX, numY, 3, numFreq - 2);
@@ -59,7 +59,7 @@ parfor freqIdx = low_n1 + 1:high_n2 - 1
 end
 
 % save video
-writeVideoOnDisc(SH_ColorSpectrumRGB, fullfile(ToolBox.path_avi, strcat(ToolBox.main_foldername, '_SH_ColorSpectra')));
+writeVideoOnDisc(SH_ColorSpectrumRGB, fullfile(ToolBox.path_avi, strcat(ToolBox.folder_name, '_SH_ColorSpectra')));
 writeGifOnDisc(SH_ColorSpectrumRGB(:, :, :, low_n1 + 1:high_n2 - 1), 'ColorSpectra', 0.1, high_n2 - low_n1 - 1);
 
 end

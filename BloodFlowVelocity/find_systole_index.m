@@ -97,7 +97,7 @@ if savepng
         mkdir(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
     end
 
-    exportgraphics(gca, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.main_foldername, 'find_systoles_indices.png')))
+    exportgraphics(gca, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.folder_name, 'find_systoles_indices.png')))
 
 end
 

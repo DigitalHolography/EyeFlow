@@ -82,7 +82,7 @@ else
     diastolicRunoff = NaN;
 end
 
-exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.main_foldername, name)))
+exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.folder_name, name)))
 
 % Export to JSON
 if ~strcmp(name, "bvr") % only for the velocity signal

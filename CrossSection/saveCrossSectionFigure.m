@@ -49,7 +49,7 @@ frame = getframe(gca);
 
 % Save the figure
 outputPath = fullfile(ToolBox.path_png, 'crossSectionsAnalysis', 'crossSection', ...
-    sprintf('%s_cross_section_%s.png', ToolBox.main_foldername, name_section));
+    sprintf('%s_cross_section_%s.png', ToolBox.folder_name, name_section));
 imwrite(frame.cdata, outputPath);
 
 % Close the figure

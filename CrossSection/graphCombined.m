@@ -47,6 +47,7 @@ combinedLast = cat(1, mat2gray(imresize(videoPlotMean, [numY_fig numY_fig])), ma
 
 % Save final frames as PNGs
 imwrite(mat2gray(signalPlotMean), fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s_plot.png", ToolBox.folder_name, dirname)));
+imwrite(mat2gray(videoPlotMean), fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s.png", ToolBox.folder_name, dirname)));
 imwrite(combinedLast, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s_combined.png", ToolBox.folder_name, dirname)));
 
 % Save as GIF if not skipping frames
@@ -55,6 +56,7 @@ if exportVideos
     videoInterp = imresize(mat2gray(videoPlotFrames), [size(signalPlotFrames, 2), size(signalPlotFrames, 2)]);
     videoInterp = max(0, min(videoInterp, 1)); % Ensure values are within [0, 1]
     combinedFrames = cat(1, videoInterp, mat2gray(signalPlotFrames));
+    writeGifOnDisc(mat2gray(videoPlotFrames), sprintf("%s", dirname), 0.04);
     writeGifOnDisc(mat2gray(signalPlotFrames), sprintf("%s_plot", dirname), 0.04);
     writeGifOnDisc(combinedFrames, sprintf("%s_combined", dirname), 0.04);
 end

@@ -291,7 +291,7 @@ methods
         end
 
         % Spectral Analysis
-        if obj.flag_spectral_analysis && isfile(fullfile(ToolBox.EF_path, 'raw', [strcat(ToolBox.main_foldername, '_SH'), '.raw']))
+        if obj.flag_spectral_analysis && isfile(fullfile(ToolBox.EF_path, 'raw', [strcat(ToolBox.folder_name, '_SH'), '.raw']))
             fprintf("\n----------------------------------\nSpectral Analysis\n----------------------------------\n");
             timeSpectralAnalysis = tic;
 
@@ -321,7 +321,7 @@ methods
 
         % Main Outputs Saving
 
-        % fid = fopen(fullfile(ToolBox.path_json, strcat(ToolBox.main_foldername, '_EF_main_outputs.json')), 'w');
+        % fid = fopen(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_EF_main_outputs.json')), 'w');
         % fwrite(fid, jsonencode(ToolBox.outputs, "PrettyPrint", true), 'char');
         % fclose(fid);
 

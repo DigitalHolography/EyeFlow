@@ -111,7 +111,9 @@ if ~isfolder(fullfile(ToolBox.path_eps, folder))
     mkdir(fullfile(ToolBox.path_eps, folder))
 end
 
-exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s_graph.png", ToolBox.main_foldername, filename)))
-exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s_graph.eps", ToolBox.main_foldername, filename)))
+exportgraphics(gca, fullfile(ToolBox.path_png, folder, ...
+    sprintf("%s_%s_graph.png", ToolBox.folder_name, filename)))
+exportgraphics(gca, fullfile(ToolBox.path_eps, folder, ...
+    sprintf("%s_%s_graph.eps", ToolBox.folder_name, filename)))
 
 end

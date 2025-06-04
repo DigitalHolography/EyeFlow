@@ -56,7 +56,7 @@ if isempty(maskVein)
         mkdir(fullfile(ToolBox.path_png, 'mask'));
     end
 
-    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.main_foldername, figname)), 'png');
+    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
 
 elseif isempty(maskArtery)
 
@@ -76,7 +76,7 @@ elseif isempty(maskArtery)
         mkdir(fullfile(ToolBox.path_png, 'mask'));
     end
 
-    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.main_foldername, figname)), 'png');
+    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
 
 else
 
@@ -115,7 +115,7 @@ else
         mkdir(fullfile(ToolBox.path_png, 'mask'));
     end
 
-    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.main_foldername, figname)), 'png');
+    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
 end
 
 end

@@ -36,7 +36,7 @@ aa = axis;
 aa(4) = aa(4) * 1.14;
 axis(aa);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s", ToolBox.main_foldername, sprintf('histogram_of_%s_section_width.png', name))))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s", ToolBox.folder_name, sprintf('histogram_of_%s_section_width.png', name))))
 
 %csv output of the widths
 T = table();
@@ -54,7 +54,7 @@ for cIdx = 1:numCircles
 
 end
 
-writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'WidthTable', '_', name, '.csv')));
+writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'WidthTable', '_', name, '.csv')));
 
 % New
 if contains(name, 'Artery')

@@ -23,6 +23,7 @@ for cIdx = 1:numC
 
 end
 
-writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'MaxVelocityTable', '_', initial, '.csv')));
+writetable(T, fullfile(ToolBox.path_txt, ...
+    sprintf('%s_MaxVelocityTable_%s.csv', ToolBox.folder_name, initial)));
 
 end

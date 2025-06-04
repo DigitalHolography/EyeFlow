@@ -3,9 +3,9 @@ function generateHealthReport()
 ToolBox = getGlobalToolBox;
 
 % Define file paths
-dataFilePath = fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_EF_main_outputs.txt'));
-pdfPath = fullfile(ToolBox.path_pdf, sprintf("%s_EyeFlowReport.pdf", ToolBox.main_foldername));
-directoryName = ToolBox.main_foldername;
+dataFilePath = fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_EF_main_outputs.txt'));
+pdfPath = fullfile(ToolBox.path_pdf, sprintf("%s_EyeFlowReport.pdf", ToolBox.folder_name));
+directoryName = ToolBox.folder_name;
 
 % Set A4 dimensions in centimeters
 a4Width = 21.0; % A4 width in cm

@@ -8,12 +8,12 @@ arguments
 end
 
 ToolBox = getGlobalToolBox;
-main_folder = ToolBox.main_foldername;
+folder = ToolBox.folder_name;
 
 if opt.isStep
-    folderPath = fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s", main_folder, suffix));
+    folderPath = fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s", folder, suffix));
 else
-    folderPath = fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s", main_folder, suffix));
+    folderPath = fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s", folder, suffix));
 end
 
 if isempty(opt.cmap)

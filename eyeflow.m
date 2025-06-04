@@ -727,16 +727,16 @@ methods (Access = public)
                 path_dir = fullfile(ToolBox.path_main, ToolBox.folder_name);
 
                 disp(['Copying from : ', fullfile(path_dir, 'png', 'mask')])
-                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskArtery.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'MaskArtery.png'));
-                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskVein.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'MaskVein.png'));
+                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskArtery.png", ToolBox.folder_name)), fullfile(ToolBox.path_main, 'mask', 'MaskArtery.png'));
+                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskVein.png", ToolBox.folder_name)), fullfile(ToolBox.path_main, 'mask', 'MaskVein.png'));
             catch
                 disp("last auto mask copying failed.")
             end
 
             try
 
-                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'M0.png'));
-                folder_name = strcat(ToolBox.main_foldername, '_EF');
+                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.folder_name)), fullfile(ToolBox.path_main, 'mask', 'M0.png'));
+                folder_name = ToolBox.folder_name;
                 list_dir = dir(ToolBox.path_main);
                 idx = 0;
 

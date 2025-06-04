@@ -45,6 +45,7 @@ for circleIdx = 1:numCircles
 end
 
 sub_images_mat(isnan(sub_images_mat)) = 0;
-imwrite(sub_images_mat, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s", ToolBox.main_foldername, sprintf('%s_section_montage.png', name))))
+imwrite(sub_images_mat, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', ...
+    sprintf("%s_%s", ToolBox.folder_name, sprintf('%s_section_montage.png', name))))
 
 end

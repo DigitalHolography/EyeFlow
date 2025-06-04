@@ -94,7 +94,7 @@ end
 T_ascent = pulseTime(index_ascent);
 T_descent = pulseTime(index_descent);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_VenousWaveformAnalysis_%s.png", ToolBox.main_foldername, name)))
+exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_VenousWaveformAnalysis_%s.png", ToolBox.folder_name, name)))
 
 % Export to JSON
 if ~strcmp(name, "bvr") % only for the velocity signal

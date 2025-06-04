@@ -32,5 +32,5 @@ for bIdx = 1:numC
     T.(sprintf('STDVolumeRate_R%d_Total_%s', cIdx, initial)) = Q_se_radius(cIdx, :)';
 end
 
-writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'BloodVolumeRateTable', '_', initial, '.csv')));
+writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'BloodVolumeRateTable', '_', initial, '.csv')));
 end
