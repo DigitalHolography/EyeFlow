@@ -84,10 +84,10 @@ total_volume_value = sum(ccinterpBvrT) * dt2 / 60 * 1000;
 dim = [0.2 0.5 0.3 0.3];
 if strcmp(name, 'Artery')
     str = sprintf("Retinal Stroke Volume : %02.0f nL and Total Volume : %02.0f nL", stroke_volume_value, total_volume_value);
-    annotation('textbox',dim,'String',str,'FitBoxToText','on');
+    annotation('textbox', dim, 'String', str, 'FitBoxToText', 'on', 'BackgroundColor', 'w');
 else
     str = sprintf("Total Volume : %02.0f nL", total_volume_value);
-    annotation('textbox',dim,'String',str,'FitBoxToText','on');
+    annotation('textbox', dim, 'String', str, 'FitBoxToText', 'on', 'BackgroundColor', 'w');
 end
 
 exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', ...

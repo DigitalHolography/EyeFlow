@@ -50,8 +50,9 @@ exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf(
 figure("Visible", "off");
 hold on;
 
+plot(fullTime, mean(radiusQ, 1), 'k', 'LineWidth', 2);
 for circleIdx = 1:numCircles
-    plot(fullTime, radiusQ(circleIdx, :), 'LineWidth', 2);
+    plot(fullTime, radiusQ(circleIdx, :));
 end
 
 axis padded;

@@ -72,6 +72,7 @@ plot(r2 * 1000, -2, 'k|', 'MarkerSize', 10, 'LineWidth', 1.5);
 plot(linspace(r1 * 1000, r2 * 1000, 10), repmat(-2, 10), '-k', 'LineWidth', 1.5);
 
 % Adjust axes
+axis tight
 axT = axis;
 axis([axT(1), axT(2), - 5, 50])
 box on

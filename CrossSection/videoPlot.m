@@ -54,6 +54,8 @@ t = cell(1, size(locs, 1));
 new_x = cell(1, size(locs, 1));
 new_y = cell(1, size(locs, 1));
 
+meanQ = mean(values, 2);
+
 if ~isempty(locs)
 
     for etIdx = 1:size(locs, 1)
@@ -61,7 +63,7 @@ if ~isempty(locs)
         new_y{etIdx} = locs(etIdx, 2);
 
         % Add the text
-        t{etIdx} = text(new_x{etIdx}, new_y{etIdx}, sprintf('%0.1f', mean(values(etIdx), 2)), ...
+        t{etIdx} = text(new_x{etIdx}, new_y{etIdx}, sprintf('%0.1f', meanQ(etIdx)), ...
             "FontWeight", "bold", ...
             "FontSize", fontsize, ...
             "Color", "white", ...
@@ -79,6 +81,10 @@ if exportVideos
 
     % Generate video frames
     parfor frameIdx = 1:numFrames
+        figure('Name', 'Signal Plot', 'Color', 'w', ...
+    'Visible', opt.Visible, ...
+    'Position', [200 200 600 600]);
+
         image_RGB = v_video_RGB(:, :, :, frameIdx) .* mask + video(:, :, frameIdx) .* ~mask;
         image_RGB = image_RGB .* ~(maskCircles & ~mask) + maskCircles .* ~mask;
         imshow(image_RGB);
