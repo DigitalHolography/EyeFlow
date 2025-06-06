@@ -111,7 +111,7 @@ paramText = cell(numParams, 1);
 for i = 1:numParams
     paramValue = parameters.(paramNames{i});
     % Format numbers nicely
-    if isnumeric(paramValue)
+    if isnumeric(paramValue.value)
         paramText{i} = sprintf('%s: %.2f %s', paramNames{i}, paramValue.value, paramValue.unit);
     else
         paramText{i} = sprintf('%s: %s %s', paramNames{i}, paramValue.value, paramValue.unit);
