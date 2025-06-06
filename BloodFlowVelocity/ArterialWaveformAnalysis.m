@@ -89,6 +89,7 @@ if ~strcmp(name, "bvr") % only for the velocity signal
 
     ToolBox.Outputs.add('SystoleDuration', systoleDuration, 's');
     ToolBox.Outputs.add('DiastoleDuration', diastoleDuration, 's');
+    ToolBox.Outputs.add('Time2SystolicPeak', T_peak, 's');
     ToolBox.Outputs.add('SystolicUpstroke', systolicUpstroke, unit);
     ToolBox.Outputs.add('SystolicDownstroke', systolicDownstroke, unit);
     ToolBox.Outputs.add('DiastolicRunoff', diastolicRunoff, unit);

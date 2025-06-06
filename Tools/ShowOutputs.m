@@ -1,118 +1,116 @@
 function ShowOutputs(paths, output_dir)
-% This function show multiple outputs from the foldermanagement drawerlist
+% SHOWOUTPUTS Display multiple outputs from foldermanagement drawerlist
+%   Shows various analysis results (segmentation, velocity, volume, etc.) 
+%   for each path and exports them as montage images to output directory
+%   - Missing figures are replaced with blank placeholders to maintain order
+%
+% Inputs:
+%   paths - cell array of paths to process
+%   output_dir - directory to save output images
+
+% Validate inputs
+if nargin < 2
+    error('Both paths and output_dir arguments are required');
+end
+
+if ~iscell(paths)
+    paths = {paths}; % Convert single path to cell array
+end
+
+if ~exist(output_dir, 'dir')
+    mkdir(output_dir); % Create output directory if it doesn't exist
+end
 
 N = length(paths);
 
-for path_idx = 1:N
-    split_path = strsplit(paths{path_idx}, '\');
-    main_foldername = split_path{end};
-    folder_name = strcat(main_foldername, '_EF');
-    ef_path = fullfile(paths{path_idx}, 'eyeflow');
-    list_dir = dir(ef_path);
-    idx = 0;
+% Define all output types and their file patterns
+output_types = {
+    'segmentation', '_vesselMap.png', 'png/mask';
+    'bvr', '_allrad_Artery_time.png', 'png/crossSectionsAnalysis';
+    'Arteries_fRMS', '_f_artery_graph.png', 'png/bloodFlowVelocity';
+    'ARI_velocity', '_RI_velocityArtery.png', 'png/bloodFlowVelocity';
+    'histo_art_velocity', '_histogramVelocityArtery.png', 'png/bloodFlowVelocity';
+    'Stroke_total_volume', '_strokeAndTotalVolume_Artery.png', 'png/crossSectionsAnalysis';
+    'Vessels_velocity', '_vessels_velocity_graph.png', 'png/bloodFlowVelocity';
+    'VRI_velocity', '_RI_velocityVein.png', 'png/bloodFlowVelocity';
+    'A_sections', '_A_sections.png', 'png/crossSectionsAnalysis';
+    'diasys_Artery', '_diasys_Artery.png', 'png/crossSectionsAnalysis';
+    'diasys_Vein', '_diasys_Vein.png', 'png/crossSectionsAnalysis';
+    'ArterialWaveformAnalysis_artery', '_ArterialWaveformAnalysis_v_artery.png', 'png/bloodFlowVelocity'
+};
 
-    for i = 1:length(list_dir)
-
-        if contains(list_dir(i).name, folder_name)
-            match = regexp(list_dir(i).name, '\d+$', 'match');
-
-            if ~isempty(match) && str2double(match{1}) >= idx
-                idx = str2double(match{1}); %suffix
-            end
-
-        end
-
-    end
-
-    last_folder_name = sprintf('%s_%d', folder_name, idx);
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'mask', [folder_name, '_vesselMap.png']))
-        segmentation_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'mask', [folder_name, '_vesselMap.png']);
-    end
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [folder_name, '_allrad_Artery_time.png']))
-        bvr_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [folder_name, '_allrad_Artery_time.png']);
-    end
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_f_artery_graph.png']))
-        Arteries_fRMS_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_f_artery_graph.png']);
-    end
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_RI_velocityArtery.png']))
-        ARI_velocity_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_RI_velocityArtery.png']);
-    end
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_histogramVelocityArtery.png']))
-        histo_art_velocity_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_histogramVelocityArtery.png']);
-    end
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [folder_name, '_strokeAndTotalVolume_Artery.png']))
-        Stroke_total_volume{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [folder_name, '_strokeAndTotalVolume_Artery.png']);
-    end
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_vessels_velocity_graph.png']))
-        Vessels_velocity{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_vessels_velocity_graph.png']);
-    end
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_RI_velocityVein.png']))
-        VRI_velocity_paths{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_RI_velocityVein.png']);
-    end
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [folder_name, '_A_sections.png']))
-        A_sections{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [folder_name, '_A_sections.png']);
-    end
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [folder_name, '_diasys_Artery.png']))
-        diasys_Artery{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [folder_name, '_diasys_Artery.png']);
-    end
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [folder_name, '_diasys_Vein.png']))
-        diasys_Vein{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [folder_name, '_diasys_Vein.png']);
-    end
-
-    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_ArterialWaveformAnalysis_v_artery.png']))
-        ArterialWaveformAnalysis_artery{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [folder_name, '_ArterialWaveformAnalysis_v_artery.png']);
-    end
-
+% Initialize all path collections
+for i = 1:size(output_types, 1)
+    output_paths.(output_types{i,1}) = cell(1, N);
 end
 
-[l, L] = bestMontageLayout(N);
+% Process each path
+for path_idx = 1:N
+    current_path = paths{path_idx};
+    
+    % Extract main folder name and construct expected EF folder name
+    [~, main_foldername] = fileparts(current_path);
+    folder_base = [main_foldername '_EF'];
+    ef_path = fullfile(current_path, 'eyeflow');
+    
+    % Skip if EyeFlow directory doesn't exist
+    if ~exist(ef_path, 'dir')
+        warning('EyeFlow directory not found in: %s', current_path);
+        continue;
+    end
+    
+    % Find all EF folders and get the latest one
+    ef_folders = dir(fullfile(ef_path, [folder_base '_*']));
+    if isempty(ef_folders)
+        warning('No EF folders found in: %s', ef_path);
+        continue;
+    end
+    
+    % Extract numeric suffixes and find the maximum
+    suffixes = regexp({ef_folders.name}, ['(?<=' folder_base '_)\d+$'], 'match', 'once');
+    valid_idx = ~cellfun(@isempty, suffixes);
+    if ~any(valid_idx)
+        warning('No valid EF folders found in: %s', ef_path);
+        continue;
+    end
+    
+    max_suffix = max(str2double(suffixes(valid_idx)));
+    last_folder_name = sprintf('%s_%d', folder_base, max_suffix);
+    
+    % Check for each output type
+    for i = 1:size(output_types, 1)
+        file_name = [last_folder_name output_types{i,2}];
+        full_path = fullfile(ef_path, last_folder_name, output_types{i,3}, file_name);
+        
+        if exist(full_path, 'file')
+            output_paths.(output_types{i,1}){path_idx} = full_path;
+        else
+            % Create a blank white placeholder image (RGB)
+            placeholder_path = fullfile(output_dir, ['placeholder_' num2str(path_idx) '_' output_types{i,1} '.png']);
+            output_paths.(output_types{i,1}){path_idx} = placeholder_path;
+        end
+    end
+end
 
-figure(320)
-montage(segmentation_paths, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, 'segmentations.png'));
-figure(321)
-montage(Arteries_fRMS_paths, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, 'ArteriesfRMS.png'));
-figure(3211)
-montage(Vessels_velocity, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, 'Vessels_velocity.png'));
-figure(322)
-montage(ARI_velocity_paths, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, 'ARIvelocity.png'));
-figure(3221)
-montage(VRI_velocity_paths, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, 'VRIvelocity.png'));
-figure(323)
-montage(bvr_paths, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, 'bloodVolumeRate.png'));
-figure(324)
-montage(histo_art_velocity_paths, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, 'histogramVelocityArteries.png'));
-figure(327)
-montage(Stroke_total_volume, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, '_strokeAndTotalVolume.png'));
-figure(328)
-montage(A_sections, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, 'A_sections.png'));
-figure(329)
-montage(diasys_Artery, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, 'diasys_Artery.png'));
-figure(330)
-montage(diasys_Vein, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, 'diasys_Vein.png'));
-figure(331)
-montage(ArterialWaveformAnalysis_artery, Size = [l L]);
-exportgraphics(gca, fullfile(output_dir, 'ArterialWaveformAnalysis_artery.png'));
+% Create montages for each output type
+[l, L] = bestMontageLayout(N);
+figure_counter = 320;
+
+for i = 1:size(output_types, 1)
+    type_name = output_types{i,1};
+    current_paths = output_paths.(type_name);
+    
+    % Skip if no valid paths (unlikely due to placeholders)
+    if all(cellfun(@isempty, current_paths))
+        warning('No valid files (including placeholders) for output type: %s', type_name);
+        continue;
+    end
+    
+    % Create montage (missing files are replaced by placeholders)
+    figure(figure_counter, 'Visible', 'off');
+    montage(current_paths, 'Size', [l L]);
+    exportgraphics(gca, fullfile(output_dir, [type_name '.png']));
+    figure_counter = figure_counter + 1;
+end
 
 end

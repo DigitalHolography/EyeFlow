@@ -639,7 +639,9 @@ methods (Access = public)
 
         function show_outputs(~, ~)
             out_dir_path = fullfile(app.drawer_list{1}, 'Multiple_Results');
-            mkdir(out_dir_path) % creates if it doesn't exists
+            if ~isfolder(out_dir_path)
+                mkdir(out_dir_path) % creates if it doesn't exists
+            end
             tic
             ShowOutputs(app.drawer_list, out_dir_path)
             toc

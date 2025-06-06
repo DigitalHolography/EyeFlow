@@ -319,6 +319,8 @@ methods
             fprintf("\n----------------------------------\nSpectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
         end
 
+        generateA4Report()
+
         % Main Outputs Saving
 
         % fid = fopen(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_EF_main_outputs.json')), 'w');
