@@ -235,7 +235,7 @@ if exportVideos
     set(meanPlot, 'XData', w2w, 'YData', v_video(1, :));
 
     ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
-                   1.07 * max([bounds_sys.upper, bounds_dias.upper])]);
+                   1.2 * max([bounds_sys.upper, bounds_dias.upper])]);
 
     [numX_fig, numY_fig, ~] = size(frame2im(getframe(figVideo)));
     video = zeros(numX_fig, numY_fig, 3, numFrames);

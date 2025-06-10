@@ -10,8 +10,6 @@ y_c = xy_barycenter(2);
 r1 = params.json.SizeOfField.SmallRadiusRatio;
 
 % Create skeleton and remove center circle
-SE = strel('disk', 2);
-vesselMask = imclose(vesselMask, SE); % Apply section mask
 skel = bwskel(vesselMask);
 cercleMask = diskMask(numX, numY, r1, 'center', [x_c / numX y_c / numY]);
 skel = skel & ~cercleMask;
