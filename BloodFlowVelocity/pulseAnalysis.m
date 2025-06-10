@@ -276,11 +276,13 @@ if veinsAnalysis
 end
 
 % Perform waveform analysis
-cshiftn = ArterialWaveformAnalysis(v_artery_signal, t, sysIdxList, 1000, 'v_artery', ToolBox);
+ArterialWaveformAnalysis(v_artery_signal, sysIdxList, 64, 'v_artery');
 
 if veinsAnalysis
-    VenousWaveformAnalysis(v_vein_signal, t, sysIdxList, 1000, 'v_vein', ToolBox);
+    VenousWaveformAnalysis(v_vein_signal, t, sysIdxList, 64, 'v_vein', ToolBox);
 end
+
+[time_lag, max_corr, lags, corr_vals] = arterial_venous_correlation(v_artery_signal, -v_vein_signal);
 
 fprintf("    5. Resistivity and waveform analysis took %ds\n", round(toc));
 
@@ -302,7 +304,6 @@ createHeatmap(in_vessels, 'Delta f in vessels', ...
 raw_map = squeeze(mean(f_video, 3));
 createHeatmap(raw_map, 'RMS frequency map RAW', ...
     'RMS frequency (kHz)', fullfile(ToolBox.path_png, folder, sprintf("%s_f_map.png", ToolBox.folder_name)));
-
 
 % Export videos if enabled
 if exportVideos
@@ -408,7 +409,7 @@ function createCombinedVisualizations(v_mean_RGB, histoVideoArtery, veinsAnalysi
 
 % Create averaged visualization
 if veinsAnalysis
-    v_mean_RGB4Gif = rescale(imresize3(v_mean_RGB, [numX_fig*2 numX_fig*2 3]));
+    v_mean_RGB4Gif = rescale(imresize3(v_mean_RGB, [numX_fig * 2 numX_fig * 2 3]));
     combinedImg = cat(2, v_mean_RGB4Gif, cat(1, mat2gray(histoVideoArtery(:, :, :, end)), mat2gray(histoVideoVein(:, :, :, end))));
 else
     v_mean_RGB4Gif = rescale(imresize3(v_mean_RGB, [numY_fig numY_fig 3]));
@@ -419,11 +420,12 @@ imwrite(combinedImg, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox
 
 % Create video visualization if exporting
 if exportVideos
+
     if veinsAnalysis
-        v_video_RGB4Gif = zeros(numX_fig*2, numX_fig*2, 3, numFrames, 'like', v_video_RGB);
-        v_video_RGB4Gif(:, :, 1, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 1, :)), [numX_fig*2 numX_fig*2 numFrames]));
-        v_video_RGB4Gif(:, :, 2, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 2, :)), [numX_fig*2 numX_fig*2 numFrames]));
-        v_video_RGB4Gif(:, :, 3, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 3, :)), [numX_fig*2 numX_fig*2 numFrames]));
+        v_video_RGB4Gif = zeros(numX_fig * 2, numX_fig * 2, 3, numFrames, 'like', v_video_RGB);
+        v_video_RGB4Gif(:, :, 1, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 1, :)), [numX_fig * 2 numX_fig * 2 numFrames]));
+        v_video_RGB4Gif(:, :, 2, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 2, :)), [numX_fig * 2 numX_fig * 2 numFrames]));
+        v_video_RGB4Gif(:, :, 3, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 3, :)), [numX_fig * 2 numX_fig * 2 numFrames]));
         combinedGifs = cat(2, v_video_RGB4Gif, cat(1, mat2gray(histoVideoArtery), mat2gray(histoVideoVein)));
     else
         v_video_RGB4Gif = zeros(numY_fig, numY_fig, 3, numFrames, 'like', v_video_RGB);
@@ -435,4 +437,5 @@ if exportVideos
 
     writeGifOnDisc(mat2gray(combinedGifs), "velocityHistogramCombined", 0.04);
 end
+
 end

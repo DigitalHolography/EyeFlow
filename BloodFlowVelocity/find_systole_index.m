@@ -16,14 +16,13 @@ end
 
 % Step 1: Extract pulse signal
 fullPulse = squeeze(sum(video .* maskArtery, [1 2], 'omitnan') / nnz(maskArtery));
-fullPulseSmooth = smoothdata(filloutliers(fullPulse, "center", 'movmean', 5));
 
 % Step 2: Compute derivative
-diff_signal = gradient(fullPulseSmooth);
+diff_signal = gradient(fullPulse);
 
 % Step 3: Detect peaks
-min_peak_height = prctile(diff_signal, 80);
-min_peak_distance = floor(length(fullPulse) / 10);
+min_peak_height = prctile(diff_signal, 95);
+min_peak_distance = floor(length(fullPulse) / 8);
 [~, sys_index_list] = findpeaks(diff_signal, 'MinPeakHeight', min_peak_height, 'MinPeakDistance', min_peak_distance);
 
 % Step 4: Validate peaks
@@ -70,7 +69,7 @@ if savepng
     numFrames = size(video, 3);
     fullTime = linspace(0, numFrames * T, numFrames);
 
-    figure(Visible = 'off');
+    figure(Visible = 'on');
     hold on
     plot(fullTime, diff_signal, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5)
     plot(fullTime, fullPulse, 'k-', 'LineWidth', 1.5);
