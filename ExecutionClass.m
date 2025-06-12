@@ -20,6 +20,7 @@ properties
     is_segmented = false;
     is_pulseAnalyzed = false;
     is_crossSectionAnalyzed = false;
+    is_AllAnalyzed = false;
 
     sysIdxList % list of frame indexes counting cardiac cycles
     diasIdx
@@ -286,7 +287,9 @@ methods
             %     end
             % 
             % end
-
+            
+            obj.is_AllAnalyzed = true;
+            
             fprintf("- Cross-Section Figures took: %ds\n", round(toc(crossSectionFiguresTimer)));
         end
 
@@ -318,8 +321,10 @@ methods
             fprintf("- Spectrogram took: %ds\n", round(toc(spectrogramTimer)));
             fprintf("\n----------------------------------\nSpectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
         end
-
-        generateA4Report()
+        
+        if obj.is_AllAnalyzed
+            generateA4Report()
+        end
 
         % Main Outputs Saving
 

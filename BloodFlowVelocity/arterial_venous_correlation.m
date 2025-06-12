@@ -44,29 +44,33 @@ V = V / std(V);
 time_lag = lags(max_idx) / fs; % Convert lag index to seconds
 
 % Plot results
-figure;
+figure("Visible", "off");
 subplot(2, 1, 1);
 hold on
-plot(t, A, 'r');
-plot(t, V, 'b');
-xlabel('Time (s)'); ylabel('Amplitude (normalized)');
+plot(t, A, 'r', 'LineWidth', 2);
+plot(t, -V, 'b', 'LineWidth', 2);
+axis tight;
+grid on;
+xlabel('Time (s)'); ylabel('Amplitude');
 legend('Arterial', 'Venous');
 title('Arterial vs. Venous Signals (Detrended)');
-grid on;
+box on;
+set(gca, 'LineWidth', 2);
 
 subplot(2, 1, 2);
 plot(lags / fs, corr_vals, 'k', 'LineWidth', 1.5);
 hold on;
 plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
+axis tight;
+grid on;
 xlabel('Lag (s)'); ylabel('Cross-Correlation');
 title(['Peak Lag: ', num2str(time_lag, '%.3f'), ' s | Corr: ', num2str(max_corr, '%.2f')]);
-grid on;
+box on;
+set(gca, 'LineWidth', 2);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'bloodFlowVelocity', ...
+exportgraphics(gcf, fullfile(ToolBox.path_png, 'bloodFlowVelocity', ...
     sprintf("%s_arterial_venous_correlation.png", ToolBox.folder_name)))
 
-% Display key biomarkers
-disp('===== Arterial-Venous Biomarkers =====');
-disp(['Time Lag: ', num2str(time_lag, '%.3f'), ' s']);
-disp(['Max Correlation: ', num2str(max_corr, '%.2f')]);
+close all
+
 end

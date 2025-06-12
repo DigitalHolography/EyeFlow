@@ -33,7 +33,7 @@ signal_shifted(end + 1) = signal_shifted(1);
 dt = (t(2) - t(1));
 pulseTime = linspace(0, dt * avgLength, numInterp);
 pulseTime(end + 1) = pulseTime(end) + dt;
-figure, plot(pulseTime, signal_shifted, 'k', 'LineWidth', 2)
+figure("Visible", "off"), plot(pulseTime, signal_shifted, 'k', 'LineWidth', 2)
 hold on
 
 axis padded
@@ -80,6 +80,7 @@ else
     % Fallback: Use the maximum if no crossing exists
     [~, index_descent] = max(signal_shifted);
 end
+
 yline(descent_value, 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
 xline(pulseTime(index_descent), 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
 

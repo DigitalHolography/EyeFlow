@@ -69,7 +69,7 @@ if savepng
     numFrames = size(video, 3);
     fullTime = linspace(0, numFrames * T, numFrames);
 
-    figure(Visible = 'on');
+    figure(Visible = 'off');
     hold on
     plot(fullTime, diff_signal, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5)
     plot(fullTime, fullPulse, 'k-', 'LineWidth', 1.5);

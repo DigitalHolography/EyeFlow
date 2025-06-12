@@ -100,4 +100,6 @@ end
 
 exportgraphics(gca, fullfile(outputDir, sprintf("%s_histogramVelocity%s.eps", ToolBox.folder_name, name)));
 
+close(fDistrib)
+
 end

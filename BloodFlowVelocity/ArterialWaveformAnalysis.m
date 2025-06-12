@@ -89,7 +89,7 @@ if length(peaks) > 1
 end
 
 %% Visualization
-hFig = figure('Visible', 'on', 'Color', 'w', 'Position', [100 100 1000 620]);
+hFig = figure('Visible', 'off', 'Color', 'w', 'Position', [100 100 1000 620]);
 hold on;
 
 % Add reference lines and annotations
@@ -130,14 +130,14 @@ if ~isnan(notch)
 end
 
 padded_signal = [one_cycle_signal(floor(numInterp / 2) + 1:end), ...
-    one_cycle_signal, ...
-    one_cycle_signal(1: floor(numInterp / 2))];
+                     one_cycle_signal, ...
+                     one_cycle_signal(1:floor(numInterp / 2))];
 padded_time = [linspace(- dt * avgLength / 2, -dt, round(numInterp / 2)), ...
-    pulseTime, ...
-    linspace(dt * (avgLength + 1), dt * (avgLength * 3 / 2), round(numInterp / 2))];
+                   pulseTime, ...
+                   linspace(dt * (avgLength + 1), dt * (avgLength * 3/2), round(numInterp / 2))];
 padded_gradient = [gradient(one_cycle_signal(floor(numInterp / 2) + 1:end)), ...
-    gradient(one_cycle_signal), ...
-    gradient(one_cycle_signal(1: floor(numInterp / 2)))];
+                       gradient(one_cycle_signal), ...
+                       gradient(one_cycle_signal(1:floor(numInterp / 2)))];
 
 % Main signal and gradient plots
 plot(padded_time, padded_gradient, 'Color', [0.85 0.85 0.85], 'LineWidth', 2);
