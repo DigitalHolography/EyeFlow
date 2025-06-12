@@ -453,16 +453,28 @@ saveImage(M0_RGB, 'RGB_img.png')
 if params.json.Mask.AllNonVesselsAsBackground
     maskNeighbors = (maskBackground & ~maskVesselness) & maskDiaphragm;
 else
-    maskNeighbors = imdilate(maskArtery | maskVein, strel('disk', bgWidth)) & ~(maskArtery | maskVein);
+    if params.veins_analysis
+        maskNeighbors = imdilate(maskArtery | maskVein, strel('disk', bgWidth)) & ~(maskArtery | maskVein);
+    else
+        maskNeighbors = imdilate(maskArtery, strel('disk', bgWidth)) & ~(maskArtery); % & ~(maskArtery | maskVein); possible 
+    end
 end
 
 cmapNeighbors = cmapLAB(256, [0 1 0], 0, [1 1 1], 1);
 
 M0_Neighbors = setcmap(M0_ff_img, maskNeighbors, cmapNeighbors);
 
-neighborsMaskSeg = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + ...
-    M0_AV + M0_Neighbors + ...
-    rescale(M0_ff_img) .* ~(maskArtery | maskVein | maskNeighbors);
+
+if params.veins_analysis
+    neighborsMaskSeg = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + ...
+        M0_AV + M0_Neighbors + ...
+        rescale(M0_ff_img) .* ~(maskArtery | maskVein | maskNeighbors);
+else
+    neighborsMaskSeg = (M0_Artery) .* ~(maskArtery) + ...
+        M0_Artery + M0_Neighbors + ...
+        rescale(M0_ff_img) .* ~(maskArtery | maskNeighbors);
+end
+
 saveImage(neighborsMaskSeg, 'neighbors_img.png')
 
 % 4) 4) Save all images

@@ -1,4 +1,4 @@
-function histoVideo = VelocityHistogram(v_video, mask, name, n)
+function histoVideo = VelocityHistogram(v_video, mask, name, n, opt)
 % VelocityHistogram.m: Creates an Histogram of the velocities from a video
 % and passes the figure as a mat
 %
@@ -17,6 +17,7 @@ arguments
     mask {mustBeNumericOrLogical}
     name {mustBeTextScalar, mustBeMember(name, {'Artery', 'Vein'})}
     n (1, 1) {mustBeInteger, mustBePositive} = 256
+    opt.yLIM = []
 end
 
 % Get toolbox parameters
@@ -40,7 +41,12 @@ end
 % Velocity Histogram
 T = ToolBox.stride / (1000 * ToolBox.fs); % time between frames
 xAx = [0 numFrames * T]; % time axis
-yAx = [v_min v_max];
+
+if ~isempty(opt.yLIM)
+    v_min = opt.yLIM(1);
+    v_max = opt.yLIM(2);
+end
+yAx = [v_min v_max]; % velocity axis
 
 % Initialize histogram matrix
 histo = zeros(n, numFrames);
@@ -61,12 +67,12 @@ set(gca, 'YDir', 'normal')
 colormap(cmap)
 ylabel('Velocity (mm/s)')
 xlabel('Time (s)')
-title(sprintf("velocity distribution in %s", name))
+title(sprintf("Velocity distribution in %s", name))
 histoVideo = frame2im(getframe(fDistrib));
 hold on
-RGB = fill([0 0 xAx(2) xAx(2)], [yAx(1) yAx(2) yAx(2) yAx(1)], [0 0 0], 'EdgeColor', 'none');
 
 if exportVideos
+RGB = fill([0 0 xAx(2) xAx(2)], [yAx(1) yAx(2) yAx(2) yAx(1)], [0 0 0], 'EdgeColor', 'none');
     [numX_fig, numY_fig, ~] = size(histoVideo);
     histoVideo = zeros(numX_fig, numY_fig, 3, numFrames);
     gifWriter = GifWriter(sprintf("histogramVelocity%s", name), numFrames);

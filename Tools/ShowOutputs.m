@@ -70,7 +70,7 @@ for path_idx = 1:N
         diasys_Vein{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'crossSectionsAnalysis', [main_foldername, '_diasys_Vein.png']);
     end
 
-    if isfile(fullfile(ef_path,d last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_ArterialWaveformAnalysis_v_artery.png']))
+    if isfile(fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_ArterialWaveformAnalysis_v_artery.png']))
         ArterialWaveformAnalysis_artery{path_idx} = fullfile(ef_path, last_folder_name, 'png', 'bloodFlowVelocity', [main_foldername, '_ArterialWaveformAnalysis_v_artery.png']);
     end
 

@@ -29,6 +29,7 @@ arguments
     opt.xLines = []
     opt.xLineLabels = {}
     opt.zero_center = false
+    opt.yLIM = []
 end
 
 f = figure('Visible', 'off');
@@ -100,6 +101,10 @@ else
     axis([axT(1), axT(2), axP(3), axP(4)])
 end
 set(gca, 'LineWidth', 2)
+
+if ~isempty(opt.yLIM)
+    ylim(opt.yLIM)
+end
 
 ToolBox = getGlobalToolBox;
 
