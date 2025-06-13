@@ -53,10 +53,11 @@ fontsize(gca, 14, 'points')
 
 signalPlotMean = frame2im(getframe(signalPlot));
 
+% Preallocate signal plot data array
+initialFrame = frame2im(getframe(signalPlot));
+signalPlotFrames = zeros([size(initialFrame), numFrames], 'uint8');
+
 if exportVideos
-    % Preallocate signal plot data array
-    initialFrame = frame2im(getframe(signalPlot));
-    signalPlotFrames = zeros([size(initialFrame), numFrames], 'uint8');
 
     % Create mask coordinates
     maskY = [yAx(1), yAx(2), yAx(2), yAx(1)];

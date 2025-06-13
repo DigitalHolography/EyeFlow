@@ -41,7 +41,7 @@ box on;
 ylabel('Blood Volume Rate (µL/min)');
 xlabel('Radius (pixels)');
 title("Time-Averaged Blood Volume Rate");
-set(gca, 'PlotBoxAspectRatio', [1.618 1 1], 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [2.5 1 1], 'LineWidth', 2);
 
 % Export plot
 exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_mean_%s_radius.png", ToolBox.folder_name, name)));
@@ -64,7 +64,7 @@ box on;
 ylabel('Blood Volume Rate (µL/min)');
 xlabel('Time (s)');
 title("Radial Variations of Blood Volume Rate");
-set(gca, 'PlotBoxAspectRatio', [1.618 1 1], 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [2.5 1 1], 'LineWidth', 2);
 
 % Export plot
 exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_variance_%s_time.png", ToolBox.folder_name, name)));
@@ -113,7 +113,7 @@ box on;
 ylabel('Blood Volume Rate (µL/min)');
 xlabel('Time (s)');
 title(sprintf("Total Blood Volume Rate (Avg. %0.2f µL/min)", mean_Q));
-set(gca, 'PlotBoxAspectRatio', [1.618 1 1], 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [2.5 1 1], 'LineWidth', 2);
 
 % Export plot
 exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_allrad_%s_time.png", ToolBox.folder_name, name)));

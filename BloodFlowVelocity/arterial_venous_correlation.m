@@ -52,7 +52,6 @@ plot(t, -V, 'b', 'LineWidth', 2);
 axis tight;
 grid on;
 xlabel('Time (s)'); ylabel('Amplitude');
-legend('Arterial', 'Venous');
 title('Arterial vs. Venous Signals (Detrended)');
 box on;
 set(gca, 'LineWidth', 2);
@@ -70,6 +69,8 @@ set(gca, 'LineWidth', 2);
 
 exportgraphics(gcf, fullfile(ToolBox.path_png, 'bloodFlowVelocity', ...
     sprintf("%s_arterial_venous_correlation.png", ToolBox.folder_name)))
+
+ToolBox.Outputs.add('PhaseDelay', time_lag, 's', NaN);
 
 close all
 

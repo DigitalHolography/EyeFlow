@@ -24,6 +24,9 @@ classdef Outputs < handle
         TimetoAscentFromMinVein
         TimetoDescentToMinVein
 
+        % Phase Delay
+        PhaseDelay
+
         % Velocity
         ArterialMeanVelocity
         ArterialMaximumVelocity

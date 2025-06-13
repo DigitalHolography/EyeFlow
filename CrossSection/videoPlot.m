@@ -75,9 +75,10 @@ end
 
 videoPlotMean = frame2im(getframe(gca));
 
+% Preallocate video data array
+videoPlotFrames = zeros([numX, numY, 3, numFrames], 'single');
+
 if exportVideos
-    % Preallocate video data array
-    videoPlotFrames = zeros([numX, numY, 3, numFrames], 'single');
 
     % Generate video frames
     parfor frameIdx = 1:numFrames

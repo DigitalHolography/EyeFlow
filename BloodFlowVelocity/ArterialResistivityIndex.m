@@ -113,7 +113,7 @@ axis padded
 axP = axis;
 axis tight
 axT = axis;
-axis([axT(1), axT(2), axP(3) - 2, axP(4) + 2])
+axis([axT(1), axT(2), - 2, axP(4) + 2])
 
 box on
 set(gca, 'Linewidth', 2)
@@ -162,7 +162,7 @@ axis padded
 axP = axis;
 axis tight
 axT = axis;
-axis([axT(1), axT(2), axP(3) - 2, axP(4) + 2])
+axis([axT(1), axT(2), - 2, axP(4) + 2])
 
 box on
 set(gca, 'Linewidth', 2)

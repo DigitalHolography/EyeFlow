@@ -161,7 +161,7 @@ axis([axT(1), axT(2), axT(3) - 0.1 * range(axT(3:4)), axT(4) + 0.1 * range(axT(3
 ylabel(y_label);
 xlabel('Time (s)');
 pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 2, 'FontSize', 12, 'Box', 'on');
+set(gca, 'LineWidth', 2, 'FontSize', 24, 'Box', 'on');
 
 %% Save Results
 try

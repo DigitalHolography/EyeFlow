@@ -63,9 +63,9 @@ ylabel('Velocity (mm/s)')
 xlabel('Time (s)')
 histoVideo = frame2im(getframe(fDistrib));
 hold on
-RGB = fill([0 0 xAx(2) xAx(2)], [yAx(1) yAx(2) yAx(2) yAx(1)], [0 0 0], 'EdgeColor', 'none');
 
 if exportVideos
+    RGB = fill([0 0 xAx(2) xAx(2)], [yAx(1) yAx(2) yAx(2) yAx(1)], [0 0 0], 'EdgeColor', 'none');
     [numX_fig, numY_fig, ~] = size(histoVideo);
     histoVideo = zeros(numX_fig, numY_fig, 3, numFrames);
     gifWriter = GifWriter(sprintf("histogramVelocity%s", name), numFrames);

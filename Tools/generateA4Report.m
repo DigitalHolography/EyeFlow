@@ -14,6 +14,8 @@ outputs = ToolBox.Outputs;
 parameters.average_arterial_velocity = outputs.ArterialMeanVelocity;
 parameters.average_venous_velocity = outputs.VenousMeanVelocity;
 parameters.TimeToMaxIncreaseSystolic = outputs.TimeToMaxIncreaseSystolic;
+parameters.TimePeakToDescent = outputs.TimePeakToDescent;
+parameters.TimeToPeakFromMinVein = outputs.TimetoPeakFromMinVein;
 parameters.average_arterial_volume_rate = outputs.ArterialMeanVolumeRate;
 parameters.average_venous_volume_rate = outputs.VenousMeanVolumeRate;
 parameters.heart_beat = outputs.HeartBeat;
@@ -26,7 +28,6 @@ parameters.ARI = outputs.ArterialResistivityIndexVelocity;
 parameters.VRI = outputs.VenousResistivityIndexVelocity;
 parameters.API = outputs.ArterialPulsatilityIndexVelocity;
 parameters.VPI = outputs.VenousPulsatilityIndexVelocity;
-
 
 % Create a new figure with A4 paper size (in centimeters)
 fig = figure('Units', 'centimeters', 'Position', [0 0 21.0 29.7], ...
