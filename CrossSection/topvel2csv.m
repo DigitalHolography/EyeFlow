@@ -1,25 +1,29 @@
-function topvel2csv(t, top_vel, top_vel_std, name)
+function topvel2csv(t, top_vel, top_vel_std, initial)
 
 ToolBox = getGlobalToolBox;
 
 %csv output of the widths
 T = table();
-numR = length(top_vel); % number of radii
+[numC, numB] = size(top_vel);
 
 if not(isempty(t)) % if time is a variable
     T.time = t';
 end
 
-for rIdx = 1:numR
-    numSection = size(top_vel{rIdx}, 1);
+for cIdx = 1:numC
 
-    for sectionIdx = 1:numSection
-        T.(sprintf('Max_Vel_R%d_S%d_%s', rIdx, sectionIdx, name)) = squeeze(squeeze(top_vel{rIdx}(sectionIdx, :)))';
-        T.(sprintf('STD_Max_Vel_R%d_S%d_%s', rIdx, sectionIdx, name)) = squeeze(squeeze(top_vel_std{rIdx}(sectionIdx, :)))';
+    for bIdx = 1:numB
+
+        if ~isempty(top_vel{cIdx, bIdx})
+            T.(sprintf('Max_Vel_R%d_S%d_%s', cIdx, bIdx, initial)) = top_vel{cIdx, bIdx}';
+            T.(sprintf('STD_Max_Vel_R%d_S%d_%s', cIdx, bIdx, initial)) = top_vel_std{cIdx, bIdx}';
+        end
+
     end
 
 end
 
-writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'MaxVelocityTable', '_', name, '.csv')));
+writetable(T, fullfile(ToolBox.path_txt, ...
+    sprintf('%s_MaxVelocityTable_%s.csv', ToolBox.folder_name, initial)));
 
 end

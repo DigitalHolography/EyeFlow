@@ -29,7 +29,7 @@ maskNeighbors = logical(imresize(maskNeighbors, [numX, numX])) - maskArtery; % f
 maskSection = logical(imresize(maskSection, [numX, numX]));
 
 %% Video
-video = VideoWriter(fullfile(ToolBox.path_avi, sprintf("%s_%s", ToolBox.main_foldername, "stdTemp.avi")));
+video = VideoWriter(fullfile(ToolBox.path_avi, sprintf("%s_%s", ToolBox.folder_name, "stdTemp.avi")));
 open(video)
 
 %% Display
@@ -126,8 +126,8 @@ for i = 1:cubeFrameLength
 
 end
 
-writeGifOnDisc(specVideo, fullfile(ToolBox.path_gif, strcat(ToolBox.main_foldername, '_spectrumDim4.gif')), 0.1);
-writeVideoOnDisc(specVideo, fullfile(ToolBox.path_avi, strcat(ToolBox.main_foldername, '_spectrumDim4')));
+writeGifOnDisc(specVideo, fullfile(ToolBox.path_gif, strcat(ToolBox.folder_name, '_spectrumDim4.gif')), 0.1);
+writeVideoOnDisc(specVideo, fullfile(ToolBox.path_avi, strcat(ToolBox.folder_name, '_spectrumDim4')));
 clear specVideo
 disp('Video creation ok.')
 %clear tmp_BG tmp_A tmp_DELTA DELTA_Smooth A_Smooth BG_Smooth ArterySpectrum BgSpectrum DeltaSpectrum
@@ -147,7 +147,7 @@ title('Average spectrum')
 xlabel('frequency (kHz)', 'FontSize', 14);
 ylabel('A.U.', 'FontSize', 14);
 legend('Artery', 'Background')
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.main_foldername, 'Averaged_spectrum.png')));
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'Averaged_spectrum.png')));
 
 % DELTA
 yAx = [0 f2];
@@ -232,9 +232,9 @@ r.Color = "yellow";
 legend('AVG', 'M1/M0', '(M2/M0)^(1/2)')
 hold off
 
-print('-f38', '-dpng', fullfile(ToolBox.path_png, strcat(ToolBox.main_foldername, '_deltaSpectrogram.png')));
-print('-f39', '-dpng', fullfile(ToolBox.path_png, strcat(ToolBox.main_foldername, '_arterySpectrogram.png')));
-print('-f40', '-dpng', fullfile(ToolBox.path_png, strcat(ToolBox.main_foldername, '_backgroundSpectrogram.png')));
+print('-f38', '-dpng', fullfile(ToolBox.path_png, strcat(ToolBox.folder_name, '_deltaSpectrogram.png')));
+print('-f39', '-dpng', fullfile(ToolBox.path_png, strcat(ToolBox.folder_name, '_arterySpectrogram.png')));
+print('-f40', '-dpng', fullfile(ToolBox.path_png, strcat(ToolBox.folder_name, '_backgroundSpectrogram.png')));
 
 [spec_plot, delt_spec_plot] = showSpectrum(maskArtery, maskNeighbors, maskSection, SH_cube(:, :, :, 1));
 figure(spec_plot); axis tight; ax1 = axis; ax1(3) = ax1(3) - 30; ax1(4) = ax1(4); axis(ax1);

@@ -62,7 +62,7 @@ c.Label.FontSize = 12;
 axis off;
 axis image;
 range = clim;
-imwrite(rescale(f_AVG_mean), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_frequency_AVG.png')), 'png');
+imwrite(rescale(f_AVG_mean), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG.png')), 'png');
 
 clear f_AVG_mean;
 
@@ -78,8 +78,8 @@ colorTitleHandle = get(f_AVG_colorbar, 'Title');
 titleString = 'AVG Doppler Frequency (kHz)';
 set(colorTitleHandle, 'String', titleString);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_frequency_AVG_colorbar.png')));
-exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, '3_frequency_AVG_colorbar.eps')));
+exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.png')));
+exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.eps')));
 
 fprintf("    3. Raw heatmaps generation took %ds\n", round(toc(t3)));
 
@@ -238,7 +238,7 @@ end
 
 % Save average arterial pulse wave velocity to a text file
 tmp = [interp_t(1:length(avgArterialPulseHz))', avgArterialPulseVelocityInPlane];
-fileID = fopen(fullfile(ToolBox.path_txt, sprintf("%s_%s", ToolBox.main_foldername, 'avgPulse.txt')), 'w');
+fileID = fopen(fullfile(ToolBox.path_txt, sprintf("%s_%s", ToolBox.folder_name, 'avgPulse.txt')), 'w');
 fprintf(fileID, '%f %f \r\n', tmp');
 fclose(fileID);
 
@@ -260,8 +260,8 @@ plot(interp_t, movavgvar(squeeze(mean(cycles_signal(:, :), 1)), 5), 'k-', 'LineW
 xlabel('Average Cardiac Cycle Duration (s)');
 ylabel('RMS Doppler Frequency (kHz)')
 
-exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, '7_RMS_Doppler_frequency_for_different_cycles.png')));
-exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, '7_RMS_Doppler_frequency_for_different_cycles.eps')));
+exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, '7_RMS_Doppler_frequency_for_different_cycles.png')));
+exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, '7_RMS_Doppler_frequency_for_different_cycles.eps')));
 
 %% Arterial pulse wave analysis
 [~, idx_sys] = max(avgArterialPulseHz);
@@ -290,8 +290,8 @@ if ~isnan(onePulseVideoM0)
     axis image;
     range = clim;
 
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, 'diastoleHeatMapFig.png')));
-    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, 'diastoleHeatMapFig.eps')));
+    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFig.png')));
+    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFig.eps')));
 
     figAspect;
     imagesc(heatmap_dia);
@@ -303,8 +303,8 @@ if ~isnan(onePulseVideoM0)
     axis off;
     axis image;
 
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, 'diastoleHeatMapFlatfieldFig.png')));
-    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, 'diastoleHeatMapFlatfieldFig.eps')));
+    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFlatfieldFig.png')));
+    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFlatfieldFig.eps')));
 
     figAspect;
     imagesc(heatmap_sys_raw);
@@ -317,8 +317,8 @@ if ~isnan(onePulseVideoM0)
     axis image;
     clim([min(range), max(range)]);
 
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, 'systoleHeatMapFig.png')));
-    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, 'systoleHeatMapFig.eps')));
+    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFig.png')));
+    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFig.eps')));
 
     figAspect;
     imagesc(heatmap_sys);
@@ -331,12 +331,12 @@ if ~isnan(onePulseVideoM0)
     axis image;
     clim([min(range), max(range)]);
 
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, 'systoleHeatMapFlatfieldFig.png')));
-    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.main_foldername, 'systoleHeatMapFlatfieldFig.eps')));
+    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFlatfieldFig.png')));
+    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFlatfieldFig.eps')));
 
     % Save heatmaps as images
-    imwrite(rescale(heatmap_sys), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, 'systoleHeatMap.png')), 'png');
-    imwrite(rescale(heatmap_dia), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.main_foldername, 'diastoleHeatMap.png')), 'png');
+    imwrite(rescale(heatmap_sys), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMap.png')), 'png');
+    imwrite(rescale(heatmap_dia), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMap.png')), 'png');
 end
 
 %% Cleanup and close figures

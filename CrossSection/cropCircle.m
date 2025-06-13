@@ -1,10 +1,17 @@
 function img = cropCircle(subImg)
-subImgHW = min([size(subImg, 1) size(subImg, 2)]);
-radius = round(subImgHW / 2);
-%FIXME anamorph.
-center = [round((size(subImg, 1) + 1) / 2) round((size(subImg, 2) + 1) / 2)];
-[xx, yy] = meshgrid(1:size(subImg, 1), 1:size(subImg, 2));
-circular_mask = false(size(subImg, 1), size(subImg, 2));
-circular_mask = circular_mask | hypot(xx - center(1), yy - center(2)) <= radius;
-img = double(circular_mask) .* subImg;
+% cropCircle - crops a circular region from a grayscale image using diskMask
+%   Input:
+%       subImg - Grayscale input image (2D matrix)
+%   Output:
+%       img - Image with everything outside the circular region set to 0.
+%             The circle is centered and has diameter equal to min(numX,numY).
+
+% Get image dimensions
+[numX, numY] = size(subImg);
+
+% Create circular mask using diskMask
+[mask, ~] = diskMask(numX, numY, 0.5);
+
+% Apply mask to image
+img = subImg .* mask;
 end

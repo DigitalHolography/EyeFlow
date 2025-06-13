@@ -21,7 +21,6 @@ properties (Access = public)
     % Checkboxes
     segmentationCheckBox matlab.ui.control.CheckBox
     bloodFlowAnalysisCheckBox matlab.ui.control.CheckBox
-    bloodFlowVelocityFigCheckBox matlab.ui.control.CheckBox
     crossSectionCheckBox matlab.ui.control.CheckBox
     crossSectionFigCheckBox matlab.ui.control.CheckBox
     spectralAnalysisCheckBox matlab.ui.control.CheckBox
@@ -59,7 +58,7 @@ methods (Access = public)
             fprintf("- Video Loading took : %ds\n", round(toc))
 
             % Compute the mean of M0_data_video along the third dimension
-            mean_M0 = mean(app.file.M0_ff_raw_video, 3);
+            mean_M0 = mean(app.file.M0_raw_video, 3);
             % Display the mean image in the uiimage component
             img = repmat(rescale(mean_M0), [1 1 3]);
             [numX, numY] = size(img);
@@ -123,7 +122,9 @@ methods (Access = public)
 
         % Initialize checkbox states
         app.CheckboxValueChanged();
-        set(0,'defaultfigurecolor',[1 1 1]);
+        set(groot, 'defaultFigureColor', 'w');
+        set(groot, 'defaultAxesFontSize', 14);
+        set(groot, 'DefaultTextFontSize', 10); % For text objects (e.g., annotations)
     end
 
     function LoadFromTxt(app)
@@ -223,7 +224,6 @@ methods (Access = public)
 
             app.file.flag_segmentation = app.segmentationCheckBox.Value;
             app.file.flag_bloodFlowVelocity_analysis = app.bloodFlowAnalysisCheckBox.Value;
-            app.file.flag_bloodFlowVelocity_figures = app.bloodFlowVelocityFigCheckBox.Value;
             app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
             app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
@@ -440,6 +440,7 @@ methods (Access = public)
             else
                 last_dir = [];
             end
+
             selected_dir = uigetdir(last_dir);
             % List of Subfolders within the measurement folder
             tmp_dir = dir(selected_dir);
@@ -469,6 +470,7 @@ methods (Access = public)
             else
                 last_dir = [];
             end
+
             selected_dir = uigetdir(last_dir);
 
             if (selected_dir)
@@ -637,7 +639,9 @@ methods (Access = public)
 
         function show_outputs(~, ~)
             out_dir_path = fullfile(app.drawer_list{1}, 'Multiple_Results');
-            mkdir(out_dir_path) % creates if it doesn't exists
+            if ~isfolder(out_dir_path)
+                mkdir(out_dir_path) % creates if it doesn't exists
+            end
             tic
             ShowOutputs(app.drawer_list, out_dir_path)
             toc
@@ -725,16 +729,16 @@ methods (Access = public)
                 path_dir = fullfile(ToolBox.path_main, ToolBox.folder_name);
 
                 disp(['Copying from : ', fullfile(path_dir, 'png', 'mask')])
-                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskArtery.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'MaskArtery.png'));
-                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskVein.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'MaskVein.png'));
+                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskArtery.png", ToolBox.folder_name)), fullfile(ToolBox.path_main, 'mask', 'MaskArtery.png'));
+                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskVein.png", ToolBox.folder_name)), fullfile(ToolBox.path_main, 'mask', 'MaskVein.png'));
             catch
                 disp("last auto mask copying failed.")
             end
 
             try
 
-                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'M0.png'));
-                folder_name = strcat(ToolBox.main_foldername, '_EF');
+                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.folder_name)), fullfile(ToolBox.path_main, 'mask', 'M0.png'));
+                folder_name = ToolBox.folder_name;
                 list_dir = dir(ToolBox.path_main);
                 idx = 0;
 
@@ -817,14 +821,11 @@ methods (Access = public)
             app.spectralAnalysisCheckBox.Value = false; % Turn off if disabled
         end
 
-        % Enable/disable bloodFlowVelocityFigCheckBox and crossSectionCheckBox
+        % Enable/disable crossSectionCheckBox
         if app.bloodFlowAnalysisCheckBox.Value || is_pulseAnalyzed
-            app.bloodFlowVelocityFigCheckBox.Enable = true;
             app.crossSectionCheckBox.Enable = true;
         else
-            app.bloodFlowVelocityFigCheckBox.Enable = false;
             app.crossSectionCheckBox.Enable = false;
-            app.bloodFlowVelocityFigCheckBox.Value = false; % Turn off if disabled
             app.crossSectionCheckBox.Value = false; % Turn off if disabled
         end
 
@@ -983,15 +984,6 @@ methods (Access = private)
         app.bloodFlowAnalysisCheckBox.Layout.Column = [1, 2];
         app.bloodFlowAnalysisCheckBox.Value = true;
         app.bloodFlowAnalysisCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-
-        app.bloodFlowVelocityFigCheckBox = uicheckbox(grid);
-        app.bloodFlowVelocityFigCheckBox.Text = 'Blood Flow Velocity Figures';
-        app.bloodFlowVelocityFigCheckBox.FontSize = 16;
-        app.bloodFlowVelocityFigCheckBox.FontColor = [1 1 1];
-        app.bloodFlowVelocityFigCheckBox.Layout.Row = 5;
-        app.bloodFlowVelocityFigCheckBox.Layout.Column = [3, 4];
-        app.bloodFlowVelocityFigCheckBox.Value = true;
-        app.bloodFlowVelocityFigCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
 
         app.crossSectionCheckBox = uicheckbox(grid);
         app.crossSectionCheckBox.Text = 'Cross Section Analysis';

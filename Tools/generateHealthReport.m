@@ -3,9 +3,9 @@ function generateHealthReport()
 ToolBox = getGlobalToolBox;
 
 % Define file paths
-dataFilePath = fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_EF_main_outputs.txt'));
-pdfPath = fullfile(ToolBox.path_pdf, sprintf("%s_EyeFlowReport.pdf", ToolBox.main_foldername));
-directoryName = ToolBox.main_foldername;
+dataFilePath = fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_EF_main_outputs.txt'));
+pdfPath = fullfile(ToolBox.path_pdf, sprintf("%s_EyeFlowReport.pdf", ToolBox.folder_name));
+directoryName = ToolBox.folder_name;
 
 % Set A4 dimensions in centimeters
 a4Width = 21.0; % A4 width in cm
@@ -51,7 +51,6 @@ yPos = addField(fig, sprintf('Stroke Volume (Artery): %.1f nL', data.strokeVolum
 yPos = addField(fig, sprintf('Total Volume (Artery): %.1f nL', data.totalVolumeArtery), yPos, margin, a4Width);
 
 addImage(fig, fullfile(ToolBox.path_png, 'mask', sprintf("%s_vesselMap.png", directoryName)), yPos, margin, a4Width);
-
 
 % Save the figure as a PDF using print
 print(fig, pdfPath, '-dpdf', '-fillpage'); % Export to PDF with A4 size and margins
@@ -179,7 +178,7 @@ try
     axis off;
 
     % Add a subtle border around the image
-    rectangle('Position', [0.5, 0.5, size(img,2)-1, size(img,1)-1], ...
+    rectangle('Position', [0.5, 0.5, size(img, 2) - 1, size(img, 1) - 1], ...
         'EdgeColor', [0.7 0.7 0.7], 'LineWidth', 0.5);
 catch ME
     warning(ME.identifier, 'Could not add image to report: %s', ME.message);

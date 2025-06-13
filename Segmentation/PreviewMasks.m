@@ -194,14 +194,14 @@ function createMask(~, ~)
 
     % Display the image with the masks on the axes in the dialog
     imshow(M0_RGB, 'Parent', ax);
-    imshow(imread(fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_all_16_Histo.png", ToolBox.main_foldername))), 'Parent', ax0);
+    imshow(imread(fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_all_16_Histo.png", ToolBox.folder_name))), 'Parent', ax0);
 
-    if isfile(fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_artery_23_Histo.png", ToolBox.main_foldername)))
-        imshow(imread(fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_artery_23_Histo.png", ToolBox.main_foldername))), 'Parent', ax1);
+    if isfile(fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_artery_23_Histo.png", ToolBox.folder_name)))
+        imshow(imread(fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_artery_23_Histo.png", ToolBox.folder_name))), 'Parent', ax1);
     end
 
-    if isfile(fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_vein_23_Histo.png", ToolBox.main_foldername)))
-        imshow(imread(fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_vein_23_Histo.png", ToolBox.main_foldername))), 'Parent', ax2);
+    if isfile(fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_vein_23_Histo.png", ToolBox.folder_name)))
+        imshow(imread(fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_vein_23_Histo.png", ToolBox.folder_name))), 'Parent', ax2);
     end
 
 end

@@ -16,6 +16,7 @@ f = figure('Visible', 'off');
 % Compute Section Cut
 profile = mean(subImg, 1, 'omitnan');
 cross_section_profile = (profile ./ max(profile)) * size(profile, 2);
+cross_section_profile(cross_section_profile < 0) = 0;
 
 % Define x-axis values
 xAx = linspace(0, size(subImg, 1), size(subImg, 1));
@@ -48,7 +49,7 @@ frame = getframe(gca);
 
 % Save the figure
 outputPath = fullfile(ToolBox.path_png, 'crossSectionsAnalysis', 'crossSection', ...
-    sprintf('%s_cross_section_%s.png', ToolBox.main_foldername, name_section));
+    sprintf('%s_cross_section_%s.png', ToolBox.folder_name, name_section));
 imwrite(frame.cdata, outputPath);
 
 % Close the figure

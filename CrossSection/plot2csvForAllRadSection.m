@@ -1,6 +1,6 @@
-function plot2csvForAllRadSection(t, vr_avg_cell, vr_std_cell, vr_avg_mat, vr_std_mat, type)
+function plot2csvForAllRadSection(t, Q_cell, Q_se_cell, Q_branch, Q_se_branch, Q_radius, Q_se_radius, initial)
 
-numR = size(vr_avg_cell, 2);
+[numC, numB] = size(Q_cell);
 ToolBox = getGlobalToolBox;
 
 T = table();
@@ -9,20 +9,28 @@ if not(isempty(t)) % if time is a variable
     T.time = t';
 end
 
-for rIdx = 1:numR
-    numSection = size(vr_avg_cell{rIdx}, 1);
+for cIdx = 1:numC
 
-    for sectionIdx = 1:numSection
-        T.(sprintf('AVGVolumeRate_R%d_S%d_%s', rIdx, sectionIdx, type)) = squeeze(squeeze(vr_avg_cell{rIdx}(sectionIdx, :)))';
-        T.(sprintf('STDVolumeRate_R%d_S%d_%s', rIdx, sectionIdx, type)) = squeeze(squeeze(vr_std_cell{rIdx}(sectionIdx, :)))';
+    for bIdx = 1:numB
+
+        if ~isempty(Q_cell{cIdx, bIdx})
+            T.(sprintf('AVGVolumeRate_R%d_B%d_%s', cIdx, bIdx, initial)) = Q_cell{cIdx, bIdx}';
+            T.(sprintf('STDVolumeRate_R%d_B%d_%s', cIdx, bIdx, initial)) = Q_se_cell{cIdx, bIdx}';
+        end
+
     end
 
 end
 
-for rIdx = 1:numR
-    T.(sprintf('AVGVolumeRate_%d_Total_%s', rIdx, type)) = squeeze(sum(vr_avg_mat(rIdx, :, :), 2));
-    T.(sprintf('STDVolumeRate_%d_Total_%s', rIdx, type)) = squeeze(sum(vr_std_mat(rIdx, :, :), 2));
+for bIdx = 1:numB
+    T.(sprintf('AVGVolumeRate_B%d_Total_%s', bIdx, initial)) = Q_branch(bIdx, :)';
+    T.(sprintf('STDVolumeRate_B%d_Total_%s', bIdx, initial)) = Q_se_branch(bIdx, :)';
 end
 
-writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.main_foldername, '_', 'BloodVolumeRateTable', '_', type, '.csv')));
+for bIdx = 1:numC
+    T.(sprintf('AVGVolumeRate_R%d_Total_%s', cIdx, initial)) = Q_radius(cIdx, :)';
+    T.(sprintf('STDVolumeRate_R%d_Total_%s', cIdx, initial)) = Q_se_radius(cIdx, :)';
+end
+
+writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'BloodVolumeRateTable', '_', initial, '.csv')));
 end

@@ -88,6 +88,6 @@ parfor frameIdx = 1:numFrames
     close(fi)
 end
 
-writeVideoOnDisc(spectrum_video, fullfile(ToolBox.path_avi, strcat(ToolBox.main_foldername, '_spectrum_video')));
+writeVideoOnDisc(spectrum_video, fullfile(ToolBox.path_avi, strcat(ToolBox.folder_name, '_spectrum_video')));
 writeGifOnDisc(mat2gray(spectrum_video), "spectrum_video")
 end

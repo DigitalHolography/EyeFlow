@@ -1,5 +1,5 @@
 classdef Outputs < handle
-    %Class to hold the main outputs of the retinal flow analysis pipeline
+    % Class to hold the main outputs of the retinal flow analysis pipeline
 
     properties
 
@@ -23,6 +23,9 @@ classdef Outputs < handle
         TimetoPeakFromMinVein
         TimetoAscentFromMinVein
         TimetoDescentToMinVein
+
+        % Phase Delay
+        PhaseDelay
 
         % Velocity
         ArterialMeanVelocity
@@ -151,30 +154,31 @@ classdef Outputs < handle
         end
 
         function writeHdf5(obj, path)
-            
+
             props = properties(Outputs);
-            
-            [dir,name,ext]=fileparts(path);
-            path = fullfile(dir,strcat(name,".h5"));
+
+            [dir, name, ~] = fileparts(path);
+            path = fullfile(dir, strcat(name, ".h5"));
 
             if isfile(path) % clear before rewriting
                 delete(path)
             end
-            
+
             for i = 1:length(props)
-                h5create(path,strcat("/",props{i}),size(obj.(props{i}).value));
-                h5write(path,strcat("/",props{i}),obj.(props{i}).value);
+                h5create(path, strcat("/", props{i}), size(obj.(props{i}).value));
+                h5write(path, strcat("/", props{i}), obj.(props{i}).value);
             end
 
             for i = 1:length(props)
-                h5create(path,strcat("/",props{i}, "_ste"),size(obj.(props{i}).standard_error));
-                h5write(path,strcat("/",props{i}, "_ste"),obj.(props{i}).standard_error);
+                h5create(path, strcat("/", props{i}, "_ste"), size(obj.(props{i}).standard_error));
+                h5write(path, strcat("/", props{i}, "_ste"), obj.(props{i}).standard_error);
             end
 
             for i = 1:length(props)
-                h5create(path,strcat("/",props{i}, "_unit"), [1 1],Datatype="string");
-                h5write(path,strcat("/",props{i}, "_unit"),string(obj.(props{i}).unit));
+                h5create(path, strcat("/", props{i}, "_unit"), [1 1], Datatype = "string");
+                h5write(path, strcat("/", props{i}, "_unit"), string(obj.(props{i}).unit));
             end
+
         end
 
     end

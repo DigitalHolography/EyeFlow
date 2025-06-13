@@ -19,7 +19,7 @@
       "VideoLength": -1
     },
     "RemoveOutliersFlag": true,
-    "Outlier Analysis Window" : 10,
+    "Outlier Analysis Window": 10,
     "Interpolation Factor": 1
   },
   "FlatFieldCorrection": {
@@ -32,6 +32,7 @@
   "MinimumGifPeriod": 0.07,
   "NumberOfWorkers": 0,
   "Mask": {
+    "Forced Masks": -1,
     "Vesselness Frangi Range": [
       4,
       6
@@ -43,28 +44,26 @@
     ],
     "Vesselness Gabor Step": 1,
     "Vesselness Holonet": true,
-    "Choroid Holonet": false,
-    "Diaphragm Radius": 0.7,
+    "Choroid Holonet": true,
+    "Diaphragm Radius": 0.45,
     "Force Barycenter": [],
     "Blur": 1.5,
     "Crop Choroid Radius": 0.1,
-    "Vascular Threshold": -2,
+    "Vascular Threshold": null,
     "Vascular Classes": [
       -1,
-      0,
       1
     ],
     "Improve Mask": 1,
     "DiaSys Analysis": 1,
-    "Arterial Threshold": -2,
+    "Arterial Threshold": null,
     "Arterial Classes": [
       -1,
       1
     ],
-    "Venous Threshold": -2,
+    "Venous Threshold": null,
     "Venous Classes": [
       1,
-      0,
       -1
     ],
     "Min Pixel Size": 150,
@@ -107,5 +106,6 @@
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
     "InterpolationPoints": 50
-  }
+  },
+  "DebugMode": false
 }

@@ -38,7 +38,7 @@ v_rescaled = (v_rescaled - v_min) / v_max;
 % Precompute v_mean and v_mean_rescaled
 v_mean = squeeze(mean(v_video, 3));
 v_mean_rescaled = squeeze(mean(v_rescaled, 3));
-v_video_RGB = zeros(numX, numY, 3, numFrames);
+v_video_RGB = zeros(numX, numY, 3, numFrames, 'single');
 
 if veinsAnalysis
     % Velocity Images
@@ -54,7 +54,7 @@ else
 
     % Velocity Images
     velocityIm(v_mean, maskArtery, cmapArtery, 'Artery', colorbarOn = true);
-    
+
 end
 
 if veinsAnalysis
@@ -64,11 +64,15 @@ if veinsAnalysis
 
     % Average Image
     v_mean_RGB = flowMapImg(v_mean_rescaled, {maskArtery, maskVein, maskAV}, {cmapArtery, cmapVein, cmapAV}, background = M0_ff_image, circles = circles);
-    imwrite(v_mean_RGB, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.main_foldername, 'v_mean.png')))
+    imwrite(v_mean_RGB, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.folder_name, 'v_mean.png')))
 
     % Gif frame generation
-    parfor frameIdx = 1:numFrames
-        v_video_RGB(:, :, :, frameIdx) = flowMapImg(v_rescaled(:, :, frameIdx), {maskArtery, maskVein, maskAV}, {cmapArtery, cmapVein, cmapAV}, background = M0_ff_video(:, :, frameIdx), circles = circles);
+    if exportVideos
+
+        parfor frameIdx = 1:numFrames
+            v_video_RGB(:, :, :, frameIdx) = flowMapImg(v_rescaled(:, :, frameIdx), {maskArtery, maskVein, maskAV}, {cmapArtery, cmapVein, cmapAV}, background = M0_ff_video(:, :, frameIdx), circles = circles);
+        end
+
     end
 
 else
@@ -78,11 +82,15 @@ else
 
     % Average Image
     v_mean_RGB = flowMapImg(v_mean_rescaled, {maskArtery}, {cmapArtery}, background = M0_ff_image, circles = circles);
-    imwrite(v_mean_RGB, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.main_foldername, 'v_mean.png')))
+    imwrite(v_mean_RGB, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.folder_name, 'v_mean.png')))
 
     % Gif frame generation
-    parfor frameIdx = 1:numFrames
-        v_video_RGB(:, :, :, frameIdx) = flowMapImg(v_rescaled(:, :, frameIdx), {maskArtery}, {cmapArtery}, background = M0_ff_video(:, :, frameIdx), circles = circles);
+    if exportVideos
+
+        parfor frameIdx = 1:numFrames
+            v_video_RGB(:, :, :, frameIdx) = flowMapImg(v_rescaled(:, :, frameIdx), {maskArtery}, {cmapArtery}, background = M0_ff_video(:, :, frameIdx), circles = circles);
+        end
+
     end
 
 end

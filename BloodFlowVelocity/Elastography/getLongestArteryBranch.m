@@ -41,7 +41,7 @@ end
 
 figure(Visible="off");
 imagesc(label);
-foldername = ToolBox.main_foldername;
+foldername = ToolBox.folder_name;
 cmap = jet(max(label, [], 'all') + 1);
 imwrite(label + 1, cmap, fullfile(ToolBox.path_png, 'mask', sprintf("%s_maskSeparateBranchesLabeled_%s.png", foldername, name)), 'png');
 

@@ -20,6 +20,7 @@ properties
     is_segmented = false;
     is_pulseAnalyzed = false;
     is_crossSectionAnalyzed = false;
+    is_AllAnalyzed = false;
 
     sysIdxList % list of frame indexes counting cardiac cycles
     diasIdx
@@ -28,6 +29,8 @@ properties
     vRMS % video estimate of velocity map in retinal vessels
     Q_results_A
     Q_results_V
+    v_video_RGB
+    v_mean_RGB
 
     maskArtery
     maskVein
@@ -86,7 +89,16 @@ methods
             obj.M1_raw_video = pagetranspose(videoM1 / 1e3); % Rescale M1
             obj.M2_raw_video = pagetranspose(videoM2 / 1e6); % Rescale M2
         else
-            obj = readRaw(obj);
+            dir_path_raw = fullfile(obj.directory, 'raw');
+            NameRefRawFile = strcat(obj.filenames, '_raw.h5');
+            RefRawFilePath = fullfile(dir_path_raw, NameRefRawFile);
+
+            if isfile(RefRawFilePath)
+                obj = readHDF5(obj);
+            else
+                obj = readRaw(obj);
+            end
+
         end
 
         obj.is_preprocessed = false;
@@ -110,42 +122,35 @@ methods
 
         % Register video
         tic;
-        fprintf("\n----------------------------------\nVideo Registering\n----------------------------------\n");
         obj = VideoRegistering(obj);
         fprintf("- Video Registering took: %ds\n", round(toc));
 
         % Crop video
         tic;
-        fprintf("\n----------------------------------\nVideo Cropping\n----------------------------------\n");
         obj = VideoCropping(obj);
         fprintf("- Video Cropping took: %ds\n", round(toc));
 
         % Normalize moments
         tic;
-        fprintf("\n----------------------------------\nMoment Normalizing\n----------------------------------\n");
         obj = VideoNormalizingLocally(obj);
         fprintf("- Moment Normalizing took: %ds\n", round(toc));
 
         % Resize video
         tic;
-        fprintf("\n----------------------------------\nVideo Resizing\n----------------------------------\n");
         obj = VideoResizing(obj);
         fprintf("- Video Resizing took: %ds\n", round(toc));
 
         % Interpolate video
         tic;
-        fprintf("\n----------------------------------\nVideo Interpolation\n----------------------------------\n");
         obj = VideoInterpolating(obj);
         fprintf("- Video Interpolation took: %ds\n", round(toc));
 
         % Remove outliers
         tic;
-        fprintf("\n----------------------------------\nVideo Outlier Cleaning\n----------------------------------\n");
         obj = VideoRemoveOutliers(obj);
         fprintf("- Video Outlier Cleaning took: %ds\n", round(toc));
 
         obj.is_preprocessed = true;
-
         obj.Outputs.initOutputs();
 
     end
@@ -156,6 +161,12 @@ methods
         % Initialize ToolBox and parameters
         ToolBox = obj.ToolBoxMaster;
         params = ToolBox.getParams;
+
+        if params.json.DebugMode
+            profile off
+            profile on
+        end
+
         veins_analysis = params.veins_analysis;
         totalTime = tic;
         saveGit;
@@ -165,14 +176,25 @@ methods
         ToolBox.Outputs.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
         ToolBox.Outputs.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
 
+        if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
+            writeGifOnDisc(imresize(rescale(obj.M0_ff_video), 0.5), "M0")
+        end
+
         % Mask Creation
         if obj.flag_segmentation
             fprintf("\n----------------------------------\nMask Creation\n----------------------------------\n");
             createMasksTimer = tic;
 
-            f_AVG_mean = squeeze(mean(obj.f_AVG_video, 3));
-            [obj.maskArtery, obj.maskVein, obj.maskNeighbors, obj.xy_barycenter] = ...
-                createMasks(obj.M0_ff_video, f_AVG_mean);
+            if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
+                mkdir(ToolBox.path_png, 'mask')
+                mkdir(ToolBox.path_eps, 'mask')
+                mkdir(fullfile(ToolBox.path_png, 'mask'), 'steps')
+                mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
+            end
+
+            obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
+            [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
+                createMasks(obj.M0_ff_video, obj.xy_barycenter);
 
             M0_ff_img = rescale(mean(obj.M0_ff_video, 3));
             cmapArtery = ToolBox.cmapArtery;
@@ -195,7 +217,6 @@ methods
 
         % Pulse Analysis
         if obj.flag_bloodFlowVelocity_analysis
-            fprintf("\n----------------------------------\nFind Systole\n----------------------------------\n");
 
             if ~isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
                 mkdir(ToolBox.path_png, 'bloodFlowVelocity')
@@ -206,7 +227,8 @@ methods
             pulseAnalysisTimer = tic;
 
             f_AVG_mean = squeeze(mean(obj.f_AVG_video, 3));
-            [obj.vRMS, obj.sysIdxList, obj.sysIdx, obj.diasIdx] = pulseAnalysis(obj.f_RMS_video, obj.maskArtery, obj.maskVein, obj.maskNeighbors, obj.xy_barycenter);
+            [obj.vRMS, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB] = pulseAnalysis(obj.f_RMS_video, obj.M0_ff_video, ...
+                obj.maskArtery, obj.maskVein, obj.maskNeighbors, obj.xy_barycenter);
 
             if params.json.PulseAnalysis.ExtendedFlag
                 extendedPulseAnalysis(obj.M0_ff_video, obj.f_RMS_video, f_AVG_mean, obj.vRMS, obj.maskArtery, obj.maskVein, obj.xy_barycenter, obj.sysIdxList);
@@ -227,16 +249,6 @@ methods
         %     time_pulsevelocity = toc(pulseVelocityTimer);
         %     fprintf("- Pulse Velocity Calculations took : %ds\n", round(time_pulsevelocity))
         % end
-
-        % Blood Flow Velocity Analysis
-        if obj.flag_bloodFlowVelocity_figures
-            fprintf("\n----------------------------------\nBlood Flow Velocity Figures\n----------------------------------\n");
-            bloodFlowVelocityTimer = tic;
-
-            bloodFlowVelocity(obj.vRMS, obj.maskArtery, obj.maskVein, obj.M0_ff_video, obj.xy_barycenter);
-
-            fprintf("- Blood Flow Velocity Figures calculation took: %ds\n", round(toc(bloodFlowVelocityTimer)));
-        end
 
         % Cross-Section Analysis
         if obj.flag_crossSection_analysis
@@ -259,28 +271,30 @@ methods
             fprintf("\n----------------------------------\nCross-Section Figures\n----------------------------------\n");
             crossSectionFiguresTimer = tic;
 
-            crossSectionsFigures(obj.Q_results_A, obj.maskArtery, 'Artery', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx);
+            crossSectionsFigures(obj.Q_results_A, 'Artery', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
 
             if veins_analysis
-                crossSectionsFigures(obj.Q_results_V, obj.maskVein, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx);
+                crossSectionsFigures(obj.Q_results_V, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
             end
 
-            try
-                generateHealthReport()
-            catch ME
-                fprintf("Error generating health report: %s\n", ME.message);
-
-                for i = 1:length(ME.stack)
-                    fprintf("Error in %s at line %d: %s\n", ME.stack(i).name, ME.stack(i).line, ME.message);
-                end
-
-            end
-
+            % try
+            %     generateHealthReport()
+            % catch ME
+            %     fprintf("Error generating health report: %s\n", ME.message);
+            % 
+            %     for i = 1:length(ME.stack)
+            %         fprintf("Error in %s at line %d: %s\n", ME.stack(i).name, ME.stack(i).line, ME.message);
+            %     end
+            % 
+            % end
+            
+            obj.is_AllAnalyzed = true;
+            
             fprintf("- Cross-Section Figures took: %ds\n", round(toc(crossSectionFiguresTimer)));
         end
 
         % Spectral Analysis
-        if obj.flag_spectral_analysis && isfile(fullfile(ToolBox.EF_path, 'raw', [strcat(ToolBox.main_foldername, '_SH'), '.raw']))
+        if obj.flag_spectral_analysis && isfile(fullfile(ToolBox.EF_path, 'raw', [strcat(ToolBox.folder_name, '_SH'), '.raw']))
             fprintf("\n----------------------------------\nSpectral Analysis\n----------------------------------\n");
             timeSpectralAnalysis = tic;
 
@@ -307,10 +321,14 @@ methods
             fprintf("- Spectrogram took: %ds\n", round(toc(spectrogramTimer)));
             fprintf("\n----------------------------------\nSpectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
         end
+        
+        if obj.is_AllAnalyzed
+            generateA4Report()
+        end
 
         % Main Outputs Saving
 
-        % fid = fopen(fullfile(ToolBox.path_json, strcat(ToolBox.main_foldername, '_EF_main_outputs.json')), 'w');
+        % fid = fopen(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_EF_main_outputs.json')), 'w');
         % fwrite(fid, jsonencode(ToolBox.outputs, "PrettyPrint", true), 'char');
         % fclose(fid);
 
@@ -327,6 +345,12 @@ methods
         clear ToolBox;
         diary off;
         displaySuccessMsg(1);
+
+        if params.json.DebugMode
+            profile off
+            profile viewer
+        end
+
     end
 
 end

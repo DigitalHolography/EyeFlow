@@ -1,7 +1,7 @@
-function [A_mat, Q_mat, Q_std_mat] = reshapeSections(numFrames, numSections, A_r, Q_r, Q_std_r)
+function [A_mat, Q_mat, Q_std_mat, Q_branch, Q_se_branch] = reshapeSections(numFrames, numSections, A_cell, Q_cell, Q_se_cell)
 
 numSectionsMax = max(numSections);
-numCircles = size(numSections, 2);
+[numCircles, numBranches] = size(numSections, 2);
 
 A_mat = zeros(numCircles, numSectionsMax);
 Q_mat = zeros(numCircles, numSectionsMax, numFrames);
@@ -14,8 +14,6 @@ for cIdx = 1:numCircles
 
         for sectionIdx = numSection:numSectionsMax
             A_mat(cIdx, sectionIdx) = nan;
-            Q_mat(cIdx, sectionIdx, :) = nan(1, 1, numFrames);
-            Q_std_mat(cIdx, sectionIdx, :) = nan(1, 1, numFrames);
         end
 
     end
@@ -23,9 +21,7 @@ for cIdx = 1:numCircles
     if numSection ~= 0
 
         for sectionIdx = 1:numSection
-            A_mat(cIdx, sectionIdx) = A_r{cIdx}(sectionIdx);
-            Q_mat(cIdx, sectionIdx, :) = Q_r{cIdx}(sectionIdx, :);
-            Q_std_mat(cIdx, sectionIdx, :) = Q_std_r{cIdx}(sectionIdx, :);
+            A_mat(cIdx, sectionIdx) = A_cell{cIdx}(sectionIdx);
         end
 
     end

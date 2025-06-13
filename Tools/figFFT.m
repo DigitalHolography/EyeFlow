@@ -8,8 +8,8 @@ X_mag = log(abs(X));
 
 % Create frequency axis
 N = length(x);
-fs = 33*10^3/512;  % Sampling frequency (normalized to 1 if unknown)
-f = (0:N-1)*(fs/N);  % Frequency vector
+fs = 33 * 10 ^ 3/512; % Sampling frequency (normalized to 1 if unknown)
+f = (0:N - 1) * (fs / N); % Frequency vector
 
 % Plot the FFT magnitude
 figure;
@@ -20,7 +20,7 @@ title('FFT of the Signal');
 pbaspect([1.618 1 1]);
 box on;
 set(gca, 'LineWidth', 2)
-fontsize(gca, 14, "points") ;
+fontsize(gca, 14, "points");
 
 % Adjust axes and labels
 axis padded;
@@ -41,7 +41,7 @@ hold off;
 % box on;
 % set(gca, 'LineWidth', 2)
 % fontsize(gca, 14, "points") ;
-% 
+%
 % % Adjust axes and labels
 % axis padded;
 % axP = axis;

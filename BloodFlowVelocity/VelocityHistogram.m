@@ -13,123 +13,93 @@ function histoVideo = VelocityHistogram(v_video, mask, name, n)
 %   histoVideo  :   Mat of the histogram figure
 
 arguments
-    v_video
-    mask
-    name
-    n = 256
+    v_video {mustBeNumeric}
+    mask {mustBeNumericOrLogical}
+    name {mustBeTextScalar, mustBeMember(name, {'Artery', 'Vein'})}
+    n (1, 1) {mustBeInteger, mustBePositive} = 256
 end
 
-tVelocityVideo = tic;
-
+% Get toolbox parameters
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 exportVideos = params.exportVideos;
+[~, ~, numFrames] = size(v_video);
 
-[numX, numY, numFrames] = size(v_video);
-
+% Pre-process data
 v_histo = v_video .* mask;
-v_min = min(v_histo, [], 'all');
-v_max = max(v_histo, [], 'all');
+v_min = min(v_histo(mask));
+v_max = max(v_histo(mask));
 
-if strcmp(name, 'Arteries')
+% Set colormap
+if strcmp(name, 'Artery')
     cmap = ToolBox.cmapArtery;
-elseif strcmp(name, 'Veins')
+else % vein
     cmap = ToolBox.cmapVein;
-else
-    cmap = cmapLAB(256, [0 0 0], 0, [0 1 0], 1/3, [1/2 1 1/2], 2/3, [1 1 1], 1);
 end
 
+% Velocity Histogram
+T = ToolBox.stride / (1000 * ToolBox.fs); % time between frames
+xAx = [0 numFrames * T]; % time axis
 yAx = [v_min v_max];
 
-%% Velocity Histogram
-
-X = linspace(v_min, v_max, n);
-xAx = [0 numFrames * ToolBox.stride / (1000 * ToolBox.fs)];
+% Initialize histogram matrix
 histo = zeros(n, numFrames);
-D = (v_max - v_min) / (n - 1);
+edges = linspace(v_min, v_max, n + 1); % edges for the histcount bins so n+1 numbers
 
-fDistrib = figure("Visible", 'off', 'Color', 'w');
+% Initialize figure
+fDistrib = figure("Visible", 'on', 'Color', 'w');
 fDistrib.Position(3:4) = [600 275];
 
-indexMin = find(X == v_min);
-indexMax = find(X == v_max);
-imagesc(xAx, yAx, histo(indexMin:indexMax, :))
-set(gca, 'YDir', 'normal')
+for frameIdx = 1:numFrames
+    data = v_histo(:, :, frameIdx);
+    histo(:, frameIdx) = histcounts(data(mask), edges); % histcount is faster than histogram or manual for loop counting
+end
+
+imagesc(xAx, yAx, histo(:, :));
 set(gca, 'PlotBoxAspectRatio', [2.5 1 1])
+set(gca, 'YDir', 'normal')
 colormap(cmap)
-f = getframe(gcf);
-[numX_fig, numY_fig, ~] = size(f.cdata);
+ylabel('Velocity (mm/s)')
+xlabel('Time (s)')
+histoVideo = frame2im(getframe(fDistrib));
+hold on
 
 if exportVideos
+    RGB = fill([0 0 xAx(2) xAx(2)], [yAx(1) yAx(2) yAx(2) yAx(1)], [0 0 0], 'EdgeColor', 'none');
+    [numX_fig, numY_fig, ~] = size(histoVideo);
     histoVideo = zeros(numX_fig, numY_fig, 3, numFrames);
     gifWriter = GifWriter(sprintf("histogramVelocity%s", name), numFrames);
 
     for frameIdx = 1:numFrames
-
-        for xx = 1:numX
-
-            for yy = 1:numY
-
-                if mask(xx, yy) ~= 0
-                    i = find(and(X >= v_histo(xx, yy, frameIdx), X < v_histo(xx, yy, frameIdx) + D));
-                    histo(i, frameIdx) = histo(i, frameIdx) + 1;
-                end
-
-            end
-
-        end
-
-        figure(fDistrib)
-        imagesc(xAx, yAx, histo(indexMin:indexMax, :))
-        set(gca, 'YDir', 'normal')
-        ylabel('Velocity (mm.s^{-1})')
-        xlabel('Time (s)')
-        title(sprintf("velocity distribution in %s", name))
-        set(gca, 'PlotBoxAspectRatio', [2.5 1 1])
-        f = getframe(gcf);
-        histoVideo(:, :, :, frameIdx) = f.cdata;
+        RGB.XData = [frameIdx frameIdx numFrames numFrames] * T;
+        f = getframe(fDistrib);
+        histoVideo(:, :, :, frameIdx) = frame2im(f);
         gifWriter.write(f, frameIdx);
-
     end
 
     gifWriter.generate();
     gifWriter.delete();
-
-    exportgraphics(gca, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_histogramVelocity%s.png", ToolBox.main_foldername, name)))
-    exportgraphics(gca, fullfile(ToolBox.path_eps, 'bloodFlowVelocity', sprintf("%s_histogramVelocity%s.eps", ToolBox.main_foldername, name)))
-else
-
-    for frameIdx = 1:numFrames
-
-        for xx = 1:numX
-
-            for yy = 1:numY
-
-                if mask(xx, yy) ~= 0
-                    i = find(and(X >= v_histo(xx, yy, frameIdx), X < v_histo(xx, yy, frameIdx) + D));
-                    histo(i, frameIdx) = histo(i, frameIdx) + 1;
-                end
-
-            end
-
-        end
-
-    end
-
-    figure(fDistrib)
-    imagesc(xAx, yAx, histo(indexMin:indexMax, :))
-    set(gca, 'YDir', 'normal')
-    ylabel('Velocity (mm.s^{-1})')
-    xlabel('Time (s)')
-    title(sprintf("velocity distribution in %s", name))
-    set(gca, 'PlotBoxAspectRatio', [2.5 1 1])
-    f = getframe(gcf);
-    histoVideo = f.cdata;
-    exportgraphics(gca, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_histogramVelocity%s.png", ToolBox.main_foldername, name)))
-    exportgraphics(gca, fullfile(ToolBox.path_eps, 'bloodFlowVelocity', sprintf("%s_histogramVelocity%s.eps", ToolBox.main_foldername, name)))
-
 end
 
-fprintf("- Velocity Histogram %s Timing : %ds\n", name, round(toc(tVelocityVideo)))
+histoVideo = mat2gray(histoVideo);
+
+% Export graphics
+outputDir = fullfile(ToolBox.path_png, 'bloodFlowVelocity');
+
+if ~exist(outputDir, 'dir')
+    mkdir(outputDir);
+end
+
+exportgraphics(gca, fullfile(outputDir, sprintf("%s_histogramVelocity%s.png", ToolBox.folder_name, name)));
+
+outputDir = fullfile(ToolBox.path_eps, 'bloodFlowVelocity');
+
+if ~exist(outputDir, 'dir')
+    mkdir(outputDir);
+end
+
+exportgraphics(gca, fullfile(outputDir, sprintf("%s_histogramVelocity%s.eps", ToolBox.folder_name, name)));
+
+close(fDistrib)
 
 end

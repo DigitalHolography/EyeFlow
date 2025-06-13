@@ -1,4 +1,4 @@
-function [crossSectionMask, maskCurrentSlice] = updateCrossSectionMask(crossSectionMask, mask, subImg, locs, sectionIdx, tilt_angle, params)
+function [crossSectionMask] = updateCrossSectionMask(crossSectionMask, mask, subImg, loc, tilt_angle, params)
 
 slice_half_thickness = params.json.CrossSectionsAnalysis.SliceHalfThickness;
 
@@ -12,8 +12,8 @@ maskSlice_subImg = maskSlice_subImg > params.json.CrossSectionsAnalysis.MaskSlic
 
 maskCurrentSlice = false(size(mask));
 maskCurrentSlice(1:size(maskSlice_subImg, 1), 1:size(maskSlice_subImg, 2)) = maskSlice_subImg;
-shift_x = locs(sectionIdx, 1) - round(size(maskSlice_subImg, 1) / 2);
-shift_y = locs(sectionIdx, 2) - round(size(maskSlice_subImg, 2) / 2);
+shift_x = loc(1) - round(size(maskSlice_subImg, 1) / 2);
+shift_y = loc(2) - round(size(maskSlice_subImg, 2) / 2);
 maskCurrentSlice = circshift(maskCurrentSlice, [shift_y shift_x]);
 maskCurrentSlice = maskCurrentSlice .* mask;
 crossSectionMask = crossSectionMask + maskCurrentSlice;

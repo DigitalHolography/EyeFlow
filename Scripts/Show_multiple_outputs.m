@@ -25,8 +25,8 @@ for ind =1:length(paths)
     end
     last_folder_name = sprintf('%s_%d', folder_name, idx);
     
-    segmentation_paths{ind} = fullfile(path,last_folder_name,'png','mask',[main_foldername,'_arteryVeinSegmentation.png']);
-    bvr_paths{ind} = fullfile(path,last_folder_name,'png','crossSectionsAnalysis',[main_foldername,'_volumeRateallradxtime.png']);
+    segmentation_paths{ind} = fullfile(path,last_folder_name,'png','mask',[folder_name,'_arteryVeinSegmentation.png']);
+    bvr_paths{ind} = fullfile(path,last_folder_name,'png','crossSectionsAnalysis',[folder_name,'_volumeRateallradxtime.png']);
 end
 output_dir = 'D:\EyeFlow_tests_output';
 mkdir(output_dir);

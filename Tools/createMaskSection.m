@@ -33,7 +33,7 @@ else
     maskSection = diskMask(numX, numY, r1, r2, center = [x_c, y_c]);
 end
 
-%% Create Colormap Artery/Vein
+% Create Colormap Artery/Vein
 img = mat2gray(img);
 img_RGB = cat(3, img, img, img);
 maskSectionRGB = cat(3, maskSection, maskSection, maskSection);
@@ -44,7 +44,7 @@ if isempty(maskVein)
 
     cmapArtery = ToolBox.cmapArtery;
     cmapArterySection = flipud(cmapArtery);
-    
+
     M0_Artery = setcmap(img, maskArtery, cmapArtery);
     M0_ArterySection = setcmap(img, maskArterySection, cmapArterySection);
 
@@ -56,7 +56,7 @@ if isempty(maskVein)
         mkdir(fullfile(ToolBox.path_png, 'mask'));
     end
 
-    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.main_foldername, figname)), 'png');
+    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
 
 elseif isempty(maskArtery)
 
@@ -76,7 +76,7 @@ elseif isempty(maskArtery)
         mkdir(fullfile(ToolBox.path_png, 'mask'));
     end
 
-    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.main_foldername, figname)), 'png');
+    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
 
 else
 
@@ -115,7 +115,7 @@ else
         mkdir(fullfile(ToolBox.path_png, 'mask'));
     end
 
-    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.main_foldername, figname)), 'png');
+    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
 end
 
 end

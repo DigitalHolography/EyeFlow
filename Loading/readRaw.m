@@ -1,87 +1,117 @@
 function obj = readRaw(obj)
+% READRAW Reads raw video data and associated moment files
+%   Improved with better error handling, memory efficiency, and organization
 
-% if ~exist(strcat(obj.filenames, '_moment0.raw')) | ~exist(strcat(obj.filenames, '_moment1.raw')) | ~exist(strcat(obj.filenames, '_moment2.raw'))
-%     error(' No raw moment files found. Please check folder path. Filenames should end with (_moment0.raw, _moment1.raw, _moment2.raw)) .')
-% end
+% Validate AVI file existence first
 dir_path_avi = fullfile(obj.directory, 'avi');
-NameRefAviFile = strcat(obj.filenames, '_M0');
-RefAviFilePath = fullfile(dir_path_avi, NameRefAviFile);
-ext = '.avi';
-fprintf('- reading : %s\n', [RefAviFilePath, ext]);
+avi_file = fullfile(dir_path_avi, [obj.filenames, '_moment0.avi']);
 
-V = VideoReader(fullfile(dir_path_avi, [NameRefAviFile, ext]));
-M0_disp_video = zeros(V.Height, V.Width, V.NumFrames);
-
-for n = 1:V.NumFrames
-    M0_disp_video(:, :, n) = rgb2gray(read(V, n));
+if ~isfile(avi_file)
+    error('No file found at: %s\nPlease check folder path and filename.', avi_file);
 end
 
-obj.M0_ff_raw_video = M0_disp_video;
-clear V M0_disp_video
+% Determine which AVI file to use as reference
+base_name = strcat(obj.filenames, '_moment0');
+possible_avi_files = {
+                      fullfile(dir_path_avi, [base_name, '_raw.avi'])
+                      fullfile(dir_path_avi, [base_name, '.avi'])
+                      };
 
-refvideosize = size(obj.M0_ff_raw_video);
-dir_path_raw = fullfile(obj.directory, 'raw');
-ext = '.raw';
+ref_avi_path = '';
 
+for i = 1:length(possible_avi_files)
+
+    if isfile(possible_avi_files{i})
+        ref_avi_path = possible_avi_files{i};
+        break;
+    end
+
+end
+
+if isempty(ref_avi_path)
+    error('No suitable AVI reference file found for: %s', base_name);
+end
+
+fprintf('- Reading reference video: %s\n', ref_avi_path);
+
+% Read reference video
 try
-    % Import Moment 0
+    V = VideoReader(ref_avi_path);
+    M0_disp_video = zeros(V.Height, V.Width, V.NumFrames, 'uint8'); % Use uint8 for grayscale
 
-    NameRawFile = strcat(obj.filenames, '_moment0');
-    fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
-    M0_data_video = fread(fileID, 'float32');
-    fclose(fileID);
+    for n = 1:V.NumFrames
+        M0_disp_video(:, :, n) = rgb2gray(read(V, n));
+    end
 
-    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
-
-    obj.M0_raw_video = reshape(M0_data_video, refvideosize);
-    clear M0_data_video
-
-    % Import Moment 1
-
-    NameRawFile = strcat(obj.filenames, '_moment1');
-    fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
-    M1_data_video = fread(fileID, 'float32');
-    fclose(fileID);
-
-    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
-
-    obj.M1_raw_video = reshape(M1_data_video, refvideosize);
-    clear M1_data_video
-
-    % Import Moment 2
-
-    NameRawFile = strcat(obj.filenames, '_moment2');
-    fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
-    M2_data_video = fread(fileID, 'float32');
-    fclose(fileID);
-
-    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
-
-    obj.M2_raw_video = reshape(M2_data_video, refvideosize);
-    clear M2_data_video
+    obj.M0_ff_raw_video = M0_disp_video;
+    refvideosize = size(obj.M0_ff_raw_video);
+    clear V M0_disp_video;
 
 catch ME
+    error('Failed to read AVI file: %s\nError: %s', ref_avi_path, ME.message);
+end
 
-    disp(['ID: ' ME.identifier])
-    rethrow(ME)
+% Read raw moment files
+dir_path_raw = fullfile(obj.directory, 'raw');
+moment_files = {'_moment0', '_moment1', '_moment2'};
+output_fields = {'M0_raw_video', 'M1_raw_video', 'M2_raw_video'};
+
+for i = 1:length(moment_files)
+    raw_file = fullfile(dir_path_raw, [obj.filenames, moment_files{i}, '.raw']);
+
+    if ~isfile(raw_file)
+        error('Raw moment file not found: %s', raw_file);
+    end
+
+    fprintf('- Reading: %s\n', raw_file);
+
+    try
+        fileID = fopen(raw_file, 'r');
+        data = fread(fileID, 'float32');
+        fclose(fileID);
+
+        if numel(data) ~= prod(refvideosize)
+            warning('Size mismatch in %s. Expected %d elements, got %d.', ...
+                raw_file, prod(refvideosize), numel(data));
+            % Try to reshape with what we have
+            closest_dim = floor(numel(data) / prod(refvideosize(1:2))) * refvideosize(1:2);
+            data = data(1:prod(closest_dim));
+        end
+
+        obj.(output_fields{i}) = reshape(data, refvideosize(1), refvideosize(2), []);
+        clear data;
+
+    catch ME
+        fclose(fileID); % Ensure file is closed if error occurs
+        error('Failed to read raw file %s: %s', raw_file, ME.message);
+    end
 
 end
 
-try
-    % Import SH data
-    NameRawFile = strcat(obj.filenames, '_SH');
-    fileID = fopen(fullfile(dir_path_raw, [NameRawFile, ext]));
-    SH_data_video = fread(fileID, 'float32');
-    fclose(fileID);
+% Import SH data if available
+sh_file = fullfile(dir_path_raw, [obj.filenames, '_SH.raw']);
 
-    fprintf('- reading : %s\n', fullfile(dir_path_raw, [NameRawFile, ext]));
+if isfile(sh_file)
+    fprintf('- Reading SH data: %s\n', sh_file);
 
-    [numX, numY, numFrames] = size(obj.M0_raw_video);
-    bin_x = 4; bin_y = 4;
-    obj.SH_data_hypervideo = reshape(SH_data_video, ceil(numX / bin_x), ceil(numY / bin_y), [], numFrames);
+    try
+        fileID = fopen(sh_file, 'r');
+        SH_data_video = fread(fileID, 'float32');
+        fclose(fileID);
 
-catch
-    warning('no SH was found')
+        [numX, numY, numFrames] = size(obj.M0_raw_video);
+        bin_x = 4; bin_y = 4;
+        obj.SH_data_hypervideo = reshape(SH_data_video, ...
+            ceil(numX / bin_x), ceil(numY / bin_y), [], numFrames);
+        clear SH_data_video;
+
+    catch ME
+        fclose all;
+        warning('Failed to read SH data: %s\nError: %s', sh_file, ME.message);
+    end
+
+else
+    fprintf('- Reading: No SH data file found\n');
 end
 
 end

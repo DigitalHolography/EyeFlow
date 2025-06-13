@@ -22,7 +22,7 @@ colormap(cmap)
 colorbar
 axis off
 axis image
-exportgraphics(gca, fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s", ToolBox.main_foldername, sprintf('%s_MapColorbar.png', name))))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s", ToolBox.folder_name, sprintf('%s_MapColorbar.png', name))))
 
 if size(colors, 1) ~= numLevel + 1
     error('Wrong size for colors, there should be N+1 colors for N levels\n numLevel = %d and numColors = %d', numLevel, numColors)
@@ -30,6 +30,7 @@ end
 
 m = min(R(mask));
 M = max(R(mask));
+thresholds = m + thresholds * (M - m);
 thresholds = [m thresholds M];
 
 % Bin the data and count occurrences
@@ -72,7 +73,7 @@ set(gca, 'Linewidth', 2)
 pbaspect([1.68 1 1])
 box on
 hold off;
-exportgraphics(gca, fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s", ToolBox.main_foldername, sprintf('%s_Histo.png', name))))
-exportgraphics(gca, fullfile(ToolBox.path_eps, 'mask', 'steps', sprintf("%s_%s", ToolBox.main_foldername, sprintf('%s_Histo.eps', name))))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s", ToolBox.folder_name, sprintf('%s_Histo.png', name))))
+exportgraphics(gca, fullfile(ToolBox.path_eps, 'mask', 'steps', sprintf("%s_%s", ToolBox.folder_name, sprintf('%s_Histo.eps', name))))
 
 end

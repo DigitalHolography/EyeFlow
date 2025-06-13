@@ -3,7 +3,7 @@ function fig = figAspect(opt)
 arguments
     opt.FigName = ''
     opt.Visible = 'off'
-    opt.Fontsize = 12
+    opt.Fontsize = 14
     opt.LineWidth = 2
 end
 
