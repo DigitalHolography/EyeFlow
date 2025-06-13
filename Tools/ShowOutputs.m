@@ -86,7 +86,7 @@ for path_idx = 1:N
             output_paths.(output_types{i,1}){path_idx} = full_path;
         else
             % Create a blank white placeholder image (RGB)
-            placeholder_path = fullfile(output_dir, ['placeholder_' num2str(path_idx) '_' output_types{i,1} '.png']);
+            placeholder_path = [];
             output_paths.(output_types{i,1}){path_idx} = placeholder_path;
         end
     end
@@ -107,7 +107,8 @@ for i = 1:size(output_types, 1)
     end
     
     % Create montage (missing files are replaced by placeholders)
-    figure(figure_counter, 'Visible', 'off');
+    fi=figure(figure_counter);
+    fi.Visible='off';
     montage(current_paths, 'Size', [l L]);
     exportgraphics(gca, fullfile(output_dir, [type_name '.png']));
     figure_counter = figure_counter + 1;
