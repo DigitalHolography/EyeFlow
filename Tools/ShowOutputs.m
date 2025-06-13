@@ -36,7 +36,8 @@ output_types = {
     'A_sections', '_A_sections.png', 'png/crossSectionsAnalysis';
     'diasys_Artery', '_diasys_Artery.png', 'png/crossSectionsAnalysis';
     'diasys_Vein', '_diasys_Vein.png', 'png/crossSectionsAnalysis';
-    'ArterialWaveformAnalysis_artery', '_ArterialWaveformAnalysis_v_artery.png', 'png/bloodFlowVelocity'
+    'ArterialWaveformAnalysis_artery', '_ArterialWaveformAnalysis_v_artery.png', 'png/bloodFlowVelocity';
+    'ArteriovenousPhaseDelay', '_arterial_venous_correlation.png' , 'png/bloodFlowVelocity';
 };
 
 % Initialize all path collections
@@ -86,7 +87,7 @@ for path_idx = 1:N
             output_paths.(output_types{i,1}){path_idx} = full_path;
         else
             % Create a blank white placeholder image (RGB)
-            placeholder_path = fullfile(output_dir, ['placeholder_' num2str(path_idx) '_' output_types{i,1} '.png']);
+            placeholder_path = [];
             output_paths.(output_types{i,1}){path_idx} = placeholder_path;
         end
     end
@@ -95,7 +96,7 @@ end
 % Create montages for each output type
 [l, L] = bestMontageLayout(N);
 figure_counter = 320;
-
+figs_ids = [];
 for i = 1:size(output_types, 1)
     type_name = output_types{i,1};
     current_paths = output_paths.(type_name);
@@ -107,10 +108,13 @@ for i = 1:size(output_types, 1)
     end
     
     % Create montage (missing files are replaced by placeholders)
-    figure(figure_counter, 'Visible', 'off');
+    fi=figure(figure_counter);
+    fi.Visible='on';
     montage(current_paths, 'Size', [l L]);
     exportgraphics(gca, fullfile(output_dir, [type_name '.png']));
+    figs_ids = [figs_ids figure_counter];
     figure_counter = figure_counter + 1;
 end
+close(figs_ids);
 
 end
