@@ -30,11 +30,12 @@ arguments
     opt.xLineLabels = {}
     opt.zero_center = false
     opt.yLIM = []
+    opt.pbaspect = [2.5 1 1]
 end
 
 f = figure('Visible', 'off');
 
-pbaspect([2.5 1 1]);
+pbaspect(opt.pbaspect);
 box on
 hold on
 
