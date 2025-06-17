@@ -1,4 +1,4 @@
-function [Q_results] = crossSectionsAnalysis(mask, vesselName, v_RMS, M0_ff_video, xy_barycenter)
+function [Q_results] = crossSectionsAnalysis(mask, vesselName, v_RMS, M0_ff_video, xy_barycenter, papillaDiameter)
 
 ToolBox = getGlobalToolBox;
 
@@ -115,7 +115,7 @@ parfor c_idx = 1:numCircles
         if ~isempty(locsLabel{c_idx, b_idx})
             % Call crossSectionAnalysis2
             patchName = sprintf('%s%d_C%d', initial, b_idx, c_idx);
-            [results] = crossSectionAnalysis2(ToolBox, locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, v_RMS, patchName);
+            [results] = crossSectionAnalysis2(ToolBox, locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, v_RMS, patchName, papillaDiameter);
 
             % Map outputs to variables
             v_cell{c_idx, b_idx} = results.v;

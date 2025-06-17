@@ -85,6 +85,7 @@ classdef Outputs < handle
         DynamicViscosityDuringSystole
         DynamicViscosityDuringDiastole
         DynamicViscosityAverage
+        PapillaRatio
 
     end
 

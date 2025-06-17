@@ -276,10 +276,10 @@ if veinsAnalysis
 end
 
 % Perform waveform analysis
-ArterialWaveformAnalysis(v_artery_signal, sysIdxList, 128, 'v_artery');
+%ArterialWaveformAnalysis(v_artery_signal, sysIdxList, 128, 'v_artery');
 
 if veinsAnalysis
-    VenousWaveformAnalysis(v_vein_signal, t, sysIdxList, 128, 'v_vein', ToolBox);
+    %VenousWaveformAnalysis(v_vein_signal, t, sysIdxList, 128, 'v_vein', ToolBox);
 end
 
 [time_lag, max_corr, lags, corr_vals] = arterial_venous_correlation(v_artery_signal, -v_vein_signal);
