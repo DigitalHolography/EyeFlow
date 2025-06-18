@@ -199,10 +199,11 @@ methods
             cmapAV = ToolBox.cmapAV;
 
             obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
-            
-            obj.papillaDiameter = findPapilla(M0_ff_img);
-             [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
+
+            [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
+            [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
                 createMasks(obj.M0_ff_video, obj.xy_barycenter);
+            obj.papillaDiameter = mean([diameter_x, diameter_y]);
 
             M0_Artery = setcmap(M0_ff_img, obj.maskArtery, cmapArtery);
             M0_Vein = setcmap(M0_ff_img, obj.maskVein, cmapVein);

@@ -1,4 +1,4 @@
-function [] = spectrogram(maskArtery, xy_barycenter, SH_cube)
+function [] = spectrogramSH(maskArtery, xy_barycenter, SH_cube)
 
 %% Variables
 
