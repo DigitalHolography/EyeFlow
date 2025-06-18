@@ -1,8 +1,13 @@
-function [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, figName, ToolBox)
+function [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, figName, ToolBox, papillaDiameter)
 
 % Parameters
 params = ToolBox.getParams;
-px_size = params.px_size;
+if ~isempty(papillaDiameter)
+    px_size = 1.8/papillaDiameter / (2 ^ params.json.Preprocess.InterpolationFactor);
+else
+    px_size = params.px_size;
+end
+
 
 % Compute velocity profile
 profile = mean(subImg, 1, 'omitnan');

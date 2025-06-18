@@ -156,7 +156,7 @@ end
 % Configure axes
 axis tight;
 axT = axis;
-axis([axT(1), axT(2), axT(3) - 0.1 * range(axT(3:4)), axT(4) + 0.1 * range(axT(3:4))]);
+axis([axT(1), axT(2), axT(3) - 0.1 * (axT(4) - axT(3)), axT(4) + 0.1 * (axT(4) - axT(3))]);
 
 ylabel(y_label);
 xlabel('Time (s)');

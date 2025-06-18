@@ -1,4 +1,4 @@
-function [results] = crossSectionAnalysis2(ToolBox, loc, mask, v_RMS, patchName)
+function [results] = crossSectionAnalysis2(ToolBox, loc, mask, v_RMS, patchName, papillaDiameter)
 
 % Perform cross-section analysis on blood vessels.
 %
@@ -47,7 +47,7 @@ rotatedImg(rotatedImg <= 0) = NaN;
 results.subImg_cell = rescale(rotatedImg);
 
 % Compute the Vessel Cross Section
-[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox);
+[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter);
 results.D = D;
 results.D_se = D_se;
 results.A = A;

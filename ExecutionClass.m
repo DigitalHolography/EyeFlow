@@ -26,6 +26,7 @@ properties
     diasIdx
     sysIdx % Indexes for diastole/ systole analysis
     xy_barycenter % x y position of the ONH
+    papillaDiameter
     vRMS % video estimate of velocity map in retinal vessels
     Q_results_A
     Q_results_V
@@ -192,14 +193,16 @@ methods
                 mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
             end
 
-            obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
-            [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
-                createMasks(obj.M0_ff_video, obj.xy_barycenter);
-
             M0_ff_img = rescale(mean(obj.M0_ff_video, 3));
             cmapArtery = ToolBox.cmapArtery;
             cmapVein = ToolBox.cmapVein;
             cmapAV = ToolBox.cmapAV;
+
+            obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
+            
+            obj.papillaDiameter = findPapilla(M0_ff_img);
+             [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
+                createMasks(obj.M0_ff_video, obj.xy_barycenter);
 
             M0_Artery = setcmap(M0_ff_img, obj.maskArtery, cmapArtery);
             M0_Vein = setcmap(M0_ff_img, obj.maskVein, cmapVein);
@@ -255,10 +258,10 @@ methods
             fprintf("\n----------------------------------\nCross-Section Analysis\n----------------------------------\n");
             crossSectionAnalysisTimer = tic;
 
-            [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'Artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter);
+            [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'Artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter);
 
             if veins_analysis
-                [obj.Q_results_V] = crossSectionsAnalysis(obj.maskVein, 'Vein', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter);
+                [obj.Q_results_V] = crossSectionsAnalysis(obj.maskVein, 'Vein', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter);
             end
 
             obj.is_crossSectionAnalyzed = true;
