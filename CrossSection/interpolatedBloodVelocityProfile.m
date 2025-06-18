@@ -27,7 +27,17 @@ end
 
 % Get dimensions
 [numCircles, numBranches] = size(v_cell);
-numFrames = size(v_cell{1}, 2);
+numFrames=0;
+i=1;
+while numFrames<=0 
+    numFrames = size(v_cell{i}, 2);
+    i=i+1;
+    if i> size(v_cell,1)*size(v_cell,2);
+        warning("Velocity profiles cells are all empty.")
+        break
+    end
+end
+
 numInterp = params.json.CrossSectionsFigures.InterpolationPoints;
 w2w = linspace(-1, 1, numInterp);
 
