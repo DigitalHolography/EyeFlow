@@ -10,7 +10,8 @@ function ArterialWaveformAnalysis(signal, systolesIndexes, numInterp, name)
 %% Initial Setup
 ToolBox = getGlobalToolBox;
 numFrames = length(signal);
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
+t = linspace(0, numFrames / fs, numFrames);
 
 % Set parameters based on signal type
 if strcmpi(name, "bvr")
@@ -162,6 +163,111 @@ ylabel(y_label);
 xlabel('Time (s)');
 pbaspect([1.618 1 1]);
 set(gca, 'LineWidth', 2, 'FontSize', 24, 'Box', 'on');
+
+%% Spectral Analysis
+
+N = 16;
+padded_signal = padarray(signal, [0 numFrames * N]);
+f = linspace(-fs/2, fs/2, (2 * N + 1) * numFrames);
+fft_mag = fftshift(abs(fft(padded_signal)));
+[s_peaks, s_locs] = findpeaks(fft_mag);
+figure, semilogy(f, fft_mag)
+hold on, scatter(f(s_locs), s_peaks)
+axis tight
+xlabel('Frequency (Hz)');
+ylabel('Magnitude (log scale)');
+title('Frequency Spectrum');
+grid on;
+pbaspect([2.5 1 1])
+set(gca, 'LineWidth', 1.5, 'FontSize', 12);
+
+
+%% Spectral Analysis
+N = 16; % Padding factor for better frequency resolution
+padded_signal = padarray(signal, [0 numFrames * N]); % Zero-padding for interpolation in frequency domain
+
+% Frequency vector (show only positive frequencies since signal is real)
+f = linspace(0, fs/2, (N * numFrames) + 1);
+fft_mag = abs(fft(padded_signal));
+fft_mag = fft_mag(1:length(f)); % Take only positive frequencies
+fft_mag = fft_mag / max(fft_mag); % Normalize to [0,1]
+
+% Improved peak detection with minimum prominence threshold
+min_prominence = 0.1; % 10% of maximum magnitude as minimum prominence
+[s_peaks, s_locs] = findpeaks(fft_mag, f, ...
+    'MinPeakProminence', min_prominence, ...
+    'SortStr', 'descend', ...
+    'NPeaks', 5); % Find up to 5 most significant peaks
+
+% Create figure for spectral analysis
+figure('Visible', 'on', 'Color', 'w','Position', [310, 180, 1200, 700]);
+
+% Main plot with improved styling
+plot(f, fft_mag, 'k', 'LineWidth', 2);
+hold on;
+grid on;
+
+% Highlight detected peaks with annotations
+if ~isempty(s_peaks)
+    scatter(s_locs, s_peaks, 100, 'r', 'filled', 'MarkerEdgeColor', 'k');
+    
+    % Annotate the top 3 peaks
+    for k = 1:min(3, length(s_peaks))
+        text(s_locs(k), s_peaks(k)*1.2, ...
+            sprintf('%.2f Hz\n(%.1f%%)', s_locs(k), s_peaks(k)*100), ...
+            'HorizontalAlignment', 'center', ...
+            'VerticalAlignment', 'bottom', ...
+            'FontSize', 10, ...
+            'BackgroundColor', 'w', ...
+            'EdgeColor', 'k');
+    end
+end
+
+% Calculate and plot harmonic frequencies if fundamental is detected
+if length(s_locs) >= 1
+    fundamental = s_locs(1);
+    harmonics = fundamental * (2:5); % Up to 5th harmonic
+    valid_harmonics = harmonics(harmonics <= fs/2);
+    
+    % Plot harmonic locations
+    for h = valid_harmonics
+        xline(h, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1, ...
+            'Label', sprintf('%.0f×', h/fundamental), ...
+            'LabelOrientation', 'horizontal', ...
+            'LabelVerticalAlignment', 'bottom');
+    end
+end
+
+% Enhanced axis formatting
+xlim([0 fs/2]);
+ylim([1e-3 1.2]); % Adjusted for normalized magnitudes
+xlabel('Frequency (Hz)', 'FontSize', 14, 'FontWeight', 'bold');
+ylabel('Normalized Magnitude (log scale)', 'FontSize', 14, 'FontWeight', 'bold');
+title('Power Spectrum with Peak Detection', 'FontSize', 16);
+pbaspect([2.5 1 1]);
+set(gca, 'LineWidth', 1.5, 'FontSize', 12);
+
+% Add inset for low-frequency detail (0-5 Hz)
+axes('Position', [0.6 0.50 0.25 0.25]);
+plot(f(f<=5), fft_mag(f<=5), 'k', 'LineWidth', 1.5);
+hold on;
+if ~isempty(s_locs)
+    scatter(s_locs(s_locs<=5), s_peaks(s_locs<=5), 50, 'r', 'filled', 'MarkerEdgeColor', 'k');
+end
+grid on;
+title('0-5 Hz Detail', 'FontSize', 10);
+set(gca, 'LineWidth', 1, 'FontSize', 8);
+
+% Add heart rate information if fundamental is in typical range (0.5-3 Hz)
+if ~isempty(s_locs) && s_locs(1) >= 0.5 && s_locs(1) <= 3
+    hr = s_locs(1) * 60; % Convert Hz to BPM
+    annotation('textbox', [0.7 0.8 0.2 0.1], ...
+        'String', sprintf('Estimated HR: %.1f BPM', hr), ...
+        'FitBoxToText', 'on', ...
+        'BackgroundColor', 'w', ...
+        'EdgeColor', 'k', ...
+        'FontSize', 12);
+end
 
 %% Save Results
 try
