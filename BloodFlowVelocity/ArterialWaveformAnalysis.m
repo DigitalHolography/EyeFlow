@@ -13,7 +13,7 @@ numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 t = linspace(0, numFrames / fs, numFrames);
 
-cDark = [0.75 0 0];
+cDark = [1 0 0];
 cLight = [1 0.5 0.5];
 
 % Set parameters based on signal type
@@ -120,7 +120,7 @@ if ~isnan(notch)
         'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
     yline(notch, 'k--', sprintf("%.1f %s", notch, unit), ...
-        'LineWidth', 1.5, 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+        'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
     if length(locs_peaks) > 1
         T_diastolic = pulseTime(locs_peaks(2));
@@ -128,7 +128,7 @@ if ~isnan(notch)
             'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
         yline(peaks(2), 'k--', sprintf("%.1f %s", peaks(2), unit), ...
-            'LineWidth', 1.5, 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+            'LineWidth', 1.5, 'LabelVerticalAlignment', 'top', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
     end
 
 end
@@ -162,7 +162,7 @@ axis tight;
 axT = axis;
 axis padded;
 axP = axis;
-axis([axT(1), axT(2), axP(3) - 0.1 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
+axis([axT(1), axT(2), axP(3) - 0.2 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
 
 ylabel(y_label);
 xlabel('Time (s)');
@@ -234,19 +234,22 @@ if length(s_locs) >= 1
 
 end
 
-% Enhanced axis formatting
-xlim([0 10]);
-ylim([1e-3 1.1]); % Adjusted for normalized magnitudes
+% Configure axes
+axis tight;
+axT = axis;
+axis padded;
+axP = axis;
+axis([axT(1), 10, axP(3) - 0.1 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
+
 xlabel('Frequency (Hz)', 'FontSize', 14, 'FontWeight', 'bold');
-ylabel('Normalized Magnitude (log scale)', 'FontSize', 14, 'FontWeight', 'bold');
-title('Power Spectrum with Peak Detection', 'FontSize', 16);
+ylabel('Normalized Magnitude', 'FontSize', 14, 'FontWeight', 'bold');
 pbaspect([1.618 1 1]);
 set(gca, 'LineWidth', 1.5, 'FontSize', 12);
 
 % Add heart rate information if fundamental is in typical range (0.5-3 Hz)
 if ~isempty(s_locs) && s_locs(1) >= 0.5 && s_locs(1) <= 3
     hr = s_locs(1) * 60; % Convert Hz to BPM
-    annotation('textbox', [0.7 0.8 0.2 0.1], ...
+    annotation('textbox', [0.5 0.6 0.2 0.1], ...
         'String', sprintf('Estimated HR: %.1f BPM', hr), ...
         'FitBoxToText', 'on', ...
         'BackgroundColor', 'w', ...

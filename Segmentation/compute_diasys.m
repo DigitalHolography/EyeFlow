@@ -10,6 +10,9 @@ ToolBox = getGlobalToolBox;
 [~, ~, numFrames] = size(M0_video);
 fullTime = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 
+cDark = [1 0 0];
+cLight = [1 0.5 0.5];
+
 [sys_index_list, fullPulse, sys_max_list, sys_min_list] = find_systole_index(M0_video, maskArtery);
 
 fullPulse = fullPulse';
@@ -50,11 +53,11 @@ for idx = 1:numSys
         end_idx = sys_index_list(idx) + round(fpCycle * 0.2);
         sys_range = start_idx:min(end_idx, numFrames);
         sysindexes = [sysindexes, sys_range];
-        plot(fullTime(sys_range), fullPulse(sys_range), 'r-', 'LineWidth', 2)
+        plot(fullTime(sys_range), fullPulse(sys_range), 'Color', cDark, 'LineWidth', 2)
         X = [fullTime(sys_range), flip(fullTime(sys_range))];
         Y = [fullPulse(sys_range), zeros(1, length(sys_range))];
 
-        fill(X, Y, 'r', 'EdgeColor', 'none')
+        fill(X, Y, cDark, 'EdgeColor', 'none')
     catch
     end
 
@@ -66,7 +69,7 @@ for idx = 1:numSys
         X = [fullTime(dias_range), flip(fullTime(dias_range))];
         Y = [fullPulse(dias_range), zeros(1, length(dias_range))];
 
-        fill(X, Y, 'b', 'EdgeColor', 'none')
+        fill(X, Y, cLight, 'EdgeColor', 'none')
     catch
     end
 
@@ -84,7 +87,7 @@ for idx = 1:numSysMax
         X = [fullTime(sys_range), flip(fullTime(sys_range))];
         Y = [fullPulse(sys_range), zeros(1, length(sys_range))];
 
-        fill(X, Y, 'r', 'EdgeColor', 'none')
+        fill(X, Y, cDark, 'EdgeColor', 'none')
 
     catch
     end
@@ -99,12 +102,12 @@ for idx = 1:numSysMin
         end_idx = sys_min_list(idx);
         dias_range = max(start_idx, 1):min(end_idx, numFrames);
         diasindexes = [diasindexes, dias_range];
-        plot(fullTime(dias_range), fullPulse(dias_range), 'b-', 'LineWidth', 2)
+        plot(fullTime(dias_range), fullPulse(dias_range), 'Color', cLight, 'LineWidth', 2)
 
         X = [fullTime(dias_range), flip(fullTime(dias_range))];
         Y = [fullPulse(dias_range), zeros(1, length(dias_range))];
 
-        fill(X, Y, 'b', 'EdgeColor', 'none')
+        fill(X, Y, cLight, 'EdgeColor', 'none')
 
     catch
     end
