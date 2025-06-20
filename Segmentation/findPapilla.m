@@ -9,6 +9,10 @@ try
 catch ME
     disp(ME)
     found = false;
+    diameter_x = NaN;
+    diameter_y = NaN;
+    x_center = NaN;
+    y_center = NaN;
     return
 end
 
