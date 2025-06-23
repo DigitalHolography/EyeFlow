@@ -77,7 +77,10 @@ end
 title(opt.Title)
 
 xlabel(opt.xlabel, 'FontSize', opt.Fontsize);
+ax = gca;
+ax.XAxis.FontSize = opt.Fontsize;  
 ylabel(opt.ylabel, 'FontSize', opt.Fontsize);
+ax.YAxis.FontSize = opt.Fontsize; 
 
 if ~isempty(opt.Legends)
     legend(opt.Legends)

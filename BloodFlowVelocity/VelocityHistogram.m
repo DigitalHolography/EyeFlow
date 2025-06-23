@@ -18,6 +18,7 @@ arguments
     name {mustBeTextScalar, mustBeMember(name, {'Artery', 'Vein'})}
     n (1, 1) {mustBeInteger, mustBePositive} = 256
     opt.yLIM = []
+    opt.Fontsize = 14
 end
 
 % Get toolbox parameters
@@ -65,8 +66,14 @@ imagesc(xAx, yAx, histo(:, :));
 set(gca, 'PlotBoxAspectRatio', [2.5 1 1])
 set(gca, 'YDir', 'normal')
 colormap(cmap)
-ylabel('Velocity (mm/s)')
-xlabel('Time (s)')
+
+
+
+ax = gca;
+ax.XAxis.FontSize = round(opt.Fontsize*3/4); 
+ax.YAxis.FontSize = round(opt.Fontsize*3/4); 
+ylabel('Velocity (mm/s)', 'FontSize', opt.Fontsize)
+xlabel('Time (s)', 'FontSize', opt.Fontsize)
 title(sprintf("Velocity distribution in %s", name))
 histoVideo = frame2im(getframe(fDistrib));
 hold on
