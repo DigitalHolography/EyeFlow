@@ -7,7 +7,7 @@ function ArterialWaveformAnalysis(signal, systolesIndexes, numInterp, name)
 %   numInterp - Number of interpolation points
 %   name - Signal type ('bvr' for blood volume rate, otherwise velocity)
 
-%% Initial Setup
+% Initial Setup
 ToolBox = getGlobalToolBox;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
@@ -29,7 +29,7 @@ else
     isBVR = false;
 end
 
-%% Signal Preprocessing
+% Signal Preprocessing
 try
     % Apply wavelet denoising if possible
     signal = double(wdenoise(signal, 4, ...
@@ -40,14 +40,14 @@ catch
     signal = double(signal);
 end
 
-%% Cycle Analysis
+% Cycle Analysis
 [one_cycle_signal, avgLength] = interpSignal(signal, systolesIndexes, numInterp);
 
 % Create time vector for one cycle
 dt = (t(2) - t(1));
 pulseTime = linspace(0, dt * avgLength, numInterp);
 
-%% Feature Detection
+% Feature Detection
 % Adaptive peak detection parameters
 min_peak_height = max(one_cycle_signal) * 0.3; % 30 % of max as threshold
 min_peak_distance = floor(length(one_cycle_signal) / 4); % 1/4 cycle minimum
@@ -92,7 +92,7 @@ if length(peaks) > 1
 
 end
 
-%% Visualization
+% Visualization
 hFig = figure('Visible', 'on', 'Color', 'w');
 hold on;
 
@@ -169,12 +169,12 @@ xlabel('Time (s)');
 pbaspect([1.618 1 1]);
 set(gca, 'LineWidth', 2, 'Box', 'on');
 
-%% Save Results
+% Save Results
 exportgraphics(hFig, fullfile(ToolBox.path_png, folder, ...
     sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
 
-%% Spectral Analysis
+% Spectral Analysis
 % Perform spectral analysis on the original signal
 % Zero-pad the signal for better frequency resolution
 N = 16; % Padding factor
@@ -257,12 +257,12 @@ if ~isempty(s_locs) && s_locs(1) >= 0.5 && s_locs(1) <= 3
         'FontSize', 12);
 end
 
-%% Save Results
+% Save Results
 exportgraphics(hFig, fullfile(ToolBox.path_png, folder, ...
     sprintf("%s_ArterialSpectralAnalysis_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
 
-%% Export to JSON (only for velocity signals)
+% Export to JSON (only for velocity signals)
 if ~isBVR
     ToolBox.Outputs.add('SystoleDuration', systoleDuration, 's');
     ToolBox.Outputs.add('DiastoleDuration', diastoleDuration, 's');

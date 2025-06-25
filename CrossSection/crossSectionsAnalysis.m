@@ -1,4 +1,4 @@
-function [Q_results] = crossSectionsAnalysis(mask, vesselName, v_RMS, M0_ff_video, xy_barycenter, papillaDiameter)
+function [Q_results] = crossSectionsAnalysis(mask, vesselName, v_RMS, M0_ff_video, xy_barycenter, papillaDiameter, sysIdx, diasIdx)
 
 ToolBox = getGlobalToolBox;
 
@@ -115,7 +115,9 @@ parfor c_idx = 1:numCircles
         if ~isempty(locsLabel{c_idx, b_idx})
             % Call crossSectionAnalysis2
             patchName = sprintf('%s%d_C%d', initial, b_idx, c_idx);
-            [results] = crossSectionAnalysis2(ToolBox, locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, v_RMS, patchName, papillaDiameter);
+            [results] = crossSectionAnalysis2(ToolBox, ...
+                locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, ...
+                v_RMS, patchName, papillaDiameter);
 
             % Map outputs to variables
             v_cell{c_idx, b_idx} = results.v;
@@ -153,6 +155,7 @@ imwrite(rejected_mask, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprin
 plot2csvForAllRadSection(t, Q_cell, Q_se_cell, branchQ, branchQSE, radiusQ, radiusQSE, initial)
 topvel2csv(t, v_cell, v_se_cell, initial);
 
+% Populate the object properties
 Q_results.locsLabel = locsLabel;
 Q_results.v_cell = v_cell;
 Q_results.v_profiles_cell = v_profiles_cell;
@@ -169,5 +172,10 @@ Q_results.radiusQSE = radiusQSE;
 Q_results.labeledVessels = labeledVessels;
 
 fprintf("    3. Cross-sections analysis for all circles (%s) output took %ds\n", vesselName, round(toc))
+
+[width_sys, width_dias, Q_sys, Q_dias, widths_diff, widths_se_diff] = ...
+    analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ...
+    numCircles, numBranches, ToolBox, initial, papillaDiameter, vesselName, numFrames);
+
 
 end
