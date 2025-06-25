@@ -9,6 +9,10 @@ try
 catch ME
     disp(ME)
     found = false;
+    diameter_x = NaN;
+    diameter_y = NaN;
+    x_center = NaN;
+    y_center = NaN;
     return
 end
 
@@ -47,10 +51,26 @@ if ~isempty(bboxes)
     y_center = shrunkenBBoxes(2) + diameter_y / 2;
 
 
-    % imgOut = insertObjectAnnotation(M0img, 'rectangle', shrunkenBBoxes, ...
-    % sprintf('%s: %.2f', string(labels), max(scores)));
-    % imshow(imgOut);
-    %
+    a = shrunkenBBoxes(3)/2;
+    b = shrunkenBBoxes(4)/2;
+
+    angle = linspace(0, 2*pi, 100);
+
+    x_ellipsis = x_center + a*cos(angle);
+    y_ellipsis = y_center + b*sin(angle);
+
+  
+    ToolBox = getGlobalToolBox;
+
+    figure('Visible','off');
+    imshow(M0img);
+    hold on;
+    plot(x_ellipsis, y_ellipsis, 'r', 'LineWidth', 2);
+    axis equal;
+    exportgraphics(gcf,fullfile(ToolBox.path_png,sprintf('%s_papilla.png',ToolBox.folder_name)));
+
+
+    
 
 else
     found = false;

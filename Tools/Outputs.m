@@ -75,9 +75,11 @@ classdef Outputs < handle
         ArterialDiameterAverage
         ArterialDiameterMedian
         ArterialDiameterSpread
+        ArterialValidSections
         VenousDiameterAverage
         VenousDiameterMedian
         VenousDiameterSpread
+        VenousValidSections
 
         % Extra
         PulseWaveVelocity

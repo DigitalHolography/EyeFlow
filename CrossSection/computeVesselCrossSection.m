@@ -2,7 +2,7 @@ function [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, fig
 
 % Parameters
 params = ToolBox.getParams;
-if ~isempty(papillaDiameter)
+if ~isnan(papillaDiameter) && ~isempty(papillaDiameter)
     px_size = 1.8/papillaDiameter / (2 ^ params.json.Preprocess.InterpolationFactor);
 else
     px_size = params.px_size;
