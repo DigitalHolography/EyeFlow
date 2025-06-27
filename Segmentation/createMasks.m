@@ -313,7 +313,36 @@ if mask_params.ImproveMask
     maskArtery_no_import = maskArtery;
     maskVein_no_import = maskVein;
 
-    % 3) 2) Force Create Masks in case they exist
+    % 3) 2) a) Look for a target mask to register from
+
+    if isfile(fullfile(path, 'mask', 'similarMaskArtery.png'))
+        similarMaskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'similarMaskArtery.png')), 3)) > 0;
+
+        if size(similarMaskArtery, 1) ~= maskCircle
+            similarMaskArtery = imresize(similarMaskArtery, [numX, numY], "nearest");
+        end
+
+        maskArtery = nonrigidregistration(maskArtery,similarMaskArtery) ;
+
+    elseif mask_params.ForcedMasks == 1
+        error("Cannot find similar Artery Mask because none given in the mask folder. Please create a similarMaskArtery.png file in the mask folder.");
+    end
+
+    if isfile(fullfile(path, 'mask', 'forceMaskVein.png'))
+        similarMaskVein = mat2gray(mean(imread(fullfile(path, 'mask', 'similarMaskVein.png')), 3)) > 0;
+
+        if size(similarMaskVein, 1) ~= maskCircle
+            similarMaskVein = imresize(similarMaskVein, [numX, numY], "nearest");
+        end
+
+        maskVein = nonrigidregistration(maskVein,similarMaskVein) ;
+
+
+    elseif mask_params.ForcedMasks == 1
+        error("Cannot find similar Vein Mask because none given in the mask folder. Please create a similarMaskVein.png file in the mask folder.");
+    end
+
+    % 3) 2) b) Force Create Masks in case they exist
     if (mask_params.ForcedMasks == -1 || mask_params.ForcedMasks == 1)
 
         if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
@@ -487,18 +516,6 @@ saveImage(bwskel(maskVein), 'skeletonVein.png')
 % 4) 5) Mask Section & Force Barycenter
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMapArtery', maskArtery, thin = 0.01);
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMap', maskArtery, maskVein, thin = 0.01);
-
-% 4) 6) Arteries tree
-% try
-%     getLongestArteryBranch(maskArtery, xy_barycenter, 'Artery');
-%     getLongestArteryBranch(maskVein, xy_barycenter, 'Vein');
-% catch ME
-%
-%     for i = 1:length(ME.stack)
-%         disp("Error in getLongestArteryBranch: " + ME.stack(i).name + " at line " + ME.stack(i).line)
-%     end
-%
-% end
 
 close all
 end
