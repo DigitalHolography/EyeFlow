@@ -67,7 +67,7 @@ if ~isempty(bboxes)
     hold on;
     plot(x_ellipsis, y_ellipsis, 'r', 'LineWidth', 2);
     axis equal;
-    exportgraphics(gcf,fullfile(ToolBox.path_png,sprintf('%s_papilla.png',ToolBox.folder_name)));
+    exportgraphics(gcf,fullfile(ToolBox.path_png,sprintf('%s_opticdisc.png',ToolBox.folder_name)));
 
 
     
