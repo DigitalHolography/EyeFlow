@@ -173,9 +173,13 @@ Q_results.labeledVessels = labeledVessels;
 
 fprintf("    3. Cross-sections analysis for all circles (%s) output took %ds\n", vesselName, round(toc))
 
-[width_sys, width_dias, Q_sys, Q_dias, widths_diff, widths_se_diff] = ...
-    analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ...
+% 4. Diameter Analysis
+
+tic
+
+analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ...
     numCircles, numBranches, ToolBox, initial, papillaDiameter, vesselName, numFrames);
 
+fprintf("    4. Diameter Analysis (%s) output took %ds\n", vesselName, round(toc))
 
 end

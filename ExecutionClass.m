@@ -78,7 +78,7 @@ methods
             tmp_idx = regexp(path, '\');
             obj.filenames = obj.directory(tmp_idx(end - 1) + 1:end - 1);
 
-            if ~isfile(fullfile(path, "raw", sprintf("%s_moment0.raw", obj.filenames)))
+            if ~isfolder(fullfile(path, "raw"))
 
                 error('No raw file found at: %s\nPlease check folder path and filename.', path);
 
