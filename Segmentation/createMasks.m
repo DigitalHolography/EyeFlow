@@ -315,27 +315,30 @@ if mask_params.ImproveMask
 
     % 3) 2) a) Look for a target mask to register from
 
-    if isfile(fullfile(path, 'mask', 'similarMaskArtery.png'))
+    if isfile(fullfile(path, 'mask', 'similarMaskArtery.png')) && isfile(fullfile(path, 'mask', 'similarM0.png'))
         similarMaskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'similarMaskArtery.png')), 3)) > 0;
+        similarM0 = mat2gray(mean(imread(fullfile(path, 'mask', 'similarM0.png')), 3));
 
         if size(similarMaskArtery, 1) ~= maskCircle
             similarMaskArtery = imresize(similarMaskArtery, [numX, numY], "nearest");
         end
 
-        maskArtery = nonrigidregistration(maskArtery,similarMaskArtery) ;
+        [~,~,maskArtery] = nonrigidregistration(M0_ff_img,similarM0,maskArtery,similarMaskArtery,fullfile(ToolBox.path_png,folder_steps),'Arteries') ;
 
     elseif mask_params.ForcedMasks == 1
         error("Cannot find similar Artery Mask because none given in the mask folder. Please create a similarMaskArtery.png file in the mask folder.");
     end
 
-    if isfile(fullfile(path, 'mask', 'forceMaskVein.png'))
+    if isfile(fullfile(path, 'mask', 'similarMaskVein.png')) && isfile(fullfile(path, 'mask', 'similarM0.png'))
         similarMaskVein = mat2gray(mean(imread(fullfile(path, 'mask', 'similarMaskVein.png')), 3)) > 0;
+        similarM0 = mat2gray(mean(imread(fullfile(path, 'mask', 'similarM0.png')), 3));
+
 
         if size(similarMaskVein, 1) ~= maskCircle
             similarMaskVein = imresize(similarMaskVein, [numX, numY], "nearest");
         end
 
-        maskVein = nonrigidregistration(maskVein,similarMaskVein) ;
+        [~,~,maskVein] = nonrigidregistration(M0_ff_img,similarM0,maskVein,similarMaskVein,fullfile(ToolBox.path_png,folder_steps),'Veins') ;
 
 
     elseif mask_params.ForcedMasks == 1
