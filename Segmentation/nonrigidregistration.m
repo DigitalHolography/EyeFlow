@@ -53,6 +53,7 @@ D = cat(3, displacementField(:,:,2), displacementField(:,:,1));  % [X,Y] order
 % RA = imref2d(size(imMoving));  % Reference frame for output
 % 'D' is the displacement field (in [X, Y] order)
 warpedMask = imwarp(toWarpAffine, +1*D, "nearest");
+% warpedMask = toWarpAffine; 
 toc;
 
 figure(54),imshowpair(imFixed,warpedMask);
