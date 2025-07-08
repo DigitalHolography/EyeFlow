@@ -1,12 +1,16 @@
-function blocWiseAffineRegistration(moving,fixed,patchSize)
+function [warped , ux, uy] = blocWiseAffineRegistration(moving,fixed,NumPatch,SmoothingValue)
+% bloc by bloc displacement field estimation using only translational local
+% displacement estimate (registerImagesCrossCorrelation) and gaussian smoothing
+%  
 
 [H, W] = size(fixed);
 ux = zeros(H, W);
 uy = zeros(H, W);
+patchSize = floor(max(H,W)/NumPatch);
 
 % Init affine optimizer
-[optimizer, metric] = imregconfig('monomodal');
-metric = registration.metric.MeanSquares;
+% [optimizer, metric] = imregconfig('multimodal');
+% metric = registration.metric.MeanSquares;
 
 % Local affine registration per patch
 for y = 1:patchSize:H - patchSize
@@ -16,32 +20,40 @@ for y = 1:patchSize:H - patchSize
         movingPatch = moving(y:y+patchSize-1, x:x+patchSize-1);
 
         % Get coordinates of patch
-        [Xp, Yp] = meshgrid(x:x+patchSize-1, y:y+patchSize-1);
-        coords = [Xp(:), Yp(:)];
+        % [Xp, Yp] = meshgrid(x:x+patchSize-1, y:y+patchSize-1);
+        % coords = [Xp(:), Yp(:)];
 
         % Estimate affine transform (e.g., using intensity-based optimization or features)
-        tform = imregtform(movingPatch, fixedPatch, 'affine',optimizer, metric, 'DisplayOptimization', false);
-
+        %tform = imregtform(rescale(movingPatch), rescale(fixedPatch), ...
+        %'affine',optimizer, metric, 'DisplayOptimization', false); nul
+        [~, shift] = registerImagesCrossCorrelation(movingPatch, fixedPatch);
+        reg_image = circshift(movingPatch, shift);
+        % shift
         % Transform coordinates
-        if ~isempty(tform)
-            newCoords = transformPointsForward(tform, coords);
-            dx = reshape(newCoords(:,1) - coords(:,1), patchSize, patchSize);
-            dy = reshape(newCoords(:,2) - coords(:,2), patchSize, patchSize);
+        if ~isempty(shift) %~isempty(tform)
+            % newCoords = transformPointsForward(tform, coords);
+            dx = (shift(2)+patchSize)*ones(patchSize);
+            dy = (shift(1)+patchSize)*ones(patchSize);
 
             % Accumulate displacements
             ux(y:y+patchSize-1, x:x+patchSize-1) = dx;
             uy(y:y+patchSize-1, x:x+patchSize-1) = dy;
         end
+        % figure,imshowpair(fixedPatch,reg_image);
+
     end
 end
 
 % Smooth the displacement field
-% ux = imgaussfilt(ux, 2);
-% uy = imgaussfilt(uy, 2);
+
+if SmoothingValue > 0 % usually 2
+    ux = imgaussfilt(ux, SmoothingValue);
+    uy = imgaussfilt(uy, SmoothingValue);
+end
 
 % Warp the image
 [Xq, Yq] = meshgrid(1:W, 1:H);
-warped = interp2(moving, Xq + ux, Yq + uy, 'linear', 0);
+warped = interp2(moving, Xq - ux, Yq - uy, 'linear', 0);
 
 imshowpair(fixed, warped);
 

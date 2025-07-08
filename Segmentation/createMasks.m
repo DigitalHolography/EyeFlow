@@ -323,7 +323,7 @@ if mask_params.ImproveMask
             similarMaskArtery = imresize(similarMaskArtery, [numX, numY], "nearest");
         end
 
-        [~,~,maskArtery] = nonrigidregistration(M0_ff_img,similarM0,maskArtery,similarMaskArtery,fullfile(ToolBox.path_png,folder_steps),'Arteries') ;
+        [~,~,maskArtery] = nonrigidregistration(similarM0,M0_ff_img,similarMaskArtery,fullfile(ToolBox.path_png,folder_steps),'Arteries') ;
 
     elseif mask_params.ForcedMasks == 1
         error("Cannot find similar Artery Mask because none given in the mask folder. Please create a similarMaskArtery.png file in the mask folder.");
@@ -338,7 +338,7 @@ if mask_params.ImproveMask
             similarMaskVein = imresize(similarMaskVein, [numX, numY], "nearest");
         end
 
-        [~,~,maskVein] = nonrigidregistration(M0_ff_img,similarM0,maskVein,similarMaskVein,fullfile(ToolBox.path_png,folder_steps),'Veins') ;
+        [~,~,maskVein] = nonrigidregistration(similarM0,M0_ff_img,similarMaskVein,fullfile(ToolBox.path_png,folder_steps),'Veins') ;
 
 
     elseif mask_params.ForcedMasks == 1
