@@ -42,6 +42,8 @@ veinParams.classes = mask_params.VenousClasses;
 minPixelSize = mask_params.MinPixelSize;
 forceVesselWidth = mask_params.ForceVesselWidth;
 
+
+
 % Load vesselness parameters
 bgWidth = params.json.PulseAnalysis.LocalBackgroundWidth;
 r1 = params.json.SizeOfField.SmallRadiusRatio;
@@ -54,13 +56,15 @@ cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
 cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
 cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [1 1 1], 1);
 
-% 1) First Masks and Correlation
-
 M0_ff_img = squeeze(mean(M0_ff_video, 3));
 saveImage(M0_ff_img, 'all_10_M0.png', isStep = true)
 
 maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 saveImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, 'all_11_maskDiaphragm.png', isStep = true)
+
+if mask_params.AutoCompute 
+
+% 1) First Masks and Correlation
 
 M0_video = M0_ff_video;
 A = ones(1, 1, numFrames);
@@ -313,80 +317,6 @@ if mask_params.ImproveMask
     maskArtery_no_import = maskArtery;
     maskVein_no_import = maskVein;
 
-    % 3) 2) a) Look for a target mask to register from
-
-    if isfile(fullfile(path, 'mask', 'similarMaskArtery.png')) && isfile(fullfile(path, 'mask', 'similarM0.png'))
-        similarMaskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'similarMaskArtery.png')), 3)) > 0;
-        similarM0 = mat2gray(mean(imread(fullfile(path, 'mask', 'similarM0.png')), 3));
-
-        if size(similarMaskArtery, 1) ~= maskCircle
-            similarMaskArtery = imresize(similarMaskArtery, [numX, numY], "nearest");
-        end
-
-        [~,~,maskArtery] = nonrigidregistration(similarM0,M0_ff_img,similarMaskArtery,fullfile(ToolBox.path_png,folder_steps),'Arteries') ;
-
-    elseif mask_params.ForcedMasks == 1
-        error("Cannot find similar Artery Mask because none given in the mask folder. Please create a similarMaskArtery.png file in the mask folder.");
-    end
-
-    if isfile(fullfile(path, 'mask', 'similarMaskVein.png')) && isfile(fullfile(path, 'mask', 'similarM0.png'))
-        similarMaskVein = mat2gray(mean(imread(fullfile(path, 'mask', 'similarMaskVein.png')), 3)) > 0;
-        similarM0 = mat2gray(mean(imread(fullfile(path, 'mask', 'similarM0.png')), 3));
-
-
-        if size(similarMaskVein, 1) ~= maskCircle
-            similarMaskVein = imresize(similarMaskVein, [numX, numY], "nearest");
-        end
-
-        [~,~,maskVein] = nonrigidregistration(similarM0,M0_ff_img,similarMaskVein,fullfile(ToolBox.path_png,folder_steps),'Veins') ;
-
-
-    elseif mask_params.ForcedMasks == 1
-        error("Cannot find similar Vein Mask because none given in the mask folder. Please create a similarMaskVein.png file in the mask folder.");
-    end
-
-    % 3) 2) b) Force Create Masks in case they exist
-    if (mask_params.ForcedMasks == -1 || mask_params.ForcedMasks == 1)
-
-        if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
-            maskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskArtery.png')), 3)) > 0;
-
-            if size(maskArtery, 1) ~= maskCircle
-                maskArtery = imresize(maskArtery, [numX, numY], "nearest");
-            end
-
-        elseif mask_params.ForcedMasks == 1
-            error("Cannot force Artery Mask because none given in the mask folder. Please create a forceMaskArtery.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
-        end
-
-        if isfile(fullfile(path, 'mask', 'forceMaskVein.png'))
-            maskVein = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskVein.png')), 3)) > 0;
-
-            if size(maskVein, 1) ~= maskCircle
-                maskVein = imresize(maskVein, [numX, numY], "nearest");
-            end
-
-        elseif mask_params.ForcedMasks == 1
-            error("Cannot force Vein Mask because none given in the mask folder. Please create a forceMaskVein.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
-        end
-
-    end
-
-    % 3) 3) Segmentation Scores Calculation
-
-    segmentationScores(maskArtery, maskVein);
-
-    % 3) 4) Segmention force width
-
-    if forceVesselWidth > 0
-        dilationSE = strel('disk', forceVesselWidth);
-        maskArtery = imdilate(bwskel(maskArtery), dilationSE);
-        maskVein = imdilate(bwskel(maskVein), dilationSE);
-
-        maskArtery = imdilate(bwskel(maskArtery), dilationSE);
-        maskVein = imdilate(bwskel(maskVein), dilationSE);
-    end
-
 else
 
     [mask_dilated, mask_closed, mask_opened, mask_widened] = clearMasks(maskArtery, ...
@@ -426,33 +356,74 @@ else
     maskArtery_no_import = maskArtery;
     maskVein_no_import = maskVein;
 
-    % 3) 2) Force Create Masks in case they exist
-    if (mask_params.ForcedMasks == -1 || mask_params.ForcedMasks == 1)
+end
 
-        if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
-            maskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskArtery.png')), 3)) > 0;
+end
 
-            if size(maskArtery, 1) ~= maskCircle
-                maskArtery = imresize(maskArtery, [numX, numY], "nearest");
-            end
+% 3) 2) a) Look for a target mask to register from
 
-        elseif mask_params.ForcedMasks == 1
-            error("Cannot force Artery Mask because none given in the mask folder. Please create a forceMaskArtery.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
+if (mask_params.RegisteredMasks == -1 || mask_params.RegisteredMasks == 1)
+
+if (isfile(fullfile(path, 'mask', 'similarMaskArtery.png')) && isfile(fullfile(path, 'mask', 'similarM0.png'))) ...
+        || (isfile(fullfile(path, 'mask', 'similarMaskVein.png')) && isfile(fullfile(path, 'mask', 'similarM0.png')))
+    M0_ff_img = squeeze(mean(M0_ff_video, 3));
+    similarM0 = mat2gray(mean(imread(fullfile(path, 'mask', 'similarM0.png')), 3));
+    [ux,uy] = nonrigidregistration(similarM0,M0_ff_img,fullfile(ToolBox.path_png,folder_steps),'Reg');
+
+end
+if (isfile(fullfile(path, 'mask', 'similarMaskArtery.png')) && isfile(fullfile(path, 'mask', 'similarM0.png')))
+    similarMaskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'similarMaskArtery.png')), 3)) > 0;
+    similarMaskArtery = imresize(similarMaskArtery, [numX, numY], "nearest");
+    [Xq, Yq] = meshgrid(1:numX, 1:numY);
+    maskArtery = interp2(single(similarMaskArtery), Xq + ux, Yq + uy, 'linear', 0)>0;
+end
+if isfile(fullfile(path, 'mask', 'similarMaskVein.png')) && isfile(fullfile(path, 'mask', 'similarM0.png'))
+    similarMaskVein = mat2gray(mean(imread(fullfile(path, 'mask', 'similarMaskVein.png')), 3)) > 0;
+    similarMaskVein = imresize(similarMaskVein, [numX, numY], "nearest");
+    [Xq, Yq] = meshgrid(1:numX, 1:numY);
+    maskVein = interp2(single(similarMaskVein), Xq + ux, Yq + uy, 'linear', 0)>0;
+end
+
+% 3) 2) b) Force Create Masks in case they exist
+if (mask_params.ForcedMasks == -1 || mask_params.ForcedMasks == 1)
+
+    if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
+        maskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskArtery.png')), 3)) > 0;
+
+        if size(maskArtery, 1) ~= maskCircle
+            maskArtery = imresize(maskArtery, [numX, numY], "nearest");
         end
 
-        if isfile(fullfile(path, 'mask', 'forceMaskVein.png'))
-            maskVein = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskVein.png')), 3)) > 0;
-
-            if size(maskVein, 1) ~= maskCircle
-                maskVein = imresize(maskVein, [numX, numY], "nearest");
-            end
-
-        elseif mask_params.ForcedMasks == 1
-            error("Cannot force Vein Mask because none given in the mask folder. Please create a forceMaskVein.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
-        end
-
+    elseif mask_params.ForcedMasks == 1
+        error("Cannot force Artery Mask because none given in the mask folder. Please create a forceMaskArtery.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
     end
 
+    if isfile(fullfile(path, 'mask', 'forceMaskVein.png'))
+        maskVein = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskVein.png')), 3)) > 0;
+
+        if size(maskVein, 1) ~= maskCircle
+            maskVein = imresize(maskVein, [numX, numY], "nearest");
+        end
+
+    elseif mask_params.ForcedMasks == 1
+        error("Cannot force Vein Mask because none given in the mask folder. Please create a forceMaskVein.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
+    end
+
+end
+
+% 3) 3) Segmentation Scores Calculation
+
+segmentationScores(maskArtery, maskVein);
+
+% 3) 4) Segmention force width
+
+if forceVesselWidth > 0
+    dilationSE = strel('disk', forceVesselWidth);
+    maskArtery = imdilate(bwskel(maskArtery), dilationSE);
+    maskVein = imdilate(bwskel(maskVein), dilationSE);
+
+    maskArtery = imdilate(bwskel(maskArtery), dilationSE);
+    maskVein = imdilate(bwskel(maskVein), dilationSE);
 end
 
 % 3) 5) Create Vessel and Background Mask
