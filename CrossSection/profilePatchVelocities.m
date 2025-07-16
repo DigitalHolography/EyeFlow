@@ -8,7 +8,7 @@ assert(isequal(size(v_profiles_cell), [rows, cols]), 'Size of v_profiles_cell mu
 numFrames = size(v_profiles_cell{1},2);
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 
-fi = figure("Visible", "off");
+fi = figure("Visible", "on");
 imshow(M0_ff_img, []);
 hold on;
 title(['Velocity Profiles Overlay - ' name]);
@@ -54,7 +54,7 @@ for circleIdx = 1:rows
         try
 
             selected_points = find(profile>max(profile(:))*0.3);
-            fitObj = fit(x_axis(selected_points), double(profile(selected_points)), 'a*(1 - ((x - b)/c)^2)', ...
+            fitObj = fit(x_axis(selected_points)', double(profile(selected_points)'), 'a*(1 - ((x - b)/c)^2)', ...
                 'StartPoint', [1, 0, profWidth/2]);
             plotData = fitObj(x_axis);
         catch e
@@ -65,12 +65,12 @@ for circleIdx = 1:rows
         % Plot profile
         x_plot = x + x_axis;
         y_data = y - profile * profHeight;     % Measured data (true profile)
-        y_fit  = y - plotData * profHeight;    % Fitted data
+        y_fit  = y - plotData(plotData>0) * profHeight;    % Fitted data
         
         % Plot directly on image (no text, no axes)
         hold on;
         plot(x_plot, y_data, 'k', 'LineWidth', 1);     % black for true data
-        plot(x_plot, y_fit, 'r', 'LineWidth', 1.5);    % red for fit
+        plot(x_plot(plotData>0), y_fit, 'r', 'LineWidth', 1.5);    % red for fit
         hold off;
     end
 end
