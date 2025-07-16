@@ -2,12 +2,12 @@ function [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, fig
 
 % Parameters
 params = ToolBox.getParams;
-if ~isnan(papillaDiameter) && ~isempty(papillaDiameter)
-    px_size = 1.8/papillaDiameter / (2 ^ params.json.Preprocess.InterpolationFactor);
-else
-    px_size = params.px_size;
-end
 
+if ~isnan(papillaDiameter) && ~isempty(papillaDiameter)
+    px_size = 1.8 / papillaDiameter / (2 ^ params.json.Preprocess.InterpolationFactor) / 2;
+else
+    px_size = params.px_size / 2;
+end
 
 % Compute velocity profile
 profile = mean(subImg, 1, 'omitnan');
@@ -27,8 +27,8 @@ c1 = max(ceil(centt + (r1 / px_size)), 1);
 c2 = min(floor(centt + (r2 / px_size)), L);
 
 % Determine cross-section width
-D = abs(r1 - r2) / px_size;
-dD = sqrt(r1_err ^ 2 + r2_err ^ 2) / px_size;
+D = abs(r1 - r2) / px_size; % in pixels
+dD = sqrt(r1_err ^ 2 + r2_err ^ 2) / px_size; % in pixels
 
 if (D > sqrt(2) * L) || (rsquare < 0.6)
     D = NaN;

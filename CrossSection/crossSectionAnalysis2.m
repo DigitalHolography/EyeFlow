@@ -35,10 +35,13 @@ if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
     xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);
     yRange = round(-subImgHW / 2) + loc(2):round(subImgHW / 2) + loc(2);
     tmp = NaN(length(xRange), length(yRange));
-    tmp(1:size(subImg, 1), 1:size(subImg, 2)) = subImg; 
+    tmp(1:size(subImg, 1), 1:size(subImg, 2)) = subImg;
     subImg = tmp;
     clear tmp
 end
+
+% Interpolate the subImage two times
+subImg = imresize(subImg, 2, 'bilinear');
 
 % Crop and rotate sub-image
 subImg = cropCircle(subImg);
@@ -80,6 +83,8 @@ for t = 1:numFrames
         subFrame = tmp;
         clear tmp
     end
+
+    subFrame = imresize(subFrame, 2, 'bilinear');
 
     subFrame = cropCircle(subFrame);
     subFrame = imrotate(subFrame, tilt_angle, 'bilinear', 'crop');
