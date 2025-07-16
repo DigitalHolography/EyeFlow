@@ -82,7 +82,7 @@ if ~exist(outputDir, 'dir')
 end
 % Save figure
 saveas(gcf, fullfile(outputDir, ...
-    sprintf("%s_velocities_profogram_overlay_%s.png", ToolBox.folder_name, name)));
+    sprintf("%s_velocities_profiles_overlay_%s.png", ToolBox.folder_name, name)));
 close(fi);
 %% Time plot (gif)
 end
