@@ -106,6 +106,7 @@ D_cell = cell(numCircles, numBranches); % Cross-section width
 D_se_cell = cell(numCircles, numBranches); % Standard deviation of cross-section width
 rejected_mask = zeros(numX, numY, 3); % Cross-section mask
 subImg_cell = cell(numCircles, numBranches); % Sub-images of vessels
+histo_v_cell = cell(numCircles, numBranches); % Histograms of vessel velocities
 
 % Cross-Section Analysis of the arteries
 parfor c_idx = 1:numCircles
@@ -122,6 +123,7 @@ parfor c_idx = 1:numCircles
             v_se_cell{c_idx, b_idx} = results.v_se;
             v_profiles_cell{c_idx, b_idx} = results.v_profiles;
             v_profiles_se_cell{c_idx, b_idx} = results.v_profiles_se;
+            histo_v_cell{c_idx, b_idx} = results.v_histo;
             Q_cell{c_idx, b_idx} = results.Q;
             Q_se_cell{c_idx, b_idx} = results.Q_se;
 
@@ -167,6 +169,7 @@ Q_results.branchQSE = branchQSE;
 Q_results.radiusQ = radiusQ;
 Q_results.radiusQSE = radiusQSE;
 Q_results.labeledVessels = labeledVessels;
+Q_results.histo_v_cell = histo_v_cell;
 
 fprintf("    3. Cross-sections analysis for all circles (%s) output took %ds\n", vesselName, round(toc))
 

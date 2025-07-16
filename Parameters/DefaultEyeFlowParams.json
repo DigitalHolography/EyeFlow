@@ -105,6 +105,7 @@
     "circleImages": true,
     "widthHistogram": true,
     "BloodFlowProfiles": true,
+    "BloodFlowHistograms": true,
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
     "InterpolationPoints": 50
