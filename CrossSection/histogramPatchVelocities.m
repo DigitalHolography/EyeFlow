@@ -5,7 +5,7 @@ ToolBox = getGlobalToolBox;
 [rows, cols] = size(locsLabel);
 assert(isequal(size(histo_v_cell), [rows, cols]), 'Size of histo_v_cell must match locsLabel');
 
-figure;
+figure(45);
 imshow(M0_ff_img, []);
 hold on;
 title(['Velocity Histograms Overlay - ' name]);
@@ -67,4 +67,5 @@ end
 % Save figure
 saveas(gcf, fullfile(outputDir, ...
     sprintf("%s_velocities_histogram_overlay_%s.png", ToolBox.folder_name, name)));
+close(45);
 end

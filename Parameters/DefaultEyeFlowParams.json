@@ -106,6 +106,7 @@
     "widthHistogram": true,
     "BloodFlowProfiles": true,
     "BloodFlowHistograms": true,
+    "BloodFlowProfilesOverlay": true,
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
     "InterpolationPoints": 50

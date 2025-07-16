@@ -67,6 +67,9 @@ end
 if params.json.CrossSectionsFigures.BloodFlowHistograms
     histogramPatchVelocities(histo_v_cell,name,locsLabel,maskLabel,mean(M0_ff_video,3))
 end
+if params.json.CrossSectionsFigures.BloodFlowProfilesOverlay
+    profilePatchVelocities(v_profiles_cell,name,locsLabel,maskLabel,mean(M0_ff_video,3))
+end
 
 fprintf("    1. Blood Volume Rate Figures (%s) took %ds\n", name, round(toc))
 
@@ -113,6 +116,7 @@ end
 if params.json.CrossSectionsFigures.ARIBVR
     ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), 'crossSectionsAnalysis', dQ_t);
 end
+
 
 fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
 
