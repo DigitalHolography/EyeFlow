@@ -90,7 +90,7 @@ title('velocity profile and laminar flow model fit');
 
 % Save figure
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', 'profiles', ...
+exportgraphics(gca, fullfile(ToolBox.path_png, 'local', 'velocityProfiles', ...
     sprintf('%s_poiseuille_profile_%s.png', ToolBox.folder_name, figName)))
 
 % Close figure

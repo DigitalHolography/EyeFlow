@@ -22,6 +22,6 @@ end
 axis image; axis off;
 
 % Export the figure as a PNG with a white background
-exportgraphics(gcf, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_v_mean_%s.png", ToolBox.folder_name, name)), 'Resolution', 300);
+exportgraphics(gcf, fullfile(ToolBox.path_png, 'global', sprintf("%s_v_mean_%s.png", ToolBox.folder_name, name)), 'Resolution', 300);
 
 end

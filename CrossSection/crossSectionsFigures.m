@@ -76,17 +76,17 @@ end
 
 if params.json.CrossSectionsFigures.circleImages
 
-    if ~isfolder(fullfile(ToolBox.path_png, 'crossSectionsAnalysis', 'sectionsImages'))
-        mkdir(fullfile(path_png, 'crossSectionsAnalysis'), 'sectionsImages')
-        mkdir(fullfile(path_eps, 'crossSectionsAnalysis'), 'sectionsImages')
-        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'widths')
-        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'widths')
-        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'num')
-        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'num')
-        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'bvr')
-        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'bvr')
-        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
-        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
+    if ~isfolder(fullfile(ToolBox.path_png, 'local', 'vesselSegmentImages'))
+        mkdir(fullfile(path_png, 'local'), 'vesselSegmentImages')
+        mkdir(fullfile(path_eps, 'local'), 'vesselSegmentImages')
+        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'lumenDiameter')
+        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'lumenDiameter')
+        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'vesselSegmentId')
+        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'vesselSegmentId')
+        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'bloodVolumeRate')
+        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'bloodVolumeRate')
+        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'velocity')
+        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'velocity')
     end
 
     circleImages(M0_ff_img, xy_barycenter, A_cell, Q_cell, v_cell, maskLabel, locsLabel, name)
@@ -107,7 +107,7 @@ if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesInd
 end
 
 if params.json.CrossSectionsFigures.ARIBVR
-    ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), 'crossSectionsAnalysis', dQ_t);
+    ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), 'local', dQ_t);
 end
 
 fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))

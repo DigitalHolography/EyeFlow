@@ -148,7 +148,7 @@ for c_idx = 1:numCircles
                 diameter_dias_array(idx, c_idx, b_idx) = diameters_dias{idx}{c_idx, b_idx};
                 diameter_se_dias_array(idx, c_idx, b_idx) = diameters_se_dias{idx}{c_idx, b_idx};
             catch
-                
+
             end
 
         end
@@ -189,7 +189,7 @@ xlabel("Time (s)")
 ylabel("Lumen Diameter (µm)")
 axis padded
 xlim([0 numFrames * T])
-exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', ...
+exportgraphics(gca, fullfile(ToolBox.path_png, 'local', ...
     sprintf('%s_plot_diasys_diameter_%s.png', ToolBox.folder_name, vesselName)))
 
 %%
@@ -211,7 +211,7 @@ ylabel("\Delta Lumen Diameter (µm)")
 axis padded
 axP = axis;
 axis([0, numFrames * T, 0, axP(4)])
-exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', ...
+exportgraphics(gca, fullfile(ToolBox.path_png, 'local', ...
     sprintf('%s_plot_diasys_diameter_diff_%s.png', ToolBox.folder_name, vesselName)))
 
 end

@@ -3,7 +3,7 @@ function [medianWidth, avgWidth, stdWidth] = widthHistogram(width, width_std, ar
 ToolBox = getGlobalToolBox;
 
 isVal = cellfun(@(x) ~isempty(x) && ~(isnumeric(x) && isnan(x)), area);
-numValid = sum(isVal,'all');
+numValid = sum(isVal, 'all');
 
 [numCircles, numBranches] = size(area);
 area_mat = nan(numCircles, numBranches);
@@ -39,7 +39,7 @@ aa = axis;
 aa(4) = aa(4) * 1.14;
 axis(aa);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', sprintf("%s_%s", ToolBox.folder_name, sprintf('histogram_of_%s_section_width.png', name))))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_%s", ToolBox.folder_name, sprintf('histogram_of_%s_section_width.png', name))))
 
 %csv output of the widths
 T = table();

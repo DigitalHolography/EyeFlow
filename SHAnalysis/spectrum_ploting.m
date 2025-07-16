@@ -41,7 +41,7 @@ parfor frameIdx = 1:numFrames
     om_RMS_line.MarkerSize = 12;
     om_RMS_line.LineWidth = 1;
     om_RMS_line.Tag = 'f RMS';
-    text(0, I_f, 'f_{RMS}', 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom')
+    text(0, I_f, '\sigma_f', 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom')
 
     plot(axis_x, fftshift(log10(SH_bkg_t)), 'black--', 'LineWidth', 1.5, 'DisplayName', 'Background');
     om_RMS_line = line([-f_signal_bkg(frameIdx) f_signal_bkg(frameIdx)], [I_f_bkg I_f_bkg]);

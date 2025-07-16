@@ -27,15 +27,18 @@ end
 
 % Get dimensions
 [numCircles, numBranches] = size(v_cell);
-numFrames=0;
-i=1;
-while numFrames<=0 
+numFrames = 0;
+i = 1;
+
+while numFrames <= 0
     numFrames = size(v_cell{i}, 2);
-    i=i+1;
-    if i> size(v_cell,1)*size(v_cell,2);
+    i = i + 1;
+
+    if i > size(v_cell, 1) * size(v_cell, 2);
         warning("Velocity profiles cells are all empty.")
         break
     end
+
 end
 
 numInterp = params.json.CrossSectionsFigures.InterpolationPoints;
@@ -194,17 +197,17 @@ plot(w2w, f_dias.p1 * r_range .^ 2 + f_dias.p2 * r_range + f_dias.p3, ...
 warning('on', 'curvefit:fit:noStartPoint');
 
 % Finalize static plot
-axis('tight');
+xlim([-1 1]);
 ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
                1.07 * max([bounds_sys.upper, bounds_dias.upper])]);
-xlabel('wall-to-wall distance (a.u.)', 'FontSize', 14);
+xlabel('lumen cross-section (a.u.)', 'FontSize', 14);
 ylabel('Velocity (mm/s)', 'FontSize', 14);
 pbaspect([1.618 1 1]);
 box('on');
 set(gca, 'LineWidth', 2);
 
 % Export static figure
-outputDir = fullfile(ToolBox.path_png, 'crossSectionsAnalysis');
+outputDir = fullfile(ToolBox.path_png, 'local');
 
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
@@ -227,8 +230,9 @@ if exportVideos
 
     % Configure axes
     axis('tight');
+    xlim([-1 1]);
     ylim(get(gca, 'YLim'));
-    xlabel('wall-to-wall distance (a.u.)');
+    xlabel('lumen cross-section (a.u.)');
     ylabel('Velocity (mm/s)');
     pbaspect([1.618 1 1]);
     box('on');
