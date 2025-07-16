@@ -7,7 +7,7 @@ function ArterialWaveformAnalysis(signal, systolesIndexes, numInterp, name)
 %   numInterp - Number of interpolation points
 %   name - Signal type ('bvr' for blood volume rate, otherwise velocity)
 
-%% Initial Setup
+% Initial Setup
 ToolBox = getGlobalToolBox;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
@@ -29,7 +29,7 @@ else
     isBVR = false;
 end
 
-%% Signal Preprocessing
+% Signal Preprocessing
 try
     % Apply wavelet denoising if possible
     signal = double(wdenoise(signal, 4, ...
@@ -40,14 +40,19 @@ catch
     signal = double(signal);
 end
 
-%% Cycle Analysis
-[one_cycle_signal, avgLength] = interpSignal(signal, systolesIndexes, numInterp);
+% Apply bandpass filter (0.5-15 Hz) as suggested
+[b, a] = butter(4, 15/(fs/2), 'low');
+filtered_signal = filtfilt(b, a, signal);
+
+% Cycle Analysis
+[one_cycle_signal, avgLength] = interpSignal(filtered_signal, systolesIndexes, numInterp);
 
 % Create time vector for one cycle
 dt = (t(2) - t(1));
 pulseTime = linspace(0, dt * avgLength, numInterp);
 
-%% Feature Detection
+% Feature Detection
+
 % Adaptive peak detection parameters
 min_peak_height = max(one_cycle_signal) * 0.3; % 30 % of max as threshold
 min_peak_distance = floor(length(one_cycle_signal) / 4); % 1/4 cycle minimum
@@ -60,11 +65,12 @@ min_peak_distance = floor(length(one_cycle_signal) / 4); % 1/4 cycle minimum
     'SortStr', 'descend'); % Sort by amplitude
 
 % Initialize all output variables
-systoleDuration = NaN;
+dicroticNotchTime = NaN;
 diastoleDuration = NaN;
 systolicUpstroke = peaks(1) - one_cycle_signal(1);
 systolicDownstroke = NaN;
 diastolicRunoff = NaN;
+dicroticNotchIndex = NaN;
 notch = NaN;
 locs_notch = NaN;
 
@@ -84,7 +90,8 @@ if length(peaks) > 1
         diastolicRunoff = notch - one_cycle_signal(end); % End of cycle
 
         % Calculate durations
-        systoleDuration = pulseTime(locs_notch) - pulseTime(1);
+        dicroticNotchTime = pulseTime(locs_notch) - pulseTime(1);
+        dicroticNotchIndex = notch ./ peaks(1);
         diastoleDuration = pulseTime(end) - pulseTime(locs_notch);
     else
         notch = NaN; % Invalid notch
@@ -92,7 +99,7 @@ if length(peaks) > 1
 
 end
 
-%% Visualization
+% Visualization
 hFig = figure('Visible', 'on', 'Color', 'w');
 hold on;
 
@@ -169,12 +176,12 @@ xlabel('Time (s)');
 pbaspect([1.618 1 1]);
 set(gca, 'LineWidth', 2, 'Box', 'on');
 
-%% Save Results
+% Save Results
 exportgraphics(hFig, fullfile(ToolBox.path_png, folder, ...
     sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
 
-%% Spectral Analysis
+% Spectral Analysis
 % Perform spectral analysis on the original signal
 % Zero-pad the signal for better frequency resolution
 N = 16; % Padding factor
@@ -257,18 +264,19 @@ if ~isempty(s_locs) && s_locs(1) >= 0.5 && s_locs(1) <= 3
         'FontSize', 12);
 end
 
-%% Save Results
+% Save Results
 exportgraphics(hFig, fullfile(ToolBox.path_png, folder, ...
     sprintf("%s_ArterialSpectralAnalysis_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
 
-%% Export to JSON (only for velocity signals)
+% Export to JSON (only for velocity signals)
 if ~isBVR
-    ToolBox.Outputs.add('SystoleDuration', systoleDuration, 's');
+    ToolBox.Outputs.add('SystoleDuration', dicroticNotchTime, 's');
     ToolBox.Outputs.add('DiastoleDuration', diastoleDuration, 's');
     ToolBox.Outputs.add('SystolicUpstroke', systolicUpstroke, unit);
     ToolBox.Outputs.add('SystolicDownstroke', systolicDownstroke, unit);
     ToolBox.Outputs.add('DiastolicRunoff', diastolicRunoff, unit);
+%     ToolBox.Outputs.add('DicroticNotchIndex', dicroticNotchIndex, unit);
 end
 
 % Close the figure if not needed

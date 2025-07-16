@@ -116,7 +116,7 @@ end
 % 1) 2) Compute the barycenters and the circle mask
 
 maskCircle = diskMask(numX, numY, cropChoroidRadius, 'center', [x_c / numX, y_c / numY]);
-maskVesselnessClean = maskVesselness & bwareafilt(maskVesselness | maskCircle, 1, 8);
+maskVesselnessClean = maskVesselness & bwareafilt(maskVesselness | maskCircle, 1, 8) & maskDiaphragm;
 saveImage(maskVesselnessClean + maskCircle * 0.5, 'all_15_VesselMask_clear.png', isStep = true)
 
 %  1) 3) Compute first correlation
@@ -203,7 +203,7 @@ if mask_params.ImproveMask
         maskVesselness = (Systole_Frangi | Diastole_Frangi | Systole_Gabor | Diastole_Gabor) & maskDiaphragm;
     end
 
-    maskVesselnessClean = maskVesselness & bwareafilt(maskVesselness | maskCircle, 1, 8);
+    maskVesselnessClean = maskVesselness & bwareafilt(maskVesselness | maskCircle, 1, 8) & maskDiaphragm;
     saveImage(maskVesselnessClean + maskCircle * 0.5, 'all_20_VesselMask_clear.png', isStep = true)
 
     % 2) 2) Diastole-Systole Image

@@ -1,4 +1,4 @@
-function widthHistogram(width, width_std, area, name)
+function [medianWidth, avgWidth, stdWidth] = widthHistogram(width, width_std, area, name)
 
 ToolBox = getGlobalToolBox;
 

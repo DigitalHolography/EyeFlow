@@ -61,6 +61,9 @@ methods
         % Constructor for ExecutionClass.
         % Input: path - directory or .holo file path.
 
+    
+
+
         if ~isfolder(path) % If the input path is a .holo file
             [filepath, name, ~] = fileparts(path);
 
@@ -74,6 +77,12 @@ methods
             obj.directory = path;
             tmp_idx = regexp(path, '\');
             obj.filenames = obj.directory(tmp_idx(end - 1) + 1:end - 1);
+
+            if ~isfolder(fullfile(path, "raw"))
+
+                error('No raw file found at: %s\nPlease check folder path and filename.', path);
+
+            end
         end
 
         % Load parameters
@@ -265,10 +274,10 @@ methods
             fprintf("\n----------------------------------\nCross-Section Analysis\n----------------------------------\n");
             crossSectionAnalysisTimer = tic;
 
-            [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'Artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter);
+            [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'Artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
 
             if veins_analysis
-                [obj.Q_results_V] = crossSectionsAnalysis(obj.maskVein, 'Vein', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter);
+                [obj.Q_results_V] = crossSectionsAnalysis(obj.maskVein, 'Vein', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
             end
 
             obj.is_crossSectionAnalyzed = true;

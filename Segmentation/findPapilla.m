@@ -2,9 +2,9 @@ function [found, diameter_x, diameter_y, x_center, y_center] = findPapilla(M0img
 %Returns the diameter of the papilla measured
 
 try
-    if ~isfile('Models/detector.mat')
-        url = 'https://huggingface.co/Raph9/papillaDetector/resolve/main/detector.mat';
-        websave('Models/detector.mat', url);
+    if ~isfile('Models/OpticDiscDetector.mat')
+        url = 'https://huggingface.co/DigitalHolography/EyeFlow_OpticDiscDetector/resolve/main/OpticDiscDetector.mat';
+        websave('Models/OpticDiscDetector.mat', url);
     end
 catch ME
     disp(ME)
@@ -16,7 +16,7 @@ catch ME
     return
 end
 
-data = load('Models/detector.mat');
+data = load('Models/OpticDiscDetector.mat');
 
 M0img = imresize(M0img, [512, 512]);
 
@@ -67,7 +67,7 @@ if ~isempty(bboxes)
     hold on;
     plot(x_ellipsis, y_ellipsis, 'r', 'LineWidth', 2);
     axis equal;
-    exportgraphics(gcf,fullfile(ToolBox.path_png,sprintf('%s_papilla.png',ToolBox.folder_name)));
+    exportgraphics(gcf,fullfile(ToolBox.path_png,sprintf('%s_opticdisc.png',ToolBox.folder_name)));
 
 
     
