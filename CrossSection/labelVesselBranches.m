@@ -44,4 +44,9 @@ end
 labeledVessels = labeledVessels .* maskSection;
 [labeledVessels, n] = bwlabel(labeledVessels); % Final labeling
 
+% Remove small spots 
+minAreaThreshold = 20; % Adjust this value as needed
+labeledVessels = bwareaopen(labeledVessels, minAreaThreshold);
+[labeledVessels, n] = bwlabel(labeledVessels); % Relabel after removal
+
 end
