@@ -49,7 +49,7 @@ curve1 = profile + dprofile;
 curve2 = profile - dprofile;
 
 % Create figure
-f = figAspect;
+f = figure("Visible", "off", "Color", 'w');
 
 % Plot confidence interval
 Color_std = [0.7, 0.7, 0.7]; % Gray color for confidence interval
@@ -86,7 +86,7 @@ set(gca, 'PlotBoxAspectRatio', [1.618 1 1])
 % Add labels and title
 xlabel('Position (µm)');
 ylabel('Velocity (mm/s)');
-title('velocity profile and laminar flow model fit');
+fontsize(gca, 14, 'points')
 
 % Save figure
 

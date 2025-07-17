@@ -93,7 +93,7 @@ if params.json.CrossSectionsFigures.circleImages
 end
 
 if params.json.CrossSectionsFigures.widthHistogram
-    widthHistogram(D_cell, dD_cell, A_cell, name);
+    [~, avgWidth, stdWidth] = widthHistogram(D_cell, dD_cell, A_cell, name);
 end
 
 fprintf("    2. Sections Images Figures (%s) took %ds\n", name, round(toc))
@@ -109,6 +109,15 @@ end
 if params.json.CrossSectionsFigures.ARIBVR
     ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), 'local', dQ_t);
 end
+
+% Define parameters with uncertainties
+deltaP = [6786, 280];          % Pa
+avg_r = avgWidth * 1e-6 / 2;
+std_r = stdWidth * 1e-6 / 2;
+r = [avg_r, std_r];            % m
+L = [5e-3, 1e-3];              % m
+
+calculateHemodynamicParameters(Q_t, dQ_t, deltaP, r, L, index_start, index_end);
 
 fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
 

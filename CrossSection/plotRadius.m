@@ -50,11 +50,11 @@ exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_mean_%s_radi
 figure("Visible", "off");
 hold on;
 
-plot(fullTime, mean(radiusQ, 1), 'k', 'LineWidth', 2);
-
 for circleIdx = 1:numCircles
     plot(fullTime, radiusQ(circleIdx, :));
 end
+
+plot(fullTime, mean(radiusQ, 1), 'k', 'LineWidth', 2);
 
 axis padded;
 axP = axis;
