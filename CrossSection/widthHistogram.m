@@ -1,19 +1,19 @@
-function [medianWidth, avgWidth, stdWidth] = widthHistogram(width, width_std, area, name)
+function [D_mid, D_avg, D_std] = widthHistogram(D, dD, A, name)
 
 ToolBox = getGlobalToolBox;
 
-isVal = cellfun(@(x) ~isempty(x) && ~(isnumeric(x) && isnan(x)), area);
+isVal = cellfun(@(x) ~isempty(x) && ~(isnumeric(x) && isnan(x)), A);
 numValid = sum(isVal, 'all');
 
-[numCircles, numBranches] = size(area);
+[numCircles, numBranches] = size(A);
 area_mat = nan(numCircles, numBranches);
 
 for cIdx = 1:numCircles
 
     for bIdx = 1:numBranches
 
-        if ~isempty(area{cIdx, bIdx})
-            area_mat(cIdx, bIdx) = area{cIdx, bIdx};
+        if ~isempty(A{cIdx, bIdx})
+            area_mat(cIdx, bIdx) = A{cIdx, bIdx};
         end
 
     end
@@ -21,47 +21,47 @@ for cIdx = 1:numCircles
 end
 
 area_mat = reshape(area_mat, 1, []);
-widths = 2 * sqrt(area_mat / pi) * 1000;
+diameters = 2 * sqrt(area_mat / pi) * 1000;
 
 % Remove outliers (beyond ±3σ)
-temp_avg = mean(widths, 'omitnan');
-temp_std = std(widths, 'omitnan');
-valid_idx = (widths >= (temp_avg - 3*temp_std)) & (widths <= (temp_avg + 3*temp_std));
-widths = widths(valid_idx);
+temp_avg = mean(diameters, 'omitnan');
+temp_std = std(diameters, 'omitnan');
+valid_idx = (diameters >= (temp_avg - 3*temp_std)) & (diameters <= (temp_avg + 3*temp_std));
+diameters = diameters(valid_idx);
 
 figure("Visible", "off")
-histogram(widths, 20, FaceColor = 'k', Normalization = 'probability');
+histogram(diameters, 20, FaceColor = 'k', Normalization = 'probability');
 hold on
 
-medianWidth = median(widths, "omitnan");
-avgWidth = mean(widths, "omitnan");
-stdWidth = std(widths, "omitnan");
+D_mid = median(diameters, "omitnan");
+D_avg = mean(diameters, "omitnan");
+D_std = std(diameters, "omitnan");
 
 % Create Gaussian distribution overlay
 x = linspace(0, 200, 1000);
-gaussian = normpdf(x, avgWidth, stdWidth);
+gaussian = normpdf(x, D_avg, D_std);
 % Scale Gaussian to match histogram probability
 gaussian = gaussian * (max(ylim)/max(gaussian)) * 0.8; 
 plot(x, gaussian, 'k-', 'LineWidth', 2);
 
-xline(medianWidth, '--', sprintf('%.0f µm', medianWidth), 'Linewidth', 2)
+xline(D_mid, '--', sprintf('%.0f µm', D_mid), 'Linewidth', 2)
 set(gca, 'Linewidth', 2)
 pbaspect([1.618 1 1]);
-xlabel("lumen cross section width (µm)")
+xlabel("lumen cross section diameter (µm)")
 ylabel("probability")
 xlim([0 200]) % Set x-axis limits as requested
 
 % Add annotation with μ and σ values
-annotationText = sprintf('μ = %.1f µm\nσ = %.1f µm', avgWidth, stdWidth);
+annotationText = sprintf('Average = %.1f µm\nSpread = %.1f µm\nMedian = %.1f µm', D_avg, D_std, D_mid);
 annotation('textbox', [0.15 0.7 0.1 0.1], 'String', annotationText, ...
            'FitBoxToText', 'on', 'BackgroundColor', 'white', ...
-           'EdgeColor', 'black', 'LineWidth', 1, 'FontSize', 10);
+           'EdgeColor', 'none', 'LineWidth', 1, 'FontSize', 10);
 
 aa = axis;
 aa(4) = aa(4) * 1.14;
 axis(aa);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_%s", ToolBox.folder_name, sprintf('histogram_of_%s_section_width.png', name))))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_%s", ToolBox.folder_name, sprintf('histogram_of_%s_section_diameter.png', name))))
 
 %csv output of the widths
 T = table();
@@ -70,9 +70,9 @@ for cIdx = 1:numCircles
 
     for bIdx = 1:numBranches
 
-        if ~isempty(width{cIdx, bIdx})
-            T.(sprintf('Width_R%d_S%d_%s', cIdx, bIdx, name)) = width{cIdx, bIdx};
-            T.(sprintf('STD_Width_R%d_S%d_%s', cIdx, bIdx, name)) = width_std{cIdx, bIdx};
+        if ~isempty(D{cIdx, bIdx})
+            T.(sprintf('Width_R%d_S%d_%s', cIdx, bIdx, name)) = D{cIdx, bIdx};
+            T.(sprintf('STD_Width_R%d_S%d_%s', cIdx, bIdx, name)) = dD{cIdx, bIdx};
         end
 
     end
@@ -83,13 +83,13 @@ writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'Width
 
 % New
 if contains(name, 'Artery')
-    ToolBox.Outputs.add('ArterialDiameterAverage', avgWidth, 'µm');
-    ToolBox.Outputs.add('ArterialDiameterMedian', medianWidth, 'µm');
-    ToolBox.Outputs.add('ArterialDiameterSpread', stdWidth, 'µm');
+    ToolBox.Outputs.add('ArterialDiameterAverage', D_avg, 'µm');
+    ToolBox.Outputs.add('ArterialDiameterMedian', D_mid, 'µm');
+    ToolBox.Outputs.add('ArterialDiameterSpread', D_std, 'µm');
     ToolBox.Outputs.add('ArterialValidSections', numValid, '');
 else
-    ToolBox.Outputs.add('VenousDiameterAverage', avgWidth, 'µm');
-    ToolBox.Outputs.add('VenousDiameterMedian', medianWidth, 'µm');
+    ToolBox.Outputs.add('VenousDiameterAverage', D_avg, 'µm');
+    ToolBox.Outputs.add('VenousDiameterMedian', D_mid, 'µm');
     ToolBox.Outputs.add('VenousValidSections', numValid, '');
 end
 
