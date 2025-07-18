@@ -112,10 +112,11 @@ end
 
 % Define parameters with uncertainties
 deltaP = [6176, 280];          % Pa
+deltaP = [1000, 100];          % (ONLY IDEAL L)
 avg_r = D_mid * 1e-6 / 2;
 std_r = D_std * 1e-6 / 2;
 r = [avg_r, std_r];            % m
-L = [3e-2, 2e-3];              % m (ONLY IDEAL L)
+L = [5e-3, 1e-3];              % m (ONLY IDEAL L)
 N = size(branchQ, 1);
 
 calculateHemodynamicParameters(Q_t, dQ_t, deltaP, r, L, index_start, index_end, N);

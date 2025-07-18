@@ -282,7 +282,10 @@ if veinsAnalysis
     VenousWaveformAnalysis(v_vein_signal, sysIdxList, 128, 'v_vein');
 end
 
-[time_lag, max_corr, lags, corr_vals] = arterial_venous_correlation(v_artery_signal, -v_vein_signal);
+if veinsAnalysis
+    % Calculate correlation between artery and vein signals
+    [time_lag, max_corr, lags, corr_vals] = arterial_venous_correlation(v_artery_signal, -v_vein_signal);
+end
 
 fprintf("    5. Resistivity and waveform analysis took %ds\n", round(toc));
 
@@ -324,13 +327,18 @@ maskVeinSection = maskVein & maskSection & ~maskAV;
 % Generate histograms
 histoVideoArtery = VelocityHistogram(v_RMS_video, maskArterySection, 'Artery');
 
+histoVideoVein = [];
+
 if veinsAnalysis
     histoVideoVein = VelocityHistogram(v_RMS_video, maskVeinSection, 'Vein');
 end
 
 % Generate combined visualizations
-createCombinedVisualizations(v_mean_RGB, histoVideoArtery, veinsAnalysis, histoVideoVein, ...
-    v_video_RGB, numFrames, exportVideos, ToolBox, folder);
+
+if veinsAnalysis
+    createCombinedVisualizations(v_mean_RGB, histoVideoArtery, veinsAnalysis, histoVideoVein, ...
+        v_video_RGB, numFrames, exportVideos, ToolBox, folder);
+end
 
 fprintf("    6. Visualization and output generation took %ds\n", round(toc));
 

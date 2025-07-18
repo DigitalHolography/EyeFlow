@@ -20,6 +20,7 @@ for cIdx = 1:numCircles
 
 end
 
+A_tot = mean(sum(area_mat, 2), 1) * 1000 * 1000;
 area_mat = reshape(area_mat, 1, []);
 diameters = 2 * sqrt(area_mat / pi) * 1000;
 
@@ -87,10 +88,13 @@ if contains(name, 'Artery')
     ToolBox.Outputs.add('ArterialDiameterMedian', D_mid, 'µm');
     ToolBox.Outputs.add('ArterialDiameterSpread', D_std, 'µm');
     ToolBox.Outputs.add('ArterialValidSections', numValid, '');
+    ToolBox.Outputs.add('TotalArterialSections', A_tot, 'µm²');
 else
     ToolBox.Outputs.add('VenousDiameterAverage', D_avg, 'µm');
     ToolBox.Outputs.add('VenousDiameterMedian', D_mid, 'µm');
+    ToolBox.Outputs.add('VenousDiameterSpread', D_std, 'µm');
     ToolBox.Outputs.add('VenousValidSections', numValid, '');
+    ToolBox.Outputs.add('TotalVenousSections', A_tot, 'µm²');
 end
 
 end

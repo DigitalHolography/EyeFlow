@@ -43,7 +43,7 @@ end
 
 % Core Calculations
 % Resistance (R = ΔP/Q)
-R_mean = deltaP_mean / Q_mean;
+R_mean = deltaP_mean * N / Q_mean;
 R_std = R_mean * sqrt((deltaP_std/deltaP_mean)^2 + (Q_std/Q_mean)^2);
 
 % Viscosity (μ = πr⁴ΔP/(8LQ))
