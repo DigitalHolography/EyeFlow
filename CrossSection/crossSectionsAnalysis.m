@@ -173,6 +173,7 @@ Q_results.radiusQ = radiusQ;
 Q_results.radiusQSE = radiusQSE;
 Q_results.labeledVessels = labeledVessels;
 Q_results.histo_v_cell = histo_v_cell;
+Q_results.rejected_mask = rejected_mask;
 
 fprintf("    3. Cross-sections analysis for all circles (%s) output took %ds\n", vesselName, round(toc))
 
