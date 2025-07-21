@@ -64,7 +64,7 @@ if veinsAnalysis
 
     % Average Image
     v_mean_RGB = flowMapImg(v_mean_rescaled, {maskArtery, maskVein, maskAV}, {cmapArtery, cmapVein, cmapAV}, background = M0_ff_image, circles = circles);
-    imwrite(v_mean_RGB, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.folder_name, 'v_mean.png')))
+    imwrite(v_mean_RGB, fullfile(ToolBox.path_png, 'global', sprintf("%s_%s", ToolBox.folder_name, 'v_mean.png')))
 
     % Gif frame generation
     if exportVideos
@@ -82,7 +82,7 @@ else
 
     % Average Image
     v_mean_RGB = flowMapImg(v_mean_rescaled, {maskArtery}, {cmapArtery}, background = M0_ff_image, circles = circles);
-    imwrite(v_mean_RGB, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.folder_name, 'v_mean.png')))
+    imwrite(v_mean_RGB, fullfile(ToolBox.path_png, 'global', sprintf("%s_%s", ToolBox.folder_name, 'v_mean.png')))
 
     % Gif frame generation
     if exportVideos

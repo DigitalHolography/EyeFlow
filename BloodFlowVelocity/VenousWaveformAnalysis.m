@@ -1,112 +1,127 @@
-function VenousWaveformAnalysis(signal, t, sysIdxList, numInterp, name, ToolBox, cshiftn)
-%VenousWaveformAnalysis Output figures and signal from venous analysis
+function VenousWaveformAnalysis(signal, systolesIndexes, numInterp, name)
+% VenousWaveformAnalysis Analyzes venous waveform signals (velocity or blood volume rate)
+%
+% Inputs:
+%   signal - Input waveform signal
+%   systolesIndexes - Indices of systolic peaks
+%   numInterp - Number of interpolation points
+%   name - Signal type ('bloodVolumeRate' for blood volume rate, otherwise velocity)
 
+% Initial Setup
+ToolBox = getGlobalToolBox;
+numFrames = length(signal);
+fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
+t = linspace(0, numFrames / fs, numFrames);
+
+cDark = [0 0 1];
+cLight = [0.5 0.5 1];
+
+% Set parameters based on signal type
 if strcmp(name, "bvr")
     y_label = 'Blood Volume Rate (µL/min)';
-    folder = 'crossSectionsAnalysis';
+    folder = 'local';
     unit = 'µL/min';
+    isBVR = true;
 else
     y_label = 'Velocity (mm/s)';
-    folder = 'bloodFlowVelocity';
+    folder = 'global';
     unit = 'mm/s';
+    isBVR = false;
 end
 
-% Cycle Analysis
-
+% Signal Preprocessing
 try
-    signal = double(wdenoise(signal));
+    % Apply wavelet denoising if possible
+    signal = double(wdenoise(signal, 4, ...
+        'Wavelet', 'sym4', ...
+        'DenoisingMethod', 'Bayes', ...
+        'ThresholdRule', 'Median'));
 catch
     signal = double(signal);
 end
 
-[one_cycle_signal, avgLength] = interpSignal(signal, sysIdxList, numInterp);
+% Apply bandpass filter (0.5-15 Hz) as suggested
+[b, a] = butter(4, 15 / (fs / 2), 'low');
+filtered_signal = filtfilt(b, a, signal);
 
-% we can use the cshiftn calculated for the veins to have a simultaneous interpolated waveforms plot
-if nargin < 8
-    [~, amin] = min(one_cycle_signal);
-    cshiftn = mod(numInterp - amin, numInterp) + 1;
-end
+% Cycle Analysis
+[one_cycle_signal, avgLength] = interpSignal(filtered_signal, systolesIndexes, numInterp);
 
-signal_shifted = circshift(one_cycle_signal, cshiftn);
-signal_shifted(end + 1) = signal_shifted(1);
-
+% Create time vector for one cycle
 dt = (t(2) - t(1));
 pulseTime = linspace(0, dt * avgLength, numInterp);
-pulseTime(end + 1) = pulseTime(end) + dt;
-figure("Visible", "off"), plot(pulseTime, signal_shifted, 'k', 'LineWidth', 2)
+
+% Feature Detection
+
+% Find extremes
+[peak, loc_peak] = max(one_cycle_signal);
+[trough, loc_trough] = min(one_cycle_signal);
+
+% Visualization
+hFig = figure('Visible', 'on', 'Color', 'w');
+plot(pulseTime, one_cycle_signal, 'k', 'LineWidth', 2)
 hold on
 
-axis padded
-axP = axis;
-axis tight
+% Add reference lines and annotations
+T_peak = pulseTime(loc_peak);
+xline(T_peak, 'k--', sprintf("%.2f s", T_peak), ...
+    'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+xline(dt * avgLength, 'k--', sprintf("%.2f s", dt * avgLength), ...
+    'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+yline(peak, 'k--', sprintf("%.1f %s", peak, unit), ...
+    'LineWidth', 1.5, 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+T_Min = pulseTime(loc_trough);
+xline(T_Min, 'k--', sprintf("%.2f s", T_Min), ...
+    'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+yline(trough, 'b--', sprintf("%.1f %s", trough, unit), ...
+    'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+padded_signal = [one_cycle_signal(floor(numInterp / 2) + 1:end), ...
+                     one_cycle_signal, ...
+                     one_cycle_signal(1:floor(numInterp / 2))];
+padded_time = [linspace(- dt * avgLength / 2, -dt, round(numInterp / 2)), ...
+                   pulseTime, ...
+                   linspace(dt * (avgLength + 1), dt * (avgLength * 3/2), round(numInterp / 2))];
+
+% Main signal and gradient plots
+plot(padded_time, padded_signal, 'Color', [0.85 0.85 0.85], 'LineWidth', 2)
+plot(pulseTime, one_cycle_signal, 'k', 'LineWidth', 2);
+
+% Plot detected features
+scatter(pulseTime(loc_peak), peak, 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
+scatter(pulseTime(loc_trough), trough, 100, 'filled', 'MarkerFaceColor', cLight, 'MarkerEdgeColor', 'k');
+
+% Configure axes
+axis tight;
 axT = axis;
-axis([axT(1), axT(2), 0, axP(4)])
+axis padded;
+axP = axis;
+axis([axT(1), axT(2), axP(3) - 0.2 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
 
-ylabel(y_label)
-xlabel('Time (s)')
-pbaspect([1.618 1 1])
-set(gca, 'LineWidth', 2), box on
+ylabel(y_label);
+xlabel('Time (s)');
+pbaspect([1.618 1 1]);
+set(gca, 'LineWidth', 2, 'Box', 'on');
 
-[peaks, locs_peaks] = findpeaks(signal_shifted, 'MinPeakWidth', numInterp / 2);
-
-Max = max(signal_shifted);
-Min = min(signal_shifted);
-Range = Max - Min;
-
-% --- Ascent Time Detection (Fixed) ---
-ascent_value = (Max - 0.05 * Range);
-
-% Find zero-crossings where signal_shifted rises above ascent_value
-crossings = find(diff(sign(signal_shifted - ascent_value)) > 0);
-
-if ~isempty(crossings)
-    index_ascent = crossings(1);
-else
-    % Fallback: Use the minimum if no crossing exists
-    [~, index_ascent] = min(signal_shifted);
-end
-
-yline(ascent_value, 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
-xline(pulseTime(index_ascent), 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
-
-% --- Descent Time Detection (Fixed) ---
-descent_value = (Min + 0.05 * Range);
-% Find last crossing where signal_shifted falls below descent_value
-crossings = find(diff(sign(signal_shifted - descent_value)) < 0);
-
-if ~isempty(crossings)
-    index_descent = crossings(end);
-else
-    % Fallback: Use the maximum if no crossing exists
-    [~, index_descent] = max(signal_shifted);
-end
-
-yline(descent_value, 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
-xline(pulseTime(index_descent), 'k--', 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom', 'Color', [0.4 0.4 0.4])
-
-scatter(pulseTime(locs_peaks), peaks, 'r')
-
-if ~isempty(locs_peaks)
-    T_peak = pulseTime(locs_peaks(1));
-else
-    T_peak = NaN;
-end
-
-T_ascent = pulseTime(index_ascent);
-T_descent = pulseTime(index_descent);
-
-exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_VenousWaveformAnalysis_%s.png", ToolBox.folder_name, name)))
+% Save Results
+exportgraphics(hFig, fullfile(ToolBox.path_png, folder, ...
+    sprintf("%s_VenousWaveformAnalysis_%s.png", ToolBox.folder_name, name)), ...
+    'Resolution', 300);
 
 % Export to JSON
-if ~strcmp(name, "bvr") % only for the velocity signal
+if ~isBVR
 
-    ToolBox.Outputs.add('TimetoPeakFromMinVein', T_peak, 's');
-    ToolBox.Outputs.add('TimetoAscentFromMinVein', T_ascent, 's');
-    ToolBox.Outputs.add('TimetoDescentToMinVein', T_descent, 's');
+%     ToolBox.Outputs.add('TimetoPeakFromMinVein', T_peak, 's');
+%     ToolBox.Outputs.add('TimetoAscentFromMinVein', T_ascent, 's');
+%     ToolBox.Outputs.add('TimetoDescentToMinVein', T_descent, 's');
 
 end
 
-if strcmp(name, "bvr")
+if isBVR
     % ToolBox.Outputs.add('SystoleDurationBvr', systoleDuration, 's'); % pour l'instant n'existe pas comme sortie car pas d'info en plus forcément
     % ToolBox.Outputs.add('DiastoleDurationBvr', diastoleDuration, 's');
     % ToolBox.Outputs.add('SystolicUpstrokeBvr', systolicUpstroke, unit);

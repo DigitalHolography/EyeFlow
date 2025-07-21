@@ -10,7 +10,7 @@ if isempty(interp_BvrT)
     return
 end
 
-dt = (avgLength / 60)/(numInterp - 1);
+dt = (avgLength / 60) / (numInterp - 1);
 pulseTime = linspace(0, avgLength / 60, numInterp);
 
 [mindiastole_bvr_value, amin] = min(interp_BvrT);
@@ -89,6 +89,7 @@ stroke_volume_value = stroke_volume_value + (sum(interp_BvrT(max(amin, 1):end)) 
 total_volume_value = sum(interp_BvrT) * dt / 60 * 1000;
 
 dim = [0.2 0.5 0.3 0.3];
+
 if strcmp(name, 'Artery')
     str = sprintf("Retinal Stroke Volume : %02.0f nL and Total Volume : %02.0f nL", stroke_volume_value, total_volume_value);
     annotation('textbox', dim, 'String', str, 'FitBoxToText', 'on', 'BackgroundColor', 'w');
@@ -97,9 +98,9 @@ else
     annotation('textbox', dim, 'String', str, 'FitBoxToText', 'on', 'BackgroundColor', 'w');
 end
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', ...
+exportgraphics(gca, fullfile(ToolBox.path_png, 'local', ...
     sprintf("%s_strokeAndTotalVolume_%s.png", ToolBox.folder_name, name)))
-exportgraphics(gca, fullfile(ToolBox.path_eps, 'crossSectionsAnalysis', ...
+exportgraphics(gca, fullfile(ToolBox.path_eps, 'local', ...
     sprintf("%s_strokeAndTotalVolume_%s.eps", ToolBox.folder_name, name)))
 
 fileID = fopen(fullfile(ToolBox.path_txt, sprintf('%s_EF_main_outputs.txt', ToolBox.folder_name)), 'a');

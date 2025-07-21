@@ -13,7 +13,7 @@ fullTime = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames
 cDark = [1 0 0];
 cLight = [1 0.5 0.5];
 
-[sys_index_list, fullPulse, sys_max_list, sys_min_list] = find_systole_index(M0_video, maskArtery);
+[sys_index_list, fullPulse, ~, ~] = find_systole_index(M0_video, maskArtery);
 
 fullPulse = fullPulse';
 
@@ -33,16 +33,14 @@ end
 
 figAspect("Visible", 0);
 hold on
-% 
-% numSysMax = numel(sys_max_list); % number of systoles
-% numSysMin = numel(sys_min_list); % number of systoles
 numSys = numel(sys_index_list); % number of systoles
-% fpCycleMax = round(numFrames / numSysMax); % Frames per cycle
-% fpCycleMin = round(numFrames / numSysMin); % Frames per cycle
 fpCycle = round(numFrames / numSys); % Frames per cycle
 
+X = [fullTime, flip(fullTime)];
+Y = [fullPulse, zeros(1, length(fullPulse))];
+fill(X, Y, cLight, 'EdgeColor', 'none')
+
 sysindexes = [];
-% diasindexes = [];
 
 for idx = 1:numSys
     xline(fullTime(sys_index_list(idx)), 'k--', 'LineWidth', 2)
@@ -58,53 +56,18 @@ for idx = 1:numSys
         plot(fullTime(sys_range), fullPulse(sys_range), 'Color', cDark, 'LineWidth', 2)
         X = [fullTime(sys_range), flip(fullTime(sys_range))];
         Y = [fullPulse(sys_range), zeros(1, length(sys_range))];
-
         fill(X, Y, cDark, 'EdgeColor', 'none')
     catch
     end
 
-    % try
-    %     start_idx = sys_index_list(idx) - round(fpCycle * 0.2);
-    %     end_idx = sys_index_list(idx) - round(fpCycle * 0.05);
-    %     dias_range = max(start_idx, 1):min(end_idx, numFrames);
-    %     diasindexes = [diasindexes, dias_range];
-    %     X = [fullTime(dias_range), flip(fullTime(dias_range))];
-    %     Y = [fullPulse(dias_range), zeros(1, length(dias_range))];
-    % 
-    %     fill(X, Y, cLight, 'EdgeColor', 'none')
-    % catch
-    % end
-
 end
-
-% for idx = 1:numSysMin
-% 
-%     try
-%         % Calculate diaindexes and ensure the values stay within the valid range
-%         start_idx = sys_min_list(idx) - round(fpCycleMin * 0.15);
-%         end_idx = sys_min_list(idx);
-%         dias_range = max(start_idx, 1):min(end_idx, numFrames);
-%         diasindexes = [diasindexes, dias_range];
-%         plot(fullTime(dias_range), fullPulse(dias_range), 'Color', cLight, 'LineWidth', 2)
-% 
-%         X = [fullTime(dias_range), flip(fullTime(dias_range))];
-%         Y = [fullPulse(dias_range), zeros(1, length(dias_range))];
-% 
-%         fill(X, Y, cLight, 'EdgeColor', 'none')
-% 
-%     catch
-%     end
-% 
-% end
 
 plot(fullTime, fullPulse, 'k', 'LineWidth', 2)
 
 % Ensure sysindexes and diaindexes are within the bounds of the video size
 sysindexes = sysindexes(sysindexes >= 1 & sysindexes <= numFrames);
-% diasindexes = diasindexes(diasindexes >= 1 & diasindexes <= numFrames);
 
 sysindexes = sort(unique(sysindexes));
-% diasindexes = sort(unique(diasindexes));
 diasindexes = setdiff(1:numFrames, sysindexes);
 
 % Compute the mean images
@@ -132,9 +95,9 @@ if strcmp(export_folder, 'mask')
         exportgraphics(gca, fullfile(ToolBox.path_png, export_folder, 'steps', sprintf('%s_vessel_20_plot_diasys.png', ToolBox.folder_name)))
     end
 
-elseif strcmp(export_folder, 'bloodFlowVelocity')
+elseif strcmp(export_folder, 'global')
 
-    if isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
+    if isfolder(fullfile(ToolBox.path_png, 'global'))
         ylabel('Velocity (mm/s)')
         exportgraphics(gca, fullfile(ToolBox.path_png, export_folder, sprintf('%s_diasysIdx.png', ToolBox.folder_name)))
     end

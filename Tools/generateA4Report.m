@@ -70,7 +70,7 @@ for col = 1:2
     posY = gridBottom + (rowHeights(2) + rowHeights(3)) * gridHeight; % Above middle and bottom rows
 
     ax = axes('Position', [posX posY 0.45 rowHeights(1) * gridHeight]);
-    vr_combined_path = fullfile(path_png, 'crossSectionsAnalysis', ...
+    vr_combined_path = fullfile(path_png, 'local', ...
         sprintf('%s_%s_vr_combined.png', folder_name, name));
     vr_combined_im = imread(vr_combined_path); % Taller placeholder (2x height)
     imshow(vr_combined_im, []);
@@ -82,7 +82,7 @@ for col = 1:2
     posY = gridBottom + rowHeights(3) * gridHeight; % Above bottom row
 
     ax = axes('Position', [posX posY 0.45 rowHeights(2) * gridHeight]);
-    ri_path = fullfile(path_png, 'bloodFlowVelocity', ...
+    ri_path = fullfile(path_png, 'global', ...
         sprintf('%s_RI_velocity%s.png', folder_name, name));
     ri_im = imread(ri_path); % Standard placeholder
     imshow(ri_im, []);
@@ -94,7 +94,7 @@ for col = 1:2
     posY = gridBottom;
 
     ax = axes('Position', [posX posY 0.45 rowHeights(3) * gridHeight]);
-    volume_path = fullfile(path_png, 'crossSectionsAnalysis', ...
+    volume_path = fullfile(path_png, 'local', ...
         sprintf('%s_strokeAndTotalVolume_%s.png', folder_name, name));
     volume_im = imread(volume_path); % Standard placeholder
     imshow(volume_im, []);

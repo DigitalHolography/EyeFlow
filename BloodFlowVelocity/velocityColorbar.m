@@ -20,6 +20,6 @@ hCB.Position = [0.10 0.3 0.81 0.35];
 colorfig.Position(4) = 0.1000;
 fontsize(gca, 15, "points");
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_colorbarVelocity%s.png", ToolBox.folder_name, name)))
-exportgraphics(gca, fullfile(ToolBox.path_eps, 'bloodFlowVelocity', sprintf("%s_colorbarVelocity%s.eps", ToolBox.folder_name, name)))
+exportgraphics(gca, fullfile(ToolBox.path_png, 'global', sprintf("%s_colorbarVelocity%s.png", ToolBox.folder_name, name)))
+exportgraphics(gca, fullfile(ToolBox.path_eps, 'global', sprintf("%s_colorbarVelocity%s.eps", ToolBox.folder_name, name)))
 end

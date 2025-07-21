@@ -61,9 +61,6 @@ methods
         % Constructor for ExecutionClass.
         % Input: path - directory or .holo file path.
 
-    
-
-
         if ~isfolder(path) % If the input path is a .holo file
             [filepath, name, ~] = fileparts(path);
 
@@ -83,6 +80,7 @@ methods
                 error('No raw file found at: %s\nPlease check folder path and filename.', path);
 
             end
+
         end
 
         % Load parameters
@@ -208,14 +206,16 @@ methods
             cmapAV = ToolBox.cmapAV;
 
             obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
-            try 
-            [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
+
+            try
+                [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
             catch E
                 warning("Error while finding papilla : ")
                 disp(E)
-                diameter_x=NaN;
-                diameter_y=NaN;
+                diameter_x = NaN;
+                diameter_y = NaN;
             end
+
             [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
                 createMasks(obj.M0_ff_video, obj.xy_barycenter);
             obj.papillaDiameter = mean([diameter_x, diameter_y]);
@@ -237,9 +237,9 @@ methods
         % Pulse Analysis
         if obj.flag_bloodFlowVelocity_analysis
 
-            if ~isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
-                mkdir(ToolBox.path_png, 'bloodFlowVelocity')
-                mkdir(ToolBox.path_eps, 'bloodFlowVelocity')
+            if ~isfolder(fullfile(ToolBox.path_png, 'global'))
+                mkdir(ToolBox.path_png, 'global')
+                mkdir(ToolBox.path_eps, 'global')
             end
 
             fprintf("\n----------------------------------\nBlood Flow Velocity Analysis\n----------------------------------\n");
@@ -303,15 +303,15 @@ methods
             %     generateHealthReport()
             % catch ME
             %     fprintf("Error generating health report: %s\n", ME.message);
-            % 
+            %
             %     for i = 1:length(ME.stack)
             %         fprintf("Error in %s at line %d: %s\n", ME.stack(i).name, ME.stack(i).line, ME.message);
             %     end
-            % 
+            %
             % end
-            
+
             obj.is_AllAnalyzed = true;
-            
+
             fprintf("- Cross-Section Figures took: %ds\n", round(toc(crossSectionFiguresTimer)));
         end
 
@@ -343,7 +343,7 @@ methods
             fprintf("- Spectrogram took: %ds\n", round(toc(spectrogramTimer)));
             fprintf("\n----------------------------------\nSpectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
         end
-        
+
         if obj.is_AllAnalyzed
             generateA4Report()
         end

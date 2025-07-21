@@ -84,7 +84,7 @@ end
 histoVideo = mat2gray(histoVideo);
 
 % Export graphics
-outputDir = fullfile(ToolBox.path_png, 'bloodFlowVelocity');
+outputDir = fullfile(ToolBox.path_png, 'global');
 
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
@@ -92,7 +92,7 @@ end
 
 exportgraphics(gca, fullfile(outputDir, sprintf("%s_histogramVelocity%s.png", ToolBox.folder_name, name)));
 
-outputDir = fullfile(ToolBox.path_eps, 'bloodFlowVelocity');
+outputDir = fullfile(ToolBox.path_eps, 'global');
 
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);

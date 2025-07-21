@@ -5,7 +5,7 @@ function ArterialWaveformAnalysis(signal, systolesIndexes, numInterp, name)
 %   signal - Input waveform signal
 %   systolesIndexes - Indices of systolic peaks
 %   numInterp - Number of interpolation points
-%   name - Signal type ('bvr' for blood volume rate, otherwise velocity)
+%   name - Signal type ('bloodVolumeRate' for blood volume rate, otherwise velocity)
 
 % Initial Setup
 ToolBox = getGlobalToolBox;
@@ -19,12 +19,12 @@ cLight = [1 0.5 0.5];
 % Set parameters based on signal type
 if strcmpi(name, "bvr")
     y_label = 'Blood Volume Rate (µL/min)';
-    folder = 'crossSectionsAnalysis';
+    folder = 'local';
     unit = 'µL/min';
     isBVR = true;
 else
     y_label = 'Velocity (mm/s)';
-    folder = 'bloodFlowVelocity';
+    folder = 'global';
     unit = 'mm/s';
     isBVR = false;
 end
@@ -41,7 +41,7 @@ catch
 end
 
 % Apply bandpass filter (0.5-15 Hz) as suggested
-[b, a] = butter(4, 15/(fs/2), 'low');
+[b, a] = butter(4, 15 / (fs / 2), 'low');
 filtered_signal = filtfilt(b, a, signal);
 
 % Cycle Analysis
@@ -100,7 +100,7 @@ if length(peaks) > 1
 end
 
 % Visualization
-hFig = figure('Visible', 'on', 'Color', 'w');
+hFig = figure('Visible', 'off', 'Color', 'w');
 hold on;
 
 % Add reference lines and annotations
@@ -201,7 +201,7 @@ min_prominence = 0.1; % 10 % of maximum magnitude as minimum prominence
     'NPeaks', 5); % Find up to 5 most significant peaks
 
 % Create figure for spectral analysis
-hFig = figure('Visible', 'on', 'Color', 'w');
+hFig = figure('Visible', 'off', 'Color', 'w');
 
 % Main plot with improved styling
 plot(f, fft_mag, 'k', 'LineWidth', 2);
@@ -276,7 +276,7 @@ if ~isBVR
     ToolBox.Outputs.add('SystolicUpstroke', systolicUpstroke, unit);
     ToolBox.Outputs.add('SystolicDownstroke', systolicDownstroke, unit);
     ToolBox.Outputs.add('DiastolicRunoff', diastolicRunoff, unit);
-%     ToolBox.Outputs.add('DicroticNotchIndex', dicroticNotchIndex, unit);
+    %     ToolBox.Outputs.add('DicroticNotchIndex', dicroticNotchIndex, unit);
 end
 
 % Close the figure if not needed

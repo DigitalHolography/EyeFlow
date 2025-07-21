@@ -89,24 +89,24 @@ end
 
 if params.json.CrossSectionsFigures.circleImages
 
-    if ~isfolder(fullfile(ToolBox.path_png, 'crossSectionsAnalysis', 'sectionsImages'))
-        mkdir(fullfile(path_png, 'crossSectionsAnalysis'), 'sectionsImages')
-        mkdir(fullfile(path_eps, 'crossSectionsAnalysis'), 'sectionsImages')
-        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'widths')
-        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'widths')
-        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'num')
-        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'num')
-        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'bvr')
-        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'bvr')
-        mkdir(fullfile(path_png, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
-        mkdir(fullfile(path_eps, 'crossSectionsAnalysis', 'sectionsImages'), 'vel')
+    if ~isfolder(fullfile(ToolBox.path_png, 'local', 'vesselSegmentImages'))
+        mkdir(fullfile(path_png, 'local'), 'vesselSegmentImages')
+        mkdir(fullfile(path_eps, 'local'), 'vesselSegmentImages')
+        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'lumenDiameter')
+        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'lumenDiameter')
+        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'vesselSegmentId')
+        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'vesselSegmentId')
+        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'bloodVolumeRate')
+        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'bloodVolumeRate')
+        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'velocity')
+        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'velocity')
     end
 
     circleImages(M0_ff_img, xy_barycenter, A_cell, Q_cell, v_cell, maskLabel, locsLabel, name)
 end
 
 if params.json.CrossSectionsFigures.widthHistogram
-    widthHistogram(D_cell, dD_cell, A_cell, name);
+    [D_mid, D_avg, D_std] = widthHistogram(D_cell, dD_cell, A_cell, name);
 end
 
 fprintf("    2. Sections Images Figures (%s) took %ds\n", name, round(toc))
@@ -120,9 +120,19 @@ if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesInd
 end
 
 if params.json.CrossSectionsFigures.ARIBVR
-    ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), 'crossSectionsAnalysis', dQ_t);
+    ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), 'local', dQ_t);
 end
 
+% Define parameters with uncertainties
+deltaP = [6176, 280];          % Pa
+deltaP = [1000, 100];          % (ONLY IDEAL L)
+avg_r = D_mid * 1e-6 / 2;
+std_r = D_std * 1e-6 / 2;
+r = [avg_r, std_r];            % m
+L = [5e-3, 1e-3];              % m (ONLY IDEAL L)
+N = size(branchQ, 1);
+
+calculateHemodynamicParameters(Q_t, dQ_t, deltaP, r, L, index_start, index_end, N);
 
 fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
 
