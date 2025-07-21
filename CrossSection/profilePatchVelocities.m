@@ -82,7 +82,7 @@ for circleIdx = 1:rows
 end
 
 
-outputDir = fullfile(ToolBox.path_png, 'crossSectionsAnalysis');
+outputDir = fullfile(ToolBox.path_png, 'local');
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
 end
@@ -153,8 +153,9 @@ for frameIdx = 1:numFrames
     profilePatchVelocitiesVideo(:,:,:,frameIdx) = frame2im(frame);
 
 end
+writeGifOnDisc(mat2gray(profilePatchVelocitiesVideo), sprintf("profiles_patch_overlay_%s", name), "ToolBox", ToolBox);
+
 
 end
 close(fi);
-writeGifOnDisc(mat2gray(profilePatchVelocitiesVideo), sprintf("profiles_patch_overlay_%s", name), "ToolBox", ToolBox);
 end

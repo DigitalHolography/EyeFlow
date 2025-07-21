@@ -60,7 +60,7 @@ for circleIdx = 1:rows
 end
 
 
-outputDir = fullfile(ToolBox.path_png, 'crossSectionsAnalysis');
+outputDir = fullfile(ToolBox.path_png, 'local');
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
 end
