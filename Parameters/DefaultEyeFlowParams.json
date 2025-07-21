@@ -98,7 +98,8 @@
     "MaskSliceThreshold": 0.01,
     "PixelSize": 0.0191,
     "SliceHalfThickness": 10,
-    "sectionMontage": true
+    "sectionMontage": true,
+    "HydrodynamicDiameters": true
   },
   "CrossSectionsFigures": {
     "sectionImage": true,

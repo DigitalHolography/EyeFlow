@@ -2,6 +2,7 @@ function [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, fig
 
 % Parameters
 params = ToolBox.getParams;
+HydrodynamicDiameters = params.json.CrossSectionsAnalysis.HydrodynamicDiameters;
 
 if ~isnan(papillaDiameter) && ~isempty(papillaDiameter)
     px_size = 1.8 / papillaDiameter / (2 ^ params.json.Preprocess.InterpolationFactor) / 2;
@@ -9,13 +10,24 @@ else
     px_size = params.px_size / 2;
 end
 
+if ~HydrodynamicDiameters
+    D = mean(sum(~isnan(subImg),2));% in pixels
+    dD = 0;
+    A = pi * (D * px_size / 2) ^ 2;
+    dA = 0;
+    c1 = 1;
+    c2 = size(subImg,2);
+    rsquare = 1;
+    return
+end
+
 % Compute velocity profile
 profile = mean(subImg, 1, 'omitnan');
 profile(isnan(profile)) = 0;
 L = length(profile);
 
-% Find all points above 10% threshold
-central_range = find(profile > 0.1 * max(profile));
+% Find all points above 50% threshold
+central_range = find(profile > 0.5 * max(profile));
 centt = mean(central_range);
 
 r_range = (central_range - centt) * px_size;
