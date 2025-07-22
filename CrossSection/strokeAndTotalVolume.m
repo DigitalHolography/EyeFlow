@@ -82,6 +82,14 @@ lower_bound = pulseTime(1) -1/2 * pulseTime(end);
 upper_bound = 3/2 * pulseTime(end);
 xlim([lower_bound, upper_bound])
 
+box on
+set(gca, 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
+
 ylabel('Blood Volume Rate (µL/min)')
 xlabel('Time (s)')
 stroke_volume_value = sum(interp_BvrT(1:min(amax, numInterp))) * dt / 60 * 1000; % in nL

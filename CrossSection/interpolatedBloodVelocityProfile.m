@@ -202,9 +202,14 @@ ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
                1.07 * max([bounds_sys.upper, bounds_dias.upper])]);
 xlabel('lumen cross-section (a.u.)', 'FontSize', 14);
 ylabel('Velocity (mm/s)', 'FontSize', 14);
-pbaspect([1.618 1 1]);
-box('on');
+
+box on
 set(gca, 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
 
 % Export static figure
 outputDir = fullfile(ToolBox.path_png, 'local');
@@ -240,9 +245,14 @@ if exportVideos
     ylim(get(gca, 'YLim'));
     xlabel('lumen cross-section (a.u.)');
     ylabel('Velocity (mm/s)');
-    pbaspect([1.618 1 1]);
-    box('on');
+
+    box on
     set(gca, 'LineWidth', 2);
+    set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+    ax = gca;
+    ax.LineStyleOrderIndex = 1; % Reset if needed
+    ax.SortMethod = 'depth'; % Try changing sorting method
+    ax.Layer = 'top'; % This may help in some cases
 
     % Preallocate video
     % Create bounds for this frame

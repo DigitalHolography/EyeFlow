@@ -37,11 +37,18 @@ axP = axis;
 axis tight;
 axT = axis;
 axis([axT(1), axT(2), 0, 1.07 * axP(4)]);
-box on;
+
+box on
+set(gca, 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [2.5, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
+
 ylabel('Blood Volume Rate (µL/min)');
 xlabel('Radius (pixels)');
 title("Time-Averaged Blood Volume Rate");
-set(gca, 'PlotBoxAspectRatio', [2.5 1 1], 'LineWidth', 2);
 
 % Export plot
 exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_mean_%s_radius.png", ToolBox.folder_name, name)));
@@ -110,11 +117,18 @@ axP = axis;
 axis tight;
 axT = axis;
 axis([axT(1), axT(2), axP(3), 1.07 * axP(4)]);
-box on;
+
+box on
+set(gca, 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [2.5, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
+
 ylabel('Blood Volume Rate (µL/min)');
 xlabel('Time (s)');
 title(sprintf("Total Blood Volume Rate (Avg. %0.2f µL/min)", mean_Q));
-set(gca, 'PlotBoxAspectRatio', [2.5 1 1], 'LineWidth', 2);
 
 % Export plot
 exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_allrad_%s_time.png", ToolBox.folder_name, name)));

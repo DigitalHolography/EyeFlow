@@ -58,7 +58,7 @@ pulseTime = linspace(0, dt * avgLength, numInterp);
 [trough, loc_trough] = min(one_cycle_signal);
 
 % Visualization
-hFig = figure('Visible', 'on', 'Color', 'w');
+hFig = figure('Visible', 'off', 'Color', 'w');
 plot(pulseTime, one_cycle_signal, 'k', 'LineWidth', 2)
 hold on
 

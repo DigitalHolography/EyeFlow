@@ -116,8 +116,12 @@ axT = axis;
 axis([axT(1), axT(2), - 2, axP(4) + 2])
 
 box on
-set(gca, 'Linewidth', 2)
+set(gca, 'LineWidth', 2);
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
 
 % Export
 exportgraphics(gcf, fullfile(ToolBox.path_png, folder, sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));

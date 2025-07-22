@@ -13,8 +13,8 @@ params = ToolBox.getParams;
 path = ToolBox.path_main;
 folder_steps = fullfile('mask', 'steps');
 
-if ~exist(folder_steps, 'dir')
-    mkdir(folder_steps);
+if ~exist(fullfile(ToolBox.path_main, folder_steps), 'dir')
+    mkdir(ToolBox.path_main, folder_steps);
 end
 
 % 0) Initialisation

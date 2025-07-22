@@ -86,7 +86,14 @@ axis([axT(1), axT(2), 0, axP(4) * 1.07])
 title('diastole and systole')
 
 xlabel('Time (s)')
-pbaspect([2.5 1 1])
+
+pbaspect([2.5 1 1]);
+box on
+set(gca, 'LineWidth', 2);
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
 
 if strcmp(export_folder, 'mask')
 

@@ -1,20 +1,35 @@
-function profilePatchVelocities(v_profiles_cell, name, locsLabel, maskLabel, M0_ff_img)
+function profilePatchVelocities(v_profiles_cell, name, locsLabel, M0_ff_img)
 
 ToolBox = getGlobalToolBox;
 
 params = ToolBox.getParams;
 exportVideos = params.exportVideos;
+
 % Check sizes
 [rows, cols] = size(locsLabel);
 assert(isequal(size(v_profiles_cell), [rows, cols]), 'Size of v_profiles_cell must match locsLabel');
+i = 0;
+numFrames = 0;
+while numFrames <= 0
+    i = i + 1;
+    numFrames = size(v_profiles_cell{i}, 2);
 
-numFrames = size(v_profiles_cell{1}, 2);
-tmp = v_profiles_cell{1};
-sizeProfiles = size(tmp{1}, 2) * 2/3;
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+    if i > size(v_profiles_cell, 1) * size(v_profiles_cell, 2)
+        warning("Velocity profiles cells are all empty.")
+        break
+    end
 
-fi = figure("Visible", "on");
+end
+
+tmp = v_profiles_cell{i};
+sizeProfiles = size(tmp{i}, 2) * 2/3;
+
+fi = figure("Visible", "on", 'Color', 'w');
 imshow(M0_ff_img, []);
+axis image
+axis off
+fi.Position = [200 200 600 600];
+
 hold on;
 title(['Velocity Profiles Overlay - ' name]);
 
@@ -97,15 +112,16 @@ if ~exist(outputDir, 'dir')
 end
 
 % Save figure
-saveas(gcf, fullfile(outputDir, ...
+exportgraphics(gca, fullfile(outputDir, ...
     sprintf("%s_velocities_profiles_overlay_%s.png", ToolBox.folder_name, name)));
 %% Time plot (gif)
 
 if exportVideos
     hold on;
     %imshow(M0_ff_img, []);
-
-    profilePatchVelocitiesVideo = zeros(1124, 1255, 3, numFrames, 'single');
+    frame = getframe(gca);
+    [numX_fig, numY_fig, ~] = size(frame.cdata);
+    profilePatchVelocitiesVideo = zeros(numX_fig, numY_fig, 3, numFrames, 'single');
 
     for frameIdx = 1:numFrames
         %fprintf(" %d ",frameIdx);
@@ -167,7 +183,7 @@ if exportVideos
 
         end
 
-        frame = getframe(gcf);
+        frame = getframe(gca);
         profilePatchVelocitiesVideo(:, :, :, frameIdx) = frame2im(frame);
 
     end

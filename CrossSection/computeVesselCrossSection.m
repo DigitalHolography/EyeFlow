@@ -92,9 +92,15 @@ plot(linspace(r1 * 1000, r2 * 1000, 10), repmat(-2, 10), '-k', 'LineWidth', 1.5)
 axis tight
 axT = axis;
 axis([axT(1), axT(2), - 5, 50])
+
 box on
-set(gca, 'LineWidth', 2)
-set(gca, 'PlotBoxAspectRatio', [1.618 1 1])
+set(gca, 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
+
 % Add labels and title
 xlabel('Position (µm)');
 ylabel('Velocity (mm/s)');
