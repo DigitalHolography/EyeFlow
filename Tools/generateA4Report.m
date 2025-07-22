@@ -34,13 +34,13 @@ fig = figure('Units', 'centimeters', 'Position', [0 0 21.0 29.7], ...
     'PaperSize', [21.0 29.7], 'PaperPositionMode', 'auto');
 
 % Set margins (in normalized units)
-topMargin = 0.08;
+% topMargin = 0.08;
 bottomMargin = 0.10;
 leftMargin = 0.05;
-rightMargin = 0.05;
+% rightMargin = 0.05;
 
 % Add title at the top
-titleAxes = axes('Position', [0 0 1 1], 'Visible', 'off');
+axes('Position', [0 0 1 1], 'Visible', 'off');
 text(0.5, 1, folder_name, ...
     'HorizontalAlignment', 'center', ...
     'VerticalAlignment', 'top', ...
@@ -102,7 +102,7 @@ for col = 1:2
 end
 
 % Add parameter section at the bottom with more spacing
-paramAxes = axes('Position', [leftMargin 0.04 0.8 bottomMargin], 'Visible', 'off');
+axes('Position', [leftMargin 0.04 0.8 bottomMargin], 'Visible', 'off');
 
 % Prepare parameter text
 paramNames = fieldnames(parameters);
