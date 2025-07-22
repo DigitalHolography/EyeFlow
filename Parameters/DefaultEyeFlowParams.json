@@ -32,6 +32,8 @@
   "MinimumGifPeriod": 0.07,
   "NumberOfWorkers": 0,
   "Mask": {
+    "Auto Compute" : 1,
+    "Registered Masks" : -1,
     "Forced Masks": -1,
     "Vesselness Frangi Range": [
       4,
@@ -96,13 +98,16 @@
     "MaskSliceThreshold": 0.01,
     "PixelSize": 0.0191,
     "SliceHalfThickness": 10,
-    "sectionMontage": true
+    "sectionMontage": true,
+    "HydrodynamicDiameters": true
   },
   "CrossSectionsFigures": {
     "sectionImage": true,
     "circleImages": true,
     "widthHistogram": true,
     "BloodFlowProfiles": true,
+    "BloodFlowHistograms": true,
+    "BloodFlowProfilesOverlay": true,
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
     "InterpolationPoints": 50

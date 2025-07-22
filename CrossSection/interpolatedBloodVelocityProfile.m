@@ -213,8 +213,14 @@ if ~exist(outputDir, 'dir')
     mkdir(outputDir);
 end
 
-exportgraphics(gca, fullfile(outputDir, ...
+ax = gca;
+if isvalid(ax)
+    exportgraphics(gca, fullfile(outputDir, ...
     sprintf("%s_diasys_%s.png", ToolBox.folder_name, name)), 'Resolution', 300);
+else
+    warning('Current axes are not valid. Skipping export.');
+end
+
 
 % Video export if requested
 if exportVideos

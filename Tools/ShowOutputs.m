@@ -51,7 +51,7 @@ for path_idx = 1:N
 
     % Extract main folder name and construct expected EF folder name
     [~, main_foldername] = fileparts(current_path);
-    folder_base = [main_foldername '_EF'];
+    folder_base = [char(main_foldername) '_EF'];
     ef_path = fullfile(current_path, 'eyeflow');
 
     % Skip if EyeFlow directory doesn't exist

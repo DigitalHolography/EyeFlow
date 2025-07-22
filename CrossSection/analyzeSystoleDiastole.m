@@ -210,7 +210,7 @@ xlabel("Time (s)")
 ylabel("\Delta Lumen Diameter (µm)")
 axis padded
 axP = axis;
-axis([0, numFrames * T, 0, axP(4)])
+axis([0, numFrames * T, min(axP(3),0), max(axP(4),10)])
 exportgraphics(gca, fullfile(ToolBox.path_png, 'local', ...
     sprintf('%s_plot_diasys_diameter_diff_%s.png', ToolBox.folder_name, vesselName)))
 
