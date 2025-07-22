@@ -1,5 +1,5 @@
 function [v_RMS_video, sysIdxList, sysIdx, diasIdx, v_video_RGB, v_mean_RGB] = pulseAnalysis(f_video, M0_ff_video, maskArtery, maskVein, maskNeighbors, xy_barycenter)
-% pulseAnalysis.m computes the blood flow velocities from Doppler data
+% pulseAnalysis.m computes the flow velocities from Doppler data
 % Inputs:
 %       VIDEOS:
 %   f_video         Size: numX x numY x numFrames double (Doppler Data)
@@ -120,7 +120,7 @@ if veinsAnalysis
         'Legend', {'arteries', 'veins', 'background'});
 end
 
-fprintf("    2. background calculation took %ds\n", round(toc));
+fprintf("    2. Background calculation took %ds\n", round(toc));
 
 %% Section 3: Difference Calculation and Velocity Computation
 
