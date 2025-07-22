@@ -294,9 +294,9 @@ methods
 
             if veins_analysis
                 crossSectionsFigures(obj.Q_results_V, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
-                sectionImageAdvanced(rescale(mean(obj.M0_ff_video,3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery | obj.maskVein);
+                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery | obj.maskVein);
             else
-                sectionImageAdvanced(rescale(mean(obj.M0_ff_video,3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery);
+                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery);
             end
 
             % try

@@ -2,9 +2,9 @@ function sectionImageAdvanced(M0_ff_img, maskLabelArtery, maskLabelVein, maskRej
 
 ToolBox = getGlobalToolBox;
 lght_r = [1, 205/255, 210/255]; % light red
-red_ = [229/255, 115/255, 115/255];    % red
-lght_blu = [179, 229, 252]/255; % light blue
-blu_ = [79, 195, 247]/255;     % blue
+red_ = [229/255, 115/255, 115/255]; % red
+lght_blu = [179, 229, 252] / 255; % light blue
+blu_ = [79, 195, 247] / 255; % blue
 [numX, numY] = size(M0_ff_img);
 [numCirclesA, numBranchesA] = size(maskLabelArtery);
 [numCirclesV, numBranchesV] = size(maskLabelVein);
@@ -18,10 +18,11 @@ imgRGB(numY * numX + indxs) = 1;
 imgRGB(2 * numY * numX + indxs) = 1;
 
 for cIdx = 1:numCirclesA
+
     if mod(cIdx, 2) == 1
         color = lght_r;
     else
-        color = red_; 
+        color = red_;
     end
 
     mask = zeros(numX, numY);
@@ -52,6 +53,7 @@ end
 
 % note that veins are drawn on top could be fixed
 for cIdx = 1:numCirclesV
+
     if mod(cIdx, 2) == 1
         color = lght_blu;
     else
@@ -84,16 +86,14 @@ for cIdx = 1:numCirclesV
 
 end
 
-% set black in the rejected regions  
-indxs = find(maskRejectedArtery(:,:,1) | maskRejectedVein(:,:,1) > 0); % the red channel = rejected parts
+% set black in the rejected regions
+indxs = find(maskRejectedArtery(:, :, 1) | maskRejectedVein(:, :, 1) > 0); % the red channel = rejected parts
 imgRGB(indxs) = 0;
 imgRGB(numY * numX + indxs) = 0;
 imgRGB(2 * numY * numX + indxs) = 0;
 
-figure(Visible='off');
+figure(Visible = 'off');
 imshow(imgRGB)
 exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_%s.png", ToolBox.folder_name, sprintf('sections_advanced'))))
-
-
 
 end

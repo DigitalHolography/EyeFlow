@@ -55,9 +55,8 @@ results.D = D;
 results.D_se = D_se;
 results.A = A;
 
-
-[histo,edges] = histcounts(subImg(:), 6);
-results.v_histo = {histo,edges};
+[histo, edges] = histcounts(subImg(:), 6);
+results.v_histo = {histo, edges};
 
 % Generate figures
 saveCrossSectionFigure(rotatedImg, c1, c2, ToolBox, patchName);
@@ -68,7 +67,7 @@ rejected_masks = zeros(numX, numY, 3);
 if rsquare < 0.6 || isnan(D)
     rejected_masks(:, :, 1) = mask; % Red
 else
-    rejected_masks(:, :, 2) = mask;% Green
+    rejected_masks(:, :, 2) = mask; % Green
 end
 
 % Compute blood volume rate and average velocity

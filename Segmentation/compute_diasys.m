@@ -31,7 +31,7 @@ if isempty(sys_index_list)
     return;
 end
 
-figAspect("Visible", 0);
+figure("Visible", "off", "Color", "w");
 hold on
 numSys = numel(sys_index_list); % number of systoles
 fpCycle = round(numFrames / numSys); % Frames per cycle

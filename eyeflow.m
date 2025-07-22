@@ -639,9 +639,11 @@ methods (Access = public)
 
         function show_outputs(~, ~)
             out_dir_path = fullfile(app.drawer_list{1}, 'Multiple_Results');
+
             if ~isfolder(out_dir_path)
                 mkdir(out_dir_path) % creates if it doesn't exists
             end
+
             tic
             ShowOutputs(app.drawer_list, out_dir_path)
             toc
@@ -756,7 +758,7 @@ methods (Access = public)
                 end
 
                 folder_name = sprintf('%s_%d', ToolBox.EF_name, idx);
-                copyfile(fullfile(ToolBox.path_main,folder_name, 'gif', sprintf("%s_M0.gif", folder_name)), fullfile(ToolBox.path_main, 'mask', 'M0.gif'));
+                copyfile(fullfile(ToolBox.path_main, folder_name, 'gif', sprintf("%s_M0.gif", folder_name)), fullfile(ToolBox.path_main, 'mask', 'M0.gif'));
             catch
 
                 disp("last M0 png and gif copying failed")
@@ -783,7 +785,7 @@ methods (Access = public)
                 end
 
                 folder_name = sprintf('%s_%d', ToolBox.EF_name, idx);
-                copyfile(fullfile(ToolBox.path_main,folder_name, 'png','mask', sprintf("%s_DiaSysRGB.png", folder_name)), fullfile(ToolBox.path_main, 'mask', 'DiaSysRGB.png'));
+                copyfile(fullfile(ToolBox.path_main, folder_name, 'png', 'mask', sprintf("%s_DiaSysRGB.png", folder_name)), fullfile(ToolBox.path_main, 'mask', 'DiaSysRGB.png'));
             catch
 
                 disp("Diasys png failed")

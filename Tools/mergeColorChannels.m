@@ -16,26 +16,30 @@ function rgbImage = mergeColorChannels(channels, colorMap)
 % Validate input
 numChannels = numel(channels);
 [H, W] = size(channels{1});
+
 for i = 1:3
-    channels{i}=squeeze(channels{i});
+    channels{i} = squeeze(channels{i});
 end
+
 for i = 2:numChannels
+
     if ~isequal(size(channels{i}), [H, W])
         error('All input channels must have the same dimensions.');
     end
+
 end
 
 % Default color map (up to 7 predefined)
 defaultColors = [
-    1 0 0;   % Red
-    0 1 0;   % Green
-    0 0 1;   % Blue
-    1 1 0;   % Yellow
-    1 0 1;   % Magenta
-    0 1 1;   % Cyan
-    1 1 1;   % White
-    lines;   % in case of high number of channels complet with default lines colormap
-    ];
+                 1 0 0; % Red
+                 0 1 0; % Green
+                 0 0 1; % Blue
+                 1 1 0; % Yellow
+                 1 0 1; % Magenta
+                 0 1 1; % Cyan
+                 1 1 1; % White
+                 lines; % in case of high number of channels complet with default lines colormap
+                 ];
 
 if nargin < 2
     colorMap = defaultColors(1:min(numChannels, size(defaultColors, 1)), :);
@@ -50,9 +54,11 @@ rgbImage = zeros(H, W, 3);
 for i = 1:numChannels
     ch = double(channels{i});
     ch = ch / max(ch(:)); % Normalize each channel independently
+
     for c = 1:3
-        rgbImage(:,:,c) = rgbImage(:,:,c) + ch * colorMap(i,c);
+        rgbImage(:, :, c) = rgbImage(:, :, c) + ch * colorMap(i, c);
     end
+
 end
 
 % Clip values to [0,1]

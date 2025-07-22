@@ -52,7 +52,7 @@ cVein = [18 23 255] / 255;
 t3 = tic;
 
 % Display and save AVG frequency heatmap
-figAspect;
+figure("Visible", "off", "Color", "w");
 imagesc(f_AVG_mean);
 colormap gray;
 title('AVG Frequency Map RAW');
@@ -67,8 +67,10 @@ imwrite(rescale(f_AVG_mean), fullfile(ToolBox.path_png, folder, sprintf("%s_%s",
 clear f_AVG_mean;
 
 % Create and save colorbar for AVG image
-colorbarF = figAspect('LineWidth', 3, 'Fontsize', 15);
-colorbarF.Units = 'normalized';
+colorbarF = figure('Visible', 'off', 'Color', 'w');
+fontsize(colorbarF, 15);
+set(colorbarF, 'Units', 'normalized');
+set(colorbarF, 'LineWidth', 3);
 colormap gray;
 f_AVG_colorbar = colorbar('north');
 clim(range);

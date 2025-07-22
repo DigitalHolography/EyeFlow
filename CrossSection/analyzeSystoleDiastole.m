@@ -42,10 +42,6 @@ if ~isempty(diastole_cell) && first_dias_idx < first_sys_idx
     % Find which diastole segments to keep (those starting after first_sys_idx)
     keep_dias = cellfun(@(x) x(1) >= first_sys_idx, diastole_cell);
     diastole_cell = diastole_cell(keep_dias);
-
-    % Update starts and ends for diastole
-    starts_dias = starts_dias(keep_dias);
-    ends_dias = ends_dias(keep_dias);
 end
 
 % Initialize output variables
@@ -210,7 +206,7 @@ xlabel("Time (s)")
 ylabel("\Delta Lumen Diameter (µm)")
 axis padded
 axP = axis;
-axis([0, numFrames * T, min(axP(3),0), max(axP(4),10)])
+axis([0, numFrames * T, min(axP(3), 0), max(axP(4), 10)])
 exportgraphics(gca, fullfile(ToolBox.path_png, 'local', ...
     sprintf('%s_plot_diasys_diameter_diff_%s.png', ToolBox.folder_name, vesselName)))
 

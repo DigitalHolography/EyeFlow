@@ -11,7 +11,4 @@ for ind = 1:length(paths)
         delete(fullfile(EF_path_json, matchingFiles{i}))
     end
 
-    % if isfile(fullfile(EF_path,'mask','forceMaskArtery.png'))
-    %     movefile(fullfile(EF_path,'mask','forceMaskArtery.png'),fullfile(EF_path,'mask','oldForceMaskArtery.png'));
-    % end
 end

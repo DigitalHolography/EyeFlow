@@ -11,12 +11,12 @@ else
 end
 
 if ~HydrodynamicDiameters
-    D = mean(sum(~isnan(subImg),2));% in pixels
+    D = mean(sum(~isnan(subImg), 2)); % in pixels
     dD = 0;
     A = pi * (D * px_size / 2) ^ 2;
     dA = 0;
     c1 = 1;
-    c2 = size(subImg,2);
+    c2 = size(subImg, 2);
     rsquare = 1;
     return
 end

@@ -18,8 +18,8 @@ It = I2 - I1;
 w = fspecial('average', windowSize);
 
 % Compute products of derivatives
-Ix2 = imfilter(Ix.^2, w);
-Iy2 = imfilter(Iy.^2, w);
+Ix2 = imfilter(Ix .^ 2, w);
+Iy2 = imfilter(Iy .^ 2, w);
 Ixy = imfilter(Ix .* Iy, w);
 Ixt = imfilter(Ix .* It, w);
 Iyt = imfilter(Iy .* It, w);
@@ -28,8 +28,8 @@ Iyt = imfilter(Iy .* It, w);
 [u, v] = deal(zeros(size(I1)));
 
 % Compute flow (avoid division by zero)
-det = (Ix2 .* Iy2 - Ixy.^2) + 1e-5;
+det = (Ix2 .* Iy2 - Ixy .^ 2) +1e-5;
 u = (-Iy2 .* Ixt + Ixy .* Iyt) ./ det;
-v = ( Ixy .* Ixt - Ix2 .* Iyt) ./ det;
+v = (Ixy .* Ixt - Ix2 .* Iyt) ./ det;
 
 end
