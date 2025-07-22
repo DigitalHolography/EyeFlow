@@ -116,7 +116,7 @@ fprintf("    2. Sections Images Figures (%s) took %ds\n", name, round(toc))
 tic
 
 if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesIndexes)
-    strokeAndTotalVolume(Q_t, dQ_t, systolesIndexes, t, 1000, name);
+    strokeAndTotalVolume(Q_t, dQ_t, systolesIndexes, 1000, name);
 end
 
 if params.json.CrossSectionsFigures.ARIBVR

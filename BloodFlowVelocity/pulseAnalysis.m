@@ -278,7 +278,7 @@ end
 
 if veinsAnalysis
     % Calculate correlation between artery and vein signals
-    [time_lag, max_corr, lags, corr_vals] = arterial_venous_correlation(v_artery_signal, -v_vein_signal);
+    arterial_venous_correlation(v_artery_signal, -v_vein_signal);
 end
 
 fprintf("    5. Resistivity and waveform analysis took %ds\n", round(toc));
