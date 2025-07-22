@@ -30,7 +30,7 @@ branchQ = Q_results.branchQ;
 labeledVessels = Q_results.labeledVessels .* Q_results.labeledVessels ~= 0;
 histo_v_cell = Q_results.histo_v_cell;
 
-% 1. SBlood Volume Rate Figures
+% 1. SVolume Rate Figures
 tic
 
 if ~isempty(systolesIndexes)
@@ -61,7 +61,7 @@ graphCombined(M0_ff_video, v_video_RGB, v_mean_RGB, ...
     'etiquettes_locs', centroids, ...
     'etiquettes_values', branchQ);
 
-fprintf("    1. Blood Volume Rate Figures (%s) took %ds\n", name, round(toc))
+fprintf("    1. Volume Rate Figures (%s) took %ds\n", name, round(toc))
 
 tic
 
@@ -77,7 +77,7 @@ if params.json.CrossSectionsFigures.BloodFlowProfilesOverlay
     profilePatchVelocities(v_profiles_cell, name, locsLabel, mean(M0_ff_video, 3))
 end
 
-fprintf("    1.(bis) optional Blood Volume Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
+fprintf("    1.(bis) optional Volume Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
 
 % 2. Sections Figures
 

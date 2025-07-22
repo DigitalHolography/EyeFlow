@@ -43,10 +43,10 @@ yPos = addField(fig, sprintf('Systoles: %s', mat2str(round(data.systoleIndices *
 yPos = addField(fig, sprintf('Number of Cycles: %d', data.numCycles), yPos, margin, a4Width);
 yPos = addField(fig, sprintf('Max Systole Indices: %s', mat2str(round(data.maxSystoleIndices * t_factor, 2))), yPos, margin, a4Width); % 2 decimal places
 yPos = addField(fig, sprintf('Min Systole Indices: %s', mat2str(round(data.minSystoleIndices * t_factor, 2))), yPos, margin, a4Width); % 2 decimal places
-yPos = addField(fig, sprintf('Mean Blood Volume Rate (Artery): %.1f ± %.1f µL/min', data.meanBloodVolumeRateArtery, data.stdBloodVolumeRateArtery / 2), yPos, margin, a4Width);
-yPos = addField(fig, sprintf('Mean Blood Volume Rate (Vein): %.1f ± %.1f µL/min', data.meanBloodVolumeRateVein, data.stdBloodVolumeRateVein / 2), yPos, margin, a4Width);
-yPos = addField(fig, sprintf('Max Systole Blood Volume Rate (Artery): %.1f µL/min', data.maxSystoleBloodVolumeRateArtery), yPos, margin, a4Width);
-yPos = addField(fig, sprintf('Min Diastole Blood Volume Rate (Artery): %.1f µL/min', data.minDiastoleBloodVolumeRateArtery), yPos, margin, a4Width);
+yPos = addField(fig, sprintf('Mean Volume Rate (Artery): %.1f ± %.1f µL/min', data.meanBloodVolumeRateArtery, data.stdBloodVolumeRateArtery / 2), yPos, margin, a4Width);
+yPos = addField(fig, sprintf('Mean Volume Rate (Vein): %.1f ± %.1f µL/min', data.meanBloodVolumeRateVein, data.stdBloodVolumeRateVein / 2), yPos, margin, a4Width);
+yPos = addField(fig, sprintf('Max Systole Volume Rate (Artery): %.1f µL/min', data.maxSystoleBloodVolumeRateArtery), yPos, margin, a4Width);
+yPos = addField(fig, sprintf('Min Diastole Volume Rate (Artery): %.1f µL/min', data.minDiastoleBloodVolumeRateArtery), yPos, margin, a4Width);
 yPos = addField(fig, sprintf('Stroke Volume (Artery): %.1f nL', data.strokeVolumeArtery), yPos, margin, a4Width);
 yPos = addField(fig, sprintf('Total Volume (Artery): %.1f nL', data.totalVolumeArtery), yPos, margin, a4Width);
 
@@ -85,8 +85,8 @@ data.meanBloodVolumeRateArtery = str2double(regexp(fileContent, 'Flow Rate Arter
 data.stdBloodVolumeRateArtery = str2double(regexp(fileContent, 'Flow Rate Standard Deviation Artery : ([\d.]+)', 'tokens', 'once'));
 data.meanBloodVolumeRateVein = str2double(regexp(fileContent, 'Flow Rate Vein : ([\d.]+)', 'tokens', 'once'));
 data.stdBloodVolumeRateVein = str2double(regexp(fileContent, 'Flow Rate Standard Deviation Vein : ([\d.]+)', 'tokens', 'once'));
-data.maxSystoleBloodVolumeRateArtery = str2double(regexp(fileContent, 'MaxSystole Blood Volume Rate Artery : ([\d.]+)', 'tokens', 'once'));
-data.minDiastoleBloodVolumeRateArtery = str2double(regexp(fileContent, 'MinDiastole Blood Volume Rate Artery : ([\d.]+)', 'tokens', 'once'));
+data.maxSystoleBloodVolumeRateArtery = str2double(regexp(fileContent, 'MaxSystole Volume Rate Artery : ([\d.]+)', 'tokens', 'once'));
+data.minDiastoleBloodVolumeRateArtery = str2double(regexp(fileContent, 'MinDiastole Volume Rate Artery : ([\d.]+)', 'tokens', 'once'));
 data.strokeVolumeArtery = str2double(regexp(fileContent, 'Stroke Volume Artery : ([\d.]+)', 'tokens', 'once'));
 data.totalVolumeArtery = str2double(regexp(fileContent, 'Total Volume Artery : ([\d.]+)', 'tokens', 'once'));
 end

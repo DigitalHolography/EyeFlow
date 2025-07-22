@@ -6,7 +6,7 @@ figure(435)
 title("Segmentation")
 
 figure(321)
-title("Blood Volume Rate")
+title('Volume Rate')
 
 for ind = 1:length(paths)
     split_path = strsplit(paths(ind), '\');

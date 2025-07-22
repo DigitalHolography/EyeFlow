@@ -70,7 +70,7 @@ else
     rejected_masks(:, :, 2) = mask; % Green
 end
 
-% Compute blood volume rate and average velocity
+% Compute Volume Rate and average velocity
 
 for t = 1:numFrames
     xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);

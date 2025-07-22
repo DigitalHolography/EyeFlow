@@ -45,7 +45,7 @@ axis(axss);
 % Formatting
 ylabel('Volume Rate (µL/min)');
 xlabel('Time (s)');
-title(sprintf("Average Blood Volume Rate : %.0f %s", round(mean_signal), 'µL/min'));
+title(sprintf("Average Volume Rate : %.0f %s", round(mean_signal), 'µL/min'));
 
 box on
 set(gca, 'LineWidth', 2);
@@ -106,7 +106,7 @@ if exportVideos
         axis(plotData.axss);
         ylabel('Volume Rate (µL/min)');
         xlabel('Time (s)');
-        title(sprintf("Average Blood Volume Rate : %.0f %s", round(plotData.mean_signal), 'µL/min'));
+        title(sprintf("Average Volume Rate : %.0f %s", round(plotData.mean_signal), 'µL/min'));
         box on;
         set(gca, 'Linewidth', 2, 'Layer', 'top');
         pbaspect([2.5, 1, 1]);

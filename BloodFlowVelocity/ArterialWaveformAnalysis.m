@@ -1,11 +1,11 @@
 function ArterialWaveformAnalysis(signal, systolesIndexes, numInterp, name)
-% ARTERIALWAVEFORMANALYSIS Analyzes arterial waveform signals (velocity or blood volume rate)
+% ARTERIALWAVEFORMANALYSIS Analyzes arterial waveform signals (velocity or Volume Rate)
 %
 % Inputs:
 %   signal - Input waveform signal
 %   systolesIndexes - Indices of systolic peaks
 %   numInterp - Number of interpolation points
-%   name - Signal type ('bloodVolumeRate' for blood volume rate, otherwise velocity)
+%   name - Signal type ('bloodVolumeRate' for Volume Rate, otherwise velocity)
 
 % Initial Setup
 ToolBox = getGlobalToolBox;
@@ -18,7 +18,7 @@ cLight = [1 0.5 0.5];
 
 % Set parameters based on signal type
 if strcmpi(name, "bvr")
-    y_label = 'Blood Volume Rate (µL/min)';
+    y_label = 'Volume Rate (µL/min)';
     unit = 'µL/min';
     isBVR = true;
 else

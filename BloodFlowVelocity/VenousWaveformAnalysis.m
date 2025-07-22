@@ -1,11 +1,11 @@
 function VenousWaveformAnalysis(signal, systolesIndexes, numInterp, name)
-% VenousWaveformAnalysis Analyzes venous waveform signals (velocity or blood volume rate)
+% VenousWaveformAnalysis Analyzes venous waveform signals (velocity or Volume Rate)
 %
 % Inputs:
 %   signal - Input waveform signal
 %   systolesIndexes - Indices of systolic peaks
 %   numInterp - Number of interpolation points
-%   name - Signal type ('bloodVolumeRate' for blood volume rate, otherwise velocity)
+%   name - Signal type ('bloodVolumeRate' for Volume Rate, otherwise velocity)
 
 % Initial Setup
 ToolBox = getGlobalToolBox;
@@ -18,7 +18,7 @@ cLight = [0.5 0.5 1];
 
 % Set parameters based on signal type
 if strcmp(name, "bvr")
-    y_label = 'Blood Volume Rate (µL/min)';
+    y_label = 'Volume Rate (µL/min)';
     unit = 'µL/min';
     isBVR = true;
 else

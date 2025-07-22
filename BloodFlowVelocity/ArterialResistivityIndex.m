@@ -17,7 +17,7 @@ if contains(name, 'velocity')
     y_label = 'Velocity (mm/s)';
 else
     unit = 'µL/min';
-    y_label = 'Blood Volume Rate (µL/min)';
+    y_label = 'Volume Rate (µL/min)';
 end
 
 % Color Maps

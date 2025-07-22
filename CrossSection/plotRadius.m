@@ -22,7 +22,7 @@ curve2 = Q_r - dQ_r; % Lower bound
 rad2 = [rad, fliplr(rad)]; % X-values for fill
 inBetween = [curve1, fliplr(curve2)]; % Y-values for fill
 
-% Plot time-averaged blood volume rate vs. radius
+% Plot time-averaged Volume Rate vs. radius
 figure("Visible", "off");
 fill(rad2, inBetween, Color_std, 'EdgeColor', 'none'); % Shaded region
 hold on;
@@ -46,14 +46,14 @@ ax.LineStyleOrderIndex = 1; % Reset if needed
 ax.SortMethod = 'depth'; % Try changing sorting method
 ax.Layer = 'top'; % This may help in some cases
 
-ylabel('Blood Volume Rate (µL/min)');
+ylabel('Volume Rate (µL/min)');
 xlabel('Radius (pixels)');
-title("Time-Averaged Blood Volume Rate");
+title("Time-Averaged Volume Rate");
 
 % Export plot
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_mean_%s_radius.png", ToolBox.folder_name, name)));
 
-% Plot radial variations of blood volume rate over time
+% Plot radial variations of Volume Rate over time
 figure("Visible", "off");
 hold on;
 
@@ -69,15 +69,15 @@ axis tight;
 axT = axis;
 axis([axT(1), axT(2), 0, 1.07 * axP(4)]);
 box on;
-ylabel('Blood Volume Rate (µL/min)');
+ylabel('Volume Rate (µL/min)');
 xlabel('Time (s)');
-title("Radial Variations of Blood Volume Rate");
+title("Radial Variations of Volume Rate");
 set(gca, 'PlotBoxAspectRatio', [2.5 1 1], 'LineWidth', 2);
 
 % Export plot
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_variance_%s_time.png", ToolBox.folder_name, name)));
 
-% Compute total blood volume rate over circles
+% Compute total Volume Rate over circles
 Q_t = squeeze(mean(radiusQ, 1)); % Mean over circles
 N = size(radiusQSE, 1);
 dQ_t = squeeze(sqrt(sum(radiusQSE .^ 2, 1))) / N; % RMS of uncertainties
@@ -91,7 +91,7 @@ mean_dQ = sqrt(sum(dQ_t(idx_start:idx_end) .^ 2)) / N; % RMS of the uncertainty
 max_dQ = dQ_t(amax);
 min_dQ = dQ_t(amin);
 
-% Plot total blood volume rate over time
+% Plot total Volume Rate over time
 figure("Visible", "off");
 curve1 = Q_t + dQ_t; % Upper bound
 curve2 = Q_t - dQ_t; % Lower bound
@@ -126,9 +126,9 @@ ax.LineStyleOrderIndex = 1; % Reset if needed
 ax.SortMethod = 'depth'; % Try changing sorting method
 ax.Layer = 'top'; % This may help in some cases
 
-ylabel('Blood Volume Rate (µL/min)');
+ylabel('Volume Rate (µL/min)');
 xlabel('Time (s)');
-title(sprintf("Total Blood Volume Rate (Avg. %0.2f µL/min)", mean_Q));
+title(sprintf("Total Volume Rate (Avg. %0.2f µL/min)", mean_Q));
 
 % Export plot
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_allrad_%s_time.png", ToolBox.folder_name, name)));

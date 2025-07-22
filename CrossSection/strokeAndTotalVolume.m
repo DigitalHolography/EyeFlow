@@ -90,7 +90,7 @@ ax.LineStyleOrderIndex = 1; % Reset if needed
 ax.SortMethod = 'depth'; % Try changing sorting method
 ax.Layer = 'top'; % This may help in some cases
 
-ylabel('Blood Volume Rate (µL/min)')
+ylabel('Volume Rate (µL/min)')
 xlabel('Time (s)')
 stroke_volume_value = sum(interp_BvrT(1:min(amax, numInterp))) * dt / 60 * 1000; % in nL
 stroke_volume_value = stroke_volume_value + (sum(interp_BvrT(max(amin, 1):end)) * dt / 60 * 1000); % in nL
@@ -110,8 +110,8 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_strokeAndTotalVolume_
 exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_strokeAndTotalVolume_%s.eps", ToolBox.folder_name, name)))
 
 fileID = fopen(fullfile(ToolBox.path_txt, sprintf('%s_EF_main_outputs.txt', ToolBox.folder_name)), 'a');
-fprintf(fileID, 'MaxSystole Blood Volume Rate Artery : %f (µL/min) \r\n', maxsystole_bvr_value);
-fprintf(fileID, 'MinDiastole Blood Volume Rate Artery : %f (µL/min) \r\n', mindiastole_bvr_value);
+fprintf(fileID, 'MaxSystole Volume Rate Artery : %f (µL/min) \r\n', maxsystole_bvr_value);
+fprintf(fileID, 'MinDiastole Volume Rate Artery : %f (µL/min) \r\n', mindiastole_bvr_value);
 fprintf(fileID, 'Stroke Volume Artery : %f (nL) \r\n', stroke_volume_value);
 fprintf(fileID, 'Total Volume Artery : %f (nL) \r\n', total_volume_value);
 fclose(fileID);
