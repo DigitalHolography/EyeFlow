@@ -10,6 +10,7 @@ exportVideos = params.exportVideos;
 assert(isequal(size(v_profiles_cell), [rows, cols]), 'Size of v_profiles_cell must match locsLabel');
 i = 0;
 numFrames = 0;
+
 while numFrames <= 0
     i = i + 1;
     numFrames = size(v_profiles_cell{i}, 2);
@@ -37,7 +38,7 @@ title(['Velocity Profiles Overlay - ' name]);
 profWidth = 40;
 profHeight = 30;
 
-%% AVG Plot
+% AVG Plot
 lines_cell = cell(rows, cols);
 
 for circleIdx = 1:rows
@@ -105,16 +106,10 @@ for circleIdx = 1:rows
 
 end
 
-outputDir = fullfile(ToolBox.path_png, 'local');
-
-if ~exist(outputDir, 'dir')
-    mkdir(outputDir);
-end
-
 % Save figure
-exportgraphics(gca, fullfile(outputDir, ...
-    sprintf("%s_velocities_profiles_overlay_%s.png", ToolBox.folder_name, name)));
-%% Time plot (gif)
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_velocities_profiles_overlay_%s.png", ToolBox.folder_name, name)));
+
+% Time plot (gif)
 
 if exportVideos
     hold on;

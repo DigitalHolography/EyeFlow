@@ -51,7 +51,7 @@ xlabel('Radius (pixels)');
 title("Time-Averaged Blood Volume Rate");
 
 % Export plot
-exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_mean_%s_radius.png", ToolBox.folder_name, name)));
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_mean_%s_radius.png", ToolBox.folder_name, name)));
 
 % Plot radial variations of blood volume rate over time
 figure("Visible", "off");
@@ -75,7 +75,7 @@ title("Radial Variations of Blood Volume Rate");
 set(gca, 'PlotBoxAspectRatio', [2.5 1 1], 'LineWidth', 2);
 
 % Export plot
-exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_variance_%s_time.png", ToolBox.folder_name, name)));
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_variance_%s_time.png", ToolBox.folder_name, name)));
 
 % Compute total blood volume rate over circles
 Q_t = squeeze(mean(radiusQ, 1)); % Mean over circles
@@ -131,8 +131,8 @@ xlabel('Time (s)');
 title(sprintf("Total Blood Volume Rate (Avg. %0.2f µL/min)", mean_Q));
 
 % Export plot
-exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_allrad_%s_time.png", ToolBox.folder_name, name)));
-exportgraphics(gca, fullfile(ToolBox.path_eps, 'local', sprintf("%s_allrad_%s_time.eps", ToolBox.folder_name, name)));
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_allrad_%s_time.png", ToolBox.folder_name, name)));
+exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_allrad_%s_time.eps", ToolBox.folder_name, name)));
 
 % Write results to a text file
 fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'EF_main_outputs', '.txt')), 'a');

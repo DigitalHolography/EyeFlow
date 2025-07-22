@@ -108,7 +108,7 @@ fontsize(gca, 14, 'points')
 
 % Save figure
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'local', 'velocityProfiles', ...
+exportgraphics(gca, fullfile(ToolBox.path_png, 'velocityProfiles', ...
     sprintf('%s_poiseuille_profile_%s.png', ToolBox.folder_name, figName)))
 
 % Close figure

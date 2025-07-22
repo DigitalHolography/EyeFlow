@@ -106,10 +106,8 @@ else
     annotation('textbox', dim, 'String', str, 'FitBoxToText', 'on', 'BackgroundColor', 'w');
 end
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'local', ...
-    sprintf("%s_strokeAndTotalVolume_%s.png", ToolBox.folder_name, name)))
-exportgraphics(gca, fullfile(ToolBox.path_eps, 'local', ...
-    sprintf("%s_strokeAndTotalVolume_%s.eps", ToolBox.folder_name, name)))
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_strokeAndTotalVolume_%s.png", ToolBox.folder_name, name)))
+exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_strokeAndTotalVolume_%s.eps", ToolBox.folder_name, name)))
 
 fileID = fopen(fullfile(ToolBox.path_txt, sprintf('%s_EF_main_outputs.txt', ToolBox.folder_name)), 'a');
 fprintf(fileID, 'MaxSystole Blood Volume Rate Artery : %f (µL/min) \r\n', maxsystole_bvr_value);

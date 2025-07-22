@@ -92,8 +92,8 @@ imgRGB(indxs) = 0;
 imgRGB(numY * numX + indxs) = 0;
 imgRGB(2 * numY * numX + indxs) = 0;
 
-figure(Visible = 'off');
+figure('Visible', 'off');
 imshow(imgRGB)
-exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_%s.png", ToolBox.folder_name, sprintf('sections_advanced'))))
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s.png", ToolBox.folder_name, sprintf('sections_advanced'))))
 
 end

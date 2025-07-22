@@ -132,9 +132,8 @@ if mask_params.AutoCompute
     [maskArtery, maskVein, R_VascularSignal, vascularSignal, quantizedImage, level, color] = correlationSegmentation(M0_video, maskVesselnessClean, vesselParams);
 
     % 1) 4) Save all images
-
     t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
-    graphSignal('all_15_vascularSignal', folder_steps, t, squeeze(vascularSignal), '-', cVascular, ...
+    graphSignal('all_15_vascularSignal', t, squeeze(vascularSignal), '-', cVascular, ...
         Title = 'Vascular Signal', xlabel = 'Time(s)', ylabel = 'Power Doppler (a.u.)');
 
     saveImage(R_VascularSignal, 'all_15_Correlation.png', isStep = true)

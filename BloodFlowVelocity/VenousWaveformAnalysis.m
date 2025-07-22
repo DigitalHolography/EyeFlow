@@ -19,12 +19,10 @@ cLight = [0.5 0.5 1];
 % Set parameters based on signal type
 if strcmp(name, "bvr")
     y_label = 'Blood Volume Rate (µL/min)';
-    folder = 'local';
     unit = 'µL/min';
     isBVR = true;
 else
     y_label = 'Velocity (mm/s)';
-    folder = 'global';
     unit = 'mm/s';
     isBVR = false;
 end
@@ -108,7 +106,7 @@ pbaspect([1.618 1 1]);
 set(gca, 'LineWidth', 2, 'Box', 'on');
 
 % Save Results
-exportgraphics(hFig, fullfile(ToolBox.path_png, folder, ...
+exportgraphics(hFig, fullfile(ToolBox.path_png, ...
     sprintf("%s_VenousWaveformAnalysis_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
 

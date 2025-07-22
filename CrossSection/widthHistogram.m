@@ -62,7 +62,7 @@ aa = axis;
 aa(4) = aa(4) * 1.14;
 axis(aa);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'local', sprintf("%s_%s", ToolBox.folder_name, sprintf('histogram_of_%s_section_diameter.png', name))))
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, sprintf('histogram_of_%s_section_diameter.png', name))))
 
 %csv output of the widths
 T = table();

@@ -212,17 +212,11 @@ ax.SortMethod = 'depth'; % Try changing sorting method
 ax.Layer = 'top'; % This may help in some cases
 
 % Export static figure
-outputDir = fullfile(ToolBox.path_png, 'local');
-
-if ~exist(outputDir, 'dir')
-    mkdir(outputDir);
-end
 
 ax = gca;
 
 if isvalid(ax)
-    exportgraphics(gca, fullfile(outputDir, ...
-        sprintf("%s_diasys_%s.png", ToolBox.folder_name, name)), 'Resolution', 300);
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_diasys_%s.png", ToolBox.folder_name, name)), 'Resolution', 300);
 else
     warning('Current axes are not valid. Skipping export.');
 end

@@ -237,11 +237,6 @@ methods
         % Pulse Analysis
         if obj.flag_bloodFlowVelocity_analysis
 
-            if ~isfolder(fullfile(ToolBox.path_png, 'global'))
-                mkdir(ToolBox.path_png, 'global')
-                mkdir(ToolBox.path_eps, 'global')
-            end
-
             fprintf("\n----------------------------------\nBlood Flow Velocity Analysis\n----------------------------------\n");
             pulseAnalysisTimer = tic;
 

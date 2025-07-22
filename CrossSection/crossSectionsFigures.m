@@ -89,17 +89,17 @@ end
 
 if params.json.CrossSectionsFigures.circleImages
 
-    if ~isfolder(fullfile(ToolBox.path_png, 'local', 'vesselSegmentImages'))
-        mkdir(fullfile(path_png, 'local'), 'vesselSegmentImages')
-        mkdir(fullfile(path_eps, 'local'), 'vesselSegmentImages')
-        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'lumenDiameter')
-        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'lumenDiameter')
-        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'vesselSegmentId')
-        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'vesselSegmentId')
-        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'bloodVolumeRate')
-        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'bloodVolumeRate')
-        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'velocity')
-        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'velocity')
+    if ~isfolder(fullfile(path_png, 'vesselSegmentImages'))
+        mkdir(fullfile(path_png, 'vesselSegmentImages'))
+        mkdir(fullfile(path_eps, 'vesselSegmentImages'))
+        mkdir(fullfile(path_png, 'vesselSegmentImages', 'lumenDiameter'))
+        mkdir(fullfile(path_eps, 'vesselSegmentImages', 'lumenDiameter'))
+        mkdir(fullfile(path_png, 'vesselSegmentImages', 'vesselSegmentId'))
+        mkdir(fullfile(path_eps, 'vesselSegmentImages', 'vesselSegmentId'))
+        mkdir(fullfile(path_png, 'vesselSegmentImages', 'bloodVolumeRate'))
+        mkdir(fullfile(path_eps, 'vesselSegmentImages', 'bloodVolumeRate'))
+        mkdir(fullfile(path_png, 'vesselSegmentImages', 'velocity'))
+        mkdir(fullfile(path_eps, 'vesselSegmentImages', 'velocity'))
     end
 
     circleImages(M0_ff_img, xy_barycenter, A_cell, Q_cell, v_cell, maskLabel, locsLabel, name)
@@ -120,7 +120,7 @@ if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesInd
 end
 
 if params.json.CrossSectionsFigures.ARIBVR
-    ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), 'local', dQ_t);
+    ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), dQ_t);
 end
 
 % Define parameters with uncertainties
