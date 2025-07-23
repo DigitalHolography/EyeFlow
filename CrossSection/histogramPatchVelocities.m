@@ -56,7 +56,8 @@ for circleIdx = 1:rows
              histHeight / size(M0_ff_img, 1)]);
 
         % Plot histogram
-        plot_list{circleIdx, i} = bar(ax, edges(1:end-1), counts, 'histc');
+        bh = bar(ax, edges(1:end-1), counts,'BarWidth', 1.0);
+        plot_list{circleIdx, i} = bh;
         ax.XTick = [];
         ax.YTick = [];
         ax.Box = 'off';
@@ -93,7 +94,13 @@ for frameIdx = 1:numFrames
             histData = histo_t{frameIdx};
 
             % replot
-            plot_list{circleIdx, i}.YData = [zeros(1,5);histData;histData;zeros(1,5)];
+            % Ensure histData matches number of bars
+            bh = plot_list{circleIdx, i};
+            if numel(bh.YData) == numel(histData)
+                bh.YData = histData;
+            else
+                warning("Bar data size mismatch at (%d,%d)", circleIdx, i);
+            end
             
         end
     end
@@ -102,8 +109,6 @@ for frameIdx = 1:numFrames
 
 end
 writeGifOnDisc(mat2gray(histPatchVelocitiesVideo), sprintf("histogram_velocities_overlay_%s", name), "ToolBox", ToolBox);
-
-
 end
 
 end
