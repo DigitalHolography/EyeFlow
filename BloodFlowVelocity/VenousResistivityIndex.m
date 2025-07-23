@@ -1,4 +1,4 @@
-function [] = VenousResistivityIndex(t, v_video, mask, sysIdxList, name, folder)
+function [] = VenousResistivityIndex(t, v_video, mask, sysIdxList, name)
 
 ToolBox = getGlobalToolBox;
 numInterp = 60;
@@ -98,13 +98,17 @@ axT = axis;
 axis([axT(1), axT(2), 0, axP(4)])
 
 box on
-set(gca, 'Linewidth', 2)
+set(gca, 'LineWidth', 2);
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
 
 % Export
-exportgraphics(gcf, fullfile(ToolBox.path_png, folder, ...
+exportgraphics(gcf, fullfile(ToolBox.path_png, ...
     sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
-exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, ...
+exportgraphics(gcf, fullfile(ToolBox.path_eps, ...
     sprintf("%s_RI_%s.eps", ToolBox.folder_name, name)));
 close;
 
@@ -150,10 +154,8 @@ set(gca, 'Linewidth', 2)
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 
 % Export
-exportgraphics(gcf, fullfile(ToolBox.path_png, folder, ...
-    sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
-exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, ...
-    sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
 close;
 
 % Save image
@@ -187,14 +189,14 @@ if size(v_video, 3) > 1 % if given a video, output the image of RI / PI
     imagesc(RI), axis image; axis off;
     colorbar, colormap(cmap)
     title(sprintf('RI %s = %0.2f', name, RI_mean));
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_RI_map_%s.png", ToolBox.folder_name, name)));
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_RI_map_%s.png", ToolBox.folder_name, name)));
 
     % Display and save the PI image
     f = figure("Visible", "off");
     imagesc(PI), axis image; axis off;
     colorbar, colormap(cmap)
     title(sprintf('PI %s = %0.2f', name, PI_mean));
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_PI_map_%s.png", ToolBox.folder_name, name)));
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_PI_map_%s.png", ToolBox.folder_name, name)));
 
     % Close figures
     close(f), close(fig);

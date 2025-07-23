@@ -1,31 +1,33 @@
 function ArterialWaveformAnalysis(signal, systolesIndexes, numInterp, name)
-% ARTERIALWAVEFORMANALYSIS Analyzes arterial waveform signals (velocity or blood volume rate)
+% ARTERIALWAVEFORMANALYSIS Analyzes arterial waveform signals (velocity or Volume Rate)
 %
 % Inputs:
 %   signal - Input waveform signal
 %   systolesIndexes - Indices of systolic peaks
 %   numInterp - Number of interpolation points
-%   name - Signal type ('bvr' for blood volume rate, otherwise velocity)
+%   name - Signal type ('bloodVolumeRate' for Volume Rate, otherwise velocity)
 
-%% Initial Setup
+% Initial Setup
 ToolBox = getGlobalToolBox;
 numFrames = length(signal);
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
+t = linspace(0, numFrames / fs, numFrames);
+
+cDark = [1 0 0];
+cLight = [1 0.5 0.5];
 
 % Set parameters based on signal type
 if strcmpi(name, "bvr")
-    y_label = 'Blood Volume Rate (µL/min)';
-    folder = 'crossSectionsAnalysis';
+    y_label = 'Volume Rate (µL/min)';
     unit = 'µL/min';
     isBVR = true;
 else
     y_label = 'Velocity (mm/s)';
-    folder = 'bloodFlowVelocity';
     unit = 'mm/s';
     isBVR = false;
 end
 
-%% Signal Preprocessing
+% Signal Preprocessing
 try
     % Apply wavelet denoising if possible
     signal = double(wdenoise(signal, 4, ...
@@ -36,14 +38,19 @@ catch
     signal = double(signal);
 end
 
-%% Cycle Analysis
-[one_cycle_signal, avgLength] = interpSignal(signal, systolesIndexes, numInterp);
+% Apply bandpass filter (0.5-15 Hz) as suggested
+[b, a] = butter(4, 15 / (fs / 2), 'low');
+filtered_signal = filtfilt(b, a, signal);
+
+% Cycle Analysis
+[one_cycle_signal, avgLength] = interpSignal(filtered_signal, systolesIndexes, numInterp);
 
 % Create time vector for one cycle
 dt = (t(2) - t(1));
 pulseTime = linspace(0, dt * avgLength, numInterp);
 
-%% Feature Detection
+% Feature Detection
+
 % Adaptive peak detection parameters
 min_peak_height = max(one_cycle_signal) * 0.3; % 30 % of max as threshold
 min_peak_distance = floor(length(one_cycle_signal) / 4); % 1/4 cycle minimum
@@ -56,11 +63,12 @@ min_peak_distance = floor(length(one_cycle_signal) / 4); % 1/4 cycle minimum
     'SortStr', 'descend'); % Sort by amplitude
 
 % Initialize all output variables
-systoleDuration = NaN;
+dicroticNotchTime = NaN;
 diastoleDuration = NaN;
 systolicUpstroke = peaks(1) - one_cycle_signal(1);
 systolicDownstroke = NaN;
 diastolicRunoff = NaN;
+dicroticNotchIndex = NaN;
 notch = NaN;
 locs_notch = NaN;
 
@@ -80,7 +88,8 @@ if length(peaks) > 1
         diastolicRunoff = notch - one_cycle_signal(end); % End of cycle
 
         % Calculate durations
-        systoleDuration = pulseTime(locs_notch) - pulseTime(1);
+        dicroticNotchTime = pulseTime(locs_notch) - pulseTime(1);
+        dicroticNotchIndex = notch ./ peaks(1);
         diastoleDuration = pulseTime(end) - pulseTime(locs_notch);
     else
         notch = NaN; % Invalid notch
@@ -88,43 +97,43 @@ if length(peaks) > 1
 
 end
 
-%% Visualization
-hFig = figure('Visible', 'off', 'Color', 'w', 'Position', [100 100 1000 620]);
+% Visualization
+hFig = figure('Visible', 'off', 'Color', 'w');
 hold on;
 
 % Add reference lines and annotations
 T_peak = pulseTime(locs_peaks(1));
-xline(T_peak, 'k--', sprintf("Max = %.2f s", T_peak), ...
+xline(T_peak, 'k--', sprintf("%.2f s", T_peak), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
-xline(dt * avgLength, 'k--', sprintf("Total = %.2f s", dt * avgLength), ...
+xline(dt * avgLength, 'k--', sprintf("%.2f s", dt * avgLength), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
-yline(peaks(1), 'k--', sprintf("Peak Systolic = %.1f %s", peaks(1), unit), ...
+yline(peaks(1), 'k--', sprintf("%.1f %s", peaks(1), unit), ...
     'LineWidth', 1.5, 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
 T_Min = pulseTime(endMinLoc);
-xline(T_Min, 'k--', sprintf("Min = %.2f s", T_Min), ...
+xline(T_Min, 'k--', sprintf("%.2f s", T_Min), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
-yline(endMinVal, 'b--', sprintf("End Minimum = %.1f %s", endMinVal, unit), ...
+yline(endMinVal, 'b--', sprintf("%.1f %s", endMinVal, unit), ...
     'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
 if ~isnan(notch)
     T_notch = pulseTime(locs_notch);
-    xline(T_notch, 'k--', sprintf("Notch = %.2f s", T_notch), ...
+    xline(T_notch, 'k--', sprintf("%.2f s", T_notch), ...
         'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
-    yline(notch, 'k--', sprintf("Notch = %.1f %s", notch, unit), ...
-        'LineWidth', 1.5, 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+    yline(notch, 'k--', sprintf("%.1f %s", notch, unit), ...
+        'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
     if length(locs_peaks) > 1
         T_diastolic = pulseTime(locs_peaks(2));
-        xline(T_diastolic, 'k--', sprintf("Max2 = %.2f s", T_diastolic), ...
+        xline(T_diastolic, 'k--', sprintf("%.2f s", T_diastolic), ...
             'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
-        yline(peaks(2), 'k--', sprintf("Peak Diastolic = %.1f %s", peaks(2), unit), ...
-            'LineWidth', 1.5, 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+        yline(peaks(2), 'k--', sprintf("%.1f %s", peaks(2), unit), ...
+            'LineWidth', 1.5, 'LabelVerticalAlignment', 'top', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
     end
 
 end
@@ -146,39 +155,126 @@ plot(pulseTime, gradient(one_cycle_signal), 'Color', [0.7 0.7 0.7], 'LineWidth',
 plot(pulseTime, one_cycle_signal, 'k', 'LineWidth', 2);
 
 % Plot detected features
-scatter(pulseTime(locs_peaks), peaks, 100, 'r', 'filled', 'MarkerEdgeColor', 'k');
-scatter(pulseTime(endMinLoc), endMinVal, 100, 'b', 'filled', 'MarkerEdgeColor', 'k');
+scatter(pulseTime(locs_peaks), peaks, 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
+scatter(pulseTime(endMinLoc), endMinVal, 100, 'filled', 'MarkerFaceColor', cLight, 'MarkerEdgeColor', 'k');
 
 if ~isnan(notch)
-    scatter(pulseTime(locs_notch), notch, 100, 'b', 'filled', 'MarkerEdgeColor', 'k');
+    scatter(pulseTime(locs_notch), notch, 100, 'filled', 'MarkerFaceColor', cLight, 'MarkerEdgeColor', 'k');
 end
 
 % Configure axes
 axis tight;
 axT = axis;
-axis([axT(1), axT(2), axT(3) - 0.1 * (axT(4) - axT(3)), axT(4) + 0.1 * (axT(4) - axT(3))]);
+axis padded;
+axP = axis;
+axis([axT(1), axT(2), axP(3) - 0.2 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
 
 ylabel(y_label);
 xlabel('Time (s)');
 pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 2, 'FontSize', 24, 'Box', 'on');
+set(gca, 'LineWidth', 2, 'Box', 'on');
 
-%% Save Results
-try
-    exportgraphics(hFig, fullfile(ToolBox.path_png, folder, ...
-        sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.folder_name, name)), ...
-        'Resolution', 300);
-catch ME
-    warning('FailedToSaveFigure', 'Could not save figure: %s', ME.message);
+% Save Results
+exportgraphics(hFig, fullfile(ToolBox.path_png, ...
+    sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.folder_name, name)), ...
+    'Resolution', 300);
+
+% Spectral Analysis
+% Perform spectral analysis on the original signal
+% Zero-pad the signal for better frequency resolution
+N = 16; % Padding factor
+padded_signal = padarray(signal, [0 numFrames * N]); % Zero-padding for interpolation in frequency domain
+
+% Frequency vector (show only positive frequencies since signal is real)
+f = linspace(0, fs / 2, (N * numFrames) + 1);
+fft_mag = abs(fft(padded_signal));
+fft_mag = fft_mag(1:length(f)); % Take only positive frequencies
+fft_mag = fft_mag / max(fft_mag); % Normalize to [0,1]
+
+% Improved peak detection with minimum prominence threshold
+min_prominence = 0.1; % 10 % of maximum magnitude as minimum prominence
+[s_peaks, s_locs] = findpeaks(fft_mag, f, ...
+    'MinPeakProminence', min_prominence, ...
+    'SortStr', 'descend', ...
+    'NPeaks', 5); % Find up to 5 most significant peaks
+
+% Create figure for spectral analysis
+hFig = figure('Visible', 'off', 'Color', 'w');
+
+% Main plot with improved styling
+plot(f, fft_mag, 'k', 'LineWidth', 2);
+hold on;
+grid on;
+
+% Highlight detected peaks with annotations
+if ~isempty(s_peaks)
+    scatter(s_locs, s_peaks, 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
+
+    % Annotate the top 3 peaks
+    for k = 1:min(5, length(s_peaks))
+        text(s_locs(k), s_peaks(k) * 1.2, ...
+            sprintf('%.2f Hz', s_locs(k)), ...
+            'HorizontalAlignment', 'center', ...
+            'VerticalAlignment', 'bottom', ...
+            'FontSize', 8, ...
+            'BackgroundColor', 'w', ...
+            'EdgeColor', 'k');
+    end
+
 end
 
-%% Export to JSON (only for velocity signals)
+% Calculate and plot harmonic frequencies if fundamental is detected
+if length(s_locs) >= 1
+    fundamental = s_locs(1);
+    harmonics = fundamental * (2:5); % Up to 5th harmonic
+    valid_harmonics = harmonics(harmonics <= fs / 2);
+
+    % Plot harmonic locations
+    for h = valid_harmonics
+        xline(h, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1, ...
+            'Label', sprintf('%.0f×', h / fundamental), ...
+            'LabelOrientation', 'horizontal', ...
+            'LabelVerticalAlignment', 'bottom');
+    end
+
+end
+
+% Configure axes
+axis tight;
+axT = axis;
+axis padded;
+axP = axis;
+axis([axT(1), 10, axP(3) - 0.1 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
+
+xlabel('Frequency (Hz)', 'FontSize', 14, 'FontWeight', 'bold');
+ylabel('Normalized Magnitude', 'FontSize', 14, 'FontWeight', 'bold');
+pbaspect([1.618 1 1]);
+set(gca, 'LineWidth', 1.5, 'FontSize', 12);
+
+% Add heart rate information if fundamental is in typical range (0.5-3 Hz)
+if ~isempty(s_locs) && s_locs(1) >= 0.5 && s_locs(1) <= 3
+    hr = s_locs(1) * 60; % Convert Hz to BPM
+    annotation('textbox', [0.5 0.6 0.2 0.1], ...
+        'String', sprintf('Estimated HR: %.1f BPM', hr), ...
+        'FitBoxToText', 'on', ...
+        'BackgroundColor', 'w', ...
+        'EdgeColor', 'k', ...
+        'FontSize', 12);
+end
+
+% Save Results
+exportgraphics(hFig, fullfile(ToolBox.path_png, ...
+    sprintf("%s_ArterialSpectralAnalysis_%s.png", ToolBox.folder_name, name)), ...
+    'Resolution', 300);
+
+% Export to JSON (only for velocity signals)
 if ~isBVR
-    ToolBox.Outputs.add('SystoleDuration', systoleDuration, 's');
+    ToolBox.Outputs.add('SystoleDuration', dicroticNotchTime, 's');
     ToolBox.Outputs.add('DiastoleDuration', diastoleDuration, 's');
     ToolBox.Outputs.add('SystolicUpstroke', systolicUpstroke, unit);
     ToolBox.Outputs.add('SystolicDownstroke', systolicDownstroke, unit);
     ToolBox.Outputs.add('DiastolicRunoff', diastolicRunoff, unit);
+    %     ToolBox.Outputs.add('DicroticNotchIndex', dicroticNotchIndex, unit);
 end
 
 % Close the figure if not needed

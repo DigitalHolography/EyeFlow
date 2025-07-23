@@ -1,10 +1,9 @@
-function [] = ArterialResistivityIndex(signal, systolesIndexes, name, folder, signal_se)
+function [] = ArterialResistivityIndex(signal, systolesIndexes, name, signal_se)
 
 arguments
     signal
     systolesIndexes
     name
-    folder
     signal_se = []
 end
 
@@ -18,7 +17,7 @@ if contains(name, 'velocity')
     y_label = 'Velocity (mm/s)';
 else
     unit = 'µL/min';
-    y_label = 'Blood Volume Rate (µL/min)';
+    y_label = 'Volume Rate (µL/min)';
 end
 
 % Color Maps
@@ -116,12 +115,16 @@ axT = axis;
 axis([axT(1), axT(2), - 2, axP(4) + 2])
 
 box on
-set(gca, 'Linewidth', 2)
+set(gca, 'LineWidth', 2);
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
 
 % Export
-exportgraphics(gcf, fullfile(ToolBox.path_png, folder, sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
-exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, sprintf("%s_RI_%s.eps", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_RI_%s.eps", ToolBox.folder_name, name)));
 close;
 
 % PI Graph
@@ -169,8 +172,8 @@ set(gca, 'Linewidth', 2)
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 
 % Export
-exportgraphics(gcf, fullfile(ToolBox.path_png, folder, sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
-exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
 close;
 
 if contains(name, 'Artery')
@@ -203,6 +206,28 @@ if contains(name, 'velocity')
         ToolBox.Outputs.add('ArterialMaximumVelocity', vMax, unit, vMax_se);
     end
 
+else
+    ToolBox.outputs.blood_volume_rate.(sprintf('mean_%s', VesselName)) = round(v_mean, 2);
+    ToolBox.outputs.blood_volume_rate.(sprintf('systolic_%s', VesselName)) = round(vMax, 2);
+    ToolBox.outputs.blood_volume_rate.(sprintf('diastolic_%s', VesselName)) = round(vMin, 2);
+
+    if ~isempty(signal_se)
+        ToolBox.outputs.blood_volume_rate.(sprintf('mean_%s_se', VesselName)) = round(std(interp_signal), 2);
+        ToolBox.outputs.blood_volume_rate.(sprintf('systolic_%s_se', VesselName)) = round(vMax_se, 2);
+        ToolBox.outputs.blood_volume_rate.(sprintf('diastolic_%s_se', VesselName)) = round(vMin_se, 2);
+    end
+
+    % New
+    if contains(name, 'Vein')
+        ToolBox.Outputs.add('VenousMeanVolumeRate', v_mean, unit, std(interp_signal));
+        ToolBox.Outputs.add('VenousMaximumVolumeRate', vMax, unit, vMax_se);
+        ToolBox.Outputs.add('VenousMinimumVolumeRate', vMin, unit, vMin_se);
+    elseif contains(name, 'Artery')
+        ToolBox.Outputs.add('ArterialMeanVolumeRate', v_mean, unit, std(interp_signal));
+        ToolBox.Outputs.add('ArterialMinimumVolumeRate', vMin, unit, vMin_se);
+        ToolBox.Outputs.add('ArterialMaximumVolumeRate', vMax, unit, vMax_se);
+    end
+
 end
 
 ToolBox.outputs.indices.(sprintf('%s_RI', name)) = round(RI, 2);
@@ -216,14 +241,31 @@ if ~isempty(signal_se)
 end
 
 % New
-if contains(name, 'Vein')
-    ToolBox.Outputs.add('VenousResistivityIndexVelocity', RI, '', RI_se);
-    ToolBox.Outputs.add('VenousPulsatilityIndexVelocity', PI, '', PI_se);
-    ToolBox.Outputs.add('VenousMaxMinRatioVelocity', PR, '', PR_se);
-elseif contains(name, 'Artery')
-    ToolBox.Outputs.add('ArterialResistivityIndexVelocity', RI, '', RI_se);
-    ToolBox.Outputs.add('ArterialPulsatilityIndexVelocity', PI, '', PI_se);
-    ToolBox.Outputs.add('ArterialMaxMinRatioVelocity', PR, '', PR_se);
+
+if contains(name, 'velocity')
+
+    if contains(name, 'Vein')
+        ToolBox.Outputs.add('VenousResistivityIndexVelocity', RI, '', RI_se);
+        ToolBox.Outputs.add('VenousPulsatilityIndexVelocity', PI, '', PI_se);
+        ToolBox.Outputs.add('VenousMaxMinRatioVelocity', PR, '', PR_se);
+    elseif contains(name, 'Artery')
+        ToolBox.Outputs.add('ArterialResistivityIndexVelocity', RI, '', RI_se);
+        ToolBox.Outputs.add('ArterialPulsatilityIndexVelocity', PI, '', PI_se);
+        ToolBox.Outputs.add('ArterialMaxMinRatioVelocity', PR, '', PR_se);
+    end
+
+else
+
+    if contains(name, 'Vein')
+        ToolBox.Outputs.add('VenousResistivityIndexVolumeRate', RI, '', RI_se);
+        ToolBox.Outputs.add('VenousPulsatilityIndexVolumeRate', PI, '', PI_se);
+        ToolBox.Outputs.add('VenousMaxMinRatioVolumeRate', PR, '', PR_se);
+    elseif contains(name, 'Artery')
+        ToolBox.Outputs.add('ArterialResistivityIndexVolumeRate', RI, '', RI_se);
+        ToolBox.Outputs.add('ArterialPulsatilityIndexVolumeRate', PI, '', PI_se);
+        ToolBox.Outputs.add('ArterialMaxMinRatioVolumeRate', PR, '', PR_se);
+    end
+
 end
 
 end

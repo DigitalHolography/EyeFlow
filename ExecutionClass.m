@@ -26,6 +26,7 @@ properties
     diasIdx
     sysIdx % Indexes for diastole/ systole analysis
     xy_barycenter % x y position of the ONH
+    papillaDiameter
     vRMS % video estimate of velocity map in retinal vessels
     Q_results_A
     Q_results_V
@@ -73,6 +74,13 @@ methods
             obj.directory = path;
             tmp_idx = regexp(path, '\');
             obj.filenames = obj.directory(tmp_idx(end - 1) + 1:end - 1);
+
+            if ~isfolder(fullfile(path, "raw"))
+
+                error('No raw file found at: %s\nPlease check folder path and filename.', path);
+
+            end
+
         end
 
         % Load parameters
@@ -192,14 +200,25 @@ methods
                 mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
             end
 
-            obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
-            [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
-                createMasks(obj.M0_ff_video, obj.xy_barycenter);
-
             M0_ff_img = rescale(mean(obj.M0_ff_video, 3));
             cmapArtery = ToolBox.cmapArtery;
             cmapVein = ToolBox.cmapVein;
             cmapAV = ToolBox.cmapAV;
+
+            obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
+
+            try
+                [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
+            catch E
+                warning("Error while finding papilla : ")
+                disp(E)
+                diameter_x = NaN;
+                diameter_y = NaN;
+            end
+
+            [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
+                createMasks(obj.M0_ff_video, obj.xy_barycenter);
+            obj.papillaDiameter = mean([diameter_x, diameter_y]);
 
             M0_Artery = setcmap(M0_ff_img, obj.maskArtery, cmapArtery);
             M0_Vein = setcmap(M0_ff_img, obj.maskVein, cmapVein);
@@ -217,11 +236,6 @@ methods
 
         % Pulse Analysis
         if obj.flag_bloodFlowVelocity_analysis
-
-            if ~isfolder(fullfile(ToolBox.path_png, 'bloodFlowVelocity'))
-                mkdir(ToolBox.path_png, 'bloodFlowVelocity')
-                mkdir(ToolBox.path_eps, 'bloodFlowVelocity')
-            end
 
             fprintf("\n----------------------------------\nBlood Flow Velocity Analysis\n----------------------------------\n");
             pulseAnalysisTimer = tic;
@@ -255,10 +269,10 @@ methods
             fprintf("\n----------------------------------\nCross-Section Analysis\n----------------------------------\n");
             crossSectionAnalysisTimer = tic;
 
-            [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'Artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter);
+            [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'Artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
 
             if veins_analysis
-                [obj.Q_results_V] = crossSectionsAnalysis(obj.maskVein, 'Vein', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter);
+                [obj.Q_results_V] = crossSectionsAnalysis(obj.maskVein, 'Vein', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
             end
 
             obj.is_crossSectionAnalyzed = true;
@@ -275,21 +289,24 @@ methods
 
             if veins_analysis
                 crossSectionsFigures(obj.Q_results_V, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
+                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery | obj.maskVein);
+            else
+                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery);
             end
 
             % try
             %     generateHealthReport()
             % catch ME
             %     fprintf("Error generating health report: %s\n", ME.message);
-            % 
+            %
             %     for i = 1:length(ME.stack)
             %         fprintf("Error in %s at line %d: %s\n", ME.stack(i).name, ME.stack(i).line, ME.message);
             %     end
-            % 
+            %
             % end
-            
+
             obj.is_AllAnalyzed = true;
-            
+
             fprintf("- Cross-Section Figures took: %ds\n", round(toc(crossSectionFiguresTimer)));
         end
 
@@ -321,7 +338,7 @@ methods
             fprintf("- Spectrogram took: %ds\n", round(toc(spectrogramTimer)));
             fprintf("\n----------------------------------\nSpectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
         end
-        
+
         if obj.is_AllAnalyzed
             generateA4Report()
         end

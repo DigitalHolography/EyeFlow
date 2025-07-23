@@ -4,21 +4,26 @@ ToolBox = getGlobalToolBox;
 
 subImgSize = [];
 
+for i = 1:size(subImg_cell, 1)
 
+    for n = 1:size(subImg_cell, 2)
 
-for i=1:size(subImg_cell,1) 
-    for n=1:size(subImg_cell,2) 
         if ~isempty(subImg_cell{i, n})
             subImgSize = size(subImg_cell{i, n});
         end
-        if  ~isempty(subImgSize)
+
+        if ~isempty(subImgSize)
             break;
         end
+
     end
-    if  ~isempty(subImgSize)
+
+    if ~isempty(subImgSize)
         break;
     end
+
 end
+
 if isempty(subImgSize)
     return
 end
@@ -45,7 +50,6 @@ for circleIdx = 1:numCircles
 end
 
 sub_images_mat(isnan(sub_images_mat)) = 0;
-imwrite(sub_images_mat, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', ...
-    sprintf("%s_%s", ToolBox.folder_name, sprintf('%s_section_montage.png', name))))
+imwrite(sub_images_mat, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, sprintf('%s_section_montage.png', name))))
 
 end

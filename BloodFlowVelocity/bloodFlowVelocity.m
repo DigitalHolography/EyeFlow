@@ -40,7 +40,7 @@ end
 [numX_fig, numY_fig, ~, ~] = size(histoVideoArtery);
 
 if veinsAnalysis
-    v_mean_RGB4Gif = rescale(imresize3(v_mean_RGB, [numX_fig*2 numX_fig*2 3]));
+    v_mean_RGB4Gif = rescale(imresize3(v_mean_RGB, [numX_fig * 2 numX_fig * 2 3]));
 else
     v_mean_RGB4Gif = rescale(imresize3(v_mean_RGB, [numY_fig numY_fig 3]));
 end
@@ -48,15 +48,15 @@ end
 if exportVideos
 
     if veinsAnalysis
-        imwrite(cat(2, v_mean_RGB4Gif, cat(1, mat2gray(histoVideoArtery(:, :, :, end)), mat2gray(histoVideoVein(:, :, :, end)))), fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.folder_name, 'AVGflowVideoCombined.png')))
+        imwrite(cat(2, v_mean_RGB4Gif, cat(1, mat2gray(histoVideoArtery(:, :, :, end)), mat2gray(histoVideoVein(:, :, :, end)))), fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'AVGflowVideoCombined.png')))
     else
-        imwrite(cat(1, v_mean_RGB4Gif, mat2gray(histoVideoArtery(:, :, :, end))), fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.folder_name, 'AVGflowVideoCombined.png')))
+        imwrite(cat(1, v_mean_RGB4Gif, mat2gray(histoVideoArtery(:, :, :, end))), fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'AVGflowVideoCombined.png')))
     end
 
     if veinsAnalysis
-        v_video_RGB4Gif(:, :, 1, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 1, :)), [numX_fig*2 numX_fig*2 numFrames]));
-        v_video_RGB4Gif(:, :, 2, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 2, :)), [numX_fig*2 numX_fig*2 numFrames]));
-        v_video_RGB4Gif(:, :, 3, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 3, :)), [numX_fig*2 numX_fig*2 numFrames]));
+        v_video_RGB4Gif(:, :, 1, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 1, :)), [numX_fig * 2 numX_fig * 2 numFrames]));
+        v_video_RGB4Gif(:, :, 2, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 2, :)), [numX_fig * 2 numX_fig * 2 numFrames]));
+        v_video_RGB4Gif(:, :, 3, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 3, :)), [numX_fig * 2 numX_fig * 2 numFrames]));
         combinedGifs = cat(2, v_video_RGB4Gif, cat(1, mat2gray(histoVideoArtery), mat2gray(histoVideoVein)));
     else
         v_video_RGB4Gif(:, :, 1, :) = mat2gray(imresize3(squeeze(v_video_RGB(:, :, 1, :)), [numY_fig numY_fig numFrames]));
@@ -70,9 +70,9 @@ if exportVideos
 else
 
     if veinsAnalysis
-        imwrite(cat(2, v_mean_RGB4Gif, cat(1, mat2gray(histoVideoArtery), mat2gray(histoVideoVein))), fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.folder_name, 'AVGflowVideoCombined.png')))
+        imwrite(cat(2, v_mean_RGB4Gif, cat(1, mat2gray(histoVideoArtery), mat2gray(histoVideoVein))), fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'AVGflowVideoCombined.png')))
     else
-        imwrite(cat(1, v_mean_RGB4Gif, mat2gray(histoVideoArtery)), fullfile(ToolBox.path_png, 'bloodFlowVelocity', sprintf("%s_%s", ToolBox.folder_name, 'AVGflowVideoCombined.png')))
+        imwrite(cat(1, v_mean_RGB4Gif, mat2gray(histoVideoArtery)), fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'AVGflowVideoCombined.png')))
     end
 
 end

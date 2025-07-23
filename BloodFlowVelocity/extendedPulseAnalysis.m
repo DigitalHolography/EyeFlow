@@ -35,7 +35,6 @@ strYlabel = 'Frequency (kHz)';
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
-folder = 'bloodFlowVelocity';
 
 % Apply masks to isolate arteries, veins, and background
 maskArtery = maskArtery & maskSection;
@@ -52,7 +51,7 @@ cVein = [18 23 255] / 255;
 t3 = tic;
 
 % Display and save AVG frequency heatmap
-figAspect;
+figure("Visible", "off", "Color", "w");
 imagesc(f_AVG_mean);
 colormap gray;
 title('AVG Frequency Map RAW');
@@ -62,13 +61,15 @@ c.Label.FontSize = 12;
 axis off;
 axis image;
 range = clim;
-imwrite(rescale(f_AVG_mean), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG.png')), 'png');
+imwrite(rescale(f_AVG_mean), fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG.png')), 'png');
 
 clear f_AVG_mean;
 
 % Create and save colorbar for AVG image
-colorbarF = figAspect('LineWidth', 3, 'Fontsize', 15);
-colorbarF.Units = 'normalized';
+colorbarF = figure('Visible', 'off', 'Color', 'w');
+fontsize(colorbarF, 15);
+set(colorbarF, 'Units', 'normalized');
+set(colorbarF, 'LineWidth', 3);
 colormap gray;
 f_AVG_colorbar = colorbar('north');
 clim(range);
@@ -78,8 +79,8 @@ colorTitleHandle = get(f_AVG_colorbar, 'Title');
 titleString = 'AVG Doppler Frequency (kHz)';
 set(colorTitleHandle, 'String', titleString);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.png')));
-exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.eps')));
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.png')));
+exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.eps')));
 
 fprintf("    3. Raw heatmaps generation took %ds\n", round(toc(t3)));
 
@@ -102,14 +103,14 @@ end
 
 % Plot raw signals
 if veinsAnalysis
-    graphSignal('4_signalsRaw', folder, ...
+    graphSignal('4_signalsRaw', ...
         t, arterial_signal, '-', cArtery, ...
         t, background_signal, ':', cBlack, ...
         t, venous_signal, '-', cVein, ...
         Title = 'Arterial Pulse Waveform and Background Signal', xlabel = strXlabel, ylabel = strYlabel, ...
         Legends = {'Artery', 'Background', 'Vein'}, TxtName = {'FullArterialSignal', 'FullBackgroundSignal', 'FullVenousSignal'});
 else
-    graphSignal('4_signalsRaw', folder, ...
+    graphSignal('4_signalsRaw', ...
         t, arterial_signal, '-', cArtery, ...
         t, background_signal, ':', cBlack, ...
         Title = 'Arterial Pulse Waveform and Background Signal', xlabel = strXlabel, ylabel = strYlabel, ...
@@ -126,7 +127,7 @@ delta_f_arterial_signal = arterial_signal - background_signal;
 delta_f_arterial_smooth = smoothdata(delta_f_arterial_signal, 'lowess');
 
 % Plot smoothed arterial signal
-graphSignal('5_arterialSignalSmoothed', folder, ...
+graphSignal('5_arterialSignalSmoothed', ...
     t, delta_f_arterial_signal, ':', cArtery, ...
     t, delta_f_arterial_smooth, '-', cArtery, ...
     Title = 'Arterial Signal Smoothing', xlabel = strXlabel, ylabel = strYlabel, ...
@@ -138,7 +139,7 @@ if veinsAnalysis
     delta_f_venous_smooth = smoothdata(delta_f_venous_signal, 'lowess');
 
     % Plot smoothed venous signal
-    graphSignal('5_venousSignalSmoothed', folder, ...
+    graphSignal('5_venousSignalSmoothed', ...
         t, delta_f_venous_signal, ':', cVein, ...
         t, delta_f_venous_smooth, '-', cVein, ...
         Title = 'Smoothed Venous Signal', xlabel = strXlabel, ylabel = strYlabel, ...
@@ -153,7 +154,7 @@ dataReliabilityIndex2 = ceil(100 * (1 - (length(idxOutNoise) / length(delta_f_ar
 disp(['        Data Reliability Index 2: ' num2str(dataReliabilityIndex2) ' %']);
 
 % Plot filtered pulse vs. residual
-graphSignal('5_filteredPulseVsResidual', folder, ...
+graphSignal('5_filteredPulseVsResidual', ...
     t, delta_f_arterial_smooth, ':', cArtery, ...
     t, noise, '-', cBlack, ...
     Title = 'Signal vs. Noise', xlabel = strXlabel, ...
@@ -181,7 +182,7 @@ if veinsAnalysis
     textsY = [fullArterialPulseSmoothDerivative(sysIdxList)' + 0.03, fullVenousPulseSmoothDerivative(sysIdxList)' + 0.03];
     texts = arrayfun(@num2str, 1:length(sysIdxList) * 2, 'UniformOutput', false);
 
-    graphSignal('6_derivative', folder, ...
+    graphSignal('6_derivative', ...
         t, fullArterialPulseDerivative, ':', cArtery, ...
         t, fullArterialPulseSmoothDerivative, '-', cArtery, ...
         t, fullVenousPulseDerivative, ':', cVein, ...
@@ -195,7 +196,7 @@ else
     textsY = fullArterialPulseSmoothDerivative(sysIdxList)' + 0.03;
     texts = arrayfun(@num2str, 1:length(sysIdxList), 'UniformOutput', false);
 
-    graphSignal('6_derivative', folder, ...
+    graphSignal('6_derivative', ...
         t, fullArterialPulseDerivative, ':', cArtery, ...
         t, fullArterialPulseSmoothDerivative, '-', cArtery, ...
         Title = 'Derivative of Arterial Waveform', xlabel = strXlabel, ylabel = 'A.U.', ...
@@ -260,8 +261,8 @@ plot(interp_t, movavgvar(squeeze(mean(cycles_signal(:, :), 1)), 5), 'k-', 'LineW
 xlabel('Average Cardiac Cycle Duration (s)');
 ylabel('RMS Doppler Frequency (kHz)')
 
-exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, '7_RMS_Doppler_frequency_for_different_cycles.png')));
-exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, '7_RMS_Doppler_frequency_for_different_cycles.eps')));
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, '7_RMS_Doppler_frequency_for_different_cycles.png')));
+exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_%s", ToolBox.folder_name, '7_RMS_Doppler_frequency_for_different_cycles.eps')));
 
 %% Arterial pulse wave analysis
 [~, idx_sys] = max(avgArterialPulseHz);
@@ -290,8 +291,8 @@ if ~isnan(onePulseVideoM0)
     axis image;
     range = clim;
 
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFig.png')));
-    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFig.eps')));
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFig.png')));
+    exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFig.eps')));
 
     figAspect;
     imagesc(heatmap_dia);
@@ -303,8 +304,8 @@ if ~isnan(onePulseVideoM0)
     axis off;
     axis image;
 
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFlatfieldFig.png')));
-    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFlatfieldFig.eps')));
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFlatfieldFig.png')));
+    exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMapFlatfieldFig.eps')));
 
     figAspect;
     imagesc(heatmap_sys_raw);
@@ -317,8 +318,8 @@ if ~isnan(onePulseVideoM0)
     axis image;
     clim([min(range), max(range)]);
 
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFig.png')));
-    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFig.eps')));
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFig.png')));
+    exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFig.eps')));
 
     figAspect;
     imagesc(heatmap_sys);
@@ -331,12 +332,12 @@ if ~isnan(onePulseVideoM0)
     axis image;
     clim([min(range), max(range)]);
 
-    exportgraphics(gca, fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFlatfieldFig.png')));
-    exportgraphics(gca, fullfile(ToolBox.path_eps, folder, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFlatfieldFig.eps')));
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFlatfieldFig.png')));
+    exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMapFlatfieldFig.eps')));
 
     % Save heatmaps as images
-    imwrite(rescale(heatmap_sys), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMap.png')), 'png');
-    imwrite(rescale(heatmap_dia), fullfile(ToolBox.path_png, folder, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMap.png')), 'png');
+    imwrite(rescale(heatmap_sys), fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'systoleHeatMap.png')), 'png');
+    imwrite(rescale(heatmap_dia), fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'diastoleHeatMap.png')), 'png');
 end
 
 %% Cleanup and close figures

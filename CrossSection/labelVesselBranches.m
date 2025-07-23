@@ -8,6 +8,9 @@ params = ToolBox.getParams;
 x_c = xy_barycenter(1);
 y_c = xy_barycenter(2);
 r1 = params.json.SizeOfField.SmallRadiusRatio;
+r2 = params.json.SizeOfField.BigRadiusRatio;
+numCircles = params.json.CrossSectionsAnalysis.NumberOfCircles;
+dr = (r2 - r1) / numCircles;
 
 % Create skeleton and remove center circle
 skel = bwskel(vesselMask);
@@ -42,6 +45,19 @@ for i = 1:n
 end
 
 labeledVessels = labeledVessels .* maskSection;
-[labeledVessels, n] = bwlabel(labeledVessels); % Final labeling
+[labeledVessels, ~] = bwlabel(labeledVessels); % Final labeling
+
+% Remove small spots
+labeledVesselsClean = false(numX, numY);
+for cIdx = 1:numCircles
+    r_in = r1 + (cIdx - 1) * dr;
+    r_out = r_in + dr;
+    maskSectionCircle = diskMask(numX, numY, r_in, r_out, center = [x_c / numX, y_c / numY]);
+
+    minAreaThreshold = 20; % Adjust this value as needed
+    labeledVesselsClean = labeledVesselsClean | bwareaopen(labeledVessels & maskSectionCircle, minAreaThreshold);
+end
+
+[labeledVessels, n] = bwlabel(labeledVesselsClean); % Relabel after removal
 
 end

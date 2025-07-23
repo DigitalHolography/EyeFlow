@@ -1,4 +1,4 @@
-function [results] = crossSectionAnalysis2(ToolBox, loc, mask, v_RMS, patchName)
+function [results] = crossSectionAnalysis2(ToolBox, loc, mask, v_RMS, patchName, papillaDiameter)
 
 % Perform cross-section analysis on blood vessels.
 %
@@ -35,10 +35,13 @@ if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
     xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);
     yRange = round(-subImgHW / 2) + loc(2):round(subImgHW / 2) + loc(2);
     tmp = NaN(length(xRange), length(yRange));
-    tmp(1:size(subImg, 1), 1:size(subImg, 2)) = subImg; 
+    tmp(1:size(subImg, 1), 1:size(subImg, 2)) = subImg;
     subImg = tmp;
     clear tmp
 end
+
+% Interpolate the subImage two times
+subImg = imresize(subImg, 2, 'bilinear');
 
 % Crop and rotate sub-image
 subImg = cropCircle(subImg);
@@ -47,10 +50,13 @@ rotatedImg(rotatedImg <= 0) = NaN;
 results.subImg_cell = rescale(rotatedImg);
 
 % Compute the Vessel Cross Section
-[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox);
+[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter);
 results.D = D;
 results.D_se = D_se;
 results.A = A;
+
+[histo, edges] = histcounts(subImg(:), 6);
+results.v_histo = {histo, edges};
 
 % Generate figures
 saveCrossSectionFigure(rotatedImg, c1, c2, ToolBox, patchName);
@@ -59,12 +65,12 @@ saveCrossSectionFigure(rotatedImg, c1, c2, ToolBox, patchName);
 rejected_masks = zeros(numX, numY, 3);
 
 if rsquare < 0.6 || isnan(D)
-    rejected_masks(:, :, 1) = mask;
+    rejected_masks(:, :, 1) = mask; % Red
 else
-    rejected_masks(:, :, 2) = mask;
+    rejected_masks(:, :, 2) = mask; % Green
 end
 
-% Compute blood volume rate and average velocity
+% Compute Volume Rate and average velocity
 
 for t = 1:numFrames
     xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
@@ -80,6 +86,8 @@ for t = 1:numFrames
         subFrame = tmp;
         clear tmp
     end
+
+    subFrame = imresize(subFrame, 2, 'bilinear');
 
     subFrame = cropCircle(subFrame);
     subFrame = imrotate(subFrame, tilt_angle, 'bilinear', 'crop');

@@ -639,9 +639,11 @@ methods (Access = public)
 
         function show_outputs(~, ~)
             out_dir_path = fullfile(app.drawer_list{1}, 'Multiple_Results');
+
             if ~isfolder(out_dir_path)
                 mkdir(out_dir_path) % creates if it doesn't exists
             end
+
             tic
             ShowOutputs(app.drawer_list, out_dir_path)
             toc
@@ -737,8 +739,8 @@ methods (Access = public)
 
             try
 
-                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.folder_name)), fullfile(ToolBox.path_main, 'mask', 'M0.png'));
-                folder_name = ToolBox.folder_name;
+                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'M0.png'));
+                folder_name = ToolBox.main_foldername;
                 list_dir = dir(ToolBox.path_main);
                 idx = 0;
 
@@ -755,8 +757,8 @@ methods (Access = public)
 
                 end
 
-                folder_name = sprintf('%s_%d', folder_name, idx);
-                copyfile(fullfile(path_dir, 'gif', sprintf("%s_M0.gif", folder_name)), fullfile(ToolBox.path_main, 'mask', 'M0.gif'));
+                folder_name = sprintf('%s_%d', ToolBox.EF_name, idx);
+                copyfile(fullfile(ToolBox.path_main, folder_name, 'gif', sprintf("%s_M0.gif", folder_name)), fullfile(ToolBox.path_main, 'mask', 'M0.gif'));
             catch
 
                 disp("last M0 png and gif copying failed")
@@ -764,17 +766,29 @@ methods (Access = public)
 
             try
 
-                M0_video = app.file.M0_ff_video;
-                M0_video = rescale(single(M0_video));
-                sz = size(M0_video);
-                [M0_Systole_img, M0_Diastole_img] = compute_diasys(M0_video, diskMask(sz(1), sz(2), 0.45));
-                diasysArtery = M0_Systole_img - M0_Diastole_img;
-                [~, M0_Gabor] = gaborVesselness(mean(M0_video, 3), ToolBox);
-                RGBdiasys = labDuoImage(rescale(M0_Gabor), diasysArtery);
-                imwrite(RGBdiasys, fullfile(ToolBox.path_main, 'mask', 'DiaSysRGB.png'), 'png');
+                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'M0.png'));
+                folder_name = ToolBox.main_foldername;
+                list_dir = dir(ToolBox.path_main);
+                idx = 0;
+
+                for i = 1:length(list_dir)
+
+                    if contains(list_dir(i).name, folder_name)
+                        match = regexp(list_dir(i).name, '\d+$', 'match');
+
+                        if ~isempty(match) && str2double(match{1}) >= idx
+                            idx = str2double(match{1}); %suffix
+                        end
+
+                    end
+
+                end
+
+                folder_name = sprintf('%s_%d', ToolBox.EF_name, idx);
+                copyfile(fullfile(ToolBox.path_main, folder_name, 'png', 'mask', sprintf("%s_DiaSysRGB.png", folder_name)), fullfile(ToolBox.path_main, 'mask', 'DiaSysRGB.png'));
             catch
 
-                fprintf(2, "Diasys png failed")
+                disp("Diasys png failed")
 
             end
 

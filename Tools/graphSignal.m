@@ -1,9 +1,8 @@
-function [f] = graphSignal(filename, folder, x, y, style, color, opt)
+function [f] = graphSignal(filename, x, y, style, color, opt)
 % Graph Function for Signal display
 
 arguments
     filename {mustBeText}
-    folder {mustBeText}
 end
 
 arguments (Repeating)
@@ -99,21 +98,14 @@ if opt.zero_center
 else
     axis([axT(1), axT(2), axP(3), axP(4)])
 end
+
 set(gca, 'LineWidth', 2)
 
 ToolBox = getGlobalToolBox;
 
-if ~isfolder(fullfile(ToolBox.path_png, folder))
-    mkdir(fullfile(ToolBox.path_png, folder))
-end
-
-if ~isfolder(fullfile(ToolBox.path_eps, folder))
-    mkdir(fullfile(ToolBox.path_eps, folder))
-end
-
-exportgraphics(gca, fullfile(ToolBox.path_png, folder, ...
+exportgraphics(gca, fullfile(ToolBox.path_png, ...
     sprintf("%s_%s_graph.png", ToolBox.folder_name, filename)))
-exportgraphics(gca, fullfile(ToolBox.path_eps, folder, ...
+exportgraphics(gca, fullfile(ToolBox.path_eps, ...
     sprintf("%s_%s_graph.eps", ToolBox.folder_name, filename)))
 
 end

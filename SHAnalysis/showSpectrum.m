@@ -20,7 +20,7 @@ arterySpectrum = squeeze(sum(SH .* maskArtery .* maskSection, [1, 2]) / nnz(mask
 backgroundSpectrum = squeeze(sum(SH .* maskBackground .* maskSection, [1, 2]) / nnz(maskBackground .* maskSection));
 deltaSpectrum = arterySpectrum - backgroundSpectrum;
 
-spec_plot = figAspect;
+spec_plot = figure("Visible", "off", "Color", "w");
 
 x = fullfreq;
 y = double(10 * log(fftshift(spectrum / sum(spectrum(fftshift(~exclude))))));
@@ -42,7 +42,7 @@ title('Spectrum');
 xlabel("Frequency (kHz)", 'FontSize', 14);
 ylabel("S(f) (dB)", 'FontSize', 14);
 
-delt_spec_plot = figAspect;
+delt_spec_plot = figure("Visible", "off", "Color", "w");
 
 ya = double(10 * log(fftshift(arterySpectrum / sum(arterySpectrum(fftshift(~exclude))))));
 yb = double(10 * log(fftshift(backgroundSpectrum / sum(backgroundSpectrum(fftshift(~exclude))))));
@@ -67,7 +67,7 @@ title('Spectrum');
 xlabel("Frequency (kHz)", 'FontSize', 14);
 ylabel("S(f) (dB)", 'FontSize', 14);
 
-% figAspect;
+% figure("Visible", "off", "Color", "w");;
 % spectrum_angle = squeeze(sum(SH_angle .* circle, [1, 2]) / nnz(circle));
 
 % plot(fullfreq / 1000, 180 / pi * fftshift(spectrum_angle), 'k-', 'LineWidth', 2)

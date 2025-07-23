@@ -1,16 +1,33 @@
-function [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, figName, ToolBox)
+function [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, figName, ToolBox, papillaDiameter)
 
 % Parameters
 params = ToolBox.getParams;
-px_size = params.px_size;
+HydrodynamicDiameters = params.json.CrossSectionsAnalysis.HydrodynamicDiameters;
+
+if ~isnan(papillaDiameter) && ~isempty(papillaDiameter)
+    px_size = 1.8 / papillaDiameter / (2 ^ params.json.Preprocess.InterpolationFactor) / 2;
+else
+    px_size = params.px_size / 2;
+end
+
+if ~HydrodynamicDiameters
+    D = mean(sum(~isnan(subImg), 2)); % in pixels
+    dD = 0;
+    A = pi * (D * px_size / 2) ^ 2;
+    dA = 0;
+    c1 = 1;
+    c2 = size(subImg, 2);
+    rsquare = 1;
+    return
+end
 
 % Compute velocity profile
 profile = mean(subImg, 1, 'omitnan');
 profile(isnan(profile)) = 0;
 L = length(profile);
 
-% Find all points above 10% threshold
-central_range = find(profile > 0.1 * max(profile));
+% Find all points above 50% threshold
+central_range = find(profile > 0.5 * max(profile));
 centt = mean(central_range);
 
 r_range = (central_range - centt) * px_size;
@@ -22,8 +39,8 @@ c1 = max(ceil(centt + (r1 / px_size)), 1);
 c2 = min(floor(centt + (r2 / px_size)), L);
 
 % Determine cross-section width
-D = abs(r1 - r2) / px_size;
-dD = sqrt(r1_err ^ 2 + r2_err ^ 2) / px_size;
+D = abs(r1 - r2) / px_size; % in pixels
+dD = sqrt(r1_err ^ 2 + r2_err ^ 2) / px_size; % in pixels
 
 if (D > sqrt(2) * L) || (rsquare < 0.6)
     D = NaN;
@@ -44,7 +61,7 @@ curve1 = profile + dprofile;
 curve2 = profile - dprofile;
 
 % Create figure
-f = figAspect;
+f = figure("Visible", "off", "Color", 'w');
 
 % Plot confidence interval
 Color_std = [0.7, 0.7, 0.7]; % Gray color for confidence interval
@@ -75,17 +92,23 @@ plot(linspace(r1 * 1000, r2 * 1000, 10), repmat(-2, 10), '-k', 'LineWidth', 1.5)
 axis tight
 axT = axis;
 axis([axT(1), axT(2), - 5, 50])
+
 box on
-set(gca, 'LineWidth', 2)
-set(gca, 'PlotBoxAspectRatio', [1.618 1 1])
+set(gca, 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
+
 % Add labels and title
 xlabel('Position (µm)');
 ylabel('Velocity (mm/s)');
-title('velocity profile and laminar flow model fit');
+fontsize(gca, 14, 'points')
 
 % Save figure
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'crossSectionsAnalysis', 'profiles', ...
+exportgraphics(gca, fullfile(ToolBox.path_png, 'velocityProfiles', ...
     sprintf('%s_poiseuille_profile_%s.png', ToolBox.folder_name, figName)))
 
 % Close figure

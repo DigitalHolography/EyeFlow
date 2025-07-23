@@ -34,13 +34,13 @@ fig = figure('Units', 'centimeters', 'Position', [0 0 21.0 29.7], ...
     'PaperSize', [21.0 29.7], 'PaperPositionMode', 'auto');
 
 % Set margins (in normalized units)
-topMargin = 0.08;
+% topMargin = 0.08;
 bottomMargin = 0.10;
 leftMargin = 0.05;
-rightMargin = 0.05;
+% rightMargin = 0.05;
 
 % Add title at the top
-titleAxes = axes('Position', [0 0 1 1], 'Visible', 'off');
+axes('Position', [0 0 1 1], 'Visible', 'off');
 text(0.5, 1, folder_name, ...
     'HorizontalAlignment', 'center', ...
     'VerticalAlignment', 'top', ...
@@ -70,8 +70,7 @@ for col = 1:2
     posY = gridBottom + (rowHeights(2) + rowHeights(3)) * gridHeight; % Above middle and bottom rows
 
     ax = axes('Position', [posX posY 0.45 rowHeights(1) * gridHeight]);
-    vr_combined_path = fullfile(path_png, 'crossSectionsAnalysis', ...
-        sprintf('%s_%s_vr_combined.png', folder_name, name));
+    vr_combined_path = fullfile(path_png, sprintf('%s_%s_vr_combined.png', folder_name, name));
     vr_combined_im = imread(vr_combined_path); % Taller placeholder (2x height)
     imshow(vr_combined_im, []);
     set(ax, 'XTick', [], 'YTick', []);
@@ -82,8 +81,7 @@ for col = 1:2
     posY = gridBottom + rowHeights(3) * gridHeight; % Above bottom row
 
     ax = axes('Position', [posX posY 0.45 rowHeights(2) * gridHeight]);
-    ri_path = fullfile(path_png, 'bloodFlowVelocity', ...
-        sprintf('%s_RI_velocity%s.png', folder_name, name));
+    ri_path = fullfile(path_png, sprintf('%s_RI_velocity%s.png', folder_name, name));
     ri_im = imread(ri_path); % Standard placeholder
     imshow(ri_im, []);
     set(ax, 'XTick', [], 'YTick', []);
@@ -94,15 +92,14 @@ for col = 1:2
     posY = gridBottom;
 
     ax = axes('Position', [posX posY 0.45 rowHeights(3) * gridHeight]);
-    volume_path = fullfile(path_png, 'crossSectionsAnalysis', ...
-        sprintf('%s_strokeAndTotalVolume_%s.png', folder_name, name));
+    volume_path = fullfile(path_png, sprintf('%s_strokeAndTotalVolume_%s.png', folder_name, name));
     volume_im = imread(volume_path); % Standard placeholder
     imshow(volume_im, []);
     set(ax, 'XTick', [], 'YTick', []);
 end
 
 % Add parameter section at the bottom with more spacing
-paramAxes = axes('Position', [leftMargin 0.04 0.8 bottomMargin], 'Visible', 'off');
+axes('Position', [leftMargin 0.04 0.8 bottomMargin], 'Visible', 'off');
 
 % Prepare parameter text
 paramNames = fieldnames(parameters);

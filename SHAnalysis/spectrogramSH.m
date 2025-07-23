@@ -1,4 +1,4 @@
-function [] = spectrogram(maskArtery, xy_barycenter, SH_cube)
+function [] = spectrogramSH(maskArtery, xy_barycenter, SH_cube)
 
 %% Variables
 
@@ -136,7 +136,7 @@ disp('Video creation ok.')
 AVG_arterySpectrum = AVG_arterySpectrum / cubeFrameLength;
 AVG_backgroundSpectrum = AVG_backgroundSpectrum / cubeFrameLength;
 
-figAspect;
+figure("Visible", "off", "Color", "w");
 semilogy(frq_shift, AVG_arterySpectrum, ...
     frq_shift, AVG_backgroundSpectrum);
 mimim = 0.8 * min(min(AVG_backgroundSpectrum), min(AVG_arterySpectrum));

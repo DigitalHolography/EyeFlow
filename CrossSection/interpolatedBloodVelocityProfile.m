@@ -27,7 +27,20 @@ end
 
 % Get dimensions
 [numCircles, numBranches] = size(v_cell);
-numFrames = size(v_cell{1}, 2);
+numFrames = 0;
+i = 1;
+
+while numFrames <= 0
+    numFrames = size(v_cell{i}, 2);
+    i = i + 1;
+
+    if i > size(v_cell, 1) * size(v_cell, 2);
+        warning("Velocity profiles cells are all empty.")
+        break
+    end
+
+end
+
 numInterp = params.json.CrossSectionsFigures.InterpolationPoints;
 w2w = linspace(-1, 1, numInterp);
 
@@ -184,24 +197,29 @@ plot(w2w, f_dias.p1 * r_range .^ 2 + f_dias.p2 * r_range + f_dias.p3, ...
 warning('on', 'curvefit:fit:noStartPoint');
 
 % Finalize static plot
-axis('tight');
+xlim([-1 1]);
 ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
                1.07 * max([bounds_sys.upper, bounds_dias.upper])]);
-xlabel('wall-to-wall distance (a.u.)', 'FontSize', 14);
+xlabel('lumen cross-section (a.u.)', 'FontSize', 14);
 ylabel('Velocity (mm/s)', 'FontSize', 14);
-pbaspect([1.618 1 1]);
-box('on');
+
+box on
 set(gca, 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
 
 % Export static figure
-outputDir = fullfile(ToolBox.path_png, 'crossSectionsAnalysis');
 
-if ~exist(outputDir, 'dir')
-    mkdir(outputDir);
+ax = gca;
+
+if isvalid(ax)
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_diasys_%s.png", ToolBox.folder_name, name)), 'Resolution', 300);
+else
+    warning('Current axes are not valid. Skipping export.');
 end
-
-exportgraphics(gca, fullfile(outputDir, ...
-    sprintf("%s_diasys_%s.png", ToolBox.folder_name, name)), 'Resolution', 300);
 
 % Video export if requested
 if exportVideos
@@ -217,12 +235,18 @@ if exportVideos
 
     % Configure axes
     axis('tight');
+    xlim([-1 1]);
     ylim(get(gca, 'YLim'));
-    xlabel('wall-to-wall distance (a.u.)');
+    xlabel('lumen cross-section (a.u.)');
     ylabel('Velocity (mm/s)');
-    pbaspect([1.618 1 1]);
-    box('on');
+
+    box on
     set(gca, 'LineWidth', 2);
+    set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+    ax = gca;
+    ax.LineStyleOrderIndex = 1; % Reset if needed
+    ax.SortMethod = 'depth'; % Try changing sorting method
+    ax.Layer = 'top'; % This may help in some cases
 
     % Preallocate video
     % Create bounds for this frame
