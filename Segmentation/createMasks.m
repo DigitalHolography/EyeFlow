@@ -462,10 +462,14 @@ saveImage(M0_RGB, 'RGB_img.png')
 
 % 4) 2) Neighbours Mask
 
+bgDist = params.json.PulseAnalysis.LocalBackgroundDist;
+
+
 if mask_params.AllNonVesselsAsBackground
     maskNeighbors = (maskBackground & ~maskVesselness) & maskDiaphragm;
 else
-    maskNeighbors = imdilate(maskArtery | maskVein, strel('disk', bgWidth)) & ~(maskArtery | maskVein);
+    maskVessel_tmp = imdilate(maskArtery | maskVein, strel('disk', bgDist));
+    maskNeighbors = imdilate(maskVessel_tmp, strel('disk', bgWidth)) & ~(maskVessel_tmp);
 end
 
 cmapNeighbors = cmapLAB(256, [0 1 0], 0, [1 1 1], 1);

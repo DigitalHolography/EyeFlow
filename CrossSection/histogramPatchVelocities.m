@@ -1,11 +1,16 @@
 function histogramPatchVelocities(histo_v_cell, name, locsLabel, maskLabel, M0_ff_img)
 
 ToolBox = getGlobalToolBox;
+
+params = ToolBox.getParams;
+exportVideos = params.exportVideos;
+
 % Check sizes
 [rows, cols] = size(locsLabel);
 assert(isequal(size(histo_v_cell), [rows, cols]), 'Size of histo_v_cell must match locsLabel');
 
-figure(45);
+numFrames = size(histo_v_cell{1},2);
+fi = figure();
 imshow(M0_ff_img, []);
 hold on;
 title(['Velocity Histograms Overlay - ' name]);
@@ -13,7 +18,7 @@ title(['Velocity Histograms Overlay - ' name]);
 % Parameters for histogram size
 histWidth = 40;
 histHeight = 30;
-
+plot_list = cell(rows, cols);
 for circleIdx = 1:rows
     for i = 1:cols
         if isempty(locsLabel{circleIdx, i}) || isempty(histo_v_cell{circleIdx, i})
@@ -21,14 +26,16 @@ for circleIdx = 1:rows
         end
 
         % Get histogram data
-        histData = histo_v_cell{circleIdx, i};
-        if numel(histData) ~= 2
-            warning('Expected histo_v_cell{%d,%d} to be {counts, edges}', circleIdx, i);
-            continue;
+        histData = zeros(1,5);
+        histo_t = histo_v_cell{circleIdx, i};
+        for ff = 1:numFrames
+            histo = histo_t{ff};
+            histData = histData + histo;
         end
+        histData = histData / numFrames;
 
-        counts = histData{1};
-        edges = histData{2};
+        counts = histData;
+        edges = linspace(0,60,6); %% HARD CODED
         if isempty(counts) || isempty(edges)
             continue;
         end
@@ -49,7 +56,7 @@ for circleIdx = 1:rows
              histHeight / size(M0_ff_img, 1)]);
 
         % Plot histogram
-        bar(ax, edges(1:end-1), counts, 'histc');
+        plot_list{circleIdx, i} = bar(ax, edges(1:end-1), counts, 'histc');
         ax.XTick = [];
         ax.YTick = [];
         ax.Box = 'off';
@@ -58,7 +65,7 @@ for circleIdx = 1:rows
         ax.YColor = 'none';
     end
 end
-
+hold off
 
 outputDir = fullfile(ToolBox.path_png, 'local');
 if ~exist(outputDir, 'dir')
@@ -66,6 +73,37 @@ if ~exist(outputDir, 'dir')
 end
 % Save figure
 saveas(gcf, fullfile(outputDir, ...
-    sprintf("%s_velocities_histogram_overlay_%s.png", ToolBox.folder_name, name)));
-close(45);
+    sprintf("%s_histogram_velocities_overlay_%s.png", ToolBox.folder_name, name)));
+
+%% (GIF)
+if exportVideos
+hold on;
+
+histPatchVelocitiesVideo = zeros(1124,1255, 3, numFrames,'single');
+for frameIdx = 1:numFrames
+    %fprintf(" %d ",frameIdx);
+    for circleIdx = 1:rows
+        for i = 1:cols
+            if isempty(locsLabel{circleIdx, i}) || isempty(histo_v_cell{circleIdx, i})
+                continue;
+            end
+
+            % Get histogram data
+            histo_t = histo_v_cell{circleIdx, i};
+            histData = histo_t{frameIdx};
+
+            % replot
+            plot_list{circleIdx, i}.YData = [zeros(1,5);histData;histData;zeros(1,5)];
+            
+        end
+    end
+    frame = getframe(gcf);
+    histPatchVelocitiesVideo(:,:,:,frameIdx) = frame2im(frame);
+
+end
+writeGifOnDisc(mat2gray(histPatchVelocitiesVideo), sprintf("histogram_velocities_overlay_%s", name), "ToolBox", ToolBox);
+
+
+end
+
 end

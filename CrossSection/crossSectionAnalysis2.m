@@ -55,9 +55,8 @@ results.D = D;
 results.D_se = D_se;
 results.A = A;
 
+results.v_histo = cell(1,numFrames);
 
-[histo,edges] = histcounts(subImg(:), 6);
-results.v_histo = {histo,edges};
 
 % Generate figures
 saveCrossSectionFigure(rotatedImg, c1, c2, ToolBox, patchName);
@@ -88,6 +87,8 @@ for t = 1:numFrames
         clear tmp
     end
 
+    subFrame(subFrame <=0) = NaN;
+
     subFrame = imresize(subFrame, 2, 'bilinear');
 
     subFrame = cropCircle(subFrame);
@@ -98,6 +99,9 @@ for t = 1:numFrames
 
     % Compute average velocity
     v = mean(v_profile(c1:c2));
+
+    [histo,edges] = histcounts(subFrame(:), linspace(0,60,6)); %% HARD CODED
+    results.v_histo{t} =  histo;
 
     % Compute standard deviation of velocity
     v_se = std(v_cross);
