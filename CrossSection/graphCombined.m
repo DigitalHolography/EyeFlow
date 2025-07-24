@@ -46,9 +46,9 @@ exportVideos = params.exportVideos;
 combinedLast = cat(1, mat2gray(imresize(videoPlotMean, [numY_fig numY_fig])), mat2gray(signalPlotMean));
 
 % Save final frames as PNGs
-imwrite(mat2gray(signalPlotMean), fullfile(ToolBox.path_png, 'local', sprintf("%s_%s_plot.png", ToolBox.folder_name, dirname)));
-imwrite(mat2gray(videoPlotMean), fullfile(ToolBox.path_png, 'local', sprintf("%s_%s.png", ToolBox.folder_name, dirname)));
-imwrite(combinedLast, fullfile(ToolBox.path_png, 'local', sprintf("%s_%s_combined.png", ToolBox.folder_name, dirname)));
+imwrite(mat2gray(signalPlotMean), fullfile(ToolBox.path_png, sprintf("%s_%s_plot.png", ToolBox.folder_name, dirname)));
+imwrite(mat2gray(videoPlotMean), fullfile(ToolBox.path_png, sprintf("%s_%s.png", ToolBox.folder_name, dirname)));
+imwrite(combinedLast, fullfile(ToolBox.path_png, sprintf("%s_%s_combined.png", ToolBox.folder_name, dirname)));
 
 % Save as GIF if not skipping frames
 if exportVideos

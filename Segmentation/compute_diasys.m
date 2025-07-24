@@ -3,7 +3,7 @@ function [M0_Systole_img, M0_Diastole_img, M0_Systole_video, M0_Diastole_video, 
 arguments
     M0_video
     maskArtery
-    export_folder = ''
+    export_folder = []
 end
 
 ToolBox = getGlobalToolBox;
@@ -31,7 +31,7 @@ if isempty(sys_index_list)
     return;
 end
 
-figAspect("Visible", 0);
+figure("Visible", "off", "Color", "w");
 hold on
 numSys = numel(sys_index_list); % number of systoles
 fpCycle = round(numFrames / numSys); % Frames per cycle
@@ -86,22 +86,21 @@ axis([axT(1), axT(2), 0, axP(4) * 1.07])
 title('diastole and systole')
 
 xlabel('Time (s)')
-pbaspect([2.5 1 1])
 
-if strcmp(export_folder, 'mask')
+pbaspect([2.5 1 1]);
+box on
+set(gca, 'LineWidth', 2);
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
 
-    if isfolder(fullfile(ToolBox.path_png, 'mask'))
-        ylabel('Power Doppler (a.u.)')
-        exportgraphics(gca, fullfile(ToolBox.path_png, export_folder, 'steps', sprintf('%s_vessel_20_plot_diasys.png', ToolBox.folder_name)))
-    end
-
-elseif strcmp(export_folder, 'global')
-
-    if isfolder(fullfile(ToolBox.path_png, 'global'))
-        ylabel('Velocity (mm/s)')
-        exportgraphics(gca, fullfile(ToolBox.path_png, export_folder, sprintf('%s_diasysIdx.png', ToolBox.folder_name)))
-    end
-
+if isempty(export_folder)
+    ylabel('Velocity (mm/s)')
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf('%s_diasysIdx.png', ToolBox.folder_name)))
+else
+    ylabel('Power Doppler (a.u.)')
+    exportgraphics(gca, fullfile(ToolBox.path_png, 'mask', 'steps', sprintf('%s_vessel_20_plot_diasys.png', ToolBox.folder_name)))
 end
 
 end

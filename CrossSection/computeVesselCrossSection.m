@@ -11,12 +11,12 @@ else
 end
 
 if ~HydrodynamicDiameters
-    D = mean(sum(~isnan(subImg),2));% in pixels
+    D = mean(sum(~isnan(subImg), 2)); % in pixels
     dD = 0;
     A = pi * (D * px_size / 2) ^ 2;
     dA = 0;
     c1 = 1;
-    c2 = size(subImg,2);
+    c2 = size(subImg, 2);
     rsquare = 1;
     return
 end
@@ -92,9 +92,15 @@ plot(linspace(r1 * 1000, r2 * 1000, 10), repmat(-2, 10), '-k', 'LineWidth', 1.5)
 axis tight
 axT = axis;
 axis([axT(1), axT(2), - 5, 50])
+
 box on
-set(gca, 'LineWidth', 2)
-set(gca, 'PlotBoxAspectRatio', [1.618 1 1])
+set(gca, 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
+
 % Add labels and title
 xlabel('Position (µm)');
 ylabel('Velocity (mm/s)');
@@ -102,7 +108,7 @@ fontsize(gca, 14, 'points')
 
 % Save figure
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'local', 'velocityProfiles', ...
+exportgraphics(gca, fullfile(ToolBox.path_png, 'velocityProfiles', ...
     sprintf('%s_poiseuille_profile_%s.png', ToolBox.folder_name, figName)))
 
 % Close figure

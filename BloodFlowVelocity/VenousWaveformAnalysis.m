@@ -1,11 +1,11 @@
 function VenousWaveformAnalysis(signal, systolesIndexes, numInterp, name)
-% VenousWaveformAnalysis Analyzes venous waveform signals (velocity or blood volume rate)
+% VenousWaveformAnalysis Analyzes venous waveform signals (velocity or Volume Rate)
 %
 % Inputs:
 %   signal - Input waveform signal
 %   systolesIndexes - Indices of systolic peaks
 %   numInterp - Number of interpolation points
-%   name - Signal type ('bloodVolumeRate' for blood volume rate, otherwise velocity)
+%   name - Signal type ('bloodVolumeRate' for Volume Rate, otherwise velocity)
 
 % Initial Setup
 ToolBox = getGlobalToolBox;
@@ -18,13 +18,11 @@ cLight = [0.5 0.5 1];
 
 % Set parameters based on signal type
 if strcmp(name, "bvr")
-    y_label = 'Blood Volume Rate (µL/min)';
-    folder = 'local';
+    y_label = 'Volume Rate (µL/min)';
     unit = 'µL/min';
     isBVR = true;
 else
     y_label = 'Velocity (mm/s)';
-    folder = 'global';
     unit = 'mm/s';
     isBVR = false;
 end
@@ -58,7 +56,7 @@ pulseTime = linspace(0, dt * avgLength, numInterp);
 [trough, loc_trough] = min(one_cycle_signal);
 
 % Visualization
-hFig = figure('Visible', 'on', 'Color', 'w');
+hFig = figure('Visible', 'off', 'Color', 'w');
 plot(pulseTime, one_cycle_signal, 'k', 'LineWidth', 2)
 hold on
 
@@ -108,16 +106,16 @@ pbaspect([1.618 1 1]);
 set(gca, 'LineWidth', 2, 'Box', 'on');
 
 % Save Results
-exportgraphics(hFig, fullfile(ToolBox.path_png, folder, ...
+exportgraphics(hFig, fullfile(ToolBox.path_png, ...
     sprintf("%s_VenousWaveformAnalysis_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
 
 % Export to JSON
 if ~isBVR
 
-%     ToolBox.Outputs.add('TimetoPeakFromMinVein', T_peak, 's');
-%     ToolBox.Outputs.add('TimetoAscentFromMinVein', T_ascent, 's');
-%     ToolBox.Outputs.add('TimetoDescentToMinVein', T_descent, 's');
+    %     ToolBox.Outputs.add('TimetoPeakFromMinVein', T_peak, 's');
+    %     ToolBox.Outputs.add('TimetoAscentFromMinVein', T_ascent, 's');
+    %     ToolBox.Outputs.add('TimetoDescentToMinVein', T_descent, 's');
 
 end
 

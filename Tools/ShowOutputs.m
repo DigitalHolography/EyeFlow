@@ -26,18 +26,18 @@ N = length(paths);
 % Define all output types and their file patterns
 output_types = {
                 'segmentation', '_vesselMap.png', 'png/mask';
-                'bloodVolumeRate', '_allrad_Artery_time.png', 'png/local';
-                'Arteries_fRMS', '_f_artery_graph.png', 'png/global';
-                'ARI_velocity', '_RI_velocityArtery.png', 'png/global';
-                'histo_art_velocity', '_histogramVelocityArtery.png', 'png/global';
-                'Stroke_total_volume', '_strokeAndTotalVolume_Artery.png', 'png/local';
-                'Vessels_velocity', '_vessels_velocity_graph.png', 'png/global';
-                'VRI_velocity', '_RI_velocityVein.png', 'png/global';
-                'A_sections', '_A_sections.png', 'png/local';
-                'diasys_Artery', '_diasys_Artery.png', 'png/local';
-                'diasys_Vein', '_diasys_Vein.png', 'png/local';
-                'ArterialWaveformAnalysis_artery', '_ArterialWaveformAnalysis_v_artery.png', 'png/global';
-                'ArteriovenousPhaseDelay', '_arterial_venous_correlation.png', 'png/global';
+                'bloodVolumeRate', '_allrad_Artery_time.png', 'png';
+                'Arteries_fRMS', '_f_artery_graph.png', 'png';
+                'ARI_velocity', '_RI_velocityArtery.png', 'png';
+                'histo_art_velocity', '_histogramVelocityArtery.png', 'png';
+                'Stroke_total_volume', '_strokeAndTotalVolume_Artery.png', 'png';
+                'Vessels_velocity', '_vessels_velocity_graph.png', 'png';
+                'VRI_velocity', '_RI_velocityVein.png', 'png';
+                'A_sections', '_A_sections.png', 'png';
+                'diasys_Artery', '_diasys_Artery.png', 'png';
+                'diasys_Vein', '_diasys_Vein.png', 'png';
+                'ArterialWaveformAnalysis_artery', '_ArterialWaveformAnalysis_v_artery.png', 'png';
+                'ArteriovenousPhaseDelay', '_arterial_venous_correlation.png', 'png';
                 };
 
 % Initialize all path collections

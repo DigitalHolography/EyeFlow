@@ -48,7 +48,7 @@ axis off;
 frame = getframe(gca);
 
 % Save the figure
-outputPath = fullfile(ToolBox.path_png, 'local', 'vesselSegmentLumen', ...
+outputPath = fullfile(ToolBox.path_png, 'vesselSegmentLumen', ...
     sprintf('%s_cross_section_%s.png', ToolBox.folder_name, name_section));
 imwrite(frame.cdata, outputPath);
 

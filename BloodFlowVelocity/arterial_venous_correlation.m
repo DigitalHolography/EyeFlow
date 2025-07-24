@@ -67,7 +67,7 @@ title(['Peak Lag: ', num2str(time_lag, '%.3f'), ' s | Corr: ', num2str(max_corr,
 box on;
 set(gca, 'LineWidth', 2);
 
-exportgraphics(gcf, fullfile(ToolBox.path_png, 'global', ...
+exportgraphics(gcf, fullfile(ToolBox.path_png, ...
     sprintf("%s_arterial_venous_correlation.png", ToolBox.folder_name)))
 
 ToolBox.Outputs.add('PhaseDelay', time_lag, 's', NaN);

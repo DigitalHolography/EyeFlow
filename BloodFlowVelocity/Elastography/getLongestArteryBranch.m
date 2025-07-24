@@ -21,16 +21,14 @@ skel = skel & ~cercleMask; % takes out arteries near the center
 
 % simply getting the longuest individual branch for now
 mx = 0;
-index = 1;
 
 for i = 1:n % for each individual branch
     s = sum(label == i, 'all'); % number of pixel of this branch
-    
+
     if s > mx
         mx = s;
-        index = i;
     end
-    
+
 end
 
 %% Get the label mask back to initial size
@@ -39,7 +37,7 @@ for i = 1:n % for each individual branch
     label(bwareafilt(imdilate(sk_mask, strel('disk', floor(numX * maskRadius / 10))) & mask, 1)) = i;
 end
 
-figure(Visible="off");
+figure(Visible = "off");
 imagesc(label);
 foldername = ToolBox.folder_name;
 cmap = jet(max(label, [], 'all') + 1);
@@ -63,19 +61,19 @@ for i = 1:length(bp) % iterates over all branch points
     circle = imdilate(circle, strel('disk', 10));
     all_circles = all_circles | circle;
     neighboors = find(label & circle);
-    
+
     for j = 1:length(neighboors) % iterates over all the neigbors of that branch point
-        
+
         for k = 1:length(neighboors)
             adjMatrix(label(neighboors(j)), label(neighboors(k))) = true;
         end
-        
+
     end
-    
+
 end
 
-fi=figure(Visible="off"); imshow(all_circles | skel2); saveas(fi, fullfile(ToolBox.path_png, 'mask', sprintf("%s_maskTree_%s.png", foldername, name)));
-g = graph(adjMatrix); fi=figure(Visible="off"); plot(g); saveas(fi, fullfile(ToolBox.path_png, 'mask', sprintf("%s_graphTree_%s.png", foldername, name)));
+fi = figure(Visible = "off"); imshow(all_circles | skel2); saveas(fi, fullfile(ToolBox.path_png, 'mask', sprintf("%s_maskTree_%s.png", foldername, name)));
+g = graph(adjMatrix); fi = figure(Visible = "off"); plot(g); saveas(fi, fullfile(ToolBox.path_png, 'mask', sprintf("%s_graphTree_%s.png", foldername, name)));
 %% get the graph's biggest connected component
 conn = conncomp(g);
 idx_most_frequent_conn = mode(conn);
@@ -86,12 +84,12 @@ dist_closest_branch = Inf;
 
 for i = 1:length(bp) % iterates over all branch points
     [xx, yy] = ind2sub(size(mask), bp(i));
-    
+
     if (xx - x_barycenter) ^ 2 + (yy - y_barycenter) ^ 2 < dist_closest_branch && conn(label(bp(i))) == idx_most_frequent_conn
         dist_closest_branch = (xx - x_barycenter) ^ 2 + (yy - y_barycenter) ^ 2;
         closest_branch = label(bp(i));
     end
-    
+
 end
 
 %% get the shortest path between branches from the closest branch to the CRA gathering the most pixels
@@ -111,46 +109,46 @@ max_pixels_intensity = 0;
 end_path = [];
 
 for idx = 1:n
-    
+
     if conn(idx) == idx_most_frequent_conn
         P = shortestpath(g, closest_branch, idx);
         pixels_intensity = 0;
-        
+
         for j = 1:length(P)
             pixels_intensity = pixels_intensity + sum((label == P(j)), [1, 2]);
         end
-        
+
         if pixels_intensity > max_pixels_intensity
             max_pixels_intensity = pixels_intensity;
             end_path = P;
         end
-        
+
     end
-    
+
 end
 
 maskLongArtery = false(size(mask));
 
 for idx = 1:n
-    
+
     if conn(idx) == idx_most_frequent_conn && ismember(idx, end_path)
         maskLongArtery = maskLongArtery | (label == idx);
     end
-    
+
 end
 
 %%FIX ME going back to simplest option for reliability
 m = 0;
 
 for idx = 1:n
-    
+
     if sum((label == idx), [1, 2]) > m
         maskLongArtery = (label == idx);
         m = sum((label == idx), [1, 2]);
     end
-    
+
 end
 
-fi=figure(Visible="off"); imshow(maskLongArtery);
+figure(Visible = "off"); imshow(maskLongArtery);
 
 end

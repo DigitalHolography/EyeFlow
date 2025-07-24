@@ -1,10 +1,9 @@
-function [] = ArterialResistivityIndex(signal, systolesIndexes, name, folder, signal_se)
+function [] = ArterialResistivityIndex(signal, systolesIndexes, name, signal_se)
 
 arguments
     signal
     systolesIndexes
     name
-    folder
     signal_se = []
 end
 
@@ -18,7 +17,7 @@ if contains(name, 'velocity')
     y_label = 'Velocity (mm/s)';
 else
     unit = 'µL/min';
-    y_label = 'Blood Volume Rate (µL/min)';
+    y_label = 'Volume Rate (µL/min)';
 end
 
 % Color Maps
@@ -116,12 +115,16 @@ axT = axis;
 axis([axT(1), axT(2), - 2, axP(4) + 2])
 
 box on
-set(gca, 'Linewidth', 2)
+set(gca, 'LineWidth', 2);
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
 
 % Export
-exportgraphics(gcf, fullfile(ToolBox.path_png, folder, sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
-exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, sprintf("%s_RI_%s.eps", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_RI_%s.eps", ToolBox.folder_name, name)));
 close;
 
 % PI Graph
@@ -169,8 +172,8 @@ set(gca, 'Linewidth', 2)
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 
 % Export
-exportgraphics(gcf, fullfile(ToolBox.path_png, folder, sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
-exportgraphics(gcf, fullfile(ToolBox.path_eps, folder, sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
+exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
 close;
 
 if contains(name, 'Artery')

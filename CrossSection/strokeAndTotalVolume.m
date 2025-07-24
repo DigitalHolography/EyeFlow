@@ -1,10 +1,15 @@
-function strokeAndTotalVolume(mean_BvrT, mean_std_BvrT, systolesIndexes, fullTime, numInterp, name)
+function strokeAndTotalVolume(mean_BvrT, mean_std_BvrT, systolesIndexes, numInterp, name)
 
 ToolBox = getGlobalToolBox;
+fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 
-figAspect("Visible", 1);
+figure("Visible", "off", "Color", "w");
 
-[interp_BvrT, avgLength, interp_std_BvrT] = interpSignal(mean_BvrT, systolesIndexes, numInterp, mean_std_BvrT);
+% Apply low-pass filter (15 Hz)
+[b, a] = butter(4, 15 / (fs / 2), 'low');
+filtered_BvrT = filtfilt(b, a, mean_BvrT);
+
+[interp_BvrT, avgLength, interp_std_BvrT] = interpSignal(filtered_BvrT, systolesIndexes, numInterp, mean_std_BvrT);
 
 if isempty(interp_BvrT)
     return
@@ -29,31 +34,43 @@ if strcmp(name, 'Artery')
     cLight = [1, 1/2, 1/2];
     cDark = [1, 0, 0];
 else
-    cLight = [0, 0, 1];
-    cDark = [1/2, 1/2, 1];
+    cLight = [1/2, 1/2, 1];
+    cDark = [0, 0, 1];
 end
 
 fill(ft2, inBetween, cLight, 'EdgeColor', 'none');
 xline(pulseTime(end), '--', 'Color', [0.4 0.4 0.4], 'LineWidth', 2)
 
-% Remaining Stroke Volume
-hold on
-curve1 = interp_BvrT;
-curve1 = curve1(1:min(amax, numInterp));
-curve2 = 0 * ones(size(curve1));
-ft2 = [pulseTime(1:min(amax, numInterp)), fliplr(pulseTime(1:min(amax, numInterp)))];
-inBetween = [curve1, fliplr(curve2)]';
-xline(pulseTime(min(amax, numInterp)), '--', 'Color', [0.4 0.4 0.4], 'LineWidth', 2)
-fill(ft2, inBetween, cDark, 'EdgeColor', 'none');
+if strcmp(name, 'Artery')
+    % Remaining Stroke Volume
+    hold on
+    curve1 = interp_BvrT;
+    curve1 = curve1(1:min(amax, numInterp));
+    curve2 = 0 * ones(size(curve1));
+    ft2 = [pulseTime(1:min(amax, numInterp)), fliplr(pulseTime(1:min(amax, numInterp)))];
+    inBetween = [curve1, fliplr(curve2)]';
+    xline(pulseTime(min(amax, numInterp)), '--', 'Color', [0.4 0.4 0.4], 'LineWidth', 2)
+    fill(ft2, inBetween, cDark, 'EdgeColor', 'none');
 
-% Remaining Stroke Volume
-curve1 = interp_BvrT;
-curve1 = curve1(max(amin, 1):end);
-curve2 = 0 * ones(size(curve1));
-ft2 = [pulseTime(max(amin, 1):end), fliplr(pulseTime(max(amin, 1):end))];
-inBetween = [curve1, fliplr(curve2)]';
-xline(pulseTime(max(amin, 1)), '--', 'Color', [0.4 0.4 0.4], 'LineWidth', 2)
-fill(ft2, inBetween, cDark, 'EdgeColor', 'none');
+    % Remaining Stroke Volume
+    curve1 = interp_BvrT;
+    curve1 = curve1(max(amin, 1):end);
+    curve2 = 0 * ones(size(curve1));
+    ft2 = [pulseTime(max(amin, 1):end), fliplr(pulseTime(max(amin, 1):end))];
+    inBetween = [curve1, fliplr(curve2)]';
+    xline(pulseTime(max(amin, 1)), '--', 'Color', [0.4 0.4 0.4], 'LineWidth', 2)
+    fill(ft2, inBetween, cDark, 'EdgeColor', 'none');
+else
+    % Remaining Stroke Volume
+    hold on
+    curve1 = interp_BvrT;
+    curve1 = curve1(1:max(amin, 1));
+    curve2 = 0 * ones(size(curve1));
+    ft2 = [pulseTime(1:max(amin, 1)), fliplr(pulseTime(1:max(amin, 1)))];
+    inBetween = [curve1, fliplr(curve2)]';
+    xline(pulseTime(max(amin, 1)), '--', 'Color', [0.4 0.4 0.4], 'LineWidth', 2)
+    fill(ft2, inBetween, cDark, 'EdgeColor', 'none');
+end
 
 % Grey STD and Signal
 interp_BvrT2 = repmat(interp_BvrT, 1, 3);
@@ -71,7 +88,6 @@ plot(pulseTime2, interp_BvrT2, '-k', 'LineWidth', 2);
 
 yline(0, '--', 'Color', [0.4 0.4 0.4], 'LineWidth', 2)
 xline(0, '--', 'Color', [0.4 0.4 0.4], 'LineWidth', 2)
-xline(0, '--', 'Color', [0.4 0.4 0.4], 'LineWidth', 2)
 
 axis padded
 axP = axis;
@@ -82,30 +98,38 @@ lower_bound = pulseTime(1) -1/2 * pulseTime(end);
 upper_bound = 3/2 * pulseTime(end);
 xlim([lower_bound, upper_bound])
 
-ylabel('Blood Volume Rate (µL/min)')
+box on
+set(gca, 'LineWidth', 2);
+set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+ax = gca;
+ax.LineStyleOrderIndex = 1; % Reset if needed
+ax.SortMethod = 'depth'; % Try changing sorting method
+ax.Layer = 'top'; % This may help in some cases
+
+ylabel('Volume Rate (µL/min)')
 xlabel('Time (s)')
-stroke_volume_value = sum(interp_BvrT(1:min(amax, numInterp))) * dt / 60 * 1000; % in nL
-stroke_volume_value = stroke_volume_value + (sum(interp_BvrT(max(amin, 1):end)) * dt / 60 * 1000); % in nL
+
+if strcmp(name, 'Artery')
+    stroke_volume_value = sum(interp_BvrT(1:min(amax, numInterp))) * dt / 60 * 1000; % in nL
+    stroke_volume_value = stroke_volume_value + (sum(interp_BvrT(max(amin, 1):end)) * dt / 60 * 1000); % in nL
+else
+    stroke_volume_value = sum(interp_BvrT(1:max(amin, 1))) * dt / 60 * 1000;
+end
 total_volume_value = sum(interp_BvrT) * dt / 60 * 1000;
 
 dim = [0.2 0.5 0.3 0.3];
 
-if strcmp(name, 'Artery')
-    str = sprintf("Retinal Stroke Volume : %02.0f nL and Total Volume : %02.0f nL", stroke_volume_value, total_volume_value);
-    annotation('textbox', dim, 'String', str, 'FitBoxToText', 'on', 'BackgroundColor', 'w');
-else
-    str = sprintf("Total Volume : %02.0f nL", total_volume_value);
-    annotation('textbox', dim, 'String', str, 'FitBoxToText', 'on', 'BackgroundColor', 'w');
-end
+str = sprintf("Retinal Stroke Volume : %02.0f nL\nTotal Volume : %02.0f nL", ...
+    stroke_volume_value, total_volume_value);
+annotation('textbox', dim, 'String', str, 'FitBoxToText', 'on', ...
+    'EdgeColor', 'none', 'BackgroundColor', 'w');
 
-exportgraphics(gca, fullfile(ToolBox.path_png, 'local', ...
-    sprintf("%s_strokeAndTotalVolume_%s.png", ToolBox.folder_name, name)))
-exportgraphics(gca, fullfile(ToolBox.path_eps, 'local', ...
-    sprintf("%s_strokeAndTotalVolume_%s.eps", ToolBox.folder_name, name)))
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_strokeAndTotalVolume_%s.png", ToolBox.folder_name, name)))
+exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_strokeAndTotalVolume_%s.eps", ToolBox.folder_name, name)))
 
 fileID = fopen(fullfile(ToolBox.path_txt, sprintf('%s_EF_main_outputs.txt', ToolBox.folder_name)), 'a');
-fprintf(fileID, 'MaxSystole Blood Volume Rate Artery : %f (µL/min) \r\n', maxsystole_bvr_value);
-fprintf(fileID, 'MinDiastole Blood Volume Rate Artery : %f (µL/min) \r\n', mindiastole_bvr_value);
+fprintf(fileID, 'MaxSystole Volume Rate Artery : %f (µL/min) \r\n', maxsystole_bvr_value);
+fprintf(fileID, 'MinDiastole Volume Rate Artery : %f (µL/min) \r\n', mindiastole_bvr_value);
 fprintf(fileID, 'Stroke Volume Artery : %f (nL) \r\n', stroke_volume_value);
 fprintf(fileID, 'Total Volume Artery : %f (nL) \r\n', total_volume_value);
 fclose(fileID);

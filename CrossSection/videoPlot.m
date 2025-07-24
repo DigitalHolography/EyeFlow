@@ -83,8 +83,8 @@ if exportVideos
     % Generate video frames
     parfor frameIdx = 1:numFrames
         figure('Name', 'Signal Plot', 'Color', 'w', ...
-    'Visible', opt.Visible, ...
-    'Position', [200 200 600 600]);
+            'Visible', opt.Visible, ...
+            'Position', [200 200 600 600]);
 
         image_RGB = v_video_RGB(:, :, :, frameIdx) .* mask + video(:, :, frameIdx) .* ~mask;
         image_RGB = image_RGB .* ~(maskCircles & ~mask) + maskCircles .* ~mask;

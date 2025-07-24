@@ -6,7 +6,7 @@ figure(435)
 title("Segmentation")
 
 figure(321)
-title("Blood Volume Rate")
+title('Volume Rate')
 
 for ind = 1:length(paths)
     split_path = strsplit(paths(ind), '\');
@@ -32,7 +32,7 @@ for ind = 1:length(paths)
     last_folder_name = sprintf('%s_%d', folder_name, idx);
 
     segmentation_paths{ind} = fullfile(path, last_folder_name, 'png', 'mask', [folder_name, '_arteryVeinSegmentation.png']);
-    bvr_paths{ind} = fullfile(path, last_folder_name, 'png', 'local', [folder_name, '_volumeRateallradxtime.png']);
+    bvr_paths{ind} = fullfile(path, last_folder_name, 'png', [folder_name, '_volumeRateallradxtime.png']);
 end
 
 output_dir = 'D:\EyeFlow_tests_output';

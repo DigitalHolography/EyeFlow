@@ -29,11 +29,11 @@
   },
   "VeinsAnalysis": 1,
   "ExportVideos": 1,
-  "MinimumGifPeriod": 0.07,
+  "MinimumGifPeriod": 0.04,
   "NumberOfWorkers": 0,
   "Mask": {
-    "Auto Compute" : 1,
-    "Registered Masks" : -1,
+    "Auto Compute": 1,
+    "Registered Masks": -1,
     "Forced Masks": -1,
     "Vesselness Frangi Range": [
       4,

@@ -123,6 +123,8 @@ methods
 
         fprintf("\n----------------------------------\nVideo PreProcessing\n----------------------------------\n");
 
+        PreProcessTimer = tic;
+
         obj.M0_data_video = obj.M0_raw_video;
         obj.M0_ff_video = obj.M0_ff_raw_video;
         obj.M1_data_video = obj.M1_raw_video;
@@ -131,35 +133,37 @@ methods
         % Register video
         tic;
         obj = VideoRegistering(obj);
-        fprintf("- Video Registering took: %ds\n", round(toc));
+        fprintf("    - Video Registering took: %ds\n", round(toc));
 
         % Crop video
         tic;
         obj = VideoCropping(obj);
-        fprintf("- Video Cropping took: %ds\n", round(toc));
+        fprintf("    - Video Cropping took: %ds\n", round(toc));
 
         % Normalize moments
         tic;
         obj = VideoNormalizingLocally(obj);
-        fprintf("- Moment Normalizing took: %ds\n", round(toc));
+        fprintf("    - Moment Normalizing took: %ds\n", round(toc));
 
         % Resize video
         tic;
         obj = VideoResizing(obj);
-        fprintf("- Video Resizing took: %ds\n", round(toc));
+        fprintf("    - Video Resizing took: %ds\n", round(toc));
 
         % Interpolate video
         tic;
         obj = VideoInterpolating(obj);
-        fprintf("- Video Interpolation took: %ds\n", round(toc));
+        fprintf("    - Video Interpolation took: %ds\n", round(toc));
 
         % Remove outliers
         tic;
         obj = VideoRemoveOutliers(obj);
-        fprintf("- Video Outlier Cleaning took: %ds\n", round(toc));
+        fprintf("    - Video Outlier Cleaning took: %ds\n", round(toc));
 
         obj.is_preprocessed = true;
         obj.Outputs.initOutputs();
+
+        fprintf("- Preprocess took : %ds\n", round(toc(PreProcessTimer)))
 
     end
 
@@ -237,11 +241,6 @@ methods
         % Pulse Analysis
         if obj.flag_bloodFlowVelocity_analysis
 
-            if ~isfolder(fullfile(ToolBox.path_png, 'global'))
-                mkdir(ToolBox.path_png, 'global')
-                mkdir(ToolBox.path_eps, 'global')
-            end
-
             fprintf("\n----------------------------------\nBlood Flow Velocity Analysis\n----------------------------------\n");
             pulseAnalysisTimer = tic;
 
@@ -294,9 +293,13 @@ methods
 
             if veins_analysis
                 crossSectionsFigures(obj.Q_results_V, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
-                sectionImageAdvanced(rescale(mean(obj.M0_ff_video,3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery | obj.maskVein);
+                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery | obj.maskVein);
             else
-                sectionImageAdvanced(rescale(mean(obj.M0_ff_video,3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery);
+                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery);
+            end
+
+            if veins_analysis
+                combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video);
             end
 
             % try

@@ -320,7 +320,23 @@ methods (Access = public)
 
     % Callback function for Open Directory button
     function ReProcessButtonPushed(app, ~)
-        app.file = app.file.preprocessData();
+
+        % Update lamp color to indicate processing
+        app.statusLamp.Color = [1, 1/2, 0]; % Orange
+
+        try
+            app.file = app.file.preprocessData();
+
+            % Update lamp color to indicate success
+            app.statusLamp.Color = [0, 1, 0]; % Green
+        catch ME
+            MEdisp(ME, app.file.directory)
+
+            % Update lamp color to indicate warning
+            app.statusLamp.Color = [1, 0, 0]; % Red
+            diary off
+        end
+
     end
 
     % Button pushed function: FolderManagementButton
@@ -639,9 +655,11 @@ methods (Access = public)
 
         function show_outputs(~, ~)
             out_dir_path = fullfile(app.drawer_list{1}, 'Multiple_Results');
+
             if ~isfolder(out_dir_path)
                 mkdir(out_dir_path) % creates if it doesn't exists
             end
+
             tic
             ShowOutputs(app.drawer_list, out_dir_path)
             toc
@@ -756,7 +774,7 @@ methods (Access = public)
                 end
 
                 folder_name = sprintf('%s_%d', ToolBox.EF_name, idx);
-                copyfile(fullfile(ToolBox.path_main,folder_name, 'gif', sprintf("%s_M0.gif", folder_name)), fullfile(ToolBox.path_main, 'mask', 'M0.gif'));
+                copyfile(fullfile(ToolBox.path_main, folder_name, 'gif', sprintf("%s_M0.gif", folder_name)), fullfile(ToolBox.path_main, 'mask', 'M0.gif'));
             catch
 
                 disp("last M0 png and gif copying failed")
@@ -783,7 +801,7 @@ methods (Access = public)
                 end
 
                 folder_name = sprintf('%s_%d', ToolBox.EF_name, idx);
-                copyfile(fullfile(ToolBox.path_main,folder_name, 'png','mask', sprintf("%s_DiaSysRGB.png", folder_name)), fullfile(ToolBox.path_main, 'mask', 'DiaSysRGB.png'));
+                copyfile(fullfile(ToolBox.path_main, folder_name, 'png', 'mask', sprintf("%s_DiaSysRGB.png", folder_name)), fullfile(ToolBox.path_main, 'mask', 'DiaSysRGB.png'));
             catch
 
                 disp("Diasys png failed")

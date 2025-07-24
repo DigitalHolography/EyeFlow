@@ -30,7 +30,7 @@ branchQ = Q_results.branchQ;
 labeledVessels = Q_results.labeledVessels .* Q_results.labeledVessels ~= 0;
 histo_v_cell = Q_results.histo_v_cell;
 
-% 1. SBlood Volume Rate Figures
+% 1. SVolume Rate Figures
 tic
 
 if ~isempty(systolesIndexes)
@@ -61,23 +61,23 @@ graphCombined(M0_ff_video, v_video_RGB, v_mean_RGB, ...
     'etiquettes_locs', centroids, ...
     'etiquettes_values', branchQ);
 
-fprintf("    1. Blood Volume Rate Figures (%s) took %ds\n", name, round(toc))
+fprintf("    1. Volume Rate Figures (%s) took %ds\n", name, round(toc))
 
 tic
 
 if params.json.CrossSectionsFigures.BloodFlowProfiles
     interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, name)
 end
+
 if params.json.CrossSectionsFigures.BloodFlowHistograms
-    histogramPatchVelocities(histo_v_cell,name,locsLabel,maskLabel,mean(M0_ff_video,3))
+    histogramPatchVelocities(histo_v_cell, name, locsLabel, mean(M0_ff_video, 3))
 end
+
 if params.json.CrossSectionsFigures.BloodFlowProfilesOverlay
-    profilePatchVelocities(v_profiles_cell,name,locsLabel,maskLabel,mean(M0_ff_video,3))
+    profilePatchVelocities(v_profiles_cell, name, locsLabel, mean(M0_ff_video, 3))
 end
 
-fprintf("    1.(bis) optional Blood Volume Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
-
-
+fprintf("    1.(bis) optional Volume Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
 
 % 2. Sections Figures
 
@@ -89,24 +89,24 @@ end
 
 if params.json.CrossSectionsFigures.circleImages
 
-    if ~isfolder(fullfile(ToolBox.path_png, 'local', 'vesselSegmentImages'))
-        mkdir(fullfile(path_png, 'local'), 'vesselSegmentImages')
-        mkdir(fullfile(path_eps, 'local'), 'vesselSegmentImages')
-        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'lumenDiameter')
-        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'lumenDiameter')
-        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'vesselSegmentId')
-        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'vesselSegmentId')
-        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'bloodVolumeRate')
-        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'bloodVolumeRate')
-        mkdir(fullfile(path_png, 'local', 'vesselSegmentImages'), 'velocity')
-        mkdir(fullfile(path_eps, 'local', 'vesselSegmentImages'), 'velocity')
+    if ~isfolder(fullfile(path_png, 'vesselSegmentImages'))
+        mkdir(fullfile(path_png, 'vesselSegmentImages'))
+        mkdir(fullfile(path_eps, 'vesselSegmentImages'))
+        mkdir(fullfile(path_png, 'vesselSegmentImages', 'lumenDiameter'))
+        mkdir(fullfile(path_eps, 'vesselSegmentImages', 'lumenDiameter'))
+        mkdir(fullfile(path_png, 'vesselSegmentImages', 'vesselSegmentId'))
+        mkdir(fullfile(path_eps, 'vesselSegmentImages', 'vesselSegmentId'))
+        mkdir(fullfile(path_png, 'vesselSegmentImages', 'bloodVolumeRate'))
+        mkdir(fullfile(path_eps, 'vesselSegmentImages', 'bloodVolumeRate'))
+        mkdir(fullfile(path_png, 'vesselSegmentImages', 'velocity'))
+        mkdir(fullfile(path_eps, 'vesselSegmentImages', 'velocity'))
     end
 
     circleImages(M0_ff_img, xy_barycenter, A_cell, Q_cell, v_cell, maskLabel, locsLabel, name)
 end
 
 if params.json.CrossSectionsFigures.widthHistogram
-    [D_mid, D_avg, D_std] = widthHistogram(D_cell, dD_cell, A_cell, name);
+    [D_mid, ~, D_std] = widthHistogram(D_cell, dD_cell, A_cell, name);
 end
 
 fprintf("    2. Sections Images Figures (%s) took %ds\n", name, round(toc))
@@ -116,20 +116,20 @@ fprintf("    2. Sections Images Figures (%s) took %ds\n", name, round(toc))
 tic
 
 if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesIndexes)
-    strokeAndTotalVolume(Q_t, dQ_t, systolesIndexes, t, 1000, name);
+    strokeAndTotalVolume(Q_t, dQ_t, systolesIndexes, 1000, name);
 end
 
 if params.json.CrossSectionsFigures.ARIBVR
-    ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), 'local', dQ_t);
+    ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), dQ_t);
 end
 
 % Define parameters with uncertainties
-deltaP = [6176, 280];          % Pa
-deltaP = [1000, 100];          % (ONLY IDEAL L)
-avg_r = D_mid * 1e-6 / 2;
-std_r = D_std * 1e-6 / 2;
-r = [avg_r, std_r];            % m
-L = [5e-3, 1e-3];              % m (ONLY IDEAL L)
+% deltaP = [6176, 280]; % Pa
+deltaP = [1000, 100]; % (ONLY IDEAL L)
+avg_r = D_mid * 1e-6/2;
+std_r = D_std * 1e-6/2;
+r = [avg_r, std_r]; % m
+L = [5e-3, 1e-3]; % m (ONLY IDEAL L)
 N = size(branchQ, 1);
 
 calculateHemodynamicParameters(Q_t, dQ_t, deltaP, r, L, index_start, index_end, N);

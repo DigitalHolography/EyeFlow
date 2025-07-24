@@ -8,12 +8,12 @@ arguments
 end
 
 ToolBox = getGlobalToolBox;
-folder = ToolBox.folder_name;
+folder_name = ToolBox.folder_name;
 
 if opt.isStep
-    folderPath = fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s", folder, suffix));
+    folderPath = fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s", folder_name, suffix));
 else
-    folderPath = fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s", folder, suffix));
+    folderPath = fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s", folder_name, suffix));
 end
 
 if isempty(opt.cmap)
@@ -23,7 +23,7 @@ if isempty(opt.cmap)
     end
 
     imwrite(I, folderPath, 'png');
-    
+
 else
 
     if size(I, 3) == 1 && ~islogical(I)
