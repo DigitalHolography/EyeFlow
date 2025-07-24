@@ -305,6 +305,8 @@ methods
             %
             % end
 
+            combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video, obj.sysIdxList)
+
             obj.is_AllAnalyzed = true;
 
             fprintf("- Cross-Section Figures took: %ds\n", round(toc(crossSectionFiguresTimer)));
