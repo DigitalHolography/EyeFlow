@@ -100,7 +100,7 @@ for t = 1:numFrames
     % Compute average velocity
     v = mean(v_profile(c1:c2));
 
-    [histo,edges] = histcounts(subFrame(:), linspace(0,60,6)); %% HARD CODED
+    [histo,edges] = histcounts(subFrame(~isnan(subFrame)), linspace(0,60,6)); %% HARD CODED
     results.v_histo{t} =  histo;
 
     % Compute standard deviation of velocity
@@ -138,8 +138,8 @@ for t = 1:numFrames
     results.v_se(t) = v_se;
     results.Q(t) = Q;
     results.Q_se(t) = Q_se;
-    results.v_profiles{t} = mean(subFrame, 1);
-    results.v_profiles_se{t} = std(subFrame, [], 1);
+    results.v_profiles{t} = mean(subFrame, 1,'omitnan');
+    results.v_profiles_se{t} = std(subFrame, [], 1,'omitnan');
 end
 
 results.rejected_masks = rejected_masks;

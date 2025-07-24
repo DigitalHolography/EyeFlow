@@ -86,7 +86,7 @@ for circleIdx = 1:rows
         y_img = ylim(2) - (pos(2) - 1) * y_scale; % Flip y-axis
 
         % Create histogram axes (centered on point)
-        ax_hist = axes('Position', ...
+        ax = axes('Position', ...
             [ax_main.Position(1) + (x_img - xlim(1)) / diff(xlim) * ax_main.Position(3) - histWidth / 2, ...
              ax_main.Position(2) + (y_img - ylim(1)) / diff(ylim) * ax_main.Position(4) - histHeight / 2, ...
              histWidth, ...
@@ -120,7 +120,7 @@ saveas(gcf, fullfile(outputDir, ...
 if exportVideos
 hold on;
 
-histPatchVelocitiesVideo = zeros(1124,1255, 3, numFrames,'single');
+histPatchVelocitiesVideo = zeros(600,600, 3, numFrames,'single');
 for frameIdx = 1:numFrames
     %fprintf(" %d ",frameIdx);
     for circleIdx = 1:rows
@@ -150,5 +150,5 @@ for frameIdx = 1:numFrames
 end
 writeGifOnDisc(mat2gray(histPatchVelocitiesVideo), sprintf("histogram_velocities_overlay_%s", name), "ToolBox", ToolBox);
 end
-
+close(fi)
 end
