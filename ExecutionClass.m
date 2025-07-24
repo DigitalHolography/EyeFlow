@@ -299,7 +299,7 @@ methods
             end
 
             if veins_analysis
-                combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video);
+                %combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video);
             end
 
             % try
