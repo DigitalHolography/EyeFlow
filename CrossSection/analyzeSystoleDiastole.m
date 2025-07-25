@@ -208,4 +208,5 @@ axP = axis;
 axis([0, numFrames * T, min(axP(3), 0), max(axP(4), 10)])
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf('%s_plot_diasys_diameter_diff_%s.png', ToolBox.folder_name, vesselName)))
 
+close all;
 end

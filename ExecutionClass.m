@@ -295,7 +295,7 @@ methods
                 crossSectionsFigures(obj.Q_results_V, 'Vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
                 sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery | obj.maskVein);
             else
-                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery);
+                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, [], obj.maskArtery);
             end
 
             if veins_analysis
@@ -312,8 +312,11 @@ methods
             %     end
             %
             % end
-
-            combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video, obj.sysIdxList)
+            try
+                combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video, obj.sysIdxList)
+            catch e
+                disp(e)
+            end
 
             obj.is_AllAnalyzed = true;
 
@@ -349,8 +352,12 @@ methods
             fprintf("\n----------------------------------\nSpectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
         end
 
-        if obj.is_AllAnalyzed
-            generateA4Report()
+        if obj.is_AllAnalyzed && veins_analysis
+            try 
+                generateA4Report()
+            catch e
+                disp(e)
+            end
         end
 
         % Main Outputs Saving

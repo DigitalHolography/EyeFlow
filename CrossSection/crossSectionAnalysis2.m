@@ -44,9 +44,9 @@ end
 subImg = imresize(subImg, 2, 'bilinear');
 
 % Crop and rotate sub-image
-subImg = cropCircle(subImg);
-[rotatedImg, tilt_angle] = rotateSubImage(subImg);
-rotatedImg(rotatedImg <= 0) = NaN;
+subImgCropped = cropCircle(subImg);
+[rotatedImg, tilt_angle] = rotateSubImage(subImg, subImgCropped);
+%rotatedImg(rotatedImg <= 0) = NaN;
 results.subImg_cell = rescale(rotatedImg);
 
 % Compute the Vessel Cross Section
@@ -55,8 +55,7 @@ results.D = D;
 results.D_se = D_se;
 results.A = A;
 
-results.v_histo = cell(1,numFrames);
-
+results.v_histo = cell(1, numFrames);
 
 % Generate figures
 saveCrossSectionFigure(rotatedImg, c1, c2, ToolBox, patchName);
@@ -76,9 +75,10 @@ for t = 1:numFrames
     xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
     yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
     tmp = v_RMS(:, :, t) .* mask;
+    tmp(~mask)=NaN;
     subFrame = tmp(yRange, xRange);
 
-    if size(subFrame, 1) < length(xRange) || size(subFrame, 2) < length(yRange)
+    if size(subFrame, 1) < length(xRange) || size(subFrame, 2) < length(yRange) % edge case (on the edges of the field)
         xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);
         yRange = round(-subImgHW / 2) + loc(2):round(subImgHW / 2) + loc(2);
         tmp = NaN(length(xRange), length(yRange));
@@ -87,7 +87,7 @@ for t = 1:numFrames
         clear tmp
     end
 
-    subFrame(subFrame <=0) = NaN;
+    %subFrame(subFrame <=0) = NaN;
 
     subFrame = imresize(subFrame, 2, 'bilinear');
 
@@ -100,8 +100,8 @@ for t = 1:numFrames
     % Compute average velocity
     v = mean(v_profile(c1:c2));
 
-    [histo,edges] = histcounts(subFrame(~isnan(subFrame)), linspace(0,60,6)); %% HARD CODED
-    results.v_histo{t} =  histo;
+    [histo, edges] = histcounts(subFrame(~isnan(subFrame)), linspace(0, 60, 6)); % % HARD CODED
+    results.v_histo{t} = histo;
 
     % Compute standard deviation of velocity
     v_se = std(v_cross);
@@ -138,8 +138,8 @@ for t = 1:numFrames
     results.v_se(t) = v_se;
     results.Q(t) = Q;
     results.Q_se(t) = Q_se;
-    results.v_profiles{t} = mean(subFrame, 1,'omitnan');
-    results.v_profiles_se{t} = std(subFrame, [], 1,'omitnan');
+    results.v_profiles{t} = mean(subFrame, 1, 'omitnan');
+    results.v_profiles_se{t} = std(subFrame, [], 1, 'omitnan');
 end
 
 results.rejected_masks = rejected_masks;
