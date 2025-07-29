@@ -98,6 +98,7 @@
     "ScaleFactorWidth": 3,
     "MaskSliceThreshold": 0.01,
     "PixelSize": 0.0191,
+    "profileFitTresholdRatio" : 0.1,
     "SliceHalfThickness": 10,
     "sectionMontage": true,
     "HydrodynamicDiameters": true
@@ -111,7 +112,8 @@
     "BloodFlowProfilesOverlay": true,
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
-    "InterpolationPoints": 50
+    "InterpolationPoints": 50,
+    "DiameterAnalysis": true
   },
   "DebugMode": false
 }

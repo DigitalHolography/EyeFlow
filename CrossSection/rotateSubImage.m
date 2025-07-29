@@ -1,10 +1,9 @@
-function [rotatedImg, orientation] = rotateSubImage(subImg,subImgCropped)
+function [rotatedImg, orientation] = rotateSubImage(subImg)
 % Rotate the sub-image to align the blood vessel vertically.
 % The orientation is determined by maximizing the kurtosis of the horizontal projection.
 %
 % Input:
 %   subImg - 2D array, the sub-image containing the blood vessel.
-%   subImgCropped - 2D array, the sub-image containing the blood vessel Cropped by a circle.
 %
 % Output:
 %   rotatedImg - 2D array, the rotated image.
@@ -15,14 +14,14 @@ angles = linspace(0, 180, 181);
 
 % Initialize an array to store kurtosis values for each angle
 peak_ratio = zeros(1, length(angles));
-subImgCropped(isnan(subImgCropped)) = 0;
-[numX, ~] = size(subImgCropped);
+subImg(isnan(subImg)) = 0;
+[numX, ~] = size(subImg);
 rangeX = floor(numX / 3):ceil(2 * numX / 3);
 
 % Loop over each angle and compute the kurtosis of the horizontal projection
 for theta = 1:length(angles)
     % Rotate the image by the current angle
-    tmpImg = imrotate(subImgCropped, angles(theta), 'nearest', 'crop');
+    tmpImg = imrotate(subImg, angles(theta), 'nearest', 'crop');
 
     % Compute the horizontal projection (sum along rows)
     projx = sum(tmpImg(rangeX, :), 1);
