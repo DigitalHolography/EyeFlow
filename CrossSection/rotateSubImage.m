@@ -1,10 +1,9 @@
-function [rotatedImg, orientation] = rotateSubImage(subImg,subImgCropped)
+function [rotatedImg, orientation] = rotateSubImage(subImg, subImgCropped)
 % Rotate the sub-image to align the blood vessel vertically.
 % The orientation is determined by maximizing the kurtosis of the horizontal projection.
 %
 % Input:
 %   subImg - 2D array, the sub-image containing the blood vessel.
-%   subImgCropped - 2D array, the sub-image containing the blood vessel Cropped by a circle.
 %
 % Output:
 %   rotatedImg - 2D array, the rotated image.
@@ -38,6 +37,6 @@ end
 orientation = angles(idc(1));
 
 % Rotate the original image by the determined orientation angle
-rotatedImg = imrotate(subImg, orientation, 'bilinear', 'crop');
+rotatedImg = imrotatecustom(subImg, orientation);
 
 end
