@@ -1,14 +1,14 @@
-# PulseWave
+# EyeFlow
 
-PulseWave is a software used to extract biomarkers from videos created by HoloDoppler. It process determines the Blood Volume Rate, the Velocity, or the Arterial Resistivity Index of the blood vessel in the eye of a patient with the help of an automatic segmentation of the arteries and veins.
+EyeFlow is a software used to extract biomarkers from videos created by HoloDoppler. It process determines the Blood Volume Rate, the Velocity, or the Arterial Resistivity Index of the blood vessel in the eye of a patient with the help of an automatic segmentation of the arteries and veins.
 
 ## Problem It Solves
 
-PulseWave transforms complex video data into readable and useful biomarkers, making it accessible for the healthcare professionals.
+EyeFlow transforms complex video data into readable and useful biomarkers, making it accessible for the healthcare professionals.
 
 ## Target Audience
 
-The primary users of PulseWave are:
+The primary users of EyeFlow are:
 - Optometrists
 - Ophthalmologists
 - Scientific researchers
@@ -21,15 +21,15 @@ The primary users of PulseWave are:
 
 ## Installation
 
-To install PulseWave, follow these steps:
+To install EyeFlow, follow these steps:
 
 1. Download the ZIP file from the GitHub repository.
 2. Extract the contents of the ZIP file. This will include a folder with MATLAB scripts and a MATLAB application.
 
 ## Dependencies & Requirements
 
-- A valid MATLAB license is required to run PulseWave.
-- A very performant computer is required to run PulseWave. 
+- A valid MATLAB license is required to run EyeFlow.
+- A very performant computer is required to run EyeFlow. 
 - Parallel Computing Toolbox
 - Curve Fitting Toolbox
 - Signal Processing Toolbox
@@ -39,11 +39,11 @@ To install PulseWave, follow these steps:
 
 To get started with PulseWave:
 
-1. Refer to the [PulseWave](https://docs.google.com/presentation/d/1s_adHm5oobDZZIPbrML8hR2-7wbIwT1kt3YC3EdAgYQ/edit#slide=id.g253c1ee4169_0_11) Google Slides presentation for detailed instructions. You can request help from the Digital Holography team for this presentation if needed.
+1. Refer to the [EyeFlow](https://docs.google.com/presentation/d/1s_adHm5oobDZZIPbrML8hR2-7wbIwT1kt3YC3EdAgYQ/edit#slide=id.g253c1ee4169_0_11) Google Slides presentation for detailed instructions. You can request help from the Digital Holography team for this presentation if needed.
 
 ## Contributing
 
-We welcome contributions to PulseWave. If you are interested in contributing, please follow these guidelines:
+We welcome contributions to EyeFlow. If you are interested in contributing, please follow these guidelines:
 
 1. Fork the repository.
 2. Create a new branch (`git checkout -b feature-branch`).
@@ -52,7 +52,7 @@ We welcome contributions to PulseWave. If you are interested in contributing, pl
 
 ## License
 
-PulseWave is licensed under the GNU General Public License (GPL). See the LICENSE file for more information.
+EyeFlow is licensed under the GNU General Public License (GPL). See the LICENSE file for more information.
 
 ---
 
