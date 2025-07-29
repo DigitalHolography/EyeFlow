@@ -87,24 +87,21 @@ for t = 1:numFrames
         clear tmp
     end
 
-    %subFrame(subFrame <=0) = NaN;
+    %subFrame = imresize(subFrame, 2, 'bilinear');
 
-    subFrame = imresize(subFrame, 2, 'bilinear');
-
-    %subFrame = cropCircle(subFrame);
-    subFrame = imrotate(subFrame, tilt_angle, 'nearest', 'crop');
+    subFrame = imrotatecustom(subFrame, tilt_angle);
 
     v_profile = mean(subFrame, 1, 'omitnan');
     v_cross = mean(subFrame(c1:c2, :), 2, 'omitnan');
 
     % Compute average velocity
-    v = mean(v_profile(c1:c2));
+    v = mean(v_profile(c1:c2), 'omitnan');
 
     [histo, edges] = histcounts(subFrame(~isnan(subFrame)), linspace(0, 60, 6)); % % HARD CODED
     results.v_histo{t} = histo;
 
     % Compute standard deviation of velocity
-    v_se = std(v_cross);
+    v_se = std(v_cross, 'omitnan');
 
     % Compute volumetric flow rate
     Q = v * A * 60; % microL/min

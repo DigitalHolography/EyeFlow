@@ -37,6 +37,6 @@ end
 orientation = angles(idc(1));
 
 % Rotate the original image by the determined orientation angle
-rotatedImg = imrotate(subImg, orientation, 'nearest', 'crop');
+rotatedImg = imrotatecustom(subImg, orientation);
 
 end
