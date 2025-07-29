@@ -79,7 +79,8 @@
   "PulseAnalysis": {
     "DifferenceMethods": 0,
     "LocalBackgroundWidth": 2,
-    "bkgScaler": 10,
+    "LocalBackgroundDist": 2,
+    "bkgScaler": 15,
     "Lambda": 8.52E-7,
     "Phi": 0.25,
     "OutOfNoiseThreshold": 4,

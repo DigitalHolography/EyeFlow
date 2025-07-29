@@ -6,7 +6,7 @@ params = ToolBox.getParams;
 [numX, numY, numFrames] = size(M0_ff_video);
 
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
-t = linspace(0, numFrames/fs, numFrames);
+t = linspace(0, numFrames / fs, numFrames);
 dt = t(2) - t(1);
 
 if ~isempty(sysIdxList)
@@ -26,23 +26,30 @@ Q_mat_A = nan(numCircles, numBranches_A, numFrames);
 Q_mat_V = nan(numCircles, numBranches_V, numFrames);
 
 for cIdx = 1:numCircles
+
     for bIdx = 1:numBranches_A
+
         if ~isempty(Q_cell_A{cIdx, bIdx})
             Q_mat_A(cIdx, bIdx, :) = Q_cell_A{cIdx, bIdx};
         end
+
     end
+
     for bIdx = 1:numBranches_V
+
         if ~isempty(Q_cell_V{cIdx, bIdx})
             Q_mat_V(cIdx, bIdx, :) = Q_cell_V{cIdx, bIdx};
         end
+
     end
+
 end
 
 Q_A = mean(squeeze(sum(Q_mat_A, 2, 'omitnan')), 1);
 Q_V = mean(squeeze(sum(Q_mat_V, 2, 'omitnan')), 1);
 
 numFramesBis = eIdx - sIdx + 1;
-tBis = linspace(sIdx/fs, eIdx/fs, numFramesBis);
+tBis = linspace(sIdx / fs, eIdx / fs, numFramesBis);
 numCycles = length(sysIdxList) - 1;
 cycleSize = numFramesBis / numCycles;
 
@@ -68,8 +75,8 @@ time_lag = lags(max_idx) / fs; % Convert lag index to seconds
 %% Transfer Function analysis
 
 % Compute FFTs
-nfft = 2^nextpow2(numFrames); % Zero-pad to next power of 2
-f = fs*(0:(nfft/2))/nfft; % Frequency vector
+nfft = 2 ^ nextpow2(numFrames); % Zero-pad to next power of 2
+f = fs * (0:(nfft / 2)) / nfft; % Frequency vector
 
 M = 64;
 L = 63;
@@ -83,7 +90,7 @@ T = s_A' \ s_V'; % s_Q_V * Z = s_Q_A
 [U, S, V] = svd(T);
 
 figure, imagesc(log(abs(S))), axis image
- figure, bar(abs(diag(S(1:4,1:4))))
+figure, bar(abs(diag(S(1:4, 1:4))))
 
 instant_dV = detrend(cumsum(Q_diff(sIdx:eIdx))) / 60 * dt;
 [peaks, peaks_idx] = findpeaks(instant_dV, 'MinPeakDistance', cycleSize * 0.8);
@@ -94,11 +101,11 @@ sys_mean = mean(peaks);
 dias_mean = -mean(troughs);
 
 % figure;
-% subplot(2,1,1); plot(f, 20*log10(abs(Z(1:nfft/2+1)))); 
+% subplot(2,1,1); plot(f, 20*log10(abs(Z(1:nfft/2+1))));
 % title('Transfer Function Magnitude'); xlabel('Frequency (Hz)'); ylabel('dB');
-% subplot(2,1,2); plot(f, angle(Z(1:nfft/2+1))); 
+% subplot(2,1,2); plot(f, angle(Z(1:nfft/2+1)));
 % title('Phase Response'); xlabel('Frequency (Hz)'); ylabel('Radians');
-% 
+%
 % Pxx = s_A .* conj(s_A) / nfft;
 % Pyy = s_V .* conj(s_V) / nfft;
 % Pxy = s_V .* conj(s_A) / nfft;

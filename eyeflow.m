@@ -320,7 +320,23 @@ methods (Access = public)
 
     % Callback function for Open Directory button
     function ReProcessButtonPushed(app, ~)
-        app.file = app.file.preprocessData();
+
+        % Update lamp color to indicate processing
+        app.statusLamp.Color = [1, 1/2, 0]; % Orange
+
+        try
+            app.file = app.file.preprocessData();
+
+            % Update lamp color to indicate success
+            app.statusLamp.Color = [0, 1, 0]; % Green
+        catch ME
+            MEdisp(ME, app.file.directory)
+
+            % Update lamp color to indicate warning
+            app.statusLamp.Color = [1, 0, 0]; % Red
+            diary off
+        end
+
     end
 
     % Button pushed function: FolderManagementButton
