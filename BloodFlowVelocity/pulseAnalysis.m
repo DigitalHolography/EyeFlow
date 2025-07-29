@@ -20,6 +20,9 @@ veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
 
 % Constants
+% 1000 -> m to mm conversion
+% 1000 -> kHz to Hz conversion
+
 scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
 [numX, numY, numFrames] = size(f_video);
 

@@ -132,7 +132,9 @@ r = [avg_r, std_r]; % m
 L = [5e-3, 1e-3]; % m (ONLY IDEAL L)
 N = size(branchQ, 1);
 
-calculateHemodynamicParameters(Q_t, dQ_t, deltaP, r, L, index_start, index_end, N);
+if params.json.CrossSectionsFigures.hemodynamicParameters
+    calculateHemodynamicParameters(Q_t, dQ_t, deltaP, r, L, index_start, index_end, N);
+end
 
 fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
 

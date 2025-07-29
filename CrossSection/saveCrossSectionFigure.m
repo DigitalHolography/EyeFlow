@@ -40,6 +40,8 @@ p.LineStyle = ':';
 x = [c1, c2];
 y = [round(size(subImg, 1) / 2), round(size(subImg, 1) / 2)];
 line(x, y, 'Color', 'red', 'LineWidth', 3);
+xline(c1, 'r--', 'LineWidth', 3)
+xline(c2, 'r--', 'LineWidth', 3)
 
 % Turn off axes
 axis off;

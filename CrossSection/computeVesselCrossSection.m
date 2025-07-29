@@ -39,8 +39,8 @@ c1 = max(ceil(centt + (r1 / px_size)), 1);
 c2 = min(floor(centt + (r2 / px_size)), L);
 
 % Determine cross-section width
-D = abs(r1 - r2) / px_size; % in pixels
-dD = sqrt(r1_err ^ 2 + r2_err ^ 2) / px_size; % in pixels
+D = abs(r1 - r2);
+dD = sqrt(r1_err ^ 2 + r2_err ^ 2);
 
 if (D > sqrt(2) * L) || (rsquare < 0.6)
     D = NaN;
@@ -48,8 +48,8 @@ if (D > sqrt(2) * L) || (rsquare < 0.6)
 end
 
 % Compute cross-sectional area
-A = pi * (D * px_size / 2) ^ 2;
-dA = pi * (px_size / 2) ^ 2 * sqrt(dD ^ 4 + 2 * dD ^ 2 * D ^ 2);
+A = pi * (D / 2) ^ 2;
+dA = pi * (D / 2) .* dD;
 
 % Calculate x-axis values (position in µm)
 r_ = ((1:L) - centt) * px_size * 1000;

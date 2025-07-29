@@ -1,11 +1,11 @@
-function [results] = crossSectionAnalysis2(ToolBox, loc, mask, v_RMS, patchName, papillaDiameter)
+function [results] = crossSectionAnalysis2(ToolBox, loc, ROI, v_RMS, patchName, papillaDiameter)
 
 % Perform cross-section analysis on blood vessels.
 %
 % Inputs:
 %   ToolBox     - Struct, contains parameters and paths.
 %   locs        - Nx2 array, locations of vessel centers.
-%   mask        - 2D array, mask for the region of interest.
+%   ROI         - 2D array, region of interest mask.
 %   v_RMS       - 3D array, velocity data over time.
 %   circleName  - String, name of the circle (for saving results).
 %
@@ -20,13 +20,13 @@ params = ToolBox.getParams;
 results = struct();
 
 % Compute mean velocity over time
-v_masked = squeeze(mean(v_RMS, 3)) .* mask;
-v_masked(~mask) = NaN;
+v_masked = squeeze(mean(v_RMS, 3)) .* ROI;
+v_masked(~ROI) = NaN;
 
 % Define sub-image dimensions
 subImgHW = round(0.01 * size(v_masked, 1) * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
 
-% Define sub-image dimensions
+% Initialize results fields
 xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
 yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
 subImg = v_masked(yRange, xRange);
@@ -46,7 +46,8 @@ subImg = imresize(subImg, 2, 'bilinear');
 % Crop and rotate sub-image
 subImgCropped = cropCircle(subImg);
 [rotatedImg, tilt_angle] = rotateSubImage(subImg, subImgCropped);
-%rotatedImg(rotatedImg <= 0) = NaN;
+
+% rotatedImg(rotatedImg <= 0) = NaN;
 results.subImg_cell = rescale(rotatedImg);
 
 % Compute the Vessel Cross Section
@@ -58,15 +59,19 @@ results.A = A;
 results.v_histo = cell(1, numFrames);
 
 % Generate figures
-saveCrossSectionFigure(rotatedImg, c1, c2, ToolBox, patchName);
+subImgUnCropped = squeeze(mean(v_RMS, 3));
+subImgUnCropped = subImgUnCropped(yRange, xRange);
+subImgUnCropped = imresize(subImgUnCropped, 2, 'bilinear');
+subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
+saveCrossSectionFigure(subImgUnCropped, c1, c2, ToolBox, patchName);
 
 % Initialize rejected masks
 rejected_masks = zeros(numX, numY, 3);
 
 if rsquare < 0.6 || isnan(D)
-    rejected_masks(:, :, 1) = mask; % Red
+    rejected_masks(:, :, 1) = ROI; % Red
 else
-    rejected_masks(:, :, 2) = mask; % Green
+    rejected_masks(:, :, 2) = ROI; % Green
 end
 
 % Compute Volume Rate and average velocity
@@ -74,8 +79,8 @@ end
 for t = 1:numFrames
     xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
     yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
-    tmp = v_RMS(:, :, t) .* mask;
-    tmp(~mask)=NaN;
+    tmp = v_RMS(:, :, t) .* ROI;
+    tmp(~ROI) = NaN;
     subFrame = tmp(yRange, xRange);
 
     if size(subFrame, 1) < length(xRange) || size(subFrame, 2) < length(yRange) % edge case (on the edges of the field)

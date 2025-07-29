@@ -18,7 +18,7 @@ exportVideos = params.exportVideos;
 
 % Rescale video and get dimensions
 [numX, numY, numFrames] = size(video);
-fontsize = round(numX / 75);
+fontsize = round(numX / 40);
 video = rescale(video);
 
 % Precompute constants

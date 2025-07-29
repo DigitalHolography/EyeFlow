@@ -139,9 +139,9 @@ for c_idx = 1:numCircles
 
             try
                 % Store individual measurements
-                diameter_sys_array(idx, c_idx, b_idx) = diameters_sys{idx}{c_idx, b_idx};
+                diameter_sys_array(idx, c_idx, b_idx) = 1000 * diameters_sys{idx}{c_idx, b_idx};
                 diameter_se_sys_array(idx, c_idx, b_idx) = diameters_se_sys{idx}{c_idx, b_idx};
-                diameter_dias_array(idx, c_idx, b_idx) = diameters_dias{idx}{c_idx, b_idx};
+                diameter_dias_array(idx, c_idx, b_idx) = 1000 * diameters_dias{idx}{c_idx, b_idx};
                 diameter_se_dias_array(idx, c_idx, b_idx) = diameters_se_dias{idx}{c_idx, b_idx};
             catch
 
@@ -153,14 +153,18 @@ for c_idx = 1:numCircles
 
 end
 
-diameter_sys_mean = mean(sum(diameter_sys_array, 3, 'omitnan'), 2, 'omitnan');
-diameter_dias_mean = mean(sum(diameter_dias_array, 3, 'omitnan'), 2, 'omitnan');
+% Mean calculations
+diameter_sys_mean = mean(diameter_sys_array, [2 3], 'omitnan');
+diameter_dias_mean = mean(diameter_dias_array, [2 3], 'omitnan');
 diameter_diff_mean = mean(diameter_sys_array - diameter_dias_array, [2 3], 'omitnan');
 
-diameter_se_sys_mean = sqrt(sum(sqrt(sum(diameter_se_sys_array .^ 2, 3, 'omitnan')) .^ 2, 2, 'omitnan')) ./ numCircles;
-diameter_se_dias_mean = sqrt(sum(sqrt(sum(diameter_se_dias_array .^ 2, 3, 'omitnan')) .^ 2, 2, 'omitnan')) ./ numCircles;
-diameter_se_diff_mean = sqrt(sum(sqrt((sum(diameter_se_sys_array .^ 2, 3, 'omitnan') ./ numBranches) .^ 2 + ...
-    (sum(diameter_se_dias_array .^ 2, 3, 'omitnan')) ./ numBranches) .^ 2, 2, 'omitnan')) ./ numCircles;
+% Standard error calculations - simplified approach
+% For systolic and diastolic (assuming independent measurements)
+diameter_se_sys_mean = sqrt(sum(diameter_se_sys_array.^2, [2 3], 'omitnan')) / numCircles / numBranches;
+diameter_se_dias_mean = sqrt(sum(diameter_se_dias_array.^2, [2 3], 'omitnan')) / numCircles / numBranches;
+
+% For difference mean SE (combining SEs of systolic and diastolic in quadrature)
+diameter_se_diff_mean =  sqrt(sum(diameter_se_sys_array.^2 + diameter_se_dias_array.^2, [2 3], 'omitnan')) / numCircles / numBranches;
 
 % Plot results
 T = ToolBox.stride / ToolBox.fs / 1000;
@@ -205,7 +209,7 @@ xlabel("Time (s)")
 ylabel("\Delta Lumen Diameter (µm)")
 axis padded
 axP = axis;
-axis([0, numFrames * T, min(axP(3), 0), max(axP(4), 10)])
+axis([0, numFrames * T, axP(3), axP(4)])
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf('%s_plot_diasys_diameter_diff_%s.png', ToolBox.folder_name, vesselName)))
 
 close all;

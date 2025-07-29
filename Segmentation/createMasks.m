@@ -59,6 +59,7 @@ saveImage(M0_ff_img, 'all_10_M0.png', isStep = true)
 
 maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 saveImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, 'all_11_maskDiaphragm.png', isStep = true)
+maskCircle = diskMask(numX, numY, cropChoroidRadius, 'center', [x_c / numX, y_c / numY]);
 
 if mask_params.AutoCompute
 
@@ -113,7 +114,6 @@ if mask_params.AutoCompute
 
     % 1) 2) Compute the barycenters and the circle mask
 
-    maskCircle = diskMask(numX, numY, cropChoroidRadius, 'center', [x_c / numX, y_c / numY]);
     maskVesselnessClean = maskVesselness & bwareafilt(maskVesselness | maskCircle, 1, 8) & maskDiaphragm;
     saveImage(maskVesselnessClean + maskCircle * 0.5, 'all_15_VesselMask_clear.png', isStep = true)
 
@@ -382,87 +382,87 @@ if (mask_params.RegisteredMasks == -1 || mask_params.RegisteredMasks == 1)
         [Xq, Yq] = meshgrid(1:numX, 1:numY);
         maskVein = interp2(single(similarMaskVein), Xq + ux, Yq + uy, 'linear', 0) > 0;
     end
+end
 
-    % 3) 2) b) Force Create Masks in case they exist
-    if (mask_params.ForcedMasks == -1 || mask_params.ForcedMasks == 1)
+% 3) 2) b) Force Create Masks in case they exist
+if (mask_params.ForcedMasks == -1 || mask_params.ForcedMasks == 1)
 
-        if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
-            maskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskArtery.png')), 3)) > 0;
+    if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
+        maskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskArtery.png')), 3)) > 0;
 
-            if size(maskArtery, 1) ~= maskCircle
-                maskArtery = imresize(maskArtery, [numX, numY], "nearest");
-            end
-
-        elseif mask_params.ForcedMasks == 1
-            error("Cannot force Artery Mask because none given in the mask folder. Please create a forceMaskArtery.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
+        if size(maskArtery, 1) ~= maskCircle
+            maskArtery = imresize(maskArtery, [numX, numY], "nearest");
         end
 
-        if isfile(fullfile(path, 'mask', 'forceMaskVein.png'))
-            maskVein = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskVein.png')), 3)) > 0;
+    elseif mask_params.ForcedMasks == 1
+        error("Cannot force Artery Mask because none given in the mask folder. Please create a forceMaskArtery.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
+    end
 
-            if size(maskVein, 1) ~= maskCircle
-                maskVein = imresize(maskVein, [numX, numY], "nearest");
-            end
+    if isfile(fullfile(path, 'mask', 'forceMaskVein.png'))
+        maskVein = mat2gray(mean(imread(fullfile(path, 'mask', 'forceMaskVein.png')), 3)) > 0;
 
-        elseif mask_params.ForcedMasks == 1
-            error("Cannot force Vein Mask because none given in the mask folder. Please create a forceMaskVein.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
+        if size(maskVein, 1) ~= maskCircle
+            maskVein = imresize(maskVein, [numX, numY], "nearest");
         end
 
+    elseif mask_params.ForcedMasks == 1
+        error("Cannot force Vein Mask because none given in the mask folder. Please create a forceMaskVein.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
     end
 
-    % 3) 3) Segmentation Scores Calculation
+end
 
-    segmentationScores(maskArtery, maskVein);
+% 3) 3) Segmentation Scores Calculation
 
-    % 3) 4) Segmention force width
+segmentationScores(maskArtery, maskVein);
 
-    if forceVesselWidth > 0
-        dilationSE = strel('disk', forceVesselWidth);
-        maskArtery = imdilate(bwskel(maskArtery), dilationSE);
-        maskVein = imdilate(bwskel(maskVein), dilationSE);
+% 3) 4) Segmention force width
 
-        maskArtery = imdilate(bwskel(maskArtery), dilationSE);
-        maskVein = imdilate(bwskel(maskVein), dilationSE);
-    end
+if forceVesselWidth > 0
+    dilationSE = strel('disk', forceVesselWidth);
+    maskArtery = imdilate(bwskel(maskArtery), dilationSE);
+    maskVein = imdilate(bwskel(maskVein), dilationSE);
 
-    % 3) 5) Create Vessel and Background Mask
-    maskArtery = maskArtery & maskDiaphragm;
-    maskVein = maskVein & maskDiaphragm;
-    maskVessel = maskArtery | maskVein;
-    maskBackground = not(maskVessel);
+    maskArtery = imdilate(bwskel(maskArtery), dilationSE);
+    maskVein = imdilate(bwskel(maskVein), dilationSE);
+end
 
-    % 4) FINAL FIGURES
+% 3) 5) Create Vessel and Background Mask
+maskArtery = maskArtery & maskDiaphragm;
+maskVein = maskVein & maskDiaphragm;
+maskVessel = maskArtery | maskVein;
+maskBackground = not(maskVessel);
 
-    % 4) 1) RGB Figures
-    if isfile(fullfile(path, 'mask', 'forceMaskArtery.png')) || isfile(fullfile(path, 'mask', 'forceMaskVein.png'))
+% 4) FINAL FIGURES
 
-        maskVesselNoImport = maskArtery_no_import | maskVein_no_import;
+% 4) 1) RGB Figures
+if (isfile(fullfile(path, 'mask', 'forceMaskArtery.png')) || isfile(fullfile(path, 'mask', 'forceMaskVein.png'))) && mask_params.AutoCompute
 
-        maskArtery_no_import = maskArtery_no_import & bwareafilt(maskVesselNoImport | maskCircle, 1, 8);
-        saveImage(maskArtery_no_import + maskCircle * 0.5, 'artery_31_VesselMask_clear.png', isStep = true)
+    maskVesselNoImport = maskArtery_no_import | maskVein_no_import;
 
-        maskVein_no_import = maskVein_no_import & bwareafilt(maskVesselNoImport | maskCircle, 1, 8);
-        saveImage(maskVein_no_import + maskCircle * 0.5, 'vein_31_VesselMask_clear.png', isStep = true)
+    maskArtery_no_import = maskArtery_no_import & bwareafilt(maskVesselNoImport | maskCircle, 1, 8);
+    saveImage(maskArtery_no_import + maskCircle * 0.5, 'artery_31_VesselMask_clear.png', isStep = true)
 
-        M0_Artery = setcmap(M0_ff_img, maskArtery_no_import, cmapArtery);
-        M0_Vein = setcmap(M0_ff_img, maskVein_no_import, cmapVein);
-        M0_AV = setcmap(M0_ff_img, maskArtery_no_import & maskVein_no_import, cmapAV);
-        M0_RGB = (M0_Artery + M0_Vein) .* ~(maskArtery_no_import & maskVein_no_import) + M0_AV + rescale(M0_ff_img) .* ~(maskArtery_no_import | maskVein_no_import);
-        saveImage(M0_RGB, 'vessel_40_RGB_no_import.png', isStep = true)
-    end
+    maskVein_no_import = maskVein_no_import & bwareafilt(maskVesselNoImport | maskCircle, 1, 8);
+    saveImage(maskVein_no_import + maskCircle * 0.5, 'vein_31_VesselMask_clear.png', isStep = true)
 
-    M0_Artery = setcmap(M0_ff_img, maskArtery, cmapArtery);
-    M0_Vein = setcmap(M0_ff_img, maskVein, cmapVein);
-    M0_AV = setcmap(M0_ff_img, maskArtery & maskVein, cmapAV);
+    M0_Artery = setcmap(M0_ff_img, maskArtery_no_import, cmapArtery);
+    M0_Vein = setcmap(M0_ff_img, maskVein_no_import, cmapVein);
+    M0_AV = setcmap(M0_ff_img, maskArtery_no_import & maskVein_no_import, cmapAV);
+    M0_RGB = (M0_Artery + M0_Vein) .* ~(maskArtery_no_import & maskVein_no_import) + M0_AV + rescale(M0_ff_img) .* ~(maskArtery_no_import | maskVein_no_import);
+    saveImage(M0_RGB, 'vessel_40_RGB_no_import.png', isStep = true)
+end
 
-    M0_RGB = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + M0_AV + rescale(M0_ff_img) .* ~(maskArtery | maskVein);
-    saveImage(M0_RGB, 'vessel_40_RGB.png', isStep = true)
-    saveImage(M0_RGB, 'RGB_img.png')
+M0_Artery = setcmap(M0_ff_img, maskArtery, cmapArtery);
+M0_Vein = setcmap(M0_ff_img, maskVein, cmapVein);
+M0_AV = setcmap(M0_ff_img, maskArtery & maskVein, cmapAV);
+
+M0_RGB = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + M0_AV + rescale(M0_ff_img) .* ~(maskArtery | maskVein);
+saveImage(M0_RGB, 'vessel_40_RGB.png', isStep = true)
+saveImage(M0_RGB, 'RGB_img.png')
 
 % 4) 2) Neighbours Mask
 
 bgDist = params.json.PulseAnalysis.LocalBackgroundDist;
-
 
 if mask_params.AllNonVesselsAsBackground
     maskNeighbors = (maskBackground & ~maskVesselness) & maskDiaphragm;
@@ -471,28 +471,28 @@ else
     maskNeighbors = imdilate(maskVessel_tmp, strel('disk', bgWidth)) & ~(maskVessel_tmp);
 end
 
-    cmapNeighbors = cmapLAB(256, [0 1 0], 0, [1 1 1], 1);
+cmapNeighbors = cmapLAB(256, [0 1 0], 0, [1 1 1], 1);
 
-    M0_Neighbors = setcmap(M0_ff_img, maskNeighbors, cmapNeighbors);
+M0_Neighbors = setcmap(M0_ff_img, maskNeighbors, cmapNeighbors);
 
-    neighborsMaskSeg = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + ...
-        M0_AV + M0_Neighbors + ...
-        rescale(M0_ff_img) .* ~(maskArtery | maskVein | maskNeighbors);
-    saveImage(neighborsMaskSeg, 'neighbors_img.png')
+neighborsMaskSeg = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + ...
+    M0_AV + M0_Neighbors + ...
+    rescale(M0_ff_img) .* ~(maskArtery | maskVein | maskNeighbors);
+saveImage(neighborsMaskSeg, 'neighbors_img.png')
 
-    % 4) 4) Save all images
+% 4) 4) Save all images
 
-    saveImage(maskArtery, 'maskArtery.png')
-    saveImage(maskVein, 'maskVein.png')
-    saveImage(maskVessel, 'maskVessel.png')
-    saveImage(maskNeighbors, 'maskNeighbors.png')
-    saveImage(maskBackground, 'maskBackground.png')
-    saveImage(bwskel(maskArtery), 'skeletonArtery.png')
-    saveImage(bwskel(maskVein), 'skeletonVein.png')
+saveImage(maskArtery, 'maskArtery.png')
+saveImage(maskVein, 'maskVein.png')
+saveImage(maskVessel, 'maskVessel.png')
+saveImage(maskNeighbors, 'maskNeighbors.png')
+saveImage(maskBackground, 'maskBackground.png')
+saveImage(bwskel(maskArtery), 'skeletonArtery.png')
+saveImage(bwskel(maskVein), 'skeletonVein.png')
 
-    % 4) 5) Mask Section & Force Barycenter
-    createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMapArtery', maskArtery, thin = 0.01);
-    createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMap', maskArtery, maskVein, thin = 0.01);
+% 4) 5) Mask Section & Force Barycenter
+createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMapArtery', maskArtery, thin = 0.01);
+createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMap', maskArtery, maskVein, thin = 0.01);
 
-    close all
+close all
 end
