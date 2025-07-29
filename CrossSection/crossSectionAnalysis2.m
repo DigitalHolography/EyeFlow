@@ -91,7 +91,7 @@ for t = 1:numFrames
         clear tmp
     end
 
-    %subFrame = imresize(subFrame, 2, 'bilinear');
+    subFrame = imresize(subFrame, 2, 'bilinear');
 
     subFrame = imrotatecustom(subFrame, tilt_angle);
 
@@ -99,7 +99,7 @@ for t = 1:numFrames
     v_cross = mean(subFrame(c1:c2, :), 2, 'omitnan');
 
     % Compute average velocity
-    v = mean(v_profile(c1:c2), 'omitnan');
+    v = mean(subFrame(c1:c2, :),'all', 'omitnan');
 
     [histo, edges] = histcounts(subFrame(~isnan(subFrame)), linspace(0, 60, 6)); % % HARD CODED
     results.v_histo{t} = histo;
