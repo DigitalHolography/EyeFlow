@@ -3,6 +3,7 @@ function [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, fig
 % Parameters
 params = ToolBox.getParams;
 HydrodynamicDiameters = params.json.CrossSectionsAnalysis.HydrodynamicDiameters;
+profileFitTresholdRatio = params.json.CrossSectionsAnalysis.profileFitTresholdRatio;
 
 if ~isnan(papillaDiameter) && ~isempty(papillaDiameter)
     px_size = 1.8 / papillaDiameter / (2 ^ params.json.Preprocess.InterpolationFactor) / 2;
@@ -27,7 +28,7 @@ profile(isnan(profile)) = 0;
 L = length(profile);
 
 % Find all points above 50% threshold
-central_range = find(profile > 0.2 * max(profile));
+central_range = find(profile > profileFitTresholdRatio * max(profile));
 centt = mean(central_range);
 
 r_range = (central_range - centt) * px_size;

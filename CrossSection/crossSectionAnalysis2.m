@@ -45,8 +45,8 @@ subImg = imresize(subImg, 2, 'bilinear');
 
 % Crop and rotate sub-image
 subImgCropped = cropCircle(subImg);
-[rotatedImg, tilt_angle] = rotateSubImage(subImg, subImgCropped);
-%rotatedImg(rotatedImg <= 0) = NaN;
+[rotatedImg, tilt_angle] = rotateSubImage(subImg,subImgCropped);
+% rotatedImg(rotatedImg <= 0) = NaN;
 results.subImg_cell = rescale(rotatedImg);
 
 % Compute the Vessel Cross Section
@@ -91,8 +91,8 @@ for t = 1:numFrames
 
     subFrame = imresize(subFrame, 2, 'bilinear');
 
-    subFrame = cropCircle(subFrame);
-    subFrame = imrotate(subFrame, tilt_angle, 'bilinear', 'crop');
+    %subFrame = cropCircle(subFrame);
+    subFrame = imrotate(subFrame, tilt_angle, 'nearest', 'crop');
 
     v_profile = mean(subFrame, 1, 'omitnan');
     v_cross = mean(subFrame(c1:c2, :), 2, 'omitnan');
