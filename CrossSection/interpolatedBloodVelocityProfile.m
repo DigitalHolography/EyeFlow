@@ -238,7 +238,10 @@ if exportVideos
     fitPlot = plot(NaN, NaN, '-', 'Color', Color_sys, 'LineWidth', 2);
 
     % Configure axes
-    axis('tight');
+    % Format plot
+    axis padded;
+    axP = axis;
+    axis([-1, 1, 0, axP(4)]);
     xlim([-1 1]);
     ylim(get(gca, 'YLim'));
     xlabel('lumen cross-section (a.u.)');

@@ -37,10 +37,16 @@ r1 = params.json.SizeOfField.SmallRadiusRatio;
 r2 = params.json.SizeOfField.BigRadiusRatio;
 maskSection = diskMask(numX, numY, r1, r2, 'center', [x_c, y_c]);
 
+M0_ff_img = mean(M0_ff_video, 3);
+
 % Create vessel masks
 maskArterySection = maskArtery & maskSection;
 maskVeinSection = maskVein & maskSection;
 maskVesselSection = (maskVein | maskArtery) & maskSection;
+[maskVesselnessFrangi, ~] = frangiVesselness(M0_ff_img, ...
+        'range', params.json.Mask.VesselnessFrangiRange, ...
+        'step', params.json.Mask.VesselnessFrangiStep);
+maskBkgSection = ~(maskVein | maskArtery| maskVesselnessFrangi) & maskSection;
 
 % Time vector for plotting
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
@@ -85,6 +91,12 @@ else
     end
 
 end
+
+
+corrective = squeeze(sum(f_video .* maskBkgSection, 'all') / nnz(maskBkgSection)) / numFrames ...
+    - squeeze(sum(f_bkg .* maskVesselSection, 'all') / nnz(maskVesselSection)) / numFrames;
+
+f_bkg = f_bkg + corrective;
 
 % Calculate and plot artery signals
 f_artery = squeeze(sum(f_video .* maskArterySection, [1, 2]) / nnz(maskArterySection));
@@ -297,6 +309,11 @@ createHeatmap(LocalBackground_in_vessels, 'background in vessels', ...
 
 % Delta f in vessels
 in_vessels = mean(df, 3) .* maskVesselSection;
+createHeatmap(in_vessels, 'Delta f in vessels', ...
+    'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_df_map_vessel.png", ToolBox.folder_name)));
+
+% Delta f
+in_vessels = mean(df, 3) .* maskVesselSection + (mean(f_video, 3) - mean(f_video, 'all')) .* ~maskVesselSection;
 createHeatmap(in_vessels, 'Delta f in vessels', ...
     'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_df_map.png", ToolBox.folder_name)));
 

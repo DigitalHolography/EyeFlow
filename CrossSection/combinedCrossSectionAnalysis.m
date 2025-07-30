@@ -58,6 +58,7 @@ Volume_V = sum(Q_V) * dt / 60 * 1e-9; % in m^3
 
 Q_ratio = Q_V ./ Q_A;
 Q_diff = Q_V - Q_A;
+Q_diff = Q_diff - mean(Q_diff(sIdx:eIdx));
 
 % Detrend signals (remove DC offset)
 A_detrended = Q_A - mean(Q_A);
@@ -114,7 +115,7 @@ dias_mean = -mean(troughs);
 %% Figures
 
 % Figure 0 - Flow Rates
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 hold on
 plot(t, Q_A, 'r', 'LineWidth', 2);
 % Format plot
@@ -137,7 +138,7 @@ ax.Layer = 'top'; % This may help in some cases
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_flowRate_Artery.png", ToolBox.folder_name)))
 exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_flowRate_Artery.eps", ToolBox.folder_name)))
 
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 hold on
 plot(t, Q_V, 'b', 'LineWidth', 2);
 % Format plot
@@ -161,7 +162,7 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_flowRate_Vein.png", T
 exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_flowRate_Vein.eps", ToolBox.folder_name)))
 
 % Figure 1 - Flow Ratio
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 hold on;
 plot(t, Q_diff, 'k-', 'LineWidth', 2);
 xlabel('Time (s)');
@@ -187,7 +188,7 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_flowRate_Diff.png", T
 exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_flowRate_Diff.eps", ToolBox.folder_name)))
 
 % Figure 2 - Signals and cross-correlation
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 subplot(2, 1, 1);
 hold on
 plot(t, V_detrended, 'b', 'LineWidth', 2);
@@ -215,7 +216,7 @@ box on;
 set(gca, 'LineWidth', 2);
 
 % Figure 4 - Cumsum Flow Ratio
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 hold on;
 plot(tBis, instant_dV, 'k-', 'LineWidth', 2);
 scatter(tBis(peaks_idx), peaks, 'red', 'filled', 'o')
