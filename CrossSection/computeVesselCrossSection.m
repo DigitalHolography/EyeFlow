@@ -27,7 +27,7 @@ profile(isnan(profile)) = 0;
 L = length(profile);
 
 % Find all points above 50% threshold
-central_range = find(profile > 0.5 * max(profile));
+central_range = find(profile > 0.1 * max(profile));
 centt = mean(central_range);
 
 r_range = (central_range - centt) * px_size;

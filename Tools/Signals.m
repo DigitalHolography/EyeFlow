@@ -8,8 +8,12 @@ classdef Signals < handle
         % VenousVelocityInterpolated
         ArterialVolumeRate
         VenousVolumeRate
+        TransFunctionModLog10
+        TransFunctionPhaseDegrees
         % ArterialVolumeRateInterpolated
         % VenousVolumeRateInterpolated
+
+
     end
 
     methods
