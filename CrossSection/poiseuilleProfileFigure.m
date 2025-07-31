@@ -49,7 +49,7 @@ plot(linspace(r1 * 1000, r2 * 1000, 10), repmat(-2, 10), '-k', 'LineWidth', 1.5)
 % Adjust axes
 axis tight
 axT = axis;
-axis([axT(1), axT(2), - 5, 50])
+axis([axT(1), axT(2), - 5, 40])
 
 box on
 set(gca, 'LineWidth', 2);

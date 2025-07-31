@@ -45,7 +45,7 @@ subImg = imresize(subImg, 2, 'bilinear');
 
 % Crop and rotate sub-image
 subImgCropped = cropCircle(subImg);
-[rotatedImg, tilt_angle] = rotateSubImage(subImg,subImgCropped);
+[rotatedImg, tilt_angle] = rotateSubImage(subImg, subImgCropped);
 % rotatedImg(rotatedImg <= 0) = NaN;
 results.subImg_cell = rescale(rotatedImg);
 
@@ -99,7 +99,7 @@ for t = 1:numFrames
     v_cross = mean(subFrame(c1:c2, :), 2, 'omitnan');
 
     % Compute average velocity
-    v = mean(subFrame(c1:c2, :),'all', 'omitnan');
+    v = mean(subFrame(c1:c2, :), 'all', 'omitnan');
 
     [histo, edges] = histcounts(subFrame(~isnan(subFrame)), linspace(0, 60, 6)); % % HARD CODED
     results.v_histo{t} = histo;

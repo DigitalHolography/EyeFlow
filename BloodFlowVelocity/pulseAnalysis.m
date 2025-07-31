@@ -93,8 +93,8 @@ else
 end
 
 
-corrective = squeeze(sum(f_video .* maskBkgSection, 'all') / nnz(maskBkgSection)) / numFrames ...
-    - squeeze(sum(f_bkg .* maskVesselSection, 'all') / nnz(maskVesselSection)) / numFrames;
+corrective = sum(f_video .* maskBkgSection, [1 2]) / nnz(maskBkgSection) ...
+    - sum(f_bkg .* maskVesselSection, [1 2]) / nnz(maskVesselSection);
 
 f_bkg = f_bkg + corrective;
 

@@ -54,7 +54,7 @@ for cIdx = 1:numCircles
     r_out = r_in + dr;
     maskSectionCircle = diskMask(numX, numY, r_in, r_out, center = [x_c / numX, y_c / numY]);
 
-    minAreaThreshold = 100; % Adjust this value as needed
+    minAreaThreshold = floor(numX / 10); % Adjust this value as needed
     labeledVesselsClean = labeledVesselsClean | bwareaopen(labeledVessels & maskSectionCircle, minAreaThreshold);
 end
 
