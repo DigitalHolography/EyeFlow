@@ -1,11 +1,11 @@
-function [results] = crossSectionAnalysis2(ToolBox, loc, mask, v_RMS, patchName, papillaDiameter)
+function [results] = crossSectionAnalysis2(ToolBox, loc, ROI, v_RMS, patchName, papillaDiameter)
 
 % Perform cross-section analysis on blood vessels.
 %
 % Inputs:
 %   ToolBox     - Struct, contains parameters and paths.
 %   locs        - Nx2 array, locations of vessel centers.
-%   mask        - 2D array, mask for the region of interest.
+%   ROI         - 2D array, region of interest mask.
 %   v_RMS       - 3D array, velocity data over time.
 %   circleName  - String, name of the circle (for saving results).
 %
@@ -20,13 +20,13 @@ params = ToolBox.getParams;
 results = struct();
 
 % Compute mean velocity over time
-v_masked = squeeze(mean(v_RMS, 3)) .* mask;
-v_masked(~mask) = NaN;
+v_masked = squeeze(mean(v_RMS, 3)) .* ROI;
+v_masked(~ROI) = NaN;
 
 % Define sub-image dimensions
 subImgHW = round(0.01 * size(v_masked, 1) * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
 
-% Define sub-image dimensions
+% Initialize results fields
 xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
 yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
 subImg = v_masked(yRange, xRange);
@@ -40,34 +40,34 @@ if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
     clear tmp
 end
 
-% Interpolate the subImage two times
-subImg = imresize(subImg, 2, 'bilinear');
-
 % Crop and rotate sub-image
-subImg = cropCircle(subImg);
-[rotatedImg, tilt_angle] = rotateSubImage(subImg);
-rotatedImg(rotatedImg <= 0) = NaN;
+subImgCropped = cropCircle(subImg);
+[rotatedImg, tilt_angle] = rotateSubImage(subImg, subImgCropped);
+% rotatedImg(rotatedImg <= 0) = NaN;
 results.subImg_cell = rescale(rotatedImg);
 
+subImgUnCropped = squeeze(mean(v_RMS, 3) .* ROI);
+subImgUnCropped = subImgUnCropped(yRange, xRange);
+subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
+
 % Compute the Vessel Cross Section
-[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter);
+[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(subImgUnCropped, patchName, ToolBox, papillaDiameter);
 results.D = D;
 results.D_se = D_se;
 results.A = A;
 
-[histo, edges] = histcounts(subImg(:), 6);
-results.v_histo = {histo, edges};
+results.v_histo = cell(1, numFrames);
 
 % Generate figures
-saveCrossSectionFigure(rotatedImg, c1, c2, ToolBox, patchName);
+saveCrossSectionFigure(subImgUnCropped, c1, c2, ToolBox, patchName);
 
 % Initialize rejected masks
 rejected_masks = zeros(numX, numY, 3);
 
 if rsquare < 0.6 || isnan(D)
-    rejected_masks(:, :, 1) = mask; % Red
+    rejected_masks(:, :, 1) = ROI; % Red
 else
-    rejected_masks(:, :, 2) = mask; % Green
+    rejected_masks(:, :, 2) = ROI; % Green
 end
 
 % Compute Volume Rate and average velocity
@@ -75,10 +75,11 @@ end
 for t = 1:numFrames
     xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
     yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
-    tmp = v_RMS(:, :, t) .* mask;
+    tmp = v_RMS(:, :, t) .* ROI;
+    tmp(~ROI) = NaN;
     subFrame = tmp(yRange, xRange);
 
-    if size(subFrame, 1) < length(xRange) || size(subFrame, 2) < length(yRange)
+    if size(subFrame, 1) < length(xRange) || size(subFrame, 2) < length(yRange) % edge case (on the edges of the field)
         xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);
         yRange = round(-subImgHW / 2) + loc(2):round(subImgHW / 2) + loc(2);
         tmp = NaN(length(xRange), length(yRange));
@@ -87,19 +88,18 @@ for t = 1:numFrames
         clear tmp
     end
 
-    subFrame = imresize(subFrame, 2, 'bilinear');
-
-    subFrame = cropCircle(subFrame);
-    subFrame = imrotate(subFrame, tilt_angle, 'bilinear', 'crop');
-
+    subFrame = imrotatecustom(subFrame, tilt_angle);
     v_profile = mean(subFrame, 1, 'omitnan');
     v_cross = mean(subFrame(c1:c2, :), 2, 'omitnan');
 
     % Compute average velocity
     v = mean(v_profile(c1:c2));
 
+    [histo, ~] = histcounts(subFrame(~isnan(subFrame)), linspace(0, 60, 6)); % % HARD CODED
+    results.v_histo{t} = histo;
+
     % Compute standard deviation of velocity
-    v_se = std(v_cross);
+    v_se = std(v_cross, 'omitnan');
 
     % Compute volumetric flow rate
     Q = v * A * 60; % microL/min
@@ -133,8 +133,8 @@ for t = 1:numFrames
     results.v_se(t) = v_se;
     results.Q(t) = Q;
     results.Q_se(t) = Q_se;
-    results.v_profiles{t} = mean(subFrame, 1);
-    results.v_profiles_se{t} = std(subFrame, [], 1);
+    results.v_profiles{t} = v_profile;
+    results.v_profiles_se{t} = std(subFrame, [], 1, 'omitnan');
 end
 
 results.rejected_masks = rejected_masks;
