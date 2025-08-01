@@ -210,10 +210,13 @@ if veinsAnalysis
         t, v_artery_signal, '-', cArtery, ...
         t, v_vein_signal, '-', cVein, ...
         'Title', 'average velocity in arteries and veins', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
+    ToolBox.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
+    ToolBox.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's');
 else
     graphSignal('arteries_velocity', ...
         t, v_artery_signal, '-', cArtery, ...
         'Title', 'average velocity in arteries', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
+    ToolBox.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
 end
 
 fprintf("    3. Difference calculation and velocity computation took %ds\n", round(toc));

@@ -14,7 +14,7 @@ maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 frame_means = squeeze(sum(obj.f_RMS_video .* maskDiaphragm, [1, 2]) / sum(maskDiaphragm, 'all')); % 1D array: numFrames x 1
 
 % Detect outlier frames
-outlier_frames_mask = isoutlier(frame_means, "movmedian", 5, "ThresholdFactor", 2);
+outlier_frames_mask = isoutlier(real(frame_means), "movmedian", 5, "ThresholdFactor", 2);
 
 % figure, plot(frame_means), hold on, scatter((1:length(frame_means)), frame_means .* outlier_frames_mask)
 

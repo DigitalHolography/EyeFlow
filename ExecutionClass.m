@@ -210,15 +210,15 @@ methods
             cmapAV = ToolBox.cmapAV;
 
             obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
-
-            try
-                [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
-            catch E
-                warning("Error while finding papilla : ")
-                disp(E)
-                diameter_x = NaN;
-                diameter_y = NaN;
-            end
+            % 
+            % try
+            %     [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
+            % catch E
+            %     warning("Error while finding papilla : ")
+            %     disp(E)
+            diameter_x = NaN;
+            diameter_y = NaN;
+            % end
 
             [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
                 createMasks(obj.M0_ff_video, obj.xy_barycenter);

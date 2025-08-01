@@ -108,6 +108,7 @@ for i = 1:length(systole_cell)
                     subImg = tmp;
                 end
 
+<<<<<<< HEAD
                 % Interpolate the subImage two times
                 subImg = imresize(subImg, 2, 'bilinear');
 
@@ -117,6 +118,18 @@ for i = 1:length(systole_cell)
 
                 % Compute the Vessel Cross Section
                 [D, D_se] = computeVesselCrossSection(rotatedImg, patchName_sys, ToolBox, papillaDiameter, false);
+=======
+                % Crop and rotate sub-image
+                subImgCropped = cropCircle(subImg);
+                [~, tilt_angle] = rotateSubImage(subImg, subImgCropped);
+
+                subImgUnCropped = squeeze(mean(v_RMS, 3) .* ROI);
+                subImgUnCropped = subImgUnCropped(yRange, xRange);
+                subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
+
+                % Compute the Vessel Cross Section
+                [D, D_se] = computeVesselCrossSection(subImgUnCropped, patchName_sys, ToolBox, papillaDiameter, false);
+>>>>>>> 0a81e561d31fc00df895e92b895898d6018baf02
                 D_cell_sys{c_idx, b_idx} = D;
                 D_se_cell_sys{c_idx, b_idx} = D_se;
 
@@ -168,6 +181,7 @@ for i = 1:length(diastole_cell)
                     subImg = tmp;
                 end
 
+<<<<<<< HEAD
                 % Interpolate the subImage two times
                 subImg = imresize(subImg, 2, 'bilinear');
 
@@ -177,6 +191,18 @@ for i = 1:length(diastole_cell)
 
                 % Compute the Vessel Cross Section
                 [D, D_se] = computeVesselCrossSection(rotatedImg, patchName_dias, ToolBox, papillaDiameter, false);
+=======
+                % Crop and rotate sub-image
+                subImgCropped = cropCircle(subImg);
+                [~, tilt_angle] = rotateSubImage(subImg, subImgCropped);
+
+                subImgUnCropped = squeeze(mean(v_RMS, 3) .* ROI);
+                subImgUnCropped = subImgUnCropped(yRange, xRange);
+                subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
+
+                % Compute the Vessel Cross Section
+                [D, D_se] = computeVesselCrossSection(subImgUnCropped, patchName_dias, ToolBox, papillaDiameter, false);
+>>>>>>> 0a81e561d31fc00df895e92b895898d6018baf02
                 D_cell_dias{c_idx, b_idx} = D;
                 D_se_cell_dias{c_idx, b_idx} = D_se;
 
@@ -226,6 +252,7 @@ diameter_diff_mean = mean(diameter_sys_array - diameter_dias_array, [2 3], 'omit
 
 % Standard error calculations - simplified approach
 % For systolic and diastolic (assuming independent measurements)
+<<<<<<< HEAD
 diameter_se_sys_mean = sqrt(sum(diameter_se_sys_array.^2, [2 3], 'omitnan')) / numCircles / numBranches;
 diameter_se_dias_mean = sqrt(sum(diameter_se_dias_array.^2, [2 3], 'omitnan')) / numCircles / numBranches;
 
@@ -234,8 +261,90 @@ diameter_se_diff_mean =  sqrt(sum(diameter_se_sys_array.^2 + diameter_se_dias_ar
 
 % widthHistogram(diameter_sys_array, diameter_se_sys_mean, A_cell, sprintf('%s_histo_sys_diameter_%s.png', ToolBox.folder_name, vesselName)));
 % widthHistogram(diameter_dias_array, diameter_se_dias_mean, A_cell, sprintf('%s_histo_dias_diameter_%s.png', ToolBox.folder_name, vesselName)));
+=======
+diameter_se_sys_mean = sqrt(sum(diameter_se_sys_array .^ 2, [2 3], 'omitnan')) / numCircles / numBranches;
+diameter_se_dias_mean = sqrt(sum(diameter_se_dias_array .^ 2, [2 3], 'omitnan')) / numCircles / numBranches;
 
-% Plot results
+% For difference mean SE (combining SEs of systolic and diastolic in quadrature)
+diameter_se_diff_mean = sqrt(sum(diameter_se_sys_array .^ 2 + diameter_se_dias_array .^ 2, [2 3], 'omitnan')) / numCircles / numBranches;
+
+%% Figures
+
+%% Systole Histogram
+
+figure("Visible", "on")
+histogram(diameter_sys_array, 40, FaceColor = 'k', Normalization = 'probability');
+hold on
+
+D_mid = median(diameter_sys_array, 'all', "omitnan");
+D_avg = mean(diameter_sys_array, 'all', "omitnan");
+D_std = std(diameter_sys_array, [], 'all', "omitnan");
+
+% Create Gaussian distribution overlay
+x = linspace(0, 200, 1000);
+gaussian = normpdf(x, D_avg, D_std);
+% Scale Gaussian to match histogram probability
+gaussian = gaussian * (max(ylim) / max(gaussian)) * 0.8;
+plot(x, gaussian, 'k-', 'LineWidth', 2);
+
+xline(D_mid, '--', sprintf('%.0f µm', D_mid), 'Linewidth', 2)
+set(gca, 'Linewidth', 2)
+pbaspect([1.618 1 1]);
+xlabel("lumen cross section diameter (µm)")
+ylabel("probability")
+xlim([0 200]) % Set x-axis limits as requested
+
+% Add annotation with μ and σ values
+annotationText = sprintf('Average = %.1f µm\nSpread = %.1f µm\nMedian = %.1f µm', D_avg, D_std, D_mid);
+annotation('textbox', [0.15 0.7 0.1 0.1], 'String', annotationText, ...
+    'FitBoxToText', 'on', 'BackgroundColor', 'white', ...
+    'EdgeColor', 'none', 'LineWidth', 1, 'FontSize', 10);
+
+aa = axis;
+aa(4) = aa(4) * 1.14;
+axis(aa);
+
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, sprintf('histogram_of_sys_%s_section_diameter.png', vesselName))))
+
+%% Diastole Histogram
+
+figure("Visible", "on")
+histogram(diameter_dias_array, 40, FaceColor = 'k', Normalization = 'probability');
+hold on
+
+D_mid = median(diameter_dias_array, 'all', "omitnan");
+D_avg = mean(diameter_dias_array, 'all', "omitnan");
+D_std = std(diameter_dias_array, [], 'all', "omitnan");
+
+% Create Gaussian distribution overlay
+x = linspace(0, 200, 1000);
+gaussian = normpdf(x, D_avg, D_std);
+% Scale Gaussian to match histogram probability
+gaussian = gaussian * (max(ylim) / max(gaussian)) * 0.8;
+plot(x, gaussian, 'k-', 'LineWidth', 2);
+
+xline(D_mid, '--', sprintf('%.0f µm', D_mid), 'Linewidth', 2)
+set(gca, 'Linewidth', 2)
+pbaspect([1.618 1 1]);
+xlabel("lumen cross section diameter (µm)")
+ylabel("probability")
+xlim([0 200]) % Set x-axis limits as requested
+
+% Add annotation with μ and σ values
+annotationText = sprintf('Average = %.1f µm\nSpread = %.1f µm\nMedian = %.1f µm', D_avg, D_std, D_mid);
+annotation('textbox', [0.15 0.7 0.1 0.1], 'String', annotationText, ...
+    'FitBoxToText', 'on', 'BackgroundColor', 'white', ...
+    'EdgeColor', 'none', 'LineWidth', 1, 'FontSize', 10);
+
+aa = axis;
+aa(4) = aa(4) * 1.14;
+axis(aa);
+
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, sprintf('histogram_of_dias_%s_section_diameter.png', vesselName))))
+
+%% Plot results
+>>>>>>> 0a81e561d31fc00df895e92b895898d6018baf02
+
 T = ToolBox.stride / ToolBox.fs / 1000;
 
 figure, hold on
@@ -260,7 +369,6 @@ axis padded
 xlim([0 numFrames * T])
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf('%s_plot_diasys_diameter_%s.png', ToolBox.folder_name, vesselName)))
 
-%%
 figure, hold on
 errorbar((t_systole + t_diastole) * T / 2, ...
     diameter_diff_mean, ...
@@ -278,8 +386,16 @@ xlabel("Time (s)")
 ylabel("\Delta Lumen Diameter (µm)")
 axis padded
 axP = axis;
+<<<<<<< HEAD
 axis([0, numFrames * T, 0, axP(4)])
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf('%s_plot_diasys_diameter_diff_%s.png', ToolBox.folder_name, vesselName)))
 
 close all;
+=======
+axis([0, numFrames * T, axP(3), axP(4)])
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf('%s_plot_diasys_diameter_diff_%s.png', ToolBox.folder_name, vesselName)))
+
+close all;
+
+>>>>>>> 0a81e561d31fc00df895e92b895898d6018baf02
 end

@@ -14,18 +14,22 @@ function saveCrossSectionFigure(subImg, c1, c2, ToolBox, name_section)
 f = figure('Visible', 'off');
 
 % Compute Section Cut
-profile = mean(subImg, 1, 'omitnan');
-cross_section_profile = (profile ./ max(profile)) * size(profile, 2);
+[numX, numY] = size(subImg);
+profile = sum(subImg, 1, 'omitnan') / numX;
+cross_section_profile = (profile ./ max(profile)) * numY;
 cross_section_profile(cross_section_profile < 0) = 0;
 
 % Define x-axis values
-xAx = linspace(0, size(subImg, 1), size(subImg, 1));
+xAx = linspace(0, numX, numY);
 
 % Display the sub-image
 imagesc(xAx, xAx, subImg);
 colormap('gray')
 axis image;
 hold on;
+
+% Flip the y-axis direction
+set(gca, 'YDir', 'normal'); % This makes the y-axis increase from bottom to top
 
 % Set aspect ratio
 set(gca, 'PlotBoxAspectRatio', [1, 1, 1]);
@@ -38,7 +42,7 @@ p.LineStyle = ':';
 
 % Plot the cross-section width line
 x = [c1, c2];
-y = [round(size(subImg, 1) / 2), round(size(subImg, 1) / 2)];
+y = [round(numY / 2), round(numY / 2)];
 line(x, y, 'Color', 'red', 'LineWidth', 3);
 xline(c1, 'r--', 'LineWidth', 3)
 xline(c2, 'r--', 'LineWidth', 3)

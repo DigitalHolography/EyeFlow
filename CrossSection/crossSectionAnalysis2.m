@@ -40,17 +40,18 @@ if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
     clear tmp
 end
 
-% Interpolate the subImage two times
-subImg = imresize(subImg, 2, 'bilinear');
-
 % Crop and rotate sub-image
 subImgCropped = cropCircle(subImg);
 [rotatedImg, tilt_angle] = rotateSubImage(subImg, subImgCropped);
 % rotatedImg(rotatedImg <= 0) = NaN;
 results.subImg_cell = rescale(rotatedImg);
 
+subImgUnCropped = squeeze(mean(v_RMS, 3) .* ROI);
+subImgUnCropped = subImgUnCropped(yRange, xRange);
+subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
+
 % Compute the Vessel Cross Section
-[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter);
+[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(subImgUnCropped, patchName, ToolBox, papillaDiameter);
 results.D = D;
 results.D_se = D_se;
 results.A = A;
@@ -58,10 +59,6 @@ results.A = A;
 results.v_histo = cell(1, numFrames);
 
 % Generate figures
-subImgUnCropped = squeeze(mean(v_RMS, 3));
-subImgUnCropped = subImgUnCropped(yRange, xRange);
-subImgUnCropped = imresize(subImgUnCropped, 2, 'bilinear');
-subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
 saveCrossSectionFigure(subImgUnCropped, c1, c2, ToolBox, patchName);
 
 % Initialize rejected masks
@@ -91,17 +88,14 @@ for t = 1:numFrames
         clear tmp
     end
 
-    subFrame = imresize(subFrame, 2, 'bilinear');
-
     subFrame = imrotatecustom(subFrame, tilt_angle);
-
     v_profile = mean(subFrame, 1, 'omitnan');
     v_cross = mean(subFrame(c1:c2, :), 2, 'omitnan');
 
     % Compute average velocity
-    v = mean(subFrame(c1:c2, :), 'all', 'omitnan');
+    v = mean(v_profile(c1:c2));
 
-    [histo, edges] = histcounts(subFrame(~isnan(subFrame)), linspace(0, 60, 6)); % % HARD CODED
+    [histo, ~] = histcounts(subFrame(~isnan(subFrame)), linspace(0, 60, 6)); % % HARD CODED
     results.v_histo{t} = histo;
 
     % Compute standard deviation of velocity
@@ -139,7 +133,7 @@ for t = 1:numFrames
     results.v_se(t) = v_se;
     results.Q(t) = Q;
     results.Q_se(t) = Q_se;
-    results.v_profiles{t} = mean(subFrame, 1, 'omitnan');
+    results.v_profiles{t} = v_profile;
     results.v_profiles_se{t} = std(subFrame, [], 1, 'omitnan');
 end
 
