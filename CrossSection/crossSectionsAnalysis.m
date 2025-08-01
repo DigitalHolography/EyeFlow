@@ -176,8 +176,8 @@ fprintf("    3. Cross-sections analysis for all circles (%s) output took %ds\n",
 
 tic
 
-analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ...
-    numCircles, numBranches, ToolBox, initial, papillaDiameter, vesselName, numFrames);
+% analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ...
+%    numCircles, numBranches, ToolBox, initial, papillaDiameter, vesselName, numFrames);
 
 fprintf("    4. Diameter Analysis (%s) output took %ds\n", vesselName, round(toc))
 
