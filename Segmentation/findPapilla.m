@@ -68,8 +68,8 @@ if ~isempty(bboxes)
     plot(x_ellipsis, y_ellipsis, 'r', 'LineWidth', 2);
     axis equal;
     exportgraphics(gcf,fullfile(ToolBox.path_png,sprintf('%s_opticdisc.png',ToolBox.folder_name)));
-
-
+    diameter = (diameter_x + diameter_y) / 2;
+    ToolBox.Outputs.add('PapillaRatio',diameter/512,'ua');
     
 
 else
@@ -80,19 +80,5 @@ else
     y_center = NaN;
 end
 
-
-end
-
-function diameter = diametergetPapillaSize(M0img)
-[found, diameter_x, diameter_y, x_center, y_center] = findPapilla(M0img);
-
-ToolBox = getGlobalToolBox;
-
-if found
-    diameter = mean([diameter_x, diameter_y]);
-    ToolBox.Outputs.add('PapillaRatio',diameter/512,'ua');
-else
-    diameter = [];
-end
 
 end

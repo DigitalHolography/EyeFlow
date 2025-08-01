@@ -41,10 +41,10 @@ V = V / std(V);
 % Cross-correlation with normalization
 [corr_vals, lags] = xcorr(A, V, 'coeff');
 [max_corr, max_idx] = max(corr_vals);
-time_lag = lags(max_idx) / fs; % Convert lag index to seconds
+time_lag = lags(max_idx) * (ToolBox.stride / fs / 1000); % Convert lag index to seconds
 
 % Plot results
-figure("Visible", "off");
+figure("Visible", "on");
 subplot(2, 1, 1);
 hold on
 plot(t, A, 'r', 'LineWidth', 2);
@@ -57,7 +57,7 @@ box on;
 set(gca, 'LineWidth', 2);
 
 subplot(2, 1, 2);
-plot(lags / fs, corr_vals, 'k', 'LineWidth', 1.5);
+plot(lags * ToolBox.stride / fs / 1000, corr_vals, 'k', 'LineWidth', 1.5);
 hold on;
 plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
 axis tight;
