@@ -45,6 +45,7 @@ r_range = (central_range - centt) * px_size;
 [p1, p2, p3, rsquare, p1_err, p2_err, p3_err] = customPoly2Fit(r_range', profile(central_range)');
 [r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3, p1_err, p2_err, p3_err);
 
+% Calculate cross-section limits in pixel indices
 c1 = max(ceil(centt + (r1 / px_size)), 1);
 c2 = min(floor(centt + (r2 / px_size)), L);
 
@@ -52,7 +53,7 @@ c2 = min(floor(centt + (r2 / px_size)), L);
 D = abs(r1 - r2);
 dD = sqrt(r1_err ^ 2 + r2_err ^ 2);
 
-if (D > sqrt(2) * L) || (rsquare < 0.6)
+if (D > sqrt(2) * L * px_size) || (rsquare < 0.6)
     D = NaN;
     dD = NaN;
 end
