@@ -1,5 +1,5 @@
-function mask = getHolonetprediction(M0, net)
-% GETHOLONETPREDICTION Generates a segmentation mask using a U-Net model
+function mask = getHolonetVesselness(M0, net)
+% getHolonetVesselness Generates a segmentation mask using a U-Net model
 %   Inputs:
 %       M0 - Input image (2D matrix)
 %       net - Optional pre-loaded neural network
@@ -22,13 +22,13 @@ if nargin < 2 || isempty(net)
         mkdir('Models');
     end
 
-    if ~isfile('Models\uresnet.onnx')
+    if ~isfile('Models\unet_vesselness.onnx')
         % Download the model from Hugging Face
-        url = 'https://huggingface.co/noTban/uresnet/resolve/main/uresnet.onnx';
-        websave('Models\uresnet.onnx', url);
+        url = 'https://huggingface.co/DigitalHolography/UNet_vesselness/resolve/main/UNet_vesselness';
+        websave('Models\unet_vesselness.onnx', url);
     end
 
-    net = importONNXNetwork('Models\uresnet.onnx');
+    net = importONNXNetwork('Models\unet_vesselness.onnx');
 end
 
 % if nargin<2 || isempty(net)
@@ -45,5 +45,5 @@ output = predict(net, input);
 
 mask = sigmoid(output) > 0.5;
 
-mask = imresize(mask, [Nx, Ny]);
+mask = imresize(mask, [Nx, Ny], "nearest");
 end
