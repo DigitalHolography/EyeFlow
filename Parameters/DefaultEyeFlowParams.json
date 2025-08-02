@@ -47,6 +47,8 @@
     "Vesselness Gabor Step": 1,
     "Vesselness Holonet": true,
     "Choroid Holonet": true,
+    "Correlation Holonet":false,
+    "Dia Sys Holonet":true,
     "Diaphragm Radius": 0.45,
     "Force Barycenter": [],
     "Blur": 1.5,
