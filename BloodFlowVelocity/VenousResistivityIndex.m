@@ -205,7 +205,7 @@ else
 
 end
 
-if contains(name, 'Artery')
+if contains(name, 'artery')
     VesselName = 'arterial';
 else
     VesselName = 'venous';
@@ -222,7 +222,7 @@ if contains(name, 'velocity')
     ToolBox.outputs.velocity.(sprintf('diastolic_%s_se', VesselName)) = round(vMin_std, 2);
 
     % New
-    if contains(name, 'Vein')
+    if contains(name, 'vein')
         ToolBox.Outputs.add('VenousMeanVelocity', v_mean, 'mm/s', std(signal));
         ToolBox.Outputs.add('VenousMaximumVelocity', vMax_mean, 'mm/s', vMin_std);
         ToolBox.Outputs.add('VenousMinimumVelocity', vMin_mean, 'mm/s', vMax_std);
@@ -238,7 +238,7 @@ ToolBox.outputs.indices.(sprintf('%s_PR', name)) = round(PR_mean, 2);
 ToolBox.outputs.indices.(sprintf('%s_PR_se', name)) = round(dPR, 2);
 
 % New
-if contains(name, 'Vein')
+if contains(name, 'vein')
     ToolBox.Outputs.add('VenousResistivityIndexVelocity', RI_mean, '', dRI);
     ToolBox.Outputs.add('VenousPulsatilityIndexVelocity', PI_mean, '', dPI);
     ToolBox.Outputs.add('VenousMaxMinRatioVelocity', (vMax_mean / vMin_mean), '');

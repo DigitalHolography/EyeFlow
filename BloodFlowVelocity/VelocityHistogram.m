@@ -15,7 +15,7 @@ function histoVideo = VelocityHistogram(v_video, mask, name, n)
 arguments
     v_video {mustBeNumeric}
     mask {mustBeNumericOrLogical}
-    name {mustBeTextScalar, mustBeMember(name, {'Artery', 'Vein'})}
+    name {mustBeTextScalar, mustBeMember(name, {'artery', 'vein'})}
     n (1, 1) {mustBeInteger, mustBePositive} = 256
 end
 
@@ -31,7 +31,7 @@ v_min = min(v_histo(mask));
 v_max = max(v_histo(mask));
 
 % Set colormap
-if strcmp(name, 'Artery')
+if strcmp(name, 'artery')
     cmap = ToolBox.cmapArtery;
 else % vein
     cmap = ToolBox.cmapVein;

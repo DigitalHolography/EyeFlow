@@ -23,7 +23,7 @@ r2 = params.json.SizeOfField.BigRadiusRatio;
 dr = (r2 - r1) / numCircles;
 maskSectionCircles = zeros(numX, numY, numCircles);
 
-if strcmp(vesselName, 'Artery')
+if strcmp(vesselName, 'artery')
     maskSection = createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, sprintf('mask%s_all_sections', vesselName), mask);
 else
     maskSection = createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, sprintf('mask%s_all_sections', vesselName), [], mask);
@@ -39,7 +39,7 @@ parfor circleIdx = 1:numCircles
     maskSectionCircles(:, :, circleIdx) = diskMask(numX, numY, r_in, r_out, center = [x_c / numX, y_c / numY]);
 
     % save mask image
-    if strcmp(vesselName, 'Artery')
+    if strcmp(vesselName, 'artery')
         createMaskSection(ToolBox, M0_ff_img, r_in, r_out, xy_barycenter, sprintf('mask%s_section_circle_%d', vesselName, circleIdx), mask);
     else
         createMaskSection(ToolBox, M0_ff_img, r_in, r_out, xy_barycenter, sprintf('mask%s_section_circle_%d', vesselName, circleIdx), [], mask);
@@ -177,7 +177,7 @@ fprintf("    3. Cross-sections analysis for all circles (%s) output took %ds\n",
 tic
 
 analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ...
-   numCircles, numBranches, ToolBox, initial, papillaDiameter, vesselName, numFrames);
+    numCircles, numBranches, ToolBox, initial, papillaDiameter, vesselName, numFrames);
 
 fprintf("    4. Diameter Analysis (%s) output took %ds\n", vesselName, round(toc))
 

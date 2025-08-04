@@ -47,6 +47,8 @@
     "Vesselness Gabor Step": 1,
     "Vesselness Holonet": true,
     "Choroid Holonet": true,
+    "Correlation Holonet":false,
+    "Dia Sys Holonet":true,
     "Diaphragm Radius": 0.45,
     "Force Barycenter": [],
     "Blur": 1.5,
@@ -79,7 +81,8 @@
   "PulseAnalysis": {
     "DifferenceMethods": 0,
     "LocalBackgroundWidth": 2,
-    "bkgScaler": 10,
+    "LocalBackgroundDist": 2,
+    "bkgScaler": 15,
     "Lambda": 8.52E-7,
     "Phi": 0.25,
     "OutOfNoiseThreshold": 4,
@@ -97,8 +100,10 @@
     "ScaleFactorWidth": 3,
     "MaskSliceThreshold": 0.01,
     "PixelSize": 0.0191,
+    "profileFitTresholdRatio" : 0.1,
     "SliceHalfThickness": 10,
     "sectionMontage": true,
+    "diameterAnalysis": true,
     "HydrodynamicDiameters": true
   },
   "CrossSectionsFigures": {
@@ -110,6 +115,7 @@
     "BloodFlowProfilesOverlay": true,
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
+    "hemodynamicParameters": true,
     "InterpolationPoints": 50
   },
   "DebugMode": false

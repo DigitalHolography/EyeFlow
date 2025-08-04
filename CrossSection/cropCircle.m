@@ -14,4 +14,5 @@ function img = cropCircle(subImg)
 
 % Apply mask to image
 img = subImg .* mask;
+img(~mask) = NaN;
 end

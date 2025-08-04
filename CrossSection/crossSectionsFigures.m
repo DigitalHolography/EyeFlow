@@ -43,7 +43,7 @@ end
 
 [Q_t, dQ_t] = plotRadius(radiusQ, radiusQSE, t, index_start, index_end, name);
 
-if contains(name, 'Artery')
+if contains(name, 'artery')
     ToolBox.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
 else
     ToolBox.Signals.add('VenousVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
@@ -57,7 +57,7 @@ centroids = cat(1, s.Centroid);
 
 graphCombined(M0_ff_video, v_video_RGB, v_mean_RGB, ...
     labeledVessels .* maskSection, ...
-    Q_t, dQ_t, xy_barycenter, sprintf('%s_vr', name), ...
+    Q_t, dQ_t, xy_barycenter, sprintf('vr_%s', name), ...
     'etiquettes_locs', centroids, ...
     'etiquettes_values', branchQ);
 
@@ -132,7 +132,9 @@ r = [avg_r, std_r]; % m
 L = [5e-3, 1e-3]; % m (ONLY IDEAL L)
 N = size(branchQ, 1);
 
-calculateHemodynamicParameters(Q_t, dQ_t, deltaP, r, L, index_start, index_end, N);
+if params.json.CrossSectionsFigures.hemodynamicParameters
+    calculateHemodynamicParameters(Q_t, dQ_t, deltaP, r, L, index_start, index_end, N);
+end
 
 fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
 

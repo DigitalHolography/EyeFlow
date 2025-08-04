@@ -6,7 +6,7 @@ params = ToolBox.getParams;
 [numX, numY, numFrames] = size(M0_ff_video);
 
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
-t = linspace(0, numFrames/fs, numFrames);
+t = linspace(0, numFrames / fs, numFrames);
 dt = t(2) - t(1);
 
 if ~isempty(sysIdxList)
@@ -26,23 +26,30 @@ Q_mat_A = nan(numCircles, numBranches_A, numFrames);
 Q_mat_V = nan(numCircles, numBranches_V, numFrames);
 
 for cIdx = 1:numCircles
+
     for bIdx = 1:numBranches_A
+
         if ~isempty(Q_cell_A{cIdx, bIdx})
             Q_mat_A(cIdx, bIdx, :) = Q_cell_A{cIdx, bIdx};
         end
+
     end
+
     for bIdx = 1:numBranches_V
+
         if ~isempty(Q_cell_V{cIdx, bIdx})
             Q_mat_V(cIdx, bIdx, :) = Q_cell_V{cIdx, bIdx};
         end
+
     end
+
 end
 
 Q_A = squeeze(mean(Q_results_A.radiusQ, 1)); % Mean over circles
-Q_V =squeeze(mean(Q_results_V.radiusQ, 1)); % Mean over circles
+Q_V = squeeze(mean(Q_results_V.radiusQ, 1)); % Mean over circles
 
 numFramesBis = eIdx - sIdx + 1;
-tBis = linspace(sIdx/fs, eIdx/fs, numFramesBis);
+tBis = linspace(sIdx / fs, eIdx / fs, numFramesBis);
 numCycles = length(sysIdxList) - 1;
 cycleSize = numFramesBis / numCycles;
 
@@ -51,6 +58,7 @@ Volume_V = sum(Q_V) * dt / 60 * 1e-9; % in m^3
 
 Q_ratio = Q_V ./ Q_A;
 Q_diff = Q_V - Q_A;
+Q_diff = Q_diff - mean(Q_diff(sIdx:eIdx));
 
 % Detrend signals (remove DC offset)
 A_detrended = Q_A - mean(Q_A);
@@ -72,9 +80,9 @@ Q_A_FT = fft(Q_A);
 Q_V_FT = fft(Q_V);
 
 F_TRANS = Q_V_FT ./ Q_A_FT;
-freqs = linspace(-fs/2,fs/2,numel(F_TRANS));
-figure("Visible", "on", "Color", 'w'); 
-semilogy(freqs,fftshift(abs(F_TRANS)),'-k','LineWidth',2);
+freqs = linspace(-fs / 2, fs / 2, numel(F_TRANS));
+figure("Visible", "on", "Color", 'w');
+semilogy(freqs, fftshift(abs(F_TRANS)), '-k', 'LineWidth', 2);
 axis tight;
 xlabel('Freq (Hz)'); ylabel('transfer function');
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
@@ -84,8 +92,8 @@ set(gca, 'LineWidth', 2);
 
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_BVR_AV_mod.png", ToolBox.folder_name)))
 
-figure("Visible", "on", "Color", 'w'); 
-plot(freqs,fftshift(angle(F_TRANS)),'-k','LineWidth',2);
+figure("Visible", "on", "Color", 'w');
+plot(freqs, fftshift(angle(F_TRANS)), '-k', 'LineWidth', 2);
 axis tight;
 xlabel('Freq (Hz)'); ylabel('transfer function angle');
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
@@ -95,10 +103,8 @@ set(gca, 'LineWidth', 2);
 
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_BVR_AV_phase.png", ToolBox.folder_name)))
 
-
-
 ToolBox.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', freqs, 'Hz');
-ToolBox.Signals.add('TransFunctionPhaseDegrees', fftshift(180/pi*angle((F_TRANS))), 'deg', freqs, 'Hz');
+ToolBox.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');
 
 instant_dV = detrend(cumsum(Q_diff(sIdx:eIdx))) / 60 * dt;
 [peaks, peaks_idx] = findpeaks(instant_dV, 'MinPeakDistance', cycleSize * 0.8);
@@ -109,11 +115,11 @@ sys_mean = mean(peaks);
 dias_mean = -mean(troughs);
 
 % figure;
-% subplot(2,1,1); plot(f, 20*log10(abs(Z(1:nfft/2+1)))); 
+% subplot(2,1,1); plot(f, 20*log10(abs(Z(1:nfft/2+1))));
 % title('Transfer Function Magnitude'); xlabel('Frequency (Hz)'); ylabel('dB');
-% subplot(2,1,2); plot(f, angle(Z(1:nfft/2+1))); 
+% subplot(2,1,2); plot(f, angle(Z(1:nfft/2+1)));
 % title('Phase Response'); xlabel('Frequency (Hz)'); ylabel('Radians');
-% 
+%
 % Pxx = s_A .* conj(s_A) / nfft;
 % Pyy = s_V .* conj(s_V) / nfft;
 % Pxy = s_V .* conj(s_A) / nfft;
@@ -122,7 +128,7 @@ dias_mean = -mean(troughs);
 %% Figures
 
 % Figure 0 - Flow Rates
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 hold on
 plot(t, Q_A, 'r', 'LineWidth', 2);
 % Format plot
@@ -145,7 +151,7 @@ ax.Layer = 'top'; % This may help in some cases
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_flowRate_Artery.png", ToolBox.folder_name)))
 exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_flowRate_Artery.eps", ToolBox.folder_name)))
 
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 hold on
 plot(t, Q_V, 'b', 'LineWidth', 2);
 % Format plot
@@ -169,7 +175,7 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_flowRate_Vein.png", T
 exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_flowRate_Vein.eps", ToolBox.folder_name)))
 
 % Figure 1 - Flow Ratio
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 hold on;
 plot(t, Q_diff, 'k-', 'LineWidth', 2);
 xlabel('Time (s)');
@@ -195,7 +201,7 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_flowRate_Diff.png", T
 exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_flowRate_Diff.eps", ToolBox.folder_name)))
 
 % Figure 2 - Signals and cross-correlation
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 subplot(2, 1, 1);
 hold on
 plot(t, V_detrended, 'b', 'LineWidth', 2);
@@ -223,7 +229,7 @@ box on;
 set(gca, 'LineWidth', 2);
 
 % Figure 4 - Cumsum Flow Ratio
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 hold on;
 plot(tBis, instant_dV, 'k-', 'LineWidth', 2);
 scatter(tBis(peaks_idx), peaks, 'red', 'filled', 'o')

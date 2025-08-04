@@ -20,8 +20,9 @@ params = ToolBox.getParams;
 results = struct();
 
 % Compute mean velocity over time
-v_masked = squeeze(mean(v_RMS, 3)) .* ROI;
-v_masked(~ROI) = NaN;
+mask = nan(numX, numY);
+mask(ROI) = 1;
+v_masked = v_RMS .* mask;
 
 % Define sub-image dimensions
 subImgHW = round(0.01 * size(v_masked, 1) * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
@@ -29,24 +30,24 @@ subImgHW = round(0.01 * size(v_masked, 1) * params.json.CrossSectionsAnalysis.Sc
 % Initialize results fields
 xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
 yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
-subImg = v_masked(yRange, xRange);
+subImg = v_masked(yRange, xRange, :);
 
 if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
     xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);
     yRange = round(-subImgHW / 2) + loc(2):round(subImgHW / 2) + loc(2);
-    tmp = NaN(length(xRange), length(yRange));
-    tmp(1:size(subImg, 1), 1:size(subImg, 2)) = subImg;
+    tmp = NaN(length(xRange), length(yRange), numFrames);
+    tmp(1:size(subImg, 1), 1:size(subImg, 2), :) = subImg;
     subImg = tmp;
     clear tmp
 end
 
-% Crop and rotate sub-image
-subImgCropped = cropCircle(subImg);
-[rotatedImg, tilt_angle] = rotateSubImage(subImg, subImgCropped);
-% rotatedImg(rotatedImg <= 0) = NaN;
+subImgMean = squeeze(mean(subImg, 3, 'omitnan'));
+subImgCropped = cropCircle(subImgMean);
+[rotatedImg, tilt_angle] = rotateSubImage(subImgMean, subImgCropped);
 results.subImg_cell = rescale(rotatedImg);
 
-subImgUnCropped = squeeze(mean(v_RMS, 3) .* ROI);
+% UncroppedVersion
+subImgUnCropped = squeeze(mean(v_RMS, 3));
 subImgUnCropped = subImgUnCropped(yRange, xRange);
 subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
 
@@ -56,9 +57,11 @@ results.D = D;
 results.D_se = D_se;
 results.A = A;
 
-results.v_histo = cell(1, numFrames);
-
 % Generate figures
+
+subImgUnCropped = squeeze(mean(v_RMS, 3));
+subImgUnCropped = subImgUnCropped(yRange, xRange);
+subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
 saveCrossSectionFigure(subImgUnCropped, c1, c2, ToolBox, patchName);
 
 % Initialize rejected masks
@@ -72,28 +75,17 @@ end
 
 % Compute Volume Rate and average velocity
 
+results.v_histo = cell(1, numFrames);
+
 for t = 1:numFrames
-    xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
-    yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
-    tmp = v_RMS(:, :, t) .* ROI;
-    tmp(~ROI) = NaN;
-    subFrame = tmp(yRange, xRange);
 
-    if size(subFrame, 1) < length(xRange) || size(subFrame, 2) < length(yRange) % edge case (on the edges of the field)
-        xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);
-        yRange = round(-subImgHW / 2) + loc(2):round(subImgHW / 2) + loc(2);
-        tmp = NaN(length(xRange), length(yRange));
-        tmp(1:size(subFrame, 1), 1:size(subFrame, 2)) = subFrame;
-        subFrame = tmp;
-        clear tmp
-    end
-
+    subFrame = subImg(:, :, t);
     subFrame = imrotatecustom(subFrame, tilt_angle);
     v_profile = mean(subFrame, 1, 'omitnan');
     v_cross = mean(subFrame(c1:c2, :), 2, 'omitnan');
 
     % Compute average velocity
-    v = mean(v_profile(c1:c2));
+    v = mean(v_profile(c1:c2), 'omitnan');
 
     [histo, ~] = histcounts(subFrame(~isnan(subFrame)), linspace(0, 60, 6)); % % HARD CODED
     results.v_histo{t} = histo;
@@ -139,5 +131,6 @@ end
 
 results.rejected_masks = rejected_masks;
 
-close all;
+close all
+
 end

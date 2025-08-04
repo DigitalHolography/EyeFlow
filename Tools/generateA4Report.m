@@ -61,16 +61,16 @@ rowHeights = [0.55, 0.225, 0.21]; % Normalized heights
 for col = 1:2
 
     if col == 1
-        name = 'Artery';
+        name = 'artery';
     else
-        name = 'Vein';
+        name = 'vein';
     end
 
     posX = leftMargin + (col - 1) * 0.45;
     posY = gridBottom + (rowHeights(2) + rowHeights(3)) * gridHeight; % Above middle and bottom rows
 
     ax = axes('Position', [posX posY 0.45 rowHeights(1) * gridHeight]);
-    vr_combined_path = fullfile(path_png, sprintf('%s_%s_vr_combined.png', folder_name, name));
+    vr_combined_path = fullfile(path_png, sprintf('%s_combined_vr_%s.png', folder_name, name));
     vr_combined_im = imread(vr_combined_path); % Taller placeholder (2x height)
     imshow(vr_combined_im, []);
     set(ax, 'XTick', [], 'YTick', []);
@@ -81,7 +81,7 @@ for col = 1:2
     posY = gridBottom + rowHeights(3) * gridHeight; % Above bottom row
 
     ax = axes('Position', [posX posY 0.45 rowHeights(2) * gridHeight]);
-    ri_path = fullfile(path_png, sprintf('%s_RI_velocity%s.png', folder_name, name));
+    ri_path = fullfile(path_png, sprintf('%s_RI_v_%s.png', folder_name, name));
     ri_im = imread(ri_path); % Standard placeholder
     imshow(ri_im, []);
     set(ax, 'XTick', [], 'YTick', []);

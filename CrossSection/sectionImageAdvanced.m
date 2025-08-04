@@ -87,7 +87,11 @@ for cIdx = 1:numCirclesV
 end
 
 % set black in the rejected regions
-indxs = find(maskRejectedArtery(:, :, 1) | maskRejectedVein(:, :, 1) > 0); % the red channel = rejected parts
+if ~isempty(maskRejectedVein)
+    indxs = find(maskRejectedArtery(:, :, 1) | maskRejectedVein(:, :, 1) > 0); % the red channel = rejected parts
+else
+    indxs = find(maskRejectedArtery(:, :, 1) > 0); % the red channel = rejected parts
+end
 imgRGB(indxs) = 0;
 imgRGB(numY * numX + indxs) = 0;
 imgRGB(2 * numY * numX + indxs) = 0;

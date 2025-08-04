@@ -17,7 +17,7 @@ exportVideos = params.exportVideos;
 % Set visualization parameters
 Color_err = [0.7 0.7 0.7];
 
-if strcmp(name, 'Artery')
+if strcmp(name, 'artery')
     Color_sys = [1 0 0];
     Color_dias = [0.5 0 0];
 else
@@ -34,7 +34,7 @@ while numFrames <= 0
     numFrames = size(v_cell{i}, 2);
     i = i + 1;
 
-    if i > size(v_cell, 1) * size(v_cell, 2);
+    if i > size(v_cell, 1) * size(v_cell, 2)
         warning("Velocity profiles cells are all empty.")
         break
     end
@@ -198,8 +198,12 @@ warning('on', 'curvefit:fit:noStartPoint');
 
 % Finalize static plot
 xlim([-1 1]);
+try
 ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
                1.07 * max([bounds_sys.upper, bounds_dias.upper])]);
+catch e
+    disp(e)
+end
 xlabel('lumen cross-section (a.u.)', 'FontSize', 14);
 ylabel('Velocity (mm/s)', 'FontSize', 14);
 
@@ -234,7 +238,10 @@ if exportVideos
     fitPlot = plot(NaN, NaN, '-', 'Color', Color_sys, 'LineWidth', 2);
 
     % Configure axes
-    axis('tight');
+    % Format plot
+    axis padded;
+    axP = axis;
+    axis([-1, 1, 0, axP(4)]);
     xlim([-1 1]);
     ylim(get(gca, 'YLim'));
     xlabel('lumen cross-section (a.u.)');
@@ -257,9 +264,12 @@ if exportVideos
     set(upperPlot, 'XData', w2w, 'YData', bounds_frame.upper);
     set(lowerPlot, 'XData', w2w, 'YData', bounds_frame.lower);
     set(meanPlot, 'XData', w2w, 'YData', v_video(1, :));
-
+    try
     ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
                    1.2 * max([bounds_sys.upper, bounds_dias.upper])]);
+    catch e
+        disp(e)
+    end
 
     [numX_fig, numY_fig, ~] = size(frame2im(getframe(figVideo)));
     video = zeros(numX_fig, numY_fig, 3, numFrames);

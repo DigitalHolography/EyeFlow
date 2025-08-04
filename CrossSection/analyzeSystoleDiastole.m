@@ -108,6 +108,7 @@ for i = 1:length(systole_cell)
                     subImg = tmp;
                 end
 
+
                 % Crop and rotate sub-image
                 subImgCropped = cropCircle(subImg);
                 [~, tilt_angle] = rotateSubImage(subImg, subImgCropped);
@@ -228,6 +229,7 @@ diameter_diff_mean = mean(diameter_sys_array - diameter_dias_array, [2 3], 'omit
 
 % Standard error calculations - simplified approach
 % For systolic and diastolic (assuming independent measurements)
+
 diameter_se_sys_mean = sqrt(sum(diameter_se_sys_array .^ 2, [2 3], 'omitnan')) / numCircles / numBranches;
 diameter_se_dias_mean = sqrt(sum(diameter_se_dias_array .^ 2, [2 3], 'omitnan')) / numCircles / numBranches;
 
@@ -351,9 +353,9 @@ xlabel("Time (s)")
 ylabel("\Delta Lumen Diameter (µm)")
 axis padded
 axP = axis;
+
 axis([0, numFrames * T, axP(3), axP(4)])
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf('%s_plot_diasys_diameter_diff_%s.png', ToolBox.folder_name, vesselName)))
 
 close all;
-
 end

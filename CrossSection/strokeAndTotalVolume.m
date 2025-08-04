@@ -30,7 +30,7 @@ curve2 = 0 * ones(size(curve1));
 ft2 = [pulseTime, fliplr(pulseTime)];
 inBetween = [curve1, fliplr(curve2)]';
 
-if strcmp(name, 'Artery')
+if strcmp(name, 'artery')
     cLight = [1, 1/2, 1/2];
     cDark = [1, 0, 0];
 else
@@ -41,7 +41,7 @@ end
 fill(ft2, inBetween, cLight, 'EdgeColor', 'none');
 xline(pulseTime(end), '--', 'Color', [0.4 0.4 0.4], 'LineWidth', 2)
 
-if strcmp(name, 'Artery')
+if strcmp(name, 'artery')
     % Remaining Stroke Volume
     hold on
     curve1 = interp_BvrT;
@@ -109,7 +109,7 @@ ax.Layer = 'top'; % This may help in some cases
 ylabel('Volume Rate (µL/min)')
 xlabel('Time (s)')
 
-if strcmp(name, 'Artery')
+if strcmp(name, 'artery')
     stroke_volume_value = sum(interp_BvrT(1:min(amax, numInterp))) * dt / 60 * 1000; % in nL
     stroke_volume_value = stroke_volume_value + (sum(interp_BvrT(max(amin, 1):end)) * dt / 60 * 1000); % in nL
 else
@@ -139,11 +139,11 @@ ToolBox.outputs.(sprintf('MinDiastoleFlowRateArtery')) = mindiastole_bvr_value;
 ToolBox.outputs.(sprintf('StrokeVolumeArteryArtery')) = stroke_volume_value;
 ToolBox.outputs.(sprintf('TotalVolumeArteryArtery')) = total_volume_value;
 
-if contains(name, 'Artery')
+if contains(name, 'artery')
     ToolBox.Outputs.add('ArterialCycleVolume', total_volume_value, 'nL');
     ToolBox.Outputs.add('ArterialSystolicFraction', stroke_volume_value / total_volume_value, '');
     ToolBox.Outputs.add('ArterialDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
-elseif contains(name, 'Vein')
+elseif contains(name, 'vein')
     ToolBox.Outputs.add('VenousCycleVolume', total_volume_value, 'nL');
     ToolBox.Outputs.add('VenousSystolicFraction', stroke_volume_value / total_volume_value, '');
     ToolBox.Outputs.add('VenousDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');

@@ -17,6 +17,7 @@ f = figure('Visible', 'off');
 [numX, numY] = size(subImg);
 profile = sum(subImg, 1, 'omitnan') / numX;
 cross_section_profile = (profile ./ max(profile)) * numY;
+cross_section_profile(cross_section_profile > numY) = numY;
 cross_section_profile(cross_section_profile < 0) = 0;
 
 % Define x-axis values
@@ -44,8 +45,8 @@ p.LineStyle = ':';
 x = [c1, c2];
 y = [round(numY / 2), round(numY / 2)];
 line(x, y, 'Color', 'red', 'LineWidth', 3);
-xline(c1, 'r--', 'LineWidth', 3);
-xline(c2, 'r--', 'LineWidth', 3);
+xline(c1, 'r--', 'LineWidth', 3)
+xline(c2, 'r--', 'LineWidth', 3)
 
 % Turn off axes
 axis off;
