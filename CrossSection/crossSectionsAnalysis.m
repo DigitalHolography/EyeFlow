@@ -4,7 +4,7 @@ ToolBox = getGlobalToolBox;
 
 params = ToolBox.getParams;
 
-initial = vesselName(1);
+initial = upper(vesselName(1));
 
 [numX, numY, numFrames] = size(v_RMS);
 x_c = xy_barycenter(1);
