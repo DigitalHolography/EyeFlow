@@ -12,7 +12,7 @@ numInterp = 60;
 numFrames = length(signal);
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 
-if contains(name, 'velocity')
+if contains(name, 'v_')
     unit = 'mm/s';
     y_label = 'Velocity (mm/s)';
 else
@@ -176,7 +176,7 @@ exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_PI_%s.png", ToolBox.f
 exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
 close;
 
-if contains(name, 'Artery')
+if contains(name, 'artery')
     VesselName = 'arterial';
 else
     VesselName = 'venous';
@@ -184,7 +184,7 @@ end
 
 % Save json
 
-if contains(name, 'velocity')
+if contains(name, 'v_')
     ToolBox.outputs.velocity.(sprintf('mean_%s', VesselName)) = round(v_mean, 2);
     ToolBox.outputs.velocity.(sprintf('systolic_%s', VesselName)) = round(vMax, 2);
     ToolBox.outputs.velocity.(sprintf('diastolic_%s', VesselName)) = round(vMin, 2);
@@ -196,11 +196,11 @@ if contains(name, 'velocity')
     end
 
     % New
-    if contains(name, 'Vein')
+    if contains(name, 'vein')
         ToolBox.Outputs.add('VenousMeanVelocity', v_mean, unit, std(interp_signal));
         ToolBox.Outputs.add('VenousMaximumVelocity', vMax, unit, vMax_se);
         ToolBox.Outputs.add('VenousMinimumVelocity', vMin, unit, vMin_se);
-    elseif contains(name, 'Artery')
+    elseif contains(name, 'artery')
         ToolBox.Outputs.add('ArterialMeanVelocity', v_mean, unit, std(interp_signal));
         ToolBox.Outputs.add('ArterialMinimumVelocity', vMin, unit, vMin_se);
         ToolBox.Outputs.add('ArterialMaximumVelocity', vMax, unit, vMax_se);
@@ -218,11 +218,11 @@ else
     end
 
     % New
-    if contains(name, 'Vein')
+    if contains(name, 'vein')
         ToolBox.Outputs.add('VenousMeanVolumeRate', v_mean, unit, std(interp_signal));
         ToolBox.Outputs.add('VenousMaximumVolumeRate', vMax, unit, vMax_se);
         ToolBox.Outputs.add('VenousMinimumVolumeRate', vMin, unit, vMin_se);
-    elseif contains(name, 'Artery')
+    elseif contains(name, 'artery')
         ToolBox.Outputs.add('ArterialMeanVolumeRate', v_mean, unit, std(interp_signal));
         ToolBox.Outputs.add('ArterialMinimumVolumeRate', vMin, unit, vMin_se);
         ToolBox.Outputs.add('ArterialMaximumVolumeRate', vMax, unit, vMax_se);
@@ -242,13 +242,13 @@ end
 
 % New
 
-if contains(name, 'velocity')
+if contains(name, 'v_')
 
-    if contains(name, 'Vein')
+    if contains(name, 'vein')
         ToolBox.Outputs.add('VenousResistivityIndexVelocity', RI, '', RI_se);
         ToolBox.Outputs.add('VenousPulsatilityIndexVelocity', PI, '', PI_se);
         ToolBox.Outputs.add('VenousMaxMinRatioVelocity', PR, '', PR_se);
-    elseif contains(name, 'Artery')
+    elseif contains(name, 'artery')
         ToolBox.Outputs.add('ArterialResistivityIndexVelocity', RI, '', RI_se);
         ToolBox.Outputs.add('ArterialPulsatilityIndexVelocity', PI, '', PI_se);
         ToolBox.Outputs.add('ArterialMaxMinRatioVelocity', PR, '', PR_se);
@@ -256,11 +256,11 @@ if contains(name, 'velocity')
 
 else
 
-    if contains(name, 'Vein')
+    if contains(name, 'vein')
         ToolBox.Outputs.add('VenousResistivityIndexVolumeRate', RI, '', RI_se);
         ToolBox.Outputs.add('VenousPulsatilityIndexVolumeRate', PI, '', PI_se);
         ToolBox.Outputs.add('VenousMaxMinRatioVolumeRate', PR, '', PR_se);
-    elseif contains(name, 'Artery')
+    elseif contains(name, 'artery')
         ToolBox.Outputs.add('ArterialResistivityIndexVolumeRate', RI, '', RI_se);
         ToolBox.Outputs.add('ArterialPulsatilityIndexVolumeRate', PI, '', PI_se);
         ToolBox.Outputs.add('ArterialMaxMinRatioVolumeRate', PR, '', PR_se);

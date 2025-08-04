@@ -269,10 +269,10 @@ methods
             fprintf("\n----------------------------------\nCross-Section Analysis\n----------------------------------\n");
             crossSectionAnalysisTimer = tic;
 
-            [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'Artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
+            [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
 
             if veins_analysis
-                [obj.Q_results_V] = crossSectionsAnalysis(obj.maskVein, 'Vein', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
+                [obj.Q_results_V] = crossSectionsAnalysis(obj.maskVein, 'vein', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
             end
 
             obj.is_crossSectionAnalyzed = true;
@@ -341,8 +341,12 @@ methods
             fprintf("\n----------------------------------\nSpectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
         end
 
-        if obj.is_AllAnalyzed
-            generateA4Report()
+        if obj.is_AllAnalyzed && veins_analysis
+            try 
+                generateA4Report()
+            catch e
+                disp(e)
+            end
         end
 
         % Main Outputs Saving

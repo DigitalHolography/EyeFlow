@@ -9,7 +9,12 @@ function Bout = imrotatecustom(A, angle)
     mask = ~isnan(A);
 
     % Use a unique fill value that won't appear in A
-    fill_value = min(A(~isnan(A))) - 1;  % ensure it's below any real value
+    % Handle case where all values are NaN
+    if any(mask(:))
+        fill_value = min(A(mask)) - 1;  % ensure it's below any real value
+    else
+        fill_value = -Inf;  % fallback if entire image is NaN
+    end
 
     % Replace NaNs with fill_value for rotation
     A_temp = A;
