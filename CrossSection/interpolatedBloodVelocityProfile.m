@@ -17,7 +17,7 @@ exportVideos = params.exportVideos;
 % Set visualization parameters
 Color_err = [0.7 0.7 0.7];
 
-if strcmp(name, 'Artery')
+if strcmp(name, 'artery')
     Color_sys = [1 0 0];
     Color_dias = [0.5 0 0];
 else
@@ -34,7 +34,7 @@ while numFrames <= 0
     numFrames = size(v_cell{i}, 2);
     i = i + 1;
 
-    if i > size(v_cell, 1) * size(v_cell, 2);
+    if i > size(v_cell, 1) * size(v_cell, 2)
         warning("Velocity profiles cells are all empty.")
         break
     end

@@ -32,8 +32,7 @@ if ~HydrodynamicDiameters
 end
 
 % Compute velocity profile
-profile = sum(subImg, 1, 'omitnan') / numX;
-profile(isnan(profile)) = 0;
+profile = mean(subImg, 1, 'omitnan');
 L = length(profile);
 
 % Find all points above 50% threshold
@@ -44,6 +43,11 @@ r_range = (central_range - centt) * px_size;
 
 [p1, p2, p3, rsquare, p1_err, p2_err, p3_err] = customPoly2Fit(r_range', profile(central_range)');
 [r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3, p1_err, p2_err, p3_err);
+
+if r1 > r2
+    r1 = NaN;
+    r2 = NaN;
+end
 
 % Calculate cross-section limits in pixel indices
 c1 = max(ceil(centt + (r1 / px_size)), 1);

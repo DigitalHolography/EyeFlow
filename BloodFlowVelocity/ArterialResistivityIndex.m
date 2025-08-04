@@ -100,9 +100,9 @@ yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, ...
 
 % Formatting
 if ~isempty(signal_se)
-    title(sprintf('%s - RI: %.2f ± %.2f', name, RI, RI_se));
+    title(sprintf('%s - RI: %.2f ± %.2f', name, RI, RI_se), 'Interpreter', 'none');
 else
-    title(sprintf('%s - RI: %.2f', name, RI));
+    title(sprintf('%s - RI: %.2f', name, RI), 'Interpreter', 'none');
 end
 
 xlabel('Time (s)');
@@ -153,9 +153,9 @@ yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, 'Color', [0.5
 
 % Formatting
 if ~isempty(signal_se)
-    title(sprintf('%s - PI: %.2f ± %.2f', name, PI, PI_se));
+    title(sprintf('%s - PI: %.2f ± %.2f', name, PI, PI_se), 'Interpreter', 'none');
 else
-    title(sprintf('%s - PI: %.2f', name, PI));
+    title(sprintf('%s - PI: %.2f', name, PI), 'Interpreter', 'none');
 end
 
 xlabel('Time (s)');

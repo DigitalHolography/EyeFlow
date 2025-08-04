@@ -113,7 +113,7 @@ for i = 1:cubeFrameLength
     title('Spectrum')
     xlabel('frequency (kHz)', 'FontSize', 14);
     ylabel('A.U.', 'FontSize', 14);
-    legend('Artery', 'Bg', 'Delta')
+    legend('artery', 'bkg', 'delta')
     specVideo(:, :, :, i) = frame2im(getframe(93));
     %
     %     DELTA(:,i) = tmp_DELTA(cubeFreqLength*k_int+1:cubeFreqLength*2*k_int,1);
@@ -146,7 +146,7 @@ xlim([-fs / 2 fs / 2])
 title('Average spectrum')
 xlabel('frequency (kHz)', 'FontSize', 14);
 ylabel('A.U.', 'FontSize', 14);
-legend('Artery', 'Background')
+legend('artery', 'background')
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'Averaged_spectrum.png')));
 
 % DELTA

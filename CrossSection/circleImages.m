@@ -6,8 +6,8 @@ params = ToolBox.getParams;
 exportVideos = params.exportVideos;
 
 % Validate input name
-if ~ismember(name, {'Artery', 'Vein'})
-    error('Name must be either ''Artery'' or ''Vein''');
+if ~ismember(name, {'artery', 'vein'})
+    error('Name must be either ''artery'' or ''vein''');
 end
 
 path_png = ToolBox.path_png;
@@ -44,12 +44,15 @@ maskRadius = squeeze(sum(maskMat, 4));
 inv_maskRadius = ~maskRadius;
 
 % Get appropriate colormap
-fontsize = round(numX / 75);
-cmap = ToolBox.(['cmap' name]);
+
+if strcmp(name, 'artery')
+    cmap = ToolBox.cmapArtery;
+else
+    cmap = ToolBox.cmapVein;
+end
 textOptions = {"FontWeight", "bold", ...
                    "Color", "white", ...
-                   "BackgroundColor", "black", ...
-                   "FontSize", fontsize};
+                   "BackgroundColor", "black"};
 
 % Plot cross-section widths
 parfor cIdx = 1:numCircles

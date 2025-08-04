@@ -15,6 +15,7 @@ angles = linspace(0, 180, 181);
 % Initialize an array to store kurtosis values for each angle
 peak_ratio = zeros(1, length(angles));
 subImgCropped(isnan(subImgCropped)) = 0;
+subImgCropped(subImgCropped < 0) = 0;
 [numX, ~] = size(subImgCropped);
 rangeX = floor(numX / 3):ceil(2 * numX / 3);
 

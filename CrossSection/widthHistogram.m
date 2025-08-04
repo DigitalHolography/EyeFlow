@@ -83,7 +83,7 @@ end
 writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'WidthTable', '_', name, '.csv')));
 
 % New
-if contains(name, 'Artery')
+if contains(name, 'artery')
     ToolBox.Outputs.add('ArterialDiameterAverage', D_avg, 'µm');
     ToolBox.Outputs.add('ArterialDiameterMedian', D_mid, 'µm');
     ToolBox.Outputs.add('ArterialDiameterSpread', D_std, 'µm');

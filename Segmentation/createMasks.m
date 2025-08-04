@@ -122,7 +122,7 @@ if mask_params.AutoCompute
     if mask_params.CorrelationHolonet || mask_params.DiaSysHolonet
         [maskArtery, maskVein] = createMasksHolonet(M0_ff_video, M0_ff_img, maskVesselness);
         saveImage(maskVein, 'vein_21_Holonet.png', isStep = true, cmap = cVein);
-        saveImage(maskArtery, 'artery_21_Holonet.png', isStep = true, cmap = cVein);
+        saveImage(maskArtery, 'artery_21_Holonet.png', isStep = true, cmap = cArtery);
     else
 
         %  1) 3) Compute first correlation

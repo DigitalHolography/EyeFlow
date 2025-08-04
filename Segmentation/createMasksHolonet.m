@@ -103,6 +103,9 @@ maskVein = onehot(:,:,2);
 maskArtery = imresize(maskArtery, [Nx, Ny], "nearest");
 maskVein = imresize(maskVein, [Nx, Ny], "nearest");
 
+maskArtery = logical(maskArtery);
+maskVein = logical(maskVein);
+
 end
 
 

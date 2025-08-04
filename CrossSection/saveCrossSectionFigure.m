@@ -17,6 +17,7 @@ f = figure('Visible', 'off');
 [numX, numY] = size(subImg);
 profile = sum(subImg, 1, 'omitnan') / numX;
 cross_section_profile = (profile ./ max(profile)) * numY;
+cross_section_profile(cross_section_profile > numY) = numY;
 cross_section_profile(cross_section_profile < 0) = 0;
 
 % Define x-axis values

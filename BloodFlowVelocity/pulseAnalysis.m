@@ -37,16 +37,10 @@ r1 = params.json.SizeOfField.SmallRadiusRatio;
 r2 = params.json.SizeOfField.BigRadiusRatio;
 maskSection = diskMask(numX, numY, r1, r2, 'center', [x_c, y_c]);
 
-M0_ff_img = mean(M0_ff_video, 3);
-
 % Create vessel masks
 maskArterySection = maskArtery & maskSection;
 maskVeinSection = maskVein & maskSection;
 maskVesselSection = (maskVein | maskArtery) & maskSection;
-[maskVesselnessFrangi, ~] = frangiVesselness(M0_ff_img, ...
-        'range', params.json.Mask.VesselnessFrangiRange, ...
-        'step', params.json.Mask.VesselnessFrangiStep);
-maskBkgSection = ~(maskVein | maskArtery| maskVesselnessFrangi) & maskSection;
 
 % Time vector for plotting
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
@@ -91,12 +85,6 @@ else
     end
 
 end
-
-
-corrective = sum(f_video .* maskBkgSection, [1 2]) / nnz(maskBkgSection) ...
-    - sum(f_bkg .* maskVesselSection, [1 2]) / nnz(maskVesselSection);
-
-f_bkg = f_bkg + corrective;
 
 % Calculate and plot artery signals
 f_artery = squeeze(sum(f_video .* maskArterySection, [1, 2]) / nnz(maskArterySection));
@@ -320,7 +308,7 @@ in_vessels = mean(df, 3) .* maskVesselSection + (mean(f_video, 3) - mean(f_video
 createHeatmap(in_vessels, 'Delta f in vessels', ...
     'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_df_map.png", ToolBox.folder_name)));
 
-velocityIm(in_vessels, maskArtery | maskVein, turbo, 'df_Vessel', colorbarOn = true, LabelName= 'kHz');
+velocityIm(mean(df, 3) .* maskVesselSection, maskArtery | maskVein, turbo, 'df_vessel', colorbarOn = true, LabelName = 'kHz');
 
 % Raw RMS frequency map
 raw_map = squeeze(mean(f_video, 3));
@@ -344,12 +332,12 @@ maskVeinSection = maskVein & maskSection & ~maskAV;
 [v_video_RGB, v_mean_RGB] = flowMap(v_RMS_video, maskSection, maskArtery, maskVein, M0_ff_video, xy_barycenter, ToolBox);
 
 % Generate histograms
-histoVideoArtery = VelocityHistogram(v_RMS_video, maskArterySection, 'Artery');
+histoVideoArtery = VelocityHistogram(v_RMS_video, maskArterySection, 'artery');
 
 histoVideoVein = [];
 
 if veinsAnalysis
-    histoVideoVein = VelocityHistogram(v_RMS_video, maskVeinSection, 'Vein');
+    histoVideoVein = VelocityHistogram(v_RMS_video, maskVeinSection, 'vein');
 end
 
 % Generate combined visualizations

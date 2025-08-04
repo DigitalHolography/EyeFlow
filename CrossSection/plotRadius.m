@@ -145,11 +145,11 @@ ToolBox.outputs.(sprintf('FlowRate%s', name)) = mean_Q;
 ToolBox.outputs.(sprintf('FlowRateStd%s', name)) = mean_dQ;
 
 % New
-if contains(name, 'Vein')
+if contains(name, 'vein')
     ToolBox.Outputs.add('VenousMeanVolumeRate', mean_Q, 'µL/min', mean_dQ);
     ToolBox.Outputs.add('VenousMaximumVolumeRate', max_Q, 'µL/min', max_dQ);
     ToolBox.Outputs.add('VenousMinimumVolumeRate', min_Q, 'µL/min', min_dQ);
-elseif contains(name, 'Artery')
+elseif contains(name, 'artery')
     ToolBox.Outputs.add('ArterialMeanVolumeRate', mean_Q, 'µL/min', mean_dQ);
     ToolBox.Outputs.add('ArterialMinimumVolumeRate', min_Q, 'µL/min', min_dQ);
     ToolBox.Outputs.add('ArterialMaximumVolumeRate', max_Q, 'µL/min', max_dQ);
