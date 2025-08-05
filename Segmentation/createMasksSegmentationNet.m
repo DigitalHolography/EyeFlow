@@ -1,4 +1,4 @@
-function [maskArtery, maskVein] = createMasksHolonet(M0_ff_video, M0_ff_img, maskVesselness)
+function [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff_video, M0_ff_img, maskVesselness)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -47,7 +47,7 @@ end
 [Nx, Ny] = size(M0_ff_img);
 
 % if the correlation map is used by the model, compute it
-if mask_params.CorrelationHolonet
+if mask_params.AVCorrelationSegmentationNet
     signal = sum(M0_ff_video .* maskVesselness, [1 2], 'omitnan');
     signal = signal ./ nnz(maskVesselness);
     
@@ -65,7 +65,7 @@ if mask_params.CorrelationHolonet
 end
 
 % if the systolic and diastolic frames are used by the model, compute them
-if mask_params.DiaSysHolonet
+if mask_params.AVDiasysSegmentationNet
     [M0_Systole_img, M0_Diastole_img, ~] = compute_diasys(M0_ff_video, maskVesselness, 'mask');
     saveImage(rescale(M0_Systole_img), 'artery_20_systole_img.png', isStep = true)
     saveImage(rescale(M0_Diastole_img), 'vein_20_diastole_img.png', isStep = true)
@@ -75,9 +75,9 @@ end
 
 M0 = imresize(rescale(M0_ff_img), [512,512]);
 
-if mask_params.CorrelationHolonet
+if mask_params.AVCorrelationSegmentationNet
     R = imresize(rescale(R), [512, 512]);
-    if mask_params.DiaSysHolonet
+    if mask_params.AVDiasysSegmentationNet
         net = importONNXNetwork('Models\iternet_5_av_sys_corr.onnx');
         
         input = cat(3, M0, M0_Systole_img, M0_Diastole_img, R);
@@ -87,7 +87,7 @@ if mask_params.CorrelationHolonet
         input = cat(3, M0, M0, R);
         output = predict(net, input);
     end
-elseif mask_params.DiaSysHolonet
+elseif mask_params.AVDiasysSegmentationNet
     net = importONNXNetwork('Models\iternet5_av_diasys.onnx');
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
     output = predict(net, input);

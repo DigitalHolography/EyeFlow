@@ -96,13 +96,13 @@ if mask_params.AutoCompute
     saveImage(maskVesselnessGabor & maskDiaphragm, 'all_12_gabor_mask.png', isStep = true)
     saveImage(M0_Gabor, 'all_12_gabor_img.png', isStep = true)
 
-    if mask_params.VesselnessHolonet
+    if mask_params.VesselSegmentationNet
 
         try
-            maskVesselness = getHolonetVesselness(M0_ff_img);
-            saveImage(maskVesselness, 'all_14_maskHoloNet.png', isStep = true)
+            maskVesselness = getSegmentationNetVesselness(M0_ff_img);
+            saveImage(maskVesselness, 'all_14_maskSegmentationNet.png', isStep = true)
         catch
-            warning("The Holonet ONNX-model couldn't be found.")
+            warning("The SegmentationNet ONNX-model couldn't be found.")
             maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
             saveImage(maskVesselness, 'all_14_maskDeterministic.png', isStep = true)
         end
@@ -117,12 +117,12 @@ if mask_params.AutoCompute
     maskVesselnessClean = maskVesselness & bwareafilt(maskVesselness | maskCircle, 1, 8) & maskDiaphragm;
     saveImage(maskVesselnessClean + maskCircle * 0.5, 'all_15_VesselMask_clear.png', isStep = true)
 
-    % 1) 3) If using Holonet, compute correlation and/or dia/sys to obtain artery vein masks  
+    % 1) 3) If using SegmentationNet, compute correlation and/or dia/sys to obtain artery vein masks  
 
-    if mask_params.CorrelationHolonet || mask_params.DiaSysHolonet
-        [maskArtery, maskVein] = createMasksHolonet(M0_ff_video, M0_ff_img, maskVesselness);
-        saveImage(maskVein, 'vein_21_Holonet.png', isStep = true, cmap = cVein);
-        saveImage(maskArtery, 'artery_21_Holonet.png', isStep = true, cmap = cVein);
+    if mask_params.AVCorrelationSegmentationNet || mask_params.AVDiasysSegmentationNet
+        [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff_video, M0_ff_img, maskVesselness);
+        saveImage(maskVein, 'vein_21_SegmentationNet.png', isStep = true, cmap = cVein);
+        saveImage(maskArtery, 'artery_21_SegmentationNet.png', isStep = true, cmap = cVein);
     else
 
         %  1) 3) Compute first correlation
@@ -202,7 +202,7 @@ if mask_params.AutoCompute
             saveImage(Systole_Gabor & maskDiaphragm, 'artery_20_gabor_mask.png', isStep = true)
             saveImage(Diastole_Gabor & maskDiaphragm, 'vein_20_gabor_mask.png', isStep = true)
     
-            if mask_params.VesselnessHolonet
+            if mask_params.VesselSegmentationNet
                 maskVesselness = maskVesselness & maskDiaphragm;
             else
                 maskVesselness = (Systole_Frangi | Diastole_Frangi | Systole_Gabor | Diastole_Gabor) & maskDiaphragm;
