@@ -30,10 +30,15 @@ To install EyeFlow, follow these steps:
 
 - A valid MATLAB license is required to run EyeFlow.
 - A very performant computer is required to run EyeFlow. 
-- Parallel Computing Toolbox
 - Curve Fitting Toolbox
-- Signal Processing Toolbox
+- Deep Learning Toolbox
 - Image Processing Toolbox
+- MATLAB
+- Optimization Toolbox
+- Parallel Computing Toolbox
+- Signal Processing Toolbox
+- Statistics and Machine Learning Toolbox
+- Wavelet Toolbox
 
 ## Getting Started
 
