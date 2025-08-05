@@ -61,7 +61,10 @@ dkms.conf
 
 test_VOP.m
 
-Models
+Models/*
+EyeFlow.prj
+resources/*
+
 +iternet5_av_diasys/Shape_To_PadLayer1006.m
 +iternet5_av_diasys/Shape_To_PadLayer1013.m
 +iternet5_av_diasys/Shape_To_PadLayer1020.m
