@@ -20,9 +20,8 @@ params = ToolBox.getParams;
 results = struct();
 
 % Compute mean velocity over time
-mask = nan(numX, numY);
-mask(ROI) = 1;
-v_masked = v_RMS .* mask;
+v_masked = v_RMS;
+v_masked(repmat(~ROI, [1, 1, size(v_RMS, 3)])) = NaN; % Apply mask to all slices
 
 % Define sub-image dimensions
 subImgHW = round(0.01 * size(v_masked, 1) * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
@@ -31,6 +30,7 @@ subImgHW = round(0.01 * size(v_masked, 1) * params.json.CrossSectionsAnalysis.Sc
 xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
 yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
 subImg = v_masked(yRange, xRange, :);
+subMask = ROI(yRange, xRange);
 
 if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
     xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);
@@ -44,6 +44,8 @@ end
 subImgMean = squeeze(mean(subImg, 3, 'omitnan'));
 subImgCropped = cropCircle(subImgMean);
 [rotatedImg, tilt_angle] = rotateSubImage(subImgMean, subImgCropped);
+subMask = imrotatecustom(subMask, tilt_angle);
+rotatedImg(~subMask) = NaN;
 results.subImg_cell = rescale(rotatedImg);
 
 % UncroppedVersion
@@ -52,16 +54,12 @@ subImgUnCropped = subImgUnCropped(yRange, xRange);
 subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
 
 % Compute the Vessel Cross Section
-[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(subImgUnCropped, patchName, ToolBox, papillaDiameter);
+[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter);
 results.D = D;
 results.D_se = D_se;
 results.A = A;
 
 % Generate figures
-
-subImgUnCropped = squeeze(mean(v_RMS, 3));
-subImgUnCropped = subImgUnCropped(yRange, xRange);
-subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
 saveCrossSectionFigure(subImgUnCropped, c1, c2, ToolBox, patchName);
 
 % Initialize rejected masks

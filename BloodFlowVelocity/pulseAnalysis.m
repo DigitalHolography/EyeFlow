@@ -26,7 +26,7 @@ exportVideos = params.exportVideos;
 scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
 [numX, numY, numFrames] = size(f_video);
 
-%% Section 1: Create Masks and Prepare Data
+%% Section 1: Background Calculation
 
 tic
 
@@ -49,12 +49,6 @@ t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 cBlack = [0 0 0];
 cArtery = [255 22 18] / 255;
 cVein = [18 23 255] / 255;
-
-fprintf("    1. Mask creation and setup took %ds\n", round(toc));
-
-%% Section 2: background Calculation
-
-tic;
 
 f_bkg = zeros(numX, numY, numFrames, 'single');
 
@@ -123,9 +117,9 @@ if veinsAnalysis
         'Legend', {'arteries', 'veins', 'background'});
 end
 
-fprintf("    2. Background calculation took %ds\n", round(toc));
+fprintf("    1. Background calculation took %ds\n", round(toc));
 
-%% Section 3: Difference Calculation and Velocity Computation
+%% Section 2: Difference Calculation and Velocity Computation
 
 tic;
 
@@ -207,9 +201,9 @@ else
     ToolBox.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
 end
 
-fprintf("    3. Difference calculation and velocity computation took %ds\n", round(toc));
+fprintf("    2. Difference calculation and velocity computation took %ds\n", round(toc));
 
-%% Section 4: Systole/Diastole Analysis
+%% Section 3: Systole/Diastole Analysis
 
 tic;
 
@@ -262,9 +256,9 @@ else
     warning('There isn''t enough systoles for analysis.');
 end
 
-fprintf("    4. Systole/diastole analysis took %ds\n", round(toc));
+fprintf("    3. Systole/diastole analysis took %ds\n", round(toc));
 
-%% Section 5: Resistivity Index and Waveform Analysis
+%% Section 4: Resistivity Index and Waveform Analysis
 tic;
 
 % Calculate arterial resistivity index
@@ -287,9 +281,9 @@ if veinsAnalysis
     arterial_venous_correlation(v_artery_signal, -v_vein_signal);
 end
 
-fprintf("    5. Resistivity and waveform analysis took %ds\n", round(toc));
+fprintf("    4. Resistivity and waveform analysis took %ds\n", round(toc()));
 
-%% Section 6: Visualization and Output Generation
+%% Section 5: Visualization and Output Generation
 
 tic;
 
@@ -347,7 +341,7 @@ if veinsAnalysis
         v_video_RGB, numFrames, exportVideos, ToolBox);
 end
 
-fprintf("    6. Visualization and output generation took %ds\n", round(toc));
+fprintf("    5. Visualization and output generation took %ds\n", round(toc));
 
 close all
 

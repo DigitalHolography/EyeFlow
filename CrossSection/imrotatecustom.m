@@ -25,7 +25,7 @@ Bfull = imrotate(A_temp, angle, 'bilinear', 'loose');
 mask_rot = imrotate(double(mask), angle, 'bilinear', 'loose'); % Convert to double for rotation
 
 % Set undefined regions to NaN
-Bfull(mask_rot < 0.5) = NaN;
+Bfull(mask_rot < 0.5) = 0;
 
 % Compute crop to center result and match original size
 sz_new = size(Bfull);

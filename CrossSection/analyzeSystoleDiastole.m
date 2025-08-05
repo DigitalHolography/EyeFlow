@@ -108,7 +108,6 @@ for i = 1:length(systole_cell)
                     subImg = tmp;
                 end
 
-
                 % Crop and rotate sub-image
                 subImgCropped = cropCircle(subImg);
                 [~, tilt_angle] = rotateSubImage(subImg, subImgCropped);
@@ -240,7 +239,7 @@ diameter_se_diff_mean = sqrt(sum(diameter_se_sys_array .^ 2 + diameter_se_dias_a
 
 %% Systole Histogram
 
-figure("Visible", "on")
+figure("Visible", "off")
 histogram(diameter_sys_array, 40, FaceColor = 'k', Normalization = 'probability');
 hold on
 
@@ -276,7 +275,7 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_n
 
 %% Diastole Histogram
 
-figure("Visible", "on")
+figure("Visible", "off")
 histogram(diameter_dias_array, 40, FaceColor = 'k', Normalization = 'probability');
 hold on
 
