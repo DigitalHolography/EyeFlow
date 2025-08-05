@@ -69,6 +69,11 @@ if mask_params.OpticDiscDetector
         plot(x_ellipsis, y_ellipsis, 'g', 'LineWidth', 2); 
         else
         plot(x_ellipsis, y_ellipsis, 'r', 'LineWidth', 2); 
+        found = false;
+        diameter_x = [94.24];
+        diameter_y = [94.24];
+        x_center = NaN;
+        y_center = NaN;
         end
         % imgOut = insertObjectAnnotation(M0img, 'rectangle', bestBox, ...
         % sprintf('%s: %.2f', string(bestLabel), bestScore));
