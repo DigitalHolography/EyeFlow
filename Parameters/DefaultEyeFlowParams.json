@@ -76,7 +76,8 @@
     "Minimum Vessel Width": 3,
     "Final Dilation": 0,
     "Force VesselWidth": 0,
-    "All Non Vessels as Background": false
+    "All Non Vessels as Background": false,
+    "Optic Disc Detector": true
   },
   "PulseAnalysis": {
     "DifferenceMethods": 0,
