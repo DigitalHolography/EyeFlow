@@ -1,11 +1,15 @@
 function obj = VideoRegistering(obj)
-tic
+% VideoRegistering - Registers the video using intensity based registration
+
 % Registers the video using intensity based registration
 params = Parameters_json(obj.directory, obj.param_name);
 
 if ~params.json.Preprocess.Register.Flag
     return % do nothing if not required
 end
+
+tic
+fprintf("    - Video Registration ... ");
 
 video = obj.M0_ff_video;
 numX = size(video, 1);
@@ -35,6 +39,8 @@ obj.M0_ff_video = register_video_from_shifts(video, shifts);
 obj.M0_data_video = register_video_from_shifts(obj.M0_data_video, shifts);
 obj.M1_data_video = register_video_from_shifts(obj.M1_data_video, shifts);
 obj.M2_data_video = register_video_from_shifts(obj.M2_data_video, shifts);
+
+fprintf("    - Video Registration took: %ds\n", round(toc));
 
 toc
 close 16 17;

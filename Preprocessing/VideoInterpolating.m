@@ -1,6 +1,11 @@
-function obj = VideoInterpolating(obj) %ref = TRUE indicates the object is the reference
+function obj = VideoInterpolating(obj)
+% This function interpolates the video frames of M0_ff_video, f_AVG_video, and f_RMS_video
+% using the specified interpolation factor from the parameters JSON file.
+% It uses parfor for parallel processing of each frame to speed up the interpolation process.
+
 [numX, numY, numFrames] = size(obj.M0_ff_video);
 params = Parameters_json(obj.directory, obj.param_name);
+
 kInterp = params.json.Preprocess.InterpolationFactor;
 numX = (numX - 1) * (2 ^ kInterp - 1) + numX;
 numY = (numY - 1) * (2 ^ kInterp - 1) + numY;
@@ -8,6 +13,10 @@ numY = (numY - 1) * (2 ^ kInterp - 1) + numY;
 if kInterp == 0
     return
 end
+
+tic;
+fprintf("    - Video Interpolation started with factor: 2^%d\n", kInterp);
+fprintf("    Interpolated Size: %dx%dx%d\n", numX, numY, numFrames);
 
 % Reference M0
 tmp_M0_ff = zeros(numX, numY, numFrames);
@@ -41,5 +50,7 @@ end
 
 obj.f_RMS_video = single(tmpM2M0);
 clear tmpM2M0 tmpCalcM2M0
+
+fprintf("    - Video Interpolation took: %ds\n", round(toc));
 
 end

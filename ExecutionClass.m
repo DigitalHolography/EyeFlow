@@ -131,34 +131,22 @@ methods
         obj.M2_data_video = obj.M2_raw_video;
 
         % Register video
-        tic;
         obj = VideoRegistering(obj);
-        fprintf("    - Video Registering took: %ds\n", round(toc));
 
         % Crop video
-        tic;
         obj = VideoCropping(obj);
-        fprintf("    - Video Cropping took: %ds\n", round(toc));
 
         % Normalize moments
-        tic;
         obj = VideoNormalizingLocally(obj);
-        fprintf("    - Moment Normalizing took: %ds\n", round(toc));
 
         % Resize video
-        tic;
         obj = VideoResizing(obj);
-        fprintf("    - Video Resizing took: %ds\n", round(toc));
 
         % Interpolate video
-        tic;
         obj = VideoInterpolating(obj);
-        fprintf("    - Video Interpolation took: %ds\n", round(toc));
 
         % Remove outliers
-        tic;
         obj = VideoRemoveOutliers(obj);
-        fprintf("    - Video Outlier Cleaning took: %ds\n", round(toc));
 
         obj.is_preprocessed = true;
         obj.Outputs.initOutputs();

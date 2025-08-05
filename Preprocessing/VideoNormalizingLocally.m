@@ -1,5 +1,8 @@
 function obj = VideoNormalizingLocally(obj)
 
+tic
+fprintf("    - Moment Normalizing started\n");
+
 params = Parameters_json(obj.directory, obj.param_name);
 
 [numX, numY, numFrames] = size(obj.M0_data_video);
@@ -17,7 +20,7 @@ elseif alpha == -1
     maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
     M0_data_convoluated = double(mean(obj.M0_data_video(maskDiaphragm))); % normalize by M0 inside the diaphragm
 elseif alpha == -2
-    diaphragmRadius = params.json.Mask.DiaphragmRadius+0.2;
+    diaphragmRadius = params.json.Mask.DiaphragmRadius + 0.2;
     maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
     M0_data_convoluated = double(mean(obj.M0_data_video(~maskDiaphragm))); % normalize by M0 outside the diaphragm
 else
@@ -60,5 +63,7 @@ if params.json.FlatFieldCorrection.FittedParameters
 else
     obj.M0_ff_video = flat_field_correction(obj.M0_data_video, ceil(gwRatio * size(obj.M0_data_video, 1)), border, 'gaussianBlur');
 end
+
+fprintf("    - Moment Normalizing took: %ds\n", round(toc));
 
 end
