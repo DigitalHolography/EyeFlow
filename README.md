@@ -39,7 +39,7 @@ To install EyeFlow, follow these steps:
 - Signal Processing Toolbox
 - Statistics and Machine Learning Toolbox
 - Wavelet Toolbox
-Run Matlab, then in "Add-Ons/Explore Add-Ons": search and install the "Deep Learning Toolbox Converter for ONNX Model Format"
+- Run Matlab, then in "Add-Ons/Explore Add-Ons": search and install the "Deep Learning Toolbox Converter for ONNX Model Format"
 
 ## Getting Started
 
