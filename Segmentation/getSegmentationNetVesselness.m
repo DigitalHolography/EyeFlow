@@ -1,5 +1,5 @@
-function mask = getHolonetVesselness(M0, net)
-% getHolonetVesselness Generates a segmentation mask using a U-Net model
+function mask = getSegmentationNetVesselness(M0, net)
+% getSegmentationNetVesselness Generates a segmentation mask using a U-Net model
 %   Inputs:
 %       M0 - Input image (2D matrix)
 %       net - Optional pre-loaded neural network
