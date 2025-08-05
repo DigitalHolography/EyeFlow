@@ -61,4 +61,10 @@ dkms.conf
 
 test_VOP.m
 
-Models
+Models/*
+EyeFlow.prj
+resources/*
++onnx_models/*
++iternet5_av_diasys/*
++opticdisc/*
++unet_vesselness/*

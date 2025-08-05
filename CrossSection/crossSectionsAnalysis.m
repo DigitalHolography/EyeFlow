@@ -4,7 +4,7 @@ ToolBox = getGlobalToolBox;
 
 params = ToolBox.getParams;
 
-initial = vesselName(1);
+initial = upper(vesselName(1));
 
 [numX, numY, numFrames] = size(v_RMS);
 x_c = xy_barycenter(1);
@@ -113,7 +113,7 @@ parfor c_idx = 1:numCircles
             patchName = sprintf('%s%d_C%d', initial, b_idx, c_idx);
             [results] = crossSectionAnalysis2(ToolBox, ...
                 locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, ...
-                v_RMS, patchName, papillaDiameter);
+                xy_barycenter, v_RMS, patchName, papillaDiameter);
 
             % Map outputs to variables
             v_cell{c_idx, b_idx} = results.v;
@@ -177,7 +177,7 @@ fprintf("    3. Cross-sections analysis for all circles (%s) output took %ds\n",
 tic
 
 analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ...
-    numCircles, numBranches, ToolBox, initial, papillaDiameter, vesselName, numFrames);
+    numCircles, numBranches, ToolBox, initial, xy_barycenter, papillaDiameter, vesselName, numFrames);
 
 fprintf("    4. Diameter Analysis (%s) output took %ds\n", vesselName, round(toc))
 

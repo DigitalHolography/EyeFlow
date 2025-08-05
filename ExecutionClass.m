@@ -131,34 +131,22 @@ methods
         obj.M2_data_video = obj.M2_raw_video;
 
         % Register video
-        tic;
         obj = VideoRegistering(obj);
-        fprintf("    - Video Registering took: %ds\n", round(toc));
 
         % Crop video
-        tic;
         obj = VideoCropping(obj);
-        fprintf("    - Video Cropping took: %ds\n", round(toc));
 
         % Normalize moments
-        tic;
         obj = VideoNormalizingLocally(obj);
-        fprintf("    - Moment Normalizing took: %ds\n", round(toc));
 
         % Resize video
-        tic;
         obj = VideoResizing(obj);
-        fprintf("    - Video Resizing took: %ds\n", round(toc));
 
         % Interpolate video
-        tic;
         obj = VideoInterpolating(obj);
-        fprintf("    - Video Interpolation took: %ds\n", round(toc));
 
         % Remove outliers
-        tic;
         obj = VideoRemoveOutliers(obj);
-        fprintf("    - Video Outlier Cleaning took: %ds\n", round(toc));
 
         obj.is_preprocessed = true;
         obj.Outputs.initOutputs();
@@ -210,15 +198,15 @@ methods
             cmapAV = ToolBox.cmapAV;
 
             obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
-            % 
-            % try
-            %     [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
-            % catch E
-            %     warning("Error while finding papilla : ")
-            %     disp(E)
+
+            try
+                [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
+            catch E
+                warning("Error while finding papilla : ")
+                disp(E)
             diameter_x = NaN;
             diameter_y = NaN;
-            % end
+            end
 
             [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
                 createMasks(obj.M0_ff_video, obj.xy_barycenter);

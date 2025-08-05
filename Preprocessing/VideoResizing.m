@@ -34,6 +34,9 @@ if ~isLengthResized
     out_numFrames = numFrames;
 end
 
+tic;
+fprintf('Resizing data cube : %dx%dx%d to %dx%dx%d\n', numX, numY, numFrames, out_height, out_width, out_numFrames);
+
 [Xq, Yq, Zq] = meshgrid(linspace(1, numY, out_width), linspace(1, numX, out_height), linspace(1, numFrames, out_numFrames));
 % tmp_ref = zeros(numX, numY, numFrames);
 
@@ -49,6 +52,7 @@ tmp_calc = obj.f_RMS_video;
 tmp = interp3(tmp_calc, Xq, Yq, Zq);
 obj.f_RMS_video = single(tmp);
 
-disp(['Resized data cube : ', num2str(out_width), 'x', num2str(out_height), 'x', num2str(out_numFrames)])
+fprintf('Resized data cube : %dx%dx%d\n', out_width, out_height, out_numFrames);
+fprintf("    - Video Resizing took: %ds\n", round(toc));
 
 end

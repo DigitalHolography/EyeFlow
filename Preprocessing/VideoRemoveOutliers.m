@@ -23,6 +23,9 @@ if ~any(outlier_frames_mask)
     return;
 end
 
+tic
+fprintf("    - Video Outlier Cleaning started...\n");
+
 % Interpolate outlier frames for each video
 obj.M0_data_video = interpolateOutlierFrames(obj.M0_data_video, outlier_frames_mask);
 obj.M1_data_video = interpolateOutlierFrames(obj.M1_data_video, outlier_frames_mask);
@@ -31,9 +34,6 @@ obj.M0_ff_video = interpolateOutlierFrames(obj.M0_ff_video, outlier_frames_mask)
 obj.f_RMS_video = interpolateOutlierFrames(obj.f_RMS_video, outlier_frames_mask);
 obj.f_AVG_video = interpolateOutlierFrames(obj.f_AVG_video, outlier_frames_mask);
 
-m = mean(obj.M0_ff_video, 'all');
-s = std(obj.M0_ff_video, [], 'all');
-obj.M0_ff_video(obj.M0_ff_video > m + 5 * s) = m + 5 * s;
-obj.M0_ff_video(obj.M0_ff_video < m - 5 * s) = m - 5 * s;
+fprintf("    - Video Outlier Cleaning took: %ds\n", round(toc));
 
 end

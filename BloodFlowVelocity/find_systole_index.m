@@ -14,8 +14,13 @@ if nargin < 3
     savepng = false;
 end
 
+ToolBox = getGlobalToolBox();
+fs = ToolBox.fs * 1000 / ToolBox.stride; % Convert to Hz
+
 % Step 1: Extract pulse signal
 fullPulse = squeeze(sum(video .* maskArtery, [1 2], 'omitnan') / nnz(maskArtery));
+[b, a] = butter(4, 15 / (fs / 2), 'low');
+fullPulse = filtfilt(b, a, fullPulse);
 
 % Step 2: Compute derivative
 diff_signal = gradient(fullPulse);

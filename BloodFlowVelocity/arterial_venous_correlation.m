@@ -44,7 +44,7 @@ V = V / std(V);
 time_lag = lags(max_idx) * (ToolBox.stride / fs / 1000); % Convert lag index to seconds
 
 % Plot results
-figure("Visible", "on");
+figure("Visible", "off");
 subplot(2, 1, 1);
 hold on
 plot(t, A, 'r', 'LineWidth', 2);
@@ -69,6 +69,39 @@ set(gca, 'LineWidth', 2);
 
 exportgraphics(gcf, fullfile(ToolBox.path_png, ...
     sprintf("%s_arterial_venous_correlation.png", ToolBox.folder_name)))
+
+% Plot results
+figure("Visible", "off");
+hold on
+plot(t, A, 'r', 'LineWidth', 2);
+plot(t, -V, 'b', 'LineWidth', 2);
+axis padded;
+xlim([0 t(end)])
+grid on;
+xlabel('Time (s)'); ylabel('Amplitude');
+title('Arterial vs. Venous Signals (Detrended)');
+box on;
+pbaspect([1.618, 1, 1]);
+set(gca, 'LineWidth', 2);
+
+exportgraphics(gcf, fullfile(ToolBox.path_png, ...
+    sprintf("%s_detrended_signals.png", ToolBox.folder_name)))
+
+figure("Visible", "off");
+plot(lags * ToolBox.stride / fs / 1000, corr_vals, 'k', 'LineWidth', 1.5);
+hold on;
+plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
+axis padded;
+xlim([0 t(end)])
+grid on;
+xlabel('Lag (s)'); ylabel('Cross-Correlation');
+title(['Peak Lag: ', num2str(time_lag, '%.3f'), ' s | Corr: ', num2str(max_corr, '%.2f')]);
+box on;
+pbaspect([1.618, 1, 1]);
+set(gca, 'LineWidth', 2);
+
+exportgraphics(gcf, fullfile(ToolBox.path_png, ...
+    sprintf("%s_lags.png", ToolBox.folder_name)))
 
 ToolBox.Outputs.add('PhaseDelay', time_lag, 's', NaN);
 
