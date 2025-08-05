@@ -1,4 +1,4 @@
-function [results] = crossSectionAnalysis2(ToolBox, loc, ROI, v_RMS, patchName, papillaDiameter)
+function [results] = crossSectionAnalysis2(ToolBox, loc, ROI, xy_barycenter, v_RMS, patchName, papillaDiameter)
 
 % Perform cross-section analysis on blood vessels.
 %
@@ -43,7 +43,7 @@ end
 
 subImgMean = squeeze(mean(subImg, 3, 'omitnan'));
 subImgCropped = cropCircle(subImgMean);
-[rotatedImg, tilt_angle] = rotateSubImage(subImgMean, subImgCropped);
+[rotatedImg, tilt_angle] = rotateSubImage(subImgMean, subImgCropped, loc, xy_barycenter);
 subMask = imrotatecustom(subMask, tilt_angle);
 rotatedImg(~subMask) = NaN;
 results.subImg_cell = rescale(rotatedImg);

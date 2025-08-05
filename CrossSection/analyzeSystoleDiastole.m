@@ -1,5 +1,5 @@
 function analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ...
-    numCircles, numBranches, ToolBox, initial, papillaDiameter, vesselName, numFrames)
+    numCircles, numBranches, ToolBox, initial, xy_barycenter, papillaDiameter, vesselName, numFrames)
 
 % Analyze systole and diastole cross-sections
 % Inputs:
@@ -110,7 +110,7 @@ for i = 1:length(systole_cell)
 
                 % Crop and rotate sub-image
                 subImgCropped = cropCircle(subImg);
-                [~, tilt_angle] = rotateSubImage(subImg, subImgCropped);
+                [~, tilt_angle] = rotateSubImage(subImg, subImgCropped, loc, xy_barycenter);
 
                 subImgUnCropped = squeeze(mean(v_RMS, 3) .* ROI);
                 subImgUnCropped = subImgUnCropped(yRange, xRange);
@@ -171,7 +171,7 @@ for i = 1:length(diastole_cell)
 
                 % Crop and rotate sub-image
                 subImgCropped = cropCircle(subImg);
-                [~, tilt_angle] = rotateSubImage(subImg, subImgCropped);
+                [~, tilt_angle] = rotateSubImage(subImg, subImgCropped, loc, xy_barycenter);
 
                 subImgUnCropped = squeeze(mean(v_RMS, 3) .* ROI);
                 subImgUnCropped = subImgUnCropped(yRange, xRange);
