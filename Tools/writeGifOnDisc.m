@@ -11,7 +11,7 @@ arguments
     opt.ToolBox = []
 end
 
-if size(size(data)) == [1, 3]
+if isequal(size(data), [size(data, 1), size(data, 2), size(data, 3)])
     data = reshape(data, size(data, 1), size(data, 2), 1, size(data, 3));
 end
 

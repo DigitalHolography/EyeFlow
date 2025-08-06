@@ -115,6 +115,7 @@ if strcmp(name, 'artery')
 else
     stroke_volume_value = sum(interp_BvrT(1:max(amin, 1))) * dt / 60 * 1000;
 end
+
 total_volume_value = sum(interp_BvrT) * dt / 60 * 1000;
 
 dim = [0.2 0.5 0.3 0.3];

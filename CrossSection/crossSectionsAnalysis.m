@@ -174,11 +174,15 @@ fprintf("    3. Cross-sections analysis for all circles (%s) output took %ds\n",
 
 % 4. Diameter Analysis
 
-tic
+if params.json.crossSectionsAnalysis.diameterAnalysis
 
-analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ...
-    numCircles, numBranches, ToolBox, initial, xy_barycenter, papillaDiameter, vesselName, numFrames);
+    tic
 
-fprintf("    4. Diameter Analysis (%s) output took %ds\n", vesselName, round(toc))
+    analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ...
+        numCircles, numBranches, ToolBox, initial, xy_barycenter, papillaDiameter, vesselName, numFrames);
+
+    fprintf("    4. Diameter Analysis (%s) output took %ds\n", vesselName, round(toc))
+
+end
 
 end

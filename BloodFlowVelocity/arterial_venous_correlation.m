@@ -42,6 +42,7 @@ V = V / std(V);
 [corr_vals, lags] = xcorr(A, V, 'coeff');
 [max_corr, max_idx] = max(corr_vals);
 time_lag = lags(max_idx) * (ToolBox.stride / fs / 1000); % Convert lag index to seconds
+lags_t = lags * (ToolBox.stride / fs / 1000); % Convert lags to seconds
 
 % Plot results
 figure("Visible", "off");
@@ -57,7 +58,7 @@ box on;
 set(gca, 'LineWidth', 2);
 
 subplot(2, 1, 2);
-plot(lags * ToolBox.stride / fs / 1000, corr_vals, 'k', 'LineWidth', 1.5);
+plot(lags_t, corr_vals, 'k', 'LineWidth', 1.5);
 hold on;
 plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
 axis tight;
@@ -88,11 +89,11 @@ exportgraphics(gcf, fullfile(ToolBox.path_png, ...
     sprintf("%s_detrended_signals.png", ToolBox.folder_name)))
 
 figure("Visible", "off");
-plot(lags * ToolBox.stride / fs / 1000, corr_vals, 'k', 'LineWidth', 1.5);
+plot(lags_t, corr_vals, 'k', 'LineWidth', 1.5);
 hold on;
 plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
 axis padded;
-xlim([0 t(end)])
+xlim([lags_t(1) lags_t(end)])
 grid on;
 xlabel('Lag (s)'); ylabel('Cross-Correlation');
 title(['Peak Lag: ', num2str(time_lag, '%.3f'), ' s | Corr: ', num2str(max_corr, '%.2f')]);

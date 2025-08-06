@@ -28,15 +28,18 @@ if ~isempty(forceBarycenter)
     x_CRV = forceBarycenter(1);
     y_CRV = forceBarycenter(2);
 else
+
     if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
         mkdir(ToolBox.path_png, 'mask')
         mkdir(ToolBox.path_eps, 'mask')
         mkdir(fullfile(ToolBox.path_png, 'mask'), 'steps')
         mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
     end
+
     saveImage(f_AVG_mean, 'all_10_fAVG.png', isStep = true)
 
     maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
+
     if blur ~= 0
         averaged_fAVG = imgaussfilt(f_AVG_mean, blur, 'Padding', 0) .* maskDiaphragm;
     else

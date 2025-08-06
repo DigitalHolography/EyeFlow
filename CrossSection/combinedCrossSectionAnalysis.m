@@ -1,9 +1,8 @@
 function combinedCrossSectionAnalysis(Q_results_A, Q_results_V, M0_ff_video, sysIdxList)
 
 ToolBox = getGlobalToolBox;
-params = ToolBox.getParams;
 
-[numX, numY, numFrames] = size(M0_ff_video);
+[~, ~, numFrames] = size(M0_ff_video);
 
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 t = linspace(0, numFrames / fs, numFrames);
@@ -53,10 +52,10 @@ tBis = linspace(sIdx / fs, eIdx / fs, numFramesBis);
 numCycles = length(sysIdxList) - 1;
 cycleSize = numFramesBis / numCycles;
 
-Volume_A = sum(Q_A) * dt / 60 * 1e-9; % in m^3
-Volume_V = sum(Q_V) * dt / 60 * 1e-9; % in m^3
+% Volume_A = sum(Q_A) * dt / 60 * 1e-9; % in m^3
+% Volume_V = sum(Q_V) * dt / 60 * 1e-9; % in m^3
 
-Q_ratio = Q_V ./ Q_A;
+% Q_ratio = Q_V ./ Q_A;
 Q_diff = Q_V - Q_A;
 Q_diff = Q_diff - mean(Q_diff(sIdx:eIdx));
 

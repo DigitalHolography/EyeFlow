@@ -68,7 +68,7 @@ diastoleDuration = NaN;
 systolicUpstroke = peaks(1) - one_cycle_signal(1);
 systolicDownstroke = NaN;
 diastolicRunoff = NaN;
-dicroticNotchIndex = NaN;
+% dicroticNotchIndex = NaN;
 notch = NaN;
 locs_notch = NaN;
 
@@ -89,7 +89,7 @@ if length(peaks) > 1
 
         % Calculate durations
         dicroticNotchTime = pulseTime(locs_notch) - pulseTime(1);
-        dicroticNotchIndex = notch ./ peaks(1);
+        % dicroticNotchIndex = notch ./ peaks(1);
         diastoleDuration = pulseTime(end) - pulseTime(locs_notch);
     else
         notch = NaN; % Invalid notch

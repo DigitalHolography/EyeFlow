@@ -49,6 +49,7 @@ labeledVessels = labeledVessels .* maskSection;
 
 % Remove small spots
 labeledVesselsClean = false(numX, numY);
+
 for cIdx = 1:numCircles
     r_in = r1 + (cIdx - 1) * dr;
     r_out = r_in + dr;

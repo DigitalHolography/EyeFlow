@@ -1,4 +1,4 @@
-function sectionMontage(subImg_cell, numSections, name)
+function sectionMontage(subImg_cell, ~, name)
 
 ToolBox = getGlobalToolBox;
 

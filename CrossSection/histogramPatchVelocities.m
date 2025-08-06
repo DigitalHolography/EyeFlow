@@ -48,9 +48,10 @@ x_scale = diff(xlim) / numX;
 y_scale = diff(ylim) / numY;
 
 % Store the axis position in normalized figure units
-ax_pos = ax_main.Position; % [left, bottom, width, height]
+% ax_pos = ax_main.Position; % [left, bottom, width, height]
 
 plot_list = cell(rows, cols);
+
 for circleIdx = 1:rows
 
     for i = 1:cols
@@ -60,16 +61,19 @@ for circleIdx = 1:rows
         end
 
         % Get histogram data
-        histData = zeros(1,5);
+        histData = zeros(1, 5);
         histo_t = histo_v_cell{circleIdx, i};
+
         for ff = 1:numFrames
             histo = histo_t{ff};
             histData = histData + histo;
         end
+
         histData = histData / numFrames;
 
         counts = histData;
-        edges = linspace(0,60,6); %% HARD CODED
+        edges = linspace(0, 60, 6); % % HARD CODED
+
         if isempty(counts) || isempty(edges)
             continue;
         end
@@ -93,7 +97,7 @@ for circleIdx = 1:rows
              histHeight], ...
             'Units', 'normalized');
         % Plot histogram
-        bh = bar(ax, edges(1:end-1), counts,'BarWidth', 1.0);
+        bh = bar(ax, edges(1:end - 1), counts, 'BarWidth', 1.0);
         plot_list{circleIdx, i} = bh;
         ax.XTick = [];
         ax.YTick = [];
@@ -104,6 +108,7 @@ for circleIdx = 1:rows
     end
 
 end
+
 hold off
 
 outputDir = fullfile(ToolBox.path_png);
@@ -118,37 +123,45 @@ saveas(gcf, fullfile(outputDir, ...
 
 %% (GIF)
 if exportVideos
-hold on;
+    hold on;
 
-histPatchVelocitiesVideo = zeros(600,600, 3, numFrames,'single');
-for frameIdx = 1:numFrames
-    %fprintf(" %d ",frameIdx);
-    for circleIdx = 1:rows
-        for i = 1:cols
-            if isempty(locsLabel{circleIdx, i}) || isempty(histo_v_cell{circleIdx, i})
-                continue;
+    histPatchVelocitiesVideo = zeros(600, 600, 3, numFrames, 'single');
+
+    for frameIdx = 1:numFrames
+        %fprintf(" %d ",frameIdx);
+        for circleIdx = 1:rows
+
+            for i = 1:cols
+
+                if isempty(locsLabel{circleIdx, i}) || isempty(histo_v_cell{circleIdx, i})
+                    continue;
+                end
+
+                % Get histogram data
+                histo_t = histo_v_cell{circleIdx, i};
+                histData = histo_t{frameIdx};
+
+                % replot
+                % Ensure histData matches number of bars
+                bh = plot_list{circleIdx, i};
+
+                if numel(bh.YData) == numel(histData)
+                    bh.YData = histData;
+                else
+                    warning("Bar data size mismatch at (%d,%d)", circleIdx, i);
+                end
+
             end
 
-            % Get histogram data
-            histo_t = histo_v_cell{circleIdx, i};
-            histData = histo_t{frameIdx};
-
-            % replot
-            % Ensure histData matches number of bars
-            bh = plot_list{circleIdx, i};
-            if numel(bh.YData) == numel(histData)
-                bh.YData = histData;
-            else
-                warning("Bar data size mismatch at (%d,%d)", circleIdx, i);
-            end
-            
         end
-    end
-    frame = getframe(gcf);
-    histPatchVelocitiesVideo(:,:,:,frameIdx) = frame2im(frame);
 
+        frame = getframe(gcf);
+        histPatchVelocitiesVideo(:, :, :, frameIdx) = frame2im(frame);
+
+    end
+
+    writeGifOnDisc(mat2gray(histPatchVelocitiesVideo), sprintf("histogram_velocities_overlay_%s", name), "ToolBox", ToolBox);
 end
-writeGifOnDisc(mat2gray(histPatchVelocitiesVideo), sprintf("histogram_velocities_overlay_%s", name), "ToolBox", ToolBox);
-end
+
 close(fi)
 end
