@@ -103,7 +103,7 @@
     "profileFitTresholdRatio": 0.1,
     "SliceHalfThickness": 10,
     "sectionMontage": true,
-    "diameterAnalysis": true,
+    "diameterAnalysis": false,
     "HydrodynamicDiameters": true
   },
   "CrossSectionsFigures": {

@@ -93,7 +93,7 @@ plot(lags_t, corr_vals, 'k', 'LineWidth', 1.5);
 hold on;
 plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
 axis padded;
-xlim([time_lag(1) time_lag(end)])
+xlim([lags_t(1) lags_t(end)])
 grid on;
 xlabel('Lag (s)'); ylabel('Cross-Correlation');
 title(['Peak Lag: ', num2str(time_lag, '%.3f'), ' s | Corr: ', num2str(max_corr, '%.2f')]);

@@ -125,27 +125,18 @@ methods
 
         PreProcessTimer = tic;
 
+        % Store raw video data
         obj.M0_data_video = obj.M0_raw_video;
         obj.M0_ff_video = obj.M0_ff_raw_video;
         obj.M1_data_video = obj.M1_raw_video;
         obj.M2_data_video = obj.M2_raw_video;
 
-        % Register video
+        % Preprocess the video data
         obj = VideoRegistering(obj);
-
-        % Crop video
         obj = VideoCropping(obj);
-
-        % Normalize moments
         obj = VideoNormalizingLocally(obj);
-
-        % Resize video
         obj = VideoResizing(obj);
-
-        % Interpolate video
         obj = VideoInterpolating(obj);
-
-        % Remove outliers
         obj = VideoRemoveOutliers(obj);
 
         obj.is_preprocessed = true;
