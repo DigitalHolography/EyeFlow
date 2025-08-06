@@ -39,8 +39,8 @@ if mask_params.OpticDiscDetector
         found = true;
         [val, idx] = max(output(:, 5, :));
         bestBox = output(:, :, idx);
-        bestScore = val;
-        bestLabel = 'optic disc';
+        % bestScore = val;
+        % bestLabel = 'optic disc';
 
         diameter_x = bestBox(3);
         diameter_y = bestBox(4);

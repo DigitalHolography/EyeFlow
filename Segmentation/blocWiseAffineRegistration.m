@@ -35,11 +35,11 @@ for y = 1:patchSize:H - patchSize
         %tform = imregtform(rescale(movingPatch), rescale(fixedPatch), ...
         %'affine',optimizer, metric, 'DisplayOptimization', false); nul
         [~, shift, score] = registerImagesCrossCorrelation(movingPatch, fixedPatch);
-        reg_image = circshift(movingPatch, shift);
+        % reg_image = circshift(movingPatch, shift);
         % shift
 
         % Transform coordinates
-        if ~isempty(shift) && ~isnan(score) && score / (patchSize ^ 2) %~isempty(tform)
+        if ~isempty(shift) && ~isnan(score) && (score / (patchSize ^ 2) > 0) %~isempty(tform)
             % newCoords = transformPointsForward(tform, coords);
             dx = (shift(2) + patchSize) * ones(patchSize);
             dy = (shift(1) + patchSize) * ones(patchSize);

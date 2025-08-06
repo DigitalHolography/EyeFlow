@@ -161,7 +161,7 @@ if exportVideos
                 %     plotData = fitObj(x_axis);
                 % catch e
                 %     disp(e)
-                plotData = profile;
+                % plotData = profile;
 
                 % Plot profile
                 x_plot = x + x_axis;

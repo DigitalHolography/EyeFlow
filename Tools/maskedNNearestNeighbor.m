@@ -1,4 +1,4 @@
-function Aresult = maskedNearestNeighbor(A, d, n, maskzone, maskapply)
+function Aresult = maskedNNearestNeighbor(A, d, n, maskzone, maskapply)
 % Function to compute the average of n nearest neighbor pixel values
 % for every pixel in 'maskapply', considering only the masked region
 % 'maskzone' in the 2D image A, using MATLAB's knnsearch.

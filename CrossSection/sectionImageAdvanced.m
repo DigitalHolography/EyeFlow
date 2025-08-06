@@ -92,6 +92,7 @@ if ~isempty(maskRejectedVein)
 else
     indxs = find(maskRejectedArtery(:, :, 1) > 0); % the red channel = rejected parts
 end
+
 imgRGB(indxs) = 0;
 imgRGB(numY * numX + indxs) = 0;
 imgRGB(2 * numY * numX + indxs) = 0;

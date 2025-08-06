@@ -204,8 +204,8 @@ methods
             catch E
                 warning("Error while finding papilla : ")
                 disp(E)
-            diameter_x = NaN;
-            diameter_y = NaN;
+                diameter_x = NaN;
+                diameter_y = NaN;
             end
 
             [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
@@ -285,11 +285,13 @@ methods
             else
                 sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, [], obj.maskArtery);
             end
-            
+
             try
+
                 if veins_analysis
                     combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video, obj.sysIdxList)
                 end
+
             catch e
                 disp(e)
             end
@@ -329,11 +331,13 @@ methods
         end
 
         if obj.is_AllAnalyzed && veins_analysis
-            try 
+
+            try
                 generateA4Report()
             catch e
                 disp(e)
             end
+
         end
 
         % Main Outputs Saving

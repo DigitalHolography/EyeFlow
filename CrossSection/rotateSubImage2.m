@@ -1,4 +1,4 @@
-function [rotatedImg, orientation] = rotateSubImage2(subImg, discMask)
+function [rotatedImg, orientation] = rotateSubImage2(subImg)
 % Rotate the sub-image to align the blood vessel vertically.
 % The orientation is determined by maximizing the number of zero pixels in the horizontal projection.
 %
