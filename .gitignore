@@ -59,12 +59,14 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+# Miscellaneous
+EyeFlow.prj
 test_VOP.m
 
+# Model files
 Models/*
-EyeFlow.prj
 resources/*
-+onnx_models/*
++onnx_model/*
 +iternet5_av_diasys/*
 +opticdisc/*
 +unet_vesselness/*
