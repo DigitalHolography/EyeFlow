@@ -27,6 +27,10 @@ Q_cell = Q_results.Q_cell;
 radiusQ = Q_results.radiusQ;
 radiusQSE = Q_results.radiusQSE;
 branchQ = Q_results.branchQ;
+radiusv = Q_results.radiusv;
+radiusvSE = Q_results.radiusvSE;
+branchv = Q_results.branchv;
+branchvSE = Q_results.branchvSE;
 labeledVessels = Q_results.labeledVessels .* Q_results.labeledVessels ~= 0;
 histo_v_cell = Q_results.histo_v_cell;
 
@@ -42,6 +46,7 @@ else
 end
 
 [Q_t, dQ_t] = plotRadius(radiusQ, radiusQSE, t, index_start, index_end, name);
+[v_t, dv_t] = plotRadius(radiusv, radiusvSE, t, index_start, index_end, name);
 
 if contains(name, 'artery')
     ToolBox.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
