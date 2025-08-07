@@ -28,7 +28,10 @@ if nargin < 2 || isempty(net)
         websave('Models\unet_vesselness.onnx', url);
     end
 
+    % Import the ONNX network
+    warning('off')
     net = importONNXNetwork('Models\unet_vesselness.onnx');
+    warning('on')
 end
 
 % if nargin<2 || isempty(net)

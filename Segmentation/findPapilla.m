@@ -50,20 +50,20 @@ if mask_params.OpticDiscDetector
         a = bestBox(3) / 2;
         b = bestBox(4) / 2;
 
-        angle = linspace(0, 2 * pi, 100);
+        angle = linspace(0, 2 * pi, 360);
         x_ellipsis = x_center + a * cos(angle);
         y_ellipsis = y_center + b * sin(angle);
 
         ToolBox = getGlobalToolBox;
 
         figure('Visible', 'off');
-        imshow(M0img);
+        imshow(M0img, []);
         hold on;
 
         if val > 0.5
-            plot(x_ellipsis, y_ellipsis, 'g', 'LineWidth', 2);
+            plot(x_ellipsis, y_ellipsis, 'g--', 'LineWidth', 2);
         else
-            plot(x_ellipsis, y_ellipsis, 'r', 'LineWidth', 2);
+            plot(x_ellipsis, y_ellipsis, 'r--', 'LineWidth', 2);
             found = false;
             diameter_x = [94.24];
             diameter_y = [94.24];
@@ -75,6 +75,7 @@ if mask_params.OpticDiscDetector
         % sprintf('%s: %.2f', string(bestLabel), bestScore));
         % imshow(imgOut);
         axis equal;
+        axis off;
         exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf('%s_opticdisc.png', ToolBox.folder_name)));
 
     else

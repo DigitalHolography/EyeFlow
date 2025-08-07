@@ -148,6 +148,9 @@ imwrite(rejected_mask, fullfile(ToolBox.path_png, sprintf("%s_rejected_masks_%s.
 [branchQ, branchQSE] = averageBranchFlux(Q_cell, Q_se_cell);
 [radiusQ, radiusQSE] = averageRadiusFlux(Q_cell, Q_se_cell);
 
+[branchv, branchvSE] = averageBranchFlux(v_cell, v_se_cell);
+[radiusv, radiusvSE] = averageRadiusFlux(v_cell, v_se_cell);
+
 % 3.2. Creates the csv files for post processing outside Eyeflow
 plot2csvForAllRadSection(t, Q_cell, Q_se_cell, branchQ, branchQSE, radiusQ, radiusQSE, initial)
 topvel2csv(t, v_cell, v_se_cell, initial);
@@ -166,6 +169,10 @@ Q_results.branchQ = branchQ;
 Q_results.branchQSE = branchQSE;
 Q_results.radiusQ = radiusQ;
 Q_results.radiusQSE = radiusQSE;
+Q_results.branchv = branchv;
+Q_results.branchvSE = branchvSE;
+Q_results.radiusv = radiusv;
+Q_results.radiusvSE = radiusvSE;
 Q_results.labeledVessels = labeledVessels;
 Q_results.histo_v_cell = histo_v_cell;
 Q_results.rejected_mask = rejected_mask;
@@ -174,7 +181,7 @@ fprintf("    3. Cross-sections analysis for all circles (%s) output took %ds\n",
 
 % 4. Diameter Analysis
 
-if params.json.crossSectionsAnalysis.diameterAnalysis
+if params.json.CrossSectionsAnalysis.diameterAnalysis
 
     tic
 

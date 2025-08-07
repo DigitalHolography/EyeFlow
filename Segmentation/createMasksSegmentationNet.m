@@ -78,18 +78,24 @@ if mask_params.AVCorrelationSegmentationNet
     R = imresize(rescale(R), [512, 512]);
 
     if mask_params.AVDiasysSegmentationNet
+        warning('off')
         net = importONNXNetwork('Models\iternet_5_av_sys_corr.onnx');
+        warning('on')
 
         input = cat(3, M0, M0_Systole_img, M0_Diastole_img, R);
         output = predict(net, input);
     else
+        warning('off')
         net = importONNXNetwork('Models\iternet_5_av_corr.onnx');
+        warning('on')
         input = cat(3, M0, M0, R);
         output = predict(net, input);
     end
 
 elseif mask_params.AVDiasysSegmentationNet
+    warning('off')
     net = importONNXNetwork('Models\iternet5_av_diasys.onnx');
+    warning('on')
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
     output = predict(net, input);
 end

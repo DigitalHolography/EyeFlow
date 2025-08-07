@@ -7,19 +7,23 @@ function obj = VideoInterpolating(obj)
 params = Parameters_json(obj.directory, obj.param_name);
 
 kInterp = params.json.Preprocess.InterpolationFactor;
-numX = (numX - 1) * (2 ^ kInterp - 1) + numX;
-numY = (numY - 1) * (2 ^ kInterp - 1) + numY;
 
 if kInterp == 0
     return
 end
 
+out_numX = (numX - 1) * (2 ^ kInterp - 1) + numX;
+out_numY = (numY - 1) * (2 ^ kInterp - 1) + numY;
+
 tic;
-fprintf("    - Video Interpolation started with factor: 2^%d\n", kInterp);
-fprintf("    Interpolated Size: %dx%dx%d\n", numX, numY, numFrames);
+
+fprintf("    - Video Interpolation started with factor: (2^%d - 1) \n", kInterp);
+
+fprintf('Interpolating data cube : %dx%dx%d to %dx%dx%d\n', ...
+    numX, numY, numFrames, out_numX, out_numY, numFrames);
 
 % Reference M0
-tmp_M0_ff = zeros(numX, numY, numFrames);
+tmp_M0_ff = zeros(out_numX, out_numY, numFrames);
 tmp_Calc_M0_ff = obj.M0_ff_video;
 
 parfor frameIdx = 1:numFrames
@@ -30,7 +34,7 @@ obj.M0_ff_video = tmp_M0_ff;
 clear tmp_M0_ff tmp_Calc_M0_ff
 
 % M1M0
-tmpM1M0 = zeros(numX, numY, numFrames);
+tmpM1M0 = zeros(out_numX, out_numY, numFrames);
 tmpCalcM1M0 = obj.f_AVG_video;
 
 parfor frameIdx = 1:numFrames
@@ -41,7 +45,7 @@ obj.f_AVG_video = tmpM1M0;
 clear tmpM1M0 tmpCalcM1M0
 
 % M2M0
-tmpM2M0 = zeros(numX, numY, numFrames);
+tmpM2M0 = zeros(out_numX, out_numY, numFrames);
 tmpCalcM2M0 = obj.f_RMS_video;
 
 parfor frameIdx = 1:numFrames
