@@ -44,8 +44,8 @@ for cIdx = 1:numCircles
 
 end
 
-Q_A = squeeze(mean(Q_results_A.radiusQ, 1)); % Mean over circles
-Q_V = squeeze(mean(Q_results_V.radiusQ, 1)); % Mean over circles
+Q_A = squeeze(mean(Q_results_A.radius_Q, 1)); % Mean over circles
+Q_V = squeeze(mean(Q_results_V.radius_Q, 1)); % Mean over circles
 
 numFramesBis = eIdx - sIdx + 1;
 tBis = linspace(sIdx / fs, eIdx / fs, numFramesBis);
@@ -136,7 +136,7 @@ axP = axis;
 axis tight;
 axT = axis;
 axis([axT(1), axT(2), 0, axP(4)]);
-xlabel('Time (s)'); ylabel('Volume Rate (µL/min)');
+xlabel('Time (s)'); ylabel('Flow Rate (µL/min)');
 set(gca, 'PlotBoxAspectRatio', [2.5, 1, 1])
 
 grid on;
@@ -159,7 +159,7 @@ axP = axis;
 axis tight;
 axT = axis;
 axis([axT(1), axT(2), 0, axP(4)]);
-xlabel('Time (s)'); ylabel('Volume Rate (µL/min)');
+xlabel('Time (s)'); ylabel('Flow Rate (µL/min)');
 set(gca, 'PlotBoxAspectRatio', [2.5, 1, 1])
 
 grid on;
@@ -178,7 +178,7 @@ figure("Visible", "off", "Color", 'w');
 hold on;
 plot(t, Q_diff, 'k-', 'LineWidth', 2);
 xlabel('Time (s)');
-ylabel('Volume Rate (µL/min)');
+ylabel('Flow Rate (µL/min)');
 
 % Format plot
 axis padded;

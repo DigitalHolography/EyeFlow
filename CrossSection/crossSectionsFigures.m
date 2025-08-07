@@ -1,4 +1,4 @@
-function crossSectionsFigures(Q_results, name, M0_ff_video, xy_barycenter, systolesIndexes, sysIdx, diasIdx, v_video_RGB, v_mean_RGB)
+function crossSectionsFigures(results, name, M0_ff_video, xy_barycenter, systolesIndexes, sysIdx, diasIdx, v_video_RGB, v_mean_RGB)
 
 % 0. Initialise Variables
 
@@ -15,26 +15,30 @@ y_c = xy_barycenter(2);
 
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 
-v_cell = Q_results.v_cell;
-v_profiles_cell = Q_results.v_profiles_cell;
-dv_profiles_cell = Q_results.dv_profiles_cell;
-D_cell = Q_results.D_cell;
-dD_cell = Q_results.dD_cell;
-locsLabel = Q_results.locsLabel;
-maskLabel = Q_results.maskLabel;
-A_cell = Q_results.A_cell;
-Q_cell = Q_results.Q_cell;
-radiusQ = Q_results.radiusQ;
-radiusQSE = Q_results.radiusQSE;
-branchQ = Q_results.branchQ;
-radiusv = Q_results.radiusv;
-radiusvSE = Q_results.radiusvSE;
-branchv = Q_results.branchv;
-branchvSE = Q_results.branchvSE;
-labeledVessels = Q_results.labeledVessels .* Q_results.labeledVessels ~= 0;
-histo_v_cell = Q_results.histo_v_cell;
+A_cell = results.A_cell;
+D_cell = results.D_cell;
+locsLabel = results.locsLabel;
+maskLabel = results.maskLabel;
+Q_cell = results.Q_cell;
+v_cell = results.v_cell;
+v_profiles_cell = results.v_profiles_cell;
+radius_Q = results.radius_Q;
+branch_Q = results.branch_Q;
+radius_v = results.radius_v;
+branch_v = results.branch_v;
 
-% 1. SVolume Rate Figures
+% Standard errors
+D_SE_cell = results.D_SE_cell;
+v_SE_profiles_cell = results.v_SE_profiles_cell;
+radius_Q_SE = results.radius_Q_SE;
+branch_Q_SE = results.branch_Q_SE;
+radius_v_SE = results.radius_v_SE;
+branch_v_SE = results.branch_v_SE;
+
+labeledVessels = results.labeledVessels .* results.labeledVessels ~= 0;
+histo_v_cell = results.histo_v_cell;
+
+% 1. Flow Rate Figures
 tic
 
 if ~isempty(systolesIndexes)
@@ -45,13 +49,22 @@ else
     index_end = numFrames;
 end
 
-[Q_t, dQ_t] = plotRadius(radiusQ, radiusQSE, t, index_start, index_end, name);
-[v_t, dv_t] = plotRadius(radiusv, radiusvSE, t, index_start, index_end, name);
+[Q_t, Q_SE_t] = plotRadius(radius_Q, radius_Q_SE, t, index_start, index_end, name, 'flux');
+[v_t, v_SE_t] = plotRadius(radius_v, radius_v_SE, t, index_start, index_end, name, 'velocity');
+
+plotBranch(branch_Q, branch_Q_SE, t, index_start, index_end, name, 'flux');
+plotBranch(branch_v, branch_v_SE, t, index_start, index_end, name, 'velocity');
 
 if contains(name, 'artery')
-    ToolBox.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
-else
-    ToolBox.Signals.add('VenousVolumeRate', Q_t, 'µL/min', t, 's', dQ_t);
+    ToolBox.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', Q_SE_t);
+elseif contains(name, 'vein')
+    ToolBox.Signals.add('VenousVolumeRate', Q_t, 'µL/min', t, 's', Q_SE_t);
+end
+
+if contains(name, 'artery')
+    ToolBox.Signals.add('ArterialVelocity', v_t, 'mm/s', t, 's', v_SE_t);
+elseif contains(name, 'vein')
+    ToolBox.Signals.add('VenousVelocity', v_t, 'mm/s', t, 's', v_SE_t);
 end
 
 r1 = params.json.SizeOfField.SmallRadiusRatio;
@@ -62,16 +75,16 @@ centroids = cat(1, s.Centroid);
 
 graphCombined(M0_ff_video, v_video_RGB, v_mean_RGB, ...
     labeledVessels .* maskSection, ...
-    Q_t, dQ_t, xy_barycenter, sprintf('vr_%s', name), ...
+    Q_t, Q_SE_t, xy_barycenter, sprintf('vr_%s', name), ...
     'etiquettes_locs', centroids, ...
-    'etiquettes_values', branchQ);
+    'etiquettes_values', branch_Q);
 
-fprintf("    1. Volume Rate Figures (%s) took %ds\n", name, round(toc))
+fprintf("    1. Flow Rate Figures (%s) took %ds\n", name, round(toc))
 
 tic
 
 if params.json.CrossSectionsFigures.BloodFlowProfiles
-    interpolatedBloodVelocityProfile(v_profiles_cell, dv_profiles_cell, sysIdx, diasIdx, name)
+    interpolatedBloodVelocityProfile(v_profiles_cell, v_SE_profiles_cell, sysIdx, diasIdx, name)
 end
 
 if params.json.CrossSectionsFigures.BloodFlowHistograms
@@ -82,7 +95,7 @@ if params.json.CrossSectionsFigures.BloodFlowProfilesOverlay
     profilePatchVelocities(v_profiles_cell, name, locsLabel, mean(M0_ff_video, 3))
 end
 
-fprintf("    1.(bis) optional Volume Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
+fprintf("    1.(bis) optional Flow Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
 
 % 2. Sections Figures
 
@@ -111,7 +124,7 @@ if params.json.CrossSectionsFigures.circleImages
 end
 
 if params.json.CrossSectionsFigures.widthHistogram
-    [D_mid, ~, D_std] = widthHistogram(D_cell, dD_cell, A_cell, name);
+    [D_mid, ~, D_std] = widthHistogram(D_cell, D_SE_cell, A_cell, name);
 end
 
 fprintf("    2. Sections Images Figures (%s) took %ds\n", name, round(toc))
@@ -121,11 +134,11 @@ fprintf("    2. Sections Images Figures (%s) took %ds\n", name, round(toc))
 tic
 
 if params.json.CrossSectionsFigures.strokeAndTotalVolume && ~isempty(systolesIndexes)
-    strokeAndTotalVolume(Q_t, dQ_t, systolesIndexes, 1000, name);
+    strokeAndTotalVolume(Q_t, Q_SE_t, systolesIndexes, 1000, name);
 end
 
 if params.json.CrossSectionsFigures.ARIBVR
-    ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), dQ_t);
+    ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), Q_SE_t);
 end
 
 % Define parameters with uncertainties
@@ -135,13 +148,13 @@ avg_r = D_mid * 1e-6/2;
 std_r = D_std * 1e-6/2;
 r = [avg_r, std_r]; % m
 L = [5e-3, 1e-3]; % m (ONLY IDEAL L)
-N = size(branchQ, 1);
+N = size(branch_Q, 1);
 
 if params.json.CrossSectionsFigures.hemodynamicParameters
-    calculateHemodynamicParameters(Q_t, dQ_t, deltaP, r, L, index_start, index_end, N);
+    calculateHemodynamicParameters(Q_t, Q_SE_t, deltaP, r, L, index_start, index_end, N);
 end
 
-fprintf("    3. Arterial Indicators Images Generation (%s) took %ds\n", name, round(toc))
+fprintf("    3. Vascular Indicators Images Generation (%s) took %ds\n", name, round(toc))
 
 close all
 

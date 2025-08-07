@@ -1,82 +1,55 @@
-function [branchQ, branchQSE] = averageBranchFlux(Qcell, QSEcell)
+function [branch_Q, branch_Q_SE] = averageBranchFlux(Q_cell, Q_SE_cell)
 % AVERAGEBRANCHFLUX Calculate average flux and standard error across branches
-%   [branchQ, branchQSE] = averageBranchFlux(Qcell, QSEcell) computes the
+%   [branch_Q, branch_Q_SE] = averageBranchFlux(Q_cell, Q_SE_cell) computes the
 %   average flux and standard error across branches from cell arrays containing
 %   flux measurements from multiple circles.
 %
 % Inputs:
-%   Qcell    - Cell array of flux measurements (numCircles × numBranches)
-%   QSEcell  - Cell array of flux standard errors (numCircles × numBranches)
+%   Q_cell    - Cell array of flux measurements (numCircles × numBranches)
+%   Q_SE_cell  - Cell array of flux standard errors (numCircles × numBranches)
 %
 % Outputs:
-%   branchQ   - Average flux per branch (numBranches × numFrames)
-%   branchQSE - Resulting standard error per branch (numBranches × numFrames)
+%   branch_Q   - Average flux per branch (numBranches × numFrames)
+%   branch_Q_SE - Resulting standard error per branch (numBranches × numFrames)
 
-[numCircles, numBranches] = size(Qcell);
+% Validate input dimensions
+[numCircles, numBranches] = size(Q_cell);
 
-if ~isequal(size(QSEcell), [numCircles, numBranches])
-    error('Qcell and QSEcell must have the same dimensions');
+if ~isequal(size(Q_SE_cell), [numCircles, numBranches])
+    error('Q_cell and Q_SE_cell must have the same dimensions');
 end
 
-% Determine maximum number of frames across all data
-maxFrames = 0;
+% Determine number of frames (maximum length in all cells)
+allLengths = cellfun(@length, Q_cell(:));
+numFrames = max(allLengths(:));
 
-for cIdx = 1:numCircles
+% Initialize outputs with NaN (better than zeros for missing data)
+branch_Q = zeros(numBranches, numFrames);
+branch_Q_SE = zeros(numBranches, numFrames);
 
-    for bIdx = 1:numBranches
-
-        if ~isempty(Qcell{cIdx, bIdx})
-            maxFrames = max(maxFrames, length(Qcell{cIdx, bIdx}));
-        end
-
-    end
-
-end
-
-if maxFrames == 0
-    error('Input cells contain no valid data');
-end
-
-% Initialize outputs
-branchQ = zeros(numBranches, maxFrames);
-branchQSE = zeros(numBranches, maxFrames);
-validCounts = zeros(numBranches, maxFrames); % Track valid counts per frame
-
+% Compute sums
 for bIdx = 1:numBranches
+
+    numCircles_per_Branch = 0; % Track the number of circles per branch
 
     for cIdx = 1:numCircles
 
-        if ~isempty(Qcell{cIdx, bIdx})
-            currentFrames = length(Qcell{cIdx, bIdx});
+        if ~isempty(Q_cell{cIdx, bIdx})
 
-            % Pad with NaN if needed (for shorter sequences)
-            if currentFrames < maxFrames
-                framesToUse = 1:currentFrames;
-                branchQ(bIdx, framesToUse) = branchQ(bIdx, framesToUse) + Qcell{cIdx, bIdx};
-                branchQSE(bIdx, framesToUse) = branchQSE(bIdx, framesToUse) + (QSEcell{cIdx, bIdx} .^ 2);
-                validCounts(bIdx, framesToUse) = validCounts(bIdx, framesToUse) + 1;
-            else
-                branchQ(bIdx, :) = branchQ(bIdx, :) + Qcell{cIdx, bIdx};
-                branchQSE(bIdx, :) = branchQSE(bIdx, :) + (QSEcell{cIdx, bIdx} .^ 2);
-                validCounts(bIdx, :) = validCounts(bIdx, :) + 1;
-            end
+            branch_Q(bIdx, :) = branch_Q(bIdx, :) + Q_cell{cIdx, bIdx};
+            branch_Q_SE(bIdx, :) = branch_Q_SE(bIdx, :) + (Q_SE_cell{cIdx, bIdx} .^ 2);
+            numCircles_per_Branch = numCircles_per_Branch + 1;
 
         end
 
     end
 
-end
-
-% Calculate averages only where we have data
-for bIdx = 1:numBranches
-    hasData = validCounts(bIdx, :) > 0;
-
-    if any(hasData)
-        branchQ(bIdx, hasData) = branchQ(bIdx, hasData) ./ validCounts(bIdx, hasData);
-        branchQSE(bIdx, hasData) = sqrt(branchQSE(bIdx, hasData)) ./ validCounts(bIdx, hasData);
+    % Average over circles
+    if numCircles_per_Branch > 0
+        branch_Q(bIdx, :) = branch_Q(bIdx, :) ./ numCircles_per_Branch;
+        branch_Q_SE(bIdx, :) = sqrt(branch_Q_SE(bIdx, :)) ./ numCircles_per_Branch;
     end
 
-    % Leave as zeros where no data exists
 end
 
 end

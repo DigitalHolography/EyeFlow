@@ -4,10 +4,10 @@ classdef Signals < handle
 properties
     ArterialVelocity
     VenousVelocity
-    % ArterialVelocityInterpolated
-    % VenousVelocityInterpolated
     ArterialVolumeRate
     VenousVolumeRate
+    % ArterialVelocityInterpolated
+    % VenousVelocityInterpolated
     TransFunctionModLog10
     TransFunctionPhaseDegrees
     % ArterialVolumeRateInterpolated

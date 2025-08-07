@@ -53,7 +53,6 @@ plot(t, -V, 'b', 'LineWidth', 2);
 axis tight;
 grid on;
 xlabel('Time (s)'); ylabel('Amplitude');
-title('Arterial vs. Venous Signals (Detrended)');
 box on;
 set(gca, 'LineWidth', 2);
 
@@ -64,7 +63,8 @@ plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
 axis tight;
 grid on;
 xlabel('Lag (s)'); ylabel('Cross-Correlation');
-title(['Peak Lag: ', num2str(time_lag, '%.3f'), ' s | Corr: ', num2str(max_corr, '%.2f')]);
+legend({sprintf("Peak Lag: %.3f s", time_lag), ...
+            sprintf("Peak Corr: %.2f", max_corr)}, 'Location', 'Best');
 box on;
 set(gca, 'LineWidth', 2);
 
@@ -80,7 +80,6 @@ axis padded;
 xlim([0 t(end)])
 grid on;
 xlabel('Time (s)'); ylabel('Amplitude');
-title('Arterial vs. Venous Signals (Detrended)');
 box on;
 pbaspect([1.618, 1, 1]);
 set(gca, 'LineWidth', 2);
@@ -96,7 +95,8 @@ axis padded;
 xlim([lags_t(1) lags_t(end)])
 grid on;
 xlabel('Lag (s)'); ylabel('Cross-Correlation');
-title(['Peak Lag: ', num2str(time_lag, '%.3f'), ' s | Corr: ', num2str(max_corr, '%.2f')]);
+legend({sprintf("Peak Lag: %.3f s", time_lag), ...
+            sprintf("Peak Corr: %.2f", max_corr)}, 'Location', 'Best');
 box on;
 pbaspect([1.618, 1, 1]);
 set(gca, 'LineWidth', 2);
