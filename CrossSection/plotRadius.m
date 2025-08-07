@@ -120,16 +120,6 @@ plot(fullTime, curve2, "Color", Color_std, 'LineWidth', 2); % Lower bound
 plot(fullTime, U_t, '-k', 'LineWidth', 2); % Mean curve
 yline(mean_U, '--k', 'LineWidth', 2, 'Color', [0.5 0.5 0.5]);
 
-% Add a text label with white background at the right edge of the plot
-ax = gca;
-xPos = ax.XLim(2) * 0.8; % Right edge of the plot
-yLen = ax.YLim(2) - ax.YLim(1);
-text(xPos, mean_U + 0.1 * yLen, sprintf("%0.1f %s", mean_U, unit), ...
-    'BackgroundColor', 'w', ...
-    'HorizontalAlignment', 'left', ...
-    'VerticalAlignment', 'middle', ...
-    'Margin', 1); % Small padding
-
 % Mark the time range used for averaging
 plot(fullTime(idx_start), 1.07 * max_U, 'k|', 'MarkerSize', 10, 'LineWidth', 2);
 plot(fullTime(idx_end), 1.07 * max_U, 'k|', 'MarkerSize', 10, 'LineWidth', 2);
@@ -149,6 +139,16 @@ ax = gca;
 ax.LineStyleOrderIndex = 1; % Reset if needed
 ax.SortMethod = 'depth'; % Try changing sorting method
 ax.Layer = 'top'; % This may help in some cases
+
+% Add a text label with white background at the right edge of the plot
+ax = gca;
+xPos = ax.XLim(2) * 0.8; % Right edge of the plot
+yLen = ax.YLim(2) - ax.YLim(1);
+text(xPos, mean_U + 0.1 * yLen, sprintf("%0.1f %s", mean_U, unit), ...
+    'BackgroundColor', 'w', ...
+    'HorizontalAlignment', 'left', ...
+    'VerticalAlignment', 'middle', ...
+    'Margin', 1); % Small padding
 
 ylabel(y_label);
 xlabel('Time (s)');
