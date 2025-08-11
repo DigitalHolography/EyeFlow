@@ -28,7 +28,7 @@
     "FittedParameters": false
   },
   "VeinsAnalysis": 1,
-  "ExportVideos": 1,
+  "ExportVideos": 0,
   "MinimumGifPeriod": 0.04,
   "NumberOfWorkers": 0,
   "Mask": {

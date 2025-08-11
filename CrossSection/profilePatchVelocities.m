@@ -83,8 +83,10 @@ for circleIdx = 1:rows
         try
 
             selected_points = find(profile > max(profile(:)) * 0.3);
+            warning('off')
             fitObj = fit(x_axis(selected_points)', double(profile(selected_points)'), 'a*(1 - ((x - b)/c)^2)', ...
                 'StartPoint', [1, 0, profWidth / 2]);
+            warning('on')
             plotData = fitObj(x_axis);
         catch e
             disp(e)

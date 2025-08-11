@@ -1,4 +1,8 @@
-function [Q_t, dQ_t] = plotRadius(radiusQ, radiusQSE, fullTime, idx_start, idx_end, name)
+function [U_t, U_t_SE] = plotRadius(radius_U, radius_U_SE, fullTime, idx_start, idx_end, vessel_name, type_name)
+% plotRadius - Plots the average flow rate per radius and its uncertainty
+%   This function computes and plots the average flow rate and its
+%   uncertainty over a specified time range for a given radius.
+
 % Get global toolbox and parameters
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -11,25 +15,37 @@ rad = linspace(r1, r2 - dr, numCircles);
 % Define color for shaded regions
 Color_std = [0.7 0.7 0.7];
 
+if strcmp(type_name, 'velocity')
+    title_str = 'velocity';
+    y_label = 'Velocity (mm/s)';
+    unit = 'mm/s';
+    isFlowRate = false;
+else
+    title_str = 'flow_rate';
+    y_label = 'Flow Rate (µL/min)';
+    unit = 'µL/min';
+    isFlowRate = true;
+end
+
 % Compute time-averaged mean and standard deviation
-Q_r = squeeze(mean(radiusQ(:, idx_start:idx_end), 2))'; % Mean over time
+U_r = squeeze(mean(radius_U(:, idx_start:idx_end), 2))'; % Mean over time
 N = length(idx_start:idx_end);
-dQ_r = squeeze(sqrt(sum(radiusQSE(:, idx_start:idx_end) .^ 2, 2)))' / N; % RMS of uncertainties
+U_r_SE = squeeze(sqrt(sum(radius_U_SE(:, idx_start:idx_end) .^ 2, 2)))' / N; % RMS of uncertainties
 
 % Create shaded region for uncertainty
-curve1 = Q_r + dQ_r; % Upper bound
-curve2 = Q_r - dQ_r; % Lower bound
+curve1 = U_r + U_r_SE; % Upper bound
+curve2 = U_r - U_r_SE; % Lower bound
 rad2 = [rad, fliplr(rad)]; % X-values for fill
 inBetween = [curve1, fliplr(curve2)]; % Y-values for fill
 
-% Plot time-averaged Volume Rate vs. radius
+% Plot time-averaged Flow Rate vs. radius
 figure("Visible", "off");
 fill(rad2, inBetween, Color_std, 'EdgeColor', 'none'); % Shaded region
 hold on;
 plot(rad, curve1, "Color", Color_std, 'LineWidth', 2); % Upper bound
 plot(rad, curve2, "Color", Color_std, 'LineWidth', 2); % Lower bound
-plot(rad, Q_r, '-k', 'LineWidth', 2); % Mean curve
-yline(mean(Q_r), '--k', 'LineWidth', 2, 'label', sprintf("%0.2f µL/min", mean(Q_r))); % Horizontal mean line
+plot(rad, U_r, '-k', 'LineWidth', 2); % Mean curve
+yline(mean(U_r), '--k', 'LineWidth', 2, 'label', sprintf("%0.1f %s", mean(U_r), unit)); % Horizontal mean line
 
 % Format plot
 axis padded;
@@ -46,22 +62,21 @@ ax.LineStyleOrderIndex = 1; % Reset if needed
 ax.SortMethod = 'depth'; % Try changing sorting method
 ax.Layer = 'top'; % This may help in some cases
 
-ylabel('Volume Rate (µL/min)');
+ylabel(y_label);
 xlabel('Radius (pixels)');
-title("Time-Averaged Volume Rate");
 
 % Export plot
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_mean_%s_radius.png", ToolBox.folder_name, name)));
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_radius_%s_mean_%s.png", ToolBox.folder_name, title_str, vessel_name)));
 
-% Plot radial variations of Volume Rate over time
+% Plot radial variations of Flow Rate over time
 figure("Visible", "off");
 hold on;
 
 for circleIdx = 1:numCircles
-    plot(fullTime, radiusQ(circleIdx, :));
+    plot(fullTime, radius_U(circleIdx, :));
 end
 
-plot(fullTime, mean(radiusQ, 1), 'k', 'LineWidth', 2);
+plot(fullTime, mean(radius_U, 1), 'k', 'LineWidth', 2);
 
 axis padded;
 axP = axis;
@@ -69,32 +84,31 @@ axis tight;
 axT = axis;
 axis([axT(1), axT(2), 0, 1.07 * axP(4)]);
 box on;
-ylabel('Volume Rate (µL/min)');
+ylabel(y_label);
 xlabel('Time (s)');
-title("Radial Variations of Volume Rate");
 set(gca, 'PlotBoxAspectRatio', [2.5 1 1], 'LineWidth', 2);
 
 % Export plot
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_variance_%s_time.png", ToolBox.folder_name, name)));
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_radius_%s_variance_%s.png", ToolBox.folder_name, title_str, vessel_name)));
 
-% Compute total Volume Rate over circles
-Q_t = squeeze(mean(radiusQ, 1)); % Mean over circles
-N = size(radiusQSE, 1);
-dQ_t = squeeze(sqrt(sum(radiusQSE .^ 2, 1))) / N; % RMS of uncertainties
+% Compute total Flow Rate over circles
+U_t = squeeze(mean(radius_U, 1)); % Mean over circles
+N = size(radius_U_SE, 1);
+U_t_SE = squeeze(sqrt(sum(radius_U_SE .^ 2, 1))) / N; % RMS of uncertainties
 
 % Compute statistics for the time range
-mean_Q = mean(Q_t(idx_start:idx_end)); % Time-averaged mean
-[max_Q, amax] = max(Q_t(idx_start:idx_end)); % Maximum value in the range
+mean_U = mean(U_t(idx_start:idx_end)); % Time-averaged mean
+[max_U, amax] = max(U_t(idx_start:idx_end)); % Maximum value in the range
 N = length(idx_start:idx_end);
-mean_dQ = sqrt(sum(dQ_t(idx_start:idx_end) .^ 2)) / N; % RMS of the uncertainty
-[min_Q, amin] = min(Q_t(idx_start:idx_end)); % Minimum value in the range
-max_dQ = dQ_t(amax);
-min_dQ = dQ_t(amin);
+mean_U_SE = sqrt(sum(U_t_SE(idx_start:idx_end) .^ 2)) / N; % RMS of the uncertainty
+[min_U, amin] = min(U_t(idx_start:idx_end)); % Minimum value in the range
+max_U_SE = U_t_SE(amax);
+min_U_SE = U_t_SE(amin);
 
-% Plot total Volume Rate over time
+% Plot total Flow Rate over time
 figure("Visible", "off");
-curve1 = Q_t + dQ_t; % Upper bound
-curve2 = Q_t - dQ_t; % Lower bound
+curve1 = U_t + U_t_SE; % Upper bound
+curve2 = U_t - U_t_SE; % Lower bound
 ft2 = [fullTime, fliplr(fullTime)]; % X-values for fill
 inBetween = [curve1, fliplr(curve2)]; % Y-values for fill
 
@@ -103,13 +117,13 @@ fill(ft2, inBetween, Color_std, 'EdgeColor', 'none'); % Shaded region
 yline(0, 'k-', 'LineWidth', 2); % Zero line
 plot(fullTime, curve1, "Color", Color_std, 'LineWidth', 2); % Upper bound
 plot(fullTime, curve2, "Color", Color_std, 'LineWidth', 2); % Lower bound
-plot(fullTime, Q_t, '-k', 'LineWidth', 2); % Mean curve
-yline(mean_Q, '--k', 'LineWidth', 2); % Horizontal mean line
+plot(fullTime, U_t, '-k', 'LineWidth', 2); % Mean curve
+yline(mean_U, '--k', 'LineWidth', 2, 'Color', [0.5 0.5 0.5]);
 
 % Mark the time range used for averaging
-plot(fullTime(idx_start), 1.07 * max_Q, 'k|', 'MarkerSize', 10, 'LineWidth', 2);
-plot(fullTime(idx_end), 1.07 * max_Q, 'k|', 'MarkerSize', 10, 'LineWidth', 2);
-plot(fullTime(idx_start:idx_end), repmat(1.07 * max_Q, 1, idx_end - idx_start + 1), '-k', 'LineWidth', 2);
+plot(fullTime(idx_start), 1.07 * max_U, 'k|', 'MarkerSize', 10, 'LineWidth', 2);
+plot(fullTime(idx_end), 1.07 * max_U, 'k|', 'MarkerSize', 10, 'LineWidth', 2);
+plot(fullTime(idx_start:idx_end), repmat(1.07 * max_U, 1, idx_end - idx_start + 1), '-k', 'LineWidth', 2);
 
 % Format plot
 axis padded;
@@ -126,33 +140,63 @@ ax.LineStyleOrderIndex = 1; % Reset if needed
 ax.SortMethod = 'depth'; % Try changing sorting method
 ax.Layer = 'top'; % This may help in some cases
 
-ylabel('Volume Rate (µL/min)');
+% Add a text label with white background at the right edge of the plot
+ax = gca;
+xPos = ax.XLim(2) * 0.8; % Right edge of the plot
+yLen = ax.YLim(2) - ax.YLim(1);
+text(xPos, mean_U + 0.1 * yLen, sprintf("%0.1f %s", mean_U, unit), ...
+    'BackgroundColor', 'w', ...
+    'HorizontalAlignment', 'left', ...
+    'VerticalAlignment', 'middle', ...
+    'Margin', 1); % Small padding
+
+ylabel(y_label);
 xlabel('Time (s)');
-title(sprintf("Total Volume Rate (Avg. %0.2f µL/min)", mean_Q));
 
 % Export plot
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_allrad_%s_time.png", ToolBox.folder_name, name)));
-exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_allrad_%s_time.eps", ToolBox.folder_name, name)));
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_radius_plot_%s_%s.png", ToolBox.folder_name, title_str, vessel_name)));
+exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_radius_plot_%s_%s.eps", ToolBox.folder_name, title_str, vessel_name)));
 
-% Write results to a text file
-fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'EF_main_outputs', '.txt')), 'a');
-fprintf(fileID, 'Flow Rate %s : %f (µL/min) \r\n', name, mean_Q);
-fprintf(fileID, 'Flow Rate Standard Deviation %s : %f (µL/min) \r\n', name, mean_dQ);
-fclose(fileID);
+if isFlowRate
+    % Write results to a text file
+    fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'EF_main_outputs', '.txt')), 'a');
+    fprintf(fileID, 'Flow Rate %s : %f %s \r\n', vessel_name, mean_U, unit);
+    fprintf(fileID, 'Flow Rate Standard Deviation %s : %f %s \r\n', vessel_name, mean_U_SE, unit);
+    fclose(fileID);
 
-% Write results to json
-ToolBox.outputs.(sprintf('FlowRate%s', name)) = mean_Q;
-ToolBox.outputs.(sprintf('FlowRateStd%s', name)) = mean_dQ;
+    % Write results to json
+    ToolBox.outputs.(sprintf('FlowRate%s', vessel_name)) = mean_U;
+    ToolBox.outputs.(sprintf('FlowRateStd%s', vessel_name)) = mean_U_SE;
 
-% New
-if contains(name, 'vein')
-    ToolBox.Outputs.add('VenousMeanVolumeRate', mean_Q, 'µL/min', mean_dQ);
-    ToolBox.Outputs.add('VenousMaximumVolumeRate', max_Q, 'µL/min', max_dQ);
-    ToolBox.Outputs.add('VenousMinimumVolumeRate', min_Q, 'µL/min', min_dQ);
-elseif contains(name, 'artery')
-    ToolBox.Outputs.add('ArterialMeanVolumeRate', mean_Q, 'µL/min', mean_dQ);
-    ToolBox.Outputs.add('ArterialMinimumVolumeRate', min_Q, 'µL/min', min_dQ);
-    ToolBox.Outputs.add('ArterialMaximumVolumeRate', max_Q, 'µL/min', max_dQ);
-end
+    % New
+    if contains(vessel_name, 'vein')
+        ToolBox.Outputs.add('VenousMeanVolumeRate', mean_U, unit, mean_U_SE);
+        ToolBox.Outputs.add('VenousMaximumVolumeRate', max_U, unit, max_U_SE);
+        ToolBox.Outputs.add('VenousMinimumVolumeRate', min_U, unit, min_U_SE);
+    elseif contains(vessel_name, 'artery')
+        ToolBox.Outputs.add('ArterialMeanVolumeRate', mean_U, unit, mean_U_SE);
+        ToolBox.Outputs.add('ArterialMinimumVolumeRate', min_U, unit, min_U_SE);
+        ToolBox.Outputs.add('ArterialMaximumVolumeRate', max_U, unit, max_U_SE);
+    end
+
+else
+    % Write results to a text file
+    fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'EF_main_outputs', '.txt')), 'a');
+    fprintf(fileID, 'Velocity %s : %f %s \r\n', vessel_name, mean_U, unit);
+    fprintf(fileID, 'Velocity Standard Deviation %s : %f %s \r\n', vessel_name, mean_U_SE, unit);
+    fclose(fileID);
+    % Write results to json
+    ToolBox.outputs.(sprintf('Velocity%s', vessel_name)) = mean_U;
+    ToolBox.outputs.(sprintf('VelocityStd%s', vessel_name)) = mean_U_SE;
+    % New
+    if contains(vessel_name, 'vein')
+        ToolBox.Outputs.add('VenousMeanVelocity', mean_U, unit, mean_U_SE);
+        ToolBox.Outputs.add('VenousMaximumVelocity', max_U, unit, max_U_SE);
+        ToolBox.Outputs.add('VenousMinimumVelocity', min_U, unit, min_U_SE);
+    elseif contains(vessel_name, 'artery')
+        ToolBox.Outputs.add('ArterialMeanVelocity', mean_U, unit, mean_U_SE);
+        ToolBox.Outputs.add('ArterialMinimumVelocity', min_U, unit, min_U_SE);
+        ToolBox.Outputs.add('ArterialMaximumVelocity', max_U, unit, max_U_SE);
+    end
 
 end

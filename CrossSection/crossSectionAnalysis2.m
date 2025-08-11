@@ -54,10 +54,11 @@ subImgUnCropped = subImgUnCropped(yRange, xRange);
 subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
 
 % Compute the Vessel Cross Section
-[D, D_se, A, A_se, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter);
+[D, D_SE, A, A_SE, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter);
 results.D = D;
-results.D_se = D_se;
+results.D_SE = D_SE;
 results.A = A;
+results.A_SE = A_SE;
 
 % Generate figures
 saveCrossSectionFigure(subImgUnCropped, c1, c2, ToolBox, patchName);
@@ -71,7 +72,7 @@ else
     rejected_masks(:, :, 2) = ROI; % Green
 end
 
-% Compute Volume Rate and average velocity
+% Compute Flow Rate and average velocity
 
 results.v_histo = cell(1, numFrames);
 
@@ -89,16 +90,16 @@ for t = 1:numFrames
     results.v_histo{t} = histo;
 
     % Compute standard deviation of velocity
-    v_se = std(v_cross, 'omitnan');
+    v_SE = std(v_cross, 'omitnan');
 
     % Compute volumetric flow rate
     Q = v * A * 60; % microL/min
 
     % Uncertainty in volumetric flow rate
     if v ~= 0 && A ~= 0
-        Q_se = Q * sqrt((v_se / v) ^ 2 + (A_se / A) ^ 2 + (A_se * v_se / (A * v)) ^ 2);
+        Q_SE = Q * sqrt((v_SE / v) ^ 2 + (A_SE / A) ^ 2 + (A_SE * v_SE / (A * v)) ^ 2);
     else
-        Q_se = 0; % Handle division by zero
+        Q_SE = 0; % Handle division by zero
     end
 
     % Handle NaN values
@@ -110,21 +111,21 @@ for t = 1:numFrames
         Q = 0;
     end
 
-    if isnan(v_se)
-        v_se = 0;
+    if isnan(v_SE)
+        v_SE = 0;
     end
 
-    if isnan(Q_se)
-        Q_se = 0;
+    if isnan(Q_SE)
+        Q_SE = 0;
     end
 
     % Store results
     results.v(t) = v;
-    results.v_se(t) = v_se;
+    results.v_SE(t) = v_SE;
     results.Q(t) = Q;
-    results.Q_se(t) = Q_se;
+    results.Q_SE(t) = Q_SE;
     results.v_profiles{t} = v_profile;
-    results.v_profiles_se{t} = std(subFrame, [], 1, 'omitnan');
+    results.v_profiles_SE{t} = std(subFrame, [], 1, 'omitnan');
 end
 
 results.rejected_masks = rejected_masks;

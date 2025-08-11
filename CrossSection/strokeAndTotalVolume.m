@@ -106,7 +106,7 @@ ax.LineStyleOrderIndex = 1; % Reset if needed
 ax.SortMethod = 'depth'; % Try changing sorting method
 ax.Layer = 'top'; % This may help in some cases
 
-ylabel('Volume Rate (µL/min)')
+ylabel('Flow Rate (µL/min)')
 xlabel('Time (s)')
 
 if strcmp(name, 'artery')
@@ -129,8 +129,8 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_strokeAndTotalVolume_
 exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_strokeAndTotalVolume_%s.eps", ToolBox.folder_name, name)))
 
 fileID = fopen(fullfile(ToolBox.path_txt, sprintf('%s_EF_main_outputs.txt', ToolBox.folder_name)), 'a');
-fprintf(fileID, 'MaxSystole Volume Rate Artery : %f (µL/min) \r\n', maxsystole_bvr_value);
-fprintf(fileID, 'MinDiastole Volume Rate Artery : %f (µL/min) \r\n', mindiastole_bvr_value);
+fprintf(fileID, 'MaxSystole Flow Rate Artery : %f (µL/min) \r\n', maxsystole_bvr_value);
+fprintf(fileID, 'MinDiastole Flow Rate Artery : %f (µL/min) \r\n', mindiastole_bvr_value);
 fprintf(fileID, 'Stroke Volume Artery : %f (nL) \r\n', stroke_volume_value);
 fprintf(fileID, 'Total Volume Artery : %f (nL) \r\n', total_volume_value);
 fclose(fileID);
