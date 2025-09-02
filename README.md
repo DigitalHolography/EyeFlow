@@ -43,7 +43,7 @@ To install EyeFlow, follow these steps:
 
 ## Getting Started
 
-To get started with PulseWave:
+To get started with EyeFlow:
 
 1. Refer to the [EyeFlow](https://docs.google.com/presentation/d/1s_adHm5oobDZZIPbrML8hR2-7wbIwT1kt3YC3EdAgYQ/edit#slide=id.g253c1ee4169_0_11) Google Slides presentation for detailed instructions. You can request help from the Digital Holography team for this presentation if needed.
 
@@ -62,4 +62,4 @@ EyeFlow is licensed under the GNU General Public License (GPL). See the LICENSE 
 
 ---
 
-Thank you for using PulseWave!
+Thank you for using Eyeflow!
