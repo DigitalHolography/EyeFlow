@@ -3,9 +3,18 @@ function obj = VideoCropping(obj)
 params = Parameters_json(obj.directory, obj.param_name);
 firstFrame = params.json.Preprocess.Crop.StartFrame;
 lastFrame = params.json.Preprocess.Crop.EndFrame;
+
+if (firstFrame == 1) && (lastFrame == -1)
+    return % do nothing if not required
+end
+
 [~, ~, numFrames] = size(obj.M0_ff_video);
 
 if firstFrame > 0 && firstFrame < numFrames || lastFrame > 1 && lastFrame <= numFrames
+
+    tic
+
+    fprintf("    - Video Cropping from %d to %d frames...\n", firstFrame, lastFrame);
 
     if lastFrame == -1
         lastFrame = numFrames;
@@ -25,6 +34,9 @@ if firstFrame > 0 && firstFrame < numFrames || lastFrame > 1 && lastFrame <= num
     end
 
     disp(['Data cube frame: ', num2str(firstFrame), '/', num2str(numFrames), ' to ', num2str(lastFrame), '/', num2str(numFrames)])
+
+    fprintf("    - Video Cropping took: %ds\n", round(toc));
+
 else
     disp('Wrong value for the first frame. Set as 1.')
     disp('Wrong value for the last frame. Set as the end.')

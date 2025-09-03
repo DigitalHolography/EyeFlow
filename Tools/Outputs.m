@@ -35,7 +35,7 @@ properties
     VenousMaximumVelocity
     VenousMinimumVelocity
 
-    % Volume Rate
+    % Flow Rate
     ArterialMeanVolumeRate
     ArterialMaximumVolumeRate
     ArterialMinimumVolumeRate

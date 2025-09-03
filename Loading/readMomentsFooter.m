@@ -14,13 +14,13 @@ header_mmap = memmapfile(filename, 'Format', ...
 % padding - skip
  }, 'Repeat', 1);
 
-version = header_mmap.Data.version;
+% version = header_mmap.Data.version;
 num_frames = header_mmap.Data.num_frames;
 frame_width = header_mmap.Data.width;
 frame_height = header_mmap.Data.height;
-data_size = header_mmap.Data.total_size;
+% data_size = header_mmap.Data.total_size;
 bit_depth = header_mmap.Data.bit_depth;
-endianness = header_mmap.Data.endianness;
+% endianness = header_mmap.Data.endianness;
 
 if ~isequal(header_mmap.Data.magic_number', unicode2native('HOLO'))
     error('Bad holo file.');

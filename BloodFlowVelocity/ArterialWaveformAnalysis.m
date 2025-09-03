@@ -1,11 +1,11 @@
 function ArterialWaveformAnalysis(signal, systolesIndexes, numInterp, name)
-% ARTERIALWAVEFORMANALYSIS Analyzes arterial waveform signals (velocity or Volume Rate)
+% ARTERIALWAVEFORMANALYSIS Analyzes arterial waveform signals (velocity or Flow Rate)
 %
 % Inputs:
 %   signal - Input waveform signal
 %   systolesIndexes - Indices of systolic peaks
 %   numInterp - Number of interpolation points
-%   name - Signal type ('bloodVolumeRate' for Volume Rate, otherwise velocity)
+%   name - Signal type ('bloodVolumeRate' for Flow Rate, otherwise velocity)
 
 % Initial Setup
 ToolBox = getGlobalToolBox;
@@ -18,7 +18,7 @@ cLight = [1 0.5 0.5];
 
 % Set parameters based on signal type
 if strcmpi(name, "bvr")
-    y_label = 'Volume Rate (µL/min)';
+    y_label = 'Flow Rate (µL/min)';
     unit = 'µL/min';
     isBVR = true;
 else
@@ -68,7 +68,7 @@ diastoleDuration = NaN;
 systolicUpstroke = peaks(1) - one_cycle_signal(1);
 systolicDownstroke = NaN;
 diastolicRunoff = NaN;
-dicroticNotchIndex = NaN;
+% dicroticNotchIndex = NaN;
 notch = NaN;
 locs_notch = NaN;
 
@@ -89,7 +89,7 @@ if length(peaks) > 1
 
         % Calculate durations
         dicroticNotchTime = pulseTime(locs_notch) - pulseTime(1);
-        dicroticNotchIndex = notch ./ peaks(1);
+        % dicroticNotchIndex = notch ./ peaks(1);
         diastoleDuration = pulseTime(end) - pulseTime(locs_notch);
     else
         notch = NaN; % Invalid notch

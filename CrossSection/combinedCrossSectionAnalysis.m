@@ -1,9 +1,8 @@
 function combinedCrossSectionAnalysis(Q_results_A, Q_results_V, M0_ff_video, sysIdxList)
 
 ToolBox = getGlobalToolBox;
-params = ToolBox.getParams;
 
-[numX, numY, numFrames] = size(M0_ff_video);
+[~, ~, numFrames] = size(M0_ff_video);
 
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 t = linspace(0, numFrames / fs, numFrames);
@@ -45,18 +44,18 @@ for cIdx = 1:numCircles
 
 end
 
-Q_A = squeeze(mean(Q_results_A.radiusQ, 1)); % Mean over circles
-Q_V = squeeze(mean(Q_results_V.radiusQ, 1)); % Mean over circles
+Q_A = squeeze(mean(Q_results_A.radius_Q, 1)); % Mean over circles
+Q_V = squeeze(mean(Q_results_V.radius_Q, 1)); % Mean over circles
 
 numFramesBis = eIdx - sIdx + 1;
 tBis = linspace(sIdx / fs, eIdx / fs, numFramesBis);
 numCycles = length(sysIdxList) - 1;
 cycleSize = numFramesBis / numCycles;
 
-Volume_A = sum(Q_A) * dt / 60 * 1e-9; % in m^3
-Volume_V = sum(Q_V) * dt / 60 * 1e-9; % in m^3
+% Volume_A = sum(Q_A) * dt / 60 * 1e-9; % in m^3
+% Volume_V = sum(Q_V) * dt / 60 * 1e-9; % in m^3
 
-Q_ratio = Q_V ./ Q_A;
+% Q_ratio = Q_V ./ Q_A;
 Q_diff = Q_V - Q_A;
 Q_diff = Q_diff - mean(Q_diff(sIdx:eIdx));
 
@@ -137,7 +136,7 @@ axP = axis;
 axis tight;
 axT = axis;
 axis([axT(1), axT(2), 0, axP(4)]);
-xlabel('Time (s)'); ylabel('Volume Rate (µL/min)');
+xlabel('Time (s)'); ylabel('Flow Rate (µL/min)');
 set(gca, 'PlotBoxAspectRatio', [2.5, 1, 1])
 
 grid on;
@@ -160,7 +159,7 @@ axP = axis;
 axis tight;
 axT = axis;
 axis([axT(1), axT(2), 0, axP(4)]);
-xlabel('Time (s)'); ylabel('Volume Rate (µL/min)');
+xlabel('Time (s)'); ylabel('Flow Rate (µL/min)');
 set(gca, 'PlotBoxAspectRatio', [2.5, 1, 1])
 
 grid on;
@@ -179,7 +178,7 @@ figure("Visible", "off", "Color", 'w');
 hold on;
 plot(t, Q_diff, 'k-', 'LineWidth', 2);
 xlabel('Time (s)');
-ylabel('Volume Rate (µL/min)');
+ylabel('Flow Rate (µL/min)');
 
 % Format plot
 axis padded;

@@ -14,12 +14,12 @@ path_png = ToolBox.path_png;
 path_eps = ToolBox.path_eps;
 path_txt = ToolBox.path_txt;
 main_folder = ToolBox.folder_name;
-initial = name(1);
 
 % Extract barycenter coordinates and image dimensions
 x_c = xy_barycenter(1);
 y_c = xy_barycenter(2);
 [numX, numY, ~] = size(M0_ff_img);
+fontsize = round(numX / 40);
 [numCircles, numBranches] = size(A_cell);
 
 % Initialize video arrays with consistent size
@@ -50,8 +50,10 @@ if strcmp(name, 'artery')
 else
     cmap = ToolBox.cmapVein;
 end
+
 textOptions = {"FontWeight", "bold", ...
                    "Color", "white", ...
+                   "FontSize", fontsize, ...
                    "BackgroundColor", "black"};
 
 % Plot cross-section widths
@@ -91,7 +93,7 @@ parfor cIdx = 1:numCircles
 
             % Numerotation visualization
             figure(fig2);
-            text(new_x, new_y, sprintf("%s%d", initial, bIdx), textOptions{:});
+            text(new_x, new_y, sprintf("%d", bIdx), textOptions{:});
 
             % BVR visualization (if data exists)
             if ~isempty(Q_cell{cIdx, bIdx})

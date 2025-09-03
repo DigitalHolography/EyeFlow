@@ -26,7 +26,7 @@ exportVideos = params.exportVideos;
 scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
 [numX, numY, numFrames] = size(f_video);
 
-%% Section 1: Create Masks and Prepare Data
+%% Section 1: Background Calculation
 
 tic
 
@@ -49,12 +49,6 @@ t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 cBlack = [0 0 0];
 cArtery = [255 22 18] / 255;
 cVein = [18 23 255] / 255;
-
-fprintf("    1. Mask creation and setup took %ds\n", round(toc));
-
-%% Section 2: background Calculation
-
-tic;
 
 f_bkg = zeros(numX, numY, numFrames, 'single');
 
@@ -93,7 +87,7 @@ f_artery_bkg = squeeze(sum(f_bkg .* maskArterySection, [1, 2]) / nnz(maskArteryS
 graphSignal('f_artery', ...
     t, f_artery, '-', cArtery, ...
     t, f_artery_bkg, '--', cBlack, ...
-    'Title', 'average \sigma_f in arteries', 'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
+    'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
     'Legend', {'arteries', 'background'});
 
 fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'advanced_outputs', '.txt')), 'a');
@@ -108,7 +102,7 @@ if veinsAnalysis
     graphSignal('f_vein', ...
         t, f_vein, '-', cVein, ...
         t, f_vein_bkg, '--', cBlack, ...
-        'Title', 'average \sigma_f in veins', 'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
+        'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
         'Legend', {'veins', 'background'});
 
     fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'advanced_outputs', '.txt')), 'a');
@@ -119,13 +113,13 @@ if veinsAnalysis
         t, f_artery, '-', cArtery, ...
         t, f_vein, '-', cVein, ...
         t, f_vessel_bkg, '--', cBlack, ...
-        'Title', 'average \sigma_f in vessels', 'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
+        'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
         'Legend', {'arteries', 'veins', 'background'});
 end
 
-fprintf("    2. Background calculation took %ds\n", round(toc));
+fprintf("    1. Background calculation took %ds\n", round(toc));
 
-%% Section 3: Difference Calculation and Velocity Computation
+%% Section 2: Difference Calculation and Velocity Computation
 
 tic;
 
@@ -174,11 +168,11 @@ if veinsAnalysis
     graphSignal('df_vessel', ...
         t, df_artery_signal, '-', cArtery, ...
         t, df_vein_signal, '-', cVein, ...
-        'Title', 'average frequency in arteries and veins', 'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
+        'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
 else
     graphSignal('df_artery', ...
         t, df_artery_signal, '-', cArtery, ...
-        'Title', 'average frequency in arteries', 'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
+        'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
 end
 
 % Calculate velocity
@@ -207,9 +201,9 @@ else
     ToolBox.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
 end
 
-fprintf("    3. Difference calculation and velocity computation took %ds\n", round(toc));
+fprintf("    2. Difference calculation and velocity computation took %ds\n", round(toc));
 
-%% Section 4: Systole/Diastole Analysis
+%% Section 3: Systole/Diastole Analysis
 
 tic;
 
@@ -262,9 +256,9 @@ else
     warning('There isn''t enough systoles for analysis.');
 end
 
-fprintf("    4. Systole/diastole analysis took %ds\n", round(toc));
+fprintf("    3. Systole/diastole analysis took %ds\n", round(toc));
 
-%% Section 5: Resistivity Index and Waveform Analysis
+%% Section 4: Resistivity Index and Waveform Analysis
 tic;
 
 % Calculate arterial resistivity index
@@ -287,9 +281,9 @@ if veinsAnalysis
     arterial_venous_correlation(v_artery_signal, -v_vein_signal);
 end
 
-fprintf("    5. Resistivity and waveform analysis took %ds\n", round(toc));
+fprintf("    4. Resistivity and waveform analysis took %ds\n", round(toc()));
 
-%% Section 6: Visualization and Output Generation
+%% Section 5: Visualization and Output Generation
 
 tic;
 
@@ -347,7 +341,7 @@ if veinsAnalysis
         v_video_RGB, numFrames, exportVideos, ToolBox);
 end
 
-fprintf("    6. Visualization and output generation took %ds\n", round(toc));
+fprintf("    5. Visualization and output generation took %ds\n", round(toc));
 
 close all
 

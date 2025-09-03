@@ -1,5 +1,5 @@
 function analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ...
-    numCircles, numBranches, ToolBox, initial, papillaDiameter, vesselName, numFrames)
+    numCircles, numBranches, ToolBox, initial, xy_barycenter, papillaDiameter, vesselName, numFrames)
 
 % Analyze systole and diastole cross-sections
 % Inputs:
@@ -108,10 +108,9 @@ for i = 1:length(systole_cell)
                     subImg = tmp;
                 end
 
-
                 % Crop and rotate sub-image
                 subImgCropped = cropCircle(subImg);
-                [~, tilt_angle] = rotateSubImage(subImg, subImgCropped);
+                [~, tilt_angle] = rotateSubImage(subImg, subImgCropped, loc, xy_barycenter);
 
                 subImgUnCropped = squeeze(mean(v_RMS, 3) .* ROI);
                 subImgUnCropped = subImgUnCropped(yRange, xRange);
@@ -172,7 +171,7 @@ for i = 1:length(diastole_cell)
 
                 % Crop and rotate sub-image
                 subImgCropped = cropCircle(subImg);
-                [~, tilt_angle] = rotateSubImage(subImg, subImgCropped);
+                [~, tilt_angle] = rotateSubImage(subImg, subImgCropped, loc, xy_barycenter);
 
                 subImgUnCropped = squeeze(mean(v_RMS, 3) .* ROI);
                 subImgUnCropped = subImgUnCropped(yRange, xRange);
@@ -240,7 +239,7 @@ diameter_se_diff_mean = sqrt(sum(diameter_se_sys_array .^ 2 + diameter_se_dias_a
 
 %% Systole Histogram
 
-figure("Visible", "on")
+figure("Visible", "off")
 histogram(diameter_sys_array, 40, FaceColor = 'k', Normalization = 'probability');
 hold on
 
@@ -276,7 +275,7 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_n
 
 %% Diastole Histogram
 
-figure("Visible", "on")
+figure("Visible", "off")
 histogram(diameter_dias_array, 40, FaceColor = 'k', Normalization = 'probability');
 hold on
 

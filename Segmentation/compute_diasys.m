@@ -83,7 +83,6 @@ axP = axis;
 axis tight
 axT = axis;
 axis([axT(1), axT(2), 0, axP(4) * 1.07])
-title('diastole and systole')
 
 xlabel('Time (s)')
 

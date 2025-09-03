@@ -1,6 +1,6 @@
 # EyeFlow
 
-EyeFlow is a software used to extract biomarkers from videos created by HoloDoppler. It process determines the Blood Volume Rate, the Velocity, or the Arterial Resistivity Index of the blood vessel in the eye of a patient with the help of an automatic segmentation of the arteries and veins.
+EyeFlow is a software used to extract biomarkers from videos created by HoloDoppler. It process determines the Blood Flow Rate, the Velocity, or the Arterial Resistivity Index of the blood vessel in the eye of a patient with the help of an automatic segmentation of the arteries and veins.
 
 ## Problem It Solves
 
@@ -30,14 +30,20 @@ To install EyeFlow, follow these steps:
 
 - A valid MATLAB license is required to run EyeFlow.
 - A very performant computer is required to run EyeFlow. 
-- Parallel Computing Toolbox
 - Curve Fitting Toolbox
-- Signal Processing Toolbox
+- Deep Learning Toolbox
 - Image Processing Toolbox
+- MATLAB
+- Optimization Toolbox
+- Parallel Computing Toolbox
+- Signal Processing Toolbox
+- Statistics and Machine Learning Toolbox
+- Wavelet Toolbox
+- Run Matlab, then in "Add-Ons/Explore Add-Ons": search and install the "Deep Learning Toolbox Converter for ONNX Model Format"
 
 ## Getting Started
 
-To get started with PulseWave:
+To get started with EyeFlow:
 
 1. Refer to the [EyeFlow](https://docs.google.com/presentation/d/1s_adHm5oobDZZIPbrML8hR2-7wbIwT1kt3YC3EdAgYQ/edit#slide=id.g253c1ee4169_0_11) Google Slides presentation for detailed instructions. You can request help from the Digital Holography team for this presentation if needed.
 
@@ -56,4 +62,4 @@ EyeFlow is licensed under the GNU General Public License (GPL). See the LICENSE 
 
 ---
 
-Thank you for using PulseWave!
+Thank you for using Eyeflow!

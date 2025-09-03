@@ -11,18 +11,21 @@ ToolBox = getGlobalToolBox;
 numInterp = 60;
 numFrames = length(signal);
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+fs = ToolBox.fs / ToolBox.stride * 1000; % Convert to seconds
 
 if contains(name, 'v_')
     unit = 'mm/s';
     y_label = 'Velocity (mm/s)';
 else
     unit = 'µL/min';
-    y_label = 'Volume Rate (µL/min)';
+    y_label = 'Flow Rate (µL/min)';
 end
 
 % Color Maps
 
 signal = double(signal);
+[b, a] = butter(4, 15 / (fs / 2), 'low');
+signal = filtfilt(b, a, signal);
 
 [interp_signal, ~] = interpSignal(signal, systolesIndexes, numInterp);
 
@@ -98,16 +101,6 @@ yline(vMax, '--k', sprintf('%.1f %s', vMax, unit), 'LineWidth', 2, ...
 yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, ...
     'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'bottom', 'FontWeight', 'bold');
 
-% Formatting
-if ~isempty(signal_se)
-    title(sprintf('%s - RI: %.2f ± %.2f', name, RI, RI_se), 'Interpreter', 'none');
-else
-    title(sprintf('%s - RI: %.2f', name, RI), 'Interpreter', 'none');
-end
-
-xlabel('Time (s)');
-ylabel(y_label);
-
 axis padded
 axP = axis;
 axis tight
@@ -121,6 +114,32 @@ ax = gca;
 ax.LineStyleOrderIndex = 1; % Reset if needed
 ax.SortMethod = 'depth'; % Try changing sorting method
 ax.Layer = 'top'; % This may help in some cases
+
+% Add a text label with white background at the right edge of the plot
+ax = gca;
+xPos = ax.XLim(2) - ax.XLim(1); % Right edge of the plot
+yLen = ax.YLim(2) - ax.YLim(1);
+
+if ~isempty(signal_se)
+    text(0.35 * xPos, 0.85 * yLen, sprintf("RI = %0.2f ± %0.2f", RI, RI_se), ...
+        'BackgroundColor', 'w', ...
+        'HorizontalAlignment', 'left', ...
+        'VerticalAlignment', 'middle', ...
+        'FontWeight', 'bold', ...
+        'FontSize', 12, ...
+        'Margin', 1); % Small padding
+else
+    text(0.4 * xPos, 0.85 * yLen, sprintf("RI = %0.2f", RI), ...
+        'BackgroundColor', 'w', ...
+        'HorizontalAlignment', 'left', ...
+        'VerticalAlignment', 'middle', ...
+        'FontWeight', 'bold', ...
+        'FontSize', 12, ...
+        'Margin', 1); % Small padding
+end
+
+xlabel('Time (s)');
+ylabel(y_label);
 
 % Export
 exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
@@ -151,16 +170,6 @@ yline(vMax, '--k', sprintf('%.1f %s', vMax, unit), 'LineWidth', 2, 'Color', [0.5
 yline(v_mean, '--k', sprintf('%.1f %s', v_mean, unit), 'LineWidth', 2, 'Color', [0.5 0.5 0.5], 'FontWeight', 'bold');
 yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'bottom', 'FontWeight', 'bold');
 
-% Formatting
-if ~isempty(signal_se)
-    title(sprintf('%s - PI: %.2f ± %.2f', name, PI, PI_se), 'Interpreter', 'none');
-else
-    title(sprintf('%s - PI: %.2f', name, PI), 'Interpreter', 'none');
-end
-
-xlabel('Time (s)');
-ylabel(y_label);
-
 axis padded
 axP = axis;
 axis tight
@@ -170,6 +179,33 @@ axis([axT(1), axT(2), - 2, axP(4) + 2])
 box on
 set(gca, 'Linewidth', 2)
 set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+
+% Add a text label with white background at the right edge of the plot
+ax = gca;
+xPos = ax.XLim(2) - ax.XLim(1); % Right edge of the plot
+yLen = ax.YLim(2) - ax.YLim(1);
+
+if ~isempty(signal_se)
+    text(0.35 * xPos, 0.85 * yLen, sprintf("PI = %.2f ± %.2f", PI, PI_se), ...
+        'BackgroundColor', 'w', ...
+        'HorizontalAlignment', 'left', ...
+        'VerticalAlignment', 'middle', ...
+        'FontWeight', 'bold', ...
+        'FontSize', 12, ...
+        'Margin', 1); % Small padding
+else
+    text(0.4 * xPos, 0.85 * yLen, sprintf("PI = %0.2f", PI), ...
+        'BackgroundColor', 'w', ...
+        'HorizontalAlignment', 'left', ...
+        'VerticalAlignment', 'middle', ...
+        'FontWeight', 'bold', ...
+        'FontSize', 12, ...
+        'Margin', 1); % Small padding
+end
+
+xlabel('Time (s)');
+ylabel(y_label);
+
 
 % Export
 exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));

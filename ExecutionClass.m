@@ -125,40 +125,19 @@ methods
 
         PreProcessTimer = tic;
 
+        % Store raw video data
         obj.M0_data_video = obj.M0_raw_video;
         obj.M0_ff_video = obj.M0_ff_raw_video;
         obj.M1_data_video = obj.M1_raw_video;
         obj.M2_data_video = obj.M2_raw_video;
 
-        % Register video
-        tic;
+        % Preprocess the video data
         obj = VideoRegistering(obj);
-        fprintf("    - Video Registering took: %ds\n", round(toc));
-
-        % Crop video
-        tic;
         obj = VideoCropping(obj);
-        fprintf("    - Video Cropping took: %ds\n", round(toc));
-
-        % Normalize moments
-        tic;
         obj = VideoNormalizingLocally(obj);
-        fprintf("    - Moment Normalizing took: %ds\n", round(toc));
-
-        % Resize video
-        tic;
         obj = VideoResizing(obj);
-        fprintf("    - Video Resizing took: %ds\n", round(toc));
-
-        % Interpolate video
-        tic;
         obj = VideoInterpolating(obj);
-        fprintf("    - Video Interpolation took: %ds\n", round(toc));
-
-        % Remove outliers
-        tic;
         obj = VideoRemoveOutliers(obj);
-        fprintf("    - Video Outlier Cleaning took: %ds\n", round(toc));
 
         obj.is_preprocessed = true;
         obj.Outputs.initOutputs();
@@ -210,15 +189,15 @@ methods
             cmapAV = ToolBox.cmapAV;
 
             obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
-            % 
-            % try
-            %     [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
-            % catch E
-            %     warning("Error while finding papilla : ")
-            %     disp(E)
-            diameter_x = NaN;
-            diameter_y = NaN;
-            % end
+
+            try
+                [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
+            catch E
+                warning("Error while finding papilla : ")
+                disp(E)
+                diameter_x = NaN;
+                diameter_y = NaN;
+            end
 
             [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
                 createMasks(obj.M0_ff_video, obj.xy_barycenter);
@@ -297,11 +276,13 @@ methods
             else
                 sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, [], obj.maskArtery);
             end
-            
+
             try
+
                 if veins_analysis
                     combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video, obj.sysIdxList)
                 end
+
             catch e
                 disp(e)
             end
@@ -341,11 +322,13 @@ methods
         end
 
         if obj.is_AllAnalyzed && veins_analysis
-            try 
+
+            try
                 generateA4Report()
             catch e
                 disp(e)
             end
+
         end
 
         % Main Outputs Saving

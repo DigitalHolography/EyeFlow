@@ -25,7 +25,7 @@ Ixt = imfilter(Ix .* It, w);
 Iyt = imfilter(Iy .* It, w);
 
 % Initialize flow
-[u, v] = deal(zeros(size(I1)));
+% [u, v] = deal(zeros(size(I1)));
 
 % Compute flow (avoid division by zero)
 det = (Ix2 .* Iy2 - Ixy .^ 2) +1e-5;

@@ -15,19 +15,18 @@ if ~isfile('Models\iternet5_av_diasys.onnx')
     websave('Models\iternet5_av_diasys.onnx', url);
 end
 
-
-    function onehot = multi2onehot(x, axis)
+function onehot = multi2onehot(x, axis)
     % Converts a label mask x to a binary one-hot encoding with 2 classes
     % axis: dimension along which to stack (default 3)
-    
+
     if nargin < 2
         axis = 3; % Default stacking axis
     end
-    
+
     % Create binary masks
     class1 = (x == 2) | (x == 4);
     class2 = (x == 3) | (x == 4);
-    
+
     % Stack along specified axis
     switch axis
         case 1
@@ -39,10 +38,10 @@ end
         otherwise
             error('Unsupported axis value: %d', axis);
     end
-    
+
     % Convert to logical or double as needed
     onehot = double(onehot);
-    end
+end
 
 [Nx, Ny] = size(M0_ff_img);
 
@@ -50,13 +49,13 @@ end
 if mask_params.AVCorrelationSegmentationNet
     signal = sum(M0_ff_video .* maskVesselness, [1 2], 'omitnan');
     signal = signal ./ nnz(maskVesselness);
-    
+
     outlier_frames_mask = isoutlier(signal, "movmedian", 5, "ThresholdFactor", 2);
     video = interpolateOutlierFrames(M0_ff_video, outlier_frames_mask);
-    
+
     signal = sum(video .* maskVesselness, [1 2], 'omitnan');
     signal = signal ./ nnz(maskVesselness);
-    
+
     % compute local-to-average signal wave zero-lag correlation
     signal_centered = signal - mean(signal, 3, 'omitnan');
     video_centered = video - mean(M0_ff_video, 'all', 'omitnan');
@@ -84,22 +83,30 @@ if mask_params.AVDiasysSegmentationNet
     
 end
 
-M0 = imresize(rescale(M0_ff_img), [512,512]);
+M0 = imresize(rescale(M0_ff_img), [512, 512]);
 
 if mask_params.AVCorrelationSegmentationNet
     R = imresize(rescale(R), [512, 512]);
+
     if mask_params.AVDiasysSegmentationNet
+        warning('off')
         net = importONNXNetwork('Models\iternet_5_av_sys_corr.onnx');
-        
+        warning('on')
+
         input = cat(3, M0, M0_Systole_img, M0_Diastole_img, R);
         output = predict(net, input);
     else
+        warning('off')
         net = importONNXNetwork('Models\iternet_5_av_corr.onnx');
+        warning('on')
         input = cat(3, M0, M0, R);
         output = predict(net, input);
     end
+
 elseif mask_params.AVDiasysSegmentationNet
+    warning('off')
     net = importONNXNetwork('Models\iternet5_av_diasys.onnx');
+    warning('on')
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
     output = predict(net, input);
 end
@@ -108,8 +115,8 @@ end
 
 onehot = multi2onehot(argmax, 3);
 
-maskArtery = onehot(:,:,1);
-maskVein = onehot(:,:,2);
+maskArtery = onehot(:, :, 1);
+maskVein = onehot(:, :, 2);
 
 maskArtery = imresize(maskArtery, [Nx, Ny], "nearest");
 maskVein = imresize(maskVein, [Nx, Ny], "nearest");
@@ -118,5 +125,3 @@ maskArtery = logical(maskArtery);
 maskVein = logical(maskVein);
 
 end
-
-

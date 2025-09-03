@@ -117,7 +117,7 @@ if mask_params.AutoCompute
     maskVesselnessClean = maskVesselness & bwareafilt(maskVesselness | maskCircle, 1, 8) & maskDiaphragm;
     saveImage(maskVesselnessClean + maskCircle * 0.5, 'all_15_VesselMask_clear.png', isStep = true)
 
-    % 1) 3) If using SegmentationNet, compute correlation and/or dia/sys to obtain artery vein masks  
+    % 1) 3) If using SegmentationNet, compute correlation and/or dia/sys to obtain artery vein masks
 
     if mask_params.AVCorrelationSegmentationNet || mask_params.AVDiasysSegmentationNet
         [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff_video, M0_ff_img, maskVesselness);
@@ -126,161 +126,163 @@ if mask_params.AutoCompute
     else
 
         %  1) 3) Compute first correlation
-    
+
         cVascular = [0 0 0];
-    
+
         if ~isempty(vesselParams.threshold)
-    
+
             if abs(vesselParams.threshold) <= 1
                 vesselParams.classes = [-1; 1];
             end
-    
+
         end
-    
+
         [maskArtery, maskVein, R_VascularSignal, vascularSignal, quantizedImage, level, color] = correlationSegmentation(M0_video, maskVesselness, vesselParams);
-    
+
         % 1) 4) Save all images
         t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
         graphSignal('all_15_vascularSignal', t, squeeze(vascularSignal), '-', cVascular, ...
             Title = 'Vascular Signal', xlabel = 'Time(s)', ylabel = 'Power Doppler (a.u.)');
-    
+
         saveImage(R_VascularSignal, 'all_15_Correlation.png', isStep = true)
         RGBcorr = labDuoImage(M0_Gabor, R_VascularSignal);
         saveImage(RGBcorr, 'all_15_Correlation_rgb.png', isStep = true)
-    
+
         [quantizedImageRGB] = quantizeImageToRGB(quantizedImage, vesselParams.classes);
         saveImage(quantizedImageRGB, 'all_16_quantizedImage.png', isStep = true, cmap = color);
         graphThreshHistogram(R_VascularSignal, level, maskVesselnessClean, color, 'all_16')
-    
+
         saveImage(maskArtery, 'artery_17_FirstMask.png', isStep = true, cmap = cArtery)
         saveImage(maskVein, 'vein_17_FirstMask.png', isStep = true, cmap = cVein)
-    
+
         % 1) 5) Remove small blobs
         maskArteryClean = bwareaopen(maskArtery, minPixelSize);
         maskVeinClean = bwareaopen(maskVein, minPixelSize);
-    
+
         saveImage(maskArteryClean, 'artery_18_FirstMaskClean.png', isStep = true, cmap = cArtery)
         saveImage(maskVeinClean, 'vein_18_FirstMaskClean.png', isStep = true, cmap = cVein)
-    
+
         M0_Artery = setcmap(M0_ff_img, maskArtery, cmapArtery);
         M0_Vein = setcmap(M0_ff_img, maskVein, cmapVein);
         M0_AV = setcmap(M0_ff_img, maskArtery & maskVein, cmapAV);
-    
+
         M0_RGB = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + M0_AV + rescale(M0_ff_img) .* ~(maskArtery | maskVein);
         saveImage(M0_RGB, 'all_19_RGB.png', isStep = true)
-    
+
         % 2)  Improvements of the first mask
-    
+
         if mask_params.ImproveMask
-    
+
             % 2) 0) Computation of the M0 in Diastole and in Systole
-    
+
             [M0_Systole_img, M0_Diastole_img, M0_Systole_video] = compute_diasys(M0_video, maskArtery, 'mask');
             [M0_Sys_img, M0_Dia_img, ~] = compute_diasys(M0_ff_video, maskArtery, 'mask');
             saveImage(rescale(M0_Systole_img), 'artery_20_systole_img.png', isStep = true)
             saveImage(rescale(M0_Diastole_img), 'vein_20_diastole_img.png', isStep = true)
-    
+
             % 2) 1) New Vesselness Mask
-    
+
             Systole_Frangi = frangiVesselness(M0_Systole_img, ...
                 'range', mask_params.VesselnessFrangiRange, ...
                 'step', mask_params.VesselnessFrangiStep);
             Diastole_Frangi = frangiVesselness(M0_Diastole_img, ...
                 'range', mask_params.VesselnessFrangiRange, ...
                 'step', mask_params.VesselnessFrangiStep);
-    
+
             saveImage(Systole_Frangi, 'artery_20_frangi_mask.png', isStep = true)
             saveImage(Diastole_Frangi, 'vein_20_frangi_mask.png', isStep = true)
-    
+
             Systole_Gabor = gaborVesselness(M0_Sys_img, ...
                 'range', mask_params.VesselnessGaborRange, ...
                 'step', mask_params.VesselnessGaborStep);
             Diastole_Gabor = gaborVesselness(M0_Dia_img, ...
                 'range', mask_params.VesselnessGaborRange, ...
                 'step', mask_params.VesselnessGaborStep);
-    
+
             saveImage(Systole_Gabor & maskDiaphragm, 'artery_20_gabor_mask.png', isStep = true)
             saveImage(Diastole_Gabor & maskDiaphragm, 'vein_20_gabor_mask.png', isStep = true)
-    
+
             if mask_params.VesselSegmentationNet
                 maskVesselness = maskVesselness & maskDiaphragm;
             else
                 maskVesselness = (Systole_Frangi | Diastole_Frangi | Systole_Gabor | Diastole_Gabor) & maskDiaphragm;
             end
-    
+
             maskVesselnessClean = maskVesselness & bwareafilt(maskVesselness | maskCircle, 1, 8) & maskDiaphragm;
             saveImage(maskVesselnessClean + maskCircle * 0.5, 'all_20_VesselMask_clear.png', isStep = true)
-    
+
             % 2) 2) Diastole-Systole Image
-    
+
             diasysArtery = M0_Systole_img - M0_Diastole_img;
             mDiasys = mean(diasysArtery, 'all', 'omitnan');
             diasysVein = mDiasys - diasysArtery;
             saveImage(diasysArtery, 'artery_21_diasys_img.png', isStep = true)
             saveImage(diasysVein, 'vein_21_diasys_img.png', isStep = true)
-    
+
             RGBdiasys = labDuoImage(rescale(M0_Gabor), diasysArtery);
             saveImage(RGBdiasys, 'vessel_40_diasys_rgb.png', isStep = true)
             saveImage(RGBdiasys, 'DiaSysRGB.png')
-    
+
             if ~isempty(arteryParams.threshold)
-    
+
                 if abs(arteryParams.threshold) <= 1
                     arteryParams.classes = [-1; 1];
                 end
-    
+
             end
-    
+
             if ~isempty(veinParams.threshold)
-    
+
                 if abs(veinParams.threshold) <= 1
                     veinParams.classes = [-1; 1];
                 end
-    
+
             end
-    
+
             if diasysAnalysis % Systole/Diastole Analysis
-    
+
                 % Artery
                 [maskArtery, ~, quantizedImage] = processDiaSysSignal(diasysArtery, maskVesselnessClean, arteryParams, cArtery, 'artery_23');
                 saveImage(maskArtery, 'artery_23_DiaSysMask.png', isStep = true, cmap = cArtery);
                 saveImage(quantizedImage, 'artery_23_quantizedImage.png', isStep = true);
-    
+
                 quantizedImageRGB = quantizeImageToRGB(quantizedImage, arteryParams.classes);
                 saveImage(quantizedImageRGB, 'artery_23_quantizedImage.png', isStep = true, cmap = cArtery);
-    
+
                 % Vein
                 [~, maskVein, quantizedImage] = processDiaSysSignal(diasysVein, maskVesselnessClean, veinParams, cVein, 'vein_23');
                 saveImage(maskVein, 'vein_23_DiaSysMask.png', isStep = true, cmap = cVein);
                 saveImage(quantizedImage, 'vein_23_quantizedImage.png', isStep = true);
-    
+
                 quantizedImageRGB = quantizeImageToRGB(quantizedImage, veinParams.classes);
                 saveImage(quantizedImageRGB, 'vein_23_quantizedImage.png', isStep = true, cmap = cVein);
             else % Second Correlation Analysis
-    
+
                 % Artery
                 [maskArtery, ~, R, ~, quantizedImage, level, color] = correlationSegmentation(M0_Systole_video, maskVesselnessClean, arteryParams);
                 saveImage(R, 'artery_23_Correlation.png', isStep = true)
-    
+
                 RGBcorr = labDuoImage(M0_Gabor, R);
                 saveImage(RGBcorr, 'artery_23_Correlation_rgb.png', isStep = true)
-    
+
                 graphThreshHistogram(R, level, maskVesselnessClean, color, 'artery_23');
                 saveImage(quantizedImage, 'artery_23_quantizedImage.png', isStep = true);
-    
+
                 quantizedImageRGB = quantizeImageToRGB(quantizedImage, arteryParams.classes);
                 saveImage(quantizedImageRGB, 'artery_23_quantizedImage_rgb.png', isStep = true, cmap = color);
-    
+
                 % Vein
                 [~, maskVein, quantizedImage] = processDiaSysSignal(diasysVein, maskVesselnessClean, veinParams, cVein, 'vein_23');
                 saveImage(maskVein, 'vein_23_DiaSysMask.png', isStep = true, cmap = cVein);
                 saveImage(quantizedImage, 'vein_23_quantizedImage.png', isStep = true);
-    
+
                 quantizedImageRGB = quantizeImageToRGB(quantizedImage, veinParams.classes);
                 saveImage(quantizedImageRGB, 'vein_23_quantizedImage_rgb.png', isStep = true);
-    
+
             end
+
         end
+
     end
 
     % 3) Mask Clearing
@@ -351,6 +353,7 @@ if (mask_params.RegisteredMasks == -1 || mask_params.RegisteredMasks == 1)
         [Xq, Yq] = meshgrid(1:numX, 1:numY);
         maskVein = interp2(single(similarMaskVein), Xq + ux, Yq + uy, 'linear', 0) > 0;
     end
+
 end
 
 % 3) 2) b) Force Create Masks in case they exist

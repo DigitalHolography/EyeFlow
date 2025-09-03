@@ -198,12 +198,14 @@ warning('on', 'curvefit:fit:noStartPoint');
 
 % Finalize static plot
 xlim([-1 1]);
+
 try
-ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
-               1.07 * max([bounds_sys.upper, bounds_dias.upper])]);
+    ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
+                   1.07 * max([bounds_sys.upper, bounds_dias.upper])]);
 catch e
     disp(e)
 end
+
 xlabel('lumen cross-section (a.u.)', 'FontSize', 14);
 ylabel('Velocity (mm/s)', 'FontSize', 14);
 
@@ -264,9 +266,10 @@ if exportVideos
     set(upperPlot, 'XData', w2w, 'YData', bounds_frame.upper);
     set(lowerPlot, 'XData', w2w, 'YData', bounds_frame.lower);
     set(meanPlot, 'XData', w2w, 'YData', v_video(1, :));
+
     try
-    ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
-                   1.2 * max([bounds_sys.upper, bounds_dias.upper])]);
+        ylim([min([bounds_sys.lower, bounds_dias.lower]), ...
+                       1.2 * max([bounds_sys.upper, bounds_dias.upper])]);
     catch e
         disp(e)
     end
