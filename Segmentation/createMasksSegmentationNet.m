@@ -69,8 +69,19 @@ if mask_params.AVDiasysSegmentationNet
     [M0_Systole_img, M0_Diastole_img, ~] = compute_diasys(M0_ff_video, maskVesselness, 'mask');
     saveImage(rescale(M0_Systole_img), 'artery_20_systole_img.png', isStep = true)
     saveImage(rescale(M0_Diastole_img), 'vein_20_diastole_img.png', isStep = true)
+
+    diasysArtery = M0_Systole_img - M0_Diastole_img;
+    mDiasys = mean(diasysArtery, 'all', 'omitnan');
+    diasysVein = mDiasys - diasysArtery;
+    saveImage(diasysArtery, 'artery_21_diasys_img.png', isStep = true);
+    saveImage(diasysVein, 'vein_21_diasys_img.png', isStep = true);
+
+    RGBdiasys = labDuoImage(rescale(M0_ff_img), diasysArtery);
+    saveImage(RGBdiasys, 'DiaSysRGB.png');
+
     M0_Diastole_img = imresize(rescale(M0_Diastole_img), [512, 512]);
     M0_Systole_img = imresize(rescale(M0_Systole_img), [512, 512]);
+    
 end
 
 M0 = imresize(rescale(M0_ff_img), [512,512]);
