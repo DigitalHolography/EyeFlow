@@ -38,6 +38,14 @@ catch
     signal = double(signal);
 end
 
+[fft_c,fundamental,valid_harmonics] = SpectralWaveformAnalysis(signal, 5, name);
+fundamental_index = round(fundamental/(fs/2)*length(fft_c));
+harmonics_index = round(valid_harmonics/(fs/2)*length(fft_c));
+fft_abs = abs(fft_c);
+fft_angle = angle(fft_c);
+composite_signal = [fft_abs(fundamental_index)*cos(2*pi*fundamental*pulseTime+fft_angle(fundamental_index)) ; ...
+    fft_abs(harmonics_index)'.*cos(2*pi*valid_harmonics'.*pulseTime+fft_angle(harmonics_index)')];
+composite_signal = composite_signal/max(composite_signal(1,:),[],'all') * max(signal,[],'all'); % rescale at initial scale
 % Apply bandpass filter (0.5-15 Hz) as suggested
 [b, a] = butter(4, 15 / (fs / 2), 'low');
 filtered_signal = filtfilt(b, a, signal);
@@ -98,7 +106,7 @@ if length(peaks) > 1
 end
 
 % Visualization
-hFig = figure('Visible', 'off', 'Color', 'w');
+hFig = figure('Visible', 'on', 'Color', 'w');
 hold on;
 
 % Add reference lines and annotations
@@ -179,93 +187,20 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
     sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
 
-% Spectral Analysis
-% Perform spectral analysis on the original signal
-% Zero-pad the signal for better frequency resolution
-N = 16; % Padding factor
-padded_signal = padarray(signal, [0 numFrames * N]); % Zero-padding for interpolation in frequency domain
+plot(pulseTime, composite_signal, 'LineWidth', 2);
 
-% Frequency vector (show only positive frequencies since signal is real)
-f = linspace(0, fs / 2, (N * numFrames) + 1);
-fft_mag = abs(fft(padded_signal));
-fft_mag = fft_mag(1:length(f)); % Take only positive frequencies
-fft_mag = fft_mag / max(fft_mag); % Normalize to [0,1]
+combined_composite = sum(composite_signal,1);
+combined_composite = rescale(combined_composite,min(signal,[],'all'),max(signal,[],'all')); % rescale at initial scale
 
-% Improved peak detection with minimum prominence threshold
-min_prominence = 0.1; % 10 % of maximum magnitude as minimum prominence
-[s_peaks, s_locs] = findpeaks(fft_mag, f, ...
-    'MinPeakProminence', min_prominence, ...
-    'SortStr', 'descend', ...
-    'NPeaks', 5); % Find up to 5 most significant peaks
+plot(pulseTime, combined_composite, '--', 'LineWidth', 2);
 
-% Create figure for spectral analysis
-hFig = figure('Visible', 'off', 'Color', 'w');
 
-% Main plot with improved styling
-plot(f, fft_mag, 'k', 'LineWidth', 2);
-hold on;
-grid on;
-
-% Highlight detected peaks with annotations
-if ~isempty(s_peaks)
-    scatter(s_locs, s_peaks, 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
-
-    % Annotate the top 3 peaks
-    for k = 1:min(5, length(s_peaks))
-        text(s_locs(k), s_peaks(k) * 1.2, ...
-            sprintf('%.2f Hz', s_locs(k)), ...
-            'HorizontalAlignment', 'center', ...
-            'VerticalAlignment', 'bottom', ...
-            'FontSize', 8, ...
-            'BackgroundColor', 'w', ...
-            'EdgeColor', 'k');
-    end
-
-end
-
-% Calculate and plot harmonic frequencies if fundamental is detected
-if length(s_locs) >= 1
-    fundamental = s_locs(1);
-    harmonics = fundamental * (2:5); % Up to 5th harmonic
-    valid_harmonics = harmonics(harmonics <= fs / 2);
-
-    % Plot harmonic locations
-    for h = valid_harmonics
-        xline(h, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1, ...
-            'Label', sprintf('%.0f×', h / fundamental), ...
-            'LabelOrientation', 'horizontal', ...
-            'LabelVerticalAlignment', 'bottom');
-    end
-
-end
-
-% Configure axes
-axis tight;
-axT = axis;
-axis padded;
-axP = axis;
-axis([axT(1), 10, axP(3) - 0.1 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
-
-xlabel('Frequency (Hz)', 'FontSize', 14, 'FontWeight', 'bold');
-ylabel('Normalized Magnitude', 'FontSize', 14, 'FontWeight', 'bold');
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 1.5, 'FontSize', 12);
-
-% Add heart rate information if fundamental is in typical range (0.5-3 Hz)
-if ~isempty(s_locs) && s_locs(1) >= 0.5 && s_locs(1) <= 3
-    hr = s_locs(1) * 60; % Convert Hz to BPM
-    annotation('textbox', [0.5 0.6 0.2 0.1], ...
-        'String', sprintf('Estimated HR: %.1f BPM', hr), ...
-        'FitBoxToText', 'on', ...
-        'BackgroundColor', 'w', ...
-        'EdgeColor', 'k', ...
-        'FontSize', 12);
-end
-
-% Save Results
+% Save Results with harmonics
 exportgraphics(hFig, fullfile(ToolBox.path_png, ...
-    sprintf("%s_ArterialSpectralAnalysis_%s.png", ToolBox.folder_name, name)), ...
+    sprintf("%s_ArterialWaveformAnalysisHarmonics_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
+
+
 
 % Export to JSON (only for velocity signals)
 if ~isBVR
