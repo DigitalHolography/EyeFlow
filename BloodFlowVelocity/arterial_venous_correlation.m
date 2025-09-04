@@ -64,7 +64,7 @@ axis tight;
 grid on;
 xlabel('Lag (s)'); ylabel('Cross-Correlation');
 legend({sprintf("Peak Lag: %.3f s", time_lag), ...
-            sprintf("Peak Corr: %.2f", max_corr)}, 'Location', 'Best');
+    sprintf("Peak Corr: %.2f", max_corr)}, 'Location', 'Best');
 box on;
 set(gca, 'LineWidth', 2);
 
@@ -87,7 +87,7 @@ set(gca, 'LineWidth', 2);
 exportgraphics(gcf, fullfile(ToolBox.path_png, ...
     sprintf("%s_detrended_signals.png", ToolBox.folder_name)))
 
-figure("Visible", "off");
+figure("Visible", "on");
 plot(lags_t, corr_vals, 'k', 'LineWidth', 1.5);
 hold on;
 plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
@@ -95,8 +95,8 @@ axis padded;
 xlim([lags_t(1) lags_t(end)])
 grid on;
 xlabel('Lag (s)'); ylabel('Cross-Correlation');
-legend({sprintf("Peak Lag: %.3f s", time_lag), ...
-            sprintf("Peak Corr: %.2f", max_corr)}, 'Location', 'Best');
+legend({sprintf("Peak Corr: %.2f", max_corr), ...
+    sprintf("Peak Lag: %.3f s", time_lag)});
 box on;
 pbaspect([1.618, 1, 1]);
 set(gca, 'LineWidth', 2);
