@@ -443,6 +443,8 @@ else
     maskNeighbors = imdilate(maskVessel_tmp, strel('disk', bgWidth)) & ~(maskVessel_tmp);
 end
 
+maskNeighbors = maskNeighbors & maskDiaphragm;
+
 cmapNeighbors = cmapLAB(256, [0 1 0], 0, [1 1 1], 1);
 
 M0_Neighbors = setcmap(M0_ff_img, maskNeighbors, cmapNeighbors);

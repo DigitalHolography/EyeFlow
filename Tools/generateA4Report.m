@@ -71,8 +71,15 @@ for col = 1:2
 
     ax = axes('Position', [posX posY 0.45 rowHeights(1) * gridHeight]);
     vr_combined_path = fullfile(path_png, sprintf('%s_combined_vr_%s.png', folder_name, name));
-    vr_combined_im = imread(vr_combined_path); % Taller placeholder (2x height)
-    imshow(vr_combined_im, []);
+
+    if isfile(vr_combined_path)
+        vr_combined_im = imread(vr_combined_path); % Taller placeholder (2x height)
+        imshow(vr_combined_im, []);
+    else
+        placeholder_im = ones(200, 200, 3); % Black placeholder
+        imshow(placeholder_im, []);
+    end
+
     set(ax, 'XTick', [], 'YTick', []);
 
     % Create middle row (2 columns at 1x height)
@@ -82,8 +89,15 @@ for col = 1:2
 
     ax = axes('Position', [posX posY 0.45 rowHeights(2) * gridHeight]);
     ri_path = fullfile(path_png, sprintf('%s_RI_v_%s.png', folder_name, name));
-    ri_im = imread(ri_path); % Standard placeholder
-    imshow(ri_im, []);
+
+    if isfile(vr_combined_path)
+        ri_im = imread(ri_path); % Standard placeholder
+        imshow(ri_im, []);
+    else
+        placeholder_im = ones(200, 200, 3); % Black placeholder
+        imshow(placeholder_im, []);
+    end
+
     set(ax, 'XTick', [], 'YTick', []);
 
     % Create bottom row (2 columns at 1x height)
@@ -93,8 +107,14 @@ for col = 1:2
 
     ax = axes('Position', [posX posY 0.45 rowHeights(3) * gridHeight]);
     volume_path = fullfile(path_png, sprintf('%s_strokeAndTotalVolume_%s.png', folder_name, name));
-    volume_im = imread(volume_path); % Standard placeholder
-    imshow(volume_im, []);
+
+    if isfile(volume_path)
+        volume_im = imread(volume_path); % Standard placeholder
+        imshow(volume_im, []);
+    else
+        placeholder_im = ones(200, 200, 3); % Black placeholder
+        imshow(placeholder_im, []);
+    end
     set(ax, 'XTick', [], 'YTick', []);
 end
 
