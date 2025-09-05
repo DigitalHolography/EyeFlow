@@ -4,23 +4,23 @@ function warp_mask_with_demons(frame1Path, frame2Path, mask1Path, outMaskPath)
     I2 = imread(frame2Path);
     M1 = imread(mask1Path);
 
-    if size(I1,3) == 3, I1 = rgb2gray(I1); end
-    if size(I2,3) == 3, I2 = rgb2gray(I2); end
+    % convert image format to rgb
+    if size(I1,3) == 3
+        I1 = rgb2gray(I1);
+    end
+    if size(I2,3) == 3
+        I2 = rgb2gray(I2); 
+    end
+    
     I1 = im2double(I1);
     I2 = im2double(I2);
 
-    if exist('imhistmatch','file')
-        I1m = imhistmatch(I1, I2);
-    else
-        I1m = I1;
-    end
-
     [optimizer, metric] = imregconfig('monomodal');
     optimizer.MaximumIterations = 100;
-    tformRigid = imregtform(I1m, I2, 'rigid', optimizer, metric);
-    RA = imref2d(size(I1m));
+    tformRigid = imregtform(I1, I2, 'rigid', optimizer, metric);
+    RA = imref2d(size(I1));
     RB = imref2d(size(I2));
-    I1_rigid = imwarp(I1m, RA, tformRigid, 'linear', 'OutputView', RB);
+    I1_rigid = imwarp(I1, RA, tformRigid, 'linear', 'OutputView', RB);
     M1_rigid = imwarp(M1,   RA, tformRigid, 'nearest', 'OutputView', RB);
 
     diffImg = abs(I2 - I1_rigid);
@@ -63,14 +63,13 @@ function warp_mask_with_demons(frame1Path, frame2Path, mask1Path, outMaskPath)
 
 
 
-    G = imread("grid.jpg");
-    if size(G,3) == 1
-        G_resized = imresize(G, size(I2));              % grayscale grid
+    grid = imread("grid.jpg");
+    if size(grid,3) == 1
+        G_resized = imresize(grid, size(I2));
         G_resized = im2double(G_resized);
-        G_warped  = imwarp(G_resized, D, 'linear');     % same size as I2
+        G_warped  = imwarp(G_resized, D, 'linear');
     else
-        % RGB grid: resize each channel and warp as a 3-channel image
-        G_resized = im2double(imresize(G, [size(I2,1) size(I2,2)]));
+        G_resized = im2double(imresize(grid, [size(I2,1) size(I2,2)]));
         G_warped  = imwarp(G_resized, D, 'linear');
     end
     imwrite(G_warped, "deformationVector.png");
@@ -78,13 +77,13 @@ function warp_mask_with_demons(frame1Path, frame2Path, mask1Path, outMaskPath)
 
 
     figure('Name','Rigid+Demons with freeze gating','Color','w');
-    tiledlayout(2,4,'Padding','compact','TileSpacing','compact');
+    tiledlayout(2,3,'Padding','compact','TileSpacing','compact');
     nexttile; imshow(I1,[]);                   title('Frame 1');
-    nexttile; imshow(I2,[]);                   title('Frame 2 (fixed)');
-    nexttile; imshowpair(I2, I1_rigid);        title('Rigid align (I1→I2)');
-    nexttile; imshow(M1_rigid);                title('Mask @ Frame 1 (rigid)');
+    nexttile; imshow(I2,[]);                   title('Frame 2');
+    nexttile; imshow(grid,[]);                 title('Grid');
+    
+    nexttile; imshow(M1);                      title('Mask');
     nexttile; imshow(M1_warp);                 title('Mask after Demons');
-    nexttile; imshow(M_out);                   title('Final (frozen unchanged)');
     nexttile; imshow(G_warped,[]);  title('Deformation Vector');
 
     fprintf('Saved warped mask to: %s\n', outMaskPath);
