@@ -443,6 +443,8 @@ else
     maskNeighbors = imdilate(maskVessel_tmp, strel('disk', bgWidth)) & ~(maskVessel_tmp);
 end
 
+maskNeighbors = maskNeighbors & maskDiaphragm;
+
 cmapNeighbors = cmapLAB(256, [0 1 0], 0, [1 1 1], 1);
 
 M0_Neighbors = setcmap(M0_ff_img, maskNeighbors, cmapNeighbors);
@@ -463,8 +465,9 @@ saveImage(bwskel(maskArtery), 'skeletonArtery.png')
 saveImage(bwskel(maskVein), 'skeletonVein.png')
 
 % 4) 5) Mask Section & Force Barycenter
-createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMapArtery', maskArtery, thin = 0.01);
-createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vesselMap', maskArtery, maskVein, thin = 0.01);
+createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vessel_map_artery', maskArtery, thin = 0.01);
+createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vessel_map_vein', [], maskVein, thin = 0.01);
+createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vessel_map', maskArtery, maskVein, thin = 0.01);
 
 close all
 end

@@ -321,12 +321,12 @@ methods
             fprintf("\n----------------------------------\nSpectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
         end
 
-        if obj.is_AllAnalyzed && veins_analysis
+        if obj.is_pulseAnalyzed && veins_analysis
 
             try
                 generateA4Report()
             catch e
-                disp(e)
+                MEdisp(e, ToolBox.EF_path)
             end
 
         end
