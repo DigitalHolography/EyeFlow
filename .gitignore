@@ -68,5 +68,6 @@ Models/*
 resources/*
 +onnx_model/*
 +iternet5_av_diasys/*
++iternet5_vesselness/*
 +opticdisc/*
 +unet_vesselness/*
