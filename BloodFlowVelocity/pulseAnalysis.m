@@ -19,6 +19,11 @@ params = ToolBox.getParams;
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
 
+% Validating inputs
+if ~any(maskArtery)
+    error("Given Mask Artery is empty.")
+end
+
 % Constants
 % 1000 -> m to mm conversion
 % 1000 -> kHz to Hz conversion

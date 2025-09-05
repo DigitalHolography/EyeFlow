@@ -140,18 +140,23 @@ for i = 1:numParams
 end
 
 % Split into two columns if more than 6 parameters
+
+% Set larger font size for parameters
+paramFontSize = 14; % Increase as desired
+paramTitleFontSize = 16;
+
 if numParams > 6
     col1 = paramText(1:ceil(numParams / 2));
     col2 = paramText(ceil(numParams / 2) + 1:end);
 
-    text(0, 1, col1, 'VerticalAlignment', 'top', 'FontSize', 9, 'Interpreter', 'none');
-    text(0.5, 1, col2, 'VerticalAlignment', 'top', 'FontSize', 9, 'Interpreter', 'none');
+    text(0, 1, col1, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
+    text(0.5, 1, col2, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
 else
-    text(0, 1, paramText, 'VerticalAlignment', 'top', 'FontSize', 9, 'Interpreter', 'none');
+    text(0, 1, paramText, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
 end
 
 % Add title to parameters section
-text(0, 1.15, 'Computed Parameters:', 'FontWeight', 'bold', 'FontSize', 10);
+text(0, 1.15, 'Computed Parameters:', 'FontWeight', 'bold', 'FontSize', paramTitleFontSize);
 
 % Save to PDF
 print(fig, fullfile(path_pdf, sprintf('%s_report.pdf', folder_name)), '-dpdf', '-bestfit');
