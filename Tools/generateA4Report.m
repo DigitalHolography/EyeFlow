@@ -76,8 +76,9 @@ for col = 1:2
         vr_combined_im = imread(vr_combined_path); % Taller placeholder (2x height)
         imshow(vr_combined_im, []);
     else
-        placeholder_im = ones(200, 200, 3); % Black placeholder
-        imshow(placeholder_im, []);
+        v_path = fullfile(path_png, 'mask', sprintf('%s_vessel_map_%s.png', folder_name, name));
+        v_im = imread(v_path); % Taller placeholder (2x height)
+        imshow(v_im, []);
     end
 
     set(ax, 'XTick', [], 'YTick', []);
@@ -90,7 +91,7 @@ for col = 1:2
     ax = axes('Position', [posX posY 0.45 rowHeights(2) * gridHeight]);
     ri_path = fullfile(path_png, sprintf('%s_RI_v_%s.png', folder_name, name));
 
-    if isfile(vr_combined_path)
+    if isfile(ri_path)
         ri_im = imread(ri_path); % Standard placeholder
         imshow(ri_im, []);
     else
@@ -112,8 +113,9 @@ for col = 1:2
         volume_im = imread(volume_path); % Standard placeholder
         imshow(volume_im, []);
     else
-        placeholder_im = ones(200, 200, 3); % Black placeholder
-        imshow(placeholder_im, []);
+        PI_path = fullfile(path_png, sprintf('%s_PI_v_%s.png', folder_name, name));
+        PI_im = imread(PI_path); % Taller placeholder (2x height)
+        imshow(PI_im, []);
     end
     set(ax, 'XTick', [], 'YTick', []);
 end
@@ -138,18 +140,23 @@ for i = 1:numParams
 end
 
 % Split into two columns if more than 6 parameters
+
+% Set larger font size for parameters
+paramFontSize = 14; % Increase as desired
+paramTitleFontSize = 16;
+
 if numParams > 6
     col1 = paramText(1:ceil(numParams / 2));
     col2 = paramText(ceil(numParams / 2) + 1:end);
 
-    text(0, 1, col1, 'VerticalAlignment', 'top', 'FontSize', 9, 'Interpreter', 'none');
-    text(0.5, 1, col2, 'VerticalAlignment', 'top', 'FontSize', 9, 'Interpreter', 'none');
+    text(0, 1, col1, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
+    text(0.5, 1, col2, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
 else
-    text(0, 1, paramText, 'VerticalAlignment', 'top', 'FontSize', 9, 'Interpreter', 'none');
+    text(0, 1, paramText, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
 end
 
 % Add title to parameters section
-text(0, 1.15, 'Computed Parameters:', 'FontWeight', 'bold', 'FontSize', 10);
+text(0, 1.15, 'Computed Parameters:', 'FontWeight', 'bold', 'FontSize', paramTitleFontSize);
 
 % Save to PDF
 print(fig, fullfile(path_pdf, sprintf('%s_report.pdf', folder_name)), '-dpdf', '-bestfit');

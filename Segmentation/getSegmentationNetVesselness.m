@@ -15,28 +15,29 @@ if ~ismatrix(M0)
     error('Input M0 must be a 2D matrix');
 end
 
-% Handle network loading
-if nargin < 2 || isempty(net)
+model_name = "iternet5_vesselness";
 
-    if ~isfolder('Models')
-        mkdir('Models');
-    end
-
-    if ~isfile('Models\unet_vesselness.onnx')
-        % Download the model from Hugging Face
-        url = 'https://huggingface.co/DigitalHolography/UNet_vesselness/resolve/main/UNet_vesselness';
-        websave('Models\unet_vesselness.onnx', url);
-    end
-
-    % Import the ONNX network
-    warning('off')
-    net = importONNXNetwork('Models\unet_vesselness.onnx');
-    warning('on')
+if ~isfolder('Models')
+    mkdir('Models');
 end
+
+if ~isfile('Models\' + model_name +'.onnx')
+    % Download the model from Hugging Face
+    url = 'https://huggingface.co/DigitalHolography/' + model_name + '/resolve/main/' + model_name;
+    fprintf(url)
+    websave('Models\' + model_name +'.onnx', url);
+end
+
+% Import the ONNX network
+warning('off')
+net = importONNXNetwork('Models\' + model_name +'.onnx');
+warning('on')
 
 % if nargin<2 || isempty(net)
 %     net = importNetworkFromONNX("Models\unet_resnet34.onnx");
 % end
+
+fprintf("Use " + model_name + " to segment retinal vessels\n")
 
 [Nx, Ny] = size(M0);
 

@@ -24,7 +24,7 @@ try
     obj.SH_data_hypervideo = h5read(RefRawFilePath, '/SH');
 
 catch
-    warning('no SH was found')
+    fprintf(2, 'Warning: no SH was found\n');
 end
 
 end

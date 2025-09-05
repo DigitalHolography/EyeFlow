@@ -47,6 +47,8 @@ end
 
 % if the correlation map is used by the model, compute it
 if mask_params.AVCorrelationSegmentationNet
+    fprintf("Compute correlation for artery/vein segmentation\n");
+
     signal = sum(M0_ff_video .* maskVesselness, [1 2], 'omitnan');
     signal = signal ./ nnz(maskVesselness);
 
@@ -65,11 +67,24 @@ end
 
 % if the systolic and diastolic frames are used by the model, compute them
 if mask_params.AVDiasysSegmentationNet
+    fprintf("Compute diastolic and stystolic frames for artery/vein segmentation\n");
+
     [M0_Systole_img, M0_Diastole_img, ~] = compute_diasys(M0_ff_video, maskVesselness, 'mask');
     saveImage(rescale(M0_Systole_img), 'artery_20_systole_img.png', isStep = true)
     saveImage(rescale(M0_Diastole_img), 'vein_20_diastole_img.png', isStep = true)
+
+    diasysArtery = M0_Systole_img - M0_Diastole_img;
+    mDiasys = mean(diasysArtery, 'all', 'omitnan');
+    diasysVein = mDiasys - diasysArtery;
+    saveImage(diasysArtery, 'artery_21_diasys_img.png', isStep = true);
+    saveImage(diasysVein, 'vein_21_diasys_img.png', isStep = true);
+
+    RGBdiasys = labDuoImage(rescale(M0_ff_img), diasysArtery);
+    saveImage(RGBdiasys, 'DiaSysRGB.png');
+
     M0_Diastole_img = imresize(rescale(M0_Diastole_img), [512, 512]);
     M0_Systole_img = imresize(rescale(M0_Systole_img), [512, 512]);
+    
 end
 
 M0 = imresize(rescale(M0_ff_img), [512, 512]);
@@ -82,12 +97,17 @@ if mask_params.AVCorrelationSegmentationNet
         net = importONNXNetwork('Models\iternet_5_av_sys_corr.onnx');
         warning('on')
 
+        fprintf("Use iternet5 to segment retinal arteries and veins\n")
+
         input = cat(3, M0, M0_Systole_img, M0_Diastole_img, R);
         output = predict(net, input);
     else
         warning('off')
         net = importONNXNetwork('Models\iternet_5_av_corr.onnx');
         warning('on')
+
+        fprintf("Use iternet5 to segment retinal arteries and veins\n")
+
         input = cat(3, M0, M0, R);
         output = predict(net, input);
     end
@@ -96,6 +116,9 @@ elseif mask_params.AVDiasysSegmentationNet
     warning('off')
     net = importONNXNetwork('Models\iternet5_av_diasys.onnx');
     warning('on')
+
+    fprintf("Use iternet5 to segment retinal arteries and veins\n")
+
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
     output = predict(net, input);
 end

@@ -29,7 +29,7 @@ if mask_params.OpticDiscDetector
         M0img = repmat(M0img, 1, 1, 3);
     end
 
-    M0img = imresize(rescale(M0img), [512, 512]);
+    M0img = imresize(rescale(M0img), [512, 512]); % 512 is the iniput size of the net
 
     input = rescale(M0img);
 
@@ -62,11 +62,12 @@ if mask_params.OpticDiscDetector
 
         if val > 0.5
             plot(x_ellipsis, y_ellipsis, 'g--', 'LineWidth', 2);
+            ToolBox.Outputs.add("PapillaRatio",(diameter_x+diameter_y)/2 /512,'px');
         else
             plot(x_ellipsis, y_ellipsis, 'r--', 'LineWidth', 2);
             found = false;
-            diameter_x = [94.24];
-            diameter_y = [94.24];
+            diameter_x = NaN; % reset to default
+            diameter_y = NaN;
             x_center = NaN;
             y_center = NaN;
         end
@@ -80,16 +81,16 @@ if mask_params.OpticDiscDetector
 
     else
         found = false;
-        diameter_x = [94.24];
-        diameter_y = [94.24];
+        diameter_x = NaN;
+        diameter_y = NaN;
         x_center = NaN;
         y_center = NaN;
     end
 
 else
     found = false;
-    diameter_x = [94.24];
-    diameter_y = [94.24];
+    diameter_x = NaN;
+    diameter_y = NaN;
     x_center = NaN;
     y_center = NaN;
 end
