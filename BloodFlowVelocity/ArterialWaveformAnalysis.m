@@ -43,9 +43,7 @@ fundamental_index = round(fundamental/(fs/2)*length(fft_c));
 harmonics_index = round(valid_harmonics/(fs/2)*length(fft_c));
 fft_abs = abs(fft_c);
 fft_angle = angle(fft_c);
-composite_signal = [fft_abs(fundamental_index)*cos(2*pi*fundamental*pulseTime+fft_angle(fundamental_index)) ; ...
-    fft_abs(harmonics_index)'.*cos(2*pi*valid_harmonics'.*pulseTime+fft_angle(harmonics_index)')];
-composite_signal = composite_signal/max(composite_signal(1,:),[],'all') * max(signal,[],'all'); % rescale at initial scale
+
 % Apply bandpass filter (0.5-15 Hz) as suggested
 [b, a] = butter(4, 15 / (fs / 2), 'low');
 filtered_signal = filtfilt(b, a, signal);
@@ -56,6 +54,11 @@ filtered_signal = filtfilt(b, a, signal);
 % Create time vector for one cycle
 dt = (t(2) - t(1));
 pulseTime = linspace(0, dt * avgLength, numInterp);
+
+% Create harmonics and combination signal
+composite_signal = [fft_abs(fundamental_index)*cos(2*pi*fundamental*pulseTime+fft_angle(fundamental_index)) ; ...
+    fft_abs(harmonics_index)'.*cos(2*pi*valid_harmonics'.*pulseTime+fft_angle(harmonics_index)')];
+composite_signal = composite_signal/max(composite_signal(1,:),[],'all') * max(signal,[],'all'); % rescale at initial scale
 
 % Feature Detection
 
@@ -106,7 +109,7 @@ if length(peaks) > 1
 end
 
 % Visualization
-hFig = figure('Visible', 'on', 'Color', 'w');
+hFig = figure('Visible', 'off', 'Color', 'w');
 hold on;
 
 % Add reference lines and annotations
