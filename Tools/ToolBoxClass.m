@@ -28,6 +28,7 @@ properties
     cmapVein
     cmapAV
     outputs %struct
+    harmonics
     Outputs % Outputs class handle
     Signals
 end
