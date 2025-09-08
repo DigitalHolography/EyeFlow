@@ -1,8 +1,11 @@
- function warp_mask_with_demons(frame1Path, frame2Path, mask1Path, outMaskPath)
+function nonRigidMask(refImg, targImg, maskIn, maskOut)
+    I1 = imread(refImg);
+    I2 = imread(targImg);
+    M1 = imread(maskIn);
 
-    I1 = imread(frame1Path);
-    I2 = imread(frame2Path);
-    M1 = imread(mask1Path);
+    if size(M1,3) == 3
+        M1 = rgb2gray(M1);
+    end
 
     % convert image format to rgb
     if size(I1,3) == 3
@@ -16,7 +19,7 @@
     I2 = im2double(I2);
 
     [optimizer, metric] = imregconfig("monomodal");
-    optimizer.MaximumIterations = 100;
+    optimizer.MaximumIterations = 100; % this value can be tweaked for either faster or better results
     tformRigid = imregtform(I1, I2, "rigid", optimizer, metric);
     RA = imref2d(size(I1));
     RB = imref2d(size(I2));
@@ -34,8 +37,8 @@
     tauGrad = 0.02;
     freeze = (diffImg <= tauDiff) & (G <= tauGrad);
 
-    iters = [60 30 10];
-    accFieldSmooth = 2.0;
+    iters = [5 3];
+    accFieldSmooth = 10.0;
 
     [D, ~] = imregdemons( ...
         I1, I2, iters, ...
@@ -56,25 +59,17 @@
         M_out = imclose(M_out, strel("disk",1));
     end
 
-    if nargin < 4 || isempty(outMaskPath)
-        outMaskPath = "warped_mask.png";
+    if nargin < 4 || isempty(maskOut)
+        maskOut = "warped_mask.png";
     end
-    imwrite(logical(M_out), outMaskPath);
+    imwrite(logical(M_out), maskOut);
 
-
-
-    grid = imread("grid.jpg");
-    if size(grid,3) == 1
-        G_resized = imresize(grid, size(I2));
-        G_resized = im2double(G_resized);
-        G_warped  = imwarp(G_resized, D, "linear");
-    else
-        G_resized = im2double(imresize(grid, [size(I2,1) size(I2,2)]));
-        G_warped  = imwarp(G_resized, D, "linear");
-    end
+    gridSpacing = 50;
+    grid = checkerboard(gridSpacing, ceil(size(I2,1)/(2*gridSpacing)), ceil(size(I2,2)/(2*gridSpacing)));
+    grid = imresize(grid, size(I2));
+    grid = im2double(grid);
+    G_warped = imwarp(grid, D*5, "linear");
     imwrite(G_warped, "deformationVector.png");
-
-
 
     figure("Name","Rigid+Demons with freeze gating","Color","w");
     tiledlayout(2,3,"Padding","compact","TileSpacing","compact");
@@ -84,22 +79,18 @@
     title("Target Image")
     nexttile; imshow(grid,[]);
     title("Grid (For Reference)")
-    
+
     % tile 4
     ax4 = nexttile;
-    imshow(I1,[],"Parent",ax4);
-    hold(ax4,"on");
-    h1 = imshow(M1,"Parent",ax4);
-    set(h1,"AlphaData",0.5);
+    imshow(I1,[],"Parent",ax4); hold(ax4,"on");
+    imshow(labeloverlay(I1, M1>0, 'Transparency',0.5), "Parent",ax4);
     title("Source Mask on Source Image")
 
     % tile 5
     ax5 = nexttile;
-    imshow(I2,[],"Parent",ax5);
-    hold(ax5,"on");
-    h2 = imshow(M1_warp,"Parent",ax5);
-    set(h2,"AlphaData",0.5);
-    title("Generated Mask on Target Image")
+    imshow(I2,[],"Parent",ax5); hold(ax5,"on");
+    imshow(labeloverlay(I2, M1_warp>0, 'Transparency',0.5), "Parent",ax5);
+    title("Mask after Demons on Target Image")
 
     nexttile; imshow(G_warped,[]);  title("Deformation Vector")
  end
