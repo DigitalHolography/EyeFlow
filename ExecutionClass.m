@@ -51,6 +51,7 @@ properties
 
     OverWrite logical
     ToolBoxMaster ToolBoxClass
+    Cache
     Outputs
     Signals
 end
@@ -113,6 +114,8 @@ methods
 
         obj.Outputs = Outputs();
         obj.Outputs.initOutputs();
+
+        obj.Cache = Cache();
 
         obj.Signals = Signals();
         obj.Signals.initSignals();
@@ -188,7 +191,8 @@ methods
             cmapVein = ToolBox.cmapVein;
             cmapAV = ToolBox.cmapAV;
 
-            obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
+            ToolBox.Cache.list.xy_barycenter = getBarycenter(obj.f_AVG_video);
+            obj.xy_barycenter = ToolBox.Cache.list.xy_barycenter;
 
             try
                 [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
@@ -334,10 +338,6 @@ methods
         end
 
         % Main Outputs Saving
-
-        % fid = fopen(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_EF_main_outputs.json')), 'w');
-        % fwrite(fid, jsonencode(ToolBox.outputs, "PrettyPrint", true), 'char');
-        % fclose(fid);
 
         ToolBox.Outputs.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_outputs.json')));
         ToolBox.Signals.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_signals.json')));

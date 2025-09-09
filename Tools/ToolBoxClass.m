@@ -3,12 +3,12 @@ classdef ToolBoxClass < handle
 
 properties
     % Paths
-    EF_path char
-    EF_name char
-    path_main char
-    path_dir char
-    path_png char
-    path_eps char
+    EF_path char %'X:\...\XXX_HD_X\'
+    EF_name char %'XXX_HD_X_EF'
+    path_main char %'X:\...\XXX_HD_X\eyeflow'
+    path_dir char %'X:\...\XXX_HD_X\eyeflow\XXX_HD_X_EF_X'
+    path_png char %'X:\...\XXX_HD_X\eyeflow\XXX_HD_X_EF_X\png'
+    path_eps char 
     path_pdf char
     path_gif char
     path_txt char
@@ -16,9 +16,9 @@ properties
     path_mp4 char
     path_json char
     path_log char
-    main_foldername char
-    param_name char
-    folder_name char
+    main_foldername char %'XXX_HD_X'
+    param_name char %'InputEyeFlowParams.json'
+    folder_name char % 'XXX_HD_X_EF_X'
     % Parameters
     stride double
     fs double
@@ -27,9 +27,8 @@ properties
     cmapArtery
     cmapVein
     cmapAV
-    outputs %struct
-    harmonics
-    Outputs % Outputs class handle
+    Cache % Cache class handle Cache small variables through the execution 
+    Outputs % Outputs class handle Stores outputs through the execution
     Signals
 end
 
@@ -95,9 +94,6 @@ methods
         obj.path_mp4 = fullfile(obj.path_dir, 'mp4');
         obj.path_json = fullfile(obj.path_dir, 'json');
         obj.path_log = fullfile(obj.path_dir, 'log');
-
-        % Initialize empty outputs
-        obj.outputs = struct();
 
         % Create directories if they don't exist
         obj.createDirectories();

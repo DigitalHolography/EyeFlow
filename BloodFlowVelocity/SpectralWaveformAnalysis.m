@@ -104,7 +104,8 @@ end
 
 % Save to ToolBox
 
-ToolBox.harmonics = [fundamental valid_harmonics];
+ToolBox.Cache.list.harmonics = [fundamental valid_harmonics];
+
 % Configure axes
 axis tight;
 axT = axis;
