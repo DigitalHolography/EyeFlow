@@ -34,10 +34,15 @@ fft_mag = fft_mag / max(fft_mag); % Normalize to [0,1]
 
 % Improved peak detection with minimum prominence threshold
 min_prominence = 0.1; % 10 % of maximum magnitude as minimum prominence
-[s_peaks, s_locs] = findpeaks(fft_mag, f, ...
+f_indx = f>0.5; % search only in f > 0.5 Hz
+[s_peaks, s_locs] = findpeaks(fft_mag(f_indx), f(f_indx), ...
     'MinPeakProminence', min_prominence, ...
     'SortStr', 'descend', ...
     'NPeaks', 5); % Find up to 5 most significant peaks
+
+% Sort peaks by descending magnitude
+[s_peaks, idx] = sort(s_peaks, 'descend');
+s_locs = s_locs(idx);
 
 % Create figure for spectral analysis
 hFig = figure('Visible', 'on', 'Color', 'w');
@@ -97,6 +102,9 @@ if length(s_locs) >= 1
 
 end
 
+% Save to ToolBox
+
+ToolBox.harmonics = [fundamental valid_harmonics];
 % Configure axes
 axis tight;
 axT = axis;
@@ -124,4 +132,5 @@ end
 exportgraphics(hFig, fullfile(ToolBox.path_png, ...
     sprintf("%s_ArterialSpectralAnalysis_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
+
 end
