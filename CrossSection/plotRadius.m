@@ -165,10 +165,6 @@ if isFlowRate
     fclose(fileID);
 
     % Write results to json
-    ToolBox.outputs.(sprintf('FlowRate%s', vessel_name)) = mean_U;
-    ToolBox.outputs.(sprintf('FlowRateStd%s', vessel_name)) = mean_U_SE;
-
-    % New
     if contains(vessel_name, 'vein')
         ToolBox.Outputs.add('VenousMeanVolumeRate', mean_U, unit, mean_U_SE);
         ToolBox.Outputs.add('VenousMaximumVolumeRate', max_U, unit, max_U_SE);
@@ -186,9 +182,6 @@ else
     fprintf(fileID, 'Velocity Standard Deviation %s : %f %s \r\n', vessel_name, mean_U_SE, unit);
     fclose(fileID);
     % Write results to json
-    ToolBox.outputs.(sprintf('Velocity%s', vessel_name)) = mean_U;
-    ToolBox.outputs.(sprintf('VelocityStd%s', vessel_name)) = mean_U_SE;
-    % New
     if contains(vessel_name, 'vein')
         ToolBox.Outputs.add('VenousMeanVelocity', mean_U, unit, mean_U_SE);
         ToolBox.Outputs.add('VenousMaximumVelocity', max_U, unit, max_U_SE);
