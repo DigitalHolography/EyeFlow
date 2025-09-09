@@ -13,6 +13,8 @@ if nargin < 2
     error('Both paths and output_dir arguments are required');
 end
 
+fprintf("Saving to : %s\n", output_dir)
+
 if ~iscell(paths)
     paths = {paths}; % Convert single path to cell array
 end
@@ -25,17 +27,16 @@ N = length(paths);
 
 % Define all output types and their file patterns
 output_types = {
-                'segmentation', '_vesselMap.png', 'png/mask';
+                'segmentation', '_vessel_map.png', 'png/mask';
                 'bloodVolumeRate', '_allrad_Artery_time.png', 'png';
                 'Arteries_fRMS', '_f_artery_graph.png', 'png';
-                'ARI_velocity', '_RI_velocityArtery.png', 'png';
+                'ARI_velocity', '_RI_v_artery.png', 'png';
                 'histo_art_velocity', '_histogramVelocityArtery.png', 'png';
                 'Stroke_total_volume', '_strokeAndTotalVolume_Artery.png', 'png';
-                'Vessels_velocity', '_vessels_velocity_graph.png', 'png';
-                'VRI_velocity', '_RI_velocityVein.png', 'png';
+                'Vessels_velocity', '_v_vessel_graph.png', 'png';
+                'VRI_velocity', '_RI_v_vein.png', 'png';
                 'A_sections', '_A_sections.png', 'png';
-                'diasys_Artery', '_diasys_Artery.png', 'png';
-                'diasys_Vein', '_diasys_Vein.png', 'png';
+                'diasys_Artery', '_find_systoles_indices.png', 'png';
                 'ArterialWaveformAnalysis_artery', '_ArterialWaveformAnalysis_v_artery.png', 'png';
                 'ArteriovenousPhaseDelay', '_arterial_venous_correlation.png', 'png';
                 };
@@ -56,7 +57,7 @@ for path_idx = 1:N
 
     % Skip if EyeFlow directory doesn't exist
     if ~exist(ef_path, 'dir')
-        warning('EyeFlow directory not found in: %s', current_path);
+        fprintf('EyeFlow directory not found in: %s\n', current_path);
         continue;
     end
 
@@ -64,7 +65,7 @@ for path_idx = 1:N
     ef_folders = dir(fullfile(ef_path, [folder_base '_*']));
 
     if isempty(ef_folders)
-        warning('No EF folders found in: %s', ef_path);
+        fprintf('No EF folders found in: %s\n', ef_path);
         continue;
     end
 
@@ -73,7 +74,7 @@ for path_idx = 1:N
     valid_idx = ~cellfun(@isempty, suffixes);
 
     if ~any(valid_idx)
-        warning('No valid EF folders found in: %s', ef_path);
+        fprintf('No valid EF folders found in: %s\n', ef_path);
         continue;
     end
 
@@ -108,7 +109,7 @@ for i = 1:size(output_types, 1)
 
     % Skip if no valid paths (unlikely due to placeholders)
     if all(cellfun(@isempty, current_paths))
-        warning('No valid files (including placeholders) for output type: %s', type_name);
+        fprintf('No valid files (including placeholders) for output type: %s\n', type_name);
         continue;
     end
 
