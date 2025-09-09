@@ -57,7 +57,6 @@ for path_idx = 1:N
 
     % Skip if EyeFlow directory doesn't exist
     if ~exist(ef_path, 'dir')
-        fprintf('EyeFlow directory not found in: %s\n', current_path);
         continue;
     end
 
@@ -65,7 +64,6 @@ for path_idx = 1:N
     ef_folders = dir(fullfile(ef_path, [folder_base '_*']));
 
     if isempty(ef_folders)
-        fprintf('No EF folders found in: %s\n', ef_path);
         continue;
     end
 
@@ -74,7 +72,6 @@ for path_idx = 1:N
     valid_idx = ~cellfun(@isempty, suffixes);
 
     if ~any(valid_idx)
-        fprintf('No valid EF folders found in: %s\n', ef_path);
         continue;
     end
 
@@ -122,6 +119,61 @@ for i = 1:size(output_types, 1)
     figure_counter = figure_counter + 1;
 end
 
+% Look for the pdf output in 'pdf'
+pdf_list = "";
+% Process each path
+for path_idx = 1:N
+    current_path = paths{path_idx};
+    % Extract main folder name and construct expected EF folder name
+    [~, main_foldername] = fileparts(current_path);
+    folder_base = [char(main_foldername) '_EF'];
+    ef_path = fullfile(current_path, 'eyeflow');
+
+    % Skip if EyeFlow directory doesn't exist
+    if ~exist(ef_path, 'dir')
+        continue;
+    end
+
+    % Find all EF folders and get the latest one
+    ef_folders = dir(fullfile(ef_path, [folder_base '_*']));
+
+    if isempty(ef_folders)
+        continue;
+    end
+
+    % Extract numeric suffixes and find the maximum
+    suffixes = regexp({ef_folders.name}, ['(?<=' folder_base '_)\d+$'], 'match', 'once');
+    valid_idx = ~cellfun(@isempty, suffixes);
+
+    if ~any(valid_idx)
+        continue;
+    end
+
+    max_suffix = max(str2double(suffixes(valid_idx)));
+    last_folder_name = sprintf('%s_%d', folder_base, max_suffix);
+    pdf_path = fullfile(current_path,"eyeflow",last_folder_name, 'pdf');
+    if exist(pdf_path, 'dir')
+        pdf_files = dir(fullfile(pdf_path, '*.pdf'));
+        if ~isempty(pdf_files)
+            % Assuming we want the first PDF found
+            pdf_list = [pdf_list; fullfile(pdf_path, pdf_files(1).name)];
+        end
+    end
+end
+
+% Save the list of found PDFs to a text file in the output directory
+pdf_txt_path = fullfile(output_dir, 'pdf_list.txt');
+fid = fopen(pdf_txt_path, 'w');
+if fid ~= -1
+    for i = 2:numel(pdf_list) % Skip the first empty string
+        fprintf(fid, '%s\n', pdf_list(i));
+    end
+    fclose(fid);
+else
+    warning('Could not write pdf_list.txt to output directory.');
+end
+
 close(figs_ids);
+
 
 end
