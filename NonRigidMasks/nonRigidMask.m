@@ -11,7 +11,7 @@ function nonRigidMask(I1, I2, M1, maskOutPath)
     if size(I2,3) == 3
         I2 = rgb2gray(I2); 
     end
-    
+
     I1 = im2double(I1);
     I2 = im2double(I2);
 
@@ -34,20 +34,20 @@ function nonRigidMask(I1, I2, M1, maskOutPath)
         [gx, gy] = gradient(I2);
         G = hypot(gx, gy);
     end
-    tauDiff = 10/255;
+    tauDiff = 5/255;
     tauGrad = 0.02;
     freeze = (diffImg <= tauDiff) & (G <= tauGrad);
 
-    iters = [5 15 30];
-    accFieldSmooth = 5.0;
+    iters = [30 15 5];
+    accFieldSmooth = 10.0;
 
     [D, ~] = imregdemons( ...
         I1, I2, iters, ...
         "AccumulatedFieldSmoothing", accFieldSmooth, ...
-        "PyramidLevels",             numel(iters), ...
-        "DisplayWaitbar",            false);
+        "PyramidLevels",             numel(iters));
 
-    [M1_warp, ~] = imwarp(M1_rigid, D, "nearest");
+    [M1_warp, ~] = imwarp(M1_rigid, D, "linear");
+    M1_warp = M1_warp > 0.5;
 
     if ~isequal(size(M1_warp), size(I2))
         M1_warp = imresize(M1_warp, size(I2), "nearest");
@@ -71,7 +71,7 @@ function nonRigidMask(I1, I2, M1, maskOutPath)
     grid = checkerboard(gridSpacing, ceil(size(I2,1)/(2*gridSpacing)), ceil(size(I2,2)/(2*gridSpacing)));
     grid = imresize(grid, size(I2));
     grid = im2double(grid);
-    G_warped = imwarp(grid, D, "linear");
+    G_warped = imwarp(grid, D*5, "linear");
 
     figure("Name","Rigid+Demons with freeze gating","Color","w");
     tiledlayout(2,3,"Padding","compact","TileSpacing","compact");
@@ -94,7 +94,11 @@ function nonRigidMask(I1, I2, M1, maskOutPath)
     imshow(labeloverlay(I2, M1_warp>0, 'Transparency',0.5), "Parent",ax5);
     title("Mask after Demons on Target Image")
 
-    nexttile; imshow(G_warped,[]);  title("Deformation Vector")
+    nexttile; imshow(G_warped,[]);  title("Deformation Vector");
+
+    figure;
+    imshowpair(M1, M1_warp);
+
 end
 
 %{
