@@ -30,7 +30,7 @@ v_profile_ft = fftshift(fft(v_profile, [], 2), 2);
 f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
 cardiac_frequency = ToolBox.Outputs.HeartBeat.value/60;
 
-harmonics = [0 1 2 3 4] .* cardiac_frequency;
+harmonics = [0 ToolBox.Cache.harmonics];
 harmonics_idx = [];
 for fr = harmonics
     [~, idx] = min(abs(f - fr));

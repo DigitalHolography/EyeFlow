@@ -98,8 +98,8 @@ if ~isempty(s_peaks)
 end
 
 % Save to ToolBox
-valid_harmonics = valid_harmonics(2:end);
-ToolBox.harmonics = [fundamental valid_harmonics];
+
+ToolBox.Cache.list.harmonics = [fundamental valid_harmonics];
 
 % Configure axes
 axis tight;
@@ -162,5 +162,9 @@ exportgraphics(hFig_angle, fullfile(ToolBox.path_png, ...
     sprintf("%s_ArterialSpectralAnalysis_Phase_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
 
+% Close the figure if not needed
+if ~strcmpi(get(hFig, 'Visible'), 'on')
+    close(hFig);
+end
 
 end

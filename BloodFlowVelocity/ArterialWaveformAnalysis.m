@@ -100,7 +100,7 @@ if length(peaks) > 1
     locs_notch = locs_notch + locs_peaks(1) - 1;
 
     % Only consider valid notch (significant difference from diastolic peak)
-    if (peaks(2) - notch) > peaks(1) * 0.1 % 10 % threshold
+    if (peaks(2) - notch) > peaks(1) * 0.05 % 5 % threshold
         systolicDownstroke = peaks(1) - notch;
         diastolicRunoff = notch - one_cycle_signal(end); % End of cycle
 
@@ -115,7 +115,7 @@ if length(peaks) > 1
 end
 
 % Visualization
-hFig = figure('Visible', 'off', 'Color', 'w');
+hFig = figure('Visible', 'on', 'Color', 'w');
 hold on;
 
 % Add reference lines and annotations
