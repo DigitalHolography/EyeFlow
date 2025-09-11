@@ -47,6 +47,14 @@ maskArterySection = maskArtery & maskSection;
 maskVeinSection = maskVein & maskSection;
 maskVesselSection = (maskVein | maskArtery) & maskSection;
 
+% Validating inputs
+if ~any(maskArterySection)
+    error("Given Mask Artery has no part within the current section.")
+end
+if ~any(maskVesselSection)
+    error("Given Mask Vein has no part within the current section.")
+end
+
 % Time vector for plotting
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 
