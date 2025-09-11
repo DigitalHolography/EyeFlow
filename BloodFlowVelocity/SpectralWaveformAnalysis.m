@@ -134,4 +134,9 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
     sprintf("%s_ArterialSpectralAnalysis_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
 
+% Close the figure if not needed
+if ~strcmpi(get(hFig, 'Visible'), 'on')
+    close(hFig);
+end
+
 end
