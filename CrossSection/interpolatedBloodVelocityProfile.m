@@ -167,6 +167,10 @@ createBounds = @(v, dv) struct( ...
 bounds_sys = createBounds(v_sys, dv_sys);
 bounds_dias = createBounds(v_dias, dv_dias);
 
+% Compute a Womersley number from shape at cardiac frequency
+% [alphaWom] = WomersleyNumberEstimation(v_video', ToolBox.Outputs.HeartBeat.value/60);
+% profileHarmonics(v_profile)
+
 % Create figure for static plot
 figure("Visible", "off");
 hold('on');

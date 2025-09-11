@@ -47,6 +47,14 @@ maskArterySection = maskArtery & maskSection;
 maskVeinSection = maskVein & maskSection;
 maskVesselSection = (maskVein | maskArtery) & maskSection;
 
+% Validating inputs
+if ~any(maskArterySection)
+    error("Given Mask Artery has no part within the current section.")
+end
+if ~any(maskVesselSection)
+    error("Given Mask Vein has no part within the current section.")
+end
+
 % Time vector for plotting
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
 
@@ -364,15 +372,6 @@ fprintf(fileID, 'Min Systole Indices: %s \r\n', strcat('[', sprintf("%d,", sysMi
 fprintf(fileID, 'Time diastolic min to systolic max derivative (ms): %f \r\n', -TimeToMinimumDiastole);
 fprintf(fileID, 'Time diastolic min to systolic max (ms): %f \r\n', TimeToPeakSystoleFromMinimumDiastole);
 fclose(fileID);
-
-% Store in ToolBox outputs
-ToolBox.outputs.HeartBeat = HeartBeat;
-ToolBox.outputs.SystoleIndices = strcat('[', sprintf("%d,", sysIdxList), ']');
-ToolBox.outputs.NumberofCycles = numel(sysIdxList) - 1;
-ToolBox.outputs.MaxSystoleIndices = strcat('[', sprintf("%d,", sysMaxList), ']');
-ToolBox.outputs.MinSystoleIndices = strcat('[', sprintf("%d,", sysMinList), ']');
-ToolBox.outputs.TimeDiastolicmintosystolicmaxderivative = -TimeToMinimumDiastole;
-ToolBox.outputs.TimeDiastolicmintosystolicmax = TimeToPeakSystoleFromMinimumDiastole;
 end
 
 function createHeatmap(data, titleStr, cbarStr, filename)

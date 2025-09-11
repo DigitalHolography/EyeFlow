@@ -144,6 +144,13 @@ if mask_params.AutoCompute
         graphSignal('all_15_vascularSignal', t, squeeze(vascularSignal), '-', cVascular, ...
             Title = 'Vascular Signal', xlabel = 'Time(s)', ylabel = 'Power Doppler (a.u.)');
 
+        % Complementary signal
+        mask = ~maskVesselness & maskDiaphragm;
+        complementary_signal = sum(M0_video .* mask, [1 2], 'omitnan');
+        complementary_signal = complementary_signal ./ nnz(mask);
+        graphSignal('all_15_nonvascularSignal', t, squeeze(complementary_signal), '-', cVascular, ...
+            Title = 'Non Vascular Signal', xlabel = 'Time(s)', ylabel = 'Power Doppler (a.u.)');
+
         saveImage(R_VascularSignal, 'all_15_Correlation.png', isStep = true)
         RGBcorr = labDuoImage(M0_Gabor, R_VascularSignal);
         saveImage(RGBcorr, 'all_15_Correlation_rgb.png', isStep = true)

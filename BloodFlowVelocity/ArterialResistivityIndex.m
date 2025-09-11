@@ -221,17 +221,7 @@ end
 % Save json
 
 if contains(name, 'v_')
-    ToolBox.outputs.velocity.(sprintf('mean_%s', VesselName)) = round(v_mean, 2);
-    ToolBox.outputs.velocity.(sprintf('systolic_%s', VesselName)) = round(vMax, 2);
-    ToolBox.outputs.velocity.(sprintf('diastolic_%s', VesselName)) = round(vMin, 2);
 
-    if ~isempty(signal_se)
-        ToolBox.outputs.velocity.(sprintf('mean_%s_se', VesselName)) = round(std(interp_signal), 2);
-        ToolBox.outputs.velocity.(sprintf('systolic_%s_se', VesselName)) = round(vMax_se, 2);
-        ToolBox.outputs.velocity.(sprintf('diastolic_%s_se', VesselName)) = round(vMin_se, 2);
-    end
-
-    % New
     if contains(name, 'vein')
         ToolBox.Outputs.add('VenousMeanVelocity', v_mean, unit, std(interp_signal));
         ToolBox.Outputs.add('VenousMaximumVelocity', vMax, unit, vMax_se);
@@ -243,16 +233,6 @@ if contains(name, 'v_')
     end
 
 else
-    ToolBox.outputs.blood_volume_rate.(sprintf('mean_%s', VesselName)) = round(v_mean, 2);
-    ToolBox.outputs.blood_volume_rate.(sprintf('systolic_%s', VesselName)) = round(vMax, 2);
-    ToolBox.outputs.blood_volume_rate.(sprintf('diastolic_%s', VesselName)) = round(vMin, 2);
-
-    if ~isempty(signal_se)
-        ToolBox.outputs.blood_volume_rate.(sprintf('mean_%s_se', VesselName)) = round(std(interp_signal), 2);
-        ToolBox.outputs.blood_volume_rate.(sprintf('systolic_%s_se', VesselName)) = round(vMax_se, 2);
-        ToolBox.outputs.blood_volume_rate.(sprintf('diastolic_%s_se', VesselName)) = round(vMin_se, 2);
-    end
-
     % New
     if contains(name, 'vein')
         ToolBox.Outputs.add('VenousMeanVolumeRate', v_mean, unit, std(interp_signal));
@@ -265,18 +245,6 @@ else
     end
 
 end
-
-ToolBox.outputs.indices.(sprintf('%s_RI', name)) = round(RI, 2);
-ToolBox.outputs.indices.(sprintf('%s_PI', name)) = round(PI, 2);
-ToolBox.outputs.indices.(sprintf('%s_PR', name)) = round(PR, 2);
-
-if ~isempty(signal_se)
-    ToolBox.outputs.indices.(sprintf('%s_RI_se', name)) = round(RI_se, 2);
-    ToolBox.outputs.indices.(sprintf('%s_PI_se', name)) = round(PI_se, 2);
-    ToolBox.outputs.indices.(sprintf('%s_PR_se', name)) = round(PR_se, 2);
-end
-
-% New
 
 if contains(name, 'v_')
 

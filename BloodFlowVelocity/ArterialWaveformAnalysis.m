@@ -27,20 +27,22 @@ else
     isBVR = false;
 end
 
-% Signal Preprocessing
-try
-    % Apply wavelet denoising if possible
-    signal = double(wdenoise(signal, 4, ...
-        'Wavelet', 'sym4', ...
-        'DenoisingMethod', 'Bayes', ...
-        'ThresholdRule', 'Median'));
-catch
-    signal = double(signal);
-end
+% % Signal Preprocessing
+% try
+%     % Apply wavelet denoising if possible
+%     signal = double(wdenoise(signal, 4, ...
+%         'Wavelet', 'sym4', ...
+%         'DenoisingMethod', 'Bayes', ...
+%         'ThresholdRule', 'Median'));
+% catch
+%     signal = double(signal);
+% end
 
-[fft_c,fundamental,valid_harmonics] = SpectralWaveformAnalysis(signal, 5, name);
-fundamental_index = round(fundamental/(fs/2)*length(fft_c));
-harmonics_index = round(valid_harmonics/(fs/2)*length(fft_c));
+[fft_c, fundamental, valid_harmonics, ~] = SpectralWaveformAnalysis(signal, 5, name);
+
+zeroPadLength = length(fft_c);
+fundamental_index = round(fundamental / (fs / 2) * zeroPadLength);
+harmonics_index = round(valid_harmonics / (fs / 2) * zeroPadLength);
 fft_abs = abs(fft_c);
 fft_angle = angle(fft_c);
 
@@ -56,9 +58,13 @@ dt = (t(2) - t(1));
 pulseTime = linspace(0, dt * avgLength, numInterp);
 
 % Create harmonics and combination signal
-composite_signal = [fft_abs(fundamental_index)*cos(2*pi*fundamental*pulseTime+fft_angle(fundamental_index)) ; ...
-    fft_abs(harmonics_index)'.*cos(2*pi*valid_harmonics'.*pulseTime+fft_angle(harmonics_index)')];
-composite_signal = composite_signal/max(composite_signal(1,:),[],'all') * max(signal,[],'all'); % rescale at initial scale
+A_f = fft_abs(fundamental_index);
+phi_f = fft_angle(fundamental_index);
+A_h = fft_abs(harmonics_index);
+phi_h = fft_angle(harmonics_index);
+composite_signal = [A_f * cos(2 * pi * fundamental * pulseTime' + phi_f), ...
+                        A_h .* cos(2 * pi * valid_harmonics .* pulseTime' + phi_h)];
+composite_signal = composite_signal / max(composite_signal(1, :), [], 'all') * max(signal, [], 'all'); % rescale at initial scale
 
 % Feature Detection
 
@@ -94,7 +100,7 @@ if length(peaks) > 1
     locs_notch = locs_notch + locs_peaks(1) - 1;
 
     % Only consider valid notch (significant difference from diastolic peak)
-    if (peaks(2) - notch) > peaks(1) * 0.1 % 10 % threshold
+    if (peaks(2) - notch) > peaks(1) * 0.05 % 5 % threshold
         systolicDownstroke = peaks(1) - notch;
         diastolicRunoff = notch - one_cycle_signal(end); % End of cycle
 
@@ -109,7 +115,7 @@ if length(peaks) > 1
 end
 
 % Visualization
-hFig = figure('Visible', 'off', 'Color', 'w');
+hFig = figure('Visible', 'on', 'Color', 'w');
 hold on;
 
 % Add reference lines and annotations
@@ -192,18 +198,15 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
 
 plot(pulseTime, composite_signal, 'LineWidth', 2);
 
-combined_composite = sum(composite_signal,1);
-combined_composite = rescale(combined_composite,min(signal,[],'all'),max(signal,[],'all')); % rescale at initial scale
+combined_composite = sum(composite_signal, 2);
+combined_composite = rescale(combined_composite, min(signal, [], 'all'), max(signal, [], 'all')); % rescale at initial scale
 
 plot(pulseTime, combined_composite, '--', 'LineWidth', 2);
-
 
 % Save Results with harmonics
 exportgraphics(hFig, fullfile(ToolBox.path_png, ...
     sprintf("%s_ArterialWaveformAnalysisHarmonics_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
-
-
 
 % Export to JSON (only for velocity signals)
 if ~isBVR
