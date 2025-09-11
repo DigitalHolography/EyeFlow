@@ -113,10 +113,13 @@ for col = 1:2
         volume_im = imread(volume_path); % Standard placeholder
         imshow(volume_im, []);
     else
-        PI_path = fullfile(path_png, sprintf('%s_PI_v_%s.png', folder_name, name));
-        PI_im = imread(PI_path); % Taller placeholder (2x height)
-        imshow(PI_im, []);
-    end
+        if strcmp(name,'artery')
+            a_wave_path = fullfile(path_png, sprintf('%s_ArterialWaveformAnalysis_v_%s.png', folder_name, name));
+        else
+            a_wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
+        end
+        a_wave_im = imread(a_wave_path); % Taller placeholder (2x height)
+        imshow(a_wave_im, []);    end
     set(ax, 'XTick', [], 'YTick', []);
 end
 
