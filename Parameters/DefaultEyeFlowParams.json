@@ -111,7 +111,7 @@
     "circleImages": true,
     "widthHistogram": true,
     "BloodFlowProfiles": true,
-    "BloodFlowHistograms": true,
+    "BloodFlowHistograms": false,
     "BloodFlowProfilesOverlay": true,
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
