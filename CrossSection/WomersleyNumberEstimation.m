@@ -20,6 +20,7 @@ numFrames = size(v_profile, 2);
 
 numInterp = params.json.CrossSectionsFigures.InterpolationPoints;
 assert(size(v_profile, 1) == numInterp);
+w2w = linspace(-1, 1, numInterp);
 
 
 % Force the two Womersley hypothesis

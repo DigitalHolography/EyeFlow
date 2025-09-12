@@ -166,6 +166,7 @@ methods
         saveGit;
         ToolBox.Outputs = obj.Outputs;
         ToolBox.Signals = obj.Signals;
+        ToolBox.Cache = obj.Cache;
         ToolBox.Outputs.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
         ToolBox.Outputs.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
         ToolBox.Outputs.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);

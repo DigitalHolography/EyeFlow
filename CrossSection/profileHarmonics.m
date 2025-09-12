@@ -30,7 +30,7 @@ v_profile_ft = fftshift(fft(v_profile, [], 2), 2);
 f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
 cardiac_frequency = ToolBox.Outputs.HeartBeat.value/60;
 
-harmonics = [0 ToolBox.Cache.harmonics];
+harmonics = [0 ToolBox.Cache.list.harmonics];
 harmonics_idx = [];
 for fr = harmonics
     [~, idx] = min(abs(f - fr));
@@ -51,7 +51,7 @@ profiles = profiles - min(profiles,[],1);
 profiles = profiles ./ max(profiles,[],1);
 plot(w2w, profiles, '-', 'LineWidth', 2);
 
-legend("n=0","n=1","n=2","n=3","n=4","","")
+
 box on
 axis tight
 axis padded;
@@ -64,6 +64,11 @@ ax.Layer = 'top'; % This may help in some cases
 xline(1,'--','LineWidth', 2)
 xline(-1,'--','LineWidth', 2)
 
+baseLabels = ["n=0"];
+for k=1:(length(harmonics)-1)
+    baseLabels = [baseLabels;sprintf("n=%d",k)];
+end
+legend(baseLabels)
 % Export static figure
 
 ax = gca;
