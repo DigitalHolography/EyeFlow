@@ -31,11 +31,11 @@ v_profile_hyp = setSymetry(v_profile);
 % Calculate Fourier transform and display
 v_profile_ft = fftshift(fft(v_profile_hyp, [], 2), 2);
 
-figure(1655), imagesc(v_profile); xlabel('Time'), ylabel('Vessel Cross Section');
+% figure(1655), imagesc(v_profile); xlabel('Time'), ylabel('Vessel Cross Section');
 
-figure(1786), imagesc(log10(abs(v_profile_ft))); xlabel('Freq'), ylabel('Vessel Cross Section ');
+% figure(1786), imagesc(log10(abs(v_profile_ft))); xlabel('Freq'), ylabel('Vessel Cross Section ');
 
-figure(1917), imagesc(angle((v_profile_ft))); xlabel('Freq'), ylabel('Vessel Cross Section ');
+% figure(1917), imagesc(angle((v_profile_ft))); xlabel('Freq'), ylabel('Vessel Cross Section ');
 
 f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
 
@@ -46,7 +46,7 @@ v_meas = v_profile_ft(:, cardiac_idx);
 v_norm = v_meas / mean(v_meas);
 
 % Create figure for static plot
-figure("Visible", "on");
+hFig = figure("Visible", "on");
 hold('on');
 
 % Plot profile data
@@ -103,6 +103,11 @@ if isvalid(ax)
     exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_WomersleyFit.png", ToolBox.folder_name)), 'Resolution', 300);
 else
     warning('Current axes are not valid. Skipping export.');
+end
+
+% Close the figure if not needed
+if ~strcmpi(get(hFig, 'Visible'), 'on')
+    close(hFig);
 end
 
 end

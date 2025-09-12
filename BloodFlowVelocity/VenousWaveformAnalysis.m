@@ -127,4 +127,9 @@ if isBVR
     % ToolBox.Outputs.add('DiastolicRunoffBvr', diastolicRunoff, unit);
 end
 
+% Close the figure if not needed
+if ~strcmpi(get(hFig, 'Visible'), 'on')
+    close(hFig);
+end
+
 end
