@@ -32,17 +32,10 @@ function nonRigidMask(source, target, aux, warpedAuxPath)
     nexttile; imshow(gridWarped, []); title("Deformation Grid");
 
     % Tile 4: Source mask overlay
-    nexttile;
-    imshow(I1g, []); hold on;
-    imshow(labeloverlay(I1g, M1 > 0, 'Transparency', 0.5));
-    title("Source Mask on Reference");
+    nexttile; imshowpair(I1g, M1); title("Source Mask on Reference");
 
     % Tile 5: Warped mask overlay
-    tile5 = nexttile;
-    imshow(I2g, []); hold on;
-    imshow(labeloverlay(I2g, M1_warp > 0, 'Transparency', 0.5));
-    title("Warped Mask on Target");
-    imwrite(getframe(tile5).cdata, warpedAuxPath)
+    nexttile; imshowpair(I2g, M1_warp); title("Warped Mask on Target");
 
     % Tile 6: Direct mask comparison
     nexttile; imshowpair(M1, M1_warp); title("Mask Before vs After");

@@ -9,8 +9,7 @@ function [D, warpedAux] = diffeomorphicDemon(source, target, aux)
 
 % returns:
 % D: displacement field from source to target
-% warpedAux: aux warped into target space
-
+% warpedAux: aux warped into target 
     if size(source,3) == 3, source = rgb2gray(source); end
     if size(target,3) == 3, target = rgb2gray(target); end
     source = im2double(source);
