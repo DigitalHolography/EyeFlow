@@ -28,7 +28,7 @@ function nonRigidMask(source, target, aux, warpedAuxPath)
         ceil(size(I2g, 2) / (2 * gridSpacing)));
     grid = imresize(grid, size(I2g));
     grid = im2double(grid);
-    gridWarped = imwarp(grid, D * 2, "linear");
+    gridWarped = imwarp(grid, D, "linear");
     nexttile; imshow(gridWarped, []); title("Deformation Grid");
 
     % Tile 4: Source mask overlay
