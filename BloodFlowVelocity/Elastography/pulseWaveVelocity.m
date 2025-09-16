@@ -13,9 +13,11 @@ implay(rescale(U) .* mask);
 [numX, numY] = size(mask);
 N_frame = size(U, 3);
 
-x_bary = ToolBox.x_barycenter;
-y_bary = ToolBox.y_barycenter;
+x_bary = ToolBox.Cache.list.xy_barycenter(1);
+y_bary = ToolBox.Cache.list.xy_barycenter(2);
 
+
+PWV = NaN;
 % radii approach
 % m = floor((numX+numY)/2/10);
 %
@@ -78,7 +80,7 @@ U_x = single(zeros([numpoints, N_frame]));
 for i = 1:numpoints
     sk_mask = ones(size(mask)) < 0;
     sk_mask(absy(i), absx(i)) = true;
-    sectio = imdilate(sk_mask, strel('disk', floor(numX * params.masks_radius / 5))) & mask;
+    sectio = imdilate(sk_mask, strel('disk', floor(numX * params.json.Mask.DiaphragmRadius / 5))) & mask;
     L(sectio) = i;
     U_x(i, :) = squeeze(mean(U .* sectio, [1, 2]));
 end
@@ -102,6 +104,11 @@ figure(77); imagesc(Ux);
 
 ft_Ux = fft(Ux, [], 2);
 ph = angle(ft_Ux);
+
+figure(78);
+imagesc(log10(abs(ft_Ux)));
+figure(79);
+imagesc(ph);
 % xc = xcorr(U_x')'; % calculates all the time cross correlations between all the sections
 % midpoint = round(numpoints/2);
 % rr = ones(2*numpoints-1)<0;
@@ -139,15 +146,16 @@ ph = angle(ft_Ux);
 Ux = Ux - mean(Ux, 2);
 hUx = hilbert(Ux')';
 figure(101)
+hold on;
 plot(Ux(50, :)); hold on;
 plot(real(hUx(50, :)));
 plot(imag(hUx(50, :)));
 title('rescaled and centered U(50,t) and its hilbert transform')
 
 hxc = reshape(real(xcorr(exp(1j * angle(hUx')))'), [], numpoints, numpoints); % calculates all the time cross correlations between all the sections
-
+figure(102)
 imagesc(mean(squeeze(hxc(:, :, :)), 3))
-
+fit_xyc(mean(squeeze(hxc(:, :, :)), 3));
 % hxc = permute(hxc,[2,3,1]);
 % rr = ones([1 3*numpoints-1]);
 % rr(2*numpoints-1) = 1;

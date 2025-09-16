@@ -248,7 +248,7 @@ methods
         %     fprintf("\n----------------------------------\nPulse Velocity Calculation\n----------------------------------\n");
         %     pulseVelocityTimer = tic;
 
-        %     pulseVelocity(obj.M0_data_video, maskArtery)
+        %     pulseVelocity(obj.M0_ff_video, obj.maskArtery);
 
         %     time_pulsevelocity = toc(pulseVelocityTimer);
         %     fprintf("- Pulse Velocity Calculations took : %ds\n", round(time_pulsevelocity))
