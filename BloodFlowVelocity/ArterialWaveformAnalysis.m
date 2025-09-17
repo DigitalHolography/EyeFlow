@@ -53,6 +53,7 @@ filtered_signal = filtfilt(b, a, signal);
 
 % Cycle Analysis
 [one_cycle_signal, avgLength] = interpSignal(filtered_signal, systolesIndexes, numInterp);
+L = length(one_cycle_signal);
 
 % Create time vector for one cycle
 dt = (t(2) - t(1));
@@ -98,7 +99,7 @@ if length(peaks) > 1
     locs_notch = locs_notch + locs_peaks(1) - 1;
 
     % Only consider valid notch (significant difference from diastolic peak)
-    if (peaks(2) - notch) > peaks(1) * 0.05 % 5 % threshold
+    if (locs_peaks(2) - locs_notch) > L * 0.05 % 5 % threshold
         systolicDownstroke = peaks(1) - notch;
         diastolicRunoff = notch - one_cycle_signal(end); % End of cycle
 
