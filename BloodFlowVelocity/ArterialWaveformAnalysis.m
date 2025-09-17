@@ -12,6 +12,7 @@ ToolBox = getGlobalToolBox;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 t = linspace(0, numFrames / fs, numFrames);
+numSystoles = length(systolesIndexes);
 
 cDark = [1 0 0];
 cLight = [1 0.5 0.5];
@@ -38,7 +39,7 @@ end
 %     signal = double(signal);
 % end
 
-[fft_c, fundamental, valid_harmonics, ~] = SpectralWaveformAnalysis(signal, 5, name);
+[fft_c, fundamental, valid_harmonics, ~] = SpectralWaveformAnalysis(signal, numSystoles, 5, name);
 
 zeroPadLength = length(fft_c);
 fundamental_index = round(fundamental / (fs / 2) * zeroPadLength);
