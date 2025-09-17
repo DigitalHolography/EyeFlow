@@ -1,4 +1,4 @@
-function nonRigidMask(source, target, aux, warpedAuxPath)
+function nonRigidMask(source, target, aux)
     % Load data
     I1 = imread(source); % reference image (fixed)
     I2 = imread(target); % target image (moving)
@@ -10,6 +10,15 @@ function nonRigidMask(source, target, aux, warpedAuxPath)
 
     % Apply diffeomorphic demons
     [D, M1_warp] = diffeomorphicDemon(I1g, I2g, M1);
+    %Dc = complex(D(:,:,1), D(:,:,2));
+    %figure;
+    %imagesc(angle(Dc))
+
+    %{
+    F2Dc = fft(Dc, [], 1);
+    F2Dc2 = fft(F2Dc, [], 2);
+    F2Dc3 = fft(F2Dc2, [], 3);
+    %}
 
     % --- Visualization similar to NonRigidMask ---
     figure("Name", "Rigid+Demons Comparison", "Color", "w");
@@ -40,4 +49,34 @@ function nonRigidMask(source, target, aux, warpedAuxPath)
     % Tile 6: Direct mask comparison
     nexttile; imshowpair(M1, M1_warp); title("Mask Before vs After");
 
+end
+
+
+
+
+% helpers
+function I = safeLoadGray(path)
+    [img, map] = imread(path);
+
+    if ~isempty(map)
+        I = ind2gray(img, map);
+    elseif ndims(img) == 3
+        I = rgb2gray(img);
+    else
+        I = img;
+    end
+
+    if islogical(I), I = double(I); end
+    if ~isfloat(I), I = im2double(I); end
+end
+
+function I = safeConvertFrame(frame)
+
+    if size(frame, 3) == 3
+        I = rgb2gray(frame);
+    else
+        I = frame;
+    end
+
+    I = im2double(I); % keep everything in [0,1]
 end
