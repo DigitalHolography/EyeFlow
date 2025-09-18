@@ -112,6 +112,7 @@
     "widthHistogram": true,
     "BloodFlowProfiles": true,
     "BloodFlowHistograms": false,
+    "BloodFlowProfilesWomersleyOverlay": true,
     "BloodFlowProfilesOverlay": true,
     "ARIBVR": true,
     "strokeAndTotalVolume": true,

@@ -91,6 +91,10 @@ if params.json.CrossSectionsFigures.BloodFlowHistograms
     histogramPatchVelocities(histo_v_cell, name, locsLabel, mean(M0_ff_video, 3))
 end
 
+if params.json.CrossSectionsFigures.BloodFlowProfilesWomersleyOverlay
+    profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff_video, 3))
+end
+
 if params.json.CrossSectionsFigures.BloodFlowProfilesOverlay
     profilePatchVelocities(v_profiles_cell, name, locsLabel, mean(M0_ff_video, 3))
 end
