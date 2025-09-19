@@ -1,4 +1,4 @@
-function [alphaWom] = WomersleyNumberEstimation(v_profile, cardiac_frequency)
+function [alphaWom] = WomersleyNumberEstimation(v_profile, cardiac_frequency, name)
 % WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
 % by fitting the input velocity profile (v_profile) to a Womersley flow profile.
 %
@@ -100,7 +100,7 @@ ax.Layer = 'top'; % This may help in some cases
 ax = gca;
 
 if isvalid(ax)
-    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_WomersleyFit.png", ToolBox.folder_name)), 'Resolution', 300);
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_WomersleyFit_%s.png", ToolBox.folder_name, name)), 'Resolution', 300);
 else
     warning('Current axes are not valid. Skipping export.');
 end

@@ -116,7 +116,7 @@ for circleIdx = 1:rows
 end
 
 % Save figure
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_velocities_profiles_overlay_%s.png", ToolBox.folder_name, name)));
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_velocities_womersley_profiles_overlay_%s.png", ToolBox.folder_name, name)));
 
 close(fi);
 end
