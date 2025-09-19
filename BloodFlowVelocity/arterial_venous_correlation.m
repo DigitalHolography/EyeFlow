@@ -40,8 +40,7 @@ V = V / std(V);
 
 % Cross-correlation with normalization
 [corr_vals, lags] = xcorr(A, V, 'coeff');
-[~, max_idx] = max(abs(corr_vals));
-max_corr = corr_vals(max_idx);
+[max_corr, max_idx] = max(corr_vals);
 time_lag = lags(max_idx) * (ToolBox.stride / fs / 1000); % Convert lag index to seconds
 lags_t = lags * (ToolBox.stride / fs / 1000); % Convert lags to seconds
 

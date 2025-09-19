@@ -1,4 +1,4 @@
-function [fft_c, fundamental, valid_harmonics, f] = SpectralWaveformAnalysis(signal, numSys, m_harmonics, name)
+function [fft_c, fundamental, valid_harmonics, f] = SpectralWaveformAnalysis(signal, m_harmonics, name)
 % Spectral Analysis
 % Perform spectral analysis on the original signal
 % Zero-pad the signal for better frequency resolution
@@ -6,20 +6,10 @@ function [fft_c, fundamental, valid_harmonics, f] = SpectralWaveformAnalysis(sig
 ToolBox = getGlobalToolBox;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000); % Sampling frequency in Hz
-duration = numFrames * ToolBox.stride / ToolBox.fs / 1000;
-estimated_fundamental = numSys / duration;
 cDark = [1 0 0]; % Dark color for peaks
 
-% --- APPLY HAMMING WINDOW TO TIME-DOMAIN SIGNAL ---
-hamming_win = hamming(numFrames)'; % Create a Hamming window of the same length as the original signal
-windowed_signal = signal .* hamming_win; % Apply the window (element-wise multiplication)
-
-% Calculate coherent gain of the Hamming window for amplitude compensation
-coherent_gain = mean(hamming_win);
-
-% Zero-pad the WINDOWED signal
 N = 16; % Padding factor
-padded_signal = padarray(windowed_signal, [0, numFrames * N]);
+padded_signal = padarray(signal, [0 numFrames * N]); % Zero-padding for interpolation in frequency domain
 
 fundamental = NaN; % Initialize fundamental frequency
 valid_harmonics = []; % Initialize valid harmonics array
@@ -27,17 +17,15 @@ valid_harmonics = []; % Initialize valid harmonics array
 % Frequency vector (show only positive frequencies since signal is real)
 f = linspace(0, fs / 2, (N * numFrames) + 1);
 fft_c = fft(padded_signal);
-
-% --- COMPENSATE FOR WINDOW AMPLITUDE LOSS ---
-fft_mag = abs(fft_c) / coherent_gain; % Divide by coherent gain
-
+fft_mag = abs(fft_c);
 fft_mag = fft_mag(1:length(f)); % Take only positive frequencies
 fft_mag = fft_mag / max(fft_mag); % Normalize to [0,1]
 
 % Improved peak detection with minimum prominence threshold
-f_indx = f > estimated_fundamental * 0.9; % search only in f > 0.5 Hz
+min_prominence = 0.1; % 10 % of maximum magnitude as minimum prominence
+f_indx = f > 0.5; % search only in f > 0.5 Hz
 [s_peaks, s_locs] = findpeaks(fft_mag(f_indx), f(f_indx), ...
-    'MinPeakDistance', estimated_fundamental * 0.6, ...
+    'MinPeakProminence', min_prominence, ...
     'SortStr', 'descend', ...
     'NPeaks', 5); % Find up to 5 most significant peaks
 
@@ -54,12 +42,11 @@ hold on;
 grid on;
 
 % Calculate and plot harmonic frequencies if fundamental is detected
-if length(s_locs) >= 2
+if length(s_locs) >= 1
     fundamental = s_locs(1);
     harmonics = fundamental * (2:m_harmonics); % Up to m th harmonic
     % For each harmonic, find the closest local maximum (peak) in the spectrum
     valid_harmonics(1) = fundamental;
-    min_prominence = s_peaks(1) * 0.2; % 20 % of maximum magnitude as minimum prominence
     [~, locs] = findpeaks(fft_mag, 'MinPeakProminence', min_prominence / 4, 'NPeaks', 15);
 
     for h = harmonics
@@ -97,9 +84,9 @@ end
 if ~isempty(s_peaks)
     scatter(s_locs, s_peaks, 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
 
-    % Annotate the top peaks
+    % Annotate the top 3 peaks
     for k = 1:min(5, length(s_peaks))
-        text(s_locs(k), s_peaks(k) + 0.005, ...
+        text(s_locs(k), s_peaks(k) * 1.2 + 0.05, ...
             sprintf('%.2f', s_locs(k)), ...
             'HorizontalAlignment', 'center', ...
             'VerticalAlignment', 'bottom', ...
@@ -119,7 +106,7 @@ axis tight;
 axT = axis;
 axis padded;
 axP = axis;
-axis([axT(1), 10, 0, s_peaks(1) + 0.1 * (s_peaks(1) - axP(3))]);
+axis([axT(1), 10, axP(3) - 0.1 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
 
 xlabel('Frequency (Hz)', 'FontSize', 14, 'FontWeight', 'bold');
 ylabel('Normalized Magnitude', 'FontSize', 14, 'FontWeight', 'bold');

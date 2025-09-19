@@ -27,7 +27,7 @@ diff_signal = gradient(fullPulse);
 
 % Step 3: Detect peaks
 min_peak_height = prctile(diff_signal, 95);
-min_peak_distance = floor(length(fullPulse) / 7); % Minimum distance between peaks (0.5 seconds for a 3.5s video)
+min_peak_distance = floor(length(fullPulse) / 6); % Minimum distance between peaks (0.5 seconds for a 3.5s video)
 [~, sys_index_list] = findpeaks(diff_signal, 'MinPeakHeight', min_peak_height, 'MinPeakDistance', min_peak_distance);
 
 % Step 4: Validate peaks
