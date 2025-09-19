@@ -238,6 +238,8 @@ methods
                 extendedPulseAnalysis(obj.M0_ff_video, obj.f_RMS_video, f_AVG_mean, obj.vRMS, obj.maskArtery, obj.maskVein, obj.xy_barycenter, obj.sysIdxList);
             end
 
+            axialAnalysis(obj.f_AVG_video, obj.maskArtery, obj.maskVein, obj.maskNeighbors);
+
             obj.is_pulseAnalyzed = true;
 
             fprintf("- Blood Flow Velocity Analysis took: %ds\n", round(toc(pulseAnalysisTimer)));
