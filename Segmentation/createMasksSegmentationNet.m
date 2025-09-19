@@ -62,7 +62,7 @@ if mask_params.AVCorrelationSegmentationNet
     signal_centered = signal - mean(signal, 3, 'omitnan');
     video_centered = video - mean(M0_ff_video, 'all', 'omitnan');
     R = mean(video_centered .* signal_centered, 3) ./ (std((video_centered), [], 'all', 'omitnan') * std(signal_centered, [], 3));
-    saveImage(R_VascularSignal, 'all_15_Correlation.png', isStep = true)
+    saveImage(R, 'all_15_Correlation.png', isStep = true)
 end
 
 % if the systolic and diastolic frames are used by the model, compute them
