@@ -1,91 +1,82 @@
-function warp_mask_with_demons(frame1Path, frame2Path, mask1Path, outMaskPath)
+function nonRigidMask(source, target, aux)
+    % Load data
+    I1 = imread(source); % reference image (fixed)
+    I2 = imread(target); % target image (moving)
+    M1 = imread(aux); % mask aligned with I1
 
-    I1 = imread(frame1Path);
-    I2 = imread(frame2Path);
-    M1 = imread(mask1Path);
+    % Convert to grayscale doubles for registration
+    I1g = im2double(im2gray(I1));
+    I2g = im2double(im2gray(I2));
 
-    if size(I1,3) == 3, I1 = rgb2gray(I1); end
-    if size(I2,3) == 3, I2 = rgb2gray(I2); end
-    I1 = im2double(I1);
-    I2 = im2double(I2);
+    % Apply diffeomorphic demons
+    [D, M1_warp] = diffeomorphicDemon(I1g, I2g, M1);
+    %Dc = complex(D(:,:,1), D(:,:,2));
+    %figure;
+    %imagesc(angle(Dc))
 
-    if exist('imhistmatch','file')
-        I1m = imhistmatch(I1, I2);
+    %{
+    F2Dc = fft(Dc, [], 1);
+    F2Dc2 = fft(F2Dc, [], 2);
+    F2Dc3 = fft(F2Dc2, [], 3);
+    %}
+
+    % --- Visualization similar to NonRigidMask ---
+    figure("Name", "Rigid+Demons Comparison", "Color", "w");
+    tiledlayout(2, 3, "Padding", "compact", "TileSpacing", "compact");
+
+    % Tile 1: Reference
+    nexttile; imshow(I1g, []); title("Reference Image");
+
+    % Tile 2: Target
+    nexttile; imshow(I2g, []); title("Target Image");
+
+    % Tile 3: Deformation grid visualization
+    gridSpacing = 50;
+    grid = checkerboard(gridSpacing, ...
+        ceil(size(I2g, 1) / (2 * gridSpacing)), ...
+        ceil(size(I2g, 2) / (2 * gridSpacing)));
+    grid = imresize(grid, size(I2g));
+    grid = im2double(grid);
+    gridWarped = imwarp(grid, D, "linear");
+    nexttile; imshow(gridWarped, []); title("Deformation Grid");
+
+    % Tile 4: Source mask overlay
+    nexttile; imshowpair(I1g, M1); title("Source Mask on Reference");
+
+    % Tile 5: Warped mask overlay
+    nexttile; imshowpair(I2g, M1_warp); title("Warped Mask on Target");
+
+    % Tile 6: Direct mask comparison
+    nexttile; imshowpair(M1, M1_warp); title("Mask Before vs After");
+
+end
+
+
+
+
+% helpers
+function I = safeLoadGray(path)
+    [img, map] = imread(path);
+
+    if ~isempty(map)
+        I = ind2gray(img, map);
+    elseif ndims(img) == 3
+        I = rgb2gray(img);
     else
-        I1m = I1;
+        I = img;
     end
 
-    [optimizer, metric] = imregconfig('monomodal');
-    optimizer.MaximumIterations = 100;
-    tformRigid = imregtform(I1m, I2, 'rigid', optimizer, metric);
-    RA = imref2d(size(I1m));
-    RB = imref2d(size(I2));
-    I1_rigid = imwarp(I1m, RA, tformRigid, 'linear', 'OutputView', RB);
-    M1_rigid = imwarp(M1,   RA, tformRigid, 'nearest', 'OutputView', RB);
+    if islogical(I), I = double(I); end
+    if ~isfloat(I), I = im2double(I); end
+end
 
-    diffImg = abs(I2 - I1_rigid);
-    if exist('imgradient','file')
-        G = imgradient(I2);
+function I = safeConvertFrame(frame)
+
+    if size(frame, 3) == 3
+        I = rgb2gray(frame);
     else
-        [gx, gy] = gradient(I2);
-        G = hypot(gx, gy);
-    end
-    tauDiff = 3/255;
-    tauGrad = 0.02;
-    freeze = (diffImg <= tauDiff) & (G <= tauGrad);
-
-    iters = [60 30 10];
-    accFieldSmooth = 2.0;
-
-    [D, movingReg] = imregdemons( ...
-        I1, I2, iters, ...
-        'AccumulatedFieldSmoothing', accFieldSmooth, ...
-        'PyramidLevels',             numel(iters), ...
-        'DisplayWaitbar',            false);
-
-    [M1_warp, ~] = imwarp(M1_rigid, D, 'nearest');
-
-    if ~isequal(size(M1_warp), size(I2))
-        M1_warp = imresize(M1_warp, size(I2), 'nearest');
+        I = frame;
     end
 
-    M_out = M1_warp;
-    M_out(freeze) = M1_rigid(freeze);
-
-    if exist('strel','file') && exist('imclose','file')
-        M_out = imclose(M_out, strel('disk',1));
-    end
-
-    if nargin < 4 || isempty(outMaskPath)
-        outMaskPath = 'warped_mask.png';
-    end
-    imwrite(logical(M_out), outMaskPath);
-
-
-
-    G = imread("grid.jpg");
-    if size(G,3) == 1
-        G_resized = imresize(G, size(I2));              % grayscale grid
-        G_resized = im2double(G_resized);
-        G_warped  = imwarp(G_resized, D, 'linear');     % same size as I2
-    else
-        % RGB grid: resize each channel and warp as a 3-channel image
-        G_resized = im2double(imresize(G, [size(I2,1) size(I2,2)]));
-        G_warped  = imwarp(G_resized, D, 'linear');
-    end
-    imwrite(G_warped, "deformationVector.png");
-
-
-
-    figure('Name','Rigid+Demons with freeze gating','Color','w');
-    tiledlayout(2,4,'Padding','compact','TileSpacing','compact');
-    nexttile; imshow(I1,[]);                   title('Frame 1');
-    nexttile; imshow(I2,[]);                   title('Frame 2 (fixed)');
-    nexttile; imshowpair(I2, I1_rigid);        title('Rigid align (I1→I2)');
-    nexttile; imshow(M1_rigid);                title('Mask @ Frame 1 (rigid)');
-    nexttile; imshow(M1_warp);                 title('Mask after Demons');
-    nexttile; imshow(M_out);                   title('Final (frozen unchanged)');
-    nexttile; imshow(G_warped,[]);  title('Deformation Vector');
-
-    fprintf('Saved warped mask to: %s\n', outMaskPath);
+    I = im2double(I); % keep everything in [0,1]
 end
