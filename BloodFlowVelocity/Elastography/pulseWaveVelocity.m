@@ -145,12 +145,30 @@ imagesc(ph);
 % end
 Ux = Ux - mean(Ux, 2);
 hUx = hilbert(Ux')';
-figure(101)
-hold on;
-plot(Ux(50, :)); hold on;
-plot(real(hUx(50, :)));
-plot(imag(hUx(50, :)));
-title('rescaled and centered U(50,t) and its hilbert transform')
+% figure(101)
+% hold on;
+% plot(Ux(50, :)); hold on;
+% plot(real(hUx(50, :)));
+% plot(imag(hUx(50, :)));
+% title('rescaled and centered U(50,t) and its hilbert transform')
+
+
+
+C=exp(1j * angle(fft(Ux)'));
+R=xcorr(C);
+[Nlags, cols] = size(R);
+M = size(C,2);
+Ravg = zeros(Nlags, 2*M+1);
+for i = -M:M
+    idx = find_indices_compact(M,i);
+    Ravg(:,i+M+1) = mean(real(R(:,idx)),2);
+end
+figure(111), imagesc(Ravg)
+
+
+
+r = [-abs_dist(end:-1:1) 0 abs_dist(1:end)];
+figure, plot(r,Ravg(round(Nlags/2),:))
 
 hxc = reshape(real(xcorr(exp(1j * angle(hUx')))'), [], numpoints, numpoints); % calculates all the time cross correlations between all the sections
 figure(102)

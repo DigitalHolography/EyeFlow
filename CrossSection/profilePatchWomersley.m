@@ -10,26 +10,26 @@ exportVideos = params.exportVideos;
 % Check sizes and extract numFrames from first non empty profile data in input
 [rows, cols] = size(locsLabel);
 assert(isequal(size(v_profiles_cell), [rows, cols]), 'Size of v_profiles_cell must match locsLabel');
-i = 0;
+ind = 0;
 numFrames = 0;
 
 while numFrames <= 0
-    i = i + 1;
-    numFrames = size(v_profiles_cell{i}, 2);
-    if i > size(v_profiles_cell, 1) * size(v_profiles_cell, 2)
+    ind = ind + 1;
+    numFrames = size(v_profiles_cell{ind}, 2);
+    if ind > size(v_profiles_cell, 1) * size(v_profiles_cell, 2)
         warning("Velocity profiles cells are all empty.")
         break
     end
 end
 
 % Extract cardiac frequency and corresponding indices with a margin
-cardiac_frequency = ToolBox.Outputs.HeartBeat.value/60;
+cardiac_frequency = ToolBox.Outputs.HeartBeat.value;
 
 f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
 
 [~, cardiac_idx] = min(abs(f - cardiac_frequency));
 
-margin_ = round(0.05 * numFrames);
+margin_ = round(0.1 * (cardiac_idx-numFrames/2)); % +- 10% of Heartrate
 cardiac_idxs = cardiac_idx + (-margin_:margin_);
 cardiac_idxs(cardiac_idxs>numFrames) = [];
 cardiac_idxs(cardiac_idxs<1) = [];
@@ -37,8 +37,8 @@ cardiac_idxs(cardiac_idxs<1) = [];
 
 
 % Start plotting 
-tmp = v_profiles_cell{i};
-sizeProfiles = size(tmp{i}, 2) * 2/3;
+tmp = v_profiles_cell{ind};
+sizeProfiles = size(tmp{ind}, 2) * 2/3;
 
 fi = figure("Visible", "on", 'Color', 'w');
 imshow(M0_ff_img, []);
@@ -73,10 +73,10 @@ for circleIdx = 1:rows
         end
 
         % Calculate FFT of the time dependent profile
-        profile_time = zeros(size(profData{1}),numFrames);
+        profile_time = zeros(length(profData{1}),numFrames);
 
         for ff = 1:numFrames
-            profile_time(:,i) = profData{ff};
+            profile_time(:,ff) = profData{ff};
         end
 
         profile_ft = fftshift(fft(profile_time,[],2),2);
@@ -96,7 +96,7 @@ for circleIdx = 1:rows
 
         x = pos(1);
         y = pos(2);
-        profile_Wom = profile_Wom / 1; % Normalize by 1 haha
+        profile_Wom = profile_Wom / 5; % Normalize by 50
         n = numel(profile_Wom);
         x_axis = linspace(-sizeProfiles / 2, sizeProfiles / 2, n);
 
@@ -104,7 +104,6 @@ for circleIdx = 1:rows
         x_plot = x + x_axis;
         y_data_r = y - real(profile_Wom) * profHeight; % Measured data (true profile)
         y_data_i = y - imag(profile_Wom) * profHeight; % Measured data (true profile)
-        y_fit = y - plotData(plotData > 0) * profHeight; % Fitted data
 
         % Plot directly on image (no text, no axes)
         hold on;
