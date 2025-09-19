@@ -4,7 +4,7 @@ function stabilizeVideo(refImgPath, targetVideo, outGifPath)
     refImg = flat_field_correction(refImg, 10, 0, 'gaussianBlur');
 
     v = VideoReader(targetVideo);
-    nFrames = floor(v.Duration * v.FrameRate) / 5;
+    nFrames = floor(v.Duration * v.FrameRate)             ;
     fprintf("video has %d frames\n", nFrames);
 
     frames = cell(1, nFrames);
@@ -14,9 +14,6 @@ function stabilizeVideo(refImgPath, targetVideo, outGifPath)
         %get the frame, stabilize it, save it
         tgt = safeConvertFrame(readFrame(v));
         tgt = flat_field_correction(tgt, 10, 0, 'gaussianBlur');
-        % tgt = adapthisteq(tgt, ...
-        %     'ClipLimit', 0.05, ...
-        %     'NumTiles', [16 16]); 
         [D, stabilized] = diffeomorphicDemon(tgt, refImg, tgt);
         frames{k} = stabilized;
         framesDispPlot{k} = D;
@@ -57,7 +54,7 @@ end
 function arr2gif(arr, filename)
     for k = 1:numel(arr)
         [A, map] = gray2ind(arr{k}, 256);
-    
+
         if k == 1
             imwrite(A, map, filename, "gif", "LoopCount", Inf, "DelayTime", 0.05);
         else
@@ -76,7 +73,7 @@ function arr2gifPlots(arr)
         absLog = log1p(abs(Dc));
         absLog = mat2gray(absLog);
         absLog = imadjust(absLog, [prctile(absLog(:), 1) prctile(absLog(:), 99);], [0 1]);
-        
+
         % Convert to indexed
         [AAbs, mapAbs] = gray2ind(absLog, 256);
         [AAngle, mapAngle] = gray2ind(angle(Dc), 256);
@@ -89,9 +86,48 @@ function arr2gifPlots(arr)
             imwrite(AAbs, mapAbs, "abs.gif", "gif", "WriteMode", "append", "DelayTime", 0.05);
             imwrite(AAngle, mapAngle, "angle.gif", "gif", "WriteMode", "append", "DelayTime", 0.05);
         end
+
+        % --- Low-pass filter ---
+        [nx, ny] = size(absLog);
+        FD = fft2(absLog);
+        FD = fftshift(FD);                         % shift zero-freq to center
+
+        [mask, ~] = diskMask(nx, ny, 0.02, 2);     % keep high pass
+        FD = FD .* mask;                           % apply filter
+
+
+
+
+        % FD = ifftshift(FD);                        % shift back
+        % D_filt = abs(ifft2(FD));                   % inverse FFT
+        % framesLowPass{k} = D_filt;
+
     end
 
+    %arr2gif(framesLowPass, "lowPassFilter.gif");
+
     analyzeFFT3D(arr);
+end
+
+function freqMap = spatialFrequencyMap(img)
+    % img: displacement magnitude (2D)
+    % returns: map of dominant spatial frequency per pixel
+    
+    % 1. Take 2D FFT
+    F = fftshift(fft2(img));
+    
+    % 2. Build frequency grid
+    [nx, ny] = size(img);
+    [u, v] = meshgrid((-floor(ny/2):ceil(ny/2)-1)/ny, ...
+                      (-floor(nx/2):ceil(nx/2)-1)/nx);
+    freqRadius = sqrt(u.^2 + v.^2);
+    
+    % 3. Weighted average frequency (spectral centroid)
+    P = abs(F).^2;
+    meanFreq = sum(P(:) .* freqRadius(:)) / sum(P(:));
+    
+    % 4. Fill freqMap with this mean frequency (global measure)
+    freqMap = ones(nx, ny) * meanFreq;
 end
 
 function analyzeFFT3D(arr)
@@ -102,22 +138,41 @@ function analyzeFFT3D(arr)
     stack = zeros(H, W, nFrames);
     for k = 1:nFrames
         D = arr{k};
-        stack(:,:,k) = hypot(D(:,:,1), D(:,:,2));  % displacement magnitude
+        stack(:,:,k) = complex(D(:,:,1), D(:,:,2));
+        %absLog = log1p(abs(stack(:,:,k)));
+        %absLog = mat2gray(absLog);
+        %absLog = imadjust(absLog, [prctile(absLog(:), 1) prctile(absLog(:), 99);], [0 1]);
+        %stack(:,:,k) = absLog .* exp(1j*angle(stack(:,:,k)));
     end
 
-    % F2Dc1 = fft(stack, [], 1);
-    % F2Dc2 = fft(F2Dc1, [], 2);
-    % F2Dc3 = fft(F2Dc2, [], 3);
-    % 
-    % s_omega = squeeze(mean(mean(abs(F2Dc3).^2, 1), 2));
+    FD3d = fftn(stack);
+    
+    for k = 1:size(FD3d,3)
+        Dc = FD3d(:,:,k);
 
-    FD = fft2(BA(stack));
-    FD = FD .* fftshift(disk);
-    D_filt = ifft2(FD);
+        %map abs(Dc) to the min and max of the value of the image
+        %maybe comapre to min and max of the video not the image to keep quantitative value idk
+        absLog = log1p(abs(Dc));
+        absLog = mat2gray(absLog);
+        absLog = imadjust(absLog, [prctile(absLog(:), 1) prctile(absLog(:), 99);], [0 1]);
 
-    figure;
-    plot(log(s_omega));
-    xlabel('Temporal frequency bin');
-    ylabel('Power');
-    title('Harmonic series of displacement magnitude');
+        % Convert to indexed
+        [AAbs, mapAbs] = gray2ind(absLog, 256);
+        [AAngle, mapAngle] = gray2ind(angle(Dc), 256);
+
+        % Write to GIF
+        if k == 1
+            imwrite(AAbs, mapAbs, "absFD.gif", "gif", "LoopCount", Inf, "DelayTime", 0.05);
+            imwrite(AAngle, mapAngle, "angleFD.gif", "gif", "LoopCount", Inf, "DelayTime", 0.05);
+        else
+            imwrite(AAbs, mapAbs, "absFD.gif", "gif", "WriteMode", "append", "DelayTime", 0.05);
+            imwrite(AAngle, mapAngle, "angleFD.gif", "gif", "WriteMode", "append", "DelayTime", 0.05);
+        end
+
+        if (k == 5)
+            figure;
+            imshow(AAbs);
+        end
+
+    end
 end
