@@ -139,12 +139,15 @@ function axialAnalysis(f_AVG_video, maskArtery, maskVein, maskNeighbors)
     [~, cardiac_idx] = min(abs(f - cardiac_frequency));
 
     img = log1p(abs(ft_v(:, :, cardiac_idx)));
-    figure, imshow(rescale(img));
+    fi=figure('Visible','off');
+    imshow(rescale(img));
     ax = gca;
 
     if isvalid(ax)
         exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_axial_cardiac_component.png", ToolBox.folder_name)), 'Resolution', 300);
     end
+    close(fi);
+
 
 
 
