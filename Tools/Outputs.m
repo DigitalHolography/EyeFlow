@@ -21,8 +21,6 @@ properties
 
     % Vein Wave form analysis
     TimetoPeakFromMinVein
-    TimetoAscentFromMinVein
-    TimetoDescentToMinVein
 
     % Phase Delay
     PhaseDelay
@@ -85,7 +83,7 @@ properties
 
     % Extra
     PulseWaveVelocity
-    % DicroticNotchVisibility
+    DicroticNotchVisibility
     DynamicViscosityDuringSystole
     DynamicViscosityDuringDiastole
     DynamicViscosityAverage
