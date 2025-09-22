@@ -37,6 +37,8 @@ properties
     maskVein
     maskNeighbors
 
+    displacementField
+
     directory char % directory of input data (from HoloDoppler or HoloVibes)
     params_names cell % filenames of all the current input parameters ('InputEyeFlowParams.json' for example by default)
     param_name char % current filename
@@ -139,6 +141,7 @@ methods
         obj = VideoCropping(obj);
         obj = VideoNormalizingLocally(obj);
         obj = VideoResizing(obj);
+        obj = VideoNonRigidRegistering(obj);
         obj = VideoInterpolating(obj);
         obj = VideoRemoveOutliers(obj);
 

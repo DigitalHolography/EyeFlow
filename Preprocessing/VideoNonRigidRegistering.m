@@ -26,7 +26,7 @@ function obj = VideoNonRigidRegistering(obj)
     field = zeros(size(ref_img, 1), size(ref_img, 2), 2, nFrames);
 
     %smoothVideo = imgaussfilt3(obj.M0_raw_video, [0.1 0.1 2]);
-    parfor k = 1:nFrames
+    for k = 1:nFrames
         %get the frame, stabilize it, save it
         tgt = safeConvertFrame(readFrame(v));
         tgt = flat_field_correction(tgt, 35, 0, 'gaussianBlur');
