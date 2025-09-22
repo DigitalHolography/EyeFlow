@@ -89,6 +89,12 @@ end
 
 M0 = imresize(rescale(M0_ff_img), [512, 512]);
 
+if canUseGPU
+    device = 'gpu';
+else
+    device = 'cpu';
+end
+
 if mask_params.AVCorrelationSegmentationNet
     R = imresize(rescale(R), [512, 512]);
 
@@ -100,7 +106,7 @@ if mask_params.AVCorrelationSegmentationNet
         fprintf("Use iternet5 to segment retinal arteries and veins\n")
 
         input = cat(3, M0, M0_Systole_img, M0_Diastole_img, R);
-        output = predict(net, input);
+        output = predict(net, input, 'ExecutionEnvironment',device);
     else
         warning('off')
         net = importONNXNetwork('Models\iternet_5_av_corr.onnx');
@@ -109,7 +115,7 @@ if mask_params.AVCorrelationSegmentationNet
         fprintf("Use iternet5 to segment retinal arteries and veins\n")
 
         input = cat(3, M0, M0, R);
-        output = predict(net, input);
+        output = predict(net, input, 'ExecutionEnvironment',device);
     end
 
 elseif mask_params.AVDiasysSegmentationNet
@@ -120,7 +126,7 @@ elseif mask_params.AVDiasysSegmentationNet
     fprintf("Use iternet5 to segment retinal arteries and veins\n")
 
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
-    output = predict(net, input);
+    output = predict(net, input, 'ExecutionEnvironment',device);
 end
 
 [~, argmax] = max(output, [], 3);
