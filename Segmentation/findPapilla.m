@@ -62,7 +62,7 @@ if mask_params.OpticDiscDetector
 
         if val > 0.5
             plot(x_ellipsis, y_ellipsis, 'g--', 'LineWidth', 2);
-            ToolBox.Outputs.add("PapillaRatio",(diameter_x+diameter_y)/2 /512,'px');
+            ToolBox.Outputs.add("PapillaRatio",(diameter_x+diameter_y)/2 /512,'');
         else
             plot(x_ellipsis, y_ellipsis, 'r--', 'LineWidth', 2);
             found = false;
