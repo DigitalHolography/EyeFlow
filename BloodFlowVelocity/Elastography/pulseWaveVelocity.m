@@ -8,6 +8,8 @@ function PWV = pulseWaveVelocity(U, mask)
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 
+mask = imerode(mask,strel('disk', 4));
+
 implay(rescale(U) .* mask);
 
 [numX, numY] = size(mask);
@@ -18,21 +20,6 @@ y_bary = ToolBox.Cache.list.xy_barycenter(2);
 
 
 PWV = NaN;
-% radii approach
-% m = floor((numX+numY)/2/10);
-%
-% list_radius = linspace(0,1,m+1);
-% U_r = zeros([m,N_frame]);
-%
-% parfor i=1:m
-%     c1 = sqrt((x-x_bary).^2+(y-y_bary).^2)<list_radius(i)* (numX+numY)/2;
-%     c2 = sqrt((x-x_bary).^2+(y-y_bary).^2)<list_radius(i+1)* (numX+numY)/2;
-%     U_r(i,:) = (sum(U.*(xor(c1,c2)&mask),[1,2])/nnz(xor(c1,c2)&mask));
-% end
-%
-% U_r = U_r(~isnan(U_r));
-% U_r = reshape(U_r,[],N_frame);
-
 %% create a grid of points to select points along the skeletton of the artery mask
 %
 dxx = 5;
@@ -74,16 +61,96 @@ end
 figure(73)
 plot(abs_dist);
 
+%% also possible to do like this (chatgpt)
+% Skeletonize
+% sk = bwmorph(mask, 'skel', Inf);
+% [y, x] = find(sk);
+% 
+% % Order skeleton points (approximate ordering using bwtraceboundary)
+% B = bwtraceboundary(sk, [y(1) x(1)], 'N');
+% absx = B(:,2); absy = B(:,1);
+% numpoints = numel(absx);
+% 
+% % Compute arc length along skeleton
+% dx = diff(absx); dy = diff(absy);
+% arclen = [0; cumsum(sqrt(dx.^2 + dy.^2))];
+% Ltot = arclen(end);
+
+
+
+%% for the positions extract a signal
+
+
 L = single(zeros(size(mask)));
 U_x = single(zeros([numpoints, N_frame]));
 
-for i = 1:numpoints
-    sk_mask = ones(size(mask)) < 0;
-    sk_mask(absy(i), absx(i)) = true;
-    sectio = imdilate(sk_mask, strel('disk', floor(numX * params.json.Mask.DiaphragmRadius / 5))) & mask;
-    L(sectio) = i;
-    U_x(i, :) = squeeze(mean(U .* sectio, [1, 2]));
+% First idea with strel and imdilate but not really orthogonal
+%
+% st_el = strel('disk', floor(numX * params.json.Mask.DiaphragmRadius / 5));
+% for i = 1:numpoints
+%     sk_mask = false(size(mask));
+%     sk_mask(absy(i), absx(i)) = true;
+%     sectio = imdilate(sk_mask, st_el) & mask;
+%     L(sectio) = i;
+%     U_x(i, :) = squeeze(mean(U .* sectio, [1, 2]));
+% end
+
+
+% Second idea with orhtogonal sections
+halfwidth = 5;
+
+L   = zeros(size(mask));
+U_x = zeros(numpoints, size(U,3));
+
+prev_line = [];
+
+for i = 2:numpoints-1
+    % tangent/normal
+    tx = absx(i+1) - absx(i-1);
+    ty = absy(i+1) - absy(i-1);
+    if tx==0 && ty==0, continue; end
+    tangent = [tx, ty] / norm([tx, ty]);
+    normal  = [-tangent(2), tangent(1)];
+
+    % endpoints of current line
+    P3 = [absx(i) - halfwidth*normal(1), absy(i) - halfwidth*normal(2)];
+    P4 = [absx(i) + halfwidth*normal(1), absy(i) + halfwidth*normal(2)];
+
+    if ~isempty(prev_line)
+        P1 = prev_line(1,:); % previous start
+        P2 = prev_line(2,:); % previous end
+
+        % parameter grid (controls resolution of strip filling)
+        nu = 2*halfwidth+1;
+        nv = round(sqrt(sum((P3-P1).^2))); % distance between strips
+        [u,v] = meshgrid(linspace(0,1,nu), linspace(0,1,nv));
+
+        % bilinear interpolation of quadrilateral
+        X = (1-v).*((1-u)*P1(1) + u*P2(1)) + v.*((1-u)*P3(1) + u*P4(1));
+        Y = (1-v).*((1-u)*P1(2) + u*P2(2)) + v.*((1-u)*P3(2) + u*P4(2));
+
+        % round to pixel indices
+        X = round(X); Y = round(Y);
+
+        % keep inside image/mask
+        inside = X>=1 & X<=size(mask,2) & Y>=1 & Y<=size(mask,1);
+        X = X(inside); Y = Y(inside);
+        idx = sub2ind(size(mask), Y, X);
+        idx = idx(mask(idx));
+        
+
+        if ~isempty(idx)
+            L(idx) = i;
+            for j=1:N_frame
+                idx_t = sub2ind(size(U), Y(:), X(:), repelem(j, length(Y))');
+                U_x(i,j) = mean(U(idx_t));
+            end
+        end
+    end
+
+    prev_line = [P3; P4]; % save endpoints for next step
 end
+
 
 figure(74);
 imagesc(L)
@@ -145,12 +212,30 @@ imagesc(ph);
 % end
 Ux = Ux - mean(Ux, 2);
 hUx = hilbert(Ux')';
-figure(101)
-hold on;
-plot(Ux(50, :)); hold on;
-plot(real(hUx(50, :)));
-plot(imag(hUx(50, :)));
-title('rescaled and centered U(50,t) and its hilbert transform')
+% figure(101)
+% hold on;
+% plot(Ux(50, :)); hold on;
+% plot(real(hUx(50, :)));
+% plot(imag(hUx(50, :)));
+% title('rescaled and centered U(50,t) and its hilbert transform')
+
+
+
+C=exp(1j * angle(hUx'));
+R=xcorr(C,'coeff');
+[Nlags, cols] = size(R);
+M = size(C,2);
+Ravg = zeros(Nlags, 2*M+1);
+for i = -M:M
+    idx = find_indices_compact(M,i);
+    Ravg(:,i+M+1) = mean(real(R(:,idx)),2);
+end
+figure(111), imagesc(Ravg)
+
+
+
+r = [-abs_dist(end:-1:1) 0 abs_dist(1:end)];
+figure, plot(r,Ravg(round(Nlags/2),:))
 
 hxc = reshape(real(xcorr(exp(1j * angle(hUx')))'), [], numpoints, numpoints); % calculates all the time cross correlations between all the sections
 figure(102)

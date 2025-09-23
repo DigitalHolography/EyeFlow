@@ -28,6 +28,12 @@ if ~isfile('Models\' + model_name +'.onnx')
     websave('Models\' + model_name +'.onnx', url);
 end
 
+if canUseGPU
+    device = 'gpu';
+else
+    device = 'cpu';
+end
+
 % Import the ONNX network
 warning('off')
 net = importONNXNetwork('Models\' + model_name +'.onnx');
@@ -45,7 +51,7 @@ M0 = imresize(rescale(M0), [512, 512]);
 
 input = rescale(M0);
 
-output = predict(net, input);
+output = predict(net, input, 'ExecutionEnvironment',device);
 
 mask = sigmoid(output) > 0.5;
 

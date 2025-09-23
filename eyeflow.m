@@ -155,14 +155,13 @@ methods (Access = public)
             last_dir = [];
         end
 
-        % Clearing before loading
-        ClearButtonPushed(app)
-
         selected_dir = uigetdir(last_dir);
 
         if selected_dir == 0
             fprintf(2, 'No folder selected\n');
         else
+            % Clearing before loading
+            ClearButtonPushed(app);
             app.Load(selected_dir);
         end
 
@@ -170,14 +169,15 @@ methods (Access = public)
 
     % Button pushed function: LoadHoloButton
     function LoadHoloButtonPushed(app, ~)
-        % Clearing before loading
-        ClearButtonPushed(app)
+        
 
         [selected_holo, path_holo] = uigetfile('*.holo');
 
         if selected_holo == 0
             fprintf(2, 'No file selected\n');
         else
+            % Clearing before loading
+            ClearButtonPushed(app);
             app.Load(fullfile(path_holo, selected_holo));
         end
 

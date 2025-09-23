@@ -232,10 +232,10 @@ if numel(sysIdxList) >= 2 && numel(sysMaxList) >= 2 && numel(sysMinList) >= 2
     % Calculate statistics
     HeartBeat = mean(heartRates);
     HeartBeatSTE = std(heartRates);
-    TimeToPeakSystole = mean((sysMaxList - sysIdxList), "omitnan") * DT;
-    TimeToPeakSystoleSTE = std((sysMaxList - sysIdxList), "omitnan") * DT;
-    TimeToMinimumDiastole = mean((sysMinList - sysIdxList), "omitnan") * DT;
-    TimeToMinimumDiastoleSTE = std((sysMinList - sysIdxList), "omitnan") * DT;
+    TimeToPeakSystole = mean((sysMaxList - sysIdxList'), "omitnan") * DT;
+    TimeToPeakSystoleSTE = std((sysMaxList - sysIdxList'), "omitnan") * DT;
+    TimeToMinimumDiastole = mean((sysMinList - sysIdxList'), "omitnan") * DT;
+    TimeToMinimumDiastoleSTE = std((sysMinList - sysIdxList'), "omitnan") * DT;
     TimeToPeakSystoleFromMinimumDiastole = abs(TimeToMinimumDiastole) + TimeToPeakSystole;
     TimeToPeakSystoleFromMinimumDiastoleSTE = (TimeToPeakSystoleSTE + TimeToMinimumDiastoleSTE) / 2;
 
@@ -248,7 +248,7 @@ if numel(sysIdxList) >= 2 && numel(sysMaxList) >= 2 && numel(sysMinList) >= 2
 
     % Find descent time
     firstIndex = find(interpFullPulse - (pMin + 0.05 * pRange) < 0, 1);
-    TimePeakToDescent = firstIndex / Ninterp * mean(diff(sysIdxList)) * DT;
+    TimePeakToDescent = firstIndex / Ninterp * mean(diff(sysIdxList')) * DT;
 
     % Store outputs
     ToolBox.Outputs.add('HeartBeat', HeartBeat, 'bpm', HeartBeatSTE);

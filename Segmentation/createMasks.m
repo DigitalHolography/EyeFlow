@@ -335,6 +335,8 @@ if mask_params.AutoCompute
 
 end
 
+% [maskArtery, maskVein ] = assert_arteries(M0_ff_video, maskArtery, maskVein);
+
 % 3) 2) a) Look for a target mask to register from
 
 if (mask_params.RegisteredMasks == -1 || mask_params.RegisteredMasks == 1)

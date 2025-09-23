@@ -114,8 +114,6 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
 if ~isBVR
 
     ToolBox.Outputs.add('TimetoPeakFromMinVein', T_peak-T_Min, 's');
-    % ToolBox.Outputs.add('TimetoAscentFromMinVein', T_ascent, 's');
-    % ToolBox.Outputs.add('TimetoDescentToMinVein', T_descent, 's');
 
 end
 

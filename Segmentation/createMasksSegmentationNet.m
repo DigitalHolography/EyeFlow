@@ -62,7 +62,7 @@ if mask_params.AVCorrelationSegmentationNet
     signal_centered = signal - mean(signal, 3, 'omitnan');
     video_centered = video - mean(M0_ff_video, 'all', 'omitnan');
     R = mean(video_centered .* signal_centered, 3) ./ (std((video_centered), [], 'all', 'omitnan') * std(signal_centered, [], 3));
-    saveImage(R_VascularSignal, 'all_15_Correlation.png', isStep = true)
+    saveImage(R, 'all_15_Correlation.png', isStep = true)
 end
 
 % if the systolic and diastolic frames are used by the model, compute them
@@ -89,6 +89,12 @@ end
 
 M0 = imresize(rescale(M0_ff_img), [512, 512]);
 
+if canUseGPU
+    device = 'gpu';
+else
+    device = 'cpu';
+end
+
 if mask_params.AVCorrelationSegmentationNet
     R = imresize(rescale(R), [512, 512]);
 
@@ -100,7 +106,7 @@ if mask_params.AVCorrelationSegmentationNet
         fprintf("Use iternet5 to segment retinal arteries and veins\n")
 
         input = cat(3, M0, M0_Systole_img, M0_Diastole_img, R);
-        output = predict(net, input);
+        output = predict(net, input, 'ExecutionEnvironment',device);
     else
         warning('off')
         net = importONNXNetwork('Models\iternet_5_av_corr.onnx');
@@ -109,7 +115,7 @@ if mask_params.AVCorrelationSegmentationNet
         fprintf("Use iternet5 to segment retinal arteries and veins\n")
 
         input = cat(3, M0, M0, R);
-        output = predict(net, input);
+        output = predict(net, input, 'ExecutionEnvironment',device);
     end
 
 elseif mask_params.AVDiasysSegmentationNet
@@ -120,7 +126,7 @@ elseif mask_params.AVDiasysSegmentationNet
     fprintf("Use iternet5 to segment retinal arteries and veins\n")
 
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
-    output = predict(net, input);
+    output = predict(net, input, 'ExecutionEnvironment',device);
 end
 
 [~, argmax] = max(output, [], 3);

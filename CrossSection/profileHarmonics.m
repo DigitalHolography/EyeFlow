@@ -1,4 +1,4 @@
-function [DiamRatio] = profileHarmonics(v_profile)
+function [DiamRatio] = profileHarmonics(v_profile, name)
 % profileHarmonics creates a figure zith the different profiles esting at dif%
 % INPUT:
 %  
@@ -74,7 +74,7 @@ legend(baseLabels)
 ax = gca;
 
 if isvalid(ax)
-    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_MultipleHarmonics.png", ToolBox.folder_name)), 'Resolution', 300);
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_MultipleHarmonics_%s.png", ToolBox.folder_name, name)), 'Resolution', 300);
 else
     warning('Current axes are not valid. Skipping export.');
 end

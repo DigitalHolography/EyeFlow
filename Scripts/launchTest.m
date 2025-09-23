@@ -1,4 +1,4 @@
-paths = readlines("C:\Users\Vladikavkaz\Documents\data_test_list.txt");
+paths = readlines("C:\Users\Mikhalkino\Desktop\in.txt");
 
 %% ensure set default parameters and no forced mask
 
@@ -35,13 +35,16 @@ for ind = 1:length(paths)
         path = strcat(path, '\');
     end
     ExecClass = ExecutionClass(path);
+  
+    ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name, 0); %no overwrite
     
     ExecClass = ExecClass.preprocessData();
 
-    ExecClass.flag_SH_analysis = 0;
-    ExecClass.flag_Pulse_analysis = 1;
-    ExecClass.flag_velocity_analysis = 1;
-    ExecClass.flag_bloodVolumeRate_analysis = 1;
+    ExecClass.flag_segmentation = 1;
+    ExecClass.flag_spectral_analysis = 0;
+    ExecClass.flag_bloodFlowVelocity_analysis = 1;
+    ExecClass.flag_crossSection_analysis = 1;
+    ExecClass.flag_crossSection_figures = 1;
 
     ExecClass.analyzeData([]);
 end

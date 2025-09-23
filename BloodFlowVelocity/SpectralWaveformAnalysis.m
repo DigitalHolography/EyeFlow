@@ -119,7 +119,7 @@ end
 
 % Save to ToolBox
 
-ToolBox.Cache.list.harmonics = [fundamental valid_harmonics];
+ToolBox.Cache.list.harmonics = [valid_harmonics];
 
 % Configure axes
 axis tight;
@@ -133,20 +133,20 @@ set(gca, 'LineWidth', 1.5, 'FontSize', 12);
 
 % Add heart rate information if fundamental is in typical range
 if ~isempty(s_locs)
-    hr = ((1:numFreq)' \ s_locs'); % Convert Hz to BPM
+    hr = ((1:numFreq)' \ s_locs');
     freq_estim = (1:numFreq) * hr;
     residus = s_locs - freq_estim;
     RMSE = sqrt(mean(residus .^ 2));
     hr_se = RMSE / sqrt(numFreq);
 
     annotation('textbox', [0.5 0.6 0.2 0.1], ...
-        'String', sprintf('HR : %.1f BPM ± %.1f', 60 * hr, 60 * hr_se), ...
+        'String', sprintf('HR : %.1f BPM ± %.1f', 60 * hr, 60 * hr_se), ... % Convert Hz to BPM
         'FitBoxToText', 'on', ...
         'BackgroundColor', 'w', ...
         'EdgeColor', 'none', ...
         'FontSize', 12);
 
-    ToolBox.Outputs.add('HeartBeat', hr, 'bpm', hr_se);
+    ToolBox.Outputs.add('HeartBeat', hr, 'Hz', hr_se);
     ToolBox.Cache.list.HeartBeatFFT = hr; % Save heart rate to cache
     ToolBox.Cache.list.HeartBeatFFTSTE = hr_se; % Save heart rate standard
 end

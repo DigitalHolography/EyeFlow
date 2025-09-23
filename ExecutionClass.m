@@ -37,6 +37,8 @@ properties
     maskVein
     maskNeighbors
 
+    displacementField
+
     directory char % directory of input data (from HoloDoppler or HoloVibes)
     params_names cell % filenames of all the current input parameters ('InputEyeFlowParams.json' for example by default)
     param_name char % current filename
@@ -139,6 +141,7 @@ methods
         obj = VideoCropping(obj);
         obj = VideoNormalizingLocally(obj);
         obj = VideoResizing(obj);
+        obj = VideoNonRigidRegistering(obj);
         obj = VideoInterpolating(obj);
         obj = VideoRemoveOutliers(obj);
 
@@ -237,6 +240,8 @@ methods
             if params.json.PulseAnalysis.ExtendedFlag
                 extendedPulseAnalysis(obj.M0_ff_video, obj.f_RMS_video, f_AVG_mean, obj.vRMS, obj.maskArtery, obj.maskVein, obj.xy_barycenter, obj.sysIdxList);
             end
+
+            axialAnalysis(obj.f_AVG_video, obj.maskArtery, obj.maskVein, obj.maskNeighbors);
 
             obj.is_pulseAnalyzed = true;
 
