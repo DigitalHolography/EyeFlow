@@ -200,7 +200,8 @@ methods
 
         path_dir_json = fullfile(obj.EF_path, 'eyeflow', 'json');
         path_file_json_params = fullfile(path_dir_json, obj.param_name);
-        copyfile(path_file_json_params, obj.path_json);
+        path_file_json_params_2 = fullfile(obj.path_json, sprintf("%s_Input_EF_Params.json", obj.folder_name));
+        copyfile(path_file_json_params, path_file_json_params_2);
     end
 
     function Params = getParams(obj)
