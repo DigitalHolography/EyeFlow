@@ -40,7 +40,7 @@ properties
     displacementField
 
     directory char % directory of input data (from HoloDoppler or HoloVibes)
-    params_names cell % filenames of all the current input parameters ('InputEyeFlowParams.json' for example by default)
+    params_names cell % filenames of all the current input parameters ('input_EF_params.json' for example by default)
     param_name char % current filename
     filenames char % name id used for storing the measured rendered data
 

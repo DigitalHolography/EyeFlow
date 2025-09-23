@@ -169,7 +169,6 @@ methods (Access = public)
 
     % Button pushed function: LoadHoloButton
     function LoadHoloButtonPushed(app, ~)
-        
 
         [selected_holo, path_holo] = uigetfile('*.holo');
 
@@ -602,7 +601,7 @@ methods (Access = public)
                 end
 
                 % Renaming
-                copyfile(fullfile(path_json, selected_json), fullfile(path_json, sprintf('InputEyeFlowParams_%d.json', idx)));
+                copyfile(fullfile(path_json, selected_json), fullfile(path_json, sprintf('input_EF_params_%d.json', idx)));
                 delete(fullfile(path_json, selected_json));
             end
 

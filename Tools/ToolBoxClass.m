@@ -17,7 +17,7 @@ properties
     path_json char
     path_log char
     main_foldername char %'XXX_HD_X'
-    param_name char %'InputEyeFlowParams.json'
+    param_name char %'input_EF_params.json'
     folder_name char % 'XXX_HD_X_EF_X'
     % Parameters
     stride double
@@ -156,6 +156,13 @@ methods
             obj.f1 = decoded_data.time_range(1);
             obj.f2 = decoded_data.time_range(2);
             disp('Done.');
+        elseif ~isempty(dir(fullfile(path, ['*', 'input_HD_params', '*']))) % since HD 2.0
+            disp('Reading cache parameters from input_HD_params');
+            fpath = fullfile(path, dir(fullfile(path, ['*', 'input_HD_params', '*'])).name);
+            decoded_data = jsondecode(fileread(fpath));
+            obj.stride = decoded_data.batch_stride;
+            obj.fs = decoded_data.fs; % Convert kHz to kHz
+            obj.f1 = decoded_data.time_range(1);
         elseif isfile(fullfile(path, 'mat', [obj.main_foldername, '.mat']))
             disp('Reading cache parameters from .mat');
             load(fullfile(path, 'mat', [obj.main_foldername, '.mat']), 'cache');
