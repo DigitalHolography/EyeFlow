@@ -40,7 +40,7 @@ properties
     displacementField
 
     directory char % directory of input data (from HoloDoppler or HoloVibes)
-    params_names cell % filenames of all the current input parameters ('InputEyeFlowParams.json' for example by default)
+    params_names cell % filenames of all the current input parameters ('input_EF_params.json' for example by default)
     param_name char % current filename
     filenames char % name id used for storing the measured rendered data
 
@@ -101,13 +101,17 @@ methods
             obj.M2_raw_video = pagetranspose(videoM2 / 1e6); % Rescale M2
         else
             dir_path_raw = fullfile(obj.directory, 'raw');
-            NameRefRawFile = strcat(obj.filenames, '_raw.h5');
-            RefRawFilePath = fullfile(dir_path_raw, NameRefRawFile);
 
-            if isfile(RefRawFilePath)
+            % Search for all .h5 files in the folder
+            h5_files = dir(fullfile(dir_path_raw, '*.h5'));
+            raw_files = dir(fullfile(dir_path_raw, '*.raw'));
+
+            if ~isempty(h5_files)
                 obj = readHDF5(obj);
-            else
+            elseif ~isempty(raw_files)
                 obj = readRaw(obj);
+            else
+                error('No data file was found in the folder: %s', dir_path_raw);
             end
 
         end
@@ -166,7 +170,6 @@ methods
 
         veins_analysis = params.veins_analysis;
         totalTime = tic;
-        saveGit;
         ToolBox.Outputs = obj.Outputs;
         ToolBox.Signals = obj.Signals;
         ToolBox.Cache = obj.Cache;
@@ -216,6 +219,7 @@ methods
             M0_AV = setcmap(M0_ff_img, obj.maskArtery & obj.maskVein, cmapAV);
 
             M0_RGB = (M0_Artery + M0_Vein) .* ~(obj.maskArtery & obj.maskVein) + M0_AV + rescale(M0_ff_img) .* ~(obj.maskArtery | obj.maskVein);
+
             if ~isempty(app)
                 app.ImageDisplay.ImageSource = mat2gray(M0_RGB); % Rescale the image for display
                 ax = ancestor(app.ImageDisplay, 'axes');

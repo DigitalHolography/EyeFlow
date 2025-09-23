@@ -15,11 +15,11 @@ for ind = 1:length(paths)
         delete(filePath);
     end
 
-    copyfile(fullfile('Parameters', 'DefaultEyeFlowParams.json'), fullfile(ef_path, 'json', 'InputEyeFlowParams.json'));
+    copyfile(fullfile('Parameters', 'DefaultEyeFlowParams.json'), fullfile(ef_path, 'json', 'input_EF_params.json'));
 
     for j = 0:Ndilation
 
-        fileID = fopen(fullfile(ef_path, 'json', 'InputEyeFlowParams.json'), 'r');
+        fileID = fopen(fullfile(ef_path, 'json', 'input_EF_params.json'), 'r');
         jsonData = fread(fileID, inf, 'uint8')';
         fclose(fileID);
         jsonData = char(jsonData);
@@ -28,7 +28,7 @@ for ind = 1:length(paths)
         decodedData.Mask.ForceVesselWidth = j;
 
         jsonStr = jsonencode(decodedData, "PrettyPrint", true);
-        fileID = fopen(fullfile(ef_path, 'json', sprintf('InputEyeFlowParams_%d.json', j)), 'w');
+        fileID = fopen(fullfile(ef_path, 'json', sprintf('input_EF_params_%d.json', j)), 'w');
         fprintf(fileID, '%s', jsonStr);
         fclose(fileID);
     end

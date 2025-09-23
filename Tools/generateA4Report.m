@@ -35,7 +35,7 @@ fig = figure('Units', 'centimeters', 'Position', [0 0 21.0 29.7], ...
 
 % Set margins (in normalized units)
 % topMargin = 0.08;
-bottomMargin = 0.10;
+bottomMargin = 0.20;
 leftMargin = 0.05;
 % rightMargin = 0.05;
 
@@ -113,58 +113,76 @@ for col = 1:2
         volume_im = imread(volume_path); % Standard placeholder
         imshow(volume_im, []);
     else
-        if strcmp(name,'artery')
+
+        if strcmp(name, 'artery')
             a_wave_path = fullfile(path_png, sprintf('%s_ArterialWaveformAnalysis_v_%s.png', folder_name, name));
         else
             a_wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
         end
+
         a_wave_im = imread(a_wave_path); % Taller placeholder (2x height)
-        imshow(a_wave_im, []);    end
-    set(ax, 'XTick', [], 'YTick', []);
-end
-
-% Add parameter section at the bottom with more spacing
-axes('Position', [leftMargin 0.04 0.8 bottomMargin], 'Visible', 'off');
-
-% Prepare parameter text
-paramNames = fieldnames(parameters);
-numParams = length(paramNames);
-paramText = cell(numParams, 1);
-
-for i = 1:numParams
-    paramValue = parameters.(paramNames{i});
-    % Format numbers nicely
-    if isnumeric(paramValue.value)
-        paramText{i} = sprintf('%s: %.2f %s', paramNames{i}, paramValue.value, paramValue.unit);
-    else
-        paramText{i} = sprintf('%s: %s %s', paramNames{i}, paramValue.value, paramValue.unit);
+        imshow(a_wave_im, []); end
+        set(ax, 'XTick', [], 'YTick', []);
     end
 
-end
+    % Add parameter section at the bottom with more spacing
+    axes('Position', [leftMargin 0.04 0.8 bottomMargin], 'Visible', 'off');
 
-% Split into two columns if more than 6 parameters
+    % Prepare parameter text
+    paramNames = fieldnames(parameters);
+    numParams = length(paramNames);
+    paramText = cell(numParams, 1);
 
-% Set larger font size for parameters
-paramFontSize = 14; % Increase as desired
-paramTitleFontSize = 16;
+    for i = 1:numParams
+        paramValue = parameters.(paramNames{i});
+        % Format numbers nicely
+        if isnumeric(paramValue.value)
+            paramText{i} = sprintf('%s: %.2f %s', paramNames{i}, paramValue.value, paramValue.unit);
+        else
+            paramText{i} = sprintf('%s: %s %s', paramNames{i}, paramValue.value, paramValue.unit);
+        end
 
-if numParams > 6
-    col1 = paramText(1:ceil(numParams / 2));
-    col2 = paramText(ceil(numParams / 2) + 1:end);
+    end
 
-    text(0, 1, col1, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
-    text(0.5, 1, col2, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
-else
-    text(0, 1, paramText, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
-end
+    % Split into two columns if more than 6 parameters
 
-% Add title to parameters section
-text(0, 1.15, 'Computed Parameters:', 'FontWeight', 'bold', 'FontSize', paramTitleFontSize);
+    % Set larger font size for parameters
+    paramFontSize = 12; % Increase as desired
+    paramTitleFontSize = 14;
 
-% Save to PDF
-print(fig, fullfile(path_pdf, sprintf('%s_report.pdf', folder_name)), '-dpdf', '-bestfit');
+    if numParams > 6
+        col1 = paramText(1:ceil(numParams / 2));
+        col2 = paramText(ceil(numParams / 2) + 1:end);
 
-% Close the figure
-close(fig);
+        text(0, 1, col1, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
+        text(0.5, 1, col2, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
+    else
+        text(0, 1, paramText, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
+    end
+
+    % Add title to parameters section
+    text(0, 1.15, 'Computed Parameters:', 'FontWeight', 'bold', 'FontSize', paramTitleFontSize);
+
+    % Set figure renderer to control compression
+    set(fig, 'Renderer', 'painters'); % Vector graphics where possible
+
+    % Save to PDF with controlled resolution
+    print(fig, fullfile(path_pdf, sprintf('%s_report.pdf', folder_name)), ...
+        '-dpdf', '-r150', '-bestfit', '-image'); % -r150 sets 150 DPI
+
+    % Close the figure
+    close(fig);
+
+    % Compress using ghostscript (if available)
+    if exist('ghostscript', 'file')
+        compressed_pdf = fullfile(path_pdf, sprintf('%s_report_compressed.pdf', folder_name));
+        ghostscript_command = sprintf( ...
+            'gswin64c -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/prepress -dNOPAUSE -dQUIET -dBATCH -sOutputFile="%s" "%s"', ...
+            compressed_pdf, pdf_path);
+        system(ghostscript_command);
+
+        % Replace original with compressed version
+        movefile(compressed_pdf, pdf_path, 'f');
+    end
 
 end

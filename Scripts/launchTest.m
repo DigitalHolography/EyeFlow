@@ -18,26 +18,27 @@ paths = readlines("C:\Users\Mikhalkino\Desktop\in.txt");
 %         end
 %     end
 %     last_folder_name = sprintf('%s_%d', folder_name, idx);
-% 
-%     copyfile(fullfile('Parameters','DefaultEyeFlowParams.json'),fullfile(path,'json','InputEyeFlowParams.json'));
-% 
+%
+%     copyfile(fullfile('Parameters','DefaultEyeFlowParams.json'),fullfile(path,'json','input_EF_params.json'));
+%
 %     if isfile(fullfile(path,'mask','forceMaskArtery.png'))
 %         movefile(fullfile(path,'mask','forceMaskArtery.png'),fullfile(path,'mask','oldForceMaskArtery.png'));
 %     end
 % end
 
-
 %% launch
 
 for ind = 1:length(paths)
     path = paths(ind);
+
     if isfolder(path)
         path = strcat(path, '\');
     end
+
     ExecClass = ExecutionClass(path);
-  
+
     ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name, 0); %no overwrite
-    
+
     ExecClass = ExecClass.preprocessData();
 
     ExecClass.flag_segmentation = 1;
@@ -52,4 +53,3 @@ end
 %% Show
 
 Show_multiple_outputs;
-

@@ -3,7 +3,7 @@ function ClearParams(paths)
 
 for ind = 1:length(paths)
     EF_path_json = fullfile(paths{ind}, 'eyeflow', 'json');
-    list_dir = dir(fullfile(EF_path_json, 'InputEyeFlowParams*.json'));
+    list_dir = dir(fullfile(EF_path_json, 'input_EF_params*.json'));
 
     matchingFiles = {list_dir.name};
 

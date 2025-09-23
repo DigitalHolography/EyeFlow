@@ -8,7 +8,7 @@ properties
     path_main char %'X:\...\XXX_HD_X\eyeflow'
     path_dir char %'X:\...\XXX_HD_X\eyeflow\XXX_HD_X_EF_X'
     path_png char %'X:\...\XXX_HD_X\eyeflow\XXX_HD_X_EF_X\png'
-    path_eps char 
+    path_eps char
     path_pdf char
     path_gif char
     path_txt char
@@ -17,7 +17,7 @@ properties
     path_json char
     path_log char
     main_foldername char %'XXX_HD_X'
-    param_name char %'InputEyeFlowParams.json'
+    param_name char %'input_EF_params.json'
     folder_name char % 'XXX_HD_X_EF_X'
     % Parameters
     stride double
@@ -27,7 +27,7 @@ properties
     cmapArtery
     cmapVein
     cmapAV
-    Cache % Cache class handle Cache small variables through the execution 
+    Cache % Cache class handle Cache small variables through the execution
     Outputs % Outputs class handle Stores outputs through the execution
     Signals
 end
@@ -102,7 +102,7 @@ methods
     function idx = getUniqueFolderIndex(obj, folderBaseName, OverWrite)
         % Helper function to determine the unique folder index based on existing directories
 
-        idx = 0;
+        idx = 1;
         list_dir = dir(obj.path_main);
 
         for i = 1:length(list_dir)
@@ -156,6 +156,13 @@ methods
             obj.f1 = decoded_data.time_range(1);
             obj.f2 = decoded_data.time_range(2);
             disp('Done.');
+        elseif ~isempty(dir(fullfile(path, ['*', 'input_HD_params', '*']))) % since HD 2.0
+            disp('Reading cache parameters from input_HD_params');
+            fpath = fullfile(path, dir(fullfile(path, ['*', 'input_HD_params', '*'])).name);
+            decoded_data = jsondecode(fileread(fpath));
+            obj.stride = decoded_data.batch_stride;
+            obj.fs = decoded_data.fs; % Convert kHz to kHz
+            obj.f1 = decoded_data.time_range(1);
         elseif isfile(fullfile(path, 'mat', [obj.main_foldername, '.mat']))
             disp('Reading cache parameters from .mat');
             load(fullfile(path, 'mat', [obj.main_foldername, '.mat']), 'cache');
@@ -197,11 +204,30 @@ methods
 
     function copyInputParameters(obj)
         % Copy the input parameters to the result folder
-
         path_dir_json = fullfile(obj.EF_path, 'eyeflow', 'json');
-        path_file_json_params = fullfile(path_dir_json, obj.param_name);
-        path_file_json_params_2 = fullfile(obj.path_json, sprintf("%s_Input_EF_Params.json", obj.folder_name));
-        copyfile(path_file_json_params, path_file_json_params_2);
+        path_file_json_params_src = fullfile(path_dir_json, obj.param_name);
+        path_file_json_params_dest = fullfile(obj.path_json, sprintf("%s_Input_EF_Params.json", obj.folder_name));
+
+        if ~isfile(path_file_json_params_src)
+            warning('Source parameter file does not exist: %s', path_file_json_params_src);
+        else
+
+            try
+                copyfile(path_file_json_params_src, path_file_json_params_dest);
+            catch ME
+                warning('Failed to copy parameter file: %s\nError: %s', path_file_json_params_src, ME.message);
+            end
+
+        end
+
+        % Add the version .txt file in the result folder
+        version_file_src = 'version.txt';
+        version_file_dest = fullfile(obj.path_dir, sprintf("%s_version.txt", obj.folder_name));
+        copyfile(version_file_src, version_file_dest);
+
+        % Add the git .txt file in the result folder
+        obj.saveGit();
+
     end
 
     function Params = getParams(obj)
@@ -212,6 +238,68 @@ methods
         obj.cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
         obj.cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
         obj.cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [1 1 1], 1);
+    end
+
+    function saveGit(obj)
+        % SAVING GIT VERSION
+        % In the txt file in the folder : "log"
+
+        % Get the current branch name
+        gitBranchCommand = 'git symbolic-ref --short HEAD';
+        [statusBranch, resultBranch] = system(gitBranchCommand);
+
+        if statusBranch == 0
+            resultBranch = strtrim(resultBranch);
+            MessBranch = 'Current branch : %s \r';
+        else
+            vers = readlines('version.txt');
+            MessBranch = sprintf('PulseWave GitHub version %s\r', char(vers));
+        end
+
+        % Get the latest commit hash
+        gitHashCommand = 'git rev-parse HEAD';
+        [statusHash, resultHash] = system(gitHashCommand);
+
+        if statusHash == 0 %hash command was successful
+            resultHash = strtrim(resultHash);
+            MessHash = 'Latest Commit Hash : %s \r';
+        else
+            MessHash = '';
+        end
+
+        % Get the most recent tag
+        gitTagCommand = 'git describe --tags';
+        [statusTag, resultTag] = system(gitTagCommand);
+
+        if statusTag == 0 %tag command was successful
+            resultTag = strtrim(resultTag);
+            MessTag = 'Most recent tag : %s \r';
+        else
+            MessTag = '';
+        end
+
+        % Print the results
+        fprintf('==========================================\rGIT VERSION :\r');
+        fprintf(MessBranch, resultBranch);
+        fprintf(MessHash, resultHash);
+        fprintf(MessTag, resultTag);
+        fprintf('==========================================\r');
+
+        % Save the results to a text file
+        logFilePath = fullfile(obj.path_dir, sprintf('%s_git_version.txt', obj.folder_name));
+        fileID = fopen(logFilePath, 'w');
+
+        if fileID == -1
+            error('Cannot open file: %s', logFilePath);
+        end
+
+        fprintf(fileID, '==========================================\rGIT VERSION :\r');
+        fprintf(fileID, MessBranch, resultBranch);
+        fprintf(fileID, MessHash, resultHash);
+        fprintf(fileID, MessTag, resultTag);
+        fprintf(fileID, '==========================================\r');
+        fclose(fileID);
+
     end
 
 end
