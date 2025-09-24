@@ -131,6 +131,13 @@ methods
 
         fprintf("\n----------------------------------\nVideo PreProcessing\n----------------------------------\n");
 
+        % Initialize ToolBox and parameters
+        ToolBox = obj.ToolBoxMaster;
+        params = ToolBox.getParams;
+        ToolBox.Output = obj.Output;
+        ToolBox.Ref = obj; % handle to the Execution Class obj
+        ToolBox.Cache = obj.Cache;
+        
         PreProcessTimer = tic;
 
         % Store raw video data
@@ -160,6 +167,9 @@ methods
         % Initialize ToolBox and parameters
         ToolBox = obj.ToolBoxMaster;
         params = ToolBox.getParams;
+        ToolBox.Output = obj.Output;
+        ToolBox.Ref = obj; % handle to the Execution Class obj
+        ToolBox.Cache = obj.Cache;
 
         if params.json.DebugMode
             profile off
@@ -168,8 +178,6 @@ methods
 
         veins_analysis = params.veins_analysis;
         totalTime = tic;
-        ToolBox.Output = obj.Output;
-        ToolBox.Cache = obj.Cache;
         ToolBox.Output.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
         ToolBox.Output.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
         ToolBox.Output.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
