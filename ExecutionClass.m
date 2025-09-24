@@ -2,17 +2,17 @@ classdef ExecutionClass < handle
 
 properties
 
-    M0_raw_video % M0 raw
+    M0_raw_video % M0 raw as imported
     M1_raw_video % M1 raw
     M2_raw_video % M2 raw
     M0_ff_raw_video % M0 ff raw
-
-    M0_data_video % M0 raw
-    M1_data_video % M1 raw
-    M2_data_video % M2 raw
     SH_data_hypervideo % SH raw
 
-    f_RMS_video % RMS M2/M0
+    M0_data_video % M0 raw modified by the preprocess 
+    M1_data_video % M1 raw
+    M2_data_video % M2 raw
+
+    f_RMS_video % RMS sqrt(M2/M0) normalized input in kHz 
     f_AVG_video % AVG M1/M0
     M0_ff_video % M0 AVI
 
@@ -22,28 +22,6 @@ properties
     is_crossSectionAnalyzed = false;
     is_AllAnalyzed = false;
 
-    sysIdxList % list of frame indexes counting cardiac cycles
-    diasIdx
-    sysIdx % Indexes for diastole/ systole analysis
-    xy_barycenter % x y position of the ONH
-    papillaDiameter
-    vRMS % video estimate of velocity map in retinal vessels
-    Q_results_A
-    Q_results_V
-    v_video_RGB
-    v_mean_RGB
-
-    maskArtery
-    maskVein
-    maskNeighbors
-
-    displacementField
-
-    directory char % directory of input data (from HoloDoppler or HoloVibes)
-    params_names cell % filenames of all the current input parameters ('input_EF_params.json' for example by default)
-    param_name char % current filename
-    filenames char % name id used for storing the measured rendered data
-
     flag_segmentation
     flag_bloodFlowVelocity_analysis
     flag_bloodFlowVelocity_figures
@@ -52,9 +30,34 @@ properties
     flag_spectral_analysis
 
     OverWrite logical
+
     ToolBoxMaster ToolBoxClass
     Cache
     Output
+
+    maskArtery % Segmentation mask of retinal arteries
+    maskVein % Segmentation mask of retinal veins
+    maskNeighbors % Segmentation mask of pixels close to vessels but outside used 
+    % to estimate a local difference in Doppler broaddening
+    displacementField % Displacement Field calculated with demons non rigid registration 
+    % frame by frame compared to the averaged image
+    sysIdxList % List of frame indexes counting cardiac cycles
+    diasIdx % Indexes for diastole/ systole analysis
+    sysIdx 
+    xy_barycenter % x y position of the ONH in pixels (size(M0_ff_video))
+    papillaDiameter % Diameter of the detected papilla in pixels (size(M0_ff_video))
+    vRMS % Video of velocity map estimate in retinal vessels
+    Q_results_A % Contain results from radial cross section analysis of retinal vessels
+    Q_results_V
+    v_video_RGB % Visual output for the velocity map estimate (arteries/red veins/blue)
+    v_mean_RGB
+
+    directory char % directory of input data (from HoloDoppler or HoloVibes)
+    params_names cell % filenames of all the current input parameters ('input_EF_params.json' for example by default)
+    param_name char % current filename
+    filenames char % name id used for storing the measured rendered data
+
+    
 end
 
 methods
