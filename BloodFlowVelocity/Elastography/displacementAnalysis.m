@@ -25,11 +25,15 @@ Ux = zeros(numpoints, numFrames);
 for k=1:numFrames
     for j=2:numpoints
 
-        [r,lags]=xcorr(squeeze(U_x(j-1,k,:)),squeeze(U_x(j,k,:)),'unbiased');
+        [r,lags]=xcorr(squeeze(U_x(1,k,:)),squeeze(U_x(j,k,:)),'unbiased');
         [~,ind] = max(r);
         % disp(lags(ind))
         Ux(j,k) = lags(ind);
     end
 end
+
+figure(75);
+imagesc(Ux)
+title('Estimated lateral displacement across length and time')
 
 end
