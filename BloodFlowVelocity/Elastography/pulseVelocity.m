@@ -1,7 +1,18 @@
-function pulseVelocity(M, maskArtery)
+function pulseVelocity(M,D, maskArtery)
 ToolBox = getGlobalToolBox;
+
 [maskLongArtery, L, adjMatrix] = getLongestArteryBranch(maskArtery, ToolBox.Cache.list.xy_barycenter,'artery');
 
-%maskLongArtery = (L==10);
+
+
+
+
+    
+
+
+
+
+displacementAnalysis(D, maskLongArtery);
+
 PWV = pulseWaveVelocity(M,maskLongArtery);
 end
