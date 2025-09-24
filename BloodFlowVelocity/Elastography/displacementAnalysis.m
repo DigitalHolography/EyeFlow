@@ -12,7 +12,7 @@ numFrames = size(D, 3);
 %%
 [skel_out, path_xy] = skel_keep_longest_path(mask);
 
-[U_x,L] = getBranchMultiCrossSections(D,skel_out,path_xy(:,1),path_xy(:,2),10,30,1);
+[U_x,L] = getBranchMultiCrossSections(D,skel_out,path_xy(:,1),path_xy(:,2),30,30,1);
 
 figure(74);
 imagesc(L)
