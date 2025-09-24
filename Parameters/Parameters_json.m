@@ -17,10 +17,10 @@ methods
         obj.path = dir_path;
         obj.name = filename;
 
-        obj = obj.GetParameters();
+        obj.GetParameters();
     end
 
-    function obj = GetParameters(obj)
+    function GetParameters(obj)
         % Constructor method
         %[~, filename, ~] = fileparts(obj.path);
         filename_json = obj.name;

@@ -8,7 +8,7 @@ ToolBox = getGlobalToolBox;
 path_png = ToolBox.path_png;
 path_pdf = ToolBox.path_pdf;
 folder_name = ToolBox.folder_name;
-outputs = ToolBox.Outputs;
+outputs = ToolBox.Output;
 
 % Parameters
 parameters.average_arterial_velocity = outputs.ArterialMeanVelocity;

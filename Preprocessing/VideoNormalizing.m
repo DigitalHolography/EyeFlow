@@ -1,4 +1,4 @@
-function obj = VideoNormalizing(obj)
+function VideoNormalizing(obj)
 
 params = Parameters_json(obj.directory, obj.param_name);
 gwRatio = params.json.FlatFieldCorrection.GWRatio;

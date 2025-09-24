@@ -1,4 +1,4 @@
-function obj = VideoInterpolating(obj)
+function VideoInterpolating(obj)
 % This function interpolates the video frames of M0_ff_video, f_AVG_video, and f_RMS_video
 % using the specified interpolation factor from the parameters JSON file.
 % It uses parfor for parallel processing of each frame to speed up the interpolation process.

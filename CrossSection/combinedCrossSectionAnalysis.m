@@ -102,8 +102,8 @@ set(gca, 'LineWidth', 2);
 
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_BVR_AV_phase.png", ToolBox.folder_name)))
 
-ToolBox.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', freqs, 'Hz');
-ToolBox.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');
+ToolBox.Output.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', freqs, 'Hz');
+ToolBox.Output.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');
 
 instant_dV = detrend(cumsum(Q_diff(sIdx:eIdx))) / 60 * dt;
 [peaks, peaks_idx] = findpeaks(instant_dV, 'MinPeakDistance', cycleSize * 0.8);

@@ -146,7 +146,7 @@ if ~isempty(s_locs)
         'EdgeColor', 'none', ...
         'FontSize', 12);
 
-    ToolBox.Outputs.add('HeartBeat', hr, 'Hz', hr_se);
+    ToolBox.Output.add('HeartBeat', hr, 'Hz', hr_se);
     ToolBox.Cache.list.HeartBeatFFT = hr; % Save heart rate to cache
     ToolBox.Cache.list.HeartBeatFFTSTE = hr_se; % Save heart rate standard
 end

@@ -1,4 +1,4 @@
-function obj = VideoNonRigidRegistering(obj)
+function VideoNonRigidRegistering(obj)
     tic
     disp("    - Video Registering Non-Rigidly started...");
     params = Parameters_json(obj.directory, obj.param_name);

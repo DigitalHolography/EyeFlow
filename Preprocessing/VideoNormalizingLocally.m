@@ -1,4 +1,4 @@
-function obj = VideoNormalizingLocally(obj)
+function VideoNormalizingLocally(obj)
 
 tic
 fprintf("    - Moment Normalizing started\n");

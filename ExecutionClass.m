@@ -54,8 +54,7 @@ properties
     OverWrite logical
     ToolBoxMaster ToolBoxClass
     Cache
-    Outputs
-    Signals
+    Output
 end
 
 methods
@@ -107,9 +106,9 @@ methods
             raw_files = dir(fullfile(dir_path_raw, '*.raw'));
 
             if ~isempty(h5_files)
-                obj = readHDF5(obj);
+                readHDF5(obj);
             elseif ~isempty(raw_files)
-                obj = readRaw(obj);
+                readRaw(obj);
             else
                 error('No data file was found in the folder: %s', dir_path_raw);
             end
@@ -118,16 +117,13 @@ methods
 
         obj.is_preprocessed = false;
 
-        obj.Outputs = Outputs();
-        obj.Outputs.initOutputs();
+        obj.Output = Output();
+        obj.Output.initOutput();
 
         obj.Cache = Cache();
-
-        obj.Signals = Signals();
-        obj.Signals.initSignals();
     end
 
-    function obj = preprocessData(obj)
+    function preprocessData(obj)
         % Preprocess video data.
 
         fprintf("\n----------------------------------\nVideo PreProcessing\n----------------------------------\n");
@@ -141,22 +137,21 @@ methods
         obj.M2_data_video = obj.M2_raw_video;
 
         % Preprocess the video data
-        obj = VideoRegistering(obj);
-        obj = VideoCropping(obj);
-        obj = VideoNormalizingLocally(obj);
-        obj = VideoResizing(obj);
-        obj = VideoNonRigidRegistering(obj);
-        obj = VideoInterpolating(obj);
-        obj = VideoRemoveOutliers(obj);
+        VideoRegistering(obj);
+        VideoCropping(obj);
+        VideoNormalizingLocally(obj);
+        VideoResizing(obj);
+        VideoNonRigidRegistering(obj);
+        VideoInterpolating(obj);
+        VideoRemoveOutliers(obj);
 
         obj.is_preprocessed = true;
-        obj.Outputs.initOutputs();
 
         fprintf("- Preprocess took : %ds\n", round(toc(PreProcessTimer)))
 
     end
 
-    function obj = analyzeData(obj, app)
+    function analyzeData(obj, app)
         % Main routine for EyeFlow analysis.
 
         % Initialize ToolBox and parameters
@@ -170,12 +165,11 @@ methods
 
         veins_analysis = params.veins_analysis;
         totalTime = tic;
-        ToolBox.Outputs = obj.Outputs;
-        ToolBox.Signals = obj.Signals;
+        ToolBox.Output = obj.Output;
         ToolBox.Cache = obj.Cache;
-        ToolBox.Outputs.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
-        ToolBox.Outputs.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
-        ToolBox.Outputs.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
+        ToolBox.Output.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
+        ToolBox.Output.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
+        ToolBox.Output.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
 
         if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
             writeGifOnDisc(imresize(rescale(obj.M0_ff_video), 0.5), "M0")
@@ -347,12 +341,10 @@ methods
 
         end
 
-        % Main Outputs Saving
+        % Main Output Saving
 
-        ToolBox.Outputs.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_outputs.json')));
-        ToolBox.Signals.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_signals.json')));
-        ToolBox.Outputs.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_outputs.h5')));
-        ToolBox.Signals.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_signals.h5')));
+        ToolBox.Output.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, 'output.json')));
+        ToolBox.Output.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, 'output.h5')));
 
         % Final Output
         tTotal = toc(totalTime);
