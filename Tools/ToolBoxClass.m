@@ -24,6 +24,7 @@ properties
     fs double
     f1 double
     f2 double
+    record_time_stamps_us
     cmapArtery
     cmapVein
     cmapAV
@@ -156,13 +157,14 @@ methods
             obj.f1 = decoded_data.time_range(1);
             obj.f2 = decoded_data.time_range(2);
             disp('Done.');
-        elseif ~isempty(dir(fullfile(path, ['*', 'input_HD_params', '*']))) % since HD 2.0
+        elseif ~isempty(dir(fullfile(path, ['*', 'input_HD_params', '*']))) % since HD 2.9
             disp('Reading cache parameters from input_HD_params');
             fpath = fullfile(path, dir(fullfile(path, ['*', 'input_HD_params', '*'])).name);
             decoded_data = jsondecode(fileread(fpath));
             obj.stride = decoded_data.batch_stride;
             obj.fs = decoded_data.fs; % Convert kHz to kHz
             obj.f1 = decoded_data.time_range(1);
+            obj.record_time_stamps_us = decoded_data.record_time_stamps_us;
         elseif isfile(fullfile(path, 'mat', [obj.main_foldername, '.mat']))
             disp('Reading cache parameters from .mat');
             load(fullfile(path, 'mat', [obj.main_foldername, '.mat']), 'cache');

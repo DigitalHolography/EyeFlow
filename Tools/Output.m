@@ -89,9 +89,11 @@ properties
     DynamicViscosityAverage
     PapillaRatio
 
+    UnixTimestampFirst
+    UnixTimestampLast
+    
     % Signals
     Signals
-
 end
 
 methods
