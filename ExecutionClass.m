@@ -92,7 +92,7 @@ methods
 
         % Load video data
         if ~isfolder(path) % If .holo file
-            disp(['Reading moments in: ', strcat(obj.directory, '.holo')]);
+            fprintf('Reading moments in: %s.holo\n', obj.directory);
             [videoM0, videoM1, videoM2] = readMoments(strcat(obj.directory, '.holo'));
             readMomentsFooter(obj.directory);
             obj.M0_ff_raw_video = pagetranspose(improve_video(ff_correction(videoM0, 35), 0.0005, 2, 0));
@@ -130,7 +130,9 @@ methods
     function obj = preprocessData(obj)
         % Preprocess video data.
 
-        fprintf("\n----------------------------------\nVideo PreProcessing\n----------------------------------\n");
+        fprintf("\n----------------------------------\n" + ...
+            "Video PreProcessing\n" + ...
+        "----------------------------------\n");
 
         PreProcessTimer = tic;
 
@@ -151,6 +153,10 @@ methods
 
         obj.is_preprocessed = true;
         obj.Outputs.initOutputs();
+
+        fprintf("\n----------------------------------\n" + ...
+            "Preprocessing Complete\n" + ...
+        "----------------------------------\n");
 
         fprintf("- Preprocess took : %ds\n", round(toc(PreProcessTimer)))
 
@@ -176,10 +182,11 @@ methods
         ToolBox.Outputs.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
         ToolBox.Outputs.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
         ToolBox.Outputs.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
+
         if ~isempty(ToolBox.record_time_stamps_us)
             tmp = ToolBox.record_time_stamps_us;
-            ToolBox.Outputs.add('UnixTimestampFirst',tmp.first,'µs');
-            ToolBox.Outputs.add('UnixTimestampLast',tmp.last,'µs');
+            ToolBox.Outputs.add('UnixTimestampFirst', tmp.first, 'µs');
+            ToolBox.Outputs.add('UnixTimestampLast', tmp.last, 'µs');
         end
 
         if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
@@ -188,7 +195,9 @@ methods
 
         % Mask Creation
         if obj.flag_segmentation
-            fprintf("\n----------------------------------\nMask Creation\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Mask Creation\n" + ...
+            "----------------------------------\n");
             createMasksTimer = tic;
 
             if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
@@ -208,9 +217,9 @@ methods
 
             try
                 [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
-            catch E
+            catch ME
                 warning("Error while finding papilla : ")
-                disp(E)
+                MEdisp(ME, ToolBox.EF_path)
                 diameter_x = NaN;
                 diameter_y = NaN;
             end
@@ -239,7 +248,9 @@ methods
         % Pulse Analysis
         if obj.flag_bloodFlowVelocity_analysis
 
-            fprintf("\n----------------------------------\nBlood Flow Velocity Analysis\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Blood Flow Velocity Analysis\n" + ...
+            "----------------------------------\n");
             pulseAnalysisTimer = tic;
 
             f_AVG_mean = squeeze(mean(obj.f_AVG_video, 3));
@@ -259,7 +270,9 @@ methods
 
         % Pulse Velocity Analysis
         %  if obj.flag_pulseVelocity_analysis
-        %     fprintf("\n----------------------------------\nPulse Velocity Calculation\n----------------------------------\n");
+        %     fprintf("\n----------------------------------\n" + ...
+        %         "Pulse Velocity Calculation\n" + ...
+        %         "----------------------------------\n");
         %     pulseVelocityTimer = tic;
 
         %%%%%%%%%%%%%%%%%%%% pulseVelocity(obj.M0_ff_video, obj.displacementField, obj.maskArtery);
@@ -270,7 +283,9 @@ methods
 
         % Cross-Section Analysis
         if obj.flag_crossSection_analysis
-            fprintf("\n----------------------------------\nCross-Section Analysis\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Cross-Section Analysis\n" + ...
+            "----------------------------------\n");
             crossSectionAnalysisTimer = tic;
 
             [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
@@ -286,7 +301,9 @@ methods
 
         % Cross-Section Figures
         if obj.flag_crossSection_figures
-            fprintf("\n----------------------------------\nCross-Section Figures\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Cross-Section Figures\n" + ...
+            "----------------------------------\n");
             crossSectionFiguresTimer = tic;
 
             crossSectionsFigures(obj.Q_results_A, 'artery', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
@@ -304,8 +321,8 @@ methods
                     combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video, obj.sysIdxList)
                 end
 
-            catch e
-                disp(e)
+            catch ME
+                MEdisp(ME, ToolBox.EF_path)
             end
 
             obj.is_AllAnalyzed = true;
@@ -315,7 +332,10 @@ methods
 
         % Spectral Analysis
         if obj.flag_spectral_analysis && isfile(fullfile(ToolBox.EF_path, 'raw', [strcat(ToolBox.folder_name, '_SH'), '.raw']))
-            fprintf("\n----------------------------------\nSpectral Analysis\n----------------------------------\n");
+
+            fprintf("\n----------------------------------\n" + ...
+                "Spectral Analysis\n" + ...
+            "----------------------------------\n");
             timeSpectralAnalysis = tic;
 
             if ~isfolder(fullfile(ToolBox.path_png, 'spectralAnalysis'))
@@ -324,7 +344,9 @@ methods
             end
 
             % Spectrum Analysis
-            fprintf("\n----------------------------------\nSpectrum Analysis\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Spectrum Analysis\n" + ...
+            "----------------------------------\n");
             spectrumAnalysisTimer = tic;
 
             spectrum_analysis(obj.SH_data_hypervideo, obj.M0_ff_video);
@@ -332,22 +354,28 @@ methods
             fprintf("- Spectrum Analysis took : %ds\n", round(toc(spectrumAnalysisTimer)))
 
             % Spectrogram
-            fprintf("\n----------------------------------\nSpectrogram\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Spectrogram\n" + ...
+            "----------------------------------\n");
             spectrogramTimer = tic;
 
             % spectrogram(obj.maskArtery, obj.xy_barycenter, obj.SH_data_hypervideo);
             spectrum_video(obj.SH_data_hypervideo, obj.f_RMS_video, obj.maskArtery, obj.maskNeighbors);
 
             fprintf("- Spectrogram took: %ds\n", round(toc(spectrogramTimer)));
-            fprintf("\n----------------------------------\nSpectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
+
+            fprintf("\n----------------------------------\n" + ...
+                "Spectral Analysis Complete\n" + ...
+            "----------------------------------\n");
+            fprintf("Spectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
         end
 
         if obj.is_pulseAnalyzed && veins_analysis
 
             try
                 generateA4Report()
-            catch e
-                MEdisp(e, ToolBox.EF_path)
+            catch ME
+                MEdisp(ME, ToolBox.EF_path)
             end
 
         end

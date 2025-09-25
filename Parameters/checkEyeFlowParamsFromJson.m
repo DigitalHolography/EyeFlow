@@ -18,11 +18,11 @@ init_data = jsondecode(jsonInput);
 jsonFiles = dir(fullfile(dir_path_json, 'input_EF_params*.json'));
 
 if ~isempty(jsonFiles)
-    disp("Found parameter files : ")
+    fprintf("Found parameter files : ")
 
     for i = 1:numel(jsonFiles)
         jsonFilePath = fullfile(dir_path_json, jsonFiles(i).name);
-        disp(jsonFilePath)
+        fprintf("%s\n", jsonFilePath)
         jsonData = fileread(jsonFilePath);
         parsedData = jsondecode(jsonData);
 
@@ -41,13 +41,13 @@ if ~isempty(jsonFiles)
     end
 
 else
-    disp("Parameter file does not exist, writing in process")
+    fprintf("Parameter file does not exist, writing in process\n");
 
     jsonData = jsonencode(init_data, PrettyPrint = true);
 
     if ~isfolder(dir_path_json)
         mkdir(dir_path_json);
-        disp(['Directory ', dir_path_json, ' has been created.']);
+        fprintf('Directory %s has been created.\n', dir_path_json);
     end
 
     jsonFilePath = fullfile(dir_path_json, filename_json);

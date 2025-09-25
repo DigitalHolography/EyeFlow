@@ -1,5 +1,5 @@
 function MEdisp(ME, path)
-fprintf(2, "==========================================\nERROR\n==========================================\n")
+fprintf(2, "==================================\nERROR\n==================================\n")
 fprintf(2, 'Error while loading : %s\n', path)
 fprintf(2, "%s\n", ME.identifier)
 fprintf(2, "%s\n", ME.message)
@@ -14,5 +14,5 @@ if ME.identifier == "MATLAB:audiovideo:VideoReader:FileNotFound"
 
 end
 
-fprintf(2, "==========================================\n")
+fprintf(2, "==================================\n")
 end

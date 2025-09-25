@@ -64,7 +64,7 @@ end
 
 % Write results to the log file in a readable format
 fprintf(fileID, "Artery and Vein Segmentation Performance Metrics\n");
-fprintf(fileID, "--------------------------------------------\n");
+fprintf(fileID, "----------------------------------\n");
 
 fprintf(fileID, "    Artery Dice Score: %0.2f %%\n", DiceArtery);
 fprintf(fileID, "    Vein Dice Score: %0.2f %%\n", DiceVein);
