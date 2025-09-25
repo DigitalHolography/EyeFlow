@@ -176,6 +176,11 @@ methods
         ToolBox.Outputs.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
         ToolBox.Outputs.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
         ToolBox.Outputs.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
+        if ~isempty(ToolBox.record_time_stamps_us)
+            tmp = ToolBox.record_time_stamps_us;
+            ToolBox.Outputs.add('TimeStampsusBegin',tmp.first,'µs');
+            ToolBox.Outputs.add('TimeStampsusEnd',tmp.last,'µs');
+        end
 
         if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
             writeGifOnDisc(imresize(rescale(obj.M0_ff_video), 0.5), "M0")

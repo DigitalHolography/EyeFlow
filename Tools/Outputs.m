@@ -89,6 +89,9 @@ properties
     DynamicViscosityAverage
     PapillaRatio
 
+    TimeStampsusBegin
+    TimeStampsusEnd
+
 end
 
 methods
