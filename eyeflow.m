@@ -15,7 +15,6 @@ properties (Access = public)
     EditParametersButton matlab.ui.control.Button
     OpenDirectoryButton matlab.ui.control.Button
     ReProcessButton matlab.ui.control.Button
-    MaskToolButton matlab.ui.control.Button
     PlayMomentsButton matlab.ui.control.Button
 
     % Checkboxes
@@ -53,7 +52,9 @@ methods (Access = public)
         try
             % Add file
             tic
-            fprintf("\n----------------------------------\nVideo Loading\n----------------------------------\n")
+            fprintf("\n----------------------------------\n");
+            fprintf("Video Loading\n");
+            fprintf("----------------------------------\n");
             app.file = ExecutionClass(path);
             fprintf("- Video Loading took : %ds\n", round(toc))
 
@@ -102,11 +103,11 @@ methods (Access = public)
 
         if exist("version.txt", 'file')
             v = readlines('version.txt');
-            fprintf("==========================================\n " + ...
+            fprintf("==================================\n " + ...
                 "Welcome to EyeFlow %s\n" + ...
-                "------------------------------------------\n" + ...
+                "----------------------------------\n" + ...
                 "Developed by the DigitalHolographyFoundation\n" + ...
-                "==========================================\n", v(1));
+                "==================================\n", v(1));
         end
 
         % Add necessary paths
@@ -197,6 +198,8 @@ methods (Access = public)
         drawnow;
 
         % Actualizes the input Parameters
+
+        fprintf("\n==================================\n");
         app.file.params_names = checkEyeFlowParamsFromJson(app.file.directory); % checks compatibility between found EF params and Default EF params of this version of EF.
         params = Parameters_json(app.file.directory, app.file.params_names{1});
 
@@ -204,22 +207,11 @@ methods (Access = public)
             app.NumberofWorkersSpinner.Value = params.json.NumberOfWorkers;
         end
 
-        parfor_arg = app.NumberofWorkersSpinner.Value;
-
-        poolobj = gcp('nocreate'); % check if a pool already exist
-
-        if isempty(poolobj)
-            parpool(parfor_arg); % create a new pool
-        elseif poolobj.NumWorkers ~= parfor_arg
-            delete(poolobj); %close the current pool to create a new one with correct num of workers
-            parpool(parfor_arg);
-        end
-
         for i = 1:length(app.file.params_names)
 
             app.file.param_name = app.file.params_names{i};
 
-            fprintf("==========================================\n")
+            fprintf("\n==================================\n")
 
             app.file.flag_segmentation = app.segmentationCheckBox.Value;
             app.file.flag_bloodFlowVelocity_analysis = app.bloodFlowAnalysisCheckBox.Value;
@@ -233,6 +225,8 @@ methods (Access = public)
                 app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name, app.file.OverWrite); % update overwrite status
 
                 if ~app.file.is_preprocessed
+                    parfor_arg = app.NumberofWorkersSpinner.Value;
+                    setupParpool(parfor_arg);
                     app.file.preprocessData();
                 end
 
@@ -324,6 +318,8 @@ methods (Access = public)
         app.statusLamp.Color = [1, 1/2, 0]; % Orange
 
         try
+            parfor_arg = app.NumberofWorkersSpinner.Value;
+            setupParpool(parfor_arg);
             app.file = app.file.preprocessData();
 
             % Update lamp color to indicate success
@@ -637,7 +633,7 @@ methods (Access = public)
                 for i = 1:error_count
                     exception = error_list{i};
                     path = faulty_folders{i};
-                    fprintf(2, "==========================================\nERROR N°:%d\n==========================================\n", i)
+                    fprintf(2, "==================================\nERROR N°:%d\n==================================\n", i)
                     fprintf(2, 'Folder : %s\n', path)
                     fprintf(2, "%s\n", exception.identifier)
                     fprintf(2, "%s\n", exception.message)
@@ -665,22 +661,6 @@ methods (Access = public)
         end
 
         delete(d);
-    end
-
-    % Button pushed function: MaskToolButtonPushed
-    function MaskToolButtonPushed(app, ~)
-
-        parfor_arg = app.NumberofWorkersSpinner.Value;
-        poolobj = gcp('nocreate'); % check if a pool already exist
-
-        if isempty(poolobj)
-            parpool(parfor_arg); % create a new pool
-        elseif poolobj.NumWorkers ~= parfor_arg
-            delete(poolobj); %close the current pool to create a new one with correct num of workers
-            parpool(parfor_arg);
-        end
-
-        PreviewMasks(app);
     end
 
     % Button pushed function: EditParametersButton
@@ -723,6 +703,8 @@ methods (Access = public)
             end
 
             if ~app.file.is_preprocessed
+                parfor_arg = app.NumberofWorkersSpinner.Value;
+                setupParpool(parfor_arg);
                 app.file = app.file.preprocessData();
             end
 
@@ -953,18 +935,19 @@ methods (Access = private)
         app.statusLamp.Layout.Column = 2;
         app.statusLamp.Color = [0 1 0];
 
-        % Third Row: Edit Parameters, Edit Masks, Play Inputs, Preview Masks
+        % Edit Parameters Button
         app.EditParametersButton = uibutton(grid, 'push');
         app.EditParametersButton.ButtonPushedFcn = createCallbackFcn(app, @EditParametersButtonPushed, true);
         app.EditParametersButton.BackgroundColor = [0.502 0.502 0.502];
         app.EditParametersButton.FontSize = 16;
         app.EditParametersButton.FontColor = [0.9412 0.9412 0.9412];
         app.EditParametersButton.Layout.Row = 3;
-        app.EditParametersButton.Layout.Column = 1;
+        app.EditParametersButton.Layout.Column = 4;
         app.EditParametersButton.Enable = 'off';
         app.EditParametersButton.Text = 'Edit Parameters';
         app.EditParametersButton.Tooltip = 'Find the eyeflow parameters here.';
 
+        % Edit Masks Button
         app.EditMasksButton = uibutton(grid, 'push');
         app.EditMasksButton.ButtonPushedFcn = createCallbackFcn(app, @EditMasksButtonPushed, true);
         app.EditMasksButton.BackgroundColor = [0.502 0.502 0.502];
@@ -976,6 +959,7 @@ methods (Access = private)
         app.EditMasksButton.Text = 'Edit Masks';
         app.EditMasksButton.Tooltip = 'Open mask folder and use forceMaskArtery.png and forceMaskVein.png to force the segmentation';
 
+        % Play Moments Button
         app.PlayMomentsButton = uibutton(grid, 'push');
         app.PlayMomentsButton.ButtonPushedFcn = createCallbackFcn(app, @PlayMomentsButtonPushed, true);
         app.PlayMomentsButton.BackgroundColor = [0.502 0.502 0.502];
@@ -985,15 +969,7 @@ methods (Access = private)
         app.PlayMomentsButton.Layout.Column = 3;
         app.PlayMomentsButton.Enable = 'off';
         app.PlayMomentsButton.Text = 'Play Moments';
-
-        app.MaskToolButton = uibutton(grid, 'push');
-        app.MaskToolButton.ButtonPushedFcn = createCallbackFcn(app, @MaskToolButtonPushed, true);
-        app.MaskToolButton.BackgroundColor = [0.502 0.502 0.502];
-        app.MaskToolButton.FontSize = 16;
-        app.MaskToolButton.FontColor = [0.9412 0.9412 0.9412];
-        app.MaskToolButton.Layout.Row = 3;
-        app.MaskToolButton.Layout.Column = 4;
-        app.MaskToolButton.Text = 'Mask Tool';
+        app.PlayMomentsButton.Tooltip = 'Play the M0, M1 and M2 videos.';
 
         % Checkboxes: Segmentation, Pulse analysis, Blood Flow Velocity, Cross Section, SH analysis
         app.segmentationCheckBox = uicheckbox(grid);
@@ -1087,25 +1063,25 @@ methods (Access = private)
         app.ImageDisplay.Layout.Column = 5; % Place in the new column
         app.ImageDisplay.ScaleMethod = 'fit'; % Adjust the image to fit the component
 
-        % Add the new button under Preview Masks
+        % Add the Open Directory button
         app.OpenDirectoryButton = uibutton(grid, 'push');
         app.OpenDirectoryButton.ButtonPushedFcn = createCallbackFcn(app, @OpenDirectoryButtonPushed, true);
         app.OpenDirectoryButton.BackgroundColor = [0.502 0.502 0.502];
         app.OpenDirectoryButton.FontSize = 16;
         app.OpenDirectoryButton.FontColor = [0.9412 0.9412 0.9412];
         app.OpenDirectoryButton.Layout.Row = 4; % Adjust the row as needed
-        app.OpenDirectoryButton.Layout.Column = 4; % Same column as Preview Masks
+        app.OpenDirectoryButton.Layout.Column = 4;
         app.OpenDirectoryButton.Text = 'Open Directory';
         app.OpenDirectoryButton.Enable = 'off'; % Disabled by default
 
-        % Add the new button under Preview Masks
+        % Add the ReProcess Button
         app.ReProcessButton = uibutton(grid, 'push');
         app.ReProcessButton.ButtonPushedFcn = createCallbackFcn(app, @ReProcessButtonPushed, true);
         app.ReProcessButton.BackgroundColor = [0.502 0.502 0.502];
         app.ReProcessButton.FontSize = 16;
         app.ReProcessButton.FontColor = [0.9412 0.9412 0.9412];
         app.ReProcessButton.Layout.Row = 4; % Adjust the row as needed
-        app.ReProcessButton.Layout.Column = 3; % Same column as Preview Masks
+        app.ReProcessButton.Layout.Column = 3;
         app.ReProcessButton.Text = 'Preprocess';
         app.ReProcessButton.Enable = 'off'; % Disabled by default
 

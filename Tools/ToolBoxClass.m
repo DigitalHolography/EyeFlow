@@ -197,11 +197,11 @@ methods
         diary_filename = fullfile(obj.path_log, sprintf('%s_log.txt', obj.main_foldername));
         set(0, 'DiaryFile', diary_filename);
         diary on % Turn on logging
-        fprintf("==========================================\n");
+        fprintf("==================================\n");
         fprintf("Current Folder Path: %s\n", obj.EF_path);
         fprintf("Current File: %s\n", obj.folder_name);
         fprintf("Start Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
-        fprintf("==========================================\n");
+        fprintf("==================================\n");
     end
 
     function copyInputParameters(obj)
@@ -281,11 +281,11 @@ methods
         end
 
         % Print the results
-        fprintf('==========================================\rGIT VERSION :\r');
+        fprintf('----------------------------------\rGIT VERSION :\r');
         fprintf(MessBranch, resultBranch);
         fprintf(MessHash, resultHash);
         fprintf(MessTag, resultTag);
-        fprintf('==========================================\r');
+        fprintf('----------------------------------\r');
 
         % Save the results to a text file
         logFilePath = fullfile(obj.path_dir, sprintf('%s_git_version.txt', obj.folder_name));
@@ -295,11 +295,11 @@ methods
             error('Cannot open file: %s', logFilePath);
         end
 
-        fprintf(fileID, '==========================================\rGIT VERSION :\r');
+        fprintf(fileID, '----------------------------------\rGIT VERSION :\r');
         fprintf(fileID, MessBranch, resultBranch);
         fprintf(fileID, MessHash, resultHash);
         fprintf(fileID, MessTag, resultTag);
-        fprintf(fileID, '==========================================\r');
+        fprintf(fileID, '----------------------------------\r');
         fclose(fileID);
 
     end

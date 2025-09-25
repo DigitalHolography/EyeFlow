@@ -17,9 +17,9 @@ out_numY = (numY - 1) * (2 ^ kInterp - 1) + numY;
 
 tic;
 
-fprintf("    - Video Interpolation started with factor: (2^%d - 1) \n", kInterp);
+fprintf("    - Video Interpolation started...\n");
 
-fprintf('Interpolating data cube : %dx%dx%d to %dx%dx%d\n', ...
+fprintf("        - Interpolating data cube : %dx%dx%d > %dx%dx%d\n", ...
     numX, numY, numFrames, out_numX, out_numY, numFrames);
 
 % Reference M0

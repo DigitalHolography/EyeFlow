@@ -1,7 +1,7 @@
 function VideoNormalizingLocally(obj)
 
 tic
-fprintf("    - Moment Normalizing started\n");
+fprintf("    - Moment Normalizing started...\n");
 
 params = Parameters_json(obj.directory, obj.param_name);
 
