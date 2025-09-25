@@ -233,10 +233,10 @@ methods (Access = public)
                 app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name, app.file.OverWrite); % update overwrite status
 
                 if ~app.file.is_preprocessed
-                    app.file = app.file.preprocessData();
+                    app.file.preprocessData();
                 end
 
-                app.file = app.file.analyzeData(app);
+                app.file.analyzeData(app);
 
                 % Update lamp color to indicate success
                 app.statusLamp.Color = [0, 1, 0]; % Green
