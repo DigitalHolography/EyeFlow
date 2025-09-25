@@ -1,5 +1,5 @@
-classdef Outputs < handle
-% Class to hold the main outputs of the retinal flow analysis pipeline
+classdef Output < handle
+% Class to hold the Output of the retinal flow analysis pipeline
 
 properties
 
@@ -21,8 +21,6 @@ properties
 
     % Vein Wave form analysis
     TimetoPeakFromMinVein
-    TimetoAscentFromMinVein
-    TimetoDescentToMinVein
 
     % Phase Delay
     PhaseDelay
@@ -85,28 +83,36 @@ properties
 
     % Extra
     PulseWaveVelocity
-    % DicroticNotchVisibility
+    DicroticNotchVisibility
     DynamicViscosityDuringSystole
     DynamicViscosityDuringDiastole
     DynamicViscosityAverage
     PapillaRatio
 
+    UnixTimestampFirst
+    UnixTimestampLast
+    
+    % Signals
+    Signals
 end
 
 methods
 
-    function obj = Outputs()
+    function obj = Output()
     end
 
-    function initOutputs(obj)
+    function initOutput(obj)
         % Constructor for the class, fills the properties with default values
-        props = properties(Outputs);
+        props = setdiff(properties(Output), "Signals");
 
         for i = 1:length(props)
             obj.(props{i}).value = NaN;
             obj.(props{i}).standard_error = NaN;
             obj.(props{i}).unit = "";
         end
+
+        obj.Signals = Signals();
+        obj.Signals.initSignals();
 
     end
 
@@ -126,13 +132,13 @@ methods
             obj.(name).standard_error = standard_error;
             obj.(name).unit = unit;
         else
-            error('Property %s does not exist in Outputs class', name);
+            error('Property %s does not exist in Output class', name);
         end
 
     end
 
     function writeJson(obj, path)
-        props = properties(Outputs);
+        props = setdiff(properties(Output), "Signals");
         data = struct();
 
         for i = 1:length(props)
@@ -160,7 +166,7 @@ methods
 
     function writeHdf5(obj, path)
 
-        props = properties(Outputs);
+        props = setdiff(properties(Output), "Signals");
 
         [dir, name, ~] = fileparts(path);
         path = fullfile(dir, strcat(name, ".h5"));
@@ -183,6 +189,9 @@ methods
             h5create(path, strcat("/", props{i}, "_unit"), [1 1], Datatype = "string");
             h5write(path, strcat("/", props{i}, "_unit"), string(obj.(props{i}).unit));
         end
+
+        % Save Signals in a separate directory of the same h5 file
+        obj.Signals.writeHdf5(path);
 
     end
 

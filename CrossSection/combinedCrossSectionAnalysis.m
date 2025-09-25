@@ -80,7 +80,7 @@ Q_V_FT = fft(Q_V);
 
 F_TRANS = Q_V_FT ./ Q_A_FT;
 freqs = linspace(-fs / 2, fs / 2, numel(F_TRANS));
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 semilogy(freqs, fftshift(abs(F_TRANS)), '-k', 'LineWidth', 2);
 axis tight;
 xlabel('Freq (Hz)'); ylabel('transfer function');
@@ -91,7 +91,7 @@ set(gca, 'LineWidth', 2);
 
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_BVR_AV_mod.png", ToolBox.folder_name)))
 
-figure("Visible", "on", "Color", 'w');
+figure("Visible", "off", "Color", 'w');
 plot(freqs, fftshift(angle(F_TRANS)), '-k', 'LineWidth', 2);
 axis tight;
 xlabel('Freq (Hz)'); ylabel('transfer function angle');
@@ -102,8 +102,8 @@ set(gca, 'LineWidth', 2);
 
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_BVR_AV_phase.png", ToolBox.folder_name)))
 
-ToolBox.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', freqs, 'Hz');
-ToolBox.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');
+ToolBox.Output.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', freqs, 'Hz');
+ToolBox.Output.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');
 
 instant_dV = detrend(cumsum(Q_diff(sIdx:eIdx))) / 60 * dt;
 [peaks, peaks_idx] = findpeaks(instant_dV, 'MinPeakDistance', cycleSize * 0.8);

@@ -56,13 +56,13 @@ if mask_params.OpticDiscDetector
 
         ToolBox = getGlobalToolBox;
 
-        figure('Visible', 'off');
+        figure('Visible', 'off', 'Color', 'w');
         imshow(M0img, []);
         hold on;
 
         if val > 0.5
             plot(x_ellipsis, y_ellipsis, 'g--', 'LineWidth', 2);
-            ToolBox.Outputs.add("PapillaRatio",(diameter_x+diameter_y)/2 /512,'px');
+            ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2/512, '');
         else
             plot(x_ellipsis, y_ellipsis, 'r--', 'LineWidth', 2);
             found = false;
@@ -86,6 +86,8 @@ if mask_params.OpticDiscDetector
         x_center = NaN;
         y_center = NaN;
     end
+
+    close all
 
 else
     found = false;

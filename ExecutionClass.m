@@ -2,17 +2,17 @@ classdef ExecutionClass < handle
 
 properties
 
-    M0_raw_video % M0 raw
+    M0_raw_video % M0 raw as imported
     M1_raw_video % M1 raw
     M2_raw_video % M2 raw
     M0_ff_raw_video % M0 ff raw
-
-    M0_data_video % M0 raw
-    M1_data_video % M1 raw
-    M2_data_video % M2 raw
     SH_data_hypervideo % SH raw
 
-    f_RMS_video % RMS M2/M0
+    M0_data_video % M0 raw modified by the preprocess 
+    M1_data_video % M1 raw
+    M2_data_video % M2 raw
+
+    f_RMS_video % RMS sqrt(M2/M0) normalized input in kHz 
     f_AVG_video % AVG M1/M0
     M0_ff_video % M0 AVI
 
@@ -22,26 +22,6 @@ properties
     is_crossSectionAnalyzed = false;
     is_AllAnalyzed = false;
 
-    sysIdxList % list of frame indexes counting cardiac cycles
-    diasIdx
-    sysIdx % Indexes for diastole/ systole analysis
-    xy_barycenter % x y position of the ONH
-    papillaDiameter
-    vRMS % video estimate of velocity map in retinal vessels
-    Q_results_A
-    Q_results_V
-    v_video_RGB
-    v_mean_RGB
-
-    maskArtery
-    maskVein
-    maskNeighbors
-
-    directory char % directory of input data (from HoloDoppler or HoloVibes)
-    params_names cell % filenames of all the current input parameters ('InputEyeFlowParams.json' for example by default)
-    param_name char % current filename
-    filenames char % name id used for storing the measured rendered data
-
     flag_segmentation
     flag_bloodFlowVelocity_analysis
     flag_bloodFlowVelocity_figures
@@ -50,10 +30,34 @@ properties
     flag_spectral_analysis
 
     OverWrite logical
+
     ToolBoxMaster ToolBoxClass
     Cache
-    Outputs
-    Signals
+    Output
+
+    maskArtery % Segmentation mask of retinal arteries
+    maskVein % Segmentation mask of retinal veins
+    maskNeighbors % Segmentation mask of pixels close to vessels but outside used 
+    % to estimate a local difference in Doppler broaddening
+    displacementField % Displacement Field calculated with demons non rigid registration 
+    % frame by frame compared to the averaged image
+    sysIdxList % List of frame indexes counting cardiac cycles
+    diasIdx % Indexes for diastole/ systole analysis
+    sysIdx 
+    xy_barycenter % x y position of the ONH in pixels (size(M0_ff_video))
+    papillaDiameter % Diameter of the detected papilla in pixels (size(M0_ff_video))
+    vRMS % Video of velocity map estimate in retinal vessels
+    Q_results_A % Contain results from radial cross section analysis of retinal vessels
+    Q_results_V
+    v_video_RGB % Visual output for the velocity map estimate (arteries/red veins/blue)
+    v_mean_RGB
+
+    directory char % directory of input data (from HoloDoppler or HoloVibes)
+    params_names cell % filenames of all the current input parameters ('input_EF_params.json' for example by default)
+    param_name char % current filename
+    filenames char % name id used for storing the measured rendered data
+
+    
 end
 
 methods
@@ -90,7 +94,7 @@ methods
 
         % Load video data
         if ~isfolder(path) % If .holo file
-            disp(['Reading moments in: ', strcat(obj.directory, '.holo')]);
+            fprintf('Reading moments in: %s.holo\n', obj.directory);
             [videoM0, videoM1, videoM2] = readMoments(strcat(obj.directory, '.holo'));
             readMomentsFooter(obj.directory);
             obj.M0_ff_raw_video = pagetranspose(improve_video(ff_correction(videoM0, 35), 0.0005, 2, 0));
@@ -99,32 +103,42 @@ methods
             obj.M2_raw_video = pagetranspose(videoM2 / 1e6); % Rescale M2
         else
             dir_path_raw = fullfile(obj.directory, 'raw');
-            NameRefRawFile = strcat(obj.filenames, '_raw.h5');
-            RefRawFilePath = fullfile(dir_path_raw, NameRefRawFile);
 
-            if isfile(RefRawFilePath)
-                obj = readHDF5(obj);
+            % Search for all .h5 files in the folder
+            h5_files = dir(fullfile(dir_path_raw, '*.h5'));
+            raw_files = dir(fullfile(dir_path_raw, '*.raw'));
+
+            if ~isempty(h5_files)
+                readHDF5(obj);
+            elseif ~isempty(raw_files)
+                readRaw(obj);
             else
-                obj = readRaw(obj);
+                error('No data file was found in the folder: %s', dir_path_raw);
             end
 
         end
 
         obj.is_preprocessed = false;
 
-        obj.Outputs = Outputs();
-        obj.Outputs.initOutputs();
+        obj.Output = Output();
+        obj.Output.initOutput();
 
         obj.Cache = Cache();
-
-        obj.Signals = Signals();
-        obj.Signals.initSignals();
     end
 
-    function obj = preprocessData(obj)
+    function preprocessData(obj)
         % Preprocess video data.
 
-        fprintf("\n----------------------------------\nVideo PreProcessing\n----------------------------------\n");
+        fprintf("\n----------------------------------\n" + ...
+            "Video PreProcessing\n" + ...
+        "----------------------------------\n");
+
+        % Initialize ToolBox and parameters
+        ToolBox = obj.ToolBoxMaster;
+        params = ToolBox.getParams;
+        ToolBox.Output = obj.Output;
+        % ToolBox.Ref = obj; % handle to the Execution Class obj
+        ToolBox.Cache = obj.Cache;
 
         PreProcessTimer = tic;
 
@@ -135,26 +149,33 @@ methods
         obj.M2_data_video = obj.M2_raw_video;
 
         % Preprocess the video data
-        obj = VideoRegistering(obj);
-        obj = VideoCropping(obj);
-        obj = VideoNormalizingLocally(obj);
-        obj = VideoResizing(obj);
-        obj = VideoInterpolating(obj);
-        obj = VideoRemoveOutliers(obj);
+        VideoRegistering(obj);
+        VideoCropping(obj);
+        VideoNormalizingLocally(obj);
+        VideoResizing(obj);
+        VideoNonRigidRegistering(obj);
+        VideoInterpolating(obj);
+        VideoRemoveOutliers(obj);
 
         obj.is_preprocessed = true;
-        obj.Outputs.initOutputs();
+        
+        fprintf("\n----------------------------------\n" + ...
+            "Preprocessing Complete\n" + ...
+        "----------------------------------\n");
 
         fprintf("- Preprocess took : %ds\n", round(toc(PreProcessTimer)))
 
     end
 
-    function obj = analyzeData(obj, app)
+    function analyzeData(obj, app)
         % Main routine for EyeFlow analysis.
 
         % Initialize ToolBox and parameters
         ToolBox = obj.ToolBoxMaster;
         params = ToolBox.getParams;
+        ToolBox.Output = obj.Output;
+        % ToolBox.Ref = obj; % handle to the Execution Class obj
+        ToolBox.Cache = obj.Cache;
 
         if params.json.DebugMode
             profile off
@@ -163,12 +184,14 @@ methods
 
         veins_analysis = params.veins_analysis;
         totalTime = tic;
-        saveGit;
-        ToolBox.Outputs = obj.Outputs;
-        ToolBox.Signals = obj.Signals;
-        ToolBox.Outputs.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
-        ToolBox.Outputs.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
-        ToolBox.Outputs.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
+        ToolBox.Output.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
+        ToolBox.Output.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
+        ToolBox.Output.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
+        if ~isempty(ToolBox.record_time_stamps_us)
+            tmp = ToolBox.record_time_stamps_us;
+            ToolBox.Output.add('UnixTimestampFirst',tmp.first,'µs');
+            ToolBox.Output.add('UnixTimestampLast',tmp.last,'µs');
+        end
 
         if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
             writeGifOnDisc(imresize(rescale(obj.M0_ff_video), 0.5), "M0")
@@ -176,7 +199,9 @@ methods
 
         % Mask Creation
         if obj.flag_segmentation
-            fprintf("\n----------------------------------\nMask Creation\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Mask Creation\n" + ...
+            "----------------------------------\n");
             createMasksTimer = tic;
 
             if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
@@ -196,9 +221,9 @@ methods
 
             try
                 [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
-            catch E
+            catch ME
                 warning("Error while finding papilla : ")
-                disp(E)
+                MEdisp(ME, ToolBox.EF_path)
                 diameter_x = NaN;
                 diameter_y = NaN;
             end
@@ -212,6 +237,7 @@ methods
             M0_AV = setcmap(M0_ff_img, obj.maskArtery & obj.maskVein, cmapAV);
 
             M0_RGB = (M0_Artery + M0_Vein) .* ~(obj.maskArtery & obj.maskVein) + M0_AV + rescale(M0_ff_img) .* ~(obj.maskArtery | obj.maskVein);
+
             if ~isempty(app)
                 app.ImageDisplay.ImageSource = mat2gray(M0_RGB); % Rescale the image for display
                 ax = ancestor(app.ImageDisplay, 'axes');
@@ -226,7 +252,9 @@ methods
         % Pulse Analysis
         if obj.flag_bloodFlowVelocity_analysis
 
-            fprintf("\n----------------------------------\nBlood Flow Velocity Analysis\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Blood Flow Velocity Analysis\n" + ...
+            "----------------------------------\n");
             pulseAnalysisTimer = tic;
 
             f_AVG_mean = squeeze(mean(obj.f_AVG_video, 3));
@@ -237,6 +265,8 @@ methods
                 extendedPulseAnalysis(obj.M0_ff_video, obj.f_RMS_video, f_AVG_mean, obj.vRMS, obj.maskArtery, obj.maskVein, obj.xy_barycenter, obj.sysIdxList);
             end
 
+            axialAnalysis(obj.f_AVG_video, obj.maskArtery, obj.maskVein, obj.maskNeighbors);
+
             obj.is_pulseAnalyzed = true;
 
             fprintf("- Blood Flow Velocity Analysis took: %ds\n", round(toc(pulseAnalysisTimer)));
@@ -244,10 +274,12 @@ methods
 
         % Pulse Velocity Analysis
         %  if obj.flag_pulseVelocity_analysis
-        %     fprintf("\n----------------------------------\nPulse Velocity Calculation\n----------------------------------\n");
+        %     fprintf("\n----------------------------------\n" + ...
+        %         "Pulse Velocity Calculation\n" + ...
+        %         "----------------------------------\n");
         %     pulseVelocityTimer = tic;
 
-        %     pulseVelocity(obj.M0_data_video, maskArtery)
+        %%%%%%%%%%%%%%%%%%%% pulseVelocity(obj.M0_ff_video, obj.displacementField, obj.maskArtery);
 
         %     time_pulsevelocity = toc(pulseVelocityTimer);
         %     fprintf("- Pulse Velocity Calculations took : %ds\n", round(time_pulsevelocity))
@@ -255,7 +287,9 @@ methods
 
         % Cross-Section Analysis
         if obj.flag_crossSection_analysis
-            fprintf("\n----------------------------------\nCross-Section Analysis\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Cross-Section Analysis\n" + ...
+            "----------------------------------\n");
             crossSectionAnalysisTimer = tic;
 
             [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
@@ -271,7 +305,9 @@ methods
 
         % Cross-Section Figures
         if obj.flag_crossSection_figures
-            fprintf("\n----------------------------------\nCross-Section Figures\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Cross-Section Figures\n" + ...
+            "----------------------------------\n");
             crossSectionFiguresTimer = tic;
 
             crossSectionsFigures(obj.Q_results_A, 'artery', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
@@ -289,8 +325,8 @@ methods
                     combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video, obj.sysIdxList)
                 end
 
-            catch e
-                disp(e)
+            catch ME
+                MEdisp(ME, ToolBox.EF_path)
             end
 
             obj.is_AllAnalyzed = true;
@@ -300,7 +336,10 @@ methods
 
         % Spectral Analysis
         if obj.flag_spectral_analysis && isfile(fullfile(ToolBox.EF_path, 'raw', [strcat(ToolBox.folder_name, '_SH'), '.raw']))
-            fprintf("\n----------------------------------\nSpectral Analysis\n----------------------------------\n");
+
+            fprintf("\n----------------------------------\n" + ...
+                "Spectral Analysis\n" + ...
+            "----------------------------------\n");
             timeSpectralAnalysis = tic;
 
             if ~isfolder(fullfile(ToolBox.path_png, 'spectralAnalysis'))
@@ -309,7 +348,9 @@ methods
             end
 
             % Spectrum Analysis
-            fprintf("\n----------------------------------\nSpectrum Analysis\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Spectrum Analysis\n" + ...
+            "----------------------------------\n");
             spectrumAnalysisTimer = tic;
 
             spectrum_analysis(obj.SH_data_hypervideo, obj.M0_ff_video);
@@ -317,32 +358,36 @@ methods
             fprintf("- Spectrum Analysis took : %ds\n", round(toc(spectrumAnalysisTimer)))
 
             % Spectrogram
-            fprintf("\n----------------------------------\nSpectrogram\n----------------------------------\n");
+            fprintf("\n----------------------------------\n" + ...
+                "Spectrogram\n" + ...
+            "----------------------------------\n");
             spectrogramTimer = tic;
 
             % spectrogram(obj.maskArtery, obj.xy_barycenter, obj.SH_data_hypervideo);
             spectrum_video(obj.SH_data_hypervideo, obj.f_RMS_video, obj.maskArtery, obj.maskNeighbors);
 
             fprintf("- Spectrogram took: %ds\n", round(toc(spectrogramTimer)));
-            fprintf("\n----------------------------------\nSpectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
+
+            fprintf("\n----------------------------------\n" + ...
+                "Spectral Analysis Complete\n" + ...
+            "----------------------------------\n");
+            fprintf("Spectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
         end
 
         if obj.is_pulseAnalyzed && veins_analysis
 
             try
                 generateA4Report()
-            catch e
-                MEdisp(e, ToolBox.EF_path)
+            catch ME
+                MEdisp(ME, ToolBox.EF_path)
             end
 
         end
 
-        % Main Outputs Saving
+        % Main Output Saving
 
-        ToolBox.Outputs.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_outputs.json')));
-        ToolBox.Signals.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_signals.json')));
-        ToolBox.Outputs.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_outputs.h5')));
-        ToolBox.Signals.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_signals.h5')));
+        ToolBox.Output.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, 'output.json')));
+        ToolBox.Output.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, 'output.h5')));
 
         % Final Output
         tTotal = toc(totalTime);

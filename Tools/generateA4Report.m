@@ -8,26 +8,44 @@ ToolBox = getGlobalToolBox;
 path_png = ToolBox.path_png;
 path_pdf = ToolBox.path_pdf;
 folder_name = ToolBox.folder_name;
-outputs = ToolBox.Outputs;
+outputs = ToolBox.Output;
 
 % Parameters
-parameters.average_arterial_velocity = outputs.ArterialMeanVelocity;
-parameters.average_venous_velocity = outputs.VenousMeanVelocity;
-parameters.TimeToMaxIncreaseSystolic = outputs.TimeToMaxIncreaseSystolic;
+% Arterious Velocities
+parameters.Max_Arterial_Velocity = outputs.ArterialMaximumVelocity;
+parameters.Average_Arterial_Velocity = outputs.ArterialMeanVelocity;
+parameters.Min_Arterial_Velocity = outputs.ArterialMinimumVelocity;
+
+% Venous Velocities
+parameters.Max_Venous_Velocity = outputs.VenousMaximumVelocity;
+parameters.Average_Venous_Velocity = outputs.VenousMeanVelocity;
+parameters.Min_Venous_Velocity = outputs.VenousMinimumVelocity;
+
+% Indexes
+parameters.ARI = outputs.ArterialResistivityIndexVelocity;
+parameters.VRI = outputs.VenousResistivityIndexVelocity;
+parameters.API = outputs.ArterialPulsatilityIndexVelocity;
+parameters.VPI = outputs.VenousPulsatilityIndexVelocity;
+
+% Other Parameters
 parameters.TimePeakToDescent = outputs.TimePeakToDescent;
 parameters.TimeToPeakFromMinVein = outputs.TimetoPeakFromMinVein;
-parameters.average_arterial_volume_rate = outputs.ArterialMeanVolumeRate;
-parameters.average_venous_volume_rate = outputs.VenousMeanVolumeRate;
+parameters.DicroticNotchVisibility = outputs.DicroticNotchVisibility;
+
+% Volume Rates
+parameters.Average_Arterial_Volume_Rate = outputs.ArterialMeanVolumeRate;
+parameters.Average_Venous_Volume_Rate = outputs.VenousMeanVolumeRate;
+
+% Heart Rate and Blood Pressure
 parameters.heart_beat = outputs.HeartBeat;
+
 parameters.arterial_systolic_fraction = outputs.ArterialSystolicFraction;
 parameters.arterial_diastolic_fraction = outputs.ArterialDiastolicFraction;
 % parameters.time_2_systolic_peak = outputs.Time2SystolicPeak;
 parameters.SystoleDuration = outputs.SystoleDuration;
 parameters.DiastoleDuration = outputs.DiastoleDuration;
-parameters.ARI = outputs.ArterialResistivityIndexVelocity;
-parameters.VRI = outputs.VenousResistivityIndexVelocity;
-parameters.API = outputs.ArterialPulsatilityIndexVelocity;
-parameters.VPI = outputs.VenousPulsatilityIndexVelocity;
+parameters.UnixTimestampFirst = outputs.UnixTimestampFirst;
+parameters.UnixTimestampLast = outputs.UnixTimestampLast;
 
 % Create a new figure with A4 paper size (in centimeters)
 fig = figure('Units', 'centimeters', 'Position', [0 0 21.0 29.7], ...
@@ -35,7 +53,7 @@ fig = figure('Units', 'centimeters', 'Position', [0 0 21.0 29.7], ...
 
 % Set margins (in normalized units)
 % topMargin = 0.08;
-bottomMargin = 0.10;
+bottomMargin = 0.20;
 leftMargin = 0.05;
 % rightMargin = 0.05;
 
@@ -55,7 +73,7 @@ gridHeight = gridTop - gridBottom;
 
 % Define row heights (sum should be 1)
 % Top row will be 2x, middle and bottom 1x each (total 4 units)
-rowHeights = [0.55, 0.225, 0.21]; % Normalized heights
+rowHeights = [0.50, 0.25, 0.25]; % Normalized heights
 
 % Create top row (2 columns at 2x height)
 for col = 1:2
@@ -113,13 +131,17 @@ for col = 1:2
         volume_im = imread(volume_path); % Standard placeholder
         imshow(volume_im, []);
     else
-        if strcmp(name,'artery')
+
+        if strcmp(name, 'artery')
             a_wave_path = fullfile(path_png, sprintf('%s_ArterialWaveformAnalysis_v_%s.png', folder_name, name));
         else
             a_wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
         end
+
         a_wave_im = imread(a_wave_path); % Taller placeholder (2x height)
-        imshow(a_wave_im, []);    end
+        imshow(a_wave_im, []);
+    end
+
     set(ax, 'XTick', [], 'YTick', []);
 end
 
@@ -133,20 +155,18 @@ paramText = cell(numParams, 1);
 
 for i = 1:numParams
     paramValue = parameters.(paramNames{i});
+    fmt = chooseFormat(paramNames{i});
+
     % Format numbers nicely
-    if isnumeric(paramValue.value)
-        paramText{i} = sprintf('%s: %.2f %s', paramNames{i}, paramValue.value, paramValue.unit);
-    else
-        paramText{i} = sprintf('%s: %s %s', paramNames{i}, paramValue.value, paramValue.unit);
-    end
+    paramText{i} = sprintf('%s %s', sprintf(fmt, paramValue.value), paramValue.unit);
 
 end
 
 % Split into two columns if more than 6 parameters
 
 % Set larger font size for parameters
-paramFontSize = 14; % Increase as desired
-paramTitleFontSize = 16;
+paramFontSize = 12; % Increase as desired
+paramTitleFontSize = 14;
 
 if numParams > 6
     col1 = paramText(1:ceil(numParams / 2));
@@ -161,10 +181,70 @@ end
 % Add title to parameters section
 text(0, 1.15, 'Computed Parameters:', 'FontWeight', 'bold', 'FontSize', paramTitleFontSize);
 
-% Save to PDF
-print(fig, fullfile(path_pdf, sprintf('%s_report.pdf', folder_name)), '-dpdf', '-bestfit');
+% Set figure renderer to control compression
+set(fig, 'Renderer', 'painters'); % Vector graphics where possible
+
+% Save to PDF with controlled resolution
+print(fig, fullfile(path_pdf, sprintf('%s_report.pdf', folder_name)), ...
+    '-dpdf', '-r150', '-bestfit', '-image'); % -r150 sets 150 DPI
 
 % Close the figure
 close(fig);
+
+end
+
+% Helper function to choose the format based on value type
+function fmt = chooseFormat(name)
+
+switch name
+    case 'UnixTimestampFirst'
+        fmt = 'First Unix Timestamp = %d';
+    case 'UnixTimestampLast'
+        fmt = 'Last Unix Timestamp = %d';
+    case 'arterial_systolic_fraction'
+        fmt = 'Arterial Systolic Fraction = %.1f';
+    case 'arterial_diastolic_fraction'
+        fmt = 'Arterial Diastolic Fraction = %.1f';
+    case 'time_2_systolic_peak'
+        fmt = 'Time to Systolic Peak = %.1f';
+    case 'heart_beat'
+        fmt = 'HR = %.1f';
+    case 'Average_Arterial_Velocity'
+        fmt = 'Avg Arterial Velocity = %.2f';
+    case 'Max_Arterial_Velocity'
+        fmt = 'Max Arterial Velocity = %.2f';
+    case 'Max_Venous_Velocity'
+        fmt = 'Max Venous Velocity = %.2f';
+    case 'Min_Arterial_Velocity'
+        fmt = 'Min Arterial Velocity = %.2f';
+    case 'Min_Venous_Velocity'
+        fmt = 'Min Venous Velocity = %.2f';
+    case 'Average_Venous_Velocity'
+        fmt = 'Avg Venous Velocity = %.2f';
+    case 'TimePeakToDescent'
+        fmt = 'Time Peak to Descent = %.2f';
+    case 'TimeToPeakFromMinVein'
+        fmt = 'Time to Peak from Min Vein = %.2f';
+    case 'DicroticNotchVisibility'
+        fmt = 'Dicrotic Notch Visibility = %.0f';
+    case 'Average_Arterial_Volume_Rate'
+        fmt = 'Avg Arterial Volume Rate = %.2f';
+    case 'Average_Venous_Volume_Rate'
+        fmt = 'Avg Venous Volume Rate = %.2f';
+    case 'SystoleDuration'
+        fmt = 'Systole Duration = %.2f';
+    case 'DiastoleDuration'
+        fmt = 'Diastole Duration = %.2f';
+    case 'ARI'
+        fmt = 'Arterial Resistivity Index = %.2f';
+    case 'VRI'
+        fmt = 'Venous Resistivity Index = %.2f';
+    case 'API'
+        fmt = 'Arterial Pulsatility Index = %.2f';
+    case 'VPI'
+        fmt = 'Venous Pulsatility Index = %.2f';
+    otherwise
+        fmt = '%g'; % General format for others
+end
 
 end

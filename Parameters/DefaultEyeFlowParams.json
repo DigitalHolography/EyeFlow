@@ -18,6 +18,7 @@
       "FrameHeight": -1,
       "VideoLength": -1
     },
+    "NonRigidRegisteringFlag": false,
     "RemoveOutliersFlag": true,
     "Outlier Analysis Window": 10,
     "Interpolation Factor": 1
@@ -111,7 +112,8 @@
     "circleImages": true,
     "widthHistogram": true,
     "BloodFlowProfiles": true,
-    "BloodFlowHistograms": true,
+    "BloodFlowHistograms": false,
+    "BloodFlowProfilesWomersleyOverlay": true,
     "BloodFlowProfilesOverlay": true,
     "ARIBVR": true,
     "strokeAndTotalVolume": true,

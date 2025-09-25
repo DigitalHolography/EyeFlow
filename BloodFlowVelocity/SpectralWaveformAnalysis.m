@@ -35,18 +35,26 @@ fft_mag = fft_mag(1:length(f)); % Take only positive frequencies
 fft_mag = fft_mag / max(fft_mag); % Normalize to [0,1]
 
 % Improved peak detection with minimum prominence threshold
-f_indx = f > estimated_fundamental * 0.9; % search only in f > 0.5 Hz
-[s_peaks, s_locs] = findpeaks(fft_mag(f_indx), f(f_indx), ...
+fundamental_peak = findpeaks(fft_mag, ...
     'MinPeakDistance', estimated_fundamental * 0.6, ...
-    'SortStr', 'descend', ...
-    'NPeaks', 5); % Find up to 5 most significant peaks
+    'SortStr', 'descend', 'NPeaks', 1);
+min_prominence = fundamental_peak(1) * 0.1; % 10 % of maximum magnitude as minimum prominence
+
+% Improved peak detection with minimum prominence threshold
+[s_peaks, s_idx] = findpeaks(fft_mag, ...
+    'MinPeakDistance', estimated_fundamental * 0.6, ...
+    'MinPeakProminence', min_prominence, ...
+    'SortStr', 'descend');
+s_locs = f(s_idx);
+numFreq = length(s_locs);
 
 % Sort peaks by descending magnitude
-[s_peaks, idx] = sort(s_peaks, 'descend');
-s_locs = s_locs(idx);
+[s_locs, idx] = sort(s_locs, 'ascend');
+s_peaks = s_peaks(idx);
+s_idx = s_idx(idx);
 
 % Create figure for spectral analysis
-hFig = figure('Visible', 'on', 'Color', 'w');
+hFig = figure('Visible', 'off', 'Color', 'w');
 
 % Main plot with improved styling
 plot(f, fft_mag, 'k', 'LineWidth', 2);
@@ -54,17 +62,16 @@ hold on;
 grid on;
 
 % Calculate and plot harmonic frequencies if fundamental is detected
-if length(s_locs) >= 2
+if numFreq >= 2
     fundamental = s_locs(1);
     harmonics = fundamental * (2:m_harmonics); % Up to m th harmonic
     % For each harmonic, find the closest local maximum (peak) in the spectrum
     valid_harmonics(1) = fundamental;
-    min_prominence = s_peaks(1) * 0.2; % 20 % of maximum magnitude as minimum prominence
-    [~, locs] = findpeaks(fft_mag, 'MinPeakProminence', min_prominence / 4, 'NPeaks', 15);
+    [~, locs] = findpeaks(fft_mag);
 
     for h = harmonics
         % Define a small window around the harmonic frequency (e.g., ±0.05*fundamental)
-        window = fundamental * 1.18;
+        window = fundamental * 0.48;
         idx_window = find(f >= h - window & f <= h + window);
 
         if isempty(idx_window)
@@ -98,8 +105,8 @@ if ~isempty(s_peaks)
     scatter(s_locs, s_peaks, 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
 
     % Annotate the top peaks
-    for k = 1:min(5, length(s_peaks))
-        text(s_locs(k), s_peaks(k) + 0.005, ...
+    for k = 1:numFreq
+        text(s_locs(k), s_peaks(k) + 0.02, ...
             sprintf('%.2f', s_locs(k)), ...
             'HorizontalAlignment', 'center', ...
             'VerticalAlignment', 'bottom', ...
@@ -112,29 +119,36 @@ end
 
 % Save to ToolBox
 
-ToolBox.Cache.list.harmonics = [fundamental valid_harmonics];
+ToolBox.Cache.list.harmonics = [valid_harmonics];
 
 % Configure axes
 axis tight;
 axT = axis;
-axis padded;
-axP = axis;
-axis([axT(1), 10, 0, s_peaks(1) + 0.1 * (s_peaks(1) - axP(3))]);
+axis([axT(1), 10, 0, 1.2 * (s_peaks(1) + 0.02)]);
 
 xlabel('Frequency (Hz)', 'FontSize', 14, 'FontWeight', 'bold');
 ylabel('Normalized Magnitude', 'FontSize', 14, 'FontWeight', 'bold');
 pbaspect([1.618 1 1]);
 set(gca, 'LineWidth', 1.5, 'FontSize', 12);
 
-% Add heart rate information if fundamental is in typical range (0.5-3 Hz)
-if ~isempty(s_locs) && s_locs(1) >= 0.5 && s_locs(1) <= 3
-    hr = s_locs(1) * 60; % Convert Hz to BPM
+% Add heart rate information if fundamental is in typical range
+if ~isempty(s_locs)
+    hr = ((1:numFreq)' \ s_locs');
+    freq_estim = (1:numFreq) * hr;
+    residus = s_locs - freq_estim;
+    RMSE = sqrt(mean(residus .^ 2));
+    hr_se = RMSE / sqrt(numFreq);
+
     annotation('textbox', [0.5 0.6 0.2 0.1], ...
-        'String', sprintf('HR : %.1f BPM', hr), ...
+        'String', sprintf('HR : %.1f BPM ± %.1f', 60 * hr, 60 * hr_se), ... % Convert Hz to BPM
         'FitBoxToText', 'on', ...
         'BackgroundColor', 'w', ...
         'EdgeColor', 'none', ...
         'FontSize', 12);
+
+    ToolBox.Output.add('HeartBeat', 60 * hr, 'bpm', 60 * hr_se);
+    ToolBox.Cache.list.HeartBeatFFT = hr; % Save heart rate to cache
+    ToolBox.Cache.list.HeartBeatFFTSTE = hr_se; % Save heart rate standard
 end
 
 % Save Results
@@ -143,7 +157,7 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
     'Resolution', 300);
 
 % Create figure for spectral analysis
-hFig_angle = figure('Visible', 'on', 'Color', 'w');
+hFig_angle = figure('Visible', 'off', 'Color', 'w');
 
 % Main plot with improved styling
 f = linspace(0, fs / 2, (N * numFrames) + 1);
@@ -157,6 +171,23 @@ grid on;
 
 % Save to ToolBox
 f = linspace(0, fs, 2 * (N * numFrames) + numFrames);
+
+% Highlight detected peaks with annotations
+if ~isempty(s_peaks)
+    scatter(s_locs, ff_angle_movmean(s_idx), 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
+
+    % Annotate the top peaks
+    for k = 1:length(s_peaks)
+        text(s_locs(k), ff_angle_movmean(s_idx(k)) + 0.3, ...
+            sprintf('%.2f', s_locs(k)), ...
+            'HorizontalAlignment', 'center', ...
+            'VerticalAlignment', 'bottom', ...
+            'FontSize', 10, ...
+            'BackgroundColor', 'w', ...
+            'EdgeColor', 'none');
+    end
+
+end
 
 % Configure axes
 axis tight;

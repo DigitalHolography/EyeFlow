@@ -1,4 +1,4 @@
-function obj = VideoRegistering(obj)
+function VideoRegistering(obj)
 % VideoRegistering - Registers the video using intensity based registration
 
 % Registers the video using intensity based registration

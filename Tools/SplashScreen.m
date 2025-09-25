@@ -339,7 +339,7 @@ end % Private methods
 
 end % classdef
 
-%-------------------------------------------------------------------------%
+%----------------------------------%
 function filename = iMakeFullName(filename)
 % Absolute paths start with one of:
 %   'X:' (Windows)

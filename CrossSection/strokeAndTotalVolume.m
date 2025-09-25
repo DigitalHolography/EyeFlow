@@ -136,13 +136,13 @@ fprintf(fileID, 'Total Volume Artery : %f (nL) \r\n', total_volume_value);
 fclose(fileID);
 
 if contains(name, 'artery')
-    ToolBox.Outputs.add('ArterialCycleVolume', total_volume_value, 'nL');
-    ToolBox.Outputs.add('ArterialSystolicFraction', stroke_volume_value / total_volume_value, '');
-    ToolBox.Outputs.add('ArterialDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
+    ToolBox.Output.add('ArterialCycleVolume', total_volume_value, 'nL');
+    ToolBox.Output.add('ArterialSystolicFraction', stroke_volume_value / total_volume_value, '');
+    ToolBox.Output.add('ArterialDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
 elseif contains(name, 'vein')
-    ToolBox.Outputs.add('VenousCycleVolume', total_volume_value, 'nL');
-    ToolBox.Outputs.add('VenousSystolicFraction', stroke_volume_value / total_volume_value, '');
-    ToolBox.Outputs.add('VenousDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
+    ToolBox.Output.add('VenousCycleVolume', total_volume_value, 'nL');
+    ToolBox.Output.add('VenousSystolicFraction', stroke_volume_value / total_volume_value, '');
+    ToolBox.Output.add('VenousDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
 end
 
 close all

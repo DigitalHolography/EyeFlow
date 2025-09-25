@@ -29,7 +29,7 @@ ymax = log10(max(SH_artery(sclingrange, :), [], 'all'));
 parfor frameIdx = 1:numFrames
     Ninterp = 10;
     axis_x = linspace(-fs / 2, fs / 2, Ninterp * numFreq);
-    fi = figure("Visible", "on", "Color", 'w');
+    fi = figure("Visible", "off", "Color", 'w');
 
     SH_t = interp1(linspace(-fs / 2, fs / 2, numFreq), SH_artery(:, frameIdx), axis_x);
     SH_bkg_t = interp1(linspace(-fs / 2, fs / 2, numFreq), SH_bkg(:, frameIdx), axis_x);

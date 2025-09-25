@@ -39,10 +39,10 @@ end
 %     signal = double(signal);
 % end
 
-[fft_c, fundamental, valid_harmonics, ~] = SpectralWaveformAnalysis(signal, numSystoles, 5, name);
+numHarmonics = 6;
+[fft_c, ~, valid_harmonics, ~] = SpectralWaveformAnalysis(signal, numSystoles, numHarmonics, name);
 
 zeroPadLength = length(fft_c);
-fundamental_index = round(fundamental / (fs / 2) * zeroPadLength);
 harmonics_index = round(valid_harmonics / (fs / 2) * zeroPadLength);
 fft_abs = abs(fft_c);
 fft_angle = angle(fft_c);
@@ -53,18 +53,16 @@ filtered_signal = filtfilt(b, a, signal);
 
 % Cycle Analysis
 [one_cycle_signal, avgLength] = interpSignal(filtered_signal, systolesIndexes, numInterp);
+L = length(one_cycle_signal);
 
 % Create time vector for one cycle
 dt = (t(2) - t(1));
 pulseTime = linspace(0, dt * avgLength, numInterp);
 
 % Create harmonics and combination signal
-A_f = fft_abs(fundamental_index);
-phi_f = fft_angle(fundamental_index);
 A_h = fft_abs(harmonics_index);
 phi_h = fft_angle(harmonics_index);
-composite_signal = [A_f * cos(2 * pi * fundamental * pulseTime' + phi_f), ...
-                        A_h .* cos(2 * pi * valid_harmonics .* pulseTime' + phi_h)];
+composite_signal = A_h .* cos(2 * pi * valid_harmonics .* pulseTime' + phi_h);
 composite_signal = composite_signal / max(composite_signal(1, :), [], 'all') * max(signal, [], 'all'); % rescale at initial scale
 
 % Feature Detection
@@ -101,7 +99,8 @@ if length(peaks) > 1
     locs_notch = locs_notch + locs_peaks(1) - 1;
 
     % Only consider valid notch (significant difference from diastolic peak)
-    if (peaks(2) - notch) > peaks(1) * 0.05 % 5 % threshold
+    if (locs_peaks(2) - locs_notch) > L * 0.05 % 5 % threshold
+        ToolBox.Output.add("DicroticNotchVisibility", 1, '');
         systolicDownstroke = peaks(1) - notch;
         diastolicRunoff = notch - one_cycle_signal(end); % End of cycle
 
@@ -111,12 +110,15 @@ if length(peaks) > 1
         diastoleDuration = pulseTime(end) - pulseTime(locs_notch);
     else
         notch = NaN; % Invalid notch
+        ToolBox.Output.add("DicroticNotchVisibility", 0, '');
     end
 
+else
+    ToolBox.Output.add("DicroticNotchVisibility", 0, '');
 end
 
 % Visualization
-hFig = figure('Visible', 'on', 'Color', 'w');
+hFig = figure('Visible', 'off', 'Color', 'w');
 hold on;
 
 % Add reference lines and annotations
@@ -197,12 +199,25 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
     sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.folder_name, name)), ...
     'Resolution', 300);
 
-plot(pulseTime, composite_signal, 'LineWidth', 2);
+%
+
+figure,
+hold on
+% plot(pulseTime, composite_signal, 'LineWidth', 2);
 
 combined_composite = sum(composite_signal, 2);
 combined_composite = rescale(combined_composite, min(signal, [], 'all'), max(signal, [], 'all')); % rescale at initial scale
 
 plot(pulseTime, combined_composite, '--', 'LineWidth', 2);
+plot(pulseTime, one_cycle_signal, 'k', 'LineWidth', 2);
+
+% Configure axes
+axis([0, pulseTime(end), axP(3) - 0.2 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
+
+ylabel(y_label);
+xlabel('Time (s)');
+pbaspect([1.618 1 1]);
+set(gca, 'LineWidth', 2, 'Box', 'on');
 
 % Save Results with harmonics
 exportgraphics(hFig, fullfile(ToolBox.path_png, ...
@@ -211,12 +226,12 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
 
 % Export to JSON (only for velocity signals)
 if ~isBVR
-    ToolBox.Outputs.add('SystoleDuration', dicroticNotchTime, 's');
-    ToolBox.Outputs.add('DiastoleDuration', diastoleDuration, 's');
-    ToolBox.Outputs.add('SystolicUpstroke', systolicUpstroke, unit);
-    ToolBox.Outputs.add('SystolicDownstroke', systolicDownstroke, unit);
-    ToolBox.Outputs.add('DiastolicRunoff', diastolicRunoff, unit);
-    %     ToolBox.Outputs.add('DicroticNotchIndex', dicroticNotchIndex, unit);
+    ToolBox.Output.add('SystoleDuration', dicroticNotchTime, 's');
+    ToolBox.Output.add('DiastoleDuration', diastoleDuration, 's');
+    ToolBox.Output.add('SystolicUpstroke', systolicUpstroke, unit);
+    ToolBox.Output.add('SystolicDownstroke', systolicDownstroke, unit);
+    ToolBox.Output.add('DiastolicRunoff', diastolicRunoff, unit);
+    %     ToolBox.Output.add('DicroticNotchIndex', dicroticNotchIndex, unit);
 end
 
 % Close the figure if not needed

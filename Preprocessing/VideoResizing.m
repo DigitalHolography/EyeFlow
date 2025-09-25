@@ -1,4 +1,4 @@
-function obj = VideoResizing(obj)
+function VideoResizing(obj)
 
 params = Parameters_json(obj.directory, obj.param_name);
 

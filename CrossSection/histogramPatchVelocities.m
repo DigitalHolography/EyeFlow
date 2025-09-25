@@ -25,7 +25,7 @@ while numFrames <= 0
 end
 
 % Create figure and display image
-fi = figure("Visible", "on", 'Color', 'w', ...
+fi = figure("Visible", "off", 'Color', 'w', ...
     'Units', 'pixels', "Position", [200 200 600 600]);
 
 % Create main axes for image with controlled position
@@ -127,40 +127,46 @@ if exportVideos
 
     histPatchVelocitiesVideo = zeros(600, 600, 3, numFrames, 'single');
 
-    for frameIdx = 1:numFrames
-        %fprintf(" %d ",frameIdx);
-        for circleIdx = 1:rows
+    try
 
-            for i = 1:cols
+        for frameIdx = 1:numFrames
+            %fprintf(" %d ",frameIdx);
+            for circleIdx = 1:rows
 
-                if isempty(locsLabel{circleIdx, i}) || isempty(histo_v_cell{circleIdx, i})
-                    continue;
-                end
+                for i = 1:cols
 
-                % Get histogram data
-                histo_t = histo_v_cell{circleIdx, i};
-                histData = histo_t{frameIdx};
+                    if isempty(locsLabel{circleIdx, i}) || isempty(histo_v_cell{circleIdx, i})
+                        continue;
+                    end
 
-                % replot
-                % Ensure histData matches number of bars
-                bh = plot_list{circleIdx, i};
+                    % Get histogram data
+                    histo_t = histo_v_cell{circleIdx, i};
+                    histData = histo_t{frameIdx};
 
-                if numel(bh.YData) == numel(histData)
-                    bh.YData = histData;
-                else
-                    warning("Bar data size mismatch at (%d,%d)", circleIdx, i);
+                    % replot
+                    % Ensure histData matches number of bars
+                    bh = plot_list{circleIdx, i};
+
+                    if numel(bh.YData) == numel(histData)
+                        bh.YData = histData;
+                    else
+                        warning("Bar data size mismatch at (%d,%d)", circleIdx, i);
+                    end
+
                 end
 
             end
 
+            frame = getframe(gcf);
+            histPatchVelocitiesVideo(:, :, :, frameIdx) = frame2im(frame);
+
         end
 
-        frame = getframe(gcf);
-        histPatchVelocitiesVideo(:, :, :, frameIdx) = frame2im(frame);
-
+        writeGifOnDisc(mat2gray(histPatchVelocitiesVideo), sprintf("histogram_velocities_overlay_%s", name), "ToolBox", ToolBox);
+    catch
+        disp('Couldnt export histogram velocities video')
     end
 
-    writeGifOnDisc(mat2gray(histPatchVelocitiesVideo), sprintf("histogram_velocities_overlay_%s", name), "ToolBox", ToolBox);
 end
 
 close(fi)

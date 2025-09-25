@@ -59,75 +59,33 @@ methods
 
     end
 
-    function writeJson(obj, path)
-        props = properties(Signals);
-        data = struct();
-
-        for i = 1:length(props)
-            data.(strcat(props{i}, "_y")) = obj.(props{i}).yvalues;
-        end
-
-        for i = 1:length(props)
-            data.(strcat(props{i}, "_ste")) = obj.(props{i}).ystandard_errors;
-        end
-
-        for i = 1:length(props)
-            data.(strcat(props{i}, "_x")) = obj.(props{i}).xvalues;
-        end
-
-        for i = 1:length(props)
-            data.(strcat(props{i}, "_yunit")) = obj.(props{i}).yunit;
-        end
-
-        for i = 1:length(props)
-            data.(strcat(props{i}, "_xunit")) = obj.(props{i}).xunit;
-        end
-
-        jsonText = jsonencode(data, "PrettyPrint", true);
-        fid = fopen(path, 'w');
-
-        if fid == -1
-            error('Cannot open file for writing: %s', path);
-        end
-
-        fwrite(fid, jsonText, 'char');
-        fclose(fid);
-    end
-
     function writeHdf5(obj, path)
 
         props = properties(Signals);
 
-        [dir, name, ~] = fileparts(path);
-        path = fullfile(dir, strcat(name, ".h5"));
-
-        if isfile(path) % clear before rewriting
-            delete(path)
+        for i = 1:length(props)
+            h5create(path, strcat("/", "Signals", props{i}, "_y"), size(obj.(props{i}).yvalues));
+            h5write(path, strcat("/", "Signals", props{i}, "_y"), obj.(props{i}).yvalues);
         end
 
         for i = 1:length(props)
-            h5create(path, strcat("/", props{i}, "_y"), size(obj.(props{i}).yvalues));
-            h5write(path, strcat("/", props{i}, "_y"), obj.(props{i}).yvalues);
+            h5create(path, strcat("/", "Signals", props{i}, "_ste"), size(obj.(props{i}).ystandard_errors));
+            h5write(path, strcat("/", "Signals", props{i}, "_ste"), obj.(props{i}).ystandard_errors);
         end
 
         for i = 1:length(props)
-            h5create(path, strcat("/", props{i}, "_ste"), size(obj.(props{i}).ystandard_errors));
-            h5write(path, strcat("/", props{i}, "_ste"), obj.(props{i}).ystandard_errors);
+            h5create(path, strcat("/", "Signals", props{i}, "_x"), size(obj.(props{i}).xvalues));
+            h5write(path, strcat("/", "Signals", props{i}, "_x"), obj.(props{i}).xvalues);
         end
 
         for i = 1:length(props)
-            h5create(path, strcat("/", props{i}, "_x"), size(obj.(props{i}).xvalues));
-            h5write(path, strcat("/", props{i}, "_x"), obj.(props{i}).xvalues);
+            h5create(path, strcat("/", "Signals", props{i}, "_yunit"), [1 1], Datatype = "string");
+            h5write(path, strcat("/", "Signals", props{i}, "_yunit"), string(obj.(props{i}).yunit));
         end
 
         for i = 1:length(props)
-            h5create(path, strcat("/", props{i}, "_yunit"), [1 1], Datatype = "string");
-            h5write(path, strcat("/", props{i}, "_yunit"), string(obj.(props{i}).yunit));
-        end
-
-        for i = 1:length(props)
-            h5create(path, strcat("/", props{i}, "_xunit"), [1 1], Datatype = "string");
-            h5write(path, strcat("/", props{i}, "_xunit"), string(obj.(props{i}).xunit));
+            h5create(path, strcat("/", "Signals", props{i}, "_xunit"), [1 1], Datatype = "string");
+            h5write(path, strcat("/", "Signals", props{i}, "_xunit"), string(obj.(props{i}).xunit));
         end
 
     end

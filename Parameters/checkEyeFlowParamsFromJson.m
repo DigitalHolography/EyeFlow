@@ -6,23 +6,23 @@ function [paramsNames] = checkEyeFlowParamsFromJson(path)
 
 % Additionally this function returns the list of the names of all valid
 % EyeFlowParameters files found (they must be in the form
-% 'InputEyeFlowParams*.json')
+% 'input_EF_params*.json')
 
 dir_path_json = fullfile(path, 'eyeflow', 'json');
-filename_json = 'InputEyeFlowParams.json';
+filename_json = 'input_EF_params.json';
 
 jsonInput = fileread(fullfile("Parameters", "DefaultEyeFlowParams.json"));
 init_data = jsondecode(jsonInput);
 
-% We now check all the existing json files named like 'InputEyeFlowParams*.json'
-jsonFiles = dir(fullfile(dir_path_json, 'InputEyeFlowParams*.json'));
+% We now check all the existing json files named like 'input_EF_params*.json'
+jsonFiles = dir(fullfile(dir_path_json, 'input_EF_params*.json'));
 
 if ~isempty(jsonFiles)
-    disp("Found parameter files : ")
+    fprintf("Found parameter files : ")
 
     for i = 1:numel(jsonFiles)
         jsonFilePath = fullfile(dir_path_json, jsonFiles(i).name);
-        disp(jsonFilePath)
+        fprintf("%s\n", jsonFilePath)
         jsonData = fileread(jsonFilePath);
         parsedData = jsondecode(jsonData);
 
@@ -41,13 +41,13 @@ if ~isempty(jsonFiles)
     end
 
 else
-    disp("Parameter file does not exist, writing in process")
+    fprintf("Parameter file does not exist, writing in process\n");
 
     jsonData = jsonencode(init_data, PrettyPrint = true);
 
     if ~isfolder(dir_path_json)
         mkdir(dir_path_json);
-        disp(['Directory ', dir_path_json, ' has been created.']);
+        fprintf('Directory %s has been created.\n', dir_path_json);
     end
 
     jsonFilePath = fullfile(dir_path_json, filename_json);
@@ -60,7 +60,7 @@ end
 
 % At this point at least one parameter file exists. We collect the
 % names of all and return it.
-jsonFiles = dir(fullfile(dir_path_json, 'InputEyeFlowParams*.json'));
+jsonFiles = dir(fullfile(dir_path_json, 'input_EF_params*.json'));
 
 % Initialize a cell array to store the file names
 paramsNames = cell(1, numel(jsonFiles));

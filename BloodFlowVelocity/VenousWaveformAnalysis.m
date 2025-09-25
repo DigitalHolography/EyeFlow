@@ -113,18 +113,13 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
 % Export to JSON
 if ~isBVR
 
-    ToolBox.Outputs.add('TimetoPeakFromMinVein', T_peak-T_Min, 's');
-    % ToolBox.Outputs.add('TimetoAscentFromMinVein', T_ascent, 's');
-    % ToolBox.Outputs.add('TimetoDescentToMinVein', T_descent, 's');
+    ToolBox.Output.add('TimetoPeakFromMinVein', T_peak-T_Min, 's');
 
 end
 
-if isBVR
-    % ToolBox.Outputs.add('SystoleDurationBvr', systoleDuration, 's'); % pour l'instant n'existe pas comme sortie car pas d'info en plus forcément
-    % ToolBox.Outputs.add('DiastoleDurationBvr', diastoleDuration, 's');
-    % ToolBox.Outputs.add('SystolicUpstrokeBvr', systolicUpstroke, unit);
-    % ToolBox.Outputs.add('SystolicDownstrokeBvr', systolicDownstroke, unit);
-    % ToolBox.Outputs.add('DiastolicRunoffBvr', diastolicRunoff, unit);
+% Close the figure if not needed
+if ~strcmpi(get(hFig, 'Visible'), 'on')
+    close(hFig);
 end
 
 end

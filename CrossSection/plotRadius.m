@@ -166,13 +166,13 @@ if isFlowRate
 
     % Write results to json
     if contains(vessel_name, 'vein')
-        ToolBox.Outputs.add('VenousMeanVolumeRate', mean_U, unit, mean_U_SE);
-        ToolBox.Outputs.add('VenousMaximumVolumeRate', max_U, unit, max_U_SE);
-        ToolBox.Outputs.add('VenousMinimumVolumeRate', min_U, unit, min_U_SE);
+        ToolBox.Output.add('VenousMeanVolumeRate', mean_U, unit, mean_U_SE);
+        ToolBox.Output.add('VenousMaximumVolumeRate', max_U, unit, max_U_SE);
+        ToolBox.Output.add('VenousMinimumVolumeRate', min_U, unit, min_U_SE);
     elseif contains(vessel_name, 'artery')
-        ToolBox.Outputs.add('ArterialMeanVolumeRate', mean_U, unit, mean_U_SE);
-        ToolBox.Outputs.add('ArterialMinimumVolumeRate', min_U, unit, min_U_SE);
-        ToolBox.Outputs.add('ArterialMaximumVolumeRate', max_U, unit, max_U_SE);
+        ToolBox.Output.add('ArterialMeanVolumeRate', mean_U, unit, mean_U_SE);
+        ToolBox.Output.add('ArterialMinimumVolumeRate', min_U, unit, min_U_SE);
+        ToolBox.Output.add('ArterialMaximumVolumeRate', max_U, unit, max_U_SE);
     end
 
 else
@@ -183,13 +183,13 @@ else
     fclose(fileID);
     % Write results to json
     if contains(vessel_name, 'vein')
-        ToolBox.Outputs.add('VenousMeanVelocity', mean_U, unit, mean_U_SE);
-        ToolBox.Outputs.add('VenousMaximumVelocity', max_U, unit, max_U_SE);
-        ToolBox.Outputs.add('VenousMinimumVelocity', min_U, unit, min_U_SE);
+        ToolBox.Output.add('VenousMeanVelocity', mean_U, unit, mean_U_SE);
+        ToolBox.Output.add('VenousMaximumVelocity', max_U, unit, max_U_SE);
+        ToolBox.Output.add('VenousMinimumVelocity', min_U, unit, min_U_SE);
     elseif contains(vessel_name, 'artery')
-        ToolBox.Outputs.add('ArterialMeanVelocity', mean_U, unit, mean_U_SE);
-        ToolBox.Outputs.add('ArterialMinimumVelocity', min_U, unit, min_U_SE);
-        ToolBox.Outputs.add('ArterialMaximumVelocity', max_U, unit, max_U_SE);
+        ToolBox.Output.add('ArterialMeanVelocity', mean_U, unit, mean_U_SE);
+        ToolBox.Output.add('ArterialMinimumVelocity', min_U, unit, min_U_SE);
+        ToolBox.Output.add('ArterialMaximumVelocity', max_U, unit, max_U_SE);
     end
 
 end

@@ -1,4 +1,4 @@
-paths = readlines("C:\Users\Vladikavkaz\Documents\data_test_list.txt");
+paths = readlines("C:\Users\Mikhalkino\Desktop\in.txt");
 
 %% ensure set default parameters and no forced mask
 
@@ -18,30 +18,34 @@ paths = readlines("C:\Users\Vladikavkaz\Documents\data_test_list.txt");
 %         end
 %     end
 %     last_folder_name = sprintf('%s_%d', folder_name, idx);
-% 
-%     copyfile(fullfile('Parameters','DefaultEyeFlowParams.json'),fullfile(path,'json','InputEyeFlowParams.json'));
-% 
+%
+%     copyfile(fullfile('Parameters','DefaultEyeFlowParams.json'),fullfile(path,'json','input_EF_params.json'));
+%
 %     if isfile(fullfile(path,'mask','forceMaskArtery.png'))
 %         movefile(fullfile(path,'mask','forceMaskArtery.png'),fullfile(path,'mask','oldForceMaskArtery.png'));
 %     end
 % end
 
-
 %% launch
 
 for ind = 1:length(paths)
     path = paths(ind);
+
     if isfolder(path)
         path = strcat(path, '\');
     end
-    ExecClass = ExecutionClass(path);
-    
-    ExecClass = ExecClass.preprocessData();
 
-    ExecClass.flag_SH_analysis = 0;
-    ExecClass.flag_Pulse_analysis = 1;
-    ExecClass.flag_velocity_analysis = 1;
-    ExecClass.flag_bloodVolumeRate_analysis = 1;
+    ExecClass = ExecutionClass(path);
+
+    ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name, 0); %no overwrite
+
+    ExecClass.preprocessData();
+
+    ExecClass.flag_segmentation = 1;
+    ExecClass.flag_spectral_analysis = 0;
+    ExecClass.flag_bloodFlowVelocity_analysis = 1;
+    ExecClass.flag_crossSection_analysis = 1;
+    ExecClass.flag_crossSection_figures = 1;
 
     ExecClass.analyzeData([]);
 end
@@ -49,4 +53,3 @@ end
 %% Show
 
 Show_multiple_outputs;
-
