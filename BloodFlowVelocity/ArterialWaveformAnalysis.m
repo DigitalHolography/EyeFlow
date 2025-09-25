@@ -100,7 +100,7 @@ if length(peaks) > 1
 
     % Only consider valid notch (significant difference from diastolic peak)
     if (locs_peaks(2) - locs_notch) > L * 0.05 % 5 % threshold
-        ToolBox.Outputs.add("DicroticNotchVisibility", 1, '');
+        ToolBox.Output.add("DicroticNotchVisibility", 1, '');
         systolicDownstroke = peaks(1) - notch;
         diastolicRunoff = notch - one_cycle_signal(end); % End of cycle
 
@@ -110,11 +110,11 @@ if length(peaks) > 1
         diastoleDuration = pulseTime(end) - pulseTime(locs_notch);
     else
         notch = NaN; % Invalid notch
-        ToolBox.Outputs.add("DicroticNotchVisibility", 0, '');
+        ToolBox.Output.add("DicroticNotchVisibility", 0, '');
     end
 
 else
-    ToolBox.Outputs.add("DicroticNotchVisibility", 0, '');
+    ToolBox.Output.add("DicroticNotchVisibility", 0, '');
 end
 
 % Visualization
@@ -226,12 +226,12 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
 
 % Export to JSON (only for velocity signals)
 if ~isBVR
-    ToolBox.Outputs.add('SystoleDuration', dicroticNotchTime, 's');
-    ToolBox.Outputs.add('DiastoleDuration', diastoleDuration, 's');
-    ToolBox.Outputs.add('SystolicUpstroke', systolicUpstroke, unit);
-    ToolBox.Outputs.add('SystolicDownstroke', systolicDownstroke, unit);
-    ToolBox.Outputs.add('DiastolicRunoff', diastolicRunoff, unit);
-    %     ToolBox.Outputs.add('DicroticNotchIndex', dicroticNotchIndex, unit);
+    ToolBox.Output.add('SystoleDuration', dicroticNotchTime, 's');
+    ToolBox.Output.add('DiastoleDuration', diastoleDuration, 's');
+    ToolBox.Output.add('SystolicUpstroke', systolicUpstroke, unit);
+    ToolBox.Output.add('SystolicDownstroke', systolicDownstroke, unit);
+    ToolBox.Output.add('DiastolicRunoff', diastolicRunoff, unit);
+    %     ToolBox.Output.add('DicroticNotchIndex', dicroticNotchIndex, unit);
 end
 
 % Close the figure if not needed

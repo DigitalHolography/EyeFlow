@@ -23,7 +23,7 @@ while numFrames <= 0
 end
 
 % Extract cardiac frequency and corresponding indices with a margin
-cardiac_frequency = ToolBox.Outputs.HeartBeat.value;
+cardiac_frequency = ToolBox.Output.HeartBeat.value;
 
 f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
 

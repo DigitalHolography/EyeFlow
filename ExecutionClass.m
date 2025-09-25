@@ -2,17 +2,17 @@ classdef ExecutionClass < handle
 
 properties
 
-    M0_raw_video % M0 raw
+    M0_raw_video % M0 raw as imported
     M1_raw_video % M1 raw
     M2_raw_video % M2 raw
     M0_ff_raw_video % M0 ff raw
-
-    M0_data_video % M0 raw
-    M1_data_video % M1 raw
-    M2_data_video % M2 raw
     SH_data_hypervideo % SH raw
 
-    f_RMS_video % RMS M2/M0
+    M0_data_video % M0 raw modified by the preprocess 
+    M1_data_video % M1 raw
+    M2_data_video % M2 raw
+
+    f_RMS_video % RMS sqrt(M2/M0) normalized input in kHz 
     f_AVG_video % AVG M1/M0
     M0_ff_video % M0 AVI
 
@@ -22,28 +22,6 @@ properties
     is_crossSectionAnalyzed = false;
     is_AllAnalyzed = false;
 
-    sysIdxList % list of frame indexes counting cardiac cycles
-    diasIdx
-    sysIdx % Indexes for diastole/ systole analysis
-    xy_barycenter % x y position of the ONH
-    papillaDiameter
-    vRMS % video estimate of velocity map in retinal vessels
-    Q_results_A
-    Q_results_V
-    v_video_RGB
-    v_mean_RGB
-
-    maskArtery
-    maskVein
-    maskNeighbors
-
-    displacementField
-
-    directory char % directory of input data (from HoloDoppler or HoloVibes)
-    params_names cell % filenames of all the current input parameters ('input_EF_params.json' for example by default)
-    param_name char % current filename
-    filenames char % name id used for storing the measured rendered data
-
     flag_segmentation
     flag_bloodFlowVelocity_analysis
     flag_bloodFlowVelocity_figures
@@ -52,10 +30,34 @@ properties
     flag_spectral_analysis
 
     OverWrite logical
+
     ToolBoxMaster ToolBoxClass
     Cache
-    Outputs
-    Signals
+    Output
+
+    maskArtery % Segmentation mask of retinal arteries
+    maskVein % Segmentation mask of retinal veins
+    maskNeighbors % Segmentation mask of pixels close to vessels but outside used 
+    % to estimate a local difference in Doppler broaddening
+    displacementField % Displacement Field calculated with demons non rigid registration 
+    % frame by frame compared to the averaged image
+    sysIdxList % List of frame indexes counting cardiac cycles
+    diasIdx % Indexes for diastole/ systole analysis
+    sysIdx 
+    xy_barycenter % x y position of the ONH in pixels (size(M0_ff_video))
+    papillaDiameter % Diameter of the detected papilla in pixels (size(M0_ff_video))
+    vRMS % Video of velocity map estimate in retinal vessels
+    Q_results_A % Contain results from radial cross section analysis of retinal vessels
+    Q_results_V
+    v_video_RGB % Visual output for the velocity map estimate (arteries/red veins/blue)
+    v_mean_RGB
+
+    directory char % directory of input data (from HoloDoppler or HoloVibes)
+    params_names cell % filenames of all the current input parameters ('input_EF_params.json' for example by default)
+    param_name char % current filename
+    filenames char % name id used for storing the measured rendered data
+
+    
 end
 
 methods
@@ -107,9 +109,9 @@ methods
             raw_files = dir(fullfile(dir_path_raw, '*.raw'));
 
             if ~isempty(h5_files)
-                obj = readHDF5(obj);
+                readHDF5(obj);
             elseif ~isempty(raw_files)
-                obj = readRaw(obj);
+                readRaw(obj);
             else
                 error('No data file was found in the folder: %s', dir_path_raw);
             end
@@ -118,21 +120,25 @@ methods
 
         obj.is_preprocessed = false;
 
-        obj.Outputs = Outputs();
-        obj.Outputs.initOutputs();
+        obj.Output = Output();
+        obj.Output.initOutput();
 
         obj.Cache = Cache();
-
-        obj.Signals = Signals();
-        obj.Signals.initSignals();
     end
 
-    function obj = preprocessData(obj)
+    function preprocessData(obj)
         % Preprocess video data.
 
         fprintf("\n----------------------------------\n" + ...
             "Video PreProcessing\n" + ...
         "----------------------------------\n");
+
+        % Initialize ToolBox and parameters
+        ToolBox = obj.ToolBoxMaster;
+        params = ToolBox.getParams;
+        ToolBox.Output = obj.Output;
+        % ToolBox.Ref = obj; % handle to the Execution Class obj
+        ToolBox.Cache = obj.Cache;
 
         PreProcessTimer = tic;
 
@@ -143,17 +149,16 @@ methods
         obj.M2_data_video = obj.M2_raw_video;
 
         % Preprocess the video data
-        obj = VideoRegistering(obj);
-        obj = VideoCropping(obj);
-        obj = VideoNormalizingLocally(obj);
-        obj = VideoResizing(obj);
-        obj = VideoNonRigidRegistering(obj);
-        obj = VideoInterpolating(obj);
-        obj = VideoRemoveOutliers(obj);
+        VideoRegistering(obj);
+        VideoCropping(obj);
+        VideoNormalizingLocally(obj);
+        VideoResizing(obj);
+        VideoNonRigidRegistering(obj);
+        VideoInterpolating(obj);
+        VideoRemoveOutliers(obj);
 
         obj.is_preprocessed = true;
-        obj.Outputs.initOutputs();
-
+        
         fprintf("\n----------------------------------\n" + ...
             "Preprocessing Complete\n" + ...
         "----------------------------------\n");
@@ -162,12 +167,15 @@ methods
 
     end
 
-    function obj = analyzeData(obj, app)
+    function analyzeData(obj, app)
         % Main routine for EyeFlow analysis.
 
         % Initialize ToolBox and parameters
         ToolBox = obj.ToolBoxMaster;
         params = ToolBox.getParams;
+        ToolBox.Output = obj.Output;
+        % ToolBox.Ref = obj; % handle to the Execution Class obj
+        ToolBox.Cache = obj.Cache;
 
         if params.json.DebugMode
             profile off
@@ -176,17 +184,13 @@ methods
 
         veins_analysis = params.veins_analysis;
         totalTime = tic;
-        ToolBox.Outputs = obj.Outputs;
-        ToolBox.Signals = obj.Signals;
-        ToolBox.Cache = obj.Cache;
-        ToolBox.Outputs.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
-        ToolBox.Outputs.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
-        ToolBox.Outputs.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
-
+        ToolBox.Output.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
+        ToolBox.Output.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
+        ToolBox.Output.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
         if ~isempty(ToolBox.record_time_stamps_us)
             tmp = ToolBox.record_time_stamps_us;
-            ToolBox.Outputs.add('UnixTimestampFirst', tmp.first, 'µs');
-            ToolBox.Outputs.add('UnixTimestampLast', tmp.last, 'µs');
+            ToolBox.Output.add('UnixTimestampFirst',tmp.first,'µs');
+            ToolBox.Output.add('UnixTimestampLast',tmp.last,'µs');
         end
 
         if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
@@ -380,12 +384,10 @@ methods
 
         end
 
-        % Main Outputs Saving
+        % Main Output Saving
 
-        ToolBox.Outputs.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_outputs.json')));
-        ToolBox.Signals.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_signals.json')));
-        ToolBox.Outputs.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_outputs.h5')));
-        ToolBox.Signals.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, '_main_signals.h5')));
+        ToolBox.Output.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, 'output.json')));
+        ToolBox.Output.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, 'output.h5')));
 
         % Final Output
         tTotal = toc(totalTime);

@@ -1,4 +1,4 @@
-function obj = VideoRemoveOutliers(obj)
+function VideoRemoveOutliers(obj)
 % Outlier Cleaning
 
 params = Parameters_json(obj.directory, obj.param_name);

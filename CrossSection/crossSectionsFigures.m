@@ -56,15 +56,15 @@ plotBranch(branch_Q, branch_Q_SE, t, index_start, index_end, name, 'flux');
 plotBranch(branch_v, branch_v_SE, t, index_start, index_end, name, 'velocity');
 
 if contains(name, 'artery')
-    ToolBox.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', Q_SE_t);
+    ToolBox.Output.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', Q_SE_t);
 elseif contains(name, 'vein')
-    ToolBox.Signals.add('VenousVolumeRate', Q_t, 'µL/min', t, 's', Q_SE_t);
+    ToolBox.Output.Signals.add('VenousVolumeRate', Q_t, 'µL/min', t, 's', Q_SE_t);
 end
 
 if contains(name, 'artery')
-    ToolBox.Signals.add('ArterialVelocity', v_t, 'mm/s', t, 's', v_SE_t);
+    ToolBox.Output.Signals.add('ArterialVelocity', v_t, 'mm/s', t, 's', v_SE_t);
 elseif contains(name, 'vein')
-    ToolBox.Signals.add('VenousVelocity', v_t, 'mm/s', t, 's', v_SE_t);
+    ToolBox.Output.Signals.add('VenousVelocity', v_t, 'mm/s', t, 's', v_SE_t);
 end
 
 r1 = params.json.SizeOfField.SmallRadiusRatio;

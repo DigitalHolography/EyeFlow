@@ -28,9 +28,9 @@ properties
     cmapArtery
     cmapVein
     cmapAV
+    % Ref % Ref handle to the Execution Class to have access to its properties easily
     Cache % Cache class handle Cache small variables through the execution
-    Outputs % Outputs class handle Stores outputs through the execution
-    Signals
+    Output % Output class handle Stores outputs through the execution
 end
 
 methods
@@ -236,7 +236,7 @@ methods
         Params = Parameters_json(obj.EF_path, obj.param_name);
     end
 
-    function obj = createColorMaps(obj)
+    function createColorMaps(obj)
         obj.cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
         obj.cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
         obj.cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [1 1 1], 1);

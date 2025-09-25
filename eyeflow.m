@@ -222,15 +222,15 @@ methods (Access = public)
             app.file.OverWrite = app.OverWriteCheckBox.Value;
 
             try
-                app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name, app.file.OverWrite);
+                app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name, app.file.OverWrite); % update overwrite status
 
                 if ~app.file.is_preprocessed
                     parfor_arg = app.NumberofWorkersSpinner.Value;
                     setupParpool(parfor_arg);
-                    app.file = app.file.preprocessData();
+                    app.file.preprocessData();
                 end
 
-                app.file = app.file.analyzeData(app);
+                app.file.analyzeData(app);
 
                 % Update lamp color to indicate success
                 app.statusLamp.Color = [0, 1, 0]; % Green

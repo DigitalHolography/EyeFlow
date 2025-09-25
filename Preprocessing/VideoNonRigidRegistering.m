@@ -1,12 +1,13 @@
-function obj = VideoNonRigidRegistering(obj)
-tic
-params = Parameters_json(obj.directory, obj.param_name);
+function VideoNonRigidRegistering(obj)
+    tic
+    
+    params = Parameters_json(obj.directory, obj.param_name);
+    
+    if ~params.json.Preprocess.NonRigidRegisteringFlag
+        return
+    end
 
-if ~params.json.Preprocess.NonRigidRegisteringFlag
-    return
-end
-
-fprintf("    - Video Registering Non-Rigidly started...\n");
+    disp("    - Video Registering Non-Rigidly started...");
 
 ref_img = mean(obj.M0_raw_video, 3);
 ref_img = flat_field_correction(ref_img, 35, 0, 'gaussianBlur');

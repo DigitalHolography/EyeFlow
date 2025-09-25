@@ -1,4 +1,4 @@
-function obj = readHDF5(obj)
+function readHDF5(obj)
 
 dir_path_raw = fullfile(obj.directory, 'raw');
 

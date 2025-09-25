@@ -1,4 +1,4 @@
-function obj = readRaw(obj)
+function readRaw(obj)
 % READRAW Reads raw video data and associated moment files
 %   Improved with better error handling, memory efficiency, and organization
 

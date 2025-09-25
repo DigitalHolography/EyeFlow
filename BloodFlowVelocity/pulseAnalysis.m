@@ -205,13 +205,13 @@ if veinsAnalysis
         t, v_artery_signal, '-', cArtery, ...
         t, v_vein_signal, '-', cVein, ...
         'Title', 'average velocity in arteries and veins', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
-    ToolBox.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
-    ToolBox.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's');
+    ToolBox.Output.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
+    ToolBox.Output.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's');
 else
     graphSignal('v_artery', ...
         t, v_artery_signal, '-', cArtery, ...
         'Title', 'average velocity in arteries', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
-    ToolBox.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
+    ToolBox.Output.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
 end
 
 fprintf("    2. Difference calculation and velocity computation took %ds\n", round(toc));
@@ -250,17 +250,17 @@ if numel(sysIdxList) >= 2 && numel(sysMaxList) >= 2 && numel(sysMinList) >= 2
     firstIndex = find(interpFullPulse - (pMin + 0.05 * pRange) < 0, 1);
     TimePeakToDescent = firstIndex / Ninterp * mean(diff(sysIdxList')) * DT;
 
-    % Store outputs
-    ToolBox.Outputs.add('HeartBeat', HeartBeat, 'bpm', HeartBeatSTE);
-    ToolBox.Outputs.add('SystoleIndices', sysIdxList, '');
-    ToolBox.Outputs.add('MaximumSystoleIndices', sysMaxList, '');
-    ToolBox.Outputs.add('MinimumDiastoleIndices', sysMinList, '');
-    ToolBox.Outputs.add('TimeToMaxIncreaseSystolic', 0, 's', 0);
-    ToolBox.Outputs.add('TimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE);
-    ToolBox.Outputs.add('TimeToMinimumDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE);
-    ToolBox.Outputs.add('TimeToPeakSystoleFromMinimumDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE);
-    ToolBox.Outputs.add('TimePeakToDescent', TimePeakToDescent, 's');
-    ToolBox.Outputs.add('TimeToDescent', TimePeakToDescent + TimeToPeakSystole, 's');
+    % Store output
+    ToolBox.Output.add('HeartBeat', HeartBeat, 'bpm', HeartBeatSTE);
+    ToolBox.Output.add('SystoleIndices', sysIdxList, '');
+    ToolBox.Output.add('MaximumSystoleIndices', sysMaxList, '');
+    ToolBox.Output.add('MinimumDiastoleIndices', sysMinList, '');
+    ToolBox.Output.add('TimeToMaxIncreaseSystolic', 0, 's', 0);
+    ToolBox.Output.add('TimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE);
+    ToolBox.Output.add('TimeToMinimumDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE);
+    ToolBox.Output.add('TimeToPeakSystoleFromMinimumDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE);
+    ToolBox.Output.add('TimePeakToDescent', TimePeakToDescent, 's');
+    ToolBox.Output.add('TimeToDescent', TimePeakToDescent + TimeToPeakSystole, 's');
 
     % Log detailed results
     logDetailedResults(ToolBox, HeartBeat, sysIdxList, sysMaxList, sysMinList, ...

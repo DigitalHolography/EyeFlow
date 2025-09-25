@@ -1,4 +1,4 @@
-function obj = VideoCropping(obj)
+function VideoCropping(obj)
 %Crop a video (matrix dim 3)
 params = Parameters_json(obj.directory, obj.param_name);
 firstFrame = params.json.Preprocess.Crop.StartFrame;

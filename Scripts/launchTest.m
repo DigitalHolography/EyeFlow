@@ -39,7 +39,7 @@ for ind = 1:length(paths)
 
     ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name, 0); %no overwrite
 
-    ExecClass = ExecClass.preprocessData();
+    ExecClass.preprocessData();
 
     ExecClass.flag_segmentation = 1;
     ExecClass.flag_spectral_analysis = 0;

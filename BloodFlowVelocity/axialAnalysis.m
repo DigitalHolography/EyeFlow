@@ -83,10 +83,6 @@ function axialAnalysis(f_AVG_video, maskArtery, maskVein, maskNeighbors)
         'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
         'Legend', {'arteries', 'background'});
     
-    fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'advanced_outputs', '.txt')), 'a');
-    fprintf(fileID, '%s : %f (%s) \r\n', 'Mean fRMS difference artery', mean(f_artery) - mean(f_artery_bkg), 'kHz');
-    fclose(fileID);
-    
     if veinsAnalysis
         f_vein = squeeze(sum(f_AVG_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
         f_vein_bkg = squeeze(sum(f_bkg .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
@@ -97,10 +93,6 @@ function axialAnalysis(f_AVG_video, maskArtery, maskVein, maskNeighbors)
             t, f_vein_bkg, '--', cBlack, ...
             'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
             'Legend', {'veins', 'background'});
-    
-        fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'advanced_outputs', '.txt')), 'a');
-        fprintf(fileID, '%s : %f (%s) \r\n', 'Mean fRMS difference vein', mean(f_vein) - mean(f_vein_bkg), 'kHz');
-        fclose(fileID);
     
         graphSignal('f_axial_vessel', ...
             t, f_artery, '-', cArtery, ...
@@ -134,7 +126,7 @@ function axialAnalysis(f_AVG_video, maskArtery, maskVein, maskNeighbors)
     
     f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
 
-    cardiac_frequency = ToolBox.Outputs.HeartBeat.value;
+    cardiac_frequency = ToolBox.Output.HeartBeat.value;
 
     [~, cardiac_idx] = min(abs(f - cardiac_frequency));
 
