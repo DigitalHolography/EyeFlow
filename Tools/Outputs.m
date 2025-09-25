@@ -89,8 +89,8 @@ properties
     DynamicViscosityAverage
     PapillaRatio
 
-    TimeStampsusBegin
-    TimeStampsusEnd
+    UnixTimestampFirst
+    UnixTimestampLast
 
 end
 

@@ -178,8 +178,8 @@ methods
         ToolBox.Outputs.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
         if ~isempty(ToolBox.record_time_stamps_us)
             tmp = ToolBox.record_time_stamps_us;
-            ToolBox.Outputs.add('TimeStampsusBegin',tmp.first,'µs');
-            ToolBox.Outputs.add('TimeStampsusEnd',tmp.last,'µs');
+            ToolBox.Outputs.add('UnixTimestampFirst',tmp.first,'µs');
+            ToolBox.Outputs.add('UnixTimestampLast',tmp.last,'µs');
         end
 
         if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
