@@ -25,7 +25,7 @@ end
 tmp = v_profiles_cell{i};
 sizeProfiles = size(tmp{i}, 2) * 2/3;
 
-fi = figure("Visible", "on", 'Color', 'w');
+fi = figure("Visible", "off", 'Color', 'w');
 imshow(M0_ff_img, []);
 axis image
 axis off

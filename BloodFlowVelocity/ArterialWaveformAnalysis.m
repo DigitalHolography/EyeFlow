@@ -100,7 +100,7 @@ if length(peaks) > 1
 
     % Only consider valid notch (significant difference from diastolic peak)
     if (locs_peaks(2) - locs_notch) > L * 0.05 % 5 % threshold
-        ToolBox.Outputs.add("DicroticNotchVisibility",1,'bool');
+        ToolBox.Outputs.add("DicroticNotchVisibility", 1, '');
         systolicDownstroke = peaks(1) - notch;
         diastolicRunoff = notch - one_cycle_signal(end); % End of cycle
 
@@ -110,14 +110,15 @@ if length(peaks) > 1
         diastoleDuration = pulseTime(end) - pulseTime(locs_notch);
     else
         notch = NaN; % Invalid notch
-        ToolBox.Outputs.add("DicroticNotchVisibility",0,'bool');
+        ToolBox.Outputs.add("DicroticNotchVisibility", 0, '');
     end
+
 else
-    ToolBox.Outputs.add("DicroticNotchVisibility",0,'bool');
+    ToolBox.Outputs.add("DicroticNotchVisibility", 0, '');
 end
 
 % Visualization
-hFig = figure('Visible', 'on', 'Color', 'w');
+hFig = figure('Visible', 'off', 'Color', 'w');
 hold on;
 
 % Add reference lines and annotations

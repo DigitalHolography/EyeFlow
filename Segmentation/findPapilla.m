@@ -56,7 +56,7 @@ if mask_params.OpticDiscDetector
 
         ToolBox = getGlobalToolBox;
 
-        figure('Visible', 'on');
+        figure('Visible', 'off', 'Color', 'w');
         imshow(M0img, []);
         hold on;
 

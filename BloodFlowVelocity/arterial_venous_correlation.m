@@ -42,7 +42,7 @@ V = V / std(V);
 [cross_corr_AV, lags] = xcorr(A, V, 'coeff');
 [~, max_idx] = max(abs(cross_corr_AV));
 max_corr = cross_corr_AV(max_idx);
-time_lag = lags(max_idx)  / fs; % Convert lag index to seconds
+time_lag = lags(max_idx) / fs; % Convert lag index to seconds
 lags_t = lags / fs; % Convert lags to seconds
 
 % MSC calculation
@@ -50,10 +50,11 @@ f0 = ToolBox.Cache.list.HeartBeatFFT;
 win_length = 64; % Choose appropriate length for your data
 [MSC, f] = mscohere(A, V, hamming(win_length), [], [], fs);
 df = 0.3;
-valid_indx = (f<(f0 + df)) & (f>(f0 - df));
+valid_indx = (f < (f0 + df)) & (f > (f0 - df));
 Gamma_0 = sum(MSC(valid_indx)) ./ sum(valid_indx);
 
-figure, plot(f, MSC, '-k', 'LineWidth', 2)
+figure("Visible", "off", "Color", 'w');
+plot(f, MSC, '-k', 'LineWidth', 2)
 xline(f0, 'k--', sprintf("%0.2f Hz", f0), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom')
 dim = [.6 .5 .3 .3];
 str = sprintf("$\\Gamma_0 = %.2f$", Gamma_0);
@@ -64,7 +65,6 @@ xlim([f(1) f(end)])
 xlabel('Frequency (Hz)'); ylabel('Magnitude-squared coherence');
 box on;
 set(gca, 'LineWidth', 2);
-
 
 exportgraphics(gcf, fullfile(ToolBox.path_png, ...
     sprintf("%s_arterial_venous_msc.png", ToolBox.folder_name)))
@@ -112,7 +112,7 @@ set(gca, 'LineWidth', 2);
 exportgraphics(gcf, fullfile(ToolBox.path_png, ...
     sprintf("%s_detrended_signals.png", ToolBox.folder_name)))
 
-figure("Visible", "on");
+figure("Visible", "off");
 plot(lags_t, cross_corr_AV, 'k', 'LineWidth', 1.5);
 hold on;
 plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);

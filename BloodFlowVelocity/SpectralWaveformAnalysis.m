@@ -54,7 +54,7 @@ s_peaks = s_peaks(idx);
 s_idx = s_idx(idx);
 
 % Create figure for spectral analysis
-hFig = figure('Visible', 'on', 'Color', 'w');
+hFig = figure('Visible', 'off', 'Color', 'w');
 
 % Main plot with improved styling
 plot(f, fft_mag, 'k', 'LineWidth', 2);
@@ -146,7 +146,7 @@ if ~isempty(s_locs)
         'EdgeColor', 'none', ...
         'FontSize', 12);
 
-    ToolBox.Outputs.add('HeartBeat', hr, 'Hz', hr_se);
+    ToolBox.Outputs.add('HeartBeat', 60 * hr, 'bpm', 60 * hr_se);
     ToolBox.Cache.list.HeartBeatFFT = hr; % Save heart rate to cache
     ToolBox.Cache.list.HeartBeatFFTSTE = hr_se; % Save heart rate standard
 end
@@ -157,7 +157,7 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
     'Resolution', 300);
 
 % Create figure for spectral analysis
-hFig_angle = figure('Visible', 'on', 'Color', 'w');
+hFig_angle = figure('Visible', 'off', 'Color', 'w');
 
 % Main plot with improved styling
 f = linspace(0, fs / 2, (N * numFrames) + 1);

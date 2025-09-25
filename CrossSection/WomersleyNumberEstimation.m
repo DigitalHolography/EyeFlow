@@ -22,7 +22,6 @@ numInterp = params.json.CrossSectionsFigures.InterpolationPoints;
 assert(size(v_profile, 1) == numInterp);
 w2w = linspace(-1, 1, numInterp);
 
-
 % Force the two Womersley hypothesis
 v_profile_hyp = setSymetry(v_profile);
 
@@ -46,7 +45,7 @@ v_meas = v_profile_ft(:, cardiac_idx);
 v_norm = v_meas / mean(v_meas);
 
 % Create figure for static plot
-hFig = figure("Visible", "on");
+hFig = figure("Visible", "off");
 hold('on');
 
 % Plot profile data
@@ -60,14 +59,13 @@ warning('off', 'curvefit:fit:noStartPoint');
 r = linspace(-1, 1, numInterp); % normalized radius
 R = 1; % normalized vessel radius
 
+uWom = @(alpha, r) (1 - (besselj(0, 1i ^ (3/2) * alpha * r / R) ./ besselj(0, 1i ^ (3/2) * alpha)));
 
-uWom = @(alpha, r) (1 - (besselj(0, 1i^(3/2)*alpha*r/R) ./ besselj(0, 1i^(3/2)*alpha)));
+regulation_window = @(r, R) max(1 - (r / R) .^ 2, 0); % increase the weight of the central values in the fitting
 
-regulation_window = @(r,R) max(1-(r/R).^2,0); % increase the weight of the central values in the fitting
+uWom_tofit = @(alpha_multi) (uWom(alpha_multi(1), r * alpha_multi(2)) / mean(uWom(alpha_multi(1), r * alpha_multi(2))));
 
-uWom_tofit = @(alpha_multi) (uWom(alpha_multi(1), r*alpha_multi(2)) / mean(uWom(alpha_multi(1), r*alpha_multi(2))));
-
-costFun = @(alpha_multi) norm(regulation_window(r*alpha_multi(2),1) .* uWom_tofit(alpha_multi) - v_norm'); % least square error minimization
+costFun = @(alpha_multi) norm(regulation_window(r * alpha_multi(2), 1) .* uWom_tofit(alpha_multi) - v_norm'); % least square error minimization
 
 alpha_init = [3 1 0.5]; % initial guess
 alphaWom = fminsearch(costFun, alpha_init);
@@ -77,7 +75,7 @@ w2w_scaled = w2w .* r_scale;
 uWom_fit = uWom_tofit([3 1 0.5]);
 plot(w2w_scaled, imag(uWom_fit), '--', 'Color', 'r', 'LineWidth', 2);
 plot(w2w_scaled, real(uWom_fit), '--', 'Color', 'b', 'LineWidth', 2);
-plot(w2w, regulation_window(r,R), '--', 'Color', 'k', 'LineWidth', 2);
+plot(w2w, regulation_window(r, R), '--', 'Color', 'k', 'LineWidth', 2);
 
 % Finalize static plot
 xlim([-1 1]);

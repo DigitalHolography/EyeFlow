@@ -5,8 +5,6 @@ ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 exportVideos = params.exportVideos;
 
-
-
 % Check sizes and extract numFrames from first non empty profile data in input
 [rows, cols] = size(locsLabel);
 assert(isequal(size(v_profiles_cell), [rows, cols]), 'Size of v_profiles_cell must match locsLabel');
@@ -16,10 +14,12 @@ numFrames = 0;
 while numFrames <= 0
     ind = ind + 1;
     numFrames = size(v_profiles_cell{ind}, 2);
+
     if ind > size(v_profiles_cell, 1) * size(v_profiles_cell, 2)
         warning("Velocity profiles cells are all empty.")
         break
     end
+
 end
 
 % Extract cardiac frequency and corresponding indices with a margin
@@ -29,18 +29,16 @@ f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBo
 
 [~, cardiac_idx] = min(abs(f - cardiac_frequency));
 
-margin_ = round(0.1 * (cardiac_idx-numFrames/2)); % +- 10% of Heartrate
+margin_ = round(0.1 * (cardiac_idx - numFrames / 2)); % +- 10 % of Heartrate
 cardiac_idxs = cardiac_idx + (-margin_:margin_);
-cardiac_idxs(cardiac_idxs>numFrames) = [];
-cardiac_idxs(cardiac_idxs<1) = [];
+cardiac_idxs(cardiac_idxs > numFrames) = [];
+cardiac_idxs(cardiac_idxs < 1) = [];
 
-
-
-% Start plotting 
+% Start plotting
 tmp = v_profiles_cell{ind};
 sizeProfiles = size(tmp{ind}, 2) * 2/3;
 
-fi = figure("Visible", "on", 'Color', 'w');
+fi = figure("Visible", "off", 'Color', 'w');
 imshow(M0_ff_img, []);
 axis image
 axis off
@@ -73,17 +71,17 @@ for circleIdx = 1:rows
         end
 
         % Calculate FFT of the time dependent profile
-        profile_time = zeros(length(profData{1}),numFrames);
+        profile_time = zeros(length(profData{1}), numFrames);
 
         for ff = 1:numFrames
-            profile_time(:,ff) = profData{ff};
+            profile_time(:, ff) = profData{ff};
         end
 
-        profile_ft = fftshift(fft(profile_time,[],2),2);
+        profile_ft = fftshift(fft(profile_time, [], 2), 2);
 
         % Calculate the complex Wom profile to plot
 
-        profile_Wom = mean(profile_ft(:,cardiac_idxs),2);
+        profile_Wom = mean(profile_ft(:, cardiac_idxs), 2);
 
         profile_Wom = profile_Wom / mean(profile_Wom);
 
@@ -107,7 +105,7 @@ for circleIdx = 1:rows
 
         % Plot directly on image (no text, no axes)
         hold on;
-        plot(x_plot, y_data_r, 'b', 'LineWidth', 1); % blue for real 
+        plot(x_plot, y_data_r, 'b', 'LineWidth', 1); % blue for real
         plot(x_plot, y_data_i, 'r', 'LineWidth', 1); % red for imag
 
         hold off;
