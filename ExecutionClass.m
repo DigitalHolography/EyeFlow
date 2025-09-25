@@ -135,7 +135,7 @@ methods
         ToolBox = obj.ToolBoxMaster;
         params = ToolBox.getParams;
         ToolBox.Output = obj.Output;
-        ToolBox.Ref = obj; % handle to the Execution Class obj
+        % ToolBox.Ref = obj; % handle to the Execution Class obj
         ToolBox.Cache = obj.Cache;
         
         PreProcessTimer = tic;
@@ -168,7 +168,7 @@ methods
         ToolBox = obj.ToolBoxMaster;
         params = ToolBox.getParams;
         ToolBox.Output = obj.Output;
-        ToolBox.Ref = obj; % handle to the Execution Class obj
+        % ToolBox.Ref = obj; % handle to the Execution Class obj
         ToolBox.Cache = obj.Cache;
 
         if params.json.DebugMode

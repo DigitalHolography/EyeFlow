@@ -27,7 +27,7 @@ properties
     cmapArtery
     cmapVein
     cmapAV
-    Ref % Ref handle to the Execution Class to have access to its properties easily
+    % Ref % Ref handle to the Execution Class to have access to its properties easily
     Cache % Cache class handle Cache small variables through the execution
     Output % Output class handle Stores outputs through the execution
 end
