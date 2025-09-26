@@ -23,9 +23,9 @@ ti = linspace(0, 1/(ToolBox.Output.HeartBeat.value/60), numInterp);
 
 % Create figure 
 hFig = figure('Visible', 'on', 'Color', 'w');
-plot(v_artery_n, 'r-', 'Linewidth', 2), hold on
-plot(circshift(vvein, amin), 'b--', 'Linewidth', 2)
-plot(v_vein_n*max(vvein), 'b-', 'Linewidth', 2)
+plot(ti,v_artery_n, 'r-', 'Linewidth', 2), hold on
+plot(ti,circshift(vvein, amin), 'b--', 'Linewidth', 2)
+plot(ti,v_vein_n*max(vvein), 'b-', 'Linewidth', 2)
 axis tight;
 
 xlabel('Time (s)', 'FontSize', 14, 'FontWeight', 'bold');
@@ -44,7 +44,7 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
 
 % Add legend with tau value
 legend({'Artery (normalized)', ...
-        sprintf('Vein shifted (%.2f ms)', amin * 1000* (1/(ToolBox.Output.HeartBeat.value/60))), ...
+        sprintf('Vein shifted (%.2f ms)', amin/numInterp * 1000* (1/(ToolBox.Output.HeartBeat.value/60))), ...
         sprintf('Vein model fit (\\tau_{RC} = %.2f ms)', tau_ms)}, ...
         'Location','best');
 
@@ -85,7 +85,7 @@ function tau_opt = fit_tau(t, v_artery, v_vein_true, tau0, amin)
     fun = @(tau_) sum(((rescale(v_vein_true) - circshift(rescale(v_vein_sol(tau_)),amin)).^2).*target_zone); 
 
     % Optimization (bounded positive tau)
-    opts = optimset('Display','iter','TolX',1e-6);
+    opts = optimset('TolX',1e-6);
     tau_opt = fminsearch(fun, tau0, opts);
 end
 
