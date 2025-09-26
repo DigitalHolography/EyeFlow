@@ -283,15 +283,20 @@ if veinsAnalysis
 end
 
 % Perform waveform analysis
-ArterialWaveformAnalysis(v_artery_signal, sysIdxList, 128, 'v_artery');
+v_artery_interp = ArterialWaveformAnalysis(v_artery_signal, sysIdxList, 128, 'v_artery');
 
 if veinsAnalysis
-    VenousWaveformAnalysis(v_vein_signal, sysIdxList, 128, 'v_vein');
+    v_vein_interp = VenousWaveformAnalysis(v_vein_signal, sysIdxList, 128, 'v_vein');
 end
 
 if veinsAnalysis
     % Calculate correlation between artery and vein signals
     arterial_venous_correlation(v_artery_signal, -v_vein_signal);
+end
+
+if veinsAnalysis
+    % Calculate correlation between artery and vein signals
+    arterial_venous_delay(v_artery_interp, v_vein_interp);
 end
 
 fprintf("    4. Resistivity and waveform analysis took %ds\n", round(toc()));

@@ -117,7 +117,7 @@
     "BloodFlowProfilesOverlay": true,
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
-    "hemodynamicParameters": true,
+    "hemodynamicParameters": false,
     "InterpolationPoints": 50
   },
   "DebugMode": false
