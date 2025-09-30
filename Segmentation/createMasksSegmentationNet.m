@@ -1,4 +1,4 @@
-function [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff_video, M0_ff_img, maskVesselness)
+function [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff_video, M0_ff_img, maskArtery)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -49,14 +49,14 @@ end
 if mask_params.AVCorrelationSegmentationNet
     fprintf("Compute correlation for artery/vein segmentation\n");
 
-    signal = sum(M0_ff_video .* maskVesselness, [1 2], 'omitnan');
-    signal = signal ./ nnz(maskVesselness);
+    signal = sum(M0_ff_video .* maskArtery, [1 2], 'omitnan');
+    signal = signal ./ nnz(maskArtery);
 
     outlier_frames_mask = isoutlier(signal, "movmedian", 5, "ThresholdFactor", 2);
     video = interpolateOutlierFrames(M0_ff_video, outlier_frames_mask);
 
-    signal = sum(video .* maskVesselness, [1 2], 'omitnan');
-    signal = signal ./ nnz(maskVesselness);
+    signal = sum(video .* maskArtery, [1 2], 'omitnan');
+    signal = signal ./ nnz(maskArtery);
 
     % compute local-to-average signal wave zero-lag correlation
     signal_centered = signal - mean(signal, 3, 'omitnan');
@@ -69,7 +69,7 @@ end
 if mask_params.AVDiasysSegmentationNet
     fprintf("Compute diastolic and stystolic frames for artery/vein segmentation\n");
 
-    [M0_Systole_img, M0_Diastole_img, ~] = compute_diasys(M0_ff_video, maskVesselness, 'mask');
+    [M0_Systole_img, M0_Diastole_img, ~] = compute_diasys(M0_ff_video, maskArtery, 'mask');
     saveImage(rescale(M0_Systole_img), 'artery_20_systole_img.png', isStep = true)
     saveImage(rescale(M0_Diastole_img), 'vein_20_diastole_img.png', isStep = true)
 
