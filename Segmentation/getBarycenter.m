@@ -1,4 +1,4 @@
-function [xy_barycenter] = getBarycenter(f_AVG_video)
+function [xy_barycenter, xy_CRA, xy_CRV] = getBarycenter(f_AVG_video)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -58,5 +58,10 @@ saveImage(maskCRA, 'maskCRA.png')
 saveImage(maskCRV, 'maskCRV.png')
 
 xy_barycenter = round([x_CRV + x_CRA, y_CRV + y_CRA] / 2);
+xy_CRA = [x_CRA, y_CRA];
+xy_CRV = [x_CRV, y_CRV];
+ToolBox.Cache.list.xy_barycenter = xy_barycenter;
+ToolBox.Cache.list.xy_CRA = xy_CRA;
+ToolBox.Cache.list.xy_CRV = xy_CRV;
 
 end
