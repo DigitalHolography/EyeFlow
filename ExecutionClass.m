@@ -8,11 +8,11 @@ properties
     M0_ff_raw_video % M0 ff raw
     SH_data_hypervideo % SH raw
 
-    M0_data_video % M0 raw modified by the preprocess 
+    M0_data_video % M0 raw modified by the preprocess
     M1_data_video % M1 raw
     M2_data_video % M2 raw
 
-    f_RMS_video % RMS sqrt(M2/M0) normalized input in kHz 
+    f_RMS_video % RMS sqrt(M2/M0) normalized input in kHz
     f_AVG_video % AVG M1/M0
     M0_ff_video % M0 AVI
 
@@ -37,13 +37,13 @@ properties
 
     maskArtery % Segmentation mask of retinal arteries
     maskVein % Segmentation mask of retinal veins
-    maskNeighbors % Segmentation mask of pixels close to vessels but outside used 
+    maskNeighbors % Segmentation mask of pixels close to vessels but outside used
     % to estimate a local difference in Doppler broaddening
-    displacementField % Displacement Field calculated with demons non rigid registration 
+    displacementField % Displacement Field calculated with demons non rigid registration
     % frame by frame compared to the averaged image
     sysIdxList % List of frame indexes counting cardiac cycles
     diasIdx % Indexes for diastole/ systole analysis
-    sysIdx 
+    sysIdx
     xy_barycenter % x y position of the ONH in pixels (size(M0_ff_video))
     papillaDiameter % Diameter of the detected papilla in pixels (size(M0_ff_video))
     vRMS % Video of velocity map estimate in retinal vessels
@@ -57,7 +57,6 @@ properties
     param_name char % current filename
     filenames char % name id used for storing the measured rendered data
 
-    
 end
 
 methods
@@ -135,7 +134,7 @@ methods
 
         % Initialize ToolBox and parameters
         ToolBox = obj.ToolBoxMaster;
-        params = ToolBox.getParams;
+        % params = ToolBox.getParams;
         ToolBox.Output = obj.Output;
         % ToolBox.Ref = obj; % handle to the Execution Class obj
         ToolBox.Cache = obj.Cache;
@@ -158,7 +157,7 @@ methods
         VideoRemoveOutliers(obj);
 
         obj.is_preprocessed = true;
-        
+
         fprintf("\n----------------------------------\n" + ...
             "Preprocessing Complete\n" + ...
         "----------------------------------\n");
@@ -187,10 +186,11 @@ methods
         ToolBox.Output.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
         ToolBox.Output.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
         ToolBox.Output.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
+
         if ~isempty(ToolBox.record_time_stamps_us)
             tmp = ToolBox.record_time_stamps_us;
-            ToolBox.Output.add('UnixTimestampFirst',tmp.first,'µs');
-            ToolBox.Output.add('UnixTimestampLast',tmp.last,'µs');
+            ToolBox.Output.add('UnixTimestampFirst', tmp.first, 'µs');
+            ToolBox.Output.add('UnixTimestampLast', tmp.last, 'µs');
         end
 
         if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
@@ -231,12 +231,15 @@ methods
                 createMasks(obj.M0_ff_video, obj.xy_barycenter);
             obj.papillaDiameter = mean([diameter_x, diameter_y]);
 
+            % Visualize the segmentation result
             M0_Artery = setcmap(M0_ff_img, obj.maskArtery, cmapArtery);
             M0_Vein = setcmap(M0_ff_img, obj.maskVein, cmapVein);
             M0_AV = setcmap(M0_ff_img, obj.maskArtery & obj.maskVein, cmapAV);
+            M0_RGB = (M0_Artery + M0_Vein) .* ~(obj.maskArtery & obj.maskVein) + ...
+                M0_AV + ...
+                rescale(M0_ff_img) .* ~(obj.maskArtery | obj.maskVein);
 
-            M0_RGB = (M0_Artery + M0_Vein) .* ~(obj.maskArtery & obj.maskVein) + M0_AV + rescale(M0_ff_img) .* ~(obj.maskArtery | obj.maskVein);
-
+            % Display the mask on the app if available
             if ~isempty(app)
                 app.ImageDisplay.ImageSource = mat2gray(M0_RGB); % Rescale the image for display
                 ax = ancestor(app.ImageDisplay, 'axes');

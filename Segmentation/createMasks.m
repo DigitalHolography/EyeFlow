@@ -117,7 +117,6 @@ if mask_params.AutoCompute
     maskVesselnessClean = maskVesselness & bwareafilt(maskVesselness | maskCircle, 1, 8) & maskDiaphragm;
     saveImage(maskVesselnessClean + maskCircle * 0.5, 'all_15_VesselMask_clear.png', isStep = true)
 
-
     % 1) 3) If using SegmentationNet, compute correlation and/or dia/sys to obtain artery vein masks
 
     if mask_params.AVCorrelationSegmentationNet || mask_params.AVDiasysSegmentationNet
