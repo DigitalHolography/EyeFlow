@@ -134,6 +134,7 @@ if mask_params.AutoCompute
     if mask_params.AVCorrelationSegmentationNet || mask_params.AVDiasysSegmentationNet
 
         maskArteryTmp = preMaskArtery(M0_ff_video, maskVesselness); % figure(),imshowpair(M0_img,maskArteryTmp);
+        saveImage(maskArteryTmp, 'artery_16_PreMask.png', isStep = true, cmap = cArtery);
         [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff_video, M0_ff_img, maskArteryTmp);
         saveImage(maskVein, 'vein_21_SegmentationNet.png', isStep = true, cmap = cVein);
         saveImage(maskArtery, 'artery_21_SegmentationNet.png', isStep = true, cmap = cVein);

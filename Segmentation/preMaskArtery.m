@@ -8,7 +8,9 @@ params = ToolBox.getParams;
 
 % -------------------------------
 % Step 1: Separate mask into branches
-[~, label, ~] = getLongestArteryBranch(maskVesselness, ToolBox.Cache.list.xy_barycenter, 'all');
+[label, n] = labelVesselBranches(maskVesselness, true(size(maskVesselness)), ToolBox.Cache.list.xy_barycenter);
+imwrite(uint16(label), 'artery_16_PreMask_labels.png');
+
 numBranches = max(label(:));
 numFrames = size(video, 3);
 
