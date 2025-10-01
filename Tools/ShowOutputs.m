@@ -15,9 +15,9 @@ end
 
 fprintf("Saving to : %s\n", output_dir)
 
-if ~iscell(paths)
-    paths = {paths}; % Convert single path to cell array
-end
+% if ~iscell(paths)
+%     paths = {paths}; % Convert single path to cell array
+% end
 
 if ~exist(output_dir, 'dir')
     mkdir(output_dir); % Create output directory if it doesn't exist
