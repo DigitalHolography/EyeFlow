@@ -980,6 +980,7 @@ methods (Access = private)
         app.segmentationCheckBox.Layout.Column = [1, 4];
         app.segmentationCheckBox.Value = true;
         app.segmentationCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.segmentationCheckBox.Tooltip = 'Segment the vessels using the U-Net deep learning model.';
 
         app.bloodFlowAnalysisCheckBox = uicheckbox(grid);
         app.bloodFlowAnalysisCheckBox.Text = 'Blood Flow Analysis';
@@ -989,6 +990,7 @@ methods (Access = private)
         app.bloodFlowAnalysisCheckBox.Layout.Column = [1, 2];
         app.bloodFlowAnalysisCheckBox.Value = true;
         app.bloodFlowAnalysisCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.bloodFlowAnalysisCheckBox.Tooltip = 'Compute the blood flow velocity in the segmented vessels.';
 
         app.crossSectionCheckBox = uicheckbox(grid);
         app.crossSectionCheckBox.Text = 'Cross Section Analysis';
@@ -996,8 +998,9 @@ methods (Access = private)
         app.crossSectionCheckBox.FontColor = [1 1 1];
         app.crossSectionCheckBox.Layout.Row = 6;
         app.crossSectionCheckBox.Layout.Column = [1, 2];
-        app.crossSectionCheckBox.Value = true;
+        app.crossSectionCheckBox.Value = false;
         app.crossSectionCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.crossSectionCheckBox.Tooltip = 'Analyze the cross-sectional blood flow profile in the segmented vessels.';
 
         app.crossSectionFigCheckBox = uicheckbox(grid);
         app.crossSectionFigCheckBox.Text = 'Cross Section Figures';
@@ -1005,8 +1008,9 @@ methods (Access = private)
         app.crossSectionFigCheckBox.FontColor = [1 1 1];
         app.crossSectionFigCheckBox.Layout.Row = 6;
         app.crossSectionFigCheckBox.Layout.Column = [3, 4];
-        app.crossSectionFigCheckBox.Value = true;
+        app.crossSectionFigCheckBox.Value = false;
         app.crossSectionFigCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.crossSectionFigCheckBox.Tooltip = 'Generate figures for the cross-sectional blood flow profiles.';
 
         app.spectralAnalysisCheckBox = uicheckbox(grid);
         app.spectralAnalysisCheckBox.Text = 'Spectral analysis';
@@ -1014,8 +1018,10 @@ methods (Access = private)
         app.spectralAnalysisCheckBox.FontColor = [1 1 1];
         app.spectralAnalysisCheckBox.Layout.Row = 7;
         app.spectralAnalysisCheckBox.Layout.Column = [1, 4];
+        app.spectralAnalysisCheckBox.Value = false;
         app.spectralAnalysisCheckBox.Enable = true;
         app.spectralAnalysisCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.spectralAnalysisCheckBox.Tooltip = 'Perform spectral analysis on the blood flow data.';
 
         % Bottom Left: Execute Button
         app.ExecuteButton = uibutton(grid, 'push');
