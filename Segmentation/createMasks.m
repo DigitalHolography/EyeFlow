@@ -117,23 +117,12 @@ if mask_params.AutoCompute
     maskVesselnessClean = maskVesselness & bwareafilt(maskVesselness | maskCircle, 1, 8) & maskDiaphragm;
     saveImage(maskVesselnessClean + maskCircle * 0.5, 'all_15_VesselMask_clear.png', isStep = true)
 
-    [labeledVessels, n] = labelVesselBranches(maskVesselnessClean, maskDiaphragm, xy_barycenter, 'strelSize', 3);
-    t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
-    signals = zeros(n, numFrames);
-    for i = 1:n
-        mask = (labeledVessels == i);
-        parfor frameIdx = 1:numFrames
-            signals(i, frameIdx) = sum(M0_ff_video(:, :, frameIdx) .* mask, 'all') / nnz(mask);
-        end
-    end
-
-    figure, plot(t, rescale(signals))
 
     % 1) 3) If using SegmentationNet, compute correlation and/or dia/sys to obtain artery vein masks
 
     if mask_params.AVCorrelationSegmentationNet || mask_params.AVDiasysSegmentationNet
 
-        maskArteryTmp = preMaskArtery(M0_ff_video, maskVesselness); % figure(),imshowpair(M0_img,maskArteryTmp);
+        maskArteryTmp = preMaskArtery(M0_ff_video, maskVesselnessClean); % figure(),imshowpair(M0_img,maskArteryTmp);
         saveImage(maskArteryTmp, 'artery_16_PreMask.png', isStep = true, cmap = cArtery);
         [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff_video, M0_ff_img, maskArteryTmp);
         saveImage(maskVein, 'vein_21_SegmentationNet.png', isStep = true, cmap = cVein);

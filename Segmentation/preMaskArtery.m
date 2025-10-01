@@ -14,7 +14,6 @@ imwrite(uint16(label), 'artery_16_PreMask_labels.png');
 numBranches = max(label(:));
 numFrames = size(video, 3);
 
-% Preallocate
 signals = zeros(numBranches, numFrames);
 
 % -------------------------------
@@ -29,19 +28,18 @@ end
 
 % -------------------------------
 % Step 3: Normalize signals
-signalsNorm = zscore(signals, 0, 2); % normalize each branch signal
+signals_n = (signals - mean(signals, 2)) ./ std (signals, [], 2); % normalize each branch signal
 
-% Compute similarity matrix (dot products)
-corrMatrix = signalsNorm * signalsNorm';
+s_idx = select_regular_peaks(signals_n,0.5,0.3);
 
-% Remove self-correlations
-corrMatrix(1:numBranches + 1:end) = 0;
 
-% Find the most correlated pair
-[~, idx] = max(corrMatrix(:));
-[branch1, branch2] = ind2sub(size(corrMatrix), idx);
 
 % -------------------------------
 % Step 4: Combine them into final mask
-preMaskArtery = (label == branch1) | (label == branch2);
+preMaskArtery = false(size(maskVesselness));
+
+for i=1:length(s_idx)
+    preMaskArtery = preMaskArtery | (label == i);
+end
+
 end
