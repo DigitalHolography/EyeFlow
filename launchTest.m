@@ -40,22 +40,25 @@ if ~isfolder("Logs")
 end
 
 fprintf('Log saving to %s :\n', logFileName);
+fid = fopen(fullfile('Logs', logFileName), 'a'); % 'a' for append if needed
 
 for ind = 1:length(paths)
-    tic;
+
     path = paths(ind);
-    fprintf('Execution of Eyeflow routine on %s\n', path);
+    fprintf(fid, 'Execution of Eyeflow routine on %s\n', path);
 
     if isfolder(path)
         path = strcat(path, '\');
     end
 
-    out = evalc('runAnalysisBlock(path)');
-    fid = fopen(fullfile('Logs', logFileName), 'a'); % 'a' for append if needed
-    fprintf(fid, '%s', out);
-    fclose(fid);
-    toc;
+    tic;
+    runAnalysisBlock(path);
+    ti = toc;
+    fprintf(fid, 'Execution time: %.2f seconds\n\n', ti);
 end
+
+fprintf(fid, '%s', out);
+fclose(fid);
 
 fprintf('Log saved to %s\n', logFileName);
 
