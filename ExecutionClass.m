@@ -8,11 +8,11 @@ properties
     M0_ff_raw_video % M0 ff raw
     SH_data_hypervideo % SH raw
 
-    M0_data_video % M0 raw modified by the preprocess
+    M0_data_video % M0 raw modified by the preprocess 
     M1_data_video % M1 raw
     M2_data_video % M2 raw
 
-    f_RMS_video % RMS sqrt(M2/M0) normalized input in kHz
+    f_RMS_video % RMS sqrt(M2/M0) normalized input in kHz 
     f_AVG_video % AVG M1/M0
     M0_ff_video % M0 AVI
 
@@ -37,13 +37,13 @@ properties
 
     maskArtery % Segmentation mask of retinal arteries
     maskVein % Segmentation mask of retinal veins
-    maskNeighbors % Segmentation mask of pixels close to vessels but outside used
+    maskNeighbors % Segmentation mask of pixels close to vessels but outside used 
     % to estimate a local difference in Doppler broaddening
-    displacementField % Displacement Field calculated with demons non rigid registration
+    displacementField % Displacement Field calculated with demons non rigid registration 
     % frame by frame compared to the averaged image
     sysIdxList % List of frame indexes counting cardiac cycles
     diasIdx % Indexes for diastole/ systole analysis
-    sysIdx
+    sysIdx 
     xy_barycenter % x y position of the ONH in pixels (size(M0_ff_video))
     papillaDiameter % Diameter of the detected papilla in pixels (size(M0_ff_video))
     vRMS % Video of velocity map estimate in retinal vessels
@@ -57,6 +57,7 @@ properties
     param_name char % current filename
     filenames char % name id used for storing the measured rendered data
 
+    
 end
 
 methods
@@ -94,7 +95,7 @@ methods
         % Load video data
         if ~isfolder(path) % If .holo file
             fprintf('Reading moments in: %s.holo\n', obj.directory);
-            [videoM0, videoM1, videoM2] = readMoments(sprintf('%s.holo', obj.directory));
+            [videoM0, videoM1, videoM2] = readMoments(strcat(obj.directory, '.holo'));
             readMomentsFooter(obj.directory);
             obj.M0_ff_raw_video = pagetranspose(improve_video(ff_correction(videoM0, 35), 0.0005, 2, 0));
             obj.M0_raw_video = pagetranspose(videoM0);
@@ -134,7 +135,7 @@ methods
 
         % Initialize ToolBox and parameters
         ToolBox = obj.ToolBoxMaster;
-        % params = ToolBox.getParams;
+        params = ToolBox.getParams;
         ToolBox.Output = obj.Output;
         % ToolBox.Ref = obj; % handle to the Execution Class obj
         ToolBox.Cache = obj.Cache;
@@ -157,7 +158,7 @@ methods
         VideoRemoveOutliers(obj);
 
         obj.is_preprocessed = true;
-
+        
         fprintf("\n----------------------------------\n" + ...
             "Preprocessing Complete\n" + ...
         "----------------------------------\n");
@@ -186,11 +187,10 @@ methods
         ToolBox.Output.add('NumFrames', size(obj.M0_data_video, 3), '', 0);
         ToolBox.Output.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
         ToolBox.Output.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
-
         if ~isempty(ToolBox.record_time_stamps_us)
             tmp = ToolBox.record_time_stamps_us;
-            ToolBox.Output.add('UnixTimestampFirst', tmp.first, 'µs');
-            ToolBox.Output.add('UnixTimestampLast', tmp.last, 'µs');
+            ToolBox.Output.add('UnixTimestampFirst',tmp.first,'µs');
+            ToolBox.Output.add('UnixTimestampLast',tmp.last,'µs');
         end
 
         if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
@@ -216,8 +216,7 @@ methods
             cmapVein = ToolBox.cmapVein;
             cmapAV = ToolBox.cmapAV;
 
-            ToolBox.Cache.list.xy_barycenter = getBarycenter(obj.f_AVG_video);
-            obj.xy_barycenter = ToolBox.Cache.list.xy_barycenter;
+            obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
 
             try
                 [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
@@ -278,9 +277,9 @@ methods
         %         "Pulse Velocity Calculation\n" + ...
         %         "----------------------------------\n");
         %     pulseVelocityTimer = tic;
-        %
-        %     pulseVelocity(obj.M0_ff_video, obj.displacementField, obj.maskArtery);
-        %
+
+        %%%%%%%%%%%%%%%%%%%% pulseVelocity(obj.M0_ff_video, obj.displacementField, obj.maskArtery);
+
         %     time_pulsevelocity = toc(pulseVelocityTimer);
         %     fprintf("- Pulse Velocity Calculations took : %ds\n", round(time_pulsevelocity))
         % end
@@ -335,7 +334,7 @@ methods
         end
 
         % Spectral Analysis
-        if obj.flag_spectral_analysis && isfile(fullfile(ToolBox.EF_path, 'raw', [sprintf('%s_SH', ToolBox.folder_name), '.raw']))
+        if obj.flag_spectral_analysis && isfile(fullfile(ToolBox.EF_path, 'raw', [strcat(ToolBox.folder_name, '_SH'), '.raw']))
 
             fprintf("\n----------------------------------\n" + ...
                 "Spectral Analysis\n" + ...
@@ -386,8 +385,8 @@ methods
 
         % Main Output Saving
 
-        ToolBox.Output.writeJson(fullfile(ToolBox.path_json, sprintf('%s_output.json', ToolBox.folder_name)));
-        ToolBox.Output.writeHdf5(fullfile(ToolBox.path_h5, sprintf('%s_output.h5', ToolBox.folder_name)));
+        ToolBox.Output.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, 'output.json')));
+        ToolBox.Output.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, 'output.h5')));
 
         % Final Output
         tTotal = toc(totalTime);
