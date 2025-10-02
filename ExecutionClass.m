@@ -28,6 +28,7 @@ properties
     flag_crossSection_analysis
     flag_crossSection_figures
     flag_spectral_analysis
+    
 
     OverWrite logical
 
@@ -274,18 +275,21 @@ methods
             fprintf("- Blood Flow Velocity Analysis took: %ds\n", round(toc(pulseAnalysisTimer)));
         end
 
-        % Pulse Velocity Analysis
-        %  if obj.flag_pulseVelocity_analysis
-        %     fprintf("\n----------------------------------\n" + ...
-        %         "Pulse Velocity Calculation\n" + ...
-        %         "----------------------------------\n");
-        %     pulseVelocityTimer = tic;
+        if obj.flag_bloodFlowVelocity_analysis
+            fprintf("\n----------------------------------\n" + ...
+                "Pulse Velocity Calculation\n" + ...
+                "----------------------------------\n");
+            pulseVelocityTimer = tic;
+            
+            pulseVelocity(obj.M0_ff_video, obj.displacementField, obj.maskArtery, 'artery');
 
-        %%%%%%%%%%%%%%%%%%%% pulseVelocity(obj.M0_ff_video, obj.displacementField, obj.maskArtery);
-
-        %     time_pulsevelocity = toc(pulseVelocityTimer);
-        %     fprintf("- Pulse Velocity Calculations took : %ds\n", round(time_pulsevelocity))
-        % end
+            if veins_analysis
+                pulseVelocity(obj.M0_ff_video, obj.displacementField, obj.maskVein, 'vein');
+            end
+            
+            time_pulsevelocity = toc(pulseVelocityTimer);
+            fprintf("- Pulse Velocity Calculations took : %ds\n", round(time_pulsevelocity))
+        end
 
         % Cross-Section Analysis
         if obj.flag_crossSection_analysis
