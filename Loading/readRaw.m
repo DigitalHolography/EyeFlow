@@ -43,8 +43,8 @@ try
         M0_disp_video(:, :, n) = rgb2gray(read(V, n));
     end
 
-    obj.M0_ff_raw_video = M0_disp_video;
-    refvideosize = size(obj.M0_ff_raw_video);
+    obj.M0_ff_video = M0_disp_video;
+    refvideosize = size(obj.M0_ff_video);
     clear V M0_disp_video;
 
 catch ME
@@ -54,7 +54,7 @@ end
 % Read raw moment files
 dir_path_raw = fullfile(obj.directory, 'raw');
 moment_files = {'_moment0', '_moment1', '_moment2'};
-output_fields = {'M0_raw_video', 'M1_raw_video', 'M2_raw_video'};
+output_fields = {'M0_data_video', 'M1_data_video', 'M2_data_video'};
 
 for i = 1:length(moment_files)
     raw_file = fullfile(dir_path_raw, [obj.filenames, moment_files{i}, '.raw']);
@@ -99,7 +99,7 @@ if isfile(sh_file)
         SH_data_video = fread(fileID, 'float32');
         fclose(fileID);
 
-        [numX, numY, numFrames] = size(obj.M0_raw_video);
+        [numX, numY, numFrames] = size(obj.M0_data_video);
         bin_x = 4; bin_y = 4;
         obj.SH_data_hypervideo = reshape(SH_data_video, ...
             ceil(numX / bin_x), ceil(numY / bin_y), [], numFrames);

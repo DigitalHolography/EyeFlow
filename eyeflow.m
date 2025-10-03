@@ -20,6 +20,7 @@ properties (Access = public)
     % Checkboxes
     segmentationCheckBox matlab.ui.control.CheckBox
     bloodFlowAnalysisCheckBox matlab.ui.control.CheckBox
+    pulseVelocityCheckBox matlab.ui.control.CheckBox
     crossSectionCheckBox matlab.ui.control.CheckBox
     crossSectionFigCheckBox matlab.ui.control.CheckBox
     spectralAnalysisCheckBox matlab.ui.control.CheckBox
@@ -59,7 +60,7 @@ methods (Access = public)
             fprintf("- Video Loading took : %ds\n", round(toc))
 
             % Compute the mean of M0_data_video along the third dimension
-            mean_M0 = mean(app.file.M0_raw_video, 3);
+            mean_M0 = mean(app.file.M0_data_video, 3);
             % Display the mean image in the uiimage component
             img = repmat(rescale(mean_M0), [1 1 3]);
             [numX, numY] = size(img);
@@ -282,7 +283,13 @@ methods (Access = public)
 
     % Button pushed function: ClearButton
     function ClearButtonPushed(app, ~)
-        app.file = [];
+
+        if ~isempty(app.file)
+            clear app.file;
+        end
+
+        close all;
+
         app.ReferenceDirectory.Value = "";
 
         app.ExecuteButton.Enable = false;
@@ -811,7 +818,7 @@ methods (Access = public)
         % Segmentation Checkbox is always enabled
         app.segmentationCheckBox.Enable = true;
 
-        % Enable/disable bloodFlowAnalysisCheckBox and spectralAnalysisCheckBox
+        % Determine the current state of the file analysis
         is_segmented = false;
         is_pulseAnalyzed = false;
         is_crossSectionAnalyzed = false;
@@ -822,14 +829,18 @@ methods (Access = public)
             is_crossSectionAnalyzed = app.file.is_crossSectionAnalyzed;
         end
 
+        % Enable/disable bloodFlowAnalysisCheckBox, pulseVelocityCheckBox, and spectralAnalysisCheckBox
         if app.segmentationCheckBox.Value || is_segmented
             app.bloodFlowAnalysisCheckBox.Enable = true;
+            app.pulseVelocityCheckBox.Enable = true;
             app.spectralAnalysisCheckBox.Enable = true;
         else
             app.bloodFlowAnalysisCheckBox.Enable = false;
+            app.pulseVelocityCheckBox.Enable = false;
             app.spectralAnalysisCheckBox.Enable = false;
             app.bloodFlowAnalysisCheckBox.Value = false; % Turn off if disabled
-            app.spectralAnalysisCheckBox.Value = false; % Turn off if disabled
+            app.pulseVelocityCheckBox.Value = false;
+            app.spectralAnalysisCheckBox.Value = false;
         end
 
         % Enable/disable crossSectionCheckBox
@@ -991,6 +1002,16 @@ methods (Access = private)
         app.bloodFlowAnalysisCheckBox.Value = true;
         app.bloodFlowAnalysisCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
         app.bloodFlowAnalysisCheckBox.Tooltip = 'Compute the blood flow velocity in the segmented vessels.';
+
+        app.pulseVelocityCheckBox = uicheckbox(grid);
+        app.pulseVelocityCheckBox.Text = 'Pulse Analysis';
+        app.pulseVelocityCheckBox.FontSize = 16;
+        app.pulseVelocityCheckBox.FontColor = [1 1 1];
+        app.pulseVelocityCheckBox.Layout.Row = 5;
+        app.pulseVelocityCheckBox.Layout.Column = [3, 4];
+        app.pulseVelocityCheckBox.Value = false;
+        app.pulseVelocityCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.pulseVelocityCheckBox.Tooltip = 'Analyze the pulsatile component of the blood flow velocity.';
 
         app.crossSectionCheckBox = uicheckbox(grid);
         app.crossSectionCheckBox.Text = 'Cross Section Analysis';

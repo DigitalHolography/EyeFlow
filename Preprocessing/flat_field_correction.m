@@ -23,13 +23,20 @@ if nargin < 4
 end
 
 % Check if image is normalized between 0 and 1
-flag = 0;
+Im_min = min(image, [], 'all');
+Im_max = max(image, [], 'all');
 
-if min(image, [], 'all') < 0 || max(image, [], 'all') > 1
-    Im_max = max(image, [], 'all');
-    Im_min = min(image, [], 'all');
-    image = (image - Im_min) ./ (Im_max - Im_min);
+if Im_min < 0 || Im_max > 1
+
+    if Im_max > Im_min
+        image = (image - Im_min) ./ (Im_max - Im_min);
+    else
+        image = zeros(size(image), 'like', image); % constant image
+    end
+
     flag = 1;
+else
+    flag = 0;
 end
 
 % Define the non-border region
