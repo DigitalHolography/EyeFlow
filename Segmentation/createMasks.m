@@ -120,8 +120,8 @@ if mask_params.AutoCompute
     % 1) 3) If using SegmentationNet, compute correlation and/or dia/sys to obtain artery vein masks
 
     if mask_params.AVCorrelationSegmentationNet || mask_params.AVDiasysSegmentationNet
-
-        maskArteryTmp = preMaskArtery(M0_ff_video, maskVesselnessClean); % figure(),imshowpair(M0_img,maskArteryTmp);
+        [maskArteryTmp, ~] = preMaskArtery(M0_ff_video, maskVesselnessClean);
+        % figure(),imshowpair(maskArteryTmp, maskVeinTmp);
         saveImage(maskArteryTmp, 'artery_16_PreMask.png', isStep = true, cmap = cArtery);
         [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff_video, M0_ff_img, maskArteryTmp);
         saveImage(maskVein, 'vein_21_SegmentationNet.png', isStep = true, cmap = cVein);
