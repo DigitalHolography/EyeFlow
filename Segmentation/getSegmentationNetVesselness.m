@@ -21,11 +21,13 @@ if ~isfolder('Models')
     mkdir('Models');
 end
 
-if ~isfile('Models\' + model_name +'.onnx')
+model_path = 'Models\' + model_name + '.onnx';
+
+if ~isfile(model_path)
     % Download the model from Hugging Face
     url = 'https://huggingface.co/DigitalHolography/' + model_name + '/resolve/main/' + model_name;
     fprintf(url)
-    websave('Models\' + model_name +'.onnx', url);
+    websave(model_path, url);
 end
 
 if canUseGPU
@@ -35,15 +37,21 @@ else
 end
 
 % Import the ONNX network
-warning('off')
-net = importONNXNetwork('Models\' + model_name +'.onnx');
-warning('on')
+try
+    % Try the newer function first
+    net = importNetworkFromONNX(model_path);
+catch
+    % Fall back to the older function
+    warning('off')
+    net = importONNXNetwork(model_path);
+    warning('on')
+end
 
 % if nargin<2 || isempty(net)
 %     net = importNetworkFromONNX("Models\unet_resnet34.onnx");
 % end
 
-fprintf("Use " + model_name + " to segment retinal vessels\n")
+fprintf("    Use %s to segment retinal vessels\n", model_name)
 
 [Nx, Ny] = size(M0);
 
@@ -51,7 +59,16 @@ M0 = imresize(rescale(M0), [512, 512]);
 
 input = rescale(M0);
 
-output = predict(net, input, 'ExecutionEnvironment',device);
+% First, determine what type of network you have
+if isa(net, 'dlnetwork')
+    % For dlnetwork objects
+    input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
+    output_dl = predict(net, input_dl);
+    output = extractdata(output_dl);
+else
+    % For DAGNetwork objects
+    output = predict(net, input, 'ExecutionEnvironment', device);
+end
 
 mask = sigmoid(output) > 0.5;
 

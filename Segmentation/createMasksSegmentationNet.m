@@ -84,7 +84,7 @@ if mask_params.AVDiasysSegmentationNet
 
     M0_Diastole_img = imresize(rescale(M0_Diastole_img), [512, 512]);
     M0_Systole_img = imresize(rescale(M0_Systole_img), [512, 512]);
-    
+
 end
 
 M0 = imresize(rescale(M0_ff_img), [512, 512]);
@@ -99,34 +99,85 @@ if mask_params.AVCorrelationSegmentationNet
     R = imresize(rescale(R), [512, 512]);
 
     if mask_params.AVDiasysSegmentationNet
-        warning('off')
-        net = importONNXNetwork('Models\iternet_5_av_sys_corr.onnx');
-        warning('on')
 
-        fprintf("Use iternet5 to segment retinal arteries and veins\n")
+        try
+            % Try the newer function first
+            net = importNetworkFromONNX('Models\iternet5_av_corr_diasys.onnx');
+        catch
+            % Fall back to the older function
+            warning('off')
+            net = importONNXNetwork('Models\iternet5_av_corr_diasys.onnx');
+            warning('on')
+        end
+
+        fprintf("    Use iternet5 to segment retinal arteries and veins\n")
 
         input = cat(3, M0, M0_Systole_img, M0_Diastole_img, R);
-        output = predict(net, input, 'ExecutionEnvironment',device);
-    else
-        warning('off')
-        net = importONNXNetwork('Models\iternet_5_av_corr.onnx');
-        warning('on')
 
-        fprintf("Use iternet5 to segment retinal arteries and veins\n")
+        if isa(net, 'dlnetwork')
+            % For dlnetwork objects
+            input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
+            output_dl = predict(net, input_dl);
+            output = extractdata(output_dl);
+        else
+            % For DAGNetwork objects
+            output = predict(net, input, 'ExecutionEnvironment', device);
+        end
+
+    else
+
+        try
+            % Try the newer function first
+            net = importNetworkFromONNX('Models\iternet_5_av_corr.onnx');
+        catch
+            % Fall back to the older function
+            warning('off')
+            net = importONNXNetwork('Models\iternet_5_av_corr.onnx');
+            warning('on')
+        end
+
+        fprintf("    Use iternet5 to segment retinal arteries and veins\n")
 
         input = cat(3, M0, M0, R);
-        output = predict(net, input, 'ExecutionEnvironment',device);
+
+        if isa(net, 'dlnetwork')
+            % For dlnetwork objects
+            input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
+            output_dl = predict(net, input_dl);
+            output = extractdata(output_dl);
+        else
+            % For DAGNetwork objects
+            output = predict(net, input, 'ExecutionEnvironment', device);
+        end
+
     end
 
 elseif mask_params.AVDiasysSegmentationNet
-    warning('off')
-    net = importONNXNetwork('Models\iternet5_av_diasys.onnx');
-    warning('on')
 
-    fprintf("Use iternet5 to segment retinal arteries and veins\n")
+    try
+        % Try the newer function first
+        net = importNetworkFromONNX('Models\iternet5_av_diasys.onnx');
+    catch
+        % Fall back to the older function
+        warning('off')
+        net = importONNXNetwork('Models\iternet5_av_diasys.onnx');
+        warning('on')
+    end
+
+    fprintf("    Use iternet5 to segment retinal arteries and veins\n")
 
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
-    output = predict(net, input, 'ExecutionEnvironment',device);
+
+    if isa(net, 'dlnetwork')
+        % For dlnetwork objects
+        input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
+        output_dl = predict(net, input_dl);
+        output = extractdata(output_dl);
+    else
+        % For DAGNetwork objects
+        output = predict(net, input, 'ExecutionEnvironment', device);
+    end
+
 end
 
 [~, argmax] = max(output, [], 3);
