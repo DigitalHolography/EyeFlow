@@ -1,4 +1,4 @@
-function ArterialWaveformAnalysis(signal, systolesIndexes, numInterp, name)
+function one_cycle_signal = ArterialWaveformAnalysis(signal, systolesIndexes, numInterp, name)
 % ARTERIALWAVEFORMANALYSIS Analyzes arterial waveform signals (velocity or Flow Rate)
 %
 % Inputs:
