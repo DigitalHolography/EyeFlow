@@ -1,4 +1,5 @@
-paths = readlines("Y:\todo\Test_list\segmentation_test_list.txt");
+[txt_name, txt_path] = uigetfile('*.txt', 'Select the test list file');
+paths = readlines(fullfile(txt_path,txt_name));
 % Add necessary paths
 addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\", ...
     "Loading\", "Parameters\", "Preprocessing\", ...
