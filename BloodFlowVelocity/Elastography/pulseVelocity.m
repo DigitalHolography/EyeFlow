@@ -8,4 +8,5 @@ for i=1:n
     PWV(i) = pulseWaveVelocity(M,L==i,i,name);
 end
 
+close all;
 end

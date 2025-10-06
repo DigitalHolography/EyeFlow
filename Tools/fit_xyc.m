@@ -41,8 +41,8 @@ fprintf('Period along x = %f units\n', Tx);
 fprintf('Period along y = %f units\n', Ty);
 
 % --- Plot map with wavevector direction ---
-figure;
-imagesc(Z); axis image; colormap jet;
+figure('Visible','off');
+imagesc(Z,[-0.1 0.1]); axis image; colormap jet;
 hold on;
 
 % center point of the image
@@ -54,7 +54,7 @@ scale = min(nx, ny) / 4;   % length scaling for visibility
 vx = scale * sign(kx);     % just show direction
 vy = scale * sign(ky);
 
-plot([xc-vx, xc+vx], [yc-vy, yc+vy], 'w-', 'LineWidth', 2);
+plot([xc-Tx, xc+Tx], [yc-Ty, yc+Ty], 'w-', 'LineWidth', 2);
 
 text(xc+vx, yc+vy, sprintf('%.2f rad/%s over %s', ky, 'yunit','xunit'), ...
      'Color','w','FontSize',10,'FontWeight','bold');

@@ -216,6 +216,7 @@ methods (Access = public)
 
             app.file.flag_segmentation = app.segmentationCheckBox.Value;
             app.file.flag_bloodFlowVelocity_analysis = app.bloodFlowAnalysisCheckBox.Value;
+            app.file.flag_bloodFlowVelocity_figures = app.pulseVelocityCheckBox.Value;
             app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
             app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
@@ -1011,7 +1012,7 @@ methods (Access = private)
         app.pulseVelocityCheckBox.Layout.Column = [3, 4];
         app.pulseVelocityCheckBox.Value = false;
         app.pulseVelocityCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.pulseVelocityCheckBox.Tooltip = 'Analyze the pulsatile component of the blood flow velocity.';
+        app.pulseVelocityCheckBox.Tooltip = 'Analyze the flexural pulse velocity in vessels.';
 
         app.crossSectionCheckBox = uicheckbox(grid);
         app.crossSectionCheckBox.Text = 'Cross Section Analysis';

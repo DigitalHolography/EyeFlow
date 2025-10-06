@@ -141,7 +141,7 @@ saveas(gcf, fullfile(outputDir, ...
 Ux = Ux_edge;
 Ux_n = (Ux - mean(Ux,2)) ./ std(Ux,[],2);
 
-figure(544), imagesc(real(Ux_n));
+figure('Visible','off'), imagesc(real(Ux_n));
 
 % Save figure
 saveas(gcf, fullfile(outputDir, ...
@@ -159,11 +159,21 @@ for i = -M:M
     Ravg(:,i+M+1) = mean(real(R(:,idx)),2);
 end
 Ravg(isnan(Ravg))=0;
-figure(111), imagesc(Ravg',[-0.1 0.1])
+Ravg = Ravg';
+figure('Visible','off'), imagesc(Ravg,[-0.1 0.1])
 
 % Save figure
 saveas(gcf, fullfile(outputDir, ...
     sprintf("%s_%s_%d_correlation_averaged.png", ToolBox.folder_name, name, branch_index)));
+
+
+[Tx,Ty] = fit_xyc(Ravg);
+
+PWV = (Ty * params.px_size) / (Tx * ToolBox.stride / (ToolBox.fs * 1000) ); 
+
+% Save figure
+saveas(gcf, fullfile(outputDir, ...
+    sprintf("%s_%s_%d_correlation_fit.png", ToolBox.folder_name, name, branch_index)));
 
 end
 
