@@ -1,4 +1,4 @@
-function VenousWaveformAnalysis(signal, systolesIndexes, numInterp, name)
+function one_cycle_signal = VenousWaveformAnalysis(signal, systolesIndexes, numInterp, name)
 % VenousWaveformAnalysis Analyzes venous waveform signals (velocity or Flow Rate)
 %
 % Inputs:

@@ -408,18 +408,6 @@ methods
 
     end
 
-    function delete(obj)
-        % Destructor for ExecutionClass.
-        % Release big arrays explicitly
-        obj.M0_data_video = [];
-        obj.M1_data_video = [];
-        obj.M2_data_video = [];
-        obj.M0_ff_video = [];
-        obj.SH_data_hypervideo = [];
-        obj.Cache = [];
-        obj.Output = [];
-    end
-
 end
 
 end
