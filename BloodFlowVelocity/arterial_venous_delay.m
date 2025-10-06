@@ -29,24 +29,29 @@ plot(ti,v_vein_n*max(vvein), 'b-', 'Linewidth', 2)
 axis tight;
 
 xlabel('Time (s)', 'FontSize', 14, 'FontWeight', 'bold');
-ylabel('Arterial impulse, venous response and decay fit', 'FontSize', 14, 'FontWeight', 'bold');
+ylabel('Arterio-venous decay fit', 'FontSize', 14, 'FontWeight', 'bold');
 pbaspect([1.618 1 1]);
 set(gca, 'LineWidth', 1.5, 'FontSize', 12);
 
 % Compute tau_RC in ms
 tau_RC = tau/numInterp * (1/(ToolBox.Output.HeartBeat.value/60)); % in seconds
 tau_ms = tau_RC * 1000; % convert to ms
+tau_delay_ms = amin/numInterp * 1000* (1/(ToolBox.Output.HeartBeat.value/60));
+% Add legend with tau value
+legend({'Artery (normalized)', ...
+        sprintf('Vein model fit (\\tau_{RC} = %.2f ms)', tau_ms), ...
+        sprintf('Vein shifted (%.2f ms)', tau_delay_ms)}, ...
+        'Location','best');
 
 % Save Results
 exportgraphics(hFig, fullfile(ToolBox.path_png, ...
     sprintf("%s_ArterialVenousDelay.png", ToolBox.folder_name)), ...
     'Resolution', 300);
 
-% Add legend with tau value
-legend({'Artery (normalized)', ...
-        sprintf('Vein shifted (%.2f ms)', amin/numInterp * 1000* (1/(ToolBox.Output.HeartBeat.value/60))), ...
-        sprintf('Vein model fit (\\tau_{RC} = %.2f ms)', tau_ms)}, ...
-        'Location','best');
+ToolBox.Output.add('WindkesselDecayRC',tau_ms,'ms');
+ToolBox.Output.add('WindkesselPureDelay',tau_delay_ms,'ms');
+
+
 
 R_rel = tau/numInterp;
 C_rel = numInterp/tau;
