@@ -133,4 +133,58 @@ ToolBox.Output.add('PhaseDelay', time_lag, 's', NaN);
 
 close all
 
+%% Transfer Function analysis
+
+% Compute FFTs
+v_a_FT = fft(v_artery_signal);
+v_v_FT = fft(v_vein_signal);
+
+F_TRANS = v_v_FT ./ v_a_FT;
+freqs = linspace(-fs / 2, fs / 2, numel(F_TRANS));
+figure("Visible", "off", "Color", 'w');
+semilogy(freqs, fftshift(abs(F_TRANS)), '-k', 'LineWidth', 2);
+axis tight;
+xlabel('Freq (Hz)'); ylabel('transfer function');
+set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+grid on;
+box on;
+set(gca, 'LineWidth', 2);
+xlim([0 10])
+
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_mod.png", ToolBox.folder_name)))
+
+figure("Visible", "off", "Color", 'w');
+plot(freqs, fftshift(angle(F_TRANS)), '-k', 'LineWidth', 2);
+axis tight;
+xlabel('Freq (Hz)'); ylabel('transfer function angle');
+set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+grid on;
+box on;
+set(gca, 'LineWidth', 2);
+xlim([0 10])
+
+exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_phase.png", ToolBox.folder_name)))
+
+ToolBox.Output.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', freqs, 'Hz');
+ToolBox.Output.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');
+
+instant_dV = detrend(cumsum(Q_diff(sIdx:eIdx))) / 60 * dt;
+[peaks, peaks_idx] = findpeaks(instant_dV, 'MinPeakDistance', cycleSize * 0.8);
+[troughs, troughs_idx] = findpeaks(-instant_dV, 'MinPeakDistance', cycleSize * 0.8);
+peaks = [instant_dV(1) peaks instant_dV(end)];
+peaks_idx = [1 peaks_idx numFramesBis];
+sys_mean = mean(peaks);
+dias_mean = -mean(troughs);
+
+% figure;
+% subplot(2,1,1); plot(f, 20*log10(abs(Z(1:nfft/2+1))));
+% title('Transfer Function Magnitude'); xlabel('Frequency (Hz)'); ylabel('dB');
+% subplot(2,1,2); plot(f, angle(Z(1:nfft/2+1)));
+% title('Phase Response'); xlabel('Frequency (Hz)'); ylabel('Radians');
+%
+% Pxx = s_A .* conj(s_A) / nfft;
+% Pyy = s_V .* conj(s_V) / nfft;
+% Pxy = s_V .* conj(s_A) / nfft;
+% Cxy = abs(Pxy).^2 ./ (Pxx .* Pyy);
+
 end

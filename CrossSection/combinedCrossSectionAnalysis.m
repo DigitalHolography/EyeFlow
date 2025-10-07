@@ -88,6 +88,7 @@ set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 grid on;
 box on;
 set(gca, 'LineWidth', 2);
+xlim([0 10])
 
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_BVR_AV_mod.png", ToolBox.folder_name)))
 
@@ -99,6 +100,7 @@ set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 grid on;
 box on;
 set(gca, 'LineWidth', 2);
+xlim([0 10])
 
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_BVR_AV_phase.png", ToolBox.folder_name)))
 
