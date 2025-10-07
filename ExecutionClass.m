@@ -390,7 +390,7 @@ methods
         % Main Output Saving
 
         ToolBox.Output.writeJson(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, 'output.json')));
-        ToolBox.Output.writeHdf5(fullfile(ToolBox.path_json, strcat(ToolBox.folder_name, 'output.h5')));
+        ToolBox.Output.writeHdf5(fullfile(ToolBox.path_h5, strcat(ToolBox.folder_name, 'output.h5')));
 
         % Final Output
         tTotal = toc(totalTime);
