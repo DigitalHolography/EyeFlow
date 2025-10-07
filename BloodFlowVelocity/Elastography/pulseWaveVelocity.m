@@ -66,11 +66,11 @@ end
 % with orhtogonal sections
 halfwidth = 15;
 
-edges = bwboundaries(mask);
-edges = edges{1};
+% edges = bwboundaries(mask);
+% edges = edges{1};
 
-edges_mask = false(size(mask));
-edges_mask(sub2ind(size(mask), edges)) = true;
+% edges_mask = false(size(mask));
+% edges_mask(sub2ind(size(mask), edges)) = true;
 
 L = zeros(size(mask));
 numinterp = 50;
