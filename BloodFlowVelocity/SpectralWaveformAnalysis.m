@@ -8,7 +8,17 @@ numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000); % Sampling frequency in Hz
 duration = numFrames * ToolBox.stride / ToolBox.fs / 1000;
 estimated_fundamental = numSys / duration;
-cDark = [1 0 0]; % Dark color for peaks
+
+if strcmp(name, "v_artery")
+    cDark = [1 0 0]; % Dark color for peaks
+    fig_name = 'ArterialSpectralAnalysis';
+elseif strcmp(name, "v_vein")
+    cDark = [0 0 1]; % Dark color for peaks
+    fig_name = 'VenousSpectralAnalysis';
+else
+    cDark = [0 0 0]; % Default color
+    fig_name = 'SpectralAnalysis';
+end
 
 % --- APPLY HAMMING WINDOW TO TIME-DOMAIN SIGNAL ---
 hamming_win = hamming(numFrames)'; % Create a Hamming window of the same length as the original signal
@@ -38,11 +48,11 @@ fft_mag = fft_mag / max(fft_mag); % Normalize to [0,1]
 fundamental_peak = findpeaks(fft_mag, ...
     'MinPeakDistance', estimated_fundamental * 0.6, ...
     'SortStr', 'descend', 'NPeaks', 1);
-min_prominence = fundamental_peak(1) * 0.1; % 10 % of maximum magnitude as minimum prominence
+min_prominence = fundamental_peak(1) * 0.5; % 10 % of maximum magnitude as minimum prominence
 
 % Improved peak detection with minimum prominence threshold
 [s_peaks, s_idx] = findpeaks(fft_mag, ...
-    'MinPeakDistance', estimated_fundamental * 0.6, ...
+    'MinPeakDistance', estimated_fundamental * 0.8, ...
     'MinPeakProminence', min_prominence, ...
     'SortStr', 'descend');
 s_locs = f(s_idx);
@@ -119,7 +129,7 @@ end
 
 % Save to ToolBox
 
-ToolBox.Cache.list.harmonics = [valid_harmonics];
+ToolBox.Cache.list.harmonics = valid_harmonics;
 
 % Configure axes
 axis tight;
@@ -153,7 +163,7 @@ end
 
 % Save Results
 exportgraphics(hFig, fullfile(ToolBox.path_png, ...
-    sprintf("%s_ArterialSpectralAnalysis_%s.png", ToolBox.folder_name, name)), ...
+    sprintf("%s_%s_%s.png", ToolBox.folder_name, fig_name, name)), ...
     'Resolution', 300);
 
 % Create figure for spectral analysis
@@ -203,7 +213,7 @@ set(gca, 'LineWidth', 1.5, 'FontSize', 12);
 
 % Save Results
 exportgraphics(hFig_angle, fullfile(ToolBox.path_png, ...
-    sprintf("%s_ArterialSpectralAnalysis_Phase_%s.png", ToolBox.folder_name, name)), ...
+    sprintf("%s_%s_Phase_%s.png", ToolBox.folder_name, fig_name, name)), ...
     'Resolution', 300);
 
 % Close the figure if not needed

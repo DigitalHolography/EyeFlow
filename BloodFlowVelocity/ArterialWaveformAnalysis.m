@@ -1,4 +1,4 @@
-function ArterialWaveformAnalysis(signal, systolesIndexes, numInterp, name)
+function one_cycle_signal = ArterialWaveformAnalysis(signal, systolesIndexes, numInterp, name)
 % ARTERIALWAVEFORMANALYSIS Analyzes arterial waveform signals (velocity or Flow Rate)
 %
 % Inputs:
@@ -28,6 +28,10 @@ else
     isBVR = false;
 end
 
+% Spectral Analysis
+numHarmonics = 6;
+[fft_c, ~, valid_harmonics, ~] = SpectralWaveformAnalysis(signal, numSystoles, numHarmonics, name);
+
 % % Signal Preprocessing
 % try
 %     % Apply wavelet denoising if possible
@@ -38,9 +42,6 @@ end
 % catch
 %     signal = double(signal);
 % end
-
-numHarmonics = 6;
-[fft_c, ~, valid_harmonics, ~] = SpectralWaveformAnalysis(signal, numSystoles, numHarmonics, name);
 
 zeroPadLength = length(fft_c);
 harmonics_index = round(valid_harmonics / (fs / 2) * zeroPadLength);

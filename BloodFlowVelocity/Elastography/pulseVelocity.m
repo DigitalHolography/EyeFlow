@@ -1,11 +1,14 @@
-function pulseVelocity(M,D, maskVessel,name)
+function pulseVelocity(M, ~, maskVessel, name)
 ToolBox = getGlobalToolBox;
 
 [L, n] = labelVesselBranches(maskVessel, ones(size(maskVessel)), ToolBox.Cache.list.xy_barycenter);
 
-for i=1:n
+PWV = NaN(1, n);
+
+for i = 1:n
     % displacementAnalysis(D, maskLongArtery);
-    PWV(i) = pulseWaveVelocity(M,L==i,i,name);
+    PWV(i) = pulseWaveVelocity(M, L == i, i, name);
 end
 
+close all;
 end

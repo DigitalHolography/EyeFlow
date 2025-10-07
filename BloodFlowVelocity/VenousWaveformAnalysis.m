@@ -1,4 +1,4 @@
-function VenousWaveformAnalysis(signal, systolesIndexes, numInterp, name)
+function one_cycle_signal = VenousWaveformAnalysis(signal, systolesIndexes, numInterp, name)
 % VenousWaveformAnalysis Analyzes venous waveform signals (velocity or Flow Rate)
 %
 % Inputs:
@@ -12,6 +12,7 @@ ToolBox = getGlobalToolBox;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 t = linspace(0, numFrames / fs, numFrames);
+numSystoles = length(systolesIndexes);
 
 cDark = [0 0 1];
 cLight = [0.5 0.5 1];
@@ -26,6 +27,10 @@ else
     unit = 'mm/s';
     isBVR = false;
 end
+
+% Spectral Analysis
+numHarmonics = 6;
+SpectralWaveformAnalysis(signal, numSystoles, numHarmonics, name);
 
 % Signal Preprocessing
 try
@@ -113,7 +118,7 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
 % Export to JSON
 if ~isBVR
 
-    ToolBox.Output.add('TimetoPeakFromMinVein', T_peak-T_Min, 's');
+    ToolBox.Output.add('TimetoPeakFromMinVein', T_peak - T_Min, 's');
 
 end
 

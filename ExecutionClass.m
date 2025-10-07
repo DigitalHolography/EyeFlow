@@ -20,7 +20,7 @@ properties
 
     flag_segmentation logical
     flag_bloodFlowVelocity_analysis logical
-    flag_bloodFlowVelocity_figures logical
+    flag_pulseWaveVelocity logical
     flag_crossSection_analysis logical
     flag_crossSection_figures logical
     flag_spectral_analysis logical
@@ -272,7 +272,7 @@ methods
         end
 
         % Pulse Velocity Calculation
-        if obj.flag_bloodFlowVelocity_figures
+        if obj.flag_pulseWaveVelocity
             fprintf("\n----------------------------------\n" + ...
                 "Pulse Velocity Calculation\n" + ...
             "----------------------------------\n");
@@ -406,18 +406,6 @@ methods
             profile viewer
         end
 
-    end
-
-    function delete(obj)
-        % Destructor for ExecutionClass.
-        % Release big arrays explicitly
-        obj.M0_data_video = [];
-        obj.M1_data_video = [];
-        obj.M2_data_video = [];
-        obj.M0_ff_video = [];
-        obj.SH_data_hypervideo = [];
-        obj.Cache = [];
-        obj.Output = [];
     end
 
 end
