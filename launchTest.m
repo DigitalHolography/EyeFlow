@@ -11,7 +11,22 @@ paths = paths(paths ~= ""); % remove empty lines
 addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\", ...
     "Loading\", "Parameters\", "Preprocessing\", ...
     "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\");
+%% ensure set default parameters and no forced mask
 
+for ind = 1:length(paths)
+    path = fullfile(paths(ind),'eyeflow');
+    if ~isfolder(fullfile(path,'json'))
+        mkdir(fullfile(path,'json'));
+    end
+    delete(fullfile(fullfile(path,'json'), '*.json')); % remove old json files
+    copyfile(fullfile('Parameters','DefaultEyeFlowParams.json'),fullfile(path,'json','input_EF_params.json'));
+    if isfile(fullfile(path,'mask','forceMaskArtery.png'))
+        movefile(fullfile(path,'mask','forceMaskArtery.png'),fullfile(path,'mask','oldForceMaskArtery.png'));
+    end
+    if isfile(fullfile(path,'mask','forceMaskVein.png'))
+        movefile(fullfile(path,'mask','forceMaskVein.png'),fullfile(path,'mask','oldForceMaskVein.png'));
+    end
+end
 %% launch
 
 % Generate timestamped log file name
