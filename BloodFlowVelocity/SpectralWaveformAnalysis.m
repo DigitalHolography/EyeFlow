@@ -150,8 +150,9 @@ ylabel('Normalized Magnitude', 'FontSize', 14);
 
 % Add heart rate information if fundamental is in typical range
 if ~isempty(s_locs)
-    hr = ((1:numFreq)' \ s_locs');
-    freq_estim = (1:numFreq) * hr;
+    freqs = round(s_locs / fundamental);
+    hr = (freqs' \ s_locs');
+    freq_estim = freqs * hr;
     residus = s_locs - freq_estim;
     RMSE = sqrt(mean(residus .^ 2));
     hr_se = RMSE / sqrt(numFreq);
