@@ -1,18 +1,18 @@
 function VideoNonRigidRegistering(obj)
-    tic
-    
-    params = Parameters_json(obj.directory, obj.param_name);
-    
-    if ~params.json.Preprocess.NonRigidRegisteringFlag
-        return
-    end
+params = Parameters_json(obj.directory, obj.param_name);
 
-    disp("    - Video Registering Non-Rigidly started...");
+if ~params.json.Preprocess.NonRigidRegisteringFlag
+    return
+end
 
-ref_img = mean(obj.M0_raw_video, 3);
-ref_img = flat_field_correction(ref_img, 35, 0, 'gaussianBlur');
+tic;
+disp("    - Video Registering Non-Rigidly started");
 
-v = obj.M0_raw_video;
+ref_img = mean(obj.M0_data_video, 3);
+low_freq = imgaussfilt(ref_img, 35);
+ref_img = ref_img ./ low_freq;
+
+v = obj.M0_data_video;
 
 outDir = fullfile(obj.directory, 'eyeflow', 'nonRigidReg');
 
@@ -27,11 +27,11 @@ nFrames = size(v, 3);
 stabilized = zeros(size(ref_img, 1), size(ref_img, 2), nFrames);
 field = zeros(size(ref_img, 1), size(ref_img, 2), 2, nFrames);
 
-%smoothVideo = imgaussfilt3(obj.M0_raw_video, [0.1 0.1 2]);
-parfor k = 1:nFrames
+%smoothVideo = imgaussfilt3(obj.M0_data_video, [0.1 0.1 2]);
+for k = 1:nFrames
     %get the frame, stabilize it, save it
     tgt = safeConvertFrame(v(:, :, k));
-    tgt = flat_field_correction(tgt, 35, 0, 'gaussianBlur');
+    tgt = tgt ./ low_freq;
     [f, s] = diffeomorphicDemon(tgt, ref_img, tgt);
 
     field(:, :, :, k) = f;
@@ -68,8 +68,8 @@ source = im2double(source);
 target = im2double(target);
 
 % Diffeomorphic demons
-iters = [5];
-accSmooth = 2.0;
+iters = 5;
+accSmooth = 1.0;
 
 [D, ~] = imregdemons(source, target, iters, ...
     "AccumulatedFieldSmoothing", accSmooth, ...
@@ -110,7 +110,7 @@ for k = 1:size(arr, 4)
     %maybe comapre to min and max of the video not the image to keep quantitative value idk
     absLog = log1p(abs(Dc));
     absLog = mat2gray(absLog);
-    absLog = imadjust(absLog, [prctile(absLog(:), 1) prctile(absLog(:), 99); ], [0 1]);
+    % absLog = imadjust(absLog, [prctile(absLog(:), 1) prctile(absLog(:), 99); ], [0 1]);
 
     % Convert to indexed
     [AAbs, mapAbs] = gray2ind(absLog, 256);

@@ -20,21 +20,21 @@ try
 
     if ismember('moment0', dataset_names)
         fprintf('    - Reading the M0 data\n');
-        obj.M0_raw_video = squeeze(h5read(RefRawFilePath, '/moment0'));
+        obj.M0_data_video = squeeze(h5read(RefRawFilePath, '/moment0'));
     else
         fprintf('Warning: moment0 dataset not found\n');
     end
 
     if ismember('moment1', dataset_names)
         fprintf('    - Reading the M1 data\n');
-        obj.M1_raw_video = squeeze(h5read(RefRawFilePath, '/moment1'));
+        obj.M1_data_video = squeeze(h5read(RefRawFilePath, '/moment1'));
     else
         fprintf('Warning: moment1 dataset not found\n');
     end
 
     if ismember('moment2', dataset_names)
         fprintf('    - Reading the M2 data\n');
-        obj.M2_raw_video = squeeze(h5read(RefRawFilePath, '/moment2'));
+        obj.M2_data_video = squeeze(h5read(RefRawFilePath, '/moment2'));
     else
         fprintf('Warning: moment2 dataset not found\n');
     end

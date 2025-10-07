@@ -8,7 +8,17 @@ numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000); % Sampling frequency in Hz
 duration = numFrames * ToolBox.stride / ToolBox.fs / 1000;
 estimated_fundamental = numSys / duration;
-cDark = [1 0 0]; % Dark color for peaks
+
+if strcmp(name, "v_artery")
+    cDark = [1 0 0]; % Dark color for peaks
+    fig_name = 'ArterialSpectralAnalysis';
+elseif strcmp(name, "v_vein")
+    cDark = [0 0 1]; % Dark color for peaks
+    fig_name = 'VenousSpectralAnalysis';
+else
+    cDark = [0 0 0]; % Default color
+    fig_name = 'SpectralAnalysis';
+end
 
 % --- APPLY HAMMING WINDOW TO TIME-DOMAIN SIGNAL ---
 hamming_win = hamming(numFrames)'; % Create a Hamming window of the same length as the original signal
@@ -20,9 +30,6 @@ coherent_gain = mean(hamming_win);
 % Zero-pad the WINDOWED signal
 N = 16; % Padding factor
 padded_signal = padarray(windowed_signal, [0, numFrames * N]);
-
-fundamental = NaN; % Initialize fundamental frequency
-valid_harmonics = []; % Initialize valid harmonics array
 
 % Frequency vector (show only positive frequencies since signal is real)
 f = linspace(0, fs / 2, (N * numFrames) + 1);
@@ -38,11 +45,11 @@ fft_mag = fft_mag / max(fft_mag); % Normalize to [0,1]
 fundamental_peak = findpeaks(fft_mag, ...
     'MinPeakDistance', estimated_fundamental * 0.6, ...
     'SortStr', 'descend', 'NPeaks', 1);
-min_prominence = fundamental_peak(1) * 0.1; % 10 % of maximum magnitude as minimum prominence
+min_prominence = fundamental_peak(1) * 0.2; % 20 % of maximum magnitude as minimum prominence
 
 % Improved peak detection with minimum prominence threshold
 [s_peaks, s_idx] = findpeaks(fft_mag, ...
-    'MinPeakDistance', estimated_fundamental * 0.6, ...
+    'MinPeakDistance', estimated_fundamental * 0.8, ...
     'MinPeakProminence', min_prominence, ...
     'SortStr', 'descend');
 s_locs = f(s_idx);
@@ -63,8 +70,10 @@ grid on;
 
 % Calculate and plot harmonic frequencies if fundamental is detected
 if numFreq >= 2
+    valid_harmonics = []; % Initialize valid harmonics array
     fundamental = s_locs(1);
     harmonics = fundamental * (2:m_harmonics); % Up to m th harmonic
+
     % For each harmonic, find the closest local maximum (peak) in the spectrum
     valid_harmonics(1) = fundamental;
     [~, locs] = findpeaks(fft_mag);
@@ -90,51 +99,60 @@ if numFreq >= 2
 
     valid_harmonics = valid_harmonics(valid_harmonics <= fs / 2);
 
-    % Plot harmonic locations
-    for h = valid_harmonics
-        xline(h, '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1, ...
-            'Label', sprintf('%.0f×', h / fundamental), ...
-            'LabelOrientation', 'horizontal', ...
-            'LabelVerticalAlignment', 'bottom');
-    end
+elseif numFreq == 1
+    fundamental = s_locs(1);
+    valid_harmonics = fundamental;
+    valid_harmonics = valid_harmonics(valid_harmonics <= fs / 2);
 
+else
+    fundamental = NaN;
+    valid_harmonics = [];
 end
+
+% Save to ToolBox
+ToolBox.Cache.list.harmonics = valid_harmonics;
 
 % Highlight detected peaks with annotations
 if ~isempty(s_peaks)
     scatter(s_locs, s_peaks, 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
 
-    % Annotate the top peaks
-    for k = 1:numFreq
-        text(s_locs(k), s_peaks(k) + 0.02, ...
-            sprintf('%.2f', s_locs(k)), ...
-            'HorizontalAlignment', 'center', ...
-            'VerticalAlignment', 'bottom', ...
-            'FontSize', 10, ...
-            'BackgroundColor', 'w', ...
-            'EdgeColor', 'none');
-    end
-
 end
 
-% Save to ToolBox
-
-ToolBox.Cache.list.harmonics = [valid_harmonics];
-
 % Configure axes
+
+axis_height = 1.3 * s_peaks(1); % Set y-axis limit slightly above the highest peak
 axis tight;
 axT = axis;
-axis([axT(1), 10, 0, 1.2 * (s_peaks(1) + 0.02)]);
-
-xlabel('Frequency (Hz)', 'FontSize', 14, 'FontWeight', 'bold');
-ylabel('Normalized Magnitude', 'FontSize', 14, 'FontWeight', 'bold');
+axis([axT(1), 10, 0, axis_height]);
 pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 1.5, 'FontSize', 12);
+set(gca, 'LineWidth', 2, 'FontSize', 12);
+
+% Annotate the top peaks
+for k = 1:numFreq
+    % Plot fundamental location
+    xline(s_locs(k), '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1, ...
+        'Label', sprintf('%.0f×', s_locs(k) / fundamental), ...
+        'LabelOrientation', 'horizontal', ...
+        'LabelVerticalAlignment', 'bottom');
+
+    text(s_locs(k), s_peaks(k) + 0.1 * axis_height, ...
+        sprintf('%.2f', s_locs(k)), ...
+        'HorizontalAlignment', 'center', ...
+        'VerticalAlignment', 'bottom', ...
+        'FontSize', 10, ...
+        'BackgroundColor', 'w', ...
+        'EdgeColor', 'none');
+end
+
+% Labels and title
+xlabel('Frequency (Hz)', 'FontSize', 14);
+ylabel('Normalized Magnitude', 'FontSize', 14);
 
 % Add heart rate information if fundamental is in typical range
 if ~isempty(s_locs)
-    hr = ((1:numFreq)' \ s_locs');
-    freq_estim = (1:numFreq) * hr;
+    freqs = round(s_locs / fundamental);
+    hr = (freqs' \ s_locs');
+    freq_estim = freqs * hr;
     residus = s_locs - freq_estim;
     RMSE = sqrt(mean(residus .^ 2));
     hr_se = RMSE / sqrt(numFreq);
@@ -153,7 +171,7 @@ end
 
 % Save Results
 exportgraphics(hFig, fullfile(ToolBox.path_png, ...
-    sprintf("%s_ArterialSpectralAnalysis_%s.png", ToolBox.folder_name, name)), ...
+    sprintf("%s_%s_%s.png", ToolBox.folder_name, fig_name, name)), ...
     'Resolution', 300);
 
 % Create figure for spectral analysis
@@ -203,7 +221,7 @@ set(gca, 'LineWidth', 1.5, 'FontSize', 12);
 
 % Save Results
 exportgraphics(hFig_angle, fullfile(ToolBox.path_png, ...
-    sprintf("%s_ArterialSpectralAnalysis_Phase_%s.png", ToolBox.folder_name, name)), ...
+    sprintf("%s_%s_Phase_%s.png", ToolBox.folder_name, fig_name, name)), ...
     'Resolution', 300);
 
 % Close the figure if not needed

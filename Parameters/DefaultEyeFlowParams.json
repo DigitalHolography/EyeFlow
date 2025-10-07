@@ -46,7 +46,7 @@
       6
     ],
     "Vesselness Gabor Step": 1,
-    "Vessel Segmentation Net": true,
+    "Vessel Segmentation Method": "AI",
     "AV Correlation Segmentation Net": false,
     "AV Diasys Segmentation Net": true,
     "Diaphragm Radius": 0.45,

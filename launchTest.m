@@ -1,5 +1,9 @@
-paths = readlines("C:\Users\Mikhalkino\Desktop\in.txt");
-
+[txt_name, txt_path] = uigetfile('*.txt', 'Select the test list file');
+paths = readlines(fullfile(txt_path,txt_name));
+% Add necessary paths
+addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\", ...
+    "Loading\", "Parameters\", "Preprocessing\", ...
+    "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\");
 %% ensure set default parameters and no forced mask
 
 % for ind = 1:length(paths)
@@ -28,28 +32,61 @@ paths = readlines("C:\Users\Mikhalkino\Desktop\in.txt");
 
 %% launch
 
+% Generate timestamped log file name
+t = datetime('now', 'Format', 'yyyyMMdd_HHmmss');
+logFileName = sprintf('log_%s.txt', char(t));
+
+if ~isfolder("Logs")
+    mkdir("Logs");
+end
+
+fprintf('Log saving to %s :\n', logFileName);
+fid = fopen(fullfile('Logs', logFileName), 'a'); % 'a' for append if needed
+
 for ind = 1:length(paths)
+
     path = paths(ind);
+    fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', path, ind, length(path));
 
     if isfolder(path)
         path = strcat(path, '\');
     end
 
-    ExecClass = ExecutionClass(path);
+    tic;
+    runAnalysisBlock(path);
+    ti = toc;
+    fprintf(fid, 'Execution time: %.2f seconds\n\n', ti);
+end
+fclose(fid);
 
+fprintf('Log saved to %s\n', logFileName);
+
+%% Show
+try
+    ShowOutputs(paths, 'Logs');
+catch ME
+    MEdisp(ME, 'Logs')
+end
+
+%%
+
+function runAnalysisBlock(path)
+
+try
+    ExecClass = ExecutionClass(path);
     ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name, 0); %no overwrite
 
     ExecClass.preprocessData();
 
     ExecClass.flag_segmentation = 1;
     ExecClass.flag_spectral_analysis = 0;
-    ExecClass.flag_bloodFlowVelocity_analysis = 1;
-    ExecClass.flag_crossSection_analysis = 1;
-    ExecClass.flag_crossSection_figures = 1;
+    ExecClass.flag_bloodFlowVelocity_analysis = 0;
+    ExecClass.flag_crossSection_analysis = 0;
+    ExecClass.flag_crossSection_figures = 0;
 
     ExecClass.analyzeData([]);
+catch ME
+    MEdisp(ME, path)
 end
 
-%% Show
-
-Show_multiple_outputs;
+end

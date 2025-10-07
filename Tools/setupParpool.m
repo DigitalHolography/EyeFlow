@@ -36,12 +36,22 @@ if isempty(poolobj)
     parpool(requestedWorkers); % create a new pool
     fprintf('Created new parallel pool with %d workers\n', requestedWorkers);
 
-elseif poolobj.NumWorkers ~= requestedWorkers
+elseif ~isvalid(poolobj) || poolobj.NumWorkers ~= requestedWorkers
 
-    delete(poolobj); %close the current pool to create a new one with correct num of workers
-    parpool(requestedWorkers);
-    fprintf('Recreated parallel pool with %d workers (was %d)\n', ...
-        requestedWorkers, poolobj.NumWorkers);
+    try
+        oldWorkers = 0;
+
+        if isvalid(poolobj)
+            oldWorkers = poolobj.NumWorkers;
+            delete(poolobj);
+        end
+
+        parpool(requestedWorkers);
+        fprintf('Recreated parallel pool with %d workers (was %d)\n', ...
+            requestedWorkers, oldWorkers);
+    catch ME
+        warning(ME.identifier, 'Failed to recreate parallel pool: %s', ME.message);
+    end
 
 else
 

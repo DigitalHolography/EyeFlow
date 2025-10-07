@@ -28,6 +28,10 @@ else
     isBVR = false;
 end
 
+% Spectral Analysis
+numHarmonics = 6;
+[fft_c, ~, valid_harmonics, ~] = SpectralWaveformAnalysis(signal, numSystoles, numHarmonics, name);
+
 % % Signal Preprocessing
 % try
 %     % Apply wavelet denoising if possible
@@ -38,9 +42,6 @@ end
 % catch
 %     signal = double(signal);
 % end
-
-numHarmonics = 6;
-[fft_c, ~, valid_harmonics, ~] = SpectralWaveformAnalysis(signal, numSystoles, numHarmonics, name);
 
 zeroPadLength = length(fft_c);
 harmonics_index = round(valid_harmonics / (fs / 2) * zeroPadLength);
@@ -62,9 +63,12 @@ pulseTime = linspace(0, dt * avgLength, numInterp);
 % Create harmonics and combination signal
 A_h = fft_abs(harmonics_index);
 phi_h = fft_angle(harmonics_index);
-composite_signal = A_h .* cos(2 * pi * valid_harmonics .* pulseTime' + phi_h);
-composite_signal = composite_signal / max(composite_signal(1, :), [], 'all') * max(signal, [], 'all'); % rescale at initial scale
-
+if ~isempty(valid_harmonics)
+    composite_signal = A_h .* cos(2 * pi * valid_harmonics .* pulseTime' + phi_h);
+    composite_signal = composite_signal / max(composite_signal(1, :), [], 'all') * max(signal, [], 'all'); % rescale at initial scale
+else 
+    composite_signal = zeros([1 numFrames]);
+end
 % Feature Detection
 
 % Adaptive peak detection parameters

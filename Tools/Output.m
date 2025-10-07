@@ -88,6 +88,8 @@ properties
     DynamicViscosityDuringDiastole
     DynamicViscosityAverage
     PapillaRatio
+    WindkesselDecayRC
+    WindkesselPureDelay
 
     UnixTimestampFirst
     UnixTimestampLast

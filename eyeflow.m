@@ -20,6 +20,7 @@ properties (Access = public)
     % Checkboxes
     segmentationCheckBox matlab.ui.control.CheckBox
     bloodFlowAnalysisCheckBox matlab.ui.control.CheckBox
+    pulseVelocityCheckBox matlab.ui.control.CheckBox
     crossSectionCheckBox matlab.ui.control.CheckBox
     crossSectionFigCheckBox matlab.ui.control.CheckBox
     spectralAnalysisCheckBox matlab.ui.control.CheckBox
@@ -59,7 +60,7 @@ methods (Access = public)
             fprintf("- Video Loading took : %ds\n", round(toc))
 
             % Compute the mean of M0_data_video along the third dimension
-            mean_M0 = mean(app.file.M0_raw_video, 3);
+            mean_M0 = mean(app.file.M0_data_video, 3);
             % Display the mean image in the uiimage component
             img = repmat(rescale(mean_M0), [1 1 3]);
             [numX, numY] = size(img);
@@ -100,6 +101,9 @@ methods (Access = public)
 
     % Code that executes after component creation
     function startupFcn(app)
+
+        % Close any existing parallel pool
+        delete(gcp('nocreate'))
 
         if exist("version.txt", 'file')
             v = readlines('version.txt');
@@ -215,6 +219,7 @@ methods (Access = public)
 
             app.file.flag_segmentation = app.segmentationCheckBox.Value;
             app.file.flag_bloodFlowVelocity_analysis = app.bloodFlowAnalysisCheckBox.Value;
+            app.file.flag_pulseWaveVelocity = app.pulseVelocityCheckBox.Value;
             app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
             app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
@@ -282,7 +287,13 @@ methods (Access = public)
 
     % Button pushed function: ClearButton
     function ClearButtonPushed(app, ~)
-        app.file = [];
+
+        if ~isempty(app.file)
+            clear app.file;
+        end
+
+        close all;
+
         app.ReferenceDirectory.Value = "";
 
         app.ExecuteButton.Enable = false;
@@ -811,7 +822,7 @@ methods (Access = public)
         % Segmentation Checkbox is always enabled
         app.segmentationCheckBox.Enable = true;
 
-        % Enable/disable bloodFlowAnalysisCheckBox and spectralAnalysisCheckBox
+        % Determine the current state of the file analysis
         is_segmented = false;
         is_pulseAnalyzed = false;
         is_crossSectionAnalyzed = false;
@@ -822,14 +833,18 @@ methods (Access = public)
             is_crossSectionAnalyzed = app.file.is_crossSectionAnalyzed;
         end
 
+        % Enable/disable bloodFlowAnalysisCheckBox, pulseVelocityCheckBox, and spectralAnalysisCheckBox
         if app.segmentationCheckBox.Value || is_segmented
             app.bloodFlowAnalysisCheckBox.Enable = true;
+            app.pulseVelocityCheckBox.Enable = true;
             app.spectralAnalysisCheckBox.Enable = true;
         else
             app.bloodFlowAnalysisCheckBox.Enable = false;
+            app.pulseVelocityCheckBox.Enable = false;
             app.spectralAnalysisCheckBox.Enable = false;
             app.bloodFlowAnalysisCheckBox.Value = false; % Turn off if disabled
-            app.spectralAnalysisCheckBox.Value = false; % Turn off if disabled
+            app.pulseVelocityCheckBox.Value = false;
+            app.spectralAnalysisCheckBox.Value = false;
         end
 
         % Enable/disable crossSectionCheckBox
@@ -980,6 +995,7 @@ methods (Access = private)
         app.segmentationCheckBox.Layout.Column = [1, 4];
         app.segmentationCheckBox.Value = true;
         app.segmentationCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.segmentationCheckBox.Tooltip = 'Segment the vessels using the U-Net deep learning model.';
 
         app.bloodFlowAnalysisCheckBox = uicheckbox(grid);
         app.bloodFlowAnalysisCheckBox.Text = 'Blood Flow Analysis';
@@ -989,6 +1005,17 @@ methods (Access = private)
         app.bloodFlowAnalysisCheckBox.Layout.Column = [1, 2];
         app.bloodFlowAnalysisCheckBox.Value = true;
         app.bloodFlowAnalysisCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.bloodFlowAnalysisCheckBox.Tooltip = 'Compute the blood flow velocity in the segmented vessels.';
+
+        app.pulseVelocityCheckBox = uicheckbox(grid);
+        app.pulseVelocityCheckBox.Text = 'Pulse Analysis';
+        app.pulseVelocityCheckBox.FontSize = 16;
+        app.pulseVelocityCheckBox.FontColor = [1 1 1];
+        app.pulseVelocityCheckBox.Layout.Row = 5;
+        app.pulseVelocityCheckBox.Layout.Column = [3, 4];
+        app.pulseVelocityCheckBox.Value = false;
+        app.pulseVelocityCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.pulseVelocityCheckBox.Tooltip = 'Analyze the flexural pulse velocity in vessels.';
 
         app.crossSectionCheckBox = uicheckbox(grid);
         app.crossSectionCheckBox.Text = 'Cross Section Analysis';
@@ -996,8 +1023,9 @@ methods (Access = private)
         app.crossSectionCheckBox.FontColor = [1 1 1];
         app.crossSectionCheckBox.Layout.Row = 6;
         app.crossSectionCheckBox.Layout.Column = [1, 2];
-        app.crossSectionCheckBox.Value = true;
+        app.crossSectionCheckBox.Value = false;
         app.crossSectionCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.crossSectionCheckBox.Tooltip = 'Analyze the cross-sectional blood flow profile in the segmented vessels.';
 
         app.crossSectionFigCheckBox = uicheckbox(grid);
         app.crossSectionFigCheckBox.Text = 'Cross Section Figures';
@@ -1005,8 +1033,9 @@ methods (Access = private)
         app.crossSectionFigCheckBox.FontColor = [1 1 1];
         app.crossSectionFigCheckBox.Layout.Row = 6;
         app.crossSectionFigCheckBox.Layout.Column = [3, 4];
-        app.crossSectionFigCheckBox.Value = true;
+        app.crossSectionFigCheckBox.Value = false;
         app.crossSectionFigCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.crossSectionFigCheckBox.Tooltip = 'Generate figures for the cross-sectional blood flow profiles.';
 
         app.spectralAnalysisCheckBox = uicheckbox(grid);
         app.spectralAnalysisCheckBox.Text = 'Spectral analysis';
@@ -1014,8 +1043,10 @@ methods (Access = private)
         app.spectralAnalysisCheckBox.FontColor = [1 1 1];
         app.spectralAnalysisCheckBox.Layout.Row = 7;
         app.spectralAnalysisCheckBox.Layout.Column = [1, 4];
+        app.spectralAnalysisCheckBox.Value = false;
         app.spectralAnalysisCheckBox.Enable = true;
         app.spectralAnalysisCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.spectralAnalysisCheckBox.Tooltip = 'Perform spectral analysis on the blood flow data.';
 
         % Bottom Left: Execute Button
         app.ExecuteButton = uibutton(grid, 'push');
