@@ -168,14 +168,6 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Vel
 ToolBox.Output.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', freqs, 'Hz');
 ToolBox.Output.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');
 
-instant_dV = detrend(cumsum(Q_diff(sIdx:eIdx))) / 60 * dt;
-[peaks, peaks_idx] = findpeaks(instant_dV, 'MinPeakDistance', cycleSize * 0.8);
-[troughs, troughs_idx] = findpeaks(-instant_dV, 'MinPeakDistance', cycleSize * 0.8);
-peaks = [instant_dV(1) peaks instant_dV(end)];
-peaks_idx = [1 peaks_idx numFramesBis];
-sys_mean = mean(peaks);
-dias_mean = -mean(troughs);
-
 % figure;
 % subplot(2,1,1); plot(f, 20*log10(abs(Z(1:nfft/2+1))));
 % title('Transfer Function Magnitude'); xlabel('Frequency (Hz)'); ylabel('dB');
