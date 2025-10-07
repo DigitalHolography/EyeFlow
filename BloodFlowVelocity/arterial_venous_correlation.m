@@ -136,8 +136,8 @@ close all
 %% Transfer Function analysis
 
 % Compute FFTs
-v_a_FT = fft(v_artery_signal);
-v_v_FT = fft(v_vein_signal);
+v_a_FT = fft(v_artery_signal,10*numFrames);
+v_v_FT = fft(v_vein_signal,10*numFrames);
 
 F_TRANS = v_v_FT ./ v_a_FT;
 freqs = linspace(-fs / 2, fs / 2, numel(F_TRANS));
