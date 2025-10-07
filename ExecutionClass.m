@@ -20,7 +20,7 @@ properties
 
     flag_segmentation logical
     flag_bloodFlowVelocity_analysis logical
-    flag_bloodFlowVelocity_figures logical
+    flag_pulseWaveVelocity logical
     flag_crossSection_analysis logical
     flag_crossSection_figures logical
     flag_spectral_analysis logical
@@ -272,7 +272,7 @@ methods
         end
 
         % Pulse Velocity Calculation
-        if obj.flag_bloodFlowVelocity_figures
+        if obj.flag_pulseWaveVelocity
             fprintf("\n----------------------------------\n" + ...
                 "Pulse Velocity Calculation\n" + ...
             "----------------------------------\n");

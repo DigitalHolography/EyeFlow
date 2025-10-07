@@ -61,7 +61,7 @@ str = sprintf("$\\Gamma_0 = %.2f$", Gamma_0);
 annotation('textbox', dim, 'String', str, ...
     'FitBoxToText', 'on', 'Interpreter', 'latex', 'FontSize', 14)
 axis padded;
-xlim([f(1) f(end)])
+xlim([f(1) 10])
 xlabel('Frequency (Hz)'); ylabel('Magnitude-squared coherence');
 box on;
 set(gca, 'LineWidth', 2);

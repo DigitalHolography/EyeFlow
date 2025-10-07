@@ -102,6 +102,9 @@ methods (Access = public)
     % Code that executes after component creation
     function startupFcn(app)
 
+        % Close any existing parallel pool
+        delete(gcp('nocreate'))
+
         if exist("version.txt", 'file')
             v = readlines('version.txt');
             fprintf("==================================\n " + ...
@@ -216,6 +219,7 @@ methods (Access = public)
 
             app.file.flag_segmentation = app.segmentationCheckBox.Value;
             app.file.flag_bloodFlowVelocity_analysis = app.bloodFlowAnalysisCheckBox.Value;
+            app.file.flag_pulseWaveVelocity = app.pulseVelocityCheckBox.Value;
             app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
             app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
