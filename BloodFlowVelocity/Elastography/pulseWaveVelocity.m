@@ -141,7 +141,7 @@ saveas(gcf, fullfile(outputDir, ...
 Ux = Ux_edge;
 Ux_n = (Ux - mean(Ux, 2)) ./ std(Ux, [], 2);
 
-figure(544), imagesc(real(Ux_n));
+figure('Visible', 'off'), imagesc(real(Ux_n));
 axis off;
 
 % Save figure
@@ -162,7 +162,8 @@ for i = -M:M
 end
 
 Ravg(isnan(Ravg)) = 0;
-figure(111), imagesc(Ravg', [-0.1 0.1]);
+Ravg = Ravg';
+figure('Visible', 'off'), imagesc(Ravg, [-0.1 0.1]);
 axis off;
 
 % Save figure

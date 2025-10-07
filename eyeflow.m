@@ -1015,7 +1015,7 @@ methods (Access = private)
         app.pulseVelocityCheckBox.Layout.Column = [3, 4];
         app.pulseVelocityCheckBox.Value = false;
         app.pulseVelocityCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.pulseVelocityCheckBox.Tooltip = 'Analyze the pulsatile component of the blood flow velocity.';
+        app.pulseVelocityCheckBox.Tooltip = 'Analyze the flexural pulse velocity in vessels.';
 
         app.crossSectionCheckBox = uicheckbox(grid);
         app.crossSectionCheckBox.Text = 'Cross Section Analysis';
