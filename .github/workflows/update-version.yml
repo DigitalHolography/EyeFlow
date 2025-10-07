@@ -1,0 +1,31 @@
+name: Sync version.txt with release tag
+
+permissions:
+  contents: write   # 👈 needed to allow commits/push
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract tag version
+        run: echo "RELEASE_VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
+      - name: Update version.txt
+        run: echo "${RELEASE_VERSION}" > version.txt
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.txt
+          git commit -m "chore: update version.txt to $RELEASE_VERSION" || echo "No changes to commit"
+          git push origin HEAD:main
