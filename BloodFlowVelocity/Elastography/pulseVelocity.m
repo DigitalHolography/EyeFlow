@@ -1,7 +1,7 @@
 function pulseVelocity(M, ~, maskVessel, name)
 ToolBox = getGlobalToolBox;
 
-[L, n] = labelVesselBranches(maskVessel, ones(size(maskVessel)), ToolBox.Cache.list.xy_barycenter);
+[L, n] = labelVesselBranches(maskVessel, ones(size(maskVessel)), ToolBox.Cache.xy_barycenter);
 
 PWV = NaN(1, n);
 

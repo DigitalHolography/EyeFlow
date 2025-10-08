@@ -1,12 +1,11 @@
-function [maskArtery, maskVein, maskNeighbors] = createMasks(M0_ff_video, xy_barycenter)
+function createMasks(M0_ff_video)
 % createMasks - Creates masks for arteries, veins, and neighbors from a video of retinal images.
 % Inputs:
 %   M0_ff_video: 3D matrix of the video data (height x width x time)
-%   xy_barycenter: 2-element vector specifying the barycenter coordinates [x, y]
-% Outputs:
-%   maskArtery: binary mask for arteries
-%   maskVein: binary mask for veins
-%   maskNeighbors: binary mask for neighboring pixels
+% Outputs: (inside the ToolBox Cache)
+%   maskArtery: Binary mask for arteries
+%   maskVein: Binary mask for veins
+%   maskNeighbors: Binary mask for neighboring regions
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -18,8 +17,8 @@ if ~exist(fullfile(ToolBox.path_main, folder_steps), 'dir')
 end
 
 % 0) Initialisation
-
 [numX, numY, numFrames] = size(M0_ff_video);
+xy_barycenter = ToolBox.Cache.xy_barycenter;
 x_c = xy_barycenter(1);
 y_c = xy_barycenter(2);
 
@@ -51,9 +50,9 @@ r2 = params.json.SizeOfField.BigRadiusRatio;
 cArtery = [0, 0, 0; 255, 22, 18] / 255;
 cVein = [0, 0, 0; 18, 23, 255] / 255;
 
-cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
-cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
-cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [1 1 1], 1);
+cmapArtery = ToolBox.Cache.cmapArtery;
+cmapVein = ToolBox.Cache.cmapVein;
+cmapAV = ToolBox.Cache.cmapAV;
 
 M0_ff_img = squeeze(mean(M0_ff_video, 3));
 saveImage(M0_ff_img, 'all_10_M0.png', isStep = true)
@@ -508,6 +507,14 @@ saveImage(bwskel(maskVein), 'skeletonVein.png')
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vessel_map_artery', maskArtery, thin = 0.01);
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vessel_map_vein', [], maskVein, thin = 0.01);
 createMaskSection(ToolBox, M0_ff_img, r1, r2, xy_barycenter, 'vessel_map', maskArtery, maskVein, thin = 0.01);
+
+% 5) Save masks in Cache
+ToolBox.Cache.maskArtery = maskArtery;
+ToolBox.Cache.maskVein = maskVein;
+ToolBox.Cache.maskNeighbors = maskNeighbors;
+ToolBox.Cache.maskBackground = maskBackground;
+ToolBox.Cache.xy_barycenter = xy_barycenter;
+ToolBox.Cache.M0_RGB = M0_RGB;
 
 close all
 end

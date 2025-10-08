@@ -7,6 +7,6 @@ end
 
 figure, imagesc(A),
 axis image
-colormap(ToolBox.cmapArtery)
+colormap(ToolBox.Cache.cmapArtery)
 colorbar
 end

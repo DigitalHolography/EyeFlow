@@ -4,17 +4,14 @@ function [preMaskArtery, preMaskVein] = preMaskArtery(video, maskVesselness)
 % preMaskArtery: 2D mask containing two branches with highest correlation
 
 ToolBox = getGlobalToolBox;
-% params = ToolBox.getParams;
-
+cmapArtery = ToolBox.Cache.cmapArtery;
 numFrames = size(video, 3);
 fs = ToolBox.fs / ToolBox.stride * 1000; % Convert to seconds
 
-% -------------------------------
 % Step 1: Separate mask into branches
-[label, ~] = labelVesselBranches(maskVesselness, true(size(maskVesselness)), ToolBox.Cache.list.xy_barycenter);
-imwrite(uint16(label), 'artery_16_PreMask_labels.png');
+[label, ~] = labelVesselBranches(maskVesselness, true(size(maskVesselness)), ToolBox.Cache.xy_barycenter);
+saveImage(uint16(label), 'artery_16_PreMask.png', isStep = true, cmap = cmapArtery);
 
-% -------------------------------
 % Step 2: Compute average signal of video for each branch
 
 numBranches = max(label(:));
@@ -29,12 +26,10 @@ for i = 1:numBranches
     signals(i, :) = filtfilt(b, a, mean(branchPixels, 1));
 end
 
-% -------------------------------
 % Step 3: Normalize signals
 signals_n = (signals - mean(signals, 2)) ./ std (signals, [], 2); % normalize each branch signal
 s_idx = select_regular_peaks(signals_n, 'minmax');
 
-% -------------------------------
 % Step 4: Combine them into final mask
 preMaskArtery = false(size(maskVesselness));
 

@@ -110,7 +110,7 @@ else
 end
 
 % Save to ToolBox
-ToolBox.Cache.list.harmonics = valid_harmonics;
+ToolBox.Cache.harmonics = valid_harmonics;
 
 % Highlight detected peaks with annotations
 if ~isempty(s_peaks)
@@ -165,8 +165,8 @@ if ~isempty(s_locs)
         'FontSize', 12);
 
     ToolBox.Output.add('HeartBeat', 60 * hr, 'bpm', 60 * hr_se);
-    ToolBox.Cache.list.HeartBeatFFT = hr; % Save heart rate to cache
-    ToolBox.Cache.list.HeartBeatFFTSTE = hr_se; % Save heart rate standard
+    ToolBox.Cache.HeartBeatFFT = hr; % Save heart rate to cache
+    ToolBox.Cache.HeartBeatFFTSTE = hr_se; % Save heart rate standard
 end
 
 % Save Results

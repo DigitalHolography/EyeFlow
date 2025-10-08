@@ -63,7 +63,7 @@ text(xc + vx, yc + vy, sprintf('%.2f rad/%s over %s', ky, 'yunit', 'xunit'), ...
 
 title('2D Map with Wavevector Direction');
 axis off;
-colormap(ToolBox.cmapArtery);
+colormap(ToolBox.Cache.cmapArtery);
 
 hold off;
 

@@ -1,11 +1,18 @@
-function crossSectionsFigures(results, name, M0_ff_video, xy_barycenter, systolesIndexes, sysIdx, diasIdx, v_video_RGB, v_mean_RGB)
+function crossSectionsFigures(results, name, M0_ff_video, v_video_RGB, v_mean_RGB)
 
 % 0. Initialise Variables
 
 ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
 path_png = ToolBox.path_png;
 path_eps = ToolBox.path_eps;
-params = ToolBox.getParams;
+
+% Retrieve cached variables
+xy_barycenter = ToolBox.Cache.xy_barycenter;
+systolesIndexes = ToolBox.Cache.sysIdxList;
+sysIdx = ToolBox.Cache.sysIdx;
+diasIdx = ToolBox.Cache.diasIdx;
+
 initial = name(1);
 M0_ff_video = rescale(M0_ff_video);
 M0_ff_img = rescale(mean(M0_ff_video, 3));

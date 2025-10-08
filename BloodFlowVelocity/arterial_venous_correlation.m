@@ -46,7 +46,7 @@ time_lag = lags(max_idx) / fs; % Convert lag index to seconds
 lags_t = lags / fs; % Convert lags to seconds
 
 % MSC calculation
-f0 = ToolBox.Cache.list.HeartBeatFFT;
+f0 = ToolBox.Cache.HeartBeatFFT;
 win_length = 64; % Choose appropriate length for your data
 [MSC, f] = mscohere(A, V, hamming(win_length), [], [], fs);
 df = 0.3;

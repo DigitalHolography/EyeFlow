@@ -1,5 +1,5 @@
 [txt_name, txt_path] = uigetfile('*.txt', 'Select the test list file');
-paths = readlines(fullfile(txt_path,txt_name));
+paths = readlines(fullfile(txt_path, txt_name));
 % Add necessary paths
 addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\", ...
     "Loading\", "Parameters\", "Preprocessing\", ...
@@ -57,6 +57,7 @@ for ind = 1:length(paths)
     ti = toc;
     fprintf(fid, 'Execution time: %.2f seconds\n\n', ti);
 end
+
 fclose(fid);
 
 fprintf('Log saved to %s\n', logFileName);

@@ -1,4 +1,4 @@
-function extendedPulseAnalysis(M0_ff_video, f_RMS_video, f_AVG_mean, v_RMS, maskArtery, maskVein, xy_barycenter, sysIdxList)
+function extendedPulseAnalysis(M0_ff_video, f_RMS_video, f_AVG_mean, v_RMS)
 % extendedPulseAnalysis - Performs extended pulse analysis on Doppler data.
 % Inputs:
 %   M0_ff_video: M0 flat-field corrected video.
@@ -10,18 +10,24 @@ function extendedPulseAnalysis(M0_ff_video, f_RMS_video, f_AVG_mean, v_RMS, mask
 %   maskSection: Mask for the region of interest.
 %   sysIdxList: List of systolic indices.
 
-% Check if sysIdxList is empty
-if isempty(sysIdxList)
-    warning('sysIdxList is empty. Skipping extended pulse analysis.');
-    return;
-end
-
 tic;
 
 % Set parameters
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 numFramesInterp = params.PulseAnalysis.OneCycleInterpolationPoints;
+
+% Define color limits for heatmaps
+maskArtery = ToolBox.Cache.maskArtery;
+maskVein = ToolBox.Cache.maskVein;
+xy_barycenter = ToolBox.Cache.xy_barycenter;
+sysIdxList = ToolBox.Cache.sysIdxList;
+
+% Check if sysIdxList is empty
+if isempty(sysIdxList)
+    warning('sysIdxList is empty. Skipping extended pulse analysis.');
+    return;
+end
 
 [numX, numY, numFrames] = size(f_RMS_video);
 x_c = xy_barycenter(1) / numX;

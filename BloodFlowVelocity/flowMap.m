@@ -22,11 +22,11 @@ circle2 = diskMask(numX, numY, r2 - w, r2, center = [x_c, y_c]);
 circles = circle1 | circle2;
 
 % Precompute colormaps
-cmapArtery = ToolBox.cmapArtery;
+cmapArtery = ToolBox.Cache.cmapArtery;
 
 if veinsAnalysis
-    cmapVein = ToolBox.cmapVein;
-    cmapAV = ToolBox.cmapAV;
+    cmapVein = ToolBox.Cache.cmapVein;
+    cmapAV = ToolBox.Cache.cmapAV;
 end
 
 % Precompute v_rescaled

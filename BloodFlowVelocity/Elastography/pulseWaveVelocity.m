@@ -7,8 +7,8 @@ function PWV = pulseWaveVelocity(U, mask, branch_index, name)
 % center the [x,y] barycenter (the center of the CRA)
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-x_bary = ToolBox.Cache.list.xy_barycenter(1);
-y_bary = ToolBox.Cache.list.xy_barycenter(2);
+x_bary = ToolBox.Cache.xy_barycenter(1);
+y_bary = ToolBox.Cache.xy_barycenter(2);
 [numX, numY] = size(mask);
 N_frame = size(U, 3);
 PWV = NaN; % initialize output

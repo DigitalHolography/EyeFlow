@@ -23,7 +23,7 @@ vvein = vein_solution_conv(t, v_artery_n, 40, 0);
 ti = linspace(0, 1 / (ToolBox.Output.HeartBeat.value / 60), numInterp);
 
 % Create figure
-hFig = figure('Visible', 'on', 'Color', 'w');
+hFig = figure('Visible', 'off', 'Color', 'w');
 plot(ti, v_artery_n, 'r-', 'Linewidth', 2), hold on
 plot(ti, circshift(vvein, amin), 'b--', 'Linewidth', 2)
 plot(ti, v_vein_n * max(vvein), 'b-', 'Linewidth', 2)

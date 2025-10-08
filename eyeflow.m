@@ -223,11 +223,10 @@ methods (Access = public)
             app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
             app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
-
-            app.file.OverWrite = app.OverWriteCheckBox.Value;
+            app.file.flag_overwrite = app.OverWriteCheckBox.Value;
 
             try
-                app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name, app.file.OverWrite); % update overwrite status
+                app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name, app.file.flag_overwrite); % update overwrite status
 
                 if ~app.file.is_preprocessed
                     parfor_arg = app.NumberofWorkersSpinner.Value;
@@ -278,7 +277,7 @@ methods (Access = public)
     function OverWriteCheckBoxChanged(app, ~)
 
         try
-            app.file.OverWrite = app.OverWriteCheckBox.Value;
+            app.file.flag_overwrite = app.OverWriteCheckBox.Value;
         catch
             disp('Couldnt force overwrite')
         end
