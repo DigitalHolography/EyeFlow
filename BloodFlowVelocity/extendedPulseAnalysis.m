@@ -1,8 +1,8 @@
-function extendedPulseAnalysis(M0_ff_video, f_RMS_video, f_AVG_mean, v_RMS)
+function extendedPulseAnalysis(M0_ff, f_RMS, f_AVG_mean, v_RMS)
 % extendedPulseAnalysis - Performs extended pulse analysis on Doppler data.
 % Inputs:
-%   M0_ff_video: M0 flat-field corrected video.
-%   f_RMS_video: RMS frequency video.
+%   M0_ff: M0 flat-field corrected video.
+%   f_RMS: RMS frequency video.
 %   f_AVG_mean: Average frequency map.
 %   v_RMS: RMS velocity map.
 %   maskArtery: Mask for arteries.
@@ -29,7 +29,7 @@ if isempty(sysIdxList)
     return;
 end
 
-[numX, numY, numFrames] = size(f_RMS_video);
+[numX, numY, numFrames] = size(f_RMS);
 x_c = xy_barycenter(1) / numX;
 y_c = xy_barycenter(2) / numY;
 r1 = params.json.SizeOfField.SmallRadiusRatio;
@@ -94,16 +94,16 @@ fprintf("    3. Raw heatmaps generation took %ds\n", round(toc(t3)));
 tic;
 
 % Compute background signal
-background_signal = f_RMS_video .* maskBackground;
+background_signal = f_RMS .* maskBackground;
 background_signal = squeeze(sum(background_signal, [1 2])) / nnz(maskBackground);
 
 % Compute arterial signal
-arterial_signal = f_RMS_video .* maskArtery;
+arterial_signal = f_RMS .* maskArtery;
 arterial_signal = squeeze(sum(arterial_signal, [1 2])) / nnz(maskArtery);
 
 % Compute venous signal if veins analysis is enabled
 if veinsAnalysis
-    venous_signal = f_RMS_video .* maskVein;
+    venous_signal = f_RMS .* maskVein;
     venous_signal = squeeze(sum(venous_signal, [1 2])) / nnz(maskVein);
 end
 
@@ -220,16 +220,16 @@ interp_t = 1:numFramesInterp;
 
 % Create one-cycle average pulse
 fprintf("    Average Pulse\n");
-[onePulseVideo, ~, ~, onePulseVideoM0] = createOneCycle(f_RMS_video, M0_ff_video, maskArtery, sysIdxList, numFramesInterp);
+[onePulseVideo, ~, ~, onePulseVideoM0] = createOneCycle(f_RMS, M0_ff, maskArtery, sysIdxList, numFramesInterp);
 
-clear f_RMS_video;
+clear f_RMS;
 
 % Create one-cycle average pulse minus background
 fprintf("    Average Pulse minus Background\n");
 
 scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
 delta_f_RMS = v_RMS / scalingFactor;
-[onePulseVideominusBKG, selectedPulseIdx, cycles_signal, ~] = createOneCycle(delta_f_RMS, M0_ff_video, maskArtery, sysIdxList, numFramesInterp);
+[onePulseVideominusBKG, selectedPulseIdx, cycles_signal, ~] = createOneCycle(delta_f_RMS, M0_ff, maskArtery, sysIdxList, numFramesInterp);
 
 clear delta_f_RMS;
 

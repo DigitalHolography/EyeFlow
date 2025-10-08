@@ -1,12 +1,14 @@
-function VideoResizing(obj)
-
-params = Parameters_json(obj.directory, obj.param_name);
+function VideoResizing(obj, params)
+% Function to resize the video data cube based on specified parameters
+% Inputs:
+%   obj - PreprocessorClass object containing video data
+%   params - Struct containing resizing parameters
 
 out_height = params.json.Preprocess.Resize.FrameHeight;
 out_width = params.json.Preprocess.Resize.FrameWidth;
 out_numFrames = params.json.Preprocess.Resize.VideoLength;
 
-[numX, numY, numFrames] = size(obj.M0_ff_video);
+[numX, numY, numFrames] = size(obj.M0_ff);
 
 isHeightResized = out_height > 0;
 isWidthResized = out_width > 0;
@@ -19,6 +21,8 @@ elseif ~isHeightResized && isWidthResized
     out_height = numY;
 
 elseif ~isHeightResized && ~isWidthResized
+    % If neither Height nor Width is inputed then the function makes the video
+    % spatially isomorphic by resizing the smallest dimension to the largest
     out_width = max(numX, numY);
     out_height = max(numX, numY);
 
@@ -34,26 +38,22 @@ if ~isLengthResized
     out_numFrames = numFrames;
 end
 
-tic;
-
 fprintf('Resizing data cube : %dx%dx%d to %dx%dx%d\n', ...
     numX, numY, numFrames, out_height, out_width, out_numFrames);
 
 [Xq, Yq, Zq] = meshgrid(linspace(1, numY, out_width), linspace(1, numX, out_height), linspace(1, numFrames, out_numFrames));
 % tmp_ref = zeros(numX, numY, numFrames);
 
-tmp_calc = obj.M0_ff_video;
+tmp_calc = obj.M0_ff;
 tmp = interp3(tmp_calc, Xq, Yq, Zq);
-obj.M0_ff_video = single(tmp);
+obj.M0_ff = single(tmp);
 
-tmp_calc = obj.f_AVG_video;
+tmp_calc = obj.f_AVG;
 tmp = interp3(tmp_calc, Xq, Yq, Zq);
-obj.f_AVG_video = single(tmp);
+obj.f_AVG = single(tmp);
 
-tmp_calc = obj.f_RMS_video;
+tmp_calc = obj.f_RMS;
 tmp = interp3(tmp_calc, Xq, Yq, Zq);
-obj.f_RMS_video = single(tmp);
-
-fprintf("    - Video Resizing took: %ds\n", round(toc));
-
+obj.f_RMS = single(tmp);
+clear tmp_calc tmp Xq Yq Zq
 end

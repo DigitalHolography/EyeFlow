@@ -1,4 +1,4 @@
-function [xy_barycenter, xy_CRA, xy_CRV] = getBarycenter(f_AVG_video)
+function [xy_barycenter, xy_CRA, xy_CRV] = getBarycenter(f_AVG)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -7,12 +7,12 @@ forceBarycenter = params.json.Mask.ForceBarycenter;
 blur = params.json.Mask.Blur;
 diaphragmRadius = params.json.Mask.DiaphragmRadius;
 
-[numX, numY, ~] = size(f_AVG_video);
+[numX, numY, ~] = size(f_AVG);
 
-if size(f_AVG_video, 3) > 1
-    f_AVG_mean = mean(f_AVG_video, 3);
+if size(f_AVG, 3) > 1
+    f_AVG_mean = mean(f_AVG, 3);
 else
-    f_AVG_mean = f_AVG_video;
+    f_AVG_mean = f_AVG;
 end
 
 if max(f_AVG_mean, [], 'all') <= 0

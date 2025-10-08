@@ -1,7 +1,7 @@
-function createMasks(M0_ff_video)
+function createMasks(M0_ff)
 % createMasks - Creates masks for arteries, veins, and neighbors from a video of retinal images.
 % Inputs:
-%   M0_ff_video: 3D matrix of the video data (height x width x time)
+%   M0_ff: 3D matrix of the video data (height x width x time)
 % Outputs: (inside the ToolBox Cache)
 %   maskArtery: Binary mask for arteries
 %   maskVein: Binary mask for veins
@@ -17,7 +17,7 @@ if ~exist(fullfile(ToolBox.path_main, folder_steps), 'dir')
 end
 
 % 0) Initialisation
-[numX, numY, numFrames] = size(M0_ff_video);
+[numX, numY, numFrames] = size(M0_ff);
 xy_barycenter = ToolBox.Cache.xy_barycenter;
 x_c = xy_barycenter(1);
 y_c = xy_barycenter(2);
@@ -54,7 +54,7 @@ cmapArtery = ToolBox.Cache.cmapArtery;
 cmapVein = ToolBox.Cache.cmapVein;
 cmapAV = ToolBox.Cache.cmapAV;
 
-M0_ff_img = squeeze(mean(M0_ff_video, 3));
+M0_ff_img = squeeze(mean(M0_ff, 3));
 saveImage(M0_ff_img, 'all_10_M0.png', isStep = true)
 
 maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
@@ -64,7 +64,7 @@ maskCircle = diskMask(numX, numY, cropChoroidRadius, 'center', [x_c / numX, y_c 
 if mask_params.AutoCompute
 
     % 1) First Masks and Correlation
-    M0_video = M0_ff_video;
+    M0_video = M0_ff;
     A = ones(1, 1, numFrames);
     B = A .* maskDiaphragm;
     M0_video(~B) = NaN;
@@ -143,12 +143,12 @@ if mask_params.AutoCompute
 
     if mask_params.AVCorrelationSegmentationNet || mask_params.AVDiasysSegmentationNet
         % Pre-mask arteries using intensity information
-        [maskArteryTmp, maskVeinTmp] = preMaskArtery(M0_ff_video, maskVesselnessClean);
+        [maskArteryTmp, maskVeinTmp] = preMaskArtery(M0_ff, maskVesselnessClean);
         saveImage(maskArteryTmp, 'artery_16_PreMask.png', isStep = true, cmap = cArtery);
         saveImage(maskVeinTmp, 'vein_16_PreMask.png', isStep = true, cmap = cVein);
 
         % Compute artery/vein masks using SegmentationNet
-        [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff_video, M0_ff_img, maskArteryTmp);
+        [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, maskArteryTmp);
         saveImage(maskVein, 'vein_21_SegmentationNet.png', isStep = true, cmap = cVein);
         saveImage(maskArtery, 'artery_21_SegmentationNet.png', isStep = true, cmap = cVein);
 
@@ -213,7 +213,7 @@ if mask_params.AutoCompute
             % 2) 0) Computation of the M0 in Diastole and in Systole
 
             [M0_Systole_img, M0_Diastole_img, M0_Systole_video] = compute_diasys(M0_video, maskArtery, 'mask');
-            [M0_Sys_img, M0_Dia_img, ~] = compute_diasys(M0_ff_video, maskArtery, 'mask');
+            [M0_Sys_img, M0_Dia_img, ~] = compute_diasys(M0_ff, maskArtery, 'mask');
             saveImage(rescale(M0_Systole_img), 'artery_20_systole_img.png', isStep = true)
             saveImage(rescale(M0_Diastole_img), 'vein_20_diastole_img.png', isStep = true)
 
@@ -365,7 +365,7 @@ if mask_params.AutoCompute
 
 end
 
-% [maskArtery, maskVein ] = assert_arteries(M0_ff_video, maskArtery, maskVein);
+% [maskArtery, maskVein ] = assert_arteries(M0_ff, maskArtery, maskVein);
 
 % 3) 2) a) Look for a target mask to register from
 
@@ -373,7 +373,7 @@ if (mask_params.RegisteredMasks == -1 || mask_params.RegisteredMasks == 1)
 
     if (isfile(fullfile(path, 'mask', 'similarMaskArtery.png')) && isfile(fullfile(path, 'mask', 'similarM0.png'))) ...
             || (isfile(fullfile(path, 'mask', 'similarMaskVein.png')) && isfile(fullfile(path, 'mask', 'similarM0.png')))
-        M0_ff_img = squeeze(mean(M0_ff_video, 3));
+        M0_ff_img = squeeze(mean(M0_ff, 3));
         similarM0 = mat2gray(mean(imread(fullfile(path, 'mask', 'similarM0.png')), 3));
         [ux, uy] = nonrigidregistration(similarM0, M0_ff_img, fullfile(ToolBox.path_png, folder_steps), 'Reg');
 

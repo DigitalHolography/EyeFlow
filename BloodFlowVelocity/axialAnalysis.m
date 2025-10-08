@@ -1,4 +1,4 @@
-function axialAnalysis(f_AVG_video)
+function axialAnalysis(f_AVG)
 % Initial Setup
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -6,7 +6,7 @@ veinsAnalysis = params.veins_analysis;
 
 %% CHANGE THIS
 % scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
-[numX, numY, numFrames] = size(f_AVG_video);
+[numX, numY, numFrames] = size(f_AVG);
 
 %% Section 1: Background Calculation
 
@@ -62,24 +62,24 @@ bkg_scaler = params.json.PulseAnalysis.bkgScaler;
 
 % Calculate background
 parfor frameIdx = 1:numFrames
-    f_bkg(:, :, frameIdx) = single(maskedAverage(f_AVG_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
+    f_bkg(:, :, frameIdx) = single(maskedAverage(f_AVG(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
 end
 
 % Calculate difference based on selected method
 switch 315
     case 0 % SIGNED DIFFERENCE FIRST
-        tmp = f_AVG_video .^ 2 - f_bkg .^ 2;
+        tmp = f_AVG .^ 2 - f_bkg .^ 2;
         df = sign(tmp) .* sqrt(abs(tmp));
     case 1 % DIFFERENCE FIRST
-        tmp = f_AVG_video .^ 2 - f_bkg .^ 2;
+        tmp = f_AVG .^ 2 - f_bkg .^ 2;
         tmp = tmp .* (tmp > 0);
         df = sqrt(tmp);
     otherwise % DIFFERENCE LAST
-        df = f_AVG_video - f_bkg;
+        df = f_AVG - f_bkg;
 end
 
 % Calculate and plot artery signals
-f_artery = squeeze(sum(f_AVG_video .* maskArterySection, [1, 2]) / nnz(maskArterySection));
+f_artery = squeeze(sum(f_AVG .* maskArterySection, [1, 2]) / nnz(maskArterySection));
 f_artery_bkg = squeeze(sum(f_bkg .* maskArterySection, [1, 2]) / nnz(maskArterySection));
 
 graphSignal('f_artery', ...
@@ -89,7 +89,7 @@ graphSignal('f_artery', ...
     'Legend', {'arteries', 'background'});
 
 if veinsAnalysis
-    f_vein = squeeze(sum(f_AVG_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
+    f_vein = squeeze(sum(f_AVG .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
     f_vein_bkg = squeeze(sum(f_bkg .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
     f_vessel_bkg = squeeze(sum(f_bkg .* maskVesselSection, [1, 2]) / nnz(maskVesselSection));
 
@@ -128,7 +128,7 @@ else
         'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
 end
 
-ft_v = fftshift(fft(f_AVG_video, [], 3), 3);
+ft_v = fftshift(fft(f_AVG, [], 3), 3);
 
 f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
 

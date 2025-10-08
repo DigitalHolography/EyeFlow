@@ -1,0 +1,150 @@
+classdef PreprocessorClass < handle
+% Handles all preprocessing operations
+
+properties
+    is_preprocessed = false
+    M0_ff double
+    M0 double
+    M1 double
+    M2 double
+    SH double
+    f_RMS double
+    f_AVG double
+    directory char
+    filenames char
+    param_name char
+    displacementField
+end
+
+properties (Access = private)
+    Output
+    Cache
+end
+
+methods
+
+    function obj = PreprocessorClass(output, cache, directory, filenames, param_name)
+        obj.Output = output;
+        obj.Cache = cache;
+        obj.directory = directory;
+        obj.filenames = filenames;
+        obj.param_name = param_name;
+    end
+
+    function preprocess(obj, executionObj)
+        fprintf("\n----------------------------------\nVideo PreProcessing\n----------------------------------\n");
+        PreProcessTimer = tic;
+
+        if any(isnan(executionObj.M0), 'all')
+            error('NaN values found in M0 data. Please check the input file.');
+        end
+
+        params = Parameters_json(obj.directory, obj.param_name);
+
+        % Execute preprocessing steps
+        obj.register(params);
+        obj.crop(params);
+        obj.normalizeLocally(params);
+        obj.resize(params);
+        obj.nonRigidRegister(params);
+        obj.interpolate(params);
+        obj.removeOutliers(params);
+
+        obj.is_preprocessed = true;
+
+        fprintf("\n----------------------------------\nPreprocessing Complete\n----------------------------------\n");
+        fprintf("- Preprocess took : %ds\n", round(toc(PreProcessTimer)))
+    end
+
+end
+
+methods (Access = private)
+
+    function register(obj, params)
+        firstFrame = params.json.Preprocess.Register.StartFrame;
+        lastFrame = params.json.Preprocess.Register.EndFrame;
+        enableRegistration = params.json.Preprocess.Register.Enable;
+
+        if (firstFrame == 1) && (lastFrame == -1) || ~enableRegistration
+            return % do nothing if not required
+        end
+
+        tic
+        fprintf("    - Video Registering...\n");
+        % Rigid registration implementation
+        VideoRegistering(obj, firstFrame, lastFrame);
+        fprintf("    - Video Registration took: %ds\n", round(toc));
+    end
+
+    function crop(obj, params)
+
+        if (params.json.Preprocess.Crop.StartFrame == 1) && (params.json.Preprocess.Crop.EndFrame == -1)
+            return % do nothing if not required
+        end
+
+        tic
+        fprintf("    - Video Cropping...\n");
+        % Cropping implementation
+        VideoCropping(obj, firstFrame, lastFrame);
+        fprintf("    - Video Cropping took: %ds\n", round(toc));
+    end
+
+    function normalizeLocally(obj, params)
+        tic
+        fprintf("    - Local Normalization...\n");
+        % Local normalization implementation
+        LocalNormalization(obj, params);
+        fprintf("    - Local Normalization took: %ds\n", round(toc));
+    end
+
+    function resize(obj, params)
+        tic
+        fprintf("    - Video Resizing...\n");
+        % Resizing implementation
+        VideoResizing(obj, params);
+        fprintf("    - Video Resizing took: %ds\n", round(toc));
+    end
+
+    function nonRigidRegister(obj, params)
+
+        if ~params.json.Preprocess.NonRigidRegisteringFlag
+            return
+        end
+
+        tic
+        fprintf("    - Video Non-Rigid Registration...\n");
+        % Non-rigid registration implementation
+        VideoNonRigidRegistering(obj);
+        fprintf("    - Video Non-Rigid Registration took: %ds\n", round(toc));
+    end
+
+    function interpolate(obj, params)
+        kInterp = params.json.Preprocess.InterpolationFactor;
+
+        if kInterp == 0
+            return
+        end
+
+        tic
+        fprintf("    - Video Interpolating...\n");
+        % Interpolation implementation
+        VideoInterpolating(obj, params);
+        fprintf("    - Video Interpolation took: %ds\n", round(toc));
+    end
+
+    function removeOutliers(obj, params)
+
+        if ~params.json.Preprocess.RemoveOutliersFlag
+            return
+        end
+
+        tic
+        fprintf("    - Video Outlier Removal...\n");
+        % Outlier removal implementation
+        VideoOutlierRemoval(obj, params);
+        fprintf("    - Video Outlier Removal took: %ds\n", round(toc));
+    end
+
+end
+
+end

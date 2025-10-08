@@ -1,4 +1,4 @@
-function crossSectionsFigures(results, name, M0_ff_video, v_video_RGB, v_mean_RGB)
+function crossSectionsFigures(results, name, M0_ff, v_video_RGB, v_mean_RGB)
 
 % 0. Initialise Variables
 
@@ -14,9 +14,9 @@ sysIdx = ToolBox.Cache.sysIdx;
 diasIdx = ToolBox.Cache.diasIdx;
 
 initial = name(1);
-M0_ff_video = rescale(M0_ff_video);
-M0_ff_img = rescale(mean(M0_ff_video, 3));
-[numX, numY, numFrames] = size(M0_ff_video);
+M0_ff = rescale(M0_ff);
+M0_ff_img = rescale(mean(M0_ff, 3));
+[numX, numY, numFrames] = size(M0_ff);
 x_c = xy_barycenter(1);
 y_c = xy_barycenter(2);
 
@@ -80,7 +80,7 @@ maskSection = diskMask(numX, numY, r1, r2, center = [x_c / numX y_c / numY]);
 s = regionprops(labeledVessels & maskSection, 'centroid');
 centroids = cat(1, s.Centroid);
 
-graphCombined(M0_ff_video, v_video_RGB, v_mean_RGB, ...
+graphCombined(M0_ff, v_video_RGB, v_mean_RGB, ...
     labeledVessels .* maskSection, ...
     Q_t, Q_SE_t, xy_barycenter, sprintf('vr_%s', name), ...
     'etiquettes_locs', centroids, ...
@@ -95,15 +95,15 @@ if params.json.CrossSectionsFigures.BloodFlowProfiles
 end
 
 if params.json.CrossSectionsFigures.BloodFlowHistograms
-    histogramPatchVelocities(histo_v_cell, name, locsLabel, mean(M0_ff_video, 3))
+    histogramPatchVelocities(histo_v_cell, name, locsLabel, mean(M0_ff, 3))
 end
 
 if params.json.CrossSectionsFigures.BloodFlowProfilesWomersleyOverlay
-    profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff_video, 3))
+    profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
 end
 
 if params.json.CrossSectionsFigures.BloodFlowProfilesOverlay
-    profilePatchVelocities(v_profiles_cell, name, locsLabel, mean(M0_ff_video, 3))
+    profilePatchVelocities(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
 end
 
 fprintf("    1.(bis) optional Flow Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))

@@ -33,7 +33,7 @@ properties (Access = public)
     ImageDisplay matlab.ui.control.Image
 
     % Files
-    file
+    file ExecutionClass
     drawer_list = {}
 end
 
@@ -59,14 +59,14 @@ methods (Access = public)
             app.file = ExecutionClass(path);
             fprintf("- Video Loading took : %ds\n", round(toc))
 
-            % Compute the mean of M0_data_video along the third dimension
-            mean_M0 = mean(app.file.M0_data_video, 3);
+            % Compute the mean of M0 along the third dimension
+            mean_M0 = mean(app.file.M0, 3);
             % Display the mean image in the uiimage component
             img = repmat(rescale(mean_M0), [1 1 3]);
             [numX, numY] = size(img);
             app.ImageDisplay.ImageSource = imresize(img, [max(numX, numY) max(numX, numY)]); % Rescale the image for display
 
-            %% Enable buttons
+            % Enable buttons
             app.ExecuteButton.Enable = true;
             app.ClearButton.Enable = true;
             app.EditParametersButton.Enable = true;
@@ -265,9 +265,9 @@ methods (Access = public)
                 disp('inputs before preprocess.')
             end
 
-            implay(rescale(app.file.M0_data_video));
-            implay(rescale(app.file.M1_data_video));
-            implay(rescale(app.file.M2_data_video));
+            implay(rescale(app.file.M0));
+            implay(rescale(app.file.M1));
+            implay(rescale(app.file.M2));
         catch
             disp('Input not well loaded')
         end
@@ -330,7 +330,7 @@ methods (Access = public)
         try
             parfor_arg = app.NumberofWorkersSpinner.Value;
             setupParpool(parfor_arg);
-            app.file = app.file.preprocessData();
+            app.file.preprocessData();
 
             % Update lamp color to indicate success
             app.statusLamp.Color = [0, 1, 0]; % Green

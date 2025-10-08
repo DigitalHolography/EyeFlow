@@ -1,4 +1,4 @@
-function [results] = crossSectionsAnalysis(mask, vesselName, v_RMS, M0_ff_video)
+function [results] = crossSectionsAnalysis(mask, vesselName, v_RMS, M0_ff)
 % crossSectionsAnalysis Perform cross-sectional analysis of retinal vessels
 
 % Inputs:
@@ -20,8 +20,8 @@ initial = upper(vesselName(1));
 x_c = xy_barycenter(1);
 y_c = xy_barycenter(2);
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
-M0_ff_video = rescale(M0_ff_video);
-M0_ff_img = rescale(mean(M0_ff_video, 3));
+M0_ff = rescale(M0_ff);
+M0_ff_img = rescale(mean(M0_ff, 3));
 
 %% 1. Mask Sectionning for all circles
 

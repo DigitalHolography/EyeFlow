@@ -1,17 +1,11 @@
-function VideoRemoveOutliers(obj)
+function VideoRemoveOutliers(obj, params)
 % Outlier Cleaning
 
-params = Parameters_json(obj.directory, obj.param_name);
-
-if ~params.json.Preprocess.RemoveOutliersFlag
-    return
-end
-
 % Compute the average profile over time (mean intensity per frame)
-[numX, numY, ~] = size(obj.f_RMS_video);
+[numX, numY, ~] = size(obj.f_RMS);
 diaphragmRadius = params.json.Mask.DiaphragmRadius;
 maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
-frame_means = squeeze(sum(obj.f_RMS_video .* maskDiaphragm, [1, 2]) / sum(maskDiaphragm, 'all')); % 1D array: numFrames x 1
+frame_means = squeeze(sum(obj.f_RMS .* maskDiaphragm, [1, 2]) / sum(maskDiaphragm, 'all')); % 1D array: numFrames x 1
 
 % Detect outlier frames
 outlier_frames_mask = isoutlier(real(frame_means), "movmedian", 5, "ThresholdFactor", 2);
@@ -23,17 +17,12 @@ if ~any(outlier_frames_mask)
     return;
 end
 
-tic
-fprintf("    - Video Outlier Cleaning started...\n");
-
 % Interpolate outlier frames for each video
-obj.M0_data_video = interpolateOutlierFrames(obj.M0_data_video, outlier_frames_mask);
-obj.M1_data_video = interpolateOutlierFrames(obj.M1_data_video, outlier_frames_mask);
-obj.M2_data_video = interpolateOutlierFrames(obj.M2_data_video, outlier_frames_mask);
-obj.M0_ff_video = interpolateOutlierFrames(obj.M0_ff_video, outlier_frames_mask);
-obj.f_RMS_video = interpolateOutlierFrames(obj.f_RMS_video, outlier_frames_mask);
-obj.f_AVG_video = interpolateOutlierFrames(obj.f_AVG_video, outlier_frames_mask);
-
-fprintf("    - Video Outlier Cleaning took: %ds\n", round(toc));
+obj.M0 = interpolateOutlierFrames(obj.M0, outlier_frames_mask);
+obj.M1 = interpolateOutlierFrames(obj.M1, outlier_frames_mask);
+obj.M2 = interpolateOutlierFrames(obj.M2, outlier_frames_mask);
+obj.M0_ff = interpolateOutlierFrames(obj.M0_ff, outlier_frames_mask);
+obj.f_RMS = interpolateOutlierFrames(obj.f_RMS, outlier_frames_mask);
+obj.f_AVG = interpolateOutlierFrames(obj.f_AVG, outlier_frames_mask);
 
 end

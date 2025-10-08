@@ -1,8 +1,8 @@
-function [mask, R_Vessel] = processVascularSignal(M0_ff_video, maskClean, maskVesselnessClean, corrParams, cmap, prefix, ToolBox)
+function [mask, R_Vessel] = processVascularSignal(M0_ff, maskClean, maskVesselnessClean, corrParams, cmap, prefix, ToolBox)
 % processVascularSignal - Processes vascular signal and computes correlation maps.
 %
 % Inputs:
-%   M0_ff_video         - 3D video data (e.g., MRI or CT).
+%   M0_ff         - 3D video data (e.g., MRI or CT).
 %   maskClean           - Clean mask for the vessel type (artery or vein).
 %   maskVesselnessClean - Vesselness mask.
 %   maskDiaphragm       - Diaphragm mask for filtering.
@@ -18,22 +18,22 @@ function [mask, R_Vessel] = processVascularSignal(M0_ff_video, maskClean, maskVe
 
 params = ToolBox.getParams;
 
-[numX, numY, ~] = size(M0_ff_video);
+[numX, numY, ~] = size(M0_ff);
 diaphragmRadius = params.json.Mask.DiaphragmRadius;
 maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 
 % Step 1: Compute the vascular signal
-vascularSignal = sum(M0_ff_video .* maskClean, [1 2]);
+vascularSignal = sum(M0_ff .* maskClean, [1 2]);
 vascularSignal = vascularSignal ./ nnz(maskClean);
 vascularSignal_centered = vascularSignal - mean(vascularSignal, 3);
 
 % Step 2: Compute the centered M0
 
-M0_ff_video_centered = M0_ff_video .* maskDiaphragm - (sum(M0_ff_video .* maskDiaphragm, [1 2]) ./ nnz(maskDiaphragm));
+M0_ff_centered = M0_ff .* maskDiaphragm - (sum(M0_ff .* maskDiaphragm, [1 2]) ./ nnz(maskDiaphragm));
 
 % Step 2: Compute the correlation map
-R_Vessel = mean((M0_ff_video_centered .* vascularSignal_centered), 3) ./ ...
-    (std(M0_ff_video_centered, [], 3) .* std(vascularSignal_centered, [], 3));
+R_Vessel = mean((M0_ff_centered .* vascularSignal_centered), 3) ./ ...
+    (std(M0_ff_centered, [], 3) .* std(vascularSignal_centered, [], 3));
 
 % Save the correlation map
 saveImage(rescale(R_Vessel), ToolBox, sprintf("%s_2_1_CorrelMatrix.png", prefix), isStep = true);

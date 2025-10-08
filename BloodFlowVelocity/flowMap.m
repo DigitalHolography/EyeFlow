@@ -1,12 +1,12 @@
-function [v_video_RGB, v_mean_RGB] = flowMap(v_video, maskSection, maskArtery, maskVein, M0_ff_video, xy_barycenter, ToolBox)
+function [v_video_RGB, v_mean_RGB] = flowMap(v_video, maskSection, maskArtery, maskVein, M0_ff, xy_barycenter, ToolBox)
 
 params = ToolBox.getParams;
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
 
 % Rescale once
-M0_ff_video = rescale(M0_ff_video);
-M0_ff_image = rescale(mean(M0_ff_video, 3));
+M0_ff = rescale(M0_ff);
+M0_ff_image = rescale(mean(M0_ff, 3));
 [numX, numY, numFrames] = size(v_video);
 
 % Precompute constants
@@ -70,7 +70,7 @@ if veinsAnalysis
     if exportVideos
 
         parfor frameIdx = 1:numFrames
-            v_video_RGB(:, :, :, frameIdx) = flowMapImg(v_rescaled(:, :, frameIdx), {maskArtery, maskVein, maskAV}, {cmapArtery, cmapVein, cmapAV}, background = M0_ff_video(:, :, frameIdx), circles = circles);
+            v_video_RGB(:, :, :, frameIdx) = flowMapImg(v_rescaled(:, :, frameIdx), {maskArtery, maskVein, maskAV}, {cmapArtery, cmapVein, cmapAV}, background = M0_ff(:, :, frameIdx), circles = circles);
         end
 
     end
@@ -88,7 +88,7 @@ else
     if exportVideos
 
         parfor frameIdx = 1:numFrames
-            v_video_RGB(:, :, :, frameIdx) = flowMapImg(v_rescaled(:, :, frameIdx), {maskArtery}, {cmapArtery}, background = M0_ff_video(:, :, frameIdx), circles = circles);
+            v_video_RGB(:, :, :, frameIdx) = flowMapImg(v_rescaled(:, :, frameIdx), {maskArtery}, {cmapArtery}, background = M0_ff(:, :, frameIdx), circles = circles);
         end
 
     end

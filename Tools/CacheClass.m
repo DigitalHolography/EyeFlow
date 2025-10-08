@@ -1,4 +1,4 @@
-classdef Cache < handle
+classdef CacheClass < handle
 % Cache class used to cache small variables through the execution
 % Used for the handle
 properties
@@ -29,15 +29,15 @@ properties
     xy_CRV double % cached xy_CRV
 
     % Heartbeat
-    HeartBeatFFT double % cached heartbeat frequency
-    HeartBeatFFTSTE double % cached heartbeat frequency standard error
+    HeartBeatFFT double % cached heartbeat frequency in Hz
+    HeartBeatFFTSTE double % cached heartbeat frequency standard error in Hz
     harmonics double % cached harmonics frequencies
 
 end
 
 methods
 
-    function obj = Cache()
+    function obj = CacheClass()
         obj.createColorMaps();
     end
 

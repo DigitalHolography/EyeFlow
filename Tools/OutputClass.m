@@ -1,4 +1,4 @@
-classdef Output < handle
+classdef OutputClass < handle
 % Class to hold the Output of the retinal flow analysis pipeline
 
 properties
@@ -93,17 +93,14 @@ properties
 
     UnixTimestampFirst
     UnixTimestampLast
-    
+
     % Signals
-    Signals
+    Signals SignalsClass
 end
 
 methods
 
-    function obj = Output()
-    end
-
-    function initOutput(obj)
+    function obj = OutputClass()
         % Constructor for the class, fills the properties with default values
         props = setdiff(properties(Output), "Signals");
 
@@ -113,8 +110,7 @@ methods
             obj.(props{i}).unit = "";
         end
 
-        obj.Signals = Signals();
-        obj.Signals.initSignals();
+        obj.Signals = SignalsClass();
 
     end
 

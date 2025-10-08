@@ -1,11 +1,11 @@
-function combinedCrossSectionAnalysis(Q_results_A, Q_results_V, M0_ff_video)
+function combinedCrossSectionAnalysis(Q_results_A, Q_results_V, M0_ff)
 
 ToolBox = getGlobalToolBox;
 
 % Retrieve parameters
 sysIdxList = ToolBox.Cache.sysIdxList;
 
-[~, ~, numFrames] = size(M0_ff_video);
+[~, ~, numFrames] = size(M0_ff);
 
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 t = linspace(0, numFrames / fs, numFrames);

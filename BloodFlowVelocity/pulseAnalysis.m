@@ -1,9 +1,9 @@
-function [v_RMS_video, v_video_RGB, v_mean_RGB] = pulseAnalysis(f_video, M0_ff_video)
+function [v_RMS_video, v_video_RGB, v_mean_RGB] = pulseAnalysis(f_video, M0_ff)
 % pulseAnalysis.m computes the flow velocities from Doppler data
 % Inputs:
 %       VIDEOS:
 %   f_video         Size: numX x numY x numFrames double (Doppler Data)
-%   M0_ff_video     Size: numX x numY x numFrames double (Display Data)
+%   M0_ff     Size: numX x numY x numFrames double (Display Data)
 %       IMAGES:
 %   maskArtery      Size: numX x numY logical
 %   maskBackground  Size: numX x numY logical
@@ -347,7 +347,7 @@ maskArterySection = maskArtery & maskSection & ~maskAV;
 maskVeinSection = maskVein & maskSection & ~maskAV;
 
 % Generate flow maps
-[v_video_RGB, v_mean_RGB] = flowMap(v_RMS_video, maskSection, maskArtery, maskVein, M0_ff_video, xy_barycenter, ToolBox);
+[v_video_RGB, v_mean_RGB] = flowMap(v_RMS_video, maskSection, maskArtery, maskVein, M0_ff, xy_barycenter, ToolBox);
 
 % Generate histograms
 histoVideoArtery = VelocityHistogram(v_RMS_video, maskArterySection, 'artery');

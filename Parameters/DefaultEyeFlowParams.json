@@ -1,9 +1,9 @@
 {
   "Preprocess": {
     "Register": {
-      "Flag": 0,
-      "RefStart": 10,
-      "RefEnd": 20
+      "Enable": false,
+      "StartFrame": 10,
+      "EndFrame": 20
     },
     "Crop": {
       "StartFrame": 1,

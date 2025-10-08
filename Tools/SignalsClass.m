@@ -1,4 +1,4 @@
-classdef Signals < handle
+classdef SignalsClass < handle
 % Class to hold the main output signals of the retinal flow analysis pipeline
 
 properties
@@ -17,10 +17,7 @@ end
 
 methods
 
-    function obj = Signals()
-    end
-
-    function initSignals(obj)
+    function obj = SignalsClass()
         % Constructor for the class, fills the properties with default values
         props = properties(Signals);
 
