@@ -1,6 +1,9 @@
-function combinedCrossSectionAnalysis(Q_results_A, Q_results_V, M0_ff_video, sysIdxList)
+function combinedCrossSectionAnalysis(Q_results_A, Q_results_V, M0_ff_video)
 
 ToolBox = getGlobalToolBox;
+
+% Retrieve parameters
+sysIdxList = ToolBox.Cache.sysIdxList;
 
 [~, ~, numFrames] = size(M0_ff_video);
 

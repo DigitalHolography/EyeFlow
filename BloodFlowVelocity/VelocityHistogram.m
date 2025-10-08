@@ -32,9 +32,9 @@ v_max = max(v_histo(mask));
 
 % Set colormap
 if strcmp(name, 'artery')
-    cmap = ToolBox.cmapArtery;
+    cmap = ToolBox.Cache.cmapArtery;
 else % vein
-    cmap = ToolBox.cmapVein;
+    cmap = ToolBox.Cache.cmapVein;
 end
 
 % Velocity Histogram

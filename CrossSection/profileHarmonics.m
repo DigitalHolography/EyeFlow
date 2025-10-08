@@ -27,18 +27,18 @@ DiamRatio = 0;
 v_profile_ft = fftshift(fft(v_profile, [], 2), 2);
 
 f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
-cardiac_frequency = ToolBox.Output.HeartBeat.value / 60;
+% cardiac_frequency = ToolBox.Cache.HeartBeatFFT; % in Hz
 
-harmonics = [0 ToolBox.Cache.list.harmonics];
-harmonics_idx = [];
+harmonics = [0 ToolBox.Cache.harmonics];
+harmonics_idx = zeros(1, length(harmonics));
 
 for fr = harmonics
     [~, idx] = min(abs(f - fr));
-    harmonics_idx = [harmonics_idx idx];
+    harmonics_idx(fr + 1) = idx;
 end
 
 % Set visualization parameters
-Color_err = [0.7 0.7 0.7];
+% Color_err = [0.7 0.7 0.7];
 w2w = linspace(-1, 1, numInterp);
 
 % Create figure for static plot
@@ -63,10 +63,11 @@ ax.Layer = 'top'; % This may help in some cases
 xline(1, '--', 'LineWidth', 2)
 xline(-1, '--', 'LineWidth', 2)
 
-baseLabels = ["n=0"];
+baseLabels = zeros(length(harmonics), 1);
+baseLabels(1) = "n=0";
 
 for k = 1:(length(harmonics) - 1)
-    baseLabels = [baseLabels; sprintf("n=%d", k)];
+    baseLabels(k + 1) = sprintf("n=%d", k);
 end
 
 legend(baseLabels)

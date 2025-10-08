@@ -60,8 +60,8 @@ saveImage(maskCRV, 'maskCRV.png')
 xy_barycenter = round([x_CRV + x_CRA, y_CRV + y_CRA] / 2);
 xy_CRA = [x_CRA, y_CRA];
 xy_CRV = [x_CRV, y_CRV];
-ToolBox.Cache.list.xy_barycenter = xy_barycenter;
-ToolBox.Cache.list.xy_CRA = xy_CRA;
-ToolBox.Cache.list.xy_CRV = xy_CRV;
+ToolBox.Cache.xy_barycenter = xy_barycenter;
+ToolBox.Cache.xy_CRA = xy_CRA;
+ToolBox.Cache.xy_CRV = xy_CRV;
 
 end

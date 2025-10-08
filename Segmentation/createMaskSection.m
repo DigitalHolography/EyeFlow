@@ -42,7 +42,7 @@ if isempty(maskVein)
 
     maskArterySection = maskArtery & maskSection;
 
-    cmapArtery = ToolBox.cmapArtery;
+    cmapArtery = ToolBox.Cache.cmapArtery;
     cmapArterySection = flipud(cmapArtery);
 
     M0_Artery = setcmap(img, maskArtery, cmapArtery);
@@ -62,8 +62,8 @@ elseif isempty(maskArtery)
 
     maskVeinSection = maskVein & maskSection;
 
-    cmapVein = ToolBox.cmapVein;
-    cmapVeinSection = flipud(ToolBox.cmapVein);
+    cmapVein = ToolBox.Cache.cmapVein;
+    cmapVeinSection = flipud(cmapVein);
 
     M0_Vein = setcmap(img, maskVein, cmapVein);
     M0_VeinSection = setcmap(img, maskVeinSection, cmapVeinSection);
@@ -85,11 +85,11 @@ else
     maskAV = maskArtery & maskVein;
     maskAVSection = maskAV & maskSection;
 
-    cmapArtery = ToolBox.cmapArtery;
+    cmapArtery = ToolBox.Cache.cmapArtery;
     cmapArterySection = flipud(cmapArtery);
-    cmapVein = ToolBox.cmapVein;
+    cmapVein = ToolBox.Cache.cmapVein;
     cmapVeinSection = flipud(cmapVein);
-    cmapAV = ToolBox.cmapAV;
+    cmapAV = ToolBox.Cache.cmapAV;
     cmapAVSection = flipud(cmapAV);
 
     M0_Artery = setcmap(img, maskArtery, cmapArtery);

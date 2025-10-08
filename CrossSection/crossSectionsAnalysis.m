@@ -1,8 +1,18 @@
-function [results] = crossSectionsAnalysis(mask, vesselName, v_RMS, M0_ff_video, xy_barycenter, papillaDiameter, sysIdx, diasIdx)
+function [results] = crossSectionsAnalysis(mask, vesselName, v_RMS, M0_ff_video)
+% crossSectionsAnalysis Perform cross-sectional analysis of retinal vessels
+
+% Inputs:
+%   - mask: Binary mask of the vessel (artery or vein)
+%   - vesselName: 'artery' or 'vein'
 
 ToolBox = getGlobalToolBox;
-
 params = ToolBox.getParams;
+
+% Retrieve cached variables
+xy_barycenter = ToolBox.Cache.xy_barycenter;
+papillaDiameter = ToolBox.Cache.papillaDiameter;
+sysIdx = ToolBox.Cache.sysIdx;
+diasIdx = ToolBox.Cache.diasIdx;
 
 initial = upper(vesselName(1));
 

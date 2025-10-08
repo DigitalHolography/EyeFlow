@@ -46,9 +46,9 @@ inv_maskRadius = ~maskRadius;
 % Get appropriate colormap
 
 if strcmp(name, 'artery')
-    cmap = ToolBox.cmapArtery;
+    cmap = ToolBox.Cache.cmapArtery;
 else
-    cmap = ToolBox.cmapVein;
+    cmap = ToolBox.Cache.cmapVein;
 end
 
 textOptions = {"FontWeight", "bold", ...

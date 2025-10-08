@@ -1,4 +1,4 @@
-function [v_RMS_video, sysIdxList, sysIdx, diasIdx, v_video_RGB, v_mean_RGB] = pulseAnalysis(f_video, M0_ff_video, maskArtery, maskVein, maskNeighbors, xy_barycenter)
+function [v_RMS_video, v_video_RGB, v_mean_RGB] = pulseAnalysis(f_video, M0_ff_video)
 % pulseAnalysis.m computes the flow velocities from Doppler data
 % Inputs:
 %       VIDEOS:
@@ -19,6 +19,11 @@ params = ToolBox.getParams;
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
 
+maskArtery = ToolBox.Cache.maskArtery;
+maskVein = ToolBox.Cache.maskVein;
+maskNeighbors = ToolBox.Cache.maskNeighbors;
+xy_barycenter = ToolBox.Cache.xy_barycenter;
+
 % Validating inputs
 if ~any(maskArtery)
     error("Given Mask Artery is empty.")
@@ -31,7 +36,7 @@ end
 scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
 [numX, numY, numFrames] = size(f_video);
 
-%% Section 1: Background Calculation
+% Section 1: Background Calculation
 
 tic
 
@@ -51,6 +56,7 @@ maskVesselSection = (maskVein | maskArtery) & maskSection;
 if ~any(maskArterySection)
     error("Given Mask Artery has no part within the current section.")
 end
+
 if ~any(maskVesselSection)
     error("Given Mask Vein has no part within the current section.")
 end
@@ -132,7 +138,7 @@ end
 
 fprintf("    1. Background calculation took %ds\n", round(toc));
 
-%% Section 2: Difference Calculation and Velocity Computation
+% Section 2: Difference Calculation and Velocity Computation
 
 tic;
 
@@ -216,7 +222,7 @@ end
 
 fprintf("    2. Difference calculation and velocity computation took %ds\n", round(toc));
 
-%% Section 3: Systole/Diastole Analysis
+% Section 3: Systole/Diastole Analysis
 
 tic;
 
@@ -271,7 +277,7 @@ end
 
 fprintf("    3. Systole/diastole analysis took %ds\n", round(toc));
 
-%% Section 4: Resistivity Index and Waveform Analysis
+% Section 4: Resistivity Index and Waveform Analysis
 tic;
 
 % Calculate arterial resistivity index
@@ -301,7 +307,7 @@ end
 
 fprintf("    4. Resistivity and waveform analysis took %ds\n", round(toc()));
 
-%% Section 5: Visualization and Output Generation
+% Section 5: Visualization and Output Generation
 
 tic;
 
@@ -362,6 +368,11 @@ end
 fprintf("    5. Visualization and output generation took %ds\n", round(toc));
 
 close all
+
+% Save Intermediate Results in cache
+ToolBox.Cache.sysIdxList = sysIdxList;
+ToolBox.Cache.sysIdx = sysIdx;
+ToolBox.Cache.diasIdx = diasIdx;
 
 end
 

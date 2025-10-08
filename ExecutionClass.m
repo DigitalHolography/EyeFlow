@@ -2,47 +2,41 @@ classdef ExecutionClass < handle
 
 properties
 
-    M0_ff_video % M0 ff raw
+    % Input data
+    M0_ff_video double % M0 ff raw
+    M0_data_video double % M0 raw
+    M1_data_video double % M1 raw
+    M2_data_video double % M2 raw
+    SH_data_hypervideo double % SH raw
 
-    M0_data_video % M0 raw modified by the preprocess
-    M1_data_video % M1 raw
-    M2_data_video % M2 raw
-    SH_data_hypervideo % SH raw
+    % Preprocessed data
+    f_RMS_video double % RMS sqrt(M2/M0) normalized input in kHz
+    f_AVG_video double % AVG M1/M0 normalized input in kHz
 
-    f_RMS_video % RMS sqrt(M2/M0) normalized input in kHz
-    f_AVG_video % AVG M1/M0 normalized input in kHz
-
+    % Processing Flags
     is_preprocessed = false; % tells if the data has been preprocessed
     is_segmented = false;
     is_pulseAnalyzed = false;
     is_crossSectionAnalyzed = false;
     is_AllAnalyzed = false;
 
+    % Checkbox flags
     flag_segmentation logical
     flag_bloodFlowVelocity_analysis logical
     flag_pulseWaveVelocity logical
     flag_crossSection_analysis logical
     flag_crossSection_figures logical
     flag_spectral_analysis logical
-
-    OverWrite logical
+    flag_overwrite logical
 
     ToolBoxMaster ToolBoxClass
 
     Cache Cache
     Output Output
 
-    maskArtery % Segmentation mask of retinal arteries
-    maskVein % Segmentation mask of retinal veins
-    maskNeighbors % Segmentation mask of pixels close to vessels but outside used
-    % to estimate a local difference in Doppler broaddening
     displacementField % Displacement Field calculated with demons non rigid registration
     % frame by frame compared to the averaged image
-    sysIdxList % List of frame indexes counting cardiac cycles
-    diasIdx % Indexes for diastole/ systole analysis
-    sysIdx
-    xy_barycenter % x y position of the ONH in pixels (size(M0_ff_video))
-    papillaDiameter % Diameter of the detected papilla in pixels (size(M0_ff_video))
+
     vRMS % Video of velocity map estimate in retinal vessels
     Q_results_A % Contain results from radial cross section analysis of retinal vessels
     Q_results_V
@@ -208,12 +202,9 @@ methods
                 mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
             end
 
-            M0_ff_img = rescale(mean(obj.M0_ff_video, 3));
-            cmapArtery = ToolBox.cmapArtery;
-            cmapVein = ToolBox.cmapVein;
-            cmapAV = ToolBox.cmapAV;
+            ToolBox.Cache.xy_barycenter = getBarycenter(obj.f_AVG_video);
 
-            obj.xy_barycenter = getBarycenter(obj.f_AVG_video);
+            M0_ff_img = rescale(mean(obj.M0_ff_video, 3));
 
             try
                 [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
@@ -224,17 +215,11 @@ methods
                 diameter_y = NaN;
             end
 
-            [obj.maskArtery, obj.maskVein, obj.maskNeighbors] = ...
-                createMasks(obj.M0_ff_video, obj.xy_barycenter);
-            obj.papillaDiameter = mean([diameter_x, diameter_y]);
+            createMasks(obj.M0_ff_video);
+            ToolBox.Cache.papillaDiameter = mean([diameter_x, diameter_y]);
 
             % Visualize the segmentation result
-            M0_Artery = setcmap(M0_ff_img, obj.maskArtery, cmapArtery);
-            M0_Vein = setcmap(M0_ff_img, obj.maskVein, cmapVein);
-            M0_AV = setcmap(M0_ff_img, obj.maskArtery & obj.maskVein, cmapAV);
-            M0_RGB = (M0_Artery + M0_Vein) .* ~(obj.maskArtery & obj.maskVein) + ...
-                M0_AV + ...
-                rescale(M0_ff_img) .* ~(obj.maskArtery | obj.maskVein);
+            M0_RGB = ToolBox.Cache.M0_RGB;
 
             % Display the mask on the app if available
             if ~isempty(app)
@@ -257,14 +242,13 @@ methods
             pulseAnalysisTimer = tic;
 
             f_AVG_mean = squeeze(mean(obj.f_AVG_video, 3));
-            [obj.vRMS, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB] = pulseAnalysis(obj.f_RMS_video, obj.M0_ff_video, ...
-                obj.maskArtery, obj.maskVein, obj.maskNeighbors, obj.xy_barycenter);
+            [obj.vRMS, obj.v_video_RGB, obj.v_mean_RGB] = pulseAnalysis(obj.f_RMS_video, obj.M0_ff_video);
 
             if params.json.PulseAnalysis.ExtendedFlag
-                extendedPulseAnalysis(obj.M0_ff_video, obj.f_RMS_video, f_AVG_mean, obj.vRMS, obj.maskArtery, obj.maskVein, obj.xy_barycenter, obj.sysIdxList);
+                extendedPulseAnalysis(obj.M0_ff_video, obj.f_RMS_video, f_AVG_mean, obj.vRMS);
             end
 
-            axialAnalysis(obj.f_AVG_video, obj.maskArtery, obj.maskVein, obj.maskNeighbors);
+            axialAnalysis(obj.f_AVG_video);
 
             obj.is_pulseAnalyzed = true;
 
@@ -278,10 +262,12 @@ methods
             "----------------------------------\n");
             pulseVelocityTimer = tic;
 
-            pulseVelocity(obj.M0_ff_video, obj.displacementField, obj.maskArtery, 'artery');
+            maskArtery = ToolBox.Cache.maskArtery;
+            pulseVelocity(obj.M0_ff_video, obj.displacementField, maskArtery, 'artery');
 
             if veins_analysis
-                pulseVelocity(obj.M0_ff_video, obj.displacementField, obj.maskVein, 'vein');
+                maskVein = ToolBox.Cache.maskVein;
+                pulseVelocity(obj.M0_ff_video, obj.displacementField, maskVein, 'vein');
             end
 
             time_pulsevelocity = toc(pulseVelocityTimer);
@@ -295,10 +281,12 @@ methods
             "----------------------------------\n");
             crossSectionAnalysisTimer = tic;
 
-            [obj.Q_results_A] = crossSectionsAnalysis(obj.maskArtery, 'artery', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
+            maskArtery = ToolBox.Cache.maskArtery;
+            [obj.Q_results_A] = crossSectionsAnalysis(maskArtery, 'artery', obj.vRMS, obj.M0_ff_video);
 
             if veins_analysis
-                [obj.Q_results_V] = crossSectionsAnalysis(obj.maskVein, 'vein', obj.vRMS, obj.M0_ff_video, obj.xy_barycenter, obj.papillaDiameter, obj.sysIdx, obj.diasIdx);
+                maskVein = ToolBox.Cache.maskVein;
+                [obj.Q_results_V] = crossSectionsAnalysis(maskVein, 'vein', obj.vRMS, obj.M0_ff_video);
             end
 
             obj.is_crossSectionAnalyzed = true;
@@ -313,19 +301,21 @@ methods
             "----------------------------------\n");
             crossSectionFiguresTimer = tic;
 
-            crossSectionsFigures(obj.Q_results_A, 'artery', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
+            crossSectionsFigures(obj.Q_results_A, 'artery', obj.M0_ff_video, obj.v_video_RGB, obj.v_mean_RGB);
 
             if veins_analysis
-                crossSectionsFigures(obj.Q_results_V, 'vein', obj.M0_ff_video, obj.xy_barycenter, obj.sysIdxList, obj.sysIdx, obj.diasIdx, obj.v_video_RGB, obj.v_mean_RGB);
-                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, obj.maskArtery | obj.maskVein);
+                crossSectionsFigures(obj.Q_results_V, 'vein', obj.M0_ff_video, obj.v_video_RGB, obj.v_mean_RGB);
+                maskVessel = ToolBox.Cache.maskArtery | ToolBox.Cache.maskVein;
+                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, maskVessel);
             else
-                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, [], obj.maskArtery);
+                maskArtery = ToolBox.Cache.maskArtery;
+                sectionImageAdvanced(rescale(mean(obj.M0_ff_video, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, [], maskArtery);
             end
 
             try
 
                 if veins_analysis
-                    combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video, obj.sysIdxList)
+                    combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, obj.M0_ff_video)
                 end
 
             catch ME
@@ -367,7 +357,9 @@ methods
             spectrogramTimer = tic;
 
             % spectrogram(obj.maskArtery, obj.xy_barycenter, obj.SH_data_hypervideo);
-            spectrum_video(obj.SH_data_hypervideo, obj.f_RMS_video, obj.maskArtery, obj.maskNeighbors);
+            maskArtery = ToolBox.Cache.maskArtery;
+            maskNeighbors = ToolBox.Cache.maskNeighbors;
+            spectrum_video(obj.SH_data_hypervideo, obj.f_RMS_video, maskArtery, maskNeighbors);
 
             fprintf("- Spectrogram took: %ds\n", round(toc(spectrogramTimer)));
 
