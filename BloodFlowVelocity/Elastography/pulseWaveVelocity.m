@@ -166,6 +166,10 @@ Ravg = Ravg';
 figure('Visible', 'off'), imagesc(Ravg, [-0.1 0.1]);
 axis off;
 
+[Tx, Ty] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints));
+
+PWV = Ty / Tx; % mm/s
+
 % Save figure
 saveas(gcf, fullfile(outputDir, ...
     sprintf("%s_%s_%d_correlation_averaged.png", ToolBox.folder_name, name, branch_index)));
