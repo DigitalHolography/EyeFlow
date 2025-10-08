@@ -4,6 +4,7 @@ classdef ExecutionClass < handle
 
 properties
     % Basic Info
+    path char
     directory char
     params_names cell
     param_name char
@@ -64,6 +65,7 @@ methods
         % Copy data to ExecutionClass for backward compatibility
         obj.directory = DataLoader.directory;
         obj.filenames = DataLoader.filenames;
+        obj.path = path;
         obj.M0_ff = DataLoader.M0_ff;
         obj.M0 = DataLoader.M0;
         obj.M1 = DataLoader.M1;

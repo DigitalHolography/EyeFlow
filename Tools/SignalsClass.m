@@ -19,7 +19,7 @@ methods
 
     function obj = SignalsClass()
         % Constructor for the class, fills the properties with default values
-        props = properties(Signals);
+        props = properties(obj);
 
         for i = 1:length(props)
             obj.(props{i}).yvalues = NaN;

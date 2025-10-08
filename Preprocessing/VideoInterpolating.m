@@ -1,10 +1,9 @@
-function VideoInterpolating(obj)
+function VideoInterpolating(obj, params)
 % This function interpolates the video frames of M0_ff, f_AVG, and f_RMS
 % using the specified interpolation factor from the parameters JSON file.
 % It uses parfor for parallel processing of each frame to speed up the interpolation process.
 
 [numX, numY, numFrames] = size(obj.M0_ff);
-params = Parameters_json(obj.directory, obj.param_name);
 
 kInterp = params.json.Preprocess.InterpolationFactor;
 

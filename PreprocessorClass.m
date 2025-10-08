@@ -41,6 +41,12 @@ methods
 
         params = Parameters_json(obj.directory, obj.param_name);
 
+        obj.M0_ff = executionObj.M0_ff;
+        obj.M0 = executionObj.M0;
+        obj.M1 = executionObj.M1;
+        obj.M2 = executionObj.M2;
+        obj.SH = executionObj.SH;
+
         % Execute preprocessing steps
         obj.register(params);
         obj.crop(params);
@@ -93,7 +99,7 @@ methods (Access = private)
         tic
         fprintf("    - Local Normalization...\n");
         % Local normalization implementation
-        LocalNormalization(obj, params);
+        VideoNormalizingLocally(obj, params);
         fprintf("    - Local Normalization took: %ds\n", round(toc));
     end
 
@@ -141,7 +147,7 @@ methods (Access = private)
         tic
         fprintf("    - Video Outlier Removal...\n");
         % Outlier removal implementation
-        VideoOutlierRemoval(obj, params);
+        VideoRemoveOutliers(obj, params);
         fprintf("    - Video Outlier Removal took: %ds\n", round(toc));
     end
 

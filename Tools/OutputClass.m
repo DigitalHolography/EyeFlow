@@ -102,7 +102,7 @@ methods
 
     function obj = OutputClass()
         % Constructor for the class, fills the properties with default values
-        props = setdiff(properties(Output), "Signals");
+        props = setdiff(properties(obj), "Signals");
 
         for i = 1:length(props)
             obj.(props{i}).value = NaN;

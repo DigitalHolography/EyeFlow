@@ -330,6 +330,7 @@ methods (Access = public)
         try
             parfor_arg = app.NumberofWorkersSpinner.Value;
             setupParpool(parfor_arg);
+            app.file = ExecutionClass(app.file.directory);
             app.file.preprocessData();
 
             % Update lamp color to indicate success
