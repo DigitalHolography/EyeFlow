@@ -165,8 +165,12 @@ if ~isempty(s_locs)
         'FontSize', 12);
 
     ToolBox.Output.add('HeartBeat', 60 * hr, 'bpm', 60 * hr_se);
-    ToolBox.Cache.HeartBeatFFT = hr; % Save heart rate to cache
-    ToolBox.Cache.HeartBeatFFTSTE = hr_se; % Save heart rate standard
+    ToolBox.Cache.HeartBeatFFT = hr; % Save heart rate to cache in Hz
+    ToolBox.Cache.HeartBeatFFTSTE = hr_se; % Save heart rate standard error to cache in Hz
+else
+    ToolBox.Output.add('HeartBeat', NaN, 'bpm', NaN);
+    ToolBox.Cache.HeartBeatFFT = NaN; % Save heart rate to cache in Hz
+    ToolBox.Cache.HeartBeatFFTSTE = NaN; % Save heart rate standard error to cache in Hz
 end
 
 % Save Results

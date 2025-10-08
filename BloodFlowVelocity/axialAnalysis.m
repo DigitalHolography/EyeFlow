@@ -132,7 +132,7 @@ ft_v = fftshift(fft(f_AVG_video, [], 3), 3);
 
 f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
 
-cardiac_frequency = ToolBox.Output.HeartBeat.value;
+cardiac_frequency = ToolBox.Cache.HeartBeatFFT; % in Hz
 
 [~, cardiac_idx] = min(abs(f - cardiac_frequency));
 
