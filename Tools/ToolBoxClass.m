@@ -55,7 +55,7 @@ methods
         % Copy input parameters to result folder
         obj.copyInputParameters();
 
-        obj.setGlobalToolBox;
+        obj.setGlobalToolBox();
 
     end
 

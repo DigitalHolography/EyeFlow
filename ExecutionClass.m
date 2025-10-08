@@ -14,19 +14,19 @@ properties
     Analyzer AnalyzerClass
     Reporter ReporterClass
 
-    % Input Data (delegated to DataLoader)
+    % Input Data
     M0_ff double
     M0 double
     M1 double
     M2 double
     SH double
 
-    % Preprocessed Data (delegated to Preprocessor)
+    % Preprocessed Data
     f_RMS double
     f_AVG double
     displacementField
 
-    % Analysis Results (delegated to Analyzer)
+    % Analysis Results
     vRMS
     v_video_RGB
     v_mean_RGB
@@ -59,6 +59,11 @@ methods
 
     function obj = ExecutionClass(path)
         % Constructor for the class, initializes all components
+        tLoading = tic;
+        fprintf("\n----------------------------------\n" + ...
+            "Video Loading\n" + ...
+        "----------------------------------\n");
+
         % Initialize DataLoader first
         DataLoader = DataLoaderClass(path);
 
@@ -83,11 +88,13 @@ methods
 
         % Initialize other modules (they'll be fully configured in analyzeData)
         obj.Analyzer = AnalyzerClass(obj.Output, obj.Cache);
+
+        fprintf("- Video Loading took : %ds\n", round(toc(tLoading)))
     end
 
     function preprocessData(obj)
         % Delegate to Preprocessor
-        Preprocessor = PreprocessorClass(obj.Output, obj.Cache, obj.directory, obj.filenames, obj.param_name);
+        Preprocessor = PreprocessorClass(obj.directory, obj.filenames, obj.param_name);
         Preprocessor.preprocess(obj);
 
         % Copy results back for backward compatibility
@@ -101,10 +108,9 @@ methods
 
     function analyzeData(obj, app)
         % Main analysis coordinator
-
-        % Configure modules with current state
+        % Initialize output system
         obj.Analyzer.ToolBoxMaster = obj.ToolBoxMaster;
-        obj.Reporter.ToolBoxMaster = obj.ToolBoxMaster;
+        obj.Reporter = ReporterClass(obj.ToolBoxMaster, obj.Output);
 
         params = obj.ToolBoxMaster.getParams;
 
@@ -115,11 +121,7 @@ methods
 
         totalTime = tic;
 
-        % Initialize output system
-        obj.Reporter = ReporterClass(obj.ToolBoxMaster, obj.Output);
-        obj.Reporter.generateGif(obj);
-
-        % Execute analysis steps based on flags
+        % Execute analysis steps based on checkbox flags
         if obj.flag_segmentation
             obj.Analyzer.performSegmentation(obj, app);
         end
@@ -140,7 +142,7 @@ methods
             obj.Analyzer.generateCrossSectionFigures(obj);
         end
 
-        if obj.flag_spectral_analysis && isempty(obj.SH)
+        if obj.flag_spectral_analysis && ~isempty(obj.SH)
             obj.Analyzer.performSpectralAnalysis(obj);
         end
 

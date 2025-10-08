@@ -4,18 +4,24 @@ classdef eyeflow < matlab.apps.AppBase
 properties (Access = public)
     EyeFlowUIFigure matlab.ui.Figure
 
-    % Load
+    ReferenceDirectory matlab.ui.control.TextArea
+    statusLamp matlab.ui.control.Lamp
+
+    % Top Buttons
     LoadFolderButton matlab.ui.control.Button
     LoadHoloButton matlab.ui.control.Button
     ClearButton matlab.ui.control.Button
     FolderManagementButton matlab.ui.control.Button
-    ReferenceDirectory matlab.ui.control.TextArea
-    statusLamp matlab.ui.control.Lamp
+
+    % Third Row Buttons
     EditMasksButton matlab.ui.control.Button
     EditParametersButton matlab.ui.control.Button
+    PlayMomentsButton matlab.ui.control.Button
+    GenerateReportButton matlab.ui.control.Button
+
+    % Fourth Row Buttons
     OpenDirectoryButton matlab.ui.control.Button
     ReProcessButton matlab.ui.control.Button
-    PlayMomentsButton matlab.ui.control.Button
 
     % Checkboxes
     segmentationCheckBox matlab.ui.control.CheckBox
@@ -52,12 +58,7 @@ methods (Access = public)
 
         try
             % Add file
-            tic
-            fprintf("\n----------------------------------\n");
-            fprintf("Video Loading\n");
-            fprintf("----------------------------------\n");
             app.file = ExecutionClass(path);
-            fprintf("- Video Loading took : %ds\n", round(toc))
 
             % Compute the mean of M0 along the third dimension
             mean_M0 = mean(app.file.M0, 3);
@@ -250,6 +251,10 @@ methods (Access = public)
 
         end
 
+        if flag_bloodFlowVelocity_analysis
+            app.GenerateReportButton.Enable = true;
+        end
+
         % Update checkbox states after execution
         app.CheckboxValueChanged();
 
@@ -270,6 +275,22 @@ methods (Access = public)
             implay(rescale(app.file.M2));
         catch
             disp('Input not well loaded')
+        end
+
+    end
+
+    function GenerateReportButtonPushed(app, ~)
+
+        try
+
+            if ~isempty(app.file)
+                app.file.Reporter.generateReport(app.file);
+            else
+                disp('No input loaded')
+            end
+
+        catch ME
+            MEdisp(ME, app.file.directory)
         end
 
     end
@@ -303,6 +324,7 @@ methods (Access = public)
         app.ReProcessButton.Enable = false;
         app.EditMasksButton.Enable = false;
         app.PlayMomentsButton.Enable = false;
+        app.GenerateReportButton.Enable = false;
 
         % Update checkbox states
         app.CheckboxValueChanged();
@@ -985,6 +1007,18 @@ methods (Access = private)
         app.PlayMomentsButton.Enable = 'off';
         app.PlayMomentsButton.Text = 'Play Moments';
         app.PlayMomentsButton.Tooltip = 'Play the M0, M1 and M2 videos.';
+
+        % Generate Report Button
+        app.GenerateReportButton = uibutton(grid, 'push');
+        app.GenerateReportButton.ButtonPushedFcn = createCallbackFcn(app, @GenerateReportButtonPushed, true);
+        app.GenerateReportButton.BackgroundColor = [0.502 0.502 0.502];
+        app.GenerateReportButton.FontSize = 16;
+        app.GenerateReportButton.FontColor = [0.9412 0.9412 0.9412];
+        app.GenerateReportButton.Layout.Row = 3;
+        app.GenerateReportButton.Layout.Column = 1;
+        app.GenerateReportButton.Enable = 'off';
+        app.GenerateReportButton.Text = 'Generate Report';
+        app.GenerateReportButton.Tooltip = 'Generate a report for the current analysis.';
 
         % Checkboxes: Segmentation, Pulse analysis, Blood Flow Velocity, Cross Section, SH analysis
         app.segmentationCheckBox = uicheckbox(grid);

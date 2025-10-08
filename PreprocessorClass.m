@@ -16,16 +16,9 @@ properties
     displacementField
 end
 
-properties (Access = private)
-    Output
-    Cache
-end
-
 methods
 
-    function obj = PreprocessorClass(output, cache, directory, filenames, param_name)
-        obj.Output = output;
-        obj.Cache = cache;
+    function obj = PreprocessorClass(directory, filenames, param_name)
         obj.directory = directory;
         obj.filenames = filenames;
         obj.param_name = param_name;

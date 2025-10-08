@@ -23,7 +23,9 @@ methods
     end
 
     function performSegmentation(obj, executionObj, app)
-        fprintf("\n----------------------------------\nMask Creation\n----------------------------------\n");
+        fprintf("\n----------------------------------\n" + ...
+            "Segmentation\n" + ...
+        "----------------------------------\n");
         createMasksTimer = tic;
 
         ToolBox = obj.ToolBoxMaster;
@@ -65,7 +67,9 @@ methods
     end
 
     function performPulseAnalysis(obj, executionObj)
-        fprintf("\n----------------------------------\nBlood Flow Velocity Analysis\n----------------------------------\n");
+        fprintf("\n----------------------------------\n" + ...
+            "Blood Flow Velocity Analysis\n" + ...
+        "----------------------------------\n");
         pulseAnalysisTimer = tic;
 
         params = obj.ToolBoxMaster.getParams;
@@ -83,7 +87,9 @@ methods
     end
 
     function performPulseVelocityAnalysis(obj, executionObj)
-        fprintf("\n----------------------------------\nPulse Velocity Calculation\n----------------------------------\n");
+        fprintf("\n----------------------------------\n" + ...
+            "Pulse Velocity Calculation\n" + ...
+        "----------------------------------\n");
         pulseVelocityTimer = tic;
 
         params = obj.ToolBoxMaster.getParams;
@@ -100,7 +106,9 @@ methods
     end
 
     function performCrossSectionAnalysis(obj, executionObj)
-        fprintf("\n----------------------------------\nCross-Section Analysis\n----------------------------------\n");
+        fprintf("\n----------------------------------\n" + ...
+            "Cross-Section Analysis\n" + ...
+        "----------------------------------\n");
         crossSectionAnalysisTimer = tic;
 
         params = obj.ToolBoxMaster.getParams;
@@ -117,7 +125,9 @@ methods
     end
 
     function generateCrossSectionFigures(obj, executionObj)
-        fprintf("\n----------------------------------\nCross-Section Figures\n----------------------------------\n");
+        fprintf("\n----------------------------------\n" + ...
+            "Cross-Section Figures\n" + ...
+        "----------------------------------\n");
         crossSectionFiguresTimer = tic;
 
         params = obj.ToolBoxMaster.getParams;
@@ -147,7 +157,9 @@ methods
     end
 
     function performSpectralAnalysis(obj, executionObj)
-        fprintf("\n----------------------------------\nSpectral Analysis\n----------------------------------\n");
+        fprintf("\n----------------------------------\n" + ...
+            "Spectral Analysis\n" + ...
+        "----------------------------------\n");
         timeSpectralAnalysis = tic;
 
         ToolBox = obj.ToolBoxMaster;
@@ -158,14 +170,18 @@ methods
         end
 
         % Spectrum Analysis
-        fprintf("\n----------------------------------\nSpectrum Analysis\n----------------------------------\n");
+        fprintf("\n----------------------------------\n" + ...
+            "Spectrum Analysis\n" + ...
+        "----------------------------------\n");
         spectrumAnalysisTimer = tic;
 
         spectrum_analysis(executionObj.SH, executionObj.M0_ff);
         fprintf("- Spectrum Analysis took : %ds\n", round(toc(spectrumAnalysisTimer)))
 
         % Spectrogram
-        fprintf("\n----------------------------------\nSpectrogram\n----------------------------------\n");
+        fprintf("\n----------------------------------\n" + ...
+            "Spectrogram\n" + ...
+        "----------------------------------\n");
         spectrogramTimer = tic;
 
         maskArtery = obj.Cache.maskArtery;
@@ -173,7 +189,9 @@ methods
         spectrum_video(executionObj.SH, executionObj.f_RMS, maskArtery, maskNeighbors);
 
         fprintf("- Spectrogram took: %ds\n", round(toc(spectrogramTimer)));
-        fprintf("\n----------------------------------\nSpectral Analysis Complete\n----------------------------------\n");
+        fprintf("\n----------------------------------\n" + ...
+            "Spectral Analysis Complete\n" + ...
+        "----------------------------------\n");
         fprintf("Spectral Analysis timing: %ds\n", round(toc(timeSpectralAnalysis)));
     end
 

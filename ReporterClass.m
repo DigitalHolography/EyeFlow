@@ -22,11 +22,6 @@ methods
             obj.Output.add('UnixTimestampLast', tmp.last, 'µs');
         end
 
-    end
-
-    function generateGif(obj, executionObj)
-        ToolBox = obj.ToolBoxMaster;
-
         if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name)))
             writeGifOnDisc(imresize(rescale(executionObj.M0_ff), 0.5), "M0")
         end
