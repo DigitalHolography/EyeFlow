@@ -251,7 +251,7 @@ methods (Access = public)
 
         end
 
-        if flag_bloodFlowVelocity_analysis
+        if app.file.flag_bloodFlowVelocity_analysis
             app.GenerateReportButton.Enable = true;
         end
 

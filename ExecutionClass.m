@@ -49,10 +49,10 @@ properties
     flag_spectral_analysis logical
     flag_overwrite logical
 
-    % ToolBox
+    % Components
     ToolBoxMaster ToolBoxClass
-    Cache CacheClass
     Output OutputClass
+    Cache CacheClass
 end
 
 methods
@@ -82,12 +82,12 @@ methods
         obj.params_names = checkEyeFlowParamsFromJson(obj.directory);
         obj.param_name = obj.params_names{1};
 
-        % Initialize other components
+        % Initialize Output and Cache
         obj.Output = OutputClass();
         obj.Cache = CacheClass();
 
-        % Initialize other modules (they'll be fully configured in analyzeData)
-        obj.Analyzer = AnalyzerClass(obj.Output, obj.Cache);
+        % Initialize Modules
+        obj.Analyzer = AnalyzerClass();
 
         fprintf("- Video Loading took : %ds\n", round(toc(tLoading)))
     end
@@ -98,6 +98,10 @@ methods
         Preprocessor.preprocess(obj);
 
         % Copy results back for backward compatibility
+        obj.M0 = Preprocessor.M0;
+        obj.M1 = Preprocessor.M1;
+        obj.M2 = Preprocessor.M2;
+        obj.M0_ff = Preprocessor.M0_ff;
         obj.f_RMS = Preprocessor.f_RMS;
         obj.f_AVG = Preprocessor.f_AVG;
         obj.displacementField = Preprocessor.displacementField;
@@ -109,10 +113,14 @@ methods
     function analyzeData(obj, app)
         % Main analysis coordinator
         % Initialize output system
-        obj.Analyzer.ToolBoxMaster = obj.ToolBoxMaster;
-        obj.Reporter = ReporterClass(obj.ToolBoxMaster, obj.Output);
 
-        params = obj.ToolBoxMaster.getParams;
+        ToolBox = obj.ToolBoxMaster;
+        params = ToolBox.getParams;
+
+        ToolBox.setOutput(obj.Output);
+        ToolBox.setCache(obj.Cache);
+
+        obj.Reporter = ReporterClass(obj);
 
         if params.json.DebugMode
             profile off
@@ -128,6 +136,9 @@ methods
 
         if obj.flag_bloodFlowVelocity_analysis
             obj.Analyzer.performPulseAnalysis(obj);
+            obj.vRMS = obj.Analyzer.vRMS;
+            obj.v_video_RGB = obj.Analyzer.v_video_RGB;
+            obj.v_mean_RGB = obj.Analyzer.v_mean_RGB;
         end
 
         if obj.flag_pulseWaveVelocity
@@ -136,6 +147,8 @@ methods
 
         if obj.flag_crossSection_analysis
             obj.Analyzer.performCrossSectionAnalysis(obj);
+            obj.Q_results_A = obj.Analyzer.Q_results_A;
+            obj.Q_results_V = obj.Analyzer.Q_results_V;
         end
 
         if obj.flag_crossSection_figures
@@ -146,15 +159,8 @@ methods
             obj.Analyzer.performSpectralAnalysis(obj);
         end
 
-        % Copy analysis results back for backward compatibility
-        obj.vRMS = obj.Analyzer.vRMS;
-        obj.v_video_RGB = obj.Analyzer.v_video_RGB;
-        obj.v_mean_RGB = obj.Analyzer.v_mean_RGB;
-        obj.Q_results_A = obj.Analyzer.Q_results_A;
-        obj.Q_results_V = obj.Analyzer.Q_results_V;
-
         % Generate reports and outputs
-        obj.Reporter.generateA4Report(obj);
+        obj.Reporter.getA4Report(obj);
         obj.Reporter.saveOutputs();
         obj.Reporter.displayFinalSummary(totalTime);
 

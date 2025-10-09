@@ -304,6 +304,16 @@ methods
 
     end
 
+    function ToolBox = setCache(obj, Cache)
+        obj.Cache = Cache;
+        ToolBox = obj;
+    end
+
+    function ToolBox = setOutput(obj, Output)
+        obj.Output = Output;
+        ToolBox = obj;
+    end
+
 end
 
 end

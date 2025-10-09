@@ -9,26 +9,19 @@ properties
     Q_results_V
 end
 
-properties (Access = private)
-    ToolBoxMaster
-    Output
-    Cache
-end
-
 methods
 
-    function obj = AnalyzerClass(output, cache)
-        obj.Output = output;
-        obj.Cache = cache;
+    function obj = AnalyzerClass()
+
     end
 
-    function performSegmentation(obj, executionObj, app)
+    function performSegmentation(~, executionObj, app)
         fprintf("\n----------------------------------\n" + ...
             "Segmentation\n" + ...
         "----------------------------------\n");
         createMasksTimer = tic;
 
-        ToolBox = obj.ToolBoxMaster;
+        ToolBox = getGlobalToolBox;
 
         if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
             mkdir(ToolBox.path_png, 'mask')
@@ -72,7 +65,8 @@ methods
         "----------------------------------\n");
         pulseAnalysisTimer = tic;
 
-        params = obj.ToolBoxMaster.getParams;
+        ToolBox = getGlobalToolBox;
+        params = ToolBox.getParams;
         [obj.vRMS, obj.v_video_RGB, obj.v_mean_RGB] = pulseAnalysis(executionObj.f_RMS, executionObj.M0_ff);
 
         if params.json.PulseAnalysis.ExtendedFlag
@@ -86,18 +80,19 @@ methods
         fprintf("- Blood Flow Velocity Analysis took: %ds\n", round(toc(pulseAnalysisTimer)));
     end
 
-    function performPulseVelocityAnalysis(obj, executionObj)
+    function performPulseVelocityAnalysis(~, executionObj)
         fprintf("\n----------------------------------\n" + ...
             "Pulse Velocity Calculation\n" + ...
         "----------------------------------\n");
         pulseVelocityTimer = tic;
 
-        params = obj.ToolBoxMaster.getParams;
-        maskArtery = obj.Cache.maskArtery;
+        ToolBox = getGlobalToolBox;
+        params = ToolBox.getParams;
+        maskArtery = ToolBox.Cache.maskArtery;
         pulseVelocity(executionObj.M0_ff, executionObj.displacementField, maskArtery, 'artery');
 
         if params.veins_analysis
-            maskVein = obj.Cache.maskVein;
+            maskVein = ToolBox.Cache.maskVein;
             pulseVelocity(executionObj.M0_ff, executionObj.displacementField, maskVein, 'vein');
         end
 
@@ -111,12 +106,13 @@ methods
         "----------------------------------\n");
         crossSectionAnalysisTimer = tic;
 
-        params = obj.ToolBoxMaster.getParams;
-        maskArtery = obj.Cache.maskArtery;
+        ToolBox = getGlobalToolBox;
+        params = ToolBox.getParams;
+        maskArtery = ToolBox.Cache.maskArtery;
         [obj.Q_results_A] = crossSectionsAnalysis(maskArtery, 'artery', obj.vRMS, executionObj.M0_ff);
 
         if params.veins_analysis
-            maskVein = obj.Cache.maskVein;
+            maskVein = ToolBox.Cache.maskVein;
             [obj.Q_results_V] = crossSectionsAnalysis(maskVein, 'vein', obj.vRMS, executionObj.M0_ff);
         end
 
@@ -130,15 +126,16 @@ methods
         "----------------------------------\n");
         crossSectionFiguresTimer = tic;
 
-        params = obj.ToolBoxMaster.getParams;
+        ToolBox = getGlobalToolBox;
+        params = ToolBox.getParams;
         crossSectionsFigures(obj.Q_results_A, 'artery', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
 
         if params.veins_analysis
             crossSectionsFigures(obj.Q_results_V, 'vein', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
-            maskVessel = obj.Cache.maskArtery | obj.Cache.maskVein;
+            maskVessel = ToolBox.Cache.maskArtery | ToolBox.Cache.maskVein;
             sectionImageAdvanced(rescale(mean(executionObj.M0_ff, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, maskVessel);
         else
-            maskArtery = obj.Cache.maskArtery;
+            maskArtery = ToolBox.Cache.maskArtery;
             sectionImageAdvanced(rescale(mean(executionObj.M0_ff, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, [], maskArtery);
         end
 
@@ -149,20 +146,20 @@ methods
             end
 
         catch ME
-            MEdisp(ME, obj.ToolBoxMaster.EF_path)
+            MEdisp(ME, ToolBox.EF_path)
         end
 
         executionObj.is_AllAnalyzed = true;
         fprintf("- Cross-Section Figures took: %ds\n", round(toc(crossSectionFiguresTimer)));
     end
 
-    function performSpectralAnalysis(obj, executionObj)
+    function performSpectralAnalysis(~, executionObj)
         fprintf("\n----------------------------------\n" + ...
             "Spectral Analysis\n" + ...
         "----------------------------------\n");
         timeSpectralAnalysis = tic;
 
-        ToolBox = obj.ToolBoxMaster;
+        ToolBox = getGlobalToolBox;
 
         if ~isfolder(fullfile(ToolBox.path_png, 'spectralAnalysis'))
             mkdir(fullfile(ToolBox.path_png), 'spectralAnalysis');
@@ -184,8 +181,8 @@ methods
         "----------------------------------\n");
         spectrogramTimer = tic;
 
-        maskArtery = obj.Cache.maskArtery;
-        maskNeighbors = obj.Cache.maskNeighbors;
+        maskArtery = ToolBox.Cache.maskArtery;
+        maskNeighbors = ToolBox.Cache.maskNeighbors;
         spectrum_video(executionObj.SH, executionObj.f_RMS, maskArtery, maskNeighbors);
 
         fprintf("- Spectrogram took: %ds\n", round(toc(spectrogramTimer)));
