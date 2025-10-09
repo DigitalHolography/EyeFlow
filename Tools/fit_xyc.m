@@ -1,8 +1,14 @@
-function [Tx, Ty] = fit_xyc(Z, dx, dy)
+function [PWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, name, branch_index)
 % --- Input ---
 % Z =  your 2D map (matrix: ny x nx)
 
 ToolBox = getGlobalToolBox;
+
+outputDir = fullfile(ToolBox.path_png, 'flexion');
+
+if ~exist(outputDir, 'dir')
+    mkdir(outputDir);
+end
 
 if nargin < 2 dx = 1.0; end % pixel spacing in x (change if physical units known)
 
@@ -20,65 +26,76 @@ if nargin < 3 dy = 1.0; end % pixel spacing in y
     cx = round(nx / 2) + 1;
 
     Z0 = Z0 .* ~diskMask(ny, nx, 0.001); % remove central point
-    % win = hann(ny) * hann(nx)';  % 2D window
-    % Z0 = Z0 .* win;
+    % apply 2D Hanning (Hann) window to reduce edge effects before FFT
+    wy = hann(ny);
+    wx = hann(nx);
+    W = wy * wx';
+    Z0 = Z0 .* W;
 
     % --- FFT ---
-    F = fftshift(fft2(Z0));
+    Nmult = 8; % must use for fine measurement
+    F = fftshift(fft2(Z0,Nmult*ny,Nmult*nx));
     S = abs(F);
 
-    %
-
-    bandWidth = diskMask(ny, nx, 0, 0.5);
+    bandWidth = diskMask(Nmult*ny, Nmult*nx, 0, 0.5);
 
     S = S .* bandWidth;
 
-    [pks, rows, cols] = findpeaks2(S, 1, 0.8);
-
-    % --- Find dominant peak ---
-    [~, idx] = max(pks);
-    iy = rows(idx);
-    ix = cols(idx);
-
-    disp(ix)
-    disp(iy)
+    [pks, rows, cols] = findpeaks2(S, 0, 0.8);
 
     % --- Frequency axes ---
-    fx = (-nx / 2:nx / 2 - 1) / (nx * dx); % cycles per unit in x
-    fy = (-ny / 2:ny / 2 - 1) / (ny * dy); % cycles per unit in y
+    fx = (-Nmult*nx / 2:Nmult*nx / 2 - 1) / (Nmult*nx * dx); % cycles per unit in x
+    fy = (-Nmult*ny / 2:Nmult*ny / 2 - 1) / (Nmult*ny * dy); % cycles per unit in y
+
+    figure('Visible','on'), imagesc(fx,fy,S);
+    axis xy;
+    hold on;
+    scatter(fx(cols), fy(rows), 80, 'o', 'r', 'LineWidth', 1.5);
+
+    % --- Find dominant peak ---
+    [m, idx] = max(pks);
+    iy = rows(idx);
+    ix = cols(idx);
 
     % --- Convert to radians per unit ---
     kx = 2 * pi * fx(ix); % a coefficient
     ky = 2 * pi * fy(iy); % b coefficient
 
     % Optional: compute spatial periods
-    Tx = 2 * pi / (kx);
+    Tx = - 2 * pi / (kx); %% todo fix
     Ty = 2 * pi / (ky);
     fprintf('Period along x = %f units\n', Tx);
     fprintf('Period along y = %f units\n', Ty);
 
     % --- Plot map with wavevector direction ---
     figure('Visible', 'on');
-    imagesc(Z0, [-0.1 0.1]); axis image; colormap jet;
+    imagesc(linspace(-dx*nx/2, nx*dx/2,nx),linspace(-dy*ny/2, ny*dy/2,ny),Z0,[-0.1,0.1]);
+    xlabel("time delay (s)");
+    ylabel("arc length lag (mm)")
     hold on;
 
     % center point of the image
     xc = nx / 2;
     yc = ny / 2;
 
-    % direction vector from (a,b)
-    scale = min(nx, ny) / 4; % length scaling for visibility
-    vx = scale * sign(kx); % just show direction
-    vy = scale * sign(ky);
+    if m > 10
+        PWV = Ty / Tx;
+        plot([0 - Tx / dx *0.2 , 0 + Tx / dx *0.2], [0 - Ty / dy *0.2, 0 + Ty / dy *0.2], 'w-', 'LineWidth', 2);
+    else
+        PWV = NaN;
+    end
 
-    plot([xc - Tx / dx, xc + Tx / dx], [yc - Ty / dy, yc + Ty / dy], 'w-', 'LineWidth', 2);
-
-    text(xc + vx, yc + vy, sprintf('%.2f %s over %s', Ty / Tx, 'yunit', 'xunit'), ...
+    text(0 , 0 , sprintf('%.2f mm / s', PWV), ...
         'Color', 'w', 'FontSize', 10, 'FontWeight', 'bold');
 
-    title('2D Map with Wavevector Direction');
-    axis off;
+    
+    
+    title('Flexural Pulse Wave velocity measure');
     hold off;
+
+    % Save figure
+    saveas(gcf, fullfile(outputDir, ...
+        sprintf("%s_%s_%d_signals_asym_over_time.png", ToolBox.folder_name, name, branch_index)));
 
 end
 
@@ -94,13 +111,12 @@ function [pks, rows, cols] = findpeaks2(Z, smoothSigma, minHeightRatio)
     [rows, cols] = find(BW);
     pks = Z(BW);
 
-    figure('Visible', 'on');
-    imagesc(Z); axis image; colormap jet;
-
     if ~isempty(pks) && minHeightRatio > 0
         M = max(pks);
-        s_idx = ~(pks > minHeightRatio * M);
-        pks(s_idx) = []; rows(s_idx) = []; cols(s_idx) = [];
+        keep = pks > minHeightRatio * M;
+        pks = pks(keep);
+        rows = rows(keep);
+        cols = cols(keep);
     end
 
 end
