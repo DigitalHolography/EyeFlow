@@ -1,4 +1,4 @@
-function [maskArtery, maskVein, R, signal, quantizedImage, level, color] = correlationSegmentation(video, mask, params)
+function [maskArtery, maskVein, R, signalArtery, quantizedImage, level, color] = correlationSegmentation(video, preMaskArtery, maskVesselness, params)
 % correlationSegmentation - Segments vessels from a video using the provided parameters.
 % Inputs:
 %   video: 3D matrix of the video data (height x width x time)
@@ -9,8 +9,8 @@ function [maskArtery, maskVein, R, signal, quantizedImage, level, color] = corre
 % Outputs:
 %   maskArtery: binary mask for arteries
 %   maskVein: binary mask for veins
-%   R: correlation map of vascular signal
-%   signal: 1D signal representing the vascular activity
+%   R: correlation map of arterial signal
+%   signalArtery: 1D signal representing the arterial activity
 %   quantizedImage: quantized image after Otsu segmentation
 
 % Initialize output variables
@@ -19,24 +19,24 @@ numClasses = length(classes);
 
 %  1) Compute first correlation
 % compute signal in 3 dimentions for correlation in the mask
-signal = sum(video .* mask, [1 2], 'omitnan');
-signal = signal ./ nnz(mask);
+signalArtery = sum(video .* preMaskArtery, [1 2], 'omitnan');
+signalArtery = signalArtery ./ nnz(preMaskArtery);
 
-outlier_frames_mask = isoutlier(signal, "movmedian", 5, "ThresholdFactor", 2);
+outlier_frames_mask = isoutlier(signalArtery, "movmedian", 5, "ThresholdFactor", 2);
 video = interpolateOutlierFrames(video, outlier_frames_mask);
 
-signal = sum(video .* mask, [1 2], 'omitnan');
-signal = signal ./ nnz(mask);
+signalArtery = sum(video .* preMaskArtery, [1 2], 'omitnan');
+signalArtery = signalArtery ./ nnz(preMaskArtery);
 
 % compute local-to-average signal wave zero-lag correlation
-signal_centered = signal - mean(signal, 3, 'omitnan');
+signal_centered = signalArtery - mean(signalArtery, 3, 'omitnan');
 video_centered = video - mean(video, 'all', 'omitnan');
 R = mean(video_centered .* signal_centered, 3) ./ (std((video_centered), [], 'all', 'omitnan') * std(signal_centered, [], 3));
 
 % 2) Segment Vessels
 if isempty(params.threshold)
     % Automatic Otsu segmentation is performed
-    [quantizedImage, level, color] = autoOtsuThresholding(R, mask, params.classes);
+    [quantizedImage, level, color] = autoOtsuThresholding(R, maskVesselness, params.classes);
 
     % Initialize masks
     maskArtery = false(size(R));
@@ -56,8 +56,8 @@ if isempty(params.threshold)
 elseif abs(params.threshold) <= 1
 
     % Create masks based on threshold
-    maskArtery = (R > params.threshold) & mask;
-    maskVein = (R < params.threshold) & mask;
+    maskArtery = (R > params.threshold) & maskVesselness;
+    maskVein = (R < params.threshold) & maskVesselness;
 
     % Create quantized image
     quantizedImage = zeros(size(R));
@@ -71,7 +71,7 @@ elseif abs(params.threshold) <= 1
 else
 
     % Automatic Otsu segmentation is performed
-    [quantizedImage, level, color] = autoOtsuThresholding(R, mask, params.classes);
+    [quantizedImage, level, color] = autoOtsuThresholding(R, maskVesselness, params.classes);
 
     % Initialize masks
     maskArtery = false(size(R));

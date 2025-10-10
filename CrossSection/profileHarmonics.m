@@ -31,10 +31,11 @@ f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBo
 
 harmonics = [0 ToolBox.Cache.harmonics];
 harmonics_idx = zeros(1, length(harmonics));
+harmonics_idx(1) = 1;
 
-for fr = harmonics
-    [~, idx] = min(abs(f - fr));
-    harmonics_idx(fr + 1) = idx;
+for fr = 2:length(harmonics)
+    [~, idx] = min(abs(f - harmonics(fr)));
+    harmonics_idx(fr) = idx;
 end
 
 % Set visualization parameters
@@ -63,11 +64,10 @@ ax.Layer = 'top'; % This may help in some cases
 xline(1, '--', 'LineWidth', 2)
 xline(-1, '--', 'LineWidth', 2)
 
-baseLabels = zeros(length(harmonics), 1);
-baseLabels(1) = "n=0";
+baseLabels = cell(length(harmonics), 1);
 
-for k = 1:(length(harmonics) - 1)
-    baseLabels(k + 1) = sprintf("n=%d", k);
+for k = 1:length(harmonics)
+    baseLabels{k} = sprintf("n=%d", k - 1);
 end
 
 legend(baseLabels)

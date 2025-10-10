@@ -36,16 +36,6 @@
     "Auto Compute": 1,
     "Registered Masks": -1,
     "Forced Masks": -1,
-    "Vesselness Frangi Range": [
-      4,
-      6
-    ],
-    "Vesselness Frangi Step": 1,
-    "Vesselness Gabor Range": [
-      4,
-      6
-    ],
-    "Vesselness Gabor Step": 1,
     "Vessel Segmentation Method": "AI",
     "AV Correlation Segmentation Net": false,
     "AV Diasys Segmentation Net": true,
@@ -57,18 +47,6 @@
     "Vascular Classes": [
       -1,
       1
-    ],
-    "Improve Mask": 1,
-    "DiaSys Analysis": 1,
-    "Arterial Threshold": null,
-    "Arterial Classes": [
-      -1,
-      1
-    ],
-    "Venous Threshold": null,
-    "Venous Classes": [
-      1,
-      -1
     ],
     "Min Pixel Size": 150,
     "CRA CRV Threshold": 3,

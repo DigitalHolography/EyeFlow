@@ -58,7 +58,7 @@ methods
 
     function writeHdf5(obj, path)
 
-        props = properties(Signals);
+        props = properties(obj);
 
         for i = 1:length(props)
             h5create(path, strcat("/", "Signals", props{i}, "_y"), size(obj.(props{i}).yvalues));

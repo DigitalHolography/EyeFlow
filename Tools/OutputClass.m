@@ -136,7 +136,7 @@ methods
     end
 
     function writeJson(obj, path)
-        props = setdiff(properties(Output), "Signals");
+        props = setdiff(properties(obj), "Signals");
         data = struct();
 
         for i = 1:length(props)
@@ -164,7 +164,7 @@ methods
 
     function writeHdf5(obj, path)
 
-        props = setdiff(properties(Output), "Signals");
+        props = setdiff(properties(obj), "Signals");
 
         [dir, name, ~] = fileparts(path);
         path = fullfile(dir, strcat(name, ".h5"));

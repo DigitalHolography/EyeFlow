@@ -45,8 +45,9 @@ methods
     function getA4Report(~, executionObj)
 
         ToolBox = getGlobalToolBox;
+        params = ToolBox.getParams;
 
-        if executionObj.is_pulseAnalyzed && executionObj.veins_analysis
+        if executionObj.is_pulseAnalyzed && params.veins_analysis
 
             try
                 generateA4Report();
@@ -63,6 +64,15 @@ methods
         fprintf("\n----------------------------------\nTotal EyeFlow timing: %ds\n", round(tTotal));
         fprintf("End Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
         displaySuccessMsg(1);
+    end
+
+    function generateReport(obj, executionObj)
+        % Generate reports and outputs
+        totalTime = tic;
+        obj.getA4Report(executionObj);
+        obj.saveOutputs();
+        obj.displayFinalSummary(totalTime);
+
     end
 
 end
