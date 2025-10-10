@@ -46,7 +46,7 @@ abs_dist = zeros([1, numpoints]); % vessel curvilign absis
 absx(1) = interpoints_x(k); % nearest point to the center
 absy(1) = interpoints_y(k);
 
-figure('Visible','off');
+figure('Visible', 'off');
 imagesc (interpoints)
 scatter(x_bary, y_bary, 80, 'o', 'r', 'LineWidth', 1.5);
 scatter(absx(1), absy(1), 80, 'o', 'g', 'LineWidth', 1.5);
@@ -150,7 +150,7 @@ Ux_n = (Ux - mean(Ux, 2)) ./ std(Ux, [], 2);
 
 figure('Visible', 'on');
 
-imagesc(linspace(0, N_frame*(ToolBox.stride / ToolBox.fs / 1000),N_frame),linspace(0, abs_dist(end),numpoints),real(Ux_n));
+imagesc(linspace(0, N_frame * (ToolBox.stride / ToolBox.fs / 1000), N_frame), linspace(0, abs_dist(end), numpoints), real(Ux_n));
 xlabel("time (s)");
 ylabel("arc length (mm)")
 % Save figure
@@ -175,7 +175,7 @@ Ravg = Ravg';
 figure('Visible', 'off'), imagesc(Ravg, [-0.1 0.1]);
 axis off;
 
-[PWV, Tx, Ty, S, m, idx, pks, rows, cols] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index);
+fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index);
 
 close all;
 end
