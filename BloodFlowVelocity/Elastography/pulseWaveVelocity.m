@@ -21,7 +21,7 @@ end
 
 %% create a grid of points to select points along the skeletton of the artery mask
 %
-dxx = 5;
+dxx = 2;
 skel = bwskel(mask);
 grid = ones([numY, numX]) < 0;
 grid(1:dxx:end, :) = true;
@@ -45,6 +45,12 @@ abs_dist = zeros([1, numpoints]); % vessel curvilign absis
 
 absx(1) = interpoints_x(k); % nearest point to the center
 absy(1) = interpoints_y(k);
+
+figure('Visible','off');
+imagesc (interpoints)
+scatter(x_bary, y_bary, 80, 'o', 'r', 'LineWidth', 1.5);
+scatter(absx(1), absy(1), 80, 'o', 'g', 'LineWidth', 1.5);
+
 interpoints_x(k) = [];
 interpoints_y(k) = [];
 abs_dist(1) = 0;
@@ -172,9 +178,4 @@ axis off;
 [PWV, Tx, Ty, S, m, idx, pks, rows, cols] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index);
 
 close all;
-
-% Save figure
-saveas(gcf, fullfile(outputDir, ...
-    sprintf("%s_%s_%d_correlation_averaged.png", ToolBox.folder_name, name, branch_index)));
-
 end
