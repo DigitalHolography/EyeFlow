@@ -33,7 +33,6 @@ diaphragmRadius = mask_params.DiaphragmRadius;
 cropChoroidRadius = mask_params.CropChoroidRadius;
 vesselParams.threshold = mask_params.VascularThreshold;
 vesselParams.classes = mask_params.VascularClasses;
-minPixelSize = mask_params.MinPixelSize;
 forceVesselWidth = mask_params.ForceVesselWidth;
 vesselnessMethod = mask_params.VesselSegmentationMethod;
 
@@ -78,8 +77,6 @@ if mask_params.AutoCompute
 
             saveImage(maskMatchedFilter, 'all_12_matched_filter_mask.png', isStep = true)
 
-            M0_contrasted = M0_ff_img;
-
         case 'frangi'
             fprintf("Compute vesselness using Frangi filter\n");
             % Frangi Vesselness
@@ -88,8 +85,6 @@ if mask_params.AutoCompute
 
             saveImage(maskVesselnessFrangi, 'all_12_frangi_mask.png', isStep = true)
             saveImage(M0_Frangi, 'all_12_frangi_img.png', isStep = true)
-
-            M0_contrasted = M0_ff_img;
 
         case 'gabor'
             fprintf("Compute vesselness using Gabor filter\n");
@@ -100,28 +95,11 @@ if mask_params.AutoCompute
             saveImage(maskVesselnessGabor & maskDiaphragm, 'all_12_gabor_mask.png', isStep = true)
             saveImage(M0_Gabor, 'all_12_gabor_img.png', isStep = true)
 
-            M0_contrasted = M0_Gabor;
-
         case 'AI'
             fprintf("Compute vesselness using SegmentationNet\n");
             % SegmentationNet Vesselness
-            try
-                maskVesselness = getSegmentationNetVesselness(M0_ff_img);
-                saveImage(maskVesselness, 'all_14_maskSegmentationNet.png', isStep = true)
-
-                M0_contrasted = M0_ff_img;
-            catch
-                warning("The SegmentationNet ONNX-model couldn't be found.")
-                [maskVesselnessFrangi, ~] = frangiVesselness(M0_img, ...
-                    'range', [4, 6], 'step', 1);
-                [maskVesselnessGabor, M0_Gabor] = gaborVesselness(M0_ff_img, ...
-                    'range', [4, 6], 'step', 1);
-                maskVesselness = (maskVesselnessFrangi | maskVesselnessGabor) & maskDiaphragm;
-
-                saveImage(maskVesselness, 'all_14_maskDeterministic.png', isStep = true)
-
-                M0_contrasted = M0_Gabor;
-            end
+            maskVesselness = getSegmentationNetVesselness(M0_ff_img);
+            saveImage(maskVesselness, 'all_14_maskSegmentationNet.png', isStep = true)
 
     end
 
@@ -144,62 +122,33 @@ if mask_params.AutoCompute
         saveImage(maskArtery, 'artery_21_SegmentationNet.png', isStep = true, cmap = cVein);
 
     else
+        % Compute artery/vein masks using correlation-based segmentation
+        [maskArtery, maskVein, R_ArterialSignal, arterialSignal, quantizedImage, level, color] = ...
+            correlationSegmentation(M0_video, maskArteryTmp, maskVesselnessClean, vesselParams);
 
-        cVascular = [0 0 0];
-
-        if ~isempty(vesselParams.threshold)
-
-            if abs(vesselParams.threshold) <= 1
-                vesselParams.classes = [-1; 1];
-            end
-
-        end
-
-        [maskArtery, maskVein, R_VascularSignal, vascularSignal, quantizedImage, level, color] = correlationSegmentation(M0_video, maskArteryTmp, maskVesselnessClean, vesselParams);
-
-        % 1) 4) Save all images
+        % 1) 5) Save all images
         t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
-        graphSignal('all_15_vascularSignal', t, squeeze(vascularSignal), '-', cVascular, ...
-            Title = 'Vascular Signal', xlabel = 'Time(s)', ylabel = 'Power Doppler (a.u.)');
+        graphSignal('all_15_arterialSignal', t, squeeze(arterialSignal), '-', color(2, :), ...
+            Title = 'Arterial Signal', xlabel = 'Time(s)', ylabel = 'Power Doppler (a.u.)');
 
-        % Complementary signal
-
-        mask = ~maskVesselness & maskDiaphragm;
-        complementary_signal = sum(M0_video .* mask, [1 2], 'omitnan');
-        complementary_signal = complementary_signal ./ nnz(mask);
-        graphSignal('all_15_nonvascularSignal', t, squeeze(complementary_signal), '-', cVascular, ...
-            Title = 'Non Vascular Signal', xlabel = 'Time(s)', ylabel = 'Power Doppler (a.u.)');
-
-        saveImage(R_VascularSignal, 'all_15_Correlation.png', isStep = true)
-        RGBcorr = labDuoImage(M0_contrasted, R_VascularSignal);
+        saveImage(R_ArterialSignal, 'all_15_Correlation.png', isStep = true)
+        RGBcorr = labDuoImage(M0_ff_img, R_ArterialSignal);
         saveImage(RGBcorr, 'all_15_Correlation_rgb.png', isStep = true)
 
         [quantizedImageRGB] = quantizeImageToRGB(quantizedImage, vesselParams.classes);
         saveImage(quantizedImageRGB, 'all_16_quantizedImage.png', isStep = true, cmap = color);
-        graphThreshHistogram(R_VascularSignal, level, maskVesselnessClean, color, 'all_16')
-
-        saveImage(maskArtery, 'artery_17_FirstMask.png', isStep = true, cmap = cArtery)
-        saveImage(maskVein, 'vein_17_FirstMask.png', isStep = true, cmap = cVein)
-
-        % 1) 5) Remove small blobs
-        maskArteryClean = bwareaopen(maskArtery, minPixelSize);
-        maskVeinClean = bwareaopen(maskVein, minPixelSize);
-
-        saveImage(maskArteryClean, 'artery_18_FirstMaskClean.png', isStep = true, cmap = cArtery)
-        saveImage(maskVeinClean, 'vein_18_FirstMaskClean.png', isStep = true, cmap = cVein)
-
-        M0_Artery = setcmap(M0_ff_img, maskArtery, cmapArtery);
-        M0_Vein = setcmap(M0_ff_img, maskVein, cmapVein);
-        M0_AV = setcmap(M0_ff_img, maskArtery & maskVein, cmapAV);
-
-        M0_RGB = (M0_Artery + M0_Vein) .* ~(maskArtery & maskVein) + M0_AV + rescale(M0_ff_img) .* ~(maskArtery | maskVein);
-        saveImage(M0_RGB, 'all_19_RGB.png', isStep = true)
+        graphThreshHistogram(R_ArterialSignal, level, maskVesselnessClean, color, 'all_16')
 
     end
 
     % 3) Mask Clearing
 
     % 3) 0) Morphological Operations
+
+    % Ensure masks are within diaphragm
+    maskArtery = maskArtery & maskDiaphragm;
+    maskVein = maskVein & maskDiaphragm;
+
     [mask_dilated, mask_closed, mask_opened, mask_widened] = clearMasks(maskArtery, ...
         'min_area', mask_params.MinPixelSize, ...
         'imclose_radius', mask_params.ImcloseRadius, ...
@@ -240,10 +189,7 @@ if mask_params.AutoCompute
 
 end
 
-% [maskArtery, maskVein ] = assert_arteries(M0_ff, maskArtery, maskVein);
-
 % 3) 2) a) Look for a target mask to register from
-
 if (mask_params.RegisteredMasks == -1 || mask_params.RegisteredMasks == 1)
 
     if (isfile(fullfile(path, 'mask', 'similarMaskArtery.png')) && isfile(fullfile(path, 'mask', 'similarM0.png'))) ...
