@@ -40,8 +40,8 @@ parameters.Average_Venous_Volume_Rate = outputs.VeinFlowRateMean;
 parameters.heart_beat = outputs.HeartBeat;
 
 if isfield(outputs, 'ArterialSystolicFraction')
-    parameters.arterial_systolic_fraction = outputs.ArterialSystolicFraction;
-    parameters.arterial_diastolic_fraction = outputs.ArterialDiastolicFraction;
+    parameters.arterial_systolic_fraction = outputs.ArterySystolicFraction;
+    parameters.arterial_diastolic_fraction = outputs.ArteryDiastolicFraction;
 end
 
 % parameters.time_2_systolic_peak = outputs.Time2SystolicPeak;
