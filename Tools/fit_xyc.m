@@ -1,4 +1,4 @@
-function [PWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, name, branch_index)
+function [PWV, dPWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, name, branch_index)
 %FIT_XYC  Estimate spatial frequency components and compute Pulse Wave Velocity (PWV)
 %
 % --- Input ---
@@ -83,16 +83,23 @@ end
 %% --- Plot frequency spectrum ---
 fig1 = figure('Visible', 'on');
 imagesc(fx, fy, S);
+xlabel('(Hz)');
+ylabel('(mm-1)');
 axis xy equal tight;
+
+xlim([-10,10]);
+ylim([-10,10]);
 colormap turbo;
 colorbar;
 hold on;
-scatter(fx(round(cols)), fy(round(rows)), 80, 'ro', 'LineWidth', 1.5, 'DisplayName', 'Detected Peaks');
 
 %% --- Dominant peak ---
 [m, idx] = max(pks);
 iy = rows(idx);
 ix = cols(idx);
+
+scatter(fx(round(ix)), fy(round(iy)), 80, 'ro', 'LineWidth', 1.5, 'DisplayName', 'Detected Peaks');
+
 
 fx_peak = fx(round(ix));
 fy_peak = fy(round(iy));

@@ -82,7 +82,7 @@ properties
     TotalVenousSections
 
     % Extra
-    PulseWaveVelocity
+    PulseWaveVelocityArtery
     DicroticNotchVisibility
     DynamicViscosityDuringSystole
     DynamicViscosityDuringDiastole
@@ -90,6 +90,7 @@ properties
     PapillaRatio
     WindkesselDecayRC
     WindkesselPureDelay
+    PulseWaveVelocityVein
 
     UnixTimestampFirst
     UnixTimestampLast

@@ -1,7 +1,11 @@
-function PWV = pulseWaveVelocity(U, mask, branch_index, name)
+function [PWV, dPWV, score] = pulseWaveVelocity(U, mask, branch_index, name)
 % Computes the pulse wave velocity based on a cross correlation computation
 % U is the field over which we compute the velocity and mask is the mask of
 % the selected retinal artery
+
+if isempty(U)
+    error("No input field (M0_ff or velocity)");
+end
 
 % U(x,y,t) usually M0
 % center the [x,y] barycenter (the center of the CRA)
@@ -12,6 +16,8 @@ y_bary = ToolBox.Cache.xy_barycenter(2);
 [numX, numY] = size(mask);
 N_frame = size(U, 3);
 PWV = NaN; % initialize output
+dPWV = NaN;
+score = NaN;
 
 outputDir = fullfile(ToolBox.path_png, 'flexion');
 
@@ -139,6 +145,7 @@ end
 figure('Visible', 'on');
 imagesc(L)
 title('selected sections along the artery')
+axis image, axis off;
 
 % Save figure
 saveas(gcf, fullfile(outputDir, ...
@@ -175,7 +182,7 @@ Ravg = Ravg';
 figure('Visible', 'off'), imagesc(Ravg, [-0.1 0.1]);
 axis off;
 
-fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index);
+[PWV, dPWV, ~, ~, ~,score] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index);
 
 close all;
 end
