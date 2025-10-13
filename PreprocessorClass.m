@@ -14,6 +14,9 @@ properties
     filenames char
     param_name char
     displacementField
+
+    firstFrameIdx double
+    lastFrameIdx double
 end
 
 methods
@@ -77,14 +80,25 @@ methods (Access = private)
 
     function crop(obj, params)
 
-        if (params.json.Preprocess.Crop.StartFrame == 1) && (params.json.Preprocess.Crop.EndFrame == -1)
+        firstFrame = params.json.Preprocess.Crop.StartFrame;
+        lastFrame = params.json.Preprocess.Crop.EndFrame;
+
+        if (firstFrame == 1) && (lastFrame == -1)
             return % do nothing if not required
         end
 
         tic
         fprintf("    - Video Cropping...\n");
         % Cropping implementation
-        VideoCropping(obj, firstFrame, lastFrame);
+        [firstFrameOut, lastFrameOut] = VideoCropping(obj, firstFrame, lastFrame);
+
+        if firstFrameOut ~=  firstFrame
+            obj.firstFrameIdx = firstFrameOut;
+        end
+
+        if lastFrameOut ~=  lastFrame
+            obj.lastFrameIdx = lastFrameOut;
+        end
         fprintf("    - Video Cropping took: %ds\n", round(toc));
     end
 

@@ -312,26 +312,30 @@ fprintf("    4. Resistivity and waveform analysis took %ds\n", round(toc()));
 tic;
 
 % background in vessels
-LocalBackground_in_vessels = mean(f_bkg, 3);
-createHeatmap(LocalBackground_in_vessels, 'background in vessels', ...
-    'background RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_f_bkg_map.png", ToolBox.folder_name)));
+if params.json.save_figures
 
-% Delta f in vessels
-in_vessels = mean(df, 3) .* maskVesselSection;
-createHeatmap(in_vessels, 'Delta f in vessels', ...
-    'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_df_map_vessel.png", ToolBox.folder_name)));
+    LocalBackground_in_vessels = mean(f_bkg, 3);
+    createHeatmap(LocalBackground_in_vessels, 'background in vessels', ...
+        'background RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_f_bkg_map.png", ToolBox.folder_name)));
 
-% Delta f
-in_vessels = mean(df, 3) .* maskVesselSection + (mean(f_video, 3) - mean(f_video, 'all')) .* ~maskVesselSection;
-createHeatmap(in_vessels, 'Delta f in vessels', ...
-    'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_df_map.png", ToolBox.folder_name)));
+    % Delta f in vessels
+    in_vessels = mean(df, 3) .* maskVesselSection;
+    createHeatmap(in_vessels, 'Delta f in vessels', ...
+        'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_df_map_vessel.png", ToolBox.folder_name)));
 
-velocityIm(mean(df, 3) .* maskVesselSection, maskArtery | maskVein, turbo, 'df_vessel', colorbarOn = true, LabelName = 'kHz');
+    % Delta f
+    in_vessels = mean(df, 3) .* maskVesselSection + (mean(f_video, 3) - mean(f_video, 'all')) .* ~maskVesselSection;
+    createHeatmap(in_vessels, 'Delta f in vessels', ...
+        'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_df_map.png", ToolBox.folder_name)));
 
-% Raw RMS frequency map
-raw_map = squeeze(mean(f_video, 3));
-createHeatmap(raw_map, 'RMS frequency map RAW', ...
-    'RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_f_map.png", ToolBox.folder_name)));
+    velocityIm(mean(df, 3) .* maskVesselSection, maskArtery | maskVein, turbo, 'df_vessel', colorbarOn = true, LabelName = 'kHz');
+
+    % Raw RMS frequency map
+    raw_map = squeeze(mean(f_video, 3));
+    createHeatmap(raw_map, 'RMS frequency map RAW', ...
+        'RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_f_map.png", ToolBox.folder_name)));
+
+end
 
 % Export videos if enabled
 if exportVideos

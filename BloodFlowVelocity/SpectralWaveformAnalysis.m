@@ -4,6 +4,7 @@ function [fft_c, fundamental, valid_harmonics, f] = SpectralWaveformAnalysis(sig
 % Zero-pad the signal for better frequency resolution
 
 ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000); % Sampling frequency in Hz
 duration = numFrames * ToolBox.stride / ToolBox.fs / 1000;
@@ -60,14 +61,6 @@ numFreq = length(s_locs);
 s_peaks = s_peaks(idx);
 s_idx = s_idx(idx);
 
-% Create figure for spectral analysis
-hFig = figure('Visible', 'off', 'Color', 'w');
-
-% Main plot with improved styling
-plot(f, fft_mag, 'k', 'LineWidth', 2);
-hold on;
-grid on;
-
 % Calculate and plot harmonic frequencies if fundamental is detected
 if numFreq >= 2
     valid_harmonics = []; % Initialize valid harmonics array
@@ -112,42 +105,6 @@ end
 % Save to ToolBox
 ToolBox.Cache.harmonics = valid_harmonics;
 
-% Highlight detected peaks with annotations
-if ~isempty(s_peaks)
-    scatter(s_locs, s_peaks, 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
-
-end
-
-% Configure axes
-
-axis_height = 1.3 * s_peaks(1); % Set y-axis limit slightly above the highest peak
-axis tight;
-axT = axis;
-axis([axT(1), 10, 0, axis_height]);
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 2, 'FontSize', 12);
-
-% Annotate the top peaks
-for k = 1:numFreq
-    % Plot fundamental location
-    xline(s_locs(k), '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1, ...
-        'Label', sprintf('%.0f×', s_locs(k) / fundamental), ...
-        'LabelOrientation', 'horizontal', ...
-        'LabelVerticalAlignment', 'bottom');
-
-    text(s_locs(k), s_peaks(k) + 0.1 * axis_height, ...
-        sprintf('%.2f', s_locs(k)), ...
-        'HorizontalAlignment', 'center', ...
-        'VerticalAlignment', 'bottom', ...
-        'FontSize', 10, ...
-        'BackgroundColor', 'w', ...
-        'EdgeColor', 'none');
-end
-
-% Labels and title
-xlabel('Frequency (Hz)', 'FontSize', 14);
-ylabel('Normalized Magnitude', 'FontSize', 14);
-
 % Add heart rate information if fundamental is in typical range
 if ~isempty(s_locs)
     freqs = round(s_locs / fundamental);
@@ -156,13 +113,6 @@ if ~isempty(s_locs)
     residus = s_locs - freq_estim;
     RMSE = sqrt(mean(residus .^ 2));
     hr_se = RMSE / sqrt(numFreq);
-
-    annotation('textbox', [0.5 0.6 0.2 0.1], ...
-        'String', sprintf('HR : %.1f BPM ± %.1f', 60 * hr, 60 * hr_se), ... % Convert Hz to BPM
-        'FitBoxToText', 'on', ...
-        'BackgroundColor', 'w', ...
-        'EdgeColor', 'none', ...
-        'FontSize', 12);
 
     ToolBox.Output.add('HeartBeat', 60 * hr, 'bpm', 60 * hr_se);
     ToolBox.Cache.HeartBeatFFT = hr; % Save heart rate to cache in Hz
@@ -173,34 +123,38 @@ else
     ToolBox.Cache.HeartBeatFFTSTE = NaN; % Save heart rate standard error to cache in Hz
 end
 
-% Save Results
-exportgraphics(hFig, fullfile(ToolBox.path_png, ...
-    sprintf("%s_%s_%s.png", ToolBox.folder_name, fig_name, name)), ...
-    'Resolution', 300);
+if params.json.save_figures
+    % --- MAGNITUDE SPECTRUM ANALYSIS ---
+    % Create figure for spectral analysis
+    hFig = figure('Visible', 'off', 'Color', 'w');
 
-% Create figure for spectral analysis
-hFig_angle = figure('Visible', 'off', 'Color', 'w');
+    % Main plot with improved styling
+    plot(f, fft_mag, 'k', 'LineWidth', 2);
+    hold on;
+    grid on;
 
-% Main plot with improved styling
-f = linspace(0, fs / 2, (N * numFrames) + 1);
-fft_angle = angle(fft_c);
-fft_angle = fft_angle(1:length(f)); % Take only positive frequencies
-ff_angle_movmean = movmean(fft_angle, 64);
+    % Highlight detected peaks with annotations
+    if ~isempty(s_peaks)
+        scatter(s_locs, s_peaks, 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
+    end
 
-plot(f, ff_angle_movmean, 'k', 'LineWidth', 2);
-hold on;
-grid on;
-
-% Save to ToolBox
-f = linspace(0, fs, 2 * (N * numFrames) + numFrames);
-
-% Highlight detected peaks with annotations
-if ~isempty(s_peaks)
-    scatter(s_locs, ff_angle_movmean(s_idx), 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
+    % Configure axes
+    axis_height = 1.3 * s_peaks(1); % Set y-axis limit slightly above the highest peak
+    axis tight;
+    axT = axis;
+    axis([axT(1), 10, 0, axis_height]);
+    pbaspect([1.618 1 1]);
+    set(gca, 'LineWidth', 2, 'FontSize', 12);
 
     % Annotate the top peaks
-    for k = 1:length(s_peaks)
-        text(s_locs(k), ff_angle_movmean(s_idx(k)) + 0.3, ...
+    for k = 1:numFreq
+        % Plot fundamental location
+        xline(s_locs(k), '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1, ...
+            'Label', sprintf('%.0f×', s_locs(k) / fundamental), ...
+            'LabelOrientation', 'horizontal', ...
+            'LabelVerticalAlignment', 'bottom');
+
+        text(s_locs(k), s_peaks(k) + 0.1 * axis_height, ...
             sprintf('%.2f', s_locs(k)), ...
             'HorizontalAlignment', 'center', ...
             'VerticalAlignment', 'bottom', ...
@@ -209,28 +163,86 @@ if ~isempty(s_peaks)
             'EdgeColor', 'none');
     end
 
+    % Labels and title
+    xlabel('Frequency (Hz)', 'FontSize', 14);
+    ylabel('Normalized Magnitude', 'FontSize', 14);
+
+    if ~isempty(s_locs)
+
+        annotation('textbox', [0.5 0.6 0.2 0.1], ...
+            'String', sprintf('HR : %.1f BPM ± %.1f', 60 * hr, 60 * hr_se), ... % Convert Hz to BPM
+            'FitBoxToText', 'on', ...
+            'BackgroundColor', 'w', ...
+            'EdgeColor', 'none', ...
+            'FontSize', 12);
+    end
+
+    % Save Results
+    exportgraphics(hFig, fullfile(ToolBox.path_png, ...
+        sprintf("%s_%s_%s.png", ToolBox.folder_name, fig_name, name)), ...
+        'Resolution', 300);
+
+    % Close the figure if not needed
+    if ~strcmpi(get(hFig, 'Visible'), 'on')
+        close(hFig);
+    end
+
+    % --- PHASE SPECTRUM ANALYSIS ---
+
+    % Main plot with improved styling
+    f = linspace(0, fs / 2, (N * numFrames) + 1);
+    fft_angle = angle(fft_c);
+    fft_angle = fft_angle(1:length(f)); % Take only positive frequencies
+    ff_angle_movmean = movmean(fft_angle, 64);
+
+    % Create figure for spectral analysis
+    hFig_angle = figure('Visible', 'off', 'Color', 'w');
+    plot(f, ff_angle_movmean, 'k', 'LineWidth', 2);
+    hold on;
+    grid on;
+
+    % Highlight detected peaks with annotations
+    if ~isempty(s_peaks)
+        scatter(s_locs, ff_angle_movmean(s_idx), 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
+
+        % Annotate the top peaks
+        for k = 1:length(s_peaks)
+            text(s_locs(k), ff_angle_movmean(s_idx(k)) + 0.3, ...
+                sprintf('%.2f', s_locs(k)), ...
+                'HorizontalAlignment', 'center', ...
+                'VerticalAlignment', 'bottom', ...
+                'FontSize', 10, ...
+                'BackgroundColor', 'w', ...
+                'EdgeColor', 'none');
+        end
+
+    end
+
+    % Configure axes
+    axis tight;
+    axT = axis;
+    axis padded;
+    axP = axis;
+    axis([axT(1), 10, axP(3) - 0.1 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
+
+    xlabel('Frequency (Hz)', 'FontSize', 14, 'FontWeight', 'bold');
+    ylabel('Phase (rad)', 'FontSize', 14, 'FontWeight', 'bold');
+    pbaspect([1.618 1 1]);
+    set(gca, 'LineWidth', 1.5, 'FontSize', 12);
+
+    % Save Results
+    exportgraphics(hFig_angle, fullfile(ToolBox.path_png, ...
+        sprintf("%s_%s_Phase_%s.png", ToolBox.folder_name, fig_name, name)), ...
+        'Resolution', 300);
+
+    % Close the figure if not needed
+    if ~strcmpi(get(hFig_angle, 'Visible'), 'on')
+        close(hFig_angle);
+    end
+
 end
 
-% Configure axes
-axis tight;
-axT = axis;
-axis padded;
-axP = axis;
-axis([axT(1), 10, axP(3) - 0.1 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
-
-xlabel('Frequency (Hz)', 'FontSize', 14, 'FontWeight', 'bold');
-ylabel('Phase (rad)', 'FontSize', 14, 'FontWeight', 'bold');
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 1.5, 'FontSize', 12);
-
-% Save Results
-exportgraphics(hFig_angle, fullfile(ToolBox.path_png, ...
-    sprintf("%s_%s_Phase_%s.png", ToolBox.folder_name, fig_name, name)), ...
-    'Resolution', 300);
-
-% Close the figure if not needed
-if ~strcmpi(get(hFig, 'Visible'), 'on')
-    close(hFig);
-end
+% Save to ToolBox
+f = linspace(0, fs, 2 * (N * numFrames) + numFrames);
 
 end

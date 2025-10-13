@@ -8,6 +8,7 @@ arguments
 end
 
 ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
 numInterp = 60;
 numFrames = length(signal);
 t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
@@ -76,145 +77,143 @@ else
     PR_se = 0;
 end
 
-% RI Graph
+% Save figures
+if params.json.save_figures
 
-figure('Visible', 'off');
-hold on;
+    % RI Graph
+    figure('Visible', 'off');
+    hold on;
 
-if ~isempty(signal_se)
-    Color_std = [0.7, 0.7, 0.7];
-    curve1 = signal + signal_se;
-    curve2 = signal - signal_se;
-    tmp_t = [t, fliplr(t)];
-    inBetween = [curve1, fliplr(curve2)];
-    fill(tmp_t, inBetween, Color_std);
-    plot(t, curve1, "Color", Color_std, 'LineWidth', 2);
-    plot(t, curve2, "Color", Color_std, 'LineWidth', 2);
-end
+    if ~isempty(signal_se)
+        Color_std = [0.7, 0.7, 0.7];
+        curve1 = signal + signal_se;
+        curve2 = signal - signal_se;
+        tmp_t = [t, fliplr(t)];
+        inBetween = [curve1, fliplr(curve2)];
+        fill(tmp_t, inBetween, Color_std);
+        plot(t, curve1, "Color", Color_std, 'LineWidth', 2);
+        plot(t, curve2, "Color", Color_std, 'LineWidth', 2);
+    end
 
-% Plot the velocity signal
-plot(t, signal, '-k', 'LineWidth', 2);
+    % Plot the velocity signal
+    plot(t, signal, '-k', 'LineWidth', 2);
 
-% Add reference lines
-yline(vMax, '--k', sprintf('%.1f %s', vMax, unit), 'LineWidth', 2, ...
-    'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'top', 'FontWeight', 'bold');
-yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, ...
-    'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'bottom', 'FontWeight', 'bold');
+    % Add reference lines
+    yline(vMax, '--k', sprintf('%.1f %s', vMax, unit), 'LineWidth', 2, ...
+        'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'top', 'FontWeight', 'bold');
+    yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, ...
+        'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'bottom', 'FontWeight', 'bold');
 
-axis padded
-axP = axis;
-axis tight
-axT = axis;
-axis([axT(1), axT(2), - 2, axP(4) + 2])
+    axis padded
+    axP = axis;
+    axis tight
+    axT = axis;
+    axis([axT(1), axT(2), - 2, axP(4) + 2])
 
-box on
-set(gca, 'LineWidth', 2);
-set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
-ax = gca;
-ax.LineStyleOrderIndex = 1; % Reset if needed
-ax.SortMethod = 'depth'; % Try changing sorting method
-ax.Layer = 'top'; % This may help in some cases
+    box on
+    set(gca, 'LineWidth', 2);
+    set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+    ax = gca;
+    ax.LineStyleOrderIndex = 1; % Reset if needed
+    ax.SortMethod = 'depth'; % Try changing sorting method
+    ax.Layer = 'top'; % This may help in some cases
 
-% Add a text label with white background at the right edge of the plot
-ax = gca;
-xPos = ax.XLim(2) - ax.XLim(1); % Right edge of the plot
-yLen = ax.YLim(2) - ax.YLim(1);
+    % Add a text label with white background at the right edge of the plot
+    ax = gca;
+    xPos = ax.XLim(2) - ax.XLim(1); % Right edge of the plot
+    yLen = ax.YLim(2) - ax.YLim(1);
 
-if ~isempty(signal_se)
-    text(0.35 * xPos, 0.85 * yLen, sprintf("RI = %0.2f ± %0.2f", RI, RI_se), ...
-        'BackgroundColor', 'w', ...
-        'HorizontalAlignment', 'left', ...
-        'VerticalAlignment', 'middle', ...
-        'FontWeight', 'bold', ...
-        'FontSize', 12, ...
-        'Margin', 1); % Small padding
-else
-    text(0.4 * xPos, 0.85 * yLen, sprintf("RI = %0.2f", RI), ...
-        'BackgroundColor', 'w', ...
-        'HorizontalAlignment', 'left', ...
-        'VerticalAlignment', 'middle', ...
-        'FontWeight', 'bold', ...
-        'FontSize', 12, ...
-        'Margin', 1); % Small padding
-end
+    if ~isempty(signal_se)
+        text(0.35 * xPos, 0.85 * yLen, sprintf("RI = %0.2f ± %0.2f", RI, RI_se), ...
+            'BackgroundColor', 'w', ...
+            'HorizontalAlignment', 'left', ...
+            'VerticalAlignment', 'middle', ...
+            'FontWeight', 'bold', ...
+            'FontSize', 12, ...
+            'Margin', 1); % Small padding
+    else
+        text(0.4 * xPos, 0.85 * yLen, sprintf("RI = %0.2f", RI), ...
+            'BackgroundColor', 'w', ...
+            'HorizontalAlignment', 'left', ...
+            'VerticalAlignment', 'middle', ...
+            'FontWeight', 'bold', ...
+            'FontSize', 12, ...
+            'Margin', 1); % Small padding
+    end
 
-xlabel('Time (s)');
-ylabel(y_label);
+    xlabel('Time (s)');
+    ylabel(y_label);
 
-% Export
-exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
-exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_RI_%s.eps", ToolBox.folder_name, name)));
-close;
+    % Export
+    exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
+    exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_RI_%s.eps", ToolBox.folder_name, name)));
+    close;
 
-% PI Graph
+    % PI Graph
 
-figure('Visible', 'off');
-hold on;
+    figure('Visible', 'off');
+    hold on;
 
-if ~isempty(signal_se)
-    Color_std = [0.7, 0.7, 0.7];
-    curve1 = signal + signal_se;
-    curve2 = signal - signal_se;
-    tmp_t = [t, fliplr(t)];
-    inBetween = [curve1, fliplr(curve2)];
-    fill(tmp_t, inBetween, Color_std);
-    plot(t, curve1, "Color", Color_std, 'LineWidth', 2);
-    plot(t, curve2, "Color", Color_std, 'LineWidth', 2);
-end
+    if ~isempty(signal_se)
+        Color_std = [0.7, 0.7, 0.7];
+        curve1 = signal + signal_se;
+        curve2 = signal - signal_se;
+        tmp_t = [t, fliplr(t)];
+        inBetween = [curve1, fliplr(curve2)];
+        fill(tmp_t, inBetween, Color_std);
+        plot(t, curve1, "Color", Color_std, 'LineWidth', 2);
+        plot(t, curve2, "Color", Color_std, 'LineWidth', 2);
+    end
 
-% Plot the velocity signal
-plot(t, signal, '-k', 'LineWidth', 2);
+    % Plot the velocity signal
+    plot(t, signal, '-k', 'LineWidth', 2);
 
-% Add reference lines
-yline(vMax, '--k', sprintf('%.1f %s', vMax, unit), 'LineWidth', 2, 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'top', 'FontWeight', 'bold');
-yline(v_mean, '--k', sprintf('%.1f %s', v_mean, unit), 'LineWidth', 2, 'Color', [0.5 0.5 0.5], 'FontWeight', 'bold');
-yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'bottom', 'FontWeight', 'bold');
+    % Add reference lines
+    yline(vMax, '--k', sprintf('%.1f %s', vMax, unit), 'LineWidth', 2, 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'top', 'FontWeight', 'bold');
+    yline(v_mean, '--k', sprintf('%.1f %s', v_mean, unit), 'LineWidth', 2, 'Color', [0.5 0.5 0.5], 'FontWeight', 'bold');
+    yline(vMin, '--k', sprintf('%.1f %s', vMin, unit), 'LineWidth', 2, 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment', 'bottom', 'FontWeight', 'bold');
 
-axis padded
-axP = axis;
-axis tight
-axT = axis;
-axis([axT(1), axT(2), - 2, axP(4) + 2])
+    axis padded
+    axP = axis;
+    axis tight
+    axT = axis;
+    axis([axT(1), axT(2), - 2, axP(4) + 2])
 
-box on
-set(gca, 'Linewidth', 2)
-set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+    box on
+    set(gca, 'Linewidth', 2)
+    set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
 
-% Add a text label with white background at the right edge of the plot
-ax = gca;
-xPos = ax.XLim(2) - ax.XLim(1); % Right edge of the plot
-yLen = ax.YLim(2) - ax.YLim(1);
+    % Add a text label with white background at the right edge of the plot
+    ax = gca;
+    xPos = ax.XLim(2) - ax.XLim(1); % Right edge of the plot
+    yLen = ax.YLim(2) - ax.YLim(1);
 
-if ~isempty(signal_se)
-    text(0.35 * xPos, 0.85 * yLen, sprintf("PI = %.2f ± %.2f", PI, PI_se), ...
-        'BackgroundColor', 'w', ...
-        'HorizontalAlignment', 'left', ...
-        'VerticalAlignment', 'middle', ...
-        'FontWeight', 'bold', ...
-        'FontSize', 12, ...
-        'Margin', 1); % Small padding
-else
-    text(0.4 * xPos, 0.85 * yLen, sprintf("PI = %0.2f", PI), ...
-        'BackgroundColor', 'w', ...
-        'HorizontalAlignment', 'left', ...
-        'VerticalAlignment', 'middle', ...
-        'FontWeight', 'bold', ...
-        'FontSize', 12, ...
-        'Margin', 1); % Small padding
-end
+    if ~isempty(signal_se)
+        text(0.35 * xPos, 0.85 * yLen, sprintf("PI = %.2f ± %.2f", PI, PI_se), ...
+            'BackgroundColor', 'w', ...
+            'HorizontalAlignment', 'left', ...
+            'VerticalAlignment', 'middle', ...
+            'FontWeight', 'bold', ...
+            'FontSize', 12, ...
+            'Margin', 1); % Small padding
+    else
+        text(0.4 * xPos, 0.85 * yLen, sprintf("PI = %0.2f", PI), ...
+            'BackgroundColor', 'w', ...
+            'HorizontalAlignment', 'left', ...
+            'VerticalAlignment', 'middle', ...
+            'FontWeight', 'bold', ...
+            'FontSize', 12, ...
+            'Margin', 1); % Small padding
+    end
 
-xlabel('Time (s)');
-ylabel(y_label);
+    xlabel('Time (s)');
+    ylabel(y_label);
 
-% Export
-exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
-exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
-close;
+    % Export
+    exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
+    exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
+    close;
 
-if contains(name, 'artery')
-    VesselName = 'arterial';
-else
-    VesselName = 'venous';
 end
 
 % Save json

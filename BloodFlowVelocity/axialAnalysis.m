@@ -137,14 +137,18 @@ cardiac_frequency = ToolBox.Cache.HeartBeatFFT; % in Hz
 [~, cardiac_idx] = min(abs(f - cardiac_frequency));
 
 img = log1p(abs(ft_v(:, :, cardiac_idx)));
-fi = figure('Visible', 'off');
-imshow(rescale(img));
-ax = gca;
 
-if isvalid(ax)
-    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_axial_cardiac_component.png", ToolBox.folder_name)), 'Resolution', 300);
+if params.json.save_figures
+    % Save cardiac component image
+    fi = figure('Visible', 'off');
+    imshow(rescale(img));
+    ax = gca;
+
+    if isvalid(ax)
+        exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_axial_cardiac_component.png", ToolBox.folder_name)), 'Resolution', 300);
+    end
+
+    close(fi);
 end
-
-close(fi);
 
 end

@@ -54,41 +54,44 @@ cArtery = [255 22 18] / 255;
 cVein = [18 23 255] / 255;
 
 %% 3) Display and save raw heatmaps
-t3 = tic;
+if params.json.save_figures
+    t3 = tic;
 
-% Display and save AVG frequency heatmap
-figure("Visible", "off", "Color", "w");
-imagesc(f_AVG_mean);
-colormap gray;
-title('AVG Frequency Map RAW');
-c = colorbar('southoutside');
-c.Label.String = 'AVG Doppler Frequency (kHz)';
-c.Label.FontSize = 12;
-axis off;
-axis image;
-range = clim;
-imwrite(rescale(f_AVG_mean), fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG.png')), 'png');
+    % Display and save AVG frequency heatmap
+    figure("Visible", "off", "Color", "w");
+    imagesc(f_AVG_mean);
+    colormap gray;
+    title('AVG Frequency Map RAW');
+    c = colorbar('southoutside');
+    c.Label.String = 'AVG Doppler Frequency (kHz)';
+    c.Label.FontSize = 12;
+    axis off;
+    axis image;
+    range = clim;
+    imwrite(rescale(f_AVG_mean), fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG.png')), 'png');
 
-clear f_AVG_mean;
+    clear f_AVG_mean;
 
-% Create and save colorbar for AVG image
-colorbarF = figure('Visible', 'off', 'Color', 'w');
-fontsize(colorbarF, 15);
-set(colorbarF, 'Units', 'normalized');
-set(colorbarF, 'LineWidth', 3);
-colormap gray;
-f_AVG_colorbar = colorbar('north');
-clim(range);
-f_AVG_colorbar.Position = [0.10 0.3 0.81 0.35];
-colorbarF.Position(4) = 0.1000;
-colorTitleHandle = get(f_AVG_colorbar, 'Title');
-titleString = 'AVG Doppler Frequency (kHz)';
-set(colorTitleHandle, 'String', titleString);
+    % Create and save colorbar for AVG image
+    colorbarF = figure('Visible', 'off', 'Color', 'w');
+    fontsize(colorbarF, 15);
+    set(colorbarF, 'Units', 'normalized');
+    set(colorbarF, 'LineWidth', 3);
+    colormap gray;
+    f_AVG_colorbar = colorbar('north');
+    clim(range);
+    f_AVG_colorbar.Position = [0.10 0.3 0.81 0.35];
+    colorbarF.Position(4) = 0.1000;
+    colorTitleHandle = get(f_AVG_colorbar, 'Title');
+    titleString = 'AVG Doppler Frequency (kHz)';
+    set(colorTitleHandle, 'String', titleString);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.png')));
-exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.eps')));
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.png')));
+    exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.eps')));
 
-fprintf("    3. Raw heatmaps generation took %ds\n", round(toc(t3)));
+    fprintf("    3. Raw heatmaps generation took %ds\n", round(toc(t3)));
+
+end
 
 %% 4) Calculate raw signals of arteries, background, and veins
 tic;

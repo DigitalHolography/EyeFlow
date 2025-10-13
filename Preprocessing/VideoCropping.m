@@ -1,4 +1,4 @@
-function VideoCropping(obj, firstFrame, lastFrame)
+function [firstFrame, lastFrame] = VideoCropping(obj, firstFrame, lastFrame)
 %Crop a video (matrix dim 3)
 
 [~, ~, numFrames] = size(obj.M0_ff);

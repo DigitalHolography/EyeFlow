@@ -1,6 +1,7 @@
 function [tau_RC, R_rel, C_rel] = arterial_venous_delay(v_artery, v_vein)
 
 ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
 
 v_artery = double(v_artery);
 v_vein = double(v_vein);
@@ -19,44 +20,48 @@ tau = fit_tau(t, v_artery_n, v_vein_n, 50, amin);
 
 % ODE definition: dvvein/dt = (v_artery(t) - v_vein) / tau
 vvein = vein_solution_conv(t, v_artery_n, 40, 0);
-
 ti = linspace(0, 1 / (ToolBox.Cache.HeartBeatFFT), numInterp);
 
-% Create figure
-hFig = figure('Visible', 'off', 'Color', 'w');
-plot(ti, v_artery_n, 'r-', 'Linewidth', 2), hold on
-plot(ti, circshift(vvein, amin), 'b--', 'Linewidth', 2)
-plot(ti, v_vein_n * max(vvein), 'b-', 'Linewidth', 2)
-axis tight;
+% Relative parameters
+R_rel = tau / numInterp;
+C_rel = numInterp / tau;
 
-xlabel('Time (s)', 'FontSize', 14, 'FontWeight', 'bold');
-ylabel('Arterio-venous decay fit', 'FontSize', 14, 'FontWeight', 'bold');
-ylabel('Arterio-venous decay fit', 'FontSize', 14, 'FontWeight', 'bold');
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 1.5, 'FontSize', 12);
-
-% Compute tau_RC in ms
+% Time delay at max cross-correlation
+tau_delay_ms = amin / numInterp * 1000 * (1 / (ToolBox.Cache.HeartBeatFFT)); % in ms
 tau_RC = tau / numInterp * (1 / (ToolBox.Cache.HeartBeatFFT)); % in seconds
 tau_ms = tau_RC * 1000; % convert to ms
 
-% Add legend with tau value
-legend({'Artery (normalized)', ...
-            sprintf('Vein shifted (%.2f ms)', vein_shift * 1000), ...
-            sprintf('Vein model fit (\\tau_{RC} = %.2f ms)', tau_ms)});
+if params.json.save_figures
+    % Create figure
+    hFig = figure('Visible', 'off', 'Color', 'w');
+    plot(ti, v_artery_n, 'r-', 'Linewidth', 2), hold on
+    plot(ti, circshift(vvein, amin), 'b--', 'Linewidth', 2)
+    plot(ti, v_vein_n * max(vvein), 'b-', 'Linewidth', 2)
+    axis tight;
 
-R_rel = tau / numInterp;
-C_rel = numInterp / tau;
-tau_delay_ms = amin / numInterp * 1000 * (1 / (ToolBox.Cache.HeartBeatFFT));
-% Add legend with tau value
-legend({'Artery (normalized)', ...
-            sprintf('Vein model fit (\\tau_{RC} = %.2f ms)', tau_ms), ...
-            sprintf('Vein shifted (%.2f ms)', tau_delay_ms)}, ...
-    'Location', 'best');
+    xlabel('Time (s)', 'FontSize', 14, 'FontWeight', 'bold');
+    ylabel('Arterio-venous decay fit', 'FontSize', 14, 'FontWeight', 'bold');
+    ylabel('Arterio-venous decay fit', 'FontSize', 14, 'FontWeight', 'bold');
+    pbaspect([1.618 1 1]);
+    set(gca, 'LineWidth', 1.5, 'FontSize', 12);
 
-% Save Results
-exportgraphics(hFig, fullfile(ToolBox.path_png, ...
-    sprintf("%s_ArterialVenous_Delay.png", ToolBox.folder_name)), ...
-    'Resolution', 300);
+    % Add legend with tau value
+    legend({'Artery (normalized)', ...
+                sprintf('Vein shifted (%.2f ms)', vein_shift * 1000), ...
+                sprintf('Vein model fit (\\tau_{RC} = %.2f ms)', tau_ms)});
+
+    % Add legend with tau value
+    legend({'Artery (normalized)', ...
+                sprintf('Vein model fit (\\tau_{RC} = %.2f ms)', tau_ms), ...
+                sprintf('Vein shifted (%.2f ms)', tau_delay_ms)}, ...
+        'Location', 'best');
+
+    % Save Results
+    exportgraphics(hFig, fullfile(ToolBox.path_png, ...
+        sprintf("%s_ArterialVenous_Delay.png", ToolBox.folder_name)), ...
+        'Resolution', 300);
+
+end
 
 end
 

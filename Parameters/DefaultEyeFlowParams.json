@@ -30,6 +30,7 @@
   },
   "VeinsAnalysis": 1,
   "ExportVideos": 1,
+  "save_figures": 1,
   "MinimumGifPeriod": 0.04,
   "NumberOfWorkers": 0,
   "Mask": {

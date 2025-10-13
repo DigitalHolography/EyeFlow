@@ -39,8 +39,11 @@ parameters.Average_Venous_Volume_Rate = outputs.VeinFlowRateMean;
 % Heart Rate and Blood Pressure
 parameters.heart_beat = outputs.HeartBeat;
 
-parameters.arterial_systolic_fraction = outputs.ArterialSystolicFraction;
-parameters.arterial_diastolic_fraction = outputs.ArterialDiastolicFraction;
+if isfield(outputs, 'ArterialSystolicFraction')
+    parameters.arterial_systolic_fraction = outputs.ArterialSystolicFraction;
+    parameters.arterial_diastolic_fraction = outputs.ArterialDiastolicFraction;
+end
+
 % parameters.time_2_systolic_peak = outputs.Time2SystolicPeak;
 parameters.SystoleDuration = outputs.SystoleDuration;
 parameters.DiastoleDuration = outputs.DiastoleDuration;

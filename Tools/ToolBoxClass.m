@@ -25,7 +25,7 @@ properties
     fs double
     f1 double
     f2 double
-    record_time_stamps_us
+    record_time_stamps_us % structure with first and last fields
 
     % Results
     % Ref % Ref handle to the Execution Class to have access to its properties easily
@@ -56,7 +56,6 @@ methods
         obj.copyInputParameters();
 
         obj.setGlobalToolBox();
-
     end
 
     function mainFolder = extractFolderName(~, path)
@@ -145,6 +144,7 @@ methods
 
     function loadParameters(obj, path)
         % Load or fall back to default parameters from cache or config files
+        
 
         % Try loading parameters from existing .mat or .json files
         if ~isempty(dir(fullfile(path, ['*', 'RenderingParameters', '*']))) % since HD 2.0
