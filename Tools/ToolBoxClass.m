@@ -25,7 +25,7 @@ properties
     fs double
     f1 double
     f2 double
-    record_time_stamps_us double
+    record_time_stamps_us
 
     % Results
     % Ref % Ref handle to the Execution Class to have access to its properties easily
