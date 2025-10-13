@@ -11,7 +11,7 @@ v_vein_n = rescale(v_vein);
 numInterp = length(v_artery);
 
 [~, amin] = min(v_vein); % possibly take max(v_artery) instead if not relyable
-vein_shift = amin / numInterp * (1 / (ToolBox.Output.HeartBeat.value / 60)); % in seconds
+vein_shift = amin / numInterp * (1 / (ToolBox.Cache.HeartBeatFFT)); % in seconds
 
 t = (1:numInterp);
 
@@ -20,7 +20,7 @@ tau = fit_tau(t, v_artery_n, v_vein_n, 50, amin);
 % ODE definition: dvvein/dt = (v_artery(t) - v_vein) / tau
 vvein = vein_solution_conv(t, v_artery_n, 40, 0);
 
-ti = linspace(0, 1 / (ToolBox.Output.HeartBeat.value / 60), numInterp);
+ti = linspace(0, 1 / (ToolBox.Cache.HeartBeatFFT), numInterp);
 
 % Create figure
 hFig = figure('Visible', 'off', 'Color', 'w');
@@ -36,7 +36,7 @@ pbaspect([1.618 1 1]);
 set(gca, 'LineWidth', 1.5, 'FontSize', 12);
 
 % Compute tau_RC in ms
-tau_RC = tau / numInterp * (1 / (ToolBox.Output.HeartBeat.value / 60)); % in seconds
+tau_RC = tau / numInterp * (1 / (ToolBox.Cache.HeartBeatFFT)); % in seconds
 tau_ms = tau_RC * 1000; % convert to ms
 
 % Add legend with tau value
@@ -46,7 +46,7 @@ legend({'Artery (normalized)', ...
 
 R_rel = tau / numInterp;
 C_rel = numInterp / tau;
-tau_delay_ms = amin / numInterp * 1000 * (1 / (ToolBox.Output.HeartBeat.value / 60));
+tau_delay_ms = amin / numInterp * 1000 * (1 / (ToolBox.Cache.HeartBeatFFT));
 % Add legend with tau value
 legend({'Artery (normalized)', ...
             sprintf('Vein model fit (\\tau_{RC} = %.2f ms)', tau_ms), ...

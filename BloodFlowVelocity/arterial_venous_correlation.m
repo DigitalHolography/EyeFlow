@@ -129,7 +129,7 @@ set(gca, 'LineWidth', 2);
 exportgraphics(gcf, fullfile(ToolBox.path_png, ...
     sprintf("%s_lags.png", ToolBox.folder_name)))
 
-ToolBox.Output.add('PhaseDelay', time_lag, 's', NaN);
+ToolBox.Output.add('ArteryVeinPhaseDelay', time_lag, 's', NaN);
 
 close all
 

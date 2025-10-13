@@ -259,14 +259,14 @@ if numel(sysIdxList) >= 2 && numel(sysMaxList) >= 2 && numel(sysMinList) >= 2
     % Store output
     ToolBox.Output.add('HeartBeat', HeartBeat, 'bpm', HeartBeatSTE);
     ToolBox.Output.add('SystoleIndices', sysIdxList, '');
-    ToolBox.Output.add('MaximumSystoleIndices', sysMaxList, '');
-    ToolBox.Output.add('MinimumDiastoleIndices', sysMinList, '');
-    ToolBox.Output.add('TimeToMaxIncreaseSystolic', 0, 's', 0);
-    ToolBox.Output.add('TimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE);
-    ToolBox.Output.add('TimeToMinimumDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE);
-    ToolBox.Output.add('TimeToPeakSystoleFromMinimumDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE);
-    ToolBox.Output.add('TimePeakToDescent', TimePeakToDescent, 's');
-    ToolBox.Output.add('TimeToDescent', TimePeakToDescent + TimeToPeakSystole, 's');
+    ToolBox.Output.add('ArterySystoleMaxIndices', sysMaxList, '');
+    ToolBox.Output.add('ArteryDiastoleMinIndices', sysMinList, '');
+    ToolBox.Output.add('ArteryTimeToMaxIncrease', 0, 's', 0);
+    ToolBox.Output.add('ArteryTimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE);
+    ToolBox.Output.add('ArteryTimeToMinDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE);
+    ToolBox.Output.add('ArteryTimeToPeakSystoleFromDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE);
+    ToolBox.Output.add('ArteryTimeToDescent', TimePeakToDescent, 's');
+    ToolBox.Output.add('ArteryTimePeakToDescent', TimePeakToDescent + TimeToPeakSystole, 's');
 
     % Log detailed results
     logDetailedResults(ToolBox, HeartBeat, sysIdxList, sysMaxList, sysMinList, ...
