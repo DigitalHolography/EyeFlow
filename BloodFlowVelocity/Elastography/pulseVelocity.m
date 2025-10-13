@@ -2,8 +2,7 @@ function pulseVelocity(M, ~, maskVessel, name)
 ToolBox = getGlobalToolBox;
 outputDir = fullfile(ToolBox.path_png, 'flexion');
 
-
-[L, n] = labelVesselBranches(maskVessel, ones(size(maskVessel)), ToolBox.Cache.xy_barycenter, refine=false);
+[L, n] = labelVesselBranches(maskVessel, ones(size(maskVessel)), ToolBox.Cache.xy_barycenter, refine = false);
 
 figure('Visible', 'off');
 imagesc(L)
@@ -18,15 +17,15 @@ scores = NaN(1, n);
 
 for i = 1:n
     % displacementAnalysis(D, maskLongArtery);
-    [PWV(i),dPWV(i),scores(i)] = pulseWaveVelocity(M, L == i, i, name);
+    [PWV(i), dPWV(i), scores(i)] = pulseWaveVelocity(M, L == i, i, name);
 end
 
-[~,idx] = max(scores .* ~isnan(PWV));
+[~, idx] = max(scores .* ~isnan(PWV));
 
-if strcmp(name,'artery')
-    ToolBox.Output.add("PulseWaveVelocityArtery",PWV(idx),'mm/s',dPWV(i));
-elseif strcmp(name,'vein')
-    ToolBox.Output.add("PulseWaveVelocityVein",PWV(idx),'mm/s',dPWV(i));
+if strcmp(name, 'artery')
+    ToolBox.Output.add("ArteryPulseWaveVelocity", PWV(idx), 'mm/s', dPWV(i));
+elseif strcmp(name, 'vein')
+    ToolBox.Output.add("VeinPulseWaveVelocity", PWV(idx), 'mm/s', dPWV(i));
 end
 
 close all;

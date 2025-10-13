@@ -118,7 +118,7 @@ exportgraphics(hFig, fullfile(ToolBox.path_png, ...
 % Export to JSON
 if ~isBVR
 
-    ToolBox.Output.add('TimetoPeakFromMinVein', T_peak - T_Min, 's');
+    ToolBox.Output.add('VeinTimeToPeakFromMin', T_peak - T_Min, 's');
 
 end
 

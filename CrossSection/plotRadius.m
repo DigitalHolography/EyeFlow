@@ -165,31 +165,31 @@ if isFlowRate
     fclose(fileID);
 
     % Write results to json
-    if contains(vessel_name, 'vein')
-        ToolBox.Output.add('VenousMeanVolumeRate', mean_U, unit, mean_U_SE);
-        ToolBox.Output.add('VenousMaximumVolumeRate', max_U, unit, max_U_SE);
-        ToolBox.Output.add('VenousMinimumVolumeRate', min_U, unit, min_U_SE);
-    elseif contains(vessel_name, 'artery')
-        ToolBox.Output.add('ArterialMeanVolumeRate', mean_U, unit, mean_U_SE);
-        ToolBox.Output.add('ArterialMinimumVolumeRate', min_U, unit, min_U_SE);
-        ToolBox.Output.add('ArterialMaximumVolumeRate', max_U, unit, max_U_SE);
-    end
+    % if contains(vessel_name, 'vein')
+    %     ToolBox.Output.add('VenousMeanVolumeRate', mean_U, unit, mean_U_SE);
+    %     ToolBox.Output.add('VenousMaximumVolumeRate', max_U, unit, max_U_SE);
+    %     ToolBox.Output.add('VenousMinimumVolumeRate', min_U, unit, min_U_SE);
+    % elseif contains(vessel_name, 'artery')
+    %     ToolBox.Output.add('ArterialMeanVolumeRate', mean_U, unit, mean_U_SE);
+    %     ToolBox.Output.add('ArterialMinimumVolumeRate', min_U, unit, min_U_SE);
+    %     ToolBox.Output.add('ArterialMaximumVolumeRate', max_U, unit, max_U_SE);
+    % end
 
 else
-    % Write results to a text file
-    fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'EF_main_outputs', '.txt')), 'a');
-    fprintf(fileID, 'Velocity %s : %f %s \r\n', vessel_name, mean_U, unit);
-    fprintf(fileID, 'Velocity Standard Deviation %s : %f %s \r\n', vessel_name, mean_U_SE, unit);
-    fclose(fileID);
-    % Write results to json
-    if contains(vessel_name, 'vein')
-        ToolBox.Output.add('VenousMeanVelocity', mean_U, unit, mean_U_SE);
-        ToolBox.Output.add('VenousMaximumVelocity', max_U, unit, max_U_SE);
-        ToolBox.Output.add('VenousMinimumVelocity', min_U, unit, min_U_SE);
-    elseif contains(vessel_name, 'artery')
-        ToolBox.Output.add('ArterialMeanVelocity', mean_U, unit, mean_U_SE);
-        ToolBox.Output.add('ArterialMinimumVelocity', min_U, unit, min_U_SE);
-        ToolBox.Output.add('ArterialMaximumVelocity', max_U, unit, max_U_SE);
-    end
+    % % Write results to a text file
+    % fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'EF_main_outputs', '.txt')), 'a');
+    % fprintf(fileID, 'Velocity %s : %f %s \r\n', vessel_name, mean_U, unit);
+    % fprintf(fileID, 'Velocity Standard Deviation %s : %f %s \r\n', vessel_name, mean_U_SE, unit);
+    % fclose(fileID);
+    % % Write results to json
+    % if contains(vessel_name, 'vein')
+    %     ToolBox.Output.add('VenousMeanVelocity', mean_U, unit, mean_U_SE);
+    %     ToolBox.Output.add('VenousMaximumVelocity', max_U, unit, max_U_SE);
+    %     ToolBox.Output.add('VenousMinimumVelocity', min_U, unit, min_U_SE);
+    % elseif contains(vessel_name, 'artery')
+    %     ToolBox.Output.add('ArterialMeanVelocity', mean_U, unit, mean_U_SE);
+    %     ToolBox.Output.add('ArterialMinimumVelocity', min_U, unit, min_U_SE);
+    %     ToolBox.Output.add('ArterialMaximumVelocity', max_U, unit, max_U_SE);
+    % end
 
 end

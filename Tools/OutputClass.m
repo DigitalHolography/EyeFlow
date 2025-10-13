@@ -2,67 +2,66 @@ classdef OutputClass < handle
 % Class to hold the Output of the retinal flow analysis pipeline
 
 properties
-
+    % General
     NumFrames
     FrameRate
     InterFramePeriod
 
-    % Arterial Wave form analysis
+    % Arterial waveform analysis
     SystoleIndices
     HeartBeat
-    MaximumSystoleIndices
-    MinimumDiastoleIndices
-    TimeToMaxIncreaseSystolic
-    TimeToPeakSystole
-    TimeToMinimumDiastole
-    TimeToPeakSystoleFromMinimumDiastole
-    TimeToDescent
-    TimePeakToDescent
+    ArterySystoleMaxIndices
+    ArteryDiastoleMinIndices
+    ArteryTimeToMaxIncrease
+    ArteryTimeToPeakSystole
+    ArteryTimeToMinDiastole
+    ArteryTimeToPeakSystoleFromDiastole
+    ArteryTimeToDescent
+    ArteryTimePeakToDescent
 
-    % Vein Wave form analysis
-    TimetoPeakFromMinVein
+    % Venous waveform analysis
+    VeinTimeToPeakFromMin
 
-    % Phase Delay
-    PhaseDelay
+    % Velocity (mm/s)
+    ArteryVelocityMean
+    ArteryVelocityMax
+    ArteryVelocityMin
+    VeinVelocityMean
+    VeinVelocityMax
+    VeinVelocityMin
 
-    % Velocity
-    ArterialMeanVelocity
-    ArterialMaximumVelocity
-    ArterialMinimumVelocity
-    VenousMeanVelocity
-    VenousMaximumVelocity
-    VenousMinimumVelocity
+    % Flow Rate (µL/s or mm³/s)
+    ArteryFlowRateMean
+    ArteryFlowRateMax
+    ArteryFlowRateMin
+    VeinFlowRateMean
+    VeinFlowRateMax
+    VeinFlowRateMin
 
-    % Flow Rate
-    ArterialMeanVolumeRate
-    ArterialMaximumVolumeRate
-    ArterialMinimumVolumeRate
-    VenousMeanVolumeRate
-    VenousMaximumVolumeRate
-    VenousMinimumVolumeRate
+    % Resistivity and Pulsatility Indices (dimensionless)
+    ArteryResistivityIndexVelocity
+    ArteryPulsatilityIndexVelocity
+    ArteryMaxMinRatioVelocity
+    VeinResistivityIndexVelocity
+    VeinPulsatilityIndexVelocity
+    VeinMaxMinRatioVelocity
 
-    % Resistivity and Pulsatility Indices
-    ArterialResistivityIndexVelocity
-    ArterialPulsatilityIndexVelocity
-    ArterialMaxMinRatioVelocity
-    VenousResistivityIndexVelocity
-    VenousPulsatilityIndexVelocity
-    VenousMaxMinRatioVelocity
-    ArterialResistivityIndexVolumeRate
-    ArterialPulsatilityIndexVolumeRate
-    ArterialMaxMinRatioVolumeRate
-    VenousResistivityIndexVolumeRate
-    VenousPulsatilityIndexVolumeRate
-    VenousMaxMinRatioVolumeRate
+    ArteryResistivityIndexFlowRate
+    ArteryPulsatilityIndexFlowRate
+    ArteryMaxMinRatioFlowRate
+    VeinResistivityIndexFlowRate
+    VeinPulsatilityIndexFlowRate
+    VeinMaxMinRatioFlowRate
 
-    % Stroke Volume
-    ArterialCycleVolume
-    ArterialSystolicFraction
-    ArterialDiastolicFraction
-    VenousCycleVolume
-    VenousSystolicFraction
-    VenousDiastolicFraction
+    % Stroke Volume & Cycle fractions
+    ArteryCycleVolume
+    ArterySystolicFraction
+    ArteryDiastolicFraction
+    VeinCycleVolume
+    VeinSystolicFraction
+    VeinDiastolicFraction
 
+    % Temporal durations
     SystoleDuration
     DiastoleDuration
     SystolicUpstroke
@@ -70,28 +69,30 @@ properties
     DiastolicRunoff
 
     % Vessel Diameters
-    ArterialDiameterAverage
-    ArterialDiameterMedian
-    ArterialDiameterSpread
-    ArterialValidSections
-    TotalArterialSections
-    VenousDiameterAverage
-    VenousDiameterMedian
-    VenousDiameterSpread
-    VenousValidSections
-    TotalVenousSections
+    ArteryDiameterMean
+    ArteryDiameterMedian
+    ArteryDiameterSpread
+    ArteryValidSectionCount
+    ArteryTotalSectionCount
+    VeinDiameterMean
+    VeinDiameterMedian
+    VeinDiameterSpread
+    VeinValidSectionCount
+    VeinTotalSectionCount
 
-    % Extra
-    PulseWaveVelocityArtery
+    % Additional hemodynamic parameters
+    ArteryPulseWaveVelocity
+    VeinPulseWaveVelocity
     DicroticNotchVisibility
-    DynamicViscosityDuringSystole
-    DynamicViscosityDuringDiastole
-    DynamicViscosityAverage
+    ViscosityDuringSystole
+    ViscosityDuringDiastole
+    ViscosityMean
     PapillaRatio
     WindkesselDecayRC
     WindkesselPureDelay
-    PulseWaveVelocityVein
+    ArteryVeinPhaseDelay
 
+    % Time info
     UnixTimestampFirst
     UnixTimestampLast
 
@@ -112,15 +113,9 @@ methods
         end
 
         obj.Signals = SignalsClass();
-
     end
 
     function add(obj, name, value, unit, standard_error)
-        % Method to add a new output to the class
-        % name:
-        % value:
-        % standard_error:
-        % unit: unit as a string
 
         if nargin < 5
             standard_error = NaN;
@@ -131,7 +126,7 @@ methods
             obj.(name).standard_error = standard_error;
             obj.(name).unit = unit;
         else
-            error('Property %s does not exist in Output class', name);
+            error('Property %s does not exist in OutputClass', name);
         end
 
     end
@@ -142,13 +137,7 @@ methods
 
         for i = 1:length(props)
             data.(props{i}) = obj.(props{i}).value;
-        end
-
-        for i = 1:length(props)
             data.(strcat(props{i}, "_ste")) = obj.(props{i}).standard_error;
-        end
-
-        for i = 1:length(props)
             data.(strcat(props{i}, "_unit")) = obj.(props{i}).unit;
         end
 
@@ -164,34 +153,25 @@ methods
     end
 
     function writeHdf5(obj, path)
-
         props = setdiff(properties(obj), "Signals");
-
         [dir, name, ~] = fileparts(path);
         path = fullfile(dir, strcat(name, ".h5"));
 
-        if isfile(path) % clear before rewriting
+        if isfile(path)
             delete(path)
         end
 
         for i = 1:length(props)
             h5create(path, strcat("/", props{i}), size(obj.(props{i}).value));
             h5write(path, strcat("/", props{i}), obj.(props{i}).value);
-        end
-
-        for i = 1:length(props)
             h5create(path, strcat("/", props{i}, "_ste"), size(obj.(props{i}).standard_error));
             h5write(path, strcat("/", props{i}, "_ste"), obj.(props{i}).standard_error);
-        end
-
-        for i = 1:length(props)
             h5create(path, strcat("/", props{i}, "_unit"), [1 1], Datatype = "string");
             h5write(path, strcat("/", props{i}, "_unit"), string(obj.(props{i}).unit));
         end
 
         % Save Signals in a separate directory of the same h5 file
         obj.Signals.writeHdf5(path);
-
     end
 
 end

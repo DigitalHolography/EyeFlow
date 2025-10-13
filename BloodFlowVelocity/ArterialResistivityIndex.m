@@ -206,7 +206,6 @@ end
 xlabel('Time (s)');
 ylabel(y_label);
 
-
 % Export
 exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
 exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
@@ -223,25 +222,25 @@ end
 if contains(name, 'v_')
 
     if contains(name, 'vein')
-        ToolBox.Output.add('VenousMeanVelocity', v_mean, unit, std(interp_signal));
-        ToolBox.Output.add('VenousMaximumVelocity', vMax, unit, vMax_se);
-        ToolBox.Output.add('VenousMinimumVelocity', vMin, unit, vMin_se);
+        ToolBox.Output.add('VeinVelocityMean', v_mean, unit, std(interp_signal));
+        ToolBox.Output.add('VeinVelocityMax', vMax, unit, vMax_se);
+        ToolBox.Output.add('VeinVelocityMin', vMin, unit, vMin_se);
     elseif contains(name, 'artery')
-        ToolBox.Output.add('ArterialMeanVelocity', v_mean, unit, std(interp_signal));
-        ToolBox.Output.add('ArterialMinimumVelocity', vMin, unit, vMin_se);
-        ToolBox.Output.add('ArterialMaximumVelocity', vMax, unit, vMax_se);
+        ToolBox.Output.add('ArteryVelocityMean', v_mean, unit, std(interp_signal));
+        ToolBox.Output.add('ArteryVelocityMin', vMin, unit, vMin_se);
+        ToolBox.Output.add('ArteryVelocityMax', vMax, unit, vMax_se);
     end
 
 else
     % New
     if contains(name, 'vein')
-        ToolBox.Output.add('VenousMeanVolumeRate', v_mean, unit, std(interp_signal));
-        ToolBox.Output.add('VenousMaximumVolumeRate', vMax, unit, vMax_se);
-        ToolBox.Output.add('VenousMinimumVolumeRate', vMin, unit, vMin_se);
+        ToolBox.Output.add('VeinFlowRateMean', v_mean, unit, std(interp_signal));
+        ToolBox.Output.add('VeinFlowRateMax', vMax, unit, vMax_se);
+        ToolBox.Output.add('VeinFlowRateMin', vMin, unit, vMin_se);
     elseif contains(name, 'artery')
-        ToolBox.Output.add('ArterialMeanVolumeRate', v_mean, unit, std(interp_signal));
-        ToolBox.Output.add('ArterialMinimumVolumeRate', vMin, unit, vMin_se);
-        ToolBox.Output.add('ArterialMaximumVolumeRate', vMax, unit, vMax_se);
+        ToolBox.Output.add('ArteryFlowRateMean', v_mean, unit, std(interp_signal));
+        ToolBox.Output.add('ArteryFlowRateMax', vMax, unit, vMax_se);
+        ToolBox.Output.add('ArteryFlowRateMin', vMin, unit, vMin_se);
     end
 
 end
@@ -249,25 +248,25 @@ end
 if contains(name, 'v_')
 
     if contains(name, 'vein')
-        ToolBox.Output.add('VenousResistivityIndexVelocity', RI, '', RI_se);
-        ToolBox.Output.add('VenousPulsatilityIndexVelocity', PI, '', PI_se);
-        ToolBox.Output.add('VenousMaxMinRatioVelocity', PR, '', PR_se);
+        ToolBox.Output.add('VeinResistivityIndexVelocity', RI, '', RI_se);
+        ToolBox.Output.add('VeinPulsatilityIndexVelocity', PI, '', PI_se);
+        ToolBox.Output.add('VeinMaxMinRatioVelocity', PR, '', PR_se);
     elseif contains(name, 'artery')
-        ToolBox.Output.add('ArterialResistivityIndexVelocity', RI, '', RI_se);
-        ToolBox.Output.add('ArterialPulsatilityIndexVelocity', PI, '', PI_se);
-        ToolBox.Output.add('ArterialMaxMinRatioVelocity', PR, '', PR_se);
+        ToolBox.Output.add('ArteryResistivityIndexVelocity', RI, '', RI_se);
+        ToolBox.Output.add('ArteryPulsatilityIndexVelocity', PI, '', PI_se);
+        ToolBox.Output.add('ArteryMaxMinRatioVelocity', PR, '', PR_se);
     end
 
 else
 
     if contains(name, 'vein')
-        ToolBox.Output.add('VenousResistivityIndexVolumeRate', RI, '', RI_se);
-        ToolBox.Output.add('VenousPulsatilityIndexVolumeRate', PI, '', PI_se);
-        ToolBox.Output.add('VenousMaxMinRatioVolumeRate', PR, '', PR_se);
+        ToolBox.Output.add('VeinResistivityIndexFlowRate', RI, '', RI_se);
+        ToolBox.Output.add('VeinPulsatilityIndexFlowRate', PI, '', PI_se);
+        ToolBox.Output.add('VeinMaxMinRatioFlowRate', PR, '', PR_se);
     elseif contains(name, 'artery')
-        ToolBox.Output.add('ArterialResistivityIndexVolumeRate', RI, '', RI_se);
-        ToolBox.Output.add('ArterialPulsatilityIndexVolumeRate', PI, '', PI_se);
-        ToolBox.Output.add('ArterialMaxMinRatioVolumeRate', PR, '', PR_se);
+        ToolBox.Output.add('ArteryResistivityIndexFlowRate', RI, '', RI_se);
+        ToolBox.Output.add('ArteryPulsatilityIndexFlowRate', PI, '', PI_se);
+        ToolBox.Output.add('ArteryMaxMinRatioFlowRate', PR, '', PR_se);
     end
 
 end
