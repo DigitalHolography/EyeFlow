@@ -79,6 +79,16 @@ methods
         % Create or identify a unique folder for the current run
         idx = obj.getUniqueFolderIndex(foldername_EF, OverWrite);
 
+        % Special case: if version.txt contains "dev"
+        if isfile('version.txt')
+            vers = readlines('version.txt');
+
+            if any(contains(vers, 'dev'))
+                idx = 0; % Use index 0 for development versions
+            end
+
+        end
+
         % Set the folder name and paths for various data types
         obj.EF_name = foldername_EF;
         obj.folder_name = sprintf('%s_%d', foldername_EF, idx);
@@ -144,7 +154,6 @@ methods
 
     function loadParameters(obj, path)
         % Load or fall back to default parameters from cache or config files
-        
 
         % Try loading parameters from existing .mat or .json files
         if ~isempty(dir(fullfile(path, ['*', 'RenderingParameters', '*']))) % since HD 2.0
