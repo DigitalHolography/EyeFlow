@@ -9,6 +9,7 @@ function one_cycle_signal = ArterialWaveformAnalysis(signal, systolesIndexes, nu
 
 % Initial Setup
 ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 t = linspace(0, numFrames / fs, numFrames);
@@ -63,12 +64,14 @@ pulseTime = linspace(0, dt * avgLength, numInterp);
 % Create harmonics and combination signal
 A_h = fft_abs(harmonics_index);
 phi_h = fft_angle(harmonics_index);
+
 if ~isempty(valid_harmonics)
     composite_signal = A_h .* cos(2 * pi * valid_harmonics .* pulseTime' + phi_h);
     composite_signal = composite_signal / max(composite_signal(1, :), [], 'all') * max(signal, [], 'all'); % rescale at initial scale
-else 
+else
     composite_signal = zeros([1 numFrames]);
 end
+
 % Feature Detection
 
 % Adaptive peak detection parameters
@@ -121,113 +124,6 @@ else
     ToolBox.Output.add("DicroticNotchVisibility", 0, '');
 end
 
-% Visualization
-hFig = figure('Visible', 'off', 'Color', 'w');
-hold on;
-
-% Add reference lines and annotations
-T_peak = pulseTime(locs_peaks(1));
-xline(T_peak, 'k--', sprintf("%.2f s", T_peak), ...
-    'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
-
-xline(dt * avgLength, 'k--', sprintf("%.2f s", dt * avgLength), ...
-    'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
-
-yline(peaks(1), 'k--', sprintf("%.1f %s", peaks(1), unit), ...
-    'LineWidth', 1.5, 'Color', [0.25 0.25 0.25], 'FontSize', 10);
-
-T_Min = pulseTime(endMinLoc);
-xline(T_Min, 'k--', sprintf("%.2f s", T_Min), ...
-    'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
-
-yline(endMinVal, 'b--', sprintf("%.1f %s", endMinVal, unit), ...
-    'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
-
-if ~isnan(notch)
-    T_notch = pulseTime(locs_notch);
-    xline(T_notch, 'k--', sprintf("%.2f s", T_notch), ...
-        'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
-
-    yline(notch, 'k--', sprintf("%.1f %s", notch, unit), ...
-        'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
-
-    if length(locs_peaks) > 1
-        T_diastolic = pulseTime(locs_peaks(2));
-        xline(T_diastolic, 'k--', sprintf("%.2f s", T_diastolic), ...
-            'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
-
-        yline(peaks(2), 'k--', sprintf("%.1f %s", peaks(2), unit), ...
-            'LineWidth', 1.5, 'LabelVerticalAlignment', 'top', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
-    end
-
-end
-
-padded_signal = [one_cycle_signal(floor(numInterp / 2) + 1:end), ...
-                     one_cycle_signal, ...
-                     one_cycle_signal(1:floor(numInterp / 2))];
-padded_time = [linspace(- dt * avgLength / 2, -dt, round(numInterp / 2)), ...
-                   pulseTime, ...
-                   linspace(dt * (avgLength + 1), dt * (avgLength * 3/2), round(numInterp / 2))];
-padded_gradient = [gradient(one_cycle_signal(floor(numInterp / 2) + 1:end)), ...
-                       gradient(one_cycle_signal), ...
-                       gradient(one_cycle_signal(1:floor(numInterp / 2)))];
-
-% Main signal and gradient plots
-plot(padded_time, padded_gradient, 'Color', [0.85 0.85 0.85], 'LineWidth', 2);
-plot(padded_time, padded_signal, 'Color', [0.85 0.85 0.85], 'LineWidth', 2);
-plot(pulseTime, gradient(one_cycle_signal), 'Color', [0.7 0.7 0.7], 'LineWidth', 2);
-plot(pulseTime, one_cycle_signal, 'k', 'LineWidth', 2);
-
-% Plot detected features
-scatter(pulseTime(locs_peaks), peaks, 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
-scatter(pulseTime(endMinLoc), endMinVal, 100, 'filled', 'MarkerFaceColor', cLight, 'MarkerEdgeColor', 'k');
-
-if ~isnan(notch)
-    scatter(pulseTime(locs_notch), notch, 100, 'filled', 'MarkerFaceColor', cLight, 'MarkerEdgeColor', 'k');
-end
-
-% Configure axes
-axis tight;
-axT = axis;
-axis padded;
-axP = axis;
-axis([axT(1), axT(2), axP(3) - 0.2 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
-
-ylabel(y_label);
-xlabel('Time (s)');
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 2, 'Box', 'on');
-
-% Save Results
-exportgraphics(hFig, fullfile(ToolBox.path_png, ...
-    sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.folder_name, name)), ...
-    'Resolution', 300);
-
-%
-
-figure,
-hold on
-% plot(pulseTime, composite_signal, 'LineWidth', 2);
-
-combined_composite = sum(composite_signal, 2);
-combined_composite = rescale(combined_composite, min(signal, [], 'all'), max(signal, [], 'all')); % rescale at initial scale
-
-plot(pulseTime, combined_composite, '--', 'LineWidth', 2);
-plot(pulseTime, one_cycle_signal, 'k', 'LineWidth', 2);
-
-% Configure axes
-axis([0, pulseTime(end), axP(3) - 0.2 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
-
-ylabel(y_label);
-xlabel('Time (s)');
-pbaspect([1.618 1 1]);
-set(gca, 'LineWidth', 2, 'Box', 'on');
-
-% Save Results with harmonics
-exportgraphics(hFig, fullfile(ToolBox.path_png, ...
-    sprintf("%s_ArterialWaveformAnalysisHarmonics_%s.png", ToolBox.folder_name, name)), ...
-    'Resolution', 300);
-
 % Export to JSON (only for velocity signals)
 if ~isBVR
     ToolBox.Output.add('SystoleDuration', dicroticNotchTime, 's');
@@ -238,9 +134,119 @@ if ~isBVR
     %     ToolBox.Output.add('DicroticNotchIndex', dicroticNotchIndex, unit);
 end
 
-% Close the figure if not needed
-if ~strcmpi(get(hFig, 'Visible'), 'on')
-    close(hFig);
+% Visualization
+if params.json.save_figures
+    hFig = figure('Visible', 'off', 'Color', 'w');
+    hold on;
+
+    % Add reference lines and annotations
+    T_peak = pulseTime(locs_peaks(1));
+    xline(T_peak, 'k--', sprintf("%.2f s", T_peak), ...
+        'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+    xline(dt * avgLength, 'k--', sprintf("%.2f s", dt * avgLength), ...
+        'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+    yline(peaks(1), 'k--', sprintf("%.1f %s", peaks(1), unit), ...
+        'LineWidth', 1.5, 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+    T_Min = pulseTime(endMinLoc);
+    xline(T_Min, 'k--', sprintf("%.2f s", T_Min), ...
+        'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+    yline(endMinVal, 'b--', sprintf("%.1f %s", endMinVal, unit), ...
+        'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+    if ~isnan(notch)
+        T_notch = pulseTime(locs_notch);
+        xline(T_notch, 'k--', sprintf("%.2f s", T_notch), ...
+            'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+        yline(notch, 'k--', sprintf("%.1f %s", notch, unit), ...
+            'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+        if length(locs_peaks) > 1
+            T_diastolic = pulseTime(locs_peaks(2));
+            xline(T_diastolic, 'k--', sprintf("%.2f s", T_diastolic), ...
+                'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+
+            yline(peaks(2), 'k--', sprintf("%.1f %s", peaks(2), unit), ...
+                'LineWidth', 1.5, 'LabelVerticalAlignment', 'top', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
+        end
+
+    end
+
+    padded_signal = [one_cycle_signal(floor(numInterp / 2) + 1:end), ...
+                         one_cycle_signal, ...
+                         one_cycle_signal(1:floor(numInterp / 2))];
+    padded_time = [linspace(- dt * avgLength / 2, -dt, round(numInterp / 2)), ...
+                       pulseTime, ...
+                       linspace(dt * (avgLength + 1), dt * (avgLength * 3/2), round(numInterp / 2))];
+    padded_gradient = [gradient(one_cycle_signal(floor(numInterp / 2) + 1:end)), ...
+                           gradient(one_cycle_signal), ...
+                           gradient(one_cycle_signal(1:floor(numInterp / 2)))];
+
+    % Main signal and gradient plots
+    plot(padded_time, padded_gradient, 'Color', [0.85 0.85 0.85], 'LineWidth', 2);
+    plot(padded_time, padded_signal, 'Color', [0.85 0.85 0.85], 'LineWidth', 2);
+    plot(pulseTime, gradient(one_cycle_signal), 'Color', [0.7 0.7 0.7], 'LineWidth', 2);
+    plot(pulseTime, one_cycle_signal, 'k', 'LineWidth', 2);
+
+    % Plot detected features
+    scatter(pulseTime(locs_peaks), peaks, 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
+    scatter(pulseTime(endMinLoc), endMinVal, 100, 'filled', 'MarkerFaceColor', cLight, 'MarkerEdgeColor', 'k');
+
+    if ~isnan(notch)
+        scatter(pulseTime(locs_notch), notch, 100, 'filled', 'MarkerFaceColor', cLight, 'MarkerEdgeColor', 'k');
+    end
+
+    % Configure axes
+    axis tight;
+    axT = axis;
+    axis padded;
+    axP = axis;
+    axis([axT(1), axT(2), axP(3) - 0.2 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
+
+    ylabel(y_label);
+    xlabel('Time (s)');
+    pbaspect([1.618 1 1]);
+    set(gca, 'LineWidth', 2, 'Box', 'on');
+
+    % Save Results
+    exportgraphics(hFig, fullfile(ToolBox.path_png, ...
+        sprintf("%s_ArterialWaveformAnalysis_%s.png", ToolBox.folder_name, name)), ...
+        'Resolution', 300);
+
+    %
+
+    figure,
+    hold on
+    % plot(pulseTime, composite_signal, 'LineWidth', 2);
+
+    combined_composite = sum(composite_signal, 2);
+    combined_composite = rescale(combined_composite, min(signal, [], 'all'), max(signal, [], 'all')); % rescale at initial scale
+
+    plot(pulseTime, combined_composite, '--', 'LineWidth', 2);
+    plot(pulseTime, one_cycle_signal, 'k', 'LineWidth', 2);
+
+    % Configure axes
+    axis([0, pulseTime(end), axP(3) - 0.2 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
+
+    ylabel(y_label);
+    xlabel('Time (s)');
+    pbaspect([1.618 1 1]);
+    set(gca, 'LineWidth', 2, 'Box', 'on');
+
+    % Save Results with harmonics
+    exportgraphics(hFig, fullfile(ToolBox.path_png, ...
+        sprintf("%s_ArterialWaveformAnalysisHarmonics_%s.png", ToolBox.folder_name, name)), ...
+        'Resolution', 300);
+
+    % Close the figure if not needed
+    if ~strcmpi(get(hFig, 'Visible'), 'on')
+        close(hFig);
+    end
+
 end
 
 end

@@ -4,18 +4,23 @@ classdef eyeflow < matlab.apps.AppBase
 properties (Access = public)
     EyeFlowUIFigure matlab.ui.Figure
 
-    % Load
+    ReferenceDirectory matlab.ui.control.TextArea
+    statusLamp matlab.ui.control.Lamp
+
+    % Top Buttons
     LoadFolderButton matlab.ui.control.Button
     LoadHoloButton matlab.ui.control.Button
     ClearButton matlab.ui.control.Button
     FolderManagementButton matlab.ui.control.Button
-    ReferenceDirectory matlab.ui.control.TextArea
-    statusLamp matlab.ui.control.Lamp
+
+    % Third Row Buttons
     EditMasksButton matlab.ui.control.Button
     EditParametersButton matlab.ui.control.Button
+    PlayMomentsButton matlab.ui.control.Button
+
+    % Fourth Row Buttons
     OpenDirectoryButton matlab.ui.control.Button
     ReProcessButton matlab.ui.control.Button
-    PlayMomentsButton matlab.ui.control.Button
 
     % Checkboxes
     segmentationCheckBox matlab.ui.control.CheckBox
@@ -33,7 +38,7 @@ properties (Access = public)
     ImageDisplay matlab.ui.control.Image
 
     % Files
-    file
+    file ExecutionClass
     drawer_list = {}
 end
 
@@ -52,21 +57,16 @@ methods (Access = public)
 
         try
             % Add file
-            tic
-            fprintf("\n----------------------------------\n");
-            fprintf("Video Loading\n");
-            fprintf("----------------------------------\n");
             app.file = ExecutionClass(path);
-            fprintf("- Video Loading took : %ds\n", round(toc))
 
-            % Compute the mean of M0_data_video along the third dimension
-            mean_M0 = mean(app.file.M0_data_video, 3);
+            % Compute the mean of M0 along the third dimension
+            mean_M0 = mean(app.file.M0, 3);
             % Display the mean image in the uiimage component
             img = repmat(rescale(mean_M0), [1 1 3]);
             [numX, numY] = size(img);
             app.ImageDisplay.ImageSource = imresize(img, [max(numX, numY) max(numX, numY)]); % Rescale the image for display
 
-            %% Enable buttons
+            % Enable buttons
             app.ExecuteButton.Enable = true;
             app.ClearButton.Enable = true;
             app.EditParametersButton.Enable = true;
@@ -223,11 +223,10 @@ methods (Access = public)
             app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
             app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
-
-            app.file.OverWrite = app.OverWriteCheckBox.Value;
+            app.file.flag_overwrite = app.OverWriteCheckBox.Value;
 
             try
-                app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name, app.file.OverWrite); % update overwrite status
+                app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name, app.file.flag_overwrite); % update overwrite status
 
                 if ~app.file.is_preprocessed
                     parfor_arg = app.NumberofWorkersSpinner.Value;
@@ -266,9 +265,9 @@ methods (Access = public)
                 disp('inputs before preprocess.')
             end
 
-            implay(rescale(app.file.M0_data_video));
-            implay(rescale(app.file.M1_data_video));
-            implay(rescale(app.file.M2_data_video));
+            implay(rescale(app.file.M0));
+            implay(rescale(app.file.M1));
+            implay(rescale(app.file.M2));
         catch
             disp('Input not well loaded')
         end
@@ -278,7 +277,7 @@ methods (Access = public)
     function OverWriteCheckBoxChanged(app, ~)
 
         try
-            app.file.OverWrite = app.OverWriteCheckBox.Value;
+            app.file.flag_overwrite = app.OverWriteCheckBox.Value;
         catch
             disp('Couldnt force overwrite')
         end
@@ -331,7 +330,8 @@ methods (Access = public)
         try
             parfor_arg = app.NumberofWorkersSpinner.Value;
             setupParpool(parfor_arg);
-            app.file = app.file.preprocessData();
+            app.file = ExecutionClass(app.file.directory);
+            app.file.preprocessData();
 
             % Update lamp color to indicate success
             app.statusLamp.Color = [0, 1, 0]; % Green

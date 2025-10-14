@@ -12,35 +12,38 @@ outputs = ToolBox.Output;
 
 % Parameters
 % Arterious Velocities
-parameters.Max_Arterial_Velocity = outputs.ArterialMaximumVelocity;
-parameters.Average_Arterial_Velocity = outputs.ArterialMeanVelocity;
-parameters.Min_Arterial_Velocity = outputs.ArterialMinimumVelocity;
+parameters.Max_Arterial_Velocity = outputs.ArteryVelocityMax;
+parameters.Average_Arterial_Velocity = outputs.ArteryVelocityMean;
+parameters.Min_Arterial_Velocity = outputs.ArteryVelocityMin;
 
 % Venous Velocities
-parameters.Max_Venous_Velocity = outputs.VenousMaximumVelocity;
-parameters.Average_Venous_Velocity = outputs.VenousMeanVelocity;
-parameters.Min_Venous_Velocity = outputs.VenousMinimumVelocity;
+parameters.Max_Venous_Velocity = outputs.VeinVelocityMax;
+parameters.Average_Venous_Velocity = outputs.VeinVelocityMean;
+parameters.Min_Venous_Velocity = outputs.VeinVelocityMin;
 
 % Indexes
-parameters.ARI = outputs.ArterialResistivityIndexVelocity;
-parameters.VRI = outputs.VenousResistivityIndexVelocity;
-parameters.API = outputs.ArterialPulsatilityIndexVelocity;
-parameters.VPI = outputs.VenousPulsatilityIndexVelocity;
+parameters.ARI = outputs.ArteryResistivityIndexVelocity;
+parameters.VRI = outputs.VeinResistivityIndexVelocity;
+parameters.API = outputs.ArteryPulsatilityIndexVelocity;
+parameters.VPI = outputs.VeinPulsatilityIndexVelocity;
 
 % Other Parameters
-parameters.TimePeakToDescent = outputs.TimePeakToDescent;
-parameters.TimeToPeakFromMinVein = outputs.TimetoPeakFromMinVein;
+parameters.TimePeakToDescent = outputs.ArteryTimePeakToDescent;
+parameters.VeinTimeToPeakFromMin = outputs.VeinTimeToPeakFromMin;
 parameters.DicroticNotchVisibility = outputs.DicroticNotchVisibility;
 
 % Volume Rates
-parameters.Average_Arterial_Volume_Rate = outputs.ArterialMeanVolumeRate;
-parameters.Average_Venous_Volume_Rate = outputs.VenousMeanVolumeRate;
+parameters.Average_Arterial_Volume_Rate = outputs.ArteryFlowRateMean;
+parameters.Average_Venous_Volume_Rate = outputs.VeinFlowRateMean;
 
 % Heart Rate and Blood Pressure
 parameters.heart_beat = outputs.HeartBeat;
 
-parameters.arterial_systolic_fraction = outputs.ArterialSystolicFraction;
-parameters.arterial_diastolic_fraction = outputs.ArterialDiastolicFraction;
+if isfield(outputs, 'ArterialSystolicFraction')
+    parameters.arterial_systolic_fraction = outputs.ArterySystolicFraction;
+    parameters.arterial_diastolic_fraction = outputs.ArteryDiastolicFraction;
+end
+
 % parameters.time_2_systolic_peak = outputs.Time2SystolicPeak;
 parameters.SystoleDuration = outputs.SystoleDuration;
 parameters.DiastoleDuration = outputs.DiastoleDuration;
@@ -223,7 +226,7 @@ switch name
         fmt = 'Avg Venous Velocity = %.2f';
     case 'TimePeakToDescent'
         fmt = 'Time Peak to Descent = %.2f';
-    case 'TimeToPeakFromMinVein'
+    case 'VeinTimeToPeakFromMin'
         fmt = 'Time to Peak from Min Vein = %.2f';
     case 'DicroticNotchVisibility'
         fmt = 'Dicrotic Notch Visibility = %.0f';

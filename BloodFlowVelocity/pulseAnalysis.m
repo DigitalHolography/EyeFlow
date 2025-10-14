@@ -1,9 +1,9 @@
-function [v_RMS_video, sysIdxList, sysIdx, diasIdx, v_video_RGB, v_mean_RGB] = pulseAnalysis(f_video, M0_ff_video, maskArtery, maskVein, maskNeighbors, xy_barycenter)
+function [v_RMS_video, v_video_RGB, v_mean_RGB] = pulseAnalysis(f_video, M0_ff)
 % pulseAnalysis.m computes the flow velocities from Doppler data
 % Inputs:
 %       VIDEOS:
 %   f_video         Size: numX x numY x numFrames double (Doppler Data)
-%   M0_ff_video     Size: numX x numY x numFrames double (Display Data)
+%   M0_ff     Size: numX x numY x numFrames double (Display Data)
 %       IMAGES:
 %   maskArtery      Size: numX x numY logical
 %   maskBackground  Size: numX x numY logical
@@ -19,6 +19,11 @@ params = ToolBox.getParams;
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
 
+maskArtery = ToolBox.Cache.maskArtery;
+maskVein = ToolBox.Cache.maskVein;
+maskNeighbors = ToolBox.Cache.maskNeighbors;
+xy_barycenter = ToolBox.Cache.xy_barycenter;
+
 % Validating inputs
 if ~any(maskArtery)
     error("Given Mask Artery is empty.")
@@ -31,7 +36,7 @@ end
 scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
 [numX, numY, numFrames] = size(f_video);
 
-%% Section 1: Background Calculation
+% Section 1: Background Calculation
 
 tic
 
@@ -51,6 +56,7 @@ maskVesselSection = (maskVein | maskArtery) & maskSection;
 if ~any(maskArterySection)
     error("Given Mask Artery has no part within the current section.")
 end
+
 if ~any(maskVesselSection)
     error("Given Mask Vein has no part within the current section.")
 end
@@ -132,7 +138,7 @@ end
 
 fprintf("    1. Background calculation took %ds\n", round(toc));
 
-%% Section 2: Difference Calculation and Velocity Computation
+% Section 2: Difference Calculation and Velocity Computation
 
 tic;
 
@@ -216,7 +222,7 @@ end
 
 fprintf("    2. Difference calculation and velocity computation took %ds\n", round(toc));
 
-%% Section 3: Systole/Diastole Analysis
+% Section 3: Systole/Diastole Analysis
 
 tic;
 
@@ -253,14 +259,14 @@ if numel(sysIdxList) >= 2 && numel(sysMaxList) >= 2 && numel(sysMinList) >= 2
     % Store output
     ToolBox.Output.add('HeartBeat', HeartBeat, 'bpm', HeartBeatSTE);
     ToolBox.Output.add('SystoleIndices', sysIdxList, '');
-    ToolBox.Output.add('MaximumSystoleIndices', sysMaxList, '');
-    ToolBox.Output.add('MinimumDiastoleIndices', sysMinList, '');
-    ToolBox.Output.add('TimeToMaxIncreaseSystolic', 0, 's', 0);
-    ToolBox.Output.add('TimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE);
-    ToolBox.Output.add('TimeToMinimumDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE);
-    ToolBox.Output.add('TimeToPeakSystoleFromMinimumDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE);
-    ToolBox.Output.add('TimePeakToDescent', TimePeakToDescent, 's');
-    ToolBox.Output.add('TimeToDescent', TimePeakToDescent + TimeToPeakSystole, 's');
+    ToolBox.Output.add('ArterySystoleMaxIndices', sysMaxList, '');
+    ToolBox.Output.add('ArteryDiastoleMinIndices', sysMinList, '');
+    ToolBox.Output.add('ArteryTimeToMaxIncrease', 0, 's', 0);
+    ToolBox.Output.add('ArteryTimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE);
+    ToolBox.Output.add('ArteryTimeToMinDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE);
+    ToolBox.Output.add('ArteryTimeToPeakSystoleFromDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE);
+    ToolBox.Output.add('ArteryTimeToDescent', TimePeakToDescent, 's');
+    ToolBox.Output.add('ArteryTimePeakToDescent', TimePeakToDescent + TimeToPeakSystole, 's');
 
     % Log detailed results
     logDetailedResults(ToolBox, HeartBeat, sysIdxList, sysMaxList, sysMinList, ...
@@ -271,7 +277,7 @@ end
 
 fprintf("    3. Systole/diastole analysis took %ds\n", round(toc));
 
-%% Section 4: Resistivity Index and Waveform Analysis
+% Section 4: Resistivity Index and Waveform Analysis
 tic;
 
 % Calculate arterial resistivity index
@@ -301,31 +307,35 @@ end
 
 fprintf("    4. Resistivity and waveform analysis took %ds\n", round(toc()));
 
-%% Section 5: Visualization and Output Generation
+% Section 5: Visualization and Output Generation
 
 tic;
 
 % background in vessels
-LocalBackground_in_vessels = mean(f_bkg, 3);
-createHeatmap(LocalBackground_in_vessels, 'background in vessels', ...
-    'background RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_f_bkg_map.png", ToolBox.folder_name)));
+if params.json.save_figures
 
-% Delta f in vessels
-in_vessels = mean(df, 3) .* maskVesselSection;
-createHeatmap(in_vessels, 'Delta f in vessels', ...
-    'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_df_map_vessel.png", ToolBox.folder_name)));
+    LocalBackground_in_vessels = mean(f_bkg, 3);
+    createHeatmap(LocalBackground_in_vessels, 'background in vessels', ...
+        'background RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_f_bkg_map.png", ToolBox.folder_name)));
 
-% Delta f
-in_vessels = mean(df, 3) .* maskVesselSection + (mean(f_video, 3) - mean(f_video, 'all')) .* ~maskVesselSection;
-createHeatmap(in_vessels, 'Delta f in vessels', ...
-    'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_df_map.png", ToolBox.folder_name)));
+    % Delta f in vessels
+    in_vessels = mean(df, 3) .* maskVesselSection;
+    createHeatmap(in_vessels, 'Delta f in vessels', ...
+        'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_df_map_vessel.png", ToolBox.folder_name)));
 
-velocityIm(mean(df, 3) .* maskVesselSection, maskArtery | maskVein, turbo, 'df_vessel', colorbarOn = true, LabelName = 'kHz');
+    % Delta f
+    in_vessels = mean(df, 3) .* maskVesselSection + (mean(f_video, 3) - mean(f_video, 'all')) .* ~maskVesselSection;
+    createHeatmap(in_vessels, 'Delta f in vessels', ...
+        'Delta Doppler RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_df_map.png", ToolBox.folder_name)));
 
-% Raw RMS frequency map
-raw_map = squeeze(mean(f_video, 3));
-createHeatmap(raw_map, 'RMS frequency map RAW', ...
-    'RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_f_map.png", ToolBox.folder_name)));
+    velocityIm(mean(df, 3) .* maskVesselSection, maskArtery | maskVein, turbo, 'df_vessel', colorbarOn = true, LabelName = 'kHz');
+
+    % Raw RMS frequency map
+    raw_map = squeeze(mean(f_video, 3));
+    createHeatmap(raw_map, 'RMS frequency map RAW', ...
+        'RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_f_map.png", ToolBox.folder_name)));
+
+end
 
 % Export videos if enabled
 if exportVideos
@@ -341,7 +351,7 @@ maskArterySection = maskArtery & maskSection & ~maskAV;
 maskVeinSection = maskVein & maskSection & ~maskAV;
 
 % Generate flow maps
-[v_video_RGB, v_mean_RGB] = flowMap(v_RMS_video, maskSection, maskArtery, maskVein, M0_ff_video, xy_barycenter, ToolBox);
+[v_video_RGB, v_mean_RGB] = flowMap(v_RMS_video, maskSection, maskArtery, maskVein, M0_ff, xy_barycenter, ToolBox);
 
 % Generate histograms
 histoVideoArtery = VelocityHistogram(v_RMS_video, maskArterySection, 'artery');
@@ -362,6 +372,11 @@ end
 fprintf("    5. Visualization and output generation took %ds\n", round(toc));
 
 close all
+
+% Save Intermediate Results in cache
+ToolBox.Cache.sysIdxList = sysIdxList;
+ToolBox.Cache.sysIdx = sysIdx;
+ToolBox.Cache.diasIdx = diasIdx;
 
 end
 

@@ -1,17 +1,23 @@
-function PWV = pulseWaveVelocity(U, mask, branch_index, name)
+function [PWV, dPWV, score] = pulseWaveVelocity(U, mask, branch_index, name)
 % Computes the pulse wave velocity based on a cross correlation computation
 % U is the field over which we compute the velocity and mask is the mask of
 % the selected retinal artery
+
+if isempty(U)
+    error("No input field (M0_ff or velocity)");
+end
 
 % U(x,y,t) usually M0
 % center the [x,y] barycenter (the center of the CRA)
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-x_bary = ToolBox.Cache.list.xy_barycenter(1);
-y_bary = ToolBox.Cache.list.xy_barycenter(2);
+x_bary = ToolBox.Cache.xy_barycenter(1);
+y_bary = ToolBox.Cache.xy_barycenter(2);
 [numX, numY] = size(mask);
 N_frame = size(U, 3);
 PWV = NaN; % initialize output
+dPWV = NaN;
+score = NaN;
 
 outputDir = fullfile(ToolBox.path_png, 'flexion');
 
@@ -21,7 +27,7 @@ end
 
 %% create a grid of points to select points along the skeletton of the artery mask
 %
-dxx = 5;
+dxx = 2;
 skel = bwskel(mask);
 grid = ones([numY, numX]) < 0;
 grid(1:dxx:end, :) = true;
@@ -45,6 +51,12 @@ abs_dist = zeros([1, numpoints]); % vessel curvilign absis
 
 absx(1) = interpoints_x(k); % nearest point to the center
 absy(1) = interpoints_y(k);
+
+figure('Visible', 'off');
+imagesc (interpoints)
+scatter(x_bary, y_bary, 80, 'o', 'r', 'LineWidth', 1.5);
+scatter(absx(1), absy(1), 80, 'o', 'g', 'LineWidth', 1.5);
+
 interpoints_x(k) = [];
 interpoints_y(k) = [];
 abs_dist(1) = 0;
@@ -130,20 +142,24 @@ for i = 2:numpoints - 1
     prev_line = [P3; P4]; % save endpoints for next step
 end
 
-figure('Visible', 'off');
+figure('Visible', 'on');
 imagesc(L)
 title('selected sections along the artery')
+axis image, axis off;
 
 % Save figure
 saveas(gcf, fullfile(outputDir, ...
     sprintf("%s_%s_%d_orthogonal_overlay.png", ToolBox.folder_name, name, branch_index)));
+axis off;
 
 Ux = Ux_edge;
 Ux_n = (Ux - mean(Ux, 2)) ./ std(Ux, [], 2);
 
-figure('Visible', 'off'), imagesc(real(Ux_n));
-axis off;
+figure('Visible', 'on');
 
+imagesc(linspace(0, N_frame * (ToolBox.stride / ToolBox.fs / 1000), N_frame), linspace(0, abs_dist(end), numpoints), real(Ux_n));
+xlabel("time (s)");
+ylabel("arc length (mm)")
 % Save figure
 saveas(gcf, fullfile(outputDir, ...
     sprintf("%s_%s_%d_signals_asym_over_time.png", ToolBox.folder_name, name, branch_index)));
@@ -166,8 +182,7 @@ Ravg = Ravg';
 figure('Visible', 'off'), imagesc(Ravg, [-0.1 0.1]);
 axis off;
 
-% Save figure
-saveas(gcf, fullfile(outputDir, ...
-    sprintf("%s_%s_%d_correlation_averaged.png", ToolBox.folder_name, name, branch_index)));
+[PWV, dPWV, ~, ~, ~,score] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index);
 
+close all;
 end

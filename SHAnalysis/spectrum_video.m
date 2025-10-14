@@ -1,4 +1,4 @@
-function spectrum_video(SH, f_RMS_video, mask_artery, mask_bkg)
+function spectrum_video(SH, f_RMS, mask_artery, mask_bkg)
 
 ToolBox = getGlobalToolBox;
 [numX, numY, numFreq, numFrames] = size(SH);
@@ -6,8 +6,8 @@ f1 = ToolBox.f1;
 f2 = ToolBox.f2;
 fs = ToolBox.fs;
 
-f_signal = squeeze(sum(f_RMS_video .* mask_artery, [1 2]) / nnz(mask_artery));
-f_signal_bkg = squeeze(sum(f_RMS_video .* mask_bkg, [1 2]) / nnz(mask_bkg));
+f_signal = squeeze(sum(f_RMS .* mask_artery, [1 2]) / nnz(mask_artery));
+f_signal_bkg = squeeze(sum(f_RMS .* mask_bkg, [1 2]) / nnz(mask_bkg));
 
 mask_artery = logical(imresize(mask_artery, [numX, numY]));
 mask_bkg = logical(imresize(mask_bkg, [numX, numY])) & ~mask_artery;

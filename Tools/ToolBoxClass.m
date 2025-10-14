@@ -25,10 +25,9 @@ properties
     fs double
     f1 double
     f2 double
-    record_time_stamps_us
-    cmapArtery
-    cmapVein
-    cmapAV
+    record_time_stamps_us % structure with first and last fields
+
+    % Results
     % Ref % Ref handle to the Execution Class to have access to its properties easily
     Cache % Cache class handle Cache small variables through the execution
     Output % Output class handle Stores outputs through the execution
@@ -36,7 +35,7 @@ end
 
 methods
 
-    function obj = ToolBoxClass(path, EF_param_name, OverWrite)
+    function obj = ToolBoxClass(path, EF_param_name, flag_overwrite)
         % Constructor for ToolBoxClass: Initializes paths, parameters, and calculates scaling factors.
 
         % Store paths and parameters
@@ -45,7 +44,7 @@ methods
         obj.main_foldername = obj.extractFolderName(path);
 
         % Initialize EyeFlow-related paths
-        obj.initializePaths(OverWrite);
+        obj.initializePaths(flag_overwrite);
 
         % Load parameters from cache or fall back to defaults
         obj.loadParameters(path);
@@ -56,10 +55,7 @@ methods
         % Copy input parameters to result folder
         obj.copyInputParameters();
 
-        obj.createColorMaps();
-
-        obj.setGlobalToolBox;
-
+        obj.setGlobalToolBox();
     end
 
     function mainFolder = extractFolderName(~, path)
@@ -148,6 +144,7 @@ methods
 
     function loadParameters(obj, path)
         % Load or fall back to default parameters from cache or config files
+        
 
         % Try loading parameters from existing .mat or .json files
         if ~isempty(dir(fullfile(path, ['*', 'RenderingParameters', '*']))) % since HD 2.0
@@ -245,12 +242,6 @@ methods
         Params = Parameters_json(obj.EF_path, obj.param_name);
     end
 
-    function createColorMaps(obj)
-        obj.cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
-        obj.cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
-        obj.cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [1 1 1], 1);
-    end
-
     function saveGit(obj)
         % SAVING GIT VERSION
         % In the txt file in the folder : "log"
@@ -311,6 +302,16 @@ methods
         fprintf(fileID, '----------------------------------\r');
         fclose(fileID);
 
+    end
+
+    function ToolBox = setCache(obj, Cache)
+        obj.Cache = Cache;
+        ToolBox = obj;
+    end
+
+    function ToolBox = setOutput(obj, Output)
+        obj.Output = Output;
+        ToolBox = obj;
     end
 
 end
