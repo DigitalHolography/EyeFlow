@@ -52,11 +52,24 @@ methods
 
     function createtimeVector(obj, ToolBox, numFrames)
         time_stamps = ToolBox.record_time_stamps_us;
-        t1 = 0;
-        t2 = (time_stamps.last - time_stamps.first) / 1e6;
-        t_stamp = linspace(t1, t2, numFrames - 1);
-        t_stamp(end + 1) = t2 + t_stamp(2);
-        obj.t = t_stamp;
+        if ~isempty(ToolBox.record_time_stamps_us) 
+            % if record_time_stamps_us 
+            % was specified in the HD folder from the .holo footer
+            t1 = 0;
+            t2 = (time_stamps.last - time_stamps.first) / 1e6; % in s
+            t_stamp = linspace(t1, t2, numFrames);
+            obj.t = t_stamp;
+
+            if ToolBox.params.json.Preprocess.Crop.EndFrame ~= -1
+                %TODO
+            end
+        else
+            t1 = 0;
+            t2 = ToolBox.stride/(ToolBox.fs*1000) * (numFrames-1); % in s
+            t_stamp = linspace(t1, t2, numFrames);
+            obj.t = t_stamp;
+        end
+
     end
 
 end

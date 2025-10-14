@@ -157,7 +157,7 @@ Ux_n = (Ux - mean(Ux, 2)) ./ std(Ux, [], 2);
 
 figure('Visible', 'on');
 
-imagesc(linspace(0, N_frame * (ToolBox.stride / ToolBox.fs / 1000), N_frame), linspace(0, abs_dist(end), numpoints), real(Ux_n));
+imagesc(ToolBox.Cache.t, linspace(0, abs_dist(end), numpoints), real(Ux_n));
 xlabel("time (s)");
 ylabel("arc length (mm)")
 % Save figure
@@ -182,7 +182,7 @@ Ravg = Ravg';
 figure('Visible', 'off'), imagesc(Ravg, [-0.1 0.1]);
 axis off;
 
-[PWV, dPWV, ~, ~, ~,score] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index);
+[PWV, dPWV, ~, ~, ~, score] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index);
 
 close all;
 end

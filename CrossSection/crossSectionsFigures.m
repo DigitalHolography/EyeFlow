@@ -20,7 +20,7 @@ M0_ff_img = rescale(mean(M0_ff, 3));
 x_c = xy_barycenter(1);
 y_c = xy_barycenter(2);
 
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+t = ToolBox.Cache.t;
 
 A_cell = results.A_cell;
 D_cell = results.D_cell;

@@ -8,7 +8,7 @@ end
 
 ToolBox = getGlobalToolBox;
 [~, ~, numFrames] = size(M0_video);
-fullTime = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+fullTime = ToolBox.Cache.t;
 
 cDark = [1 0 0];
 cLight = [1 0.5 0.5];

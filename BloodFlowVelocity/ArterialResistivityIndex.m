@@ -11,7 +11,7 @@ ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 numInterp = 60;
 numFrames = length(signal);
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+t = ToolBox.Cache.t;
 fs = ToolBox.fs / ToolBox.stride * 1000; % Convert to seconds
 
 if contains(name, 'v_')

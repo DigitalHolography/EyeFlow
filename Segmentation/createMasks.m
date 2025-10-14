@@ -127,7 +127,7 @@ if mask_params.AutoCompute
             correlationSegmentation(M0_video, maskArteryTmp, maskVesselnessClean, vesselParams);
 
         % 1) 5) Save all images
-        t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+        t = ToolBox.Cache.t;
         graphSignal('all_15_arterialSignal', t, squeeze(arterialSignal), '-', color(2, :), ...
             Title = 'Arterial Signal', xlabel = 'Time(s)', ylabel = 'Power Doppler (a.u.)');
 

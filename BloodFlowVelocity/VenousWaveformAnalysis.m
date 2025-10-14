@@ -11,7 +11,7 @@ function one_cycle_signal = VenousWaveformAnalysis(signal, systolesIndexes, numI
 ToolBox = getGlobalToolBox;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
-t = linspace(0, numFrames / fs, numFrames);
+t = ToolBox.Cache.t;
 numSystoles = length(systolesIndexes);
 
 cDark = [0 0 1];

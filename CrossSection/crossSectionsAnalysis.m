@@ -19,7 +19,7 @@ initial = upper(vesselName(1));
 [numX, numY, numFrames] = size(v_RMS);
 x_c = xy_barycenter(1);
 y_c = xy_barycenter(2);
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+t = ToolBox.Cache.t;
 M0_ff = rescale(M0_ff);
 M0_ff_img = rescale(mean(M0_ff, 3));
 

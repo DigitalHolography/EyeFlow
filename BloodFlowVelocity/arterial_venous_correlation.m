@@ -16,7 +16,7 @@ ToolBox = getGlobalToolBox();
 params = ToolBox.getParams;
 fs = ToolBox.fs * 1000 / ToolBox.stride;
 numFrames = length(v_artery_signal);
-t = linspace(0, numFrames / fs, numFrames);
+t = ToolBox.Cache.t;
 
 % Input validation
 if nargin < 2

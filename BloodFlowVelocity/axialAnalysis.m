@@ -39,7 +39,7 @@ if ~any(maskVesselSection)
 end
 
 % Time vector for plotting
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+t = ToolBox.Cache.t;
 
 % Colors for plotting
 cBlack = [0 0 0];

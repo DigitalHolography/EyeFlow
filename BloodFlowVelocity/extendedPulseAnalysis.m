@@ -38,7 +38,7 @@ maskSection = diskMask(numX, numY, r1, r2, center = [x_c, y_c]);
 
 strXlabel = 'Time (s)';
 strYlabel = 'Frequency (kHz)';
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+t = ToolBox.Cache.t;
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
 
