@@ -25,7 +25,8 @@ properties
     fs double
     f1 double
     f2 double
-    record_time_stamps_us % structure with first and last fields
+    record_time_stamps_us % structure with first and time_stamps
+    holo_frames  % structure with first and last frames
 
     % Results
     % Ref % Ref handle to the Execution Class to have access to its properties easily
@@ -176,6 +177,10 @@ methods
 
             if isfield(decoded_data, 'record_time_stamps_us')
                 obj.record_time_stamps_us = decoded_data.record_time_stamps_us;
+            end
+            if isfield(decoded_data, 'num_frames')
+                obj.holo_frames.first = decoded_data.first;
+                obj.holo_frames.last = decoded_data.last;
             end
 
         elseif isfile(fullfile(path, 'mat', [obj.main_foldername, '.mat']))
