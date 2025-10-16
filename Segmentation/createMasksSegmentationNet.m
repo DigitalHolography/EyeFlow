@@ -9,11 +9,11 @@ if ~isfolder('Models')
     mkdir('Models');
 end
 
-if ~isfile('Models\iternet5_av_diasys.onnx')
-    % Download the model from Hugging Face
-    url = 'https://huggingface.co/DigitalHolography/iternet5_av_diasys/resolve/main/iternet5_av_diasys';
-    websave('Models\iternet5_av_diasys.onnx', url);
-end
+% if ~isfile('Models\iternet5_av_diasys.onnx')
+%     % Download the model from Hugging Face
+%     url = 'https://huggingface.co/DigitalHolography/iternet5_av_diasys/resolve/main/iternet5_av_diasys';
+%     websave('Models\iternet5_av_diasys.onnx', url);
+% end
 
 function onehot = multi2onehot(x, axis)
     % Converts a label mask x to a binary one-hot encoding with 2 classes
@@ -84,6 +84,7 @@ if mask_params.AVDiasysSegmentationNet
 
     M0_Diastole_img = imresize(rescale(M0_Diastole_img), [512, 512]);
     M0_Systole_img = imresize(rescale(M0_Systole_img), [512, 512]);
+    diasysArtery = imresize(rescale(diasysArtery), [512, 512]);
 
 end
 
@@ -100,19 +101,20 @@ if mask_params.AVCorrelationSegmentationNet
 
     if mask_params.AVDiasysSegmentationNet
 
+        model_path = getLatestModel('iternet5_av_corr_diasys');
         try
             % Try the newer function first
-            net = importNetworkFromONNX('Models\iternet5_av_corr_diasys.onnx');
+            net = importNetworkFromONNX(model_path);
         catch
             % Fall back to the older function
             warning('off')
-            net = importONNXNetwork('Models\iternet5_av_corr_diasys.onnx');
+            net = importONNXNetwork(model_path);
             warning('on')
         end
 
         fprintf("    Use iternet5 to segment retinal arteries and veins\n")
 
-        input = cat(3, M0, M0_Systole_img, M0_Diastole_img, R);
+        input = cat(3, M0, R, diasysArtery);
 
         if isa(net, 'dlnetwork')
             % For dlnetwork objects
@@ -126,13 +128,14 @@ if mask_params.AVCorrelationSegmentationNet
 
     else
 
+        model_path = getLatestModel('iternet5_av_corr');
         try
             % Try the newer function first
-            net = importNetworkFromONNX('Models\iternet_5_av_corr.onnx');
+            net = importNetworkFromONNX(model_path);
         catch
             % Fall back to the older function
             warning('off')
-            net = importONNXNetwork('Models\iternet_5_av_corr.onnx');
+            net = importONNXNetwork(model_path);
             warning('on')
         end
 
@@ -154,13 +157,14 @@ if mask_params.AVCorrelationSegmentationNet
 
 elseif mask_params.AVDiasysSegmentationNet
 
+    model_path = getLatestModel('iternet5_av_diasys');
     try
         % Try the newer function first
-        net = importNetworkFromONNX('Models\iternet5_av_diasys.onnx');
+        net = importNetworkFromONNX(model_path);
     catch
         % Fall back to the older function
         warning('off')
-        net = importONNXNetwork('Models\iternet5_av_diasys.onnx');
+        net = importONNXNetwork(model_path);
         warning('on')
     end
 
