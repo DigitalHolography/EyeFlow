@@ -34,7 +34,7 @@ end
 
 if need_download
     fprintf("Downloading model %s (version: %s)...\n", model_name, latest_version);
-    websave(model_path, model_url);
+    websave(model_path, model_url + '.onnx');
 
     % Save version locally
     fid = fopen(version_path, 'w');
