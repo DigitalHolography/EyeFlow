@@ -1,50 +1,34 @@
-name: Sync version.txt with tag
+name: Bump version
 
 permissions:
   contents: write
 
 on:
-  push:
-    tags:
-      - '*'   # Runs whenever a tag is pushed
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.2.3)'
+        required: true
 
 jobs:
-  update-version:
+  bump-version:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # 👈 Needed so we can check branches
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify tag is from main
-        id: check_branch
-        run: |
-          TAG_COMMIT=$(git rev-list -n 1 "${GITHUB_REF_NAME}")
-          if git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
-            echo "on_main=true" >> $GITHUB_ENV
-          else
-            echo "Tag not from main branch. Skipping."
-            echo "on_main=false" >> $GITHUB_ENV
-          fi
-
-      - name: Stop if not on main
-        if: env.on_main != 'true'
-        run: |
-          echo "Tag is not from main branch — exiting."
-          exit 0
-
-      - name: Extract tag version
-        run: echo "RELEASE_VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
 
       - name: Update version.txt
-        run: echo "${RELEASE_VERSION}" > version.txt
+        run: echo "${{ github.event.inputs.version }}" > version.txt
 
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add version.txt
-          git commit -m "chore: update version.txt to $RELEASE_VERSION" || echo "No changes to commit"
-          git push origin HEAD:main
+          git commit -m "chore: update version.txt to ${{ github.event.inputs.version }}"
+          git push origin main
+
+      - name: Create tag
+        run: |
+          git tag ${{ github.event.inputs.version }}
+          git push origin ${{ github.event.inputs.version }}
