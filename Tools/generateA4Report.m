@@ -52,7 +52,7 @@ parameters.UnixTimestampLast = outputs.UnixTimestampLast;
 
 % Create a new figure with A4 paper size (in centimeters)
 fig = figure('Units', 'centimeters', 'Position', [0 0 21.0 29.7], ...
-    'PaperSize', [21.0 29.7], 'PaperPositionMode', 'auto');
+    'PaperSize', [21.0 29.7], 'PaperPositionMode', 'auto', "Visible", "off");
 
 % Set margins (in normalized units)
 % topMargin = 0.08;

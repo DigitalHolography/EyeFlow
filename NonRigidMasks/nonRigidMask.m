@@ -21,7 +21,7 @@ function nonRigidMask(source, target, aux)
     %}
 
     % --- Visualization similar to NonRigidMask ---
-    figure("Name", "Rigid+Demons Comparison", "Color", "w");
+    figure("Name", "Rigid+Demons Comparison", "Color", "w", "Visible", "off");
     tiledlayout(2, 3, "Padding", "compact", "TileSpacing", "compact");
 
     % Tile 1: Reference

@@ -76,7 +76,7 @@ function plot_tagged_png_comparison(folder_list_source, tag)
     % Create figure with subplots
     figure('Name', sprintf('PNG Files with Tag: "%s"', tag), ...
            'NumberTitle', 'off', ...
-           'Position', [100, 100, 200 * length(png_files), 400]);
+           'Position', [100, 100, 200 * length(png_files), 400], "Visible", "on");
     
     for i = 1:length(png_files)
         subplot(1, length(png_files), i);

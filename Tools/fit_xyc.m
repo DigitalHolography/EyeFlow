@@ -81,7 +81,7 @@ if isempty(pks)
 end
 
 %% --- Plot frequency spectrum ---
-fig1 = figure('Visible', 'on');
+fig1 = figure('Visible', 'off');
 imagesc(fx, fy, S);
 xlabel('(Hz)');
 ylabel('(mm-1)');
@@ -142,7 +142,7 @@ fprintf('PWV = %.3f ± %.3f (mm/s)\n', PWV, dPWV);
 
 if params.json.save_figures
     % --- Plot original map with wave direction ---
-    fig2 = figure('Visible', 'on');
+    fig2 = figure('Visible', 'off');
     xVals = linspace(-dx * nx / 2, dx * nx / 2, nx);
     yVals = linspace(-dy * ny / 2, dy * ny / 2, ny);
     imagesc(xVals, yVals, Z0, [-0.1, 0.1]);
