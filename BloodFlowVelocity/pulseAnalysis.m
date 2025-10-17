@@ -18,6 +18,7 @@ ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
+save_figures = params.json.save_figures;
 
 maskArtery = ToolBox.Cache.maskArtery;
 maskVein = ToolBox.Cache.maskVein;
@@ -61,14 +62,6 @@ if ~any(maskVesselSection)
     error("Given Mask Vein has no part within the current section.")
 end
 
-% Time vector for plotting
-t = ToolBox.Cache.t;
-
-% Colors for plotting
-cBlack = [0 0 0];
-cArtery = [255 22 18] / 255;
-cVein = [18 23 255] / 255;
-
 f_bkg = zeros(numX, numY, numFrames, 'single');
 
 % Determine vessel mask based on analysis type
@@ -100,40 +93,46 @@ else
 end
 
 % Calculate and plot artery signals
-f_artery = squeeze(sum(f_video .* maskArterySection, [1, 2]) / nnz(maskArterySection));
-f_artery_bkg = squeeze(sum(f_bkg .* maskArterySection, [1, 2]) / nnz(maskArterySection));
+if save_figures
 
-graphSignal('f_artery', ...
-    t, f_artery, '-', cArtery, ...
-    t, f_artery_bkg, '--', cBlack, ...
-    'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
-    'Legend', {'arteries', 'background'});
+    % Time vector for plotting
+    t = ToolBox.Cache.t;
 
-fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'advanced_outputs', '.txt')), 'a');
-fprintf(fileID, '%s : %f (%s) \r\n', 'Mean fRMS difference artery', mean(f_artery) - mean(f_artery_bkg), 'kHz');
-fclose(fileID);
+    % Colors for plotting
+    cBlack = [0 0 0];
+    cArtery = [255 22 18] / 255;
+    cVein = [18 23 255] / 255;
 
-if veinsAnalysis
-    f_vein = squeeze(sum(f_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
-    f_vein_bkg = squeeze(sum(f_bkg .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
-    f_vessel_bkg = squeeze(sum(f_bkg .* maskVesselSection, [1, 2]) / nnz(maskVesselSection));
+    % Artery signals
+    f_artery = squeeze(sum(f_video .* maskArterySection, [1, 2]) / nnz(maskArterySection));
+    f_artery_bkg = squeeze(sum(f_bkg .* maskArterySection, [1, 2]) / nnz(maskArterySection));
 
-    graphSignal('f_vein', ...
-        t, f_vein, '-', cVein, ...
-        t, f_vein_bkg, '--', cBlack, ...
-        'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
-        'Legend', {'veins', 'background'});
-
-    fileID = fopen(fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'advanced_outputs', '.txt')), 'a');
-    fprintf(fileID, '%s : %f (%s) \r\n', 'Mean fRMS difference vein', mean(f_vein) - mean(f_vein_bkg), 'kHz');
-    fclose(fileID);
-
-    graphSignal('f_vessel', ...
+    graphSignal('f_artery', ...
         t, f_artery, '-', cArtery, ...
-        t, f_vein, '-', cVein, ...
-        t, f_vessel_bkg, '--', cBlack, ...
+        t, f_artery_bkg, '--', cBlack, ...
         'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
-        'Legend', {'arteries', 'veins', 'background'});
+        'Legend', {'arteries', 'background'});
+
+    if veinsAnalysis
+        % Vein signals
+        f_vein = squeeze(sum(f_video .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
+        f_vein_bkg = squeeze(sum(f_bkg .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
+        f_vessel_bkg = squeeze(sum(f_bkg .* maskVesselSection, [1, 2]) / nnz(maskVesselSection));
+
+        graphSignal('f_vein', ...
+            t, f_vein, '-', cVein, ...
+            t, f_vein_bkg, '--', cBlack, ...
+            'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
+            'Legend', {'veins', 'background'});
+
+        graphSignal('f_vessel', ...
+            t, f_artery, '-', cArtery, ...
+            t, f_vein, '-', cVein, ...
+            t, f_vessel_bkg, '--', cBlack, ...
+            'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
+            'Legend', {'arteries', 'veins', 'background'});
+    end
+
 end
 
 fprintf("    1. Background calculation took %ds\n", round(toc));
@@ -173,51 +172,61 @@ end
 % Interpolate outlier frames
 df = interpolateOutlierFrames(df, outlier_frames_mask');
 
-% Recalculate signals after interpolation
-df_artery = df .* maskArterySection;
-df_artery(~maskArterySection) = NaN;
-df_artery_signal = squeeze(sum(df_artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
+if save_figures
+    % Recalculate signals after interpolation
+    df_artery = df .* maskArterySection;
+    df_artery(~maskArterySection) = NaN;
+    df_artery_signal = squeeze(sum(df_artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
 
-% Plot signals
-if veinsAnalysis
-    df_vein = df .* maskVeinSection;
-    df_vein(~maskVeinSection) = NaN;
-    df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
+    % Plot signals
+    if veinsAnalysis
+        df_vein = df .* maskVeinSection;
+        df_vein(~maskVeinSection) = NaN;
+        df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
 
-    graphSignal('df_vessel', ...
-        t, df_artery_signal, '-', cArtery, ...
-        t, df_vein_signal, '-', cVein, ...
-        'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
-else
-    graphSignal('df_artery', ...
-        t, df_artery_signal, '-', cArtery, ...
-        'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
+        graphSignal('df_vessel', ...
+            t, df_artery_signal, '-', cArtery, ...
+            t, df_vein_signal, '-', cVein, ...
+            'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
+    else
+        graphSignal('df_artery', ...
+            t, df_artery_signal, '-', cArtery, ...
+            'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
+    end
+
 end
 
 % Calculate velocity
 v_RMS_video = scalingFactor * df;
 
-% Process and plot velocity signals
+% Process artery velocity signals
 v_artery = v_RMS_video .* maskArterySection;
 v_artery(~maskArterySection) = NaN;
 v_artery_signal = squeeze(sum(v_artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
 
 if veinsAnalysis
+    % Process vein velocity signals
     v_vein = v_RMS_video .* maskVeinSection;
     v_vein(~maskVeinSection) = NaN;
     v_vein_signal = squeeze(sum(v_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
+end
 
-    graphSignal('v_vessel', ...
-        t, v_artery_signal, '-', cArtery, ...
-        t, v_vein_signal, '-', cVein, ...
-        'Title', 'average velocity in arteries and veins', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
-    ToolBox.Output.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
-    ToolBox.Output.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's');
-else
-    graphSignal('v_artery', ...
-        t, v_artery_signal, '-', cArtery, ...
-        'Title', 'average velocity in arteries', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
-    ToolBox.Output.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
+if save_figures
+    % Plot velocity signals
+    if veinsAnalysis
+        graphSignal('v_vessel', ...
+            t, v_artery_signal, '-', cArtery, ...
+            t, v_vein_signal, '-', cVein, ...
+            'Title', 'average velocity in arteries and veins', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
+        ToolBox.Output.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
+        ToolBox.Output.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's');
+    else
+        graphSignal('v_artery', ...
+            t, v_artery_signal, '-', cArtery, ...
+            'Title', 'average velocity in arteries', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
+        ToolBox.Output.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
+    end
+
 end
 
 fprintf("    2. Difference calculation and velocity computation took %ds\n", round(toc));
@@ -312,7 +321,7 @@ fprintf("    4. Resistivity and waveform analysis took %ds\n", round(toc()));
 tic;
 
 % background in vessels
-if params.json.save_figures
+if save_figures
 
     LocalBackground_in_vessels = mean(f_bkg, 3);
     createHeatmap(LocalBackground_in_vessels, 'background in vessels', ...
@@ -345,28 +354,29 @@ if exportVideos
     writeGifOnDisc(imresize(f_video_rescale, 0.5), "f");
 end
 
-% Precompute masks for visualization
-maskAV = maskArtery & maskVein;
-maskArterySection = maskArtery & maskSection & ~maskAV;
-maskVeinSection = maskVein & maskSection & ~maskAV;
+v_video_RGB = zeros(numX, numY, 3, numFrames, 'single');
+v_mean_RGB = zeros(numX, numY, 3, 'single');
 
-% Generate flow maps
-[v_video_RGB, v_mean_RGB] = flowMap(v_RMS_video, maskSection, maskArtery, maskVein, M0_ff, xy_barycenter, ToolBox);
+if save_figures
+    % Precompute masks for visualization
+    maskAV = maskArtery & maskVein;
+    maskArterySection = maskArtery & maskSection & ~maskAV;
+    maskVeinSection = maskVein & maskSection & ~maskAV;
 
-% Generate histograms
-histoVideoArtery = VelocityHistogram(v_RMS_video, maskArterySection, 'artery');
+    % Generate flow maps
+    [v_video_RGB, v_mean_RGB] = flowMap(v_RMS_video, maskSection, maskArtery, maskVein, M0_ff, xy_barycenter, ToolBox);
 
-histoVideoVein = [];
+    % Generate histograms
+    histoVideoArtery = VelocityHistogram(v_RMS_video, maskArterySection, 'artery');
 
-if veinsAnalysis
-    histoVideoVein = VelocityHistogram(v_RMS_video, maskVeinSection, 'vein');
-end
+    if veinsAnalysis
+        histoVideoVein = VelocityHistogram(v_RMS_video, maskVeinSection, 'vein');
 
-% Generate combined visualizations
+        % Generate combined visualizations
+        createCombinedVisualizations(v_mean_RGB, histoVideoArtery, veinsAnalysis, histoVideoVein, ...
+            v_video_RGB, numFrames, exportVideos, ToolBox);
+    end
 
-if veinsAnalysis
-    createCombinedVisualizations(v_mean_RGB, histoVideoArtery, veinsAnalysis, histoVideoVein, ...
-        v_video_RGB, numFrames, exportVideos, ToolBox);
 end
 
 fprintf("    5. Visualization and output generation took %ds\n", round(toc));

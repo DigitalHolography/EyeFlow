@@ -47,24 +47,10 @@ if mask_params.OpticDiscDetector
 
         x_center = bestBox(1);
         y_center = bestBox(2);
-        a = bestBox(3) / 2;
-        b = bestBox(4) / 2;
-
-        angle = linspace(0, 2 * pi, 360);
-        x_ellipsis = x_center + a * cos(angle);
-        y_ellipsis = y_center + b * sin(angle);
-
-        ToolBox = getGlobalToolBox;
-
-        figure('Visible', 'off', 'Color', 'w');
-        imshow(M0img, []);
-        hold on;
 
         if val > 0.5
-            plot(x_ellipsis, y_ellipsis, 'g--', 'LineWidth', 2);
             ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2/512, '');
         else
-            plot(x_ellipsis, y_ellipsis, 'r--', 'LineWidth', 2);
             found = false;
             diameter_x = NaN; % reset to default
             diameter_y = NaN;
@@ -72,12 +58,27 @@ if mask_params.OpticDiscDetector
             y_center = NaN;
         end
 
-        % imgOut = insertObjectAnnotation(M0img, 'rectangle', bestBox, ...
-        % sprintf('%s: %.2f', string(bestLabel), bestScore));
-        % imshow(imgOut);
-        axis equal;
-        axis off;
-        exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf('%s_opticdisc.png', ToolBox.folder_name)));
+        if params.json.save_figures
+            a = bestBox(3) / 2;
+            b = bestBox(4) / 2;
+            angle = linspace(0, 2 * pi, 360);
+            x_ellipsis = x_center + a * cos(angle);
+            y_ellipsis = y_center + b * sin(angle);
+
+            figure('Visible', 'off', 'Color', 'w');
+            imshow(M0img, []);
+            hold on;
+
+            if val > 0.5
+                plot(x_ellipsis, y_ellipsis, 'g--', 'LineWidth', 2);
+            else
+                plot(x_ellipsis, y_ellipsis, 'r--', 'LineWidth', 2);
+            end
+
+            axis equal;
+            axis off;
+            exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf('%s_opticdisc.png', ToolBox.folder_name)));
+        end
 
     else
         found = false;

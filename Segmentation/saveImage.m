@@ -8,7 +8,12 @@ arguments
 end
 
 ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
 folder_name = ToolBox.folder_name;
+
+if ~params.json.save_figures
+    return;
+end
 
 if opt.isStep
     folderPath = fullfile(ToolBox.path_png, 'mask', 'steps', sprintf("%s_%s", folder_name, suffix));
