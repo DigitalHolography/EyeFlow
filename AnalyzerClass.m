@@ -25,8 +25,17 @@ methods
 
         if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
             mkdir(ToolBox.path_png, 'mask')
+        end
+
+        if ~isfolder(fullfile(ToolBox.path_eps, 'mask'))
             mkdir(ToolBox.path_eps, 'mask')
+        end
+
+        if ~isfolder(fullfile(ToolBox.path_png, 'mask', 'steps'))
             mkdir(fullfile(ToolBox.path_png, 'mask'), 'steps')
+        end
+
+        if ~isfolder(fullfile(ToolBox.path_eps, 'mask', 'steps'))
             mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
         end
 
