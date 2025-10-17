@@ -74,7 +74,6 @@ if savepng
 
     if params.json.save_figures
         T = ToolBox.stride / ToolBox.fs / 1000;
-        numFrames = size(video, 3);
         fullTime = ToolBox.Cache.t;
 
         figure(Visible = 'off');
