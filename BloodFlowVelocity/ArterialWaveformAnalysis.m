@@ -219,7 +219,7 @@ if params.json.save_figures
 
     %
 
-    figure,
+    figure('Visible','off'),
     hold on
     % plot(pulseTime, composite_signal, 'LineWidth', 2);
 

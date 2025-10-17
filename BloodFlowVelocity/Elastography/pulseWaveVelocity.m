@@ -145,7 +145,7 @@ for i = 2:numpoints - 1
 end
 
 if params.json.save_figures
-    figure('Visible', 'on');
+    figure('Visible', 'off');
     imagesc(L)
     title('selected sections along the artery')
     axis image, axis off;
@@ -158,7 +158,7 @@ Ux = Ux_edge;
 Ux_n = (Ux - mean(Ux, 2)) ./ std(Ux, [], 2);
 
 if params.json.save_figures
-    figure('Visible', 'on');
+    figure('Visible', 'off');
     imagesc(ToolBox.Cache.t, linspace(0, abs_dist(end), numpoints), real(Ux_n));
     xlabel("time (s)");
     ylabel("arc length (mm)")

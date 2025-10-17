@@ -313,7 +313,7 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_n
 
 T = ToolBox.stride / ToolBox.fs / 1000;
 
-figure, hold on
+figure("Visible","off"), hold on
 errorbar(t_systole * T, diameter_sys_mean, diameter_se_sys_mean, ...
     'k', 'LineStyle', 'none', ...
     'Marker', '^', 'MarkerFaceColor', 'auto', 'LineWidth', 2)
@@ -335,7 +335,7 @@ axis padded
 xlim([0 numFrames * T])
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf('%s_plot_diasys_diameter_%s.png', ToolBox.folder_name, vesselName)))
 
-figure, hold on
+figure("Visible","off"), hold on
 errorbar((t_systole + t_diastole) * T / 2, ...
     diameter_diff_mean, ...
     diameter_se_diff_mean, ...

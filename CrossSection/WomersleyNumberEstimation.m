@@ -36,7 +36,7 @@ v_profile_ft = fftshift(fft(v_profile_hyp, [], 2), 2);
 
 % figure(1917), imagesc(angle((v_profile_ft))); xlabel('Freq'), ylabel('Vessel Cross Section ');
 
-f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
+f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, numFrames);
 
 [~, cardiac_idx] = min(abs(f - cardiac_frequency));
 

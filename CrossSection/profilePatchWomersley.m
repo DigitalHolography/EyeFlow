@@ -24,7 +24,7 @@ end
 % Extract cardiac frequency and corresponding indices with a margin
 cardiac_frequency = ToolBox.Cache.HeartBeatFFT; % in Hz
 
-f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
+f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, numFrames);
 
 [~, cardiac_idx] = min(abs(f - cardiac_frequency));
 
