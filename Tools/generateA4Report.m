@@ -12,35 +12,38 @@ outputs = ToolBox.Output;
 
 % Parameters
 % Arterious Velocities
-parameters.Max_Arterial_Velocity = outputs.ArterialMaximumVelocity;
-parameters.Average_Arterial_Velocity = outputs.ArterialMeanVelocity;
-parameters.Min_Arterial_Velocity = outputs.ArterialMinimumVelocity;
+parameters.Max_Arterial_Velocity = outputs.ArteryVelocityMax;
+parameters.Average_Arterial_Velocity = outputs.ArteryVelocityMean;
+parameters.Min_Arterial_Velocity = outputs.ArteryVelocityMin;
 
 % Venous Velocities
-parameters.Max_Venous_Velocity = outputs.VenousMaximumVelocity;
-parameters.Average_Venous_Velocity = outputs.VenousMeanVelocity;
-parameters.Min_Venous_Velocity = outputs.VenousMinimumVelocity;
+parameters.Max_Venous_Velocity = outputs.VeinVelocityMax;
+parameters.Average_Venous_Velocity = outputs.VeinVelocityMean;
+parameters.Min_Venous_Velocity = outputs.VeinVelocityMin;
 
 % Indexes
-parameters.ARI = outputs.ArterialResistivityIndexVelocity;
-parameters.VRI = outputs.VenousResistivityIndexVelocity;
-parameters.API = outputs.ArterialPulsatilityIndexVelocity;
-parameters.VPI = outputs.VenousPulsatilityIndexVelocity;
+parameters.ARI = outputs.ArteryResistivityIndexVelocity;
+parameters.VRI = outputs.VeinResistivityIndexVelocity;
+parameters.API = outputs.ArteryPulsatilityIndexVelocity;
+parameters.VPI = outputs.VeinPulsatilityIndexVelocity;
 
 % Other Parameters
-parameters.TimePeakToDescent = outputs.TimePeakToDescent;
-parameters.TimeToPeakFromMinVein = outputs.TimetoPeakFromMinVein;
+parameters.TimePeakToDescent = outputs.ArteryTimePeakToDescent;
+parameters.VeinTimeToPeakFromMin = outputs.VeinTimeToPeakFromMin;
 parameters.DicroticNotchVisibility = outputs.DicroticNotchVisibility;
 
 % Volume Rates
-parameters.Average_Arterial_Volume_Rate = outputs.ArterialMeanVolumeRate;
-parameters.Average_Venous_Volume_Rate = outputs.VenousMeanVolumeRate;
+parameters.Average_Arterial_Volume_Rate = outputs.ArteryFlowRateMean;
+parameters.Average_Venous_Volume_Rate = outputs.VeinFlowRateMean;
 
 % Heart Rate and Blood Pressure
 parameters.heart_beat = outputs.HeartBeat;
 
-parameters.arterial_systolic_fraction = outputs.ArterialSystolicFraction;
-parameters.arterial_diastolic_fraction = outputs.ArterialDiastolicFraction;
+if isfield(outputs, 'ArterialSystolicFraction')
+    parameters.arterial_systolic_fraction = outputs.ArterySystolicFraction;
+    parameters.arterial_diastolic_fraction = outputs.ArteryDiastolicFraction;
+end
+
 % parameters.time_2_systolic_peak = outputs.Time2SystolicPeak;
 parameters.SystoleDuration = outputs.SystoleDuration;
 parameters.DiastoleDuration = outputs.DiastoleDuration;
@@ -49,7 +52,7 @@ parameters.UnixTimestampLast = outputs.UnixTimestampLast;
 
 % Create a new figure with A4 paper size (in centimeters)
 fig = figure('Units', 'centimeters', 'Position', [0 0 21.0 29.7], ...
-    'PaperSize', [21.0 29.7], 'PaperPositionMode', 'auto');
+    'PaperSize', [21.0 29.7], 'PaperPositionMode', 'auto', "Visible", "off");
 
 % Set margins (in normalized units)
 % topMargin = 0.08;
@@ -89,14 +92,17 @@ for col = 1:2
 
     ax = axes('Position', [posX posY 0.45 rowHeights(1) * gridHeight]);
     vr_combined_path = fullfile(path_png, sprintf('%s_combined_vr_%s.png', folder_name, name));
+    vesselmap_path = fullfile(path_png, sprintf('%s_vessel_map_%s.png', folder_name, name));
 
     if isfile(vr_combined_path)
         vr_combined_im = imread(vr_combined_path); % Taller placeholder (2x height)
         imshow(vr_combined_im, []);
-    else
-        v_path = fullfile(path_png, 'mask', sprintf('%s_vessel_map_%s.png', folder_name, name));
-        v_im = imread(v_path); % Taller placeholder (2x height)
+    elseif isfile(vesselmap_path)
+        v_im = imread(vesselmap_path); % Taller placeholder (2x height)
         imshow(v_im, []);
+    else
+        placeholder_im = ones(400, 200, 3); % Black placeholder
+        imshow(placeholder_im, []);
     end
 
     set(ax, 'XTick', [], 'YTick', []);
@@ -127,17 +133,16 @@ for col = 1:2
     ax = axes('Position', [posX posY 0.45 rowHeights(3) * gridHeight]);
     volume_path = fullfile(path_png, sprintf('%s_strokeAndTotalVolume_%s.png', folder_name, name));
 
+    if strcmp(name, 'artery')
+        a_wave_path = fullfile(path_png, sprintf('%s_ArterialWaveformAnalysis_v_%s.png', folder_name, name));
+    else
+        a_wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
+    end
+
     if isfile(volume_path)
         volume_im = imread(volume_path); % Standard placeholder
         imshow(volume_im, []);
-    else
-
-        if strcmp(name, 'artery')
-            a_wave_path = fullfile(path_png, sprintf('%s_ArterialWaveformAnalysis_v_%s.png', folder_name, name));
-        else
-            a_wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
-        end
-
+    elseif isfile(a_wave_path)
         a_wave_im = imread(a_wave_path); % Taller placeholder (2x height)
         imshow(a_wave_im, []);
     end
@@ -223,7 +228,7 @@ switch name
         fmt = 'Avg Venous Velocity = %.2f';
     case 'TimePeakToDescent'
         fmt = 'Time Peak to Descent = %.2f';
-    case 'TimeToPeakFromMinVein'
+    case 'VeinTimeToPeakFromMin'
         fmt = 'Time to Peak from Min Vein = %.2f';
     case 'DicroticNotchVisibility'
         fmt = 'Dicrotic Notch Visibility = %.0f';

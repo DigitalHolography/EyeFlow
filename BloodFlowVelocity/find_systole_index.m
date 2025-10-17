@@ -70,34 +70,39 @@ end
 if savepng
 
     ToolBox = getGlobalToolBox();
-    T = ToolBox.stride / ToolBox.fs / 1000;
-    numFrames = size(video, 3);
-    fullTime = linspace(0, numFrames * T, numFrames);
+    params = ToolBox.getParams();
 
-    figure(Visible = 'off');
-    hold on
-    plot(fullTime, diff_signal, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5)
-    plot(fullTime, fullPulse, 'k-', 'LineWidth', 1.5);
-    scatter((sys_max_list - 1) * T, fullPulse(sys_max_list), 'r', "filled")
-    scatter((sys_min_list - 1) * T, fullPulse(sys_min_list), 'b', "filled")
-    scatter((sys_index_list - 1) * T, fullPulse(sys_index_list), 'k', "filled")
+    if params.json.save_figures
+        T = ToolBox.stride / ToolBox.fs / 1000;
+        numFrames = size(video, 3);
+        fullTime = ToolBox.Cache.t;
 
-    xline((sys_index_list - 1) * T, 'k--')
-    xline((sys_min_list - 1) * T, 'b--')
-    xline((sys_max_list - 1) * T, 'r--')
-    hold off
+        figure(Visible = 'off');
+        hold on
+        plot(fullTime, diff_signal, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5)
+        plot(fullTime, fullPulse, 'k-', 'LineWidth', 1.5);
+        scatter((sys_max_list - 1) * T, fullPulse(sys_max_list), 'r', "filled")
+        scatter((sys_min_list - 1) * T, fullPulse(sys_min_list), 'b', "filled")
+        scatter((sys_index_list - 1) * T, fullPulse(sys_index_list), 'k', "filled")
 
-    axis padded;
-    axP = axis;
-    axis tight;
-    axT = axis;
-    axis([axT(1), axT(2), axP(3), axP(4)]);
-    box on
-    set(gca, 'LineWidth', 2, 'PlotBoxAspect', [2.5 1 1])
-    xlabel("Time (s)")
-    ylabel("Velocity (mm/s)")
+        xline((sys_index_list - 1) * T, 'k--')
+        xline((sys_min_list - 1) * T, 'b--')
+        xline((sys_max_list - 1) * T, 'r--')
+        hold off
 
-    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'find_systoles_indices.png')))
+        axis padded;
+        axP = axis;
+        axis tight;
+        axT = axis;
+        axis([axT(1), axT(2), axP(3), axP(4)]);
+        box on
+        set(gca, 'LineWidth', 2, 'PlotBoxAspect', [2.5 1 1])
+        xlabel("Time (s)")
+        ylabel("Velocity (mm/s)")
+
+        exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'find_systoles_indices.png')))
+
+    end
 
 end
 

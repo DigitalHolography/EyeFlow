@@ -2,9 +2,6 @@ function profilePatchWomersley(v_profiles_cell, name, locsLabel, M0_ff_img)
 
 ToolBox = getGlobalToolBox;
 
-params = ToolBox.getParams;
-exportVideos = params.exportVideos;
-
 % Check sizes and extract numFrames from first non empty profile data in input
 [rows, cols] = size(locsLabel);
 assert(isequal(size(v_profiles_cell), [rows, cols]), 'Size of v_profiles_cell must match locsLabel');
@@ -23,9 +20,9 @@ while numFrames <= 0
 end
 
 % Extract cardiac frequency and corresponding indices with a margin
-cardiac_frequency = ToolBox.Output.HeartBeat.value;
+cardiac_frequency = ToolBox.Cache.HeartBeatFFT; % in Hz
 
-f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
+f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, numFrames);
 
 [~, cardiac_idx] = min(abs(f - cardiac_frequency));
 
@@ -48,11 +45,11 @@ hold on;
 title(['Womersley Profiles Overlay - ' name]);
 
 % Parameters for Profiles size
-profWidth = 40;
+% profWidth = 40;
 profHeight = 30;
 
 % AVG Plot
-lines_cell = cell(rows, cols);
+% lines_cell = cell(rows, cols);
 
 for circleIdx = 1:rows
 

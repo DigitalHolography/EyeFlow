@@ -1,18 +1,10 @@
 function VideoNonRigidRegistering(obj)
-params = Parameters_json(obj.directory, obj.param_name);
-
-if ~params.json.Preprocess.NonRigidRegisteringFlag
-    return
-end
-
-tic;
-disp("    - Video Registering Non-Rigidly started");
-
-ref_img = mean(obj.M0_data_video, 3);
+% This function performs non-rigid registration on the video frames of M0
+v = obj.M0;
+[numX, numY, numFrames] = size(v);
+ref_img = mean(v, 3);
 low_freq = imgaussfilt(ref_img, 35);
 ref_img = ref_img ./ low_freq;
-
-v = obj.M0_data_video;
 
 outDir = fullfile(obj.directory, 'eyeflow', 'nonRigidReg');
 
@@ -22,13 +14,11 @@ end
 
 save_path = fullfile(obj.directory, 'eyeflow', "nonRigidReg");
 
-nFrames = size(v, 3);
+stabilized = zeros(numX, numY, numFrames);
+field = zeros(numX, numY, 2, numFrames);
 
-stabilized = zeros(size(ref_img, 1), size(ref_img, 2), nFrames);
-field = zeros(size(ref_img, 1), size(ref_img, 2), 2, nFrames);
-
-%smoothVideo = imgaussfilt3(obj.M0_data_video, [0.1 0.1 2]);
-for k = 1:nFrames
+%smoothVideo = imgaussfilt3(obj.M0, [0.1 0.1 2]);
+for k = 1:numFrames
     %get the frame, stabilize it, save it
     tgt = safeConvertFrame(v(:, :, k));
     tgt = tgt ./ low_freq;
@@ -45,7 +35,6 @@ saveStabilizedVideoGif(D.stabilized, fullfile(save_path, "stabilized.gif"));
 saveAngleAndNormOfDisplacementField(D.field, fullfile(save_path, "angle.gif"), fullfile(save_path, "norm.gif"));
 
 obj.displacementField = D;
-fprintf("    - Video Registering Non-Rigidly took: %ds\n", round(toc));
 end
 
 % helper functions

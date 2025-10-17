@@ -25,10 +25,10 @@ properties
     fs double
     f1 double
     f2 double
-    record_time_stamps_us
-    cmapArtery
-    cmapVein
-    cmapAV
+    record_time_stamps_us % structure with first and time_stamps
+    holo_frames % structure with first and last frames
+
+    % Results
     % Ref % Ref handle to the Execution Class to have access to its properties easily
     Cache % Cache class handle Cache small variables through the execution
     Output % Output class handle Stores outputs through the execution
@@ -36,7 +36,7 @@ end
 
 methods
 
-    function obj = ToolBoxClass(path, EF_param_name, OverWrite)
+    function obj = ToolBoxClass(path, EF_param_name)
         % Constructor for ToolBoxClass: Initializes paths, parameters, and calculates scaling factors.
 
         % Store paths and parameters
@@ -45,7 +45,7 @@ methods
         obj.main_foldername = obj.extractFolderName(path);
 
         % Initialize EyeFlow-related paths
-        obj.initializePaths(OverWrite);
+        obj.initializePaths();
 
         % Load parameters from cache or fall back to defaults
         obj.loadParameters(path);
@@ -56,10 +56,7 @@ methods
         % Copy input parameters to result folder
         obj.copyInputParameters();
 
-        obj.createColorMaps();
-
-        obj.setGlobalToolBox;
-
+        obj.setGlobalToolBox();
     end
 
     function mainFolder = extractFolderName(~, path)
@@ -73,7 +70,7 @@ methods
         ToolBoxGlobal = obj;
     end
 
-    function initializePaths(obj, OverWrite)
+    function initializePaths(obj)
         % Helper function to initialize paths for storing eyeflow-related data
 
         % Define main and subdirectories for storing data
@@ -81,7 +78,17 @@ methods
         foldername_EF = strcat(obj.main_foldername, '_EF');
 
         % Create or identify a unique folder for the current run
-        idx = obj.getUniqueFolderIndex(foldername_EF, OverWrite);
+        idx = obj.getUniqueFolderIndex(foldername_EF);
+
+        % Special case: if version.txt contains "dev"
+        if isfile('version.txt')
+            vers = readlines('version.txt');
+
+            if any(contains(vers, 'dev'))
+                idx = 0; % Use index 0 for development versions
+            end
+
+        end
 
         % Set the folder name and paths for various data types
         obj.EF_name = foldername_EF;
@@ -102,7 +109,7 @@ methods
         obj.createDirectories();
     end
 
-    function idx = getUniqueFolderIndex(obj, folderBaseName, OverWrite)
+    function idx = getUniqueFolderIndex(obj, folderBaseName)
         % Helper function to determine the unique folder index based on existing directories
 
         idx = 1;
@@ -115,11 +122,7 @@ methods
 
                 if ~isempty(match) && str2double(match{1}) >= idx
 
-                    if isempty(OverWrite) || ~OverWrite
-                        idx = str2double(match{1}) + 1; % Use the next index
-                    else
-                        idx = str2double(match{1});
-                    end
+                    idx = str2double(match{1}) + 1; % Use the next index
 
                 end
 
@@ -170,6 +173,11 @@ methods
 
             if isfield(decoded_data, 'record_time_stamps_us')
                 obj.record_time_stamps_us = decoded_data.record_time_stamps_us;
+            end
+
+            if isfield(decoded_data, 'num_frames')
+                obj.holo_frames.first = decoded_data.first_frame;
+                obj.holo_frames.last = decoded_data.end_frame;
             end
 
         elseif isfile(fullfile(path, 'mat', [obj.main_foldername, '.mat']))
@@ -245,12 +253,6 @@ methods
         Params = Parameters_json(obj.EF_path, obj.param_name);
     end
 
-    function createColorMaps(obj)
-        obj.cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
-        obj.cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
-        obj.cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [1 1 1], 1);
-    end
-
     function saveGit(obj)
         % SAVING GIT VERSION
         % In the txt file in the folder : "log"
@@ -311,6 +313,16 @@ methods
         fprintf(fileID, '----------------------------------\r');
         fclose(fileID);
 
+    end
+
+    function ToolBox = setCache(obj, Cache)
+        obj.Cache = Cache;
+        ToolBox = obj;
+    end
+
+    function ToolBox = setOutput(obj, Output)
+        obj.Output = Output;
+        ToolBox = obj;
     end
 
 end

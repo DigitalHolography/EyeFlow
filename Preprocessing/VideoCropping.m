@@ -1,46 +1,37 @@
-function VideoCropping(obj)
+function [firstFrame, lastFrame] = VideoCropping(obj, firstFrame, lastFrame)
 %Crop a video (matrix dim 3)
-params = Parameters_json(obj.directory, obj.param_name);
-firstFrame = params.json.Preprocess.Crop.StartFrame;
-lastFrame = params.json.Preprocess.Crop.EndFrame;
 
-if (firstFrame == 1) && (lastFrame == -1)
-    return % do nothing if not required
+[~, ~, numFrames] = size(obj.M0_ff);
+
+if lastFrame == -1
+    lastFrame = numFrames;
 end
 
-[~, ~, numFrames] = size(obj.M0_ff_video);
+if firstFrame == -1
+    firstFrame = 1;
+end
 
-if firstFrame > 0 && firstFrame < numFrames || lastFrame > 1 && lastFrame <= numFrames
+if firstFrame >= 1 && firstFrame <= numFrames ...
+        || lastFrame >= 1 && lastFrame <= numFrames ...
+        && firstFrame < lastFrame
 
-    tic
+    obj.M0_ff = obj.M0_ff(:, :, firstFrame:lastFrame);
+    obj.M0 = obj.M0(:, :, firstFrame:lastFrame);
+    obj.M1 = obj.M1(:, :, firstFrame:lastFrame);
+    obj.M2 = obj.M2(:, :, firstFrame:lastFrame);
 
-    fprintf("    - Video Cropping from %d to %d frames...\n", firstFrame, lastFrame);
-
-    if lastFrame == -1
-        lastFrame = numFrames;
+    if ~isempty(obj.SH)
+        obj.SH = obj.SH(:, :, :, firstFrame:lastFrame);
     end
 
-    if firstFrame == -1
-        firstFrame = 1;
-    end
+    fprintf('Data cube frame: %d/%d to %d/%d\n', firstFrame, numFrames, lastFrame, numFrames);
 
-    obj.M0_ff_video = obj.M0_ff_video(:, :, firstFrame:lastFrame);
-    obj.M0_data_video = obj.M0_data_video(:, :, firstFrame:lastFrame);
-    obj.M1_data_video = obj.M1_data_video(:, :, firstFrame:lastFrame);
-    obj.M2_data_video = obj.M2_data_video(:, :, firstFrame:lastFrame);
-
-    if ~isempty(obj.SH_data_hypervideo)
-        obj.SH_data_hypervideo = obj.SH_data_hypervideo(:, :, :, firstFrame:lastFrame);
-    end
-
-    disp(['Data cube frame: ', num2str(firstFrame), '/', num2str(numFrames), ' to ', num2str(lastFrame), '/', num2str(numFrames)])
-
-    fprintf("    - Video Cropping took: %ds\n", round(toc));
-
-else
-    disp('Wrong value for the first frame. Set as 1.')
-    disp('Wrong value for the last frame. Set as the end.')
-    disp(['Data cube frame: 1/', num2str(numFrames), ' to ', num2str(numFrames), '/', num2str(numFrames)])
+elseif firstFrame < 1 || firstFrame > numFrames
+    error('First frame (%d) is out of bounds. It should be between 1 and %d.', firstFrame, numFrames);
+elseif lastFrame < 1 || lastFrame > numFrames
+    error('Last frame (%d) is out of bounds. It should be between 1 and %d.', lastFrame, numFrames);
+elseif firstFrame >= lastFrame
+    error('First frame (%d) should be less than last frame (%d).', firstFrame, lastFrame);
 end
 
 end

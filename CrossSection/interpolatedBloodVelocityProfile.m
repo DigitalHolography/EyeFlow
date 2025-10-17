@@ -84,7 +84,7 @@ for cIdx = 1:numCircles
                 if isempty(indx)
                     temp_v(frameIdx, :) = zeros(1, numInterp);
                     temp_dv(frameIdx, :) = zeros(1, numInterp);
-                elseif numel(indx) == 1
+                elseif isscalar(indx)
                     temp_v(frameIdx, :) = zeros(1, numInterp);
                     temp_dv(frameIdx, :) = zeros(1, numInterp);
                 else
@@ -168,8 +168,8 @@ bounds_sys = createBounds(v_sys, dv_sys);
 bounds_dias = createBounds(v_dias, dv_dias);
 
 % Compute a Womersley number from shape at cardiac frequency
-[alphaWom] = WomersleyNumberEstimation(v_video', ToolBox.Output.HeartBeat.value, name);
-profileHarmonics(v_video', name)
+WomersleyNumberEstimation(v_video', ToolBox.Cache.HeartBeatFFT, name);
+profileHarmonics(v_video', name);
 
 % Create figure for static plot
 figure("Visible", "off");

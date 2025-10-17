@@ -173,9 +173,12 @@ axes('Parent', fig, 'Units', 'normalized', 'Position', [fieldX fieldY 1 - 2 * fi
 
 % Read and display the image
 try
-    img = imread(imagePath);
-    imshow(img);
-    axis off;
+
+    if isfile(imagePath)
+        img = imread(imagePath);
+        imshow(img);
+        axis off;
+    end
 
     % Add a subtle border around the image
     rectangle('Position', [0.5, 0.5, size(img, 2) - 1, size(img, 1) - 1], ...

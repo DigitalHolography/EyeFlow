@@ -54,14 +54,17 @@ subImgUnCropped = subImgUnCropped(yRange, xRange);
 subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
 
 % Compute the Vessel Cross Section
-[D, D_SE, A, A_SE, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter);
+flag_figure = params.json.save_figures;
+[D, D_SE, A, A_SE, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter, flag_figure);
 results.D = D;
 results.D_SE = D_SE;
 results.A = A;
 results.A_SE = A_SE;
 
 % Generate figures
-saveCrossSectionFigure(subImgUnCropped, c1, c2, ToolBox, patchName);
+if params.json.save_figures
+    saveCrossSectionFigure(subImgUnCropped, c1, c2, ToolBox, patchName);
+end
 
 % Initialize rejected masks
 rejected_masks = zeros(numX, numY, 3);

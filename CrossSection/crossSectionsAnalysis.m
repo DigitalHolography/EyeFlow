@@ -1,17 +1,27 @@
-function [results] = crossSectionsAnalysis(mask, vesselName, v_RMS, M0_ff_video, xy_barycenter, papillaDiameter, sysIdx, diasIdx)
+function [results] = crossSectionsAnalysis(mask, vesselName, v_RMS, M0_ff)
+% crossSectionsAnalysis Perform cross-sectional analysis of retinal vessels
+
+% Inputs:
+%   - mask: Binary mask of the vessel (artery or vein)
+%   - vesselName: 'artery' or 'vein'
 
 ToolBox = getGlobalToolBox;
-
 params = ToolBox.getParams;
+
+% Retrieve cached variables
+xy_barycenter = ToolBox.Cache.xy_barycenter;
+papillaDiameter = ToolBox.Cache.papillaDiameter;
+sysIdx = ToolBox.Cache.sysIdx;
+diasIdx = ToolBox.Cache.diasIdx;
 
 initial = upper(vesselName(1));
 
 [numX, numY, numFrames] = size(v_RMS);
 x_c = xy_barycenter(1);
 y_c = xy_barycenter(2);
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
-M0_ff_video = rescale(M0_ff_video);
-M0_ff_img = rescale(mean(M0_ff_video, 3));
+t = ToolBox.Cache.t;
+M0_ff = rescale(M0_ff);
+M0_ff_img = rescale(mean(M0_ff, 3));
 
 %% 1. Mask Sectionning for all circles
 

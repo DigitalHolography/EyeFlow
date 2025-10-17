@@ -24,12 +24,6 @@ for tt = 1:length(theta)
     projy(:, tt) = squeeze(sum(tmpImg, 2));
 end
 
-figure(3001)
-imagesc(projx)
-
-figure(3002)
-imagesc(projy)
-
 [~, tilt_angle] = max(sum((projx == 0), 1));
 H_cropped = imrotate(H_cropped, tilt_angle, 'crop');
 H_cropped = H_cropped .* (H_cropped > 0);

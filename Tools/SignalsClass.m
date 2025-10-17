@@ -1,4 +1,4 @@
-classdef Signals < handle
+classdef SignalsClass < handle
 % Class to hold the main output signals of the retinal flow analysis pipeline
 
 properties
@@ -17,12 +17,9 @@ end
 
 methods
 
-    function obj = Signals()
-    end
-
-    function initSignals(obj)
+    function obj = SignalsClass()
         % Constructor for the class, fills the properties with default values
-        props = properties(Signals);
+        props = properties(obj);
 
         for i = 1:length(props)
             obj.(props{i}).yvalues = NaN;
@@ -61,7 +58,7 @@ methods
 
     function writeHdf5(obj, path)
 
-        props = properties(Signals);
+        props = properties(obj);
 
         for i = 1:length(props)
             h5create(path, strcat("/", "Signals", props{i}, "_y"), size(obj.(props{i}).yvalues));

@@ -31,7 +31,7 @@ switch method
     case "regular"
         s_idx = select_regular(gradient_n, params.threshold, params.tolerance);
     case "kmeans_cosine"
-        s_idx = select_kmeans(signals_n,'cosine');
+        s_idx = select_kmeans(signals_n, 'cosine');
 end
 
 end
@@ -51,7 +51,7 @@ P1 = P2(1:floor(numFrames / 2) + 1);
 P1(2:end - 1) = 2 * P1(2:end - 1);
 
 % Frequency vector
-f = fs * (0:(numFrames / 2)) / numFrames;
+f = fft_freq_vector(fs, numFrames, true);
 
 % Find dominant frequency in physiological range (e.g. 0.5 - 5 Hz)
 f_range = (f > 0.5 & f < 5); % 30 - 300 bpm
@@ -111,7 +111,6 @@ end
 
 end
 
-
 function s_idx = select_kmeans(signals_n, distance)
 % Select signals based on kmeans clustering with given distance
 
@@ -120,15 +119,15 @@ ToolBox = getGlobalToolBox;
 dt = ToolBox.stride / ToolBox.fs / 1000;
 fs = 1 / dt;
 
-[idxs, C] = kmedoids(signals_n,2,"Distance",distance) ;
+[idxs, C] = kmedoids(signals_n, 2, "Distance", distance);
 
 s_idx = zeros(1, numBranches);
 
-gradient_C = gradient(C,1);
+gradient_C = gradient(C, 1);
 
 % just to gets idx0 the period
-% 
-avgSignal = C(1,:);
+%
+avgSignal = C(1, :);
 
 % Compute FFT
 Y = fft(avgSignal);
@@ -137,7 +136,7 @@ P1 = P2(1:floor(numFrames / 2) + 1);
 P1(2:end - 1) = 2 * P1(2:end - 1);
 
 % Frequency vector
-f = fs * (0:(numFrames / 2)) / numFrames;
+f = fft_freq_vector(fs, numFrames, true);
 
 % Find dominant frequency in physiological range (e.g. 0.5 - 5 Hz)
 f_range = (f > 0.5 & f < 5); % 30 - 300 bpm
@@ -152,9 +151,9 @@ idx0 = round(f0 / dt);
 [~, loc_ind1] = max(peaks1);
 
 if gradient_C(1, locs1(loc_ind1)) > 0
-    s_idx(idxs==1) = 1;
+    s_idx(idxs == 1) = 1;
 else
-    s_idx(idxs==1) = 0;
+    s_idx(idxs == 1) = 0;
 end
 
 %2 index
@@ -163,9 +162,9 @@ end
 [~, loc_ind2] = max(peaks2);
 
 if gradient_C(2, locs2(loc_ind2)) > 0
-    s_idx(idxs==2) = 1;
+    s_idx(idxs == 2) = 1;
 else
-    s_idx(idxs==2) = 0;
+    s_idx(idxs == 2) = 0;
 end
 
 end

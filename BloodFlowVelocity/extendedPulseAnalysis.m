@@ -1,20 +1,14 @@
-function extendedPulseAnalysis(M0_ff_video, f_RMS_video, f_AVG_mean, v_RMS, maskArtery, maskVein, xy_barycenter, sysIdxList)
+function extendedPulseAnalysis(M0_ff, f_RMS, f_AVG_mean, v_RMS)
 % extendedPulseAnalysis - Performs extended pulse analysis on Doppler data.
 % Inputs:
-%   M0_ff_video: M0 flat-field corrected video.
-%   f_RMS_video: RMS frequency video.
+%   M0_ff: M0 flat-field corrected video.
+%   f_RMS: RMS frequency video.
 %   f_AVG_mean: Average frequency map.
 %   v_RMS: RMS velocity map.
 %   maskArtery: Mask for arteries.
 %   maskVein: Mask for veins.
 %   maskSection: Mask for the region of interest.
 %   sysIdxList: List of systolic indices.
-
-% Check if sysIdxList is empty
-if isempty(sysIdxList)
-    warning('sysIdxList is empty. Skipping extended pulse analysis.');
-    return;
-end
 
 tic;
 
@@ -23,7 +17,19 @@ ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 numFramesInterp = params.PulseAnalysis.OneCycleInterpolationPoints;
 
-[numX, numY, numFrames] = size(f_RMS_video);
+% Define color limits for heatmaps
+maskArtery = ToolBox.Cache.maskArtery;
+maskVein = ToolBox.Cache.maskVein;
+xy_barycenter = ToolBox.Cache.xy_barycenter;
+sysIdxList = ToolBox.Cache.sysIdxList;
+
+% Check if sysIdxList is empty
+if isempty(sysIdxList)
+    warning('sysIdxList is empty. Skipping extended pulse analysis.');
+    return;
+end
+
+[numX, numY, numFrames] = size(f_RMS);
 x_c = xy_barycenter(1) / numX;
 y_c = xy_barycenter(2) / numY;
 r1 = params.json.SizeOfField.SmallRadiusRatio;
@@ -32,7 +38,7 @@ maskSection = diskMask(numX, numY, r1, r2, center = [x_c, y_c]);
 
 strXlabel = 'Time (s)';
 strYlabel = 'Frequency (kHz)';
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+t = ToolBox.Cache.t;
 veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
 
@@ -48,56 +54,59 @@ cArtery = [255 22 18] / 255;
 cVein = [18 23 255] / 255;
 
 %% 3) Display and save raw heatmaps
-t3 = tic;
+if params.json.save_figures
+    t3 = tic;
 
-% Display and save AVG frequency heatmap
-figure("Visible", "off", "Color", "w");
-imagesc(f_AVG_mean);
-colormap gray;
-title('AVG Frequency Map RAW');
-c = colorbar('southoutside');
-c.Label.String = 'AVG Doppler Frequency (kHz)';
-c.Label.FontSize = 12;
-axis off;
-axis image;
-range = clim;
-imwrite(rescale(f_AVG_mean), fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG.png')), 'png');
+    % Display and save AVG frequency heatmap
+    figure("Visible", "off", "Color", "w");
+    imagesc(f_AVG_mean);
+    colormap gray;
+    title('AVG Frequency Map RAW');
+    c = colorbar('southoutside');
+    c.Label.String = 'AVG Doppler Frequency (kHz)';
+    c.Label.FontSize = 12;
+    axis off;
+    axis image;
+    range = clim;
+    imwrite(rescale(f_AVG_mean), fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG.png')), 'png');
 
-clear f_AVG_mean;
+    clear f_AVG_mean;
 
-% Create and save colorbar for AVG image
-colorbarF = figure('Visible', 'off', 'Color', 'w');
-fontsize(colorbarF, 15);
-set(colorbarF, 'Units', 'normalized');
-set(colorbarF, 'LineWidth', 3);
-colormap gray;
-f_AVG_colorbar = colorbar('north');
-clim(range);
-f_AVG_colorbar.Position = [0.10 0.3 0.81 0.35];
-colorbarF.Position(4) = 0.1000;
-colorTitleHandle = get(f_AVG_colorbar, 'Title');
-titleString = 'AVG Doppler Frequency (kHz)';
-set(colorTitleHandle, 'String', titleString);
+    % Create and save colorbar for AVG image
+    colorbarF = figure('Visible', 'off', 'Color', 'w');
+    fontsize(colorbarF, 15);
+    set(colorbarF, 'Units', 'normalized');
+    set(colorbarF, 'LineWidth', 3);
+    colormap gray;
+    f_AVG_colorbar = colorbar('north');
+    clim(range);
+    f_AVG_colorbar.Position = [0.10 0.3 0.81 0.35];
+    colorbarF.Position(4) = 0.1000;
+    colorTitleHandle = get(f_AVG_colorbar, 'Title');
+    titleString = 'AVG Doppler Frequency (kHz)';
+    set(colorTitleHandle, 'String', titleString);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.png')));
-exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.eps')));
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.png')));
+    exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_%s", ToolBox.folder_name, '3_frequency_AVG_colorbar.eps')));
 
-fprintf("    3. Raw heatmaps generation took %ds\n", round(toc(t3)));
+    fprintf("    3. Raw heatmaps generation took %ds\n", round(toc(t3)));
+
+end
 
 %% 4) Calculate raw signals of arteries, background, and veins
 tic;
 
 % Compute background signal
-background_signal = f_RMS_video .* maskBackground;
+background_signal = f_RMS .* maskBackground;
 background_signal = squeeze(sum(background_signal, [1 2])) / nnz(maskBackground);
 
 % Compute arterial signal
-arterial_signal = f_RMS_video .* maskArtery;
+arterial_signal = f_RMS .* maskArtery;
 arterial_signal = squeeze(sum(arterial_signal, [1 2])) / nnz(maskArtery);
 
 % Compute venous signal if veins analysis is enabled
 if veinsAnalysis
-    venous_signal = f_RMS_video .* maskVein;
+    venous_signal = f_RMS .* maskVein;
     venous_signal = squeeze(sum(venous_signal, [1 2])) / nnz(maskVein);
 end
 
@@ -214,16 +223,16 @@ interp_t = 1:numFramesInterp;
 
 % Create one-cycle average pulse
 fprintf("    Average Pulse\n");
-[onePulseVideo, ~, ~, onePulseVideoM0] = createOneCycle(f_RMS_video, M0_ff_video, maskArtery, sysIdxList, numFramesInterp);
+[onePulseVideo, ~, ~, onePulseVideoM0] = createOneCycle(f_RMS, M0_ff, maskArtery, sysIdxList, numFramesInterp);
 
-clear f_RMS_video;
+clear f_RMS;
 
 % Create one-cycle average pulse minus background
 fprintf("    Average Pulse minus Background\n");
 
 scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
 delta_f_RMS = v_RMS / scalingFactor;
-[onePulseVideominusBKG, selectedPulseIdx, cycles_signal, ~] = createOneCycle(delta_f_RMS, M0_ff_video, maskArtery, sysIdxList, numFramesInterp);
+[onePulseVideominusBKG, selectedPulseIdx, cycles_signal, ~] = createOneCycle(delta_f_RMS, M0_ff, maskArtery, sysIdxList, numFramesInterp);
 
 clear delta_f_RMS;
 

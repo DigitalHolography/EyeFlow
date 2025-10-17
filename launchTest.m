@@ -1,4 +1,5 @@
 [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
+
 if isequal(txt_name, 0)
     fprintf('No file selected. Exiting.\n');
     return;
@@ -14,19 +15,25 @@ addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\"
 %% ensure set default parameters and no forced mask
 
 for ind = 1:length(paths)
-    path = fullfile(paths(ind),'eyeflow');
-    if ~isfolder(fullfile(path,'json'))
-        mkdir(fullfile(path,'json'));
+    path = fullfile(paths(ind), 'eyeflow');
+
+    if ~isfolder(fullfile(path, 'json'))
+        mkdir(fullfile(path, 'json'));
     end
-    delete(fullfile(fullfile(path,'json'), '*.json')); % remove old json files
-    copyfile(fullfile('Parameters','DefaultEyeFlowParams.json'),fullfile(path,'json','input_EF_params.json'));
-    if isfile(fullfile(path,'mask','forceMaskArtery.png'))
-        movefile(fullfile(path,'mask','forceMaskArtery.png'),fullfile(path,'mask','oldForceMaskArtery.png'));
+
+    delete(fullfile(fullfile(path, 'json'), '*.json')); % remove old json files
+    copyfile(fullfile('Parameters', 'DefaultEyeFlowParams.json'), fullfile(path, 'json', 'input_EF_params.json'));
+
+    if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
+        movefile(fullfile(path, 'mask', 'forceMaskArtery.png'), fullfile(path, 'mask', 'oldForceMaskArtery.png'));
     end
-    if isfile(fullfile(path,'mask','forceMaskVein.png'))
-        movefile(fullfile(path,'mask','forceMaskVein.png'),fullfile(path,'mask','oldForceMaskVein.png'));
+
+    if isfile(fullfile(path, 'mask', 'forceMaskVein.png'))
+        movefile(fullfile(path, 'mask', 'forceMaskVein.png'), fullfile(path, 'mask', 'oldForceMaskVein.png'));
     end
+
 end
+
 %% launch
 
 % Generate timestamped log file name
@@ -54,6 +61,7 @@ for ind = 1:length(paths)
     ti = toc;
     fprintf(fid, 'Execution time: %.2f seconds\n\n', ti);
 end
+
 fclose(fid);
 
 fprintf('Log saved to %s\n', logFileName);
@@ -71,7 +79,7 @@ function runAnalysisBlock(path)
 
 try
     ExecClass = ExecutionClass(path);
-    ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name, 0); %no overwrite
+    ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name);
 
     ExecClass.preprocessData();
 
