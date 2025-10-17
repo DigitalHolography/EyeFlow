@@ -13,12 +13,12 @@ function [alphaWom] = WomersleyNumberEstimation(v_profile, cardiac_frequency, na
 %               the pulsatile flow regime.
 % Create figure for static plot
 
-% Get global toolbox settings
+% Get global ToolBox settings
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 numFrames = size(v_profile, 2);
 
-numInterp = params.json.CrossSectionsFigures.InterpolationPoints;
+numInterp = params.json.exportCrossSectionResults.InterpolationPoints;
 assert(size(v_profile, 1) == numInterp);
 w2w = linspace(-1, 1, numInterp);
 
@@ -69,7 +69,7 @@ costFun = @(alpha_multi) norm(regulation_window(r * alpha_multi(2), 1) .* uWom_t
 
 alpha_init = [3 1 0.5]; % initial guess
 alphaWom = fminsearch(costFun, alpha_init);
-alpha = alphaWom(1);
+% alpha = alphaWom(1);
 r_scale = alphaWom(2);
 w2w_scaled = w2w .* r_scale;
 uWom_fit = uWom_tofit([3 1 0.5]);

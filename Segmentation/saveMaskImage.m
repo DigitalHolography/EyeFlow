@@ -1,17 +1,18 @@
-function saveImage(I, suffix, opt)
+function saveMaskImage(I, suffix, opt)
 
 arguments
     I
     suffix
     opt.cmap = []
     opt.isStep = false
+    opt.ForceFigure = false
 end
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 folder_name = ToolBox.folder_name;
 
-if ~params.json.save_figures
+if ~params.json.save_figures && ~opt.ForceFigure
     return;
 end
 

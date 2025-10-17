@@ -1,6 +1,6 @@
 function plotBranch(branch_U, branch_U_SE, fullTime, idx_start, idx_end, vessel_name, type_name)
 
-% Get global toolbox and parameters
+% Get global ToolBox and parameters
 ToolBox = getGlobalToolBox;
 
 numBranches = size(branch_U, 1); % Number of branches

@@ -9,7 +9,7 @@ function interpolatedBloodVelocityProfile(v_cell, dv_cell, sysIdx, diasIdx, name
 %   name: Name identifier for saving files.
 %   rad: Radius values for each circle.
 
-% Get global toolbox settings
+% Get global ToolBox settings
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 exportVideos = params.exportVideos;
@@ -41,7 +41,7 @@ while numFrames <= 0
 
 end
 
-numInterp = params.json.CrossSectionsFigures.InterpolationPoints;
+numInterp = params.json.exportCrossSectionResults.InterpolationPoints;
 w2w = linspace(-1, 1, numInterp);
 
 % Preallocate interpolated arrays

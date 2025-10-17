@@ -36,8 +36,8 @@ properties
     % Processing Flags
     is_preprocessed = false
     is_segmented = false
-    is_pulseAnalyzed = false
-    is_crossSectionAnalyzed = false
+    is_velocityAnalyzed = false
+    is_volumeRateAnalyzed = false
     is_AllAnalyzed = false
 
     % Checkbox flags
@@ -45,7 +45,7 @@ properties
     flag_bloodFlowVelocity_analysis logical
     flag_pulseWaveVelocity logical
     flag_crossSection_analysis logical
-    flag_crossSection_figures logical
+    flag_crossSection_export logical
     flag_spectral_analysis logical
 
     % Components
@@ -94,6 +94,10 @@ methods
     function preprocessData(obj)
         % Delegate to Preprocessor
         Preprocessor = PreprocessorClass(obj.directory, obj.filenames, obj.param_name);
+
+        PreProcessTimer = tic;
+
+        % Preprocessing
         Preprocessor.preprocess(obj);
 
         % Copy results back for backward compatibility
@@ -107,11 +111,14 @@ methods
         obj.is_preprocessed = Preprocessor.is_preprocessed;
 
         clear Preprocessor;
+        fprintf("- Preprocess took : %ds\n", round(toc(PreProcessTimer)))
     end
 
     function analyzeData(obj, app)
         % Main analysis coordinator
         % Initialize output system
+
+        AnalyzerTimer = tic;
 
         ToolBox = obj.ToolBoxMaster;
         params = ToolBox.getParams;
@@ -151,8 +158,8 @@ methods
             obj.Q_results_V = obj.Analyzer.Q_results_V;
         end
 
-        if obj.flag_crossSection_figures
-            obj.Analyzer.generateCrossSectionFigures(obj);
+        if obj.flag_crossSection_export
+            obj.Analyzer.generateexportCrossSectionResults(obj);
         end
 
         if obj.flag_spectral_analysis && ~isempty(obj.SH)
@@ -160,8 +167,14 @@ methods
         end
 
         % Generate reports and outputs
+
+        ReporterTimer = tic;
+        fprintf("\n----------------------------------\n" + ...
+            "Generating Reports\n" + ...
+        "----------------------------------\n");
         obj.Reporter.getA4Report(obj);
         obj.Reporter.saveOutputs();
+        fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
         obj.Reporter.displayFinalSummary(totalTime);
 
         diary off;
@@ -170,6 +183,8 @@ methods
             profile off
             profile viewer
         end
+
+        fprintf("- Total Analysis took : %ds\n", round(toc(AnalyzerTimer)))
 
     end
 

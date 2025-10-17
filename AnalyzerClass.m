@@ -85,7 +85,7 @@ methods
 
         axialAnalysis(executionObj.f_AVG);
 
-        executionObj.is_pulseAnalyzed = true;
+        executionObj.is_velocityAnalyzed = true;
         fprintf("- Blood Flow Velocity Analysis took: %ds\n", round(toc(pulseAnalysisTimer)));
     end
 
@@ -111,36 +111,36 @@ methods
 
     function performCrossSectionAnalysis(obj, executionObj)
         fprintf("\n----------------------------------\n" + ...
-            "Cross-Section Analysis\n" + ...
+            "Generate Cross-Section Signals\n" + ...
         "----------------------------------\n");
         crossSectionAnalysisTimer = tic;
 
         ToolBox = getGlobalToolBox;
         params = ToolBox.getParams;
         maskArtery = ToolBox.Cache.maskArtery;
-        [obj.Q_results_A] = crossSectionsAnalysis(maskArtery, 'artery', obj.vRMS, executionObj.M0_ff);
+        [obj.Q_results_A] = generateCrossSectionSignals(maskArtery, 'artery', obj.vRMS, executionObj.M0_ff);
 
         if params.veins_analysis
             maskVein = ToolBox.Cache.maskVein;
-            [obj.Q_results_V] = crossSectionsAnalysis(maskVein, 'vein', obj.vRMS, executionObj.M0_ff);
+            [obj.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', obj.vRMS, executionObj.M0_ff);
         end
 
-        executionObj.is_crossSectionAnalyzed = true;
-        fprintf("- Cross-Section Analysis took: %ds\n", round(toc(crossSectionAnalysisTimer)));
+        executionObj.is_volumeRateAnalyzed = true;
+        fprintf("- Cross-Section Signals Generation took: %ds\n", round(toc(crossSectionAnalysisTimer)));
     end
 
-    function generateCrossSectionFigures(obj, executionObj)
+    function generateexportCrossSectionResults(obj, executionObj)
         fprintf("\n----------------------------------\n" + ...
-            "Cross-Section Figures\n" + ...
+            "Export Cross-Section Results\n" + ...
         "----------------------------------\n");
-        crossSectionFiguresTimer = tic;
+        exportCrossSectionResultsTimer = tic;
 
         ToolBox = getGlobalToolBox;
         params = ToolBox.getParams;
-        crossSectionsFigures(obj.Q_results_A, 'artery', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
+        exportCrossSectionResults(obj.Q_results_A, 'artery', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
 
         if params.veins_analysis
-            crossSectionsFigures(obj.Q_results_V, 'vein', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
+            exportCrossSectionResults(obj.Q_results_V, 'vein', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
             maskVessel = ToolBox.Cache.maskArtery | ToolBox.Cache.maskVein;
             sectionImageAdvanced(rescale(mean(executionObj.M0_ff, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, maskVessel);
         else
@@ -159,7 +159,7 @@ methods
         end
 
         executionObj.is_AllAnalyzed = true;
-        fprintf("- Cross-Section Figures took: %ds\n", round(toc(crossSectionFiguresTimer)));
+        fprintf("- Cross-Section Results Export took: %ds\n", round(toc(exportCrossSectionResultsTimer)));
     end
 
     function performSpectralAnalysis(~, executionObj)

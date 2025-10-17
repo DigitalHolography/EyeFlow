@@ -290,11 +290,11 @@ fprintf("    3. Systole/diastole analysis took %ds\n", round(toc));
 tic;
 
 % Calculate arterial resistivity index
-ArterialResistivityIndex(v_artery_signal, sysIdxList, 'v_artery');
+ArterialResistivityIndex(v_artery_signal, sysIdxList, 'v_artery', ForceFigure = true);
 
 % Vein analysis if enabled
 if veinsAnalysis
-    ArterialResistivityIndex(v_vein_signal, sysIdxList, 'v_vein');
+    ArterialResistivityIndex(v_vein_signal, sysIdxList, 'v_vein', ForceFigure = true);
 end
 
 % Perform waveform analysis

@@ -51,109 +51,67 @@ parameters.UnixTimestampFirst = outputs.UnixTimestampFirst;
 parameters.UnixTimestampLast = outputs.UnixTimestampLast;
 
 % Create a new figure with A4 paper size (in centimeters)
-fig = figure('Units', 'centimeters', 'Position', [0 0 21.0 29.7], ...
-    'PaperSize', [21.0 29.7], 'PaperPositionMode', 'auto');
+fig = figure('Units', 'centimeters', ...
+    'Position', [0 0 21.0 29.7], ...
+    'PaperSize', [21.0 29.7], ...
+    'PaperPositionMode', 'auto', ...
+    'Color', 'w');
 
-% Set margins (in normalized units)
-% topMargin = 0.08;
-bottomMargin = 0.20;
-leftMargin = 0.05;
-% rightMargin = 0.05;
+% === Title ===
+t = tiledlayout(fig, 12, 2, 'Padding', 'compact', 'TileSpacing', 'compact');
+title(t, folder_name, 'FontSize', 16, 'FontWeight', 'bold', 'Interpreter', 'none');
 
-% Add title at the top
-axes('Position', [0 0 1 1], 'Visible', 'off');
-text(0.5, 1, folder_name, ...
-    'HorizontalAlignment', 'center', ...
-    'VerticalAlignment', 'top', ...
-    'FontSize', 14, ...
-    'FontWeight', 'bold', ...
-    'Interpreter', 'none');
+% Margins
+t.Units = 'centimeters';
+t.OuterPosition = [1.5 3 18 25.7]; % [left bottom width height]
 
-% Calculate available space for grid (below title and above parameters)
-gridTop = 0.95; % Position below title
-gridBottom = bottomMargin + 0.1; % Extra space above parameters
-gridHeight = gridTop - gridBottom;
-
-% Define row heights (sum should be 1)
-% Top row will be 2x, middle and bottom 1x each (total 4 units)
-rowHeights = [0.50, 0.25, 0.25]; % Normalized heights
+% === IMAGE GRID ===
+vesselTypes = {'artery', 'vein'};
 
 % Create top row (2 columns at 2x height)
 for col = 1:2
+    name = vesselTypes{col};
 
-    if col == 1
-        name = 'artery';
-    else
-        name = 'vein';
-    end
-
-    posX = leftMargin + (col - 1) * 0.45;
-    posY = gridBottom + (rowHeights(2) + rowHeights(3)) * gridHeight; % Above middle and bottom rows
-
-    ax = axes('Position', [posX posY 0.45 rowHeights(1) * gridHeight]);
-    vr_combined_path = fullfile(path_png, sprintf('%s_combined_vr_%s.png', folder_name, name));
+    % Top row (1 column at 2x height)
+    ax1 = nexttile(t, col, [4 1]);
+    vr_combined_path = fullfile(path_png, sprintf('%s_vr_%s.png', folder_name, name));
     vesselmap_path = fullfile(path_png, sprintf('%s_vessel_map_%s.png', folder_name, name));
+    mask_path = fullfile(path_png, 'mask', sprintf('%s_M0_%s.png', folder_name, name));
+    im1 = loadOrPlaceholder(vr_combined_path, vesselmap_path, mask_path);
 
-    if isfile(vr_combined_path)
-        vr_combined_im = imread(vr_combined_path); % Taller placeholder (2x height)
-        imshow(vr_combined_im, []);
-    elseif isfile(vesselmap_path)
-        v_im = imread(vesselmap_path); % Taller placeholder (2x height)
-        imshow(v_im, []);
-    else
-        placeholder_im = ones(400, 200, 3); % Black placeholder
-        imshow(placeholder_im, []);
-    end
+    imshow(im1, [], 'Parent', ax1);
+    axis(ax1, 'off');
 
-    set(ax, 'XTick', [], 'YTick', []);
-
-    % Create middle row (2 columns at 1x height)
-
-    posX = leftMargin + (col - 1) * 0.45;
-    posY = gridBottom + rowHeights(3) * gridHeight; % Above bottom row
-
-    ax = axes('Position', [posX posY 0.45 rowHeights(2) * gridHeight]);
+    % Middle row (1 column at 1x height)
+    ax2 = nexttile(t, 8 + col, [3 1]);
+    vr_path = fullfile(path_png, sprintf('%s_plot_vr_%s.png', folder_name, name));
     ri_path = fullfile(path_png, sprintf('%s_RI_v_%s.png', folder_name, name));
+    im2 = loadOrPlaceholder(vr_path, ri_path);
 
-    if isfile(ri_path)
-        ri_im = imread(ri_path); % Standard placeholder
-        imshow(ri_im, []);
-    else
-        placeholder_im = ones(200, 200, 3); % Black placeholder
-        imshow(placeholder_im, []);
-    end
+    imshow(im2, [], 'Parent', ax2);
+    axis(ax2, 'off');
 
-    set(ax, 'XTick', [], 'YTick', []);
-
-    % Create bottom row (2 columns at 1x height)
-
-    posX = leftMargin + (col - 1) * 0.45;
-    posY = gridBottom;
-
-    ax = axes('Position', [posX posY 0.45 rowHeights(3) * gridHeight]);
+    % Bottom row (1 column at 1x height)
+    ax3 = nexttile(t, 14 + col, [3 1]);
     volume_path = fullfile(path_png, sprintf('%s_strokeAndTotalVolume_%s.png', folder_name, name));
 
     if strcmp(name, 'artery')
-        a_wave_path = fullfile(path_png, sprintf('%s_ArterialWaveformAnalysis_v_%s.png', folder_name, name));
+        wave_path = fullfile(path_png, sprintf('%s_ArterialWaveformAnalysis_v_%s.png', folder_name, name));
     else
-        a_wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
+        wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
     end
 
-    if isfile(volume_path)
-        volume_im = imread(volume_path); % Standard placeholder
-        imshow(volume_im, []);
-    elseif isfile(a_wave_path)
-        a_wave_im = imread(a_wave_path); % Taller placeholder (2x height)
-        imshow(a_wave_im, []);
-    end
+    im3 = loadOrPlaceholder(volume_path, wave_path);
 
-    set(ax, 'XTick', [], 'YTick', []);
+    imshow(im3, [], 'Parent', ax3);
+    axis(ax3, 'off');
+
 end
 
-% Add parameter section at the bottom with more spacing
-axes('Position', [leftMargin 0.04 0.8 bottomMargin], 'Visible', 'off');
+% === PARAMETERS SECTION ===
+axParams = nexttile(t, [2 2]); % last row spans both columns
+axis(axParams, 'off');
 
-% Prepare parameter text
 paramNames = fieldnames(parameters);
 numParams = length(paramNames);
 paramText = cell(numParams, 1);
@@ -161,39 +119,29 @@ paramText = cell(numParams, 1);
 for i = 1:numParams
     paramValue = parameters.(paramNames{i});
     fmt = chooseFormat(paramNames{i});
-
-    % Format numbers nicely
     paramText{i} = sprintf('%s %s', sprintf(fmt, paramValue.value), paramValue.unit);
-
 end
 
-% Split into two columns if more than 6 parameters
-
-% Set larger font size for parameters
-paramFontSize = 12; % Increase as desired
+paramFontSize = 12;
 paramTitleFontSize = 14;
+
+text(axParams, 0, 1.1, 'Computed Parameters:', ...
+    'FontWeight', 'bold', 'FontSize', paramTitleFontSize, ...
+    'VerticalAlignment', 'top', 'Interpreter', 'none');
 
 if numParams > 6
     col1 = paramText(1:ceil(numParams / 2));
     col2 = paramText(ceil(numParams / 2) + 1:end);
-
-    text(0, 1, col1, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
-    text(0.5, 1, col2, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
+    text(axParams, 0.0, 0.9, col1, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
+    text(axParams, 0.5, 0.9, col2, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
 else
-    text(0, 1, paramText, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
+    text(axParams, 0.0, 0.9, paramText, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
 end
 
-% Add title to parameters section
-text(0, 1.15, 'Computed Parameters:', 'FontWeight', 'bold', 'FontSize', paramTitleFontSize);
-
-% Set figure renderer to control compression
-set(fig, 'Renderer', 'painters'); % Vector graphics where possible
-
-% Save to PDF with controlled resolution
-print(fig, fullfile(path_pdf, sprintf('%s_report.pdf', folder_name)), ...
-    '-dpdf', '-r150', '-bestfit', '-image'); % -r150 sets 150 DPI
-
-% Close the figure
+% === Export to PDF ===
+set(fig, 'Renderer', 'painters');
+output_pdf = fullfile(path_pdf, sprintf('%s_report.pdf', folder_name));
+print(fig, output_pdf, '-dpdf', '-r150', '-bestfit');
 close(fig);
 
 end
@@ -252,4 +200,18 @@ switch name
         fmt = '%g'; % General format for others
 end
 
+end
+
+function im = loadOrPlaceholder(varargin)
+
+for k = 1:numel(varargin)
+
+    if isfile(varargin{k})
+        im = imread(varargin{k});
+        return;
+    end
+
+end
+
+im = ones(200, 200, 3); % White placeholder
 end
