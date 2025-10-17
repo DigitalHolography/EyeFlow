@@ -51,7 +51,7 @@ P1 = P2(1:floor(numFrames / 2) + 1);
 P1(2:end - 1) = 2 * P1(2:end - 1);
 
 % Frequency vector
-f = fs * (0:(numFrames / 2)) / numFrames;
+f = fft_freq_vector(fs, numFrames, true);
 
 % Find dominant frequency in physiological range (e.g. 0.5 - 5 Hz)
 f_range = (f > 0.5 & f < 5); % 30 - 300 bpm
@@ -136,7 +136,7 @@ P1 = P2(1:floor(numFrames / 2) + 1);
 P1(2:end - 1) = 2 * P1(2:end - 1);
 
 % Frequency vector
-f = fs * (0:(numFrames / 2)) / numFrames;
+f = fft_freq_vector(fs, numFrames, true);
 
 % Find dominant frequency in physiological range (e.g. 0.5 - 5 Hz)
 f_range = (f > 0.5 & f < 5); % 30 - 300 bpm

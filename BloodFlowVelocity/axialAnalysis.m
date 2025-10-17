@@ -130,7 +130,7 @@ end
 
 ft_v = fftshift(fft(f_AVG, [], 3), 3);
 
-f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
+f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, numFrames);
 
 cardiac_frequency = ToolBox.Cache.HeartBeatFFT; % in Hz
 

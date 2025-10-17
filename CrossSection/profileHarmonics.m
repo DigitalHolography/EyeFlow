@@ -26,7 +26,7 @@ DiamRatio = 0;
 % Calculate Fourier transform and display
 v_profile_ft = fftshift(fft(v_profile, [], 2), 2);
 
-f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
+f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, numFrames);
 % cardiac_frequency = ToolBox.Cache.HeartBeatFFT; % in Hz
 
 harmonics = [0 ToolBox.Cache.harmonics];
