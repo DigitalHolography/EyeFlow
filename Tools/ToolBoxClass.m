@@ -176,8 +176,8 @@ methods
             end
 
             if isfield(decoded_data, 'num_frames')
-                obj.holo_frames.first = decoded_data.first;
-                obj.holo_frames.last = decoded_data.last;
+                obj.holo_frames.first = decoded_data.first_frame;
+                obj.holo_frames.last = decoded_data.end_frame;
             end
 
         elseif isfile(fullfile(path, 'mat', [obj.main_foldername, '.mat']))
