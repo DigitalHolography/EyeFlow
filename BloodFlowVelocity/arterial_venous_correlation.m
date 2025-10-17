@@ -145,29 +145,34 @@ v_v_FT = fft(v_vein_signal, 10 * numFrames);
 
 F_TRANS = v_v_FT ./ v_a_FT;
 freqs = linspace(-fs / 2, fs / 2, numel(F_TRANS));
-figure("Visible", "off", "Color", 'w');
-semilogy(freqs, fftshift(abs(F_TRANS)), '-k', 'LineWidth', 2);
-axis tight;
-xlabel('Freq (Hz)'); ylabel('transfer function');
-set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
-grid on;
-box on;
-set(gca, 'LineWidth', 2);
-xlim([0 10])
 
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_mod.png", ToolBox.folder_name)))
+if params.json.save_figures
+    % Plot Transfer Function Magnitude
+    figure("Visible", "off", "Color", 'w');
+    semilogy(freqs, fftshift(abs(F_TRANS)), '-k', 'LineWidth', 2);
+    axis tight;
+    xlabel('Freq (Hz)'); ylabel('transfer function');
+    set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+    grid on;
+    box on;
+    set(gca, 'LineWidth', 2);
+    xlim([0 10])
 
-figure("Visible", "off", "Color", 'w');
-plot(freqs, fftshift(angle(F_TRANS)), '-k', 'LineWidth', 2);
-axis tight;
-xlabel('Freq (Hz)'); ylabel('transfer function angle');
-set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
-grid on;
-box on;
-set(gca, 'LineWidth', 2);
-xlim([0 10])
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_mod.png", ToolBox.folder_name)))
 
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_phase.png", ToolBox.folder_name)))
+    % Plot Phase
+    figure("Visible", "off", "Color", 'w');
+    plot(freqs, fftshift(angle(F_TRANS)), '-k', 'LineWidth', 2);
+    axis tight;
+    xlabel('Freq (Hz)'); ylabel('transfer function angle');
+    set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+    grid on;
+    box on;
+    set(gca, 'LineWidth', 2);
+    xlim([0 10])
+
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_phase.png", ToolBox.folder_name)))
+end
 
 ToolBox.Output.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', freqs, 'Hz');
 ToolBox.Output.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');

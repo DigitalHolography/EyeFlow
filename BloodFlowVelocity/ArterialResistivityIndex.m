@@ -10,7 +10,6 @@ end
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 numInterp = 60;
-numFrames = length(signal);
 t = ToolBox.Cache.t;
 fs = ToolBox.fs / ToolBox.stride * 1000; % Convert to seconds
 
@@ -150,7 +149,6 @@ if params.json.save_figures
     close;
 
     % PI Graph
-
     figure('Visible', 'off');
     hold on;
 
@@ -213,7 +211,6 @@ if params.json.save_figures
     exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_PI_%s.png", ToolBox.folder_name, name)));
     exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_PI_%s.eps", ToolBox.folder_name, name)));
     close;
-
 end
 
 % Save json

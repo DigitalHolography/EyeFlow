@@ -92,14 +92,17 @@ for col = 1:2
 
     ax = axes('Position', [posX posY 0.45 rowHeights(1) * gridHeight]);
     vr_combined_path = fullfile(path_png, sprintf('%s_combined_vr_%s.png', folder_name, name));
+    vesselmap_path = fullfile(path_png, sprintf('%s_vessel_map_%s.png', folder_name, name));
 
     if isfile(vr_combined_path)
         vr_combined_im = imread(vr_combined_path); % Taller placeholder (2x height)
         imshow(vr_combined_im, []);
-    else
-        v_path = fullfile(path_png, 'mask', sprintf('%s_vessel_map_%s.png', folder_name, name));
-        v_im = imread(v_path); % Taller placeholder (2x height)
+    elseif isfile(vesselmap_path)
+        v_im = imread(vesselmap_path); % Taller placeholder (2x height)
         imshow(v_im, []);
+    else
+        placeholder_im = ones(400, 200, 3); % Black placeholder
+        imshow(placeholder_im, []);
     end
 
     set(ax, 'XTick', [], 'YTick', []);
@@ -130,17 +133,16 @@ for col = 1:2
     ax = axes('Position', [posX posY 0.45 rowHeights(3) * gridHeight]);
     volume_path = fullfile(path_png, sprintf('%s_strokeAndTotalVolume_%s.png', folder_name, name));
 
+    if strcmp(name, 'artery')
+        a_wave_path = fullfile(path_png, sprintf('%s_ArterialWaveformAnalysis_v_%s.png', folder_name, name));
+    else
+        a_wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
+    end
+
     if isfile(volume_path)
         volume_im = imread(volume_path); % Standard placeholder
         imshow(volume_im, []);
-    else
-
-        if strcmp(name, 'artery')
-            a_wave_path = fullfile(path_png, sprintf('%s_ArterialWaveformAnalysis_v_%s.png', folder_name, name));
-        else
-            a_wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
-        end
-
+    elseif isfile(a_wave_path)
         a_wave_im = imread(a_wave_path); % Taller placeholder (2x height)
         imshow(a_wave_im, []);
     end
