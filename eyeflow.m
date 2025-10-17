@@ -33,7 +33,6 @@ properties (Access = public)
     % Execute
     NumberofWorkersSpinner matlab.ui.control.Spinner
     NumberofWorkersSpinnerLabel matlab.ui.control.Label
-    OverWriteCheckBox matlab.ui.control.CheckBox
     ExecuteButton matlab.ui.control.Button
     ImageDisplay matlab.ui.control.Image
 
@@ -70,7 +69,6 @@ methods (Access = public)
             app.ExecuteButton.Enable = true;
             app.ClearButton.Enable = true;
             app.EditParametersButton.Enable = true;
-            app.OverWriteCheckBox.Enable = true;
             app.EditMasksButton.Enable = true;
             app.PlayMomentsButton.Enable = true;
             app.OpenDirectoryButton.Enable = true;
@@ -223,10 +221,9 @@ methods (Access = public)
             app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
             app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
-            app.file.flag_overwrite = app.OverWriteCheckBox.Value;
 
             try
-                app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name, app.file.flag_overwrite); % update overwrite status
+                app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name);
 
                 if ~app.file.is_preprocessed
                     parfor_arg = app.NumberofWorkersSpinner.Value;
@@ -274,16 +271,6 @@ methods (Access = public)
 
     end
 
-    function OverWriteCheckBoxChanged(app, ~)
-
-        try
-            app.file.flag_overwrite = app.OverWriteCheckBox.Value;
-        catch
-            disp('Couldnt force overwrite')
-        end
-
-    end
-
     % Button pushed function: ClearButton
     function ClearButtonPushed(app, ~)
 
@@ -298,7 +285,6 @@ methods (Access = public)
         app.ExecuteButton.Enable = false;
         app.ClearButton.Enable = false;
         app.EditParametersButton.Enable = false;
-        app.OverWriteCheckBox.Enable = false;
         app.OpenDirectoryButton.Enable = false;
         app.ReProcessButton.Enable = false;
         app.EditMasksButton.Enable = false;
@@ -698,7 +684,7 @@ methods (Access = public)
         ToolBox = getGlobalToolBox;
 
         if isempty(ToolBox) || ~strcmp(app.file.directory, ToolBox.EF_path)
-            ToolBox = ToolBoxClass(app.file.directory, app.file.param_name, 1);
+            ToolBox = ToolBoxClass(app.file.directory, app.file.param_name);
         end
 
         if ~isempty(app.file)
@@ -816,7 +802,7 @@ methods (Access = public)
     end
 
     function CheckboxValueChanged(app, ~)
-        % Callback function triggered when any checkbox (except OverWriteCheckBox) is clicked.
+        % Callback function triggered when any checkbox is clicked.
         % This function enforces the rules for enabling/disabling checkboxes.
 
         % Segmentation Checkbox is always enabled
@@ -836,22 +822,22 @@ methods (Access = public)
         % Enable/disable bloodFlowAnalysisCheckBox, pulseVelocityCheckBox, and spectralAnalysisCheckBox
         if app.segmentationCheckBox.Value || is_segmented
             app.bloodFlowAnalysisCheckBox.Enable = true;
-            app.pulseVelocityCheckBox.Enable = true;
             app.spectralAnalysisCheckBox.Enable = true;
         else
             app.bloodFlowAnalysisCheckBox.Enable = false;
-            app.pulseVelocityCheckBox.Enable = false;
             app.spectralAnalysisCheckBox.Enable = false;
             app.bloodFlowAnalysisCheckBox.Value = false; % Turn off if disabled
-            app.pulseVelocityCheckBox.Value = false;
             app.spectralAnalysisCheckBox.Value = false;
         end
 
         % Enable/disable crossSectionCheckBox
         if app.bloodFlowAnalysisCheckBox.Value || is_pulseAnalyzed
             app.crossSectionCheckBox.Enable = true;
+            app.pulseVelocityCheckBox.Enable = true;
         else
+            app.pulseVelocityCheckBox.Enable = false;
             app.crossSectionCheckBox.Enable = false;
+            app.pulseVelocityCheckBox.Value = false;
             app.crossSectionCheckBox.Value = false; % Turn off if disabled
         end
 
@@ -1075,18 +1061,6 @@ methods (Access = private)
         maxWorkers = parcluster('local').NumWorkers;
         app.NumberofWorkersSpinner.Limits = [0 maxWorkers]; % Ensure valid range
         app.NumberofWorkersSpinner.Value = min(10, floor(maxWorkers / 2)); % Default to 10 or max available
-
-        % Bottom Right: Overwrite Checkbox
-        app.OverWriteCheckBox = uicheckbox(grid);
-        app.OverWriteCheckBox.Text = 'Overwrite';
-        app.OverWriteCheckBox.FontSize = 16;
-        app.OverWriteCheckBox.FontColor = [0.8 0.8 0.8];
-        app.OverWriteCheckBox.Layout.Row = 8;
-        app.OverWriteCheckBox.Layout.Column = 2;
-        app.OverWriteCheckBox.Value = false;
-        app.OverWriteCheckBox.Enable = 'off';
-        app.OverWriteCheckBox.ValueChangedFcn = createCallbackFcn(app, @OverWriteCheckBoxChanged, true);
-        app.OverWriteCheckBox.Tooltip = 'Overwrite the new results in the last EF_ result folder (to save space\n Warning: it will supress previous figures.';
 
         % Add a new column for the image
         app.ImageDisplay = uiimage(grid);

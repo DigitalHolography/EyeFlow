@@ -79,7 +79,7 @@ function runAnalysisBlock(path)
 
 try
     ExecClass = ExecutionClass(path);
-    ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name, 0); %no overwrite
+    ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name);
 
     ExecClass.preprocessData();
 

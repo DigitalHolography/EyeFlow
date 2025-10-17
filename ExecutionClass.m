@@ -47,7 +47,6 @@ properties
     flag_crossSection_analysis logical
     flag_crossSection_figures logical
     flag_spectral_analysis logical
-    flag_overwrite logical
 
     % Components
     ToolBoxMaster ToolBoxClass
