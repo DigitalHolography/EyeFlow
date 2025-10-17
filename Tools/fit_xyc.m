@@ -24,7 +24,7 @@ if nargin < 5, branch_index = 0; end
 %% --- Get global toolbox and prepare output directory ---
 ToolBox = getGlobalToolBox();
 outputDir = fullfile(ToolBox.path_png, 'flexion');
-
+params = ToolBox.getParams;
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
 end
