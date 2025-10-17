@@ -1,6 +1,7 @@
 function pulseVelocity(M, ~, maskVessel, name)
 ToolBox = getGlobalToolBox;
 outputDir = fullfile(ToolBox.path_png, 'flexion');
+params = ToolBox.getParams;
 
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
@@ -8,12 +9,14 @@ end
 
 [L, n] = labelVesselBranches(maskVessel, ones(size(maskVessel)), ToolBox.Cache.xy_barycenter, refine = false);
 
-figure('Visible', 'off');
-imagesc(L)
-axis image; axis off;
-% Save figure
-saveas(gcf, fullfile(outputDir, ...
-    sprintf("%s_%s_branches.png", ToolBox.folder_name, name)));
+if params.json.save_figures
+    figure('Visible', 'off');
+    imagesc(L)
+    axis image; axis off;
+    % Save figure
+    saveas(gcf, fullfile(outputDir, ...
+        sprintf("%s_%s_branches.png", ToolBox.folder_name, name)));
+end
 
 PWV = NaN(1, n);
 dPWV = NaN(1, n);

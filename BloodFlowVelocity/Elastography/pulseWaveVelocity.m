@@ -52,10 +52,12 @@ abs_dist = zeros([1, numpoints]); % vessel curvilign absis
 absx(1) = interpoints_x(k); % nearest point to the center
 absy(1) = interpoints_y(k);
 
-figure('Visible', 'off');
-imagesc (interpoints)
-scatter(x_bary, y_bary, 80, 'o', 'r', 'LineWidth', 1.5);
-scatter(absx(1), absy(1), 80, 'o', 'g', 'LineWidth', 1.5);
+if params.json.save_figures
+    figure('Visible', 'off');
+    imagesc (interpoints)
+    scatter(x_bary, y_bary, 80, 'o', 'r', 'LineWidth', 1.5);
+    scatter(absx(1), absy(1), 80, 'o', 'g', 'LineWidth', 1.5);
+end
 
 interpoints_x(k) = [];
 interpoints_y(k) = [];
@@ -142,27 +144,28 @@ for i = 2:numpoints - 1
     prev_line = [P3; P4]; % save endpoints for next step
 end
 
-figure('Visible', 'on');
-imagesc(L)
-title('selected sections along the artery')
-axis image, axis off;
-
-% Save figure
-saveas(gcf, fullfile(outputDir, ...
-    sprintf("%s_%s_%d_orthogonal_overlay.png", ToolBox.folder_name, name, branch_index)));
-axis off;
+if params.json.save_figures
+    figure('Visible', 'on');
+    imagesc(L)
+    title('selected sections along the artery')
+    axis image, axis off;
+    % Save figure
+    saveas(gcf, fullfile(outputDir, ...
+        sprintf("%s_%s_%d_orthogonal_overlay.png", ToolBox.folder_name, name, branch_index)));
+end
 
 Ux = Ux_edge;
 Ux_n = (Ux - mean(Ux, 2)) ./ std(Ux, [], 2);
 
-figure('Visible', 'on');
-
-imagesc(ToolBox.Cache.t, linspace(0, abs_dist(end), numpoints), real(Ux_n));
-xlabel("time (s)");
-ylabel("arc length (mm)")
-% Save figure
-saveas(gcf, fullfile(outputDir, ...
-    sprintf("%s_%s_%d_signals_asym_over_time.png", ToolBox.folder_name, name, branch_index)));
+if params.json.save_figures
+    figure('Visible', 'on');
+    imagesc(ToolBox.Cache.t, linspace(0, abs_dist(end), numpoints), real(Ux_n));
+    xlabel("time (s)");
+    ylabel("arc length (mm)")
+    % Save figure
+    saveas(gcf, fullfile(outputDir, ...
+        sprintf("%s_%s_%d_signals_asym_over_time.png", ToolBox.folder_name, name, branch_index)));
+end
 
 Ux_n = Ux_n';
 Ux_n(isnan(Ux_n)) = 0;
@@ -179,8 +182,7 @@ end
 
 Ravg(isnan(Ravg)) = 0;
 Ravg = Ravg';
-figure('Visible', 'off'), imagesc(Ravg, [-0.1 0.1]);
-axis off;
+
 
 [PWV, dPWV, ~, ~, ~, score] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index);
 

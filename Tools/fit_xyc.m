@@ -140,26 +140,30 @@ end
 
 fprintf('PWV = %.3f ± %.3f (mm/s)\n', PWV, dPWV);
 
-%% --- Plot original map with wave direction ---
-fig2 = figure('Visible', 'on');
-xVals = linspace(-dx * nx / 2, dx * nx / 2, nx);
-yVals = linspace(-dy * ny / 2, dy * ny / 2, ny);
-imagesc(xVals, yVals, Z0, [-0.1, 0.1]);
-axis xy; colormap parula; colorbar;
-xlabel('time delay (s)');
-ylabel('arc length lag (mm)');
-hold on;
+if params.json.save_figures
+    % --- Plot original map with wave direction ---
+    fig2 = figure('Visible', 'on');
+    xVals = linspace(-dx * nx / 2, dx * nx / 2, nx);
+    yVals = linspace(-dy * ny / 2, dy * ny / 2, ny);
+    imagesc(xVals, yVals, Z0, [-0.1, 0.1]);
+    axis xy; colormap parula; colorbar;
+    xlabel('time delay (s)');
+    ylabel('arc length lag (mm)');
+    hold on;
 
-% Draw wavevector direction
-quiver(0, 0, Tx * 0.2, Ty * 0.2, 0, 'w', 'LineWidth', 2, 'MaxHeadSize', 2);
-text(0, 0, sprintf('%.2f mm/s', PWV), 'Color', 'w', 'FontSize', 10, 'FontWeight', 'bold');
-title('Flexural Pulse Wave Velocity');
+    % Draw wavevector direction
+    quiver(0, 0, Tx * 0.2, Ty * 0.2, 0, 'w', 'LineWidth', 2, 'MaxHeadSize', 2);
+    text(0, 0, sprintf('%.2f mm/s', PWV), 'Color', 'w', 'FontSize', 10, 'FontWeight', 'bold');
+    title('Flexural Pulse Wave Velocity');
 
-%% --- Save figures ---
-saveas(fig1, fullfile(outputDir, sprintf('%s_%s_%d_fft_spectrum.png', ToolBox.folder_name, name, branch_index)));
-saveas(fig2, fullfile(outputDir, sprintf('%s_%s_%d_wave_map.png', ToolBox.folder_name, name, branch_index)));
+    % --- Save figures ---
+    saveas(fig1, fullfile(outputDir, sprintf('%s_%s_%d_fft_spectrum.png', ToolBox.folder_name, name, branch_index)));
+    saveas(fig2, fullfile(outputDir, sprintf('%s_%s_%d_wave_map.png', ToolBox.folder_name, name, branch_index)));
 
-%close(fig1); close(fig2);
+    close(fig1); close(fig2);
+
+end
+
 end
 
 %% --- Helper: find peaks in 2D ---
