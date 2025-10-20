@@ -12,8 +12,6 @@ if ~isfolder(outDir)
     mkdir(outDir);
 end
 
-save_path = fullfile(obj.directory, 'eyeflow', "nonRigidReg");
-
 stabilized = zeros(numX, numY, numFrames);
 
 %smoothVideo = imgaussfilt3(obj.M0, [0.1 0.1 2]);
@@ -43,10 +41,18 @@ end
 D.stabilized = stabilized;
 D.field = field;
 
-saveStabilizedVideoGif(D.stabilized, fullfile(save_path, "stabilized.gif"));
-saveAngleAndNormOfDisplacementField(D.field, fullfile(save_path, "angle.gif"), fullfile(save_path, "norm.gif"));
-obj.displacementField = D;
+A1 = field(:, :, 1, :);
+A2 = field(:, :, 2, :);
+dA1 = diff(squeeze(A1), 1, 3);
+dA2 = diff(squeeze(A2), 1, 3);
+dA = zeros(numX, numY, 2, numFrames - 1);
+dA(:, :, 1, :) = dA1;
+dA(:, :, 2, :) = dA2;
 
+D.gradient = dA;
+
+saveAsGifs(D);
+obj.displacementField = D;
 end
 
 % helper functions
@@ -84,52 +90,6 @@ mask = hypot(D(:, :, 1), D(:, :, 2)) < 0.5;
 warpedAux(mask) = source(mask);
 end
 
-function saveStabilizedVideoGif(arr, filename)
-
-for k = 1:size(arr, 3)
-    frame = arr(:, :, k);
-    frame = mat2gray(frame);
-    [A, map] = gray2ind(frame, 256);
-
-    if k == 1
-        imwrite(A, map, filename, "gif", "LoopCount", Inf, "DelayTime", 0.05);
-    else
-        imwrite(A, map, filename, "gif", "WriteMode", "append", "DelayTime", 0.05);
-    end
-
-end
-
-end
-
-function saveAngleAndNormOfDisplacementField(arr, angleFilename, normFilename)
-
-for k = 1:size(arr, 4)
-    D = arr(:, :, :, k);
-    Dc = complex(D(:, :, 1), D(:, :, 2));
-
-    %map abs(Dc) to the min and max of the value of the image
-    %maybe comapre to min and max of the video not the image to keep quantitative value idk
-    absLog = log1p(abs(Dc));
-    absLog = mat2gray(absLog);
-    % absLog = imadjust(absLog, [prctile(absLog(:), 1) prctile(absLog(:), 99); ], [0 1]);
-
-    % Convert to indexed
-    [AAbs, mapAbs] = gray2ind(absLog, 256);
-    [AAngle, mapAngle] = gray2ind(angle(Dc), 256);
-
-    % Write to GIF
-    if k == 1
-        imwrite(AAbs, mapAbs, normFilename, "gif", "LoopCount", Inf, "DelayTime", 0.05);
-        imwrite(AAngle, mapAngle, angleFilename, "gif", "LoopCount", Inf, "DelayTime", 0.05);
-    else
-        imwrite(AAbs, mapAbs, normFilename, "gif", "WriteMode", "append", "DelayTime", 0.05);
-        imwrite(AAngle, mapAngle, angleFilename, "gif", "WriteMode", "append", "DelayTime", 0.05);
-    end
-
-end
-
-end
-
 function I = safeConvertFrame(frame)
 
 if size(frame, 3) == 3
@@ -139,4 +99,44 @@ else
 end
 
 I = im2double(I); % keep everything in [0,1]
+end
+
+function saveAsGifs(D)
+% Normalize stabilized frames to [0, 255] uint8
+normalizedStabilized = zeros(size(D.stabilized), 'uint8');
+for k = 1:size(D.stabilized, 3)
+    frame = D.stabilized(:,:,k);
+    minVal = double(min(frame(:)));
+    maxVal = double(max(frame(:)));
+    if maxVal == minVal
+        normalizedFrame = zeros(size(frame));
+    else
+        normalizedFrame = (double(frame) - minVal) / (maxVal - minVal);
+    end
+    normalizedStabilized(:,:,k) = uint8(normalizedFrame * 255);
+end
+writeGifOnDisc(normalizedStabilized, 'stabilized');
+
+% Compute magnitude and phase of displacement field
+Xcomp = squeeze(D.field(:, :, 1, :));
+Ycomp = squeeze(D.field(:, :, 2, :));
+
+magnitude = sqrt(Xcomp.^2 + Ycomp.^2);
+phase = atan2(Ycomp, Xcomp);
+
+% Normalize magnitude to [0,255] uint8
+magMin = min(magnitude(:));
+magMax = max(magnitude(:));
+if magMax == magMin
+    normMagnitude = zeros(size(magnitude));
+else
+    normMagnitude = (magnitude - magMin) / (magMax - magMin);
+end
+normMagnitude = uint8(normMagnitude * 255);
+writeGifOnDisc(normMagnitude, 'displacement_magnitude');
+
+% Normalize phase from [-pi, pi] to [0, 255] uint8
+normPhase = (phase + pi) / (2 * pi); % normalize to [0,1]
+normPhase = uint8(normPhase * 255);
+writeGifOnDisc(normPhase, 'displacement_phase');
 end
