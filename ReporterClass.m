@@ -9,6 +9,7 @@ methods
 
     function obj = ReporterClass(executionObj)
         ToolBox = getGlobalToolBox;
+        params = ToolBox.getParams;
 
         if isempty(ToolBox)
             error("ToolBoxMaster is not initialized in ExecutionClass.");
@@ -30,7 +31,7 @@ methods
             ToolBox.Output.add('UnixTimestampLast', tmp.last, 'µs');
         end
 
-        if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name))) && ToolBox.params.json.save_figures
+        if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name))) && params.json.save_figures
             writeGifOnDisc(imresize(rescale(executionObj.M0_ff), 0.5), "M0")
         end
 

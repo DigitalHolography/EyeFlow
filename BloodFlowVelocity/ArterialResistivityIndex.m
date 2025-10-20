@@ -12,7 +12,6 @@ ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 numInterp = 60;
 t = ToolBox.Cache.t;
-fs = ToolBox.fs / ToolBox.stride * 1000; % Convert to seconds
 
 if contains(name, 'v_')
     unit = 'mm/s';
@@ -25,8 +24,6 @@ end
 % Color Maps
 
 signal = double(signal);
-[b, a] = butter(4, 15 / (fs / 2), 'low');
-signal = filtfilt(b, a, signal);
 
 [interp_signal, ~] = interpSignal(signal, systolesIndexes, numInterp);
 
