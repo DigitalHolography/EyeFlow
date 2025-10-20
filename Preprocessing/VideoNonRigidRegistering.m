@@ -15,14 +15,26 @@ end
 save_path = fullfile(obj.directory, 'eyeflow', "nonRigidReg");
 
 stabilized = zeros(numX, numY, numFrames);
-field = zeros(numX, numY, 2, numFrames);
 
 %smoothVideo = imgaussfilt3(obj.M0, [0.1 0.1 2]);
-for k = 1:numFrames
+parfor k = 1:numFrames
     %get the frame, stabilize it, save it
     tgt = safeConvertFrame(v(:, :, k));
     tgt = tgt ./ low_freq;
-    [f, s] = diffeomorphicDemon(tgt, ref_img, tgt);
+    [~, s] = diffeomorphicDemon(tgt, ref_img, tgt);
+
+    stabilized(:, :, k) = s;
+end
+
+ref_img2 = log(mean(stabilized, 3));
+stabilized = zeros(numX, numY, numFrames);
+field = zeros(numX, numY, 2, numFrames);
+
+parfor k = 1:numFrames
+    %get the frame, stabilize it, save it
+    tgt = safeConvertFrame(v(:, :, k));
+    tgt = tgt ./ low_freq;
+    [f, s] = diffeomorphicDemon(tgt, ref_img2, tgt);
 
     field(:, :, :, k) = f;
     stabilized(:, :, k) = s;
@@ -33,8 +45,8 @@ D.field = field;
 
 saveStabilizedVideoGif(D.stabilized, fullfile(save_path, "stabilized.gif"));
 saveAngleAndNormOfDisplacementField(D.field, fullfile(save_path, "angle.gif"), fullfile(save_path, "norm.gif"));
-
 obj.displacementField = D;
+
 end
 
 % helper functions
