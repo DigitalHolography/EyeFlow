@@ -35,6 +35,7 @@ end
 % 1000 -> kHz to Hz conversion
 
 scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
+fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 [numX, numY, numFrames] = size(f_video);
 
 % Section 1: Background Calculation
@@ -209,6 +210,14 @@ if veinsAnalysis
     v_vein = v_RMS_video .* maskVeinSection;
     v_vein(~maskVeinSection) = NaN;
     v_vein_signal = squeeze(sum(v_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
+end
+
+% Filter signals
+[b, a] = butter(4, 15 / (fs / 2), 'low');
+v_artery_signal = filtfilt(b, a, v_artery_signal);
+
+if veinsAnalysis
+    v_vein_signal = filtfilt(b, a, v_vein_signal);
 end
 
 if save_figures
