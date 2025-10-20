@@ -102,7 +102,9 @@ for col = 1:2
         wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
     end
 
-    im3 = loadOrPlaceholder(volume_path, wave_path);
+    find_systole_path = fullfile(path_png, sprintf('%s_find_systoles_indices_%s.png', folder_name, name));
+
+    im3 = loadOrPlaceholder(volume_path, wave_path, find_systole_path);
 
     imshow(im3, [], 'Parent', ax3);
     axis(ax3, 'off');

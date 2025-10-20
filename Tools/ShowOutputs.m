@@ -36,7 +36,7 @@ output_types = {
                 'Vessels_velocity', '_v_vessel_graph.png', 'png';
                 'VRI_velocity', '_RI_v_vein.png', 'png';
                 'A_sections', '_A_sections.png', 'png';
-                'diasys_Artery', '_find_systoles_indices.png', 'png';
+                'diasys_Artery', '_find_systoles_indices_artery.png', 'png';
                 'ArterialWaveformAnalysis_artery', '_ArterialWaveformAnalysis_v_artery.png', 'png';
                 'ArteriovenousPhaseDelay', '_arterial_venous_correlation.png', 'png';
                 };
@@ -151,29 +151,35 @@ for path_idx = 1:N
 
     max_suffix = max(str2double(suffixes(valid_idx)));
     last_folder_name = sprintf('%s_%d', folder_base, max_suffix);
-    pdf_path = fullfile(current_path,"eyeflow",last_folder_name, 'pdf');
+    pdf_path = fullfile(current_path, "eyeflow", last_folder_name, 'pdf');
+
     if exist(pdf_path, 'dir')
         pdf_files = dir(fullfile(pdf_path, '*.pdf'));
+
         if ~isempty(pdf_files)
             % Assuming we want the first PDF found
             pdf_list = [pdf_list; fullfile(pdf_path, pdf_files(1).name)];
         end
+
     end
+
 end
 
 % Save the list of found PDFs to a text file in the output directory
 pdf_txt_path = fullfile(output_dir, 'pdf_list.txt');
 fid = fopen(pdf_txt_path, 'w');
+
 if fid ~= -1
+
     for i = 2:numel(pdf_list) % Skip the first empty string
         fprintf(fid, '%s\n', pdf_list(i));
     end
+
     fclose(fid);
 else
     warning('Could not write pdf_list.txt to output directory.');
 end
 
 close(figs_ids);
-
 
 end

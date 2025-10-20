@@ -236,40 +236,45 @@ fprintf("    2. Difference calculation and velocity computation took %ds\n", rou
 tic;
 
 % Find systole indices
-[sysIdxList, fullPulse, sysMaxList, sysMinList] = find_systole_index(v_RMS_video, maskArterySection, true);
-[~, ~, ~, ~, sysIdx, diasIdx] = compute_diasys(v_RMS_video, maskArterySection);
+if veinsAnalysis
+    [sys_idx_list, pulse_artery, sys_max_list, sys_min_list] = find_systole_index(v_artery_signal, 'pulseVein', v_vein_signal);
+else
+    [sys_idx_list, pulse_artery, sys_max_list, sys_min_list] = find_systole_index(v_artery_signal);
+end
+
+[~, ~, ~, ~, sys_idx, dias_idx] = compute_diasys(v_RMS_video, maskArterySection);
 
 % Process heart beat data if enough cycles detected
-if numel(sysIdxList) >= 2 && numel(sysMaxList) >= 2 && numel(sysMinList) >= 2
+if numel(sys_idx_list) >= 2 && numel(sys_max_list) >= 2 && numel(sys_min_list) >= 2
     DT = ToolBox.stride / (ToolBox.fs * 1000); % Period in seconds
-    heartRates = 60 ./ (diff(sysIdxList) * DT);
+    heartRates = 60 ./ (diff(sys_idx_list) * DT);
 
     % Calculate statistics
     HeartBeat = mean(heartRates);
     HeartBeatSTE = std(heartRates);
-    TimeToPeakSystole = mean((sysMaxList - sysIdxList'), "omitnan") * DT;
-    TimeToPeakSystoleSTE = std((sysMaxList - sysIdxList'), "omitnan") * DT;
-    TimeToMinimumDiastole = mean((sysMinList - sysIdxList'), "omitnan") * DT;
-    TimeToMinimumDiastoleSTE = std((sysMinList - sysIdxList'), "omitnan") * DT;
+    TimeToPeakSystole = mean((sys_max_list - sys_idx_list'), "omitnan") * DT;
+    TimeToPeakSystoleSTE = std((sys_max_list - sys_idx_list'), "omitnan") * DT;
+    TimeToMinimumDiastole = mean((sys_min_list - sys_idx_list'), "omitnan") * DT;
+    TimeToMinimumDiastoleSTE = std((sys_min_list - sys_idx_list'), "omitnan") * DT;
     TimeToPeakSystoleFromMinimumDiastole = abs(TimeToMinimumDiastole) + TimeToPeakSystole;
     TimeToPeakSystoleFromMinimumDiastoleSTE = (TimeToPeakSystoleSTE + TimeToMinimumDiastoleSTE) / 2;
 
     % Interpolate full pulse for additional analysis
     Ninterp = 1000;
-    interpFullPulse = interpSignal(fullPulse, sysIdxList, Ninterp);
+    interpFullPulse = interpSignal(pulse_artery, sys_idx_list, Ninterp);
     pMax = max(interpFullPulse);
     pMin = min(interpFullPulse);
     pRange = pMax - pMin;
 
     % Find descent time
     firstIndex = find(interpFullPulse - (pMin + 0.05 * pRange) < 0, 1);
-    TimePeakToDescent = firstIndex / Ninterp * mean(diff(sysIdxList')) * DT;
+    TimePeakToDescent = firstIndex / Ninterp * mean(diff(sys_idx_list')) * DT;
 
     % Store output
     ToolBox.Output.add('HeartBeat', HeartBeat, 'bpm', HeartBeatSTE);
-    ToolBox.Output.add('SystoleIndices', sysIdxList, '');
-    ToolBox.Output.add('ArterySystoleMaxIndices', sysMaxList, '');
-    ToolBox.Output.add('ArteryDiastoleMinIndices', sysMinList, '');
+    ToolBox.Output.add('SystoleIndices', sys_idx_list, '');
+    ToolBox.Output.add('ArterySystoleMaxIndices', sys_max_list, '');
+    ToolBox.Output.add('ArteryDiastoleMinIndices', sys_min_list, '');
     ToolBox.Output.add('ArteryTimeToMaxIncrease', 0, 's', 0);
     ToolBox.Output.add('ArteryTimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE);
     ToolBox.Output.add('ArteryTimeToMinDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE);
@@ -278,7 +283,7 @@ if numel(sysIdxList) >= 2 && numel(sysMaxList) >= 2 && numel(sysMinList) >= 2
     ToolBox.Output.add('ArteryTimePeakToDescent', TimePeakToDescent + TimeToPeakSystole, 's');
 
     % Log detailed results
-    logDetailedResults(ToolBox, HeartBeat, sysIdxList, sysMaxList, sysMinList, ...
+    logDetailedResults(ToolBox, HeartBeat, sys_idx_list, sys_max_list, sys_min_list, ...
         TimeToMinimumDiastole, TimeToPeakSystoleFromMinimumDiastole);
 else
     warning('There isn''t enough systoles for analysis.');
@@ -290,18 +295,18 @@ fprintf("    3. Systole/diastole analysis took %ds\n", round(toc));
 tic;
 
 % Calculate arterial resistivity index
-ArterialResistivityIndex(v_artery_signal, sysIdxList, 'v_artery', ForceFigure = true);
+ArterialResistivityIndex(v_artery_signal, sys_idx_list, 'v_artery', ForceFigure = true);
 
 % Vein analysis if enabled
 if veinsAnalysis
-    ArterialResistivityIndex(v_vein_signal, sysIdxList, 'v_vein', ForceFigure = true);
+    ArterialResistivityIndex(v_vein_signal, sys_idx_list, 'v_vein', ForceFigure = true);
 end
 
 % Perform waveform analysis
-v_artery_interp = ArterialWaveformAnalysis(v_artery_signal, sysIdxList, 128, 'v_artery');
+v_artery_interp = ArterialWaveformAnalysis(v_artery_signal, sys_idx_list, 128, 'v_artery');
 
 if veinsAnalysis
-    v_vein_interp = VenousWaveformAnalysis(v_vein_signal, sysIdxList, 128, 'v_vein');
+    v_vein_interp = VenousWaveformAnalysis(v_vein_signal, sys_idx_list, 128, 'v_vein');
 end
 
 if veinsAnalysis
@@ -384,9 +389,9 @@ fprintf("    5. Visualization and output generation took %ds\n", round(toc));
 close all
 
 % Save Intermediate Results in cache
-ToolBox.Cache.sysIdxList = sysIdxList;
-ToolBox.Cache.sysIdx = sysIdx;
-ToolBox.Cache.diasIdx = diasIdx;
+ToolBox.Cache.sysIdxList = sys_idx_list;
+ToolBox.Cache.sysIdx = sys_idx;
+ToolBox.Cache.diasIdx = dias_idx;
 
 end
 
