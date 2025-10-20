@@ -69,18 +69,14 @@ end
 if mask_params.AVDiasysSegmentationNet
     fprintf("Compute diastolic and stystolic frames for artery/vein segmentation\n");
 
-    [M0_Systole_img, M0_Diastole_img, ~] = compute_diasys(M0_ff, maskArtery, 'mask');
+    [M0_Systole_img, M0_Diastole_img] = compute_diasys(M0_ff, maskArtery, 'mask');
     saveMaskImage(rescale(M0_Systole_img), 'artery_20_systole_img.png', isStep = true)
     saveMaskImage(rescale(M0_Diastole_img), 'vein_20_diastole_img.png', isStep = true)
 
-    diasysArtery = M0_Systole_img - M0_Diastole_img;
-    mDiasys = mean(diasysArtery, 'all', 'omitnan');
-    diasysVein = mDiasys - diasysArtery;
-    saveMaskImage(diasysArtery, 'artery_21_diasys_img.png', isStep = true);
-    saveMaskImage(diasysVein, 'vein_21_diasys_img.png', isStep = true);
+    diasys_diff = M0_Systole_img - M0_Diastole_img;
 
-    RGBdiasys = labDuoImage(rescale(M0_ff_img), diasysArtery);
-    saveMaskImage(RGBdiasys, 'DiaSysRGB.png');
+    RGBdiasys = labDuoImage(rescale(M0_ff_img), diasys_diff);
+    saveMaskImage(RGBdiasys, 'vessel_20_diasys_diff.png', isStep = true);
 
     M0_Diastole_img = imresize(rescale(M0_Diastole_img), [512, 512]);
     M0_Systole_img = imresize(rescale(M0_Systole_img), [512, 512]);
