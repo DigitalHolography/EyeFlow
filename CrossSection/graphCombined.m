@@ -29,7 +29,7 @@ arguments
     opt.etiquettes_values = []
 end
 
-% Get global toolbox settings
+% Get global ToolBox settings
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 exportVideos = params.exportVideos;

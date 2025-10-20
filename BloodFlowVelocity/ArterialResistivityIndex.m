@@ -1,10 +1,11 @@
-function [] = ArterialResistivityIndex(signal, systolesIndexes, name, signal_se)
+function [] = ArterialResistivityIndex(signal, systolesIndexes, name, signal_se, opt)
 
 arguments
     signal
     systolesIndexes
     name
     signal_se = []
+    opt.ForceFigure = false
 end
 
 ToolBox = getGlobalToolBox;
@@ -77,7 +78,7 @@ else
 end
 
 % Save figures
-if params.json.save_figures
+if params.json.save_figures || opt.ForceFigure
 
     % RI Graph
     figure('Visible', 'off');
@@ -147,7 +148,9 @@ if params.json.save_figures
     exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
     exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_RI_%s.eps", ToolBox.folder_name, name)));
     close;
+end
 
+if params.json.save_figures
     % PI Graph
     figure('Visible', 'off');
     hold on;

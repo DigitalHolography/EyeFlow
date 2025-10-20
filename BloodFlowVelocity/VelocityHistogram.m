@@ -19,7 +19,7 @@ arguments
     n (1, 1) {mustBeInteger, mustBePositive} = 256
 end
 
-% Get toolbox parameters
+% Get ToolBox parameters
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 exportVideos = params.exportVideos;

@@ -36,14 +36,14 @@ R_Vessel = mean((M0_ff_centered .* vascularSignal_centered), 3) ./ ...
     (std(M0_ff_centered, [], 3) .* std(vascularSignal_centered, [], 3));
 
 % Save the correlation map
-saveImage(rescale(R_Vessel), ToolBox, sprintf("%s_2_1_CorrelMatrix.png", prefix), isStep = true);
+saveMaskImage(rescale(R_Vessel), ToolBox, sprintf("%s_2_1_CorrelMatrix.png", prefix), isStep = true);
 
 % Step 3: Apply vesselness mask to the correlation map
 R_Vessel = R_Vessel .* maskVesselnessClean;
 R_Vessel = R_Vessel .* (R_Vessel > 0);
 
 % Save the masked correlation map
-saveImage(rescale(R_Vessel), ToolBox, sprintf("%s_2_2_R_Vessel.png", prefix), isStep = true);
+saveMaskImage(rescale(R_Vessel), ToolBox, sprintf("%s_2_2_R_Vessel.png", prefix), isStep = true);
 
 % Step 4: Apply thresholding (manual or automatic)
 if corrParams.threshold >= -1 && corrParams.threshold <= 1
@@ -57,5 +57,5 @@ else
 end
 
 % Save the final thresholded mask
-saveImage(mask, ToolBox, sprintf("%s_2_4_Thresh.png", prefix), isStep = true, cmap = cmap);
+saveMaskImage(mask, ToolBox, sprintf("%s_2_4_Thresh.png", prefix), isStep = true, cmap = cmap);
 end

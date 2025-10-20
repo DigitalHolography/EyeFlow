@@ -33,7 +33,7 @@ N = 16; % Padding factor
 padded_signal = padarray(windowed_signal, [0, numFrames * N]);
 
 % Frequency vector (show only positive frequencies since signal is real)
-f = linspace(0, fs / 2, (N * numFrames) + 1);
+f = fft_freq_vector(fs, length(padded_signal), true);
 fft_c = fft(padded_signal);
 
 % --- COMPENSATE FOR WINDOW AMPLITUDE LOSS ---
@@ -190,7 +190,7 @@ if params.json.save_figures
     % --- PHASE SPECTRUM ANALYSIS ---
 
     % Main plot with improved styling
-    f = linspace(0, fs / 2, (N * numFrames) + 1);
+    f = fft_freq_vector(fs, N * numFrames, true);
     fft_angle = angle(fft_c);
     fft_angle = fft_angle(1:length(f)); % Take only positive frequencies
     ff_angle_movmean = movmean(fft_angle, 64);
@@ -241,8 +241,5 @@ if params.json.save_figures
     end
 
 end
-
-% Save to ToolBox
-f = linspace(0, fs, 2 * (N * numFrames) + numFrames);
 
 end

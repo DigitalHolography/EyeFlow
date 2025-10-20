@@ -75,7 +75,7 @@
     "SmallRadiusRatio": 0.15,
     "BigRadiusRatio": 0.35
   },
-  "CrossSectionsAnalysis": {
+  "generateCrossSectionSignals": {
     "NumberOfCircles": 10,
     "ScaleFactorWidth": 3,
     "MaskSliceThreshold": 0.01,
@@ -86,7 +86,7 @@
     "diameterAnalysis": false,
     "HydrodynamicDiameters": true
   },
-  "CrossSectionsFigures": {
+  "exportCrossSectionResults": {
     "sectionImage": true,
     "circleImages": true,
     "widthHistogram": true,

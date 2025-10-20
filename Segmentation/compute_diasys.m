@@ -14,7 +14,9 @@ fullTime = ToolBox.Cache.t;
 cDark = [1 0 0];
 cLight = [1 0.5 0.5];
 
-[sys_index_list, fullPulse, ~, ~] = find_systole_index(M0_video, maskArtery);
+pulse_artery = squeeze(mean(M0_video .* maskArtery, [1 2], 'omitnan')) ./ nnz(sum(maskArtery, [1 2]));
+
+[sys_index_list, fullPulse, ~, ~] = find_systole_index(pulse_artery, 'savepng', false);
 
 fullPulse = fullPulse';
 

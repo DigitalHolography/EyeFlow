@@ -1,6 +1,8 @@
 function [D_mid, D_avg, D_std] = widthHistogram(D, dD, A, name)
 
 ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
+save_figures = params.json.save_figures;
 
 isVal = cellfun(@(x) ~isempty(x) && ~(isnumeric(x) && isnan(x)), A);
 numValid = sum(isVal, 'all');
@@ -30,39 +32,44 @@ temp_std = std(diameters, 'omitnan');
 valid_idx = (diameters >= (temp_avg - 3 * temp_std)) & (diameters <= (temp_avg + 3 * temp_std));
 diameters = diameters(valid_idx);
 
-figure("Visible", "off")
-histogram(diameters, 20, FaceColor = 'k', Normalization = 'probability');
-hold on
-
 D_mid = median(diameters, "omitnan");
 D_avg = mean(diameters, "omitnan");
 D_std = std(diameters, "omitnan");
 
-% Create Gaussian distribution overlay
-x = linspace(0, 200, 1000);
-gaussian = normpdf(x, D_avg, D_std);
-% Scale Gaussian to match histogram probability
-gaussian = gaussian * (max(ylim) / max(gaussian)) * 0.8;
-plot(x, gaussian, 'k-', 'LineWidth', 2);
+if save_figures
+    % Plot histogram
+    f = figure("Visible", "off");
+    histogram(diameters, 20, FaceColor = 'k', Normalization = 'probability');
+    hold on
 
-xline(D_mid, '--', sprintf('%.0f µm', D_mid), 'Linewidth', 2)
-set(gca, 'Linewidth', 2)
-pbaspect([1.618 1 1]);
-xlabel("lumen cross section diameter (µm)")
-ylabel("probability")
-xlim([0 200]) % Set x-axis limits as requested
+    % Create Gaussian distribution overlay
+    x = linspace(0, 200, 1000);
+    gaussian = normpdf(x, D_avg, D_std);
+    % Scale Gaussian to match histogram probability
+    gaussian = gaussian * (max(ylim) / max(gaussian)) * 0.8;
+    plot(x, gaussian, 'k-', 'LineWidth', 2);
 
-% Add annotation with μ and σ values
-annotationText = sprintf('Average = %.1f µm\nSpread = %.1f µm\nMedian = %.1f µm', D_avg, D_std, D_mid);
-annotation('textbox', [0.15 0.7 0.1 0.1], 'String', annotationText, ...
-    'FitBoxToText', 'on', 'BackgroundColor', 'white', ...
-    'EdgeColor', 'none', 'LineWidth', 1, 'FontSize', 10);
+    xline(D_mid, '--', sprintf('%.0f µm', D_mid), 'Linewidth', 2)
+    set(gca, 'Linewidth', 2)
+    pbaspect([1.618 1 1]);
+    xlabel("lumen cross section diameter (µm)")
+    ylabel("probability")
+    xlim([0 200]) % Set x-axis limits as requested
 
-aa = axis;
-aa(4) = aa(4) * 1.14;
-axis(aa);
+    % Add annotation with μ and σ values
+    annotationText = sprintf('Average = %.1f µm\nSpread = %.1f µm\nMedian = %.1f µm', D_avg, D_std, D_mid);
+    annotation('textbox', [0.15 0.7 0.1 0.1], 'String', annotationText, ...
+        'FitBoxToText', 'on', 'BackgroundColor', 'white', ...
+        'EdgeColor', 'none', 'LineWidth', 1, 'FontSize', 10);
 
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, sprintf('histogram_of_%s_section_diameter.png', name))))
+    aa = axis;
+    aa(4) = aa(4) * 1.14;
+    axis(aa);
+
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, sprintf('histogram_of_%s_section_diameter.png', name))))
+
+    close(f);
+end
 
 %csv output of the widths
 T = table();

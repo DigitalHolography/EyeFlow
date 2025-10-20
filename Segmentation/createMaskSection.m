@@ -12,6 +12,8 @@ arguments
     opt.thin = 0
 end
 
+params = ToolBox.getParams;
+
 if isempty(maskArtery) && isempty(maskVein)
     error('Add at least one mask')
 end
@@ -33,89 +35,94 @@ else
     maskSection = diskMask(numX, numY, r1, r2, center = [x_c, y_c]);
 end
 
-% Create Colormap Artery/Vein
-img = mat2gray(img);
-img_RGB = cat(3, img, img, img);
-maskSectionRGB = cat(3, maskSection, maskSection, maskSection);
+VesselImageRGB = zeros(numX, numY, 3);
 
-if isempty(maskVein)
+if params.json.save_figures
+    % Create Colormap Artery/Vein
+    img = mat2gray(img);
+    img_RGB = cat(3, img, img, img);
+    maskSectionRGB = cat(3, maskSection, maskSection, maskSection);
 
-    maskArterySection = maskArtery & maskSection;
+    if isempty(maskVein)
 
-    cmapArtery = ToolBox.Cache.cmapArtery;
-    cmapArterySection = flipud(cmapArtery);
+        maskArterySection = maskArtery & maskSection;
 
-    M0_Artery = setcmap(img, maskArtery, cmapArtery);
-    M0_ArterySection = setcmap(img, maskArterySection, cmapArterySection);
+        cmapArtery = ToolBox.Cache.cmapArtery;
+        cmapArterySection = flipud(cmapArtery);
 
-    VesselImageRGB = M0_Artery .* ~maskSection + M0_ArterySection + ...
-        maskSectionRGB .* ~maskArtery + ...
-        img_RGB .* ~maskArtery .* ~maskSection;
+        M0_Artery = setcmap(img, maskArtery, cmapArtery);
+        M0_ArterySection = setcmap(img, maskArterySection, cmapArterySection);
 
-    if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
-        mkdir(fullfile(ToolBox.path_png, 'mask'));
+        VesselImageRGB = M0_Artery .* ~maskSection + M0_ArterySection + ...
+            maskSectionRGB .* ~maskArtery + ...
+            img_RGB .* ~maskArtery .* ~maskSection;
+
+        if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
+            mkdir(fullfile(ToolBox.path_png, 'mask'));
+        end
+
+        imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
+
+    elseif isempty(maskArtery)
+
+        maskVeinSection = maskVein & maskSection;
+
+        cmapVein = ToolBox.Cache.cmapVein;
+        cmapVeinSection = flipud(cmapVein);
+
+        M0_Vein = setcmap(img, maskVein, cmapVein);
+        M0_VeinSection = setcmap(img, maskVeinSection, cmapVeinSection);
+
+        VesselImageRGB = M0_Vein .* ~maskSection + M0_VeinSection + ...
+            maskSectionRGB .* ~maskVein + ...
+            img_RGB .* ~maskVein .* ~maskSection;
+
+        if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
+            mkdir(fullfile(ToolBox.path_png, 'mask'));
+        end
+
+        imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
+
+    else
+
+        maskArterySection = maskArtery & maskSection;
+        maskVeinSection = maskVein & maskSection;
+        maskAV = maskArtery & maskVein;
+        maskAVSection = maskAV & maskSection;
+
+        cmapArtery = ToolBox.Cache.cmapArtery;
+        cmapArterySection = flipud(cmapArtery);
+        cmapVein = ToolBox.Cache.cmapVein;
+        cmapVeinSection = flipud(cmapVein);
+        cmapAV = ToolBox.Cache.cmapAV;
+        cmapAVSection = flipud(cmapAV);
+
+        M0_Artery = setcmap(img, maskArtery, cmapArtery);
+        M0_ArterySection = setcmap(img, maskArterySection, cmapArterySection);
+        M0_Vein = setcmap(img, maskVein, cmapVein);
+        M0_VeinSection = setcmap(img, maskVeinSection, cmapVeinSection);
+        M0_AV = setcmap(img, maskAV, cmapAV);
+        M0_AVSection = setcmap(img, maskAVSection, cmapAVSection);
+
+        maskVessel = maskArtery | maskVein;
+
+        VesselImageRGB = ...
+            M0_Artery .* ~maskAV .* ~maskSection + ...
+            M0_ArterySection .* ~maskAVSection + ...
+            M0_Vein .* ~maskAV .* ~maskSection + ...
+            M0_VeinSection .* ~maskAVSection + ...
+            M0_AV .* ~maskSection + ...
+            M0_AVSection + ...
+            maskSectionRGB .* ~maskVessel + ...
+            img_RGB .* ~maskArtery .* ~maskVein .* ~maskSection;
+
+        if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
+            mkdir(fullfile(ToolBox.path_png, 'mask'));
+        end
+
+        imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
     end
 
-    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
-
-elseif isempty(maskArtery)
-
-    maskVeinSection = maskVein & maskSection;
-
-    cmapVein = ToolBox.Cache.cmapVein;
-    cmapVeinSection = flipud(cmapVein);
-
-    M0_Vein = setcmap(img, maskVein, cmapVein);
-    M0_VeinSection = setcmap(img, maskVeinSection, cmapVeinSection);
-
-    VesselImageRGB = M0_Vein .* ~maskSection + M0_VeinSection + ...
-        maskSectionRGB .* ~maskVein + ...
-        img_RGB .* ~maskVein .* ~maskSection;
-
-    if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
-        mkdir(fullfile(ToolBox.path_png, 'mask'));
-    end
-
-    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
-
-else
-
-    maskArterySection = maskArtery & maskSection;
-    maskVeinSection = maskVein & maskSection;
-    maskAV = maskArtery & maskVein;
-    maskAVSection = maskAV & maskSection;
-
-    cmapArtery = ToolBox.Cache.cmapArtery;
-    cmapArterySection = flipud(cmapArtery);
-    cmapVein = ToolBox.Cache.cmapVein;
-    cmapVeinSection = flipud(cmapVein);
-    cmapAV = ToolBox.Cache.cmapAV;
-    cmapAVSection = flipud(cmapAV);
-
-    M0_Artery = setcmap(img, maskArtery, cmapArtery);
-    M0_ArterySection = setcmap(img, maskArterySection, cmapArterySection);
-    M0_Vein = setcmap(img, maskVein, cmapVein);
-    M0_VeinSection = setcmap(img, maskVeinSection, cmapVeinSection);
-    M0_AV = setcmap(img, maskAV, cmapAV);
-    M0_AVSection = setcmap(img, maskAVSection, cmapAVSection);
-
-    maskVessel = maskArtery | maskVein;
-
-    VesselImageRGB = ...
-        M0_Artery .* ~maskAV .* ~maskSection + ...
-        M0_ArterySection .* ~maskAVSection + ...
-        M0_Vein .* ~maskAV .* ~maskSection + ...
-        M0_VeinSection .* ~maskAVSection + ...
-        M0_AV .* ~maskSection + ...
-        M0_AVSection + ...
-        maskSectionRGB .* ~maskVessel + ...
-        img_RGB .* ~maskArtery .* ~maskVein .* ~maskSection;
-
-    if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
-        mkdir(fullfile(ToolBox.path_png, 'mask'));
-    end
-
-    imwrite(VesselImageRGB, fullfile(ToolBox.path_png, 'mask', sprintf("%s_%s.png", ToolBox.folder_name, figname)), 'png');
 end
 
 end

@@ -17,13 +17,13 @@ arguments
     vesselMask logical % Binary mask of the segmented vessels
     maskSection logical % Binary mask defining the cross-sectional area of interest
     xy_barycenter (1, 2) double % [x, y] coordinates of the center of the cross-section
-    fun_params.refine logical = true % perform small refining or not and apply a sectioning 
+    fun_params.refine logical = true % perform small refining or not and apply a sectioning
     fun_params.min_area_percent double = 0.1 % area percentage of the image minimal for each label
     fun_params.strelSize double = 2 % Size for structuring element in morphological operations
     fun_params.smallBranchCriteria double = 10 % Minimum area (in pixels) for a branch to be considered valid
 end
 
-% Get parameters from global toolbox
+% Get parameters from global ToolBox
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 
@@ -33,7 +33,7 @@ x_c = xy_barycenter(1);
 y_c = xy_barycenter(2);
 r1 = params.json.SizeOfField.SmallRadiusRatio;
 r2 = params.json.SizeOfField.BigRadiusRatio;
-numCircles = params.json.CrossSectionsAnalysis.NumberOfCircles;
+numCircles = params.json.generateCrossSectionSignals.NumberOfCircles;
 dr = (r2 - r1) / numCircles;
 
 % Create skeleton and remove center circle
@@ -70,7 +70,7 @@ for i = 1:n
     labeledVessels(branchPixels) = i;
 end
 
-minAreaThreshold = floor(numX*numY*fun_params.min_area_percent/100);
+minAreaThreshold = floor(numX * numY * fun_params.min_area_percent / 100);
 
 labeledVessels = bwareaopen(labeledVessels, minAreaThreshold);
 

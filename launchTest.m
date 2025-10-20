@@ -88,7 +88,7 @@ try
     ExecClass.flag_bloodFlowVelocity_analysis = 1;
     ExecClass.flag_pulseWaveVelocity = 1;
     ExecClass.flag_crossSection_analysis = 1;
-    ExecClass.flag_crossSection_figures = 1;
+    ExecClass.flag_crossSection_export = 1;
 
     ExecClass.analyzeData([]);
 catch ME

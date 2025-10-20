@@ -11,7 +11,7 @@ arguments
     opt.Visible = "off"
 end
 
-% Get global toolbox settings
+% Get global ToolBox settings
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 exportVideos = params.exportVideos;

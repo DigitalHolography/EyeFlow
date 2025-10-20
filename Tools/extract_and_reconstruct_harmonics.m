@@ -21,7 +21,7 @@ function [reconstructed_signal, harmonics, fundamental_freq] = extract_and_recon
     
     % Perform FFT
     Y = fft(signal);
-    f = (0:N-1)' * fs / N;
+    f = fft_freq_vector(fs, N)';
     
     % Find harmonic frequencies and their magnitudes/phases
     harmonics = find_harmonics(Y, f, fundamental_freq, num_harmonics, fs);

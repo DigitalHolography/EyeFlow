@@ -1,6 +1,8 @@
 function profilePatchWomersley(v_profiles_cell, name, locsLabel, M0_ff_img)
 
 ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
+save_figures = params.json.save_figures;
 
 % Check sizes and extract numFrames from first non empty profile data in input
 [rows, cols] = size(locsLabel);
@@ -22,7 +24,7 @@ end
 % Extract cardiac frequency and corresponding indices with a margin
 cardiac_frequency = ToolBox.Cache.HeartBeatFFT; % in Hz
 
-f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
+f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, numFrames);
 
 [~, cardiac_idx] = min(abs(f - cardiac_frequency));
 

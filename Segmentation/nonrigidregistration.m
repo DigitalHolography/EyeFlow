@@ -44,9 +44,9 @@ fprintf("Calculating affine registration : \n"); tic;
 M0Affine = circshift(M0, shift);
 %similarMaskAffine = imwarp(similarMask, tformInv, 'OutputView', Rfixed);
 % similarMaskAffine =circshift(similarMask, -shift);
-figure(51), imshowpair(similarM0Diaph, M0Diaph);
+figure("Visible","off"), imshowpair(similarM0Diaph, M0Diaph);
 saveas(gcf, fullfile(folderpath, sprintf('%s_1_Diff.png', tag)));
-figure(52), imshowpair(similarM0, M0Affine);
+figure("Visible","off"), imshowpair(similarM0, M0Affine);
 saveas(gcf, fullfile(folderpath, sprintf('%s_1_AfterAffine.png', tag)));
 % figure(53),imshowpair(M0,similarMaskAffine);
 % saveas(gcf,fullfile(folderpath,sprintf('%s_1_MaskAfterAffine.png',tag)));
@@ -78,16 +78,16 @@ similarM0FrangiDiaph = (similarM0Frangi) .* disk; % version normalized and with 
 
 [warped, u, v, scores] = blocWiseAffineRegistration(M0FrangiDiaph, similarM0FrangiDiaph, NUM_BLOCS, SMOOTH_PIX);
 
-figure(55), imagesc(scores), colorbar;
+figure("Visible","off"), imagesc(scores), colorbar;
 saveas(gcf, fullfile(folderpath, sprintf('%s_2_BlocWiseRegScores.png', tag)));
 
-figure(56), imshowpair(FrangiFilter2D(mat2gray(similarM0Diaph)), warped);
+figure("Visible","off"), imshowpair(FrangiFilter2D(mat2gray(similarM0Diaph)), warped);
 saveas(gcf, fullfile(folderpath, sprintf('%s_2_BlocWiseRegWarped.png', tag)));
 step = 50; % Adjust to make arrows sparser or denser
 [xGrid, yGrid] = meshgrid(1:step:size(u, 2), 1:step:size(u, 1));
 uSampled =- u(1:step:end, 1:step:end);
 vSampled =- v(1:step:end, 1:step:end);
-figure(57); % Plot quiver over mask (optional background)
+figure("Visible","off"); % Plot quiver over mask (optional background)
 imshow(M0Affine); hold on;
 quiver(xGrid, yGrid, uSampled, vSampled, 'r'); % red arrows
 title('Displacement Field (Quiver Plot)');

@@ -24,7 +24,7 @@ v_masked = v_RMS;
 v_masked(repmat(~ROI, [1, 1, size(v_RMS, 3)])) = NaN; % Apply mask to all slices
 
 % Define sub-image dimensions
-subImgHW = round(0.01 * size(v_masked, 1) * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
+subImgHW = round(0.01 * size(v_masked, 1) * params.json.generateCrossSectionSignals.ScaleFactorWidth);
 
 % Initialize results fields
 xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);

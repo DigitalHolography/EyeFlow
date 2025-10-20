@@ -10,7 +10,7 @@ end
 
 % Parameters
 params = ToolBox.getParams;
-HydrodynamicDiameters = params.json.CrossSectionsAnalysis.HydrodynamicDiameters;
+HydrodynamicDiameters = params.json.generateCrossSectionSignals.HydrodynamicDiameters;
 
 [numX, ~] = size(subImg);
 

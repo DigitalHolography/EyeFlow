@@ -2,12 +2,17 @@ function playProfile(v_profile, x)
 % INPUT:
 %   v_profile - Array (numInterp x numFrames) containing the measured
 % velocity profile data across x (freq or time).
-% Get global toolbox settings
+% Get global ToolBox settings
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 numFrames = size(v_profile, 2);
-numInterp = params.json.CrossSectionsFigures.InterpolationPoints;
-w2w = linspace(-1, 1, numInterp);
+numInterp = params.json.exportCrossSectionResults.InterpolationPoints;
+
+if isempty(x)
+    w2w = linspace(-1, 1, numInterp);
+else
+    w2w = x;
+end
 
 % Create figure for static plot
 figure("Visible", "off");

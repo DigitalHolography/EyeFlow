@@ -10,7 +10,7 @@ fs = ToolBox.fs / ToolBox.stride * 1000; % Convert to seconds
 
 % Step 1: Separate mask into branches
 [label, ~] = labelVesselBranches(maskVesselness, true(size(maskVesselness)), ToolBox.Cache.xy_barycenter);
-saveImage(uint16(label), 'artery_16_PreMask.png', isStep = true, cmap = cmapArtery);
+saveMaskImage(uint16(label), 'artery_16_PreMask.png', isStep = true, cmap = cmapArtery);
 
 % Step 2: Compute average signal of video for each branch
 

@@ -62,7 +62,7 @@ if mask_params.AVCorrelationSegmentationNet
     signal_centered = signal - mean(signal, 3, 'omitnan');
     video_centered = video - mean(M0_ff, 'all', 'omitnan');
     R = mean(video_centered .* signal_centered, 3) ./ (std((video_centered), [], 'all', 'omitnan') * std(signal_centered, [], 3));
-    saveImage(R, 'all_15_Correlation.png', isStep = true)
+    saveMaskImage(R, 'all_15_Correlation.png', isStep = true)
 end
 
 % if the systolic and diastolic frames are used by the model, compute them
@@ -70,17 +70,17 @@ if mask_params.AVDiasysSegmentationNet
     fprintf("Compute diastolic and stystolic frames for artery/vein segmentation\n");
 
     [M0_Systole_img, M0_Diastole_img, ~] = compute_diasys(M0_ff, maskArtery, 'mask');
-    saveImage(rescale(M0_Systole_img), 'artery_20_systole_img.png', isStep = true)
-    saveImage(rescale(M0_Diastole_img), 'vein_20_diastole_img.png', isStep = true)
+    saveMaskImage(rescale(M0_Systole_img), 'artery_20_systole_img.png', isStep = true)
+    saveMaskImage(rescale(M0_Diastole_img), 'vein_20_diastole_img.png', isStep = true)
 
     diasysArtery = M0_Systole_img - M0_Diastole_img;
     mDiasys = mean(diasysArtery, 'all', 'omitnan');
     diasysVein = mDiasys - diasysArtery;
-    saveImage(diasysArtery, 'artery_21_diasys_img.png', isStep = true);
-    saveImage(diasysVein, 'vein_21_diasys_img.png', isStep = true);
+    saveMaskImage(diasysArtery, 'artery_21_diasys_img.png', isStep = true);
+    saveMaskImage(diasysVein, 'vein_21_diasys_img.png', isStep = true);
 
     RGBdiasys = labDuoImage(rescale(M0_ff_img), diasysArtery);
-    saveImage(RGBdiasys, 'DiaSysRGB.png');
+    saveMaskImage(RGBdiasys, 'DiaSysRGB.png');
 
     M0_Diastole_img = imresize(rescale(M0_Diastole_img), [512, 512]);
     M0_Systole_img = imresize(rescale(M0_Systole_img), [512, 512]);
