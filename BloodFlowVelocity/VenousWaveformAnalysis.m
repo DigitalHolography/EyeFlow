@@ -11,7 +11,6 @@ function one_cycle_signal = VenousWaveformAnalysis(signal, systolesIndexes, numI
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 save_figures = params.json.save_figures;
-fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 t = ToolBox.Cache.t;
 numSystoles = length(systolesIndexes);
 
@@ -44,12 +43,8 @@ catch
     signal = double(signal);
 end
 
-% Apply bandpass filter (0.5-15 Hz) as suggested
-[b, a] = butter(4, 15 / (fs / 2), 'low');
-filtered_signal = filtfilt(b, a, signal);
-
 % Cycle Analysis
-[one_cycle_signal, avgLength] = interpSignal(filtered_signal, systolesIndexes, numInterp);
+[one_cycle_signal, avgLength] = interpSignal(signal, systolesIndexes, numInterp);
 
 % Create time vector for one cycle
 dt = (t(2) - t(1));

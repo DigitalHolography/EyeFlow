@@ -35,6 +35,7 @@ end
 % 1000 -> kHz to Hz conversion
 
 scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
+fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 [numX, numY, numFrames] = size(f_video);
 
 % Section 1: Background Calculation
@@ -211,6 +212,14 @@ if veinsAnalysis
     v_vein_signal = squeeze(sum(v_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
 end
 
+% Filter signals
+[b, a] = butter(4, 15 / (fs / 2), 'low');
+v_artery_signal = filtfilt(b, a, v_artery_signal);
+
+if veinsAnalysis
+    v_vein_signal = filtfilt(b, a, v_vein_signal);
+end
+
 if save_figures
     % Plot velocity signals
     if veinsAnalysis
@@ -242,7 +251,14 @@ else
     [sys_idx_list, pulse_artery, sys_max_list, sys_min_list] = find_systole_index(v_artery_signal);
 end
 
-[~, ~, ~, ~, sys_idx, dias_idx] = compute_diasys(v_RMS_video, maskArterySection);
+[M0_Systole_img, M0_Diastole_img, sys_idx, dias_idx] = compute_diasys(v_RMS_video, maskArterySection);
+
+if save_figures
+    v_RMS_img = mean(v_RMS_video, 3, 'omitnan');
+    diasys_diff = M0_Systole_img - M0_Diastole_img;
+    RGBdiasys = labDuoImage(rescale(v_RMS_img), diasys_diff);
+    saveMaskImage(RGBdiasys, 'vessel_20_diasys_diff.png', isStep = true);
+end
 
 % Process heart beat data if enough cycles detected
 if numel(sys_idx_list) >= 2 && numel(sys_max_list) >= 2 && numel(sys_min_list) >= 2
