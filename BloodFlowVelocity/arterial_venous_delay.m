@@ -2,6 +2,7 @@ function [tau_RC, R_rel, C_rel] = arterial_venous_delay(v_artery, v_vein)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 
 v_artery = double(v_artery);
 v_vein = double(v_vein);
@@ -15,7 +16,6 @@ numInterp = length(v_artery);
 vein_shift = amin / numInterp * (1 / (ToolBox.Cache.HeartBeatFFT)); % in seconds
 
 t = (1:numInterp);
-
 tau = fit_tau(t, v_artery_n, v_vein_n, 50, amin);
 
 % ODE definition: dvvein/dt = (v_artery(t) - v_vein) / tau
@@ -31,7 +31,7 @@ tau_delay_ms = amin / numInterp * 1000 * (1 / (ToolBox.Cache.HeartBeatFFT)); % i
 tau_RC = tau / numInterp * (1 / (ToolBox.Cache.HeartBeatFFT)); % in seconds
 tau_ms = tau_RC * 1000; % convert to ms
 
-if params.json.save_figures
+if saveFigures
     % Create figure
     hFig = figure('Visible', 'off', 'Color', 'w');
     plot(ti, v_artery_n, 'r-', 'Linewidth', 2), hold on

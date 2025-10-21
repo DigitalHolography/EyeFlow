@@ -1,7 +1,7 @@
 function VideoRegistering(obj, firstFrame, lastFrame)
 % VideoRegistering - Registers the video using intensity based registration
 
-video = obj.M0_ff;
+video = obj.M0;
 numX = size(video, 1);
 numY = size(video, 2);
 
@@ -23,8 +23,6 @@ f2 = figure("Visible", 'off');
 plot(shifts(1, :)); hold on; plot(shifts(2, :));
 imwrite(f2, fullfile(obj.directory, 'eyeflow', sprintf("%s_%s", obj.filenames, 'RegistrationShiftsXY.png')));
 close all
-
-obj.M0_ff = register_video_from_shifts(video, shifts);
 
 obj.M0 = register_video_from_shifts(obj.M0, shifts);
 obj.M1 = register_video_from_shifts(obj.M1, shifts);

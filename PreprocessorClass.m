@@ -36,7 +36,6 @@ methods
 
         params = Parameters_json(obj.directory, obj.param_name);
 
-        obj.M0_ff = executionObj.M0_ff;
         obj.M0 = executionObj.M0;
         obj.M1 = executionObj.M1;
         obj.M2 = executionObj.M2;

@@ -2,7 +2,11 @@ function profilePatchWomersley(v_profiles_cell, name, locsLabel, M0_ff_img)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-save_figures = params.json.save_figures;
+saveFigures = params.saveFigures;
+
+if ~saveFigures
+    return;
+end
 
 % Check sizes and extract numFrames from first non empty profile data in input
 [rows, cols] = size(locsLabel);

@@ -10,6 +10,7 @@ end
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 numInterp = 60;
 t = ToolBox.Cache.t;
 
@@ -75,7 +76,7 @@ else
 end
 
 % Save figures
-if params.json.save_figures || opt.ForceFigure
+if saveFigures || opt.ForceFigure
 
     % RI Graph
     figure('Visible', 'off');
@@ -147,7 +148,7 @@ if params.json.save_figures || opt.ForceFigure
     close;
 end
 
-if params.json.save_figures
+if saveFigures
     % PI Graph
     figure('Visible', 'off');
     hold on;

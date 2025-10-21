@@ -2,6 +2,7 @@ function [found, diameter_x, diameter_y, x_center, y_center] = findPapilla(M0img
 %Returns the diameter of the papilla measured
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 mask_params = params.json.Mask;
 
 if mask_params.OpticDiscDetector
@@ -58,7 +59,7 @@ if mask_params.OpticDiscDetector
             y_center = NaN;
         end
 
-        if params.json.save_figures
+        if saveFigures
             a = bestBox(3) / 2;
             b = bestBox(4) / 2;
             angle = linspace(0, 2 * pi, 360);

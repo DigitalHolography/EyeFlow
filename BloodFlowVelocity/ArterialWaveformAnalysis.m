@@ -10,6 +10,7 @@ function one_cycle_signal = ArterialWaveformAnalysis(signal, systolesIndexes, nu
 % Initial Setup
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 t = ToolBox.Cache.t;
@@ -131,7 +132,7 @@ if ~isBVR
 end
 
 % Visualization
-if params.json.save_figures
+if saveFigures
     hFig = figure('Visible', 'off', 'Color', 'w');
     hold on;
 

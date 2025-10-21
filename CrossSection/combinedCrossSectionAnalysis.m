@@ -2,7 +2,7 @@ function combinedCrossSectionAnalysis(Q_results_A, Q_results_V, M0_ff)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-save_figures = params.json.save_figures;
+saveFigures = params.saveFigures;
 
 % Retrieve parameters
 sysIdxList = ToolBox.Cache.sysIdxList;
@@ -90,7 +90,7 @@ ToolBox.Output.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))
 ToolBox.Output.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');
 
 % Figures and Outputs
-if save_figures
+if saveFigures
     figure("Visible", "off", "Color", 'w');
     semilogy(freqs, fftshift(abs(F_TRANS)), '-k', 'LineWidth', 2);
     axis tight;

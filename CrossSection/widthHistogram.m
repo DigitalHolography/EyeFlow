@@ -2,7 +2,7 @@ function [D_mid, D_avg, D_std] = widthHistogram(D, dD, A, name)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-save_figures = params.json.save_figures;
+saveFigures = params.saveFigures;
 
 isVal = cellfun(@(x) ~isempty(x) && ~(isnumeric(x) && isnan(x)), A);
 numValid = sum(isVal, 'all');
@@ -36,7 +36,7 @@ D_mid = median(diameters, "omitnan");
 D_avg = mean(diameters, "omitnan");
 D_std = std(diameters, "omitnan");
 
-if save_figures
+if saveFigures
     % Plot histogram
     f = figure("Visible", "off");
     histogram(diameters, 20, FaceColor = 'k', Normalization = 'probability');

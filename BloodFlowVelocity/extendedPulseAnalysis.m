@@ -15,6 +15,7 @@ tic;
 % Set parameters
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 numFramesInterp = params.PulseAnalysis.OneCycleInterpolationPoints;
 
 % Define color limits for heatmaps
@@ -29,7 +30,7 @@ if isempty(sysIdxList)
     return;
 end
 
-[numX, numY, numFrames] = size(f_RMS);
+[numX, numY, ~] = size(f_RMS);
 x_c = xy_barycenter(1) / numX;
 y_c = xy_barycenter(2) / numY;
 r1 = params.json.SizeOfField.SmallRadiusRatio;
@@ -39,7 +40,6 @@ maskSection = diskMask(numX, numY, r1, r2, center = [x_c, y_c]);
 strXlabel = 'Time (s)';
 strYlabel = 'Frequency (kHz)';
 t = ToolBox.Cache.t;
-veinsAnalysis = params.veins_analysis;
 exportVideos = params.exportVideos;
 
 % Apply masks to isolate arteries, veins, and background
@@ -53,8 +53,8 @@ cBlack = [0 0 0];
 cArtery = [255 22 18] / 255;
 cVein = [18 23 255] / 255;
 
-%% 3) Display and save raw heatmaps
-if params.json.save_figures
+% 3) Display and save raw heatmaps
+if saveFigures
     t3 = tic;
 
     % Display and save AVG frequency heatmap
@@ -104,27 +104,16 @@ background_signal = squeeze(sum(background_signal, [1 2])) / nnz(maskBackground)
 arterial_signal = f_RMS .* maskArtery;
 arterial_signal = squeeze(sum(arterial_signal, [1 2])) / nnz(maskArtery);
 
-% Compute venous signal if veins analysis is enabled
-if veinsAnalysis
-    venous_signal = f_RMS .* maskVein;
-    venous_signal = squeeze(sum(venous_signal, [1 2])) / nnz(maskVein);
-end
+venous_signal = f_RMS .* maskVein;
+venous_signal = squeeze(sum(venous_signal, [1 2])) / nnz(maskVein);
 
 % Plot raw signals
-if veinsAnalysis
-    graphSignal('4_signalsRaw', ...
-        t, arterial_signal, '-', cArtery, ...
-        t, background_signal, ':', cBlack, ...
-        t, venous_signal, '-', cVein, ...
-        Title = 'Arterial Pulse Waveform and Background Signal', xlabel = strXlabel, ylabel = strYlabel, ...
-        Legends = {'artery', 'background', 'vein'}, TxtName = {'FullArterialSignal', 'FullBackgroundSignal', 'FullVenousSignal'});
-else
-    graphSignal('4_signalsRaw', ...
-        t, arterial_signal, '-', cArtery, ...
-        t, background_signal, ':', cBlack, ...
-        Title = 'Arterial Pulse Waveform and Background Signal', xlabel = strXlabel, ylabel = strYlabel, ...
-        Legends = {'artery', 'background'}, TxtName = {'FullArterialSignal', 'FullBackgroundSignal'});
-end
+graphSignal('4_signalsRaw', ...
+    t, arterial_signal, '-', cArtery, ...
+    t, background_signal, ':', cBlack, ...
+    t, venous_signal, '-', cVein, ...
+    Title = 'Arterial Pulse Waveform and Background Signal', xlabel = strXlabel, ylabel = strYlabel, ...
+    Legends = {'artery', 'background', 'vein'}, TxtName = {'FullArterialSignal', 'FullBackgroundSignal', 'FullVenousSignal'});
 
 fprintf("    4. Calculation of raw signals took %ds\n", round(toc));
 
@@ -134,26 +123,20 @@ tic;
 % Smooth arterial signal
 delta_f_arterial_signal = arterial_signal - background_signal;
 delta_f_arterial_smooth = smoothdata(delta_f_arterial_signal, 'lowess');
+delta_f_venous_signal = venous_signal - background_signal;
+delta_f_venous_smooth = smoothdata(delta_f_venous_signal, 'lowess');
 
-% Plot smoothed arterial signal
+% Plot signal
 graphSignal('5_arterialSignalSmoothed', ...
     t, delta_f_arterial_signal, ':', cArtery, ...
     t, delta_f_arterial_smooth, '-', cArtery, ...
     Title = 'Arterial Signal Smoothing', xlabel = strXlabel, ylabel = strYlabel, ...
     Legends = {'Noisy', 'Robust Linear Regression'});
-
-% Smooth venous signal if veins analysis is enabled
-if veinsAnalysis
-    delta_f_venous_signal = venous_signal - background_signal;
-    delta_f_venous_smooth = smoothdata(delta_f_venous_signal, 'lowess');
-
-    % Plot smoothed venous signal
-    graphSignal('5_venousSignalSmoothed', ...
-        t, delta_f_venous_signal, ':', cVein, ...
-        t, delta_f_venous_smooth, '-', cVein, ...
-        Title = 'Smoothed Venous Signal', xlabel = strXlabel, ylabel = strYlabel, ...
-        Legends = {'Noisy', 'Robust Linear Regression'});
-end
+graphSignal('5_venousSignalSmoothed', ...
+    t, delta_f_venous_signal, ':', cVein, ...
+    t, delta_f_venous_smooth, '-', cVein, ...
+    Title = 'Smoothed Venous Signal', xlabel = strXlabel, ylabel = strYlabel, ...
+    Legends = {'Noisy', 'Robust Linear Regression'});
 
 % Compute noise and data reliability index
 outOfNoiseThreshold = params.PulseAnalysis.OneCycleOutOfNoiseThreshold;
@@ -173,46 +156,29 @@ graphSignal('5_filteredPulseVsResidual', ...
 
 fprintf("    5. Smoothing signals took %ds\n", round(toc));
 
-%% 6) Calculation of pulse signal derivative and finding/smoothing pulses
+% 6) Calculation of pulse signal derivative and finding/smoothing pulses
 tic;
 
 % Compute derivatives of arterial and venous signals
 fullArterialPulseDerivative = gradient(arterial_signal);
 fullArterialPulseSmoothDerivative = gradient(delta_f_arterial_smooth);
-
-if veinsAnalysis
-    fullVenousPulseDerivative = gradient(venous_signal);
-    fullVenousPulseSmoothDerivative = gradient(delta_f_venous_smooth);
-end
+fullVenousPulseDerivative = gradient(venous_signal);
+fullVenousPulseSmoothDerivative = gradient(delta_f_venous_smooth);
 
 % Plot derivatives
-if veinsAnalysis
-    textsX = [t(sysIdxList) - 0.3, t(sysIdxList) - 0.3];
-    textsY = [fullArterialPulseSmoothDerivative(sysIdxList)' + 0.03, fullVenousPulseSmoothDerivative(sysIdxList)' + 0.03];
-    texts = arrayfun(@num2str, 1:length(sysIdxList) * 2, 'UniformOutput', false);
+textsX = [t(sysIdxList) - 0.3, t(sysIdxList) - 0.3];
+textsY = [fullArterialPulseSmoothDerivative(sysIdxList)' + 0.03, fullVenousPulseSmoothDerivative(sysIdxList)' + 0.03];
+texts = arrayfun(@num2str, 1:length(sysIdxList) * 2, 'UniformOutput', false);
 
-    graphSignal('6_derivative', ...
-        t, fullArterialPulseDerivative, ':', cArtery, ...
-        t, fullArterialPulseSmoothDerivative, '-', cArtery, ...
-        t, fullVenousPulseDerivative, ':', cVein, ...
-        t, fullVenousPulseSmoothDerivative, '-', cVein, ...
-        Title = 'Derivative of Arterial and Venous Pulse Waveform', xlabel = strXlabel, ylabel = 'A.U.', ...
-        Legend = {'\delta <p(t)> - <b(t)>', 'From Smoothed Data'}, ...
-        TxtName = {'FullArterialPulseDerivative', 'FullArterialPulseSmoothDerivative', 'FullVenousPulseDerivative', 'FullVenousPulseSmoothDerivative'}, ...
-        TxtFigX = textsX, TxtFigY = textsY, TxtFigString = texts);
-else
-    textsX = t(sysIdxList) - 0.3;
-    textsY = fullArterialPulseSmoothDerivative(sysIdxList)' + 0.03;
-    texts = arrayfun(@num2str, 1:length(sysIdxList), 'UniformOutput', false);
-
-    graphSignal('6_derivative', ...
-        t, fullArterialPulseDerivative, ':', cArtery, ...
-        t, fullArterialPulseSmoothDerivative, '-', cArtery, ...
-        Title = 'Derivative of Arterial Waveform', xlabel = strXlabel, ylabel = 'A.U.', ...
-        Legend = {'\delta <p(t)> - <b(t)>', 'From Smoothed Data'}, ...
-        TxtName = {'FullArterialPulseDerivative', 'FullArterialPulseSmoothDerivative'}, ...
-        TxtFigX = textsX, TxtFigY = textsY, TxtFigString = texts);
-end
+graphSignal('6_derivative', ...
+    t, fullArterialPulseDerivative, ':', cArtery, ...
+    t, fullArterialPulseSmoothDerivative, '-', cArtery, ...
+    t, fullVenousPulseDerivative, ':', cVein, ...
+    t, fullVenousPulseSmoothDerivative, '-', cVein, ...
+    Title = 'Derivative of Arterial and Venous Pulse Waveform', xlabel = strXlabel, ylabel = 'A.U.', ...
+    Legend = {'\delta <p(t)> - <b(t)>', 'From Smoothed Data'}, ...
+    TxtName = {'FullArterialPulseDerivative', 'FullArterialPulseSmoothDerivative', 'FullVenousPulseDerivative', 'FullVenousPulseSmoothDerivative'}, ...
+    TxtFigX = textsX, TxtFigY = textsY, TxtFigString = texts);
 
 fprintf("    6. Calculation of pulse signal derivative took %ds\n", round(toc));
 

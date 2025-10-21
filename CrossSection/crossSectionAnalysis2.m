@@ -14,6 +14,7 @@ function [results] = crossSectionAnalysis2(ToolBox, loc, ROI, xy_barycenter, v_R
 
 % Initialize parameters
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 [numX, numY, numFrames] = size(v_RMS);
 
 % Initialize the results struct with preallocated fields.
@@ -54,15 +55,14 @@ subImgUnCropped = subImgUnCropped(yRange, xRange);
 subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
 
 % Compute the Vessel Cross Section
-flag_figure = params.json.save_figures;
-[D, D_SE, A, A_SE, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter, flag_figure);
+[D, D_SE, A, A_SE, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter, saveFigures);
 results.D = D;
 results.D_SE = D_SE;
 results.A = A;
 results.A_SE = A_SE;
 
 % Generate figures
-if params.json.save_figures
+if saveFigures
     saveCrossSectionFigure(subImgUnCropped, c1, c2, ToolBox, patchName);
 end
 

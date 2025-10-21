@@ -28,9 +28,8 @@
     "Border": 0.15,
     "FittedParameters": false
   },
-  "VeinsAnalysis": 1,
-  "ExportVideos": 1,
-  "save_figures": 1,
+  "exportVideos": 1,
+  "saveFigures": 1,
   "MinimumGifPeriod": 0.04,
   "NumberOfWorkers": 0,
   "Mask": {
@@ -55,7 +54,6 @@
     "Minimum Vessel Width": 3,
     "Final Dilation": 0,
     "Force Vessel Width": 0,
-    "All Non Vessels as Background": false,
     "Optic Disc Detector": true
   },
   "PulseAnalysis": {
@@ -65,6 +63,7 @@
     "bkgScaler": 5,
     "Lambda": 8.52E-7,
     "Phi": 0.25,
+    "FilterSignals": true,
     "OutOfNoiseThreshold": 4,
     "BlurScaleFactor": 100,
     "OneCycle InterpolationPoints": 256,
