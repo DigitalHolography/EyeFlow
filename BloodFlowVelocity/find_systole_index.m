@@ -22,20 +22,20 @@ end
 ToolBox = getGlobalToolBox();
 fs = ToolBox.fs * 1000 / ToolBox.stride; % Convert to Hz
 
-veinsAnalysis = ~isempty(options.pulseVein);
+flagVein = ~isempty(options.pulseVein);
 
 % Step 1: Extract pulse signal
 [b, a] = butter(4, options.lowpass_freq / (fs / 2), 'low');
 pulse_artery_filtered = filtfilt(b, a, pulse_artery);
 
-if veinsAnalysis
+if flagVein
     pulse_vein_filtered = filtfilt(b, a, options.pulseVein);
 end
 
 % Step 2: Compute derivative
 diff_artery_signal = gradient(pulse_artery_filtered);
 
-if veinsAnalysis
+if flagVein
     diff_vein_signal = gradient(pulse_vein_filtered);
 end
 
@@ -112,7 +112,7 @@ if options.savepng
 
     exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, 'find_systoles_indices_artery.png')))
 
-    if veinsAnalysis
+    if flagVein
         figure(Visible = 'off');
         hold on
         plot(t, diff_vein_signal, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5)

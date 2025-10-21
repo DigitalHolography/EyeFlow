@@ -56,31 +56,35 @@ methods
         createMasks(executionObj.M0_ff);
         ToolBox.Cache.papillaDiameter = mean([diameter_x, diameter_y]);
 
-        params = ToolBox.getParams;
         % Artery score
         scoreA = ToolBox.Cache.scoreMaskArtery;
+
         if isempty(scoreA) || isnan(scoreA)
         else
             fprintf("- Mask artery quality score: %.2f\n", scoreA);
+
             if scoreA < 0.5
-            error("AnalyzerClass:LowMaskScore", "Mask artery quality score too low (%.2f < 0.5). Aborting segmentation.", scoreA);
+                error("AnalyzerClass:LowMaskScore", "Mask artery quality score too low (%.2f < 0.5). Aborting segmentation.", scoreA);
             end
+
         end
+
         ToolBox.Output.Extra.add("maskArtery", ToolBox.Cache.maskArtery);
 
         % Vein score (if veins analysis enabled)
-        if params.veins_analysis
-            scoreV = ToolBox.Cache.scoreMaskVein;
-            if isempty(scoreV) || isnan(scoreV)
-            else
-                fprintf("- Mask vein quality score: %.2f\n", scoreV);
-                if scoreV < 0.5
-                    error("AnalyzerClass:LowMaskScore", "Mask vein quality score too low (%.2f < 0.5). Aborting segmentation.", scoreV);
-                end
-            end
-        end
-        ToolBox.Output.Extra.add("maskVein", ToolBox.Cache.maskVein);
+        scoreV = ToolBox.Cache.scoreMaskVein;
 
+        if isempty(scoreV) || isnan(scoreV)
+        else
+            fprintf("- Mask vein quality score: %.2f\n", scoreV);
+
+            if scoreV < 0.5
+                error("AnalyzerClass:LowMaskScore", "Mask vein quality score too low (%.2f < 0.5). Aborting segmentation.", scoreV);
+            end
+
+        end
+
+        ToolBox.Output.Extra.add("maskVein", ToolBox.Cache.maskVein);
 
         % Visualize the segmentation result
         M0_RGB = ToolBox.Cache.M0_RGB;
