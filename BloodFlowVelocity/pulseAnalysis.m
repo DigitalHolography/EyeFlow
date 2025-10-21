@@ -251,7 +251,14 @@ else
     [sys_idx_list, pulse_artery, sys_max_list, sys_min_list] = find_systole_index(v_artery_signal);
 end
 
-[~, ~, ~, ~, sys_idx, dias_idx] = compute_diasys(v_RMS_video, maskArterySection);
+[M0_Systole_img, M0_Diastole_img, sys_idx, dias_idx] = compute_diasys(v_RMS_video, maskArterySection);
+
+if save_figures
+    v_RMS_img = mean(v_RMS_video, 3, 'omitnan');
+    diasys_diff = M0_Systole_img - M0_Diastole_img;
+    RGBdiasys = labDuoImage(rescale(v_RMS_img), diasys_diff);
+    saveMaskImage(RGBdiasys, 'vessel_20_diasys_diff.png', isStep = true);
+end
 
 % Process heart beat data if enough cycles detected
 if numel(sys_idx_list) >= 2 && numel(sys_max_list) >= 2 && numel(sys_min_list) >= 2

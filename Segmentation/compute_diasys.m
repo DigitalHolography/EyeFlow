@@ -1,4 +1,4 @@
-function [M0_Systole_img, M0_Diastole_img, M0_Systole_video, M0_Diastole_video, sysindexes, diasindexes] = compute_diasys(M0_video, maskArtery, export_folder)
+function [M0_Systole_img, M0_Diastole_img, sysindexes, diasindexes] = compute_diasys(M0_video, maskArtery, export_folder)
 
 arguments
     M0_video
@@ -29,8 +29,6 @@ if isempty(sys_index_list)
 
     M0_Systole_img = M0_video(amax, 3);
     M0_Diastole_img = M0_video(amin, 3);
-    M0_Systole_video = M0_video;
-    M0_Diastole_video = M0_video;
     return;
 end
 
@@ -82,9 +80,6 @@ diasindexes = setdiff(1:numFrames, sysindexes);
 % Compute the mean images
 M0_Systole_img = mean(M0_video(:, :, sysindexes), 3, 'omitnan');
 M0_Diastole_img = mean(M0_video(:, :, diasindexes), 3, 'omitnan');
-
-M0_Systole_video = M0_video(:, :, sysindexes);
-M0_Diastole_video = M0_video(:, :, diasindexes);
 
 if params.json.save_figures
     plot(fullTime, fullPulse, 'k', 'LineWidth', 2)

@@ -61,28 +61,26 @@ methods
         props = properties(obj);
 
         for i = 1:length(props)
-            h5create(path, strcat("/", "Signals", props{i}, "_y"), size(obj.(props{i}).yvalues));
-            h5write(path, strcat("/", "Signals", props{i}, "_y"), obj.(props{i}).yvalues);
+            h5create(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_y"), size(obj.(props{i}).yvalues));
+            h5write(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_y"), obj.(props{i}).yvalues);
         end
 
         for i = 1:length(props)
-            h5create(path, strcat("/", "Signals", props{i}, "_ste"), size(obj.(props{i}).ystandard_errors));
-            h5write(path, strcat("/", "Signals", props{i}, "_ste"), obj.(props{i}).ystandard_errors);
+            h5create(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_ste"), size(obj.(props{i}).ystandard_errors));
+            h5write(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_ste"), obj.(props{i}).ystandard_errors);
         end
 
         for i = 1:length(props)
-            h5create(path, strcat("/", "Signals", props{i}, "_x"), size(obj.(props{i}).xvalues));
-            h5write(path, strcat("/", "Signals", props{i}, "_x"), obj.(props{i}).xvalues);
+            h5create(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_x"), size(obj.(props{i}).xvalues));
+            h5write(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_x"), obj.(props{i}).xvalues);
         end
 
         for i = 1:length(props)
-            h5create(path, strcat("/", "Signals", props{i}, "_yunit"), [1 1], Datatype = "string");
-            h5write(path, strcat("/", "Signals", props{i}, "_yunit"), string(obj.(props{i}).yunit));
+            writeStringToHDF5(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_yunit"), string(obj.(props{i}).yunit));
         end
 
         for i = 1:length(props)
-            h5create(path, strcat("/", "Signals", props{i}, "_xunit"), [1 1], Datatype = "string");
-            h5write(path, strcat("/", "Signals", props{i}, "_xunit"), string(obj.(props{i}).xunit));
+            writeStringToHDF5(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_xunit"), string(obj.(props{i}).xunit));
         end
 
     end

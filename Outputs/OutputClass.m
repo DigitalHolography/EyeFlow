@@ -96,8 +96,9 @@ properties
     UnixTimestampFirst
     UnixTimestampLast
 
-    % Signals
+    % Signals & Extra
     Signals SignalsClass
+    Extra ExtraClass
 end
 
 methods
@@ -105,6 +106,7 @@ methods
     function obj = OutputClass()
         % Constructor for the class, fills the properties with default values
         props = setdiff(properties(obj), "Signals");
+        props = setdiff(props, "Extra");
 
         for i = 1:length(props)
             obj.(props{i}).value = NaN;
@@ -113,6 +115,7 @@ methods
         end
 
         obj.Signals = SignalsClass();
+        obj.Extra = ExtraClass();
     end
 
     function add(obj, name, value, unit, standard_error)
@@ -133,6 +136,7 @@ methods
 
     function writeJson(obj, path)
         props = setdiff(properties(obj), "Signals");
+        props = setdiff(props, "Extra");
         data = struct();
 
         for i = 1:length(props)
@@ -154,6 +158,7 @@ methods
 
     function writeHdf5(obj, path)
         props = setdiff(properties(obj), "Signals");
+        props = setdiff(props, "Extra");
         [dir, name, ~] = fileparts(path);
         path = fullfile(dir, strcat(name, ".h5"));
 
@@ -162,18 +167,20 @@ methods
         end
 
         for i = 1:length(props)
-            h5create(path, strcat("/", props{i}), size(obj.(props{i}).value));
-            h5write(path, strcat("/", props{i}), obj.(props{i}).value);
-            h5create(path, strcat("/", props{i}, "_ste"), size(obj.(props{i}).standard_error));
-            h5write(path, strcat("/", props{i}, "_ste"), obj.(props{i}).standard_error);
-            h5create(path, strcat("/", props{i}, "_unit"), [1 1], Datatype = "string");
-            h5write(path, strcat("/", props{i}, "_unit"), string(obj.(props{i}).unit));
+            writeNumericToHDF5(path, strcat("/", "Figures", "/", props{i}, "/", props{i}),obj.(props{i}).value);
+
+            writeNumericToHDF5(path, strcat("/", "Figures", "/", props{i}, "/", props{i}, "_ste"),obj.(props{i}).standard_error);
+
+            writeStringToHDF5(path, strcat("/", "Figures", "/", props{i}, "/", props{i}, "_unit"),string(obj.(props{i}).unit));
         end
 
-        % Save Signals in a separate directory of the same h5 file
+        % Save Signals and Extra in a separate directory of the same h5 file
         obj.Signals.writeHdf5(path);
+        obj.Extra.writeHdf5(path);
+
     end
 
 end
 
 end
+
