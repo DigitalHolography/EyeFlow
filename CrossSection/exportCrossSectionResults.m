@@ -32,19 +32,22 @@ v_cell = results.v_cell;
 v_profiles_cell = results.v_profiles_cell;
 radius_Q = results.radius_Q;
 branch_Q = results.branch_Q;
-radius_v = results.radius_v;
-branch_v = results.branch_v;
+% radius_v = results.radius_v;
+% branch_v = results.branch_v;
 
 % Standard errors
 D_SE_cell = results.D_SE_cell;
 v_SE_profiles_cell = results.v_SE_profiles_cell;
 radius_Q_SE = results.radius_Q_SE;
 branch_Q_SE = results.branch_Q_SE;
-radius_v_SE = results.radius_v_SE;
-branch_v_SE = results.branch_v_SE;
+% radius_v_SE = results.radius_v_SE;
+% branch_v_SE = results.branch_v_SE;
 
 labeledVessels = results.labeledVessels .* results.labeledVessels ~= 0;
 histo_v_cell = results.histo_v_cell;
+
+% 0.bis Save to H5 Output the velocity profiles and maksLabel info
+exportProfilesToH5(name,maskLabel,v_profiles_cell);
 
 % 1. Flow Rate Figures
 tic
@@ -58,23 +61,17 @@ else
 end
 
 [Q_t, Q_SE_t] = plotRadius(radius_Q, radius_Q_SE, t, index_start, index_end, name, 'flux');
-[v_t, v_SE_t] = plotRadius(radius_v, radius_v_SE, t, index_start, index_end, name, 'velocity');
+% [v_t, v_SE_t] = plotRadius(radius_v, radius_v_SE, t, index_start, index_end, name, 'velocity');
 
 if save_figures
     plotBranch(branch_Q, branch_Q_SE, t, index_start, index_end, name, 'flux');
-    plotBranch(branch_v, branch_v_SE, t, index_start, index_end, name, 'velocity');
+    % plotBranch(branch_v, branch_v_SE, t, index_start, index_end, name, 'velocity');
 end
 
 if contains(name, 'artery')
     ToolBox.Output.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', Q_SE_t);
 elseif contains(name, 'vein')
     ToolBox.Output.Signals.add('VenousVolumeRate', Q_t, 'µL/min', t, 's', Q_SE_t);
-end
-
-if contains(name, 'artery')
-    ToolBox.Output.Signals.add('ArterialVelocity', v_t, 'mm/s', t, 's', v_SE_t);
-elseif contains(name, 'vein')
-    ToolBox.Output.Signals.add('VenousVelocity', v_t, 'mm/s', t, 's', v_SE_t);
 end
 
 if save_figures
@@ -92,6 +89,8 @@ if save_figures
 end
 
 fprintf("    1. Flow Rate Figures (%s) took %ds\n", name, round(toc))
+
+% 1.bis optional Flow Rate Figures
 
 tic
 
