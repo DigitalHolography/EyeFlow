@@ -10,7 +10,7 @@ function one_cycle_signal = VenousWaveformAnalysis(signal, systolesIndexes, numI
 % Initial Setup
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-save_figures = params.json.save_figures;
+saveFigures = params.saveFigures;
 t = ToolBox.Cache.t;
 numSystoles = length(systolesIndexes);
 
@@ -57,7 +57,7 @@ pulseTime = linspace(0, dt * avgLength, numInterp);
 [trough, loc_trough] = min(one_cycle_signal);
 
 % Visualization
-if save_figures
+if saveFigures
     hFig = figure('Visible', 'off', 'Color', 'w');
     plot(pulseTime, one_cycle_signal, 'k', 'LineWidth', 2)
     hold on

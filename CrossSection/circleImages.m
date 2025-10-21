@@ -3,7 +3,7 @@ function circleImages(M0_ff_img, xy_barycenter, A_cell, Q_cell, v_cell, mask, lo
 % Get global ToolBox and parameters
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-save_figures = params.json.save_figures;
+saveFigures = params.saveFigures;
 exportVideos = params.exportVideos;
 
 % Validate input name
@@ -16,7 +16,7 @@ main_folder = ToolBox.folder_name;
 [numX, numY, ~] = size(M0_ff_img);
 [numCircles, numBranches] = size(A_cell);
 
-if save_figures
+if saveFigures
     path_png = ToolBox.path_png;
     path_eps = ToolBox.path_eps;
 

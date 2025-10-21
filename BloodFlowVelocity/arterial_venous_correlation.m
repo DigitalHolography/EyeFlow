@@ -14,6 +14,7 @@ function [time_lag, max_corr, lags, cross_corr_AV] = arterial_venous_correlation
 
 ToolBox = getGlobalToolBox();
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 fs = ToolBox.fs * 1000 / ToolBox.stride;
 numFrames = length(v_artery_signal);
 t = ToolBox.Cache.t;
@@ -54,7 +55,7 @@ df = 0.3;
 valid_indx = (f < (f0 + df)) & (f > (f0 - df));
 Gamma_0 = sum(MSC(valid_indx)) ./ sum(valid_indx);
 
-if params.json.save_figures
+if saveFigures
     figure("Visible", "off", "Color", 'w');
     plot(f, MSC, '-k', 'LineWidth', 2)
     xline(f0, 'k--', sprintf("%0.2f Hz", f0), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom')
@@ -137,7 +138,7 @@ ToolBox.Output.add('ArteryVeinPhaseDelay', time_lag, 's', NaN);
 
 close all
 
-%% Transfer Function analysis
+% Transfer Function analysis
 
 % Compute FFTs
 v_a_FT = fft(v_artery_signal, 10 * numFrames);
@@ -146,7 +147,7 @@ v_v_FT = fft(v_vein_signal, 10 * numFrames);
 F_TRANS = v_v_FT ./ v_a_FT;
 freqs = linspace(-fs / 2, fs / 2, numel(F_TRANS));
 
-if params.json.save_figures
+if saveFigures
     % Plot Transfer Function Magnitude
     figure("Visible", "off", "Color", 'w');
     semilogy(freqs, fftshift(abs(F_TRANS)), '-k', 'LineWidth', 2);

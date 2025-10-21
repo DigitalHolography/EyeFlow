@@ -6,7 +6,7 @@ function [U_t, U_t_SE] = plotRadius(radius_U, radius_U_SE, fullTime, idx_start, 
 % Get global ToolBox and parameters
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-save_figures = params.json.save_figures;
+saveFigures = params.saveFigures;
 numCircles = params.json.generateCrossSectionSignals.NumberOfCircles; % Number of circles (radii)
 r1 = params.json.SizeOfField.SmallRadiusRatio;
 r2 = params.json.SizeOfField.BigRadiusRatio;
@@ -40,7 +40,7 @@ U_t_SE = squeeze(sqrt(sum(radius_U_SE .^ 2, 1))) / N; % RMS of uncertainties
 mean_U = mean(U_t(idx_start:idx_end)); % Time-averaged mean
 max_U = max(U_t(idx_start:idx_end)); % Maximum value in the range
 
-if save_figures
+if saveFigures
     % Create shaded region for uncertainty
     curve1 = U_r + U_r_SE; % Upper bound
     curve2 = U_r - U_r_SE; % Lower bound

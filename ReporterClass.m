@@ -31,7 +31,7 @@ methods
             ToolBox.Output.add('UnixTimestampLast', tmp.last, 'µs');
         end
 
-        if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name))) && params.json.save_figures
+        if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name))) && params.saveFigures
             writeGifOnDisc(imresize(rescale(executionObj.M0_ff), 0.5), "M0")
         end
 
@@ -52,9 +52,8 @@ methods
         fprintf("Generating A4 Report...\n");
 
         ToolBox = getGlobalToolBox;
-        params = ToolBox.getParams;
 
-        if executionObj.is_velocityAnalyzed && params.veins_analysis
+        if executionObj.is_velocityAnalyzed
 
             try
                 generateA4Report();

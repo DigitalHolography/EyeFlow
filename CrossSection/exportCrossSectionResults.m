@@ -6,7 +6,7 @@ ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 path_png = ToolBox.path_png;
 path_eps = ToolBox.path_eps;
-save_figures = params.json.save_figures;
+saveFigures = params.saveFigures;
 
 % Retrieve cached variables
 xy_barycenter = ToolBox.Cache.xy_barycenter;
@@ -60,7 +60,7 @@ end
 [Q_t, Q_SE_t] = plotRadius(radius_Q, radius_Q_SE, t, index_start, index_end, name, 'flux');
 [v_t, v_SE_t] = plotRadius(radius_v, radius_v_SE, t, index_start, index_end, name, 'velocity');
 
-if save_figures
+if saveFigures
     plotBranch(branch_Q, branch_Q_SE, t, index_start, index_end, name, 'flux');
     plotBranch(branch_v, branch_v_SE, t, index_start, index_end, name, 'velocity');
 end
@@ -77,7 +77,7 @@ elseif contains(name, 'vein')
     ToolBox.Output.Signals.add('VenousVelocity', v_t, 'mm/s', t, 's', v_SE_t);
 end
 
-if save_figures
+if saveFigures
     r1 = params.json.SizeOfField.SmallRadiusRatio;
     r2 = params.json.SizeOfField.BigRadiusRatio;
     maskSection = diskMask(numX, numY, r1, r2, center = [x_c / numX y_c / numY]);
@@ -95,19 +95,19 @@ fprintf("    1. Flow Rate Figures (%s) took %ds\n", name, round(toc))
 
 tic
 
-if params.json.exportCrossSectionResults.BloodFlowProfiles && save_figures
+if params.json.exportCrossSectionResults.BloodFlowProfiles && saveFigures
     interpolatedBloodVelocityProfile(v_profiles_cell, v_SE_profiles_cell, sysIdx, diasIdx, name)
 end
 
-if params.json.exportCrossSectionResults.BloodFlowHistograms && save_figures
+if params.json.exportCrossSectionResults.BloodFlowHistograms && saveFigures
     histogramPatchVelocities(histo_v_cell, name, locsLabel, mean(M0_ff, 3))
 end
 
-if params.json.exportCrossSectionResults.BloodFlowProfilesWomersleyOverlay && save_figures
+if params.json.exportCrossSectionResults.BloodFlowProfilesWomersleyOverlay && saveFigures
     profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
 end
 
-if params.json.exportCrossSectionResults.BloodFlowProfilesOverlay && save_figures
+if params.json.exportCrossSectionResults.BloodFlowProfilesOverlay && saveFigures
     profilePatchVelocities(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
 end
 
@@ -117,7 +117,7 @@ fprintf("    1.(bis) optional Flow Rate Figures (interpolated velocity profiles 
 
 tic
 
-if params.json.exportCrossSectionResults.sectionImage && save_figures
+if params.json.exportCrossSectionResults.sectionImage && saveFigures
     sectionImage(M0_ff_img, maskLabel, initial)
 end
 

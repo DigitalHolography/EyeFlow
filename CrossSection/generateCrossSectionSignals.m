@@ -14,7 +14,7 @@ papillaDiameter = ToolBox.Cache.papillaDiameter;
 sysIdx = ToolBox.Cache.sysIdx;
 diasIdx = ToolBox.Cache.diasIdx;
 
-save_figures = params.json.save_figures;
+saveFigures = params.saveFigures;
 initial = upper(vesselName(1));
 
 [numX, numY, numFrames] = size(v_RMS);
@@ -42,7 +42,7 @@ end
 
 [labeledVessels, numBranches] = labelVesselBranches(mask, maskSection, xy_barycenter);
 
-if save_figures
+if saveFigures
     cmap = jet(numBranches + 1);
     imwrite(labeledVessels + 1, cmap, fullfile(ToolBox.path_png, sprintf("%s_labeledVessels_%s.png", ToolBox.folder_name, vesselName)))
 end
@@ -53,7 +53,7 @@ parfor circleIdx = 1:numCircles
     maskSectionCircles(:, :, circleIdx) = diskMask(numX, numY, r_in, r_out, center = [x_c / numX, y_c / numY]);
 
     % save mask image
-    if save_figures
+    if saveFigures
 
         if strcmp(vesselName, 'artery')
             createMaskSection(ToolBox, M0_ff_img, r_in, r_out, xy_barycenter, sprintf('mask%s_section_circle_%d', vesselName, circleIdx), mask);
@@ -157,11 +157,11 @@ parfor c_idx = 1:numCircles
 
 end
 
-if params.json.generateCrossSectionSignals.sectionMontage && save_figures
+if params.json.generateCrossSectionSignals.sectionMontage && saveFigures
     sectionMontage(subImg_cell, numSections, vesselName)
 end
 
-if save_figures
+if saveFigures
     imwrite(rejected_mask, fullfile(ToolBox.path_png, sprintf("%s_rejected_masks_%s.png", ToolBox.folder_name, vesselName)))
 end
 

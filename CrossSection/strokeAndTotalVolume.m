@@ -2,7 +2,7 @@ function strokeAndTotalVolume(mean_BvrT, mean_std_BvrT, systolesIndexes, numInte
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-save_figures = params.json.save_figures;
+saveFigures = params.saveFigures;
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 
 % Apply low-pass filter (15 Hz)
@@ -39,7 +39,7 @@ elseif contains(name, 'vein')
     ToolBox.Output.add('VeinDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
 end
 
-if save_figures
+if saveFigures
     % Plotting
     f = figure("Visible", "off", "Color", "w");
     hold off

@@ -15,21 +15,21 @@ properties
     Reporter ReporterClass
 
     % Input Data
-    M0_ff double
-    M0 double
-    M1 double
-    M2 double
-    SH double
+    M0 single
+    M1 single
+    M2 single
+    SH single
 
     % Preprocessed Data
-    f_RMS double
-    f_AVG double
+    M0_ff single
+    f_RMS single
+    f_AVG single
     displacementField
 
     % Analysis Results
-    vRMS
-    v_video_RGB
-    v_mean_RGB
+    vRMS single
+    v_video_RGB uint8
+    v_mean_RGB uint8
     Q_results_A
     Q_results_V
 
@@ -70,7 +70,8 @@ methods
         obj.directory = DataLoader.directory;
         obj.filenames = DataLoader.filenames;
         obj.path = path;
-        obj.M0_ff = DataLoader.M0_ff;
+
+        % Copy data to ExecutionClass for backward compatibility
         obj.M0 = DataLoader.M0;
         obj.M1 = DataLoader.M1;
         obj.M2 = DataLoader.M2;
@@ -101,16 +102,18 @@ methods
         Preprocessor.preprocess(obj);
 
         % Copy results back for backward compatibility
-        obj.M0 = Preprocessor.M0;
-        obj.M1 = Preprocessor.M1;
-        obj.M2 = Preprocessor.M2;
         obj.M0_ff = Preprocessor.M0_ff;
         obj.f_RMS = Preprocessor.f_RMS;
         obj.f_AVG = Preprocessor.f_AVG;
         obj.displacementField = Preprocessor.displacementField;
         obj.is_preprocessed = Preprocessor.is_preprocessed;
 
+        % Clear Preprocessor and intermediate variables
+        obj.M0 = [];
+        obj.M1 = [];
+        obj.M2 = [];
         clear Preprocessor;
+
         fprintf("- Preprocess took : %ds\n", round(toc(PreProcessTimer)))
     end
 
@@ -125,7 +128,7 @@ methods
 
         ToolBox.setOutput(obj.Output);
         ToolBox.setCache(obj.Cache);
-        obj.Cache.createtimeVector(ToolBox, size(obj.M0, 3))
+        obj.Cache.createtimeVector(ToolBox, size(obj.M0_ff, 3))
 
         obj.Reporter = ReporterClass(obj);
 
@@ -185,6 +188,41 @@ methods
         end
 
         fprintf("- Total Analysis took : %ds\n", round(toc(AnalyzerTimer)))
+
+    end
+
+    function checkData(obj)
+        % Visual check of loaded/preprocessed data
+        figure
+
+        if ~isempty(obj.M0_ff)
+            subplot(2, 2, 1)
+            imagesc(mean(obj.M0_ff, 3))
+            axis image off
+            subplot(2, 2, 2)
+            imagesc(mean(obj.f_AVG, 3))
+            axis image off
+            subplot(2, 2, 3)
+            imagesc(mean(obj.f_RMS, 3))
+            axis image off
+
+            if ~isempty(obj.displacementField)
+                subplot(2, 2, 4)
+                imagesc(sqrt(mean(obj.displacementField .^ 2, 4)))
+                axis image off
+            end
+
+        elseif ~isempty(obj.M0)
+            subplot(1, 3, 1)
+            imagesc(mean(obj.M0, 3))
+            axis image off
+            subplot(1, 3, 2)
+            imagesc(mean(obj.M1, 3))
+            axis image off
+            subplot(1, 3, 3)
+            imagesc(mean(obj.M2, 3))
+            axis image off
+        end
 
     end
 

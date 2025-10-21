@@ -2,6 +2,7 @@ function pulseVelocity(M, ~, maskVessel, name)
 ToolBox = getGlobalToolBox;
 outputDir = fullfile(ToolBox.path_png, 'flexion');
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
@@ -9,7 +10,7 @@ end
 
 [L, n] = labelVesselBranches(maskVessel, ones(size(maskVessel)), ToolBox.Cache.xy_barycenter, refine = false);
 
-if params.json.save_figures
+if saveFigures
     figure('Visible', 'off');
     imagesc(L)
     axis image; axis off;

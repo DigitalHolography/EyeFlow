@@ -4,11 +4,10 @@ classdef DataLoaderClass < handle
 properties
     directory char
     filenames char
-    M0_ff double
-    M0 double
-    M1 double
-    M2 double
-    SH double
+    M0 single
+    M1 single
+    M2 single
+    SH single
 end
 
 methods
@@ -67,7 +66,6 @@ methods
         fprintf('Reading moments in: %s.holo\n', obj.directory);
         [videoM0, videoM1, videoM2] = readMoments(strcat(obj.directory, '.holo'));
         readMomentsFooter(obj.directory);
-        obj.M0_ff = pagetranspose(improve_video(ff_correction(videoM0, 35), 0.0005, 2, 0));
         obj.M0 = pagetranspose(videoM0);
         obj.M1 = pagetranspose(videoM1 / 1e3);
         obj.M2 = pagetranspose(videoM2 / 1e6);
@@ -89,7 +87,6 @@ methods
     end
 
     function delete(obj)
-        obj.M0_ff = [];
         obj.M0 = [];
         obj.M1 = [];
         obj.M2 = [];

@@ -5,6 +5,7 @@ function [fft_c, fundamental, valid_harmonics, f] = SpectralWaveformAnalysis(sig
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000); % Sampling frequency in Hz
 duration = numFrames * ToolBox.stride / ToolBox.fs / 1000;
@@ -123,7 +124,7 @@ else
     ToolBox.Cache.HeartBeatFFTSTE = NaN; % Save heart rate standard error to cache in Hz
 end
 
-if params.json.save_figures
+if saveFigures
     % --- MAGNITUDE SPECTRUM ANALYSIS ---
     % Create figure for spectral analysis
     hFig = figure('Visible', 'off', 'Color', 'w');

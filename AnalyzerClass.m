@@ -2,9 +2,9 @@ classdef AnalyzerClass < handle
 % Handles all analysis operations
 
 properties
-    vRMS
-    v_video_RGB
-    v_mean_RGB
+    vRMS single
+    v_video_RGB uint8
+    v_mean_RGB uint8
     Q_results_A
     Q_results_V
 end
@@ -59,7 +59,7 @@ methods
 
         % Display the mask on the app if available
         if ~isempty(app)
-            app.ImageDisplay.ImageSource = mat2gray(M0_RGB);
+            app.ImageDisplay.ImageSource = M0_RGB;
             ax = ancestor(app.ImageDisplay, 'axes');
             axis(ax, 'equal');
         end
@@ -96,14 +96,10 @@ methods
         pulseVelocityTimer = tic;
 
         ToolBox = getGlobalToolBox;
-        params = ToolBox.getParams;
         maskArtery = ToolBox.Cache.maskArtery;
+        maskVein = ToolBox.Cache.maskVein;
         pulseVelocity(executionObj.M0_ff, executionObj.displacementField, maskArtery, 'artery');
-
-        if params.veins_analysis
-            maskVein = ToolBox.Cache.maskVein;
-            pulseVelocity(executionObj.M0_ff, executionObj.displacementField, maskVein, 'vein');
-        end
+        pulseVelocity(executionObj.M0_ff, executionObj.displacementField, maskVein, 'vein');
 
         time_pulsevelocity = toc(pulseVelocityTimer);
         fprintf("- Pulse Velocity Calculations took : %ds\n", round(time_pulsevelocity))
@@ -116,14 +112,10 @@ methods
         crossSectionAnalysisTimer = tic;
 
         ToolBox = getGlobalToolBox;
-        params = ToolBox.getParams;
         maskArtery = ToolBox.Cache.maskArtery;
+        maskVein = ToolBox.Cache.maskVein;
         [obj.Q_results_A] = generateCrossSectionSignals(maskArtery, 'artery', obj.vRMS, executionObj.M0_ff);
-
-        if params.veins_analysis
-            maskVein = ToolBox.Cache.maskVein;
-            [obj.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', obj.vRMS, executionObj.M0_ff);
-        end
+        [obj.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', obj.vRMS, executionObj.M0_ff);
 
         executionObj.is_volumeRateAnalyzed = true;
         fprintf("- Cross-Section Signals Generation took: %ds\n", round(toc(crossSectionAnalysisTimer)));
@@ -136,24 +128,14 @@ methods
         exportCrossSectionResultsTimer = tic;
 
         ToolBox = getGlobalToolBox;
-        params = ToolBox.getParams;
         exportCrossSectionResults(obj.Q_results_A, 'artery', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
+        exportCrossSectionResults(obj.Q_results_V, 'vein', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
 
-        if params.veins_analysis
-            exportCrossSectionResults(obj.Q_results_V, 'vein', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
-            maskVessel = ToolBox.Cache.maskArtery | ToolBox.Cache.maskVein;
-            sectionImageAdvanced(rescale(mean(executionObj.M0_ff, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, maskVessel);
-        else
-            maskArtery = ToolBox.Cache.maskArtery;
-            sectionImageAdvanced(rescale(mean(executionObj.M0_ff, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, [], maskArtery);
-        end
+        maskVessel = ToolBox.Cache.maskArtery | ToolBox.Cache.maskVein;
+        sectionImageAdvanced(rescale(mean(executionObj.M0_ff, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, maskVessel);
 
         try
-
-            if params.veins_analysis
-                combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, executionObj.M0_ff)
-            end
-
+            combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, executionObj.M0_ff)
         catch ME
             MEdisp(ME, ToolBox.EF_path)
         end

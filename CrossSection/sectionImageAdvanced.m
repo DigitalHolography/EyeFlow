@@ -2,7 +2,7 @@ function sectionImageAdvanced(M0_ff_img, maskLabelArtery, maskLabelVein, maskRej
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-save_figures = params.json.save_figures;
+saveFigures = params.saveFigures;
 
 lght_r = [1, 205/255, 210/255]; % light red
 red_ = [229/255, 115/255, 115/255]; % red
@@ -100,7 +100,7 @@ imgRGB(indxs) = 0;
 imgRGB(numY * numX + indxs) = 0;
 imgRGB(2 * numY * numX + indxs) = 0;
 
-if save_figures
+if saveFigures
     figure('Visible', 'off');
     imshow(imgRGB)
     exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s.png", ToolBox.folder_name, sprintf('sections_advanced'))))

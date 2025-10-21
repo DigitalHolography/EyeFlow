@@ -12,7 +12,7 @@ ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 folder_name = ToolBox.folder_name;
 
-if ~params.json.save_figures && ~opt.ForceFigure
+if ~params.saveFigures && ~opt.ForceFigure
     return;
 end
 
