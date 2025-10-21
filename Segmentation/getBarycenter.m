@@ -15,6 +15,8 @@ else
     f_AVG_mean = f_AVG;
 end
 
+ToolBox.Output.Extra.add("f_AVG_mean", f_AVG_mean);
+
 if max(f_AVG_mean, [], 'all') <= 0
     figure;
     imshow(rescale(f_AVG_mean));

@@ -171,7 +171,9 @@ methods
 
             writeNumericToHDF5(path, strcat("/", "Figures", "/", props{i}, "/", props{i}, "_ste"),obj.(props{i}).standard_error);
 
-            writeStringToHDF5(path, strcat("/", "Figures", "/", props{i}, "/", props{i}, "_unit"),string(obj.(props{i}).unit));
+            h5writeatt(path,strcat("/", "Figures", "/", props{i}, "/", props{i}), "unit", obj.(props{i}).unit);
+
+            h5writeatt(path,strcat("/", "Figures", "/", props{i}, "/", props{i}, "_ste"), "unit", obj.(props{i}).unit);
         end
 
         % Save Signals and Extra in a separate directory of the same h5 file

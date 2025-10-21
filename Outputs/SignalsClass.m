@@ -63,24 +63,19 @@ methods
         for i = 1:length(props)
             h5create(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_y"), size(obj.(props{i}).yvalues));
             h5write(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_y"), obj.(props{i}).yvalues);
+            h5writeatt(path,strcat("/", "Signals", "/", props{i},"/", props{i}, "_y"), "unit", obj.(props{i}).yunit);
         end
 
         for i = 1:length(props)
-            h5create(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_ste"), size(obj.(props{i}).ystandard_errors));
-            h5write(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_ste"), obj.(props{i}).ystandard_errors);
+            h5create(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_y_ste"), size(obj.(props{i}).ystandard_errors));
+            h5write(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_y_ste"), obj.(props{i}).ystandard_errors);
+            h5writeatt(path,strcat("/", "Signals", "/", props{i},"/", props{i}, "_y_ste"), "unit", obj.(props{i}).yunit);
         end
 
         for i = 1:length(props)
             h5create(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_x"), size(obj.(props{i}).xvalues));
             h5write(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_x"), obj.(props{i}).xvalues);
-        end
-
-        for i = 1:length(props)
-            writeStringToHDF5(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_yunit"), string(obj.(props{i}).yunit));
-        end
-
-        for i = 1:length(props)
-            writeStringToHDF5(path, strcat("/", "Signals", "/", props{i},"/", props{i}, "_xunit"), string(obj.(props{i}).xunit));
+            h5writeatt(path,strcat("/", "Signals", "/", props{i},"/", props{i}, "_x"), "unit", obj.(props{i}).xunit);
         end
 
     end

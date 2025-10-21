@@ -3,6 +3,8 @@ classdef ExtraClass < handle
 
 properties
     Data
+    Ste
+    Unit
 end
 
 methods
@@ -10,12 +12,22 @@ methods
     function obj = ExtraClass()
         % Constructor for the class, fills the properties with default values
         obj.Data = []; % a struct containing "id", data fields
+        obj.Ste = [];
+        obj.Unit = [];
     end
 
-    function add(obj, name, data)
+    function add(obj, name, data, ste, unit)
         % Method to add a new output to the class
         
         obj.Data.(sanitizeFieldName(name)) = data;
+
+        if nargin > 3 && ~isempty(ste)
+            obj.Ste.(strcat(sanitizeFieldName(name))) = ste;
+        end
+
+        if nargin > 4
+            obj.Unit.(strcat(sanitizeFieldName(name))) = unit;
+        end
 
     end
 
@@ -34,23 +46,31 @@ methods
             fieldValue = (data.(fieldName));
             
             % Build dataset path
-            datasetPath = strcat('/', antiSanitizeFieldName(fieldName));
+            datasetPath = strcat('/Extra/', antiSanitizeFieldName(fieldName));
         
             % --- Case 1: Numeric or image data ---
             if isnumeric(fieldValue) || islogical(fieldValue)
                 writeNumericToHDF5(path, datasetPath, fieldValue);
+                if ~isempty(obj.Ste) && isfield(obj.Ste, fieldName)
+                    steValue = obj.Ste.(fieldName);
+                    writeNumericToHDF5(path, strcat(datasetPath, '_ste'), steValue);
+                end
+                if ~isempty(obj.Unit) && isfield(obj.Unit, fieldName)
+                    unitValue = obj.Unit.(fieldName);
+                    h5writeatt(path, datasetPath, 'unit', unitValue);
+                end
         
             % --- Case 2: Structs with known fields (e.g., yvalues, label) ---
             elseif isstruct(fieldValue)
                 subFields = fieldnames(fieldValue);
                 for j = 1:numel(subFields)
-                    subName = subFields{j};
+                    datasetPath = subFields{j};
                     subValue = fieldValue.(subName);
                     subPath = strcat(datasetPath, '_', subName);
                     if isnumeric(subValue)
                         writeNumericToHDF5(path, subPath, subValue);
                     elseif ischar(subValue) || isstring(subValue)
-                        writeStringToHDF5(path, subPath, string(subValue));
+                        h5writeatt(path, datasetPath,subName, subValue);
                     end
                 end
         

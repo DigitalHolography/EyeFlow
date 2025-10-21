@@ -11,6 +11,8 @@ properties
     maskVein logical % cached mask vein
     maskNeighbors logical % cached mask neighbors
     maskBackground logical % cached mask background
+    scoreMaskArtery double
+    scoreMaskVein double
 
     % Diastolic and systolic indices
     sysIdxList double % cached systolic indices list
