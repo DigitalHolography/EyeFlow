@@ -84,7 +84,7 @@ end
 
 % --- Plot frequency spectrum ---
 fig1 = figure('Visible', 'off');
-imagesc(fx, fy, S);
+h_wave_map = imagesc(fx, fy, S);
 xlabel('(Hz)');
 ylabel('(mm-1)');
 axis xy equal tight;
@@ -118,7 +118,7 @@ dky = 2 * pi * dfy;
 % Avoid division by zero
 if abs(kx) < eps || abs(ky) < eps
     % warning('Invalid frequency detected (zero or near zero).');
-    Tx = NaN; Ty = NaN; PWV = NaN;
+    Tx = NaN; Ty = NaN; PWV = NaN; dPWV = NaN;
     return;
 end
 
@@ -134,6 +134,13 @@ dTy = abs(Ty * (dky / ky));
 
 PWV = Ty / Tx;
 dPWV = PWV * sqrt((dTx / Tx) ^ 2 + (dTy / Ty) ^ 2);
+
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV", name, branch_index),PWV);
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_std", name, branch_index),dPWV);
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_unit", name, branch_index),"mm/s");
+% s_wave_map = saveImagescToStruct(h_wave_map);
+% ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_intercorr", name, branch_index),s_wave_map);
+
 
 if PWV < 1 || PWV > 4 % mm/s
     PWV = NaN; dPWV = NaN;

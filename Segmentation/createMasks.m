@@ -56,6 +56,9 @@ maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 saveMaskImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, 'all_11_maskDiaphragm.png', isStep = true)
 maskCircle = diskMask(numX, numY, cropChoroidRadius, 'center', [x_c / numX, y_c / numY]);
 
+scoreMaskArtery = NaN;
+scoreMaskVein = NaN;
+
 if mask_params.AutoCompute
 
     % 1) First Masks and Correlation
@@ -120,7 +123,7 @@ if mask_params.AutoCompute
     if mask_params.AVCorrelationSegmentationNet || mask_params.AVDiasysSegmentationNet
 
         % Compute artery/vein masks using SegmentationNet
-        [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, maskArteryTmp);
+        [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, maskArteryTmp);
         saveMaskImage(maskVein, 'vein_21_SegmentationNet.png', isStep = true, cmap = cVein);
         saveMaskImage(maskArtery, 'artery_21_SegmentationNet.png', isStep = true, cmap = cVein);
 
@@ -330,6 +333,8 @@ ToolBox.Cache.maskNeighbors = maskNeighbors;
 ToolBox.Cache.maskBackground = maskBackground;
 ToolBox.Cache.xy_barycenter = xy_barycenter;
 ToolBox.Cache.M0_RGB = M0_RGB;
+ToolBox.Cache.scoreMaskArtery = scoreMaskArtery;
+ToolBox.Cache.scoreMaskVein = scoreMaskVein;
 
 close all
 end

@@ -1,4 +1,4 @@
-function [maskArtery, maskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, maskArtery)
+function [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, maskArtery)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -110,6 +110,8 @@ if mask_params.AVCorrelationSegmentationNet
 
         input = cat(3, M0, M0_Systole_img, M0_Diastole_img, R);
 
+        ToolBox.Output.Extra.add("NetworkInput",input);
+
         if isa(net, 'dlnetwork')
             % For dlnetwork objects
             input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
@@ -135,6 +137,8 @@ if mask_params.AVCorrelationSegmentationNet
         fprintf("    Use iternet5 to segment retinal arteries and veins\n")
 
         input = cat(3, M0, M0, R);
+
+        ToolBox.Output.Extra.add("NetworkInput",input);
 
         if isa(net, 'dlnetwork')
             % For dlnetwork objects
@@ -164,6 +168,8 @@ elseif mask_params.AVDiasysSegmentationNet
 
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
 
+    ToolBox.Output.Extra.add("NetworkInput",input);
+
     if isa(net, 'dlnetwork')
         % For dlnetwork objects
         input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
@@ -182,6 +188,9 @@ onehot = multi2onehot(argmax, 3);
 
 maskArtery = onehot(:, :, 1);
 maskVein = onehot(:, :, 2);
+
+scoreMaskArtery = sum(maskArtery.*output(:,:,2),[1,2])/nnz(maskArtery);
+scoreMaskVein = sum(maskVein.*output(:,:,3),[1,2])/nnz(maskVein);
 
 maskArtery = imresize(maskArtery, [Nx, Ny], "nearest");
 maskVein = imresize(maskVein, [Nx, Ny], "nearest");

@@ -251,6 +251,9 @@ tic;
 
 [M0_Systole_img, M0_Diastole_img, sys_idx, dias_idx] = compute_diasys(v_RMS_video, maskArterySection);
 
+% ToolBox.Output.Extra.add("M0_ff_img_systole",M0_Systole_img);
+% ToolBox.Output.Extra.add("M0_ff_img_diastole",M0_Diastole_img);
+
 if saveFigures
     v_RMS_img = mean(v_RMS_video, 3, 'omitnan');
     diasys_diff = M0_Systole_img - M0_Diastole_img;

@@ -6,12 +6,6 @@ ref_img = mean(v, 3);
 low_freq = imgaussfilt(ref_img, 35);
 ref_img = ref_img ./ low_freq;
 
-outDir = fullfile(obj.directory, 'eyeflow', 'nonRigidReg');
-
-if ~isfolder(outDir)
-    mkdir(outDir);
-end
-
 stabilized = zeros(numX, numY, numFrames);
 
 %smoothVideo = imgaussfilt3(obj.M0, [0.1 0.1 2]);
@@ -25,17 +19,15 @@ parfor k = 1:numFrames
 end
 
 ref_img2 = log(mean(stabilized, 3));
-stabilized = zeros(numX, numY, numFrames);
 field = zeros(numX, numY, 2, numFrames);
 
 parfor k = 1:numFrames
     %get the frame, stabilize it, save it
     tgt = safeConvertFrame(v(:, :, k));
     tgt = tgt ./ low_freq;
-    [f, s] = diffeomorphicDemon(tgt, ref_img2, tgt);
+    [f, ~] = diffeomorphicDemon(tgt, ref_img2, tgt);
 
     field(:, :, :, k) = f;
-    stabilized(:, :, k) = s;
 end
 
 D.stabilized = stabilized;
@@ -43,13 +35,18 @@ D.field = field;
 
 A1 = field(:, :, 1, :);
 A2 = field(:, :, 2, :);
-dA1 = diff(squeeze(A1), 1, 3);
-dA2 = diff(squeeze(A2), 1, 3);
-dA = zeros(numX, numY, 2, numFrames - 1);
-dA(:, :, 1, :) = dA1;
-dA(:, :, 2, :) = dA2;
 
-D.gradient = dA;
+AA(:,:,:) =complex(A1,A2);
+absAA = abs(AA);
+[~, ~, Ft] = gradient(absAA);
+
+% dA1 = diff(squeeze(A1), 1, 3);
+% dA2 = diff(squeeze(A2), 1, 3);
+% dA = zeros(numX, numY, 2, numFrames - 1);
+% dA(:, :, 1, :) = dA1;
+% dA(:, :, 2, :) = dA2;  
+
+D.gradient = Ft;
 
 saveAsGifs(D);
 obj.displacementField = D;
@@ -139,4 +136,5 @@ writeGifOnDisc(normMagnitude, 'displacement_magnitude');
 normPhase = (phase + pi) / (2 * pi); % normalize to [0,1]
 normPhase = uint8(normPhase * 255);
 writeGifOnDisc(normPhase, 'displacement_phase');
+writeGifOnDisc(mat2gray(D.gradient), 'displacement_temporal_derivative');
 end
