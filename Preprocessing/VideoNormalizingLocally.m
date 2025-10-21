@@ -48,10 +48,25 @@ obj.f_AVG = f_AVG;
 f_RMS = sqrt(single(obj.M2) ./ M0_data_convoluated);
 obj.f_RMS = f_RMS;
 
+% Flat-field correction parameters
 gwRatio = params.json.FlatFieldCorrection.GWRatio;
 border = params.json.FlatFieldCorrection.Border;
 
+% Apply flat-field correction
 M0_ff = flat_field_correction(M0, ceil(gwRatio * numX), border);
+
+% Compute mean and std per frame (along spatial dimensions)
+mu = mean(M0_ff, [1 2]);
+sigma = std(M0_ff, 0, [1 2]);
+
+% Expand mu and sigma to match video size
+mu = repmat(mu, numX, numY, 1);
+sigma = repmat(sigma, numX, numY, 1);
+
+% Clip extreme values to ±5σ
+M0_ff(M0_ff > mu + 5 * sigma) = mu(M0_ff > mu + 5 * sigma) + 5 * sigma(M0_ff > mu + 5 * sigma);
+M0_ff(M0_ff < mu - 5 * sigma) = mu(M0_ff < mu - 5 * sigma) - 5 * sigma(M0_ff < mu - 5 * sigma);
+
 obj.M0_ff = M0_ff;
 
 end
