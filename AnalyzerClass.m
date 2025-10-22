@@ -12,7 +12,6 @@ end
 methods
 
     function obj = AnalyzerClass()
-
     end
 
     function performSegmentation(~, executionObj, app)
@@ -53,7 +52,7 @@ methods
             diameter_y = NaN;
         end
 
-        createMasks(executionObj.M0_ff);
+        createMasks(executionObj.M0_ff, executionObj.VesselnessNet, executionObj.VesselNet);
         ToolBox.Cache.papillaDiameter = mean([diameter_x, diameter_y]);
 
         % Artery score

@@ -1,47 +1,8 @@
-function [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, maskArtery)
+function [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, net, maskArtery)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 mask_params = params.json.Mask;
-
-% Downloads all huggingface models once
-if ~isfolder('Models')
-    mkdir('Models');
-end
-
-if ~isfile('Models\iternet5_av_diasys.onnx')
-    % Download the model from Hugging Face
-    url = 'https://huggingface.co/DigitalHolography/iternet5_av_diasys/resolve/main/iternet5_av_diasys';
-    websave('Models\iternet5_av_diasys.onnx', url);
-end
-
-function onehot = multi2onehot(x, axis)
-    % Converts a label mask x to a binary one-hot encoding with 2 classes
-    % axis: dimension along which to stack (default 3)
-
-    if nargin < 2
-        axis = 3; % Default stacking axis
-    end
-
-    % Create binary masks
-    class1 = (x == 2) | (x == 4);
-    class2 = (x == 3) | (x == 4);
-
-    % Stack along specified axis
-    switch axis
-        case 1
-            onehot = cat(1, class1, class2);
-        case 2
-            onehot = cat(2, class1, class2);
-        case 3
-            onehot = cat(3, class1, class2);
-        otherwise
-            error('Unsupported axis value: %d', axis);
-    end
-
-    % Convert to logical or double as needed
-    onehot = double(onehot);
-end
 
 [Nx, Ny] = size(M0_ff_img);
 
@@ -96,21 +57,9 @@ if mask_params.AVCorrelationSegmentationNet
 
     if mask_params.AVDiasysSegmentationNet
 
-        try
-            % Try the newer function first
-            net = importNetworkFromONNX('Models\iternet5_av_corr_diasys.onnx');
-        catch
-            % Fall back to the older function
-            warning('off')
-            net = importONNXNetwork('Models\iternet5_av_corr_diasys.onnx');
-            warning('on')
-        end
-
-        fprintf("    Use iternet5 to segment retinal arteries and veins\n")
-
         input = cat(3, M0, M0_Systole_img, M0_Diastole_img, R);
 
-        ToolBox.Output.Extra.add("NetworkInput",input);
+        ToolBox.Output.Extra.add("NetworkInput", input);
 
         if isa(net, 'dlnetwork')
             % For dlnetwork objects
@@ -124,21 +73,9 @@ if mask_params.AVCorrelationSegmentationNet
 
     else
 
-        try
-            % Try the newer function first
-            net = importNetworkFromONNX('Models\iternet_5_av_corr.onnx');
-        catch
-            % Fall back to the older function
-            warning('off')
-            net = importONNXNetwork('Models\iternet_5_av_corr.onnx');
-            warning('on')
-        end
-
-        fprintf("    Use iternet5 to segment retinal arteries and veins\n")
-
         input = cat(3, M0, M0, R);
 
-        ToolBox.Output.Extra.add("NetworkInput",input);
+        ToolBox.Output.Extra.add("NetworkInput", input);
 
         if isa(net, 'dlnetwork')
             % For dlnetwork objects
@@ -154,21 +91,8 @@ if mask_params.AVCorrelationSegmentationNet
 
 elseif mask_params.AVDiasysSegmentationNet
 
-    try
-        % Try the newer function first
-        net = importNetworkFromONNX('Models\iternet5_av_diasys.onnx');
-    catch
-        % Fall back to the older function
-        warning('off')
-        net = importONNXNetwork('Models\iternet5_av_diasys.onnx');
-        warning('on')
-    end
-
-    fprintf("    Use iternet5 to segment retinal arteries and veins\n")
-
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
-
-    ToolBox.Output.Extra.add("NetworkInput",input);
+    ToolBox.Output.Extra.add("NetworkInput", input);
 
     if isa(net, 'dlnetwork')
         % For dlnetwork objects
@@ -189,8 +113,8 @@ onehot = multi2onehot(argmax, 3);
 maskArtery = onehot(:, :, 1);
 maskVein = onehot(:, :, 2);
 
-scoreMaskArtery = sum(maskArtery.*output(:,:,2),[1,2])/nnz(maskArtery);
-scoreMaskVein = sum(maskVein.*output(:,:,3),[1,2])/nnz(maskVein);
+scoreMaskArtery = sum(maskArtery .* output(:, :, 2), [1, 2]) / nnz(maskArtery);
+scoreMaskVein = sum(maskVein .* output(:, :, 3), [1, 2]) / nnz(maskVein);
 
 maskArtery = imresize(maskArtery, [Nx, Ny], "nearest");
 maskVein = imresize(maskVein, [Nx, Ny], "nearest");
@@ -198,4 +122,32 @@ maskVein = imresize(maskVein, [Nx, Ny], "nearest");
 maskArtery = logical(maskArtery);
 maskVein = logical(maskVein);
 
+end
+
+function onehot = multi2onehot(x, axis)
+% Converts a label mask x to a binary one-hot encoding with 2 classes
+% axis: dimension along which to stack (default 3)
+
+if nargin < 2
+    axis = 3; % Default stacking axis
+end
+
+% Create binary masks
+class1 = (x == 2) | (x == 4);
+class2 = (x == 3) | (x == 4);
+
+% Stack along specified axis
+switch axis
+    case 1
+        onehot = cat(1, class1, class2);
+    case 2
+        onehot = cat(2, class1, class2);
+    case 3
+        onehot = cat(3, class1, class2);
+    otherwise
+        error('Unsupported axis value: %d', axis);
+end
+
+% Convert to logical or double as needed
+onehot = double(onehot);
 end

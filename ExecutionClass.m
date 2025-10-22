@@ -20,6 +20,10 @@ properties
     M2 single
     SH single
 
+    % AI Networks
+    VesselNet
+    VesselnessNet
+
     % Preprocessed Data
     M0_ff single
     f_RMS single
@@ -107,6 +111,10 @@ methods
         obj.f_AVG = Preprocessor.f_AVG;
         obj.displacementField = Preprocessor.displacementField;
         obj.is_preprocessed = Preprocessor.is_preprocessed;
+
+        % Copy loaded AI networks
+        obj.VesselnessNet = Preprocessor.VesselnessNet;
+        obj.VesselNet = Preprocessor.VesselNet;
 
         % Clear Preprocessor and intermediate variables
         obj.M0 = [];
