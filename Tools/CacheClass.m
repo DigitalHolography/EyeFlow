@@ -62,14 +62,22 @@ methods
 
             % binsize = 64;
             % (ToolBox.holo_frames.last - ToolBox.holo_frames.first + 1) / ToolBox.stride;
+            try
+                t1 = 0;
+                t2 = (time_stamps.last - time_stamps.first) / 1e6; % in s
+                t_stamp = linspace(t1, t2, numFrames);
+                obj.t = t_stamp;
 
-            t1 = 0;
-            t2 = (time_stamps.last - time_stamps.first) / 1e6; % in s
-            t_stamp = linspace(t1, t2, numFrames);
-            obj.t = t_stamp;
+                if params.json.Preprocess.Crop.EndFrame ~= -1
+                    %TODO
+                end
 
-            if params.json.Preprocess.Crop.EndFrame ~= -1
-                %TODO
+            catch
+                warning('Could not create time vector from time stamps, using default fs and stride');
+                t1 = 0;
+                t2 = ToolBox.stride / (ToolBox.fs * 1000) * (numFrames - 1); % in s
+                t_stamp = linspace(t1, t2, numFrames);
+                obj.t = t_stamp;
             end
 
         else
