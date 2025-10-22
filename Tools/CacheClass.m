@@ -11,8 +11,8 @@ properties
     maskVein logical % cached mask vein
     maskNeighbors logical % cached mask neighbors
     maskBackground logical % cached mask background
-    scoreMaskArtery double
-    scoreMaskVein double
+    scoreMaskArtery double % cached score mask artery
+    scoreMaskVein double % cached score mask vein
 
     % Diastolic and systolic indices
     sysIdxList double % cached systolic indices list
@@ -58,19 +58,28 @@ methods
         startFrame = params.json.Preprocess.Crop.StartFrame;
         endFrame = params.json.Preprocess.Crop.EndFrame;
 
-        if ~isempty(time_stamps) && ~isempty(ToolBox.holo_frames) && params.json.use_time_stamps
+        if ~isempty(time_stamps) ...
+                && ~isempty(ToolBox.holo_frames) ...
+                && params.json.use_time_stamps
             % if record_time_stamps_us
             % was specified in the HD folder from the .holo footer
 
             % binsize = 64;
             % (ToolBox.holo_frames.last - ToolBox.holo_frames.first + 1) / ToolBox.stride;
-            try
-                % Create time vector from time stamps
-                time_array = getTimeTimestamp(time_stamps, numFrames);
-            catch
-                % If error occurs, use default fs and stride
-                warning('Could not create time vector from time stamps, using default fs and stride');
+            if time_stamps.last <= time_stamps.first
+                warning('Invalid time stamps detected, using default fs and stride');
                 time_array = getTimeLinear(ToolBox, numFrames);
+            else
+
+                try
+                    % Create time vector from time stamps
+                    time_array = getTimeTimestamp(time_stamps, numFrames);
+                catch
+                    % If error occurs, use default fs and stride
+                    warning('Could not create time vector from time stamps, using default fs and stride');
+                    time_array = getTimeLinear(ToolBox, numFrames);
+                end
+
             end
 
         else
