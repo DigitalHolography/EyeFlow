@@ -19,6 +19,7 @@
       "VideoLength": -1
     },
     "NonRigidRegisteringFlag": false,
+    "NonRigidRegisteringApply": false,
     "RemoveOutliersFlag": true,
     "Outlier Analysis Window": 10,
     "Interpolation Factor": 1

@@ -25,7 +25,7 @@ while numFrames <= 0
 
 end
 
-L = zeros(size(maskLabel{1,1}), 'uint16');
+L = zeros(size(maskLabel{1,1}), 'uint8');
 idx = 1;
 % Process each circle and branch
 for cIdx = 1:numCircles
@@ -47,7 +47,7 @@ for cIdx = 1:numCircles
                 cdv = [];
             end
             L(maskLabel{cIdx, bIdx}) = idx;
-            ToolBox.Output.Extra.add(sprintf("Segments/%s_idx_%d_c%d_b%d_VelocityProfiles", name, idx, cIdx, bIdx), cv, cdv, "mm/s");
+            ToolBox.Output.Extra.add(sprintf("Segments/%s_idx%d_c%d_b%d_VelocityProfiles", name, idx, cIdx, bIdx), cv, cdv, "mm/s");
             idx = idx + 1;
         end
     end
