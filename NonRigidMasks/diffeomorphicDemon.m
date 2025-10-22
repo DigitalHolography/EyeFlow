@@ -10,23 +10,23 @@ function [D, warpedAux] = diffeomorphicDemon(source, target, aux)
 % returns:
 % D: displacement field from source to target
 % warpedAux: aux warped into target
-    if size(source,3) == 3, source = rgb2gray(source); end
-    if size(target,3) == 3, target = rgb2gray(target); end
-    source = im2double(source);
-    target = im2double(target);
+if size(source, 3) == 3, source = rgb2gray(source); end
+if size(target, 3) == 3, target = rgb2gray(target); end
+source = im2double(source);
+target = im2double(target);
 
-    % Diffeomorphic demons
-    iters = [5];
-    accSmooth = 1.0;
+% Diffeomorphic demons
+iters = [5];
+accSmooth = 1.0;
 
-    [D, ~] = imregdemons(source, target, iters, ...
-                         "AccumulatedFieldSmoothing", accSmooth, ...
-                         "PyramidLevels", numel(iters), ...
-                         "DisplayWaitbar", false);
+[D, ~] = imregdemons(source, target, iters, ...
+    "AccumulatedFieldSmoothing", accSmooth, ...
+    "PyramidLevels", numel(iters), ...
+    "DisplayWaitbar", false);
 
-    warpedAux = imwarp(aux, D, "nearest");
+warpedAux = imwarp(aux, D, "nearest");
 
-    %freeze pixel where warp is minimal
-    mask = hypot(D(:,:,1), D(:,:,2)) < 0.5;
-    warpedAux(mask) = source(mask);
+%freeze pixel where warp is minimal
+mask = hypot(D(:, :, 1), D(:, :, 2)) < 0.5;
+warpedAux(mask) = source(mask);
 end

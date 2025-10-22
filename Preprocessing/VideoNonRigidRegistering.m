@@ -36,7 +36,7 @@ D.field = field;
 A1 = field(:, :, 1, :);
 A2 = field(:, :, 2, :);
 
-AA(:,:,:) =complex(A1,A2);
+AA(:, :, :) = complex(A1, A2);
 absAA = abs(AA);
 [~, ~, Ft] = gradient(absAA);
 
@@ -44,7 +44,7 @@ absAA = abs(AA);
 % dA2 = diff(squeeze(A2), 1, 3);
 % dA = zeros(numX, numY, 2, numFrames - 1);
 % dA(:, :, 1, :) = dA1;
-% dA(:, :, 2, :) = dA2;  
+% dA(:, :, 2, :) = dA2;
 
 D.gradient = Ft;
 
@@ -101,34 +101,40 @@ end
 function saveAsGifs(D)
 % Normalize stabilized frames to [0, 255] uint8
 normalizedStabilized = zeros(size(D.stabilized), 'uint8');
+
 for k = 1:size(D.stabilized, 3)
-    frame = D.stabilized(:,:,k);
+    frame = D.stabilized(:, :, k);
     minVal = double(min(frame(:)));
     maxVal = double(max(frame(:)));
+
     if maxVal == minVal
         normalizedFrame = zeros(size(frame));
     else
         normalizedFrame = (double(frame) - minVal) / (maxVal - minVal);
     end
-    normalizedStabilized(:,:,k) = uint8(normalizedFrame * 255);
+
+    normalizedStabilized(:, :, k) = uint8(normalizedFrame * 255);
 end
+
 writeGifOnDisc(normalizedStabilized, 'stabilized');
 
 % Compute magnitude and phase of displacement field
 Xcomp = squeeze(D.field(:, :, 1, :));
 Ycomp = squeeze(D.field(:, :, 2, :));
 
-magnitude = sqrt(Xcomp.^2 + Ycomp.^2);
+magnitude = sqrt(Xcomp .^ 2 + Ycomp .^ 2);
 phase = atan2(Ycomp, Xcomp);
 
 % Normalize magnitude to [0,255] uint8
 magMin = min(magnitude(:));
 magMax = max(magnitude(:));
+
 if magMax == magMin
     normMagnitude = zeros(size(magnitude));
 else
     normMagnitude = (magnitude - magMin) / (magMax - magMin);
 end
+
 normMagnitude = uint8(normMagnitude * 255);
 writeGifOnDisc(normMagnitude, 'displacement_magnitude');
 

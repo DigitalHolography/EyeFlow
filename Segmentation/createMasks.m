@@ -197,22 +197,26 @@ end
 % 3) 2) a) Look for a target mask to register from
 if (mask_params.RegisteredMasks == -1 || mask_params.RegisteredMasks == 1)
 
-    if (isfile(fullfile(path, 'mask', 'similarMaskArtery.png')) && isfile(fullfile(path, 'mask', 'similarM0.png'))) ...
-            || (isfile(fullfile(path, 'mask', 'similarMaskVein.png')) && isfile(fullfile(path, 'mask', 'similarM0.png')))
+    if (isfile(fullfile(path, 'mask', 'similarMaskArtery.png')) ...
+            && isfile(fullfile(path, 'mask', 'similarM0.png'))) ...
+            || (isfile(fullfile(path, 'mask', 'similarMaskVein.png')) ...
+            && isfile(fullfile(path, 'mask', 'similarM0.png')))
         M0_ff_img = squeeze(mean(M0_ff, 3));
         similarM0 = mat2gray(mean(imread(fullfile(path, 'mask', 'similarM0.png')), 3));
         [ux, uy] = nonrigidregistration(similarM0, M0_ff_img, fullfile(ToolBox.path_png, folder_steps), 'Reg');
 
     end
 
-    if (isfile(fullfile(path, 'mask', 'similarMaskArtery.png')) && isfile(fullfile(path, 'mask', 'similarM0.png')))
+    if isfile(fullfile(path, 'mask', 'similarMaskArtery.png')) ...
+            && isfile(fullfile(path, 'mask', 'similarM0.png'))
         similarMaskArtery = mat2gray(mean(imread(fullfile(path, 'mask', 'similarMaskArtery.png')), 3)) > 0;
         similarMaskArtery = imresize(similarMaskArtery, [numX, numY], "nearest");
         [Xq, Yq] = meshgrid(1:numX, 1:numY);
         maskArtery = interp2(single(similarMaskArtery), Xq + ux, Yq + uy, 'linear', 0) > 0;
     end
 
-    if isfile(fullfile(path, 'mask', 'similarMaskVein.png')) && isfile(fullfile(path, 'mask', 'similarM0.png'))
+    if isfile(fullfile(path, 'mask', 'similarMaskVein.png')) ...
+            && isfile(fullfile(path, 'mask', 'similarM0.png'))
         similarMaskVein = mat2gray(mean(imread(fullfile(path, 'mask', 'similarMaskVein.png')), 3)) > 0;
         similarMaskVein = imresize(similarMaskVein, [numX, numY], "nearest");
         [Xq, Yq] = meshgrid(1:numX, 1:numY);

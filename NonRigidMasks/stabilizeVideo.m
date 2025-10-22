@@ -173,7 +173,7 @@ for k = 1:size(FD3d, 3)
     end
 
     if (k == 5)
-        figure("Visible","off");
+        figure("Visible", "off");
         imshow(AAbs);
     end
 

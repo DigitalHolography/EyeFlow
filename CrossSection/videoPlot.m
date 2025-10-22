@@ -15,6 +15,7 @@ end
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 exportVideos = params.exportVideos;
+isVisible = opt.Visible == "on";
 
 % Rescale video and get dimensions
 [numX, numY, numFrames] = size(video);
@@ -39,12 +40,18 @@ values = opt.etiquettes_values;
 
 % Initialize signal plot with optimized properties
 figure('Name', 'Signal Plot', 'Color', 'w', ...
-    'Visible', opt.Visible, ...
+    'Visible', isVisible, ...
     'Position', [200 200 600 600]);
 
 image = rescale(mean(video, 3));
-image_RGB = v_mean_RGB .* mask + image .* ~mask;
-image_RGB = image_RGB .* ~(maskCircles & ~mask) + maskCircles .* ~mask;
+image_int = uint8(rescale(image, 0, 255));
+mask_int = uint8(mask);
+not_mask_int = uint8(~mask);
+mask_circles_int = uint8(maskCircles);
+
+image_RGB = v_mean_RGB .* mask_int + image_int .* not_mask_int;
+image_RGB = image_RGB .* (1 - (mask_circles_int .* not_mask_int)) + ...
+    255 * mask_circles_int .* not_mask_int;
 imshow(image_RGB);
 
 axis image
@@ -76,18 +83,19 @@ end
 videoPlotMean = frame2im(getframe(gca));
 
 % Preallocate video data array
-videoPlotFrames = zeros([numX, numY, 3, numFrames], 'single');
+videoPlotFrames = zeros([numX, numY, 3, numFrames], 'uint8');
 
 if exportVideos
 
     % Generate video frames
     parfor frameIdx = 1:numFrames
         figure('Name', 'Signal Plot', 'Color', 'w', ...
-            'Visible', opt.Visible, ...
+            'Visible', isVisible, ...
             'Position', [200 200 600 600]);
-
-        image_RGB = v_video_RGB(:, :, :, frameIdx) .* mask + video(:, :, frameIdx) .* ~mask;
-        image_RGB = image_RGB .* ~(maskCircles & ~mask) + maskCircles .* ~mask;
+        
+        video_int = uint8(rescale(video, 0, 255));
+        image_RGB = v_video_RGB(:, :, :, frameIdx) .* mask_int + video_int(:, :, frameIdx) .* not_mask_int;
+        image_RGB = image_RGB .* (1 -(mask_circles_int .* not_mask_int)) + mask_circles_int .* not_mask_int * 255;
         imshow(image_RGB);
 
         if ~isempty(locs)
