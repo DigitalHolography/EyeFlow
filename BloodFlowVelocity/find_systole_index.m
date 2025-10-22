@@ -21,6 +21,7 @@ end
 % Input validation
 ToolBox = getGlobalToolBox();
 fs = ToolBox.fs * 1000 / ToolBox.stride; % Convert to Hz
+dt = 1 / fs;
 
 flagVein = ~isempty(options.pulseVein);
 
@@ -40,8 +41,9 @@ if flagVein
 end
 
 % Step 3: Detect peaks
+min_duration = 0.5; % Beyond this period errors will occur (in s)
 min_peak_height = prctile(diff_artery_signal, 95);
-min_peak_distance = floor(length(pulse_artery_filtered) / 7); % Minimum distance between peaks (0.5 seconds for a 3.5s video)
+min_peak_distance = floor(min_duration / dt); % Minimum distance between peaks (0.5 seconds for a 3.5s video)
 [~, sys_idx_list] = findpeaks(diff_artery_signal, 'MinPeakHeight', min_peak_height, 'MinPeakDistance', min_peak_distance);
 
 % Step 4: Validate peaks
