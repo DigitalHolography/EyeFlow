@@ -1,4 +1,4 @@
-function VideoNonRigidRegistering(obj)
+function VideoNonRigidRegistering(obj, apply)
 % This function performs non-rigid registration on the video frames of M0
 v = obj.M0;
 [numX, numY, numFrames] = size(v);
@@ -50,6 +50,24 @@ D.gradient = Ft;
 
 saveAsGifs(D);
 obj.displacementField = D;
+
+if apply
+    % M0_ff = obj.M0_ff;
+    f_RMS = obj.f_RMS;
+    f_AVG = obj.f_AVG;
+
+    dfield = D.field;
+
+    parfor ff = 1:numFrames
+        % M0_ff(:,:,ff) = imwarp(M0_ff(:,:,ff), dfield(:,:,:,ff), "nearest");
+        f_RMS(:,:,ff) = imwarp(f_RMS(:,:,ff), dfield(:,:,:,ff), "nearest");
+        f_AVG(:,:,ff) = imwarp(f_AVG(:,:,ff), dfield(:,:,:,ff), "nearest");
+    end
+    % obj.M0_ff = M0_ff;
+    obj.f_RMS = f_RMS;
+    obj.f_AVG = f_AVG;
+
+end
 end
 
 % helper functions

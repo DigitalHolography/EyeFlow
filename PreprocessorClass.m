@@ -122,10 +122,12 @@ methods (Access = private)
             return
         end
 
+        apply = params.json.Preprocess.NonRigidRegisteringApply;
+
         tic
         fprintf("    - Video Non-Rigid Registration...\n");
         % Non-rigid registration implementation
-        VideoNonRigidRegistering(obj);
+        VideoNonRigidRegistering(obj,apply);
         fprintf("    - Video Non-Rigid Registration took: %ds\n", round(toc));
     end
 
