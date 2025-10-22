@@ -67,27 +67,26 @@ methods
             try
                 % Create time vector from time stamps
                 time_array = getTimeTimestamp(time_stamps, numFrames);
-                obj.t = time_array;
             catch
                 % If error occurs, use default fs and stride
                 warning('Could not create time vector from time stamps, using default fs and stride');
                 time_array = getTimeLinear(ToolBox, numFrames);
-                obj.t = time_array;
             end
 
         else
             % Create time vector from fs and stride
             time_array = getTimeLinear(ToolBox, numFrames);
-            obj.t = time_array;
         end
 
-        if startFrame ~= -1 || startFrame ~= 1
-            obj.t = obj.t(startFrame:end);
+        if startFrame < 1
+            startFrame = 1;
         end
 
-        if endFrame ~= -1 || endFrame ~= numFrames
-            obj.t = obj.t(1:endFrame);
+        if endFrame > numFrames || endFrame == -1
+            endFrame = numFrames;
         end
+
+        obj.t = time_array(startFrame:endFrame);
 
     end
 
