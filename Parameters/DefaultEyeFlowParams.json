@@ -31,7 +31,7 @@
   },
   "exportVideos": 1,
   "saveFigures": 1,
-  "use_time_stamps" : 1,
+  "use_time_stamps": 1,
   "MinimumGifPeriod": 0.04,
   "NumberOfWorkers": 0,
   "Mask": {

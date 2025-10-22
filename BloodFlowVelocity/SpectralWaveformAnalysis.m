@@ -191,7 +191,7 @@ if saveFigures
     % --- PHASE SPECTRUM ANALYSIS ---
 
     % Main plot with improved styling
-    f = fft_freq_vector(fs, length(padded_signal), true);
+    f = fft_freq_vector(fs, N * numFrames, true);
     fft_angle = angle(fft_c);
     fft_angle = fft_angle(1:length(f)); % Take only positive frequencies
     ff_angle_movmean = movmean(fft_angle, 64);

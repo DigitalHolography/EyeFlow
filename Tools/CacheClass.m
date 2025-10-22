@@ -11,8 +11,8 @@ properties
     maskVein logical % cached mask vein
     maskNeighbors logical % cached mask neighbors
     maskBackground logical % cached mask background
-    scoreMaskArtery double
-    scoreMaskVein double
+    scoreMaskArtery double % cached score mask artery
+    scoreMaskVein double % cached score mask vein
 
     % Diastolic and systolic indices
     sysIdxList double % cached systolic indices list
@@ -55,32 +55,62 @@ methods
     function createtimeVector(obj, ToolBox, numFrames)
         time_stamps = ToolBox.record_time_stamps_us;
         params = ToolBox.getParams;
+        startFrame = params.json.Preprocess.Crop.StartFrame;
+        endFrame = params.json.Preprocess.Crop.EndFrame;
 
-        if ~isempty(time_stamps) && ~isempty(ToolBox.holo_frames) && params.json.use_time_stamps
+        if ~isempty(time_stamps) ...
+                && ~isempty(ToolBox.holo_frames) ...
+                && params.json.use_time_stamps
             % if record_time_stamps_us
             % was specified in the HD folder from the .holo footer
 
             % binsize = 64;
             % (ToolBox.holo_frames.last - ToolBox.holo_frames.first + 1) / ToolBox.stride;
+            if time_stamps.last <= time_stamps.first
+                warning('Invalid time stamps detected, using default fs and stride');
+                time_array = getTimeLinear(ToolBox, numFrames);
+            else
 
-            t1 = 0;
-            t2 = (time_stamps.last - time_stamps.first) / 1e6; % in s
-            t_stamp = linspace(t1, t2, numFrames);
-            obj.t = t_stamp;
+                try
+                    % Create time vector from time stamps
+                    time_array = getTimeTimestamp(time_stamps, numFrames);
+                catch
+                    % If error occurs, use default fs and stride
+                    warning('Could not create time vector from time stamps, using default fs and stride');
+                    time_array = getTimeLinear(ToolBox, numFrames);
+                end
 
-            if params.json.Preprocess.Crop.EndFrame ~= -1
-                %TODO
             end
 
         else
-            t1 = 0;
-            t2 = ToolBox.stride / (ToolBox.fs * 1000) * (numFrames - 1); % in s
-            t_stamp = linspace(t1, t2, numFrames);
-            obj.t = t_stamp;
+            % Create time vector from fs and stride
+            time_array = getTimeLinear(ToolBox, numFrames);
         end
+
+        if startFrame < 1
+            startFrame = 1;
+        end
+
+        if endFrame > numFrames || endFrame == -1
+            endFrame = numFrames;
+        end
+
+        obj.t = time_array(startFrame:endFrame);
 
     end
 
 end
 
+end
+
+function time_array = getTimeTimestamp(time_stamps, numFrames)
+t1 = 0;
+t2 = (time_stamps.last - time_stamps.first) / 1e6; % in s
+time_array = linspace(t1, t2, numFrames);
+end
+
+function time_array = getTimeLinear(ToolBox, numFrames)
+t1 = 0;
+t2 = ToolBox.stride / (ToolBox.fs * 1000) * (numFrames - 1); % in s
+time_array = linspace(t1, t2, numFrames);
 end
