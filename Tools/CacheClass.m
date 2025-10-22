@@ -49,14 +49,15 @@ methods
     function createColorMaps(obj)
         obj.cmapArtery = cmapLAB(256, [0 0 0], 0, [1 0 0], 1/3, [1 1 0], 2/3, [1 1 1], 1);
         obj.cmapVein = cmapLAB(256, [0 0 0], 0, [0 0 1], 1/3, [0 1 1], 2/3, [1 1 1], 1);
-        obj.cmapAV = cmapLAB(256, [0 0 0], 0, [1 0 1], 1/3, [1 1 1], 1);
+        obj.cmapAV = cmapLAB(256, [0 0 0], 0, [1/2 0 1/2], 1/3, [1 0 1], 2/3, [1 1 1], 1);
     end
 
     function createtimeVector(obj, ToolBox, numFrames)
         time_stamps = ToolBox.record_time_stamps_us;
         params = ToolBox.getParams;
+
         if ~isempty(time_stamps) && ~isempty(ToolBox.holo_frames) && params.json.use_time_stamps
-            % if record_time_stamps_us 
+            % if record_time_stamps_us
             % was specified in the HD folder from the .holo footer
 
             % binsize = 64;
@@ -66,14 +67,14 @@ methods
             t2 = (time_stamps.last - time_stamps.first) / 1e6; % in s
             t_stamp = linspace(t1, t2, numFrames);
             obj.t = t_stamp;
-            
 
             if params.json.Preprocess.Crop.EndFrame ~= -1
                 %TODO
             end
+
         else
             t1 = 0;
-            t2 = ToolBox.stride/(ToolBox.fs*1000) * (numFrames-1); % in s
+            t2 = ToolBox.stride / (ToolBox.fs * 1000) * (numFrames - 1); % in s
             t_stamp = linspace(t1, t2, numFrames);
             obj.t = t_stamp;
         end
