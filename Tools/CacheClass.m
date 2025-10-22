@@ -55,6 +55,8 @@ methods
     function createtimeVector(obj, ToolBox, numFrames)
         time_stamps = ToolBox.record_time_stamps_us;
         params = ToolBox.getParams;
+        startFrame = params.json.Preprocess.Crop.StartFrame;
+        endFrame = params.json.Preprocess.Crop.EndFrame;
 
         if ~isempty(time_stamps) && ~isempty(ToolBox.holo_frames) && params.json.use_time_stamps
             % if record_time_stamps_us
@@ -63,32 +65,44 @@ methods
             % binsize = 64;
             % (ToolBox.holo_frames.last - ToolBox.holo_frames.first + 1) / ToolBox.stride;
             try
-                t1 = 0;
-                t2 = (time_stamps.last - time_stamps.first) / 1e6; % in s
-                t_stamp = linspace(t1, t2, numFrames);
-                obj.t = t_stamp;
-
-                if params.json.Preprocess.Crop.EndFrame ~= -1
-                    %TODO
-                end
-
+                % Create time vector from time stamps
+                time_array = getTimeTimestamp(time_stamps, numFrames);
+                obj.t = time_array;
             catch
+                % If error occurs, use default fs and stride
                 warning('Could not create time vector from time stamps, using default fs and stride');
-                t1 = 0;
-                t2 = ToolBox.stride / (ToolBox.fs * 1000) * (numFrames - 1); % in s
-                t_stamp = linspace(t1, t2, numFrames);
-                obj.t = t_stamp;
+                time_array = getTimeLinear(ToolBox, numFrames);
+                obj.t = time_array;
             end
 
         else
-            t1 = 0;
-            t2 = ToolBox.stride / (ToolBox.fs * 1000) * (numFrames - 1); % in s
-            t_stamp = linspace(t1, t2, numFrames);
-            obj.t = t_stamp;
+            % Create time vector from fs and stride
+            time_array = getTimeLinear(ToolBox, numFrames);
+            obj.t = time_array;
+        end
+
+        if startFrame ~= -1 || startFrame ~= 1
+            obj.t = obj.t(startFrame:end);
+        end
+
+        if endFrame ~= -1 || endFrame ~= numFrames
+            obj.t = obj.t(1:endFrame);
         end
 
     end
 
 end
 
+end
+
+function time_array = getTimeTimestamp(time_stamps, numFrames)
+t1 = 0;
+t2 = (time_stamps.last - time_stamps.first) / 1e6; % in s
+time_array = linspace(t1, t2, numFrames);
+end
+
+function time_array = getTimeLinear(ToolBox, numFrames)
+t1 = 0;
+t2 = ToolBox.stride / (ToolBox.fs * 1000) * (numFrames - 1); % in s
+time_array = linspace(t1, t2, numFrames);
 end
