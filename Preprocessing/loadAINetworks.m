@@ -20,7 +20,7 @@ if strcmp(params.json.Mask.VesselSegmentationMethod, 'AI')
 
     if ~isfile(model_path)
         % Download the model from Hugging Face
-        url = sprintf('https://huggingface.co/DigitalHolography/%s/resolve/main/%s', model_name, model_path);
+        url = sprintf('https://huggingface.co/DigitalHolography/%s/resolve/main/%s', model_name, model_name);
         fprintf(url)
         websave(model_path, url);
     end
