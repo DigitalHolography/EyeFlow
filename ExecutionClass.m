@@ -247,6 +247,8 @@ methods
         if ~strcmp(maskParams.VesselSegmentationMethod, 'AI') && ...
                 ~maskParams.AVDiasysSegmentationNet && ...
                 ~maskParams.AVCorrelationSegmentationNet
+
+            fprintf("    - No AI Networks selected in parameters. Skipping loading.\n");
             return; % No AI networks needed
         end
 
@@ -255,10 +257,10 @@ methods
 
         if VesselSegmentationParamChanged && strcmp(maskParams.VesselSegmentationMethod, 'AI')
             tic
-            fprintf("    - Loading AI Networks...\n");
+            fprintf("    - Loading Vessel Segmentation Networks...\n");
             [obj.VesselSegmentationNet] = loadVesselSegmentationNetworks();
             obj.VesselSegmentationParam = maskParams.VesselSegmentationMethod;
-            fprintf("    - Loading AI Networks took: %ds\n", round(toc));
+            fprintf("    - Loading Vessel Segmentation Networks took: %ds\n", round(toc));
         end
 
         % Determine AV Segmentation Parameter
@@ -266,8 +268,8 @@ methods
             AVSegParam = 'AVDiasysSegmentationNet';
         elseif maskParams.AVCorrelationSegmentationNet
             AVSegParam = 'AVCorrelationSegmentationNet';
-        elseif maskParams.AVSegmentationNet && maskParams.AVSegmentationParam
-            AVSegParam = 'AVSegmentationNet';
+        elseif maskParams.AVDiasysSegmentationNet && maskParams.AVCorrelationSegmentationNet
+            AVSegParam = 'AVBothSegmentationNet';
         else
             AVSegParam = '';
         end
@@ -281,6 +283,10 @@ methods
             [obj.AVSegmentationNet] = loadAVSegmentationNetworks(params);
             obj.AVSegmentationParam = AVSegParam;
             fprintf("    - Loading AV Segmentation Networks took: %ds\n", round(toc));
+        end
+
+        if ~AVSegmentationParamChanged && ~VesselSegmentationParamChanged
+            fprintf("    - AI Networks are up to date. No loading needed.\n");
         end
 
     end
