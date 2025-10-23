@@ -15,9 +15,6 @@ properties
     param_name char
     displacementField
 
-    VesselnessNet
-    VesselNet
-
     firstFrameIdx double
     lastFrameIdx double
 end
@@ -52,7 +49,6 @@ methods
         obj.nonRigidRegister(params);
         obj.interpolate(params);
         obj.removeOutliers(params);
-        obj.loadNetworks(params);
 
         obj.is_preprocessed = true;
 
@@ -131,7 +127,7 @@ methods (Access = private)
         tic
         fprintf("    - Video Non-Rigid Registration...\n");
         % Non-rigid registration implementation
-        VideoNonRigidRegistering(obj,apply);
+        VideoNonRigidRegistering(obj, apply);
         fprintf("    - Video Non-Rigid Registration took: %ds\n", round(toc));
     end
 
@@ -160,21 +156,6 @@ methods (Access = private)
         % Outlier removal implementation
         VideoRemoveOutliers(obj, params);
         fprintf("    - Video Outlier Removal took: %ds\n", round(toc));
-    end
-
-    function loadNetworks(obj, params)
-        % Load AI networks if required
-
-        if ~strcmp(params.json.Mask.VesselSegmentationMethod, 'AI') && ...
-                ~params.json.Segmentation.AVDiasysSegmentationNet && ...
-                ~params.json.Segmentation.AVCorrelationSegmentationNet
-            return; % No AI networks needed
-        end
-
-        tic
-        fprintf("    - Loading AI Networks...\n");
-        [obj.VesselnessNet, obj.VesselNet] = loadAINetworks(params);
-        fprintf("    - Loading AI Networks took: %ds\n", round(toc));
     end
 
 end
