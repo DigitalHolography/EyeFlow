@@ -57,19 +57,23 @@ profHeight = 30;
 % AVG Plot
 % lines_cell = cell(rows, cols);
 
+idx = 1;
+
 for circleIdx = 1:rows
 
-    for i = 1:cols
+    for branchIdx = 1:cols
 
-        if isempty(locsLabel{circleIdx, i}) || isempty(v_profiles_cell{circleIdx, i})
+        % 1. Plot cardiac profiles
+
+        if isempty(locsLabel{circleIdx, branchIdx}) || isempty(v_profiles_cell{circleIdx, branchIdx})
             continue;
         end
 
         % Get prof data
-        profData = v_profiles_cell{circleIdx, i};
+        profData = v_profiles_cell{circleIdx, branchIdx};
 
         if ~isequal(size(profData, 2), numFrames)
-            warning('Expected v_profiles_cell{%d,%d} to be profile size, numFrames', circleIdx, i);
+            warning('Expected v_profiles_cell{%d,%d} to be profile size, numFrames', circleIdx, branchIdx);
             continue;
         end
 
@@ -89,7 +93,7 @@ for circleIdx = 1:rows
         profile_Wom = profile_Wom / mean(profile_Wom);
 
         % Compute axes center location
-        pos = locsLabel{circleIdx, i}; % pos = [x, y]
+        pos = locsLabel{circleIdx, branchIdx}; % pos = [x, y]
 
         if isempty(pos) || numel(pos) ~= 2
             continue;
@@ -112,12 +116,22 @@ for circleIdx = 1:rows
         plot(x_plot, y_data_i, 'r', 'LineWidth', 1); % red for imag
 
         hold off;
+
+        % 2. Fit cardiac profiles
+
+        [alphaWom, pseudoViscosity] = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
+        ToolBox.Output.Extra.add(sprintf("Womersley/alphaWom%s_idx%d_c%d_b%d", name, idx, circleIdx, branchIdx), alphaWom);
+        idx = idx + 1;
     end
 
 end
+
+
 
 % Save figure
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_velocities_womersley_profiles_overlay_%s.png", ToolBox.folder_name, name)));
 
 close(fi);
+
+close all;
 end
