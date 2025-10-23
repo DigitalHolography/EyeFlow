@@ -99,10 +99,12 @@ methods
     end
 
     function preprocessData(obj)
-        % Delegate to Preprocessor
-        Preprocessor = PreprocessorClass(obj.directory, obj.filenames, obj.param_name);
 
         PreProcessTimer = tic;
+        fprintf("\n----------------------------------\nVideo PreProcessing\n----------------------------------\n");
+
+        % Delegate to Preprocessor
+        Preprocessor = PreprocessorClass(obj.directory, obj.filenames, obj.param_name);
 
         % Preprocessing
         Preprocessor.preprocess(obj);
@@ -121,6 +123,8 @@ methods
         clear Preprocessor;
 
         fprintf("- Preprocess took : %ds\n", round(toc(PreProcessTimer)))
+
+        fprintf("\n----------------------------------\nPreprocessing Complete\n----------------------------------\n");
     end
 
     function analyzeData(obj, app)
@@ -264,12 +268,12 @@ methods
         end
 
         % Determine AV Segmentation Parameter
-        if maskParams.AVDiasysSegmentationNet
+        if maskParams.AVDiasysSegmentationNet && maskParams.AVCorrelationSegmentationNet
+            AVSegParam = 'AVBothSegmentationNet';
+        elseif maskParams.AVDiasysSegmentationNet
             AVSegParam = 'AVDiasysSegmentationNet';
         elseif maskParams.AVCorrelationSegmentationNet
             AVSegParam = 'AVCorrelationSegmentationNet';
-        elseif maskParams.AVDiasysSegmentationNet && maskParams.AVCorrelationSegmentationNet
-            AVSegParam = 'AVBothSegmentationNet';
         else
             AVSegParam = '';
         end

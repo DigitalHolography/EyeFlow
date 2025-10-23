@@ -28,7 +28,6 @@ methods
     end
 
     function preprocess(obj, executionObj)
-        fprintf("\n----------------------------------\nVideo PreProcessing\n----------------------------------\n");
 
         if any(isnan(executionObj.M0), 'all')
             error('NaN values found in M0 data. Please check the input file.');
@@ -51,8 +50,6 @@ methods
         obj.removeOutliers(params);
 
         obj.is_preprocessed = true;
-
-        fprintf("\n----------------------------------\nPreprocessing Complete\n----------------------------------\n");
     end
 
 end

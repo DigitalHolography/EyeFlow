@@ -24,6 +24,4 @@ catch
     warning('on')
 end
 
-fprintf("Loaded iternet5_vesselness model for vessel segmentation\n");
-
 end

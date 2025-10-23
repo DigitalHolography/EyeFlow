@@ -69,6 +69,8 @@ resources/*
 +onnx_model/*
 +iternet5_av_diasys/*
 +iternet5_vesselness/*
++iternet5_av_corr_diasys/*
++iternet5_av_corr/*
 +opticdisc/*
 +unet_vesselness/*
 Logs/*
