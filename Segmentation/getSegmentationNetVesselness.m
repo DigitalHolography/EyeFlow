@@ -16,7 +16,7 @@ end
 %     net = importNetworkFromONNX("Models\unet_resnet34.onnx");
 % end
 
-fprintf("    Use %s to segment retinal vessels\n", model_name)
+% fprintf("    Use %s to segment retinal vessels\n", model_name)
 
 [Nx, Ny] = size(M0);
 

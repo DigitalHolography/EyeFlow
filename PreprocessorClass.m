@@ -173,7 +173,7 @@ methods (Access = private)
 
         tic
         fprintf("    - Loading AI Networks...\n");
-        obj.VesselNet = loadAINetworks(params);
+        [obj.VesselnessNet, obj.VesselNet] = loadAINetworks(params);
         fprintf("    - Loading AI Networks took: %ds\n", round(toc));
     end
 

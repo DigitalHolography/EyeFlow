@@ -47,7 +47,7 @@ if params.json.Mask.AVDiasysSegmentationNet
 
     if ~isfile(model_path)
         % Download the model from Hugging Face
-        url = sprintf('https://huggingface.co/DigitalHolography/%s/resolve/main/%s', model_name);
+        url = sprintf('https://huggingface.co/DigitalHolography/%s/resolve/main/%s', model_name, model_name);
         websave(model_path, url);
     end
 
