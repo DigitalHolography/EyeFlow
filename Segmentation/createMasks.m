@@ -1,4 +1,4 @@
-function createMasks(M0_ff, vesselnessNet, vesselNet)
+function createMasks(M0_ff, VesselSegmentationNet, AVSegmentationNet)
 % createMasks - Creates masks for arteries, veins, and neighbors from a video of retinal images.
 % Inputs:
 %   M0_ff: 3D matrix of the video data (height x width x time)
@@ -9,8 +9,8 @@ function createMasks(M0_ff, vesselnessNet, vesselNet)
 
 arguments
     M0_ff double
-    vesselnessNet = []
-    vesselNet = []
+    VesselSegmentationNet = []
+    AVSegmentationNet = []
 end
 
 ToolBox = getGlobalToolBox;
@@ -110,7 +110,7 @@ if mask_params.AutoCompute
         case 'AI'
             fprintf("Compute vesselness using SegmentationNet\n");
             % SegmentationNet Vesselness
-            maskVesselness = getSegmentationNetVesselness(M0_ff_img, vesselnessNet);
+            maskVesselness = getSegmentationNetVesselness(M0_ff_img, VesselSegmentationNet);
             saveMaskImage(maskVesselness, 'all_14_maskSegmentationNet.png', isStep = true)
 
     end
@@ -129,7 +129,7 @@ if mask_params.AutoCompute
     if mask_params.AVCorrelationSegmentationNet || mask_params.AVDiasysSegmentationNet
 
         % Compute artery/vein masks using SegmentationNet
-        [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, vesselNet, maskArteryTmp);
+        [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, AVSegmentationNet, maskArteryTmp);
         saveMaskImage(maskVein, 'vein_21_SegmentationNet.png', isStep = true, cmap = cVein);
         saveMaskImage(maskArtery, 'artery_21_SegmentationNet.png', isStep = true, cmap = cVein);
 
