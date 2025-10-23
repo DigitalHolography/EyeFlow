@@ -84,27 +84,27 @@ if mask_params.AutoCompute
             fprintf("Compute vesselness using matched filter\n");
 
             % Matched Vesselness
-            [~, maskMatchedFilter] = matchedFilterVesselDetection(M0_img, ...
+            [~, maskVesselness] = matchedFilterVesselDetection(M0_img, ...
                 'threshold', 0.6);
 
-            saveMaskImage(maskMatchedFilter, 'all_12_matched_filter_mask.png', isStep = true)
+            saveMaskImage(maskVesselness, 'all_12_matched_filter_mask.png', isStep = true)
 
         case 'frangi'
             fprintf("Compute vesselness using Frangi filter\n");
             % Frangi Vesselness
-            [maskVesselnessFrangi, M0_Frangi] = frangiVesselness(M0_img, ...
+            [maskVesselness, M0_Frangi] = frangiVesselness(M0_img, ...
                 'range', [4, 6], 'step', 1);
 
-            saveMaskImage(maskVesselnessFrangi, 'all_12_frangi_mask.png', isStep = true)
+            saveMaskImage(maskVesselness, 'all_12_frangi_mask.png', isStep = true)
             saveMaskImage(M0_Frangi, 'all_12_frangi_img.png', isStep = true)
 
         case 'gabor'
             fprintf("Compute vesselness using Gabor filter\n");
             % Gabor Vesselness
-            [maskVesselnessGabor, M0_Gabor] = gaborVesselness(M0_ff_img, ...
+            [maskVesselness, M0_Gabor] = gaborVesselness(M0_ff_img, ...
                 'range', [4, 6], 'step', 1);
 
-            saveMaskImage(maskVesselnessGabor & maskDiaphragm, 'all_12_gabor_mask.png', isStep = true)
+            saveMaskImage(maskVesselness & maskDiaphragm, 'all_12_gabor_mask.png', isStep = true)
             saveMaskImage(M0_Gabor, 'all_12_gabor_img.png', isStep = true)
 
         case 'AI'
@@ -141,7 +141,7 @@ if mask_params.AutoCompute
         % 1) 5) Save all images
         if saveFigures
             t = ToolBox.Cache.t;
-            graphSignal('all_15_arterialSignal', t, squeeze(arterialSignal), '-', color(2, :), ...
+            graphSignal('all_15_arterialSignal', t, squeeze(arterialSignal), '-', color(end, :), ...
                 Title = 'Arterial Signal', xlabel = 'Time(s)', ylabel = 'Power Doppler (a.u.)');
 
             saveMaskImage(R_ArterialSignal, 'all_15_Correlation.png', isStep = true)
