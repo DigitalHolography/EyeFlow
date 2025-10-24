@@ -252,7 +252,7 @@ methods
         if OpticDiskDetectorParamChanged && maskParams.OpticDiskDetectorNet
             tic
             fprintf("    - Loading Optic Disk Detector Network...\n");
-            [obj.OpticDiskDetectorNet] = loadOpticDiskDetectorNetwork();
+            [obj.OpticDiskDetectorNet] = loadOpticDiskNetwork();
             obj.OpticDiskDetectorParam = maskParams.OpticDiskDetectorNet;
             fprintf("    - Loading Optic Disk Detector Network took: %ds\n", round(toc));
         end

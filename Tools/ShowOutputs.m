@@ -75,7 +75,8 @@ for path_idx = 1:N
         continue;
     end
 
-    max_suffix = max(str2double(suffixes(valid_idx)));
+    % max_suffix = max(str2double(suffixes(valid_idx)));
+    max_suffix = 0;
     last_folder_name = sprintf('%s_%d', folder_base, max_suffix);
 
     % Check for each output type
