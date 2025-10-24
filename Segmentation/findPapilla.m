@@ -8,8 +8,12 @@ saveFigures = params.saveFigures;
 found = false;
 diameter_x = NaN;
 diameter_y = NaN;
-x_center = NaN;
-y_center = NaN;
+x_center = size(M0img, 1) / 2;
+y_center = size(M0img, 2) / 2;
+
+if ~params.json.Mask.OpticDiskDetectorNet
+    return;
+end
 
 if size(M0img, 3) == 1
     M0img = repmat(M0img, 1, 1, 3);

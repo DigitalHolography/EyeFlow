@@ -38,27 +38,21 @@ methods
             mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
         end
 
-        % ToolBox.Cache.xy_barycenter = getBarycenter(executionObj.f_AVG);
+        ToolBox.Cache.xy_barycenter = getBarycenter(executionObj.f_AVG);
         M0_ff_img = rescale(mean(executionObj.M0_ff, 3));
 
         ToolBox.Output.Extra.add("M0_ff_img", M0_ff_img);
 
         try
 
-            if mask_params.OpticDiskDetectorNet
-                [~, diameter_x, diameter_y, x_center, y_center] = findPapilla(M0_ff_img, executionObj.OpticDiskDetectorNet);
-            end
+            [~, diameter_x, diameter_y, ~, ~] = findPapilla(M0_ff_img, executionObj.OpticDiskDetectorNet);
 
         catch ME
             warning("Error while finding papilla : ")
             MEdisp(ME, ToolBox.EF_path)
             diameter_x = NaN;
             diameter_y = NaN;
-            x_center = size(M0_ff_img, 1) / 2;
-            y_center = size(M0_ff_img, 2) / 2;
         end
-
-        ToolBox.Cache.xy_barycenter = [x_center, y_center];
 
         createMasks(executionObj.M0_ff, executionObj.VesselSegmentationNet, executionObj.AVSegmentationNet);
         ToolBox.Cache.papillaDiameter = mean([diameter_x, diameter_y]);
