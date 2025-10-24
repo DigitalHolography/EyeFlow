@@ -45,9 +45,7 @@ methods
 
         try
 
-            if mask_params.OpticDiskDetector
-                [~, diameter_x, diameter_y] = findPapilla(M0_ff_img, executionObj.OpticDiskDetectorNet);
-            end
+            [~, diameter_x, diameter_y, ~, ~] = findPapilla(M0_ff_img, executionObj.OpticDiskDetectorNet);
 
         catch ME
             warning("Error while finding papilla : ")
