@@ -79,7 +79,7 @@ methods (Access = public)
             app.statusLamp.Color = [0, 1, 0]; % Green
 
         catch ME
-            MEdisp(ME, path)
+            MEdisp(ME, path);
             diary off
             % Update lamp color to indicate error
             app.statusLamp.Color = [1, 0, 0]; % Red
@@ -223,6 +223,8 @@ methods (Access = public)
             app.file.flag_crossSection_analysis = app.generateCrossSectionSignalsCheckBox.Value;
             app.file.flag_crossSection_export = app.exportCrossSectionResultsCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
+            
+            err = [];
 
             try
                 app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name);
@@ -240,7 +242,7 @@ methods (Access = public)
 
             catch ME
                 err = ME;
-                MEdisp(ME, app.file.directory)
+                MEdisp(ME, app.file.directory);
 
                 % Update lamp color to indicate warning
                 app.statusLamp.Color = [1, 0, 0]; % Red
@@ -253,7 +255,7 @@ methods (Access = public)
             fprintf("\n----------------------------------\n" + ...
                 "Generating Reports\n" + ...
             "----------------------------------\n");
-            app.file.Reporter.getA4Report();
+            app.file.Reporter.getA4Report(err);
             app.file.Reporter.saveOutputs();
             fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
             app.file.Reporter.displayFinalSummary(totalTime);
@@ -335,7 +337,7 @@ methods (Access = public)
             % Update lamp color to indicate success
             app.statusLamp.Color = [0, 1, 0]; % Green
         catch ME
-            MEdisp(ME, app.file.directory)
+            MEdisp(ME, app.file.directory);
 
             % Update lamp color to indicate warning
             app.statusLamp.Color = [1, 0, 0]; % Red

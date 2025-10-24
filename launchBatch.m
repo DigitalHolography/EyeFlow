@@ -83,7 +83,7 @@ fprintf("\n   (. ❛ ᴗ ❛.)\n");
 % try
 %     ShowOutputs(paths, 'Logs');
 % catch ME
-%     MEdisp(ME, 'Logs')
+%     MEdisp(ME, 'Logs');
 % end
 
 %%
@@ -91,6 +91,8 @@ fprintf("\n   (. ❛ ᴗ ❛.)\n");
 function runAnalysisBlock(path)
 
 totalTime = tic;
+
+ME = [];
 
 try
     ExecClass = ExecutionClass(path);
@@ -106,8 +108,9 @@ try
     ExecClass.flag_crossSection_export = 0;
 
     ExecClass.analyzeData([]);
-catch ME
-    MEdisp(ME, path)
+catch e
+    ME = e;
+    MEdisp(e, path);
 end
 
 
@@ -115,7 +118,7 @@ ReporterTimer = tic;
 fprintf("\n----------------------------------\n" + ...
     "Generating Reports\n" + ...
 "----------------------------------\n");
-ExecClass.Reporter.getA4Report();
+ExecClass.Reporter.getA4Report(ME);
 ExecClass.Reporter.saveOutputs();
 fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
 ExecClass.Reporter.displayFinalSummary(totalTime);

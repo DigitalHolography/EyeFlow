@@ -48,14 +48,18 @@ methods
         fprintf("Saving Outputs took %ds\n", round(toc));
     end
 
-    function getA4Report(~)
+    function getA4Report(~,ME)
+        if nargin < 2
+            ME = [];
+        end
+
         tic
         fprintf("Generating A4 Report...\n");
 
         ToolBox = getGlobalToolBox;
 
         try
-            generateA4Report();
+            generateA4Report(ME);
         catch ME
             MEdisp(ME, ToolBox.EF_path);
         end

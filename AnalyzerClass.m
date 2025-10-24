@@ -51,7 +51,7 @@ methods
 
         catch ME
             warning("Error while finding papilla : ")
-            MEdisp(ME, ToolBox.EF_path)
+            MEdisp(ME, ToolBox.EF_path);
             diameter_x = NaN;
             diameter_y = NaN;
         end
@@ -172,7 +172,7 @@ methods
         try
             combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, executionObj.M0_ff)
         catch ME
-            MEdisp(ME, ToolBox.EF_path)
+            MEdisp(ME, ToolBox.EF_path);
         end
 
         executionObj.is_AllAnalyzed = true;

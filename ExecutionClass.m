@@ -132,6 +132,7 @@ methods
     function analyzeData(obj, app)
         % Main analysis coordinator
         % Initialize output system
+        
 
         AnalyzerTimer = tic;
 
@@ -140,7 +141,9 @@ methods
 
         ToolBox.setOutput(obj.Output);
         ToolBox.setCache(obj.Cache);
-        obj.Cache.createtimeVector(ToolBox, size(obj.M0_ff, 3))
+
+        error('hello');
+        obj.Cache.createtimeVector(ToolBox, size(obj.M0_ff, 3));
 
         obj.Reporter = ReporterClass(obj);
 
@@ -252,7 +255,7 @@ methods
         if OpticDiskDetectorParamChanged && maskParams.OpticDiskDetectorNet
             tic
             fprintf("    - Loading Optic Disk Detector Network...\n");
-            [obj.OpticDiskDetectorNet] = loadOpticDiskDetectorNetwork();
+            [obj.OpticDiskDetectorNet] = loadOpticDiskNetwork();
             obj.OpticDiskDetectorParam = maskParams.OpticDiskDetectorNet;
             fprintf("    - Loading Optic Disk Detector Network took: %ds\n", round(toc));
         end

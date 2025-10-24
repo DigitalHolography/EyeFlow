@@ -1,13 +1,15 @@
-function generateA4Report()
+function generateA4Report(ME)
 % generateA4Report - Creates an A4 PDF with image grid and parameters
 %
 % Inputs:
 %   parameters    - Structure containing parameter names and values
 
 ToolBox = getGlobalToolBox;
+path_hd = ToolBox.EF_path;
 path_png = ToolBox.path_png;
 path_pdf = ToolBox.path_pdf;
 folder_name = ToolBox.folder_name;
+main_folder_name = ToolBox.main_foldername;
 outputs = ToolBox.Output;
 
 % Parameters
@@ -59,9 +61,9 @@ fig = figure('Units', 'centimeters', ...
     'Visible', 'off');
 
 % === Title ===
-t = tiledlayout(fig, 12, 2, 'Padding', 'compact', 'TileSpacing', 'compact');
+t = tiledlayout(fig, 14, 2, 'Padding', 'compact', 'TileSpacing', 'compact');
 title(t, folder_name, 'FontSize', 16, 'FontWeight', 'bold', 'Interpreter', 'none');
-
+% text(5, 8, 'This is red text', 'Color', 'red', 'FontSize', 14, 'FontWeight', 'bold');
 % Margins
 t.Units = 'centimeters';
 t.OuterPosition = [1.5 3 18 25.7]; % [left bottom width height]
@@ -78,7 +80,8 @@ for col = 1:2
     vr_combined_path = fullfile(path_png, sprintf('%s_vr_%s.png', folder_name, name));
     vesselmap_path = fullfile(path_png, sprintf('%s_vessel_map_%s.png', folder_name, name));
     mask_path = fullfile(path_png, 'mask', sprintf('%s_M0_%s.png', folder_name, name));
-    im1 = loadOrPlaceholder(vr_combined_path, vesselmap_path, mask_path);
+    M0_hd_path = fullfile(path_hd, 'png', sprintf('%s_M0.png', main_folder_name)); 
+    im1 = loadOrPlaceholder(vr_combined_path, vesselmap_path, mask_path,M0_hd_path);
 
     imshow(im1, [], 'Parent', ax1);
     axis(ax1, 'off');
@@ -140,6 +143,25 @@ if numParams > 6
 else
     text(axParams, 0.0, 0.9, paramText, 'VerticalAlignment', 'top', 'FontSize', paramFontSize, 'Interpreter', 'none');
 end
+
+% === OPTIONAL ERROR SECTION ===
+
+if ~isempty(ME)
+    axErrors = nexttile(t, [2 2]); % last row spans both columns
+    axis(axErrors, 'off');
+
+    text(axErrors, 0, 1, 'Errors Encountered During Processing:', ...
+        'FontWeight', 'bold', 'FontSize', paramTitleFontSize, ...
+        'VerticalAlignment', 'top', 'Interpreter', 'none', 'Color', 'r');
+
+    errorMsg = MEdisp(ME, ToolBox.EF_path);
+    errorLines = strsplit(errorMsg, '\n');
+
+    text(axErrors, 0, 0.8, errorLines, ...
+        'VerticalAlignment', 'top', 'FontSize', paramFontSize, ...
+        'Interpreter', 'none', 'Color', 'r');
+end
+
 
 % === Export to PDF ===
 set(fig, 'Renderer', 'painters');
