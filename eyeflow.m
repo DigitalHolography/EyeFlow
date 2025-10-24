@@ -131,6 +131,8 @@ methods (Access = public)
         set(groot, 'defaultFigureColor', 'w');
         set(groot, 'defaultAxesFontSize', 14);
         set(groot, 'DefaultTextFontSize', 10); % For text objects (e.g., annotations)
+
+        app.AINetworks = AINetworksClass();
     end
 
     function LoadFromTxt(app)

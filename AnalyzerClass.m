@@ -45,7 +45,7 @@ methods
 
         try
 
-            [~, diameter_x, diameter_y, ~, ~] = findPapilla(M0_ff_img, executionObj.OpticDiskDetectorNet);
+            [~, diameter_x, diameter_y, ~, ~] = findPapilla(M0_ff_img, executionObj.AINetworks.OpticDiskDetectorNet);
 
         catch ME
             warning("Error while finding papilla : ")
@@ -54,7 +54,7 @@ methods
             diameter_y = NaN;
         end
 
-        createMasks(executionObj.M0_ff, executionObj.VesselSegmentationNet, executionObj.AVSegmentationNet);
+        createMasks(executionObj.M0_ff, executionObj.AINetworks.VesselSegmentationNet, executionObj.AINetworks.AVSegmentationNet);
         ToolBox.Cache.papillaDiameter = mean([diameter_x, diameter_y]);
 
         % Artery score
