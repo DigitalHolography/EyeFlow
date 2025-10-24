@@ -44,7 +44,11 @@ methods
         ToolBox.Output.Extra.add("M0_ff_img", M0_ff_img);
 
         try
-            [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
+
+            if mask_params.OpticDiskDetector
+                [~, diameter_x, diameter_y] = findPapilla(M0_ff_img, executionObj.OpticDiskDetectorNet);
+            end
+
         catch ME
             warning("Error while finding papilla : ")
             MEdisp(ME, ToolBox.EF_path)

@@ -1,102 +1,63 @@
-function [found, diameter_x, diameter_y, x_center, y_center] = findPapilla(M0img)
+function [found, diameter_x, diameter_y, x_center, y_center] = findPapilla(M0img, net)
 %Returns the diameter of the papilla measured
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 saveFigures = params.saveFigures;
-mask_params = params.json.Mask;
 
-if mask_params.OpticDiscDetector
+% Initialize output variables
+found = false;
+diameter_x = NaN;
+diameter_y = NaN;
+x_center = NaN;
+y_center = NaN;
 
-    try
+if size(M0img, 3) == 1
+    M0img = repmat(M0img, 1, 1, 3);
+end
 
-        if ~isfile('Models/opticdisc.onnx')
-            url = 'https://huggingface.co/DigitalHolography/EyeFlow_OpticDiscDetectorV2/resolve/main/opticdisc.onnx';
-            websave('Models/opticdisc.onnx', url);
-        end
+M0img = imresize(rescale(M0img), [512, 512]); % 512 is the iniput size of the net
+input = rescale(M0img);
+output = predict(net, input);
 
-    catch ME
-        disp(ME)
-        found = false;
-        diameter_x = NaN;
-        diameter_y = NaN;
-        x_center = NaN;
-        y_center = NaN;
-        return
-    end
+if ~isempty(output)
+    % Find the box with the highest confidence
+    [val, idx] = max(output(:, 5, :));
+    bestBox = output(:, :, idx);
 
-    net = importNetworkFromONNX('Models/opticdisc.onnx');
-
-    if size(M0img, 3) == 1
-        M0img = repmat(M0img, 1, 1, 3);
-    end
-
-    M0img = imresize(rescale(M0img), [512, 512]); % 512 is the iniput size of the net
-
-    input = rescale(M0img);
-
-    output = predict(net, input);
-
-    if ~isempty(output)
+    % Check if the confidence is above a threshold (e.g., 0.5)
+    if val > 0.5
         found = true;
-        [val, idx] = max(output(:, 5, :));
-        bestBox = output(:, :, idx);
-        % bestScore = val;
-        % bestLabel = 'optic disc';
-
         diameter_x = bestBox(3);
         diameter_y = bestBox(4);
-
         x_center = bestBox(1);
         y_center = bestBox(2);
-
-        if val > 0.5
-            ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2/512, '');
-        else
-            found = false;
-            diameter_x = NaN; % reset to default
-            diameter_y = NaN;
-            x_center = NaN;
-            y_center = NaN;
-        end
-
-        if saveFigures
-            a = bestBox(3) / 2;
-            b = bestBox(4) / 2;
-            angle = linspace(0, 2 * pi, 360);
-            x_ellipsis = x_center + a * cos(angle);
-            y_ellipsis = y_center + b * sin(angle);
-
-            figure('Visible', 'off', 'Color', 'w');
-            imshow(M0img, []);
-            hold on;
-
-            if val > 0.5
-                plot(x_ellipsis, y_ellipsis, 'g--', 'LineWidth', 2);
-            else
-                plot(x_ellipsis, y_ellipsis, 'r--', 'LineWidth', 2);
-            end
-
-            axis equal;
-            axis off;
-            exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf('%s_opticdisc.png', ToolBox.folder_name)));
-        end
-
-    else
-        found = false;
-        diameter_x = NaN;
-        diameter_y = NaN;
-        x_center = NaN;
-        y_center = NaN;
+        ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2/512, '');
     end
 
-    close all
+    if saveFigures
+        a = bestBox(3) / 2;
+        b = bestBox(4) / 2;
+        angle = linspace(0, 2 * pi, 360);
+        x_ellipsis = x_center + a * cos(angle);
+        y_ellipsis = y_center + b * sin(angle);
 
-else
-    found = false;
-    diameter_x = NaN;
-    diameter_y = NaN;
-    x_center = NaN;
-    y_center = NaN;
+        figure('Visible', 'off', 'Color', 'w');
+        imshow(M0img, []);
+        hold on;
+
+        if val > 0.5
+            plot(x_ellipsis, y_ellipsis, 'g--', 'LineWidth', 2);
+        else
+            plot(x_ellipsis, y_ellipsis, 'r--', 'LineWidth', 2);
+        end
+
+        axis equal;
+        axis off;
+        exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf('%s_opticdisc.png', ToolBox.folder_name)));
+    end
+
 end
+
+close all
 
 end
