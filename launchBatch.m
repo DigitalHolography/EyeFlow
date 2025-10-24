@@ -1,3 +1,10 @@
+%% Get the list of holodoppler folders to be processed from user
+fprintf("=== EYFLOWPROCESS START ===\n");
+
+version_tag = readlines("version.txt");
+
+fprintf("EyeFlow version : %s\n", version_tag);
+
 [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
 
 if isequal(txt_name, 0)
@@ -52,6 +59,9 @@ for ind = 1:length(paths)
     path = paths(ind);
     fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', path, ind, length(path));
 
+    
+    
+
     if isfolder(path)
         path = strcat(path, '\');
     end
@@ -66,16 +76,21 @@ fclose(fid);
 
 fprintf('Log saved to %s\n', logFileName);
 
-%% Show
-try
-    ShowOutputs(paths, 'Logs');
-catch ME
-    MEdisp(ME, 'Logs')
-end
+fprintf("\n   (. ❛ ᴗ ❛.)\n");
+
+
+% %% Show
+% try
+%     ShowOutputs(paths, 'Logs');
+% catch ME
+%     MEdisp(ME, 'Logs')
+% end
 
 %%
 
 function runAnalysisBlock(path)
+
+totalTime = tic;
 
 try
     ExecClass = ExecutionClass(path);
@@ -83,16 +98,26 @@ try
 
     ExecClass.preprocessData();
 
-    ExecClass.flag_segmentation = 1;
+    ExecClass.flag_segmentation = 0;
     ExecClass.flag_spectral_analysis = 0;
-    ExecClass.flag_bloodFlowVelocity_analysis = 1;
-    ExecClass.flag_pulseWaveVelocity = 1;
-    ExecClass.flag_crossSection_analysis = 1;
-    ExecClass.flag_crossSection_export = 1;
+    ExecClass.flag_bloodFlowVelocity_analysis = 0;
+    ExecClass.flag_pulseWaveVelocity = 0;
+    ExecClass.flag_crossSection_analysis = 0;
+    ExecClass.flag_crossSection_export = 0;
 
     ExecClass.analyzeData([]);
 catch ME
     MEdisp(ME, path)
 end
+
+
+ReporterTimer = tic;
+fprintf("\n----------------------------------\n" + ...
+    "Generating Reports\n" + ...
+"----------------------------------\n");
+ExecClass.Reporter.getA4Report();
+ExecClass.Reporter.saveOutputs();
+fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
+ExecClass.Reporter.displayFinalSummary(totalTime);
 
 end
