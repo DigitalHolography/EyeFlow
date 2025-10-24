@@ -59,7 +59,7 @@ methods (Access = public)
             % Add file
             app.file = ExecutionClass(path);
 
-            app.file.AINetworks = obj.AINetworks;
+            app.file.AINetworks = app.AINetworks;
 
             % Compute the mean of M0 along the third dimension
             mean_M0 = mean(app.file.M0, 3);
