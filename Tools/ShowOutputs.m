@@ -23,6 +23,16 @@ if ~exist(output_dir, 'dir')
     mkdir(output_dir); % Create output directory if it doesn't exist
 end
 
+version = fopen('version.txt', 'r');
+version_str = fileread('version.txt');
+fclose(version);
+
+if strcmp(version_str, 'dev')
+    isDev = true;
+else
+    isDev = false;
+end
+
 N = length(paths);
 
 % Define all output types and their file patterns
@@ -75,8 +85,12 @@ for path_idx = 1:N
         continue;
     end
 
-    % max_suffix = max(str2double(suffixes(valid_idx)));
-    max_suffix = 0;
+    if isDev
+        max_suffix = 0;
+    else
+        max_suffix = max(str2double(suffixes(valid_idx)));
+    end
+
     last_folder_name = sprintf('%s_%d', folder_base, max_suffix);
 
     % Check for each output type
