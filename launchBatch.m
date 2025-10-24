@@ -1,9 +1,12 @@
 %% Get the list of holodoppler folders to be processed from user
-fprintf("=== EYFLOWPROCESS START ===\n");
+fprintf("=== EYEFLOWPROCESS START ===\n");
+
+beginComputerTime = sprintf("Eyeprocess Begin Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
 
 version_tag = readlines("version.txt");
 
 fprintf("EyeFlow version : %s\n", version_tag);
+fprintf("\n%s\n",beginComputerTime);
 
 [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
 
@@ -51,8 +54,10 @@ if ~isfolder("Logs")
     mkdir("Logs");
 end
 
-fprintf('Log saving to %s :\n', logFileName);
+fprintf('Log saving to Eyeflow\%s\n', fullfile('Logs', logFileName));
 fid = fopen(fullfile('Logs', logFileName), 'a'); % 'a' for append if needed
+
+AIModels = AINetworksClass();
 
 for ind = 1:length(paths)
 
@@ -67,17 +72,26 @@ for ind = 1:length(paths)
     end
 
     tic;
-    runAnalysisBlock(path);
+    runAnalysisBlock(path, AIModels);
     ti = toc;
     fprintf(fid, 'Execution time: %.2f seconds\n\n', ti);
 end
 
 fclose(fid);
 
-fprintf('Log saved to %s\n', logFileName);
+endComputerTime = sprintf("Eyeprocess End Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
+
+
+fprintf('Log saved to Eyeflow\%s\n', fullfile('Logs', logFileName));
 
 fprintf("\n   (. ❛ ᴗ ❛.)\n");
+fprintf("\n");
 
+fprintf("\n%s\n",beginComputerTime);
+fprintf("\n%s\n",endComputerTime);
+fprintf("\n");
+
+fprintf("=== EYEFLOWPROCESS END ===\n");
 
 % %% Show
 % try
@@ -88,7 +102,7 @@ fprintf("\n   (. ❛ ᴗ ❛.)\n");
 
 %%
 
-function runAnalysisBlock(path)
+function runAnalysisBlock(path, AIModels)
 
 totalTime = tic;
 
@@ -96,6 +110,9 @@ ME = [];
 
 try
     ExecClass = ExecutionClass(path);
+
+    ExecClass.AINetworks = AIModels;
+
     ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name);
 
     ExecClass.preprocessData();

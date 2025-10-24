@@ -38,6 +38,7 @@ properties (Access = public)
 
     % Files
     file ExecutionClass
+    AINetworks AINetworksClass
     drawer_list = {}
 end
 
@@ -57,6 +58,8 @@ methods (Access = public)
         try
             % Add file
             app.file = ExecutionClass(path);
+
+            app.file.AINetworks = obj.AINetworks;
 
             % Compute the mean of M0 along the third dimension
             mean_M0 = mean(app.file.M0, 3);
