@@ -147,8 +147,6 @@ methods
             profile on
         end
 
-        totalTime = tic;
-
         obj.updateAINetworks(params);
 
         % Execute analysis steps based on checkbox flags
@@ -180,17 +178,6 @@ methods
         if obj.flag_spectral_analysis && ~isempty(obj.SH)
             obj.Analyzer.performSpectralAnalysis(obj);
         end
-
-        % Generate reports and outputs
-
-        ReporterTimer = tic;
-        fprintf("\n----------------------------------\n" + ...
-            "Generating Reports\n" + ...
-        "----------------------------------\n");
-        obj.Reporter.getA4Report(obj);
-        obj.Reporter.saveOutputs();
-        fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
-        obj.Reporter.displayFinalSummary(totalTime);
 
         diary off;
 

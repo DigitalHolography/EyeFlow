@@ -44,23 +44,20 @@ methods
         ToolBox = getGlobalToolBox;
         ToolBox.Output.writeJson(fullfile(ToolBox.path_json, sprintf("%s_output.json", ToolBox.folder_name)));
         ToolBox.Output.writeHdf5(fullfile(ToolBox.path_h5, sprintf("%s_output.h5", ToolBox.folder_name)));
+
         fprintf("Saving Outputs took %ds\n", round(toc));
     end
 
-    function getA4Report(~, executionObj)
+    function getA4Report(~)
         tic
         fprintf("Generating A4 Report...\n");
 
         ToolBox = getGlobalToolBox;
 
-        if executionObj.is_velocityAnalyzed
-
-            try
-                generateA4Report();
-            catch ME
-                MEdisp(ME, ToolBox.EF_path);
-            end
-
+        try
+            generateA4Report();
+        catch ME
+            MEdisp(ME, ToolBox.EF_path);
         end
 
         fprintf("Generating A4 Report took %ds\n", round(toc));

@@ -213,6 +213,8 @@ methods (Access = public)
 
             app.file.param_name = app.file.params_names{i};
 
+            totalTime = tic;
+
             fprintf("\n==================================\n")
 
             app.file.flag_segmentation = app.segmentationCheckBox.Value;
@@ -244,6 +246,17 @@ methods (Access = public)
                 app.statusLamp.Color = [1, 0, 0]; % Red
                 diary off
             end
+
+            % Generate reports and outputs
+
+            ReporterTimer = tic;
+            fprintf("\n----------------------------------\n" + ...
+                "Generating Reports\n" + ...
+            "----------------------------------\n");
+            app.file.Reporter.getA4Report();
+            app.file.Reporter.saveOutputs();
+            fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
+            app.file.Reporter.displayFinalSummary(totalTime);
 
         end
 
