@@ -29,13 +29,13 @@
     "Border": 0.15,
     "FittedParameters": false
   },
-  "exportVideos": 1,
-  "saveFigures": 1,
-  "use_time_stamps": 1,
+  "exportVideos": true,
+  "saveFigures": true,
+  "use_time_stamps": true,
   "MinimumGifPeriod": 0.04,
   "NumberOfWorkers": 0,
   "Mask": {
-    "Auto Compute": 1,
+    "Auto Compute": true,
     "Registered Masks": -1,
     "Forced Masks": -1,
     "Vessel Segmentation Method": "AI",
@@ -55,8 +55,8 @@
     "Imclose Radius": 1,
     "Minimum Vessel Width": 3,
     "Final Dilation": 0,
-    "Force Vessel Width": 0,
-    "Optic Disc Detector": true
+    "Force Vessel Width": false,
+    "Optic Disk Detector Net": true
   },
   "PulseAnalysis": {
     "DifferenceMethods": 0,

@@ -25,6 +25,8 @@ properties
     VesselSegmentationNet
     AVSegmentationParam
     AVSegmentationNet
+    OpticDiskDetectorParam
+    OpticDiskDetectorNet
 
     % Preprocessed Data
     M0_ff single
@@ -237,10 +239,22 @@ methods
 
         if ~strcmp(maskParams.VesselSegmentationMethod, 'AI') && ...
                 ~maskParams.AVDiasysSegmentationNet && ...
-                ~maskParams.AVCorrelationSegmentationNet
+                ~maskParams.AVCorrelationSegmentationNet && ...
+                ~maskParams.OpticDiskDetectorNet
 
             fprintf("    - No AI Networks selected in parameters. Skipping loading.\n");
             return; % No AI networks needed
+        end
+
+        % Load Optic Disk Detector Network if parameter changed
+        OpticDiskDetectorParamChanged = ~isequal(obj.OpticDiskDetectorParam, maskParams.OpticDiskDetectorNet);
+
+        if OpticDiskDetectorParamChanged && maskParams.OpticDiskDetectorNet
+            tic
+            fprintf("    - Loading Optic Disk Detector Network...\n");
+            [obj.OpticDiskDetectorNet] = loadOpticDiskDetectorNetwork();
+            obj.OpticDiskDetectorParam = maskParams.OpticDiskDetectorNet;
+            fprintf("    - Loading Optic Disk Detector Network took: %ds\n", round(toc));
         end
 
         % Load Vessel Segmentation Network if parameter changed
