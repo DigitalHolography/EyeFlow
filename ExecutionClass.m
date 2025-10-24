@@ -97,6 +97,9 @@ methods
         % Initialize Modules
         obj.Analyzer = AnalyzerClass();
 
+        p = Parameters_json(path, obj.param_name);
+        obj.updateAINetworks(p);
+
         fprintf("- Video Loading took : %ds\n", round(toc(tLoading)))
     end
 
