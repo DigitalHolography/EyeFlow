@@ -1,17 +1,18 @@
-function [] = ArterialResistivityIndex(signal, systolesIndexes, name, signal_se)
+function [] = ArterialResistivityIndex(signal, systolesIndexes, name, signal_se, opt)
 
 arguments
     signal
     systolesIndexes
     name
     signal_se = []
+    opt.ForceFigure = false
 end
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 numInterp = 60;
 t = ToolBox.Cache.t;
-fs = ToolBox.fs / ToolBox.stride * 1000; % Convert to seconds
 
 if contains(name, 'v_')
     unit = 'mm/s';
@@ -24,8 +25,6 @@ end
 % Color Maps
 
 signal = double(signal);
-[b, a] = butter(4, 15 / (fs / 2), 'low');
-signal = filtfilt(b, a, signal);
 
 [interp_signal, ~] = interpSignal(signal, systolesIndexes, numInterp);
 
@@ -77,7 +76,7 @@ else
 end
 
 % Save figures
-if params.json.save_figures
+if saveFigures || opt.ForceFigure
 
     % RI Graph
     figure('Visible', 'off');
@@ -147,7 +146,9 @@ if params.json.save_figures
     exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_RI_%s.png", ToolBox.folder_name, name)));
     exportgraphics(gcf, fullfile(ToolBox.path_eps, sprintf("%s_RI_%s.eps", ToolBox.folder_name, name)));
     close;
+end
 
+if saveFigures
     % PI Graph
     figure('Visible', 'off');
     hold on;

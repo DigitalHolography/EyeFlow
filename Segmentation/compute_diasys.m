@@ -1,20 +1,23 @@
-function [M0_Systole_img, M0_Diastole_img, M0_Systole_video, M0_Diastole_video, sysindexes, diasindexes] = compute_diasys(M0_video, maskArtery, export_folder)
+function [M0_Systole_img, M0_Diastole_img, sysindexes, diasindexes] = compute_diasys(video, mask, export_folder)
 
 arguments
-    M0_video
-    maskArtery
+    video
+    mask
     export_folder = []
 end
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-[~, ~, numFrames] = size(M0_video);
+saveFigures = params.saveFigures;
+[~, ~, numFrames] = size(video);
 fullTime = ToolBox.Cache.t;
 
 cDark = [1 0 0];
 cLight = [1 0.5 0.5];
 
-[sys_index_list, fullPulse, ~, ~] = find_systole_index(M0_video, maskArtery);
+pulse_artery = squeeze(mean(video .* mask, [1 2], 'omitnan')) ./ nnz(sum(mask, [1 2]));
+
+[sys_index_list, fullPulse, ~, ~] = find_systole_index(pulse_artery, 'savepng', false);
 
 fullPulse = fullPulse';
 
@@ -22,20 +25,18 @@ fullPulse = fullPulse';
 if isempty(sys_index_list)
     warning('sys_index_list is empty. Skipping systole and diastole computation.');
 
-    [~, amin] = min(M0_video, [], 3);
-    [~, amax] = max(M0_video, [], 3);
+    [~, amin] = min(video, [], 3);
+    [~, amax] = max(video, [], 3);
 
-    M0_Systole_img = M0_video(amax, 3);
-    M0_Diastole_img = M0_video(amin, 3);
-    M0_Systole_video = M0_video;
-    M0_Diastole_video = M0_video;
+    M0_Systole_img = video(amax, 3);
+    M0_Diastole_img = video(amin, 3);
     return;
 end
 
 numSys = numel(sys_index_list); % number of systoles
 fpCycle = round(numFrames / numSys); % Frames per cycle
 
-if params.json.save_figures
+if saveFigures
     figure("Visible", "off", "Color", "w");
     hold on
 
@@ -59,7 +60,7 @@ for idx = 1:numSys
         sys_range = start_idx:min(end_idx, numFrames);
         sysindexes = [sysindexes, sys_range];
 
-        if params.json.save_figures
+        if saveFigures
             plot(fullTime(sys_range), fullPulse(sys_range), 'Color', cDark, 'LineWidth', 2)
             X = [fullTime(sys_range), flip(fullTime(sys_range))];
             Y = [fullPulse(sys_range), zeros(1, length(sys_range))];
@@ -78,13 +79,10 @@ sysindexes = sort(unique(sysindexes));
 diasindexes = setdiff(1:numFrames, sysindexes);
 
 % Compute the mean images
-M0_Systole_img = mean(M0_video(:, :, sysindexes), 3, 'omitnan');
-M0_Diastole_img = mean(M0_video(:, :, diasindexes), 3, 'omitnan');
+M0_Systole_img = mean(video(:, :, sysindexes), 3, 'omitnan');
+M0_Diastole_img = mean(video(:, :, diasindexes), 3, 'omitnan');
 
-M0_Systole_video = M0_video(:, :, sysindexes);
-M0_Diastole_video = M0_video(:, :, diasindexes);
-
-if params.json.save_figures
+if saveFigures
     plot(fullTime, fullPulse, 'k', 'LineWidth', 2)
 
     % Adjust axes

@@ -18,7 +18,6 @@ end
 
 folderpath = fullfile(folderpath, 'RegisteredMasks');
 
-tic;
 % Step 1: Correct illumination and renormalize within the diaphragm
 [numX, numY] = size(similarM0);
 disk = diskMask(numX, numY, RADIUS);
@@ -44,15 +43,20 @@ fprintf("Calculating affine registration : \n"); tic;
 M0Affine = circshift(M0, shift);
 %similarMaskAffine = imwarp(similarMask, tformInv, 'OutputView', Rfixed);
 % similarMaskAffine =circshift(similarMask, -shift);
-figure("Visible","off"), imshowpair(similarM0Diaph, M0Diaph);
+
+% Figure 1: Difference before registration
+figure("Visible", "off"), imshowpair(similarM0Diaph, M0Diaph);
 saveas(gcf, fullfile(folderpath, sprintf('%s_1_Diff.png', tag)));
-figure("Visible","off"), imshowpair(similarM0, M0Affine);
+
+% Figure 2: After Affine Registration
+figure("Visible", "off"), imshowpair(similarM0, M0Affine);
 saveas(gcf, fullfile(folderpath, sprintf('%s_1_AfterAffine.png', tag)));
+
 % figure(53),imshowpair(M0,similarMaskAffine);
 % saveas(gcf,fullfile(folderpath,sprintf('%s_1_MaskAfterAffine.png',tag)));
 
 % Step 2: Compute deformation field using blocwiseAffineRegistration
-%
+
 % "the Demons algorithm
 % % % fprintf("Calculating non rigid registration : \n");tic;
 % % % [displacementField, ~] = imregdemons(toWarpAffine, similarM0Diaph, ... % Here it could potentially be M0Diaph and similarM0Diaph
@@ -78,25 +82,30 @@ similarM0FrangiDiaph = (similarM0Frangi) .* disk; % version normalized and with 
 
 [warped, u, v, scores] = blocWiseAffineRegistration(M0FrangiDiaph, similarM0FrangiDiaph, NUM_BLOCS, SMOOTH_PIX);
 
-figure("Visible","off"), imagesc(scores), colorbar;
+ux = u + shift(2) + numX;
+uy = v + shift(1) + numY;
+
+% Step 3: Visualizations and outputs
+
+% Save figures
+figure("Visible", "off"), imagesc(scores), colorbar;
 saveas(gcf, fullfile(folderpath, sprintf('%s_2_BlocWiseRegScores.png', tag)));
 
-figure("Visible","off"), imshowpair(FrangiFilter2D(mat2gray(similarM0Diaph)), warped);
+% Visualize the registration result
+figure("Visible", "off"), imshowpair(FrangiFilter2D(mat2gray(similarM0Diaph)), warped);
 saveas(gcf, fullfile(folderpath, sprintf('%s_2_BlocWiseRegWarped.png', tag)));
 step = 50; % Adjust to make arrows sparser or denser
 [xGrid, yGrid] = meshgrid(1:step:size(u, 2), 1:step:size(u, 1));
 uSampled =- u(1:step:end, 1:step:end);
 vSampled =- v(1:step:end, 1:step:end);
-figure("Visible","off"); % Plot quiver over mask (optional background)
+
+% Quiver plot of the displacement field
+figure("Visible", "off"); % Plot quiver over mask (optional background)
 imshow(M0Affine); hold on;
 quiver(xGrid, yGrid, uSampled, vSampled, 'r'); % red arrows
 title('Displacement Field (Quiver Plot)');
 axis on;
 saveas(gcf, fullfile(folderpath, sprintf('%s_2_DisplacementFieldNonRigid.png', tag)));
 close all;
-
-ux = u + shift(2) + numX;
-uy = v + shift(1) + numY;
-toc;
 
 end

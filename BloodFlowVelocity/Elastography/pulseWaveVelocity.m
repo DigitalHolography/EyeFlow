@@ -11,6 +11,7 @@ end
 % center the [x,y] barycenter (the center of the CRA)
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 x_bary = ToolBox.Cache.xy_barycenter(1);
 y_bary = ToolBox.Cache.xy_barycenter(2);
 [numX, numY] = size(mask);
@@ -25,8 +26,8 @@ if ~exist(outputDir, 'dir')
     mkdir(outputDir);
 end
 
-%% create a grid of points to select points along the skeletton of the artery mask
-%
+% create a grid of points to select points along the skeletton of the artery mask
+
 dxx = 2;
 skel = bwskel(mask);
 grid = ones([numY, numX]) < 0;
@@ -40,7 +41,7 @@ if numpoints < 1 % no intersection with grid (typically the mask is too small)
     return
 end
 
-%% register the positions of points stating by the one closest to the CRA then going from closest to closest
+% register the positions of points stating by the one closest to the CRA then going from closest to closest
 
 [interpoints_y, interpoints_x] = ind2sub(size(interpoints), find(interpoints)); % y first
 k = dsearchn([interpoints_x, interpoints_y], [x_bary, y_bary]); % get the nearest point to the center
@@ -52,7 +53,7 @@ abs_dist = zeros([1, numpoints]); % vessel curvilign absis
 absx(1) = interpoints_x(k); % nearest point to the center
 absy(1) = interpoints_y(k);
 
-if params.json.save_figures
+if saveFigures
     figure('Visible', 'off');
     imagesc (interpoints)
     scatter(x_bary, y_bary, 80, 'o', 'r', 'LineWidth', 1.5);
@@ -75,7 +76,7 @@ for kb = 2:numpoints
     abs_dist(kb) = abs_dist(kb - 1) + sqrt((absx(kb) - absx(kb - 1)) ^ 2 + (absy(kb) - absy(kb - 1)) ^ 2) * params.px_size;
 end
 
-%% for the positions extract a signal
+% for the positions extract a signal
 
 % with orhtogonal sections
 halfwidth = 15;
@@ -144,7 +145,7 @@ for i = 2:numpoints - 1
     prev_line = [P3; P4]; % save endpoints for next step
 end
 
-if params.json.save_figures
+if saveFigures
     figure('Visible', 'off');
     imagesc(L)
     title('selected sections along the artery')
@@ -157,7 +158,7 @@ end
 Ux = Ux_edge;
 Ux_n = (Ux - mean(Ux, 2)) ./ std(Ux, [], 2);
 
-if params.json.save_figures
+if saveFigures
     figure('Visible', 'off');
     imagesc(ToolBox.Cache.t, linspace(0, abs_dist(end), numpoints), real(Ux_n));
     xlabel("time (s)");
@@ -182,7 +183,6 @@ end
 
 Ravg(isnan(Ravg)) = 0;
 Ravg = Ravg';
-
 
 [PWV, dPWV, ~, ~, ~, score] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index);
 

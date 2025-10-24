@@ -12,7 +12,7 @@ function [oneCycleVideo, selectedPulseIdx, cyclesSignal, oneCycleVideoM0] = crea
 %   cyclesSignal: Signal for each cycle.
 %   oneCycleVideoM0: Averaged M0 video of one cardiac cycle.
 
-% Get global toolbox settings
+% Get global ToolBox settings
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 

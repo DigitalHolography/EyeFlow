@@ -10,6 +10,7 @@ function one_cycle_signal = ArterialWaveformAnalysis(signal, systolesIndexes, nu
 % Initial Setup
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 t = ToolBox.Cache.t;
@@ -49,12 +50,8 @@ harmonics_index = round(valid_harmonics / (fs / 2) * zeroPadLength);
 fft_abs = abs(fft_c);
 fft_angle = angle(fft_c);
 
-% Apply bandpass filter (0.5-15 Hz) as suggested
-[b, a] = butter(4, 15 / (fs / 2), 'low');
-filtered_signal = filtfilt(b, a, signal);
-
 % Cycle Analysis
-[one_cycle_signal, avgLength] = interpSignal(filtered_signal, systolesIndexes, numInterp);
+[one_cycle_signal, avgLength] = interpSignal(signal, systolesIndexes, numInterp);
 L = length(one_cycle_signal);
 
 % Create time vector for one cycle
@@ -135,7 +132,7 @@ if ~isBVR
 end
 
 % Visualization
-if params.json.save_figures
+if saveFigures
     hFig = figure('Visible', 'off', 'Color', 'w');
     hold on;
 
@@ -219,7 +216,7 @@ if params.json.save_figures
 
     %
 
-    figure('Visible','off'),
+    figure('Visible', 'off'),
     hold on
     % plot(pulseTime, composite_signal, 'LineWidth', 2);
 

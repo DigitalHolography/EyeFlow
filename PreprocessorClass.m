@@ -28,8 +28,6 @@ methods
     end
 
     function preprocess(obj, executionObj)
-        fprintf("\n----------------------------------\nVideo PreProcessing\n----------------------------------\n");
-        PreProcessTimer = tic;
 
         if any(isnan(executionObj.M0), 'all')
             error('NaN values found in M0 data. Please check the input file.');
@@ -37,7 +35,6 @@ methods
 
         params = Parameters_json(obj.directory, obj.param_name);
 
-        obj.M0_ff = executionObj.M0_ff;
         obj.M0 = executionObj.M0;
         obj.M1 = executionObj.M1;
         obj.M2 = executionObj.M2;
@@ -53,9 +50,6 @@ methods
         obj.removeOutliers(params);
 
         obj.is_preprocessed = true;
-
-        fprintf("\n----------------------------------\nPreprocessing Complete\n----------------------------------\n");
-        fprintf("- Preprocess took : %ds\n", round(toc(PreProcessTimer)))
     end
 
 end
@@ -92,13 +86,14 @@ methods (Access = private)
         % Cropping implementation
         [firstFrameOut, lastFrameOut] = VideoCropping(obj, firstFrame, lastFrame);
 
-        if firstFrameOut ~=  firstFrame
+        if firstFrameOut ~= firstFrame
             obj.firstFrameIdx = firstFrameOut;
         end
 
-        if lastFrameOut ~=  lastFrame
+        if lastFrameOut ~= lastFrame
             obj.lastFrameIdx = lastFrameOut;
         end
+
         fprintf("    - Video Cropping took: %ds\n", round(toc));
     end
 
@@ -124,10 +119,12 @@ methods (Access = private)
             return
         end
 
+        apply = params.json.Preprocess.NonRigidRegisteringApply;
+
         tic
         fprintf("    - Video Non-Rigid Registration...\n");
         % Non-rigid registration implementation
-        VideoNonRigidRegistering(obj);
+        VideoNonRigidRegistering(obj, apply);
         fprintf("    - Video Non-Rigid Registration took: %ds\n", round(toc));
     end
 

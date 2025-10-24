@@ -7,7 +7,7 @@ function analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ..
 %   v_RMS - velocity data
 %   locsLabel, maskLabel - artery location and mask data
 %   numCircles, numBranches - dimensions of artery data
-%   ToolBox - toolbox parameters
+%   ToolBox - ToolBox parameters
 %   initial - prefix for patch names
 %   papillaDiameter - diameter parameter
 %   vesselName - name of vessel for plots
@@ -22,7 +22,7 @@ params = ToolBox.getParams;
 % Initialize parameters
 [numX, numY, ~] = size(v_RMS);
 
-subImgHW = round(0.01 * numX * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
+subImgHW = round(0.01 * numX * params.json.generateCrossSectionSignals.ScaleFactorWidth);
 
 gap_threshold = 3;
 

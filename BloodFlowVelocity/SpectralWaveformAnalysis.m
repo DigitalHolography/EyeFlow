@@ -5,6 +5,7 @@ function [fft_c, fundamental, valid_harmonics, f] = SpectralWaveformAnalysis(sig
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 numFrames = length(signal);
 fs = 1 / (ToolBox.stride / ToolBox.fs / 1000); % Sampling frequency in Hz
 duration = numFrames * ToolBox.stride / ToolBox.fs / 1000;
@@ -33,7 +34,7 @@ N = 16; % Padding factor
 padded_signal = padarray(windowed_signal, [0, numFrames * N]);
 
 % Frequency vector (show only positive frequencies since signal is real)
-f = fft_freq_vector(fs,length(padded_signal),true);
+f = fft_freq_vector(fs, length(padded_signal), true);
 fft_c = fft(padded_signal);
 
 % --- COMPENSATE FOR WINDOW AMPLITUDE LOSS ---
@@ -123,7 +124,7 @@ else
     ToolBox.Cache.HeartBeatFFTSTE = NaN; % Save heart rate standard error to cache in Hz
 end
 
-if params.json.save_figures
+if saveFigures
     % --- MAGNITUDE SPECTRUM ANALYSIS ---
     % Create figure for spectral analysis
     hFig = figure('Visible', 'off', 'Color', 'w');
@@ -190,7 +191,6 @@ if params.json.save_figures
     % --- PHASE SPECTRUM ANALYSIS ---
 
     % Main plot with improved styling
-    f = fft_freq_vector(fs,length(padded_signal),true);
     fft_angle = angle(fft_c);
     fft_angle = fft_angle(1:length(f)); % Take only positive frequencies
     ff_angle_movmean = movmean(fft_angle, 64);

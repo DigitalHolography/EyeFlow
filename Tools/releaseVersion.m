@@ -34,9 +34,9 @@ if status ~= 0
     disp('No changes to commit.');
 end
 
-% [status, cmdout] = system(cmdPush);
-% assert(status == 0, cmdout);
-% fprintf('Changes pushed to main\n');
+[status, cmdout] = system(cmdPush);
+assert(status == 0, cmdout);
+fprintf('Changes pushed to main\n');
 
 % Step 3: Create and push tag
 cmdTag = sprintf('git tag %s', versionTag);

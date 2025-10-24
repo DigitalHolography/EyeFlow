@@ -8,12 +8,12 @@ function [DiamRatio] = profileHarmonics(v_profile, name)
 %   modulation.
 % Create figure for static plot
 
-% Get global toolbox settings
+% Get global ToolBox settings
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 numFrames = size(v_profile, 2);
 
-numInterp = params.json.CrossSectionsFigures.InterpolationPoints;
+numInterp = params.json.exportCrossSectionResults.InterpolationPoints;
 assert(size(v_profile, 1) == numInterp);
 
 % Force the two Womersley hypothesis

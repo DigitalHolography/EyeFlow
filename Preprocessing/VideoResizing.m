@@ -44,6 +44,10 @@ fprintf('Resizing data cube : %dx%dx%d to %dx%dx%d\n', ...
 [Xq, Yq, Zq] = meshgrid(linspace(1, numY, out_width), linspace(1, numX, out_height), linspace(1, numFrames, out_numFrames));
 % tmp_ref = zeros(numX, numY, numFrames);
 
+tmp_calc = obj.M0;
+tmp = interp3(tmp_calc, Xq, Yq, Zq);
+obj.M0 = single(tmp);
+
 tmp_calc = obj.M0_ff;
 tmp = interp3(tmp_calc, Xq, Yq, Zq);
 obj.M0_ff = single(tmp);

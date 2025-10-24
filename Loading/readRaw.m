@@ -37,15 +37,8 @@ fprintf('- Reading reference video: %s\n', ref_avi_path);
 % Read reference video
 try
     V = VideoReader(ref_avi_path);
-    disp_video = zeros(V.Height, V.Width, V.NumFrames, 'uint8'); % Use uint8 for grayscale
-
-    for n = 1:V.NumFrames
-        disp_video(:, :, n) = rgb2gray(read(V, n));
-    end
-
-    obj.M0_ff = disp_video;
-    refvideosize = size(obj.M0_ff);
-    clear V disp_video;
+    refvideosize = [V.Height, V.Width, V.NumFrames];
+    clear V;
 
 catch ME
     error('Failed to read AVI file: %s\nError: %s', ref_avi_path, ME.message);
@@ -67,7 +60,7 @@ for i = 1:length(moment_files)
 
     try
         fileID = fopen(raw_file, 'r');
-        data = fread(fileID, 'float32');
+        data = fread(fileID, 'single');
         fclose(fileID);
 
         if numel(data) ~= prod(refvideosize)
@@ -96,7 +89,7 @@ if isfile(sh_file)
 
     try
         fileID = fopen(sh_file, 'r');
-        SH_data_video = fread(fileID, 'float32');
+        SH_data_video = fread(fileID, 'single');
         fclose(fileID);
 
         [numX, numY, numFrames] = size(obj.M0);

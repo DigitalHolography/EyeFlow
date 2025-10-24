@@ -33,7 +33,7 @@ end
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 
-if ~params.json.save_figures
+if ~params.saveFigures
     return;
 end
 

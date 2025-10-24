@@ -26,8 +26,8 @@ properties (Access = public)
     segmentationCheckBox matlab.ui.control.CheckBox
     bloodFlowAnalysisCheckBox matlab.ui.control.CheckBox
     pulseVelocityCheckBox matlab.ui.control.CheckBox
-    crossSectionCheckBox matlab.ui.control.CheckBox
-    crossSectionFigCheckBox matlab.ui.control.CheckBox
+    generateCrossSectionSignalsCheckBox matlab.ui.control.CheckBox
+    exportCrossSectionResultsCheckBox matlab.ui.control.CheckBox
     spectralAnalysisCheckBox matlab.ui.control.CheckBox
 
     % Execute
@@ -38,6 +38,7 @@ properties (Access = public)
 
     % Files
     file ExecutionClass
+    AINetworks AINetworksClass
     drawer_list = {}
 end
 
@@ -57,6 +58,8 @@ methods (Access = public)
         try
             % Add file
             app.file = ExecutionClass(path);
+
+            app.file.AINetworks = app.AINetworks;
 
             % Compute the mean of M0 along the third dimension
             mean_M0 = mean(app.file.M0, 3);
@@ -79,7 +82,7 @@ methods (Access = public)
             app.statusLamp.Color = [0, 1, 0]; % Green
 
         catch ME
-            MEdisp(ME, path)
+            MEdisp(ME, path);
             diary off
             % Update lamp color to indicate error
             app.statusLamp.Color = [1, 0, 0]; % Red
@@ -114,7 +117,7 @@ methods (Access = public)
 
         % Add necessary paths
         addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\", ...
-            "Loading\", "Parameters\", "Preprocessing\", ...
+            "Loading\", "Parameters\", "Preprocessing\", "Outputs\", ...
             "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\");
 
         % Set the UI title
@@ -128,6 +131,8 @@ methods (Access = public)
         set(groot, 'defaultFigureColor', 'w');
         set(groot, 'defaultAxesFontSize', 14);
         set(groot, 'DefaultTextFontSize', 10); % For text objects (e.g., annotations)
+
+        app.AINetworks = AINetworksClass();
     end
 
     function LoadFromTxt(app)
@@ -213,14 +218,18 @@ methods (Access = public)
 
             app.file.param_name = app.file.params_names{i};
 
+            totalTime = tic;
+
             fprintf("\n==================================\n")
 
             app.file.flag_segmentation = app.segmentationCheckBox.Value;
             app.file.flag_bloodFlowVelocity_analysis = app.bloodFlowAnalysisCheckBox.Value;
             app.file.flag_pulseWaveVelocity = app.pulseVelocityCheckBox.Value;
-            app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
-            app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
+            app.file.flag_crossSection_analysis = app.generateCrossSectionSignalsCheckBox.Value;
+            app.file.flag_crossSection_export = app.exportCrossSectionResultsCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
+            
+            err = [];
 
             try
                 app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name);
@@ -238,12 +247,23 @@ methods (Access = public)
 
             catch ME
                 err = ME;
-                MEdisp(ME, app.file.directory)
+                MEdisp(ME, app.file.directory);
 
                 % Update lamp color to indicate warning
                 app.statusLamp.Color = [1, 0, 0]; % Red
                 diary off
             end
+
+            % Generate reports and outputs
+
+            ReporterTimer = tic;
+            fprintf("\n----------------------------------\n" + ...
+                "Generating Reports\n" + ...
+            "----------------------------------\n");
+            app.file.Reporter.getA4Report(err);
+            app.file.Reporter.saveOutputs();
+            fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
+            app.file.Reporter.displayFinalSummary(totalTime);
 
         end
 
@@ -322,7 +342,7 @@ methods (Access = public)
             % Update lamp color to indicate success
             app.statusLamp.Color = [0, 1, 0]; % Green
         catch ME
-            MEdisp(ME, app.file.directory)
+            MEdisp(ME, app.file.directory);
 
             % Update lamp color to indicate warning
             app.statusLamp.Color = [1, 0, 0]; % Red
@@ -810,13 +830,13 @@ methods (Access = public)
 
         % Determine the current state of the file analysis
         is_segmented = false;
-        is_pulseAnalyzed = false;
-        is_crossSectionAnalyzed = false;
+        is_velocityAnalyzed = false;
+        is_volumeRateAnalyzed = false;
 
         if ~isempty(app.file)
             is_segmented = app.file.is_segmented;
-            is_pulseAnalyzed = app.file.is_pulseAnalyzed;
-            is_crossSectionAnalyzed = app.file.is_crossSectionAnalyzed;
+            is_velocityAnalyzed = app.file.is_velocityAnalyzed;
+            is_volumeRateAnalyzed = app.file.is_volumeRateAnalyzed;
         end
 
         % Enable/disable bloodFlowAnalysisCheckBox, pulseVelocityCheckBox, and spectralAnalysisCheckBox
@@ -830,23 +850,23 @@ methods (Access = public)
             app.spectralAnalysisCheckBox.Value = false;
         end
 
-        % Enable/disable crossSectionCheckBox
-        if app.bloodFlowAnalysisCheckBox.Value || is_pulseAnalyzed
-            app.crossSectionCheckBox.Enable = true;
+        % Enable/disable generateCrossSectionSignalsCheckBox
+        if app.bloodFlowAnalysisCheckBox.Value || is_velocityAnalyzed
+            app.generateCrossSectionSignalsCheckBox.Enable = true;
             app.pulseVelocityCheckBox.Enable = true;
         else
             app.pulseVelocityCheckBox.Enable = false;
-            app.crossSectionCheckBox.Enable = false;
+            app.generateCrossSectionSignalsCheckBox.Enable = false;
             app.pulseVelocityCheckBox.Value = false;
-            app.crossSectionCheckBox.Value = false; % Turn off if disabled
+            app.generateCrossSectionSignalsCheckBox.Value = false; % Turn off if disabled
         end
 
-        % Enable/disable crossSectionFigCheckBox
-        if app.crossSectionCheckBox.Value || is_crossSectionAnalyzed
-            app.crossSectionFigCheckBox.Enable = true;
+        % Enable/disable exportCrossSectionResultsCheckBox
+        if app.generateCrossSectionSignalsCheckBox.Value || is_volumeRateAnalyzed
+            app.exportCrossSectionResultsCheckBox.Enable = true;
         else
-            app.crossSectionFigCheckBox.Enable = false;
-            app.crossSectionFigCheckBox.Value = false; % Turn off if disabled
+            app.exportCrossSectionResultsCheckBox.Enable = false;
+            app.exportCrossSectionResultsCheckBox.Value = false; % Turn off if disabled
         end
 
     end
@@ -1003,25 +1023,25 @@ methods (Access = private)
         app.pulseVelocityCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
         app.pulseVelocityCheckBox.Tooltip = 'Analyze the flexural pulse velocity in vessels.';
 
-        app.crossSectionCheckBox = uicheckbox(grid);
-        app.crossSectionCheckBox.Text = 'Cross Section Analysis';
-        app.crossSectionCheckBox.FontSize = 16;
-        app.crossSectionCheckBox.FontColor = [1 1 1];
-        app.crossSectionCheckBox.Layout.Row = 6;
-        app.crossSectionCheckBox.Layout.Column = [1, 2];
-        app.crossSectionCheckBox.Value = false;
-        app.crossSectionCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.crossSectionCheckBox.Tooltip = 'Analyze the cross-sectional blood flow profile in the segmented vessels.';
+        app.generateCrossSectionSignalsCheckBox = uicheckbox(grid);
+        app.generateCrossSectionSignalsCheckBox.Text = 'Generate Cross Section Signals';
+        app.generateCrossSectionSignalsCheckBox.FontSize = 16;
+        app.generateCrossSectionSignalsCheckBox.FontColor = [1 1 1];
+        app.generateCrossSectionSignalsCheckBox.Layout.Row = 6;
+        app.generateCrossSectionSignalsCheckBox.Layout.Column = [1, 2];
+        app.generateCrossSectionSignalsCheckBox.Value = false;
+        app.generateCrossSectionSignalsCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.generateCrossSectionSignalsCheckBox.Tooltip = 'Generate blood flow profiles across vessel cross-sections.';
 
-        app.crossSectionFigCheckBox = uicheckbox(grid);
-        app.crossSectionFigCheckBox.Text = 'Cross Section Figures';
-        app.crossSectionFigCheckBox.FontSize = 16;
-        app.crossSectionFigCheckBox.FontColor = [1 1 1];
-        app.crossSectionFigCheckBox.Layout.Row = 6;
-        app.crossSectionFigCheckBox.Layout.Column = [3, 4];
-        app.crossSectionFigCheckBox.Value = false;
-        app.crossSectionFigCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.crossSectionFigCheckBox.Tooltip = 'Generate figures for the cross-sectional blood flow profiles.';
+        app.exportCrossSectionResultsCheckBox = uicheckbox(grid);
+        app.exportCrossSectionResultsCheckBox.Text = 'Export Cross Section Results';
+        app.exportCrossSectionResultsCheckBox.FontSize = 16;
+        app.exportCrossSectionResultsCheckBox.FontColor = [1 1 1];
+        app.exportCrossSectionResultsCheckBox.Layout.Row = 6;
+        app.exportCrossSectionResultsCheckBox.Layout.Column = [3, 4];
+        app.exportCrossSectionResultsCheckBox.Value = false;
+        app.exportCrossSectionResultsCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.exportCrossSectionResultsCheckBox.Tooltip = 'Export the results of cross-section signal analysis.';
 
         app.spectralAnalysisCheckBox = uicheckbox(grid);
         app.spectralAnalysisCheckBox.Text = 'Spectral analysis';

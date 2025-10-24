@@ -4,13 +4,12 @@ function [preMaskArtery, preMaskVein] = preMaskArtery(video, maskVesselness)
 % preMaskArtery: 2D mask containing two branches with highest correlation
 
 ToolBox = getGlobalToolBox;
-cmapArtery = ToolBox.Cache.cmapArtery;
 numFrames = size(video, 3);
 fs = ToolBox.fs / ToolBox.stride * 1000; % Convert to seconds
 
 % Step 1: Separate mask into branches
 [label, ~] = labelVesselBranches(maskVesselness, true(size(maskVesselness)), ToolBox.Cache.xy_barycenter);
-saveImage(uint16(label), 'artery_16_PreMask.png', isStep = true, cmap = cmapArtery);
+saveMaskImage(uint16(label), 'all_16_label_Vesselness.png', isStep = true);
 
 % Step 2: Compute average signal of video for each branch
 
@@ -28,7 +27,7 @@ end
 
 % Step 3: Normalize signals
 signals_n = (signals - mean(signals, 2)) ./ std (signals, [], 2); % normalize each branch signal
-s_idx = select_regular_peaks(signals_n, 'minmax');
+[s_idx, locs_n] = select_regular_peaks(signals_n, 'minmax');
 
 % Step 4: Combine them into final mask
 preMaskArtery = false(size(maskVesselness));
@@ -47,6 +46,48 @@ for i = 1:length(s_idx)
 
     if s_idx(i) == 0
         preMaskVein = preMaskVein | (label == i);
+    end
+
+end
+
+params = ToolBox.getParams;
+
+% Find N for artery and N for vein
+
+if params.saveFigures
+    t = ToolBox.Cache.t;
+
+    for N = 1:numBranches
+
+        if s_idx(N) == 1
+            color = [1 0 0];
+            name = 'artery';
+        else
+            color = [0 0 1];
+            name = 'vein';
+        end
+
+        signals_N = signals_n(N, :);
+        gradient_N = gradient(signals_N);
+        locs_N = locs_n{N};
+        figure("Visible", 'off'); hold on;
+        plot(t, gradient_N, '-', ...
+            'Color', color, 'LineWidth', 1.5);
+        plot(t, signals_N, '--', ...
+            'Color', color * 0.5 + 0.5, 'LineWidth', 1.5);
+        scatter(t(locs_N), gradient_N(locs_N), ...
+            'MarkerFaceColor', color, 'MarkerEdgeColor', color);
+
+        axis padded
+        axP = axis;
+        axis tight
+        axT = axis;
+        axis([axT(1), axT(2), axP(3), axP(4)])
+        box on
+        set(gca, 'LineWidth', 2);
+        set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+        figPath = fullfile(ToolBox.path_png, 'mask', 'steps', sprintf('%s_%d_Peaks.png', name, N));
+        exportgraphics(gcf, figPath, 'Resolution', 300);
     end
 
 end

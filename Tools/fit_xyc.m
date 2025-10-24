@@ -21,15 +21,17 @@ if nargin < 3 || isempty(dy), dy = 1.0; end
 if nargin < 4, name = 'unnamed'; end
 if nargin < 5, branch_index = 0; end
 
-%% --- Get global toolbox and prepare output directory ---
+%% --- Get global ToolBox and prepare output directory ---
 ToolBox = getGlobalToolBox();
 outputDir = fullfile(ToolBox.path_png, 'flexion');
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
+
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
 end
 
-%% --- Preprocess ---
+% --- Preprocess ---
 Z0 = Z - mean(Z(:), 'omitnan'); % remove DC offset and NaN safety
 
 if size(Z0, 1) <= 10 || size(Z0, 2) <= 10
@@ -53,7 +55,7 @@ wx = hann(nx);
 W = wy * wx';
 Z0 = Z0 .* W;
 
-%% --- FFT ---
+% --- FFT ---
 Nmult = 8; % zero-padding multiplier for higher frequency resolution
 F = fftshift(fft2(Z0, Nmult * ny, Nmult * nx));
 S = abs(F);
@@ -65,11 +67,11 @@ S0 = S;
 S0(1:ny * Nmult > ny * Nmult / 2, :) = 0;
 S0(:, 1:nx * Nmult < nx * Nmult / 2) = 0;
 
-%% --- Frequency axes ---
+% --- Frequency axes ---
 fx = (-Nmult * nx / 2:Nmult * nx / 2 - 1) / (Nmult * nx * dx); % cycles per unit x
 fy = (-Nmult * ny / 2:Nmult * ny / 2 - 1) / (Nmult * ny * dy); % cycles per unit y
 
-%% --- Peak detection ---
+% --- Peak detection ---
 [pks, rows, cols, fx_err, fy_err] = findpeaks2(S0, fx, fy, 0.8);
 
 if isempty(pks)
@@ -80,26 +82,25 @@ if isempty(pks)
     return;
 end
 
-%% --- Plot frequency spectrum ---
+% --- Plot frequency spectrum ---
 fig1 = figure('Visible', 'off');
-imagesc(fx, fy, S);
+h_wave_map = imagesc(fx, fy, S);
 xlabel('(Hz)');
 ylabel('(mm-1)');
 axis xy equal tight;
 
-xlim([-10,10]);
-ylim([-10,10]);
+xlim([-10, 10]);
+ylim([-10, 10]);
 colormap turbo;
 colorbar;
 hold on;
 
-%% --- Dominant peak ---
+% --- Dominant peak ---
 [m, idx] = max(pks);
 iy = rows(idx);
 ix = cols(idx);
 
 scatter(fx(round(ix)), fy(round(iy)), 80, 'ro', 'LineWidth', 1.5, 'DisplayName', 'Detected Peaks');
-
 
 fx_peak = fx(round(ix));
 fy_peak = fy(round(iy));
@@ -117,11 +118,11 @@ dky = 2 * pi * dfy;
 % Avoid division by zero
 if abs(kx) < eps || abs(ky) < eps
     % warning('Invalid frequency detected (zero or near zero).');
-    Tx = NaN; Ty = NaN; PWV = NaN;
+    Tx = NaN; Ty = NaN; PWV = NaN; dPWV = NaN;
     return;
 end
 
-%% --- Compute periods and PWV ---
+% --- Compute periods and PWV ---
 Tx = 2 * pi / abs(kx);
 Ty = 2 * pi / abs(ky);
 
@@ -134,13 +135,20 @@ dTy = abs(Ty * (dky / ky));
 PWV = Ty / Tx;
 dPWV = PWV * sqrt((dTx / Tx) ^ 2 + (dTy / Ty) ^ 2);
 
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV", name, branch_index),PWV);
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_std", name, branch_index),dPWV);
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_unit", name, branch_index),"mm/s");
+% s_wave_map = saveImagescToStruct(h_wave_map);
+% ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_intercorr", name, branch_index),s_wave_map);
+
+
 if PWV < 1 || PWV > 4 % mm/s
     PWV = NaN; dPWV = NaN;
 end
 
 fprintf('PWV = %.3f ± %.3f (mm/s)\n', PWV, dPWV);
 
-if params.json.save_figures
+if saveFigures
     % --- Plot original map with wave direction ---
     fig2 = figure('Visible', 'off');
     xVals = linspace(-dx * nx / 2, dx * nx / 2, nx);

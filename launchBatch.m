@@ -1,3 +1,13 @@
+%% Get the list of holodoppler folders to be processed from user
+fprintf("=== EYEFLOWPROCESS START ===\n");
+
+beginComputerTime = sprintf("Eyeprocess Begin Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
+
+version_tag = readlines("version.txt");
+
+fprintf("EyeFlow version : %s\n", version_tag);
+fprintf("\n%s\n",beginComputerTime);
+
 [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
 
 if isequal(txt_name, 0)
@@ -44,55 +54,90 @@ if ~isfolder("Logs")
     mkdir("Logs");
 end
 
-fprintf('Log saving to %s :\n', logFileName);
+fprintf('Log saving to Eyeflow\%s\n', fullfile('Logs', logFileName));
 fid = fopen(fullfile('Logs', logFileName), 'a'); % 'a' for append if needed
+
+AIModels = AINetworksClass();
 
 for ind = 1:length(paths)
 
     path = paths(ind);
     fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', path, ind, length(path));
 
+    
+    
+
     if isfolder(path)
         path = strcat(path, '\');
     end
 
     tic;
-    runAnalysisBlock(path);
+    runAnalysisBlock(path, AIModels);
     ti = toc;
     fprintf(fid, 'Execution time: %.2f seconds\n\n', ti);
 end
 
 fclose(fid);
 
-fprintf('Log saved to %s\n', logFileName);
+endComputerTime = sprintf("Eyeprocess End Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
 
-%% Show
-try
-    ShowOutputs(paths, 'Logs');
-catch ME
-    MEdisp(ME, 'Logs')
-end
+
+fprintf('Log saved to Eyeflow\%s\n', fullfile('Logs', logFileName));
+
+fprintf("\n   (. ❛ ᴗ ❛.)\n");
+fprintf("\n");
+
+fprintf("\n%s\n",beginComputerTime);
+fprintf("\n%s\n",endComputerTime);
+fprintf("\n");
+
+fprintf("=== EYEFLOWPROCESS END ===\n");
+
+% %% Show
+% try
+%     ShowOutputs(paths, 'Logs');
+% catch ME
+%     MEdisp(ME, 'Logs');
+% end
 
 %%
 
-function runAnalysisBlock(path)
+function runAnalysisBlock(path, AIModels)
+
+totalTime = tic;
+
+ME = [];
 
 try
     ExecClass = ExecutionClass(path);
+
+    ExecClass.AINetworks = AIModels;
+
     ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name);
 
     ExecClass.preprocessData();
 
-    ExecClass.flag_segmentation = 1;
+    ExecClass.flag_segmentation = 0;
     ExecClass.flag_spectral_analysis = 0;
-    ExecClass.flag_bloodFlowVelocity_analysis = 1;
-    ExecClass.flag_pulseWaveVelocity = 1;
-    ExecClass.flag_crossSection_analysis = 1;
-    ExecClass.flag_crossSection_figures = 1;
+    ExecClass.flag_bloodFlowVelocity_analysis = 0;
+    ExecClass.flag_pulseWaveVelocity = 0;
+    ExecClass.flag_crossSection_analysis = 0;
+    ExecClass.flag_crossSection_export = 0;
 
     ExecClass.analyzeData([]);
-catch ME
-    MEdisp(ME, path)
+catch e
+    ME = e;
+    MEdisp(e, path);
 end
+
+
+ReporterTimer = tic;
+fprintf("\n----------------------------------\n" + ...
+    "Generating Reports\n" + ...
+"----------------------------------\n");
+ExecClass.Reporter.getA4Report(ME);
+ExecClass.Reporter.saveOutputs();
+fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
+ExecClass.Reporter.displayFinalSummary(totalTime);
 
 end
