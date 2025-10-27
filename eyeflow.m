@@ -38,7 +38,7 @@ properties (Access = public)
 
     % Files
     file ExecutionClass
-    AINetworks AINetworksClass
+    AINetworks
     drawer_list = {}
 end
 
