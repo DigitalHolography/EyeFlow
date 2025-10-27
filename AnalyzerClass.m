@@ -60,12 +60,14 @@ methods
         % Artery score
         scoreA = ToolBox.Cache.scoreMaskArtery;
 
+        ToolBox.Output.Extra.add("QualityControl/scoreMaskArtery",scoreA);
+
         if isempty(scoreA) || isnan(scoreA)
         else
             fprintf("- Mask artery quality score: %.2f\n", scoreA);
 
             if scoreA < 0.5
-                error("AnalyzerClass:LowMaskScore", "Mask artery quality score too low (%.2f < 0.5). Aborting segmentation.", scoreA);
+                warning("AnalyzerClass:LowMaskScore", "Mask artery quality score too low (%.2f < 0.5). Dangerous segmentation.", scoreA);
             end
 
         end
@@ -75,12 +77,14 @@ methods
         % Vein score (if veins analysis enabled)
         scoreV = ToolBox.Cache.scoreMaskVein;
 
+        ToolBox.Output.Extra.add("QualityControl/scoreMaskVein",scoreV);
+
         if isempty(scoreV) || isnan(scoreV)
         else
             fprintf("- Mask vein quality score: %.2f\n", scoreV);
 
             if scoreV < 0.5
-                error("AnalyzerClass:LowMaskScore", "Mask vein quality score too low (%.2f < 0.5). Aborting segmentation.", scoreV);
+                warning("AnalyzerClass:LowMaskScore", "Mask vein quality score too low (%.2f < 0.5). Dangerous segmentation.", scoreV);
             end
 
         end
