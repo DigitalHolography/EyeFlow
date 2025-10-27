@@ -5,6 +5,8 @@ function [AVSegmentationNet] = loadAVSegmentationNetworks(params)
 %   Outputs:
 %       VesselSegmentationNet - Loaded vesselness segmentation network
 
+AVSegmentationNet = [];
+
 if params.json.Mask.AVCorrelationSegmentationNet && params.json.Mask.AVDiasysSegmentationNet
 
     model_name = "iternet5_av_corr_diasys";
