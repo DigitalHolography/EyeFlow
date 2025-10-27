@@ -89,4 +89,6 @@ results = struct('DiceArtery', DiceArtery, 'DiceVein', DiceVein, ...
 
 log = 'Results logged successfully.';
 
+ToolBox.Output.Extra.Data.segmentationScores = results;
+
 end
