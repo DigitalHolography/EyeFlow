@@ -21,7 +21,7 @@ paths = paths(paths ~= ""); % remove empty lines
 % Add necessary paths
 addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\", ...
     "Loading\", "Parameters\", "Preprocessing\", ...
-    "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\");
+    "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\", "Outputs\");
 %% ensure set default parameters and no forced mask
 
 for ind = 1:length(paths)
