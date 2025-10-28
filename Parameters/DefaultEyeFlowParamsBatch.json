@@ -1,0 +1,104 @@
+{
+  "Preprocess": {
+    "Register": {
+      "Enable": false,
+      "StartFrame": 10,
+      "EndFrame": 20
+    },
+    "Crop": {
+      "StartFrame": 1,
+      "EndFrame": -1
+    },
+    "Normalizing": {
+      "Alpha Convolve Norm": 1,
+      "NormTempMode": false
+    },
+    "Resize": {
+      "FrameWidth": -1,
+      "FrameHeight": -1,
+      "VideoLength": -1
+    },
+    "NonRigidRegisteringFlag": false,
+    "NonRigidRegisteringApply": false,
+    "RemoveOutliersFlag": true,
+    "Outlier Analysis Window": 10,
+    "Interpolation Factor": 1
+  },
+  "FlatFieldCorrection": {
+    "GWRatio": 0.07,
+    "Border": 0.15,
+    "FittedParameters": false
+  },
+  "exportVideos": false,
+  "saveFigures": true,
+  "use_time_stamps": true,
+  "MinimumGifPeriod": 0.04,
+  "NumberOfWorkers": 0,
+  "Mask": {
+    "Auto Compute": true,
+    "Registered Masks": -1,
+    "Forced Masks": -1,
+    "Vessel Segmentation Method": "AI",
+    "AV Correlation Segmentation Net": false,
+    "AV Diasys Segmentation Net": true,
+    "Diaphragm Radius": 0.45,
+    "Force Barycenter": [],
+    "Blur": 1.5,
+    "Crop Choroid Radius": 0.1,
+    "Vascular Threshold": null,
+    "Vascular Classes": [
+      -1,
+      1
+    ],
+    "Min Pixel Size": 150,
+    "CRA CRV Threshold": 3,
+    "Imclose Radius": 1,
+    "Minimum Vessel Width": 3,
+    "Final Dilation": 0,
+    "Force Vessel Width": false,
+    "Optic Disk Detector Net": true
+  },
+  "PulseAnalysis": {
+    "DifferenceMethods": 0,
+    "LocalBackgroundWidth": 5,
+    "LocalBackgroundDist": 2,
+    "bkgScaler": 5,
+    "Lambda": 8.52E-7,
+    "Phi": 0.25,
+    "FilterSignals": true,
+    "OutOfNoiseThreshold": 4,
+    "BlurScaleFactor": 100,
+    "OneCycle InterpolationPoints": 256,
+    "OneCycle OutOfNoiseThreshold": 85,
+    "ExtendedFlag": false
+  },
+  "SizeOfField": {
+    "SmallRadiusRatio": 0.15,
+    "BigRadiusRatio": 0.35
+  },
+  "generateCrossSectionSignals": {
+    "NumberOfCircles": 10,
+    "ScaleFactorWidth": 3,
+    "MaskSliceThreshold": 0.01,
+    "PixelSize": 0.0191,
+    "profileFitTresholdRatio": 0.1,
+    "SliceHalfThickness": 10,
+    "sectionMontage": true,
+    "diameterAnalysis": false,
+    "HydrodynamicDiameters": true
+  },
+  "exportCrossSectionResults": {
+    "sectionImage": true,
+    "circleImages": true,
+    "widthHistogram": true,
+    "BloodFlowProfiles": true,
+    "BloodFlowHistograms": false,
+    "BloodFlowProfilesWomersleyOverlay": true,
+    "BloodFlowProfilesOverlay": true,
+    "ARIBVR": true,
+    "strokeAndTotalVolume": true,
+    "hemodynamicParameters": false,
+    "InterpolationPoints": 50
+  },
+  "DebugMode": false
+}

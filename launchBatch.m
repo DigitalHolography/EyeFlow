@@ -32,7 +32,8 @@ for ind = 1:length(paths)
     end
 
     delete(fullfile(fullfile(path, 'json'), '*.json')); % remove old json files
-    copyfile(fullfile('Parameters', 'DefaultEyeFlowParams.json'), fullfile(path, 'json', 'input_EF_params.json'));
+
+    copyfile(fullfile('Parameters', 'DefaultEyeFlowParamsBatch.json'), fullfile(path, 'json', 'input_EF_params.json'));
 
     if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
         movefile(fullfile(path, 'mask', 'forceMaskArtery.png'), fullfile(path, 'mask', 'oldForceMaskArtery.png'));
@@ -113,12 +114,12 @@ try
 
     ExecClass.preprocessData();
 
-    ExecClass.flag_segmentation = 0;
-    ExecClass.flag_spectral_analysis = 0;
-    ExecClass.flag_bloodFlowVelocity_analysis = 0;
-    ExecClass.flag_pulseWaveVelocity = 0;
-    ExecClass.flag_crossSection_analysis = 0;
-    ExecClass.flag_crossSection_export = 0;
+    ExecClass.flag_segmentation = 1;
+    ExecClass.flag_spectral_analysis = 1;
+    ExecClass.flag_bloodFlowVelocity_analysis = 1;
+    ExecClass.flag_pulseWaveVelocity = 1;
+    ExecClass.flag_crossSection_analysis = 1;
+    ExecClass.flag_crossSection_export = 1;
 
     ExecClass.analyzeData([]);
 catch e
