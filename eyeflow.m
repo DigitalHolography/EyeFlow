@@ -207,6 +207,9 @@ methods (Access = public)
         % Actualizes the input Parameters
 
         fprintf("\n==================================\n");
+
+        fclose all; % Close any open files
+
         app.file.params_names = checkEyeFlowParamsFromJson(app.file.directory); % checks compatibility between found EF params and Default EF params of this version of EF.
         params = Parameters_json(app.file.directory, app.file.params_names{1});
 

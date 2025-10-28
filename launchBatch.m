@@ -55,7 +55,7 @@ if ~isfolder("Logs")
     mkdir("Logs");
 end
 
-fprintf('Log saving to Eyeflow\%s\n', fullfile('Logs', logFileName));
+fprintf("Log saving to Eyeflow\\%s\n", fullfile('Logs', logFileName));
 fid = fopen(fullfile('Logs', logFileName), 'a'); % 'a' for append if needed
 
 AIModels = AINetworksClass();
