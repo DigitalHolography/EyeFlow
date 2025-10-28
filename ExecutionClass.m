@@ -132,6 +132,7 @@ methods
 
         AnalyzerTimer = tic;
 
+        fclose all; % Close any open files
         ToolBox = obj.ToolBoxMaster;
         params = ToolBox.getParams;
 

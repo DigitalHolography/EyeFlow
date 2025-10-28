@@ -159,30 +159,29 @@ methods
     function writeHdf5(obj, path)
         props = setdiff(properties(obj), "Signals");
         props = setdiff(props, "Extra");
-        [dir, name, ~] = fileparts(path);
-        path = fullfile(dir, strcat(name, ".h5"));
+        [folder_dir, folder_name, ~] = fileparts(path);
+        file_path = fullfile(folder_dir, strcat(folder_name, ".h5"));
 
-        if isfile(path)
-            delete(path)
+        if isfile(file_path)
+            delete(file_path)
         end
 
         for i = 1:length(props)
-            writeNumericToHDF5(path, strcat("/", "Figures", "/", props{i}, "/", props{i}),obj.(props{i}).value);
+            writeNumericToHDF5(file_path, strcat("/", "Figures", "/", props{i}, "/", props{i}), obj.(props{i}).value);
 
-            writeNumericToHDF5(path, strcat("/", "Figures", "/", props{i}, "/", props{i}, "_ste"),obj.(props{i}).standard_error);
+            writeNumericToHDF5(file_path, strcat("/", "Figures", "/", props{i}, "/", props{i}, "_ste"), obj.(props{i}).standard_error);
 
-            h5writeatt(path,strcat("/", "Figures", "/", props{i}, "/", props{i}), "unit", obj.(props{i}).unit);
+            h5writeatt(file_path, strcat("/", "Figures", "/", props{i}, "/", props{i}), "unit", obj.(props{i}).unit);
 
-            h5writeatt(path,strcat("/", "Figures", "/", props{i}, "/", props{i}, "_ste"), "unit", obj.(props{i}).unit);
+            h5writeatt(file_path, strcat("/", "Figures", "/", props{i}, "/", props{i}, "_ste"), "unit", obj.(props{i}).unit);
         end
 
         % Save Signals and Extra in a separate directory of the same h5 file
-        obj.Signals.writeHdf5(path);
-        obj.Extra.writeHdf5(path);
+        obj.Signals.writeHdf5(file_path);
+        obj.Extra.writeHdf5(file_path);
 
     end
 
 end
 
 end
-
