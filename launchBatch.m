@@ -63,7 +63,7 @@ AIModels = AINetworksClass();
 for ind = 1:length(paths)
 
     path = paths(ind);
-    fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', path, ind, length(path));
+    fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', path, ind, length(paths));
 
     if isfolder(path)
         path = strcat(path, '\');
