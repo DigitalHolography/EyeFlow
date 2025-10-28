@@ -64,8 +64,10 @@ S = abs(F);
 bandWidth = diskMask(Nmult * ny, Nmult * nx, 0, 0.5);
 S = S .* bandWidth;
 S0 = S;
-S0(1:ny * Nmult > ny * Nmult / 2, :) = 0;
+
+% Scan only half to avoid unnecessary computations
 S0(:, 1:nx * Nmult < nx * Nmult / 2) = 0;
+%%%S0(1:ny * Nmult > ny * Nmult / 2, :) = 0;  % Keep only x increasing waves 
 
 % --- Frequency axes ---
 fx = (-Nmult * nx / 2:Nmult * nx / 2 - 1) / (Nmult * nx * dx); % cycles per unit x
@@ -123,8 +125,10 @@ if abs(kx) < eps || abs(ky) < eps
 end
 
 % --- Compute periods and PWV ---
-Tx = 2 * pi / abs(kx);
-Ty = 2 * pi / abs(ky);
+Tx = 2 * pi / (kx);
+Ty = 2 * pi / (ky);
+
+% slope = [-Ty, Tx];
 
 dTx = abs(Tx * (dkx / kx));
 dTy = abs(Ty * (dky / ky));
@@ -160,13 +164,13 @@ if saveFigures
     hold on;
 
     % Draw wavevector direction
-    quiver(0, 0, Tx * 0.2, Ty * 0.2, 0, 'w', 'LineWidth', 2, 'MaxHeadSize', 2);
-    text(0, 0, sprintf('%.2f mm/s', PWV), 'Color', 'w', 'FontSize', 10, 'FontWeight', 'bold');
+    quiver(0, 0, Tx, - Ty, 0, 'w', 'LineWidth', 2, 'MaxHeadSize', 2);
+    text(0, 1, sprintf('%.2f mm/s', PWV), 'Color', 'w', 'FontSize', 14, 'FontWeight', 'bold');
     title('Flexural Pulse Wave Velocity');
 
     % --- Save figures ---
-    saveas(fig1, fullfile(outputDir, sprintf('%s_%s_%d_fft_spectrum.png', ToolBox.folder_name, name, branch_index)));
-    saveas(fig2, fullfile(outputDir, sprintf('%s_%s_%d_wave_map.png', ToolBox.folder_name, name, branch_index)));
+    saveas(fig1, fullfile(outputDir, sprintf('%s_%s_%d_6_fft_spectrum.png', ToolBox.folder_name, name, branch_index)));
+    saveas(fig2, fullfile(outputDir, sprintf('%s_%s_%d_5_wave_map.png', ToolBox.folder_name, name, branch_index)));
 
     close(fig1); close(fig2);
 

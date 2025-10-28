@@ -6,7 +6,7 @@ beginComputerTime = sprintf("Eyeprocess Begin Computer Time: %s\n", datetime('no
 version_tag = readlines("version.txt");
 
 fprintf("EyeFlow version : %s\n", version_tag);
-fprintf("\n%s\n",beginComputerTime);
+fprintf("\n%s\n", beginComputerTime);
 
 [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
 
@@ -21,7 +21,7 @@ paths = paths(paths ~= ""); % remove empty lines
 % Add necessary paths
 addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\", ...
     "Loading\", "Parameters\", "Preprocessing\", ...
-    "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\");
+    "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\", "Outputs\");
 %% ensure set default parameters and no forced mask
 
 for ind = 1:length(paths)
@@ -32,7 +32,8 @@ for ind = 1:length(paths)
     end
 
     delete(fullfile(fullfile(path, 'json'), '*.json')); % remove old json files
-    copyfile(fullfile('Parameters', 'DefaultEyeFlowParams.json'), fullfile(path, 'json', 'input_EF_params.json'));
+
+    copyfile(fullfile('Parameters', 'DefaultEyeFlowParamsBatch.json'), fullfile(path, 'json', 'input_EF_params.json'));
 
     if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
         movefile(fullfile(path, 'mask', 'forceMaskArtery.png'), fullfile(path, 'mask', 'oldForceMaskArtery.png'));
@@ -54,7 +55,7 @@ if ~isfolder("Logs")
     mkdir("Logs");
 end
 
-fprintf('Log saving to Eyeflow\%s\n', fullfile('Logs', logFileName));
+fprintf("Log saving to Eyeflow\\%s\n", fullfile('Logs', logFileName));
 fid = fopen(fullfile('Logs', logFileName), 'a'); % 'a' for append if needed
 
 AIModels = AINetworksClass();
@@ -63,9 +64,6 @@ for ind = 1:length(paths)
 
     path = paths(ind);
     fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', path, ind, length(path));
-
-    
-    
 
     if isfolder(path)
         path = strcat(path, '\');
@@ -81,14 +79,13 @@ fclose(fid);
 
 endComputerTime = sprintf("Eyeprocess End Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
 
-
 fprintf('Log saved to Eyeflow\%s\n', fullfile('Logs', logFileName));
 
 fprintf("\n   (. ❛ ᴗ ❛.)\n");
 fprintf("\n");
 
-fprintf("\n%s\n",beginComputerTime);
-fprintf("\n%s\n",endComputerTime);
+fprintf("\n%s\n", beginComputerTime);
+fprintf("\n%s\n", endComputerTime);
 fprintf("\n");
 
 fprintf("=== EYEFLOWPROCESS END ===\n");
@@ -117,19 +114,18 @@ try
 
     ExecClass.preprocessData();
 
-    ExecClass.flag_segmentation = 0;
-    ExecClass.flag_spectral_analysis = 0;
-    ExecClass.flag_bloodFlowVelocity_analysis = 0;
-    ExecClass.flag_pulseWaveVelocity = 0;
-    ExecClass.flag_crossSection_analysis = 0;
-    ExecClass.flag_crossSection_export = 0;
+    ExecClass.flag_segmentation = 1;
+    ExecClass.flag_spectral_analysis = 1;
+    ExecClass.flag_bloodFlowVelocity_analysis = 1;
+    ExecClass.flag_pulseWaveVelocity = 1;
+    ExecClass.flag_crossSection_analysis = 1;
+    ExecClass.flag_crossSection_export = 1;
 
     ExecClass.analyzeData([]);
 catch e
     ME = e;
     MEdisp(e, path);
 end
-
 
 ReporterTimer = tic;
 fprintf("\n----------------------------------\n" + ...

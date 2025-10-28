@@ -38,7 +38,7 @@ properties (Access = public)
 
     % Files
     file ExecutionClass
-    AINetworks AINetworksClass
+    AINetworks
     drawer_list = {}
 end
 
@@ -207,6 +207,9 @@ methods (Access = public)
         % Actualizes the input Parameters
 
         fprintf("\n==================================\n");
+
+        fclose all; % Close any open files
+
         app.file.params_names = checkEyeFlowParamsFromJson(app.file.directory); % checks compatibility between found EF params and Default EF params of this version of EF.
         params = Parameters_json(app.file.directory, app.file.params_names{1});
 
@@ -228,7 +231,7 @@ methods (Access = public)
             app.file.flag_crossSection_analysis = app.generateCrossSectionSignalsCheckBox.Value;
             app.file.flag_crossSection_export = app.exportCrossSectionResultsCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
-            
+
             err = [];
 
             try
@@ -332,20 +335,24 @@ methods (Access = public)
 
         % Update lamp color to indicate processing
         app.statusLamp.Color = [1, 1/2, 0]; % Orange
+        drawnow;
 
         try
             parfor_arg = app.NumberofWorkersSpinner.Value;
             setupParpool(parfor_arg);
             app.file = ExecutionClass(app.file.directory);
+            app.file.AINetworks = app.AINetworks;
             app.file.preprocessData();
 
             % Update lamp color to indicate success
             app.statusLamp.Color = [0, 1, 0]; % Green
+            drawnow;
         catch ME
             MEdisp(ME, app.file.directory);
 
             % Update lamp color to indicate warning
             app.statusLamp.Color = [1, 0, 0]; % Red
+            drawnow;
             diary off
         end
 
