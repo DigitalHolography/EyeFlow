@@ -80,8 +80,8 @@ for col = 1:2
     vr_combined_path = fullfile(path_png, sprintf('%s_vr_%s.png', folder_name, name));
     vesselmap_path = fullfile(path_png, sprintf('%s_vessel_map_%s.png', folder_name, name));
     mask_path = fullfile(path_png, 'mask', sprintf('%s_M0_%s.png', folder_name, name));
-    M0_hd_path = fullfile(path_hd, 'png', sprintf('%s_M0.png', main_folder_name)); 
-    im1 = loadOrPlaceholder(vr_combined_path, vesselmap_path, mask_path,M0_hd_path);
+    M0_hd_path = fullfile(path_hd, 'png', sprintf('%s_M0.png', main_folder_name));
+    im1 = loadOrPlaceholder(vr_combined_path, vesselmap_path, mask_path, M0_hd_path);
 
     imshow(im1, [], 'Parent', ax1);
     axis(ax1, 'off');
@@ -165,38 +165,38 @@ end
 % === QUALITY VALIDATION SCORES SECTION ===
 
 % QV Scores
+if isfield(outputs.Extra.Data, 'QualityControl_slash_scoreMaskArtery') && isfield(outputs.Extra.Data, 'QualityControl_slash_scoreMaskVein')
+    qscores.maskArteryScore = outputs.Extra.Data.QualityControl_slash_scoreMaskArtery;
+    qscores.maskVeinScore = outputs.Extra.Data.QualityControl_slash_scoreMaskVein;
 
-qscores.maskArteryScore = outputs.Extra.Data.QualityControl_slash_scoreMaskArtery;
-qscores.maskVeinScore = outputs.Extra.Data.QualityControl_slash_scoreMaskVein;
+    axValidation = nexttile(t, [2 2]); % last row spans both columns
+    axis(axValidation, 'off');
 
+    qscoresNames = fieldnames(qscores);
+    numQscores = length(qscoresNames);
+    qscoresText = cell(numQscores, 1);
 
-axValidation = nexttile(t, [2 2]); % last row spans both columns
-axis(axValidation, 'off');
+    for i = 1:numQscores
+        qscoresValue = qscores.(qscoresNames{i});
+        qscoresText{i} = sprintf('%s = %f', qscoresNames{i}, qscoresValue);
+    end
 
-qscoresNames = fieldnames(qscores);
-numQscores = length(qscoresNames);
-qscoresText = cell(numQscores, 1);
+    qscoresFontSize = 12;
 
-for i = 1:numQscores
-    qscoresValue = qscores.(qscoresNames{i});
-    qscoresText{i} = sprintf('%s = %f', qscoresNames{i}, qscoresValue);
+    text(axValidation, 0, 1.1, 'Quality Control Scores:', ...
+        'FontWeight', 'bold', 'FontSize', paramTitleFontSize, ...
+        'VerticalAlignment', 'top', 'Interpreter', 'none');
+
+    if numQscores > 6
+        col1 = qscoresText(1:ceil(numQscores / 2));
+        col2 = qscoresText(ceil(numQscores / 2) + 1:end);
+        text(axValidation, 0.0, 0.9, col1, 'VerticalAlignment', 'top', 'FontSize', qscoresFontSize, 'Interpreter', 'none');
+        text(axValidation, 0.5, 0.9, col2, 'VerticalAlignment', 'top', 'FontSize', qscoresFontSize, 'Interpreter', 'none');
+    else
+        text(axValidation, 0.0, 0.9, qscoresText, 'VerticalAlignment', 'top', 'FontSize', qscoresFontSize, 'Interpreter', 'none');
+    end
+
 end
-
-qscoresFontSize = 12;
-
-text(axValidation, 0, 1.1, 'Quality Control Scores:', ...
-    'FontWeight', 'bold', 'FontSize', paramTitleFontSize, ...
-    'VerticalAlignment', 'top', 'Interpreter', 'none');
-
-if numQscores > 6
-    col1 = qscoresText(1:ceil(numQscores / 2));
-    col2 = qscoresText(ceil(numQscores / 2) + 1:end);
-    text(axValidation, 0.0, 0.9, col1, 'VerticalAlignment', 'top', 'FontSize', qscoresFontSize, 'Interpreter', 'none');
-    text(axValidation, 0.5, 0.9, col2, 'VerticalAlignment', 'top', 'FontSize', qscoresFontSize, 'Interpreter', 'none');
-else
-    text(axValidation, 0.0, 0.9, qscoresText, 'VerticalAlignment', 'top', 'FontSize', qscoresFontSize, 'Interpreter', 'none');
-end
-
 
 % === Export to PDF ===
 set(fig, 'Renderer', 'painters');

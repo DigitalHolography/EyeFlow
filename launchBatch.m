@@ -6,7 +6,7 @@ beginComputerTime = sprintf("Eyeprocess Begin Computer Time: %s\n", datetime('no
 version_tag = readlines("version.txt");
 
 fprintf("EyeFlow version : %s\n", version_tag);
-fprintf("\n%s\n",beginComputerTime);
+fprintf("\n%s\n", beginComputerTime);
 
 [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
 
@@ -64,9 +64,6 @@ for ind = 1:length(paths)
     path = paths(ind);
     fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', path, ind, length(path));
 
-    
-    
-
     if isfolder(path)
         path = strcat(path, '\');
     end
@@ -81,14 +78,13 @@ fclose(fid);
 
 endComputerTime = sprintf("Eyeprocess End Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
 
-
 fprintf('Log saved to Eyeflow\%s\n', fullfile('Logs', logFileName));
 
 fprintf("\n   (. ❛ ᴗ ❛.)\n");
 fprintf("\n");
 
-fprintf("\n%s\n",beginComputerTime);
-fprintf("\n%s\n",endComputerTime);
+fprintf("\n%s\n", beginComputerTime);
+fprintf("\n%s\n", endComputerTime);
 fprintf("\n");
 
 fprintf("=== EYEFLOWPROCESS END ===\n");
@@ -129,7 +125,6 @@ catch e
     ME = e;
     MEdisp(e, path);
 end
-
 
 ReporterTimer = tic;
 fprintf("\n----------------------------------\n" + ...
