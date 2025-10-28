@@ -22,7 +22,6 @@ properties
 
     % AI Networks
     AINetworks AINetworksClass
-    
 
     % Preprocessed Data
     M0_ff single
@@ -93,7 +92,7 @@ methods
         % Initialize Modules
         obj.Analyzer = AnalyzerClass();
 
-        p = Parameters_json(path, obj.param_name);
+        Parameters_json(path, obj.param_name);
 
         fprintf("- Video Loading took : %ds\n", round(toc(tLoading)))
     end
@@ -130,7 +129,6 @@ methods
     function analyzeData(obj, app)
         % Main analysis coordinator
         % Initialize output system
-        
 
         AnalyzerTimer = tic;
 
@@ -140,7 +138,6 @@ methods
         ToolBox.setOutput(obj.Output);
         ToolBox.setCache(obj.Cache);
 
-        
         obj.Cache.createtimeVector(ToolBox, size(obj.M0_ff, 3));
 
         obj.Reporter = ReporterClass(obj);
