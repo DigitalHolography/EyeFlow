@@ -18,10 +18,63 @@ end
 paths = strtrim(readlines(fullfile(txt_path, txt_name)));
 paths = paths(paths ~= ""); % remove empty lines
 
-% Add necessary paths
-addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\", ...
-    "Loading\", "Parameters\", "Preprocessing\", ...
-    "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\", "Outputs\");
+if isdeployed
+    % When deployed, MCR creates a cache folder (ctfroot) and unpacks our files
+    % into a subfolder. We will find the correct folder by excluding known MCR
+    % directories and then selecting the remaining candidate with the shortest name.
+    
+    cache_root = ctfroot;
+    
+    % Define the list of internal MCR folders/files to ignore.
+    % We include '.' and '..' which represent the current and parent directories.
+    blacklist = {'.', '..', '.matlab', '.META', 'toolbox'};
+    
+    % Get all contents of the cache root
+    dir_contents = dir(cache_root);
+    
+    % --- Filtering Logic ---
+    % 1. Keep only the items that are directories.
+    % 2. From those, remove any that are on our blacklist.
+    is_directory = [dir_contents.isdir];
+    is_blacklisted = ismember({dir_contents.name}, blacklist);
+    
+    candidate_folders = dir_contents(is_directory & ~is_blacklisted);
+    if ~isempty(candidate_folders)
+        % We have one or more candidate folders (e.g., 'EyeFlowLaunc' and 'EyeFlowLaunc_...').
+        % Find the one with the shortest name, as you suggested.
+        
+        folder_names = {candidate_folders.name};
+        [~, shortest_name_index] = min(cellfun(@length, folder_names));
+        
+        app_folder_name = folder_names{shortest_name_index};
+        
+        % Build the full, correct path to our application's root
+        appRoot = fullfile(cache_root, app_folder_name);
+    else
+        % If, after filtering, no candidate folders are left, the application cannot run.
+        error('FATAL: Could not find any valid application data subfolders within the MCR cache at %s.', cache_root);
+    end
+else
+    % This part is for running in the MATLAB development environment
+    [appRoot, ~, ~] = fileparts(mfilename('fullpath'));
+end
+
+fprintf('Application Root correctly determined as: %s\n', appRoot);
+
+cd(appRoot);
+
+addpath( "BloodFlowVelocity",...
+         "BloodFlowVelocity\Elastography",...
+         "CrossSection",...
+         "Loading",...
+         "Parameters",...
+         "Preprocessing",...
+         "Scripts",...
+         "Segmentation",...
+         "SHAnalysis",...
+         "Tools",...
+         "Outputs");
+
 %% ensure set default parameters and no forced mask
 
 for ind = 1:length(paths)
@@ -33,7 +86,8 @@ for ind = 1:length(paths)
 
     delete(fullfile(fullfile(path, 'json'), '*.json')); % remove old json files
 
-    copyfile(fullfile('Parameters', 'DefaultEyeFlowParamsBatch.json'), fullfile(path, 'json', 'input_EF_params.json'));
+    copyfile(fullfile(appRoot, 'Parameters', 'DefaultEyeFlowParamsBatch.json'), ...
+         fullfile(path, 'json', 'input_EF_params.json'));
 
     if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
         movefile(fullfile(path, 'mask', 'forceMaskArtery.png'), fullfile(path, 'mask', 'oldForceMaskArtery.png'));
