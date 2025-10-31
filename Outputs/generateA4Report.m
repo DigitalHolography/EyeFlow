@@ -77,37 +77,37 @@ for col = 1:2
 
     % Top row (1 column at 2x height)
     ax1 = nexttile(t, col, [4 1]);
-    vr_combined_path = fullfile(path_png, sprintf('%s_vr_%s.png', folder_name, name));
+    % vr_combined_path = fullfile(path_png, sprintf('%s_vr_%s.png', folder_name, name));
     vesselmap_path = fullfile(path_png, sprintf('%s_vessel_map_%s.png', folder_name, name));
     mask_path = fullfile(path_png, 'mask', sprintf('%s_M0_%s.png', folder_name, name));
     M0_hd_path = fullfile(path_hd, 'png', sprintf('%s_M0.png', main_folder_name));
-    im1 = loadOrPlaceholder(vr_combined_path, vesselmap_path, mask_path, M0_hd_path);
+    im1 = loadOrPlaceholder(vesselmap_path, mask_path, M0_hd_path);
 
     imshow(im1, [], 'Parent', ax1);
     axis(ax1, 'off');
 
     % Middle row (1 column at 1x height)
     ax2 = nexttile(t, 8 + col, [3 1]);
-    vr_path = fullfile(path_png, sprintf('%s_plot_vr_%s.png', folder_name, name));
+    % vr_path = fullfile(path_png, sprintf('%s_plot_vr_%s.png', folder_name, name));
     ri_path = fullfile(path_png, sprintf('%s_RI_v_%s.png', folder_name, name));
-    im2 = loadOrPlaceholder(vr_path, ri_path);
+    im2 = loadOrPlaceholder(ri_path);
 
     imshow(im2, [], 'Parent', ax2);
     axis(ax2, 'off');
 
     % Bottom row (1 column at 1x height)
     ax3 = nexttile(t, 14 + col, [3 1]);
-    volume_path = fullfile(path_png, sprintf('%s_strokeAndTotalVolume_%s.png', folder_name, name));
+    % volume_path = fullfile(path_png, sprintf('%s_strokeAndTotalVolume_%s.png', folder_name, name));
 
-    if strcmp(name, 'artery')
-        wave_path = fullfile(path_png, sprintf('%s_ArterialWaveformAnalysis_v_%s.png', folder_name, name));
-    else
-        wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
-    end
+    % if strcmp(name, 'artery')
+    %     wave_path = fullfile(path_png, sprintf('%s_ArterialWaveformAnalysis_v_%s.png', folder_name, name));
+    % else
+    %     wave_path = fullfile(path_png, sprintf('%s_VenousWaveformAnalysis_v_%s.png', folder_name, name));
+    % end
 
     find_systole_path = fullfile(path_png, sprintf('%s_find_systoles_indices_%s.png', folder_name, name));
 
-    im3 = loadOrPlaceholder(volume_path, wave_path, find_systole_path);
+    im3 = loadOrPlaceholder(find_systole_path);
 
     imshow(im3, [], 'Parent', ax3);
     axis(ax3, 'off');
