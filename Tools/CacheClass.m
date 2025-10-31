@@ -68,7 +68,7 @@ methods
             % binsize = 64;
             % (ToolBox.holo_frames.last - ToolBox.holo_frames.first + 1) / ToolBox.stride;
             if time_stamps.last <= time_stamps.first
-                fprintf('Invalid time stamps detected, using default fs and stride');
+                disp('Invalid time stamps detected, using default fs and stride');
                 time_array = getTimeLinear(ToolBox, numFrames);
             else
 
@@ -77,7 +77,7 @@ methods
                     time_array = getTimeTimestamp(time_stamps, numFrames);
                 catch
                     % If error occurs, use default fs and stride
-                    fprintf('Could not create time vector from time stamps, using default fs and stride');
+                    disp('Could not create time vector from time stamps, using default fs and stride');
                     time_array = getTimeLinear(ToolBox, numFrames);
                 end
 
