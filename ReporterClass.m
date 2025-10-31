@@ -64,6 +64,13 @@ methods
 
         ToolBox = getGlobalToolBox;
 
+        if ~isempty(ToolBox.Output)
+            ToolBox.Output.writeJson(fullfile(ToolBox.path_json, sprintf("%s_output.json", ToolBox.folder_name)));
+            ToolBox.Output.writeHdf5(fullfile(ToolBox.path_h5, sprintf("%s_output.h5", ToolBox.folder_name)));
+        else
+            ToolBox.Output = OutputClass();
+        end
+
         try
             generateA4Report(ME);
         catch ME
