@@ -32,6 +32,7 @@ properties
     xy_barycenter double % cached xy_barycenter
     xy_CRA double % cached xy_CRA
     xy_CRV double % cached xy_CRV
+    xy_papilla double
 
     % Heartbeat
     HeartBeatFFT double % cached heartbeat frequency in Hz
@@ -67,7 +68,7 @@ methods
             % binsize = 64;
             % (ToolBox.holo_frames.last - ToolBox.holo_frames.first + 1) / ToolBox.stride;
             if time_stamps.last <= time_stamps.first
-                warning('Invalid time stamps detected, using default fs and stride');
+                fprintf('Invalid time stamps detected, using default fs and stride');
                 time_array = getTimeLinear(ToolBox, numFrames);
             else
 
@@ -76,7 +77,7 @@ methods
                     time_array = getTimeTimestamp(time_stamps, numFrames);
                 catch
                     % If error occurs, use default fs and stride
-                    warning('Could not create time vector from time stamps, using default fs and stride');
+                    fprintf('Could not create time vector from time stamps, using default fs and stride');
                     time_array = getTimeLinear(ToolBox, numFrames);
                 end
 
