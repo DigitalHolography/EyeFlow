@@ -164,7 +164,8 @@ end
 
 % === QUALITY VALIDATION SCORES SECTION ===
 
-% QV Scores
+%{
+ % QV Scores
 if isfield(outputs.Extra.Data, 'QualityControl_slash_scoreMaskArtery') && isfield(outputs.Extra.Data, 'QualityControl_slash_scoreMaskVein')
     qscores.maskArteryScore = outputs.Extra.Data.QualityControl_slash_scoreMaskArtery;
     qscores.maskVeinScore = outputs.Extra.Data.QualityControl_slash_scoreMaskVein;
@@ -197,6 +198,7 @@ if isfield(outputs.Extra.Data, 'QualityControl_slash_scoreMaskArtery') && isfiel
     end
 
 end
+%}
 
 % === Export to PDF ===
 set(fig, 'Renderer', 'painters');
