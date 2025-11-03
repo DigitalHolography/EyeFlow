@@ -22,6 +22,11 @@ function [alphaWom, pseudoViscosity, fitParams] = WomersleyNumberEstimation(v_pr
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
+PIXEL_SIZE = params.json.generateCrossSectionSignals.PixelSize;
+
+SYS_IDXS = ToolBox.Cache.sysIdx;
+DIAS_IDXS = ToolBox.Cache.diasIdx;
+
 FFT_PADDING_FACTOR = 16;
 
 alphaWom = NaN;
@@ -29,7 +34,7 @@ pseudoViscosity = NaN;
 fitParams = struct('alpha', NaN, 'amplitude', NaN, 'center', NaN, 'width', NaN);
 
 v_profile_avg = mean(v_profile, 2);
-valid_idxs = v_profile_avg ~= 0;
+valid_idxs = v_profile_avg > 0;
 v_profile = v_profile(valid_idxs, :);
 crossSectionLength = size(v_profile, 1);
 
@@ -58,7 +63,6 @@ if isempty(cardiac_idxs)
 end
 
 % FIT PART
-
 
 v_meas = mean(v_profile_ft(:, cardiac_idxs), 2);
 
@@ -93,25 +97,39 @@ try
     fitParams.width = p_fit(5);
 
     omega = 2 * pi * cardiac_frequency;
-    pseudoViscosity = NaN;
+
+    RHO_BLOOD = 1060; % Density of blood in kg/m^3
+
+    vessel_radius_meters = PIXEL_SIZE * crossSectionLength / 2 * fitParams.width;
+
+    numerator = (vessel_radius_meters^2) * omega * RHO_BLOOD;
+    denominator = alphaWom^2;
+    
+    if denominator > 0
+        pseudoViscosity = numerator / denominator;
+    else
+        pseudoViscosity = NaN;
+    end
 
 catch ME
     warning('Womersley fit failed for %s (idx %d): %s', name, idx, ME.message);
-    % Return NaNs if fit fails
     return;
 end
 
-% --- Plotting and Saving Results ---
-
 uWom_fit = generate_womersley_model(p_fit, x_coords, uWom_base);
+
+[parabole_fit_systole, parabole_fit_diastole] = analyse_lumen_size(v_profile, SYS_IDXS, DIAS_IDXS);
+
+
+% Figures
 
 hFig = figure("Visible", "off");
 hold on;
 title(sprintf('Womersley Fit for %s (idx %d)', name, idx), 'Interpreter', 'none');
-plot(x_coords, real(v_meas), 'b-', 'LineWidth', 2, 'DisplayName', 'Measured Data (Real)');
-plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 2, 'DisplayName', 'Measured Data (Imag)');
-plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 2, 'DisplayName', 'Model Fit (Real)');
-plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 2, 'DisplayName', 'Model Fit (Imag)');
+plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1, 'DisplayName', 'Measured Data (Real)');
+plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1, 'DisplayName', 'Measured Data (Imag)');
+plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1, 'DisplayName', 'Model Fit (Real)');
+plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1, 'DisplayName', 'Model Fit (Imag)');
 hold off;
 
 xlim([-1 1]);
@@ -123,18 +141,17 @@ grid on;
 axis tight;
 set(gca, 'LineWidth', 1.5);
 
-% Add an annotation box with the key results
 fit_string = sprintf('α Womersley: %.2f\nCenter: %.2f\nWidth: %.2f', ...
                      fitParams.alpha, fitParams.center, fitParams.width);
-annotation('textbox', [0.2 0.7 0.2 0.2], 'String', fit_string, ...
-            'FitBoxToText', 'on', 'BackgroundColor', 'w', ...
-            'EdgeColor', 'k', 'FontSize', 12);
+annotation('textbox', [0.15 0.78 0.25 0.1], 'String', fit_string, ...
+            'FitBoxToText', 'off', 'BackgroundColor', 'w', ...
+            'EdgeColor', 'k', 'FontSize', 12, 'FontSize', 10);
 
-% Export static figure
 save_path = fullfile(ToolBox.path_png, 'Womersley');
 if ~isfolder(save_path)
     mkdir(save_path);
 end
+
 save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx));
 
 try
@@ -143,61 +160,131 @@ catch export_error
     warning('Could not save figure');
 end
 
-% Close the figure if it was created invisibly
+
 if ~strcmpi(get(hFig, 'Visible'), 'on')
     close(hFig);
 end
 
 end
 
-    
-function model_profile = generate_womersley_model(p, x, uWom_base)
-% GENERATE_WOMERSLEY_MODEL Creates a scaled and positioned Womersley velocity profile.
-%
-% This function takes a parameter vector 'p' and generates the corresponding
-% theoretical Womersley velocity profile on a given spatial coordinate axis 'x'.
-%
-% INPUTS:
-%   p          - A 1x5 vector of model parameters:
-%                p(1): alpha (Womersley number)
-%                p(2): amplitude_real (real part of the complex scaling factor)
-%                p(3): amplitude_imag (imaginary part of the complex scaling factor)
-%                p(4): center (center position of the vessel on the x-axis)
-%                p(5): width (effective radius of the vessel)
-%
-%   x          - A 1xN vector representing the fixed spatial coordinates where
-%                the profile should be evaluated.
-%
-%   uWom_base  - A function handle to the base Womersley equation.
-%                It should accept (alpha, r) as inputs, where 'r' is the
-%                normalized radius from -1 to 1.
-%
-% OUTPUT:
-%   model_profile - A 1xN complex-valued vector representing the generated
-%                   Womersley velocity profile.
 
-% 1. Unpack parameters for clarity
+% +=====================================================================+ %
+% |                          HELPER FUNCTIONS                           | %
+% +=====================================================================+ %
+
+
+function model_profile = generate_womersley_model(p, x, uWom_base)
+
 alpha         = p(1);
 amplitude     = p(2) + 1i * p(3); % Reconstruct complex amplitude
 center        = p(4);
 width         = p(5);
 
-% 2. Map the fixed 'x' coordinates to the vessel's normalized radius 'r'.
-% This transforms the spatial coordinates into the model's coordinate system
-% where the vessel exists from r = -1 to r = +1.
 r = (x - center) / width;
 
-% 3. Calculate the theoretical, unitless Womersley profile using the base function.
 profile = uWom_base(alpha, r);
 
-% 4. Enforce the no-slip boundary condition. The model is only valid
-% inside the vessel walls (where abs(r) <= 1). Outside the walls, the
-% velocity must be zero.
 profile(abs(r) > 1) = 0;
 
-% 5. Scale the unit profile by the complex amplitude to match the data's
-% magnitude and overall phase. Assign to the output variable.
 model_profile = amplitude * profile;
+end
+
+
+
+function [fit_systole, fit_diastole] = analyse_lumen_size(v_profile, systole_frames, diastole_frames)
+% TODO: Check for the type of the frames, will not work currently.
+
+if nargin < 3
+    error('Three inputs are required: v_profile, systole_frames, and diastole_frames.');
+end
+
+v_systole = v_profile(:, systole_frames);
+avg_profile_systole = mean(v_systole, 2, 'omitnan');
+
+
+v_diastole = v_profile(:, diastole_frames);
+avg_profile_diastole = mean(v_diastole, 2, 'omitnan');
+
+
+try
+    fit_systole = fit_parabol_diam(avg_profile_systole);
+catch ME
+    warning(ME.identifier, 'Failed to fit the systolic profile. Error: %s', ME.message);
+    fit_systole = [];
+end
+
+try
+    fit_diastole = fit_parabol_diam(avg_profile_diastole);
+catch ME
+    warning(ME.identifier, 'Failed to fit the diastolic profile. Error: %s', ME.message);
+    fit_diastole = [];
+end
+
+
+end
+
+
+function fit_results = fit_parabol_diam(velocity_profile)
+% Fits a parabolic profile and calculates the diameter from its roots.
+%
+% This function is a wrapper for customPoly2Fit and customPoly2Roots.
+% It takes a 1D velocity profile, fits a quadratic polynomial (parabola)
+% to it, finds the roots of the polynomial, and calculates the distance
+% between them, which represents the diameter.
+%
+% INPUT:
+%   velocity_profile - A 1D column or row vector of velocity data.
+%
+% OUTPUT:
+%   fit_results      - A struct containing all results:
+%       .diameter                   : The calculated diameter (abs(root1 - root2)).
+%       .diameter_error             : The propagated error of the diameter.
+%       .rsquared                   : The R-squared value of the parabolic fit.
+%       .p1, .p2, .p3               : Coefficients of the fitted polynomial.
+%       .p1_err, .p2_err, .p3_err   : Errors of the coefficients.
+%       .root1, .root2              : The two roots of the polynomial.
+%       .root1_err, .root2_err      : The errors of the roots.
+%
+
+
+if isempty(velocity_profile) || numel(velocity_profile) < 3
+    warning('Input velocity profile is too short for a parabolic fit. Returning empty.');
+    fit_results = struct('diameter', NaN, 'diameter_error', NaN, 'rsquared', NaN);
+    return;
+end
+
+% Ensure column vector
+y = velocity_profile(:);
+x = (1:length(y))';
+
+
+[p1, p2, p3, rsquared, p1_err, p2_err, p3_err] = customPoly2Fit(x, y);
+
+% Check poor fit
+if rsquared < 0.8
+    warning('R-squared value (%.2f) is low. The fit may not be reliable.', rsquared);
+end
+
+[r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3, p1_err, p2_err, p3_err);
+
+diameter = abs(r1 - r2);
+diameter_error = sqrt(r1_err^2 + r2_err^2);
+
+fit_results = struct();
+
+fit_results.diameter = diameter;
+fit_results.diameter_error = diameter_error;
+fit_results.rsquared = rsquared;
+fit_results.p1 = p1;
+fit_results.p2 = p2;
+fit_results.p3 = p3;
+fit_results.p1_err = p1_err;
+fit_results.p2_err = p2_err;
+fit_results.p3_err = p3_err;
+fit_results.root1 = r1;
+fit_results.root2 = r2;
+fit_results.root1_err = r1_err;
+fit_results.root2_err = r2_err;
 
 end
 
