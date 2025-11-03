@@ -3,31 +3,27 @@ function VideoNonRigidRegistering(obj, apply)
 v = obj.M0;
 [numX, numY, numFrames] = size(v);
 ref_img = mean(v, 3);
-low_freq = imgaussfilt(ref_img, 35);
+low_freq = imgaussfilt(ref_img, 100);
 ref_img = ref_img ./ low_freq;
+ref_img = (ref_img - min(ref_img(:))) / (max(ref_img(:)) - min(ref_img(:)));
 
 stabilized = zeros(numX, numY, numFrames);
+field = zeros(numX, numY, 2, numFrames);
 
 %smoothVideo = imgaussfilt3(obj.M0, [0.1 0.1 2]);
 parfor k = 1:numFrames
     %get the frame, stabilize it, save it
     tgt = safeConvertFrame(v(:, :, k));
-    tgt = tgt ./ low_freq;
-    [~, s] = diffeomorphicDemon(tgt, ref_img, tgt);
-
-    stabilized(:, :, k) = s;
-end
-
-ref_img2 = log(mean(stabilized, 3));
-field = zeros(numX, numY, 2, numFrames);
-
-parfor k = 1:numFrames
-    %get the frame, stabilize it, save it
-    tgt = safeConvertFrame(v(:, :, k));
-    tgt = tgt ./ low_freq;
-    [f, ~] = diffeomorphicDemon(tgt, ref_img2, tgt);
+    [f, s] = diffeoDemon(ref_img, tgt, ...
+    "STEP_SIZE", 4, ...
+    "BLOCK_SIZE", 30, ...
+    "SEARCH_RADIUS", 5, ...
+    "SSD_THRESHOLD", 0.1, ...
+    "NUM_ITERS", 1 ...
+    );
 
     field(:, :, :, k) = f;
+    stabilized(:, :, k) = s;
 end
 
 D.stabilized = stabilized;
@@ -36,9 +32,14 @@ D.field = field;
 A1 = field(:, :, 1, :);
 A2 = field(:, :, 2, :);
 
+% Compute the temporal derivative of mag and phase
 AA(:, :, :) = complex(A1, A2);
 absAA = abs(AA);
 [~, ~, Ft] = gradient(absAA);
+D.mag_temporal_derivative = Ft;
+angleAA = angle(AA);
+[~, ~, Ft] = gradient(angleAA);
+D.phase_temporal_derivative = Ft;
 
 % dA1 = diff(squeeze(A1), 1, 3);
 % dA2 = diff(squeeze(A2), 1, 3);
@@ -46,7 +47,6 @@ absAA = abs(AA);
 % dA(:, :, 1, :) = dA1;
 % dA(:, :, 2, :) = dA2;
 
-D.gradient = Ft;
 
 saveAsGifs(D);
 obj.displacementField = D;
@@ -90,7 +90,7 @@ source = im2double(source);
 target = im2double(target);
 
 % Diffeomorphic demons
-iters = 5;
+iters = 3;
 accSmooth = 1.0;
 
 [D, ~] = imregdemons(source, target, iters, ...
@@ -113,7 +113,8 @@ else
     I = frame;
 end
 
-I = im2double(I); % keep everything in [0,1]
+I = im2double(I);
+I = (I - min(I(:))) / (max(I(:)) - min(I(:))); % keep everything in [0,1]
 end
 
 function saveAsGifs(D)
@@ -134,7 +135,7 @@ for k = 1:size(D.stabilized, 3)
     normalizedStabilized(:, :, k) = uint8(normalizedFrame * 255);
 end
 
-writeGifOnDisc(normalizedStabilized, 'stabilized');
+writeGifOnDisc(normalizedStabilized, 'M0_stabilized');
 
 % Compute magnitude and phase of displacement field
 Xcomp = squeeze(D.field(:, :, 1, :));
@@ -160,5 +161,6 @@ writeGifOnDisc(normMagnitude, 'displacement_magnitude');
 normPhase = (phase + pi) / (2 * pi); % normalize to [0,1]
 normPhase = uint8(normPhase * 255);
 writeGifOnDisc(normPhase, 'displacement_phase');
-writeGifOnDisc(mat2gray(D.gradient), 'displacement_temporal_derivative');
+writeGifOnDisc(mat2gray(D.mag_temporal_derivative), 'displacement_mag_temporal_derivative');
+writeGifOnDisc(mat2gray(D.phase_temporal_derivative), 'displacement_phase_temporal_derivative');
 end
