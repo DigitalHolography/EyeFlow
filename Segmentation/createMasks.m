@@ -18,7 +18,7 @@ params = ToolBox.getParams;
 saveFigures = params.saveFigures;
 path = ToolBox.path_main;
 folder_steps = fullfile('mask', 'steps');
-error("LOL")
+
 if ~exist(fullfile(ToolBox.path_main, folder_steps), 'dir')
     mkdir(ToolBox.path_main, folder_steps);
 end
