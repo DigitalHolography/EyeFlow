@@ -258,7 +258,7 @@ if saveFigures
     v_RMS_img = mean(v_RMS_video, 3, 'omitnan');
     diasys_diff = M0_Systole_img - M0_Diastole_img;
     RGBdiasys = labDuoImage(rescale(v_RMS_img), diasys_diff);
-    saveMaskImage(RGBdiasys, 'vessel_20_diasys_diff.png', isStep = true);
+    saveMaskImage(RGBdiasys, 'vessel_21_diasys_diff.png', isStep = true);
 end
 
 % Process heart beat data if enough cycles detected
