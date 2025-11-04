@@ -133,7 +133,7 @@ fclose(fid);
 
 endComputerTime = sprintf("Eyeprocess End Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
 
-fprintf('Log saved to Eyeflow\%s\n', fullfile('Logs', logFileName));
+fprintf('Log saved to Eyeflow\\%s\n', fullfile('Logs', logFileName));
 
 fprintf("\n   (. ❛ ᴗ ❛.)\n");
 fprintf("\n");
