@@ -1,4 +1,4 @@
-function createMasks(M0_ff, VesselSegmentationNet, AVSegmentationNet)
+function createMasks(M0_ff, VesselSegmentationNet, AVSegmentationNet, EyeDiaphragmSegmentationNet)
 % createMasks - Creates masks for arteries, veins, and neighbors from a video of retinal images.
 % Inputs:
 %   M0_ff: 3D matrix of the video data (height x width x time)
@@ -11,6 +11,7 @@ arguments
     M0_ff double
     VesselSegmentationNet = []
     AVSegmentationNet = []
+    EyeDiaphragmSegmentationNet = []
 end
 
 ToolBox = getGlobalToolBox;
@@ -58,7 +59,13 @@ cmapAV = ToolBox.Cache.cmapAV;
 M0_ff_img = squeeze(mean(M0_ff, 3));
 saveMaskImage(M0_ff_img, 'all_10_M0.png', isStep = true)
 
-maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
+% 1) Diaphragm Mask Creation
+if maskParams.EyeDiaphragmSegmentationNet
+    maskDiaphragm = opticDiskDetect(M0_ff_img, EyeDiaphragmSegmentationNet);
+else
+    maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
+end
+
 saveMaskImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, 'all_11_maskDiaphragm.png', isStep = true)
 maskCircle = diskMask(numX, numY, cropChoroidRadius, 'center', [x_c / numX, y_c / numY]);
 

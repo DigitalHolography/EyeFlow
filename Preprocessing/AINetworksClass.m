@@ -7,6 +7,10 @@ properties
     AVSegmentationNet
     OpticDiskDetectorParam
     OpticDiskDetectorNet
+    EyeSideClassifierParam
+    EyeSideClassifierNet
+    EyeDiaphragmSegmentationParam
+    EyeDiaphragmSegmentationNet
 end
 
 methods
@@ -29,12 +33,21 @@ methods
             mkdir('Models');
         end
 
+        pythonFolder = 'C:\Users\Michael\Documents\MATLAB\EyeFlow\Preprocessing';
+        if count(py.sys.path, pythonFolder) == 0
+            insert(py.sys.path, int32(0), pythonFolder);
+        end
+
+        py.importlib.invalidate_caches(); % refresh import cache
+
         maskParams = params.json.Mask;
 
         if ~strcmp(maskParams.VesselSegmentationMethod, 'AI') && ...
                 ~maskParams.AVDiasysSegmentationNet && ...
                 ~maskParams.AVCorrelationSegmentationNet && ...
-                ~maskParams.OpticDiskDetectorNet
+                ~maskParams.OpticDiskDetectorNet && ...
+                ~maskParams.PapillaDiskDetectorNet && ...
+                ~maskParams.EyeSideClassifierNet
 
             fprintf("    - No AI Networks selected in parameters. Skipping loading.\n");
             return; % No AI networks needed
@@ -44,9 +57,12 @@ methods
         OpticDiskDetectorParamChanged = ~isequal(obj.OpticDiskDetectorParam, maskParams.OpticDiskDetectorNet);
 
         if OpticDiskDetectorParamChanged && maskParams.OpticDiskDetectorNet
+            pyenv; % Ensure Python environment is initialized
+
             tic
             fprintf("    - Loading Optic Disk Detector Network...\n");
-            [obj.OpticDiskDetectorNet] = loadOpticDiskNetwork();
+            % [obj.OpticDiskDetectorNet] = loadOpticDiskNetwork();
+            [obj.OpticDiskDetectorNet] = py.import_yolo_model.import_yolo_model("runs/train/optic_disk_segmentation2/weights/best.pt"); % Load the trained model
             obj.OpticDiskDetectorParam = maskParams.OpticDiskDetectorNet;
             fprintf("    - Loading Optic Disk Detector Network took: %ds\n", round(toc));
         end
@@ -84,7 +100,33 @@ methods
             fprintf("    - Loading AV Segmentation Networks took: %ds\n", round(toc));
         end
 
-        if ~AVSegmentationParamChanged && ~VesselSegmentationParamChanged
+        % Load Eye Side Classifier Network if parameter changed
+        EyeSideClassifierParamChanged = ~isequal(obj.EyeSideClassifierParam, maskParams.EyeSideClassifierNet);
+
+        if EyeSideClassifierParamChanged && maskParams.EyeSideClassifierNet
+            tic
+            fprintf("    - Loading Eye Side Classifier Network...\n");
+            [obj.EyeSideClassifierNet] = loadEyeSideClassifierNetwork();
+            obj.EyeSideClassifierParam = maskParams.EyeSideClassifierNet;
+            fprintf("    - Loading Eye Side Classifier Network took: %ds\n", round(toc));
+        end
+
+        % Load Eye Diaphragm Segmentation Network if parameter changed
+        EyeDiaphragmSegmentationParamChanged = ~isequal(obj.EyeDiaphragmSegmentationParam, maskParams.EyeDiaphragmSegmentationNet);
+
+        if EyeDiaphragmSegmentationParamChanged && maskParams.EyeDiaphragmSegmentationNet
+            tic
+            fprintf("    - Loading Eye Diaphragm Segmentation Network...\n");
+            [obj.EyeDiaphragmSegmentationNet] = loadEyeDiaphragmSegmentation();
+            obj.EyeDiaphragmSegmentationParam = maskParams.EyeDiaphragmSegmentationNet;
+            fprintf("    - Loading Eye Diaphragm Segmentation Network took: %ds\n", round(toc));
+        end
+
+        if ~AVSegmentationParamChanged ...
+                && ~VesselSegmentationParamChanged ...
+                && ~OpticDiskDetectorParamChanged ...
+                && ~EyeSideClassifierParamChanged ...
+                && ~PapillaDiskDetectorParamChanged
             fprintf("    - AI Networks are up to date. No loading needed.\n");
         end
 
