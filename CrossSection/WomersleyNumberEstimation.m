@@ -1,4 +1,4 @@
-function [alphaWom, pseudoViscosity, fitParams] = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx)
+function [alphaWom, pseudoViscosity, fitParams, estimated_width] = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx)
 % WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
 % by fitting the velocity profile to a Womersley flow model.
 %
@@ -32,6 +32,7 @@ FFT_PADDING_FACTOR = 16;
 alphaWom = NaN;
 pseudoViscosity = NaN;
 fitParams = struct('alpha', NaN, 'amplitude', NaN, 'center', NaN, 'width', NaN);
+estimated_width = struct('systole', [], 'diastole', []);
 
 v_profile_avg = mean(v_profile, 2);
 valid_idxs = v_profile_avg > 0;
@@ -120,6 +121,8 @@ uWom_fit = generate_womersley_model(p_fit, x_coords, uWom_base);
 
 [parabole_fit_systole, parabole_fit_diastole] = analyse_lumen_size(v_profile_good_idx_sav, SYS_IDXS, DIAS_IDXS);
 
+estimated_width.systole = parabole_fit_systole;
+estimated_width.diastole = parabole_fit_diastole;
 
 % Figures
 
