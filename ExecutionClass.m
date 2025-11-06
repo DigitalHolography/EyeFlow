@@ -161,18 +161,30 @@ methods
             obj.v_mean_RGB = obj.Analyzer.v_mean_RGB;
         end
 
-        if obj.flag_pulseWaveVelocity
-            obj.Analyzer.performPulseVelocityAnalysis(obj);
+        try
+
+            if obj.flag_pulseWaveVelocity
+                obj.Analyzer.performPulseVelocityAnalysis(obj);
+            end
+
+        catch ME
+            warning("Pulse Wave Velocity Analysis failed");
         end
 
-        if obj.flag_crossSection_analysis
-            obj.Analyzer.performCrossSectionAnalysis(obj);
-            obj.Q_results_A = obj.Analyzer.Q_results_A;
-            obj.Q_results_V = obj.Analyzer.Q_results_V;
-        end
+        try
 
-        if obj.flag_crossSection_export
-            obj.Analyzer.generateexportCrossSectionResults(obj);
+            if obj.flag_crossSection_analysis
+                obj.Analyzer.performCrossSectionAnalysis(obj);
+                obj.Q_results_A = obj.Analyzer.Q_results_A;
+                obj.Q_results_V = obj.Analyzer.Q_results_V;
+            end
+
+            if obj.flag_crossSection_export
+                obj.Analyzer.generateexportCrossSectionResults(obj);
+            end
+
+        catch ME
+            warning("Cross-Section Analysis failed");
         end
 
         if obj.flag_spectral_analysis && ~isempty(obj.SH)

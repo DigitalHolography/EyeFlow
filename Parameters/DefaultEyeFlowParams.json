@@ -73,7 +73,7 @@
     "ExtendedFlag": false
   },
   "SizeOfField": {
-    "SmallRadiusRatio": 0.15,
+    "SmallRadiusRatio": 0.10,
     "BigRadiusRatio": 0.35
   },
   "generateCrossSectionSignals": {
