@@ -1,173 +1,206 @@
 function [alphaWom, pseudoViscosity, fitParams, estimated_width] = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx)
-% WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
-% by fitting the velocity profile to a Womersley flow model.
-%
-% This improved version fits a 5-parameter model to find the optimal:
-% 1. alpha: Womersley number
-% 2. amplitude: Complex scaling factor (magnitude and phase)
-% 3. center: Center position of the vessel
-% 4. width: Effective radius of the vessel
-%
-% INPUT:
-%   v_profile         - Array (crossSectionLength x numFrames) of velocity data.
-%   cardiac_frequency - Cardiac frequency in Hz.
-%   name, idx, ...    - Identifiers for saving the output plot.
-%
-% OUTPUT:
-%   alphaWom          - Estimated Womersley number.
-%   pseudoViscosity   - Derived dynamic viscosity in Pa·s.
-%   fitParams         - A struct containing all fitted parameters.
-
-
-ToolBox = getGlobalToolBox;
-params = ToolBox.getParams;
-NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
-PIXEL_SIZE = params.px_size;
-
-SYS_IDXS = ToolBox.Cache.sysIdx;
-DIAS_IDXS = ToolBox.Cache.diasIdx;
-
-FFT_PADDING_FACTOR = 16;
-
-alphaWom = NaN;
-pseudoViscosity = NaN;
-fitParams = struct('alpha', NaN, 'amplitude', NaN, 'center', NaN, 'width', NaN);
-estimated_width = struct('systole', [], 'diastole', []);
-
-v_profile_avg = mean(v_profile, 2);
-valid_idxs = v_profile_avg > 0;
-v_profile = v_profile(valid_idxs, :);
-v_profile_good_idx_sav = v_profile;
-crossSectionLength = size(v_profile, 1);
-
-if crossSectionLength > 1
-    v_profile = interp1(linspace(1, crossSectionLength, crossSectionLength), v_profile, linspace(1, crossSectionLength, NUM_INTERP_POINTS));
-else
-    warning('Not enough valid points in the velocity profile. Skipping fit.');
-    return;
-end
-
-numFrames = size(v_profile, 2);
-N_fft = numFrames * FFT_PADDING_FACTOR;
-v_profile_ft = fftshift(fft(v_profile, N_fft, 2), 2);
-
-f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, N_fft);
-
-[~, cardiac_idx] = min(abs(f - cardiac_frequency));
-% Average over a small frequency band around the cardiac frequency for stability
-freq_resolution = f(2) - f(1);
-margin_hz = freq_resolution * 1.5; % Capture main lobe of the peak
-cardiac_idxs = find(abs(f - cardiac_frequency) <= margin_hz);
-
-if isempty(cardiac_idxs)
-    warning('Cardiac frequency not found in FFT spectrum. Using closest peak.');
-    cardiac_idxs = cardiac_idx;
-end
-
-% FIT PART
-
-v_meas = mean(v_profile_ft(:, cardiac_idxs), 2);
-
-
-x_coords = linspace(-1, 1, NUM_INTERP_POINTS);
-
-
-uWom_base = @(alpha, r) (1 - (besselj(0, 1i^(3/2) * alpha * r) ./ besselj(0, 1i^(3/2) * alpha)));
-
-costFun = @(p) [real(generate_womersley_model(p, x_coords, uWom_base) - v_meas.'); ...
-                imag(generate_womersley_model(p, x_coords, uWom_base) - v_meas.')];
-
-
-alpha_init = 4;
-amp_init_complex = mean(v_meas(abs(v_meas)>0));
-center_init = 0;
-width_init = 0.8;
-
-p_init = [alpha_init, real(amp_init_complex), imag(amp_init_complex), center_init, width_init];
-
-lb = [0.1,  -Inf, -Inf, -0.8, 0.1]; % alpha > 0, width > 0
-ub = [20,   Inf,  Inf,  0.8, 1.5];  % Reasonable physiological/physical bounds
-
-options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
-try
-    [p_fit, ~] = lsqnonlin(costFun, p_init, lb, ub, options);
-
-    alphaWom = p_fit(1);
-    fitParams.alpha = p_fit(1);
-    fitParams.amplitude = p_fit(2) + 1i * p_fit(3);
-    fitParams.center = p_fit(4);
-    fitParams.width = p_fit(5);
-
-    omega = 2 * pi * cardiac_frequency;
-
-    RHO_BLOOD = 1060; % Density of blood in kg/m^3
-
-    vessel_radius_meters = PIXEL_SIZE * crossSectionLength / 2 * fitParams.width;
-
-    numerator = (vessel_radius_meters^2) * omega * RHO_BLOOD;
-    denominator = alphaWom^2;
+    % WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
+    % by fitting the velocity profile to a Womersley flow model.
+    %
+    % 1. alpha: Womersley number
+    % 2. amplitude: Complex scaling factor (magnitude and phase)
+    % 3. center: Center position of the vessel
+    % 4. width: Effective radius of the vessel
+    %
+    % INPUT:
+    %   v_profile         - Array (crossSectionLength x numFrames) of velocity data.
+    %   cardiac_frequency - Cardiac frequency in Hz.
+    %   name, idx, ...    - Identifiers for saving the output plot.
+    %
+    % OUTPUT:
+    %   alphaWom          - Estimated Womersley number.
+    %   pseudoViscosity   - Derived dynamic viscosity in Pa·s.
+    %   fitParams         - A struct containing all fitted parameters.
     
-    if denominator > 0
-        pseudoViscosity = numerator / denominator;
+    
+    ToolBox = getGlobalToolBox;
+    params = ToolBox.getParams;
+    NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
+    PIXEL_SIZE = params.px_size;
+    
+    SYS_IDXS = ToolBox.Cache.sysIdx;
+    DIAS_IDXS = ToolBox.Cache.diasIdx;
+    
+    FFT_PADDING_FACTOR = 16;
+    
+    alphaWom = NaN;
+    pseudoViscosity = NaN;
+    fitParams = struct('alpha', NaN, ...
+                       'Cn', NaN, ...
+                       'Dn', NaN, ...
+                       'center', NaN, ...
+                       'width', NaN, ...
+                       'R1R0_complex', NaN, ...
+                       'R1R0_mag', NaN, ...
+                       'R1R0_phase_deg', NaN);
+    estimated_width = struct('systole', [], 'diastole', []);
+    
+    v_profile_avg = mean(v_profile, 2);
+    valid_idxs = v_profile_avg > 0;
+    v_profile = v_profile(valid_idxs, :);
+    v_profile_good_idx_sav = v_profile;
+    crossSectionLength = size(v_profile, 1);
+    
+    if crossSectionLength > 1
+        v_profile = interp1(linspace(1, crossSectionLength, crossSectionLength), v_profile, linspace(1, crossSectionLength, NUM_INTERP_POINTS));
     else
-        pseudoViscosity = NaN;
+        warning('Not enough valid points in the velocity profile. Skipping fit.');
+        return;
+    end
+    
+    numFrames = size(v_profile, 2);
+    N_fft = numFrames * FFT_PADDING_FACTOR;
+    v_profile_ft = fftshift(fft(v_profile, N_fft, 2), 2);
+    
+    f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, N_fft);
+    
+    [~, cardiac_idx] = min(abs(f - cardiac_frequency));
+    % Average over a small frequency band around the cardiac frequency for stability
+    freq_resolution = f(2) - f(1);
+    margin_hz = freq_resolution * 1.5; % Capture main lobe of the peak
+    cardiac_idxs = find(abs(f - cardiac_frequency) <= margin_hz);
+    
+    if isempty(cardiac_idxs)
+        warning('Cardiac frequency not found in FFT spectrum. Using closest peak.');
+        cardiac_idxs = cardiac_idx;
+    end
+    
+    % ============================== [ FIT ] ==============================
+    
+    v_meas = mean(v_profile_ft(:, cardiac_idxs), 2);
+    
+    
+    x_coords = linspace(-1, 1, NUM_INTERP_POINTS);
+    
+    
+    costFun = @(p) [real(generate_moving_wall_model(p, x_coords) - v_meas.'); ...
+                    imag(generate_moving_wall_model(p, x_coords) - v_meas.')];
+    
+    
+    % p = [alpha, real(Cn), imag(Cn), real(Dn), imag(Dn), center, width]
+    alpha_init = 4;
+    Cn_init_complex = mean(v_meas(abs(v_meas)>0));
+    Dn_init_complex = 0; % Start with no wall motion
+    center_init = 0;
+    width_init = 0.8;
+    
+    % p_init = [alpha_init, real(amp_init_complex), imag(amp_init_complex), center_init, width_init];
+    p_init = [alpha_init, real(Cn_init_complex), imag(Cn_init_complex), real(Dn_init_complex), imag(Dn_init_complex), center_init, width_init];
+    
+    lb = [0.1, -Inf, -Inf, -Inf, -Inf, -0.8, 0.1]; % alpha > 0, width > 0
+    ub = [20,   Inf,  Inf,  Inf,  Inf,  0.8, 1.5];
+    
+    options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
+    try
+        [p_fit, ~] = lsqnonlin(costFun, p_init, lb, ub, options);
+
+        alphaWom = p_fit(1);
+        Cn_fit = p_fit(2) + 1i * p_fit(3);
+        Dn_fit = p_fit(4) + 1i * p_fit(5);
+        center_fit = p_fit(6);
+        width_fit = p_fit(7);
+    
+        fitParams.alpha = alphaWom;
+        fitParams.Cn = Cn_fit;
+        fitParams.Dn = Dn_fit;
+        fitParams.center = center_fit;
+        fitParams.width = width_fit;
+
+        R1R0_complex = Dn_fit / Cn_fit;
+        fitParams.R1R0_complex = R1R0_complex;
+        fitParams.R1R0_mag = abs(R1R0_complex);
+        fitParams.R1R0_phase_deg = rad2deg(angle(R1R0_complex));
+    
+        omega = 2 * pi * cardiac_frequency;
+    
+        RHO_BLOOD = 1060; % Density of blood in kg/m^3
+    
+        vessel_radius_meters = PIXEL_SIZE * crossSectionLength / 2 * fitParams.width;
+    
+        numerator = (vessel_radius_meters^2) * omega * RHO_BLOOD;
+        denominator = alphaWom ^ 2;
+        
+        if denominator > 0
+            pseudoViscosity = numerator / denominator;
+        else
+            pseudoViscosity = NaN;
+        end
+    
+    catch ME
+        warning('Womersley fit failed for %s (idx %d): %s', name, idx, ME.message);
+        return;
     end
 
-catch ME
-    warning('Womersley fit failed for %s (idx %d): %s', name, idx, ME.message);
-    return;
-end
-uWom_fit = generate_womersley_model(p_fit, x_coords, uWom_base);
+    uWom_fit = generate_moving_wall_model(p_fit, x_coords);
+    
+    [parabole_fit_systole, parabole_fit_diastole] = analyse_lumen_size(v_profile_good_idx_sav, SYS_IDXS, DIAS_IDXS);
+    
+    estimated_width.systole = parabole_fit_systole;
+    estimated_width.diastole = parabole_fit_diastole;
+    
+    % ============================ [ Figures ] ============================
+    
+    hFig = figure("Visible", "off");
+    hold on;
+    title(sprintf('Womersley Fit for %s (idx %d)', name, idx), 'Interpreter', 'none');
+    plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1, 'DisplayName', 'Measured Data (Real)');
+    plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1, 'DisplayName', 'Measured Data (Imag)');
+    plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1, 'DisplayName', 'Model Fit (Real)');
+    plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1, 'DisplayName', 'Model Fit (Imag)');
+    hold off;
+    
+    xlim([-1 1]);
+    xlabel('Normalized Cross-section', 'FontSize', 14);
+    ylabel('Complex Velocity (a.u.)', 'FontSize', 14);
+    legend('show', 'Location', 'best', 'FontSize', 8); 
+    box on;
+    grid on;
+    axis tight;
+    set(gca, 'LineWidth', 1.5);
+    
+    % fit_string = sprintf('α Womersley: %.2f\nCenter: %.2f\nWidth: %.2f', ...
+    %                      fitParams.alpha, fitParams.center, fitParams.width);
+    % annotation('textbox', [0.15 0.78 0.25 0.1], 'String', fit_string, ...
+    %             'FitBoxToText', 'off', 'BackgroundColor', 'w', ...
+    %             'EdgeColor', 'k', 'FontSize', 12, 'FontSize', 10);
 
-[parabole_fit_systole, parabole_fit_diastole] = analyse_lumen_size(v_profile_good_idx_sav, SYS_IDXS, DIAS_IDXS);
+    fit_string = sprintf(['α: %.2f\n' ...
+                          'Center: %.2f\n' ...
+                          'Width: %.2f\n' ...
+                          '|R_1/R_0|: %.2f %%\n' ...
+                          'Phase(R_1): %.1f°'], ...
+                          fitParams.alpha, ...
+                          fitParams.center, ...
+                          fitParams.width, ...
+                          fitParams.R1R0_mag * 100, ...
+                          fitParams.R1R0_phase_deg);
 
-estimated_width.systole = parabole_fit_systole;
-estimated_width.diastole = parabole_fit_diastole;
+    annotation('textbox', [0.15 0.75 0.3 0.15], 'String', fit_string, ...
+                'FitBoxToText', 'on', 'BackgroundColor', 'w', ...
+                'EdgeColor', 'k', 'FontSize', 10);
+    
+    save_path = fullfile(ToolBox.path_png, 'Womersley');
 
-% Figures
+    if ~isfolder(save_path)
+        mkdir(save_path);
+    end
 
-hFig = figure("Visible", "off");
-hold on;
-title(sprintf('Womersley Fit for %s (idx %d)', name, idx), 'Interpreter', 'none');
-plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1, 'DisplayName', 'Measured Data (Real)');
-plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1, 'DisplayName', 'Measured Data (Imag)');
-plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1, 'DisplayName', 'Model Fit (Real)');
-plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1, 'DisplayName', 'Model Fit (Imag)');
-hold off;
-
-xlim([-1 1]);
-xlabel('Normalized Cross-section', 'FontSize', 14);
-ylabel('Complex Velocity (a.u.)', 'FontSize', 14);
-legend('show', 'Location', 'best');
-box on;
-grid on;
-axis tight;
-set(gca, 'LineWidth', 1.5);
-
-fit_string = sprintf('α Womersley: %.2f\nCenter: %.2f\nWidth: %.2f', ...
-                     fitParams.alpha, fitParams.center, fitParams.width);
-annotation('textbox', [0.15 0.78 0.25 0.1], 'String', fit_string, ...
-            'FitBoxToText', 'off', 'BackgroundColor', 'w', ...
-            'EdgeColor', 'k', 'FontSize', 12, 'FontSize', 10);
-
-save_path = fullfile(ToolBox.path_png, 'Womersley');
-if ~isfolder(save_path)
-    mkdir(save_path);
-end
-
-save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx));
-
-try
-    exportgraphics(hFig, save_filename, 'Resolution', 300);
-catch export_error
-    warning('Could not save figure');
-end
-
-
-if ~strcmpi(get(hFig, 'Visible'), 'on')
-    close(hFig);
-end
-
+    save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx));
+    
+    try
+        exportgraphics(hFig, save_filename, 'Resolution', 300);
+    catch export_error
+        warning('Could not save figure');
+    end
+    
+    if ~strcmpi(get(hFig, 'Visible'), 'on')
+        close(hFig);
+    end
 end
 
 
@@ -175,8 +208,56 @@ end
 % |                          HELPER FUNCTIONS                           | %
 % +=====================================================================+ %
 
+% ========================== [ COST FUNCTIONS ] ===========================
 
-function model_profile = generate_womersley_model(p, x, uWom_base)
+function res = uWom_base(alpha, r)
+    res = (1 - (besselj(0, 1i^(3/2) * alpha * r) ./ besselj(0, 1i^(3/2) * alpha)));
+end
+
+
+function res = uWom_psi(alpha, r)
+    % Formula: Psi_n = - [lambda * J1(lambda) / J0(lambda)^2] * J0(lambda*r)
+    %
+    % Inputs:
+    %   alpha - The Womersley number (a dimensionless real number).
+    %   r     - The normalized radial coordinate (r/R0), typically a vector 
+    %           from 0 to 1.
+    
+    % it is ((-1 + i) / sqrt(2)) * alpha
+    lambda_val = 1i^(3/2) * alpha;
+
+    numerator_scalar = -lambda_val * besselj(1, lambda_val);
+    denominator_scalar = besselj(0, lambda_val) ^ 2;
+    complex_scalar = numerator_scalar / denominator_scalar;
+    
+    radial_profile = besselj(0, lambda_val .* r);
+    
+    res = complex_scalar .* radial_profile;
+end
+
+% ============================= [ WOMERSELY ] =============================
+
+function model_profile = generate_moving_wall_model(p, x)
+    % p = [alpha, real(Cn), imag(Cn), real(Dn), imag(Dn), center, width]
+    alpha   = p(1);
+    Cn      = p(2) + 1i * p(3);
+    Dn      = p(4) + 1i * p(5);
+    center  = p(6);
+    width   = p(7);
+    
+    r = (x - center) / width;
+    
+    Bn_profile = uWom_base(alpha, r);
+    Psi_n_profile = uWom_psi(alpha, r);
+    
+    profile = (Cn * Bn_profile) + (Dn * Psi_n_profile);
+    
+    profile(abs(r) > 1) = 0;
+    
+    model_profile = profile;
+end
+
+function model_profile = generate_womersley_model(p, x)
     alpha         = p(1);
     amplitude     = p(2) + 1i * p(3); % Reconstruct complex amplitude
     center        = p(4);
@@ -188,10 +269,10 @@ function model_profile = generate_womersley_model(p, x, uWom_base)
     
     profile(abs(r) > 1) = 0;
     
-    model_profile = amplitude * profile;
+    model_profile = amplitude * profile;gergr
 end
 
-
+% =========================================================================
 
 function [fit_systole_cycles, fit_diastole_cycles] = analyse_lumen_size(v_profile, systole_frames, diastole_frames, frame_gap_threshold)
     % Takes v_profile in and return two arrays of arteries size
@@ -251,7 +332,115 @@ function output_cell = process_cycles(v_profile, group_frames)
     end
 end
 
+function fit_results = fit_parabol_diam(velocity_profile)
+    % Fits a parabolic profile and calculates the diameter from its roots.
+    %
+    % This function is a wrapper for customPoly2Fit and customPoly2Roots.
+    % It takes a 1D velocity profile, fits a quadratic polynomial (parabola)
+    % to it, finds the roots of the polynomial, and calculates the distance
+    % between them, which represents the diameter.
+    %
+    % INPUT:
+    %   velocity_profile - A 1D column or row vector of velocity data.
+    %
+    % OUTPUT:
+    %   fit_results      - A struct containing all results:
+    %       .diameter                   : The calculated diameter (abs(root1 - root2)).
+    %       .diameter_error             : The propagated error of the diameter.
+    %       .rsquared                   : The R-squared value of the parabolic fit.
+    %       .p1, .p2, .p3               : Coefficients of the fitted polynomial.
+    %       .p1_err, .p2_err, .p3_err   : Errors of the coefficients.
+    %       .root1, .root2              : The two roots of the polynomial.
+    %       .root1_err, .root2_err      : The errors of the roots.
+    %
+    
+    
+    if isempty(velocity_profile) || numel(velocity_profile) < 3
+        warning('Input velocity profile is too short for a parabolic fit. Returning empty.');
+        fit_results = struct('diameter', NaN, 'diameter_error', NaN, 'rsquared', NaN);
+        return;
+    end
+    
+    % Ensure column vector
+    y = velocity_profile(:);
+    
+    central_range = find(y > 0.1 * max(y));
+    centt = mean(central_range);
+    
+    r_range = (central_range - centt);
+    
+    [p1, p2, p3, rsquared, p1_err, p2_err, p3_err] = customPoly2Fit(r_range', y(central_range));
+    
+    % Check poor fit
+    if rsquared < 0.8
+        warning('R-squared value (%.2f) is low. The fit may not be reliable.', rsquared);
+    end
+    
+    [r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3, p1_err, p2_err, p3_err);
+    
+    diameter = abs(r1 - r2);
+    diameter_error = sqrt(r1_err^2 + r2_err^2);
+    
+    fit_results = struct();
+    
+    fit_results.diameter = diameter;
+    fit_results.diameter_error = diameter_error;
+    fit_results.rsquared = rsquared;
+    fit_results.p1 = p1;
+    fit_results.p2 = p2;
+    fit_results.p3 = p3;
+    fit_results.p1_err = p1_err;
+    fit_results.p2_err = p2_err;
+    fit_results.p3_err = p3_err;
+    fit_results.root1 = r1;
+    fit_results.root2 = r2;
+    fit_results.root1_err = r1_err;
+    fit_results.root2_err = r2_err;
+    fit_results.center_offset = centt;
+    fit_results.central_range = central_range;
+end
+  
 
+function output_cell_array = subdivide_array(input_array, threshold)
+    % This function subdivides an input array into subarrays based on element spread.
+    % It groups consecutive numbers together.
+    
+    if ~isvector(input_array)
+        error('Input must be a vector.');
+    end
+    
+    if nargin < 2
+        threshold = 1;
+    end
+    
+    d = diff(input_array);
+    break_points = find(d > threshold);
+    
+    output_cell_array = cell(1, length(break_points) + 1);
+    
+    if isempty(break_points)
+        output_cell_array{1} = input_array;
+        return;
+    end
+    
+    start_index = 1;
+    
+    for i = 1:length(break_points)
+        end_index = break_points(i);
+        output_cell_array{i} = input_array(start_index:end_index);
+        start_index = end_index + 1;
+    end
+    
+    output_cell_array{end} = input_array(start_index:end);
+
+end
+
+
+% +=====================================================================+ %
+% |                           DEBUG FUNCTIONS                           | %
+% +=====================================================================+ %
+
+% Debug function to show parabole and its fit
 function show_para_and_fit(value, fit_results)
     x_data = 1:length(value);
 
@@ -264,8 +453,6 @@ function show_para_and_fit(value, fit_results)
 
     % Calculate the corresponding y-values for the fitted curve
     y_fit = polyval(p, x_fit);
-
-    % --- 3. Create the Plot ---
     
     figure;
     hold on;
@@ -282,110 +469,6 @@ function show_para_and_fit(value, fit_results)
     legend('show', 'Location', 'best'); % Add a legend
     grid on;  % Add a grid for easier reading
     hold off; % Release the plot
-end
-
-function fit_results = fit_parabol_diam(velocity_profile)
-% Fits a parabolic profile and calculates the diameter from its roots.
-%
-% This function is a wrapper for customPoly2Fit and customPoly2Roots.
-% It takes a 1D velocity profile, fits a quadratic polynomial (parabola)
-% to it, finds the roots of the polynomial, and calculates the distance
-% between them, which represents the diameter.
-%
-% INPUT:
-%   velocity_profile - A 1D column or row vector of velocity data.
-%
-% OUTPUT:
-%   fit_results      - A struct containing all results:
-%       .diameter                   : The calculated diameter (abs(root1 - root2)).
-%       .diameter_error             : The propagated error of the diameter.
-%       .rsquared                   : The R-squared value of the parabolic fit.
-%       .p1, .p2, .p3               : Coefficients of the fitted polynomial.
-%       .p1_err, .p2_err, .p3_err   : Errors of the coefficients.
-%       .root1, .root2              : The two roots of the polynomial.
-%       .root1_err, .root2_err      : The errors of the roots.
-%
-
-
-if isempty(velocity_profile) || numel(velocity_profile) < 3
-    warning('Input velocity profile is too short for a parabolic fit. Returning empty.');
-    fit_results = struct('diameter', NaN, 'diameter_error', NaN, 'rsquared', NaN);
-    return;
-end
-
-% Ensure column vector
-y = velocity_profile(:);
-
-central_range = find(y > 0.1 * max(y));
-centt = mean(central_range);
-
-r_range = (central_range - centt);
-
-[p1, p2, p3, rsquared, p1_err, p2_err, p3_err] = customPoly2Fit(r_range', y(central_range));
-
-% Check poor fit
-if rsquared < 0.8
-    warning('R-squared value (%.2f) is low. The fit may not be reliable.', rsquared);
-end
-
-[r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3, p1_err, p2_err, p3_err);
-
-diameter = abs(r1 - r2);
-diameter_error = sqrt(r1_err^2 + r2_err^2);
-
-fit_results = struct();
-
-fit_results.diameter = diameter;
-fit_results.diameter_error = diameter_error;
-fit_results.rsquared = rsquared;
-fit_results.p1 = p1;
-fit_results.p2 = p2;
-fit_results.p3 = p3;
-fit_results.p1_err = p1_err;
-fit_results.p2_err = p2_err;
-fit_results.p3_err = p3_err;
-fit_results.root1 = r1;
-fit_results.root2 = r2;
-fit_results.root1_err = r1_err;
-fit_results.root2_err = r2_err;
-fit_results.center_offset = centt;
-fit_results.central_range = central_range;
-
-end
-  
-
-function output_cell_array = subdivide_array(input_array, threshold)
-% This function subdivides an input array into subarrays based on element spread.
-% It groups consecutive numbers together.
-
-if ~isvector(input_array)
-    error('Input must be a vector.');
-end
-
-if nargin < 2
-    threshold = 1;
-end
-
-d = diff(input_array);
-break_points = find(d > threshold);
-
-output_cell_array = cell(1, length(break_points) + 1);
-
-if isempty(break_points)
-    output_cell_array{1} = input_array;
-    return;
-end
-
-start_index = 1;
-
-for i = 1:length(break_points)
-    end_index = break_points(i);
-    output_cell_array{i} = input_array(start_index:end_index);
-    start_index = end_index + 1;
-end
-
-output_cell_array{end} = input_array(start_index:end);
-
 end
 
 % =========================================================================
