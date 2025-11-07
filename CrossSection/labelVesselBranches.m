@@ -35,15 +35,14 @@ r1 = params.json.SizeOfField.SmallRadiusRatio;
 r2 = params.json.SizeOfField.BigRadiusRatio;
 numCircles = params.json.generateCrossSectionSignals.NumberOfCircles;
 dr = (r2 - r1) / numCircles;
+SE = strel('square', fun_params.strelSize);
 
 % Create skeleton and remove center circle
 skel = bwskel(vesselMask);
-cercleMask = diskMask(numX, numY, r1, 'center', [x_c / numX y_c / numY]);
-skel = skel & ~cercleMask;
 
 % Remove branch points from skeleton
 branchPoints = bwmorph(skel, 'branchpoints');
-skelNoBranchesPoints = skel & ~imdilate(branchPoints, strel('disk', fun_params.strelSize));
+skelNoBranchesPoints = skel & ~imdilate(branchPoints, SE);
 
 % Remove small branches
 skelNoBranchesPoints = bwareaopen(skelNoBranchesPoints, fun_params.smallBranchCriteria); % Remove small branches
@@ -57,7 +56,7 @@ D(~(vesselMask & maskSection)) = -Inf; % Force background to -Inf
 
 % Use skeleton branches as markers
 markers = label > 0;
-markers = imdilate(markers, strel('disk', 1)); % Ensure markers are connected
+% markers = imdilate(markers, SE); % Ensure markers are connected
 
 % Apply watershed
 L = double(watershed(imimposemin(D, markers)));
@@ -70,17 +69,16 @@ for i = 1:n
     labeledVessels(branchPixels) = i;
 end
 
-minAreaThreshold = floor(numX * numY * fun_params.min_area_percent / 100);
+% minAreaThreshold = floor(numX * numY * fun_params.min_area_percent / 100);
+% labeledVessels = bwareaopen(labeledVessels, minAreaThreshold);
 
-labeledVessels = bwareaopen(labeledVessels, minAreaThreshold);
-
+cercleMask = diskMask(numX, numY, r1, r2, 'center', [x_c / numX y_c / numY]);
+labeledVessels = labeledVessels .* cercleMask;
 [labeledVessels, n] = bwlabel(labeledVessels); % Final labeling
 
 if ~fun_params.refine
     return;
 end
-
-labeledVessels = labeledVessels .* maskSection;
 
 % Remove small spots
 labeledVesselsClean = false(numX, numY);

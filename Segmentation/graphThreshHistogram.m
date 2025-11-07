@@ -35,7 +35,7 @@ thresholds = [m thresholds M];
 
 % Bin the data and count occurrences
 edges = linspace(m, M, 50); % Set bin edges (modify as needed)
-[counts, centers] = histcounts(R(mask & R ~= 0), edges);
+[counts, centers] = histcounts(R(mask & R ~= 0), edges, 'Normalization', 'probability');
 counts = [counts 0];
 
 % Plot the histogram with different colors based on threshold
@@ -65,9 +65,6 @@ for i = 2:(numLevel + 1)
 end
 
 % Add labels and title
-xlabel('Data Value');
-ylabel('Frequency');
-title('Histogram with Threshold Coloring');
 axis tight
 set(gca, 'Linewidth', 2)
 pbaspect([1.68 1 1])
