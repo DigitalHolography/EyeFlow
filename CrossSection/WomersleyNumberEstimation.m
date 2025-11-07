@@ -148,10 +148,10 @@ function [alphaWom, pseudoViscosity, fitParams, estimated_width] = WomersleyNumb
     hFig = figure("Visible", "off");
     hold on;
     title(sprintf('Womersley Fit for %s (idx %d)', name, idx), 'Interpreter', 'none');
-    plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1, 'DisplayName', 'Measured Data (Real)');
-    plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1, 'DisplayName', 'Measured Data (Imag)');
-    plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1, 'DisplayName', 'Model Fit (Real)');
-    plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1, 'DisplayName', 'Model Fit (Imag)');
+    plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1);    % Measured Data (Real)
+    plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1);    % Measured Data (Imag)
+    plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1); % Model Fit (Real)
+    plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1); % Model Fit (Imag)
     hold off;
     
     xlim([-1 1]);
