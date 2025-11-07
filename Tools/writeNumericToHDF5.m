@@ -15,10 +15,10 @@ if ~isempty(value)
 
     % Reduce precision if numeric type allows it
     mini = [];
-    if bytesize > threshold
+    if bytesize > threshold && ~isa(typeName, 'uint8')
         mini = min(value(:));
         MM = max(value(:));
-        value = int8(rescale(value) * 128);
+        value = uint8(rescale(value) * 255);
     end
 
     h5create(path, datasetPath, size(value), 'Datatype', class(value), 'Chunksize', size(value), 'Deflate', 6);
