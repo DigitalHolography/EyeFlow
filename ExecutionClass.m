@@ -170,8 +170,6 @@ methods
         catch ME
             warning("Pulse Wave Velocity Analysis failed");
         end
-        error("haha");
-
 
         try
 
