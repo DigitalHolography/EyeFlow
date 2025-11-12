@@ -18,9 +18,9 @@ mask_params = params.json.Mask;
 M0_ff_img = squeeze(mean(M0_ff, 3));
 [numX, numY] = size(M0_ff_img);
 
-diasys_diff = [];
-R = [];
-exportVideos = params.exportVideos;
+% diasys_diff = [];
+% R = [];
+% exportVideos = params.exportVideos;
 
 % if the correlation map is used by the model, compute it
 if mask_params.AVCorrelationSegmentationNet
@@ -138,13 +138,13 @@ maskVein = imresize(maskVein, [numX, numY], "nearest");
 maskArtery = logical(maskArtery);
 maskVein = logical(maskVein);
 
-if exportVideos && ~isempty(diasys_diff)
-    RGB_diasys_video = labDuoVideo(M0_ff, diasys_diff);
-    writeGifonDisc(mat2gray(RGB_diasys_video), 'diasys.gif');
-elseif exportVideos && ~isempty(R)
-    RGB_corr_video = labDuoVideo(M0_ff, R);
-    writeGifonDisc(mat2gray(RGB_corr_video), 'correlation.gif');
-end
+% if exportVideos && ~isempty(diasys_diff)
+%     RGB_diasys_video = labDuoVideo(M0_ff, diasys_diff);
+%     writeGifonDisc(mat2gray(RGB_diasys_video), 'diasys.gif');
+% elseif exportVideos && ~isempty(R)
+%     RGB_corr_video = labDuoVideo(M0_ff, R);
+%     writeGifonDisc(mat2gray(RGB_corr_video), 'correlation.gif');
+% end
 
 end
 

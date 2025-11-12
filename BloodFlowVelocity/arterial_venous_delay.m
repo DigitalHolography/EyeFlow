@@ -32,13 +32,13 @@ tau_RC = tau / numInterp * (1 / (ToolBox.Cache.HeartBeatFFT)); % in seconds
 tau_ms = tau_RC * 1000; % convert to ms
 
 ToolBox.Output.add('WindkesselPureDelay', tau_delay_ms, 'ms');
-ToolBox.Output.add('WindkesselDecayRC', tau_ms, 'ms');  
+ToolBox.Output.add('WindkesselDecayRC', tau_ms, 'ms');
 
 Ceff = tau_RC / (1 / (ToolBox.Cache.HeartBeatFFT));
-Reff = 1/Ceff;
+Reff = 1 / Ceff;
 
-ToolBox.Output.add('WindkesselCeff',Ceff,'');
-ToolBox.Output.add('WindkesselReff', Reff,'');  
+ToolBox.Output.add('WindkesselCeff', Ceff, '', '');
+ToolBox.Output.add('WindkesselReff', Reff, '', '');
 
 if saveFigures
     % Create figure
