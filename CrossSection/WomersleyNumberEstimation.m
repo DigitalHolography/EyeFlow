@@ -4,7 +4,8 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     % TODO: For now a constant number of harmonics (use input parameters maybe)
     HARMONIC_NUMBER = 1;
 
-    parfor i = 1:HARMONIC_NUMBER
+    % TODO: Parfor does not seem to work with toolbox
+    for i = 1:HARMONIC_NUMBER
         results{i} = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i);
     end
 end
@@ -40,6 +41,8 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     % DIAS_IDXS = ToolBox.Cache.diasIdx;
     
     FFT_PADDING_FACTOR = 16;
+
+    FWHM_um = 8;
     
     fitParams = struct('alpha', NaN, ...
                        'pseudoViscosity', NaN, ...
@@ -71,20 +74,23 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     
     f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, N_fft);
     
-    [~, cardiac_idx] = min(abs(f - cardiac_frequency));
-    % Average over a small frequency band around the cardiac frequency for stability
-    freq_resolution = f(2) - f(1);
-    margin_hz = freq_resolution * 1.5; % Capture main lobe of the peak
-    cardiac_idxs = find(abs(f - cardiac_frequency) <= margin_hz);
-    
-    if isempty(cardiac_idxs)
-        warning('Cardiac frequency not found in FFT spectrum. Using closest peak.');
-        cardiac_idxs = cardiac_idx;
-    end
+    % [~, cardiac_idx] = min(abs(f - cardiac_frequency));
+    % 
+    % % Average over a small frequency band around the cardiac frequency for stability
+    % freq_resolution = f(2) - f(1);
+    % margin_hz = freq_resolution * 1.5; % Capture main lobe of the peak
+    % cardiac_idxs = find(abs(f - cardiac_frequency) <= margin_hz);
+    % 
+    % if isempty(cardiac_idxs)
+    %     warning('Cardiac frequency not found in FFT spectrum. Using closest peak.');
+    %     cardiac_idxs = cardiac_idx;
+    % end
     
     % ============================== [ FIT ] ==============================
     
-    v_meas = mean(v_profile_ft(:, cardiac_idxs), 2);
+    % v_meas = mean(v_profile_ft(:, cardiac_idxs), 2);
+
+    v_meas = extractHarmonicProfile(v_profile_ft, f, cardiac_frequency, n_harmonic);
     
     x_coords = linspace(-1, 1, NUM_INTERP_POINTS);
     
@@ -101,9 +107,14 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     lb = [0.1, -Inf, -Inf, -Inf, -Inf, -0.8, 0.1]; % alpha > 0, width > 0
     ub = [20,   Inf,  Inf,  Inf,  Inf,  0.8, 1.5];
     
+    % psf_kernel = create_gaussian_psf_kernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
+    psf_kernel = [];
+
+    costFunctionHandle = @(p) costFun(p, x_coords, v_meas, n_harmonic, psf_kernel);
+
     options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
     try
-        [p_fit, ~] = lsqnonlin(@costFun, p_init, lb, ub, options);
+        [p_fit, ~] = lsqnonlin(costFunctionHandle, p_init, lb, ub, options);
 
         alphaWom = p_fit(1);
         Cn_fit = p_fit(2) + 1i * p_fit(3);
@@ -140,7 +151,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         return;
     end
 
-    uWom_fit = generate_moving_wall_model(p_fit, x_coords);
+    uWom_fit = generate_moving_wall_model(p_fit, x_coords, n_harmonic, psf_kernel);
     
     % [parabole_fit_systole, parabole_fit_diastole] = analyse_lumen_size(v_profile_good_idx_sav, SYS_IDXS, DIAS_IDXS);
     % 
@@ -151,9 +162,9 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     
     hFig = figure("Visible", "off");
     hold on;
-    title(sprintf('Womersley Fit for %s (idx %d)', name, idx), 'Interpreter', 'none');
-    plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1);    % Measured Data (Real)
-    plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1);    % Measured Data (Imag)
+    title(sprintf('Womersley Fit for %s (idx %d) (Harmonic: %d)', name, idx, n_harmonic), 'Interpreter', 'none');
+    % plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1);    % Measured Data (Real)
+    % plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1);    % Measured Data (Imag)
     plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1); % Model Fit (Real)
     plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1); % Model Fit (Imag)
     hold off;
@@ -176,8 +187,8 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     fit_string = sprintf(['α: %.2f\n' ...
                           'Center: %.2f\n' ...
                           'Width: %.2f\n' ...
-                          '|R_1/R_0|: %.2f %%\n' ...
-                          'Phase(R_1): %.1f°'], ...
+                          '|R_n/R_0|: %.2f %%\n' ...
+                          'Phase(R_n): %.1f°'], ...
                           fitParams.alpha, ...
                           fitParams.center, ...
                           fitParams.width, ...
@@ -194,7 +205,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         mkdir(save_path);
     end
 
-    save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx));
+    save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d_h%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx, n_harmonic));
     
     try
         exportgraphics(hFig, save_filename, 'Resolution', 300);
@@ -214,12 +225,12 @@ end
 
 % ========================== [ COST FUNCTIONS ] ===========================
 
-function res = costFun(p, n_harmonic) 
-    res = [real(generate_moving_wall_model(p, x_coords, n_harmonic) - v_meas.'); ...
-           imag(generate_moving_wall_model(p, x_coords, n_harmonic) - v_meas.')];
+function res = costFun(p, x_coords, v_meas, n_harmonic, psf_kernel)
+    res = [real(generate_moving_wall_model(p, x_coords, n_harmonic, psf_kernel) - v_meas.'); ...
+           imag(generate_moving_wall_model(p, x_coords, n_harmonic, psf_kernel) - v_meas.')];
 end
 
-function res = uWom_base(alpha, r)
+function res = uWom_base(alpha, r) 
     res = (1 - (besselj(0, 1i^(3/2) * alpha * r) ./ besselj(0, 1i^(3/2) * alpha)));
 end
 
@@ -246,7 +257,9 @@ end
 
 % ============================= [ WOMERSELY ] =============================
 
-function model_profile = generate_moving_wall_model(p, x, n_harmonic)
+function model_profile = generate_moving_wall_model(p, x, n_harmonic, psf_kernel)
+    % psf_kernel is optionnal
+
     % p = [alpha, real(Cn), imag(Cn), real(Dn), imag(Dn), center, width]
     alpha_1 = p(1);
     Cn      = p(2) + 1i * p(3);
@@ -263,8 +276,20 @@ function model_profile = generate_moving_wall_model(p, x, n_harmonic)
     
     Bn_profile = uWom_base(alpha_n, r);
     Psi_n_profile = uWom_psi(alpha_n, r);
+
+    Bn_profile(abs(r) > 1) = 0;
+    Psi_n_profile(abs(r) > 1) = 0;
+
+    if ~isempty(psf_kernel)
+        Bn_profile_final = conv(Bn_profile, psf_kernel, 'same');
+        Psi_n_profile_final = conv(Psi_n_profile, psf_kernel, 'same');
+    else
+        % If no PSF, use the ideal profiles.
+        Bn_profile_final = Bn_profile;
+        Psi_n_profile_final = Psi_n_profile;
+    end
     
-    profile = (Cn * Bn_profile) + (Dn * Psi_n_profile);
+    profile = (Cn * Bn_profile_final) + (Dn * Psi_n_profile_final);
     
     profile(abs(r) > 1) = 0;
     
@@ -287,8 +312,64 @@ function model_profile = generate_womersley_model(p, x)
 end
 
 % =========================================================================
+    
+function v_meas = extractHarmonicProfile(v_profile_ft, f_vector, base_frequency, n_harmonic)
+    % extractHarmonicProfile Extracts the complex velocity profile for a specific harmonic.
+    %
+    %   v_profile_ft   - The full, FFT-shifted Fourier spectrum of the velocity data.
+    %   f_vector       - The corresponding frequency vector for the spectrum.
+    %   base_frequency - The fundamental cardiac frequency (e.g., heart rate in Hz).
+    %   n_harmonic     - The integer of the harmonic to extract (e.g., 1, 2, 3...).
+    %
+    % OUTPUT:
+    %   v_meas         - The complex velocity profile (a column vector) averaged
+    %                    over the frequency band of the specified harmonic.
 
+    target_frequency = n_harmonic * base_frequency;
 
+    freq_resolution = f_vector(2) - f_vector(1);
+    margin_hz = freq_resolution * 1.5;
+    
+    harmonic_indices = find(abs(f_vector - target_frequency) <= margin_hz);
+
+    if isempty(harmonic_indices)
+        warning('Harmonic %d (%.2f Hz) not found in frequency band. Using closest single peak instead.', n_harmonic, target_frequency);
+        [~, closest_idx] = min(abs(f_vector - target_frequency));
+        harmonic_indices = closest_idx;
+    end
+
+    v_meas = mean(v_profile_ft(:, harmonic_indices), 2);
+end
+
+    
+function psf_kernel = create_gaussian_psf_kernel(fwhm_um, num_points, cross_section_px, pixel_size_um)
+    % Gaussian PSF kernel
+
+    if fwhm_um <= 0
+        % If FWHM is zero or negative, return an empty kernel to signify no convolution.
+        psf_kernel = [];
+        return;
+    end
+
+    total_width_um = cross_section_px * pixel_size_um;
+    dx_um = total_width_um / num_points; % um per point
+
+    if dx_um == 0
+        error('Cannot create PSF kernel: The spatial resolution (dx_um) is zero.');
+    end
+    
+    fwhm_in_points = fwhm_um / dx_um;
+
+    sigma_in_points = fwhm_in_points / (2 * sqrt(2 * log(2)));
+
+    kernel_radius = ceil(3 * sigma_in_points);
+    kernel_size = 2 * kernel_radius + 1;
+
+    % 'fspecial' creates a normalized kernel that sums to 1
+    psf_kernel = fspecial('gaussian', [1, kernel_size], sigma_in_points);
+end
+
+  
 
 % +=====================================================================+ %
 % |                           DEBUG FUNCTIONS                           | %

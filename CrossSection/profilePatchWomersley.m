@@ -119,8 +119,10 @@ for circleIdx = 1:rows
 
         % 2. Fit cardiac profiles
 
-        [alphaWom, pseudoViscosity] = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
-        ToolBox.Output.Extra.add(sprintf("Womersley/alphaWom%s_idx%d_c%d_b%d", name, idx, circleIdx, branchIdx), alphaWom);
+        % TODO: temp fix for a single harmonic
+        womersley_results = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
+
+        ToolBox.Output.Extra.add(sprintf("Womersley/alphaWom%s_idx%d_c%d_b%d", name, idx, circleIdx, branchIdx), womersley_results{1}.alpha);
         idx = idx + 1;
     end
 
