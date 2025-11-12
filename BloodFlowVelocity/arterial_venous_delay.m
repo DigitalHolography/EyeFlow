@@ -37,8 +37,8 @@ ToolBox.Output.add('WindkesselDecayRC', tau_ms, 'ms');
 Ceff = tau_RC / (1 / (ToolBox.Cache.HeartBeatFFT));
 Reff = 1 / Ceff;
 
-ToolBox.Output.add('WindkesselCeff', Ceff, '');
-ToolBox.Output.add('WindkesselReff', Reff, '');
+ToolBox.Output.add('WindkesselCeff', Ceff, '', '');
+ToolBox.Output.add('WindkesselReff', Reff, '', '');
 
 if saveFigures
     % Create figure
