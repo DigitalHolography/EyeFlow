@@ -43,16 +43,38 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     FFT_PADDING_FACTOR = 16;
 
     FWHM_um = 8;
+
+    RHO_BLOOD = 1060; % Density of blood in kg/m^3
     
-    fitParams = struct('alpha', NaN, ...
-                       'pseudoViscosity', NaN, ...
-                       'Cn', NaN, ...
-                       'Dn', NaN, ...
-                       'center', NaN, ...
-                       'width', NaN, ...
-                       'R1R0_complex', NaN, ...
-                       'R1R0_mag', NaN, ...
-                       'R1R0_phase_deg', NaN);
+    metrics = struct(...
+        'RnR0_complex',     NaN, ... % PWK ≈ D_n / C_n
+        'RnR0_mag',         NaN, ...
+        'RnR0_phase_deg',   NaN, ...
+        'Q_n',              NaN, ... % Flow (mm3/s)
+        'G_n',              NaN, ... % Gradient (Pa/m)
+        'tau_n',            NaN, ... % Shear (Pa)
+        'H_Zn',             NaN, ... % Impedance (Pa s/mm3/m)
+        'H_Rn',             NaN, ... % Geom-Norm (Pa)
+        'AnA0',             NaN, ...
+        'nu_app',           NaN, ... % Viscosity (kinetic) (m2/s)
+        'mu_app',           NaN  ... % Viscosity (dinamic)
+    );
+
+    fitParams = struct(...
+        'alpha_1',          NaN, ...
+        'alpha_n',          NaN, ...
+        'harmonic',         NaN, ...
+        'K_cond',           NaN, ...
+        'R0',               NaN, ...
+        'Cn',               NaN, ...
+        'Dn',               NaN, ...
+        'center',           NaN, ...
+        'width',            NaN, ...
+        'omega_0',          NaN, ...
+        'omega_n',          NaN, ...
+        'metrics',          metrics ...
+       );
+    
     % estimated_width = struct('systole', [], 'diastole', []);
     
     v_profile_avg = mean(v_profile, 2);
@@ -86,7 +108,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     %     cardiac_idxs = cardiac_idx;
     % end
     
-    % ============================== [ FIT ] ==============================
+    % ============================== [ FIT ] ============================ %
     
     % v_meas = mean(v_profile_ft(:, cardiac_idxs), 2);
 
@@ -114,39 +136,35 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
 
     options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
     try
-        [p_fit, ~] = lsqnonlin(costFunctionHandle, p_init, lb, ub, options);
+        [p_fit, ~, ~, ~, ~, ~, jacobian] = lsqnonlin(costFunctionHandle, p_init, lb, ub, options);
 
-        alphaWom = p_fit(1);
-        Cn_fit = p_fit(2) + 1i * p_fit(3);
-        Dn_fit = p_fit(4) + 1i * p_fit(5);
-        center_fit = p_fit(6);
-        width_fit = p_fit(7);
-    
-        fitParams.alpha = alphaWom;
-        fitParams.Cn = Cn_fit;
-        fitParams.Dn = Dn_fit;
-        fitParams.center = center_fit;
-        fitParams.width = width_fit;
+        % Fit Condition number
+        fitParams.K_cond = sqrt(cond(jacobian'*jacobian));
 
-        R1R0_complex = Dn_fit / Cn_fit;
-        fitParams.R1R0_complex = R1R0_complex;
-        fitParams.R1R0_mag = abs(R1R0_complex);
-        fitParams.R1R0_phase_deg = rad2deg(angle(R1R0_complex));
+        alpha_1             = p_fit(1);
+        Cn_fit              = p_fit(2) + 1i * p_fit(3);
+        Dn_fit              = p_fit(4) + 1i * p_fit(5);
+        center_fit          = p_fit(6);
+        width_fit           = p_fit(7);
     
-        omega = 2 * pi * cardiac_frequency;
+        fitParams.alpha_1   = alpha_1;
+        fitParams.alpha_n   = alpha_1 * sqrt(n_harmonic);
+        fitParams.Cn        = Cn_fit;
+        fitParams.Dn        = Dn_fit;
+        fitParams.center    = center_fit;
+        fitParams.width     = width_fit;
     
-        RHO_BLOOD = 1060; % Density of blood in kg/m^3
+        fitParams.omega_0 = 2 * pi * cardiac_frequency;
+        fitParams.omega_n = fitParams.omega_0 * n_harmonic;
+
+        fitParams.harmonic = n_harmonic;
     
-        vessel_radius_meters = PIXEL_SIZE * crossSectionLength / 2 * fitParams.width;
+        Rn = PIXEL_SIZE * crossSectionLength / 2 * fitParams.width;
+        fitParams.Rn = Rn;
     
-        numerator = (vessel_radius_meters^2) * omega * RHO_BLOOD;
-        denominator = alphaWom ^ 2;
-        
-        if denominator > 0
-            fitParams.pseudoViscosity = numerator / denominator;
-        end
-    
-    catch ME
+        fitParams.metrics = calculate_symbols(fitParams, RHO_BLOOD);
+
+    catch ME 
         warning('Womersley fit failed for %s (idx %d): %s', name, idx, ME.message);
         return;
     end
@@ -158,13 +176,13 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     % estimated_width.systole = parabole_fit_systole;
     % estimated_width.diastole = parabole_fit_diastole;
     
-    % ============================ [ Figures ] ============================
+    % ============================ [ Figures ] ========================== %
     
     hFig = figure("Visible", "off");
     hold on;
     title(sprintf('Womersley Fit for %s (idx %d) (Harmonic: %d)', name, idx, n_harmonic), 'Interpreter', 'none');
-    % plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1);    % Measured Data (Real)
-    % plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1);    % Measured Data (Imag)
+    plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1);    % Measured Data (Real)
+    plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1);    % Measured Data (Imag)
     plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1); % Model Fit (Real)
     plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1); % Model Fit (Imag)
     hold off;
@@ -223,7 +241,7 @@ end
 % |                          HELPER FUNCTIONS                           | %
 % +=====================================================================+ %
 
-% ========================== [ COST FUNCTIONS ] ===========================
+% ========================== [ COST FUNCTIONS ] ========================= %
 
 function res = costFun(p, x_coords, v_meas, n_harmonic, psf_kernel)
     res = [real(generate_moving_wall_model(p, x_coords, n_harmonic, psf_kernel) - v_meas.'); ...
@@ -255,7 +273,7 @@ function res = uWom_psi(alpha, r)
     res = complex_scalar .* radial_profile;
 end
 
-% ============================= [ WOMERSELY ] =============================
+% ============================= [ WOMERSELY ] =========================== %
 
 function model_profile = generate_moving_wall_model(p, x, n_harmonic, psf_kernel)
     % psf_kernel is optionnal
@@ -311,7 +329,7 @@ function model_profile = generate_womersley_model(p, x)
     model_profile = amplitude * profile;gergr
 end
 
-% =========================================================================
+% ======================================================================= %
     
 function v_meas = extractHarmonicProfile(v_profile_ft, f_vector, base_frequency, n_harmonic)
     % extractHarmonicProfile Extracts the complex velocity profile for a specific harmonic.
@@ -369,7 +387,111 @@ function psf_kernel = create_gaussian_psf_kernel(fwhm_um, num_points, cross_sect
     psf_kernel = fspecial('gaussian', [1, kernel_size], sigma_in_points);
 end
 
-  
+
+% ============================== [ SYMBOLS ] ============================ %
+
+function K = calculate_K_factor(lambda)
+    % Calculates the flow moment factor K(alpha).
+    % K(alpha) = 1 - (2*J1(lambda) / (lambda * J0(lambda)))
+    
+    if lambda == 0 || besselj(0, lambda) == 0
+        K = complex(NaN, NaN); % Avoid division by zero
+        return;
+    end
+    
+    K = 1 - (2 * besselj(1, lambda)) / (lambda * besselj(0, lambda));
+end
+
+
+function metrics = calculate_symbols(fitParams, rho_blood)
+    Cn          = fitParams.Cn;
+    Dn          = fitParams.Dn;
+    % TODO: This is NaN due to the fact that for now, when we do harmonics,
+    %       we don't have any clue on R0, we should make a two steps fit
+    R0_meters   = fitParams.R0;
+    alpha_1     = fitParams.alpha_1;
+    alpha_n     = fitParams.alpha_n;
+    omega_n     = fitParams.omega_n;
+
+    Rn          = fitParams.Rn;
+
+    lambda_n = (1i^(3/2)) * alpha_n;
+
+    metrics = struct();
+    % metrics = struct(...
+    %     'RnR0_complex',     NaN, ... % PWK ≈ D_n / C_n
+    %     'RnR0_mag',         NaN, ...
+    %     'RnR0_phase_deg',   NaN, ...
+    %     'Q_n',              NaN, ... % Flow (mm3/s)
+    %     'G_n',              NaN, ... % Gradient (Pa/m)
+    %     'tau_n',            NaN, ... % Shear (Pa)
+    %     'H_Zn',             NaN, ... % Impedance (Pa s/mm3/m)
+    %     'H_Rn',             NaN, ... % Geom-Norm (Pa)
+    %     'AnA0',             NaN, ...
+    %     'nu_app',           NaN, ... % Viscosity (kinetic) (m2/s)
+    %     'mu_app',           NaN  ... % Viscosity (dinamic)
+    % );
+
+    % Geometry (Ro)
+    % metrics.R0 = R0_meters * 1e6; % units: µm
+
+    % PWK (Rn/R0)
+    if Cn ~= 0
+        RnR0_complex = Dn / Cn;
+    else
+        RnR0_complex = complex(NaN, NaN);
+    end
+
+    metrics.RnR0_complex      = RnR0_complex;
+    metrics.RnR0_mag          = abs(RnR0_complex);
+    metrics.RnR0_phase_deg    = rad2deg(angle(RnR0_complex));
+
+    % Flow (Qn)
+    K_an = calculate_K_factor(lambda_n);
+    Qn_m3_s = pi * R0_meters^2 * Cn * K_an;
+    metrics.Q_n = Qn_m3_s * 1e9; % units: mm³/s
+
+    % Gradient (Gn)
+    metrics.G_n = 1i * omega_n * rho_blood * Cn; % units: Pa/m
+
+    % Viscosity (νapp)
+    numerator = (Rn ^ 2) * fitParams.omega_0;
+    denominator = alpha_1 ^ 2;
+    
+    if denominator > 0
+        metrics.nu_app = numerator / denominator;
+        metrics.mu_app = fitParams.metrics.nu_app * rho_blood;
+    else
+        metrics.nu_app = NaN;
+        metrics.mu_app = NaN;
+    end
+
+    % Shear (τn)
+    if ~isnan(metrics.mu_app) && R0_meters > 0 && besselj(0, lambda_n) ~= 0
+        metrics.tau_n = (metrics.mu_app * Cn * lambda_n * besselj(1, lambda_n)) / (R0_meters * besselj(0, lambda_n)); % units: Pa
+    else
+        metrics.tau_n = complex(NaN, NaN);
+    end
+
+    % Impedance (Ĥz,n)
+    if Qn_m3_s ~= 0
+        metrics.H_Zn = metrics.G_n / Qn_m3_s; % units: Pa·s/m⁴ (SI)
+    else
+        metrics.H_Zn = complex(NaN, NaN);
+    end
+
+    % Geom.-norm. (HR,n)
+    % NOTE: The formula H_R,n = Ĥ_z,n * R₀² from the paper results in units
+    % of [Pa·s·m], whereas the table specifies the units as [Pa].
+    % This is a known inconsistency in the source document.
+    % The calculation is implemented here as stated in the formula.
+    metrics.H_Rn = metrics.H_Zn * (R0_meters ^ 2); % units: Pa·s·m
+
+    % Area puls. (An/A0)
+    metrics.AnA0 = 2 * metrics.RnR0_complex;
+
+end
+
 
 % +=====================================================================+ %
 % |                           DEBUG FUNCTIONS                           | %
@@ -405,164 +527,3 @@ function show_para_and_fit(value, fit_results)
     grid on;  % Add a grid for easier reading
     hold off; % Release the plot
 end
-
-% =========================================================================
-% OLD IMPLEM
-% =========================================================================
-
-
-% function [alphaWom, pseudoViscosity] = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx)
-% % WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
-% % by fitting the input velocity profile (v_profile) to a Womersley flow profile.
-% %
-% % INPUT:
-% %   v_profile - Array (crossSectionLength x numFrames) containing the measured
-% % velocity profile data across time.
-% %   (dv - std)
-% %   cardiac_frequency - Cardiac Frequency in Hz
-% %
-% % OUTPUT:
-% %   alphaWom  - Estimated Womersley number (dimensionless), characterizing
-% %               the pulsatile flow regime.
-% %   pseudoViscosity  - induced dynamic viscosity
-% % Create figure for static plot
-% % Get global ToolBox settings
-% ToolBox = getGlobalToolBox;
-% params = ToolBox.getParams;
-% crossSectionLength = size(v_profile,1);
-% numFrames = size(v_profile, 2);
-% 
-% t = ToolBox.Cache.t;
-% N_padding = 16;
-% 
-% alphaWom = NaN;
-% pseudoViscosity = NaN;
-% 
-% numInterp = params.json.exportCrossSectionResults.InterpolationPoints;
-% 
-% 
-% % v_profile = interp1(linspace(1,crossSectionLength,crossSectionLength),v_profile,linspace(1,crossSectionLength,numInterp));
-% 
-% % Trimming the 0 on the edges
-% v_profile_avg  = squeeze(mean(v_profile, 2));
-% idxs = v_profile_avg~=0;
-% v_profile_avg = v_profile_avg(idxs);
-% v_profile = v_profile(idxs, :);
-% 
-% % Interpolation for more points
-% sectionSize = length(v_profile_avg);
-% v_profile = interp1(linspace(1, sectionSize, sectionSize), v_profile, linspace(1, sectionSize, numInterp));
-% 
-% % Center with a weighted mean
-% v_profile_avg  = squeeze(mean(v_profile, 2));
-% indxCenter = sum((1:numInterp)' .* v_profile_avg) / sum(v_profile_avg);
-% shiftIndx = indxCenter - (numInterp+1)/2;
-% v_profile = circshift(v_profile, round(shiftIndx), 1);
-% 
-% v_profile_ft = fftshift(fft(v_profile, numFrames * N_padding, 2), 2);
-% 
-% w2w = linspace(-1, 1, numInterp);
-% 
-% f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, numFrames * N_padding);
-% 
-% [~, cardiac_idx] = min(abs(f - cardiac_frequency));
-% 
-% margin_ = round(0.01 * numFrames * N_padding / 2 ); % +- 10 % fs /2
-% cardiac_idxs = cardiac_idx + (-margin_:margin_);
-% cardiac_idxs(cardiac_idxs > numFrames * N_padding) = [];
-% cardiac_idxs(cardiac_idxs < 1) = [];
-% 
-% v_meas = mean(v_profile_ft(:, cardiac_idxs), 2);
-% % Force the two Womersley hypothesis - bad hypothesis
-% % v_profile_hyp = setSymetry(v_profile);
-% 
-% % v_profile_hyp = setBoundariesZeros(v_profile_hyp);  - bad hypothesis
-% 
-% % Calculate Fourier transform and display
-% 
-% % figure(1655), imagesc(t, w2w,v_profile); xlabel('Time'), ylabel('Vessel Cross Section');
-% 
-% % figure(1786), imagesc(f, w2w,log10(abs(v_profile_ft))); xlabel('Freq'), ylabel('Vessel Cross Section ');
-% 
-% % figure(1917), imagesc(angle((v_profile_ft))); xlabel('Freq'), ylabel('Vessel Cross Section ');
-% 
-% v_norm = v_meas / mean(v_meas);
-% 
-% % v_norm = v_norm - 2i * imag(v_norm);
-% 
-% % Create figure for static plot
-% hFig = figure("Visible", "off");
-% hold('on');
-% 
-% % Plot profile data
-% plot(w2w, imag(v_norm), '-', 'Color', 'r', 'LineWidth', 2); 
-% plot(w2w, real(v_norm), '-', 'Color', 'b', 'LineWidth', 2);
-% 
-% % Fit Womersley analytical profile
-% R = 1;
-% r = linspace(-1, 1, numInterp) *R; % normalized radius
-% 
-% uWom = @(alpha, r) (1 - (besselj(0, 1i ^ (3/2) * alpha * r) ./ besselj(0, 1i ^ (3/2) * alpha)));
-% 
-% % regulation_window = @(r, R) max(1 - (r / R) .^ 2, 0); % increase the weight of the central values in the fitting
-% 
-% uWom_tofit = @(alpha) (uWom(alpha, r) / mean(uWom(alpha, r)));
-% 
-% % costFun = @(alpha) norm(regulation_window(r, 1) .* uWom_tofit(alpha) - v_norm'); % least square error minimization
-% costFun = @(alpha) norm(uWom_tofit(alpha) - v_norm'); % least square error minimization
-% 
-% alpha_init = 3; % initial guess
-% alphaWom = fminsearch(costFun, alpha_init);
-% % alphaWom = lsqnonlin(costFun, alpha_init, [], []);
-% 
-% uWom_fit = uWom_tofit(alphaWom);
-% plot(w2w, imag(uWom_fit), '--', 'Color', 'r', 'LineWidth', 2);
-% plot(w2w, real(uWom_fit), '--', 'Color', 'b', 'LineWidth', 2);
-% 
-% 
-% 
-% % plot(w2w, regulation_window(r, R), '--', 'Color', 'k', 'LineWidth', 2);
-% 
-% % Finalize static plot
-% xlim([-1 1]);
-% 
-% xlabel('lumen cross-section (a.u.)', 'FontSize', 14);
-% ylabel('Velocity (mm/s)', 'FontSize', 14);
-% 
-% box on
-% axis tight
-% axis padded;
-% set(gca, 'LineWidth', 2);
-% set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
-% ax = gca;
-% ax.LineStyleOrderIndex = 1; % Reset if needed
-% ax.SortMethod = 'depth'; % Try changing sorting method
-% ax.Layer = 'top'; % This may help in some cases
-% 
-% annotation('textbox', [0.5 0.6 0.2 0.1], ...
-%             'String', sprintf('alpha Womersley : %.1f  ± %.1f', alphaWom, NaN), ...
-%             'FitBoxToText', 'on', ...
-%             'BackgroundColor', 'w', ...
-%             'EdgeColor', 'none', ...
-%             'FontSize', 12);
-% 
-% % Export static figure
-% 
-% ax = gca;
-% 
-% if ~isfolder(fullfile(ToolBox.path_png, 'Womersley'))
-%     mkdir(fullfile(ToolBox.path_png, 'Womersley'))
-% end
-% 
-% if isvalid(ax)
-%     exportgraphics(gca, fullfile(ToolBox.path_png, "Womersley", sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx)), 'Resolution', 300);
-% else
-%     warning('Current axes are not valid. Skipping export.');
-% end
-% 
-% % Close the figure if not needed
-% if ~strcmpi(get(hFig, 'Visible'), 'on')
-%     close(hFig);
-% end
-% 
-% end
