@@ -164,4 +164,38 @@ function fit_results = fit_parabol_diam(velocity_profile)
     fit_results.center_offset = centt;
     fit_results.central_range = central_range;
 end
-  
+
+% +=====================================================================+ %
+% |                           DEBUG FUNCTIONS                           | %
+% +=====================================================================+ %
+
+% Debug function to show parabole and its fit
+function show_para_and_fit(value, fit_results)
+    x_data = 1:length(value);
+
+    p = [fit_results.p1, fit_results.p2, fit_results.p3];
+    
+    % Create a smooth x-axis for the fitted curve
+    x_fit = linspace(fit_results.root1, fit_results.root2, 200);
+    
+    x_fit_original = x_fit + fit_results.center_offset;
+
+    % Calculate the corresponding y-values for the fitted curve
+    y_fit = polyval(p, x_fit);
+    
+    figure;
+    hold on;
+    
+    plot(x_data, value, '.', 'Color', [0.7 0.7 0.7], 'DisplayName', 'Full Profile Data');
+    plot(fit_results.central_range, value(fit_results.central_range), 'b.', 'MarkerSize', 12, 'DisplayName', 'Data Used for Fit');
+    plot(x_fit_original, y_fit, 'r-', 'LineWidth', 2, 'DisplayName', 'Parabolic Fit');
+    
+    plot([fit_results.root1, fit_results.root2] + fit_results.center_offset, [0, 0], 'kx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Roots');
+
+    title('Comparison of Average Profile and Parabolic Fit');
+    xlabel('Spatial Points (e.g., Pixel Index)');
+    ylabel('Average Velocity (or other metric)');
+    legend('show', 'Location', 'best'); % Add a legend
+    grid on;  % Add a grid for easier reading
+    hold off; % Release the plot
+end

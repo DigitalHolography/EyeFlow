@@ -10,8 +10,6 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     end
 end
 
-
-
 function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic)
     % WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
     % by fitting the velocity profile to a Womersley flow model.
@@ -207,11 +205,11 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
                           'Width: %.2f\n' ...
                           '|R_n/R_0|: %.2f %%\n' ...
                           'Phase(R_n): %.1f°'], ...
-                          fitParams.alpha, ...
+                          fitParams.alpha_n, ...
                           fitParams.center, ...
                           fitParams.width, ...
-                          fitParams.R1R0_mag * 100, ...
-                          fitParams.R1R0_phase_deg);
+                          fitParams.metrics.RnR0_mag * 100, ...
+                          fitParams.metrics.RnR0_phase_deg);
 
     annotation('textbox', [0.15 0.75 0.3 0.15], 'String', fit_string, ...
                 'FitBoxToText', 'on', 'BackgroundColor', 'w', ...
@@ -490,40 +488,4 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     % Area puls. (An/A0)
     metrics.AnA0 = 2 * metrics.RnR0_complex;
 
-end
-
-
-% +=====================================================================+ %
-% |                           DEBUG FUNCTIONS                           | %
-% +=====================================================================+ %
-
-% Debug function to show parabole and its fit
-function show_para_and_fit(value, fit_results)
-    x_data = 1:length(value);
-
-    p = [fit_results.p1, fit_results.p2, fit_results.p3];
-    
-    % Create a smooth x-axis for the fitted curve
-    x_fit = linspace(fit_results.root1, fit_results.root2, 200);
-    
-    x_fit_original = x_fit + fit_results.center_offset;
-
-    % Calculate the corresponding y-values for the fitted curve
-    y_fit = polyval(p, x_fit);
-    
-    figure;
-    hold on;
-    
-    plot(x_data, value, '.', 'Color', [0.7 0.7 0.7], 'DisplayName', 'Full Profile Data');
-    plot(fit_results.central_range, value(fit_results.central_range), 'b.', 'MarkerSize', 12, 'DisplayName', 'Data Used for Fit');
-    plot(x_fit_original, y_fit, 'r-', 'LineWidth', 2, 'DisplayName', 'Parabolic Fit');
-    
-    plot([fit_results.root1, fit_results.root2] + fit_results.center_offset, [0, 0], 'kx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Roots');
-
-    title('Comparison of Average Profile and Parabolic Fit');
-    xlabel('Spatial Points (e.g., Pixel Index)');
-    ylabel('Average Velocity (or other metric)');
-    legend('show', 'Location', 'best'); % Add a legend
-    grid on;  % Add a grid for easier reading
-    hold off; % Release the plot
 end
