@@ -1,16 +1,35 @@
 function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx)
     results = [];
+    ToolBox = getGlobalToolBox;
+    params = ToolBox.getParams;
+
+    NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
+    crossSectionLength = size(v_profile, 1);
+    FWHM_um = 8;
+    PIXEL_SIZE = params.px_size;
+
+    % TODO: Fix the psf kernel function
+    psf_kernel = create_gaussian_psf_kernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
+    % Fit a simple PSF-convolved Parabolic/Plug model to get Geometry
+    [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, FWHM_um, psf_kernel, ToolBox);
+    
+    if isnan(geoParams.R0_meters)
+        warning('Geometry fit failed');
+        return;
+    end
 
     % TODO: For now a constant number of harmonics (use input parameters maybe)
     HARMONIC_NUMBER = 1;
-
+    
+    results = cell(1, HARMONIC_NUMBER);
     % TODO: Parfor does not seem to work with toolbox
     for i = 1:HARMONIC_NUMBER
-        results{i} = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i);
+        results{i} = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, ToolBox);
     end
 end
 
-function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic)
+
+function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, ToolBox)
     % WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
     % by fitting the velocity profile to a Womersley flow model.
     %
@@ -29,9 +48,8 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     %   pseudoViscosity   - Derived dynamic viscosity in Pa·s.
     %   fitParams         - A struct containing all fitted parameters.
     
-    
-    ToolBox = getGlobalToolBox;
     params = ToolBox.getParams;
+
     NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
     PIXEL_SIZE = params.px_size;
     
@@ -238,6 +256,75 @@ end
 % +=====================================================================+ %
 % |                          HELPER FUNCTIONS                           | %
 % +=====================================================================+ %
+
+% ========================== [ R0 CALCULATION ] ========================= %
+
+function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, FWHM_um, psf_kernel, ToolBox)
+    % Fit simple Poiseuille flow (1 - r^2) convolved with PSF to find Center and Width
+    params = ToolBox.getParams;
+
+    NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
+    crossSectionLength = size(v_profile, 1);
+    x_grid_normalized = linspace(-1, 1, NUM_INTERP_POINTS); 
+    
+    if crossSectionLength <= 1
+         warning('fitGeometryFromMean: Profile too short'); 
+         return; 
+    end
+
+    % TODO: Maybe not fit on interpolated values
+    v_profile_interp = interp1(linspace(-1, 1, crossSectionLength), v_profile, x_grid_normalized);
+    
+    % PSF Kernel
+    PIXEL_SIZE = params.px_size;
+
+    v_mean = mean(v_profile_interp, 2);
+    v_mean_interp = v_mean;
+
+    % Model: Amplitude * (1 - ((x-center)/width)^2) * convol PSF
+
+    %         [Amplitude,    Center,    Width]
+    p_init  = [max(v_mean),  0,         0.8  ];
+
+    lb      = [0,           -0.5,       0.1  ];
+    ub      = [Inf,          0.5,       1.5  ];
+    
+    costFun = @(p) costFunDC(p, x_grid_normalized, v_mean, psf_kernel);
+    options = optimoptions('lsqnonlin', 'Display', 'off');
+    try
+        p_fit = lsqnonlin(costFun, p_init, lb, ub, options);
+    catch
+        geoParams.R0_meters = NaN; 
+        return;
+    end
+    
+    width_normalized = p_fit(3);
+    R0_meters = (width_normalized * (crossSectionLength * PIXEL_SIZE)) / 2; 
+    
+    geoParams.center_norm = p_fit(2);
+    geoParams.width_norm = p_fit(3);
+    geoParams.R0_meters = R0_meters;
+    geoParams.DC_Amp = p_fit(1);
+end
+
+function err = costFunDC(p, x, v_meas, psf)
+    amp     = p(1); 
+    center  = p(2); 
+    width   = p(3);
+
+    r = (x - center) / width;
+    
+    profile = 1 - r .^ 2;
+    profile(abs(r) > 1) = 0;
+    profile = profile * amp;
+    
+    if ~isempty(psf)
+        profile = conv(profile, psf, 'same');
+    end
+    
+    err = profile(:) - v_meas(:);
+end
+
 
 % ========================== [ COST FUNCTIONS ] ========================= %
 
@@ -489,3 +576,64 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     metrics.AnA0 = 2 * metrics.RnR0_complex;
 
 end
+
+
+% +=====================================================================+ %
+% |                                DEBUG                                | %
+% +=====================================================================+ %
+
+    
+function visualizeDCFit(v_mean, geoParams, psf_kernel)
+    % VISUALIZEDCFIT Plots the mean velocity data against the fitted model.
+    % It uses the geoParams structure containing the fit results.
+    %
+    % INPUTS:
+    %   v_mean     - The averaged velocity profile vector (the data that was fit).
+    %   geoParams  - The struct output from fitGeometryOnMean.
+    %   psf_kernel - The PSF kernel used during the fit.
+
+    % --- 1. Generate the normalized coordinate grid internally ---
+    num_points = length(v_mean);
+    x_grid = linspace(-1, 1, num_points);
+
+    % --- 2. Unpack parameters directly from the geoParams struct ---
+    amplitude = geoParams.DC_Amp;
+    center = geoParams.center_norm;
+    width = geoParams.width_norm;
+
+    % --- 3. Recreate the model components for plotting ---
+    r = (x_grid - center) / width;
+    ideal_model = amplitude * (1 - r.^2);
+    ideal_model(abs(r) > 1) = 0;
+
+    if ~isempty(psf_kernel)
+        final_model = conv(ideal_model, psf_kernel, 'same');
+    else
+        final_model = ideal_model;
+    end
+
+    % --- 4. Create the plot ---
+    figure('Name', 'DC Fit Visualization', 'Position', [100, 100, 800, 600]);
+    hold on;
+    plot(x_grid, v_mean, 'b.', 'MarkerSize', 12, 'DisplayName', 'Mean Velocity Data');
+    plot(x_grid, ideal_model, 'g--', 'LineWidth', 1.5, 'DisplayName', 'Ideal Parabolic Model');
+    plot(x_grid, final_model, 'r-', 'LineWidth', 2.5, 'DisplayName', 'Fitted Model (PSF-Convolved)');
+
+    % --- 5. Add annotations ---
+    xline(center, 'k:', 'DisplayName', 'Center', 'LineWidth', 2);
+    xline([center - width, center + width], 'm:', 'DisplayName', 'Edges (R0)', 'HandleVisibility', 'off', 'LineWidth', 2);
+    xline(center - width, 'm:', 'DisplayName', 'Edges (R0)', 'LineWidth', 2); % Re-plot one for legend
+    
+    grid on; box on; hold off;
+    xlabel('Normalized Cross-Section Coordinate');
+    ylabel('Mean Velocity');
+    legend('show', 'Location', 'best');
+    xlim([-1, 1]);
+
+    fit_text = sprintf('Fitted Parameters:\n  Amplitude: %.3f\n  Center: %.3f\n  Width (R0_n): %.3f', ...
+                       amplitude, center, width);
+    annotation('textbox', [0.15, 0.7, 0.2, 0.2], 'String', fit_text, ...
+               'BackgroundColor', 'w', 'EdgeColor', 'k', 'FitBoxToText', 'on');
+end
+
+  
