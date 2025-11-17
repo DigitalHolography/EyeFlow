@@ -11,7 +11,7 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     % TODO: Fix the psf kernel function
     psf_kernel = create_gaussian_psf_kernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
     % Fit a simple PSF-convolved Parabolic/Plug model to get Geometry
-    [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, FWHM_um, psf_kernel, ToolBox);
+    [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, ToolBox);
     
     if isnan(geoParams.R0_meters)
         warning('Geometry fit failed');
@@ -57,8 +57,6 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     % DIAS_IDXS = ToolBox.Cache.diasIdx;
     
     FFT_PADDING_FACTOR = 16;
-
-    FWHM_um = 8;
 
     RHO_BLOOD = 1060; % Density of blood in kg/m^3
     
@@ -259,7 +257,7 @@ end
 
 % ========================== [ R0 CALCULATION ] ========================= %
 
-function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, FWHM_um, psf_kernel, ToolBox)
+function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, ToolBox)
     % Fit simple Poiseuille flow (1 - r^2) convolved with PSF to find Center and Width
     params = ToolBox.getParams;
 
@@ -540,7 +538,7 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     metrics.G_n = 1i * omega_n * rho_blood * Cn; % units: Pa/m
 
     % Viscosity (νapp)
-    numerator = (Rn ^ 2) * fitParams.omega_0;
+    numerator = (R0_meters ^ 2) * fitParams.omega_0;
     denominator = alpha_1 ^ 2;
     
     if denominator > 0
