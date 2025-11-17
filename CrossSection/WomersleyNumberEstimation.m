@@ -1,5 +1,4 @@
 function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx)
-    results = [];
     ToolBox = getGlobalToolBox;
     params = ToolBox.getParams;
 
@@ -18,18 +17,22 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
         return;
     end
 
+    init_fit = struct(...
+        'psf_kernel',   psf_kernel, ...
+        'geoParams',    geoParams   ...
+    );
+
     % TODO: For now a constant number of harmonics (use input parameters maybe)
     HARMONIC_NUMBER = 1;
     
-    results = cell(1, HARMONIC_NUMBER);
     % TODO: Parfor does not seem to work with toolbox
     for i = 1:HARMONIC_NUMBER
-        results{i} = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, ToolBox);
+        results(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, ToolBox);
     end
 end
 
 
-function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, ToolBox)
+function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, ToolBox)
     % WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
     % by fitting the velocity profile to a Womersley flow model.
     %
@@ -153,7 +156,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         [p_fit, ~, ~, ~, ~, ~, jacobian] = lsqnonlin(costFunctionHandle, p_init, lb, ub, options);
 
         % Fit Condition number
-        fitParams.K_cond = sqrt(cond(jacobian'*jacobian));
+        fitParams.K_cond = sqrt(condest(jacobian'*jacobian));
 
         alpha_1             = p_fit(1);
         Cn_fit              = p_fit(2) + 1i * p_fit(3);
@@ -194,42 +197,60 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     
     hFig = figure("Visible", "off");
     hold on;
+
     title(sprintf('Womersley Fit for %s (idx %d) (Harmonic: %d)', name, idx, n_harmonic), 'Interpreter', 'none');
-    plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1);    % Measured Data (Real)
-    plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1);    % Measured Data (Imag)
-    plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1); % Model Fit (Real)
-    plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1); % Model Fit (Imag)
-    hold off;
     
+    p1 = plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1, 'DisplayName', 'Measured Data');  % Measured Data (Real)
+    plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1);    % Measured Data (Imag)
+
+    p2 = plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1, 'DisplayName', 'Model Fit'); % Model Fit (Real)
+    plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1); % Model Fit (Imag)
+    
+    hold off;
+
     xlim([-1 1]);
+
     xlabel('Normalized Cross-section', 'FontSize', 14);
     ylabel('Complex Velocity (a.u.)', 'FontSize', 14);
+
     legend('show', 'Location', 'best', 'FontSize', 8); 
     box on;
     grid on;
+
     axis tight;
     set(gca, 'LineWidth', 1.5);
+
+    lgd = legend([p1, p2], 'Location', 'best');
+    title(lgd, 'Blue: Real, Red: Imaginary');
+
     
+    pos = get(gca, 'Position'); 
+    info_box_height = 0.15; 
+    % Move the axes up and shrink its height to make room
+    % [left, bottom, width, height]
+    set(gca, 'Position', [pos(1), pos(2) + info_box_height, pos(3), pos(4) - info_box_height]);
+
+
     % fit_string = sprintf('α Womersley: %.2f\nCenter: %.2f\nWidth: %.2f', ...
     %                      fitParams.alpha, fitParams.center, fitParams.width);
     % annotation('textbox', [0.15 0.78 0.25 0.1], 'String', fit_string, ...
     %             'FitBoxToText', 'off', 'BackgroundColor', 'w', ...
     %             'EdgeColor', 'k', 'FontSize', 12, 'FontSize', 10);
 
-    fit_string = sprintf(['α: %.2f\n' ...
-                          'Center: %.2f\n' ...
-                          'Width: %.2f\n' ...
-                          '|R_n/R_0|: %.2f %%\n' ...
-                          'Phase(R_n): %.1f°'], ...
-                          fitParams.alpha_n, ...
-                          fitParams.center, ...
-                          fitParams.width, ...
-                          fitParams.metrics.RnR0_mag * 100, ...
-                          fitParams.metrics.RnR0_phase_deg);
 
-    annotation('textbox', [0.15 0.75 0.3 0.15], 'String', fit_string, ...
-                'FitBoxToText', 'on', 'BackgroundColor', 'w', ...
-                'EdgeColor', 'k', 'FontSize', 10);
+    line1_str = sprintf('α     : %-10.2f     R_0       : %.4f', fitParams.alpha_n, init_fit.geoParams.R0_meters);
+    line2_str = sprintf('Center: %-10.2f     |R_n/R_0| : %.2f %%', fitParams.center, fitParams.metrics.RnR0_mag * 100);
+    line3_str = sprintf('Width : %-10.2f     Phase(R_n): %.1f°', fitParams.width, fitParams.metrics.RnR0_phase_deg);
+    
+    fit_string = {line1_str, line2_str, line3_str};
+    
+    annotation('textbox', [0, 0, 1, info_box_height], ...
+               'String', fit_string, ...
+               'EdgeColor', 'none', ...
+               'HorizontalAlignment', 'center', ...
+               'VerticalAlignment', 'middle', ...
+               'FontSize', 10);
+
     
     save_path = fullfile(ToolBox.path_png, 'Womersley');
 
@@ -259,6 +280,15 @@ end
 
 function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, ToolBox)
     % Fit simple Poiseuille flow (1 - r^2) convolved with PSF to find Center and Width
+    
+    geoParams = struct(...
+        'R0_meters',    NaN, ... % R0           (Real)
+        ...
+        'center_norm',  NaN, ... % Shift        (Normalized)
+        'width_norm',   NaN, ... % Width/R0     (Normalized)
+        'DC_Amp',       NaN  ... % Amplitude    (Non-Normalized ?)
+    );
+
     params = ToolBox.getParams;
 
     NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
@@ -300,7 +330,7 @@ function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, T
     R0_meters = (width_normalized * (crossSectionLength * PIXEL_SIZE)) / 2; 
     
     geoParams.center_norm = p_fit(2);
-    geoParams.width_norm = p_fit(3);
+    geoParams.width_norm = width_normalized;
     geoParams.R0_meters = R0_meters;
     geoParams.DC_Amp = p_fit(1);
 end
