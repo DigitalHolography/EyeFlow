@@ -58,8 +58,8 @@ P1(2:end - 1) = 2 * P1(2:end - 1);
 % Frequency vector
 f = fft_freq_vector(fs, numFrames, true);
 
-% Find dominant frequency in physiological range (e.g. 0.5 - 5 Hz)
-f_range = (f > 0.5 & f < 5); % 30 - 300 bpm
+% Find dominant frequency in physiological range (e.g. 0.5 - 2 Hz)
+f_range = (f > 0.5 & f < 2); % 30 - 120 bpm
 [~, idx] = max(P1(f_range));
 f0 = f(f_range);
 f0 = f0(idx);
@@ -164,9 +164,8 @@ function isValid = check_validity(signal, fs, f0)
 
 % ---------------- Parameters ----------------
 freqTolerance = 0.3; % Hz, tolerance around f0
-dominanceThreshold = 3; % ratio of main peak power / average PSD
 purityThreshold = 0.3;      % required purity (tune as needed)
-freqRange = [0.5, 5]; % Hz, physiological range (30–300 bpm)
+freqRange = [0.5, 2]; % Hz, physiological range (30–120 bpm)
 
 % ---------------- Preprocessing ----------------
 signal = signal(:)' - mean(signal); % remove DC
@@ -203,8 +202,7 @@ purity = 0.7 * energyConcentration + 0.3 * purityEntropy;
 
 % ---- Validity criteria ----
 freqClose = abs(f_branch - f0) < freqTolerance;
-dominance = P_local(idxMax) / mean(P_local);
 
-isValid = freqClose && dominance > dominanceThreshold && purity > purityThreshold;
+isValid = freqClose && purity > purityThreshold;
 
 end
