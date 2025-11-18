@@ -5,7 +5,7 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
     crossSectionLength = size(v_profile, 1);
     FWHM_um = 8;
-    PIXEL_SIZE = params.px_size;
+    PIXEL_SIZE = params.px_size; % in milimeters
 
     % TODO: Fix the psf kernel function
     psf_kernel = create_gaussian_psf_kernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
