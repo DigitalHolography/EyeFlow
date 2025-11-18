@@ -33,7 +33,7 @@ methods
             mkdir('Models');
         end
 
-        pythonFolder = 'C:\Users\Michael\Documents\MATLAB\EyeFlow\Preprocessing';
+        pythonFolder = 'Preprocessing';
         if count(py.sys.path, pythonFolder) == 0
             insert(py.sys.path, int32(0), pythonFolder);
         end
@@ -51,20 +51,6 @@ methods
 
             fprintf("    - No AI Networks selected in parameters. Skipping loading.\n");
             return; % No AI networks needed
-        end
-
-        % Load Optic Disk Detector Network if parameter changed
-        OpticDiskDetectorParamChanged = ~isequal(obj.OpticDiskDetectorParam, maskParams.OpticDiskDetectorNet);
-
-        if OpticDiskDetectorParamChanged && maskParams.OpticDiskDetectorNet
-            pyenv; % Ensure Python environment is initialized
-
-            tic
-            fprintf("    - Loading Optic Disk Detector Network...\n");
-            % [obj.OpticDiskDetectorNet] = loadOpticDiskNetwork();
-            [obj.OpticDiskDetectorNet] = py.import_yolo_model.import_yolo_model("runs/train/optic_disk_segmentation2/weights/best.pt"); % Load the trained model
-            obj.OpticDiskDetectorParam = maskParams.OpticDiskDetectorNet;
-            fprintf("    - Loading Optic Disk Detector Network took: %ds\n", round(toc));
         end
 
         % Load Vessel Segmentation Network if parameter changed
@@ -100,15 +86,17 @@ methods
             fprintf("    - Loading AV Segmentation Networks took: %ds\n", round(toc));
         end
 
-        % Load Eye Side Classifier Network if parameter changed
-        EyeSideClassifierParamChanged = ~isequal(obj.EyeSideClassifierParam, maskParams.EyeSideClassifierNet);
+        % Load Optic Disk Detector Network if parameter changed
+        OpticDiskDetectorParamChanged = ~isequal(obj.OpticDiskDetectorParam, maskParams.OpticDiskDetectorNet);
 
-        if EyeSideClassifierParamChanged && maskParams.EyeSideClassifierNet
+        if OpticDiskDetectorParamChanged && maskParams.OpticDiskDetectorNet
             tic
-            fprintf("    - Loading Eye Side Classifier Network...\n");
-            [obj.EyeSideClassifierNet] = loadEyeSideClassifierNetwork();
-            obj.EyeSideClassifierParam = maskParams.EyeSideClassifierNet;
-            fprintf("    - Loading Eye Side Classifier Network took: %ds\n", round(toc));
+            fprintf("    - Loading Optic Disk Detector Network...\n");
+            % [obj.OpticDiskDetectorNet] = loadOpticDiskNetwork();
+            % [obj.OpticDiskDetectorNet] = py.yolo.import_model("../Models/optic_disk.pt"); % Load the trained model
+            [obj.OpticDiskDetectorNet] = loadYoloModel("optic_disk", "YOLO_OpticDisk");
+            obj.OpticDiskDetectorParam = maskParams.OpticDiskDetectorNet;
+            fprintf("    - Loading Optic Disk Detector Network took: %ds\n", round(toc));
         end
 
         % Load Eye Diaphragm Segmentation Network if parameter changed
@@ -117,16 +105,26 @@ methods
         if EyeDiaphragmSegmentationParamChanged && maskParams.EyeDiaphragmSegmentationNet
             tic
             fprintf("    - Loading Eye Diaphragm Segmentation Network...\n");
-            [obj.EyeDiaphragmSegmentationNet] = loadEyeDiaphragmSegmentation();
+            [obj.EyeDiaphragmSegmentationNet] = loadYoloModel("eye_diaphragm", "YOLO_EyeDiaphragm");
             obj.EyeDiaphragmSegmentationParam = maskParams.EyeDiaphragmSegmentationNet;
             fprintf("    - Loading Eye Diaphragm Segmentation Network took: %ds\n", round(toc));
+        end
+
+        % Load Eye Side Classifier Network if parameter changed
+        EyeSideClassifierParamChanged = ~isequal(obj.EyeSideClassifierParam, maskParams.EyeSideClassifierNet);
+
+        if EyeSideClassifierParamChanged && maskParams.EyeSideClassifierNet
+            tic
+            fprintf("    - Loading Eye Side Classifier Network...\n");
+            [obj.EyeSideClassifierNet] = loadYoloModel("eye_side", "YOLO_EyeSide");
+            obj.EyeSideClassifierParam = maskParams.EyeSideClassifierNet;
+            fprintf("    - Loading Eye Side Classifier Network took: %ds\n", round(toc));
         end
 
         if ~AVSegmentationParamChanged ...
                 && ~VesselSegmentationParamChanged ...
                 && ~OpticDiskDetectorParamChanged ...
-                && ~EyeSideClassifierParamChanged ...
-                && ~PapillaDiskDetectorParamChanged
+                && ~EyeSideClassifierParamChanged
             fprintf("    - AI Networks are up to date. No loading needed.\n");
         end
 
