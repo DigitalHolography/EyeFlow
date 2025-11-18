@@ -5,11 +5,12 @@ params = ToolBox.getParams;
 saveFigures = params.saveFigures;
 
 % Initialize output variables
+[numX, numY] = size(M0img);
 found = false;
 diameter_x = NaN;
 diameter_y = NaN;
-x_center = size(M0img, 1) / 2;
-y_center = size(M0img, 2) / 2;
+x_center = numX / 2;
+y_center = numY / 2;
 
 if ~params.json.Mask.OpticDiskDetectorNet
     return;
@@ -33,8 +34,8 @@ if ~isempty(output)
         found = true;
         diameter_x = bestBox(3);
         diameter_y = bestBox(4);
-        x_center = bestBox(1);
-        y_center = bestBox(2);
+        x_center = round(bestBox(1) / 512 * numX);
+        y_center = round(bestBox(2) / 512 * numY);
         ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2/512, '');
     end
 
@@ -42,8 +43,8 @@ if ~isempty(output)
         a = bestBox(3) / 2;
         b = bestBox(4) / 2;
         angle = linspace(0, 2 * pi, 360);
-        x_ellipsis = x_center + a * cos(angle);
-        y_ellipsis = y_center + b * sin(angle);
+        x_ellipsis = x_center * 512 / numX + a * cos(angle);
+        y_ellipsis = y_center * 512 / numY + b * sin(angle);
 
         figure('Visible', 'off', 'Color', 'w');
         imshow(M0img, []);
