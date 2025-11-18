@@ -165,7 +165,7 @@ function isValid = check_validity(signal, fs, f0)
 % ---------------- Parameters ----------------
 freqTolerance = 0.3; % Hz, tolerance around f0
 dominanceThreshold = 3; % ratio of main peak power / average PSD
-purityThreshold = 0.6;      % required purity (tune as needed)
+purityThreshold = 0.3;      % required purity (tune as needed)
 freqRange = [0.5, 5]; % Hz, physiological range (30–300 bpm)
 
 % ---------------- Preprocessing ----------------
