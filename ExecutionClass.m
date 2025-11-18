@@ -168,6 +168,7 @@ methods
             end
 
         catch ME
+            MEdisp(ME,'');
             warning("Pulse Wave Velocity Analysis failed");
         end
 
