@@ -525,7 +525,7 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     Dn          = fitParams.Dn;
     % TODO: This is NaN due to the fact that for now, when we do harmonics,
     %       we don't have any clue on R0, we should make a two steps fit
-    R0   = fitParams.R0;
+    R0          = fitParams.R0;
     alpha_1     = fitParams.alpha_1;
     alpha_n     = fitParams.alpha_n;
     omega_n     = fitParams.omega_n;
