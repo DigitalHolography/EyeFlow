@@ -69,11 +69,11 @@ idx0 = round(t0 / dt);
 [s_idx, locs_n] = select_regular_peaks(signals_n, 'minmax', idx0);
 
 % Step 3.5: Check periodicity (autocorrelation-based)
-isPeriodic = false(numBranches, 1);
+isPure = false(numBranches, 1);
 
 parfor i = 1:numBranches
     sig = signals_n(i, :);
-    isPeriodic(i) = check_validity(sig, fs, f0);
+    isPure(i) = check_validity(sig, fs);
 end
 
 % Step 4: Combine them into final mask
@@ -82,7 +82,7 @@ preMaskVein = false(size(maskVesselness));
 
 parfor i = 1:numBranches
 
-    if ~isPeriodic(i)
+    if ~isPure(i)
         continue; % skip non-periodic branches
     end
 
@@ -99,9 +99,10 @@ params = ToolBox.getParams;
 if params.saveFigures
     t = ToolBox.Cache.t;
     path_png = ToolBox.path_png;
+
     parfor N = 1:numBranches
 
-        if ~isPeriodic(N)
+        if ~isPure(N)
             continue; % skip non-periodic branches
         end
 
@@ -143,7 +144,7 @@ end
 
 end
 
-function isValid = check_validity(signal, fs, f0)
+function isValid = check_validity(signal, fs)
 %CHECK_VALIDITY  Check if a temporal signal is periodic and not noise.
 %
 %   isValid = check_validity(signal, fs, f0)
@@ -163,8 +164,7 @@ function isValid = check_validity(signal, fs, f0)
 %       - if that frequency lies close to f0.
 
 % ---------------- Parameters ----------------
-freqTolerance = 0.3; % Hz, tolerance around f0
-purityThreshold = 0.3;      % required purity (tune as needed)
+purityThreshold = 0.3; % required purity (tune as needed)
 freqRange = [0.5, 2]; % Hz, physiological range (30–120 bpm)
 
 % ---------------- Preprocessing ----------------
@@ -195,14 +195,11 @@ energyConcentration = sum(P_local(band));
 
 % 2. Spectral entropy
 spectralEntropy = -sum(P_local .* log(P_local + eps)) / log(numel(P_local));
-purityEntropy = 1 - spectralEntropy;  % invert so 1 = pure, 0 = noisy
+purityEntropy = 1 - spectralEntropy; % invert so 1 = pure, 0 = noisy
 
 % 3. Combine into final purity score (weighted average)
 purity = 0.7 * energyConcentration + 0.3 * purityEntropy;
 
-% ---- Validity criteria ----
-freqClose = abs(f_branch - f0) < freqTolerance;
-
-isValid = freqClose && purity > purityThreshold;
+isValid = purity > purityThreshold;
 
 end
