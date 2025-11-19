@@ -25,6 +25,7 @@ properties
 
     % Preprocessed Data
     M0_ff single
+    M0_ff_img single
     f_RMS single
     f_AVG single
     displacementField
@@ -110,6 +111,7 @@ methods
 
         % Copy results back for backward compatibility
         obj.M0_ff = Preprocessor.M0_ff;
+        obj.M0_ff_img = squeeze(mean(obj.M0_ff, 3));
         obj.f_RMS = Preprocessor.f_RMS;
         obj.f_AVG = Preprocessor.f_AVG;
         obj.displacementField = Preprocessor.displacementField;
@@ -148,6 +150,10 @@ methods
         end
 
         obj.AINetworks.updateAINetworks(params);
+
+        if params.json.Mask.EyeSideClassifierNet
+            predictEyeSide(obj.AINetworks.EyeSideClassifierNet, obj.M0_ff_img, true);
+        end
 
         % Execute analysis steps based on checkbox flags
         if obj.flag_segmentation
