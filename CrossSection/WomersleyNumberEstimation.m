@@ -5,14 +5,16 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
     crossSectionLength = size(v_profile, 1);
     FWHM_um = 8;
+    % There are several scatered like this in the files 
     PIXEL_SIZE = params.px_size; % in milimeters
+    PIXEL_SIZE = PIXEL_SIZE * 1000; % in μm
 
     % TODO: Fix the psf kernel function
     psf_kernel = create_gaussian_psf_kernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
     % Fit a simple PSF-convolved Parabolic/Plug model to get Geometry
     [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, ToolBox);
     
-    if isnan(geoParams.R0_meters)
+    if isnan(geoParams.R0)
         warning('Geometry fit failed');
         return;
     end
@@ -54,7 +56,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     params = ToolBox.getParams;
 
     NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
-    PIXEL_SIZE = params.px_size;
+    PIXEL_SIZE = params.px_size * 1000;
     
     % SYS_IDXS = ToolBox.Cache.sysIdx;
     % DIAS_IDXS = ToolBox.Cache.diasIdx;
@@ -62,6 +64,8 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     FFT_PADDING_FACTOR = 16;
 
     RHO_BLOOD = 1060; % Density of blood in kg/m^3
+
+    PSF_KERNEL = init_fit.psf_kernel;
     
     metrics = struct(...
         'RnR0_complex',     NaN, ... % PWK ≈ D_n / C_n
@@ -82,7 +86,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         'alpha_n',          NaN, ...
         'harmonic',         NaN, ...
         'K_cond',           NaN, ...
-        'R0',               NaN, ...
+        'R0',               init_fit.geoParams.R0, ...
         'Cn',               NaN, ...
         'Dn',               NaN, ...
         'center',           NaN, ...
@@ -147,9 +151,8 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     ub = [20,   Inf,  Inf,  Inf,  Inf,  0.8, 1.5];
     
     % psf_kernel = create_gaussian_psf_kernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
-    psf_kernel = [];
 
-    costFunctionHandle = @(p) costFun(p, x_coords, v_meas, n_harmonic, psf_kernel);
+    costFunctionHandle = @(p) costFun(p, x_coords, v_meas, n_harmonic, PSF_KERNEL);
 
     options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
     try
@@ -186,7 +189,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         return;
     end
 
-    uWom_fit = generate_moving_wall_model(p_fit, x_coords, n_harmonic, psf_kernel);
+    uWom_fit = generate_moving_wall_model(p_fit, x_coords, n_harmonic, PSF_KERNEL);
     
     % [parabole_fit_systole, parabole_fit_diastole] = analyse_lumen_size(v_profile_good_idx_sav, SYS_IDXS, DIAS_IDXS);
     % 
@@ -238,7 +241,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     %             'EdgeColor', 'k', 'FontSize', 12, 'FontSize', 10);
 
 
-    line1_str = sprintf('α     : %-10.2f     R_0       : %.4f', fitParams.alpha_n, init_fit.geoParams.R0_meters);
+    line1_str = sprintf('α     : %-10.2f     R_0       : %.4f', fitParams.alpha_n, init_fit.geoParams.R0);
     line2_str = sprintf('Center: %-10.2f     |R_n/R_0| : %.2f %%', fitParams.center, fitParams.metrics.RnR0_mag * 100);
     line3_str = sprintf('Width : %-10.2f     Phase(R_n): %.1f°', fitParams.width, fitParams.metrics.RnR0_phase_deg);
     
@@ -282,7 +285,7 @@ function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, T
     % Fit simple Poiseuille flow (1 - r^2) convolved with PSF to find Center and Width
     
     geoParams = struct(...
-        'R0_meters',    NaN, ... % R0           (Real)
+        'R0',           NaN, ... % R0           (Real)
         ...
         'center_norm',  NaN, ... % Shift        (Normalized)
         'width_norm',   NaN, ... % Width/R0     (Normalized)
@@ -304,7 +307,7 @@ function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, T
     v_profile_interp = interp1(linspace(-1, 1, crossSectionLength), v_profile, x_grid_normalized);
     
     % PSF Kernel
-    PIXEL_SIZE = params.px_size;
+    PIXEL_SIZE = params.px_size * 1000;
 
     v_mean = mean(v_profile_interp, 2);
     v_mean_interp = v_mean;
@@ -322,16 +325,17 @@ function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, T
     try
         p_fit = lsqnonlin(costFun, p_init, lb, ub, options);
     catch
-        geoParams.R0_meters = NaN; 
+        geoParams.R0 = NaN; 
         return;
     end
     
     width_normalized = p_fit(3);
-    R0_meters = (width_normalized * (crossSectionLength * PIXEL_SIZE)) / 2; 
+    % Divided by 2 because the Normalized section is of length 2
+    R0 = (width_normalized * (crossSectionLength * PIXEL_SIZE)) / 2; 
     
     geoParams.center_norm = p_fit(2);
     geoParams.width_norm = width_normalized;
-    geoParams.R0_meters = R0_meters;
+    geoParams.R0 = R0;
     geoParams.DC_Amp = p_fit(1);
 end
 
@@ -521,7 +525,7 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     Dn          = fitParams.Dn;
     % TODO: This is NaN due to the fact that for now, when we do harmonics,
     %       we don't have any clue on R0, we should make a two steps fit
-    R0_meters   = fitParams.R0;
+    R0   = fitParams.R0;
     alpha_1     = fitParams.alpha_1;
     alpha_n     = fitParams.alpha_n;
     omega_n     = fitParams.omega_n;
@@ -545,9 +549,6 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     %     'mu_app',           NaN  ... % Viscosity (dinamic)
     % );
 
-    % Geometry (Ro)
-    % metrics.R0 = R0_meters * 1e6; % units: µm
-
     % PWK (Rn/R0)
     if Cn ~= 0
         RnR0_complex = Dn / Cn;
@@ -561,27 +562,27 @@ function metrics = calculate_symbols(fitParams, rho_blood)
 
     % Flow (Qn)
     K_an = calculate_K_factor(lambda_n);
-    Qn_m3_s = pi * R0_meters^2 * Cn * K_an;
+    Qn_m3_s = pi * R0 ^ 2 * Cn * K_an;
     metrics.Q_n = Qn_m3_s * 1e9; % units: mm³/s
 
     % Gradient (Gn)
     metrics.G_n = 1i * omega_n * rho_blood * Cn; % units: Pa/m
 
     % Viscosity (νapp)
-    numerator = (R0_meters ^ 2) * fitParams.omega_0;
+    numerator = (R0 ^ 2) * fitParams.omega_0;
     denominator = alpha_1 ^ 2;
     
     if denominator > 0
         metrics.nu_app = numerator / denominator;
-        metrics.mu_app = fitParams.metrics.nu_app * rho_blood;
+        metrics.mu_app = metrics.nu_app * rho_blood;
     else
         metrics.nu_app = NaN;
         metrics.mu_app = NaN;
     end
 
     % Shear (τn)
-    if ~isnan(metrics.mu_app) && R0_meters > 0 && besselj(0, lambda_n) ~= 0
-        metrics.tau_n = (metrics.mu_app * Cn * lambda_n * besselj(1, lambda_n)) / (R0_meters * besselj(0, lambda_n)); % units: Pa
+    if ~isnan(metrics.mu_app) && R0 > 0 && besselj(0, lambda_n) ~= 0
+        metrics.tau_n = (metrics.mu_app * Cn * lambda_n * besselj(1, lambda_n)) / (R0 * besselj(0, lambda_n)); % units: Pa
     else
         metrics.tau_n = complex(NaN, NaN);
     end
@@ -598,7 +599,7 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     % of [Pa·s·m], whereas the table specifies the units as [Pa].
     % This is a known inconsistency in the source document.
     % The calculation is implemented here as stated in the formula.
-    metrics.H_Rn = metrics.H_Zn * (R0_meters ^ 2); % units: Pa·s·m
+    metrics.H_Rn = metrics.H_Zn * (R0 ^ 2); % units: Pa·s·m
 
     % Area puls. (An/A0)
     metrics.AnA0 = 2 * metrics.RnR0_complex;
