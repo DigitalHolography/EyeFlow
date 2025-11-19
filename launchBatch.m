@@ -1,12 +1,64 @@
-%% Get the list of holodoppler folders to be processed from user
+function launchBatch()
+
 fprintf("=== EYEFLOWPROCESS START ===\n");
 
+% In Dev: Returns the folder containing this script (e.g., C:\Projects\EyeFlow)
+% In Deployed: Returns the extraction folder (e.g., ...\Cache\EyeFlo2\EyeFlowProcess)
+appRoot = fileparts(mfilename('fullpath'));
+
+try
+    cd(appRoot);
+    fprintf("Current Working Directory changed to: %s\n", pwd);
+catch ME
+    warning("Could not change directory to appRoot");
+end
+
+fprintf("Application Root: %s\n", appRoot);
 beginComputerTime = sprintf("Eyeprocess Begin Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
 
-version_tag = readlines("version.txt");
+% Locate version.txt relative to the script
+versionFile = fullfile(appRoot, "version.txt");
+if isfile(versionFile)
+    version_tag = readlines(versionFile);
+    fprintf("EyeFlow version : %s\n", version_tag);
+else
+    fprintf("EyeFlow version : Unknown (version.txt not found at %s)\n", versionFile);
+end
 
-fprintf("EyeFlow version : %s\n", version_tag);
 fprintf("\n%s\n", beginComputerTime);
+
+% Manage paths
+if ~isdeployed
+    % In Development: Add all subfolders to path
+    fprintf("Running in Development Mode - Adding paths...\n");
+    addpath(fullfile(appRoot, "BloodFlowVelocity"));
+    addpath(fullfile(appRoot, "BloodFlowVelocity", "Elastography"));
+    addpath(fullfile(appRoot, "CrossSection"));
+    addpath(fullfile(appRoot, "Loading"));
+    addpath(fullfile(appRoot, "Parameters"));
+    addpath(fullfile(appRoot, "Preprocessing"));
+    addpath(fullfile(appRoot, "Scripts"));
+    addpath(fullfile(appRoot, "Segmentation"));
+    addpath(fullfile(appRoot, "SHAnalysis"));
+    addpath(fullfile(appRoot, "Tools"));
+    addpath(fullfile(appRoot, "Outputs"));
+else
+    fprintf("Running in Deployed Mode.\n");
+end
+
+% We expect the 'Parameters' folder to be a sibling of this script in the cache.
+defaultJson = fullfile(appRoot, "Parameters", "DefaultEyeFlowParamsBatch.json");
+
+% Fallback check (compiler sometimes shifts structure by one level)
+if ~isfile(defaultJson)
+    fallbackPath = fullfile(fileparts(appRoot), "Parameters", "DefaultEyeFlowParamsBatch.json");
+    if isfile(fallbackPath)
+        defaultJson = fallbackPath;
+    else
+        error("CRITICAL: Could not find DefaultEyeFlowParamsBatch.json at: %s", defaultJson);
+    end
+end
+fprintf("Parameter file found: %s\n", defaultJson);
 
 [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
 
@@ -15,116 +67,66 @@ if isequal(txt_name, 0)
     return;
 end
 
-paths = strtrim(readlines(fullfile(txt_path, txt_name)));
+fullInputPath = fullfile(txt_path, txt_name);
+paths = strtrim(readlines(fullInputPath));
 paths = paths(paths ~= ""); % remove empty lines
 
-if isdeployed
-    % When deployed, MCR creates a cache folder (ctfroot) and unpacks our files
-    % into a subfolder. We will find the correct folder by excluding known MCR
-    % directories and then selecting the remaining candidate with the shortest name.
-    
-    cache_root = ctfroot;
-    
-    % Define the list of internal MCR folders/files to ignore.
-    % We include '.' and '..' which represent the current and parent directories.
-    blacklist = {'.', '..', '.matlab', '.META', 'toolbox'};
-    
-    % Get all contents of the cache root
-    dir_contents = dir(cache_root);
-    
-    % --- Filtering Logic ---
-    % 1. Keep only the items that are directories.
-    % 2. From those, remove any that are on our blacklist.
-    is_directory = [dir_contents.isdir];
-    is_blacklisted = ismember({dir_contents.name}, blacklist);
-    
-    candidate_folders = dir_contents(is_directory & ~is_blacklisted);
-    if ~isempty(candidate_folders)
-        % We have one or more candidate folders (e.g., 'EyeFlowLaunc' and 'EyeFlowLaunc_...').
-        % Find the one with the shortest name, as you suggested.
-        
-        folder_names = {candidate_folders.name};
-        [~, shortest_name_index] = min(cellfun(@length, folder_names));
-        
-        app_folder_name = folder_names{shortest_name_index};
-        
-        % Build the full, correct path to our application's root
-        appRoot = fullfile(cache_root, app_folder_name);
-    else
-        % If, after filtering, no candidate folders are left, the application cannot run.
-        error('FATAL: Could not find any valid application data subfolders within the MCR cache at %s.', cache_root);
-    end
-else
-    % This part is for running in the MATLAB development environment
-    [appRoot, ~, ~] = fileparts(mfilename('fullpath'));
-end
-
-fprintf('Application Root correctly determined as: %s\n', appRoot);
-
-cd(appRoot);
-
-addpath( "BloodFlowVelocity",...
-         "BloodFlowVelocity\Elastography",...
-         "CrossSection",...
-         "Loading",...
-         "Parameters",...
-         "Preprocessing",...
-         "Scripts",...
-         "Segmentation",...
-         "SHAnalysis",...
-         "Tools",...
-         "Outputs");
-
-%% ensure set default parameters and no forced mask
-
 for ind = 1:length(paths)
-    path = fullfile(paths(ind), 'eyeflow');
+    targetPath = fullfile(paths(ind), 'eyeflow');
+    jsonDir = fullfile(targetPath, 'json');
 
-    if ~isfolder(fullfile(path, 'json'))
-        mkdir(fullfile(path, 'json'));
+    if ~isfolder(jsonDir)
+        mkdir(jsonDir);
     end
 
-    delete(fullfile(fullfile(path, 'json'), '*.json')); % remove old json files
+    % Remove old json files
+    delete(fullfile(jsonDir, '*.json')); 
 
-    copyfile(fullfile(appRoot, 'Parameters', 'DefaultEyeFlowParamsBatch.json'), ...
-         fullfile(path, 'json', 'input_EF_params.json'));
+    % Copy default parameter file
+    copyfile(defaultJson, fullfile(jsonDir, 'input_EF_params.json'));
 
-    if isfile(fullfile(path, 'mask', 'forceMaskArtery.png'))
-        movefile(fullfile(path, 'mask', 'forceMaskArtery.png'), fullfile(path, 'mask', 'oldForceMaskArtery.png'));
+    % Handle Masks
+    maskDir = fullfile(targetPath, 'mask');
+    if isfile(fullfile(maskDir, 'forceMaskArtery.png'))
+        movefile(fullfile(maskDir, 'forceMaskArtery.png'), fullfile(maskDir, 'oldForceMaskArtery.png'));
     end
 
-    if isfile(fullfile(path, 'mask', 'forceMaskVein.png'))
-        movefile(fullfile(path, 'mask', 'forceMaskVein.png'), fullfile(path, 'mask', 'oldForceMaskVein.png'));
+    if isfile(fullfile(maskDir, 'forceMaskVein.png'))
+        movefile(fullfile(maskDir, 'forceMaskVein.png'), fullfile(maskDir, 'oldForceMaskVein.png'));
     end
-
 end
 
-%% launch
+% Save logs in the same folder as the selected text file (Persistent location)
+logDir = fullfile(txt_path, 'Logs'); 
+if ~isfolder(logDir)
+    mkdir(logDir);
+end
 
-% Generate timestamped log file name
 t = datetime('now', 'Format', 'yyyyMMdd_HHmmss');
 logFileName = sprintf('log_%s.txt', char(t));
+logFullPath = fullfile(logDir, logFileName);
 
-if ~isfolder("Logs")
-    mkdir("Logs");
+fprintf("Log saving to: %s\n", logFullPath);
+fid = fopen(logFullPath, 'a'); 
+
+if fid == -1
+    error("Could not open log file for writing at: %s", logFullPath);
 end
-
-fprintf("Log saving to Eyeflow\\%s\n", fullfile('Logs', logFileName));
-fid = fopen(fullfile('Logs', logFileName), 'a'); % 'a' for append if needed
 
 AIModels = AINetworksClass();
 
 for ind = 1:length(paths)
 
-    path = paths(ind);
-    fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', path, ind, length(path));
+    p = paths(ind);
+    fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', p, ind, length(paths));
 
-    if isfolder(path)
-        path = strcat(path, '\');
+    % Ensure path ends with separator
+    if isfolder(p) && ~endsWith(p, filesep)
+        p = strcat(p, filesep);
     end
 
     tic;
-    runAnalysisBlock(path, AIModels);
+    runAnalysisBlock(p, AIModels);
     ti = toc;
     fprintf(fid, 'Execution time: %.2f seconds\n\n', ti);
 end
@@ -133,37 +135,25 @@ fclose(fid);
 
 endComputerTime = sprintf("Eyeprocess End Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
 
-fprintf('Log saved to Eyeflow\\%s\n', fullfile('Logs', logFileName));
-
+fprintf('Log saved to: %s\n', logFullPath);
 fprintf("\n   (. ❛ ᴗ ❛.)\n");
-fprintf("\n");
-
 fprintf("\n%s\n", beginComputerTime);
 fprintf("\n%s\n", endComputerTime);
-fprintf("\n");
-
 fprintf("=== EYEFLOWPROCESS END ===\n");
 
-% %% Show
-% try
-%     ShowOutputs(paths, 'Logs');
-% catch ME
-%     MEdisp(ME, 'Logs');
-% end
-
-%%
+end
 
 function runAnalysisBlock(path, AIModels)
 
 totalTime = tic;
-
 ME = [];
 
 try
     ExecClass = ExecutionClass(path);
 
     ExecClass.AINetworks = AIModels;
-
+    
+    % Ensure ExecutionClass uses the directory passed to it
     ExecClass.ToolBoxMaster = ToolBoxClass(ExecClass.directory, ExecClass.param_name);
 
     ExecClass.preprocessData();
@@ -185,8 +175,11 @@ ReporterTimer = tic;
 fprintf("\n----------------------------------\n" + ...
     "Generating Reports\n" + ...
 "----------------------------------\n");
+
+% Pass error stack if any
 ExecClass.Reporter.getA4Report(ME);
 ExecClass.Reporter.saveOutputs();
+
 fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
 ExecClass.Reporter.displayFinalSummary(totalTime);
 
