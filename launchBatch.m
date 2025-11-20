@@ -124,7 +124,6 @@ for ind = 1:length(paths)
     if isfolder(p) && ~endsWith(p, filesep)
         p = strcat(p, filesep);
     end
-
     tic;
     runAnalysisBlock(p, AIModels);
     ti = toc;
@@ -171,16 +170,21 @@ catch e
     MEdisp(e, path);
 end
 
-ReporterTimer = tic;
-fprintf("\n----------------------------------\n" + ...
-    "Generating Reports\n" + ...
-"----------------------------------\n");
-
-% Pass error stack if any
-ExecClass.Reporter.getA4Report(ME);
-ExecClass.Reporter.saveOutputs();
-
-fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
-ExecClass.Reporter.displayFinalSummary(totalTime);
+try
+    ReporterTimer = tic;
+    fprintf("\n----------------------------------\n" + ...
+        "Generating Reports\n" + ...
+    "----------------------------------\n");
+    
+    % Pass error stack if any
+    ExecClass.Reporter.getA4Report(ME);
+    ExecClass.Reporter.saveOutputs();
+    
+    fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
+    ExecClass.Reporter.displayFinalSummary(totalTime);
+catch e
+    fprintf("Error during report generation:\n");
+    MEdisp(e, path);
+end
 
 end

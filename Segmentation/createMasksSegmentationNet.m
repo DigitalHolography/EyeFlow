@@ -1,10 +1,26 @@
-function [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, net, maskArtery)
+function [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, net, maskArtery)
+% createMasksSegmentationNet Create artery and vein masks using a SegmentationNet
+%   [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein, R] = createMasksSegmentationNetInternal(M0_ff, M0_ff_img, net, maskArtery);
+%   Inputs:
+%       M0_ff: 3D array (numX, numY, Nt) of flow-encoded images over time
+%       net: trained SegmentationNet model
+%       maskArtery: 2D binary array (numX, numY) pre-mask of artery locations
+%   Outputs:
+%       maskArtery: 2D binary array (numX, numY) artery mask
+%       maskVein: 2D binary array (numX, numY) vein mask
+%       scoreMaskArtery: 2D array (numX, numY) of artery mask scores
+%       scoreMaskVein: 2D array (numX, numY) of vein mask scores
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 mask_params = params.json.Mask;
 
-[Nx, Ny] = size(M0_ff_img);
+M0_ff_img = squeeze(mean(M0_ff, 3));
+[numX, numY] = size(M0_ff_img);
+
+% diasys_diff = [];
+% R = [];
+% exportVideos = params.exportVideos;
 
 % if the correlation map is used by the model, compute it
 if mask_params.AVCorrelationSegmentationNet
@@ -31,13 +47,13 @@ if mask_params.AVDiasysSegmentationNet
     fprintf("Compute diastolic and stystolic frames for artery/vein segmentation\n");
 
     [M0_Systole_img, M0_Diastole_img] = compute_diasys(M0_ff, maskArtery, 'mask');
-    saveMaskImage(rescale(M0_Systole_img), 'artery_20_systole_img.png', isStep = true)
-    saveMaskImage(rescale(M0_Diastole_img), 'vein_20_diastole_img.png', isStep = true)
+    saveMaskImage(rescale(M0_Systole_img), 'artery_21_systole_img.png', isStep = true)
+    saveMaskImage(rescale(M0_Diastole_img), 'vein_21_diastole_img.png', isStep = true)
 
     diasys_diff = M0_Systole_img - M0_Diastole_img;
 
     RGBdiasys = labDuoImage(rescale(M0_ff_img), diasys_diff);
-    saveMaskImage(RGBdiasys, 'vessel_20_diasys_diff.png', isStep = true);
+    saveMaskImage(RGBdiasys, 'vessel_21_diasys_diff.png', isStep = true);
 
     M0_Diastole_img = imresize(rescale(M0_Diastole_img), [512, 512]);
     M0_Systole_img = imresize(rescale(M0_Systole_img), [512, 512]);
@@ -116,11 +132,19 @@ maskVein = onehot(:, :, 2);
 scoreMaskArtery = sum(maskArtery .* output(:, :, 2), [1, 2]) / nnz(maskArtery);
 scoreMaskVein = sum(maskVein .* output(:, :, 3), [1, 2]) / nnz(maskVein);
 
-maskArtery = imresize(maskArtery, [Nx, Ny], "nearest");
-maskVein = imresize(maskVein, [Nx, Ny], "nearest");
+maskArtery = imresize(maskArtery, [numX, numY], "nearest");
+maskVein = imresize(maskVein, [numX, numY], "nearest");
 
 maskArtery = logical(maskArtery);
 maskVein = logical(maskVein);
+
+% if exportVideos && ~isempty(diasys_diff)
+%     RGB_diasys_video = labDuoVideo(M0_ff, diasys_diff);
+%     writeGifonDisc(mat2gray(RGB_diasys_video), 'diasys.gif');
+% elseif exportVideos && ~isempty(R)
+%     RGB_corr_video = labDuoVideo(M0_ff, R);
+%     writeGifonDisc(mat2gray(RGB_corr_video), 'correlation.gif');
+% end
 
 end
 
