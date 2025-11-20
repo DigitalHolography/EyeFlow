@@ -16,7 +16,7 @@ function test_disk_speed(path)
     end
 
     % Parameters
-    fileSizeMB = 10;                % File size in MB (adjust as needed)
+    fileSizeMB = 500;                % File size in MB (adjust as needed)
     fileName = fullfile(path, 'disk_speed_test.bin');
     blockSize = 1024 * 1024;         % 1 MB blocks
     numBlocks = fileSizeMB;

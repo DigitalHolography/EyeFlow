@@ -6,7 +6,7 @@ properties
     name
     json
     exportVideos
-    veins_analysis
+    saveFigures
     timePeriodMin
     px_size
 end
@@ -31,13 +31,12 @@ methods
             jsonData = fileread(jsonPath);
             parsedData = jsondecode(jsonData);
 
+            % Store the parsed data in the object's properties
             obj.json = parsedData;
-            % Recherche de chaque paramètre dans le fichier json
-
-            obj.veins_analysis = parsedData.VeinsAnalysis;
-            obj.exportVideos = parsedData.ExportVideos;
+            obj.exportVideos = parsedData.exportVideos;
+            obj.saveFigures = parsedData.saveFigures;
             obj.timePeriodMin = parsedData.MinimumGifPeriod;
-            obj.px_size = parsedData.CrossSectionsAnalysis.PixelSize / (2 ^ parsedData.Preprocess.InterpolationFactor);
+            obj.px_size = parsedData.generateCrossSectionSignals.PixelSize / (2 ^ parsedData.Preprocess.InterpolationFactor);
 
         else
             error('The json file could not be found.');

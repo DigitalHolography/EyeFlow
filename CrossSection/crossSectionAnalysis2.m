@@ -14,6 +14,7 @@ function [results] = crossSectionAnalysis2(ToolBox, loc, ROI, xy_barycenter, v_R
 
 % Initialize parameters
 params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 [numX, numY, numFrames] = size(v_RMS);
 
 % Initialize the results struct with preallocated fields.
@@ -24,7 +25,7 @@ v_masked = v_RMS;
 v_masked(repmat(~ROI, [1, 1, size(v_RMS, 3)])) = NaN; % Apply mask to all slices
 
 % Define sub-image dimensions
-subImgHW = round(0.01 * size(v_masked, 1) * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
+subImgHW = round(0.01 * size(v_masked, 1) * params.json.generateCrossSectionSignals.ScaleFactorWidth);
 
 % Initialize results fields
 xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
@@ -54,14 +55,16 @@ subImgUnCropped = subImgUnCropped(yRange, xRange);
 subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
 
 % Compute the Vessel Cross Section
-[D, D_SE, A, A_SE, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter);
+[D, D_SE, A, A_SE, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter, saveFigures);
 results.D = D;
 results.D_SE = D_SE;
 results.A = A;
 results.A_SE = A_SE;
 
 % Generate figures
-saveCrossSectionFigure(subImgUnCropped, c1, c2, ToolBox, patchName);
+if saveFigures
+    saveCrossSectionFigure(subImgUnCropped, c1, c2, ToolBox, patchName);
+end
 
 % Initialize rejected masks
 rejected_masks = zeros(numX, numY, 3);

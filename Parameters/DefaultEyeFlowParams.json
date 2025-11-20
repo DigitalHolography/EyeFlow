@@ -19,6 +19,7 @@
       "VideoLength": -1
     },
     "NonRigidRegisteringFlag": false,
+    "NonRigidRegisteringApply": false,
     "RemoveOutliersFlag": true,
     "Outlier Analysis Window": 10,
     "Interpolation Factor": 1
@@ -28,12 +29,13 @@
     "Border": 0.15,
     "FittedParameters": false
   },
-  "VeinsAnalysis": 1,
-  "ExportVideos": 1,
+  "exportVideos": true,
+  "saveFigures": true,
+  "use_time_stamps": true,
   "MinimumGifPeriod": 0.04,
   "NumberOfWorkers": 0,
   "Mask": {
-    "Auto Compute": 1,
+    "Auto Compute": true,
     "Registered Masks": -1,
     "Forced Masks": -1,
     "Vessel Segmentation Method": "AI",
@@ -53,9 +55,8 @@
     "Imclose Radius": 1,
     "Minimum Vessel Width": 3,
     "Final Dilation": 0,
-    "Force Vessel Width": 0,
-    "All Non Vessels as Background": false,
-    "Optic Disc Detector": true
+    "Force Vessel Width": false,
+    "Optic Disk Detector Net": true
   },
   "PulseAnalysis": {
     "DifferenceMethods": 0,
@@ -64,6 +65,7 @@
     "bkgScaler": 5,
     "Lambda": 8.52E-7,
     "Phi": 0.25,
+    "FilterSignals": true,
     "OutOfNoiseThreshold": 4,
     "BlurScaleFactor": 100,
     "OneCycle InterpolationPoints": 256,
@@ -71,10 +73,10 @@
     "ExtendedFlag": false
   },
   "SizeOfField": {
-    "SmallRadiusRatio": 0.15,
+    "SmallRadiusRatio": 0.10,
     "BigRadiusRatio": 0.35
   },
-  "CrossSectionsAnalysis": {
+  "generateCrossSectionSignals": {
     "NumberOfCircles": 10,
     "ScaleFactorWidth": 3,
     "MaskSliceThreshold": 0.01,
@@ -85,7 +87,7 @@
     "diameterAnalysis": false,
     "HydrodynamicDiameters": true
   },
-  "CrossSectionsFigures": {
+  "exportCrossSectionResults": {
     "sectionImage": true,
     "circleImages": true,
     "widthHistogram": true,

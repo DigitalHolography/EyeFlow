@@ -2,7 +2,7 @@ function axialAnalysis(f_AVG)
 % Initial Setup
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
-veinsAnalysis = params.veins_analysis;
+saveFigures = params.saveFigures;
 
 %% CHANGE THIS
 % scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
@@ -39,7 +39,7 @@ if ~any(maskVesselSection)
 end
 
 % Time vector for plotting
-t = linspace(0, numFrames * ToolBox.stride / ToolBox.fs / 1000, numFrames);
+t = ToolBox.Cache.t;
 
 % Colors for plotting
 cBlack = [0 0 0];
@@ -49,11 +49,7 @@ cVein = [18 23 255] / 255;
 f_bkg = zeros(numX, numY, numFrames, 'single');
 
 % Determine vessel mask based on analysis type
-if veinsAnalysis
-    maskVessel = maskArtery | maskVein;
-else
-    maskVessel = maskArtery;
-end
+maskVessel = maskArtery | maskVein;
 
 % Background calculation parameters
 w = params.json.PulseAnalysis.LocalBackgroundWidth;
@@ -81,6 +77,9 @@ end
 % Calculate and plot artery signals
 f_artery = squeeze(sum(f_AVG .* maskArterySection, [1, 2]) / nnz(maskArterySection));
 f_artery_bkg = squeeze(sum(f_bkg .* maskArterySection, [1, 2]) / nnz(maskArterySection));
+f_vein = squeeze(sum(f_AVG .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
+f_vein_bkg = squeeze(sum(f_bkg .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
+f_vessel_bkg = squeeze(sum(f_bkg .* maskVesselSection, [1, 2]) / nnz(maskVesselSection));
 
 graphSignal('f_artery', ...
     t, f_artery, '-', cArtery, ...
@@ -88,63 +87,52 @@ graphSignal('f_artery', ...
     'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
     'Legend', {'arteries', 'background'});
 
-if veinsAnalysis
-    f_vein = squeeze(sum(f_AVG .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
-    f_vein_bkg = squeeze(sum(f_bkg .* maskVeinSection, [1, 2]) / nnz(maskVeinSection));
-    f_vessel_bkg = squeeze(sum(f_bkg .* maskVesselSection, [1, 2]) / nnz(maskVesselSection));
+graphSignal('f_axial_vein', ...
+    t, f_vein, '-', cVein, ...
+    t, f_vein_bkg, '--', cBlack, ...
+    'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
+    'Legend', {'veins', 'background'});
 
-    graphSignal('f_axial_vein', ...
-        t, f_vein, '-', cVein, ...
-        t, f_vein_bkg, '--', cBlack, ...
-        'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
-        'Legend', {'veins', 'background'});
-
-    graphSignal('f_axial_vessel', ...
-        t, f_artery, '-', cArtery, ...
-        t, f_vein, '-', cVein, ...
-        t, f_vessel_bkg, '--', cBlack, ...
-        'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
-        'Legend', {'arteries', 'veins', 'background'});
-end
+graphSignal('f_axial_vessel', ...
+    t, f_artery, '-', cArtery, ...
+    t, f_vein, '-', cVein, ...
+    t, f_vessel_bkg, '--', cBlack, ...
+    'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
+    'Legend', {'arteries', 'veins', 'background'});
 
 % Calculate velocity
 % v_axial_video = scalingFactor * df;
 df_artery = df .* maskArterySection;
 df_artery_signal = squeeze(sum(df_artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
+df_vein = df .* maskVeinSection;
+df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
 
-if veinsAnalysis
-    df_vein = df .* maskVeinSection;
-    df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
-end
-
-if veinsAnalysis
-    graphSignal('df_axial_vessel', ...
-        t, df_artery_signal, '-', cArtery, ...
-        t, df_vein_signal, '-', cVein, ...
-        'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
-else
-    graphSignal('df_axial_artery', ...
-        t, df_artery_signal, '-', cArtery, ...
-        'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
-end
+graphSignal('df_axial_vessel', ...
+    t, df_artery_signal, '-', cArtery, ...
+    t, df_vein_signal, '-', cVein, ...
+    'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
 
 ft_v = fftshift(fft(f_AVG, [], 3), 3);
 
-f = linspace(-ToolBox.fs * 1000 / ToolBox.stride / 2, ToolBox.fs * 1000 / ToolBox.stride / 2, numFrames);
+f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, numFrames);
 
 cardiac_frequency = ToolBox.Cache.HeartBeatFFT; % in Hz
 
 [~, cardiac_idx] = min(abs(f - cardiac_frequency));
 
 img = log1p(abs(ft_v(:, :, cardiac_idx)));
-fi = figure('Visible', 'off');
-imshow(rescale(img));
-ax = gca;
 
-if isvalid(ax)
-    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_axial_cardiac_component.png", ToolBox.folder_name)), 'Resolution', 300);
+if saveFigures
+    % Save cardiac component image
+    fi = figure('Visible', 'off');
+    imshow(rescale(img));
+    ax = gca;
+
+    if isvalid(ax)
+        exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_axial_cardiac_component.png", ToolBox.folder_name)), 'Resolution', 300);
+    end
+
+    close(fi);
 end
-
-close(fi);
 
 end

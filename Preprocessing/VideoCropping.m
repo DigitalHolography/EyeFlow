@@ -1,7 +1,7 @@
-function VideoCropping(obj, firstFrame, lastFrame)
+function [firstFrame, lastFrame] = VideoCropping(obj, firstFrame, lastFrame)
 %Crop a video (matrix dim 3)
 
-[~, ~, numFrames] = size(obj.M0_ff);
+[~, ~, numFrames] = size(obj.M0);
 
 if lastFrame == -1
     lastFrame = numFrames;
@@ -15,7 +15,6 @@ if firstFrame >= 1 && firstFrame <= numFrames ...
         || lastFrame >= 1 && lastFrame <= numFrames ...
         && firstFrame < lastFrame
 
-    obj.M0_ff = obj.M0_ff(:, :, firstFrame:lastFrame);
     obj.M0 = obj.M0(:, :, firstFrame:lastFrame);
     obj.M1 = obj.M1(:, :, firstFrame:lastFrame);
     obj.M2 = obj.M2(:, :, firstFrame:lastFrame);

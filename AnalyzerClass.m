@@ -2,9 +2,9 @@ classdef AnalyzerClass < handle
 % Handles all analysis operations
 
 properties
-    vRMS
-    v_video_RGB
-    v_mean_RGB
+    vRMS single
+    v_video_RGB uint8
+    v_mean_RGB uint8
     Q_results_A
     Q_results_V
 end
@@ -12,7 +12,6 @@ end
 methods
 
     function obj = AnalyzerClass()
-
     end
 
     function performSegmentation(~, executionObj, app)
@@ -25,32 +24,79 @@ methods
 
         if ~isfolder(fullfile(ToolBox.path_png, 'mask'))
             mkdir(ToolBox.path_png, 'mask')
+        end
+
+        if ~isfolder(fullfile(ToolBox.path_eps, 'mask'))
             mkdir(ToolBox.path_eps, 'mask')
+        end
+
+        if ~isfolder(fullfile(ToolBox.path_png, 'mask', 'steps'))
             mkdir(fullfile(ToolBox.path_png, 'mask'), 'steps')
+        end
+
+        if ~isfolder(fullfile(ToolBox.path_eps, 'mask', 'steps'))
             mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
         end
 
         ToolBox.Cache.xy_barycenter = getBarycenter(executionObj.f_AVG);
         M0_ff_img = rescale(mean(executionObj.M0_ff, 3));
 
+        ToolBox.Output.Extra.add("M0_ff_img", M0_ff_img);
+
         try
-            [~, diameter_x, diameter_y] = findPapilla(M0_ff_img);
+            [~, diameter_x, diameter_y, center_x, center_y] = findPapilla(M0_ff_img, executionObj.AINetworks.OpticDiskDetectorNet);
+            xy_papilla = [center_x, center_y];
+            ToolBox.Cache.xy_papilla = xy_papilla;
         catch ME
             warning("Error while finding papilla : ")
-            MEdisp(ME, ToolBox.EF_path)
+            MEdisp(ME, ToolBox.EF_path);
             diameter_x = NaN;
             diameter_y = NaN;
         end
 
-        createMasks(executionObj.M0_ff);
+        createMasks(executionObj.M0_ff, executionObj.AINetworks.VesselSegmentationNet, executionObj.AINetworks.AVSegmentationNet);
         ToolBox.Cache.papillaDiameter = mean([diameter_x, diameter_y]);
+
+        % Artery score
+        scoreA = ToolBox.Cache.scoreMaskArtery;
+
+        ToolBox.Output.Extra.add("QualityControl/scoreMaskArtery",scoreA);
+
+        if isempty(scoreA) || isnan(scoreA)
+        else
+            fprintf("- Mask artery quality score: %.2f\n", scoreA);
+
+            if scoreA < 0.5
+                warning("AnalyzerClass:LowMaskScore", "Mask artery quality score too low (%.2f < 0.5). Dangerous segmentation.", scoreA);
+            end
+
+        end
+
+        ToolBox.Output.Extra.add("maskArtery", ToolBox.Cache.maskArtery);
+
+        % Vein score (if veins analysis enabled)
+        scoreV = ToolBox.Cache.scoreMaskVein;
+
+        ToolBox.Output.Extra.add("QualityControl/scoreMaskVein",scoreV);
+
+        if isempty(scoreV) || isnan(scoreV)
+        else
+            fprintf("- Mask vein quality score: %.2f\n", scoreV);
+
+            if scoreV < 0.5
+                warning("AnalyzerClass:LowMaskScore", "Mask vein quality score too low (%.2f < 0.5). Dangerous segmentation.", scoreV);
+            end
+
+        end
+
+        ToolBox.Output.Extra.add("maskVein", ToolBox.Cache.maskVein);
 
         % Visualize the segmentation result
         M0_RGB = ToolBox.Cache.M0_RGB;
 
         % Display the mask on the app if available
         if ~isempty(app)
-            app.ImageDisplay.ImageSource = mat2gray(M0_RGB);
+            app.ImageDisplay.ImageSource = M0_RGB;
             ax = ancestor(app.ImageDisplay, 'axes');
             axis(ax, 'equal');
         end
@@ -76,7 +122,7 @@ methods
 
         axialAnalysis(executionObj.f_AVG);
 
-        executionObj.is_pulseAnalyzed = true;
+        executionObj.is_velocityAnalyzed = true;
         fprintf("- Blood Flow Velocity Analysis took: %ds\n", round(toc(pulseAnalysisTimer)));
     end
 
@@ -87,14 +133,10 @@ methods
         pulseVelocityTimer = tic;
 
         ToolBox = getGlobalToolBox;
-        params = ToolBox.getParams;
         maskArtery = ToolBox.Cache.maskArtery;
+        maskVein = ToolBox.Cache.maskVein;
         pulseVelocity(executionObj.M0_ff, executionObj.displacementField, maskArtery, 'artery');
-
-        if params.veins_analysis
-            maskVein = ToolBox.Cache.maskVein;
-            pulseVelocity(executionObj.M0_ff, executionObj.displacementField, maskVein, 'vein');
-        end
+        pulseVelocity(executionObj.M0_ff, executionObj.displacementField, maskVein, 'vein');
 
         time_pulsevelocity = toc(pulseVelocityTimer);
         fprintf("- Pulse Velocity Calculations took : %ds\n", round(time_pulsevelocity))
@@ -102,55 +144,41 @@ methods
 
     function performCrossSectionAnalysis(obj, executionObj)
         fprintf("\n----------------------------------\n" + ...
-            "Cross-Section Analysis\n" + ...
+            "Generate Cross-Section Signals\n" + ...
         "----------------------------------\n");
         crossSectionAnalysisTimer = tic;
 
         ToolBox = getGlobalToolBox;
-        params = ToolBox.getParams;
         maskArtery = ToolBox.Cache.maskArtery;
-        [obj.Q_results_A] = crossSectionsAnalysis(maskArtery, 'artery', obj.vRMS, executionObj.M0_ff);
+        maskVein = ToolBox.Cache.maskVein;
+        [obj.Q_results_A] = generateCrossSectionSignals(maskArtery, 'artery', obj.vRMS, executionObj.M0_ff);
+        [obj.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', obj.vRMS, executionObj.M0_ff);
 
-        if params.veins_analysis
-            maskVein = ToolBox.Cache.maskVein;
-            [obj.Q_results_V] = crossSectionsAnalysis(maskVein, 'vein', obj.vRMS, executionObj.M0_ff);
-        end
-
-        executionObj.is_crossSectionAnalyzed = true;
-        fprintf("- Cross-Section Analysis took: %ds\n", round(toc(crossSectionAnalysisTimer)));
+        executionObj.is_volumeRateAnalyzed = true;
+        fprintf("- Cross-Section Signals Generation took: %ds\n", round(toc(crossSectionAnalysisTimer)));
     end
 
-    function generateCrossSectionFigures(obj, executionObj)
+    function generateexportCrossSectionResults(obj, executionObj)
         fprintf("\n----------------------------------\n" + ...
-            "Cross-Section Figures\n" + ...
+            "Export Cross-Section Results\n" + ...
         "----------------------------------\n");
-        crossSectionFiguresTimer = tic;
+        exportCrossSectionResultsTimer = tic;
 
         ToolBox = getGlobalToolBox;
-        params = ToolBox.getParams;
-        crossSectionsFigures(obj.Q_results_A, 'artery', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
+        exportCrossSectionResults(obj.Q_results_A, 'artery', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
+        exportCrossSectionResults(obj.Q_results_V, 'vein', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
 
-        if params.veins_analysis
-            crossSectionsFigures(obj.Q_results_V, 'vein', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
-            maskVessel = ToolBox.Cache.maskArtery | ToolBox.Cache.maskVein;
-            sectionImageAdvanced(rescale(mean(executionObj.M0_ff, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, maskVessel);
-        else
-            maskArtery = ToolBox.Cache.maskArtery;
-            sectionImageAdvanced(rescale(mean(executionObj.M0_ff, 3)), obj.Q_results_A.maskLabel, [], obj.Q_results_A.rejected_mask, [], maskArtery);
-        end
+        maskVessel = ToolBox.Cache.maskArtery | ToolBox.Cache.maskVein;
+        sectionImageAdvanced(rescale(mean(executionObj.M0_ff, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, maskVessel);
 
         try
-
-            if params.veins_analysis
-                combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, executionObj.M0_ff)
-            end
-
+            combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, executionObj.M0_ff)
         catch ME
-            MEdisp(ME, ToolBox.EF_path)
+            MEdisp(ME, ToolBox.EF_path);
         end
 
         executionObj.is_AllAnalyzed = true;
-        fprintf("- Cross-Section Figures took: %ds\n", round(toc(crossSectionFiguresTimer)));
+        fprintf("- Cross-Section Results Export took: %ds\n", round(toc(exportCrossSectionResultsTimer)));
     end
 
     function performSpectralAnalysis(~, executionObj)

@@ -13,9 +13,11 @@ function [time_lag, max_corr, lags, cross_corr_AV] = arterial_venous_correlation
 %       cross_corr_AV       : Cross-correlation values
 
 ToolBox = getGlobalToolBox();
+params = ToolBox.getParams;
+saveFigures = params.saveFigures;
 fs = ToolBox.fs * 1000 / ToolBox.stride;
 numFrames = length(v_artery_signal);
-t = linspace(0, numFrames / fs, numFrames);
+t = ToolBox.Cache.t;
 
 % Input validation
 if nargin < 2
@@ -53,87 +55,90 @@ df = 0.3;
 valid_indx = (f < (f0 + df)) & (f > (f0 - df));
 Gamma_0 = sum(MSC(valid_indx)) ./ sum(valid_indx);
 
-figure("Visible", "off", "Color", 'w');
-plot(f, MSC, '-k', 'LineWidth', 2)
-xline(f0, 'k--', sprintf("%0.2f Hz", f0), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom')
-dim = [.6 .5 .3 .3];
-str = sprintf("$\\Gamma_0 = %.2f$", Gamma_0);
-annotation('textbox', dim, 'String', str, ...
-    'FitBoxToText', 'on', 'Interpreter', 'latex', 'FontSize', 14)
-axis padded;
-xlim([f(1) 10])
-xlabel('Frequency (Hz)'); ylabel('Magnitude-squared coherence');
-box on;
-set(gca, 'LineWidth', 2);
+if saveFigures
+    figure("Visible", "off", "Color", 'w');
+    plot(f, MSC, '-k', 'LineWidth', 2)
+    xline(f0, 'k--', sprintf("%0.2f Hz", f0), 'LineWidth', 2, 'LabelVerticalAlignment', 'bottom')
+    dim = [.6 .5 .3 .3];
+    str = sprintf("$\\Gamma_0 = %.2f$", Gamma_0);
+    annotation('textbox', dim, 'String', str, ...
+        'FitBoxToText', 'on', 'Interpreter', 'latex', 'FontSize', 14)
+    axis padded;
+    xlim([f(1) 10])
+    xlabel('Frequency (Hz)'); ylabel('Magnitude-squared coherence');
+    box on;
+    set(gca, 'LineWidth', 2);
 
-exportgraphics(gcf, fullfile(ToolBox.path_png, ...
-    sprintf("%s_arterial_venous_msc.png", ToolBox.folder_name)))
+    exportgraphics(gcf, fullfile(ToolBox.path_png, ...
+        sprintf("%s_arterial_venous_msc.png", ToolBox.folder_name)))
 
-% Plot results
-figure("Visible", "off");
-subplot(2, 1, 1);
-hold on
-plot(t, A, 'r', 'LineWidth', 2);
-plot(t, -V, 'b', 'LineWidth', 2);
-axis tight;
-grid on;
-xlabel('Time (s)'); ylabel('Amplitude');
-box on;
-set(gca, 'LineWidth', 2);
+    % Plot results
+    figure("Visible", "off");
+    subplot(2, 1, 1);
+    hold on
+    plot(t, A, 'r', 'LineWidth', 2);
+    plot(t, -V, 'b', 'LineWidth', 2);
+    axis tight;
+    grid on;
+    xlabel('Time (s)'); ylabel('Amplitude');
+    box on;
+    set(gca, 'LineWidth', 2);
 
-subplot(2, 1, 2);
-plot(lags_t, cross_corr_AV, 'k', 'LineWidth', 1.5);
-hold on;
-plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
-axis tight;
-grid on;
-xlabel('Lag (s)'); ylabel('Cross-Correlation');
-legend({sprintf("Peak Lag: %.3f s", time_lag), ...
-            sprintf("Peak Corr: %.2f", max_corr)}, 'Location', 'Best');
-box on;
-set(gca, 'LineWidth', 2);
+    subplot(2, 1, 2);
+    plot(lags_t, cross_corr_AV, 'k', 'LineWidth', 1.5);
+    hold on;
+    plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
+    axis tight;
+    grid on;
+    xlabel('Lag (s)'); ylabel('Cross-Correlation');
+    legend({sprintf("Peak Lag: %.3f s", time_lag), ...
+                sprintf("Peak Corr: %.2f", max_corr)}, 'Location', 'Best');
+    box on;
+    set(gca, 'LineWidth', 2);
 
-exportgraphics(gcf, fullfile(ToolBox.path_png, ...
-    sprintf("%s_arterial_venous_correlation.png", ToolBox.folder_name)))
+    exportgraphics(gcf, fullfile(ToolBox.path_png, ...
+        sprintf("%s_arterial_venous_correlation.png", ToolBox.folder_name)))
 
-% Plot results
-figure("Visible", "off");
-hold on
-plot(t, A, 'r', 'LineWidth', 2);
-plot(t, -V, 'b', 'LineWidth', 2);
-axis padded;
-xlim([0 t(end)])
-grid on;
-xlabel('Time (s)'); ylabel('Amplitude');
-box on;
-pbaspect([1.618, 1, 1]);
-set(gca, 'LineWidth', 2);
+    % Plot results
+    figure("Visible", "off");
+    hold on
+    plot(t, A, 'r', 'LineWidth', 2);
+    plot(t, -V, 'b', 'LineWidth', 2);
+    axis padded;
+    xlim([0 t(end)])
+    grid on;
+    xlabel('Time (s)'); ylabel('Amplitude');
+    box on;
+    pbaspect([1.618, 1, 1]);
+    set(gca, 'LineWidth', 2);
 
-exportgraphics(gcf, fullfile(ToolBox.path_png, ...
-    sprintf("%s_detrended_signals.png", ToolBox.folder_name)))
+    exportgraphics(gcf, fullfile(ToolBox.path_png, ...
+        sprintf("%s_detrended_signals.png", ToolBox.folder_name)))
 
-figure("Visible", "off");
-plot(lags_t, cross_corr_AV, 'k', 'LineWidth', 1.5);
-hold on;
-plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
-axis padded;
-xlim([lags_t(1) lags_t(end)])
-grid on;
-xlabel('Lag (s)'); ylabel('Cross-Correlation');
-legend({sprintf("Peak Corr: %.2f", max_corr), ...
-            sprintf("Peak Lag: %.3f s", time_lag)});
-box on;
-pbaspect([1.618, 1, 1]);
-set(gca, 'LineWidth', 2);
+    figure("Visible", "off");
+    plot(lags_t, cross_corr_AV, 'k', 'LineWidth', 1.5);
+    hold on;
+    plot(time_lag, max_corr, 'ro', 'MarkerSize', 10);
+    axis padded;
+    xlim([lags_t(1) lags_t(end)])
+    grid on;
+    xlabel('Lag (s)'); ylabel('Cross-Correlation');
+    legend({sprintf("Peak Corr: %.2f", max_corr), ...
+                sprintf("Peak Lag: %.3f s", time_lag)});
+    box on;
+    pbaspect([1.618, 1, 1]);
+    set(gca, 'LineWidth', 2);
 
-exportgraphics(gcf, fullfile(ToolBox.path_png, ...
-    sprintf("%s_lags.png", ToolBox.folder_name)))
+    exportgraphics(gcf, fullfile(ToolBox.path_png, ...
+        sprintf("%s_lags.png", ToolBox.folder_name)))
+
+end
 
 ToolBox.Output.add('ArteryVeinPhaseDelay', time_lag, 's', NaN);
 
 close all
 
-%% Transfer Function analysis
+% Transfer Function analysis
 
 % Compute FFTs
 v_a_FT = fft(v_artery_signal, 10 * numFrames);
@@ -141,29 +146,34 @@ v_v_FT = fft(v_vein_signal, 10 * numFrames);
 
 F_TRANS = v_v_FT ./ v_a_FT;
 freqs = linspace(-fs / 2, fs / 2, numel(F_TRANS));
-figure("Visible", "off", "Color", 'w');
-semilogy(freqs, fftshift(abs(F_TRANS)), '-k', 'LineWidth', 2);
-axis tight;
-xlabel('Freq (Hz)'); ylabel('transfer function');
-set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
-grid on;
-box on;
-set(gca, 'LineWidth', 2);
-xlim([0 10])
 
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_mod.png", ToolBox.folder_name)))
+if saveFigures
+    % Plot Transfer Function Magnitude
+    figure("Visible", "off", "Color", 'w');
+    semilogy(freqs, fftshift(abs(F_TRANS)), '-k', 'LineWidth', 2);
+    axis tight;
+    xlabel('Freq (Hz)'); ylabel('transfer function');
+    set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+    grid on;
+    box on;
+    set(gca, 'LineWidth', 2);
+    xlim([0 10])
 
-figure("Visible", "off", "Color", 'w');
-plot(freqs, fftshift(angle(F_TRANS)), '-k', 'LineWidth', 2);
-axis tight;
-xlabel('Freq (Hz)'); ylabel('transfer function angle');
-set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
-grid on;
-box on;
-set(gca, 'LineWidth', 2);
-xlim([0 10])
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_mod.png", ToolBox.folder_name)))
 
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_phase.png", ToolBox.folder_name)))
+    % Plot Phase
+    figure("Visible", "off", "Color", 'w');
+    plot(freqs, fftshift(angle(F_TRANS)), '-k', 'LineWidth', 2);
+    axis tight;
+    xlabel('Freq (Hz)'); ylabel('transfer function angle');
+    set(gca, 'PlotBoxAspectRatio', [1.618, 1, 1])
+    grid on;
+    box on;
+    set(gca, 'LineWidth', 2);
+    xlim([0 10])
+
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_phase.png", ToolBox.folder_name)))
+end
 
 ToolBox.Output.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', freqs, 'Hz');
 ToolBox.Output.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');

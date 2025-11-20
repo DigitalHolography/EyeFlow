@@ -26,19 +26,19 @@ properties (Access = public)
     segmentationCheckBox matlab.ui.control.CheckBox
     bloodFlowAnalysisCheckBox matlab.ui.control.CheckBox
     pulseVelocityCheckBox matlab.ui.control.CheckBox
-    crossSectionCheckBox matlab.ui.control.CheckBox
-    crossSectionFigCheckBox matlab.ui.control.CheckBox
+    generateCrossSectionSignalsCheckBox matlab.ui.control.CheckBox
+    exportCrossSectionResultsCheckBox matlab.ui.control.CheckBox
     spectralAnalysisCheckBox matlab.ui.control.CheckBox
 
     % Execute
     NumberofWorkersSpinner matlab.ui.control.Spinner
     NumberofWorkersSpinnerLabel matlab.ui.control.Label
-    OverWriteCheckBox matlab.ui.control.CheckBox
     ExecuteButton matlab.ui.control.Button
     ImageDisplay matlab.ui.control.Image
 
     % Files
     file ExecutionClass
+    AINetworks
     drawer_list = {}
 end
 
@@ -59,6 +59,8 @@ methods (Access = public)
             % Add file
             app.file = ExecutionClass(path);
 
+            app.file.AINetworks = app.AINetworks;
+
             % Compute the mean of M0 along the third dimension
             mean_M0 = mean(app.file.M0, 3);
             % Display the mean image in the uiimage component
@@ -70,7 +72,6 @@ methods (Access = public)
             app.ExecuteButton.Enable = true;
             app.ClearButton.Enable = true;
             app.EditParametersButton.Enable = true;
-            app.OverWriteCheckBox.Enable = true;
             app.EditMasksButton.Enable = true;
             app.PlayMomentsButton.Enable = true;
             app.OpenDirectoryButton.Enable = true;
@@ -81,7 +82,7 @@ methods (Access = public)
             app.statusLamp.Color = [0, 1, 0]; % Green
 
         catch ME
-            MEdisp(ME, path)
+            MEdisp(ME, path);
             diary off
             % Update lamp color to indicate error
             app.statusLamp.Color = [1, 0, 0]; % Red
@@ -116,7 +117,7 @@ methods (Access = public)
 
         % Add necessary paths
         addpath("BloodFlowVelocity\", "BloodFlowVelocity\Elastography\", "CrossSection\", ...
-            "Loading\", "Parameters\", "Preprocessing\", ...
+            "Loading\", "Parameters\", "Preprocessing\", "Outputs\", ...
             "Scripts\", "Segmentation\", "SHAnalysis\", "Tools\");
 
         % Set the UI title
@@ -130,6 +131,8 @@ methods (Access = public)
         set(groot, 'defaultFigureColor', 'w');
         set(groot, 'defaultAxesFontSize', 14);
         set(groot, 'DefaultTextFontSize', 10); % For text objects (e.g., annotations)
+
+        app.AINetworks = AINetworksClass();
     end
 
     function LoadFromTxt(app)
@@ -204,6 +207,9 @@ methods (Access = public)
         % Actualizes the input Parameters
 
         fprintf("\n==================================\n");
+
+        fclose all; % Close any open files
+
         app.file.params_names = checkEyeFlowParamsFromJson(app.file.directory); % checks compatibility between found EF params and Default EF params of this version of EF.
         params = Parameters_json(app.file.directory, app.file.params_names{1});
 
@@ -215,18 +221,21 @@ methods (Access = public)
 
             app.file.param_name = app.file.params_names{i};
 
+            totalTime = tic;
+
             fprintf("\n==================================\n")
 
             app.file.flag_segmentation = app.segmentationCheckBox.Value;
             app.file.flag_bloodFlowVelocity_analysis = app.bloodFlowAnalysisCheckBox.Value;
             app.file.flag_pulseWaveVelocity = app.pulseVelocityCheckBox.Value;
-            app.file.flag_crossSection_analysis = app.crossSectionCheckBox.Value;
-            app.file.flag_crossSection_figures = app.crossSectionFigCheckBox.Value;
+            app.file.flag_crossSection_analysis = app.generateCrossSectionSignalsCheckBox.Value;
+            app.file.flag_crossSection_export = app.exportCrossSectionResultsCheckBox.Value;
             app.file.flag_spectral_analysis = app.spectralAnalysisCheckBox.Value;
-            app.file.flag_overwrite = app.OverWriteCheckBox.Value;
+
+            err = [];
 
             try
-                app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name, app.file.flag_overwrite); % update overwrite status
+                app.file.ToolBoxMaster = ToolBoxClass(app.file.directory, app.file.param_name);
 
                 if ~app.file.is_preprocessed
                     parfor_arg = app.NumberofWorkersSpinner.Value;
@@ -241,12 +250,23 @@ methods (Access = public)
 
             catch ME
                 err = ME;
-                MEdisp(ME, app.file.directory)
+                MEdisp(ME, app.file.directory);
 
                 % Update lamp color to indicate warning
                 app.statusLamp.Color = [1, 0, 0]; % Red
                 diary off
             end
+
+            % Generate reports and outputs
+
+            ReporterTimer = tic;
+            fprintf("\n----------------------------------\n" + ...
+                "Generating Reports\n" + ...
+            "----------------------------------\n");
+            app.file.Reporter.getA4Report(err);
+            app.file.Reporter.saveOutputs();
+            fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
+            app.file.Reporter.displayFinalSummary(totalTime);
 
         end
 
@@ -274,16 +294,6 @@ methods (Access = public)
 
     end
 
-    function OverWriteCheckBoxChanged(app, ~)
-
-        try
-            app.file.flag_overwrite = app.OverWriteCheckBox.Value;
-        catch
-            disp('Couldnt force overwrite')
-        end
-
-    end
-
     % Button pushed function: ClearButton
     function ClearButtonPushed(app, ~)
 
@@ -298,7 +308,6 @@ methods (Access = public)
         app.ExecuteButton.Enable = false;
         app.ClearButton.Enable = false;
         app.EditParametersButton.Enable = false;
-        app.OverWriteCheckBox.Enable = false;
         app.OpenDirectoryButton.Enable = false;
         app.ReProcessButton.Enable = false;
         app.EditMasksButton.Enable = false;
@@ -326,20 +335,24 @@ methods (Access = public)
 
         % Update lamp color to indicate processing
         app.statusLamp.Color = [1, 1/2, 0]; % Orange
+        drawnow;
 
         try
             parfor_arg = app.NumberofWorkersSpinner.Value;
             setupParpool(parfor_arg);
             app.file = ExecutionClass(app.file.directory);
+            app.file.AINetworks = app.AINetworks;
             app.file.preprocessData();
 
             % Update lamp color to indicate success
             app.statusLamp.Color = [0, 1, 0]; % Green
+            drawnow;
         catch ME
-            MEdisp(ME, app.file.directory)
+            MEdisp(ME, app.file.directory);
 
             % Update lamp color to indicate warning
             app.statusLamp.Color = [1, 0, 0]; % Red
+            drawnow;
             diary off
         end
 
@@ -698,7 +711,7 @@ methods (Access = public)
         ToolBox = getGlobalToolBox;
 
         if isempty(ToolBox) || ~strcmp(app.file.directory, ToolBox.EF_path)
-            ToolBox = ToolBoxClass(app.file.directory, app.file.param_name, 1);
+            ToolBox = ToolBoxClass(app.file.directory, app.file.param_name);
         end
 
         if ~isempty(app.file)
@@ -816,7 +829,7 @@ methods (Access = public)
     end
 
     function CheckboxValueChanged(app, ~)
-        % Callback function triggered when any checkbox (except OverWriteCheckBox) is clicked.
+        % Callback function triggered when any checkbox is clicked.
         % This function enforces the rules for enabling/disabling checkboxes.
 
         % Segmentation Checkbox is always enabled
@@ -824,43 +837,43 @@ methods (Access = public)
 
         % Determine the current state of the file analysis
         is_segmented = false;
-        is_pulseAnalyzed = false;
-        is_crossSectionAnalyzed = false;
+        is_velocityAnalyzed = false;
+        is_volumeRateAnalyzed = false;
 
         if ~isempty(app.file)
             is_segmented = app.file.is_segmented;
-            is_pulseAnalyzed = app.file.is_pulseAnalyzed;
-            is_crossSectionAnalyzed = app.file.is_crossSectionAnalyzed;
+            is_velocityAnalyzed = app.file.is_velocityAnalyzed;
+            is_volumeRateAnalyzed = app.file.is_volumeRateAnalyzed;
         end
 
         % Enable/disable bloodFlowAnalysisCheckBox, pulseVelocityCheckBox, and spectralAnalysisCheckBox
         if app.segmentationCheckBox.Value || is_segmented
             app.bloodFlowAnalysisCheckBox.Enable = true;
-            app.pulseVelocityCheckBox.Enable = true;
             app.spectralAnalysisCheckBox.Enable = true;
         else
             app.bloodFlowAnalysisCheckBox.Enable = false;
-            app.pulseVelocityCheckBox.Enable = false;
             app.spectralAnalysisCheckBox.Enable = false;
             app.bloodFlowAnalysisCheckBox.Value = false; % Turn off if disabled
-            app.pulseVelocityCheckBox.Value = false;
             app.spectralAnalysisCheckBox.Value = false;
         end
 
-        % Enable/disable crossSectionCheckBox
-        if app.bloodFlowAnalysisCheckBox.Value || is_pulseAnalyzed
-            app.crossSectionCheckBox.Enable = true;
+        % Enable/disable generateCrossSectionSignalsCheckBox
+        if app.bloodFlowAnalysisCheckBox.Value || is_velocityAnalyzed
+            app.generateCrossSectionSignalsCheckBox.Enable = true;
+            app.pulseVelocityCheckBox.Enable = true;
         else
-            app.crossSectionCheckBox.Enable = false;
-            app.crossSectionCheckBox.Value = false; % Turn off if disabled
+            app.pulseVelocityCheckBox.Enable = false;
+            app.generateCrossSectionSignalsCheckBox.Enable = false;
+            app.pulseVelocityCheckBox.Value = false;
+            app.generateCrossSectionSignalsCheckBox.Value = false; % Turn off if disabled
         end
 
-        % Enable/disable crossSectionFigCheckBox
-        if app.crossSectionCheckBox.Value || is_crossSectionAnalyzed
-            app.crossSectionFigCheckBox.Enable = true;
+        % Enable/disable exportCrossSectionResultsCheckBox
+        if app.generateCrossSectionSignalsCheckBox.Value || is_volumeRateAnalyzed
+            app.exportCrossSectionResultsCheckBox.Enable = true;
         else
-            app.crossSectionFigCheckBox.Enable = false;
-            app.crossSectionFigCheckBox.Value = false; % Turn off if disabled
+            app.exportCrossSectionResultsCheckBox.Enable = false;
+            app.exportCrossSectionResultsCheckBox.Value = false; % Turn off if disabled
         end
 
     end
@@ -1017,25 +1030,25 @@ methods (Access = private)
         app.pulseVelocityCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
         app.pulseVelocityCheckBox.Tooltip = 'Analyze the flexural pulse velocity in vessels.';
 
-        app.crossSectionCheckBox = uicheckbox(grid);
-        app.crossSectionCheckBox.Text = 'Cross Section Analysis';
-        app.crossSectionCheckBox.FontSize = 16;
-        app.crossSectionCheckBox.FontColor = [1 1 1];
-        app.crossSectionCheckBox.Layout.Row = 6;
-        app.crossSectionCheckBox.Layout.Column = [1, 2];
-        app.crossSectionCheckBox.Value = false;
-        app.crossSectionCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.crossSectionCheckBox.Tooltip = 'Analyze the cross-sectional blood flow profile in the segmented vessels.';
+        app.generateCrossSectionSignalsCheckBox = uicheckbox(grid);
+        app.generateCrossSectionSignalsCheckBox.Text = 'Generate Cross Section Signals';
+        app.generateCrossSectionSignalsCheckBox.FontSize = 16;
+        app.generateCrossSectionSignalsCheckBox.FontColor = [1 1 1];
+        app.generateCrossSectionSignalsCheckBox.Layout.Row = 6;
+        app.generateCrossSectionSignalsCheckBox.Layout.Column = [1, 2];
+        app.generateCrossSectionSignalsCheckBox.Value = false;
+        app.generateCrossSectionSignalsCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.generateCrossSectionSignalsCheckBox.Tooltip = 'Generate blood flow profiles across vessel cross-sections.';
 
-        app.crossSectionFigCheckBox = uicheckbox(grid);
-        app.crossSectionFigCheckBox.Text = 'Cross Section Figures';
-        app.crossSectionFigCheckBox.FontSize = 16;
-        app.crossSectionFigCheckBox.FontColor = [1 1 1];
-        app.crossSectionFigCheckBox.Layout.Row = 6;
-        app.crossSectionFigCheckBox.Layout.Column = [3, 4];
-        app.crossSectionFigCheckBox.Value = false;
-        app.crossSectionFigCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.crossSectionFigCheckBox.Tooltip = 'Generate figures for the cross-sectional blood flow profiles.';
+        app.exportCrossSectionResultsCheckBox = uicheckbox(grid);
+        app.exportCrossSectionResultsCheckBox.Text = 'Export Cross Section Results';
+        app.exportCrossSectionResultsCheckBox.FontSize = 16;
+        app.exportCrossSectionResultsCheckBox.FontColor = [1 1 1];
+        app.exportCrossSectionResultsCheckBox.Layout.Row = 6;
+        app.exportCrossSectionResultsCheckBox.Layout.Column = [3, 4];
+        app.exportCrossSectionResultsCheckBox.Value = false;
+        app.exportCrossSectionResultsCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
+        app.exportCrossSectionResultsCheckBox.Tooltip = 'Export the results of cross-section signal analysis.';
 
         app.spectralAnalysisCheckBox = uicheckbox(grid);
         app.spectralAnalysisCheckBox.Text = 'Spectral analysis';
@@ -1075,18 +1088,6 @@ methods (Access = private)
         maxWorkers = parcluster('local').NumWorkers;
         app.NumberofWorkersSpinner.Limits = [0 maxWorkers]; % Ensure valid range
         app.NumberofWorkersSpinner.Value = min(10, floor(maxWorkers / 2)); % Default to 10 or max available
-
-        % Bottom Right: Overwrite Checkbox
-        app.OverWriteCheckBox = uicheckbox(grid);
-        app.OverWriteCheckBox.Text = 'Overwrite';
-        app.OverWriteCheckBox.FontSize = 16;
-        app.OverWriteCheckBox.FontColor = [0.8 0.8 0.8];
-        app.OverWriteCheckBox.Layout.Row = 8;
-        app.OverWriteCheckBox.Layout.Column = 2;
-        app.OverWriteCheckBox.Value = false;
-        app.OverWriteCheckBox.Enable = 'off';
-        app.OverWriteCheckBox.ValueChangedFcn = createCallbackFcn(app, @OverWriteCheckBoxChanged, true);
-        app.OverWriteCheckBox.Tooltip = 'Overwrite the new results in the last EF_ result folder (to save space\n Warning: it will supress previous figures.';
 
         % Add a new column for the image
         app.ImageDisplay = uiimage(grid);

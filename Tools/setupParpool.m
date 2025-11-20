@@ -22,7 +22,7 @@ if ~isnumeric(requestedWorkers) || requestedWorkers < 1 || mod(requestedWorkers,
     error('Number of workers must be a positive integer');
 end
 
-% Check if parallel computing toolbox is available
+% Check if parallel computing ToolBox is available
 if ~license('test', 'Distrib_Computing_Toolbox')
     warning('Parallel Computing Toolbox is not available');
     return;

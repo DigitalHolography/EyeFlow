@@ -1,18 +1,24 @@
-function MEdisp(ME, path)
-fprintf(2, "==================================\nERROR\n==================================\n")
-fprintf(2, 'Error while loading : %s\n', path)
-fprintf(2, "%s\n", ME.identifier)
-fprintf(2, "%s\n", ME.message)
+function s = MEdisp(ME, path)
+
+s = sprintf("==================================\nERROR\n==================================\n");
+s = s + sprintf('Error while processing : %s\n', path);
+s = s + sprintf("%s\n", ME.identifier);
+s = s + sprintf("%s\n", ME.message);
 
 for stackIdx = 1:size(ME.stack, 1)
-    fprintf(2, "%s : %s, line : %d\n", ME.stack(stackIdx).file, ME.stack(stackIdx).name, ME.stack(stackIdx).line);
+    s = s + sprintf("%s : %s, line : %d\n", ME.stack(stackIdx).file, ME.stack(stackIdx).name, ME.stack(stackIdx).line);
 end
 
 if ME.identifier == "MATLAB:audiovideo:VideoReader:FileNotFound"
 
-    fprintf(2, "\nNo Raw File was found\n")
+    s = s + sprintf("\nNo Raw File was found\n");
 
 end
 
-fprintf(2, "==================================\n")
+s = s + sprintf("==================================\n");
+
+if nargout == 0
+    fprintf(2,"%s", s);
+end
+
 end

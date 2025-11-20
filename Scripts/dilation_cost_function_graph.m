@@ -62,7 +62,7 @@ for ind = 1:length(paths)
 end
 
 %% Show
-figure(9958);
+figure("Visible","off");
 hold on;
 
 for ind = 1:length(paths)

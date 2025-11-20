@@ -30,6 +30,13 @@ arguments
     opt.zero_center = false
 end
 
+ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
+
+if ~params.saveFigures
+    return;
+end
+
 f = figure('Visible', 'off');
 
 pbaspect([2.5 1 1]);
@@ -100,8 +107,6 @@ else
 end
 
 set(gca, 'LineWidth', 2)
-
-ToolBox = getGlobalToolBox;
 
 exportgraphics(gca, fullfile(ToolBox.path_png, ...
     sprintf("%s_%s_graph.png", ToolBox.folder_name, filename)))

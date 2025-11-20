@@ -152,7 +152,7 @@ fprintf('Which is %.1f Beats Per Minute (BPM)\n', estimatedFreq * 60);
 fprintf('----------------------------------\n');
 
 % 7. Plot the results with the correct frequency axis
-figure;
+figure("Visible", "off");
 plot(f, powerSpectrum);
 hold on;
 plot(estimatedFreq, powerSpectrum(peakLocation), 'rv', 'MarkerFaceColor', 'r');

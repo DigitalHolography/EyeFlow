@@ -7,7 +7,7 @@ function analyzeSystoleDiastole(sysIdx, diasIdx, v_RMS, locsLabel, maskLabel, ..
 %   v_RMS - velocity data
 %   locsLabel, maskLabel - artery location and mask data
 %   numCircles, numBranches - dimensions of artery data
-%   ToolBox - toolbox parameters
+%   ToolBox - ToolBox parameters
 %   initial - prefix for patch names
 %   papillaDiameter - diameter parameter
 %   vesselName - name of vessel for plots
@@ -22,7 +22,7 @@ params = ToolBox.getParams;
 % Initialize parameters
 [numX, numY, ~] = size(v_RMS);
 
-subImgHW = round(0.01 * numX * params.json.CrossSectionsAnalysis.ScaleFactorWidth);
+subImgHW = round(0.01 * numX * params.json.generateCrossSectionSignals.ScaleFactorWidth);
 
 gap_threshold = 3;
 
@@ -313,7 +313,7 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_n
 
 T = ToolBox.stride / ToolBox.fs / 1000;
 
-figure, hold on
+figure("Visible","off"), hold on
 errorbar(t_systole * T, diameter_sys_mean, diameter_se_sys_mean, ...
     'k', 'LineStyle', 'none', ...
     'Marker', '^', 'MarkerFaceColor', 'auto', 'LineWidth', 2)
@@ -335,7 +335,7 @@ axis padded
 xlim([0 numFrames * T])
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf('%s_plot_diasys_diameter_%s.png', ToolBox.folder_name, vesselName)))
 
-figure, hold on
+figure("Visible","off"), hold on
 errorbar((t_systole + t_diastole) * T / 2, ...
     diameter_diff_mean, ...
     diameter_se_diff_mean, ...

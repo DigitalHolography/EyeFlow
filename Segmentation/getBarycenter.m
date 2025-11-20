@@ -15,6 +15,8 @@ else
     f_AVG_mean = f_AVG;
 end
 
+ToolBox.Output.Extra.add("f_AVG_mean", f_AVG_mean);
+
 if max(f_AVG_mean, [], 'all') <= 0
     figure;
     imshow(rescale(f_AVG_mean));
@@ -36,7 +38,7 @@ else
         mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
     end
 
-    saveImage(f_AVG_mean, 'all_10_fAVG.png', isStep = true)
+    saveMaskImage(f_AVG_mean, 'all_10_fAVG.png', isStep = true)
 
     maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 
@@ -54,8 +56,8 @@ f_AVG_std = std2(f_AVG_mean);
 maskCRA = f_AVG_mean > (CRACRV_Threshold * f_AVG_std);
 maskCRV = f_AVG_mean < (-CRACRV_Threshold * f_AVG_std);
 
-saveImage(maskCRA, 'maskCRA.png')
-saveImage(maskCRV, 'maskCRV.png')
+saveMaskImage(maskCRA, 'maskCRA.png')
+saveMaskImage(maskCRV, 'maskCRV.png')
 
 xy_barycenter = round([x_CRV + x_CRA, y_CRV + y_CRA] / 2);
 xy_CRA = [x_CRA, y_CRA];

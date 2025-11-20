@@ -1,6 +1,9 @@
 function sectionImageAdvanced(M0_ff_img, maskLabelArtery, maskLabelVein, maskRejectedArtery, maskRejectedVein, maskVessel)
 
 ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
+saveFigures = params.saveFigures;
+
 lght_r = [1, 205/255, 210/255]; % light red
 red_ = [229/255, 115/255, 115/255]; % red
 lght_blu = [179, 229, 252] / 255; % light blue
@@ -97,8 +100,10 @@ imgRGB(indxs) = 0;
 imgRGB(numY * numX + indxs) = 0;
 imgRGB(2 * numY * numX + indxs) = 0;
 
-figure('Visible', 'off');
-imshow(imgRGB)
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s.png", ToolBox.folder_name, sprintf('sections_advanced'))))
+if saveFigures
+    figure('Visible', 'off');
+    imshow(imgRGB)
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_%s.png", ToolBox.folder_name, sprintf('sections_advanced'))))
+end
 
 end

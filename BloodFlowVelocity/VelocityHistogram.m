@@ -19,7 +19,7 @@ arguments
     n (1, 1) {mustBeInteger, mustBePositive} = 256
 end
 
-% Get toolbox parameters
+% Get ToolBox parameters
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 exportVideos = params.exportVideos;
@@ -50,7 +50,7 @@ edges = linspace(v_min, v_max, n + 1); % edges for the histcount bins so n+1 num
 fDistrib = figure("Visible", 'on', 'Color', 'w');
 fDistrib.Position(3:4) = [600 275];
 
-for frameIdx = 1:numFrames
+parfor frameIdx = 1:numFrames
     data = v_histo(:, :, frameIdx);
     histo(:, frameIdx) = histcounts(data(mask), edges); % histcount is faster than histogram or manual for loop counting
 end

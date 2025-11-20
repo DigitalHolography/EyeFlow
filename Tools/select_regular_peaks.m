@@ -1,4 +1,4 @@
-function s_idx = select_regular_peaks(signals_n, method, params)
+function [s_idx, locs_n] = select_regular_peaks(signals_n, method, params)
 %SELECT_REGULAR_PEAKS Select signals with regular derivative peaks
 %
 % Inputs:
@@ -27,16 +27,16 @@ gradient_n = gradient(signals_n);
 
 switch method
     case "minmax"
-        s_idx = select_minmax(signals_n, gradient_n, fs, dt);
+        [s_idx, locs_n] = select_minmax(signals_n, gradient_n, fs, dt);
     case "regular"
-        s_idx = select_regular(gradient_n, params.threshold, params.tolerance);
+        [s_idx, locs_n] = select_regular(gradient_n, params.threshold, params.tolerance);
     case "kmeans_cosine"
         s_idx = select_kmeans(signals_n, 'cosine');
 end
 
 end
 
-function s_idx = select_minmax(signals_n, gradient_n, fs, dt)
+function [s_idx, locs_n] = select_minmax(signals_n, gradient_n, fs, dt)
 % Select signals based on presence of regular min/max peaks in derivative
 
 [numBranches, numFrames] = size(signals_n);
@@ -51,20 +51,22 @@ P1 = P2(1:floor(numFrames / 2) + 1);
 P1(2:end - 1) = 2 * P1(2:end - 1);
 
 % Frequency vector
-f = fs * (0:(numFrames / 2)) / numFrames;
+f = fft_freq_vector(fs, numFrames, true);
 
 % Find dominant frequency in physiological range (e.g. 0.5 - 5 Hz)
 f_range = (f > 0.5 & f < 5); % 30 - 300 bpm
 [~, idx] = max(P1(f_range));
 f0 = f(f_range);
 f0 = f0(idx);
-idx0 = round(f0 / dt);
+t0 = 1 / f0;
+idx0 = round(t0 / dt);
 
 % Select signals based on presence of peaks in derivative at intervals ~1/f0
 s_idx = zeros(1, numBranches);
+locs_n = cell(1, numBranches);
 
 for i = 1:numBranches
-    [peaks, locs] = findpeaks(abs(gradient_n(i, :)), 'MinPeakDistance', 0.6 * idx0);
+    [peaks, locs] = findpeaks(abs(gradient_n(i, :)), 'MinPeakDistance', 0.9 * idx0);
     [~, loc_ind] = max(peaks);
 
     if gradient_n(i, locs(loc_ind)) > 0
@@ -73,16 +75,19 @@ for i = 1:numBranches
         s_idx(i) = 0;
     end
 
-end
+    locs_n{i} = locs;
 
 end
 
-function s_idx = select_regular(gradient_n, threshold, tolerance)
+end
+
+function [s_idx, locs_n] = select_regular(gradient_n, threshold, tolerance)
 
 % Select signals based on regularity of peaks in derivative
 
 numBranches = size(gradient_n, 1);
 s_idx = zeros(1, numBranches);
+locs_n = cell(1, numBranches);
 
 for i = 1:numBranches
     d_sig = gradient_n(i, :);
@@ -104,6 +109,8 @@ for i = 1:numBranches
             end
 
         end
+
+        locs_n{i} = locs;
 
     end
 
@@ -136,7 +143,7 @@ P1 = P2(1:floor(numFrames / 2) + 1);
 P1(2:end - 1) = 2 * P1(2:end - 1);
 
 % Frequency vector
-f = fs * (0:(numFrames / 2)) / numFrames;
+f = fft_freq_vector(fs, numFrames, true);
 
 % Find dominant frequency in physiological range (e.g. 0.5 - 5 Hz)
 f_range = (f > 0.5 & f < 5); % 30 - 300 bpm
