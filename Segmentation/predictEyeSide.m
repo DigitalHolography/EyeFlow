@@ -29,7 +29,6 @@ end
 
 % Save the image
 if nargin == 3 && saveImage
-    disp("saving");
     visImg = uint8(rgbM0 * 255);
     borderWidth = 10;
 

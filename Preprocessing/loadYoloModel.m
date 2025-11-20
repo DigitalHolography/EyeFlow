@@ -21,11 +21,12 @@ end
 try
     % Try the newer function first
     yoloModel = importNetworkFromONNX(model_path);
-catch
+catch ME
+    warning("Error in yolo model import : ")
+    MEdisp(ME, ToolBox.EF_path);
+    
     % Fall back to the older function
-    warning('off')
     yoloModel = importONNXNetwork(model_path);
-    warning('on')
 end
 
 end
