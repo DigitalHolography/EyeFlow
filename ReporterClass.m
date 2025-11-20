@@ -20,8 +20,13 @@ methods
         if isempty(output)
             error("Output is not initialized in ExecutionClass.");
         end
-
-        ToolBox.Output.add('NumFrames', size(executionObj.M0, 3), '', 0);
+        
+        if isempty(executionObj.M0)
+            ToolBox.Output.add('NumFrames', size(executionObj.M0_ff, 3), '', 0);
+        else
+            ToolBox.Output.add('NumFrames', size(executionObj.M0, 3), '', 0);
+        end
+        
         ToolBox.Output.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
         ToolBox.Output.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
 
