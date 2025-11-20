@@ -133,6 +133,8 @@ end
 
 saveWomersleyResults("Womersley", womersley_results);
 
+womersleyResultsAnalysis(womersley_results);
+
 
 % Save figure
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_velocities_womersley_profiles_overlay_%s.png", ToolBox.folder_name, name)));
