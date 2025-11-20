@@ -1,4 +1,4 @@
-function exportSegmentsValueToH5(name,maskLabel,values,baseName)
+function exportSegmentsValueToH5(name, maskLabel, values, baseName, units)
 
 if nargin < 4
     baseName = "Segments";
@@ -21,6 +21,6 @@ for cIdx = 1:numCircles
     end
 end
 
-ToolBox.Output.Extra.add(baseName + sprintf("%s_Segments_Labels", name), L);
+ToolBox.Output.Extra.add(baseName + sprintf("%s_Segments_Labels", name), L, [], units);
 
 end
