@@ -128,7 +128,7 @@ end
 
 if params.json.exportCrossSectionResults.circleImages
 
-    folders = {'lumenDiameter', 'vesselSegmentId', 'bloodVolumeRate', 'velocity'};
+    folders = {'lumenDiameter', 'vesselSegmentId', 'bloodVolumeRate', 'velocity', 'alphaWomersley'};
 
     if ~isfolder(fullfile(path_png, 'vesselSegmentImages'))
         mkdir(fullfile(path_png, 'vesselSegmentImages'))
