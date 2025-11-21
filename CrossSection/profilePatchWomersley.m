@@ -167,6 +167,6 @@ function saveWomersleyResults(BasePath, womersley_results)
         % end
 
         field_list = [womersley_results.(field)];
-        ToolBox.Output.Extra.add(BasePath + field, field_list);
+        ToolBox.Output.DimOut.add_D1_array(BasePath + field, field_list);
     end
 end

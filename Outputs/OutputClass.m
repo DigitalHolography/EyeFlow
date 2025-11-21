@@ -96,9 +96,10 @@ properties
     UnixTimestampFirst
     UnixTimestampLast
 
-    % Signals & Extra
+    % Signals & Extra & DimOut
     Signals SignalsClass
     Extra ExtraClass
+    DimOut DimOutClass
 end
 
 methods
@@ -116,6 +117,7 @@ methods
 
         obj.Signals = SignalsClass();
         obj.Extra = ExtraClass();
+        obj.DimOut = DimOutClass();
     end
 
     function add(obj, name, value, unit, standard_error)
@@ -179,6 +181,7 @@ methods
         % Save Signals and Extra in a separate directory of the same h5 file
         obj.Signals.writeHdf5(file_path);
         obj.Extra.writeHdf5(file_path);
+        obj.DimOut.writeHdf5(file_path);
 
     end
 
