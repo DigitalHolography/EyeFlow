@@ -126,7 +126,7 @@ for i = 1:size(alphaWom, 1)
     end
 end
 
-exportSegmentsValueToH5("Wom_alpha",maskLabel,alphaWom,"Womersley");
+exportSegmentsValueToH5(name+"_Wom_alpha",maskLabel,alphaWom,"Womersley");
 
 fprintf("    1.(bis) optional Flow Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
 

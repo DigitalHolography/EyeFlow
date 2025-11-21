@@ -1,11 +1,8 @@
 function writeNumericToHDF5(path, datasetPath, value)
 if ~isempty(value)
 
-    % Handle for complex values (split them)
     if ~isreal(value)
-        % Recursively
-        writeNumericToHDF5(path, datasetPath + "_real", real(value));
-        writeNumericToHDF5(path, datasetPath + "_imag", imag(value));
+        warning("Complexe values should be handled before call");
         return;
     end
 
