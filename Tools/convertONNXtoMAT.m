@@ -22,9 +22,14 @@ for i = 1:numel(onnxFiles)
     [~, baseName, ~] = fileparts(onnxFiles(i).name);
     matPath = fullfile(outputDir, [baseName, '.mat']);
 
+    if isfile(matPath)
+        fprintf('MAT file for "%s" already exists. Skipping conversion.\n', onnxFiles(i).name);
+        continue;
+    end
+
     try
         fprintf('Converting "%s" ... ', onnxFiles(i).name);
-        
+
         % Import ONNX model
         net = importNetworkFromONNX(onnxPath);
 
@@ -34,6 +39,7 @@ for i = 1:numel(onnxFiles)
     catch ME
         fprintf('Failed: %s\n', ME.message);
     end
+
 end
 
 fprintf('Conversion completed.\n');
