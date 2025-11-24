@@ -20,10 +20,6 @@ exportVideos = params.exportVideos;
 path = ToolBox.path_main;
 folder_steps = fullfile('mask', 'steps');
 
-if ~exist(fullfile(ToolBox.path_main, folder_steps), 'dir')
-    mkdir(ToolBox.path_main, folder_steps);
-end
-
 % 0) Initialisation
 [numX, numY, numFrames] = size(M0_ff);
 xy_barycenter = ToolBox.Cache.xy_barycenter;
@@ -216,6 +212,12 @@ if mask_params.AutoCompute
     end
 
 end
+
+% 3) 2) Process systolic signal to create artery mask
+[M0_Systole_img, M0_Diastole_img] = compute_diasys(M0_ff, maskArtery, 'mask');
+diasys_diff = M0_Systole_img - M0_Diastole_img;
+RGBdiasys = labDuoImage(rescale(M0_ff_img), diasys_diff);
+saveMaskImage(RGBdiasys, 'diasys_diff.png');
 
 % 3) 2) a) Look for a target mask to register from
 if (mask_params.RegisteredMasks == -1 || mask_params.RegisteredMasks == 1)
