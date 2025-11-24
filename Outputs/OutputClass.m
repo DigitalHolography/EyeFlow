@@ -103,9 +103,10 @@ properties
     UnixTimestampFirst
     UnixTimestampLast
 
-    % Signals & Extra
+    % Signals & Extra & DimOut
     Signals SignalsClass
     Extra ExtraClass
+    DimOut DimOutClass
 end
 
 methods
@@ -114,6 +115,7 @@ methods
         % Constructor for the class, fills the properties with default values
         props = setdiff(properties(obj), "Signals");
         props = setdiff(props, "Extra");
+        props = setdiff(props, "DimOut");
 
         for i = 1:length(props)
             obj.(props{i}).value = NaN;
@@ -123,6 +125,7 @@ methods
 
         obj.Signals = SignalsClass();
         obj.Extra = ExtraClass();
+        obj.DimOut = DimOutClass();
     end
 
     function add(obj, name, value, unit, standard_error)
@@ -144,6 +147,8 @@ methods
     function writeJson(obj, path)
         props = setdiff(properties(obj), "Signals");
         props = setdiff(props, "Extra");
+        props = setdiff(props, "DimOut");
+        
         data = struct();
 
         for i = 1:length(props)
@@ -166,6 +171,8 @@ methods
     function writeHdf5(obj, path)
         props = setdiff(properties(obj), "Signals");
         props = setdiff(props, "Extra");
+        props = setdiff(props, "DimOut");
+        
         [folder_dir, folder_name, ~] = fileparts(path);
         file_path = fullfile(folder_dir, strcat(folder_name, ".h5"));
 
@@ -190,6 +197,7 @@ methods
         % Save Signals and Extra in a separate directory of the same h5 file
         obj.Signals.writeHdf5(file_path);
         obj.Extra.writeHdf5(file_path);
+        obj.DimOut.writeHdf5(file_path);
 
     end
 

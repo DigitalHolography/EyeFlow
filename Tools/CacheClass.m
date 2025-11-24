@@ -39,6 +39,9 @@ properties
     HeartBeatFFTSTE double % cached heartbeat frequency standard error in Hz
     harmonics double % cached harmonics frequencies
 
+    % Womersley things
+    WomersleyOut cell
+
 end
 
 methods

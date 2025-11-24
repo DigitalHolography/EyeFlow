@@ -51,6 +51,9 @@ end
 s = s + sprintf("==================================\n");
 
 if nargout == 0
+    if fd == 1
+        warning(message);
+    end
     fprintf(fd,"%s", s);
 end
 

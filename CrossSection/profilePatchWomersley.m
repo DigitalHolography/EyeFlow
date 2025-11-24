@@ -119,13 +119,21 @@ for circleIdx = 1:rows
 
         % 2. Fit cardiac profiles
 
-        [alphaWom, pseudoViscosity] = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
-        ToolBox.Output.Extra.add(sprintf("Womersley/alphaWom%s_idx%d_c%d_b%d", name, idx, circleIdx, branchIdx), alphaWom);
+        % TODO: temp fix for a single harmonic
+        womersley_results(idx) = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
+
+        % addStructToExtra(ToolBox.Output.Extra, "Womersley", womersley_results(idx)(1));
+
+        ToolBox.Cache.WomersleyOut{circleIdx,branchIdx} = womersley_results(1, idx);
         idx = idx + 1;
     end
 
 end
 
+
+saveWomersleyResults("Womersley", womersley_results);
+
+womersleyResultsAnalysis(womersley_results);
 
 
 % Save figure
@@ -134,4 +142,31 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_velocities_womersley_
 close(fi);
 
 close all;
+end
+
+
+function saveWomersleyResults(BasePath, womersley_results)
+    ToolBox = getGlobalToolBox;
+
+    if ~endsWith(BasePath, "/") && ~endsWith(BasePath, "_")
+        BasePath = BasePath + "/"; 
+    end
+
+    field_names = fieldnames(womersley_results(1));
+    for i = 1:numel(field_names)
+        field = field_names{i};
+
+        if isstruct(womersley_results(1).(field))
+            subStructs = [womersley_results.(field)];
+            saveWomersleyResults(BasePath + field, subStructs);
+            continue;
+        end
+
+        % for j = 1:numel(womersley_results)
+        %     field_list(j) = womersley_results(j).(field);
+        % end
+
+        field_list = [womersley_results.(field)];
+        ToolBox.Output.DimOut.add_D1_array(BasePath + field, field_list);
+    end
 end
