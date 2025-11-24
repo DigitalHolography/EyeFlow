@@ -36,6 +36,7 @@ properties
     v_mean_RGB uint8
     Q_results_A
     Q_results_V
+    eye_side = "none"
 
     % Processing Flags
     is_preprocessed = false
@@ -151,8 +152,9 @@ methods
 
         obj.AINetworks.updateAINetworks(params);
 
+        % Execute eye_side analysis if asked
         if params.json.Mask.EyeSideClassifierNet
-            predictEyeSide(obj.AINetworks.EyeSideClassifierNet, obj.M0_ff_img, true);
+            obj.eye_side = predictEyeSide(obj.AINetworks.EyeSideClassifierNet, obj.M0_ff_img, true);
         end
 
         % Execute analysis steps based on checkbox flags

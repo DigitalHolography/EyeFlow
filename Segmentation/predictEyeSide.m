@@ -5,7 +5,7 @@ function eyeSide = predictEyeSide(model, M0, saveImage)
 %       M0        - Input image (2D matrix)
 %       saveImage - Save the image with eye direction
 %   Output:
-%       eyeSide   - 0 (left) or 1 (right)
+%       eyeSide   - string: "left" or "right"
 
 M0 = rescale(imresize(M0, [640, 640]));
 rgbM0 = cat(3, M0, M0, M0);
@@ -18,11 +18,11 @@ scores = scores(:);
 
 [maxScore, maxIndex] = max(scores);
 if maxIndex == 1
-    eyeSide = 0;
+    eyeSide = "left";
     labelStr = "Left";
     borderColor = [0 200 0];
 else
-    eyeSide = 1;
+    eyeSide = "right";
     labelStr = "Right";
     borderColor = [200 0 0];
 end
