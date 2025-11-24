@@ -140,7 +140,7 @@ if saveFigures
     end
 
     % Configure axes
-    axis_height = 1.3 * s_peaks(1); % Set y-axis limit slightly above the highest peak
+    axis_height = 1.3 * fundamental_peak; % Set y-axis limit slightly above the highest peak
     axis tight;
     axT = axis;
     axis([axT(1), 10, 0, axis_height]);

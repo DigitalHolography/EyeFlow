@@ -73,28 +73,42 @@ function plot_tagged_png_comparison(folder_list_source, tag)
         error('No PNG files found containing tag "%s" in any folder', tag);
     end
     
-    % Create figure with subplots
+   % Create figure with subplots (no margins)
     figure('Name', sprintf('PNG Files with Tag: "%s"', tag), ...
            'NumberTitle', 'off', ...
-           'Position', [100, 100, 200 * length(png_files), 400], "Visible", "on");
+           'Position', [100, 100, 200 * length(png_files), 400], ...
+           'Visible', 'on');
     
-    for i = 1:length(png_files)
-        subplot(1, length(png_files), i);
-        
+    n = length(png_files);
+    
+    for i = 1:n
+        % Manually control subplot positions with no margins
+        ax = axes('Position', [(i-1)/n, 0, 1/n, 1]); % [left bottom width height]
+    
         try
             img = imread(png_files{i});
-            imshow(img);
-            title(folder_names{i}, 'Interpreter', 'none', 'FontSize', 10);
+            imshow(img, 'Parent', ax);
+            title(ax, folder_names{i}, 'Interpreter', 'none', 'FontSize', 10);
         catch ME
             warning('Error reading image: %s. Error: %s', png_files{i}, ME.message);
             % Create empty plot with error message
-            imshow(zeros(100, 100, 3));
-            title(sprintf('%s\n(Error)', folder_names{i}), 'Interpreter', 'none', 'Color', 'red');
+            imshow(zeros(100, 100, 3), 'Parent', ax);
+            title(ax, sprintf('%s\n(Error)', folder_names{i}), 'Interpreter', 'none', 'Color', 'red');
         end
+    
+        % Remove any default padding/margins
+        ax.Units = 'normalized';
+        ax.PositionConstraint = 'outerposition';
+        ax.XTick = [];
+        ax.YTick = [];
+        ax.XColor = 'none';
+        ax.YColor = 'none';
     end
     
     % Add overall title
-    sgtitle(sprintf('PNG Files Containing Tag: "%s"', tag), 'FontSize', 12, 'FontWeight', 'bold');
+    sgtitle(sprintf('PNG Files Containing Tag: "%s"', tag), ...
+        'FontSize', 12, 'FontWeight', 'bold');
+
     
     fprintf('Successfully plotted %d images with tag "%s"\n', length(png_files), tag);
 end

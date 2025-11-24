@@ -63,15 +63,15 @@ AIModels = AINetworksClass();
 for ind = 1:length(paths)
 
     path = paths(ind);
-    fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', path, ind, length(path));
+    fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', path, ind, length(paths));
 
     if isfolder(path)
         path = strcat(path, '\');
     end
 
-    tic;
+    EFtime = tic;
     runAnalysisBlock(path, AIModels);
-    ti = toc;
+    ti = toc(EFtime);
     fprintf(fid, 'Execution time: %.2f seconds\n\n', ti);
 end
 
@@ -127,6 +127,7 @@ catch e
     MEdisp(e, path);
 end
 
+try
 ReporterTimer = tic;
 fprintf("\n----------------------------------\n" + ...
     "Generating Reports\n" + ...
@@ -135,5 +136,10 @@ ExecClass.Reporter.getA4Report(ME);
 ExecClass.Reporter.saveOutputs();
 fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
 ExecClass.Reporter.displayFinalSummary(totalTime);
+
+catch e
+    fprintf("Error during report generation:\n");
+    MEdisp(e, path);
+end
 
 end

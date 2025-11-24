@@ -90,6 +90,8 @@ properties
     PapillaRatio
     WindkesselDecayRC
     WindkesselPureDelay
+    WindkesselCeff
+    WindkesselReff
     ArteryVeinPhaseDelay
 
     % Time info
@@ -174,13 +176,17 @@ methods
         end
 
         for i = 1:length(props)
-            writeNumericToHDF5(file_path, strcat("/", "Figures", "/", props{i}, "/", props{i}), obj.(props{i}).value);
-
-            writeNumericToHDF5(file_path, strcat("/", "Figures", "/", props{i}, "/", props{i}, "_ste"), obj.(props{i}).standard_error);
-
-            h5writeatt(file_path, strcat("/", "Figures", "/", props{i}, "/", props{i}), "unit", obj.(props{i}).unit);
-
-            h5writeatt(file_path, strcat("/", "Figures", "/", props{i}, "/", props{i}, "_ste"), "unit", obj.(props{i}).unit);
+            if ~isempty(obj.(props{i}).value)
+                writeNumericToHDF5(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}), obj.(props{i}).value);
+                h5writeatt(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}), "unit", obj.(props{i}).unit);
+            end
+            
+            if ~isempty(obj.(props{i}).standard_error)
+                writeNumericToHDF5(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}, "_ste"), obj.(props{i}).standard_error);
+                h5writeatt(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}, "_ste"), "unit", obj.(props{i}).unit);
+            end
+            
+            
         end
 
         % Save Signals and Extra in a separate directory of the same h5 file

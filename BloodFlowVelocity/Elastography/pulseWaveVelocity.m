@@ -92,8 +92,16 @@ for kb = 2:numpoints
     abs_dist(kb) = abs_dist(kb - 1) + sqrt((absx(kb) - absx(kb - 1)) ^ 2 + (absy(kb) - absy(kb - 1)) ^ 2) * params.px_size;
 end
 
-figure('Visible', 'off'); plot(abs_dist);
+if abs_dist(end) < 1.5 % minimal distance in mm
+    return
+end
 
+if saveFigures
+    figure('Visible', 'off'); plot(abs_dist);
+    % Save figure
+    saveas(gcf, fullfile(outputDir, ...
+        sprintf("%s_%s_%d_1b_true_dist.png", ToolBox.folder_name, name, branch_index)));
+end
 % for the positions extract a signal
 
 % with orhtogonal sections
@@ -173,11 +181,11 @@ for i = 2:numpoints - 1
 
     prev_line = [P3; P4]; % save endpoints for next step
 end
-
-% Save figure
-saveas(gcf, fullfile(outputDir, ...
-    sprintf("%s_%s_%d_2_CrossingLines.png", ToolBox.folder_name, name, branch_index)));
-
+if saveFigures
+    % Save figure
+    saveas(gcf, fullfile(outputDir, ...
+        sprintf("%s_%s_%d_2_CrossingLines.png", ToolBox.folder_name, name, branch_index)));
+end
 if saveFigures
     figure('Visible', 'off');
     imagesc(L)
@@ -205,7 +213,42 @@ if saveFigures
 end
 
 Ux_n = Ux_n';
-Ux_n(isnan(Ux_n)) = 0;
+
+sig = ToolBox.Output.Signals.ArterialVelocity.yvalues;
+sig2 = ToolBox.Output.Signals.VenousVelocity.yvalues;
+sig = (sig-mean(sig))/std(sig);
+sig2 = (sig2-mean(sig2))/std(sig2);
+
+
+Ux_n(isnan(Ux_n)) = 0; % remove nans
+
+corr_thresh = 0.4;
+% figure("Visible","off"), hold on,
+c1 = squeeze(mean(Ux_n.*sig',1));
+c2 = squeeze(mean(Ux_n.*sig2',1));
+c3 = squeeze(mean(Ux_n.*(-sig)',1));
+c4 = squeeze(mean(Ux_n.*(-sig2)',1));
+% nn = length(c1);
+% plot(1:nn,c1,1:nn,c2,1:nn,c3,1:nn,c4);
+% yline(corr_thresh)
+
+envelop = max([c1;c2;c3;c4],[],1);
+plot(squeeze(envelop));
+
+pulse_correlated_indxs = envelop > corr_thresh;
+
+Ux_n(:,pulse_correlated_indxs) = 0; % remove pulse correlated parts
+
+if saveFigures
+    figure('Visible', 'off');
+    imagesc(ToolBox.Cache.t, linspace(0, abs_dist(end), numpoints), real(Ux_n'));
+    xlabel("time (s)");
+    ylabel("arc length (mm)")
+    % Save figure
+    saveas(gcf, fullfile(outputDir, ...
+        sprintf("%s_%s_%d_4bis_signals_asym_over_time_filtered.png", ToolBox.folder_name, name, branch_index)));
+end
+
 R = xcorr(Ux_n, 'unbiased');
 
 [Nlags, ~] = size(R);
