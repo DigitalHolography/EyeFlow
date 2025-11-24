@@ -158,11 +158,6 @@ methods
             obj.eye_side = predictEyeSide(obj.AINetworks.EyeSideClassifierNet, obj.M0_ff_img, true);
         end
 
-        % Execute eye diaphragm analysis if asked
-        if params.json.Mask.EyeDiaphragmSegmentationNet
-            obj.eye_diaphragm = predictDiaphragm(obj.AINetworks.EyeDiaphragmSegmentationNet, obj.M0_ff_img, true);
-        end
-
         % Execute analysis steps based on checkbox flags
         if obj.flag_segmentation
             obj.Analyzer.performSegmentation(obj, app);

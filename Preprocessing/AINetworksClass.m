@@ -7,6 +7,8 @@ properties
     AVSegmentationNet
     OpticDiskDetectorParam
     OpticDiskDetectorNet
+    OpticDiskSegmentationParam
+    OpticDiskSegmentationNet
     EyeSideClassifierParam
     EyeSideClassifierNet
     EyeDiaphragmSegmentationParam
@@ -23,6 +25,7 @@ methods
         AINetworksObj.AVSegmentationNet = [];
         AINetworksObj.OpticDiskDetectorParam = false;
         AINetworksObj.OpticDiskDetectorNet = [];
+        AINetworksObj.OpticDiskSegmentationNet = [];
     end
 
     function updateAINetworks(obj, params)
@@ -92,11 +95,20 @@ methods
         if OpticDiskDetectorParamChanged && maskParams.OpticDiskDetectorNet
             tic
             fprintf("    - Loading Optic Disk Detector Network...\n");
-            % [obj.OpticDiskDetectorNet] = loadOpticDiskNetwork();
-            % [obj.OpticDiskDetectorNet] = py.yolo.import_model("../Models/optic_disk.pt"); % Load the trained model
-            [obj.OpticDiskDetectorNet] = loadYoloModel("optic_disk", "YOLO_OpticDisk");
+            [obj.OpticDiskDetectorNet] = loadOpticDiskNetwork();
             obj.OpticDiskDetectorParam = maskParams.OpticDiskDetectorNet;
             fprintf("    - Loading Optic Disk Detector Network took: %ds\n", round(toc));
+        end
+
+        % Load Optic Disk Segmentation Network if parameter changed
+        OpticDiskSegmentationParamChanged = ~isequal(obj.OpticDiskSegmentationParam, maskParams.OpticDiskSegmentationNet);
+
+        if OpticDiskSegmentationParamChanged && maskParams.OpticDiskSegmentationNet
+            tic
+            fprintf("    - Loading Optic Disk Segmentation Network...\n");
+            [obj.OpticDiskSegmentationNet] = loadYoloModel("optic_disk", "YOLO_OpticDisk");
+            obj.OpticDiskSegmentationParam = maskParams.OpticDiskSegmentationNet;
+            fprintf("    - Loading Optic Disk Segmentation Network took: %ds\n", round(toc));
         end
 
         % Load Eye Diaphragm Segmentation Network if parameter changed
@@ -124,6 +136,8 @@ methods
         if ~AVSegmentationParamChanged ...
                 && ~VesselSegmentationParamChanged ...
                 && ~OpticDiskDetectorParamChanged ...
+                && ~OpticDiskSegmentationParamChanged ...
+                && ~EyeDiaphragmSegmentationParamChanged ...
                 && ~EyeSideClassifierParamChanged
             fprintf("    - AI Networks are up to date. No loading needed.\n");
         end

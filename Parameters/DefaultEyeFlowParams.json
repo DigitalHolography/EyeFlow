@@ -57,6 +57,7 @@
     "Final Dilation": 0,
     "Force Vessel Width": false,
     "Optic Disk Detector Net": true,
+    "Optic Disk Segmentation Net": true,
     "Eye Diaphragm Segmentation Net": true,
     "Eye Side Classifier Net": true
   },

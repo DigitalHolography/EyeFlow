@@ -54,7 +54,7 @@ methods
             diameter_y = NaN;
         end
 
-        createMasks(executionObj.M0_ff, executionObj.AINetworks.VesselSegmentationNet, executionObj.AINetworks.AVSegmentationNet);
+        createMasks(executionObj.M0_ff, executionObj.AINetworks.VesselSegmentationNet, executionObj.AINetworks.AVSegmentationNet, executionObj.AINetworks.EyeDiaphragmSegmentationNet);
         ToolBox.Cache.papillaDiameter = mean([diameter_x, diameter_y]);
 
         % Artery score
