@@ -108,6 +108,7 @@ methods
         % Constructor for the class, fills the properties with default values
         props = setdiff(properties(obj), "Signals");
         props = setdiff(props, "Extra");
+        props = setdiff(props, "DimOut");
 
         for i = 1:length(props)
             obj.(props{i}).value = NaN;
@@ -139,6 +140,8 @@ methods
     function writeJson(obj, path)
         props = setdiff(properties(obj), "Signals");
         props = setdiff(props, "Extra");
+        props = setdiff(props, "DimOut");
+        
         data = struct();
 
         for i = 1:length(props)
@@ -161,6 +164,8 @@ methods
     function writeHdf5(obj, path)
         props = setdiff(properties(obj), "Signals");
         props = setdiff(props, "Extra");
+        props = setdiff(props, "DimOut");
+        
         [folder_dir, folder_name, ~] = fileparts(path);
         file_path = fullfile(folder_dir, strcat(folder_name, ".h5"));
 

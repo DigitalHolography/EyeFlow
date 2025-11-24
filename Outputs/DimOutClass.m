@@ -49,26 +49,68 @@ methods
     %}
 
     function add_D0_scalar(obj, name, data, ste, unit)
+        if nargin < 5
+            unit = [];
+        end
+        if nargin < 4
+            ste = [];
+        end
+
         add(obj, name, data, DimEnumClass.D0_scalar, ste, unit)
     end
 
     function add_D1_array(obj, name, data, ste, unit)
+        if nargin < 5
+            unit = [];
+        end
+        if nargin < 4
+            ste = [];
+        end
+        
         add(obj, name, data, DimEnumClass.D1_array, ste, unit)
     end
 
     function add_D2_array(obj, name, data, ste, unit)
+        if nargin < 5
+            unit = [];
+        end
+        if nargin < 4
+            ste = [];
+        end
+        
         add(obj, name, data, DimEnumClass.D2_array, ste, unit)
     end
 
     function add_D3_array(obj, name, data, ste, unit)
+        if nargin < 5
+            unit = [];
+        end
+        if nargin < 4
+            ste = [];
+        end
+        
         add(obj, name, data, DimEnumClass.D3_array, ste, unit)
     end
 
     function add_D4_array(obj, name, data, ste, unit)
+        if nargin < 5
+            unit = [];
+        end
+        if nargin < 4
+            ste = [];
+        end
+        
         add(obj, name, data, DimEnumClass.D4_array, ste, unit)
     end
 
     function add_strings(obj, name, data, ste, unit)
+        if nargin < 5
+            unit = [];
+        end
+        if nargin < 4
+            ste = [];
+        end
+        
         add(obj, name, data, DimEnumClass.strings, ste, unit)
     end
 
@@ -100,42 +142,62 @@ methods (Access = private)
             
             % Build dataset path
             datasetPath = "/" + string(folder) + "/" + antiSanitizeFieldName(fieldName);
-        
-            % --- Case 1: Numeric or image data ---
-            if isnumeric(fieldValue) || islogical(fieldValue)
-                writeNumericToHDF5(path, datasetPath, fieldValue);
-                if ~isempty(obj.Ste) && isfield(obj.Ste, fieldName)
-                    steValue = obj.Ste.(fieldName);
-                    writeNumericToHDF5(path, strcat(datasetPath, '_ste'), steValue);
-                end
-                if ~isempty(obj.Unit) && isfield(obj.Unit, fieldName)
-                    unitValue = obj.Unit.(fieldName);
-                    h5writeatt(path, datasetPath, 'unit', unitValue);
-                end
-        
-            % --- Case 2: Structs with known fields (e.g., yvalues, label) ---
-            elseif isstruct(fieldValue)
-                subFields = fieldnames(fieldValue);
-                for j = 1:numel(subFields)
-                    datasetPath = subFields{j};
-                    subValue = fieldValue.(subName);
-                    subPath = strcat(datasetPath, '_', subName);
-                    if isnumeric(subValue)
-                        writeNumericToHDF5(path, subPath, subValue);
-                    elseif ischar(subValue) || isstring(subValue)
-                        h5writeatt(path, datasetPath,subName, subValue);
-                    end
-                end
-        
-            % --- Case 3: Strings or labels ---
-            elseif ischar(fieldValue) || isstring(fieldValue)
-                writeStringToHDF5(path, datasetPath, string(fieldValue));
-        
-            else
-                warning('Skipping unsupported field "%s" of type %s', fieldName, class(fieldValue));
-            end
+
+            handleSavingData(obj, path, datasetPath, fieldName, fieldValue);        
         end
 
+    end
+
+    function handleSavingData(obj, path, datasetPath, fieldName, fieldValue)
+        arguments
+            obj
+            path
+            datasetPath
+            fieldName
+            fieldValue
+        end
+    
+        % --- Case 1: Numeric or image data ---
+        if isnumeric(fieldValue) || islogical(fieldValue)
+            % % Handle for complex values (split them)
+            if ~isreal(fieldValue)
+                % Recursively
+                handleSavingData(obj, path, datasetPath + "_real", fieldName, real(fieldValue));
+                handleSavingData(obj, path, datasetPath + "_imag", fieldName, imag(fieldValue));
+                return;
+            end
+    
+            writeNumericToHDF5(path, datasetPath, fieldValue);
+            if ~isempty(obj.Ste) && isfield(obj.Ste, fieldName)
+                steValue = obj.Ste.(fieldName);
+                writeNumericToHDF5(path, strcat(datasetPath, '_ste'), steValue);
+            end
+            if ~isempty(obj.Unit) && isfield(obj.Unit, fieldName)
+                unitValue = obj.Unit.(fieldName);
+                h5writeatt(path, datasetPath, 'unit', unitValue);
+            end
+    
+        % --- Case 2: Structs with known fields (e.g., yvalues, label) ---
+        elseif isstruct(fieldValue)
+            subFields = fieldnames(fieldValue);
+            for j = 1:numel(subFields)
+                datasetPath = subFields{j};
+                subValue = fieldValue.(subName);
+                subPath = strcat(datasetPath, '_', subName);
+                if isnumeric(subValue)
+                    writeNumericToHDF5(path, subPath, subValue);
+                elseif ischar(subValue) || isstring(subValue)
+                    h5writeatt(path, datasetPath,subName, subValue);
+                end
+            end
+    
+        % --- Case 3: Strings or labels ---
+        elseif ischar(fieldValue) || isstring(fieldValue)
+            writeStringToHDF5(path, datasetPath, string(fieldValue));
+    
+        else
+            warning('Skipping unsupported field "%s" of type %s', fieldName, class(fieldValue));
+        end
     end
 
 end
@@ -143,6 +205,8 @@ end
 end
 
 % --- Helper: write numeric dataset ---
+
+
 
 
 function name = sanitizeFieldName(str)
