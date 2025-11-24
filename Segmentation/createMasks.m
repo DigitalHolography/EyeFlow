@@ -353,6 +353,19 @@ if saveFigures
 
 end
 
+% MaskSurface
+ArteryArea_pxl = sum(maskArtery(:));
+VeinArea_pxl = sum(maskVein(:));
+RemainingArea_pxl = sum(maskBackground(:));
+
+ArteryArea_mm2 = ArteryArea_pxl * (params.px_size ^ 2);
+VeinArea_mm2 = VeinArea_pxl * (params.px_size ^ 2);
+RemainingArea_mm2 = RemainingArea_pxl * (params.px_size ^ 2);
+
+ToolBox.Output.add('ArteryArea', ArteryArea_mm2, 'mm^2', NaN);
+ToolBox.Output.add('VeinArea', VeinArea_mm2, 'mm^2', NaN);
+ToolBox.Output.add('RemainingArea', RemainingArea_mm2, 'mm^2', NaN);
+
 % 5) Save masks in Cache
 ToolBox.Cache.maskArtery = maskArtery;
 ToolBox.Cache.maskVein = maskVein;
