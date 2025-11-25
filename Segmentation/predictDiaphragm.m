@@ -1,10 +1,10 @@
-function diaphragm = predictDiaphragm(model, M0)
+function [diaphragm_mask, cx, cy, r] = predictDiaphragm(model, M0)
 % predictDiaphragm - Predicts the diaphragm of a M0 image
 %   Inputs:
 %       model     - The pre-loaded YOLO model
 %       M0        - Input image (2D matrix)
 %   Output:
-%       diaphragm - Logical matrix (mask)
+%       diaphragm_mask - Logical matrix (mask)
 
 % Preprocess
 inputSize = [1024, 1024]; 
@@ -28,8 +28,6 @@ binaryMask = get_yolo_mask(dets, protos, inputSize);
 
 % RANSAC circle
 [contours, ~] = bwboundaries(binaryMask, 'noholes');
-    
-best_cx = []; best_cy = []; best_r = [];
 
 if ~isempty(contours)
     % Find largest contour
@@ -38,23 +36,24 @@ if ~isempty(contours)
     
     % Convert to x,y and run RANSAC
     pts = [largestContour(:,2), largestContour(:,1)];
-    [best_cx, best_cy, best_r] = ransac_circle(pts, 500, 2.0);
+    [cx, cy, r] = ransac_circle(pts, 500, 2.0);
+    
 end
 
 % Output
-if ~isempty(best_cx)
+if ~isempty(cx)
     [xx, yy] = meshgrid(1:inputSize(2), 1:inputSize(1));
-    finalMask = ((xx - best_cx).^2 + (yy - best_cy).^2) <= best_r^2;
+    finalMask = ((xx - cx).^2 + (yy - cy).^2) <= r^2;
 else
     finalMask = false(inputSize);
 end
 
-diaphragm = imresize(finalMask, [origH, origW], 'nearest');
+diaphragm_mask = imresize(finalMask, [origH, origW], 'nearest');
 
 % Image save
 ToolBox = getGlobalToolBox;
 if nargin >= 3 && ToolBox.getParams.saveFigures
-    save_visualisation(M0, diaphragm);
+    save_visualisation(M0, diaphragm_mask);
 end
 
 end
