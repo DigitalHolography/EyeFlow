@@ -14,7 +14,7 @@ classdef DimEnumClass
       D2_array    (2)
       D3_array    (3)
       D4_array    (4)
-      strings     (1)
+      Strings     (1)
       Other       (NaN)
    end
 
@@ -40,7 +40,7 @@ classdef DimEnumClass
 
          % strings
          if isstring(data) || ischar(data) || iscellstr(data)
-            res_bool = obj == DimEnumClass.strings;
+            res_bool = obj == DimEnumClass.Strings;
             return;
          end
 

@@ -91,17 +91,17 @@ writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'Width
 
 % New
 if contains(name, 'artery')
-    ToolBox.Output.add('ArteryDiameterMean', D_avg, 'µm');
-    ToolBox.Output.add('ArteryDiameterMedian', D_mid, 'µm');
-    ToolBox.Output.add('ArteryDiameterSpread', D_std, 'µm');
-    ToolBox.Output.add('ArteryValidSectionCount', numValid, '');
-    ToolBox.Output.add('ArteryTotalSectionCount', A_tot, 'µm²');
+    ToolBox.Output.DimOut.add('ArteryDiameterMean', D_avg, ["test"], 'µm');
+    ToolBox.Output.DimOut.add('ArteryDiameterMedian', D_mid, ["test"], 'µm');
+    ToolBox.Output.DimOut.add('ArteryDiameterSpread', D_std, ["test"], 'µm');
+    ToolBox.Output.DimOut.add('ArteryValidSectionCount', numValid, ["test"], '');
+    ToolBox.Output.DimOut.add('ArteryTotalSectionCount', A_tot, ["test"], 'µm²');
 else
-    ToolBox.Output.add('VeinDiameterMean', D_avg, 'µm');
-    ToolBox.Output.add('VeinDiameterMedian', D_mid, 'µm');
-    ToolBox.Output.add('VeinDiameterSpread', D_std, 'µm');
-    ToolBox.Output.add('VeinValidSectionCount', numValid, '');
-    ToolBox.Output.add('VeinTotalSectionCount', A_tot, 'µm²');
+    ToolBox.Output.DimOut.add('VeinDiameterMean', D_avg, ["test"], 'µm');
+    ToolBox.Output.DimOut.add('VeinDiameterMedian', D_mid, ["test"], 'µm');
+    ToolBox.Output.DimOut.add('VeinDiameterSpread', D_std, ["test"], 'µm');
+    ToolBox.Output.DimOut.add('VeinValidSectionCount', numValid, ["test"], '');
+    ToolBox.Output.DimOut.add('VeinTotalSectionCount', A_tot, ["test"], 'µm²');
 end
 
 end

@@ -3,8 +3,6 @@ classdef DimOutClass < handle
 
     properties
         Data
-        Ste
-        Unit
     end
 
     % PUBLIC FUNCTIONS
@@ -20,33 +18,59 @@ classdef DimOutClass < handle
             for i = 1:numKeys
                 obj.Data(keys(i)) = struct();
             end
-
-            obj.Ste  = [];
-            obj.Unit = [];
         end
 
-        function add(obj, name, data, unit, ste)
+        function add(obj, name, data, dimDescription, unit, ste, silenceWarn)
             arguments
                 obj
                 name
                 data
+                dimDescription (1,:) string
                 unit string = ""
-                ste = NaN
+                ste = NaN % for legacy only, not used
+                silenceWarn double = 0
             end
 
             type = DimEnumClass.enum_from(data);
 
-            obj.Data(type).(sanitizeFieldName(name)) = data;
-
-            if isnumeric(ste)
-                obj.Ste.(strcat(sanitizeFieldName(name))) = ste;
-            else
-                obj.Ste.(strcat(sanitizeFieldName(name))) = NaN;
+            if ~silenceWarn && ~checkDimNames(type, dimDescription)
+                warning("Wrong length of dimDescription for data !\nExpected: %i\nGot: %i", type.rank, size(dimDescription, 2));
             end
 
-            obj.Unit.(strcat(sanitizeFieldName(name))) = unit;
+            % Check && Sanitize if 1D array
+            if isvector(data) && ~isscalar(data)
+                data = sanitize1DArray(data);    
+            end
+            
+            obj.Data(type).(sanitizeFieldName(name)).data = data;
+            obj.Data(type).(sanitizeFieldName(name)).attributes.dimDescription = dimDescription;
+            obj.Data(type).(sanitizeFieldName(name)).attributes.unit = unit;
         end
 
+        function add_attributes(obj, name, key, val, dim)
+            arguments
+                obj
+                name string
+                key  string
+                val
+                dim DimEnumClass = DimEnumClass.empty
+            end
+
+            if isempty(dim)
+                dirs = enumeration("DimEnumClass");
+                for i = 1:numel(dirs)
+                    if isfield(obj.Data(dirs{i}), name)
+                        dim = dirs{i};
+                        break;
+                    end
+                end
+                warning("field \'%s\' not found", name);
+            end
+
+            obj.Data(dim).(name).attributes.(key) = val;
+        end
+
+        % FOR NOW DECREPATED
         function add_typed(obj, name, data, type, unit, ste)
             arguments
                 obj
@@ -147,7 +171,7 @@ classdef DimOutClass < handle
                 ste = [];
             end
 
-            add_typed(obj, name, data, DimEnumClass.strings, unit, ste)
+            add_typed(obj, name, data, DimEnumClass.Strings, unit, ste)
         end
 
         function writeHdf5(obj, path)
@@ -174,23 +198,25 @@ classdef DimOutClass < handle
 
             for i = 1:numel(props)
                 fieldName = props{i};
-                fieldValue = (data.(fieldName));
+                fieldValue = data.(fieldName).data;
+                fieldAttributes = data.(fieldName).attributes;
 
                 % Build dataset path
                 datasetPath = "/" + string(folder) + "/" + antiSanitizeFieldName(fieldName);
 
-                handleSavingData(obj, path, datasetPath, fieldName, fieldValue);
+                handleSavingData(obj, path, datasetPath, fieldName, fieldValue, fieldAttributes);
             end
 
         end
 
-        function handleSavingData(obj, path, datasetPath, fieldName, fieldValue)
+        function handleSavingData(obj, path, datasetPath, fieldName, fieldValue, fieldAttributes)
             arguments
                 obj
                 path
                 datasetPath
                 fieldName
                 fieldValue
+                fieldAttributes
             end
 
             % --- Case 1: Numeric or image data ---
@@ -198,22 +224,14 @@ classdef DimOutClass < handle
                 % % Handle for complex values (split them)
                 if ~isreal(fieldValue)
                     % Recursively
-                    handleSavingData(obj, path, datasetPath + "_real", fieldName, real(fieldValue));
-                    handleSavingData(obj, path, datasetPath + "_imag", fieldName, imag(fieldValue));
+                    handleSavingData(obj, path, datasetPath + "_real", fieldName, real(fieldValue), fieldAttributes);
+                    handleSavingData(obj, path, datasetPath + "_imag", fieldName, imag(fieldValue), fieldAttributes);
                     return;
                 end
 
                 writeNumericToHDF5(path, datasetPath, fieldValue);
-                if ~isempty(obj.Ste) && isfield(obj.Ste, fieldName)
-                    steValue = obj.Ste.(fieldName);
-                    writeNumericToHDF5(path, strcat(datasetPath, '_ste'), steValue);
-                end
-                if ~isempty(obj.Unit) && isfield(obj.Unit, fieldName)
-                    unitValue = obj.Unit.(fieldName);
-                    h5writeatt(path, datasetPath, 'unit', unitValue);
-                end
 
-                % --- Case 2: Structs with known fields (e.g., yvalues, label) ---
+            % --- Case 2: Structs with known fields (e.g., yvalues, label) ---
             elseif isstruct(fieldValue)
                 subFields = fieldnames(fieldValue);
                 for j = 1:numel(subFields)
@@ -227,13 +245,14 @@ classdef DimOutClass < handle
                     end
                 end
 
-                % --- Case 3: Strings or labels ---
+            % --- Case 3: Strings or labels ---
             elseif ischar(fieldValue) || isstring(fieldValue)
                 writeStringToHDF5(path, datasetPath, string(fieldValue));
 
             else
                 warning('Skipping unsupported field "%s" of type %s', fieldName, class(fieldValue));
             end
+            writeAttributes(path, datasetPath, fieldAttributes);
         end
 
     end
@@ -242,8 +261,48 @@ end
 
 % --- Helper: write numeric dataset ---
 
+function writeAttributes(path, datasetPath, fieldAttributes)
+    arguments
+        path string
+        datasetPath string
+        fieldAttributes struct
+    end
 
+    keys = fieldnames(fieldAttributes);
+    for i = 1:numel(keys)
+        cur_key = keys{i};
+        cur_val = fieldAttributes.(cur_key);
+        % This will avoid [strings] and "" (will replace by null)
+        if isstring(cur_val) && isscalar(cur_val)
+            cur_val = char(cur_val);
+        end
 
+        h5writeatt(path, datasetPath, cur_key, cur_val);
+    end
+end
+
+function res = sanitize1DArray(arr)
+    % Sanitize the Array to be Python friendly (1, N) -> (N, 1)
+    arguments
+        arr 
+    end
+    
+    res = arr(:);
+end
+
+function res_bool = checkDimNames(type, dimDescription)
+    arguments
+        type
+        dimDescription
+    end
+
+    if type == DimEnumClass.Other
+        res_bool = true;
+        return;
+    end
+
+    res_bool = size(dimDescription, 2) == type.rank;
+end
 
 function name = sanitizeFieldName(str)
 % Replace invalid characters for struct fields with descriptive tags

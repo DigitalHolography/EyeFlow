@@ -104,7 +104,7 @@ if length(peaks) > 1
 
     % Only consider valid notch (significant difference from diastolic peak)
     if (locs_peaks(2) - locs_notch) > L * 0.05 % 5 % threshold
-        ToolBox.Output.add("DicroticNotchVisibility", 1, '');
+        ToolBox.Output.DimOut.add("DicroticNotchVisibility", 1, ["test"], '');
         systolicDownstroke = peaks(1) - notch;
         diastolicRunoff = notch - one_cycle_signal(end); % End of cycle
 
@@ -114,21 +114,21 @@ if length(peaks) > 1
         diastoleDuration = pulseTime(end) - pulseTime(locs_notch);
     else
         notch = NaN; % Invalid notch
-        ToolBox.Output.add("DicroticNotchVisibility", 0, '');
+        ToolBox.Output.DimOut.add("DicroticNotchVisibility", 0, ["test"], '');
     end
 
 else
-    ToolBox.Output.add("DicroticNotchVisibility", 0, '');
+    ToolBox.Output.DimOut.add("DicroticNotchVisibility", 0, ["test"], '');
 end
 
 % Export to JSON (only for velocity signals)
 if ~isBVR
-    ToolBox.Output.add('SystoleDuration', dicroticNotchTime, 's');
-    ToolBox.Output.add('DiastoleDuration', diastoleDuration, 's');
-    ToolBox.Output.add('SystolicUpstroke', systolicUpstroke, unit);
-    ToolBox.Output.add('SystolicDownstroke', systolicDownstroke, unit);
-    ToolBox.Output.add('DiastolicRunoff', diastolicRunoff, unit);
-    %     ToolBox.Output.add('DicroticNotchIndex', dicroticNotchIndex, unit);
+    ToolBox.Output.DimOut.add('SystoleDuration', dicroticNotchTime, ["test"], 's');
+    ToolBox.Output.DimOut.add('DiastoleDuration', diastoleDuration, ["test"], 's');
+    ToolBox.Output.DimOut.add('SystolicUpstroke', systolicUpstroke, ["test"], unit);
+    ToolBox.Output.DimOut.add('SystolicDownstroke', systolicDownstroke, ["test"], unit);
+    ToolBox.Output.DimOut.add('DiastolicRunoff', diastolicRunoff, ["test"], unit);
+    %     ToolBox.Output.DimOut.add('DicroticNotchIndex', dicroticNotchIndex, ["test"], unit);
 end
 
 % Visualization
@@ -174,14 +174,14 @@ if saveFigures
     end
 
     padded_signal = [one_cycle_signal(floor(numInterp / 2) + 1:end), ...
-                         one_cycle_signal, ...
-                         one_cycle_signal(1:floor(numInterp / 2))];
+        one_cycle_signal, ...
+        one_cycle_signal(1:floor(numInterp / 2))];
     padded_time = [linspace(- dt * avgLength / 2, -dt, round(numInterp / 2)), ...
-                       pulseTime, ...
-                       linspace(dt * (avgLength + 1), dt * (avgLength * 3/2), round(numInterp / 2))];
+        pulseTime, ...
+        linspace(dt * (avgLength + 1), dt * (avgLength * 3/2), round(numInterp / 2))];
     padded_gradient = [gradient(one_cycle_signal(floor(numInterp / 2) + 1:end)), ...
-                           gradient(one_cycle_signal), ...
-                           gradient(one_cycle_signal(1:floor(numInterp / 2)))];
+        gradient(one_cycle_signal), ...
+        gradient(one_cycle_signal(1:floor(numInterp / 2)))];
 
     % Main signal and gradient plots
     plot(padded_time, padded_gradient, 'Color', [0.85 0.85 0.85], 'LineWidth', 2);

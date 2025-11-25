@@ -81,11 +81,11 @@ if saveFigures
         'LineWidth', 1.5, 'LabelVerticalAlignment', 'bottom', 'Color', [0.25 0.25 0.25], 'FontSize', 10);
 
     padded_signal = [one_cycle_signal(floor(numInterp / 2) + 1:end), ...
-                         one_cycle_signal, ...
-                         one_cycle_signal(1:floor(numInterp / 2))];
+        one_cycle_signal, ...
+        one_cycle_signal(1:floor(numInterp / 2))];
     padded_time = [linspace(- dt * avgLength / 2, -dt, round(numInterp / 2)), ...
-                       pulseTime, ...
-                       linspace(dt * (avgLength + 1), dt * (avgLength * 3/2), round(numInterp / 2))];
+        pulseTime, ...
+        linspace(dt * (avgLength + 1), dt * (avgLength * 3/2), round(numInterp / 2))];
 
     % Main signal and gradient plots
     plot(padded_time, padded_signal, 'Color', [0.85 0.85 0.85], 'LineWidth', 2)
@@ -115,7 +115,7 @@ if saveFigures
     % Export to JSON
     if ~isBVR
 
-        ToolBox.Output.add('VeinTimeToPeakFromMin', T_peak - T_Min, 's');
+        ToolBox.Output.DimOut.add('VeinTimeToPeakFromMin', T_peak - T_Min, ["test"], 's');
 
     end
 

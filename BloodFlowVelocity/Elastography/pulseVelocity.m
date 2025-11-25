@@ -33,9 +33,9 @@ end
 [~, idx] = max(scores .* ~isnan(PWV));
 
 if strcmp(name, 'artery')
-    ToolBox.Output.add("ArteryPulseWaveVelocity", PWV(idx), 'mm/s', dPWV(i));
+    ToolBox.Output.DimOut.add("ArteryPulseWaveVelocity", PWV(idx), ["example", "desc"], 'mm/s', dPWV(i));
 elseif strcmp(name, 'vein')
-    ToolBox.Output.add("VeinPulseWaveVelocity", PWV(idx), 'mm/s', dPWV(i));
+    ToolBox.Output.DimOut.add("VeinPulseWaveVelocity", PWV(idx), ["example", "desc"], 'mm/s', dPWV(i));
 end
 
 close all;

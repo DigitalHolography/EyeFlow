@@ -146,27 +146,27 @@ end
 
 
 function saveWomersleyResults(BasePath, womersley_results)
-    ToolBox = getGlobalToolBox;
+ToolBox = getGlobalToolBox;
 
-    if ~endsWith(BasePath, "/") && ~endsWith(BasePath, "_")
-        BasePath = BasePath + "/"; 
+if ~endsWith(BasePath, "/") && ~endsWith(BasePath, "_")
+    BasePath = BasePath + "/";
+end
+
+field_names = fieldnames(womersley_results(1));
+for i = 1:numel(field_names)
+    field = field_names{i};
+
+    if isstruct(womersley_results(1).(field))
+        subStructs = [womersley_results.(field)];
+        saveWomersleyResults(BasePath + field, subStructs);
+        continue;
     end
 
-    field_names = fieldnames(womersley_results(1));
-    for i = 1:numel(field_names)
-        field = field_names{i};
+    % for j = 1:numel(womersley_results)
+    %     field_list(j) = womersley_results(j).(field);
+    % end
 
-        if isstruct(womersley_results(1).(field))
-            subStructs = [womersley_results.(field)];
-            saveWomersleyResults(BasePath + field, subStructs);
-            continue;
-        end
-
-        % for j = 1:numel(womersley_results)
-        %     field_list(j) = womersley_results(j).(field);
-        % end
-
-        field_list = [womersley_results.(field)];
-        ToolBox.Output.DimOut.add_D1_array(BasePath + field, field_list);
-    end
+    field_list = [womersley_results.(field)];
+    ToolBox.Output.DimOut.add(BasePath + field, field_list, ["Test"]);
+end
 end
