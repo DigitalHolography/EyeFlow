@@ -39,7 +39,7 @@
     "Registered Masks": -1,
     "Forced Masks": -1,
     "Vessel Segmentation Method": "AI",
-    "AV Correlation Segmentation Net": false,
+    "AV Correlation Segmentation Net": true,
     "AV Diasys Segmentation Net": true,
     "Diaphragm Radius": 0.45,
     "Force Barycenter": [],

@@ -7,7 +7,6 @@ function [model_struct] = loadAVSegmentationNetworks(params)
 
 
 use_python = false;
-extension = ".onnx";
 
 try
     % Try detecting Python
@@ -22,9 +21,19 @@ try
 
     % Check version range: 3.10 ≤ version < 3.13
     if major == 3 && minor >= 10 && minor < 13
+        try
+            torch = py.importlib.import_module('torch');
+
+            % Try allocating a CUDA tensor
+            test = torch.rand(int32(1)).cuda();
+            fprintf("CUDA in PyTorch is working.\n");
+            use_python = true;
+
+        catch
+            warning("PyTorch CUDA unavailable or faulty. Falling back to ONNX.");
+
+        end
         use_python = true;
-        extension = ".pt";
-        fprintf("Using PyTorch model (.pt)\n");
     else
         warning("Python version %s is not supported ; it must be >= 3.10 and < 3.13 (3.12 recommanded). Using ONNX.", pyver.Version);
     end
@@ -33,11 +42,12 @@ catch ME
     warning("Python not detected or not configured. Using ONNX instead.\n%s", ME.message);
 end
 
-
+extension = ".onnx";
 
 if params.json.Mask.AVCorrelationSegmentationNet && params.json.Mask.AVDiasysSegmentationNet
     if use_python
         model_name = "nnwnet_av_corr_diasys";
+        extension = ".pt";
     else
         model_name = "iternet5_av_corr_diasys";
     end
@@ -49,18 +59,16 @@ end
 
 model_path = getLatestModel(model_name, extension);
 
-[~, ~, ext] = fileparts(model_path);
-
 % AVSegmentationNet = [];
 
 model_struct = struct();
 model_struct.use_python = false;
 model_struct.use_onnx   = false;
 
-if ext == ".pt"
+if extension == ".pt"
     model_struct.use_python = true;
     model_struct.py_model = py.torch.jit.load(model_path);
-elseif ext == ".onnx"
+elseif extension == ".onnx"
     model_struct.use_onnx = true;
     try
         % Try the newer function first
