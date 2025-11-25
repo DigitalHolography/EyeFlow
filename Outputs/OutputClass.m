@@ -98,6 +98,9 @@ properties
     ArteryArea
     VeinArea
     RemainingArea
+    ArteryNbPxl
+    VeinNbPxl
+    RemainingNbPxl
 
     % Time info
     UnixTimestampFirst
@@ -148,7 +151,7 @@ methods
         props = setdiff(properties(obj), "Signals");
         props = setdiff(props, "Extra");
         props = setdiff(props, "DimOut");
-        
+
         data = struct();
 
         for i = 1:length(props)
@@ -172,7 +175,7 @@ methods
         props = setdiff(properties(obj), "Signals");
         props = setdiff(props, "Extra");
         props = setdiff(props, "DimOut");
-        
+
         [folder_dir, folder_name, ~] = fileparts(path);
         file_path = fullfile(folder_dir, strcat(folder_name, ".h5"));
 
