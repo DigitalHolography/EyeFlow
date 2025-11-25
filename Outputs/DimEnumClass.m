@@ -9,7 +9,7 @@ classdef DimEnumClass
    end
 
    enumeration
-      D0_scalar   (0)
+      D0_array    (0)
       D1_array    (1)
       D2_array    (2)
       D3_array    (3)
