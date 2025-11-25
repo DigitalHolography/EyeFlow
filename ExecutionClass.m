@@ -155,7 +155,7 @@ methods
 
         % Execute eye side analysis if asked
         if params.json.Mask.EyeSideClassifierNet
-            obj.eye_side = predictEyeSide(obj.AINetworks.EyeSideClassifierNet, obj.M0_ff_img, true);
+            obj.eye_side = predictEyeSide(obj.AINetworks.EyeSideClassifierNet, obj.M0_ff_img);
         end
 
         % Execute analysis steps based on checkbox flags

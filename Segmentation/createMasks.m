@@ -62,7 +62,7 @@ saveMaskImage(M0_ff_img, 'all_10_M0.png', isStep = true)
 % 1) Diaphragm Mask Creation
 maskParams = params.json.Mask;
 if maskParams.EyeDiaphragmSegmentationNet
-    maskDiaphragm = predictDiaphragm(EyeDiaphragmSegmentationNet, M0_ff_img, true);
+    maskDiaphragm = predictDiaphragm(EyeDiaphragmSegmentationNet, M0_ff_img);
 else
     maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 end

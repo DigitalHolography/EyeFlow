@@ -1,9 +1,8 @@
-function diaphragm = predictDiaphragm(model, M0, saveImage)
+function diaphragm = predictDiaphragm(model, M0)
 % predictDiaphragm - Predicts the diaphragm of a M0 image
 %   Inputs:
 %       model     - The pre-loaded YOLO model
 %       M0        - Input image (2D matrix)
-%       saveImage - Save the blended visualization
 %   Output:
 %       diaphragm - Logical matrix (mask)
 
@@ -53,7 +52,8 @@ end
 diaphragm = imresize(finalMask, [origH, origW], 'nearest');
 
 % Image save
-if nargin >= 3 && saveImage
+ToolBox = getGlobalToolBox;
+if nargin >= 3 && ToolBox.getParams.saveFigures
     save_visualisation(M0, diaphragm);
 end
 

@@ -1,9 +1,8 @@
-function eyeSide = predictEyeSide(model, M0, saveImage)
+function eyeSide = predictEyeSide(model, M0)
 % predictEyeSide - Predicts if a M0 image shows a left or right eye
 %   Inputs:
 %       model     - The pre-loaded YOLO model
 %       M0        - Input image (2D matrix)
-%       saveImage - Save the image with eye direction
 %   Output:
 %       eyeSide   - string: "left" or "right"
 
@@ -28,7 +27,8 @@ else
 end
 
 % Save the image
-if nargin == 3 && saveImage
+Toolbox = getGlobalToolBox;
+if nargin == 3 && Toolbox.getParams.saveFigures
     visImg = uint8(rgbM0 * 255);
     borderWidth = 10;
 
