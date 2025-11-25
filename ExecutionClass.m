@@ -37,7 +37,6 @@ properties
     Q_results_A
     Q_results_V
     eye_side = "none"
-    eye_diaphragm = []
 
     % Processing Flags
     is_preprocessed = false
@@ -156,6 +155,11 @@ methods
         % Execute eye side analysis if asked
         if params.json.Mask.EyeSideClassifierNet
             obj.eye_side = predictEyeSide(obj.AINetworks.EyeSideClassifierNet, obj.M0_ff_img);
+        end
+
+        % TMP
+        if params.json.Mask.OpticDiskSegmentationNet
+            predictOpticDisk(obj.AINetworks.OpticDiskSegmentationNet, obj.M0_ff_img);
         end
 
         % Execute analysis steps based on checkbox flags
