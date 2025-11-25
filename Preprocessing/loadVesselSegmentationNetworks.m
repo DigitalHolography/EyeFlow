@@ -9,8 +9,8 @@ function [VesselSegmentationNet] = loadVesselSegmentationNetworks()
 
 VesselSegmentationNet = [];
 model_name = "iternet5_vesselness";
-mat_model_path = fullfile('Models', model_name + '.mat');
-onnx_model_path = fullfile('Models', model_name + '.onnx');
+mat_model_path = fullfile('..', 'Models', model_name + '.mat');
+onnx_model_path = fullfile('..', 'Models', model_name + '.onnx');
 
 if isfile(mat_model_path)
     fprintf('Loading .mat network: %s\n', mat_model_path);
