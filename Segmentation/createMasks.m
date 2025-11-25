@@ -129,7 +129,7 @@ if mask_params.AutoCompute
     if mask_params.AVCorrelationSegmentationNet || mask_params.AVDiasysSegmentationNet
 
         % Compute artery/vein masks using SegmentationNet
-        [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, maskArteryTmp);
+        [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, AVSegmentationNet, maskArteryTmp);
 
         if saveFigures
             saveMaskImage(maskVein, 'vein_21_SegmentationNet.png', isStep = true, cmap = cVein);

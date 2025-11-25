@@ -1,4 +1,4 @@
-function model_path = getLatestModel(model_name)
+function model_path = getLatestModel(model_name, extension)
 %GET_LATEST_MODEL Ensure the latest version of a Hugging Face model is downloaded
 %
 % model_name : string, name of your model on Hugging Face (e.g., "iternet5_vesselness")
@@ -9,7 +9,7 @@ if ~isfolder(models_dir)
     mkdir(models_dir);
 end
 
-model_path = fullfile(models_dir, model_name + ".onnx");
+model_path = fullfile(models_dir, model_name + extension);
 version_path = fullfile(models_dir, model_name + ".version");
 
 % URLs on Hugging Face

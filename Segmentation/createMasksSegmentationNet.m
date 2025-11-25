@@ -1,4 +1,4 @@
-function [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, maskArtery)
+function [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSegmentationNet(M0_ff, M0_ff_img, net, maskArtery)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -48,65 +48,25 @@ end
 M0 = imresize(rescale(M0_ff_img), [512, 512]);
 
 if canUseGPU
-    device = 'gpu';
+    device = 'cuda';
 else
     device = 'cpu';
 end
 
 if mask_params.AVCorrelationSegmentationNet
     R = imresize(rescale(R), [512, 512]);
-
     if mask_params.AVDiasysSegmentationNet
         input = cat(3, M0, R, diasys_diff);
-
-        ToolBox.Output.Extra.add("NetworkInput", input);
-        
-        input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
-        output = AVSegmentationNet(input_dl);
-        % if isa(net, 'dlnetwork')
-        %     % For dlnetwork objects
-        %     input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
-        %     output_dl = predict(net, input_dl);
-        %     output = extractdata(output_dl);
-        % else
-        %     % For DAGNetwork objects
-        %     output = predict(net, input, 'ExecutionEnvironment', device);
-        % end
-
     else
-
         input = cat(3, M0, M0, R);
-
-        ToolBox.Output.Extra.add("NetworkInput", input);
-
-        if isa(net, 'dlnetwork')
-            % For dlnetwork objects
-            input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
-            output_dl = predict(net, input_dl);
-            output = extractdata(output_dl);
-        else
-            % For DAGNetwork objects
-            output = predict(net, input, 'ExecutionEnvironment', device);
-        end
-
     end
 
 elseif mask_params.AVDiasysSegmentationNet
-
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
-    ToolBox.Output.Extra.add("NetworkInput", input);
-
-    if isa(net, 'dlnetwork')
-        % For dlnetwork objects
-        input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
-        output_dl = predict(net, input_dl);
-        output = extractdata(output_dl);
-    else
-        % For DAGNetwork objects
-        output = predict(net, input, 'ExecutionEnvironment', device);
-    end
-
 end
+
+ToolBox.Output.Extra.add("NetworkInput", input);
+output = runAVInference(net, input, device);
 
 [~, argmax] = max(output, [], 3);
 
@@ -152,4 +112,41 @@ end
 
 % Convert to logical or double as needed
 onehot = double(onehot);
+end
+
+function output = runAVInference(model_struct, input, device)
+    if model_struct.use_python
+        np = py.importlib.import_module('numpy');
+        torch = py.importlib.import_module('torch');
+
+        % MATLAB HWC → NumPy CHW
+        input_np = np.array(permute(input, [3 1 2]), 'float32');
+
+        % To tensor
+        t = torch.tensor(input_np).unsqueeze(int32(0)).to(device);  % BCHW
+
+        % Forward pass
+        model = model_struct.py_model.to(device);
+        out = model(t);
+        out_np = out.cpu().detach().numpy();
+
+        % NumPy BCHW → MATLAB HWC
+        out_mat = squeeze(single(out_np));  % C × H × W
+        output = gather(out_mat);
+
+        output = permute(output, [2 3 1]); % CHW to HWC
+
+    elseif model_struct.use_onnx
+        if isa(model_struct.onnx_model, 'dlnetwork')
+            % For dlnetwork objects
+            input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
+            output_dl = predict(model_struct.onnx_model, input_dl);
+            output = extractdata(output_dl);
+        else
+            % For DAGNetwork objects
+            output = predict(model_struct.onnx_model, input, 'ExecutionEnvironment', device);
+        end
+    else
+        error("Model struct contains neither PyTorch nor ONNX model.");
+    end
 end
