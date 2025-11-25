@@ -100,7 +100,7 @@ classdef DimOutClass < handle
         end
 
         %{
-        D0_scalar
+        D0_array
         D1_array
         D2_array
         D3_array
@@ -108,7 +108,7 @@ classdef DimOutClass < handle
         strings
         %}
 
-        function add_D0_scalar(obj, name, data, unit, ste)
+        function add_D0_array(obj, name, data, unit, ste)
             if nargin < 4
                 unit = [];
             end
@@ -116,7 +116,7 @@ classdef DimOutClass < handle
                 ste = [];
             end
 
-            add_typed(obj, name, data, DimEnumClass.D0_scalar, unit, ste)
+            add_typed(obj, name, data, DimEnumClass.D0_array, unit, ste)
         end
 
         function add_D1_array(obj, name, data, unit, ste)
