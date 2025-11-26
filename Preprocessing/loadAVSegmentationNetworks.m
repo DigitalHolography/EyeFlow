@@ -22,8 +22,11 @@ elseif params.json.Mask.AVCorrelationSegmentationNet
 end
 
 if model_name ~= ""
-    mat_model_path = fullfile('Models', model_name + '.mat');
-    onnx_model_path = fullfile('Models', model_name + '.onnx');
+    currentScriptPath = fileparts(mfilename('fullpath'));
+    projectRoot = fileparts(currentScriptPath);
+    mat_model_path = fullfile(projectRoot, 'Models', model_name + '.mat');
+    onnx_model_path = fullfile(projectRoot, 'Models', model_name + '.onnx');
+    
     if isfile(mat_model_path)
         fprintf('Loading .mat network: %s\n', mat_model_path);
         net_data = load(mat_model_path);

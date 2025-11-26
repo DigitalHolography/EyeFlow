@@ -25,8 +25,12 @@ methods
         % Load or update AI networks based on parameters
         % Check for change to avoid redundant loading
 
-        if ~isfolder('Models')
-            mkdir('Models');
+        currentScriptPath = fileparts(mfilename('fullpath'));
+        projectRoot = fileparts(currentScriptPath);
+        models_dir = fullfile(projectRoot, 'Models');
+
+        if ~isfolder(models_dir)
+            mkdir(models_dir);
         end
 
         maskParams = params.json.Mask;

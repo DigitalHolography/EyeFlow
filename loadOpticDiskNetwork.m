@@ -9,8 +9,9 @@ function [OpticDiskDetectorNet] = loadOpticDiskNetwork()
 
 OpticDiskDetectorNet = [];
 model_name = "opticdisc";
-mat_model_path = fullfile('Models', model_name + '.mat');
-onnx_model_path = fullfile('Models', model_name + '.onnx');
+currentScriptPath = fileparts(mfilename('fullpath'));
+mat_model_path = fullfile(currentScriptPath, 'Models', model_name + '.mat');
+onnx_model_path = fullfile(currentScriptPath, 'Models', model_name + '.onnx');
 
 if isfile(mat_model_path)
     fprintf('Loading .mat network: %s\n', mat_model_path);
