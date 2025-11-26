@@ -159,7 +159,7 @@ methods
 
         % TMP
         if params.json.Mask.OpticDiskSegmentationNet
-            predictOpticDisk(obj.AINetworks.OpticDiskSegmentationNet, obj.M0_ff_img);
+            [mask, tmp1, tmp2, tmp3, tmp4] = predictOpticDisk(obj.AINetworks.OpticDiskSegmentationNet, obj.M0_ff_img);
         end
 
         % Execute analysis steps based on checkbox flags
