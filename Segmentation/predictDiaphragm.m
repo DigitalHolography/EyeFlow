@@ -5,6 +5,9 @@ function [diaphragm_mask, cx, cy, r] = predictDiaphragm(model, M0)
 %       M0        - Input image (2D matrix)
 %   Output:
 %       diaphragm_mask - Logical matrix (mask)
+%       cx             - Diaphragm center x
+%       cy             - Diaphragm center y
+%       r              - Diaphragm radius
 
 % Preprocess
 inputSize = [1024, 1024]; 
@@ -52,7 +55,7 @@ diaphragm_mask = imresize(finalMask, [origH, origW], 'nearest');
 
 % Image save
 ToolBox = getGlobalToolBox;
-if nargin >= 3 && ToolBox.getParams.saveFigures
+if ToolBox.getParams.saveFigures
     save_visualisation(M0, diaphragm_mask);
 end
 
@@ -195,9 +198,9 @@ function save_visualisation(M0, diaphragm)
     end
 
     % 5. Save
-    Toolbox = getGlobalToolBox;
-    imwrite(outputImg, fullfile(Toolbox.path_png, 'eye_diaphragm.png'));
+    ToolBox = getGlobalToolBox;
+    imwrite(outputImg, fullfile(ToolBox.path_png, 'eye_diaphragm.png'));
 
     maskImg = uint8(diaphragm) * 255;
-    imwrite(maskImg, fullfile(Toolbox.path_png, 'eye_diaphragm_mask.png'));
+    imwrite(maskImg, fullfile(ToolBox.path_png, 'eye_diaphragm_mask.png'));
 end

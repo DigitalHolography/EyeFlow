@@ -28,7 +28,7 @@ end
 
 % Save the image
 Toolbox = getGlobalToolBox;
-if nargin == 3 && Toolbox.getParams.saveFigures
+if Toolbox.getParams.saveFigures
     visImg = uint8(rgbM0 * 255);
     borderWidth = 10;
 
