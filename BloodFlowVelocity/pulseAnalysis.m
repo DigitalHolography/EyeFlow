@@ -287,16 +287,16 @@ if numel(sys_idx_list) >= 2 && numel(sys_max_list) >= 2 && numel(sys_min_list) >
     TimePeakToDescent = firstIndex / Ninterp * mean(diff(sys_idx_list')) * dt;
 
     % Store output
-    ToolBox.Output.DimOut.add('HeartBeat', HeartBeat, ["example", "desc"], 'bpm', HeartBeatSTE);
-    ToolBox.Output.DimOut.add('SystoleIndices', sys_idx_list, ["test"], '');
-    ToolBox.Output.DimOut.add('ArterySystoleMaxIndices', sys_max_list, ["test"], '');
-    ToolBox.Output.DimOut.add('ArteryDiastoleMinIndices', sys_min_list, ["test"], '');
-    ToolBox.Output.DimOut.add('ArteryTimeToMaxIncrease', 0, ["example", "desc"], 's', 0);
-    ToolBox.Output.DimOut.add('ArteryTimeToPeakSystole', TimeToPeakSystole, ["example", "desc"], 's', TimeToPeakSystoleSTE);
-    ToolBox.Output.DimOut.add('ArteryTimeToMinDiastole', TimeToMinimumDiastole, ["example", "desc"], 's', TimeToMinimumDiastoleSTE);
-    ToolBox.Output.DimOut.add('ArteryTimeToPeakSystoleFromDiastole', TimeToPeakSystoleFromMinimumDiastole, ["example", "desc"], 's', TimeToPeakSystoleFromMinimumDiastoleSTE);
-    ToolBox.Output.DimOut.add('ArteryTimeToDescent', TimePeakToDescent, ["test"], 's');
-    ToolBox.Output.DimOut.add('ArteryTimePeakToDescent', TimePeakToDescent + TimeToPeakSystole, ["test"], 's');
+    ToolBox.Output.add('HeartBeat', HeartBeat, 'bpm', HeartBeatSTE);
+    ToolBox.Output.add('SystoleIndices', sys_idx_list, '');
+    ToolBox.Output.add('ArterySystoleMaxIndices', sys_max_list, '');
+    ToolBox.Output.add('ArteryDiastoleMinIndices', sys_min_list, '');
+    ToolBox.Output.add('ArteryTimeToMaxIncrease', 0, 's', 0);
+    ToolBox.Output.add('ArteryTimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE);
+    ToolBox.Output.add('ArteryTimeToMinDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE);
+    ToolBox.Output.add('ArteryTimeToPeakSystoleFromDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE);
+    ToolBox.Output.add('ArteryTimeToDescent', TimePeakToDescent, 's');
+    ToolBox.Output.add('ArteryTimePeakToDescent', TimePeakToDescent + TimeToPeakSystole, 's');
 
     % Log detailed results
     logDetailedResults(ToolBox, HeartBeat, sys_idx_list, sys_max_list, sys_min_list, ...

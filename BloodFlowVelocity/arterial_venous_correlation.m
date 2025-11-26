@@ -92,7 +92,7 @@ if saveFigures
     grid on;
     xlabel('Lag (s)'); ylabel('Cross-Correlation');
     legend({sprintf("Peak Lag: %.3f s", time_lag), ...
-        sprintf("Peak Corr: %.2f", max_corr)}, 'Location', 'Best');
+                sprintf("Peak Corr: %.2f", max_corr)}, 'Location', 'Best');
     box on;
     set(gca, 'LineWidth', 2);
 
@@ -124,7 +124,7 @@ if saveFigures
     grid on;
     xlabel('Lag (s)'); ylabel('Cross-Correlation');
     legend({sprintf("Peak Corr: %.2f", max_corr), ...
-        sprintf("Peak Lag: %.3f s", time_lag)});
+                sprintf("Peak Lag: %.3f s", time_lag)});
     box on;
     pbaspect([1.618, 1, 1]);
     set(gca, 'LineWidth', 2);
@@ -134,7 +134,7 @@ if saveFigures
 
 end
 
-ToolBox.Output.DimOut.add('ArteryVeinPhaseDelay', time_lag, ["example", "desc"], 's', NaN);
+ToolBox.Output.add('ArteryVeinPhaseDelay', time_lag, 's', NaN);
 
 close all
 

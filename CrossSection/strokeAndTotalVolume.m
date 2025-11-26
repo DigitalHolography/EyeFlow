@@ -30,13 +30,13 @@ else
 end
 
 if contains(name, 'artery')
-    ToolBox.Output.DimOut.add('ArteryCycleVolume', total_volume_value, ["test"], 'nL');
-    ToolBox.Output.DimOut.add('ArterySystolicFraction', stroke_volume_value / total_volume_value, ["test"], '');
-    ToolBox.Output.DimOut.add('ArteryDiastolicFraction', (1 - stroke_volume_value / total_volume_value), ["test"], '');
+    ToolBox.Output.add('ArteryCycleVolume', total_volume_value, 'nL');
+    ToolBox.Output.add('ArterySystolicFraction', stroke_volume_value / total_volume_value, '');
+    ToolBox.Output.add('ArteryDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
 elseif contains(name, 'vein')
-    ToolBox.Output.DimOut.add('VeinCycleVolume', total_volume_value, ["test"], 'nL');
-    ToolBox.Output.DimOut.add('VeinSystolicFraction', stroke_volume_value / total_volume_value, ["test"], '');
-    ToolBox.Output.DimOut.add('VeinDiastolicFraction', (1 - stroke_volume_value / total_volume_value), ["test"], '');
+    ToolBox.Output.add('VeinCycleVolume', total_volume_value, 'nL');
+    ToolBox.Output.add('VeinSystolicFraction', stroke_volume_value / total_volume_value, '');
+    ToolBox.Output.add('VeinDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
 end
 
 if saveFigures

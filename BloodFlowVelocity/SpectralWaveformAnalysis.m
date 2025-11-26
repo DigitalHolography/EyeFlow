@@ -115,11 +115,11 @@ if ~isempty(s_locs)
     RMSE = sqrt(mean(residus .^ 2));
     hr_se = RMSE / sqrt(numFreq);
 
-    ToolBox.Output.DimOut.add('HeartBeat', 60 * hr, ["example", "desc"], 'bpm', 60 * hr_se);
+    ToolBox.Output.add('HeartBeat', 60 * hr, 'bpm', 60 * hr_se);
     ToolBox.Cache.HeartBeatFFT = hr; % Save heart rate to cache in Hz
     ToolBox.Cache.HeartBeatFFTSTE = hr_se; % Save heart rate standard error to cache in Hz
 else
-    ToolBox.Output.DimOut.add('HeartBeat', NaN, ["example", "desc"], 'bpm', NaN);
+    ToolBox.Output.add('HeartBeat', NaN, 'bpm', NaN);
     ToolBox.Cache.HeartBeatFFT = NaN; % Save heart rate to cache in Hz
     ToolBox.Cache.HeartBeatFFTSTE = NaN; % Save heart rate standard error to cache in Hz
 end

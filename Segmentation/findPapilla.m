@@ -36,7 +36,7 @@ if ~isempty(output)
         diameter_y = bestBox(4);
         x_center = round(bestBox(1) / 512 * numX);
         y_center = round(bestBox(2) / 512 * numY);
-        ToolBox.Output.DimOut.add("PapillaRatio", (diameter_x + diameter_y) / 2/512, ["test"], '');
+        ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2/512, '');
     end
 
     if saveFigures
