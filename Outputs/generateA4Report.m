@@ -149,21 +149,23 @@ end
 
 % === OPTIONAL ERROR SECTION ===
 
+%{
 if ~isempty(ME)
-    axErrors = nexttile(t, [2 2]); % last row spans both columns
-    axis(axErrors, 'off');
+axErrors = nexttile(t, [2 2]); % last row spans both columns
+axis(axErrors, 'off');
 
-    text(axErrors, 0, 1, 'Errors Encountered During Processing:', ...
-        'FontWeight', 'bold', 'FontSize', paramTitleFontSize, ...
-        'VerticalAlignment', 'top', 'Interpreter', 'none', 'Color', 'r');
+text(axErrors, 0, 1, 'Errors Encountered During Processing:', ...
+    'FontWeight', 'bold', 'FontSize', paramTitleFontSize, ...
+    'VerticalAlignment', 'top', 'Interpreter', 'none', 'Color', 'r');
 
-    errorMsg = MEdisp(ME, ToolBox.EF_path);
-    errorLines = strsplit(errorMsg, '\n');
+errorMsg = MEdisp(ME, ToolBox.EF_path);
+errorLines = strsplit(errorMsg, '\n');
 
-    text(axErrors, 0, 1, errorLines, ...
-        'VerticalAlignment', 'top', 'FontSize', paramFontSize, ...
-        'Interpreter', 'none', 'Color', 'r');
+text(axErrors, 0, 1, errorLines, ...
+    'VerticalAlignment', 'top', 'FontSize', paramFontSize, ...
+    'Interpreter', 'none', 'Color', 'r');
 end
+%}
 
 % === QUALITY VALIDATION SCORES SECTION ===
 

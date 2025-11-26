@@ -13,6 +13,7 @@ properties
     maskBackground logical % cached mask background
     scoreMaskArtery double % cached score mask artery
     scoreMaskVein double % cached score mask vein
+    maskChoroid logical % cached mask choroid
 
     % Diastolic and systolic indices
     sysIdxList double % cached systolic indices list

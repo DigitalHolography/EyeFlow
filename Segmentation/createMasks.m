@@ -200,6 +200,13 @@ if mask_params.AutoCompute
     maskArtery = mask_dilated_artery;
     maskVein = mask_dilated_vein;
 
+    % 3) 0) Mask Choroid
+    [maskGabor] = gaborVesselness(M0_ff_img, ...
+        'range', [4, 6], 'step', 1);
+    [maskFrangi] = frangiVesselness(M0_ff_img, ...
+        'range', [4, 6], 'step', 1);
+    maskChoroid = (maskGabor & maskFrangi) & ~maskCircle & maskDiaphragm;
+
     % 3) 1) Final Blob removal
     maskVessel = maskArtery | maskVein;
 
@@ -377,6 +384,7 @@ ToolBox.Cache.maskArtery = maskArtery;
 ToolBox.Cache.maskVein = maskVein;
 ToolBox.Cache.maskNeighbors = maskNeighbors;
 ToolBox.Cache.maskBackground = maskBackground;
+ToolBox.Cache.maskChoroid = maskChoroid;
 ToolBox.Cache.xy_barycenter = xy_barycenter;
 ToolBox.Cache.M0_RGB = M0_RGB;
 ToolBox.Cache.scoreMaskArtery = scoreMaskArtery;
