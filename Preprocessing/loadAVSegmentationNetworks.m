@@ -1,61 +1,90 @@
-function [AVSegmentationNet] = loadAVSegmentationNetworks(params)
-% loadAVSegmentationNetworks Loads AI networks for artery/vein segmentation
-%   Priority is given to loading a .mat file from the Models directory.
-%   If a .mat file is not found and the application is not deployed,
-%   it looks for a .onnx file or downloads it from Hugging Face.
-%
+function [model_struct] = loadAVSegmentationNetworks(params)
+% loadAVSegmentationNetworks Loads AI networks for vesselness and artery/vein segmentation
 %   Inputs:
 %       params - Parameters structure containing segmentation settings
 %   Outputs:
 %       AVSegmentationNet - Loaded artery/vein segmentation network
 
-AVSegmentationNet = [];
-model_name = "";
+use_python = false;
+
+try
+    % Try detecting Python
+    pyver = pyenv;
+
+    fprintf("Python detected: %s\n", pyver.Version);
+
+    % Parse version string "3.x.y"
+    v = sscanf(pyver.Version, "%d.%d.%d");
+    major = v(1);
+    minor = v(2);
+
+    % Check version range: 3.10 ≤ version < 3.13
+    if major == 3 && minor >= 10 && minor < 13
+
+        try
+            torch = py.importlib.import_module('torch');
+
+            % Try allocating a CUDA tensor
+            test = torch.rand(int32(1)).cuda();
+            fprintf("CUDA in PyTorch is working.\n");
+            use_python = true;
+
+        catch
+            warning("PyTorch CUDA unavailable or faulty. Falling back to ONNX.");
+
+        end
+
+        use_python = true;
+    else
+        warning("Python version %s is not supported ; it must be >= 3.10 and < 3.13 (3.12 recommanded). Using ONNX.", pyver.Version);
+    end
+
+catch ME
+    warning("Python not detected or not configured. Using ONNX instead.\n%s", ME.message);
+end
+
+extension = ".onnx";
 
 % Determine the correct model name based on params
 if params.json.Mask.AVCorrelationSegmentationNet && params.json.Mask.AVDiasysSegmentationNet
-    model_name = "iternet5_av_corr_diasys";
+
+    if use_python
+        model_name = "nnwnet_av_corr_diasys";
+        extension = ".pt";
+    else
+        model_name = "iternet5_av_corr_diasys";
+    end
+
 elseif params.json.Mask.AVDiasysSegmentationNet
     model_name = "iternet5_av_diasys";
 elseif params.json.Mask.AVCorrelationSegmentationNet
     model_name = "iternet5_av_corr";
 end
 
-if model_name ~= ""
-    currentScriptPath = fileparts(mfilename('fullpath'));
-    projectRoot = fileparts(currentScriptPath);
-    mat_model_path = fullfile(projectRoot, 'Models', model_name + '.mat');
-    onnx_model_path = fullfile(projectRoot, 'Models', model_name + '.onnx');
-    
-    if isfile(mat_model_path)
-        fprintf('Loading .mat network: %s\n', mat_model_path);
-        net_data = load(mat_model_path);
-        % The network is expected to be the first variable in the .mat file
-        f = fieldnames(net_data);
-        AVSegmentationNet = net_data.(f{1});
+model_path = getLatestModel(model_name, extension);
 
-    elseif ~isdeployed
-        fprintf('No .mat network found. Looking for .onnx version.\n');
-        if ~isfile(onnx_model_path)
-            % Download the model from Hugging Face
-            fprintf('Downloading .onnx network from Hugging Face: %s\n', model_name);
-            url = sprintf('https://huggingface.co/DigitalHolography/%s/resolve/main/%s', model_name, model_name);
-            websave(onnx_model_path, url);
-        end
+% AVSegmentationNet = [];
 
-        try
-            % Try the newer import function first
-            fprintf('Importing .onnx network: %s\n', onnx_model_path);
-            AVSegmentationNet = importNetworkFromONNX(onnx_model_path);
-        catch ME
-            % If it fails, display the error and try the older function
-            fprintf('importNetworkFromONNX failed: %s\n', ME.message);
-            fprintf('Falling back to importONNXNetwork.\n');
-            warning('off')
-            AVSegmentationNet = importONNXNetwork(onnx_model_path);
-            warning('on')
-        end
+model_struct = struct();
+model_struct.use_python = false;
+model_struct.use_onnx = false;
+
+if extension == ".pt"
+    model_struct.use_python = true;
+    model_struct.py_model = py.torch.jit.load(model_path);
+elseif extension == ".onnx"
+    model_struct.use_onnx = true;
+
+    try
+        % Try the newer function first
+        model_struct.onnx_model = importNetworkFromONNX(model_path);
+    catch
+        % Fall back to the older function
+        warning('off')
+        model_struct.onnx_model = importONNXNetwork(model_path);
+        warning('on')
     end
+
 end
 
 end
