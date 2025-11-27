@@ -1,17 +1,5 @@
 function launchBatch()
-    %#function dlnetwork
-    %#function nnet.cnn.DAGNetwork
-
-    fprintf("=== EYEFLOWPROCESS START ===\n");
-
-    % In Dev: Returns the folder containing this script (e.g., C:\Projects\EyeFlow)
-    % In Deployed: Returns the extraction folder (e.g., ...\Cache\EyeFlo2\EyeFlowProcess)
     appRoot = fileparts(mfilename('fullpath'));
-
-    fprintf("Application Root: %s\n", appRoot);
-    beginComputerTime = sprintf("Eyeprocess Begin Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
-
-    % Locate version.txt relative to the script
     versionFile = fullfile(appRoot, "version.txt");
 
     if isfile(versionFile)
@@ -21,12 +9,12 @@ function launchBatch()
         fprintf("EyeFlow version : Unknown (version.txt not found at %s)\n", versionFile);
     end
 
-    fprintf("\n%s\n", beginComputerTime);
+    beginComputerTime = datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss');
+    fprintf("Begin Computer Time: %s\n", beginComputerTime);
 
-    % Manage paths
     if ~isdeployed
         % In Development: Add all subfolders to path
-        fprintf("Running in Development Mode - Adding paths...\n");
+        fprintf("Running in Development Mode\n");
         addpath(fullfile(appRoot, "BloodFlowVelocity"));
         addpath(fullfile(appRoot, "BloodFlowVelocity", "Elastography"));
         addpath(fullfile(appRoot, "CrossSection"));
@@ -42,22 +30,13 @@ function launchBatch()
         fprintf("Running in Deployed Mode.\n");
     end
 
-    % We expect the 'Parameters' folder to be a sibling of this script in the cache.
     defaultJson = fullfile(appRoot, "Parameters", "DefaultEyeFlowParamsBatch.json");
 
-    % Fallback check (compiler sometimes shifts structure by one level)
     if ~isfile(defaultJson)
-        fallbackPath = fullfile(fileparts(appRoot), "Parameters", "DefaultEyeFlowParamsBatch.json");
-
-        if isfile(fallbackPath)
-            defaultJson = fallbackPath;
-        else
-            error("CRITICAL: Could not find DefaultEyeFlowParamsBatch.json at: %s", defaultJson);
-        end
-
+        error("CRITICAL: Could not find DefaultEyeFlowParamsBatch.json at: %s", defaultJson);
+    else
+        fprintf("Parameter file found: %s\n", defaultJson);
     end
-
-    fprintf("Parameter file found: %s\n", defaultJson);
 
     [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
 
@@ -97,52 +76,21 @@ function launchBatch()
 
     end
 
-    % Save logs in the same folder as the selected text file (Persistent location)
-    logDir = fullfile(txt_path, 'Logs');
-
-    if ~isfolder(logDir)
-        mkdir(logDir);
-    end
-
-    t = datetime('now', 'Format', 'yyyyMMdd_HHmmss');
-    logFileName = sprintf('log_%s.txt', char(t));
-    logFullPath = fullfile(logDir, logFileName);
-
-    fprintf("Log saving to: %s\n", logFullPath);
-    fid = fopen(logFullPath, 'a');
-
-    if fid == -1
-        error("Could not open log file for writing at: %s", logFullPath);
-    end
-
     AIModels = AINetworksClass();
 
     for ind = 1:length(paths)
 
         p = paths(ind);
-        fprintf(fid, 'Execution of Eyeflow routine on %s  ;  %d/%d\n', p, ind, length(paths));
-
         % Ensure path ends with separator
         if isfolder(p) && ~endsWith(p, filesep)
             p = strcat(p, filesep);
         end
 
-        tic;
         runAnalysisBlock(p, AIModels);
-        ti = toc;
-        fprintf(fid, 'Execution time: %.2f seconds\n\n', ti);
     end
 
-    fclose(fid);
-
-    endComputerTime = sprintf("Eyeprocess End Computer Time: %s\n", datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss'));
-
-    fprintf('Log saved to: %s\n', logFullPath);
-    fprintf("\n   (. ❛ ᴗ ❛.)\n");
-    fprintf("\n%s\n", beginComputerTime);
-    fprintf("\n%s\n", endComputerTime);
-    fprintf("=== EYEFLOWPROCESS END ===\n");
-
+    endComputerTime = datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss');
+    fprintf("All done! Total time elapsed: %s\n", string(endComputerTime - beginComputerTime));
 end
 
 function runAnalysisBlock(path, AIModels)
@@ -174,19 +122,10 @@ function runAnalysisBlock(path, AIModels)
     end
 
     try
-        ReporterTimer = tic;
-        fprintf("\n----------------------------------\n" + ...
-            "Generating Reports\n" + ...
-        "----------------------------------\n");
-
-        % Pass error stack if any
         ExecClass.Reporter.getA4Report(ME);
         ExecClass.Reporter.saveOutputs();
-
-        fprintf("- Reporting took : %ds\n", round(toc(ReporterTimer)))
         ExecClass.Reporter.displayFinalSummary(totalTime);
     catch e
-        fprintf("Error during report generation:\n");
         MEdisp(e, path);
     end
 
