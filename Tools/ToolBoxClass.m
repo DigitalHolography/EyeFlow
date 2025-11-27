@@ -240,9 +240,18 @@ methods
         end
 
         % Add the version .txt file in the result folder
-        version_file_src = 'version.txt';
+        % Resolve path relative to Tools/ToolBoxClass.m -> Parent -> version.txt
+        [currentPath, ~, ~] = fileparts(mfilename('fullpath')); 
+        [appRoot, ~, ~] = fileparts(currentPath);
+        version_file_src = fullfile(appRoot, 'version.txt');
+        
         version_file_dest = fullfile(obj.path_dir, sprintf("%s_version.txt", obj.folder_name));
-        copyfile(version_file_src, version_file_dest);
+        
+        if isfile(version_file_src)
+            copyfile(version_file_src, version_file_dest);
+        else
+            warning('version.txt not found at %s', version_file_src);
+        end
 
         % Add the git .txt file in the result folder
         obj.saveGit();
