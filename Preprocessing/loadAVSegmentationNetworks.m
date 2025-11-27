@@ -40,7 +40,7 @@ try
     end
 
 catch ME
-    warning("Python not detected or not configured. Using ONNX instead.\n%s", ME.message);
+    warning(ME.identifier, "Python not detected or not configured. Using ONNX instead.\n%s", ME.message);
 end
 
 extension = ".onnx";
