@@ -157,11 +157,6 @@ methods
             obj.eye_side = predictEyeSide(obj.AINetworks.EyeSideClassifierNet, obj.M0_ff_img);
         end
 
-        % TMP
-        if params.json.Mask.OpticDiskSegmentationNet
-            [mask, tmp1, tmp2, tmp3, tmp4] = predictOpticDisk(obj.AINetworks.OpticDiskSegmentationNet, obj.M0_ff_img);
-        end
-
         % Execute analysis steps based on checkbox flags
         if obj.flag_segmentation
             obj.Analyzer.performSegmentation(obj, app);
