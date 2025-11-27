@@ -40,12 +40,12 @@ methods
             mkdir(models_dir);
         end
 
-        pythonFolder = 'Preprocessing';
-        if count(py.sys.path, pythonFolder) == 0
-            insert(py.sys.path, int32(0), pythonFolder);
-        end
-
-        py.importlib.invalidate_caches(); % refresh import cache
+        %pythonFolder = 'Preprocessing';
+        %if count(py.sys.path, pythonFolder) == 0
+        %    insert(py.sys.path, int32(0), pythonFolder);
+        %end
+        %
+        %py.importlib.invalidate_caches(); % refresh import cache
 
         maskParams = params.json.Mask;
 
