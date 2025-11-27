@@ -176,6 +176,7 @@ methods
             end
 
         catch ME
+            MEdisp(ME, '');
             warning("Pulse Wave Velocity Analysis failed");
         end
 
@@ -192,7 +193,7 @@ methods
             end
 
         catch ME
-            warning("Cross-Section Analysis failed");
+            MEdisp(ME, "", "WARN", "Cross-Section Analysis failed");
         end
 
         if obj.flag_spectral_analysis && ~isempty(obj.SH)

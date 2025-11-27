@@ -211,7 +211,7 @@ methods
         % Set up logging (diary) for the current session
 
         diary off % Turn off logging first to avoid logging this script
-        diary_filename = fullfile(obj.path_log, sprintf('%s_log.txt', obj.main_foldername));
+        diary_filename = fullfile(obj.path_log, sprintf('%s_log.txt', obj.folder_name));
         set(0, 'DiaryFile', diary_filename);
         diary on % Turn on logging
         fprintf("==================================\n");

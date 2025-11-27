@@ -15,7 +15,12 @@ fullTime = ToolBox.Cache.t;
 cDark = [1 0 0];
 cLight = [1 0.5 0.5];
 
-pulse_artery = squeeze(mean(video .* mask, [1 2], 'omitnan')) ./ nnz(sum(mask, [1 2]));
+pulse_artery = squeeze(sum(video .* mask, [1 2], 'omitnan')) ./ nnz(mask);
+
+% Filter pulse_artery to remove high frequency noise
+fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
+[b, a] = butter(4, 15 / (fs / 2), 'low');
+pulse_artery = filtfilt(b, a, pulse_artery);
 
 [sys_index_list, fullPulse, ~, ~] = find_systole_index(pulse_artery, 'savepng', false);
 

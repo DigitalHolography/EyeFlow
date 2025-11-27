@@ -23,6 +23,7 @@ function I = imgaussian(I, sigma, siz)
 %   figure, imshow(imgaussian(I,10));
 %
 % Function is written by D.Kroon University of Twente (September 2009)
+
 if (~exist('siz', 'var')), siz = sigma * 6; end
 
 if (sigma > 0)
@@ -30,6 +31,7 @@ if (sigma > 0)
     x = -ceil(siz / 2):ceil(siz / 2);
     H = exp(- (x .^ 2 / (2 * sigma ^ 2)));
     H = H / sum(H(:));
+
     % Filter each dimension with the 1D Gaussian kernels\
     if (ndims(I) == 1)
         I = imfilter(I, H, 'same', 'replicate');

@@ -1,4 +1,4 @@
-function [s_idx, locs_n] = select_regular_peaks(signals_n, method, params)
+function [s_idx, locs_n] = select_regular_peaks(signals_n, method, idx0, params)
 %SELECT_REGULAR_PEAKS Select signals with regular derivative peaks
 %
 % Inputs:
@@ -14,20 +14,17 @@ function [s_idx, locs_n] = select_regular_peaks(signals_n, method, params)
 arguments
     signals_n (:, :) double
     method (1, 1) string {mustBeMember(method, ["regular", "minmax", "kmeans_cosine"])}
+    idx0
     params.threshold (1, 1) double {mustBePositive}
     params.tolerance (1, 1) double {mustBePositive, mustBeLessThan(params.tolerance, 1)}
 end
-
-ToolBox = getGlobalToolBox;
-dt = ToolBox.stride / ToolBox.fs / 1000;
-fs = 1 / dt;
 
 % Compute gradient of each signal
 gradient_n = gradient(signals_n);
 
 switch method
     case "minmax"
-        [s_idx, locs_n] = select_minmax(signals_n, gradient_n, fs, dt);
+        [s_idx, locs_n] = select_minmax(signals_n, gradient_n, idx0);
     case "regular"
         [s_idx, locs_n] = select_regular(gradient_n, params.threshold, params.tolerance);
     case "kmeans_cosine"
@@ -36,40 +33,21 @@ end
 
 end
 
-function [s_idx, locs_n] = select_minmax(signals_n, gradient_n, fs, dt)
+function [s_idx, locs_n] = select_minmax(signals_n, gradient_n, idx0)
 % Select signals based on presence of regular min/max peaks in derivative
 
-[numBranches, numFrames] = size(signals_n);
-
-% Average normalized signal across all branches
-avgSignal = mean(signals_n, 1);
-
-% Compute FFT
-Y = fft(avgSignal);
-P2 = abs(Y / numFrames);
-P1 = P2(1:floor(numFrames / 2) + 1);
-P1(2:end - 1) = 2 * P1(2:end - 1);
-
-% Frequency vector
-f = fft_freq_vector(fs, numFrames, true);
-
-% Find dominant frequency in physiological range (e.g. 0.5 - 5 Hz)
-f_range = (f > 0.5 & f < 5); % 30 - 300 bpm
-[~, idx] = max(P1(f_range));
-f0 = f(f_range);
-f0 = f0(idx);
-t0 = 1 / f0;
-idx0 = round(t0 / dt);
+[numBranches, ~] = size(signals_n);
 
 % Select signals based on presence of peaks in derivative at intervals ~1/f0
 s_idx = zeros(1, numBranches);
 locs_n = cell(1, numBranches);
 
 for i = 1:numBranches
-    [peaks, locs] = findpeaks(abs(gradient_n(i, :)), 'MinPeakDistance', 0.9 * idx0);
-    [~, loc_ind] = max(peaks);
+    [peaks, locs] = findpeaks(abs(gradient_n(i, :)), 'MinPeakDistance', 0.8 * idx0);
+    peaks_v = gradient_n(i, locs);
+    c = sum(peaks_v > 0);
 
-    if gradient_n(i, locs(loc_ind)) > 0
+    if c > length(peaks) / 2
         s_idx(i) = 1;
     else
         s_idx(i) = 0;
@@ -118,39 +96,16 @@ end
 
 end
 
-function s_idx = select_kmeans(signals_n, distance)
+function s_idx = select_kmeans(signals_n, distance, idx0)
 % Select signals based on kmeans clustering with given distance
 
-[numBranches, numFrames] = size(signals_n);
-ToolBox = getGlobalToolBox;
-dt = ToolBox.stride / ToolBox.fs / 1000;
-fs = 1 / dt;
+[numBranches, ~] = size(signals_n);
 
 [idxs, C] = kmedoids(signals_n, 2, "Distance", distance);
 
 s_idx = zeros(1, numBranches);
 
 gradient_C = gradient(C, 1);
-
-% just to gets idx0 the period
-%
-avgSignal = C(1, :);
-
-% Compute FFT
-Y = fft(avgSignal);
-P2 = abs(Y / numFrames);
-P1 = P2(1:floor(numFrames / 2) + 1);
-P1(2:end - 1) = 2 * P1(2:end - 1);
-
-% Frequency vector
-f = fft_freq_vector(fs, numFrames, true);
-
-% Find dominant frequency in physiological range (e.g. 0.5 - 5 Hz)
-f_range = (f > 0.5 & f < 5); % 30 - 300 bpm
-[~, idx] = max(P1(f_range));
-f0 = f(f_range);
-f0 = f0(idx);
-idx0 = round(f0 / dt);
 
 %1 index
 [peaks1, locs1] = findpeaks(abs(gradient_C(1, :)), 'MinPeakDistance', 0.6 * idx0);

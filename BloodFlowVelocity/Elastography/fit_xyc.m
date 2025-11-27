@@ -36,7 +36,7 @@ Z0 = Z - mean(Z(:), 'omitnan'); % remove DC offset and NaN safety
 
 if size(Z0, 1) <= 10 || size(Z0, 2) <= 10
     % warning('Input map is too small for FFT analysis. Returning NaN results.');
-    PWV = NaN; Tx = NaN; Ty = NaN; m = NaN;
+    PWV = NaN; Tx = NaN; Ty = NaN; m = NaN; dPWV = NaN;
     idx = []; rows = []; cols = [];
     S = []; pks = [];
     return
@@ -78,7 +78,7 @@ fy = (-Nmult * ny / 2:Nmult * ny / 2 - 1) / (Nmult * ny * dy); % cycles per unit
 
 if isempty(pks)
     % warning('No peaks found in spectrum. Returning NaN results.');
-    PWV = NaN; Tx = NaN; Ty = NaN; m = NaN;
+    PWV = NaN; Tx = NaN; Ty = NaN; m = NaN; dPWV = NaN;
     idx = []; rows = []; cols = [];
     fx_err = NaN; fy_err = NaN;
     return;
@@ -146,9 +146,9 @@ ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_unit", name, br
 % ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_intercorr", name, branch_index),s_wave_map);
 
 
-if PWV < 1 || PWV > 4 % mm/s
-    PWV = NaN; dPWV = NaN;
-end
+% if PWV < 1 || PWV > 4 % mm/s
+%     PWV = NaN; dPWV = NaN;
+% end
 
 fprintf('PWV = %.3f ± %.3f (mm/s)\n', PWV, dPWV);
 
@@ -172,7 +172,7 @@ if saveFigures
     saveas(fig1, fullfile(outputDir, sprintf('%s_%s_%d_6_fft_spectrum.png', ToolBox.folder_name, name, branch_index)));
     saveas(fig2, fullfile(outputDir, sprintf('%s_%s_%d_5_wave_map.png', ToolBox.folder_name, name, branch_index)));
 
-    close(fig1); close(fig2);
+    % close(fig1); close(fig2);
 
 end
 
