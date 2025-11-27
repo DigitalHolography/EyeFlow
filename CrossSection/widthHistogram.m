@@ -22,7 +22,7 @@ for cIdx = 1:numCircles
 
 end
 
-A_tot = mean(sum(area_mat, 2), 1) * 1000 * 1000;
+A_tot = mean(sum(area_mat, 2,'omitnan'), 1,'omitnan') * 1000 * 1000;
 area_mat = reshape(area_mat, 1, []);
 diameters = 2 * sqrt(area_mat / pi) * 1000;
 

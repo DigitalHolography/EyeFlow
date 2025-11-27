@@ -1,4 +1,4 @@
-function createMasks(M0_ff, VesselSegmentationNet, AVSegmentationNet)
+function createMasks(M0_ff, VesselSegmentationNet, AVSegmentationNet, EyeDiaphragmSegmentationNet)
 % createMasks - Creates masks for arteries, veins, and neighbors from a video of retinal images.
 % Inputs:
 %   M0_ff: 3D matrix of the video data (height x width x time)
@@ -11,6 +11,7 @@ arguments
     M0_ff double
     VesselSegmentationNet = []
     AVSegmentationNet = []
+    EyeDiaphragmSegmentationNet = []
 end
 
 ToolBox = getGlobalToolBox;
@@ -19,10 +20,6 @@ saveFigures = params.saveFigures;
 exportVideos = params.exportVideos;
 path = ToolBox.path_main;
 folder_steps = fullfile('mask', 'steps');
-
-if ~exist(fullfile(ToolBox.path_main, folder_steps), 'dir')
-    mkdir(ToolBox.path_main, folder_steps);
-end
 
 % 0) Initialisation
 [numX, numY, numFrames] = size(M0_ff);
@@ -60,7 +57,13 @@ M0_ff_img = squeeze(mean(M0_ff, 3));
 saveMaskImage(M0_ff_img, 'all_00_M0.png', isStep = true)
 
 % 0) 1) Create Diaphragm and Crop Circle Masks
-maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
+maskParams = params.json.Mask;
+if maskParams.EyeDiaphragmSegmentationNet
+    [maskDiaphragm, ~, ~, ~] = predictDiaphragm(EyeDiaphragmSegmentationNet, M0_ff_img);
+else
+    maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
+end
+
 saveMaskImage(rescale(M0_ff_img) + maskDiaphragm .* 0.5, 'all_01_maskDiaphragm.png', isStep = true)
 maskCircle = diskMask(numX, numY, cropChoroidRadius, 'center', [x_c / numX, y_c / numY]);
 
@@ -204,6 +207,13 @@ if mask_params.AutoCompute
     maskArtery = mask_dilated_artery;
     maskVein = mask_dilated_vein;
 
+    % 3) 0) Mask Choroid
+    [maskGabor] = gaborVesselness(M0_ff_img, ...
+        'range', [4, 6], 'step', 1);
+    [maskFrangi] = frangiVesselness(M0_ff_img, ...
+        'range', [4, 6], 'step', 1);
+    maskChoroid = (maskGabor & maskFrangi) & ~maskCircle & maskDiaphragm;
+
     % 3) 1) Final Blob removal
     maskVessel = maskArtery | maskVein;
 
@@ -216,6 +226,12 @@ if mask_params.AutoCompute
     end
 
 end
+
+% 3) 2) Process systolic signal to create artery mask
+[M0_Systole_img, M0_Diastole_img] = compute_diasys(M0_ff, maskArtery, 'mask');
+diasys_diff = M0_Systole_img - M0_Diastole_img;
+RGBdiasys = labDuoImage(rescale(M0_ff_img), diasys_diff);
+saveMaskImage(RGBdiasys, 'diasys_diff.png');
 
 % 3) 2) a) Look for a target mask to register from
 if (mask_params.RegisteredMasks == -1 || mask_params.RegisteredMasks == 1)
@@ -353,11 +369,29 @@ if saveFigures
 
 end
 
+% MaskSurface
+ArteryArea_pxl = sum(maskArtery(:));
+VeinArea_pxl = sum(maskVein(:));
+RemainingArea_pxl = sum(maskBackground(:));
+
+% ArteryArea_mm2 = ArteryArea_pxl * (params.px_size ^ 2);
+% VeinArea_mm2 = VeinArea_pxl * (params.px_size ^ 2);
+% RemainingArea_mm2 = RemainingArea_pxl * (params.px_size ^ 2);
+
+ToolBox.Output.add('ArteryNbPxl', ArteryArea_pxl, '');
+ToolBox.Output.add('VeinNbPxl', VeinArea_pxl, '');
+ToolBox.Output.add('RemainingNbPxl', RemainingArea_pxl, '');
+
+% ToolBox.Output.add('ArteryArea', ArteryArea_mm2, 'mm^2');
+% ToolBox.Output.add('VeinArea', VeinArea_mm2, 'mm^2');
+% ToolBox.Output.add('RemainingArea', RemainingArea_mm2, 'mm^2');
+
 % 5) Save masks in Cache
 ToolBox.Cache.maskArtery = maskArtery;
 ToolBox.Cache.maskVein = maskVein;
 ToolBox.Cache.maskNeighbors = maskNeighbors;
 ToolBox.Cache.maskBackground = maskBackground;
+ToolBox.Cache.maskChoroid = maskChoroid;
 ToolBox.Cache.xy_barycenter = xy_barycenter;
 ToolBox.Cache.M0_RGB = M0_RGB;
 ToolBox.Cache.scoreMaskArtery = scoreMaskArtery;
