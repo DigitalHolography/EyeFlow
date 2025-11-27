@@ -32,16 +32,20 @@ methods
         % Load or update AI networks based on parameters
         % Check for change to avoid redundant loading
 
-        if ~isfolder('Models')
-            mkdir('Models');
+        currentScriptPath = fileparts(mfilename('fullpath'));
+        projectRoot = fileparts(currentScriptPath);
+        models_dir = fullfile(projectRoot, 'Models');
+
+        if ~isfolder(models_dir)
+            mkdir(models_dir);
         end
 
-        pythonFolder = 'Preprocessing';
-        if count(py.sys.path, pythonFolder) == 0
-            insert(py.sys.path, int32(0), pythonFolder);
-        end
-
-        py.importlib.invalidate_caches(); % refresh import cache
+        %pythonFolder = 'Preprocessing';
+        %if count(py.sys.path, pythonFolder) == 0
+        %    insert(py.sys.path, int32(0), pythonFolder);
+        %end
+        %
+        %py.importlib.invalidate_caches(); % refresh import cache
 
         maskParams = params.json.Mask;
 
