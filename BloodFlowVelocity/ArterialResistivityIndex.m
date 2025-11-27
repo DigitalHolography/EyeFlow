@@ -39,6 +39,8 @@ v_mean = mean(interp_signal);
 
 % Compute RI and its uncertainty using error propagation
 RI = (vMax - vMin) / vMax;
+RI (RI < 0) = 0;
+RI (RI > 1) = 1;
 
 if ~isempty(signal_se)
     vMax_se = signal_se(amax);
@@ -54,6 +56,7 @@ end
 
 % PI calculation
 PI = (vMax - vMin) / v_mean;
+PI (PI < 0) = 0;
 
 if ~isempty(signal_se)
     dPI_dvMax = 1 / v_mean;

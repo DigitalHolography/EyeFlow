@@ -101,6 +101,8 @@ properties
     ArteryNbPxl
     VeinNbPxl
     RemainingNbPxl
+    QualityControlScoreMaskArtery
+    QualityControlScoreMaskVein
 
     % Time info
     UnixTimestampFirst
