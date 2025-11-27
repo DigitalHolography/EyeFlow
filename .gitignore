@@ -75,3 +75,6 @@ resources/*
 +unet_vesselness/*
 Logs/*
 build/
+
+# IDEs and editors
+.vscode/
