@@ -53,6 +53,15 @@ methods
             ME = [];
         end
 
+        if ~isempty(ME)
+            ToolBox = getGlobalToolBox;
+            str = MEdisp(ME, ToolBox.EF_path);
+
+            fid = fopen(fullfile(ToolBox.path_log, sprintf("%s_error_log.txt", ToolBox.folder_name)), 'w');
+            fprintf(fid, "%s", str);
+            fclose(fid);
+        end
+
         tic
         fprintf("Generating A4 Report...\n");
 
