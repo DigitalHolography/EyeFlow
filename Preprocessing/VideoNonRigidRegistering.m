@@ -9,6 +9,7 @@ ref_img = (ref_img - min(ref_img(:))) / (max(ref_img(:)) - min(ref_img(:)));
 
 stabilized = zeros(numX, numY, numFrames);
 field = zeros(numX, numY, 2, numFrames);
+diff = zeros(numX, numY, numFrames);
 
 %smoothVideo = imgaussfilt3(obj.M0, [0.1 0.1 2]);
 parfor k = 1:numFrames
@@ -19,13 +20,16 @@ parfor k = 1:numFrames
     "BLOCK_SIZE", 30, ...
     "SEARCH_RADIUS", 5, ...
     "SSD_THRESHOLD", 0.1, ...
-    "NUM_ITERS", 1 ...
+    "NUM_ITERS", 1, ...
+    "LOG_LEVEL", "WARNING" ...
     );
 
     field(:, :, :, k) = f;
     stabilized(:, :, k) = s;
+    diff(:, :, k) = tgt - s;
 end
 
+D.diff = diff;
 D.stabilized = stabilized;
 D.field = field;
 
@@ -163,4 +167,5 @@ normPhase = uint8(normPhase * 255);
 writeGifOnDisc(normPhase, 'displacement_phase');
 writeGifOnDisc(mat2gray(D.mag_temporal_derivative), 'displacement_mag_temporal_derivative');
 writeGifOnDisc(mat2gray(D.phase_temporal_derivative), 'displacement_phase_temporal_derivative');
+writeGifOnDisc(D.diff, 'diff_M0_stab');
 end

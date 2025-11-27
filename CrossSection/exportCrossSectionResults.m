@@ -47,7 +47,7 @@ labeledVessels = results.labeledVessels .* results.labeledVessels ~= 0;
 histo_v_cell = results.histo_v_cell;
 
 % 0.bis Save to H5 Output the velocity profiles and maksLabel info
-exportProfilesToH5(name,maskLabel,v_profiles_cell);
+exportProfilesToH5(name, maskLabel, v_profiles_cell);
 
 % 1. Flow Rate Figures
 tic
@@ -116,6 +116,18 @@ if params.json.exportCrossSectionResults.BloodFlowProfilesOverlay && saveFigures
     profilePatchVelocities(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
 end
 
+alphaWom = zeros(size(ToolBox.Cache.WomersleyOut),'single');
+for i = 1:size(alphaWom, 1)
+    for j = 1:size(alphaWom, 2)
+        if isstruct(ToolBox.Cache.WomersleyOut{i,j})
+            data = ToolBox.Cache.WomersleyOut(i, j);
+            alphaWom(i, j) = data{1, 1}.alpha_n;
+        end
+    end
+end
+
+exportSegmentsValueToH5(name+"_Wom_alpha",maskLabel,alphaWom,"Womersley");
+
 fprintf("    1.(bis) optional Flow Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
 
 % 2. Sections Figures
@@ -128,7 +140,7 @@ end
 
 if params.json.exportCrossSectionResults.circleImages
 
-    folders = {'lumenDiameter', 'vesselSegmentId', 'bloodVolumeRate', 'velocity'};
+    folders = {'lumenDiameter', 'vesselSegmentId', 'bloodVolumeRate', 'velocity', 'alphaWomersley'};
 
     if ~isfolder(fullfile(path_png, 'vesselSegmentImages'))
         mkdir(fullfile(path_png, 'vesselSegmentImages'))

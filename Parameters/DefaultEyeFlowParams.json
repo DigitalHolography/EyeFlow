@@ -56,7 +56,10 @@
     "Minimum Vessel Width": 3,
     "Final Dilation": 0,
     "Force Vessel Width": false,
-    "Optic Disk Detector Net": true
+    "Optic Disk Detector Net": true,
+    "Optic Disk Segmentation Net": true,
+    "Eye Diaphragm Segmentation Net": true,
+    "Eye Side Classifier Net": true
   },
   "PulseAnalysis": {
     "DifferenceMethods": 0,
@@ -77,7 +80,8 @@
     "BigRadiusRatio": 0.35
   },
   "generateCrossSectionSignals": {
-    "NumberOfCircles": 10,
+    "NumberOfCircles": 20,
+    "SegmentsLength": 0.025,
     "ScaleFactorWidth": 3,
     "MaskSliceThreshold": 0.01,
     "PixelSize": 0.0191,

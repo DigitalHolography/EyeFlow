@@ -1,75 +1,61 @@
 function [AVSegmentationNet] = loadAVSegmentationNetworks(params)
-% loadAVSegmentationNetworks Loads AI networks for vesselness and artery/vein segmentation
+% loadAVSegmentationNetworks Loads AI networks for artery/vein segmentation
+%   Priority is given to loading a .mat file from the Models directory.
+%   If a .mat file is not found and the application is not deployed,
+%   it looks for a .onnx file or downloads it from Hugging Face.
+%
 %   Inputs:
 %       params - Parameters structure containing segmentation settings
 %   Outputs:
-%       VesselSegmentationNet - Loaded vesselness segmentation network
+%       AVSegmentationNet - Loaded artery/vein segmentation network
 
 AVSegmentationNet = [];
+model_name = "";
 
+% Determine the correct model name based on params
 if params.json.Mask.AVCorrelationSegmentationNet && params.json.Mask.AVDiasysSegmentationNet
-
     model_name = "iternet5_av_corr_diasys";
-    model_path = 'Models\iternet5_av_corr_diasys.onnx';
-
-    if ~isfile(model_path)
-        % Download the model from Hugging Face
-        url = sprintf('https://huggingface.co/DigitalHolography/%s/resolve/main/%s', model_name, model_name);
-        websave(model_path, url);
-    end
-
-    try
-        % Try the newer function first
-        AVSegmentationNet = importNetworkFromONNX(model_path);
-    catch
-        % Fall back to the older function
-        warning('off')
-        AVSegmentationNet = importONNXNetwork(model_path);
-        warning('on')
-    end
-
 elseif params.json.Mask.AVDiasysSegmentationNet
-
     model_name = "iternet5_av_diasys";
-    model_path = 'Models\iternet5_av_diasys.onnx';
-
-    if ~isfile(model_path)
-        % Download the model from Hugging Face
-        url = sprintf('https://huggingface.co/DigitalHolography/%s/resolve/main/%s', model_name, model_name);
-        websave(model_path, url);
-    end
-
-    try
-        % Try the newer function first
-        AVSegmentationNet = importNetworkFromONNX(model_path);
-    catch
-        % Fall back to the older function
-        warning('off')
-        AVSegmentationNet = importONNXNetwork(model_path);
-        warning('on')
-    end
-
 elseif params.json.Mask.AVCorrelationSegmentationNet
-
     model_name = "iternet5_av_corr";
-    model_path = 'Models\iternet5_av_corr.onnx';
+end
 
-    if ~isfile(model_path)
-        % Download the model from Hugging Face
-        url = sprintf('https://huggingface.co/DigitalHolography/%s/resolve/main/%s', model_name, model_name);
-        websave(model_path, url);
+if model_name ~= ""
+    currentScriptPath = fileparts(mfilename('fullpath'));
+    projectRoot = fileparts(currentScriptPath);
+    mat_model_path = fullfile(projectRoot, 'Models', model_name + '.mat');
+    onnx_model_path = fullfile(projectRoot, 'Models', model_name + '.onnx');
+    
+    if isfile(mat_model_path)
+        fprintf('Loading .mat network: %s\n', mat_model_path);
+        net_data = load(mat_model_path);
+        % The network is expected to be the first variable in the .mat file
+        f = fieldnames(net_data);
+        AVSegmentationNet = net_data.(f{1});
+
+    elseif ~isdeployed
+        fprintf('No .mat network found. Looking for .onnx version.\n');
+        if ~isfile(onnx_model_path)
+            % Download the model from Hugging Face
+            fprintf('Downloading .onnx network from Hugging Face: %s\n', model_name);
+            url = sprintf('https://huggingface.co/DigitalHolography/%s/resolve/main/%s', model_name, model_name);
+            websave(onnx_model_path, url);
+        end
+
+        try
+            % Try the newer import function first
+            fprintf('Importing .onnx network: %s\n', onnx_model_path);
+            AVSegmentationNet = importNetworkFromONNX(onnx_model_path);
+        catch ME
+            % If it fails, display the error and try the older function
+            fprintf('importNetworkFromONNX failed: %s\n', ME.message);
+            fprintf('Falling back to importONNXNetwork.\n');
+            warning('off')
+            AVSegmentationNet = importONNXNetwork(onnx_model_path);
+            warning('on')
+        end
     end
-
-    try
-        % Try the newer function first
-        AVSegmentationNet = importNetworkFromONNX(model_path);
-    catch
-        % Fall back to the older function
-        warning('off')
-        AVSegmentationNet = importONNXNetwork(model_path);
-        warning('on')
-    end
-
 end
 
 end

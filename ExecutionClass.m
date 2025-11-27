@@ -25,6 +25,7 @@ properties
 
     % Preprocessed Data
     M0_ff single
+    M0_ff_img single
     f_RMS single
     f_AVG single
     displacementField
@@ -35,6 +36,7 @@ properties
     v_mean_RGB uint8
     Q_results_A
     Q_results_V
+    eye_side = "none"
 
     % Processing Flags
     is_preprocessed = false
@@ -110,6 +112,7 @@ methods
 
         % Copy results back for backward compatibility
         obj.M0_ff = Preprocessor.M0_ff;
+        obj.M0_ff_img = squeeze(mean(obj.M0_ff, 3));
         obj.f_RMS = Preprocessor.f_RMS;
         obj.f_AVG = Preprocessor.f_AVG;
         obj.displacementField = Preprocessor.displacementField;
@@ -149,6 +152,11 @@ methods
 
         obj.AINetworks.updateAINetworks(params);
 
+        % Execute eye side analysis if asked
+        if params.json.Mask.EyeSideClassifierNet
+            obj.eye_side = predictEyeSide(obj.AINetworks.EyeSideClassifierNet, obj.M0_ff_img);
+        end
+
         % Execute analysis steps based on checkbox flags
         if obj.flag_segmentation
             obj.Analyzer.performSegmentation(obj, app);
@@ -168,6 +176,7 @@ methods
             end
 
         catch ME
+            MEdisp(ME, '');
             warning("Pulse Wave Velocity Analysis failed");
         end
 
@@ -184,7 +193,7 @@ methods
             end
 
         catch ME
-            warning("Cross-Section Analysis failed");
+            MEdisp(ME, "", "WARN", "Cross-Section Analysis failed");
         end
 
         if obj.flag_spectral_analysis && ~isempty(obj.SH)

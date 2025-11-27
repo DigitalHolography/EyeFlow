@@ -35,7 +35,8 @@ r2 = jsonParams.SizeOfField.BigRadiusRatio;
 % Load cached data
 maskArtery = ToolBox.Cache.maskArtery;
 maskVein = ToolBox.Cache.maskVein;
-maskNeighbors = ToolBox.Cache.maskNeighbors;
+maskChoroid = ToolBox.Cache.maskChoroid & ~(maskArtery | maskVein);
+maskNeighbors = ToolBox.Cache.maskNeighbors & ~maskChoroid;
 xy_barycenter = ToolBox.Cache.xy_barycenter;
 
 % Validating inputs

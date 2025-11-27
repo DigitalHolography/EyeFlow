@@ -20,8 +20,13 @@ methods
         if isempty(output)
             error("Output is not initialized in ExecutionClass.");
         end
-
-        ToolBox.Output.add('NumFrames', size(executionObj.M0, 3), '', 0);
+        
+        if isempty(executionObj.M0)
+            ToolBox.Output.add('NumFrames', size(executionObj.M0_ff, 3), '', 0);
+        else
+            ToolBox.Output.add('NumFrames', size(executionObj.M0, 3), '', 0);
+        end
+        
         ToolBox.Output.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
         ToolBox.Output.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
 
@@ -42,8 +47,14 @@ methods
         fprintf("Saving Outputs...\n");
 
         ToolBox = getGlobalToolBox;
-        ToolBox.Output.writeJson(fullfile(ToolBox.path_json, sprintf("%s_output.json", ToolBox.folder_name)));
-        ToolBox.Output.writeHdf5(fullfile(ToolBox.path_h5, sprintf("%s_output.h5", ToolBox.folder_name)));
+        if ~isempty(ToolBox.Output)
+            ToolBox.Output.writeJson(fullfile(ToolBox.path_json, sprintf("%s_output.json", ToolBox.folder_name)));
+            ToolBox.Output.writeHdf5(fullfile(ToolBox.path_h5, sprintf("%s_output.h5", ToolBox.folder_name)));
+        else
+            DummyOutput = OutputClass();
+            DummyOutput.writeJson(fullfile(ToolBox.path_json, sprintf("%s_output.json", ToolBox.folder_name)));
+            DummyOutput.writeHdf5(fullfile(ToolBox.path_h5, sprintf("%s_output.h5", ToolBox.folder_name)));
+        end
 
         fprintf("Saving Outputs took %ds\n", round(toc));
     end
@@ -53,10 +64,26 @@ methods
             ME = [];
         end
 
+        if ~isempty(ME)
+            ToolBox = getGlobalToolBox;
+            str = MEdisp(ME, ToolBox.EF_path);
+
+            fid = fopen(fullfile(ToolBox.path_log, sprintf("%s_error_log.txt", ToolBox.folder_name)), 'w');
+            fprintf(fid, "%s", str);
+            fclose(fid);
+        end
+
         tic
         fprintf("Generating A4 Report...\n");
 
         ToolBox = getGlobalToolBox;
+
+        if ~isempty(ToolBox.Output)
+            ToolBox.Output.writeJson(fullfile(ToolBox.path_json, sprintf("%s_output.json", ToolBox.folder_name)));
+            ToolBox.Output.writeHdf5(fullfile(ToolBox.path_h5, sprintf("%s_output.h5", ToolBox.folder_name)));
+        else
+            ToolBox.Output = OutputClass();
+        end
 
         try
             generateA4Report(ME);

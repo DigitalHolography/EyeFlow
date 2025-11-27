@@ -54,19 +54,22 @@ parameters.UnixTimestampLast = outputs.UnixTimestampLast;
 
 % Create a new figure with A4 paper size (in centimeters)
 fig = figure('Units', 'centimeters', ...
-    'Position', [0 0 21.0 29.7], ...
+    'OuterPosition', [0, 0, 21, 29.7], ...
+    'PaperUnits', 'centimeters', ...
     'PaperSize', [21.0 29.7], ...
-    'PaperPositionMode', 'auto', ...
+    'PaperPosition', [0 0 21.0 29.7], ...
+    'PaperPositionMode', 'manual', ...
+    'Resize', 'off', ...
     'Color', 'w', ...
     'Visible', 'off');
 
 % === Title ===
 t = tiledlayout(fig, 16, 2, 'Padding', 'compact', 'TileSpacing', 'compact');
+t.Units = 'centimeters';
+t.InnerPosition = [1.5, 0, 18, 25.7]; % [left bottom width height]
 title(t, folder_name, 'FontSize', 16, 'FontWeight', 'bold', 'Interpreter', 'none');
 % text(5, 8, 'This is red text', 'Color', 'red', 'FontSize', 14, 'FontWeight', 'bold');
 % Margins
-t.Units = 'centimeters';
-t.OuterPosition = [1.5 3 18 25.7]; % [left bottom width height]
 
 % === IMAGE GRID ===
 vesselTypes = {'artery', 'vein'};
@@ -131,7 +134,7 @@ end
 paramFontSize = 12;
 paramTitleFontSize = 14;
 
-text(axParams, 0, 1.1, 'Computed Parameters:', ...
+text(axParams, 0, 1.2, 'Computed Parameters:', ...
     'FontWeight', 'bold', 'FontSize', paramTitleFontSize, ...
     'VerticalAlignment', 'top', 'Interpreter', 'none');
 
@@ -146,21 +149,23 @@ end
 
 % === OPTIONAL ERROR SECTION ===
 
+%{
 if ~isempty(ME)
-    axErrors = nexttile(t, [2 2]); % last row spans both columns
-    axis(axErrors, 'off');
+axErrors = nexttile(t, [2 2]); % last row spans both columns
+axis(axErrors, 'off');
 
-    text(axErrors, 0, 1, 'Errors Encountered During Processing:', ...
-        'FontWeight', 'bold', 'FontSize', paramTitleFontSize, ...
-        'VerticalAlignment', 'top', 'Interpreter', 'none', 'Color', 'r');
+text(axErrors, 0, 1, 'Errors Encountered During Processing:', ...
+    'FontWeight', 'bold', 'FontSize', paramTitleFontSize, ...
+    'VerticalAlignment', 'top', 'Interpreter', 'none', 'Color', 'r');
 
-    errorMsg = MEdisp(ME, ToolBox.EF_path);
-    errorLines = strsplit(errorMsg, '\n');
+errorMsg = MEdisp(ME, ToolBox.EF_path);
+errorLines = strsplit(errorMsg, '\n');
 
-    text(axErrors, 0, 0.8, errorLines, ...
-        'VerticalAlignment', 'top', 'FontSize', paramFontSize, ...
-        'Interpreter', 'none', 'Color', 'r');
+text(axErrors, 0, 1, errorLines, ...
+    'VerticalAlignment', 'top', 'FontSize', paramFontSize, ...
+    'Interpreter', 'none', 'Color', 'r');
 end
+%}
 
 % === QUALITY VALIDATION SCORES SECTION ===
 
@@ -201,9 +206,9 @@ end
 %}
 
 % === Export to PDF ===
-set(fig, 'Renderer', 'painters');
 output_pdf = fullfile(path_pdf, sprintf('%s_report.pdf', folder_name));
-print(fig, output_pdf, '-dpdf', '-r150', '-bestfit');
+set(fig, 'Renderer', 'painters');
+print(fig, output_pdf, '-dpdf', '-painters', '-r300');
 close(fig);
 
 end
