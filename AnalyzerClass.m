@@ -43,8 +43,17 @@ methods
 
         ToolBox.Output.Extra.add("M0_ff_img", M0_ff_img);
 
+        % Optic disk
         try
-            [~, diameter_x, diameter_y, center_x, center_y] = findPapilla(M0_ff_img, executionObj.AINetworks.OpticDiskDetectorNet);
+
+            if ToolBox.getParams.json.Mask.OpticDiskSegmentationNet
+                % New model
+                [~, center_x, center_y, diameter_x, diameter_y] = predictOpticDisk(executionObj.AINetworks.OpticDiskSegmentationNet, M0_ff_img);
+            else
+                % Old model
+                [~, diameter_x, diameter_y, center_x, center_y] = findPapilla(M0_ff_img, executionObj.AINetworks.OpticDiskDetectorNet);
+            end
+
             xy_papilla = [center_x, center_y];
             ToolBox.Cache.xy_papilla = xy_papilla;
         catch ME
@@ -54,13 +63,14 @@ methods
             diameter_y = NaN;
         end
 
-        createMasks(executionObj.M0_ff, executionObj.AINetworks.VesselSegmentationNet, executionObj.AINetworks.AVSegmentationNet);
         ToolBox.Cache.papillaDiameter = mean([diameter_x, diameter_y]);
+
+        createMasks(executionObj.M0_ff, executionObj.AINetworks.VesselSegmentationNet, executionObj.AINetworks.AVSegmentationNet, executionObj.AINetworks.EyeDiaphragmSegmentationNet);
 
         % Artery score
         scoreA = ToolBox.Cache.scoreMaskArtery;
 
-        ToolBox.Output.Extra.add("QualityControl/scoreMaskArtery",scoreA);
+        ToolBox.Output.add("QualityControlScoreMaskArtery", scoreA, '');
 
         if isempty(scoreA) || isnan(scoreA)
         else
@@ -77,7 +87,7 @@ methods
         % Vein score (if veins analysis enabled)
         scoreV = ToolBox.Cache.scoreMaskVein;
 
-        ToolBox.Output.Extra.add("QualityControl/scoreMaskVein",scoreV);
+        ToolBox.Output.add("QualityControlScoreMaskVein", scoreV, '');
 
         if isempty(scoreV) || isnan(scoreV)
         else

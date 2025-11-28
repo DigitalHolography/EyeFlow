@@ -13,6 +13,7 @@ properties
     maskBackground logical % cached mask background
     scoreMaskArtery double % cached score mask artery
     scoreMaskVein double % cached score mask vein
+    maskChoroid logical % cached mask choroid
 
     % Diastolic and systolic indices
     sysIdxList double % cached systolic indices list
@@ -38,6 +39,9 @@ properties
     HeartBeatFFT double % cached heartbeat frequency in Hz
     HeartBeatFFTSTE double % cached heartbeat frequency standard error in Hz
     harmonics double % cached harmonics frequencies
+
+    % Womersley things
+    WomersleyOut cell
 
 end
 

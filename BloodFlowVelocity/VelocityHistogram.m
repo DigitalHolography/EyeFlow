@@ -23,7 +23,16 @@ end
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 exportVideos = params.exportVideos;
-[~, ~, numFrames] = size(v_video);
+[numX, numY, numFrames] = size(v_video);
+xy_barycenter = ToolBox.Cache.xy_barycenter;
+r1 = params.json.SizeOfField.SmallRadiusRatio;
+r2 = params.json.SizeOfField.BigRadiusRatio;
+
+% Branches
+x_c = xy_barycenter(1) / numX;
+y_c = xy_barycenter(2) / numY;
+maskSection = diskMask(numX, numY, r1, r2, center = [x_c, y_c]);
+[labeledVessels, numBranches] = labelVesselBranches(mask, maskSection, xy_barycenter);
 
 % Pre-process data
 v_histo = v_video .* mask;
@@ -87,5 +96,27 @@ exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_histogramVelocity%s.p
 exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_histogramVelocity%s.eps", ToolBox.folder_name, name)));
 
 close(fDistrib)
+
+% Save branch histograms without figures
+
+for branchIdx = 1:numBranches
+    branchMask = (labeledVessels == branchIdx);
+    v_histo_branch = v_video .* branchMask;
+
+    % Initialize histogram matrix
+    histo_branch = zeros(n, numFrames);
+
+    parfor frameIdx = 1:numFrames
+        data = v_histo_branch(:, :, frameIdx);
+        histo_branch(:, frameIdx) = histcounts(data(branchMask), edges); % histcount is faster than histogram or manual for loop counting
+    end
+
+    if strcmp(name, 'artery')
+        ToolBox.Output.Extra.add(sprintf("VelocityHisto_A%d", branchIdx), histo_branch);
+    elseif strcmp(name, 'vein')
+        ToolBox.Output.Extra.add(sprintf("VelocityHisto_V%d", branchIdx), histo_branch);
+    end
+
+end
 
 end

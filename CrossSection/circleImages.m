@@ -11,6 +11,17 @@ if ~ismember(name, {'artery', 'vein'})
     error('Name must be either ''artery'' or ''vein''');
 end
 
+alphaWom = zeros(size(ToolBox.Cache.WomersleyOut),'single');
+for i = 1:size(alphaWom, 1)
+    for j = 1:size(alphaWom, 2)
+        if isstruct(ToolBox.Cache.WomersleyOut{i,j})
+            data = ToolBox.Cache.WomersleyOut(i, j);
+            alphaWom(i, j) = data{1, 1}.alpha_n;
+        end
+    end
+end
+
+
 path_txt = ToolBox.path_txt;
 main_folder = ToolBox.folder_name;
 [numX, numY, ~] = size(M0_ff_img);
@@ -55,9 +66,9 @@ if saveFigures
     end
 
     textOptions = {"FontWeight", "bold", ...
-                       "Color", "white", ...
-                       "FontSize", fontsize, ...
-                       "BackgroundColor", "black"};
+        "Color", "white", ...
+        "FontSize", fontsize, ...
+        "BackgroundColor", "black"};
 
     % Plot cross-section widths
     parfor cIdx = 1:numCircles
@@ -73,6 +84,8 @@ if saveFigures
         fig3 = figure("Visible", "off");
         imshow(image_RGB);
         fig4 = figure("Visible", "off");
+        imshow(image_RGB);
+        fig5 = figure("Visible", "off");
         imshow(image_RGB);
 
         for bIdx = 1:numBranches
@@ -112,9 +125,19 @@ if saveFigures
                     text(new_x, new_y, sprintf('%.1f', mean(v, 2)), textOptions{:});
                 end
 
+                % Velocity visualization (if data exists)
+                if ~isempty(alphaWom(cIdx, bIdx))
+                    figure(fig5);
+                    text(new_x, new_y, sprintf('%.1f', alphaWom(cIdx, bIdx)), textOptions{:});
+                end
+
             end
 
         end
+
+
+
+        
 
         % Capture and resize frame for video
         figure(fig1);
@@ -163,6 +186,20 @@ if saveFigures
             sprintf("%s_circle_%d_velocity%sImage.png", main_folder, cIdx, name)));
         exportgraphics(gca, fullfile(path_eps, 'vesselSegmentImages', 'velocity', ...
             sprintf("%s_circle_%d_velocity%sImage.eps", main_folder, cIdx, name)));
+
+        % Capture and resize frame for video
+        figure(fig5);
+        capturedFrame = frame2im(getframe(gca));
+        resizedFrame = rescale(imresize(capturedFrame, [numX, numY]));
+        alpha_video(:, :, :, cIdx) = resizedFrame;
+
+        % Export plot
+        exportgraphics(gca, fullfile(path_png, 'vesselSegmentImages', 'alphaWomersley', ...
+            sprintf("%s_circle_%d_alpha%sImage.png", main_folder, cIdx, name)));
+        exportgraphics(gca, fullfile(path_eps, 'vesselSegmentImages', 'alphaWomersley', ...
+            sprintf("%s_circle_%d_alpha%sImage.eps", main_folder, cIdx, name)));
+
+
     end
 
     % Export videos if enabled
@@ -171,6 +208,7 @@ if saveFigures
         writeGifOnDisc(vesselNum_video, sprintf('num_%s', name), 0.15, 10);
         writeGifOnDisc(Q_video, sprintf('BVR_%s', name), 0.15, 10);
         writeGifOnDisc(velocity_video, sprintf('velocity_%s', name), 0.15, 10);
+        writeGifOnDisc(alpha_video, sprintf('alpha_womersley_%s', name), 0.15, 10);
     end
 
 end

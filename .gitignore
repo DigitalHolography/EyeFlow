@@ -46,10 +46,6 @@
 *.idb
 *.pdb
 
-# Python files
-*.py
-*.ipynb
-
 # Kernel Module Compile Results
 *.mod*
 *.cmd
@@ -75,4 +71,9 @@ resources/*
 +unet_vesselness/*
 Logs/*
 *.mat
+build/
+__pycache__
++*
 
+# IDEs and editors
+.vscode/

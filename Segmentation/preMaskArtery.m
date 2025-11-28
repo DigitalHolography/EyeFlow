@@ -21,7 +21,7 @@ signals = zeros(numBranches, numFrames);
 [b, a] = butter(4, 15 / (fs / 2), 'low');
 movingMeanWindow = round(fs * 0.1); % ~0.1 s window; adjust as needed
 
-parfor i = 1:numBranches
+for i = 1:numBranches
     branchMask = (label == i); % logical mask of branch i
 
     % Extract all pixels for branch i across frames

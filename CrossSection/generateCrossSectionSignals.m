@@ -36,6 +36,7 @@ numCircles = params.json.generateCrossSectionSignals.NumberOfCircles;
 r1 = params.json.SizeOfField.SmallRadiusRatio;
 r2 = params.json.SizeOfField.BigRadiusRatio;
 dr = (r2 - r1) / numCircles;
+slen = params.json.generateCrossSectionSignals.SegmentsLength;
 maskSectionCircles = zeros(numX, numY, numCircles);
 
 if strcmp(vesselName, 'artery')
@@ -53,7 +54,7 @@ end
 
 parfor circleIdx = 1:numCircles
     r_in = r1 + (circleIdx - 1) * dr;
-    r_out = r_in + dr;
+    r_out = r_in + slen;
     maskSectionCircles(:, :, circleIdx) = diskMask(numX, numY, r_in, r_out, center = [x_c / numX, y_c / numY]);
 
     % save mask image

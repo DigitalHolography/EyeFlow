@@ -42,7 +42,7 @@ V = V / std(V);
 
 % Cross-correlation with normalization
 [cross_corr_AV, lags] = xcorr(A, V, 'coeff');
-[~, max_idx] = max(abs(cross_corr_AV));
+[~, max_idx] = max(cross_corr_AV);
 max_corr = cross_corr_AV(max_idx);
 time_lag = lags(max_idx) / fs; % Convert lag index to seconds
 lags_t = lags / fs; % Convert lags to seconds
