@@ -10,6 +10,11 @@ if ~isempty(value)
         value = uint8(value);
     end
 
+    % Preserve order of dimensions
+    if ~isscalar(value) && ~isvector(value)
+        value = permute(value, ndims(value):-1:1);
+    end
+
     % Determine byte size of the array
 
     % typeSizes = struct('double',8,'single',4,'int64',8,'uint64',8,'int32',4,'uint32',4,...

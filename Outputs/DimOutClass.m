@@ -31,7 +31,7 @@ classdef DimOutClass < handle
                 silenceWarn double = 0
             end
 
-            type = DimEnumClass.enum_from(data);
+             type = DimEnumClass.enum_from(data);
 
             if ~silenceWarn && ~checkDimNames(type, dimDescription)
                 warning("Wrong length of dimDescription for data !\nExpected: %i\nGot: %i", type.rank, size(dimDescription, 2));
@@ -41,6 +41,7 @@ classdef DimOutClass < handle
             if isvector(data) && ~isscalar(data)
                 data = sanitize1DArray(data);    
             end
+
             
             obj.Data(type).(sanitizeFieldName(name)).data = data;
             obj.Data(type).(sanitizeFieldName(name)).attributes.dimDescription = dimDescription;
@@ -225,7 +226,12 @@ classdef DimOutClass < handle
                 if ~isreal(fieldValue)
                     % Recursively
                     handleSavingData(obj, path, datasetPath + "_real", fieldName, real(fieldValue), fieldAttributes);
-                    handleSavingData(obj, path, datasetPath + "_imag", fieldName, imag(fieldValue), fieldAttributes);
+
+                    % Special safety for NaN + 0i (which can happen for
+                    % complex NaN)
+                    imag_data = imag(fieldValue);
+                    imag_data(isnan(fieldValue)) = NaN;
+                    handleSavingData(obj, path, datasetPath + "_imag", fieldName, imag_data, fieldAttributes);
                     return;
                 end
 
@@ -235,13 +241,13 @@ classdef DimOutClass < handle
             elseif isstruct(fieldValue)
                 subFields = fieldnames(fieldValue);
                 for j = 1:numel(subFields)
-                    datasetPath = subFields{j};
+                    subName = subFields{j};
                     subValue = fieldValue.(subName);
                     subPath = strcat(datasetPath, '_', subName);
                     if isnumeric(subValue)
                         writeNumericToHDF5(path, subPath, subValue);
                     elseif ischar(subValue) || isstring(subValue)
-                        h5writeatt(path, datasetPath,subName, subValue);
+                        h5writeatt(path, datasetPath, subName, subValue);
                     end
                 end
 

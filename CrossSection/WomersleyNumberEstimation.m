@@ -24,8 +24,7 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
         'geoParams',    geoParams   ...
     );
 
-    % TODO: For now a constant number of harmonics (use input parameters maybe)
-    HARMONIC_NUMBER = 1;
+    HARMONIC_NUMBER = params.json.exportCrossSectionResults.WomersleyMaxHarmonic;
     
     % TODO: Parfor does not seem to work with toolbox
     for i = 1:HARMONIC_NUMBER
@@ -265,7 +264,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d_h%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx, n_harmonic));
     
     try
-        exportgraphics(hFig, save_filename, 'Resolution', 300);
+        exportgraphics(hFig, save_filename, 'Resolution', 96);
     catch export_error
         warning('Could not save figure');
     end
@@ -524,9 +523,7 @@ end
 function metrics = calculate_symbols(fitParams, rho_blood)
     Cn          = fitParams.Cn;
     Dn          = fitParams.Dn;
-    % TODO: This is NaN due to the fact that for now, when we do harmonics,
-    %       we don't have any clue on R0, we should make a two steps fit
-    R0          = fitParams.R0;
+    R0          = fitParams.R0 * 1e-6;
     alpha_1     = fitParams.alpha_1;
     alpha_n     = fitParams.alpha_n;
     omega_n     = fitParams.omega_n;

@@ -59,6 +59,8 @@ profHeight = 30;
 
 idx = 1;
 
+MAX_HARMONIC = params.json.exportCrossSectionResults.WomersleyMaxHarmonic;
+
 for circleIdx = 1:rows
 
     for branchIdx = 1:cols
@@ -120,18 +122,23 @@ for circleIdx = 1:rows
         % 2. Fit cardiac profiles
 
         % TODO: temp fix for a single harmonic
-        womersley_results(idx) = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
+        % womersley_results(circleIdx, branchIdx, :) = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
+
+        % Somehow safer than previous
+        temp_results = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
+        reshaped_results = reshape(temp_results, 1, 1, []);
+        womersley_results(circleIdx, branchIdx, 1:numel(reshaped_results)) = reshaped_results;
 
         % addStructToExtra(ToolBox.Output.Extra, "Womersley", womersley_results(idx)(1));
 
-        ToolBox.Cache.WomersleyOut{circleIdx,branchIdx} = womersley_results(1, idx);
+        ToolBox.Cache.WomersleyOut{circleIdx,branchIdx} = womersley_results(circleIdx, branchIdx);
         idx = idx + 1;
     end
 
 end
 
 
-saveWomersleyResults("Womersley", womersley_results);
+saveWomersleyResults("Womersley/" + name, womersley_results);
 
 womersleyResultsAnalysis(womersley_results);
 
@@ -145,28 +152,80 @@ close all;
 end
 
 
+    
 function saveWomersleyResults(BasePath, womersley_results)
-ToolBox = getGlobalToolBox;
+    ToolBox = getGlobalToolBox;
 
-if ~endsWith(BasePath, "/") && ~endsWith(BasePath, "_")
-    BasePath = BasePath + "/";
-end
-
-field_names = fieldnames(womersley_results(1));
-for i = 1:numel(field_names)
-    field = field_names{i};
-
-    if isstruct(womersley_results(1).(field))
-        subStructs = [womersley_results.(field)];
-        saveWomersleyResults(BasePath + field, subStructs);
-        continue;
+    if ~endsWith(BasePath, "/") && ~endsWith(BasePath, "_")
+        BasePath = BasePath + "/";
     end
 
-    % for j = 1:numel(womersley_results)
-    %     field_list(j) = womersley_results(j).(field);
-    % end
+    input_size = size(womersley_results);
 
-    field_list = [womersley_results.(field)];
-    ToolBox.Output.DimOut.add(BasePath + field, field_list, ["Test"]);
+    valid_idx = findFirstNonEmptyIdx(womersley_results);
+    
+    if isempty(valid_idx)
+        return; % The whole array is empty
+    end
+    
+    field_names = fieldnames(womersley_results(valid_idx));
+
+    for i = 1:numel(field_names)
+        field = field_names{i};
+
+        raw_cells = {womersley_results.(field)};
+        raw_cells = reshape(raw_cells, input_size);
+
+        sample_val = womersley_results(valid_idx).(field);
+
+        if isstruct(sample_val)
+            empty_mask = cellfun(@isempty, raw_cells);
+            
+            if any(empty_mask(:))
+                fnames = fieldnames(sample_val);
+                struct_args = [fnames, cell(numel(fnames), 1)]'; 
+                dummy_struct = struct(struct_args{:});
+                
+                [raw_cells{empty_mask}] = deal(dummy_struct);
+            end
+            
+            subStructs = [raw_cells{:}];
+            subStructs = reshape(subStructs, input_size);
+            
+            saveWomersleyResults(BasePath + field, subStructs);
+            continue;
+        end
+
+        empty_mask = cellfun(@isempty, raw_cells);
+
+        if any(empty_mask(:))
+            if isnumeric(sample_val) && ~isreal(sample_val)
+                filler = complex(NaN, NaN);
+            else
+                filler = NaN;
+            end
+            raw_cells(empty_mask) = {filler};
+        end
+
+        try
+            field_list = cell2mat(raw_cells);
+            field_list = reshape(field_list, input_size);
+            
+            ToolBox.Output.DimOut.add(BasePath + field, field_list, ["circleIdx", "branchIdx", "harmonic"]);
+            
+        catch ME
+            warning("Skipping field '%s': Data dimensions inconsistent or non-scalar. (%s)", field, ME.message);
+        end
+    end
 end
+
+
+function idx = findFirstNonEmptyIdx(array)
+    arguments
+        array 
+    end
+
+    is_gap = @(s) all(cellfun(@isempty, struct2cell(s)));
+    idx = find(~arrayfun(is_gap, array), 1);
 end
+  
