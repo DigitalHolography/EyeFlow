@@ -12,24 +12,6 @@ function launchBatch()
     beginComputerTime = datetime('now', 'Format', 'yyyy/MM/dd HH:mm:ss');
     fprintf("Begin Computer Time: %s\n", beginComputerTime);
 
-    if ~isdeployed
-        % In Development: Add all subfolders to path
-        fprintf("Running in Development Mode\n");
-        addpath(fullfile(appRoot, "BloodFlowVelocity"));
-        addpath(fullfile(appRoot, "BloodFlowVelocity", "Elastography"));
-        addpath(fullfile(appRoot, "CrossSection"));
-        addpath(fullfile(appRoot, "Loading"));
-        addpath(fullfile(appRoot, "Parameters"));
-        addpath(fullfile(appRoot, "Preprocessing"));
-        addpath(fullfile(appRoot, "Scripts"));
-        addpath(fullfile(appRoot, "Segmentation"));
-        addpath(fullfile(appRoot, "SHAnalysis"));
-        addpath(fullfile(appRoot, "Tools"));
-        addpath(fullfile(appRoot, "Outputs"));
-    else
-        fprintf("Running in Deployed Mode.\n");
-    end
-
     defaultJson = fullfile(appRoot, "Parameters", "DefaultEyeFlowParamsBatch.json");
 
     if ~isfile(defaultJson)
