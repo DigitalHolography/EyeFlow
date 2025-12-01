@@ -20,7 +20,7 @@ if isfile(mat_model_path)
     yoloModel = net_data.(f{1});
 elseif ~isdeployed
     fprintf('No .mat network found. Looking for .onnx version.\n');
-    if ~isfile(model_path)
+    if ~isfile(onnx_model_path)
         % Download the model from Hugging Face
         url = sprintf('https://huggingface.co/DigitalHolography/%s/resolve/main/%s.onnx?download=true', hugging_face_repo, model_name);
         fprintf("Downloading %s model in %s at %s ...\n", model_name, onnx_model_path, url);
