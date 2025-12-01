@@ -6,21 +6,24 @@ function VideoRemoveOutliers(obj, params)
 diaphragmRadius = params.json.Mask.DiaphragmRadius;
 maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 frame_means = squeeze(sum(obj.f_RMS .* maskDiaphragm, [1, 2]) / sum(maskDiaphragm, 'all')); % 1D array: numFrames x 1
-
 mean_ = mean(frame_means);
 std_ = std(frame_means);
 
 % Detect outlier frames
 outliers = (abs(frame_means - mean_) > 3 * std_);
 
-% outlier_frames_mask = isoutlier(real(frame_means), "movmedian", 5, "ThresholdFactor", 2);
-
 kernel = [1 1 1 1 1 1 1 1]; % simple 1D smoothing
 outliers_dilated = conv(double(outliers), kernel, 'same') > 0;
 
-outlier_frames_mask = outliers_dilated;
-
-% figure, plot(frame_means), hold on, scatter((1:length(frame_means)), frame_means .* outliers_dilated)
+% Find the biggest contiguous part of outliers
+[labeled, numRegions] = bwlabel(outliers_dilated);
+if numRegions > 0
+    regionSizes = histcounts(labeled, 1:numRegions+1);
+    [~, largestIdx] = max(regionSizes);
+    outlier_frames_mask = (labeled == largestIdx);
+else
+    outlier_frames_mask = false(size(outliers_dilated));
+end
 
 % If no outliers detected, return early
 if ~any(outlier_frames_mask)
