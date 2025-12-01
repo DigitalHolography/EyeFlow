@@ -63,4 +63,6 @@ if Toolbox.getParams.saveFigures
     imwrite(visImg, fullfile(Toolbox.path_png, 'eye_side.png'));
 end
 
+ToolBox.Output.add('PredictedEyeSide', eyeSide, '');
+
 end

@@ -105,6 +105,8 @@ properties
     VeinSelNbPxl
     RemainingSelNbPxl
 
+    % Mic
+    PredictedEyeSide
 
     % Quality Control Scores
     QualityControlScoreMaskArtery

@@ -249,10 +249,10 @@ if ~isnan(onePulseVideoM0)
     border = params.json.FlatFieldCorrection.Border;
 
     heatmap_dia_raw = squeeze(mean(onePulseVideominusBKG(:, :, floor(0.9 * numFramesInterp):numFramesInterp), 3));
-    heatmap_dia = flat_field_correction(heatmap_dia_raw, ceil(gwRatio * size(heatmap_dia_raw, 1)), border);
+    heatmap_dia = flat_field_correction_ef(heatmap_dia_raw, ceil(gwRatio * size(heatmap_dia_raw, 1)), border);
 
     heatmap_sys_raw = squeeze(mean(onePulseVideominusBKG(:, :, max(ceil(idx_sys - 0.05 * numFramesInterp), 1):min(ceil(idx_sys + 0.05 * numFramesInterp), numFramesInterp)), 3));
-    heatmap_sys = flat_field_correction(heatmap_sys_raw, ceil(gwRatio * size(heatmap_sys_raw, 1)), border);
+    heatmap_sys = flat_field_correction_ef(heatmap_sys_raw, ceil(gwRatio * size(heatmap_sys_raw, 1)), border);
 
     % Plot and save diastolic and systolic heatmaps
     figAspect;
