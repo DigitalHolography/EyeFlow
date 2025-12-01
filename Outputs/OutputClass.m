@@ -195,10 +195,10 @@ methods
 
         for i = 1:length(props)
 
-            if ~isempty(obj.(props{i}).value)
-                writeNumericToHDF5(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}), obj.(props{i}).value);
-                h5writeatt(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}), "unit", obj.(props{i}).unit);
-            end
+            % if ~isempty(obj.(props{i}).value)
+            %     writeNumericToHDF5(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}), obj.(props{i}).value);
+            %     h5writeatt(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}), "unit", obj.(props{i}).unit);
+            % end
 
             if ~isempty(obj.(props{i}).standard_error)
                 writeNumericToHDF5(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}, "_ste"), obj.(props{i}).standard_error);

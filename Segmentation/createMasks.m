@@ -62,7 +62,7 @@ maskParams = params.json.Mask;
 if maskParams.EyeDiaphragmSegmentationNet
     [~, cx, cy, r] = predictDiaphragm(EyeDiaphragmSegmentationNet, M0_ff_img);
     offset = 0.02; % To avoid diaphragm to be considered a vessel
-    maskDiaphragm = diskMask(numX, numY, (r / numX) - offset, 'center', [cx / numX, cy / numY]);
+    maskDiaphragm = diskMask(numX, numY, ( 2 * r / numX) - offset, 'center', [cx / numX, cy / numY]);
 else
     maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 end
