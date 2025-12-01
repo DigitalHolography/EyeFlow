@@ -62,23 +62,20 @@ markers = label > 0;
 L = double(watershed(imimposemin(D, markers)));
 L = L .* vesselMask; % Keep only vessel regions
 
-labeledVessels = zeros(size(vesselMask));
-
-for i = 1:n
-    branchPixels = (L == i);
-    labeledVessels(branchPixels) = i;
-end
+labeledVessels = L;
 
 % minAreaThreshold = floor(numX * numY * fun_params.min_area_percent / 100);
 % labeledVessels = bwareaopen(labeledVessels, minAreaThreshold);
+
+if ~fun_params.refine
+    return;
+end
 
 cercleMask = diskMask(numX, numY, r1, r2, 'center', [x_c / numX y_c / numY]);
 labeledVessels = labeledVessels .* cercleMask;
 [labeledVessels, n] = bwlabel(labeledVessels); % Final labeling
 
-if ~fun_params.refine
-    return;
-end
+
 
 % Remove small spots
 labeledVesselsClean = false(numX, numY);

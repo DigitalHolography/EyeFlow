@@ -49,7 +49,7 @@ Z0(end - 4:end, :) = [];
 [ny, nx] = size(Z0);
 
 % Mask out the central region if needed
-Z0 = Z0 .* ~diskMask(ny, nx, 0.001);
+Z0 = Z0 .* ~diskMask(nx, ny, 0.001);
 wy = hann(ny);
 wx = hann(nx);
 W = wy * wx';
@@ -57,7 +57,7 @@ Z0 = Z0 .* W;
 
 % --- FFT ---
 Nmult = 8; % zero-padding multiplier for higher frequency resolution
-F = fftshift(fft2(Z0, Nmult * ny, Nmult * nx));
+F = fftshift(fft2(Z0, Nmult * nx, Nmult * ny));
 S = abs(F);
 
 % Keep only central frequencies

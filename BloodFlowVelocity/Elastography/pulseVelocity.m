@@ -12,6 +12,13 @@ end
 
 ToolBox.Output.Extra.add(sprintf("PWV/%s_Segments_Labels", name), L);
 
+figure('Visible', 'off');
+imagesc(L)
+axis image; axis off;
+% Save figure
+saveas(gcf, fullfile(outputDir, ...
+    sprintf("%s_%s_branches.png", ToolBox.folder_name, name)));
+
 if saveFigures
     figure('Visible', 'off');
     imagesc(L)
