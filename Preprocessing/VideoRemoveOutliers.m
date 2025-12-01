@@ -28,11 +28,11 @@ if ~any(outlier_frames_mask)
 end
 
 % Interpolate outlier frames for each video
-obj.M0 = interpolateOutlierFrames(obj.M0, outlier_frames_mask);
-obj.M1 = interpolateOutlierFrames(obj.M1, outlier_frames_mask);
-obj.M2 = interpolateOutlierFrames(obj.M2, outlier_frames_mask);
-obj.M0_ff = interpolateOutlierFrames(obj.M0_ff, outlier_frames_mask);
-obj.f_RMS = interpolateOutlierFrames(obj.f_RMS, outlier_frames_mask);
-obj.f_AVG = interpolateOutlierFrames(obj.f_AVG, outlier_frames_mask);
+obj.M0(:,:,outlier_frames_mask) = NaN;
+obj.M1(:,:,outlier_frames_mask) = NaN;
+obj.M2(:,:,outlier_frames_mask) = NaN;
+obj.M0_ff(:,:,outlier_frames_mask) = NaN;
+obj.f_RMS(:,:,outlier_frames_mask) = NaN;
+obj.f_AVG(:,:,outlier_frames_mask) = NaN;
 
 end
