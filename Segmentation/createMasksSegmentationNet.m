@@ -139,7 +139,15 @@ onehot = double(onehot);
 end
 
 function output = runAVInference(model_struct, input, device)
-    if model_struct.use_python
+    if isa(model_struct, 'dlnetwork')
+            % For dlnetwork objects
+            input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
+            output_dl = predict(model_struct, input_dl);
+            output = extractdata(output_dl);
+    elseif isa(model_struct, 'DAGNetwork')
+            % For DAGNetwork objects
+            output = predict(model_struct, input, 'ExecutionEnvironment', device);
+    else
         np = py.importlib.import_module('numpy');
         torch = py.importlib.import_module('torch');
 
@@ -159,18 +167,5 @@ function output = runAVInference(model_struct, input, device)
         output = gather(out_mat);
 
         output = permute(output, [2 3 1]); % CHW to HWC
-
-    elseif model_struct.use_onnx
-        if isa(model_struct.onnx_model, 'dlnetwork')
-            % For dlnetwork objects
-            input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
-            output_dl = predict(model_struct.onnx_model, input_dl);
-            output = extractdata(output_dl);
-        else
-            % For DAGNetwork objects
-            output = predict(model_struct.onnx_model, input, 'ExecutionEnvironment', device);
-        end
-    else
-        error("Model struct contains neither PyTorch nor ONNX model.");
     end
 end
