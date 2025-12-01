@@ -95,12 +95,18 @@ properties
     ArteryVeinPhaseDelay
 
     % Mask
-    ArteryArea
+    ArteryArea % in mm²
     VeinArea
     RemainingArea
-    ArteryNbPxl
+    ArteryNbPxl % in pixels on all field
     VeinNbPxl
     RemainingNbPxl
+    ArterySelNbPxl % in pixels on targeted region (smallRadius bigRadius)
+    VeinSelNbPxl
+    RemainingSelNbPxl
+
+
+    % Quality Control Scores
     QualityControlScoreMaskArtery
     QualityControlScoreMaskVein
 
