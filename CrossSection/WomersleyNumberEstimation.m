@@ -68,10 +68,8 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     
     metrics = struct(...
         "RnR0_complex",     complex(NaN, NaN),      ... % PWK ≈ D_n / C_n
-        "RnR0_mag",         NaN,                    ...
-        "RnR0_phase_deg",   NaN,                    ...
-        "Q_n",              complex(NaN, NaN),      ... % Flow (mm3/s)
-        "G_n",              complex(NaN, NaN),      ... % Gradient (Pa/m)
+        "Qn",              complex(NaN, NaN),      ... % Flow (mm3/s)
+        "Gn",              complex(NaN, NaN),      ... % Gradient (Pa/m)
         "tau_n",            complex(NaN, NaN),      ... % Shear (Pa)
         "H_Zn",             complex(NaN, NaN),      ... % Impedance (Pa s/mm3/m)
         "H_Rn",             complex(NaN, NaN),      ... % Geom-Norm (Pa)
@@ -84,7 +82,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         "alpha_1",          NaN,                    ...
         "alpha_n",          NaN,                    ...
         "harmonic",         NaN,                    ...
-        "K_cond",           NaN,                    ...
+        "K_condition",      NaN,                    ...
         "R0",               init_fit.geoParams.R0,  ...
         "Rn",               NaN,                    ...
         "Cn",               complex(NaN, NaN),      ...
@@ -242,8 +240,8 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
 
 
     line1_str = sprintf('α     : %-10.2f     R_0       : %.4f', fitParams.alpha_n, init_fit.geoParams.R0);
-    line2_str = sprintf('Center: %-10.2f     |R_n/R_0| : %.2f %%', fitParams.center, fitParams.metrics.RnR0_mag * 100);
-    line3_str = sprintf('Width : %-10.2f     Phase(R_n): %.1f°', fitParams.width, fitParams.metrics.RnR0_phase_deg);
+    line2_str = sprintf('Center: %-10.2f     |R_n/R_0| : %.2f %%', fitParams.center, abs(fitParams.metrics.RnR0_complex * 100));
+    line3_str = sprintf('Width : %-10.2f     Phase(R_n): %.1f°', fitParams.width, rad2deg(angle(fitParams.metrics.RnR0_complex)));
     
     fit_string = {line1_str, line2_str, line3_str};
     
@@ -537,8 +535,8 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     %     'RnR0_complex',     NaN, ... % PWK ≈ D_n / C_n
     %     'RnR0_mag',         NaN, ...
     %     'RnR0_phase_deg',   NaN, ...
-    %     'Q_n',              NaN, ... % Flow (mm3/s)
-    %     'G_n',              NaN, ... % Gradient (Pa/m)
+    %     'Qn',              NaN, ... % Flow (mm3/s)
+    %     'Gn',              NaN, ... % Gradient (Pa/m)
     %     'tau_n',            NaN, ... % Shear (Pa)
     %     'H_Zn',             NaN, ... % Impedance (Pa s/mm3/m)
     %     'H_Rn',             NaN, ... % Geom-Norm (Pa)
@@ -555,16 +553,14 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     end
 
     metrics.RnR0_complex      = RnR0_complex;
-    metrics.RnR0_mag          = abs(RnR0_complex);
-    metrics.RnR0_phase_deg    = rad2deg(angle(RnR0_complex));
 
     % Flow (Qn)
     K_an = calculate_K_factor(lambda_n);
     Qn_m3_s = pi * R0 ^ 2 * Cn * K_an;
-    metrics.Q_n = Qn_m3_s * 1e9; % units: mm³/s
+    metrics.Qn = Qn_m3_s * 1e9; % units: mm³/s
 
     % Gradient (Gn)
-    metrics.G_n = 1i * omega_n * rho_blood * Cn; % units: Pa/m
+    metrics.Gn = 1i * omega_n * rho_blood * Cn; % units: Pa/m
 
     % Viscosity (νapp)
     numerator = (R0 ^ 2) * fitParams.omega_0;
@@ -587,7 +583,7 @@ function metrics = calculate_symbols(fitParams, rho_blood)
 
     % Impedance (Ĥz,n)
     if Qn_m3_s ~= 0
-        metrics.H_Zn = metrics.G_n / Qn_m3_s; % units: Pa·s/m⁴ (SI)
+        metrics.H_Zn = metrics.Gn / Qn_m3_s; % units: Pa·s/m⁴ (SI)
     else
         metrics.H_Zn = complex(NaN, NaN);
     end
