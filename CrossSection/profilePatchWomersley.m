@@ -138,7 +138,7 @@ for circleIdx = 1:rows
 end
 
 
-saveWomersleyResults("Womersley/" + name, womersley_results);
+saveWomersleyResults("Womersley/" + capitalize(name), womersley_results, get_unit(womersley_results));
 
 womersleyResultsAnalysis(womersley_results);
 
@@ -153,8 +153,20 @@ close all;
 end
 
 
+function res = capitalize(str)
+    res = char(str);
+    res(1) = upper(res(1));
+    res = string(res);
+end
+
     
-function saveWomersleyResults(BasePath, womersley_results)
+function saveWomersleyResults(BasePath, womersley_results, units_struct)
+    arguments
+        BasePath string
+        womersley_results
+        units_struct
+    end
+
     ToolBox = getGlobalToolBox;
 
     if ~endsWith(BasePath, "/") && ~endsWith(BasePath, "_")
@@ -172,13 +184,24 @@ function saveWomersleyResults(BasePath, womersley_results)
     field_names = fieldnames(womersley_results(valid_idx));
 
     for i = 1:numel(field_names)
-        field = field_names{i};
+        field       = field_names{i};
+        u_struc_val = [];
+        unit_field  = [];
+        desc_field  = [];
+        if ~isempty(units_struct)
+            u_struc_val = units_struct.(field);
+            if ~isstruct(u_struc_val)
+                unit_field = u_struc_val(2);
+                desc_field = u_struc_val(1);
+            end
+        end
 
         raw_cells = {womersley_results.(field)};
         raw_cells = reshape(raw_cells, input_size);
 
         sample_val = womersley_results(valid_idx).(field);
 
+        % Reccursive structs
         if isstruct(sample_val)
             empty_mask = cellfun(@isempty, raw_cells);
             
@@ -193,7 +216,7 @@ function saveWomersleyResults(BasePath, womersley_results)
             subStructs = [raw_cells{:}];
             subStructs = reshape(subStructs, input_size);
             
-            saveWomersleyResults(BasePath + field, subStructs);
+            saveWomersleyResults(BasePath + field, subStructs, u_struc_val);
             continue;
         end
 
@@ -212,10 +235,11 @@ function saveWomersleyResults(BasePath, womersley_results)
             field_list = cell2mat(raw_cells);
             field_list = reshape(field_list, input_size);
             
-            ToolBox.Output.DimOut.add(BasePath + field, field_list, ["circleIdx", "branchIdx", "harmonic"]);
+            ToolBox.Output.DimOut.add(BasePath + field, field_list, ["circleIdx", "branchIdx", "harmonic"], unit_field);
+            ToolBox.Output.DimOut.add_attributes(BasePath + field, "Description", desc_field);
             
         catch ME
-            warning("Skipping field '%s': Data dimensions inconsistent or non-scalar. (%s)", field, ME.message);
+            MEwarning("Skipping field '%s': Data dimensions inconsistent or non-scalar. (%s)", field, ME.message);
         end
     end
 end
@@ -228,5 +252,40 @@ function idx = findFirstNonEmptyIdx(array)
 
     is_gap = @(s) all(cellfun(@isempty, struct2cell(s)));
     idx = find(~arrayfun(is_gap, array), 1);
+end
+
+function units_struct = get_unit(womersley_results)
+    units_struct = struct(...
+        "alpha_1",          ["Womersley number",                ""],       ...
+        "alpha_n",          ["Womersley number on harmonic",    ""],       ...
+        "harmonic",         ["Harmonic number",                 ""],       ...
+        "Kappa_n",          ["Condition fit",                   ""],       ...
+        "R0",               ["Baseline Vessel Radius",          "m"],       ...
+        "Rn",               ["Radius harmonic (complex ?)",     "m"],       ...
+        "Cn",               ["Drive Wall Gain",                 "m/s"],     ...
+        "Dn",               ["Moving Wall Gain",                "m/s"],     ...
+        "center",           ["Center offset fit factor",        ""],       ...
+        "width",            ["Scale fit factor",                ""],       ...
+        "omega_0",          ["Fundamental angular frequency",   "rad/s"],   ...
+        "omega_n",          ["N-th harmonic angulat frequency", "rad/s"],   ...
+        "metrics",          struct(...
+            "RnR0_complex",     ["PWK ≈ D_n / C_n",             ""],               ...
+            "Qn",               ["Flow",                        "mm3/s"],           ...
+            "Gn",               ["Gradient",                    "Pa/m"],            ...
+            "tau_n",            ["Shear",                       "Pa"],              ...
+            "H_Zn",             ["Impedance",                   "Pa.s/mm3/m"],      ...
+            "H_Rn",             ["Geom-Norm",                   "Pa"],              ...
+            "AnA0",             ["Area Puls.",                  "- (m2?)"],         ...
+            "nu_app",           ["Viscosity (kinetic)",         "m2/s ? (Pa.s)"],   ...
+            "mu_app",           ["Viscosity (dinamic)",         "m2/s ? (Pa.s)"]    ...
+            )                                                               ... 
+    );
+
+    idx = findFirstNonEmptyIdx(womersley_results);
+    [res, diff] = diffStructs(units_struct, womersley_results(idx));
+    if ~res
+        warning("Womersley: The unit structure differ form the results!\n%s", diff);
+        units_struct = [];
+    end
 end
   

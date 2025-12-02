@@ -65,34 +65,32 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     RHO_BLOOD = 1060; % Density of blood in kg/m^3
 
     PSF_KERNEL = init_fit.psf_kernel;
-    
-    metrics = struct(...
-        "RnR0_complex",     complex(NaN, NaN),      ... % PWK ≈ D_n / C_n
-        "Qn",              complex(NaN, NaN),      ... % Flow (mm3/s)
-        "Gn",              complex(NaN, NaN),      ... % Gradient (Pa/m)
-        "tau_n",            complex(NaN, NaN),      ... % Shear (Pa)
-        "H_Zn",             complex(NaN, NaN),      ... % Impedance (Pa s/mm3/m)
-        "H_Rn",             complex(NaN, NaN),      ... % Geom-Norm (Pa)
-        "AnA0",             complex(NaN, NaN),      ...
-        "nu_app",           NaN,                    ... % Viscosity (kinetic) (m2/s)
-        "mu_app",           NaN                     ... % Viscosity (dinamic)
-    );
 
     fitParams = struct(...
-        "alpha_1",          NaN,                    ...
-        "alpha_n",          NaN,                    ...
-        "harmonic",         NaN,                    ...
-        "K_condition",      NaN,                    ...
-        "R0",               init_fit.geoParams.R0,  ...
-        "Rn",               NaN,                    ...
-        "Cn",               complex(NaN, NaN),      ...
-        "Dn",               complex(NaN, NaN),      ...
-        "center",           NaN,                    ...
-        "width",            NaN,                    ...
-        "omega_0",          NaN,                    ...
-        "omega_n",          NaN,                    ...
-        "metrics",          metrics                 ...
-       );
+        "alpha_1",          NaN,                    ... % Womersley number                  (-)
+        "alpha_n",          NaN,                    ... % Womersley number on harmonic      (-)
+        "harmonic",         NaN,                    ... % Harmonic number                   (-)
+        "Kappa_n",          NaN,                    ... % Condition fit                     (-)
+        "R0",               init_fit.geoParams.R0,  ... % Baseline Vessel Radius            (m)
+        "Rn",               NaN,                    ... % Radius harmonic (complex ?)       (m)
+        "Cn",               complex(NaN, NaN),      ... % Drive Wall Gain                   (m/s)
+        "Dn",               complex(NaN, NaN),      ... % Moving Wall Gain                  (m/s)
+        "center",           NaN,                    ... % Center offset fit factor          (-)
+        "width",            NaN,                    ... % Scale fit factor                  (-)
+        "omega_0",          NaN,                    ... % Fundamental angular frequency     (rad/s)
+        "omega_n",          NaN,                    ... % N-th harmonic angulat frequency   (rad/s)
+        "metrics",          struct(...
+            "RnR0_complex",     complex(NaN, NaN),      ... % PWK ≈ D_n / C_n                   (-)
+            "Qn",               complex(NaN, NaN),      ... % Flow                              (mm3/s)
+            "Gn",               complex(NaN, NaN),      ... % Gradient                          (Pa/m)
+            "tau_n",            complex(NaN, NaN),      ... % Shear                             (Pa)   
+            "H_Zn",             complex(NaN, NaN),      ... % Impedance                         (Pa s/mm3/m)
+            "H_Rn",             complex(NaN, NaN),      ... % Geom-Norm                         (Pa)
+            "AnA0",             complex(NaN, NaN),      ... % Area Puls.                        (-) (m2?)
+            "nu_app",           NaN,                    ... % Viscosity (kinetic)               (m2/s) ? (Pa.s)
+            "mu_app",           NaN                     ... % Viscosity (dinamic)               (m2/s) ? (Pa.s)
+            )                                       ... 
+    );
     
     % estimated_width = struct('systole', [], 'diastole', []);
     
@@ -157,7 +155,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         [p_fit, ~, ~, ~, ~, ~, jacobian] = lsqnonlin(costFunctionHandle, p_init, lb, ub, options);
 
         % Fit Condition number
-        fitParams.K_cond = sqrt(condest(jacobian'*jacobian));
+        fitParams.Kappa_n = sqrt(condest(jacobian'*jacobian));
 
         alpha_1             = p_fit(1);
         Cn_fit              = p_fit(2) + 1i * p_fit(3);

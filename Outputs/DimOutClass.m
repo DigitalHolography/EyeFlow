@@ -57,18 +57,23 @@ classdef DimOutClass < handle
                 dim DimEnumClass = DimEnumClass.empty
             end
 
+            san_name = sanitizeFieldName(name);
+
             if isempty(dim)
                 dirs = enumeration("DimEnumClass");
                 for i = 1:numel(dirs)
-                    if isfield(obj.Data(dirs{i}), name)
-                        dim = dirs{i};
+                    if isfield(obj.Data(dirs(i)), san_name)
+                        dim = dirs(i);
                         break;
                     end
                 end
-                warning("field \'%s\' not found", name);
+
+                if dim == DimEnumClass.empty
+                    warning("field \'%s\' not found", name);
+                end
             end
 
-            obj.Data(dim).(name).attributes.(key) = val;
+            obj.Data(dim).(san_name).attributes.(key) = val;
         end
 
         % FOR NOW DECREPATED
