@@ -4,9 +4,9 @@ ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 saveFigures = params.saveFigures;
 
-if ~saveFigures
-    return;
-end
+% if ~saveFigures
+%     return;
+% end
 
 % Check sizes and extract numFrames from first non empty profile data in input
 [rows, cols] = size(locsLabel);
@@ -144,8 +144,9 @@ womersleyResultsAnalysis(womersley_results);
 
 
 % Save figure
-exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_velocities_womersley_profiles_overlay_%s.png", ToolBox.folder_name, name)));
-
+if saveFigures
+    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_velocities_womersley_profiles_overlay_%s.png", ToolBox.folder_name, name)));
+end
 close(fi);
 
 close all;
