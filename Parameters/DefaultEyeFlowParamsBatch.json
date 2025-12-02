@@ -20,8 +20,11 @@
     },
     "NonRigidRegisteringFlag": false,
     "NonRigidRegisteringApply": false,
-    "RemoveOutliersFlag": false,
-    "Outlier Analysis Window": 10,
+    "RemoveOutliers": {
+      "Flag": true,
+      "KeepBiggestContiguous": true,
+      "InsertNans": true
+    },
     "Interpolation Factor": 1
   },
   "FlatFieldCorrection": {
