@@ -108,7 +108,7 @@ if params.json.exportCrossSectionResults.BloodFlowHistograms && saveFigures
     histogramPatchVelocities(histo_v_cell, name, locsLabel, mean(M0_ff, 3))
 end
 
-if params.json.exportCrossSectionResults.BloodFlowProfilesWomersleyOverlay && saveFigures
+if params.json.exportCrossSectionResults.BloodFlowProfilesWomersleyOverlay
     profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
 end
 
