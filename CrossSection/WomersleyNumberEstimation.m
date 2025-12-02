@@ -195,80 +195,81 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     % estimated_width.diastole = parabole_fit_diastole;
     
     % ============================ [ Figures ] ========================== %
+    if params.saveFigures
+        hFig = figure("Visible", "off");
+        hold on;
     
-    hFig = figure("Visible", "off");
-    hold on;
-
-    title(sprintf('Womersley Fit for %s (idx %d) (Harmonic: %d)', name, idx, n_harmonic), 'Interpreter', 'none');
+        title(sprintf('Womersley Fit for %s (idx %d) (Harmonic: %d)', name, idx, n_harmonic), 'Interpreter', 'none');
+        
+        p1 = plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1, 'DisplayName', 'Measured Data');  % Measured Data (Real)
+        plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1);    % Measured Data (Imag)
     
-    p1 = plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1, 'DisplayName', 'Measured Data');  % Measured Data (Real)
-    plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1);    % Measured Data (Imag)
-
-    p2 = plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1, 'DisplayName', 'Model Fit'); % Model Fit (Real)
-    plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1); % Model Fit (Imag)
+        p2 = plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1, 'DisplayName', 'Model Fit'); % Model Fit (Real)
+        plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1); % Model Fit (Imag)
+        
+        hold off;
     
-    hold off;
-
-    xlim([-1 1]);
-
-    xlabel('Normalized Cross-section', 'FontSize', 14);
-    ylabel('Complex Velocity (a.u.)', 'FontSize', 14);
-
-    legend('show', 'Location', 'best', 'FontSize', 8); 
-    box on;
-    grid on;
-
-    axis tight;
-    set(gca, 'LineWidth', 1.5);
-
-    lgd = legend([p1, p2], 'Location', 'best');
-    title(lgd, 'Blue: Real, Red: Imaginary');
-
+        xlim([-1 1]);
     
-    pos = get(gca, 'Position'); 
-    info_box_height = 0.15; 
-    % Move the axes up and shrink its height to make room
-    % [left, bottom, width, height]
-    set(gca, 'Position', [pos(1), pos(2) + info_box_height, pos(3), pos(4) - info_box_height]);
-
-
-    % fit_string = sprintf('α Womersley: %.2f\nCenter: %.2f\nWidth: %.2f', ...
-    %                      fitParams.alpha, fitParams.center, fitParams.width);
-    % annotation('textbox', [0.15 0.78 0.25 0.1], 'String', fit_string, ...
-    %             'FitBoxToText', 'off', 'BackgroundColor', 'w', ...
-    %             'EdgeColor', 'k', 'FontSize', 12, 'FontSize', 10);
-
-
-    line1_str = sprintf('α     : %-10.2f     R_0       : %.4f', fitParams.alpha_n, init_fit.geoParams.R0);
-    line2_str = sprintf('Center: %-10.2f     |R_n/R_0| : %.2f %%', fitParams.center, abs(fitParams.metrics.RnR0_complex * 100));
-    line3_str = sprintf('Width : %-10.2f     Phase(R_n): %.1f°', fitParams.width, rad2deg(angle(fitParams.metrics.RnR0_complex)));
+        xlabel('Normalized Cross-section', 'FontSize', 14);
+        ylabel('Complex Velocity (a.u.)', 'FontSize', 14);
     
-    fit_string = {line1_str, line2_str, line3_str};
+        legend('show', 'Location', 'best', 'FontSize', 8); 
+        box on;
+        grid on;
     
-    annotation('textbox', [0, 0, 1, info_box_height], ...
-               'String', fit_string, ...
-               'EdgeColor', 'none', ...
-               'HorizontalAlignment', 'center', ...
-               'VerticalAlignment', 'middle', ...
-               'FontSize', 10);
-
+        axis tight;
+        set(gca, 'LineWidth', 1.5);
     
-    save_path = fullfile(ToolBox.path_png, 'Womersley');
-
-    if ~isfolder(save_path)
-        mkdir(save_path);
-    end
-
-    save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d_h%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx, n_harmonic));
+        lgd = legend([p1, p2], 'Location', 'best');
+        title(lgd, 'Blue: Real, Red: Imaginary');
     
-    try
-        exportgraphics(hFig, save_filename, 'Resolution', 96);
-    catch export_error
-        warning('Could not save figure');
-    end
+        
+        pos = get(gca, 'Position'); 
+        info_box_height = 0.15; 
+        % Move the axes up and shrink its height to make room
+        % [left, bottom, width, height]
+        set(gca, 'Position', [pos(1), pos(2) + info_box_height, pos(3), pos(4) - info_box_height]);
     
-    if ~strcmpi(get(hFig, 'Visible'), 'on')
-        close(hFig);
+    
+        % fit_string = sprintf('α Womersley: %.2f\nCenter: %.2f\nWidth: %.2f', ...
+        %                      fitParams.alpha, fitParams.center, fitParams.width);
+        % annotation('textbox', [0.15 0.78 0.25 0.1], 'String', fit_string, ...
+        %             'FitBoxToText', 'off', 'BackgroundColor', 'w', ...
+        %             'EdgeColor', 'k', 'FontSize', 12, 'FontSize', 10);
+    
+    
+        line1_str = sprintf('α     : %-10.2f     R_0       : %.4f', fitParams.alpha_n, init_fit.geoParams.R0);
+        line2_str = sprintf('Center: %-10.2f     |R_n/R_0| : %.2f %%', fitParams.center, abs(fitParams.metrics.RnR0_complex * 100));
+        line3_str = sprintf('Width : %-10.2f     Phase(R_n): %.1f°', fitParams.width, rad2deg(angle(fitParams.metrics.RnR0_complex)));
+        
+        fit_string = {line1_str, line2_str, line3_str};
+        
+        annotation('textbox', [0, 0, 1, info_box_height], ...
+                   'String', fit_string, ...
+                   'EdgeColor', 'none', ...
+                   'HorizontalAlignment', 'center', ...
+                   'VerticalAlignment', 'middle', ...
+                   'FontSize', 10);
+    
+        
+        save_path = fullfile(ToolBox.path_png, 'Womersley');
+    
+        if ~isfolder(save_path)
+            mkdir(save_path);
+        end
+    
+        save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d_h%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx, n_harmonic));
+        
+        try
+            exportgraphics(hFig, save_filename, 'Resolution', 96);
+        catch export_error
+            warning('Could not save figure');
+        end
+        
+        if ~strcmpi(get(hFig, 'Visible'), 'on')
+            close(hFig);
+        end
     end
 end
 

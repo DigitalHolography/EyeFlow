@@ -9,13 +9,14 @@ classdef DimEnumClass
    end
 
    enumeration
-      D0_array    (0)
-      D1_array    (1)
-      D2_array    (2)
-      D3_array    (3)
-      D4_array    (4)
-      Strings     (1)
-      Other       (NaN)
+      Array0D_FrequencyAnalysis    (0)
+      Array1D_FrequencyAnalysis    (1)
+      Array2D_FrequencyAnalysis    (2)
+      Array3D_FrequencyAnalysis    (3)
+      Array4D_FrequencyAnalysis    (4)
+      Array5D_FrequencyAnalysis    (5)
+      Strings                      (1)
+      Other                        (NaN)
    end
 
    methods
