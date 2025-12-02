@@ -52,7 +52,7 @@ fs = 1 / dt;
 % Create section mask
 x_c = xy_barycenter(1) / numX;
 y_c = xy_barycenter(2) / numY;
-maskSection = diskMask(numX, numY, r1, r2, 'center', [x_c, y_c]);
+maskSection = diskMask(numX, numY, 2*r1, 2*r2, 'center', [x_c, y_c]);
 
 % Create vessel masks
 maskArterySection = maskArtery & maskSection;
@@ -212,6 +212,8 @@ end
 v_RMS_video = scalingFactor * df;
 clear df
 
+VelocityStatisticalOutputs(v_RMS_video,maskArtery, maskVein, maskArterySection, maskVeinSection);
+
 % Process artery velocity signals
 v_artery = v_RMS_video .* maskArterySection;
 v_artery(~maskArterySection) = NaN;
@@ -236,10 +238,10 @@ if saveFigures
         t, v_artery_signal, '-', cArtery, ...
         t, v_vein_signal, '-', cVein, ...
         'Title', 'average velocity in arteries and veins', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
-    ToolBox.Output.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
-    ToolBox.Output.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's');
-
 end
+
+ToolBox.Output.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
+ToolBox.Output.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's');
 
 fprintf("    2. Difference calculation and velocity computation took %ds\n", round(toc));
 
