@@ -33,10 +33,10 @@ addpath('Outputs');
 
 % Configure Build Options
 buildOpts = compiler.build.StandaloneApplicationOptions('launchBatch.m');
-buildOpts.ExecutableName = 'EyeFlowBatch';
+buildOpts.ExecutableName = 'eyeflow';
 buildOpts.OutputDir = 'build';
 buildOpts.Verbose = 'on';
-buildOpts.TreatInputsAsNumeric = 'on';
+buildOpts.TreatInputsAsNumeric = 'off';
 
 % --- SET ICON HERE ---
 % Ensure you have created 'eyeflow_logo.ico' from your png

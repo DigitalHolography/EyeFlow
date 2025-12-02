@@ -1,4 +1,5 @@
-function launchBatch()
+function launchBatch(varargin)
+    % Initialize Application
     appRoot = fileparts(mfilename('fullpath'));
     versionFile = fullfile(appRoot, "version.txt");
 
@@ -20,20 +21,109 @@ function launchBatch()
         fprintf("Parameter file found: %s\n", defaultJson);
     end
 
-    [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
+    % --- ARGUMENT PARSING & PATH SELECTION ---
+    paths = string.empty;
+    mode = 'single'; % default to single holo mode
+    inputPath = "";
 
-    if isequal(txt_name, 0)
-        fprintf('No file selected. Exiting.\n');
+    % Check arguments
+    if nargin > 0
+        arg1 = string(varargin{1});
+
+        if arg1 == "-b"
+            mode = 'batch';
+
+            if nargin > 1
+                inputPath = string(varargin{2});
+            end
+
+        else
+            mode = 'single';
+            inputPath = arg1;
+        end
+
+    end
+
+    try
+
+        if strcmp(mode, 'batch')
+            % --- BATCH MODE ---
+            if inputPath == ""
+                [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
+
+                if isequal(txt_name, 0)
+                    fprintf('No file selected. Exiting.\n');
+                    return;
+                end
+
+                fullInputPath = fullfile(txt_path, txt_name);
+            else
+                fullInputPath = inputPath;
+
+                if ~isfile(fullInputPath)
+                    error("Batch file not found: %s", fullInputPath);
+                end
+
+            end
+
+            fprintf("Running in Batch Mode: %s\n", fullInputPath);
+            paths = strtrim(readlines(fullInputPath));
+            paths = paths(paths ~= ""); % remove empty lines
+
+        else
+            % --- SINGLE HOLO MODE ---
+            if inputPath == ""
+                [holo_name, holo_path] = uigetfile('*.holo', 'Select the .holo file');
+
+                if isequal(holo_name, 0)
+                    fprintf('No file selected. Exiting.\n');
+                    return;
+                end
+
+                fullInputPath = fullfile(holo_path, holo_name);
+            else
+                fullInputPath = inputPath;
+
+                if ~isfile(fullInputPath)
+                    error("Holo file not found: %s", fullInputPath);
+                end
+
+            end
+
+            fprintf("Running in Single Mode: %s\n", fullInputPath);
+
+            % Find the latest HD folder for this holo file
+            latestHD = findLatestHDFolder(fullInputPath);
+
+            if ismissing(latestHD)
+                fprintf("No HoloDoppler (HD) folder found for: %s\n", fullInputPath);
+                return;
+            end
+
+            fprintf("Selected latest HD folder: %s\n", latestHD);
+            paths = [latestHD];
+        end
+
+    catch ME
+        fprintf("Error during path selection: %s\n", ME.message);
         return;
     end
 
-    fullInputPath = fullfile(txt_path, txt_name);
-    paths = strtrim(readlines(fullInputPath));
-    paths = paths(paths ~= ""); % remove empty lines
+    if isempty(paths)
+        fprintf("No paths to process. Exiting.\n");
+        return;
+    end
+
+    % --- PRE-PROCESSING (JSON & MASKS) ---
+    fprintf("Preparing %d folder(s)...\n", length(paths));
 
     for ind = 1:length(paths)
-        targetPath = fullfile(paths(ind), 'eyeflow');
-        jsonDir = fullfile(targetPath, 'json');
+        targetPath = paths(ind);
+
+        % check for empty lines if readlines failed to catch them
+        if targetPath == "" || ismissing(targetPath); continue; end
+
+        jsonDir = fullfile(targetPath, 'eyeflow', 'json');
 
         if ~isfolder(jsonDir)
             mkdir(jsonDir);
@@ -46,7 +136,19 @@ function launchBatch()
         copyfile(defaultJson, fullfile(jsonDir, 'input_EF_params.json'));
 
         % Handle Masks
-        maskDir = fullfile(targetPath, 'mask');
+        maskDir = fullfile(targetPath, 'eyeflow', 'mask');
+
+        efPath = fullfile(targetPath, 'eyeflow');
+        jsonDir = fullfile(efPath, 'json');
+
+        if ~isfolder(jsonDir)
+            mkdir(jsonDir);
+        end
+
+        delete(fullfile(jsonDir, '*.json'));
+        copyfile(defaultJson, fullfile(jsonDir, 'input_EF_params.json'));
+
+        maskDir = fullfile(efPath, 'mask');
 
         if isfile(fullfile(maskDir, 'forceMaskArtery.png'))
             movefile(fullfile(maskDir, 'forceMaskArtery.png'), fullfile(maskDir, 'oldForceMaskArtery.png'));
@@ -58,16 +160,22 @@ function launchBatch()
 
     end
 
+    % --- AI LOADING ---
+    fprintf("Loading AI Models...\n");
     AIModels = AINetworksClass();
 
+    % --- EXECUTION LOOP ---
     for ind = 1:length(paths)
-
         p = paths(ind);
+
+        if p == "" || ismissing(p); continue; end
+
         % Ensure path ends with separator
         if isfolder(p) && ~endsWith(p, filesep)
             p = strcat(p, filesep);
         end
 
+        fprintf("Processing: %s\n", p);
         runAnalysisBlock(p, AIModels);
     end
 
@@ -76,7 +184,6 @@ function launchBatch()
 end
 
 function runAnalysisBlock(path, AIModels)
-
     totalTime = tic;
     ME = [];
 
@@ -100,7 +207,13 @@ function runAnalysisBlock(path, AIModels)
         ExecClass.analyzeData([]);
     catch e
         ME = e;
-        MEdisp(e, path);
+        % Check if MEdisp exists, otherwise use disp
+        if exist('MEdisp', 'file')
+            MEdisp(e, path);
+        else
+            disp(e.message);
+        end
+
     end
 
     try
@@ -108,7 +221,52 @@ function runAnalysisBlock(path, AIModels)
         ExecClass.Reporter.saveOutputs();
         ExecClass.Reporter.displayFinalSummary(totalTime);
     catch e
-        MEdisp(e, path);
+
+        if exist('MEdisp', 'file')
+            MEdisp(e, path);
+        else
+            disp(e.message);
+        end
+
+    end
+
+end
+
+function latestHDPath = findLatestHDFolder(holoPath)
+    % Finds the HD folder with the highest render number in the same directory as the holo file
+    % Naming convention: [holo_filename]_HD_[RENDER_NUMBER]
+
+    latestHDPath = string(missing);
+
+    [parentDir, fname, ~] = fileparts(holoPath);
+
+    % Get list of folders in parent directory
+    contents = dir(parentDir);
+    dirFlags = [contents.isdir];
+    subFolders = contents(dirFlags);
+
+    maxRenderNum = -1;
+
+    % Escaped pattern for regex (escape special regex characters in filename)
+    escapedName = regexptranslate('escape', fname);
+    pattern = "^" + escapedName + "_HD_(\d+)$";
+
+    for k = 1:length(subFolders)
+        thisName = string(subFolders(k).name);
+
+        tokens = regexp(thisName, pattern, 'tokens');
+
+        if ~isempty(tokens)
+            % Extract the number
+            renderNum = str2double(tokens{1}{1});
+
+            if renderNum > maxRenderNum
+                maxRenderNum = renderNum;
+                latestHDPath = fullfile(parentDir, thisName);
+            end
+
+        end
+
     end
 
 end
