@@ -28,8 +28,16 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     
     % TODO: Parfor does not seem to work with toolbox
     for i = 1:HARMONIC_NUMBER
-        results(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, ToolBox);
+        fitParams(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, ToolBox);
     end
+
+    h_metrics = calculate_harmonic_metrics(fitParams);
+
+    % metrics for each segments / harmonic
+    results.segments_metrics = fitParams;
+    % metrics for each segments (using multiple harmonics)
+    results.harmonic_metrics = h_metrics;
+
 end
 
 
@@ -80,15 +88,24 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         "omega_0",          NaN,                    ... % Fundamental angular frequency     (rad/s)
         "omega_n",          NaN,                    ... % N-th harmonic angulat frequency   (rad/s)
         "metrics",          struct(...
-            "RnR0_complex",     complex(NaN, NaN),      ... % PWK ≈ D_n / C_n                   (-)
-            "Qn",               complex(NaN, NaN),      ... % Flow                              (mm3/s)
-            "Gn",               complex(NaN, NaN),      ... % Gradient                          (Pa/m)
-            "tau_n",            complex(NaN, NaN),      ... % Shear                             (Pa)   
-            "H_Zn",             complex(NaN, NaN),      ... % Impedance                         (Pa s/mm3/m)
-            "H_Rn",             complex(NaN, NaN),      ... % Geom-Norm                         (Pa)
-            "AnA0",             complex(NaN, NaN),      ... % Area Puls.                        (-) (m2?)
-            "nu_app",           NaN,                    ... % Viscosity (kinetic)               (m2/s) ? (Pa.s)
-            "mu_app",           NaN                     ... % Viscosity (dinamic)               (m2/s) ? (Pa.s)
+            "RnR0_complex",         complex(NaN, NaN),      ... % PWK ≈ D_n / C_n                   (-)
+            "Qn",                   complex(NaN, NaN),      ... % Flow                              (mm3/s)
+            "Gn",                   complex(NaN, NaN),      ... % Gradient                          (Pa/m)
+            "Kn",                   complex(NaN, NaN),      ... % Complex Flow Gain                 (-)
+            "tau_n",                complex(NaN, NaN),      ... % Shear                             (Pa)
+            "AnA0",                 complex(NaN, NaN),      ... % Area Puls.                        (-) (m2?)
+            "nu_app",               NaN,                    ... % Viscosity (kinetic)               (m2/s) ? (Pa.s)
+            "mu_app",               NaN,                    ... % Viscosity (dinamic)               (m2/s) ? (Pa.s)
+            "H_GQ_n",               complex(NaN, NaN),      ...
+            "H_GQ_n_Geonorm",       NaN,                    ...
+            "H_tauQ_n",             complex(NaN, NaN),      ...
+            "H_tauQ_n_Geonorm",     NaN,                    ...
+            "H_RQ_n",               complex(NaN, NaN),      ...
+            "H_RQ_n_Geonorm_abs",   NaN,                    ...
+            "R_seg_n",              NaN,                    ...
+            "C_seg_n",              NaN,                    ...
+            "P_seg_diss_n",         NaN,                    ...
+            "P_seg_store_n",        NaN                     ...
             )                                       ... 
     );
     
@@ -557,9 +574,15 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     K_an = calculate_K_factor(lambda_n);
     Qn_m3_s = pi * R0 ^ 2 * Cn * K_an;
     metrics.Qn = Qn_m3_s * 1e9; % units: mm³/s
+    metrics.Kn = K_an;
 
     % Gradient (Gn)
     metrics.Gn = 1i * omega_n * rho_blood * Cn; % units: Pa/m
+
+    % Per length impedance ratio (Pa.s/m4)
+    metrics.H_GQ_n = metrics.Gn / metrics.Qn;
+    % Geometry normalized impedance magnitude (Pa.s/m2)
+    metrics.H_GQ_n_Geonorm_abs = norm(metrics.H_GQ_n) * (R0 ^ 2);
 
     % Viscosity (νapp)
     numerator = (R0 ^ 2) * fitParams.omega_0;
@@ -580,23 +603,49 @@ function metrics = calculate_symbols(fitParams, rho_blood)
         metrics.tau_n = complex(NaN, NaN);
     end
 
-    % Impedance (Ĥz,n)
-    if Qn_m3_s ~= 0
-        metrics.H_Zn = metrics.Gn / Qn_m3_s; % units: Pa·s/m⁴ (SI)
-    else
-        metrics.H_Zn = complex(NaN, NaN);
-    end
+    % Shear stress per unit pulsatile flow (Pa.s/m3)
+    metrics.H_tauQ_n = metrics.tau_n / metrics.Qn;
+    metrics.H_tauQ_n_Geonorm_abs = norm(metrics.H_tauQ_n) * (R0 ^ 2);
 
-    % Geom.-norm. (HR,n)
-    % NOTE: The formula H_R,n = Ĥ_z,n * R₀² from the paper results in units
-    % of [Pa·s·m], whereas the table specifies the units as [Pa].
-    % This is a known inconsistency in the source document.
-    % The calculation is implemented here as stated in the formula.
-    metrics.H_Rn = metrics.H_Zn * (R0 ^ 2); % units: Pa·s·m
+    % Dilatation per unit pulsatile flow (s/m3)
+    metrics.H_RQ_n = (Rn / R0) / metrics.Qn;
+    metrics.H_RQ_n_Geonorm_abs = norm(metrics.H_GQ_n) * (R0 ^ 2);
 
     % Area puls. (An/A0)
     metrics.AnA0 = 2 * metrics.RnR0_complex;
 
+    % Resistance-like contribution per unit length (Pa.s/m4)
+    metrics.R_seg_n = real(metrics.H_GQ_n);
+
+    % Compliance-like (inverse-compliance) per unit length (Pa.s/m4)
+    metrics.C_seg_n = 1 / imag(metrics.H_GQ_n);
+
+    % Dissipative AC power per unit length (W/m)
+    metrics.P_seg_diss_n  = 1/2 * (norm(metrics.Qn) ^ 2) * real(metrics.H_GQ_n); 
+
+    % Reactive (stored) AC power per unit length (W/m)
+    metrics.P_seg_store_n = 1/2 * (norm(metrics.Qn) ^ 2) * imag(metrics.H_GQ_n);
+
+end
+
+function h_metrics = calculate_harmonic_metrics(fitParams)
+    arguments
+        fitParams % list of fitParams based uppon the harmonics
+    end
+
+    fitParams = fitParams(:);
+    leng_harmo = size(fitParams, 1);
+
+    metrics = [fitParams.metrics];
+
+    h_metrics = struct();
+
+    % Shear harmonic ratios |τ2|/|τ1|, |τ3|/|τ1| (-)
+    h_metrics.RhoTau21 = ternary_op(leng_harmo >= 2, @() norm(metrics(2).tau_n) / norm(metrics(1).tau_n), @() NaN);
+    h_metrics.RhoTau31 = ternary_op(leng_harmo >= 3, @() norm(metrics(3).tau_n) / norm(metrics(1).tau_n), @() NaN);
+
+    % Phase skewness of shear, ϕτ,2 − 2ϕτ,1 (°)
+    h_metrics.DeltaPhiTau2 = ternary_op(leng_harmo >= 2, @() angle(metrics(2).tau_n) - 2 * angle(metrics(1).tau_n), @() NaN);
 end
 
 

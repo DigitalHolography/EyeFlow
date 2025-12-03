@@ -125,9 +125,10 @@ for circleIdx = 1:rows
         % womersley_results(circleIdx, branchIdx, :) = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
 
         % Somehow safer than previous
-        temp_results = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
-        reshaped_results = reshape(temp_results, 1, 1, []);
-        womersley_results(circleIdx, branchIdx, 1:numel(reshaped_results)) = reshaped_results;
+        % temp_results = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
+        % reshaped_results = reshape(temp_results, 1, 1, []);
+        % womersley_results(circleIdx, branchIdx, 1:numel(reshaped_results)) = reshaped_results;
+        womersley_results(circleIdx, branchIdx) = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
 
         % addStructToExtra(ToolBox.Output.Extra, "Womersley", womersley_results(idx)(1));
 
@@ -140,7 +141,7 @@ end
 
 saveWomersleyResults("Womersley/" + capitalize(name), womersley_results, get_unit(womersley_results));
 
-womersleyResultsAnalysis(womersley_results);
+% womersleyResultsAnalysis(womersley_results);
 
 
 % Save figure
@@ -159,11 +160,23 @@ function res = capitalize(str)
     res = string(res);
 end
 
-    
+
 function saveWomersleyResults(BasePath, womersley_results, units_struct)
     arguments
         BasePath string
         womersley_results
+        units_struct
+    end
+
+    
+    saveWomersleyResults_handle(BasePath, expandStructField(womersley_results, "segments_metrics"), units_struct.segments_metrics);
+    saveWomersleyResults_handle(BasePath, expandStructField(womersley_results, "harmonic_metrics"), units_struct.harmonic_metrics);
+end
+
+function saveWomersleyResults_handle(BasePath, womersley_cells, units_struct)
+    arguments
+        BasePath string
+        womersley_cells cell % Input is now explicitly a Cell Array
         units_struct
     end
 
@@ -173,77 +186,85 @@ function saveWomersleyResults(BasePath, womersley_results, units_struct)
         BasePath = BasePath + "/";
     end
 
-    input_size = size(womersley_results);
-
-    valid_idx = findFirstNonEmptyIdx(womersley_results);
+    % Find a valid index to get field names and types
+    valid_idx = find(~cellfun(@isempty, womersley_cells), 1);
     
     if isempty(valid_idx)
         return; % The whole array is empty
     end
     
-    field_names = fieldnames(womersley_results(valid_idx));
+    sample_struct = womersley_cells{valid_idx};
+    if ~isstruct(sample_struct)
+        warning('Expected cell array of structs, found %s. Skipping %s.', class(sample_struct), BasePath);
+        return;
+    end
 
+    field_names = fieldnames(sample_struct);
+    
     for i = 1:numel(field_names)
         field       = field_names{i};
         u_struc_val = [];
         unit_field  = [];
         desc_field  = [];
-        if ~isempty(units_struct)
+        
+        if ~isempty(units_struct) && isfield(units_struct, field)
             u_struc_val = units_struct.(field);
-            if ~isstruct(u_struc_val)
+            if ~isstruct(u_struc_val) && numel(u_struc_val) >= 2
                 unit_field = u_struc_val(2);
                 desc_field = u_struc_val(1);
             end
         end
 
-        raw_cells = {womersley_results.(field)};
-        raw_cells = reshape(raw_cells, input_size);
+        % We map (Cell -> Struct -> Field) to (Cell -> FieldValue)
+        % Result is an A x B x N cell array containing the values of this field.
+        field_cells = extractFieldFromCells(womersley_cells, field);
+        
+        sample_val = field_cells{valid_idx};
 
-        sample_val = womersley_results(valid_idx).(field);
-
-        % Reccursive structs
+        % Structs
         if isstruct(sample_val)
-            empty_mask = cellfun(@isempty, raw_cells);
-            
-            if any(empty_mask(:))
-                fnames = fieldnames(sample_val);
-                struct_args = [fnames, cell(numel(fnames), 1)]'; 
-                dummy_struct = struct(struct_args{:});
-                
-                [raw_cells{empty_mask}] = deal(dummy_struct);
-            end
-            
-            subStructs = [raw_cells{:}];
-            subStructs = reshape(subStructs, input_size);
-            
-            saveWomersleyResults(BasePath + field, subStructs, u_struc_val);
+            saveWomersleyResults_handle(BasePath + field, field_cells, u_struc_val);
             continue;
         end
 
-        empty_mask = cellfun(@isempty, raw_cells);
-
+        
+        empty_mask = cellfun(@isempty, field_cells);
         if any(empty_mask(:))
             if isnumeric(sample_val) && ~isreal(sample_val)
                 filler = complex(NaN, NaN);
             else
                 filler = NaN;
             end
-            raw_cells(empty_mask) = {filler};
+            field_cells(empty_mask) = {filler};
         end
 
         try
-            field_list = cell2mat(raw_cells);
-            field_list = reshape(field_list, input_size);
+            field_list = cell2mat(field_cells);
             
-            ToolBox.Output.DimOut.add(BasePath + field, field_list, ["circleIdx", "branchIdx", "harmonic"], unit_field);
+            fields_desc = ["circleIdx", "branchIdx"];
+            
+            if size(field_list, 3) > 1
+                fields_desc = [fields_desc, "harmonic"];
+            end
+
+            ToolBox.Output.DimOut.add(BasePath + field, field_list, fields_desc, unit_field);
             ToolBox.Output.DimOut.add_attributes(BasePath + field, "Description", desc_field);
             
         catch ME
-            MEwarning("Skipping field '%s': Data dimensions inconsistent or non-scalar. (%s)", field, ME.message);
+            MEwarning("Skipping field '%s': Data dimensions inconsistent. (%s)", field, ME.message);
         end
     end
 end
 
+function out_cells = extractFieldFromCells(in_cells, field_name)
+    % Extracts in_cells{i}.(field_name) into out_cells{i}
+    % Keeps structure size identical.
+    
+    out_cells = cell(size(in_cells));
+    mask = ~cellfun(@isempty, in_cells);
+    
+    out_cells(mask) = cellfun(@(s) s.(field_name), in_cells(mask), 'UniformOutput', false);
+end
 
 function idx = findFirstNonEmptyIdx(array)
     arguments
@@ -255,37 +276,116 @@ function idx = findFirstNonEmptyIdx(array)
 end
 
 function units_struct = get_unit(womersley_results)
-    units_struct = struct(...
-        "alpha_1",          ["Womersley number",                ""],       ...
-        "alpha_n",          ["Womersley number on harmonic",    ""],       ...
-        "harmonic",         ["Harmonic number",                 ""],       ...
-        "Kappa_n",          ["Condition fit",                   ""],       ...
+    segments_metrics = struct(...
+        "alpha_1",          ["Womersley number",                ""],        ...
+        "alpha_n",          ["Womersley number on harmonic",    ""],        ...
+        "harmonic",         ["Harmonic number",                 ""],        ...
+        "Kappa_n",          ["Condition fit",                   ""],        ...
         "R0",               ["Baseline Vessel Radius",          "m"],       ...
         "Rn",               ["Radius harmonic (complex ?)",     "m"],       ...
         "Cn",               ["Drive Wall Gain",                 "m/s"],     ...
         "Dn",               ["Moving Wall Gain",                "m/s"],     ...
-        "center",           ["Center offset fit factor",        ""],       ...
-        "width",            ["Scale fit factor",                ""],       ...
+        "center",           ["Center offset fit factor",        ""],        ...
+        "width",            ["Scale fit factor",                ""],        ...
         "omega_0",          ["Fundamental angular frequency",   "rad/s"],   ...
         "omega_n",          ["N-th harmonic angulat frequency", "rad/s"],   ...
         "metrics",          struct(...
-            "RnR0_complex",     ["PWK ≈ D_n / C_n",             ""],               ...
-            "Qn",               ["Flow",                        "mm3/s"],           ...
-            "Gn",               ["Gradient",                    "Pa/m"],            ...
-            "tau_n",            ["Shear",                       "Pa"],              ...
-            "H_Zn",             ["Impedance",                   "Pa.s/mm3/m"],      ...
-            "H_Rn",             ["Geom-Norm",                   "Pa"],              ...
-            "AnA0",             ["Area Puls.",                  "- (m2?)"],         ...
-            "nu_app",           ["Viscosity (kinetic)",         "m2/s ? (Pa.s)"],   ...
-            "mu_app",           ["Viscosity (dinamic)",         "m2/s ? (Pa.s)"]    ...
+            "RnR0_complex",         ["PWK ≈ D_n / C_n",                                         ""],                ...
+            "Qn",                   ["Flow",                                                    "mm3/s"],           ...
+            "Gn",                   ["Gradient",                                                "Pa/m"],            ...
+            "Kn",                   ["Complex Flow Gain",                                       ""],                ...
+            "tau_n",                ["Shear",                                                   "Pa"],              ...
+            "AnA0",                 ["Area Puls.",                                              "- (m2?)"],         ...
+            "nu_app",               ["Viscosity (kinetic)",                                     "m2/s ? (Pa.s)"],   ...
+            "mu_app",               ["Viscosity (dinamic)",                                     "m2/s ? (Pa.s)"],   ...
+            "H_GQ_n",               ["Per-length impedance ratio",                              "Pa.s/m4"],         ...
+            "H_GQ_n_Geonorm_abs",   ["Geo-normed impedance magnitude",                          "Pa.s/m2"],         ...
+            "H_tauQ_n",             ["Shear stress per unit pulsatile flow",                    "Pa.s/m3"],         ...
+            "H_tauQ_n_Geonorm_abs", ["Geo-normed Shear stress",                                 "Pa.s/m"],          ...
+            "H_RQ_n",               ["Dilatation per unit pulsatile flow",                      "s/m3"],            ...
+            "H_RQ_n_Geonorm_abs",   ["Geo-normed Dilatation pulsatile flow",                    "s/m"],             ...
+            "R_seg_n",              ["Resistance-like contribution per unit length",            "Pa.s/m4"],         ...
+            "C_seg_n",              ["Compliance-like (inverse-compliance) per unit length",    "Pa.s/m4"],         ...
+            "P_seg_diss_n",         ["Dissipative AC power per unit length",                    "W/m"],             ...
+            "P_seg_store_n",        ["Reactive (stored) AC power per unit length",              "W/m"]              ...
             )                                                               ... 
     );
 
-    idx = findFirstNonEmptyIdx(womersley_results);
+    harmonic_metrics = struct(...
+        "RhoTau21",         ["Shear harmonic ratios |tau_2|/|tau_1|",               ""],    ...
+        "RhoTau31",         ["Shear harmonic ratios |tau_3|/|tau_1|",               ""],    ...
+        "DeltaPhiTau2",     ["Phase skewness of shear, PhiTau_2 - 2 * PhiTau_1",    "°"]    ...
+    );
+
+    units_struct.segments_metrics = segments_metrics;
+    units_struct.harmonic_metrics = harmonic_metrics;
+
+    % TODO: Maybe use the 2D like flatten and not just for the first DIM
+    idx = findFirstNonEmptyIdx([womersley_results.segments_metrics]);
     [res, diff] = diffStructs(units_struct, womersley_results(idx));
     if ~res
         warning("Womersley: The unit structure differ form the results!\n%s", diff);
-        units_struct = [];
+        % units_struct.segments_metrics = [];
+        % units_struct.harmonic_metrics = [];
     end
 end
+
+
+    
+function res = expandStructField(StructArray, FieldName)
+% EXPANDSTRUCTFIELD Extracts a field of size 1xN from an AxB struct array
+% and returns an AxBxN cell array, preserving [] for empty entries.
+%
+% Usage:
+%   Result = expandStructField(MyData, 'F');
+    arguments
+        StructArray 
+        FieldName 
+    end
+
+    [rows, cols] = size(StructArray);
+
+    if ~isfield(StructArray, FieldName)
+        warning('Field "%s" does not exist in the provided struct.', FieldName);
+        return;
+    end
+    rawValues = {StructArray.(FieldName)};
+
+    nonEmptyIdx = find(~cellfun(@isempty, rawValues), 1);
+    
+    if isempty(nonEmptyIdx)
+        res = cell(rows, cols, 0); 
+        warning('All fields are empty. Returning empty cell array.');
+        return;
+    end
+    
+    firstItem = rawValues{nonEmptyIdx};
+    N = length(firstItem);
+
+    % Normalize data: Convert every entry into a 1xN Cell Array
+    %    - If data exists: convert struct-array to cell-array
+    %    - If data is empty: create a cell-array of empty brackets
+    
+    normalizeFn = @(x) prepareRow(x, N);
+    
+    processedCells = cellfun(normalizeFn, rawValues, 'UniformOutput', false);
+
+    % vertcat stacks the (A*B) entries. Result is (A*B) x N.
+    flatMatrix = vertcat(processedCells{:});
+    
+    % Reshape to A x B x N
+    res = reshape(flatMatrix, [rows, cols, N]);
+
+end
+
+function out = prepareRow(in, N)
+    if isempty(in)
+        % Fill holes with N separate []
+        out = repmat({[]}, 1, N);
+    else
+        % Convert 1xN struct/array to 1xN cell array
+        out = num2cell(in); 
+    end
+end
+
   

@@ -14,9 +14,9 @@ end
 alphaWom = zeros(size(ToolBox.Cache.WomersleyOut),'single');
 for i = 1:size(alphaWom, 1)
     for j = 1:size(alphaWom, 2)
-        if isstruct(ToolBox.Cache.WomersleyOut{i,j})
-            data = ToolBox.Cache.WomersleyOut(i, j);
-            alphaWom(i, j) = data{1, 1}.alpha_n;
+        if isstruct(ToolBox.Cache.WomersleyOut{i, j})
+            data = ToolBox.Cache.WomersleyOut{i, j}.segments_metrics;
+            alphaWom(i, j) = data.alpha_n;
         end
     end
 end
