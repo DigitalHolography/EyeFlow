@@ -26,23 +26,27 @@ end
 % If Keep biggest Contiguous Params is enabled, keep only the largest contiguous block of outliers
 if params.json.Preprocess.RemoveOutliers.KeepBiggestContiguous
     % Find the biggest contiguous part of outliers
-    
+
     i = find(outliers_dilated);
+
     if isempty(i)
         selected_range = true(size(outliers_dilated));
     else
         d = diff([0; i; numel(outliers_dilated) + 1]);
         [~, maxIdx] = max(d);
+
         if maxIdx == 1
             largest_contiguous_start = 1;
         else
             largest_contiguous_start = i(maxIdx - 1) + 1;
         end
+
         if maxIdx > numel(i)
             largest_contiguous_end = numel(outliers_dilated);
         else
             largest_contiguous_end = i(maxIdx) - 1;
         end
+
         selected_range = false(size(outliers_dilated));
         selected_range(largest_contiguous_start:largest_contiguous_end) = true;
     end

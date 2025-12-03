@@ -29,12 +29,10 @@ try
             fprintf("CUDA in PyTorch is working.\n");
             use_python = true;
 
-        catch
-            warning("PyTorch CUDA unavailable or faulty. Falling back to ONNX.");
-
+        catch ME
+            warning(ME.identifier, "PyTorch CUDA unavailable or faulty. Falling back to ONNX.\n%s", ME.message);
         end
 
-        use_python = true;
     else
         warning("Python version %s is not supported ; it must be >= 3.10 and < 3.13 (3.12 recommanded). Using ONNX.", pyver.Version);
     end
