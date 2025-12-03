@@ -139,15 +139,20 @@ onehot = double(onehot);
 end
 
 function output = runAVInference(model_struct, input, device)
-    if isa(model_struct, 'dlnetwork')
+    if model_struct.use_onnx
+        model_struct = model_struct.onnx_model;
+        if isa(model_struct, 'dlnetwork')
             % For dlnetwork objects
             input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
             output_dl = predict(model_struct, input_dl);
             output = extractdata(output_dl);
-    elseif isa(model_struct, 'DAGNetwork')
-            % For DAGNetwork objects
-            output = predict(model_struct, input, 'ExecutionEnvironment', device);
-    else
+        elseif isa(model_struct, 'DAGNetwork')
+                % For DAGNetwork objects
+                output = predict(model_struct, input, 'ExecutionEnvironment', device);
+        end
+    elseif model_struct.use_python
+        model_struct = model_struct.python_model;
+
         np = py.importlib.import_module('numpy');
         torch = py.importlib.import_module('torch');
 

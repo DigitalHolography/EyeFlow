@@ -30,6 +30,31 @@ properties
     VeinVelocityMax
     VeinVelocityMin
 
+    % Velocity Statistical Outputs (mm/s)
+    ArteryVelocityMeanSection
+    ArteryVelocityMaxSection
+    ArteryVelocityMinSection
+    ArteryVelocityModeSection
+    ArteryVelocityMedianSection
+    ArteryVelocityMeanTrimmed
+    ArteryVelocityMedianTrimmed
+    ArteryVelocityModeTrimmed
+    
+    VeinVelocityMeanSection
+    VeinVelocityMaxSection
+    VeinVelocityMinSection
+    VeinVelocityModeSection
+    VeinVelocityMedianSection
+    VeinVelocityMeanTrimmed
+    VeinVelocityMedianTrimmed
+    VeinVelocityModeTrimmed
+
+    ArteryVelocity25Percentile
+    ArteryVelocity75Percentile
+    VeinVelocity25Percentile
+    VeinVelocity75Percentile
+
+
     % Flow Rate (µL/s or mm³/s)
     ArteryFlowRateMean
     ArteryFlowRateMax
