@@ -15,13 +15,13 @@ function [PWV, dPWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, na
 % pks, idx       : Peaks and index of the dominant one
 % rows, cols     : Coordinates of detected peaks
 
-%% --- Default inputs ---
+% --- Default inputs ---
 if nargin < 2 || isempty(dx), dx = 1.0; end
 if nargin < 3 || isempty(dy), dy = 1.0; end
 if nargin < 4, name = 'unnamed'; end
 if nargin < 5, branch_index = 0; end
 
-%% --- Get global ToolBox and prepare output directory ---
+% --- Get global ToolBox and prepare output directory ---
 ToolBox = getGlobalToolBox();
 outputDir = fullfile(ToolBox.path_png, 'flexion');
 params = ToolBox.getParams;
@@ -46,13 +46,13 @@ end
 Z0(1:5, :) = [];
 Z0(end - 4:end, :) = [];
 
-[ny, nx] = size(Z0);
+[nx, ny] = size(Z0);
 
 % Mask out the central region if needed
 Z0 = Z0 .* ~diskMask(nx, ny, 0.001);
-wy = hann(ny);
 wx = hann(nx);
-W = wy * wx';
+wy = hann(ny);
+W = wx * wy';
 Z0 = Z0 .* W;
 
 % --- FFT ---
@@ -61,13 +61,13 @@ F = fftshift(fft2(Z0, Nmult * nx, Nmult * ny));
 S = abs(F);
 
 % Keep only central frequencies
-bandWidth = diskMask(Nmult * ny, Nmult * nx, 0, 0.5);
+bandWidth = diskMask(Nmult * nx, Nmult * ny, 0, 0.5);
 S = S .* bandWidth;
 S0 = S;
 
 % Scan only half to avoid unnecessary computations
-S0(:, 1:nx * Nmult < nx * Nmult / 2) = 0;
-%%%S0(1:ny * Nmult > ny * Nmult / 2, :) = 0;  % Keep only x increasing waves 
+S0(:, 1:ny * Nmult < ny * Nmult / 2) = 0;
+% S0(1:ny * Nmult > ny * Nmult / 2, :) = 0;  % Keep only x increasing waves
 
 % --- Frequency axes ---
 fx = (-Nmult * nx / 2:Nmult * nx / 2 - 1) / (Nmult * nx * dx); % cycles per unit x
@@ -80,13 +80,12 @@ if isempty(pks)
     % warning('No peaks found in spectrum. Returning NaN results.');
     PWV = NaN; Tx = NaN; Ty = NaN; m = NaN; dPWV = NaN;
     idx = []; rows = []; cols = [];
-    fx_err = NaN; fy_err = NaN;
     return;
 end
 
 % --- Plot frequency spectrum ---
 fig1 = figure('Visible', 'off');
-h_wave_map = imagesc(fx, fy, S);
+imagesc(fx, fy, S);
 xlabel('(Hz)');
 ylabel('(mm-1)');
 axis xy equal tight;
@@ -102,10 +101,10 @@ hold on;
 iy = rows(idx);
 ix = cols(idx);
 
-scatter(fx(round(ix)), fy(round(iy)), 80, 'ro', 'LineWidth', 1.5, 'DisplayName', 'Detected Peaks');
+scatter(fy(round(ix)), fx(round(iy)), 80, 'ro', 'LineWidth', 1.5, 'DisplayName', 'Detected Peaks');
 
-fx_peak = fx(round(ix));
-fy_peak = fy(round(iy));
+fx_peak = fy(round(ix));
+fy_peak = fx(round(iy));
 
 % --- Estimated uncertainty on frequencies ---
 dfx = fx_err(idx);
@@ -139,12 +138,11 @@ dTy = abs(Ty * (dky / ky));
 PWV = Ty / Tx;
 dPWV = PWV * sqrt((dTx / Tx) ^ 2 + (dTy / Ty) ^ 2);
 
-ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV", name, branch_index),PWV);
-ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_std", name, branch_index),dPWV);
-ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_unit", name, branch_index),"mm/s");
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV", name, branch_index), PWV);
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_std", name, branch_index), dPWV);
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_unit", name, branch_index), "mm/s");
 % s_wave_map = saveImagescToStruct(h_wave_map);
 % ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_intercorr", name, branch_index),s_wave_map);
-
 
 % if PWV < 1 || PWV > 4 % mm/s
 %     PWV = NaN; dPWV = NaN;
