@@ -105,7 +105,9 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
             "R_seg_n",              NaN,                    ...
             "C_seg_n",              NaN,                    ...
             "P_seg_diss_n",         NaN,                    ...
-            "P_seg_store_n",        NaN                     ...
+            "P_seg_store_n",        NaN,                    ...
+            "residual_mag_RMS",     NaN,                    ...
+            "residual_phase_RMS",   NaN                     ...
             )                                       ... 
     );
     
@@ -150,59 +152,101 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     
     x_coords = linspace(-1, 1, NUM_INTERP_POINTS);
     
-    % p = [alpha, real(Cn), imag(Cn), real(Dn), imag(Dn), center, width]
-    alpha_1_init = 4;
+    FIXED_NU = 3e-6; % m^2/s (Phase 1 recommendation)
+    OMEGA_N = 2 * pi * cardiac_frequency * n_harmonic;
+    
+    % Factor to convert 'width' (normalized 0-1) to Radius in Meters
+    % PIXEL_SIZE is in microns, convert to meters (1e-6)
+    R_SCALE_METERS = (PIXEL_SIZE * 1e-6) * crossSectionLength / 2; 
+
+    % p = [real(Cn), imag(Cn), real(Dn), imag(Dn), center, width]
     Cn_init_complex = mean(v_meas(abs(v_meas)>0));
     Dn_init_complex = 0; % Start with no wall motion
     center_init = 0;
     width_init = 0.8;
     
-    % p_init = [alpha_1_init, real(amp_init_complex), imag(amp_init_complex), center_init, width_init];
-    p_init = [alpha_1_init, real(Cn_init_complex), imag(Cn_init_complex), real(Dn_init_complex), imag(Dn_init_complex), center_init, width_init];
+    % p_init = [real(amp_init_complex), imag(amp_init_complex), center_init, width_init];
+    p_init = [real(Cn_init_complex), imag(Cn_init_complex), real(Dn_init_complex), imag(Dn_init_complex), center_init, width_init];
     
-    lb = [0.1, -Inf, -Inf, -Inf, -Inf, -0.8, 0.1]; % alpha > 0, width > 0
-    ub = [20,   Inf,  Inf,  Inf,  Inf,  0.8, 1.5];
+    lb = [-Inf, -Inf, -Inf, -Inf, -0.8, 0.1]; % alpha > 0, width > 0
+    ub = [ Inf,  Inf,  Inf,  Inf,  0.8, 1.5];
     
     % psf_kernel = create_gaussian_psf_kernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
 
-    costFunctionHandle = @(p) costFun(p, x_coords, v_meas, n_harmonic, PSF_KERNEL);
+    costFunctionHandle = @(p) costFun(p, x_coords, v_meas, n_harmonic, PSF_KERNEL, FIXED_NU, R_SCALE_METERS, OMEGA_N, fitParams.R0);
 
     options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
     try
         [p_fit, ~, ~, ~, ~, ~, jacobian] = lsqnonlin(costFunctionHandle, p_init, lb, ub, options);
 
-        % Fit Condition number
+        uWom_fit = generate_moving_wall_model(p_fit, x_coords, n_harmonic, PSF_KERNEL, FIXED_NU, R_SCALE_METERS, OMEGA_N, fitParams.R0);
+
+        v_data_col = v_meas(:);
+        v_model_col = uWom_fit(:);
+
+        % CALCUL DES RESIDUS QC
+        
+        mag_data = abs(v_data_col);
+        mag_model = abs(v_model_col);
+        
+        diff_mag_sq = (mag_data - mag_model).^2;
+        sum_sq_diff = mean(diff_mag_sq); % Mean Squared Error
+        rms_data = sqrt(mean(mag_data.^2));
+        
+        % Formule: RMS(error) / RMS(signal)
+        % Ajout de eps pour éviter division par zéro
+        res_mag_RMS = sqrt(sum_sq_diff) / (rms_data + eps);
+
+        % Residual Phase RMS
+        % On utilise angle(z1 * conj(z2)) pour avoir la différence de phase repliée dans [-pi, pi]
+        % On ne garde que les points où le signal est significatif pour ne pas fitter du bruit
+        % Seuil arbitraire : 10% du max ou basé sur le SNR. Ici, simple RMS sur tout le profil comme demandé.
+        
+        phase_diff_rad = angle(v_data_col .* conj(v_model_col));
+        
+        % Optionnel : Pondérer par l'amplitude pour ignorer le bruit de fond
+        % mask = mag_data > 0.1 * max(mag_data);
+        % res_phase_RMS = sqrt(mean(phase_diff_rad(mask).^2));
+        
+        % Version brute (attention si v_meas contient beaucoup de bruit aux bords)
+        res_phase_RMS = sqrt(mean(phase_diff_rad.^2));
+
+
+        fitParams.residual_mag_RMS = res_mag_RMS;    
+        fitParams.residual_phase_RMS = res_phase_RMS;
+
         fitParams.Kappa_n = sqrt(condest(jacobian'*jacobian));
 
-        alpha_1             = p_fit(1);
-        Cn_fit              = p_fit(2) + 1i * p_fit(3);
-        Dn_fit              = p_fit(4) + 1i * p_fit(5);
-        center_fit          = p_fit(6);
-        width_fit           = p_fit(7);
+        % alpha_1             = p_fit(1);
+        Cn_fit              = p_fit(1) + 1i * p_fit(2);
+        Dn_fit              = p_fit(3) + 1i * p_fit(4);
+        center_fit          = p_fit(5);
+        width_fit           = p_fit(6);
     
-        fitParams.alpha_1   = alpha_1;
-        fitParams.alpha_n   = alpha_1 * sqrt(n_harmonic);
+        % fitParams.alpha_1   = alpha_1;
+        fitParams.alpha_n   = fitParams.R0 * sqrt(OMEGA_N / FIXED_NU);
         fitParams.Cn        = Cn_fit;
         fitParams.Dn        = Dn_fit;
         fitParams.center    = center_fit;
         fitParams.width     = width_fit;
-    
+
+        % Already done above, but for clarity
         fitParams.omega_0 = 2 * pi * cardiac_frequency;
         fitParams.omega_n = fitParams.omega_0 * n_harmonic;
 
         fitParams.harmonic = n_harmonic;
     
-        Rn = PIXEL_SIZE * crossSectionLength / 2 * fitParams.width;
+        Rn = R_SCALE_METERS * fitParams.width;
         fitParams.Rn = Rn;
     
+        fitParams.metrics.nu_app = FIXED_NU;
+
         fitParams.metrics = calculate_symbols(fitParams, RHO_BLOOD);
 
     catch ME 
         warning('Womersley fit failed for %s (idx %d): %s', name, idx, ME.message);
         return;
     end
-
-    uWom_fit = generate_moving_wall_model(p_fit, x_coords, n_harmonic, PSF_KERNEL);
     
     % [parabole_fit_systole, parabole_fit_diastole] = analyse_lumen_size(v_profile_good_idx_sav, SYS_IDXS, DIAS_IDXS);
     % 
@@ -321,7 +365,7 @@ function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, T
     v_profile_interp = interp1(linspace(-1, 1, crossSectionLength), v_profile, x_grid_normalized);
     
     % PSF Kernel
-    PIXEL_SIZE = params.px_size * 1000;
+    PIXEL_SIZE = params.px_size * 1e-3;
 
     v_mean = mean(v_profile_interp, 2);
     v_mean_interp = v_mean;
@@ -374,9 +418,10 @@ end
 
 % ========================== [ COST FUNCTIONS ] ========================= %
 
-function res = costFun(p, x_coords, v_meas, n_harmonic, psf_kernel)
-    res = [real(generate_moving_wall_model(p, x_coords, n_harmonic, psf_kernel) - v_meas.'); ...
-           imag(generate_moving_wall_model(p, x_coords, n_harmonic, psf_kernel) - v_meas.')];
+function res = costFun(p, x_coords, v_meas, n_harmonic, psf_kernel, nu, r_scale, omega_n, R0)
+    val = generate_moving_wall_model(p, x_coords, n_harmonic, psf_kernel, nu, r_scale, omega_n, R0);
+    res = [real(val - v_meas.'); ...
+           imag(val - v_meas.')];
 end
 
 function res = uWom_base(alpha, r) 
@@ -406,22 +451,32 @@ end
 
 % ============================= [ WOMERSELY ] =========================== %
 
-function model_profile = generate_moving_wall_model(p, x, n_harmonic, psf_kernel)
+function model_profile = generate_moving_wall_model(p, x, n_harmonic, psf_kernel, nu, r_scale, omega_n, R0)
     % psf_kernel is optionnal
 
     % p = [alpha, real(Cn), imag(Cn), real(Dn), imag(Dn), center, width]
-    alpha_1 = p(1);
-    Cn      = p(2) + 1i * p(3);
-    Dn      = p(4) + 1i * p(5);
-    center  = p(6);
-    width   = p(7);
+    % alpha_1 = p(1);
+    Cn      = p(1) + 1i * p(2);
+    Dn      = p(3) + 1i * p(4);
+    center  = p(5);
+    width   = p(6);
     
     r = (x - center) / width;
+
 
     % See paper section 4.1, the alpha can be deduced from alpha_1
     % The functions Bn abd Psin use an alpha that is dimensionless
     % (calculated, before hand)
-    alpha_n = alpha_1 * sqrt(n_harmonic);
+    % alpha_n = alpha_1 * sqrt(n_harmonic);
+    
+    % R = width * r_scale; % (Rn)
+    R = R0; % (R0) 
+
+    if R <= 0
+        alpha_n = 1e-3; 
+    else
+        alpha_n = R * sqrt(omega_n / nu);
+    end
     
     Bn_profile = uWom_base(alpha_n, r);
     Psi_n_profile = uWom_psi(alpha_n, r);
@@ -457,7 +512,7 @@ function model_profile = generate_womersley_model(p, x)
     
     profile(abs(r) > 1) = 0;
     
-    model_profile = amplitude * profile;gergr
+    model_profile = amplitude * profile;
 end
 
 % ======================================================================= %
@@ -573,7 +628,7 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     % Flow (Qn)
     K_an = calculate_K_factor(lambda_n);
     Qn_m3_s = pi * R0 ^ 2 * Cn * K_an;
-    metrics.Qn = Qn_m3_s * 1e9; % units: mm³/s
+    metrics.Qn = Qn_m3_s; % units: m³/s
     metrics.Kn = K_an;
 
     % Gradient (Gn)
@@ -585,17 +640,20 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     metrics.H_GQ_n_Geonorm_abs = norm(metrics.H_GQ_n) * (R0 ^ 2);
 
     % Viscosity (νapp)
-    numerator = (R0 ^ 2) * fitParams.omega_0;
-    denominator = alpha_1 ^ 2;
+    % numerator = (R0 ^ 2) * fitParams.omega_0;
+    % denominator = alpha_1 ^ 2;
     
-    if denominator > 0
-        metrics.nu_app = numerator / denominator;
-        metrics.mu_app = metrics.nu_app * rho_blood;
-    else
-        metrics.nu_app = NaN;
-        metrics.mu_app = NaN;
-    end
+    % if denominator > 0
+    %     metrics.nu_app = numerator / denominator;
+    %     metrics.mu_app = metrics.nu_app * rho_blood;
+    % else
+    %     metrics.nu_app = NaN;
+    %     metrics.mu_app = NaN;
+    % end
 
+    metrics.nu_app = fitParams.metrics.nu_app;
+    metrics.mu_app = metrics.nu_app * rho_blood;
+    
     % Shear (τn)
     if ~isnan(metrics.mu_app) && R0 > 0 && besselj(0, lambda_n) ~= 0
         metrics.tau_n = (metrics.mu_app * Cn * lambda_n * besselj(1, lambda_n)) / (R0 * besselj(0, lambda_n)); % units: Pa
