@@ -8,29 +8,50 @@ boxColor = normalizeColor(boxColor);
 textColor = normalizeColor(textColor);
 
 hFig = figure('Visible','off');
+% Ensure the figure size matches the image to avoid resizing artifacts during getframe
+hFig.Position(3:4) = [size(img,2), size(img,1)]; 
+
 imshow(img, 'Border','tight')
 axis off
 hold on
 
+% 1. Draw text invisibly first to calculate extent
 t = text(position(1), position(2), txt, ...
     'FontSize', fontSize, ...
     'Color', textColor, ...
     'Units','data', ...
-    'VerticalAlignment','top');
+    'VerticalAlignment','top', ...
+    'Visible', 'on'); % Must be visible for Extent to be accurate in some versions
 
 drawnow
 
+% 2. Get Extent
 ext = t.Extent;
 x = ext(1);
-y = ext(2);
 w = ext(3);
 hBox = ext(4);
 
+% In imshow (YDir='reverse'), ext(2) is the visual bottom (max Y value).
+% We need the visual top (min Y value) for the patch start.
+y = ext(2) - hBox; 
+
+% Optional: Add a small margin so the text isn't flush against the box edge
+margin = 2; 
+x = x - margin;
+y = y - margin;
+w = w + 2*margin;
+hBox = hBox + 2*margin;
+
+% 3. Draw the background box
 patch([x x+w x+w x], [y y y+hBox y+hBox], boxColor, ...
     'EdgeColor','none', ...
     'FaceAlpha', boxOpacity)
 
-t = text(position(1), position(2), txt, ...
+% 4. Redraw text on top of the box
+% (We can actually just reuse 't' by bringing it to front, strictly speaking, 
+% but deleting and recreating ensures layer order)
+delete(t);
+text(position(1), position(2), txt, ...
     'FontSize', fontSize, ...
     'Color', textColor, ...
     'Units','data', ...
