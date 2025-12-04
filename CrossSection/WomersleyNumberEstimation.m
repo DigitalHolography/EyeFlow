@@ -120,7 +120,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     if crossSectionLength > 1
         v_profile = interp1(linspace(1, crossSectionLength, crossSectionLength), v_profile, linspace(1, crossSectionLength, NUM_INTERP_POINTS));
     else
-        warning('Not enough valid points in the velocity profile. Skipping fit.');
+        warning_s("WomersleyNumberEstimation_n (%i, %i, %i): Not enough valid points in the velocity profile. Skipping fit.", circleIdx, branchIdx, n_harmonic);
         return;
     end
     
@@ -504,7 +504,7 @@ function psf_kernel = create_gaussian_psf_kernel(fwhm_um, num_points, cross_sect
     dx_um = total_width_um / num_points; % um per point
 
     if dx_um == 0
-        error('Cannot create PSF kernel: The spatial resolution (dx_um) is zero.');
+        warning('Cannot create PSF kernel: The spatial resolution (dx_um) is zero.');
     end
     
     fwhm_in_points = fwhm_um / dx_um;

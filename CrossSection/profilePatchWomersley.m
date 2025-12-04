@@ -330,7 +330,7 @@ function units_struct = get_unit(womersley_results)
     idx = findFirstNonEmptyIdx([womersley_results.segments_metrics]);
     [res, diff] = diffStructs(units_struct, womersley_results(idx));
     if ~res
-        warning("Womersley: The unit structure differ form the results!\n%s", diff);
+        warning_s("Womersley: The unit structure differ form the results!\n%s", diff);
         % units_struct.segments_metrics = [];
         % units_struct.harmonic_metrics = [];
     end
