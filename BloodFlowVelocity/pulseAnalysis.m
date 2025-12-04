@@ -35,7 +35,7 @@ r2 = jsonParams.SizeOfField.BigRadiusRatio;
 % Load cached data
 maskArtery = ToolBox.Cache.maskArtery;
 maskVein = ToolBox.Cache.maskVein;
-maskChoroid = ToolBox.Cache.maskChoroid & ~(maskArtery | maskVein);
+maskChoroid = ToolBox.Cache.maskChoroid;
 maskNeighbors = ToolBox.Cache.maskNeighbors & ~maskChoroid;
 xy_barycenter = ToolBox.Cache.xy_barycenter;
 
@@ -52,7 +52,7 @@ fs = 1 / dt;
 % Create section mask
 x_c = xy_barycenter(1) / numX;
 y_c = xy_barycenter(2) / numY;
-maskSection = diskMask(numX, numY, 2*r1, 2*r2, 'center', [x_c, y_c]);
+maskSection = diskMask(numX, numY, 2 * r1, 2 * r2, 'center', [x_c, y_c]);
 
 % Create vessel masks
 maskArterySection = maskArtery & maskSection;
@@ -212,7 +212,7 @@ end
 v_RMS_video = scalingFactor * df;
 clear df
 
-VelocityStatisticalOutputs(v_RMS_video,maskArtery, maskVein, maskArterySection, maskVeinSection);
+VelocityStatisticalOutputs(v_RMS_video, maskArtery, maskVein, maskArterySection, maskVeinSection);
 
 % Process artery velocity signals
 v_artery = v_RMS_video .* maskArterySection;
