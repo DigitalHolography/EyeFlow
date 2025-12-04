@@ -14,7 +14,6 @@ toolboxes = {
     'Signal Processing Toolbox'
     'Statistics and Machine Learning Toolbox'
     'Wavelet Toolbox'
-    'Computer Vision Toolbox'
 };
 
 fprintf('=== Checking for installed toolboxes ===\n');
