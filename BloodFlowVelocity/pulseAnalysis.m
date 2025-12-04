@@ -25,6 +25,7 @@ jsonParams = params.json;
 saveFigures = jsonParams.saveFigures;
 filterSignals = jsonParams.PulseAnalysis.FilterSignals;
 method = jsonParams.PulseAnalysis.DifferenceMethods;
+bkgfillmethod = jsonParams.PulseAnalysis.BkgFillMethod;
 w = jsonParams.PulseAnalysis.LocalBackgroundWidth;
 k = jsonParams.Preprocess.InterpolationFactor;
 bkg_scaler = jsonParams.PulseAnalysis.bkgScaler;
@@ -35,6 +36,7 @@ r2 = jsonParams.SizeOfField.BigRadiusRatio;
 % Load cached data
 maskArtery = ToolBox.Cache.maskArtery;
 maskVein = ToolBox.Cache.maskVein;
+maskVessel = ToolBox.Cache.maskVessel;
 maskChoroid = ToolBox.Cache.maskChoroid & ~(maskArtery | maskVein);
 maskNeighbors = ToolBox.Cache.maskNeighbors & ~maskChoroid;
 xy_barycenter = ToolBox.Cache.xy_barycenter;
@@ -68,15 +70,20 @@ if ~any(maskVesselSection)
     error("Given Mask Vein has no part within the current section.")
 end
 
-% Determine vessel mask based on analysis type
-maskVessel = maskArtery | maskVein;
-
 % Section 1: Background Calculation
 f_bkg = zeros(numX, numY, numFrames, 'single');
 
 % Calculate background
-parfor frameIdx = 1:numFrames
-    f_bkg(:, :, frameIdx) = single(maskedAverage(f_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
+
+switch bkgfillmethod 
+    case 'maskedAverage'
+        parfor frameIdx = 1:numFrames
+            f_bkg(:, :, frameIdx) = single(maskedAverage(f_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
+        end
+    case 'inpaintCoherent'
+        parfor frameIdx = 1:numFrames
+            f_bkg(:, :, frameIdx) = single(inpaintCoherent(f_video(:, :, frameIdx), maskVessel));
+        end
 end
 
 % Calculate and plot artery signals
@@ -118,7 +125,6 @@ if saveFigures
     LocalBackground_in_vessels = mean(f_bkg, 3);
     createHeatmap(LocalBackground_in_vessels, 'background in vessels', ...
         'background RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_f_bkg_map.png", ToolBox.folder_name)));
-
 end
 
 if exportVideos
@@ -163,15 +169,6 @@ outlier_frames_mask = outlier_frames_mask | isoutlier(df_vein_signal, "movmedian
 df = interpolateOutlierFrames(df, outlier_frames_mask');
 
 if saveFigures
-    % Recalculate signals after interpolation
-    df_artery = df .* maskArterySection;
-    df_artery(~maskArterySection) = NaN;
-    df_artery_signal = squeeze(sum(df_artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
-
-    % Plot signals
-    df_vein = df .* maskVeinSection;
-    df_vein(~maskVeinSection) = NaN;
-    df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
 
     graphSignal('df_vessel', ...
         t, df_artery_signal, '-', cArtery, ...

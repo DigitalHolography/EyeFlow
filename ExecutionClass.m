@@ -92,7 +92,7 @@ methods
         obj.Cache = CacheClass();
 
         % Initialize Modules
-        obj.Analyzer = AnalyzerClass();
+        obj.Analyzer = AnalyzerClass(obj.Cache);
 
         Parameters_json(path, obj.param_name);
 

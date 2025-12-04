@@ -26,6 +26,7 @@ tic
 % Get masks from ToolBox
 maskArtery = ToolBox.Cache.maskArtery;
 maskVein = ToolBox.Cache.maskVein;
+maskVessel = ToolBox.Cache.maskVessel;
 maskNeighbors = ToolBox.Cache.maskNeighbors;
 
 % Create section mask
@@ -38,7 +39,7 @@ maskSection = diskMask(numX, numY, r1, r2, 'center', [x_c, y_c]);
 % Create vessel masks
 maskArterySection = maskArtery & maskSection;
 maskVeinSection = maskVein & maskSection;
-maskVesselSection = (maskVein | maskArtery) & maskSection;
+maskVesselSection = maskVessel & maskSection;
 
 % Validating inputs
 if ~any(maskArterySection)
@@ -58,9 +59,6 @@ cArtery = [255 22 18] / 255;
 cVein = [18 23 255] / 255;
 
 f_bkg = zeros(numX, numY, numFrames, 'single');
-
-% Determine vessel mask based on analysis type
-maskVessel = maskArtery | maskVein;
 
 % Background calculation parameters
 w = params.json.PulseAnalysis.LocalBackgroundWidth;
