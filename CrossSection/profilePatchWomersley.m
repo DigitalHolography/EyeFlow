@@ -180,6 +180,12 @@ function saveWomersleyResults_handle(BasePath, womersley_cells, units_struct)
         units_struct
     end
 
+    [ok, msg] = checkStructConsistency(womersley_cells);
+    if ~ok
+        warning("saveWomersleyResults_handle: cells are not consistant! (Will skip save!)\n%s", msg);
+        return;
+    end
+
     ToolBox = getGlobalToolBox;
 
     if ~endsWith(BasePath, "/") && ~endsWith(BasePath, "_")
@@ -388,4 +394,54 @@ function out = prepareRow(in, N)
     end
 end
 
+
+% DEBUG FUNCTIONS
+
+    
+function debug_struct_cells(in_cells, target_field)
+    fprintf('Debugging field "%s"...\n', target_field);
+    error_count = 0;
+    
+    % Use linear indexing to loop through everything
+    for i = 1:numel(in_cells)
+        s = in_cells{i};
+        
+        % Skip empty cells (your original code handles these fine)
+        if isempty(s)
+            continue; 
+        end
+        
+        % Check if the structure actually has the field
+        if ~isfield(s, target_field)
+            error_count = error_count + 1;
+            
+            % Get list of fields it DOES have
+            actual_fields = fieldnames(s);
+            
+            fprintf('------------------------------------------------\n');
+            fprintf('MISSING FIELD at Index: %d\n', i);
+            fprintf('  Expected: %s\n', target_field);
+            
+            if isempty(actual_fields)
+                fprintf('  Actual: <Structure is empty struct with no fields>\n');
+            else
+                fprintf('  Actual fields present: %s\n', strjoin(actual_fields', ', '));
+            end
+            
+            % Stop after 5 errors to avoid flooding the command window
+            if error_count >= 5
+                fprintf('... More errors exist (stopping debug output).\n');
+                return;
+            end
+        end
+    end
+    
+    if error_count == 0
+        fprintf('Debug complete: All non-empty cells contain the field.\n');
+    else
+        fprintf('Debug complete: Found %d issues.\n', error_count);
+    end
+end
+
+  
   
