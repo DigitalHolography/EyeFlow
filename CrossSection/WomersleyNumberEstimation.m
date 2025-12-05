@@ -83,6 +83,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         "residual_phase_RMS",       NaN,                    ... % Residual phase RMS                            (-)
         "residual_phase_RMS_msk",   NaN,                    ... % Residual phase RMS (masked to reduce noise)   (-)
         "harmonic_SNR_dB",          NaN,                    ... % Signal-to-noise ratio at harmonic n           (dB)
+        "fit_exitflag",             NaN,                    ... % Reason the solver stopped (see lsqnonlin)     (-)
         "R0",                       init_fit.geoParams.R0,  ... % Baseline Vessel Radius                        (m)
         "Rn",                       NaN,                    ... % Radius harmonic (complex ?)                   (m)
         "Cn",                       complex(NaN, NaN),      ... % Drive Wall Gain                               (m/s)
@@ -190,6 +191,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         fitParams.residual_phase_RMS     = res_phase_RMS;
         fitParams.residual_phase_RMS_msk = res_phase_RMS_msk;
         fitParams.harmonic_SNR_dB        = harmonic_SNR_dB;
+        fitParams.fit_exitflag           = exitflag;
         
         % fitParams.Kappa_n = sqrt(condest(jacobian'*jacobian));
 
