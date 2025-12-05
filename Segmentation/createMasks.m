@@ -62,8 +62,9 @@ maskParams = params.json.Mask;
 if maskParams.EyeDiaphragmSegmentationNet
     [~, cx, cy, r] = predictDiaphragm(EyeDiaphragmSegmentationNet, M0_ff_img);
     offset = 0.02; % To avoid diaphragm to be considered a vessel
-    maskDiaphragm = diskMask(numX, numY, ( 2 * r / numX) - offset, 'center', [cx / numX, cy / numY]);
+    maskDiaphragm = diskMask(numX, numY, (r / numX) - offset, 'center', [cx / numX, cy / numY]);
 else
+    cx = numX / 2; cy = numY / 2;
     maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 end
 
@@ -127,7 +128,10 @@ maskVesselnessClean = maskVesselness & bwareafilt(maskVesselness | maskCircle, 1
 saveMaskImage(maskVesselnessClean + maskCircle * 0.5, 'all_12_VesselMask_clear.png', isStep = true)
 
 % 2) Pre-mask arteries using intensity information
-[maskArteryTmp, maskVeinTmp] = preMaskArtery(M0_ff, maskVesselnessClean);
+% Precompute circles
+maskCircles = diskMask(numX, numY, r1, r2, 'center', [cx / numX, cy / numY]);
+
+[maskArteryTmp, maskVeinTmp] = preMaskArtery(M0_ff, maskVesselnessClean .* maskCircles);
 saveMaskImage(maskArteryTmp, 'artery_20_PreMask.png', isStep = true, cmap = cArtery);
 saveMaskImage(maskVeinTmp, 'vein_20_PreMask.png', isStep = true, cmap = cVein);
 
@@ -287,6 +291,11 @@ if (mask_params.ForcedMasks == -1 || mask_params.ForcedMasks == 1)
     elseif mask_params.ForcedMasks == 1
         error("Cannot force Vein Mask because none given in the mask folder. Please create a forceMaskVein.png file in the mask folder. (SET ForcedMasks to -1 to skip use the auto mask)");
     end
+
+end
+
+if isfile(fullfile(path, 'mask', 'maskChoroid.png'))
+    maskChoroid = mat2gray(mean(imread(fullfile(path, 'mask', 'maskChoroid.png')), 3)) > 0;
 
 end
 

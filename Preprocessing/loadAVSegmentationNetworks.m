@@ -57,6 +57,9 @@ elseif params.json.Mask.AVDiasysSegmentationNet
     model_name = "iternet5_av_diasys";
 elseif params.json.Mask.AVCorrelationSegmentationNet
     model_name = "iternet5_av_corr";
+else
+    model_struct = struct();
+    return
 end
 
 model_path = getLatestModel(model_name, extension);
