@@ -75,40 +75,42 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     PSF_KERNEL = init_fit.psf_kernel;
 
     fitParams = struct(...
-        "alpha_1",          NaN,                    ... % Womersley number                  (-)
-        "alpha_n",          NaN,                    ... % Womersley number on harmonic      (-)
-        "harmonic",         NaN,                    ... % Harmonic number                   (-)
-        "Kappa_n",          NaN,                    ... % Condition fit                     (-)
-        "R0",               init_fit.geoParams.R0,  ... % Baseline Vessel Radius            (m)
-        "Rn",               NaN,                    ... % Radius harmonic (complex ?)       (m)
-        "Cn",               complex(NaN, NaN),      ... % Drive Wall Gain                   (m/s)
-        "Dn",               complex(NaN, NaN),      ... % Moving Wall Gain                  (m/s)
-        "center",           NaN,                    ... % Center offset fit factor          (-)
-        "width",            NaN,                    ... % Scale fit factor                  (-)
-        "omega_0",          NaN,                    ... % Fundamental angular frequency     (rad/s)
-        "omega_n",          NaN,                    ... % N-th harmonic angulat frequency   (rad/s)
-        "metrics",          struct(...
-            "RnR0_complex",         complex(NaN, NaN),      ... % PWK ≈ D_n / C_n                   (-)
-            "Qn",                   complex(NaN, NaN),      ... % Flow                              (mm3/s)
-            "Gn",                   complex(NaN, NaN),      ... % Gradient                          (Pa/m)
-            "Kn",                   complex(NaN, NaN),      ... % Complex Flow Gain                 (-)
-            "tau_n",                complex(NaN, NaN),      ... % Shear                             (Pa)
-            "AnA0",                 complex(NaN, NaN),      ... % Area Puls.                        (-) (m2?)
-            "nu_app",               NaN,                    ... % Viscosity (kinetic)               (m2/s) ? (Pa.s)
-            "mu_app",               NaN,                    ... % Viscosity (dinamic)               (m2/s) ? (Pa.s)
-            "H_GQ_n",               complex(NaN, NaN),      ...
-            "H_GQ_n_Geonorm_abs",   NaN,                    ...
-            "H_tauQ_n",             complex(NaN, NaN),      ...
-            "H_tauQ_n_Geonorm_abs", NaN,                    ...
-            "H_RQ_n",               complex(NaN, NaN),      ...
-            "H_RQ_n_Geonorm_abs",   NaN,                    ...
-            "R_seg_n",              NaN,                    ...
-            "C_seg_n",              NaN,                    ...
-            "P_seg_diss_n",         NaN,                    ...
-            "P_seg_store_n",        NaN,                    ...
-            "residual_mag_RMS",     NaN,                    ...
-            "residual_phase_RMS",   NaN                     ...
-            )                                       ... 
+        "alpha_1",                  NaN,                    ... % Womersley number                              (-)
+        "alpha_n",                  NaN,                    ... % Womersley number on harmonic                  (-)
+        "harmonic",                 NaN,                    ... % Harmonic number                               (-)
+        "Kappa_n",                  NaN,                    ... % Condition fit                                 (-)
+        "residual_mag_RMS",         NaN,                    ... % Residual magnitude RMS                        (-)
+        "residual_phase_RMS",       NaN,                    ... % Residual phase RMS                            (-)
+        "residual_phase_RMS_msk",   NaN,                    ... % Residual phase RMS (masked to reduce noise)   (-)
+        "harmonic_SNR_dB",          NaN,                    ... % Signal-to-noise ratio at harmonic n           (dB)
+        "R0",                       init_fit.geoParams.R0,  ... % Baseline Vessel Radius                        (m)
+        "Rn",                       NaN,                    ... % Radius harmonic (complex ?)                   (m)
+        "Cn",                       complex(NaN, NaN),      ... % Drive Wall Gain                               (m/s)
+        "Dn",                       complex(NaN, NaN),      ... % Moving Wall Gain                              (m/s)
+        "center",                   NaN,                    ... % Center offset fit factor                      (-)
+        "width",                    NaN,                    ... % Scale fit factor                              (-)
+        "omega_0",                  NaN,                    ... % Fundamental angular frequency                 (rad/s)
+        "omega_n",                  NaN,                    ... % N-th harmonic angulat frequency               (rad/s)
+        "metrics",                  struct(...
+            "RnR0_complex",             complex(NaN, NaN),      ... % PWK ≈ D_n / C_n                   (-)
+            "Qn",                       complex(NaN, NaN),      ... % Flow                              (m3/s)
+            "Gn",                       complex(NaN, NaN),      ... % Gradient                          (Pa/m)
+            "Kn",                       complex(NaN, NaN),      ... % Complex Flow Gain                 (-)
+            "tau_n",                    complex(NaN, NaN),      ... % Shear                             (Pa)
+            "AnA0",                     complex(NaN, NaN),      ... % Area Puls.                        (-) (m2?)
+            "nu_app",                   NaN,                    ... % Viscosity (kinetic)               (m2/s) ? (Pa.s)
+            "mu_app",                   NaN,                    ... % Viscosity (dinamic)               (m2/s) ? (Pa.s)
+            "H_GQ_n",                   complex(NaN, NaN),      ...
+            "H_GQ_n_Geonorm_abs",       NaN,                    ...
+            "H_tauQ_n",                 complex(NaN, NaN),      ...
+            "H_tauQ_n_Geonorm_abs",     NaN,                    ...
+            "H_RQ_n",                   complex(NaN, NaN),      ...
+            "H_RQ_n_Geonorm_abs",       NaN,                    ...
+            "R_seg_n",                  NaN,                    ...
+            "C_seg_n",                  NaN,                    ...
+            "P_seg_diss_n",             NaN,                    ...
+            "P_seg_store_n",            NaN                     ...
+        )                                                   ... 
     );
     
     % estimated_width = struct('systole', [], 'diastole', []);
@@ -168,7 +170,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     % p_init = [real(amp_init_complex), imag(amp_init_complex), center_init, width_init];
     p_init = [real(Cn_init_complex), imag(Cn_init_complex), real(Dn_init_complex), imag(Dn_init_complex), center_init, width_init];
     
-    lb = [-Inf, -Inf, -Inf, -Inf, -0.8, 0.1]; % alpha > 0, width > 0
+    lb = [-Inf, -Inf, -Inf, -Inf, -0.8, 0.1];
     ub = [ Inf,  Inf,  Inf,  Inf,  0.8, 1.5];
     
     % psf_kernel = create_gaussian_psf_kernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
@@ -177,45 +179,19 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
 
     options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
     try
-        [p_fit, ~, ~, ~, ~, ~, jacobian] = lsqnonlin(costFunctionHandle, p_init, lb, ub, options);
+        [p_fit, resnorm, residual, exitflag, output, lambda, jacobian] = lsqnonlin(costFunctionHandle, p_init, lb, ub, options);
 
         uWom_fit = generate_moving_wall_model(p_fit, x_coords, n_harmonic, PSF_KERNEL, FIXED_NU, R_SCALE_METERS, OMEGA_N, fitParams.R0);
 
-        v_data_col = v_meas(:);
-        v_model_col = uWom_fit(:);
+        [Kappa_n, res_mag_RMS, res_phase_RMS, res_phase_RMS_msk, harmonic_SNR_dB] = calculate_fit_precision_metrics(v_meas, residual, jacobian);
 
-        % CALCUL DES RESIDUS QC
+        fitParams.Kappa_n                = Kappa_n;
+        fitParams.residual_mag_RMS       = res_mag_RMS;    
+        fitParams.residual_phase_RMS     = res_phase_RMS;
+        fitParams.residual_phase_RMS_msk = res_phase_RMS_msk;
+        fitParams.harmonic_SNR_dB        = harmonic_SNR_dB;
         
-        mag_data = abs(v_data_col);
-        mag_model = abs(v_model_col);
-        
-        diff_mag_sq = (mag_data - mag_model).^2;
-        sum_sq_diff = mean(diff_mag_sq); % Mean Squared Error
-        rms_data = sqrt(mean(mag_data.^2));
-        
-        % Formule: RMS(error) / RMS(signal)
-        % Ajout de eps pour éviter division par zéro
-        res_mag_RMS = sqrt(sum_sq_diff) / (rms_data + eps);
-
-        % Residual Phase RMS
-        % On utilise angle(z1 * conj(z2)) pour avoir la différence de phase repliée dans [-pi, pi]
-        % On ne garde que les points où le signal est significatif pour ne pas fitter du bruit
-        % Seuil arbitraire : 10% du max ou basé sur le SNR. Ici, simple RMS sur tout le profil comme demandé.
-        
-        phase_diff_rad = angle(v_data_col .* conj(v_model_col));
-        
-        % Optionnel : Pondérer par l'amplitude pour ignorer le bruit de fond
-        % mask = mag_data > 0.1 * max(mag_data);
-        % res_phase_RMS = sqrt(mean(phase_diff_rad(mask).^2));
-        
-        % Version brute (attention si v_meas contient beaucoup de bruit aux bords)
-        res_phase_RMS = sqrt(mean(phase_diff_rad.^2));
-
-
-        fitParams.residual_mag_RMS = res_mag_RMS;    
-        fitParams.residual_phase_RMS = res_phase_RMS;
-
-        fitParams.Kappa_n = sqrt(condest(jacobian'*jacobian));
+        % fitParams.Kappa_n = sqrt(condest(jacobian'*jacobian));
 
         % alpha_1             = p_fit(1);
         Cn_fit              = p_fit(1) + 1i * p_fit(2);
@@ -576,6 +552,54 @@ end
 
 % ============================== [ SYMBOLS ] ============================ %
 
+function [Kappa_n, res_mag_RMS, res_phase_RMS, res_phase_RMS_msk, harmonic_SNR_dB] = calculate_fit_precision_metrics(v_meas, residual, jacobian)
+
+    v_meas   = v_meas(:);
+    residual = residual(:);
+
+    % ================ KAPPA_N ================
+    Kappa_n = cond(full(jacobian)); % sqrt(condest(jacobian'*jacobian));
+
+    % ================   RMS   ================
+
+    N_points = numel(v_meas);
+
+    % Résidus renvoyés par lsqnonlin : [Re(eps); Im(eps)]
+    eps_complex = residual(1:N_points) + 1i * residual(N_points+1:2*N_points);
+
+    % Données et modèle au point optimum
+    v_data_col  = v_meas(:);
+    v_model_col = v_data_col - eps_complex;
+
+    % Résidu amplitude RMS normalisé
+    mag_data  = abs(v_data_col);
+    mag_model = abs(v_model_col);
+
+    diff_mag       = mag_data - mag_model;
+    diff_mag_sq    = diff_mag .^ 2;
+    mse_mag        = mean(diff_mag_sq);       % Mean Squared Error
+    rms_data       = sqrt(mean(mag_data.^2)); % RMS du signal
+
+    res_mag_RMS = sqrt(mse_mag) / (rms_data + eps);  % eviter div/0
+
+    % Résidu phase RMS
+    % phase_err = angle(V_data * conj(V_model)) dans [-pi, pi]
+    phase_diff_rad = angle(v_data_col .* conj(v_model_col));
+
+    % ponderation par amplitude pour ignorer le bruit
+    mask = mag_data > 0.1 * max(mag_data);
+    res_phase_RMS_msk = sqrt(mean(phase_diff_rad(mask) .^ 2));
+    res_phase_RMS     = sqrt(mean(phase_diff_rad       .^ 2));
+
+    % ================   SNR   ================
+
+    signal_power = sum(abs(v_model_col) .^ 2);
+    noise_power  = sum(abs(eps_complex) .^ 2);
+
+    harmonic_SNR_dB = 10 * log10(max(signal_power, eps) / max(noise_power, eps));
+end
+
+
 function K = calculate_K_factor(lambda)
     % Calculates the flow moment factor K(alpha).
     % K(alpha) = 1 - (2*J1(lambda) / (lambda * J0(lambda)))
@@ -592,7 +616,7 @@ end
 function metrics = calculate_symbols(fitParams, rho_blood)
     Cn          = fitParams.Cn;
     Dn          = fitParams.Dn;
-    R0          = fitParams.R0 * 1e-6;
+    R0          = fitParams.R0; % in meters
     alpha_1     = fitParams.alpha_1;
     alpha_n     = fitParams.alpha_n;
     omega_n     = fitParams.omega_n;
