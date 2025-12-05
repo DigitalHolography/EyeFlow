@@ -13,9 +13,14 @@ function capturedFrame = displayLabels(BkgImg,locsLabels,Labels,opt)
 
     assert(numel(locsLabels)==numel(Labels));
 
+    if ~iscell(Labels)
+        Labels = num2cell(Labels);
+    end
+
     Nlab = numel(Labels);
     fig = figure("Visible","off");
     imshow(BkgImg);
+    fontsize = round(size(BkgImg,1) / 40);
     
     textOptions = {"FontWeight", "bold", ...
         "Color", "white", ...
@@ -23,8 +28,8 @@ function capturedFrame = displayLabels(BkgImg,locsLabels,Labels,opt)
         "BackgroundColor", "black"};
 
     for i = 1:Nlab
-        x_l = locsLabel{i}(1);
-        y_l = locsLabel{i}(2);
+        x_l = locsLabels{i}(1);
+        y_l = locsLabels{i}(2);
         label = Labels{i};
         if isnumeric(label)
             text(x_l, y_l, sprintf("%d", round(label, 1)), textOptions{:});

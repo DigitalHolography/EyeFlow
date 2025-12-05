@@ -27,6 +27,7 @@ filterSignals = jsonParams.PulseAnalysis.FilterSignals;
 method = jsonParams.PulseAnalysis.DifferenceMethods;
 bkgfillmethod = jsonParams.PulseAnalysis.BkgFillMethod;
 w = jsonParams.PulseAnalysis.LocalBackgroundWidth;
+d = jsonParams.PulseAnalysis.LocalBackgroundDist;
 k = jsonParams.Preprocess.InterpolationFactor;
 bkg_scaler = jsonParams.PulseAnalysis.bkgScaler;
 scalingFactor = 1000 * 1000 * 2 * jsonParams.PulseAnalysis.Lambda / sin(jsonParams.PulseAnalysis.Phi);
@@ -54,7 +55,7 @@ fs = 1 / dt;
 % Create section mask
 x_c = xy_barycenter(1) / numX;
 y_c = xy_barycenter(2) / numY;
-maskSection = diskMask(numX, numY, 2*r1, 2*r2, 'center', [x_c, y_c]);
+maskSection = diskMask(numX, numY, r1, r2, 'center', [x_c, y_c]);
 
 % Create vessel masks
 maskArterySection = maskArtery & maskSection;
@@ -81,8 +82,9 @@ switch bkgfillmethod
             f_bkg(:, :, frameIdx) = single(maskedAverage(f_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
         end
     case 'inpaintCoherent'
+        maskVesselDilated = imdilate(maskVessel, strel('disk', (d)));
         parfor frameIdx = 1:numFrames
-            f_bkg(:, :, frameIdx) = single(inpaintCoherent(f_video(:, :, frameIdx), maskVessel));
+            f_bkg(:, :, frameIdx) = single(inpaintCoherent(f_video(:, :, frameIdx), maskVesselDilated));
         end
 end
 

@@ -77,7 +77,7 @@ scoreMaskVein = NaN;
 
 % Prepare video for vesselness computation
 
-if any(contains(vesselnessMethod,{"matchedFilter","frangi"}))
+if any(contains(string(vesselnessMethod),["matchedFilter","frangi"]))
     M0_video = M0_ff;
     A = ones(1, 1, numFrames);
     B = A .* maskDiaphragm;
