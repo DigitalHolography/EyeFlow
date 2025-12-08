@@ -317,7 +317,7 @@ end
 
 function name = sanitizeFieldName(str)
 % Replace invalid characters for struct fields with descriptive tags
-name = regexprep(str, '/', '_slash_'); % Replace / with _slash_
+name = regexprep(str, '/', '__'); % Replace / with _slash_
 name = regexprep(name, '[^a-zA-Z0-9_]', '_'); % Replace any other invalid chars
 % Ensure it starts with a letter
 if ~isletter(name(1))
@@ -331,7 +331,7 @@ function original = antiSanitizeFieldName(safeName)
 % and removes any leading 'x' added for invalid first chars.
 
 % Step 1: Replace descriptive tokens back to original characters
-original = regexprep(safeName, '_slash_', '/');
+original = regexprep(safeName, '__', '/');
 
 % Step 2: Undo generic substitutions (if you added more rules)
 % Example: if sanitizeFieldName replaced spaces or dashes, handle them here

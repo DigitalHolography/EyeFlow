@@ -169,8 +169,10 @@ function saveWomersleyResults(BasePath, womersley_results, units_struct)
     end
 
     
-    saveWomersleyResults_handle(BasePath, expandStructField(womersley_results, "segments_metrics"), units_struct.segments_metrics);
-    saveWomersleyResults_handle(BasePath, expandStructField(womersley_results, "harmonic_metrics"), units_struct.harmonic_metrics);
+    saveWomersleyResults_handle(BasePath + "/M", expandStructField(womersley_results, "segments_metrics.MovingWallFixedNu"), units_struct.segments_metrics);
+    saveWomersleyResults_handle(BasePath + "/R", expandStructField(womersley_results, "segments_metrics.RigidWallFixedNu"), units_struct.segments_metrics);
+    saveWomersleyResults_handle(BasePath + "/M", expandStructField(womersley_results, "harmonic_metrics.MovingWallFixedNu"), units_struct.harmonic_metrics);
+    saveWomersleyResults_handle(BasePath + "/R", expandStructField(womersley_results, "harmonic_metrics.RigidWallFixedNu"), units_struct.harmonic_metrics);
 end
 
 function saveWomersleyResults_handle(BasePath, womersley_cells, units_struct)
@@ -348,22 +350,28 @@ function res = expandStructField(StructArray, FieldName)
 %   Result = expandStructField(MyData, 'F');
     arguments
         StructArray 
-        FieldName 
+        FieldName (1,1) string
     end
 
     [rows, cols] = size(StructArray);
 
-    if ~isfield(StructArray, FieldName)
-        warning('Field "%s" does not exist in the provided struct.', FieldName);
-        return;
+    fieldPath = split(FieldName, ".");
+
+    rawValues = num2cell(StructArray);
+
+    for i = 1:length(fieldPath)
+        currentField = fieldPath{i};
+        
+        % For every element in our current list, extract the sub-field.
+        % If the field is missing or the parent is empty, return [].
+        rawValues = cellfun(@(s) safeExtract(s, currentField), rawValues, 'UniformOutput', false);
     end
-    rawValues = {StructArray.(FieldName)};
 
     nonEmptyIdx = find(~cellfun(@isempty, rawValues), 1);
     
     if isempty(nonEmptyIdx)
         res = cell(rows, cols, 0); 
-        warning('All fields are empty. Returning empty cell array.');
+        warning('Field path "%s" All fields are empty. Returning empty cell array.', FieldName);
         return;
     end
     
@@ -384,6 +392,15 @@ function res = expandStructField(StructArray, FieldName)
     % Reshape to A x B x N
     res = reshape(flatMatrix, [rows, cols, N]);
 
+end
+
+function val = safeExtract(s, f)
+    % SAFEEXTRACT Safely gets field 'f' from struct 's'. Returns [] on failure.
+    if isstruct(s) && isscalar(s) && isfield(s, f)
+        val = s.(f);
+    else
+        val = [];
+    end
 end
 
 function out = prepareRow(in, N)

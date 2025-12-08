@@ -27,10 +27,12 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     
     % TODO: Parfor does not seem to work with toolbox
     for i = 1:HARMONIC_NUMBER
-        fitParams(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, ToolBox);
+        fitParams.RigidWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, ToolBox, ModelType="rigid");
+        fitParams.MovingWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, ToolBox, ModelType="moving");
     end
 
-    h_metrics = calculate_harmonic_metrics(fitParams);
+    h_metrics.RigidWallFixedNu = calculate_harmonic_metrics(fitParams.RigidWallFixedNu);
+    h_metrics.MovingWallFixedNu = calculate_harmonic_metrics(fitParams.MovingWallFixedNu);
 
     % metrics for each segments / harmonic
     results.segments_metrics = fitParams;
@@ -40,7 +42,11 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
 end
 
 
-function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, ToolBox)
+function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, ToolBox, options)
+    arguments
+        v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, ToolBox
+        options.ModelType string {mustBeMember(options.ModelType, ["rigid", "moving"])} = "moving"
+    end
     % WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
     % by fitting the velocity profile to a Womersley flow model.
     %
@@ -156,6 +162,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     
     FIXED_NU = 3e-6; % m^2/s (Phase 1 recommendation)
     OMEGA_N = 2 * pi * cardiac_frequency * n_harmonic;
+    ALPHA_N = fitParams.R0 * sqrt(OMEGA_N / FIXED_NU);
     
     % Factor to convert 'width' (normalized 0-1) to Radius in Meters
     % PIXEL_SIZE is in microns, convert to meters (1e-6)
@@ -167,24 +174,37 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     center_init     = init_fit.geoParams.center_norm;
     % width_init = 0.8;
     
-    % p_init = [real(amp_init_complex), imag(amp_init_complex), center_init, width_init];
-    p_init = [real(Cn_init_complex), imag(Cn_init_complex), real(Dn_init_complex), imag(Dn_init_complex), center_init];
-    
-    lb = [-Inf, -Inf, -Inf, -Inf, -0.8];
-    ub = [ Inf,  Inf,  Inf,  Inf,  0.8];
-    
-    % psf_kernel = create_gaussian_psf_kernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
+    switch options.ModelType
+        case "rigid"
+            p_init = [real(Cn_init_complex), imag(Cn_init_complex), center_init];
+            
+            lb = [-Inf, -Inf, -0.8];
+            ub = [ Inf,  Inf,  0.8];
+
+            modelArgHandle = @(p) deal(complex(p(1), p(2)), complex(0, 0), p(3));
+
+        case "moving"
+            p_init = [real(Cn_init_complex), imag(Cn_init_complex), real(Dn_init_complex), imag(Dn_init_complex), center_init];
+            
+            lb = [-Inf, -Inf, -Inf, -Inf, -0.8];
+            ub = [ Inf,  Inf,  Inf,  Inf,  0.8];
+
+            modelArgHandle = @(p) deal(complex(p(1), p(2)), complex(p(3), p(4)), p(5));
+    end
 
     % Which is basically init_fit.geoParams.width_fit, the fit on R0
     width_norm = fitParams.width;
 
-    costFunctionHandle = @(p) costFun(p, x_coords, v_meas, width_norm, PSF_KERNEL, FIXED_NU, R_SCALE_METERS, OMEGA_N, fitParams.R0);
+    % costFunctionHandle = @(p) costFun(p, x_coords, v_meas, width_norm, PSF_KERNEL, FIXED_NU, R_SCALE_METERS, OMEGA_N, fitParams.R0);
+    costFunctionHandle = @(p) costFun(p, modelArgHandle, x_coords, v_meas, ALPHA_N, width_norm, PSF_KERNEL);
 
     options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
     try
-        [p_fit, resnorm, residual, exitflag, output, lambda, jacobian] = lsqnonlin(costFunctionHandle, p_init, lb, ub, options);
+        [p_fit, ~, residual, exitflag, ~, ~, jacobian] = lsqnonlin(costFunctionHandle, p_init, lb, ub, options);
+        [Cn_fit, Dn_fit, center_fit] = modelArgHandle(p_fit);
 
-        uWom_fit = generate_moving_wall_model(p_fit, x_coords, n_harmonic, PSF_KERNEL, FIXED_NU, R_SCALE_METERS, OMEGA_N, fitParams.R0);
+        %          generate_womersley_profile(x, Cn, Dn, center, alpha, width_norm, psf_kernel)
+        uWom_fit = generate_womersley_profile(x_coords, Cn_fit, Dn_fit, center_fit, ALPHA_N, width_norm, PSF_KERNEL);
 
         [Kappa_n, res_mag_RMS, res_phase_RMS, res_phase_RMS_msk, harmonic_SNR_dB] = calculate_fit_precision_metrics(v_meas, residual, jacobian);
 
@@ -197,11 +217,11 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         
         % fitParams.Kappa_n = sqrt(condest(jacobian'*jacobian));
 
-        Cn_fit              = p_fit(1) + 1i * p_fit(2);
-        Dn_fit              = p_fit(3) + 1i * p_fit(4);
-        center_fit          = p_fit(5);
+        % Cn_fit              = p_fit(1) + 1i * p_fit(2);
+        % Dn_fit              = p_fit(3) + 1i * p_fit(4);
+        % center_fit          = p_fit(5);
     
-        fitParams.alpha_n   = fitParams.R0 * sqrt(OMEGA_N / FIXED_NU);
+        fitParams.alpha_n   = ALPHA_N;
         fitParams.Cn        = Cn_fit;
         fitParams.Dn        = Dn_fit;
         fitParams.center    = center_fit;
@@ -212,7 +232,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
 
         fitParams.harmonic = n_harmonic;
     
-        Rn = (fitParams.Dn / fitParams.Cn) * fitParams.R0;;
+        Rn = (fitParams.Dn / fitParams.Cn) * fitParams.R0;
         fitParams.Rn = Rn;
     
         fitParams.metrics.nu_app = FIXED_NU;
@@ -394,18 +414,30 @@ end
 
 % ========================== [ COST FUNCTIONS ] ========================= %
 
-function res = costFun(p, x_coords, v_meas, width_norm, psf_kernel, nu, r_scale, omega_n, R0)
-    val = generate_moving_wall_model(p, x_coords, width_norm, psf_kernel, nu, r_scale, omega_n, R0);
+function res = costFun(p, modelArgHandle, x_coords, v_meas, alpha, width_norm, psf_kernel)
+
+    [Cn, Dn, center] = modelArgHandle(p);
+
+    val = generate_womersley_profile(x_coords, Cn, Dn, center, alpha, width_norm, psf_kernel);
+
     res = [real(val - v_meas.'); ...
            imag(val - v_meas.')];
 end
 
-function res = uWom_base(alpha, r) 
-    res = (1 - (besselj(0, 1i^(3/2) * alpha * r) ./ besselj(0, 1i^(3/2) * alpha)));
+function Bn = uWom_base(alpha, r)
+    lambda_n = 1i^(3/2) * alpha;
+    J0 = besselj(0, lambda_n);
+
+    if J0 == 0
+        Bn = zeros(size(r));
+        return;
+    end
+
+    Bn = (1 - (besselj(0, lambda_n * r) ./ J0));
 end
 
 
-function res = uWom_psi(alpha, r)
+function Psin = uWom_psi(alpha, r)
     % Formula: Psi_n = - [lambda * J1(lambda) / J0(lambda)^2] * J0(lambda*r)
     %
     % Inputs:
@@ -414,18 +446,66 @@ function res = uWom_psi(alpha, r)
     %           from 0 to 1.
     
     % it is ((-1 + i) / sqrt(2)) * alpha
-    lambda_val = 1i^(3/2) * alpha;
+    lambda_n = 1i^(3/2) * alpha;
 
-    numerator_scalar = -lambda_val * besselj(1, lambda_val);
-    denominator_scalar = besselj(0, lambda_val) ^ 2;
+    numerator_scalar = -lambda_n * besselj(1, lambda_n);
+    denominator_scalar = besselj(0, lambda_n) ^ 2;
+
+    if denominator_scalar == 0
+        Psin = zeros(size(r));
+        return;
+    end
+
     complex_scalar = numerator_scalar / denominator_scalar;
     
-    radial_profile = besselj(0, lambda_val .* r);
+    radial_profile = besselj(0, lambda_n .* r);
     
-    res = complex_scalar .* radial_profile;
+    Psin = complex_scalar .* radial_profile;
 end
 
 % ============================= [ WOMERSELY ] =========================== %
+
+function model_profile = generate_womersley_profile(x, Cn, Dn, center, alpha, width_norm, psf_kernel)
+    % A more generalized and clean version
+
+    arguments
+        x, Cn, Dn, center, alpha, width_norm, psf_kernel
+    end
+
+    % Normalise coordinates
+    r = (x - center) / width_norm;
+
+    [Bn, Psin] = get_womersley_basis(alpha, r);
+
+    if ~isempty(psf_kernel)
+        Bn = conv(Bn, psf_kernel, 'same');
+        if Dn ~= 0
+            Psin = conv(Psin, psf_kernel, 'same');
+        end
+    end
+
+    model_profile = (Cn * Bn) + (Dn * Psin);
+    
+    model_profile(abs(r) > 1) = 0;
+end
+
+
+function [Bn, Psin] = get_womersley_basis(alpha, r)
+    arguments
+        alpha
+        r
+    end
+    % Returns the Womersley basis as calculated
+    % C.f.  18a - 18c of v7
+
+    Bn = uWom_base(alpha, r);
+
+    if nargout > 1
+        Psin = uWom_psi(alpha, r);
+    else
+        Psin = [];
+    end
+end
 
 function model_profile = generate_moving_wall_model(p, x, width_norm, psf_kernel, nu, r_scale, omega_n, R0)
     % psf_kernel is optionnal
