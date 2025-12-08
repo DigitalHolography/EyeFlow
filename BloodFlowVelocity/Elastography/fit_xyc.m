@@ -3,7 +3,8 @@ function [PWV, dPWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, na
 %
 % --- Input ---
 % Z              : 2D map (matrix: ny x nx)
-% dx, dy         : Pixel spacing in x and y (default = 1)
+% dx, dy         : Pixel spacing in x and y (default = 1) x is time y is
+%                  length
 % name           : Identifier string for output file
 % branch_index   : Index of the branch analyzed
 %
@@ -23,9 +24,10 @@ if nargin < 5, branch_index = 0; end
 
 %% --- Get global ToolBox and prepare output directory ---
 ToolBox = getGlobalToolBox();
-outputDir = fullfile(ToolBox.path_png, 'flexion');
 params = ToolBox.getParams;
 saveFigures = params.saveFigures;
+
+outputDir = fullfile(ToolBox.path_png, 'flexion', sprintf("%s_branch_%d",name,branch_index));
 
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
@@ -57,16 +59,16 @@ Z0 = Z0 .* W;
 
 % --- FFT ---
 Nmult = 8; % zero-padding multiplier for higher frequency resolution
-F = fftshift(fft2(Z0, Nmult * nx, Nmult * ny));
+F = fftshift(fft2(Z0, Nmult * ny, Nmult * nx));
 S = abs(F);
 
 % Keep only central frequencies
-bandWidth = diskMask(Nmult * nx, Nmult * ny, 0, 0.5);
+bandWidth = diskMask(Nmult * ny, Nmult * nx, 0, 0.5);
 S = S .* bandWidth;
 S0 = S;
 
 % Scan only half to avoid unnecessary computations
-S0(:, 1:nx * Nmult < nx * Nmult / 2) = 0;
+S0(:,1:nx * Nmult < nx * Nmult / 2) = 0;
 %%%S0(1:ny * Nmult > ny * Nmult / 2, :) = 0;  % Keep only x increasing waves 
 
 % --- Frequency axes ---
@@ -157,7 +159,7 @@ if saveFigures
     fig2 = figure('Visible', 'off');
     xVals = linspace(-dx * nx / 2, dx * nx / 2, nx);
     yVals = linspace(-dy * ny / 2, dy * ny / 2, ny);
-    imagesc(xVals, yVals, Z0, [-0.1, 0.1]);
+    imagesc(xVals, yVals, Z0, [-0.025, 0.025]);
     axis xy; colormap parula; colorbar;
     xlabel('time delay (s)');
     ylabel('arc length lag (mm)');

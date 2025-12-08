@@ -13,7 +13,7 @@ end
 ToolBox.Output.Extra.add(sprintf("PWV/%s_Segments_Labels", name), L);
 
 if saveFigures
-    figure('Visible', 'on');
+    figure('Visible', 'off');
     curcmap = jet(n+1);
     imagesc(L); colormap(curcmap);
     axis image; axis off;
