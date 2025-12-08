@@ -40,7 +40,7 @@ function capturedFrame = displayLabels(BkgImg,locsLabels,Labels,opt)
 
     if ~isempty(opt.save_path)
         ToolBox = getGlobalToolBox();
-        exportgraphics(gca,opt.save_path,'Resolution',300);
+        saveas(gcf,opt.save_path);
     end
 
 

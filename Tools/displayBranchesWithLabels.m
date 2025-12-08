@@ -2,14 +2,15 @@ function displayBranchesWithLabels(vesselBranchesMap,opt)
 
     arguments
         vesselBranchesMap
-        opt.save_path
+        opt.save_path = [];
+        opt.bkgimg = [];
     end
 
     ToolBox = getGlobalToolBox();
     M0_RGB = ToolBox.Cache.M0_RGB;
     N = max(vesselBranchesMap(:)); % num of branches
 
-    cmap = colormap("hsv");
+    % cmap = colormap("hsv");
     
 
     figure("Visible","off")
@@ -18,11 +19,15 @@ function displayBranchesWithLabels(vesselBranchesMap,opt)
         mask = (vesselBranchesMap==i);
         s = regionprops(mask,"centroid");
         locsLabels{i} = cat(1,s.Centroid);
+    end
 
-        M0_RGB = M0_RGB .* mask .* cmap(i) + M0_RGB .* ~mask;
+    if ~isempty(opt.bkgimg)
+        bkgimg = opt.bkgimg;
+    else
+        bkgimg = M0_RGB;
     end
 
 
-    displayLabels(M0_RGB,locsLabels,1:N,'save_path',opt.save_path);
+    displayLabels(bkgimg,locsLabels,1:N,'save_path',opt.save_path);
 
 end
