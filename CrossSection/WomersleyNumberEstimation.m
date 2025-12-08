@@ -9,7 +9,6 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     PIXEL_SIZE = params.px_size; % in milimeters
     PIXEL_SIZE = PIXEL_SIZE * 1000; % in μm
 
-    % TODO: Fix the psf kernel function
     psf_kernel = create_gaussian_psf_kernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
     % Fit a simple PSF-convolved Parabolic/Plug model to get Geometry
     [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, ToolBox);
