@@ -14,7 +14,7 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, ToolBox);
     
     if isnan(geoParams.R0)
-        warning('Geometry fit failed');
+        warning("[WOMERSLEY] Geometry fit failed");
         return;
     end
 
@@ -24,15 +24,17 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     );
 
     HARMONIC_NUMBER = params.json.exportCrossSectionResults.WomersleyMaxHarmonic;
-    
+
     % TODO: Parfor does not seem to work with toolbox
     for i = 1:HARMONIC_NUMBER
-        fitParams.RigidWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, ToolBox, ModelType="rigid");
+        fitParams.RigidWallFixedNu(i)  = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, ToolBox, ModelType="rigid");
         fitParams.MovingWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, ToolBox, ModelType="moving");
+        fitParams.RigidWallFreeNu(i)   = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, ToolBox, ModelType="rigid", NuType="free");
     end
 
-    h_metrics.RigidWallFixedNu = calculate_harmonic_metrics(fitParams.RigidWallFixedNu);
+    h_metrics.RigidWallFixedNu  = calculate_harmonic_metrics(fitParams.RigidWallFixedNu);
     h_metrics.MovingWallFixedNu = calculate_harmonic_metrics(fitParams.MovingWallFixedNu);
+    h_metrics.RigidWallFreeNu   = calculate_harmonic_metrics(fitParams.RigidWallFreeNu);
 
     % metrics for each segments / harmonic
     results.segments_metrics = fitParams;
@@ -45,7 +47,8 @@ end
 function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, ToolBox, options)
     arguments
         v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, ToolBox
-        options.ModelType string {mustBeMember(options.ModelType, ["rigid", "moving"])} = "moving"
+        options.ModelType   string {mustBeMember(options.ModelType, ["rigid", "moving"])} = "moving"
+        options.NuType      string {mustBeMember(options.NuType,    ["fixed", "free"  ])} = "fixed"
     end
     % WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
     % by fitting the velocity profile to a Womersley flow model.
@@ -130,7 +133,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     if crossSectionLength > 1
         v_profile = interp1(linspace(1, crossSectionLength, crossSectionLength), v_profile, linspace(1, crossSectionLength, NUM_INTERP_POINTS));
     else
-        warning_s("WomersleyNumberEstimation_n (%i, %i, %i): Not enough valid points in the velocity profile. Skipping fit.", circleIdx, branchIdx, n_harmonic);
+        warning_s("[WOMERSLEY] WomersleyNumberEstimation_n (%i, %i, %i): Not enough valid points in the velocity profile. Skipping fit.", circleIdx, branchIdx, n_harmonic);
         return;
     end
     
@@ -162,47 +165,30 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     
     FIXED_NU = 3e-6; % m^2/s (Phase 1 recommendation)
     OMEGA_N = 2 * pi * cardiac_frequency * n_harmonic;
-    ALPHA_N = fitParams.R0 * sqrt(OMEGA_N / FIXED_NU);
     
     % Factor to convert 'width' (normalized 0-1) to Radius in Meters
     % PIXEL_SIZE is in microns, convert to meters (1e-6)
     R_SCALE_METERS = (PIXEL_SIZE * 1e-6) * crossSectionLength / 2; 
-
+    
+    % Setup all parameters for fit depending on options
     % p = [real(Cn), imag(Cn), real(Dn), imag(Dn), center]
-    Cn_init_complex = mean(v_meas(abs(v_meas)>0));
+    Cn_init_complex = mean(v_meas(abs(v_meas) > 0));
     Dn_init_complex = 0; % Start with no wall motion
     center_init     = init_fit.geoParams.center_norm;
-    % width_init = 0.8;
-    
-    switch options.ModelType
-        case "rigid"
-            p_init = [real(Cn_init_complex), imag(Cn_init_complex), center_init];
-            
-            lb = [-Inf, -Inf, -0.8];
-            ub = [ Inf,  Inf,  0.8];
-
-            modelArgHandle = @(p) deal(complex(p(1), p(2)), complex(0, 0), p(3));
-
-        case "moving"
-            p_init = [real(Cn_init_complex), imag(Cn_init_complex), real(Dn_init_complex), imag(Dn_init_complex), center_init];
-            
-            lb = [-Inf, -Inf, -Inf, -Inf, -0.8];
-            ub = [ Inf,  Inf,  Inf,  Inf,  0.8];
-
-            modelArgHandle = @(p) deal(complex(p(1), p(2)), complex(p(3), p(4)), p(5));
-    end
+    [p_init, lb, ub, modelArgHandle] = fit_setup(options, Cn_init_complex, Dn_init_complex, center_init, FIXED_NU);
 
     % Which is basically init_fit.geoParams.width_fit, the fit on R0
     width_norm = fitParams.width;
 
     % costFunctionHandle = @(p) costFun(p, x_coords, v_meas, width_norm, PSF_KERNEL, FIXED_NU, R_SCALE_METERS, OMEGA_N, fitParams.R0);
-    costFunctionHandle = @(p) costFun(p, modelArgHandle, x_coords, v_meas, ALPHA_N, width_norm, PSF_KERNEL);
+    costFunctionHandle = @(p) costFun(p, modelArgHandle, x_coords, v_meas,  width_norm, PSF_KERNEL, fitParams.R0, OMEGA_N);
 
-    options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
+    fit_options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
     try
-        [p_fit, ~, residual, exitflag, ~, ~, jacobian] = lsqnonlin(costFunctionHandle, p_init, lb, ub, options);
-        [Cn_fit, Dn_fit, center_fit] = modelArgHandle(p_fit);
+        [p_fit, ~, residual, exitflag, ~, ~, jacobian] = lsqnonlin(costFunctionHandle, p_init, lb, ub, fit_options);
+        [Cn_fit, Dn_fit, center_fit, nu_fit] = modelArgHandle(p_fit);
 
+        ALPHA_N = fitParams.R0 * sqrt(OMEGA_N / nu_fit);
         %          generate_womersley_profile(x, Cn, Dn, center, alpha, width_norm, psf_kernel)
         uWom_fit = generate_womersley_profile(x_coords, Cn_fit, Dn_fit, center_fit, ALPHA_N, width_norm, PSF_KERNEL);
 
@@ -232,15 +218,18 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
 
         fitParams.harmonic = n_harmonic;
     
-        Rn = (fitParams.Dn / fitParams.Cn) * fitParams.R0;
-        fitParams.Rn = Rn;
+        if options.ModelType == "rigid"
+            fitParams.Rn = complex(NaN, NaN);
+        else
+            fitParams.Rn = (fitParams.Dn / fitParams.Cn) * fitParams.R0;
+        end
     
-        fitParams.metrics.nu_app = FIXED_NU;
+        fitParams.metrics.nu_app = nu_fit;
 
-        fitParams.metrics = calculate_symbols(fitParams, RHO_BLOOD);
+        fitParams.metrics = calculate_symbols(fitParams, RHO_BLOOD, options);
 
     catch ME 
-        warning('Womersley fit failed for %s (idx %d): %s', name, idx, ME.message);
+        warning_s("[WOMERSLEY] Womersley fit failed for %s (idx %d): %s", name, idx, ME.message);
         return;
     end
     
@@ -319,7 +308,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         try
             exportgraphics(hFig, save_filename, 'Resolution', 96);
         catch export_error
-            warning('Could not save figure');
+            warning("[WOMERSLEY] Could not save figure");
         end
         
         if ~strcmpi(get(hFig, 'Visible'), 'on')
@@ -332,6 +321,40 @@ end
 % +=====================================================================+ %
 % |                          HELPER FUNCTIONS                           | %
 % +=====================================================================+ %
+
+% ============================ [ FIT SETUP ] ============================ %
+
+function [p_init, lb, ub, modelArgHandle] = fit_setup(options, Cn_init, Dn_init, center_init, FIXED_NU)
+    arguments
+        options, Cn_init, Dn_init, center_init, FIXED_NU
+    end
+
+    if options.ModelType == "rigid" && options.NuType == "fixed"
+        p_init = [real(Cn_init), imag(Cn_init), center_init];
+        
+        lb = [-Inf, -Inf, -0.8];
+        ub = [ Inf,  Inf,  0.8];
+
+        modelArgHandle = @(p) deal(complex(p(1), p(2)), complex(0, 0), p(3), FIXED_NU);
+
+    elseif options.ModelType == "moving" && options.NuType == "fixed"
+        p_init = [real(Cn_init), imag(Cn_init), real(Dn_init), imag(Dn_init), center_init];
+        
+        lb = [-Inf, -Inf, -Inf, -Inf, -0.8];
+        ub = [ Inf,  Inf,  Inf,  Inf,  0.8];
+
+        modelArgHandle = @(p) deal(complex(p(1), p(2)), complex(p(3), p(4)), p(5), FIXED_NU);
+    elseif options.ModelType == "rigid" && options.NuType == "free"
+        p_init = [real(Cn_init), imag(Cn_init), center_init, FIXED_NU];
+        
+        lb = [-Inf, -Inf, -0.8, 1.5e-6];
+        ub = [ Inf,  Inf,  0.8, 4.0e-6];
+
+        modelArgHandle = @(p) deal(complex(p(1), p(2)), complex(0, 0), p(3), p(4));
+    else
+        warning_s("[WOMERSLEY] fit_setup: Invalid options combinaison (%s, %s)", options.ModelType, options.NuType);
+    end
+end
 
 % ========================== [ R0 CALCULATION ] ========================= %
 
@@ -353,7 +376,7 @@ function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, T
     x_grid_normalized = linspace(-1, 1, NUM_INTERP_POINTS); 
     
     if crossSectionLength <= 1
-         warning('fitGeometryFromMean: Profile too short'); 
+         warning("[WOMERSLEY] fitGeometryFromMean: Profile too short"); 
          return; 
     end
 
@@ -414,11 +437,13 @@ end
 
 % ========================== [ COST FUNCTIONS ] ========================= %
 
-function res = costFun(p, modelArgHandle, x_coords, v_meas, alpha, width_norm, psf_kernel)
+function res = costFun(p, modelArgHandle, x_coords, v_meas, width_norm, psf_kernel, R0, omega_n)
+    [Cn, Dn, center, nu] = modelArgHandle(p);
 
-    [Cn, Dn, center] = modelArgHandle(p);
+    % Based on the equation 18a of paper v7
+    alpha_n = R0 * sqrt(omega_n / nu);
 
-    val = generate_womersley_profile(x_coords, Cn, Dn, center, alpha, width_norm, psf_kernel);
+    val = generate_womersley_profile(x_coords, Cn, Dn, center, alpha_n, width_norm, psf_kernel);
 
     res = [real(val - v_meas.'); ...
            imag(val - v_meas.')];
@@ -594,7 +619,7 @@ function v_meas = extractHarmonicProfile(v_profile_ft, f_vector, base_frequency,
     harmonic_indices = find(abs(f_vector - target_frequency) <= margin_hz);
 
     if isempty(harmonic_indices)
-        warning('Harmonic %d (%.2f Hz) not found in frequency band. Using closest single peak instead.', n_harmonic, target_frequency);
+        warning("[WOMERSLEY] Harmonic %d (%.2f Hz) not found in frequency band. Using closest single peak instead.", n_harmonic, target_frequency);
         [~, closest_idx] = min(abs(f_vector - target_frequency));
         harmonic_indices = closest_idx;
     end
@@ -616,7 +641,7 @@ function psf_kernel = create_gaussian_psf_kernel(fwhm_um, num_points, cross_sect
     dx_um = total_width_um / num_points; % um per point
 
     if dx_um == 0
-        warning('Cannot create PSF kernel: The spatial resolution (dx_um) is zero.');
+        warning("[WOMERSLEY] Cannot create PSF kernel: The spatial resolution (dx_um) is zero.");
     end
     
     fwhm_in_points = fwhm_um / dx_um;
@@ -694,7 +719,7 @@ function K = calculate_K_factor(lambda)
 end
 
 
-function metrics = calculate_symbols(fitParams, rho_blood)
+function metrics = calculate_symbols(fitParams, rho_blood, options)
     Cn          = fitParams.Cn;
     Dn          = fitParams.Dn;
     R0          = fitParams.R0; % in meters
@@ -721,20 +746,9 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     %     'mu_app',           NaN  ... % Viscosity (dinamic)
     % );
 
-    % PWK (Rn/R0)
-    if Cn ~= 0
-        RnR0_complex = Dn / Cn;
-    else
-        RnR0_complex = complex(NaN, NaN);
-    end
-
-    metrics.RnR0_complex      = RnR0_complex;
-
     % Flow (Qn)
-    K_an = calculate_K_factor(lambda_n);
-    Qn_m3_s = pi * R0 ^ 2 * Cn * K_an;
-    metrics.Qn = Qn_m3_s; % units: m³/s
-    metrics.Kn = K_an;
+    metrics.Kn = calculate_K_factor(lambda_n);
+    metrics.Qn = pi * R0 ^ 2 * Cn * metrics.Kn; % units: m³/s
 
     % Gradient (Gn)
     metrics.Gn = 1i * omega_n * rho_blood * Cn; % units: Pa/m
@@ -743,6 +757,33 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     metrics.H_GQ_n = metrics.Gn / metrics.Qn;
     % Geometry normalized impedance magnitude (Pa.s/m2)
     metrics.H_GQ_n_Geonorm_abs = norm(metrics.H_GQ_n) * (R0 ^ 2);
+
+
+    % Handle Moving Wall metrics to be not calculated when Rigid
+    if options.ModelType == "rigid"
+        metrics.RnR0_complex        = complex(NaN, NaN);
+        metrics.AnA0                = complex(NaN, NaN);
+        metrics.H_RQ_n              = complex(NaN, NaN);
+        metrics.H_RQ_n_Geonorm_abs  = NaN;
+    else
+        % PWK (Rn/R0)
+        if Cn ~= 0
+            metrics.RnR0_complex = Dn / Cn;
+        else
+            metrics.RnR0_complex = complex(NaN, NaN);
+        end
+
+        % Area puls. (An/A0)
+        metrics.AnA0 = 2 * metrics.RnR0_complex;
+
+        % Dilatation per unit pulsatile flow (s/m3)
+        metrics.H_RQ_n = (Rn / R0) / metrics.Qn;
+        metrics.H_RQ_n_Geonorm_abs = norm(metrics.H_GQ_n) * (R0 ^ 2);
+    end
+
+
+
+
 
     % Viscosity (νapp)
     % numerator = (R0 ^ 2) * fitParams.omega_0;
@@ -769,13 +810,6 @@ function metrics = calculate_symbols(fitParams, rho_blood)
     % Shear stress per unit pulsatile flow (Pa.s/m3)
     metrics.H_tauQ_n = metrics.tau_n / metrics.Qn;
     metrics.H_tauQ_n_Geonorm_abs = norm(metrics.H_tauQ_n) * (R0 ^ 2);
-
-    % Dilatation per unit pulsatile flow (s/m3)
-    metrics.H_RQ_n = (Rn / R0) / metrics.Qn;
-    metrics.H_RQ_n_Geonorm_abs = norm(metrics.H_GQ_n) * (R0 ^ 2);
-
-    % Area puls. (An/A0)
-    metrics.AnA0 = 2 * metrics.RnR0_complex;
 
     % Resistance-like contribution per unit length (Pa.s/m4)
     metrics.R_seg_n = real(metrics.H_GQ_n);
@@ -809,6 +843,11 @@ function h_metrics = calculate_harmonic_metrics(fitParams)
 
     % Phase skewness of shear, ϕτ,2 − 2ϕτ,1 (°)
     h_metrics.DeltaPhiTau2 = ternary_op(leng_harmo >= 2, @() angle(metrics(2).tau_n) - 2 * angle(metrics(1).tau_n), @() NaN);
+
+    % TODO: Add Description, because I can't Find anything
+    h_metrics.RhoQ21       = ternary_op(leng_harmo >= 2, @() norm(metrics(2).Qn) / norm(metrics(1).Qn), @() NaN);
+    h_metrics.RhoQ31       = ternary_op(leng_harmo >= 3, @() norm(metrics(3).Qn) / norm(metrics(1).Qn), @() NaN);
+    h_metrics.DeltaPhiQ2   = ternary_op(leng_harmo >= 2, @() angle(metrics(2).Qn) - 2 * angle(metrics(1).Qn), @() NaN);
 end
 
 
