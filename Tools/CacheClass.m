@@ -3,12 +3,25 @@ classdef CacheClass < handle
 % Used for the handle
 properties
 
+    % Main Results
+    vRMS single
+    Q_results_A
+    Q_results_V
+
+    % Display Cache
+    M0_ff_img
+    v_video_RGB uint8
+    v_mean_RGB uint8
+    M0_RGB double % cached mean image
+
+
     % Time Vector
     t double %cached time vector
 
     % Masks
     maskArtery logical % cached mask artery
     maskVein logical % cached mask vein
+    maskVessel logical
     maskNeighbors logical % cached mask neighbors
     maskBackground logical % cached mask background
     scoreMaskArtery double % cached score mask artery
@@ -22,7 +35,6 @@ properties
 
     % Other cached variables
     papillaDiameter double % cached papilla diameter
-    M0_RGB double % cached mean image
 
     % Color maps
     cmapArtery double % cached colormap artery
@@ -42,6 +54,8 @@ properties
 
     % Womersley things
     WomersleyOut cell
+
+    
 
 end
 

@@ -7,6 +7,8 @@ if isempty(U)
     error("No input field (M0_ff or velocity)");
 end
 
+
+
 % U(x,y,t) usually M0
 % center the [x,y] barycenter (the center of the CRA)
 ToolBox = getGlobalToolBox;
@@ -20,7 +22,7 @@ PWV = NaN; % initialize output
 dPWV = NaN;
 score = NaN;
 
-outputDir = fullfile(ToolBox.path_png, 'flexion');
+outputDir = fullfile(ToolBox.path_png, 'flexion', sprintf("%s_branch_%d",name,branch_index));
 
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
@@ -66,8 +68,8 @@ absy(1) = interpoints_y(k);
 
 if saveFigures
     figure('Visible', 'off');
-    hold on;
     imagesc (interpoints)
+    hold on
     scatter(x_bary, y_bary, 80, 'o', 'r', 'LineWidth', 1.5);
     scatter(absx(1), absy(1), 80, 'o', 'g', 'LineWidth', 1.5);
     axis image;

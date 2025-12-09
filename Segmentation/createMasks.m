@@ -77,12 +77,15 @@ scoreMaskVein = NaN;
 % 1) Vesselness Computation and Initial Mask Creation
 
 % Prepare video for vesselness computation
-M0_video = M0_ff;
-A = ones(1, 1, numFrames);
-B = A .* maskDiaphragm;
-M0_video(~B) = NaN;
-clear A B
-M0_img = squeeze(mean(M0_video, 3, 'omitnan'));
+
+if any(contains(string(vesselnessMethod),["matchedFilter","frangi"]))
+    M0_video = M0_ff;
+    A = ones(1, 1, numFrames);
+    B = A .* maskDiaphragm;
+    M0_video(~B) = NaN;
+    clear A B
+    M0_img = squeeze(mean(M0_video, 3, 'omitnan'));
+end
 
 % 1) 1) Compute vesselness response
 
@@ -397,6 +400,7 @@ ToolBox.Output.add('RemainingNbPxl', RemainingArea_pxl, '');
 % 5) Save masks in Cache
 ToolBox.Cache.maskArtery = maskArtery;
 ToolBox.Cache.maskVein = maskVein;
+ToolBox.Cache.maskVessel = maskArtery | maskVein;
 ToolBox.Cache.maskNeighbors = maskNeighbors;
 ToolBox.Cache.maskBackground = maskBackground;
 ToolBox.Cache.maskChoroid = maskChoroid;

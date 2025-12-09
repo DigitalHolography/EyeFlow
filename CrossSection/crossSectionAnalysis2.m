@@ -44,7 +44,7 @@ end
 
 subImgMean = squeeze(mean(subImg, 3, 'omitnan'));
 subImgCropped = cropCircle(subImgMean);
-[rotatedImg, tilt_angle] = rotateSubImage(subImgMean, subImgCropped, loc, xy_barycenter);
+[rotatedImg, tilt_angle] = rotateSubImage(subImgCropped);
 subMask = imrotatecustom(subMask, tilt_angle);
 rotatedImg(~subMask) = NaN;
 results.subImg_cell = rescale(rotatedImg);
@@ -55,7 +55,7 @@ subImgUnCropped = subImgUnCropped(yRange, xRange);
 subImgUnCropped = imrotate(subImgUnCropped, tilt_angle, 'bilinear', 'crop');
 
 % Compute the Vessel Cross Section
-[D, D_SE, A, A_SE, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, patchName, ToolBox, papillaDiameter, saveFigures);
+[D, D_SE, A, A_SE, c1, c2, rsquare] = computeVesselCrossSection(rotatedImg, params.px_size);
 results.D = D;
 results.D_SE = D_SE;
 results.A = A;

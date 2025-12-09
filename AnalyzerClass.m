@@ -2,16 +2,13 @@ classdef AnalyzerClass < handle
 % Handles all analysis operations
 
 properties
-    vRMS single
-    v_video_RGB uint8
-    v_mean_RGB uint8
-    Q_results_A
-    Q_results_V
+    Cache CacheClass
 end
 
 methods
 
-    function obj = AnalyzerClass()
+    function obj = AnalyzerClass(Cache)
+        obj.Cache = Cache;
     end
 
     function performSegmentation(~, executionObj, app)
@@ -41,11 +38,12 @@ methods
         ToolBox.Cache.xy_barycenter = getBarycenter(executionObj.f_AVG);
         M0_ff_img = rescale(mean(executionObj.M0_ff, 3));
 
+        ToolBox.Cache.M0_ff_img = M0_ff_img;
+
         ToolBox.Output.Extra.add("M0_ff_img", M0_ff_img);
 
         % Optic disk
         try
-
             if ToolBox.getParams.json.Mask.OpticDiskSegmentationNet
                 % New model
                 [~, center_x, center_y, diameter_x, diameter_y] = predictOpticDisk(executionObj.AINetworks.OpticDiskSegmentationNet, M0_ff_img);
@@ -123,11 +121,11 @@ methods
 
         ToolBox = getGlobalToolBox;
         params = ToolBox.getParams;
-        [obj.vRMS, obj.v_video_RGB, obj.v_mean_RGB] = pulseAnalysis(executionObj.f_RMS, executionObj.M0_ff);
+        [obj.Cache.vRMS, obj.Cache.v_video_RGB, obj.Cache.v_mean_RGB] = pulseAnalysis(executionObj.f_RMS, executionObj.M0_ff);
 
         if params.json.PulseAnalysis.ExtendedFlag
             f_AVG_mean = squeeze(mean(executionObj.f_AVG, 3));
-            extendedPulseAnalysis(executionObj.M0_ff, executionObj.f_RMS, f_AVG_mean, obj.vRMS);
+            extendedPulseAnalysis(executionObj.M0_ff, executionObj.f_RMS, f_AVG_mean, obj.Cache.vRMS);
         end
 
         axialAnalysis(executionObj.f_AVG);
@@ -161,8 +159,8 @@ methods
         ToolBox = getGlobalToolBox;
         maskArtery = ToolBox.Cache.maskArtery;
         maskVein = ToolBox.Cache.maskVein;
-        [obj.Q_results_A] = generateCrossSectionSignals(maskArtery, 'artery', obj.vRMS, executionObj.M0_ff);
-        [obj.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', obj.vRMS, executionObj.M0_ff);
+        [obj.Cache.Q_results_A] = generateCrossSectionSignals(maskArtery, 'artery', obj.Cache.vRMS, executionObj.M0_ff);
+        [obj.Cache.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', obj.Cache.vRMS, executionObj.M0_ff);
 
         executionObj.is_volumeRateAnalyzed = true;
         fprintf("- Cross-Section Signals Generation took: %ds\n", round(toc(crossSectionAnalysisTimer)));
@@ -175,14 +173,14 @@ methods
         exportCrossSectionResultsTimer = tic;
 
         ToolBox = getGlobalToolBox;
-        exportCrossSectionResults(obj.Q_results_A, 'artery', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
-        exportCrossSectionResults(obj.Q_results_V, 'vein', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
+        exportCrossSectionResults(obj.Cache.Q_results_A, 'artery', executionObj.M0_ff, obj.Cache.v_video_RGB, obj.Cache.v_mean_RGB);
+        exportCrossSectionResults(obj.Cache.Q_results_V, 'vein', executionObj.M0_ff, obj.Cache.v_video_RGB, obj.Cache.v_mean_RGB);
 
-        maskVessel = ToolBox.Cache.maskArtery | ToolBox.Cache.maskVein;
-        sectionImageAdvanced(rescale(mean(executionObj.M0_ff, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, maskVessel);
+        maskVessel = ToolBox.Cache.maskVessel;
+        sectionImageAdvanced(obj.Cache.M0_ff_img, obj.Cache.Q_results_A.maskLabel, obj.Cache.Q_results_V.maskLabel, obj.Cache.Q_results_A.rejected_mask, obj.Cache.Q_results_V.rejected_mask, maskVessel);
 
         try
-            combinedCrossSectionAnalysis(obj.Q_results_A, obj.Q_results_V, executionObj.M0_ff)
+            combinedCrossSectionAnalysis(obj.Cache.Q_results_A, obj.Cache.Q_results_V, executionObj.M0_ff)
         catch ME
             MEdisp(ME, ToolBox.EF_path);
         end

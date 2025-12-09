@@ -92,7 +92,7 @@ methods
         obj.Cache = CacheClass();
 
         % Initialize Modules
-        obj.Analyzer = AnalyzerClass();
+        obj.Analyzer = AnalyzerClass(obj.Cache);
 
         Parameters_json(path, obj.param_name);
 
@@ -164,9 +164,9 @@ methods
 
         if obj.flag_bloodFlowVelocity_analysis
             obj.Analyzer.performPulseAnalysis(obj);
-            obj.vRMS = obj.Analyzer.vRMS;
-            obj.v_video_RGB = obj.Analyzer.v_video_RGB;
-            obj.v_mean_RGB = obj.Analyzer.v_mean_RGB;
+            obj.vRMS = obj.Analyzer.Cache.vRMS;
+            obj.v_video_RGB = obj.Analyzer.Cache.v_video_RGB;
+            obj.v_mean_RGB = obj.Analyzer.Cache.v_mean_RGB;
         end
 
         try
@@ -184,8 +184,8 @@ methods
 
             if obj.flag_crossSection_analysis
                 obj.Analyzer.performCrossSectionAnalysis(obj);
-                obj.Q_results_A = obj.Analyzer.Q_results_A;
-                obj.Q_results_V = obj.Analyzer.Q_results_V;
+                obj.Q_results_A = obj.Analyzer.Cache.Q_results_A;
+                obj.Q_results_V = obj.Analyzer.Cache.Q_results_V;
             end
 
             if obj.flag_crossSection_export
