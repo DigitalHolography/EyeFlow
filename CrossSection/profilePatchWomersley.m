@@ -169,14 +169,14 @@ function saveWomersleyResults(BasePath, womersley_results, units_struct)
     end
 
     
-    saveWomersleyResults_handle(BasePath + "/M", expandStructField(womersley_results, "segments_metrics.MovingWallFixedNu"), units_struct.segments_metrics);
-    saveWomersleyResults_handle(BasePath + "/M", expandStructField(womersley_results, "harmonic_metrics.MovingWallFixedNu"), units_struct.harmonic_metrics);
+    saveWomersleyResults_handle(BasePath + "/MovingWallFixedNu", expandStructField(womersley_results, "segments_metrics.MovingWallFixedNu"), units_struct.segments_metrics);
+    saveWomersleyResults_handle(BasePath + "/MovingWallFixedNu", expandStructField(womersley_results, "harmonic_metrics.MovingWallFixedNu"), units_struct.harmonic_metrics);
 
-    saveWomersleyResults_handle(BasePath + "/R", expandStructField(womersley_results, "segments_metrics.RigidWallFixedNu"), units_struct.segments_metrics);
-    saveWomersleyResults_handle(BasePath + "/R", expandStructField(womersley_results, "harmonic_metrics.RigidWallFixedNu"), units_struct.harmonic_metrics);
+    saveWomersleyResults_handle(BasePath + "/RigidWallFixedNu", expandStructField(womersley_results, "segments_metrics.RigidWallFixedNu"), units_struct.segments_metrics);
+    saveWomersleyResults_handle(BasePath + "/RigidWallFixedNu", expandStructField(womersley_results, "harmonic_metrics.RigidWallFixedNu"), units_struct.harmonic_metrics);
 
-    saveWomersleyResults_handle(BasePath + "/N", expandStructField(womersley_results, "segments_metrics.RigidWallFreeNu"), units_struct.segments_metrics);
-    saveWomersleyResults_handle(BasePath + "/N", expandStructField(womersley_results, "harmonic_metrics.RigidWallFreeNu"), units_struct.harmonic_metrics);
+    saveWomersleyResults_handle(BasePath + "/RigidWallFreeNu", expandStructField(womersley_results, "segments_metrics.RigidWallFreeNu"), units_struct.segments_metrics);
+    saveWomersleyResults_handle(BasePath + "/RigidWallFreeNu", expandStructField(womersley_results, "harmonic_metrics.RigidWallFreeNu"), units_struct.harmonic_metrics);
 end
 
 function saveWomersleyResults_handle(BasePath, womersley_cells, units_struct)

@@ -15,8 +15,10 @@ classdef DimOutClass < handle
             % Map the Enum directly to the dictionary
             obj.Data = dictionary(); % a dictionary of dictionaries containing "id", data fields
 
+            structTemplate = struct("data", [], "attributes", []);
+
             for i = 1:numKeys
-                obj.Data(keys(i)) = struct();
+                obj.Data(keys(i)) = dictionary(string, structTemplate);
             end
         end
 
@@ -42,10 +44,14 @@ classdef DimOutClass < handle
                 data = sanitize1DArray(data);    
             end
 
-            
-            obj.Data(type).(sanitizeFieldName(name)).data = data;
-            obj.Data(type).(sanitizeFieldName(name)).attributes.dimDescription = dimDescription;
-            obj.Data(type).(sanitizeFieldName(name)).attributes.unit = unit;
+            entry = struct();
+            entry.data = data;
+            entry.attributes.dimDescription = dimDescription;
+            entry.attributes.unit = unit;
+
+            currentDict = obj.Data(type);
+            currentDict(name) = entry;
+            obj.Data(type) = currentDict;
         end
 
         function add_attributes(obj, name, key, val, dim)
@@ -57,23 +63,29 @@ classdef DimOutClass < handle
                 dim DimEnumClass = DimEnumClass.empty
             end
 
-            san_name = sanitizeFieldName(name);
+            % san_name = sanitizeFieldName(name);
 
             if isempty(dim)
                 dirs = enumeration("DimEnumClass");
                 for i = 1:numel(dirs)
-                    if isfield(obj.Data(dirs(i)), san_name)
+                    if isKey(obj.Data(dirs(i)), name)
                         dim = dirs(i);
                         break;
                     end
                 end
 
                 if dim == DimEnumClass.empty
-                    warning("field \'%s\' not found", name);
+                    warning_s("field \'%s\' not found", name);
+                    return;
                 end
             end
 
-            obj.Data(dim).(san_name).attributes.(key) = val;
+            currentDict = obj.Data(dim);
+        
+            entry = currentDict(name);
+            entry.attributes.(key) = val;
+            currentDict(name) = entry;
+            obj.Data(dim) = currentDict;
         end
 
         % FOR NOW DECREPATED
@@ -88,13 +100,13 @@ classdef DimOutClass < handle
             end
 
             if type.validate(data)
-                obj.Data(type).(sanitizeFieldName(name)) = data;
+                obj.Data(type).(name) = data;
             else
-                warning("DimOutClass:add", "DimEnumType (%s) is invalid with the data: %s\nSetting Other as default !", string(type), string(name));
-                obj.Data(DimEnumClass.Other).(sanitizeFieldName(name)) = data;
+                warning_s("DimOutClass:add", "DimEnumType (%s) is invalid with the data: %s\nSetting Other as default !", string(type), string(name));
+                obj.Data(DimEnumClass.Other).(name) = data;
             end
 
-            obj.Data(type).(sanitizeFieldName(name)) = data;
+            obj.Data(type).(name) = data;
 
             if isnumeric(ste)
                 obj.Ste.(strcat(sanitizeFieldName(name))) = ste;
@@ -196,19 +208,26 @@ classdef DimOutClass < handle
 
             data = obj.Data(folder);
 
-            if isempty(data)
+            if numEntries(data) == 0
                 return
             end
 
-            props = fieldnames(data);
+            props = keys(data);
 
             for i = 1:numel(props)
-                fieldName = props{i};
-                fieldValue = data.(fieldName).data;
-                fieldAttributes = data.(fieldName).attributes;
+                fieldName = props(i);
+
+                if fieldName == ""
+                    continue;
+                end
+
+                entry = data(fieldName);
+
+                fieldValue = entry.data;
+                fieldAttributes = entry.attributes;
 
                 % Build dataset path
-                datasetPath = "/" + string(folder) + "/" + antiSanitizeFieldName(fieldName);
+                datasetPath = "/" + string(folder) + "/" + fieldName;
 
                 handleSavingData(obj, path, datasetPath, fieldName, fieldValue, fieldAttributes);
             end
@@ -271,6 +290,12 @@ classdef DimOutClass < handle
 end
 
 % --- Helper: write numeric dataset ---
+
+function res = access_sub_dict(dict, field, sub_field)
+    temp = dict(field);
+    res = temp(sub_field);
+end
+
 
 function writeAttributes(path, datasetPath, fieldAttributes)
     arguments
