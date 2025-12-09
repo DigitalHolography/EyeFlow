@@ -1,4 +1,4 @@
-function [PWV, dPWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, name, branch_index)
+function [PWV, dPWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, name, branch_index, ToolBox)
 %FIT_XYC  Estimate spatial frequency components and compute Pulse Wave Velocity (PWV)
 %
 % --- Input ---
@@ -23,7 +23,6 @@ if nargin < 4, name = 'unnamed'; end
 if nargin < 5, branch_index = 0; end
 
 % --- Get global ToolBox and prepare output directory ---
-ToolBox = getGlobalToolBox();
 params = ToolBox.getParams;
 saveFigures = params.saveFigures;
 
