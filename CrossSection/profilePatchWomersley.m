@@ -329,19 +329,40 @@ function units_struct = get_unit(womersley_results)
     );
 
     harmonic_metrics = struct(...
-        "RhoTau21",         ["Shear harmonic ratios |tau_2|/|tau_1|",               ""],    ...
-        "RhoTau31",         ["Shear harmonic ratios |tau_3|/|tau_1|",               ""],    ...
-        "DeltaPhiTau2",     ["Phase skewness of shear, PhiTau_2 - 2 * PhiTau_1",    "°"]    ...
+        "RhoTau21",             ["Shear harmonic ratios |tau_2|/|tau_1|",               ""],    ...
+        "RhoTau31",             ["Shear harmonic ratios |tau_3|/|tau_1|",               ""],    ...
+        "DeltaPhiTau2",         ["Phase skewness of shear, PhiTau_2 - 2 * PhiTau_1",    "°"],   ...
+        "RhoQ21",               ["Flow harmonic ratios |Q_2|/|Q_1|",                    ""],    ...
+        "RhoQ31",               ["Flow harmonic ratios |Q_3|/|Q_1|",                    ""],    ...
+        "DeltaPhiQ2",           ["Phase skewness of flow, PhiQ_2 - 2 * PhiQ_1",         ""]     ...
     );
 
     units_struct.segments_metrics = segments_metrics;
     units_struct.harmonic_metrics = harmonic_metrics;
 
     idx = findFirstNonEmptyIdx(womersley_results);
-    [res, diff] = diffStructs(units_struct, womersley_results(idx));
-    if ~res
-        warning_s("Womersley: The unit structure differ form the results!\n%s", diff);
+    
+    fields_seg = fieldnames(womersley_results(idx).segments_metrics);
+    fields_har = fieldnames(womersley_results(idx).harmonic_metrics);
+
+    if ~isequal(sort(fields_seg), sort(fields_har))
+        warning_s("[WOMERSLEY] The fits are not the same for harmonic and segments\n(THIS SOULD NOT HAPPEN)\n");
+        return;
     end
+
+    for i = 1:numel(fields_seg)
+        field = fields_seg{i};
+        [res, diff] = diffStructs(segments_metrics, womersley_results(idx).segments_metrics.(field));
+        if ~res
+            warning_s("[WOMERSLEY] The unit structure (segments: %s) differ form the results!\n(THIS SOULD NOT HAPPEN)\n%s", field, diff);
+        end
+        [res, diff] = diffStructs(harmonic_metrics, womersley_results(idx).harmonic_metrics.(field));
+        if ~res
+            warning_s("[WOMERSLEY] The unit structure (harmonic: %s) differ form the results!\n(THIS SOULD NOT HAPPEN)\n%s", field, diff);
+        end
+        
+    end
+
 end
 
 
