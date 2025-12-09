@@ -51,7 +51,7 @@ Z0(end - 4:end, :) = [];
 [nx, ny] = size(Z0);
 
 % Mask out the central region if needed
-Z0 = Z0 .* ~diskMask(ny, nx, 0.001);
+Z0 = Z0 .* ~diskMask(nx, ny, 0.001);
 wx = hann(nx);
 wy = hann(ny);
 W = wx * wy';
@@ -59,7 +59,7 @@ Z0 = Z0 .* W;
 
 % --- FFT ---
 Nmult = 8; % zero-padding multiplier for higher frequency resolution
-F = fftshift(fft2(Z0, Nmult * ny, Nmult * nx));
+F = fftshift(fft2(Z0, Nmult * nx, Nmult * ny));
 S = abs(F);
 
 % Keep only central frequencies
@@ -100,13 +100,13 @@ hold on;
 
 % --- Dominant peak ---
 [m, idx] = max(pks);
-iy = rows(idx);
-ix = cols(idx);
+ix = rows(idx);
+iy = cols(idx);
 
-scatter(fy(round(ix)), fx(round(iy)), 80, 'ro', 'LineWidth', 1.5, 'DisplayName', 'Detected Peaks');
+scatter(fx(round(ix)), fy(round(iy)), 80, 'ro', 'LineWidth', 1.5, 'DisplayName', 'Detected Peaks');
 
-fx_peak = fy(round(ix));
-fy_peak = fx(round(iy));
+fx_peak = fx(round(ix));
+fy_peak = fy(round(iy));
 
 % --- Estimated uncertainty on frequencies ---
 dfx = fx_err(idx);
