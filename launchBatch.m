@@ -40,9 +40,9 @@ function launchBatch(varargin)
     end
 
     % --- ARGUMENT PARSING & PATH SELECTION ---
-    paths = string.empty;
-    mode = 'single'; % default to single holo mode
+    mode = 'single';
     inputPath = "";
+    rawInputs = string.empty; % This will hold the unprocessed paths/filenames
 
     % Check arguments
     if nargin > 0
@@ -65,7 +65,7 @@ function launchBatch(varargin)
     try
 
         if strcmp(mode, 'batch')
-            % --- BATCH MODE ---
+
             if inputPath == ""
                 [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
 
@@ -85,11 +85,11 @@ function launchBatch(varargin)
             end
 
             fprintf("Running in Batch Mode: %s\n", fullInputPath);
-            paths = strtrim(readlines(fullInputPath));
-            paths = paths(paths ~= ""); % remove empty lines
+            rawInputs = strtrim(readlines(fullInputPath));
+            rawInputs = rawInputs(rawInputs ~= ""); % remove empty lines
 
         else
-            % --- SINGLE HOLO MODE ---
+
             if inputPath == ""
                 [holo_name, holo_path] = uigetfile('*.holo', 'Select the .holo file');
 
@@ -101,25 +101,10 @@ function launchBatch(varargin)
                 fullInputPath = fullfile(holo_path, holo_name);
             else
                 fullInputPath = inputPath;
-
-                if ~isfile(fullInputPath)
-                    error("Holo file not found: %s", fullInputPath);
-                end
-
             end
 
             fprintf("Running in Single Mode: %s\n", fullInputPath);
-
-            % Find the latest HD folder for this holo file
-            latestHD = findLatestHDFolder(fullInputPath);
-
-            if ismissing(latestHD)
-                fprintf("No HoloDoppler (HD) folder found for: %s\n", fullInputPath);
-                return;
-            end
-
-            fprintf("Selected latest HD folder: %s\n", latestHD);
-            paths = [latestHD];
+            rawInputs = string(fullInputPath);
         end
 
     catch ME
@@ -127,8 +112,45 @@ function launchBatch(varargin)
         return;
     end
 
+    % Process rawInputs to resolve .holo files to HD folders, or validate folder paths
+    paths = string.empty;
+    fprintf("Resolving %d input(s)...\n", length(rawInputs));
+
+    for k = 1:length(rawInputs)
+        currentInput = rawInputs(k);
+
+        if currentInput == "" || ismissing(currentInput); continue; end
+
+        % Case 1: Input is a .holo file (Resolve to HD folder)
+        if endsWith(currentInput, ".holo", 'IgnoreCase', true)
+
+            if ~isfile(currentInput)
+                fprintf("  [WARNING] File not found: %s\n", currentInput);
+                continue;
+            end
+
+            latestHD = findLatestHDFolder(currentInput);
+
+            if ismissing(latestHD)
+                fprintf("  [WARNING] No HoloDoppler (HD) folder found for: %s\n", currentInput);
+            else
+                fprintf("  [RESOLVED] %s -> %s\n", currentInput, latestHD);
+                paths(end + 1, 1) = latestHD;
+            end
+
+            % Case 2: Input is already a folder
+        elseif isfolder(currentInput)
+            paths(end + 1, 1) = currentInput;
+
+            % Case 3: Invalid input
+        else
+            fprintf("  [WARNING] Path is not a folder or valid .holo file: %s\n", currentInput);
+        end
+
+    end
+
     if isempty(paths)
-        fprintf("No paths to process. Exiting.\n");
+        fprintf("No valid paths to process. Exiting.\n");
         return;
     end
 
@@ -137,9 +159,6 @@ function launchBatch(varargin)
 
     for ind = 1:length(paths)
         targetPath = paths(ind);
-
-        % check for empty lines if readlines failed to catch them
-        if targetPath == "" || ismissing(targetPath); continue; end
 
         jsonDir = fullfile(targetPath, 'eyeflow', 'json');
 
