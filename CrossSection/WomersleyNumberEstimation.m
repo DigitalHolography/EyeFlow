@@ -37,9 +37,15 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     qc.qc_MovingWallFixedNu = womersley_qc(fitParams.MovingWallFixedNu, "moving");
     qc.qc_RigidWallFreeNu   = womersley_qc(fitParams.RigidWallFreeNu,   "rigid");
 
-    h_metrics.RigidWallFixedNu  = calculate_harmonic_metrics(fitParams.RigidWallFixedNu);
-    h_metrics.MovingWallFixedNu = calculate_harmonic_metrics(fitParams.MovingWallFixedNu);
-    h_metrics.RigidWallFreeNu   = calculate_harmonic_metrics(fitParams.RigidWallFreeNu);
+    % h_metrics.RigidWallFixedNu  = calculate_harmonic_metrics(fitParams.RigidWallFixedNu);
+    % h_metrics.MovingWallFixedNu = calculate_harmonic_metrics(fitParams.MovingWallFixedNu);
+    % h_metrics.RigidWallFreeNu   = calculate_harmonic_metrics(fitParams.RigidWallFreeNu);
+
+    % filtered metrics (Should be done inside Analysis Program, not Here)
+    h_metrics.RigidWallFixedNu  = calculate_harmonic_metrics(fitParams.RigidWallFixedNu(qc.qc_RigidWallFixedNu.harmonic_valid));
+    h_metrics.MovingWallFixedNu = calculate_harmonic_metrics(fitParams.MovingWallFixedNu(qc.qc_MovingWallFixedNu.harmonic_valid));
+    h_metrics.RigidWallFreeNu   = calculate_harmonic_metrics(fitParams.RigidWallFreeNu(qc.qc_RigidWallFreeNu.harmonic_valid));
+
 
     % metrics for each segments / harmonic
     results.segments_metrics = fitParams;

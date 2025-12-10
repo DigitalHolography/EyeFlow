@@ -258,14 +258,18 @@ function saveWomersleyResults_handle(BasePath, womersley_cells, units_struct)
         try
             raw_matrix = cell2mat(field_cells);
             
-            [nRows, nCols] = size(field_cells);
-            dRows = sz(1);
-            dCols = sz(2);
-
-            reshaped_mat = reshape(raw_matrix, [dRows, nRows, dCols, nCols]);
-            permuted_mat = permute(reshaped_mat, [2, 4, 1, 3]);
-            
-            field_list = squeeze(permuted_mat);
+            if sz(1) ~= 1 || sz(2) ~= 1
+                [nRows, nCols] = size(field_cells);
+                dRows = sz(1);
+                dCols = sz(2);
+    
+                reshaped_mat = reshape(raw_matrix, [dRows, nRows, dCols, nCols]);
+                permuted_mat = permute(reshaped_mat, [2, 4, 1, 3]);
+                
+                field_list = squeeze(permuted_mat);
+            else
+                field_list = raw_matrix;
+            end
 
             fields_desc = ["circleIdx", "branchIdx"];
             
