@@ -168,6 +168,7 @@ function saveWomersleyResults(BasePath, womersley_results, units_struct)
         units_struct
     end
 
+    saveWomersleyResults_handle(BasePath + "/QC", expandStructField(womersley_results, "qc"), []);
     
     saveWomersleyResults_handle(BasePath + "/MovingWallFixedNu", expandStructField(womersley_results, "segments_metrics.MovingWallFixedNu"), units_struct.segments_metrics);
     saveWomersleyResults_handle(BasePath + "/MovingWallFixedNu", expandStructField(womersley_results, "harmonic_metrics.MovingWallFixedNu"), units_struct.harmonic_metrics);
@@ -239,20 +240,33 @@ function saveWomersleyResults_handle(BasePath, womersley_cells, units_struct)
             continue;
         end
 
-        
+        sz = size(sample_val); 
         empty_mask = cellfun(@isempty, field_cells);
         if any(empty_mask(:))
             if isnumeric(sample_val) && ~isreal(sample_val)
                 filler = complex(NaN, NaN);
+            elseif islogical(sample_val)
+                filler = false;
             else
                 filler = NaN;
             end
+
+            filler = repmat(filler, sz);
             field_cells(empty_mask) = {filler};
         end
 
         try
-            field_list = cell2mat(field_cells);
+            raw_matrix = cell2mat(field_cells);
             
+            [nRows, nCols] = size(field_cells);
+            dRows = sz(1);
+            dCols = sz(2);
+
+            reshaped_mat = reshape(raw_matrix, [dRows, nRows, dCols, nCols]);
+            permuted_mat = permute(reshaped_mat, [2, 4, 1, 3]);
+            
+            field_list = squeeze(permuted_mat);
+
             fields_desc = ["circleIdx", "branchIdx"];
             
             if size(field_list, 3) > 1
