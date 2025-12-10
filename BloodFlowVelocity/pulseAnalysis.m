@@ -39,7 +39,7 @@ maskArtery = ToolBox.Cache.maskArtery;
 maskVein = ToolBox.Cache.maskVein;
 maskVessel = ToolBox.Cache.maskVessel;
 maskChoroid = ToolBox.Cache.maskChoroid;
-maskNeighbors = ToolBox.Cache.maskNeighbors & ~maskChoroid;
+maskNeighbors = ToolBox.Cache.maskNeighbors;
 xy_barycenter = ToolBox.Cache.xy_barycenter;
 
 % Validating inputs
@@ -72,23 +72,67 @@ if ~any(maskVesselSection)
 end
 
 % Section 1: Background Calculation
-f_bkg = zeros(numX, numY, numFrames, 'single');
 
 % Calculate background
+% Background is divided between vascular and non-vascular areas
+fprintf("  1. Calculating background...\n");
 
-switch bkgfillmethod
-    case 'maskedAverage'
+if ~isempty(maskChoroid)
+    f_bkg_vascular = zeros(numX, numY, numFrames, 'single');
+    f_bkg_nonvascular = zeros(numX, numY, numFrames, 'single');
 
-        parfor frameIdx = 1:numFrames
-            f_bkg(:, :, frameIdx) = single(maskedAverage(f_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
-        end
+    % Masks
+    maskVascular = maskChoroid & maskNeighbors;
+    maskNonvascular = ~maskChoroid & maskNeighbors;
+    maskIntersect = maskChoroid & maskVessel;
+    maskNonIntersect = ~maskChoroid & maskVessel;
 
-    case 'inpaintCoherent'
-        maskVesselDilated = imdilate(maskVessel, strel('disk', (d)));
+    switch bkgfillmethod
+        case 'maskedAverage'
 
-        parfor frameIdx = 1:numFrames
-            f_bkg(:, :, frameIdx) = single(inpaintCoherent(f_video(:, :, frameIdx), maskVesselDilated));
-        end
+            parfor frameIdx = 1:numFrames
+                f_bkg_vascular(:, :, frameIdx) = single(maskedAverage(f_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskVascular, maskIntersect));
+                f_bkg_nonvascular(:, :, frameIdx) = single(maskedAverage(f_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNonvascular, maskNonIntersect));
+            end
+
+            f_bkg = f_bkg_vascular .* maskChoroid + f_bkg_nonvascular .* ~maskChoroid;
+
+        case 'inpaintCoherent'
+            maskVascularDilated = imdilate(maskVascular, strel('disk', (d)));
+            maskNonVascularDilated = imdilate(maskNonvascular, strel('disk', (d)));
+
+            parfor frameIdx = 1:numFrames
+                f_bkg_vascular(:, :, frameIdx) = single(inpaintCoherent(f_video(:, :, frameIdx), maskVascularDilated));
+                f_bkg_nonvascular(:, :, frameIdx) = single(inpaintCoherent(f_video(:, :, frameIdx), maskNonVascularDilated));
+            end
+
+            f_bkg = f_bkg_vascular .* maskChoroid + f_bkg_nonvascular .* ~maskChoroid;
+
+        otherwise
+            error("Unknown background fill method: %s", bkgfillmethod);
+    end
+
+else
+    f_bkg = zeros(numX, numY, numFrames, 'like', f_video);
+
+    switch bkgfillmethod
+        case 'maskedAverage'
+
+            parfor frameIdx = 1:numFrames
+                f_bkg(:, :, frameIdx) = single(maskedAverage(f_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
+            end
+
+        case 'inpaintCoherent'
+            maskNeighborsDilated = imdilate(maskNeighbors, strel('disk', (d)));
+
+            parfor frameIdx = 1:numFrames
+                f_bkg(:, :, frameIdx) = single(inpaintCoherent(f_video(:, :, frameIdx), maskNeighborsDilated));
+            end
+
+        otherwise
+            error("Unknown background fill method: %s", bkgfillmethod);
+
+    end
 
 end
 
@@ -213,6 +257,11 @@ end
 
 % Calculate velocity
 v_RMS_video = scalingFactor * df;
+
+% COMMENT
+% v_negative_velocity = v_RMS_video < 0;
+% writeGifOnDisc(v_negative_velocity, "v_negative_velocity", 0.04);
+
 clear df
 
 VelocityStatisticalOutputs(v_RMS_video, maskArtery, maskVein, maskArterySection, maskVeinSection);

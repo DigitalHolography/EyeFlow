@@ -21,9 +21,9 @@
     "NonRigidRegisteringFlag": false,
     "NonRigidRegisteringApply": false,
     "RemoveOutliers": {
-      "Flag": true,
+      "Flag": false,
       "KeepBiggestContiguous": true,
-      "KeepBiggestContiguousStdDistance" : 4,
+      "KeepBiggestContiguousStdDistance": 4,
       "InsertNans": true
     },
     "Interpolation Factor": 1
