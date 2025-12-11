@@ -130,7 +130,7 @@ subImg_cell = cell(numCircles, numBranches); % Sub-images of vessels
 histo_v_cell = cell(numCircles, numBranches); % Histograms of vessel velocities
 
 % Cross-Section Analysis of the arteries
-parfor c_idx = 1:numCircles
+for c_idx = 1:numCircles
 
     for b_idx = 1:numBranches
 

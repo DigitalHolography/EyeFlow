@@ -63,11 +63,6 @@ function [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSeg
 
     M0 = imresize(rescale(M0_ff_img), [512, 512]);
 
-    if canUseGPU
-        device = 'cuda';
-    else
-        device = 'cpu';
-    end
 
     if mask_params.AVCorrelationSegmentationNet
         R = imresize(rescale(R), [512, 512]);
@@ -83,7 +78,7 @@ function [maskArtery, maskVein, scoreMaskArtery, scoreMaskVein] = createMasksSeg
     end
 
     ToolBox.Output.Extra.add("NetworkInput", input);
-    output = runAVInference(net, input, device);
+    output = runAVInference(net, input);
 
     [~, argmax] = max(output, [], 3);
 
@@ -139,10 +134,14 @@ function onehot = multi2onehot(x, axis)
     onehot = double(onehot);
 end
 
-function output = runAVInference(model_struct, input, device)
+function output = runAVInference(model_struct, input)
 
     if model_struct.use_onnx
-        model_struct = model_struct.onnx_model;
+        if canUseGPU
+            device = 'cuda';
+        else
+            device = 'cpu';
+        end
 
         if isa(model_struct, 'dlnetwork')
             % For dlnetwork objects
@@ -155,10 +154,13 @@ function output = runAVInference(model_struct, input, device)
         end
 
     elseif model_struct.use_pytorch
-        model_struct = model_struct.py_model;
-
         np = py.importlib.import_module('numpy');
         torch = py.importlib.import_module('torch');
+        if torch.cuda.is_available()
+            device = 'cuda';
+        else
+            device = 'cpu';
+        end
 
         % MATLAB HWC → NumPy CHW
         input_np = np.array(permute(input, [3 1 2]), 'float32');
@@ -167,7 +169,7 @@ function output = runAVInference(model_struct, input, device)
         t = torch.tensor(input_np).unsqueeze(int32(0)).to(device); % BCHW
 
         % Forward pass
-        model = model_struct.to(device);
+        model = model_struct.py_model.to(device);
         out = model(t);
         out_np = out.cpu().detach().numpy();
 

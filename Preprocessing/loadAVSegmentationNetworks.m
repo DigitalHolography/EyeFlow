@@ -95,7 +95,7 @@ function [model_struct] = loadAVSegmentationNetworks(params)
         model_struct.use_cuda = is_cuda_available; % Store whether we're using CUDA
 
         % Load the PyTorch model
-        model_struct.py_model = py.torch.jit.load(model_path);
+        model_struct.py_model = py.torch.jit.load(model_path, pyargs('map_location','cpu'));
 
         % Move to GPU if CUDA is available and working
         if model_struct.use_cuda
