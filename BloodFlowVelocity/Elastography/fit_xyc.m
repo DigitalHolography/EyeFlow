@@ -1,9 +1,10 @@
-function [PWV, dPWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, name, branch_index)
+function [PWV, dPWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, name, branch_index, ToolBox)
 %FIT_XYC  Estimate spatial frequency components and compute Pulse Wave Velocity (PWV)
 %
 % --- Input ---
 % Z              : 2D map (matrix: ny x nx)
-% dx, dy         : Pixel spacing in x and y (default = 1)
+% dx, dy         : Pixel spacing in x and y (default = 1) x is time y is
+%                  length
 % name           : Identifier string for output file
 % branch_index   : Index of the branch analyzed
 %
@@ -22,10 +23,10 @@ if nargin < 4, name = 'unnamed'; end
 if nargin < 5, branch_index = 0; end
 
 % --- Get global ToolBox and prepare output directory ---
-ToolBox = getGlobalToolBox();
-outputDir = fullfile(ToolBox.path_png, 'flexion');
 params = ToolBox.getParams;
 saveFigures = params.saveFigures;
+
+outputDir = fullfile(ToolBox.path_png, 'flexion', sprintf("%s_branch_%d", name, branch_index));
 
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
@@ -98,13 +99,13 @@ hold on;
 
 % --- Dominant peak ---
 [m, idx] = max(pks);
-iy = rows(idx);
-ix = cols(idx);
+ix = rows(idx);
+iy = cols(idx);
 
-scatter(fy(round(ix)), fx(round(iy)), 80, 'ro', 'LineWidth', 1.5, 'DisplayName', 'Detected Peaks');
+scatter(fx(round(ix)), fy(round(iy)), 80, 'ro', 'LineWidth', 1.5, 'DisplayName', 'Detected Peaks');
 
-fx_peak = fy(round(ix));
-fy_peak = fx(round(iy));
+fx_peak = fx(round(ix));
+fy_peak = fy(round(iy));
 
 % --- Estimated uncertainty on frequencies ---
 dfx = fx_err(idx);
@@ -155,7 +156,7 @@ if saveFigures
     fig2 = figure('Visible', 'off');
     xVals = linspace(-dx * nx / 2, dx * nx / 2, nx);
     yVals = linspace(-dy * ny / 2, dy * ny / 2, ny);
-    imagesc(xVals, yVals, Z0, [-0.1, 0.1]);
+    imagesc(xVals, yVals, Z0, [-0.025, 0.025]);
     axis xy; colormap parula; colorbar;
     xlabel('time delay (s)');
     ylabel('arc length lag (mm)');

@@ -5,7 +5,8 @@ function [model_struct] = loadAVSegmentationNetworks(params)
     %   Outputs:
     %       AVSegmentationNet - Loaded artery/vein segmentation network
 
-    is_python_available = false;
+    is_pytorch_available = false;
+    is_cuda_available = false;
 
     try
         % Try detecting Python
@@ -23,22 +24,34 @@ function [model_struct] = loadAVSegmentationNetworks(params)
 
             try
                 torch = py.importlib.import_module('torch');
+                is_pytorch_available = true;
+                % Check if CUDA is available
+                if torch.cuda.is_available()
 
-                % Try allocating a CUDA tensor
-                test = torch.rand(int32(1)).cuda();
-                fprintf("CUDA in PyTorch is working.\n");
-                is_python_available = true;
+                    try
+                        % Try allocating a CUDA tensor
+                        test = torch.rand(int32(1)).cuda();
+                        fprintf("CUDA in PyTorch is working.\n");
+                        is_cuda_available = true;
+                    catch ME
+                        warning(ME.identifier, "PyTorch CUDA allocation failed. Falling back to CPU.\n%s", ME.message);
+                        fprintf("PyTorch CPU will be used.\n");
+                    end
+
+                else
+                    fprintf("CUDA not available. PyTorch CPU will be used.\n");
+                end
 
             catch ME
-                warning(ME.identifier, "PyTorch CUDA unavailable or faulty. Falling back to ONNX.\n%s", ME.message);
+                fprintf("PyTorch import failed. Falling back to ONNX.\n");
             end
 
         else
-            warning("Python version %s is not supported ; it must be >= 3.10 and < 3.13 (3.12 recommanded). Using ONNX.", pyver.Version);
+            fprintf("Python version %s is not supported ; it must be >= 3.10 and < 3.13 (3.12 recommanded). Using ONNX.", pyver.Version);
         end
 
     catch ME
-        warning(ME.identifier, "Python not detected or not configured. Using ONNX instead.\n%s", ME.message);
+        fprintf("Python not detected or not configured. Using ONNX instead.\n");
     end
 
     extension = ".onnx";
@@ -46,7 +59,7 @@ function [model_struct] = loadAVSegmentationNetworks(params)
     % Determine the correct model name based on params
     if params.json.Mask.AVCorrelationSegmentationNet && params.json.Mask.AVDiasysSegmentationNet
 
-        if is_python_available && ~isdeployed
+        if is_pytorch_available && ~isdeployed
             model_name = "nnwnet_av_corr_diasys";
             extension = ".pt";
         else
@@ -73,12 +86,24 @@ function [model_struct] = loadAVSegmentationNetworks(params)
     % AVSegmentationNet = [];
 
     model_struct = struct();
-    model_struct.use_python = false;
+    model_struct.use_pytorch = false;
     model_struct.use_onnx = false;
+    model_struct.use_cuda = false;
 
     if extension == ".pt"
-        model_struct.use_python = true;
+        model_struct.use_pytorch = true;
+        model_struct.use_cuda = is_cuda_available; % Store whether we're using CUDA
+
+        % Load the PyTorch model
         model_struct.py_model = py.torch.jit.load(model_path);
+
+        % Move to GPU if CUDA is available and working
+        if model_struct.use_cuda
+            model_struct.py_model = model_struct.py_model.cuda();
+        else
+            model_struct.py_model = model_struct.py_model.cpu();
+        end
+
     elseif extension == ".onnx"
         model_struct.use_onnx = true;
 
