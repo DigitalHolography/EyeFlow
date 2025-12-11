@@ -109,7 +109,11 @@ if params.json.exportCrossSectionResults.BloodFlowHistograms && saveFigures
 end
 
 if params.json.exportCrossSectionResults.BloodFlowProfilesWomersleyOverlay && saveFigures
-
+    try
+        profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
+    catch
+        fprintf("Womersley Profile Overlay failed for %s\n", name);
+    end
     %{
     try
         profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
