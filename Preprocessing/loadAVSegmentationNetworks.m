@@ -5,7 +5,7 @@ function [model_struct] = loadAVSegmentationNetworks(params)
     %   Outputs:
     %       AVSegmentationNet - Loaded artery/vein segmentation network
 
-    use_python = false;
+    is_python_available = false;
 
     try
         % Try detecting Python
@@ -27,7 +27,7 @@ function [model_struct] = loadAVSegmentationNetworks(params)
                 % Try allocating a CUDA tensor
                 test = torch.rand(int32(1)).cuda();
                 fprintf("CUDA in PyTorch is working.\n");
-                use_python = true;
+                is_python_available = true;
 
             catch ME
                 warning(ME.identifier, "PyTorch CUDA unavailable or faulty. Falling back to ONNX.\n%s", ME.message);
@@ -46,7 +46,7 @@ function [model_struct] = loadAVSegmentationNetworks(params)
     % Determine the correct model name based on params
     if params.json.Mask.AVCorrelationSegmentationNet && params.json.Mask.AVDiasysSegmentationNet
 
-        if use_python && ~isdeployed
+        if is_python_available && ~isdeployed
             model_name = "nnwnet_av_corr_diasys";
             extension = ".pt";
         else
