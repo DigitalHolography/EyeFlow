@@ -4,6 +4,8 @@ function displayBranchesWithLabels(vesselBranchesMap,opt)
         vesselBranchesMap
         opt.save_path = [];
         opt.bkgimg = [];
+        opt.label = [] % 
+        opt.unit = []
     end
 
     ToolBox = getGlobalToolBox();
@@ -27,7 +29,11 @@ function displayBranchesWithLabels(vesselBranchesMap,opt)
         bkgimg = M0_RGB;
     end
 
+    if isempty(opt.label)
+        opt.label = 1:N;
+    end
 
-    displayLabels(bkgimg,locsLabels,1:N,'save_path',opt.save_path);
+
+    displayLabels(bkgimg,locsLabels,opt.label,'save_path',opt.save_path,'unit',opt.unit);
 
 end

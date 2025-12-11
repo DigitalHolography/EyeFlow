@@ -42,6 +42,10 @@ end
 
 [~, idx] = max(scores .* ~isnan(PWV));
 
+displayBranchesWithLabels(L, label = PWV, unit="mm/s", save_path = fullfile(outputDir, ...
+        sprintf("%s_%s_branches_PWV.png", ToolBox.folder_name, name)), ...
+        bkgimg = ind2rgb(uint16(L), curcmap));
+
 if strcmp(name, 'artery')
     ToolBox.Output.add("ArteryPulseWaveVelocity", PWV(idx), 'mm/s', dPWV(idx));
 elseif strcmp(name, 'vein')

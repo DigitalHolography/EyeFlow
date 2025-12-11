@@ -121,7 +121,6 @@ Ux_edge = zeros(numpoints, size(U, 3));
 sabsx = smooth(absx, 0.5, 'loess');
 sabsy = smooth(absy, 0.5, 'loess');
 
-prev_line = [];
 figure('Visible', 'off');
 imshow(mask);
 xlim(xlim_mask);
@@ -143,44 +142,43 @@ for i = 2:numpoints - 1
     cc = cat(1, P3, P4);
     plot(cc(:, 1), cc(:, 2), 'r');
 
-    if ~isempty(prev_line)
-        P1 = prev_line(1, :); % previous start
-        P2 = prev_line(2, :); % previous end
-        plot(cc(:, 1), cc(:, 2), 'r')
+    plot(cc(:, 1), cc(:, 2), 'r')
 
-        % parameter grid (controls resolution of strip filling)
-        nu = 2 * halfwidth + 1;
-        nv = round(sqrt(sum((P3 - P1) .^ 2))); % distance between strips
-        [u, v] = meshgrid(linspace(0, 1, nu), linspace(0, 1, nv));
+    % parameter grid (controls resolution of strip filling)
+    nv = round(sqrt(sum((P4 - P3) .^ 2)));
+    t = linspace(0, 1, nv)';
+    X = P3(1) + t * (P4(1) - P3(1));
+    Y = P3(2) + t * (P4(2) - P3(2));
 
-        % bilinear interpolation of quadrilateral
-        X = (1 - v) .* ((1 - u) * P1(1) + u * P2(1)) + v .* ((1 - u) * P3(1) + u * P4(1));
-        Y = (1 - v) .* ((1 - u) * P1(2) + u * P2(2)) + v .* ((1 - u) * P3(2) + u * P4(2));
+    % round to pixel indices
+    X = round(X); Y = round(Y);
 
-        % round to pixel indices
-        X = round(X); Y = round(Y);
+    % keep inside image/mask
+    inside = X >= 1 & X <= size(mask, 2) & Y >= 1 & Y <= size(mask, 1);
+    X = X(inside); Y = Y(inside);
 
-        % keep inside image/mask
-        inside = X >= 1 & X <= size(mask, 2) & Y >= 1 & Y <= size(mask, 1);
-        X = X(inside); Y = Y(inside);
-        idx = sub2ind(size(mask), Y, X);
-        idx = idx(mask(idx));
+    % keep inside mask
+    idx = sub2ind(size(mask), Y, X);
+    
+    X = X(mask(idx));
+    Y = Y(mask(idx));
 
-        if ~isempty(idx)
-            L(idx) = i;
+    plot(X, Y, 'g');
 
-            for j = 1:N_frame
-                % idx_t = sub2ind(size(U), Y(:), X(:), repelem(j, length(Y))');
-                % U_x(i, j, :) = interp1((1:length(U(idx_t))) / length(U(idx_t)), U(idx_t), (1:numinterp) / numinterp);
-                line = U(sub2ind(size(U), X(:), Y(:), repelem(j, length(Y), 1)));
-                Ux_edge(i, j) = mean(squeeze(line') .* linspace(-1, 1, length(line)));
-            end
+    idx = idx(mask(idx));
 
+    if ~isempty(idx)
+        L(idx) = i;
+
+        for j = 1:N_frame
+            % idx_t = sub2ind(size(U), Y(:), X(:), repelem(j, length(Y))');
+            % U_x(i, j, :) = interp1((1:length(U(idx_t))) / length(U(idx_t)), U(idx_t), (1:numinterp) / numinterp);
+            line = U(sub2ind(size(U), X(:), Y(:), repelem(j, length(Y), 1)));
+            Ux_edge(i, j) = mean(squeeze(line') .* linspace(-1, 1, length(line)));
         end
 
     end
-
-    prev_line = [P3; P4]; % save endpoints for next step
+    
 end
 
 if saveFigures
@@ -192,11 +190,12 @@ end
 if saveFigures
     figure('Visible', 'off');
     imagesc(L)
+    title('selected sections along the artery')
+    axis image, axis off;
 
     xlim(xlim_mask);
     ylim(ylim_mask);
-    title('selected sections along the artery')
-    axis image, axis off;
+    
     % Save figure
     saveas(gcf, fullfile(outputDir, ...
         sprintf("%s_%s_%d_3_CrossingRegions.png", ToolBox.folder_name, name, branch_index)));
@@ -207,7 +206,7 @@ Ux_n = (Ux - mean(Ux, 2)) ./ std(Ux, [], 2);
 
 if saveFigures
     figure('Visible', 'off');
-    imagesc(ToolBox.Cache.t, linspace(0, abs_dist(end), numpoints), real(Ux_n));
+    imagesc(ToolBox.Cache.t, linspace(0, abs_dist(end), numpoints), Ux_n);
     xlabel("time (s)");
     ylabel("arc length (mm)")
     % Save figure

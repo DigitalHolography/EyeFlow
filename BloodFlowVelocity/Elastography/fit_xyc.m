@@ -47,32 +47,36 @@ end
 Z0(1:5, :) = [];
 Z0(end - 4:end, :) = [];
 
-[nx, ny] = size(Z0);
+[ny, nx] = size(Z0); % y space x time
 
 % Mask out the central region if needed
-Z0 = Z0 .* ~diskMask(nx, ny, 0.001);
-wx = hann(nx);
-wy = hann(ny);
+Z0 = Z0 .* ~diskMask(ny, nx, 0.001);
+wx = hann(ny);
+wy = hann(nx);
 W = wx * wy';
 Z0 = Z0 .* W;
 
 % --- FFT ---
 Nmult = 8; % zero-padding multiplier for higher frequency resolution
-F = fftshift(fft2(Z0, Nmult * nx, Nmult * ny));
+F = fftshift(fft2(Z0, Nmult * ny, Nmult * nx));
 S = abs(F);
 
 % Keep only central frequencies
-bandWidth = diskMask(Nmult * nx, Nmult * ny, 0, 0.5);
+bandWidth = diskMask(Nmult * ny, Nmult * nx, 0, 0.5);
 S = S .* bandWidth;
 S0 = S;
 
 % Scan only half to avoid unnecessary computations
-S0(:, 1:ny * Nmult < ny * Nmult / 2) = 0;
+S0(:, 1:nx * Nmult < nx * Nmult / 2) = 0;
 % S0(1:ny * Nmult > ny * Nmult / 2, :) = 0;  % Keep only x increasing waves
 
 % --- Frequency axes ---
 fx = (-Nmult * nx / 2:Nmult * nx / 2 - 1) / (Nmult * nx * dx); % cycles per unit x
 fy = (-Nmult * ny / 2:Nmult * ny / 2 - 1) / (Nmult * ny * dy); % cycles per unit y
+
+% --- Avoid the band of zero movment
+
+S0(abs(fy) < 1/1.25,:) = 0; % 1.25mm
 
 % --- Peak detection ---
 [pks, rows, cols, fx_err, fy_err] = findpeaks2(S0, fx, fy, 0.8);
@@ -99,8 +103,8 @@ hold on;
 
 % --- Dominant peak ---
 [m, idx] = max(pks);
-ix = rows(idx);
-iy = cols(idx);
+iy = rows(idx);
+ix = cols(idx);
 
 scatter(fx(round(ix)), fy(round(iy)), 80, 'ro', 'LineWidth', 1.5, 'DisplayName', 'Detected Peaks');
 
@@ -136,12 +140,15 @@ dTy = abs(Ty * (dky / ky));
 % fprintf('Period along x = %.3f units\n', Tx);
 % fprintf('Period along y = %.3f units\n', Ty);
 
-PWV = Ty / Tx;
-dPWV = PWV * sqrt((dTx / Tx) ^ 2 + (dTy / Ty) ^ 2);
+PWV = - Ty / Tx;
+dPWV = abs(PWV * sqrt((dTx / Tx) ^ 2 + (dTy / Ty) ^ 2));
 
 ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV", name, branch_index), PWV);
 ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_std", name, branch_index), dPWV);
 ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_unit", name, branch_index), "mm/s");
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/Wavelength", name, branch_index), Ty);
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/Wavelength_unit", name, branch_index), "mm");
+
 % s_wave_map = saveImagescToStruct(h_wave_map);
 % ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_intercorr", name, branch_index),s_wave_map);
 
@@ -149,7 +156,7 @@ ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_unit", name, br
 %     PWV = NaN; dPWV = NaN;
 % end
 
-fprintf('PWV = %.3f ± %.3f (mm/s)\n', PWV, dPWV);
+fprintf('PWV = %.3f ± %.3f (mm/s) score = %.3f\n', PWV, dPWV, m);
 
 if saveFigures
     % --- Plot original map with wave direction ---
@@ -171,7 +178,7 @@ if saveFigures
     saveas(fig1, fullfile(outputDir, sprintf('%s_%s_%d_6_fft_spectrum.png', ToolBox.folder_name, name, branch_index)));
     saveas(fig2, fullfile(outputDir, sprintf('%s_%s_%d_5_wave_map.png', ToolBox.folder_name, name, branch_index)));
 
-    % close(fig1); close(fig2);
+    close(fig1); close(fig2);
 
 end
 
