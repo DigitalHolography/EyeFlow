@@ -85,7 +85,7 @@
     "BigRadiusRatio": 0.35
   },
   "generateCrossSectionSignals": {
-    "NumberOfCircles": 20,
+    "NumberOfCircles": 10,
     "SegmentsLength": 0.025,
     "ScaleFactorWidth": 3,
     "MaskSliceThreshold": 0.01,
