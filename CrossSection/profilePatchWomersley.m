@@ -59,8 +59,6 @@ profHeight = 30;
 
 idx = 1;
 
-MAX_HARMONIC = params.json.exportCrossSectionResults.WomersleyMaxHarmonic;
-
 for circleIdx = 1:rows
 
     for branchIdx = 1:cols
