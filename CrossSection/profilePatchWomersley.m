@@ -458,8 +458,7 @@ end
 
 % DEBUG FUNCTIONS
 
-    
-function debug_struct_cells(in_cells, target_field)
+function debug_struct_cells(in_cells, target_field) %#ok<DEFNU>
     fprintf('Debugging field "%s"...\n', target_field);
     error_count = 0;
     
