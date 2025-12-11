@@ -45,15 +45,15 @@ try
             end
 
         catch ME
-            warning(ME.identifier, "PyTorch import failed. Falling back to ONNX.\n%s", ME.message);
+            fprintf("PyTorch import failed. Falling back to ONNX.\n");
         end
 
     else
-        warning("Python version %s is not supported ; it must be >= 3.10 and < 3.13 (3.12 recommanded). Using ONNX.", pyver.Version);
+        fprintf("Python version %s is not supported ; it must be >= 3.10 and < 3.13 (3.12 recommanded). Using ONNX.", pyver.Version);
     end
 
 catch ME
-    warning(ME.identifier, "Python not detected or not configured. Using ONNX instead.\n%s", ME.message);
+    fprintf("Python not detected or not configured. Using ONNX instead.\n");
 end
 
 extension = ".onnx";
