@@ -216,9 +216,7 @@ df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))
 outlier_frames_mask = outlier_frames_mask | isoutlier(df_vein_signal, "movmedian", 10);
 
 % Interpolate outlier frames
-if params.json.Preprocess.RemoveOutliersFlag
-    df = interpolateOutlierFrames(df, outlier_frames_mask');
-end
+df = interpolateOutlierFrames(df, outlier_frames_mask');
 
 if saveFigures
 
