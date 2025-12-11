@@ -26,6 +26,7 @@
       "KeepBiggestContiguousStdDistance": 4,
       "InsertNans": true
     },
+    "RemoveOutliersFlag": true,
     "Interpolation Factor": 1
   },
   "FlatFieldCorrection": {

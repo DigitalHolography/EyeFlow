@@ -24,13 +24,28 @@ try
         try
             torch = py.importlib.import_module('torch');
 
-            % Try allocating a CUDA tensor
-            test = torch.rand(int32(1)).cuda();
-            fprintf("CUDA in PyTorch is working.\n");
-            use_python = true;
+            % Check if CUDA is available
+            if torch.cuda.is_available()
+
+                try
+                    % Try allocating a CUDA tensor
+                    test = torch.rand(int32(1)).cuda();
+                    fprintf("CUDA in PyTorch is working.\n");
+                    use_cuda = true;
+                    use_python = true;
+                catch ME
+                    warning(ME.identifier, "PyTorch CUDA allocation failed. Falling back to CPU.\n%s", ME.message);
+                    fprintf("PyTorch CPU will be used.\n");
+                    use_python = true; % Still use Python with CPU
+                end
+
+            else
+                fprintf("CUDA not available. PyTorch CPU will be used.\n");
+                use_python = true; % Use Python with CPU
+            end
 
         catch ME
-            warning(ME.identifier, "PyTorch CUDA unavailable or faulty. Falling back to ONNX.\n%s", ME.message);
+            warning(ME.identifier, "PyTorch import failed. Falling back to ONNX.\n%s", ME.message);
         end
 
     else
@@ -69,10 +84,22 @@ model_path = getLatestModel(model_name, extension);
 model_struct = struct();
 model_struct.use_python = false;
 model_struct.use_onnx = false;
+model_struct.use_cuda = false;
 
 if extension == ".pt"
     model_struct.use_python = true;
+    model_struct.use_cuda = use_cuda; % Store whether we're using CUDA
+
+    % Load the PyTorch model
     model_struct.py_model = py.torch.jit.load(model_path);
+
+    % Move to GPU if CUDA is available and working
+    if model_struct.use_cuda
+        model_struct.py_model = model_struct.py_model.cuda();
+    else
+        model_struct.py_model = model_struct.py_model.cpu();
+    end
+
 elseif extension == ".onnx"
     model_struct.use_onnx = true;
 

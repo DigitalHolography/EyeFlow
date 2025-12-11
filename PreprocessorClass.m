@@ -144,7 +144,7 @@ methods (Access = private)
 
     function removeOutliers(obj, params)
 
-        if ~params.json.Preprocess.RemoveOutliers.Flag
+        if ~params.json.Preprocess.RemoveOutliersFlag
             return
         end
 
