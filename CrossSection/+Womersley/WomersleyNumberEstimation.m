@@ -13,7 +13,7 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
 
     psf_kernel = create_gaussian_psf_kernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
     % Fit a simple PSF-convolved Parabolic/Plug model to get Geometry
-    [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, ToolBox);
+    [geoParams, ~] = fitGeometryOnMean(v_profile, psf_kernel, ToolBox);
     
     if isnan(geoParams.R0)
         warning("[WOMERSLEY] Geometry fit failed");
@@ -194,7 +194,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     
     % Factor to convert 'width' (normalized 0-1) to Radius in Meters
     % PIXEL_SIZE is in microns, convert to meters (1e-6)
-    R_SCALE_METERS = (PIXEL_SIZE * 1e-6) * crossSectionLength / 2; 
+    % R_SCALE_METERS = (PIXEL_SIZE * 1e-6) * crossSectionLength / 2; 
     
     % Setup all parameters for fit depending on options
     % p = [real(Cn), imag(Cn), real(Dn), imag(Dn), center]
@@ -1228,8 +1228,7 @@ end
 % |                                DEBUG                                | %
 % +=====================================================================+ %
 
-    
-function visualizeDCFit(v_mean, geoParams, psf_kernel)
+function visualizeDCFit(v_mean, geoParams, psf_kernel) %#ok<DEFNU>
     % VISUALIZEDCFIT Plots the mean velocity data against the fitted model.
     % It uses the geoParams structure containing the fit results.
     %
