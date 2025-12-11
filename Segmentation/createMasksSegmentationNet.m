@@ -151,7 +151,7 @@ function output = runAVInference(model_struct, input, device)
                 output = predict(model_struct, input, 'ExecutionEnvironment', device);
         end
     elseif model_struct.use_python
-        model_struct = model_struct.python_model;
+        model_struct = model_struct.py_model;
 
         np = py.importlib.import_module('numpy');
         torch = py.importlib.import_module('torch');
@@ -163,7 +163,7 @@ function output = runAVInference(model_struct, input, device)
         t = torch.tensor(input_np).unsqueeze(int32(0)).to(device);  % BCHW
 
         % Forward pass
-        model = model_struct.py_model.to(device);
+        model = model_struct.to(device);
         out = model(t);
         out_np = out.cpu().detach().numpy();
 
