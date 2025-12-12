@@ -35,16 +35,19 @@ PWV = NaN(1, n);
 dPWV = NaN(1, n);
 scores = NaN(1, n);
 
+arterialVelocity = ToolBox.Output.Signals.ArterialVelocity.yvalues;
+venousVelocity = ToolBox.Output.Signals.VenousVelocity.yvalues;
+
 parfor i = 1:n
     % displacementAnalysis(D, maskLongArtery);
-    [PWV(i), dPWV(i), scores(i)] = pulseWaveVelocity(M, L == i, i, name, ToolBox);
+    [PWV(i), dPWV(i), scores(i)] = pulseWaveVelocity(M, L == i, i, name, arterialVelocity, venousVelocity, ToolBox);
 end
 
 [~, idx] = max(scores .* ~isnan(PWV));
 
-displayBranchesWithLabels(L, label = PWV, unit="mm/s", save_path = fullfile(outputDir, ...
-        sprintf("%s_%s_branches_PWV.png", ToolBox.folder_name, name)), ...
-        bkgimg = ind2rgb(uint16(L), curcmap));
+displayBranchesWithLabels(L, label = PWV, unit = "mm/s", save_path = fullfile(outputDir, ...
+    sprintf("%s_%s_branches_PWV.png", ToolBox.folder_name, name)), ...
+    bkgimg = ind2rgb(uint16(L), curcmap));
 
 if strcmp(name, 'artery')
     ToolBox.Output.add("ArteryPulseWaveVelocity", PWV(idx), 'mm/s', dPWV(idx));

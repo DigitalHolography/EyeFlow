@@ -1,4 +1,4 @@
-function [PWV, dPWV, score] = pulseWaveVelocity(U, mask, branch_index, name, ToolBox)
+function [PWV, dPWV, score] = pulseWaveVelocity(U, mask, branch_index, name, arterialVelocity, venousVelocity, ToolBox)
 % Computes the pulse wave velocity based on a cross correlation computation
 % U is the field over which we compute the velocity and mask is the mask of
 % the selected retinal artery
@@ -159,7 +159,7 @@ for i = 2:numpoints - 1
 
     % keep inside mask
     idx = sub2ind(size(mask), Y, X);
-    
+
     X = X(mask(idx));
     Y = Y(mask(idx));
 
@@ -178,7 +178,7 @@ for i = 2:numpoints - 1
         end
 
     end
-    
+
 end
 
 if saveFigures
@@ -195,7 +195,7 @@ if saveFigures
 
     xlim(xlim_mask);
     ylim(ylim_mask);
-    
+
     % Save figure
     saveas(gcf, fullfile(outputDir, ...
         sprintf("%s_%s_%d_3_CrossingRegions.png", ToolBox.folder_name, name, branch_index)));
@@ -216,19 +216,18 @@ end
 
 Ux_n = Ux_n';
 
-sig = ToolBox.Output.Signals.ArterialVelocity.yvalues;
-sig2 = ToolBox.Output.Signals.VenousVelocity.yvalues;
-sig = (sig - mean(sig)) / std(sig);
-sig2 = (sig2 - mean(sig2)) / std(sig2);
+% normalize signals
+arterialVelocity_norm = (arterialVelocity - mean(arterialVelocity)) / std(arterialVelocity);
+venousVelocity_norm = (venousVelocity - mean(venousVelocity)) / std(venousVelocity);
 
 Ux_n(isnan(Ux_n)) = 0; % remove nans
 
 corr_thresh = 0.4;
 % figure("Visible","off"), hold on,
-c1 = squeeze(mean(Ux_n .* sig', 1));
-c2 = squeeze(mean(Ux_n .* sig2', 1));
-c3 = squeeze(mean(Ux_n .* (-sig)', 1));
-c4 = squeeze(mean(Ux_n .* (-sig2)', 1));
+c1 = squeeze(mean(Ux_n .* arterialVelocity_norm', 1));
+c2 = squeeze(mean(Ux_n .* venousVelocity_norm', 1));
+c3 = squeeze(mean(Ux_n .* (-arterialVelocity_norm)', 1));
+c4 = squeeze(mean(Ux_n .* (-venousVelocity_norm)', 1));
 % nn = length(c1);
 % plot(1:nn,c1,1:nn,c2,1:nn,c3,1:nn,c4);
 % yline(corr_thresh)
