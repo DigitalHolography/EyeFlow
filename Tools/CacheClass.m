@@ -1,7 +1,29 @@
 classdef CacheClass < handle
 % Cache class used to cache small variables through the execution
 % Used for the handle
+
+properties (Transient)
+
+    % Main Results
+    vRMS single
+    Q_results_A
+    Q_results_V
+
+    % Display Cache
+    v_video_RGB uint8
+    v_mean_RGB uint8
+
+end
+
+
 properties
+
+    % Main Results
+
+    % Display Cache
+    M0_ff_img
+    M0_RGB double % cached mean image
+
 
     % Time Vector
     t double %cached time vector
@@ -9,6 +31,7 @@ properties
     % Masks
     maskArtery logical % cached mask artery
     maskVein logical % cached mask vein
+    maskVessel logical
     maskNeighbors logical % cached mask neighbors
     maskBackground logical % cached mask background
     scoreMaskArtery double % cached score mask artery
@@ -22,7 +45,6 @@ properties
 
     % Other cached variables
     papillaDiameter double % cached papilla diameter
-    M0_RGB double % cached mean image
 
     % Color maps
     cmapArtery double % cached colormap artery
@@ -42,6 +64,8 @@ properties
 
     % Womersley things
     WomersleyOut cell
+
+    
 
 end
 

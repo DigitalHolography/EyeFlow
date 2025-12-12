@@ -28,6 +28,7 @@ arguments
     opt.xLines = []
     opt.xLineLabels = {}
     opt.zero_center = false
+    opt.parent_folder = [];
 end
 
 ToolBox = getGlobalToolBox;
@@ -108,9 +109,19 @@ end
 
 set(gca, 'LineWidth', 2)
 
+if ~isempty(opt.parent_folder)
+    exportgraphics(gca, fullfile(ToolBox.path_png, opt.parent_folder, ...
+        sprintf("%s_%s_graph.png", ToolBox.folder_name, filename)))
+    exportgraphics(gca, fullfile(ToolBox.path_eps, opt.parent_folder, ...
+        sprintf("%s_%s_graph.eps", ToolBox.folder_name, filename)))
+    
+end
+
 exportgraphics(gca, fullfile(ToolBox.path_png, ...
     sprintf("%s_%s_graph.png", ToolBox.folder_name, filename)))
 exportgraphics(gca, fullfile(ToolBox.path_eps, ...
     sprintf("%s_%s_graph.eps", ToolBox.folder_name, filename)))
+
+
 
 end

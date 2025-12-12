@@ -23,6 +23,7 @@ if isfile(mat_model_path)
 
 elseif ~isdeployed
     fprintf('No .mat network found. Looking for .onnx version.\n');
+
     if ~isfile(onnx_model_path)
         % Download the model from Hugging Face
         fprintf('Downloading .onnx network from Hugging Face: %s\n', model_name);
@@ -42,6 +43,7 @@ elseif ~isdeployed
         OpticDiskDetectorNet = importONNXNetwork(onnx_model_path);
         warning('on')
     end
+
 end
 
 end

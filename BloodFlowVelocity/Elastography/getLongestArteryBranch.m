@@ -149,6 +149,6 @@ for idx = 1:n
 
 end
 
-figure(Visible = "off");title('Longest branch'); imshow(maskLongArtery);
+figure(Visible = "off"); title('Longest branch'); imshow(maskLongArtery);
 
 end

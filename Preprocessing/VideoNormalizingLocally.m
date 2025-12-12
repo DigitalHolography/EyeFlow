@@ -53,7 +53,7 @@ gwRatio = params.json.FlatFieldCorrection.GWRatio;
 border = params.json.FlatFieldCorrection.Border;
 
 % Apply flat-field correction
-M0_ff = flat_field_correction(M0, ceil(gwRatio * numX), border);
+M0_ff = flat_field_correction_ef(M0, ceil(gwRatio * numX), border);
 
 % Compute mean and std per frame (along spatial dimensions)
 mu = mean(M0_ff, 'all');

@@ -57,70 +57,27 @@ if mask_params.AVDiasysSegmentationNet
 
     M0_Diastole_img = imresize(rescale(M0_Diastole_img), [512, 512]);
     M0_Systole_img = imresize(rescale(M0_Systole_img), [512, 512]);
+    diasys_diff = imresize(rescale(diasys_diff), [512, 512]);
 
 end
 
 M0 = imresize(rescale(M0_ff_img), [512, 512]);
 
-if canUseGPU
-    device = 'gpu';
-else
-    device = 'cpu';
-end
-
 if mask_params.AVCorrelationSegmentationNet
     R = imresize(rescale(R), [512, 512]);
 
     if mask_params.AVDiasysSegmentationNet
-
-        input = cat(3, M0, M0_Systole_img, M0_Diastole_img, R);
-
-        ToolBox.Output.Extra.add("NetworkInput", input);
-
-        if isa(net, 'dlnetwork')
-            % For dlnetwork objects
-            input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
-            output_dl = predict(net, input_dl);
-            output = extractdata(output_dl);
-        else
-            % For DAGNetwork objects
-            output = predict(net, input, 'ExecutionEnvironment', device);
-        end
-
+        input = cat(3, M0, R, diasys_diff);
     else
-
         input = cat(3, M0, M0, R);
-
-        ToolBox.Output.Extra.add("NetworkInput", input);
-
-        if isa(net, 'dlnetwork')
-            % For dlnetwork objects
-            input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
-            output_dl = predict(net, input_dl);
-            output = extractdata(output_dl);
-        else
-            % For DAGNetwork objects
-            output = predict(net, input, 'ExecutionEnvironment', device);
-        end
-
     end
 
 elseif mask_params.AVDiasysSegmentationNet
-
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
-    ToolBox.Output.Extra.add("NetworkInput", input);
-
-    if isa(net, 'dlnetwork')
-        % For dlnetwork objects
-        input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
-        output_dl = predict(net, input_dl);
-        output = extractdata(output_dl);
-    else
-        % For DAGNetwork objects
-        output = predict(net, input, 'ExecutionEnvironment', device);
-    end
-
 end
+
+ToolBox.Output.Extra.add("NetworkInput", input);
+output = runAVInference(net, input);
 
 [~, argmax] = max(output, [], 3);
 
@@ -174,4 +131,54 @@ end
 
 % Convert to logical or double as needed
 onehot = double(onehot);
+end
+
+function output = runAVInference(model_struct, input)
+
+if model_struct.use_onnx
+
+    if canUseGPU
+        device = 'cuda';
+    else
+        device = 'cpu';
+    end
+
+    if isa(model_struct.onnx_model, 'dlnetwork')
+        % For dlnetwork objects
+        input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
+        output_dl = predict(model_struct.onnx_model, input_dl);
+        output = extractdata(output_dl);
+    elseif isa(model_struct.onnx_model, 'DAGNetwork')
+        % For DAGNetwork objects
+        output = predict(model_struct.onnx_model, input, 'ExecutionEnvironment', device);
+    end
+
+elseif model_struct.use_pytorch
+    np = py.importlib.import_module('numpy');
+    torch = py.importlib.import_module('torch');
+
+    if torch.cuda.is_available()
+        device = 'cuda';
+    else
+        device = 'cpu';
+    end
+
+    % MATLAB HWC → NumPy CHW
+    input_np = np.array(permute(input, [3 1 2]), 'float32');
+
+    % To tensor
+    t = torch.tensor(input_np).unsqueeze(int32(0)).to(device); % BCHW
+
+    % Forward pass
+    model = model_struct.py_model.to(device);
+    out = model(t);
+    out_np = out.cpu().detach().numpy();
+
+    % NumPy BCHW → MATLAB HWC
+    out_mat = squeeze(single(out_np)); % C × H × W
+    output = gather(out_mat);
+
+    output = permute(output, [2 3 1]); % CHW to HWC
+end
+
 end

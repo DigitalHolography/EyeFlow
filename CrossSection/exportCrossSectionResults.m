@@ -109,24 +109,37 @@ if params.json.exportCrossSectionResults.BloodFlowHistograms && saveFigures
 end
 
 if params.json.exportCrossSectionResults.BloodFlowProfilesWomersleyOverlay && saveFigures
-    profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
+
+    try
+        profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
+    catch
+        fprintf("Womersley Profile Overlay failed for %s\n", name);
+    end
+
+    %{
+        alphaWom = zeros(size(ToolBox.Cache.WomersleyOut), 'single');
+
+        for i = 1:size(alphaWom, 1)
+
+            for j = 1:size(alphaWom, 2)
+
+                if isstruct(ToolBox.Cache.WomersleyOut{i, j})
+                    data = ToolBox.Cache.WomersleyOut(i, j);
+                    alphaWom(i, j) = data{1, 1}.alpha_n;
+                end
+
+            end
+
+        end
+
+        exportSegmentsValueToH5(name + "_Wom_alpha", maskLabel, alphaWom, "Womersley");
+    %}
+
 end
 
 if params.json.exportCrossSectionResults.BloodFlowProfilesOverlay && saveFigures
     profilePatchVelocities(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
 end
-
-alphaWom = zeros(size(ToolBox.Cache.WomersleyOut),'single');
-for i = 1:size(alphaWom, 1)
-    for j = 1:size(alphaWom, 2)
-        if isstruct(ToolBox.Cache.WomersleyOut{i,j})
-            data = ToolBox.Cache.WomersleyOut(i, j);
-            alphaWom(i, j) = data{1, 1}.alpha_n;
-        end
-    end
-end
-
-exportSegmentsValueToH5(name+"_Wom_alpha",maskLabel,alphaWom,"Womersley");
 
 fprintf("    1.(bis) optional Flow Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
 
@@ -167,7 +180,7 @@ if params.json.exportCrossSectionResults.circleImages
 end
 
 if params.json.exportCrossSectionResults.widthHistogram
-    [D_mid, ~, D_std] = widthHistogram(D_cell, D_SE_cell, A_cell, name);
+    widthHistogram(D_cell, D_SE_cell, A_cell, name);
 end
 
 fprintf("    2. Sections Images Figures (%s) took %ds\n", name, round(toc))
@@ -182,19 +195,6 @@ end
 
 if params.json.exportCrossSectionResults.ARIBVR
     ArterialResistivityIndex(Q_t, systolesIndexes, sprintf('BVR%s', name), Q_SE_t);
-end
-
-if params.json.exportCrossSectionResults.hemodynamicParameters
-    % Define parameters with uncertainties
-    % deltaP = [6176, 280]; % Pa
-    deltaP = [1000, 100]; % (ONLY IDEAL L)
-    avg_r = D_mid * 1e-6/2;
-    std_r = D_std * 1e-6/2;
-    r = [avg_r, std_r]; % m
-    L = [5e-3, 1e-3]; % m (ONLY IDEAL L)
-    N = size(branch_Q, 1);
-
-    calculateHemodynamicParameters(Q_t, Q_SE_t, deltaP, r, L, index_start, index_end, N);
 end
 
 fprintf("    3. Vascular Indicators Images Generation (%s) took %ds\n", name, round(toc))

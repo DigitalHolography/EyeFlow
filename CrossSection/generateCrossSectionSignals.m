@@ -14,6 +14,7 @@ if ~isempty(ToolBox.Cache.papillaDiameter)
 else
     xy_barycenter = ToolBox.Cache.xy_barycenter;
 end
+
 papillaDiameter = ToolBox.Cache.papillaDiameter;
 sysIdx = ToolBox.Cache.sysIdx;
 diasIdx = ToolBox.Cache.diasIdx;

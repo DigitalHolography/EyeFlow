@@ -70,9 +70,14 @@ resources/*
 +opticdisc/*
 +unet_vesselness/*
 Logs/*
+*.mat
 build/
 __pycache__
 +*
 
 # IDEs and editors
 .vscode/
+
+# Python files
+*.py
+*.ipynb

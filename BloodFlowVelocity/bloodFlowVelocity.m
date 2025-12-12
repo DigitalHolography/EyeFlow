@@ -20,6 +20,14 @@ maskAV = maskArtery & maskVein;
 maskArterySection = maskArtery & maskSection & ~maskAV;
 maskVeinSection = maskVein & maskSection & ~maskAV;
 
+ArterySection_pxl = sum(maskArterySection(:));
+VeinSection_pxl = sum(maskVeinSection(:));
+RemainingSection_pxl = sum(maskSection & ~maskAV, 'all');
+
+ToolBox.Output.add('ArterySelNbPxl', ArterySection_pxl, '');
+ToolBox.Output.add('VeinSelNbPxl', VeinSection_pxl, '');
+ToolBox.Output.add('RemainingSelNbPxl', RemainingSection_pxl, '');
+
 if saveFigures
     % 1) VELOCITY VIDEO
     tVelocityVideo = tic;

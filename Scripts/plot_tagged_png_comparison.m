@@ -33,9 +33,10 @@ function plot_tagged_png_comparison(folder_list_source, tag)
         error('No valid folders found');
     end
     
-    % Find PNG files for each folder
-    png_files = cell(1, length(valid_folders));
-    folder_names = cell(1, length(valid_folders));
+   % --- PART 1: Find PNG files for each folder (MODIFIED) ---
+    % png_files will now be a cell array of cell arrays, where each inner 
+    % cell array contains all found file paths for a folder.
+    png_file_groups = cell(1, length(valid_folders));
     
     for i = 1:length(valid_folders)
         folder_path = valid_folders{i};
@@ -52,57 +53,107 @@ function plot_tagged_png_comparison(folder_list_source, tag)
         
         if isempty(found_files)
             warning('No PNG files containing tag "%s" found in: %s', tag, png_dir);
-            png_files{i} = '';
-        elseif length(found_files) > 1
-            warning('Multiple PNG files containing tag "%s" found in: %s. Using first match.', tag, png_dir);
-            png_files{i} = found_files{1};
+            png_file_groups{i} = {}; % Store an empty cell array
         else
-            png_files{i} = found_files{1};
+            % Store ALL found files for this folder
+            png_file_groups{i} = found_files; 
         end
-        
-        % Extract folder name for display
-        [~, folder_names{i}, ~] = fileparts(folder_path);
     end
     
-    % Remove folders without valid PNG files
-    valid_indices = ~cellfun(@isempty, png_files);
-    png_files = png_files(valid_indices);
-    folder_names = folder_names(valid_indices);
+    % --- PART 2: Flatten the list for plotting ---
     
-    if isempty(png_files)
+    % Prepare the final, flat lists for plotting
+    all_png_files = {};
+    all_plot_names = {};
+    
+    for i = 1:length(valid_folders)
+        folder_path = valid_folders{i};
+        found_files = png_file_groups{i};
+        
+        if isempty(found_files)
+            continue;
+        end
+        
+        % Extract folder name
+        [~, folder_name, ~] = fileparts(folder_path);
+
+        % Append each file to the flat list
+        for j = 1:length(found_files)
+            all_png_files{end+1} = found_files{j};
+            % Name the plot with the folder and a sequence number if multiple exist
+            if length(found_files) > 1
+                all_plot_names{end+1} = sprintf('%s (%d/%d)', folder_name, j, length(found_files));
+            else
+                all_plot_names{end+1} = folder_name;
+            end
+        end
+    end
+
+    % --- PART 1 & 2: Data Finding and Flattening (RETAINED) ---
+
+% ... [Your code for finding and flattening the file paths (all_png_files) 
+%      and titles (all_plot_names) goes here] ...
+
+    if isempty(all_png_files)
         error('No PNG files found containing tag "%s" in any folder', tag);
     end
     
-   % Create figure with subplots (no margins)
-    figure('Name', sprintf('PNG Files with Tag: "%s"', tag), ...
+% --- PART 3: Create Square-Like Figure with Tiled Layout (NEW LOGIC) ---
+    
+    N = length(all_png_files); % Total number of subplots needed
+    
+    % Calculate the optimal grid size (M rows x K columns)
+    % M = rows (sqrt(N) rounded up)
+    M = ceil(sqrt(N));
+    % K = columns (ceil(N / M))
+    K = ceil(N / M);
+    
+    % Define base figure size
+    base_unit = 200; 
+    
+   % Create figure
+    figure('Name', sprintf('PNG Files with Tag: "%s" (%dx%d grid)', tag, M, K), ...
            'NumberTitle', 'off', ...
-           'Position', [100, 100, 200 * length(png_files), 400], ...
+           'Position', [100, 100, K * base_unit, M * base_unit + 50], ... % Adjust size
            'Visible', 'on');
+           
+    % **KEY STEP: Create the Tiled Layout Manager**
+    % 'TileSpacing', 'none' and 'Padding', 'none' ensure maximum tightness.
+    t = tiledlayout(M, K, 'TileSpacing', 'none', 'Padding', 'none');
     
-    n = length(png_files);
+    % Set an overall title for the figure if desired (optional)
+    t.Title.String = sprintf('PNG Files for Tag: "%s"', tag);
+    t.Title.Interpreter = 'none';
     
-    for i = 1:n
-        % Manually control subplot positions with no margins
-        ax = axes('Position', [(i-1)/n, 0, 1/n, 1]); % [left bottom width height]
+    % Loop through all images and plot them
+    for i = 1:N
+        % **KEY STEP: Get the next tile (subplot) to draw on**
+        ax = nexttile;
     
         try
-            img = imread(png_files{i});
+            img = imread(all_png_files{i});
             imshow(img, 'Parent', ax);
-            title(ax, folder_names{i}, 'Interpreter', 'none', 'FontSize', 10);
+            
+            % Set title using the generated plot name
+            title(ax, all_plot_names{i}, 'Interpreter', 'none', 'FontSize', 8); 
         catch ME
-            warning('Error reading image: %s. Error: %s', png_files{i}, ME.message);
-            % Create empty plot with error message
+            warning('Error reading image: %s. Error: %s', all_png_files{i}, ME.message);
+            
+            % Create empty plot with error message on failure
             imshow(zeros(100, 100, 3), 'Parent', ax);
-            title(ax, sprintf('%s\n(Error)', folder_names{i}), 'Interpreter', 'none', 'Color', 'red');
+            title(ax, sprintf('%s\n(Error)', all_plot_names{i}), 'Interpreter', 'none', 'Color', 'red', 'FontSize', 8);
         end
     
-        % Remove any default padding/margins
-        ax.Units = 'normalized';
-        ax.PositionConstraint = 'outerposition';
+        % --- TIGHT PLOT ADJUSTMENTS ---
+        
+        % Remove ticks and coloring for a cleaner display
         ax.XTick = [];
         ax.YTick = [];
         ax.XColor = 'none';
         ax.YColor = 'none';
+        
+        % In tiledlayout, the 'TileSpacing' and 'Padding' settings 
+        % already handle the majority of the tightness.
     end
     
     % Add overall title
@@ -110,7 +161,7 @@ function plot_tagged_png_comparison(folder_list_source, tag)
         'FontSize', 12, 'FontWeight', 'bold');
 
     
-    fprintf('Successfully plotted %d images with tag "%s"\n', length(png_files), tag);
+    fprintf('Successfully plotted %d images with tag "%s"\n', length(all_png_files), tag);
 end
 
 function folders = read_folder_list_from_file(txt_file_path)

@@ -240,7 +240,7 @@ if contains(name, 'v_')
     end
 
 else
-    % New
+
     if contains(name, 'vein')
         ToolBox.Output.add('VeinFlowRateMean', v_mean, unit, std(interp_signal));
         ToolBox.Output.add('VeinFlowRateMax', vMax, unit, vMax_se);

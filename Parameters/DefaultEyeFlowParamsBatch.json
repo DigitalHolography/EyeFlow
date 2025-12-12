@@ -20,8 +20,13 @@
     },
     "NonRigidRegisteringFlag": false,
     "NonRigidRegisteringApply": false,
+    "RemoveOutliers": {
+      "Flag": false,
+      "KeepBiggestContiguous": true,
+      "KeepBiggestContiguousStdDistance": 4,
+      "InsertNans": true
+    },
     "RemoveOutliersFlag": true,
-    "Outlier Analysis Window": 10,
     "Interpolation Factor": 1
   },
   "FlatFieldCorrection": {
@@ -39,7 +44,7 @@
     "Registered Masks": -1,
     "Forced Masks": -1,
     "Vessel Segmentation Method": "AI",
-    "AV Correlation Segmentation Net": false,
+    "AV Correlation Segmentation Net": true,
     "AV Diasys Segmentation Net": true,
     "Diaphragm Radius": 0.45,
     "Force Barycenter": [],
@@ -56,10 +61,14 @@
     "Minimum Vessel Width": 3,
     "Final Dilation": 0,
     "Force Vessel Width": false,
-    "Optic Disk Detector Net": true
+    "Optic Disk Detector Net": true,
+    "Optic Disk Segmentation Net": true,
+    "Eye Diaphragm Segmentation Net": true,
+    "Eye Side Classifier Net": true
   },
   "PulseAnalysis": {
     "DifferenceMethods": 0,
+    "BkgFillMethod": "maskedAverage",
     "LocalBackgroundWidth": 5,
     "LocalBackgroundDist": 2,
     "bkgScaler": 5,
@@ -73,11 +82,12 @@
     "ExtendedFlag": false
   },
   "SizeOfField": {
-    "SmallRadiusRatio": 0.15,
+    "SmallRadiusRatio": 0.10,
     "BigRadiusRatio": 0.35
   },
   "generateCrossSectionSignals": {
     "NumberOfCircles": 10,
+    "SegmentsLength": 0.025,
     "ScaleFactorWidth": 3,
     "MaskSliceThreshold": 0.01,
     "PixelSize": 0.0191,

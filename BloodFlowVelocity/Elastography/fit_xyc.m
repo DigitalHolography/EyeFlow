@@ -1,9 +1,10 @@
-function [PWV, dPWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, name, branch_index)
+function [PWV, dPWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, name, branch_index, ToolBox)
 %FIT_XYC  Estimate spatial frequency components and compute Pulse Wave Velocity (PWV)
 %
 % --- Input ---
 % Z              : 2D map (matrix: ny x nx)
-% dx, dy         : Pixel spacing in x and y (default = 1)
+% dx, dy         : Pixel spacing in x and y (default = 1) x is time y is
+%                  length
 % name           : Identifier string for output file
 % branch_index   : Index of the branch analyzed
 %
@@ -15,17 +16,17 @@ function [PWV, dPWV, Tx, Ty, S, m, pks, idx, rows, cols] = fit_xyc(Z, dx, dy, na
 % pks, idx       : Peaks and index of the dominant one
 % rows, cols     : Coordinates of detected peaks
 
-%% --- Default inputs ---
+% --- Default inputs ---
 if nargin < 2 || isempty(dx), dx = 1.0; end
 if nargin < 3 || isempty(dy), dy = 1.0; end
 if nargin < 4, name = 'unnamed'; end
 if nargin < 5, branch_index = 0; end
 
-%% --- Get global ToolBox and prepare output directory ---
-ToolBox = getGlobalToolBox();
-outputDir = fullfile(ToolBox.path_png, 'flexion');
+% --- Get global ToolBox and prepare output directory ---
 params = ToolBox.getParams;
 saveFigures = params.saveFigures;
+
+outputDir = fullfile(ToolBox.path_png, 'flexion', sprintf("%s_branch_%d", name, branch_index));
 
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
@@ -46,13 +47,13 @@ end
 Z0(1:5, :) = [];
 Z0(end - 4:end, :) = [];
 
-[ny, nx] = size(Z0);
+[ny, nx] = size(Z0); % y space x time
 
 % Mask out the central region if needed
 Z0 = Z0 .* ~diskMask(ny, nx, 0.001);
-wy = hann(ny);
-wx = hann(nx);
-W = wy * wx';
+wx = hann(ny);
+wy = hann(nx);
+W = wx * wy';
 Z0 = Z0 .* W;
 
 % --- FFT ---
@@ -67,11 +68,15 @@ S0 = S;
 
 % Scan only half to avoid unnecessary computations
 S0(:, 1:nx * Nmult < nx * Nmult / 2) = 0;
-%%%S0(1:ny * Nmult > ny * Nmult / 2, :) = 0;  % Keep only x increasing waves 
+% S0(1:ny * Nmult > ny * Nmult / 2, :) = 0;  % Keep only x increasing waves
 
 % --- Frequency axes ---
 fx = (-Nmult * nx / 2:Nmult * nx / 2 - 1) / (Nmult * nx * dx); % cycles per unit x
 fy = (-Nmult * ny / 2:Nmult * ny / 2 - 1) / (Nmult * ny * dy); % cycles per unit y
+
+% --- Avoid the band of zero movment
+
+S0(abs(fy) < 1/1.25,:) = 0; % 1.25mm
 
 % --- Peak detection ---
 [pks, rows, cols, fx_err, fy_err] = findpeaks2(S0, fx, fy, 0.8);
@@ -80,13 +85,12 @@ if isempty(pks)
     % warning('No peaks found in spectrum. Returning NaN results.');
     PWV = NaN; Tx = NaN; Ty = NaN; m = NaN; dPWV = NaN;
     idx = []; rows = []; cols = [];
-    fx_err = NaN; fy_err = NaN;
     return;
 end
 
 % --- Plot frequency spectrum ---
 fig1 = figure('Visible', 'off');
-h_wave_map = imagesc(fx, fy, S);
+imagesc(fx, fy, S);
 xlabel('(Hz)');
 ylabel('(mm-1)');
 axis xy equal tight;
@@ -136,28 +140,30 @@ dTy = abs(Ty * (dky / ky));
 % fprintf('Period along x = %.3f units\n', Tx);
 % fprintf('Period along y = %.3f units\n', Ty);
 
-PWV = Ty / Tx;
-dPWV = PWV * sqrt((dTx / Tx) ^ 2 + (dTy / Ty) ^ 2);
+PWV = - Ty / Tx;
+dPWV = abs(PWV * sqrt((dTx / Tx) ^ 2 + (dTy / Ty) ^ 2));
 
-ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV", name, branch_index),PWV);
-ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_std", name, branch_index),dPWV);
-ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_unit", name, branch_index),"mm/s");
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV", name, branch_index), PWV);
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_std", name, branch_index), dPWV);
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_unit", name, branch_index), "mm/s");
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/Wavelength", name, branch_index), Ty);
+ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/Wavelength_unit", name, branch_index), "mm");
+
 % s_wave_map = saveImagescToStruct(h_wave_map);
 % ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_intercorr", name, branch_index),s_wave_map);
-
 
 % if PWV < 1 || PWV > 4 % mm/s
 %     PWV = NaN; dPWV = NaN;
 % end
 
-fprintf('PWV = %.3f ± %.3f (mm/s)\n', PWV, dPWV);
+fprintf('PWV = %.3f ± %.3f (mm/s) score = %.3f\n', PWV, dPWV, m);
 
 if saveFigures
     % --- Plot original map with wave direction ---
     fig2 = figure('Visible', 'off');
     xVals = linspace(-dx * nx / 2, dx * nx / 2, nx);
     yVals = linspace(-dy * ny / 2, dy * ny / 2, ny);
-    imagesc(xVals, yVals, Z0, [-0.1, 0.1]);
+    imagesc(xVals, yVals, Z0, [-0.025, 0.025]);
     axis xy; colormap parula; colorbar;
     xlabel('time delay (s)');
     ylabel('arc length lag (mm)');
@@ -172,7 +178,7 @@ if saveFigures
     saveas(fig1, fullfile(outputDir, sprintf('%s_%s_%d_6_fft_spectrum.png', ToolBox.folder_name, name, branch_index)));
     saveas(fig2, fullfile(outputDir, sprintf('%s_%s_%d_5_wave_map.png', ToolBox.folder_name, name, branch_index)));
 
-    % close(fig1); close(fig2);
+    close(fig1); close(fig2);
 
 end
 

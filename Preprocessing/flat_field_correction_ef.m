@@ -1,4 +1,4 @@
-function corrected_image = flat_field_correction(image, correctionParams, borderAmount)
+function corrected_image = flat_field_correction_ef(image, correctionParams, borderAmount)
 % FLAT_FIELD_CORRECTION Corrects an image for uneven illumination using either Gaussian blur or fitted Gaussian.
 %
 % Inputs:

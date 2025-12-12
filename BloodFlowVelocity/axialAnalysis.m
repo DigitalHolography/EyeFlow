@@ -4,9 +4,20 @@ ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 saveFigures = params.saveFigures;
 
+if ~isfolder(fullfile(ToolBox.path_png, "axialAnalysis")) && saveFigures
+    mkdir(fullfile(ToolBox.path_png, "axialAnalysis"));
+end
+
+if ~isfolder(fullfile(ToolBox.path_eps, "axialAnalysis")) && saveFigures
+    mkdir(fullfile(ToolBox.path_eps, "axialAnalysis"));
+end
+
 %% CHANGE THIS
 % scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
 [numX, numY, numFrames] = size(f_AVG);
+
+
+
 
 %% Section 1: Background Calculation
 
@@ -15,6 +26,7 @@ tic
 % Get masks from ToolBox
 maskArtery = ToolBox.Cache.maskArtery;
 maskVein = ToolBox.Cache.maskVein;
+maskVessel = ToolBox.Cache.maskVessel;
 maskNeighbors = ToolBox.Cache.maskNeighbors;
 
 % Create section mask
@@ -27,7 +39,7 @@ maskSection = diskMask(numX, numY, r1, r2, 'center', [x_c, y_c]);
 % Create vessel masks
 maskArterySection = maskArtery & maskSection;
 maskVeinSection = maskVein & maskSection;
-maskVesselSection = (maskVein | maskArtery) & maskSection;
+maskVesselSection = maskVessel & maskSection;
 
 % Validating inputs
 if ~any(maskArterySection)
@@ -47,9 +59,6 @@ cArtery = [255 22 18] / 255;
 cVein = [18 23 255] / 255;
 
 f_bkg = zeros(numX, numY, numFrames, 'single');
-
-% Determine vessel mask based on analysis type
-maskVessel = maskArtery | maskVein;
 
 % Background calculation parameters
 w = params.json.PulseAnalysis.LocalBackgroundWidth;
@@ -85,20 +94,20 @@ graphSignal('f_artery', ...
     t, f_artery, '-', cArtery, ...
     t, f_artery_bkg, '--', cBlack, ...
     'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
-    'Legend', {'arteries', 'background'});
+    'Legend', {'arteries', 'background'}, 'parent_folder', "axialAnalysis");
 
 graphSignal('f_axial_vein', ...
     t, f_vein, '-', cVein, ...
     t, f_vein_bkg, '--', cBlack, ...
     'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
-    'Legend', {'veins', 'background'});
+    'Legend', {'veins', 'background'}, 'parent_folder', "axialAnalysis");
 
 graphSignal('f_axial_vessel', ...
     t, f_artery, '-', cArtery, ...
     t, f_vein, '-', cVein, ...
     t, f_vessel_bkg, '--', cBlack, ...
     'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', ...
-    'Legend', {'arteries', 'veins', 'background'});
+    'Legend', {'arteries', 'veins', 'background'}, 'parent_folder', "axialAnalysis");
 
 % Calculate velocity
 % v_axial_video = scalingFactor * df;
@@ -110,7 +119,7 @@ df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))
 graphSignal('df_axial_vessel', ...
     t, df_artery_signal, '-', cArtery, ...
     t, df_vein_signal, '-', cVein, ...
-    'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)');
+    'xlabel', 'Time(s)', 'ylabel', 'frequency (kHz)', 'parent_folder', "axialAnalysis");
 
 ft_v = fftshift(fft(f_AVG, [], 3), 3);
 
@@ -129,7 +138,7 @@ if saveFigures
     ax = gca;
 
     if isvalid(ax)
-        exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_axial_cardiac_component.png", ToolBox.folder_name)), 'Resolution', 300);
+        exportgraphics(gca, fullfile(ToolBox.path_png, "axialAnalysis", sprintf("%s_axial_cardiac_component.png", ToolBox.folder_name)), 'Resolution', 300);
     end
 
     close(fi);

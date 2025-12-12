@@ -16,12 +16,12 @@ parfor k = 1:numFrames
     %get the frame, stabilize it, save it
     tgt = safeConvertFrame(v(:, :, k));
     [f, s] = diffeoDemon(ref_img, tgt, ...
-    "STEP_SIZE", 4, ...
-    "BLOCK_SIZE", 30, ...
-    "SEARCH_RADIUS", 5, ...
-    "SSD_THRESHOLD", 0.1, ...
-    "NUM_ITERS", 1, ...
-    "LOG_LEVEL", "WARNING" ...
+        "STEP_SIZE", 4, ...
+        "BLOCK_SIZE", 30, ...
+        "SEARCH_RADIUS", 5, ...
+        "SSD_THRESHOLD", 0.1, ...
+        "NUM_ITERS", 1, ...
+        "LOG_LEVEL", "WARNING" ...
     );
 
     field(:, :, :, k) = f;
@@ -51,7 +51,6 @@ D.phase_temporal_derivative = Ft;
 % dA(:, :, 1, :) = dA1;
 % dA(:, :, 2, :) = dA2;
 
-
 saveAsGifs(D);
 obj.displacementField = D;
 
@@ -64,14 +63,16 @@ if apply
 
     parfor ff = 1:numFrames
         % M0_ff(:,:,ff) = imwarp(M0_ff(:,:,ff), dfield(:,:,:,ff), "nearest");
-        f_RMS(:,:,ff) = imwarp(f_RMS(:,:,ff), dfield(:,:,:,ff), "nearest");
-        f_AVG(:,:,ff) = imwarp(f_AVG(:,:,ff), dfield(:,:,:,ff), "nearest");
+        f_RMS(:, :, ff) = imwarp(f_RMS(:, :, ff), dfield(:, :, :, ff), "nearest");
+        f_AVG(:, :, ff) = imwarp(f_AVG(:, :, ff), dfield(:, :, :, ff), "nearest");
     end
+
     % obj.M0_ff = M0_ff;
     obj.f_RMS = f_RMS;
     obj.f_AVG = f_AVG;
 
 end
+
 end
 
 % helper functions

@@ -25,7 +25,9 @@ jsonParams = params.json;
 saveFigures = jsonParams.saveFigures;
 filterSignals = jsonParams.PulseAnalysis.FilterSignals;
 method = jsonParams.PulseAnalysis.DifferenceMethods;
+bkgfillmethod = jsonParams.PulseAnalysis.BkgFillMethod;
 w = jsonParams.PulseAnalysis.LocalBackgroundWidth;
+d = jsonParams.PulseAnalysis.LocalBackgroundDist;
 k = jsonParams.Preprocess.InterpolationFactor;
 bkg_scaler = jsonParams.PulseAnalysis.bkgScaler;
 scalingFactor = 1000 * 1000 * 2 * jsonParams.PulseAnalysis.Lambda / sin(jsonParams.PulseAnalysis.Phi);
@@ -35,8 +37,9 @@ r2 = jsonParams.SizeOfField.BigRadiusRatio;
 % Load cached data
 maskArtery = ToolBox.Cache.maskArtery;
 maskVein = ToolBox.Cache.maskVein;
-maskChoroid = ToolBox.Cache.maskChoroid & ~(maskArtery | maskVein);
-maskNeighbors = ToolBox.Cache.maskNeighbors & ~maskChoroid;
+maskVessel = ToolBox.Cache.maskVessel;
+maskChoroid = ToolBox.Cache.maskChoroid;
+maskNeighbors = ToolBox.Cache.maskNeighbors;
 xy_barycenter = ToolBox.Cache.xy_barycenter;
 
 % Validating inputs
@@ -68,15 +71,31 @@ if ~any(maskVesselSection)
     error("Given Mask Vein has no part within the current section.")
 end
 
-% Determine vessel mask based on analysis type
-maskVessel = maskArtery | maskVein;
-
 % Section 1: Background Calculation
-f_bkg = zeros(numX, numY, numFrames, 'single');
 
 % Calculate background
-parfor frameIdx = 1:numFrames
-    f_bkg(:, :, frameIdx) = single(maskedAverage(f_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
+% Background is divided between vascular and non-vascular areas
+fprintf("  1. Calculating background...\n");
+
+f_bkg = zeros(numX, numY, numFrames, 'like', f_video);
+
+switch bkgfillmethod
+    case 'maskedAverage'
+
+        parfor frameIdx = 1:numFrames
+            f_bkg(:, :, frameIdx) = single(maskedAverage(f_video(:, :, frameIdx), bkg_scaler * w * 2 ^ k, maskNeighbors, maskVessel));
+        end
+
+    case 'inpaintCoherent'
+        maskVesselDilated = imdilate(maskVessel, strel('disk', (d)));
+
+        parfor frameIdx = 1:numFrames
+            f_bkg(:, :, frameIdx) = single(inpaintCoherent(f_video(:, :, frameIdx), maskVesselDilated));
+        end
+
+    otherwise
+        error("Unknown background fill method: %s", bkgfillmethod);
+
 end
 
 % Calculate and plot artery signals
@@ -118,7 +137,6 @@ if saveFigures
     LocalBackground_in_vessels = mean(f_bkg, 3);
     createHeatmap(LocalBackground_in_vessels, 'background in vessels', ...
         'background RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_f_bkg_map.png", ToolBox.folder_name)));
-
 end
 
 if exportVideos
@@ -160,20 +178,9 @@ df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))
 outlier_frames_mask = outlier_frames_mask | isoutlier(df_vein_signal, "movmedian", 10);
 
 % Interpolate outlier frames
-if params.json.Preprocess.RemoveOutliersFlag
-    df = interpolateOutlierFrames(df, outlier_frames_mask');
-end
+df = interpolateOutlierFrames(df, outlier_frames_mask');
 
 if saveFigures
-    % Recalculate signals after interpolation
-    df_artery = df .* maskArterySection;
-    df_artery(~maskArterySection) = NaN;
-    df_artery_signal = squeeze(sum(df_artery, [1, 2], 'omitnan') / nnz(maskArterySection))';
-
-    % Plot signals
-    df_vein = df .* maskVeinSection;
-    df_vein(~maskVeinSection) = NaN;
-    df_vein_signal = squeeze(sum(df_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
 
     graphSignal('df_vessel', ...
         t, df_artery_signal, '-', cArtery, ...
@@ -212,7 +219,14 @@ end
 
 % Calculate velocity
 v_RMS_video = scalingFactor * df;
+
+% COMMENT
+% v_negative_velocity = v_RMS_video < 0;
+% writeGifOnDisc(v_negative_velocity, "v_negative_velocity", 0.04);
+
 clear df
+
+VelocityStatisticalOutputs(v_RMS_video, maskArtery, maskVein, maskArterySection, maskVeinSection);
 
 % Process artery velocity signals
 v_artery = v_RMS_video .* maskArterySection;
@@ -238,10 +252,10 @@ if saveFigures
         t, v_artery_signal, '-', cArtery, ...
         t, v_vein_signal, '-', cVein, ...
         'Title', 'average velocity in arteries and veins', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
-    ToolBox.Output.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
-    ToolBox.Output.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's');
-
 end
+
+ToolBox.Output.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
+ToolBox.Output.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's');
 
 fprintf("    2. Difference calculation and velocity computation took %ds\n", round(toc));
 

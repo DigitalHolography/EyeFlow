@@ -30,6 +30,31 @@ properties
     VeinVelocityMax
     VeinVelocityMin
 
+    % Velocity Statistical Outputs (mm/s)
+    ArteryVelocityMeanSection
+    ArteryVelocityMaxSection
+    ArteryVelocityMinSection
+    ArteryVelocityModeSection
+    ArteryVelocityMedianSection
+    ArteryVelocityMeanTrimmed
+    ArteryVelocityMedianTrimmed
+    ArteryVelocityModeTrimmed
+    
+    VeinVelocityMeanSection
+    VeinVelocityMaxSection
+    VeinVelocityMinSection
+    VeinVelocityModeSection
+    VeinVelocityMedianSection
+    VeinVelocityMeanTrimmed
+    VeinVelocityMedianTrimmed
+    VeinVelocityModeTrimmed
+
+    ArteryVelocity25Percentile
+    ArteryVelocity75Percentile
+    VeinVelocity25Percentile
+    VeinVelocity75Percentile
+
+
     % Flow Rate (µL/s or mm³/s)
     ArteryFlowRateMean
     ArteryFlowRateMax
@@ -95,12 +120,20 @@ properties
     ArteryVeinPhaseDelay
 
     % Mask
-    ArteryArea
+    ArteryArea % in mm²
     VeinArea
     RemainingArea
-    ArteryNbPxl
+    ArteryNbPxl % in pixels on all field
     VeinNbPxl
     RemainingNbPxl
+    ArterySelNbPxl % in pixels on targeted region (smallRadius bigRadius)
+    VeinSelNbPxl
+    RemainingSelNbPxl
+
+    % Mic
+    PredictedEyeSide
+
+    % Quality Control Scores
     QualityControlScoreMaskArtery
     QualityControlScoreMaskVein
 
@@ -187,10 +220,10 @@ methods
 
         for i = 1:length(props)
 
-            if ~isempty(obj.(props{i}).value)
-                writeNumericToHDF5(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}), obj.(props{i}).value);
-                h5writeatt(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}), "unit", obj.(props{i}).unit);
-            end
+            % if ~isempty(obj.(props{i}).value)
+            %     writeNumericToHDF5(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}), obj.(props{i}).value);
+            %     h5writeatt(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}), "unit", obj.(props{i}).unit);
+            % end
 
             if ~isempty(obj.(props{i}).standard_error)
                 writeNumericToHDF5(file_path, strcat("/", "Scalars", "/", props{i}, "/", props{i}, "_ste"), obj.(props{i}).standard_error);

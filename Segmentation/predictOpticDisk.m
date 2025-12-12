@@ -46,7 +46,7 @@ boxes_tlwh(:, 1) = boxes_cxcywh(:, 1) - boxes_cxcywh(:, 3) / 2;
 boxes_tlwh(:, 2) = boxes_cxcywh(:, 2) - boxes_cxcywh(:, 4) / 2;
 
 % Select strongest bounding box
-[~, ~, idx] = selectStrongestBbox(boxes_tlwh, validPreds(:, 5), 'OverlapThreshold', 0.6);
+idx = nms_tlwh(boxes_tlwh, validPreds(:,5), 0.6);
 
 bestIdx = idx(1);
 bestBox = boxes_cxcywh(bestIdx, :); % [cx, cy, w, h] relative to 1024x1024
@@ -88,8 +88,7 @@ if ToolBox.getParams.saveFigures
     ex = bestBox(1) + (bestBox(3)/2) * cos(t);
     ey = bestBox(2) + (bestBox(4)/2) * sin(t);
     polyCoords = reshape([ex; ey], 1, []); % Interleave for insertShape
-    outlineMask = insertShape(zeros(1024, 1024), 'Polygon', polyCoords, ...
-        'Color', 'white', 'LineWidth', 4, 'Opacity', 1);
+    outlineMask = drawPolygonOutline([1024 1024], polyCoords, 4);
     isEdge = outlineMask(:,:,1) > 0.5;
 
     visImg = rgbM0; % This is 0-1 Single

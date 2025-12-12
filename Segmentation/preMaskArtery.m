@@ -11,7 +11,12 @@ dt = 1 / fs;
 % Step 1: Separate mask into branches
 [label, n] = labelVesselBranches(maskVesselness, true(size(maskVesselness)), ...
     ToolBox.Cache.xy_barycenter, 'refine', false);
-saveMaskImage(uint16(label), 'all_20_label_Vesselness.png', isStep = true, cmap = jet(n + 1));
+if (n + 1) <= 256
+    cmapjet = jet(n+1);
+else
+    cmapjet = jet(256);
+end
+saveMaskImage(uint16(label), 'all_20_label_Vesselness.png', isStep = true, cmap = cmapjet);
 
 % Step 2: Compute average signal of video for each branch
 

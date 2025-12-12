@@ -14,7 +14,7 @@ for k = 1:nFrames
     fprintf("processing frame %d/%d...", k, nFrames);
     %get the frame, stabilize it, save it
     tgt = safeConvertFrame(readFrame(v));
-    tgt = flat_field_correction(tgt, 10, 0, 'gaussianBlur');
+    tgt = flat_field_correction_ef(tgt, 10, 0, 'gaussianBlur');
     % tgt = adapthisteq(tgt, ...
     %     'ClipLimit', 0.05, ...
     %     'NumTiles', [16 16]);

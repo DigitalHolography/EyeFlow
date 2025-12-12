@@ -188,7 +188,13 @@ plot(w2w, bounds_dias.lower, 'Color', Color_err, 'LineWidth', 2);
 plot(w2w, v_dias, '--', 'Color', Color_dias, 'LineWidth', 2);
 
 % Add Poiseuille fits
-warning('off', 'curvefit:fit:noStartPoint');
+
+% Avoid InsufficientData warning by ensuring enough points are present
+if numInterp < 3
+    fprintf('Insufficient data points for Poiseuille fit. Skipping fit.');
+    return;
+end
+
 fitPoiseuille = @(v) fit((1:numInterp)' - (numInterp / 2), v', 'poly2');
 f_sys = fitPoiseuille(v_sys);
 f_dias = fitPoiseuille(v_dias);
@@ -198,7 +204,6 @@ plot(w2w, f_sys.p1 * r_range .^ 2 + f_sys.p2 * r_range + f_sys.p3, ...
     'Color', Color_sys, 'LineWidth', 2);
 plot(w2w, f_dias.p1 * r_range .^ 2 + f_dias.p2 * r_range + f_dias.p3, ...
     'Color', Color_dias, 'LineWidth', 2);
-warning('on', 'curvefit:fit:noStartPoint');
 
 % Finalize static plot
 xlim([-1 1]);
@@ -293,7 +298,11 @@ if exportVideos
         set(meanPlot, 'XData', w2w, 'YData', v_video(frameIdx, :));
 
         % Update Poiseuille fit
+        warning('off', 'curvefit:fit:noStartPoint');
+        warning('off', 'curvefit:fit:InsufficientData');
         f_frame = fitPoiseuille(v_video(frameIdx, :));
+        warning('on', 'curvefit:fit:noStartPoint');
+        warning('on', 'curvefit:fit:InsufficientData');
         set(fitPlot, 'XData', w2w, ...
             'YData', f_frame.p1 * r_range .^ 2 + f_frame.p2 * r_range + f_frame.p3);
 
