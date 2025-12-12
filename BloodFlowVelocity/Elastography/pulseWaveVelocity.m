@@ -1,4 +1,4 @@
-function [PWV, dPWV, score] = pulseWaveVelocity(U, mask, branch_index, name, arterialVelocity, venousVelocity, ToolBox)
+function [PWV, dPWV, score] = pulseWaveVelocity(U, mask, branch_index, name, ToolBox)
 % Computes the pulse wave velocity based on a cross correlation computation
 % U is the field over which we compute the velocity and mask is the mask of
 % the selected retinal artery
@@ -215,6 +215,11 @@ if saveFigures
 end
 
 Ux_n = Ux_n';
+
+% Import the reference signals
+
+arterialVelocity = ToolBox.Output.Signals.ArterialVelocity.yvalues;
+venousVelocity = ToolBox.Output.Signals.VenousVelocity.yvalues;
 
 % normalize signals
 arterialVelocity_norm = (arterialVelocity - mean(arterialVelocity)) / std(arterialVelocity);
