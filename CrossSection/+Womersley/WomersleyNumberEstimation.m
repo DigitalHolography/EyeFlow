@@ -187,67 +187,6 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
 
     v_meas = extractHarmonicProfile(v_profile_ft, f, cardiac_frequency, n_harmonic);
 
-
-    D_meas_mag_profile = []; 
-    
-    % Check if d_profile is provided and valid ([Points x 2 x Time])
-    if ~isempty(d_profile) && ndims(d_profile) == 3 && size(d_profile, 3) == numFrames
-        
-        % We need to process the sliced displacement to match v_profile spatial grid
-        % Assuming d_profile was extracted with same spatial points.
-        % If v_profile was reduced by valid_idxs, we must reduce d_profile too.
-        
-        d_profile_reduced = d_profile(valid_idxs, :, :); % Cut background
-        
-        % Interpolate to match NUM_INTERP_POINTS
-        if crossSectionLength > 1
-           d_interp = zeros(NUM_INTERP_POINTS, 2, numFrames);
-           orig_x = linspace(1, crossSectionLength, crossSectionLength);
-           new_x  = linspace(1, crossSectionLength, NUM_INTERP_POINTS);
-           
-           for t = 1:numFrames
-               d_interp(:, 1, t) = interp1(orig_x, squeeze(d_profile_reduced(:, 1, t)), new_x);
-               d_interp(:, 2, t) = interp1(orig_x, squeeze(d_profile_reduced(:, 2, t)), new_x);
-           end
-        else
-           d_interp = [];
-        end
-        
-        if ~isempty(d_interp)
-             % FFT along time dimension (3)
-             d_ft = fftshift(fft(d_interp, N_fft, 3), 3);
-             
-             % Extract Harmonic for X and Y components separately
-             Dx_meas = extractHarmonicProfile(squeeze(d_ft(:, 1, :)), f, cardiac_frequency, n_harmonic);
-             Dy_meas = extractHarmonicProfile(squeeze(d_ft(:, 2, :)), f, cardiac_frequency, n_harmonic);
-             
-             % Compute Magnitude Profile |D_n| = sqrt(|Dx|^2 + |Dy|^2)
-             D_meas_mag_profile = sqrt(abs(Dx_meas).^2 + abs(Dy_meas).^2);
-        end
-    end
-
-    % --- 3. Compute Measured Interaction Statistics (NEW) ---
-    if ~isempty(D_meas_mag_profile)
-        epsilon = 1e-9;
-        
-        % Filter based on Velocity signal to avoid noise outside vessel
-        abs_v = abs(v_meas);
-        abs_D = D_meas_mag_profile;
-        
-        valid_mask = abs_v > (0.1 * max(abs_v));
-        
-        if any(valid_mask)
-            % 1. Statistic of abs(D_1) (Mean Magnitude in the vessel)
-            mean_D_val = mean(abs_D(valid_mask));
-            fitParams.metrics.Mean_D1_amp = mean_D_val;
-            
-            % 2. Ratio abs(D_1) / mean(abs(v_1))
-            mean_v_val = mean(abs_v(valid_mask));
-            
-            fitParams.metrics.Ratio_D1_V1 = mean_D_val / (mean_v_val + epsilon);
-        end
-    end
-
     x_coords = linspace(-1, 1, NUM_INTERP_POINTS);
     
     FIXED_NU = 3e-6; % m^2/s (Phase 1 recommendation)
@@ -313,11 +252,71 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     
         fitParams.metrics.nu_app = nu_fit;
 
-        fitParams.metrics = calculate_symbols(fitParams, RHO_BLOOD, options, D_meas_reg);
+        fitParams.metrics = calculate_symbols(fitParams, RHO_BLOOD, options);
 
     catch ME 
         warning_s("[WOMERSLEY] Womersley fit failed for %s (idx %d): %s", name, idx, ME.message);
         return;
+    end
+
+    D_meas_mag_profile = []; 
+    
+    % Check if d_profile is provided and valid ([Points x 2 x Time])
+    if ~isempty(d_profile) && ndims(d_profile) == 3 && size(d_profile, 3) == numFrames
+        
+        % We need to process the sliced displacement to match v_profile spatial grid
+        % Assuming d_profile was extracted with same spatial points.
+        % If v_profile was reduced by valid_idxs, we must reduce d_profile too.
+        
+        d_profile_reduced = d_profile(valid_idxs, :, :); % Cut background
+        
+        % Interpolate to match NUM_INTERP_POINTS
+        if crossSectionLength > 1
+           d_interp = zeros(NUM_INTERP_POINTS, 2, numFrames);
+           orig_x = linspace(1, crossSectionLength, crossSectionLength);
+           new_x  = linspace(1, crossSectionLength, NUM_INTERP_POINTS);
+           
+           for t = 1:numFrames
+               d_interp(:, 1, t) = interp1(orig_x, squeeze(d_profile_reduced(:, 1, t)), new_x);
+               d_interp(:, 2, t) = interp1(orig_x, squeeze(d_profile_reduced(:, 2, t)), new_x);
+           end
+        else
+           d_interp = [];
+        end
+        
+        if ~isempty(d_interp)
+             % FFT along time dimension (3)
+             d_ft = fftshift(fft(d_interp, N_fft, 3), 3);
+             
+             % Extract Harmonic for X and Y components separately
+             Dx_meas = extractHarmonicProfile(squeeze(d_ft(:, 1, :)), f, cardiac_frequency, n_harmonic);
+             Dy_meas = extractHarmonicProfile(squeeze(d_ft(:, 2, :)), f, cardiac_frequency, n_harmonic);
+             
+             % Compute Magnitude Profile |D_n| = sqrt(|Dx|^2 + |Dy|^2)
+             D_meas_mag_profile = sqrt(abs(Dx_meas).^2 + abs(Dy_meas).^2);
+        end
+    end
+
+    % --- 3. Compute Measured Interaction Statistics (NEW) ---
+    if ~isempty(D_meas_mag_profile)
+        epsilon = 1e-9;
+        
+        % Filter based on Velocity signal to avoid noise outside vessel
+        abs_v = abs(v_meas);
+        abs_D = D_meas_mag_profile;
+        
+        valid_mask = abs_v > (0.1 * max(abs_v));
+        
+        if any(valid_mask)
+            % 1. Statistic of abs(D_1) (Mean Magnitude in the vessel)
+            mean_D_val = mean(abs_D(valid_mask));
+            fitParams.metrics.Mean_D1_amp = mean_D_val;
+            
+            % 2. Ratio abs(D_1) / mean(abs(v_1))
+            mean_v_val = mean(abs_v(valid_mask));
+            
+            fitParams.metrics.Ratio_D1_V1 = mean_D_val / (mean_v_val + epsilon);
+        end
     end
     
     % [parabole_fit_systole, parabole_fit_diastole] = analyse_lumen_size(v_profile_good_idx_sav, SYS_IDXS, DIAS_IDXS);
@@ -811,7 +810,7 @@ function K = calculate_K_factor(lambda)
 end
 
 
-function metrics = calculate_symbols(fitParams, rho_blood, options, D_meas_reg)
+function metrics = calculate_symbols(fitParams, rho_blood, options)
     Cn          = fitParams.Cn;
     Dn          = fitParams.Dn;
     R0          = fitParams.R0; % in meters
