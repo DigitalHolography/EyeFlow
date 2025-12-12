@@ -1,7 +1,8 @@
 classdef CacheClass < handle
 % Cache class used to cache small variables through the execution
 % Used for the handle
-properties
+
+properties (Transient)
 
     % Main Results
     vRMS single
@@ -9,9 +10,18 @@ properties
     Q_results_V
 
     % Display Cache
-    M0_ff_img
     v_video_RGB uint8
     v_mean_RGB uint8
+
+end
+
+
+properties
+
+    % Main Results
+
+    % Display Cache
+    M0_ff_img
     M0_RGB double % cached mean image
 
 
