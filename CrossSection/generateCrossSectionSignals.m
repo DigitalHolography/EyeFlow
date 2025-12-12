@@ -14,6 +14,7 @@ if ~isempty(ToolBox.Cache.papillaDiameter)
 else
     xy_barycenter = ToolBox.Cache.xy_barycenter;
 end
+
 papillaDiameter = ToolBox.Cache.papillaDiameter;
 sysIdx = ToolBox.Cache.sysIdx;
 diasIdx = ToolBox.Cache.diasIdx;
@@ -130,7 +131,7 @@ subImg_cell = cell(numCircles, numBranches); % Sub-images of vessels
 histo_v_cell = cell(numCircles, numBranches); % Histograms of vessel velocities
 
 % Cross-Section Analysis of the arteries
-for c_idx = 1:numCircles
+parfor c_idx = 1:numCircles
 
     for b_idx = 1:numBranches
 
