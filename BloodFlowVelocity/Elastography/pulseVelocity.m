@@ -38,9 +38,6 @@ scores = NaN(1, n);
 arterialVelocity = ToolBox.Output.Signals.ArterialVelocity.yvalues;
 venousVelocity = ToolBox.Output.Signals.VenousVelocity.yvalues;
 
-arterialVelocity = ToolBox.Output.Signals.ArterialVelocity.yvalues;
-venousVelocity = ToolBox.Output.Signals.VenousVelocity.yvalues;
-
 parfor i = 1:n
     % displacementAnalysis(D, maskLongArtery);
     [PWV(i), dPWV(i), scores(i)] = pulseWaveVelocity(M, L == i, i, name, arterialVelocity, venousVelocity, ToolBox);
