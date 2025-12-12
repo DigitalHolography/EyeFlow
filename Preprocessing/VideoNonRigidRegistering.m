@@ -1,4 +1,9 @@
 function VideoNonRigidRegistering(obj, apply)
+
+ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
+exportVideos = params.exportVideos;
+
 % This function performs non-rigid registration on the video frames of M0
 v = obj.M0;
 [numX, numY, numFrames] = size(v);
@@ -51,8 +56,10 @@ D.phase_temporal_derivative = Ft;
 % dA(:, :, 1, :) = dA1;
 % dA(:, :, 2, :) = dA2;
 
+if (exportVideos)
+    saveAsGifs(D);
+end
 
-saveAsGifs(D);
 obj.displacementField = D;
 
 if apply

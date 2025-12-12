@@ -1,4 +1,4 @@
-function exportCrossSectionResults(results, name, M0_ff, v_video_RGB, v_mean_RGB)
+function exportCrossSectionResults(results, name, M0_ff, v_video_RGB, v_mean_RGB, displacement_field)
 
 % 0. Initialise Variables
 
@@ -109,7 +109,7 @@ if params.json.exportCrossSectionResults.BloodFlowHistograms && saveFigures
 end
 
 if params.json.exportCrossSectionResults.BloodFlowProfilesWomersleyOverlay
-    profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
+    profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3), displacement_field)
 end
 
 if params.json.exportCrossSectionResults.BloodFlowProfilesOverlay && saveFigures

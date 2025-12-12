@@ -165,8 +165,8 @@ methods
         exportCrossSectionResultsTimer = tic;
 
         ToolBox = getGlobalToolBox;
-        exportCrossSectionResults(obj.Q_results_A, 'artery', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
-        exportCrossSectionResults(obj.Q_results_V, 'vein', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB);
+        exportCrossSectionResults(obj.Q_results_A, 'artery', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB, executionObj.displacementField);
+        exportCrossSectionResults(obj.Q_results_V, 'vein', executionObj.M0_ff, obj.v_video_RGB, obj.v_mean_RGB, executionObj.displacementField);
 
         maskVessel = ToolBox.Cache.maskArtery | ToolBox.Cache.maskVein;
         sectionImageAdvanced(rescale(mean(executionObj.M0_ff, 3)), obj.Q_results_A.maskLabel, obj.Q_results_V.maskLabel, obj.Q_results_A.rejected_mask, obj.Q_results_V.rejected_mask, maskVessel);

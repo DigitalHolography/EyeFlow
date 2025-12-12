@@ -1,4 +1,4 @@
-function profilePatchWomersley(v_profiles_cell, name, locsLabel, M0_ff_img)
+function profilePatchWomersley(v_profiles_cell, name, locsLabel, M0_ff_img, displacement_field)
 
 ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
@@ -117,6 +117,31 @@ for circleIdx = 1:rows
 
         hold off;
 
+        d_profile = zeros(n, 2, numFrames);
+
+        xi = x + x_axis;
+        yi = repmat(y, 1, n);
+
+        displacement_field = displacement_field.field;
+
+        % Check bounds to avoid errors during interp2
+        if x > 1 && x < 512 && y > 1 && y < 512
+            for t = 1:numFrames
+                % Extract the X-component frame (Component 1)
+                D_field_X = displacement_field(:, :, 1, t); 
+                
+                % Extract the Y-component frame (Component 2)
+                D_field_Y = displacement_field(:, :, 2, t);
+                
+                % Interpolate at the cross-section coordinates
+                % interp2(V, Xq, Yq)
+                d_profile(:, 1, t) = interp2(D_field_X, xi, yi, 'linear', 0);
+                d_profile(:, 2, t) = interp2(D_field_Y, xi, yi, 'linear', 0);
+            end
+        else
+            warning('Coordinates out of image bounds for extraction');
+        end
+
         % 2. Fit cardiac profiles
 
         % TODO: temp fix for a single harmonic
@@ -126,7 +151,7 @@ for circleIdx = 1:rows
         % temp_results = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
         % reshaped_results = reshape(temp_results, 1, 1, []);
         % womersley_results(circleIdx, branchIdx, 1:numel(reshaped_results)) = reshaped_results;
-        womersley_results(circleIdx, branchIdx) = Womersley.WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
+        womersley_results(circleIdx, branchIdx) = Womersley.WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx, d_profile);
 
         % addStructToExtra(ToolBox.Output.Extra, "Womersley", womersley_results(idx)(1));
 
