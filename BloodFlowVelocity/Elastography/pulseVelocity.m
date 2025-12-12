@@ -35,7 +35,7 @@ PWV = NaN(1, n);
 dPWV = NaN(1, n);
 scores = NaN(1, n);
 
-for i = 1:n
+parfor i = 1:n
     % displacementAnalysis(D, maskLongArtery);
     [PWV(i), dPWV(i), scores(i)] = pulseWaveVelocity(M, L == i, i, name, ToolBox);
 end
