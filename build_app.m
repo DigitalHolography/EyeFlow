@@ -32,7 +32,7 @@ addpath('Tools');
 addpath('Outputs');
 
 % Configure Build Options
-buildOpts = compiler.build.StandaloneApplicationOptions('launchBatch.m');
+buildOpts = compiler.build.StandaloneApplicationOptions('eyeflowcli.m');
 buildOpts.ExecutableName = 'eyeflow';
 buildOpts.OutputDir = 'build';
 buildOpts.Verbose = 'on';
