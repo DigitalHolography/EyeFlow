@@ -151,8 +151,8 @@ methods
         ToolBox = getGlobalToolBox;
         maskArtery = ToolBox.Cache.maskArtery;
         maskVein = ToolBox.Cache.maskVein;
-        [obj.Q_results_A] = generateCrossSectionSignals(maskArtery, 'artery', obj.vRMS, executionObj.M0_ff);
-        [obj.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', obj.vRMS, executionObj.M0_ff);
+        [obj.Q_results_A] = generateCrossSectionSignals(maskArtery, 'artery', obj.vRMS, executionObj.M0_ff, executionObj.displacementField);
+        [obj.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', obj.vRMS, executionObj.M0_ff,executionObj.displacementField);
 
         executionObj.is_volumeRateAnalyzed = true;
         fprintf("- Cross-Section Signals Generation took: %ds\n", round(toc(crossSectionAnalysisTimer)));

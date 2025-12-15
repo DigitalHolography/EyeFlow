@@ -1,4 +1,4 @@
-function [results] = generateCrossSectionSignals(mask, vesselName, v_RMS, M0_ff)
+function [results] = generateCrossSectionSignals(mask, vesselName, v_RMS, M0_ff, displacementField)
 % generateCrossSectionSignals Perform cross-sectional analysis of retinal vessels
 
 % Inputs:
@@ -130,7 +130,7 @@ subImg_cell = cell(numCircles, numBranches); % Sub-images of vessels
 histo_v_cell = cell(numCircles, numBranches); % Histograms of vessel velocities
 
 % Cross-Section Analysis of the arteries
-parfor c_idx = 1:numCircles
+for c_idx = 1:numCircles
 
     for b_idx = 1:numBranches
 
@@ -140,6 +140,8 @@ parfor c_idx = 1:numCircles
             [cross_section_results] = crossSectionAnalysis2(ToolBox, ...
                 locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, ...
                 xy_barycenter, v_RMS, patchName, papillaDiameter);
+
+            res = analyzeDispField(locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, xy_barycenter, displacementField.field, patchName);
 
             % Map outputs to variables
             v_cell{c_idx, b_idx} = cross_section_results.v;
