@@ -27,11 +27,14 @@ while ~isempty(order)
     h = max(0, yy2 - yy1);
     inter = w .* h;
 
-    area_i = (boxes_xyxy(i,3)-boxes_xyxy(i,1)) * (boxes_xyxy(i,4)-boxes_xyxy(i,2));
-    area_rest = (boxes_xyxy(rest,3)-boxes_xyxy(rest,1)) .* (boxes_xyxy(rest,4)-boxes_xyxy(rest,2));
+    area_i = (boxes_xyxy(i,3)-boxes_xyxy(i,1)) * ...
+             (boxes_xyxy(i,4)-boxes_xyxy(i,2));
+    area_rest = (boxes_xyxy(rest,3)-boxes_xyxy(rest,1)) .* ...
+                (boxes_xyxy(rest,4)-boxes_xyxy(rest,2));
 
     union = area_i + area_rest - inter;
     iou = inter ./ union;
 
-    order = order([true; iou < thresh]);
+    % ALWAYS remove i → guaranteed termination
+    order = rest(iou < thresh);
 end
