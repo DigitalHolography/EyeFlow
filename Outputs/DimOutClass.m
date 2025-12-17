@@ -36,7 +36,7 @@ classdef DimOutClass < handle
              type = DimEnumClass.enum_from(data);
 
             if ~silenceWarn && ~checkDimNames(type, dimDescription)
-                warning("Wrong length of dimDescription for data (%s) !\nExpected: %i\nGot: %i", name, type.rank, size(dimDescription, 2));
+                warning_s("Wrong length of dimDescription for data (%s) !\nExpected: %i\nGot: %i", name, type.rank, size(dimDescription, 2));
             end
 
             % Check && Sanitize if 1D array
