@@ -43,13 +43,17 @@ function res = analyze_logic(loc, ROI, xy_barycenter, dispField)
     % Apply the dilation
     se = strel("disk", 5);
     ROI_dilated = imdilate(ROI, se);
-    v_masked(repmat(~ROI_dilated, [1, 1, numFrames])) = NaN; % Apply mask to all slices
+    % v_masked(repmat(~ROI_dilated, [1, 1, numFrames])) = NaN; % Apply mask to all slices
 
     subImgHW = round(0.01 * size(v_masked, 1) * params.json.generateCrossSectionSignals.ScaleFactorWidth);
 
     xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
     yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
-    subImg = v_masked(yRange, xRange, :);
+    subImg = dispField(yRange, xRange, :);
+    subMask = ROI_dilated(yRange, xRange);
+
+    % Apply the mask to only the relevant part
+    subImg(repmat(~subMask, [1, 1, numFrames])) = NaN; 
 
     if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
         xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);

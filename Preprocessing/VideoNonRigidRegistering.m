@@ -112,7 +112,7 @@ accSmooth = 1.0;
 
 warpedAux = imwarp(aux, D, "nearest");
 
-%freeze pixel where warp is minimal
+% freeze pixel where warp is minimal
 mask = hypot(D(:, :, 1), D(:, :, 2)) < 0.5;
 warpedAux(mask) = source(mask);
 end

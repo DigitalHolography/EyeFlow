@@ -18,7 +18,7 @@
       "FrameHeight": -1,
       "VideoLength": -1
     },
-    "NonRigidRegisteringFlag": false,
+    "NonRigidRegisteringFlag": true,
     "NonRigidRegisteringApply": false,
     "RemoveOutliersFlag": true,
     "Outlier Analysis Window": 10,
@@ -29,8 +29,8 @@
     "Border": 0.15,
     "FittedParameters": false
   },
-  "exportVideos": true,
-  "saveFigures": true,
+  "exportVideos": false,
+  "saveFigures": false,
   "use_time_stamps": true,
   "MinimumGifPeriod": 0.04,
   "NumberOfWorkers": 0,

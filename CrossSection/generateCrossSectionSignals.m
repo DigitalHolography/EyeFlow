@@ -291,8 +291,8 @@ function handleDispValues(name, Disp_cell, FFT_D_cell)
     res_fft_x1 = nan(c_size, b_size, numFrames);
     res_fft_x2 = nan(c_size, b_size, numFrames);
 
-    % TODO: calculate
-    Fs = 37000 / 512;
+    ToolBox = getGlobalToolBox;
+    fN = ToolBox.Cache.fN;
     
     res_fft_card_freq = nan(c_size, b_size, 2);
 
@@ -314,8 +314,12 @@ function handleDispValues(name, Disp_cell, FFT_D_cell)
                     continue;
                 end
 
-                res_D_x1(i, j, :) = current_disp(x1, :);
-                res_D_x2(i, j, :) = current_disp(x2, :);
+                % Mean with 1 before and after
+                res_D_x1(i, j, :) = mean(current_disp((x1 - 1):(x1 + 1), :), 1); % current_disp(x1, :);
+                res_D_x2(i, j, :) = mean(current_disp((x2 - 1):(x2 + 1), :), 1); % current_disp(x2, :);
+
+                res_x1_stats = calculate_stats(res_D_x1);
+                res_x2_stats = calculate_stats(res_D_x2);
 
                 res_fft_x1(i, j, :) = abs(fft(res_D_x1(i, j, :) / numFrames));
                 res_fft_x2(i, j, :) = abs(fft(res_D_x2(i, j, :) / numFrames));
@@ -323,8 +327,8 @@ function handleDispValues(name, Disp_cell, FFT_D_cell)
 
                 cur_fft_x1 = res_fft_x1(i, j, :);
                 cur_fft_x2 = res_fft_x2(i, j, :);
-                res_fft_card_freq(i, j, 1) = cur_fft_x1(getCardiacIdx(res_fft_x1(i, j, :), Fs));
-                res_fft_card_freq(i, j, 2) = cur_fft_x2(getCardiacIdx(res_fft_x2(i, j, :), Fs));
+                res_fft_card_freq(i, j, 1) = cur_fft_x1(getCardiacIdx(res_fft_x1(i, j, :), fN));
+                res_fft_card_freq(i, j, 2) = cur_fft_x2(getCardiacIdx(res_fft_x2(i, j, :), fN));
             end
 
             % if ~isempty(FFT_D_cell{i, j})
@@ -335,8 +339,6 @@ function handleDispValues(name, Disp_cell, FFT_D_cell)
 
         end
     end
-
-    ToolBox = getGlobalToolBox;
 
     % Removed Empty to reshape
     emptyIndex = cellfun(@isempty, Disp_cell);
@@ -350,6 +352,8 @@ function handleDispValues(name, Disp_cell, FFT_D_cell)
     ToolBox.Output.DimOut.add("DispField/profile_fft_x2_" + name, res_fft_x2, []);
     ToolBox.Output.DimOut.add("DispField/profile_cardiac_freq_" + name, res_fft_card_freq, []);
 
+    ToolBox.Output.DimOut.add("DispField/D_x1_stats_" + name, res_x1_stats, ["Mean", "Median", "Std"]);
+    ToolBox.Output.DimOut.add("DispField/D_x2_stats_" + name, res_x2_stats, ["Mean", "Median", "Std"]);
 
     % ToolBox.Output.DimOut.add("DispField/profile_FFT_D_local_max_" + name, res_fft_disp, []);
 end
@@ -372,7 +376,7 @@ function res = handlePeaks(data)
 end
 
 
-function idx = getCardiacIdx(fft_data, Fs)
+function idx = getCardiacIdx(fft_data, fN)
 % GETCARDIACIDX Returns the index of the dominant heart rate peak.
 %
 % Usage: 
@@ -383,11 +387,11 @@ function idx = getCardiacIdx(fft_data, Fs)
     N = size(fft_data, 3);
     
     % 2. Create Frequency Vector
-    f = (0:N-1) * (Fs / N);
+    f = (0:N-1) * (fN / N);
     
     % 3. Define Cardiac Range (0.75 Hz to 4.0 Hz)
     %    This automatically ignores the "huge left one" (DC/Breathing)
-    range_idxs = find(f >= 0.75 & f <= 4.0);
+    range_idxs = find(f >= 0.58 & f <= 3.67);
     
     % 4. Spatially average the data to find the global peak
     %    (Averaging height and width makes the peak distinct from noise)
@@ -399,4 +403,12 @@ function idx = getCardiacIdx(fft_data, Fs)
     % 6. Convert local peak back to the global index of input array
     idx = range_idxs(local_peak);
 
+end
+
+function res = calculate_stats(x_array)
+    mea     = mean(x_array, 3, "omitnan");
+    med     = median(x_array, 3, "omitnan");
+    std_dev = std(x_array, 0, 3, "omitnan");
+
+    res = cat(3, mea, med, std_dev);
 end
