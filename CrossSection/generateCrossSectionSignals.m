@@ -314,16 +314,17 @@ function handleDispValues(name, Disp_cell, FFT_D_cell)
                     continue;
                 end
 
-                % Mean with 1 before and after
+                % Mean with 1 idx before and after x1 & x2
                 res_D_x1(i, j, :) = mean(current_disp((x1 - 1):(x1 + 1), :), 1); % current_disp(x1, :);
                 res_D_x2(i, j, :) = mean(current_disp((x2 - 1):(x2 + 1), :), 1); % current_disp(x2, :);
 
-                res_x1_stats = calculate_stats(res_D_x1);
-                res_x2_stats = calculate_stats(res_D_x2);
+                % Calculate mean, median, std over time
+                res_x1_stats = calculate_stats_onDim(res_D_x1, 3);
+                res_x2_stats = calculate_stats_onDim(res_D_x2, 3);
 
+                % Calculate Time Spectrum of displacement Field
                 res_fft_x1(i, j, :) = abs(fft(res_D_x1(i, j, :) / numFrames));
                 res_fft_x2(i, j, :) = abs(fft(res_D_x2(i, j, :) / numFrames));
-
 
                 cur_fft_x1 = res_fft_x1(i, j, :);
                 cur_fft_x2 = res_fft_x2(i, j, :);
@@ -340,20 +341,26 @@ function handleDispValues(name, Disp_cell, FFT_D_cell)
         end
     end
 
+    res_D1_x1_stats = calculate_stats_all(res_fft_card_freq(:, :, 1));
+    res_D1_x2_stats = calculate_stats_all(res_fft_card_freq(:, :, 2));
+
     % Removed Empty to reshape
     emptyIndex = cellfun(@isempty, Disp_cell);
     Disp_cell(emptyIndex) = {NaN(33, 256)};
 
-    ToolBox.Output.DimOut.add("DispField/profile_DispField_" + name, reshape(cell2mat(Disp_cell), [c_size, b_size, numFrames, profile_width]), []);
+    ToolBox.Output.DimOut.add("DispField/profile_DispField_" + name, reshape(cell2mat(Disp_cell), [c_size, b_size, numFrames, profile_width]), ["CircleIdx", "BranchIdx", "Time", "X-axis"]);
 
-    ToolBox.Output.DimOut.add("DispField/profile_D_x1_" + name, res_D_x1, []);
-    ToolBox.Output.DimOut.add("DispField/profile_D_x2_" + name, res_D_x2, []);
-    ToolBox.Output.DimOut.add("DispField/profile_fft_x1_" + name, res_fft_x1, []);
-    ToolBox.Output.DimOut.add("DispField/profile_fft_x2_" + name, res_fft_x2, []);
-    ToolBox.Output.DimOut.add("DispField/profile_cardiac_freq_" + name, res_fft_card_freq, []);
+    ToolBox.Output.DimOut.add("DispField/profile_D_x1_" + name, res_D_x1, ["CircleIdx", "BranchIdx", "Time"]);
+    ToolBox.Output.DimOut.add("DispField/profile_D_x2_" + name, res_D_x2, ["CircleIdx", "BranchIdx", "Time"]);
+    ToolBox.Output.DimOut.add("DispField/profile_fft_x1_" + name, res_fft_x1, ["CircleIdx", "BranchIdx", "Frequency"]);
+    ToolBox.Output.DimOut.add("DispField/profile_fft_x2_" + name, res_fft_x2, ["CircleIdx", "BranchIdx", "Frequency"]);
+    ToolBox.Output.DimOut.add("DispField/D1_" + name, res_fft_card_freq, ["CircleIdx", "BranchIdx", "x1, x2"]);
 
-    ToolBox.Output.DimOut.add("DispField/D_x1_stats_" + name, res_x1_stats, ["Mean", "Median", "Std"]);
-    ToolBox.Output.DimOut.add("DispField/D_x2_stats_" + name, res_x2_stats, ["Mean", "Median", "Std"]);
+    ToolBox.Output.DimOut.add("DispField/D_x1_stats_" + name, res_x1_stats, ["CircleIdx", "BranchIdx", "Mean, Median, Std"]);
+    ToolBox.Output.DimOut.add("DispField/D_x2_stats_" + name, res_x2_stats, ["CircleIdx", "BranchIdx", "Mean, Median, Std"]);
+
+    ToolBox.Output.DimOut.add("DispField/D1_x1_stats_" + name, res_D1_x1_stats, "Mean, Median, Std");
+    ToolBox.Output.DimOut.add("DispField/D1_x2_stats_" + name, res_D1_x2_stats, "Mean, Median, Std");
 
     % ToolBox.Output.DimOut.add("DispField/profile_FFT_D_local_max_" + name, res_fft_disp, []);
 end
@@ -383,13 +390,16 @@ function idx = getCardiacIdx(fft_data, fN)
 %   idx = getCardiacIdx(res_fft_x1, 30);
 %   heart_rate_slice = res_fft_x1(:, :, idx);
 
+    ToolBox = getGlobalToolBox;
+
     % 1. Get size
-    N = size(fft_data, 3);
+    % N = size(fft_data, 3);
     
     % 2. Create Frequency Vector
-    f = (0:N-1) * (fN / N);
+    % f = (0:N-1) * (fN / N);
+    f = ToolBox.Cache.f;
     
-    % 3. Define Cardiac Range (0.75 Hz to 4.0 Hz)
+    % 3. Define Cardiac Range (0.58 Hz (35 BPM) to 3.67 Hz (220 BPM))
     %    This automatically ignores the "huge left one" (DC/Breathing)
     range_idxs = find(f >= 0.58 & f <= 3.67);
     
@@ -405,10 +415,26 @@ function idx = getCardiacIdx(fft_data, fN)
 
 end
 
-function res = calculate_stats(x_array)
-    mea     = mean(x_array, 3, "omitnan");
-    med     = median(x_array, 3, "omitnan");
-    std_dev = std(x_array, 0, 3, "omitnan");
+function res = calculate_stats_onDim(x_array, dim)
+    arguments
+        x_array, dim
+    end
+
+    mea     = mean(x_array, dim, "omitnan");
+    med     = median(x_array, dim, "omitnan");
+    std_dev = std(x_array, 0, dim, "omitnan");
 
     res = cat(3, mea, med, std_dev);
+end
+
+function res = calculate_stats_all(data)
+    arguments
+        data
+    end
+
+    mea     = mean(data, "all", "omitnan");
+    med     = median(data, "all", "omitnan");
+    std_dev = std(data, 1, "all", "omitnan");
+
+    res = cat(1, mea, med, std_dev);
 end
