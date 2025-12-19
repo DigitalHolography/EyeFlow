@@ -136,7 +136,7 @@ function [fN, f] = frequency_array(ToolBox)
     arguments
         ToolBox
     end
-    fN = (ToolBox.fs * 1000) / ToolBox.stride;
+    fN = ((ToolBox.fs * 1000) / ToolBox.stride) / 2;
     f = circshift(fftshift(linspace(-fN, fN, size(ToolBox.Cache.t, 2) + 1)), [0, 1]);
     f = f(1,1:(end-1));
 end
