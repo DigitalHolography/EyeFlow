@@ -129,14 +129,6 @@ rejected_mask = zeros(numX, numY, 3); % Cross-section mask
 subImg_cell = cell(numCircles, numBranches); % Sub-images of vessels
 histo_v_cell = cell(numCircles, numBranches); % Histograms of vessel velocities
 
-% Upscale the DispField
-dispField = displacementField.field;
-dispField = squeeze(hypot(dispField(:,:,1,:), dispField(:,:,2,:)));
-dispField = upscaleDispField(dispField);
-
-Disp_cell = cell(numCircles, numBranches);
-FFT_D_cell = cell(numCircles, numBranches);
-
 % Cross-Section Analysis of the arteries
 for c_idx = 1:numCircles
 
@@ -148,11 +140,6 @@ for c_idx = 1:numCircles
             [cross_section_results] = crossSectionAnalysis2(ToolBox, ...
                 locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, ...
                 xy_barycenter, v_RMS, patchName, papillaDiameter);
-
-            res = analyzeDispField(locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, xy_barycenter, dispField, patchName);
-
-            Disp_cell{c_idx, b_idx} = res.D;
-            FFT_D_cell{c_idx, b_idx} = res.fft_D;
 
             % Map outputs to variables
             v_cell{c_idx, b_idx} = cross_section_results.v;
@@ -173,7 +160,32 @@ for c_idx = 1:numCircles
     end
 end
 
-handleDispValues(vesselName, Disp_cell, FFT_D_cell);
+if params.json.Preprocess.NonRigidRegisteringFlag
+    % Upscale the DispField
+    dispField = displacementField.field;
+    dispField = squeeze(hypot(dispField(:,:,1,:), dispField(:,:,2,:)));
+    dispField = upscaleDispField(dispField);
+
+    Disp_cell = cell(numCircles, numBranches);
+    FFT_D_cell = cell(numCircles, numBranches);
+
+    for c_idx = 1:numCircles
+        for b_idx = 1:numBranches
+            if isempty(locsLabel{c_idx, b_idx})
+                continue;
+            end
+            patchName = sprintf('%s%d_C%d', initial, b_idx, c_idx);
+            res = analyzeDispField(locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, xy_barycenter, dispField, patchName);
+
+            Disp_cell{c_idx, b_idx} = res.D;
+            FFT_D_cell{c_idx, b_idx} = res.fft_D;
+        end
+    end
+
+    handleDispValues(vesselName, Disp_cell, FFT_D_cell);
+end
+
+
 
 if params.json.generateCrossSectionSignals.sectionMontage && saveFigures
     sectionMontage(subImg_cell, numSections, vesselName)
@@ -346,7 +358,7 @@ function handleDispValues(name, Disp_cell, FFT_D_cell)
 
     % Removed Empty to reshape
     emptyIndex = cellfun(@isempty, Disp_cell);
-    Disp_cell(emptyIndex) = {NaN(33, 256)};
+    Disp_cell(emptyIndex) = {NaN(profile_width, numFrames)};
 
     ToolBox.Output.DimOut.add("DispField/profile_DispField_" + name, reshape(cell2mat(Disp_cell), [c_size, b_size, numFrames, profile_width]), ["CircleIdx", "BranchIdx", "Time", "X-axis"]);
 

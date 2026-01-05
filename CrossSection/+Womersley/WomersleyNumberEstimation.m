@@ -10,28 +10,30 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     PIXEL_SIZE = params.px_size; % in milimeters
     PIXEL_SIZE = PIXEL_SIZE * 1000; % in μm
     RHO_BLOOD = 1060; % Density of blood in kg/m^3
+    FIXED_NU = 3e-6; % m^2/s (Phase 1 recommendation)
 
     psf_kernel = createGaussianPSFKernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
     % Fit a simple PSF-convolved Parabolic/Plug model to get Geometry
     [geoParams, ~] = fitGeometryOnMean(v_profile, psf_kernel, ToolBox);
-    
+    DC_metrics = calculateDCmetrics(geoParams, RHO_BLOOD, FIXED_NU);
+
     if isnan(geoParams.R0)
         warning("[WOMERSLEY] Geometry fit failed");
         return;
     end
 
     init_fit = struct(...
-        'psf_kernel',   psf_kernel, ...
-        'geoParams',    geoParams   ...
+        "psf_kernel",   psf_kernel, ...
+        "geoParams",    geoParams   ...
     );
 
     HARMONIC_NUMBER = params.json.exportCrossSectionResults.WomersleyMaxHarmonic;
 
     % TODO: Parfor does not seem to work with toolbox
     for i = 1:HARMONIC_NUMBER
-        fitParams.RigidWallFixedNu(i)  = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, ToolBox, ModelType="rigid");
-        fitParams.MovingWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, ToolBox, ModelType="moving");
-        fitParams.RigidWallFreeNu(i)   = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, ToolBox, ModelType="rigid", NuType="free");
+        fitParams.RigidWallFixedNu(i)  = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="rigid");
+        fitParams.MovingWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="moving");
+        fitParams.RigidWallFreeNu(i)   = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="rigid", NuType="free");
     end
 
     % Quality Control
@@ -61,6 +63,7 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
     % QCs are both, mostly calculated for each segments / harmonics, but some 
     % are just for segments
     results.qc = qc;
+    results.DC_metrics = DC_metrics;
 
     % TODO: Maybe removed derived and put inside respective results
     % Derived are metrics that are some extra metrics, they could be included 
@@ -70,9 +73,9 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
 end
 
 
-function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, ToolBox, options)
+function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox, options)
     arguments
-        v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, ToolBox
+        v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox
         options.ModelType   string {mustBeMember(options.ModelType, ["rigid", "moving"])} = "moving"
         options.NuType      string {mustBeMember(options.NuType,    ["fixed", "free"  ])} = "fixed"
     end
@@ -191,7 +194,6 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
 
     x_coords = linspace(-1, 1, NUM_INTERP_POINTS);
     
-    FIXED_NU = 3e-6; % m^2/s (Phase 1 recommendation)
     OMEGA_N = 2 * pi * cardiac_frequency * n_harmonic;
     
     % Factor to convert 'width' (normalized 0-1) to Radius in Meters
@@ -211,7 +213,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     % costFunctionHandle = @(p) costFun(p, x_coords, v_meas, width_norm, PSF_KERNEL, FIXED_NU, R_SCALE_METERS, OMEGA_N, fitParams.R0);
     costFunctionHandle = @(p) costFun(p, modelArgHandle, x_coords, v_meas,  width_norm, PSF_KERNEL, fitParams.R0, OMEGA_N);
 
-    fit_options = optimoptions('lsqnonlin', 'Display', 'off', 'Algorithm', 'trust-region-reflective');
+    fit_options = optimoptions("lsqnonlin", "Display", "off", "Algorithm", "trust-region-reflective");
     try
         [p_fit, ~, residual, exitflag, ~, ~, jacobian] = lsqnonlin(costFunctionHandle, p_init, lb, ub, fit_options);
         [Cn_fit, Dn_fit, center_fit, nu_fit] = modelArgHandle(p_fit);
@@ -264,7 +266,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     D_meas_mag_profile = []; 
     
     % Check if d_profile is provided and valid ([Points x 2 x Time])
-    if ~isempty(d_profile) && ndims(d_profile) == 3 && size(d_profile, 3) == numFrames
+    if ~(isscalar(d_profile) && isnan(d_profile)) && ~isempty(d_profile) && ndims(d_profile) == 3 && size(d_profile, 3) == numFrames
         
         % We need to process the sliced displacement to match v_profile spatial grid
         % Assuming d_profile was extracted with same spatial points.
@@ -486,7 +488,7 @@ function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, T
     ub      = [Inf,          0.5,       1.5  ];
     
     costFun = @(p) costFunDC(p, x_grid_normalized, v_mean, psf_kernel);
-    options = optimoptions('lsqnonlin', 'Display', 'off');
+    options = optimoptions("lsqnonlin", "Display", "off");
     try
         p_fit = lsqnonlin(costFun, p_init, lb, ub, options);
     catch
@@ -496,7 +498,7 @@ function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, T
     
     width_normalized = p_fit(3);
     % Divided by 2 because the Normalized section is of length 2
-    R0 = (width_normalized * (crossSectionLength * PIXEL_SIZE)) / 2; 
+    R0 = (width_normalized * (crossSectionLength * PIXEL_SIZE)) / 2;
     
     geoParams.center_norm = p_fit(2);
     geoParams.width_norm = width_normalized;
@@ -504,9 +506,32 @@ function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, T
     geoParams.DC_Amp = p_fit(1);
 end
 
+function DC_metrics = calculateDCmetrics(geoParams, RHO_BLOOD, FIXED_NU)
+    C0 = geoParams.DC_Amp;
+    mu_0 = RHO_BLOOD * FIXED_NU; % Viscosité dynamique (Pa.s)
+    R0 = geoParams.R0;
+
+    % Calculs analytiques n=0
+    K0 = 0.5;
+    Q0 = (pi * R0^2 / 2) * C0;
+    tau0 = -(2 * mu_0 / R0) * C0;
+    G0 = (4 * mu_0 / R0^2) * C0;
+
+    % Stockage des résultats DC
+    DC_metrics = struct(...
+        "C0", C0, ...
+        "K0", K0, ...
+        "Q0", Q0, ...
+        "tau0", tau0, ...
+        "G0", G0, ...
+        "R0", R0, ...
+        'mu0', mu_0 ...
+    );
+end
+
 function err = costFunDC(p, x, v_meas, psf)
-    amp     = p(1); 
-    center  = p(2); 
+    amp     = p(1);
+    center  = p(2);
     width   = p(3);
 
     r = (x - center) / width;
@@ -516,7 +541,7 @@ function err = costFunDC(p, x, v_meas, psf)
     profile = profile * amp;
     
     if ~isempty(psf)
-        profile = conv(profile, psf, 'same');
+        profile = conv(profile, psf, "same");
     end
     
     err = profile(:) - v_meas(:);
@@ -591,9 +616,9 @@ function model_profile = generate_womersley_profile(x, Cn, Dn, center, alpha, wi
     [Bn, Psin] = get_womersley_basis(alpha, r);
 
     if ~isempty(psf_kernel)
-        Bn = conv(Bn, psf_kernel, 'same');
+        Bn = conv(Bn, psf_kernel, "same");
         if Dn ~= 0
-            Psin = conv(Psin, psf_kernel, 'same');
+            Psin = conv(Psin, psf_kernel, "same");
         end
     end
 
@@ -655,8 +680,8 @@ function model_profile = generate_moving_wall_model(p, x, width_norm, psf_kernel
     Psi_n_profile(abs(r) > 1) = 0;
 
     if ~isempty(psf_kernel)
-        Bn_profile_final = conv(Bn_profile, psf_kernel, 'same');
-        Psi_n_profile_final = conv(Psi_n_profile, psf_kernel, 'same');
+        Bn_profile_final = conv(Bn_profile, psf_kernel, "same");
+        Psi_n_profile_final = conv(Psi_n_profile, psf_kernel, "same");
     else
         % If no PSF, use the ideal profiles.
         Bn_profile_final = Bn_profile;

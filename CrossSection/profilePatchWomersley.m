@@ -59,7 +59,9 @@ profHeight = 30;
 
 idx = 1;
 
-displacement_field = displacement_field.field;
+if params.json.Preprocess.NonRigidRegisteringFlag
+    displacement_field = displacement_field.field;
+end
 
 for circleIdx = 1:rows
 
@@ -119,24 +121,29 @@ for circleIdx = 1:rows
 
         hold off;
 
-        d_profile = zeros(n, 2, numFrames);
+        if params.json.Preprocess.NonRigidRegisteringFlag
+            d_profile = zeros(n, 2, numFrames);
 
-        xi = x + x_axis;
-        yi = repmat(y, 1, n);
+            xi = x + x_axis;
+            yi = repmat(y, 1, n);
 
-        % Check bounds to avoid errors during interp2
-        % if x > 1 && x < 512 && y > 1 && y < 512
-        for t = 1:numFrames
-            % Extract the X-component frame (Component 1)
-            D_field_X = displacement_field(:, :, 1, t); 
-            
-            % Extract the Y-component frame (Component 2)
-            D_field_Y = displacement_field(:, :, 2, t);
-            
-            % Interpolate at the cross-section coordinates
-            % interp2(V, Xq, Yq)
-            d_profile(:, 1, t) = interp2(D_field_X, xi, yi, 'linear', 0);
-            d_profile(:, 2, t) = interp2(D_field_Y, xi, yi, 'linear', 0);
+            % Check bounds to avoid errors during interp2
+            % if x > 1 && x < 512 && y > 1 && y < 512
+            for t = 1:numFrames
+                % Extract the X-component frame (Component 1)
+                D_field_X = displacement_field(:, :, 1, t); 
+                
+                % Extract the Y-component frame (Component 2)
+                D_field_Y = displacement_field(:, :, 2, t);
+                
+                % Interpolate at the cross-section coordinates
+                % interp2(V, Xq, Yq)
+                d_profile(:, 1, t) = interp2(D_field_X, xi, yi, 'linear', 0);
+                d_profile(:, 2, t) = interp2(D_field_Y, xi, yi, 'linear', 0);
+            end
+
+        else
+            d_profile = NaN;
         end
         % else
             % warning('Coordinates out of image bounds for extraction');
@@ -202,6 +209,8 @@ function saveWomersleyResults(BasePath, womersley_results, units_struct)
 
     saveWomersleyResults_handle(BasePath + "/QC", expandStructField(womersley_results, "qc"), []);
     saveWomersleyResults_handle(BasePath + "/Derived", expandStructField(womersley_results, "derived"), units_struct.derived_metrics);
+
+    saveWomersleyResults_handle(BasePath + "/DCMetrics", expandStructField(womersley_results, "DC_metrics"), []);
 end
 
 function saveWomersleyResults_handle(BasePath, womersley_cells, units_struct)
