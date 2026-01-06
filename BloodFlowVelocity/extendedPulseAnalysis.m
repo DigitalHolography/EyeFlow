@@ -21,6 +21,7 @@ numFramesInterp = params.PulseAnalysis.OneCycleInterpolationPoints;
 % Define color limits for heatmaps
 maskArtery = ToolBox.Cache.maskArtery;
 maskVein = ToolBox.Cache.maskVein;
+maskVessel = ToolBox.Cache.maskVessel;
 xy_barycenter = ToolBox.Cache.xy_barycenter;
 sysIdxList = ToolBox.Cache.sysIdxList;
 
@@ -45,7 +46,6 @@ exportVideos = params.exportVideos;
 % Apply masks to isolate arteries, veins, and background
 maskArtery = maskArtery & maskSection;
 maskVein = maskVein & maskSection;
-maskVessel = maskArtery | maskVein;
 maskBackground = ~maskVessel & maskSection;
 
 % Define colors for plotting

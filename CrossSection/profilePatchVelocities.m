@@ -80,18 +80,17 @@ for circleIdx = 1:rows
         x_axis = linspace(-sizeProfiles / 2, sizeProfiles / 2, n);
 
         % Optional Poiseuille fit
-        try
 
-            selected_points = find(profile > max(profile(:)) * 0.3);
-            warning('off')
-            fitObj = fit(x_axis(selected_points)', double(profile(selected_points)'), 'a*(1 - ((x - b)/c)^2)', ...
-                'StartPoint', [1, 0, profWidth / 2]);
-            warning('on')
-            plotData = fitObj(x_axis);
-        catch e
-            disp(e)
-            plotData = profile;
+        selected_points = find(profile > max(profile(:)) * 0.3);
+
+        % Ensure enough points for fit
+        if numel(selected_points) < 3
+            continue;
         end
+
+        fitObj = fit(x_axis(selected_points)', double(profile(selected_points)'), 'a*(1 - ((x - b)/c)^2)', ...
+            'StartPoint', [1, 0, profWidth / 2]);
+        plotData = fitObj(x_axis);
 
         % Plot profile
         x_plot = x + x_axis;

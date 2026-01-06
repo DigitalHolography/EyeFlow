@@ -39,7 +39,7 @@ properties
     ArteryVelocityMeanTrimmed
     ArteryVelocityMedianTrimmed
     ArteryVelocityModeTrimmed
-    
+
     VeinVelocityMeanSection
     VeinVelocityMaxSection
     VeinVelocityMinSection
@@ -53,7 +53,6 @@ properties
     ArteryVelocity75Percentile
     VeinVelocity25Percentile
     VeinVelocity75Percentile
-
 
     % Flow Rate (µL/s or mm³/s)
     ArteryFlowRateMean
@@ -91,6 +90,7 @@ properties
     DiastoleDuration
     SystolicUpstroke
     SystolicDownstroke
+    DiastolicUpstroke
     DiastolicRunoff
 
     % Vessel Diameters

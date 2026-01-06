@@ -29,8 +29,7 @@ else
 end
 
 % Spectral Analysis
-numHarmonics = 6;
-SpectralWaveformAnalysis(signal, numSystoles, numHarmonics, name);
+SpectralWaveformAnalysis(signal, numSystoles, name);
 
 % Signal Preprocessing
 try

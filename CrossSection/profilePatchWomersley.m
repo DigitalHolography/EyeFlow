@@ -57,11 +57,43 @@ profHeight = 30;
 % AVG Plot
 % lines_cell = cell(rows, cols);
 
-idx = 1;
+metrics = struct( ...
+    'RnR0_complex', NaN, ... 
+    'RnR0_mag', NaN, ...
+    'RnR0_phase_deg', NaN, ...
+    'Q_n', NaN, ... 
+    'G_n', NaN, ... 
+    'tau_n', NaN, ... 
+    'H_Zn', NaN, ... 
+    'H_Rn', NaN, ... 
+    'AnA0', NaN, ...
+    'nu_app', NaN, ... 
+    'mu_app', NaN ... 
+);
+
+fitParams = struct( ...
+    'alpha_1', NaN, ...
+    'alpha_n', NaN, ...
+    'harmonic', NaN, ...
+    'K_cond', NaN, ...
+    'R0', NaN, ...
+    'Rn', NaN, ...
+    'Cn', NaN, ...
+    'Dn', NaN, ...
+    'center', NaN, ...
+    'width', NaN, ...
+    'omega_0', NaN, ...
+    'omega_n', NaN, ...
+    'metrics', metrics ...
+);
+
+womersley_results = repmat(fitParams, 1, rows * cols);
 
 for circleIdx = 1:rows
 
     for branchIdx = 1:cols
+
+        idx = (circleIdx - 1) * cols + branchIdx;
 
         % 1. Plot cardiac profiles
 
@@ -120,21 +152,22 @@ for circleIdx = 1:rows
         % 2. Fit cardiac profiles
 
         % TODO: temp fix for a single harmonic
-        womersley_results(idx) = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
+        try
+            womersley_results(idx) = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
+            ToolBox.Cache.WomersleyOut{circleIdx, branchIdx} = womersley_results(1, idx);
+        catch
+            fprintf("Womersley estimation failed for circle %d branch %d\n", circleIdx, branchIdx);
+        end
 
         % addStructToExtra(ToolBox.Output.Extra, "Womersley", womersley_results(idx)(1));
 
-        ToolBox.Cache.WomersleyOut{circleIdx,branchIdx} = womersley_results(1, idx);
-        idx = idx + 1;
     end
 
 end
 
-
 saveWomersleyResults("Womersley", womersley_results);
 
 womersleyResultsAnalysis(womersley_results);
-
 
 % Save figure
 exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_velocities_womersley_profiles_overlay_%s.png", ToolBox.folder_name, name)));
@@ -144,29 +177,30 @@ close(fi);
 close all;
 end
 
-
 function saveWomersleyResults(BasePath, womersley_results)
-    ToolBox = getGlobalToolBox;
+ToolBox = getGlobalToolBox;
 
-    if ~endsWith(BasePath, "/") && ~endsWith(BasePath, "_")
-        BasePath = BasePath + "/"; 
+if ~endsWith(BasePath, "/") && ~endsWith(BasePath, "_")
+    BasePath = BasePath + "/";
+end
+
+field_names = fieldnames(womersley_results(1));
+
+for i = 1:numel(field_names)
+    field = field_names{i};
+
+    if isstruct(womersley_results(1).(field))
+        subStructs = [womersley_results.(field)];
+        saveWomersleyResults(BasePath + field, subStructs);
+        continue;
     end
 
-    field_names = fieldnames(womersley_results(1));
-    for i = 1:numel(field_names)
-        field = field_names{i};
+    % for j = 1:numel(womersley_results)
+    %     field_list(j) = womersley_results(j).(field);
+    % end
 
-        if isstruct(womersley_results(1).(field))
-            subStructs = [womersley_results.(field)];
-            saveWomersleyResults(BasePath + field, subStructs);
-            continue;
-        end
+    field_list = [womersley_results.(field)];
+    ToolBox.Output.DimOut.add_D1_array(BasePath + field, field_list);
+end
 
-        % for j = 1:numel(womersley_results)
-        %     field_list(j) = womersley_results(j).(field);
-        % end
-
-        field_list = [womersley_results.(field)];
-        ToolBox.Output.DimOut.add_D1_array(BasePath + field, field_list);
-    end
 end

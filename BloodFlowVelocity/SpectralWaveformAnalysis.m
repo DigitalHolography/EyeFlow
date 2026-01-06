@@ -1,4 +1,4 @@
-function [fft_c, fundamental, valid_harmonics, f] = SpectralWaveformAnalysis(signal, numSys, m_harmonics, name)
+function [fft_c, fundamental, valid_harmonics, f] = SpectralWaveformAnalysis(signal, numSys, name)
 % Spectral Analysis
 % Perform spectral analysis on the original signal
 % Zero-pad the signal for better frequency resolution
@@ -30,7 +30,7 @@ windowed_signal = signal .* hamming_win; % Apply the window (element-wise multip
 coherent_gain = mean(hamming_win);
 
 % Zero-pad the WINDOWED signal
-N = 16; % Padding factor
+N = 2; % Padding factor
 padded_signal = padarray(windowed_signal, [0, numFrames * N]);
 
 % Frequency vector (show only positive frequencies since signal is real)
@@ -47,7 +47,7 @@ fft_mag = fft_mag / max(fft_mag); % Normalize to [0,1]
 fundamental_peak = findpeaks(fft_mag, ...
     'MinPeakDistance', estimated_fundamental * 0.6, ...
     'SortStr', 'descend', 'NPeaks', 1);
-min_prominence = fundamental_peak(1) * 0.2; % 20 % of maximum magnitude as minimum prominence
+min_prominence = fundamental_peak(1) * 0.1; % 10 % of maximum magnitude as minimum prominence
 
 % Improved peak detection with minimum prominence threshold
 [s_peaks, s_idx] = findpeaks(fft_mag, ...
@@ -61,6 +61,7 @@ numFreq = length(s_locs);
 [s_locs, idx] = sort(s_locs, 'ascend');
 s_peaks = s_peaks(idx);
 s_idx = s_idx(idx);
+m_harmonics = length(s_locs);
 
 % Calculate and plot harmonic frequencies if fundamental is detected
 if numFreq >= 2
@@ -193,21 +194,20 @@ if saveFigures
     % Main plot with improved styling
     fft_angle = angle(fft_c);
     fft_angle = fft_angle(1:length(f)); % Take only positive frequencies
-    ff_angle_movmean = movmean(fft_angle, 64);
 
     % Create figure for spectral analysis
     hFig_angle = figure('Visible', 'off', 'Color', 'w');
-    plot(f, ff_angle_movmean, 'k', 'LineWidth', 2);
+    plot(f, fft_angle, 'k', 'LineWidth', 2);
     hold on;
     grid on;
 
     % Highlight detected peaks with annotations
     if ~isempty(s_peaks)
-        scatter(s_locs, ff_angle_movmean(s_idx), 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
+        scatter(s_locs, fft_angle(s_idx), 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
 
         % Annotate the top peaks
         for k = 1:length(s_peaks)
-            text(s_locs(k), ff_angle_movmean(s_idx(k)) + 0.3, ...
+            text(s_locs(k), fft_angle(s_idx(k)) + 0.3, ...
                 sprintf('%.2f', s_locs(k)), ...
                 'HorizontalAlignment', 'center', ...
                 'VerticalAlignment', 'bottom', ...
@@ -219,11 +219,7 @@ if saveFigures
     end
 
     % Configure axes
-    axis tight;
-    axT = axis;
-    axis padded;
-    axP = axis;
-    axis([axT(1), 10, axP(3) - 0.1 * (axP(4) - axP(3)), axP(4) + 0.1 * (axP(4) - axP(3))]);
+    axis([0, 10, -pi, pi]);
 
     xlabel('Frequency (Hz)', 'FontSize', 14, 'FontWeight', 'bold');
     ylabel('Phase (rad)', 'FontSize', 14, 'FontWeight', 'bold');

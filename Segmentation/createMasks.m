@@ -62,9 +62,10 @@ maskParams = params.json.Mask;
 if maskParams.EyeDiaphragmSegmentationNet
     [~, cx, cy, r] = predictDiaphragm(EyeDiaphragmSegmentationNet, M0_ff_img);
     offset = 0.02; % To avoid diaphragm to be considered a vessel
-    maskDiaphragm = diskMask(numX, numY, (r / numX) - offset, 'center', [cx / numX, cy / numY]);
+    maskDiaphragm = diskMask(numX, numY, (r / 1024) - offset, 'center', [cx / 1024, cy / 1024]);
+
 else
-    cx = numX / 2; cy = numY / 2;
+    cx = 512; cy = 512;
     maskDiaphragm = diskMask(numX, numY, diaphragmRadius);
 end
 
@@ -77,12 +78,15 @@ scoreMaskVein = NaN;
 % 1) Vesselness Computation and Initial Mask Creation
 
 % Prepare video for vesselness computation
-M0_video = M0_ff;
-A = ones(1, 1, numFrames);
-B = A .* maskDiaphragm;
-M0_video(~B) = NaN;
-clear A B
-M0_img = squeeze(mean(M0_video, 3, 'omitnan'));
+
+if any(contains(string(vesselnessMethod),["matchedFilter","frangi"]))
+    M0_video = M0_ff;
+    A = ones(1, 1, numFrames);
+    B = A .* maskDiaphragm;
+    M0_video(~B) = NaN;
+    clear A B
+    M0_img = squeeze(mean(M0_video, 3, 'omitnan'));
+end
 
 % 1) 1) Compute vesselness response
 
@@ -129,7 +133,7 @@ saveMaskImage(maskVesselnessClean + maskCircle * 0.5, 'all_12_VesselMask_clear.p
 
 % 2) Pre-mask arteries using intensity information
 % Precompute circles
-maskCircles = diskMask(numX, numY, r1, r2, 'center', [cx / numX, cy / numY]);
+maskCircles = diskMask(numX, numY, r1, r2, 'center', [cx / 1024, cy / 1024]);
 
 [maskArteryTmp, maskVeinTmp] = preMaskArtery(M0_ff, maskVesselnessClean .* maskCircles);
 saveMaskImage(maskArteryTmp, 'artery_20_PreMask.png', isStep = true, cmap = cArtery);
@@ -397,6 +401,7 @@ ToolBox.Output.add('RemainingNbPxl', RemainingArea_pxl, '');
 % 5) Save masks in Cache
 ToolBox.Cache.maskArtery = maskArtery;
 ToolBox.Cache.maskVein = maskVein;
+ToolBox.Cache.maskVessel = maskArtery | maskVein;
 ToolBox.Cache.maskNeighbors = maskNeighbors;
 ToolBox.Cache.maskBackground = maskBackground;
 ToolBox.Cache.maskChoroid = maskChoroid;

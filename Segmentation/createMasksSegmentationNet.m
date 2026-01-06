@@ -63,14 +63,9 @@ end
 
 M0 = imresize(rescale(M0_ff_img), [512, 512]);
 
-if canUseGPU
-    device = 'cuda';
-else
-    device = 'cpu';
-end
-
 if mask_params.AVCorrelationSegmentationNet
     R = imresize(rescale(R), [512, 512]);
+
     if mask_params.AVDiasysSegmentationNet
         input = cat(3, M0, R, diasys_diff);
     else
@@ -82,7 +77,7 @@ elseif mask_params.AVDiasysSegmentationNet
 end
 
 ToolBox.Output.Extra.add("NetworkInput", input);
-output = runAVInference(net, input, device);
+output = runAVInference(net, input);
 
 [~, argmax] = max(output, [], 3);
 
@@ -138,39 +133,52 @@ end
 onehot = double(onehot);
 end
 
-function output = runAVInference(model_struct, input, device)
-    if model_struct.use_onnx
-        model_struct = model_struct.onnx_model;
-        if isa(model_struct, 'dlnetwork')
-            % For dlnetwork objects
-            input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
-            output_dl = predict(model_struct, input_dl);
-            output = extractdata(output_dl);
-        elseif isa(model_struct, 'DAGNetwork')
-                % For DAGNetwork objects
-                output = predict(model_struct, input, 'ExecutionEnvironment', device);
-        end
-    elseif model_struct.use_python
-        model_struct = model_struct.python_model;
+function output = runAVInference(model_struct, input)
 
-        np = py.importlib.import_module('numpy');
-        torch = py.importlib.import_module('torch');
+if model_struct.use_onnx
 
-        % MATLAB HWC → NumPy CHW
-        input_np = np.array(permute(input, [3 1 2]), 'float32');
-
-        % To tensor
-        t = torch.tensor(input_np).unsqueeze(int32(0)).to(device);  % BCHW
-
-        % Forward pass
-        model = model_struct.py_model.to(device);
-        out = model(t);
-        out_np = out.cpu().detach().numpy();
-
-        % NumPy BCHW → MATLAB HWC
-        out_mat = squeeze(single(out_np));  % C × H × W
-        output = gather(out_mat);
-
-        output = permute(output, [2 3 1]); % CHW to HWC
+    if canUseGPU
+        device = 'cuda';
+    else
+        device = 'cpu';
     end
+
+    if isa(model_struct.onnx_model, 'dlnetwork')
+        % For dlnetwork objects
+        input_dl = dlarray(input, 'SSCB'); % Convert to dlarray
+        output_dl = predict(model_struct.onnx_model, input_dl);
+        output = extractdata(output_dl);
+    elseif isa(model_struct.onnx_model, 'DAGNetwork')
+        % For DAGNetwork objects
+        output = predict(model_struct.onnx_model, input, 'ExecutionEnvironment', device);
+    end
+
+elseif model_struct.use_pytorch
+    np = py.importlib.import_module('numpy');
+    torch = py.importlib.import_module('torch');
+
+    if torch.cuda.is_available()
+        device = 'cuda';
+    else
+        device = 'cpu';
+    end
+
+    % MATLAB HWC → NumPy CHW
+    input_np = np.array(permute(input, [3 1 2]), 'float32');
+
+    % To tensor
+    t = torch.tensor(input_np).unsqueeze(int32(0)).to(device); % BCHW
+
+    % Forward pass
+    model = model_struct.py_model.to(device);
+    out = model(t);
+    out_np = out.cpu().detach().numpy();
+
+    % NumPy BCHW → MATLAB HWC
+    out_mat = squeeze(single(out_np)); % C × H × W
+    output = gather(out_mat);
+
+    output = permute(output, [2 3 1]); % CHW to HWC
+end
+
 end

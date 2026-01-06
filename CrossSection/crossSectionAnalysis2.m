@@ -44,8 +44,7 @@ end
 
 subImgMean = squeeze(mean(subImg, 3, 'omitnan'));
 subImgCropped = cropCircle(subImgMean);
-[rotatedImg, tilt_angle] = rotateSubImage(subImgMean, subImgCropped, loc, xy_barycenter);
-subMask = imrotatecustom(subMask, tilt_angle);
+[rotatedImg, tilt_angle] = rotateSubImage(subImgMean, subImgCropped, loc, xy_barycenter); subMask = imrotatecustom(subMask, tilt_angle);
 rotatedImg(~subMask) = NaN;
 results.subImg_cell = rescale(rotatedImg);
 
