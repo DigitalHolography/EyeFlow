@@ -30,7 +30,7 @@ windowed_signal = signal .* hamming_win; % Apply the window (element-wise multip
 coherent_gain = mean(hamming_win);
 
 % Zero-pad the WINDOWED signal
-N = 16; % Padding factor
+N = 1; % Padding factor
 padded_signal = padarray(windowed_signal, [0, numFrames * N]);
 
 % Frequency vector (show only positive frequencies since signal is real)
@@ -193,21 +193,20 @@ if saveFigures
     % Main plot with improved styling
     fft_angle = angle(fft_c);
     fft_angle = fft_angle(1:length(f)); % Take only positive frequencies
-    ff_angle_movmean = movmean(fft_angle, 64);
 
     % Create figure for spectral analysis
     hFig_angle = figure('Visible', 'off', 'Color', 'w');
-    plot(f, ff_angle_movmean, 'k', 'LineWidth', 2);
+    plot(f, fft_angle, 'k', 'LineWidth', 2);
     hold on;
     grid on;
 
     % Highlight detected peaks with annotations
     if ~isempty(s_peaks)
-        scatter(s_locs, ff_angle_movmean(s_idx), 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
+        scatter(s_locs, fft_angle(s_idx), 100, 'filled', 'MarkerFaceColor', cDark, 'MarkerEdgeColor', 'k');
 
         % Annotate the top peaks
         for k = 1:length(s_peaks)
-            text(s_locs(k), ff_angle_movmean(s_idx(k)) + 0.3, ...
+            text(s_locs(k), fft_angle(s_idx(k)) + 0.3, ...
                 sprintf('%.2f', s_locs(k)), ...
                 'HorizontalAlignment', 'center', ...
                 'VerticalAlignment', 'bottom', ...
