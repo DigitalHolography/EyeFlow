@@ -98,11 +98,11 @@ switch bkgfillmethod
 
 end
 
+% Time vector for plotting
+t = ToolBox.Cache.t;
+
 % Calculate and plot artery signals
 if saveFigures
-    % Time vector for plotting
-    t = ToolBox.Cache.t;
-
     % Colors for plotting
     cBlack = [0 0 0];
     cArtery = [255 22 18] / 255;
