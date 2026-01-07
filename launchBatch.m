@@ -1,1 +1,1 @@
-eyeflowcli -b
+eyeflowcli -batch

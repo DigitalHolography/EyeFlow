@@ -31,122 +31,105 @@ else
     fprintf("Running in Deployed Mode.\n");
 end
 
-defaultJson = fullfile(appRoot, "Parameters", "DefaultEyeFlowParamsBatch.json");
-
-if ~isfile(defaultJson)
-    error("CRITICAL: Could not find DefaultEyeFlowParamsBatch.json at: %s", defaultJson);
-else
-    fprintf("Parameter file found: %s\n", defaultJson);
-end
-
-% --- ARGUMENT PARSING & PATH SELECTION ---
+% --- ARGUMENT PARSING ---
 mode = 'single';
 inputPath = "";
-rawInputs = string.empty; % This will hold the unprocessed paths/filenames
+customConfigPath = "";
+useSafeMode = false;
 
-% Check arguments
-if nargin > 0
-    arg1 = string(varargin{1});
-
-    if arg1 == "-b"
-        mode = 'batch';
-
-        if nargin > 1
-            inputPath = string(varargin{2});
-        end
-
-    else
-        mode = 'single';
-        inputPath = arg1;
+idx = 1;
+while idx <= nargin
+    arg = string(varargin{idx});
+    
+    switch arg
+        case "-batch"
+            mode = 'batch';
+        case "-safe"
+            useSafeMode = true;
+        case "-config"
+            % Check if next argument exists and isn't another flag
+            if idx < nargin && ~startsWith(string(varargin{idx+1}), "-")
+                customConfigPath = string(varargin{idx+1});
+                idx = idx + 1; % Skip next arg as it was the path
+            else
+                % Open file explorer for config
+                [cfg_name, cfg_path] = uigetfile('*.json', 'Select Custom EyeFlow Parameters JSON');
+                if isequal(cfg_name, 0)
+                    fprintf("No config selected, using defaults.\n");
+                else
+                    customConfigPath = fullfile(cfg_path, cfg_name);
+                end
+            end
+        otherwise
+            % Assume this is the input path (data folder or batch file)
+            inputPath = arg;
     end
-
+    idx = idx + 1;
 end
 
+% --- CONFIG SELECTION ---
+% Priority: 1. Custom (-config) | 2. Safe (-safe) | 3. Default
+if customConfigPath ~= "" && isfile(customConfigPath)
+    selectedJson = customConfigPath;
+    fprintf("Using Custom Config: %s\n", selectedJson);
+elseif useSafeMode
+    selectedJson = fullfile(appRoot, "Parameters", "DefaultEyeFlowParamsBatchSafeMode.json");
+    fprintf("Using Safe Mode Config.\n");
+else
+    selectedJson = fullfile(appRoot, "Parameters", "DefaultEyeFlowParamsBatch.json");
+    fprintf("Using Standard Config.\n");
+end
+
+if ~isfile(selectedJson)
+    error("CRITICAL: Configuration file not found: %s", selectedJson);
+end
+
+% --- PATH SELECTION ---
+rawInputs = string.empty;
+
 try
-
     if strcmp(mode, 'batch')
-
         if inputPath == ""
             [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
-
-            if isequal(txt_name, 0)
-                fprintf('No file selected. Exiting.\n');
-                return;
-            end
-
+            if isequal(txt_name, 0), return; end
             fullInputPath = fullfile(txt_path, txt_name);
         else
             fullInputPath = inputPath;
-
-            if ~isfile(fullInputPath)
-                error("Batch file not found: %s", fullInputPath);
-            end
-
+            if ~isfile(fullInputPath), error("Batch file not found: %s", fullInputPath); end
         end
-
         fprintf("Running in Batch Mode: %s\n", fullInputPath);
         rawInputs = strtrim(readlines(fullInputPath));
-        rawInputs = rawInputs(rawInputs ~= ""); % remove empty lines
-
+        rawInputs = rawInputs(rawInputs ~= ""); 
     else
-
         if inputPath == ""
             [holo_name, holo_path] = uigetfile('*.holo', 'Select the .holo file');
-
-            if isequal(holo_name, 0)
-                fprintf('No file selected. Exiting.\n');
-                return;
-            end
-
+            if isequal(holo_name, 0), return; end
             fullInputPath = fullfile(holo_path, holo_name);
         else
             fullInputPath = inputPath;
         end
-
         fprintf("Running in Single Mode: %s\n", fullInputPath);
         rawInputs = string(fullInputPath);
     end
-
 catch ME
     fprintf("Error during path selection: %s\n", ME.message);
     return;
 end
 
-% Process rawInputs to resolve .holo files to HD folders, or validate folder paths
+% Resolve .holo files to HD folders
 paths = string.empty;
-fprintf("Resolving %d input(s)...\n", length(rawInputs));
-
 for k = 1:length(rawInputs)
     currentInput = rawInputs(k);
-
     if currentInput == "" || ismissing(currentInput); continue; end
 
-    % Case 1: Input is a .holo file (Resolve to HD folder)
     if endsWith(currentInput, ".holo", 'IgnoreCase', true)
-
-        if ~isfile(currentInput)
-            fprintf("  [WARNING] File not found: %s\n", currentInput);
-            continue;
-        end
-
         latestHD = findLatestHDFolder(currentInput);
-
-        if ismissing(latestHD)
-            fprintf("  [WARNING] No HoloDoppler (HD) folder found for: %s\n", currentInput);
-        else
-            fprintf("  [RESOLVED] %s -> %s\n", currentInput, latestHD);
+        if ~ismissing(latestHD)
             paths(end + 1, 1) = latestHD;
         end
-
-        % Case 2: Input is already a folder
     elseif isfolder(currentInput)
         paths(end + 1, 1) = currentInput;
-
-        % Case 3: Invalid input
-    else
-        fprintf("  [WARNING] Path is not a folder or valid .holo file: %s\n", currentInput);
     end
-
 end
 
 if isempty(paths)
@@ -155,61 +138,36 @@ if isempty(paths)
 end
 
 % --- PRE-PROCESSING (JSON & MASKS) ---
-fprintf("Preparing %d folder(s)...\n", length(paths));
-
 for ind = 1:length(paths)
     targetPath = paths(ind);
-
-    jsonDir = fullfile(targetPath, 'eyeflow', 'json');
-
-    if ~isfolder(jsonDir)
-        mkdir(jsonDir);
-    end
-
-    % Remove old json files
-    delete(fullfile(jsonDir, '*.json'));
-
-    % Copy default parameter file
-    copyfile(defaultJson, fullfile(jsonDir, 'input_EF_params.json'));
-
-    % Handle Masks
     efPath = fullfile(targetPath, 'eyeflow');
     jsonDir = fullfile(efPath, 'json');
-
-    if ~isfolder(jsonDir)
-        mkdir(jsonDir);
-    end
-
-    delete(fullfile(jsonDir, '*.json'));
-    copyfile(defaultJson, fullfile(jsonDir, 'input_EF_params.json'));
-
     maskDir = fullfile(efPath, 'mask');
 
+    if ~isfolder(jsonDir), mkdir(jsonDir); end
+
+    % Setup Config JSON
+    delete(fullfile(jsonDir, '*.json'));
+    copyfile(selectedJson, fullfile(jsonDir, 'input_EF_params.json'));
+
+    % Handle Masks
     if isfile(fullfile(maskDir, 'forceMaskArtery.png'))
         movefile(fullfile(maskDir, 'forceMaskArtery.png'), fullfile(maskDir, 'oldForceMaskArtery.png'));
     end
-
     if isfile(fullfile(maskDir, 'forceMaskVein.png'))
         movefile(fullfile(maskDir, 'forceMaskVein.png'), fullfile(maskDir, 'oldForceMaskVein.png'));
     end
-
 end
 
-% --- AI LOADING ---
+% --- AI LOADING & EXECUTION ---
 fprintf("Loading AI Models...\n");
 AIModels = AINetworksClass();
 
-% --- EXECUTION LOOP ---
 for ind = 1:length(paths)
     p = paths(ind);
-
     if p == "" || ismissing(p); continue; end
-
-    % Ensure path ends with separator
-    if isfolder(p) && ~endsWith(p, filesep)
-        p = strcat(p, filesep);
-    end
-
+    if isfolder(p) && ~endsWith(p, filesep), p = strcat(p, filesep); end
+    
     fprintf("Processing: %s\n", p);
     runAnalysisBlock(p, AIModels);
 end
