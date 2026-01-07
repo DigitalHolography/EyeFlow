@@ -76,7 +76,7 @@ elseif mask_params.AVDiasysSegmentationNet
     input = cat(3, M0, M0_Diastole_img, M0_Systole_img);
 end
 
-ToolBox.Output.Extra.add("NetworkInput", input);
+ToolBox.Output.add("NetworkInput", input);
 output = runAVInference(net, input);
 
 [~, argmax] = max(output, [], 3);

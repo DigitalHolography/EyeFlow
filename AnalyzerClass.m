@@ -40,10 +40,11 @@ methods
 
         ToolBox.Cache.M0_ff_img = M0_ff_img;
 
-        ToolBox.Output.Extra.add("M0_ff_img", M0_ff_img);
+        ToolBox.Output.add("M0_ff_img", M0_ff_img);
 
         % Optic disk
         try
+
             if ToolBox.getParams.json.Mask.OpticDiskSegmentationNet
                 % New model
                 [~, center_x, center_y, diameter_x, diameter_y] = predictOpticDisk(executionObj.AINetworks.OpticDiskSegmentationNet, M0_ff_img);
@@ -80,7 +81,7 @@ methods
 
         end
 
-        ToolBox.Output.Extra.add("maskArtery", ToolBox.Cache.maskArtery);
+        ToolBox.Output.add("maskArtery", ToolBox.Cache.maskArtery);
 
         % Vein score (if veins analysis enabled)
         scoreV = ToolBox.Cache.scoreMaskVein;
@@ -97,7 +98,7 @@ methods
 
         end
 
-        ToolBox.Output.Extra.add("maskVein", ToolBox.Cache.maskVein);
+        ToolBox.Output.add("maskVein", ToolBox.Cache.maskVein);
 
         % Visualize the segmentation result
         M0_RGB = ToolBox.Cache.M0_RGB;

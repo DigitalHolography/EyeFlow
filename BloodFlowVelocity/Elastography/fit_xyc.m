@@ -76,7 +76,7 @@ fy = (-Nmult * ny / 2:Nmult * ny / 2 - 1) / (Nmult * ny * dy); % cycles per unit
 
 % --- Avoid the band of zero movment
 
-S0(abs(fy) < 1/1.25,:) = 0; % 1.25mm
+S0(abs(fy) < 1/1.25, :) = 0; % 1.25mm
 
 % --- Peak detection ---
 [pks, rows, cols, fx_err, fy_err] = findpeaks2(S0, fx, fy, 0.8);
@@ -140,14 +140,14 @@ dTy = abs(Ty * (dky / ky));
 % fprintf('Period along x = %.3f units\n', Tx);
 % fprintf('Period along y = %.3f units\n', Ty);
 
-PWV = - Ty / Tx;
+PWV =- Ty / Tx;
 dPWV = abs(PWV * sqrt((dTx / Tx) ^ 2 + (dTy / Ty) ^ 2));
 
-ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV", name, branch_index), PWV);
-ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_std", name, branch_index), dPWV);
-ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_unit", name, branch_index), "mm/s");
-ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/Wavelength", name, branch_index), Ty);
-ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/Wavelength_unit", name, branch_index), "mm");
+% ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV", name, branch_index), PWV);
+% ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_std", name, branch_index), dPWV);
+% ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_unit", name, branch_index), "mm/s");
+% ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/Wavelength", name, branch_index), Ty);
+% ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/Wavelength_unit", name, branch_index), "mm");
 
 % s_wave_map = saveImagescToStruct(h_wave_map);
 % ToolBox.Output.Extra.add(sprintf("PulseWaveVelocity/PWV%s_%d/PWV_intercorr", name, branch_index),s_wave_map);

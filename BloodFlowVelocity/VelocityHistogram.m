@@ -111,11 +111,11 @@ for branchIdx = 1:numBranches
         histo_branch(:, frameIdx) = histcounts(data(branchMask), edges); % histcount is faster than histogram or manual for loop counting
     end
 
-    if strcmp(name, 'artery')
-        ToolBox.Output.Extra.add(sprintf("VelocityHisto_A%d", branchIdx), histo_branch);
-    elseif strcmp(name, 'vein')
-        ToolBox.Output.Extra.add(sprintf("VelocityHisto_V%d", branchIdx), histo_branch);
-    end
+    % if strcmp(name, 'artery')
+    %     ToolBox.Output.add(sprintf("VelocityHisto_A%d", branchIdx), histo_branch);
+    % elseif strcmp(name, 'vein')
+    %     ToolBox.Output.add(sprintf("VelocityHisto_V%d", branchIdx), histo_branch);
+    % end
 
 end
 
