@@ -218,7 +218,10 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     
         fitParams.metrics.nu_app = nu_fit;
 
-        fitParams.metrics = calculateSymbols(fitParams, RHO_BLOOD, options);
+        % fitParams.metrics = calculateSymbols(fitParams, RHO_BLOOD, options);
+        % Will only replace what is updated and warn for possible new values 
+        % not in base
+        fitParams.metrics = updateStruct(fitParams.metrics, calculateSymbols(fitParams, RHO_BLOOD, options));
 
     catch ME 
         warning_s("[WOMERSLEY] Womersley fit failed for %s (idx %d): %s", name, idx, ME.message);

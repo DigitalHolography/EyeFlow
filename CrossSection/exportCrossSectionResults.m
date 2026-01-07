@@ -109,32 +109,11 @@ if params.json.exportCrossSectionResults.BloodFlowHistograms && saveFigures
 end
 
 if params.json.exportCrossSectionResults.BloodFlowProfilesWomersleyOverlay && saveFigures
-
     try
         profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
     catch ME
         warning_s("Womersley Profile Overlay failed for %s", name);
     end
-
-    %{
-        alphaWom = zeros(size(ToolBox.Cache.WomersleyOut), 'single');
-
-        for i = 1:size(alphaWom, 1)
-
-            for j = 1:size(alphaWom, 2)
-
-                if isstruct(ToolBox.Cache.WomersleyOut{i, j})
-                    data = ToolBox.Cache.WomersleyOut(i, j);
-                    alphaWom(i, j) = data{1, 1}.alpha_n;
-                end
-
-            end
-
-        end
-
-        exportSegmentsValueToH5(name + "_Wom_alpha", maskLabel, alphaWom, "Womersley");
-    %}
-
 end
 
 if params.json.exportCrossSectionResults.BloodFlowProfilesOverlay && saveFigures
