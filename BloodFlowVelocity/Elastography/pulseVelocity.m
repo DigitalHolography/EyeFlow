@@ -16,7 +16,7 @@ end
 
 [L, n] = labelVesselBranches(maskVessel, ones(size(maskVessel)), ToolBox.Cache.xy_barycenter, refine = false);
 
-ToolBox.Output.Extra.add(sprintf("PWV/%s_Segments_Labels", name), L);
+ToolBox.Output.add(sprintf("PWV/%s_Segments_Labels", name), L);
 
 if saveFigures
     figure('Visible', 'off');
