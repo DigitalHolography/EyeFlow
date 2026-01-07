@@ -111,7 +111,9 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
 
     PSF_KERNEL = init_fit.psf_kernel;
 
-    fitParams = getResultsStructs();
+    fitParams = getFitParamsStruct();
+    fitParams.R0    = init_fit.geoParams.R0;
+    fitParams.width = init_fit.geoParams.width_norm;
     
     % estimated_width = struct('systole', [], 'diastole', []);
     
@@ -289,7 +291,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     % estimated_width.diastole = parabole_fit_diastole;
     
     % ============================ [ Figures ] ========================== %
-    if params.saveFigures
+    if params.saveFigures && params.json.exportCrossSectionResults.WomersleySectionImage
         hFig = figure("Visible", "off");
         hold on;
     

@@ -112,8 +112,8 @@ if params.json.exportCrossSectionResults.BloodFlowProfilesWomersleyOverlay && sa
 
     try
         profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
-    catch
-        fprintf("Womersley Profile Overlay failed for %s\n", name);
+    catch ME
+        warning_s("Womersley Profile Overlay failed for %s", name);
     end
 
     %{

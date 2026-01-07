@@ -34,8 +34,6 @@ properties
     Output % Output class handle Stores outputs through the execution
 
     params
-
-    params
 end
 
 methods

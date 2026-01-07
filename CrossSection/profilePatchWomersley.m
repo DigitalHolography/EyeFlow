@@ -57,9 +57,9 @@ profHeight = 30;
 % AVG Plot
 % lines_cell = cell(rows, cols);
 
-fitParams = Womersley.getResultsStruct();
-
-womersley_results = repmat(fitParams, 1, rows * cols);
+% TODO: Need to rework the repmat to be a dynamic struct
+% fitParams = Womersley.getResultsStruct();
+% womersley_results = repmat(fitParams, 1, rows * cols);
 
 if params.json.Preprocess.NonRigidRegisteringFlag
     displacement_field = displacement_field.field;

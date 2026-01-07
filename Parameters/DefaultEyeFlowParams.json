@@ -109,7 +109,8 @@
     "strokeAndTotalVolume": true,
     "hemodynamicParameters": false,
     "InterpolationPoints": 50,
-    "WomersleyMaxHarmonic": 6
+    "WomersleyMaxHarmonic": 6,
+    "WomersleySectionImage": false
   },
   "DebugMode": false
 }
