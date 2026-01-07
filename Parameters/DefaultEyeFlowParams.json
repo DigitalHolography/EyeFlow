@@ -108,7 +108,8 @@
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
     "hemodynamicParameters": false,
-    "InterpolationPoints": 50
+    "InterpolationPoints": 50,
+    "WomersleyMaxHarmonic": 6
   },
   "DebugMode": false
 }

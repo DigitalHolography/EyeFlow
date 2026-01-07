@@ -1,4 +1,9 @@
 function VideoNonRigidRegistering(obj, apply)
+
+ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
+exportVideos = params.exportVideos;
+
 % This function performs non-rigid registration on the video frames of M0
 v = obj.M0;
 [numX, numY, numFrames] = size(v);
@@ -15,14 +20,15 @@ diff = zeros(numX, numY, numFrames);
 parfor k = 1:numFrames
     %get the frame, stabilize it, save it
     tgt = safeConvertFrame(v(:, :, k));
-    [f, s] = diffeoDemon(ref_img, tgt, ...
-        "STEP_SIZE", 4, ...
-        "BLOCK_SIZE", 30, ...
-        "SEARCH_RADIUS", 5, ...
-        "SSD_THRESHOLD", 0.1, ...
-        "NUM_ITERS", 1, ...
-        "LOG_LEVEL", "WARNING" ...
-    );
+    % [f, s] = diffeoDemon(ref_img, tgt, ...
+    % "STEP_SIZE", 4, ...
+    % "BLOCK_SIZE", 30, ...
+    % "SEARCH_RADIUS", 5, ...
+    % "SSD_THRESHOLD", 0.1, ...
+    % "NUM_ITERS", 1, ...
+    % "LOG_LEVEL", "WARNING" ...
+    % );
+    [f, s] = diffeomorphicDemon(tgt, ref_img, tgt);
 
     field(:, :, :, k) = f;
     stabilized(:, :, k) = s;
@@ -51,7 +57,10 @@ D.phase_temporal_derivative = Ft;
 % dA(:, :, 1, :) = dA1;
 % dA(:, :, 2, :) = dA2;
 
-saveAsGifs(D);
+if (exportVideos)
+    saveAsGifs(D);
+end
+
 obj.displacementField = D;
 
 if apply
@@ -105,7 +114,7 @@ accSmooth = 1.0;
 
 warpedAux = imwarp(aux, D, "nearest");
 
-%freeze pixel where warp is minimal
+% freeze pixel where warp is minimal
 mask = hypot(D(:, :, 1), D(:, :, 2)) < 0.5;
 warpedAux(mask) = source(mask);
 end

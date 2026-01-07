@@ -34,6 +34,8 @@ properties
     Output % Output class handle Stores outputs through the execution
 
     params
+
+    params
 end
 
 methods
@@ -262,7 +264,7 @@ methods
 
     function Params = getParams(obj)
         if isempty(obj.params)
-             obj.params = Parameters_json(obj.EF_path, obj.param_name);
+            obj.params = Parameters_json(obj.EF_path, obj.param_name);
         end
         Params = obj.params;
     end

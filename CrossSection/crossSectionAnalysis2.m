@@ -22,7 +22,7 @@ results = struct();
 
 % Compute mean velocity over time
 v_masked = v_RMS;
-v_masked(repmat(~ROI, [1, 1, size(v_RMS, 3)])) = NaN; % Apply mask to all slices
+% v_masked(repmat(~ROI, [1, 1, size(v_RMS, 3)])) = NaN; % Apply mask to all slices
 
 % Define sub-image dimensions
 subImgHW = round(0.01 * size(v_masked, 1) * params.json.generateCrossSectionSignals.ScaleFactorWidth);
@@ -32,6 +32,9 @@ xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1),
 yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
 subImg = v_masked(yRange, xRange, :);
 subMask = ROI(yRange, xRange);
+
+% Apply the mask to only the relevant part
+subImg(repmat(~subMask, [1, 1, numFrames])) = NaN; 
 
 if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
     xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);
