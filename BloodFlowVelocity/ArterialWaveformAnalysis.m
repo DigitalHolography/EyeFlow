@@ -124,6 +124,8 @@ else
     ToolBox.Output.add("DicroticNotchVisibility", 0, '');
 end
 
+ToolBox.Output.add("DicroticNotchVisibility", dicrotic_notch_visibility, "h5path", "/Artery/PulseAnalysis/DicroticNotch/Visibility");
+
 % Export to JSON (only for velocity signals)
 if ~isBVR
     ToolBox.Output.add('SystoleDuration', dicroticNotchTime, 's');

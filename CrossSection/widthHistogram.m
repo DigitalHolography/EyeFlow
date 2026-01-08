@@ -94,14 +94,14 @@ if contains(name, 'artery')
     ToolBox.Output.add('ArteryDiameterMean', D_avg, 'µm', h5path = '/Artery/CrossSections/Diameter/Mean');
     ToolBox.Output.add('ArteryDiameterMedian', D_mid, 'µm', h5path = '/Artery/CrossSections/Diameter/Median');
     ToolBox.Output.add('ArteryDiameterSpread', D_std, 'µm', h5path = '/Artery/CrossSections/Diameter/Spread');
-    ToolBox.Output.add('ArteryValidSectionCount', numValid, '', h5path = '/Artery/CrossSections/Diameter/ValidSectionCount');
-    ToolBox.Output.add('ArteryTotalSectionCount', A_tot, 'µm²', h5path = '/Artery/CrossSections/Diameter/TotalSectionCount');
+    ToolBox.Output.add('ArteryValidSectionCount', numValid, '', h5path = '/Artery/CrossSections/ValidSectionCount');
+    ToolBox.Output.add('ArteryTotalSectionCount', A_tot, 'µm²', h5path = '/Artery/CrossSections/TotalSectionCount');
 else
     ToolBox.Output.add('VeinDiameterMean', D_avg, 'µm', h5path = '/Vein/CrossSections/Diameter/Mean');
     ToolBox.Output.add('VeinDiameterMedian', D_mid, 'µm', h5path = '/Vein/CrossSections/Diameter/Median');
     ToolBox.Output.add('VeinDiameterSpread', D_std, 'µm', h5path = '/Vein/CrossSections/Diameter/Spread');
-    ToolBox.Output.add('VeinValidSectionCount', numValid, '', h5path = '/Vein/CrossSections/Diameter/ValidSectionCount');
-    ToolBox.Output.add('VeinTotalSectionCount', A_tot, 'µm²', h5path = '/Vein/CrossSections/Diameter/TotalSectionCount');
+    ToolBox.Output.add('VeinValidSectionCount', numValid, '', h5path = '/Vein/CrossSections/ValidSectionCount');
+    ToolBox.Output.add('VeinTotalSectionCount', A_tot, 'µm²', h5path = '/Vein/CrossSections/TotalSectionCount');
 end
 
 end

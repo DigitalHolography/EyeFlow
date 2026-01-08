@@ -174,7 +174,7 @@ methods
         obj.data.(name).unit = vars.unit;
 
         if vars.h5path == ""
-            obj.data.(name).h5path = name;
+            obj.data.(name).h5path = sprintf("/%s",name);
         else
             obj.data.(name).h5path = (vars.h5path);
         end
@@ -184,31 +184,28 @@ methods
     function writeJson(obj, path)
         props = fieldnames(obj.data);
 
-        d = [];
+        d = containers.Map('KeyType','char','ValueType','any');
 
         for i = 1:length(props)
-
-            if all(size(obj.data.(props{i}).value) == [1, 1]) % Scalar
-
-                if obj.(props{i}).unit == ""
-                    d.(props{i}) = obj.data.(props{i}).value;
-                    % data.(strcat(props{i}, "_ste")) = obj.(props{i}).standard_error;
+            v = obj.data.(props{i}).value;
+            if isscalar(v)
+                if obj.data.(props{i}).unit == ""
+                    key = props{i};
                 else
-                    d.(strcat(props{i}, "_", obj.(props{i}).unit)) = obj.data.(props{i}).value;
+                    key = props{i} + "_" + obj.data.(props{i}).unit;
                 end
-
+                d(char(key)) = v;
             end
-
         end
-
+        
         if ~isempty(d)
             jsonText = jsonencode(d, "PrettyPrint", true);
+        
             fid = fopen(path, 'w');
-
             if fid == -1
                 error('Cannot open file for writing: %s', path);
             end
-
+        
             fwrite(fid, jsonText, 'char');
             fclose(fid);
         end
@@ -229,12 +226,19 @@ methods
         for i = 1:length(props)
 
             h5path = (obj.data.(props{i}).h5path);
+            temp = char(h5path);
+            if temp(1) ~= '/'
+                h5path = strcat("/",h5path);
+            end
 
             if ~isnan(obj.data.(props{i}).standard_error)
                 writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(props{i}).value);
+                h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(props{i}).unit);
                 writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data.(props{i}).standard_error);
+                h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data.(props{i}).unit);
             else
-                writeNumericToHDF5(file_path, strcat(h5path), obj.data.(props{i}).value);
+                writeNumericToHDF5(file_path, h5path, obj.data.(props{i}).value);
+                h5writeatt(file_path, h5path, "unit", obj.data.(props{i}).unit);
             end
 
         end
@@ -251,8 +255,8 @@ function writeNumericToHDF5(path, datasetPath, value)
 
 if ~isempty(value)
 
-    if ~isreal(value)
-        warning("Complex values should be handled before call");
+    if isnumeric(value) & ~isreal(value)
+        warning(sprintf("Complex values should be handled before call : %s",datasetPath));
         return;
     end
 
@@ -291,7 +295,8 @@ end
 end
 
 function name = sanitizeFieldName(str)
-name = regexprep(str, '/', '_slash_');
+name = regexprep(str, 'µ', 'u');
+name = regexprep(name, '/', '_slash_');
 name = regexprep(name, '[^a-zA-Z0-9_]', '_');
 
 if ~isletter(name(1))
@@ -302,6 +307,7 @@ end
 
 function original = antiSanitizeFieldName(safeName)
 original = regexprep(safeName, '_slash_', '/');
+original = regexprep(original, '_us', '_µs');
 
 if startsWith(original, 'x') && ~startsWith(safeName, 'x_')
     original = original(2:end);

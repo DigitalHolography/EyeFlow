@@ -10,7 +10,7 @@ path_png = ToolBox.path_png;
 path_pdf = ToolBox.path_pdf;
 folder_name = ToolBox.folder_name;
 main_folder_name = ToolBox.main_foldername;
-outputs = ToolBox.Output;
+outputs = ToolBox.Output.data;
 
 % Parameters
 % Arterious Velocities
