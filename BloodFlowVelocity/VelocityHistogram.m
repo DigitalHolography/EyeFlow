@@ -97,26 +97,36 @@ exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_histogramVelocity%s.e
 
 close(fDistrib)
 
-% % Save branch histograms without figures
+% Save branch histograms without figures
 
-% for branchIdx = 1:numBranches
-%     branchMask = (labeledVessels == branchIdx);
-%     v_histo_branch = v_video .* branchMask;
+HistogramsByBranches = zeros([n, numFrames, numBranches]);
 
-%     % Initialize histogram matrix
-%     histo_branch = zeros(n, numFrames);
+for branchIdx = 1:numBranches
+    branchMask = (labeledVessels == branchIdx);
+    v_histo_branch = v_video .* branchMask;
 
-%     parfor frameIdx = 1:numFrames
-%         data = v_histo_branch(:, :, frameIdx);
-%         histo_branch(:, frameIdx) = histcounts(data(branchMask), edges); % histcount is faster than histogram or manual for loop counting
-%     end
+    % Initialize histogram matrix
+    histo_branch = zeros(n, numFrames);
 
-%     % if strcmp(name, 'artery')
-%     %     ToolBox.Output.add(sprintf("VelocityHisto_A%d", branchIdx), histo_branch);
-%     % elseif strcmp(name, 'vein')
-%     %     ToolBox.Output.add(sprintf("VelocityHisto_V%d", branchIdx), histo_branch);
-%     % end
+    parfor frameIdx = 1:numFrames
+        data = v_histo_branch(:, :, frameIdx);
+        histo_branch(:, frameIdx) = histcounts(data(branchMask), edges); % histcount is faster than histogram or manual for loop counting
+    end
 
-% end
+    HistogramsByBranches(:, :, branchIdx) = histo_branch;
+
+    % if strcmp(name, 'artery')
+    %     ToolBox.Output.add(sprintf("VelocityHisto_A%d", branchIdx), histo_branch);
+    % elseif strcmp(name, 'vein')
+    %     ToolBox.Output.add(sprintf("VelocityHisto_V%d", branchIdx), histo_branch);
+    % end
+
+end
+
+if strcmp(name, 'artery')
+    ToolBox.Output.add(sprintf("ArteryHistogramBybranches"), histo_branch, h5path = '/Artery/Velocity/HistogramBybranches');
+elseif strcmp(name, 'vein')
+    ToolBox.Output.add(sprintf("VeinHistogramBybranches"), histo_branch, h5path = '/Vein/Velocity/HistogramBybranches');
+end
 
 end

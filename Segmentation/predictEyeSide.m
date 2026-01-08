@@ -16,6 +16,7 @@ scores = extractdata(gather(dlOutput));
 scores = scores(:);
 
 [maxScore, maxIndex] = max(scores);
+
 if maxIndex == 1
     eyeSide = "left";
     labelStr = "Left";
@@ -28,6 +29,7 @@ end
 
 % Save the image
 Toolbox = getGlobalToolBox;
+
 if Toolbox.getParams.saveFigures
     visImg = uint8(rgbM0 * 255);
     borderWidth = 10;
@@ -35,26 +37,27 @@ if Toolbox.getParams.saveFigures
     visImg(1:borderWidth, :, 1) = borderColor(1);
     visImg(1:borderWidth, :, 2) = borderColor(2);
     visImg(1:borderWidth, :, 3) = borderColor(3);
-    visImg(end-borderWidth+1:end, :, 1) = borderColor(1);
-    visImg(end-borderWidth+1:end, :, 2) = borderColor(2);
-    visImg(end-borderWidth+1:end, :, 3) = borderColor(3);
+    visImg(end - borderWidth + 1:end, :, 1) = borderColor(1);
+    visImg(end - borderWidth + 1:end, :, 2) = borderColor(2);
+    visImg(end - borderWidth + 1:end, :, 3) = borderColor(3);
     visImg(:, 1:borderWidth, 1) = borderColor(1);
     visImg(:, 1:borderWidth, 2) = borderColor(2);
     visImg(:, 1:borderWidth, 3) = borderColor(3);
-    visImg(:, end-borderWidth+1:end, 1) = borderColor(1);
-    visImg(:, end-borderWidth+1:end, 2) = borderColor(2);
-    visImg(:, end-borderWidth+1:end, 3) = borderColor(3);
+    visImg(:, end - borderWidth + 1:end, 1) = borderColor(1);
+    visImg(:, end - borderWidth + 1:end, 2) = borderColor(2);
+    visImg(:, end - borderWidth + 1:end, 3) = borderColor(3);
 
     precisionText = sprintf('%s: %.2f%%', labelStr, maxScore * 100);
+
     try
         visImg = drawTextBox( ...
             visImg, ...
-            [borderWidth+5, borderWidth+5], ...
+            [borderWidth + 5, borderWidth + 5], ...
             precisionText, ...
             24, ...
             borderColor, ...
             1, ...
-            'white');
+        'white');
     catch
         warning('insertText not available. Saving image with border only.');
     end
@@ -63,6 +66,6 @@ if Toolbox.getParams.saveFigures
     imwrite(visImg, fullfile(Toolbox.path_png, 'eye_side.png'));
 end
 
-Toolbox.Output.add('PredictedEyeSide', eyeSide, '');
+Toolbox.Output.add('PredictedEyeSide', eyeSide, h5path = '/Meta/EyePredictedSide');
 
 end

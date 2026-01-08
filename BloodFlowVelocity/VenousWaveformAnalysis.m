@@ -115,7 +115,7 @@ if saveFigures
     % Export to JSON
     if ~isBVR
 
-        ToolBox.Output.add('VeinTimeToPeakFromMin', T_peak - T_Min, 's');
+        ToolBox.Output.add('VeinTimeToPeakFromMin', T_peak - T_Min, 's', h5path = '/Vein/Waveform/TimeToPeakFromMin');
 
     end
 

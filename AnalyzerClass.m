@@ -40,7 +40,7 @@ methods
 
         ToolBox.Cache.M0_ff_img = M0_ff_img;
 
-        ToolBox.Output.add("M0_ff_img", M0_ff_img);
+        ToolBox.Output.add("M0_ff_img", M0_ff_img, h5path = '/M0_ff_img');
 
         % Optic disk
         try
@@ -69,7 +69,7 @@ methods
         % Artery score
         scoreA = ToolBox.Cache.scoreMaskArtery;
 
-        ToolBox.Output.add("QualityControlScoreMaskArtery", scoreA, '');
+        ToolBox.Output.add("QualityControlScoreMaskArtery", scoreA, '', h5path = '/Artery/Segmentation/QualityScore');
 
         if isempty(scoreA) || isnan(scoreA)
         else
@@ -81,12 +81,12 @@ methods
 
         end
 
-        ToolBox.Output.add("maskArtery", ToolBox.Cache.maskArtery);
+        ToolBox.Output.add("maskArtery", ToolBox.Cache.maskArtery, h5path = '/Artery/Segmentation/Mask');
 
         % Vein score (if veins analysis enabled)
         scoreV = ToolBox.Cache.scoreMaskVein;
 
-        ToolBox.Output.add("QualityControlScoreMaskVein", scoreV, '');
+        ToolBox.Output.add("QualityControlScoreMaskVein", scoreV, '', h5path = '/Vein/Segmentation/QualityScore');
 
         if isempty(scoreV) || isnan(scoreV)
         else
@@ -98,7 +98,7 @@ methods
 
         end
 
-        ToolBox.Output.add("maskVein", ToolBox.Cache.maskVein);
+        ToolBox.Output.add("maskVein", ToolBox.Cache.maskVein, h5path = '/Vein/Segmentation/Mask');
 
         % Visualize the segmentation result
         M0_RGB = ToolBox.Cache.M0_RGB;

@@ -22,18 +22,18 @@ methods
         end
 
         if isempty(executionObj.M0)
-            ToolBox.Output.add('NumFrames', size(executionObj.M0_ff, 3), '', 0);
+            ToolBox.Output.add('NumFrames', size(executionObj.M0_ff, 3), h5path = '/Meta/NumFrames');
         else
-            ToolBox.Output.add('NumFrames', size(executionObj.M0, 3), '', 0);
+            ToolBox.Output.add('NumFrames', size(executionObj.M0, 3), h5path = '/Meta/NumFrames');
         end
 
-        ToolBox.Output.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', 0);
-        ToolBox.Output.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', 0);
+        ToolBox.Output.add('FrameRate', ToolBox.fs * 1000 / ToolBox.stride, 'Hz', h5path = '/Meta/FrameRate');
+        ToolBox.Output.add('InterFramePeriod', ToolBox.stride / ToolBox.fs / 1000, 's', h5path = '/Meta/InterFramePeriod');
 
         if ~isempty(ToolBox.record_time_stamps_us)
             tmp = ToolBox.record_time_stamps_us;
-            ToolBox.Output.add('UnixTimestampFirst', tmp.first, 'µs');
-            ToolBox.Output.add('UnixTimestampLast', tmp.last, 'µs');
+            ToolBox.Output.add('UnixTimestampFirst', tmp.first, 'µs', h5path = '/Meta/UnixTimestampFirst');
+            ToolBox.Output.add('UnixTimestampLast', tmp.last, 'µs', h5path = '/Meta/UnixTimestampLast');
         end
 
         if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name))) && params.saveFigures

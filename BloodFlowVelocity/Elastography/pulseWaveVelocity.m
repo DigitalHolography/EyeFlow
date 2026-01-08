@@ -1,4 +1,4 @@
-function [PWV, dPWV, Tx, score] = pulseWaveVelocity(U, mask, branch_index, name, ToolBox)
+function [PWV, dPWV, Ty, score] = pulseWaveVelocity(U, mask, branch_index, name, ToolBox)
 % Computes the pulse wave velocity based on a cross correlation computation
 % U is the field over which we compute the velocity and mask is the mask of
 % the selected retinal artery
@@ -268,7 +268,7 @@ end
 Ravg(isnan(Ravg)) = 0;
 Ravg = Ravg';
 
-[PWV, dPWV, Tx, ~, ~, score] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index, ToolBox);
+[PWV, dPWV, ~, Ty, ~, score] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index, ToolBox);
 
 close all;
 end

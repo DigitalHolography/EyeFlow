@@ -31,14 +31,14 @@ tau_delay_ms = amin / numInterp * 1000 * (1 / (ToolBox.Cache.HeartBeatFFT)); % i
 tau_RC = tau / numInterp * (1 / (ToolBox.Cache.HeartBeatFFT)); % in seconds
 tau_ms = tau_RC * 1000; % convert to ms
 
-ToolBox.Output.add('WindkesselPureDelay', tau_delay_ms, 'ms');
-ToolBox.Output.add('WindkesselDecayRC', tau_ms, 'ms');
+ToolBox.Output.add('WindkesselPureDelay', tau_delay_ms, 'ms', h5path = '/ArteryVein/Windkessel/PureDelay');
+ToolBox.Output.add('WindkesselDecayRC', tau_ms, 'ms', h5path = '/ArteryVein/Windkessel/DecayRC');
 
 Ceff = tau_RC / (1 / (ToolBox.Cache.HeartBeatFFT));
 Reff = 1 / Ceff;
 
-ToolBox.Output.add('WindkesselCeff', Ceff, '', '');
-ToolBox.Output.add('WindkesselReff', Reff, '', '');
+ToolBox.Output.add('WindkesselCeff', Ceff, h5path = '/ArteryVein/Windkessel/Ceff');
+ToolBox.Output.add('WindkesselReff', Reff, h5path = '/ArteryVein/Windkessel/Reff');
 
 if saveFigures
     % Create figure

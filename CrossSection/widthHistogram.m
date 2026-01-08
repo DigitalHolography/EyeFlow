@@ -22,7 +22,7 @@ for cIdx = 1:numCircles
 
 end
 
-A_tot = mean(sum(area_mat, 2,'omitnan'), 1,'omitnan') * 1000 * 1000;
+A_tot = mean(sum(area_mat, 2, 'omitnan'), 1, 'omitnan') * 1000 * 1000;
 area_mat = reshape(area_mat, 1, []);
 diameters = 2 * sqrt(area_mat / pi) * 1000;
 
@@ -91,17 +91,17 @@ writetable(T, fullfile(ToolBox.path_txt, strcat(ToolBox.folder_name, '_', 'Width
 
 % New
 if contains(name, 'artery')
-    ToolBox.Output.add('ArteryDiameterMean', D_avg, 'µm');
-    ToolBox.Output.add('ArteryDiameterMedian', D_mid, 'µm');
-    ToolBox.Output.add('ArteryDiameterSpread', D_std, 'µm');
-    ToolBox.Output.add('ArteryValidSectionCount', numValid, '');
-    ToolBox.Output.add('ArteryTotalSectionCount', A_tot, 'µm²');
+    ToolBox.Output.add('ArteryDiameterMean', D_avg, 'µm', h5path = '/Artery/CrossSections/Diameter/Mean');
+    ToolBox.Output.add('ArteryDiameterMedian', D_mid, 'µm', h5path = '/Artery/CrossSections/Diameter/Median');
+    ToolBox.Output.add('ArteryDiameterSpread', D_std, 'µm', h5path = '/Artery/CrossSections/Diameter/Spread');
+    ToolBox.Output.add('ArteryValidSectionCount', numValid, '', h5path = '/Artery/CrossSections/Diameter/ValidSectionCount');
+    ToolBox.Output.add('ArteryTotalSectionCount', A_tot, 'µm²', h5path = '/Artery/CrossSections/Diameter/TotalSectionCount');
 else
-    ToolBox.Output.add('VeinDiameterMean', D_avg, 'µm');
-    ToolBox.Output.add('VeinDiameterMedian', D_mid, 'µm');
-    ToolBox.Output.add('VeinDiameterSpread', D_std, 'µm');
-    ToolBox.Output.add('VeinValidSectionCount', numValid, '');
-    ToolBox.Output.add('VeinTotalSectionCount', A_tot, 'µm²');
+    ToolBox.Output.add('VeinDiameterMean', D_avg, 'µm', h5path = '/Vein/CrossSections/Diameter/Mean');
+    ToolBox.Output.add('VeinDiameterMedian', D_mid, 'µm', h5path = '/Vein/CrossSections/Diameter/Median');
+    ToolBox.Output.add('VeinDiameterSpread', D_std, 'µm', h5path = '/Vein/CrossSections/Diameter/Spread');
+    ToolBox.Output.add('VeinValidSectionCount', numValid, '', h5path = '/Vein/CrossSections/Diameter/ValidSectionCount');
+    ToolBox.Output.add('VeinTotalSectionCount', A_tot, 'µm²', h5path = '/Vein/CrossSections/Diameter/TotalSectionCount');
 end
 
 end

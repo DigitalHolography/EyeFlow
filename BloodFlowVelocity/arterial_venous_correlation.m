@@ -134,7 +134,7 @@ if saveFigures
 
 end
 
-ToolBox.Output.add('ArteryVeinPhaseDelay', time_lag, 's', NaN);
+ToolBox.Output.add('ArteryVeinPhaseDelay', time_lag, 's', NaN, h5path = '/ArteryVein/PhaseDelay');
 
 close all
 
@@ -175,9 +175,9 @@ if saveFigures
     exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_phase.png", ToolBox.folder_name)))
 end
 
-ToolBox.Output.add('Frequency', freqs, 'Hz');
-ToolBox.Output.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10');
-ToolBox.Output.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg');
+ToolBox.Output.add('Frequency', freqs, 'Hz', h5path = '/Meta/Frequency');
+ToolBox.Output.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', h5path = 'ArteryVein/TransFunction/Mod');
+ToolBox.Output.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', h5path = 'ArteryVein/TransFunction/Phase');
 
 % figure;
 % subplot(2,1,1); plot(f, 20*log10(abs(Z(1:nfft/2+1))));

@@ -69,9 +69,9 @@ if saveFigures
 end
 
 if contains(name, 'artery')
-    ToolBox.Output.add('ArterialVolumeRate', Q_t, 'µL/min', Q_SE_t);
+    ToolBox.Output.add('ArterialVolumeRate', Q_t, 'µL/min', Q_SE_t, h5path = '/Artery/FlowRate/VolumeRate/Signal');
 elseif contains(name, 'vein')
-    ToolBox.Output.add('VenousVolumeRate', Q_t, 'µL/min', Q_SE_t);
+    ToolBox.Output.add('VenousVolumeRate', Q_t, 'µL/min', Q_SE_t, h5path = '/Artery/FlowRate/VolumeRate/Signal');
 end
 
 if saveFigures

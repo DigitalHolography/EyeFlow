@@ -104,7 +104,7 @@ if length(peaks) > 1
 
     % Only consider valid notch (significant difference from diastolic peak)
     if (locs_peaks(2) - locs_notch) > L * 0.05 % 5 % threshold
-        ToolBox.Output.add("DicroticNotchVisibility", 1, '');
+        ToolBox.Output.add("DicroticNotchVisibility", 1, "h5path", "/Artery/DicroticNotch/Visibility");
         systolicDownstroke = peaks(1) - notch;
         diastolicRunoff = notch - one_cycle_signal(end); % End of cycle
 
@@ -114,20 +114,20 @@ if length(peaks) > 1
         diastoleDuration = pulseTime(end) - pulseTime(locs_notch);
     else
         notch = NaN; % Invalid notch
-        ToolBox.Output.add("DicroticNotchVisibility", 0, '');
+        ToolBox.Output.add("DicroticNotchVisibility", 0, "h5path", "/Artery/DicroticNotch/Visibility");
     end
 
 else
-    ToolBox.Output.add("DicroticNotchVisibility", 0, '');
+    ToolBox.Output.add("DicroticNotchVisibility", 0, "h5path", "/Artery/DicroticNotch/Visibility");
 end
 
 % Export to JSON (only for velocity signals)
 if ~isBVR
-    ToolBox.Output.add('SystoleDuration', dicroticNotchTime, 's');
-    ToolBox.Output.add('DiastoleDuration', diastoleDuration, 's');
-    ToolBox.Output.add('SystolicUpstroke', systolicUpstroke, unit);
-    ToolBox.Output.add('SystolicDownstroke', systolicDownstroke, unit);
-    ToolBox.Output.add('DiastolicRunoff', diastolicRunoff, unit);
+    ToolBox.Output.add('SystoleDuration', dicroticNotchTime, 's', "h5path", "/Artery/DicroticNotch/dicroticNotchTime");
+    ToolBox.Output.add('DiastoleDuration', diastoleDuration, 's', "h5path", "/Artery/DicroticNotch/diastoleDuration");
+    ToolBox.Output.add('SystolicUpstroke', systolicUpstroke, unit, "h5path", "/Artery/DicroticNotch/systolicUpstroke");
+    ToolBox.Output.add('SystolicDownstroke', systolicDownstroke, unit, "h5path", "/Artery/DicroticNotch/systolicDownstroke");
+    ToolBox.Output.add('DiastolicRunoff', diastolicRunoff, unit, "h5path", "/Artery/DicroticNotch/diastolicRunoff");
     %     ToolBox.Output.add('DicroticNotchIndex', dicroticNotchIndex, unit);
 end
 

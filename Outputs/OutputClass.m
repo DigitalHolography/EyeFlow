@@ -231,10 +231,10 @@ methods
             h5path = (obj.data.(props{i}).h5path);
 
             if ~isnan(obj.data.(props{i}).standard_error)
-                writeNumericToHDF5(file_path, strcat("/", h5path, "/value"), obj.data.(props{i}).value);
-                writeNumericToHDF5(file_path, strcat("/", h5path, "/ste"), obj.data.(props{i}).standard_error);
+                writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(props{i}).value);
+                writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data.(props{i}).standard_error);
             else
-                writeNumericToHDF5(file_path, strcat("/", h5path), obj.data.(props{i}).value);
+                writeNumericToHDF5(file_path, strcat(h5path), obj.data.(props{i}).value);
             end
 
         end
