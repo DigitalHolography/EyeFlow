@@ -29,8 +29,7 @@ else
 end
 
 % Spectral Analysis
-numHarmonics = 6;
-SpectralWaveformAnalysis(signal, numSystoles, numHarmonics, name);
+SpectralWaveformAnalysis(signal, numSystoles, name);
 
 % Signal Preprocessing
 try
@@ -51,6 +50,8 @@ dt = (t(2) - t(1));
 pulseTime = linspace(0, dt * avgLength, numInterp);
 
 % Feature Detection
+T = avgLength * t(end) / length(t);
+[peak_freqs, peaks, phase] = syntheticSpectralAnalysis(one_cycle_signal, pulseTime, numInterp / T, 512);
 
 % Find extremes
 [peak, loc_peak] = max(one_cycle_signal);
@@ -115,7 +116,7 @@ if saveFigures
     % Export to JSON
     if ~isBVR
 
-        ToolBox.Output.add('VeinTimeToPeakFromMin', T_peak - T_Min, 's', h5path = '/Vein/Waveform/TimeToPeakFromMin');
+        ToolBox.Output.add('VeinTimeToPeakFromMin', T_peak - T_Min, 's');
 
     end
 
