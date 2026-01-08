@@ -254,8 +254,12 @@ if saveFigures
         'Title', 'average velocity in arteries and veins', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
 end
 
-ToolBox.Output.Signals.add('ArterialVelocity', v_artery_signal, 'mm/s', t, 's');
-ToolBox.Output.Signals.add('VenousVelocity', v_vein_signal, 'mm/s', t, 's');
+ToolBox.Output.add('Time', t, 's');
+ToolBox.Output.add('ArterialVelocity', v_artery_signal, 'mm/s');
+ToolBox.Output.add('VenousVelocity', v_vein_signal, 'mm/s');
+
+ToolBox.Cache.ArterialVelocity = v_artery_signal;
+ToolBox.Cache.VeinVelocity = v_vein_signal;
 
 fprintf("    2. Difference calculation and velocity computation took %ds\n", round(toc));
 

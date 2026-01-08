@@ -15,7 +15,6 @@ properties (Transient)
 
 end
 
-
 properties
 
     % Main Results
@@ -23,7 +22,6 @@ properties
     % Display Cache
     M0_ff_img
     M0_RGB double % cached mean image
-
 
     % Time Vector
     t double %cached time vector
@@ -62,10 +60,12 @@ properties
     HeartBeatFFTSTE double % cached heartbeat frequency standard error in Hz
     harmonics double % cached harmonics frequencies
 
+    % Velocity Artery Vein mean signals
+    ArterialVelocity
+    VeinVelocity
+
     % Womersley things
     WomersleyOut cell
-
-    
 
 end
 

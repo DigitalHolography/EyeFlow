@@ -16,7 +16,7 @@ end
 
 [L, n] = labelVesselBranches(maskVessel, ones(size(maskVessel)), ToolBox.Cache.xy_barycenter, refine = false);
 
-ToolBox.Output.add(sprintf("PWV/%s_Segments_Labels", name), L);
+ToolBox.Output.add(sprintf("%s_PWV_Segments_Labels", name), L);
 
 if saveFigures
     figure('Visible', 'off');
@@ -34,10 +34,11 @@ end
 PWV = NaN(1, n);
 dPWV = NaN(1, n);
 scores = NaN(1, n);
+Tx = NaN(1, n);
 
 parfor i = 1:n
     % displacementAnalysis(D, maskLongArtery);
-    [PWV(i), dPWV(i), scores(i)] = pulseWaveVelocity(M, L == i, i, name, ToolBox);
+    [PWV(i), dPWV(i), Tx(i), scores(i)] = pulseWaveVelocity(M, L == i, i, name, ToolBox);
 end
 
 [~, idx] = max(scores .* ~isnan(PWV));

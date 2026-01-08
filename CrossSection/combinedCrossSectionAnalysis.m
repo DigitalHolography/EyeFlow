@@ -86,8 +86,8 @@ Q_V_FT = fft(Q_V);
 F_TRANS = Q_V_FT ./ Q_A_FT;
 freqs = linspace(-fs / 2, fs / 2, numel(F_TRANS));
 
-ToolBox.Output.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', freqs, 'Hz');
-ToolBox.Output.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');
+ToolBox.Output.add('TransFunctionModLog10FlowRate', fftshift(abs(log10(F_TRANS))), 'log10');
+ToolBox.Output.add('TransFunctionPhaseDegreesFlowRate', fftshift(180 / pi * angle((F_TRANS))), 'deg');
 
 % Figures and Outputs
 if saveFigures

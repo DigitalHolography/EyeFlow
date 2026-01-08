@@ -146,20 +146,6 @@ end
 methods
 
     function obj = OutputClass()
-        % Constructor for the class, fills the properties with default values
-        % props = setdiff(properties(obj), "Signals");
-        % props = setdiff(props, "Extra");
-        % props = setdiff(props, "DimOut");
-
-        % for i = 1:length(props)
-        %     obj.(props{i}).value = NaN;
-        %     obj.(props{i}).standard_error = NaN;
-        %     obj.(props{i}).unit = "";
-        % end
-
-        % obj.Signals = SignalsClass();
-        % obj.Extra = ExtraClass();
-        % obj.DimOut = DimOutClass();
     end
 
     function add(obj, name, value, unit, ste, vars)
@@ -175,11 +161,11 @@ methods
             vars.standard_error = NaN
         end
 
-        if nargin>3
+        if nargin > 3
             vars.unit = unit;
         end
 
-        if nargin>4
+        if nargin > 4
             vars.standard_error = ste;
         end
 
@@ -197,7 +183,7 @@ methods
 
     function writeJson(obj, path)
         props = fieldnames(obj.data);
-        
+
         d = [];
 
         for i = 1:length(props)
@@ -218,14 +204,15 @@ methods
         if ~isempty(d)
             jsonText = jsonencode(d, "PrettyPrint", true);
             fid = fopen(path, 'w');
-    
+
             if fid == -1
                 error('Cannot open file for writing: %s', path);
             end
-    
+
             fwrite(fid, jsonText, 'char');
             fclose(fid);
         end
+
     end
 
     function writeHdf5(obj, path)
@@ -304,10 +291,9 @@ end
 end
 
 function name = sanitizeFieldName(str)
-% Replace invalid characters for struct fields with descriptive tags
-name = regexprep(str, '/', '_slash_'); % Replace / with _slash_
-name = regexprep(name, '[^a-zA-Z0-9_]', '_'); % Replace any other invalid chars
-% Ensure it starts with a letter
+name = regexprep(str, '/', '_slash_');
+name = regexprep(name, '[^a-zA-Z0-9_]', '_');
+
 if ~isletter(name(1))
     name = ['x' name];
 end
@@ -315,19 +301,8 @@ end
 end
 
 function original = antiSanitizeFieldName(safeName)
-% Reverse the sanitization applied by sanitizeFieldName()
-% Converts things like '_slash_' → '/'
-% and removes any leading 'x' added for invalid first chars.
-
-% Step 1: Replace descriptive tokens back to original characters
 original = regexprep(safeName, '_slash_', '/');
 
-% Step 2: Undo generic substitutions (if you added more rules)
-% Example: if sanitizeFieldName replaced spaces or dashes, handle them here
-% original = regexprep(original, '_dash_', '-');
-% original = regexprep(original, '_space_', ' ');
-
-% Step 3: If a leading 'x' was added to make a valid name, remove it
 if startsWith(original, 'x') && ~startsWith(safeName, 'x_')
     original = original(2:end);
 end

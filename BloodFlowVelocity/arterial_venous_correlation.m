@@ -175,8 +175,9 @@ if saveFigures
     exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_Transfer_function_Velocity_AV_phase.png", ToolBox.folder_name)))
 end
 
-ToolBox.Output.Signals.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10', freqs, 'Hz');
-ToolBox.Output.Signals.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg', freqs, 'Hz');
+ToolBox.Output.add('Frequency', freqs, 'Hz');
+ToolBox.Output.add('TransFunctionModLog10', fftshift(abs(log10(F_TRANS))), 'log10');
+ToolBox.Output.add('TransFunctionPhaseDegrees', fftshift(180 / pi * angle((F_TRANS))), 'deg');
 
 % figure;
 % subplot(2,1,1); plot(f, 20*log10(abs(Z(1:nfft/2+1))));

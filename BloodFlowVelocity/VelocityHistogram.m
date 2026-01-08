@@ -97,26 +97,26 @@ exportgraphics(gca, fullfile(ToolBox.path_eps, sprintf("%s_histogramVelocity%s.e
 
 close(fDistrib)
 
-% Save branch histograms without figures
+% % Save branch histograms without figures
 
-for branchIdx = 1:numBranches
-    branchMask = (labeledVessels == branchIdx);
-    v_histo_branch = v_video .* branchMask;
+% for branchIdx = 1:numBranches
+%     branchMask = (labeledVessels == branchIdx);
+%     v_histo_branch = v_video .* branchMask;
 
-    % Initialize histogram matrix
-    histo_branch = zeros(n, numFrames);
+%     % Initialize histogram matrix
+%     histo_branch = zeros(n, numFrames);
 
-    parfor frameIdx = 1:numFrames
-        data = v_histo_branch(:, :, frameIdx);
-        histo_branch(:, frameIdx) = histcounts(data(branchMask), edges); % histcount is faster than histogram or manual for loop counting
-    end
+%     parfor frameIdx = 1:numFrames
+%         data = v_histo_branch(:, :, frameIdx);
+%         histo_branch(:, frameIdx) = histcounts(data(branchMask), edges); % histcount is faster than histogram or manual for loop counting
+%     end
 
-    % if strcmp(name, 'artery')
-    %     ToolBox.Output.add(sprintf("VelocityHisto_A%d", branchIdx), histo_branch);
-    % elseif strcmp(name, 'vein')
-    %     ToolBox.Output.add(sprintf("VelocityHisto_V%d", branchIdx), histo_branch);
-    % end
+%     % if strcmp(name, 'artery')
+%     %     ToolBox.Output.add(sprintf("VelocityHisto_A%d", branchIdx), histo_branch);
+%     % elseif strcmp(name, 'vein')
+%     %     ToolBox.Output.add(sprintf("VelocityHisto_V%d", branchIdx), histo_branch);
+%     % end
 
-end
+% end
 
 end
