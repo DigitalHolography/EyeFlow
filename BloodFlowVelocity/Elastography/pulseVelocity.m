@@ -15,8 +15,11 @@ if ~exist(outputDir, 'dir')
 end
 
 [L, n] = labelVesselBranches(maskVessel, ones(size(maskVessel)), ToolBox.Cache.xy_barycenter, refine = false);
-
-ToolBox.Output.add(sprintf("%s_PWV_Segments_Labels", name), L);
+if strcmp(name, 'artery')
+    ToolBox.Output.add(sprintf("%s_PWV_Segments_Labels", name), L, h5path = "Artery/FlexuralPulseWave/BranchesLabel");
+elseif strcmp(name, 'vein')
+    ToolBox.Output.add(sprintf("%s_PWV_Segments_Labels", name), L, h5path = "Vein/FlexuralPulseWave/BranchesLabel");
+end
 
 if saveFigures
     figure('Visible', 'off');

@@ -104,7 +104,7 @@ if length(peaks) > 1
 
     % Only consider valid notch (significant difference from diastolic peak)
     if (locs_peaks(2) - locs_notch) > L * 0.05 % 5 % threshold
-        ToolBox.Output.add("DicroticNotchVisibility", 1, "h5path", "/Artery/DicroticNotch/Visibility");
+        dicrotic_notch_visibility = 1;
         systolicDownstroke = peaks(1) - notch;
         diastolicRunoff = notch - one_cycle_signal(end); % End of cycle
 
@@ -114,20 +114,22 @@ if length(peaks) > 1
         diastoleDuration = pulseTime(end) - pulseTime(locs_notch);
     else
         notch = NaN; % Invalid notch
-        ToolBox.Output.add("DicroticNotchVisibility", 0, "h5path", "/Artery/DicroticNotch/Visibility");
+        dicrotic_notch_visibility = 0;
     end
 
 else
-    ToolBox.Output.add("DicroticNotchVisibility", 0, "h5path", "/Artery/DicroticNotch/Visibility");
+    dicrotic_notch_visibility = 0;
 end
+
+ToolBox.Output.add("DicroticNotchVisibility", dicrotic_notch_visibility, "h5path", "/Artery/PulseAnalysis/DicroticNotch/Visibility");
 
 % Export to JSON (only for velocity signals)
 if ~isBVR
-    ToolBox.Output.add('SystoleDuration', dicroticNotchTime, 's', "h5path", "/Artery/DicroticNotch/dicroticNotchTime");
-    ToolBox.Output.add('DiastoleDuration', diastoleDuration, 's', "h5path", "/Artery/DicroticNotch/diastoleDuration");
-    ToolBox.Output.add('SystolicUpstroke', systolicUpstroke, unit, "h5path", "/Artery/DicroticNotch/systolicUpstroke");
-    ToolBox.Output.add('SystolicDownstroke', systolicDownstroke, unit, "h5path", "/Artery/DicroticNotch/systolicDownstroke");
-    ToolBox.Output.add('DiastolicRunoff', diastolicRunoff, unit, "h5path", "/Artery/DicroticNotch/diastolicRunoff");
+    ToolBox.Output.add('SystoleDuration', dicroticNotchTime, 's', "h5path", "/Artery/PulseAnalysis/DicroticNotch/dicroticNotchTime");
+    ToolBox.Output.add('DiastoleDuration', diastoleDuration, 's', "h5path", "/Artery/PulseAnalysis/DicroticNotch/diastoleDuration");
+    ToolBox.Output.add('SystolicUpstroke', systolicUpstroke, unit, "h5path", "/Artery/PulseAnalysis/systolicUpstroke");
+    ToolBox.Output.add('SystolicDownstroke', systolicDownstroke, unit, "h5path", "/Artery/PulseAnalysis/systolicDownstroke");
+    ToolBox.Output.add('DiastolicRunoff', diastolicRunoff, unit, "h5path", "/Artery/PulseAnalysis/diastolicRunoff");
     %     ToolBox.Output.add('DicroticNotchIndex', dicroticNotchIndex, unit);
 end
 

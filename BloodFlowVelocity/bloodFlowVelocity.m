@@ -26,7 +26,7 @@ RemainingSection_pxl = sum(maskSection & ~maskAV, 'all');
 
 ToolBox.Output.add('ArterySelNbPxl', ArterySection_pxl, h5path = '/Artery/Segmentation/NumberOfPixelsInSection');
 ToolBox.Output.add('VeinSelNbPxl', VeinSection_pxl, h5path = '/Vein/Segmentation/NumberOfPixelsInSection');
-ToolBox.Output.add('RemainingSelNbPxl', RemainingSection_pxl, '/ArteryVein/Segmentation/RemainingSelNbPxl');
+ToolBox.Output.add('RemainingSelNbPxl', RemainingSection_pxl, h5path = '/ArteryVein/Segmentation/RemainingSelNbPxl');
 
 if saveFigures
     % 1) VELOCITY VIDEO

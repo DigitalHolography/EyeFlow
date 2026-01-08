@@ -33,7 +33,7 @@ ArteryModeSection = mode(v_RMS_video .* (maskArterySectionNaN), 'all'); % omits 
 ArteryMedianSection = median(v_RMS_video .* (maskArterySectionNaN), 'all', 'omitnan');
 
 ToolBox.Output.add('ArteryVelocityModeSection', ArteryModeSection, 'mm/s', h5path = '/Artery/Velocity/ModeSection');
-ToolBox.Output.add('ArteryVelocityMedianSection', ArteryMedianSection, 'mm/s');
+ToolBox.Output.add('ArteryVelocityMedianSection', ArteryMedianSection, 'mm/s', h5path = '/Artery/Velocity/MedianSection');
 
 % Mode and median for vein section
 VeinModeSection = mode(v_RMS_video .* maskVeinSectionNaN, 'all'); % omits nan by default

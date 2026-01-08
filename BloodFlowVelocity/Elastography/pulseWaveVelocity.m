@@ -18,6 +18,7 @@ N_frame = size(U, 3);
 PWV = NaN; % initialize output
 dPWV = NaN;
 score = NaN;
+Ty = NaN;
 
 outputDir = fullfile(ToolBox.path_png, 'flexion', sprintf("%s_branch_%d", name, branch_index));
 
