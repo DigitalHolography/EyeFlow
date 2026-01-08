@@ -57,9 +57,9 @@ elseif strcmp(name, 'vein')
 end
 
 if strcmp(name, 'artery')
-    ToolBox.Output.add("ArteryPulseWaveVelocities", Ty, 'mm', h5path = '/Artery/FlexuralPulseWave/Wavelengths');
+    ToolBox.Output.add("ArteryPulseWaveVelocitiesWavelengths", Ty, 'mm', h5path = '/Artery/FlexuralPulseWave/Wavelengths');
 elseif strcmp(name, 'vein')
-    ToolBox.Output.add("VeinPulseWaveVelocities", Ty, 'mm', h5path = '/Vein/FlexuralPulseWave/Wavelengths');
+    ToolBox.Output.add("VeinPulseWaveVelocitiesWavelengths", Ty, 'mm', h5path = '/Vein/FlexuralPulseWave/Wavelengths');
 end
 
 close all;

@@ -233,9 +233,12 @@ methods
 
             if ~isnan(obj.data.(props{i}).standard_error)
                 writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(props{i}).value);
+                h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(props{i}).unit);
                 writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data.(props{i}).standard_error);
+                h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data.(props{i}).unit);
             else
-                writeNumericToHDF5(file_path, strcat(h5path), obj.data.(props{i}).value);
+                writeNumericToHDF5(file_path, h5path, obj.data.(props{i}).value);
+                h5writeatt(file_path, h5path, "unit", obj.data.(props{i}).unit);
             end
 
         end
