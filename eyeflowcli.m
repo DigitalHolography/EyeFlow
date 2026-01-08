@@ -31,6 +31,8 @@ else
     fprintf("Running in Deployed Mode.\n");
 end
 
+fprintf("Application root is %s\n", appRoot);
+
 % --- ARGUMENT PARSING ---
 mode = 'single';
 inputPath = "";
