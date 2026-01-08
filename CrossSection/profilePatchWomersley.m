@@ -1,9 +1,18 @@
 function profilePatchWomersley(v_profiles_cell, name, locsLabel, M0_ff_img, displacement_field)
+    ToolBox = getGlobalToolBox;
+    params = ToolBox.getParams;
+    saveFigures = params.saveFigures;
+    
+    if params.json.exportCrossSectionResults.TimeWarp.TimeWarpToPeriodic
+        tic;
+        v_profiles_cell_w = Womersley.TimeWarpingToPeriodic(v_profiles_cell);
+        fprintf("\t- Time warp to periodic signal took: %.2fs\n", toc);
 
-ToolBox = getGlobalToolBox;
-params = ToolBox.getParams;
-saveFigures = params.saveFigures;
+        % DEBUG_segment_amp(v_profiles_cell{1});
+        % DEBUG_segment_amp(v_profiles_cell_w{1});
 
+        v_profiles_cell = v_profiles_cell_w;
+    end
 % if ~saveFigures
 %     return;
 % end
@@ -563,4 +572,14 @@ function debug_struct_cells(in_cells, target_field) %#ok<DEFNU>
     else
         fprintf('Debug complete: Found %d issues.\n', error_count);
     end
+end
+
+
+function DEBUG_segment_amp(segment)
+    arguments
+        segment cell
+    end
+
+    seg_w_mat = reshape(cell2mat(segment), [size(segment{1}, 2), size(segment, 2)]);
+    figure; plot(max(seg_w_mat, [], 1));
 end

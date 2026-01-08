@@ -105,6 +105,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     % SYS_IDXS = ToolBox.Cache.sysIdx;
     % DIAS_IDXS = ToolBox.Cache.diasIdx;
     
+    % Really should be a power of 2
     FFT_PADDING_FACTOR = 16;
 
     RHO_BLOOD = 1060; % Density of blood in kg/m^3
@@ -131,11 +132,21 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     end
     
     numFrames = size(v_profile, 2);
-    N_fft = numFrames * FFT_PADDING_FACTOR;
+    % Will pad to the next power of 2 to ease the FFT algorithm
+    N_fft = (2 ^ nextpow2(numFrames)) * FFT_PADDING_FACTOR;
     v_profile_ft = fftshift(fft(v_profile, N_fft, 2), 2);
     
     f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, N_fft);
     
+    % fitParams.v_profile_ft = v_profile_ft;
+    % fitParams.frequency_vector = f;
+
+    figure;
+    subplot(2,1,1);
+    plot(mean(abs(fft(v_profile, N_fft, 2)), 1)); title("FFT v\_profile with PADDING 16"); xlim([0, N_fft]);
+    subplot(2,1,2);
+    plot(mean(abs(fft(v_profile, (2 ^ nextpow2(numFrames)), 2)), 1));  title("FFT v\_profile without PADDING"); xlim([0, (2 ^ nextpow2(numFrames))]);
+
     % [~, cardiac_idx] = min(abs(f - cardiac_frequency));
     % 
     % % Average over a small frequency band around the cardiac frequency for stability
@@ -224,7 +235,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         fitParams.metrics = updateStruct(fitParams.metrics, calculateSymbols(fitParams, RHO_BLOOD, options));
 
     catch ME 
-        warning_s("[WOMERSLEY] Womersley fit failed for %s (idx %d): %s", name, idx, ME.message);
+        warning_s("[WOMERSLEY] Womersley fit failed for %s (%i, %i, %i): %s", name, circleIdx, branchIdx, n_harmonic, ME.message);
         return;
     end
 
