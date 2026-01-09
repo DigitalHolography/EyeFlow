@@ -141,11 +141,11 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     % fitParams.v_profile_ft = v_profile_ft;
     % fitParams.frequency_vector = f;
 
-    figure;
-    subplot(2,1,1);
-    plot(mean(abs(fft(v_profile, N_fft, 2)), 1)); title("FFT v\_profile with PADDING 16"); xlim([0, N_fft]);
-    subplot(2,1,2);
-    plot(mean(abs(fft(v_profile, (2 ^ nextpow2(numFrames)), 2)), 1));  title("FFT v\_profile without PADDING"); xlim([0, (2 ^ nextpow2(numFrames))]);
+    % figure;
+    % subplot(2,1,1);
+    % plot(mean(abs(fft(v_profile, N_fft, 2)), 1)); title("FFT v\_profile with PADDING 16"); xlim([0, N_fft]);
+    % subplot(2,1,2);
+    % plot(mean(abs(fft(v_profile, (2 ^ nextpow2(numFrames)), 2)), 1));  title("FFT v\_profile without PADDING"); xlim([0, (2 ^ nextpow2(numFrames))]);
 
     % [~, cardiac_idx] = min(abs(f - cardiac_frequency));
     % 

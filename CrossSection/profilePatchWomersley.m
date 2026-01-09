@@ -4,6 +4,7 @@ function profilePatchWomersley(v_profiles_cell, name, locsLabel, M0_ff_img, disp
     saveFigures = params.saveFigures;
     
     if params.json.exportCrossSectionResults.TimeWarp.TimeWarpToPeriodic
+        warning_s("THIS VERSION OF TIMEWARP IS OBSOLETE AND HAS UNTESTED BEHAVIOR");
         tic;
         v_profiles_cell_w = Womersley.TimeWarpingToPeriodic(v_profiles_cell);
         fprintf("\t- Time warp to periodic signal took: %.2fs\n", toc);
