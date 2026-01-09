@@ -1,4 +1,4 @@
-function eyeSide = predictEyeSide(model, M0)
+function eyeSide = predictEyeSide(model)
 % predictEyeSide - Predicts if a M0 image shows a left or right eye
 %   Inputs:
 %       model     - The pre-loaded YOLO model
@@ -6,6 +6,8 @@ function eyeSide = predictEyeSide(model, M0)
 %   Output:
 %       eyeSide   - string: "left" or "right"
 
+ToolBox = getGlobalToolBox;
+M0 = ToolBox.Cache.M0_ff_img;
 M0 = rescale(imresize(M0, [640, 640]));
 rgbM0 = cat(3, M0, M0, M0);
 dlInput = dlarray(rgbM0, 'SSCB');
@@ -28,9 +30,8 @@ else
 end
 
 % Save the image
-Toolbox = getGlobalToolBox;
 
-if Toolbox.getParams.saveFigures
+if ToolBox.getParams.saveFigures
     visImg = uint8(rgbM0 * 255);
     borderWidth = 10;
 
@@ -62,10 +63,11 @@ if Toolbox.getParams.saveFigures
         warning('insertText not available. Saving image with border only.');
     end
 
-    Toolbox = getGlobalToolBox;
-    imwrite(visImg, fullfile(Toolbox.path_png, 'eye_side.png'));
+    ToolBox = getGlobalToolBox;
+    imwrite(visImg, fullfile(ToolBox.path_png, 'eye_side.png'));
 end
 
-Toolbox.Output.add('PredictedEyeSide', eyeSide, h5path = '/Meta/EyePredictedSide');
+ToolBox.Cache.eyeSide = eyeSide;
+ToolBox.Output.add('PredictedEyeSide', eyeSide, h5path = '/Meta/EyePredictedSide');
 
 end

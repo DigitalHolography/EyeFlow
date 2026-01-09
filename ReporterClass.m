@@ -22,7 +22,7 @@ methods
         end
 
         if isempty(executionObj.M0)
-            ToolBox.Output.add('NumFrames', size(executionObj.M0_ff, 3), h5path = '/Meta/NumFrames');
+            ToolBox.Output.add('NumFrames', size(executionObj.Cache.M0_ff, 3), h5path = '/Meta/NumFrames');
         else
             ToolBox.Output.add('NumFrames', size(executionObj.M0, 3), h5path = '/Meta/NumFrames');
         end
@@ -37,7 +37,7 @@ methods
         end
 
         if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name))) && params.saveFigures
-            writeGifOnDisc(imresize(rescale(executionObj.M0_ff), 0.5), "M0")
+            writeGifOnDisc(imresize(rescale(executionObj.Cache.M0_ff), 0.5), "M0")
         end
 
     end

@@ -174,7 +174,7 @@ methods
         obj.data.(name).unit = vars.unit;
 
         if vars.h5path == ""
-            obj.data.(name).h5path = sprintf("/%s",name);
+            obj.data.(name).h5path = sprintf("/%s", name);
         else
             obj.data.(name).h5path = (vars.h5path);
         end
@@ -184,28 +184,33 @@ methods
     function writeJson(obj, path)
         props = fieldnames(obj.data);
 
-        d = containers.Map('KeyType','char','ValueType','any');
+        d = containers.Map('KeyType', 'char', 'ValueType', 'any');
 
         for i = 1:length(props)
             v = obj.data.(props{i}).value;
+
             if isscalar(v)
+
                 if obj.data.(props{i}).unit == ""
                     key = props{i};
                 else
                     key = props{i} + "_" + obj.data.(props{i}).unit;
                 end
+
                 d(char(key)) = v;
             end
+
         end
-        
+
         if ~isempty(d)
             jsonText = jsonencode(d, "PrettyPrint", true);
-        
+
             fid = fopen(path, 'w');
+
             if fid == -1
                 error('Cannot open file for writing: %s', path);
             end
-        
+
             fwrite(fid, jsonText, 'char');
             fclose(fid);
         end
@@ -227,8 +232,9 @@ methods
 
             h5path = (obj.data.(props{i}).h5path);
             temp = char(h5path);
+
             if temp(1) ~= '/'
-                h5path = strcat("/",h5path);
+                h5path = strcat("/", h5path);
             end
 
             if ~isnan(obj.data.(props{i}).standard_error)
@@ -240,6 +246,8 @@ methods
                 writeNumericToHDF5(file_path, h5path, obj.data.(props{i}).value);
                 h5writeatt(file_path, h5path, "unit", obj.data.(props{i}).unit);
             end
+
+            h5writeatt(file_path, h5path, "nameID", props{i});
 
         end
 
@@ -256,7 +264,7 @@ function writeNumericToHDF5(path, datasetPath, value)
 if ~isempty(value)
 
     if isnumeric(value) & ~isreal(value)
-        warning(sprintf("Complex values should be handled before call : %s",datasetPath));
+        warning("Complex values should be handled before call : %s", datasetPath);
         return;
     end
 
@@ -290,27 +298,6 @@ if ~isempty(value)
         h5writeatt(path, datasetPath, "original_class", original_class);
     end
 
-end
-
-end
-
-function name = sanitizeFieldName(str)
-name = regexprep(str, 'µ', 'u');
-name = regexprep(name, '/', '_slash_');
-name = regexprep(name, '[^a-zA-Z0-9_]', '_');
-
-if ~isletter(name(1))
-    name = ['x' name];
-end
-
-end
-
-function original = antiSanitizeFieldName(safeName)
-original = regexprep(safeName, '_slash_', '/');
-original = regexprep(original, '_us', '_µs');
-
-if startsWith(original, 'x') && ~startsWith(safeName, 'x_')
-    original = original(2:end);
 end
 
 end

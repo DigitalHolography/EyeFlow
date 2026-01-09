@@ -1,4 +1,4 @@
-function [fft_c, fundamental, valid_harmonics, f] = SpectralWaveformAnalysis(signal, numSys, m_harmonics, name)
+function [fft_c, fundamental, valid_harmonics, f] = SpectralWaveformAnalysis(signal, numSys, name)
 % Spectral Analysis
 % Perform spectral analysis on the original signal
 % Zero-pad the signal for better frequency resolution
@@ -66,7 +66,7 @@ s_idx = s_idx(idx);
 if numFreq >= 2
     valid_harmonics = []; % Initialize valid harmonics array
     fundamental = s_locs(1);
-    harmonics = fundamental * (2:m_harmonics); % Up to m th harmonic
+    harmonics = fundamental * (2:length(s_peaks)); % Up to m th harmonic
 
     % For each harmonic, find the closest local maximum (peak) in the spectrum
     valid_harmonics(1) = fundamental;
@@ -115,11 +115,11 @@ if ~isempty(s_locs)
     RMSE = sqrt(mean(residus .^ 2));
     hr_se = RMSE / sqrt(numFreq);
 
-    ToolBox.Output.add('HeartBeatFFT', 60 * hr, 'bpm', 60 * hr_se, 'h5path', '/SpectralAnalysis/Artery/HeartBeatFFT');
+    ToolBox.Output.add('HeartBeatFFT', 60 * hr, 'bpm', 60 * hr_se, 'h5path', '/Artery/HeartBeatFFT');
     ToolBox.Cache.HeartBeatFFT = hr; % Save heart rate to cache in Hz
     ToolBox.Cache.HeartBeatFFTSTE = hr_se; % Save heart rate standard error to cache in Hz
 else
-    ToolBox.Output.add('HeartBeatFFT', NaN, 'bpm', NaN, 'h5path', '/SpectralAnalysis/Artery/HeartBeatFFT');
+    ToolBox.Output.add('HeartBeatFFT', NaN, 'bpm', NaN, 'h5path', '/Artery/HeartBeatFFT');
     ToolBox.Cache.HeartBeatFFT = NaN; % Save heart rate to cache in Hz
     ToolBox.Cache.HeartBeatFFTSTE = NaN; % Save heart rate standard error to cache in Hz
 end

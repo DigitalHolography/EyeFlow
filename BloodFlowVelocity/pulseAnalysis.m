@@ -38,7 +38,7 @@ r2 = jsonParams.SizeOfField.BigRadiusRatio;
 maskArtery = ToolBox.Cache.maskArtery;
 maskVein = ToolBox.Cache.maskVein;
 maskVessel = ToolBox.Cache.maskVessel;
-maskChoroid = ToolBox.Cache.maskChoroid;
+% maskChoroid = ToolBox.Cache.maskChoroid;
 maskNeighbors = ToolBox.Cache.maskNeighbors;
 xy_barycenter = ToolBox.Cache.xy_barycenter;
 
@@ -308,16 +308,16 @@ if numel(sys_idx_list) >= 2 && numel(sys_max_list) >= 2 && numel(sys_min_list) >
     TimePeakToDescent = firstIndex / Ninterp * mean(diff(sys_idx_list')) * dt;
 
     % Store output
-    ToolBox.Output.add('HeartBeat', HeartBeat, 'bpm', HeartBeatSTE, h5path = '/Artery/PulseAnalysis/HeartBeat');
-    ToolBox.Output.add('SystoleIndices', sys_idx_list, '', h5path = '/Artery/PulseAnalysis/SystoleIndices');
-    ToolBox.Output.add('ArterySystoleMaxIndices', sys_max_list, '', h5path = '/Artery/PulseAnalysis/ArterySystoleMaxIndices');
-    ToolBox.Output.add('ArteryDiastoleMinIndices', sys_min_list, '', h5path = '/Artery/PulseAnalysis/ArteryDiastoleMinIndices');
-    ToolBox.Output.add('ArteryTimeToMaxIncrease', 0, 's', 0, h5path = '/Artery/PulseAnalysis/ArteryTimeToMaxIncrease');
-    ToolBox.Output.add('ArteryTimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE, h5path = '/Artery/PulseAnalysis/ArteryTimeToPeakSystole');
-    ToolBox.Output.add('ArteryTimeToMinDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE, h5path = '/Artery/PulseAnalysis/ArteryTimeToMinDiastole');
-    ToolBox.Output.add('ArteryTimeToPeakSystoleFromDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE, h5path = '/Artery/PulseAnalysis/TimeToPeakSystoleFromMinimumDiastole');
-    ToolBox.Output.add('ArteryTimeToDescent', TimePeakToDescent, 's', h5path = '/Artery/PulseAnalysis/TimeToDescent');
-    ToolBox.Output.add('ArteryTimePeakToDescent', TimePeakToDescent + TimeToPeakSystole, 's', h5path = '/Artery/PulseAnalysis/TimePeakToDescent');
+    ToolBox.Output.add('HeartBeat', HeartBeat, 'bpm', HeartBeatSTE, h5path = '/Artery/WaveformAnalysis/HeartBeat');
+    ToolBox.Output.add('SystoleIndices', sys_idx_list, '', h5path = '/Artery/WaveformAnalysis/SystoleIndices');
+    ToolBox.Output.add('ArterySystoleMaxIndices', sys_max_list, '', h5path = '/Artery/WaveformAnalysis/ArterySystoleMaxIndices');
+    ToolBox.Output.add('ArteryDiastoleMinIndices', sys_min_list, '', h5path = '/Artery/WaveformAnalysis/ArteryDiastoleMinIndices');
+    ToolBox.Output.add('ArteryTimeToMaxIncrease', 0, 's', 0, h5path = '/Artery/WaveformAnalysis/ArteryTimeToMaxIncrease');
+    ToolBox.Output.add('ArteryTimeToPeakSystole', TimeToPeakSystole, 's', TimeToPeakSystoleSTE, h5path = '/Artery/WaveformAnalysis/ArteryTimeToPeakSystole');
+    ToolBox.Output.add('ArteryTimeToMinDiastole', TimeToMinimumDiastole, 's', TimeToMinimumDiastoleSTE, h5path = '/Artery/WaveformAnalysis/ArteryTimeToMinDiastole');
+    ToolBox.Output.add('ArteryTimeToPeakSystoleFromDiastole', TimeToPeakSystoleFromMinimumDiastole, 's', TimeToPeakSystoleFromMinimumDiastoleSTE, h5path = '/Artery/WaveformAnalysis/TimeToPeakSystoleFromMinimumDiastole');
+    ToolBox.Output.add('ArteryTimeToDescent', TimePeakToDescent, 's', h5path = '/Artery/WaveformAnalysis/TimeToDescent');
+    ToolBox.Output.add('ArteryTimePeakToDescent', TimePeakToDescent + TimeToPeakSystole, 's', h5path = '/Artery/WaveformAnalysis/TimePeakToDescent');
 
     % Log detailed results
     logDetailedResults(ToolBox, HeartBeat, sys_idx_list, sys_max_list, sys_min_list, ...

@@ -50,24 +50,30 @@ L = length(one_cycle_signal);
 dt = (t(2) - t(1));
 
 % In case you use the averaged cycle uncomment this
-
-% pulseTime = linspace(0, dt * avgLength, numInterp);
-% T = avgLength * t(end) / length(t);
-% fs = numInterp / T;
+pulseTime = linspace(0, dt * avgLength, numInterp);
+T = avgLength * t(end) / length(t);
+fs = numInterp / T;
+interp_signal = one_cycle_signal;
 
 % Otherwise use this
-N_interp = 256;
-idx1 = systolesIndexes(1); idx2 = systolesIndexes(end) - 1;
-len = length(idx1:idx2);
-fs = N_interp / (t(idx2 + 1) - t(idx1));
-
-croppedTime = linspace(0, t(idx2) - t(idx1), len);
-pulseTime = linspace(0, t(idx2) - t(idx1), N_interp);
-
-test_signal = signal(idx1:idx2); % put your signal here
-interp_signal = interp1(croppedTime, test_signal, pulseTime); % power of 2
+% N_interp = 256;
+% idx1 = systolesIndexes(1); idx2 = systolesIndexes(end) - 1;
+% len = length(idx1:idx2);
+% fs = N_interp / (t(idx2 + 1) - t(idx1));
+%
+% croppedTime = linspace(0, t(idx2) - t(idx1), len);
+% pulseTime = linspace(0, t(idx2) - t(idx1), N_interp);
+%
+% test_signal = signal(idx1:idx2); % put your signal here
+% interp_signal = interp1(croppedTime, test_signal, pulseTime); % power of 2
 
 [peak_freqs, peaks, phase] = syntheticSpectralAnalysis(interp_signal, pulseTime, fs, 512);
+ToolBox.Output.add("ArterialPeakFrequencies", peak_freqs, 'Hz', ...
+    'h5path', "/Artery/Velocity/WaveformAnalysis/syntheticSpectralAnalysis/ArterialPeakFrequencies");
+ToolBox.Output.add("ArterialFourierAmplitude", peaks, 'mm/s', ...
+    'h5path', "/Artery/Velocity/WaveformAnalysis/syntheticSpectralAnalysis/ArterialFourierAmplitude");
+ToolBox.Output.add("ArterialFourierPhase", phase, 'rad', ...
+    'h5path', "/Artery/Velocity/WaveformAnalysis/syntheticSpectralAnalysis/ArterialFourierPhase");
 
 % Adaptive peak detection parameters
 min_peak_height = max(one_cycle_signal) * 0.3; % 30 % of max as threshold
@@ -106,7 +112,7 @@ if length(peaks) > 1
 
     % Only consider valid notch (significant difference from diastolic peak)
     if (locs_peaks(2) - locs_notch) > L * 0.05 % 5 % threshold
-        ToolBox.Output.add("DicroticNotchVisibility", 1, '');
+        dicrotic_notch_visibility = 1;
         systolicDownstroke = peaks(1) - notch;
         diastolicUpstroke = peaks(2) - notch;
         diastolicRunoff = notch - endMinVal; % End of cycle
@@ -117,23 +123,23 @@ if length(peaks) > 1
         diastoleDuration = pulseTime(end) - pulseTime(locs_notch);
     else
         notch = NaN; % Invalid notch
-        ToolBox.Output.add("DicroticNotchVisibility", 0, '');
+        dicrotic_notch_visibility = 0;
     end
 
 else
-    ToolBox.Output.add("DicroticNotchVisibility", 0, '');
+    dicrotic_notch_visibility = 0;
 end
 
-ToolBox.Output.add("DicroticNotchVisibility", dicrotic_notch_visibility, "h5path", "/Artery/PulseAnalysis/DicroticNotch/Visibility");
+ToolBox.Output.add("DicroticNotchVisibility", dicrotic_notch_visibility, "h5path", "/Artery/WaveformAnalysis/DicroticNotch/Visibility");
 
 % Export to JSON (only for velocity signals)
 if ~isBVR
-    ToolBox.Output.add('SystoleDuration', dicroticNotchTime, 's');
-    ToolBox.Output.add('DiastoleDuration', diastoleDuration, 's');
-    ToolBox.Output.add('SystolicUpstroke', systolicUpstroke, unit);
-    ToolBox.Output.add('SystolicDownstroke', systolicDownstroke, unit);
-    ToolBox.Output.add('DiastolicUpstroke', diastolicUpstroke, unit);
-    ToolBox.Output.add('DiastolicRunoff', diastolicRunoff, unit);
+    ToolBox.Output.add('SystoleDuration', dicroticNotchTime, 's', "h5path", "/Artery/WaveformAnalysis/DicroticNotch/dicroticNotchTime");
+    ToolBox.Output.add('DiastoleDuration', diastoleDuration, 's', "h5path", "/Artery/WaveformAnalysis/DicroticNotch/diastoleDuration");
+    ToolBox.Output.add('SystolicUpstroke', systolicUpstroke, unit, "h5path", "/Artery/WaveformAnalysis/systolicUpstroke");
+    ToolBox.Output.add('SystolicDownstroke', systolicDownstroke, unit, "h5path", "/Artery/WaveformAnalysis/systolicDownstroke");
+    ToolBox.Output.add('DiastolicUpstroke', diastolicUpstroke, unit, "h5path", "/Artery/WaveformAnalysis/diastolicUpstroke");
+    ToolBox.Output.add('DiastolicRunoff', diastolicRunoff, unit, "h5path", "/Artery/WaveformAnalysis/diastolicRunoff");
     %     ToolBox.Output.add('DicroticNotchIndex', dicroticNotchIndex, unit);
 end
 
