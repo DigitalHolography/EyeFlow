@@ -35,7 +35,7 @@ methods
 
         params = Parameters_json(obj.directory, obj.param_name);
 
-        setupParpool(params.json.NumberOfWorkers);
+        % setupParpool(params.json.NumberOfWorkers);
 
         obj.M0 = executionObj.M0;
         obj.M1 = executionObj.M1;
