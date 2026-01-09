@@ -64,6 +64,9 @@ methods
 
         ToolBox.Cache.papillaDiameter = mean([diameter_x, diameter_y]);
 
+        ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2 / size(executionObj.Cache.M0_ff, 1), h5path = '/Papilla/Ratio');
+        ToolBox.Output.add("PapillaXY", [x_center, y_center], h5path = '/Papilla/XYCenter', unit = 'px');
+
         createMasks(executionObj.Cache.M0_ff, executionObj.AINetworks.VesselSegmentationNet, executionObj.AINetworks.AVSegmentationNet, executionObj.AINetworks.EyeDiaphragmSegmentationNet);
 
         % Artery score
