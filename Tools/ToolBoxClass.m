@@ -32,6 +32,8 @@ properties
     % Ref % Ref handle to the Execution Class to have access to its properties easily
     Cache % Cache class handle Cache small variables through the execution
     Output % Output class handle Stores outputs through the execution
+
+    params
 end
 
 methods
@@ -259,9 +261,11 @@ methods
     end
 
     function Params = getParams(obj)
-        Params = Parameters_json(obj.EF_path, obj.param_name);
+        if isempty(obj.params)
+             obj.params = Parameters_json(obj.EF_path, obj.param_name);
+        end
+        Params = obj.params;
     end
-
     function saveGit(obj)
         % SAVING GIT VERSION
         % In the txt file in the folder : "log"
