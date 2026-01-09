@@ -73,11 +73,15 @@ Logs/*
 *.mat
 build/
 __pycache__
+build/
+
 +*
+!+Womersley
 
 # IDEs and editors
 .vscode/
 
 # Python files
 *.py
-*.ipynb
+*.ipynb# IDEs and editors
+.vscode/

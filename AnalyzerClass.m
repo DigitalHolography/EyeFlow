@@ -163,8 +163,8 @@ methods
         ToolBox = getGlobalToolBox;
         maskArtery = ToolBox.Cache.maskArtery;
         maskVein = ToolBox.Cache.maskVein;
-        [executionObj.Cache.Q_results_A] = generateCrossSectionSignals(maskArtery, 'artery', executionObj.Cache.vRMS, executionObj.Cache.M0_ff);
-        [executionObj.Cache.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', executionObj.Cache.vRMS, executionObj.Cache.M0_ff);
+        [executionObj.Cache.Q_results_A] = generateCrossSectionSignals(maskArtery, 'artery', executionObj.Cache.vRMS, executionObj.Cache.M0_ff, executionObj.displacementField);
+        [executionObj.Cache.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', executionObj.Cache.vRMS, executionObj.Cache.M0_ff, executionObj.displacementField);
 
         executionObj.is_volumeRateAnalyzed = true;
         fprintf("- Cross-Section Signals Generation took: %ds\n", round(toc(crossSectionAnalysisTimer)));
@@ -177,8 +177,8 @@ methods
         exportCrossSectionResultsTimer = tic;
 
         ToolBox = getGlobalToolBox;
-        exportCrossSectionResults(executionObj.Cache.Q_results_A, 'artery', executionObj.Cache.M0_ff, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB);
-        exportCrossSectionResults(executionObj.Cache.Q_results_V, 'vein', executionObj.Cache.M0_ff, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB);
+        exportCrossSectionResults(executionObj.Cache.Q_results_A, 'artery', executionObj.Cache.M0_ff, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB, executionObj.displacementField);
+        exportCrossSectionResults(executionObj.Cache.Q_results_V, 'vein', executionObj.Cache.M0_ff, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB, executionObj.displacementField);
 
         maskVessel = ToolBox.Cache.maskVessel;
         sectionImageAdvanced(executionObj.Cache.M0_ff_img, executionObj.Cache.Q_results_A.maskLabel, executionObj.Cache.Q_results_V.maskLabel, executionObj.Cache.Q_results_A.rejected_mask, executionObj.Cache.Q_results_V.rejected_mask, maskVessel);

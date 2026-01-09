@@ -108,7 +108,13 @@
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
     "hemodynamicParameters": false,
-    "InterpolationPoints": 50
+    "InterpolationPoints": 50,
+    "TimeWarp": {
+      "TimeWarpToPeriodic": false,
+      "SignalReplication": 4
+    },
+    "WomersleyMaxHarmonic": 6,
+    "WomersleySectionImage": false
   },
   "DebugMode": false
 }

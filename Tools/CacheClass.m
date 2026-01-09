@@ -32,6 +32,12 @@ properties
     % Time Vector
     t double %cached time vector
 
+    % Frequency Vector
+    f double
+
+    % Niquist Value
+    fN double
+
     % Masks
     maskArtery logical % cached mask artery
     maskVein logical % cached mask vein
@@ -88,7 +94,7 @@ methods
         obj.cmapAV = cmapLAB(256, [0 0 0], 0, [1/2 0 1/2], 1/3, [1 0 1], 2/3, [1 1 1], 1);
     end
 
-    function createtimeVector(obj, ToolBox, numFrames)
+    function createTimeVector(obj, ToolBox, numFrames)
         time_stamps = ToolBox.record_time_stamps_us;
         params = ToolBox.getParams;
         startFrame = params.json.Preprocess.Crop.StartFrame;
@@ -132,7 +138,14 @@ methods
         end
 
         obj.t = time_array(startFrame:endFrame);
+    end
 
+    function createFreqVector(obj, ToolBox)
+        arguments
+            obj, ToolBox
+        end
+
+        [obj.fN, obj.f] = frequency_array(ToolBox);
     end
 
 end
@@ -149,4 +162,13 @@ function time_array = getTimeLinear(ToolBox, numFrames)
 t1 = 0;
 t2 = ToolBox.stride / (ToolBox.fs * 1000) * (numFrames - 1); % in s
 time_array = linspace(t1, t2, numFrames);
+end
+
+function [fN, f] = frequency_array(ToolBox)
+    arguments
+        ToolBox
+    end
+    fN = ((ToolBox.fs * 1000) / ToolBox.stride) / 2;
+    f = circshift(fftshift(linspace(-fN, fN, size(ToolBox.Cache.t, 2) + 1)), [0, 1]);
+    f = f(1,1:(end-1));
 end
