@@ -13,17 +13,21 @@ properties (Transient)
     v_video_RGB uint8
     v_mean_RGB uint8
 
-end
+    % Preprocessed Data
+    M0_ff single
+    f_RMS single
+    f_AVG single
+    displacementField
 
+end
 
 properties
 
     % Main Results
 
     % Display Cache
-    M0_ff_img
+    M0_ff_img single
     M0_RGB double % cached mean image
-
 
     % Time Vector
     t double %cached time vector
@@ -45,6 +49,7 @@ properties
 
     % Other cached variables
     papillaDiameter double % cached papilla diameter
+    eyeSide string
 
     % Color maps
     cmapArtery double % cached colormap artery
@@ -62,10 +67,12 @@ properties
     HeartBeatFFTSTE double % cached heartbeat frequency standard error in Hz
     harmonics double % cached harmonics frequencies
 
+    % Velocity Artery Vein mean signals
+    ArterialVelocity
+    VeinVelocity
+
     % Womersley things
     WomersleyOut cell
-
-    
 
 end
 

@@ -67,7 +67,7 @@ m_harmonics = length(s_locs);
 if numFreq >= 2
     valid_harmonics = []; % Initialize valid harmonics array
     fundamental = s_locs(1);
-    harmonics = fundamental * (2:m_harmonics); % Up to m th harmonic
+    harmonics = fundamental * (2:length(s_peaks)); % Up to m th harmonic
 
     % For each harmonic, find the closest local maximum (peak) in the spectrum
     valid_harmonics(1) = fundamental;
@@ -116,11 +116,11 @@ if ~isempty(s_locs)
     RMSE = sqrt(mean(residus .^ 2));
     hr_se = RMSE / sqrt(numFreq);
 
-    ToolBox.Output.add('HeartBeat', 60 * hr, 'bpm', 60 * hr_se);
+    ToolBox.Output.add('HeartBeatFFT', 60 * hr, 'bpm', 60 * hr_se, 'h5path', '/Artery/HeartBeatFFT');
     ToolBox.Cache.HeartBeatFFT = hr; % Save heart rate to cache in Hz
     ToolBox.Cache.HeartBeatFFTSTE = hr_se; % Save heart rate standard error to cache in Hz
 else
-    ToolBox.Output.add('HeartBeat', NaN, 'bpm', NaN);
+    ToolBox.Output.add('HeartBeatFFT', NaN, 'bpm', NaN, 'h5path', '/Artery/HeartBeatFFT');
     ToolBox.Cache.HeartBeatFFT = NaN; % Save heart rate to cache in Hz
     ToolBox.Cache.HeartBeatFFTSTE = NaN; % Save heart rate standard error to cache in Hz
 end

@@ -69,16 +69,10 @@ if saveFigures
 end
 
 if contains(name, 'artery')
-    ToolBox.Output.Signals.add('ArterialVolumeRate', Q_t, 'µL/min', t, 's', Q_SE_t);
+    ToolBox.Output.add('ArterialVolumeRate', Q_t, 'µL/min', Q_SE_t, h5path = '/Artery/FlowRate/VolumeRate/Signal');
 elseif contains(name, 'vein')
-    ToolBox.Output.Signals.add('VenousVolumeRate', Q_t, 'µL/min', t, 's', Q_SE_t);
+    ToolBox.Output.add('VenousVolumeRate', Q_t, 'µL/min', Q_SE_t, h5path = '/Vein/FlowRate/VolumeRate/Signal');
 end
-
-% if contains(name, 'artery')
-%     ToolBox.Output.Signals.add('ArterialVelocity', v_t, 'mm/s', t, 's', v_SE_t);
-% elseif contains(name, 'vein')
-%     ToolBox.Output.Signals.add('VenousVelocity', v_t, 'mm/s', t, 's', v_SE_t);
-% end
 
 if saveFigures
     r1 = params.json.SizeOfField.SmallRadiusRatio;

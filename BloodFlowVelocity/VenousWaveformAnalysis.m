@@ -47,9 +47,32 @@ end
 
 % Create time vector for one cycle
 dt = (t(2) - t(1));
-pulseTime = linspace(0, dt * avgLength, numInterp);
 
-% Feature Detection
+% In case you use the averaged cycle uncomment this
+pulseTime = linspace(0, dt * avgLength, numInterp);
+T = avgLength * t(end) / length(t);
+fs = numInterp / T;
+interp_signal = one_cycle_signal;
+
+% Otherwise use this
+% N_interp = 256;
+% idx1 = systolesIndexes(1); idx2 = systolesIndexes(end) - 1;
+% len = length(idx1:idx2);
+% fs = N_interp / (t(idx2 + 1) - t(idx1));
+%
+% croppedTime = linspace(0, t(idx2) - t(idx1), len);
+% pulseTime = linspace(0, t(idx2) - t(idx1), N_interp);
+%
+% test_signal = signal(idx1:idx2); % put your signal here
+% interp_signal = interp1(croppedTime, test_signal, pulseTime); % power of 2
+
+[peak_freqs, peaks, phase] = syntheticSpectralAnalysis(interp_signal, pulseTime, fs, 512);
+ToolBox.Output.add("VenousPeakFrequencies", peak_freqs, 'Hz', ...
+    'h5path', "/Vein/Velocity/WaveformAnalysis/syntheticSpectralAnalysis/VenousPeakFrequencies");
+ToolBox.Output.add("VenousFourierAmplitude", peaks, 'mm/s', ...
+    'h5path', "/Vein/Velocity/WaveformAnalysis/syntheticSpectralAnalysis/VenousFourierAmplitude");
+ToolBox.Output.add("VenousFourierPhase", phase, 'rad', ...
+    'h5path', "/Vein/Velocity/WaveformAnalysis/syntheticSpectralAnalysis/VenousFourierPhase");
 
 % Find extremes
 [peak, loc_peak] = max(one_cycle_signal);
@@ -114,7 +137,7 @@ if saveFigures
     % Export to JSON
     if ~isBVR
 
-        ToolBox.Output.add('VeinTimeToPeakFromMin', T_peak - T_Min, 's');
+        ToolBox.Output.add('VeinTimeToPeakFromMin', T_peak - T_Min, 's', "h5path", "/Vein/WaveformAnalysis/VeinTimeToPeakFromMin");
 
     end
 

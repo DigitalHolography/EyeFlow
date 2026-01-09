@@ -243,12 +243,12 @@ methods
 
         % Add the version .txt file in the result folder
         % Resolve path relative to Tools/ToolBoxClass.m -> Parent -> version.txt
-        [currentPath, ~, ~] = fileparts(mfilename('fullpath')); 
+        [currentPath, ~, ~] = fileparts(mfilename('fullpath'));
         [appRoot, ~, ~] = fileparts(currentPath);
         version_file_src = fullfile(appRoot, 'version.txt');
-        
+
         version_file_dest = fullfile(obj.path_dir, sprintf("%s_version.txt", obj.folder_name));
-        
+
         if isfile(version_file_src)
             copyfile(version_file_src, version_file_dest);
         else
@@ -261,11 +261,14 @@ methods
     end
 
     function Params = getParams(obj)
+
         if isempty(obj.params)
-             obj.params = Parameters_json(obj.EF_path, obj.param_name);
+            obj.params = Parameters_json(obj.EF_path, obj.param_name);
         end
+
         Params = obj.params;
     end
+
     function saveGit(obj)
         % SAVING GIT VERSION
         % In the txt file in the folder : "log"
@@ -328,14 +331,12 @@ methods
 
     end
 
-    function ToolBox = setCache(obj, Cache)
+    function setCache(obj, Cache)
         obj.Cache = Cache;
-        ToolBox = obj;
     end
 
-    function ToolBox = setOutput(obj, Output)
+    function setOutput(obj, Output)
         obj.Output = Output;
-        ToolBox = obj;
     end
 
 end
