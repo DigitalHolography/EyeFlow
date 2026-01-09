@@ -30,13 +30,13 @@ else
 end
 
 if contains(name, 'artery')
-    ToolBox.Output.add('ArteryCycleVolume', total_volume_value, 'nL');
-    ToolBox.Output.add('ArterySystolicFraction', stroke_volume_value / total_volume_value, '');
-    ToolBox.Output.add('ArteryDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
+    ToolBox.Output.add('ArteryCycleVolume', total_volume_value, 'nL', h5path = '/Artery/FlowRate/CycleVolume/Total');
+    ToolBox.Output.add('ArterySystolicFraction', stroke_volume_value / total_volume_value, h5path = '/Artery/FlowRate/CycleVolume/SystolicFraction');
+    ToolBox.Output.add('ArteryDiastolicFraction', (1 - stroke_volume_value / total_volume_value), h5path = '/Artery/FlowRate/CycleVolume/DiastolicFraction');
 elseif contains(name, 'vein')
-    ToolBox.Output.add('VeinCycleVolume', total_volume_value, 'nL');
-    ToolBox.Output.add('VeinSystolicFraction', stroke_volume_value / total_volume_value, '');
-    ToolBox.Output.add('VeinDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
+    ToolBox.Output.add('VeinCycleVolume', total_volume_value, 'nL', h5path = '/Vein/FlowRate/CycleVolume/Total');
+    ToolBox.Output.add('VeinSystolicFraction', stroke_volume_value / total_volume_value, h5path = '/Vein/FlowRate/CycleVolume/SystolicFraction');
+    ToolBox.Output.add('VeinDiastolicFraction', (1 - stroke_volume_value / total_volume_value), h5path = '/Vein/FlowRate/CycleVolume/DiastolicFraction');
 end
 
 if saveFigures

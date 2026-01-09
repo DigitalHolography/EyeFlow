@@ -230,25 +230,25 @@ end
 if contains(name, 'v_')
 
     if contains(name, 'vein')
-        ToolBox.Output.add('VeinVelocityMean', v_mean, unit, std(interp_signal));
-        ToolBox.Output.add('VeinVelocityMax', vMax, unit, vMax_se);
-        ToolBox.Output.add('VeinVelocityMin', vMin, unit, vMin_se);
+        ToolBox.Output.add('VeinVelocityMean', v_mean, unit, std(interp_signal), h5path = '/Vein/Velocity/MeanSignal');
+        ToolBox.Output.add('VeinVelocityMax', vMax, unit, vMax_se, h5path = '/Vein/Velocity/MaxSignal');
+        ToolBox.Output.add('VeinVelocityMin', vMin, unit, vMin_se, h5path = '/Vein/Velocity/MinSignal');
     elseif contains(name, 'artery')
-        ToolBox.Output.add('ArteryVelocityMean', v_mean, unit, std(interp_signal));
-        ToolBox.Output.add('ArteryVelocityMin', vMin, unit, vMin_se);
-        ToolBox.Output.add('ArteryVelocityMax', vMax, unit, vMax_se);
+        ToolBox.Output.add('ArteryVelocityMean', v_mean, unit, std(interp_signal), h5path = '/Artery/Velocity/MeanSignal');
+        ToolBox.Output.add('ArteryVelocityMin', vMin, unit, vMin_se, h5path = '/Artery/Velocity/MinSignal');
+        ToolBox.Output.add('ArteryVelocityMax', vMax, unit, vMax_se, h5path = '/Artery/Velocity/MaxSignal');
     end
 
 else
 
     if contains(name, 'vein')
-        ToolBox.Output.add('VeinFlowRateMean', v_mean, unit, std(interp_signal));
-        ToolBox.Output.add('VeinFlowRateMax', vMax, unit, vMax_se);
-        ToolBox.Output.add('VeinFlowRateMin', vMin, unit, vMin_se);
+        ToolBox.Output.add('VeinFlowRateMean', v_mean, unit, std(interp_signal), h5path = '/Vein/FlowRate/MeanSignal');
+        ToolBox.Output.add('VeinFlowRateMax', vMax, unit, vMax_se, h5path = '/Vein/FlowRate/MaxSignal');
+        ToolBox.Output.add('VeinFlowRateMin', vMin, unit, vMin_se, h5path = '/Vein/FlowRate/MinSignal');
     elseif contains(name, 'artery')
-        ToolBox.Output.add('ArteryFlowRateMean', v_mean, unit, std(interp_signal));
-        ToolBox.Output.add('ArteryFlowRateMax', vMax, unit, vMax_se);
-        ToolBox.Output.add('ArteryFlowRateMin', vMin, unit, vMin_se);
+        ToolBox.Output.add('ArteryFlowRateMean', v_mean, unit, std(interp_signal), h5path = '/Artery/FlowRate/MeanSignal');
+        ToolBox.Output.add('ArteryFlowRateMax', vMax, unit, vMax_se, h5path = '/Artery/FlowRate/MaxSignal');
+        ToolBox.Output.add('ArteryFlowRateMin', vMin, unit, vMin_se, h5path = '/Artery/FlowRate/MinSignal');
     end
 
 end
@@ -256,25 +256,25 @@ end
 if contains(name, 'v_')
 
     if contains(name, 'vein')
-        ToolBox.Output.add('VeinResistivityIndexVelocity', RI, '', RI_se);
-        ToolBox.Output.add('VeinPulsatilityIndexVelocity', PI, '', PI_se);
-        ToolBox.Output.add('VeinMaxMinRatioVelocity', PR, '', PR_se);
+        ToolBox.Output.add('VeinResistivityIndexVelocity', RI, '', RI_se, h5path = '/Vein/Velocity/ResistivityIndexSignal');
+        ToolBox.Output.add('VeinPulsatilityIndexVelocity', PI, '', PI_se, h5path = '/Vein/Velocity/PulsatilityIndexSignal');
+        ToolBox.Output.add('VeinMaxMinRatioVelocity', PR, '', PR_se, h5path = '/Vein/Velocity/MaxMinRatioSignal');
     elseif contains(name, 'artery')
-        ToolBox.Output.add('ArteryResistivityIndexVelocity', RI, '', RI_se);
-        ToolBox.Output.add('ArteryPulsatilityIndexVelocity', PI, '', PI_se);
-        ToolBox.Output.add('ArteryMaxMinRatioVelocity', PR, '', PR_se);
+        ToolBox.Output.add('ArteryResistivityIndexVelocity', RI, '', RI_se, h5path = '/Artery/Velocity/ResistivityIndexSignal');
+        ToolBox.Output.add('ArteryPulsatilityIndexVelocity', PI, '', PI_se, h5path = '/Artery/Velocity/PulsatilityIndexSignal');
+        ToolBox.Output.add('ArteryMaxMinRatioVelocity', PR, '', PR_se, h5path = '/Artery/Velocity/MaxMinRatioSignal');
     end
 
 else
 
     if contains(name, 'vein')
-        ToolBox.Output.add('VeinResistivityIndexFlowRate', RI, '', RI_se);
-        ToolBox.Output.add('VeinPulsatilityIndexFlowRate', PI, '', PI_se);
-        ToolBox.Output.add('VeinMaxMinRatioFlowRate', PR, '', PR_se);
+        ToolBox.Output.add('VeinResistivityIndexFlowRate', RI, '', RI_se, h5path = '/Vein/FlowRate/ResistivityIndexSignal');
+        ToolBox.Output.add('VeinPulsatilityIndexFlowRate', PI, '', PI_se, h5path = '/Vein/FlowRate/PulsatilityIndexSignal');
+        ToolBox.Output.add('VeinMaxMinRatioFlowRate', PR, '', PR_se, h5path = '/Vein/FlowRate/MaxMinRatioSignal');
     elseif contains(name, 'artery')
-        ToolBox.Output.add('ArteryResistivityIndexFlowRate', RI, '', RI_se);
-        ToolBox.Output.add('ArteryPulsatilityIndexFlowRate', PI, '', PI_se);
-        ToolBox.Output.add('ArteryMaxMinRatioFlowRate', PR, '', PR_se);
+        ToolBox.Output.add('ArteryResistivityIndexFlowRate', RI, '', RI_se, h5path = '/Artery/FlowRate/ResistivityIndexSignal');
+        ToolBox.Output.add('ArteryPulsatilityIndexFlowRate', PI, '', PI_se, h5path = '/Artery/FlowRate/PulsatilityIndexSignal');
+        ToolBox.Output.add('ArteryMaxMinRatioFlowRate', PR, '', PR_se, h5path = '/Artery/FlowRate/MaxMinRatioSignal');
     end
 
 end

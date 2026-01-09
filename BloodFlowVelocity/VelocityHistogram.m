@@ -99,6 +99,8 @@ close(fDistrib)
 
 % Save branch histograms without figures
 
+HistogramsByBranches = zeros([n, numFrames, numBranches]);
+
 for branchIdx = 1:numBranches
     branchMask = (labeledVessels == branchIdx);
     v_histo_branch = v_video .* branchMask;
@@ -111,12 +113,20 @@ for branchIdx = 1:numBranches
         histo_branch(:, frameIdx) = histcounts(data(branchMask), edges); % histcount is faster than histogram or manual for loop counting
     end
 
-    if strcmp(name, 'artery')
-        ToolBox.Output.Extra.add(sprintf("VelocityHisto_A%d", branchIdx), histo_branch);
-    elseif strcmp(name, 'vein')
-        ToolBox.Output.Extra.add(sprintf("VelocityHisto_V%d", branchIdx), histo_branch);
-    end
+    HistogramsByBranches(:, :, branchIdx) = histo_branch;
 
+    % if strcmp(name, 'artery')
+    %     ToolBox.Output.add(sprintf("VelocityHisto_A%d", branchIdx), histo_branch);
+    % elseif strcmp(name, 'vein')
+    %     ToolBox.Output.add(sprintf("VelocityHisto_V%d", branchIdx), histo_branch);
+    % end
+
+end
+
+if strcmp(name, 'artery')
+    ToolBox.Output.add(sprintf("ArteryHistogramBybranches"), histo_branch, h5path = '/Artery/Velocity/HistogramBybranches');
+elseif strcmp(name, 'vein')
+    ToolBox.Output.add(sprintf("VeinHistogramBybranches"), histo_branch, h5path = '/Vein/Velocity/HistogramBybranches');
 end
 
 end

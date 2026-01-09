@@ -15,8 +15,11 @@ if ~exist(outputDir, 'dir')
 end
 
 [L, n] = labelVesselBranches(maskVessel, ones(size(maskVessel)), ToolBox.Cache.xy_barycenter, refine = false);
-
-ToolBox.Output.Extra.add(sprintf("PWV/%s_Segments_Labels", name), L);
+if strcmp(name, 'artery')
+    ToolBox.Output.add(sprintf("%s_PWV_Segments_Labels", name), L, h5path = "Artery/FlexuralPulseWave/BranchesLabel");
+elseif strcmp(name, 'vein')
+    ToolBox.Output.add(sprintf("%s_PWV_Segments_Labels", name), L, h5path = "Vein/FlexuralPulseWave/BranchesLabel");
+end
 
 if saveFigures
     figure('Visible', 'off');
@@ -34,22 +37,29 @@ end
 PWV = NaN(1, n);
 dPWV = NaN(1, n);
 scores = NaN(1, n);
+Ty = NaN(1, n);
 
 parfor i = 1:n
     % displacementAnalysis(D, maskLongArtery);
-    [PWV(i), dPWV(i), scores(i)] = pulseWaveVelocity(M, L == i, i, name, ToolBox);
+    [PWV(i), dPWV(i), Ty(i), scores(i)] = pulseWaveVelocity(M, L == i, i, name, ToolBox);
 end
 
-[~, idx] = max(scores .* ~isnan(PWV));
-
-displayBranchesWithLabels(L, label = PWV, unit = "mm/s", save_path = fullfile(outputDir, ...
-    sprintf("%s_%s_branches_PWV.png", ToolBox.folder_name, name)), ...
-    bkgimg = ind2rgb(uint16(L), curcmap));
+if saveFigures
+    displayBranchesWithLabels(L, label = PWV, unit = "mm/s", save_path = fullfile(outputDir, ...
+        sprintf("%s_%s_branches_PWV.png", ToolBox.folder_name, name)), ...
+        bkgimg = ind2rgb(uint16(L), curcmap));
+end
 
 if strcmp(name, 'artery')
-    ToolBox.Output.add("ArteryPulseWaveVelocity", PWV(idx), 'mm/s', dPWV(idx));
+    ToolBox.Output.add("ArteryPulseWaveVelocities", PWV, 'mm/s', dPWV, h5path = '/Artery/FlexuralPulseWave/Velocities');
 elseif strcmp(name, 'vein')
-    ToolBox.Output.add("VeinPulseWaveVelocity", PWV(idx), 'mm/s', dPWV(idx));
+    ToolBox.Output.add("VeinPulseWaveVelocities", PWV, 'mm/s', dPWV, h5path = '/Vein/FlexuralPulseWave/Velocities');
+end
+
+if strcmp(name, 'artery')
+    ToolBox.Output.add("ArteryPulseWaveVelocitiesWavelengths", Ty, 'mm', h5path = '/Artery/FlexuralPulseWave/Wavelengths');
+elseif strcmp(name, 'vein')
+    ToolBox.Output.add("VeinPulseWaveVelocitiesWavelengths", Ty, 'mm', h5path = '/Vein/FlexuralPulseWave/Wavelengths');
 end
 
 close all;

@@ -79,7 +79,7 @@ scoreMaskVein = NaN;
 
 % Prepare video for vesselness computation
 
-if any(contains(string(vesselnessMethod),["matchedFilter","frangi"]))
+if any(contains(string(vesselnessMethod), ["matchedFilter", "frangi"]))
     M0_video = M0_ff;
     A = ones(1, 1, numFrames);
     B = A .* maskDiaphragm;
@@ -390,9 +390,9 @@ RemainingArea_pxl = sum(maskBackground(:));
 % VeinArea_mm2 = VeinArea_pxl * (params.px_size ^ 2);
 % RemainingArea_mm2 = RemainingArea_pxl * (params.px_size ^ 2);
 
-ToolBox.Output.add('ArteryNbPxl', ArteryArea_pxl, '');
-ToolBox.Output.add('VeinNbPxl', VeinArea_pxl, '');
-ToolBox.Output.add('RemainingNbPxl', RemainingArea_pxl, '');
+ToolBox.Output.add('ArteryNbPxl', ArteryArea_pxl, h5path = '/Artery/Segmentation/NbPxl');
+ToolBox.Output.add('VeinNbPxl', VeinArea_pxl, h5path = '/Vein/Segmentation/NbPxl');
+ToolBox.Output.add('RemainingNbPxl', RemainingArea_pxl, h5path = '/ArteryVein/Segmentation/NbPxl');
 
 % ToolBox.Output.add('ArteryArea', ArteryArea_mm2, 'mm^2');
 % ToolBox.Output.add('VeinArea', VeinArea_mm2, 'mm^2');

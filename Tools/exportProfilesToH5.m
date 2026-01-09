@@ -1,64 +1,68 @@
 function exportProfilesToH5(name, maskLabel, v_cell, dv_cell)
 
-ToolBox = getGlobalToolBox;
+% ToolBox = getGlobalToolBox;
 
-if nargin < 4
-    dv_cell = [];
-end
+% if nargin < 4
+%     dv_cell = [];
+% end
 
-[numCircles, numBranches] = size(maskLabel);
-% [numCircles, numBranches] = size(v_profiles_cell);
+% [numCircles, numBranches] = size(maskLabel);
+% % [numCircles, numBranches] = size(v_profiles_cell);
 
-numFrames = 0;
-i = 1;
+% numFrames = 0;
+% i = 1;
 
-while numFrames <= 0
-    numFrames = size(v_cell{i}, 2);
-    i = i + 1;
+% while numFrames <= 0
+%     numFrames = size(v_cell{i}, 2);
+%     i = i + 1;
 
-    if i > size(v_cell, 1) * size(v_cell, 2)
-        warning("Velocity profiles cells are all empty.")
-        break
-    end
+%     if i > size(v_cell, 1) * size(v_cell, 2)
+%         warning("Velocity profiles cells are all empty.")
+%         break
+%     end
 
-end
+% end
 
-L = zeros(size(maskLabel{1, 1}), 'uint8');
-idx = 1;
-% Process each circle and branch
-for cIdx = 1:numCircles
+% L = zeros(size(maskLabel{1, 1}), 'uint8');
+% idx = 1;
+% % Process each circle and branch
 
-    for bIdx = 1:numBranches
+% ProfilesTimeBranches = zeros([numFrames, numCircles, numBranches]);
 
-        if ~isempty(v_cell{cIdx, bIdx})
-            current_v = v_cell{cIdx, bIdx};
-            cv = zeros(size(current_v{1}, 2), numFrames, "single");
+% for cIdx = 1:numCircles
 
-            for ff = 1:numFrames
-                cv(:, ff) = current_v{ff};
-            end
+%     for bIdx = 1:numBranches
 
-            if ~isempty(dv_cell)
-                current_dv = dv_cell{cIdx, bIdx};
-                cdv = zeros(size(current_dv{1}, 2), numFrames, "single");
+%         if ~isempty(v_cell{cIdx, bIdx})
+%             current_v = v_cell{cIdx, bIdx};
+%             cv = zeros(size(current_v{1}, 2), numFrames, "single");
 
-                for ff = 1:numFrames
-                    cdv(:, ff) = current_dv{ff};
-                end
+%             for ff = 1:numFrames
+%                 cv(:, ff) = current_v{ff};
+%             end
 
-            else
-                cdv = [];
-            end
+%             if ~isempty(dv_cell)
+%                 current_dv = dv_cell{cIdx, bIdx};
+%                 cdv = zeros(size(current_dv{1}, 2), numFrames, "single");
 
-            L(maskLabel{cIdx, bIdx}) = idx;
-            ToolBox.Output.Extra.add(sprintf("Segments/%s_idx%d_c%d_b%d_VelocityProfiles", name, idx, cIdx, bIdx), cv, cdv, "mm/s");
-            idx = idx + 1;
-        end
+%                 for ff = 1:numFrames
+%                     cdv(:, ff) = current_dv{ff};
+%                 end
 
-    end
+%             else
+%                 cdv = [];
+%             end
 
-end
+%             L(maskLabel{cIdx, bIdx}) = idx;
+%             ProfilesTimeBranches(:, cIdx, bIdx) = mean(cv, 1, 'omitnan');
+%             ToolBox.Output.Extra.add(sprintf("Segments/%s_idx%d_c%d_b%d_VelocityProfiles", name, idx, cIdx, bIdx), cv, cdv, "mm/s");
+%             idx = idx + 1;
+%         end
 
-ToolBox.Output.Extra.add(sprintf("Segments/%s_Segments_Labels", name), L);
+%     end
+
+% end
+
+% ToolBox.Output.Extra.add(sprintf("Segments/%s_Segments_Labels", name), L);
 
 end

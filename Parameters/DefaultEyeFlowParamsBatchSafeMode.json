@@ -34,11 +34,11 @@
     "Border": 0.15,
     "FittedParameters": false
   },
-  "exportVideos": true,
+  "exportVideos": false,
   "saveFigures": true,
   "use_time_stamps": true,
   "MinimumGifPeriod": 0.04,
-  "NumberOfWorkers": 0,
+  "NumberOfWorkers": 10,
   "Mask": {
     "Auto Compute": true,
     "Registered Masks": -1,
@@ -68,7 +68,7 @@
   },
   "PulseAnalysis": {
     "DifferenceMethods": 0,
-    "BkgFillMethod": "inpaintCoherent",
+    "BkgFillMethod": "maskedAverage",
     "LocalBackgroundWidth": 5,
     "LocalBackgroundDist": 2,
     "bkgScaler": 5,
@@ -108,13 +108,7 @@
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
     "hemodynamicParameters": false,
-    "InterpolationPoints": 50,
-    "TimeWarp": {
-      "TimeWarpToPeriodic": false,
-      "SignalReplication": 4
-    },
-    "WomersleyMaxHarmonic": 6,
-    "WomersleySectionImage": false
+    "InterpolationPoints": 50
   },
   "DebugMode": false
 }
