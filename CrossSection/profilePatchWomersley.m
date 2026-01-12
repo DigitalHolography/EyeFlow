@@ -322,8 +322,8 @@ function saveWomersleyResults_handle(BasePath, womersley_cells, units_struct)
                 fields_desc = [fields_desc, "harmonic"];
             end
 
-            ToolBox.Output.DimOut.add(BasePath + field, field_list, fields_desc, unit_field);
-            ToolBox.Output.DimOut.add_attributes(BasePath + field, "Description", desc_field);
+            % ToolBox.Output.DimOut.add(BasePath + field, field_list, fields_desc, unit_field);
+            % ToolBox.Output.DimOut.add_attributes(BasePath + field, "Description", desc_field);
             
         catch ME
             warning("Skipping field '%s': Data dimensions inconsistent. (%s)", field, ME.message);

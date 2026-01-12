@@ -103,33 +103,41 @@ if params.json.exportCrossSectionResults.BloodFlowHistograms && saveFigures
 end
 
 if params.json.exportCrossSectionResults.BloodFlowProfilesWomersleyOverlay
+
     try
         profilePatchWomersley(v_profiles_cell, name, locsLabel, mean(M0_ff, 3), displacement_field);
     catch ME
         warning_s("Womersley Profile Overlay failed for %s\n%s\n%s", name, ME.identifier, ME.message);
     end
+
 end
 
 if params.json.exportCrossSectionResults.BloodFlowProfilesOverlay && saveFigures
     profilePatchVelocities(v_profiles_cell, name, locsLabel, mean(M0_ff, 3))
 end
 
-alphaWom = zeros(size(ToolBox.Cache.WomersleyOut),'single');
+alphaWom = zeros(size(ToolBox.Cache.WomersleyOut), 'single');
+
 for i = 1:size(alphaWom, 1)
+
     for j = 1:size(alphaWom, 2)
+
         if isstruct(ToolBox.Cache.WomersleyOut{i, j})
             data = ToolBox.Cache.WomersleyOut{i, j}.segments_metrics.MovingWallFixedNu;
             alphaWom(i, j) = data.alpha_n;
         end
+
     end
+
 end
 
 %exportSegmentsValueToH5(name+"_Wom_alpha",maskLabel,alphaWom,"Womersley");
-if strcmp(name,"artery")
-    ToolBox.Output.add(sprintf("ArteryAlphaWomersley"), alphaWom, [], "", h5path="Artery/CrossSections/Womersley/Alpha");
-elseif strcmp(name,"vein")
-    ToolBox.Output.add(sprintf("VeinAlphaWomersley"), alphaWom, [], "", h5path="Vein/CrossSections/Womersley/Alpha");
+if strcmp(name, "artery")
+    ToolBox.Output.add(sprintf("ArteryAlphaWomersley"), alphaWom, [], "", h5path = "Artery/CrossSections/Womersley/Alpha");
+elseif strcmp(name, "vein")
+    ToolBox.Output.add(sprintf("VeinAlphaWomersley"), alphaWom, [], "", h5path = "Vein/CrossSections/Womersley/Alpha");
 end
+
 fprintf("    1.(bis) optional Flow Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
 
 % 2. Sections Figures
@@ -165,7 +173,7 @@ if params.json.exportCrossSectionResults.circleImages
 
     end
 
-    circleImages(M0_ff_img, xy_barycenter, A_cell, Q_cell, v_cell, maskLabel, locsLabel, name)
+    circleImages(M0_ff_img, xy_barycenter, A_cell, Q_cell, v_cell, alphaWom, maskLabel, locsLabel, name)
 end
 
 if params.json.exportCrossSectionResults.widthHistogram
