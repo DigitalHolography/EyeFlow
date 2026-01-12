@@ -18,7 +18,7 @@ methods
 
     function add(obj, name, data, ste, unit)
         % Method to add a new output to the class
-        
+
         obj.Data.(sanitizeFieldName(name)) = data;
 
         if nargin > 3 && ~isempty(ste)
@@ -40,47 +40,53 @@ methods
         end
 
         props = fieldnames(data);
-        
+
         for i = 1:numel(props)
             fieldName = props{i};
             fieldValue = (data.(fieldName));
-            
+
             % Build dataset path
             datasetPath = strcat('/Extra/', antiSanitizeFieldName(fieldName));
-        
+
             % --- Case 1: Numeric or image data ---
             if isnumeric(fieldValue) || islogical(fieldValue)
                 writeNumericToHDF5(path, datasetPath, fieldValue);
+
                 if ~isempty(obj.Ste) && isfield(obj.Ste, fieldName)
                     steValue = obj.Ste.(fieldName);
                     writeNumericToHDF5(path, strcat(datasetPath, '_ste'), steValue);
                 end
+
                 if ~isempty(obj.Unit) && isfield(obj.Unit, fieldName)
                     unitValue = obj.Unit.(fieldName);
                     h5writeatt(path, datasetPath, 'unit', unitValue);
                 end
-        
-            % --- Case 2: Structs with known fields (e.g., yvalues, label) ---
+
+                % --- Case 2: Structs with known fields (e.g., yvalues, label) ---
             elseif isstruct(fieldValue)
                 subFields = fieldnames(fieldValue);
+
                 for j = 1:numel(subFields)
                     datasetPath = subFields{j};
                     subValue = fieldValue.(subName);
                     subPath = strcat(datasetPath, '_', subName);
+
                     if isnumeric(subValue)
                         writeNumericToHDF5(path, subPath, subValue);
                     elseif ischar(subValue) || isstring(subValue)
-                        h5writeatt(path, datasetPath,subName, subValue);
+                        h5writeatt(path, datasetPath, subName, subValue);
                     end
+
                 end
-        
-            % --- Case 3: Strings or labels ---
+
+                % --- Case 3: Strings or labels ---
             elseif ischar(fieldValue) || isstring(fieldValue)
                 writeStringToHDF5(path, datasetPath, string(fieldValue));
-        
+
             else
                 warning('Skipping unsupported field "%s" of type %s', fieldName, class(fieldValue));
             end
+
         end
 
     end
@@ -91,7 +97,6 @@ end
 
 % --- Helper: write numeric dataset ---
 
-
 function name = sanitizeFieldName(str)
 % Replace invalid characters for struct fields with descriptive tags
 name = regexprep(str, '/', '_slash_'); % Replace / with _slash_
@@ -100,6 +105,7 @@ name = regexprep(name, '[^a-zA-Z0-9_]', '_'); % Replace any other invalid chars
 if ~isletter(name(1))
     name = ['x' name];
 end
+
 end
 
 function original = antiSanitizeFieldName(safeName)
@@ -119,4 +125,5 @@ original = regexprep(safeName, '_slash_', '/');
 if startsWith(original, 'x') && ~startsWith(safeName, 'x_')
     original = original(2:end);
 end
+
 end
