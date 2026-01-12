@@ -123,14 +123,7 @@ methods
         "----------------------------------\n");
         pulseAnalysisTimer = tic;
 
-        ToolBox = getGlobalToolBox;
-        params = ToolBox.getParams;
         [executionObj.Cache.vRMS, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB] = pulseAnalysis(executionObj.Cache.f_RMS, executionObj.Cache.M0_ff);
-
-        if params.json.PulseAnalysis.ExtendedFlag
-            f_AVG_mean = squeeze(mean(executionObj.Cache.f_AVG, 3));
-            extendedPulseAnalysis(executionObj.Cache.M0_ff, executionObj.Cache.f_RMS, f_AVG_mean, executionObj.Cache.vRMS);
-        end
 
         axialAnalysis(executionObj.Cache.f_AVG);
 

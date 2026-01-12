@@ -1,8 +1,7 @@
-function VelocityStatisticalOutputs(v_RMS_video, maskArtery, maskVein, maskArterySection, maskVeinSection)
+function VelocityStatisticalOutputs(v_RMS_video, ~, ~, maskArterySection, maskVeinSection)
 
 % Initial Setup
 ToolBox = getGlobalToolBox;
-params = ToolBox.getParams;
 
 mask = NaN(size(maskArterySection));
 mask(maskArterySection) = 1;

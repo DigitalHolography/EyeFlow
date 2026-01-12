@@ -118,6 +118,8 @@ end
 
 alphaWom = zeros(size(ToolBox.Cache.WomersleyOut), 'single');
 
+alphaWom = zeros(size(ToolBox.Cache.WomersleyOut), 'single');
+
 for i = 1:size(alphaWom, 1)
 
     for j = 1:size(alphaWom, 2)

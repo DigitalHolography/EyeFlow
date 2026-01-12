@@ -1,4 +1,4 @@
-function [peak_freqs, peaks, phase] = syntheticSpectralAnalysis(signal, t, fs, N)
+function [peak_freqs, peaks, phase] = syntheticSpectralAnalysis(signal, ~, fs, N)
 % syntheticSpectralAnalysis - Perform spectral analysis on a one-cycle blood flow velocity signal
 %
 % Inputs:

@@ -61,7 +61,6 @@ numFreq = length(s_locs);
 [s_locs, idx] = sort(s_locs, 'ascend');
 s_peaks = s_peaks(idx);
 s_idx = s_idx(idx);
-m_harmonics = length(s_locs);
 
 % Calculate and plot harmonic frequencies if fundamental is detected
 if numFreq >= 2

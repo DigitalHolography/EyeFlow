@@ -158,35 +158,39 @@ for c_idx = 1:numCircles
             rejected_mask = cross_section_results.rejected_masks + rejected_mask;
             subImg_cell{c_idx, b_idx} = cross_section_results.subImg_cell;
         end
+
     end
+
 end
 
 if params.json.Preprocess.NonRigidRegisteringFlag
     % Upscale the DispField
     dispField = displacementField.field;
-    dispField = squeeze(hypot(dispField(:,:,1,:), dispField(:,:,2,:)));
+    dispField = squeeze(hypot(dispField(:, :, 1, :), dispField(:, :, 2, :)));
     dispField = upscaleDispField(dispField);
 
     Disp_cell = cell(numCircles, numBranches);
     FFT_D_cell = cell(numCircles, numBranches);
 
     for c_idx = 1:numCircles
+
         for b_idx = 1:numBranches
+
             if isempty(locsLabel{c_idx, b_idx})
                 continue;
             end
+
             patchName = sprintf('%s%d_C%d', initial, b_idx, c_idx);
             res = analyzeDispField(locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, xy_barycenter, dispField, patchName);
 
             Disp_cell{c_idx, b_idx} = res.D;
             FFT_D_cell{c_idx, b_idx} = res.fft_D;
         end
+
     end
 
     handleDispValues(vesselName, Disp_cell, FFT_D_cell);
 end
-
-
 
 if params.json.generateCrossSectionSignals.sectionMontage && saveFigures
     sectionMontage(subImg_cell, numSections, vesselName)
@@ -255,199 +259,205 @@ end
 % +==========================================================================+ %
 
 function v_masked_resized = upscaleDispField(dispField)
-    arguments
-        dispField
-    end
 
-    % 1. Setup parameters based on your logic
-    [numX, numY, numFrames] = size(dispField);
-    kInterp = 1; % Derived from 512 -> 1023 logic
-
-    % Calculate new dimensions (matches your function's logic)
-    out_numX = (numX - 1) * (2^kInterp - 1) + numX; % Result: 1023
-    out_numY = (numY - 1) * (2^kInterp - 1) + numY; % Result: 1023
-
-    % 2. Pre-allocate the new array
-    % Using 'like' preserves data type (e.g., single vs double) to save RAM
-    v_masked_resized = zeros(out_numX, out_numY, numFrames, 'like', dispField);
-
-    % 3. Interpolate exactly like VideoInterpolating
-    % Use parfor if you have the Parallel Toolbox, otherwise change to 'for'
-    parfor frameIdx = 1:numFrames
-        % interp2 with integer k performs the specific refinement used in your ROI generation
-        v_masked_resized(:, :, frameIdx) = interp2(dispField(:, :, frameIdx), kInterp);
-    end
+arguments
+    dispField
 end
 
+% 1. Setup parameters based on your logic
+[numX, numY, numFrames] = size(dispField);
+kInterp = 1; % Derived from 512 -> 1023 logic
 
-function handleDispValues(name, Disp_cell, FFT_D_cell)
-    [c_size, b_size] = size(Disp_cell);
+% Calculate new dimensions (matches your function's logic)
+out_numX = (numX - 1) * (2 ^ kInterp - 1) + numX; % Result: 1023
+out_numY = (numY - 1) * (2 ^ kInterp - 1) + numY; % Result: 1023
 
-    % disp_peak_1_idx, disp_peak_1_val, disp_peak_2_idx, disp_peak_2_val
-    % res_disp = nan(c_size, b_size, 4);
+% 2. Pre-allocate the new array
+% Using 'like' preserves data type (e.g., single vs double) to save RAM
+v_masked_resized = zeros(out_numX, out_numY, numFrames, 'like', dispField);
 
-    % Get numFrame from first non-empty elt
-    idx = find(~cellfun("isempty", Disp_cell), 1);
+% 3. Interpolate exactly like VideoInterpolating
+% Use parfor if you have the Parallel Toolbox, otherwise change to 'for'
+parfor frameIdx = 1:numFrames
+    % interp2 with integer k performs the specific refinement used in your ROI generation
+    v_masked_resized(:, :, frameIdx) = interp2(dispField(:, :, frameIdx), kInterp);
+end
 
-    if ~isempty(idx)
-        first_data = Disp_cell{idx};
-    else
-        warning_s("handleDispValues: All cells are empty!");
-        first_data = [];
-    end
+end
 
-    profile_width = size(first_data, 1);
-    numFrames = size(first_data, 2);
+function handleDispValues(name, Disp_cell, ~)
+[c_size, b_size] = size(Disp_cell);
 
-    res_D_x1 = nan(c_size, b_size, numFrames);
-    res_D_x2 = nan(c_size, b_size, numFrames);
-    res_fft_x1 = nan(c_size, b_size, numFrames);
-    res_fft_x2 = nan(c_size, b_size, numFrames);
+% disp_peak_1_idx, disp_peak_1_val, disp_peak_2_idx, disp_peak_2_val
+% res_disp = nan(c_size, b_size, 4);
 
-    ToolBox = getGlobalToolBox;
-    fN = ToolBox.Cache.fN;
-    
-    res_fft_card_freq = nan(c_size, b_size, 2);
+% Get numFrame from first non-empty elt
+idx = find(~cellfun("isempty", Disp_cell), 1);
 
-    for i = 1:c_size
-        for j = 1:b_size
+if ~isempty(idx)
+    first_data = Disp_cell{idx};
+else
+    warning_s("handleDispValues: All cells are empty!");
+    first_data = [];
+end
 
-            current_disp = Disp_cell{i, j};
-            if ~isempty(current_disp)
-                % If value is complex get the abs
-                disp_mean = mean(current_disp, 2);
-                % res_fft_disp(i, j, :) = handlePeaks(disp_mean);
-                pks = handlePeaks(disp_mean);
+profile_width = size(first_data, 1);
+numFrames = size(first_data, 2);
 
-                x1 = pks(1);
-                x2 = pks(3);
-                
-                if isnan(x1) || isnan(x2)
-                    warning_s("Displacement Profile Local Max is NaN");
-                    continue;
-                end
+res_D_x1 = nan(c_size, b_size, numFrames);
+res_D_x2 = nan(c_size, b_size, numFrames);
+res_fft_x1 = nan(c_size, b_size, numFrames);
+res_fft_x2 = nan(c_size, b_size, numFrames);
 
-                % Mean with 1 idx before and after x1 & x2
-                res_D_x1(i, j, :) = mean(current_disp((x1 - 1):(x1 + 1), :), 1); % current_disp(x1, :);
-                res_D_x2(i, j, :) = mean(current_disp((x2 - 1):(x2 + 1), :), 1); % current_disp(x2, :);
+ToolBox = getGlobalToolBox;
+fN = ToolBox.Cache.fN;
 
-                % Calculate mean, median, std over time
-                res_x1_stats = calculate_stats_onDim(res_D_x1, 3);
-                res_x2_stats = calculate_stats_onDim(res_D_x2, 3);
+res_fft_card_freq = nan(c_size, b_size, 2);
 
-                % Calculate Time Spectrum of displacement Field
-                res_fft_x1(i, j, :) = abs(fft(res_D_x1(i, j, :) / numFrames));
-                res_fft_x2(i, j, :) = abs(fft(res_D_x2(i, j, :) / numFrames));
+for i = 1:c_size
 
-                cur_fft_x1 = res_fft_x1(i, j, :);
-                cur_fft_x2 = res_fft_x2(i, j, :);
-                res_fft_card_freq(i, j, 1) = cur_fft_x1(getCardiacIdx(res_fft_x1(i, j, :), fN));
-                res_fft_card_freq(i, j, 2) = cur_fft_x2(getCardiacIdx(res_fft_x2(i, j, :), fN));
+    for j = 1:b_size
+
+        current_disp = Disp_cell{i, j};
+
+        if ~isempty(current_disp)
+            % If value is complex get the abs
+            disp_mean = mean(current_disp, 2);
+            % res_fft_disp(i, j, :) = handlePeaks(disp_mean);
+            pks = handlePeaks(disp_mean);
+
+            x1 = pks(1);
+            x2 = pks(3);
+
+            if isnan(x1) || isnan(x2)
+                warning_s("Displacement Profile Local Max is NaN");
+                continue;
             end
 
-            % if ~isempty(FFT_D_cell{i, j})
-            %     % If value is complex get the abs
-            %     FFT_seg = FFT_D_cell{i, j};
-            %     res_fft_disp(i, j, :) = handlePeaks(abs(FFT_seg(:, 2)));
-            % end
+            % Mean with 1 idx before and after x1 & x2
+            res_D_x1(i, j, :) = mean(current_disp((x1 - 1):(x1 + 1), :), 1); % current_disp(x1, :);
+            res_D_x2(i, j, :) = mean(current_disp((x2 - 1):(x2 + 1), :), 1); % current_disp(x2, :);
 
+            % Calculate mean, median, std over time
+            res_x1_stats = calculate_stats_onDim(res_D_x1, 3);
+            res_x2_stats = calculate_stats_onDim(res_D_x2, 3);
+
+            % Calculate Time Spectrum of displacement Field
+            res_fft_x1(i, j, :) = abs(fft(res_D_x1(i, j, :) / numFrames));
+            res_fft_x2(i, j, :) = abs(fft(res_D_x2(i, j, :) / numFrames));
+
+            cur_fft_x1 = res_fft_x1(i, j, :);
+            cur_fft_x2 = res_fft_x2(i, j, :);
+            res_fft_card_freq(i, j, 1) = cur_fft_x1(getCardiacIdx(res_fft_x1(i, j, :), fN));
+            res_fft_card_freq(i, j, 2) = cur_fft_x2(getCardiacIdx(res_fft_x2(i, j, :), fN));
         end
+
+        % if ~isempty(FFT_D_cell{i, j})
+        %     % If value is complex get the abs
+        %     FFT_seg = FFT_D_cell{i, j};
+        %     res_fft_disp(i, j, :) = handlePeaks(abs(FFT_seg(:, 2)));
+        % end
+
     end
 
-    res_D1_x1_stats = calculate_stats_all(res_fft_card_freq(:, :, 1));
-    res_D1_x2_stats = calculate_stats_all(res_fft_card_freq(:, :, 2));
+end
 
-    % Removed Empty to reshape
-    emptyIndex = cellfun(@isempty, Disp_cell);
-    Disp_cell(emptyIndex) = {NaN(profile_width, numFrames)};
+res_D1_x1_stats = calculate_stats_all(res_fft_card_freq(:, :, 1));
+res_D1_x2_stats = calculate_stats_all(res_fft_card_freq(:, :, 2));
 
-    ToolBox.Output.DimOut.add("DispField/profile_DispField_" + name, reshape(cell2mat(Disp_cell), [c_size, b_size, numFrames, profile_width]), ["CircleIdx", "BranchIdx", "Time", "X-axis"]);
+% Removed Empty to reshape
+emptyIndex = cellfun(@isempty, Disp_cell);
+Disp_cell(emptyIndex) = {NaN(profile_width, numFrames)};
 
-    ToolBox.Output.DimOut.add("DispField/profile_D_x1_" + name, res_D_x1, ["CircleIdx", "BranchIdx", "Time"]);
-    ToolBox.Output.DimOut.add("DispField/profile_D_x2_" + name, res_D_x2, ["CircleIdx", "BranchIdx", "Time"]);
-    ToolBox.Output.DimOut.add("DispField/profile_fft_x1_" + name, res_fft_x1, ["CircleIdx", "BranchIdx", "Frequency"]);
-    ToolBox.Output.DimOut.add("DispField/profile_fft_x2_" + name, res_fft_x2, ["CircleIdx", "BranchIdx", "Frequency"]);
-    ToolBox.Output.DimOut.add("DispField/D1_" + name, res_fft_card_freq, ["CircleIdx", "BranchIdx", "x1, x2"]);
+ToolBox.Output.DimOut.add("DispField/profile_DispField_" + name, reshape(cell2mat(Disp_cell), [c_size, b_size, numFrames, profile_width]), ["CircleIdx", "BranchIdx", "Time", "X-axis"]);
 
-    ToolBox.Output.DimOut.add("DispField/D_x1_stats_" + name, res_x1_stats, ["CircleIdx", "BranchIdx", "Mean, Median, Std"]);
-    ToolBox.Output.DimOut.add("DispField/D_x2_stats_" + name, res_x2_stats, ["CircleIdx", "BranchIdx", "Mean, Median, Std"]);
+ToolBox.Output.DimOut.add("DispField/profile_D_x1_" + name, res_D_x1, ["CircleIdx", "BranchIdx", "Time"]);
+ToolBox.Output.DimOut.add("DispField/profile_D_x2_" + name, res_D_x2, ["CircleIdx", "BranchIdx", "Time"]);
+ToolBox.Output.DimOut.add("DispField/profile_fft_x1_" + name, res_fft_x1, ["CircleIdx", "BranchIdx", "Frequency"]);
+ToolBox.Output.DimOut.add("DispField/profile_fft_x2_" + name, res_fft_x2, ["CircleIdx", "BranchIdx", "Frequency"]);
+ToolBox.Output.DimOut.add("DispField/D1_" + name, res_fft_card_freq, ["CircleIdx", "BranchIdx", "x1, x2"]);
 
-    ToolBox.Output.DimOut.add("DispField/D1_x1_stats_" + name, res_D1_x1_stats, "Mean, Median, Std");
-    ToolBox.Output.DimOut.add("DispField/D1_x2_stats_" + name, res_D1_x2_stats, "Mean, Median, Std");
+ToolBox.Output.DimOut.add("DispField/D_x1_stats_" + name, res_x1_stats, ["CircleIdx", "BranchIdx", "Mean, Median, Std"]);
+ToolBox.Output.DimOut.add("DispField/D_x2_stats_" + name, res_x2_stats, ["CircleIdx", "BranchIdx", "Mean, Median, Std"]);
 
-    % ToolBox.Output.DimOut.add("DispField/profile_FFT_D_local_max_" + name, res_fft_disp, []);
+ToolBox.Output.DimOut.add("DispField/D1_x1_stats_" + name, res_D1_x1_stats, "Mean, Median, Std");
+ToolBox.Output.DimOut.add("DispField/D1_x2_stats_" + name, res_D1_x2_stats, "Mean, Median, Std");
+
+% ToolBox.Output.DimOut.add("DispField/profile_FFT_D_local_max_" + name, res_fft_disp, []);
 end
 
 function res = handlePeaks(data)
-    res = [NaN, NaN, NaN, NaN];
-    [pks, locs] = findpeaks(data, "SortStr", "descend", "NPeaks", 2);
-            
-    num_found = length(pks);
+res = [NaN, NaN, NaN, NaN];
+[pks, locs] = findpeaks(data, "SortStr", "descend", "NPeaks", 2);
 
-     if num_found >= 1
-        res(1) = locs(1);
-        res(2) = pks(1);
-    end
-    
-    if num_found >= 2
-        res(3) = locs(2);
-        res(4) = pks(2);
-    end
+num_found = length(pks);
+
+if num_found >= 1
+    res(1) = locs(1);
+    res(2) = pks(1);
 end
 
+if num_found >= 2
+    res(3) = locs(2);
+    res(4) = pks(2);
+end
 
-function idx = getCardiacIdx(fft_data, fN)
+end
+
+function idx = getCardiacIdx(fft_data, ~)
 % GETCARDIACIDX Returns the index of the dominant heart rate peak.
 %
-% Usage: 
+% Usage:
 %   idx = getCardiacIdx(res_fft_x1, 30);
 %   heart_rate_slice = res_fft_x1(:, :, idx);
 
-    ToolBox = getGlobalToolBox;
+ToolBox = getGlobalToolBox;
 
-    % 1. Get size
-    % N = size(fft_data, 3);
-    
-    % 2. Create Frequency Vector
-    % f = (0:N-1) * (fN / N);
-    f = ToolBox.Cache.f;
-    
-    % 3. Define Cardiac Range (0.58 Hz (35 BPM) to 3.67 Hz (220 BPM))
-    %    This automatically ignores the "huge left one" (DC/Breathing)
-    range_idxs = find(f >= 0.58 & f <= 3.67);
-    
-    % 4. Spatially average the data to find the global peak
-    %    (Averaging height and width makes the peak distinct from noise)
-    avg_spectrum = squeeze(mean(mean(fft_data, 1), 2));
-    
-    % 5. Find the max peak strictly within the cardiac range
-    [~, local_peak] = max(avg_spectrum(range_idxs));
-    
-    % 6. Convert local peak back to the global index of input array
-    idx = range_idxs(local_peak);
+% 1. Get size
+% N = size(fft_data, 3);
+
+% 2. Create Frequency Vector
+% f = (0:N-1) * (fN / N);
+f = ToolBox.Cache.f;
+
+% 3. Define Cardiac Range (0.58 Hz (35 BPM) to 3.67 Hz (220 BPM))
+%    This automatically ignores the "huge left one" (DC/Breathing)
+range_idxs = find(f >= 0.58 & f <= 3.67);
+
+% 4. Spatially average the data to find the global peak
+%    (Averaging height and width makes the peak distinct from noise)
+avg_spectrum = squeeze(mean(mean(fft_data, 1), 2));
+
+% 5. Find the max peak strictly within the cardiac range
+[~, local_peak] = max(avg_spectrum(range_idxs));
+
+% 6. Convert local peak back to the global index of input array
+idx = range_idxs(local_peak);
 
 end
 
 function res = calculate_stats_onDim(x_array, dim)
-    arguments
-        x_array, dim
-    end
 
-    mea     = mean(x_array, dim, "omitnan");
-    med     = median(x_array, dim, "omitnan");
-    std_dev = std(x_array, 0, dim, "omitnan");
+arguments
+    x_array, dim
+end
 
-    res = cat(3, mea, med, std_dev);
+mea = mean(x_array, dim, "omitnan");
+med = median(x_array, dim, "omitnan");
+std_dev = std(x_array, 0, dim, "omitnan");
+
+res = cat(3, mea, med, std_dev);
 end
 
 function res = calculate_stats_all(data)
-    arguments
-        data
-    end
 
-    mea     = mean(data, "all", "omitnan");
-    med     = median(data, "all", "omitnan");
-    std_dev = std(data, 1, "all", "omitnan");
+arguments
+    data
+end
 
-    res = cat(1, mea, med, std_dev);
+mea = mean(data, "all", "omitnan");
+med = median(data, "all", "omitnan");
+std_dev = std(data, 1, "all", "omitnan");
+
+res = cat(1, mea, med, std_dev);
 end

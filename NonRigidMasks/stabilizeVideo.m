@@ -67,7 +67,7 @@ end
 
 end
 
-function arr2gifPlots(arr)
+function FD = arr2gifPlots(arr)
 
 for k = 1:numel(arr)
     D = arr{k};
@@ -109,27 +109,6 @@ end
 %arr2gif(framesLowPass, "lowPassFilter.gif");
 
 analyzeFFT3D(arr);
-end
-
-function freqMap = spatialFrequencyMap(img)
-% img: displacement magnitude (2D)
-% returns: map of dominant spatial frequency per pixel
-
-% 1. Take 2D FFT
-F = fftshift(fft2(img));
-
-% 2. Build frequency grid
-[nx, ny] = size(img);
-[u, v] = meshgrid((-floor(ny / 2):ceil(ny / 2) - 1) / ny, ...
-    (-floor(nx / 2):ceil(nx / 2) - 1) / nx);
-freqRadius = sqrt(u .^ 2 + v .^ 2);
-
-% 3. Weighted average frequency (spectral centroid)
-P = abs(F) .^ 2;
-meanFreq = sum(P(:) .* freqRadius(:)) / sum(P(:));
-
-% 4. Fill freqMap with this mean frequency (global measure)
-freqMap = ones(nx, ny) * meanFreq;
 end
 
 function analyzeFFT3D(arr)

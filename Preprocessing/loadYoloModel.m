@@ -6,7 +6,6 @@ function [yoloModel] = loadYoloModel(model_name, hugging_face_repo)
 %   Outputs:
 %       yoloModel - Loaded YOLO model
 
-
 currentScriptPath = fileparts(mfilename('fullpath'));
 projectRoot = fileparts(currentScriptPath);
 mat_model_path = fullfile(projectRoot, 'Models', model_name + '.mat');
@@ -20,6 +19,7 @@ if isfile(mat_model_path)
     yoloModel = net_data.(f{1});
 elseif ~isdeployed
     fprintf('No .mat network found. Looking for .onnx version.\n');
+
     if ~isfile(onnx_model_path)
         % Download the model from Hugging Face
         url = sprintf('https://huggingface.co/DigitalHolography/%s/resolve/main/%s.onnx?download=true', hugging_face_repo, model_name);
@@ -28,7 +28,7 @@ elseif ~isdeployed
         websave(onnx_model_path, url);
         fprintf("Finished downloading %s in %s. It took: %.2fs\n", model_name, onnx_model_path, toc);
     end
-    
+
     % Import the ONNX network
     try
         % Try the newer function first
@@ -36,10 +36,11 @@ elseif ~isdeployed
     catch ME
         warning("Error in yolo model import : ")
         MEdisp(ME, ToolBox.EF_path);
-        
+
         % Fall back to the older function
         yoloModel = importONNXNetwork(onnx_model_path);
     end
+
 end
 
 end
