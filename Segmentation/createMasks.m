@@ -388,9 +388,9 @@ ArteryArea_pxl = sum(maskArtery(:));
 VeinArea_pxl = sum(maskVein(:));
 RemainingArea_pxl = sum(maskBackground(:));
 
-% ArteryArea_mm2 = ArteryArea_pxl * (params.px_size ^ 2);
-% VeinArea_mm2 = VeinArea_pxl * (params.px_size ^ 2);
-% RemainingArea_mm2 = RemainingArea_pxl * (params.px_size ^ 2);
+% ArteryArea_mm2 = ArteryArea_pxl * (ToolBox.Cache.pixelSize ^ 2);
+% VeinArea_mm2 = VeinArea_pxl * (ToolBox.Cache.pixelSize ^ 2);
+% RemainingArea_mm2 = RemainingArea_pxl * (ToolBox.Cache.pixelSize ^ 2);
 
 ToolBox.Output.add('ArteryNbPxl', ArteryArea_pxl, h5path = '/Artery/Segmentation/NbPxl');
 ToolBox.Output.add('VeinNbPxl', VeinArea_pxl, h5path = '/Vein/Segmentation/NbPxl');

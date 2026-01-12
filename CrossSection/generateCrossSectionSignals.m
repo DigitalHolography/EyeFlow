@@ -9,7 +9,7 @@ ToolBox = getGlobalToolBox;
 params = ToolBox.getParams;
 
 % Retrieve cached variables
-if ~isempty(ToolBox.Cache.papillaDiameter)
+if ~isempty(ToolBox.Cache.xy_papilla)
     xy_barycenter = ToolBox.Cache.xy_papilla;
 else
     xy_barycenter = ToolBox.Cache.xy_barycenter;

@@ -14,11 +14,7 @@ HydrodynamicDiameters = params.json.generateCrossSectionSignals.HydrodynamicDiam
 
 [numX, ~] = size(subImg);
 
-if ~isnan(papillaDiameter) && ~isempty(papillaDiameter)
-    px_size = 1.8 / papillaDiameter / (2 ^ params.json.Preprocess.InterpolationFactor);
-else
-    px_size = params.px_size;
-end
+px_size = ToolBox.Cache.pixelSize;
 
 if ~HydrodynamicDiameters
     D = mean(sum(~isnan(subImg), 2)); % in pixels

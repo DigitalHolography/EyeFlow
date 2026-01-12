@@ -55,6 +55,7 @@ properties
 
     % Other cached variables
     papillaDiameter double % cached papilla diameter
+    pixelSize double % the size of 1 pixel in mm
     eyeSide string
 
     % Color maps
@@ -141,6 +142,7 @@ methods
     end
 
     function createFreqVector(obj, ToolBox)
+
         arguments
             obj, ToolBox
         end
@@ -165,10 +167,12 @@ time_array = linspace(t1, t2, numFrames);
 end
 
 function [fN, f] = frequency_array(ToolBox)
-    arguments
-        ToolBox
-    end
-    fN = ((ToolBox.fs * 1000) / ToolBox.stride) / 2;
-    f = circshift(fftshift(linspace(-fN, fN, size(ToolBox.Cache.t, 2) + 1)), [0, 1]);
-    f = f(1,1:(end-1));
+
+arguments
+    ToolBox
+end
+
+fN = ((ToolBox.fs * 1000) / ToolBox.stride) / 2;
+f = circshift(fftshift(linspace(-fN, fN, size(ToolBox.Cache.t, 2) + 1)), [0, 1]);
+f = f(1, 1:(end - 1));
 end
