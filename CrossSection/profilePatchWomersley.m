@@ -330,11 +330,12 @@ for i = 1:numel(field_names)
             fields_desc = [fields_desc, "harmonic"];
         end
 
-        ToolBox.Output.DimOut.add(BasePath + field, field_list, fields_desc, unit_field);
-        ToolBox.Output.DimOut.add_attributes(BasePath + field, "Description", desc_field);
+        ToolBox.Output.add(field, field_list, h5path = BasePath, unit = unit_field);
+        % TODO: Add Back the attributes
+        % ToolBox.Output.DimOut.add_attributes(BasePath + field, "Description", desc_field);
 
     catch ME
-        warning("Skipping field '%s': Data dimensions inconsistent. (%s)", field, ME.message);
+        warning_s("Skipping field '%s': Data dimensions inconsistent. (%s)", field, ME.message);
     end
 
 end

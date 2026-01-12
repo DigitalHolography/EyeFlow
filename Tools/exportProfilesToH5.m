@@ -1,3 +1,21 @@
+function exportProfilesToH5(name, v_cell, v_safe_cell)
+% Function to save the velocities profiles 
+    arguments
+        name string
+        v_cell cell
+        v_safe_cell cell
+    end
+
+    ToolBox = getGlobalToolBox;
+    ToolBox.Output.add("velocity_trunc_seg_mean", v_cell, name);
+    ToolBox.Output.add("velocity_whole_seg_mean", v_safe_cell, name);
+end
+
+% +============================================+ %
+% |                   OLD CODE                 | %
+% +============================================+ %
+
+%{
 function exportProfilesToH5(name, maskLabel, v_cell, dv_cell)
 
 % ToolBox = getGlobalToolBox;
@@ -66,3 +84,4 @@ function exportProfilesToH5(name, maskLabel, v_cell, dv_cell)
 % ToolBox.Output.Extra.add(sprintf("Segments/%s_Segments_Labels", name), L);
 
 end
+%}

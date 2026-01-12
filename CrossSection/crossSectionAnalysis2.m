@@ -90,6 +90,7 @@ for t = 1:numFrames
 
     % Compute average velocity
     v = mean(v_profile(c1:c2), 'omitnan');
+    v_safe = mean(v_profile, "all", 'omitnan');
 
     [histo, ~] = histcounts(subFrame(~isnan(subFrame)), linspace(0, 60, 6)); % % HARD CODED
     results.v_histo{t} = histo;
@@ -126,6 +127,7 @@ for t = 1:numFrames
 
     % Store results
     results.v(t) = v;
+    results.v_safe(t) = v_safe;
     results.v_SE(t) = v_SE;
     results.Q(t) = Q;
     results.Q_SE(t) = Q_SE;

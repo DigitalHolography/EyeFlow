@@ -120,6 +120,7 @@ end
 Q_cell = cell(numCircles, numBranches); % Average flow rate
 Q_SE_cell = cell(numCircles, numBranches); % Standard deviation of flow rate
 v_cell = cell(numCircles, numBranches); % Top velocity
+v_safe_cell = cell(numCircles, numBranches);
 v_SE_cell = cell(numCircles, numBranches); % Standard deviation of velocity
 v_profiles_cell = cell(numCircles, numBranches); % Top velocity
 v_profiles_SE_cell = cell(numCircles, numBranches); % Standard deviation of velocity
@@ -144,6 +145,7 @@ for c_idx = 1:numCircles
 
             % Map outputs to variables
             v_cell{c_idx, b_idx} = cross_section_results.v;
+            v_safe_cell{c_idx, b_idx} = cross_section_results.v_safe;
             v_SE_cell{c_idx, b_idx} = cross_section_results.v_SE;
             v_profiles_cell{c_idx, b_idx} = cross_section_results.v_profiles;
             v_profiles_SE_cell{c_idx, b_idx} = cross_section_results.v_profiles_SE;
@@ -219,6 +221,7 @@ results.D_cell = D_cell;
 results.A_cell = A_cell;
 results.maskLabel = maskLabel;
 results.v_cell = v_cell;
+results.v_safe_cell = v_safe_cell;
 results.v_profiles_cell = v_profiles_cell;
 results.Q_cell = Q_cell;
 results.branch_Q = branch_Q;
