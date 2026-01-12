@@ -124,8 +124,12 @@ for i = 1:size(alphaWom, 1)
     end
 end
 
-exportSegmentsValueToH5(name+"_Wom_alpha",maskLabel,alphaWom,"Womersley");
-
+%exportSegmentsValueToH5(name+"_Wom_alpha",maskLabel,alphaWom,"Womersley");
+if strcmp(name,"artery")
+    ToolBox.Output.add(sprintf("ArteryAlphaWomersley"), alphaWom, [], "", h5path="Artery/CrossSections/Womersley/Alpha");
+elseif strcmp(name,"vein")
+    ToolBox.Output.add(sprintf("VeinAlphaWomersley"), alphaWom, [], "", h5path="Vein/CrossSections/Womersley/Alpha");
+end
 fprintf("    1.(bis) optional Flow Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
 
 % 2. Sections Figures
