@@ -22,6 +22,10 @@ M0_ff_img = squeeze(mean(M0_ff, 3));
 % R = [];
 % exportVideos = params.exportVideos;
 
+if ~any(maskArtery,"all")
+    error("Given Pre Mask Artery is completely empty.");
+end
+
 % if the correlation map is used by the model, compute it
 if mask_params.AVCorrelationSegmentationNet
     fprintf("Compute correlation for artery/vein segmentation\n");
