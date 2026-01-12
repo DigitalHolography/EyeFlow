@@ -78,8 +78,7 @@
     "OutOfNoiseThreshold": 4,
     "BlurScaleFactor": 100,
     "OneCycle InterpolationPoints": 256,
-    "OneCycle OutOfNoiseThreshold": 85,
-    "ExtendedFlag": false
+    "OneCycle OutOfNoiseThreshold": 85
   },
   "SizeOfField": {
     "SmallRadiusRatio": 0.10,

@@ -5,9 +5,7 @@ arguments
 end
 
 metrics = get_array_field(womersley_results, "metrics");
-
 alpha_n_arr = get_array_field(womersley_results, "alpha_n");
-
 R0_arr = get_array_field(womersley_results, "R0");
 
 % create_violin([alpha_n_arr]);

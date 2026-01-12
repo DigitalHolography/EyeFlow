@@ -86,6 +86,8 @@ if any(contains(string(vesselnessMethod), ["matchedFilter", "frangi"]))
     M0_video(~B) = NaN;
     clear A B
     M0_img = squeeze(mean(M0_video, 3, 'omitnan'));
+else
+    M0_video = M0_ff;
 end
 
 % 1) 1) Compute vesselness response

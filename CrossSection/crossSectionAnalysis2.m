@@ -34,7 +34,7 @@ subImg = v_masked(yRange, xRange, :);
 subMask = ROI(yRange, xRange);
 
 % Apply the mask to only the relevant part
-subImg(repmat(~subMask, [1, 1, numFrames])) = NaN; 
+subImg(repmat(~subMask, [1, 1, numFrames])) = NaN;
 
 if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
     xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);

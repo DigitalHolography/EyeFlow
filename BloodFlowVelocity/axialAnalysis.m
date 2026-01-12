@@ -16,9 +16,6 @@ end
 % scalingFactor = 1000 * 1000 * 2 * params.json.PulseAnalysis.Lambda / sin(params.json.PulseAnalysis.Phi);
 [numX, numY, numFrames] = size(f_AVG);
 
-
-
-
 %% Section 1: Background Calculation
 
 tic
