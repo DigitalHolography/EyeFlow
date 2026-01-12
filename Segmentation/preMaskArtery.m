@@ -81,6 +81,10 @@ parfor i = 1:numBranches
     isPure(i) = check_validity(sig, fs);
 end
 
+if ~any(isPure) % in the case no periodicity is found keep default behavior with no filtering
+    isPure = ones([1, numBranches]);
+end
+
 % Step 4: Combine them into final mask
 preMaskArtery = false(size(maskVesselness));
 preMaskVein = false(size(maskVesselness));
