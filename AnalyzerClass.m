@@ -177,8 +177,8 @@ methods
         exportCrossSectionResultsTimer = tic;
 
         ToolBox = getGlobalToolBox;
-        exportCrossSectionResults(executionObj.Cache.Q_results_A, 'artery', executionObj.Cache.M0_ff, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB, executionObj.displacementField);
-        exportCrossSectionResults(executionObj.Cache.Q_results_V, 'vein', executionObj.Cache.M0_ff, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB, executionObj.displacementField);
+        exportCrossSectionResults(executionObj.Cache.Q_results_A, 'artery', executionObj.Cache.M0_ff, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB, executionObj.Cache.displacementField);
+        exportCrossSectionResults(executionObj.Cache.Q_results_V, 'vein', executionObj.Cache.M0_ff, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB, executionObj.Cache.displacementField);
 
         maskVessel = ToolBox.Cache.maskVessel;
         sectionImageAdvanced(executionObj.Cache.M0_ff_img, executionObj.Cache.Q_results_A.maskLabel, executionObj.Cache.Q_results_V.maskLabel, executionObj.Cache.Q_results_A.rejected_mask, executionObj.Cache.Q_results_V.rejected_mask, maskVessel);
