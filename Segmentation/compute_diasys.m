@@ -47,11 +47,33 @@ if saveFigures
 
     X = [fullTime, flip(fullTime)];
     Y = [fullPulse, zeros(1, length(fullPulse))];
-    fill(X, Y, cLight, 'EdgeColor', 'none')
+    fill(X, Y, [1 1 1], 'EdgeColor', 'none')
 end
 
 % Find systole indexes and plot
 sysindexes = [];
+diasindexes = [];
+
+for idx = 1:numSys
+
+    try
+        start_idx = max(sys_index_list(idx) + round(fpCycle * 0.55), 1);
+        [~, end_idx] = min(fullPulse(start_idx:sys_index_list(idx) + round(fpCycle * 0.95)));
+        end_idx = end_idx + start_idx;
+        dias_range = start_idx:min(end_idx, numFrames);
+        diasindexes = [diasindexes, dias_range];
+
+        if saveFigures
+            plot(fullTime(dias_range), fullPulse(dias_range), 'Color', cLight, 'LineWidth', 2)
+            X = [fullTime(dias_range), flip(fullTime(dias_range))];
+            Y = [fullPulse(dias_range), zeros(1, length(dias_range))];
+            fill(X, Y, cLight, 'EdgeColor', 'none')
+        end
+
+    catch
+    end
+
+end
 
 for idx = 1:numSys
     xline(fullTime(sys_index_list(idx)), 'k--', 'LineWidth', 2)
@@ -79,9 +101,11 @@ end
 
 % Ensure sysindexes and diaindexes are within the bounds of the video size
 sysindexes = sysindexes(sysindexes >= 1 & sysindexes <= numFrames);
+diasindexes = diasindexes(diasindexes >= 1 & diasindexes <= numFrames);
 
 sysindexes = sort(unique(sysindexes));
-diasindexes = setdiff(1:numFrames, sysindexes);
+diasindexes = sort(unique(diasindexes));
+% diasindexes = setdiff(1:numFrames, sysindexes);
 
 % Compute the mean images
 M0_Systole_img = mean(video(:, :, sysindexes), 3, 'omitnan');
