@@ -251,7 +251,7 @@ methods
                 end
 
             else
-                warning("Non numeric ste given to save property : %s %d", props{i}, obj.data.(props{i}).standard_error);
+                warning_s("Non numeric ste given to save property : %s", props{i});
                 writeNumericToHDF5(file_path, h5path, obj.data.(props{i}).value);
                 h5writeatt(file_path, h5path, "unit", obj.data.(props{i}).unit);
             end
