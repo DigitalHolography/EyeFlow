@@ -238,12 +238,20 @@ methods
                 h5path = strcat("/", h5path);
             end
 
-            if ~isnan(obj.data.(props{i}).standard_error)
-                writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(props{i}).value);
-                h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(props{i}).unit);
-                writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data.(props{i}).standard_error);
-                h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data.(props{i}).unit);
+            if isnumeric(obj.data.(props{i}).standard_error)
+
+                if ~isnan(obj.data.(props{i}).standard_error)
+                    writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(props{i}).value);
+                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(props{i}).unit);
+                    writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data.(props{i}).standard_error);
+                    h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data.(props{i}).unit);
+                else
+                    writeNumericToHDF5(file_path, h5path, obj.data.(props{i}).value);
+                    h5writeatt(file_path, h5path, "unit", obj.data.(props{i}).unit);
+                end
+
             else
+                warning("Non numeric ste given to save property : %s %d", props{i}, obj.data.(props{i}).standard_error);
                 writeNumericToHDF5(file_path, h5path, obj.data.(props{i}).value);
                 h5writeatt(file_path, h5path, "unit", obj.data.(props{i}).unit);
             end

@@ -76,9 +76,7 @@
     "Phi": 0.25,
     "FilterSignals": true,
     "OutOfNoiseThreshold": 4,
-    "BlurScaleFactor": 100,
-    "OneCycle InterpolationPoints": 256,
-    "OneCycle OutOfNoiseThreshold": 85
+    "BlurScaleFactor": 100
   },
   "SizeOfField": {
     "SmallRadiusRatio": 0.10,
@@ -89,7 +87,8 @@
     "SegmentsLength": 0.025,
     "ScaleFactorWidth": 3,
     "MaskSliceThreshold": 0.01,
-    "PixelSize": 0.0191,
+    "RefPapillaSize": 1.91,
+    "DefaultPixelSize": 0.0191,
     "profileFitTresholdRatio": 0.1,
     "SliceHalfThickness": 10,
     "sectionMontage": true,
@@ -107,7 +106,13 @@
     "ARIBVR": true,
     "strokeAndTotalVolume": true,
     "hemodynamicParameters": false,
-    "InterpolationPoints": 50
+    "InterpolationPoints": 50,
+    "TimeWarp": {
+      "TimeWarpToPeriodic": false,
+      "SignalReplication": 4
+    },
+    "WomersleyMaxHarmonic": 6,
+    "WomersleySectionImage": false
   },
   "DebugMode": false
 }
