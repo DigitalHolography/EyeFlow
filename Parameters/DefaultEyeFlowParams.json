@@ -112,8 +112,10 @@
       "TimeWarpToPeriodic": false,
       "SignalReplication": 4
     },
-    "WomersleyMaxHarmonic": 6,
-    "WomersleySectionImage": false
+    "Womersley": {
+      "MaxHarmonic": 6,
+      "SectionImage": false
+    }
   },
   "DebugMode": false
 }

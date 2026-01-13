@@ -80,7 +80,7 @@ for circleIdx = 1:rows
 
     for branchIdx = 1:cols
 
-        idx = (circleIdx - 1) * cols + branchIdx;
+        % idx = (circleIdx - 1) * cols + branchIdx;
 
         % 1. Plot cardiac profiles
 
@@ -174,7 +174,7 @@ for circleIdx = 1:rows
         % temp_results = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
         % reshaped_results = reshape(temp_results, 1, 1, []);
         % womersley_results(circleIdx, branchIdx, 1:numel(reshaped_results)) = reshaped_results;
-        womersley_results(circleIdx, branchIdx) = Womersley.WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx, d_profile);
+        womersley_results(circleIdx, branchIdx) = Womersley.WomersleyNumberEstimation(profile_time, cardiac_frequency, name, circleIdx, branchIdx, d_profile);
 
         % addStructToExtra(ToolBox.Output.Extra, "Womersley", womersley_results(idx)(1));
 
@@ -183,7 +183,7 @@ for circleIdx = 1:rows
 
 end
 
-saveWomersleyResults("Womersley/" + capitalize(name), womersley_results, get_unit(womersley_results));
+saveWomersleyResults(capitalize(name) + "/CrossSections/Womersley", womersley_results, get_unit(womersley_results));
 
 % womersleyResultsAnalysis(womersley_results);
 
@@ -197,11 +197,6 @@ close(fi);
 close all;
 end
 
-function res = capitalize(str)
-res = char(str);
-res(1) = upper(res(1));
-res = string(res);
-end
 
 function saveWomersleyResults(BasePath, womersley_results, units_struct)
 
@@ -330,7 +325,16 @@ for i = 1:numel(field_names)
             fields_desc = [fields_desc, "harmonic"];
         end
 
-        ToolBox.Output.add(field, field_list, h5path = BasePath, unit = unit_field);
+        % HOTFIX (to replace)
+        if ~isreal(field_list)
+            imag_data = imag(field_list);
+            imag_data(isnan(field_list)) = NaN;
+            ToolBox.Output.add(replace("r/" + BasePath + field, "/", "_"), real(field_list), h5path = BasePath + field + "_r", unit = unit_field);
+            ToolBox.Output.add(replace("i/" + BasePath + field, "/", "_"), imag_data, h5path = BasePath + field + "_i", unit = unit_field);
+        else
+            ToolBox.Output.add(replace(BasePath + field, "/", "_"), field_list, h5path = BasePath + field, unit = unit_field);
+        end
+
         % TODO: Add Back the attributes
         % ToolBox.Output.DimOut.add_attributes(BasePath + field, "Description", desc_field);
 

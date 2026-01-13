@@ -1,4 +1,13 @@
-function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, d_profile)
+function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, circleIdx, branchIdx, d_profile)
+    arguments
+        v_profile
+        cardiac_frequency
+        name
+        circleIdx
+        branchIdx
+        d_profile
+    end
+
     ToolBox = getGlobalToolBox;
     params = ToolBox.getParams;
 
@@ -27,13 +36,13 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
         "geoParams",    geoParams   ...
     );
 
-    HARMONIC_NUMBER = params.json.exportCrossSectionResults.WomersleyMaxHarmonic;
+    HARMONIC_NUMBER = params.json.exportCrossSectionResults.Womersley.MaxHarmonic;
 
     % TODO: Parfor does not seem to work with toolbox
     for i = 1:HARMONIC_NUMBER
-        fitParams.RigidWallFixedNu(i)  = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="rigid");
-        fitParams.MovingWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="moving");
-        fitParams.RigidWallFreeNu(i)   = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="rigid", NuType="free");
+        fitParams.RigidWallFixedNu(i)  = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="rigid");
+        fitParams.MovingWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="moving");
+        fitParams.RigidWallFreeNu(i)   = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="rigid", NuType="free");
     end
 
     % Quality Control
@@ -73,9 +82,9 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
 end
 
 
-function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox, options)
+function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox, options)
     arguments
-        v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox
+        v_profile, cardiac_frequency, name, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox
         options.ModelType   string {mustBeMember(options.ModelType, ["rigid", "moving"])} = "moving"
         options.NuType      string {mustBeMember(options.NuType,    ["fixed", "free"  ])} = "fixed"
     end
@@ -96,7 +105,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     %   alphaWom          - Estimated Womersley number.
     %   pseudoViscosity   - Derived dynamic viscosity in Pa·s.
     %   fitParams         - A struct containing all fitted parameters.
-    
+
     params = ToolBox.getParams;
 
     NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
@@ -309,7 +318,7 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
         hFig = figure("Visible", "off");
         hold on;
     
-        title(sprintf('Womersley Fit for %s (idx %d) (Harmonic: %d)', name, idx, n_harmonic), 'Interpreter', 'none');
+        title(sprintf('Womersley Fit (%s, %s) for %s (%d, %d) (Harmonic: %d)', options.ModelType, options.NuType, name, circleIdx, branchIdx, n_harmonic), 'Interpreter', 'none');
         
         p1 = plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1, 'DisplayName', 'Measured Data');  % Measured Data (Real)
         plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1);    % Measured Data (Imag)

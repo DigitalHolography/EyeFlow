@@ -24,6 +24,6 @@ function exportSegmentsValueToH5(name, maskLabel, values, baseName, units)
         end
     end
     
-    ToolBox.Output.add(sprintf("%s_Segments_Labels", name), L, h5path = baseName, unit = units);
+    ToolBox.Output.add(sprintf("%s_Segments_Labels", name), L, h5path = baseName + sprintf("%s_Segments_Labels", name), unit = units);
 
 end

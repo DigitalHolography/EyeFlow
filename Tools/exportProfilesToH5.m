@@ -7,8 +7,29 @@ function exportProfilesToH5(name, v_cell, v_safe_cell)
     end
 
     ToolBox = getGlobalToolBox;
-    ToolBox.Output.add("velocity_trunc_seg_mean", v_cell, name);
-    ToolBox.Output.add("velocity_whole_seg_mean", v_safe_cell, name);
+    ToolBox.Output.add("velocity_trunc_seg_mean_" + name, toArray(v_cell),      h5path = capitalize(name) + "/velocity_trunc_seg_mean");
+    ToolBox.Output.add("velocity_whole_seg_mean_" + name, toArray(v_safe_cell), h5path = capitalize(name) + "/velocity_whole_seg_mean");
+end
+
+function v_array = toArray(v_cell)
+    [rows, cols] = size(v_cell);
+
+    firstIdx = find(~cellfun(@isempty, v_cell), 1);
+    if isempty(firstIdx)
+        error("The cell array is completely empty.");
+    end
+
+    vecLen = length(v_cell{firstIdx});
+    
+    v_array = zeros(rows, cols, vecLen, "double");
+    
+    for r = 1:rows
+        for c = 1:cols
+            if ~isempty(v_cell{r,c})
+                v_array(r, c, :) = double(v_cell{r,c});
+            end
+        end
+    end
 end
 
 % +============================================+ %
