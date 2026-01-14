@@ -66,7 +66,7 @@ interp_signal = one_cycle_signal;
 % test_signal = signal(idx1:idx2); % put your signal here
 % interp_signal = interp1(croppedTime, test_signal, pulseTime); % power of 2
 
-[peak_freqs, peaks, phase] = syntheticSpectralAnalysis(interp_signal, pulseTime, fs, 512);
+[peak_freqs, peaks, phase] = syntheticSpectralAnalysis(interp_signal, fs, 512);
 ToolBox.Output.add("VenousPeakFrequencies", peak_freqs, 'Hz', ...
     'h5path', "/Vein/Velocity/WaveformAnalysis/syntheticSpectralAnalysis/VenousPeakFrequencies");
 ToolBox.Output.add("VenousFourierAmplitude", peaks, 'mm/s', ...
