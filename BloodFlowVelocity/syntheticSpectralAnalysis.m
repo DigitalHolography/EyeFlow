@@ -67,7 +67,11 @@ if saveFigures
     xlabel("Time (s)"), ylabel("Blood Velocity (mm/s)")
     axis([t(1), t(end), 0, axP(4)])
 
-    exportgraphics(gca, fullfile(ToolBox.path_png, sprintf("%s_syntheticSpectralAnalysis.png", ToolBox.folder_name)), "Resolution", 300)
+    box on
+    set(gca, 'LineWidth', 2);
+    pbaspect([0.5, 1, 1]);
+
+    exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_syntheticSpectralAnalysis.png", ToolBox.folder_name)), "Resolution", 300)
 
 end
 
