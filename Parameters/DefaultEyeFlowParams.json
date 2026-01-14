@@ -93,7 +93,8 @@
     "SliceHalfThickness": 10,
     "sectionMontage": true,
     "diameterAnalysis": false,
-    "HydrodynamicDiameters": true
+    "HydrodynamicDiameters": true,
+    "velocityProfileThreshold": 0.5
   },
   "exportCrossSectionResults": {
     "sectionImage": true,
