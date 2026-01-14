@@ -147,10 +147,15 @@ end
 methods
 
     function obj = OutputClass()
+        structTemplate = struct(...
+            "value", [], ...
+            "h5path", "", ...
+            "attributes", []...
+            );
+        obj.data = dictionary(string, structTemplate);
     end
 
     function add(obj, name, value, unit, ste, vars)
-
         arguments
             obj
             name string
@@ -170,32 +175,44 @@ methods
             vars.standard_error = ste;
         end
 
-        obj.data.(name).value = value;
-        obj.data.(name).standard_error = vars.standard_error;
-        obj.data.(name).unit = vars.unit;
+        entry.value = value;
+        entry.attributes.standard_error = vars.standard_error;
+        entry.attributes.unit = vars.unit;
+
+        obj.data(name) = entry;
+
+        % obj.data(name).value = value;
+        % obj.data(name).attributes.standard_error = vars.standard_error;
+        % obj.data(name).attributes.unit = vars.unit;
 
         if vars.h5path == ""
-            obj.data.(name).h5path = sprintf("/%s", name);
+            obj.data(name).h5path = sprintf("/%s", name);
         else
-            obj.data.(name).h5path = (vars.h5path);
+            obj.data(name).h5path = (vars.h5path);
         end
 
     end
 
     function writeJson(obj, path)
-        props = fieldnames(obj.data);
+        props = keys(obj.data);
 
         d = containers.Map('KeyType', 'char', 'ValueType', 'any');
 
         for i = 1:length(props)
-            v = obj.data.(props{i}).value;
+            dic_key = props(i);
+            
+            if dic_key == ""
+                continue;
+            end
+
+            v = obj.data(dic_key).value;
 
             if isscalar(v)
 
-                if obj.data.(props{i}).unit == ""
-                    key = props{i};
+                if obj.data(dic_key).attributes.unit == ""
+                    key = dic_key;
                 else
-                    key = props{i} + "_" + obj.data.(props{i}).unit;
+                    key = dic_key + "_" + obj.data(dic_key).attributes.unit;
                 end
 
                 d(char(key)) = v;
@@ -227,28 +244,33 @@ methods
             delete(file_path)
         end
 
-        props = fieldnames(obj.data);
+        props = keys(obj.data);
 
         for i = 1:length(props)
+            dic_key = props(i);
+            
+            if dic_key == ""
+                continue;
+            end
 
-            h5path = (obj.data.(props{i}).h5path);
+            h5path = (obj.data(dic_key).h5path);
             temp = char(h5path);
 
             if temp(1) ~= '/'
                 h5path = strcat("/", h5path);
             end
 
-            if ~isnan(obj.data.(props{i}).standard_error)
-                writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(props{i}).value);
-                h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(props{i}).unit);
-                writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data.(props{i}).standard_error);
-                h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data.(props{i}).unit);
+            if ~isnan(obj.data(dic_key).attributes.standard_error)
+                writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data(dic_key).value);
+                h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data(dic_key).attributes.unit);
+                writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data(dic_key).attributes.standard_error);
+                h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data(dic_key).attributes.unit);
             else
-                writeNumericToHDF5(file_path, h5path, obj.data.(props{i}).value);
-                h5writeatt(file_path, h5path, "unit", obj.data.(props{i}).unit);
+                writeNumericToHDF5(file_path, h5path, obj.data(dic_key).value);
+                h5writeatt(file_path, h5path, "unit", obj.data(dic_key).attributes.unit);
             end
 
-            h5writeatt(file_path, h5path, "nameID", props{i});
+            h5writeatt(file_path, h5path, "nameID", dic_key);
 
         end
 

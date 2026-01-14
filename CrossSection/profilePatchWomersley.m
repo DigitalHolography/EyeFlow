@@ -329,8 +329,8 @@ for i = 1:numel(field_names)
         if ~isreal(field_list)
             imag_data = imag(field_list);
             imag_data(isnan(field_list)) = NaN;
-            ToolBox.Output.add(replace("r/" + BasePath + field, "/", "_"), real(field_list), h5path = BasePath + field + "_r", unit = unit_field);
-            ToolBox.Output.add(replace("i/" + BasePath + field, "/", "_"), imag_data, h5path = BasePath + field + "_i", unit = unit_field);
+            ToolBox.Output.add(replace(BasePath + field + "/r", "/", "_"), real(field_list), h5path = BasePath + field + "_r", unit = unit_field);
+            ToolBox.Output.add(replace(BasePath + field + "/i", "/", "_"), imag_data, h5path = BasePath + field + "_i", unit = unit_field);
         else
             ToolBox.Output.add(replace(BasePath + field, "/", "_"), field_list, h5path = BasePath + field, unit = unit_field);
         end

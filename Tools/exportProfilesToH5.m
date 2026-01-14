@@ -7,8 +7,8 @@ function exportProfilesToH5(name, v_cell, v_safe_cell)
     end
 
     ToolBox = getGlobalToolBox;
-    ToolBox.Output.add("velocity_trunc_seg_mean_" + name, toArray(v_cell),      h5path = capitalize(name) + "/velocity_trunc_seg_mean");
-    ToolBox.Output.add("velocity_whole_seg_mean_" + name, toArray(v_safe_cell), h5path = capitalize(name) + "/velocity_whole_seg_mean");
+    ToolBox.Output.add("velocity_trunc_seg_mean_" + name, toArray(v_cell),      h5path = capitalize(name) + "/CrossSections/velocity_trunc_seg_mean");
+    ToolBox.Output.add("velocity_whole_seg_mean_" + name, toArray(v_safe_cell), h5path = capitalize(name) + "/CrossSections/velocity_whole_seg_mean");
 end
 
 function v_array = toArray(v_cell)
@@ -21,7 +21,7 @@ function v_array = toArray(v_cell)
 
     vecLen = length(v_cell{firstIdx});
     
-    v_array = zeros(rows, cols, vecLen, "double");
+    v_array = nan(rows, cols, vecLen, "double");
     
     for r = 1:rows
         for c = 1:cols

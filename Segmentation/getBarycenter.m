@@ -15,7 +15,7 @@ else
     f_AVG_mean = f_AVG;
 end
 
-ToolBox.Output.add("f_AVG_mean", f_AVG_mean, h5path = '/f_AVG_mean');
+ToolBox.Output.add("f_AVG_mean", f_AVG_mean, h5path = "/Maps/f_AVG_mean");
 
 if max(f_AVG_mean, [], 'all') <= 0
     figure;

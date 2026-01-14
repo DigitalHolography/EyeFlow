@@ -40,7 +40,7 @@ methods
 
         ToolBox.Cache.M0_ff_img = M0_ff_img;
 
-        ToolBox.Output.add("M0_ff_img", M0_ff_img, h5path = '/M0_ff_img');
+        ToolBox.Output.add("M0_ff_img", M0_ff_img, h5path = "/Maps/M0_ff_img");
 
         % Optic disk
         try

@@ -121,52 +121,53 @@ for f = [
              "UnixTimestampLast", ...
          ]
 
-if ~isfield(outputs, f)
-    outputs.(f).value = NaN;
-    outputs.(f).unit = "";
+if ~isKey(outputs, f)
+    entry.value = NaN;
+    entry.attributes.unit = "";
+    outputs(f) = entry;
 end
 
 end
 
 % Parameters
 % Arterious Velocities
-parameters.Max_Arterial_Velocity = outputs.ArteryVelocityMax;
-parameters.Average_Arterial_Velocity = outputs.ArteryVelocityMean;
-parameters.Min_Arterial_Velocity = outputs.ArteryVelocityMin;
+parameters.Max_Arterial_Velocity = outputs("ArteryVelocityMax");
+parameters.Average_Arterial_Velocity = outputs("ArteryVelocityMean");
+parameters.Min_Arterial_Velocity = outputs("ArteryVelocityMin");
 
 % Venous Velocities
-parameters.Max_Venous_Velocity = outputs.VeinVelocityMax;
-parameters.Average_Venous_Velocity = outputs.VeinVelocityMean;
-parameters.Min_Venous_Velocity = outputs.VeinVelocityMin;
+parameters.Max_Venous_Velocity = outputs("VeinVelocityMax");
+parameters.Average_Venous_Velocity = outputs("VeinVelocityMean");
+parameters.Min_Venous_Velocity = outputs("VeinVelocityMin");
 
 % Indexes
-parameters.ARI = outputs.ArteryResistivityIndexVelocity;
-parameters.VRI = outputs.VeinResistivityIndexVelocity;
-parameters.API = outputs.ArteryPulsatilityIndexVelocity;
-parameters.VPI = outputs.VeinPulsatilityIndexVelocity;
+parameters.ARI = outputs("ArteryResistivityIndexVelocity");
+parameters.VRI = outputs("VeinResistivityIndexVelocity");
+parameters.API = outputs("ArteryPulsatilityIndexVelocity");
+parameters.VPI = outputs("VeinPulsatilityIndexVelocity");
 
 % Other Parameters
-parameters.TimePeakToDescent = outputs.ArteryTimePeakToDescent;
-parameters.VeinTimeToPeakFromMin = outputs.VeinTimeToPeakFromMin;
-parameters.DicroticNotchVisibility = outputs.DicroticNotchVisibility;
+parameters.TimePeakToDescent = outputs("ArteryTimePeakToDescent");
+parameters.VeinTimeToPeakFromMin = outputs("VeinTimeToPeakFromMin");
+parameters.DicroticNotchVisibility = outputs("DicroticNotchVisibility");
 
 % Volume Rates
-parameters.Average_Arterial_Volume_Rate = outputs.ArteryFlowRateMean;
-parameters.Average_Venous_Volume_Rate = outputs.VeinFlowRateMean;
+parameters.Average_Arterial_Volume_Rate = outputs("ArteryFlowRateMean");
+parameters.Average_Venous_Volume_Rate = outputs("VeinFlowRateMean");
 
 % Heart Rate and Blood Pressure
-parameters.heart_beat = outputs.HeartBeat;
+parameters.heart_beat = outputs("HeartBeat");
 
 if isfield(outputs, 'ArterialSystolicFraction')
-    parameters.arterial_systolic_fraction = outputs.ArterySystolicFraction;
-    parameters.arterial_diastolic_fraction = outputs.ArteryDiastolicFraction;
+    parameters.arterial_systolic_fraction = outputs("ArterySystolicFraction");
+    parameters.arterial_diastolic_fraction = outputs("ArteryDiastolicFraction");
 end
 
-% parameters.time_2_systolic_peak = outputs.Time2SystolicPeak;
-parameters.SystoleDuration = outputs.SystoleDuration;
-parameters.DiastoleDuration = outputs.DiastoleDuration;
-parameters.UnixTimestampFirst = outputs.UnixTimestampFirst;
-parameters.UnixTimestampLast = outputs.UnixTimestampLast;
+% parameters.time_2_systolic_peak = outputs("Time2SystolicPeak");
+parameters.SystoleDuration = outputs("SystoleDuration");
+parameters.DiastoleDuration = outputs("DiastoleDuration");
+parameters.UnixTimestampFirst = outputs("UnixTimestampFirst");
+parameters.UnixTimestampLast = outputs("UnixTimestampLast");
 
 % Create a new figure with A4 paper size (in centimeters)
 fig = figure('Units', 'centimeters', ...
@@ -244,7 +245,7 @@ paramText = cell(numParams, 1);
 for i = 1:numParams
     paramValue = parameters.(paramNames{i});
     fmt = chooseFormat(paramNames{i});
-    paramText{i} = sprintf('%s %s', sprintf(fmt, paramValue.value), paramValue.unit);
+    paramText{i} = sprintf('%s %s', sprintf(fmt, paramValue.value), paramValue.attributes.unit);
 end
 
 paramFontSize = 12;
