@@ -53,13 +53,25 @@ if saveFigures
     axis([t(1), t(end), 0, axP(4)])
     xlabel("Time (s)"), ylabel("Blood Velocity (mm/s)")
 
+    box on
+    set(gca, 'LineWidth', 2);
+    pbaspect([2.5, 1, 1]);
+
     subplot(4, 1, 2), plot(f, fft_mag, 'k', 'LineWidth', 2),
     hold on, scatter(peak_freqs, peaks), xlim([0 10])
     xlabel("Frequency (Hz)"), ylabel("Magnitude |Y|")
 
+    box on
+    set(gca, 'LineWidth', 2);
+    pbaspect([2.5, 1, 1]);
+
     subplot(4, 1, 3), plot(f, fft_angle / pi, 'k', 'LineWidth', 2),
     hold on, scatter(peak_freqs, phase / pi), xlim([0 10]), ylim([-1 1])
     xlabel("Frequency (Hz)"), ylabel("Phase / \pi")
+
+    box on
+    set(gca, 'LineWidth', 2);
+    pbaspect([2.5, 1, 1]);
 
     subplot(4, 1, 4), plot(t, newSignal, 'k', 'LineWidth', 2),
     hold on, plot(t, signal, 'r', 'LineWidth', 1.5),
@@ -69,7 +81,7 @@ if saveFigures
 
     box on
     set(gca, 'LineWidth', 2);
-    pbaspect([0.5, 1, 1]);
+    pbaspect([2.5, 1, 1]);
 
     exportgraphics(gcf, fullfile(ToolBox.path_png, sprintf("%s_syntheticSpectralAnalysis.png", ToolBox.folder_name)), "Resolution", 300)
 
