@@ -43,7 +43,7 @@ phase = fft_angle(peak_locs);
 % Display
 if saveFigures
     % Create figure
-    f = figure("Visible", "off", "Color", 'w');
+    figure("Visible", "off", "Color", 'w');
 
     % Display Magnitude
     subplot(2, 1, 1), plot(f, fft_mag, 'k', 'LineWidth', 2),
@@ -56,7 +56,7 @@ if saveFigures
     pbaspect([2.5, 1, 1]);
 
     % Display Phase
-    subplot(2, 1, 1), plot(f, fft_angle / pi, 'k', 'LineWidth', 2),
+    subplot(2, 1, 2), plot(f, fft_angle / pi, 'k', 'LineWidth', 2),
     hold on,
     scatter(peak_freqs, phase / pi), xlim([0 10]), ylim([-1 1])
     xlabel("Frequency (Hz)"), ylabel("Phase / \pi")

@@ -30,7 +30,8 @@ w = jsonParams.PulseAnalysis.LocalBackgroundWidth;
 d = jsonParams.PulseAnalysis.LocalBackgroundDist;
 k = jsonParams.Preprocess.InterpolationFactor;
 bkg_scaler = jsonParams.PulseAnalysis.bkgScaler;
-scalingFactor = 1000 * 1000 * 2 * jsonParams.PulseAnalysis.Lambda / jsonParams.PulseAnalysis.Phi;
+scalingFactor = 1000 * 1000 * jsonParams.PulseAnalysis.CorrectionCoeff * ...
+    2 * jsonParams.PulseAnalysis.Lambda / jsonParams.PulseAnalysis.Phi;
 r1 = jsonParams.SizeOfField.SmallRadiusRatio;
 r2 = jsonParams.SizeOfField.BigRadiusRatio;
 
