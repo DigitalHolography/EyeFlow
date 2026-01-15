@@ -131,7 +131,7 @@ subImg_cell = cell(numCircles, numBranches); % Sub-images of vessels
 histo_v_cell = cell(numCircles, numBranches); % Histograms of vessel velocities
 
 % Cross-Section Analysis of the arteries
-for c_idx = 1:numCircles
+parfor c_idx = 1:numCircles
 
     for b_idx = 1:numBranches
 
@@ -140,7 +140,7 @@ for c_idx = 1:numCircles
             patchName = sprintf('%s%d_C%d', initial, b_idx, c_idx);
             [cross_section_results] = crossSectionAnalysis2(ToolBox, ...
                 locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, ...
-                xy_barycenter, v_RMS, patchName, papillaDiameter);
+                xy_barycenter, v_RMS, patchName);
 
             % Map outputs to variables
             v_cell{c_idx, b_idx} = cross_section_results.v;

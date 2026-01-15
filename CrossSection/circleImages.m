@@ -141,7 +141,7 @@ if saveFigures
 
         % Capture and resize frame for video
         figure(fig1);
-        capturedFrame = frame2im(getframe(fig1));
+        capturedFrame = frame2im(getframe(gca));
         resizedFrame = rescale(imresize(capturedFrame, [numX, numY]));
         vesselD_video(:, :, :, cIdx) = resizedFrame;
 

@@ -74,6 +74,7 @@
     "bkgScaler": 5,
     "Lambda": 8.52E-7,
     "Phi": 0.25,
+    "CorrectionCoeff": 1,
     "FilterSignals": true,
     "OutOfNoiseThreshold": 4,
     "BlurScaleFactor": 100,
@@ -94,7 +95,8 @@
     "SliceHalfThickness": 10,
     "sectionMontage": true,
     "diameterAnalysis": false,
-    "HydrodynamicDiameters": true
+    "HydrodynamicDiameters": true,
+    "velocityProfileThreshold": 0.5
   },
   "exportCrossSectionResults": {
     "sectionImage": true,
