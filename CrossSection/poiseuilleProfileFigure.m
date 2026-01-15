@@ -1,12 +1,14 @@
 function poiseuilleProfileFigure(subImg, px_size, p1, p2, p3, r1, r2, figName, ToolBox)
 
+params = ToolBox.getParams;
 % Compute velocity profile
 profile = mean(subImg, 1, 'omitnan');
 profile(isnan(profile)) = 0;
 L = length(profile);
 
 % Find all points above 50% threshold
-central_range = find(profile > 0.2 * max(profile));
+hydrodynamicFloor = params.json.generateCrossSectionSignals.velocityProfileThreshold;
+central_range = find(profile > hydrodynamicFloor * max(profile));
 centt = mean(central_range);
 
 % Calculate x-axis values (position in µm)
@@ -41,6 +43,11 @@ x_fit = linspace(min(r_), max(r_), 100) / 1000; % Interpolate for smooth fit
 y_fit = p1 * x_fit .^ 2 + p2 * x_fit + p3;
 plot(x_fit * 1000, y_fit, 'k', 'LineWidth', 1.5);
 
+% Plot half-maximum line
+hydrodynamicFloor = params.json.generateCrossSectionSignals.velocityProfileThreshold;
+halfVelocity = hydrodynamicFloor * max(profile);
+yline(halfVelocity, '--', 'Color', [0.2 0.2 0.2], 'LineWidth', 1);
+
 % Plot vessel boundaries
 plot(r1 * 1000, -2, 'k|', 'MarkerSize', 10, 'LineWidth', 1.5);
 plot(r2 * 1000, -2, 'k|', 'MarkerSize', 10, 'LineWidth', 1.5);
@@ -49,7 +56,7 @@ plot(linspace(r1 * 1000, r2 * 1000, 10), repmat(-2, 10), '-k', 'LineWidth', 1.5)
 % Adjust axes
 axis tight
 axT = axis;
-axis([axT(1), axT(2), - 5, 40])
+axis([axT(1), axT(2), - 5, 60])
 
 box on
 set(gca, 'LineWidth', 2);

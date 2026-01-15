@@ -23,21 +23,6 @@ properties
     % AI Networks
     AINetworks AINetworksClass
 
-    % Preprocessed Data
-    M0_ff single
-    M0_ff_img single
-    f_RMS single
-    f_AVG single
-    displacementField
-
-    % Analysis Results
-    vRMS single
-    v_video_RGB uint8
-    v_mean_RGB uint8
-    Q_results_A
-    Q_results_V
-    eye_side = "none"
-
     % Processing Flags
     is_preprocessed = false
     is_segmented = false
@@ -111,11 +96,11 @@ methods
         Preprocessor.preprocess(obj);
 
         % Copy results back for backward compatibility
-        obj.M0_ff = Preprocessor.M0_ff;
-        obj.M0_ff_img = squeeze(mean(obj.M0_ff, 3));
-        obj.f_RMS = Preprocessor.f_RMS;
-        obj.f_AVG = Preprocessor.f_AVG;
-        obj.displacementField = Preprocessor.displacementField;
+        obj.Cache.M0_ff = Preprocessor.M0_ff;
+        obj.Cache.M0_ff_img = squeeze(mean(obj.Cache.M0_ff, 3));
+        obj.Cache.f_RMS = Preprocessor.f_RMS;
+        obj.Cache.f_AVG = Preprocessor.f_AVG;
+        obj.Cache.displacementField = Preprocessor.displacementField;
         obj.is_preprocessed = Preprocessor.is_preprocessed;
 
         % Clear Preprocessor and intermediate variables
@@ -141,7 +126,7 @@ methods
         ToolBox.setOutput(obj.Output);
         ToolBox.setCache(obj.Cache);
 
-        obj.Cache.createtimeVector(ToolBox, size(obj.M0_ff, 3));
+        obj.Cache.createTimeVector(ToolBox, size(obj.Cache.M0_ff, 3));
 
         obj.Reporter = ReporterClass(obj);
 
@@ -154,7 +139,7 @@ methods
 
         % Execute eye side analysis if asked
         if params.json.Mask.EyeSideClassifierNet
-            obj.eye_side = predictEyeSide(obj.AINetworks.EyeSideClassifierNet, obj.M0_ff_img);
+            predictEyeSide(obj.AINetworks.EyeSideClassifierNet);
         end
 
         % Execute analysis steps based on checkbox flags
@@ -164,9 +149,6 @@ methods
 
         if obj.flag_bloodFlowVelocity_analysis
             obj.Analyzer.performPulseAnalysis(obj);
-            obj.vRMS = obj.Analyzer.Cache.vRMS;
-            obj.v_video_RGB = obj.Analyzer.Cache.v_video_RGB;
-            obj.v_mean_RGB = obj.Analyzer.Cache.v_mean_RGB;
         end
 
         try
@@ -184,8 +166,6 @@ methods
 
             if obj.flag_crossSection_analysis
                 obj.Analyzer.performCrossSectionAnalysis(obj);
-                obj.Q_results_A = obj.Analyzer.Cache.Q_results_A;
-                obj.Q_results_V = obj.Analyzer.Cache.Q_results_V;
             end
 
             if obj.flag_crossSection_export
@@ -215,20 +195,20 @@ methods
         % Visual check of loaded/preprocessed data
         figure
 
-        if ~isempty(obj.M0_ff)
+        if ~isempty(obj.Cache.M0_ff)
             subplot(2, 2, 1)
-            imagesc(mean(obj.M0_ff, 3))
+            imagesc(mean(obj.Cache.M0_ff, 3))
             axis image off
             subplot(2, 2, 2)
-            imagesc(mean(obj.f_AVG, 3))
+            imagesc(mean(obj.Cache.f_AVG, 3))
             axis image off
             subplot(2, 2, 3)
-            imagesc(mean(obj.f_RMS, 3))
+            imagesc(mean(obj.Cache.f_RMS, 3))
             axis image off
 
-            if ~isempty(obj.displacementField)
+            if ~isempty(obj.Cache.displacementField)
                 subplot(2, 2, 4)
-                imagesc(sqrt(mean(obj.displacementField .^ 2, 4)))
+                imagesc(sqrt(mean(obj.Cache.displacementField .^ 2, 4)))
                 axis image off
             end
 

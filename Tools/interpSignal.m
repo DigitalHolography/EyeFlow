@@ -21,7 +21,7 @@ end
 avgLength = mean(findIndxs(2:end) - findIndxs(1:end - 1));
 
 for i = 1:(length(findIndxs) - 1)
-    X = findIndxs(i):findIndxs(i + 1);
+    X = findIndxs(i):findIndxs(i + 1) - 1;
     interpSig = interpSig + interp1(X, sig(X), linspace(X(1), X(end), Ninterp));
 end
 
@@ -31,7 +31,7 @@ if nargin > 3
     interpstdSig = zeros([1 Ninterp]);
 
     for i = 1:(length(findIndxs) - 1)
-        X = findIndxs(i):findIndxs(i + 1);
+        X = findIndxs(i):findIndxs(i + 1) - 1;
         interpstdSig = interpstdSig + interp1(X, stdSig(X), linspace(X(1), X(end), Ninterp)) .^ 2;
     end
 

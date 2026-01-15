@@ -11,11 +11,13 @@ dt = 1 / fs;
 % Step 1: Separate mask into branches
 [label, n] = labelVesselBranches(maskVesselness, true(size(maskVesselness)), ...
     ToolBox.Cache.xy_barycenter, 'refine', false);
+
 if (n + 1) <= 256
-    cmapjet = jet(n+1);
+    cmapjet = jet(n + 1);
 else
     cmapjet = jet(256);
 end
+
 saveMaskImage(uint16(label), 'all_20_label_Vesselness.png', isStep = true, cmap = cmapjet);
 
 % Step 2: Compute average signal of video for each branch
@@ -79,6 +81,10 @@ isPure = false(numBranches, 1);
 parfor i = 1:numBranches
     sig = signals_n(i, :);
     isPure(i) = check_validity(sig, fs);
+end
+
+if ~any(isPure) % in the case no periodicity is found keep default behavior with no filtering
+    isPure = ones([1, numBranches]);
 end
 
 % Step 4: Combine them into final mask

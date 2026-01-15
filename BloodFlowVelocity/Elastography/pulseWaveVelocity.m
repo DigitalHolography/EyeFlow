@@ -1,4 +1,4 @@
-function [PWV, dPWV, score] = pulseWaveVelocity(U, mask, branch_index, name, ToolBox)
+function [PWV, dPWV, Ty, score] = pulseWaveVelocity(U, mask, branch_index, name, ToolBox)
 % Computes the pulse wave velocity based on a cross correlation computation
 % U is the field over which we compute the velocity and mask is the mask of
 % the selected retinal artery
@@ -18,6 +18,7 @@ N_frame = size(U, 3);
 PWV = NaN; % initialize output
 dPWV = NaN;
 score = NaN;
+Ty = NaN;
 
 outputDir = fullfile(ToolBox.path_png, 'flexion', sprintf("%s_branch_%d", name, branch_index));
 
@@ -88,7 +89,7 @@ for kb = 2:numpoints
 end
 
 for kb = 2:numpoints
-    abs_dist(kb) = abs_dist(kb - 1) + sqrt((absx(kb) - absx(kb - 1)) ^ 2 + (absy(kb) - absy(kb - 1)) ^ 2) * params.px_size;
+    abs_dist(kb) = abs_dist(kb - 1) + sqrt((absx(kb) - absx(kb - 1)) ^ 2 + (absy(kb) - absy(kb - 1)) ^ 2) * ToolBox.Cache.pixelSize;
 end
 
 if abs_dist(end) < 1.5 % minimal distance in mm
@@ -218,8 +219,8 @@ Ux_n = Ux_n';
 
 % Import the reference signals
 
-arterialVelocity = ToolBox.Output.Signals.ArterialVelocity.yvalues;
-venousVelocity = ToolBox.Output.Signals.VenousVelocity.yvalues;
+arterialVelocity = ToolBox.Cache.ArterialVelocity;
+venousVelocity = ToolBox.Cache.VeinVelocity;
 
 % normalize signals
 arterialVelocity_norm = (arterialVelocity - mean(arterialVelocity)) / std(arterialVelocity);
@@ -268,7 +269,7 @@ end
 Ravg(isnan(Ravg)) = 0;
 Ravg = Ravg';
 
-[PWV, dPWV, ~, ~, ~, score] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index, ToolBox);
+[PWV, dPWV, ~, Ty, ~, score] = fit_xyc(Ravg, (ToolBox.stride / ToolBox.fs / 1000), (abs_dist(end) / numpoints), name, branch_index, ToolBox);
 
 close all;
 end

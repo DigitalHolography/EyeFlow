@@ -35,40 +35,62 @@ methods
             mkdir(fullfile(ToolBox.path_eps, 'mask'), 'steps')
         end
 
-        ToolBox.Cache.xy_barycenter = getBarycenter(executionObj.f_AVG);
-        M0_ff_img = rescale(mean(executionObj.M0_ff, 3));
+        ToolBox.Cache.xy_barycenter = getBarycenter(executionObj.Cache.f_AVG);
+        M0_ff_img = rescale(mean(executionObj.Cache.M0_ff, 3));
 
         ToolBox.Cache.M0_ff_img = M0_ff_img;
 
-        ToolBox.Output.Extra.add("M0_ff_img", M0_ff_img);
+        ToolBox.Output.add("M0_ff_img", M0_ff_img, h5path = '/M0_ff_img');
 
         % Optic disk
-        try
+        try % papilla detection
+
             if ToolBox.getParams.json.Mask.OpticDiskSegmentationNet
                 % New model
                 [~, center_x, center_y, diameter_x, diameter_y] = predictOpticDisk(executionObj.AINetworks.OpticDiskSegmentationNet, M0_ff_img);
-            else
-                % Old model
+            elseif ToolBox.getParams.json.Mask.OpticDiskDetectorNet
                 [~, diameter_x, diameter_y, center_x, center_y] = findPapilla(M0_ff_img, executionObj.AINetworks.OpticDiskDetectorNet);
+            else
+                center_x = NaN;
+                center_y = NaN;
+                diameter_x = NaN;
+                diameter_y = NaN;
             end
 
             xy_papilla = [center_x, center_y];
             ToolBox.Cache.xy_papilla = xy_papilla;
+
+            ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2 / size(executionObj.Cache.M0_ff, 1), h5path = '/Papilla/Ratio');
+            ToolBox.Output.add("PapillaXY", xy_papilla, h5path = '/Papilla/XYCenter', unit = 'px');
         catch ME
             warning("Error while finding papilla : ")
             MEdisp(ME, ToolBox.EF_path);
+            center_x = NaN;
+            center_y = NaN;
             diameter_x = NaN;
             diameter_y = NaN;
         end
 
-        ToolBox.Cache.papillaDiameter = mean([diameter_x, diameter_y]);
+        params = ToolBox.getParams;
+        papillaDiameter = mean([diameter_x, diameter_y]);
+        ToolBox.Cache.papillaDiameter = papillaDiameter;
 
-        createMasks(executionObj.M0_ff, executionObj.AINetworks.VesselSegmentationNet, executionObj.AINetworks.AVSegmentationNet, executionObj.AINetworks.EyeDiaphragmSegmentationNet);
+        if isnan(papillaDiameter) % if is nan return to default
+            pixelSize = params.json.generateCrossSectionSignals.DefaultPixelSize / (2 ^ params.json.Preprocess.InterpolationFactor);
+        else
+            pixelSize = params.json.generateCrossSectionSignals.RefPapillaSize / mean([diameter_x, diameter_y]);
+        end
+
+        fprintf("Using pixel size : %f mm/pix \n", pixelSize);
+
+        ToolBox.Cache.pixelSize = pixelSize;
+
+        createMasks(executionObj.Cache.M0_ff, executionObj.AINetworks.VesselSegmentationNet, executionObj.AINetworks.AVSegmentationNet, executionObj.AINetworks.EyeDiaphragmSegmentationNet);
 
         % Artery score
         scoreA = ToolBox.Cache.scoreMaskArtery;
 
-        ToolBox.Output.add("QualityControlScoreMaskArtery", scoreA, '');
+        ToolBox.Output.add("QualityControlScoreMaskArtery", scoreA, '', h5path = '/Artery/Segmentation/QualityScore');
 
         if isempty(scoreA) || isnan(scoreA)
         else
@@ -80,12 +102,12 @@ methods
 
         end
 
-        ToolBox.Output.Extra.add("maskArtery", ToolBox.Cache.maskArtery);
+        ToolBox.Output.add("maskArtery", ToolBox.Cache.maskArtery, h5path = '/Artery/Segmentation/Mask');
 
         % Vein score (if veins analysis enabled)
         scoreV = ToolBox.Cache.scoreMaskVein;
 
-        ToolBox.Output.add("QualityControlScoreMaskVein", scoreV, '');
+        ToolBox.Output.add("QualityControlScoreMaskVein", scoreV, '', h5path = '/Vein/Segmentation/QualityScore');
 
         if isempty(scoreV) || isnan(scoreV)
         else
@@ -97,7 +119,7 @@ methods
 
         end
 
-        ToolBox.Output.Extra.add("maskVein", ToolBox.Cache.maskVein);
+        ToolBox.Output.add("maskVein", ToolBox.Cache.maskVein, h5path = '/Vein/Segmentation/Mask');
 
         % Visualize the segmentation result
         M0_RGB = ToolBox.Cache.M0_RGB;
@@ -113,22 +135,15 @@ methods
         fprintf("- Mask Creation took: %ds\n", round(toc(createMasksTimer)));
     end
 
-    function performPulseAnalysis(obj, executionObj)
+    function performPulseAnalysis(~, executionObj)
         fprintf("\n----------------------------------\n" + ...
             "Blood Flow Velocity Analysis\n" + ...
         "----------------------------------\n");
         pulseAnalysisTimer = tic;
 
-        ToolBox = getGlobalToolBox;
-        params = ToolBox.getParams;
-        [obj.Cache.vRMS, obj.Cache.v_video_RGB, obj.Cache.v_mean_RGB] = pulseAnalysis(executionObj.f_RMS, executionObj.M0_ff);
+        [executionObj.Cache.vRMS, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB] = pulseAnalysis(executionObj.Cache.f_RMS, executionObj.Cache.M0_ff);
 
-        if params.json.PulseAnalysis.ExtendedFlag
-            f_AVG_mean = squeeze(mean(executionObj.f_AVG, 3));
-            extendedPulseAnalysis(executionObj.M0_ff, executionObj.f_RMS, f_AVG_mean, obj.Cache.vRMS);
-        end
-
-        axialAnalysis(executionObj.f_AVG);
+        axialAnalysis(executionObj.Cache.f_AVG);
 
         executionObj.is_velocityAnalyzed = true;
         fprintf("- Blood Flow Velocity Analysis took: %ds\n", round(toc(pulseAnalysisTimer)));
@@ -143,14 +158,14 @@ methods
         ToolBox = getGlobalToolBox;
         maskArtery = ToolBox.Cache.maskArtery;
         maskVein = ToolBox.Cache.maskVein;
-        pulseVelocity(executionObj.M0_ff, executionObj.displacementField, maskArtery, 'artery');
-        pulseVelocity(executionObj.M0_ff, executionObj.displacementField, maskVein, 'vein');
+        pulseVelocity(executionObj.Cache.M0_ff, executionObj.Cache.displacementField, maskArtery, 'artery');
+        pulseVelocity(executionObj.Cache.M0_ff, executionObj.Cache.displacementField, maskVein, 'vein');
 
         time_pulsevelocity = toc(pulseVelocityTimer);
         fprintf("- Pulse Velocity Calculations took : %ds\n", round(time_pulsevelocity))
     end
 
-    function performCrossSectionAnalysis(obj, executionObj)
+    function performCrossSectionAnalysis(~, executionObj)
         fprintf("\n----------------------------------\n" + ...
             "Generate Cross-Section Signals\n" + ...
         "----------------------------------\n");
@@ -159,28 +174,28 @@ methods
         ToolBox = getGlobalToolBox;
         maskArtery = ToolBox.Cache.maskArtery;
         maskVein = ToolBox.Cache.maskVein;
-        [obj.Cache.Q_results_A] = generateCrossSectionSignals(maskArtery, 'artery', obj.Cache.vRMS, executionObj.M0_ff);
-        [obj.Cache.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', obj.Cache.vRMS, executionObj.M0_ff);
+        [executionObj.Cache.Q_results_A] = generateCrossSectionSignals(maskArtery, 'artery', executionObj.Cache.vRMS, executionObj.Cache.M0_ff, executionObj.Cache.displacementField);
+        [executionObj.Cache.Q_results_V] = generateCrossSectionSignals(maskVein, 'vein', executionObj.Cache.vRMS, executionObj.Cache.M0_ff, executionObj.Cache.displacementField);
 
         executionObj.is_volumeRateAnalyzed = true;
         fprintf("- Cross-Section Signals Generation took: %ds\n", round(toc(crossSectionAnalysisTimer)));
     end
 
-    function generateexportCrossSectionResults(obj, executionObj)
+    function generateexportCrossSectionResults(~, executionObj)
         fprintf("\n----------------------------------\n" + ...
             "Export Cross-Section Results\n" + ...
         "----------------------------------\n");
         exportCrossSectionResultsTimer = tic;
 
         ToolBox = getGlobalToolBox;
-        exportCrossSectionResults(obj.Cache.Q_results_A, 'artery', executionObj.M0_ff, obj.Cache.v_video_RGB, obj.Cache.v_mean_RGB);
-        exportCrossSectionResults(obj.Cache.Q_results_V, 'vein', executionObj.M0_ff, obj.Cache.v_video_RGB, obj.Cache.v_mean_RGB);
+        exportCrossSectionResults(executionObj.Cache.Q_results_A, 'artery', executionObj.Cache.M0_ff, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB, executionObj.Cache.displacementField);
+        exportCrossSectionResults(executionObj.Cache.Q_results_V, 'vein', executionObj.Cache.M0_ff, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB, executionObj.Cache.displacementField);
 
         maskVessel = ToolBox.Cache.maskVessel;
-        sectionImageAdvanced(obj.Cache.M0_ff_img, obj.Cache.Q_results_A.maskLabel, obj.Cache.Q_results_V.maskLabel, obj.Cache.Q_results_A.rejected_mask, obj.Cache.Q_results_V.rejected_mask, maskVessel);
+        sectionImageAdvanced(executionObj.Cache.M0_ff_img, executionObj.Cache.Q_results_A.maskLabel, executionObj.Cache.Q_results_V.maskLabel, executionObj.Cache.Q_results_A.rejected_mask, executionObj.Cache.Q_results_V.rejected_mask, maskVessel);
 
         try
-            combinedCrossSectionAnalysis(obj.Cache.Q_results_A, obj.Cache.Q_results_V, executionObj.M0_ff)
+            combinedCrossSectionAnalysis(executionObj.Cache.Q_results_A, executionObj.Cache.Q_results_V, executionObj.Cache.M0_ff)
         catch ME
             MEdisp(ME, ToolBox.EF_path);
         end
@@ -208,7 +223,7 @@ methods
         "----------------------------------\n");
         spectrumAnalysisTimer = tic;
 
-        spectrum_analysis(executionObj.SH, executionObj.M0_ff);
+        spectrum_analysis(executionObj.SH, executionObj.Cache.M0_ff);
         fprintf("- Spectrum Analysis took : %ds\n", round(toc(spectrumAnalysisTimer)))
 
         % Spectrogram
@@ -219,7 +234,7 @@ methods
 
         maskArtery = ToolBox.Cache.maskArtery;
         maskNeighbors = ToolBox.Cache.maskNeighbors;
-        spectrum_video(executionObj.SH, executionObj.f_RMS, maskArtery, maskNeighbors);
+        spectrum_video(executionObj.SH, executionObj.Cache.f_RMS, maskArtery, maskNeighbors);
 
         fprintf("- Spectrogram took: %ds\n", round(toc(spectrogramTimer)));
         fprintf("\n----------------------------------\n" + ...

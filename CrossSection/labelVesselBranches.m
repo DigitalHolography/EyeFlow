@@ -73,9 +73,7 @@ end
 
 cercleMask = diskMask(numX, numY, r1, r2, 'center', [x_c / numX y_c / numY]);
 labeledVessels = labeledVessels .* cercleMask;
-[labeledVessels, n] = bwlabel(labeledVessels); % Final labeling
-
-
+[labeledVessels] = bwlabel(labeledVessels); % Final labeling
 
 % Remove small spots
 labeledVesselsClean = false(numX, numY);

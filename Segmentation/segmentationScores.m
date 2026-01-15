@@ -89,13 +89,13 @@ results = struct('DiceArtery', DiceArtery, 'DiceVein', DiceVein, ...
 
 log = 'Results logged successfully.';
 
-ToolBox.Output.Extra.add('QualityControl/DiceArtery', DiceArtery);
-ToolBox.Output.Extra.add('QualityControl/DiceVein', DiceVein);
-ToolBox.Output.Extra.add('QualityControl/JaccardArtery', JaccardArtery);
-ToolBox.Output.Extra.add('QualityControl/JaccardVein', JaccardVein);
-ToolBox.Output.Extra.add('QualityControl/AccuracyArtery', AccuracyArtery);
-ToolBox.Output.Extra.add('QualityControl/AccuracyVein', AccuracyVein);
-ToolBox.Output.Extra.add('QualityControl/PrecisionArtery', PrecisionArtery);
-ToolBox.Output.Extra.add('QualityControl/PrecisionVein', PrecisionVein);
+ToolBox.Output.add('QualityControlDiceArtery', DiceArtery);
+ToolBox.Output.add('QualityControlDiceVein', DiceVein);
+ToolBox.Output.add('QualityControlJaccardArtery', JaccardArtery);
+ToolBox.Output.add('QualityControlJaccardVein', JaccardVein);
+ToolBox.Output.add('QualityControlAccuracyArtery', AccuracyArtery);
+ToolBox.Output.add('QualityControlAccuracyVein', AccuracyVein);
+ToolBox.Output.add('QualityControlPrecisionArtery', PrecisionArtery);
+ToolBox.Output.add('QualityControlPrecisionVein', PrecisionVein);
 
 end

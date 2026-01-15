@@ -94,9 +94,9 @@ if exportVideos
         figure('Name', 'Signal Plot', 'Color', 'w', ...
             'Visible', isVisible, ...
             'Position', [200 200 600 600]);
-        
+
         image_RGB = v_video_RGB(:, :, :, frameIdx) .* mask_int + video_int(:, :, frameIdx) .* not_mask_int;
-        image_RGB = image_RGB .* (1 -(mask_circles_int .* not_mask_int)) + mask_circles_int .* not_mask_int * 255;
+        image_RGB = image_RGB .* (1 - (mask_circles_int .* not_mask_int)) + mask_circles_int .* not_mask_int * 255;
         imshow(image_RGB);
 
         if ~isempty(locs)

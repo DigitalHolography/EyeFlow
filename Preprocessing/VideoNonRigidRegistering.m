@@ -1,4 +1,9 @@
 function VideoNonRigidRegistering(obj, apply)
+
+ToolBox = getGlobalToolBox;
+params = ToolBox.getParams;
+exportVideos = params.exportVideos;
+
 % This function performs non-rigid registration on the video frames of M0
 v = obj.M0;
 [numX, numY, numFrames] = size(v);
@@ -7,7 +12,7 @@ low_freq = imgaussfilt(ref_img, 100);
 ref_img = ref_img ./ low_freq;
 ref_img = (ref_img - min(ref_img(:))) / (max(ref_img(:)) - min(ref_img(:)));
 
-stabilized = zeros(numX, numY, numFrames);
+M0_stabilized = zeros(numX, numY, numFrames);
 field = zeros(numX, numY, 2, numFrames);
 diff = zeros(numX, numY, numFrames);
 
@@ -15,22 +20,23 @@ diff = zeros(numX, numY, numFrames);
 parfor k = 1:numFrames
     %get the frame, stabilize it, save it
     tgt = safeConvertFrame(v(:, :, k));
-    [f, s] = diffeoDemon(ref_img, tgt, ...
-        "STEP_SIZE", 4, ...
-        "BLOCK_SIZE", 30, ...
-        "SEARCH_RADIUS", 5, ...
-        "SSD_THRESHOLD", 0.1, ...
-        "NUM_ITERS", 1, ...
-        "LOG_LEVEL", "WARNING" ...
-    );
+    % [f, s] = diffeoDemon(ref_img, tgt, ...
+    % "STEP_SIZE", 4, ...
+    % "BLOCK_SIZE", 30, ...
+    % "SEARCH_RADIUS", 5, ...
+    % "SSD_THRESHOLD", 0.1, ...
+    % "NUM_ITERS", 1, ...
+    % "LOG_LEVEL", "WARNING" ...
+    % );
+    [f, s] = diffeomorphicDemon(tgt, ref_img, tgt);
 
     field(:, :, :, k) = f;
-    stabilized(:, :, k) = s;
+    M0_stabilized(:, :, k) = s;
     diff(:, :, k) = tgt - s;
 end
 
 D.diff = diff;
-D.stabilized = stabilized;
+D.stabilized = M0_stabilized;
 D.field = field;
 
 A1 = field(:, :, 1, :);
@@ -51,11 +57,15 @@ D.phase_temporal_derivative = Ft;
 % dA(:, :, 1, :) = dA1;
 % dA(:, :, 2, :) = dA2;
 
-saveAsGifs(D);
+if (exportVideos)
+    saveAsGifs(D);
+end
+
 obj.displacementField = D;
 
 if apply
     % M0_ff = obj.M0_ff;
+    warning_s("NonRigidRegisteringApply is not applied and needs to be debugged");
     f_RMS = obj.f_RMS;
     f_AVG = obj.f_AVG;
 
@@ -70,7 +80,6 @@ if apply
     % obj.M0_ff = M0_ff;
     obj.f_RMS = f_RMS;
     obj.f_AVG = f_AVG;
-
 end
 
 end
@@ -105,7 +114,7 @@ accSmooth = 1.0;
 
 warpedAux = imwarp(aux, D, "nearest");
 
-%freeze pixel where warp is minimal
+% freeze pixel where warp is minimal
 mask = hypot(D(:, :, 1), D(:, :, 2)) < 0.5;
 warpedAux(mask) = source(mask);
 end

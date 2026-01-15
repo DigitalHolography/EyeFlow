@@ -9,7 +9,32 @@ fs = 1 / (ToolBox.stride / ToolBox.fs / 1000);
 [b, a] = butter(4, 15 / (fs / 2), 'low');
 filtered_BvrT = filtfilt(b, a, mean_BvrT);
 
+sysIdx = ToolBox.Cache.sysIdx;
+diasIdx = ToolBox.Cache.diasIdx;
+
+Qsys = mean(mean_BvrT(sysIdx));
+Qdia = mean(mean_BvrT(diasIdx));
+
+if contains(name, 'artery')
+    ToolBox.Output.add("ArteryVolumeRateSystole", Qsys, unit = "µL/min", h5path = "/Artery/FlowRate/VolumeRateSystoleMean");
+    ToolBox.Output.add("ArteryVolumeRateDiastole", Qdia, unit = "µL/min", h5path = "/Artery/FlowRate/VolumeRateDiastoleMean");
+elseif contains(name, 'vein')
+    ToolBox.Output.add("VeinVolumeRateSystole", Qsys, unit = "µL/min", h5path = "/Vein/FlowRate/VolumeRateSystoleMean");
+    ToolBox.Output.add("VeinVolumeRateDiastole", Qdia, unit = "µL/min", h5path = "/Vein/FlowRate/VolumeRateDiastoleMean");
+end
+
 [interp_BvrT, avgLength, interp_std_BvrT] = interpSignal(filtered_BvrT, systolesIndexes, numInterp, mean_std_BvrT);
+
+Qsysthird = mean(interp_BvrT(1:floor(length(interp_std_BvrT) / 3)));
+Qdiatwothird = mean(interp_BvrT(floor(length(interp_std_BvrT) / 3):end));
+
+if contains(name, 'artery')
+    ToolBox.Output.add("ArteryVolumeRateSystolethird", Qsys, unit = "µL/min", h5path = "/Artery/FlowRate/VolumeRateSystoleMeanthird");
+    ToolBox.Output.add("ArteryVolumeRateDiastoletwothird", Qdia, unit = "µL/min", h5path = "/Artery/FlowRate/VolumeRateDiastoleMeantwothird");
+elseif contains(name, 'vein')
+    ToolBox.Output.add("VeinVolumeRateSystolethird", Qsysthird, unit = "µL/min", h5path = "/Vein/FlowRate/VolumeRateSystoleMeanthird");
+    ToolBox.Output.add("VeinVolumeRateDiastoletwothird", Qdiatwothird, unit = "µL/min", h5path = "/Vein/FlowRate/VolumeRateDiastoleMeantwothird");
+end
 
 if isempty(interp_BvrT)
     return
@@ -30,13 +55,13 @@ else
 end
 
 if contains(name, 'artery')
-    ToolBox.Output.add('ArteryCycleVolume', total_volume_value, 'nL');
-    ToolBox.Output.add('ArterySystolicFraction', stroke_volume_value / total_volume_value, '');
-    ToolBox.Output.add('ArteryDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
+    ToolBox.Output.add('ArteryCycleVolume', total_volume_value, 'nL', h5path = '/Artery/FlowRate/CycleVolume/Total');
+    ToolBox.Output.add('ArterySystolicFraction', stroke_volume_value / total_volume_value, h5path = '/Artery/FlowRate/CycleVolume/SystolicFraction');
+    ToolBox.Output.add('ArteryDiastolicFraction', (1 - stroke_volume_value / total_volume_value), h5path = '/Artery/FlowRate/CycleVolume/DiastolicFraction');
 elseif contains(name, 'vein')
-    ToolBox.Output.add('VeinCycleVolume', total_volume_value, 'nL');
-    ToolBox.Output.add('VeinSystolicFraction', stroke_volume_value / total_volume_value, '');
-    ToolBox.Output.add('VeinDiastolicFraction', (1 - stroke_volume_value / total_volume_value), '');
+    ToolBox.Output.add('VeinCycleVolume', total_volume_value, 'nL', h5path = '/Vein/FlowRate/CycleVolume/Total');
+    ToolBox.Output.add('VeinSystolicFraction', stroke_volume_value / total_volume_value, h5path = '/Vein/FlowRate/CycleVolume/SystolicFraction');
+    ToolBox.Output.add('VeinDiastolicFraction', (1 - stroke_volume_value / total_volume_value), h5path = '/Vein/FlowRate/CycleVolume/DiastolicFraction');
 end
 
 if saveFigures
