@@ -270,9 +270,12 @@ arguments
     dispField
 end
 
+ToolBox = getGlobalToolBox;
+params = ToolBox.params;
+
 % 1. Setup parameters based on your logic
 [numX, numY, numFrames] = size(dispField);
-kInterp = 1; % Derived from 512 -> 1023 logic
+kInterp = params.json.Preprocess.InterpolationFactor; % Derived from 512 -> 1023 logic
 
 % Calculate new dimensions (matches your function's logic)
 out_numX = (numX - 1) * (2 ^ kInterp - 1) + numX; % Result: 1023
@@ -375,7 +378,16 @@ res_D1_x2_stats = calculate_stats_all(res_fft_card_freq(:, :, 2));
 emptyIndex = cellfun(@isempty, Disp_cell);
 Disp_cell(emptyIndex) = {NaN(profile_width, numFrames)};
 
-ToolBox.Output.add("displacementField_profile_" + name, reshape(cell2mat(Disp_cell), [c_size, b_size, numFrames, profile_width]), h5path = capitalize(name) + "/CrossSections/DisplacementField/profile");
+
+displacement_array = nan(c_size, b_size, profile_width, numFrames);
+
+for c = 1:c_size
+    for b = 1:b_size
+        displacement_array(c, b, :, :) = Disp_cell{c, b};
+    end
+end
+
+ToolBox.Output.add("displacementField_profile_" + name, displacement_array, h5path = capitalize(name) + "/CrossSections/DisplacementField/profile", keepSize = true);
 ToolBox.Output.add("displacementField_profile_D_x1_" + name, res_D_x1, h5path = capitalize(name) + "/CrossSections/DisplacementField/profile_D_x1");
 ToolBox.Output.add("displacementField_profile_D_x2_" + name, res_D_x2, h5path = capitalize(name) + "/CrossSections/DisplacementField/profile_D_x2");
 ToolBox.Output.add("displacementField_profile_fft_x1_" + name, res_fft_x1, h5path = capitalize(name) + "/CrossSections/DisplacementField/profile_fft_x1");
