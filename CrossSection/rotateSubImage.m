@@ -27,7 +27,7 @@ alpha_deg = mod(alpha_rad * 180 / pi, 360);
 beta_deg = mod(90 + round(alpha_deg), 180);
 
 % Define a range of angles to test (0 to 180 degrees in 1-degree increments)
-N = 40;
+N = 90;
 angles_deg = (beta_deg - N:beta_deg + N);
 angles_deg = mod(angles_deg, 180);
 peak_ratio = zeros(1, length(angles_deg));

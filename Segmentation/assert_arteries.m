@@ -1,5 +1,5 @@
-function [maskArtery, maskVein ] = assert_arteries(video, maskArtery, maskVein)
-% This function makes sure maskArtery and Vein are not inverted by choosing the signal with the largest 
+function [maskArtery, maskVein] = assert_arteries(video, maskArtery, maskVein)
+% This function makes sure maskArtery and Vein are not inverted by choosing the signal with the largest
 % derimative max.
 % Ensure maskArtery and maskVein are not inverted by comparing the max derivative of their signals
 
@@ -29,11 +29,11 @@ pulseVein = squeeze(sum(video_artery .* maskVein, [1 2], 'omitnan') / nnz(maskVe
 % Filter both signals
 [b, a] = butter(4, 15 / (fs / 2), 'low');
 pulseArtery = filtfilt(b, a, pulseArtery);
-pulseVein   = filtfilt(b, a, pulseVein);
+pulseVein = filtfilt(b, a, pulseVein);
 
 % Compute derivatives
 diffArtery = gradient(pulseArtery);
-diffVein   = gradient(pulseVein);
+diffVein = gradient(pulseVein);
 
 % Compare max derivative
 if max(diffVein) > max(diffArtery)

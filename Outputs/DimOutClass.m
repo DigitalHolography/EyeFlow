@@ -1,121 +1,129 @@
 classdef DimOutClass < handle
-    % Class to hold the extra data to the h5 output
+% Class to hold the extra data to the h5 output
 
-    properties
-        Data
+properties
+    Data
+end
+
+% PUBLIC FUNCTIONS
+methods
+
+    function obj = DimOutClass()
+        keys = enumeration("DimEnumClass");
+        numKeys = numel(keys);
+
+        % Map the Enum directly to the dictionary
+        obj.Data = dictionary(); % a dictionary of dictionaries containing "id", data fields
+
+        structTemplate = struct("data", [], "attributes", []);
+
+        for i = 1:numKeys
+            obj.Data(keys(i)) = dictionary(string, structTemplate);
+        end
+
     end
 
-    % PUBLIC FUNCTIONS
-    methods
+    function add(obj, name, data, dimDescription, unit, ste, silenceWarn)
 
-        function obj = DimOutClass()
-            keys = enumeration("DimEnumClass");
-            numKeys = numel(keys);
-
-            % Map the Enum directly to the dictionary
-            obj.Data = dictionary(); % a dictionary of dictionaries containing "id", data fields
-
-            structTemplate = struct("data", [], "attributes", []);
-
-            for i = 1:numKeys
-                obj.Data(keys(i)) = dictionary(string, structTemplate);
-            end
+        arguments
+            obj
+            name
+            data
+            dimDescription (1, :) string
+            unit string = ""
+            ste = NaN % for legacy only, not used
+            silenceWarn double = 0
         end
 
-        function add(obj, name, data, dimDescription, unit, ste, silenceWarn)
-            arguments
-                obj
-                name
-                data
-                dimDescription (1,:) string
-                unit string = ""
-                ste = NaN % for legacy only, not used
-                silenceWarn double = 0
-            end
+        type = DimEnumClass.enum_from(data);
 
-             type = DimEnumClass.enum_from(data);
-
-            if ~silenceWarn && ~checkDimNames(type, dimDescription)
-                warning_s("Wrong length of dimDescription for data (%s) !\nExpected: %i\nGot: %i", name, type.rank, size(dimDescription, 2));
-            end
-
-            % Check && Sanitize if 1D array
-            if isvector(data) && ~isscalar(data)
-                data = sanitize1DArray(data);    
-            end
-
-            entry = struct();
-            entry.data = data;
-            entry.attributes.dimDescription = dimDescription;
-            entry.attributes.unit = unit;
-
-            currentDict = obj.Data(type);
-            currentDict(name) = entry;
-            obj.Data(type) = currentDict;
+        if ~silenceWarn && ~checkDimNames(type, dimDescription)
+            warning_s("Wrong length of dimDescription for data (%s) !\nExpected: %i\nGot: %i", name, type.rank, size(dimDescription, 2));
         end
 
-        function add_attributes(obj, name, key, val, dim)
-            arguments
-                obj
-                name string
-                key  string
-                val
-                dim DimEnumClass = DimEnumClass.empty
-            end
+        % Check && Sanitize if 1D array
+        if isvector(data) && ~isscalar(data)
+            data = sanitize1DArray(data);
+        end
 
-            % san_name = sanitizeFieldName(name);
+        entry = struct();
+        entry.data = data;
+        entry.attributes.dimDescription = dimDescription;
+        entry.attributes.unit = unit;
 
-            if isempty(dim)
-                dirs = enumeration("DimEnumClass");
-                for i = 1:numel(dirs)
-                    if isKey(obj.Data(dirs(i)), name)
-                        dim = dirs(i);
-                        break;
-                    end
+        currentDict = obj.Data(type);
+        currentDict(name) = entry;
+        obj.Data(type) = currentDict;
+    end
+
+    function add_attributes(obj, name, key, val, dim)
+
+        arguments
+            obj
+            name string
+            key string
+            val
+            dim DimEnumClass = DimEnumClass.empty
+        end
+
+        % san_name = sanitizeFieldName(name);
+
+        if isempty(dim)
+            dirs = enumeration("DimEnumClass");
+
+            for i = 1:numel(dirs)
+
+                if isKey(obj.Data(dirs(i)), name)
+                    dim = dirs(i);
+                    break;
                 end
 
-                if dim == DimEnumClass.empty
-                    warning_s("field \'%s\' not found", name);
-                    return;
-                end
             end
 
-            currentDict = obj.Data(dim);
-        
-            entry = currentDict(name);
-            entry.attributes.(key) = val;
-            currentDict(name) = entry;
-            obj.Data(dim) = currentDict;
+            if dim == DimEnumClass.empty
+                warning_s("field \'%s\' not found", name);
+                return;
+            end
+
         end
 
-        % FOR NOW DECREPATED
-        function add_typed(obj, name, data, type, unit, ste)
-            arguments
-                obj
-                name
-                data
-                type DimEnumClass
-                unit string = ""
-                ste = NaN
-            end
+        currentDict = obj.Data(dim);
 
-            if type.validate(data)
-                obj.Data(type).(name) = data;
-            else
-                warning_s("DimOutClass:add", "DimEnumType (%s) is invalid with the data: %s\nSetting Other as default !", string(type), string(name));
-                obj.Data(DimEnumClass.Other).(name) = data;
-            end
+        entry = currentDict(name);
+        entry.attributes.(key) = val;
+        currentDict(name) = entry;
+        obj.Data(dim) = currentDict;
+    end
 
+    % FOR NOW DECREPATED
+    function add_typed(obj, name, data, type, unit, ste)
+
+        arguments
+            obj
+            name
+            data
+            type DimEnumClass
+            unit string = ""
+            ste = NaN
+        end
+
+        if type.validate(data)
             obj.Data(type).(name) = data;
-
-            if isnumeric(ste)
-                obj.Ste.(strcat(sanitizeFieldName(name))) = ste;
-            else
-                obj.Ste.(strcat(sanitizeFieldName(name))) = NaN;
-            end
-
-            obj.Unit.(strcat(sanitizeFieldName(name))) = unit;
+        else
+            warning_s("DimOutClass:add", "DimEnumType (%s) is invalid with the data: %s\nSetting Other as default !", string(type), string(name));
+            obj.Data(DimEnumClass.Other).(name) = data;
         end
+
+        obj.Data(type).(name) = data;
+
+        if isnumeric(ste)
+            obj.Ste.(strcat(sanitizeFieldName(name))) = ste;
+        else
+            obj.Ste.(strcat(sanitizeFieldName(name))) = NaN;
+        end
+
+        obj.Unit.(strcat(sanitizeFieldName(name))) = unit;
+    end
 
         %{
         D0_array
@@ -126,218 +134,240 @@ classdef DimOutClass < handle
         strings
         %}
 
-        function add_D0_array(obj, name, data, unit, ste)
-            if nargin < 4
-                unit = [];
-            end
-            if nargin < 5
-                ste = [];
-            end
+    function add_D0_array(obj, name, data, unit, ste)
 
-            add_typed(obj, name, data, DimEnumClass.D0_array, unit, ste)
+        if nargin < 4
+            unit = [];
         end
 
-        function add_D1_array(obj, name, data, unit, ste)
-            if nargin < 4
-                unit = [];
-            end
-            if nargin < 5
-                ste = [];
-            end
-
-            add_typed(obj, name, data, DimEnumClass.D1_array, unit, ste)
+        if nargin < 5
+            ste = [];
         end
 
-        function add_D2_array(obj, name, data, unit, ste)
-            if nargin < 4
-                unit = [];
-            end
-            if nargin < 5
-                ste = [];
-            end
-
-            add_typed(obj, name, data, DimEnumClass.D2_array, unit, ste)
-        end
-
-        function add_D3_array(obj, name, data, unit, ste)
-            if nargin < 4
-                unit = [];
-            end
-            if nargin < 5
-                ste = [];
-            end
-
-            add_typed(obj, name, data, DimEnumClass.D3_array, unit, ste)
-        end
-
-        function add_D4_array(obj, name, data, unit, ste)
-            if nargin < 4
-                unit = [];
-            end
-            if nargin < 5
-                ste = [];
-            end
-
-            add_typed(obj, name, data, DimEnumClass.D4_array, unit, ste)
-        end
-
-        function add_strings(obj, name, data, unit, ste)
-            if nargin < 4
-                unit = [];
-            end
-            if nargin < 5
-                ste = [];
-            end
-
-            add_typed(obj, name, data, DimEnumClass.Strings, unit, ste)
-        end
-
-        function writeHdf5(obj, path)
-            folders = keys(obj.Data);
-
-            for i = 1:numel(folders)
-                writeHdf5_folder(obj, path, folders(i))
-            end
-        end
+        add_typed(obj, name, data, DimEnumClass.D0_array, unit, ste)
     end
 
+    function add_D1_array(obj, name, data, unit, ste)
 
-    % PRIVATE FUNCTIONS
-    methods (Access = private)
-        function writeHdf5_folder(obj, path, folder)
-
-            data = obj.Data(folder);
-
-            if numEntries(data) == 0
-                return
-            end
-
-            props = keys(data);
-
-            for i = 1:numel(props)
-                fieldName = props(i);
-
-                if fieldName == ""
-                    continue;
-                end
-
-                entry = data(fieldName);
-
-                fieldValue = entry.data;
-                fieldAttributes = entry.attributes;
-
-                % Build dataset path
-                datasetPath = "/" + string(folder) + "/" + fieldName;
-
-                handleSavingData(obj, path, datasetPath, fieldName, fieldValue, fieldAttributes);
-            end
-
+        if nargin < 4
+            unit = [];
         end
 
-        function handleSavingData(obj, path, datasetPath, fieldName, fieldValue, fieldAttributes)
-            arguments
-                obj
-                path
-                datasetPath
-                fieldName
-                fieldValue
-                fieldAttributes
+        if nargin < 5
+            ste = [];
+        end
+
+        add_typed(obj, name, data, DimEnumClass.D1_array, unit, ste)
+    end
+
+    function add_D2_array(obj, name, data, unit, ste)
+
+        if nargin < 4
+            unit = [];
+        end
+
+        if nargin < 5
+            ste = [];
+        end
+
+        add_typed(obj, name, data, DimEnumClass.D2_array, unit, ste)
+    end
+
+    function add_D3_array(obj, name, data, unit, ste)
+
+        if nargin < 4
+            unit = [];
+        end
+
+        if nargin < 5
+            ste = [];
+        end
+
+        add_typed(obj, name, data, DimEnumClass.D3_array, unit, ste)
+    end
+
+    function add_D4_array(obj, name, data, unit, ste)
+
+        if nargin < 4
+            unit = [];
+        end
+
+        if nargin < 5
+            ste = [];
+        end
+
+        add_typed(obj, name, data, DimEnumClass.D4_array, unit, ste)
+    end
+
+    function add_strings(obj, name, data, unit, ste)
+
+        if nargin < 4
+            unit = [];
+        end
+
+        if nargin < 5
+            ste = [];
+        end
+
+        add_typed(obj, name, data, DimEnumClass.Strings, unit, ste)
+    end
+
+    function writeHdf5(obj, path)
+        folders = keys(obj.Data);
+
+        for i = 1:numel(folders)
+            writeHdf5_folder(obj, path, folders(i))
+        end
+
+    end
+
+end
+
+% PRIVATE FUNCTIONS
+methods (Access = private)
+
+    function writeHdf5_folder(obj, path, folder)
+
+        data = obj.Data(folder);
+
+        if numEntries(data) == 0
+            return
+        end
+
+        props = keys(data);
+
+        for i = 1:numel(props)
+            fieldName = props(i);
+
+            if fieldName == ""
+                continue;
             end
 
-            % --- Case 1: Numeric or image data ---
-            if isnumeric(fieldValue) || islogical(fieldValue)
-                % % Handle for complex values (split them)
-                if ~isreal(fieldValue)
-                    % Recursively
-                    handleSavingData(obj, path, datasetPath + "_real", fieldName, real(fieldValue), fieldAttributes);
+            entry = data(fieldName);
 
-                    % Special safety for NaN + 0i (which can happen for
-                    % complex NaN)
-                    imag_data = imag(fieldValue);
-                    imag_data(isnan(fieldValue)) = NaN;
-                    handleSavingData(obj, path, datasetPath + "_imag", fieldName, imag_data, fieldAttributes);
-                    return;
-                end
+            fieldValue = entry.data;
+            fieldAttributes = entry.attributes;
 
-                writeNumericToHDF5(path, datasetPath, fieldValue);
+            % Build dataset path
+            datasetPath = "/" + string(folder) + "/" + fieldName;
+
+            handleSavingData(obj, path, datasetPath, fieldName, fieldValue, fieldAttributes);
+        end
+
+    end
+
+    function handleSavingData(obj, path, datasetPath, fieldName, fieldValue, fieldAttributes)
+
+        arguments
+            obj
+            path
+            datasetPath
+            fieldName
+            fieldValue
+            fieldAttributes
+        end
+
+        % --- Case 1: Numeric or image data ---
+        if isnumeric(fieldValue) || islogical(fieldValue)
+            % % Handle for complex values (split them)
+            if ~isreal(fieldValue)
+                % Recursively
+                handleSavingData(obj, path, datasetPath + "_real", fieldName, real(fieldValue), fieldAttributes);
+
+                % Special safety for NaN + 0i (which can happen for
+                % complex NaN)
+                imag_data = imag(fieldValue);
+                imag_data(isnan(fieldValue)) = NaN;
+                handleSavingData(obj, path, datasetPath + "_imag", fieldName, imag_data, fieldAttributes);
+                return;
+            end
+
+            writeNumericToHDF5(path, datasetPath, fieldValue);
 
             % --- Case 2: Structs with known fields (e.g., yvalues, label) ---
-            elseif isstruct(fieldValue)
-                subFields = fieldnames(fieldValue);
-                for j = 1:numel(subFields)
-                    subName = subFields{j};
-                    subValue = fieldValue.(subName);
-                    subPath = strcat(datasetPath, '_', subName);
-                    if isnumeric(subValue)
-                        writeNumericToHDF5(path, subPath, subValue);
-                    elseif ischar(subValue) || isstring(subValue)
-                        h5writeatt(path, datasetPath, subName, subValue);
-                    end
+        elseif isstruct(fieldValue)
+            subFields = fieldnames(fieldValue);
+
+            for j = 1:numel(subFields)
+                subName = subFields{j};
+                subValue = fieldValue.(subName);
+                subPath = strcat(datasetPath, '_', subName);
+
+                if isnumeric(subValue)
+                    writeNumericToHDF5(path, subPath, subValue);
+                elseif ischar(subValue) || isstring(subValue)
+                    h5writeatt(path, datasetPath, subName, subValue);
                 end
 
-            % --- Case 3: Strings or labels ---
-            elseif ischar(fieldValue) || isstring(fieldValue)
-                writeStringToHDF5(path, datasetPath, string(fieldValue));
-
-            else
-                warning('Skipping unsupported field "%s" of type %s', fieldName, class(fieldValue));
             end
-            writeAttributes(path, datasetPath, fieldAttributes);
+
+            % --- Case 3: Strings or labels ---
+        elseif ischar(fieldValue) || isstring(fieldValue)
+            writeStringToHDF5(path, datasetPath, string(fieldValue));
+
+        else
+            warning('Skipping unsupported field "%s" of type %s', fieldName, class(fieldValue));
         end
 
+        writeAttributes(path, datasetPath, fieldAttributes);
     end
+
+end
 
 end
 
 % --- Helper: write numeric dataset ---
 
 function res = access_sub_dict(dict, field, sub_field)
-    temp = dict(field);
-    res = temp(sub_field);
+temp = dict(field);
+res = temp(sub_field);
 end
 
-
 function writeAttributes(path, datasetPath, fieldAttributes)
-    arguments
-        path string
-        datasetPath string
-        fieldAttributes struct
+
+arguments
+    path string
+    datasetPath string
+    fieldAttributes struct
+end
+
+keys = fieldnames(fieldAttributes);
+
+for i = 1:numel(keys)
+    cur_key = keys{i};
+    cur_val = fieldAttributes.(cur_key);
+    % This will avoid [strings] and "" (will replace by null)
+    if isstring(cur_val) && isscalar(cur_val)
+        cur_val = char(cur_val);
     end
 
-    keys = fieldnames(fieldAttributes);
-    for i = 1:numel(keys)
-        cur_key = keys{i};
-        cur_val = fieldAttributes.(cur_key);
-        % This will avoid [strings] and "" (will replace by null)
-        if isstring(cur_val) && isscalar(cur_val)
-            cur_val = char(cur_val);
-        end
+    h5writeatt(path, datasetPath, cur_key, cur_val);
+end
 
-        h5writeatt(path, datasetPath, cur_key, cur_val);
-    end
 end
 
 function res = sanitize1DArray(arr)
-    % Sanitize the Array to be Python friendly (1, N) -> (N, 1)
-    arguments
-        arr 
-    end
-    
-    res = arr(:);
+% Sanitize the Array to be Python friendly (1, N) -> (N, 1)
+arguments
+    arr
+end
+
+res = arr(:);
 end
 
 function res_bool = checkDimNames(type, dimDescription)
-    arguments
-        type
-        dimDescription
-    end
 
-    if type == DimEnumClass.Other
-        res_bool = true;
-        return;
-    end
+arguments
+    type
+    dimDescription
+end
 
-    res_bool = size(dimDescription, 2) == type.rank;
+if type == DimEnumClass.Other
+    res_bool = true;
+    return;
+end
+
+res_bool = size(dimDescription, 2) == type.rank;
 end
 
 function name = sanitizeFieldName(str)
@@ -348,6 +378,7 @@ name = regexprep(name, '[^a-zA-Z0-9_]', '_'); % Replace any other invalid chars
 if ~isletter(name(1))
     name = ['x' name];
 end
+
 end
 
 function original = antiSanitizeFieldName(safeName)
@@ -367,4 +398,5 @@ original = regexprep(safeName, '__', '/');
 if startsWith(original, 'x') && ~startsWith(safeName, 'x_')
     original = original(2:end);
 end
+
 end

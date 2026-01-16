@@ -43,29 +43,47 @@ methods
         ToolBox.Output.add("M0_ff_img", M0_ff_img, h5path = "/Maps/M0_ff_img");
 
         % Optic disk
-        try
+        try % papilla detection
 
             if ToolBox.getParams.json.Mask.OpticDiskSegmentationNet
                 % New model
                 [~, center_x, center_y, diameter_x, diameter_y] = predictOpticDisk(executionObj.AINetworks.OpticDiskSegmentationNet, M0_ff_img);
-            else
-                % Old model
+            elseif ToolBox.getParams.json.Mask.OpticDiskDetectorNet
                 [~, diameter_x, diameter_y, center_x, center_y] = findPapilla(M0_ff_img, executionObj.AINetworks.OpticDiskDetectorNet);
+            else
+                center_x = NaN;
+                center_y = NaN;
+                diameter_x = NaN;
+                diameter_y = NaN;
             end
 
             xy_papilla = [center_x, center_y];
             ToolBox.Cache.xy_papilla = xy_papilla;
+
+            ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2 / size(executionObj.Cache.M0_ff, 1), h5path = '/Papilla/Ratio');
+            ToolBox.Output.add("PapillaXY", xy_papilla, h5path = '/Papilla/XYCenter', unit = 'px');
         catch ME
             warning("Error while finding papilla : ")
             MEdisp(ME, ToolBox.EF_path);
+            center_x = NaN;
+            center_y = NaN;
             diameter_x = NaN;
             diameter_y = NaN;
         end
 
-        ToolBox.Cache.papillaDiameter = mean([diameter_x, diameter_y]);
+        params = ToolBox.getParams;
+        papillaDiameter = mean([diameter_x, diameter_y]);
+        ToolBox.Cache.papillaDiameter = papillaDiameter;
 
-        ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2 / size(executionObj.Cache.M0_ff, 1), h5path = '/Papilla/Ratio');
-        ToolBox.Output.add("PapillaXY", [center_x, center_y], h5path = '/Papilla/XYCenter', unit = 'px');
+        if isnan(papillaDiameter) % if is nan return to default
+            pixelSize = params.json.generateCrossSectionSignals.DefaultPixelSize / (2 ^ params.json.Preprocess.InterpolationFactor);
+        else
+            pixelSize = params.json.generateCrossSectionSignals.RefPapillaSize / mean([diameter_x, diameter_y]);
+        end
+
+        fprintf("Using pixel size : %f mm/pix \n", pixelSize);
+
+        ToolBox.Cache.pixelSize = pixelSize;
 
         createMasks(executionObj.Cache.M0_ff, executionObj.AINetworks.VesselSegmentationNet, executionObj.AINetworks.AVSegmentationNet, executionObj.AINetworks.EyeDiaphragmSegmentationNet);
 

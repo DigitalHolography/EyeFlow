@@ -50,30 +50,3 @@ nexttile; imshowpair(I2g, M1_warp); title("Warped Mask on Target");
 nexttile; imshowpair(M1, M1_warp); title("Mask Before vs After");
 
 end
-
-% helpers
-function I = safeLoadGray(path)
-[img, map] = imread(path);
-
-if ~isempty(map)
-    I = ind2gray(img, map);
-elseif ndims(img) == 3
-    I = rgb2gray(img);
-else
-    I = img;
-end
-
-if islogical(I), I = double(I); end
-if ~isfloat(I), I = im2double(I); end
-end
-
-function I = safeConvertFrame(frame)
-
-if size(frame, 3) == 3
-    I = rgb2gray(frame);
-else
-    I = frame;
-end
-
-I = im2double(I); % keep everything in [0,1]
-end

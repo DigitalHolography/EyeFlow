@@ -23,8 +23,8 @@ get_diameter = @(s) get_diameter_or_nan(s);
 systole_diameters = cellfun(get_diameter, systole_results);
 diastole_diameters = cellfun(get_diameter, diastole_results);
 
-fit_systole_cycles = systole_diameters * params.px_size;
-fit_diastole_cycles = diastole_diameters * params.px_size;
+fit_systole_cycles = systole_diameters * ToolBox.Cache.pixelSize;
+fit_diastole_cycles = diastole_diameters * ToolBox.Cache.pixelSize;
 
 end
 

@@ -1,10 +1,9 @@
-function [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, figName, ToolBox, papillaDiameter, flagFigures)
+function [D, dD, A, dA, c1, c2, rsquare] = computeVesselCrossSection(subImg, figName, ToolBox, flagFigures)
 
 arguments
     subImg
     figName
     ToolBox
-    papillaDiameter
     flagFigures = true
 end
 
@@ -14,11 +13,7 @@ HydrodynamicDiameters = params.json.generateCrossSectionSignals.HydrodynamicDiam
 
 [numX, ~] = size(subImg);
 
-if ~isnan(papillaDiameter) && ~isempty(papillaDiameter)
-    px_size = 1.8 / papillaDiameter / (2 ^ params.json.Preprocess.InterpolationFactor);
-else
-    px_size = params.px_size;
-end
+px_size = ToolBox.Cache.pixelSize;
 
 if ~HydrodynamicDiameters
     D = mean(sum(~isnan(subImg), 2)); % in pixels
@@ -36,13 +31,18 @@ profile = mean(subImg, 1, 'omitnan');
 L = length(profile);
 
 % Find all points above 50% threshold
-central_range = find(profile > 0.1 * max(profile));
+hydrodynamicFloor = params.json.generateCrossSectionSignals.velocityProfileThreshold;
+central_range = find(profile > hydrodynamicFloor * max(profile));
 centt = mean(central_range);
+halfVelocity = hydrodynamicFloor * max(profile);
 
 r_range = (central_range - centt) * px_size;
 
 [p1, p2, p3, rsquare, p1_err, p2_err, p3_err] = customPoly2Fit(r_range', profile(central_range)');
-[r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3, p1_err, p2_err, p3_err);
+
+% Apply floor thresholding
+p3half = p3 - halfVelocity;
+[r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3half, p1_err, p2_err, p3_err);
 
 if r1 > r2
     r1 = NaN;

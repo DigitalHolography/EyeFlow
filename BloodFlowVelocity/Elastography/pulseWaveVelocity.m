@@ -89,7 +89,7 @@ for kb = 2:numpoints
 end
 
 for kb = 2:numpoints
-    abs_dist(kb) = abs_dist(kb - 1) + sqrt((absx(kb) - absx(kb - 1)) ^ 2 + (absy(kb) - absy(kb - 1)) ^ 2) * params.px_size;
+    abs_dist(kb) = abs_dist(kb - 1) + sqrt((absx(kb) - absx(kb - 1)) ^ 2 + (absy(kb) - absy(kb - 1)) ^ 2) * ToolBox.Cache.pixelSize;
 end
 
 if abs_dist(end) < 1.5 % minimal distance in mm

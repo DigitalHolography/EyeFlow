@@ -2,145 +2,6 @@ classdef OutputClass < handle
 % Class to hold the Output of the retinal flow analysis pipeline
 
 properties
-    % % General
-    % NumFrames
-    % FrameRate
-    % InterFramePeriod
-
-    % % Arterial waveform analysis
-    % SystoleIndices
-    % HeartBeat
-    % ArterySystoleMaxIndices
-    % ArteryDiastoleMinIndices
-    % ArteryTimeToMaxIncrease
-    % ArteryTimeToPeakSystole
-    % ArteryTimeToMinDiastole
-    % ArteryTimeToPeakSystoleFromDiastole
-    % ArteryTimeToDescent
-    % ArteryTimePeakToDescent
-
-    % % Venous waveform analysis
-    % VeinTimeToPeakFromMin
-
-    % % Velocity (mm/s)
-    % ArteryVelocityMean
-    % ArteryVelocityMax
-    % ArteryVelocityMin
-    % VeinVelocityMean
-    % VeinVelocityMax
-    % VeinVelocityMin
-
-    % % Velocity Statistical Outputs (mm/s)
-    % ArteryVelocityMeanSection
-    % ArteryVelocityMaxSection
-    % ArteryVelocityMinSection
-    % ArteryVelocityModeSection
-    % ArteryVelocityMedianSection
-    % ArteryVelocityMeanTrimmed
-    % ArteryVelocityMedianTrimmed
-    % ArteryVelocityModeTrimmed
-
-    % VeinVelocityMeanSection
-    % VeinVelocityMaxSection
-    % VeinVelocityMinSection
-    % VeinVelocityModeSection
-    % VeinVelocityMedianSection
-    % VeinVelocityMeanTrimmed
-    % VeinVelocityMedianTrimmed
-    % VeinVelocityModeTrimmed
-
-    % ArteryVelocity25Percentile
-    % ArteryVelocity75Percentile
-    % VeinVelocity25Percentile
-    % VeinVelocity75Percentile
-
-    % % Flow Rate (µL/s or mm³/s)
-    % ArteryFlowRateMean
-    % ArteryFlowRateMax
-    % ArteryFlowRateMin
-    % VeinFlowRateMean
-    % VeinFlowRateMax
-    % VeinFlowRateMin
-
-    % % Resistivity and Pulsatility Indices (dimensionless)
-    % ArteryResistivityIndexVelocity
-    % ArteryPulsatilityIndexVelocity
-    % ArteryMaxMinRatioVelocity
-    % VeinResistivityIndexVelocity
-    % VeinPulsatilityIndexVelocity
-    % VeinMaxMinRatioVelocity
-
-    % ArteryResistivityIndexFlowRate
-    % ArteryPulsatilityIndexFlowRate
-    % ArteryMaxMinRatioFlowRate
-    % VeinResistivityIndexFlowRate
-    % VeinPulsatilityIndexFlowRate
-    % VeinMaxMinRatioFlowRate
-
-    % % Stroke Volume & Cycle fractions
-    % ArteryCycleVolume
-    % ArterySystolicFraction
-    % ArteryDiastolicFraction
-    % VeinCycleVolume
-    % VeinSystolicFraction
-    % VeinDiastolicFraction
-
-    % % Temporal durations
-    % SystoleDuration
-    % DiastoleDuration
-    % SystolicUpstroke
-    % SystolicDownstroke
-    % DiastolicUpstroke
-    % DiastolicRunoff
-
-    % % Vessel Diameters
-    % ArteryDiameterMean
-    % ArteryDiameterMedian
-    % ArteryDiameterSpread
-    % ArteryValidSectionCount
-    % ArteryTotalSectionCount
-    % VeinDiameterMean
-    % VeinDiameterMedian
-    % VeinDiameterSpread
-    % VeinValidSectionCount
-    % VeinTotalSectionCount
-
-    % % Additional hemodynamic parameters
-    % ArteryPulseWaveVelocity
-    % VeinPulseWaveVelocity
-    % DicroticNotchVisibility
-    % ViscosityDuringSystole
-    % ViscosityDuringDiastole
-    % ViscosityMean
-    % PapillaRatio
-    % WindkesselDecayRC
-    % WindkesselPureDelay
-    % WindkesselCeff
-    % WindkesselReff
-    % ArteryVeinPhaseDelay
-
-    % % Mask
-    % ArteryArea % in mm²
-    % VeinArea
-    % RemainingArea
-    % ArteryNbPxl % in pixels on all field
-    % VeinNbPxl
-    % RemainingNbPxl
-    % ArterySelNbPxl % in pixels on targeted region (smallRadius bigRadius)
-    % VeinSelNbPxl
-    % RemainingSelNbPxl
-
-    % % Mic
-    % PredictedEyeSide
-
-    % % Quality Control Scores
-    % QualityControlScoreMaskArtery
-    % QualityControlScoreMaskVein
-
-    % % Time info
-    % UnixTimestampFirst
-    % UnixTimestampLast
-
     data
 end
 
@@ -260,14 +121,22 @@ methods
                 h5path = strcat("/", h5path);
             end
 
-            if ~isnan(obj.data(dic_key).attributes.standard_error)
-                writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data(dic_key).value);
-                h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data(dic_key).attributes.unit);
-                writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data(dic_key).attributes.standard_error);
-                h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data(dic_key).attributes.unit);
+            if isnumeric(obj.data.(props{i}).standard_error)
+
+                if ~isnan(obj.data.(props{i}).standard_error)
+                    writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(props{i}).value);
+                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(props{i}).unit);
+                    writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data.(props{i}).standard_error);
+                    h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data.(props{i}).unit);
+                else
+                    writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(props{i}).value);
+                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(props{i}).unit);
+                end
+
             else
-                writeNumericToHDF5(file_path, h5path, obj.data(dic_key).value);
-                h5writeatt(file_path, h5path, "unit", obj.data(dic_key).attributes.unit);
+                warning_s("Non numeric ste given to save property : %s", props{i});
+                writeNumericToHDF5(file_path, h5path, obj.data.(props{i}).value);
+                h5writeatt(file_path, h5path, "unit", obj.data.(props{i}).unit);
             end
 
             h5writeatt(file_path, h5path, "nameID", dic_key);

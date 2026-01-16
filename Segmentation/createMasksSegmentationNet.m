@@ -22,7 +22,7 @@ M0_ff_img = squeeze(mean(M0_ff, 3));
 % R = [];
 % exportVideos = params.exportVideos;
 
-if ~any(maskArtery,"all")
+if ~any(maskArtery, "all")
     error("Given Pre Mask Artery is completely empty.");
 end
 

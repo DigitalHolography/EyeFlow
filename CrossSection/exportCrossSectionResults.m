@@ -120,6 +120,8 @@ end
 
 alphaWom = zeros(size(ToolBox.Cache.WomersleyOut), 'single');
 
+alphaWom = zeros(size(ToolBox.Cache.WomersleyOut), 'single');
+
 for i = 1:size(alphaWom, 1)
 
     for j = 1:size(alphaWom, 2)
@@ -133,7 +135,7 @@ for i = 1:size(alphaWom, 1)
 
 end
 
-exportSegmentsValueToH5(name + "_Wom_alpha", maskLabel, alphaWom, capitalize(name) + "/CrossSections/Womersley");
+% exportSegmentsValueToH5(name + "_Wom_alpha", maskLabel, alphaWom, capitalize(name) + "/CrossSections/Womersley");
 
 fprintf("    1.(bis) optional Flow Rate Figures (interpolated velocity profiles / Histograms / Profiles Overlay) (%s) took %ds\n", name, round(toc))
 
@@ -170,7 +172,7 @@ if params.json.exportCrossSectionResults.circleImages
 
     end
 
-    circleImages(M0_ff_img, xy_barycenter, A_cell, Q_cell, v_cell, maskLabel, locsLabel, name)
+    circleImages(M0_ff_img, xy_barycenter, A_cell, Q_cell, v_cell, alphaWom, maskLabel, locsLabel, name)
 end
 
 if params.json.exportCrossSectionResults.widthHistogram
