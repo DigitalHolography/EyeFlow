@@ -125,22 +125,22 @@ methods
 
             keepSize = obj.data(dic_key).attributes.keepSize;
 
-            if isnumeric(obj.data.(dic_key).standard_error)
+            if isnumeric(obj.data(dic_key).attributes.standard_error)
 
-                if ~isnan(obj.data.(dic_key).standard_error)
-                    writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(dic_key).value, keepSize);
-                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(dic_key).unit);
-                    writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data.(dic_key).standard_error, keepSize);
-                    h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data.(dic_key).unit);
+                if ~isnan(obj.data(dic_key).attributes.standard_error)
+                    writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data(dic_key).value, keepSize);
+                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data(dic_key).attributes.unit);
+                    writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data(dic_key).attributes.standard_error, keepSize);
+                    h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data(dic_key).attributes.unit);
                 else
-                    writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(dic_key).value, keepSize);
-                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(dic_key).unit);
+                    writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data(dic_key).value, keepSize);
+                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data(dic_key).attributes.unit);
                 end
 
             else
                 warning_s("Non numeric ste given to save property : %s", dic_key);
-                writeNumericToHDF5(file_path, h5path, obj.data.(dic_key).value);
-                h5writeatt(file_path, h5path, "unit", obj.data.(dic_key).unit);
+                writeNumericToHDF5(file_path, h5path, obj.data(dic_key).value);
+                h5writeatt(file_path, h5path, "unit", obj.data(dic_key).attributes.unit);
             end
 
             h5writeatt(file_path, h5path, "nameID", dic_key);
