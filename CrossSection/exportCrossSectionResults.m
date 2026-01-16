@@ -31,6 +31,7 @@ Q_cell = results.Q_cell;
 v_cell = results.v_cell;
 v_safe_cell = results.v_safe_cell;
 v_profiles_cell = results.v_profiles_cell;
+v_profiles_cropped_cell = results.v_profiles_cropped_cell;
 radius_Q = results.radius_Q;
 branch_Q = results.branch_Q;
 % radius_v = results.radius_v;
@@ -48,7 +49,7 @@ labeledVessels = results.labeledVessels .* results.labeledVessels ~= 0;
 histo_v_cell = results.histo_v_cell;
 
 % 0.bis Save to H5 Output the velocity profiles and maksLabel info
-exportProfilesToH5(name, v_cell, v_safe_cell);
+exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell, v_profiles_cropped_cell);
 
 % 1. Flow Rate Figures
 tic

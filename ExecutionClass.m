@@ -127,6 +127,7 @@ methods
         ToolBox.setCache(obj.Cache);
 
         obj.Cache.createTimeVector(ToolBox, size(obj.Cache.M0_ff, 3));
+        obj.Cache.createFreqVector(ToolBox);
 
         obj.Reporter = ReporterClass(obj);
 

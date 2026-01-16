@@ -127,8 +127,8 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     
     % estimated_width = struct('systole', [], 'diastole', []);
     
-    v_profile_avg = mean(v_profile, 2);
-    valid_idxs = v_profile_avg > 0;
+    v_profile_avg = mean(v_profile, 2, "omitnan");
+    valid_idxs = ~isnan(v_profile_avg);
     v_profile = v_profile(valid_idxs, :);
     % v_profile_good_idx_sav = v_profile;
     crossSectionLength = size(v_profile, 1);
@@ -461,7 +461,7 @@ function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, T
     % PSF Kernel
     PIXEL_SIZE = params.px_size * 1e-3;
 
-    v_mean = mean(v_profile_interp, 2);
+    v_mean = mean(v_profile_interp, 2, "omitnan");
     v_mean_interp = v_mean;
 
     % Model: Amplitude * (1 - ((x-center)/width)^2) * convol PSF
@@ -472,11 +472,21 @@ function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, T
     lb      = [0,           -0.5,       0.1  ];
     ub      = [Inf,          0.5,       1.5  ];
     
-    costFun = @(p) costFunDC(p, x_grid_normalized, v_mean, psf_kernel);
+    isVal = ~isnan(v_mean);
+    x_filt = x_grid_normalized(isVal);
+    v_filt = v_mean(isVal);
+
+    costFun = @(p) wrapper(p, x_filt, v_filt, psf_kernel);
     options = optimoptions("lsqnonlin", "Display", "off");
+
+    function r = wrapper(p, x, v, psf)
+        raw_r = costFunDC(p, x, v, psf);
+        r = raw_r(isfinite(raw_r)); % Remove any NaNs
+    end
+
     try
         p_fit = lsqnonlin(costFun, p_init, lb, ub, options);
-    catch
+    catch ME
         geoParams.R0 = NaN; 
         return;
     end

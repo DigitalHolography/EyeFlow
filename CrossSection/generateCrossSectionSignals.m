@@ -123,6 +123,7 @@ v_cell = cell(numCircles, numBranches); % Top velocity
 v_safe_cell = cell(numCircles, numBranches);
 v_SE_cell = cell(numCircles, numBranches); % Standard deviation of velocity
 v_profiles_cell = cell(numCircles, numBranches); % Top velocity
+v_profiles_cropped_cell = cell(numCircles, numBranches);
 v_profiles_SE_cell = cell(numCircles, numBranches); % Standard deviation of velocity
 A_cell = cell(numCircles, numBranches); % Cross-sectional area
 D_cell = cell(numCircles, numBranches); % Cross-section width
@@ -148,6 +149,7 @@ for c_idx = 1:numCircles
             v_safe_cell{c_idx, b_idx} = cross_section_results.v_safe;
             v_SE_cell{c_idx, b_idx} = cross_section_results.v_SE;
             v_profiles_cell{c_idx, b_idx} = cross_section_results.v_profiles;
+            v_profiles_cropped_cell{c_idx, b_idx} = cross_section_results.v_profiles_cropped;
             v_profiles_SE_cell{c_idx, b_idx} = cross_section_results.v_profiles_SE;
             histo_v_cell{c_idx, b_idx} = cross_section_results.v_histo;
             Q_cell{c_idx, b_idx} = cross_section_results.Q;
@@ -223,6 +225,7 @@ results.maskLabel = maskLabel;
 results.v_cell = v_cell;
 results.v_safe_cell = v_safe_cell;
 results.v_profiles_cell = v_profiles_cell;
+results.v_profiles_cropped_cell = v_profiles_cropped_cell;
 results.Q_cell = Q_cell;
 results.branch_Q = branch_Q;
 results.radius_Q = radius_Q;
@@ -372,19 +375,16 @@ res_D1_x2_stats = calculate_stats_all(res_fft_card_freq(:, :, 2));
 emptyIndex = cellfun(@isempty, Disp_cell);
 Disp_cell(emptyIndex) = {NaN(profile_width, numFrames)};
 
-ToolBox.Output.DimOut.add("DispField/profile_DispField_" + name, reshape(cell2mat(Disp_cell), [c_size, b_size, numFrames, profile_width]), ["CircleIdx", "BranchIdx", "Time", "X-axis"]);
-
-ToolBox.Output.DimOut.add("DispField/profile_D_x1_" + name, res_D_x1, ["CircleIdx", "BranchIdx", "Time"]);
-ToolBox.Output.DimOut.add("DispField/profile_D_x2_" + name, res_D_x2, ["CircleIdx", "BranchIdx", "Time"]);
-ToolBox.Output.DimOut.add("DispField/profile_fft_x1_" + name, res_fft_x1, ["CircleIdx", "BranchIdx", "Frequency"]);
-ToolBox.Output.DimOut.add("DispField/profile_fft_x2_" + name, res_fft_x2, ["CircleIdx", "BranchIdx", "Frequency"]);
-ToolBox.Output.DimOut.add("DispField/D1_" + name, res_fft_card_freq, ["CircleIdx", "BranchIdx", "x1, x2"]);
-
-ToolBox.Output.DimOut.add("DispField/D_x1_stats_" + name, res_x1_stats, ["CircleIdx", "BranchIdx", "Mean, Median, Std"]);
-ToolBox.Output.DimOut.add("DispField/D_x2_stats_" + name, res_x2_stats, ["CircleIdx", "BranchIdx", "Mean, Median, Std"]);
-
-ToolBox.Output.DimOut.add("DispField/D1_x1_stats_" + name, res_D1_x1_stats, "Mean, Median, Std");
-ToolBox.Output.DimOut.add("DispField/D1_x2_stats_" + name, res_D1_x2_stats, "Mean, Median, Std");
+ToolBox.Output.add("displacementField_profile_" + name, reshape(cell2mat(Disp_cell), [c_size, b_size, numFrames, profile_width]), h5path = capitalize(name) + "/CrossSections/DisplacementField/profile");
+ToolBox.Output.add("displacementField_profile_D_x1_" + name, res_D_x1, h5path = capitalize(name) + "/CrossSections/DisplacementField/profile_D_x1");
+ToolBox.Output.add("displacementField_profile_D_x2_" + name, res_D_x2, h5path = capitalize(name) + "/CrossSections/DisplacementField/profile_D_x2");
+ToolBox.Output.add("displacementField_profile_fft_x1_" + name, res_fft_x1, h5path = capitalize(name) + "/CrossSections/DisplacementField/profile_fft_x1");
+ToolBox.Output.add("displacementField_profile_fft_x2_" + name, res_fft_x2, h5path = capitalize(name) + "/CrossSections/DisplacementField/profile_fft_x2");
+ToolBox.Output.add("displacementField_D1_" + name, res_fft_card_freq, h5path = capitalize(name) + "/CrossSections/DisplacementField/D1");
+ToolBox.Output.add("displacementField_D_x1_stats_" + name, res_x1_stats, h5path = capitalize(name) + "/CrossSections/DisplacementField/D_x1_stats");
+ToolBox.Output.add("displacementField_D_x2_stats_" + name, res_x2_stats, h5path = capitalize(name) + "/CrossSections/DisplacementField/D_x2_stats");
+ToolBox.Output.add("displacementField_D1_x1_stats_" + name, res_D1_x1_stats, h5path = capitalize(name) + "/CrossSections/DisplacementField/D1_x1_stats");
+ToolBox.Output.add("displacementField_D1_x2_stats_" + name, res_D1_x2_stats, h5path = capitalize(name) + "/CrossSections/DisplacementField/D1_x2_stats");
 
 % ToolBox.Output.DimOut.add("DispField/profile_FFT_D_local_max_" + name, res_fft_disp, []);
 end

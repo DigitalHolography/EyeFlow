@@ -1,14 +1,19 @@
-function exportProfilesToH5(name, v_cell, v_safe_cell)
+function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell, v_profiles_cropped_cell)
 % Function to save the velocities profiles 
     arguments
         name string
         v_cell cell
         v_safe_cell cell
+        v_profiles_cell cell
+        v_profiles_cropped_cell cell
     end
 
     ToolBox = getGlobalToolBox;
     ToolBox.Output.add("velocity_trunc_seg_mean_" + name, toArray(v_cell),      h5path = capitalize(name) + "/CrossSections/velocity_trunc_seg_mean");
     ToolBox.Output.add("velocity_whole_seg_mean_" + name, toArray(v_safe_cell), h5path = capitalize(name) + "/CrossSections/velocity_whole_seg_mean");
+
+    ToolBox.Output.add("velocity_profiles_whole_seg" + name, toArray4D(v_profiles_cell), h5path = capitalize(name) + "/CrossSections/velocity_profiles_whole_seg");
+    ToolBox.Output.add("velocity_profiles_trunc_seg" + name, toArray4D(v_profiles_cropped_cell), h5path = capitalize(name) + "/CrossSections/velocity_profiles_trunc_seg");
 end
 
 function v_array = toArray(v_cell)
@@ -28,6 +33,30 @@ function v_array = toArray(v_cell)
             if ~isempty(v_cell{r,c})
                 v_array(r, c, :) = double(v_cell{r,c});
             end
+        end
+    end
+end
+
+function v_4d = toArray4D(v_cell)
+    [rows, cols] = size(v_cell);
+
+    firstIdx = find(~cellfun(@isempty, v_cell), 1);
+    if isempty(firstIdx)
+        v_4d = []; return;
+    end
+    
+    innerCell = v_cell{firstIdx};
+    numNested = numel(innerCell);
+    vecLen = numel(innerCell{1});
+
+    v_4d = nan(rows, cols, numNested, vecLen, "double");
+
+    for i = 1:numel(v_cell)
+        if ~isempty(v_cell{i})
+            [r, c] = ind2sub([rows, cols], i);
+            
+            nestedMatrix = vertcat(v_cell{i}{:});
+            v_4d(r, c, :, :) = nestedMatrix;
         end
     end
 end
