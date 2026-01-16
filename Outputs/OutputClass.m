@@ -26,6 +26,7 @@ methods
             vars.h5path string = ""
             vars.unit string = ""
             vars.standard_error = NaN
+            vars.keepSize = false
         end
 
         if nargin > 3
@@ -39,6 +40,7 @@ methods
         entry.value = value;
         entry.attributes.standard_error = vars.standard_error;
         entry.attributes.unit = vars.unit;
+        entry.attributes.keepSize = vars.keepSize;
 
         obj.data(name) = entry;
 
@@ -121,22 +123,24 @@ methods
                 h5path = strcat("/", h5path);
             end
 
-            if isnumeric(obj.data.(props{i}).standard_error)
+            keepSize = obj.data(dic_key).attributes.keepSize;
 
-                if ~isnan(obj.data.(props{i}).standard_error)
-                    writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(props{i}).value);
-                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(props{i}).unit);
-                    writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data.(props{i}).standard_error);
-                    h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data.(props{i}).unit);
+            if isnumeric(obj.data.(dic_key).standard_error)
+
+                if ~isnan(obj.data.(dic_key).standard_error)
+                    writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(dic_key).value, keepSize);
+                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(dic_key).unit);
+                    writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data.(dic_key).standard_error, keepSize);
+                    h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data.(dic_key).unit);
                 else
-                    writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(props{i}).value);
-                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(props{i}).unit);
+                    writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data.(dic_key).value, keepSize);
+                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data.(dic_key).unit);
                 end
 
             else
-                warning_s("Non numeric ste given to save property : %s", props{i});
-                writeNumericToHDF5(file_path, h5path, obj.data.(props{i}).value);
-                h5writeatt(file_path, h5path, "unit", obj.data.(props{i}).unit);
+                warning_s("Non numeric ste given to save property : %s", dic_key);
+                writeNumericToHDF5(file_path, h5path, obj.data.(dic_key).value);
+                h5writeatt(file_path, h5path, "unit", obj.data.(dic_key).unit);
             end
 
             h5writeatt(file_path, h5path, "nameID", dic_key);
@@ -151,7 +155,13 @@ end
 
 % --- Helper: write numeric dataset ---
 
-function writeNumericToHDF5(path, datasetPath, value)
+function writeNumericToHDF5(path, datasetPath, value, keepSize)
+    arguments
+        path,
+        datasetPath,
+        value,
+        keepSize = false
+    end
 
 if ~isempty(value)
 
@@ -163,22 +173,24 @@ if ~isempty(value)
     if islogical(value) % Hdf5 matlab does not support
         value = uint8(value);
     end
-
-    stored_value = whos('value');
-    bytesize = stored_value.bytes;
-    original_class = stored_value.class;
-
-    % Threshold for precision reduction
-    threshold = 1e6; % 1 MBytes
-
+    
     % Reduce precision if numeric type allows it
     isReduced = false;
+    
+    if ~keepSize
+        stored_value = whos('value');
+        bytesize = stored_value.bytes;
+        original_class = stored_value.class;
 
-    if bytesize > threshold
-        isReduced = true;
-        mini = min(value(:));
-        MM = max(value(:));
-        value = uint8(rescale(value) * 255);
+        % Threshold for precision reduction
+        threshold = 1e6; % 1 MBytes
+
+        if bytesize > threshold
+            isReduced = true;
+            mini = min(value(:));
+            MM = max(value(:));
+            value = uint8(rescale(value) * 255);
+        end
     end
 
     h5create(path, datasetPath, size(value), 'Datatype', class(value), 'Chunksize', size(value), 'Deflate', 6);
