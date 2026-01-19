@@ -273,6 +273,41 @@ tic;
 
 [M0_Systole_img, M0_Diastole_img, sys_idx, dias_idx] = compute_diasys(v_RMS_video, maskArterySection);
 
+bandLimitedSignalHarmonicCount = params.json.PulseAnalysis.BandLimitedSignalHarmonicCount;
+[vein_VelocitySignalPerBeat, vein_VelocitySignalPerBeatFFT, vein_VelocitySignalPerBeatBandLimited] = perBeatAnalysis(v_vein_signal, sys_idx_list, bandLimitedSignalHarmonicCount);
+[artery_VelocitySignalPerBeat, artery_VelocitySignalPerBeatFFT, artery_VelocitySignalPerBeatBandLimited] = perBeatAnalysis(v_artery_signal, sys_idx_list, bandLimitedSignalHarmonicCount);
+
+function [VelocitySignalPerBeat, VelocitySignalPerBeatFFT, VelocitySignalPerBeatBandLimited] = perBeatAnalysis(signal, sysIdxList, bandLimitedSignalHarmonicCount)
+    numberOfBeats = numel(sysIdxList) - 1;
+    N_fft = 2 ^ nextpow2(max(diff(sysIdxList)));
+    VelocitySignalPerBeat = NaN(numberOfBeats, N_fft);
+    VelocitySignalPerBeatFFT = NaN(numberOfBeats, N_fft);
+    VelocitySignalPerBeatBandLimited = NaN(numberOfBeats, N_fft);
+    % perform the fft on each cycle
+    for beatIdx = 1:numberOfBeats
+        beat = signal(sysIdxList(beatIdx):(sysIdxList(beatIdx + 1) - 1));
+        beatInterp = interpft(beat, N_fft);
+        beatFFT = fft(beatInterp, N_fft);
+
+        VelocitySignalPerBeatFFT(beatIdx,:) = beatFFT;
+        VelocitySignalPerBeat(beatIdx,:) = abs(ifft(beatFFT));
+
+        VelocitySignalPerBeatBandLimited(beatIdx,:) = abs(ifft(beatFFT(1:bandLimitedSignalHarmonicCount), N_fft));
+    end
+end
+
+ToolBox.Output.add("sysIdxList", sys_idx_list, h5path = "/Artery/SystolicAccelerationPeakIndexes");
+
+ToolBox.Output.add("vein_VelocitySignalPerBeat", vein_VelocitySignalPerBeat, h5path = "/Vein/Velocity/VelocitySignalPerBeat", keepSize=true);
+ToolBox.Output.add("vein_VelocitySignalPerBeatFFT_abs", abs(vein_VelocitySignalPerBeatFFT), h5path = "/Vein/Velocity/VelocitySignalPerBeatFFT_abs", keepSize=true);
+ToolBox.Output.add("vein_VelocitySignalPerBeatFFT_arg", angle(vein_VelocitySignalPerBeatFFT), h5path = "/Vein/Velocity/VelocitySignalPerBeatFFT_arg", keepSize=true);
+ToolBox.Output.add("vein_VelocitySignalPerBeatBandLimited", vein_VelocitySignalPerBeatBandLimited, h5path = "/Vein/Velocity/VelocitySignalPerBeatBandLimited", keepSize=true);
+
+ToolBox.Output.add("artery_VelocitySignalPerBeat", artery_VelocitySignalPerBeat, h5path = "/Artery/Velocity/VelocitySignalPerBeat", keepSize=true);
+ToolBox.Output.add("artery_VelocitySignalPerBeatFFT_abs", abs(artery_VelocitySignalPerBeatFFT), h5path = "/Artery/Velocity/VelocitySignalPerBeatFFT_abs", keepSize=true);
+ToolBox.Output.add("artery_VelocitySignalPerBeatFFT_arg", angle(artery_VelocitySignalPerBeatFFT), h5path = "/Artery/Velocity/VelocitySignalPerBeatFFT_arg", keepSize=true);
+ToolBox.Output.add("artery_VelocitySignalPerBeatBandLimited", artery_VelocitySignalPerBeatBandLimited, h5path = "/Artery/Velocity/VelocitySignalPerBeatBandLimited", keepSize=true);
+
 % ToolBox.Output.add("M0_ff_img_systole",M0_Systole_img);
 % ToolBox.Output.add("M0_ff_img_diastole",M0_Diastole_img);
 
