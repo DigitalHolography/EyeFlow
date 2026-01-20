@@ -9,11 +9,47 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell, v_profil
     end
 
     ToolBox = getGlobalToolBox;
-    ToolBox.Output.add("velocity_trunc_seg_mean_" + name, toArray(v_cell),      h5path = capitalize(name) + "/CrossSections/velocity_trunc_seg_mean");
-    ToolBox.Output.add("velocity_whole_seg_mean_" + name, toArray(v_safe_cell), h5path = capitalize(name) + "/CrossSections/velocity_whole_seg_mean");
+    params = ToolBox.getParams;
+    sys_idx_list = ToolBox.Cache.sysIdxList;
+
+    v_mat = toArray(v_cell);
+    v_safe_mat = toArray(v_safe_cell);
+
+    bandLimitedSignalHarmonicCount = params.json.PulseAnalysis.BandLimitedSignalHarmonicCount;
+
+    [velocitySignalPerBeatPerSegments, velocitySignalPerBeatPerSegmentsFFT, velocitySignalPerBeatPerSegmentsBandLimited] = perBeatAnalysisMat(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount);
+    velocitySignalPerBeatPerSegments            = mat2cell4D_shape(velocitySignalPerBeatPerSegments);
+    velocitySignalPerBeatPerSegmentsFFT         = mat2cell4D_shape(velocitySignalPerBeatPerSegmentsFFT);
+    velocitySignalPerBeatPerSegmentsBandLimited = mat2cell4D_shape(velocitySignalPerBeatPerSegmentsBandLimited);
+
+    ToolBox.Output.add("velocitySignalPerBeatPerSegments"            + capitalize(name), velocitySignalPerBeatPerSegments,            h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegments",            keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegmentsFFT_abs"     + capitalize(name), abs(velocitySignalPerBeatPerSegmentsFFT),    h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentsFFT_abs",     keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegmentsFFT_arg"     + capitalize(name), angle(velocitySignalPerBeatPerSegmentsFFT),  h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentsFFT_arg",     keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegmentsBandLimited" + capitalize(name), velocitySignalPerBeatPerSegmentsBandLimited, h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentsBandLimited", keepSize=true);
+
+    ToolBox.Output.add("velocity_trunc_seg_mean_" + name, v_mat,      h5path = capitalize(name) + "/CrossSections/velocity_trunc_seg_mean");
+    ToolBox.Output.add("velocity_whole_seg_mean_" + name, v_safe_mat, h5path = capitalize(name) + "/CrossSections/velocity_whole_seg_mean");
 
     ToolBox.Output.add("velocity_profiles_whole_seg" + name, toArray4D(v_profiles_cell), h5path = capitalize(name) + "/CrossSections/velocity_profiles_whole_seg", keepSize = true);
     ToolBox.Output.add("velocity_profiles_trunc_seg" + name, toArray4D(v_profiles_cropped_cell), h5path = capitalize(name) + "/CrossSections/velocity_profiles_trunc_seg", keepSize = true);
+end
+
+function [velocitySignalPerBeat, velocitySignalPerBeatFFT, velocitySignalPerBeatBandLimited] = perBeatAnalysisMat(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount)
+    arguments
+        v_mat,
+        sys_idx_list,
+        bandLimitedSignalHarmonicCount
+    end
+    [c_size, b_size, ~] = size(v_mat);
+    velocitySignalPerBeat = cell(c_size, b_size);
+    velocitySignalPerBeatFFT = cell(c_size, b_size);
+    velocitySignalPerBeatBandLimited = cell(c_size, b_size);
+
+    for c_idx = 1:c_size
+        for b_idx = 1:b_size
+            [velocitySignalPerBeat{c_idx, b_idx}, velocitySignalPerBeatFFT{c_idx, b_idx}, velocitySignalPerBeatBandLimited{c_idx, b_idx}] = perBeatAnalysis(v_mat(c_idx, b_idx, :), sys_idx_list, bandLimitedSignalHarmonicCount);
+        end
+    end
 end
 
 function v_array = toArray(v_cell)
@@ -59,6 +95,18 @@ function v_4d = toArray4D(v_cell)
             v_4d(r, c, :, :) = nestedMatrix;
         end
     end
+end
+
+function array = mat2cell4D_shape(input_cell)
+    arguments
+        input_cell cell 
+    end
+
+    [x, y] = size(input_cell);
+    [z, a] = size(input_cell{1, 1});
+    array = cat(4, input_cell{:});     % z × a × (x*y)
+    array = reshape(array, z, a, x, y);
+    array = permute(array, [3 4 1 2]); % x × y × z × a
 end
 
 % +============================================+ %
