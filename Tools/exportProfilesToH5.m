@@ -17,7 +17,7 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell, v_profil
 
     bandLimitedSignalHarmonicCount = params.json.PulseAnalysis.BandLimitedSignalHarmonicCount;
 
-    [velocitySignalPerBeatPerSegments, velocitySignalPerBeatPerSegmentsFFT, velocitySignalPerBeatPerSegmentsBandLimited] = perBeatAnalysisMat(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount);
+    [velocitySignalPerBeatPerSegments, velocitySignalPerBeatPerSegmentsFFT, velocitySignalPerBeatPerSegmentsBandLimited] = perBeatSignalAnalysisMat(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount);
     velocitySignalPerBeatPerSegments            = mat2cell4D_shape(velocitySignalPerBeatPerSegments);
     velocitySignalPerBeatPerSegmentsFFT         = mat2cell4D_shape(velocitySignalPerBeatPerSegmentsFFT);
     velocitySignalPerBeatPerSegmentsBandLimited = mat2cell4D_shape(velocitySignalPerBeatPerSegmentsBandLimited);
@@ -34,7 +34,7 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell, v_profil
     ToolBox.Output.add("velocity_profiles_trunc_seg" + name, toArray4D(v_profiles_cropped_cell), h5path = capitalize(name) + "/CrossSections/velocity_profiles_trunc_seg", keepSize = true);
 end
 
-function [velocitySignalPerBeat, velocitySignalPerBeatFFT, velocitySignalPerBeatBandLimited] = perBeatAnalysisMat(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount)
+function [velocitySignalPerBeat, velocitySignalPerBeatFFT, velocitySignalPerBeatBandLimited] = perBeatSignalAnalysisMat(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount)
     arguments
         v_mat,
         sys_idx_list,
@@ -47,7 +47,7 @@ function [velocitySignalPerBeat, velocitySignalPerBeatFFT, velocitySignalPerBeat
 
     for c_idx = 1:c_size
         for b_idx = 1:b_size
-            [velocitySignalPerBeat{c_idx, b_idx}, velocitySignalPerBeatFFT{c_idx, b_idx}, velocitySignalPerBeatBandLimited{c_idx, b_idx}] = perBeatAnalysis(v_mat(c_idx, b_idx, :), sys_idx_list, bandLimitedSignalHarmonicCount);
+            [velocitySignalPerBeat{c_idx, b_idx}, velocitySignalPerBeatFFT{c_idx, b_idx}, velocitySignalPerBeatBandLimited{c_idx, b_idx}] = perBeatSignalAnalysis(v_mat(c_idx, b_idx, :), sys_idx_list, bandLimitedSignalHarmonicCount);
         end
     end
 end

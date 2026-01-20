@@ -143,6 +143,8 @@ methods
 
         [executionObj.Cache.vRMS, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB] = pulseAnalysis(executionObj.Cache.f_RMS, executionObj.Cache.M0_ff);
 
+        perBeatAnalysis();
+
         axialAnalysis(executionObj.Cache.f_AVG);
 
         executionObj.is_velocityAnalyzed = true;

@@ -273,22 +273,7 @@ tic;
 
 [M0_Systole_img, M0_Diastole_img, sys_idx, dias_idx] = compute_diasys(v_RMS_video, maskArterySection);
 
-bandLimitedSignalHarmonicCount = params.json.PulseAnalysis.BandLimitedSignalHarmonicCount;
-[vein_VelocitySignalPerBeat, vein_VelocitySignalPerBeatFFT, vein_VelocitySignalPerBeatBandLimited] = perBeatAnalysis(v_vein_signal, sys_idx_list, bandLimitedSignalHarmonicCount);
-[artery_VelocitySignalPerBeat, artery_VelocitySignalPerBeatFFT, artery_VelocitySignalPerBeatBandLimited] = perBeatAnalysis(v_artery_signal, sys_idx_list, bandLimitedSignalHarmonicCount);
-
-ToolBox.Output.add("sysIdxList", sys_idx_list, h5path = "/Artery/SystolicAccelerationPeakIndexes");
-ToolBox.Output.add("sysIdxList", sys_idx_list, h5path = "/Artery/SystolicAccelerationPeakIndexes");
-
-ToolBox.Output.add("vein_VelocitySignalPerBeat", vein_VelocitySignalPerBeat, h5path = "/Vein/PerBeat/VelocitySignalPerBeat", keepSize=true);
-ToolBox.Output.add("vein_VelocitySignalPerBeatFFT_abs", abs(vein_VelocitySignalPerBeatFFT), h5path = "/Vein/PerBeat/VelocitySignalPerBeatFFT_abs", keepSize=true);
-ToolBox.Output.add("vein_VelocitySignalPerBeatFFT_arg", angle(vein_VelocitySignalPerBeatFFT), h5path = "/Vein/PerBeat/VelocitySignalPerBeatFFT_arg", keepSize=true);
-ToolBox.Output.add("vein_VelocitySignalPerBeatBandLimited", vein_VelocitySignalPerBeatBandLimited, h5path = "/Vein/PerBeat/VelocitySignalPerBeatBandLimited", keepSize=true);
-
-ToolBox.Output.add("artery_VelocitySignalPerBeat", artery_VelocitySignalPerBeat, h5path = "/Artery/PerBeat/VelocitySignalPerBeat", keepSize=true);
-ToolBox.Output.add("artery_VelocitySignalPerBeatFFT_abs", abs(artery_VelocitySignalPerBeatFFT), h5path = "/Artery/PerBeat/VelocitySignalPerBeatFFT_abs", keepSize=true);
-ToolBox.Output.add("artery_VelocitySignalPerBeatFFT_arg", angle(artery_VelocitySignalPerBeatFFT), h5path = "/Artery/PerBeat/VelocitySignalPerBeatFFT_arg", keepSize=true);
-ToolBox.Output.add("artery_VelocitySignalPerBeatBandLimited", artery_VelocitySignalPerBeatBandLimited, h5path = "/Artery/PerBeat/VelocitySignalPerBeatBandLimited", keepSize=true);
+ToolBox.Output.add("sysIdxList", sys_idx_list,       h5path = "/Artery/SystolicAccelerationPeakIndexes");
 
 % ToolBox.Output.add("M0_ff_img_systole",M0_Systole_img);
 % ToolBox.Output.add("M0_ff_img_diastole",M0_Diastole_img);
