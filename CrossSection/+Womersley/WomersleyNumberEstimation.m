@@ -316,7 +316,7 @@ end
     % estimated_width.diastole = parabole_fit_diastole;
     
     % ============================ [ Figures ] ========================== %
-    if params.saveFigures && params.json.exportCrossSectionResults.WomersleySectionImage
+    if params.saveFigures && params.json.exportCrossSectionResults.Womersley.SectionImage
         hFig = figure("Visible", "off");
         hold on;
     
