@@ -1,13 +1,15 @@
 function perBeatAnalysis()
     ToolBox = getGlobalToolBox;
     params = ToolBox.params;
+    dt = ToolBox.stride / ToolBox.fs / 1000;
 
     bandLimitedSignalHarmonicCount  = params.json.PulseAnalysis.BandLimitedSignalHarmonicCount;
     sys_idx_list                    = ToolBox.Cache.sysIdxList;
     v_vein_signal                   = ToolBox.Cache.VeinVelocity;
     v_artery_signal                 = ToolBox.Cache.ArterialVelocity;
 
-    ToolBox.Output.add("beatPeriod", diff(sys_idx_list), h5path = "/Artery/PerBeat/BeatPeriod");
+    ToolBox.Output.add("beatPeriodIdx", diff(sys_idx_list), h5path = "/Artery/PerBeat/beatPeriodIdx");
+    ToolBox.Output.add("beatPeriodSeconds", diff(sys_idx_list) * dt, h5path = "/Artery/PerBeat/beatPeriodSeconds");
 
     perBeatAnalysis_handle(v_vein_signal,   "vein",     sys_idx_list, bandLimitedSignalHarmonicCount);
     perBeatAnalysis_handle(v_artery_signal, "artery",   sys_idx_list, bandLimitedSignalHarmonicCount);

@@ -1,11 +1,10 @@
-function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell, v_profiles_cropped_cell)
+function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
 % Function to save the velocities profiles 
     arguments
         name string
         v_cell cell
         v_safe_cell cell
         v_profiles_cell cell
-        v_profiles_cropped_cell cell
     end
 
     ToolBox = getGlobalToolBox;
@@ -14,24 +13,44 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell, v_profil
 
     v_mat = toArray(v_cell);
     v_safe_mat = toArray(v_safe_cell);
+    v_profiles_mat = toArray4D(v_profiles_cell);
 
     bandLimitedSignalHarmonicCount = params.json.PulseAnalysis.BandLimitedSignalHarmonicCount;
 
-    [velocitySignalPerBeatPerSegments, velocitySignalPerBeatPerSegmentsFFT, velocitySignalPerBeatPerSegmentsBandLimited] = perBeatSignalAnalysisMat(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount);
-    velocitySignalPerBeatPerSegments            = mat2cell4D_shape(velocitySignalPerBeatPerSegments);
-    velocitySignalPerBeatPerSegmentsFFT         = mat2cell4D_shape(velocitySignalPerBeatPerSegmentsFFT);
-    velocitySignalPerBeatPerSegmentsBandLimited = mat2cell4D_shape(velocitySignalPerBeatPerSegmentsBandLimited);
+    [velocitySignalPerBeatPerSegment_whole, velocitySignalPerBeatPerSegmentFFT_whole, velocitySignalPerBeatPerSegmentBandLimited_whole] = perBeatSignalAnalysisMat(v_safe_mat, sys_idx_list, bandLimitedSignalHarmonicCount);
+    velocitySignalPerBeatPerSegment_whole            = mat2cell4D_shape(velocitySignalPerBeatPerSegment_whole);
+    velocitySignalPerBeatPerSegmentFFT_whole         = mat2cell4D_shape(velocitySignalPerBeatPerSegmentFFT_whole);
+    velocitySignalPerBeatPerSegmentBandLimited_whole = mat2cell4D_shape(velocitySignalPerBeatPerSegmentBandLimited_whole);
 
-    ToolBox.Output.add("velocitySignalPerBeatPerSegments"            + capitalize(name), velocitySignalPerBeatPerSegments,            h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegments",            keepSize=true);
-    ToolBox.Output.add("velocitySignalPerBeatPerSegmentsFFT_abs"     + capitalize(name), abs(velocitySignalPerBeatPerSegmentsFFT),    h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentsFFT_abs",     keepSize=true);
-    ToolBox.Output.add("velocitySignalPerBeatPerSegmentsFFT_arg"     + capitalize(name), angle(velocitySignalPerBeatPerSegmentsFFT),  h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentsFFT_arg",     keepSize=true);
-    ToolBox.Output.add("velocitySignalPerBeatPerSegmentsBandLimited" + capitalize(name), velocitySignalPerBeatPerSegmentsBandLimited, h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentsBandLimited", keepSize=true);
+    [velocitySignalPerBeatPerSegment_trunc, velocitySignalPerBeatPerSegmentFFT_trunc, velocitySignalPerBeatPerSegmentBandLimited_trunc] = perBeatSignalAnalysisMat(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount);
+    velocitySignalPerBeatPerSegment_trunc            = mat2cell4D_shape(velocitySignalPerBeatPerSegment_trunc);
+    velocitySignalPerBeatPerSegmentFFT_trunc         = mat2cell4D_shape(velocitySignalPerBeatPerSegmentFFT_trunc);
+    velocitySignalPerBeatPerSegmentBandLimited_trunc = mat2cell4D_shape(velocitySignalPerBeatPerSegmentBandLimited_trunc);
+
+    % [profilePerBeatPerSegments, profilePerBeatPerSegmentsFFT, profilePerBeatPerSegmentsBandLimited] = perBeatProfileAnalysisMat(v_profiles_mat, sys_idx_list, bandLimitedSignalHarmonicCount);
+    % profilePerBeatPerSegments            = mat2cell5D_shape(profilePerBeatPerSegments);
+    % profilePerBeatPerSegmentsFFT         = mat2cell5D_shape(profilePerBeatPerSegmentsFFT);
+    % profilePerBeatPerSegmentsBandLimited = mat2cell5D_shape(profilePerBeatPerSegmentsBandLimited);
+
+    % ToolBox.Output.add("profilePerBeatPerSegments"            + capitalize(name), profilePerBeatPerSegments,            h5path = capitalize(name) + "/PerBeat/Segments/profilePerBeatPerSegments",            keepSize=true);
+    % ToolBox.Output.add("profilePerBeatPerSegmentsFFT_abs"     + capitalize(name), abs(profilePerBeatPerSegmentsFFT),    h5path = capitalize(name) + "/PerBeat/Segments/profilePerBeatPerSegmentsFFT_abs",     keepSize=true);
+    % ToolBox.Output.add("profilePerBeatPerSegmentsFFT_arg"     + capitalize(name), angle(profilePerBeatPerSegmentsFFT),  h5path = capitalize(name) + "/PerBeat/Segments/profilePerBeatPerSegmentsFFT_arg",     keepSize=true);
+    % ToolBox.Output.add("profilePerBeatPerSegmentsBandLimited" + capitalize(name), profilePerBeatPerSegmentsBandLimited, h5path = capitalize(name) + "/PerBeat/Segments/profilePerBeatPerSegmentsBandLimited", keepSize=true);
+
+    ToolBox.Output.add("velocitySignalPerBeatPerSegmentWhole"            + capitalize(name), velocitySignalPerBeatPerSegment_whole,            h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentWhole",            keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegmentWholeFFT_abs"     + capitalize(name), abs(velocitySignalPerBeatPerSegmentFFT_whole),    h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentWholeFFT_abs",     keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegmentWholeFFT_arg"     + capitalize(name), angle(velocitySignalPerBeatPerSegmentFFT_whole),  h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentWholeFFT_arg",     keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegmentWholeBandLimited" + capitalize(name), velocitySignalPerBeatPerSegmentBandLimited_whole, h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentWholeBandLimited", keepSize=true);
+
+    ToolBox.Output.add("velocitySignalPerBeatPerSegmentTrunc"            + capitalize(name), velocitySignalPerBeatPerSegment_trunc,            h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentTrunc",            keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegmentTruncFFT_abs"     + capitalize(name), abs(velocitySignalPerBeatPerSegmentFFT_trunc),    h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentTruncFFT_abs",     keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegmentTruncFFT_arg"     + capitalize(name), angle(velocitySignalPerBeatPerSegmentFFT_trunc),  h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentTruncFFT_arg",     keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegmentTruncBandLimited" + capitalize(name), velocitySignalPerBeatPerSegmentBandLimited_trunc, h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentTruncBandLimited", keepSize=true);
 
     ToolBox.Output.add("velocity_trunc_seg_mean_" + name, v_mat,      h5path = capitalize(name) + "/CrossSections/velocity_trunc_seg_mean");
     ToolBox.Output.add("velocity_whole_seg_mean_" + name, v_safe_mat, h5path = capitalize(name) + "/CrossSections/velocity_whole_seg_mean");
 
-    ToolBox.Output.add("velocity_profiles_whole_seg" + name, toArray4D(v_profiles_cell), h5path = capitalize(name) + "/CrossSections/velocity_profiles_whole_seg", keepSize = true);
-    ToolBox.Output.add("velocity_profiles_trunc_seg" + name, toArray4D(v_profiles_cropped_cell), h5path = capitalize(name) + "/CrossSections/velocity_profiles_trunc_seg", keepSize = true);
+    ToolBox.Output.add("velocity_profiles_whole_seg" + name, v_profiles_mat, h5path = capitalize(name) + "/CrossSections/velocity_profiles_whole_seg", keepSize = true);
 end
 
 function [velocitySignalPerBeat, velocitySignalPerBeatFFT, velocitySignalPerBeatBandLimited] = perBeatSignalAnalysisMat(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount)
@@ -41,13 +60,40 @@ function [velocitySignalPerBeat, velocitySignalPerBeatFFT, velocitySignalPerBeat
         bandLimitedSignalHarmonicCount
     end
     [c_size, b_size, ~] = size(v_mat);
-    velocitySignalPerBeat = cell(c_size, b_size);
-    velocitySignalPerBeatFFT = cell(c_size, b_size);
+    velocitySignalPerBeat            = cell(c_size, b_size);
+    velocitySignalPerBeatFFT         = cell(c_size, b_size);
     velocitySignalPerBeatBandLimited = cell(c_size, b_size);
 
     for c_idx = 1:c_size
         for b_idx = 1:b_size
             [velocitySignalPerBeat{c_idx, b_idx}, velocitySignalPerBeatFFT{c_idx, b_idx}, velocitySignalPerBeatBandLimited{c_idx, b_idx}] = perBeatSignalAnalysis(v_mat(c_idx, b_idx, :), sys_idx_list, bandLimitedSignalHarmonicCount);
+        end
+    end
+end
+
+function [profilePerBeat, profilePerBeatFFT, profilePerBeatBandLimited] = perBeatProfileAnalysisMat(v_profiles_4d, sys_idx_list, bandLimitedSignalHarmonicCount)
+    arguments
+        v_profiles_4d
+        sys_idx_list
+        bandLimitedSignalHarmonicCount
+    end
+
+    [c_size, b_size, ~, ~] = size(v_profiles_4d);
+
+    profilePerBeat            = cell(c_size, b_size);
+    profilePerBeatFFT         = cell(c_size, b_size);
+    profilePerBeatBandLimited = cell(c_size, b_size);
+
+    for c_idx = 1:c_size
+        for b_idx = 1:b_size
+
+            profile = squeeze(v_profiles_4d(c_idx, b_idx, :, :));
+
+            if all(isnan(profile), 'all')
+                continue
+            end
+
+            [profilePerBeat{c_idx, b_idx}, profilePerBeatFFT{c_idx, b_idx}, profilePerBeatBandLimited{c_idx, b_idx}] = perBeatProfileAnalysis(profile, sys_idx_list, bandLimitedSignalHarmonicCount);
         end
     end
 end
@@ -109,6 +155,37 @@ function array = mat2cell4D_shape(input_cell)
     array = permute(array, [3 4 1 2]); % x × y × z × a
 end
 
+function array5D = mat2cell5D_shape(input_cell)
+    arguments
+        input_cell cell
+    end
+
+    % grid size
+    [C, B] = size(input_cell);
+
+    % find first non-empty cell
+    firstIdx = find(~cellfun(@isempty, input_cell), 1);
+    if isempty(firstIdx)
+        array5D = [];
+        return
+    end
+
+    % infer dimensions from first valid cell
+    sample = input_cell{firstIdx};   % [beats × Nfft × pixels]
+    [numBeats, Nfft, numPixels] = size(sample);
+
+    % preallocate output
+    array5D = nan(C, B, numBeats, Nfft, numPixels, 'double');
+
+    % fill array
+    for c = 1:C
+        for b = 1:B
+            if ~isempty(input_cell{c,b})
+                array5D(c, b, :, :, :) = input_cell{c,b};
+            end
+        end
+    end
+end
 % +============================================+ %
 % |                   OLD CODE                 | %
 % +============================================+ %

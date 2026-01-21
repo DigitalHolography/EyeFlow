@@ -49,7 +49,7 @@ labeledVessels = results.labeledVessels .* results.labeledVessels ~= 0;
 histo_v_cell = results.histo_v_cell;
 
 % 0.bis Save to H5 Output the velocity profiles and maksLabel info
-exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell, v_profiles_cropped_cell);
+exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell);
 
 % 1. Flow Rate Figures
 tic
