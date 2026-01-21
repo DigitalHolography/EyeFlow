@@ -339,7 +339,7 @@ for i = 1:c_size
             x2 = pks(3);
 
             if isnan(x1) || isnan(x2)
-                warning_s("Displacement Profile Local Max is NaN");
+                warning_s("handleDispValues(%i, %i): Displacement Profile Local Max is NaN", i, j);
                 continue;
             end
 

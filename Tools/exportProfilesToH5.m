@@ -17,6 +17,7 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
 
     bandLimitedSignalHarmonicCount = params.json.PulseAnalysis.BandLimitedSignalHarmonicCount;
 
+    %{
     [velocitySignalPerBeatPerSegment_whole, velocitySignalPerBeatPerSegmentFFT_whole, velocitySignalPerBeatPerSegmentBandLimited_whole] = perBeatSignalAnalysisMat(v_safe_mat, sys_idx_list, bandLimitedSignalHarmonicCount);
     velocitySignalPerBeatPerSegment_whole            = mat2cell4D_shape(velocitySignalPerBeatPerSegment_whole);
     velocitySignalPerBeatPerSegmentFFT_whole         = mat2cell4D_shape(velocitySignalPerBeatPerSegmentFFT_whole);
@@ -26,6 +27,7 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
     velocitySignalPerBeatPerSegment_trunc            = mat2cell4D_shape(velocitySignalPerBeatPerSegment_trunc);
     velocitySignalPerBeatPerSegmentFFT_trunc         = mat2cell4D_shape(velocitySignalPerBeatPerSegmentFFT_trunc);
     velocitySignalPerBeatPerSegmentBandLimited_trunc = mat2cell4D_shape(velocitySignalPerBeatPerSegmentBandLimited_trunc);
+    %}
 
     % [profilePerBeatPerSegments, profilePerBeatPerSegmentsFFT, profilePerBeatPerSegmentsBandLimited] = perBeatProfileAnalysisMat(v_profiles_mat, sys_idx_list, bandLimitedSignalHarmonicCount);
     % profilePerBeatPerSegments            = mat2cell5D_shape(profilePerBeatPerSegments);
@@ -37,6 +39,7 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
     % ToolBox.Output.add("profilePerBeatPerSegmentsFFT_arg"     + capitalize(name), angle(profilePerBeatPerSegmentsFFT),  h5path = capitalize(name) + "/PerBeat/Segments/profilePerBeatPerSegmentsFFT_arg",     keepSize=true);
     % ToolBox.Output.add("profilePerBeatPerSegmentsBandLimited" + capitalize(name), profilePerBeatPerSegmentsBandLimited, h5path = capitalize(name) + "/PerBeat/Segments/profilePerBeatPerSegmentsBandLimited", keepSize=true);
 
+    %{ 
     ToolBox.Output.add("velocitySignalPerBeatPerSegmentWhole"            + capitalize(name), velocitySignalPerBeatPerSegment_whole,            h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentWhole",            keepSize=true);
     ToolBox.Output.add("velocitySignalPerBeatPerSegmentWholeFFT_abs"     + capitalize(name), abs(velocitySignalPerBeatPerSegmentFFT_whole),    h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentWholeFFT_abs",     keepSize=true);
     ToolBox.Output.add("velocitySignalPerBeatPerSegmentWholeFFT_arg"     + capitalize(name), angle(velocitySignalPerBeatPerSegmentFFT_whole),  h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentWholeFFT_arg",     keepSize=true);
@@ -46,6 +49,10 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
     ToolBox.Output.add("velocitySignalPerBeatPerSegmentTruncFFT_abs"     + capitalize(name), abs(velocitySignalPerBeatPerSegmentFFT_trunc),    h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentTruncFFT_abs",     keepSize=true);
     ToolBox.Output.add("velocitySignalPerBeatPerSegmentTruncFFT_arg"     + capitalize(name), angle(velocitySignalPerBeatPerSegmentFFT_trunc),  h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentTruncFFT_arg",     keepSize=true);
     ToolBox.Output.add("velocitySignalPerBeatPerSegmentTruncBandLimited" + capitalize(name), velocitySignalPerBeatPerSegmentBandLimited_trunc, h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegmentTruncBandLimited", keepSize=true);
+    %}
+
+    perBeatSignalAnalysisMat(v_mat,         "Trunc", sys_idx_list, bandLimitedSignalHarmonicCount);
+    perBeatSignalAnalysisMat(v_safe_mat,    "Whole", sys_idx_list, bandLimitedSignalHarmonicCount);
 
     ToolBox.Output.add("velocity_trunc_seg_mean_" + name, v_mat,      h5path = capitalize(name) + "/CrossSections/velocity_trunc_seg_mean");
     ToolBox.Output.add("velocity_whole_seg_mean_" + name, v_safe_mat, h5path = capitalize(name) + "/CrossSections/velocity_whole_seg_mean");
@@ -53,7 +60,28 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
     ToolBox.Output.add("velocity_profiles_whole_seg" + name, v_profiles_mat, h5path = capitalize(name) + "/CrossSections/velocity_profiles_whole_seg", keepSize = true);
 end
 
-function [velocitySignalPerBeat, velocitySignalPerBeatFFT, velocitySignalPerBeatBandLimited] = perBeatSignalAnalysisMat(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount)
+function perBeatSignalAnalysisMat(v_mat, name, sys_idx_list, bandLimitedSignalHarmonicCount)
+    arguments
+        v_mat
+        name string
+        sys_idx_list
+        bandLimitedSignalHarmonicCount
+    end
+
+    ToolBox = getGlobalToolBox;
+
+    [velocitySignalPerBeatPerSegment, velocitySignalPerBeatPerSegmentFFT, velocitySignalPerBeatPerSegmentBandLimited] = perBeatSignalAnalysisMat_handle(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount);
+    velocitySignalPerBeatPerSegment            = mat2cell4D_shape(velocitySignalPerBeatPerSegment);
+    velocitySignalPerBeatPerSegmentFFT         = mat2cell4D_shape(velocitySignalPerBeatPerSegmentFFT);
+    velocitySignalPerBeatPerSegmentBandLimited = mat2cell4D_shape(velocitySignalPerBeatPerSegmentBandLimited);
+
+    ToolBox.Output.add("velocitySignalPerBeatPerSegment" + name                 + capitalize(name), velocitySignalPerBeatPerSegment,            h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegment" + name ,                keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegment" + name + "FFT_abs"     + capitalize(name), abs(velocitySignalPerBeatPerSegmentFFT),    h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegment" + name + "FFT_abs",     keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegment" + name + "FFT_arg"     + capitalize(name), angle(velocitySignalPerBeatPerSegmentFFT),  h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegment" + name + "FFT_arg",     keepSize=true);
+    ToolBox.Output.add("velocitySignalPerBeatPerSegment" + name + "BandLimited" + capitalize(name), velocitySignalPerBeatPerSegmentBandLimited, h5path = capitalize(name) + "/PerBeat/Segments/velocitySignalPerBeatPerSegment" + name + "BandLimited", keepSize=true);
+end
+
+function [velocitySignalPerBeat, velocitySignalPerBeatFFT, velocitySignalPerBeatBandLimited] = perBeatSignalAnalysisMat_handle(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount)
     arguments
         v_mat,
         sys_idx_list,
