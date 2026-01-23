@@ -123,7 +123,7 @@ for f = [
 
 if ~isKey(outputs, f)
     entry.value = NaN;
-    entry.attributes.unit = "";
+    entry.metadata.unit = "";
     outputs(f) = entry;
 end
 
@@ -245,7 +245,7 @@ paramText = cell(numParams, 1);
 for i = 1:numParams
     paramValue = parameters.(paramNames{i});
     fmt = chooseFormat(paramNames{i});
-    paramText{i} = sprintf('%s %s', sprintf(fmt, paramValue.value), paramValue.attributes.unit);
+    paramText{i} = sprintf('%s %s', sprintf(fmt, paramValue.value), paramValue.metadata.unit);
 end
 
 paramFontSize = 12;

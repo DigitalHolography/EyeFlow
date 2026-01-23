@@ -60,8 +60,8 @@ methods
             xy_papilla = [center_x, center_y];
             ToolBox.Cache.xy_papilla = xy_papilla;
 
-            ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2 / size(executionObj.Cache.M0_ff, 1), h5path = '/Papilla/Ratio');
-            ToolBox.Output.add("PapillaXY", xy_papilla, h5path = '/Papilla/XYCenter', unit = 'px');
+            ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2 / size(executionObj.Cache.M0_ff, 1), h5path = '/OpticDisc/Ratio');
+            ToolBox.Output.add("PapillaXY", xy_papilla, h5path = '/OpticDisc/XYCenter', unit = 'px');
         catch ME
             warning("Error while finding papilla : ")
             MEdisp(ME, ToolBox.EF_path);

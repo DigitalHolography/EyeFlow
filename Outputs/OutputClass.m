@@ -11,7 +11,8 @@ methods
         structTemplate = struct(...
             "value", [], ...
             "h5path", "", ...
-            "attributes", []...
+            "metadata", [], ...
+            "attributes", [] ...
             );
         obj.data = dictionary(string, structTemplate);
     end
@@ -38,15 +39,16 @@ methods
         end
 
         entry.value = value;
-        entry.attributes.standard_error = vars.standard_error;
-        entry.attributes.unit = vars.unit;
-        entry.attributes.keepSize = vars.keepSize;
+        entry.metadata.standard_error = vars.standard_error;
+        entry.metadata.unit = vars.unit;
+        entry.metadata.keepSize = vars.keepSize;
+        entry.attributes = [];
 
         obj.data(name) = entry;
 
         % obj.data(name).value = value;
-        % obj.data(name).attributes.standard_error = vars.standard_error;
-        % obj.data(name).attributes.unit = vars.unit;
+        % obj.data(name).metadata.standard_error = vars.standard_error;
+        % obj.data(name).metadata.unit = vars.unit;
 
         if vars.h5path == ""
             obj.data(name).h5path = sprintf("/%s", name);
@@ -54,6 +56,19 @@ methods
             obj.data(name).h5path = (vars.h5path);
         end
 
+    end
+
+    function add_attribute(obj, value_name, key, val)
+        arguments
+            obj
+            value_name string   % Name of the value
+            key string          % Name of the attribute
+            val
+        end
+
+        entry = obj.data(value_name);
+        entry.attributes.(key) = val;
+        obj.data(value_name) = entry;
     end
 
     function writeJson(obj, path)
@@ -72,10 +87,10 @@ methods
 
             if isscalar(v)
 
-                if obj.data(dic_key).attributes.unit == ""
+                if obj.data(dic_key).metadata.unit == ""
                     key = dic_key;
                 else
-                    key = dic_key + "_" + obj.data(dic_key).attributes.unit;
+                    key = dic_key + "_" + obj.data(dic_key).metadata.unit;
                 end
 
                 d(char(key)) = v;
@@ -123,27 +138,29 @@ methods
                 h5path = strcat("/", h5path);
             end
 
-            keepSize = obj.data(dic_key).attributes.keepSize;
+            keepSize = obj.data(dic_key).metadata.keepSize;
 
-            if isnumeric(obj.data(dic_key).attributes.standard_error)
+            if isnumeric(obj.data(dic_key).metadata.standard_error)
 
-                if ~isnan(obj.data(dic_key).attributes.standard_error)
+                if ~isnan(obj.data(dic_key).metadata.standard_error)
                     writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data(dic_key).value, keepSize);
-                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data(dic_key).attributes.unit);
-                    writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data(dic_key).attributes.standard_error, keepSize);
-                    h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data(dic_key).attributes.unit);
+                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data(dic_key).metadata.unit);
+                    writeNumericToHDF5(file_path, strcat(h5path, "/ste"), obj.data(dic_key).metadata.standard_error, keepSize);
+                    h5writeatt(file_path, strcat(h5path, "/ste"), "unit", obj.data(dic_key).metadata.unit);
                 else
                     writeNumericToHDF5(file_path, strcat(h5path, "/value"), obj.data(dic_key).value, keepSize);
-                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data(dic_key).attributes.unit);
+                    h5writeatt(file_path, strcat(h5path, "/value"), "unit", obj.data(dic_key).metadata.unit);
                 end
 
             else
                 warning_s("Non numeric ste given to save property : %s", dic_key);
                 writeNumericToHDF5(file_path, h5path, obj.data(dic_key).value);
-                h5writeatt(file_path, h5path, "unit", obj.data(dic_key).attributes.unit);
+                h5writeatt(file_path, h5path, "unit", obj.data(dic_key).metadata.unit);
             end
 
-            h5writeatt(file_path, h5path, "nameID", dic_key);
+            h5writeatt(file_path, h5path + "/value", "nameID", dic_key);
+
+            writeAttributes(file_path, h5path, obj.data(dic_key).attributes);
 
         end
 
@@ -193,6 +210,24 @@ if ~isempty(value)
         end
     end
 
+    if isa(value, 'double')
+        value = single(value);
+    end
+
+    if isfile(path)
+        try
+            h5info(path, datasetPath);
+            datasetExists = true;
+        catch
+            datasetExists = false;
+        end
+
+        if datasetExists
+            warning_s("Dataset '%s' already exists in '%s'. Skipping.", datasetPath, path);
+            return;
+        end
+    end
+
     h5create(path, datasetPath, size(value), 'Datatype', class(value), 'Chunksize', size(value), 'Deflate', 6);
     h5write(path, datasetPath, value);
 
@@ -204,4 +239,28 @@ if ~isempty(value)
 
 end
 
+end
+
+
+% ==================== Helper to write the h5 attributes ==================== %
+
+function writeAttributes(file_path, h5path, fieldAttributes)
+    arguments
+        file_path string
+        h5path string
+        fieldAttributes struct
+    end
+
+    keys = fieldnames(fieldAttributes);
+
+    for i = 1:numel(keys)
+        cur_key = keys{i};
+        cur_val = fieldAttributes.(cur_key);
+        % This will avoid [strings] and "" (will replace by null)
+        if isstring(cur_val) && isscalar(cur_val)
+            cur_val = char(cur_val);
+        end
+
+        h5writeatt(file_path, h5path + "/value", cur_key, cur_val);
+    end
 end
