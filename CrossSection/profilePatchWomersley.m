@@ -76,6 +76,8 @@ if params.json.Preprocess.NonRigidRegisteringFlag
     displacement_field = displacement_field.field;
 end
 
+useCycleMean = params.json.exportCrossSectionResults.Womersley.UseCycleMean;
+
 for circleIdx = 1:rows
 
     for branchIdx = 1:cols
@@ -174,14 +176,26 @@ for circleIdx = 1:rows
         % temp_results = WomersleyNumberEstimation(profile_time, cardiac_frequency, name, idx, circleIdx, branchIdx);
         % reshaped_results = reshape(temp_results, 1, 1, []);
         % womersley_results(circleIdx, branchIdx, 1:numel(reshaped_results)) = reshaped_results;
-        womersley_results(circleIdx, branchIdx) = Womersley.WomersleyNumberEstimation(profile_time, cardiac_frequency, name, circleIdx, branchIdx, d_profile);
 
+        if useCycleMean
+            v_profile_t = profile_time';
+            [ProfilePerBeat, ~, ~] = perBeatProfileAnalysis(v_profile_t, ToolBox.Cache.sysIdxList, 10);
+            v_profile_t = squeeze(mean(ProfilePerBeat, 1));
+            v_profile_t = v_profile_t';
+
+            v_profile_t_mat(circleIdx, branchIdx, :, :) = v_profile_t;
+        end
+        
+        womersley_results(circleIdx, branchIdx) = Womersley.WomersleyNumberEstimation(v_profile_t, cardiac_frequency, name, circleIdx, branchIdx, d_profile);
+        
         % addStructToExtra(ToolBox.Output.Extra, "Womersley", womersley_results(idx)(1));
-
+        
         ToolBox.Cache.WomersleyOut{circleIdx, branchIdx} = womersley_results(circleIdx, branchIdx);
     end
-
+    
 end
+
+ToolBox.Output.add("VelocityProfilesSegInterpOneBeat" + capitalize(name), v_profile_t_mat, h5path = capitalize(name) + "/CrossSections/VelocityProfilesSegInterpOneBeat", keepSize=true);
 
 saveWomersleyResults(capitalize(name) + "/CrossSections/Womersley", womersley_results, get_unit(womersley_results));
 
@@ -329,10 +343,26 @@ for i = 1:numel(field_names)
         if ~isreal(field_list)
             imag_data = imag(field_list);
             imag_data(isnan(field_list)) = NaN;
-            ToolBox.Output.add(replace(BasePath + field + "/r", "/", "_"), real(field_list), h5path = BasePath + field + "_r", unit = unit_field);
-            ToolBox.Output.add(replace(BasePath + field + "/i", "/", "_"), imag_data, h5path = BasePath + field + "_i", unit = unit_field);
+
+            real_ID = replace(BasePath + field + "/r", "/", "_");
+            imag_ID = replace(BasePath + field + "/i", "/", "_");
+
+            ToolBox.Output.add(real_ID, real(field_list),   h5path = BasePath + field + "_r", unit = unit_field);
+            ToolBox.Output.add(imag_ID, imag_data,          h5path = BasePath + field + "_i", unit = unit_field);
+
+            % ToolBox.Output.add_attribute(real_ID, "unit",           unit_field);
+            ToolBox.Output.add_attribute(real_ID, "Descritpion",    desc_field);
+
+            % ToolBox.Output.add_attribute(imag_ID, "unit",           unit_field);
+            ToolBox.Output.add_attribute(imag_ID, "Description",    desc_field);
+
         else
-            ToolBox.Output.add(replace(BasePath + field, "/", "_"), field_list, h5path = BasePath + field, unit = unit_field);
+            ID = replace(BasePath + field, "/", "_");
+
+            ToolBox.Output.add(ID, field_list, h5path = BasePath + field, unit = unit_field);
+
+            % ToolBox.Output.add_attribute(ID, "unit",           unit_field);
+            ToolBox.Output.add_attribute(ID, "Descritpion",    desc_field);
         end
 
         % TODO: Add Back the attributes
@@ -606,4 +636,29 @@ end
 
 seg_w_mat = reshape(cell2mat(segment), [size(segment{1}, 2), size(segment, 2)]);
 figure; plot(max(seg_w_mat, [], 1));
+end
+
+
+function v_4d = toArray4D(v_cell)
+    [rows, cols] = size(v_cell);
+
+    firstIdx = find(~cellfun(@isempty, v_cell), 1);
+    if isempty(firstIdx)
+        v_4d = []; return;
+    end
+    
+    innerCell = v_cell{firstIdx};
+    numNested = numel(innerCell);
+    vecLen = numel(innerCell{1});
+
+    v_4d = nan(rows, cols, numNested, vecLen, "double");
+
+    for i = 1:numel(v_cell)
+        if ~isempty(v_cell{i})
+            [r, c] = ind2sub([rows, cols], i);
+            
+            nestedMatrix = vertcat(v_cell{i}{:});
+            v_4d(r, c, :, :) = nestedMatrix;
+        end
+    end
 end

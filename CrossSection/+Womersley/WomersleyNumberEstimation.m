@@ -113,8 +113,14 @@ PIXEL_SIZE = ToolBox.Cache.pixelSize * 1000;
 % SYS_IDXS = ToolBox.Cache.sysIdx;
 % DIAS_IDXS = ToolBox.Cache.diasIdx;
 
+USE_CYCLE_MEAN = params.json.exportCrossSectionResults.Womersley.UseCycleMean;
+
 % Really should be a power of 2
-FFT_PADDING_FACTOR = 16;
+if USE_CYCLE_MEAN
+    FFT_PADDING_FACTOR = 1;
+else
+    FFT_PADDING_FACTOR = 16;
+end
 
 RHO_BLOOD = 1060; % Density of blood in kg/m^3
 
@@ -126,13 +132,18 @@ PSF_KERNEL = init_fit.psf_kernel;
     
     % estimated_width = struct('systole', [], 'diastole', []);
     
-    v_profile_avg = mean(v_profile, 2, "omitnan");
-    valid_idxs = ~isnan(v_profile_avg);
+    v_profile_avg_t = mean(v_profile, 2, "omitnan");
+    valid_idxs = ~isnan(v_profile_avg_t);
     v_profile = v_profile(valid_idxs, :);
     % v_profile_good_idx_sav = v_profile;
     crossSectionLength = size(v_profile, 1);
     
     if crossSectionLength > 1
+
+        if USE_CYCLE_MEAN
+            NUM_INTERP_POINTS = 2^nextpow2(NUM_INTERP_POINTS);
+        end
+
         v_profile = interp1(linspace(1, crossSectionLength, crossSectionLength), v_profile, linspace(1, crossSectionLength, NUM_INTERP_POINTS));
     else
         warning_s("[WOMERSLEY] WomersleyNumberEstimation_n (%i, %i, %i): Not enough valid points in the velocity profile. Skipping fit.", circleIdx, branchIdx, n_harmonic);
@@ -142,11 +153,12 @@ PSF_KERNEL = init_fit.psf_kernel;
     numFrames = size(v_profile, 2);
     % Will pad to the next power of 2 to ease the FFT algorithm
     N_fft = (2 ^ nextpow2(numFrames)) * FFT_PADDING_FACTOR;
-    v_profile_ft = fftshift(fft(v_profile, N_fft, 2), 2);
+    % The fft is on the time dim (2)
+    velocityProfileFFT = fft(v_profile, N_fft, 2);
     
     f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, N_fft);
     
-    % fitParams.v_profile_ft = v_profile_ft;
+    % fitParams.velocityProfileFFT = velocityProfileFFT;
     % fitParams.frequency_vector = f;
 
 % figure;
@@ -169,9 +181,9 @@ PSF_KERNEL = init_fit.psf_kernel;
 
 % ============================== [ FIT ] ============================ %
 
-% v_meas = mean(v_profile_ft(:, cardiac_idxs), 2);
+% v_meas = mean(velocityProfileFFT(:, cardiac_idxs), 2);
 
-v_meas = extractHarmonicProfile(v_profile_ft, f, cardiac_frequency, n_harmonic);
+v_meas = extractHarmonicProfile(velocityProfileFFT, n_harmonic);
 
 x_coords = linspace(-1, 1, NUM_INTERP_POINTS);
 
