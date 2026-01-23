@@ -78,7 +78,7 @@
     "FilterSignals": true,
     "OutOfNoiseThreshold": 4,
     "BlurScaleFactor": 100,
-    "BandLimitedSignalHarmonicCount": 10
+    "BandLimitedSignalHarmonicCount": 13
   },
   "SizeOfField": {
     "SmallRadiusRatio": 0.10,
@@ -116,7 +116,8 @@
     },
     "Womersley": {
       "MaxHarmonic": 6,
-      "SectionImage": false
+      "SectionImage": false,
+      "UseCycleMean": true
     }
   },
   "DebugMode": false
