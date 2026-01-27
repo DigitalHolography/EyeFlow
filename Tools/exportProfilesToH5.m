@@ -64,7 +64,9 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
     ToolBox.Output.add("VelocitySignalPerBeatPerSegment" + "FFT_arg"     + capitalize(name), angle(velocitySignalPerBeatPerSegmentFFT),  h5path = capitalize(name) + "/VelocityPerBeat/Segments/VelocitySignalPerBeatPerSegmentFFT_arg",     keepSize=true);
     ToolBox.Output.add("VelocitySignalPerBeatPerSegment" + "BandLimited" + capitalize(name), velocitySignalPerBeatPerSegmentBandLimited, h5path = capitalize(name) + "/VelocityPerBeat/Segments/VelocitySignalPerBeatPerSegmentBandLimited", keepSize=true);
 
-    out = mode1(velocitySignalPerBeatPerSegment);
+    outPerBeat = mode1PerBeat(velocitySignalPerBeatPerSegment);
+    out = mode1(v_safe_mat);
+    exportMode1StructPerBeat(outPerBeat, name);
     exportMode1Struct(out, name);
 
     % ToolBox.Output.add("velocity_trunc_seg_mean_" + name, v_mat,      h5path = capitalize(name) + "/CrossSections/velocity_trunc_seg_mean");
@@ -207,7 +209,7 @@ function array5D = mat2cell5D_shape(input_cell)
     end
 end
 
-function out = mode1(v)
+function out = mode1PerBeat(v)
 % mode-1 decomposition/reconstruction:
 %   w(t,b,k,r) = mu(b,k,r) + a1(b,k,r) * u1(t)
 % from SVD of DC-removed waveforms in v(t,b,k,r).
@@ -292,7 +294,86 @@ function out = mode1(v)
     out.s         = s;
 end
 
-function exportMode1Struct(out, name)
+function out = mode1(v)
+% mode-1 decomposition/reconstruction:
+% w(t,k,r) = mu(k,r) + a1(k,r) * u1(t)
+% from SVD of DC-removed waveforms in v(t,k,r).
+%
+% INPUT
+% v : T x K x R (may contain NaNs in mapping and/or time)
+%
+% OUTPUT
+% out.u1 : T x 1
+% out.mu : K x R
+% out.a1 : K x R (NaN where invalid)
+% out.w : T x K x R (NaN where invalid)
+% out.wc : T x K x R (NaN where invalid)
+% out.validMask : K x R logical
+% out.s : singular values
+
+    % converting input R K T to T K R
+    v = permute(v, [3, 2, 1]);
+
+    if ndims(v) ~= 3
+        error('Expected v to be 3D: (T x K x R). Got %s', mat2str(size(v)));
+    end
+
+    [T,K,R] = size(v);
+    N = K*R;
+
+    % --- 1) local mean over time (NaN-aware): mu is (1 x K x R) then squeeze -> (K x R)
+    mu3 = mean(v, 1, 'omitnan'); % 1 x K x R
+    mu = squeeze(mu3); % K x R
+
+    % --- 2) center each waveform by its own mean
+    vc = v - mu3; % implicit expansion (R2016b+)
+
+    % --- 3) reshape to matrix Mc: (T x N)
+    Mc_all = reshape(vc, T, N);
+
+    % --- 4) keep only columns fully finite across time
+    validCol = all(isfinite(Mc_all), 1); % 1 x N
+    Mc = Mc_all(:, validCol); % T x Nvalid
+    if size(Mc,2) < 2
+        error('Not enough valid waveforms for SVD (Nvalid=%d).', size(Mc,2));
+    end
+
+    % --- 5) SVD and mode-1 scores
+    [U,S,V] = svd(Mc, 'econ');
+    s = diag(S);
+    u1 = U(:,1); % T x 1
+    a1_valid = s(1) * V(:,1); % Nvalid x 1
+
+    % --- 6) scatter scores back into full (1 x N), then reshape to (K x R)
+    a1_all = nan(1, N);
+    a1_all(validCol) = a1_valid;
+    a1 = reshape(a1_all, [K, R]);
+
+    validMask = reshape(validCol, [K, R]);
+
+    % --- 7) reconstruct: wc = u1 * a1, then add mu
+    wc_all = u1 * a1_all; % (T x 1) * (1 x N) -> T x N
+    wc = reshape(wc_all, [T, K, R]); % T x K x R
+
+    w = wc + mu3; % T x K x R (broadcast along time)
+
+    mu = permute(mu, [2, 1]);
+    a1 = permute(a1, [2, 1]);
+    wc = permute(wc, [3, 2, 1]);
+    w = permute(w, [3, 2, 1]);
+    validMask = permute(validMask, [2, 1]);
+
+    out = struct();
+    out.u1 = u1;
+    out.mu = mu;
+    out.a1 = a1;
+    out.wc = wc;
+    out.w = w;
+    out.validMask = validMask;
+    out.s = s;
+end
+
+function exportMode1StructPerBeat(out, name)
     arguments
         out
         name
@@ -326,6 +407,47 @@ function exportMode1Struct(out, name)
     ToolBox.Output.add(var_name + "_validMask_" + capitalize(name), out.validMask, ...
         h5path      = h5path + "/validMask", ...
         dimDesc     = ["Beat", "Branch", "Circle"], ...
+        keepSize    = true);
+    ToolBox.Output.add(var_name + "_s_"         + capitalize(name), out.s, ...
+        h5path      = h5path + "/s", ...
+        dimDesc     = ["Time"], ...
+        keepSize    = true);
+end
+
+function exportMode1Struct(out, name)
+    arguments
+        out
+        name
+    end
+
+    ToolBox = getGlobalToolBox;
+
+    var_name = "VelocityMode1SignalPerSegment";
+    h5path   = capitalize(name) + "/CrossSections/VelocityPerSegment/VelocityMode1SignalPerSegment";
+
+    ToolBox.Output.add(var_name + "_mu_"        + capitalize(name), out.mu, ...
+        h5path      = h5path + "/mu",   ...
+        dimDesc     = ["Branch", "Circle"], ...
+        keepSize    = true);
+    ToolBox.Output.add(var_name + "_a1_"        + capitalize(name), out.a1, ...
+        h5path      = h5path + "/a1", ...
+        dimDesc     = ["Branch", "Circle"], ...
+        keepSize    = true);
+    ToolBox.Output.add(var_name + "_u1_"        + capitalize(name), out.u1, ...
+        h5path      = h5path + "/u1", ...
+        dimDesc     = ["Time"], ...
+        keepSize    = true);
+    ToolBox.Output.add(var_name + "_wc_"        + capitalize(name), out.wc, ...
+        h5path      = h5path + "/wc", ...
+        dimDesc     = ["Time", "Branch", "Circle"], ...
+        keepSize    = true);
+    ToolBox.Output.add(var_name + "_w_"         + capitalize(name), out.w, ...
+        h5path      = h5path + "/w", ...
+        dimDesc     = ["Time", "Branch", "Circle"], ...
+        keepSize    = true);
+    ToolBox.Output.add(var_name + "_validMask_" + capitalize(name), out.validMask, ...
+        h5path      = h5path + "/validMask", ...
+        dimDesc     = ["Branch", "Circle"], ...
         keepSize    = true);
     ToolBox.Output.add(var_name + "_s_"         + capitalize(name), out.s, ...
         h5path      = h5path + "/s", ...
