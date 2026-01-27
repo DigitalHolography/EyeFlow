@@ -28,6 +28,7 @@ methods
             vars.unit string = ""
             vars.standard_error = NaN
             vars.keepSize = false
+            vars.dimDesc = []
         end
 
         if nargin > 3
@@ -43,6 +44,10 @@ methods
         entry.metadata.unit = vars.unit;
         entry.metadata.keepSize = vars.keepSize;
         entry.attributes = [];
+
+        if ~isempty(vars.dimDesc)
+            entry.attributes.dimDesc = vars.dimDesc;
+        end
 
         obj.data(name) = entry;
 
