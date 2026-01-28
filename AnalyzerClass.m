@@ -40,7 +40,7 @@ methods
 
         ToolBox.Cache.M0_ff_img = M0_ff_img;
 
-        ToolBox.Output.add("M0_ff_img", M0_ff_img, h5path = '/M0_ff_img');
+        ToolBox.Output.add("M0_ff_img", M0_ff_img, h5path = "/Maps/M0_ff_img");
 
         % Optic disk
         try % papilla detection
@@ -60,8 +60,8 @@ methods
             xy_papilla = [center_x, center_y];
             ToolBox.Cache.xy_papilla = xy_papilla;
 
-            ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2 / size(executionObj.Cache.M0_ff, 1), h5path = '/Papilla/Ratio');
-            ToolBox.Output.add("PapillaXY", xy_papilla, h5path = '/Papilla/XYCenter', unit = 'px');
+            ToolBox.Output.add("PapillaRatio", (diameter_x + diameter_y) / 2 / size(executionObj.Cache.M0_ff, 1), h5path = '/OpticDisc/Ratio');
+            ToolBox.Output.add("PapillaXY", xy_papilla, h5path = '/OpticDisc/XYCenter', unit = 'px');
         catch ME
             warning("Error while finding papilla : ")
             MEdisp(ME, ToolBox.EF_path);
@@ -142,6 +142,8 @@ methods
         pulseAnalysisTimer = tic;
 
         [executionObj.Cache.vRMS, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB] = pulseAnalysis(executionObj.Cache.f_RMS, executionObj.Cache.M0_ff);
+
+        perBeatAnalysis();
 
         axialAnalysis(executionObj.Cache.f_AVG);
 

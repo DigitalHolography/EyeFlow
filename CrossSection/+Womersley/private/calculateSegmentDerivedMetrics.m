@@ -98,7 +98,7 @@ function derived = calculateSegmentDerivedMetrics(fitParams, qc_model, geoParams
 
     allH = [fitParams.harmonic];
     idx1 = find(allH == 1, 1, "first");
-    if isempty(idx1) || ~qc_model.harmonic_valid(idx1)
+    if isempty(idx1) % || ~qc_model.harmonic_valid(idx1)
         % No valid first harmonic
         derived.PI_Q                = NaN;
         derived.PI_V                = NaN;

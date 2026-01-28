@@ -27,7 +27,7 @@
       "InsertNans": true
     },
     "RemoveOutliersFlag": true,
-    "Interpolation Factor": 1
+    "InterpolationFactor": 1
   },
   "FlatFieldCorrection": {
     "GWRatio": 0.07,
@@ -77,7 +77,8 @@
     "CorrectionCoeff": 1,
     "FilterSignals": true,
     "OutOfNoiseThreshold": 4,
-    "BlurScaleFactor": 100
+    "BlurScaleFactor": 100,
+    "BandLimitedSignalHarmonicCount": 13
   },
   "SizeOfField": {
     "SmallRadiusRatio": 0.10,
@@ -113,8 +114,11 @@
       "TimeWarpToPeriodic": false,
       "SignalReplication": 4
     },
-    "WomersleyMaxHarmonic": 6,
-    "WomersleySectionImage": false
+    "Womersley": {
+      "MaxHarmonic": 6,
+      "SectionImage": false,
+      "UseCycleMean": true
+    }
   },
   "DebugMode": false
 }
