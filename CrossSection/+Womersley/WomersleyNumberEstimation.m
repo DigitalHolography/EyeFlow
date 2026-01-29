@@ -1,6 +1,15 @@
-function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, d_profile)
-ToolBox = getGlobalToolBox;
-params = ToolBox.getParams;
+function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, circleIdx, branchIdx, d_profile)
+    arguments
+        v_profile
+        cardiac_frequency
+        name
+        circleIdx
+        branchIdx
+        d_profile
+    end
+
+    ToolBox = getGlobalToolBox;
+    params = ToolBox.getParams;
 
 NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
 crossSectionLength = size(v_profile, 1);
@@ -27,14 +36,14 @@ init_fit = struct( ...
     "geoParams", geoParams ...
 );
 
-HARMONIC_NUMBER = params.json.exportCrossSectionResults.WomersleyMaxHarmonic;
+    HARMONIC_NUMBER = params.json.exportCrossSectionResults.Womersley.MaxHarmonic;
 
-% TODO: Parfor does not seem to work with toolbox
-for i = 1:HARMONIC_NUMBER
-    fitParams.RigidWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType = "rigid");
-    fitParams.MovingWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType = "moving");
-    fitParams.RigidWallFreeNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType = "rigid", NuType = "free");
-end
+    % TODO: Parfor does not seem to work with toolbox
+    for i = 1:HARMONIC_NUMBER
+        fitParams.RigidWallFixedNu(i)  = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="rigid");
+        fitParams.MovingWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="moving");
+        fitParams.RigidWallFreeNu(i)   = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="rigid", NuType="free");
+    end
 
 % Quality Control
 qc.qc_RigidWallFixedNu = calculateWomersleyQC(fitParams.RigidWallFixedNu, "rigid");
@@ -72,33 +81,31 @@ results.DC_metrics = DC_metrics;
 results.derived = derived;
 end
 
-function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox, options)
+function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox, options)
+    arguments
+        v_profile, cardiac_frequency, name, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox
+        options.ModelType   string {mustBeMember(options.ModelType, ["rigid", "moving"])} = "moving"
+        options.NuType      string {mustBeMember(options.NuType,    ["fixed", "free"  ])} = "fixed"
+    end
+    % WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
+    % by fitting the velocity profile to a Womersley flow model.
+    %
+    % 1. alpha: Womersley number
+    % 2. amplitude: Complex scaling factor (magnitude and phase)
+    % 3. center: Center position of the vessel
+    % 4. width: Effective radius of the vessel
+    %
+    % INPUT:
+    %   v_profile         - Array (crossSectionLength x numFrames) of velocity data.
+    %   cardiac_frequency - Cardiac frequency in Hz.
+    %   name, idx, ...    - Identifiers for saving the output plot.
+    %
+    % OUTPUT:
+    %   alphaWom          - Estimated Womersley number.
+    %   pseudoViscosity   - Derived dynamic viscosity in Pa·s.
+    %   fitParams         - A struct containing all fitted parameters.
 
-arguments
-    v_profile, cardiac_frequency, name, idx, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox
-    options.ModelType string {mustBeMember(options.ModelType, ["rigid", "moving"])} = "moving"
-    options.NuType string {mustBeMember(options.NuType, ["fixed", "free"])} = "fixed"
-end
-
-% WomersleyNumberEstimation estimates the dimensionless Womersley number (alphaWom)
-% by fitting the velocity profile to a Womersley flow model.
-%
-% 1. alpha: Womersley number
-% 2. amplitude: Complex scaling factor (magnitude and phase)
-% 3. center: Center position of the vessel
-% 4. width: Effective radius of the vessel
-%
-% INPUT:
-%   v_profile         - Array (crossSectionLength x numFrames) of velocity data.
-%   cardiac_frequency - Cardiac frequency in Hz.
-%   name, idx, ...    - Identifiers for saving the output plot.
-%
-% OUTPUT:
-%   alphaWom          - Estimated Womersley number.
-%   pseudoViscosity   - Derived dynamic viscosity in Pa·s.
-%   fitParams         - A struct containing all fitted parameters.
-
-params = ToolBox.getParams;
+    params = ToolBox.getParams;
 
 NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
 PIXEL_SIZE = ToolBox.Cache.pixelSize * 1000;
@@ -106,41 +113,53 @@ PIXEL_SIZE = ToolBox.Cache.pixelSize * 1000;
 % SYS_IDXS = ToolBox.Cache.sysIdx;
 % DIAS_IDXS = ToolBox.Cache.diasIdx;
 
+USE_CYCLE_MEAN = params.json.exportCrossSectionResults.Womersley.UseCycleMean;
+
 % Really should be a power of 2
-FFT_PADDING_FACTOR = 16;
+if USE_CYCLE_MEAN
+    FFT_PADDING_FACTOR = 1;
+else
+    FFT_PADDING_FACTOR = 16;
+end
 
 RHO_BLOOD = 1060; % Density of blood in kg/m^3
 
 PSF_KERNEL = init_fit.psf_kernel;
 
-fitParams = getFitParamsStruct();
-fitParams.R0 = init_fit.geoParams.R0;
-fitParams.width = init_fit.geoParams.width_norm;
+    fitParams = getFitParamsStruct();
+    fitParams.R0    = init_fit.geoParams.R0;
+    fitParams.width = init_fit.geoParams.width_norm;
+    
+    % estimated_width = struct('systole', [], 'diastole', []);
+    
+    v_profile_avg_t = mean(v_profile, 2, "omitnan");
+    valid_idxs = ~isnan(v_profile_avg_t);
+    v_profile = v_profile(valid_idxs, :);
+    % v_profile_good_idx_sav = v_profile;
+    crossSectionLength = size(v_profile, 1);
+    
+    if crossSectionLength > 1
 
-% estimated_width = struct('systole', [], 'diastole', []);
+        if USE_CYCLE_MEAN
+            NUM_INTERP_POINTS = 2^nextpow2(NUM_INTERP_POINTS);
+        end
 
-v_profile_avg = mean(v_profile, 2);
-valid_idxs = v_profile_avg > 0;
-v_profile = v_profile(valid_idxs, :);
-% v_profile_good_idx_sav = v_profile;
-crossSectionLength = size(v_profile, 1);
-
-if crossSectionLength > 1
-    v_profile = interp1(linspace(1, crossSectionLength, crossSectionLength), v_profile, linspace(1, crossSectionLength, NUM_INTERP_POINTS));
-else
-    warning_s("[WOMERSLEY] WomersleyNumberEstimation_n (%i, %i, %i): Not enough valid points in the velocity profile. Skipping fit.", circleIdx, branchIdx, n_harmonic);
-    return;
-end
-
-numFrames = size(v_profile, 2);
-% Will pad to the next power of 2 to ease the FFT algorithm
-N_fft = (2 ^ nextpow2(numFrames)) * FFT_PADDING_FACTOR;
-v_profile_ft = fftshift(fft(v_profile, N_fft, 2), 2);
-
-f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, N_fft);
-
-% fitParams.v_profile_ft = v_profile_ft;
-% fitParams.frequency_vector = f;
+        v_profile = interp1(linspace(1, crossSectionLength, crossSectionLength), v_profile, linspace(1, crossSectionLength, NUM_INTERP_POINTS));
+    else
+        warning_s("[WOMERSLEY] WomersleyNumberEstimation_n (%i, %i, %i): Not enough valid points in the velocity profile. Skipping fit.", circleIdx, branchIdx, n_harmonic);
+        return;
+    end
+    
+    numFrames = size(v_profile, 2);
+    % Will pad to the next power of 2 to ease the FFT algorithm
+    N_fft = (2 ^ nextpow2(numFrames)) * FFT_PADDING_FACTOR;
+    % The fft is on the time dim (2)
+    velocityProfileFFT = fft(v_profile, N_fft, 2);
+    
+    f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, N_fft);
+    
+    % fitParams.velocityProfileFFT = velocityProfileFFT;
+    % fitParams.frequency_vector = f;
 
 % figure;
 % subplot(2,1,1);
@@ -162,9 +181,9 @@ f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, N_fft);
 
 % ============================== [ FIT ] ============================ %
 
-% v_meas = mean(v_profile_ft(:, cardiac_idxs), 2);
+% v_meas = mean(velocityProfileFFT(:, cardiac_idxs), 2);
 
-v_meas = extractHarmonicProfile(v_profile_ft, f, cardiac_frequency, n_harmonic);
+v_meas = extractHarmonicProfile(velocityProfileFFT, n_harmonic);
 
 x_coords = linspace(-1, 1, NUM_INTERP_POINTS);
 
@@ -281,109 +300,110 @@ if ~(isscalar(d_profile) && isnan(d_profile)) && ~isempty(d_profile) && ndims(d_
 
 end
 
-% --- 3. Compute Measured Interaction Statistics (NEW) ---
-if ~isempty(D_meas_mag_profile)
-    epsilon = 1e-9;
-
-    % Filter based on Velocity signal to avoid noise outside vessel
-    abs_v = abs(v_meas);
-    abs_D = D_meas_mag_profile;
-
-    valid_mask = abs_v > (0.1 * max(abs_v));
-
-    if any(valid_mask)
-        % 1. Statistic of abs(D_1) (Mean Magnitude in the vessel)
-        mean_D_val = mean(abs_D(valid_mask));
-        fitParams.metrics.Mean_D1_amp = mean_D_val;
-
-        % 2. Ratio abs(D_1) / mean(abs(v_1))
-        mean_v_val = mean(abs_v(valid_mask));
-
-        fitParams.metrics.Ratio_D1_V1 = mean_D_val / (mean_v_val + epsilon);
+    % --- 3. Compute Measured Interaction Statistics (NEW) ---
+    if ~isempty(D_meas_mag_profile)
+        epsilon = 1e-9;
+        
+        % Filter based on Velocity signal to avoid noise outside vessel
+        abs_v = abs(v_meas);
+        abs_D = D_meas_mag_profile;
+        
+        valid_mask = abs_v > (0.1 * max(abs_v));
+        
+        if any(valid_mask)
+            % 1. Statistic of abs(D_1) (Mean Magnitude in the vessel)
+            mean_D_val = mean(abs_D(valid_mask));
+            fitParams.metrics.Mean_D1_amp = mean_D_val;
+            
+            % 2. Ratio abs(D_1) / mean(abs(v_1))
+            mean_v_val = mean(abs_v(valid_mask));
+            
+            fitParams.metrics.Ratio_D1_V1 = mean_D_val / (mean_v_val + epsilon);
+        end
     end
-
-end
-
-% [parabole_fit_systole, parabole_fit_diastole] = analyse_lumen_size(v_profile_good_idx_sav, SYS_IDXS, DIAS_IDXS);
-%
-% estimated_width.systole = parabole_fit_systole;
-% estimated_width.diastole = parabole_fit_diastole;
-
-% ============================ [ Figures ] ========================== %
-if params.saveFigures && params.json.exportCrossSectionResults.WomersleySectionImage
-    hFig = figure("Visible", "off");
-    hold on;
-
-    title(sprintf('Womersley Fit for %s (idx %d) (Harmonic: %d)', name, idx, n_harmonic), 'Interpreter', 'none');
-
-    p1 = plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1, 'DisplayName', 'Measured Data'); % Measured Data (Real)
-    plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1); % Measured Data (Imag)
-
-    p2 = plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1, 'DisplayName', 'Model Fit'); % Model Fit (Real)
-    plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1); % Model Fit (Imag)
-
-    hold off;
-
-    xlim([-1 1]);
-
-    xlabel('Normalized Cross-section', 'FontSize', 14);
-    ylabel('Complex Velocity (a.u.)', 'FontSize', 14);
-
-    legend('show', 'Location', 'best', 'FontSize', 8);
-    box on;
-    grid on;
-
-    axis tight;
-    set(gca, 'LineWidth', 1.5);
-
-    lgd = legend([p1, p2], 'Location', 'best');
-    title(lgd, 'Blue: Real, Red: Imaginary');
-
-    pos = get(gca, 'Position');
-    info_box_height = 0.15;
-    % Move the axes up and shrink its height to make room
-    % [left, bottom, width, height]
-    set(gca, 'Position', [pos(1), pos(2) + info_box_height, pos(3), pos(4) - info_box_height]);
-
-    % fit_string = sprintf('α Womersley: %.2f\nCenter: %.2f\nWidth: %.2f', ...
-    %                      fitParams.alpha, fitParams.center, fitParams.width);
-    % annotation('textbox', [0.15 0.78 0.25 0.1], 'String', fit_string, ...
-    %             'FitBoxToText', 'off', 'BackgroundColor', 'w', ...
-    %             'EdgeColor', 'k', 'FontSize', 12, 'FontSize', 10);
-
-    line1_str = sprintf('α     : %-10.2f     R_0       : %.4f', fitParams.alpha_n, init_fit.geoParams.R0);
-    line2_str = sprintf('Center: %-10.2f     |R_n/R_0| : %.2f %%', fitParams.center, abs(fitParams.metrics.RnR0_complex * 100));
-    line3_str = sprintf('Width : %-10.2f     Phase(R_n): %.1f°', fitParams.width, rad2deg(angle(fitParams.metrics.RnR0_complex)));
-
-    fit_string = {line1_str, line2_str, line3_str};
-
-    annotation('textbox', [0, 0, 1, info_box_height], ...
-        'String', fit_string, ...
-        'EdgeColor', 'none', ...
-        'HorizontalAlignment', 'center', ...
-        'VerticalAlignment', 'middle', ...
-        'FontSize', 10);
-
-    save_path = fullfile(ToolBox.path_png, 'Womersley');
-
-    if ~isfolder(save_path)
-        mkdir(save_path);
+    
+    % [parabole_fit_systole, parabole_fit_diastole] = analyse_lumen_size(v_profile_good_idx_sav, SYS_IDXS, DIAS_IDXS);
+    % 
+    % estimated_width.systole = parabole_fit_systole;
+    % estimated_width.diastole = parabole_fit_diastole;
+    
+    % ============================ [ Figures ] ========================== %
+    if params.saveFigures && params.json.exportCrossSectionResults.Womersley.SectionImage
+        hFig = figure("Visible", "off");
+        hold on;
+    
+        title(sprintf('Womersley Fit (%s, %s) for %s (%d, %d) (Harmonic: %d)', options.ModelType, options.NuType, name, circleIdx, branchIdx, n_harmonic), 'Interpreter', 'none');
+        
+        p1 = plot(x_coords, real(v_meas), 'b-', 'LineWidth', 1, 'DisplayName', 'Measured Data');  % Measured Data (Real)
+        plot(x_coords, imag(v_meas), 'r-', 'LineWidth', 1);    % Measured Data (Imag)
+    
+        p2 = plot(x_coords, real(uWom_fit), 'b--', 'LineWidth', 1, 'DisplayName', 'Model Fit'); % Model Fit (Real)
+        plot(x_coords, imag(uWom_fit), 'r--', 'LineWidth', 1); % Model Fit (Imag)
+        
+        hold off;
+    
+        xlim([-1 1]);
+    
+        xlabel('Normalized Cross-section', 'FontSize', 14);
+        ylabel('Complex Velocity (a.u.)', 'FontSize', 14);
+    
+        legend('show', 'Location', 'best', 'FontSize', 8); 
+        box on;
+        grid on;
+    
+        axis tight;
+        set(gca, 'LineWidth', 1.5);
+    
+        lgd = legend([p1, p2], 'Location', 'best');
+        title(lgd, 'Blue: Real, Red: Imaginary');
+    
+        
+        pos = get(gca, 'Position'); 
+        info_box_height = 0.15; 
+        % Move the axes up and shrink its height to make room
+        % [left, bottom, width, height]
+        set(gca, 'Position', [pos(1), pos(2) + info_box_height, pos(3), pos(4) - info_box_height]);
+    
+    
+        % fit_string = sprintf('α Womersley: %.2f\nCenter: %.2f\nWidth: %.2f', ...
+        %                      fitParams.alpha, fitParams.center, fitParams.width);
+        % annotation('textbox', [0.15 0.78 0.25 0.1], 'String', fit_string, ...
+        %             'FitBoxToText', 'off', 'BackgroundColor', 'w', ...
+        %             'EdgeColor', 'k', 'FontSize', 12, 'FontSize', 10);
+    
+    
+        line1_str = sprintf('α     : %-10.2f     R_0       : %.4f', fitParams.alpha_n, init_fit.geoParams.R0);
+        line2_str = sprintf('Center: %-10.2f     |R_n/R_0| : %.2f %%', fitParams.center, abs(fitParams.metrics.RnR0_complex * 100));
+        line3_str = sprintf('Width : %-10.2f     Phase(R_n): %.1f°', fitParams.width, rad2deg(angle(fitParams.metrics.RnR0_complex)));
+        
+        fit_string = {line1_str, line2_str, line3_str};
+        
+        annotation('textbox', [0, 0, 1, info_box_height], ...
+                   'String', fit_string, ...
+                   'EdgeColor', 'none', ...
+                   'HorizontalAlignment', 'center', ...
+                   'VerticalAlignment', 'middle', ...
+                   'FontSize', 10);
+    
+        
+        save_path = fullfile(ToolBox.path_png, 'Womersley');
+    
+        if ~isfolder(save_path)
+            mkdir(save_path);
+        end
+    
+        save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d_h%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx, n_harmonic));
+        
+        try
+            exportgraphics(hFig, save_filename, 'Resolution', 96);
+        catch export_error
+            warning("[WOMERSLEY] Could not save figure");
+        end
+        
+        if ~strcmpi(get(hFig, 'Visible'), 'on')
+            close(hFig);
+        end
     end
-
-    save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d_h%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx, n_harmonic));
-
-    try
-        exportgraphics(hFig, save_filename, 'Resolution', 96);
-    catch export_error
-        warning("[WOMERSLEY] Could not save figure");
-    end
-
-    if ~strcmpi(get(hFig, 'Visible'), 'on')
-        close(hFig);
-    end
-
-end
-
 end
 
 % +=====================================================================+ %
@@ -456,35 +476,44 @@ v_profile_interp = interp1(linspace(-1, 1, crossSectionLength), v_profile, x_gri
 % PSF Kernel
 PIXEL_SIZE = ToolBox.Cache.pixelSize * 1e-3;
 
-v_mean = mean(v_profile_interp, 2);
-v_mean_interp = v_mean;
+    v_mean = mean(v_profile_interp, 2, "omitnan");
+    v_mean_interp = v_mean;
 
 % Model: Amplitude * (1 - ((x-center)/width)^2) * convol PSF
 
 %         [Amplitude,    Center,    Width]
 p_init = [max(v_mean), 0, 0.8];
 
-lb = [0, -0.5, 0.1];
-ub = [Inf, 0.5, 1.5];
+    lb      = [0,           -0.5,       0.1  ];
+    ub      = [Inf,          0.5,       1.5  ];
+    
+    isVal = ~isnan(v_mean);
+    x_filt = x_grid_normalized(isVal);
+    v_filt = v_mean(isVal);
 
-costFun = @(p) costFunDC(p, x_grid_normalized, v_mean, psf_kernel);
-options = optimoptions("lsqnonlin", "Display", "off");
+    costFun = @(p) wrapper(p, x_filt, v_filt, psf_kernel);
+    options = optimoptions("lsqnonlin", "Display", "off");
 
-try
-    p_fit = lsqnonlin(costFun, p_init, lb, ub, options);
-catch
-    geoParams.R0 = NaN;
-    return;
-end
+    function r = wrapper(p, x, v, psf)
+        raw_r = costFunDC(p, x, v, psf);
+        r = raw_r(isfinite(raw_r)); % Remove any NaNs
+    end
 
-width_normalized = p_fit(3);
-% Divided by 2 because the Normalized section is of length 2
-R0 = (width_normalized * (crossSectionLength * PIXEL_SIZE)) / 2;
-
-geoParams.center_norm = p_fit(2);
-geoParams.width_norm = width_normalized;
-geoParams.R0 = R0;
-geoParams.DC_Amp = p_fit(1);
+    try
+        p_fit = lsqnonlin(costFun, p_init, lb, ub, options);
+    catch ME
+        geoParams.R0 = NaN; 
+        return;
+    end
+    
+    width_normalized = p_fit(3);
+    % Divided by 2 because the Normalized section is of length 2
+    R0 = (width_normalized * (crossSectionLength * PIXEL_SIZE)) / 2;
+    
+    geoParams.center_norm = p_fit(2);
+    geoParams.width_norm = width_normalized;
+    geoParams.R0 = R0;
+    geoParams.DC_Amp = p_fit(1);
 end
 
 function DC_metrics = calculateDCmetrics(geoParams, RHO_BLOOD, FIXED_NU)

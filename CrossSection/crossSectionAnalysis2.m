@@ -86,10 +86,13 @@ for t = 1:numFrames
     subFrame = subImg(:, :, t);
     subFrame = imrotatecustom(subFrame, tilt_angle);
     v_profile = mean(subFrame, 1, 'omitnan');
-    v_cross = mean(subFrame(c1:c2, :), 2, 'omitnan');
+    v_profile_cropped = nan(1, size(subFrame, 2));
+    v_profile_cropped(c1:c2) = mean(subFrame(:, c1:c2), 1, "omitnan");
+    v_cross = mean(subFrame(:, c1:c2), 2, 'omitnan');
 
     % Compute average velocity
     v = mean(v_profile(c1:c2), 'omitnan');
+    v_safe = mean(v_profile, "all", 'omitnan');
 
     [histo, ~] = histcounts(subFrame(~isnan(subFrame)), linspace(0, 60, 6)); % % HARD CODED
     results.v_histo{t} = histo;
@@ -126,10 +129,12 @@ for t = 1:numFrames
 
     % Store results
     results.v(t) = v;
+    results.v_safe(t) = v_safe;
     results.v_SE(t) = v_SE;
     results.Q(t) = Q;
     results.Q_SE(t) = Q_SE;
     results.v_profiles{t} = v_profile;
+    results.v_profiles_cropped{t} = v_profile_cropped;
     results.v_profiles_SE{t} = std(subFrame, [], 1, 'omitnan');
 end
 
