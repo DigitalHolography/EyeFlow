@@ -192,6 +192,8 @@ parfor circleIdx = 1:rows
         % reshaped_results = reshape(temp_results, 1, 1, []);
         % womersley_results(circleIdx, branchIdx, 1:numel(reshaped_results)) = reshaped_results;
 
+        v_profile_t = profile_time;
+
         if useCycleMean
             v_profile_temp = profile_time';
             [ProfilePerBeat, ~, ~] = perBeatProfileAnalysis(v_profile_temp, sysIdxList, 10);
