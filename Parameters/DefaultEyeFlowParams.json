@@ -110,6 +110,7 @@
     "strokeAndTotalVolume": true,
     "hemodynamicParameters": false,
     "InterpolationPoints": 50,
+    "ModalDecompositionNModes": 5,
     "TimeWarp": {
       "TimeWarpToPeriodic": false,
       "SignalReplication": 4
