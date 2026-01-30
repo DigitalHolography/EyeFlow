@@ -161,6 +161,17 @@ for ind = 1:length(paths)
     end
 end
 
+% --- SETUP PARPOOL ---
+maxWorkers = parcluster("local").NumWorkers;
+
+params_names = checkEyeFlowParamsFromJson(rawInputs(1)); % checks compatibility between found EF params and Default EF params of this version of EF.
+params = Parameters_json(rawInputs(1), params_names{1});
+
+if params.json.NumberOfWorkers > 0 && params.json.NumberOfWorkers < maxWorkers
+    fprintf("Using nb of workers stored inside the parameters.json (%i)", params.json.NumberOfWorkers);
+    setupParpool(params.json.NumberOfWorkers);
+end
+
 % --- AI LOADING & EXECUTION ---
 fprintf("Loading AI Models...\n");
 AIModels = AINetworksClass();
