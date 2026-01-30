@@ -115,13 +115,17 @@ if ~isempty(s_locs)
     RMSE = sqrt(mean(residus .^ 2));
     hr_se = RMSE / sqrt(numFreq);
 
-    ToolBox.Output.add('HeartBeatFFT', 60 * hr, 'bpm', 60 * hr_se, 'h5path', '/Artery/WaveformAnalysis/HeartBeatFFT');
-    ToolBox.Cache.HeartBeatFFT = hr; % Save heart rate to cache in Hz
-    ToolBox.Cache.HeartBeatFFTSTE = hr_se; % Save heart rate standard error to cache in Hz
+    if strcmp(name, "v_artery")
+        ToolBox.Output.add('HeartBeatFFT', 60 * hr, 'bpm', 60 * hr_se, 'h5path', '/Artery/WaveformAnalysis/HeartBeatFFT');
+        ToolBox.Cache.HeartBeatFFT = hr; % Save heart rate to cache in Hz
+        ToolBox.Cache.HeartBeatFFTSTE = hr_se; % Save heart rate standard error to cache in Hz
+    end
 else
-    ToolBox.Output.add('HeartBeatFFT', NaN, 'bpm', NaN, 'h5path', '/Artery/WaveformAnalysis/HeartBeatFFT');
-    ToolBox.Cache.HeartBeatFFT = NaN; % Save heart rate to cache in Hz
-    ToolBox.Cache.HeartBeatFFTSTE = NaN; % Save heart rate standard error to cache in Hz
+    if strcmp(name, "v_artery")
+        ToolBox.Output.add('HeartBeatFFT', NaN, 'bpm', NaN, 'h5path', '/Artery/WaveformAnalysis/HeartBeatFFT');
+        ToolBox.Cache.HeartBeatFFT = NaN; % Save heart rate to cache in Hz
+        ToolBox.Cache.HeartBeatFFTSTE = NaN; % Save heart rate standard error to cache in Hz
+    end
 end
 
 if saveFigures
