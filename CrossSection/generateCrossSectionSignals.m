@@ -53,20 +53,22 @@ if saveFigures
     imwrite(labeledVessels + 1, cmap, fullfile(ToolBox.path_png, sprintf("%s_labeledVessels_%s.png", ToolBox.folder_name, vesselName)))
 end
 
+tiltLabel = cell(numCircles, numBranches);
+
 parfor circleIdx = 1:numCircles
     r_in = r1 + (circleIdx - 1) * dr;
     r_out = r_in + slen;
     maskSectionCircles(:, :, circleIdx) = diskMask(numX, numY, r_in, r_out, center = [x_c / numX, y_c / numY]);
+    
+    
 
     % save mask image
     if saveFigures
-
         if strcmp(vesselName, 'artery')
             createMaskSection(ToolBox, M0_ff_img, r_in, r_out, xy_barycenter, sprintf('mask%s_section_circle_%d', vesselName, circleIdx), mask);
         else
             createMaskSection(ToolBox, M0_ff_img, r_in, r_out, xy_barycenter, sprintf('mask%s_section_circle_%d', vesselName, circleIdx), [], mask);
         end
-
     end
 
 end
@@ -79,21 +81,43 @@ tic
 
 locsLabel = cell(numCircles, numBranches);
 maskLabel = cell(numCircles, numBranches);
+
 numSections = zeros(1, numCircles);
 
 parfor circleIdx = 1:numCircles
     maskSection = logical(maskSectionCircles(:, :, circleIdx) .* mask);
+    
     s = regionprops(maskSection, 'centroid');
     numSections(circleIdx) = size(round(cat(1, s.Centroid)), 1);
 end
 
 parfor circleIdx = 1:numCircles
 
+    r_in = r1 + (circleIdx - 1) * dr;
+    r_out = r_in + slen;
+    disk_int = diskMask(numX, numY, r_in, r_in + 1/mean(numX,numY) , center = [x_c / numX, y_c / numY]);
+    disk_ext = diskMask(numX, numY, r_out  - 1/mean(numX,numY), r_out , center = [x_c / numX, y_c / numY]);
+
     for i = 1:numBranches
         maskSection = logical(maskSectionCircles(:, :, circleIdx) .* (labeledVessels == i));
         s = regionprops(maskSection, 'centroid');
         locsLabel{circleIdx, i} = round(cat(1, s.Centroid));
         maskLabel{circleIdx, i} = maskSection;
+
+        
+    
+        point_int = regionprops(disk_int .* maskSection, 'centroid');
+        point_ext = regionprops(disk_ext .* maskSection, 'centroid');
+        if ~isempty(point_int) && ~isempty(point_ext)
+            c_int = point_int.Centroid;
+            c_ext = point_ext.Centroid;
+        
+            dx = c_ext(1) - c_int(1);
+            dy = c_ext(2) - c_int(2);
+            tiltLabel{circleIdx, i} = atan2d(dy, dx);
+        else
+            tiltLabel{circleIdx, i} = NaN;
+        end
     end
 
 end
@@ -119,10 +143,10 @@ end
 % Initialisation of the cells for arteries
 Q_cell = cell(numCircles, numBranches); % Average flow rate
 Q_SE_cell = cell(numCircles, numBranches); % Standard deviation of flow rate
-v_cell = cell(numCircles, numBranches); % Top velocity
+v_cell = cell(numCircles, numBranches); % Avg velocity
 v_safe_cell = cell(numCircles, numBranches);
 v_SE_cell = cell(numCircles, numBranches); % Standard deviation of velocity
-v_profiles_cell = cell(numCircles, numBranches); % Top velocity
+v_profiles_cell = cell(numCircles, numBranches); % Profiles in time of velocity
 v_profiles_cropped_cell = cell(numCircles, numBranches);
 v_profiles_SE_cell = cell(numCircles, numBranches); % Standard deviation of velocity
 A_cell = cell(numCircles, numBranches); % Cross-sectional area
@@ -141,7 +165,7 @@ parfor c_idx = 1:numCircles
             % Call crossSectionAnalysis2
             patchName = sprintf('%s%d_C%d', initial, b_idx, c_idx);
             [cross_section_results] = crossSectionAnalysis2(ToolBox, ...
-                locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, ...
+                locsLabel{c_idx, b_idx}, maskLabel{c_idx, b_idx}, tiltLabel{c_idx, b_idx}, ...
                 xy_barycenter, v_RMS, patchName);
 
             % Map outputs to variables

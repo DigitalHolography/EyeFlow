@@ -1,4 +1,4 @@
-function [results] = crossSectionAnalysis2(ToolBox, loc, ROI, xy_barycenter, v_RMS, patchName)
+function [results] = crossSectionAnalysis2(ToolBox, loc, ROI, tilt_angle_mask, xy_barycenter, v_RMS, patchName)
 
 % Perform cross-section analysis on blood vessels.
 %
@@ -46,9 +46,18 @@ if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
 end
 
 subImgMean = squeeze(mean(subImg, 3, 'omitnan'));
-subImgCropped = cropCircle(subImgMean);
-[rotatedImg, tilt_angle] = rotateSubImage(subImgMean, subImgCropped, loc, xy_barycenter); subMask = imrotatecustom(subMask, tilt_angle);
-rotatedImg(~subMask) = NaN;
+
+if params.json.generateCrossSectionSignals.RotateFromMask && ~isnan(tilt_angle_mask)
+    tilt_angle = tilt_angle_mask  + 90;
+    rotatedImg = imrotatecustom(subImgMean, tilt_angle);
+    subMask = imrotatecustom(subMask, tilt_angle);
+    rotatedImg(~subMask) = NaN;
+else
+    subImgCropped = cropCircle(subImgMean);
+    [rotatedImg, tilt_angle] = rotateSubImage(subImgMean, subImgCropped, loc, xy_barycenter); 
+    subMask = imrotatecustom(subMask, tilt_angle);
+    rotatedImg(~subMask) = NaN;
+end
 results.subImg_cell = rescale(rotatedImg);
 
 % UncroppedVersion
