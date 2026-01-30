@@ -1,4 +1,4 @@
-function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, circleIdx, branchIdx, d_profile)
+function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name, circleIdx, branchIdx, d_profile, params_struct)
     arguments
         v_profile
         cardiac_frequency
@@ -6,24 +6,24 @@ function results = WomersleyNumberEstimation(v_profile, cardiac_frequency, name,
         circleIdx
         branchIdx
         d_profile
+        params_struct
     end
 
-    ToolBox = getGlobalToolBox;
-    params = ToolBox.getParams;
+    params = params_struct.params;
 
 NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
 crossSectionLength = size(v_profile, 1);
 FWHM_um = 8;
 % TODO: Remove all and refactor
 % There are several scatered like this in the files (If change, need oto check others)
-PIXEL_SIZE = ToolBox.Cache.pixelSize; % in milimeters
+PIXEL_SIZE = params_struct.pixelSize; % in milimeters
 PIXEL_SIZE = PIXEL_SIZE * 1000; % in μm
 RHO_BLOOD = 1060; % Density of blood in kg/m^3
 FIXED_NU = 3e-6; % m^2/s (Phase 1 recommendation)
 
 psf_kernel = createGaussianPSFKernel(FWHM_um, NUM_INTERP_POINTS, crossSectionLength, PIXEL_SIZE);
 % Fit a simple PSF-convolved Parabolic/Plug model to get Geometry
-[geoParams, ~] = fitGeometryOnMean(v_profile, psf_kernel, ToolBox);
+[geoParams, ~] = fitGeometryOnMean(v_profile, psf_kernel, params_struct);
 DC_metrics = calculateDCmetrics(geoParams, RHO_BLOOD, FIXED_NU);
 
 if isnan(geoParams.R0)
@@ -40,9 +40,9 @@ init_fit = struct( ...
 
     % TODO: Parfor does not seem to work with toolbox
     for i = 1:HARMONIC_NUMBER
-        fitParams.RigidWallFixedNu(i)  = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="rigid");
-        fitParams.MovingWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="moving");
-        fitParams.RigidWallFreeNu(i)   = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, ToolBox, ModelType="rigid", NuType="free");
+        fitParams.RigidWallFixedNu(i)  = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, params_struct, ModelType="rigid");
+        fitParams.MovingWallFixedNu(i) = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, params_struct, ModelType="moving");
+        fitParams.RigidWallFreeNu(i)   = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, i, init_fit, d_profile, FIXED_NU, params_struct, ModelType="rigid", NuType="free");
     end
 
 % Quality Control
@@ -81,9 +81,9 @@ results.DC_metrics = DC_metrics;
 results.derived = derived;
 end
 
-function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox, options)
+function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, name, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, params_struct, options)
     arguments
-        v_profile, cardiac_frequency, name, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, ToolBox
+        v_profile, cardiac_frequency, name, circleIdx, branchIdx, n_harmonic, init_fit, d_profile, FIXED_NU, params_struct
         options.ModelType   string {mustBeMember(options.ModelType, ["rigid", "moving"])} = "moving"
         options.NuType      string {mustBeMember(options.NuType,    ["fixed", "free"  ])} = "fixed"
     end
@@ -105,10 +105,10 @@ function fitParams = WomersleyNumberEstimation_n(v_profile, cardiac_frequency, n
     %   pseudoViscosity   - Derived dynamic viscosity in Pa·s.
     %   fitParams         - A struct containing all fitted parameters.
 
-    params = ToolBox.getParams;
+    params = params_struct.params;
 
 NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
-PIXEL_SIZE = ToolBox.Cache.pixelSize * 1000;
+PIXEL_SIZE = params_struct.pixelSize * 1000;
 
 % SYS_IDXS = ToolBox.Cache.sysIdx;
 % DIAS_IDXS = ToolBox.Cache.diasIdx;
@@ -156,7 +156,7 @@ PSF_KERNEL = init_fit.psf_kernel;
     % The fft is on the time dim (2)
     velocityProfileFFT = fft(v_profile, N_fft, 2);
     
-    f = fft_freq_vector(ToolBox.fs * 1000 / ToolBox.stride, N_fft);
+    f = fft_freq_vector(params_struct.fs * 1000 / params_struct.stride, N_fft);
     
     % fitParams.velocityProfileFFT = velocityProfileFFT;
     % fitParams.frequency_vector = f;
@@ -386,13 +386,13 @@ end
                    'FontSize', 10);
     
         
-        save_path = fullfile(ToolBox.path_png, 'Womersley');
+        save_path = fullfile(params_struct.path_png, 'Womersley');
     
         if ~isfolder(save_path)
             mkdir(save_path);
         end
     
-        save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d_h%d.png", ToolBox.folder_name, name, idx, circleIdx, branchIdx, n_harmonic));
+        save_filename = fullfile(save_path, sprintf("%s_WomersleyFit_%s_idx%d_c%d_b%d_h%d.png", params_struct.folder_name, name, idx, circleIdx, branchIdx, n_harmonic));
         
         try
             exportgraphics(hFig, save_filename, 'Resolution', 96);
@@ -448,7 +448,7 @@ end
 
 % ========================== [ R0 CALCULATION ] ========================= %
 
-function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, ToolBox)
+function [geoParams, v_mean_interp] = fitGeometryOnMean(v_profile, psf_kernel, params_struct)
 % Fit simple Poiseuille flow (1 - r^2) convolved with PSF to find Center and Width
 
 geoParams = struct( ...
@@ -459,7 +459,7 @@ geoParams = struct( ...
     'DC_Amp', NaN ... % Amplitude    (Non-Normalized ?)
 );
 
-params = ToolBox.getParams;
+params = params_struct.params;
 
 NUM_INTERP_POINTS = params.json.exportCrossSectionResults.InterpolationPoints;
 crossSectionLength = size(v_profile, 1);
@@ -474,7 +474,7 @@ end
 v_profile_interp = interp1(linspace(-1, 1, crossSectionLength), v_profile, x_grid_normalized);
 
 % PSF Kernel
-PIXEL_SIZE = ToolBox.Cache.pixelSize * 1e-3;
+PIXEL_SIZE = params_struct.pixelSize * 1e-3;
 
     v_mean = mean(v_profile_interp, 2, "omitnan");
     v_mean_interp = v_mean;

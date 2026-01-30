@@ -13,7 +13,7 @@ mask = ~isnan(A);
 if any(mask(:))
     fill_value = min(A(mask)) - 1; % ensure it's below any real value
 else
-    fill_value = -Inf; % fallback if entire image is NaN
+    fill_value = NaN; % fallback if entire image is NaN
 end
 
 % Replace NaNs with fill_value for rotation

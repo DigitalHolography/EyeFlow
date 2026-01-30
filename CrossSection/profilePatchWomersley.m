@@ -78,7 +78,18 @@ end
 
 useCycleMean = params.json.exportCrossSectionResults.Womersley.UseCycleMean;
 
-for circleIdx = 1:rows
+% This allows for parallelisation without including whole Toolbox
+params_struct.params = ToolBox.params;
+params_struct.pixelSize = ToolBox.Cache.pixelSize;
+params_struct.fs = ToolBox.fs;
+params_struct.stride = ToolBox.stride;
+params_struct.path_png = ToolBox.path_png;
+params_struct.folder_name = ToolBox.folder_name;
+
+NonRigidRegisteringFlag = params.json.Preprocess.NonRigidRegisteringFlag;
+sysIdxList = ToolBox.Cache.sysIdxList;
+
+parfor circleIdx = 1:rows
 
     for branchIdx = 1:cols
 
@@ -122,6 +133,8 @@ for circleIdx = 1:rows
 
         x = pos(1);
         y = pos(2);
+
+        %{
         profile_Wom = profile_Wom / 5; % Normalize by 50
         n = numel(profile_Wom);
         x_axis = linspace(-sizeProfiles / 2, sizeProfiles / 2, n);
@@ -137,8 +150,10 @@ for circleIdx = 1:rows
         plot(x_plot, y_data_i, 'r', 'LineWidth', 1); % red for imag
 
         hold off;
+        %}
 
-        if params.json.Preprocess.NonRigidRegisteringFlag
+        if NonRigidRegisteringFlag
+            n = numel(profile_Wom);
             d_profile = zeros(n, 2, numFrames);
 
             xi = x + x_axis;
@@ -177,22 +192,40 @@ for circleIdx = 1:rows
         % reshaped_results = reshape(temp_results, 1, 1, []);
         % womersley_results(circleIdx, branchIdx, 1:numel(reshaped_results)) = reshaped_results;
 
+        v_profile_t = profile_time;
+
         if useCycleMean
-            v_profile_t = profile_time';
-            [ProfilePerBeat, ~, ~] = perBeatProfileAnalysis(v_profile_t, ToolBox.Cache.sysIdxList, 10);
-            v_profile_t = squeeze(mean(ProfilePerBeat, 1));
-            v_profile_t = v_profile_t';
+            v_profile_temp = profile_time';
+            [ProfilePerBeat, ~, ~] = perBeatProfileAnalysis(v_profile_temp, sysIdxList, 10);
+            v_profile_temp = squeeze(mean(ProfilePerBeat, 1))';
+            v_profile_t = v_profile_temp;
 
             v_profile_t_mat(circleIdx, branchIdx, :, :) = v_profile_t;
         end
         
-        womersley_results(circleIdx, branchIdx) = Womersley.WomersleyNumberEstimation(v_profile_t, cardiac_frequency, name, circleIdx, branchIdx, d_profile);
+        %{
+        params_struct = struct(...
+            "NUM_INTERP_POINTS", params.json.exportCrossSectionResults.InterpolationPoints, ...
+            "HARMONIC_NUMBER", params.json.exportCrossSectionResults.Womersley.MaxHarmonic, ...
+            "PIXEL_SIZE", ToolBox.Cache.pixelSize, ...
+            "USE_CYCLE_MEAN", params.json.exportCrossSectionResults.Womersley.UseCycleMean, ...
+            "SAVE_FIGURE", params.saveFigures
+        );
+        %}
+
+        womersley_results(circleIdx, branchIdx) = Womersley.WomersleyNumberEstimation(v_profile_t, cardiac_frequency, name, circleIdx, branchIdx, d_profile, params_struct);
         
         % addStructToExtra(ToolBox.Output.Extra, "Womersley", womersley_results(idx)(1));
-        
-        ToolBox.Cache.WomersleyOut{circleIdx, branchIdx} = womersley_results(circleIdx, branchIdx);
     end
     
+end
+
+for circleIdx = 1:rows
+    for branchIdx = 1:cols
+        if ~isempty(womersley_results(circleIdx, branchIdx).segments_metrics)
+            ToolBox.Cache.WomersleyOut{circleIdx, branchIdx} = womersley_results(circleIdx, branchIdx);
+        end
+    end
 end
 
 ToolBox.Output.add("VelocityProfilesSegInterpOneBeat" + capitalize(name), v_profile_t_mat, h5path = capitalize(name) + "/CrossSections/VelocityProfilesSegInterpOneBeat", keepSize=true);
