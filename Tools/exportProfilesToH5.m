@@ -11,6 +11,10 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
     params = ToolBox.getParams;
     sys_idx_list = ToolBox.Cache.sysIdxList;
 
+    % First simply output the full profiles in time for each patch;
+
+    v_mat_new = toArrayNew(v_profiles_cell);
+    ToolBox.Output.add(capitalize(name) + "VelocityProfilesFull", v_mat_new, unit = "mm/s" , h5path = capitalize(name) + "/Velocity/VelocityProfiles", keepSize=false);
     v_mat = toArray(v_cell);
     v_safe_mat = toArray(v_safe_cell);
     v_profiles_mat = toArray4D(v_profiles_cell);
@@ -75,6 +79,53 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
 
     ToolBox.Output.add("VelocityProfileSeg" + name, v_profiles_mat, h5path = capitalize(name) + "/CrossSections/VelocityProfileSeg", keepSize = true);
 end
+
+function v_array = toArrayNew(v_cell)
+    [rows, cols] = size(v_cell);
+
+    maxInner = 0;
+    maxDims = [];
+
+    for i = 1:numel(v_cell)
+        inner = v_cell{i};
+        if isempty(inner)
+            continue
+        end
+        maxInner = max(maxInner, numel(inner));
+        for j = 1:numel(inner)
+            if ~isempty(inner{j})
+                sz = size(inner{j});
+                if numel(sz) > numel(maxDims)
+                    maxDims(end+1:numel(sz)) = 1;
+                end
+                maxDims = max(maxDims, sz);
+            end
+        end
+    end
+
+    v_array = nan([rows, cols, maxInner, maxDims], "double");
+
+    for r = 1:rows
+        for c = 1:cols
+            inner = v_cell{r,c};
+            if isempty(inner)
+                continue
+            end
+            for j = 1:numel(inner)
+                if isempty(inner{j})
+                    continue
+                end
+                sz = size(inner{j});
+                idx = arrayfun(@(n) 1:n, sz, "UniformOutput", false);
+                v_array(r,c,j,idx{:}) = double(inner{j});
+            end
+        end
+    end
+
+    v_array = squeeze(v_array);
+end
+
+
 
 function [velocitySignalPerBeat, velocitySignalPerBeatFFT, velocitySignalPerBeatBandLimited] = perBeatSignalAnalysisMat_handle(v_mat, sys_idx_list, bandLimitedSignalHarmonicCount)
     arguments
