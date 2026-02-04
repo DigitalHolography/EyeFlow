@@ -114,13 +114,14 @@ if ~isempty(opt.parent_folder)
         sprintf("%s_%s_graph.png", ToolBox.folder_name, filename)))
     exportgraphics(gca, fullfile(ToolBox.path_eps, opt.parent_folder, ...
         sprintf("%s_%s_graph.eps", ToolBox.folder_name, filename)))
+else
+    exportgraphics(gca, fullfile(ToolBox.path_png, ...
+        sprintf("%s_%s_graph.png", ToolBox.folder_name, filename)))
+    exportgraphics(gca, fullfile(ToolBox.path_eps, ...
+        sprintf("%s_%s_graph.eps", ToolBox.folder_name, filename)))
     
 end
 
-exportgraphics(gca, fullfile(ToolBox.path_png, ...
-    sprintf("%s_%s_graph.png", ToolBox.folder_name, filename)))
-exportgraphics(gca, fullfile(ToolBox.path_eps, ...
-    sprintf("%s_%s_graph.eps", ToolBox.folder_name, filename)))
 
 
 
