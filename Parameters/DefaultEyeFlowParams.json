@@ -96,8 +96,9 @@
     "sectionMontage": true,
     "diameterAnalysis": false,
     "HydrodynamicDiameters": true,
-    "velocityProfileThreshold": 0.5,
-    "RotateFromMask": 0
+    "velocityProfileThreshold": 0.1,
+    "RotateFromMask": 1,
+    "hydrodynamicFloorThreshold": 0.75
   },
   "exportCrossSectionResults": {
     "sectionImage": true,

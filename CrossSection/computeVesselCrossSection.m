@@ -34,15 +34,16 @@ L = length(profile);
 hydrodynamicFloor = params.json.generateCrossSectionSignals.velocityProfileThreshold;
 central_range = find(profile > hydrodynamicFloor * max(profile));
 centt = mean(central_range);
-halfVelocity = hydrodynamicFloor * max(profile);
+floorVelocity = params.json.generateCrossSectionSignals.hydrodynamicFloorThreshold;
+floorVelocity = hydrodynamicFloor * max(profile);
 
 r_range = (central_range - centt) * px_size;
 
 [p1, p2, p3, rsquare, p1_err, p2_err, p3_err] = customPoly2Fit(r_range', profile(central_range)');
 
 % Apply floor thresholding
-p3half = p3 - halfVelocity;
-[r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3half, p1_err, p2_err, p3_err);
+p3floor = p3 - floorVelocity;
+[r1, r2, r1_err, r2_err] = customPoly2Roots(p1, p2, p3floor, p1_err, p2_err, p3_err);
 
 if r1 > r2
     r1 = NaN;

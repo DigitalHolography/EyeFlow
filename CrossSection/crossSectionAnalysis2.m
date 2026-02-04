@@ -30,6 +30,15 @@ subImgHW = round(0.01 * size(v_masked, 1) * params.json.generateCrossSectionSign
 % Initialize results fields
 xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
 yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
+% TODO change this to only take the intersection of mask and circle
+try
+    [row, col] = find(ROI);
+    yRange = min(row):max(row);
+    xRange = min(col):max(col);
+catch
+    warning_s("Probleme de taille");
+end
+
 subImg = v_masked(yRange, xRange, :);
 subMask = ROI(yRange, xRange);
 
@@ -48,16 +57,17 @@ end
 subImgMean = squeeze(mean(subImg, 3, 'omitnan'));
 
 if params.json.generateCrossSectionSignals.RotateFromMask && ~isnan(tilt_angle_mask)
-    tilt_angle = tilt_angle_mask  + 90;
+    tilt_angle = tilt_angle_mask + 90;
     rotatedImg = imrotatecustom(subImgMean, tilt_angle);
     subMask = imrotatecustom(subMask, tilt_angle);
     rotatedImg(~subMask) = NaN;
 else
     subImgCropped = cropCircle(subImgMean);
-    [rotatedImg, tilt_angle] = rotateSubImage(subImgMean, subImgCropped, loc, xy_barycenter); 
+    [rotatedImg, tilt_angle] = rotateSubImage(subImgMean, subImgCropped, loc, xy_barycenter);
     subMask = imrotatecustom(subMask, tilt_angle);
     rotatedImg(~subMask) = NaN;
 end
+
 results.subImg_cell = rescale(rotatedImg);
 
 % UncroppedVersion
