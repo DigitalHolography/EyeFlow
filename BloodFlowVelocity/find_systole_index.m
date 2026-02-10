@@ -95,13 +95,13 @@ if options.savepng
     hold on
     plot(t, diff_artery_signal, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5)
     plot(t, pulse_artery_filtered, 'k-', 'LineWidth', 1.5);
-    scatter((sys_max_list - 1) * T, pulse_artery_filtered(sys_max_list), 'r', "filled")
-    scatter((sys_min_list - 1) * T, pulse_artery_filtered(sys_min_list), 'b', "filled")
-    scatter((sys_idx_list - 1) * T, pulse_artery_filtered(sys_idx_list), 'k', "filled")
+    scatter((sys_max_list - 1 + ToolBox.Cache.firstFrameIdx) * T, pulse_artery_filtered(sys_max_list), 'r', "filled")
+    scatter((sys_min_list - 1 + ToolBox.Cache.firstFrameIdx) * T, pulse_artery_filtered(sys_min_list), 'b', "filled")
+    scatter((sys_idx_list - 1 + ToolBox.Cache.firstFrameIdx) * T, pulse_artery_filtered(sys_idx_list), 'k', "filled")
 
-    xline((sys_idx_list - 1) * T, 'k--', 'LineWidth', 1.5)
-    xline((sys_min_list - 1) * T, 'b--')
-    xline((sys_max_list - 1) * T, 'r--')
+    xline((sys_idx_list - 1 + ToolBox.Cache.firstFrameIdx) * T, 'k--', 'LineWidth', 1.5)
+    xline((sys_min_list - 1 + ToolBox.Cache.firstFrameIdx) * T, 'b--')
+    xline((sys_max_list - 1 + ToolBox.Cache.firstFrameIdx) * T, 'r--')
     hold off
 
     axis padded;
@@ -121,13 +121,13 @@ if options.savepng
         hold on
         plot(t, diff_vein_signal, 'Color', [0.5 0.5 0.5], 'LineWidth', 1.5)
         plot(t, pulse_vein_filtered, 'k-', 'LineWidth', 1.5);
-        scatter((sys_max_list - 1) * T, pulse_vein_filtered(sys_max_list), 'r', "filled")
-        scatter((sys_min_list - 1) * T, pulse_vein_filtered(sys_min_list), 'b', "filled")
-        scatter((sys_idx_list - 1) * T, pulse_vein_filtered(sys_idx_list), 'k', "filled")
+        scatter((sys_max_list - 1 + ToolBox.Cache.firstFrameIdx) * T, pulse_vein_filtered(sys_max_list), 'r', "filled")
+        scatter((sys_min_list - 1 + ToolBox.Cache.firstFrameIdx) * T, pulse_vein_filtered(sys_min_list), 'b', "filled")
+        scatter((sys_idx_list - 1 + ToolBox.Cache.firstFrameIdx) * T, pulse_vein_filtered(sys_idx_list), 'k', "filled")
 
-        xline((sys_idx_list - 1) * T, 'k--', 'LineWidth', 1.5)
-        xline((sys_min_list - 1) * T, 'b--')
-        xline((sys_max_list - 1) * T, 'r--')
+        xline((sys_idx_list - 1 + ToolBox.Cache.firstFrameIdx) * T, 'k--', 'LineWidth', 1.5)
+        xline((sys_min_list - 1 + ToolBox.Cache.firstFrameIdx) * T, 'b--')
+        xline((sys_max_list - 1 + ToolBox.Cache.firstFrameIdx) * T, 'r--')
         hold off
 
         axis padded;

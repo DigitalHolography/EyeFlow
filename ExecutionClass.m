@@ -96,6 +96,8 @@ methods
         Preprocessor.preprocess(obj);
 
         % Copy results back for backward compatibility
+        obj.Cache.firstFrameIdx = Preprocessor.firstFrameIdx;
+        obj.Cache.lastFrameIdx = Preprocessor.lastFrameIdx;
         obj.Cache.M0_ff = Preprocessor.M0_ff;
         obj.Cache.M0_ff_img = squeeze(mean(obj.Cache.M0_ff, 3));
         obj.Cache.f_RMS = Preprocessor.f_RMS;
@@ -126,7 +128,7 @@ methods
         ToolBox.setOutput(obj.Output);
         ToolBox.setCache(obj.Cache);
 
-        obj.Cache.createTimeVector(ToolBox, size(obj.Cache.M0_ff, 3));
+        obj.Cache.createTimeVector(ToolBox, obj.Cache.lastFrameIdx);
         obj.Cache.createFreqVector(ToolBox);
 
         obj.Reporter = ReporterClass(obj);

@@ -114,6 +114,7 @@ methods (Access = private)
     end
 
     function nonRigidRegister(obj, params)
+
         if ~params.json.Preprocess.NonRigidRegisteringFlag
             return
         end
