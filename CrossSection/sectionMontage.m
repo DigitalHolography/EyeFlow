@@ -2,54 +2,50 @@ function sectionMontage(subImg_cell, ~, name)
 
 ToolBox = getGlobalToolBox;
 
-subImgSize = [];
+numCircles = size(subImg_cell, 1);
+numBranches = size(subImg_cell, 2);
 
-for i = 1:size(subImg_cell, 1)
+rowHeights = zeros(1, numBranches);
+colWidths = zeros(1, numCircles);
 
-    for n = 1:size(subImg_cell, 2)
-
-        if ~isempty(subImg_cell{i, n})
-            subImgSize = size(subImg_cell{i, n});
+for i = 1:numCircles
+    for j = 1:numBranches
+        if ~isempty(subImg_cell{i, j})
+            sz = size(subImg_cell{i, j});
+            rowHeights(j) = max(rowHeights(j), sz(1));
+            colWidths(i) = max(colWidths(i), sz(2));
         end
-
-        if ~isempty(subImgSize)
-            break;
-        end
-
     end
-
-    if ~isempty(subImgSize)
-        break;
-    end
-
 end
 
-if isempty(subImgSize)
+if all(rowHeights == 0) || all(colWidths == 0)
     return
 end
 
-figure("Visible", "off")
-numCircles = size(subImg_cell, 1);
-numBranches = size(subImg_cell, 2);
-% fill with zero images the zeros parts
+rowOffsets = [0 cumsum(rowHeights)];
+colOffsets = [0 cumsum(colWidths)];
 
-sub_images_mat = zeros((subImgSize(1) * numBranches) + 1, (subImgSize(2) * numCircles) + 1);
+sub_images_mat = zeros(rowOffsets(end), colOffsets(end));
 
-for circleIdx = 1:numCircles
-
-    for branchIdx = 1:numBranches
-
-        if ~isempty(subImg_cell{circleIdx, branchIdx})
+for i = 1:numCircles
+    for j = 1:numBranches
+        if ~isempty(subImg_cell{i, j})
+            img = subImg_cell{i, j};
+            h = size(img, 1);
+            w = size(img, 2);
             sub_images_mat( ...
-                1 + (branchIdx - 1) * subImgSize(1):branchIdx * subImgSize(1), ...
-                1 + (circleIdx - 1) * subImgSize(2):circleIdx * subImgSize(2)) = subImg_cell{circleIdx, branchIdx};
+                rowOffsets(j) + (1:h), ...
+                colOffsets(i) + (1:w)) = img;
         end
-
     end
-
 end
 
 sub_images_mat(isnan(sub_images_mat)) = 0;
-imwrite(sub_images_mat, fullfile(ToolBox.path_png, sprintf("%s_%s", ToolBox.folder_name, sprintf('%s_section_montage.png', name))))
+
+figure("Visible", "off")
+imwrite(sub_images_mat, ...
+    fullfile(ToolBox.path_png, ...
+    sprintf("%s_%s", ToolBox.folder_name, ...
+    sprintf('%s_section_montage.png', name))))
 
 end

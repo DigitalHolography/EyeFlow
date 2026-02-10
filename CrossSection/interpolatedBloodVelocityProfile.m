@@ -195,8 +195,12 @@ if numInterp < 3
     return;
 end
 
-fitPoiseuille = @(v) fit((1:numInterp)' - (numInterp / 2), v', 'poly2');
-f_sys = fitPoiseuille(v_sys);
+x_full = (1:numInterp)' - (numInterp / 2);
+
+fitPoiseuille = @(v) ...
+    localPoly2Fit(x_full, v);
+
+f_sys  = fitPoiseuille(v_sys);
 f_dias = fitPoiseuille(v_dias);
 
 r_range = (1:numInterp) - (numInterp / 2); % Center around midpoint
@@ -314,4 +318,18 @@ if exportVideos
     writeGifOnDisc(mat2gray(video), sprintf("wall2wall_profile_%s", name), "ToolBox", ToolBox);
 end
 
+end
+
+function f = localPoly2Fit(x, v)
+    x = x(:);
+    v = v(:);
+
+    valid = isfinite(x) & isfinite(v);
+
+    if nnz(valid) < 3
+        f = [];
+        return
+    end
+
+    f = fit(x(valid), v(valid), 'poly2');
 end

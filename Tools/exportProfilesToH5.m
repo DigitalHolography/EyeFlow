@@ -196,26 +196,44 @@ end
 function v_4d = toArray4D(v_cell)
     [rows, cols] = size(v_cell);
 
-    firstIdx = find(~cellfun(@isempty, v_cell), 1);
-    if isempty(firstIdx)
-        v_4d = []; return;
-    end
-    
-    innerCell = v_cell{firstIdx};
-    numNested = numel(innerCell);
-    vecLen = numel(innerCell{1});
-
-    v_4d = nan(rows, cols, numNested, vecLen, "double");
+    maxNested = 0;
+    maxLen = 0;
 
     for i = 1:numel(v_cell)
-        if ~isempty(v_cell{i})
-            [r, c] = ind2sub([rows, cols], i);
-            
-            nestedMatrix = vertcat(v_cell{i}{:});
-            v_4d(r, c, :, :) = nestedMatrix;
+        if isempty(v_cell{i})
+            continue
+        end
+        maxNested = max(maxNested, numel(v_cell{i}));
+        for j = 1:numel(v_cell{i})
+            if ~isempty(v_cell{i}{j})
+                maxLen = max(maxLen, numel(v_cell{i}{j}));
+            end
+        end
+    end
+
+    if maxNested == 0 || maxLen == 0
+        v_4d = [];
+        return
+    end
+
+    v_4d = nan(rows, cols, maxNested, maxLen, "double");
+
+    for i = 1:numel(v_cell)
+        if isempty(v_cell{i})
+            continue
+        end
+        [r, c] = ind2sub([rows, cols], i);
+
+        for j = 1:numel(v_cell{i})
+            if isempty(v_cell{i}{j})
+                continue
+            end
+            vec = double(v_cell{i}{j});
+            v_4d(r, c, j, 1:numel(vec)) = vec;
         end
     end
 end
+
 
 function array = mat2cell4D_shape(input_cell)
     arguments
