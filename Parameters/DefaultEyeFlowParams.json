@@ -87,7 +87,6 @@
   "generateCrossSectionSignals": {
     "NumberOfCircles": 10,
     "SegmentsLength": 0.025,
-    "ScaleFactorWidth": 3,
     "MaskSliceThreshold": 0.01,
     "RefPapillaSize": 1.91,
     "DefaultPixelSize": 0.0191,

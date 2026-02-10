@@ -24,20 +24,10 @@ results = struct();
 v_masked = v_RMS;
 % v_masked(repmat(~ROI, [1, 1, size(v_RMS, 3)])) = NaN; % Apply mask to all slices
 
-% Define sub-image dimensions
-subImgHW = round(0.01 * size(v_masked, 1) * params.json.generateCrossSectionSignals.ScaleFactorWidth);
+[row, col] = find(ROI);
+yRange = min(row):max(row);
+xRange = min(col):max(col);
 
-% Initialize results fields
-xRange = max(round(-subImgHW / 2) + loc(1), 1):min(round(subImgHW / 2) + loc(1), numX);
-yRange = max(round(-subImgHW / 2) + loc(2), 1):min(round(subImgHW / 2) + loc(2), numY);
-% TODO change this to only take the intersection of mask and circle
-try
-    [row, col] = find(ROI);
-    yRange = min(row):max(row);
-    xRange = min(col):max(col);
-catch
-    warning_s("Probleme de taille");
-end
 
 subImg = v_masked(yRange, xRange, :);
 subMask = ROI(yRange, xRange);
@@ -45,20 +35,11 @@ subMask = ROI(yRange, xRange);
 % Apply the mask to only the relevant part
 subImg(repmat(~subMask, [1, 1, numFrames])) = NaN;
 
-if size(subImg, 1) < length(xRange) || size(subImg, 2) < length(yRange)
-    xRange = round(-subImgHW / 2) + loc(1):round(subImgHW / 2) + loc(1);
-    yRange = round(-subImgHW / 2) + loc(2):round(subImgHW / 2) + loc(2);
-    tmp = NaN(length(xRange), length(yRange), numFrames);
-    tmp(1:size(subImg, 1), 1:size(subImg, 2), :) = subImg;
-    subImg = tmp;
-    clear tmp
-end
-
 subImgMean = squeeze(mean(subImg, 3, 'omitnan'));
 
 if params.json.generateCrossSectionSignals.RotateFromMask && ~isnan(tilt_angle_mask)
     tilt_angle = tilt_angle_mask + 90;
-    rotatedImg = imrotatecustom(subImgMean, tilt_angle);
+    rotatedImg = imrotatecustom2(subImgMean, tilt_angle);
     subMask = imrotatecustom(subMask, tilt_angle);
     rotatedImg(~subMask) = NaN;
 else
@@ -103,7 +84,7 @@ results.v_histo = cell(1, numFrames);
 for t = 1:numFrames
 
     subFrame = subImg(:, :, t);
-    subFrame = imrotatecustom(subFrame, tilt_angle);
+    subFrame = imrotatecustom2(subFrame, tilt_angle);
     v_profile = mean(subFrame, 1, 'omitnan');
     v_profile_cropped = nan(1, size(subFrame, 2));
     v_profile_cropped(c1:c2) = mean(subFrame(:, c1:c2), 1, "omitnan");
