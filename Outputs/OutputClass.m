@@ -169,6 +169,13 @@ methods
 
         end
 
+        ToolBox = getGlobalToolBox;
+        params = ToolBox.getParams;
+        jsonParams = params.json;
+
+        str = jsonencode(jsonParams);
+
+        export_h5_string(file_path, "EF_parameters", str);
     end
 
 end
