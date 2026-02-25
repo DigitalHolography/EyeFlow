@@ -100,11 +100,12 @@ methods
         obj.Cache.M0_ff_img = squeeze(mean(obj.Cache.M0_ff, 3));
         obj.Cache.f_RMS = Preprocessor.f_RMS;
         obj.Cache.f_AVG = Preprocessor.f_AVG;
+        obj.Cache.M0 = obj.M0;
         obj.Cache.displacementField = Preprocessor.displacementField;
         obj.is_preprocessed = Preprocessor.is_preprocessed;
 
         % Clear Preprocessor and intermediate variables
-        obj.M0 = [];
+        obj.M0 = []; 
         obj.M1 = [];
         obj.M2 = [];
         clear Preprocessor;

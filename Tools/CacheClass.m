@@ -14,6 +14,7 @@ properties (Transient)
     v_mean_RGB uint8
 
     % Preprocessed Data
+    M0 single
     M0_ff single
     f_RMS single
     f_AVG single

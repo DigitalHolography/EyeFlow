@@ -140,6 +140,7 @@ methods
             "Blood Flow Velocity Analysis\n" + ...
         "----------------------------------\n");
         pulseAnalysisTimer = tic;
+        moment0Signal(executionObj.Cache.M0);
 
         [executionObj.Cache.vRMS, executionObj.Cache.v_video_RGB, executionObj.Cache.v_mean_RGB] = pulseAnalysis(executionObj.Cache.f_RMS, executionObj.Cache.M0_ff);
 
