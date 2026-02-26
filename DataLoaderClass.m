@@ -51,14 +51,16 @@ methods
     end
 
     function filename = extractFilename(~, path)
+
         if ~isfolder(path)
             [~, name, ~] = fileparts(path);
             filename = name;
         else
             tmp_idx = regexp(path, '\');
             if iscell(tmp_idx), tmp_idx = tmp_idx{1}; end
-            filename = extractBetween(path, tmp_idx(end-1)+1, tmp_idx(end)-1);
+            filename = extractBetween(path, tmp_idx(end - 1) + 1, tmp_idx(end) - 1);
         end
+
     end
 
     function loadHoloFile(obj)

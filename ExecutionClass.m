@@ -109,6 +109,7 @@ methods
         obj.M0 = [];
         obj.M1 = [];
         obj.M2 = [];
+        obj.SH = [];
         clear Preprocessor;
 
         fprintf("- Preprocess took : %ds\n", round(toc(PreProcessTimer)))
