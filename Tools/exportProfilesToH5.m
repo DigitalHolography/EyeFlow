@@ -1,10 +1,11 @@
-function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
+function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell,locsLabel)
 % Function to save the velocities profiles 
     arguments
         name string
         v_cell cell
         v_safe_cell cell
         v_profiles_cell cell
+        locsLabel cell
     end
 
     ToolBox = getGlobalToolBox;
@@ -13,11 +14,12 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
 
     % First simply output the full profiles in time for each patch;
 
-    v_mat_new = toArrayNew(v_profiles_cell);
-    ToolBox.Output.add(capitalize(name) + "VelocityProfilesFull", v_mat_new, unit = "mm/s" , h5path = capitalize(name) + "/Velocity/VelocityProfiles", keepSize=false);
+    % v_mat_new = toArrayNew(v_profiles_cell);
+    % ToolBox.Output.add(capitalize(name) + "VelocityProfilesFull", v_mat_new, unit = "mm/s" , h5path = capitalize(name) + "/Velocity/VelocityProfiles", keepSize=false);
     v_mat = toArray(v_cell);
     v_safe_mat = toArray(v_safe_cell);
     v_profiles_mat = toArray4D(v_profiles_cell);
+    v_locs_mat = toArray(locsLabel);
 
     bandLimitedSignalHarmonicCount = params.json.PulseAnalysis.BandLimitedSignalHarmonicCount;
     nModes                         = params.json.exportCrossSectionResults.ModalDecompositionNModes;
@@ -78,6 +80,8 @@ function exportProfilesToH5(name, v_cell, v_safe_cell, v_profiles_cell)
     ToolBox.Output.add("velocity_seg_mean_" + name, v_safe_mat, h5path = capitalize(name) + "/CrossSections/VelocityPerSegment", keepSize = true, unit = "mm/s", dimDesc = ["Branch", "Circle"]);
 
     ToolBox.Output.add("VelocityProfileSeg" + name, v_profiles_mat, h5path = capitalize(name) + "/CrossSections/VelocityProfileSeg", keepSize = true);
+
+    ToolBox.Output.add("VelocityLocsSeg" + name, v_locs_mat, h5path = capitalize(name) + "/CrossSections/VelocityLocsSeg", keepSize = true);
 end
 
 function v_array = toArrayNew(v_cell)

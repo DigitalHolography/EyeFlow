@@ -1,13 +1,28 @@
 function export_h5_string(filename, name, str)
-dataset_path = sprintf('/%s', name);
-if isfile(filename)
-    info = h5info(filename);
-    dataset_exists = any(strcmp({info.Datasets.Name}, name));
-else
-    dataset_exists = false;
-end
-if ~dataset_exists
-    h5create(filename, dataset_path, size(str), 'Datatype', 'char');
-end
-h5write(filename, dataset_path, str);
+
+    datasetPath = "/" + name;
+
+    % Ensure input is a string scalar
+    str = string(str);
+
+    % Check if dataset already exists
+    datasetExists = false;
+
+    if isfile(filename)
+        try
+            h5info(filename, datasetPath);
+            datasetExists = true;
+        catch
+            datasetExists = false;
+        end
+    end
+
+    % Create dataset if it does not exist
+    if ~datasetExists
+        h5create(filename, datasetPath, 1, 'Datatype', 'string');
+    end
+
+    % Write the string
+    h5write(filename, datasetPath, str);
+
 end
