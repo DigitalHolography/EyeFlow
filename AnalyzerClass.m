@@ -65,8 +65,6 @@ methods
         catch ME
             warning("Error while finding papilla : ")
             MEdisp(ME, ToolBox.EF_path);
-            center_x = NaN;
-            center_y = NaN;
             diameter_x = NaN;
             diameter_y = NaN;
         end

@@ -12,9 +12,6 @@ signal = signal ./ nnz(maskArtery);
 outlier_frames_mask = isoutlier(signal, "movmedian", 5, "ThresholdFactor", 2);
 video = interpolateOutlierFrames(video, outlier_frames_mask);
 
-signal = sum(video .* maskArtery, [1 2], 'omitnan');
-signal = signal ./ nnz(maskArtery);
-
 % Extract pulse signals for artery and vein masks
 pulseArtery = squeeze(sum(video .* maskArtery, [1 2], 'omitnan') / nnz(maskArtery));
 outlier_frames_mask = isoutlier(pulseArtery, "movmedian", 5, "ThresholdFactor", 2);

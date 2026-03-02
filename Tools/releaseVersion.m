@@ -10,9 +10,11 @@ end
 
 % Step 1: Update version.txt
 fid = fopen('version.txt', 'w');
+
 if fid == -1
     error('Cannot open version.txt for writing');
 end
+
 fprintf(fid, '%s\n', versionTag);
 fclose(fid);
 fprintf('Updated version.txt with version %s\n', versionTag);
@@ -29,7 +31,8 @@ assert(status == 0, cmdout);
 [status, cmdout] = system(cmdAdd);
 assert(status == 0, cmdout);
 
-[status, cmdout] = system(cmdCommit);
+[status, ~] = system(cmdCommit);
+
 if status ~= 0
     disp('No changes to commit.');
 end

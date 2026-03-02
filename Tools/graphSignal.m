@@ -119,10 +119,7 @@ else
         sprintf("%s_%s_graph.png", ToolBox.folder_name, filename)))
     exportgraphics(gca, fullfile(ToolBox.path_eps, ...
         sprintf("%s_%s_graph.eps", ToolBox.folder_name, filename)))
-    
+
 end
-
-
-
 
 end
