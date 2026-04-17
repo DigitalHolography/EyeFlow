@@ -43,8 +43,8 @@ methods (Access = private)
         app = obj.MainApp;
 
         % Initial height based on number of folders
-        nFolders = length(app.drawer_list);
-        initialHeight = 200 + max(nFolders, 1) * 14;
+        nFolders = max(length(app.drawer_list), 1);
+        initialHeight = 222 + nFolders * 18;
 
         % Position next to main app if possible
         if isvalid(app.EyeFlowUIFigure)
@@ -56,7 +56,7 @@ methods (Access = private)
             yPos = 300;
         end
 
-        obj.Figure = uifigure('Position', [xPos, yPos, 750, initialHeight], ...
+        obj.Figure = uifigure('Position', [xPos, yPos, 650, initialHeight], ...
             'Color', [0.2, 0.2, 0.2], ...
             'Name', 'Folder Management - EyeFlow', ...
             'Resize', 'on', ...
@@ -149,8 +149,8 @@ methods (Access = private)
         end
 
         % Adjust figure height
-        n = length(app.drawer_list);
-        newHeight = 200 + max(n, 1) * 14;
+        n = max(length(app.drawer_list), 1);
+        newHeight = 222 + n * 18;
         obj.Figure.Position(4) = newHeight;
     end
 
@@ -380,14 +380,34 @@ methods (Access = private)
         % Summary
         fprintf('\n========== BATCH PROCESSING COMPLETED ==========\n');
 
-        if isempty(errors)
+        % Find indices of cells that actually contain an error (non-empty)
+        errorIndices = find(~cellfun(@isempty, errors));
+
+        if isempty(errorIndices)
             fprintf('All %d folders processed successfully.\n', length(folders));
         else
-            fprintf(2, 'Errors occurred in %d folders:\n', length(errors));
+            fprintf(2, 'Errors occurred in %d folder(s):\n', length(errorIndices));
 
-            for e = 1:length(errors)
-                fprintf(2, '  [%d] %s\n', e, errFolders{e});
-                fprintf(2, '      %s\n', errors{e}.message);
+            for e = 1:length(errorIndices)
+                idx = errorIndices(e);
+                errVal = errors{idx};
+                folderName = errFolders{idx};
+
+                if isempty(folderName)
+                    folderName = '<unknown folder>';
+                end
+
+                fprintf(2, '  [%d] %s\n', idx, folderName);
+
+                % Handle different error types safely
+                if isa(errVal, 'MException')
+                    fprintf(2, '      %s\n', errVal.message);
+                elseif ischar(errVal) || isstring(errVal)
+                    fprintf(2, '      %s\n', char(errVal));
+                else
+                    fprintf(2, '      (Non‑standard error object)\n');
+                end
+
             end
 
         end
