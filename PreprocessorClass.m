@@ -77,6 +77,9 @@ methods (Access = private)
         firstFrame = params.json.Preprocess.Crop.StartFrame;
         lastFrame = params.json.Preprocess.Crop.EndFrame;
 
+        obj.firstFrameIdx = 1;
+        obj.lastFrameIdx = size(obj.M0, 3);
+
         if (firstFrame == 1) && (lastFrame == -1)
             return % do nothing if not required
         end
@@ -114,6 +117,7 @@ methods (Access = private)
     end
 
     function nonRigidRegister(obj, params)
+
         if ~params.json.Preprocess.NonRigidRegisteringFlag
             return
         end

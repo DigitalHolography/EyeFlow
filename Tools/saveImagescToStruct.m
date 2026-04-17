@@ -2,9 +2,9 @@ function s = saveImagescToStruct(h)
 s = struct();
 
 % Extract image data and properties
-s.CData = h.CData;               % actual image data matrix
-s.XData = h.XData;               % x-axis limits
-s.YData = h.YData;               % y-axis limits
+s.CData = h.CData; % actual image data matrix
+s.XData = h.XData; % x-axis limits
+s.YData = h.YData; % y-axis limits
 s.CDataMapping = h.CDataMapping; % 'scaled' or 'direct'
 
 % Extract color limits and colormap

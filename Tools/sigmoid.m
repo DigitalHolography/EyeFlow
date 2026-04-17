@@ -5,13 +5,13 @@ function y = sigmoid(x, c, a)
 %     y =        -a(x-c)
 %          1 + e^
 %
-%% Syntax
+% Syntax
 %
 % y = sigmoid(x)
 % y = sigmoid(x,c)
 % y = sigmoid(x,c,a)
 %
-%% Description
+% Description
 %
 % y = sigmoid(x) generates a sigmoid function along x.
 %
@@ -25,13 +25,13 @@ function y = sigmoid(x, c, a)
 % sigmoid will go from 1 to zero. A default value of a = 1 is assumed if
 % a is not declared.
 %
-%% Example 1
+% Example 1
 % A simple sigmoid:
 %
 % x = -10:.01:10;
 % plot(x,sigmoid(x))
 %
-%% Example 2:
+% Example 2:
 % Make a sigmoid function along x = 1 to 100, such that y(x=60) = 0.5:
 %
 % x = 1:100;
@@ -46,11 +46,11 @@ function y = sigmoid(x, c, a)
 % legend('default a = 1','a = 1/10')
 % legend boxoff
 %
-%% Author Info:
+% Author Info:
 % Chad Greene, May 28, 2015.
 % http://www.chadagreene.com
 
-%% Parse Inputs:
+% Parse Inputs:
 
 narginchk(1, 3)
 
@@ -66,6 +66,6 @@ else
     assert(isscalar(c), 'c must be a scalar.')
 end
 
-%% Perform mathematics:
+% Perform mathematics:
 
 y = 1 ./ (1 + exp(-a .* (x - c)));

@@ -51,17 +51,18 @@ end
 s = s + sprintf("==================================\n");
 
 if nargout == 0
+
     if fd == 1
         warning(message);
     end
-    fprintf(fd,"%s", s);
+
+    fprintf(fd, "%s", s);
 end
 
 end
-
 
 function str = centerText(text, size)
-    leng = strlength(string(text));
-    pad = (size - leng) / 2;
-    str = sprintf("%*s%*s", fix(pad) + leng, text, ceil(pad), "");
+leng = strlength(string(text));
+pad = (size - leng) / 2;
+str = sprintf("%*s%*s", fix(pad) + leng, text, ceil(pad), "");
 end

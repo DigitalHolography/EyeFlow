@@ -22,7 +22,7 @@ classdef SplashScreen < hgsetget
 %   Copyright 2008-2011 The MathWorks, Inc.
 %   Revision: 1.1
 
-%% Public properties
+% Public properties
 properties
     Visible = 'on' % Is the splash-screen visible on-screen [on|off]
     Border = 'on' % Is the edge pixel darkened to form a border [on|off]
@@ -32,13 +32,13 @@ properties
     Tag = '' % User tag for this object
 end % Public properties
 
-%% Read-only properties
+% Read-only properties
 properties (GetAccess = public, SetAccess = private)
     Width = 0 % Width of the window
     Height = 0 % Height of the window
 end % Read-only properties
 
-%% Private properties
+% Private properties
 properties (Access = private)
     Icon = []
     BufferedImage = []
@@ -47,7 +47,7 @@ properties (Access = private)
     Frame = []
 end % Read-only properties
 
-%% Public methods
+% Public methods
 methods
 
     function obj = SplashScreen(title, imagename, varargin)
@@ -153,7 +153,7 @@ methods
 
 end % Public methods
 
-%% Data-access methods
+% Data-access methods
 methods
 
     function val = get.Width(obj)
@@ -237,7 +237,7 @@ methods
 
 end % Data-access methods
 
-%% Private methods
+% Private methods
 methods (Access = private)
 
     function createInterfaceComponents(obj, title, imageFile)

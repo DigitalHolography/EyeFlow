@@ -40,9 +40,10 @@ customConfigPath = "";
 useSafeMode = false;
 
 idx = 1;
+
 while idx <= nargin
     arg = string(varargin{idx});
-    
+
     switch arg
         case "-batch"
             mode = 'batch';
@@ -50,22 +51,26 @@ while idx <= nargin
             useSafeMode = true;
         case "-config"
             % Check if next argument exists and isn't another flag
-            if idx < nargin && ~startsWith(string(varargin{idx+1}), "-")
-                customConfigPath = string(varargin{idx+1});
+            if idx < nargin && ~startsWith(string(varargin{idx + 1}), "-")
+                customConfigPath = string(varargin{idx + 1});
                 idx = idx + 1; % Skip next arg as it was the path
             else
                 % Open file explorer for config
                 [cfg_name, cfg_path] = uigetfile('*.json', 'Select Custom EyeFlow Parameters JSON');
+
                 if isequal(cfg_name, 0)
                     fprintf("No config selected, using defaults.\n");
                 else
                     customConfigPath = fullfile(cfg_path, cfg_name);
                 end
+
             end
+
         otherwise
             % Assume this is the input path (data folder or batch file)
             inputPath = arg;
     end
+
     idx = idx + 1;
 end
 
@@ -87,10 +92,11 @@ if ~isfile(selectedJson)
 end
 
 % --- PATH SELECTION ---
-rawInputs = string.empty;
 
 try
+
     if strcmp(mode, 'batch')
+
         if inputPath == ""
             [txt_name, txt_path] = uigetfile('*.txt', 'Select the list of HoloDoppler processed folders');
             if isequal(txt_name, 0), return; end
@@ -99,10 +105,12 @@ try
             fullInputPath = inputPath;
             if ~isfile(fullInputPath), error("Batch file not found: %s", fullInputPath); end
         end
+
         fprintf("Running in Batch Mode: %s\n", fullInputPath);
         rawInputs = strtrim(readlines(fullInputPath));
-        rawInputs = rawInputs(rawInputs ~= ""); 
+        rawInputs = rawInputs(rawInputs ~= "");
     else
+
         if inputPath == ""
             [holo_name, holo_path] = uigetfile('*.holo', 'Select the .holo file');
             if isequal(holo_name, 0), return; end
@@ -110,9 +118,11 @@ try
         else
             fullInputPath = inputPath;
         end
+
         fprintf("Running in Single Mode: %s\n", fullInputPath);
         rawInputs = string(fullInputPath);
     end
+
 catch ME
     fprintf("Error during path selection: %s\n", ME.message);
     return;
@@ -120,18 +130,22 @@ end
 
 % Resolve .holo files to HD folders
 paths = string.empty;
+
 for k = 1:length(rawInputs)
     currentInput = rawInputs(k);
     if currentInput == "" || ismissing(currentInput); continue; end
 
     if endsWith(currentInput, ".holo", 'IgnoreCase', true)
         latestHD = findLatestHDFolder(currentInput);
+
         if ~ismissing(latestHD)
             paths(end + 1, 1) = latestHD;
         end
+
     elseif isfolder(currentInput)
         paths(end + 1, 1) = currentInput;
     end
+
 end
 
 if isempty(paths)
@@ -156,21 +170,23 @@ for ind = 1:length(paths)
     if isfile(fullfile(maskDir, 'forceMaskArtery.png'))
         movefile(fullfile(maskDir, 'forceMaskArtery.png'), fullfile(maskDir, 'oldForceMaskArtery.png'));
     end
+
     if isfile(fullfile(maskDir, 'forceMaskVein.png'))
         movefile(fullfile(maskDir, 'forceMaskVein.png'), fullfile(maskDir, 'oldForceMaskVein.png'));
     end
+
 end
 
 % --- SETUP PARPOOL ---
-maxWorkers = parcluster("local").NumWorkers;
+% maxWorkers = parcluster("local").NumWorkers;
 
-params_names = checkEyeFlowParamsFromJson(rawInputs(1)); % checks compatibility between found EF params and Default EF params of this version of EF.
-params = Parameters_json(rawInputs(1), params_names{1});
+% params_names = checkEyeFlowParamsFromJson(rawInputs(1)); % checks compatibility between found EF params and Default EF params of this version of EF.
+% params = Parameters_json(rawInputs(1), params_names{1});
 
-if params.json.NumberOfWorkers > 0 && params.json.NumberOfWorkers < maxWorkers
-    fprintf("Using nb of workers stored inside the parameters.json (%i)", params.json.NumberOfWorkers);
-    setupParpool(params.json.NumberOfWorkers);
-end
+% if params.json.NumberOfWorkers > 0 && params.json.NumberOfWorkers < maxWorkers
+%     fprintf("Using nb of workers stored inside the parameters.json (%i)", params.json.NumberOfWorkers);
+%     setupParpool(params.json.NumberOfWorkers);
+% end
 
 % --- AI LOADING & EXECUTION ---
 fprintf("Loading AI Models...\n");
@@ -180,7 +196,7 @@ for ind = 1:length(paths)
     p = paths(ind);
     if p == "" || ismissing(p); continue; end
     if isfolder(p) && ~endsWith(p, filesep), p = strcat(p, filesep); end
-    
+
     fprintf("Processing: %s\n", p);
     runAnalysisBlock(p, AIModels);
 end

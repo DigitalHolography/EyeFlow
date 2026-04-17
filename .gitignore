@@ -56,12 +56,10 @@ Mkfile.old
 dkms.conf
 
 # Miscellaneous
-EyeFlow.prj
 test_VOP.m
 
 # Model files
 Models/*
-resources/*
 +onnx_model/*
 +iternet5_av_diasys/*
 +iternet5_vesselness/*
@@ -69,11 +67,9 @@ resources/*
 +iternet5_av_corr/*
 +opticdisc/*
 +unet_vesselness/*
-Logs/*
 *.mat
 build/
 __pycache__
-build/
 
 +*
 !+Womersley

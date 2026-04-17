@@ -3,6 +3,7 @@ classdef eyeflow < matlab.apps.AppBase
 % Properties that correspond to app components
 properties (Access = public)
     EyeFlowUIFigure matlab.ui.Figure
+    RootGrid matlab.ui.container.GridLayout
 
     ReferenceDirectory matlab.ui.control.TextArea
     statusLamp matlab.ui.control.Lamp
@@ -167,6 +168,7 @@ methods (Access = public)
 
         if selected_dir == 0
             fprintf(2, 'No folder selected\n');
+            return
         else
             % Clearing before loading
             ClearButtonPushed(app);
@@ -358,333 +360,15 @@ methods (Access = public)
 
     end
 
-    % Button pushed function: FolderManagementButton
     function FolderManagementButtonPushed(app, ~)
-        d = dialog('Position', [300, 300, 690, 190 + length(app.drawer_list) * 14], ...
-            'Color', [0.2, 0.2, 0.2], ...
-            'Name', 'Folder management', ...
-            'Resize', 'on', ...
-            'WindowStyle', 'normal');
+        persistent fmUI
 
-        txt = uicontrol('Parent', d, ...
-            'Style', 'text', ...
-            'FontName', 'Helvetica', ...
-            'BackgroundColor', [0.2, 0.2, 0.2], ...
-            'ForegroundColor', [0.8, 0.8, 0.8], ...
-            'Position', [20, 70, 710, length(app.drawer_list) * 14], ...
-            'HorizontalAlignment', 'left', ...
-            'String', app.drawer_list);
-
-        uicontrol('Parent', d, ...
-            'Position', [20, 20, 100, 25], ...
-            'FontName', 'Helvetica', ...
-            'BackgroundColor', [0.5, 0.5, 0.5], ...
-            'ForegroundColor', [0.9 0.9 0.9], ...
-            'FontWeight', 'bold', ...
-            'String', 'Select folder', ...
-            'Callback', @select);
-
-        uicontrol('Parent', d, ...
-            'Position', [130, 20, 100, 25], ...
-            'FontName', 'Helvetica', ...
-            'BackgroundColor', [0.5, 0.5, 0.5], ...
-            'ForegroundColor', [0.9 0.9 0.9], ...
-            'FontWeight', 'bold', ...
-            'String', 'Select entire folder', ...
-            'Callback', @select_all);
-
-        uicontrol('Parent', d, ...
-            'Position', [240, 20, 100, 25], ...
-            'FontName', 'Helvetica', ...
-            'BackgroundColor', [0.5, 0.5, 0.5], ...
-            'ForegroundColor', [0.9 0.9 0.9], ...
-            'FontWeight', 'bold', ...
-            'String', 'Clear list', ...
-            'Callback', @clear_drawer);
-
-        uicontrol('Parent', d, ...
-            'Position', [350, 20, 100, 25], ...
-            'FontName', 'Helvetica', ...
-            'BackgroundColor', [0.5, 0.5, 0.5], ...
-            'ForegroundColor', [0.9 0.9 0.9], ...
-            'FontWeight', 'bold', ...
-            'String', 'Load from text', ...
-            'Callback', @load_from_txt);
-
-        uicontrol('Parent', d, ...
-            'Position', [460, 50, 100, 25], ...
-            'FontName', 'Helvetica', ...
-            'BackgroundColor', [0.5, 0.5, 0.5], ...
-            'ForegroundColor', [0.9 0.9 0.9], ...
-            'FontWeight', 'bold', ...
-            'String', 'Clear Parameters', ...
-            'Callback', @clear_params);
-
-        uicontrol('Parent', d, ...
-            'Position', [460, 80, 100, 25], ...
-            'FontName', 'Helvetica', ...
-            'BackgroundColor', [0.5, 0.5, 0.5], ...
-            'ForegroundColor', [0.9 0.9 0.9], ...
-            'FontWeight', 'bold', ...
-            'String', 'Import Parameter', ...
-            'Callback', @import_param);
-
-        uicontrol('Parent', d, ...
-            'Position', [460, 20, 100, 25], ...
-            'FontName', 'Helvetica', ...
-            'BackgroundColor', [0.5, 0.5, 0.5], ...
-            'ForegroundColor', [0.9 0.9 0.9], ...
-            'FontWeight', 'bold', ...
-            'String', 'Render', ...
-            'Callback', @render);
-
-        uicontrol('Parent', d, ...
-            'Position', [570, 20, 100, 25], ...
-            'FontName', 'Helvetica', ...
-            'BackgroundColor', [0.5, 0.5, 0.5], ...
-            'ForegroundColor', [0.9 0.9 0.9], ...
-            'FontWeight', 'bold', ...
-            'String', 'Show Results', ...
-            'Callback', @show_outputs);
-
-        uicontrol('Parent', d, ...
-            'Position', [350, 50, 100, 25], ...
-            'FontName', 'Helvetica', ...
-            'BackgroundColor', [0.5, 0.5, 0.5], ...
-            'ForegroundColor', [0.9 0.9 0.9], ...
-            'FontWeight', 'bold', ...
-            'String', 'Save to text', ...
-            'Callback', @save_to_txt);
-
-        uiwait(d);
-
-        function select_all(~, ~)
-            %                 % selection of one processed folder with uigetdir
-            %                 selected_dir = uigetdir();
-            %                 if (selected_dir)
-            %                     app.drawer_list{end + 1} = selected_dir;
-            %                 end
-            %                 txt.String = app.drawer_list;
-            %                 d.Position(4) = 100 + length(app.drawer_list) * 14;
-            %                 txt.Position(4) = length(app.drawer_list) * 14;
-
-            % selection of the measurement folder with uigetdir to analyze all processed folders
-
-            if ~isempty(app.drawer_list)
-                last_dir = app.drawer_list{end};
-            else
-                last_dir = [];
-            end
-
-            selected_dir = uigetdir(last_dir);
-            % List of Subfolders within the measurement folder
-            tmp_dir = dir(selected_dir);
-            % remove all files (isdir property is 0)
-            subfoldersName = tmp_dir([tmp_dir(:).isdir]);
-            % remove '.' and '..' folders
-            subfoldersName = subfoldersName(~ismember({subfoldersName(:).name}, {'.', '..'}));
-            subfoldersName = {subfoldersName.name};
-            % remove of other folders (ex: 'config' subfolders)
-            for ii = 1:length(subfoldersName)
-
-                if contains(subfoldersName{ii}, '_HD_') || contains(subfoldersName{ii}, '_HW_')
-                    app.drawer_list{end + 1} = fullfile(selected_dir, '\', subfoldersName{ii});
-                    txt.String = app.drawer_list;
-                    d.Position(4) = 100 + length(app.drawer_list) * 14;
-                    txt.Position(4) = length(app.drawer_list) * 14;
-                end
-
-            end
-
+        if isempty(fmUI) || ~isvalid(fmUI)
+            fmUI = FolderManagementUI(app);
+        else
+            fmUI.bringToFront();
         end
 
-        function select(~, ~)
-            % selection of one processed folder with uigetdir
-            if ~isempty(app.drawer_list)
-                last_dir = app.drawer_list{end};
-            else
-                last_dir = [];
-            end
-
-            selected_dir = uigetdir(last_dir);
-
-            if (selected_dir)
-                app.drawer_list{end + 1} = selected_dir;
-            end
-
-            txt.String = app.drawer_list;
-            d.Position(4) = 100 + length(app.drawer_list) * 14;
-            txt.Position(4) = length(app.drawer_list) * 14;
-        end
-
-        function clear_drawer(~, ~)
-            app.drawer_list = {};
-            txt.String = app.drawer_list;
-            d.Position(4) = 100 + length(app.drawer_list) * 14;
-            txt.Position(4) = length(app.drawer_list) * 14;
-        end
-
-        function load_from_txt(~, ~)
-
-            [selected_file, path] = uigetfile('*.txt');
-
-            if (selected_file)
-                files_lines = readlines(fullfile(path, selected_file));
-
-                for nn = 1:length(files_lines)
-
-                    if ~isempty(files_lines(nn))
-                        app.drawer_list{end + 1} = files_lines(nn);
-                    end
-
-                end
-
-            end
-
-            txt.String = app.drawer_list;
-            d.Position(4) = 100 + length(app.drawer_list) * 14;
-            txt.Position(4) = length(app.drawer_list) * 14;
-        end
-
-        function save_to_txt(~, ~)
-
-            if isempty(app.drawer_list)
-                warndlg('No folders to save!', 'Warning');
-                return;
-            end
-
-            % Get filename to save
-            [filename, pathname] = uiputfile('*.txt', 'Save folder list as');
-
-            if isequal(filename, 0) || isequal(pathname, 0)
-                return; % User cancelled
-            end
-
-            fullpath = fullfile(pathname, filename);
-
-            try
-                % Write each folder path to the file
-                fid = fopen(fullpath, 'w');
-
-                for i = 1:length(app.drawer_list)
-                    fprintf(fid, '%s\n', app.drawer_list{i});
-                end
-
-                fclose(fid);
-
-                msgbox(sprintf('Folder list saved to:\n%s', fullpath), 'Success');
-            catch ME
-                fclose(fid);
-                errordlg(sprintf('Error saving file:\n%s', ME.message), 'Error');
-            end
-
-        end
-
-        function clear_params(~, ~)
-            tic
-            ClearParams(app.drawer_list)
-            toc
-        end
-
-        function import_param(~, ~)
-            tic
-
-            % Open the file selection dialog
-            [selected_json, json_path] = uigetfile('*.json');
-
-            if selected_json == 0
-                fprintf(2, 'No file selected');
-                return;
-            end
-
-            % Process the selected file
-            for ind = 1:length(app.drawer_list)
-                path_json = fullfile(app.drawer_list{ind}, 'eyeflow', 'json');
-
-                if ~isfolder(path_json)
-                    mkdir(path_json);
-                end
-
-                copyfile(fullfile(json_path, selected_json), path_json);
-
-                % Get idx for renaming
-                idx = 0;
-                list_dir = dir(path_json);
-
-                for i = 1:numel(list_dir)
-                    match = regexp(list_dir(i).name, '\d+$', 'match');
-
-                    if ~isempty(match) && str2double(match{1}) >= idx
-                        idx = str2double(match{1}); % Suffix
-                    end
-
-                end
-
-                % Renaming
-                copyfile(fullfile(path_json, selected_json), fullfile(path_json, sprintf('input_EF_params_%d.json', idx)));
-                delete(fullfile(path_json, selected_json));
-            end
-
-            toc
-        end
-
-        function render(~, ~)
-
-            num_drawers = length(app.drawer_list);
-            error_list = cell(1, num_drawers);
-            faulty_folders = cell(1, num_drawers);
-            error_count = 0;
-
-            for i = 1:num_drawers
-                tic
-
-                app.Load(app.drawer_list{i});
-                ME = app.ExecuteButtonPushed();
-
-                if ~isempty(ME)
-                    error_count = error_count + 1;
-                    error_list{error_count} = ME;
-                    faulty_folders{error_count} = app.drawer_list{i};
-                end
-
-                app.ClearButtonPushed();
-                toc
-            end
-
-            if error_count > 0
-                disp('Errors in rendering:')
-
-                for i = 1:error_count
-                    exception = error_list{i};
-                    path = faulty_folders{i};
-                    fprintf(2, "==================================\nERROR N°:%d\n==================================\n", i)
-                    fprintf(2, 'Folder : %s\n', path)
-                    fprintf(2, "%s\n", exception.identifier)
-                    fprintf(2, "%s\n", exception.message)
-
-                    for stackIdx = 1:size(exception.stack, 1)
-                        fprintf(2, "%s : %s, line : %d\n", exception.stack(stackIdx).file, exception.stack(stackIdx).name, exception.stack(stackIdx).line);
-                    end
-
-                end
-
-            end
-
-        end
-
-        function show_outputs(~, ~)
-            out_dir_path = fullfile(app.drawer_list{1}, 'Multiple_Results');
-
-            if ~isfolder(out_dir_path)
-                mkdir(out_dir_path) % creates if it doesn't exists
-            end
-
-            tic
-            ShowOutputs(app.drawer_list, out_dir_path)
-            toc
-        end
-
-        delete(d);
     end
 
     % Button pushed function: EditParametersButton
@@ -880,245 +564,310 @@ methods (Access = public)
 
 end
 
-% Component initialization
+% =========================================================================
+% Component initialisation – modernised with panels and grid layouts
+% =========================================================================
 methods (Access = private)
 
-    % Create UIFigure and components
     function createComponents(app)
-        % Create UIFigure and components with the specified layout.
-
+        % Master entry point – builds all UI components
         pathToMLAPP = fileparts(mfilename('fullpath'));
 
-        % Create EyeFlowUIFigure and hide until all components are created
-        app.EyeFlowUIFigure = uifigure('Visible', 'off');
-        app.EyeFlowUIFigure.Color = [0.149 0.149 0.149];
-        app.EyeFlowUIFigure.Position = [100 100 1050 421];
-        app.EyeFlowUIFigure.Name = 'EyeFlow';
-        app.EyeFlowUIFigure.Icon = fullfile(pathToMLAPP, 'eyeflow_logo.png');
+        app.createFigure(pathToMLAPP);
+        app.createRootGrid();
+        app.createFileSelectionPanel();
+        app.createProcessingOptionsPanel();
+        app.createExecutionToolsPanel();
+        app.createImageDisplay();
 
-        % Create a grid layout to manage resizing
-        grid = uigridlayout(app.EyeFlowUIFigure);
-        grid.RowHeight = {'fit', '1x', 'fit', 'fit', 'fit', 'fit', 'fit', 'fit'};
-        grid.ColumnWidth = {'1x', '1x', '1x', '1x', '3x'};
-        grid.BackgroundColor = [0.149, 0.149, 0.149];
+        % Global appearance
+        fontname(app.EyeFlowUIFigure, 'Arial');
+        fontsize(app.EyeFlowUIFigure, 12, "points");
 
-        % Top Row: Load Folder, Load Holo, Clear, Folder Management
-        app.LoadFolderButton = uibutton(grid, 'push');
-        app.LoadFolderButton.ButtonPushedFcn = createCallbackFcn(app, @LoadfolderButtonPushed, true);
-        app.LoadFolderButton.BackgroundColor = [0.502 0.502 0.502];
-        app.LoadFolderButton.FontSize = 16;
-        app.LoadFolderButton.FontColor = [0.9412 0.9412 0.9412];
+        app.EyeFlowUIFigure.Visible = 'on';
+    end
+
+    % ---------------------------------------------------------------------
+    function createFigure(app, pathToMLAPP)
+        screenSize = get(0, 'ScreenSize');
+        appWidth = 1050;
+        appHeight = 500;
+        appX = (screenSize(3) - appWidth) / 2;
+        appY = (screenSize(4) - appHeight) / 2;
+
+        app.EyeFlowUIFigure = uifigure('Visible', 'off', ...
+            'Position', [appX, appY, appWidth, appHeight], ...
+            'Color', [0.2 0.2 0.2], ...
+            'Name', 'EyeFlow', ...
+            'Icon', fullfile(pathToMLAPP, 'eyeflow_logo.png'), ...
+            'WindowStyle', 'normal');
+    end
+
+    % ---------------------------------------------------------------------
+    function createRootGrid(app)
+        % Main grid: two columns (left panels, right image)
+        app.RootGrid = uigridlayout(app.EyeFlowUIFigure, [3, 2], ...
+            'ColumnWidth', {'fit', '1x'}, ...
+            'RowHeight', {'1x', 'fit', 'fit'}, ...
+            'Padding', [10 10 10 10], ...
+            'RowSpacing', 10, ...
+            'ColumnSpacing', 10, ...
+            'BackgroundColor', [0.2 0.2 0.2]);
+    end
+
+    % ---------------------------------------------------------------------
+    function createFileSelectionPanel(app)
+        import matlab.ui.container.Panel
+        import matlab.ui.container.GridLayout
+        import matlab.ui.control.*
+
+        panel = uipanel(app.RootGrid, ...
+            'Title', 'File Selection', ...
+            'BackgroundColor', [0.2 0.2 0.2], ...
+            'ForegroundColor', [1 1 1], ...
+            'BorderType', 'line', ...
+            'FontWeight', 'bold');
+        panel.Layout.Row = 1;
+        panel.Layout.Column = 1;
+
+        grid = uigridlayout(panel, [3, 4], ...
+            'ColumnWidth', {'fit', 'fit', 'fit', 'fit'}, ...
+            'RowHeight', {'fit', '1x', 'fit'}, ...
+            'Padding', [10 10 10 10], ...
+            'RowSpacing', 5, ...
+            'ColumnSpacing', 5, ...
+            'BackgroundColor', [0.2 0.2 0.2]);
+
+        % Row 1: Load buttons
+        app.LoadFolderButton = uibutton(grid, 'push', ...
+            'Text', 'Load Folder', ...
+            'BackgroundColor', [0.5 0.5 0.5], ...
+            'FontColor', [1 1 1], ...
+            'ButtonPushedFcn', @(~, ~) app.LoadfolderButtonPushed());
         app.LoadFolderButton.Layout.Row = 1;
         app.LoadFolderButton.Layout.Column = 1;
-        app.LoadFolderButton.Text = 'Load Folder';
 
-        app.LoadHoloButton = uibutton(grid, 'push');
-        app.LoadHoloButton.ButtonPushedFcn = createCallbackFcn(app, @LoadHoloButtonPushed, true);
-        app.LoadHoloButton.BackgroundColor = [0.502 0.502 0.502];
-        app.LoadHoloButton.FontSize = 16;
-        app.LoadHoloButton.FontColor = [0.9412 0.9412 0.9412];
+        app.LoadHoloButton = uibutton(grid, 'push', ...
+            'Text', 'Load Holo', ...
+            'BackgroundColor', [0.5 0.5 0.5], ...
+            'FontColor', [1 1 1], ...
+            'ButtonPushedFcn', @(~, ~) app.LoadHoloButtonPushed());
         app.LoadHoloButton.Layout.Row = 1;
         app.LoadHoloButton.Layout.Column = 2;
-        app.LoadHoloButton.Text = 'Load Holo';
 
-        app.ClearButton = uibutton(grid, 'push');
-        app.ClearButton.ButtonPushedFcn = createCallbackFcn(app, @ClearButtonPushed, true);
-        app.ClearButton.BackgroundColor = [0.502 0.502 0.502];
-        app.ClearButton.FontSize = 16;
-        app.ClearButton.FontColor = [0.9412 0.9412 0.9412];
-        app.ClearButton.Enable = 'off';
+        app.ClearButton = uibutton(grid, 'push', ...
+            'Text', 'Clear', ...
+            'BackgroundColor', [0.5 0.5 0.5], ...
+            'FontColor', [1 1 1], ...
+            'Enable', 'off', ...
+            'ButtonPushedFcn', @(~, ~) app.ClearButtonPushed());
         app.ClearButton.Layout.Row = 1;
         app.ClearButton.Layout.Column = 3;
-        app.ClearButton.Text = 'Clear';
 
-        app.FolderManagementButton = uibutton(grid, 'push');
-        app.FolderManagementButton.ButtonPushedFcn = createCallbackFcn(app, @FolderManagementButtonPushed, true);
-        app.FolderManagementButton.BackgroundColor = [0.502 0.502 0.502];
-        app.FolderManagementButton.FontSize = 16;
-        app.FolderManagementButton.FontColor = [0.9412 0.9412 0.9412];
+        app.FolderManagementButton = uibutton(grid, 'push', ...
+            'Text', 'Folder Management', ...
+            'BackgroundColor', [0.5 0.5 0.5], ...
+            'FontColor', [1 1 1], ...
+            'ButtonPushedFcn', @(~, ~) app.FolderManagementButtonPushed());
         app.FolderManagementButton.Layout.Row = 1;
         app.FolderManagementButton.Layout.Column = 4;
-        app.FolderManagementButton.Text = 'Folder Management';
 
-        % Second Row: Directory
+        % Row 2: Directory display + lamp
+        app.ReferenceDirectory = uitextarea(grid, ...
+            'Value', '', ...
+            'Editable', 'off', ...
+            'BackgroundColor', [0.15 0.15 0.15], ...
+            'FontColor', [1 1 1]);
+        app.ReferenceDirectory.Layout.Row = 2;
+        app.ReferenceDirectory.Layout.Column = [1 4];
 
-        dirgrid = uigridlayout(grid);
-        dirgrid.Layout.Row = 2;
-        dirgrid.Layout.Column = [1, 4];
-        dirgrid.RowHeight = {'1x'};
-        dirgrid.ColumnWidth = {'1x', 20};
-        dirgrid.BackgroundColor = [0.149, 0.149, 0.149];
-
-        app.ReferenceDirectory = uitextarea(dirgrid);
-        app.ReferenceDirectory.Editable = 'off';
-        app.ReferenceDirectory.FontSize = 16;
-        app.ReferenceDirectory.FontColor = [0.9412 0.9412 0.9412];
-        app.ReferenceDirectory.BackgroundColor = [0.149 0.149 0.149];
-        app.ReferenceDirectory.Layout.Row = 1;
-        app.ReferenceDirectory.Layout.Column = 1;
-
-        % Create Lamp
-        app.statusLamp = uilamp(dirgrid);
-        app.statusLamp.Layout.Row = 1;
-        app.statusLamp.Layout.Column = 2;
-        app.statusLamp.Color = [0 1 0];
-
-        % Edit Parameters Button
-        app.EditParametersButton = uibutton(grid, 'push');
-        app.EditParametersButton.ButtonPushedFcn = createCallbackFcn(app, @EditParametersButtonPushed, true);
-        app.EditParametersButton.BackgroundColor = [0.502 0.502 0.502];
-        app.EditParametersButton.FontSize = 16;
-        app.EditParametersButton.FontColor = [0.9412 0.9412 0.9412];
+        % Row 3: Edit tools buttons
+        app.EditParametersButton = uibutton(grid, 'push', ...
+            'Text', 'Edit Parameters', ...
+            'BackgroundColor', [0.5 0.5 0.5], ...
+            'FontColor', [1 1 1], ...
+            'Enable', 'off', ...
+            'Tooltip', 'Open the JSON parameter file', ...
+            'ButtonPushedFcn', @(~, ~) app.EditParametersButtonPushed());
         app.EditParametersButton.Layout.Row = 3;
-        app.EditParametersButton.Layout.Column = 4;
-        app.EditParametersButton.Enable = 'off';
-        app.EditParametersButton.Text = 'Edit Parameters';
-        app.EditParametersButton.Tooltip = 'Find the eyeflow parameters here.';
+        app.EditParametersButton.Layout.Column = 1;
 
-        % Edit Masks Button
-        app.EditMasksButton = uibutton(grid, 'push');
-        app.EditMasksButton.ButtonPushedFcn = createCallbackFcn(app, @EditMasksButtonPushed, true);
-        app.EditMasksButton.BackgroundColor = [0.502 0.502 0.502];
-        app.EditMasksButton.FontSize = 16;
-        app.EditMasksButton.FontColor = [0.9412 0.9412 0.9412];
+        app.EditMasksButton = uibutton(grid, 'push', ...
+            'Text', 'Edit Masks', ...
+            'BackgroundColor', [0.5 0.5 0.5], ...
+            'FontColor', [1 1 1], ...
+            'Enable', 'off', ...
+            'Tooltip', 'Open mask folder for manual editing', ...
+            'ButtonPushedFcn', @(~, ~) app.EditMasksButtonPushed());
         app.EditMasksButton.Layout.Row = 3;
         app.EditMasksButton.Layout.Column = 2;
-        app.EditMasksButton.Enable = 'off';
-        app.EditMasksButton.Text = 'Edit Masks';
-        app.EditMasksButton.Tooltip = 'Open mask folder and use forceMaskArtery.png and forceMaskVein.png to force the segmentation';
 
-        % Play Moments Button
-        app.PlayMomentsButton = uibutton(grid, 'push');
-        app.PlayMomentsButton.ButtonPushedFcn = createCallbackFcn(app, @PlayMomentsButtonPushed, true);
-        app.PlayMomentsButton.BackgroundColor = [0.502 0.502 0.502];
-        app.PlayMomentsButton.FontSize = 16;
-        app.PlayMomentsButton.FontColor = [0.9412 0.9412 0.9412];
+        app.PlayMomentsButton = uibutton(grid, 'push', ...
+            'Text', 'Play Moments', ...
+            'BackgroundColor', [0.5 0.5 0.5], ...
+            'FontColor', [1 1 1], ...
+            'Enable', 'off', ...
+            'Tooltip', 'Play M0/M1/M2 videos', ...
+            'ButtonPushedFcn', @(~, ~) app.PlayMomentsButtonPushed());
         app.PlayMomentsButton.Layout.Row = 3;
         app.PlayMomentsButton.Layout.Column = 3;
-        app.PlayMomentsButton.Enable = 'off';
-        app.PlayMomentsButton.Text = 'Play Moments';
-        app.PlayMomentsButton.Tooltip = 'Play the M0, M1 and M2 videos.';
+    end
 
-        % Checkboxes: Segmentation, Pulse analysis, Blood Flow Velocity, Cross Section, SH analysis
-        app.segmentationCheckBox = uicheckbox(grid);
-        app.segmentationCheckBox.Text = 'Segmentation';
-        app.segmentationCheckBox.FontSize = 16;
-        app.segmentationCheckBox.FontColor = [1 1 1];
-        app.segmentationCheckBox.Layout.Row = 4;
-        app.segmentationCheckBox.Layout.Column = [1, 4];
-        app.segmentationCheckBox.Value = true;
-        app.segmentationCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.segmentationCheckBox.Tooltip = 'Segment the vessels using the U-Net deep learning model.';
+    % ---------------------------------------------------------------------
+    function createProcessingOptionsPanel(app)
+        panel = uipanel(app.RootGrid, ...
+            'Title', 'Processing Options', ...
+            'BackgroundColor', [0.2 0.2 0.2], ...
+            'ForegroundColor', [1 1 1], ...
+            'BorderType', 'line', ...
+            'FontWeight', 'bold');
+        panel.Layout.Row = 2;
+        panel.Layout.Column = 1;
 
-        app.bloodFlowAnalysisCheckBox = uicheckbox(grid);
-        app.bloodFlowAnalysisCheckBox.Text = 'Blood Flow Analysis';
-        app.bloodFlowAnalysisCheckBox.FontSize = 16;
-        app.bloodFlowAnalysisCheckBox.FontColor = [1 1 1];
-        app.bloodFlowAnalysisCheckBox.Layout.Row = 5;
-        app.bloodFlowAnalysisCheckBox.Layout.Column = [1, 2];
-        app.bloodFlowAnalysisCheckBox.Value = true;
-        app.bloodFlowAnalysisCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.bloodFlowAnalysisCheckBox.Tooltip = 'Compute the blood flow velocity in the segmented vessels.';
+        grid = uigridlayout(panel, [6, 2], ...
+            'ColumnWidth', {'1x', '1x'}, ...
+            'RowHeight', repmat({'fit'}, 1, 6), ...
+            'Padding', [10 10 10 10], ...
+            'RowSpacing', 8, ...
+            'BackgroundColor', [0.2 0.2 0.2]);
 
-        app.pulseVelocityCheckBox = uicheckbox(grid);
-        app.pulseVelocityCheckBox.Text = 'Pulse Analysis';
-        app.pulseVelocityCheckBox.FontSize = 16;
-        app.pulseVelocityCheckBox.FontColor = [1 1 1];
-        app.pulseVelocityCheckBox.Layout.Row = 5;
-        app.pulseVelocityCheckBox.Layout.Column = [3, 4];
-        app.pulseVelocityCheckBox.Value = false;
-        app.pulseVelocityCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.pulseVelocityCheckBox.Tooltip = 'Analyze the flexural pulse velocity in vessels.';
+        % Segmentation (full width)
+        app.segmentationCheckBox = uicheckbox(grid, ...
+            'Text', 'Segmentation', ...
+            'Value', true, ...
+            'FontColor', [1 1 1], ...
+            'Tooltip', 'Segment vessels using U-Net', ...
+            'ValueChangedFcn', @(~, ~) app.CheckboxValueChanged());
+        app.segmentationCheckBox.Layout.Row = 1;
+        app.segmentationCheckBox.Layout.Column = [1 2];
 
-        app.generateCrossSectionSignalsCheckBox = uicheckbox(grid);
-        app.generateCrossSectionSignalsCheckBox.Text = 'Generate Cross Section Signals';
-        app.generateCrossSectionSignalsCheckBox.FontSize = 16;
-        app.generateCrossSectionSignalsCheckBox.FontColor = [1 1 1];
-        app.generateCrossSectionSignalsCheckBox.Layout.Row = 6;
-        app.generateCrossSectionSignalsCheckBox.Layout.Column = [1, 2];
-        app.generateCrossSectionSignalsCheckBox.Value = false;
-        app.generateCrossSectionSignalsCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.generateCrossSectionSignalsCheckBox.Tooltip = 'Generate blood flow profiles across vessel cross-sections.';
+        % Blood Flow Analysis & Pulse Analysis
+        app.bloodFlowAnalysisCheckBox = uicheckbox(grid, ...
+            'Text', 'Blood Flow Analysis', ...
+            'Value', true, ...
+            'FontColor', [1 1 1], ...
+            'Tooltip', 'Compute blood flow velocity', ...
+            'ValueChangedFcn', @(~, ~) app.CheckboxValueChanged());
+        app.bloodFlowAnalysisCheckBox.Layout.Row = 2;
+        app.bloodFlowAnalysisCheckBox.Layout.Column = 1;
 
-        app.exportCrossSectionResultsCheckBox = uicheckbox(grid);
-        app.exportCrossSectionResultsCheckBox.Text = 'Export Cross Section Results';
-        app.exportCrossSectionResultsCheckBox.FontSize = 16;
-        app.exportCrossSectionResultsCheckBox.FontColor = [1 1 1];
-        app.exportCrossSectionResultsCheckBox.Layout.Row = 6;
-        app.exportCrossSectionResultsCheckBox.Layout.Column = [3, 4];
-        app.exportCrossSectionResultsCheckBox.Value = false;
-        app.exportCrossSectionResultsCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.exportCrossSectionResultsCheckBox.Tooltip = 'Export the results of cross-section signal analysis.';
+        app.pulseVelocityCheckBox = uicheckbox(grid, ...
+            'Text', 'Pulse Analysis', ...
+            'Value', false, ...
+            'FontColor', [1 1 1], ...
+            'Tooltip', 'Flexural pulse wave velocity', ...
+            'ValueChangedFcn', @(~, ~) app.CheckboxValueChanged());
+        app.pulseVelocityCheckBox.Layout.Row = 2;
+        app.pulseVelocityCheckBox.Layout.Column = 2;
 
-        app.spectralAnalysisCheckBox = uicheckbox(grid);
-        app.spectralAnalysisCheckBox.Text = 'Spectral analysis';
-        app.spectralAnalysisCheckBox.FontSize = 16;
-        app.spectralAnalysisCheckBox.FontColor = [1 1 1];
-        app.spectralAnalysisCheckBox.Layout.Row = 7;
-        app.spectralAnalysisCheckBox.Layout.Column = [1, 4];
-        app.spectralAnalysisCheckBox.Value = false;
-        app.spectralAnalysisCheckBox.Enable = true;
-        app.spectralAnalysisCheckBox.ValueChangedFcn = createCallbackFcn(app, @CheckboxValueChanged, true);
-        app.spectralAnalysisCheckBox.Tooltip = 'Perform spectral analysis on the blood flow data.';
+        % Cross Section Signals & Export
+        app.generateCrossSectionSignalsCheckBox = uicheckbox(grid, ...
+            'Text', 'Generate Cross Section Signals', ...
+            'Value', false, ...
+            'FontColor', [1 1 1], ...
+            'Tooltip', 'Blood flow profiles across vessels', ...
+            'ValueChangedFcn', @(~, ~) app.CheckboxValueChanged());
+        app.generateCrossSectionSignalsCheckBox.Layout.Row = 3;
+        app.generateCrossSectionSignalsCheckBox.Layout.Column = 1;
 
-        % Bottom Left: Execute Button
-        app.ExecuteButton = uibutton(grid, 'push');
-        app.ExecuteButton.ButtonPushedFcn = createCallbackFcn(app, @ExecuteButtonPushed, true);
-        app.ExecuteButton.BackgroundColor = [0.502 0.502 0.502];
-        app.ExecuteButton.FontSize = 16;
-        app.ExecuteButton.FontColor = [0.9412 0.9412 0.9412];
-        app.ExecuteButton.Enable = 'off';
-        app.ExecuteButton.Layout.Row = 8;
+        app.exportCrossSectionResultsCheckBox = uicheckbox(grid, ...
+            'Text', 'Export Cross Section Results', ...
+            'Value', false, ...
+            'FontColor', [1 1 1], ...
+            'Tooltip', 'Export cross-section analysis', ...
+            'ValueChangedFcn', @(~, ~) app.CheckboxValueChanged());
+        app.exportCrossSectionResultsCheckBox.Layout.Row = 3;
+        app.exportCrossSectionResultsCheckBox.Layout.Column = 2;
+
+        % Spectral Analysis (full width)
+        app.spectralAnalysisCheckBox = uicheckbox(grid, ...
+            'Text', 'Spectral Analysis', ...
+            'Value', false, ...
+            'FontColor', [1 1 1], ...
+            'Tooltip', 'Spectral analysis of blood flow', ...
+            'ValueChangedFcn', @(~, ~) app.CheckboxValueChanged());
+        app.spectralAnalysisCheckBox.Layout.Row = 4;
+        app.spectralAnalysisCheckBox.Layout.Column = [1 2];
+    end
+
+    % ---------------------------------------------------------------------
+    function createExecutionToolsPanel(app)
+        panel = uipanel(app.RootGrid, ...
+            'Title', 'Execution & Tools', ...
+            'BackgroundColor', [0.2 0.2 0.2], ...
+            'ForegroundColor', [1 1 1], ...
+            'BorderType', 'line', ...
+            'FontWeight', 'bold');
+        panel.Layout.Row = 3;
+        panel.Layout.Column = 1;
+
+        grid = uigridlayout(panel, [2, 4], ...
+            'ColumnWidth', {'1x', 'fit', 'fit', 'fit'}, ...
+            'RowHeight', {'fit', 'fit'}, ...
+            'Padding', [10 10 10 10], ...
+            'RowSpacing', 8, ...
+            'ColumnSpacing', 8, ...
+            'BackgroundColor', [0.2 0.2 0.2]);
+
+        % Execute button (green)
+        app.ExecuteButton = uibutton(grid, 'push', ...
+            'Text', 'Execute', ...
+            'BackgroundColor', [0.2 0.6 0.2], ...
+            'FontColor', [1 1 1], ...
+            'Enable', 'off', ...
+            'ButtonPushedFcn', @(~, ~) app.ExecuteButtonPushed());
+        app.ExecuteButton.Layout.Row = 1;
         app.ExecuteButton.Layout.Column = 1;
-        app.ExecuteButton.Text = 'Execute';
 
-        % Number of Workers Spinner and Label
-        app.NumberofWorkersSpinnerLabel = uilabel(grid);
-        app.NumberofWorkersSpinnerLabel.HorizontalAlignment = 'right';
-        app.NumberofWorkersSpinnerLabel.FontColor = [0.902 0.902 0.902];
-        app.NumberofWorkersSpinnerLabel.FontSize = 16;
-        app.NumberofWorkersSpinnerLabel.Layout.Row = 8;
-        app.NumberofWorkersSpinnerLabel.Layout.Column = 3;
-        app.NumberofWorkersSpinnerLabel.Text = 'Number of Workers';
+        % Open Directory button
+        app.OpenDirectoryButton = uibutton(grid, 'push', ...
+            'Text', 'Open Directory', ...
+            'BackgroundColor', [0.5 0.5 0.5], ...
+            'FontColor', [1 1 1], ...
+            'Enable', 'off', ...
+            'ButtonPushedFcn', @(~, ~) app.OpenDirectoryButtonPushed());
+        app.OpenDirectoryButton.Layout.Row = 1;
+        app.OpenDirectoryButton.Layout.Column = 2;
 
-        app.NumberofWorkersSpinner = uispinner(grid);
-        app.NumberofWorkersSpinner.FontSize = 16;
-        app.NumberofWorkersSpinner.Layout.Row = 8;
-        app.NumberofWorkersSpinner.Layout.Column = 4;
-        maxWorkers = parcluster('local').NumWorkers;
-        app.NumberofWorkersSpinner.Limits = [0 maxWorkers]; % Ensure valid range
-        app.NumberofWorkersSpinner.Value = min(10, floor(maxWorkers / 2)); % Default to 10 or max available
-
-        % Add a new column for the image
-        app.ImageDisplay = uiimage(grid);
-        app.ImageDisplay.Layout.Row = [1, 8]; % Span all rows
-        app.ImageDisplay.Layout.Column = 5; % Place in the new column
-        app.ImageDisplay.ScaleMethod = 'fit'; % Adjust the image to fit the component
-
-        % Add the Open Directory button
-        app.OpenDirectoryButton = uibutton(grid, 'push');
-        app.OpenDirectoryButton.ButtonPushedFcn = createCallbackFcn(app, @OpenDirectoryButtonPushed, true);
-        app.OpenDirectoryButton.BackgroundColor = [0.502 0.502 0.502];
-        app.OpenDirectoryButton.FontSize = 16;
-        app.OpenDirectoryButton.FontColor = [0.9412 0.9412 0.9412];
-        app.OpenDirectoryButton.Layout.Row = 4; % Adjust the row as needed
-        app.OpenDirectoryButton.Layout.Column = 4;
-        app.OpenDirectoryButton.Text = 'Open Directory';
-        app.OpenDirectoryButton.Enable = 'off'; % Disabled by default
-
-        % Add the ReProcess Button
-        app.ReProcessButton = uibutton(grid, 'push');
-        app.ReProcessButton.ButtonPushedFcn = createCallbackFcn(app, @ReProcessButtonPushed, true);
-        app.ReProcessButton.BackgroundColor = [0.502 0.502 0.502];
-        app.ReProcessButton.FontSize = 16;
-        app.ReProcessButton.FontColor = [0.9412 0.9412 0.9412];
-        app.ReProcessButton.Layout.Row = 4; % Adjust the row as needed
+        % Preprocess button
+        app.ReProcessButton = uibutton(grid, 'push', ...
+            'Text', 'Preprocess', ...
+            'BackgroundColor', [0.5 0.5 0.5], ...
+            'FontColor', [1 1 1], ...
+            'Enable', 'off', ...
+            'ButtonPushedFcn', @(~, ~) app.ReProcessButtonPushed());
+        app.ReProcessButton.Layout.Row = 1;
         app.ReProcessButton.Layout.Column = 3;
-        app.ReProcessButton.Text = 'Preprocess';
-        app.ReProcessButton.Enable = 'off'; % Disabled by default
 
-        % Show the figure after all components are created
-        app.EyeFlowUIFigure.Visible = 'on';
+        % Workers label and spinner
+        app.NumberofWorkersSpinnerLabel = uilabel(grid, ...
+            'Text', 'Workers:', ...
+            'HorizontalAlignment', 'right', ...
+            'FontColor', [1 1 1]);
+        app.NumberofWorkersSpinnerLabel.Layout.Row = 1;
+        app.NumberofWorkersSpinnerLabel.Layout.Column = 4;
+
+        app.NumberofWorkersSpinner = uispinner(grid, ...
+            'Limits', [0 parcluster('local').NumWorkers], ...
+            'Value', min(10, floor(parcluster('local').NumWorkers / 2)), ...
+            'BackgroundColor', [0.15 0.15 0.15], ...
+            'FontColor', [1 1 1]);
+        app.NumberofWorkersSpinner.Layout.Row = 2;
+        app.NumberofWorkersSpinner.Layout.Column = 4;
+
+        app.statusLamp = uilamp(grid, ...
+            'Color', [0 1 0]); % green
+        app.statusLamp.Layout.Row = 2;
+        app.statusLamp.Layout.Column = 1;
+    end
+
+    % ---------------------------------------------------------------------
+    function createImageDisplay(app)
+        app.ImageDisplay = uiimage(app.RootGrid);
+        app.ImageDisplay.Layout.Row = [1 3];
+        app.ImageDisplay.Layout.Column = 2;
+        app.ImageDisplay.ScaleMethod = 'fit';
+        app.ImageDisplay.BackgroundColor = [0.15 0.15 0.15];
     end
 
 end

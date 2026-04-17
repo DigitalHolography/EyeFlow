@@ -169,15 +169,27 @@ methods
             disp('Reading cache parameters from input_HD_params');
             fpath = fullfile(path, dir(fullfile(path, ['*', 'input_HD_params', '*'])).name);
             decoded_data = jsondecode(fileread(fpath));
-            obj.stride = decoded_data.batch_stride;
-            obj.fs = decoded_data.fs; % Convert kHz to kHz
-            obj.f1 = decoded_data.time_range(1);
 
-            if isfield(decoded_data, 'record_time_stamps_us')
+            if isfield(decoded_data, 'batch_stride') % Version 2.9
+                obj.stride = decoded_data.batch_stride;
+                obj.fs = decoded_data.fs; % Convert kHz to kHz
+                obj.f1 = decoded_data.time_range(1);
+
+                if isfield(decoded_data, 'record_time_stamps_us')
+                    obj.record_time_stamps_us = decoded_data.record_time_stamps_us;
+                end
+
+                if isfield(decoded_data, 'num_frames')
+                    obj.holo_frames.first = decoded_data.first_frame;
+                    obj.holo_frames.last = decoded_data.end_frame;
+                end
+
+            else % Version 3.0 or later
+                obj.stride = decoded_data.batchStride;
+                obj.fs = decoded_data.fs; % Convert kHz to kHz
+                obj.f1 = decoded_data.frequencyRange1;
+                obj.f2 = decoded_data.frequencyRange2;
                 obj.record_time_stamps_us = decoded_data.record_time_stamps_us;
-            end
-
-            if isfield(decoded_data, 'num_frames')
                 obj.holo_frames.first = decoded_data.first_frame;
                 obj.holo_frames.last = decoded_data.end_frame;
             end

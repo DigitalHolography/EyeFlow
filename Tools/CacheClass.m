@@ -31,6 +31,8 @@ properties
 
     % Time Vector
     t double %cached time vector
+    firstFrameIdx double % numFrames
+    lastFrameIdx double % numFrames
 
     % Frequency Vector
     f double
