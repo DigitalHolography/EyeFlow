@@ -9,7 +9,10 @@ methods
 
     function obj = ReporterClass(executionObj)
         ToolBox = getGlobalToolBox;
-        params = ToolBox.getParams;
+
+        if isempty(executionObj)
+            error("ExecutionClass object is required to initialize ReporterClass.");
+        end
 
         if isempty(ToolBox)
             error("ToolBoxMaster is not initialized in ExecutionClass.");
@@ -34,10 +37,6 @@ methods
             tmp = ToolBox.record_time_stamps_us;
             ToolBox.Output.add('UnixTimestampFirst', tmp.first, 'µs', h5path = '/Meta/UnixTimestampFirst');
             ToolBox.Output.add('UnixTimestampLast', tmp.last, 'µs', h5path = '/Meta/UnixTimestampLast');
-        end
-
-        if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name))) && params.saveFigures
-            writeGifOnDisc(imresize(rescale(executionObj.Cache.M0_ff), 0.5), "M0")
         end
 
     end
@@ -81,6 +80,11 @@ methods
         fprintf("Generating A4 Report...\n");
 
         ToolBox = getGlobalToolBox;
+        params = ToolBox.getParams;
+
+        if ~isfile(fullfile(ToolBox.path_gif, sprintf("%s_M0.gif", ToolBox.folder_name))) && params.saveFigures
+            writeGifOnDisc(imresize(rescale(executionObj.Cache.M0_ff), 0.5), "M0")
+        end
 
         if ~isempty(ToolBox.Output)
             ToolBox.Output.writeJson(fullfile(ToolBox.path_json, sprintf("%s_output.json", ToolBox.folder_name)));

@@ -1,7 +1,7 @@
 classdef eyeflow < matlab.apps.AppBase
 
-% Properties that correspond to app components
-properties (Access = public)
+% Properties that correspond to app components – now PRIVATE
+properties (Access = private)
     EyeFlowUIFigure matlab.ui.Figure
     RootGrid matlab.ui.container.GridLayout
 
@@ -36,14 +36,87 @@ properties (Access = public)
     NumberofWorkersSpinnerLabel matlab.ui.control.Label
     ExecuteButton matlab.ui.control.Button
     ImageDisplay matlab.ui.control.Image
+end
 
-    % Files
+% Public data (kept as originally)
+properties (Access = public)
     file ExecutionClass
     AINetworks
     drawer_list = {}
 end
 
 methods (Access = public)
+
+    % Set the ImageDisplay image source with the same pre‑processing as Load()
+    function setDisplayImage(app, imageMatrix)
+        % imageMatrix – 2D or 3D numeric array
+        if ndims(imageMatrix) == 3
+            grayImg = mean(imageMatrix, 3);
+        else
+            grayImg = imageMatrix;
+        end
+
+        rgbImg = repmat(rescale(grayImg), [1 1 3]);
+        [numX, numY] = size(rgbImg);
+        app.ImageDisplay.ImageSource = imresize(rgbImg, [max(numX, numY) max(numX, numY)]);
+    end
+
+    % Provide access to the main figure (needed by FolderManagementUI)
+    function fig = getMainFigure(app)
+        fig = app.EyeFlowUIFigure;
+    end
+
+    function value = getWidgetValue(app, widgetName)
+        % Return the current value of the UI widget named widgetName.
+        w = app.(widgetName);
+
+        if isempty(w)
+            value = [];
+        elseif isa(w, 'matlab.ui.control.CheckBox')
+            value = logical(w.Value);
+        elseif isa(w, 'matlab.ui.control.DropDown')
+            value = w.Value;
+        elseif isa(w, 'matlab.ui.control.ListBox')
+            value = w.Value;
+        elseif isa(w, 'matlab.ui.control.NumericEditField') || isa(w, 'matlab.ui.control.Spinner')
+            value = double(w.Value);
+        else
+            value = w.Value;
+        end
+
+    end
+
+    function setWidgetValue(app, widgetName, value)
+        % Set the value of the UI widget named widgetName.
+        w = app.(widgetName);
+        if isempty(w), return; end
+
+        if isa(w, 'matlab.ui.control.CheckBox')
+            w.Value = logical(value);
+        elseif isa(w, 'matlab.ui.control.DropDown')
+
+            if ismember(value, w.Items)
+                w.Value = value;
+            else
+                w.Value = w.Items{1};
+            end
+
+        elseif isa(w, 'matlab.ui.control.ListBox')
+            allItems = w.Items;
+
+            if iscell(value)
+                w.Value = intersect(value, allItems, 'stable');
+            else
+                w.Value = {};
+            end
+
+        elseif isa(w, 'matlab.ui.control.NumericEditField') || isa(w, 'matlab.ui.control.Spinner')
+            w.Value = double(value(1));
+        else
+            w.Value = value;
+        end
+
+    end
 
     function Load(app, path)
         % Update lamp color to indicate loading
@@ -400,12 +473,12 @@ methods (Access = public)
 
         if ~isempty(app.file)
 
-            if ~isfolder(fullfile(ToolBox.path_main, 'mask'))
-                mkdir(fullfile(ToolBox.path_main, 'mask'))
+            if ~isfolder(fullfile(ToolBox.EF_path, 'mask'))
+                mkdir(fullfile(ToolBox.EF_path, 'mask'))
             end
 
             try
-                winopen(fullfile(ToolBox.path_main, 'mask'));
+                winopen(fullfile(ToolBox.EF_path, 'mask'));
             catch
                 disp("opening failed.")
             end
@@ -417,12 +490,11 @@ methods (Access = public)
             end
 
             try
-                list_dir = dir(ToolBox.path_main);
-                idx = 0;
+                list_dir = dir(ToolBox.EF_path);
 
                 for i = 1:length(list_dir)
 
-                    if contains(list_dir(i).name, ToolBox.EF_name)
+                    if contains(list_dir(i).name, ToolBox.folder_name)
                         match = regexp(list_dir(i).name, '\d+$', 'match');
 
                         if ~isempty(match) && str2double(match{1}) >= idx
@@ -433,20 +505,20 @@ methods (Access = public)
 
                 end
 
-                path_dir = fullfile(ToolBox.path_main, ToolBox.folder_name);
+                path_dir = fullfile(ToolBox.EF_path, ToolBox.folder_name);
 
                 disp(['Copying from : ', fullfile(path_dir, 'png', 'mask')])
-                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskArtery.png", ToolBox.folder_name)), fullfile(ToolBox.path_main, 'mask', 'MaskArtery.png'));
-                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskVein.png", ToolBox.folder_name)), fullfile(ToolBox.path_main, 'mask', 'MaskVein.png'));
+                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskArtery.png", ToolBox.folder_name)), fullfile(ToolBox.EF_path, 'mask', 'MaskArtery.png'));
+                copyfile(fullfile(path_dir, 'png', 'mask', sprintf("%s_maskVein.png", ToolBox.folder_name)), fullfile(ToolBox.EF_path, 'mask', 'MaskVein.png'));
             catch
                 disp("last auto mask copying failed.")
             end
 
             try
 
-                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'M0.png'));
-                folder_name = ToolBox.main_foldername;
-                list_dir = dir(ToolBox.path_main);
+                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.folder_name)), fullfile(ToolBox.EF_path, 'mask', 'M0.png'));
+                folder_name = ToolBox.folder_name;
+                list_dir = dir(ToolBox.EF_path);
                 idx = 0;
 
                 for i = 1:length(list_dir)
@@ -462,8 +534,8 @@ methods (Access = public)
 
                 end
 
-                folder_name = sprintf('%s_%d', ToolBox.EF_name, idx);
-                copyfile(fullfile(ToolBox.path_main, folder_name, 'gif', sprintf("%s_M0.gif", folder_name)), fullfile(ToolBox.path_main, 'mask', 'M0.gif'));
+                folder_name = sprintf('%s_%d', ToolBox.folder_name, idx);
+                copyfile(fullfile(ToolBox.EF_path, folder_name, 'gif', sprintf("%s_M0.gif", folder_name)), fullfile(ToolBox.EF_path, 'mask', 'M0.gif'));
             catch
 
                 disp("last M0 png and gif copying failed")
@@ -471,9 +543,9 @@ methods (Access = public)
 
             try
 
-                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.main_foldername)), fullfile(ToolBox.path_main, 'mask', 'M0.png'));
-                folder_name = ToolBox.main_foldername;
-                list_dir = dir(ToolBox.path_main);
+                copyfile(fullfile(ToolBox.EF_path, 'png', sprintf("%s_M0.png", ToolBox.folder_name)), fullfile(ToolBox.EF_path, 'mask', 'M0.png'));
+                folder_name = ToolBox.folder_name;
+                list_dir = dir(ToolBox.EF_path);
                 idx = 0;
 
                 for i = 1:length(list_dir)
@@ -489,8 +561,8 @@ methods (Access = public)
 
                 end
 
-                folder_name = sprintf('%s_%d', ToolBox.EF_name, idx);
-                copyfile(fullfile(ToolBox.path_main, folder_name, 'png', 'mask', sprintf("%s_DiaSysRGB.png", folder_name)), fullfile(ToolBox.path_main, 'mask', 'DiaSysRGB.png'));
+                folder_name = sprintf('%s_%d', ToolBox.folder_name, idx);
+                copyfile(fullfile(ToolBox.EF_path, folder_name, 'png', 'mask', sprintf("%s_DiaSysRGB.png", folder_name)), fullfile(ToolBox.EF_path, 'mask', 'DiaSysRGB.png'));
             catch
 
                 disp("Diasys png failed")
@@ -499,7 +571,7 @@ methods (Access = public)
 
             % try
             % %   Commented until further fixes MESSAGE TO ZACHARIE
-            %     openmaskinpaintnet(fullfile(ToolBox.path_main,'mask','M0.png'), fullfile(ToolBox.path_main,'mask','DiaSysRGB.png'));
+            %     openmaskinpaintnet(fullfile(ToolBox.EF_path,'mask','M0.png'), fullfile(ToolBox.EF_path,'mask','DiaSysRGB.png'));
             % catch
             %     disp("paint.net macro failed")
             % end
@@ -621,10 +693,15 @@ methods (Access = private)
         import matlab.ui.container.GridLayout
         import matlab.ui.control.*
 
+        backgroundColor = [0.2 0.2 0.2];
+        darkBackgroundColor = [0.15 0.15 0.15];
+        fontColor = [1 1 1];
+        grayButtonColor = [0.5 0.5 0.5];
+
         panel = uipanel(app.RootGrid, ...
             'Title', 'File Selection', ...
-            'BackgroundColor', [0.2 0.2 0.2], ...
-            'ForegroundColor', [1 1 1], ...
+            'BackgroundColor', backgroundColor, ...
+            'ForegroundColor', fontColor, ...
             'BorderType', 'line', ...
             'FontWeight', 'bold');
         panel.Layout.Row = 1;
@@ -636,7 +713,7 @@ methods (Access = private)
             'Padding', [10 10 10 10], ...
             'RowSpacing', 5, ...
             'ColumnSpacing', 5, ...
-            'BackgroundColor', [0.2 0.2 0.2]);
+            'BackgroundColor', backgroundColor);
 
         % Row 1: Load buttons
         app.LoadFolderButton = uibutton(grid, 'push', ...
@@ -649,7 +726,7 @@ methods (Access = private)
 
         app.LoadHoloButton = uibutton(grid, 'push', ...
             'Text', 'Load Holo', ...
-            'BackgroundColor', [0.5 0.5 0.5], ...
+            'BackgroundColor', grayButtonColor, ...
             'FontColor', [1 1 1], ...
             'ButtonPushedFcn', @(~, ~) app.LoadHoloButtonPushed());
         app.LoadHoloButton.Layout.Row = 1;
@@ -657,7 +734,7 @@ methods (Access = private)
 
         app.ClearButton = uibutton(grid, 'push', ...
             'Text', 'Clear', ...
-            'BackgroundColor', [0.5 0.5 0.5], ...
+            'BackgroundColor', grayButtonColor, ...
             'FontColor', [1 1 1], ...
             'Enable', 'off', ...
             'ButtonPushedFcn', @(~, ~) app.ClearButtonPushed());
@@ -666,7 +743,7 @@ methods (Access = private)
 
         app.FolderManagementButton = uibutton(grid, 'push', ...
             'Text', 'Folder Management', ...
-            'BackgroundColor', [0.5 0.5 0.5], ...
+            'BackgroundColor', grayButtonColor, ...
             'FontColor', [1 1 1], ...
             'ButtonPushedFcn', @(~, ~) app.FolderManagementButtonPushed());
         app.FolderManagementButton.Layout.Row = 1;
@@ -676,7 +753,7 @@ methods (Access = private)
         app.ReferenceDirectory = uitextarea(grid, ...
             'Value', '', ...
             'Editable', 'off', ...
-            'BackgroundColor', [0.15 0.15 0.15], ...
+            'BackgroundColor', darkBackgroundColor, ...
             'FontColor', [1 1 1]);
         app.ReferenceDirectory.Layout.Row = 2;
         app.ReferenceDirectory.Layout.Column = [1 4];
@@ -684,7 +761,7 @@ methods (Access = private)
         % Row 3: Edit tools buttons
         app.EditParametersButton = uibutton(grid, 'push', ...
             'Text', 'Edit Parameters', ...
-            'BackgroundColor', [0.5 0.5 0.5], ...
+            'BackgroundColor', grayButtonColor, ...
             'FontColor', [1 1 1], ...
             'Enable', 'off', ...
             'Tooltip', 'Open the JSON parameter file', ...
@@ -694,7 +771,7 @@ methods (Access = private)
 
         app.EditMasksButton = uibutton(grid, 'push', ...
             'Text', 'Edit Masks', ...
-            'BackgroundColor', [0.5 0.5 0.5], ...
+            'BackgroundColor', grayButtonColor, ...
             'FontColor', [1 1 1], ...
             'Enable', 'off', ...
             'Tooltip', 'Open mask folder for manual editing', ...
@@ -704,7 +781,7 @@ methods (Access = private)
 
         app.PlayMomentsButton = uibutton(grid, 'push', ...
             'Text', 'Play Moments', ...
-            'BackgroundColor', [0.5 0.5 0.5], ...
+            'BackgroundColor', grayButtonColor, ...
             'FontColor', [1 1 1], ...
             'Enable', 'off', ...
             'Tooltip', 'Play M0/M1/M2 videos', ...
