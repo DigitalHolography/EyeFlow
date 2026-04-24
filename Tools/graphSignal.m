@@ -108,6 +108,7 @@ else
 end
 
 set(gca, 'LineWidth', 2)
+pbaspect([1.618, 1, 1]);
 
 if ~isempty(opt.parent_folder)
     exportgraphics(gca, fullfile(ToolBox.path_png, opt.parent_folder, ...

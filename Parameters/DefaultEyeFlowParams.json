@@ -73,7 +73,7 @@
     "LocalBackgroundDist": 2,
     "bkgScaler": 5,
     "Lambda": 8.52E-7,
-    "Phi": 0.25,
+    "Phi": 0.2,
     "CorrectionCoeff": 1,
     "FilterSignals": true,
     "OutOfNoiseThreshold": 4,

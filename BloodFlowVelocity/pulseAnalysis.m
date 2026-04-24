@@ -136,6 +136,8 @@ if saveFigures
         'Legend', {'arteries', 'veins', 'background'});
 
     LocalBackground_in_vessels = mean(f_bkg, 3);
+
+    LocalBackground_in_vessels(maskNeighbors) = mean(LocalBackground_in_vessels(maskNeighbors),"all");
     createHeatmap(LocalBackground_in_vessels, 'background in vessels', ...
         'background RMS frequency (kHz)', fullfile(ToolBox.path_png, sprintf("%s_f_bkg_map.png", ToolBox.folder_name)));
 end
@@ -243,7 +245,7 @@ v_vein_signal = squeeze(sum(v_vein, [1, 2], 'omitnan') / nnz(maskVeinSection))';
 if filterSignals
     [b, a] = butter(4, 15 / (fs / 2), 'low');
     v_artery_signal = filtfilt(b, a, v_artery_signal);
-    v_vein_signal = filtfilt(b, a, v_vein_signal);
+    %v_vein_signal = filtfilt(b, a, v_vein_signal);
 
 end
 
@@ -253,6 +255,9 @@ if saveFigures
         t, v_artery_signal, '-', cArtery, ...
         t, v_vein_signal, '-', cVein, ...
         'Title', 'average velocity in arteries and veins', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
+    graphSignal('v_artery', ...
+        t, v_artery_signal, '-', cArtery, ...
+        'Title', 'average velocity in arteries', 'xlabel', 'Time(s)', 'ylabel', 'Velocity (mm/s)');
 end
 
 ToolBox.Output.add('Time', t, 's', h5path = '/Meta/Time');
