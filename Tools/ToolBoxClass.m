@@ -71,16 +71,13 @@ methods
 
 end
 
+% ---- non‑static private methods ----
 methods (Access = private)
 
     function setGlobalToolBox(obj)
         global ToolBoxGlobal
         ToolBoxGlobal = obj;
     end
-
-end
-
-methods (Access = private, Static)
 
     function extractDataNameAndEFPath(obj)
         % HD_path is always the _HD folder (e.g., ...\XXX_HD\)
@@ -131,8 +128,6 @@ methods (Access = private, Static)
     end
 
     function loadParameters(obj)
-        % Load rendering parameters from various possible source files.
-
         % Try RenderingParameters*.json
         fname = obj.getFirstFileMatch(obj.HD_path, '*RenderingParameters*.json');
 
@@ -310,8 +305,12 @@ methods (Access = private, Static)
         fclose(fid);
     end
 
+end
+
+% ---- static private utility methods ----
+methods (Access = private, Static)
+
     function fname = getFirstFileMatch(folder, pattern)
-        % Return full path of first file matching pattern, or '' if none.
         d = dir(fullfile(folder, pattern));
 
         if isempty(d)
@@ -323,7 +322,6 @@ methods (Access = private, Static)
     end
 
     function hdFolder = findHDSubfolder(parentPath)
-        % Find first subfolder of parentPath whose name matches *_HD*.
         d = dir(fullfile(parentPath, '*_HD*'));
         d = d([d.isdir] & ~ismember({d.name}, {'.', '..'}));
 
