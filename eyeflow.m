@@ -115,6 +115,19 @@ methods (Access = public)
 
     end
 
+    function setImageSource(app, rgbImage)
+        % Directly set the ImageDisplay image source (no rescaling)
+        app.ImageDisplay.ImageSource = rgbImage;
+    end
+
+    function setAxisEqual(app)
+        % Make the axes holding the image have equal scaling
+        ax = ancestor(app.ImageDisplay, 'axes');
+        if ~isempty(ax)
+            axis(ax, 'equal');
+        end
+    end
+
     % ---------------------------------------------------------------------
     % Corrected Load method – no trailing backslash, proper path cleaning
     % ---------------------------------------------------------------------
