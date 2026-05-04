@@ -47,7 +47,6 @@ py-modules = [
     "cli",
     "app_settings",
     "dependency_utils",
-    "graphics",
     "launcher",
 ]
 

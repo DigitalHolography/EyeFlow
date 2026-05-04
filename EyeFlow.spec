@@ -4,14 +4,12 @@ from PyInstaller.utils.hooks import collect_submodules
 
 datas = []
 hiddenimports = []
-datas += collect_data_files('pipelines')
 datas += collect_data_files('sv_ttk')
 datas += collect_data_files('tkinterdnd2')
 datas += [('EyeFlow_logo.png', '.')]
 datas += [('EyeFlow.ico', '.')]
 datas += [('default_settings.json', '.')]
 datas += [('pyproject.toml', '.')]
-hiddenimports += collect_submodules('pipelines')
 hiddenimports += collect_submodules('tkinterdnd2')
 
 

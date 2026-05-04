@@ -30,7 +30,6 @@ PAYLOAD_EXTRA_FILES = (
     PROJECT_ROOT / "default_settings.json",
     PROJECT_ROOT / "pyproject.toml",
 )
-EDITABLE_PACKAGE_DIRS = ("pipelines",)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -124,16 +123,6 @@ def _copy_tree_contents(source_dir: Path, destination_dir: Path) -> None:
             shutil.copy2(child, target)
 
 
-def _copy_editable_package_modules(package_name: str) -> None:
-    source_dir = PROJECT_ROOT / "src" / package_name
-    destination_dir = PAYLOAD_DIR / package_name
-    destination_dir.mkdir(parents=True, exist_ok=True)
-    for source_file in source_dir.glob("*.py"):
-        if source_file.name == "__init__.py":
-            continue
-        shutil.copy2(source_file, destination_dir / source_file.name)
-
-
 def _prepare_payload() -> None:
     if PAYLOAD_DIR.exists():
         shutil.rmtree(PAYLOAD_DIR)
@@ -157,9 +146,6 @@ def _prepare_payload() -> None:
         shutil.copy2(selected_target, PAYLOAD_DIR / "EyeFlow.exe")
     else:
         _copy_tree_contents(ONEDIR_BUILD, PAYLOAD_DIR)
-
-    for package_name in EDITABLE_PACKAGE_DIRS:
-        _copy_editable_package_modules(package_name)
 
     for extra_file in PAYLOAD_EXTRA_FILES:
         if extra_file.exists():

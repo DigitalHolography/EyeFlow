@@ -8,44 +8,69 @@ EyeFlow is the cohort-analysis engine for retinal Doppler holography. It browses
 
 ### Prerequisites
 
-- Python 3.10 or higher.
-- It is highly recommended to use a virtual environment.
+- `uv`.
+- Python 3.10 or higher. The repository includes `.python-version` set to Python 3.11 for uv-managed environments.
 
-This project uses a `pyproject.toml` to describe all requirements needed. To start using it, **it is better to use a Python virtual environment (venv)**.
+This project uses `pyproject.toml` plus a committed `uv.lock` for reproducible installs.
+
+### 1. Recommended Setup With uv
 
 ```sh
-# Creates the venv
-python -m venv .venv
+# Install the pinned Python if uv does not already find a compatible one
+uv python install
 
-# To enter the venv
-# If you are using Windows PowerShell, you might need to activate the "Exceution" policy
+# Create/update .venv and install the base application
+uv sync
+
+# Optional: include pipeline-specific dependencies
+uv sync --extra pipelines
+
+# Contributor setup: base app + pipeline deps + dev tools
+uv sync --extra pipelines --extra dev
+```
+
+Run commands through uv so you do not need to activate the virtual environment:
+
+```sh
+uv run eyeflow
+uv run eyeflow-cli --help
+uv run lint-tool
+```
+
+If you prefer to activate the environment manually:
+
+```sh
+# Windows PowerShell
 ./.venv/Scripts/activate
+
+# macOS/Linux
+source .venv/bin/activate
 ```
 
-You can easily exit it with the command
+### 2. Pip Fallback
 
 ```sh
-deactivate
-```
-
-### 1. Basic Installation (User)
-
-```sh
+# Base application
 pip install -e .
 
-# Installs pipeline-specific dependencies (optional)
+# Optional pipeline dependencies
 pip install -e ".[pipelines]"
+
+# Contributor setup
+pip install -e ".[dev,pipelines]"
 ```
 
-### 2. Development Setup (Contributor)
+### 3. Development Setup
 
 ```sh
-# Install all dependencies including dev tools (ruff, pre-commit, pyinstaller)
-pip install -e ".[dev,pipelines]"
+# After installing dev dependencies with uv
+uv run pre-commit install
 
-# Initialize pre-commit hooks (optionnal)
+# If using an activated pip environment instead
 pre-commit install
 ```
+
+After changing dependencies in `pyproject.toml`, run `uv lock` and commit the updated `uv.lock`.
 
 > [!NOTE]
 > The pre-commit is really usefull to run automatic checks before pushing code, reducing chances of ugly code being pushed.
@@ -57,10 +82,10 @@ pre-commit install
 >
 > ```sh
 > # To only run the checks
-> lint-tool
+> uv run lint-tool
 >
 > # To let the linter try to fix as much as possible
-> lint-tool --fix
+> uv run lint-tool --fix
 > ```
 
 ---
@@ -71,32 +96,32 @@ Launch the main application to process files interactively:
 
 ### GUI
 
-The GUI handles batch processing for folders, single .h5/.hdf5 files, or .zip archives and lets you run multiple pipelines at once. Batch outputs preserve the input subfolder layout under the chosen output directory (one combined `.h5` per input file).
+The GUI processes one `.holo` file at a time and lets you run multiple coded pipelines on that input. Outputs are written to the default `*_EF` folder derived from the selected `.holo` file.
 
-Use the Pipeline Library tab to select which pipelines run. Selection preferences are saved per user between app launches, including installed builds.
+Use the Pipeline Library tab to select which coded pipelines run. Selection preferences are saved per user between app launches, including installed builds.
 
 ```sh
-# Via the entry point
-eyeflow
+# Via uv
+uv run eyeflow
 
 # Or via the script
-python src/eye_flow.py
+uv run python src/eye_flow.py
 ```
 
-When you run `eyeflow` from inside the repository checkout, the launcher prefers the local `src/` tree so newly added or edited pipelines are picked up without needing a full reinstall.
+When developing from the repository checkout, install the project in editable mode or run `python src/eye_flow.py`; edit pipeline code under `src/pipelines/` and restart the app to pick up code changes.
 
-Installed builds expose an editable `pipelines/` folder next to `EyeFlow.exe`; use the Pipeline Library tab's Open folder and Reload buttons to edit and refresh it.
+Installed builds only run the pipelines explicitly registered in source code and bundled into the application. They do not load editable pipeline files from folders next to `EyeFlow.exe` or from environment-variable overrides; adding or changing a pipeline requires rebuilding and reinstalling the application.
 
 ### CLI
 
-The CLI is designed for batch processing in headless environments or clusters.
+The CLI is designed for headless processing in environments or clusters.
 
 ```sh
-# Via the entry point
-eyeflow-cli
+# Via uv
+uv run eyeflow-cli
 
 # Or via the script
-python src/cli.py
+uv run python src/cli.py
 ```
 
 ---
@@ -105,9 +130,9 @@ python src/cli.py
 
 Pipelines are the heart of EyeFlow. To add a new analysis, create a file in `src/pipelines/` with a class inheriting from `ProcessPipeline`.
 
-To register it to the app, add the decorator `@register_pipeline`. You can define any needed imports inside, as well as some more info.
+To register it to the app, add the decorator `@registerPipeline`, then add an explicit import block for the class in `src/pipelines/__init__.py` so it is appended to the coded pipeline catalog. The app does not scan or import pipeline files dynamically at runtime.
 
-To see more complete examples, check out `src/pipelines/basic_stats.py` and `src/pipelines/dummy_heavy.py`.
+To see complete examples, check out `src/pipelines/waveform_shape_metrics.py` and `src/pipelines/dual_input_tutorial.py`.
 
 ### Simple Pipeline Structure
 

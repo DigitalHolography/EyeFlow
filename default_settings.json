@@ -1,10 +1,6 @@
 {
   "pipeline_visibility": {
-    "Windkessel_RC": false,
-    "lowrank_pulsatility_metrics": false,
-    "modal_analysis": false,
-    "waveform_harmonic_organization": false,
-    "waveform_harmonic_organization_SVD": false,
+    "dual_input_tutorial": false,
     "waveform_shape_metrics": true
   },
   "trim_h5source": true,

@@ -4,15 +4,15 @@ import json
 import os
 import re
 import sys
-from importlib import metadata as importlib_metadata
 from collections.abc import Iterable, Mapping
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
 
 APP_NAME = "EyeFlow"
 SETTINGS_FILENAME = "settings.json"
 DEFAULT_SETTINGS_FILENAME = "default_settings.json"
-LAST_BATCH_LOG_FILENAME = "last_EF_log.txt"
+LAST_RUN_LOG_FILENAME = "last_EF_log.txt"
 VERSION_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
 INVALID_PATH_CHARS_PATTERN = re.compile(r'[<>:"/\\|?*]+')
 
@@ -64,10 +64,6 @@ def default_settings_path() -> Path:
         xdg_config = os.getenv("XDG_CONFIG_HOME")
         base_dir = Path(xdg_config) if xdg_config else Path.home() / ".config"
     return base_dir / APP_NAME / _settings_subdir_name() / SETTINGS_FILENAME
-
-
-def default_batch_log_path() -> Path:
-    return default_settings_path().with_name(LAST_BATCH_LOG_FILENAME)
 
 
 def _resource_roots() -> list[Path]:
@@ -264,9 +260,7 @@ class AppSettingsStore:
 
         default_trim_h5source = self.load_defaults().get("trim_h5source")
         return (
-            default_trim_h5source
-            if isinstance(default_trim_h5source, bool)
-            else True
+            default_trim_h5source if isinstance(default_trim_h5source, bool) else True
         )
 
     def save_trim_h5source(self, trim_h5source: bool) -> None:

@@ -1,105 +1,91 @@
-import importlib
-import os
-import pkgutil
-import sys
-from pathlib import Path
-
-# import inspect
 from .core.base import (
-    PIPELINE_REGISTRY,
     MissingPipeline,
     PipelineDescriptor,
     ProcessPipeline,
     ProcessResult,
+    registerPipeline,
 )
-from input_output import write_combined_results_h5, write_result_h5
+
+_PIPELINE_CLASSES: list[type[ProcessPipeline]] = []
+_PIPELINE_IMPORT_ERRORS: list[PipelineDescriptor] = []
 
 
-def _extend_with_external_pipeline_dir() -> None:
-    candidates: list[Path] = []
-    env_path = os.getenv("EYEFLOW_PIPELINES_DIR")
-    if env_path:
-        candidates.append(Path(env_path))
-    if getattr(sys, "frozen", False):
-        candidates.append(Path(sys.executable).resolve().parent / "pipelines")
-
-    for candidate in reversed(candidates):
-        if candidate.is_dir():
-            path_value = str(candidate.resolve())
-            if path_value not in __path__:
-                __path__.insert(0, path_value)
+def _import_error_descriptor(name: str, exc: BaseException) -> PipelineDescriptor:
+    return PipelineDescriptor(
+        name=name,
+        description=f"Import Error: {exc}",
+        available=False,
+        error_msg=str(exc),
+    )
 
 
-_extend_with_external_pipeline_dir()
+try:
+    from .dual_input_tutorial import DualInputTutorial
+except Exception as exc:  # noqa: BLE001
+    _PIPELINE_IMPORT_ERRORS.append(_import_error_descriptor("dual_input_tutorial", exc))
+else:
+    _PIPELINE_CLASSES.append(DualInputTutorial)
+
+try:
+    from .waveform_shape_metrics import WaveformShapeMetrics
+except Exception as exc:  # noqa: BLE001
+    _PIPELINE_IMPORT_ERRORS.append(
+        _import_error_descriptor("waveform_shape_metrics", exc)
+    )
+else:
+    _PIPELINE_CLASSES.append(WaveformShapeMetrics)
 
 
-def _discover_pipelines() -> tuple[list[PipelineDescriptor], list[PipelineDescriptor]]:
+def _descriptor_from_class(cls: type[ProcessPipeline]) -> PipelineDescriptor:
+    return PipelineDescriptor(
+        name=getattr(cls, "name", cls.__name__),
+        description=getattr(cls, "description", ""),
+        available=bool(getattr(cls, "available", True)),
+        input_slot=getattr(cls, "input_slot", "both"),
+        requires=list(getattr(cls, "requires", [])),
+        missing_deps=list(getattr(cls, "missing_deps", [])),
+        pipeline_cls=cls,
+    )
+
+
+def write_result_h5(*args, **kwargs):
+    from input_output import write_result_h5 as _write_result_h5
+
+    return _write_result_h5(*args, **kwargs)
+
+
+def write_combined_results_h5(*args, **kwargs):
+    from input_output import write_combined_results_h5 as _write_combined_results_h5
+
+    return _write_combined_results_h5(*args, **kwargs)
+
+
+def load_pipeline_catalog() -> tuple[
+    list[PipelineDescriptor], list[PipelineDescriptor]
+]:
+    """Return (available, missing) coded pipelines for UI/CLI surfaces."""
     available: list[PipelineDescriptor] = []
-    missing: list[PipelineDescriptor] = []
-    PIPELINE_REGISTRY.clear()
-    importlib.invalidate_caches()
+    missing: list[PipelineDescriptor] = list(_PIPELINE_IMPORT_ERRORS)
 
-    for module_info in pkgutil.iter_modules(__path__):
-        if module_info.name in {"core"} or module_info.name.startswith("_"):
-            continue
-
-        module_name = f"{__name__}.{module_info.name}"
-
-        try:
-            if module_name in sys.modules:
-                importlib.reload(sys.modules[module_name])
-            else:
-                importlib.import_module(module_name)
-        except Exception as e:
-            # Fallback for unknown failures (SyntaxError, etc.)
-            missing.append(
-                PipelineDescriptor(
-                    name=module_info.name,
-                    description=f"Import Error: {e}",
-                    available=False,
-                    error_msg=str(e),
-                )
-            )
-
-    for _name, cls in PIPELINE_REGISTRY.items():
-        desc = PipelineDescriptor(
-            name=cls.name,
-            description=cls.description,
-            available=cls.available,
-            input_slot=getattr(cls, "input_slot", "both"),
-            requires=cls.requires,
-            missing_deps=cls.missing_deps,
-            pipeline_cls=cls,
-        )
-        if getattr(cls, "is_available", True):
-            available.append(desc)
+    for cls in _PIPELINE_CLASSES:
+        descriptor = _descriptor_from_class(cls)
+        if descriptor.available:
+            available.append(descriptor)
         else:
-            missing.append(desc)
+            missing.append(descriptor)
 
     available.sort(key=lambda p: p.name.lower())
     missing.sort(key=lambda p: p.name.lower())
     return available, missing
 
 
-def load_pipeline_catalog() -> tuple[
-    list[PipelineDescriptor], list[PipelineDescriptor]
-]:
-    """Return (available, missing) pipelines for UI/CLI surfaces."""
-    return _discover_pipelines()
-
-
-# Expose pipeline classes at package level for convenience and star-imports.
-_AVAILABLE, _MISSING = _discover_pipelines()
-for _cls in (p.__class__ for p in _AVAILABLE):
-    globals().setdefault(_cls.__name__, _cls)
-
-
 __all__ = [
     "ProcessPipeline",
     "ProcessResult",
+    "registerPipeline",
     "write_result_h5",
     "write_combined_results_h5",
     "load_pipeline_catalog",
     "MissingPipeline",
-    *[_cls.__name__ for _cls in (p.__class__ for p in _AVAILABLE)],
+    *[cls.__name__ for cls in _PIPELINE_CLASSES],
 ]

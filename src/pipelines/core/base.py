@@ -8,11 +8,11 @@ import h5py
 
 from dependency_utils import find_missing_dependencies
 
-# Global Registry of all imports needed by the pipelines
-PIPELINE_REGISTRY: dict[str, type["ProcessPipeline"]] = {}
+# Metadata registry populated by coded pipeline modules when they are imported.
+PIPELINE_REGISTRY: dict[str, type[ProcessPipeline]] = {}
 
 
-# Decorator to register all neede pipelines
+# Decorator to attach metadata to coded pipeline classes.
 def registerPipeline(
     name: str, description: str = "", required_deps: list[str] | None = None
 ):
@@ -67,10 +67,10 @@ class PipelineDescriptor:
     # To avoid Python Mutable Default Arguments
     requires: list[str] = field(default_factory=list)
     missing_deps: list[str] = field(default_factory=list)
-    pipeline_cls: type["ProcessPipeline"] | None = None
+    pipeline_cls: type[ProcessPipeline] | None = None
     error_msg: str = ""
 
-    def instantiate(self) -> "ProcessPipeline":
+    def instantiate(self) -> ProcessPipeline:
         """Factory method to create the actual pipeline instance."""
         if not self.available or self.pipeline_cls is None:
             return MissingPipeline(
