@@ -50,7 +50,7 @@ def resolve_required_source_array(
 
 
 def resolve_holodoppler_timing(
-    pipeline_input: "PipelineInputView",
+    pipeline_input: PipelineInputView,
 ) -> HolodopplerTiming:
     sampling_spec = HOLODOPPLER_SCHEMA.config_value("sampling_freq")
     stride_spec = HOLODOPPLER_SCHEMA.config_value("batch_stride")
@@ -65,11 +65,11 @@ def resolve_holodoppler_timing(
     return HolodopplerTiming(float(sampling_freq), float(batch_stride))
 
 
-def resolve_dt_seconds(pipeline_input: "PipelineInputView") -> float:
+def resolve_dt_seconds(pipeline_input: PipelineInputView) -> float:
     return resolve_holodoppler_timing(pipeline_input).dt_seconds
 
 
-def read_first_attr(pipeline_input: "PipelineInputView", *keys: str):
+def read_first_attr(pipeline_input: PipelineInputView, *keys: str):
     for key in keys:
         value = pipeline_input.attrs.get(key, None)
         scalar = _scalar_from_value(value)
@@ -79,7 +79,7 @@ def read_first_attr(pipeline_input: "PipelineInputView", *keys: str):
 
 
 def read_int_setting(
-    pipeline_input: "PipelineInputView",
+    pipeline_input: PipelineInputView,
     *,
     default: int,
     keys: tuple[str, ...],
@@ -91,7 +91,7 @@ def read_int_setting(
 
 
 def read_nested_int_setting(
-    config: "Mapping[str, object]",
+    config: Mapping[str, object],
     section: str,
     key: str,
     *,
@@ -105,7 +105,7 @@ def read_nested_int_setting(
 
 
 def _read_hd_scalar_or_config(
-    pipeline_input: "PipelineInputView",
+    pipeline_input: PipelineInputView,
     spec: JsonConfigValueSpec,
 ):
     value = _read_source_scalar(pipeline_input.hd, spec.h5_path)

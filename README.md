@@ -96,9 +96,9 @@ Launch the main application to process files interactively:
 
 ### GUI
 
-The GUI processes one `.holo` file at a time and lets you run multiple coded pipelines on that input. Outputs are written to the default `*_EF` folder derived from the selected `.holo` file.
+The GUI processes one `.holo` file at a time and lets you select pipeline targets for that input. The DAG resolves the required upstream pipelines and run order. Outputs are written to the default `*_EF` folder derived from the selected `.holo` file.
 
-Use the Pipeline Library tab to select which coded pipelines run. Selection preferences are saved per user between app launches, including installed builds.
+Use the Pipeline Library tab to select which coded pipeline outputs you want. Selection preferences are saved per user between app launches, including installed builds.
 
 ```sh
 # Via uv
@@ -132,6 +132,8 @@ Pipelines are the heart of EyeFlow. To add a new analysis, create a file in `src
 
 To register it to the app, add the decorator `@registerPipeline`, then add an explicit import block for the class in `src/pipelines/__init__.py` so it is appended to the coded pipeline catalog. The app does not scan or import pipeline files dynamically at runtime.
 
+Pipeline execution is DAG-based. The selected pipeline names are treated as targets, every pipeline implicitly produces its own name, and optional `dag_produces` keys can describe intermediate outputs. Use `dag_requires` to declare which produced keys must be available before a pipeline runs. Keys with no producer are treated as external input data.
+
 To see complete examples, check out `src/pipelines/waveform_shape_metrics.py` and `src/pipelines/dual_input_tutorial.py`.
 
 ### Simple Pipeline Structure
@@ -140,9 +142,11 @@ To see complete examples, check out `src/pipelines/waveform_shape_metrics.py` an
 from pipelines import ProcessPipeline, ProcessResult, registerPipeline
 
 @registerPipeline(
-    name="My Analysis",
+    name="my_analysis",
     description="Calculates a custom clinical metric.",
     required_deps=["torch>=2.2"],
+    dag_requires=["velocity_per_beat"],
+    dag_produces=["custom_clinical_metric"],
 )
 class MyAnalysis(ProcessPipeline):
     def run(self, h5file):

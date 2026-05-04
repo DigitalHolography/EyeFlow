@@ -1,79 +1,59 @@
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-import launcher
+import launcher  # noqa: E402
 
 
 class LauncherTests(unittest.TestCase):
-    def test_find_checkout_src_from_nested_repo_dir(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            repo_root = Path(tmp_dir)
-            src_dir = repo_root / "src"
-            nested_dir = repo_root / "sub" / "dir"
-            src_dir.mkdir()
-            nested_dir.mkdir(parents=True)
-            (repo_root / "pyproject.toml").write_text("[project]\nname='EyeFlow'\n")
-            (src_dir / "eye_flow.py").write_text("def main():\n    return 'ok'\n")
-
-            result = launcher._find_checkout_src(
-                "eye_flow.py",
-                start_dir=nested_dir,
-            )
-
-            self.assertEqual(src_dir, result)
-
-    def test_call_entry_prefers_checkout_module(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            repo_root = Path(tmp_dir)
-            src_dir = repo_root / "src"
-            src_dir.mkdir()
-            (repo_root / "pyproject.toml").write_text("[project]\nname='EyeFlow'\n")
-            (src_dir / "fake_entry.py").write_text(
-                "def main(value=None):\n"
-                "    return ('checkout', value)\n",
-                encoding="utf-8",
-            )
-
-            result = launcher._call_entry(
-                "fake_entry",
-                "fake_entry.py",
-                "main",
-                "value",
-                start_dir=repo_root,
-            )
-
-            self.assertEqual(("checkout", "value"), result)
-
-    def test_call_entry_falls_back_to_imported_module(self) -> None:
+    def test_call_entry_imports_module_and_calls_function(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             module_dir = Path(tmp_dir)
-            outside_dir = module_dir / "outside"
-            outside_dir.mkdir()
-            (module_dir / "fallback_entry.py").write_text(
-                "def main():\n"
-                "    return 'installed'\n",
+            (module_dir / "fake_entry.py").write_text(
+                "def main(value=None):\n"
+                "    return ('imported', value)\n",
                 encoding="utf-8",
             )
             sys.path.insert(0, str(module_dir))
-            sys.modules.pop("fallback_entry", None)
+            sys.modules.pop("fake_entry", None)
             try:
-                result = launcher._call_entry(
-                    "fallback_entry",
-                    "fallback_entry.py",
-                    "main",
-                    start_dir=outside_dir,
-                )
+                result = launcher._call_entry("fake_entry", "main", "value")
             finally:
                 sys.path.remove(str(module_dir))
-                sys.modules.pop("fallback_entry", None)
+                sys.modules.pop("fake_entry", None)
 
-            self.assertEqual("installed", result)
+            self.assertEqual(("imported", "value"), result)
+
+    def test_main_configures_threads_and_calls_eye_flow_entry(self) -> None:
+        module = types.SimpleNamespace(main=mock.Mock(return_value="ok"))
+        with (
+            mock.patch.dict(sys.modules, {"eye_flow": module}),
+            mock.patch("launcher.configure_numeric_threads") as configure,
+        ):
+            result = launcher.main()
+
+        self.assertEqual("ok", result)
+        configure.assert_called_once_with()
+        module.main.assert_called_once_with()
+
+    def test_cli_main_configures_threads_and_passes_argv(self) -> None:
+        module = types.SimpleNamespace(main=mock.Mock(return_value=0))
+        with (
+            mock.patch.dict(sys.modules, {"cli": module}),
+            mock.patch("launcher.configure_numeric_threads") as configure,
+        ):
+            result = launcher.cli_main(["--help"])
+
+        self.assertEqual(0, result)
+        configure.assert_called_once_with()
+        module.main.assert_called_once_with(["--help"])
 
 
 if __name__ == "__main__":

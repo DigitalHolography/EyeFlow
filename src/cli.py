@@ -6,11 +6,13 @@ Usage example:
 
 Inputs:
     --data / -d        Path to a directory (recursively scanned), a single .h5/.hdf5 file, or a .zip archive of .h5 files.
-    --pipelines / -p   Text file listing pipeline names (one per line, '#' and blank lines ignored).
+    --pipelines / -p   Text file listing pipeline target names (one per line, '#' and blank lines ignored).
     --output / -o      Base directory where results will be written (input subfolder layout is preserved).
     --zip / -z         When set, compress the outputs into a .zip archive after completion.
     --zip-name         Optional filename for the archive (default: outputs.zip).
 """
+
+# ruff: noqa: E402
 
 from __future__ import annotations
 
@@ -29,25 +31,26 @@ configure_numeric_threads()
 
 import h5py
 
+from input_output import write_combined_results_h5
 from pipelines import (
     PipelineDescriptor,
     ProcessResult,
     load_pipeline_catalog,
 )
+from pipelines.core.dag import PipelineDAG
 from pipelines.core.errors import format_pipeline_exception
-from input_output import write_combined_results_h5
 
 
 def _build_pipeline_registry() -> dict[str, PipelineDescriptor]:
-    available, _ = load_pipeline_catalog()
-    return {pipeline.name: pipeline for pipeline in available}
+    available, missing = load_pipeline_catalog()
+    return {pipeline.name: pipeline for pipeline in (*available, *missing)}
 
 
 def _load_pipeline_list(
     path: Path, registry: dict[str, PipelineDescriptor]
 ) -> list[PipelineDescriptor]:
     raw_lines = path.read_text(encoding="utf-8").splitlines()
-    selected: list[PipelineDescriptor] = []
+    selected_names: list[str] = []
     missing: list[str] = []
     for line in raw_lines:
         name = line.strip()
@@ -57,17 +60,28 @@ def _load_pipeline_list(
         if pipeline is None:
             missing.append(name)
         else:
-            selected.append(pipeline)
+            selected_names.append(pipeline.name)
     if missing:
         available = ", ".join(registry.keys())
         raise ValueError(
             f"Unknown pipeline(s): {', '.join(missing)}. Available: {available}"
         )
-    if not selected:
+    if not selected_names:
         raise ValueError(
             "No pipelines selected (file is empty or only contains comments)."
         )
-    return selected
+
+    plan = PipelineDAG(registry.values()).resolve_targets(selected_names)
+    unavailable = [pipeline for pipeline in plan.descriptors if not pipeline.available]
+    if unavailable:
+        details = []
+        for pipeline in unavailable:
+            reason = ", ".join(pipeline.missing_deps or pipeline.requires)
+            details.append(f"{pipeline.name}" + (f" ({reason})" if reason else ""))
+        raise ValueError(
+            "The DAG requires unavailable pipeline(s): " + ", ".join(details)
+        )
+    return list(plan.descriptors)
 
 
 def _find_h5_inputs(path: Path) -> list[Path]:
@@ -277,7 +291,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--pipelines",
         required=True,
         type=Path,
-        help="Text file with pipeline names to run (one per line, '#' and blank lines ignored).",
+        help="Text file with pipeline targets to resolve through the DAG.",
     )
     parser.add_argument(
         "-o",

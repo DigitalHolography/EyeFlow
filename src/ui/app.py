@@ -13,6 +13,7 @@ configure_numeric_threads()
 
 from app_settings import AppSettingsStore
 from pipelines import PipelineDescriptor
+from pipelines.core.dag import PipelineDAG
 
 from .compat import BaseAppTk, sv_ttk
 from .drag_drop import DragDropMixin
@@ -45,14 +46,11 @@ class ProcessApp(
         self.ui_mode = self.settings_store.load_ui_mode()
         self.pipeline_registry: dict[str, PipelineDescriptor] = {}
         self.pipeline_catalog: dict[str, PipelineDescriptor] = {}
+        self.pipeline_dag: PipelineDAG | None = None
         self.pipeline_rows: list[PipelineDescriptor] = []
         self.pipeline_visibility: dict[str, bool] = {}
         self.pipeline_visibility_vars: dict[str, tk.BooleanVar] = {}
         self.pipeline_row_widgets: dict[str, tk.Widget] = {}
-        self._dragging_pipeline_name: str | None = None
-        self._dragging_pipeline_active = False
-        self._drag_start_root_y = 0
-        self._pipeline_drop_indicator: tk.Frame | None = None
         self.holo_input_var = tk.StringVar()
         self.run_progress_var = tk.DoubleVar(value=0.0)
         self._selected_holo_input_paths: list[Path] = []

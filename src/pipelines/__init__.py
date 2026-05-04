@@ -5,6 +5,7 @@ from .core.base import (
     ProcessResult,
     registerPipeline,
 )
+from .core.dag import PipelineDAG, PipelineExecutionPlan
 
 _PIPELINE_CLASSES: list[type[ProcessPipeline]] = []
 _PIPELINE_IMPORT_ERRORS: list[PipelineDescriptor] = []
@@ -44,6 +45,8 @@ def _descriptor_from_class(cls: type[ProcessPipeline]) -> PipelineDescriptor:
         input_slot=getattr(cls, "input_slot", "both"),
         requires=list(getattr(cls, "requires", [])),
         missing_deps=list(getattr(cls, "missing_deps", [])),
+        dag_requires=tuple(getattr(cls, "dag_requires", ())),
+        dag_produces=tuple(getattr(cls, "dag_produces", ())),
         pipeline_cls=cls,
     )
 
@@ -82,6 +85,9 @@ def load_pipeline_catalog() -> tuple[
 __all__ = [
     "ProcessPipeline",
     "ProcessResult",
+    "PipelineDescriptor",
+    "PipelineDAG",
+    "PipelineExecutionPlan",
     "registerPipeline",
     "write_result_h5",
     "write_combined_results_h5",

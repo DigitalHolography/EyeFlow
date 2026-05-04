@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -14,13 +15,24 @@ PIPELINE_REGISTRY: dict[str, type[ProcessPipeline]] = {}
 
 # Decorator to attach metadata to coded pipeline classes.
 def registerPipeline(
-    name: str, description: str = "", required_deps: list[str] | None = None
+    name: str,
+    description: str = "",
+    required_deps: list[str] | None = None,
+    *,
+    dag_requires: Iterable[str] | None = None,
+    dag_produces: Iterable[str] | None = None,
 ):
     def decorator(cls):
         # metadata for the class
         cls.name = name
         cls.description = description or getattr(cls, "description", "")
         cls.requires = required_deps or []
+        cls.dag_requires = _pipeline_keys(
+            dag_requires if dag_requires is not None else getattr(cls, "dag_requires", ())
+        )
+        cls.dag_produces = _pipeline_keys(
+            dag_produces if dag_produces is not None else getattr(cls, "dag_produces", ())
+        )
 
         missing = find_missing_dependencies(cls.requires)
         cls.missing_deps = missing
@@ -31,6 +43,10 @@ def registerPipeline(
         return cls
 
     return decorator
+
+
+def _pipeline_keys(keys: Iterable[str]) -> tuple[str, ...]:
+    return tuple(str(key).strip() for key in keys if str(key).strip())
 
 
 @dataclass
@@ -67,6 +83,8 @@ class PipelineDescriptor:
     # To avoid Python Mutable Default Arguments
     requires: list[str] = field(default_factory=list)
     missing_deps: list[str] = field(default_factory=list)
+    dag_requires: tuple[str, ...] = ()
+    dag_produces: tuple[str, ...] = ()
     pipeline_cls: type[ProcessPipeline] | None = None
     error_msg: str = ""
 
@@ -88,6 +106,8 @@ class ProcessPipeline:
     available: bool
     missing_deps: list[str]
     requires: list[str]
+    dag_requires: tuple[str, ...] = ()
+    dag_produces: tuple[str, ...] = ()
     input_slot: str = "both"
 
     def __init__(self) -> None:

@@ -59,29 +59,35 @@ class RunMixin:
         self._reset_progress()
         holo_path = self._selected_holo_path()
 
-        selected_names = [
-            pipeline.name
-            for pipeline in self.pipeline_rows
-            if pipeline.available and self.pipeline_visibility.get(pipeline.name, False)
-        ]
-        if not selected_names:
+        target_names = self._selected_target_pipeline_names()
+        if not target_names:
             messagebox.showwarning(
                 "No pipelines",
                 "Select at least one pipeline in Pipeline Library.",
             )
             return
 
-        pipelines: list[PipelineDescriptor] = []
-        missing: list[str] = []
-        for name in selected_names:
-            pipeline = self.pipeline_registry.get(name)
-            if pipeline is None:
-                missing.append(name)
-            else:
-                pipelines.append(pipeline)
-        if missing:
+        try:
+            plan = self._resolve_pipeline_plan(target_names)
+        except (RuntimeError, ValueError) as exc:
             messagebox.showerror(
-                "Pipeline missing", f"Pipeline(s) not registered: {', '.join(missing)}"
+                "Pipeline DAG error",
+                str(exc),
+            )
+            return
+
+        pipelines = list(plan.descriptors)
+        unavailable = [pipeline for pipeline in pipelines if not pipeline.available]
+        if unavailable:
+            details = []
+            for pipeline in unavailable:
+                reason = ", ".join(pipeline.missing_deps or pipeline.requires)
+                details.append(
+                    f"{pipeline.name}" + (f" ({reason})" if reason else "")
+                )
+            messagebox.showerror(
+                "Pipeline unavailable",
+                "The DAG requires unavailable pipeline(s):\n" + "\n".join(details),
             )
             return
 
@@ -90,6 +96,8 @@ class RunMixin:
             return
 
         self._reset_run_log("Starting pipeline run...\n")
+        self._log_run(f"[DAG] Targets -> {', '.join(plan.targets)}")
+        self._log_run(f"[DAG] Execution order -> {', '.join(plan.names)}")
         self._log_run(f"[INPUT] HOLO -> {resolved_input.holo_path}")
         self._log_run(f"[INPUT] DATA DIR -> {resolved_input.data_dir}")
         self._log_run(f"[RESOLVED] HD -> {resolved_input.hd_h5}")
@@ -118,6 +126,7 @@ class RunMixin:
             self._run_pipelines_to_output(
                 output_h5_path=output_h5_path,
                 pipelines=pipelines,
+                target_names=plan.targets,
                 holodoppler_h5=resolved_input.hd_h5,
                 doppler_vision_h5=resolved_input.dv_h5,
             )
@@ -137,6 +146,7 @@ class RunMixin:
         *,
         output_h5_path: Path,
         pipelines: Sequence[PipelineDescriptor],
+        target_names: Sequence[str] = (),
         holodoppler_h5: Path | None,
         doppler_vision_h5: Path | None,
     ) -> Path:
@@ -163,6 +173,7 @@ class RunMixin:
                 ),
             )
             work_h5.attrs["trim_h5source"] = True
+            work_h5.attrs["pipeline_targets"] = list(target_names)
             work_h5.attrs["pipeline_order"] = [pipeline.name for pipeline in pipelines]
 
             for pipeline_desc in pipelines:

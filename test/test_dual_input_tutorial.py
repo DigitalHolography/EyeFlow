@@ -12,8 +12,12 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from input_output import (  # noqa: E402
+    DOPPLER_VIEW_SCHEMA,
+    HOLODOPPLER_SCHEMA,
+    PipelineInputView,
+)
 from pipelines.dual_input_tutorial import DualInputTutorial  # noqa: E402
-from input_output import PipelineInputView  # noqa: E402
 
 
 class DualInputTutorialTests(unittest.TestCase):
@@ -25,14 +29,25 @@ class DualInputTutorialTests(unittest.TestCase):
             work_path = tmp_path / "work.h5"
 
             with h5py.File(hd_path, "w") as hd_h5:
-                hd_h5.create_dataset("moment0", data=np.array([[1.0, 3.0], [5.0, 7.0]]))
-                hd_h5.create_group("segmentation")
+                hd_h5.create_dataset(
+                    HOLODOPPLER_SCHEMA.dataset_path("moment0"),
+                    data=np.array([[1.0, 3.0], [5.0, 7.0]]),
+                )
+                hd_h5.create_dataset(
+                    HOLODOPPLER_SCHEMA.config_value("sampling_freq").h5_path,
+                    data=np.array(200.0),
+                )
+                hd_h5.create_dataset(
+                    HOLODOPPLER_SCHEMA.config_value("batch_stride").h5_path,
+                    data=np.array(5.0),
+                )
 
             with h5py.File(dv_path, "w") as dv_h5:
-                artery = dv_h5.create_group("Artery")
-                velocity = artery.create_group("VelocityPerBeat")
-                vti = velocity.create_group("VTIPerBeat")
-                vti.create_dataset("value", data=np.array([2.0, 4.0, 6.0], dtype=float))
+                retina = dv_h5.create_group("segmentation").create_group("Retina")
+                retina.create_dataset(
+                    "artery_mask",
+                    data=np.array([[True, False], [True, False]]),
+                )
                 dv_h5.create_group("Meta")
 
             with (
@@ -52,7 +67,7 @@ class DualInputTutorialTests(unittest.TestCase):
                 result = DualInputTutorial().run(input_view)
 
             self.assertEqual(
-                2,
+                3,
                 int(result.metrics["summary/hd_root_group_count"].data),
             )
             self.assertEqual(
@@ -68,7 +83,7 @@ class DualInputTutorialTests(unittest.TestCase):
                 int(result.metrics["summary/hd_example_size"].data),
             )
             self.assertEqual(
-                3,
+                4,
                 int(result.metrics["summary/dv_example_size"].data),
             )
             self.assertAlmostEqual(
@@ -76,21 +91,35 @@ class DualInputTutorialTests(unittest.TestCase):
                 float(result.metrics["summary/hd_example_mean"].data),
             )
             self.assertAlmostEqual(
-                4.0,
+                0.5,
                 float(result.metrics["summary/dv_example_mean"].data),
             )
             self.assertAlmostEqual(
-                0.0,
+                3.5,
                 float(result.metrics["summary/hd_minus_dv_example_mean"].data),
             )
+            self.assertAlmostEqual(
+                200.0,
+                float(result.metrics["schema/hd_sampling_freq_hz"].data),
+            )
+            self.assertAlmostEqual(
+                0.025,
+                float(result.metrics["schema/hd_dt_seconds"].data),
+            )
             self.assertEqual(
-                "moment0",
+                2,
+                int(result.metrics["schema/dv_local_background_dist"].data),
+            )
+            self.assertEqual(
+                HOLODOPPLER_SCHEMA.dataset_path("moment0"),
                 result.attrs["hd_example_path"],
             )
             self.assertEqual(
-                "Artery/VelocityPerBeat/VTIPerBeat/value",
+                DOPPLER_VIEW_SCHEMA.dataset_path("retinal_artery_mask"),
                 result.attrs["dv_example_path"],
             )
+            self.assertEqual("moment0", result.attrs["hd_example_key"])
+            self.assertEqual("retinal_artery_mask", result.attrs["dv_example_key"])
 
     def test_eye_flow_proxy_resolves_root_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

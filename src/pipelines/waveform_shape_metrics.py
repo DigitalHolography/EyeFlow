@@ -12,14 +12,6 @@ from domain.steps import (
     ArterialWaveformAnalysisStep,
     VesselVelocityEstimatorStep,
 )
-from pipelines.core.base import ProcessPipeline, ProcessResult, registerPipeline
-from pipelines.utils.input_access import (
-    HolodopplerTiming,
-    read_int_setting,
-    read_nested_int_setting,
-    resolve_holodoppler_timing,
-    resolve_required_source_array,
-)
 from input_output import (
     DOPPLER_VIEW_ANALYSIS_SCHEMA,
     DOPPLER_VIEW_SCHEMA,
@@ -27,6 +19,14 @@ from input_output import (
     pack_dopplerview_analysis_outputs,
     pack_velocity_per_beat_outputs,
     systolic_index_base_for_path,
+)
+from pipelines.core.base import ProcessPipeline, ProcessResult, registerPipeline
+from pipelines.utils.input_access import (
+    HolodopplerTiming,
+    read_int_setting,
+    read_nested_int_setting,
+    resolve_holodoppler_timing,
+    resolve_required_source_array,
 )
 
 LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT = 13
@@ -263,6 +263,11 @@ def run_waveform_shape_metrics(
     name="waveform_shape_metrics",
     description="Pipeline 1 MVP: global per-beat velocity outputs for AngioEye.",
     required_deps=["numpy", "h5py", "scipy", "skimage"],
+    dag_produces=[
+        "dopplerview_analysis",
+        "velocity_per_beat",
+        "waveform_shape_metrics",
+    ],
 )
 class WaveformShapeMetrics(ProcessPipeline):
     input_slot = "both"
