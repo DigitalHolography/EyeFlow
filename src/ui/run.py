@@ -2,19 +2,15 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
-from contextlib import ExitStack
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
 from input_output import (
-    EyeFlowOutputManager,
-    PipelineInputView,
     ResolvedHoloInput,
-    open_h5,
     resolve_selected_holo_inputs,
+    run_pipelines_to_output_h5,
 )
 from pipelines import PipelineDescriptor
-from pipeline_engine import format_pipeline_exception
 
 
 class RunMixin:
@@ -150,47 +146,12 @@ class RunMixin:
         holodoppler_h5: Path | None,
         doppler_vision_h5: Path | None,
     ) -> Path:
-        output_h5_path.parent.mkdir(parents=True, exist_ok=True)
-        with ExitStack() as stack:
-            work_h5 = stack.enter_context(open_h5(output_h5_path, "w"))
-            hd_h5 = (
-                stack.enter_context(open_h5(holodoppler_h5, "r"))
-                if holodoppler_h5 is not None
-                else None
-            )
-            dv_h5 = (
-                stack.enter_context(open_h5(doppler_vision_h5, "r"))
-                if doppler_vision_h5 is not None
-                else None
-            )
-            output_manager = EyeFlowOutputManager(work_h5)
-            output_manager.initialize(
-                holodoppler_source_file=(
-                    str(holodoppler_h5) if holodoppler_h5 is not None else None
-                ),
-                doppler_vision_source_file=(
-                    str(doppler_vision_h5) if doppler_vision_h5 is not None else None
-                ),
-            )
-            work_h5.attrs["trim_h5source"] = True
-            work_h5.attrs["pipeline_targets"] = list(target_names)
-            work_h5.attrs["pipeline_order"] = [pipeline.name for pipeline in pipelines]
-
-            for pipeline_desc in pipelines:
-                pipeline = pipeline_desc.instantiate()
-                pipeline_input = PipelineInputView(
-                    work_h5=work_h5,
-                    holodoppler_h5=hd_h5,
-                    doppler_vision_h5=dv_h5,
-                )
-                try:
-                    result = pipeline.run(pipeline_input)
-                except Exception as exc:  # noqa: BLE001
-                    raise RuntimeError(
-                        format_pipeline_exception(exc, pipeline)
-                    ) from exc
-                output_manager.append_pipeline_result(pipeline.name, result)
-                result.output_h5_path = str(output_h5_path)
-                self._log_run(f"[OK] {pipeline.name}")
-                self._advance_progress()
-        return output_h5_path
+        return run_pipelines_to_output_h5(
+            output_h5_path=output_h5_path,
+            pipelines=pipelines,
+            target_names=target_names,
+            holodoppler_h5=holodoppler_h5,
+            doppler_vision_h5=doppler_vision_h5,
+            on_pipeline_success=lambda name: self._log_run(f"[OK] {name}"),
+            on_progress=self._advance_progress,
+        )

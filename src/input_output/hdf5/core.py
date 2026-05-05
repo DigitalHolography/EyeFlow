@@ -1,13 +1,10 @@
-"""Read and write EyeFlow HDF5 files.
+"""Read and write EyeFlow runtime HDF5 files.
 
-This file contains concrete HDF5 operations: opening files, copying contents,
-writing datasets, and appending pipeline results.
+This file contains concrete HDF5 operations used by the runtime output manager.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,117 +15,16 @@ if TYPE_CHECKING:
     from pipeline_engine import DatasetValue, ProcessResult
 
 
-@dataclass
-class MetricsTree:
-    name: str
-    metrics: dict[str, object]
-    attrs: dict[str, object] | None = None
-
-
-def safe_h5_key(name: str) -> str:
-    """Return a filesystem/HDF5-friendly key derived from a logical name."""
-    cleaned = "".join(ch if ch.isalnum() else "_" for ch in name.lower())
-    while "__" in cleaned:
-        cleaned = cleaned.replace("__", "_")
-    cleaned = cleaned.strip("_")
-    return cleaned or "item"
-
-
 def open_h5(path: Path | str, mode: str = "r") -> h5py.File:
     return h5py.File(Path(path), mode)
 
 
-def copy_h5_contents(source_file: Path | str | None, dest: h5py.File) -> None:
-    """Copy all top-level objects and attributes from an existing HDF5 into dest."""
-    if not source_file:
-        return
-    src_path = Path(source_file)
-    if not src_path.exists():
-        return
-    with open_h5(src_path, "r") as src:
-        for key, value in src.attrs.items():
-            dest.attrs[key] = value
-        for key in src.keys():
-            src.copy(src[key], dest, name=key)
-
-
-def create_h5_file(
-    path: Path | str,
-    *,
-    source_file: Path | str | None = None,
-    trim_source: bool = False,
-) -> Path:
-    out_path = Path(path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open_h5(out_path, "w") as h5file:
-        if not trim_source:
-            copy_h5_contents(source_file, h5file)
-        if source_file:
-            h5file.attrs["source_file"] = str(source_file)
-    return out_path
-
-
-def find_first_existing_path(
-    group_or_file: h5py.Group | h5py.File,
-    candidates: Sequence[str],
-) -> str | None:
-    for candidate in candidates:
-        if candidate in group_or_file:
-            return candidate
-    return None
-
-
-def find_child_group_by_attr(
-    group: h5py.Group,
-    attr_name: str,
-    attr_value: object,
-) -> h5py.Group | None:
-    for child in group.values():
-        if isinstance(child, h5py.Group) and child.attrs.get(attr_name) == attr_value:
-            return child
-    return None
-
-
-def read_dataset(
-    group_or_file: h5py.Group | h5py.File,
-    path: str,
-    default: object = None,
-) -> object:
-    try:
-        dataset = group_or_file[path]
-    except Exception:
-        return default
-    try:
-        return dataset[()]
-    except Exception:
-        return default
-
-
-def read_array(
-    group_or_file: h5py.Group | h5py.File,
-    path: str,
-    dtype=None,
-) -> np.ndarray | None:
-    value = read_dataset(group_or_file, path, default=None)
-    if value is None:
-        return None
-    arr = np.asarray(value, dtype=dtype) if dtype is not None else np.asarray(value)
-    if arr.shape == ():
-        return np.asarray([arr.item()], dtype=dtype)
-    return np.ravel(arr)
-
-
-def create_unique_group(parent: h5py.Group, base_name: str) -> h5py.Group:
-    candidate = base_name
-    idx = 1
-    while candidate in parent:
-        candidate = f"{base_name}_{idx}"
-        idx += 1
-    return parent.create_group(candidate)
+def normalize_h5_path(path: object) -> str:
+    return str(path).replace("\\", "/").strip("/")
 
 
 def resolve_dataset_target(root_group: h5py.Group, key: str) -> tuple[h5py.Group, str]:
-    normalized_key = str(key).replace("\\", "/").strip("/")
+    normalized_key = normalize_h5_path(key)
     parts = [part for part in normalized_key.split("/") if part]
     if not parts:
         raise ValueError("Dataset key cannot be empty.")
@@ -188,18 +84,6 @@ def _get_dataset_creation_kwargs(payload: np.ndarray) -> dict[str, object]:
     return {}
 
 
-def _get_or_replace_group(parent: h5py.Group, group_name: str) -> h5py.Group:
-    existing = parent.get(group_name)
-    if existing is not None:
-        if isinstance(existing, h5py.Group):
-            del parent[group_name]
-        else:
-            raise ValueError(
-                f"Cannot create group '{group_name}': a dataset already exists at that path."
-            )
-    return parent.create_group(group_name)
-
-
 def write_value_dataset(group: h5py.Group, key: str, value) -> None:
     from pipeline_engine import DatasetValue
 
@@ -257,73 +141,6 @@ def write_value_dataset(group: h5py.Group, key: str, value) -> None:
         set_attr_safe(dataset, "nameID", str(key))
 
 
-def write_metrics_tree_group(
-    parent: h5py.Group,
-    tree: MetricsTree,
-    *,
-    overwrite: bool = False,
-) -> h5py.Group:
-    group_name = safe_h5_key(tree.name)
-    existing = parent.get(group_name)
-    if existing is not None:
-        if overwrite:
-            del parent[group_name]
-        else:
-            group = create_unique_group(parent, group_name)
-            set_attr_safe(group, "pipeline", tree.name)
-            if tree.attrs:
-                for key, value in tree.attrs.items():
-                    if key == "pipeline":
-                        continue
-                    set_attr_safe(group, key, value)
-            for key, value in tree.metrics.items():
-                write_value_dataset(group, key, value)
-            return group
-
-    group = parent.create_group(group_name)
-    set_attr_safe(group, "pipeline", tree.name)
-    if tree.attrs:
-        for key, value in tree.attrs.items():
-            if key == "pipeline":
-                continue
-            set_attr_safe(group, key, value)
-    for key, value in tree.metrics.items():
-        write_value_dataset(group, key, value)
-    return group
-
-
-def write_metrics_trees_to_h5(
-    h5_path: Path | str,
-    root_path: str,
-    trees: Sequence[MetricsTree],
-    *,
-    overwrite: bool = False,
-) -> None:
-    with open_h5(h5_path, "r+") as h5file:
-        root_group = h5file.require_group(root_path)
-        for tree in trees:
-            write_metrics_tree_group(
-                root_group,
-                tree,
-                overwrite=overwrite,
-            )
-
-
-def append_metrics_trees_to_h5(
-    h5_path: Path | str,
-    root_path: str,
-    trees: Sequence[MetricsTree],
-    *,
-    overwrite: bool = True,
-) -> None:
-    write_metrics_trees_to_h5(
-        h5_path,
-        root_path,
-        trees,
-        overwrite=overwrite,
-    )
-
-
 def initialize_output_h5(
     h5file: h5py.File,
     *,
@@ -343,7 +160,7 @@ def append_result_group(
     h5file: h5py.File,
     pipeline_name: str,
     result: "ProcessResult",
-) -> h5py.Group:
+) -> h5py.File:
     if "EyeFlow" in h5file:
         del h5file["EyeFlow"]
     h5file.attrs["last_pipeline"] = pipeline_name
@@ -356,39 +173,3 @@ def append_result_group(
         write_value_dataset(h5file, key, value)
     h5file.flush()
     return h5file
-
-
-def write_result_h5(
-    result: ProcessResult,
-    path: Path | str,
-    pipeline_name: str,
-    source_file: str | None = None,
-) -> str:
-    out_path = Path(path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open_h5(out_path, "w") as f:
-        copy_h5_contents(source_file, f)
-        if "pipeline" not in f.attrs:
-            f.attrs["pipeline"] = pipeline_name
-        if source_file:
-            f.attrs["source_file"] = source_file
-        append_result_group(f, pipeline_name, result)
-    return str(out_path)
-
-
-def write_combined_results_h5(
-    results: Sequence[tuple[str, ProcessResult]],
-    path: Path | str,
-    source_file: str | None = None,
-    trim_source: bool = False,
-) -> str:
-    out_path = Path(path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open_h5(out_path, "w") as f:
-        if not trim_source:
-            copy_h5_contents(source_file, f)
-        if source_file:
-            f.attrs["source_file"] = source_file
-        for pipeline_name, result in results:
-            append_result_group(f, pipeline_name, result)
-    return str(out_path)

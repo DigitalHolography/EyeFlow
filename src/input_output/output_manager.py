@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -14,7 +16,7 @@ from .schema import DOPPLER_VIEW_ANALYSIS_SCHEMA
 if TYPE_CHECKING:
     import h5py
 
-    from pipeline_engine import ProcessResult
+    from pipeline_engine import PipelineDescriptor, ProcessResult
 
 
 ZERO_BASED_INDEX_PATHS = frozenset(
@@ -94,8 +96,75 @@ class EyeFlowOutputManager:
         write_value_dataset(self.h5file, path, value)
 
 
+def run_pipelines_to_output_h5(
+    *,
+    output_h5_path: Path,
+    pipelines: Sequence["PipelineDescriptor"],
+    target_names: Sequence[str] = (),
+    holodoppler_h5: Path | None,
+    doppler_vision_h5: Path | None,
+    on_pipeline_success: Callable[[str], None] | None = None,
+    on_progress: Callable[[], None] | None = None,
+) -> Path:
+    """Run resolved pipelines against HD/DV inputs and append results to one work H5."""
+    from pipeline_engine import format_pipeline_exception
+
+    from .hdf5 import open_h5
+    from .inputs import PipelineInputView
+
+    output_h5_path = Path(output_h5_path)
+    output_h5_path.parent.mkdir(parents=True, exist_ok=True)
+    with ExitStack() as stack:
+        work_h5 = stack.enter_context(open_h5(output_h5_path, "w"))
+        hd_h5 = (
+            stack.enter_context(open_h5(holodoppler_h5, "r"))
+            if holodoppler_h5 is not None
+            else None
+        )
+        dv_h5 = (
+            stack.enter_context(open_h5(doppler_vision_h5, "r"))
+            if doppler_vision_h5 is not None
+            else None
+        )
+
+        output_manager = EyeFlowOutputManager(work_h5)
+        output_manager.initialize(
+            holodoppler_source_file=(
+                str(holodoppler_h5) if holodoppler_h5 is not None else None
+            ),
+            doppler_vision_source_file=(
+                str(doppler_vision_h5) if doppler_vision_h5 is not None else None
+            ),
+        )
+        work_h5.attrs["trim_h5source"] = True
+        work_h5.attrs["pipeline_targets"] = list(target_names)
+        work_h5.attrs["pipeline_order"] = [pipeline.name for pipeline in pipelines]
+
+        for pipeline_desc in pipelines:
+            pipeline = pipeline_desc.instantiate()
+            pipeline_input = PipelineInputView(
+                work_h5=work_h5,
+                holodoppler_h5=hd_h5,
+                doppler_vision_h5=dv_h5,
+                preferred_input=pipeline_desc.input_slot,
+            )
+            try:
+                result = pipeline.run(pipeline_input)
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(format_pipeline_exception(exc, pipeline)) from exc
+            output_manager.append_pipeline_result(pipeline.name, result)
+            result.output_h5_path = str(output_h5_path)
+            if on_pipeline_success is not None:
+                on_pipeline_success(pipeline.name)
+            if on_progress is not None:
+                on_progress()
+    return output_h5_path
+
+
 def systolic_index_base_for_path(path: str) -> int | None:
-    normalized = _normalize_h5_key(path)
+    from .hdf5 import normalize_h5_path
+
+    normalized = normalize_h5_path(path)
     return 0 if normalized in ZERO_BASED_INDEX_PATHS else None
 
 
@@ -215,6 +284,3 @@ def _metric_value(
         attrs["matlab_function"] = matlab_function
     return (data, attrs) if attrs else data
 
-
-def _normalize_h5_key(key: str) -> str:
-    return str(key).replace("\\", "/").strip("/")

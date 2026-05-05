@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from pathlib import Path
 
-from input_output import HOLO_SUFFIX, holo_input_status, reset_output_dir
+from input_output import (
+    HOLO_SUFFIX,
+    default_output_dir_for_input,
+    default_work_h5_name_for_input,
+    holo_input_status,
+    reset_output_dir,
+)
 
 
 class InputStateMixin:
@@ -55,17 +60,8 @@ class InputStateMixin:
             return
         self._assign_holo_input_path(input_paths[0])
 
-    def _normalized_input_token(self, input_path: Path) -> str:
-        token = re.sub(r"[^A-Za-z0-9]+", "_", input_path.stem).strip("_")
-        return token or input_path.stem or "output"
-
     def _default_work_h5_name_for_input(self, input_path: Path | None) -> str:
-        base_name = (
-            self._normalized_input_token(input_path)
-            if input_path is not None
-            else "output"
-        )
-        return f"{base_name}_eyeflow.h5"
+        return default_work_h5_name_for_input(input_path)
 
     def _default_work_h5_name(self) -> str:
         return self._default_work_h5_name_for_input(self._selected_holo_path())
@@ -152,10 +148,7 @@ class InputStateMixin:
         self._update_minimal_found_statuses(holo_paths)
 
     def _default_output_dir_for_input(self, input_path: Path) -> Path:
-        output_dir = input_path.parent if input_path.is_file() else input_path
-        if input_path.is_file() and input_path.suffix.lower() == HOLO_SUFFIX:
-            output_dir = input_path.parent / input_path.stem / f"{input_path.stem}_EF"
-        return output_dir
+        return default_output_dir_for_input(input_path)
 
     def _prepare_default_output_dir(self, input_path: Path) -> Path:
         output_dir = self._default_output_dir_for_input(input_path)

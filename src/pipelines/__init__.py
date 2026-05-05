@@ -52,18 +52,6 @@ def _descriptor_from_class(cls: type[ProcessPipeline]) -> PipelineDescriptor:
     )
 
 
-def write_result_h5(*args, **kwargs):
-    from input_output import write_result_h5 as _write_result_h5
-
-    return _write_result_h5(*args, **kwargs)
-
-
-def write_combined_results_h5(*args, **kwargs):
-    from input_output import write_combined_results_h5 as _write_combined_results_h5
-
-    return _write_combined_results_h5(*args, **kwargs)
-
-
 def load_pipeline_catalog() -> tuple[
     list[PipelineDescriptor], list[PipelineDescriptor]
 ]:
@@ -90,8 +78,6 @@ __all__ = [
     "PipelineDAG",
     "PipelineExecutionPlan",
     "registerPipeline",
-    "write_result_h5",
-    "write_combined_results_h5",
     "load_pipeline_catalog",
     "MissingPipeline",
     *[cls.__name__ for cls in _PIPELINE_CLASSES],

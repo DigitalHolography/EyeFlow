@@ -10,7 +10,7 @@ from input_output import (
     H5SourceSchema,
     JsonConfigValueSpec,
 )
-from pipelines.utils.input_access import (
+from input_output.input_access import (
     read_nested_int_setting,
     resolve_holodoppler_timing,
     resolve_required_source_array,

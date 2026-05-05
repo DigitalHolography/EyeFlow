@@ -1,11 +1,11 @@
 """
-Command-line interface to run EyeFlow pipelines over a collection of HDF5 files.
+Command-line interface to run EyeFlow pipelines over HOLO selections.
 
 Usage example:
     python cli.py --data data/ --pipelines pipelines.txt --output ./results --zip --zip-name my_run.zip
 
 Inputs:
-    --data / -d        Path to a directory (recursively scanned), a single .h5/.hdf5 file, or a .zip archive of .h5 files.
+    --data / -d        Path to a directory (recursively scanned), a single .holo file, or a .zip archive of HOLO data.
     --pipelines / -p   Text file listing pipeline target names (one per line, '#' and blank lines ignored).
     --output / -o      Base directory where results will be written (input subfolder layout is preserved).
     --zip / -z         When set, compress the outputs into a .zip archive after completion.
@@ -27,15 +27,19 @@ from runtime_limits import configure_numeric_threads
 
 configure_numeric_threads()
 
-import h5py
-
-from input_output import write_combined_results_h5
+from input_output import (
+    HOLO_SUFFIX,
+    ResolvedHoloInput,
+    create_zip_from_tree,
+    default_work_h5_name_for_input,
+    resolve_selected_holo_inputs,
+    run_pipelines_to_output_h5,
+)
 from pipelines import (
     PipelineDescriptor,
-    ProcessResult,
     load_pipeline_catalog,
 )
-from pipeline_engine import PipelineDAG, format_pipeline_exception
+from pipeline_engine import PipelineDAG, PipelineExecutionPlan
 
 
 def _build_pipeline_registry() -> dict[str, PipelineDescriptor]:
@@ -43,9 +47,9 @@ def _build_pipeline_registry() -> dict[str, PipelineDescriptor]:
     return {pipeline.name: pipeline for pipeline in (*available, *missing)}
 
 
-def _load_pipeline_list(
+def _load_pipeline_plan(
     path: Path, registry: dict[str, PipelineDescriptor]
-) -> list[PipelineDescriptor]:
+) -> PipelineExecutionPlan:
     raw_lines = path.read_text(encoding="utf-8").splitlines()
     selected_names: list[str] = []
     missing: list[str] = []
@@ -78,24 +82,23 @@ def _load_pipeline_list(
         raise ValueError(
             "The DAG requires unavailable pipeline(s): " + ", ".join(details)
         )
-    return list(plan.descriptors)
+    return plan
 
 
-def _find_h5_inputs(path: Path) -> list[Path]:
+def _find_holo_inputs(path: Path) -> list[Path]:
     if path.is_file():
-        if path.suffix.lower() in {".h5", ".hdf5"}:
+        if path.suffix.lower() == HOLO_SUFFIX:
             return [path]
-        raise ValueError(f"File is not an HDF5 file: {path}")
+        raise ValueError(f"File is not a {HOLO_SUFFIX} file: {path}")
     if path.is_dir():
-        files = sorted({*path.rglob("*.h5"), *path.rglob("*.hdf5")})
-        return files
+        return sorted(path.rglob(f"*{HOLO_SUFFIX}"))
     raise FileNotFoundError(f"Input path does not exist: {path}")
 
 
 def _prepare_data_root(
     data_path: Path,
 ) -> tuple[Path, tempfile.TemporaryDirectory | None]:
-    """Return a directory containing HDF5 files; extract zip archives when needed."""
+    """Return a directory containing HOLO files; extract zip archives when needed."""
     if data_path.is_file() and data_path.suffix.lower() == ".zip":
         tempdir = tempfile.TemporaryDirectory()
         with zipfile.ZipFile(data_path, "r") as zf:
@@ -104,45 +107,42 @@ def _prepare_data_root(
     return data_path, None
 
 
-def _run_pipelines_on_file(
-    h5_path: Path,
-    pipelines: Sequence[PipelineDescriptor],
-    output_root: Path,
-    output_relative_parent: Path = Path("."),
-) -> Path:
-    target_dir = output_root / output_relative_parent
-    target_dir.mkdir(parents=True, exist_ok=True)
-    combined_h5_out = target_dir / f"{h5_path.stem}_pipelines_result.h5"
+def _unique_output_path(path: Path) -> Path:
+    if not path.exists():
+        return path
     suffix = 1
-    while combined_h5_out.exists():
-        combined_h5_out = target_dir / f"{h5_path.stem}_{suffix}_pipelines_result.h5"
+    while True:
+        candidate = path.with_name(f"{path.stem}_{suffix}{path.suffix}")
+        if not candidate.exists():
+            return candidate
         suffix += 1
-    pipeline_results: list[tuple[str, ProcessResult]] = []
-    with h5py.File(h5_path, "r") as h5file:
-        for pipeline_desc in pipelines:
-            pipeline = pipeline_desc.instantiate()
-            try:
-                result = pipeline.run(h5file)
-            except Exception as exc:  # noqa: BLE001
-                raise RuntimeError(format_pipeline_exception(exc, pipeline)) from exc
-            pipeline_results.append((pipeline.name, result))
-            print(f"[OK] {h5_path.name} -> {pipeline.name}")
-    write_combined_results_h5(
-        pipeline_results, combined_h5_out, source_file=str(h5_path)
+
+
+def _run_pipelines_on_input(
+    resolved_input: ResolvedHoloInput,
+    plan: PipelineExecutionPlan,
+    output_root: Path,
+) -> Path:
+    target_dir = output_root / resolved_input.relative_holo_path.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+    output_h5_path = _unique_output_path(
+        target_dir / default_work_h5_name_for_input(resolved_input.holo_path)
     )
-    for _, result in pipeline_results:
-        result.output_h5_path = str(combined_h5_out)
-    print(f"[OK] {h5_path.name}: combined results -> {combined_h5_out}")
-    return combined_h5_out
-
-
-def _relative_input_parent(h5_path: Path, input_root: Path) -> Path:
-    if input_root.is_dir():
-        try:
-            return h5_path.resolve().relative_to(input_root.resolve()).parent
-        except ValueError:
-            pass
-    return Path(".")
+    print(f"[INPUT] HOLO -> {resolved_input.holo_path}")
+    print(f"[RESOLVED] HD -> {resolved_input.hd_h5}")
+    print(f"[RESOLVED] DV -> {resolved_input.dv_h5}")
+    run_pipelines_to_output_h5(
+        output_h5_path=output_h5_path,
+        pipelines=plan.descriptors,
+        target_names=plan.targets,
+        holodoppler_h5=resolved_input.hd_h5,
+        doppler_vision_h5=resolved_input.dv_h5,
+        on_pipeline_success=lambda name: print(
+            f"[OK] {resolved_input.holo_path.name} -> {name}"
+        ),
+    )
+    print(f"[OK] {resolved_input.holo_path.name}: output -> {output_h5_path}")
+    return output_h5_path
 
 
 def _zip_output_dir(
@@ -160,24 +160,7 @@ def _zip_output_dir(
         zip_path = target_path.expanduser().resolve()
     if zip_path.exists():
         zip_path.unlink()
-    files = sorted(
-        (file_path for file_path in folder.rglob("*") if file_path.is_file()),
-        key=lambda path: str(path.relative_to(folder)),
-    )
-    total_files = len(files)
-    if progress_callback is not None:
-        progress_callback(0, total_files, Path("."))
-    with zipfile.ZipFile(
-        zip_path,
-        "w",
-        compression=zipfile.ZIP_DEFLATED,
-        compresslevel=1,
-    ) as zf:
-        for idx, file_path in enumerate(files, start=1):
-            rel_path = file_path.relative_to(folder)
-            zf.write(file_path, rel_path)
-            if progress_callback is not None:
-                progress_callback(idx, total_files, rel_path)
+    create_zip_from_tree(folder, zip_path, progress_callback=progress_callback)
     return zip_path
 
 
@@ -189,14 +172,15 @@ def run_cli(
     zip_name: str | None = None,
 ) -> int:
     registry = _build_pipeline_registry()
-    pipelines = _load_pipeline_list(pipelines_file, registry)
+    plan = _load_pipeline_plan(pipelines_file, registry)
     data_root, tempdir = _prepare_data_root(data_path)
     work_tempdir_path: Path | None = None
     clean_work_output = False
     try:
-        inputs = _find_h5_inputs(data_root)
+        inputs = _find_holo_inputs(data_root)
         if not inputs:
-            raise ValueError(f"No .h5/.hdf5 files found under {data_path}")
+            raise ValueError(f"No {HOLO_SUFFIX} files found under {data_path}")
+        resolved_inputs = resolve_selected_holo_inputs(inputs)
 
         output_root = output_dir.expanduser().resolve()
         output_root.mkdir(parents=True, exist_ok=True)
@@ -208,19 +192,20 @@ def run_cli(
 
         failures: list[str] = []
         processed_outputs: list[Path] = []
-        for h5_path in inputs:
+        for resolved_input in resolved_inputs:
             try:
-                relative_parent = _relative_input_parent(h5_path, data_root)
-                combined_output = _run_pipelines_on_file(
-                    h5_path,
-                    pipelines,
+                combined_output = _run_pipelines_on_input(
+                    resolved_input,
+                    plan,
                     work_root,
-                    output_relative_parent=relative_parent,
                 )
                 processed_outputs.append(combined_output)
             except Exception as exc:  # noqa: BLE001
-                failures.append(f"{h5_path}: {exc}")
-                print(f"[FAIL] {h5_path.name}: {exc}", file=sys.stderr)
+                failures.append(f"{resolved_input.holo_path}: {exc}")
+                print(
+                    f"[FAIL] {resolved_input.holo_path.name}: {exc}",
+                    file=sys.stderr,
+                )
 
         if zip_outputs:
             try:
@@ -274,14 +259,14 @@ def run_cli(
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Run EyeFlow pipelines over a folder of HDF5 files."
+        description="Run EyeFlow pipelines over one or more HOLO selections."
     )
     parser.add_argument(
         "-d",
         "--data",
         required=True,
         type=Path,
-        help="Directory containing .h5/.hdf5 files (scanned recursively), a single .h5/.hdf5 file, or a .zip archive.",
+        help="Directory containing .holo files (scanned recursively), a single .holo file, or a .zip archive.",
     )
     parser.add_argument(
         "-p",

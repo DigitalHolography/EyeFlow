@@ -21,7 +21,7 @@ from input_output import (
     systolic_index_base_for_path,
 )
 from pipeline_engine import ProcessPipeline, ProcessResult, registerPipeline
-from pipelines.utils.input_access import (
+from input_output.input_access import (
     HolodopplerTiming,
     read_int_setting,
     read_nested_int_setting,

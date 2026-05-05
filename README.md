@@ -79,7 +79,7 @@ When developing from the repository checkout, install the project in editable mo
 
 ### CLI
 
-The CLI is designed for headless processing in environments or clusters.
+The CLI is designed for headless processing in environments or clusters. It accepts a `.holo` file, a folder scanned recursively for `.holo` files, or a `.zip` containing the same HOLO data layout used by the GUI.
 
 ```sh
 # Via uv
@@ -114,9 +114,9 @@ from pipeline_engine import ProcessPipeline, ProcessResult, registerPipeline
     dag_produces=["custom_clinical_metric"],
 )
 class MyAnalysis(ProcessPipeline):
-    def run(self, h5file):
+    def run(self, pipeline_input):
         import torch
-        # 1. Read data using h5py
+        # 1. Read data from pipeline_input.hd, pipeline_input.dv, or pipeline_input.ef
         # 2. Perform calculations
         # 3. Return metrics
 

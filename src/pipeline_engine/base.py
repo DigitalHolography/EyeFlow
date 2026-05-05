@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import csv
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
-
-import h5py
 
 from dependency_utils import find_missing_dependencies
 
@@ -116,18 +113,8 @@ class ProcessPipeline:
             module_name = (self.__class__.__module__ or "").rsplit(".", 1)[-1]
             self.name: str = module_name or self.__class__.__name__
 
-    def run(self, h5file: h5py.File) -> ProcessResult:
+    def run(self, pipeline_input: Any) -> ProcessResult:
         raise NotImplementedError
-
-    def export(self, result: ProcessResult, output_path: str) -> str:
-        """Default CSV export for metrics."""
-        with open(output_path, "w", newline="", encoding="utf-8") as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(["metric", "value"])
-            for key, value in result.metrics.items():
-                writer.writerow([key, value])
-        return output_path
-
 
 class MissingPipeline(ProcessPipeline):
     """Placeholder for pipelines whose dependencies are missing."""

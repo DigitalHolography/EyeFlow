@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
 
+from .hdf5 import normalize_h5_path
 from .schema import (
     DOPPLER_VIEW_SCHEMA,
     HDF5_SUFFIXES,
@@ -92,6 +94,25 @@ def resolve_selected_holo_inputs(
     return resolved
 
 
+def normalized_input_token(input_path: Path) -> str:
+    token = re.sub(r"[^A-Za-z0-9]+", "_", input_path.stem).strip("_")
+    return token or input_path.stem or "output"
+
+
+def default_work_h5_name_for_input(input_path: Path | None) -> str:
+    base_name = (
+        normalized_input_token(input_path) if input_path is not None else "output"
+    )
+    return f"{base_name}_eyeflow.h5"
+
+
+def default_output_dir_for_input(input_path: Path) -> Path:
+    output_dir = input_path.parent if input_path.is_file() else input_path
+    if input_path.is_file() and input_path.suffix.lower() == HOLO_SUFFIX:
+        output_dir = input_path.parent / input_path.stem / f"{input_path.stem}_EF"
+    return output_dir
+
+
 def holo_input_status(
     holo_path: Path,
     *,
@@ -115,7 +136,7 @@ def holo_input_status(
 
 
 def _lookup_key(path: str) -> str:
-    return str(path).replace("\\", "/").strip("/")
+    return normalize_h5_path(path)
 
 
 def _absolute(path: str | Path) -> Path:

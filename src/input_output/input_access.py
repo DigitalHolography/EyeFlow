@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING
 import h5py
 import numpy as np
 
-from input_output.schema import HOLODOPPLER_SCHEMA, JsonConfigValueSpec
+from .schema import HOLODOPPLER_SCHEMA, JsonConfigValueSpec
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from input_output import PipelineInputView
+    from .inputs import PipelineInputView
 
 
 @dataclass(frozen=True)
