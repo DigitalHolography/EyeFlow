@@ -28,6 +28,7 @@ wheelhouse/
 .ipynb_checkpoints/
 
 # IDE / editor
+.python-version
 .vscode/
 .idea/
 *.code-workspace
