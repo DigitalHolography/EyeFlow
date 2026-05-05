@@ -5,7 +5,7 @@ from tkinter import ttk
 
 from app_settings import normalize_pipeline_visibility
 from pipelines import PipelineDescriptor, load_pipeline_catalog
-from pipelines.core.dag import PipelineDAG, PipelineExecutionPlan
+from pipeline_engine import PipelineDAG, PipelineExecutionPlan
 
 from .widgets import _Tooltip
 

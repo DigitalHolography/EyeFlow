@@ -12,8 +12,6 @@ Inputs:
     --zip-name         Optional filename for the archive (default: outputs.zip).
 """
 
-# ruff: noqa: E402
-
 from __future__ import annotations
 
 import argparse
@@ -37,8 +35,7 @@ from pipelines import (
     ProcessResult,
     load_pipeline_catalog,
 )
-from pipelines.core.dag import PipelineDAG
-from pipelines.core.errors import format_pipeline_exception
+from pipeline_engine import PipelineDAG, format_pipeline_exception
 
 
 def _build_pipeline_registry() -> dict[str, PipelineDescriptor]:

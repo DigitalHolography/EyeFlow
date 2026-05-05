@@ -1,11 +1,12 @@
-from .core.base import (
+from pipeline_engine import (
     MissingPipeline,
+    PipelineDAG,
     PipelineDescriptor,
+    PipelineExecutionPlan,
     ProcessPipeline,
     ProcessResult,
     registerPipeline,
 )
-from .core.dag import PipelineDAG, PipelineExecutionPlan
 
 _PIPELINE_CLASSES: list[type[ProcessPipeline]] = []
 _PIPELINE_IMPORT_ERRORS: list[PipelineDescriptor] = []

@@ -14,7 +14,7 @@ from input_output import (
     resolve_selected_holo_inputs,
 )
 from pipelines import PipelineDescriptor
-from pipelines.core.errors import format_pipeline_exception
+from pipeline_engine import format_pipeline_exception
 
 
 class RunMixin:

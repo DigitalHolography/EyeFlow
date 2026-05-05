@@ -20,7 +20,7 @@ from input_output import (
     pack_velocity_per_beat_outputs,
     systolic_index_base_for_path,
 )
-from pipelines.core.base import ProcessPipeline, ProcessResult, registerPipeline
+from pipeline_engine import ProcessPipeline, ProcessResult, registerPipeline
 from pipelines.utils.input_access import (
     HolodopplerTiming,
     read_int_setting,

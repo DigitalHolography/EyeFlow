@@ -14,7 +14,7 @@ from .schema import DOPPLER_VIEW_ANALYSIS_SCHEMA
 if TYPE_CHECKING:
     import h5py
 
-    from pipelines.core.base import ProcessResult
+    from pipeline_engine import ProcessResult
 
 
 ZERO_BASED_INDEX_PATHS = frozenset(

@@ -1,5 +1,3 @@
-# ruff: noqa: E402
-
 from __future__ import annotations
 
 import tkinter as tk
@@ -13,7 +11,7 @@ configure_numeric_threads()
 
 from app_settings import AppSettingsStore
 from pipelines import PipelineDescriptor
-from pipelines.core.dag import PipelineDAG
+from pipeline_engine import PipelineDAG
 
 from .compat import BaseAppTk, sv_ttk
 from .drag_drop import DragDropMixin

@@ -1,7 +1,6 @@
 # Temporary workspace files
 system_design/
 AGENTS.md
-test/
 
 # Byte-compiled / cache
 __pycache__/
@@ -24,26 +23,6 @@ dist/
 *.egg-info/
 *.egg
 wheelhouse/
-
-# Test / coverage
-.tmp/
-.pytest_cache/
-.tox/
-.nox/
-.cache/
-.coverage
-.coverage.*
-htmlcov/
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-
-# Type checking / linting
-.mypy_cache/
-.pytype/
-.pyre/
-.ruff_cache/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -68,6 +47,5 @@ Desktop.ini
 *.zip
 process_result.csv
 pipelines.txt
-requirements-optional.txt
 eyeflow_matlab/
 DAG/

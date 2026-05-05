@@ -15,7 +15,7 @@ import h5py
 import numpy as np
 
 if TYPE_CHECKING:
-    from pipelines.core.base import DatasetValue, ProcessResult
+    from pipeline_engine import DatasetValue, ProcessResult
 
 
 @dataclass
@@ -201,7 +201,7 @@ def _get_or_replace_group(parent: h5py.Group, group_name: str) -> h5py.Group:
 
 
 def write_value_dataset(group: h5py.Group, key: str, value) -> None:
-    from pipelines.core.base import DatasetValue
+    from pipeline_engine import DatasetValue
 
     ds_attrs = None
     data = value

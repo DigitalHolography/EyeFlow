@@ -24,9 +24,6 @@ uv sync
 
 # Optional: include pipeline-specific dependencies
 uv sync --extra pipelines
-
-# Contributor setup: base app + pipeline deps + dev tools
-uv sync --extra pipelines --extra dev
 ```
 
 Run commands through uv so you do not need to activate the virtual environment:
@@ -34,7 +31,6 @@ Run commands through uv so you do not need to activate the virtual environment:
 ```sh
 uv run eyeflow
 uv run eyeflow-cli --help
-uv run lint-tool
 ```
 
 If you prefer to activate the environment manually:
@@ -55,38 +51,9 @@ pip install -e .
 
 # Optional pipeline dependencies
 pip install -e ".[pipelines]"
-
-# Contributor setup
-pip install -e ".[dev,pipelines]"
-```
-
-### 3. Development Setup
-
-```sh
-# After installing dev dependencies with uv
-uv run pre-commit install
-
-# If using an activated pip environment instead
-pre-commit install
 ```
 
 After changing dependencies in `pyproject.toml`, run `uv lock` and commit the updated `uv.lock`.
-
-> [!NOTE]
-> The pre-commit is really usefull to run automatic checks before pushing code, reducing chances of ugly code being pushed.
->
-> If a pre-commit hook fails, it will try to fix all needed files, **so you will need to add them again before recreating the commit**.
-
-> [!TIP]
-> You can run the linter easily, once the `dev` dependencies are installed, with the command:
->
-> ```sh
-> # To only run the checks
-> uv run lint-tool
->
-> # To let the linter try to fix as much as possible
-> uv run lint-tool --fix
-> ```
 
 ---
 
@@ -98,7 +65,7 @@ Launch the main application to process files interactively:
 
 The GUI processes one `.holo` file at a time and lets you select pipeline targets for that input. The DAG resolves the required upstream pipelines and run order. Outputs are written to the default `*_EF` folder derived from the selected `.holo` file.
 
-Use the Pipeline Library tab to select which coded pipeline outputs you want. Selection preferences are saved per user between app launches, including installed builds.
+Use the Pipeline Library tab to select which coded pipeline outputs you want. Selection preferences are saved per user between app launches.
 
 ```sh
 # Via uv
@@ -109,8 +76,6 @@ uv run python src/eye_flow.py
 ```
 
 When developing from the repository checkout, install the project in editable mode or run `python src/eye_flow.py`; edit pipeline code under `src/pipelines/` and restart the app to pick up code changes.
-
-Installed builds only run the pipelines explicitly registered in source code and bundled into the application. They do not load editable pipeline files from folders next to `EyeFlow.exe` or from environment-variable overrides; adding or changing a pipeline requires rebuilding and reinstalling the application.
 
 ### CLI
 
@@ -128,7 +93,7 @@ uv run python src/cli.py
 
 ## Pipeline System
 
-Pipelines are the heart of EyeFlow. To add a new analysis, create a file in `src/pipelines/` with a class inheriting from `ProcessPipeline`.
+Pipelines are the heart of EyeFlow. Pipeline implementations live in `src/pipelines/`; shared execution contracts and DAG code live in `src/pipeline_engine/`. To add a new analysis, create a file in `src/pipelines/` with a class inheriting from `ProcessPipeline`.
 
 To register it to the app, add the decorator `@registerPipeline`, then add an explicit import block for the class in `src/pipelines/__init__.py` so it is appended to the coded pipeline catalog. The app does not scan or import pipeline files dynamically at runtime.
 
@@ -139,7 +104,7 @@ To see complete examples, check out `src/pipelines/waveform_shape_metrics.py` an
 ### Simple Pipeline Structure
 
 ```python
-from pipelines import ProcessPipeline, ProcessResult, registerPipeline
+from pipeline_engine import ProcessPipeline, ProcessResult, registerPipeline
 
 @registerPipeline(
     name="my_analysis",

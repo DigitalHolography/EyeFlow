@@ -16,7 +16,7 @@ from pipelines.utils.input_access import (
     resolve_required_source_array,
 )
 
-from .core.base import ProcessPipeline, ProcessResult, registerPipeline, with_attrs
+from pipeline_engine import ProcessPipeline, ProcessResult, registerPipeline, with_attrs
 
 
 @registerPipeline(
