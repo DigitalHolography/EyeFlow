@@ -8,9 +8,9 @@ from tkinter import filedialog, messagebox
 from input_output import (
     ResolvedHoloInput,
     resolve_selected_holo_inputs,
-    run_pipelines_to_output_h5,
 )
 from pipelines import PipelineDescriptor
+from pipeline_engine import run_pipelines_to_output_h5
 
 
 class RunMixin:

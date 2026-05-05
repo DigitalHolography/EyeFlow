@@ -314,91 +314,6 @@ class EyeFlowView:
         return isinstance(key, str) and self.get(key) is not None
 
 
-class PipelineInputView:
-    def __init__(
-        self,
-        *,
-        work_h5: h5py.File,
-        holodoppler_h5: h5py.File | None = None,
-        doppler_vision_h5: h5py.File | None = None,
-        preferred_input: str = "both",
-    ) -> None:
-        self.work_h5 = work_h5
-        self.hd_h5 = holodoppler_h5
-        self.dv_h5 = doppler_vision_h5
-        self.work = work_h5
-        self.hd = holodoppler_h5
-        self.dv = doppler_vision_h5
-        self.ef = EyeFlowView(work_h5)
-        self.preferred_input = preferred_input
-        self.hd_config = _load_sidecar_config(
-            holodoppler_h5,
-            source_schema=HOLODOPPLER_SCHEMA,
-        )
-        self.dv_config = _load_sidecar_config(
-            doppler_vision_h5,
-            source_schema=DOPPLER_VIEW_SCHEMA,
-        )
-        self.attrs = MergedAttrs(
-            self.work_h5,
-            self._preferred_raw_source(),
-            self._secondary_raw_source(),
-            self.hd_config,
-            self.dv_config,
-        )
-
-    def _preferred_raw_source(self) -> h5py.File | None:
-        if self.preferred_input == "dv":
-            return self.dv_h5 or self.hd_h5
-        return self.hd_h5 or self.dv_h5
-
-    def _secondary_raw_source(self) -> h5py.File | None:
-        preferred = self._preferred_raw_source()
-        if preferred is self.hd_h5:
-            return self.dv_h5
-        if preferred is self.dv_h5:
-            return self.hd_h5
-        return None
-
-    @property
-    def filename(self) -> str:
-        primary = self._preferred_raw_source()
-        if primary is not None and primary.filename is not None:
-            return str(primary.filename)
-        if self.work_h5.filename is not None:
-            return str(self.work_h5.filename)
-        return ""
-
-    def _lookup_in_source(self, source: h5py.File | None, key: str):
-        if source is None:
-            return None
-        return source.get(key)
-
-    def get(self, key: str, default=None):
-        normalized_key = _lookup_key(key)
-        if not normalized_key:
-            return default
-
-        for source in (
-            self.work_h5,
-            self._preferred_raw_source(),
-            self._secondary_raw_source(),
-        ):
-            found = self._lookup_in_source(source, normalized_key)
-            if found is not None:
-                return found
-        return default
-
-    def __getitem__(self, key: str):
-        found = self.get(key)
-        if found is None:
-            raise KeyError(key)
-        return found
-
-    def __contains__(self, key: object) -> bool:
-        return isinstance(key, str) and self.get(key) is not None
-
-
 def _attr_source(source: h5py.File | Mapping[str, object]) -> Mapping[str, object]:
     return source.attrs if isinstance(source, h5py.File) else source
 
@@ -424,6 +339,22 @@ def _load_sidecar_config(
     except (OSError, json.JSONDecodeError):
         return {}
     return _normalize_config_keys(payload)
+
+
+def load_h5_sidecar_config(
+    h5file: h5py.File | None,
+    *,
+    source: str | H5SourceSchema,
+) -> dict[str, object]:
+    if isinstance(source, H5SourceSchema):
+        source_schema = source
+    elif source == "hd":
+        source_schema = HOLODOPPLER_SCHEMA
+    elif source == "dv":
+        source_schema = DOPPLER_VIEW_SCHEMA
+    else:
+        raise ValueError(f"Unknown sidecar config source: {source}")
+    return _load_sidecar_config(h5file, source_schema=source_schema)
 
 
 def _sidecar_config_path(

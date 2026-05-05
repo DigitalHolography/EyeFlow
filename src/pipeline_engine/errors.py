@@ -56,7 +56,9 @@ def format_pipeline_exception(
 
     pipeline_path = None
     if pipeline is not None:
-        pipeline_path = _resolve_path(inspect.getsourcefile(pipeline.__class__))
+        pipeline_path = _resolve_path(getattr(pipeline, "source_path", None))
+        if pipeline_path is None:
+            pipeline_path = _resolve_path(inspect.getsourcefile(pipeline.__class__))
 
     target = _pick_relevant_frame(frames, pipeline_path)
     location = f"{_shorten_path(target.filename)}:{target.lineno} in {target.name}()"

@@ -93,9 +93,9 @@ uv run python src/cli.py
 
 ## Pipeline System
 
-Pipelines are the heart of EyeFlow. Pipeline implementations live in `src/pipelines/`; shared execution contracts and DAG code live in `src/pipeline_engine/`. To add a new analysis, create a file in `src/pipelines/` with a class inheriting from `ProcessPipeline`.
+Pipelines are the heart of EyeFlow. Pipeline implementations live in `src/pipelines/`; shared execution contracts, DAG code, and the runtime context live in `src/pipeline_engine/`. To add a new analysis, create a file in `src/pipelines/` and register one function with `@pipeline`.
 
-To register it to the app, add the decorator `@registerPipeline`, then add an explicit import block for the class in `src/pipelines/__init__.py` so it is appended to the coded pipeline catalog. The app does not scan or import pipeline files dynamically at runtime.
+The app auto-discovers Python files in `src/pipelines/`. A new pipeline file is picked up automatically as long as it imports cleanly and uses the `@pipeline` decorator.
 
 Pipeline execution is DAG-based. The selected pipeline names are treated as targets, every pipeline implicitly produces its own name, and optional `dag_produces` keys can describe intermediate outputs. Use `dag_requires` to declare which produced keys must be available before a pipeline runs. Keys with no producer are treated as external input data.
 
@@ -104,32 +104,20 @@ To see complete examples, check out `src/pipelines/waveform_shape_metrics.py` an
 ### Simple Pipeline Structure
 
 ```python
-from pipeline_engine import ProcessPipeline, ProcessResult, registerPipeline
+from pipeline_engine import pipeline
 
-@registerPipeline(
+@pipeline(
     name="my_analysis",
     description="Calculates a custom clinical metric.",
-    required_deps=["torch>=2.2"],
+    requires=["torch>=2.2"],
     dag_requires=["velocity_per_beat"],
     dag_produces=["custom_clinical_metric"],
 )
-class MyAnalysis(ProcessPipeline):
-    def run(self, pipeline_input):
-        import torch
-        # 1. Read data from pipeline_input.hd, pipeline_input.dv, or pipeline_input.ef
-        # 2. Perform calculations
-        # 3. Return metrics
+def run(ctx):
+    moment0 = ctx.hd.array("moment0")
+    previous = ctx.read("Artery/VelocityPerBeat/value", default=None)
 
-        metrics={"peak_flow": 12.5}
-
-        # Optional attributes applied to the pipeline group.
-        attrs = {
-            "pipeline_version": "1.0",
-            "author": "StaticExample"
-        }
-
-        return ProcessResult(
-            metrics=metrics,
-            attrs=attrs
-        )
+    peak_flow = float(moment0.max())
+    ctx.write("custom/peak_flow", peak_flow, unit="a.u.")
+    ctx.set_attr("pipeline_version", "1.0")
 ```

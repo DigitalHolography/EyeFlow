@@ -33,13 +33,16 @@ from input_output import (
     create_zip_from_tree,
     default_work_h5_name_for_input,
     resolve_selected_holo_inputs,
-    run_pipelines_to_output_h5,
 )
 from pipelines import (
     PipelineDescriptor,
     load_pipeline_catalog,
 )
-from pipeline_engine import PipelineDAG, PipelineExecutionPlan
+from pipeline_engine import (
+    PipelineDAG,
+    PipelineExecutionPlan,
+    run_pipelines_to_output_h5,
+)
 
 
 def _build_pipeline_registry() -> dict[str, PipelineDescriptor]:

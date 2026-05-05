@@ -1,7 +1,6 @@
 """Public HDF5 read/write helpers."""
 
 from .core import (
-    append_result_group,
     initialize_output_h5,
     normalize_h5_path,
     open_h5,
@@ -11,7 +10,6 @@ from .core import (
 )
 
 __all__ = [
-    "append_result_group",
     "initialize_output_h5",
     "normalize_h5_path",
     "open_h5",

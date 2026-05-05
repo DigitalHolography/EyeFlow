@@ -1,14 +1,20 @@
+from __future__ import annotations
+
+import importlib
+import pkgutil
+
 from pipeline_engine import (
+    PIPELINE_REGISTRY,
     MissingPipeline,
     PipelineDAG,
     PipelineDescriptor,
     PipelineExecutionPlan,
     ProcessPipeline,
     ProcessResult,
+    pipeline,
     registerPipeline,
 )
 
-_PIPELINE_CLASSES: list[type[ProcessPipeline]] = []
 _PIPELINE_IMPORT_ERRORS: list[PipelineDescriptor] = []
 
 
@@ -21,35 +27,17 @@ def _import_error_descriptor(name: str, exc: BaseException) -> PipelineDescripto
     )
 
 
-try:
-    from .dual_input_tutorial import DualInputTutorial
-except Exception as exc:  # noqa: BLE001
-    _PIPELINE_IMPORT_ERRORS.append(_import_error_descriptor("dual_input_tutorial", exc))
-else:
-    _PIPELINE_CLASSES.append(DualInputTutorial)
-
-try:
-    from .waveform_shape_metrics import WaveformShapeMetrics
-except Exception as exc:  # noqa: BLE001
-    _PIPELINE_IMPORT_ERRORS.append(
-        _import_error_descriptor("waveform_shape_metrics", exc)
-    )
-else:
-    _PIPELINE_CLASSES.append(WaveformShapeMetrics)
+def _discover_pipeline_modules() -> None:
+    for module in pkgutil.iter_modules(__path__):
+        if module.ispkg or module.name.startswith("_"):
+            continue
+        try:
+            importlib.import_module(f"{__name__}.{module.name}")
+        except Exception as exc:  # noqa: BLE001
+            _PIPELINE_IMPORT_ERRORS.append(_import_error_descriptor(module.name, exc))
 
 
-def _descriptor_from_class(cls: type[ProcessPipeline]) -> PipelineDescriptor:
-    return PipelineDescriptor(
-        name=getattr(cls, "name", cls.__name__),
-        description=getattr(cls, "description", ""),
-        available=bool(getattr(cls, "available", True)),
-        input_slot=getattr(cls, "input_slot", "both"),
-        requires=list(getattr(cls, "requires", [])),
-        missing_deps=list(getattr(cls, "missing_deps", [])),
-        dag_requires=tuple(getattr(cls, "dag_requires", ())),
-        dag_produces=tuple(getattr(cls, "dag_produces", ())),
-        pipeline_cls=cls,
-    )
+_discover_pipeline_modules()
 
 
 def load_pipeline_catalog() -> tuple[
@@ -59,26 +47,25 @@ def load_pipeline_catalog() -> tuple[
     available: list[PipelineDescriptor] = []
     missing: list[PipelineDescriptor] = list(_PIPELINE_IMPORT_ERRORS)
 
-    for cls in _PIPELINE_CLASSES:
-        descriptor = _descriptor_from_class(cls)
+    for descriptor in PIPELINE_REGISTRY.values():
         if descriptor.available:
             available.append(descriptor)
         else:
             missing.append(descriptor)
 
-    available.sort(key=lambda p: p.name.lower())
-    missing.sort(key=lambda p: p.name.lower())
+    available.sort(key=lambda item: item.name.lower())
+    missing.sort(key=lambda item: item.name.lower())
     return available, missing
 
 
 __all__ = [
+    "MissingPipeline",
+    "PipelineDAG",
+    "PipelineDescriptor",
+    "PipelineExecutionPlan",
     "ProcessPipeline",
     "ProcessResult",
-    "PipelineDescriptor",
-    "PipelineDAG",
-    "PipelineExecutionPlan",
-    "registerPipeline",
     "load_pipeline_catalog",
-    "MissingPipeline",
-    *[cls.__name__ for cls in _PIPELINE_CLASSES],
+    "pipeline",
+    "registerPipeline",
 ]

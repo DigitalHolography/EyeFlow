@@ -12,7 +12,7 @@ import h5py
 import numpy as np
 
 if TYPE_CHECKING:
-    from pipeline_engine import DatasetValue, ProcessResult
+    from pipeline_engine import DatasetValue
 
 
 def open_h5(path: Path | str, mode: str = "r") -> h5py.File:
@@ -155,21 +155,3 @@ def initialize_output_h5(
     if primary_source:
         h5file.attrs["source_file"] = primary_source
 
-
-def append_result_group(
-    h5file: h5py.File,
-    pipeline_name: str,
-    result: "ProcessResult",
-) -> h5py.File:
-    if "EyeFlow" in h5file:
-        del h5file["EyeFlow"]
-    h5file.attrs["last_pipeline"] = pipeline_name
-    if result.attrs:
-        for key, value in result.attrs.items():
-            if key == "pipeline":
-                continue
-            set_attr_safe(h5file, key, value)
-    for key, value in result.metrics.items():
-        write_value_dataset(h5file, key, value)
-    h5file.flush()
-    return h5file

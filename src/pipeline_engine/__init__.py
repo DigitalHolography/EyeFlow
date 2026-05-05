@@ -5,11 +5,14 @@ from .base import (
     PipelineDescriptor,
     ProcessPipeline,
     ProcessResult,
+    pipeline,
     registerPipeline,
     with_attrs,
 )
+from .context import H5SourceReader, PipelineContext
 from .dag import PipelineDAG, PipelineExecutionPlan
 from .errors import format_pipeline_exception
+from .runtime import run_pipelines_to_output_h5
 
 
 __all__ = [
@@ -18,10 +21,14 @@ __all__ = [
     "PipelineDAG",
     "PipelineDescriptor",
     "PipelineExecutionPlan",
+    "PipelineContext",
+    "H5SourceReader",
     "ProcessPipeline",
     "ProcessResult",
     "MissingPipeline",
     "format_pipeline_exception",
+    "pipeline",
     "registerPipeline",
+    "run_pipelines_to_output_h5",
     "with_attrs",
 ]

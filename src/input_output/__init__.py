@@ -11,7 +11,6 @@ from .archives import (
     temporary_zip_from_tree,
 )
 from .hdf5 import (
-    append_result_group,
     initialize_output_h5,
     normalize_h5_path,
     open_h5,
@@ -19,11 +18,9 @@ from .hdf5 import (
     set_attr_safe,
     write_value_dataset,
 )
-from .output_manager import (
-    EyeFlowOutputManager,
+from .metric_packers import (
     pack_dopplerview_analysis_outputs,
     pack_velocity_per_beat_outputs,
-    run_pipelines_to_output_h5,
     systolic_index_base_for_path,
 )
 from .schema import (
@@ -70,11 +67,11 @@ from .inputs import (
     EyeFlowView,
     HoloInputStatus,
     MergedAttrs,
-    PipelineInputView,
     ResolvedHoloInput,
     default_output_dir_for_input,
     default_work_h5_name_for_input,
     holo_input_status,
+    load_h5_sidecar_config,
     normalized_input_token,
     resolve_holo_input,
     resolve_selected_holo_inputs,
@@ -89,7 +86,6 @@ __all__ = [
     "HOLO_H5_SUBDIR",
     "HOLO_SUFFIX",
     "EyeFlowView",
-    "EyeFlowOutputManager",
     "HoloCompanionH5Layout",
     "HoloInputStatus",
     "DOPPLER_VIEW_ANALYSIS_SCHEMA",
@@ -122,11 +118,9 @@ __all__ = [
     "HOLODOPPLER_SCHEMA",
     "JsonConfigValueSpec",
     "MergedAttrs",
-    "PipelineInputView",
     "ResolvedHoloInput",
     "default_output_dir_for_input",
     "default_work_h5_name_for_input",
-    "append_result_group",
     "create_zip_from_tree",
     "extract_file_from_zip",
     "extract_folder_from_zip",
@@ -134,6 +128,7 @@ __all__ = [
     "holo_input_status",
     "initialize_output_h5",
     "iter_metric_datasets",
+    "load_h5_sidecar_config",
     "normalize_h5_path",
     "open_h5",
     "normalized_input_token",
@@ -145,7 +140,6 @@ __all__ = [
     "resolve_holo_input",
     "resolve_dataset_target",
     "resolve_selected_holo_inputs",
-    "run_pipelines_to_output_h5",
     "set_attr_safe",
     "systolic_index_base_for_path",
     "temporary_zip_from_tree",

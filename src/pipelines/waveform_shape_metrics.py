@@ -20,7 +20,7 @@ from input_output import (
     pack_velocity_per_beat_outputs,
     systolic_index_base_for_path,
 )
-from pipeline_engine import ProcessPipeline, ProcessResult, registerPipeline
+from pipeline_engine import pipeline
 from input_output.input_access import (
     HolodopplerTiming,
     read_int_setting,
@@ -259,19 +259,18 @@ def run_waveform_shape_metrics(
     return metrics, context.attrs
 
 
-@registerPipeline(
+@pipeline(
     name="waveform_shape_metrics",
     description="Pipeline 1 MVP: global per-beat velocity outputs for AngioEye.",
-    required_deps=["numpy", "h5py", "scipy", "skimage"],
+    requires=["numpy", "h5py", "scipy", "skimage"],
     dag_produces=[
         "dopplerview_analysis",
         "velocity_per_beat",
         "waveform_shape_metrics",
     ],
+    input_slot="both",
 )
-class WaveformShapeMetrics(ProcessPipeline):
-    input_slot = "both"
-
-    def run(self, h5file) -> ProcessResult:
-        metrics, attrs = run_waveform_shape_metrics(h5file)
-        return ProcessResult(metrics=metrics, attrs={"pipeline": self.name, **attrs})
+def run(ctx) -> None:
+    metrics, attrs = run_waveform_shape_metrics(ctx)
+    ctx.write_many(metrics)
+    ctx.set_attrs(attrs)
