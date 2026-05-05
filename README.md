@@ -91,6 +91,64 @@ uv run python src/cli.py
 
 ---
 
+## Repository Architecture
+
+EyeFlow is organized around one runtime flow: resolve one or more `.holo` inputs, open the locked Holodoppler and DopplerVision HDF5 files, run selected pipelines through the DAG, and write one EyeFlow work HDF5 output.
+
+```text
+src/
+  eye_flow.py              GUI entrypoint
+  cli.py                   Headless CLI entrypoint
+  launcher.py              Console-script launcher
+  app_settings.py          User settings persistence
+  runtime_limits.py        Numeric thread/runtime limits (Need Rework)
+
+  pipeline_engine/         Pipeline authoring and execution framework
+    base.py                @pipeline decorator, pipeline descriptors, result/value types
+    context.py             PipelineContext passed to pipeline functions
+    dag.py                 DAG resolver for pipeline dependencies
+    runtime.py             Opens HD/DV/work H5 files and runs pipelines
+    errors.py              Pipeline exception formatting
+
+  pipelines/               User-authored pipeline files
+    __init__.py            Auto-discovers pipeline modules
+    *.py                   One or more @pipeline functions
+
+  input_output/            Locked input schemas and HDF5 IO primitives
+    schema/                Holodoppler/DopplerVision HDF5 and config contracts
+    hdf5/                  Low-level HDF5 read/write helpers
+    inputs.py              .holo resolution and sidecar config loading
+    input_access.py        Shared source-reading helpers for pipelines
+    metric_packers.py      Domain-specific metric-to-HDF5-path formatting
+    archives/              ZIP/archive helpers
+
+  domain/                  Scientific/domain computations independent of UI/runtime
+    blood_flow_velocity/   Per-beat velocity analysis
+    steps/                 DopplerView-like processing steps reused by pipelines
+
+  ui/                      Tkinter GUI code split into mixins and views
+```
+
+### Runtime Flow
+
+1. The GUI or CLI resolves selected `.holo` files into their required HD and DV HDF5 companions using `input_output.inputs`.
+2. The selected pipeline targets are expanded into an execution plan by `pipeline_engine.PipelineDAG`.
+3. `pipeline_engine.runtime.run_pipelines_to_output_h5()` opens HD, DV, and work HDF5 files.
+4. Each pipeline receives a `PipelineContext` named `ctx`.
+5. Pipelines read locked inputs through `ctx.hd` and `ctx.dv`, read previous outputs through `ctx.read()` / `ctx.ef`, and write outputs through `ctx.write()` or `ctx.write_many()`.
+6. The work HDF5 is updated after each pipeline, so downstream DAG steps can consume upstream outputs.
+
+### Layer Responsibilities
+
+- `pipeline_engine` owns the pipeline API, dependency resolution, runtime context, and execution loop.
+- `pipelines` contains analysis code. Pipeline authors should usually only edit this folder.
+- `input_output/schema` defines the locked HD/DV source formats. These schemas are shared by every pipeline.
+- `input_output/hdf5` stays low-level. It should not contain pipeline-specific logic.
+- `domain` contains reusable scientific computations that can be called from pipelines without knowing about HDF5 or the UI.
+- `ui` and `cli.py` are entrypoints only. They should not implement pipeline business logic.
+
+---
+
 ## Pipeline System
 
 Pipelines are the heart of EyeFlow. Pipeline implementations live in `src/pipelines/`; shared execution contracts, DAG code, and the runtime context live in `src/pipeline_engine/`. To add a new analysis, create a file in `src/pipelines/` and register one function with `@pipeline`.
