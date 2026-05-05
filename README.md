@@ -110,9 +110,10 @@ src/
     runtime.py             Opens HD/DV/work H5 files and runs pipelines
     errors.py              Pipeline exception formatting
 
-  pipelines/               User-authored pipeline files
-    __init__.py            Auto-discovers pipeline modules
-    *.py                   One or more @pipeline functions
+  pipelines/               User-authored pipeline files or folders
+    __init__.py            Auto-discovers pipeline modules/packages
+    *.py                   Small single-file pipelines
+    */__init__.py          Entrypoint for larger package pipelines
 
   input_output/            Locked input schemas and HDF5 IO primitives
     schema/                Holodoppler/DopplerVision HDF5 and config contracts
@@ -151,13 +152,23 @@ src/
 
 ## Pipeline System
 
-Pipelines are the heart of EyeFlow. Pipeline implementations live in `src/pipelines/`; shared execution contracts, DAG code, and the runtime context live in `src/pipeline_engine/`. To add a new analysis, create a file in `src/pipelines/` and register one function with `@pipeline`.
+Pipelines are the heart of EyeFlow. Pipeline implementations live in `src/pipelines/`; shared execution contracts, DAG code, and the runtime context live in `src/pipeline_engine/`. To add a new analysis, create a single file or a folder package in `src/pipelines/` and register one function with `@pipeline`.
 
-The app auto-discovers Python files in `src/pipelines/`. A new pipeline file is picked up automatically as long as it imports cleanly and uses the `@pipeline` decorator.
+The app auto-discovers Python files and package folders in `src/pipelines/`. A new pipeline is picked up automatically as long as it imports cleanly and uses the `@pipeline` decorator. Names starting with `_` are ignored by discovery.
 
 Pipeline execution is DAG-based. The selected pipeline names are treated as targets, every pipeline implicitly produces its own name, and optional `dag_produces` keys can describe intermediate outputs. Use `dag_requires` to declare which produced keys must be available before a pipeline runs. Keys with no producer are treated as external input data.
 
-To see complete examples, check out `src/pipelines/waveform_shape_metrics.py` and `src/pipelines/dual_input_tutorial.py`.
+Use a single `.py` file for small pipelines. Use a folder when the pipeline grows enough to need helper modules:
+
+```text
+src/pipelines/my_large_pipeline/
+  __init__.py      # registers the pipeline with @pipeline
+  runner.py        # orchestration code
+  inputs.py        # HDF5/input conversion helpers
+  models.py        # local dataclasses or types
+```
+
+To see complete examples, check out `src/pipelines/package_pipeline_tutorial/`, `src/pipelines/waveform_shape_metrics/`, and `src/pipelines/dual_input_tutorial.py`.
 
 ### Simple Pipeline Structure
 

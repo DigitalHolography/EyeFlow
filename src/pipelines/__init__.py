@@ -29,7 +29,7 @@ def _import_error_descriptor(name: str, exc: BaseException) -> PipelineDescripto
 
 def _discover_pipeline_modules() -> None:
     for module in pkgutil.iter_modules(__path__):
-        if module.ispkg or module.name.startswith("_"):
+        if module.name.startswith("_"):
             continue
         try:
             importlib.import_module(f"{__name__}.{module.name}")
