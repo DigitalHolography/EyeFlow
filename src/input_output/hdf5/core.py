@@ -55,6 +55,7 @@ def set_attr_safe(h5obj: h5py.File | h5py.Group | h5py.Dataset, key: str, value)
             data = np.asarray(value, dtype=h5py.string_dtype(encoding="utf-8"))
         else:
             data = np.asarray(value)
+    data = _downcast_numeric_payload(data)
     try:
         h5obj.attrs[key] = data
     except (TypeError, ValueError):
@@ -73,11 +74,35 @@ def _normalize_dataset_payload(data, ds_attrs):
     elif isinstance(payload, (list, tuple)):
         payload = np.asarray(payload)
 
+    payload = _downcast_numeric_payload(payload)
+
     if original_class is not None:
         ds_attrs = {} if ds_attrs is None else dict(ds_attrs)
         ds_attrs.setdefault("original_class", original_class)
 
     return payload, ds_attrs
+
+
+def _downcast_numeric_payload(payload):
+    if isinstance(payload, bool):
+        return payload
+    if isinstance(payload, float):
+        return np.float32(payload)
+    if isinstance(payload, int):
+        return np.int32(payload)
+    if isinstance(payload, complex):
+        return np.complex64(payload)
+    if not isinstance(payload, np.ndarray):
+        return payload
+    if payload.dtype.kind == "f":
+        return payload.astype(np.float32, copy=False)
+    if payload.dtype.kind == "c":
+        return payload.astype(np.complex64, copy=False)
+    if payload.dtype.kind == "i":
+        return payload.astype(np.int32, copy=False)
+    if payload.dtype.kind == "u":
+        return payload.astype(np.uint32, copy=False)
+    return payload
 
 
 def _get_dataset_creation_kwargs(payload: np.ndarray) -> dict[str, object]:

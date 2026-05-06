@@ -1,3 +1,5 @@
+"""Read fixed HD/DV inputs for the waveform-shape metrics pipeline."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -39,6 +41,10 @@ def dopplerview_cache_from_h5(ctx) -> dict[str, object]:
             "retinal vein mask",
             DOPPLER_VIEW_SCHEMA.dataset_path("retinal_vein_mask"),
         ),
+        "retinal_labeled_vessels": _read_optional_int_array(
+            ctx.dv,
+            DOPPLER_VIEW_SCHEMA.dataset_path("retinal_labeled_vessels"),
+        ),
     }
 
 
@@ -72,11 +78,11 @@ def _read_required_float_array(
         if dopplerview_moment
         else resolved.value
     )
-    return np.asarray(value, dtype=np.float64)
+    return np.asarray(value, dtype=np.float32)
 
 
 def _coerce_dopplerview_moment(value) -> np.ndarray:
-    squeezed = np.squeeze(np.asarray(value))
+    squeezed = np.squeeze(np.asarray(value, dtype=np.float32))
     if squeezed.ndim != 3:
         raise ValueError(
             "Holodoppler moment datasets must become 3-D after squeeze, "
@@ -93,3 +99,12 @@ def _read_required_bool_array(source, source_name: str, logical_name: str, path:
         path=path,
     )
     return np.asarray(resolved.value, dtype=bool)
+
+
+def _read_optional_int_array(source, path: str) -> np.ndarray | None:
+    if source.h5file is None:
+        return None
+    found = source.h5file.get(path)
+    if found is None:
+        return None
+    return np.asarray(found[()], dtype=np.int32)

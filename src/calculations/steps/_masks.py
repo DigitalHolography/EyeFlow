@@ -25,26 +25,3 @@ def elliptical_annulus_mask(
     outer = elliptical_mask(ny, nx, outer_radius_frac)
     inner = elliptical_mask(ny, nx, inner_radius_frac)
     return outer & ~inner
-
-
-def binary_dilation(mask, radius: int) -> np.ndarray:
-    mask_array = np.asarray(mask, dtype=bool)
-    radius = int(max(radius, 0))
-    if radius == 0:
-        return mask_array.copy()
-
-    footprint = _disk_footprint(radius)
-    padded = np.pad(mask_array, radius, mode="constant", constant_values=False)
-    dilated = np.zeros_like(mask_array, dtype=bool)
-    for row, col in np.argwhere(footprint):
-        dilated |= padded[
-            row : row + mask_array.shape[0],
-            col : col + mask_array.shape[1],
-        ]
-    return dilated
-
-
-def _disk_footprint(radius: int) -> np.ndarray:
-    coords = np.arange(-radius, radius + 1)
-    y_grid, x_grid = np.meshgrid(coords, coords, indexing="ij")
-    return (x_grid**2 + y_grid**2) <= radius**2

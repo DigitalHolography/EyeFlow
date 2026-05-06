@@ -52,6 +52,19 @@ class H5DatasetSpec(BaseModel):
     def normalize_path(cls, value: str) -> str:
         return value.replace("\\", "/").strip("/")
 
+    @field_validator("dtype")
+    @classmethod
+    def normalize_dtype(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.lower()
+        aliases = {"float": "float32", "int": "int32"}
+        if normalized in aliases:
+            return aliases[normalized]
+        if "64" in normalized or normalized == "complex128":
+            raise ValueError(f"Schema dtype '{value}' must use a 32-bit variant.")
+        return normalized
+
 
 class JsonConfigValueSpec(BaseModel):
     """One config value that may live in HDF5 or a sidecar JSON file."""

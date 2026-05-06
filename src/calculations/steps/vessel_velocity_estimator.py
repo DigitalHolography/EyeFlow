@@ -9,7 +9,7 @@ import numpy as np
 from runtime_limits import cap_parallel_jobs
 
 from ._masks import elliptical_mask
-from .base import DomainStep as BaseStep
+from .base import CalculationStep as BaseStep
 
 
 class VesselVelocityEstimatorStep(BaseStep):
@@ -40,16 +40,16 @@ class VesselVelocityEstimatorStep(BaseStep):
     def run(self, ctx):
 
         # ---- Requires ----
-        moment0 = ctx.require("moment0")
-        moment2 = ctx.require("moment2")
+        moment0 = np.asarray(ctx.require("moment0"), dtype=np.float32)
+        moment2 = np.asarray(ctx.require("moment2"), dtype=np.float32)
 
         artery_mask = ctx.require("retinal_artery_mask")
         vein_mask = ctx.require("retinal_vein_mask")
         vessel_mask = artery_mask | vein_mask
 
         # Compute fRMS
-        mean_m0 = np.mean(moment0, axis=(-1, -2), keepdims=True)
-        fRMS = np.sqrt(moment2 / mean_m0)
+        mean_m0 = np.mean(moment0, axis=(-1, -2), keepdims=True, dtype=np.float32)
+        fRMS = np.sqrt(moment2 / mean_m0).astype(np.float32, copy=False)
 
         # Inpaint fRMS to estimate background
         local_background_dist = ctx.dopplerview_config["VelocityEstimation"][
@@ -63,7 +63,7 @@ class VesselVelocityEstimatorStep(BaseStep):
         print(f"    - Inpainting fRMS with {n_jobs} parallel jobs")
 
         def _inpaint_frame(frame, mask):
-            return inpaint.inpaint_biharmonic(frame, mask)
+            return inpaint.inpaint_biharmonic(frame, mask).astype(np.float32)
 
         fRMSbkg = _run_in_parallel(
             partial(_inpaint_frame, mask=mask), fRMS, n_jobs=n_jobs, chunking=False
@@ -72,10 +72,11 @@ class VesselVelocityEstimatorStep(BaseStep):
         # fRMSbkg = np.stack(np.array([inpaint.inpaint_biharmonic(frame, mask) for frame in fRMS]), axis=0)
 
         # Velocity estimation
-        A = fRMS**2 - fRMSbkg**2
-        deltafRMS = np.sign(A) * np.sqrt(np.abs(A))
+        A = (fRMS**2 - fRMSbkg**2).astype(np.float32, copy=False)
+        deltafRMS = (np.sign(A) * np.sqrt(np.abs(A))).astype(np.float32, copy=False)
 
-        velocity_map = 2 * 852e-9 / np.sin(0.25) * deltafRMS * 1e6  # mm/s
+        velocity_scale = np.float32(2 * 852e-9 / np.sin(0.25) * 1e6)
+        velocity_map = (velocity_scale * deltafRMS).astype(np.float32)  # mm/s
 
         ctx.set("velocity_map", velocity_map)
 
@@ -89,17 +90,17 @@ class VesselVelocityEstimatorStep(BaseStep):
         #     hist_matrix[i,:] = hist
 
         # ctx.set("hist_matrix", hist_matrix)
-        ctx.set("velocity_map_avg", np.mean(velocity_map,axis=0))
-        ctx.set("fRMS_avg", np.mean(fRMS,axis=0))
-        ctx.set("fRMS_bkg_avg", np.mean(fRMSbkg,axis=0))
+        ctx.set("velocity_map_avg", np.mean(velocity_map, axis=0, dtype=np.float32))
+        ctx.set("fRMS_avg", np.mean(fRMS, axis=0, dtype=np.float32))
+        ctx.set("fRMS_bkg_avg", np.mean(fRMSbkg, axis=0, dtype=np.float32))
 
         sz = velocity_map.shape
 
         section_mask = elliptical_mask(sz[-2], sz[-1], 0.5) & (~(elliptical_mask(sz[-2], sz[-1], 0.2)))
 
-        artery_sig = np.sum(velocity_map * section_mask * artery_mask, axis=(-2,-1)) / np.count_nonzero(section_mask * artery_mask)
+        artery_sig = _masked_signal(velocity_map, section_mask & artery_mask)
 
-        vein_sig = np.sum(velocity_map * section_mask * vein_mask, axis=(-2,-1)) / np.count_nonzero(section_mask * vein_mask)
+        vein_sig = _masked_signal(velocity_map, section_mask & vein_mask)
 
         ctx.set("retinal_vessel_velocity", velocity_map)
         ctx.set("retinal_artery_velocity_signal", artery_sig)
@@ -125,15 +126,23 @@ def _cpu_count() -> int:
     return joblib.cpu_count()
 
 
+def _masked_signal(velocity_map: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    count = np.count_nonzero(mask)
+    if count == 0:
+        return np.full((velocity_map.shape[0],), np.nan, dtype=np.float32)
+    total = np.sum(velocity_map * mask, axis=(-2, -1), dtype=np.float32)
+    return (total / np.float32(count)).astype(np.float32, copy=False)
+
+
 def _run_in_parallel(func, iterable, n_jobs=-1, chunking=False):
     try:
         import joblib
     except ModuleNotFoundError:
-        return np.stack([func(item) for item in iterable], axis=0)
+        return np.stack([func(item) for item in iterable], axis=0).astype(np.float32)
     if n_jobs == -1:
         n_jobs = joblib.cpu_count()
     n_jobs = cap_parallel_jobs(n_jobs)
     results = joblib.Parallel(n_jobs=n_jobs, backend="threading")(
         joblib.delayed(func)(item) for item in iterable
     )
-    return np.stack(results, axis=0)
+    return np.stack(results, axis=0).astype(np.float32)

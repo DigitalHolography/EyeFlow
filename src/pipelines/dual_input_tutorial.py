@@ -45,7 +45,7 @@ def _numeric_dataset_summary(values: np.ndarray) -> tuple[np.float32, np.int32]:
         return np.float32(np.nan), np.int32(0)
 
     try:
-        numeric = np.asarray(values, dtype=float)
+        numeric = np.asarray(values, dtype=np.float32)
     except (TypeError, ValueError):
         return np.float32(np.nan), np.int32(values.size)
 

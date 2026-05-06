@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .base import DomainStep as BaseStep
+from .base import CalculationStep as BaseStep
 
 
 class ArterialWaveformAnalysisStep(BaseStep):
@@ -23,14 +23,15 @@ class ArterialWaveformAnalysisStep(BaseStep):
 
     def find_systole_index(self, pulse_artery):
         butter, filtfilt, find_peaks = _scipy_signal_dependencies()
+        pulse = np.asarray(pulse_artery, dtype=np.float32)
         Wn = 0.5  # cutoff frequency in 0 1 Niquist freq TODO parametrize
         N = 1     # filter order TODO parametrize
         b, a = butter(N, Wn, btype="low")
-        pulse_filtered = filtfilt(b, a, pulse_artery)
+        pulse_filtered = filtfilt(b, a, pulse).astype(np.float32)
         validation_distance = 10 # distance minimal to be accepted TODO parametrize
         min_peak_distance = 40 # distance between two peaks minimal TODO parametrize
 
-        diff_signal = np.gradient(pulse_filtered)
+        diff_signal = np.gradient(pulse_filtered).astype(np.float32)
 
         # Step 3: Detect peaks
         min_peak_height = np.percentile(diff_signal, 95) # TODO parametrize
@@ -49,9 +50,9 @@ class ArterialWaveformAnalysisStep(BaseStep):
             for idx in peaks[1:]:
                 if idx - validated[-1] >= min_distance:
                     validated.append(idx)
-            return np.array(validated)
+            return np.asarray(validated, dtype=np.int32)
 
-        peaks = validate_peaks(peaks, validation_distance) #
+        peaks = validate_peaks(peaks.astype(np.int32), validation_distance) #
 
         return peaks, pulse_filtered
 
@@ -60,11 +61,15 @@ class ArterialWaveformAnalysisStep(BaseStep):
 
         ninterp = 128 # TODO parametrize
 
-        sig_perbeat = np.zeros(shape=(nbeat,ninterp))
+        sig_perbeat = np.zeros(shape=(nbeat, ninterp), dtype=np.float32)
 
         for i in range(nbeat-1):
             beat_sig = sig[peaks[i]:peaks[i+1]]
-            beat_sig_interp = np.interp(np.linspace(0,1,ninterp),np.linspace(0,1,len(beat_sig)),beat_sig)
+            beat_sig_interp = np.interp(
+                np.linspace(0, 1, ninterp, dtype=np.float32),
+                np.linspace(0, 1, len(beat_sig), dtype=np.float32),
+                beat_sig,
+            ).astype(np.float32)
             sig_perbeat[i,:] = beat_sig_interp
 
         return sig_perbeat
@@ -82,7 +87,12 @@ class ArterialWaveformAnalysisStep(BaseStep):
         ctx.set("retinal_artery_velocity_signal_filtered_perbeat",sig_perbeat)
         ctx.set("retinal_artery_velocity_signal_filtered",sig_filtered)
         ctx.set("beat_indices", peaks)
-        ctx.set("time_per_beat", np.diff(peaks) * stride/fs) # TODO parametrize look for params
+        ctx.set(
+            "time_per_beat",
+            (np.diff(peaks).astype(np.float32) * np.float32(stride / fs)).astype(
+                np.float32
+            ),
+        ) # TODO parametrize look for params
 
 
 def _scipy_signal_dependencies():

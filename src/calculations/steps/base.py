@@ -10,7 +10,7 @@ from typing import ClassVar
 import numpy as np
 
 
-class DomainStep:
+class CalculationStep:
     name: ClassVar[str] = ""
     requires: ClassVar[frozenset[str]] = frozenset()
     produces: ClassVar[frozenset[str]] = frozenset()
@@ -40,6 +40,9 @@ class DomainStep:
             for key in sorted(self.requires)
             if key in inputs
         }
+
+
+DomainStep = CalculationStep
 
 
 def _hash_value(value) -> object:

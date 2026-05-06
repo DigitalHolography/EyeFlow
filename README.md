@@ -123,7 +123,8 @@ src/
     metric_packers.py      Domain-specific metric-to-HDF5-path formatting
     archives/              ZIP/archive helpers
 
-  domain/                  Scientific/domain computations independent of UI/runtime
+  calculations/            Pure scientific computations independent of UI/runtime
+    math/                  Reusable mathematical helpers
     blood_flow_velocity/   Per-beat velocity analysis
     steps/                 DopplerView-like processing steps reused by pipelines
 
@@ -145,7 +146,7 @@ src/
 - `pipelines` contains analysis code. Pipeline authors should usually only edit this folder.
 - `input_output/schema` defines the locked HD/DV source formats. These schemas are shared by every pipeline.
 - `input_output/hdf5` stays low-level. It should not contain pipeline-specific logic.
-- `domain` contains reusable scientific computations that can be called from pipelines without knowing about HDF5 or the UI.
+- `calculations` contains reusable scientific computations that can be called from pipelines without knowing about HDF5 or the UI.
 - `ui` and `cli.py` are entrypoints only. They should not implement pipeline business logic.
 
 ---

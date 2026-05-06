@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from domain.blood_flow_velocity import PerBeatAnalysisInput
+from calculations.blood_flow_velocity import PerBeatAnalysisInput
 
 
 @dataclass(frozen=True)

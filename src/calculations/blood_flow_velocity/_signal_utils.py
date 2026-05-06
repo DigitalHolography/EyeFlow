@@ -17,7 +17,7 @@ def normalize_cycle_boundaries(
     *,
     index_base: int | None = None,
 ) -> np.ndarray:
-    boundaries = np.asarray(cycle_boundaries, dtype=np.int64).reshape(-1)
+    boundaries = np.asarray(cycle_boundaries, dtype=np.int32).reshape(-1)
     if boundaries.size < 2:
         raise ValueError("At least two cycle boundaries are required.")
     if signal_length <= 0:
@@ -26,7 +26,7 @@ def normalize_cycle_boundaries(
     inferred_index_base = _infer_index_base(boundaries, signal_length, index_base)
     normalized = boundaries - int(inferred_index_base)
     _validate_cycle_boundaries(normalized, signal_length, inferred_index_base)
-    return normalized.astype(np.int64, copy=False)
+    return normalized.astype(np.int32, copy=False)
 
 
 def _infer_index_base(

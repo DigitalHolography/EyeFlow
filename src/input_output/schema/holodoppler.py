@@ -25,14 +25,14 @@ HOLODOPPLER_SCHEMA = H5SourceSchema(
         "moment0": H5DatasetSpec(
             key="moment0",
             path="moment0",
-            dtype="float",
+            dtype="float32",
             dims=("frame", "y", "x"),
             description="Holodoppler moment 0 stack.",
         ),
         "moment2": H5DatasetSpec(
             key="moment2",
             path="moment2",
-            dtype="float",
+            dtype="float32",
             dims=("frame", "y", "x"),
             description="Holodoppler moment 2 stack.",
         ),
