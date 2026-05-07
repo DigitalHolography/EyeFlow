@@ -42,8 +42,8 @@ methods
         else
             directory = path;
 
-            if ~isfolder(fullfile(path, "raw"))
-                error('No raw file found at: %s\nPlease check folder path and filename.', path);
+            if ~isfolder(fullfile(path, "h5"))
+                error('No h5 file found at: %s\nPlease check folder path and filename.', path);
             end
 
         end
@@ -73,16 +73,16 @@ methods
     end
 
     function loadFromRawDirectory(obj)
-        dir_path_raw = fullfile(obj.directory, 'raw');
-        h5_files = dir(fullfile(dir_path_raw, '*.h5'));
-        raw_files = dir(fullfile(dir_path_raw, '*.raw'));
+        dir_path_h5 = fullfile(obj.directory, 'h5');
+        h5_files = dir(fullfile(dir_path_h5, '*.h5'));
+        raw_files = dir(fullfile(dir_path_h5, '*.raw'));
 
         if ~isempty(h5_files)
             obj.filereadHDF5();
         elseif ~isempty(raw_files)
             obj.filereadRaw();
         else
-            error('No data file was found in the folder: %s', dir_path_raw);
+            error('No data file was found in the folder: %s', dir_path_h5);
         end
 
     end
