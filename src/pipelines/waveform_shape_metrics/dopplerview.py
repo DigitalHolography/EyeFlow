@@ -4,6 +4,10 @@ from calculations.steps import ArterialWaveformAnalysisStep, VesselVelocityEstim
 from input_output import DOPPLER_VIEW_SCHEMA
 from input_output.input_access import HolodopplerTiming
 
+from .constants import (
+    LEGACY_FILTER_VELOCITY_SIGNALS,
+    LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
+)
 from .models import DopplerViewStepContext
 from .source_inputs import dopplerview_cache_from_h5, local_background_dist
 
@@ -23,7 +27,11 @@ def run_dopplerview_analysis(
                 DOPPLER_VIEW_SCHEMA.config_value(
                     "local_background_dist"
                 ).json_key: local_background_dist(ctx),
-            }
+            },
+            "PulseAnalysis": {
+                "FilterSignals": LEGACY_FILTER_VELOCITY_SIGNALS,
+                "LowpassFreqHz": LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
+            },
         },
     )
     VesselVelocityEstimatorStep().run(step_context)

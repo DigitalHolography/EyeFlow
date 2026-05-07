@@ -1,8 +1,10 @@
-"""Copied from DopplerView pipeline/steps/arterial_waveform_analysis.py."""
+"""Arterial waveform analysis, using BloodFlowVelocity/find_systole_index.m."""
 
 from __future__ import annotations
 
 import numpy as np
+
+from calculations.blood_flow_velocity.find_systole_index import find_systole_index
 
 from .base import CalculationStep as BaseStep
 
@@ -18,52 +20,19 @@ class ArterialWaveformAnalysisStep(BaseStep):
     }
 
     def _relevant_config(self, ctx):
-        return {"sampling_freq": ctx.holodoppler_config["sampling_freq"],
-                "stride" : ctx.holodoppler_config["batch_stride"]}
-
-    def find_systole_index(self, pulse_artery):
-        butter, filtfilt, find_peaks = _scipy_signal_dependencies()
-        pulse = np.asarray(pulse_artery, dtype=np.float32)
-        Wn = 0.5  # cutoff frequency in 0 1 Niquist freq TODO parametrize
-        N = 1     # filter order TODO parametrize
-        b, a = butter(N, Wn, btype="low")
-        pulse_filtered = filtfilt(b, a, pulse).astype(np.float32)
-        validation_distance = 10 # distance minimal to be accepted TODO parametrize
-        min_peak_distance = 40 # distance between two peaks minimal TODO parametrize
-
-        diff_signal = np.gradient(pulse_filtered).astype(np.float32)
-
-        # Step 3: Detect peaks
-        min_peak_height = np.percentile(diff_signal, 95) # TODO parametrize
-
-        peaks, _ = find_peaks(
-            diff_signal,
-            height = min_peak_height,
-            distance = min_peak_distance,
-        )
-
-        # Step 4: Validate peaks
-        def validate_peaks(peaks, min_distance):
-            if len(peaks) == 0:
-                return peaks
-            validated = [peaks[0]]
-            for idx in peaks[1:]:
-                if idx - validated[-1] >= min_distance:
-                    validated.append(idx)
-            return np.asarray(validated, dtype=np.int32)
-
-        peaks = validate_peaks(peaks.astype(np.int32), validation_distance) #
-
-        return peaks, pulse_filtered
+        return {
+            "sampling_freq": ctx.holodoppler_config["sampling_freq"],
+            "stride": ctx.holodoppler_config["batch_stride"],
+        }
 
     def slice_interp_beats(self, peaks, sig):
-        nbeat = len(peaks)
+        nbeat = max(0, len(peaks) - 1)
 
         ninterp = 128 # TODO parametrize
 
         sig_perbeat = np.zeros(shape=(nbeat, ninterp), dtype=np.float32)
 
-        for i in range(nbeat-1):
+        for i in range(nbeat):
             beat_sig = sig[peaks[i]:peaks[i+1]]
             beat_sig_interp = np.interp(
                 np.linspace(0, 1, ninterp, dtype=np.float32),
@@ -80,12 +49,14 @@ class ArterialWaveformAnalysisStep(BaseStep):
         fs = ctx.holodoppler_config["sampling_freq"]
         stride = ctx.holodoppler_config["batch_stride"]
 
-        peaks, sig_filtered = self.find_systole_index(sig)
+        detection = find_systole_index(sig, dt_seconds=float(stride) / float(fs))
+        peaks = detection.systole_indexes
+        sig_filtered = detection.artery_signal_filtered
 
         sig_perbeat = self.slice_interp_beats(peaks, sig_filtered)
 
-        ctx.set("retinal_artery_velocity_signal_filtered_perbeat",sig_perbeat)
-        ctx.set("retinal_artery_velocity_signal_filtered",sig_filtered)
+        ctx.set("retinal_artery_velocity_signal_filtered_perbeat", sig_perbeat)
+        ctx.set("retinal_artery_velocity_signal_filtered", sig_filtered)
         ctx.set("beat_indices", peaks)
         ctx.set(
             "time_per_beat",
@@ -93,13 +64,5 @@ class ArterialWaveformAnalysisStep(BaseStep):
                 np.float32
             ),
         ) # TODO parametrize look for params
-
-
-def _scipy_signal_dependencies():
-    try:
-        from scipy.signal import butter, filtfilt, find_peaks
-    except ModuleNotFoundError as exc:
-        raise ImportError(
-            "DopplerView arterial waveform analysis requires scipy."
-        ) from exc
-    return butter, filtfilt, find_peaks
+        ctx.set("beat_detection_min_peak_distance", detection.min_peak_distance)
+        ctx.set("beat_detection_min_peak_height", detection.min_peak_height)

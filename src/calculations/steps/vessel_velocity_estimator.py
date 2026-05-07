@@ -6,6 +6,7 @@ from functools import partial
 
 import numpy as np
 
+from calculations.blood_flow_velocity.pulse_signal_filter import lowpass_velocity_signal
 from runtime_limits import cap_parallel_jobs
 
 from ._masks import elliptical_mask
@@ -34,7 +35,15 @@ class VesselVelocityEstimatorStep(BaseStep):
         return {
             "LocalBackgroundDist": (
                 ctx.dopplerview_config["VelocityEstimation"]["LocalBackgroundDist"]
-            )
+            ),
+            "FilterSignals": ctx.dopplerview_config.get("PulseAnalysis", {}).get(
+                "FilterSignals",
+                True,
+            ),
+            "LowpassFreqHz": ctx.dopplerview_config.get("PulseAnalysis", {}).get(
+                "LowpassFreqHz",
+                15.0,
+            ),
         }
 
     def run(self, ctx):
@@ -101,6 +110,19 @@ class VesselVelocityEstimatorStep(BaseStep):
         artery_sig = _masked_signal(velocity_map, section_mask & artery_mask)
 
         vein_sig = _masked_signal(velocity_map, section_mask & vein_mask)
+        if _filter_signals(ctx):
+            dt_seconds = _dt_seconds(ctx)
+            lowpass_freq_hz = _lowpass_freq_hz(ctx)
+            artery_sig = lowpass_velocity_signal(
+                artery_sig,
+                dt_seconds=dt_seconds,
+                lowpass_freq_hz=lowpass_freq_hz,
+            )
+            vein_sig = lowpass_velocity_signal(
+                vein_sig,
+                dt_seconds=dt_seconds,
+                lowpass_freq_hz=lowpass_freq_hz,
+            )
 
         ctx.set("retinal_vessel_velocity", velocity_map)
         ctx.set("retinal_artery_velocity_signal", artery_sig)
@@ -132,6 +154,24 @@ def _masked_signal(velocity_map: np.ndarray, mask: np.ndarray) -> np.ndarray:
         return np.full((velocity_map.shape[0],), np.nan, dtype=np.float32)
     total = np.sum(velocity_map * mask, axis=(-2, -1), dtype=np.float32)
     return (total / np.float32(count)).astype(np.float32, copy=False)
+
+
+def _filter_signals(ctx) -> bool:
+    pulse_config = ctx.dopplerview_config.get("PulseAnalysis", {})
+    return bool(pulse_config.get("FilterSignals", True))
+
+
+def _lowpass_freq_hz(ctx) -> float:
+    pulse_config = ctx.dopplerview_config.get("PulseAnalysis", {})
+    return float(pulse_config.get("LowpassFreqHz", 15.0))
+
+
+def _dt_seconds(ctx) -> float:
+    fs = float(ctx.holodoppler_config["sampling_freq"])
+    stride = float(ctx.holodoppler_config["batch_stride"])
+    if fs <= 0:
+        raise ValueError("sampling_freq must be positive for velocity filtering.")
+    return stride / fs
 
 
 def _run_in_parallel(func, iterable, n_jobs=-1, chunking=False):

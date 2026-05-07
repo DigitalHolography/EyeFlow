@@ -22,7 +22,11 @@ from input_output.input_access import (
     resolve_holodoppler_timing,
 )
 
-from .constants import LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT
+from .constants import (
+    LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
+    LEGACY_FILTER_VELOCITY_SIGNALS,
+    LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
+)
 from .dopplerview import run_dopplerview_analysis
 from .models import WaveformShapeMetricsContext
 
@@ -176,4 +180,6 @@ def _context_attrs(
         "batch_stride": float(timing.batch_stride),
         "dt_seconds": float(timing.dt_seconds),
         "band_limited_signal_harmonic_count": int(harmonic_count),
+        "filter_velocity_signals": bool(LEGACY_FILTER_VELOCITY_SIGNALS),
+        "velocity_signal_lowpass_hz": float(LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ),
     }
