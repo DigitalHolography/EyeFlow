@@ -6,7 +6,7 @@ from functools import partial
 
 import numpy as np
 
-from calculations.blood_flow_velocity.pulse_signal_filter import lowpass_velocity_signal
+from calculations.math import butter_lowpass_filtfilt
 from runtime_limits import cap_parallel_jobs
 
 from ._masks import elliptical_mask
@@ -33,14 +33,17 @@ class VesselVelocityEstimatorStep(BaseStep):
 
     def _relevant_config(self, ctx):
         return {
-            "LocalBackgroundDist": (
-                ctx.dopplerview_config["VelocityEstimation"]["LocalBackgroundDist"]
+            "LocalBackgroundDist": ctx.dv_config_value(
+                "VelocityEstimation",
+                "LocalBackgroundDist",
             ),
-            "FilterSignals": ctx.dopplerview_config.get("PulseAnalysis", {}).get(
+            "FilterSignals": ctx.dv_config_value(
+                "PulseAnalysis",
                 "FilterSignals",
                 True,
             ),
-            "LowpassFreqHz": ctx.dopplerview_config.get("PulseAnalysis", {}).get(
+            "LowpassFreqHz": ctx.dv_config_value(
+                "PulseAnalysis",
                 "LowpassFreqHz",
                 15.0,
             ),
@@ -61,9 +64,10 @@ class VesselVelocityEstimatorStep(BaseStep):
         fRMS = np.sqrt(moment2 / mean_m0).astype(np.float32, copy=False)
 
         # Inpaint fRMS to estimate background
-        local_background_dist = ctx.dopplerview_config["VelocityEstimation"][
-            "LocalBackgroundDist"
-        ]
+        local_background_dist = ctx.dv_config_value(
+            "VelocityEstimation",
+            "LocalBackgroundDist",
+        )
         disk, dilation, inpaint = _skimage_dependencies()
         mask = dilation(vessel_mask, disk(local_background_dist)) #TODO add parameter
 
@@ -110,18 +114,22 @@ class VesselVelocityEstimatorStep(BaseStep):
         artery_sig = _masked_signal(velocity_map, section_mask & artery_mask)
 
         vein_sig = _masked_signal(velocity_map, section_mask & vein_mask)
-        if _filter_signals(ctx):
+        if ctx.dv_config_value("PulseAnalysis", "FilterSignals", True):
             dt_seconds = _dt_seconds(ctx)
-            lowpass_freq_hz = _lowpass_freq_hz(ctx)
-            artery_sig = lowpass_velocity_signal(
+            lowpass_freq_hz = float(
+                ctx.dv_config_value("PulseAnalysis", "LowpassFreqHz", 15.0)
+            )
+            artery_sig = butter_lowpass_filtfilt(
                 artery_sig,
                 dt_seconds=dt_seconds,
                 lowpass_freq_hz=lowpass_freq_hz,
+                order=4,
             )
-            vein_sig = lowpass_velocity_signal(
+            vein_sig = butter_lowpass_filtfilt(
                 vein_sig,
                 dt_seconds=dt_seconds,
                 lowpass_freq_hz=lowpass_freq_hz,
+                order=4,
             )
 
         ctx.set("retinal_vessel_velocity", velocity_map)
@@ -156,19 +164,9 @@ def _masked_signal(velocity_map: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return (total / np.float32(count)).astype(np.float32, copy=False)
 
 
-def _filter_signals(ctx) -> bool:
-    pulse_config = ctx.dopplerview_config.get("PulseAnalysis", {})
-    return bool(pulse_config.get("FilterSignals", True))
-
-
-def _lowpass_freq_hz(ctx) -> float:
-    pulse_config = ctx.dopplerview_config.get("PulseAnalysis", {})
-    return float(pulse_config.get("LowpassFreqHz", 15.0))
-
-
 def _dt_seconds(ctx) -> float:
-    fs = float(ctx.holodoppler_config["sampling_freq"])
-    stride = float(ctx.holodoppler_config["batch_stride"])
+    fs = float(ctx.hd_config_value("sampling_freq"))
+    stride = float(ctx.hd_config_value("batch_stride"))
     if fs <= 0:
         raise ValueError("sampling_freq must be positive for velocity filtering.")
     return stride / fs

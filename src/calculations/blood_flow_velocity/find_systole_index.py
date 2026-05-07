@@ -1,10 +1,12 @@
-"""Systole detection from BloodFlowVelocity/find_systole_index.m."""
+"""Systole detection based on low-pass filtering and peak detection of the derivative of the signal."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 import numpy as np
+
+from calculations.math import butter_lowpass_filtfilt
 
 
 @dataclass(frozen=True)
@@ -24,14 +26,19 @@ def find_systole_index(
     min_duration_seconds: np.float32 = np.float32(0.5),
     validation_distance: int = 10,
 ) -> SystoleDetectionResult:
-    butter, filtfilt, find_peaks = _scipy_signal_dependencies()
-    
+    find_peaks = _scipy_signal_dependencies()
+
     pulse = np.asarray(pulse_artery, dtype=np.float32).reshape(-1)
-    filtered_pulse = _lowpass_filter(pulse, dt, lowpass_freq_hz, butter, filtfilt)
+    filtered_pulse = butter_lowpass_filtfilt(
+        pulse,
+        dt_seconds=np.float32(dt),
+        lowpass_freq_hz=np.float32(lowpass_freq_hz),
+        order=4,
+    )
     derivative = np.gradient(filtered_pulse).astype(np.float32)
     min_peak_height = np.float32(np.percentile(derivative, 95))
     min_peak_distance = _min_peak_distance(dt, min_duration_seconds)
-    
+
     peaks, _ = find_peaks(
         derivative,
         height=min_peak_height,
@@ -48,29 +55,7 @@ def find_systole_index(
         min_peak_height=min_peak_height,
     )
 
-
-def _lowpass_filter(
-    pulse: np.ndarray,
-    dt_seconds: float,
-    lowpass_freq_hz: float,
-    butter,
-    filtfilt,
-) -> np.ndarray:
-    normalized_cutoff = _normalized_cutoff(dt_seconds, lowpass_freq_hz)
-    b, a = butter(4, normalized_cutoff, btype="low")
-    return filtfilt(b, a, pulse).astype(np.float32)
-
-
-def _normalized_cutoff(dt_seconds: float, lowpass_freq_hz: float) -> float:
-    if dt_seconds <= 0:
-        raise ValueError("dt_seconds must be positive for systole detection.")
-    nyquist_hz = 0.5 / float(dt_seconds)
-    if nyquist_hz <= 0:
-        raise ValueError("Nyquist frequency must be positive for systole detection.")
-    return float(np.clip(float(lowpass_freq_hz) / nyquist_hz, 1e-6, 0.99))
-
-
-def _min_peak_distance(dt_seconds: float, min_duration_seconds: float) -> int:
+def _min_peak_distance(dt_seconds: np.float32, min_duration_seconds: np.float32) -> int:
     if dt_seconds <= 0:
         raise ValueError("dt_seconds must be positive for systole detection.")
     return max(1, int(np.floor(float(min_duration_seconds) / float(dt_seconds))))
@@ -88,7 +73,7 @@ def _validate_peaks(peaks: np.ndarray, min_distance: int) -> np.ndarray:
 
 def _scipy_signal_dependencies():
     try:
-        from scipy.signal import butter, filtfilt, find_peaks
+        from scipy.signal import find_peaks
     except ModuleNotFoundError as exc:
         raise ImportError("Systole detection requires scipy.") from exc
-    return butter, filtfilt, find_peaks
+    return find_peaks

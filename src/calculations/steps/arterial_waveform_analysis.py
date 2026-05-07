@@ -21,14 +21,17 @@ class ArterialWaveformAnalysisStep(BaseStep):
 
     def _relevant_config(self, ctx):
         return {
-            "sampling_freq": ctx.holodoppler_config["sampling_freq"],
-            "stride": ctx.holodoppler_config["batch_stride"],
+            "sampling_freq": ctx.hd_config_value("sampling_freq"),
+            "stride": ctx.hd_config_value("batch_stride"),
+            "LowpassFreqHz": ctx.dv_config_value(
+                "PulseAnalysis",
+                "LowpassFreqHz",
+                15.0,
+            ),
         }
 
-    def slice_interp_beats(self, peaks, sig):
+    def slice_interp_beats(self, peaks, sig, ninterp=128):
         nbeat = max(0, len(peaks) - 1)
-
-        ninterp = 128 # TODO parametrize
 
         sig_perbeat = np.zeros(shape=(nbeat, ninterp), dtype=np.float32)
 
@@ -46,11 +49,17 @@ class ArterialWaveformAnalysisStep(BaseStep):
     def run(self, ctx):
         # ---- Requires ----
         sig = ctx.require("retinal_artery_velocity_signal")
-        stride = np.float32(ctx.holodoppler_config["batch_stride"])
-        fs = np.float32(ctx.holodoppler_config["sampling_freq"])
+        stride = np.float32(ctx.hd_config_value("batch_stride"))
+        fs = np.float32(ctx.hd_config_value("sampling_freq"))
         dt = stride / fs
 
-        detection = find_systole_index(sig, dt=dt)
+        detection = find_systole_index(
+            sig,
+            dt=dt,
+            lowpass_freq_hz=np.float32(
+                ctx.dv_config_value("PulseAnalysis", "LowpassFreqHz", 15.0)
+            ),
+        )
         peaks = detection.systole_indexes
         sig_filtered = detection.artery_signal_filtered
 
