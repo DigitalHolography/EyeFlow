@@ -50,3 +50,10 @@ process_result.csv
 pipelines.txt
 eyeflow_matlab/
 DAG/
+.venv/
+.tmp_smoke/
+__pycache__/
+*.py[cod]
+*.egg-info/
+EyeFlow-main/
+build/

@@ -1,193 +1,295 @@
-# EyeFlow
+# EyeFlowPython
 
-EyeFlow is the cohort-analysis engine for retinal Doppler holography. It browses EyeFlow .h5 outputs, reads per-segment metrics, applies QC, compares models, and aggregates results at eye/cohort level (including artery–vein summaries) to help design biomarkers. It exports clean CSV reports for stats, figures, and clinical models.
+## Purpose
 
----
+EyeFlowPython is a clean Python rewrite of EyeFlow focused on downstream analysis.
 
-## Setup
+Important scope change:
 
-### Prerequisites
+- EyeFlowPython does not run AI segmentation.
+- Vessel masks are expected to already exist in the input H5 files.
+- The application consumes precomputed data and produces biomarkers, quality-control outputs, and exported analysis results.
 
-- `uv`.
-- Python 3.10 or higher. The repository includes `.python-version` set to Python 3.11 for uv-managed environments.
+## Product Goals
 
-This project uses `pyproject.toml` plus a committed `uv.lock` for reproducible installs.
+- Input one H5 file, a folder tree of H5 files, or a zip archive containing H5 files.
+- Output one analysis result per input file.
+- Preserve the input folder structure in batch and zip processing.
+- Provide a CLI and a GUI with the same analysis capabilities.
+- Keep the GUI user friendly and oriented around review, configuration, execution, and quality control.
+- Produce clean, structured, reproducible outputs.
 
-### 1. Recommended Setup With uv
+## Launching The App
 
-```sh
-# Install the pinned Python if uv does not already find a compatible one
-uv python install
+### Install
 
-# Create/update .venv and install the base application
-uv sync
+Create and activate a virtual environment, then install the project.
 
-# Optional: include pipeline-specific dependencies
-uv sync --extra pipelines
-```
-
-Run commands through uv so you do not need to activate the virtual environment:
-
-```sh
-uv run eyeflow
-uv run eyeflow-cli --help
-```
-
-If you prefer to activate the environment manually:
-
-```sh
-# Windows PowerShell
-./.venv/Scripts/activate
-
-# macOS/Linux
-source .venv/bin/activate
-```
-
-### 2. Pip Fallback
-
-```sh
-# Base application
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
 pip install -e .
-
-# Optional pipeline dependencies
-pip install -e ".[pipelines]"
 ```
 
-After changing dependencies in `pyproject.toml`, run `uv lock` and commit the updated `uv.lock`.
+If you also want the Streamlit GUI:
 
----
-
-## Usage
-
-Launch the main application to process files interactively:
-
-### GUI
-
-The GUI processes one `.holo` file at a time and lets you select pipeline targets for that input. The DAG resolves the required upstream pipelines and run order. Outputs are written to the default `*_EF` folder derived from the selected `.holo` file.
-
-Use the Pipeline Library tab to select which coded pipeline outputs you want. Selection preferences are saved per user between app launches.
-
-```sh
-# Via uv
-uv run eyeflow
-
-# Or via the script
-uv run python src/eye_flow.py
+```powershell
+pip install -e .[gui]
 ```
 
-When developing from the repository checkout, install the project in editable mode or run `python src/eye_flow.py`; edit pipeline code under `src/pipelines/` and restart the app to pick up code changes.
+### Launch The CLI
 
-### CLI
+Validate one H5 file, a folder tree, or a zip archive:
 
-The CLI is designed for headless processing in environments or clusters. It accepts a `.holo` file, a folder scanned recursively for `.holo` files, or a `.zip` containing the same HOLO data layout used by the GUI.
-
-```sh
-# Via uv
-uv run eyeflow-cli
-
-# Or via the script
-uv run python src/cli.py
+```powershell
+eyeflow validate path\to\input.h5
+eyeflow validate path\to\folder
+eyeflow validate path\to\archive.zip
 ```
 
----
+You can also use the module form:
 
-## Repository Architecture
-
-EyeFlow is organized around one runtime flow: resolve one or more `.holo` inputs, open the locked Holodoppler and DopplerVision HDF5 files, run selected pipelines through the DAG, and write one EyeFlow work HDF5 output.
-
-```text
-src/
-  eye_flow.py              GUI entrypoint
-  cli.py                   Headless CLI entrypoint
-  launcher.py              Console-script launcher
-  app_settings.py          User settings persistence
-  runtime_limits.py        Numeric thread/runtime limits (Need Rework)
-
-  pipeline_engine/         Pipeline authoring and execution framework
-    base.py                @pipeline decorator, pipeline descriptors, result/value types
-    context.py             PipelineContext passed to pipeline functions
-    dag.py                 DAG resolver for pipeline dependencies
-    runtime.py             Opens HD/DV/work H5 files and runs pipelines
-    errors.py              Pipeline exception formatting
-
-  pipelines/               User-authored pipeline files or folders
-    __init__.py            Auto-discovers pipeline modules/packages
-    *.py                   Small single-file pipelines
-    */__init__.py          Entrypoint for larger package pipelines
-
-  input_output/            Locked input schemas and HDF5 IO primitives
-    schema/                Holodoppler/DopplerVision HDF5 and config contracts
-    hdf5/                  Low-level HDF5 read/write helpers
-    inputs.py              .holo resolution and sidecar config loading
-    input_access.py        Shared source-reading helpers for pipelines
-    metric_packers.py      Domain-specific metric-to-HDF5-path formatting
-    archives/              ZIP/archive helpers
-
-  calculations/            Pure scientific computations independent of UI/runtime
-    math/                  Reusable mathematical helpers
-    blood_flow_velocity/   Per-beat velocity analysis
-    steps/                 DopplerView-like processing steps reused by pipelines
-
-  ui/                      Tkinter GUI code split into mixins and views
+```powershell
+python -m eyeflow validate path\to\input.h5
 ```
 
-### Runtime Flow
+### Launch The GUI
 
-1. The GUI or CLI resolves selected `.holo` files into their required HD and DV HDF5 companions using `input_output.inputs`.
-2. The selected pipeline targets are expanded into an execution plan by `pipeline_engine.PipelineDAG`.
-3. `pipeline_engine.runtime.run_pipelines_to_output_h5()` opens HD, DV, and work HDF5 files.
-4. Each pipeline receives a `PipelineContext` named `ctx`.
-5. Pipelines read locked inputs through `ctx.hd` and `ctx.dv`, read previous outputs through `ctx.read()` / `ctx.ef`, and write outputs through `ctx.write()` or `ctx.write_many()`.
-6. The work HDF5 is updated after each pipeline, so downstream DAG steps can consume upstream outputs.
+Once the GUI dependencies are installed:
 
-### Layer Responsibilities
-
-- `pipeline_engine` owns the pipeline API, dependency resolution, runtime context, and execution loop.
-- `pipelines` contains analysis code. Pipeline authors should usually only edit this folder.
-- `input_output/schema` defines the locked HD/DV source formats. These schemas are shared by every pipeline.
-- `input_output/hdf5` stays low-level. It should not contain pipeline-specific logic.
-- `calculations` contains reusable scientific computations that can be called from pipelines without knowing about HDF5 or the UI.
-- `ui` and `cli.py` are entrypoints only. They should not implement pipeline business logic.
-
----
-
-## Pipeline System
-
-Pipelines are the heart of EyeFlow. Pipeline implementations live in `src/pipelines/`; shared execution contracts, DAG code, and the runtime context live in `src/pipeline_engine/`. To add a new analysis, create a single file or a folder package in `src/pipelines/` and register one function with `@pipeline`.
-
-The app auto-discovers Python files and package folders in `src/pipelines/`. A new pipeline is picked up automatically as long as it imports cleanly and uses the `@pipeline` decorator. Names starting with `_` are ignored by discovery.
-
-Pipeline execution is DAG-based. The selected pipeline names are treated as targets, every pipeline implicitly produces its own name, and optional `dag_produces` keys can describe intermediate outputs. Use `dag_requires` to declare which produced keys must be available before a pipeline runs. Keys with no producer are treated as external input data.
-
-Use a single `.py` file for small pipelines. Use a folder when the pipeline grows enough to need helper modules:
-
-```text
-src/pipelines/my_large_pipeline/
-  __init__.py      # registers the pipeline with @pipeline
-  runner.py        # orchestration code
-  inputs.py        # HDF5/input conversion helpers
-  models.py        # local dataclasses or types
+```powershell
+eyeflow-gui
 ```
 
-To see complete examples, check out `src/pipelines/package_pipeline_tutorial/`, `src/pipelines/waveform_shape_metrics/`, and `src/pipelines/dual_input_tutorial.py`.
+Fallback direct Streamlit command:
 
-### Simple Pipeline Structure
-
-```python
-from pipeline_engine import pipeline
-
-@pipeline(
-    name="my_analysis",
-    description="Calculates a custom clinical metric.",
-    requires=["torch>=2.2"],
-    dag_requires=["velocity_per_beat"],
-    dag_produces=["custom_clinical_metric"],
-)
-def run(ctx):
-    moment0 = ctx.hd.array("moment0")
-    previous = ctx.read("Artery/VelocityPerBeat/value", default=None)
-
-    peak_flow = float(moment0.max())
-    ctx.write("custom/peak_flow", peak_flow, unit="a.u.")
-    ctx.set_attr("pipeline_version", "1.0")
+```powershell
+streamlit run src\eyeflow\gui\app.py
 ```
+
+## Scope
+
+### In Scope
+
+- Loading H5 files containing:
+  - statistical moments
+  - precomputed masks
+  - acquisition metadata
+  - optional spectral data
+- Preprocessing before analysis.
+- Velocity and waveform analysis.
+- Pulse-wave velocity analysis.
+- Cross-section signal generation.
+- Cross-section result export and derived hemodynamic metrics.
+- Spectral analysis when the required spectral data is present.
+- Batch processing from folders and zip archives.
+- Persistent user settings for GUI and CLI.
+- H5, JSON, and log outputs.
+- CPU-first implementation with optional GPU acceleration where useful.
+
+### Out of Scope
+
+- AI inference inside EyeFlowPython.
+- Training or shipping segmentation models.
+- Automatic generation of artery and vein masks from raw images.
+- Manual mask painting inside the application.
+- Full MATLAB visual/report parity for the first Python release.
+
+The GUI may still provide mask visualization and overlay-based quality control, but not mask creation.
+
+## Input Contract
+
+The data contract must be strict and documented early. A clean Python implementation depends more on a stable input schema than on UI details.
+
+### Required Datasets
+
+- `/moment0`
+  - 3D array: `(height, width, frames)`
+- `/moment1`
+  - 3D array: `(height, width, frames)`
+- `/moment2`
+  - 3D array: `(height, width, frames)`
+- `/masks/artery`
+  - 2D binary mask: `(height, width)`
+- `/masks/vein`
+  - 2D binary mask: `(height, width)`
+
+### Optional Datasets
+
+- `/SH`
+  - Required only if spectral analysis is enabled.
+- Additional masks if useful for QC or downstream analysis
+  - examples: vessel, background, diaphragm, optic-disc, cross-section exclusions
+
+### Required Metadata
+
+At least one valid way to recover the time axis and one valid way to recover the spatial scale must be present.
+
+- Frame timing metadata
+  - preferred: timestamps in microseconds
+  - fallback: frame rate and stride
+- Spatial calibration metadata
+  - preferred: `pixel_size_mm`
+  - fallback: another explicit upstream calibration value already resolved before EyeFlowPython
+- Frame range metadata if the source data has already been cropped upstream
+- Any metadata needed to interpret units correctly
+
+### Strong Recommendation
+
+Do not make EyeFlowPython infer physical units from weak assumptions. If a biomarker depends on time or spatial scale, the needed metadata should be explicitly present in the input.
+
+## Analysis Pipeline
+
+The application should be structured as a dependency-driven pipeline.
+
+### Stage 1: Load And Validate
+
+- Validate required datasets and metadata.
+- Validate shapes, dtypes, mask consistency, and units.
+- Reject malformed inputs early with clear errors.
+
+### Stage 2: Preprocess
+
+Preprocessing remains part of the Python app even if masks are already provided.
+
+- frame cropping
+- rigid registration
+- local normalization
+- resizing
+- interpolation
+- outlier handling
+- optional non-rigid registration if still needed
+
+### Stage 3: Core Analysis
+
+- blood-flow velocity analysis
+- arterial and venous waveform analysis
+- heartbeat-related metrics
+- per-beat and statistical metrics
+
+### Stage 4: Advanced Analysis
+
+- pulse-wave velocity
+- cross-section signal generation
+- cross-section exports
+- flow-rate and hemodynamic outputs
+- spectral analysis when `SH` is available
+
+## Dependency Rules
+
+Some metrics depend on earlier stages. This should be implemented explicitly as a dependency graph, not as scattered conditionals.
+
+Examples:
+
+- preprocessing -> velocity analysis
+- velocity analysis -> waveform biomarkers
+- velocity analysis -> pulse-wave velocity
+- velocity analysis + masks + spatial calibration -> cross-section analysis
+- cross-section analysis -> exported cross-section biomarkers
+- `SH` + masks + timing metadata -> spectral analysis
+
+The user must be able to select requested outputs, and the app should automatically execute the required upstream dependencies.
+
+## Outputs
+
+Each processed input should generate a clean result package.
+
+### Required Outputs
+
+- one result H5 file with structured biomarker datasets
+- one result JSON file for scalar and summary outputs
+- one execution log file
+- one saved copy of the effective analysis settings used for the run
+
+### Output Requirements
+
+- stable dataset naming
+- explicit units
+- quality-control fields
+- run metadata
+- clear failure reporting for partial or skipped modules
+
+Optional figures and visual exports can be added later, but they are not the core deliverable for v1.
+
+## CLI And GUI
+
+The CLI and GUI must expose the same analysis features.
+
+### CLI Requirements
+
+- single-file processing
+- folder-tree batch processing
+- zip processing
+- settings file support through `eyeflow-settings.json`
+- module selection
+- clear logging and non-zero exit codes on failure
+
+### GUI Requirements
+
+- built with Streamlit
+- same processing options as the CLI
+- input browsing
+- batch execution
+- settings persistence
+- progress reporting
+- visualization of loaded moments and masks
+- quality-control views for overlays and key intermediate outputs
+
+The GUI should be a review and execution interface, not a second implementation of the pipeline.
+
+## Technical Requirements
+
+- Python project managed with a `pyproject.toml`
+- easy setup with a virtual environment
+- use standard scientific Python libraries such as `numpy`, `h5py`, and related tooling
+- modular codebase with small focused files
+- clear separation between:
+  - IO
+  - validation
+  - preprocessing
+  - analysis modules
+  - exports
+  - CLI
+  - GUI
+- optional GPU support designed in from the start, but not required for all modules
+
+## Architecture Principles
+
+- The data contract comes first.
+- The pipeline must be deterministic and testable.
+- Every module should have a clear input and output interface.
+- Failures should be local when possible: one failed optional module should not necessarily invalidate the whole run.
+- Re-running downstream modules should not require repeating expensive upstream work when cached intermediates are available.
+- The codebase should stay readable and easy to extend.
+
+## Suggested V1 Deliverable
+
+A good first Python release would include:
+
+- strict H5 input validation
+- preprocessing
+- velocity analysis
+- waveform metrics
+- cross-section analysis
+- H5 and JSON export
+- CLI and Streamlit GUI parity
+- settings persistence
+- batch and zip support
+
+Then add, in later iterations:
+
+- pulse-wave velocity
+- spectral analysis
+- richer QC exports
+- more visual reports
+
+## Summary
+
+EyeFlowPython is an analysis application, not a segmentation application.
+
+Its success depends on:
+
+- a strict H5 input schema
+- explicit metadata for time and spatial calibration
+- a clean dependency-aware analysis pipeline
+- consistent outputs across CLI and GUI
