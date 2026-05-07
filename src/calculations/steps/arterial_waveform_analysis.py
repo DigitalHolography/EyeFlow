@@ -46,10 +46,11 @@ class ArterialWaveformAnalysisStep(BaseStep):
     def run(self, ctx):
         # ---- Requires ----
         sig = ctx.require("retinal_artery_velocity_signal")
-        fs = ctx.holodoppler_config["sampling_freq"]
-        stride = ctx.holodoppler_config["batch_stride"]
+        stride = np.float32(ctx.holodoppler_config["batch_stride"])
+        fs = np.float32(ctx.holodoppler_config["sampling_freq"])
+        dt = stride / fs
 
-        detection = find_systole_index(sig, dt_seconds=float(stride) / float(fs))
+        detection = find_systole_index(sig, dt=dt)
         peaks = detection.systole_indexes
         sig_filtered = detection.artery_signal_filtered
 
@@ -60,9 +61,7 @@ class ArterialWaveformAnalysisStep(BaseStep):
         ctx.set("beat_indices", peaks)
         ctx.set(
             "time_per_beat",
-            (np.diff(peaks).astype(np.float32) * np.float32(stride / fs)).astype(
-                np.float32
-            ),
+            (np.diff(peaks).astype(np.float32) * dt).astype(np.float32),
         ) # TODO parametrize look for params
         ctx.set("beat_detection_min_peak_distance", detection.min_peak_distance)
         ctx.set("beat_detection_min_peak_height", detection.min_peak_height)

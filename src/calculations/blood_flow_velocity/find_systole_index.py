@@ -19,17 +19,19 @@ class SystoleDetectionResult:
 def find_systole_index(
     pulse_artery,
     *,
-    dt_seconds: float,
-    lowpass_freq_hz: float = 15.0,
-    min_duration_seconds: float = 0.5,
+    dt: np.float32,
+    lowpass_freq_hz: np.float32 = np.float32(15.0),
+    min_duration_seconds: np.float32 = np.float32(0.5),
     validation_distance: int = 10,
 ) -> SystoleDetectionResult:
     butter, filtfilt, find_peaks = _scipy_signal_dependencies()
+    
     pulse = np.asarray(pulse_artery, dtype=np.float32).reshape(-1)
-    filtered = _lowpass_filter(pulse, dt_seconds, lowpass_freq_hz, butter, filtfilt)
-    derivative = np.gradient(filtered).astype(np.float32)
+    filtered_pulse = _lowpass_filter(pulse, dt, lowpass_freq_hz, butter, filtfilt)
+    derivative = np.gradient(filtered_pulse).astype(np.float32)
     min_peak_height = np.float32(np.percentile(derivative, 95))
-    min_peak_distance = _min_peak_distance(dt_seconds, min_duration_seconds)
+    min_peak_distance = _min_peak_distance(dt, min_duration_seconds)
+    
     peaks, _ = find_peaks(
         derivative,
         height=min_peak_height,
@@ -40,7 +42,7 @@ def find_systole_index(
         raise ValueError("No systole peaks detected. Check signal quality or parameters.")
     return SystoleDetectionResult(
         systole_indexes=indexes,
-        artery_signal_filtered=filtered,
+        artery_signal_filtered=filtered_pulse,
         derivative_signal=derivative,
         min_peak_distance=min_peak_distance,
         min_peak_height=min_peak_height,
