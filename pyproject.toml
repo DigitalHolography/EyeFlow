@@ -1,48 +1,34 @@
 [build-system]
-requires = ["setuptools >= 77.0.3"]
+requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "EyeFlow"
-version = "0.3.0"
-description = "Cohort-analysis engine for retinal Doppler holography"
+name = "eyeflow-python"
+version = "0.1.0"
+description = "Python rewrite of EyeFlow focused on downstream H5-based analysis."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "GPL-3.0-only" }
-
-# =============== [ DEPENDENCIES ] ===============
-
+license = { file = "LICENSE" }
 dependencies = [
-    "numpy>=1.24",
-    "h5py>=3.9",
-    "pydantic>=2.6",
-    "scipy>=1.10",
-    "scikit-image>=0.20",
-    "joblib>=1.3",
-    "sv-ttk>=2.6",
-    "tkinterdnd2",
+  "h5py>=3.10",
+  "numpy>=1.26",
 ]
 
 [project.optional-dependencies]
-# For specific pipelines
-pipelines = ["torch>=2.2", "pandas>=2.1"]
-
-# =============== [ SCRIPTS ] ===============
+gui = [
+  "streamlit>=1.44",
+]
+dev = [
+  "pytest>=8.2",
+  "ruff>=0.6",
+]
 
 [project.scripts]
-# This allows users to simply type 'eyeflow' in their terminal
-eyeflow = "launcher:main"
-eyeflow-cli = "launcher:cli_main"
+eyeflow = "eyeflow.cli:main"
+eyeflow-gui = "eyeflow.gui.launcher:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-py-modules = [
-    "eye_flow",
-    "cli",
-    "app_settings",
-    "dependency_utils",
-    "launcher",
-]
 
 [tool.setuptools.packages.find]
 where = ["src"]
