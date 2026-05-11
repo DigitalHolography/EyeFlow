@@ -1,3 +1,5 @@
+"""Settings persistence and window-state helpers for the Tk UI."""
+
 from __future__ import annotations
 
 import tkinter as tk
@@ -121,6 +123,13 @@ class SettingsMixin:
             self._persist_ui_mode()
 
     def _on_close(self) -> None:
+        if getattr(self, "_pipeline_run_active", False):
+            messagebox.showwarning(
+                "Run in progress",
+                "Wait for the current pipeline run to finish before closing EyeFlow.",
+            )
+            return
+
         self._persist_ui_mode()
         self._persist_trim_h5source()
         self.destroy()

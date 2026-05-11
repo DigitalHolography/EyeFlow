@@ -1,3 +1,5 @@
+"""Build the Tk views used by the EyeFlow desktop UI."""
+
 from __future__ import annotations
 
 import tkinter as tk
@@ -227,8 +229,12 @@ class ViewBuilderMixin:
         controls = ttk.Frame(parent)
         controls.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 4))
 
-        run_btn = ttk.Button(controls, text="Run", command=self.run_process)
-        run_btn.grid(row=0, column=0, sticky="w")
+        self.advanced_run_button = ttk.Button(
+            controls,
+            text="Run",
+            command=self.run_process,
+        )
+        self.advanced_run_button.grid(row=0, column=0, sticky="w")
 
         ttk.Label(parent, text="Run log").grid(
             row=3, column=0, sticky="nw", pady=(8, 2)
