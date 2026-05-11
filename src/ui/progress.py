@@ -9,7 +9,6 @@ from app_settings import LAST_RUN_LOG_FILENAME
 class ProgressMixin:
     def _set_minimal_status(self, text: str) -> None:
         self.minimal_status_var.set(text)
-        self.update_idletasks()
 
     def _run_log_path(self) -> Path:
         return self.settings_store.path.with_name(LAST_RUN_LOG_FILENAME)
@@ -36,7 +35,6 @@ class ProgressMixin:
         self._progress_completed_units = 0.0
         self._set_progress_style(self._progress_primary_style)
         self.run_progress_var.set(0.0)
-        self.update_idletasks()
 
     def _start_progress(
         self,
@@ -51,7 +49,6 @@ class ProgressMixin:
         self.run_progress_var.set(0.0)
         if status_text is not None:
             self._set_minimal_status(status_text)
-        self.update_idletasks()
 
     def _set_progress_units(self, completed_units: float) -> None:
         clamped_units = min(
@@ -62,7 +59,6 @@ class ProgressMixin:
         self.run_progress_var.set(
             (clamped_units / max(self._progress_total_units, 1.0)) * 100.0
         )
-        self.update_idletasks()
 
     def _advance_progress(self, units: float = 1.0) -> None:
         self._set_progress_units(self._progress_completed_units + units)
@@ -83,8 +79,6 @@ class ProgressMixin:
         self.run_log.see("end")
         self.run_log.configure(state="disabled")
         self._persist_run_log_snapshot()
-        self.run_log.update_idletasks()
-        self.update_idletasks()
 
     def _show_run_error_dialog(self, message: str) -> None:
         self.bell()

@@ -60,6 +60,9 @@ class ProcessApp(
         self.holo_dv_status_var = tk.StringVar(value="DV waiting")
         self._progress_total_units = 1.0
         self._progress_completed_units = 0.0
+        self._pipeline_run_active = False
+        self._pipeline_run_thread = None
+        self._pipeline_ui_events = None
         self._last_saved_run_log_path: Path | None = None
         self._progress_primary_style = "MinimalPrimary.Horizontal.TProgressbar"
         self._progress_final_style = "MinimalFinal.Horizontal.TProgressbar"
