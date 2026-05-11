@@ -1,8 +1,6 @@
 """Pipeline 1 MVP: compute DopplerView analysis, then AE waveform metrics."""
 
-from __future__ import annotations
-
-from pipeline_engine import pipeline
+from pipelines.imports import pipeline
 
 from .runner import run_waveform_shape_metrics
 

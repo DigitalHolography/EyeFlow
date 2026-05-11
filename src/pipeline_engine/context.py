@@ -35,6 +35,14 @@ class H5SourceReader:
             return None
         return self.h5file.filename
 
+    @property
+    def available(self) -> bool:
+        return self.h5file is not None
+
+    def require(self) -> None:
+        if self.h5file is None:
+            raise ValueError(f"{self.schema.label} HDF5 input is required.")
+
     def keys(self):
         if self.h5file is None:
             return ()
@@ -85,11 +93,13 @@ class H5SourceReader:
         dtype=None,
         flatten: bool = False,
         default: Any = _MISSING,
-    ) -> np.ndarray:
+    ) -> Any:
         try:
             array = np.asarray(self.dataset(key_or_path)[()], dtype=dtype)
         except KeyError:
             if default is not _MISSING:
+                if default is None:
+                    return None
                 return np.asarray(default, dtype=dtype)
             raise
         return np.ravel(array) if flatten else array
@@ -134,6 +144,7 @@ class PipelineContext:
         doppler_vision_config: Mapping[str, object] | None = None,
         preferred_input: str = "both",
         pipeline_name: str = "",
+        variables: dict[str, Any] | None = None,
     ) -> None:
         self.work_h5 = work_h5
         self.work = work_h5
@@ -154,6 +165,10 @@ class PipelineContext:
         self.dv_config = dict(doppler_vision_config or {})
         self.preferred_input = preferred_input
         self.pipeline_name = pipeline_name
+        # Shared in-memory state for this run. It is not persisted unless a
+        # pipeline explicitly writes a value to the work H5.
+        self.vars = variables if variables is not None else {}
+        self.state = self.vars
         self.attrs = MergedAttrs(
             self.work_h5,
             self._preferred_raw_source(),
@@ -161,6 +176,22 @@ class PipelineContext:
             self.hd_config,
             self.dv_config,
         )
+
+    def require_inputs(self, *inputs: str) -> None:
+        requested = {name.lower() for name in inputs} or {"hd", "dv"}
+        missing: list[str] = []
+        if "hd" in requested and not self.hd.available:
+            missing.append("HD")
+        if "dv" in requested and not self.dv.available:
+            missing.append("DV")
+        if missing:
+            raise ValueError(f"Missing required input(s): {', '.join(missing)}.")
+
+    def set_var(self, key: str, value: Any) -> None:
+        self.vars[str(key)] = value
+
+    def get_var(self, key: str, default: Any = None) -> Any:
+        return self.vars.get(str(key), default)
 
     @property
     def filename(self) -> str:

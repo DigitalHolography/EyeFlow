@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from calculations.blood_flow_velocity import PerBeatAnalysisInput

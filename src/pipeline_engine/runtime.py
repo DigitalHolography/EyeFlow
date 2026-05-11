@@ -54,6 +54,7 @@ def run_pipelines_to_output_h5(
 
         hd_config = load_h5_sidecar_config(hd_h5, source="hd")
         dv_config = load_h5_sidecar_config(dv_h5, source="dv")
+        context_vars: dict[str, object] = {}
 
         for pipeline_desc in pipelines:
             pipeline = pipeline_desc.instantiate()
@@ -65,6 +66,7 @@ def run_pipelines_to_output_h5(
                 doppler_vision_config=dv_config,
                 preferred_input=pipeline_desc.input_slot,
                 pipeline_name=pipeline.name,
+                variables=context_vars,
             )
             try:
                 result = pipeline.run(ctx)
