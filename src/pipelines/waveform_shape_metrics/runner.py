@@ -1,10 +1,6 @@
 """Orchestrate the waveform-shape metrics sandbox pipeline."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
-
-import numpy as np
 
 from calculations.blood_flow_velocity import (
     PerBeatAnalysisInput,
@@ -16,8 +12,9 @@ from input_output import (
     pack_velocity_per_beat_outputs,
     systolic_index_base_for_path,
 )
-from input_output.input_access import (
+from pipelines.imports import (
     HolodopplerTiming,
+    np,
     read_int_setting,
     resolve_holodoppler_timing,
 )
@@ -32,8 +29,7 @@ from .models import WaveformShapeMetricsContext
 
 
 def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object]]:
-    if ctx.hd.h5file is None or ctx.dv.h5file is None:
-        raise ValueError("waveform_shape_metrics requires both HD and DV inputs.")
+    ctx.require_inputs("hd", "dv")
 
     context = _build_waveform_shape_metrics_context(ctx)
     per_beat_result = run_per_beat_analysis(context.per_beat_analysis)

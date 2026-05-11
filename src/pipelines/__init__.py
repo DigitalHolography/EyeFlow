@@ -1,7 +1,4 @@
-from __future__ import annotations
-
 import importlib
-import pkgutil
 
 from pipeline_engine import (
     PIPELINE_REGISTRY,
@@ -13,6 +10,16 @@ from pipeline_engine import (
     ProcessResult,
     pipeline,
     registerPipeline,
+)
+
+# Add new pipeline modules here. The catalog is explicit so helper files are
+# not imported as runnable pipelines by accident.
+PIPELINE_MODULES = (
+    "dual_input_tutorial",
+    "package_pipeline_tutorial",
+    "test1",
+    "test2",
+    "waveform_shape_metrics",
 )
 
 _PIPELINE_IMPORT_ERRORS: list[PipelineDescriptor] = []
@@ -27,17 +34,15 @@ def _import_error_descriptor(name: str, exc: BaseException) -> PipelineDescripto
     )
 
 
-def _discover_pipeline_modules() -> None:
-    for module in pkgutil.iter_modules(__path__):
-        if module.name.startswith("_"):
-            continue
+def _import_pipeline_modules() -> None:
+    for module_name in PIPELINE_MODULES:
         try:
-            importlib.import_module(f"{__name__}.{module.name}")
+            importlib.import_module(f"{__name__}.{module_name}")
         except Exception as exc:  # noqa: BLE001
-            _PIPELINE_IMPORT_ERRORS.append(_import_error_descriptor(module.name, exc))
+            _PIPELINE_IMPORT_ERRORS.append(_import_error_descriptor(module_name, exc))
 
 
-_discover_pipeline_modules()
+_import_pipeline_modules()
 
 
 def load_pipeline_catalog() -> tuple[
@@ -60,6 +65,7 @@ def load_pipeline_catalog() -> tuple[
 
 __all__ = [
     "MissingPipeline",
+    "PIPELINE_MODULES",
     "PipelineDAG",
     "PipelineDescriptor",
     "PipelineExecutionPlan",

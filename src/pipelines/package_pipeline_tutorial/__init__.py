@@ -1,13 +1,11 @@
 """Minimal tutorial for a package-based pipeline.
 
-The runtime imports this package during pipeline discovery. Keeping the
+The runtime imports this package from the static pipeline catalog. Keeping the
 registration here makes the runnable entrypoint easy to find, while the actual
 implementation can be split across helper modules next to this file.
 """
 
-from __future__ import annotations
-
-from pipeline_engine import pipeline
+from pipelines.imports import pipeline
 
 from .runner import run_package_pipeline_tutorial
 

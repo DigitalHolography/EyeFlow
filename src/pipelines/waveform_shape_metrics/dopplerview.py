@@ -1,8 +1,5 @@
-from __future__ import annotations
-
 from calculations.steps import ArterialWaveformAnalysisStep, VesselVelocityEstimatorStep
-from input_output import DOPPLER_VIEW_SCHEMA
-from input_output.input_access import HolodopplerTiming
+from pipelines.imports import HolodopplerTiming
 
 from .constants import (
     LEGACY_FILTER_VELOCITY_SIGNALS,
@@ -23,10 +20,8 @@ def run_dopplerview_analysis(
             "batch_stride": timing.batch_stride,
         },
         dopplerview_config={
-            DOPPLER_VIEW_SCHEMA.config_value("local_background_dist").section: {
-                DOPPLER_VIEW_SCHEMA.config_value(
-                    "local_background_dist"
-                ).json_key: local_background_dist(ctx),
+            "VelocityEstimation": {
+                "LocalBackgroundDist": local_background_dist(ctx),
             },
             "PulseAnalysis": {
                 "FilterSignals": LEGACY_FILTER_VELOCITY_SIGNALS,

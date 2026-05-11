@@ -1,7 +1,5 @@
 """Implementation module for the package pipeline tutorial."""
 
-from __future__ import annotations
-
 
 def run_package_pipeline_tutorial(ctx) -> None:
     """No-op pipeline body.
@@ -10,6 +8,10 @@ def run_package_pipeline_tutorial(ctx) -> None:
     runtime gives this function the same PipelineContext object as any other
     pipeline, so it can read inputs with ctx.hd/ctx.dv and write outputs with
     ctx.write()/ctx.write_many().
+
+    Use ctx.vars or ctx.set_var(...) for values that later pipelines should
+    see but that should not be written to the output H5 file.
     """
 
+    ctx.set_var("package_pipeline_tutorial_ran", True)
     return None
