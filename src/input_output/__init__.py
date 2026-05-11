@@ -10,19 +10,13 @@ from .archives import (
     reset_output_dir,
     temporary_zip_from_tree,
 )
-from .hdf5 import (
-    initialize_output_h5,
-    normalize_h5_path,
-    open_h5,
-    resolve_dataset_target,
-    set_attr_safe,
-    write_value_dataset,
-)
 from .metric_packers import (
     pack_dopplerview_analysis_outputs,
     pack_velocity_per_beat_outputs,
     systolic_index_base_for_path,
 )
+from .output_layout import OutputLayout
+from .output_manager import OutputManager, OutputType
 from .schema import (
     ACTIVE_OUTPUT_SCHEMA_VARIANT,
     ANGIOEYE_FULL_OUTPUT,
@@ -79,12 +73,18 @@ from .inputs import (
     MergedAttrs,
     ResolvedHoloInput,
     default_output_dir_for_input,
-    default_work_h5_name_for_input,
     holo_input_status,
     load_h5_sidecar_config,
-    normalized_input_token,
     resolve_holo_input,
     resolve_selected_holo_inputs,
+)
+from .writers.h5 import (
+    initialize_output_h5,
+    normalize_h5_path,
+    open_h5,
+    resolve_dataset_target,
+    set_attr_safe,
+    write_value_dataset,
 )
 
 __all__ = [
@@ -98,6 +98,9 @@ __all__ = [
     "EyeFlowView",
     "HoloCompanionH5Layout",
     "HoloInputStatus",
+    "OutputLayout",
+    "OutputManager",
+    "OutputType",
     "DOPPLER_VIEW_ANALYSIS_SCHEMA",
     "DOPPLER_VIEW_SCHEMA",
     "DOPPLERVIEW_ANALYSIS_ROOT",
@@ -139,7 +142,6 @@ __all__ = [
     "SLIM_TEMP_OUTPUT_SCHEMA",
     "VelocityPerBeatOutputPaths",
     "default_output_dir_for_input",
-    "default_work_h5_name_for_input",
     "create_zip_from_tree",
     "extract_file_from_zip",
     "extract_folder_from_zip",
@@ -151,7 +153,6 @@ __all__ = [
     "load_h5_sidecar_config",
     "normalize_h5_path",
     "open_h5",
-    "normalized_input_token",
     "pack_velocity_per_beat_outputs",
     "pack_dopplerview_analysis_outputs",
     "replace_file_in_zip",

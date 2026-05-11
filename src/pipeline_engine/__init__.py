@@ -12,7 +12,7 @@ from .base import (
 from .context import H5SourceReader, PipelineContext
 from .dag import PipelineDAG, PipelineExecutionPlan
 from .errors import format_pipeline_exception
-from .runtime import run_pipelines_to_output_h5
+from .runtime import run_pipelines_to_output
 
 
 __all__ = [
@@ -29,6 +29,6 @@ __all__ = [
     "format_pipeline_exception",
     "pipeline",
     "registerPipeline",
-    "run_pipelines_to_output_h5",
+    "run_pipelines_to_output",
     "with_attrs",
 ]

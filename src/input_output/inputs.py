@@ -1,17 +1,14 @@
 """Resolve HOLO selections and expose HD/DV/work HDF5 inputs to pipelines."""
 
-from __future__ import annotations
-
 import json
 import os
-import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
 
-from .hdf5 import normalize_h5_path
+from .output_layout import OutputLayout
 from .schema import (
     DOPPLER_VIEW_SCHEMA,
     HDF5_SUFFIXES,
@@ -22,6 +19,7 @@ from .schema import (
     H5SourceSchema,
     HoloCompanionH5Layout,
 )
+from .writers.h5 import normalize_h5_path
 
 
 @dataclass(frozen=True)
@@ -94,23 +92,10 @@ def resolve_selected_holo_inputs(
     return resolved
 
 
-def normalized_input_token(input_path: Path) -> str:
-    token = re.sub(r"[^A-Za-z0-9]+", "_", input_path.stem).strip("_")
-    return token or input_path.stem or "output"
-
-
-def default_work_h5_name_for_input(input_path: Path | None) -> str:
-    base_name = (
-        normalized_input_token(input_path) if input_path is not None else "output"
-    )
-    return f"{base_name}_eyeflow.h5"
-
-
 def default_output_dir_for_input(input_path: Path) -> Path:
-    output_dir = input_path.parent if input_path.is_file() else input_path
-    if input_path.is_file() and input_path.suffix.lower() == HOLO_SUFFIX:
-        output_dir = input_path.parent / input_path.stem / f"{input_path.stem}_EF"
-    return output_dir
+    if input_path.suffix.lower() == HOLO_SUFFIX:
+        return OutputLayout.from_holo(input_path).root_dir
+    return input_path.parent if input_path.is_file() else input_path
 
 
 def holo_input_status(
