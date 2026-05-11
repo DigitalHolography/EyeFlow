@@ -5,7 +5,7 @@ registration here makes the runnable entrypoint easy to find, while the actual
 implementation can be split across helper modules next to this file.
 """
 
-from pipelines.imports import pipeline
+from pipeline_engine.imports import pipeline
 
 from .runner import run_package_pipeline_tutorial
 

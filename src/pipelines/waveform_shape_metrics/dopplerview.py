@@ -1,5 +1,5 @@
 from calculations.steps import ArterialWaveformAnalysisStep, VesselVelocityEstimatorStep
-from pipelines.imports import HolodopplerTiming
+from pipeline_engine.imports import HolodopplerTiming
 
 from .constants import (
     LEGACY_FILTER_VELOCITY_SIGNALS,

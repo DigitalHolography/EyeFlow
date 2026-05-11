@@ -1,4 +1,4 @@
-from pipelines.imports import np, pipeline
+from pipeline_engine.imports import np, pipeline
 
 
 @pipeline(

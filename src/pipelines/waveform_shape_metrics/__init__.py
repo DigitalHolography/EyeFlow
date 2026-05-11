@@ -1,6 +1,6 @@
 """Pipeline 1 MVP: compute DopplerView analysis, then AE waveform metrics."""
 
-from pipelines.imports import pipeline
+from pipeline_engine.imports import ProcessResult, pipeline
 
 from .runner import run_waveform_shape_metrics
 
@@ -16,7 +16,6 @@ from .runner import run_waveform_shape_metrics
     ],
     input_slot="both",
 )
-def run(ctx) -> None:
+def run(ctx) -> ProcessResult:
     metrics, attrs = run_waveform_shape_metrics(ctx)
-    ctx.write_many(metrics)
-    ctx.set_attrs(attrs)
+    return ProcessResult(metrics=metrics, attrs=attrs)

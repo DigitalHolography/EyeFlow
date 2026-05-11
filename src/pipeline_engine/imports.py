@@ -12,7 +12,9 @@ from input_output.input_access import (
     resolve_dt_seconds,
     resolve_holodoppler_timing,
 )
-from pipeline_engine import PipelineContext, ProcessResult, pipeline, with_attrs
+
+from .base import ProcessResult, pipeline, with_attrs
+from .context import PipelineContext
 
 __all__ = [
     "HolodopplerTiming",

@@ -12,7 +12,7 @@ from input_output import (
     pack_velocity_per_beat_outputs,
     systolic_index_base_for_path,
 )
-from pipelines.imports import (
+from pipeline_engine.imports import (
     HolodopplerTiming,
     np,
     read_int_setting,
@@ -32,9 +32,14 @@ def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object
     ctx.require_inputs("hd", "dv")
 
     context = _build_waveform_shape_metrics_context(ctx)
+    ctx.set_var("waveform_shape_metrics_context", context)
+    ctx.set_var("dopplerview_analysis", context.dopplerview_analysis)
+
     per_beat_result = run_per_beat_analysis(context.per_beat_analysis)
     metrics = pack_dopplerview_analysis_outputs(context.dopplerview_analysis)
     metrics.update(pack_velocity_per_beat_outputs(per_beat_result))
+    ctx.set_var("velocity_per_beat_result", per_beat_result)
+
     return metrics, context.attrs
 
 

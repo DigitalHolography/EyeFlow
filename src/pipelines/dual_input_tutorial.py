@@ -1,4 +1,4 @@
-from pipelines.imports import np, pipeline, resolve_holodoppler_timing, with_attrs
+from pipeline_engine.imports import np, pipeline, resolve_holodoppler_timing, with_attrs
 
 
 HD_EXAMPLE_DATASET_KEY = "moment0"
