@@ -36,6 +36,7 @@ pipeline access to:
 - the Holodoppler input H5 through `ctx.hd`
 - the DopplerView input H5 through `ctx.dv`
 - the EyeFlow output/work H5 through `ctx.work` or `ctx.work_h5`
+- the run output file manager through `ctx.output`
 - shared in-memory values through `ctx.vars`, `ctx.set_var(...)`, and
   `ctx.get_var(...)`
 - merged input/config attributes through `ctx.attrs`
@@ -189,6 +190,9 @@ dt_seconds = timing.dt_seconds
 
 ## Writing Outputs
 
+Use the output H5 for pipeline metrics and machine-readable values that later
+pipelines or downstream tools should consume.
+
 Use `ctx.write(...)` for one output:
 
 ```python
@@ -223,6 +227,76 @@ Prefer output attributes that explain the value:
 
 - `unit`: physical unit, such as `"s"`, `"mm/s"`, `"pixels"`, or `"a.u."`
 - `dimDesc`: dimension names, such as `["frame"]` or `["beat", "sample"]`
+
+## Writing Output Files
+
+Each run also has a structured output folder managed by `ctx.output`. Use it
+for sidecar files such as JSON summaries, figures, movies, or auxiliary H5
+artifacts.
+
+The default layout for a HOLO file named `sample.holo` is:
+
+```text
+sample/
+    sample_EF/
+        h5/sample_EF.h5
+        json/
+        png/
+        mp4/
+        avi/
+```
+
+The main H5 file is opened by the runtime. Most pipelines should write to that
+file with `ctx.write(...)`, not by opening another H5 file.
+
+Write a JSON sidecar:
+
+```python
+from input_output.output_manager import OutputType
+
+
+ctx.output.write(
+    {
+        "pipeline": ctx.pipeline_name,
+        "frame_count": int(moment0.shape[-1]),
+        "mean_value": float(np.nanmean(moment0)),
+    },
+    OutputType.JSON,
+    "my_metric_summary.json",
+)
+```
+
+Reserve a path for an image or movie that another library writes:
+
+```python
+from input_output.output_manager import OutputType
+
+
+figure_path = ctx.output.path_for(OutputType.PNG, "my_metric_overlay.png")
+figure_path.parent.mkdir(parents=True, exist_ok=True)
+
+# Example:
+# matplotlib_figure.savefig(figure_path, dpi=150)
+```
+
+Use `ctx.output.dir_for(...)` when a pipeline writes several files of the same
+kind:
+
+```python
+png_dir = ctx.output.dir_for(OutputType.PNG)
+png_dir.mkdir(parents=True, exist_ok=True)
+```
+
+Use a separate H5 file only for an auxiliary artifact that should not be part of
+the main result H5:
+
+```python
+with ctx.output.open_h5("my_metric_debug.h5") as debug_h5:
+    debug_h5.create_dataset("intermediate", data=intermediate_array)
+```
+
+Do not store required pipeline metrics only in sidecar files. If a value is part
+of the analysis result, write it to the main output H5 with `ctx.write(...)`.
 
 ## Reading Values From The Output H5
 
