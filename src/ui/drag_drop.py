@@ -5,9 +5,9 @@ from collections.abc import Sequence
 from pathlib import Path
 from tkinter import messagebox
 
-from input_output import HOLO_SUFFIX
-
 from .compat import DND_FILES
+
+HOLO_SUFFIX = ".holo"
 
 
 class DragDropMixin:

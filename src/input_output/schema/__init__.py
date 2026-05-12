@@ -3,7 +3,6 @@
 from .base import (
     H5DatasetSpec,
     H5SourceSchema,
-    HoloCompanionH5Layout,
     JsonConfigValueSpec,
 )
 from .doppler_view import (
@@ -24,7 +23,6 @@ from .doppler_view import (
     DOPPLERVIEW_VENOUS_VELOCITY_SIGNAL_PATH,
     DV_CONFIG_DIR_NAME,
     DV_CONFIG_FILENAME,
-    DV_H5_LAYOUT,
     DV_RETINAL_ARTERY_MASK_PATH,
     DV_RETINAL_VEIN_MASK_PATH,
 )
@@ -45,20 +43,11 @@ from .holodoppler import (
     HD_BATCH_STRIDE_KEY,
     HD_CONFIG_DIR_NAME,
     HD_CONFIG_FILENAME,
-    HD_H5_LAYOUT,
     HD_MOMENT0_PATH,
     HD_MOMENT2_PATH,
     HD_SAMPLING_FREQ_KEY,
     HOLODOPPLER_SCHEMA,
 )
-from .holo_input import (
-    HDF5_SUFFIXES,
-    HOLO_COMPANION_H5_LAYOUTS,
-    HOLO_DATA_DIR_TEMPLATE,
-    HOLO_H5_SUBDIR,
-    HOLO_SUFFIX,
-)
-
 __all__ = [
     "DOPPLER_VIEW_ANALYSIS_SCHEMA",
     "DOPPLER_VIEW_SCHEMA",
@@ -77,7 +66,6 @@ __all__ = [
     "DOPPLERVIEW_VENOUS_VELOCITY_SIGNAL_PATH",
     "DV_CONFIG_DIR_NAME",
     "DV_CONFIG_FILENAME",
-    "DV_H5_LAYOUT",
     "DV_RETINAL_ARTERY_MASK_PATH",
     "DV_RETINAL_VEIN_MASK_PATH",
     "ACTIVE_OUTPUT_SCHEMA_VARIANT",
@@ -88,19 +76,12 @@ __all__ = [
     "HD_BATCH_STRIDE_KEY",
     "HD_CONFIG_DIR_NAME",
     "HD_CONFIG_FILENAME",
-    "HD_H5_LAYOUT",
     "HD_MOMENT0_PATH",
     "HD_MOMENT2_PATH",
     "HD_SAMPLING_FREQ_KEY",
     "H5DatasetSpec",
     "H5SourceSchema",
-    "HDF5_SUFFIXES",
     "HOLODOPPLER_SCHEMA",
-    "HOLO_COMPANION_H5_LAYOUTS",
-    "HOLO_DATA_DIR_TEMPLATE",
-    "HOLO_H5_SUBDIR",
-    "HOLO_SUFFIX",
-    "HoloCompanionH5Layout",
     "JsonConfigValueSpec",
     "OUTPUT_SCHEMA_VARIANTS",
     "SLIM_TEMP_OUTPUT",

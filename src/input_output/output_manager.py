@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 
 from .archives import reset_output_dir
-from .output_layout import OutputLayout
+from .holo_run_layout import HoloRunLayout
 from .writers import open_h5, write_json_file
 
 
@@ -19,7 +19,7 @@ class OutputType(Enum):
 
 @dataclass(frozen=True)
 class OutputManager:
-    layout: OutputLayout
+    layout: HoloRunLayout
 
     @classmethod
     def from_holo(
@@ -28,16 +28,17 @@ class OutputManager:
         *,
         output_root: str | Path | None = None,
     ) -> "OutputManager":
-        return cls(OutputLayout.from_holo(holo_path, output_root=output_root))
+        return cls(HoloRunLayout.from_holo(holo_path, output_root=output_root))
 
     def prepare(self, *, replace: bool = False) -> None:
-        if replace and self.layout.root_dir.exists():
-            reset_output_dir(self.layout.root_dir)
+        output_dir = self.layout.ef_dir
+        if replace and output_dir.exists():
+            reset_output_dir(output_dir)
         else:
-            self.layout.root_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
 
     def dir_for(self, output_type: OutputType) -> Path:
-        return self.layout.root_dir / output_type.value
+        return self.layout.ef_dir / output_type.value
 
     def path_for(
         self,

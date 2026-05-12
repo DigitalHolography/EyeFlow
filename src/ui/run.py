@@ -8,10 +8,8 @@ from queue import Empty, Queue
 from threading import Thread
 from tkinter import filedialog, messagebox
 
-from input_output import (
-    ResolvedHoloInput,
-    resolve_selected_holo_inputs,
-)
+from input_output import resolve_holo_input
+from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from pipelines import PipelineDescriptor
 from pipeline_engine import PipelineExecutionPlan, run_pipelines_to_output
@@ -48,7 +46,7 @@ class RunMixin:
     def _validate_selected_input(
         self,
         holo_path: Path | None,
-    ) -> ResolvedHoloInput | None:
+    ) -> HoloRunLayout | None:
         if holo_path is None:
             messagebox.showwarning(
                 "Missing input",
@@ -57,7 +55,7 @@ class RunMixin:
             return None
 
         try:
-            resolved_inputs = resolve_selected_holo_inputs([holo_path])
+            run_layout = resolve_holo_input(holo_path)
         except ValueError as exc:
             messagebox.showerror("Invalid input", str(exc))
             return None
@@ -65,7 +63,7 @@ class RunMixin:
             messagebox.showerror("Missing data", str(exc))
             return None
 
-        return resolved_inputs[0]
+        return run_layout
 
     def run_process(self) -> None:
         if getattr(self, "_pipeline_run_active", False):
@@ -96,17 +94,17 @@ class RunMixin:
         if not self._reject_unavailable_pipelines(pipelines):
             return None
 
-        resolved_input = self._validate_selected_input(self._selected_holo_path())
-        if resolved_input is None:
+        run_layout = self._validate_selected_input(self._selected_holo_path())
+        if run_layout is None:
             return None
 
         self._reset_run_log("Starting pipeline run...\n")
         self._log_run(f"[DAG] Targets -> {', '.join(plan.targets)}")
         self._log_run(f"[DAG] Execution order -> {', '.join(plan.names)}")
-        self._log_resolved_input(resolved_input)
+        self._log_run_layout(run_layout)
 
         return self._create_pipeline_run_request(
-            resolved_input=resolved_input,
+            run_layout=run_layout,
             pipelines=pipelines,
             target_names=plan.targets,
         )
@@ -149,22 +147,22 @@ class RunMixin:
         )
         return False
 
-    def _log_resolved_input(self, resolved_input: ResolvedHoloInput) -> None:
-        self._log_run(f"[INPUT] HOLO -> {resolved_input.holo_path}")
-        self._log_run(f"[INPUT] DATA DIR -> {resolved_input.data_dir}")
-        self._log_run(f"[RESOLVED] HD -> {resolved_input.hd_h5}")
-        self._log_run(f"[RESOLVED] DV -> {resolved_input.dv_h5}")
+    def _log_run_layout(self, run_layout: HoloRunLayout) -> None:
+        self._log_run(f"[INPUT] HOLO -> {run_layout.holo_path}")
+        self._log_run(f"[INPUT] DATA DIR -> {run_layout.root_dir}")
+        self._log_run(f"[RESOLVED] HD -> {run_layout.hd_h5}")
+        self._log_run(f"[RESOLVED] DV -> {run_layout.dv_h5}")
 
     def _create_pipeline_run_request(
         self,
         *,
-        resolved_input: ResolvedHoloInput,
+        run_layout: HoloRunLayout,
         pipelines: Sequence[PipelineDescriptor],
         target_names: Sequence[str],
     ) -> _PipelineRunRequest | None:
         try:
             output_manager = self._prepare_output_manager_for_input(
-                resolved_input.holo_path
+                run_layout.holo_path
             )
         except (OSError, RuntimeError) as exc:
             self._log_run(f"[FAIL] {exc}")
@@ -178,8 +176,8 @@ class RunMixin:
             output_manager=output_manager,
             pipelines=pipelines,
             target_names=target_names,
-            holodoppler_h5=resolved_input.hd_h5,
-            doppler_vision_h5=resolved_input.dv_h5,
+            holodoppler_h5=run_layout.hd_h5,
+            doppler_vision_h5=run_layout.dv_h5,
         )
 
     def _start_pipeline_thread(self, request: _PipelineRunRequest) -> None:

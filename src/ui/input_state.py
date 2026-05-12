@@ -2,12 +2,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from input_output import (
-    HOLO_SUFFIX,
     default_output_dir_for_input,
     holo_input_status,
     reset_output_dir,
 )
 from input_output.output_manager import OutputManager
+
+HOLO_SUFFIX = ".holo"
 
 
 class InputStateMixin:
