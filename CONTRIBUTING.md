@@ -224,6 +224,28 @@ Prefer output attributes that explain the value:
 - `unit`: physical unit, such as `"s"`, `"mm/s"`, `"pixels"`, or `"a.u."`
 - `dimDesc`: dimension names, such as `["frame"]` or `["beat", "sample"]`
 
+## Reading Values From The Output H5
+
+Inside a later pipeline, read a value already written to the EyeFlow output H5
+with `ctx.read(...)` or `ctx.array(...)`:
+
+```python
+mean_per_frame = ctx.array(
+    "analysis/my_metric/mean_moment0_per_frame",
+    dtype=np.float32,
+)
+```
+
+Outside the pipeline runtime, use `h5py` and the same dataset path:
+
+```python
+import h5py
+
+with h5py.File("path/to/output_eyeflow.h5", "r") as h5:
+    mean_per_frame = h5["analysis/my_metric/mean_moment0_per_frame"][()]
+    unit = h5["analysis/my_metric/mean_moment0_per_frame"].attrs.get("unit")
+```
+
 ## Sharing Values Between Pipelines
 
 Use `ctx.set_var(...)` for temporary values needed by later pipelines but not
