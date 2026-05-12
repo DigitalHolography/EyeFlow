@@ -1,19 +1,20 @@
-"""Public HDF5 read/write helpers."""
+"""Output writer helpers."""
 
-from .core import (
+from .h5 import (
     initialize_output_h5,
-    normalize_h5_path,
     open_h5,
     resolve_dataset_target,
     set_attr_safe,
     write_value_dataset,
 )
+from .json import write_json_file
 
 __all__ = [
     "initialize_output_h5",
-    "normalize_h5_path",
     "open_h5",
     "resolve_dataset_target",
     "set_attr_safe",
+    "write_json_file",
     "write_value_dataset",
 ]
+

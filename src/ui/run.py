@@ -1,12 +1,10 @@
 """Run-tab actions and background pipeline execution."""
 
-from __future__ import annotations
-
 import os
-from queue import Empty, Queue
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from queue import Empty, Queue
 from threading import Thread
 from tkinter import filedialog, messagebox
 
@@ -14,13 +12,14 @@ from input_output import (
     ResolvedHoloInput,
     resolve_selected_holo_inputs,
 )
+from input_output.output_manager import OutputManager, OutputType
 from pipelines import PipelineDescriptor
-from pipeline_engine import PipelineExecutionPlan, run_pipelines_to_output_h5
+from pipeline_engine import PipelineExecutionPlan, run_pipelines_to_output
 
 
 @dataclass(frozen=True)
 class _PipelineRunRequest:
-    output_h5_path: Path
+    output_manager: OutputManager
     pipelines: Sequence[PipelineDescriptor]
     target_names: Sequence[str]
     holodoppler_h5: Path | None
@@ -164,19 +163,19 @@ class RunMixin:
         target_names: Sequence[str],
     ) -> _PipelineRunRequest | None:
         try:
-            output_dir = self._prepare_default_output_dir(resolved_input.holo_path)
+            output_manager = self._prepare_output_manager_for_input(
+                resolved_input.holo_path
+            )
         except (OSError, RuntimeError) as exc:
             self._log_run(f"[FAIL] {exc}")
             self._set_minimal_status("Run failed.")
             messagebox.showerror("Output folder unavailable", str(exc))
             return None
 
-        output_h5_path = output_dir / self._default_work_h5_name_for_input(
-            resolved_input.holo_path
-        )
+        output_h5_path = output_manager.path_for(OutputType.H5)
         self._log_run(f"[OUTPUT] {output_h5_path}")
         return _PipelineRunRequest(
-            output_h5_path=output_h5_path,
+            output_manager=output_manager,
             pipelines=pipelines,
             target_names=target_names,
             holodoppler_h5=resolved_input.hd_h5,
@@ -279,8 +278,8 @@ class RunMixin:
         self,
         request: _PipelineRunRequest,
     ) -> Path:
-        return run_pipelines_to_output_h5(
-            output_h5_path=request.output_h5_path,
+        return run_pipelines_to_output(
+            output_manager=request.output_manager,
             pipelines=request.pipelines,
             target_names=request.target_names,
             holodoppler_h5=request.holodoppler_h5,

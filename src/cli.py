@@ -12,8 +12,6 @@ Inputs:
     --zip-name         Optional filename for the archive (default: outputs.zip).
 """
 
-from __future__ import annotations
-
 import argparse
 import shutil
 import sys
@@ -31,9 +29,10 @@ from input_output import (
     HOLO_SUFFIX,
     ResolvedHoloInput,
     create_zip_from_tree,
-    default_work_h5_name_for_input,
     resolve_selected_holo_inputs,
 )
+from input_output.output_layout import OutputLayout
+from input_output.output_manager import OutputManager, OutputType
 from pipelines import (
     PipelineDescriptor,
     load_pipeline_catalog,
@@ -41,7 +40,7 @@ from pipelines import (
 from pipeline_engine import (
     PipelineDAG,
     PipelineExecutionPlan,
-    run_pipelines_to_output_h5,
+    run_pipelines_to_output,
 )
 
 
@@ -110,12 +109,12 @@ def _prepare_data_root(
     return data_path, None
 
 
-def _unique_output_path(path: Path) -> Path:
+def _unique_output_root(path: Path) -> Path:
     if not path.exists():
         return path
     suffix = 1
     while True:
-        candidate = path.with_name(f"{path.stem}_{suffix}{path.suffix}")
+        candidate = path.with_name(f"{path.name}_{suffix}")
         if not candidate.exists():
             return candidate
         suffix += 1
@@ -128,14 +127,22 @@ def _run_pipelines_on_input(
 ) -> Path:
     target_dir = output_root / resolved_input.relative_holo_path.parent
     target_dir.mkdir(parents=True, exist_ok=True)
-    output_h5_path = _unique_output_path(
-        target_dir / default_work_h5_name_for_input(resolved_input.holo_path)
+    layout = OutputLayout.from_holo(
+        resolved_input.holo_path,
+        output_root=target_dir,
     )
+    layout = OutputLayout(
+        holo_path=layout.holo_path,
+        stem=layout.stem,
+        root_dir=_unique_output_root(layout.root_dir),
+    )
+    output_manager = OutputManager(layout)
+    output_h5_path = output_manager.path_for(OutputType.H5)
     print(f"[INPUT] HOLO -> {resolved_input.holo_path}")
     print(f"[RESOLVED] HD -> {resolved_input.hd_h5}")
     print(f"[RESOLVED] DV -> {resolved_input.dv_h5}")
-    run_pipelines_to_output_h5(
-        output_h5_path=output_h5_path,
+    run_pipelines_to_output(
+        output_manager=output_manager,
         pipelines=plan.descriptors,
         target_names=plan.targets,
         holodoppler_h5=resolved_input.hd_h5,

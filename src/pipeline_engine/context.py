@@ -1,14 +1,17 @@
-from __future__ import annotations
-
 from collections.abc import Mapping
 from typing import Any
 
 import h5py
 import numpy as np
 
-from input_output.hdf5 import normalize_h5_path, set_attr_safe, write_value_dataset
 from input_output.inputs import EyeFlowView, MergedAttrs
+from input_output.output_manager import OutputManager
 from input_output.schema import DOPPLER_VIEW_SCHEMA, HOLODOPPLER_SCHEMA, H5SourceSchema
+from input_output.writers.h5 import (
+    normalize_h5_path,
+    set_attr_safe,
+    write_value_dataset,
+)
 
 from .base import DatasetValue, ProcessResult
 
@@ -145,6 +148,7 @@ class PipelineContext:
         preferred_input: str = "both",
         pipeline_name: str = "",
         variables: dict[str, Any] | None = None,
+        output_manager: OutputManager | None = None,
     ) -> None:
         self.work_h5 = work_h5
         self.work = work_h5
@@ -164,6 +168,7 @@ class PipelineContext:
         self.hd_config = dict(holodoppler_config or {})
         self.dv_config = dict(doppler_vision_config or {})
         self.preferred_input = preferred_input
+        self.output = output_manager
         self.pipeline_name = pipeline_name
         # Shared in-memory state for this run. It is not persisted unless a
         # pipeline explicitly writes a value to the work H5.

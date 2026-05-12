@@ -1,15 +1,13 @@
-from __future__ import annotations
-
 from collections.abc import Sequence
 from pathlib import Path
 
 from input_output import (
     HOLO_SUFFIX,
     default_output_dir_for_input,
-    default_work_h5_name_for_input,
     holo_input_status,
     reset_output_dir,
 )
+from input_output.output_manager import OutputManager
 
 
 class InputStateMixin:
@@ -59,12 +57,6 @@ class InputStateMixin:
             self._apply_input_defaults(None)
             return
         self._assign_holo_input_path(input_paths[0])
-
-    def _default_work_h5_name_for_input(self, input_path: Path | None) -> str:
-        return default_work_h5_name_for_input(input_path)
-
-    def _default_work_h5_name(self) -> str:
-        return self._default_work_h5_name_for_input(self._selected_holo_path())
 
     def _reference_holo_tooltip_text(self) -> str:
         return "Pick one reference .holo file."
@@ -159,6 +151,14 @@ class InputStateMixin:
                 output_dir.unlink()
         output_dir.mkdir(parents=True, exist_ok=True)
         return output_dir
+
+    def _output_manager_for_input(self, input_path: Path) -> OutputManager:
+        return OutputManager.from_holo(input_path)
+
+    def _prepare_output_manager_for_input(self, input_path: Path) -> OutputManager:
+        output_manager = self._output_manager_for_input(input_path)
+        output_manager.prepare(replace=True)
+        return output_manager
 
     def _apply_input_defaults(self, input_path: Path | None) -> None:
         del input_path

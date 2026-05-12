@@ -1,7 +1,5 @@
 """Domain-specific metric dictionaries for EyeFlow HDF5 output paths."""
 
-from __future__ import annotations
-
 from collections.abc import Iterable, Mapping
 
 import numpy as np
@@ -23,7 +21,7 @@ ZERO_BASED_INDEX_PATHS = frozenset(
 
 
 def systolic_index_base_for_path(path: str) -> int | None:
-    from .hdf5 import normalize_h5_path
+    from .writers.h5 import normalize_h5_path
 
     normalized = normalize_h5_path(path)
     return 0 if normalized in ZERO_BASED_INDEX_PATHS else None
