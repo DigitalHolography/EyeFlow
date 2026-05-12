@@ -2,37 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-
-class HoloCompanionH5Layout(BaseModel):
-    """Folder and filename layout for one HOLO companion HDF5 source."""
-
-    model_config = ConfigDict(frozen=True)
-
-    companion_name: str
-    h5_folder_name: str
-    h5_filename_template: str
-
-    def companion_folder_name(self, stem: str) -> str:
-        return f"{stem}_{self.companion_name}"
-
-    def companion_folder(self, root_dir: Path, stem: str) -> Path:
-        return root_dir / self.companion_folder_name(stem)
-
-    def h5_folder(self, root_dir: Path, stem: str) -> Path:
-        return self.companion_folder(root_dir, stem) / self.h5_folder_name
-
-    def h5_filename(self, stem: str) -> str:
-        companion_folder_name = self.companion_folder_name(stem)
-        return self.h5_filename_template.format(
-            stem=stem,
-            folder=companion_folder_name,
-            companion=self.companion_name,
-        )
 
 
 class H5DatasetSpec(BaseModel):
@@ -96,7 +68,9 @@ class H5SourceSchema(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     label: str
-    layout: HoloCompanionH5Layout
+    companion_suffix: str
+    h5_folder_name: str
+    h5_filename_template: str
     config_dir_name: str | None = None
     config_filename: str | None = None
     datasets: dict[str, H5DatasetSpec] = Field(default_factory=dict)

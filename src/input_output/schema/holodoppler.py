@@ -5,7 +5,6 @@ from __future__ import annotations
 from .base import (
     H5DatasetSpec,
     H5SourceSchema,
-    HoloCompanionH5Layout,
     JsonConfigValueSpec,
 )
 
@@ -14,11 +13,9 @@ HD_CONFIG_FILENAME = "parameters.json"
 
 HOLODOPPLER_SCHEMA = H5SourceSchema(
     label="HD",
-    layout=HoloCompanionH5Layout(
-        companion_name="HD",
-        h5_folder_name="h5",
-        h5_filename_template="{folder}_output.h5",
-    ),
+    companion_suffix="HD",
+    h5_folder_name="h5",
+    h5_filename_template="{folder}_output.h5",
     config_dir_name=HD_CONFIG_DIR_NAME,
     config_filename=HD_CONFIG_FILENAME,
     datasets={
@@ -53,7 +50,6 @@ HOLODOPPLER_SCHEMA = H5SourceSchema(
     },
 )
 
-HD_H5_LAYOUT = HOLODOPPLER_SCHEMA.layout
 HD_MOMENT0_PATH = HOLODOPPLER_SCHEMA.dataset_path("moment0")
 HD_MOMENT2_PATH = HOLODOPPLER_SCHEMA.dataset_path("moment2")
 HD_SAMPLING_FREQ_KEY = HOLODOPPLER_SCHEMA.config_value("sampling_freq").json_key

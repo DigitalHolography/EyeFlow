@@ -1,36 +1,17 @@
 """Resolve HOLO selections and expose HD/DV/work HDF5 inputs to pipelines."""
 
 import json
-import os
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
 
-from .output_layout import OutputLayout
-from .schema import (
-    DOPPLER_VIEW_SCHEMA,
-    HDF5_SUFFIXES,
-    HOLODOPPLER_SCHEMA,
-    HOLO_COMPANION_H5_LAYOUTS,
-    HOLO_DATA_DIR_TEMPLATE,
-    HOLO_SUFFIX,
-    H5SourceSchema,
-    HoloCompanionH5Layout,
-)
+from .holo_run_layout import HoloRunLayout
+from .schema import DOPPLER_VIEW_SCHEMA, H5SourceSchema, HOLODOPPLER_SCHEMA
 from .writers.h5 import normalize_h5_path
 
-
-@dataclass(frozen=True)
-class ResolvedHoloInput:
-    holo_path: Path
-    relative_holo_path: Path
-    data_dir: Path
-    hd_dir: Path
-    dv_dir: Path
-    hd_h5: Path
-    dv_h5: Path
+HOLO_SUFFIX = ".holo"
 
 
 @dataclass(frozen=True)
@@ -43,43 +24,26 @@ def resolve_holo_input(
     holo_path: Path,
     *,
     require_holo_file: bool = True,
-    relative_holo_path: Path | None = None,
-) -> ResolvedHoloInput:
+) -> HoloRunLayout:
     holo_path = _absolute(holo_path)
     _validate_holo_file(holo_path, require_file=require_holo_file)
-    data_dir = _data_dir_for_holo(holo_path)
-    _require_dir(data_dir, f"Could not find data folder:\n{data_dir}")
-
-    resolved = _resolve_required_companions(data_dir, holo_path.stem)
-    return ResolvedHoloInput(
-        holo_path=holo_path,
-        relative_holo_path=relative_holo_path or Path(holo_path.name),
-        data_dir=data_dir,
-        hd_dir=HOLODOPPLER_SCHEMA.layout.companion_folder(data_dir, holo_path.stem),
-        dv_dir=DOPPLER_VIEW_SCHEMA.layout.companion_folder(data_dir, holo_path.stem),
-        hd_h5=resolved[HOLODOPPLER_SCHEMA.layout],
-        dv_h5=resolved[DOPPLER_VIEW_SCHEMA.layout],
-    )
+    run_layout = HoloRunLayout.from_holo(holo_path)
+    run_layout.require_inputs()
+    return run_layout
 
 
 def resolve_selected_holo_inputs(
     holo_paths: Sequence[Path],
-) -> list[ResolvedHoloInput]:
+) -> list[HoloRunLayout]:
     normalized = [_absolute(path) for path in holo_paths]
     if not normalized:
         raise ValueError(f"Select one or more {HOLO_SUFFIX} files.")
 
-    batch_root = _batch_root(normalized)
-    resolved: list[ResolvedHoloInput] = []
+    resolved: list[HoloRunLayout] = []
     errors: list[str] = []
     for holo_path in normalized:
         try:
-            resolved.append(
-                resolve_holo_input(
-                    holo_path,
-                    relative_holo_path=_relative_to_batch(holo_path, batch_root),
-                )
-            )
+            resolved.append(resolve_holo_input(holo_path))
         except (FileNotFoundError, ValueError) as exc:
             errors.append(f"{holo_path}:\n{exc}")
 
@@ -94,7 +58,7 @@ def resolve_selected_holo_inputs(
 
 def default_output_dir_for_input(input_path: Path) -> Path:
     if input_path.suffix.lower() == HOLO_SUFFIX:
-        return OutputLayout.from_holo(input_path).root_dir
+        return HoloRunLayout.from_holo(input_path).ef_dir
     return input_path.parent if input_path.is_file() else input_path
 
 
@@ -109,15 +73,8 @@ def holo_input_status(
     except (FileNotFoundError, ValueError):
         return HoloInputStatus(hd=False, dv=False)
 
-    data_dir = _data_dir_for_holo(holo_path)
-    return HoloInputStatus(
-        hd=bool(
-            _h5_files(HOLODOPPLER_SCHEMA.layout.h5_folder(data_dir, holo_path.stem))
-        ),
-        dv=bool(
-            _h5_files(DOPPLER_VIEW_SCHEMA.layout.h5_folder(data_dir, holo_path.stem))
-        ),
-    )
+    run_layout = HoloRunLayout.from_holo(holo_path)
+    return HoloInputStatus(hd=run_layout.has_hd_h5, dv=run_layout.has_dv_h5)
 
 
 def _lookup_key(path: str) -> str:
@@ -129,77 +86,6 @@ def _absolute(path: str | Path) -> Path:
     return resolved if resolved.is_absolute() else Path.cwd() / resolved
 
 
-def _h5_files(folder: Path) -> list[Path]:
-    if not folder.is_dir():
-        return []
-    return sorted(
-        (
-            path
-            for path in folder.iterdir()
-            if path.is_file() and path.suffix.lower() in HDF5_SUFFIXES
-        ),
-        key=lambda path: path.name.lower(),
-    )
-
-
-def _choose_h5_file(layout: HoloCompanionH5Layout, folder: Path, stem: str) -> Path:
-    candidates = _h5_files(folder)
-    if not candidates:
-        raise FileNotFoundError(
-            f"{layout.companion_name} HDF5 file missing in expected folder:\n{folder}"
-        )
-
-    preferred = layout.h5_filename(stem).lower()
-    matching = [path for path in candidates if path.name.lower() == preferred]
-    if matching:
-        return matching[0]
-    if len(candidates) == 1:
-        return candidates[0]
-    raise FileNotFoundError(_multiple_h5_message(layout, folder, stem, candidates))
-
-
-def _multiple_h5_message(
-    layout: HoloCompanionH5Layout,
-    folder: Path,
-    stem: str,
-    candidates: Sequence[Path],
-) -> str:
-    candidate_list = "\n".join(str(candidate) for candidate in candidates)
-    return (
-        f"Multiple {layout.companion_name} HDF5 files found in:\n{folder}\n\n"
-        f"Expected one file, preferably named:\n{layout.h5_filename(stem)}\n\n"
-        f"Candidates:\n{candidate_list}"
-    )
-
-
-def _data_dir_for_holo(holo_path: Path) -> Path:
-    return holo_path.parent / HOLO_DATA_DIR_TEMPLATE.format(stem=holo_path.stem)
-
-
-def _require_dir(path: Path, message: str) -> None:
-    if not path.is_dir():
-        raise FileNotFoundError(message)
-
-
-def _resolve_layout_h5(
-    layout: HoloCompanionH5Layout,
-    *,
-    data_dir: Path,
-    stem: str,
-) -> Path:
-    companion_dir = layout.companion_folder(data_dir, stem)
-    _require_dir(
-        companion_dir,
-        f"{layout.companion_name} folder missing:\n{companion_dir}",
-    )
-    h5_dir = layout.h5_folder(data_dir, stem)
-    _require_dir(
-        h5_dir,
-        f"{layout.companion_name} HDF5 folder missing:\n{h5_dir}",
-    )
-    return _choose_h5_file(layout, h5_dir, stem)
-
-
 def _validate_holo_file(holo_path: Path, *, require_file: bool) -> None:
     if holo_path.suffix.lower() != HOLO_SUFFIX:
         raise ValueError(f"HOLO input must be a {HOLO_SUFFIX} file:\n{holo_path}")
@@ -209,43 +95,6 @@ def _validate_holo_file(holo_path: Path, *, require_file: bool) -> None:
         raise FileNotFoundError(f"HOLO input does not exist:\n{holo_path}")
     if not holo_path.is_file():
         raise ValueError(f"HOLO input must be a file:\n{holo_path}")
-
-
-def _resolve_required_companions(data_dir: Path, stem: str) -> dict[object, Path]:
-    errors: list[str] = []
-    resolved: dict[object, Path] = {}
-    for layout in HOLO_COMPANION_H5_LAYOUTS:
-        try:
-            resolved[layout] = _resolve_layout_h5(layout, data_dir=data_dir, stem=stem)
-        except FileNotFoundError as exc:
-            errors.append(str(exc))
-    if errors:
-        raise FileNotFoundError(
-            f"Missing required input data for the selected {HOLO_SUFFIX} file:\n\n"
-            + "\n\n".join(errors)
-        )
-    return resolved
-
-
-def _batch_root(holo_paths: Sequence[Path]) -> Path:
-    if not holo_paths:
-        return Path.cwd()
-    if len(holo_paths) == 1:
-        return holo_paths[0].parent
-    try:
-        return Path(os.path.commonpath([str(path.parent) for path in holo_paths]))
-    except ValueError:
-        return Path.cwd()
-
-
-def _relative_to_batch(holo_path: Path, batch_root: Path) -> Path:
-    try:
-        return holo_path.relative_to(batch_root)
-    except ValueError:
-        anchor = Path(holo_path.anchor)
-        drive_token = holo_path.drive.rstrip(":\\/") or "root"
-        tail = holo_path.relative_to(anchor) if anchor != holo_path else Path()
-        return Path(drive_token) / tail
 
 
 class MergedAttrs(Mapping[str, object]):

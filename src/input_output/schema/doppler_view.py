@@ -5,7 +5,6 @@ from __future__ import annotations
 from .base import (
     H5DatasetSpec,
     H5SourceSchema,
-    HoloCompanionH5Layout,
     JsonConfigValueSpec,
 )
 
@@ -17,11 +16,9 @@ DOPPLERVIEW_ANALYSIS_ROOT = "analysis"
 
 DOPPLER_VIEW_SCHEMA = H5SourceSchema(
     label="DV",
-    layout=HoloCompanionH5Layout(
-        companion_name="DV",
-        h5_folder_name="h5",
-        h5_filename_template="{folder}.h5",
-    ),
+    companion_suffix="DV",
+    h5_folder_name="h5",
+    h5_filename_template="{folder}.h5",
     config_dir_name=DV_CONFIG_DIR_NAME,
     config_filename=DV_CONFIG_FILENAME,
     datasets={
@@ -60,7 +57,9 @@ DOPPLER_VIEW_SCHEMA = H5SourceSchema(
 
 DOPPLER_VIEW_ANALYSIS_SCHEMA = H5SourceSchema(
     label="DV analysis",
-    layout=DOPPLER_VIEW_SCHEMA.layout,
+    companion_suffix=DOPPLER_VIEW_SCHEMA.companion_suffix,
+    h5_folder_name=DOPPLER_VIEW_SCHEMA.h5_folder_name,
+    h5_filename_template=DOPPLER_VIEW_SCHEMA.h5_filename_template,
     datasets={
         "retinal_velocity_array": H5DatasetSpec(
             key="retinal_velocity_array",
@@ -125,7 +124,6 @@ DOPPLER_VIEW_ANALYSIS_SCHEMA = H5SourceSchema(
     },
 )
 
-DV_H5_LAYOUT = DOPPLER_VIEW_SCHEMA.layout
 DV_RETINAL_ARTERY_MASK_PATH = DOPPLER_VIEW_SCHEMA.dataset_path("retinal_artery_mask")
 DV_RETINAL_VEIN_MASK_PATH = DOPPLER_VIEW_SCHEMA.dataset_path("retinal_vein_mask")
 DOPPLERVIEW_RETINAL_VELOCITY_ARRAY_PATH = DOPPLER_VIEW_ANALYSIS_SCHEMA.dataset_path(

@@ -13,6 +13,7 @@ Inputs:
 """
 
 import argparse
+import os
 import shutil
 import sys
 import tempfile
@@ -26,12 +27,10 @@ from runtime_limits import configure_numeric_threads
 configure_numeric_threads()
 
 from input_output import (
-    HOLO_SUFFIX,
-    ResolvedHoloInput,
     create_zip_from_tree,
     resolve_selected_holo_inputs,
 )
-from input_output.output_layout import OutputLayout
+from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from pipelines import (
     PipelineDescriptor,
@@ -42,6 +41,8 @@ from pipeline_engine import (
     PipelineExecutionPlan,
     run_pipelines_to_output,
 )
+
+HOLO_SUFFIX = ".holo"
 
 
 def _build_pipeline_registry() -> dict[str, PipelineDescriptor]:
@@ -120,38 +121,58 @@ def _unique_output_root(path: Path) -> Path:
         suffix += 1
 
 
+def _batch_root(holo_paths: Sequence[Path]) -> Path:
+    if not holo_paths:
+        return Path.cwd()
+    if len(holo_paths) == 1:
+        return holo_paths[0].parent
+    try:
+        return Path(os.path.commonpath([str(path.parent) for path in holo_paths]))
+    except ValueError:
+        return Path.cwd()
+
+
+def _relative_to_batch(holo_path: Path, batch_root: Path) -> Path:
+    try:
+        return holo_path.relative_to(batch_root)
+    except ValueError:
+        anchor = Path(holo_path.anchor)
+        drive_token = holo_path.drive.rstrip(":\\/") or "root"
+        tail = holo_path.relative_to(anchor) if anchor != holo_path else Path()
+        return Path(drive_token) / tail
+
+
 def _run_pipelines_on_input(
-    resolved_input: ResolvedHoloInput,
+    run_layout: HoloRunLayout,
+    relative_holo_path: Path,
     plan: PipelineExecutionPlan,
     output_root: Path,
 ) -> Path:
-    target_dir = output_root / resolved_input.relative_holo_path.parent
+    target_dir = output_root / relative_holo_path.parent
     target_dir.mkdir(parents=True, exist_ok=True)
-    layout = OutputLayout.from_holo(
-        resolved_input.holo_path,
+    output_layout = HoloRunLayout.from_holo(
+        run_layout.holo_path,
         output_root=target_dir,
     )
-    layout = OutputLayout(
-        holo_path=layout.holo_path,
-        stem=layout.stem,
-        root_dir=_unique_output_root(layout.root_dir),
+    output_layout = output_layout.with_root_dir(
+        _unique_output_root(output_layout.root_dir)
     )
-    output_manager = OutputManager(layout)
+    output_manager = OutputManager(output_layout)
     output_h5_path = output_manager.path_for(OutputType.H5)
-    print(f"[INPUT] HOLO -> {resolved_input.holo_path}")
-    print(f"[RESOLVED] HD -> {resolved_input.hd_h5}")
-    print(f"[RESOLVED] DV -> {resolved_input.dv_h5}")
+    print(f"[INPUT] HOLO -> {run_layout.holo_path}")
+    print(f"[RESOLVED] HD -> {run_layout.hd_h5}")
+    print(f"[RESOLVED] DV -> {run_layout.dv_h5}")
     run_pipelines_to_output(
         output_manager=output_manager,
         pipelines=plan.descriptors,
         target_names=plan.targets,
-        holodoppler_h5=resolved_input.hd_h5,
-        doppler_vision_h5=resolved_input.dv_h5,
+        holodoppler_h5=run_layout.hd_h5,
+        doppler_vision_h5=run_layout.dv_h5,
         on_pipeline_success=lambda name: print(
-            f"[OK] {resolved_input.holo_path.name} -> {name}"
+            f"[OK] {run_layout.holo_path.name} -> {name}"
         ),
     )
-    print(f"[OK] {resolved_input.holo_path.name}: output -> {output_h5_path}")
+    print(f"[OK] {run_layout.holo_path.name}: output -> {output_h5_path}")
     return output_h5_path
 
 
@@ -190,7 +211,8 @@ def run_cli(
         inputs = _find_holo_inputs(data_root)
         if not inputs:
             raise ValueError(f"No {HOLO_SUFFIX} files found under {data_path}")
-        resolved_inputs = resolve_selected_holo_inputs(inputs)
+        run_layouts = resolve_selected_holo_inputs(inputs)
+        batch_root = _batch_root(inputs)
 
         output_root = output_dir.expanduser().resolve()
         output_root.mkdir(parents=True, exist_ok=True)
@@ -202,18 +224,20 @@ def run_cli(
 
         failures: list[str] = []
         processed_outputs: list[Path] = []
-        for resolved_input in resolved_inputs:
+        for run_layout in run_layouts:
+            relative_holo_path = _relative_to_batch(run_layout.holo_path, batch_root)
             try:
                 combined_output = _run_pipelines_on_input(
-                    resolved_input,
+                    run_layout,
+                    relative_holo_path,
                     plan,
                     work_root,
                 )
                 processed_outputs.append(combined_output)
             except Exception as exc:  # noqa: BLE001
-                failures.append(f"{resolved_input.holo_path}: {exc}")
+                failures.append(f"{run_layout.holo_path}: {exc}")
                 print(
-                    f"[FAIL] {resolved_input.holo_path.name}: {exc}",
+                    f"[FAIL] {run_layout.holo_path.name}: {exc}",
                     file=sys.stderr,
                 )
 
