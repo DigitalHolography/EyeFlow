@@ -1,6 +1,6 @@
 """Read HD/DV inputs for the waveform-shape metrics pipeline."""
 
-from pipelines.imports import np
+from pipeline_engine.imports import np
 
 from .constants import DOPPLERVIEW_DEFAULT_LOCAL_BACKGROUND_DIST
 
@@ -11,9 +11,10 @@ def dopplerview_cache_from_h5(ctx) -> dict[str, object]:
         "moment2": _read_hd_moment(ctx, "moment2"),
         "retinal_artery_mask": ctx.dv.array("retinal_artery_mask", dtype=bool),
         "retinal_vein_mask": ctx.dv.array("retinal_vein_mask", dtype=bool),
-        "retinal_labeled_vessels": _read_optional_int_array(
-            ctx.dv,
+        "retinal_labeled_vessels": ctx.dv.array(
             "retinal_labeled_vessels",
+            dtype=np.int32,
+            default=None,
         ),
     }
 
@@ -39,10 +40,3 @@ def _coerce_dopplerview_moment(value) -> np.ndarray:
             f"got shape {squeezed.shape}."
         )
     return np.transpose(squeezed, (0, 2, 1))
-
-
-def _read_optional_int_array(source, key: str) -> np.ndarray | None:
-    found = source.get(key)
-    if found is None:
-        return None
-    return np.asarray(found[()], dtype=np.int32)
