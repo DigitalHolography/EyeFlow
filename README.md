@@ -31,40 +31,18 @@ python -m venv .venv
 pip install -e .
 ```
 
-If you also want the Streamlit GUI:
+### Launch The Desktop App
 
 ```powershell
-pip install -e .[gui]
+eyeflow
 ```
 
 ### Launch The CLI
 
-Validate one H5 file, a folder tree, or a zip archive:
+Run selected pipelines over one HOLO file, a folder tree of HOLO files, or a zip archive:
 
 ```powershell
-eyeflow validate path\to\input.h5
-eyeflow validate path\to\folder
-eyeflow validate path\to\archive.zip
-```
-
-You can also use the module form:
-
-```powershell
-python -m eyeflow validate path\to\input.h5
-```
-
-### Launch The GUI
-
-Once the GUI dependencies are installed:
-
-```powershell
-eyeflow-gui
-```
-
-Fallback direct Streamlit command:
-
-```powershell
-streamlit run src\eyeflow\gui\app.py
+eyeflow-cli --data path\to\input.holo --pipelines path\to\pipelines.txt --output path\to\outputs
 ```
 
 ## Scope
@@ -224,19 +202,6 @@ The CLI and GUI must expose the same analysis features.
 - module selection
 - clear logging and non-zero exit codes on failure
 
-### GUI Requirements
-
-- built with Streamlit
-- same processing options as the CLI
-- input browsing
-- batch execution
-- settings persistence
-- progress reporting
-- visualization of loaded moments and masks
-- quality-control views for overlays and key intermediate outputs
-
-The GUI should be a review and execution interface, not a second implementation of the pipeline.
-
 ## Technical Requirements
 
 - Python project managed with a `pyproject.toml`
@@ -272,7 +237,7 @@ A good first Python release would include:
 - waveform metrics
 - cross-section analysis
 - H5 and JSON export
-- CLI and Streamlit GUI parity
+- CLI and GUI parity
 - settings persistence
 - batch and zip support
 
