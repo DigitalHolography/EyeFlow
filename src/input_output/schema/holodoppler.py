@@ -33,6 +33,18 @@ HOLODOPPLER_SCHEMA = H5SourceSchema(
             dims=("frame", "y", "x"),
             description="Holodoppler moment 2 stack.",
         ),
+        "registration": H5DatasetSpec(
+            key="registration",
+            path="registration",
+            required=False,
+            description="Holodoppler registration data copied to EyeFlow output.",
+        ),
+        "zernike_coefs_radians": H5DatasetSpec(
+            key="zernike_coefs_radians",
+            path="zernike_coefs_radians",
+            required=False,
+            description="Holodoppler Zernike coefficients copied to EyeFlow output.",
+        ),
     },
     config_values={
         "sampling_freq": JsonConfigValueSpec(
@@ -52,5 +64,9 @@ HOLODOPPLER_SCHEMA = H5SourceSchema(
 
 HD_MOMENT0_PATH = HOLODOPPLER_SCHEMA.dataset_path("moment0")
 HD_MOMENT2_PATH = HOLODOPPLER_SCHEMA.dataset_path("moment2")
+HD_OUTPUT_PASSTHROUGH_PATHS = (
+    HOLODOPPLER_SCHEMA.dataset_path("registration"),
+    HOLODOPPLER_SCHEMA.dataset_path("zernike_coefs_radians"),
+)
 HD_SAMPLING_FREQ_KEY = HOLODOPPLER_SCHEMA.config_value("sampling_freq").json_key
 HD_BATCH_STRIDE_KEY = HOLODOPPLER_SCHEMA.config_value("batch_stride").json_key
