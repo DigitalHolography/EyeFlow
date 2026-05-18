@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "EyeFlow"
-version = "0.3.0"
+version = "0.5.0"
 description = "Cohort-analysis engine for retinal Doppler holography"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,13 +36,7 @@ eyeflow-cli = "launcher:cli_main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-py-modules = [
-    "eye_flow",
-    "cli",
-    "app_settings",
-    "dependency_utils",
-    "launcher",
-]
+py-modules = ["eye_flow", "cli", "app_settings", "dependency_utils", "launcher"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
