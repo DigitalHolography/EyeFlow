@@ -45,6 +45,7 @@ from .holodoppler import (
     HD_CONFIG_FILENAME,
     HD_MOMENT0_PATH,
     HD_MOMENT2_PATH,
+    HD_OUTPUT_PASSTHROUGH_PATHS,
     HD_SAMPLING_FREQ_KEY,
     HOLODOPPLER_SCHEMA,
 )
@@ -78,6 +79,7 @@ __all__ = [
     "HD_CONFIG_FILENAME",
     "HD_MOMENT0_PATH",
     "HD_MOMENT2_PATH",
+    "HD_OUTPUT_PASSTHROUGH_PATHS",
     "HD_SAMPLING_FREQ_KEY",
     "H5DatasetSpec",
     "H5SourceSchema",

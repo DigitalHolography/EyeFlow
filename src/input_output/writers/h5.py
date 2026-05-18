@@ -5,6 +5,8 @@ from pathlib import Path
 import h5py
 import numpy as np
 
+from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
+
 
 def normalize_h5_path(path: object) -> str:
     return str(path).replace("\\", "/").strip("/")
@@ -92,6 +94,13 @@ def initialize_output_h5(
 ) -> None:
     if holodoppler_source_file:
         h5file.attrs["holodoppler_source_file"] = holodoppler_source_file
+
+        # Pass registration and zernike data through directly
+        with open_h5(holodoppler_source_file, "r") as source_h5:
+            for path in HD_OUTPUT_PASSTHROUGH_PATHS:
+                if source_h5.get(path) is None:
+                    continue
+                source_h5.copy(path, h5file, name=path)
     if doppler_vision_source_file:
         h5file.attrs["doppler_vision_source_file"] = doppler_vision_source_file
     primary_source = holodoppler_source_file or doppler_vision_source_file
