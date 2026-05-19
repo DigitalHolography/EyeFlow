@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -111,7 +112,10 @@ def _read_hd_scalar_or_config(
     value = _read_source_scalar(pipeline_input.hd, spec.h5_path)
     if value is not None:
         return value
-    return _scalar_from_value(spec.read_json_config(pipeline_input.hd_config))
+    value = _scalar_from_value(spec.read_json_config(pipeline_input.hd_config))
+    if value is not None:
+        return value
+    return _read_embedded_json_scalar(pipeline_input.hd, "HD_parameters", spec.json_key)
 
 
 def _read_source_scalar(source: h5py.File | None, path: str | None):
@@ -121,6 +125,24 @@ def _read_source_scalar(source: h5py.File | None, path: str | None):
     if not isinstance(found, h5py.Dataset):
         return None
     return _scalar_from_value(found[()])
+
+
+def _read_embedded_json_scalar(source: h5py.File | None, path: str, key: str):
+    if source is None:
+        return None
+    found = source.get(path)
+    if not isinstance(found, h5py.Dataset):
+        return None
+    raw = _scalar_from_value(found[()])
+    if not isinstance(raw, str):
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return _scalar_from_value(payload.get(key))
 
 
 def _scalar_from_value(value):

@@ -9,6 +9,7 @@ from pipeline_engine import (
 # not imported as runnable pipelines by accident.
 PIPELINE_MODULES = (
     "dual_input_tutorial",
+    "matlab_pulse_poc",
     "package_pipeline_tutorial",
     "test1",
     "test2",
