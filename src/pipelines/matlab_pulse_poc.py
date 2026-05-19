@@ -485,19 +485,19 @@ def _legacy_arterial_waveform_metrics(
             {"unit": "bpm"},
         ),
         "Artery/VelocityPerBeat/beatPeriodIdx/value": with_attrs(
-            beat_period_idx,
+            beat_period_idx.astype(np.float32, copy=False).reshape(1, -1),
             {"unit": "frame", "dimDesc": ["beat"]},
         ),
         "Artery/VelocityPerBeat/beatPeriodSeconds/value": with_attrs(
-            beat_period_seconds,
+            beat_period_seconds.reshape(1, -1),
             {"unit": "s", "dimDesc": ["beat"]},
         ),
         "Vein/VelocityPerBeat/beatPeriodIdx/value": with_attrs(
-            beat_period_idx,
+            beat_period_idx.astype(np.float32, copy=False).reshape(1, -1),
             {"unit": "frame", "dimDesc": ["beat"]},
         ),
         "Vein/VelocityPerBeat/beatPeriodSeconds/value": with_attrs(
-            beat_period_seconds,
+            beat_period_seconds.reshape(1, -1),
             {"unit": "s", "dimDesc": ["beat"]},
         ),
     }
@@ -551,11 +551,11 @@ def _legacy_per_beat_metrics(
         f"{root}/VTIMean/value": with_attrs(_nanmean_or_nan(vti_per_beat), {"unit": "mm"}),
         f"{root}/VTIStd/value": with_attrs(_nanstd_or_nan(vti_per_beat), {"unit": "mm"}),
         f"{root}/beatPeriodIdx/value": with_attrs(
-            beat_period_idx,
+            beat_period_idx.astype(np.float32, copy=False).reshape(1, -1),
             {"unit": "frame", "dimDesc": ["beat"]},
         ),
         f"{root}/beatPeriodSeconds/value": with_attrs(
-            beat_period_seconds,
+            beat_period_seconds.reshape(1, -1),
             {"unit": "s", "dimDesc": ["beat"]},
         ),
         f"{segment_root}/BranchIds/value": with_attrs(
