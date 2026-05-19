@@ -1,4 +1,7 @@
-from calculations.steps import ArterialWaveformAnalysisStep, VesselVelocityEstimatorStep
+from calculations.dopplerview_analysis import (
+    ArterialWaveformAnalysisStep,
+    VesselVelocityEstimatorStep,
+)
 from pipeline_engine.imports import HolodopplerTiming
 
 from .constants import (
@@ -6,22 +9,21 @@ from .constants import (
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
 from .models import DopplerViewStepContext
-from .source_inputs import dopplerview_cache_from_h5, local_background_dist
 
 
 def run_dopplerview_analysis(
-    ctx,
-    timing: HolodopplerTiming,
+    source_data,
 ) -> dict[str, object]:
+    timing: HolodopplerTiming = source_data.timing
     step_context = DopplerViewStepContext(
-        cache=dopplerview_cache_from_h5(ctx),
+        cache=source_data.dopplerview_cache(),
         holodoppler_config={
             "sampling_freq": timing.sampling_freq,
             "batch_stride": timing.batch_stride,
         },
         dopplerview_config={
             "VelocityEstimation": {
-                "LocalBackgroundDist": local_background_dist(ctx),
+                "LocalBackgroundDist": source_data.local_background_dist,
             },
             "PulseAnalysis": {
                 "FilterSignals": LEGACY_FILTER_VELOCITY_SIGNALS,

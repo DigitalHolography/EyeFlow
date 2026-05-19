@@ -1,37 +1,18 @@
-"""Domain-specific metric dictionaries for EyeFlow HDF5 output paths."""
+"""Output packing for the waveform-shape metrics pipeline."""
 
 from collections.abc import Iterable, Mapping
 
 import numpy as np
 
 from calculations.blood_flow_velocity import PerBeatAnalysisResult
-
-from .schema import (
-    DOPPLER_VIEW_ANALYSIS_SCHEMA,
-    EyeFlowOutputSchemaVariant,
-    VelocityPerBeatOutputPaths,
-    output_schema_variant,
-)
-
-ZERO_BASED_INDEX_PATHS = frozenset(
-    {
-        DOPPLER_VIEW_ANALYSIS_SCHEMA.dataset_path("beat_indices"),
-    }
-)
-
-
-def systolic_index_base_for_path(path: str) -> int | None:
-    from .writers.h5 import normalize_h5_path
-
-    normalized = normalize_h5_path(path)
-    return 0 if normalized in ZERO_BASED_INDEX_PATHS else None
+from input_output.schema import EyeFlowOutputPaths, VelocityPerBeatOutputPaths
 
 
 def pack_velocity_per_beat_outputs(
     result: PerBeatAnalysisResult,
-    schema_variant: EyeFlowOutputSchemaVariant | str | None = None,
+    output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
-    schema = _resolve_output_schema(schema_variant)
+    schema = _resolve_output_paths(output_paths)
     metrics = {
         schema.beat_period_idx: _metric_value(
             result.beat_period_idx,
@@ -51,9 +32,9 @@ def pack_velocity_per_beat_outputs(
 
 def pack_dopplerview_analysis_outputs(
     analysis: Mapping[str, object],
-    schema_variant: EyeFlowOutputSchemaVariant | str | None = None,
+    output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
-    paths = _resolve_output_schema(schema_variant).analysis
+    paths = _resolve_output_paths(output_paths).analysis
     metrics = {
         paths.retinal_artery_velocity_signal: _metric_value(
             analysis["retinal_artery_velocity_signal"],
@@ -88,12 +69,12 @@ def pack_dopplerview_analysis_outputs(
     return metrics
 
 
-def _resolve_output_schema(
-    schema_variant: EyeFlowOutputSchemaVariant | str | None,
-) -> EyeFlowOutputSchemaVariant:
-    if isinstance(schema_variant, EyeFlowOutputSchemaVariant):
-        return schema_variant
-    return output_schema_variant(schema_variant)
+def _resolve_output_paths(
+    output_paths: EyeFlowOutputPaths | str | None,
+) -> EyeFlowOutputPaths:
+    if isinstance(output_paths, EyeFlowOutputPaths):
+        return output_paths
+    return EyeFlowOutputPaths.active(output_paths)
 
 
 def _pack_vessel_outputs(
@@ -149,15 +130,17 @@ def _pack_vessel_segment_outputs(
 
 
 def _segment_metric_value(data, *, unit: str):
-    value, dim_desc = _drop_singleton_radius_axis(data)
-    return _metric_value(value, unit=unit, dim_desc=dim_desc)
-
-
-def _drop_singleton_radius_axis(data) -> tuple[np.ndarray, tuple[str, ...]]:
     value = _metric_data(data)
-    if value.ndim == 4 and value.shape[-1] == 1:
-        return value[..., 0], ("sample", "beat", "branch")
-    return value, ("sample", "beat", "branch", "radius")
+    if value.ndim != 4:
+        raise ValueError(
+            "segment per-beat outputs must have shape "
+            "(sample, beat, branch, radius)."
+        )
+    return _metric_value(
+        value,
+        unit=unit,
+        dim_desc=("sample", "beat", "branch", "radius"),
+    )
 
 
 def _metric_value(

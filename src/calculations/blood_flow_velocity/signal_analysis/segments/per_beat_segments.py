@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .per_beat_signal import PerBeatSignalAnalysisResult, per_beat_signal_analysis
+from ..signal.per_beat_signal import PerBeatSignalAnalysisResult, per_beat_signal_analysis
 
 
 @dataclass(frozen=True)

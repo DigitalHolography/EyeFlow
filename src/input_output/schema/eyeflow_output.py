@@ -1,4 +1,4 @@
-"""Selectable EyeFlow output HDF5 schema variants."""
+"""EyeFlow output HDF5 paths for AngioEye and temporary schemas."""
 
 from __future__ import annotations
 
@@ -6,8 +6,6 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 import h5py
-
-from .doppler_view import DOPPLER_VIEW_ANALYSIS_SCHEMA
 
 ANGIOEYE_FULL_OUTPUT_SCHEMA = "angioeye_full"
 SLIM_TEMP_OUTPUT_SCHEMA = "slim_temp"
@@ -39,7 +37,7 @@ class VelocityPerBeatOutputPaths:
 
 
 @dataclass(frozen=True)
-class EyeFlowOutputSchemaVariant:
+class EyeFlowOutputPaths:
     name: str
     analysis: DopplerViewAnalysisOutputPaths
     artery_per_beat: VelocityPerBeatOutputPaths
@@ -47,35 +45,31 @@ class EyeFlowOutputSchemaVariant:
     beat_period_idx: str
     beat_period_seconds: str
 
-
-def output_schema_variant(
-    name: str | None = None,
-) -> EyeFlowOutputSchemaVariant:
-    name = ACTIVE_OUTPUT_SCHEMA_VARIANT if name is None else name
-    try:
-        return OUTPUT_SCHEMA_VARIANTS[name]
-    except KeyError as exc:
-        known = ", ".join(sorted(OUTPUT_SCHEMA_VARIANTS))
-        raise ValueError(f"Unknown EyeFlow output schema '{name}'. Known: {known}.") from exc
-
-
-def _analysis_path(key: str) -> str:
-    return DOPPLER_VIEW_ANALYSIS_SCHEMA.dataset_path(key)
+    @classmethod
+    def active(cls, name: str | None = None) -> "EyeFlowOutputPaths":
+        name = ACTIVE_OUTPUT_SCHEMA_VARIANT if name is None else name
+        try:
+            return OUTPUT_PATH_VARIANTS[name]
+        except KeyError as exc:
+            known = ", ".join(sorted(OUTPUT_PATH_VARIANTS))
+            raise ValueError(
+                f"Unknown EyeFlow output schema '{name}'. Known: {known}."
+            ) from exc
 
 
-ANGIOEYE_FULL_OUTPUT = EyeFlowOutputSchemaVariant(
+ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
     name=ANGIOEYE_FULL_OUTPUT_SCHEMA,
     analysis=DopplerViewAnalysisOutputPaths(
-        retinal_velocity_array=_analysis_path("retinal_velocity_array"),
-        retinal_artery_velocity_signal=_analysis_path("retinal_artery_velocity_signal"),
-        retinal_vein_velocity_signal=_analysis_path("retinal_vein_velocity_signal"),
-        velocity_map_avg=_analysis_path("velocity_map_avg"),
-        fRMS_avg=_analysis_path("fRMS_avg"),
-        fRMS_bkg_avg=_analysis_path("fRMS_bkg_avg"),
-        velocitysignal_per_beat=_analysis_path("velocitysignal_per_beat"),
-        velocitysignal_filtered=_analysis_path("velocitysignal_filtered"),
-        beat_indices=_analysis_path("beat_indices"),
-        time_per_beat=_analysis_path("time_per_beat"),
+        retinal_velocity_array="analysis/retinal_velocity_array",
+        retinal_artery_velocity_signal="analysis/retinal_artery_velocity_signal",
+        retinal_vein_velocity_signal="analysis/retinal_vein_velocity_signal",
+        velocity_map_avg="analysis/velocity_map_avg",
+        fRMS_avg="analysis/fRMS_avg",
+        fRMS_bkg_avg="analysis/fRMS_bkg_avg",
+        velocitysignal_per_beat="analysis/velocitysignal_per_beat",
+        velocitysignal_filtered="analysis/velocitysignal_filtered",
+        beat_indices="analysis/beat_indices",
+        time_per_beat="analysis/time_per_beat",
     ),
     artery_per_beat=VelocityPerBeatOutputPaths(
         velocity_signal="Artery/VelocityPerBeat/VelocitySignalPerBeat/value",
@@ -113,7 +107,7 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputSchemaVariant(
     beat_period_seconds="Artery/VelocityPerBeat/beatPeriodSeconds/value",
 )
 
-SLIM_TEMP_OUTPUT = EyeFlowOutputSchemaVariant(
+SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
     name=SLIM_TEMP_OUTPUT_SCHEMA,
     analysis=DopplerViewAnalysisOutputPaths(
         retinal_velocity_array=None,
@@ -151,10 +145,21 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputSchemaVariant(
     beat_period_seconds="perbeat/beat_period_seconds/value",
 )
 
-OUTPUT_SCHEMA_VARIANTS = {
+OUTPUT_PATH_VARIANTS = {
     ANGIOEYE_FULL_OUTPUT_SCHEMA: ANGIOEYE_FULL_OUTPUT,
     SLIM_TEMP_OUTPUT_SCHEMA: SLIM_TEMP_OUTPUT,
 }
+
+ZERO_BASED_INDEX_PATHS = frozenset(
+    paths.analysis.beat_indices for paths in OUTPUT_PATH_VARIANTS.values()
+)
+
+
+def systolic_index_base_for_path(path: str) -> int | None:
+    from input_output.writers.h5 import normalize_h5_path
+
+    normalized = normalize_h5_path(path)
+    return 0 if normalized in ZERO_BASED_INDEX_PATHS else None
 
 
 def iter_metric_datasets(group: h5py.Group) -> Iterator[tuple[str, h5py.Dataset]]:

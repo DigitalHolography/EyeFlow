@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .archives import reset_output_dir
 from .holo_run_layout import HoloRunLayout
-from .writers import open_h5, write_json_file
+from .writers import open_h5, write_json_file, write_png_file
 
 
 class OutputType(Enum):
@@ -60,6 +60,8 @@ class OutputManager:
     ) -> Path:
         if output_type is OutputType.JSON:
             return write_json_file(self.path_for(output_type, filename), output)
+        if output_type is OutputType.PNG:
+            return write_png_file(self.path_for(output_type, filename), output)
         if output_type is OutputType.H5:
             raise NotImplementedError("Use open_h5() for session-based H5 output.")
         raise NotImplementedError(

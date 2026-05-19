@@ -8,7 +8,7 @@ from pathlib import Path
 import h5py
 
 from .holo_run_layout import HoloRunLayout
-from .schema import DOPPLER_VIEW_SCHEMA, H5SourceSchema, HOLODOPPLER_SCHEMA
+from .schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
 from .writers.h5 import normalize_h5_path
 
 HOLO_SUFFIX = ".holo"
@@ -155,7 +155,7 @@ def _attr_source(source: h5py.File | Mapping[str, object]) -> Mapping[str, objec
 def _load_sidecar_config(
     h5file: h5py.File | None,
     *,
-    source_schema: H5SourceSchema,
+    source_schema: SourceFileLayout,
 ) -> dict[str, object]:
     if h5file is None or h5file.filename is None:
         return {}
@@ -178,14 +178,14 @@ def _load_sidecar_config(
 def load_h5_sidecar_config(
     h5file: h5py.File | None,
     *,
-    source: str | H5SourceSchema,
+    source: str | SourceFileLayout,
 ) -> dict[str, object]:
-    if isinstance(source, H5SourceSchema):
+    if isinstance(source, SourceFileLayout):
         source_schema = source
     elif source == "hd":
-        source_schema = HOLODOPPLER_SCHEMA
+        source_schema = HOLODOPPLER_LAYOUT
     elif source == "dv":
-        source_schema = DOPPLER_VIEW_SCHEMA
+        source_schema = DOPPLER_VIEW_LAYOUT
     else:
         raise ValueError(f"Unknown sidecar config source: {source}")
     return _load_sidecar_config(h5file, source_schema=source_schema)

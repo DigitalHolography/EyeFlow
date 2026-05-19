@@ -17,7 +17,7 @@ def run(ctx) -> None:
 
     ctx.require_inputs("hd")
 
-    moment0 = ctx.hd.array("moment0", dtype=np.float32)
+    moment0 = ctx.sources.hd.array("moment0", dtype=np.float32)
 
     ctx.set_var(
         "test1_moment0_summary",

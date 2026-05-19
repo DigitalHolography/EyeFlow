@@ -1,72 +1,64 @@
-"""Holodoppler HDF5 and sidecar JSON input schema."""
+"""Holodoppler source adapter for exported HDF5 and config values."""
 
 from __future__ import annotations
 
-from .base import (
-    H5DatasetSpec,
-    H5SourceSchema,
-    JsonConfigValueSpec,
-)
+import numpy as np
+
+from .base import HolodopplerTiming, SourceFileLayout, TypedSource
 
 HD_CONFIG_DIR_NAME = "json"
 HD_CONFIG_FILENAME = "parameters.json"
+HD_MOMENT0_PATH = "moment0"
+HD_MOMENT2_PATH = "moment2"
+HD_OUTPUT_PASSTHROUGH_PATHS = ("registration", "zernike_coefs_radians")
+HD_SAMPLING_FREQ_KEY = "sampling_freq"
+HD_BATCH_STRIDE_KEY = "batch_stride"
 
-HOLODOPPLER_SCHEMA = H5SourceSchema(
+HOLODOPPLER_LAYOUT = SourceFileLayout(
     label="HD",
     companion_suffix="HD",
     h5_folder_name="h5",
     h5_filename_template="{folder}_output.h5",
     config_dir_name=HD_CONFIG_DIR_NAME,
     config_filename=HD_CONFIG_FILENAME,
-    datasets={
-        "moment0": H5DatasetSpec(
-            key="moment0",
-            path="moment0",
-            dtype="float32",
-            dims=("frame", "y", "x"),
-            description="Holodoppler moment 0 stack.",
-        ),
-        "moment2": H5DatasetSpec(
-            key="moment2",
-            path="moment2",
-            dtype="float32",
-            dims=("frame", "y", "x"),
-            description="Holodoppler moment 2 stack.",
-        ),
-        "registration": H5DatasetSpec(
-            key="registration",
-            path="registration",
-            required=False,
-            description="Holodoppler registration data copied to EyeFlow output.",
-        ),
-        "zernike_coefs_radians": H5DatasetSpec(
-            key="zernike_coefs_radians",
-            path="zernike_coefs_radians",
-            required=False,
-            description="Holodoppler Zernike coefficients copied to EyeFlow output.",
-        ),
-    },
-    config_values={
-        "sampling_freq": JsonConfigValueSpec(
-            key="sampling_freq",
-            json_key="sampling_freq",
-            h5_path="sampling_freq",
-            description="Camera sampling frequency in hertz.",
-        ),
-        "batch_stride": JsonConfigValueSpec(
-            key="batch_stride",
-            json_key="batch_stride",
-            h5_path="batch_stride",
-            description="Frame stride between exported Holodoppler batches.",
-        ),
-    },
 )
 
-HD_MOMENT0_PATH = HOLODOPPLER_SCHEMA.dataset_path("moment0")
-HD_MOMENT2_PATH = HOLODOPPLER_SCHEMA.dataset_path("moment2")
-HD_OUTPUT_PASSTHROUGH_PATHS = (
-    HOLODOPPLER_SCHEMA.dataset_path("registration"),
-    HOLODOPPLER_SCHEMA.dataset_path("zernike_coefs_radians"),
-)
-HD_SAMPLING_FREQ_KEY = HOLODOPPLER_SCHEMA.config_value("sampling_freq").json_key
-HD_BATCH_STRIDE_KEY = HOLODOPPLER_SCHEMA.config_value("batch_stride").json_key
+
+class HolodopplerSource(TypedSource):
+    """Typed access to the Holodoppler HDF5 file and sidecar config."""
+
+    layout = HOLODOPPLER_LAYOUT
+
+    @classmethod
+    def from_context(cls, ctx) -> "HolodopplerSource":
+        return cls(ctx.sources.hd, ctx.hd_config)
+
+    def moment0(self) -> np.ndarray:
+        return self._moment(HD_MOMENT0_PATH)
+
+    def moment2(self) -> np.ndarray:
+        return self._moment(HD_MOMENT2_PATH)
+
+    def timing(self) -> HolodopplerTiming:
+        sampling_freq = self._scalar_h5_or_config(
+            HD_SAMPLING_FREQ_KEY,
+            HD_SAMPLING_FREQ_KEY,
+        )
+        batch_stride = self._scalar_h5_or_config(
+            HD_BATCH_STRIDE_KEY,
+            HD_BATCH_STRIDE_KEY,
+        )
+        if sampling_freq is None or batch_stride is None:
+            raise KeyError(
+                "Could not resolve Holodoppler timing from HD HDF5 or config."
+            )
+        return HolodopplerTiming(float(sampling_freq), float(batch_stride))
+
+    def _moment(self, path: str) -> np.ndarray:
+        squeezed = np.squeeze(np.asarray(self._array(path, dtype=np.float32)))
+        if squeezed.ndim != 3:
+            raise ValueError(
+                "Holodoppler moment datasets must become 3-D after squeeze, "
+                f"got shape {squeezed.shape}."
+            )
+        return np.transpose(squeezed, (0, 2, 1))

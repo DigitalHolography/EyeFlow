@@ -13,7 +13,11 @@ def normalize_h5_path(path: object) -> str:
 
 
 def open_h5(path: Path | str, mode: str = "r") -> h5py.File:
-    return h5py.File(Path(path), mode)
+    h5_path = Path(path)
+    try:
+        return h5py.File(h5_path, mode)
+    except OSError as exc:
+        raise OSError(f"Could not open HDF5 file '{h5_path}': {exc}") from exc
 
 
 def resolve_dataset_target(root_group: h5py.Group, key: str) -> tuple[h5py.Group, str]:

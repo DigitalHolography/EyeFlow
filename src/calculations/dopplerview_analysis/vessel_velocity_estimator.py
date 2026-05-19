@@ -5,31 +5,15 @@ from __future__ import annotations
 from functools import partial
 
 import numpy as np
+from scipy import ndimage as ndi
 
 from calculations.math import butter_lowpass_filtfilt
 from runtime_limits import cap_parallel_jobs
 
 from ._masks import elliptical_mask
-from .base import CalculationStep as BaseStep
 
 
-class VesselVelocityEstimatorStep(BaseStep):
-    name = "retinal_vessel_velocity_estimator"
-    requires = {
-        "moment0",
-        "moment2",
-        "retinal_artery_mask",
-        "retinal_vein_mask",
-        "optic_disc_center",
-    }
-    produces = {
-        "retinal_vessel_velocity",
-        "velocity_map_avg",
-        "fRMS_avg",
-        "fRMS_bkg_avg",
-        "retinal_artery_velocity_signal",
-        "retinal_vein_velocity_signal",
-    }
+class VesselVelocityEstimatorStep:
 
     def _relevant_config(self, ctx):
         return {
@@ -68,8 +52,8 @@ class VesselVelocityEstimatorStep(BaseStep):
             "VelocityEstimation",
             "LocalBackgroundDist",
         )
-        disk, dilation, inpaint = _skimage_dependencies()
-        mask = dilation(vessel_mask, disk(local_background_dist)) #TODO add parameter
+        disk, inpaint = _skimage_dependencies()
+        mask = _dilated_mask(vessel_mask, disk(local_background_dist))
 
         n_jobs = cap_parallel_jobs(_cpu_count())
 
@@ -139,13 +123,20 @@ class VesselVelocityEstimatorStep(BaseStep):
 
 def _skimage_dependencies():
     try:
-        from skimage.morphology import disk, dilation
+        from skimage.morphology import disk
         from skimage.restoration import inpaint
     except ModuleNotFoundError as exc:
         raise ImportError(
             "DopplerView velocity estimation requires scikit-image."
         ) from exc
-    return disk, dilation, inpaint
+    return disk, inpaint
+
+
+def _dilated_mask(vessel_mask: np.ndarray, footprint: np.ndarray) -> np.ndarray:
+    mask = np.asarray(vessel_mask, dtype=bool)
+    if mask.ndim != 2:
+        raise ValueError(f"vessel_mask must be 2-D for dilation, got {mask.shape}.")
+    return ndi.binary_dilation(mask, structure=np.asarray(footprint, dtype=bool))
 
 
 def _cpu_count() -> int:

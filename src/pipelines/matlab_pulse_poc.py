@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.blood_flow_velocity.find_systole_index import find_systole_index
-from calculations.blood_flow_velocity.per_beat_segments import per_beat_segment_analysis
-from calculations.blood_flow_velocity.per_beat_signal import per_beat_signal_analysis
+from calculations.blood_flow_velocity.context_builders.signal import find_systole_index
+from calculations.blood_flow_velocity.signal_analysis.segments import (
+    per_beat_segment_analysis,
+)
+from calculations.blood_flow_velocity.signal_analysis.signal.per_beat_signal import (
+    per_beat_signal_analysis,
+)
 from calculations.math import butter_lowpass_filtfilt
 from pipeline_engine.imports import (
     ProcessResult,
@@ -485,19 +489,19 @@ def _legacy_arterial_waveform_metrics(
             {"unit": "bpm"},
         ),
         "Artery/VelocityPerBeat/beatPeriodIdx/value": with_attrs(
-            beat_period_idx,
+            beat_period_idx.astype(np.float32, copy=False).reshape(1, -1),
             {"unit": "frame", "dimDesc": ["beat"]},
         ),
         "Artery/VelocityPerBeat/beatPeriodSeconds/value": with_attrs(
-            beat_period_seconds,
+            beat_period_seconds.reshape(1, -1),
             {"unit": "s", "dimDesc": ["beat"]},
         ),
         "Vein/VelocityPerBeat/beatPeriodIdx/value": with_attrs(
-            beat_period_idx,
+            beat_period_idx.astype(np.float32, copy=False).reshape(1, -1),
             {"unit": "frame", "dimDesc": ["beat"]},
         ),
         "Vein/VelocityPerBeat/beatPeriodSeconds/value": with_attrs(
-            beat_period_seconds,
+            beat_period_seconds.reshape(1, -1),
             {"unit": "s", "dimDesc": ["beat"]},
         ),
     }
@@ -551,11 +555,11 @@ def _legacy_per_beat_metrics(
         f"{root}/VTIMean/value": with_attrs(_nanmean_or_nan(vti_per_beat), {"unit": "mm"}),
         f"{root}/VTIStd/value": with_attrs(_nanstd_or_nan(vti_per_beat), {"unit": "mm"}),
         f"{root}/beatPeriodIdx/value": with_attrs(
-            beat_period_idx,
+            beat_period_idx.astype(np.float32, copy=False).reshape(1, -1),
             {"unit": "frame", "dimDesc": ["beat"]},
         ),
         f"{root}/beatPeriodSeconds/value": with_attrs(
-            beat_period_seconds,
+            beat_period_seconds.reshape(1, -1),
             {"unit": "s", "dimDesc": ["beat"]},
         ),
         f"{segment_root}/BranchIds/value": with_attrs(

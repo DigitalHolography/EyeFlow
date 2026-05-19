@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .per_beat_segments import (
+from ..segments.per_beat_segments import (
     PerBeatSegmentAnalysisResult,
     per_beat_segment_analysis,
 )

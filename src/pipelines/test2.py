@@ -1,3 +1,4 @@
+from input_output import DopplerViewSource
 from pipeline_engine.imports import pipeline
 
 
@@ -21,7 +22,7 @@ def run(ctx) -> None:
     if moment0_summary is None:
         raise RuntimeError("test2 expected test1 to store test1_moment0_summary.")
 
-    local_background_dist = ctx.dv.config("local_background_dist", default=2)
+    local_background_dist = DopplerViewSource.from_context(ctx).local_background_dist()
 
     ctx.set_var(
         "test2_context_example",

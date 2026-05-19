@@ -9,7 +9,7 @@ from .base import (
     registerPipeline,
     with_attrs,
 )
-from .context import H5SourceReader, PipelineContext
+from .context import PipelineContext, PipelineSources, RawH5SourceReader
 from .dag import PipelineDAG, PipelineExecutionPlan
 from .errors import format_pipeline_exception
 from .runtime import run_pipelines_to_output
@@ -22,7 +22,8 @@ __all__ = [
     "PipelineDescriptor",
     "PipelineExecutionPlan",
     "PipelineContext",
-    "H5SourceReader",
+    "PipelineSources",
+    "RawH5SourceReader",
     "ProcessPipeline",
     "ProcessResult",
     "MissingPipeline",
