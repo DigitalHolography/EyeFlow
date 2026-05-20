@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "EyeFlow"
-version = "0.5.0"
-description = "Cohort-analysis engine for retinal Doppler holography"
+version = "0.7.0"
+description = "Coh5rt-analysis engine for retinal Doppler holography"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "GPL-3.0-only" }
