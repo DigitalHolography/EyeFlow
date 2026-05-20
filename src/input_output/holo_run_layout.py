@@ -3,10 +3,12 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .schema import DOPPLER_VIEW_SCHEMA, H5SourceSchema, HOLODOPPLER_SCHEMA
+import h5py
+
+from .schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
 
 HDF5_SUFFIXES = (".h5", ".hdf5")
-INPUT_SCHEMAS = (HOLODOPPLER_SCHEMA, DOPPLER_VIEW_SCHEMA)
+INPUT_LAYOUTS = (HOLODOPPLER_LAYOUT, DOPPLER_VIEW_LAYOUT)
 
 
 @dataclass(frozen=True)
@@ -44,19 +46,19 @@ class HoloRunLayout:
 
     @property
     def hd_h5(self) -> Path:
-        return self._input_h5(HOLODOPPLER_SCHEMA)
+        return self._input_h5(HOLODOPPLER_LAYOUT)
 
     @property
     def dv_h5(self) -> Path:
-        return self._input_h5(DOPPLER_VIEW_SCHEMA)
+        return self._input_h5(DOPPLER_VIEW_LAYOUT)
 
     @property
     def has_hd_h5(self) -> bool:
-        return self._has_h5(HOLODOPPLER_SCHEMA)
+        return self._has_h5(HOLODOPPLER_LAYOUT)
 
     @property
     def has_dv_h5(self) -> bool:
-        return self._has_h5(DOPPLER_VIEW_SCHEMA)
+        return self._has_h5(DOPPLER_VIEW_LAYOUT)
 
     def with_root_dir(self, root_dir: str | Path) -> "HoloRunLayout":
         return HoloRunLayout(
@@ -69,7 +71,7 @@ class HoloRunLayout:
         if not self.root_dir.is_dir():
             raise FileNotFoundError(f"Could not find data folder:\n{self.root_dir}")
         errors: list[str] = []
-        for schema in INPUT_SCHEMAS:
+        for schema in INPUT_LAYOUTS:
             try:
                 self._input_h5(schema)
             except FileNotFoundError as exc:
@@ -83,10 +85,10 @@ class HoloRunLayout:
     def _run_dir(self, suffix: str) -> Path:
         return self._root_dir / f"{self._stem}_{suffix}"
 
-    def _h5_dir(self, schema: H5SourceSchema) -> Path:
+    def _h5_dir(self, schema: SourceFileLayout) -> Path:
         return self._run_dir(schema.companion_suffix) / schema.h5_folder_name
 
-    def _preferred_h5(self, schema: H5SourceSchema) -> Path:
+    def _preferred_h5(self, schema: SourceFileLayout) -> Path:
         folder_name = f"{self._stem}_{schema.companion_suffix}"
         filename = schema.h5_filename_template.format(
             stem=self._stem,
@@ -95,7 +97,7 @@ class HoloRunLayout:
         )
         return self._h5_dir(schema) / filename
 
-    def _input_h5(self, schema: H5SourceSchema) -> Path:
+    def _input_h5(self, schema: SourceFileLayout) -> Path:
         files = self._h5_files(schema)
         if not files:
             raise FileNotFoundError(
@@ -114,19 +116,27 @@ class HoloRunLayout:
             f"Candidates:\n{candidates}"
         )
 
-    def _has_h5(self, schema: H5SourceSchema) -> bool:
+    def _has_h5(self, schema: SourceFileLayout) -> bool:
         return bool(self._h5_files(schema))
 
-    def _h5_files(self, schema: H5SourceSchema) -> list[Path]:
+    def _h5_files(self, schema: SourceFileLayout) -> list[Path]:
         folder = self._h5_dir(schema)
         if not folder.is_dir():
             return []
         return sorted(
             path
             for path in folder.iterdir()
-            if path.is_file() and path.suffix.lower() in HDF5_SUFFIXES
+            if _is_hdf5_file(path)
         )
 
 
 def _absolute(path: Path) -> Path:
     return path if path.is_absolute() else Path.cwd() / path
+
+
+def _is_hdf5_file(path: Path) -> bool:
+    return (
+        path.is_file()
+        and path.suffix.lower() in HDF5_SUFFIXES
+        and h5py.is_hdf5(path)
+    )

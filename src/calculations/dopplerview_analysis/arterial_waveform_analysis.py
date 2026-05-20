@@ -4,21 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.blood_flow_velocity.find_systole_index import find_systole_index
-
-from .base import CalculationStep as BaseStep
+from calculations.blood_flow_velocity.context_builders.signal import find_systole_index
 
 
-class ArterialWaveformAnalysisStep(BaseStep):
-    name = "arterial_waveform_analysis"
-    requires = {"retinal_artery_velocity_signal"}
-    produces = {
-        "retinal_artery_velocity_signal_filtered",
-        "retinal_artery_velocity_signal_filtered_perbeat",
-        "beat_indices",
-        "time_per_beat",
-    }
-
+class ArterialWaveformAnalysisStep:
     def _relevant_config(self, ctx):
         return {
             "sampling_freq": ctx.hd_config_value("sampling_freq"),

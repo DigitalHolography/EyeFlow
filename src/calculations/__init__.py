@@ -1,15 +1,11 @@
 """Pure EyeFlow scientific calculations."""
 
-from .steps import (
+from .dopplerview_analysis import (
     ArterialWaveformAnalysisStep,
-    CalculationStep,
-    DomainStep,
     VesselVelocityEstimatorStep,
 )
 
 __all__ = [
     "ArterialWaveformAnalysisStep",
-    "CalculationStep",
-    "DomainStep",
     "VesselVelocityEstimatorStep",
 ]

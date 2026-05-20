@@ -1,3 +1,5 @@
+"""Runtime containers for the waveform-shape metrics pipeline."""
+
 from dataclasses import dataclass
 
 from calculations.blood_flow_velocity import PerBeatAnalysisInput
@@ -12,6 +14,8 @@ class WaveformShapeMetricsContext:
 
 @dataclass
 class DopplerViewStepContext:
+    """In-memory bridge for copied DopplerView steps, not an HDF5 access layer."""
+
     cache: dict[str, object]
     holodoppler_config: dict[str, object]
     dopplerview_config: dict[str, object]

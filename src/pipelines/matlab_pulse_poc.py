@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.blood_flow_velocity.find_systole_index import find_systole_index
-from calculations.blood_flow_velocity.per_beat_segments import per_beat_segment_analysis
-from calculations.blood_flow_velocity.per_beat_signal import per_beat_signal_analysis
+from calculations.blood_flow_velocity.context_builders.signal import find_systole_index
+from calculations.blood_flow_velocity.signal_analysis.segments import (
+    per_beat_segment_analysis,
+)
+from calculations.blood_flow_velocity.signal_analysis.signal.per_beat_signal import (
+    per_beat_signal_analysis,
+)
 from calculations.math import butter_lowpass_filtfilt
 from pipeline_engine.imports import (
     ProcessResult,

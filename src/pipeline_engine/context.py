@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import h5py
@@ -6,7 +7,6 @@ import numpy as np
 
 from input_output.inputs import EyeFlowView, MergedAttrs
 from input_output.output_manager import OutputManager
-from input_output.schema import DOPPLER_VIEW_SCHEMA, HOLODOPPLER_SCHEMA, H5SourceSchema
 from input_output.writers.h5 import (
     normalize_h5_path,
     set_attr_safe,
@@ -18,19 +18,17 @@ from .base import DatasetValue, ProcessResult
 _MISSING = object()
 
 
-class H5SourceReader:
-    """Schema-aware reader for one locked upstream HDF5 source."""
+class RawH5SourceReader:
+    """Explicit-path reader for one locked HDF5 source."""
 
     def __init__(
         self,
         *,
         h5file: h5py.File | None,
-        schema: H5SourceSchema,
-        config: Mapping[str, object] | None = None,
+        label: str,
     ) -> None:
         self.h5file = h5file
-        self.schema = schema
-        self.config_values = dict(config or {})
+        self.label = label
 
     @property
     def filename(self) -> str | None:
@@ -44,46 +42,39 @@ class H5SourceReader:
 
     def require(self) -> None:
         if self.h5file is None:
-            raise ValueError(f"{self.schema.label} HDF5 input is required.")
+            raise ValueError(f"{self.label} HDF5 input is required.")
 
     def keys(self):
         if self.h5file is None:
             return ()
         return self.h5file.keys()
 
-    def get(self, key_or_path: str, default=None):
+    def get(self, path: str, default=None):
         if self.h5file is None:
             return default
-        path = self.path(key_or_path)
-        found = self.h5file.get(path)
+        found = self.h5file.get(normalize_h5_path(path))
         return default if found is None else found
 
-    def __getitem__(self, key_or_path: str):
-        found = self.get(key_or_path)
+    def __getitem__(self, path: str):
+        found = self.get(path)
         if found is None:
-            raise KeyError(key_or_path)
+            raise KeyError(path)
         return found
 
-    def __contains__(self, key_or_path: object) -> bool:
-        return isinstance(key_or_path, str) and self.get(key_or_path) is not None
+    def __contains__(self, path: object) -> bool:
+        return isinstance(path, str) and self.get(path) is not None
 
-    def path(self, key_or_path: str) -> str:
-        if key_or_path in self.schema.datasets:
-            return self.schema.dataset_path(key_or_path)
-        return normalize_h5_path(key_or_path)
-
-    def dataset(self, key_or_path: str) -> h5py.Dataset:
-        found = self.get(key_or_path)
+    def dataset(self, path: str) -> h5py.Dataset:
+        found = self.get(path)
         if not isinstance(found, h5py.Dataset):
             raise KeyError(
-                f"Missing {self.schema.label} dataset '{key_or_path}'. "
-                f"Expected: {self.path(key_or_path)}"
+                f"Missing {self.label} dataset at path '{normalize_h5_path(path)}'."
             )
         return found
 
-    def value(self, key_or_path: str, default: Any = _MISSING):
+    def value(self, path: str, default: Any = _MISSING):
         try:
-            return self.dataset(key_or_path)[()]
+            return self.dataset(path)[()]
         except KeyError:
             if default is not _MISSING:
                 return default
@@ -91,14 +82,14 @@ class H5SourceReader:
 
     def array(
         self,
-        key_or_path: str,
+        path: str,
         *,
         dtype=None,
         flatten: bool = False,
         default: Any = _MISSING,
     ) -> Any:
         try:
-            array = np.asarray(self.dataset(key_or_path)[()], dtype=dtype)
+            array = np.asarray(self.dataset(path)[()], dtype=dtype)
         except KeyError:
             if default is not _MISSING:
                 if default is None:
@@ -107,31 +98,14 @@ class H5SourceReader:
             raise
         return np.ravel(array) if flatten else array
 
-    def config(self, key: str, default: Any = _MISSING):
-        spec = self.schema.config_value(key)
-        value = self._h5_config_value(spec.h5_path)
-        if value is not None:
-            return value
-        value = spec.read_json_config(dict(self.config_values))
-        if value is not None:
-            return value
-        if default is not _MISSING:
-            return default
-        return spec.default
 
-    def _h5_config_value(self, path: str | None):
-        if self.h5file is None or path is None:
-            return None
-        found = self.h5file.get(path)
-        if not isinstance(found, h5py.Dataset):
-            return None
-        array = np.asarray(found[()]).reshape(-1)
-        if array.size == 0:
-            return None
-        value = array[0]
-        if isinstance(value, bytes):
-            return value.decode("utf-8")
-        return value.item() if hasattr(value, "item") else value
+@dataclass(frozen=True)
+class PipelineSources:
+    """Raw explicit-path source readers available on PipelineContext."""
+
+    work: RawH5SourceReader
+    hd: RawH5SourceReader
+    dv: RawH5SourceReader
 
 
 class PipelineContext:
@@ -153,15 +127,10 @@ class PipelineContext:
         self.work_h5 = work_h5
         self.work = work_h5
         self.ef = EyeFlowView(work_h5)
-        self.hd = H5SourceReader(
-            h5file=holodoppler_h5,
-            schema=HOLODOPPLER_SCHEMA,
-            config=holodoppler_config,
-        )
-        self.dv = H5SourceReader(
-            h5file=doppler_vision_h5,
-            schema=DOPPLER_VIEW_SCHEMA,
-            config=doppler_vision_config,
+        self.sources = PipelineSources(
+            work=RawH5SourceReader(h5file=work_h5, label="work"),
+            hd=RawH5SourceReader(h5file=holodoppler_h5, label="HD"),
+            dv=RawH5SourceReader(h5file=doppler_vision_h5, label="DV"),
         )
         self.hd_h5 = holodoppler_h5
         self.dv_h5 = doppler_vision_h5
@@ -185,9 +154,9 @@ class PipelineContext:
     def require_inputs(self, *inputs: str) -> None:
         requested = {name.lower() for name in inputs} or {"hd", "dv"}
         missing: list[str] = []
-        if "hd" in requested and not self.hd.available:
+        if "hd" in requested and not self.sources.hd.available:
             missing.append("HD")
-        if "dv" in requested and not self.dv.available:
+        if "dv" in requested and not self.sources.dv.available:
             missing.append("DV")
         if missing:
             raise ValueError(f"Missing required input(s): {', '.join(missing)}.")

@@ -8,6 +8,7 @@ from .h5 import (
     write_value_dataset,
 )
 from .json import write_json_file
+from .png import write_png_file
 
 __all__ = [
     "initialize_output_h5",
@@ -15,6 +16,7 @@ __all__ = [
     "resolve_dataset_target",
     "set_attr_safe",
     "write_json_file",
+    "write_png_file",
     "write_value_dataset",
 ]
 

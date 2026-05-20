@@ -1,9 +1,10 @@
+from input_output import DopplerViewSource
 from pipeline_engine.imports import np, pipeline, resolve_holodoppler_timing, with_attrs
 
 
-HD_EXAMPLE_DATASET_KEY = "moment0"
-DV_EXAMPLE_DATASET_KEY = "retinal_artery_mask"
-DV_EXAMPLE_CONFIG_KEY = "local_background_dist"
+HD_EXAMPLE_DATASET_PATH = "moment0"
+DV_EXAMPLE_DATASET_PATH = "segmentation/Retina/artery_mask"
+DV_EXAMPLE_CONFIG_NAME = "VelocityEstimation/LocalBackgroundDist"
 
 
 def _numeric_dataset_summary(values) -> tuple[np.float32, np.int32]:
@@ -30,18 +31,20 @@ def run(ctx) -> None:
 
     Common operations:
     - `ctx.require_inputs("hd", "dv")` fails early when an input is missing.
-    - `ctx.hd.array("moment0")` reads an HD dataset.
-    - `ctx.dv.array("retinal_artery_mask")` reads a DV dataset.
-    - `ctx.dv.config("local_background_dist")` reads a DV sidecar/H5 setting.
+    - `ctx.sources.hd.array(path)` reads an HD dataset by explicit H5 path.
+    - `ctx.sources.dv.array(path)` reads a DV dataset by explicit H5 path.
+    - input_output loaders own normal typed source reads and config fallback.
     - `ctx.vars["name"] = value` shares an in-memory value with later pipelines.
     """
 
     ctx.require_inputs("hd", "dv")
 
     timing = resolve_holodoppler_timing(ctx)
-    hd_values = ctx.hd.array(HD_EXAMPLE_DATASET_KEY)
-    dv_values = ctx.dv.array(DV_EXAMPLE_DATASET_KEY)
-    local_background_dist = np.int32(ctx.dv.config(DV_EXAMPLE_CONFIG_KEY))
+    hd_values = ctx.sources.hd.array(HD_EXAMPLE_DATASET_PATH)
+    dv_values = ctx.sources.dv.array(DV_EXAMPLE_DATASET_PATH)
+    local_background_dist = np.int32(
+        DopplerViewSource.from_context(ctx).local_background_dist()
+    )
 
     hd_mean, hd_size = _numeric_dataset_summary(hd_values)
     dv_mean, dv_size = _numeric_dataset_summary(dv_values)
@@ -51,8 +54,8 @@ def run(ctx) -> None:
         else np.float32(np.nan)
     )
 
-    hd_root_keys = sorted(str(key) for key in ctx.hd.keys())
-    dv_root_keys = sorted(str(key) for key in ctx.dv.keys())
+    hd_root_keys = sorted(str(key) for key in ctx.sources.hd.keys())
+    dv_root_keys = sorted(str(key) for key in ctx.sources.dv.keys())
     shared_root_keys = sorted(set(hd_root_keys) & set(dv_root_keys))
 
     ctx.set_var(
@@ -90,19 +93,19 @@ def run(ctx) -> None:
                 np.uint8(1),
                 {"unit": ["bool"]},
             ),
-            "schema/hd_sampling_freq_hz": with_attrs(
+            "source/hd_sampling_freq_hz": with_attrs(
                 np.float32(timing.sampling_freq),
                 {"unit": ["Hz"]},
             ),
-            "schema/hd_batch_stride": with_attrs(
+            "source/hd_batch_stride": with_attrs(
                 np.float32(timing.batch_stride),
                 {"unit": ["frames"]},
             ),
-            "schema/hd_dt_seconds": with_attrs(
+            "source/hd_dt_seconds": with_attrs(
                 np.float32(timing.dt_seconds),
                 {"unit": ["s"]},
             ),
-            "schema/dv_local_background_dist": with_attrs(
+            "source/dv_local_background_dist": with_attrs(
                 local_background_dist,
                 {"unit": ["pixels"]},
             ),
@@ -110,13 +113,11 @@ def run(ctx) -> None:
     )
     ctx.set_attrs(
         {
-            "hd_source_file": str(ctx.hd.filename or ""),
-            "dv_source_file": str(ctx.dv.filename or ""),
-            "hd_example_key": HD_EXAMPLE_DATASET_KEY,
-            "dv_example_key": DV_EXAMPLE_DATASET_KEY,
-            "dv_config_key": DV_EXAMPLE_CONFIG_KEY,
-            "hd_example_path": ctx.hd.path(HD_EXAMPLE_DATASET_KEY),
-            "dv_example_path": ctx.dv.path(DV_EXAMPLE_DATASET_KEY),
+            "hd_source_file": str(ctx.sources.hd.filename or ""),
+            "dv_source_file": str(ctx.sources.dv.filename or ""),
+            "hd_example_path": HD_EXAMPLE_DATASET_PATH,
+            "dv_example_path": DV_EXAMPLE_DATASET_PATH,
+            "dv_config_key": DV_EXAMPLE_CONFIG_NAME,
             "shared_root_groups": shared_root_keys,
         }
     )
