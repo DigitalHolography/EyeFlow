@@ -15,14 +15,14 @@ def pack_velocity_per_beat_outputs(
     schema = _resolve_output_paths(output_paths)
     metrics = {
         schema.beat_period_idx: _metric_value(
-            result.beat_period_idx,
+            _matlab_row_vector(result.beat_period_idx),
             unit="frame",
-            dim_desc=("beat",),
+            dim_desc=("row", "beat"),
         ),
         schema.beat_period_seconds: _metric_value(
-            result.beat_period_seconds,
+            _matlab_row_vector(result.beat_period_seconds),
             unit="s",
-            dim_desc=("beat",),
+            dim_desc=("row", "beat"),
         ),
     }
     metrics.update(_pack_vessel_outputs(schema.artery_per_beat, result.artery))
@@ -156,6 +156,10 @@ def _metric_value(
         attrs["dimDesc"] = list(dim_desc)
     data = _metric_data(data)
     return (data, attrs) if attrs else data
+
+
+def _matlab_row_vector(data) -> np.ndarray:
+    return np.asarray(data).reshape(1, -1)
 
 
 def _metric_data(data):
