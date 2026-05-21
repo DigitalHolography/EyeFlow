@@ -5,13 +5,11 @@ from __future__ import annotations
 import numpy as np
 
 from calculations.blood_flow_velocity.context_builders.signal import find_systole_index
-from calculations.blood_flow_velocity.signal_analysis.segments import (
-    per_beat_segment_analysis,
-)
 from calculations.blood_flow_velocity.signal_analysis.signal.per_beat_signal import (
     per_beat_signal_analysis,
 )
 from calculations.math import butter_lowpass_filtfilt
+from input_output.schema import DopplerViewSource, HD_MOMENT0_PATH, HD_MOMENT2_PATH
 from pipeline_engine.imports import (
     ProcessResult,
     pipeline,
@@ -25,6 +23,8 @@ LOWPASS_FREQ_HZ = np.float32(15.0)
 ANNULUS_INNER_RADIUS = np.float32(0.10)
 ANNULUS_OUTER_RADIUS = np.float32(0.35)
 BAND_LIMITED_SIGNAL_HARMONIC_COUNT = 13
+DV_ARTERY_MASK_PATH = "segmentation/Retina/artery_mask"
+DV_VEIN_MASK_PATH = "segmentation/Retina/vein_mask"
 
 
 @pipeline(
@@ -41,13 +41,9 @@ def run(ctx) -> ProcessResult:
     ctx.require_inputs("hd", "dv")
 
     timing = resolve_holodoppler_timing(ctx)
-    artery_mask = ctx.dv.array("retinal_artery_mask", dtype=bool)
-    vein_mask = ctx.dv.array("retinal_vein_mask", dtype=bool)
-    labeled_vessels = ctx.dv.array(
-        "retinal_labeled_vessels",
-        dtype=np.int32,
-        default=None,
-    )
+    dv_source = DopplerViewSource.from_context(ctx)
+    artery_mask = dv_source.retinal_artery_mask()
+    vein_mask = dv_source.retinal_vein_mask()
     vessel_mask = artery_mask | vein_mask
     section_mask = _annulus_mask(artery_mask.shape)
 
@@ -55,22 +51,15 @@ def run(ctx) -> ProcessResult:
     vein_section = vein_mask & section_mask
     background_section = section_mask & ~vessel_mask
     _validate_masks(artery_section, vein_section, background_section)
-    artery_branch_masks, artery_branch_ids = _branch_masks(
-        labeled_vessels,
-        artery_section,
-    )
-    vein_branch_masks, vein_branch_ids = _branch_masks(labeled_vessels, vein_section)
 
-    moment0 = ctx.hd.dataset("moment0")
-    moment2 = ctx.hd.dataset("moment2")
-    artery_signal, vein_signal, artery_segments, vein_segments = _velocity_signals(
+    moment0 = ctx.sources.hd.dataset(HD_MOMENT0_PATH)
+    moment2 = ctx.sources.hd.dataset(HD_MOMENT2_PATH)
+    artery_signal, vein_signal = _velocity_signals(
         moment0=moment0,
         moment2=moment2,
         artery_mask=artery_section,
         vein_mask=vein_section,
         background_mask=background_section,
-        artery_branch_masks=artery_branch_masks,
-        vein_branch_masks=vein_branch_masks,
     )
 
     artery_filtered = butter_lowpass_filtfilt(
@@ -96,14 +85,6 @@ def run(ctx) -> ProcessResult:
     )
     artery_per_beat = _per_beat_waveforms(artery_filtered, systole_zero_based)
     vein_per_beat = _per_beat_waveforms(vein_filtered, systole_zero_based)
-    artery_segment_per_beat = _per_beat_segment_waveforms(
-        artery_segments,
-        systole_zero_based,
-    )
-    vein_segment_per_beat = _per_beat_segment_waveforms(
-        vein_segments,
-        systole_zero_based,
-    )
     artery_vti_per_beat = _vti_per_beat(
         artery_per_beat.velocity_signal_per_beat,
         np.float32(timing.dt_seconds),
@@ -141,8 +122,6 @@ def run(ctx) -> ProcessResult:
         _legacy_per_beat_metrics(
             "Artery",
             per_beat=artery_per_beat,
-            segment_per_beat=artery_segment_per_beat,
-            branch_ids=artery_branch_ids,
             vti_per_beat=artery_vti_per_beat,
             beat_period_idx=beat_period_idx,
             beat_period_seconds=beat_period_seconds,
@@ -152,8 +131,6 @@ def run(ctx) -> ProcessResult:
         _legacy_per_beat_metrics(
             "Vein",
             per_beat=vein_per_beat,
-            segment_per_beat=vein_segment_per_beat,
-            branch_ids=vein_branch_ids,
             vti_per_beat=vein_vti_per_beat,
             beat_period_idx=beat_period_idx,
             beat_period_seconds=beat_period_seconds,
@@ -261,16 +238,13 @@ def run(ctx) -> ProcessResult:
         "poc_vti_method": (
             "perBeatAnalysis.m style: sum(interpolated filtered velocity beat) * dt"
         ),
-        "poc_segment_source": "DV labeled_vessels intersected with artery/vein masks",
-        "poc_hd_moment0_path": ctx.hd.path("moment0"),
-        "poc_hd_moment2_path": ctx.hd.path("moment2"),
-        "poc_dv_artery_mask_path": ctx.dv.path("retinal_artery_mask"),
-        "poc_dv_vein_mask_path": ctx.dv.path("retinal_vein_mask"),
+        "poc_hd_moment0_path": HD_MOMENT0_PATH,
+        "poc_hd_moment2_path": HD_MOMENT2_PATH,
+        "poc_dv_artery_mask_path": DV_ARTERY_MASK_PATH,
+        "poc_dv_vein_mask_path": DV_VEIN_MASK_PATH,
         "poc_sampling_freq": float(timing.sampling_freq),
         "poc_batch_stride": float(timing.batch_stride),
         "poc_dt_seconds": float(timing.dt_seconds),
-        "poc_artery_branch_count": int(len(artery_branch_ids)),
-        "poc_vein_branch_count": int(len(vein_branch_ids)),
     }
     ctx.set_var("matlab_pulse_poc", {"systole_indexes": systole_zero_based})
     return ProcessResult(metrics=metrics, attrs=attrs)
@@ -283,9 +257,7 @@ def _velocity_signals(
     artery_mask: np.ndarray,
     vein_mask: np.ndarray,
     background_mask: np.ndarray,
-    artery_branch_masks: tuple[np.ndarray, ...],
-    vein_branch_masks: tuple[np.ndarray, ...],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     if moment0.shape != moment2.shape:
         raise ValueError(
             f"moment0 and moment2 shapes differ: {moment0.shape} != {moment2.shape}"
@@ -296,11 +268,6 @@ def _velocity_signals(
     n_frames = int(moment0.shape[0])
     artery_signal = np.empty(n_frames, dtype=np.float32)
     vein_signal = np.empty(n_frames, dtype=np.float32)
-    artery_segments = np.empty(
-        (1, len(artery_branch_masks), n_frames),
-        dtype=np.float32,
-    )
-    vein_segments = np.empty((1, len(vein_branch_masks), n_frames), dtype=np.float32)
 
     for frame_index in range(n_frames):
         m0_frame = _hd_frame_for_dv_mask(moment0[frame_index], artery_mask.shape)
@@ -308,52 +275,8 @@ def _velocity_signals(
         velocity_frame = _velocity_frame(m0_frame, m2_frame, background_mask)
         artery_signal[frame_index] = np.nanmean(velocity_frame[artery_mask])
         vein_signal[frame_index] = np.nanmean(velocity_frame[vein_mask])
-        _fill_segment_frame(
-            artery_segments,
-            artery_branch_masks,
-            velocity_frame,
-            frame_index,
-        )
-        _fill_segment_frame(
-            vein_segments,
-            vein_branch_masks,
-            velocity_frame,
-            frame_index,
-        )
 
-    return artery_signal, vein_signal, artery_segments, vein_segments
-
-
-def _branch_masks(
-    labeled_vessels: np.ndarray | None,
-    vessel_mask: np.ndarray,
-) -> tuple[tuple[np.ndarray, ...], np.ndarray]:
-    if labeled_vessels is None:
-        return (vessel_mask,), np.asarray([1], dtype=np.int32)
-
-    labels = np.asarray(labeled_vessels, dtype=np.int32)
-    if labels.shape != vessel_mask.shape:
-        raise ValueError(
-            "DopplerView labeled_vessels shape does not match mask shape: "
-            f"{labels.shape} != {vessel_mask.shape}."
-        )
-
-    branch_ids = np.unique(labels[vessel_mask & (labels > 0)]).astype(np.int32)
-    if branch_ids.size == 0:
-        return (vessel_mask,), np.asarray([1], dtype=np.int32)
-
-    masks = tuple((labels == int(branch_id)) & vessel_mask for branch_id in branch_ids)
-    return masks, branch_ids
-
-
-def _fill_segment_frame(
-    output: np.ndarray,
-    masks: tuple[np.ndarray, ...],
-    velocity_frame: np.ndarray,
-    frame_index: int,
-) -> None:
-    for branch_index, mask in enumerate(masks):
-        output[0, branch_index, frame_index] = np.nanmean(velocity_frame[mask])
+    return artery_signal, vein_signal
 
 
 def _hd_frame_for_dv_mask(frame, mask_shape: tuple[int, int]) -> np.ndarray:
@@ -423,18 +346,6 @@ def _heart_rate_bpm(beat_period_seconds: np.ndarray) -> np.float32:
 def _per_beat_waveforms(signal: np.ndarray, systole_indexes: np.ndarray):
     return per_beat_signal_analysis(
         signal,
-        systole_indexes,
-        BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
-        index_base=0,
-    )
-
-
-def _per_beat_segment_waveforms(
-    segment_signals: np.ndarray,
-    systole_indexes: np.ndarray,
-):
-    return per_beat_segment_analysis(
-        segment_signals,
         systole_indexes,
         BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
         index_base=0,
@@ -511,8 +422,6 @@ def _legacy_per_beat_metrics(
     vessel: str,
     *,
     per_beat,
-    segment_per_beat,
-    branch_ids: np.ndarray,
     vti_per_beat: np.ndarray,
     beat_period_idx: np.ndarray,
     beat_period_seconds: np.ndarray,
@@ -521,7 +430,6 @@ def _legacy_per_beat_metrics(
     signal = per_beat.velocity_signal_per_beat
     fft = per_beat.velocity_signal_per_beat_fft
     band_limited = per_beat.velocity_signal_per_beat_band_limited
-    segment_root = f"{root}/Segments"
 
     return {
         f"{root}/VelocitySignalPerBeat/value": with_attrs(
@@ -561,18 +469,6 @@ def _legacy_per_beat_metrics(
         f"{root}/beatPeriodSeconds/value": with_attrs(
             beat_period_seconds.reshape(1, -1),
             {"unit": "s", "dimDesc": ["beat"]},
-        ),
-        f"{segment_root}/BranchIds/value": with_attrs(
-            branch_ids,
-            {"dimDesc": ["branch"]},
-        ),
-        f"{segment_root}/VelocitySignalPerBeatPerSegment/value": with_attrs(
-            segment_per_beat.velocity_signal_per_beat_per_segment,
-            {"unit": "mm/s", "dimDesc": ["sample", "beat", "branch", "radius"]},
-        ),
-        f"{segment_root}/VelocitySignalPerBeatPerSegmentBandLimited/value": with_attrs(
-            segment_per_beat.velocity_signal_per_beat_per_segment_band_limited,
-            {"unit": "mm/s", "dimDesc": ["sample", "beat", "branch", "radius"]},
         ),
     }
 
