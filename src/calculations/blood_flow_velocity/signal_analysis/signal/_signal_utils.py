@@ -5,12 +5,6 @@ from __future__ import annotations
 import numpy as np
 
 
-def next_power_of_two(value: int) -> int:
-    if value < 1:
-        raise ValueError("next_power_of_two expects a strictly positive integer.")
-    return 1 << (value - 1).bit_length()
-
-
 def normalize_cycle_boundaries(
     cycle_boundaries,
     signal_length: int,

@@ -1,4 +1,3 @@
-from input_output import DopplerViewSource
 from pipeline_engine.imports import np, pipeline, resolve_holodoppler_timing, with_attrs
 
 
@@ -31,19 +30,19 @@ def run(ctx) -> None:
 
     Common operations:
     - `ctx.require_inputs("hd", "dv")` fails early when an input is missing.
-    - `ctx.sources.hd.array(path)` reads an HD dataset by explicit H5 path.
-    - `ctx.sources.dv.array(path)` reads a DV dataset by explicit H5 path.
+    - `ctx.inputs.hd.array(path)` reads an HD dataset by explicit H5 path.
+    - `ctx.inputs.dv.array(path)` reads a DV dataset by explicit H5 path.
     - input_output loaders own normal typed source reads and config fallback.
-    - `ctx.vars["name"] = value` shares an in-memory value with later pipelines.
+    - `ctx.state.set("name", value)` shares memory with later pipelines.
     """
 
     ctx.require_inputs("hd", "dv")
 
     timing = resolve_holodoppler_timing(ctx)
-    hd_values = ctx.sources.hd.array(HD_EXAMPLE_DATASET_PATH)
-    dv_values = ctx.sources.dv.array(DV_EXAMPLE_DATASET_PATH)
+    hd_values = ctx.inputs.hd.array(HD_EXAMPLE_DATASET_PATH)
+    dv_values = ctx.inputs.dv.array(DV_EXAMPLE_DATASET_PATH)
     local_background_dist = np.int32(
-        DopplerViewSource.from_context(ctx).local_background_dist()
+        ctx.inputs.dv.as_dopplerview().local_background_dist()
     )
 
     hd_mean, hd_size = _numeric_dataset_summary(hd_values)
@@ -54,11 +53,11 @@ def run(ctx) -> None:
         else np.float32(np.nan)
     )
 
-    hd_root_keys = sorted(str(key) for key in ctx.sources.hd.keys())
-    dv_root_keys = sorted(str(key) for key in ctx.sources.dv.keys())
+    hd_root_keys = sorted(str(key) for key in ctx.inputs.hd.keys())
+    dv_root_keys = sorted(str(key) for key in ctx.inputs.dv.keys())
     shared_root_keys = sorted(set(hd_root_keys) & set(dv_root_keys))
 
-    ctx.set_var(
+    ctx.state.set(
         "dual_input_summary",
         {
             "hd_example_mean": float(hd_mean),
@@ -67,7 +66,7 @@ def run(ctx) -> None:
         },
     )
 
-    ctx.write_many(
+    ctx.output.h5.write_many(
         {
             "summary/hd_root_group_count": with_attrs(
                 np.int32(len(hd_root_keys)),
@@ -111,10 +110,10 @@ def run(ctx) -> None:
             ),
         }
     )
-    ctx.set_attrs(
+    ctx.output.h5.set_attrs(
         {
-            "hd_source_file": str(ctx.sources.hd.filename or ""),
-            "dv_source_file": str(ctx.sources.dv.filename or ""),
+            "hd_source_file": str(ctx.inputs.hd.filename or ""),
+            "dv_source_file": str(ctx.inputs.dv.filename or ""),
             "hd_example_path": HD_EXAMPLE_DATASET_PATH,
             "dv_example_path": DV_EXAMPLE_DATASET_PATH,
             "dv_config_key": DV_EXAMPLE_CONFIG_NAME,

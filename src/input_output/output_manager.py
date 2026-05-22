@@ -52,7 +52,7 @@ class OutputManager:
         path.parent.mkdir(parents=True, exist_ok=True)
         return open_h5(path, mode)
 
-    def write(
+    def write_sidecar(
         self,
         output,
         output_type: OutputType,
@@ -67,6 +67,12 @@ class OutputManager:
         raise NotImplementedError(
             f"Output writer for {output_type.value!r} is not implemented yet."
         )
+
+    def write_json(self, output, filename: str | None = None) -> Path:
+        return self.write_sidecar(output, OutputType.JSON, filename)
+
+    def write_png(self, output, filename: str | None = None) -> Path:
+        return self.write_sidecar(output, OutputType.PNG, filename)
 
     def _filename_for(self, output_type: OutputType, filename: str | None) -> str:
         if filename:

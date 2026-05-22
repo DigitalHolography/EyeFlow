@@ -9,7 +9,7 @@ from input_output.output_manager import OutputManager, OutputType
 from input_output.writers.h5 import initialize_output_h5, open_h5
 
 from .base import PipelineDescriptor, ProcessResult
-from .context import PipelineContext
+from .context import PipelineContext, apply_pipeline_result, finish_pipeline
 from .errors import format_pipeline_exception
 
 
@@ -67,7 +67,6 @@ def _run_pipelines_with_work_h5(
         holodoppler_h5=holodoppler_h5,
         doppler_vision_h5=doppler_vision_h5,
     )
-
     hd_config = load_h5_sidecar_config(hd_h5, source="hd")
     dv_config = load_h5_sidecar_config(dv_h5, source="dv")
     context_vars: dict[str, object] = {}
@@ -161,13 +160,13 @@ def _run_pipeline_descriptor(
     )
     try:
         result = pipeline.run(ctx)
-        ctx.apply_result(result)
+        apply_pipeline_result(ctx, result)
     except Exception as exc:  # noqa: BLE001
         _emit_log(on_log, f"[FAIL] {pipeline.name}: {exc}")
         raise RuntimeError(format_pipeline_exception(exc, pipeline)) from exc
     if isinstance(result, ProcessResult):
         result.output_h5_path = str(output_h5_path)
-    ctx.finish_pipeline(pipeline.name)
+    finish_pipeline(ctx, pipeline.name)
     _emit_log(on_log, f"[OK] {pipeline.name}")
     if on_pipeline_success is not None:
         on_pipeline_success(pipeline.name)

@@ -50,13 +50,13 @@ def _read_vessel(ctx, paths: VelocityPerBeatOutputPaths) -> VesselWaveformInputs
 
 
 def _required_array(ctx, path: str) -> np.ndarray:
-    return np.asarray(ctx.ef[path], dtype=np.float32)
+    return ctx.output.h5.array(path, dtype=np.float32)
 
 
 def _optional_array(ctx, path: str | None) -> np.ndarray | None:
-    if path is None or path not in ctx.ef:
+    if path is None or ctx.output.h5.get(path) is None:
         return None
-    return np.asarray(ctx.ef[path], dtype=np.float32)
+    return ctx.output.h5.array(path, dtype=np.float32)
 
 
 def _optional_pair(

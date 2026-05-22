@@ -33,12 +33,11 @@ A pipeline is one analysis step that the GUI or CLI can run.
 Each pipeline receives a `PipelineContext` named `ctx`. The context gives your
 pipeline access to:
 
-- the Holodoppler input H5 through `ctx.hd`
-- the DopplerView input H5 through `ctx.dv`
-- the EyeFlow output/work H5 through `ctx.work` or `ctx.work_h5`
-- the run output file manager through `ctx.output`
-- shared in-memory values through `ctx.vars`, `ctx.set_var(...)`, and
-  `ctx.get_var(...)`
+- the Holodoppler input H5 through `ctx.inputs.hd`
+- the DopplerView input H5 through `ctx.inputs.dv`
+- the EyeFlow work H5 handle through `ctx.runtime.work_h5`
+- the output H5 writer and sidecar manager through `ctx.output`
+- shared in-memory values through `ctx.state.set(...)` and `ctx.state.get(...)`
 - merged input/config attributes through `ctx.attrs`
 
 The pipeline runtime is in `src/pipeline_engine/`.
@@ -68,11 +67,13 @@ The README also describes the broader input contract:
 - binary vessel masks such as `/masks/artery` and `/masks/vein`
 - explicit timing and spatial calibration metadata
 
-When writing a coded pipeline today, prefer the schema-aware readers:
+When writing a coded pipeline today, prefer the typed source adapters:
 
 ```python
-moment0 = ctx.hd.array("moment0")
-artery_mask = ctx.dv.array("retinal_artery_mask")
+hd = ctx.inputs.hd.as_holodoppler()
+dv = ctx.inputs.dv.as_dopplerview()
+moment0 = hd.moment0()
+artery_mask = dv.retinal_artery_mask()
 ```
 
 These logical names are mapped to real H5 paths by the schema files in
@@ -101,17 +102,17 @@ from pipeline_engine.imports import np, pipeline
 def run(ctx) -> None:
     ctx.require_inputs("hd")
 
-    moment0 = ctx.hd.array("moment0", dtype=np.float32)
+    moment0 = ctx.inputs.hd.array("moment0", dtype=np.float32)
     mean_per_frame = np.nanmean(moment0, axis=(1, 2)).astype(np.float32)
 
-    ctx.write(
+    ctx.output.h5.write(
         "analysis/my_metric/mean_moment0_per_frame",
         mean_per_frame,
         unit="a.u.",
         dimDesc=["frame"],
     )
 
-    ctx.set_attr("my_metric_input_path", ctx.hd.path("moment0"))
+    ctx.output.h5.set_attr("my_metric_input_path", "moment0")
 ```
 
 What this does:
@@ -119,9 +120,9 @@ What this does:
 - `@pipeline(...)` registers the function as a runnable pipeline.
 - `input_slot="hd"` tells the runtime this pipeline mainly uses HD data.
 - `ctx.require_inputs("hd")` fails early with a clear error if HD is missing.
-- `ctx.hd.array("moment0")` reads the HD `moment0` dataset as a NumPy array.
-- `ctx.write(...)` creates a dataset in the output EyeFlow H5 file.
-- `ctx.set_attr(...)` writes metadata to the output H5 file.
+- `ctx.inputs.hd.array("moment0")` reads the HD `moment0` dataset.
+- `ctx.output.h5.write(...)` creates a dataset in the output EyeFlow H5 file.
+- `ctx.output.h5.set_attr(...)` writes metadata to the output H5 file.
 
 ## Register The Pipeline
 
@@ -160,23 +161,24 @@ ctx.require_inputs("hd", "dv")
 Read HD datasets:
 
 ```python
-moment0 = ctx.hd.array("moment0", dtype=np.float32)
-moment2 = ctx.hd.array("moment2", dtype=np.float32)
+moment0 = ctx.inputs.hd.array("moment0", dtype=np.float32)
+moment2 = ctx.inputs.hd.array("moment2", dtype=np.float32)
 ```
 
 Read DV datasets:
 
 ```python
-artery_mask = ctx.dv.array("retinal_artery_mask", dtype=bool)
-vein_mask = ctx.dv.array("retinal_vein_mask", dtype=bool)
-labels = ctx.dv.array("retinal_labeled_vessels", dtype=np.int32, default=None)
+dv = ctx.inputs.dv.as_dopplerview()
+artery_mask = dv.retinal_artery_mask()
+vein_mask = dv.retinal_vein_mask()
+labels = dv.retinal_labeled_vessels()
 ```
 
 Read a DV config value. This checks the H5 first, then the sidecar JSON config,
 then the schema default:
 
 ```python
-local_background_dist = ctx.dv.config("local_background_dist", default=2)
+local_background_dist = ctx.inputs.dv.as_dopplerview().local_background_dist()
 ```
 
 Read Holodoppler timing:
@@ -193,20 +195,20 @@ dt_seconds = timing.dt_seconds
 Use the output H5 for pipeline metrics and machine-readable values that later
 pipelines or downstream tools should consume.
 
-Use `ctx.write(...)` for one output:
+Use `ctx.output.h5.write(...)` for one output:
 
 ```python
-ctx.write(
+ctx.output.h5.write(
     "analysis/my_metric/value",
     np.float32(42.0),
     unit="a.u.",
 )
 ```
 
-Use `ctx.write_many(...)` for several outputs:
+Use `ctx.output.h5.write_many(...)` for several outputs:
 
 ```python
-ctx.write_many(
+ctx.output.h5.write_many(
     {
         "analysis/my_metric/artery_pixel_count": (
             np.int32(np.count_nonzero(artery_mask)),
@@ -247,21 +249,17 @@ sample/
 ```
 
 The main H5 file is opened by the runtime. Most pipelines should write to that
-file with `ctx.write(...)`, not by opening another H5 file.
+file with `ctx.output.h5.write(...)`, not by opening another H5 file.
 
 Write a JSON sidecar:
 
 ```python
-from input_output.output_manager import OutputType
-
-
-ctx.output.write(
+ctx.output.write_json(
     {
-        "pipeline": ctx.pipeline_name,
+        "pipeline": ctx.runtime.pipeline_name,
         "frame_count": int(moment0.shape[-1]),
         "mean_value": float(np.nanmean(moment0)),
     },
-    OutputType.JSON,
     "my_metric_summary.json",
 )
 ```
@@ -296,15 +294,16 @@ with ctx.output.open_h5("my_metric_debug.h5") as debug_h5:
 ```
 
 Do not store required pipeline metrics only in sidecar files. If a value is part
-of the analysis result, write it to the main output H5 with `ctx.write(...)`.
+of the analysis result, write it to the main output H5 with
+`ctx.output.h5.write(...)`.
 
 ## Reading Values From The Output H5
 
 Inside a later pipeline, read a value already written to the EyeFlow output H5
-with `ctx.read(...)` or `ctx.array(...)`:
+with `ctx.output.h5.read(...)` or `ctx.output.h5.array(...)`:
 
 ```python
-mean_per_frame = ctx.array(
+mean_per_frame = ctx.output.h5.array(
     "analysis/my_metric/mean_moment0_per_frame",
     dtype=np.float32,
 )
@@ -322,7 +321,7 @@ with h5py.File("path/to/output_eyeflow.h5", "r") as h5:
 
 ## Sharing Values Between Pipelines
 
-Use `ctx.set_var(...)` for temporary values needed by later pipelines but not
+Use `ctx.state.set(...)` for temporary values needed by later pipelines but not
 written to the output H5.
 
 Producer:
@@ -341,7 +340,7 @@ def run(ctx) -> None:
     ctx.require_inputs("hd", "dv")
 
     signal = np.asarray([1.0, 2.0, 3.0], dtype=np.float32)
-    ctx.set_var("velocity_signal", signal)
+    ctx.state.set("velocity_signal", signal)
 ```
 
 Consumer:
@@ -357,11 +356,11 @@ from pipeline_engine.imports import np, pipeline
     dag_requires=["velocity_signal"],
 )
 def run(ctx) -> None:
-    signal = ctx.get_var("velocity_signal")
+    signal = ctx.state.get("velocity_signal")
     if signal is None:
         raise RuntimeError("Expected prepare_velocity_signal to set velocity_signal.")
 
-    ctx.write(
+    ctx.output.h5.write(
         "analysis/velocity_signal/mean",
         np.float32(np.nanmean(signal)),
         unit="mm/s",
@@ -461,8 +460,8 @@ from pipeline_engine.imports import np
 def run_my_big_pipeline(ctx) -> tuple[dict[str, object], dict[str, object]]:
     ctx.require_inputs("hd", "dv")
 
-    moment0 = ctx.hd.array("moment0", dtype=np.float32)
-    artery_mask = ctx.dv.array("retinal_artery_mask", dtype=bool)
+    moment0 = ctx.inputs.hd.array("moment0", dtype=np.float32)
+    artery_mask = ctx.inputs.dv.as_dopplerview().retinal_artery_mask()
 
     artery_mean = np.float32(np.nanmean(moment0[:, artery_mask]))
 
@@ -473,8 +472,8 @@ def run_my_big_pipeline(ctx) -> tuple[dict[str, object], dict[str, object]]:
         )
     }
     attrs = {
-        "my_big_pipeline_hd_path": ctx.hd.path("moment0"),
-        "my_big_pipeline_dv_path": ctx.dv.path("retinal_artery_mask"),
+        "my_big_pipeline_hd_path": "moment0",
+        "my_big_pipeline_dv_path": "segmentation/Retina/artery_mask",
     }
     return metrics, attrs
 ```
@@ -526,11 +525,12 @@ run it.
 ## Common Mistakes
 
 - Forgetting to add the module to `PIPELINE_MODULES`.
-- Reading from `ctx.hd` or `ctx.dv` without calling `ctx.require_inputs(...)`.
+- Reading from `ctx.inputs.hd` or `ctx.inputs.dv` without calling
+  `ctx.require_inputs(...)`.
 - Writing outputs without units when the value has a physical meaning.
-- Using `ctx.vars` for values that should be saved in the output H5.
-- Using `ctx.write(...)` for large temporary values that only the next pipeline
-  needs.
+- Using `ctx.state` for values that should be saved in the output H5.
+- Using `ctx.output.h5.write(...)` for large temporary values that only the
+  next pipeline needs.
 - Hiding missing data by returning `nan` when the pipeline should fail clearly.
 - Creating a DAG key that no producer creates and then expecting the runtime to
   build it automatically.

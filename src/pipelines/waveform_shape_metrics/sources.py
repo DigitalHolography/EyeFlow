@@ -61,8 +61,8 @@ class WaveformShapeSources:
     def from_context(cls, ctx: PipelineContext) -> "WaveformShapeSources":
         ctx.require_inputs("hd", "dv")
         return cls(
-            hd=HolodopplerSource.from_context(ctx),
-            dv=DopplerViewSource.from_context(ctx),
+            hd=ctx.inputs.hd.as_holodoppler(),
+            dv=ctx.inputs.dv.as_dopplerview(),
         )
 
     def load(self) -> WaveformShapeSourceData:

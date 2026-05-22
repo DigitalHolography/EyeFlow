@@ -26,7 +26,7 @@ class DopplerViewSource(TypedSource):
 
     @classmethod
     def from_context(cls, ctx) -> "DopplerViewSource":
-        return cls(ctx.sources.dv, ctx.dv_config)
+        return cls(ctx.inputs.dv.h5, ctx.inputs.dv.config)
 
     def retinal_artery_mask(self) -> np.ndarray:
         return self._array("segmentation/Retina/artery_mask", dtype=bool)

@@ -6,9 +6,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from calculations.math import band_limited_ifft_abs, interpft_real
+from calculations.math import band_limited_ifft_abs, interpft_real, next_power_of_two
 
-from ._signal_utils import next_power_of_two, normalize_cycle_boundaries
+from ._signal_utils import normalize_cycle_boundaries
 
 
 @dataclass(frozen=True)

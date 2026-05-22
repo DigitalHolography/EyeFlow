@@ -1,4 +1,4 @@
-"""Runtime context object exposed to EyeFlow pipelines."""
+"""Pipeline context namespaces for inputs, runtime state, outputs, and run logs."""
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -7,7 +7,7 @@ from typing import Any
 import h5py
 import numpy as np
 
-from input_output.inputs import EyeFlowView, MergedAttrs
+from input_output.inputs import MergedAttrs
 from input_output.output_manager import OutputManager
 from input_output.writers.h5 import (
     normalize_h5_path,
@@ -102,123 +102,100 @@ class RawH5SourceReader:
 
 
 @dataclass(frozen=True)
-class PipelineSources:
-    """Raw explicit-path source readers available on PipelineContext."""
+class PipelineInputSource:
+    """One input HDF5 reader and its parsed sidecar configuration."""
 
-    work: RawH5SourceReader
-    hd: RawH5SourceReader
-    dv: RawH5SourceReader
-
-
-class PipelineContext:
-    """Runtime object passed to every pipeline."""
-
-    def __init__(
-        self,
-        *,
-        work_h5: h5py.File,
-        holodoppler_h5: h5py.File | None,
-        doppler_vision_h5: h5py.File | None,
-        holodoppler_config: Mapping[str, object] | None = None,
-        doppler_vision_config: Mapping[str, object] | None = None,
-        preferred_input: str = "both",
-        pipeline_name: str = "",
-        variables: dict[str, Any] | None = None,
-        output_manager: OutputManager | None = None,
-        on_log: Callable[[str], None] | None = None,
-    ) -> None:
-        self.work_h5 = work_h5
-        self.work = work_h5
-        self.ef = EyeFlowView(work_h5)
-        self.sources = PipelineSources(
-            work=RawH5SourceReader(h5file=work_h5, label="work"),
-            hd=RawH5SourceReader(h5file=holodoppler_h5, label="HD"),
-            dv=RawH5SourceReader(h5file=doppler_vision_h5, label="DV"),
-        )
-        self.hd_h5 = holodoppler_h5
-        self.dv_h5 = doppler_vision_h5
-        self.hd_config = dict(holodoppler_config or {})
-        self.dv_config = dict(doppler_vision_config or {})
-        self.preferred_input = preferred_input
-        self.output = output_manager
-        self.pipeline_name = pipeline_name
-        self._on_log = on_log
-        # Shared in-memory state for this run. It is not persisted unless a
-        # pipeline explicitly writes a value to the work H5.
-        self.vars = variables if variables is not None else {}
-        self.state = self.vars
-        self.attrs = MergedAttrs(
-            self.work_h5,
-            self._preferred_raw_source(),
-            self._secondary_raw_source(),
-            self.hd_config,
-            self.dv_config,
-        )
-
-    def require_inputs(self, *inputs: str) -> None:
-        requested = {name.lower() for name in inputs} or {"hd", "dv"}
-        missing: list[str] = []
-        if "hd" in requested and not self.sources.hd.available:
-            missing.append("HD")
-        if "dv" in requested and not self.sources.dv.available:
-            missing.append("DV")
-        if missing:
-            raise ValueError(f"Missing required input(s): {', '.join(missing)}.")
-
-    def set_var(self, key: str, value: Any) -> None:
-        self.vars[str(key)] = value
-
-    def get_var(self, key: str, default: Any = None) -> Any:
-        return self.vars.get(str(key), default)
-
-    def log(self, message: str) -> None:
-        if self._on_log is not None:
-            self._on_log(message)
+    h5: RawH5SourceReader
+    config: dict[str, object]
 
     @property
-    def filename(self) -> str:
-        primary = self._preferred_raw_source()
-        if primary is not None and primary.filename is not None:
-            return str(primary.filename)
-        if self.work_h5.filename is not None:
-            return str(self.work_h5.filename)
-        return ""
+    def filename(self) -> str | None:
+        return self.h5.filename
 
-    def _preferred_raw_source(self) -> h5py.File | None:
-        if self.preferred_input == "dv":
-            return self.dv_h5 or self.hd_h5
-        return self.hd_h5 or self.dv_h5
+    @property
+    def available(self) -> bool:
+        return self.h5.available
 
-    def _secondary_raw_source(self) -> h5py.File | None:
-        preferred = self._preferred_raw_source()
-        if preferred is self.hd_h5:
-            return self.dv_h5
-        if preferred is self.dv_h5:
-            return self.hd_h5
-        return None
+    def require(self) -> None:
+        self.h5.require()
+
+    def keys(self):
+        return self.h5.keys()
 
     def get(self, path: str, default=None):
-        normalized_path = normalize_h5_path(path)
-        if not normalized_path:
-            return default
-        for source in (
-            self.work_h5,
-            self._preferred_raw_source(),
-            self._secondary_raw_source(),
-        ):
-            found = source.get(normalized_path) if source is not None else None
-            if found is not None:
-                return found
-        return default
+        return self.h5.get(path, default)
 
-    def __getitem__(self, path: str):
-        found = self.get(path)
-        if found is None:
-            raise KeyError(path)
-        return found
+    def dataset(self, path: str) -> h5py.Dataset:
+        return self.h5.dataset(path)
 
-    def __contains__(self, path: object) -> bool:
-        return isinstance(path, str) and self.get(path) is not None
+    def value(self, path: str, default: Any = _MISSING):
+        return self.h5.value(path, default)
+
+    def array(
+        self,
+        path: str,
+        *,
+        dtype=None,
+        flatten: bool = False,
+        default: Any = _MISSING,
+    ) -> Any:
+        return self.h5.array(path, dtype=dtype, flatten=flatten, default=default)
+
+    def as_holodoppler(self):
+        from input_output.schema import HolodopplerSource
+
+        return HolodopplerSource(self.h5, self.config)
+
+    def as_dopplerview(self):
+        from input_output.schema import DopplerViewSource
+
+        return DopplerViewSource(self.h5, self.config)
+
+
+@dataclass(frozen=True)
+class PipelineInputs:
+    """External application inputs consumed by EyeFlow."""
+
+    hd: PipelineInputSource
+    dv: PipelineInputSource
+
+
+class PipelineState:
+    """Shared in-memory values for the current pipeline run."""
+
+    def __init__(self, values: dict[str, Any] | None = None) -> None:
+        self._values = values if values is not None else {}
+
+    def set(self, key: str, value: Any) -> None:
+        self._values[str(key)] = value
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._values.get(str(key), default)
+
+    def __contains__(self, key: object) -> bool:
+        return str(key) in self._values if isinstance(key, str) else False
+
+    def __getitem__(self, key: str) -> Any:
+        return self._values[key]
+
+    @property
+    def raw(self) -> dict[str, Any]:
+        return self._values
+
+
+class PipelineH5Output:
+    """Read and write the EyeFlow work/output HDF5 file."""
+
+    def __init__(self, work_h5: h5py.File) -> None:
+        self.file = work_h5
+
+    @property
+    def filename(self) -> str | None:
+        return self.file.filename
+
+    def get(self, path: str, default=None):
+        found = self.file.get(normalize_h5_path(path))
+        return default if found is None else found
 
     def read(self, path: str, default: Any = _MISSING):
         found = self.get(path)
@@ -246,36 +223,175 @@ class PipelineContext:
 
     def write(self, path: str, value: Any, **attrs: Any) -> None:
         payload = DatasetValue(value, attrs) if attrs else value
-        write_value_dataset(self.work_h5, path, payload)
+        write_value_dataset(self.file, path, payload)
 
     def write_many(self, metrics: Mapping[str, Any]) -> None:
         for path, value in metrics.items():
-            write_value_dataset(self.work_h5, path, value)
+            write_value_dataset(self.file, path, value)
 
     def set_attr(self, key: str, value: Any) -> None:
         if key == "pipeline":
             return
-        set_attr_safe(self.work_h5, key, value)
+        set_attr_safe(self.file, key, value)
 
     def set_attrs(self, attrs: Mapping[str, Any] | None) -> None:
         for key, value in (attrs or {}).items():
             self.set_attr(str(key), value)
 
-    def apply_result(self, result: ProcessResult | Mapping[str, Any] | None) -> None:
-        if result is None:
-            return
-        if isinstance(result, ProcessResult):
-            self.set_attrs(result.attrs)
-            self.write_many(result.metrics)
-            return
-        if isinstance(result, Mapping):
-            self.write_many(result)
-            return
-        raise TypeError(
-            "Pipeline must return None, a metrics dict, or ProcessResult. "
-            f"Got: {type(result).__name__}"
+    def flush(self) -> None:
+        self.file.flush()
+
+
+@dataclass(frozen=True)
+class PipelineOutput:
+    """Output namespace for the work H5 and sidecar artifacts."""
+
+    manager: OutputManager | None
+    h5: PipelineH5Output
+
+    @property
+    def available(self) -> bool:
+        return self.manager is not None
+
+    def dir_for(self, output_type):
+        return self._manager().dir_for(output_type)
+
+    def path_for(self, output_type, filename: str | None = None):
+        return self._manager().path_for(output_type, filename)
+
+    def open_h5(self, filename: str | None = None, mode: str = "w"):
+        return self._manager().open_h5(filename, mode)
+
+    def write_sidecar(self, output, output_type, filename: str | None = None):
+        return self._manager().write_sidecar(output, output_type, filename)
+
+    def write_json(self, output, filename: str | None = None):
+        return self._manager().write_json(output, filename)
+
+    def write_png(self, output, filename: str | None = None):
+        return self._manager().write_png(output, filename)
+
+    def _manager(self) -> OutputManager:
+        if self.manager is None:
+            raise ValueError("No output manager is available for this pipeline run.")
+        return self.manager
+
+
+@dataclass
+class PipelineRuntime:
+    """Pipeline engine bookkeeping for the current run."""
+
+    work_h5: h5py.File
+    preferred_input: str
+    pipeline_name: str
+
+
+class PipelineContext:
+    """Runtime object passed to every pipeline."""
+
+    def __init__(
+        self,
+        *,
+        work_h5: h5py.File,
+        holodoppler_h5: h5py.File | None,
+        doppler_vision_h5: h5py.File | None,
+        holodoppler_config: Mapping[str, object] | None = None,
+        doppler_vision_config: Mapping[str, object] | None = None,
+        preferred_input: str = "both",
+        pipeline_name: str = "",
+        variables: dict[str, Any] | None = None,
+        output_manager: OutputManager | None = None,
+        on_log: Callable[[str], None] | None = None,
+    ) -> None:
+        hd_config = dict(holodoppler_config or {})
+        dv_config = dict(doppler_vision_config or {})
+        self.runtime = PipelineRuntime(work_h5, preferred_input, pipeline_name)
+        self.inputs = PipelineInputs(
+            hd=PipelineInputSource(
+                RawH5SourceReader(h5file=holodoppler_h5, label="HD"),
+                hd_config,
+            ),
+            dv=PipelineInputSource(
+                RawH5SourceReader(h5file=doppler_vision_h5, label="DV"),
+                dv_config,
+            ),
+        )
+        self.output = PipelineOutput(output_manager, PipelineH5Output(work_h5))
+        self.state = PipelineState(variables)
+        self._on_log = on_log
+        self.attrs = MergedAttrs(
+            work_h5,
+            self._preferred_raw_source(),
+            self._secondary_raw_source(),
+            hd_config,
+            dv_config,
         )
 
-    def finish_pipeline(self, pipeline_name: str) -> None:
-        self.work_h5.attrs["last_pipeline"] = pipeline_name
-        self.work_h5.flush()
+    def require_inputs(self, *inputs: str) -> None:
+        requested = {name.lower() for name in inputs} or {"hd", "dv"}
+        missing: list[str] = []
+        if "hd" in requested and not self.inputs.hd.available:
+            missing.append("HD")
+        if "dv" in requested and not self.inputs.dv.available:
+            missing.append("DV")
+        if missing:
+            raise ValueError(f"Missing required input(s): {', '.join(missing)}.")
+
+    def log(self, message: str) -> None:
+        if self._on_log is not None:
+            self._on_log(message)
+
+    @property
+    def filename(self) -> str:
+        primary = self._preferred_raw_source()
+        if primary is not None and primary.filename is not None:
+            return str(primary.filename)
+        if self.runtime.work_h5.filename is not None:
+            return str(self.runtime.work_h5.filename)
+        return ""
+
+    def _preferred_raw_source(self) -> h5py.File | None:
+        hd_h5 = self.inputs.hd.h5.h5file
+        dv_h5 = self.inputs.dv.h5.h5file
+        if self.runtime.preferred_input == "dv":
+            return dv_h5 or hd_h5
+        return hd_h5 or dv_h5
+
+    def _secondary_raw_source(self) -> h5py.File | None:
+        hd_h5 = self.inputs.hd.h5.h5file
+        dv_h5 = self.inputs.dv.h5.h5file
+        preferred = self._preferred_raw_source()
+        if preferred is hd_h5:
+            return dv_h5
+        if preferred is dv_h5:
+            return hd_h5
+        return None
+
+
+def apply_pipeline_result(
+    ctx: PipelineContext,
+    result: ProcessResult | Mapping[str, Any] | None,
+) -> None:
+    """Persist a pipeline return value to the output H5."""
+
+    if result is None:
+        return
+    if isinstance(result, ProcessResult):
+        ctx.output.h5.set_attrs(result.attrs)
+        ctx.output.h5.write_many(result.metrics)
+        return
+    if isinstance(result, Mapping):
+        ctx.output.h5.write_many(result)
+        return
+    raise TypeError(
+        "Pipeline must return None, a metrics dict, or ProcessResult. "
+        f"Got: {type(result).__name__}"
+    )
+
+
+def finish_pipeline(ctx: PipelineContext, pipeline_name: str) -> None:
+    """Record completion metadata after a pipeline succeeds."""
+
+    ctx.runtime.pipeline_name = pipeline_name
+    ctx.runtime.work_h5.attrs["last_pipeline"] = pipeline_name
+    ctx.output.h5.flush()

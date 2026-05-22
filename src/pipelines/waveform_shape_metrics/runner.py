@@ -35,14 +35,14 @@ def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object
 
     _log(ctx, "Starting waveform-shape metrics context build...")
     context = _build_waveform_shape_metrics_context(ctx)
-    ctx.set_var("waveform_shape_metrics_context", context)
-    ctx.set_var("dopplerview_analysis", context.dopplerview_analysis)
+    ctx.state.set("waveform_shape_metrics_context", context)
+    ctx.state.set("dopplerview_analysis", context.dopplerview_analysis)
 
     _log(ctx, "Starting per-beat analysis...")
     per_beat_result = run_per_beat_analysis(context.per_beat_analysis)
     metrics = pack_dopplerview_analysis_outputs(context.dopplerview_analysis)
     metrics.update(pack_velocity_per_beat_outputs(per_beat_result))
-    ctx.set_var("velocity_per_beat_result", per_beat_result)
+    ctx.state.set("velocity_per_beat_result", per_beat_result)
 
     return metrics, context.attrs
 
@@ -157,7 +157,7 @@ def _export_branch_identity_debug(
     ring_settings: SegmentRingSettings,
     prefix: str,
 ) -> None:
-    if ctx.output is None:
+    if not ctx.output.available:
         return
     export_branch_identity_stage_pngs(
         ctx.output,

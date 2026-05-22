@@ -3,7 +3,7 @@ from pipeline_engine.imports import np, pipeline
 
 @pipeline(
     name="test1",
-    description="Tutorial: read HD moment0 and keep a value only in ctx.vars.",
+    description="Tutorial: read HD moment0 and keep a value only in ctx.state.",
     dag_produces=["test1_moment0_summary"],
     input_slot="hd",
 )
@@ -17,9 +17,9 @@ def run(ctx) -> None:
 
     ctx.require_inputs("hd")
 
-    moment0 = ctx.sources.hd.array("moment0", dtype=np.float32)
+    moment0 = ctx.inputs.hd.array("moment0", dtype=np.float32)
 
-    ctx.set_var(
+    ctx.state.set(
         "test1_moment0_summary",
         {
             "shape": tuple(int(size) for size in moment0.shape),
@@ -28,4 +28,4 @@ def run(ctx) -> None:
     )
 
     # Nothing is written to the output H5 because this tutorial only uses
-    # ctx.vars. Call ctx.write(...) only when you want a persistent output.
+    # ctx.state. Use ctx.output.h5.write(...) for persistent output.
