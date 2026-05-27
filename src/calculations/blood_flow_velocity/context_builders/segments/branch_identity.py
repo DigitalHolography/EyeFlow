@@ -18,6 +18,7 @@ BRANCH_POINT_CENTER_WEIGHT = 10
 BRANCH_POINT_MIN_NEIGHBORS = 3
 BRANCH_POINT_DILATION_RADIUS = 2
 STREL_SIZE = BRANCH_POINT_DILATION_RADIUS
+EIGHT_CONNECTED = np.ones((3, 3), dtype=bool)
 BRANCH_POINT_KERNEL = np.array(
     [[1, 1, 1], [1, BRANCH_POINT_CENTER_WEIGHT, 1], [1, 1, 1]],
     dtype=np.int16,
@@ -85,7 +86,7 @@ def _branch_identity_stages(
     )
     skeleton = skeletonize(vessel)
 
-    branch_points = _branch_points(skeleton)
+    branch_points = _branch_points(skeleton, min_arm_pixels=small_branch_pixels)
     branch_footprint = disk(max(0, int(strel_size))).astype(bool, copy=False)
     cleaned_skeleton = skeleton & ~ndi.binary_dilation(branch_points, structure=branch_footprint)
     cleaned_skeleton = _remove_small(cleaned_skeleton, max(0, int(small_branch_pixels)))
@@ -119,10 +120,39 @@ def _branch_identity_stages(
     )
 
 
-def _branch_points(skeleton: np.ndarray) -> np.ndarray:
+def _branch_points(skeleton: np.ndarray, min_arm_pixels: int = 1) -> np.ndarray:
     skel = np.asarray(skeleton, dtype=bool)
     scores = ndi.convolve(skel.astype(np.int16), BRANCH_POINT_KERNEL, mode="constant")
-    return skel & (scores >= BRANCH_POINT_THRESHOLD)
+    candidates = skel & (scores >= BRANCH_POINT_THRESHOLD)
+    arm_min = max(1, int(min_arm_pixels))
+    if arm_min <= 1 or not np.any(candidates):
+        return candidates
+
+    labeled, count = ndi.label(candidates, structure=EIGHT_CONNECTED)
+    branch_points = np.zeros(candidates.shape, dtype=bool)
+    for cluster_id in range(1, count + 1):
+        cluster = labeled == cluster_id
+        if _substantial_arm_count(skel, cluster, arm_min) >= BRANCH_POINT_MIN_NEIGHBORS:
+            branch_points |= cluster
+    return branch_points
+
+
+def _substantial_arm_count(
+    skeleton: np.ndarray,
+    branch_point_cluster: np.ndarray,
+    min_arm_pixels: int,
+) -> int:
+    cut_skeleton = skeleton & ~branch_point_cluster
+    labeled, count = ndi.label(cut_skeleton, structure=EIGHT_CONNECTED)
+    if count == 0:
+        return 0
+    neighborhood = ndi.binary_dilation(branch_point_cluster, structure=EIGHT_CONNECTED)
+    touching_ids = np.unique(labeled[neighborhood & cut_skeleton])
+    touching_ids = touching_ids[touching_ids > 0]
+    if touching_ids.size == 0:
+        return 0
+    sizes = np.bincount(labeled.reshape(-1))
+    return int(np.count_nonzero(sizes[touching_ids] >= int(min_arm_pixels)))
 
 
 def _impose_marker_minima(
@@ -157,7 +187,7 @@ def _per_circle_cleaned_labels(
 def _remove_small(mask: np.ndarray, min_area: int) -> np.ndarray:
     if min_area <= 1:
         return mask
-    labeled, _ = ndi.label(mask, structure=np.ones((3, 3), dtype=bool))
+    labeled, _ = ndi.label(mask, structure=EIGHT_CONNECTED)
     sizes = np.bincount(labeled.reshape(-1))
     keep = sizes >= int(min_area)
     keep[0] = False

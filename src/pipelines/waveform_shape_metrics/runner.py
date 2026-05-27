@@ -8,6 +8,9 @@ from calculations.blood_flow_velocity import (
     run_per_beat_analysis,
     segment_velocity_results,
 )
+from calculations.blood_flow_velocity.context_builders.segments.segment_geometry import (
+    largest_centered_circle_radius_frac,
+)
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.imports import (
     HolodopplerTiming,
@@ -19,7 +22,6 @@ from .constants import (
     LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
     LEGACY_FILTER_VELOCITY_SIGNALS,
     LEGACY_SEGMENT_INNER_RADIUS_FRAC,
-    LEGACY_SEGMENT_OUTER_RADIUS_FRAC,
     LEGACY_SEGMENT_RING_COUNT,
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
@@ -169,8 +171,16 @@ def _export_branch_identity_debug(
 
 
 def _segment_ring_settings(source_data: WaveformShapeSourceData) -> SegmentRingSettings:
-    inner = _positive_float(source_data.peripapillary_inner_radius, LEGACY_SEGMENT_INNER_RADIUS_FRAC)
-    outer = _positive_float(source_data.peripapillary_outer_radius, LEGACY_SEGMENT_OUTER_RADIUS_FRAC)
+    inner = _positive_float(
+        source_data.peripapillary_inner_radius,
+        LEGACY_SEGMENT_INNER_RADIUS_FRAC,
+    )
+    outer = float(
+        largest_centered_circle_radius_frac(
+            source_data.retinal_artery_mask,
+            source_data.optic_disc_center,
+        )
+    )
     count = _positive_int(source_data.peripapillary_ring_count, LEGACY_SEGMENT_RING_COUNT)
     width = _ring_width(source_data.peripapillary_ring_width, inner, outer, count)
     length = _positive_float(source_data.segment_length, width)
