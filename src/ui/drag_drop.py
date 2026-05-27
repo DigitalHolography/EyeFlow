@@ -73,11 +73,15 @@ class DragDropMixin:
         if not valid_paths:
             return False
 
-        if len(valid_paths) != 1:
-            return False
+        if len(valid_paths) == 1:
+            self._assign_holo_input_path(valid_paths[0])
+            self._log_run(f"[INPUT] Drag and drop HOLO -> {valid_paths[0]}")
+            return True
 
-        self._assign_holo_input_path(valid_paths[0])
-        self._log_run(f"[INPUT] Drag and drop HOLO -> {valid_paths[0]}")
+        self._assign_holo_input_paths(valid_paths)
+        self._log_run(
+            f"[INPUT] Drag and drop HOLO -> {valid_paths[0]} (+{len(valid_paths) - 1} more)"
+        )
         return True
 
     def _on_input_drop(self, event, *, slot_hint: str | None = None) -> None:

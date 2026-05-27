@@ -8,7 +8,7 @@ from queue import Empty, Queue
 from threading import Thread
 from tkinter import filedialog, messagebox
 
-from input_output import resolve_holo_input
+from input_output import resolve_holo_input, resolve_selected_holo_inputs
 from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from pipelines import PipelineDescriptor
@@ -35,35 +35,33 @@ class RunMixin:
             if selected_holo is not None
             else os.path.abspath("example_file")
         )
-        path = filedialog.askopenfilename(
+        paths = filedialog.askopenfilenames(
             filetypes=[("HOLO", "*.holo"), ("All files", "*.*")],
             initialdir=initial_dir,
-            title="Select .holo file",
+            title="Select .holo file(s)",
         )
-        if path:
-            self._assign_holo_input_path(Path(path))
+        if paths:
+            self._assign_holo_input_paths([Path(path) for path in paths])
 
-    def _validate_selected_input(
+    def _validate_selected_inputs(
         self,
-        holo_path: Path | None,
-    ) -> HoloRunLayout | None:
-        if holo_path is None:
+        holo_paths: Sequence[Path],
+    ) -> list[HoloRunLayout] | None:
+        if not holo_paths:
             messagebox.showwarning(
                 "Missing input",
-                "Select one .holo file.",
+                "Select one or more .holo files.",
             )
             return None
 
         try:
-            run_layout = resolve_holo_input(holo_path)
+            return resolve_selected_holo_inputs(holo_paths)
         except ValueError as exc:
             messagebox.showerror("Invalid input", str(exc))
             return None
         except FileNotFoundError as exc:
             messagebox.showerror("Missing data", str(exc))
             return None
-
-        return run_layout
 
     def run_process(self) -> None:
         if getattr(self, "_pipeline_run_active", False):
@@ -74,18 +72,19 @@ class RunMixin:
             return
 
         self._reset_progress()
-        request = self._build_pipeline_run_request()
-        if request is None:
+        requests = self._build_pipeline_run_requests()
+        if requests is None:
             return
 
+        total_units = sum(len(request.pipelines) for request in requests)
         self._start_progress(
-            len(request.pipelines),
+            total_units,
             style_name=self._progress_primary_style,
             status_text="Running pipelines...",
         )
-        self._start_pipeline_thread(request)
+        self._start_pipeline_thread(requests)
 
-    def _build_pipeline_run_request(self) -> _PipelineRunRequest | None:
+    def _build_pipeline_run_requests(self) -> list[_PipelineRunRequest] | None:
         plan = self._resolve_selected_run_plan()
         if plan is None:
             return None
@@ -94,20 +93,24 @@ class RunMixin:
         if not self._reject_unavailable_pipelines(pipelines):
             return None
 
-        run_layout = self._validate_selected_input(self._selected_holo_path())
-        if run_layout is None:
+        run_layouts = self._validate_selected_inputs(self._selected_holo_paths())
+        if run_layouts is None:
             return None
 
         self._reset_run_log("Starting pipeline run...\n")
         self._log_run(f"[DAG] Targets -> {', '.join(plan.targets)}")
         self._log_run(f"[DAG] Execution order -> {', '.join(plan.names)}")
-        self._log_run_layout(run_layout)
+        for run_layout in run_layouts:
+            self._log_run_layout(run_layout)
 
-        return self._create_pipeline_run_request(
-            run_layout=run_layout,
-            pipelines=pipelines,
-            target_names=plan.targets,
-        )
+        return [
+            self._create_pipeline_run_request(
+                run_layout=run_layout,
+                pipelines=pipelines,
+                target_names=plan.targets,
+            )
+            for run_layout in run_layouts
+        ]
 
     def _resolve_selected_run_plan(self) -> PipelineExecutionPlan | None:
         target_names = self._selected_target_pipeline_names()
@@ -180,12 +183,12 @@ class RunMixin:
             doppler_vision_h5=run_layout.dv_h5,
         )
 
-    def _start_pipeline_thread(self, request: _PipelineRunRequest) -> None:
+    def _start_pipeline_thread(self, requests: list[_PipelineRunRequest]) -> None:
         self._pipeline_ui_events = Queue()
         self._set_pipeline_run_active(True)
         thread = Thread(
             target=self._run_pipeline_worker,
-            args=(request,),
+            args=(requests,),
             name="EyeFlowPipelineWorker",
             daemon=True,
         )
@@ -193,9 +196,9 @@ class RunMixin:
         thread.start()
         self.after(50, self._drain_pipeline_ui_events)
 
-    def _run_pipeline_worker(self, request: _PipelineRunRequest) -> None:
+    def _run_pipeline_worker(self, requests: list[_PipelineRunRequest]) -> None:
         try:
-            output_h5_path = self._run_pipelines_to_output(request)
+            output_h5_path = self._run_pipelines_to_output(requests)
         except Exception as exc:  # noqa: BLE001
             self._queue_pipeline_ui_event("failure", str(exc))
             return
@@ -274,17 +277,26 @@ class RunMixin:
 
     def _run_pipelines_to_output(
         self,
-        request: _PipelineRunRequest,
+        requests: list[_PipelineRunRequest],
     ) -> Path:
-        return run_pipelines_to_output(
-            output_manager=request.output_manager,
-            pipelines=request.pipelines,
-            target_names=request.target_names,
-            holodoppler_h5=request.holodoppler_h5,
-            doppler_vision_h5=request.doppler_vision_h5,
-            on_pipeline_success=lambda name: self._queue_pipeline_ui_event(
+        last_output_path: Path | None = None
+        for request in requests:
+            last_output_path = run_pipelines_to_output(
+                output_manager=request.output_manager,
+                pipelines=request.pipelines,
+                target_names=request.target_names,
+                holodoppler_h5=request.holodoppler_h5,
+                doppler_vision_h5=request.doppler_vision_h5,
+                on_pipeline_success=lambda name: self._queue_pipeline_ui_event(
+                    "log",
+                    f"[OK] {name}",
+                ),
+                on_progress=lambda: self._queue_pipeline_ui_event("progress", None),
+            )
+            self._queue_pipeline_ui_event(
                 "log",
-                f"[OK] {name}",
-            ),
-            on_progress=lambda: self._queue_pipeline_ui_event("progress", None),
-        )
+                f"Completed run for {request.output_manager.layout.holo_path.name}: {last_output_path}",
+            )
+
+        assert last_output_path is not None
+        return last_output_path
