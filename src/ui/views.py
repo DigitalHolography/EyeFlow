@@ -69,7 +69,7 @@ class ViewBuilderMixin:
 
         self.minimal_holo_browse_button = ttk.Button(
             content,
-            text="Select .holo file",
+            text="Select .holo files",
             command=self.choose_holo_file,
         )
         self.minimal_holo_browse_button.grid(row=2, column=0, pady=(0, 10))
@@ -183,7 +183,7 @@ class ViewBuilderMixin:
         self.holo_input_entry = ttk.Entry(parent, textvariable=self.holo_input_var)
         self.holo_input_entry.grid(row=0, column=1, sticky="ew", padx=(0, 4))
         self.holo_browse_button = ttk.Button(
-            parent, text="Select file", command=self.choose_holo_file
+            parent, text="Select files", command=self.choose_holo_file
         )
         self.holo_browse_button.grid(
             row=0,

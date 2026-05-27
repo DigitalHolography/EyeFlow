@@ -8,8 +8,6 @@ from input_output import (
 )
 from input_output.output_manager import OutputManager
 
-HOLO_SUFFIX = ".holo"
-
 
 class InputStateMixin:
     def _on_holo_input_changed(self, *_args) -> None:
@@ -34,6 +32,8 @@ class InputStateMixin:
             self._synchronizing_holo_input_var = False
 
     def _selected_holo_paths(self) -> list[Path]:
+        if self._selected_holo_input_paths:
+            return list(self._selected_holo_input_paths)
         selected_path = self._selected_holo_path()
         return [selected_path] if selected_path is not None else []
 
@@ -52,15 +52,28 @@ class InputStateMixin:
         self._apply_input_defaults(normalized_path)
 
     def _assign_holo_input_paths(self, input_paths: Sequence[Path]) -> None:
-        if not input_paths:
+        normalized_paths: list[Path] = []
+        for input_path in input_paths:
+            path = input_path.expanduser()
+            if not path.is_absolute():
+                path = Path.cwd() / path
+            normalized_paths.append(path)
+
+        if not normalized_paths:
             self._selected_holo_input_paths = []
             self._set_holo_input_var("")
             self._apply_input_defaults(None)
             return
-        self._assign_holo_input_path(input_paths[0])
+
+        self._selected_holo_input_paths = normalized_paths
+        display_value = str(normalized_paths[0])
+        if len(normalized_paths) > 1:
+            display_value += f" (+{len(normalized_paths) - 1} more)"
+        self._set_holo_input_var(display_value)
+        self._apply_input_defaults(normalized_paths[0])
 
     def _reference_holo_tooltip_text(self) -> str:
-        return "Pick one reference .holo file."
+        return "Pick one or more reference .holo files."
 
     def _set_holo_status_parts(
         self,
@@ -103,41 +116,56 @@ class InputStateMixin:
             )
             return
 
-        normalized_holo = holo_paths[0].expanduser()
-        if not normalized_holo.is_absolute():
-            normalized_holo = Path.cwd() / normalized_holo
+        total_files = len(holo_paths)
+        hd_found_count = 0
+        dv_found_count = 0
+        missing_hd: list[str] = []
+        missing_dv: list[str] = []
 
-        if (
-            not normalized_holo.exists()
-            or not normalized_holo.is_file()
-            or normalized_holo.suffix.lower() != HOLO_SUFFIX
-        ):
-            self._set_holo_status_parts(
-                hd_text="HD unavailable",
-                hd_color=self._error_color,
-                dv_text="DV unavailable",
-                dv_color=self._error_color,
-            )
-            return
+        for holo_path in holo_paths:
+            normalized_holo = holo_path.expanduser()
+            if not normalized_holo.is_absolute():
+                normalized_holo = Path.cwd() / normalized_holo
 
-        status = self._holo_data_status(
-            normalized_holo,
-            require_holo_file=True,
-        )
+            status = self._holo_data_status(normalized_holo, require_holo_file=True)
+            if status.hd:
+                hd_found_count += 1
+            else:
+                missing_hd.append(normalized_holo.stem)
+            if status.dv:
+                dv_found_count += 1
+            else:
+                missing_dv.append(normalized_holo.stem)
+
+        hd_text = _found_status_text("HD", hd_found_count, total_files, missing_hd)
+        if missing_hd:
+            hd_color = self._error_color
+        else:
+            hd_color = self._success_color
+
+        dv_text = _found_status_text("DV", dv_found_count, total_files, missing_dv)
+        if missing_dv:
+            dv_color = self._error_color
+        else:
+            dv_color = self._success_color
 
         self._set_holo_status_parts(
-            hd_text="HD found" if status.hd else "HD not found",
-            hd_color=self._success_color if status.hd else self._error_color,
-            dv_text="DV found" if status.dv else "DV not found",
-            dv_color=self._success_color if status.dv else self._error_color,
+            hd_text=hd_text,
+            hd_color=hd_color,
+            dv_text=dv_text,
+            dv_color=dv_color,
         )
 
     def _update_minimal_path_labels(self) -> None:
         holo_paths = self._selected_holo_paths()
         if not holo_paths:
             self.minimal_holo_input_path_var.set("No input selected")
-        else:
+        elif len(holo_paths) == 1:
             self.minimal_holo_input_path_var.set(str(holo_paths[0]))
+        else:
+            self.minimal_holo_input_path_var.set(
+                f"{holo_paths[0]} (+{len(holo_paths) - 1} more)"
+            )
         self._update_minimal_found_statuses(holo_paths)
 
     def _default_output_dir_for_input(self, input_path: Path) -> Path:
@@ -165,3 +193,17 @@ class InputStateMixin:
         del input_path
         self._reset_progress()
         self._set_minimal_status("Ready.")
+
+
+def _found_status_text(
+    label: str,
+    found_count: int,
+    total_count: int,
+    missing_stems: Sequence[str],
+) -> str:
+    if total_count == 1:
+        return f"{label} found" if found_count else f"{label} not found"
+    text = f"{label} {found_count}/{total_count} found"
+    if missing_stems:
+        text += ": missing " + ", ".join(missing_stems)
+    return text

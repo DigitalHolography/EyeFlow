@@ -18,6 +18,7 @@ HOLO_SUFFIX = ".holo"
 class HoloInputStatus:
     hd: bool
     dv: bool
+    ef: bool
 
 
 def resolve_holo_input(
@@ -71,10 +72,14 @@ def holo_input_status(
     try:
         _validate_holo_file(holo_path, require_file=require_holo_file)
     except (FileNotFoundError, ValueError):
-        return HoloInputStatus(hd=False, dv=False)
+        return HoloInputStatus(hd=False, dv=False, ef=False)
 
     run_layout = HoloRunLayout.from_holo(holo_path)
-    return HoloInputStatus(hd=run_layout.has_hd_h5, dv=run_layout.has_dv_h5)
+    return HoloInputStatus(
+        hd=run_layout.has_hd_h5,
+        dv=run_layout.has_dv_h5,
+        ef=run_layout.has_ef_h5,
+    )
 
 
 def _lookup_key(path: str) -> str:
