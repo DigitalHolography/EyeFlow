@@ -7,7 +7,7 @@ import numpy as np
 from .base import HolodopplerTiming, SourceFileLayout, TypedSource
 
 HD_CONFIG_DIR_NAME = "json"
-HD_CONFIG_FILENAME = "parameters.json"
+HD_CONFIG_FILENAME = "parameters_holodoppler.json"
 HD_MOMENT0_PATH = "moment0"
 HD_MOMENT2_PATH = "moment2"
 HD_OUTPUT_PASSTHROUGH_PATHS = ("registration", "zernike_coefs_radians")
