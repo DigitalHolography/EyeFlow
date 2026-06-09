@@ -2,9 +2,12 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from input_output import (
+    INPUT_LIST_SUFFIX,
     default_output_dir_for_input,
     holo_input_status,
+    read_stems_from_input_list,
     reset_output_dir,
+    stem_input_status,
 )
 from input_output.output_manager import OutputManager
 
@@ -73,7 +76,7 @@ class InputStateMixin:
         self._apply_input_defaults(normalized_paths[0])
 
     def _reference_holo_tooltip_text(self) -> str:
-        return "Pick one or more reference .holo files."
+        return "Pick one or more reference .holo files, or a .txt stem list."
 
     def _set_holo_status_parts(
         self,
@@ -115,6 +118,9 @@ class InputStateMixin:
                 dv_color=self._muted_fg,
             )
             return
+        if len(holo_paths) == 1 and holo_paths[0].suffix.lower() == INPUT_LIST_SUFFIX:
+            self._update_input_list_found_statuses(holo_paths[0])
+            return
 
         total_files = len(holo_paths)
         hd_found_count = 0
@@ -154,6 +160,35 @@ class InputStateMixin:
             hd_color=hd_color,
             dv_text=dv_text,
             dv_color=dv_color,
+        )
+
+    def _update_input_list_found_statuses(self, input_list_path: Path) -> None:
+        try:
+            stems = read_stems_from_input_list(input_list_path)
+        except (OSError, ValueError) as exc:
+            self._set_holo_status_parts(
+                hd_text=str(exc),
+                hd_color=self._error_color,
+                dv_text="DV unavailable",
+                dv_color=self._error_color,
+            )
+            return
+
+        root_dir = input_list_path.expanduser()
+        if not root_dir.is_absolute():
+            root_dir = Path.cwd() / root_dir
+        statuses = [stem_input_status(stem, root_dir.parent) for stem in stems]
+        missing_hd = [stem for stem, status in zip(stems, statuses) if not status.hd]
+        missing_dv = [stem for stem, status in zip(stems, statuses) if not status.dv]
+        self._set_holo_status_parts(
+            hd_text=_found_status_text(
+                "HD", len(stems) - len(missing_hd), len(stems), missing_hd
+            ),
+            hd_color=self._error_color if missing_hd else self._success_color,
+            dv_text=_found_status_text(
+                "DV", len(stems) - len(missing_dv), len(stems), missing_dv
+            ),
+            dv_color=self._error_color if missing_dv else self._success_color,
         )
 
     def _update_minimal_path_labels(self) -> None:

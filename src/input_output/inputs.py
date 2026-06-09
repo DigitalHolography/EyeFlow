@@ -12,6 +12,7 @@ from .schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
 from .writers.h5 import normalize_h5_path
 
 HOLO_SUFFIX = ".holo"
+INPUT_LIST_SUFFIX = ".txt"
 
 
 @dataclass(frozen=True)
@@ -21,7 +22,7 @@ class HoloInputStatus:
     ef: bool
 
 
-def resolve_holo_input(
+def resolve_holo_run_layout(
     holo_path: Path,
     *,
     require_holo_file: bool = True,
@@ -33,18 +34,43 @@ def resolve_holo_input(
     return run_layout
 
 
-def resolve_selected_holo_inputs(
-    holo_paths: Sequence[Path],
+def resolve_stem_run_layout(stem: str, root_dir: Path) -> HoloRunLayout:
+    root_dir = _absolute(root_dir)
+    run_layout = HoloRunLayout(
+        _holo_path=root_dir / stem,
+        _stem=stem,
+        _root_dir=root_dir / stem,
+    )
+    run_layout.require_inputs()
+    return run_layout
+
+
+def resolve_selected_run_layouts(
+    input_paths: Sequence[Path],
 ) -> list[HoloRunLayout]:
-    normalized = [_absolute(path) for path in holo_paths]
+    normalized = [_absolute(path) for path in input_paths]
     if not normalized:
-        raise ValueError(f"Select one or more {HOLO_SUFFIX} files.")
+        raise ValueError(
+            f"Select one or more {HOLO_SUFFIX} files "
+            f"or one {INPUT_LIST_SUFFIX} list."
+        )
+    if len(normalized) == 1 and normalized[0].suffix.lower() == INPUT_LIST_SUFFIX:
+        input_list_path = normalized[0]
+        return [
+            resolve_stem_run_layout(stem, input_list_path.parent)
+            for stem in read_stems_from_input_list(input_list_path)
+        ]
+    if any(path.suffix.lower() == INPUT_LIST_SUFFIX for path in normalized):
+        raise ValueError(
+            f"Select either one {INPUT_LIST_SUFFIX} list or one or more "
+            f"{HOLO_SUFFIX} files."
+        )
 
     resolved: list[HoloRunLayout] = []
     errors: list[str] = []
     for holo_path in normalized:
         try:
-            resolved.append(resolve_holo_input(holo_path))
+            resolved.append(resolve_holo_run_layout(holo_path))
         except (FileNotFoundError, ValueError) as exc:
             errors.append(f"{holo_path}:\n{exc}")
 
@@ -55,6 +81,17 @@ def resolve_selected_holo_inputs(
             + "\n\n".join(errors)
         )
     return resolved
+
+
+def read_stems_from_input_list(input_list_path: Path) -> list[str]:
+    stems = [
+        line.strip()
+        for line in _absolute(input_list_path).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not stems:
+        raise ValueError(f"Input list is empty:\n{input_list_path}")
+    return stems
 
 
 def default_output_dir_for_input(input_path: Path) -> Path:
@@ -75,6 +112,20 @@ def holo_input_status(
         return HoloInputStatus(hd=False, dv=False, ef=False)
 
     run_layout = HoloRunLayout.from_holo(holo_path)
+    return HoloInputStatus(
+        hd=run_layout.has_hd_h5,
+        dv=run_layout.has_dv_h5,
+        ef=run_layout.has_ef_h5,
+    )
+
+
+def stem_input_status(stem: str, root_dir: Path) -> HoloInputStatus:
+    root_dir = _absolute(root_dir)
+    run_layout = HoloRunLayout(
+        _holo_path=root_dir / stem,
+        _stem=stem,
+        _root_dir=root_dir / stem,
+    )
     return HoloInputStatus(
         hd=run_layout.has_hd_h5,
         dv=run_layout.has_dv_h5,

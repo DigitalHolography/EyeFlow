@@ -69,7 +69,7 @@ class ViewBuilderMixin:
 
         self.minimal_holo_browse_button = ttk.Button(
             content,
-            text="Select .holo files",
+            text="Select .holo or .txt",
             command=self.choose_holo_file,
         )
         self.minimal_holo_browse_button.grid(row=2, column=0, pady=(0, 10))
@@ -167,7 +167,7 @@ class ViewBuilderMixin:
         parent.columnconfigure(2, weight=0)
         parent.rowconfigure(4, weight=1)
 
-        input_label = ttk.Label(parent, text="Input (.holo)")
+        input_label = ttk.Label(parent, text="Input (.holo or .txt)")
         input_label.grid(
             row=0,
             column=0,
