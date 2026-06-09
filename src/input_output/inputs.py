@@ -259,6 +259,10 @@ def _sidecar_config_path(
     preferred = config_dir / preferred_name
     if preferred.is_file():
         return preferred
+    for hd_name in ("parameters_holodoppler.json", "parameters_holodoppler"):
+        hd_exported = config_dir / hd_name
+        if hd_exported.is_file():
+            return hd_exported
     json_files = sorted(config_dir.glob("*.json"))
     return json_files[0] if json_files else None
 
