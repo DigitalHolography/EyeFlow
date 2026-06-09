@@ -24,6 +24,12 @@ class _PipelineRunRequest:
     doppler_vision_h5: Path | None
 
 
+@dataclass(frozen=True)
+class _PipelineRunSummary:
+    output_h5_path: Path | None
+    failures: tuple[str, ...]
+
+
 _PipelineUiEvent = tuple[str, object]
 
 
@@ -198,12 +204,12 @@ class RunMixin:
 
     def _run_pipeline_worker(self, requests: list[_PipelineRunRequest]) -> None:
         try:
-            output_h5_path = self._run_pipelines_to_output(requests)
+            summary = self._run_pipelines_to_output(requests)
         except Exception as exc:  # noqa: BLE001
             self._queue_pipeline_ui_event("failure", str(exc))
             return
 
-        self._queue_pipeline_ui_event("success", output_h5_path)
+        self._queue_pipeline_ui_event("success", summary)
 
     def _set_pipeline_run_active(self, active: bool) -> None:
         self._pipeline_run_active = active
@@ -259,14 +265,24 @@ class RunMixin:
         elif event_type == "progress":
             self._advance_progress()
         elif event_type == "success":
-            self._finish_pipeline_run_success(Path(payload))
+            self._finish_pipeline_run_success(payload)
         elif event_type == "failure":
             self._finish_pipeline_run_failure(str(payload))
 
-    def _finish_pipeline_run_success(self, output_h5_path: Path) -> None:
+    def _finish_pipeline_run_success(self, summary: object) -> None:
+        assert isinstance(summary, _PipelineRunSummary)
         self._set_progress_units(self._progress_total_units)
-        self._log_run(f"Completed. Output file: {output_h5_path}")
-        self._set_minimal_status("Process ended.")
+        if summary.output_h5_path is not None:
+            self._log_run(f"Completed. Output file: {summary.output_h5_path}")
+        if summary.failures:
+            self._log_run(f"{len(summary.failures)} failure(s):")
+            for failure in summary.failures:
+                self._log_run(f" - {failure}")
+            self._set_minimal_status(
+                f"Process ended with {len(summary.failures)} failure(s)."
+            )
+        else:
+            self._set_minimal_status("Process ended.")
         self._set_pipeline_run_active(False)
 
     def _finish_pipeline_run_failure(self, failure_message: str) -> None:
@@ -278,25 +294,35 @@ class RunMixin:
     def _run_pipelines_to_output(
         self,
         requests: list[_PipelineRunRequest],
-    ) -> Path:
+    ) -> _PipelineRunSummary:
         last_output_path: Path | None = None
+        failures: list[str] = []
         for request in requests:
-            last_output_path = run_pipelines_to_output(
-                output_manager=request.output_manager,
-                pipelines=request.pipelines,
-                target_names=request.target_names,
-                holodoppler_h5=request.holodoppler_h5,
-                doppler_vision_h5=request.doppler_vision_h5,
-                on_pipeline_success=lambda name: self._queue_pipeline_ui_event(
-                    "log",
-                    f"[OK] {name}",
-                ),
-                on_progress=lambda: self._queue_pipeline_ui_event("progress", None),
-            )
+            run_name = request.output_manager.layout.holo_path.name
+            try:
+                last_output_path = run_pipelines_to_output(
+                    output_manager=request.output_manager,
+                    pipelines=request.pipelines,
+                    target_names=request.target_names,
+                    holodoppler_h5=request.holodoppler_h5,
+                    doppler_vision_h5=request.doppler_vision_h5,
+                    on_pipeline_success=lambda name: self._queue_pipeline_ui_event(
+                        "log",
+                        f"[OK] {name}",
+                    ),
+                    on_progress=lambda: self._queue_pipeline_ui_event(
+                        "progress", None
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                failure = f"{run_name}: {exc}"
+                failures.append(failure)
+                self._queue_pipeline_ui_event("log", f"[FAIL] {failure}")
+                continue
+
             self._queue_pipeline_ui_event(
                 "log",
-                f"Completed run for {request.output_manager.layout.holo_path.name}: {last_output_path}",
+                f"Completed run for {run_name}: {last_output_path}",
             )
 
-        assert last_output_path is not None
-        return last_output_path
+        return _PipelineRunSummary(last_output_path, tuple(failures))
