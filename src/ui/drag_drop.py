@@ -5,6 +5,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from tkinter import messagebox
 
+from input_output import INPUT_LIST_SUFFIX
+
 from .compat import DND_FILES
 
 HOLO_SUFFIX = ".holo"
@@ -67,7 +69,10 @@ class DragDropMixin:
             if not cleaned:
                 continue
             candidate = Path(cleaned).expanduser()
-            if candidate.is_file() and candidate.suffix.lower() == HOLO_SUFFIX:
+            if candidate.is_file() and candidate.suffix.lower() in {
+                HOLO_SUFFIX,
+                INPUT_LIST_SUFFIX,
+            }:
                 valid_paths.append(candidate)
 
         if not valid_paths:
@@ -97,5 +102,5 @@ class DragDropMixin:
 
         messagebox.showwarning(
             "Unsupported drop",
-            "Drop one .holo file into the input area.",
+            "Drop one or more .holo files, or one .txt stem list.",
         )

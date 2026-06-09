@@ -5,7 +5,7 @@ Usage example:
     python cli.py --data data/ --pipelines pipelines.txt --output ./results --zip --zip-name my_run.zip
 
 Inputs:
-    --data / -d        Path to a directory (recursively scanned), a single .holo file, or a .zip archive of HOLO data.
+    --data / -d        Directory, single .holo, .txt stem list, or .zip archive of HOLO data.
     --pipelines / -p   Text file listing pipeline target names (one per line, '#' and blank lines ignored).
     --output / -o      Base directory where results will be written (input subfolder layout is preserved).
     --zip / -z         When set, compress the outputs into a .zip archive after completion.
@@ -27,8 +27,9 @@ from runtime_limits import configure_numeric_threads
 configure_numeric_threads()
 
 from input_output import (
+    INPUT_LIST_SUFFIX,
     create_zip_from_tree,
-    resolve_selected_holo_inputs,
+    resolve_selected_run_layouts,
 )
 from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
@@ -90,9 +91,11 @@ def _load_pipeline_plan(
 
 def _find_holo_inputs(path: Path) -> list[Path]:
     if path.is_file():
-        if path.suffix.lower() == HOLO_SUFFIX:
+        if path.suffix.lower() in {HOLO_SUFFIX, INPUT_LIST_SUFFIX}:
             return [path]
-        raise ValueError(f"File is not a {HOLO_SUFFIX} file: {path}")
+        raise ValueError(
+            f"File is not a {HOLO_SUFFIX} or {INPUT_LIST_SUFFIX} file: {path}"
+        )
     if path.is_dir():
         return sorted(path.rglob(f"*{HOLO_SUFFIX}"))
     raise FileNotFoundError(f"Input path does not exist: {path}")
@@ -211,7 +214,7 @@ def run_cli(
         inputs = _find_holo_inputs(data_root)
         if not inputs:
             raise ValueError(f"No {HOLO_SUFFIX} files found under {data_path}")
-        run_layouts = resolve_selected_holo_inputs(inputs)
+        run_layouts = resolve_selected_run_layouts(inputs)
         batch_root = _batch_root(inputs)
 
         output_root = output_dir.expanduser().resolve()
@@ -300,7 +303,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--data",
         required=True,
         type=Path,
-        help="Directory containing .holo files (scanned recursively), a single .holo file, or a .zip archive.",
+        help=(
+            "Directory containing .holo files, a single .holo file, "
+            "a .txt stem list, or a .zip archive."
+        ),
     )
     parser.add_argument(
         "-p",

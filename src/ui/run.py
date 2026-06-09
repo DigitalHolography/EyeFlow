@@ -8,7 +8,7 @@ from queue import Empty, Queue
 from threading import Thread
 from tkinter import filedialog, messagebox
 
-from input_output import resolve_holo_input, resolve_selected_holo_inputs
+from input_output import resolve_selected_run_layouts
 from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from pipelines import PipelineDescriptor
@@ -36,9 +36,9 @@ class RunMixin:
             else os.path.abspath("example_file")
         )
         paths = filedialog.askopenfilenames(
-            filetypes=[("HOLO", "*.holo"), ("All files", "*.*")],
+            filetypes=[("HOLO or stem list", "*.holo *.txt"), ("All files", "*.*")],
             initialdir=initial_dir,
-            title="Select .holo file(s)",
+            title="Select .holo file(s) or one .txt stem list",
         )
         if paths:
             self._assign_holo_input_paths([Path(path) for path in paths])
@@ -50,12 +50,12 @@ class RunMixin:
         if not holo_paths:
             messagebox.showwarning(
                 "Missing input",
-                "Select one or more .holo files.",
+                "Select one or more .holo files or one .txt stem list.",
             )
             return None
 
         try:
-            return resolve_selected_holo_inputs(holo_paths)
+            return resolve_selected_run_layouts(holo_paths)
         except ValueError as exc:
             messagebox.showerror("Invalid input", str(exc))
             return None
