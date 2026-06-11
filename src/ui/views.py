@@ -18,7 +18,7 @@ class ViewBuilderMixin:
         self.main_container = container
 
         self.minimal_view = ttk.Frame(container, padding=0)
-        self.advanced_view = ttk.Frame(container, padding=0)
+        self.advanced_view = ttk.Frame(container, padding=(20, 20, 20, 20))
 
         self._build_minimal_view(self.minimal_view)
         self._build_advanced_view(self.advanced_view)

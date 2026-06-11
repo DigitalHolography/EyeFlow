@@ -102,5 +102,5 @@ class DragDropMixin:
 
         messagebox.showwarning(
             "Unsupported drop",
-            "Drop one or more .holo files, or one .txt stem list.",
+            "Drop one or more .holo files, or one .txt path list.",
         )

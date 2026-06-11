@@ -1,5 +1,7 @@
 """Resolve HOLO selections and expose HD/DV/work HDF5 inputs to pipelines."""
 
+"""Resolve selected HOLO inputs and their companion data files."""
+
 import json
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -19,7 +21,11 @@ INPUT_LIST_SUFFIX = ".txt"
 class HoloInputStatus:
     hd: bool
     dv: bool
-    ef: bool
+
+
+@dataclass(frozen=True)
+class HoloInputList:
+    path_stem_pairs: tuple[tuple[Path, str], ...]
 
 
 def resolve_holo_run_layout(
@@ -37,7 +43,7 @@ def resolve_holo_run_layout(
 def resolve_stem_run_layout(stem: str, root_dir: Path) -> HoloRunLayout:
     root_dir = _absolute(root_dir)
     run_layout = HoloRunLayout(
-        _holo_path=root_dir / stem,
+        _holo_path=root_dir / f"{stem}{HOLO_SUFFIX}",
         _stem=stem,
         _root_dir=root_dir / stem,
     )
@@ -56,9 +62,10 @@ def resolve_selected_run_layouts(
         )
     if len(normalized) == 1 and normalized[0].suffix.lower() == INPUT_LIST_SUFFIX:
         input_list_path = normalized[0]
+        input_list = read_holo_input_list(input_list_path)
         return [
-            resolve_stem_run_layout(stem, input_list_path.parent)
-            for stem in read_stems_from_input_list(input_list_path)
+            resolve_stem_run_layout(stem, root_dir)
+            for root_dir, stem in input_list.path_stem_pairs
         ]
     if any(path.suffix.lower() == INPUT_LIST_SUFFIX for path in normalized):
         raise ValueError(
@@ -83,15 +90,20 @@ def resolve_selected_run_layouts(
     return resolved
 
 
-def read_stems_from_input_list(input_list_path: Path) -> list[str]:
-    stems = [
+def read_holo_input_list(input_list_path: Path) -> HoloInputList:
+    input_list_path = _absolute(input_list_path)
+    entries = [
         line.strip()
-        for line in _absolute(input_list_path).read_text(encoding="utf-8").splitlines()
+        for line in input_list_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    if not stems:
+    if not entries:
         raise ValueError(f"Input list is empty:\n{input_list_path}")
-    return stems
+    return HoloInputList(
+        path_stem_pairs=tuple(
+            _parse_input_list_entries(entries, input_list_path.parent)
+        )
+    )
 
 
 def default_output_dir_for_input(input_path: Path) -> Path:
@@ -109,32 +121,46 @@ def holo_input_status(
     try:
         _validate_holo_file(holo_path, require_file=require_holo_file)
     except (FileNotFoundError, ValueError):
-        return HoloInputStatus(hd=False, dv=False, ef=False)
+        return HoloInputStatus(hd=False, dv=False)
 
     run_layout = HoloRunLayout.from_holo(holo_path)
     return HoloInputStatus(
         hd=run_layout.has_hd_h5,
         dv=run_layout.has_dv_h5,
-        ef=run_layout.has_ef_h5,
     )
 
 
 def stem_input_status(stem: str, root_dir: Path) -> HoloInputStatus:
     root_dir = _absolute(root_dir)
     run_layout = HoloRunLayout(
-        _holo_path=root_dir / stem,
+        _holo_path=root_dir / f"{stem}{HOLO_SUFFIX}",
         _stem=stem,
         _root_dir=root_dir / stem,
     )
     return HoloInputStatus(
         hd=run_layout.has_hd_h5,
         dv=run_layout.has_dv_h5,
-        ef=run_layout.has_ef_h5,
     )
 
 
 def _lookup_key(path: str) -> str:
     return normalize_h5_path(path)
+
+
+def _parse_input_list_entries(
+    entries: Sequence[str],
+    default_root_dir: Path,
+) -> list[tuple[Path, str]]:
+    parsed: list[tuple[Path, str]] = []
+    for entry in entries:
+        path = Path(entry).expanduser()
+        if path.suffix.lower() == HOLO_SUFFIX:
+            holo_path = path if path.is_absolute() else default_root_dir / path
+            holo_path = _absolute(holo_path)
+            parsed.append((holo_path.parent, holo_path.stem))
+        else:
+            parsed.append((default_root_dir, entry))
+    return parsed
 
 
 def _absolute(path: str | Path) -> Path:

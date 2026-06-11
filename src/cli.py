@@ -5,7 +5,7 @@ Usage example:
     python cli.py --data data/ --pipelines pipelines.txt --output ./results --zip --zip-name my_run.zip
 
 Inputs:
-    --data / -d        Directory, single .holo, .txt stem list, or .zip archive of HOLO data.
+    --data / -d        Directory, single .holo, .txt path list, or .zip archive of HOLO data.
     --pipelines / -p   Text file listing pipeline target names (one per line, '#' and blank lines ignored).
     --output / -o      Base directory where results will be written (input subfolder layout is preserved).
     --zip / -z         When set, compress the outputs into a .zip archive after completion.
@@ -215,7 +215,7 @@ def run_cli(
         if not inputs:
             raise ValueError(f"No {HOLO_SUFFIX} files found under {data_path}")
         run_layouts = resolve_selected_run_layouts(inputs)
-        batch_root = _batch_root(inputs)
+        batch_root = _batch_root([layout.holo_path for layout in run_layouts])
 
         output_root = output_dir.expanduser().resolve()
         output_root.mkdir(parents=True, exist_ok=True)
@@ -305,7 +305,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help=(
             "Directory containing .holo files, a single .holo file, "
-            "a .txt stem list, or a .zip archive."
+            "a .txt path list, or a .zip archive."
         ),
     )
     parser.add_argument(

@@ -5,7 +5,7 @@ from input_output import (
     INPUT_LIST_SUFFIX,
     default_output_dir_for_input,
     holo_input_status,
-    read_stems_from_input_list,
+    read_holo_input_list,
     reset_output_dir,
     stem_input_status,
 )
@@ -76,9 +76,9 @@ class InputStateMixin:
         self._apply_input_defaults(normalized_paths[0])
 
     def _reference_holo_tooltip_text(self) -> str:
-        return "Pick one or more reference .holo files, or a .txt stem list."
+        return "Pick one or more reference .holo files, or a .txt path list."
 
-    def _set_holo_status_parts(
+    def _set_shared_holo_status(
         self,
         *,
         hd_text: str,
@@ -109,12 +109,12 @@ class InputStateMixin:
             require_holo_file=require_holo_file,
         )
 
-    def _update_minimal_found_statuses(self, holo_paths: Sequence[Path]) -> None:
+    def _update_holo_input_found_statuses(self, holo_paths: Sequence[Path]) -> None:
         if not holo_paths:
-            self._set_holo_status_parts(
-                hd_text="HD waiting",
+            self._set_shared_holo_status(
+                hd_text="Awaiting HD",
                 hd_color=self._muted_fg,
-                dv_text="DV waiting",
+                dv_text="Awaiting DV",
                 dv_color=self._muted_fg,
             )
             return
@@ -155,7 +155,7 @@ class InputStateMixin:
         else:
             dv_color = self._success_color
 
-        self._set_holo_status_parts(
+        self._set_shared_holo_status(
             hd_text=hd_text,
             hd_color=hd_color,
             dv_text=dv_text,
@@ -164,9 +164,9 @@ class InputStateMixin:
 
     def _update_input_list_found_statuses(self, input_list_path: Path) -> None:
         try:
-            stems = read_stems_from_input_list(input_list_path)
+            input_list = read_holo_input_list(input_list_path)
         except (OSError, ValueError) as exc:
-            self._set_holo_status_parts(
+            self._set_shared_holo_status(
                 hd_text=str(exc),
                 hd_color=self._error_color,
                 dv_text="DV unavailable",
@@ -174,13 +174,12 @@ class InputStateMixin:
             )
             return
 
-        root_dir = input_list_path.expanduser()
-        if not root_dir.is_absolute():
-            root_dir = Path.cwd() / root_dir
-        statuses = [stem_input_status(stem, root_dir.parent) for stem in stems]
+        inputs = list(input_list.path_stem_pairs)
+        stems = [stem for _root_dir, stem in inputs]
+        statuses = [stem_input_status(stem, root_dir) for root_dir, stem in inputs]
         missing_hd = [stem for stem, status in zip(stems, statuses) if not status.hd]
         missing_dv = [stem for stem, status in zip(stems, statuses) if not status.dv]
-        self._set_holo_status_parts(
+        self._set_shared_holo_status(
             hd_text=_found_status_text(
                 "HD", len(stems) - len(missing_hd), len(stems), missing_hd
             ),
@@ -201,7 +200,7 @@ class InputStateMixin:
             self.minimal_holo_input_path_var.set(
                 f"{holo_paths[0]} (+{len(holo_paths) - 1} more)"
             )
-        self._update_minimal_found_statuses(holo_paths)
+        self._update_holo_input_found_statuses(holo_paths)
 
     def _default_output_dir_for_input(self, input_path: Path) -> Path:
         return default_output_dir_for_input(input_path)
@@ -238,7 +237,7 @@ def _found_status_text(
 ) -> str:
     if total_count == 1:
         return f"{label} found" if found_count else f"{label} not found"
-    text = f"{label} {found_count}/{total_count} found"
+    text = f"Found {found_count}/{total_count} {label}"
     if missing_stems:
         text += ": missing " + ", ".join(missing_stems)
     return text

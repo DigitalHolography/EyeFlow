@@ -42,9 +42,9 @@ class RunMixin:
             else os.path.abspath("example_file")
         )
         paths = filedialog.askopenfilenames(
-            filetypes=[("HOLO or stem list", "*.holo *.txt"), ("All files", "*.*")],
+            filetypes=[("HOLO or path list", "*.holo *.txt"), ("All files", "*.*")],
             initialdir=initial_dir,
-            title="Select .holo file(s) or one .txt stem list",
+            title="Select .holo file(s) or one .txt path list",
         )
         if paths:
             self._assign_holo_input_paths([Path(path) for path in paths])
@@ -56,7 +56,7 @@ class RunMixin:
         if not holo_paths:
             messagebox.showwarning(
                 "Missing input",
-                "Select one or more .holo files or one .txt stem list.",
+                "Select one or more .holo files or one .txt path list.",
             )
             return None
 
