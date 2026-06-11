@@ -56,8 +56,8 @@ class ProcessApp(
         self.minimal_status_var = tk.StringVar(value="Ready.")
         self.pipeline_library_summary_var = tk.StringVar(value="")
         self.minimal_holo_input_path_var = tk.StringVar(value="No input selected")
-        self.holo_hd_status_var = tk.StringVar(value="HD waiting")
-        self.holo_dv_status_var = tk.StringVar(value="DV waiting")
+        self.holo_hd_status_var = tk.StringVar(value="Awaiting HD")
+        self.holo_dv_status_var = tk.StringVar(value="Awaiting DV")
         self._progress_total_units = 1.0
         self._progress_completed_units = 0.0
         self._pipeline_run_active = False
