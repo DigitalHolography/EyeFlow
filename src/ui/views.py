@@ -113,6 +113,8 @@ class ViewBuilderMixin:
             justify="center",
         )
         self.minimal_holo_dv_status_label.pack(side="left")
+        if not self.holo_hd_status_var.get() and not self.holo_dv_status_var.get():
+            self.minimal_holo_status_frame.grid_remove()
 
         self.minimal_run_button = ttk.Button(
             content, text="Run", command=self.run_process
@@ -225,6 +227,8 @@ class ViewBuilderMixin:
             anchor="w",
         )
         self.holo_dv_status_label.pack(side="left")
+        if not self.holo_hd_status_var.get() and not self.holo_dv_status_var.get():
+            self.holo_status_frame.grid_remove()
 
         controls = ttk.Frame(parent)
         controls.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 4))
