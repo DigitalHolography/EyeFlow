@@ -6,7 +6,6 @@ from input_output import (
     default_output_dir_for_input,
     holo_input_status,
     read_holo_input_list,
-    read_holo_input_list,
     reset_output_dir,
     stem_input_status,
 )
@@ -78,9 +77,7 @@ class InputStateMixin:
 
     def _reference_holo_tooltip_text(self) -> str:
         return "Pick one or more reference .holo files, or a .txt path list."
-        return "Pick one or more reference .holo files, or a .txt path list."
 
-    def _set_shared_holo_status(
     def _set_shared_holo_status(
         self,
         *,
@@ -123,7 +120,6 @@ class InputStateMixin:
             require_holo_file=require_holo_file,
         )
 
-    def _update_holo_input_found_statuses(self, holo_paths: Sequence[Path]) -> None:
     def _update_holo_input_found_statuses(self, holo_paths: Sequence[Path]) -> None:
         if not holo_paths:
             self._set_shared_holo_status(
@@ -171,7 +167,6 @@ class InputStateMixin:
             dv_color = self._success_color
 
         self._set_shared_holo_status(
-        self._set_shared_holo_status(
             hd_text=hd_text,
             hd_color=hd_color,
             dv_text=dv_text,
@@ -181,9 +176,7 @@ class InputStateMixin:
     def _update_input_list_found_statuses(self, input_list_path: Path) -> None:
         try:
             input_list = read_holo_input_list(input_list_path)
-            input_list = read_holo_input_list(input_list_path)
         except (OSError, ValueError) as exc:
-            self._set_shared_holo_status(
             self._set_shared_holo_status(
                 hd_text=str(exc),
                 hd_color=self._error_color,
@@ -195,12 +188,8 @@ class InputStateMixin:
         inputs = list(input_list.path_stem_pairs)
         stems = [stem for _root_dir, stem in inputs]
         statuses = [stem_input_status(stem, root_dir) for root_dir, stem in inputs]
-        inputs = list(input_list.path_stem_pairs)
-        stems = [stem for _root_dir, stem in inputs]
-        statuses = [stem_input_status(stem, root_dir) for root_dir, stem in inputs]
         missing_hd = [stem for stem, status in zip(stems, statuses) if not status.hd]
         missing_dv = [stem for stem, status in zip(stems, statuses) if not status.dv]
-        self._set_shared_holo_status(
         self._set_shared_holo_status(
             hd_text=_found_status_text(
                 "HD", len(stems) - len(missing_hd), len(stems), missing_hd
@@ -222,7 +211,6 @@ class InputStateMixin:
             self.minimal_holo_input_path_var.set(
                 f"{holo_paths[0]} (+{len(holo_paths) - 1} more)"
             )
-        self._update_holo_input_found_statuses(holo_paths)
         self._update_holo_input_found_statuses(holo_paths)
 
     def _default_output_dir_for_input(self, input_path: Path) -> Path:
@@ -260,7 +248,6 @@ def _found_status_text(
 ) -> str:
     if total_count == 1:
         return f"{label} found" if found_count else f"{label} not found"
-    text = f"Found {found_count}/{total_count} {label}"
     text = f"Found {found_count}/{total_count} {label}"
     if missing_stems:
         text += ": missing " + ", ".join(missing_stems)
