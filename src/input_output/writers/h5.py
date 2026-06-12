@@ -1,16 +1,11 @@
 """Write EyeFlow runtime values into HDF5 files."""
 
-import re
 from pathlib import Path
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10 fallback
-    tomllib = None
 
 import h5py
 import numpy as np
 
+from app_settings import app_version
 from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
 
 
@@ -120,17 +115,7 @@ def initialize_output_h5(
 
 
 def _project_version() -> str:
-    pyproject_path = Path(__file__).resolve().parents[3] / "pyproject.toml"
-    text = pyproject_path.read_text(encoding="utf-8")
-    if tomllib is not None:
-        data = tomllib.loads(text)
-        version = data.get("project", {}).get("version")
-        if version:
-            return str(version)
-    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', text)
-    if match is None:
-        raise ValueError(f"Missing project version in {pyproject_path}")
-    return match.group(1)
+    return app_version() or "unknown"
 
 
 def _normalize_dataset_payload(data, ds_attrs):

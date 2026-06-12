@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from functools import partial
 
 import numpy as np
@@ -140,11 +141,7 @@ def _dilated_mask(vessel_mask: np.ndarray, footprint: np.ndarray) -> np.ndarray:
 
 
 def _cpu_count() -> int:
-    try:
-        import joblib
-    except ModuleNotFoundError:
-        return 1
-    return joblib.cpu_count()
+    return os.cpu_count() or 1
 
 
 def _masked_signal(velocity_map: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -169,7 +166,7 @@ def _run_in_parallel(func, iterable, n_jobs=-1, chunking=False):
     except ModuleNotFoundError:
         return np.stack([func(item) for item in iterable], axis=0).astype(np.float32)
     if n_jobs == -1:
-        n_jobs = joblib.cpu_count()
+        n_jobs = _cpu_count()
     n_jobs = cap_parallel_jobs(n_jobs)
     results = joblib.Parallel(n_jobs=n_jobs, backend="threading")(
         joblib.delayed(func)(item) for item in iterable
