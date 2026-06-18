@@ -1,21 +1,17 @@
-"""AngioEye waveform metrics ported from src/pipelines/waveform_shape_metrics.py."""
+"""AngioEye waveform calculations ported from src/pipelines/waveform_shape_metrics.py."""
 
 from functools import cache
 import warnings
 
 import numpy as np
 
-from pipeline_engine import ProcessPipeline, ProcessResult, registerPipeline, with_attrs
+from pipeline_engine import with_attrs
+
+from .formulas import LATEX_FORMULAS
+from .models import WaveformShapeMetricInputs
 
 
-@registerPipeline(
-    name="waveform_shape_metrics_angioeye",
-    description="AngioEye waveform-shape metrics over EyeFlow velocity outputs.",
-    required_deps=["numpy"],
-    dag_requires=["waveform_shape_metrics"],
-    dag_produces=["waveform_shape_metrics_angioeye"],
-)
-class WaveformShapeMetricsAngioEye(ProcessPipeline):
+class WaveformShapeMetricsCalculator:
     """
     Manuscript-aligned waveform-shape metrics on per-beat, per-branch,
     per-radius velocity waveforms.
@@ -35,7 +31,7 @@ class WaveformShapeMetricsAngioEye(ProcessPipeline):
 
     Notes
     -----
-    - The registered pipeline name is temporary while this port is validated.
+    - Pipeline registration and HDF5 access live outside this calculator.
     - Deprecated exploratory higher-harmonic rolloff/support and phase-organization
       metrics are no longer part of the canonical public metric set.
     """
@@ -44,39 +40,6 @@ class WaveformShapeMetricsAngioEye(ProcessPipeline):
         "Manuscript-aligned waveform-shape metrics "
         "(artery + vein; segment + aggregates + global)."
     )
-
-    # ----------------------------
-    # Arterial inputs
-    # ----------------------------
-    v_raw_segment_input = (
-        "/Artery/VelocityPerBeat/Segments/VelocitySignalPerBeatPerSegment/value"
-    )
-    v_band_segment_input = (
-        "/Artery/VelocityPerBeat/Segments/"
-        "VelocitySignalPerBeatPerSegmentBandLimited/value"
-    )
-    v_raw_global_input = "/Artery/VelocityPerBeat/VelocitySignalPerBeat/value"
-    v_band_global_input = (
-        "/Artery/VelocityPerBeat/VelocitySignalPerBeatBandLimited/value"
-    )
-
-    # ----------------------------
-    # Venous inputs
-    # ----------------------------
-    v_raw_segment_input_vein = (
-        "/Vein/VelocityPerBeat/Segments/VelocitySignalPerBeatPerSegment/value"
-    )
-    v_band_segment_input_vein = (
-        "/Vein/VelocityPerBeat/Segments/"
-        "VelocitySignalPerBeatPerSegmentBandLimited/value"
-    )
-    v_raw_global_input_vein = "/Vein/VelocityPerBeat/VelocitySignalPerBeat/value"
-    v_band_global_input_vein = (
-        "/Vein/VelocityPerBeat/VelocitySignalPerBeatBandLimited/value"
-    )
-
-    # Beat period input
-    T_input = "/Artery/VelocityPerBeat/beatPeriodSeconds/value"
 
     eps = 1e-12
 
@@ -1279,7 +1242,7 @@ class WaveformShapeMetricsAngioEye(ProcessPipeline):
     @staticmethod
     @cache
     def _metric_names() -> tuple[str, ...]:
-        return tuple(k[0] for k in WaveformShapeMetricsAngioEye._metric_keys())
+        return tuple(k[0] for k in WaveformShapeMetricsCalculator._metric_keys())
 
     def _compute_block_segment(self, v_block: np.ndarray, T: np.ndarray):
         """
@@ -1542,101 +1505,50 @@ class WaveformShapeMetricsAngioEye(ProcessPipeline):
             else:
                 metrics[f"{vessel_prefix}/global/bandlimited/{name}"] = arr
 
-    def run(self, h5file) -> ProcessResult:
-        latex_formulas = {
-            "mu_t": r"$\mu_t=\frac{\int_0^T v(t)t\,dt}{\int_0^T v(t)\,dt}$",
-            "mu_t_over_T": r"$\mu_t/T$",
-            "sigma_t": r"$\sigma_t=\sqrt{\frac{\int_0^T v(t)(t-\mu_t)^2\,dt}{\int_0^T v(t)\,dt}}$",
-            "sigma_t_over_T": r"$\sigma_t/T$",
-            "gamma_t": r"$\gamma_t=\frac{\int_0^T v(t)(t-\mu_t)^3\,dt}{M_0\sigma_t^3}$",
-            "t10_over_T": r"$t_{10}/T$",
-            "t25_over_T": r"$t_{25}/T$",
-            "t50_over_T": r"$t_{50}/T$",
-            "t75_over_T": r"$t_{75}/T$",
-            "t90_over_T": r"$t_{90}/T$",
-            "Q_t_width": r"$Q_{t,\mathrm{width}}=(t_{75}-t_{25})/T$",
-            "Q_t_skew": r"$Q_{t,\mathrm{skew}}=\frac{(t_{90}-t_{50})-(t_{50}-t_{10})}{t_{90}-t_{10}}$",
-            "W50_over_T": r"$W_{50}/T$",
-            "W80_over_T": r"$W_{80}/T$",
-            "RI": r"$\mathrm{RI}=1-v_{\min}/v_{\max}$",
-            "PI": r"$\mathrm{PI}=(v_{\max}-v_{\min})/\bar v$",
-            "R_VTI": r"$\mathrm{R}_{\mathrm{VTI}}=\frac{d(\alpha T)}{D-d(\alpha T)}$",
-            "SF_VTI": r"$\mathrm{SF}_{\mathrm{VTI}}=\frac{d(\alpha T)}{D}$",
-            "Delta_DTI": r"$\Delta_{\mathrm{DTI}}=\int_0^1\left[\frac{d(\tau T)}{D}-\tau\right]d\tau$",
-            "d10_over_D": r"$d_{10}/D$",
-            "d25_over_D": r"$d_{25}/D$",
-            "d50_over_D": r"$d_{50}/D$",
-            "d75_over_D": r"$d_{75}/D$",
-            "d90_over_D": r"$d_{90}/D$",
-            "Q_d_width": r"$Q_{d,\mathrm{width}}=(d_{75}-d_{25})/D$",
-            "Q_d_skew": r"$Q_{d,\mathrm{skew}}=\frac{(d_{90}-d_{50})-(d_{50}-d_{10})}{d_{90}-d_{10}}$",
-            "t_max_over_T": r"$t_{\max}/T$",
-            "t_min_over_T": r"$t_{\min}/T$",
-            "S_rise": r"$S_{\mathrm{rise}}=\frac{T}{\bar v}\max_t\dot v(t)$",
-            "S_fall": r"$S_{\mathrm{fall}}=\frac{T}{\bar v}|\min_t\dot v(t)|$",
-            "t_rise_over_T": r"$t_{\mathrm{rise}}/T$",
-            "t_fall_over_T": r"$t_{\mathrm{fall}}/T$",
-            "v_end_over_vbar": r"$\bar v_{\mathrm{end}}/\bar v$",
-            "CF": r"$\mathrm{CF}=v_{\max}/v_{\mathrm{RMS}}$",
-            "E_LF_over_E_HF": r"$E_{\mathrm{LF}}/E_{\mathrm{HF}}$",
-            "eta_h": r"$\eta_h=1-\frac{\int_0^T (v(t)-v_H(t))^2\,dt}{\int_0^T (v(t)-\bar v)^2\,dt}$",
-            "N_eff_over_T": r"$N_{\mathrm{eff}}/T=(T\int_0^T p(t)^2\,dt)^{-1}$",
-            "N_t_over_T": r"$N_t/T=\exp[-\int_0^T p(t)\ln(Tp(t))\,dt]$",
-            "E_slope": r"$E_{\mathrm{slope}}=\frac{T^3}{M_0^2}\int_0^T \dot v(t)^2\,dt$",
-        }
+    def compute(self, inputs: WaveformShapeMetricInputs) -> dict[str, object]:
+        beat_periods = np.asarray(inputs.beat_period_seconds, dtype=np.float32)
+        metrics: dict[str, object] = {}
+        self._pack_vessel(
+            metrics,
+            "artery",
+            inputs.artery,
+            beat_periods,
+            LATEX_FORMULAS,
+        )
+        self._pack_vessel(
+            metrics,
+            "vein",
+            inputs.vein,
+            beat_periods,
+            LATEX_FORMULAS,
+        )
+        return metrics
 
-        T = np.asarray(h5file[self.T_input])
-        metrics = {}
-
-        vessel_configs = [
-            {
-                "prefix": "artery",
-                "v_raw_segment_input": self.v_raw_segment_input,
-                "v_band_segment_input": self.v_band_segment_input,
-                "v_raw_global_input": self.v_raw_global_input,
-                "v_band_global_input": self.v_band_global_input,
-            },
-            {
-                "prefix": "vein",
-                "v_raw_segment_input": self.v_raw_segment_input_vein,
-                "v_band_segment_input": self.v_band_segment_input_vein,
-                "v_raw_global_input": self.v_raw_global_input_vein,
-                "v_band_global_input": self.v_band_global_input_vein,
-            },
-        ]
-
-        for cfg in vessel_configs:
-            vessel_prefix = cfg["prefix"]
-
-            have_seg = (
-                cfg["v_raw_segment_input"] in h5file
-                and cfg["v_band_segment_input"] in h5file
+    def _pack_vessel(
+        self,
+        metrics,
+        prefix,
+        vessel,
+        beat_periods,
+        latex_formulas,
+    ) -> None:
+        if (
+            vessel.raw_segments is not None
+            and vessel.bandlimited_segments is not None
+        ):
+            self._pack_segment_outputs(
+                metrics,
+                prefix,
+                vessel.raw_segments,
+                vessel.bandlimited_segments,
+                beat_periods,
             )
-            if have_seg:
-                v_raw_seg = np.asarray(h5file[cfg["v_raw_segment_input"]])
-                v_band_seg = np.asarray(h5file[cfg["v_band_segment_input"]])
-                self._pack_segment_outputs(
-                    metrics, vessel_prefix, v_raw_seg, v_band_seg, T
-                )
-
-            have_glob = (
-                cfg["v_raw_global_input"] in h5file
-                and cfg["v_band_global_input"] in h5file
+        if vessel.raw_global is not None and vessel.bandlimited_global is not None:
+            self._pack_global_outputs(
+                metrics,
+                prefix,
+                vessel.raw_global,
+                vessel.bandlimited_global,
+                beat_periods,
+                latex_formulas,
             )
-            if have_glob:
-                v_raw_gl = np.asarray(h5file[cfg["v_raw_global_input"]])
-                v_band_gl = np.asarray(h5file[cfg["v_band_global_input"]])
-                self._pack_global_outputs(
-                    metrics,
-                    vessel_prefix,
-                    v_raw_gl,
-                    v_band_gl,
-                    T,
-                    latex_formulas,
-                )
-
-        output_root = "Processing/waveform_shape_metrics"
-        prefixed_metrics = {
-            f"{output_root}/{key}": value for key, value in metrics.items()
-        }
-        return ProcessResult(metrics=prefixed_metrics)
