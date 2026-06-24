@@ -1,3 +1,5 @@
+"""Tk application shell for EyeFlow."""
+
 from __future__ import annotations
 
 import tkinter as tk
@@ -9,7 +11,7 @@ from runtime_limits import configure_numeric_threads
 
 configure_numeric_threads()
 
-from app_settings import AppSettingsStore
+from app_settings import AppSettingsStore, app_display_name
 from pipelines import PipelineDescriptor
 from pipeline_engine import PipelineDAG
 
@@ -37,7 +39,7 @@ class ProcessApp(
 ):
     def __init__(self) -> None:
         super().__init__()
-        self.title("EyeFlow")
+        self.title(app_display_name())
         self.settings_store = AppSettingsStore()
         self._settings_warning_shown = False
         self._ensure_default_settings()

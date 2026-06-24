@@ -1,3 +1,5 @@
+"""Application identity, resource discovery, and persisted settings."""
+
 from __future__ import annotations
 
 import json
@@ -45,6 +47,11 @@ def app_version() -> str | None:
         if version:
             return version
     return None
+
+
+def app_display_name() -> str:
+    version = app_version()
+    return f"{APP_NAME} {version}" if version else APP_NAME
 
 
 def _settings_subdir_name() -> str:
