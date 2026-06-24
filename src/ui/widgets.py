@@ -4,7 +4,7 @@ import tkinter as tk
 from collections.abc import Callable
 
 
-class _Tooltip:
+class Tooltip:
     """Lightweight tooltip that shows on hover."""
 
     def __init__(

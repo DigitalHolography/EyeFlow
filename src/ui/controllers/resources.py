@@ -1,3 +1,5 @@
+"""Controller for UI resource lookup and image loading."""
+
 from __future__ import annotations
 
 import sys
@@ -5,25 +7,28 @@ import tkinter as tk
 from pathlib import Path
 
 
-class ResourceMixin:
-    def _resource_roots(self) -> list[Path]:
+class ResourceController:
+    def __init__(self, app) -> None:
+        self.app = app
+
+    def resource_roots(self) -> list[Path]:
         roots: list[Path] = []
         frozen_root = getattr(sys, "_MEIPASS", None)
         if frozen_root:
             roots.append(Path(frozen_root))
-        roots.append(Path(__file__).resolve().parents[1])
+        roots.append(Path(__file__).resolve().parents[2])
         roots.append(Path.cwd())
         return roots
 
-    def _resolve_logo_path(self) -> Path | None:
-        for root in self._resource_roots():
+    def resolve_logo_path(self) -> Path | None:
+        for root in self.resource_roots():
             candidate = root / "EyeFlow_logo.png"
             if candidate.is_file():
                 return candidate
         return None
 
-    def _load_logo_image(self) -> tk.PhotoImage | None:
-        logo_path = self._resolve_logo_path()
+    def load_logo_image(self) -> tk.PhotoImage | None:
+        logo_path = self.resolve_logo_path()
         if logo_path is None:
             return None
         try:
@@ -31,13 +36,13 @@ class ResourceMixin:
         except tk.TclError:
             return None
 
-    def _load_scaled_logo_image(
+    def load_scaled_logo_image(
         self,
         *,
         max_width: int,
         max_height: int,
     ) -> tk.PhotoImage | None:
-        image = self._load_logo_image()
+        image = self.load_logo_image()
         if image is None:
             return None
 
@@ -48,12 +53,12 @@ class ResourceMixin:
             image = image.subsample(scale, scale)
         return image
 
-    def _set_window_icon(self) -> None:
-        image = self._load_logo_image()
+    def set_window_icon(self) -> None:
+        image = self.load_logo_image()
         if image is None:
             return
-        self._window_icon_image = image
+        self.app._window_icon_image = image
         try:
-            self.iconphoto(True, self._window_icon_image)
+            self.app.iconphoto(True, self.app._window_icon_image)
         except tk.TclError:
             pass

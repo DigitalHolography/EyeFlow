@@ -14,6 +14,7 @@ PIPELINE_MODULES = (
     "test1",
     "test2",
     "waveform_shape_metrics",
+    "waveform_shape_metrics_angioeye",
 )
 
 _PIPELINE_IMPORT_ERRORS: list[PipelineDescriptor] = []

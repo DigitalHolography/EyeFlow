@@ -14,7 +14,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from input_output import read_holo_input_list, resolve_selected_run_layouts  # noqa: E402
-from ui.input_state import InputStateMixin  # noqa: E402
+from ui.controllers.input import InputController  # noqa: E402
 
 
 def _write_holo_file(root: Path, stem: str) -> Path:
@@ -54,13 +54,14 @@ class _Var:
         self.value = value
 
 
-class _InputStateHarness(InputStateMixin):
+class _InputStateHarness:
     def __init__(self) -> None:
         self.holo_hd_status_var = _Var()
         self.holo_dv_status_var = _Var()
         self._muted_fg = "muted"
         self._error_color = "error"
         self._success_color = "success"
+        self.input_controller = InputController(self)
 
 
 class HoloInputListTests(unittest.TestCase):
@@ -139,7 +140,7 @@ class HoloInputListTests(unittest.TestCase):
             input_list.write_text(f"{first_holo}\n{second_holo}\n", encoding="utf-8")
             app = _InputStateHarness()
 
-            app._update_holo_input_found_statuses([input_list])
+            app.input_controller.update_holo_input_found_statuses([input_list])
 
             self.assertEqual("Found 2/2 HD", app.holo_hd_status_var.get())
             self.assertEqual(

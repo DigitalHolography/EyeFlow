@@ -33,10 +33,12 @@ from .sources import WaveformShapeSourceData, WaveformShapeSources
 def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object]]:
     ctx.require_inputs("hd", "dv")
 
+    _log(ctx, "Starting waveform-shape metrics context build...")
     context = _build_waveform_shape_metrics_context(ctx)
     ctx.set_var("waveform_shape_metrics_context", context)
     ctx.set_var("dopplerview_analysis", context.dopplerview_analysis)
 
+    _log(ctx, "Starting per-beat analysis...")
     per_beat_result = run_per_beat_analysis(context.per_beat_analysis)
     metrics = pack_dopplerview_analysis_outputs(context.dopplerview_analysis)
     metrics.update(pack_velocity_per_beat_outputs(per_beat_result))
@@ -46,8 +48,10 @@ def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object
 
 
 def _build_waveform_shape_metrics_context(ctx) -> WaveformShapeMetricsContext:
+    _log(ctx, "Starting waveform source loading...")
     source_data = WaveformShapeSources.from_context(ctx).load()
     timing = source_data.timing
+    _log(ctx, "Starting DopplerView analysis reconstruction...")
     dopplerview_analysis = run_dopplerview_analysis(source_data)
     harmonic_count = _band_limited_harmonic_count(ctx)
 
@@ -114,6 +118,7 @@ def _segment_velocity_inputs(
     ring_settings: SegmentRingSettings,
     ctx,
 ) -> tuple[np.ndarray, np.ndarray]:
+    _log(ctx, "Starting segment velocity extraction...")
     artery, vein = segment_velocity_results(
         analysis["retinal_vessel_velocity"],
         source_data.retinal_artery_mask,
@@ -137,6 +142,12 @@ def _segment_velocity_inputs(
         "vein",
     )
     return artery.velocity, vein.velocity
+
+
+def _log(ctx, message: str) -> None:
+    log = getattr(ctx, "log", None)
+    if callable(log):
+        log(message)
 
 
 def _export_branch_identity_debug(

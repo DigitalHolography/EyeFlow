@@ -44,6 +44,7 @@ class EyeFlowOutputPaths:
     vein_per_beat: VelocityPerBeatOutputPaths
     beat_period_idx: str
     beat_period_seconds: str
+    waveform_shape_metrics_root: str
 
     @classmethod
     def active(cls, name: str | None = None) -> "EyeFlowOutputPaths":
@@ -105,6 +106,7 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
     ),
     beat_period_idx="Artery/VelocityPerBeat/beatPeriodIdx/value",
     beat_period_seconds="Artery/VelocityPerBeat/beatPeriodSeconds/value",
+    waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
 )
 
 SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
@@ -143,6 +145,7 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
     ),
     beat_period_idx="perbeat/beat_period_idx/value",
     beat_period_seconds="perbeat/beat_period_seconds/value",
+    waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
 )
 
 OUTPUT_PATH_VARIANTS = {

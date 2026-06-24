@@ -171,8 +171,8 @@ def _run_pipelines_on_input(
         target_names=plan.targets,
         holodoppler_h5=run_layout.hd_h5,
         doppler_vision_h5=run_layout.dv_h5,
-        on_pipeline_success=lambda name: print(
-            f"[OK] {run_layout.holo_path.name} -> {name}"
+        on_log=lambda message: print(
+            f"[{run_layout.holo_path.name}] {message}"
         ),
     )
     print(f"[OK] {run_layout.holo_path.name}: output -> {output_h5_path}")

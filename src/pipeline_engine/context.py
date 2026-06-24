@@ -1,4 +1,6 @@
-from collections.abc import Mapping
+"""Runtime context object exposed to EyeFlow pipelines."""
+
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -123,6 +125,7 @@ class PipelineContext:
         pipeline_name: str = "",
         variables: dict[str, Any] | None = None,
         output_manager: OutputManager | None = None,
+        on_log: Callable[[str], None] | None = None,
     ) -> None:
         self.work_h5 = work_h5
         self.work = work_h5
@@ -139,6 +142,7 @@ class PipelineContext:
         self.preferred_input = preferred_input
         self.output = output_manager
         self.pipeline_name = pipeline_name
+        self._on_log = on_log
         # Shared in-memory state for this run. It is not persisted unless a
         # pipeline explicitly writes a value to the work H5.
         self.vars = variables if variables is not None else {}
@@ -166,6 +170,10 @@ class PipelineContext:
 
     def get_var(self, key: str, default: Any = None) -> Any:
         return self.vars.get(str(key), default)
+
+    def log(self, message: str) -> None:
+        if self._on_log is not None:
+            self._on_log(message)
 
     @property
     def filename(self) -> str:

@@ -106,6 +106,18 @@ function ConvertTo-InnoVersionInfo {
     return ($parts -join ".")
 }
 
+function Join-AppNameAndVersion {
+    param(
+        [Parameter(Mandatory = $true)][string]$AppName,
+        [Parameter(Mandatory = $true)][string]$AppVersion
+    )
+
+    if ([string]::IsNullOrWhiteSpace($AppVersion)) {
+        return $AppName
+    }
+    return "$AppName $AppVersion"
+}
+
 function Resolve-InnoSetupCompiler {
     if ($InnoSetupCompiler) {
         if (-not (Test-Path -LiteralPath $InnoSetupCompiler -PathType Leaf)) {
@@ -197,11 +209,13 @@ function Write-InnoSetupScript {
     param(
         [Parameter(Mandatory = $true)][string]$AppName,
         [Parameter(Mandatory = $true)][string]$AppVersion,
+        [Parameter(Mandatory = $true)][string]$AppDisplayName,
         [Parameter(Mandatory = $true)][string]$BundleDir
     )
 
     $appNameInno = ConvertTo-InnoQuotedValue $AppName
     $appVersionInno = ConvertTo-InnoQuotedValue $AppVersion
+    $appDisplayNameInno = ConvertTo-InnoQuotedValue $AppDisplayName
     $bundleDirInno = ConvertTo-InnoQuotedValue (Get-FullPath $BundleDir)
     $outputDirInno = ConvertTo-InnoQuotedValue (Get-FullPath $InstallerOutputDir)
     $licensePathInno = ConvertTo-InnoQuotedValue (Get-FullPath (Join-Path $RepoRoot "LICENSE"))
@@ -216,8 +230,9 @@ function Write-InnoSetupScript {
     @"
 #define MyAppName "$appNameInno"
 #define MyAppVersion "$appVersionInno"
+#define MyAppDisplayName "$appDisplayNameInno"
 #define MyAppPublisher "EyeFlow"
-#define MyAppExeName "$appNameInno.exe"
+#define MyAppExeName "$appDisplayNameInno.exe"
 #define MyBundleDir "$bundleDirInno"
 #define MyOutputDir "$outputDirInno"
 #define MySetupBaseName "$setupBaseNameInno"
@@ -229,7 +244,7 @@ AppId={{72E10B9F-83C4-4F4C-89A5-F8BB598B0396}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-AppVerName={#MyAppName} {#MyAppVersion}
+AppVerName={#MyAppDisplayName}
 DefaultDirName={localappdata}\Programs\{#MyAppName}\{#MyAppVersion}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
@@ -255,22 +270,23 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Source: "{#MyBundleDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\{#MyAppDisplayName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\Uninstall {#MyAppDisplayName}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#MyAppDisplayName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppDisplayName}"; Flags: nowait postinstall skipifsilent
 "@ | Set-Content -LiteralPath $GeneratedInnoScript -Encoding UTF8
 }
 
 $metadata = Read-ProjectMetadata
 $appName = $metadata.Name
 $appVersion = $metadata.Version
-$bundleDir = Join-Path $PyInstallerDistDir $appName
-$bundleExe = Join-Path $bundleDir "$appName.exe"
+$appDisplayName = Join-AppNameAndVersion -AppName $appName -AppVersion $appVersion
+$bundleDir = Join-Path $PyInstallerDistDir $appDisplayName
+$bundleExe = Join-Path $bundleDir "$appDisplayName.exe"
 
-Write-Host "Building $appName $appVersion installer..."
+Write-Host "Building $appDisplayName installer..."
 
 if (-not $SkipClean) {
     Assert-ChildPath -BasePath $RepoRoot -TargetPath $BuildRoot
@@ -287,7 +303,7 @@ $pyInstallerArgs = @(
     "--noconfirm",
     "--clean",
     "--onedir",
-    "--name", $appName,
+    "--name", $appDisplayName,
     "--distpath", $PyInstallerDistDir,
     "--workpath", $PyInstallerWorkDir,
     "--specpath", $PyInstallerSpecDir,
@@ -317,7 +333,11 @@ if (-not (Test-Path -LiteralPath $bundleExe -PathType Leaf)) {
 }
 
 $iscc = Resolve-InnoSetupCompiler
-Write-InnoSetupScript -AppName $appName -AppVersion $appVersion -BundleDir $bundleDir
+Write-InnoSetupScript `
+    -AppName $appName `
+    -AppVersion $appVersion `
+    -AppDisplayName $appDisplayName `
+    -BundleDir $bundleDir
 
 & $iscc $GeneratedInnoScript
 if ($LASTEXITCODE -ne 0) {
