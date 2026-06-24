@@ -14,11 +14,13 @@ def run_waveform_shape_metrics_angioeye(ctx) -> dict[str, object]:
     """Read EyeFlow outputs, calculate metrics, and prefix output paths."""
 
     schema = EyeFlowOutputPaths.active()
+    _log(ctx, "Starting AngioEye waveform-shape input loading...")
     inputs = WaveformShapeMetricInputs(
         beat_period_seconds=_required_array(ctx, schema.beat_period_seconds),
         artery=_read_vessel(ctx, schema.artery_per_beat),
         vein=_read_vessel(ctx, schema.vein_per_beat),
     )
+    _log(ctx, "Starting AngioEye waveform-shape metric calculation...")
     metrics = WaveformShapeMetricsCalculator().compute(inputs)
     return {
         f"{schema.waveform_shape_metrics_root}/{key}": value
@@ -68,3 +70,9 @@ def _optional_pair(
     if (raw is None) != (bandlimited is None):
         raise ValueError(f"Incomplete {label} inputs.")
     return raw, bandlimited
+
+
+def _log(ctx, message: str) -> None:
+    log = getattr(ctx, "log", None)
+    if callable(log):
+        log(message)
