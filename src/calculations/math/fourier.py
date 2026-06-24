@@ -5,6 +5,12 @@ from __future__ import annotations
 import numpy as np
 
 
+def next_power_of_two(value: int) -> int:
+    if value < 1:
+        raise ValueError("next_power_of_two expects a strictly positive integer.")
+    return 1 << (value - 1).bit_length()
+
+
 def interpft_real(signal, target_length: int) -> np.ndarray:
     source = np.asarray(signal, dtype=np.float32).reshape(-1)
     source_length = int(source.size)

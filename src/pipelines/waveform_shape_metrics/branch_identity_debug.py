@@ -12,11 +12,9 @@ from calculations.blood_flow_velocity.context_builders.segments import (
 from calculations.blood_flow_velocity.context_builders.segments.segment_geometry import (
     annulus_mask,
 )
-from input_output.output_manager import OutputManager, OutputType
-
 
 def export_branch_identity_stage_pngs(
-    output_manager: OutputManager,
+    output,
     stages: BranchIdentityStages,
     prefix: str,
     optic_disc_center,
@@ -24,9 +22,8 @@ def export_branch_identity_stage_pngs(
 ) -> list[str]:
     paths = []
     for name, image in _stage_images(stages, optic_disc_center, ring_settings):
-        path = output_manager.write(
+        path = output.write_png(
             image,
-            OutputType.PNG,
             f"branch_identity/{prefix}_{name}.png",
         )
         paths.append(str(path))

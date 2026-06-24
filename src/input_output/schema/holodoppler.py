@@ -31,7 +31,7 @@ class HolodopplerSource(TypedSource):
 
     @classmethod
     def from_context(cls, ctx) -> "HolodopplerSource":
-        return cls(ctx.sources.hd, ctx.hd_config)
+        return cls(ctx.inputs.hd.h5, ctx.inputs.hd.config)
 
     def moment0(self) -> np.ndarray:
         return self._moment(HD_MOMENT0_PATH)

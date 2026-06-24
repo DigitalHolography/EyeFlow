@@ -5,11 +5,11 @@ from __future__ import annotations
 import numpy as np
 
 from calculations.blood_flow_velocity.context_builders.signal import find_systole_index
-from calculations.blood_flow_velocity.signal_analysis.signal.per_beat_signal import (
+from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (
     per_beat_signal_analysis,
 )
 from calculations.math import butter_lowpass_filtfilt
-from input_output.schema import DopplerViewSource, HD_MOMENT0_PATH, HD_MOMENT2_PATH
+from input_output.schema import HD_MOMENT0_PATH, HD_MOMENT2_PATH
 from pipeline_engine.imports import (
     ProcessResult,
     pipeline,
@@ -41,7 +41,7 @@ def run(ctx) -> ProcessResult:
     ctx.require_inputs("hd", "dv")
 
     timing = resolve_holodoppler_timing(ctx)
-    dv_source = DopplerViewSource.from_context(ctx)
+    dv_source = ctx.inputs.dv.as_dopplerview()
     artery_mask = dv_source.retinal_artery_mask()
     vein_mask = dv_source.retinal_vein_mask()
     vessel_mask = artery_mask | vein_mask
@@ -52,8 +52,8 @@ def run(ctx) -> ProcessResult:
     background_section = section_mask & ~vessel_mask
     _validate_masks(artery_section, vein_section, background_section)
 
-    moment0 = ctx.sources.hd.dataset(HD_MOMENT0_PATH)
-    moment2 = ctx.sources.hd.dataset(HD_MOMENT2_PATH)
+    moment0 = ctx.inputs.hd.dataset(HD_MOMENT0_PATH)
+    moment2 = ctx.inputs.hd.dataset(HD_MOMENT2_PATH)
     artery_signal, vein_signal = _velocity_signals(
         moment0=moment0,
         moment2=moment2,
@@ -246,7 +246,7 @@ def run(ctx) -> ProcessResult:
         "poc_batch_stride": float(timing.batch_stride),
         "poc_dt_seconds": float(timing.dt_seconds),
     }
-    ctx.set_var("matlab_pulse_poc", {"systole_indexes": systole_zero_based})
+    ctx.state.set("matlab_pulse_poc", {"systole_indexes": systole_zero_based})
     return ProcessResult(metrics=metrics, attrs=attrs)
 
 

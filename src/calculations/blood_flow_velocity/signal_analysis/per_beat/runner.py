@@ -6,11 +6,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..segments.per_beat_segments import (
+from .segments import (
     PerBeatSegmentAnalysisResult,
     per_beat_segment_analysis,
 )
-from .per_beat_signal import PerBeatSignalAnalysisResult, per_beat_signal_analysis
+from .signal import PerBeatSignalAnalysisResult, per_beat_signal_analysis
 
 
 @dataclass(frozen=True)

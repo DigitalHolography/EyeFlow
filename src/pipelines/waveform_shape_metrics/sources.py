@@ -34,7 +34,6 @@ class WaveformShapeSourceData:
     timing: HolodopplerTiming
     local_background_dist: int
     peripapillary_inner_radius: np.float32
-    peripapillary_outer_radius: np.float32
     peripapillary_ring_count: np.int32
     peripapillary_ring_width: np.float32
     segment_length: np.float32
@@ -61,8 +60,8 @@ class WaveformShapeSources:
     def from_context(cls, ctx: PipelineContext) -> "WaveformShapeSources":
         ctx.require_inputs("hd", "dv")
         return cls(
-            hd=HolodopplerSource.from_context(ctx),
-            dv=DopplerViewSource.from_context(ctx),
+            hd=ctx.inputs.hd.as_holodoppler(),
+            dv=ctx.inputs.dv.as_dopplerview(),
         )
 
     def load(self) -> WaveformShapeSourceData:
@@ -83,9 +82,8 @@ class WaveformShapeSources:
             timing=timing,
             local_background_dist=self.dv.local_background_dist(),
             peripapillary_inner_radius=self._inner_radius(),
-            peripapillary_outer_radius=self._outer_radius(),
             peripapillary_ring_count=self._circle_count(),
-            peripapillary_ring_width=self._circle_step(),
+            peripapillary_ring_width=self._ring_width(),
             segment_length=self._segment_length(),
             cross_section_settings=self._cross_section_settings(
                 optic_disc_width,
@@ -109,16 +107,6 @@ class WaveformShapeSources:
             )
         )
 
-    def _outer_radius(self) -> np.float32:
-        return np.float32(
-            _config_float(
-                self.hd,
-                "SizeOfField",
-                "BigRadiusRatio",
-                float(self.dv.peripapillary_outer_radius()),
-            )
-        )
-
     def _circle_count(self) -> np.int32:
         return np.int32(
             _config_int(
@@ -129,11 +117,8 @@ class WaveformShapeSources:
             )
         )
 
-    def _circle_step(self) -> np.float32:
-        inner = float(self._inner_radius())
-        outer = float(self._outer_radius())
-        count = max(int(self._circle_count()), 1)
-        return np.float32((outer - inner) / float(count))
+    def _ring_width(self) -> np.float32:
+        return np.float32(self.dv.peripapillary_ring_width())
 
     def _segment_length(self) -> np.float32:
         return np.float32(
@@ -141,7 +126,7 @@ class WaveformShapeSources:
                 self.hd,
                 "generateCrossSectionSignals",
                 "SegmentsLength",
-                float(self._circle_step()),
+                -1.0,
             )
         )
 

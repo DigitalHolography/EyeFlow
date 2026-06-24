@@ -26,7 +26,7 @@ class DopplerViewSource(TypedSource):
 
     @classmethod
     def from_context(cls, ctx) -> "DopplerViewSource":
-        return cls(ctx.sources.dv, ctx.dv_config)
+        return cls(ctx.inputs.dv.h5, ctx.inputs.dv.config)
 
     def retinal_artery_mask(self) -> np.ndarray:
         return self._array("segmentation/Retina/artery_mask", dtype=bool)
@@ -43,21 +43,21 @@ class DopplerViewSource(TypedSource):
 
     def optic_disc_center(self) -> np.ndarray | None:
         return self._array(
-            "segmentation/OpticDisc/optic_disc_center",
+            "segmentation/OpticDisc/center",
             dtype=np.float32,
             default=None,
         )
 
     def optic_disc_width(self) -> np.float32 | None:
         return self._array(
-            "segmentation/OpticDisc/optic_disc_width",
+            "segmentation/OpticDisc/width",
             dtype=np.float32,
             default=None,
         )
 
     def optic_disc_height(self) -> np.float32 | None:
         return self._array(
-            "segmentation/OpticDisc/optic_disc_height",
+            "segmentation/OpticDisc/height",
             dtype=np.float32,
             default=None,
         )

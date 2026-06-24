@@ -8,6 +8,9 @@ from calculations.blood_flow_velocity import (
     run_per_beat_analysis,
     segment_velocity_results,
 )
+from calculations.blood_flow_velocity.context_builders.segments.segment_geometry import (
+    largest_centered_circle_radius_frac,
+)
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.imports import (
     HolodopplerTiming,
@@ -19,7 +22,6 @@ from .constants import (
     LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
     LEGACY_FILTER_VELOCITY_SIGNALS,
     LEGACY_SEGMENT_INNER_RADIUS_FRAC,
-    LEGACY_SEGMENT_OUTER_RADIUS_FRAC,
     LEGACY_SEGMENT_RING_COUNT,
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
@@ -35,14 +37,14 @@ def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object
 
     _log(ctx, "Starting waveform-shape metrics context build...")
     context = _build_waveform_shape_metrics_context(ctx)
-    ctx.set_var("waveform_shape_metrics_context", context)
-    ctx.set_var("dopplerview_analysis", context.dopplerview_analysis)
+    ctx.state.set("waveform_shape_metrics_context", context)
+    ctx.state.set("dopplerview_analysis", context.dopplerview_analysis)
 
     _log(ctx, "Starting per-beat analysis...")
     per_beat_result = run_per_beat_analysis(context.per_beat_analysis)
     metrics = pack_dopplerview_analysis_outputs(context.dopplerview_analysis)
     metrics.update(pack_velocity_per_beat_outputs(per_beat_result))
-    ctx.set_var("velocity_per_beat_result", per_beat_result)
+    ctx.state.set("velocity_per_beat_result", per_beat_result)
 
     return metrics, context.attrs
 
@@ -157,7 +159,7 @@ def _export_branch_identity_debug(
     ring_settings: SegmentRingSettings,
     prefix: str,
 ) -> None:
-    if ctx.output is None:
+    if not ctx.output.available:
         return
     export_branch_identity_stage_pngs(
         ctx.output,
@@ -169,8 +171,16 @@ def _export_branch_identity_debug(
 
 
 def _segment_ring_settings(source_data: WaveformShapeSourceData) -> SegmentRingSettings:
-    inner = _positive_float(source_data.peripapillary_inner_radius, LEGACY_SEGMENT_INNER_RADIUS_FRAC)
-    outer = _positive_float(source_data.peripapillary_outer_radius, LEGACY_SEGMENT_OUTER_RADIUS_FRAC)
+    inner = _positive_float(
+        source_data.peripapillary_inner_radius,
+        LEGACY_SEGMENT_INNER_RADIUS_FRAC,
+    )
+    outer = float(
+        largest_centered_circle_radius_frac(
+            source_data.retinal_artery_mask,
+            source_data.optic_disc_center,
+        )
+    )
     count = _positive_int(source_data.peripapillary_ring_count, LEGACY_SEGMENT_RING_COUNT)
     width = _ring_width(source_data.peripapillary_ring_width, inner, outer, count)
     length = _positive_float(source_data.segment_length, width)
@@ -208,8 +218,8 @@ def _context_attrs(
         "dependency_chain": [
             "dopplerview.vessel_velocity_estimator",
             "dopplerview.arterial_waveform_analysis",
-            "blood_flow_velocity.signal_analysis.signal.per_beat_signal",
-            "blood_flow_velocity.signal_analysis.signal.per_beat",
+            "blood_flow_velocity.signal_analysis.per_beat.signal",
+            "blood_flow_velocity.signal_analysis.per_beat.runner",
         ],
         "analysis_source": "computed_dopplerview_steps",
         "arterial_velocity_signal_path": analysis_paths.retinal_artery_velocity_signal,

@@ -6,9 +6,9 @@ import h5py
 import numpy as np
 
 import pipelines  # noqa: F401
-from input_output.inputs import EyeFlowView
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
+from pipeline_engine.context import PipelineH5Output, PipelineOutput
 from pipelines.waveform_shape_metrics_angioeye.runner import (
     run_waveform_shape_metrics_angioeye,
 )
@@ -16,7 +16,7 @@ from pipelines.waveform_shape_metrics_angioeye.runner import (
 
 class _Context:
     def __init__(self, h5file):
-        self.ef = EyeFlowView(h5file)
+        self.output = PipelineOutput(None, PipelineH5Output(h5file))
 
 
 class WaveformShapeMetricsAngioEyeTests(unittest.TestCase):

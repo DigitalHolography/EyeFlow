@@ -69,6 +69,23 @@ def annulus_mask(
     return (radius_sq > inner_radius_frac**2) & (radius_sq <= outer_radius_frac**2)
 
 
+def largest_centered_circle_radius_frac(reference_image, optic_disc_center) -> np.float32:
+    shape = np.shape(reference_image)
+    if len(shape) < 2:
+        raise ValueError("reference_image must have at least two dimensions.")
+    ny, nx = int(shape[-2]), int(shape[-1])
+    cy, cx = optic_disc_center_yx(optic_disc_center, ny, nx)
+    center_y = np.float32(cy / max(ny, 1))
+    center_x = np.float32(cx / max(nx, 1))
+    corner_y = np.asarray([0.0, 0.0, 1.0, 1.0], dtype=np.float32)
+    corner_x = np.asarray([0.0, 1.0, 0.0, 1.0], dtype=np.float32)
+    distances = np.sqrt(
+        (corner_y - center_y) ** 2 + (corner_x - center_x) ** 2,
+        dtype=np.float32,
+    )
+    return np.float32(max(np.max(distances), np.finfo(np.float32).eps))
+
+
 def optic_disc_center_yx(optic_disc_center, ny: int, nx: int) -> tuple[float, float]:
     if optic_disc_center is None:
         return ny / 2.0, nx / 2.0

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import ndimage as ndi
 
+from calculations.math import nanmean_float32, rotate_array_threshold, rotate_image_with_nan
+
 from .branch_identity import BranchIdentityResult, label_vessel_branches
 from .segment_geometry import (
     SegmentRingSettings,
@@ -165,7 +167,7 @@ def _cross_section_velocity(
     sub_stack, sub_mask = _subimage_stack(velocity, mask, loc_xy, settings)
     if sub_stack.size == 0:
         return _nan_signal(velocity), _nan_signal(velocity)
-    mean_image = _nanmean(sub_stack, axis=0)
+    mean_image = nanmean_float32(sub_stack, axis=0)
     rotated_mean, angle = _rotated_mean_image(
         mean_image,
         sub_mask,
@@ -206,8 +208,8 @@ def _rotated_mean_image(
         angle = tilt_angle_mask + 90.0
     else:
         angle = _estimate_orientation(mean_image, loc_xy, optic_disc_center)
-    rotated = _rotate_with_nan(mean_image, angle)
-    rotated_mask = _rotate_mask(sub_mask, angle)
+    rotated = rotate_image_with_nan(mean_image, angle)
+    rotated_mask = rotate_array_threshold(sub_mask, angle)
     rotated[~rotated_mask] = np.nan
     return rotated.astype(np.float32, copy=False), float(angle)
 
@@ -250,7 +252,7 @@ def _cross_section_limits(
 ) -> tuple[int, int]:
     if not settings.hydrodynamic_diameters:
         return 0, max(image.shape[1] - 1, 0)
-    profile = _nanmean(image, axis=0)
+    profile = nanmean_float32(image, axis=0)
     limits = _hydrodynamic_limits(profile, settings)
     return limits if limits is not None else (0, max(profile.size - 1, 0))
 
@@ -300,48 +302,11 @@ def _frame_velocities(
     raw = np.full((sub_stack.shape[0],), np.nan, dtype=np.float32)
     safe = np.full_like(raw, np.nan)
     for frame_index, frame in enumerate(sub_stack):
-        rotated = _rotate_with_nan(frame, angle)
-        profile = _nanmean(rotated, axis=0)
-        raw[frame_index] = _nanmean(profile[c1 : c2 + 1])
-        safe[frame_index] = _nanmean(profile)
+        rotated = rotate_image_with_nan(frame, angle)
+        profile = nanmean_float32(rotated, axis=0)
+        raw[frame_index] = nanmean_float32(profile[c1 : c2 + 1])
+        safe[frame_index] = nanmean_float32(profile)
     return raw, safe
-
-
-def _nanmean(values: np.ndarray, axis=None):
-    array = np.asarray(values, dtype=np.float32)
-    finite = np.isfinite(array)
-    count = np.sum(finite, axis=axis)
-    total = np.sum(np.where(finite, array, 0.0), axis=axis, dtype=np.float32)
-    result = np.divide(
-        total,
-        count,
-        out=np.full_like(total, np.nan, dtype=np.float32),
-        where=count > 0,
-    )
-    if isinstance(result, np.ndarray):
-        return result.astype(np.float32, copy=False)
-    return np.float32(result)
-
-
-def _rotate_with_nan(image: np.ndarray, angle: float) -> np.ndarray:
-    valid = np.isfinite(image)
-    fill = np.float32(np.nanmin(image[valid]) - 1.0) if np.any(valid) else np.float32(0.0)
-    filled = np.where(valid, image, fill)
-    rotated = ndi.rotate(filled, angle, reshape=False, order=1, mode="constant", cval=float(fill))
-    mask = ndi.rotate(valid.astype(np.float32), angle, reshape=False, order=1, mode="constant", cval=0.0)
-    rotated[mask < 0.5] = np.nan
-    return rotated.astype(np.float32, copy=False)
-
-
-def _rotate_mask(mask: np.ndarray, angle: float) -> np.ndarray:
-    return ndi.rotate(
-        mask.astype(np.float32),
-        angle,
-        reshape=False,
-        order=1,
-        mode="constant",
-        cval=0.0,
-    ) >= 0.5
 
 
 def _nan_signal(velocity: np.ndarray) -> np.ndarray:
