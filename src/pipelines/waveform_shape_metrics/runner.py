@@ -218,8 +218,8 @@ def _context_attrs(
         "dependency_chain": [
             "dopplerview.vessel_velocity_estimator",
             "dopplerview.arterial_waveform_analysis",
-            "blood_flow_velocity.signal_analysis.signal.per_beat_signal",
-            "blood_flow_velocity.signal_analysis.signal.per_beat",
+            "blood_flow_velocity.signal_analysis.per_beat.signal",
+            "blood_flow_velocity.signal_analysis.per_beat.runner",
         ],
         "analysis_source": "computed_dopplerview_steps",
         "arterial_velocity_signal_path": analysis_paths.retinal_artery_velocity_signal,

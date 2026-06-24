@@ -8,16 +8,16 @@ from .context_builders.segments.segment_velocity_signals import (
     segment_velocity_inputs,
     segment_velocity_results,
 )
-from .signal_analysis.segments.per_beat_segments import (
-    PerBeatSegmentAnalysisResult,
-    per_beat_segment_analysis,
-)
-from .signal_analysis.signal.per_beat import (
+from .signal_analysis.per_beat.runner import (
     PerBeatAnalysisInput,
     PerBeatAnalysisResult,
     run_per_beat_analysis,
 )
-from .signal_analysis.signal.per_beat_signal import (
+from .signal_analysis.per_beat.segments import (
+    PerBeatSegmentAnalysisResult,
+    per_beat_segment_analysis,
+)
+from .signal_analysis.per_beat.signal import (
     PerBeatSignalAnalysisResult,
     per_beat_signal_analysis,
 )

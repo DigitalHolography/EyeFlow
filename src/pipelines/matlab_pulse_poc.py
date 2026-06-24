@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from calculations.blood_flow_velocity.context_builders.signal import find_systole_index
-from calculations.blood_flow_velocity.signal_analysis.signal.per_beat_signal import (
+from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (
     per_beat_signal_analysis,
 )
 from calculations.math import butter_lowpass_filtfilt
