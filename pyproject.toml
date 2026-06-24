@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "EyeFlow"
+version = "0.9.0"
+description = "Coh5rt-analysis engine for retinal Doppler holography"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-only" }
+
+# =============== [ DEPENDENCIES ] ===============
+
+dependencies = [
+    "numpy>=1.24",
+    "h5py>=3.9",
+    "pydantic>=2.6",
+    "scipy>=1.10",
+    "scikit-image>=0.20",
+    "joblib>=1.3",
+    "sv-ttk>=2.6",
+    "tkinterdnd2",
+]
+
+[project.optional-dependencies]
+# For specific pipelines
+pipelines = ["torch>=2.2", "pandas>=2.1"]
+
+# =============== [ SCRIPTS ] ===============
+
+[project.scripts]
+# This allows users to simply type 'eyeflow' in their terminal
+eyeflow = "launcher:main"
+eyeflow-cli = "launcher:cli_main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = ["eye_flow", "cli", "app_settings", "dependency_utils", "launcher"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
