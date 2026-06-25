@@ -27,6 +27,7 @@ from .inputs import (
     stem_input_status,
 )
 from .output_manager import OutputManager, OutputType
+from .reports import generate_a4_report
 from .schema import (
     ACTIVE_OUTPUT_SCHEMA_VARIANT,
     ANGIOEYE_FULL_OUTPUT,
@@ -102,6 +103,7 @@ __all__ = [
     "extract_file_from_zip",
     "extract_folder_from_zip",
     "extracted_zip_tree",
+    "generate_a4_report",
     "holo_input_status",
     "initialize_output_h5",
     "iter_metric_datasets",
