@@ -66,12 +66,15 @@ class VesselVelocityEstimatorStep:
         fRMSbkg = _run_in_parallel(
             partial(_inpaint_frame, mask=mask), fRMS, n_jobs=n_jobs, chunking=False
         )
+        ctx.set("fRMS", fRMS)
+        ctx.set("fRMS_bkg", fRMSbkg)
 
         # fRMSbkg = np.stack(np.array([inpaint.inpaint_biharmonic(frame, mask) for frame in fRMS]), axis=0)
 
         # Velocity estimation
         A = (fRMS**2 - fRMSbkg**2).astype(np.float32, copy=False)
         deltafRMS = (np.sign(A) * np.sqrt(np.abs(A))).astype(np.float32, copy=False)
+        ctx.set("deltafRMS", deltafRMS)
 
         velocity_scale = np.float32(2 * 852e-9 / np.sin(0.25) * 1e6)
         velocity_map = (velocity_scale * deltafRMS).astype(np.float32)  # mm/s
@@ -95,6 +98,7 @@ class VesselVelocityEstimatorStep:
         sz = velocity_map.shape
 
         section_mask = elliptical_mask(sz[-2], sz[-1], 0.5) & (~(elliptical_mask(sz[-2], sz[-1], 0.2)))
+        ctx.set("velocity_section_mask", section_mask)
 
         artery_sig = _masked_signal(velocity_map, section_mask & artery_mask)
 
