@@ -62,6 +62,9 @@ PULSE_PNG_SUFFIXES = (
     "AVGflowVideoCombined.png",
 )
 
+FREQUENCY_DISPLAY_SCALE = np.float32(1.0 / 1000.0)
+VELOCITY_DISPLAY_SCALE = np.float32(1.0 / 1000.0)
+
 
 @dataclass(frozen=True)
 class PulseFigureContext:
@@ -108,9 +111,8 @@ class FigureWriter:
         return path
 
     def save_image(self, image: np.ndarray, suffix: str) -> Path:
-        path = self.path(suffix)
-        _plt().imsave(path, _finite_image(image))
-        return path
+        filename = f"{self.stem}_{suffix}"
+        return self.output.write_png(_finite_image(image), filename)
 
 
 def export_pulse_pngs(
@@ -163,11 +165,11 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
     f_bkg = _array_or_none(ctx.analysis.get("fRMS_bkg"))
     delta = _array_or_none(ctx.analysis.get("deltafRMS"))
     if f_video is not None and f_bkg is not None:
-        f_artery = _masked_signal(f_video, ctx.artery_section_mask)
-        f_artery_bkg = _masked_signal(f_bkg, ctx.artery_section_mask)
-        f_vein = _masked_signal(f_video, ctx.vein_section_mask)
-        f_vein_bkg = _masked_signal(f_bkg, ctx.vein_section_mask)
-        f_vessel_bkg = _masked_signal(f_bkg, ctx.vessel_section_mask)
+        f_artery = _display_frequency(_masked_signal(f_video, ctx.artery_section_mask))
+        f_artery_bkg = _display_frequency(_masked_signal(f_bkg, ctx.artery_section_mask))
+        f_vein = _display_frequency(_masked_signal(f_video, ctx.vein_section_mask))
+        f_vein_bkg = _display_frequency(_masked_signal(f_bkg, ctx.vein_section_mask))
+        f_vessel_bkg = _display_frequency(_masked_signal(f_bkg, ctx.vessel_section_mask))
         paths.append(
             _line_plot(
                 writer,
@@ -213,13 +215,13 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
                 ctx.time,
                 [
                     (
-                        _masked_signal(delta, ctx.artery_section_mask),
+                        _display_frequency(_masked_signal(delta, ctx.artery_section_mask)),
                         "-",
                         "tab:red",
                         "arteries",
                     ),
                     (
-                        _masked_signal(delta, ctx.vein_section_mask),
+                        _display_frequency(_masked_signal(delta, ctx.vein_section_mask)),
                         "-",
                         "tab:blue",
                         "veins",
@@ -239,13 +241,13 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
             ctx.time,
             [
                 (
-                    _vector(ctx.analysis["retinal_artery_velocity_signal"]),
+                    _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"])),
                     "-",
                     "tab:red",
                     "arteries",
                 ),
                 (
-                    _vector(ctx.analysis["retinal_vein_velocity_signal"]),
+                    _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"])),
                     "-",
                     "tab:blue",
                     "veins",
@@ -265,6 +267,7 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     f_avg = _array_or_none(ctx.analysis.get("fRMS_avg"))
     delta = _array_or_none(ctx.analysis.get("deltafRMS"))
     if f_bkg_avg is not None:
+        f_bkg_avg = _display_frequency(f_bkg_avg)
         paths.extend(
             _heatmap_with_colorbar(
                 writer,
@@ -276,7 +279,7 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
             )
         )
     if delta is not None:
-        df_mean = np.nanmean(delta, axis=0)
+        df_mean = _display_frequency(np.nanmean(delta, axis=0))
         paths.extend(
             _heatmap_with_colorbar(
                 writer,
@@ -308,6 +311,7 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
             )
         )
     if f_avg is not None:
+        f_avg = _display_frequency(f_avg)
         paths.extend(
             _heatmap_with_colorbar(
                 writer,
@@ -326,10 +330,14 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
     if peaks.size == 0:
         _log(ctx, "Skipping systole index PNGs; no beat indices are available.")
         return []
-    artery = _vector(ctx.analysis.get("retinal_artery_velocity_signal_filtered"))
-    artery_deriv = _vector(ctx.analysis.get("retinal_artery_velocity_signal_derivative"))
-    vein = _vector(ctx.analysis.get("retinal_vein_velocity_signal_filtered"))
-    vein_deriv = _vector(ctx.analysis.get("retinal_vein_velocity_signal_derivative"))
+    artery = _display_velocity(_vector(ctx.analysis.get("retinal_artery_velocity_signal_filtered")))
+    artery_deriv = _display_velocity(
+        _vector(ctx.analysis.get("retinal_artery_velocity_signal_derivative"))
+    )
+    vein = _display_velocity(_vector(ctx.analysis.get("retinal_vein_velocity_signal_filtered")))
+    vein_deriv = _display_velocity(
+        _vector(ctx.analysis.get("retinal_vein_velocity_signal_derivative"))
+    )
     maxima, minima = _cycle_extrema(artery, peaks)
     return [
         _systole_plot(
@@ -359,8 +367,8 @@ def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[P
     peaks = _safe_indexes(ctx.analysis.get("beat_indices"))
     paths: list[Path] = []
     for suffix_prefix, signal_values in (
-        ("v_artery", _vector(ctx.analysis["retinal_artery_velocity_signal"])),
-        ("v_vein", _vector(ctx.analysis["retinal_vein_velocity_signal"])),
+        ("v_artery", _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"]))),
+        ("v_vein", _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"]))),
     ):
         cycle = _average_cycle(signal_values, peaks, 60)
         if cycle is None:
@@ -391,8 +399,12 @@ def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[P
 
 def _export_waveform_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     peaks = _safe_indexes(ctx.analysis.get("beat_indices"))
-    artery = _average_cycle(_vector(ctx.analysis["retinal_artery_velocity_signal"]), peaks, 128)
-    vein = _average_cycle(_vector(ctx.analysis["retinal_vein_velocity_signal"]), peaks, 128)
+    artery = _average_cycle(
+        _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"])), peaks, 128
+    )
+    vein = _average_cycle(
+        _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"])), peaks, 128
+    )
     paths: list[Path] = []
     if artery is not None:
         paths.append(_arterial_waveform_plot(writer, ctx, artery))
@@ -407,8 +419,8 @@ def _export_waveform_plots(writer: FigureWriter, ctx: PulseFigureContext) -> lis
 
 def _export_spectral_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     paths: list[Path] = []
-    artery = _vector(ctx.analysis["retinal_artery_velocity_signal"])
-    vein = _vector(ctx.analysis["retinal_vein_velocity_signal"])
+    artery = _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"]))
+    vein = _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"]))
     for prefix, vessel_name, values, color in (
         ("Arterial", "artery", artery, "tab:red"),
         ("Venous", "vein", vein, "tab:blue"),
@@ -442,8 +454,8 @@ def _export_spectral_plots(writer: FigureWriter, ctx: PulseFigureContext) -> lis
 
 
 def _export_correlation_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
-    artery = _vector(ctx.analysis["retinal_artery_velocity_signal"])
-    vein = -_vector(ctx.analysis["retinal_vein_velocity_signal"])
+    artery = _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"]))
+    vein = -_display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"]))
     if artery.size != vein.size or artery.size < 3:
         _log(ctx, "Skipping arterial/venous correlation PNGs; signals are incompatible.")
         return []
@@ -475,11 +487,13 @@ def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) 
     if velocity_avg is None:
         _log(ctx, "Skipping final velocity visualizations; velocity map is unavailable.")
         return []
-    vmax = float(np.nanmax(np.abs(velocity_avg)))
+    velocity_map_display = _display_velocity(velocity_map) if velocity_map is not None else None
+    velocity_avg_display = _display_velocity(velocity_avg)
+    vmax = float(np.nanmax(np.abs(velocity_avg_display)))
     paths = [
         _image_map(
             writer,
-            np.where(ctx.artery_section_mask, velocity_avg, 0.0),
+            np.where(ctx.artery_section_mask, velocity_avg_display, 0.0),
             "map_v_Artery.png",
             cmap="Reds",
             colorbar=True,
@@ -487,7 +501,7 @@ def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) 
         ),
         _image_map(
             writer,
-            np.where(ctx.vein_section_mask, velocity_avg, 0.0),
+            np.where(ctx.vein_section_mask, velocity_avg_display, 0.0),
             "map_v_Vein.png",
             cmap="Blues",
             colorbar=True,
@@ -495,7 +509,7 @@ def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) 
         ),
         _image_map(
             writer,
-            np.where(ctx.vessel_section_mask, velocity_avg, 0.0),
+            np.where(ctx.vessel_section_mask, velocity_avg_display, 0.0),
             "map_v_Vessel.png",
             cmap="turbo",
             colorbar=True,
@@ -518,27 +532,27 @@ def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) 
             label="mm/s",
         ),
     ]
-    flow_rgb = _flow_rgb(ctx, velocity_avg)
+    flow_rgb = _flow_rgb(ctx, velocity_avg_display)
     writer.save_image(flow_rgb, "v_map.png")
     paths.append(writer.path("v_map.png"))
     hist_artery = _histogram_plot(
         writer,
         ctx,
-        velocity_map,
+        velocity_map_display,
         ctx.artery_section_mask,
         "histogramVelocityartery.png",
-        "Reds",
+        "artery",
     )
     hist_vein = _histogram_plot(
         writer,
         ctx,
-        velocity_map,
+        velocity_map_display,
         ctx.vein_section_mask,
         "histogramVelocityvein.png",
-        "Blues",
+        "vein",
     )
     paths.extend([hist_artery, hist_vein])
-    paths.append(_combined_plot(writer, ctx, flow_rgb, velocity_map))
+    paths.append(_combined_plot(writer, ctx, flow_rgb, velocity_map_display))
     return paths
 
 
@@ -698,14 +712,55 @@ def _arterial_waveform_plot(
     cycle: np.ndarray,
 ) -> Path:
     pulse_time = _cycle_time(ctx, cycle)
-    grad = np.gradient(cycle)
-    peak_indexes, _ = signal.find_peaks(cycle, distance=max(1, cycle.size // 4))
+    period = _mean_period_seconds(ctx)
+    gradient = np.gradient(cycle)
+    peak_indexes, properties = signal.find_peaks(
+        cycle,
+        height=float(np.nanmax(cycle)) * 0.3,
+        distance=max(1, cycle.size // 4),
+    )
     if peak_indexes.size == 0:
         peak_indexes = np.asarray([int(np.nanargmax(cycle))])
+    else:
+        order = np.argsort(properties["peak_heights"])[::-1][:2]
+        peak_indexes = peak_indexes[order]
     end_min = int(np.nanargmin(cycle[int(0.75 * cycle.size):]) + int(0.75 * cycle.size))
+    notch_idx = _dicrotic_notch_index(cycle, peak_indexes)
+    padded_time, padded_signal = _padded_cycle(pulse_time, cycle, period)
+    _, padded_gradient = _padded_cycle(pulse_time, gradient, period)
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
-    ax.plot(pulse_time, grad, color="0.70", linewidth=2)
+    ax.plot(padded_time, padded_gradient, color="0.85", linewidth=2)
+    ax.plot(padded_time, padded_signal, color="0.85", linewidth=2)
+    ax.plot(pulse_time, gradient, color="0.70", linewidth=2)
     ax.plot(pulse_time, cycle, color="k", linewidth=2)
+    primary_peak = int(peak_indexes[0])
+    _annotated_vline(ax, pulse_time[primary_peak], f"{pulse_time[primary_peak]:.2f} s")
+    _annotated_vline(ax, period, f"{period:.2f} s")
+    _annotated_hline(ax, cycle[primary_peak], f"{cycle[primary_peak]:.1f} mm/s")
+    _annotated_vline(ax, pulse_time[end_min], f"{pulse_time[end_min]:.2f} s")
+    _annotated_hline(
+        ax,
+        cycle[end_min],
+        f"{cycle[end_min]:.1f} mm/s",
+        color="tab:blue",
+        vertical_alignment="bottom",
+    )
+    if notch_idx is not None:
+        _annotated_vline(ax, pulse_time[notch_idx], f"{pulse_time[notch_idx]:.2f} s")
+        _annotated_hline(ax, cycle[notch_idx], f"{cycle[notch_idx]:.1f} mm/s")
+    if peak_indexes.size > 1:
+        secondary_peak = int(peak_indexes[1])
+        _annotated_vline(
+            ax,
+            pulse_time[secondary_peak],
+            f"{pulse_time[secondary_peak]:.2f} s",
+        )
+        _annotated_hline(
+            ax,
+            cycle[secondary_peak],
+            f"{cycle[secondary_peak]:.1f} mm/s",
+            vertical_alignment="top",
+        )
     ax.scatter(
         pulse_time[peak_indexes],
         cycle[peak_indexes],
@@ -722,6 +777,7 @@ def _arterial_waveform_plot(
     )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Velocity (mm/s)")
+    ax.margins(y=0.18)
     _style_axes(ax)
     return writer.savefig(fig, "ArterialWaveformAnalysis_v_artery.png", dpi=180)
 
@@ -732,10 +788,24 @@ def _venous_waveform_plot(
     cycle: np.ndarray,
 ) -> Path:
     pulse_time = _cycle_time(ctx, cycle)
+    period = _mean_period_seconds(ctx)
     loc_peak = int(np.nanargmax(cycle))
     loc_trough = int(np.nanargmin(cycle))
+    padded_time, padded_signal = _padded_cycle(pulse_time, cycle, period)
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
+    ax.plot(padded_time, padded_signal, color="0.85", linewidth=2)
     ax.plot(pulse_time, cycle, color="k", linewidth=2)
+    _annotated_vline(ax, pulse_time[loc_peak], f"{pulse_time[loc_peak]:.2f} s")
+    _annotated_vline(ax, period, f"{period:.2f} s")
+    _annotated_hline(ax, cycle[loc_peak], f"{cycle[loc_peak]:.1f} mm/s")
+    _annotated_vline(ax, pulse_time[loc_trough], f"{pulse_time[loc_trough]:.2f} s")
+    _annotated_hline(
+        ax,
+        cycle[loc_trough],
+        f"{cycle[loc_trough]:.1f} mm/s",
+        color="tab:blue",
+        vertical_alignment="bottom",
+    )
     ax.scatter(
         [pulse_time[loc_peak]],
         [cycle[loc_peak]],
@@ -752,6 +822,7 @@ def _venous_waveform_plot(
     )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Velocity (mm/s)")
+    ax.margins(y=0.18)
     _style_axes(ax)
     return writer.savefig(fig, "VenousWaveformAnalysis_v_vein.png", dpi=180)
 
@@ -762,6 +833,9 @@ class SpectrumData:
     magnitude: np.ndarray
     phase: np.ndarray
     peak_indexes: np.ndarray
+    fundamental_hz: float
+    heart_rate_bpm: float
+    heart_rate_se_bpm: float
 
 
 def _spectrum(values: np.ndarray, dt_seconds: float) -> SpectrumData:
@@ -773,13 +847,26 @@ def _spectrum(values: np.ndarray, dt_seconds: float) -> SpectrumData:
     freq = np.fft.rfftfreq(padded.size, dt_seconds)
     mag = np.abs(fft) / max(float(np.mean(window)), np.finfo(np.float32).eps)
     mag = mag / max(float(np.nanmax(mag)), np.finfo(np.float32).eps)
-    peaks, _ = signal.find_peaks(mag, distance=max(1, int(0.25 / dt_seconds)))
+    peaks, _ = signal.find_peaks(
+        mag,
+        distance=max(1, int(0.25 / dt_seconds)),
+        prominence=max(float(np.nanmax(mag)) * 0.05, np.finfo(np.float32).eps),
+    )
+    if peaks.size == 0:
+        peaks, _ = signal.find_peaks(
+            mag,
+            distance=max(1, int(0.25 / dt_seconds)),
+        )
     peaks = peaks[np.argsort(freq[peaks])]
+    fundamental, heart_rate, heart_rate_se = _spectral_heart_rate(freq, peaks)
     return SpectrumData(
         freq.astype(np.float32),
         mag.astype(np.float32),
         np.angle(fft).astype(np.float32),
         peaks.astype(np.int32),
+        fundamental,
+        heart_rate,
+        heart_rate_se,
     )
 
 
@@ -800,10 +887,23 @@ def _spectrum_plot(
             s=45,
             edgecolor="k",
         )
+        _annotate_spectral_peaks(ax, spectrum, peaks, phase=False)
     ax.set_xlim(0, 10)
     ax.set_ylim(0, max(1.0, float(np.nanmax(spectrum.magnitude)) * 1.15))
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("Normalized Magnitude")
+    if np.isfinite(spectrum.heart_rate_bpm):
+        ax.text(
+            0.52,
+            0.62,
+            (
+                f"HR : {spectrum.heart_rate_bpm:.1f} BPM "
+                f"+/- {spectrum.heart_rate_se_bpm:.1f}"
+            ),
+            transform=ax.transAxes,
+            fontsize=10,
+            backgroundcolor="w",
+        )
     _style_axes(ax, grid=True)
     return writer.savefig(fig, suffix, dpi=180)
 
@@ -825,12 +925,142 @@ def _phase_spectrum_plot(
             s=45,
             edgecolor="k",
         )
+        _annotate_spectral_peaks(ax, spectrum, peaks, phase=True)
     ax.set_xlim(0, 10)
     ax.set_ylim(-np.pi, np.pi)
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("Phase (rad)")
     _style_axes(ax, grid=True)
     return writer.savefig(fig, suffix, dpi=180)
+
+
+def _dicrotic_notch_index(cycle: np.ndarray, peak_indexes: np.ndarray) -> int | None:
+    if peak_indexes.size < 2:
+        return None
+    first, second = sorted(int(index) for index in peak_indexes[:2])
+    if second <= first:
+        return None
+    notch = first + int(np.nanargmin(cycle[first : second + 1]))
+    return notch if second - notch > cycle.size * 0.05 else None
+
+
+def _padded_cycle(
+    pulse_time: np.ndarray,
+    values: np.ndarray,
+    period_seconds: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    half = values.size // 2
+    if half == 0:
+        return pulse_time, values
+    left_time = np.linspace(-period_seconds / 2.0, 0.0, half, endpoint=False)
+    right_count = values.size - half
+    right_time = np.linspace(
+        period_seconds,
+        period_seconds * 1.5,
+        right_count,
+        endpoint=False,
+    )
+    return (
+        np.concatenate((left_time, pulse_time, right_time)).astype(np.float32),
+        np.concatenate((values[-half:], values, values[:right_count])).astype(np.float32),
+    )
+
+
+def _annotated_vline(ax, x: float, label: str) -> None:
+    ax.axvline(x, color="0.25", linestyle="--", linewidth=1.5, zorder=1)
+    ax.text(
+        x,
+        0.04,
+        label,
+        transform=ax.get_xaxis_transform(),
+        color="0.25",
+        fontsize=9,
+        ha="center",
+        va="bottom",
+        backgroundcolor="w",
+    )
+
+
+def _annotated_hline(
+    ax,
+    y: float,
+    label: str,
+    *,
+    color: str = "0.25",
+    vertical_alignment: str = "top",
+) -> None:
+    ax.axhline(y, color=color, linestyle="--", linewidth=1.5, zorder=1)
+    ax.text(
+        0.98,
+        y,
+        label,
+        transform=ax.get_yaxis_transform(),
+        color="0.25",
+        fontsize=9,
+        ha="right",
+        va=vertical_alignment,
+        backgroundcolor="w",
+    )
+
+
+def _spectral_heart_rate(
+    frequencies: np.ndarray,
+    peak_indexes: np.ndarray,
+) -> tuple[float, float, float]:
+    if peak_indexes.size == 0:
+        return np.nan, np.nan, np.nan
+    fundamental = float(frequencies[peak_indexes[0]])
+    if not np.isfinite(fundamental) or fundamental <= 0:
+        return fundamental, np.nan, np.nan
+    peak_freqs = frequencies[peak_indexes]
+    harmonic_numbers = np.rint(peak_freqs / fundamental)
+    valid = harmonic_numbers > 0
+    if not np.any(valid):
+        return fundamental, np.nan, np.nan
+    numbers = harmonic_numbers[valid]
+    locations = peak_freqs[valid]
+    heart_rate_hz = float(np.dot(numbers, locations) / np.dot(numbers, numbers))
+    residuals = locations - numbers * heart_rate_hz
+    heart_rate_se_hz = float(np.sqrt(np.mean(residuals**2)) / np.sqrt(locations.size))
+    return fundamental, heart_rate_hz * 60.0, heart_rate_se_hz * 60.0
+
+
+def _annotate_spectral_peaks(
+    ax,
+    spectrum: SpectrumData,
+    peak_indexes: np.ndarray,
+    *,
+    phase: bool,
+) -> None:
+    if not np.isfinite(spectrum.fundamental_hz) or spectrum.fundamental_hz <= 0:
+        return
+    y_values = spectrum.phase if phase else spectrum.magnitude
+    y_offset = 0.30 if phase else max(0.06, float(np.nanmax(spectrum.magnitude)) * 0.08)
+    for index in peak_indexes:
+        freq = float(spectrum.frequencies[index])
+        harmonic = int(round(freq / spectrum.fundamental_hz))
+        if not phase:
+            ax.axvline(freq, color="0.5", linestyle="--", linewidth=1.0, zorder=1)
+            ax.text(
+                freq,
+                0.04,
+                f"{harmonic}x",
+                transform=ax.get_xaxis_transform(),
+                color="0.35",
+                fontsize=9,
+                ha="center",
+                va="bottom",
+                backgroundcolor="w",
+            )
+        ax.text(
+            freq,
+            float(y_values[index]) + y_offset,
+            f"{freq:.2f}",
+            fontsize=9,
+            ha="center",
+            va="bottom",
+            backgroundcolor="w",
+        )
 
 
 def _synthetic_spectral_plot(
@@ -881,6 +1111,7 @@ class CorrelationData:
     coherence_freq: np.ndarray
     coherence: np.ndarray
     heart_rate_hz: float
+    gamma_0: float
 
 
 def _correlation_data(artery: np.ndarray, vein: np.ndarray, dt_seconds: float) -> CorrelationData:
@@ -893,13 +1124,22 @@ def _correlation_data(artery: np.ndarray, vein: np.ndarray, dt_seconds: float) -
     max_idx = int(np.nanargmax(cross))
     fs = 1.0 / dt_seconds
     nperseg = min(64, a.size)
-    freqs, coherence = signal.coherence(a, v, fs=fs, nperseg=nperseg)
+    freqs, coherence = signal.coherence(
+        a,
+        v,
+        fs=fs,
+        window=np.hamming(nperseg),
+        nperseg=nperseg,
+        noverlap=None,
+        nfft=max(256, nperseg),
+    )
     spectrum = _spectrum(a, dt_seconds)
     heart_rate = (
         float(spectrum.frequencies[spectrum.peak_indexes[0]])
         if spectrum.peak_indexes.size
         else np.nan
     )
+    gamma_0 = _gamma_0(coherence, freqs, heart_rate)
     return CorrelationData(
         a.astype(np.float32),
         v.astype(np.float32),
@@ -910,6 +1150,7 @@ def _correlation_data(artery: np.ndarray, vein: np.ndarray, dt_seconds: float) -
         freqs.astype(np.float32),
         coherence.astype(np.float32),
         heart_rate,
+        gamma_0,
     )
 
 
@@ -918,11 +1159,39 @@ def _msc_plot(writer: FigureWriter, corr: CorrelationData) -> Path:
     ax.plot(corr.coherence_freq, corr.coherence, color="k", linewidth=2)
     if np.isfinite(corr.heart_rate_hz):
         ax.axvline(corr.heart_rate_hz, color="k", linestyle="--", linewidth=1.5)
+        ax.text(
+            corr.heart_rate_hz,
+            0.04,
+            f"{corr.heart_rate_hz:.2f} Hz",
+            transform=ax.get_xaxis_transform(),
+            fontsize=9,
+            ha="center",
+            va="bottom",
+            backgroundcolor="w",
+        )
+    if np.isfinite(corr.gamma_0):
+        ax.text(
+            0.62,
+            0.62,
+            rf"$\Gamma_0 = {corr.gamma_0:.2f}$",
+            transform=ax.transAxes,
+            fontsize=12,
+            backgroundcolor="w",
+        )
     ax.set_xlim(0, 10)
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("Magnitude-squared coherence")
     _style_axes(ax)
     return writer.savefig(fig, "arterial_venous_msc.png")
+
+
+def _gamma_0(coherence: np.ndarray, frequencies: np.ndarray, heart_rate_hz: float) -> float:
+    if not np.isfinite(heart_rate_hz):
+        return np.nan
+    valid = (frequencies < heart_rate_hz + 0.3) & (frequencies > heart_rate_hz - 0.3)
+    if not np.any(valid):
+        return np.nan
+    return float(np.nanmean(coherence[valid]))
 
 
 def _correlation_panel_plot(writer: FigureWriter, time: np.ndarray, corr: CorrelationData) -> Path:
@@ -1047,14 +1316,26 @@ def _histogram_plot(
     velocity_map: np.ndarray | None,
     mask: np.ndarray,
     suffix: str,
-    cmap: str,
+    vessel: str,
 ) -> Path:
     if velocity_map is None:
-        velocity_map = np.asarray(ctx.analysis["velocity_map_avg"], dtype=np.float32)[None, :, :]
+        velocity_map = _display_velocity(
+            np.asarray(ctx.analysis["velocity_map_avg"], dtype=np.float32)
+        )[None, :, :]
     histo = _histogram_matrix(velocity_map, mask)
     fig, ax = _plt().subplots(figsize=(6.0, 2.75))
     extent = [0, velocity_map.shape[0] * ctx.dt_seconds, histo.vmin, histo.vmax]
-    ax.imshow(histo.counts, aspect="auto", origin="lower", extent=extent, cmap=cmap)
+    ax.imshow(
+        histo.counts,
+        aspect="auto",
+        origin="lower",
+        extent=extent,
+        cmap=_vessel_histogram_colormap(vessel),
+        interpolation="nearest",
+        vmin=0,
+        vmax=histo.count_max,
+    )
+    ax.set_facecolor("black")
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Velocity (mm/s)")
     _style_axes(ax)
@@ -1066,6 +1347,7 @@ class HistogramData:
     counts: np.ndarray
     vmin: float
     vmax: float
+    count_max: float
 
 
 def _histogram_matrix(velocity_map: np.ndarray, mask: np.ndarray, bins: int = 256) -> HistogramData:
@@ -1073,7 +1355,12 @@ def _histogram_matrix(velocity_map: np.ndarray, mask: np.ndarray, bins: int = 25
     selected = data[:, mask]
     selected = selected[np.isfinite(selected)]
     if selected.size == 0:
-        return HistogramData(np.zeros((bins, data.shape[0]), dtype=np.float32), 0.0, 1.0)
+        return HistogramData(
+            np.zeros((bins, data.shape[0]), dtype=np.float32),
+            0.0,
+            1.0,
+            1.0,
+        )
     vmin = float(np.nanmin(selected))
     vmax = float(np.nanmax(selected))
     if vmax <= vmin:
@@ -1082,7 +1369,43 @@ def _histogram_matrix(velocity_map: np.ndarray, mask: np.ndarray, bins: int = 25
     edges = np.linspace(vmin, vmax, bins + 1, dtype=np.float32)
     for frame_idx, frame in enumerate(data):
         counts[:, frame_idx] = np.histogram(frame[mask], bins=edges)[0]
-    return HistogramData(counts, vmin, vmax)
+    count_max = float(np.nanmax(counts))
+    return HistogramData(counts, vmin, vmax, count_max if count_max > 0 else 1.0)
+
+
+def _vessel_histogram_colormap(vessel: str):
+    if vessel == "vein":
+        stops = (
+            ([0.0, 0.0, 0.0], 0.0),
+            ([0.0, 0.0, 1.0], 1.0 / 3.0),
+            ([0.0, 1.0, 1.0], 2.0 / 3.0),
+            ([1.0, 1.0, 1.0], 1.0),
+        )
+    else:
+        stops = (
+            ([0.0, 0.0, 0.0], 0.0),
+            ([1.0, 0.0, 0.0], 1.0 / 3.0),
+            ([1.0, 1.0, 0.0], 2.0 / 3.0),
+            ([1.0, 1.0, 1.0], 1.0),
+        )
+    return _matplotlib().colors.ListedColormap(_cmap_lab(256, stops))
+
+
+def _cmap_lab(n: int, stops) -> np.ndarray:
+    from skimage.color import lab2rgb, rgb2lab
+
+    lab = np.zeros((n, 3), dtype=np.float32)
+    for (rgb1, pos1), (rgb2, pos2) in zip(stops[:-1], stops[1:]):
+        first = int(round(n * pos1))
+        last = max(first, int(round(n * pos2)) - 1)
+        lab1 = rgb2lab(np.asarray(rgb1, dtype=np.float32).reshape(1, 1, 3))[0, 0]
+        lab2 = rgb2lab(np.asarray(rgb2, dtype=np.float32).reshape(1, 1, 3))[0, 0]
+        x = np.linspace(0.0, 1.0, last - first + 1, dtype=np.float32)
+        lab[first : last + 1] = lab1 + (lab2 - lab1) * x[:, None]
+    cmap = lab2rgb(lab.reshape(n, 1, 3)).reshape(n, 3)
+    cmap = np.clip(cmap, 0.0, 1.0)
+    cmap[~np.isfinite(cmap)] = 0.0
+    return cmap.astype(np.float32)
 
 
 def _combined_plot(
@@ -1095,21 +1418,31 @@ def _combined_plot(
     axes[0, 0].imshow(flow_rgb)
     axes[0, 0].axis("off")
     axes[1, 0].axis("off")
-    for ax, mask, title, cmap in (
-        (axes[0, 1], ctx.artery_section_mask, "Artery", "Reds"),
-        (axes[1, 1], ctx.vein_section_mask, "Vein", "Blues"),
+    for ax, mask, title, vessel in (
+        (axes[0, 1], ctx.artery_section_mask, "Artery", "artery"),
+        (axes[1, 1], ctx.vein_section_mask, "Vein", "vein"),
     ):
         histogram_source = (
             velocity_map
             if velocity_map is not None
-            else np.asarray(ctx.analysis["velocity_map_avg"])[None, :, :]
+            else _display_velocity(np.asarray(ctx.analysis["velocity_map_avg"]))[None, :, :]
         )
         histo = _histogram_matrix(
             histogram_source,
             mask,
         )
         extent = [0, histo.counts.shape[1] * ctx.dt_seconds, histo.vmin, histo.vmax]
-        ax.imshow(histo.counts, aspect="auto", origin="lower", extent=extent, cmap=cmap)
+        ax.imshow(
+            histo.counts,
+            aspect="auto",
+            origin="lower",
+            extent=extent,
+            cmap=_vessel_histogram_colormap(vessel),
+            interpolation="nearest",
+            vmin=0,
+            vmax=histo.count_max,
+        )
+        ax.set_facecolor("black")
         ax.set_title(title)
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Velocity (mm/s)")
@@ -1232,6 +1565,14 @@ def _vector(values) -> np.ndarray:
     if values is None:
         return np.asarray([], dtype=np.float32)
     return np.asarray(values, dtype=np.float32).reshape(-1)
+
+
+def _display_frequency(values) -> np.ndarray:
+    return np.asarray(values, dtype=np.float32) * FREQUENCY_DISPLAY_SCALE
+
+
+def _display_velocity(values) -> np.ndarray:
+    return np.asarray(values, dtype=np.float32) * VELOCITY_DISPLAY_SCALE
 
 
 def _array_or_none(values) -> np.ndarray | None:

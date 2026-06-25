@@ -15,9 +15,17 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from input_output.output_manager import OutputType  # noqa: E402
+from input_output.writers.png import write_png_file  # noqa: E402
 from pipelines.waveform_shape_metrics.velocity.figures import (  # noqa: E402
     PULSE_PNG_SUFFIXES,
     export_pulse_pngs,
+)
+from pipelines.waveform_shape_metrics.velocity.figures.pulse_pngs import (  # noqa: E402
+    _correlation_data,
+    _display_frequency,
+    _display_velocity,
+    _histogram_matrix,
+    _vessel_histogram_colormap,
 )
 
 
@@ -31,6 +39,9 @@ class FakeOutput:
     def path_for(self, output_type: OutputType, filename: str | None = None) -> Path:
         assert output_type is OutputType.PNG
         return self.root / "png" / (filename or "sample")
+
+    def write_png(self, output, filename: str | None = None) -> Path:
+        return write_png_file(self.path_for(OutputType.PNG, filename), output)
 
 
 def _has_matplotlib() -> bool:
@@ -47,6 +58,53 @@ class PulsePngExporterTests(unittest.TestCase):
         self.assertIn("find_systoles_indices_artery.png", PULSE_PNG_SUFFIXES)
         self.assertIn("ArterialSpectralAnalysis_v_artery.png", PULSE_PNG_SUFFIXES)
         self.assertIn("AVGflowVideoCombined.png", PULSE_PNG_SUFFIXES)
+
+    @unittest.skipUnless(_has_matplotlib(), "matplotlib is not installed")
+    def test_histogram_colormap_matches_matlab_vessel_ramp(self) -> None:
+        artery_cmap = _vessel_histogram_colormap("artery")(np.linspace(0.0, 1.0, 4))
+        vein_cmap = _vessel_histogram_colormap("vein")(np.linspace(0.0, 1.0, 4))
+
+        np.testing.assert_allclose(artery_cmap[0, :3], [0.0, 0.0, 0.0], atol=1e-6)
+        self.assertGreater(artery_cmap[1, 0], artery_cmap[1, 1])
+        self.assertGreater(artery_cmap[2, 0], 0.8)
+        self.assertGreater(artery_cmap[2, 1], 0.8)
+        np.testing.assert_allclose(vein_cmap[0, :3], [0.0, 0.0, 0.0], atol=1e-6)
+        self.assertGreater(vein_cmap[1, 2], vein_cmap[1, 0])
+
+    def test_histogram_matrix_counts_masked_pixels_per_frame(self) -> None:
+        velocity = np.asarray(
+            [
+                [[0.0, 10.0], [20.0, 30.0]],
+                [[0.0, 10.0], [10.0, 30.0]],
+            ],
+            dtype=np.float32,
+        )
+        mask = np.asarray([[False, True], [True, False]])
+
+        histo = _histogram_matrix(velocity, mask, bins=2)
+
+        self.assertEqual((2, 2), histo.counts.shape)
+        np.testing.assert_array_equal(histo.counts[:, 0], [1, 1])
+        np.testing.assert_array_equal(histo.counts[:, 1], [2, 0])
+        self.assertEqual(2.0, histo.count_max)
+
+    def test_correlation_data_uses_matlab_style_msc_settings(self) -> None:
+        time = np.arange(96, dtype=np.float32) * 0.05
+        artery = np.sin(2 * np.pi * 1.0 * time).astype(np.float32)
+        vein = np.sin(2 * np.pi * 1.0 * time + 0.35).astype(np.float32)
+
+        corr = _correlation_data(artery, vein, 0.05)
+
+        self.assertEqual(129, corr.coherence_freq.size)
+        self.assertTrue(np.isfinite(corr.gamma_0))
+        self.assertGreaterEqual(corr.gamma_0, 0.0)
+        self.assertLessEqual(corr.gamma_0, 1.0)
+
+    def test_display_unit_scaling_matches_png_labels(self) -> None:
+        raw = np.asarray([0.0, 1000.0, 6000.0], dtype=np.float32)
+
+        np.testing.assert_allclose(_display_frequency(raw), [0.0, 1.0, 6.0])
+        np.testing.assert_allclose(_display_velocity(raw), [0.0, 1.0, 6.0])
 
     @unittest.skipUnless(_has_matplotlib(), "matplotlib is not installed")
     def test_export_pulse_pngs_writes_non_empty_pngs(self) -> None:
