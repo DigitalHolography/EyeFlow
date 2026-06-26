@@ -142,14 +142,7 @@ def _velocity_gradient_values(
     section_mask: np.ndarray,
     velocity_map: np.ndarray | None = None,
 ) -> np.ndarray:
-    if velocity_map is not None:
-        velocity = np.abs(np.asarray(velocity_map, dtype=np.float32))
-        section_values = velocity[:, section_mask]
-        finite = np.isfinite(section_values)
-        if np.any(finite):
-            vmax = float(np.nanmax(section_values[finite]))
-            if vmax > 0.0:
-                return np.clip(np.nanmean(velocity / vmax, axis=0), 0.0, 1.0)
+    del velocity_map
     velocity = np.abs(np.asarray(velocity_avg, dtype=np.float32))
     section_values = velocity[section_mask]
     finite = np.isfinite(section_values)

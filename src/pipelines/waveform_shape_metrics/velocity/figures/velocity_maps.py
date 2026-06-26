@@ -143,13 +143,7 @@ def _velocity_colorbar_vmax(
     section_mask: np.ndarray,
     velocity_map: np.ndarray | None,
 ) -> float:
-    if velocity_map is not None:
-        section_values = np.asarray(velocity_map, dtype=np.float32)[:, section_mask]
-        finite = np.isfinite(section_values)
-        if np.any(finite):
-            vmax = float(np.nanmax(np.abs(section_values[finite])))
-            if vmax > 0.0:
-                return vmax
+    del velocity_map
     section_values = np.asarray(velocity_avg, dtype=np.float32)[section_mask]
     finite = np.isfinite(section_values)
     if not np.any(finite):

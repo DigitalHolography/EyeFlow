@@ -38,7 +38,11 @@ from pipelines.waveform_shape_metrics.velocity.figures import (  # noqa: E402
     PULSE_PNG_SUFFIXES,
     export_pulse_pngs,
 )
+from pipelines.waveform_shape_metrics.velocity.figures.plotting import (  # noqa: E402
+    _velocity_gradient_values,
+)
 from pipelines.waveform_shape_metrics.velocity.figures.velocity_maps import (  # noqa: E402
+    _velocity_colorbar_vmax,
     _vessel_histogram_colormap,
 )
 
@@ -184,6 +188,23 @@ class PulsePngExporterTests(unittest.TestCase):
         mask = np.asarray([[True, False], [False, True]])
 
         np.testing.assert_allclose(masked_video_signal(video, mask), [4.0, 5.0])
+
+    def test_velocity_gradient_uses_averaged_map_not_3d_peak(self) -> None:
+        velocity_map = np.asarray(
+            [
+                [[0.0, 50.0, 70.0]],
+                [[0.0, 50.0, 70.0]],
+                [[90.0, 50.0, 70.0]],
+            ],
+            dtype=np.float32,
+        )
+        velocity_avg = np.mean(velocity_map, axis=0)
+        section_mask = np.ones_like(velocity_avg, dtype=bool)
+
+        values = _velocity_gradient_values(velocity_avg, section_mask, velocity_map)
+
+        np.testing.assert_allclose(values, [[30.0 / 70.0, 50.0 / 70.0, 1.0]])
+        self.assertEqual(70.0, _velocity_colorbar_vmax(velocity_avg, section_mask, velocity_map))
 
     @unittest.skipUnless(_has_matplotlib(), "matplotlib is not installed")
     def test_export_pulse_pngs_writes_non_empty_pngs(self) -> None:
