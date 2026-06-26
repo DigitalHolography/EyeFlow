@@ -8,7 +8,7 @@ import numpy as np
 
 
 FREQUENCY_DISPLAY_SCALE = np.float32(1.0 / 1000.0)
-VELOCITY_DISPLAY_SCALE = np.float32(1.0 / 1000.0)
+VELOCITY_DISPLAY_SCALE = np.float32(1.0)
 
 
 @dataclass(frozen=True)

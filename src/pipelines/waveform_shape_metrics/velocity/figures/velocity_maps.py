@@ -157,13 +157,21 @@ def _combined_plot(
     flow_rgb: np.ndarray,
     velocity_map: np.ndarray | None,
 ) -> Path:
-    fig, axes = _plt().subplots(2, 2, figsize=(8.0, 5.5))
-    axes[0, 0].imshow(flow_rgb)
-    axes[0, 0].axis("off")
-    axes[1, 0].axis("off")
-    for ax, mask, title, vessel in (
-        (axes[0, 1], ctx.artery_section_mask, "Artery", "artery"),
-        (axes[1, 1], ctx.vein_section_mask, "Vein", "vein"),
+    fig = _plt().figure(figsize=(8.8, 5.5), constrained_layout=True)
+    grid = fig.add_gridspec(
+        2,
+        2,
+        width_ratios=(1.25, 1.0),
+        height_ratios=(1.0, 1.0),
+        hspace=0.18,
+    )
+    map_ax = fig.add_subplot(grid[:, 0])
+    hist_axes = (fig.add_subplot(grid[0, 1]), fig.add_subplot(grid[1, 1]))
+    map_ax.imshow(flow_rgb)
+    map_ax.axis("off")
+    for ax, mask, title, vessel, xlabel in (
+        (hist_axes[0], ctx.artery_section_mask, "Artery", "artery", ""),
+        (hist_axes[1], ctx.vein_section_mask, "Vein", "vein", "Time (s)"),
     ):
         histogram_source = (
             velocity_map
@@ -186,9 +194,9 @@ def _combined_plot(
             vmax=histo.count_max,
         )
         ax.set_facecolor("black")
-        ax.set_title(title)
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Velocity (mm/s)")
+        ax.set_title(title, pad=3)
+        ax.set_xlabel(xlabel, labelpad=2)
+        ax.set_ylabel("Velocity (mm/s)", labelpad=2)
         _style_axes(ax)
     return writer.savefig(fig, "AVGflowVideoCombined.png", dpi=150)
 

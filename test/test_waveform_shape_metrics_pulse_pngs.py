@@ -34,6 +34,9 @@ from calculations.blood_flow_velocity.signal_analysis.waveform import (  # noqa:
 )
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.writers.png import write_png_file  # noqa: E402
+from calculations.dopplerview_analysis.vessel_velocity_estimator import (  # noqa: E402
+    _masked_signal as _velocity_masked_signal,
+)
 from pipelines.waveform_shape_metrics.velocity.figures import (  # noqa: E402
     PULSE_PNG_SUFFIXES,
     export_pulse_pngs,
@@ -124,7 +127,7 @@ class PulsePngExporterTests(unittest.TestCase):
         raw = np.asarray([0.0, 1000.0, 6000.0], dtype=np.float32)
 
         np.testing.assert_allclose(display_frequency(raw), [0.0, 1.0, 6.0])
-        np.testing.assert_allclose(display_velocity(raw), [0.0, 1.0, 6.0])
+        np.testing.assert_allclose(display_velocity(raw), raw)
 
     def test_average_cycle_and_extrema_are_generic_signal_helpers(self) -> None:
         values = np.asarray([0.0, 2.0, 1.0, -1.0, 0.0, 3.0, 1.0, -2.0], dtype=np.float32)
@@ -188,6 +191,18 @@ class PulsePngExporterTests(unittest.TestCase):
         mask = np.asarray([[True, False], [False, True]])
 
         np.testing.assert_allclose(masked_video_signal(video, mask), [4.0, 5.0])
+
+    def test_velocity_masked_signal_ignores_nans_outside_and_inside_mask(self) -> None:
+        velocity = np.asarray(
+            [
+                [[np.nan, 1.0], [3.0, np.nan]],
+                [[np.nan, np.nan], [5.0, np.nan]],
+            ],
+            dtype=np.float32,
+        )
+        mask = np.asarray([[False, True], [True, False]])
+
+        np.testing.assert_allclose(_velocity_masked_signal(velocity, mask), [2.0, 5.0])
 
     def test_velocity_gradient_uses_averaged_map_not_3d_peak(self) -> None:
         velocity_map = np.asarray(
