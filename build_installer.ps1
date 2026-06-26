@@ -25,6 +25,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $false
 
 $RepoRoot = $PSScriptRoot
 $PyprojectPath = Join-Path $RepoRoot "pyproject.toml"
