@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from calculations.blood_flow_velocity.context_builders.signal import find_systole_index
+from calculations.math import butter_lowpass_filtfilt
 
 
 class ArterialWaveformAnalysisStep:
@@ -51,11 +52,26 @@ class ArterialWaveformAnalysisStep:
         )
         peaks = detection.systole_indexes
         sig_filtered = detection.artery_signal_filtered
+        vein_sig = np.asarray(ctx.require("retinal_vein_velocity_signal"), dtype=np.float32)
+        vein_filtered = butter_lowpass_filtfilt(
+            vein_sig,
+            dt_seconds=dt,
+            lowpass_freq_hz=np.float32(
+                ctx.dv_config_value("PulseAnalysis", "LowpassFreqHz", 15.0)
+            ),
+            order=4,
+        )
 
         sig_perbeat = self.slice_interp_beats(peaks, sig_filtered)
 
         ctx.set("retinal_artery_velocity_signal_filtered_perbeat", sig_perbeat)
         ctx.set("retinal_artery_velocity_signal_filtered", sig_filtered)
+        ctx.set("retinal_artery_velocity_signal_derivative", detection.derivative_signal)
+        ctx.set("retinal_vein_velocity_signal_filtered", vein_filtered)
+        ctx.set(
+            "retinal_vein_velocity_signal_derivative",
+            np.gradient(vein_filtered).astype(np.float32),
+        )
         ctx.set("beat_indices", peaks)
         ctx.set(
             "time_per_beat",

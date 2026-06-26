@@ -92,7 +92,9 @@ class PipelineLibraryController:
             child.destroy()
         self.app.pipeline_visibility_vars = {}
         self.app.pipeline_row_widgets = {}
-        self.app.pipeline_library_inner.columnconfigure(0, weight=1)
+        self.app.pipeline_library_inner.columnconfigure(0, weight=0)
+        self.app.pipeline_library_inner.columnconfigure(1, weight=1)
+        self.app.pipeline_library_inner.columnconfigure(2, weight=0)
         self._build_header()
 
         for idx, pipeline in enumerate(rows, start=1):
@@ -131,6 +133,9 @@ class PipelineLibraryController:
         if self.app.pipeline_visibility.get(name) == visible:
             return
         self.app.pipeline_visibility[name] = visible
+        var = self.app.pipeline_visibility_vars.get(name)
+        if var is not None and var.get() != visible:
+            var.set(visible)
         self.persist_visibility()
         self.update_summary()
 
@@ -192,12 +197,13 @@ class PipelineLibraryController:
 
     def _build_library_container(self, parent: ttk.Frame) -> None:
         library_container = ttk.Frame(parent)
-        library_container.grid(row=2, column=0, sticky="nsew")
+        library_container.grid(row=2, column=0, sticky="nsew", padx=(10, 10))
         library_container.columnconfigure(0, weight=1)
         library_container.rowconfigure(0, weight=1)
 
+        library_bg = self.app._style.lookup("TFrame", "background") or self.app._bg_color
         self.app.pipeline_library_canvas = tk.Canvas(
-            library_container, highlightthickness=0, bg=self.app._bg_color
+            library_container, highlightthickness=0, bg=library_bg
         )
         self.app.pipeline_library_canvas.grid(row=0, column=0, sticky="nsew")
         library_scroll = ttk.Scrollbar(
@@ -205,7 +211,9 @@ class PipelineLibraryController:
             orient="vertical",
             command=self.app.pipeline_library_canvas.yview,
         )
-        library_scroll.grid(row=0, column=1, sticky="ns")
+        library_padding = tk.Frame(library_container, width=10, bg=library_bg)
+        library_padding.grid(row=0, column=1, sticky="ns")
+        library_scroll.grid(row=0, column=2, sticky="ns")
         self.app.pipeline_library_canvas.configure(yscrollcommand=library_scroll.set)
         self.app.pipeline_library_inner = ttk.Frame(self.app.pipeline_library_canvas)
         self.app.pipeline_library_window = (
@@ -241,7 +249,7 @@ class PipelineLibraryController:
         order_header = ttk.Label(self.app.pipeline_library_inner, text="Pipeline")
         order_header.grid(row=0, column=1, sticky="w", padx=(12, 0), pady=(0, 6))
         status_header = ttk.Label(self.app.pipeline_library_inner, text="Status")
-        status_header.grid(row=0, column=2, sticky="w", padx=(12, 0), pady=(0, 6))
+        status_header.grid(row=0, column=2, sticky="e", padx=(12, 0), pady=(0, 6))
         for widget in (selected_header, order_header, status_header):
             self.bind_vertical_mousewheel(widget, self.app.pipeline_library_canvas)
 
@@ -251,12 +259,8 @@ class PipelineLibraryController:
             value=self.app.pipeline_visibility.get(pipeline.name, False)
             and is_available
         )
-        row_frame = ttk.Frame(self.app.pipeline_library_inner)
-        row_frame.grid(row=idx, column=0, columnspan=3, sticky="ew", pady=(0, 6))
-        row_frame.columnconfigure(1, weight=1)
-
         check = ttk.Checkbutton(
-            row_frame,
+            self.app.pipeline_library_inner,
             text="",
             variable=var,
             state="normal" if is_available else "disabled",
@@ -264,19 +268,45 @@ class PipelineLibraryController:
                 self.set_visibility(name, visible_var.get())
             ),
         )
-        check.grid(row=0, column=0, sticky="w")
-        name_label = ttk.Label(row_frame, text=pipeline.name)
-        name_label.grid(row=0, column=1, sticky="w", padx=(12, 0))
-        status = ttk.Label(row_frame, text=pipeline_status_text(pipeline))
-        status.grid(row=0, column=2, sticky="w", padx=(12, 0))
-        self._bind_row_widgets(row_frame, check, name_label, status)
+        check.grid(row=idx, column=0, sticky="w", pady=(0, 6))
+        name_label = ttk.Label(self.app.pipeline_library_inner, text=pipeline.name)
+        name_label.grid(row=idx, column=1, sticky="w", padx=(12, 0), pady=(0, 6))
+        status = ttk.Label(
+            self.app.pipeline_library_inner,
+            text=pipeline_status_text(pipeline),
+        )
+        status.grid(row=idx, column=2, sticky="e", padx=(12, 0), pady=(0, 6))
+        self._bind_row_widgets(check, name_label, status)
+        self._bind_pipeline_row_toggle(
+            pipeline.name,
+            var,
+            name_label,
+            status,
+        )
         self._add_tooltips(pipeline, check, name_label, status)
-        self.app.pipeline_row_widgets[pipeline.name] = row_frame
+        self.app.pipeline_row_widgets[pipeline.name] = name_label
         self.app.pipeline_visibility_vars[pipeline.name] = var
 
     def _bind_row_widgets(self, *widgets: tk.Misc) -> None:
         for widget in widgets:
             self.bind_vertical_mousewheel(widget, self.app.pipeline_library_canvas)
+
+    def _bind_pipeline_row_toggle(
+        self,
+        name: str,
+        var: tk.BooleanVar,
+        *widgets: tk.Misc,
+    ) -> None:
+        def toggle(_event: tk.Event) -> str:
+            pipeline = self.app.pipeline_catalog.get(name)
+            if pipeline is not None and not pipeline.available:
+                return "break"
+            var.set(not var.get())
+            self.set_visibility(name, var.get())
+            return "break"
+
+        for widget in widgets:
+            widget.bind("<Button-1>", toggle, add="+")
 
     def _add_tooltips(
         self,
