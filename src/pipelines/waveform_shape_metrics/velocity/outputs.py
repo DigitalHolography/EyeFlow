@@ -1,6 +1,6 @@
-"""Output packing for the waveform-shape metrics pipeline."""
+"""Output packing for per-beat velocity calculations."""
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 
 import numpy as np
 
@@ -14,12 +14,12 @@ def pack_velocity_per_beat_outputs(
 ) -> dict[str, object]:
     schema = _resolve_output_paths(output_paths)
     metrics = {
-        schema.beat_period_idx: _metric_value(
+        schema.beat_period_idx: metric_value(
             _matlab_row_vector(result.beat_period_idx),
             unit="frame",
             dim_desc=("row", "beat"),
         ),
-        schema.beat_period_seconds: _metric_value(
+        schema.beat_period_seconds: metric_value(
             _matlab_row_vector(result.beat_period_seconds),
             unit="s",
             dim_desc=("row", "beat"),
@@ -30,75 +30,28 @@ def pack_velocity_per_beat_outputs(
     return metrics
 
 
-def pack_dopplerview_analysis_outputs(
-    analysis: Mapping[str, object],
-    output_paths: EyeFlowOutputPaths | str | None = None,
-) -> dict[str, object]:
-    paths = _resolve_output_paths(output_paths).analysis
-    metrics = {
-        paths.retinal_artery_velocity_signal: _metric_value(
-            analysis["retinal_artery_velocity_signal"],
-            unit="mm/s",
-        ),
-        paths.retinal_vein_velocity_signal: _metric_value(
-            analysis["retinal_vein_velocity_signal"],
-            unit="mm/s",
-        ),
-        paths.velocity_map_avg: _metric_value(analysis["velocity_map_avg"]),
-        paths.fRMS_avg: _metric_value(analysis["fRMS_avg"]),
-        paths.fRMS_bkg_avg: _metric_value(analysis["fRMS_bkg_avg"]),
-        paths.velocitysignal_per_beat: _metric_value(
-            analysis["retinal_artery_velocity_signal_filtered_perbeat"],
-            unit="mm/s",
-        ),
-        paths.velocitysignal_filtered: _metric_value(
-            analysis["retinal_artery_velocity_signal_filtered"],
-            unit="mm/s",
-        ),
-        paths.beat_indices: _metric_value(analysis["beat_indices"]),
-        paths.time_per_beat: _metric_value(
-            analysis["time_per_beat"],
-            unit="s",
-        ),
-    }
-    if paths.retinal_velocity_array is not None:
-        metrics[paths.retinal_velocity_array] = _metric_value(
-            analysis["retinal_vessel_velocity"],
-            unit="mm/s",
-        )
-    return metrics
-
-
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)
-
-
 def _pack_vessel_outputs(
     paths: VelocityPerBeatOutputPaths,
     vessel,
 ) -> dict[str, object]:
     signal = vessel.signal
     metrics = {
-        paths.velocity_signal: _metric_value(
+        paths.velocity_signal: metric_value(
             signal.velocity_signal_per_beat,
             unit="mm/s",
             dim_desc=("beat", "sample"),
         ),
-        paths.velocity_signal_fft_abs: _metric_value(
+        paths.velocity_signal_fft_abs: metric_value(
             np.abs(signal.velocity_signal_per_beat_fft),
             unit="a.u.",
             dim_desc=("beat", "frequency_bin"),
         ),
-        paths.velocity_signal_fft_arg: _metric_value(
+        paths.velocity_signal_fft_arg: metric_value(
             np.angle(signal.velocity_signal_per_beat_fft),
             unit="rad",
             dim_desc=("beat", "frequency_bin"),
         ),
-        paths.velocity_signal_band_limited: _metric_value(
+        paths.velocity_signal_band_limited: metric_value(
             signal.velocity_signal_per_beat_band_limited,
             unit="mm/s",
             dim_desc=("beat", "sample"),
@@ -130,20 +83,32 @@ def _pack_vessel_segment_outputs(
 
 
 def _segment_metric_value(data, *, unit: str):
-    value = _metric_data(data)
+    value = metric_data(data)
     if value.ndim != 4:
         raise ValueError(
             "segment per-beat outputs must have shape "
             "(sample, beat, branch, radius)."
         )
-    return _metric_value(
+    return metric_value(
         value,
         unit=unit,
         dim_desc=("sample", "beat", "branch", "radius"),
     )
 
 
-def _metric_value(
+def _matlab_row_vector(data) -> np.ndarray:
+    return np.asarray(data).reshape(1, -1)
+
+
+def _resolve_output_paths(
+    output_paths: EyeFlowOutputPaths | str | None,
+) -> EyeFlowOutputPaths:
+    if isinstance(output_paths, EyeFlowOutputPaths):
+        return output_paths
+    return EyeFlowOutputPaths.active(output_paths)
+
+
+def metric_value(
     data,
     *,
     unit: str | None = None,
@@ -154,15 +119,11 @@ def _metric_value(
         attrs["unit"] = unit
     if dim_desc:
         attrs["dimDesc"] = list(dim_desc)
-    data = _metric_data(data)
+    data = metric_data(data)
     return (data, attrs) if attrs else data
 
 
-def _matlab_row_vector(data) -> np.ndarray:
-    return np.asarray(data).reshape(1, -1)
-
-
-def _metric_data(data):
+def metric_data(data):
     if isinstance(data, bool):
         return data
     if isinstance(data, float):

@@ -13,8 +13,10 @@ class OutputType(Enum):
     H5 = "h5"
     PNG = "png"
     JSON = "json"
+    HTML = "html"
     MP4 = "mp4"
     AVI = "avi"
+    PDF = "pdf"
 
 
 @dataclass(frozen=True)

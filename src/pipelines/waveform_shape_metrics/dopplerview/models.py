@@ -1,15 +1,6 @@
-"""Runtime containers for the waveform-shape metrics pipeline."""
+"""Runtime containers for in-memory DopplerView reconstruction."""
 
 from dataclasses import dataclass
-
-from calculations.blood_flow_velocity import PerBeatAnalysisInput
-
-
-@dataclass(frozen=True)
-class WaveformShapeMetricsContext:
-    per_beat_analysis: PerBeatAnalysisInput
-    dopplerview_analysis: dict[str, object]
-    attrs: dict[str, object]
 
 
 @dataclass

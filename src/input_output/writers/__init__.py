@@ -8,9 +8,10 @@ from .h5 import (
     write_value_dataset,
 )
 from .json import write_json_file
-from .png import write_png_file
+from .png import PngArtifactWriter, write_png_file
 
 __all__ = [
+    "PngArtifactWriter",
     "initialize_output_h5",
     "open_h5",
     "resolve_dataset_target",

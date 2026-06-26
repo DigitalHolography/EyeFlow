@@ -51,6 +51,7 @@ pipelines.txt
 eyeflow_matlab/
 DAG/
 .venv/
+.tmp/
 .tmp_smoke/
 __pycache__/
 *.py[cod]

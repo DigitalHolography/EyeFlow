@@ -1,11 +1,11 @@
 """Orchestrate the waveform-shape metrics sandbox pipeline."""
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from calculations.blood_flow_velocity import (
     PerBeatAnalysisInput,
     SegmentRingSettings,
-    run_per_beat_analysis,
     segment_velocity_results,
 )
 from calculations.blood_flow_velocity.context_builders.segments.segment_geometry import (
@@ -18,18 +18,30 @@ from pipeline_engine.imports import (
     read_int_setting,
 )
 
-from .constants import (
-    LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
+from .dopplerview.constants import (
     LEGACY_FILTER_VELOCITY_SIGNALS,
-    LEGACY_SEGMENT_INNER_RADIUS_FRAC,
-    LEGACY_SEGMENT_RING_COUNT,
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
-from .dopplerview import run_dopplerview_analysis
-from .branch_identity_debug import export_branch_identity_stage_pngs
-from .models import WaveformShapeMetricsContext
-from .outputs import pack_dopplerview_analysis_outputs, pack_velocity_per_beat_outputs
+from .velocity.constants import (
+    LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
+    LEGACY_SEGMENT_INNER_RADIUS_FRAC,
+    LEGACY_SEGMENT_RING_COUNT,
+)
+from .dopplerview.outputs import pack_dopplerview_analysis_outputs
+from .dopplerview.runner import run_dopplerview_analysis
+from .metrics.runner import run_waveform_shape_metric_calculations
 from .sources import WaveformShapeSourceData, WaveformShapeSources
+from .velocity.branch_identity_debug import export_branch_identity_stage_pngs
+from .velocity.figures import export_pulse_pngs
+from .velocity.runner import run_velocity_per_beat_metrics
+
+
+@dataclass(frozen=True)
+class WaveformShapeMetricsContext:
+    source_data: WaveformShapeSourceData
+    per_beat_analysis: PerBeatAnalysisInput
+    dopplerview_analysis: dict[str, object]
+    attrs: dict[str, object]
 
 
 def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object]]:
@@ -41,10 +53,16 @@ def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object
     ctx.state.set("dopplerview_analysis", context.dopplerview_analysis)
 
     _log(ctx, "Starting per-beat analysis...")
-    per_beat_result = run_per_beat_analysis(context.per_beat_analysis)
+    per_beat_result, velocity_metrics = run_velocity_per_beat_metrics(context)
     metrics = pack_dopplerview_analysis_outputs(context.dopplerview_analysis)
-    metrics.update(pack_velocity_per_beat_outputs(per_beat_result))
+    metrics.update(velocity_metrics)
     ctx.state.set("velocity_per_beat_result", per_beat_result)
+    _export_pulse_pngs(ctx, context, per_beat_result)
+
+    _log(ctx, "Starting waveform-shape metric calculation...")
+    shape_metrics = run_waveform_shape_metric_calculations(metrics)
+    metrics.update(shape_metrics)
+    ctx.state.set("waveform_shape_metric_outputs", shape_metrics)
 
     return metrics, context.attrs
 
@@ -58,6 +76,7 @@ def _build_waveform_shape_metrics_context(ctx) -> WaveformShapeMetricsContext:
     harmonic_count = _band_limited_harmonic_count(ctx)
 
     return WaveformShapeMetricsContext(
+        source_data=source_data,
         per_beat_analysis=_per_beat_input_from_analysis(
             dopplerview_analysis,
             source_data,
@@ -168,6 +187,13 @@ def _export_branch_identity_debug(
         optic_disc_center,
         ring_settings,
     )
+
+
+def _export_pulse_pngs(ctx, context: WaveformShapeMetricsContext, per_beat_result) -> None:
+    if not ctx.output.available:
+        return
+    _log(ctx, "Exporting pulse-analysis PNG artifacts...")
+    export_pulse_pngs(ctx.output, context, per_beat_result, log=getattr(ctx, "log", None))
 
 
 def _segment_ring_settings(source_data: WaveformShapeSourceData) -> SegmentRingSettings:
