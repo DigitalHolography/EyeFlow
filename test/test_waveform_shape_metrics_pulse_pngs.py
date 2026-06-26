@@ -14,17 +14,31 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from calculations.blood_flow_velocity.context_builders.spectrum import (  # noqa: E402
+    display_frequency,
+    display_velocity,
+    histogram_matrix,
+    masked_video_signal,
+)
+from calculations.blood_flow_velocity.signal_analysis.spectrum import (  # noqa: E402
+    correlation_data,
+    paired_spectrum_analysis,
+    spectrum_signal_analysis,
+    synthetic_spectrum_analysis,
+)
+from calculations.blood_flow_velocity.signal_analysis.waveform import (  # noqa: E402
+    arterial_waveform_analysis,
+    average_cycle,
+    cycle_extrema,
+    pulse_metric,
+)
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.writers.png import write_png_file  # noqa: E402
 from pipelines.waveform_shape_metrics.velocity.figures import (  # noqa: E402
     PULSE_PNG_SUFFIXES,
     export_pulse_pngs,
 )
-from pipelines.waveform_shape_metrics.velocity.figures.pulse_pngs import (  # noqa: E402
-    _correlation_data,
-    _display_frequency,
-    _display_velocity,
-    _histogram_matrix,
+from pipelines.waveform_shape_metrics.velocity.figures.velocity_maps import (  # noqa: E402
     _vessel_histogram_colormap,
 )
 
@@ -57,6 +71,8 @@ class PulsePngExporterTests(unittest.TestCase):
         self.assertIn("f_artery_graph.png", PULSE_PNG_SUFFIXES)
         self.assertIn("find_systoles_indices_artery.png", PULSE_PNG_SUFFIXES)
         self.assertIn("ArterialSpectralAnalysis_v_artery.png", PULSE_PNG_SUFFIXES)
+        self.assertIn("artery_seg_map_bkg.png", PULSE_PNG_SUFFIXES)
+        self.assertIn("vein_seg_map_bkg.png", PULSE_PNG_SUFFIXES)
         self.assertIn("AVGflowVideoCombined.png", PULSE_PNG_SUFFIXES)
 
     @unittest.skipUnless(_has_matplotlib(), "matplotlib is not installed")
@@ -81,7 +97,7 @@ class PulsePngExporterTests(unittest.TestCase):
         )
         mask = np.asarray([[False, True], [True, False]])
 
-        histo = _histogram_matrix(velocity, mask, bins=2)
+        histo = histogram_matrix(velocity, mask, bins=2)
 
         self.assertEqual((2, 2), histo.counts.shape)
         np.testing.assert_array_equal(histo.counts[:, 0], [1, 1])
@@ -93,7 +109,7 @@ class PulsePngExporterTests(unittest.TestCase):
         artery = np.sin(2 * np.pi * 1.0 * time).astype(np.float32)
         vein = np.sin(2 * np.pi * 1.0 * time + 0.35).astype(np.float32)
 
-        corr = _correlation_data(artery, vein, 0.05)
+        corr = correlation_data(artery, vein, 0.05)
 
         self.assertEqual(129, corr.coherence_freq.size)
         self.assertTrue(np.isfinite(corr.gamma_0))
@@ -103,8 +119,71 @@ class PulsePngExporterTests(unittest.TestCase):
     def test_display_unit_scaling_matches_png_labels(self) -> None:
         raw = np.asarray([0.0, 1000.0, 6000.0], dtype=np.float32)
 
-        np.testing.assert_allclose(_display_frequency(raw), [0.0, 1.0, 6.0])
-        np.testing.assert_allclose(_display_velocity(raw), [0.0, 1.0, 6.0])
+        np.testing.assert_allclose(display_frequency(raw), [0.0, 1.0, 6.0])
+        np.testing.assert_allclose(display_velocity(raw), [0.0, 1.0, 6.0])
+
+    def test_average_cycle_and_extrema_are_generic_signal_helpers(self) -> None:
+        values = np.asarray([0.0, 2.0, 1.0, -1.0, 0.0, 3.0, 1.0, -2.0], dtype=np.float32)
+        peaks = np.asarray([1, 5], dtype=np.int32)
+
+        cycle = average_cycle(values, peaks, samples=4)
+        maxima, minima = cycle_extrema(values, peaks)
+
+        np.testing.assert_allclose(cycle, values[1:5], atol=1e-6)
+        np.testing.assert_array_equal(maxima, [1, 5])
+        np.testing.assert_array_equal(minima, [0, 3])
+
+    def test_spectrum_reports_frequency_bins_and_ordered_peaks(self) -> None:
+        time = np.arange(128, dtype=np.float32) * 0.05
+        values = np.sin(2 * np.pi * 1.25 * time).astype(np.float32)
+
+        data = spectrum_signal_analysis(values, 0.05)
+
+        self.assertEqual(data.frequencies.shape, data.magnitude.shape)
+        self.assertEqual(data.frequencies.shape, data.phase.shape)
+        self.assertTrue(np.all(np.diff(data.frequencies[data.peak_indexes]) >= 0))
+        self.assertTrue(np.isfinite(data.heart_rate_bpm))
+
+    def test_synthetic_and_paired_spectrum_analysis_outputs(self) -> None:
+        time = np.arange(96, dtype=np.float32) * 0.05
+        first = np.sin(2 * np.pi * 1.0 * time).astype(np.float32)
+        second = np.sin(2 * np.pi * 1.0 * time + 0.35).astype(np.float32)
+        beat_indexes = np.asarray([0, 24, 48, 72], dtype=np.int32)
+        cycle = average_cycle(first, beat_indexes, 32)
+
+        synthetic = synthetic_spectrum_analysis(cycle, 0.05, beat_indexes)
+        paired = paired_spectrum_analysis(first, second, 0.05, beat_indexes)
+
+        self.assertEqual(synthetic.frequencies.shape, synthetic.magnitude.shape)
+        self.assertEqual(synthetic.frequencies.shape, synthetic.phase.shape)
+        self.assertTrue(synthetic.peak_indexes.size > 0)
+        self.assertEqual(paired.transfer.frequencies.shape, paired.transfer.transfer.shape)
+        self.assertIsNotNone(paired.delay)
+        self.assertGreaterEqual(paired.correlation.gamma_0, 0.0)
+        self.assertLessEqual(paired.correlation.gamma_0, 1.0)
+
+    def test_waveform_metric_and_marker_analysis_outputs(self) -> None:
+        cycle = np.asarray([0.0, 3.0, 1.0, 2.0, 0.5, -1.0, 0.0, 1.0], dtype=np.float32)
+        beat_indexes = np.asarray([0, 8, 16], dtype=np.int32)
+
+        metric = pulse_metric(cycle, "RI")
+        markers = arterial_waveform_analysis(cycle, beat_indexes, 0.1)
+
+        self.assertAlmostEqual((metric.maximum - metric.minimum) / metric.maximum, metric.value)
+        self.assertEqual(cycle.size, markers.gradient.size)
+        self.assertGreaterEqual(markers.peak_indexes.size, 1)
+
+    def test_masked_video_signal_averages_masked_pixels_per_frame(self) -> None:
+        video = np.asarray(
+            [
+                [[1.0, 3.0], [5.0, 7.0]],
+                [[2.0, 4.0], [6.0, 8.0]],
+            ],
+            dtype=np.float32,
+        )
+        mask = np.asarray([[True, False], [False, True]])
+
+        np.testing.assert_allclose(masked_video_signal(video, mask), [4.0, 5.0])
 
     @unittest.skipUnless(_has_matplotlib(), "matplotlib is not installed")
     def test_export_pulse_pngs_writes_non_empty_pngs(self) -> None:
