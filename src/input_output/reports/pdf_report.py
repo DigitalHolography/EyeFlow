@@ -92,21 +92,21 @@ def generate_a4_report(
             ax1.axis('off')
             im1 = _try_load_vessel_image(png_dir, mask_dir, hd_png_dir, folder_name, vessel_type)
             if im1 is not None:
-                ax1.imshow(im1, aspect='auto')
+                _show_report_image(ax1, im1)
             
             # Middle row: RI plot (3 rows high)
             ax2 = fig.add_subplot(gs[5:8, col])
             ax2.axis('off')
             im2 = _try_load_ri_image(png_dir, folder_name, vessel_type)
             if im2 is not None:
-                ax2.imshow(im2, aspect='auto')
+                _show_report_image(ax2, im2, zoom=1.02, right_pad_fraction=0.04)
             
             # Bottom row: systole indices (3 rows high)
             ax3 = fig.add_subplot(gs[8:11, col])
             ax3.axis('off')
             im3 = _try_load_systole_image(png_dir, folder_name, vessel_type)
             if im3 is not None:
-                ax3.imshow(im3, aspect='auto')
+                _show_report_image(ax3, im3, zoom=1.02, right_pad_fraction=0.04)
         
         # === PARAMETERS SECTION ===
         ax_params = fig.add_subplot(gs[11:16, :])
@@ -133,6 +133,30 @@ def _add_title(fig, grid_spec, folder_name: str) -> None:
     )
 
 
+def _show_report_image(
+    ax,
+    image: np.ndarray,
+    *,
+    zoom: float = 1.04,
+    right_pad_fraction: float = 0.0,
+) -> None:
+    """Draw an image without distorting its pixel aspect ratio."""
+    height, width = np.asarray(image).shape[:2]
+    ax.imshow(image, aspect="equal")
+    ax.set_anchor("C")
+    ax.set_adjustable("box")
+    ax.margins(0)
+
+    if zoom > 1.0 and width > 0 and height > 0:
+        x_center = (width - 1) / 2
+        y_center = (height - 1) / 2
+        half_width = width / (2 * zoom)
+        half_height = height / (2 * zoom)
+        right_pad = width * max(right_pad_fraction, 0.0)
+        ax.set_xlim(x_center - half_width, x_center + half_width + right_pad)
+        ax.set_ylim(y_center + half_height, y_center - half_height)
+
+
 def _add_parameters_section(ax, parameters: dict[str, Any]) -> None:
     """Add parameters section to the report."""
     param_texts = _format_parameters_for_display(parameters)
@@ -144,7 +168,7 @@ def _add_parameters_section(ax, parameters: dict[str, Any]) -> None:
         return
     
     # Title
-    ax.text(0.02, 1.05, 'Computed Parameters:',
+    ax.text(0.02, 0.98, 'Computed Parameters:',
             fontsize=14, fontweight='bold', va='top')
     
     if num_params > 6:
@@ -153,7 +177,7 @@ def _add_parameters_section(ax, parameters: dict[str, Any]) -> None:
         col1 = param_texts[:split_idx]
         col2 = param_texts[split_idx:]
         
-        y_start = 0.95
+        y_start = 0.86
         y_step = 0.055
         
         for i, text in enumerate(col1):
@@ -167,7 +191,7 @@ def _add_parameters_section(ax, parameters: dict[str, Any]) -> None:
                         fontsize=9, va='top')
     else:
         # Single column
-        y_start = 0.95
+        y_start = 0.86
         y_step = 0.08
         
         for i, text in enumerate(param_texts):
