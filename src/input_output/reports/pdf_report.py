@@ -182,8 +182,10 @@ def _try_load_vessel_image(png_dir, mask_dir, hd_png_dir, folder_name, vessel_ty
     
     if png_dir:
         patterns = [
+            f"{folder_name}_{vessel_type}_seg_map_bkg.png",
             f"{folder_name}_vessel_map_{vessel_type}.png",
             f"{folder_name}_{vessel_type}_map.png",
+            f"{vessel_type}_seg_map_bkg.png",
             f"{vessel_type}_map.png",
             f"vessel_map_{vessel_type}.png",
         ]
