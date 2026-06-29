@@ -8,11 +8,11 @@ from pipeline_engine import (
 # Add new pipeline modules here. The catalog is explicit so helper files are
 # not imported as runnable pipelines by accident.
 PIPELINE_MODULES = (
-    "dual_input_tutorial",
-    "matlab_pulse_poc",
-    "package_pipeline_tutorial",
-    "test1",
-    "test2",
+    "tutorials.dual_input_tutorial.dual_input_tutorial",
+    "tutorials.dual_input_tutorial.test1",
+    "tutorials.dual_input_tutorial.test2",
+    "tutorials.matlab_pulse_poc",
+    "tutorials.package_pipeline_tutorial",
     "waveform_shape_metrics",
     "waveform_shape_metrics_angioeye",
     "pdf_report",

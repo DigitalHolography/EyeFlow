@@ -36,6 +36,7 @@ DV_VEIN_MASK_PATH = "segmentation/Retina/vein_mask"
     requires=["numpy", "h5py", "scipy"],
     dag_produces=["matlab_pulse_poc"],
     input_slot="both",
+    visibility="hidden",
 )
 def run(ctx) -> ProcessResult:
     ctx.require_inputs("hd", "dv")

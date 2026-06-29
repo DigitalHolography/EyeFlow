@@ -112,6 +112,11 @@ def default_output_dir_for_input(input_path: Path) -> Path:
     return input_path.parent if input_path.is_file() else input_path
 
 
+def sidecar_dir_for_h5(h5_path: str | Path, folder_name: str) -> Path:
+    """Return a sibling sidecar folder next to an exported HDF5 folder."""
+    return Path(h5_path).parent.parent / folder_name
+
+
 def holo_input_status(
     holo_path: Path,
     *,
@@ -279,7 +284,7 @@ def _sidecar_config_path(
     folder_name: str,
     preferred_name: str,
 ) -> Path | None:
-    config_dir = h5_path.parent.parent / folder_name
+    config_dir = sidecar_dir_for_h5(h5_path, folder_name)
     if not config_dir.is_dir():
         return None
     preferred = config_dir / preferred_name

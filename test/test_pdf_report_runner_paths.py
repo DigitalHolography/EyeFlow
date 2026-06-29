@@ -31,6 +31,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             )
             output_h5_path = manager.path_for(OutputType.H5)
             (manager.layout.ef_dir / "png").mkdir(parents=True)
+            (hd_h5_path.parent.parent / "png").mkdir(parents=True)
             ctx = _fake_context(manager, output_h5_path, hd_h5_path)
 
             def fake_generate_a4_report(**kwargs):
@@ -46,8 +47,9 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             self.assertEqual("scan", kwargs["folder_name"])
             self.assertEqual(manager.layout.ef_dir / "pdf", kwargs["output_dir"])
             self.assertEqual(manager.layout.ef_dir / "png", kwargs["png_dir"])
+            self.assertEqual(hd_h5_path.parent.parent / "png", kwargs["hd_png_dir"])
             self.assertNotIn("_HD_output_EF", str(kwargs["output_dir"]))
-            self.assertEqual(1, int(result.metrics["pdf_report_generated"]))
+            self.assertIsNone(result)
 
 
 def _fake_context(manager: OutputManager, output_h5_path: Path, hd_h5_path: Path):

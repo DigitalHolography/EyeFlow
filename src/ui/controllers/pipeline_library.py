@@ -29,7 +29,12 @@ class PipelineLibraryController:
     def register(self) -> None:
         available, missing = load_pipeline_catalog()
         rows = sorted(
-            [*available, *missing], key=lambda pipeline: pipeline.name.lower()
+            [
+                pipeline
+                for pipeline in [*available, *missing]
+                if getattr(pipeline, "visibility", "visible") != "hidden"
+            ],
+            key=lambda pipeline: pipeline.name.lower(),
         )
         self.app.pipeline_registry = {p.name: p for p in available}
         self.app.pipeline_catalog = {p.name: p for p in rows}

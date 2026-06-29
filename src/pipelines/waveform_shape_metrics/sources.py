@@ -38,6 +38,7 @@ class WaveformShapeSourceData:
     peripapillary_ring_width: np.float32
     segment_length: np.float32
     cross_section_settings: CrossSectionSignalSettings
+    dopplerview_analysis: dict[str, object]
     provenance: dict[str, object]
 
     def dopplerview_cache(self) -> dict[str, object]:
@@ -89,6 +90,7 @@ class WaveformShapeSources:
                 optic_disc_width,
                 optic_disc_height,
             ),
+            dopplerview_analysis=self.dv.analysis(),
             provenance=_source_provenance(
                 self.hd,
                 self.dv,
