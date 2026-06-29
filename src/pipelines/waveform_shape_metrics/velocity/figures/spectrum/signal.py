@@ -1,4 +1,4 @@
-"""One-signal spectral analysis for blood-flow velocity calculations."""
+"""One-signal spectral analysis for waveform-shape velocity figures."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import signal
 
-from calculations.blood_flow_velocity.signal_analysis.waveform import nan_to_mean
+from calculations.math.arrays import nan_to_mean
 
 
 @dataclass(frozen=True)

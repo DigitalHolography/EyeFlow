@@ -14,13 +14,13 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.blood_flow_velocity.context_builders.spectrum import (  # noqa: E402
+from pipelines.waveform_shape_metrics.velocity.figures.signal_inputs import (  # noqa: E402
     display_frequency,
     display_velocity,
     histogram_matrix,
     masked_video_signal,
 )
-from calculations.blood_flow_velocity.signal_analysis.spectrum import (  # noqa: E402
+from pipelines.waveform_shape_metrics.velocity.figures.spectrum import (  # noqa: E402
     correlation_data,
     paired_spectrum_analysis,
     spectrum_signal_analysis,

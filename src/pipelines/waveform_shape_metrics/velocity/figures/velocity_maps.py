@@ -6,10 +6,10 @@ from pathlib import Path
 
 import numpy as np
 
-from calculations.blood_flow_velocity.context_builders.spectrum import (
+from .signal_inputs import (
     histogram_matrix as _histogram_matrix,
 )
-from calculations.blood_flow_velocity.signal_analysis.waveform import rescale as _rescale
+from calculations.math.arrays import rescale as _rescale
 from input_output.writers.png import PngArtifactWriter as FigureWriter
 
 from .common import (

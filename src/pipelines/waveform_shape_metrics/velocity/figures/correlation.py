@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from calculations.blood_flow_velocity.signal_analysis.spectrum import (
+from .spectrum import (
     CorrelationData,
     DelayFitData,
     TransferData,

@@ -1,4 +1,4 @@
-"""Segment context builders for blood-flow velocity calculations."""
+"""Segment preparation helpers for blood-flow velocity analyses."""
 
 from .branch_identity import (
     BranchIdentityResult,

@@ -8,7 +8,7 @@ from calculations.blood_flow_velocity import (
     SegmentRingSettings,
     segment_velocity_results,
 )
-from calculations.blood_flow_velocity.context_builders.segments.segment_geometry import (
+from calculations.blood_flow_velocity.analysis_preparation.segments.segment_geometry import (
     largest_centered_circle_radius_frac,
 )
 from input_output import EyeFlowOutputPaths
