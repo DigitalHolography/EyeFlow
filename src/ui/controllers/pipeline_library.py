@@ -5,10 +5,11 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from app_settings import normalize_pipeline_visibility
+from app_settings import normalize_pipeline_visibility, runtime_pipelines_path
 from pipelines import PipelineDescriptor, load_pipeline_catalog
 from pipeline_engine import PipelineDAG, PipelineExecutionPlan
 
+from ..services import services_for
 from ..widgets import Tooltip
 
 
@@ -74,6 +75,26 @@ class PipelineLibraryController:
 
     def deselect_all(self) -> None:
         self.set_all_visibility(False)
+
+    def open_pipelines_folder(self) -> None:
+        try:
+            pipelines_folder = runtime_pipelines_path()
+            pipelines_folder.mkdir(parents=True, exist_ok=True)
+            services_for(self.app).path_opener.open_path(pipelines_folder)
+        except OSError as exc:
+            services_for(self.app).dialogs.showerror(
+                "Folder unavailable",
+                f"Could not open pipelines folder:\n{exc}",
+            )
+
+    def reload_pipelines(self) -> None:
+        if getattr(self.app, "_pipeline_run_active", False):
+            services_for(self.app).dialogs.showwarning(
+                "Pipeline run active",
+                "Wait for the current pipeline run to finish before reloading pipelines.",
+            )
+            return
+        self.register()
 
     def bind_vertical_mousewheel(self, widget: tk.Misc, canvas: tk.Canvas) -> None:
         for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
@@ -184,7 +205,7 @@ class PipelineLibraryController:
     def _build_controls(self, parent: ttk.Frame) -> None:
         controls = ttk.Frame(parent)
         controls.grid(row=1, column=0, sticky="ew", pady=(8, 4))
-        controls.columnconfigure(2, weight=1)
+        controls.columnconfigure(4, weight=1)
         ttk.Button(
             controls,
             text="Select all",
@@ -195,10 +216,20 @@ class PipelineLibraryController:
             text="Deselect all",
             command=self.deselect_all,
         ).grid(row=0, column=1, sticky="w", padx=(4, 0))
+        ttk.Button(
+            controls,
+            text="Open folder",
+            command=self.open_pipelines_folder,
+        ).grid(row=0, column=2, sticky="w", padx=(4, 0))
+        ttk.Button(
+            controls,
+            text="Reload",
+            command=self.reload_pipelines,
+        ).grid(row=0, column=3, sticky="w", padx=(4, 0))
         ttk.Label(
             controls,
             textvariable=self.app.pipeline_library_summary_var,
-        ).grid(row=0, column=2, sticky="e")
+        ).grid(row=0, column=4, sticky="e")
 
     def _build_library_container(self, parent: ttk.Frame) -> None:
         library_container = ttk.Frame(parent)
