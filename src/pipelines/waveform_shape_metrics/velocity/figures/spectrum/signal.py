@@ -30,15 +30,16 @@ def spectrum_signal_analysis(values: np.ndarray, dt_seconds: float) -> SpectrumD
     freq = np.fft.rfftfreq(padded.size, dt_seconds)
     mag = np.abs(fft) / max(float(np.mean(window)), np.finfo(np.float32).eps)
     mag = mag / max(float(np.nanmax(mag)), np.finfo(np.float32).eps)
+    peak_distance_bins = _frequency_distance_bins(freq, 0.25)
     peaks, _ = signal.find_peaks(
         mag,
-        distance=max(1, int(0.25 / dt_seconds)),
+        distance=peak_distance_bins,
         prominence=max(float(np.nanmax(mag)) * 0.05, np.finfo(np.float32).eps),
     )
     if peaks.size == 0:
         peaks, _ = signal.find_peaks(
             mag,
-            distance=max(1, int(0.25 / dt_seconds)),
+            distance=peak_distance_bins,
         )
     peaks = peaks[np.argsort(freq[peaks])]
     fundamental, heart_rate, heart_rate_se = spectral_heart_rate(freq, peaks)
@@ -51,6 +52,15 @@ def spectrum_signal_analysis(values: np.ndarray, dt_seconds: float) -> SpectrumD
         heart_rate,
         heart_rate_se,
     )
+
+
+def _frequency_distance_bins(frequencies: np.ndarray, min_hz: float) -> int:
+    if frequencies.size < 2 or not np.isfinite(min_hz) or min_hz <= 0:
+        return 1
+    step_hz = float(np.nanmedian(np.diff(frequencies)))
+    if not np.isfinite(step_hz) or step_hz <= 0:
+        return 1
+    return max(1, int(np.ceil(min_hz / step_hz)))
 
 
 def spectral_heart_rate(
