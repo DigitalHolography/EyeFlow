@@ -1,7 +1,7 @@
 {
   "pipeline_visibility": {
-    "dual_input_tutorial": false,
-    "waveform_shape_metrics": true
+    "pdf_report_generator": true,
+    "waveform_shape_metrics": false
   },
   "trim_h5source": true,
   "ui_mode": "minimal"
