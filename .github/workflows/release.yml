@@ -353,6 +353,41 @@ jobs:
               --verify-tag
           Assert-LastExit "Could not publish GitHub release '$env:TAG_NAME'."
 
+      - name: Merge version commit back into dev
+        shell: pwsh
+        env:
+          RELEASE_COMMIT: ${{ steps.commit.outputs.release_commit }}
+          TAG_COMMIT_SHA: ${{ steps.validate.outputs.tag_commit_sha }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          function Assert-LastExit {
+              param([Parameter(Mandatory = $true)][string]$Message)
+              if ($LASTEXITCODE -ne 0) {
+                  throw $Message
+              }
+          }
+
+          $currentDevText = ((@(git ls-remote origin refs/heads/dev)) -join "`n").Trim()
+          Assert-LastExit "Could not resolve current origin/dev."
+          if ([string]::IsNullOrWhiteSpace($currentDevText)) {
+              throw "origin/dev lookup returned empty output."
+          }
+          $currentDev = ($currentDevText -split '\s+')[0]
+          if ($currentDev -ne $env:TAG_COMMIT_SHA) {
+              throw "origin/dev moved from $env:TAG_COMMIT_SHA to $currentDev while this release was building. Merge main into dev manually, then continue development from the updated dev branch."
+          }
+
+          git checkout -B dev origin/dev
+          Assert-LastExit "Could not check out origin/dev."
+
+          git merge --no-ff $env:RELEASE_COMMIT -m "Merge release $env:TAG_NAME into dev"
+          Assert-LastExit "Could not merge release commit '$env:RELEASE_COMMIT' into dev. Resolve the conflict manually by merging main into dev."
+
+          git push origin HEAD:refs/heads/dev
+          Assert-LastExit "Could not push release merge back to dev."
+
       - name: Reject failed release tag
         if: failure()
         shell: pwsh
