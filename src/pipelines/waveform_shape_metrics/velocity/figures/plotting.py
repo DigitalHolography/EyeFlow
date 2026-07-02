@@ -52,7 +52,6 @@ def _cmap_lab(n: int, stops) -> np.ndarray:
     cmap[~np.isfinite(cmap)] = 0.0
     return cmap.astype(np.float32)
 
-
 def _line_plot(
     writer: FigureWriter,
     suffix: str,
@@ -74,6 +73,7 @@ def _line_plot(
         ax.legend(loc="best")
     _style_axes(ax)
     return writer.savefig(fig, suffix)
+
 def _heatmap_with_colorbar(
     writer: FigureWriter,
     image: np.ndarray,
@@ -96,6 +96,7 @@ def _heatmap_with_colorbar(
             label=label,
         ),
     ]
+
 def _image_map(
     writer: FigureWriter,
     image: np.ndarray,
@@ -113,6 +114,7 @@ def _image_map(
         cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
         cbar.set_label(label)
     return writer.savefig(fig, suffix, dpi=180)
+
 def _mask_background_map(
     writer: FigureWriter,
     background: np.ndarray,
@@ -137,6 +139,7 @@ def _mask_background_map(
     ax.axis("off")
     ax.set_aspect("equal")
     return writer.savefig(fig, suffix, dpi=180)
+
 def _velocity_gradient_values(
     velocity_avg: np.ndarray,
     section_mask: np.ndarray,
@@ -152,6 +155,7 @@ def _velocity_gradient_values(
     if vmax <= 0.0:
         return np.zeros_like(velocity, dtype=np.float32)
     return np.clip(velocity / vmax, 0.0, 1.0)
+
 def _colorbar(
     writer: FigureWriter,
     suffix: str,
@@ -174,6 +178,7 @@ def _colorbar(
     )
     cbar.set_label(label)
     return writer.savefig(fig, suffix, dpi=150)
+
 def _annotated_vline(ax, x: float, label: str) -> None:
     ax.axvline(x, color="0.25", linestyle="--", linewidth=1.5, zorder=1)
     ax.text(
