@@ -1,4 +1,4 @@
-"""Spectrum signal-analysis routines for blood-flow velocity calculations."""
+"""Spectrum helpers used by waveform-shape velocity figures."""
 
 from .pair import (
     CorrelationData,

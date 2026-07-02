@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import signal
 
-from calculations.blood_flow_velocity.signal_analysis.waveform import average_cycle
+from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import average_cycle
 
 
 @dataclass(frozen=True)

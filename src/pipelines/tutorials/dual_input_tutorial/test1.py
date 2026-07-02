@@ -6,6 +6,7 @@ from pipeline_engine.imports import np, pipeline
     description="Tutorial: read HD moment0 and keep a value only in ctx.state.",
     dag_produces=["test1_moment0_summary"],
     input_slot="hd",
+    visibility="hidden",
 )
 def run(ctx) -> None:
     """

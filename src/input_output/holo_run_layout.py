@@ -93,8 +93,11 @@ class HoloRunLayout:
     def _run_dir(self, suffix: str) -> Path:
         return self._root_dir / f"{self._stem}_{suffix}"
 
+    def _input_dir(self, schema: SourceFileLayout) -> Path:
+        return self._run_dir(schema.companion_suffix)
+
     def _h5_dir(self, schema: SourceFileLayout) -> Path:
-        return self._run_dir(schema.companion_suffix) / schema.h5_folder_name
+        return self._input_dir(schema) / schema.h5_folder_name
 
     def _preferred_h5(self, schema: SourceFileLayout) -> Path:
         folder_name = f"{self._stem}_{schema.companion_suffix}"

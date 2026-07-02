@@ -61,4 +61,4 @@ class HolodopplerSource(TypedSource):
                 "Holodoppler moment datasets must become 3-D after squeeze, "
                 f"got shape {squeezed.shape}."
             )
-        return np.transpose(squeezed, (0, 2, 1))
+        return squeezed

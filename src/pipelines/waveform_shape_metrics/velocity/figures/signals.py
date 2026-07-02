@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from calculations.blood_flow_velocity.context_builders.spectrum import (
+from .signal_inputs import (
     masked_video_signal as _masked_signal,
 )
 from input_output.writers.png import PngArtifactWriter as FigureWriter

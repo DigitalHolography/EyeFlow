@@ -14,13 +14,13 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.blood_flow_velocity.context_builders.spectrum import (  # noqa: E402
+from pipelines.waveform_shape_metrics.velocity.figures.signal_inputs import (  # noqa: E402
     display_frequency,
     display_velocity,
     histogram_matrix,
     masked_video_signal,
 )
-from calculations.blood_flow_velocity.signal_analysis.spectrum import (  # noqa: E402
+from pipelines.waveform_shape_metrics.velocity.figures.spectrum import (  # noqa: E402
     correlation_data,
     paired_spectrum_analysis,
     spectrum_signal_analysis,
@@ -150,6 +150,25 @@ class PulsePngExporterTests(unittest.TestCase):
         self.assertEqual(data.frequencies.shape, data.phase.shape)
         self.assertTrue(np.all(np.diff(data.frequencies[data.peak_indexes]) >= 0))
         self.assertTrue(np.isfinite(data.heart_rate_bpm))
+
+    def test_spectrum_reports_all_prominent_harmonic_peaks(self) -> None:
+        dt = 0.025
+        time = np.arange(1024, dtype=np.float32) * dt
+        fundamental = 1.6
+        values = np.zeros_like(time)
+        amplitudes = (1.0, 0.45, 0.28, 0.18, 0.12, 0.08)
+        for harmonic, amplitude in enumerate(amplitudes, start=1):
+            values += amplitude * np.sin(2 * np.pi * fundamental * harmonic * time)
+
+        data = spectrum_signal_analysis(values.astype(np.float32), dt)
+        prominent = data.peak_indexes[data.frequencies[data.peak_indexes] < 10.0]
+
+        self.assertGreaterEqual(prominent.size, 6)
+        np.testing.assert_allclose(
+            data.frequencies[prominent[:6]],
+            fundamental * np.arange(1, 7, dtype=np.float32),
+            atol=0.05,
+        )
 
     def test_synthetic_and_paired_spectrum_analysis_outputs(self) -> None:
         time = np.arange(96, dtype=np.float32) * 0.05

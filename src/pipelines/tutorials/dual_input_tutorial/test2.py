@@ -6,6 +6,7 @@ from pipeline_engine.imports import pipeline
     description="Tutorial: consume a ctx.state value produced by test1.",
     dag_requires=["test1_moment0_summary"],
     input_slot="both",
+    visibility="hidden",
 )
 def run(ctx) -> None:
     """
