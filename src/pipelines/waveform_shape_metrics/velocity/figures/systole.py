@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from calculations.blood_flow_velocity.signal_analysis.waveform import (
+from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
     cycle_extrema as _cycle_extrema,
 )
 from input_output.writers.png import PngArtifactWriter as FigureWriter

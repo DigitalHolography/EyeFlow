@@ -15,6 +15,7 @@ APP_NAME = "EyeFlow"
 SETTINGS_FILENAME = "settings.json"
 DEFAULT_SETTINGS_FILENAME = "default_settings.json"
 LAST_RUN_LOG_FILENAME = "last_EF_log.txt"
+PIPELINES_DIR_ENV = "EYEFLOW_PIPELINES_DIR"
 VERSION_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
 INVALID_PATH_CHARS_PATTERN = re.compile(r'[<>:"/\\|?*]+')
 
@@ -54,6 +55,19 @@ def app_display_name() -> str:
     return f"{APP_NAME} {version}" if version else APP_NAME
 
 
+def app_version_dir_name(version: str | None = None) -> str:
+    raw_version = version if version is not None else app_version()
+    if not raw_version:
+        return APP_NAME
+
+    safe_version = INVALID_PATH_CHARS_PATTERN.sub("-", raw_version).rstrip(" .")
+    if not safe_version:
+        return APP_NAME
+    if safe_version.lower().startswith("v"):
+        return safe_version
+    return f"v{safe_version}"
+
+
 def _settings_subdir_name() -> str:
     version = app_version()
     if not version:
@@ -83,6 +97,17 @@ def _resource_roots() -> list[Path]:
     roots.append(Path(__file__).resolve().parents[1])
     roots.append(Path.cwd())
     return roots
+
+
+def runtime_pipelines_path() -> Path:
+    env_path = os.getenv(PIPELINES_DIR_ENV)
+    if env_path:
+        return Path(env_path).expanduser()
+
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "pipelines"
+
+    return Path(__file__).resolve().parent / "pipelines"
 
 
 def default_settings_template_path() -> Path | None:

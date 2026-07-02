@@ -7,16 +7,16 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from calculations.blood_flow_velocity.context_builders.spectrum import (
+from .signal_inputs import (
     array_or_none as _array_or_none,
     display_frequency,
     display_velocity,
     section_mask as _section_mask,
 )
-from calculations.blood_flow_velocity.signal_analysis.waveform import (
+from calculations.math.arrays import (
+    as_float32_vector as _vector,
+    as_nonnegative_int_indexes as _safe_indexes,
     finite_image as _finite_image,
-    safe_indexes as _safe_indexes,
-    vector as _vector,
 )
 
 if TYPE_CHECKING:

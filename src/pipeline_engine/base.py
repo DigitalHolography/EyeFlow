@@ -19,6 +19,7 @@ def registerPipeline(
     *,
     dag_requires: Iterable[str] | None = None,
     dag_produces: Iterable[str] | None = None,
+    visibility: str = "visible",
 ):
     def decorator(cls):
         cls.name = name
@@ -44,6 +45,7 @@ def registerPipeline(
             missing_deps=list(cls.missing_deps),
             dag_requires=tuple(cls.dag_requires),
             dag_produces=tuple(cls.dag_produces),
+            visibility=visibility,
             pipeline_factory=cls,
             source_path=_source_path(cls),
         )
@@ -60,6 +62,7 @@ def pipeline(
     dag_requires: Iterable[str] | None = None,
     dag_produces: Iterable[str] | None = None,
     input_slot: str = "both",
+    visibility: str = "visible",
 ):
     """Register a function pipeline.
 
@@ -81,6 +84,7 @@ def pipeline(
             missing_deps=missing,
             dag_requires=_pipeline_keys(dag_requires or ()),
             dag_produces=_pipeline_keys(dag_produces or ()),
+            visibility=visibility,
             pipeline_factory=lambda: FunctionPipeline(
                 name=name,
                 description=description or (inspect.getdoc(func) or ""),
@@ -91,6 +95,7 @@ def pipeline(
                 available=available,
                 dag_requires=_pipeline_keys(dag_requires or ()),
                 dag_produces=_pipeline_keys(dag_produces or ()),
+                visibility=visibility,
             ),
             source_path=_source_path(func),
         )
@@ -133,6 +138,7 @@ class ProcessPipeline:
     dag_requires: tuple[str, ...] = ()
     dag_produces: tuple[str, ...] = ()
     input_slot: str = "both"
+    visibility: str = "visible"
     source_path: str | None = None
 
     def __init__(self) -> None:
@@ -158,6 +164,7 @@ class FunctionPipeline(ProcessPipeline):
         available: bool,
         dag_requires: tuple[str, ...],
         dag_produces: tuple[str, ...],
+        visibility: str,
     ) -> None:
         self.name = name
         self.description = description
@@ -168,6 +175,7 @@ class FunctionPipeline(ProcessPipeline):
         self.available = available
         self.dag_requires = dag_requires
         self.dag_produces = dag_produces
+        self.visibility = visibility
         self.source_path = _source_path(func)
 
     def run(self, ctx: Any) -> ProcessResult | Mapping[str, Any] | None:
@@ -185,6 +193,7 @@ class PipelineDescriptor:
     missing_deps: list[str] = field(default_factory=list)
     dag_requires: tuple[str, ...] = ()
     dag_produces: tuple[str, ...] = ()
+    visibility: str = "visible"
     pipeline_factory: Callable[[], ProcessPipeline] | None = None
     error_msg: str = ""
     source_path: str | None = None

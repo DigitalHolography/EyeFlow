@@ -6,13 +6,15 @@ from pathlib import Path
 
 import numpy as np
 
-from calculations.blood_flow_velocity.signal_analysis.waveform import (
+from calculations.blood_flow_velocity.signal_analysis.waveform.metrics import pulse_metric
+from calculations.blood_flow_velocity.signal_analysis.waveform.morphology import (
     ArterialWaveformAnalysis,
     VenousWaveformAnalysis,
     arterial_waveform_analysis,
-    pulse_metric,
-    vessel_cycle_analysis,
     venous_waveform_analysis,
+)
+from calculations.blood_flow_velocity.signal_analysis.waveform.paired_cycles import (
+    paired_vessel_cycles,
 )
 from input_output.writers.png import PngArtifactWriter as FigureWriter
 
@@ -27,18 +29,30 @@ from .common import (
 from .plotting import _annotated_hline, _annotated_vline, _style_axes
 
 
+def _unit_corrected_velocity_signal(ctx: PulseFigureContext, key: str) -> np.ndarray:
+    return _display_velocity(_vector(ctx.analysis[key]))
+
+
 def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     peaks = _safe_indexes(ctx.analysis.get("beat_indices"))
-    cycles = vessel_cycle_analysis(
-        _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"])),
-        _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"])),
+    unit_corrected_retinal_artery_velocity_signal = _unit_corrected_velocity_signal(
+        ctx,
+        "retinal_artery_velocity_signal",
+    )
+    unit_corrected_retinal_vein_velocity_signal = _unit_corrected_velocity_signal(
+        ctx,
+        "retinal_vein_velocity_signal",
+    )
+    cycles = paired_vessel_cycles(
+        unit_corrected_retinal_artery_velocity_signal,
+        unit_corrected_retinal_vein_velocity_signal,
         peaks,
         60,
     )
     paths: list[Path] = []
     for suffix_prefix, signal_values in (
-        ("v_artery", _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"]))),
-        ("v_vein", _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"]))),
+        ("v_artery", unit_corrected_retinal_artery_velocity_signal),
+        ("v_vein", unit_corrected_retinal_vein_velocity_signal),
     ):
         cycle = cycles.artery if suffix_prefix == "v_artery" else cycles.vein
         if cycle is None:
@@ -68,9 +82,17 @@ def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[P
 
 def _export_waveform_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     peaks = _safe_indexes(ctx.analysis.get("beat_indices"))
-    cycles = vessel_cycle_analysis(
-        _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"])),
-        _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"])),
+    unit_corrected_retinal_artery_velocity_signal = _unit_corrected_velocity_signal(
+        ctx,
+        "retinal_artery_velocity_signal",
+    )
+    unit_corrected_retinal_vein_velocity_signal = _unit_corrected_velocity_signal(
+        ctx,
+        "retinal_vein_velocity_signal",
+    )
+    cycles = paired_vessel_cycles(
+        unit_corrected_retinal_artery_velocity_signal,
+        unit_corrected_retinal_vein_velocity_signal,
         peaks,
         128,
     )

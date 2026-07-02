@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.blood_flow_velocity.context_builders.signal import find_systole_index
+from calculations.blood_flow_velocity.analysis_preparation.beat_detection import find_systole_index
 from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (
     per_beat_signal_analysis,
 )
@@ -36,6 +36,7 @@ DV_VEIN_MASK_PATH = "segmentation/Retina/vein_mask"
     requires=["numpy", "h5py", "scipy"],
     dag_produces=["matlab_pulse_poc"],
     input_slot="both",
+    visibility="hidden",
 )
 def run(ctx) -> ProcessResult:
     ctx.require_inputs("hd", "dv")

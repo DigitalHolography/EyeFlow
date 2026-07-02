@@ -23,6 +23,7 @@ def _numeric_dataset_summary(values) -> tuple[np.float32, np.int32]:
     description="Tutorial: read HD and DV inputs simultaneously in one pipeline.",
     dag_produces=["dual_input_summary"],
     input_slot="both",
+    visibility="hidden",
 )
 def run(ctx) -> None:
     """

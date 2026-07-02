@@ -107,6 +107,19 @@ function ConvertTo-InnoVersionInfo {
     return ($parts -join ".")
 }
 
+function ConvertTo-VersionDirName {
+    param([Parameter(Mandatory = $true)][string]$Version)
+
+    $safeVersion = ($Version -replace '[<>:"/\\|?*]+', '-').TrimEnd([char[]]" .")
+    if ([string]::IsNullOrWhiteSpace($safeVersion)) {
+        throw "Version cannot be converted to an installer directory name."
+    }
+    if ($safeVersion.StartsWith("v", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $safeVersion
+    }
+    return "v$safeVersion"
+}
+
 function Join-AppNameAndVersion {
     param(
         [Parameter(Mandatory = $true)][string]$AppName,
@@ -211,16 +224,23 @@ function Write-InnoSetupScript {
         [Parameter(Mandatory = $true)][string]$AppName,
         [Parameter(Mandatory = $true)][string]$AppVersion,
         [Parameter(Mandatory = $true)][string]$AppDisplayName,
+        [Parameter(Mandatory = $true)][string]$InstallRootName,
+        [Parameter(Mandatory = $true)][string]$VersionDirName,
         [Parameter(Mandatory = $true)][string]$BundleDir
     )
 
     $appNameInno = ConvertTo-InnoQuotedValue $AppName
     $appVersionInno = ConvertTo-InnoQuotedValue $AppVersion
     $appDisplayNameInno = ConvertTo-InnoQuotedValue $AppDisplayName
+    $installRootNameInno = ConvertTo-InnoQuotedValue $InstallRootName
+    $versionDirNameInno = ConvertTo-InnoQuotedValue $VersionDirName
     $bundleDirInno = ConvertTo-InnoQuotedValue (Get-FullPath $BundleDir)
     $outputDirInno = ConvertTo-InnoQuotedValue (Get-FullPath $InstallerOutputDir)
     $licensePathInno = ConvertTo-InnoQuotedValue (Get-FullPath (Join-Path $RepoRoot "LICENSE"))
+    $readmePathInno = ConvertTo-InnoQuotedValue (Get-FullPath (Join-Path $RepoRoot "README.md"))
+    $thirdPartyNoticesPathInno = ConvertTo-InnoQuotedValue (Get-FullPath (Join-Path $RepoRoot "THIRD_PARTY_NOTICES"))
     $iconPathInno = ConvertTo-InnoQuotedValue (Get-FullPath (Join-Path $RepoRoot "EyeFlow.ico"))
+    $pipelinesSourceDirInno = ConvertTo-InnoQuotedValue (Get-FullPath (Join-Path $RepoRoot "src\pipelines"))
     $setupBaseNameInno = ConvertTo-InnoQuotedValue ("$AppName-Setup-$AppVersion")
     $versionInfo = ConvertTo-InnoVersionInfo $AppVersion
     $versionInfoLine = ""
@@ -232,13 +252,18 @@ function Write-InnoSetupScript {
 #define MyAppName "$appNameInno"
 #define MyAppVersion "$appVersionInno"
 #define MyAppDisplayName "$appDisplayNameInno"
+#define MyInstallRootName "$installRootNameInno"
+#define MyVersionDirName "$versionDirNameInno"
 #define MyAppPublisher "EyeFlow"
 #define MyAppExeName "$appDisplayNameInno.exe"
 #define MyBundleDir "$bundleDirInno"
 #define MyOutputDir "$outputDirInno"
 #define MySetupBaseName "$setupBaseNameInno"
 #define MyLicensePath "$licensePathInno"
+#define MyReadmePath "$readmePathInno"
+#define MyThirdPartyNoticesPath "$thirdPartyNoticesPathInno"
 #define MyIconPath "$iconPathInno"
+#define MyPipelinesSourceDir "$pipelinesSourceDirInno"
 
 [Setup]
 AppId={{72E10B9F-83C4-4F4C-89A5-F8BB598B0396}
@@ -246,9 +271,10 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppVerName={#MyAppDisplayName}
-DefaultDirName={localappdata}\Programs\{#MyAppName}\{#MyAppVersion}
+DefaultDirName={localappdata}\Programs\{#MyInstallRootName}\{#MyVersionDirName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+UsePreviousAppDir=no
 LicenseFile={#MyLicensePath}
 OutputDir={#MyOutputDir}
 OutputBaseFilename={#MySetupBaseName}
@@ -269,6 +295,10 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 
 [Files]
 Source: "{#MyBundleDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyLicensePath}"; DestDir: "{app}"; DestName: "LICENSE"; Flags: ignoreversion
+Source: "{#MyReadmePath}"; DestDir: "{app}"; DestName: "README.md"; Flags: ignoreversion
+Source: "{#MyThirdPartyNoticesPath}"; DestDir: "{app}"; DestName: "THIRD_PARTY_NOTICES"; Flags: ignoreversion
+Source: "{#MyPipelinesSourceDir}\*"; DestDir: "{app}\pipelines"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppDisplayName}"; Filename: "{app}\{#MyAppExeName}"
@@ -284,6 +314,8 @@ $metadata = Read-ProjectMetadata
 $appName = $metadata.Name
 $appVersion = $metadata.Version
 $appDisplayName = Join-AppNameAndVersion -AppName $appName -AppVersion $appVersion
+$installRootName = "eyeflow-python"
+$versionDirName = ConvertTo-VersionDirName -Version $appVersion
 $bundleDir = Join-Path $PyInstallerDistDir $appDisplayName
 $bundleExe = Join-Path $bundleDir "$appDisplayName.exe"
 
@@ -338,6 +370,8 @@ Write-InnoSetupScript `
     -AppName $appName `
     -AppVersion $appVersion `
     -AppDisplayName $appDisplayName `
+    -InstallRootName $installRootName `
+    -VersionDirName $versionDirName `
     -BundleDir $bundleDir
 
 & $iscc $GeneratedInnoScript

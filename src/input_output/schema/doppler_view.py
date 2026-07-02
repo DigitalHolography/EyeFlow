@@ -17,6 +17,7 @@ DOPPLER_VIEW_LAYOUT = SourceFileLayout(
     config_dir_name=DV_CONFIG_DIR_NAME,
     config_filename=DV_CONFIG_FILENAME,
 )
+VELOCITY_ANALYSIS_SCALE = np.float32(1.0e-3)
 
 
 class DopplerViewSource(TypedSource):
@@ -27,6 +28,37 @@ class DopplerViewSource(TypedSource):
     @classmethod
     def from_context(cls, ctx) -> "DopplerViewSource":
         return cls(ctx.inputs.dv.h5, ctx.inputs.dv.config)
+
+    def analysis(self) -> dict[str, object]:
+        artery_signal = self._velocity_array("analysis/retinal_artery_velocity_signal")
+        vein_signal = self._velocity_array("analysis/retinal_vein_velocity_signal")
+        artery_filtered = self._velocity_array("analysis/velocitysignal_filtered")
+        return {
+            "retinal_vessel_velocity": self._velocity_array(
+                "analysis/retinal_velocity_array"
+            ),
+            "retinal_artery_velocity_signal": artery_signal,
+            "retinal_vein_velocity_signal": vein_signal,
+            "velocity_map_avg": self._velocity_array("analysis/velocity_map_avg"),
+            "fRMS_avg": self._array("analysis/fRMS_avg"),
+            "fRMS_bkg_avg": self._array("analysis/fRMS_bkg_avg"),
+            "retinal_artery_velocity_signal_filtered_perbeat": self._velocity_array(
+                "analysis/velocitysignal_per_beat"
+            ),
+            "retinal_artery_velocity_signal_filtered": artery_filtered,
+            "retinal_artery_velocity_signal_derivative": np.gradient(
+                artery_filtered
+            ).astype(np.float32),
+            "retinal_vein_velocity_signal_filtered": vein_signal,
+            "retinal_vein_velocity_signal_derivative": np.gradient(vein_signal).astype(
+                np.float32
+            ),
+            "beat_indices": self._array("analysis/beat_indices"),
+            "time_per_beat": self._array("analysis/time_per_beat"),
+        }
+
+    def _velocity_array(self, path: str) -> np.ndarray:
+        return self._array(path, dtype=np.float32) * VELOCITY_ANALYSIS_SCALE
 
     def retinal_artery_mask(self) -> np.ndarray:
         return self._array("segmentation/Retina/artery_mask", dtype=bool)

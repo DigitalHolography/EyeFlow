@@ -8,7 +8,7 @@ from calculations.blood_flow_velocity import (
     SegmentRingSettings,
     segment_velocity_results,
 )
-from calculations.blood_flow_velocity.context_builders.segments.segment_geometry import (
+from calculations.blood_flow_velocity.analysis_preparation.segments.segment_geometry import (
     largest_centered_circle_radius_frac,
 )
 from input_output import EyeFlowOutputPaths
@@ -28,7 +28,6 @@ from .velocity.constants import (
     LEGACY_SEGMENT_RING_COUNT,
 )
 from .dopplerview.outputs import pack_dopplerview_analysis_outputs
-from .dopplerview.runner import run_dopplerview_analysis
 from .metrics.runner import run_waveform_shape_metric_calculations
 from .sources import WaveformShapeSourceData, WaveformShapeSources
 from .velocity.branch_identity_debug import export_branch_identity_stage_pngs
@@ -71,8 +70,8 @@ def _build_waveform_shape_metrics_context(ctx) -> WaveformShapeMetricsContext:
     _log(ctx, "Starting waveform source loading...")
     source_data = WaveformShapeSources.from_context(ctx).load()
     timing = source_data.timing
-    _log(ctx, "Starting DopplerView analysis reconstruction...")
-    dopplerview_analysis = run_dopplerview_analysis(source_data)
+    _log(ctx, "Loading DopplerView analysis datasets...")
+    dopplerview_analysis = source_data.dopplerview_analysis
     harmonic_count = _band_limited_harmonic_count(ctx)
 
     return WaveformShapeMetricsContext(
@@ -242,12 +241,11 @@ def _context_attrs(
     analysis_paths = EyeFlowOutputPaths.active().analysis
     return {
         "dependency_chain": [
-            "dopplerview.vessel_velocity_estimator",
-            "dopplerview.arterial_waveform_analysis",
+            "dopplerview.h5.analysis",
             "blood_flow_velocity.signal_analysis.per_beat.signal",
             "blood_flow_velocity.signal_analysis.per_beat.runner",
         ],
-        "analysis_source": "computed_dopplerview_steps",
+        "analysis_source": "dopplerview_h5_analysis",
         "arterial_velocity_signal_path": analysis_paths.retinal_artery_velocity_signal,
         "venous_velocity_signal_path": analysis_paths.retinal_vein_velocity_signal,
         "systolic_peak_indexes_path": analysis_paths.beat_indices,

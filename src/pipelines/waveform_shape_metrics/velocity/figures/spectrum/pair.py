@@ -7,12 +7,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import optimize, signal
 
-from calculations.blood_flow_velocity.signal_analysis.waveform import (
-    average_cycle,
-    nan_to_mean,
-    rescale,
-    standardize,
-)
+from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import average_cycle
+from calculations.math.arrays import nan_to_mean, rescale, standardize
 
 from .signal import spectrum_signal_analysis
 

@@ -24,6 +24,7 @@ from .inputs import (
     resolve_holo_run_layout,
     resolve_selected_run_layouts,
     resolve_stem_run_layout,
+    sidecar_dir_for_h5,
     stem_input_status,
 )
 from .output_manager import OutputManager, OutputType
@@ -118,6 +119,7 @@ __all__ = [
     "resolve_holo_run_layout",
     "resolve_selected_run_layouts",
     "resolve_stem_run_layout",
+    "sidecar_dir_for_h5",
     "set_attr_safe",
     "stem_input_status",
     "systolic_index_base_for_path",

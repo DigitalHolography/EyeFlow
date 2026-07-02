@@ -1,4 +1,4 @@
-"""Build display-ready signal and histogram inputs for spectrum figures."""
+"""Build display-ready signal and histogram inputs for pulse figures."""
 
 from __future__ import annotations
 
