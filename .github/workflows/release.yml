@@ -3,7 +3,7 @@ name: Release EyeFlow
 on:
   push:
     tags:
-      - "*"
+      - "v*"
 
 permissions:
   contents: write
@@ -110,30 +110,15 @@ jobs:
               throw "Could not check release availability for '$tagName'."
           }
 
-          $lastReleaseBody = Get-NativeText `
-              -FailureMessage "Could not read previous release marker from origin/main." `
-              -Command { git log origin/main --extended-regexp --grep '^Version v[0-9]+\.[0-9]+\.[0-9]+$' -n 1 --format=%B }
-          $previousDevSha = ""
-          if ($lastReleaseBody -match '(?m)^Dev-Head:\s*([0-9a-f]{40})\s*$') {
-              $candidatePreviousDevSha = $Matches[1]
-              git merge-base --is-ancestor $candidatePreviousDevSha $tagCommitSha
-              if ($LASTEXITCODE -eq 0) {
-                  $previousDevSha = $candidatePreviousDevSha
-              }
-          }
-
-          if (-not $previousDevSha) {
-              $previousDevSha = Get-RequiredNativeText `
-                  -FailureMessage "Could not find a shared history point between origin/main and '$tagName'." `
-                  -EmptyMessage "Shared history lookup between origin/main and '$tagName' returned empty output." `
-                  -Command { git merge-base origin/main $tagCommitSha }
-          }
-
-          $releaseNotes = Get-NativeText `
-              -FailureMessage "Could not generate release notes for '$tagName'." `
-              -Command { git log --reverse --format='- %s' "$previousDevSha..$tagCommitSha" }
+          $releaseSubjects = @(git log --reverse --format='%s' "origin/main..$tagCommitSha")
+          Assert-LastExit "Could not generate release notes for '$tagName'."
+          $releaseSubjects = @($releaseSubjects | Where-Object {
+              $_ -notmatch '^Merge release v[0-9]+\.[0-9]+\.[0-9]+ into dev$' -and
+              $_ -notmatch '^Version v[0-9]+\.[0-9]+\.[0-9]+$'
+          })
+          $releaseNotes = ($releaseSubjects | ForEach-Object { "- $_" }) -join "`n"
           if ([string]::IsNullOrWhiteSpace($releaseNotes)) {
-              $releaseNotes = "- No commit messages found since the previous release marker."
+              $releaseNotes = "- No commit messages found since origin/main."
           }
 
           $releaseNotesPath = Join-Path $env:RUNNER_TEMP "release-notes.md"
@@ -154,7 +139,6 @@ jobs:
           "version=$($tagName.Substring(1))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
           "tag_ref_sha=$tagRefSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
           "tag_commit_sha=$tagCommitSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
-          "previous_dev_sha=$previousDevSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
           "main_sha=$mainSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
           "release_notes_path=$releaseNotesPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
           "commit_message_path=$commitMessagePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
@@ -182,7 +166,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.validate.outputs.version }}
           TAG_COMMIT_SHA: ${{ steps.validate.outputs.tag_commit_sha }}
-          PREVIOUS_DEV_SHA: ${{ steps.validate.outputs.previous_dev_sha }}
+          MAIN_SHA: ${{ steps.validate.outputs.main_sha }}
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $false
@@ -197,18 +181,18 @@ jobs:
           git checkout -B release-main origin/main
           Assert-LastExit "Could not check out origin/main."
 
-          git diff --quiet $env:PREVIOUS_DEV_SHA $env:TAG_COMMIT_SHA
+          git diff --quiet $env:MAIN_SHA $env:TAG_COMMIT_SHA
           if ($LASTEXITCODE -eq 0) {
-              Write-Host "No source delta between previous dev head and '$env:TAG_COMMIT_SHA'."
+              Write-Host "No source delta between origin/main and '$env:TAG_COMMIT_SHA'."
           } elseif ($LASTEXITCODE -eq 1) {
               $releasePatchPath = Join-Path $env:RUNNER_TEMP "release-delta.patch"
-              git diff --binary "--output=$releasePatchPath" $env:PREVIOUS_DEV_SHA $env:TAG_COMMIT_SHA
-              Assert-LastExit "Could not create release delta from previous dev head to '$env:TAG_COMMIT_SHA'."
+              git diff --binary "--output=$releasePatchPath" $env:MAIN_SHA $env:TAG_COMMIT_SHA
+              Assert-LastExit "Could not create release delta from origin/main to '$env:TAG_COMMIT_SHA'."
 
               git apply --index --3way $releasePatchPath
               Assert-LastExit "Could not apply release delta to origin/main. Resolve the conflict on dev/main, then recreate the release tag."
           } else {
-              throw "Could not compare previous dev head '$env:PREVIOUS_DEV_SHA' with '$env:TAG_COMMIT_SHA'."
+              throw "Could not compare origin/main '$env:MAIN_SHA' with '$env:TAG_COMMIT_SHA'."
           }
 
           $pyprojectPath = "pyproject.toml"
@@ -307,14 +291,13 @@ jobs:
 
           "installer_path=$($installer.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
 
-      - name: Push main, move tag, and publish release
+      - name: Push main and move tag
+        id: push
         shell: pwsh
         env:
           MAIN_SHA: ${{ steps.validate.outputs.main_sha }}
           TAG_REF_SHA: ${{ steps.validate.outputs.tag_ref_sha }}
           RELEASE_COMMIT: ${{ steps.commit.outputs.release_commit }}
-          INSTALLER_PATH: ${{ steps.build.outputs.installer_path }}
-          RELEASE_NOTES_PATH: ${{ steps.validate.outputs.release_notes_path }}
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $false
@@ -347,13 +330,30 @@ jobs:
 
           New-Item -ItemType File -Path ".release-remote-mutated" -Force | Out-Null
 
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          INSTALLER_PATH: ${{ steps.build.outputs.installer_path }}
+          RELEASE_NOTES_PATH: ${{ steps.validate.outputs.release_notes_path }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          function Assert-LastExit {
+              param([Parameter(Mandatory = $true)][string]$Message)
+              if ($LASTEXITCODE -ne 0) {
+                  throw $Message
+              }
+          }
+
           gh release create $env:TAG_NAME $env:INSTALLER_PATH `
-              --title "Eyeflow" `
+              --title "EyeFlow $env:TAG_NAME" `
               --notes-file $env:RELEASE_NOTES_PATH `
               --verify-tag
           Assert-LastExit "Could not publish GitHub release '$env:TAG_NAME'."
 
       - name: Merge version commit back into dev
+        if: ${{ always() && steps.push.outcome == 'success' }}
         shell: pwsh
         env:
           RELEASE_COMMIT: ${{ steps.commit.outputs.release_commit }}
