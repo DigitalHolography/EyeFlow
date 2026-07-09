@@ -10,6 +10,8 @@ HD_CONFIG_DIR_NAME = "json"
 HD_CONFIG_FILENAME = "parameters.json"
 HD_MOMENT0_PATH = "moment0"
 HD_MOMENT2_PATH = "moment2"
+HD_MOMENT0_PATHS = (HD_MOMENT0_PATH, "M0")
+HD_MOMENT2_PATHS = (HD_MOMENT2_PATH, "M2")
 HD_OUTPUT_PASSTHROUGH_PATHS = ("registration", "zernike_coefs_radians")
 HD_SAMPLING_FREQ_KEY = "sampling_freq"
 HD_BATCH_STRIDE_KEY = "batch_stride"
@@ -34,10 +36,10 @@ class HolodopplerSource(TypedSource):
         return cls(ctx.inputs.hd.h5, ctx.inputs.hd.config)
 
     def moment0(self) -> np.ndarray:
-        return self._moment(HD_MOMENT0_PATH)
+        return self._moment(HD_MOMENT0_PATHS)
 
     def moment2(self) -> np.ndarray:
-        return self._moment(HD_MOMENT2_PATH)
+        return self._moment(HD_MOMENT2_PATHS)
 
     def timing(self) -> HolodopplerTiming:
         sampling_freq = self._scalar_h5_or_config(
@@ -54,7 +56,13 @@ class HolodopplerSource(TypedSource):
             )
         return HolodopplerTiming(float(sampling_freq), float(batch_stride))
 
-    def _moment(self, path: str) -> np.ndarray:
+    def _moment(self, paths: tuple[str, ...]) -> np.ndarray:
+        path = next((candidate for candidate in paths if candidate in self._reader), None)
+        if path is None:
+            raise KeyError(
+                "Missing Holodoppler moment dataset. Tried: "
+                + ", ".join(repr(candidate) for candidate in paths)
+            )
         squeezed = np.squeeze(np.asarray(self._array(path, dtype=np.float32)))
         if squeezed.ndim != 3:
             raise ValueError(
