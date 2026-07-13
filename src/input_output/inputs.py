@@ -284,18 +284,29 @@ def _sidecar_config_path(
     folder_name: str,
     preferred_name: str,
 ) -> Path | None:
-    config_dir = sidecar_dir_for_h5(h5_path, folder_name)
-    if not config_dir.is_dir():
-        return None
-    preferred = config_dir / preferred_name
-    if preferred.is_file():
-        return preferred
-    for hd_name in ("parameters_holodoppler.json", "parameters_holodoppler"):
-        hd_exported = config_dir / hd_name
-        if hd_exported.is_file():
-            return hd_exported
-    json_files = sorted(config_dir.glob("*.json"))
-    return json_files[0] if json_files else None
+    for candidate_folder in _sidecar_config_folder_names(folder_name):
+        config_dir = sidecar_dir_for_h5(h5_path, candidate_folder)
+        if not config_dir.is_dir():
+            continue
+        preferred = config_dir / preferred_name
+        if preferred.is_file():
+            return preferred
+        for hd_name in ("parameters_holodoppler.json", "parameters_holodoppler"):
+            hd_exported = config_dir / hd_name
+            if hd_exported.is_file():
+                return hd_exported
+        json_files = sorted(config_dir.glob("*.json"))
+        if json_files:
+            return json_files[0]
+    return None
+
+
+def _sidecar_config_folder_names(folder_name: str) -> tuple[str, ...]:
+    names = [folder_name]
+    for fallback in ("json", "config"):
+        if fallback not in names:
+            names.append(fallback)
+    return tuple(names)
 
 
 def _normalize_config_keys(value):

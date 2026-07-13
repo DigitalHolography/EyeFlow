@@ -28,6 +28,7 @@ from .velocity.constants import (
     LEGACY_SEGMENT_RING_COUNT,
 )
 from .dopplerview.outputs import pack_dopplerview_analysis_outputs
+from .dopplerview.runner import run_dopplerview_analysis
 from .metrics.runner import run_waveform_shape_metric_calculations
 from .sources import WaveformShapeSourceData, WaveformShapeSources
 from .velocity.branch_identity_debug import export_branch_identity_stage_pngs
@@ -70,8 +71,10 @@ def _build_waveform_shape_metrics_context(ctx) -> WaveformShapeMetricsContext:
     _log(ctx, "Starting waveform source loading...")
     source_data = WaveformShapeSources.from_context(ctx).load()
     timing = source_data.timing
-    _log(ctx, "Loading DopplerView analysis datasets...")
-    dopplerview_analysis = source_data.dopplerview_analysis
+    dopplerview_analysis, analysis_source = _resolve_dopplerview_analysis(
+        source_data,
+        ctx,
+    )
     harmonic_count = _band_limited_harmonic_count(ctx)
 
     return WaveformShapeMetricsContext(
@@ -84,8 +87,23 @@ def _build_waveform_shape_metrics_context(ctx) -> WaveformShapeMetricsContext:
             ctx,
         ),
         dopplerview_analysis=dopplerview_analysis,
-        attrs=_context_attrs(source_data, timing, harmonic_count),
+        attrs=_context_attrs(source_data, timing, harmonic_count, analysis_source),
     )
+
+
+def _resolve_dopplerview_analysis(
+    source_data: WaveformShapeSourceData,
+    ctx,
+) -> tuple[dict[str, object], str]:
+    if source_data.dopplerview_analysis is not None:
+        _log(ctx, "Loading DopplerView analysis datasets...")
+        return source_data.dopplerview_analysis, "dopplerview_h5_analysis"
+    _log(
+        ctx,
+        "DopplerView analysis datasets are missing; rebuilding analysis from "
+        "HD moments and DV masks.",
+    )
+    return run_dopplerview_analysis(source_data), "eyeflow_recomputed_dopplerview_analysis"
 
 
 def _band_limited_harmonic_count(ctx) -> int:
@@ -237,15 +255,24 @@ def _context_attrs(
     source_data: WaveformShapeSourceData,
     timing: HolodopplerTiming,
     harmonic_count: int,
+    analysis_source: str,
 ) -> dict[str, object]:
     analysis_paths = EyeFlowOutputPaths.active().analysis
+    dependency_chain = (
+        ["dopplerview.h5.analysis"]
+        if analysis_source == "dopplerview_h5_analysis"
+        else [
+            "holodoppler.h5.moment0_moment2",
+            "dopplerview.h5.segmentation",
+            "eyeflow.dopplerview_analysis.recomputed",
+        ]
+    )
     return {
-        "dependency_chain": [
-            "dopplerview.h5.analysis",
+        "dependency_chain": dependency_chain + [
             "blood_flow_velocity.signal_analysis.per_beat.signal",
             "blood_flow_velocity.signal_analysis.per_beat.runner",
         ],
-        "analysis_source": "dopplerview_h5_analysis",
+        "analysis_source": analysis_source,
         "arterial_velocity_signal_path": analysis_paths.retinal_artery_velocity_signal,
         "venous_velocity_signal_path": analysis_paths.retinal_vein_velocity_signal,
         "systolic_peak_indexes_path": analysis_paths.beat_indices,
