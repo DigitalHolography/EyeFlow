@@ -2,58 +2,52 @@
 Command-line interface to run EyeFlow pipelines over HOLO selections.
 
 Usage example:
-    python cli.py --data data/ --pipelines pipelines.txt --output ./results --zip --zip-name my_run.zip
+    python cli.py --data data/
 
 Inputs:
     --data / -d        Directory, single .holo, .txt path list, or .zip archive of HOLO data.
-    --pipelines / -p   Text file listing pipeline target names (one per line, '#' and blank lines ignored).
-    --output / -o      Base directory where results will be written (input subfolder layout is preserved).
+    --pipelines / -p   Optional target list; enabled user/default settings are used otherwise.
+    --output / -o      Optional output root; source-adjacent GUI defaults are used otherwise.
     --zip / -z         When set, compress the outputs into a .zip archive after completion.
     --zip-name         Optional filename for the archive (default: outputs.zip).
 """
 
 import argparse
-import os
 import shutil
 import sys
 import tempfile
 import time
-import zipfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from uuid import uuid4
 
+from app_settings import AppSettingsStore
 from runtime_limits import configure_numeric_threads
 
 configure_numeric_threads()
 
 from input_output import (
-    INPUT_LIST_SUFFIX,
     create_zip_from_tree,
-    resolve_selected_run_layouts,
 )
-from input_output.holo_run_layout import HoloRunLayout
-from input_output.output_manager import OutputManager, OutputType
 from pipelines import (
     PipelineDescriptor,
     load_pipeline_catalog,
 )
 from pipeline_engine import (
-    PipelineDAG,
-    PipelineExecutionPlan,
-    run_pipelines_to_output,
+    execute_run,
+    expand_run_inputs,
+    resolve_run_spec,
+    selectable_pipeline_registry,
 )
-
-HOLO_SUFFIX = ".holo"
-
 
 def _build_pipeline_registry() -> dict[str, PipelineDescriptor]:
     available, missing = load_pipeline_catalog()
     return {pipeline.name: pipeline for pipeline in (*available, *missing)}
 
 
-def _load_pipeline_plan(
+def _load_pipeline_targets(
     path: Path, registry: dict[str, PipelineDescriptor]
-) -> PipelineExecutionPlan:
+) -> tuple[str, ...]:
     raw_lines = path.read_text(encoding="utf-8").splitlines()
     selected_names: list[str] = []
     missing: list[str] = []
@@ -76,107 +70,29 @@ def _load_pipeline_plan(
             "No pipelines selected (file is empty or only contains comments)."
         )
 
-    plan = PipelineDAG(registry.values()).resolve_targets(selected_names)
-    unavailable = [pipeline for pipeline in plan.descriptors if not pipeline.available]
-    if unavailable:
-        details = []
-        for pipeline in unavailable:
-            reason = ", ".join(pipeline.missing_deps or pipeline.requires)
-            details.append(f"{pipeline.name}" + (f" ({reason})" if reason else ""))
-        raise ValueError(
-            "The DAG requires unavailable pipeline(s): " + ", ".join(details)
-        )
-    return plan
+    return tuple(dict.fromkeys(selected_names))
 
 
-def _find_holo_inputs(path: Path) -> list[Path]:
-    if path.is_file():
-        if path.suffix.lower() in {HOLO_SUFFIX, INPUT_LIST_SUFFIX}:
-            return [path]
-        raise ValueError(
-            f"File is not a {HOLO_SUFFIX} or {INPUT_LIST_SUFFIX} file: {path}"
-        )
-    if path.is_dir():
-        return sorted(path.rglob(f"*{HOLO_SUFFIX}"))
-    raise FileNotFoundError(f"Input path does not exist: {path}")
-
-
-def _prepare_data_root(
-    data_path: Path,
-) -> tuple[Path, tempfile.TemporaryDirectory | None]:
-    """Return a directory containing HOLO files; extract zip archives when needed."""
-    if data_path.is_file() and data_path.suffix.lower() == ".zip":
-        tempdir = tempfile.TemporaryDirectory()
-        with zipfile.ZipFile(data_path, "r") as zf:
-            zf.extractall(tempdir.name)
-        return Path(tempdir.name), tempdir
-    return data_path, None
-
-
-def _unique_output_root(path: Path) -> Path:
-    if not path.exists():
-        return path
-    suffix = 1
-    while True:
-        candidate = path.with_name(f"{path.name}_{suffix}")
-        if not candidate.exists():
-            return candidate
-        suffix += 1
-
-
-def _batch_root(holo_paths: Sequence[Path]) -> Path:
-    if not holo_paths:
-        return Path.cwd()
-    if len(holo_paths) == 1:
-        return holo_paths[0].parent
-    try:
-        return Path(os.path.commonpath([str(path.parent) for path in holo_paths]))
-    except ValueError:
-        return Path.cwd()
-
-
-def _relative_to_batch(holo_path: Path, batch_root: Path) -> Path:
-    try:
-        return holo_path.relative_to(batch_root)
-    except ValueError:
-        anchor = Path(holo_path.anchor)
-        drive_token = holo_path.drive.rstrip(":\\/") or "root"
-        tail = holo_path.relative_to(anchor) if anchor != holo_path else Path()
-        return Path(drive_token) / tail
-
-
-def _run_pipelines_on_input(
-    run_layout: HoloRunLayout,
-    relative_holo_path: Path,
-    plan: PipelineExecutionPlan,
-    output_root: Path,
-) -> Path:
-    target_dir = output_root / relative_holo_path.parent
-    target_dir.mkdir(parents=True, exist_ok=True)
-    output_layout = HoloRunLayout.from_holo(
-        run_layout.holo_path,
-        output_root=target_dir,
+def _load_configured_pipeline_targets(
+    registry: dict[str, PipelineDescriptor],
+    settings_store: AppSettingsStore | None = None,
+) -> tuple[str, ...]:
+    store = settings_store or AppSettingsStore()
+    visibility = store.load_pipeline_visibility()
+    selected_names = tuple(
+        name for name in registry if visibility.get(name, False)
     )
-    output_layout = output_layout.with_root_dir(
-        _unique_output_root(output_layout.root_dir)
+    if selected_names:
+        return selected_names
+    raise ValueError(
+        "No visible pipelines are enabled in EyeFlow settings. "
+        "Enable at least one pipeline in the GUI or provide --pipelines."
     )
-    output_manager = OutputManager(output_layout)
-    output_h5_path = output_manager.path_for(OutputType.H5)
-    print(f"[INPUT] HOLO -> {run_layout.holo_path}")
-    print(f"[RESOLVED] HD -> {run_layout.hd_h5}")
-    print(f"[RESOLVED] DV -> {run_layout.dv_h5}")
-    run_pipelines_to_output(
-        output_manager=output_manager,
-        pipelines=plan.descriptors,
-        target_names=plan.targets,
-        holodoppler_h5=run_layout.hd_h5,
-        doppler_vision_h5=run_layout.dv_h5,
-        on_log=lambda message: print(
-            f"[{run_layout.holo_path.name}] {message}"
-        ),
-    )
-    print(f"[OK] {run_layout.holo_path.name}: output -> {output_h5_path}")
-    return output_h5_path
+
+
+def _default_cli_output_root(data_path: Path) -> Path:
+    source = data_path.expanduser().resolve()
+    return source if source.is_dir() else source.parent
 
 
 def _zip_output_dir(
@@ -192,57 +108,64 @@ def _zip_output_dir(
         zip_path = folder.parent / zip_name
     else:
         zip_path = target_path.expanduser().resolve()
-    if zip_path.exists():
-        zip_path.unlink()
-    create_zip_from_tree(folder, zip_path, progress_callback=progress_callback)
+    staging_zip = zip_path.with_name(
+        f".{zip_path.name}.eyeflow-staging-{uuid4().hex}"
+    )
+    try:
+        create_zip_from_tree(
+            folder,
+            staging_zip,
+            progress_callback=progress_callback,
+        )
+        staging_zip.replace(zip_path)
+    finally:
+        if staging_zip.exists():
+            staging_zip.unlink()
     return zip_path
 
 
 def run_cli(
     data_path: Path,
-    pipelines_file: Path,
-    output_dir: Path,
+    pipelines_file: Path | None = None,
+    output_dir: Path | None = None,
     zip_outputs: bool = False,
     zip_name: str | None = None,
 ) -> int:
     registry = _build_pipeline_registry()
-    plan = _load_pipeline_plan(pipelines_file, registry)
-    data_root, tempdir = _prepare_data_root(data_path)
+    target_registry = selectable_pipeline_registry(registry.values())
+    target_names = (
+        _load_pipeline_targets(pipelines_file, target_registry)
+        if pipelines_file is not None
+        else _load_configured_pipeline_targets(target_registry)
+    )
     work_tempdir_path: Path | None = None
     clean_work_output = False
-    try:
-        inputs = _find_holo_inputs(data_root)
-        if not inputs:
-            raise ValueError(f"No {HOLO_SUFFIX} files found under {data_path}")
-        run_layouts = resolve_selected_run_layouts(inputs)
-        batch_root = _batch_root([layout.holo_path for layout in run_layouts])
-
-        output_root = output_dir.expanduser().resolve()
-        output_root.mkdir(parents=True, exist_ok=True)
+    with expand_run_inputs(data_path) as expanded_inputs:
+        output_root = (
+            output_dir.expanduser().resolve() if output_dir is not None else None
+        )
+        input_is_zip = data_path.suffix.lower() == ".zip"
+        if output_root is None and (input_is_zip or zip_outputs):
+            output_root = _default_cli_output_root(data_path)
+        if output_root is not None:
+            output_root.mkdir(parents=True, exist_ok=True)
 
         work_root = output_root
         if zip_outputs:
+            assert output_root is not None
             work_tempdir_path = Path(tempfile.mkdtemp(dir=output_root))
             work_root = work_tempdir_path
 
-        failures: list[str] = []
-        processed_outputs: list[Path] = []
-        for run_layout in run_layouts:
-            relative_holo_path = _relative_to_batch(run_layout.holo_path, batch_root)
-            try:
-                combined_output = _run_pipelines_on_input(
-                    run_layout,
-                    relative_holo_path,
-                    plan,
-                    work_root,
-                )
-                processed_outputs.append(combined_output)
-            except Exception as exc:  # noqa: BLE001
-                failures.append(f"{run_layout.holo_path}: {exc}")
-                print(
-                    f"[FAIL] {run_layout.holo_path.name}: {exc}",
-                    file=sys.stderr,
-                )
+        spec = resolve_run_spec(
+            input_paths=expanded_inputs.paths,
+            target_names=target_names,
+            pipelines=registry.values(),
+            output_root=work_root,
+            batch_root=expanded_inputs.batch_root,
+        )
+        result = execute_run(spec, on_log=print)
+        processed_outputs = list(result.outputs)
+        archive_failed = False
 
         if zip_outputs:
             try:
@@ -260,6 +183,8 @@ def run_cli(
                         print(f"[ZIP] {done}/{total} files ({pct}%)")
                         last_progress_log = now
 
+                assert work_root is not None
+                assert output_root is not None
                 zip_path = _zip_output_dir(
                     work_root,
                     target_path=output_root / final_name,
@@ -269,6 +194,7 @@ def run_cli(
                 summary_msg = f"ZIP archive: {zip_path}"
                 clean_work_output = True
             except Exception as exc:  # noqa: BLE001
+                archive_failed = True
                 print(
                     f"[ZIP FAIL] Could not create ZIP archive: {exc}", file=sys.stderr
                 )
@@ -276,22 +202,23 @@ def run_cli(
         else:
             if len(processed_outputs) == 1:
                 summary_msg = f"Output file: {processed_outputs[0]}"
+            elif work_root is None:
+                summary_msg = (
+                    f"{len(processed_outputs)} output files written beside their inputs"
+                )
             else:
                 summary_msg = f"Outputs stored under: {work_root}"
 
         print(f"Completed. {summary_msg}")
 
-        if failures:
-            print(f"{len(failures)} failure(s):", file=sys.stderr)
-            for msg in failures:
-                print(f" - {msg}", file=sys.stderr)
-            return 1
-        return 0
-    finally:
-        if tempdir is not None:
-            tempdir.cleanup()
+        if result.failures:
+            print(f"{len(result.failures)} failure(s):", file=sys.stderr)
+            for failure in result.failures:
+                print(f" - {failure}", file=sys.stderr)
+        exit_code = 1 if result.failures or archive_failed else 0
         if clean_work_output and work_tempdir_path is not None:
             shutil.rmtree(work_tempdir_path, ignore_errors=True)
+        return exit_code
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -311,16 +238,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "-p",
         "--pipelines",
-        required=True,
         type=Path,
-        help="Text file with pipeline targets to resolve through the DAG.",
+        help=(
+            "Optional text file with pipeline targets. When omitted, enabled "
+            "targets are loaded from user settings or default_settings.json."
+        ),
     )
     parser.add_argument(
         "-o",
         "--output",
-        required=True,
         type=Path,
-        help="Base output directory. Input subfolder layout is preserved for output files.",
+        help=(
+            "Optional output root. By default, normal inputs use GUI-style "
+            "source-adjacent outputs; ZIP inputs use the ZIP's parent folder."
+        ),
     )
     parser.add_argument(
         "-z",

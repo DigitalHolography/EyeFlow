@@ -29,27 +29,32 @@ class PipelineLibraryController:
 
     def register(self) -> None:
         available, missing = load_pipeline_catalog()
-        rows = sorted(
-            [
-                pipeline
-                for pipeline in [*available, *missing]
-                if getattr(pipeline, "visibility", "visible") != "hidden"
-            ],
+        catalog = sorted(
+            [*available, *missing],
             key=lambda pipeline: pipeline.name.lower(),
         )
         self.app.pipeline_registry = {p.name: p for p in available}
-        self.app.pipeline_catalog = {p.name: p for p in rows}
+        self.app.pipeline_catalog = {p.name: p for p in catalog}
 
         try:
-            self.app.pipeline_dag = PipelineDAG(rows)
+            self.app.pipeline_dag = PipelineDAG(catalog)
         except (RuntimeError, ValueError) as exc:
             self.app.pipeline_dag = None
+            rows = [
+                pipeline
+                for pipeline in catalog
+                if getattr(pipeline, "visibility", "visible") != "hidden"
+            ]
             self.app.settings_controller.show_settings_warning(
                 "Pipeline DAG error",
                 f"Pipeline dependency graph is invalid:\n{exc}",
             )
         else:
-            rows = list(self.app.pipeline_dag.ordered_descriptors)
+            rows = [
+                pipeline
+                for pipeline in self.app.pipeline_dag.ordered_descriptors
+                if getattr(pipeline, "visibility", "visible") != "hidden"
+            ]
 
         self.app.pipeline_rows = rows
         self.sync_visibility(rows)

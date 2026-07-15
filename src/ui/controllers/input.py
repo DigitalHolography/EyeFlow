@@ -12,7 +12,6 @@ from input_output import (
     read_holo_input_list,
     stem_input_status,
 )
-from input_output.output_manager import OutputManager
 
 from ..services import services_for
 
@@ -261,11 +260,6 @@ class InputController:
                 frame.grid()
             else:
                 frame.grid_remove()
-
-    def prepare_output_manager_for_input(self, input_path: Path) -> OutputManager:
-        output_manager = OutputManager.from_holo(input_path)
-        output_manager.prepare(replace=True)
-        return output_manager
 
     def apply_input_defaults(self, input_path: Path | None) -> None:
         del input_path

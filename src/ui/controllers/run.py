@@ -3,34 +3,13 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
 
-from input_output import resolve_selected_run_layouts
-from input_output.holo_run_layout import HoloRunLayout
-from input_output.output_manager import OutputManager, OutputType
-from pipelines import PipelineDescriptor
-from pipeline_engine import PipelineExecutionPlan, run_pipelines_to_output
+from pipeline_engine import RunResult, RunSpec, execute_run, resolve_run_spec
 
 from ..services import services_for
-
-
-@dataclass(frozen=True)
-class _PipelineRunRequest:
-    output_manager: OutputManager
-    pipelines: Sequence[PipelineDescriptor]
-    target_names: Sequence[str]
-    holodoppler_h5: Path | None
-    doppler_vision_h5: Path | None
-
-
-@dataclass(frozen=True)
-class _PipelineRunSummary:
-    output_h5_path: Path | None
-    failures: tuple[str, ...]
 
 
 _PipelineUiEvent = tuple[str, object]
@@ -66,73 +45,25 @@ class RunController:
             return
 
         self.app.progress_controller.reset_progress()
-        requests = self._build_pipeline_run_requests()
-        if requests is None:
+        spec = self._build_run_spec()
+        if spec is None:
             return
 
-        total_units = sum(len(request.pipelines) for request in requests)
         self.app.progress_controller.start_progress(
-            total_units,
+            spec.total_pipeline_units,
             style_name=self.app._progress_primary_style,
             status_text="Running pipelines...",
         )
-        self.start_pipeline_thread(requests)
+        self.start_pipeline_thread(spec)
 
-    def _build_pipeline_run_requests(self) -> list[_PipelineRunRequest] | None:
-        plan = self._resolve_selected_run_plan()
-        if plan is None:
-            return None
-
-        pipelines = list(plan.descriptors)
-        if not self._reject_unavailable_pipelines(pipelines):
-            return None
-
-        run_layouts = self._validate_selected_inputs(
-            self.app.input_controller.selected_holo_paths()
-        )
-        if run_layouts is None:
-            return None
-
-        self.app.progress_controller.reset_run_log("Starting pipeline run...\n")
-        self.app.progress_controller.log_run(
-            f"[DAG] Targets -> {', '.join(plan.targets)}"
-        )
-        self.app.progress_controller.log_run(
-            f"[DAG] Execution order -> {', '.join(plan.names)}"
-        )
-        for run_layout in run_layouts:
-            self._log_run_layout(run_layout)
-
-        return [
-            self._create_pipeline_run_request(
-                run_layout=run_layout,
-                pipelines=pipelines,
-                target_names=plan.targets,
-            )
-            for run_layout in run_layouts
-        ]
-
-    def _validate_selected_inputs(
-        self,
-        holo_paths: Sequence[Path],
-    ) -> list[HoloRunLayout] | None:
-        if not holo_paths:
+    def _build_run_spec(self) -> RunSpec | None:
+        input_paths = self.app.input_controller.selected_holo_paths()
+        if not input_paths:
             services_for(self.app).dialogs.showwarning(
                 "Missing input",
                 "Select one or more .holo files or one .txt path list.",
             )
             return None
-
-        try:
-            return resolve_selected_run_layouts(holo_paths)
-        except ValueError as exc:
-            services_for(self.app).dialogs.showerror("Invalid input", str(exc))
-            return None
-        except FileNotFoundError as exc:
-            services_for(self.app).dialogs.showerror("Missing data", str(exc))
-            return None
-
-    def _resolve_selected_run_plan(self) -> PipelineExecutionPlan | None:
         target_names = (
             self.app.pipeline_library_controller.selected_target_pipeline_names()
         )
@@ -144,78 +75,26 @@ class RunController:
             return None
 
         try:
-            return self.app.pipeline_library_controller.resolve_plan(target_names)
-        except (RuntimeError, ValueError) as exc:
+            spec = resolve_run_spec(
+                input_paths=input_paths,
+                target_names=target_names,
+                pipelines=self.app.pipeline_catalog.values(),
+            )
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
             services_for(self.app).dialogs.showerror(
-                "Pipeline DAG error",
+                "Run configuration error",
                 str(exc),
             )
             return None
+        self.app.progress_controller.reset_run_log("Starting pipeline run...\n")
+        return spec
 
-    def _reject_unavailable_pipelines(
-        self,
-        pipelines: Sequence[PipelineDescriptor],
-    ) -> bool:
-        unavailable = [pipeline for pipeline in pipelines if not pipeline.available]
-        if not unavailable:
-            return True
-
-        details = []
-        for pipeline in unavailable:
-            reason = ", ".join(pipeline.missing_deps or pipeline.requires)
-            details.append(
-                f"{pipeline.name}" + (f" ({reason})" if reason else "")
-            )
-        services_for(self.app).dialogs.showerror(
-            "Pipeline unavailable",
-            "The DAG requires unavailable pipeline(s):\n" + "\n".join(details),
-        )
-        return False
-
-    def _log_run_layout(self, run_layout: HoloRunLayout) -> None:
-        self.app.progress_controller.log_run(f"[INPUT] HOLO -> {run_layout.holo_path}")
-        self.app.progress_controller.log_run(
-            f"[INPUT] DATA DIR -> {run_layout.root_dir}"
-        )
-        self.app.progress_controller.log_run(f"[RESOLVED] HD -> {run_layout.hd_h5}")
-        self.app.progress_controller.log_run(f"[RESOLVED] DV -> {run_layout.dv_h5}")
-
-    def _create_pipeline_run_request(
-        self,
-        *,
-        run_layout: HoloRunLayout,
-        pipelines: Sequence[PipelineDescriptor],
-        target_names: Sequence[str],
-    ) -> _PipelineRunRequest | None:
-        try:
-            output_manager = self.app.input_controller.prepare_output_manager_for_input(
-                run_layout.holo_path
-            )
-        except (OSError, RuntimeError) as exc:
-            self.app.progress_controller.log_run(f"[FAIL] {exc}")
-            self.app.progress_controller.set_minimal_status("Run failed.")
-            services_for(self.app).dialogs.showerror(
-                "Output folder unavailable",
-                str(exc),
-            )
-            return None
-
-        output_h5_path = output_manager.path_for(OutputType.H5)
-        self.app.progress_controller.log_run(f"[OUTPUT] {output_h5_path}")
-        return _PipelineRunRequest(
-            output_manager=output_manager,
-            pipelines=pipelines,
-            target_names=target_names,
-            holodoppler_h5=run_layout.hd_h5,
-            doppler_vision_h5=run_layout.dv_h5,
-        )
-
-    def start_pipeline_thread(self, requests: list[_PipelineRunRequest]) -> None:
+    def start_pipeline_thread(self, spec: RunSpec) -> None:
         self.app._pipeline_ui_events = Queue()
         self._set_pipeline_run_active(True)
         thread = Thread(
             target=self._run_pipeline_worker,
-            args=(requests,),
+            args=(spec,),
             name="EyeFlowPipelineWorker",
             daemon=True,
         )
@@ -223,9 +102,9 @@ class RunController:
         thread.start()
         self.app.after(50, self.drain_pipeline_ui_events)
 
-    def _run_pipeline_worker(self, requests: list[_PipelineRunRequest]) -> None:
+    def _run_pipeline_worker(self, spec: RunSpec) -> None:
         try:
-            summary = self._run_pipelines_to_output(requests)
+            summary = self._execute_run(spec)
         except Exception as exc:  # noqa: BLE001
             self._queue_pipeline_ui_event("failure", str(exc))
             return
@@ -291,11 +170,11 @@ class RunController:
             self._finish_pipeline_run_failure(str(payload))
 
     def _finish_pipeline_run_success(self, summary: object) -> None:
-        assert isinstance(summary, _PipelineRunSummary)
+        assert isinstance(summary, RunResult)
         self.app.progress_controller.set_progress_units(self.app._progress_total_units)
-        if summary.output_h5_path is not None:
+        if summary.last_output_path is not None:
             self.app.progress_controller.log_run(
-                f"Completed. Output file: {summary.output_h5_path}"
+                f"Completed. Output file: {summary.last_output_path}"
             )
         if summary.failures:
             self.app.progress_controller.log_run(
@@ -316,39 +195,9 @@ class RunController:
         self._set_pipeline_run_active(False)
         services_for(self.app).dialogs.showerror("Run failed", failure_message)
 
-    def _run_pipelines_to_output(
-        self,
-        requests: list[_PipelineRunRequest],
-    ) -> _PipelineRunSummary:
-        last_output_path: Path | None = None
-        failures: list[str] = []
-        for request in requests:
-            run_name = request.output_manager.layout.holo_path.name
-            try:
-                last_output_path = run_pipelines_to_output(
-                    output_manager=request.output_manager,
-                    pipelines=request.pipelines,
-                    target_names=request.target_names,
-                    holodoppler_h5=request.holodoppler_h5,
-                    doppler_vision_h5=request.doppler_vision_h5,
-                    on_log=lambda message: self._queue_pipeline_ui_event(
-                        "log",
-                        message,
-                    ),
-                    on_progress=lambda: self._queue_pipeline_ui_event(
-                        "progress",
-                        None,
-                    ),
-                )
-            except Exception as exc:  # noqa: BLE001
-                failure = f"{run_name}: {exc}"
-                failures.append(failure)
-                self._queue_pipeline_ui_event("log", f"[FAIL] {failure}")
-                continue
-
-            self._queue_pipeline_ui_event(
-                "log",
-                f"Completed run for {run_name}: {last_output_path}",
-            )
-
-        return _PipelineRunSummary(last_output_path, tuple(failures))
+    def _execute_run(self, spec: RunSpec) -> RunResult:
+        return execute_run(
+            spec,
+            on_log=lambda message: self._queue_pipeline_ui_event("log", message),
+            on_progress=lambda: self._queue_pipeline_ui_event("progress", None),
+        )

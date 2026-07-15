@@ -35,6 +35,7 @@ pip install -e .
 
 ```powershell
 eyeflow
+# or: uv run eyeflow
 ```
 
 ### Launch The CLI
@@ -42,7 +43,9 @@ eyeflow
 Run selected pipelines over one HOLO file, a folder tree of HOLO files, or a zip archive:
 
 ```powershell
-eyeflow-cli --data path\to\input.holo --pipelines path\to\pipelines.txt --output path\to\outputs
+eyeflow --data path\to\input.holo
+# dedicated CLI entry point (never launches the GUI):
+eyeflow-cli --data path\to\input.holo
 ```
 
 ## Scope
