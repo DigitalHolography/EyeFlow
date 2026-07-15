@@ -22,6 +22,17 @@ from .context import (
 from .dag import PipelineDAG, PipelineExecutionPlan
 from .errors import format_pipeline_exception
 from .runtime import run_pipelines_to_output
+from .run_service import (
+    ExpandedRunInputs,
+    RunFailure,
+    RunRequest,
+    RunResult,
+    RunSpec,
+    execute_run,
+    expand_run_inputs,
+    resolve_run_spec,
+    selectable_pipeline_registry,
+)
 
 
 __all__ = [
@@ -45,5 +56,14 @@ __all__ = [
     "pipeline",
     "registerPipeline",
     "run_pipelines_to_output",
+    "ExpandedRunInputs",
+    "RunFailure",
+    "RunRequest",
+    "RunResult",
+    "RunSpec",
+    "execute_run",
+    "expand_run_inputs",
+    "resolve_run_spec",
+    "selectable_pipeline_registry",
     "with_attrs",
 ]

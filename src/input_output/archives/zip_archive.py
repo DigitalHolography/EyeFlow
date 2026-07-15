@@ -13,9 +13,30 @@ import zipfile
 @contextmanager
 def extracted_zip_tree(zip_path: str | Path) -> Iterator[Path]:
     with TemporaryDirectory() as tmp_dir:
+        target_root = Path(tmp_dir).resolve()
         with zipfile.ZipFile(zip_path, "r") as archive:
-            archive.extractall(tmp_dir)
-        yield Path(tmp_dir)
+            _safe_extract_all(archive, target_root)
+        yield target_root
+
+
+def _safe_extract_all(archive: zipfile.ZipFile, target_root: Path) -> None:
+    """Extract an archive without allowing members to escape the target root."""
+
+    for member in archive.infolist():
+        member_path = Path(member.filename.replace("\\", "/"))
+        if member_path.is_absolute() or ".." in member_path.parts:
+            raise ValueError(f"Unsafe ZIP member path: {member.filename}")
+        target = (target_root / member_path).resolve()
+        try:
+            target.relative_to(target_root)
+        except ValueError as exc:
+            raise ValueError(f"Unsafe ZIP member path: {member.filename}") from exc
+        if member.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with archive.open(member) as source, target.open("wb") as destination:
+            shutil.copyfileobj(source, destination)
 
 
 def create_zip_from_tree(

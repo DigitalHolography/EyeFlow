@@ -124,7 +124,6 @@ def _initialize_work_h5(
             str(doppler_vision_h5) if doppler_vision_h5 is not None else None
         ),
     )
-    work_h5.attrs["trim_h5source"] = True
     work_h5.attrs["pipeline_targets"] = list(target_names)
     work_h5.attrs["pipeline_order"] = [pipeline.name for pipeline in pipelines]
 
