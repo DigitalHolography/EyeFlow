@@ -72,9 +72,6 @@ class ProcessApp(BaseAppTk):
         self._window_icon_image: tk.PhotoImage | None = None
         self._minimal_logo_image: tk.PhotoImage | None = None
         self._minimal_title_font: tkfont.Font | None = None
-        self._trim_h5source = tk.BooleanVar(
-            value=self.settings_store.load_trim_h5source()
-        )
         self.resource_controller = ResourceController(self)
         self.view_controller = ViewController(self)
         self.progress_controller = ProgressController(self)

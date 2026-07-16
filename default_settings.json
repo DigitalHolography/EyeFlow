@@ -3,6 +3,5 @@
     "pdf_report_generator": true,
     "waveform_shape_metrics": false
   },
-  "trim_h5source": true,
   "ui_mode": "minimal"
 }

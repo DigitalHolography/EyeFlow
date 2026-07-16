@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from .base import SourceFileLayout, TypedSource
+from .base import MISSING, SourceFileLayout, TypedSource
 
-DV_CONFIG_DIR_NAME = "config"
+DV_CONFIG_DIR_NAME = "json"
 DV_CONFIG_FILENAME = "DV_params.json"
 
 DOPPLER_VIEW_LAYOUT = SourceFileLayout(
@@ -19,6 +19,19 @@ DOPPLER_VIEW_LAYOUT = SourceFileLayout(
 )
 VELOCITY_ANALYSIS_SCALE = np.float32(1.0e-3)
 
+DV_ANALYSIS_REQUIRED_PATHS = (
+    "analysis/retinal_velocity_array",
+    "analysis/retinal_artery_velocity_signal",
+    "analysis/retinal_vein_velocity_signal",
+    "analysis/velocity_map_avg",
+    "analysis/fRMS_avg",
+    "analysis/fRMS_bkg_avg",
+    "analysis/velocitysignal_per_beat",
+    "analysis/velocitysignal_filtered",
+    "analysis/beat_indices",
+    "analysis/time_per_beat",
+)
+
 
 class DopplerViewSource(TypedSource):
     """Typed access to the DopplerView HDF5 file and sidecar config."""
@@ -29,7 +42,19 @@ class DopplerViewSource(TypedSource):
     def from_context(cls, ctx) -> "DopplerViewSource":
         return cls(ctx.inputs.dv.h5, ctx.inputs.dv.config)
 
-    def analysis(self) -> dict[str, object]:
+    def has_analysis(self) -> bool:
+        return all(path in self._reader for path in DV_ANALYSIS_REQUIRED_PATHS)
+
+    def analysis(self, *, default=MISSING) -> dict[str, object] | None:
+        if not self.has_analysis():
+            if default is not MISSING:
+                return default
+            missing = [
+                path for path in DV_ANALYSIS_REQUIRED_PATHS if path not in self._reader
+            ]
+            raise KeyError(
+                "Missing DopplerView analysis dataset(s): " + ", ".join(missing)
+            )
         artery_signal = self._velocity_array("analysis/retinal_artery_velocity_signal")
         vein_signal = self._velocity_array("analysis/retinal_vein_velocity_signal")
         artery_filtered = self._velocity_array("analysis/velocitysignal_filtered")
@@ -77,6 +102,13 @@ class DopplerViewSource(TypedSource):
         return self._array(
             "segmentation/OpticDisc/center",
             dtype=np.float32,
+            default=None,
+        )
+
+    def optic_disc_mask(self) -> np.ndarray | None:
+        return self._array(
+            "segmentation/OpticDisc/mask",
+            dtype=bool,
             default=None,
         )
 

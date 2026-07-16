@@ -35,17 +35,6 @@ class SettingsController:
                 f"Could not save UI mode preference:\n{exc}",
             )
 
-    def persist_trim_h5source(self) -> None:
-        try:
-            self.app.settings_store.save_trim_h5source(
-                self.app._trim_h5source.get()
-            )
-        except OSError as exc:
-            self.show_settings_warning(
-                "Settings not saved",
-                f"Could not save trim preference:\n{exc}",
-            )
-
     def window_size_for_mode(self, mode: str) -> tuple[int, int, int, int]:
         screen_width = self.app.winfo_screenwidth()
         screen_height = self.app.winfo_screenheight()
@@ -122,7 +111,6 @@ class SettingsController:
             return
 
         self.persist_ui_mode()
-        self.persist_trim_h5source()
         self.app.destroy()
 
     def _target_window_size(

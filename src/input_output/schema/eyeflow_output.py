@@ -37,11 +37,32 @@ class VelocityPerBeatOutputPaths:
 
 
 @dataclass(frozen=True)
+class OpticDiscTopologyOutputPaths:
+    mask: str
+    center_xy: str
+
+
+@dataclass(frozen=True)
+class VesselTopologyOutputPaths:
+    branch_label_map: str
+    branch_ids: str
+    segment_center_xy: str
+
+
+@dataclass(frozen=True)
+class TopologyOutputPaths:
+    optic_disc: OpticDiscTopologyOutputPaths
+    artery: VesselTopologyOutputPaths
+    vein: VesselTopologyOutputPaths
+
+
+@dataclass(frozen=True)
 class EyeFlowOutputPaths:
     name: str
     analysis: DopplerViewAnalysisOutputPaths
     artery_per_beat: VelocityPerBeatOutputPaths
     vein_per_beat: VelocityPerBeatOutputPaths
+    topology: TopologyOutputPaths
     beat_period_idx: str
     beat_period_seconds: str
     waveform_shape_metrics_root: str
@@ -56,6 +77,24 @@ class EyeFlowOutputPaths:
             raise ValueError(
                 f"Unknown EyeFlow output schema '{name}'. Known: {known}."
             ) from exc
+
+
+TOPOLOGY_OUTPUT = TopologyOutputPaths(
+    optic_disc=OpticDiscTopologyOutputPaths(
+        mask="Topology/OpticDisc/Mask/value",
+        center_xy="Topology/OpticDisc/CenterXY/value",
+    ),
+    artery=VesselTopologyOutputPaths(
+        branch_label_map="Topology/Artery/BranchLabelMap/value",
+        branch_ids="Topology/Artery/BranchIds/value",
+        segment_center_xy="Topology/Artery/SegmentCenterXY/value",
+    ),
+    vein=VesselTopologyOutputPaths(
+        branch_label_map="Topology/Vein/BranchLabelMap/value",
+        branch_ids="Topology/Vein/BranchIds/value",
+        segment_center_xy="Topology/Vein/SegmentCenterXY/value",
+    ),
+)
 
 
 ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
@@ -104,6 +143,7 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
             "VelocitySignalPerBeatPerSegmentBandLimited/value"
         ),
     ),
+    topology=TOPOLOGY_OUTPUT,
     beat_period_idx="Artery/VelocityPerBeat/beatPeriodIdx/value",
     beat_period_seconds="Artery/VelocityPerBeat/beatPeriodSeconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
@@ -143,6 +183,7 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
             "vein/velocity/perbeat/segments/band_limited/value"
         ),
     ),
+    topology=TOPOLOGY_OUTPUT,
     beat_period_idx="perbeat/beat_period_idx/value",
     beat_period_seconds="perbeat/beat_period_seconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",

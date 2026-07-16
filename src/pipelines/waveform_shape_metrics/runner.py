@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from calculations.blood_flow_velocity import (
+    CrossSectionSignalResult,
     PerBeatAnalysisInput,
     SegmentRingSettings,
     segment_velocity_results,
@@ -28,17 +29,21 @@ from .velocity.constants import (
     LEGACY_SEGMENT_RING_COUNT,
 )
 from .dopplerview.outputs import pack_dopplerview_analysis_outputs
+from .dopplerview.runner import run_dopplerview_analysis
 from .metrics.runner import run_waveform_shape_metric_calculations
 from .sources import WaveformShapeSourceData, WaveformShapeSources
 from .velocity.branch_identity_debug import export_branch_identity_stage_pngs
 from .velocity.figures import export_pulse_pngs
 from .velocity.runner import run_velocity_per_beat_metrics
+from .velocity.topology import pack_segment_topology_outputs
 
 
 @dataclass(frozen=True)
 class WaveformShapeMetricsContext:
     source_data: WaveformShapeSourceData
     per_beat_analysis: PerBeatAnalysisInput
+    artery_segment_result: CrossSectionSignalResult
+    vein_segment_result: CrossSectionSignalResult
     dopplerview_analysis: dict[str, object]
     attrs: dict[str, object]
 
@@ -55,6 +60,13 @@ def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object
     per_beat_result, velocity_metrics = run_velocity_per_beat_metrics(context)
     metrics = pack_dopplerview_analysis_outputs(context.dopplerview_analysis)
     metrics.update(velocity_metrics)
+    metrics.update(
+        pack_segment_topology_outputs(
+            context.source_data,
+            context.artery_segment_result,
+            context.vein_segment_result,
+        )
+    )
     ctx.state.set("velocity_per_beat_result", per_beat_result)
     _export_pulse_pngs(ctx, context, per_beat_result)
 
@@ -70,22 +82,42 @@ def _build_waveform_shape_metrics_context(ctx) -> WaveformShapeMetricsContext:
     _log(ctx, "Starting waveform source loading...")
     source_data = WaveformShapeSources.from_context(ctx).load()
     timing = source_data.timing
-    _log(ctx, "Loading DopplerView analysis datasets...")
-    dopplerview_analysis = source_data.dopplerview_analysis
+    dopplerview_analysis, analysis_source = _resolve_dopplerview_analysis(
+        source_data,
+        ctx,
+    )
     harmonic_count = _band_limited_harmonic_count(ctx)
+    per_beat_analysis, artery_segments, vein_segments = _per_beat_input_from_analysis(
+        dopplerview_analysis,
+        source_data,
+        timing,
+        harmonic_count,
+        ctx,
+    )
 
     return WaveformShapeMetricsContext(
         source_data=source_data,
-        per_beat_analysis=_per_beat_input_from_analysis(
-            dopplerview_analysis,
-            source_data,
-            timing,
-            harmonic_count,
-            ctx,
-        ),
+        per_beat_analysis=per_beat_analysis,
+        artery_segment_result=artery_segments,
+        vein_segment_result=vein_segments,
         dopplerview_analysis=dopplerview_analysis,
-        attrs=_context_attrs(source_data, timing, harmonic_count),
+        attrs=_context_attrs(source_data, timing, harmonic_count, analysis_source),
     )
+
+
+def _resolve_dopplerview_analysis(
+    source_data: WaveformShapeSourceData,
+    ctx,
+) -> tuple[dict[str, object], str]:
+    if source_data.dopplerview_analysis is not None:
+        _log(ctx, "Loading DopplerView analysis datasets...")
+        return source_data.dopplerview_analysis, "dopplerview_h5_analysis"
+    _log(
+        ctx,
+        "DopplerView analysis datasets are missing; rebuilding analysis from "
+        "HD moments and DV masks.",
+    )
+    return run_dopplerview_analysis(source_data), "eyeflow_recomputed_dopplerview_analysis"
 
 
 def _band_limited_harmonic_count(ctx) -> int:
@@ -102,7 +134,11 @@ def _per_beat_input_from_analysis(
     timing: HolodopplerTiming,
     harmonic_count: int,
     ctx,
-) -> PerBeatAnalysisInput:
+) -> tuple[
+    PerBeatAnalysisInput,
+    CrossSectionSignalResult,
+    CrossSectionSignalResult,
+]:
     ring_settings = _segment_ring_settings(source_data)
     artery_segments, vein_segments = _segment_velocity_inputs(
         analysis,
@@ -110,7 +146,7 @@ def _per_beat_input_from_analysis(
         ring_settings,
         ctx,
     )
-    return PerBeatAnalysisInput(
+    inputs = PerBeatAnalysisInput(
         arterial_velocity_signal=np.asarray(
             analysis["retinal_artery_velocity_signal"],
             dtype=np.float32,
@@ -125,11 +161,12 @@ def _per_beat_input_from_analysis(
         ),
         band_limited_signal_harmonic_count=harmonic_count,
         dt_seconds=timing.dt_seconds,
-        arterial_velocity_segments=artery_segments,
-        venous_velocity_segments=vein_segments,
+        arterial_velocity_segments=_waveform_segment_input(artery_segments),
+        venous_velocity_segments=_waveform_segment_input(vein_segments),
         beat_period_seconds=np.asarray(analysis["time_per_beat"], dtype=np.float32),
         index_base=source_data.provenance["beat_index_base"],
     )
+    return inputs, artery_segments, vein_segments
 
 
 def _segment_velocity_inputs(
@@ -137,7 +174,7 @@ def _segment_velocity_inputs(
     source_data: WaveformShapeSourceData,
     ring_settings: SegmentRingSettings,
     ctx,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
     _log(ctx, "Starting segment velocity extraction...")
     artery, vein = segment_velocity_results(
         analysis["retinal_vessel_velocity"],
@@ -161,7 +198,13 @@ def _segment_velocity_inputs(
         ring_settings,
         "vein",
     )
-    return artery.velocity, vein.velocity
+    return artery, vein
+
+
+def _waveform_segment_input(result: CrossSectionSignalResult) -> np.ndarray | None:
+    if result.branch_ids.size == 0:
+        return None
+    return result.velocity
 
 
 def _log(ctx, message: str) -> None:
@@ -237,15 +280,24 @@ def _context_attrs(
     source_data: WaveformShapeSourceData,
     timing: HolodopplerTiming,
     harmonic_count: int,
+    analysis_source: str,
 ) -> dict[str, object]:
     analysis_paths = EyeFlowOutputPaths.active().analysis
+    dependency_chain = (
+        ["dopplerview.h5.analysis"]
+        if analysis_source == "dopplerview_h5_analysis"
+        else [
+            "holodoppler.h5.moment0_moment2",
+            "dopplerview.h5.segmentation",
+            "eyeflow.dopplerview_analysis.recomputed",
+        ]
+    )
     return {
-        "dependency_chain": [
-            "dopplerview.h5.analysis",
+        "dependency_chain": dependency_chain + [
             "blood_flow_velocity.signal_analysis.per_beat.signal",
             "blood_flow_velocity.signal_analysis.per_beat.runner",
         ],
-        "analysis_source": "dopplerview_h5_analysis",
+        "analysis_source": analysis_source,
         "arterial_velocity_signal_path": analysis_paths.retinal_artery_velocity_signal,
         "venous_velocity_signal_path": analysis_paths.retinal_vein_velocity_signal,
         "systolic_peak_indexes_path": analysis_paths.beat_indices,

@@ -1,6 +1,7 @@
 """Pure blood-flow velocity calculations for EyeFlow."""
 
 from .analysis_preparation.segments.generate_cross_section_signals import (
+    CrossSectionSignalResult,
     CrossSectionSignalSettings,
 )
 from .analysis_preparation.segments.segment_geometry import SegmentRingSettings
@@ -43,6 +44,7 @@ __all__ = [
     "PairedVesselCycles",
     "PulseMetricData",
     "CrossSectionSignalSettings",
+    "CrossSectionSignalResult",
     "SegmentRingSettings",
     "VenousWaveformAnalysis",
     "arterial_waveform_analysis",

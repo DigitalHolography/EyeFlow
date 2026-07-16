@@ -14,8 +14,90 @@ from ..widgets import Tooltip
 
 
 class PipelineLibraryController:
+    _STATUS_COLUMN_PADDING = (24, 24)
+
     def __init__(self, app) -> None:
         self.app = app
+
+    def configure_library_columns(self, inner, *, row_count: int = 1) -> None:
+        inner.columnconfigure(0, weight=1, minsize=180)
+        inner.columnconfigure(1, weight=0, minsize=6)
+        inner.columnconfigure(2, weight=0, minsize=0)
+        divider_slot = ttk.Frame(inner, cursor="sb_h_double_arrow")
+        divider_slot.grid(
+            row=0,
+            column=1,
+            rowspan=max(1, row_count),
+            sticky="nsew",
+        )
+        divider_slot.grid_propagate(False)
+        divider_slot._library_resize_inner = inner
+        for relx in (0.35, 0.65):
+            handle_line = ttk.Separator(divider_slot, orient="vertical")
+            handle_line._library_resize_inner = inner
+            handle_line.place(
+                relx=relx,
+                rely=0.5,
+                anchor="center",
+                width=1,
+                height=22,
+            )
+            handle_line.bind(
+                "<ButtonPress-1>", self._start_library_column_resize
+            )
+            handle_line.bind("<B1-Motion>", self._resize_library_columns)
+            handle_line.bind(
+                "<ButtonRelease-1>", self._finish_library_column_resize
+            )
+        divider_slot.bind(
+            "<ButtonPress-1>", self._start_library_column_resize
+        )
+        divider_slot.bind("<B1-Motion>", self._resize_library_columns)
+        divider_slot.bind(
+            "<ButtonRelease-1>", self._finish_library_column_resize
+        )
+
+    def _start_library_column_resize(self, event) -> None:
+        inner = getattr(event.widget, "_library_resize_inner", event.widget.master)
+        inner.update_idletasks()
+        name_width = inner.grid_bbox(0, 0)[2]
+        status_width = max(1, self._library_column_requested_width(inner, 2))
+        self._library_resize_state = (
+            inner,
+            event.x_root,
+            name_width,
+            status_width,
+        )
+
+    def _resize_library_columns(self, event) -> None:
+        state = getattr(self, "_library_resize_state", None)
+        if state is None:
+            return
+        inner, start_x, start_width, status_min_width = state
+        divider_width = 6
+        new_width = start_width + event.x_root - start_x
+        max_width = max(180, inner.winfo_width() - status_min_width - divider_width)
+        new_width = min(max(180, new_width), max_width)
+        inner.columnconfigure(0, weight=0, minsize=new_width)
+        inner.columnconfigure(2, weight=1, minsize=status_min_width)
+
+    @staticmethod
+    def _library_column_requested_width(inner, column: int) -> int:
+        widths = []
+        for widget in inner.grid_slaves(column=column):
+            grid_info = widget.grid_info()
+            padx = grid_info.get("padx", 0)
+            if isinstance(padx, (tuple, list)):
+                padding = sum(int(value) for value in padx)
+            elif isinstance(padx, str) and " " in padx:
+                padding = sum(int(value) for value in padx.split())
+            else:
+                padding = int(padx or 0) * 2
+            widths.append(widget.winfo_reqwidth() + padding)
+        return max(widths, default=0)
+
+    def _finish_library_column_resize(self, _event) -> None:
+        self._library_resize_state = None
 
     def build_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
@@ -29,27 +111,32 @@ class PipelineLibraryController:
 
     def register(self) -> None:
         available, missing = load_pipeline_catalog()
-        rows = sorted(
-            [
-                pipeline
-                for pipeline in [*available, *missing]
-                if getattr(pipeline, "visibility", "visible") != "hidden"
-            ],
+        catalog = sorted(
+            [*available, *missing],
             key=lambda pipeline: pipeline.name.lower(),
         )
         self.app.pipeline_registry = {p.name: p for p in available}
-        self.app.pipeline_catalog = {p.name: p for p in rows}
+        self.app.pipeline_catalog = {p.name: p for p in catalog}
 
         try:
-            self.app.pipeline_dag = PipelineDAG(rows)
+            self.app.pipeline_dag = PipelineDAG(catalog)
         except (RuntimeError, ValueError) as exc:
             self.app.pipeline_dag = None
+            rows = [
+                pipeline
+                for pipeline in catalog
+                if getattr(pipeline, "visibility", "visible") != "hidden"
+            ]
             self.app.settings_controller.show_settings_warning(
                 "Pipeline DAG error",
                 f"Pipeline dependency graph is invalid:\n{exc}",
             )
         else:
-            rows = list(self.app.pipeline_dag.ordered_descriptors)
+            rows = [
+                pipeline
+                for pipeline in self.app.pipeline_dag.ordered_descriptors
+                if getattr(pipeline, "visibility", "visible") != "hidden"
+            ]
 
         self.app.pipeline_rows = rows
         self.sync_visibility(rows)
@@ -118,9 +205,10 @@ class PipelineLibraryController:
             child.destroy()
         self.app.pipeline_visibility_vars = {}
         self.app.pipeline_row_widgets = {}
-        self.app.pipeline_library_inner.columnconfigure(0, weight=0)
-        self.app.pipeline_library_inner.columnconfigure(1, weight=1)
-        self.app.pipeline_library_inner.columnconfigure(2, weight=0)
+        self.configure_library_columns(
+            self.app.pipeline_library_inner,
+            row_count=len(rows) + 1,
+        )
         self._build_header()
 
         for idx, pipeline in enumerate(rows, start=1):
@@ -233,7 +321,7 @@ class PipelineLibraryController:
 
     def _build_library_container(self, parent: ttk.Frame) -> None:
         library_container = ttk.Frame(parent)
-        library_container.grid(row=2, column=0, sticky="nsew", padx=(10, 10))
+        library_container.grid(row=2, column=0, sticky="nsew")
         library_container.columnconfigure(0, weight=1)
         library_container.rowconfigure(0, weight=1)
 
@@ -247,9 +335,7 @@ class PipelineLibraryController:
             orient="vertical",
             command=self.app.pipeline_library_canvas.yview,
         )
-        library_padding = tk.Frame(library_container, width=10, bg=library_bg)
-        library_padding.grid(row=0, column=1, sticky="ns")
-        library_scroll.grid(row=0, column=2, sticky="ns")
+        library_scroll.grid(row=0, column=1, sticky="ns")
         self.app.pipeline_library_canvas.configure(yscrollcommand=library_scroll.set)
         self.app.pipeline_library_inner = ttk.Frame(self.app.pipeline_library_canvas)
         self.app.pipeline_library_window = (
@@ -282,11 +368,15 @@ class PipelineLibraryController:
     def _build_header(self) -> None:
         selected_header = ttk.Label(self.app.pipeline_library_inner, text="Target")
         selected_header.grid(row=0, column=0, sticky="w", pady=(0, 6))
-        order_header = ttk.Label(self.app.pipeline_library_inner, text="Pipeline")
-        order_header.grid(row=0, column=1, sticky="w", padx=(12, 0), pady=(0, 6))
         status_header = ttk.Label(self.app.pipeline_library_inner, text="Status")
-        status_header.grid(row=0, column=2, sticky="e", padx=(12, 0), pady=(0, 6))
-        for widget in (selected_header, order_header, status_header):
+        status_header.grid(
+            row=0,
+            column=2,
+            sticky="w",
+            padx=self._STATUS_COLUMN_PADDING,
+            pady=(0, 6),
+        )
+        for widget in (selected_header, status_header):
             self.bind_vertical_mousewheel(widget, self.app.pipeline_library_canvas)
 
     def _build_pipeline_row(self, idx: int, pipeline: PipelineDescriptor) -> None:
@@ -297,7 +387,7 @@ class PipelineLibraryController:
         )
         check = ttk.Checkbutton(
             self.app.pipeline_library_inner,
-            text="",
+            text=pipeline.name,
             variable=var,
             state="normal" if is_available else "disabled",
             command=lambda name=pipeline.name, visible_var=var: (
@@ -305,22 +395,25 @@ class PipelineLibraryController:
             ),
         )
         check.grid(row=idx, column=0, sticky="w", pady=(0, 6))
-        name_label = ttk.Label(self.app.pipeline_library_inner, text=pipeline.name)
-        name_label.grid(row=idx, column=1, sticky="w", padx=(12, 0), pady=(0, 6))
         status = ttk.Label(
             self.app.pipeline_library_inner,
             text=pipeline_status_text(pipeline),
         )
-        status.grid(row=idx, column=2, sticky="e", padx=(12, 0), pady=(0, 6))
-        self._bind_row_widgets(check, name_label, status)
+        status.grid(
+            row=idx,
+            column=2,
+            sticky="w",
+            padx=self._STATUS_COLUMN_PADDING,
+            pady=(0, 6),
+        )
+        self._bind_row_widgets(check, status)
         self._bind_pipeline_row_toggle(
             pipeline.name,
             var,
-            name_label,
             status,
         )
-        self._add_tooltips(pipeline, check, name_label, status)
-        self.app.pipeline_row_widgets[pipeline.name] = name_label
+        self._add_tooltips(pipeline, check, status)
+        self.app.pipeline_row_widgets[pipeline.name] = check
         self.app.pipeline_visibility_vars[pipeline.name] = var
 
     def _bind_row_widgets(self, *widgets: tk.Misc) -> None:
