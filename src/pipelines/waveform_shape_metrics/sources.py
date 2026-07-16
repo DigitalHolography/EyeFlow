@@ -28,6 +28,7 @@ class WaveformShapeSourceData:
     retinal_artery_mask: np.ndarray
     retinal_vein_mask: np.ndarray
     retinal_labeled_vessels: np.ndarray | None
+    optic_disc_mask: np.ndarray | None
     optic_disc_center: np.ndarray | None
     optic_disc_width: np.ndarray | None
     optic_disc_height: np.ndarray | None
@@ -87,6 +88,12 @@ class WaveformShapeSources:
             "retinal_labeled_vessels",
         )
         spatial_axes_swapped = spatial_axes_swapped or labeled_axes_swapped
+        optic_disc_mask, optic_disc_axes_swapped = _align_optional_spatial_array(
+            self.dv.optic_disc_mask(),
+            spatial_shape,
+            "optic_disc_mask",
+        )
+        spatial_axes_swapped = spatial_axes_swapped or optic_disc_axes_swapped
         optic_disc_center = _align_spatial_pair(
             self.dv.optic_disc_center(),
             swapped=spatial_axes_swapped,
@@ -106,6 +113,7 @@ class WaveformShapeSources:
             retinal_artery_mask=np.asarray(artery_mask, dtype=bool),
             retinal_vein_mask=np.asarray(vein_mask, dtype=bool),
             retinal_labeled_vessels=labeled_vessels,
+            optic_disc_mask=optic_disc_mask,
             optic_disc_center=optic_disc_center,
             optic_disc_width=optic_disc_width,
             optic_disc_height=optic_disc_height,
@@ -124,6 +132,7 @@ class WaveformShapeSources:
                 self.hd,
                 self.dv,
                 labeled_vessels,
+                optic_disc_mask,
                 optic_disc_center,
                 spatial_axes_swapped=spatial_axes_swapped,
                 dopplerview_analysis_available=dopplerview_analysis is not None,
@@ -210,6 +219,7 @@ def _source_provenance(
     hd,
     dv,
     labeled_vessels,
+    optic_disc_mask,
     optic_disc_center,
     *,
     spatial_axes_swapped: bool,
@@ -219,6 +229,7 @@ def _source_provenance(
         "hd_source_file": str(hd.filename or ""),
         "dv_source_file": str(dv.filename or ""),
         "has_retinal_labeled_vessels": labeled_vessels is not None,
+        "has_optic_disc_mask": optic_disc_mask is not None,
         "has_optic_disc_center": optic_disc_center is not None,
         "dopplerview_analysis_available": dopplerview_analysis_available,
         "dv_spatial_axes_swapped_to_match_hd": spatial_axes_swapped,

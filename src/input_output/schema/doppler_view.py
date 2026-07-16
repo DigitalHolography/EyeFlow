@@ -105,6 +105,13 @@ class DopplerViewSource(TypedSource):
             default=None,
         )
 
+    def optic_disc_mask(self) -> np.ndarray | None:
+        return self._array(
+            "segmentation/OpticDisc/mask",
+            dtype=bool,
+            default=None,
+        )
+
     def optic_disc_width(self) -> np.float32 | None:
         return self._array(
             "segmentation/OpticDisc/width",

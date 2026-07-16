@@ -53,11 +53,18 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         self.assertIsNone(source_data.dopplerview_analysis)
         np.testing.assert_array_equal(source_data.retinal_artery_mask, artery_raw.T)
         np.testing.assert_array_equal(source_data.retinal_vein_mask, vein_raw.T)
+        expected_optic_disc_mask = np.zeros_like(artery_raw)
+        expected_optic_disc_mask[1:3, 0] = True
+        np.testing.assert_array_equal(
+            source_data.optic_disc_mask,
+            expected_optic_disc_mask.T,
+        )
         np.testing.assert_array_equal(source_data.optic_disc_center, [2.0, 1.0])
         self.assertTrue(
             source_data.provenance["dv_spatial_axes_swapped_to_match_hd"]
         )
         self.assertFalse(source_data.provenance["dopplerview_analysis_available"])
+        self.assertTrue(source_data.provenance["has_optic_disc_mask"])
 
     def test_existing_analysis_spatial_arrays_align_to_hd_and_scale_velocity(self) -> None:
         artery_raw = np.array(
@@ -109,6 +116,9 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
             data=np.arange(8, dtype=np.int32).reshape(4, 2),
         )
         optic_disc = h5.create_group("segmentation/OpticDisc")
+        optic_disc_mask = np.zeros_like(artery_mask)
+        optic_disc_mask[1:3, 0] = True
+        optic_disc.create_dataset("mask", data=optic_disc_mask)
         optic_disc.create_dataset("center", data=np.asarray([1.0, 2.0], dtype=np.float32))
         optic_disc.create_dataset("width", data=np.float32(3.0))
         optic_disc.create_dataset("height", data=np.float32(4.0))

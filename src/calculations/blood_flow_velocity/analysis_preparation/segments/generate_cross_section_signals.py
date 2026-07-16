@@ -33,6 +33,7 @@ class CrossSectionSignalResult:
     safe_velocity: np.ndarray
     labels: np.ndarray
     branch_ids: np.ndarray
+    segment_center_xy: np.ndarray
     branch_identity: BranchIdentityResult
 
 
@@ -53,9 +54,15 @@ def generate_cross_section_signals(
     shape = (ring_settings.ring_count, branches.branch_ids.size, velocity_array.shape[0])
     segment_v = np.full(shape, np.nan, dtype=np.float32)
     segment_safe = np.full(shape, np.nan, dtype=np.float32)
+    segment_center_xy = np.full(
+        (branches.branch_ids.size, ring_settings.ring_count, 2),
+        np.nan,
+        dtype=np.float32,
+    )
     _fill_cross_section_signals(
         segment_v,
         segment_safe,
+        segment_center_xy,
         velocity_array,
         masks,
         branches,
@@ -67,6 +74,7 @@ def generate_cross_section_signals(
         segment_safe,
         branches.labels,
         branches.branch_ids,
+        segment_center_xy,
         branches,
     )
 
@@ -83,6 +91,7 @@ def _empty_result(
         np.full(shape, np.nan, dtype=np.float32),
         np.zeros(vessel.shape, dtype=np.int32),
         branches.branch_ids,
+        np.full((0, settings.ring_count, 2), np.nan, dtype=np.float32),
         branches,
     )
 
@@ -90,6 +99,7 @@ def _empty_result(
 def _fill_cross_section_signals(
     segment_v: np.ndarray,
     segment_safe: np.ndarray,
+    segment_center_xy: np.ndarray,
     velocity: np.ndarray,
     masks: np.ndarray,
     branches: BranchIdentityResult,
@@ -102,6 +112,7 @@ def _fill_cross_section_signals(
             loc = _centroid_xy(mask)
             if loc is None:
                 continue
+            segment_center_xy[branch_index, circle_index] = loc
             tilt = _tilt_angle(mask, optic_disc_center)
             raw, safe = _cross_section_velocity(
                 velocity,
