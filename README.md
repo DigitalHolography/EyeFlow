@@ -48,6 +48,45 @@ eyeflow --data path\to\input.holo
 eyeflow-cli --data path\to\input.holo
 ```
 
+## Extracting Waveform Fixtures
+
+`tools/extract_waveform_fixture.py` creates compact waveform-only H5 files for
+algorithm development and robustness testing. It copies only an explicit
+allow-list of numeric artery/vein waveforms, beat timing, and optional per-beat
+signals. Source filenames, source attributes, images, masks, maps, and
+acquisition metadata are not copied.
+
+Install the two required packages if EyeFlow is not already installed:
+
+```powershell
+py -m pip install numpy h5py
+```
+
+Validate a folder before writing anything:
+
+```powershell
+py tools\extract_waveform_fixture.py "D:\EyeFlowOutputs" `
+  --output-dir "D:\WaveformFixtures" `
+  --recursive `
+  --dry-run
+```
+
+Create the compact fixtures:
+
+```powershell
+py tools\extract_waveform_fixture.py "D:\EyeFlowOutputs" `
+  --output-dir "D:\WaveformFixtures" `
+  --recursive
+```
+
+Output filenames are derived from waveform content rather than source filenames.
+Repeating an extraction reuses an identical fixture. Run the script with
+`--help` for size limits and overwrite behavior.
+
+Metadata removal does not make clinical waveforms non-sensitive. Treat the
+fixtures as patient-derived data, follow the applicable data-governance rules,
+and do not commit them to a public repository without explicit approval.
+
 ## Scope
 
 ### In Scope
