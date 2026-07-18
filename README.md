@@ -56,6 +56,33 @@ allow-list of numeric artery/vein waveforms, beat timing, and optional per-beat
 signals. Source filenames, source attributes, images, masks, maps, and
 acquisition metadata are not copied.
 
+### Windows executable
+
+The downloadable `EyeFlowWaveformFixtureExtractor.exe` provides a double-click
+interface:
+
+1. Choose one EyeFlow H5 file or a folder of EyeFlow outputs.
+2. Choose a separate output folder.
+3. Select **Validate inputs** to check compatibility without writing files.
+4. Select **Extract fixtures** to create the compact waveform fixtures.
+
+The executable is published with a `.sha256` checksum file. It is not
+code-signed, so Windows SmartScreen may display an unrecognized-app warning.
+Verify the checksum before running a downloaded copy.
+
+To build the executable from source, install PyInstaller in the active Python
+environment and run:
+
+```powershell
+py -m pip install numpy h5py pyinstaller
+.\tools\build_waveform_fixture_executable.ps1
+```
+
+The executable and checksum are written to
+`dist\waveform-fixture-extractor\`.
+
+### Python command line
+
 Install the two required packages if EyeFlow is not already installed:
 
 ```powershell
