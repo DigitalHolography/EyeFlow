@@ -192,6 +192,39 @@ Each processed input should generate a clean result package.
 
 Optional figures and visual exports can be added later, but they are not the core deliverable for v1.
 
+### Waveform Beat Quality
+
+Waveform-shape metrics use a shared arterial/venous beat-quality decision:
+
+1. Keep the historical high-confidence systolic-boundary detector.
+2. Search only an approximately two-period gap for one plausible missed
+   upstroke, using local timing, height, and prominence checks.
+3. Reject intervals with implausible duration, excessive raw-to-band-limited
+   residual, or a paired arterial/venous template mismatch.
+4. Re-extract accepted global and segment waveforms before calculating metrics.
+
+The metric formulas are unchanged. The final `Artery/VelocityPerBeat` and
+`Vein/VelocityPerBeat` arrays and beat-period datasets contain accepted beats
+only, so report heart rate and every waveform metric use the same population.
+The `analysis` namespace retains candidate segmentation for diagnosis.
+Candidate boundaries, accepted masks, rejection flags, quality scores,
+thresholds, and recovery counts are written under `QualityControl/Beat`.
+
+The QC defaults can be overridden through pipeline attributes named
+`BeatQualityRawBandlimitedResidualLimit`,
+`BeatQualityPairedTemplateDistanceLimit`, `BeatQualityMinimumTemplateBeats`,
+`BeatQualityMinimumPeriodRatio`, and `BeatQualityMaximumPeriodRatio`. The
+effective values are stored with the QC outputs.
+
+Local waveform fixtures can be benchmarked without adding them to Git:
+
+```powershell
+python tools\benchmark_waveform_robustness.py C:\path\to\local\fixtures
+```
+
+The optional `--expectations` manifest and `--json-output` report also remain
+local unless explicitly copied into the repository.
+
 ## CLI And GUI
 
 The CLI and GUI must expose the same analysis features.

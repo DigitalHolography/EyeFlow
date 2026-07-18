@@ -14,6 +14,12 @@ from .signal_analysis.per_beat.runner import (
     PerBeatAnalysisResult,
     run_per_beat_analysis,
 )
+from .signal_analysis.per_beat.quality import (
+    BeatQualityResult,
+    BeatQualitySettings,
+    VesselBeatQualityScores,
+    assess_beat_quality,
+)
 from .signal_analysis.per_beat.segments import (
     PerBeatSegmentAnalysisResult,
     per_beat_segment_analysis,
@@ -37,6 +43,8 @@ from .signal_analysis.waveform import (
 
 __all__ = [
     "ArterialWaveformAnalysis",
+    "BeatQualityResult",
+    "BeatQualitySettings",
     "PerBeatAnalysisInput",
     "PerBeatAnalysisResult",
     "PerBeatSegmentAnalysisResult",
@@ -47,7 +55,9 @@ __all__ = [
     "CrossSectionSignalResult",
     "SegmentRingSettings",
     "VenousWaveformAnalysis",
+    "VesselBeatQualityScores",
     "arterial_waveform_analysis",
+    "assess_beat_quality",
     "average_cycle",
     "cycle_extrema",
     "paired_vessel_cycles",

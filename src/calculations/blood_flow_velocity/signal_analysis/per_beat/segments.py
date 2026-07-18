@@ -22,6 +22,7 @@ def per_beat_segment_analysis(
     band_limited_signal_harmonic_count: int,
     *,
     index_base: int | None = None,
+    interval_mask: np.ndarray | None = None,
 ) -> PerBeatSegmentAnalysisResult:
     segments = _segment_array(segment_velocity_signals)
     first = per_beat_signal_analysis(
@@ -29,6 +30,7 @@ def per_beat_segment_analysis(
         sys_idx_list,
         band_limited_signal_harmonic_count,
         index_base=index_base,
+        interval_mask=interval_mask,
     )
     outputs = _empty_segment_outputs(segments.shape, first)
     _fill_segment_outputs(outputs, first, branch_index=0, radius_index=0)
@@ -38,6 +40,7 @@ def per_beat_segment_analysis(
         sys_idx_list,
         band_limited_signal_harmonic_count,
         index_base,
+        interval_mask,
     )
     return PerBeatSegmentAnalysisResult(*outputs)
 
@@ -72,6 +75,7 @@ def _fill_remaining_segments(
     sys_idx_list,
     harmonic_count: int,
     index_base: int | None,
+    interval_mask: np.ndarray | None,
 ) -> None:
     for radius_index in range(segments.shape[0]):
         for branch_index in range(segments.shape[1]):
@@ -82,6 +86,7 @@ def _fill_remaining_segments(
                 sys_idx_list,
                 harmonic_count,
                 index_base=index_base,
+                interval_mask=interval_mask,
             )
             _fill_segment_outputs(outputs, result, branch_index, radius_index)
 

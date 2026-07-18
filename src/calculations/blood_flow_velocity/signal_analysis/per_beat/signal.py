@@ -24,6 +24,7 @@ def per_beat_signal_analysis(
     band_limited_signal_harmonic_count: int,
     *,
     index_base: int | None = None,
+    interval_mask: np.ndarray | None = None,
 ) -> PerBeatSignalAnalysisResult:
     signal_array = np.asarray(signal, dtype=np.float32).reshape(-1)
     if signal_array.size == 0:
@@ -40,6 +41,7 @@ def per_beat_signal_analysis(
         signal_array,
         cycle_boundaries,
         int(band_limited_signal_harmonic_count),
+        interval_mask=interval_mask,
     )
 
 
@@ -47,14 +49,29 @@ def _analyze_cycles(
     signal_array: np.ndarray,
     cycle_boundaries: np.ndarray,
     harmonic_count: int,
+    *,
+    interval_mask: np.ndarray | None = None,
 ) -> PerBeatSignalAnalysisResult:
-    number_of_beats = int(cycle_boundaries.size - 1)
-    n_fft = next_power_of_two(int(np.max(np.diff(cycle_boundaries))))
+    interval_pairs = np.column_stack(
+        (cycle_boundaries[:-1], cycle_boundaries[1:])
+    ).astype(np.int32, copy=False)
+    if interval_mask is not None:
+        mask = np.asarray(interval_mask, dtype=np.bool_).reshape(-1)
+        if mask.size != interval_pairs.shape[0]:
+            raise ValueError(
+                "interval_mask must contain one value per boundary interval."
+            )
+        interval_pairs = interval_pairs[mask]
+    if interval_pairs.shape[0] == 0:
+        raise ValueError("At least one beat interval must be selected.")
+
+    number_of_beats = int(interval_pairs.shape[0])
+    n_fft = next_power_of_two(int(np.max(interval_pairs[:, 1] - interval_pairs[:, 0])))
     per_beat, per_beat_fft, band_limited = _empty_outputs(number_of_beats, n_fft)
 
-    for beat_index in range(number_of_beats):
-        start = int(cycle_boundaries[beat_index])
-        stop = int(cycle_boundaries[beat_index + 1]) + 1
+    for beat_index, (start_index, stop_index) in enumerate(interval_pairs):
+        start = int(start_index)
+        stop = int(stop_index) + 1
         beat_interp = interpft_real(signal_array[start:stop], n_fft + 1)[:-1]
         beat_fft = np.fft.fft(beat_interp, n=n_fft).astype(np.complex64)
         per_beat[beat_index, :] = beat_interp

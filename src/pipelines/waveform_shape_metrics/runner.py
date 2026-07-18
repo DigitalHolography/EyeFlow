@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from calculations.blood_flow_velocity import (
+    BeatQualitySettings,
     CrossSectionSignalResult,
     PerBeatAnalysisInput,
     SegmentRingSettings,
@@ -12,6 +13,7 @@ from calculations.blood_flow_velocity import (
 from calculations.blood_flow_velocity.analysis_preparation.segments.segment_geometry import (
     largest_centered_circle_radius_frac,
 )
+from calculations.dopplerview_analysis import analyze_arterial_waveforms
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.imports import (
     HolodopplerTiming,
@@ -86,6 +88,11 @@ def _build_waveform_shape_metrics_context(ctx) -> WaveformShapeMetricsContext:
         source_data,
         ctx,
     )
+    dopplerview_analysis = _refresh_waveform_analysis(
+        dopplerview_analysis,
+        timing,
+        ctx,
+    )
     harmonic_count = _band_limited_harmonic_count(ctx)
     per_beat_analysis, artery_segments, vein_segments = _per_beat_input_from_analysis(
         dopplerview_analysis,
@@ -118,6 +125,24 @@ def _resolve_dopplerview_analysis(
         "HD moments and DV masks.",
     )
     return run_dopplerview_analysis(source_data), "eyeflow_recomputed_dopplerview_analysis"
+
+
+def _refresh_waveform_analysis(
+    analysis: Mapping[str, object],
+    timing: HolodopplerTiming,
+    ctx,
+) -> dict[str, object]:
+    _log(ctx, "Refreshing robust beat detection and waveform diagnostics...")
+    refreshed = dict(analysis)
+    refreshed.update(
+        analyze_arterial_waveforms(
+            refreshed["retinal_artery_velocity_signal"],
+            refreshed["retinal_vein_velocity_signal"],
+            dt_seconds=np.float32(timing.dt_seconds),
+            lowpass_freq_hz=np.float32(LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ),
+        )
+    )
+    return refreshed
 
 
 def _band_limited_harmonic_count(ctx) -> int:
@@ -164,6 +189,16 @@ def _per_beat_input_from_analysis(
         arterial_velocity_segments=_waveform_segment_input(artery_segments),
         venous_velocity_segments=_waveform_segment_input(vein_segments),
         beat_period_seconds=np.asarray(analysis["time_per_beat"], dtype=np.float32),
+        interval_period_ratio=np.asarray(
+            analysis["beat_detection_interval_period_ratio"],
+            dtype=np.float32,
+        ),
+        recovered_boundary_indexes=np.asarray(
+            analysis["beat_detection_recovered_indices"],
+            dtype=np.int32,
+        ),
+        nominal_period_samples=float(analysis["beat_detection_nominal_period_samples"]),
+        quality_settings=_beat_quality_settings(ctx),
         index_base=source_data.provenance["beat_index_base"],
     )
     return inputs, artery_segments, vein_segments
@@ -274,6 +309,33 @@ def _positive_int(value, default: int) -> int:
         return int(default)
     scalar = int(np.asarray(value).reshape(-1)[0])
     return scalar if scalar > 0 else int(default)
+
+
+def _beat_quality_settings(ctx) -> BeatQualitySettings:
+    defaults = BeatQualitySettings()
+    attrs = ctx.attrs
+    return BeatQualitySettings(
+        raw_bandlimited_residual_limit=_positive_float(
+            attrs.get("BeatQualityRawBandlimitedResidualLimit"),
+            defaults.raw_bandlimited_residual_limit,
+        ),
+        paired_template_distance_limit=_positive_float(
+            attrs.get("BeatQualityPairedTemplateDistanceLimit"),
+            defaults.paired_template_distance_limit,
+        ),
+        minimum_template_beats=_positive_int(
+            attrs.get("BeatQualityMinimumTemplateBeats"),
+            defaults.minimum_template_beats,
+        ),
+        minimum_period_ratio=_positive_float(
+            attrs.get("BeatQualityMinimumPeriodRatio"),
+            defaults.minimum_period_ratio,
+        ),
+        maximum_period_ratio=_positive_float(
+            attrs.get("BeatQualityMaximumPeriodRatio"),
+            defaults.maximum_period_ratio,
+        ),
+    )
 
 
 def _context_attrs(

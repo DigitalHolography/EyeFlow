@@ -5,6 +5,14 @@ from collections.abc import Iterable
 import numpy as np
 
 from calculations.blood_flow_velocity import PerBeatAnalysisResult
+from calculations.blood_flow_velocity.analysis_preparation.beat_detection import (
+    RECOVERY_GAP_RATIO_MAX,
+    RECOVERY_GAP_RATIO_MIN,
+    RECOVERY_MEDIAN_PRIMARY_HEIGHT_FRACTION,
+    RECOVERY_MEDIAN_PRIMARY_PROMINENCE_FRACTION,
+    RECOVERY_ORIGINAL_THRESHOLD_FRACTION,
+    RECOVERY_SEARCH_RADIUS_PERIOD_FRACTION,
+)
 from input_output.schema import EyeFlowOutputPaths, VelocityPerBeatOutputPaths
 
 
@@ -27,7 +35,134 @@ def pack_velocity_per_beat_outputs(
     }
     metrics.update(_pack_vessel_outputs(schema.artery_per_beat, result.artery))
     metrics.update(_pack_vessel_outputs(schema.vein_per_beat, result.vein))
+    metrics.update(_pack_quality_outputs(schema, result))
     return metrics
+
+
+def _pack_quality_outputs(
+    schema: EyeFlowOutputPaths,
+    result: PerBeatAnalysisResult,
+) -> dict[str, object]:
+    paths = schema.beat_quality
+    quality = result.quality
+    if paths is None or quality is None:
+        return {}
+
+    accepted_indexes = np.flatnonzero(quality.accepted_mask).astype(np.int32)
+    boundary_index_attrs = (
+        {}
+        if result.index_base is None
+        else {"indexBase": np.int32(result.index_base)}
+    )
+    settings_attrs = {
+        "scoreAcceptanceThreshold": np.float32(1.0),
+        "rawBandlimitedResidualLimit": np.float32(
+            quality.settings.raw_bandlimited_residual_limit
+        ),
+        "pairedTemplateDistanceLimit": np.float32(
+            quality.settings.paired_template_distance_limit
+        ),
+        "minimumTemplateBeats": np.int32(quality.settings.minimum_template_beats),
+        "minimumPeriodRatio": np.float32(quality.settings.minimum_period_ratio),
+        "maximumPeriodRatio": np.float32(quality.settings.maximum_period_ratio),
+    }
+    flag_attrs = {
+        **settings_attrs,
+        "flagDefinitions": [
+            "1=duration_too_short",
+            "2=duration_too_long",
+            "4=artery_raw_bandlimited_residual",
+            "8=vein_raw_bandlimited_residual",
+            "16=artery_template_mismatch",
+            "32=vein_template_mismatch",
+            "64=insufficient_or_nonfinite_waveform",
+        ],
+    }
+    return {
+        paths.candidate_start_index: metric_value(
+            _matlab_row_vector(result.candidate_start_indexes),
+            unit="frame",
+            dim_desc=("row", "candidate_beat"),
+            extra_attrs=boundary_index_attrs,
+        ),
+        paths.candidate_stop_index: metric_value(
+            _matlab_row_vector(result.candidate_stop_indexes),
+            unit="frame",
+            dim_desc=("row", "candidate_beat"),
+            extra_attrs=boundary_index_attrs,
+        ),
+        paths.accepted_mask: metric_value(
+            _matlab_row_vector(quality.accepted_mask),
+            dim_desc=("row", "candidate_beat"),
+        ),
+        paths.accepted_candidate_index: metric_value(
+            _matlab_row_vector(accepted_indexes),
+            dim_desc=("row", "accepted_beat"),
+            extra_attrs={"indexBase": np.int32(0)},
+        ),
+        paths.rejection_flags: metric_value(
+            _matlab_row_vector(quality.rejection_flags),
+            dim_desc=("row", "candidate_beat"),
+            extra_attrs=flag_attrs,
+        ),
+        paths.quality_score: metric_value(
+            _matlab_row_vector(quality.quality_score),
+            dim_desc=("row", "candidate_beat"),
+            extra_attrs=settings_attrs,
+        ),
+        paths.period_ratio: metric_value(
+            _matlab_row_vector(quality.period_ratio),
+            dim_desc=("row", "candidate_beat"),
+        ),
+        paths.boundary_recovered_mask: metric_value(
+            _matlab_row_vector(result.recovered_boundary_mask),
+            dim_desc=("row", "boundary"),
+            extra_attrs={
+                "gapRatioRange": np.asarray(
+                    [RECOVERY_GAP_RATIO_MIN, RECOVERY_GAP_RATIO_MAX],
+                    dtype=np.float32,
+                ),
+                "midpointSearchRadiusPeriodFraction": np.float32(
+                    RECOVERY_SEARCH_RADIUS_PERIOD_FRACTION
+                ),
+                "minimumOriginalThresholdFraction": np.float32(
+                    RECOVERY_ORIGINAL_THRESHOLD_FRACTION
+                ),
+                "minimumMedianPrimaryHeightFraction": np.float32(
+                    RECOVERY_MEDIAN_PRIMARY_HEIGHT_FRACTION
+                ),
+                "minimumMedianPrimaryProminenceFraction": np.float32(
+                    RECOVERY_MEDIAN_PRIMARY_PROMINENCE_FRACTION
+                ),
+            },
+        ),
+        paths.nominal_period_samples: metric_value(
+            result.nominal_period_samples,
+            unit="frame",
+        ),
+        paths.artery_raw_bandlimited_residual: metric_value(
+            _matlab_row_vector(quality.artery.raw_bandlimited_residual),
+            dim_desc=("row", "candidate_beat"),
+        ),
+        paths.vein_raw_bandlimited_residual: metric_value(
+            _matlab_row_vector(quality.vein.raw_bandlimited_residual),
+            dim_desc=("row", "candidate_beat"),
+        ),
+        paths.artery_template_correlation: metric_value(
+            _matlab_row_vector(quality.artery.template_correlation),
+            dim_desc=("row", "candidate_beat"),
+        ),
+        paths.vein_template_correlation: metric_value(
+            _matlab_row_vector(quality.vein.template_correlation),
+            dim_desc=("row", "candidate_beat"),
+        ),
+        paths.candidate_count: metric_value(int(quality.accepted_mask.size)),
+        paths.accepted_count: metric_value(int(np.sum(quality.accepted_mask))),
+        paths.rejected_count: metric_value(int(np.sum(~quality.accepted_mask))),
+        paths.recovered_boundary_count: metric_value(
+            int(np.sum(result.recovered_boundary_mask))
+        ),
+    }
 
 
 def _pack_vessel_outputs(
@@ -113,8 +248,9 @@ def metric_value(
     *,
     unit: str | None = None,
     dim_desc: Iterable[str] | None = None,
+    extra_attrs: dict[str, object] | None = None,
 ):
-    attrs: dict[str, object] = {}
+    attrs: dict[str, object] = dict(extra_attrs or {})
     if unit:
         attrs["unit"] = unit
     if dim_desc:

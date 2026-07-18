@@ -37,6 +37,27 @@ class VelocityPerBeatOutputPaths:
 
 
 @dataclass(frozen=True)
+class BeatQualityOutputPaths:
+    candidate_start_index: str
+    candidate_stop_index: str
+    accepted_mask: str
+    accepted_candidate_index: str
+    rejection_flags: str
+    quality_score: str
+    period_ratio: str
+    boundary_recovered_mask: str
+    nominal_period_samples: str
+    artery_raw_bandlimited_residual: str
+    vein_raw_bandlimited_residual: str
+    artery_template_correlation: str
+    vein_template_correlation: str
+    candidate_count: str
+    accepted_count: str
+    rejected_count: str
+    recovered_boundary_count: str
+
+
+@dataclass(frozen=True)
 class OpticDiscTopologyOutputPaths:
     mask: str
     center_xy: str
@@ -66,6 +87,7 @@ class EyeFlowOutputPaths:
     beat_period_idx: str
     beat_period_seconds: str
     waveform_shape_metrics_root: str
+    beat_quality: BeatQualityOutputPaths | None = None
 
     @classmethod
     def active(cls, name: str | None = None) -> "EyeFlowOutputPaths":
@@ -147,6 +169,35 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
     beat_period_idx="Artery/VelocityPerBeat/beatPeriodIdx/value",
     beat_period_seconds="Artery/VelocityPerBeat/beatPeriodSeconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
+    beat_quality=BeatQualityOutputPaths(
+        candidate_start_index="QualityControl/Beat/CandidateStartIndex/value",
+        candidate_stop_index="QualityControl/Beat/CandidateStopIndex/value",
+        accepted_mask="QualityControl/Beat/AcceptedMask/value",
+        accepted_candidate_index="QualityControl/Beat/AcceptedCandidateIndex/value",
+        rejection_flags="QualityControl/Beat/RejectionFlags/value",
+        quality_score="QualityControl/Beat/QualityScore/value",
+        period_ratio="QualityControl/Beat/PeriodRatio/value",
+        boundary_recovered_mask="QualityControl/Beat/BoundaryRecoveredMask/value",
+        nominal_period_samples="QualityControl/Beat/NominalPeriodSamples/value",
+        artery_raw_bandlimited_residual=(
+            "QualityControl/Beat/ArteryRawBandlimitedResidual/value"
+        ),
+        vein_raw_bandlimited_residual=(
+            "QualityControl/Beat/VeinRawBandlimitedResidual/value"
+        ),
+        artery_template_correlation=(
+            "QualityControl/Beat/ArteryTemplateCorrelation/value"
+        ),
+        vein_template_correlation=(
+            "QualityControl/Beat/VeinTemplateCorrelation/value"
+        ),
+        candidate_count="QualityControl/Beat/CandidateCount/value",
+        accepted_count="QualityControl/Beat/AcceptedCount/value",
+        rejected_count="QualityControl/Beat/RejectedCount/value",
+        recovered_boundary_count=(
+            "QualityControl/Beat/RecoveredBoundaryCount/value"
+        ),
+    ),
 )
 
 SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
@@ -187,6 +238,29 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
     beat_period_idx="perbeat/beat_period_idx/value",
     beat_period_seconds="perbeat/beat_period_seconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
+    beat_quality=BeatQualityOutputPaths(
+        candidate_start_index="quality/beat/candidate_start_index/value",
+        candidate_stop_index="quality/beat/candidate_stop_index/value",
+        accepted_mask="quality/beat/accepted_mask/value",
+        accepted_candidate_index="quality/beat/accepted_candidate_index/value",
+        rejection_flags="quality/beat/rejection_flags/value",
+        quality_score="quality/beat/quality_score/value",
+        period_ratio="quality/beat/period_ratio/value",
+        boundary_recovered_mask="quality/beat/boundary_recovered_mask/value",
+        nominal_period_samples="quality/beat/nominal_period_samples/value",
+        artery_raw_bandlimited_residual=(
+            "quality/beat/artery_raw_bandlimited_residual/value"
+        ),
+        vein_raw_bandlimited_residual=(
+            "quality/beat/vein_raw_bandlimited_residual/value"
+        ),
+        artery_template_correlation="quality/beat/artery_template_correlation/value",
+        vein_template_correlation="quality/beat/vein_template_correlation/value",
+        candidate_count="quality/beat/candidate_count/value",
+        accepted_count="quality/beat/accepted_count/value",
+        rejected_count="quality/beat/rejected_count/value",
+        recovered_boundary_count="quality/beat/recovered_boundary_count/value",
+    ),
 )
 
 OUTPUT_PATH_VARIANTS = {
