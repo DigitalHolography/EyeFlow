@@ -77,7 +77,10 @@ class VesselVelocityEstimatorStep:
         ctx.set("deltafRMS", deltafRMS)
 
         velocity_scale = np.float32(2 * 852e-9 / np.sin(0.25) * 1e3)
-        velocity_map = (velocity_scale * deltafRMS).astype(np.float32)  # mm/s
+        velocity_map = (velocity_scale * deltafRMS).astype(
+            np.float32,
+            copy=False,
+        )  # mm/s
 
         ctx.set("velocity_map", velocity_map)
 
@@ -149,10 +152,10 @@ def _cpu_count() -> int:
 
 
 def _masked_signal(velocity_map: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    selected = np.where(np.asarray(mask, dtype=bool)[None, :, :], velocity_map, np.nan)
+    selected = velocity_map[:, np.asarray(mask, dtype=bool)]
     if not np.any(np.isfinite(selected)):
         return np.full((velocity_map.shape[0],), np.nan, dtype=np.float32)
-    return np.nanmean(selected, axis=(-2, -1), dtype=np.float32).astype(
+    return np.nanmean(selected, axis=1, dtype=np.float32).astype(
         np.float32,
         copy=False,
     )
@@ -170,11 +173,14 @@ def _run_in_parallel(func, iterable, n_jobs=-1, chunking=False):
     try:
         import joblib
     except ModuleNotFoundError:
-        return np.stack([func(item) for item in iterable], axis=0).astype(np.float32)
+        return np.stack([func(item) for item in iterable], axis=0).astype(
+            np.float32,
+            copy=False,
+        )
     if n_jobs == -1:
         n_jobs = _cpu_count()
     n_jobs = cap_parallel_jobs(n_jobs)
     results = joblib.Parallel(n_jobs=n_jobs, backend="threading")(
         joblib.delayed(func)(item) for item in iterable
     )
-    return np.stack(results, axis=0).astype(np.float32)
+    return np.stack(results, axis=0).astype(np.float32, copy=False)

@@ -83,7 +83,11 @@ class DopplerViewSource(TypedSource):
         }
 
     def _velocity_array(self, path: str) -> np.ndarray:
-        return self._array(path, dtype=np.float32) * VELOCITY_ANALYSIS_SCALE
+        values = self._array(path, dtype=np.float32)
+        # ``_array`` returns a newly read array, so scale it in place instead
+        # of allocating a second full analysis array for the multiplication.
+        values *= VELOCITY_ANALYSIS_SCALE
+        return values
 
     def retinal_artery_mask(self) -> np.ndarray:
         return self._array("segmentation/Retina/artery_mask", dtype=bool)

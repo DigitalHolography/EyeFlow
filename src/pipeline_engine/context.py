@@ -91,7 +91,8 @@ class RawH5SourceReader:
         default: Any = _MISSING,
     ) -> Any:
         try:
-            array = np.asarray(self.dataset(path)[()], dtype=dtype)
+            dataset = self.dataset(path)
+            array = _read_dataset_array(dataset, dtype=dtype)
         except KeyError:
             if default is not _MISSING:
                 if default is None:
@@ -99,6 +100,30 @@ class RawH5SourceReader:
                 return np.asarray(default, dtype=dtype)
             raise
         return np.ravel(array) if flatten else array
+
+
+def _read_dataset_array(dataset: h5py.Dataset, *, dtype=None) -> np.ndarray:
+    """Read a dataset with at most one full-size allocation when possible.
+
+    ``np.asarray(dataset[()], dtype=...)`` first materializes the source dtype
+    and then allocates a second array when a cast is needed.  h5py can perform
+    the numeric conversion while reading into its output buffer, which avoids
+    that temporary.  HDF5 has no reliable conversion path for NumPy bool, so
+    bool reads retain the small, portable fallback.
+    """
+
+    if dtype is None:
+        return dataset[()]
+
+    requested = np.dtype(dtype)
+    if requested == np.dtype(bool):
+        return np.asarray(dataset[()], dtype=requested)
+    if requested == dataset.dtype:
+        return dataset[()]
+    if requested.kind in "iufc" and dataset.dtype.kind in "iufc":
+        return dataset.astype(requested)[()]
+    # Keep support for HDF5 types without a direct numeric conversion path.
+    return np.asarray(dataset[()], dtype=requested)
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,4 @@
-"""Tests for shared GUI/CLI run orchestration and transactional outputs."""
+"""Tests for shared GUI/CLI run orchestration and direct outputs."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
 
 
 class RunServiceTests(unittest.TestCase):
-    def test_success_replaces_existing_output_only_after_staged_run(self) -> None:
+    def test_success_replaces_existing_output_with_direct_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             holo = _write_input(root)
@@ -96,7 +96,7 @@ class RunServiceTests(unittest.TestCase):
             self.assertTrue(json_path.is_file())
             self.assertFalse(list(final_dir.parent.glob(".*eyeflow-staging-*")))
 
-    def test_failed_staged_run_preserves_existing_output(self) -> None:
+    def test_failed_direct_run_leaves_partial_output(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             holo = _write_input(root)
@@ -122,10 +122,12 @@ class RunServiceTests(unittest.TestCase):
                 result = execute_run(spec)
 
             self.assertEqual(1, len(result.failures))
-            self.assertEqual("old", marker.read_text(encoding="utf-8"))
+            self.assertFalse(marker.exists())
+            json_path = spec.requests[0].output_manager.path_for(OutputType.JSON)
+            self.assertTrue(json_path.is_file())
             self.assertFalse(list(final_dir.parent.glob(".*eyeflow-staging-*")))
 
-    def test_commit_refuses_to_replace_non_directory_output(self) -> None:
+    def test_direct_run_refuses_to_replace_non_directory_output(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             holo = _write_input(root)

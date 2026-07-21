@@ -1,5 +1,7 @@
 """Write EyeFlow runtime values into HDF5 files."""
 
+import json
+import re
 from pathlib import Path
 
 import h5py
@@ -109,13 +111,80 @@ def initialize_output_h5(
                 source_h5.copy(path, h5file, name=path)
     if doppler_vision_source_file:
         h5file.attrs["doppler_vision_source_file"] = doppler_vision_source_file
+    _initialize_app_versions(h5file, doppler_vision_source_file)
     primary_source = holodoppler_source_file or doppler_vision_source_file
     if primary_source:
         h5file.attrs["source_file"] = primary_source
 
 
+def _initialize_app_versions(
+    h5file: h5py.File,
+    doppler_vision_source_file: str | None,
+) -> None:
+    """Write application versions as one scalar JSON dataset."""
+
+    versions: dict[str, object] = {}
+    if doppler_vision_source_file:
+        with open_h5(doppler_vision_source_file, "r") as source_h5:
+            source_versions = source_h5.get("app_versions")
+            versions = _read_app_versions(source_versions)
+
+    versions["EF_version"] = _project_version()
+    if "app_versions" in h5file:
+        del h5file["app_versions"]
+    h5file.create_dataset(
+        "app_versions",
+        data=json.dumps(versions),
+        dtype=h5py.string_dtype(encoding="utf-8"),
+    )
+
+
+def _read_app_versions(source_versions) -> dict[str, object]:
+    if isinstance(source_versions, h5py.Dataset):
+        value = _scalar_text(source_versions[()])
+        if value is None:
+            return {}
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    # Accept the group representation emitted by older EyeFlow builds.
+    if isinstance(source_versions, h5py.Group):
+        versions: dict[str, object] = {}
+        for key, value in source_versions.items():
+            if isinstance(value, h5py.Dataset):
+                scalar = _scalar_text(value[()])
+                if scalar is not None:
+                    versions[str(key)] = scalar
+        return versions
+    return {}
+
+
+def _scalar_text(value) -> str | None:
+    if isinstance(value, np.ndarray):
+        if value.size != 1:
+            return None
+        value = value.reshape(-1)[0]
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return str(value) if value is not None else None
+
+
 def _project_version() -> str:
-    return app_version() or "unknown"
+    pyproject_path = Path(__file__).resolve().parents[3] / "pyproject.toml"
+    try:
+        pyproject_text = pyproject_path.read_text(encoding="utf-8")
+    except OSError:
+        pyproject_text = ""
+
+    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', pyproject_text)
+    return match.group(1) if match else (app_version() or "unknown")
 
 
 def _normalize_dataset_payload(data, ds_attrs):

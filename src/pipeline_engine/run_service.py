@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import os
-import shutil
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import uuid4
 
 from input_output import INPUT_LIST_SUFFIX, HoloRunLayout, resolve_selected_run_layouts
 from input_output.archives import extracted_zip_tree
@@ -145,7 +143,7 @@ def execute_run(
     on_log: Callable[[str], None] | None = None,
     on_progress: Callable[[], None] | None = None,
 ) -> RunResult:
-    """Execute a batch and transactionally commit each successful output."""
+    """Execute a batch, writing each run directly to its final output folder."""
 
     _emit(on_log, f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
     _emit(on_log, f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
@@ -162,30 +160,25 @@ def execute_run(
         _emit(on_log, f"[RESOLVED] DV -> {input_layout.dv_h5}")
         _emit(on_log, f"[OUTPUT] {final_path}")
 
-        stage_manager = _staging_output_manager(final_manager)
-
-        def forward_runtime_log(message: str) -> None:
-            # Pipelines write into staging, but staging is an implementation
-            # detail and its paths become invalid immediately after commit.
-            visible_message = message.replace(
-                str(stage_manager.layout.root_dir),
-                str(final_manager.layout.root_dir),
-            )
-            _emit(on_log, visible_message)
-
         try:
+            final_dir = final_manager.layout.ef_dir
+            if final_dir.exists() and not final_dir.is_dir():
+                raise RuntimeError(
+                    f"Refusing to replace non-directory EyeFlow output path: {final_dir}"
+                )
+            # Start clean so a failed run leaves only its own partial output,
+            # rather than mixing new files with artifacts from an old run.
+            final_manager.prepare(replace=True)
             run_pipelines_to_output(
-                output_manager=stage_manager,
+                output_manager=final_manager,
                 pipelines=spec.plan.descriptors,
                 target_names=spec.plan.targets,
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
-                on_log=forward_runtime_log,
+                on_log=on_log,
                 on_progress=on_progress,
             )
-            _commit_staged_output(stage_manager, final_manager)
         except Exception as exc:  # noqa: BLE001
-            _discard_staged_output(stage_manager)
             failure = RunFailure(input_layout.holo_path, str(exc))
             failures.append(failure)
             _emit(on_log, f"[FAIL] {failure}")
@@ -283,49 +276,6 @@ def _reject_duplicate_destinations(requests: Sequence[RunRequest]) -> None:
                 f"{previous} and {request.input_layout.holo_path} -> {destination}"
             )
         destinations[key] = request.input_layout.holo_path
-
-
-def _staging_output_manager(final_manager: OutputManager) -> OutputManager:
-    layout = final_manager.layout
-    stage_root = layout.root_dir.parent / (
-        f".{layout.root_dir.name}.eyeflow-staging-{uuid4().hex}"
-    )
-    return OutputManager(layout.with_root_dir(stage_root))
-
-
-def _commit_staged_output(
-    stage_manager: OutputManager,
-    final_manager: OutputManager,
-) -> None:
-    stage_dir = stage_manager.layout.ef_dir
-    final_dir = final_manager.layout.ef_dir
-    if not stage_dir.is_dir():
-        raise RuntimeError(f"Pipeline run did not create its staged output: {stage_dir}")
-    if final_dir.exists() and not final_dir.is_dir():
-        raise RuntimeError(
-            f"Refusing to replace non-directory EyeFlow output path: {final_dir}"
-        )
-
-    final_dir.parent.mkdir(parents=True, exist_ok=True)
-    if final_dir.exists():
-        shutil.rmtree(final_dir)
-    try:
-        stage_dir.replace(final_dir)
-    finally:
-        _remove_empty_stage_root(stage_manager.layout.root_dir)
-
-
-def _discard_staged_output(stage_manager: OutputManager) -> None:
-    stage_root = stage_manager.layout.root_dir
-    if stage_root.exists():
-        shutil.rmtree(stage_root, ignore_errors=True)
-
-
-def _remove_empty_stage_root(stage_root: Path) -> None:
-    try:
-        stage_root.rmdir()
-    except OSError:
-        pass
 
 
 def _emit(on_log: Callable[[str], None] | None, message: str) -> None:
