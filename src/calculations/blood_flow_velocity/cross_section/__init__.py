@@ -1,4 +1,4 @@
-"""Segment preparation helpers for blood-flow velocity analyses."""
+"""Cross-section geometry and velocity-signal calculations."""
 
 from .branch_identity import (
     BranchIdentityResult,

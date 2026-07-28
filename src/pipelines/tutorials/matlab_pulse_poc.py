@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.blood_flow_velocity.analysis_preparation.beat_detection import find_systole_index
+from calculations.blood_flow_velocity.signal_analysis.heartbeat import find_systole_index
 from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (
     per_beat_signal_analysis,
 )
@@ -195,14 +195,12 @@ def run(ctx) -> ProcessResult:
                 _heart_rate_bpm(beat_period_seconds),
                 {"unit": "bpm"},
             ),
-            "poc/matlab_pulse/artery_resistivity_index": with_attrs(
-                artery_stats["resistivity_index"],
-                {"matlab_source": "ArterialResistivityIndex.m"},
-            ),
-            "poc/matlab_pulse/vein_resistivity_index": with_attrs(
-                vein_stats["resistivity_index"],
-                {"matlab_source": "ArterialResistivityIndex.m"},
-            ),
+            "poc/matlab_pulse/artery_resistivity_index": artery_stats[
+                "resistivity_index"
+            ],
+            "poc/matlab_pulse/vein_resistivity_index": vein_stats[
+                "resistivity_index"
+            ],
             "poc/matlab_pulse/artery_mean_velocity": with_attrs(
                 artery_stats["mean"],
                 {"unit": "mm/s"},
@@ -223,7 +221,6 @@ def run(ctx) -> ProcessResult:
     )
 
     attrs = {
-        "matlab_reference_step": "BloodFlowVelocity/pulseAnalysis.m",
         "poc_background_method": (
             "mean fRMS over non-vessel pixels in fixed elliptical annulus"
         ),
@@ -235,9 +232,6 @@ def run(ctx) -> ProcessResult:
         "poc_lowpass_freq_hz": float(LOWPASS_FREQ_HZ),
         "poc_band_limited_signal_harmonic_count": int(
             BAND_LIMITED_SIGNAL_HARMONIC_COUNT
-        ),
-        "poc_vti_method": (
-            "perBeatAnalysis.m style: sum(interpolated filtered velocity beat) * dt"
         ),
         "poc_hd_moment0_path": HD_MOMENT0_PATH,
         "poc_hd_moment2_path": HD_MOMENT2_PATH,

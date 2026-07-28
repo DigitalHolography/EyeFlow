@@ -1,13 +1,21 @@
 """Pure blood-flow velocity calculations for EyeFlow."""
 
-from .analysis_preparation.segments.generate_cross_section_signals import (
+from .cross_section.generate_cross_section_signals import (
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
 )
-from .analysis_preparation.segments.segment_geometry import SegmentRingSettings
-from .analysis_preparation.segments.segment_velocity_signals import (
+from .cross_section.segment_geometry import SegmentRingSettings
+from .cross_section.segment_velocity_signals import (
     segment_velocity_inputs,
     segment_velocity_results,
+)
+from .signal_analysis.heartbeat import (
+    HeartbeatAnalysisResult,
+    SpectralHeartbeatResult,
+    SystoleDetectionResult,
+    find_systole_index,
+    run_heartbeat_analysis,
+    spectral_heartbeat_analysis,
 )
 from .signal_analysis.per_beat.runner import (
     PerBeatAnalysisInput,
@@ -37,6 +45,7 @@ from .signal_analysis.waveform import (
 
 __all__ = [
     "ArterialWaveformAnalysis",
+    "HeartbeatAnalysisResult",
     "PerBeatAnalysisInput",
     "PerBeatAnalysisResult",
     "PerBeatSegmentAnalysisResult",
@@ -46,17 +55,22 @@ __all__ = [
     "CrossSectionSignalSettings",
     "CrossSectionSignalResult",
     "SegmentRingSettings",
+    "SpectralHeartbeatResult",
+    "SystoleDetectionResult",
     "VenousWaveformAnalysis",
     "arterial_waveform_analysis",
     "average_cycle",
     "cycle_extrema",
+    "find_systole_index",
     "paired_vessel_cycles",
     "per_beat_segment_analysis",
     "per_beat_signal_analysis",
     "pulse_metric",
+    "run_heartbeat_analysis",
     "run_per_beat_analysis",
     "segment_velocity_inputs",
     "segment_velocity_results",
+    "spectral_heartbeat_analysis",
     "venous_waveform_analysis",
 ]
 

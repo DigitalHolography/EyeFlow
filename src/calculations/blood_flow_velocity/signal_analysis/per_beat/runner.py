@@ -6,11 +6,16 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from calculations.blood_flow_velocity.signal_analysis.heartbeat import (
+    SpectralHeartbeatResult,
+)
+
 from .segments import (
     PerBeatSegmentAnalysisResult,
     per_beat_segment_analysis,
 )
 from .signal import PerBeatSignalAnalysisResult, per_beat_signal_analysis
+from ._signal_utils import normalize_cycle_boundaries
 
 
 @dataclass(frozen=True)
@@ -25,92 +30,92 @@ class VesselPerBeatAnalysisResult:
 class PerBeatAnalysisInput:
     arterial_velocity_signal: np.ndarray
     venous_velocity_signal: np.ndarray
-    systolic_acceleration_peak_indexes: np.ndarray
+    cycle_boundary_indexes: np.ndarray
     band_limited_signal_harmonic_count: int
-    dt_seconds: float
+    heartbeat: SpectralHeartbeatResult
     arterial_velocity_segments: np.ndarray | None = None
     venous_velocity_segments: np.ndarray | None = None
-    beat_period_seconds: np.ndarray | None = None
     index_base: int | None = None
 
 
 @dataclass(frozen=True)
 class PerBeatAnalysisResult:
-    beat_period_idx: np.ndarray
     beat_period_seconds: np.ndarray
+    heartbeat: SpectralHeartbeatResult
+    cycle_boundary_indexes: np.ndarray
     artery: VesselPerBeatAnalysisResult
     vein: VesselPerBeatAnalysisResult
 
 
 def run_per_beat_analysis(inputs: PerBeatAnalysisInput) -> PerBeatAnalysisResult:
-    sys_idx_list = np.asarray(
-        inputs.systolic_acceleration_peak_indexes,
-        dtype=np.int32,
-    ).reshape(-1)
-    beat_period_idx = np.diff(sys_idx_list).astype(np.int32, copy=False)
+    cycle_boundaries = normalize_cycle_boundaries(
+        inputs.cycle_boundary_indexes,
+        np.asarray(inputs.arterial_velocity_signal).size,
+        index_base=inputs.index_base,
+    )
     return PerBeatAnalysisResult(
-        beat_period_idx=beat_period_idx,
-        beat_period_seconds=_beat_period_seconds(inputs, beat_period_idx),
+        beat_period_seconds=_beat_period_seconds(
+            inputs.heartbeat,
+            max(0, cycle_boundaries.size - 1),
+        ),
+        heartbeat=inputs.heartbeat,
+        cycle_boundary_indexes=cycle_boundaries,
         vein=_run_vessel(
             inputs.venous_velocity_signal,
             inputs.venous_velocity_segments,
-            sys_idx_list,
+            cycle_boundaries,
             inputs,
         ),
         artery=_run_vessel(
             inputs.arterial_velocity_signal,
             inputs.arterial_velocity_segments,
-            sys_idx_list,
+            cycle_boundaries,
             inputs,
         ),
     )
 
 
 def _beat_period_seconds(
-    inputs: PerBeatAnalysisInput,
-    beat_period_idx: np.ndarray,
+    heartbeat: SpectralHeartbeatResult,
+    number_of_periods: int,
 ) -> np.ndarray:
-    if inputs.beat_period_seconds is not None:
-        periods = np.asarray(inputs.beat_period_seconds, dtype=np.float32).reshape(-1)
-        if periods.size == beat_period_idx.size:
-            return periods
-    periods = beat_period_idx.astype(np.float32, copy=False) * np.float32(
-        inputs.dt_seconds
+    return np.full(
+        number_of_periods,
+        heartbeat.period_seconds,
+        dtype=np.float32,
     )
-    return periods.astype(np.float32, copy=False)
 
 
 def _run_vessel(
     velocity_signal,
     velocity_segments,
-    sys_idx_list: np.ndarray,
+    cycle_boundaries: np.ndarray,
     inputs: PerBeatAnalysisInput,
 ) -> VesselPerBeatAnalysisResult:
     signal = per_beat_signal_analysis(
         velocity_signal,
-        sys_idx_list,
+        cycle_boundaries,
         inputs.band_limited_signal_harmonic_count,
-        index_base=inputs.index_base,
+        index_base=0,
     )
     return VesselPerBeatAnalysisResult(
         signal=signal,
         vmax_band_limited=np.max(signal.velocity_signal_per_beat_band_limited, axis=1),
         vmin_band_limited=np.min(signal.velocity_signal_per_beat_band_limited, axis=1),
-        segments=_run_segments(velocity_segments, sys_idx_list, inputs),
+        segments=_run_segments(velocity_segments, cycle_boundaries, inputs),
     )
 
 
 def _run_segments(
     velocity_segments,
-    sys_idx_list: np.ndarray,
+    cycle_boundaries: np.ndarray,
     inputs: PerBeatAnalysisInput,
 ) -> PerBeatSegmentAnalysisResult | None:
     if velocity_segments is None:
         return None
     return per_beat_segment_analysis(
         velocity_segments,
-        sys_idx_list,
+        cycle_boundaries,
         inputs.band_limited_signal_harmonic_count,
-        index_base=inputs.index_base,
+        index_base=0,
     )
-

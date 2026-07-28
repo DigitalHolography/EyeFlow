@@ -20,7 +20,7 @@ class PerBeatSignalAnalysisResult:
 
 def per_beat_signal_analysis(
     signal,
-    sys_idx_list,
+    cycle_boundary_indexes,
     band_limited_signal_harmonic_count: int,
     *,
     index_base: int | None = None,
@@ -32,7 +32,7 @@ def per_beat_signal_analysis(
         raise ValueError("band_limited_signal_harmonic_count must be positive.")
 
     cycle_boundaries = normalize_cycle_boundaries(
-        sys_idx_list,
+        cycle_boundary_indexes,
         signal_array.size,
         index_base=index_base,
     )

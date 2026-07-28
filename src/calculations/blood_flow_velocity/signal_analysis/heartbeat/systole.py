@@ -1,21 +1,12 @@
-"""Systole detection based on low-pass filtering and peak detection of the derivative of the signal."""
+"""Systolic-boundary detection translated from find_systole_index.m."""
 
 from __future__ import annotations
-
-from dataclasses import dataclass
 
 import numpy as np
 
 from calculations.math import butter_lowpass_filtfilt
 
-
-@dataclass(frozen=True)
-class SystoleDetectionResult:
-    systole_indexes: np.ndarray
-    artery_signal_filtered: np.ndarray
-    derivative_signal: np.ndarray
-    min_peak_distance: int
-    min_peak_height: np.float32
+from .models import SystoleDetectionResult
 
 
 def find_systole_index(
@@ -54,6 +45,7 @@ def find_systole_index(
         min_peak_distance=min_peak_distance,
         min_peak_height=min_peak_height,
     )
+
 
 def _min_peak_distance(dt_seconds: np.float32, min_duration_seconds: np.float32) -> int:
     if dt_seconds <= 0:

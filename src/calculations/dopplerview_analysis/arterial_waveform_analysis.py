@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.blood_flow_velocity.analysis_preparation.beat_detection import find_systole_index
+from calculations.blood_flow_velocity.signal_analysis.heartbeat import (
+    run_heartbeat_analysis,
+)
 from calculations.math import butter_lowpass_filtfilt
 
 
@@ -43,13 +45,14 @@ class ArterialWaveformAnalysisStep:
         fs = np.float32(ctx.hd_config_value("sampling_freq"))
         dt = stride / fs
 
-        detection = find_systole_index(
+        heartbeat = run_heartbeat_analysis(
             sig,
-            dt=dt,
-            lowpass_freq_hz=np.float32(
+            dt_seconds=float(dt),
+            lowpass_freq_hz=float(
                 ctx.dv_config_value("PulseAnalysis", "LowpassFreqHz", 15.0)
             ),
         )
+        detection = heartbeat.systole
         peaks = detection.systole_indexes
         sig_filtered = detection.artery_signal_filtered
         vein_sig = np.asarray(ctx.require("retinal_vein_velocity_signal"), dtype=np.float32)
@@ -79,3 +82,4 @@ class ArterialWaveformAnalysisStep:
         ) # TODO parametrize look for params
         ctx.set("beat_detection_min_peak_distance", detection.min_peak_distance)
         ctx.set("beat_detection_min_peak_height", detection.min_peak_height)
+        ctx.set("_heartbeat_analysis_result", heartbeat)

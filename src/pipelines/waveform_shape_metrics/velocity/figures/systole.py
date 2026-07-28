@@ -15,7 +15,6 @@ from .common import (
     PulseFigureContext,
     _log,
     _plt,
-    _safe_indexes,
     _vector,
     display_velocity as _display_velocity,
 )
@@ -23,7 +22,7 @@ from .plotting import _style_axes
 
 
 def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
-    peaks = _safe_indexes(ctx.analysis.get("beat_indices"))
+    peaks = ctx.cycle_boundary_indexes
     if peaks.size == 0:
         _log(ctx, "Skipping systole index PNGs; no beat indices are available.")
         return []

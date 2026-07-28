@@ -14,11 +14,6 @@ def pack_velocity_per_beat_outputs(
 ) -> dict[str, object]:
     schema = _resolve_output_paths(output_paths)
     metrics = {
-        schema.beat_period_idx: metric_value(
-            _matlab_row_vector(result.beat_period_idx),
-            unit="frame",
-            dim_desc=("row", "beat"),
-        ),
         schema.beat_period_seconds: metric_value(
             _matlab_row_vector(result.beat_period_seconds),
             unit="s",

@@ -5,11 +5,13 @@ from dataclasses import dataclass
 
 from calculations.blood_flow_velocity import (
     CrossSectionSignalResult,
+    HeartbeatAnalysisResult,
     PerBeatAnalysisInput,
     SegmentRingSettings,
     segment_velocity_results,
+    spectral_heartbeat_analysis,
 )
-from calculations.blood_flow_velocity.analysis_preparation.segments.segment_geometry import (
+from calculations.blood_flow_velocity.cross_section.segment_geometry import (
     largest_centered_circle_radius_frac,
 )
 from input_output import EyeFlowOutputPaths
@@ -101,7 +103,13 @@ def _build_waveform_shape_metrics_context(ctx) -> WaveformShapeMetricsContext:
         artery_segment_result=artery_segments,
         vein_segment_result=vein_segments,
         dopplerview_analysis=dopplerview_analysis,
-        attrs=_context_attrs(source_data, timing, harmonic_count, analysis_source),
+        attrs=_context_attrs(
+            source_data,
+            timing,
+            harmonic_count,
+            analysis_source,
+            per_beat_analysis.heartbeat,
+        ),
     )
 
 
@@ -146,24 +154,35 @@ def _per_beat_input_from_analysis(
         ring_settings,
         ctx,
     )
+    arterial_velocity_signal = np.asarray(
+        analysis["retinal_artery_velocity_signal"],
+        dtype=np.float32,
+    )
+    beat_indexes = np.asarray(
+        analysis["beat_indices"],
+        dtype=np.int32,
+    )
+    cached_heartbeat = analysis.get("_heartbeat_analysis_result")
+    heartbeat = (
+        cached_heartbeat.spectral
+        if isinstance(cached_heartbeat, HeartbeatAnalysisResult)
+        else spectral_heartbeat_analysis(
+            arterial_velocity_signal,
+            timing.dt_seconds,
+            beat_indexes.size,
+        )
+    )
     inputs = PerBeatAnalysisInput(
-        arterial_velocity_signal=np.asarray(
-            analysis["retinal_artery_velocity_signal"],
-            dtype=np.float32,
-        ),
+        arterial_velocity_signal=arterial_velocity_signal,
         venous_velocity_signal=np.asarray(
             analysis["retinal_vein_velocity_signal"],
             dtype=np.float32,
         ),
-        systolic_acceleration_peak_indexes=np.asarray(
-            analysis["beat_indices"],
-            dtype=np.int32,
-        ),
+        cycle_boundary_indexes=beat_indexes,
         band_limited_signal_harmonic_count=harmonic_count,
-        dt_seconds=timing.dt_seconds,
+        heartbeat=heartbeat,
         arterial_velocity_segments=_waveform_segment_input(artery_segments),
         venous_velocity_segments=_waveform_segment_input(vein_segments),
-        beat_period_seconds=np.asarray(analysis["time_per_beat"], dtype=np.float32),
         index_base=source_data.provenance["beat_index_base"],
     )
     return inputs, artery_segments, vein_segments
@@ -281,8 +300,10 @@ def _context_attrs(
     timing: HolodopplerTiming,
     harmonic_count: int,
     analysis_source: str,
+    heartbeat,
 ) -> dict[str, object]:
-    analysis_paths = EyeFlowOutputPaths.active().analysis
+    output_paths = EyeFlowOutputPaths.active()
+    analysis_paths = output_paths.analysis
     dependency_chain = (
         ["dopplerview.h5.analysis"]
         if analysis_source == "dopplerview_h5_analysis"
@@ -294,6 +315,7 @@ def _context_attrs(
     )
     return {
         "dependency_chain": dependency_chain + [
+            "blood_flow_velocity.signal_analysis.heartbeat.spectral",
             "blood_flow_velocity.signal_analysis.per_beat.signal",
             "blood_flow_velocity.signal_analysis.per_beat.runner",
         ],
@@ -301,12 +323,11 @@ def _context_attrs(
         "arterial_velocity_signal_path": analysis_paths.retinal_artery_velocity_signal,
         "venous_velocity_signal_path": analysis_paths.retinal_vein_velocity_signal,
         "systolic_peak_indexes_path": analysis_paths.beat_indices,
-        "beat_period_seconds_path": analysis_paths.time_per_beat,
-        "segment_velocity_source": (
-            "CrossSection/labelVesselBranches.m-style branch labeling; "
-            "CrossSection/generateCrossSectionSignals.m-style branch/circle "
-            "velocity extraction from retinal_velocity_array"
-        ),
+        "beat_period_seconds_path": output_paths.beat_period_seconds,
+        "heart_rate_hz": float(heartbeat.heart_rate_hz),
+        "heart_rate_bpm": float(heartbeat.heart_rate_bpm),
+        "heart_rate_ste_hz": float(heartbeat.heart_rate_ste_hz),
+        "heart_rate_ste_bpm": float(heartbeat.heart_rate_ste_bpm),
         "sampling_freq": float(timing.sampling_freq),
         "batch_stride": float(timing.batch_stride),
         "dt_seconds": float(timing.dt_seconds),

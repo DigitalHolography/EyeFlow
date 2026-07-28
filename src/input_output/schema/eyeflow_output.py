@@ -63,7 +63,6 @@ class EyeFlowOutputPaths:
     artery_per_beat: VelocityPerBeatOutputPaths
     vein_per_beat: VelocityPerBeatOutputPaths
     topology: TopologyOutputPaths
-    beat_period_idx: str
     beat_period_seconds: str
     waveform_shape_metrics_root: str
 
@@ -144,7 +143,6 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
         ),
     ),
     topology=TOPOLOGY_OUTPUT,
-    beat_period_idx="Artery/VelocityPerBeat/beatPeriodIdx/value",
     beat_period_seconds="Artery/VelocityPerBeat/beatPeriodSeconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
 )
@@ -184,7 +182,6 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
         ),
     ),
     topology=TOPOLOGY_OUTPUT,
-    beat_period_idx="perbeat/beat_period_idx/value",
     beat_period_seconds="perbeat/beat_period_seconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
 )

@@ -18,7 +18,6 @@ from .common import (
     PulseFigureContext,
     _log,
     _plt,
-    _safe_indexes,
     _vector,
     display_velocity as _display_velocity,
 )
@@ -35,7 +34,8 @@ def _export_correlation_plots(writer: FigureWriter, ctx: PulseFigureContext) -> 
         artery,
         vein,
         ctx.dt_seconds,
-        _safe_indexes(ctx.analysis.get("beat_indices")),
+        ctx.cycle_boundary_indexes,
+        heartbeat=ctx.heartbeat,
     )
     corr = analysis.correlation
     spectrum = analysis.transfer

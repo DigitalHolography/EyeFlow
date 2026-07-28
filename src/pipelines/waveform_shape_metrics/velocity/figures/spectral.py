@@ -18,7 +18,6 @@ from .common import (
     PulseFigureContext,
     _log,
     _plt,
-    _safe_indexes,
     _vector,
     display_velocity as _display_velocity,
 )
@@ -32,11 +31,18 @@ def _export_spectral_plots(writer: FigureWriter, ctx: PulseFigureContext) -> lis
     paths: list[Path] = []
     artery = _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"]))
     vein = _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"]))
-    for prefix, vessel_name, values, color in (
-        ("Arterial", "artery", artery, "tab:red"),
-        ("Venous", "vein", vein, "tab:blue"),
+    beat_indexes = ctx.cycle_boundary_indexes
+    systole_count = int(beat_indexes.size)
+    artery_spectrum = ctx.heartbeat
+    vein_spectrum = spectrum_signal_analysis(
+        vein,
+        ctx.dt_seconds,
+        systole_count,
+    )
+    for prefix, vessel_name, spectrum, color in (
+        ("Arterial", "artery", artery_spectrum, "tab:red"),
+        ("Venous", "vein", vein_spectrum, "tab:blue"),
     ):
-        spectrum = spectrum_signal_analysis(values, ctx.dt_seconds)
         paths.append(
             _spectrum_plot(
                 writer,
@@ -53,8 +59,12 @@ def _export_spectral_plots(writer: FigureWriter, ctx: PulseFigureContext) -> lis
                 color,
             )
     )
-    peaks = _safe_indexes(ctx.analysis.get("beat_indices"))
-    synthetic = synthetic_spectrum_from_signals(vein, artery, peaks, ctx.dt_seconds)
+    synthetic = synthetic_spectrum_from_signals(
+        vein,
+        artery,
+        beat_indexes,
+        ctx.heartbeat_period_seconds,
+    )
     if synthetic is not None:
         paths.append(_synthetic_spectral_plot(writer, synthetic))
     else:
@@ -89,7 +99,7 @@ def _spectrum_plot(
             0.62,
             (
                 f"HR : {spectrum.heart_rate_bpm:.1f} BPM "
-                f"+/- {spectrum.heart_rate_se_bpm:.1f}"
+                f"+/- {spectrum.heart_rate_ste_bpm:.1f}"
             ),
             transform=ax.transAxes,
             fontsize=10,

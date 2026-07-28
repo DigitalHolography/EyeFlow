@@ -16,7 +16,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.blood_flow_velocity import CrossSectionSignalSettings  # noqa: E402
-from calculations.blood_flow_velocity.analysis_preparation.segments.generate_cross_section_signals import (  # noqa: E402
+from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
     _fill_cross_section_signals,
 )
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
@@ -46,11 +46,11 @@ class SegmentCenterTests(unittest.TestCase):
 
         signal = np.arange(3, dtype=np.float32)
         with patch(
-            "calculations.blood_flow_velocity.analysis_preparation.segments."
+            "calculations.blood_flow_velocity.cross_section."
             "generate_cross_section_signals._tilt_angle",
             return_value=0.0,
         ), patch(
-            "calculations.blood_flow_velocity.analysis_preparation.segments."
+            "calculations.blood_flow_velocity.cross_section."
             "generate_cross_section_signals._cross_section_velocity",
             return_value=(signal, signal),
         ):

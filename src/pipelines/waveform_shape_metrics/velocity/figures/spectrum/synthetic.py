@@ -20,14 +20,10 @@ class SyntheticSpectrumData:
 
 def synthetic_spectrum_analysis(
     cycle: np.ndarray,
-    dt_seconds: float,
-    beat_indexes: np.ndarray,
+    period_seconds: float,
 ) -> SyntheticSpectrumData:
     repeated = np.tile(cycle, 512)
-    if beat_indexes.size > 1:
-        period = float(np.nanmean(np.diff(beat_indexes)) * dt_seconds)
-    else:
-        period = cycle.size * dt_seconds
+    period = float(period_seconds)
     fs = cycle.size / max(period, np.finfo(np.float32).eps)
     frequencies = np.fft.rfftfreq(repeated.size, 1.0 / fs)
     fft = np.fft.rfft(repeated)
@@ -51,7 +47,7 @@ def synthetic_spectrum_from_signals(
     first_values: np.ndarray,
     fallback_values: np.ndarray,
     beat_indexes: np.ndarray,
-    dt_seconds: float,
+    period_seconds: float,
     *,
     samples: int = 128,
 ) -> SyntheticSpectrumData | None:
@@ -60,4 +56,4 @@ def synthetic_spectrum_from_signals(
         cycle = average_cycle(fallback_values, beat_indexes, samples)
     if cycle is None:
         return None
-    return synthetic_spectrum_analysis(cycle, dt_seconds, beat_indexes)
+    return synthetic_spectrum_analysis(cycle, period_seconds)
