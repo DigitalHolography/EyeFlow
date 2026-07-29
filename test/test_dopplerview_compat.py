@@ -148,7 +148,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                 },
             )
 
-        ring_settings = _segment_ring_settings(source_data)
+        ring_settings = _segment_ring_settings()
         cross_section = source_data.cross_section_settings
         self.assertEqual(16, ring_settings.ring_count)
         self.assertEqual(0.10, ring_settings.inner_radius_frac)

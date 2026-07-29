@@ -16,6 +16,10 @@ class WaveformShapeMetricsTests(unittest.TestCase):
     def test_waveform_shape_metrics_is_the_only_registered_pipeline(self):
         self.assertIn("waveform_shape_metrics", PIPELINE_REGISTRY)
         self.assertNotIn("waveform_shape_metrics_angioeye", PIPELINE_REGISTRY)
+        self.assertEqual(
+            "Processing/Metrics/waveform_shape_metrics",
+            EyeFlowOutputPaths.active().waveform_shape_metrics_root,
+        )
 
         plan = PipelineDAG(PIPELINE_REGISTRY.values()).resolve_targets(
             ["waveform_shape_metrics"]

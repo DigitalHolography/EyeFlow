@@ -11,9 +11,6 @@ from calculations.blood_flow_velocity import (
     segment_velocity_results,
     spectral_heartbeat_analysis,
 )
-from calculations.blood_flow_velocity.cross_section.segment_geometry import (
-    largest_centered_circle_radius_frac,
-)
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.imports import (
     HolodopplerTiming,
@@ -30,6 +27,7 @@ from .velocity.constants import (
     SEGMENT_RING_COUNT,
     SEGMENT_INNER_RADIUS_FRAC,
     SEGMENT_LENGTH_FRAC,
+    SEGMENT_OUTER_RADIUS_FRAC,
 )
 from .dopplerview.outputs import pack_dopplerview_analysis_outputs
 from .dopplerview.runner import run_dopplerview_analysis
@@ -155,7 +153,7 @@ def _per_beat_input_from_analysis(
     CrossSectionSignalResult,
     CrossSectionSignalResult,
 ]:
-    ring_settings = _segment_ring_settings(source_data)
+    ring_settings = _segment_ring_settings()
     artery_segments, vein_segments = _segment_velocity_inputs(
         analysis,
         source_data,
@@ -276,14 +274,9 @@ def _export_pulse_pngs(ctx, context: WaveformShapeMetricsContext, per_beat_resul
     export_pulse_pngs(ctx.output, context, per_beat_result, log=getattr(ctx, "log", None))
 
 
-def _segment_ring_settings(source_data: WaveformShapeSourceData) -> SegmentRingSettings:
+def _segment_ring_settings() -> SegmentRingSettings:
     inner = SEGMENT_INNER_RADIUS_FRAC
-    outer = float(
-        largest_centered_circle_radius_frac(
-            source_data.retinal_artery_mask,
-            source_data.optic_disc_center,
-        )
-    )
+    outer = SEGMENT_OUTER_RADIUS_FRAC
     count = SEGMENT_RING_COUNT
     width = _ring_width(inner, outer, count)
     return SegmentRingSettings(

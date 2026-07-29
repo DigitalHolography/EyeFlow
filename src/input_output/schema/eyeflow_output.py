@@ -291,7 +291,7 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     topology=_topology_paths("Segmentation"),
     heartbeat=HEARTBEAT_OUTPUT,
     beat_period_seconds="Processing/VelocityPerBeat/BeatPeriodSeconds/value",
-    waveform_shape_metrics_root="Processing/Metrics/WaveformShape",
+    waveform_shape_metrics_root="Processing/Metrics/waveform_shape_metrics",
     meta_root="Meta",
 )
 
