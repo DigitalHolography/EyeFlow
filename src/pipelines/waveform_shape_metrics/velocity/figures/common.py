@@ -19,6 +19,21 @@ from calculations.math.arrays import (
     finite_image as _finite_image,
 )
 
+__all__ = [
+    "PulseFigureContext",
+    "_array_or_none",
+    "_finite_image",
+    "_log",
+    "_matplotlib",
+    "_output_stem",
+    "_plt",
+    "_safe_indexes",
+    "_section_mask",
+    "_vector",
+    "display_frequency",
+    "display_velocity",
+]
+
 if TYPE_CHECKING:
     from calculations.blood_flow_velocity import PerBeatAnalysisResult
     from calculations.blood_flow_velocity.signal_analysis.heartbeat import (

@@ -40,14 +40,27 @@ def pack_segment_topology_outputs(
             unit="pixel",
         ),
     }
-    metrics.update(_pack_vessel_topology(schema.topology.artery, artery_segments))
-    metrics.update(_pack_vessel_topology(schema.topology.vein, vein_segments))
+    metrics.update(
+        _pack_vessel_topology(
+            schema.topology.artery,
+            artery_segments,
+            source_data.retinal_artery_mask,
+        )
+    )
+    metrics.update(
+        _pack_vessel_topology(
+            schema.topology.vein,
+            vein_segments,
+            source_data.retinal_vein_mask,
+        )
+    )
     return metrics
 
 
 def _pack_vessel_topology(
     paths: VesselTopologyOutputPaths,
     segments,
+    vessel_mask,
 ) -> dict[str, object]:
     labels = np.asarray(segments.labels, dtype=np.int32)
     branch_ids = np.asarray(segments.branch_ids, dtype=np.int32)
@@ -75,7 +88,7 @@ def _pack_vessel_topology(
         raise ValueError(
             "Each segment center must contain finite [x, y] coordinates or two NaNs."
         )
-    return {
+    metrics = {
         paths.branch_label_map: _topology_value(
             labels,
             dim_desc=("y", "x"),
@@ -99,6 +112,14 @@ def _pack_vessel_topology(
             waveform_radius_axis=np.int32(3),
         ),
     }
+    if paths.mask is not None:
+        metrics[paths.mask] = _topology_value(
+            np.asarray(vessel_mask, dtype=bool),
+            dim_desc=("y", "x"),
+            coordinate_system="image_pixel",
+            source="dopplerview_segmentation",
+        )
+    return metrics
 
 
 def _validate_branch_labels(labels: np.ndarray, branch_ids: np.ndarray) -> None:

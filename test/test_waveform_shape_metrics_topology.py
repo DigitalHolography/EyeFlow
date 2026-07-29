@@ -24,9 +24,26 @@ from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from pipelines.waveform_shape_metrics.velocity.topology import (  # noqa: E402
     pack_segment_topology_outputs,
 )
+from pipelines.waveform_shape_metrics.runner import _segment_ring_settings  # noqa: E402
 
 
 class SegmentCenterTests(unittest.TestCase):
+    def test_segment_analysis_uses_sixteen_eyeflow_owned_rings(self) -> None:
+        source = SimpleNamespace(
+            retinal_artery_mask=np.ones((100, 100), dtype=bool),
+            optic_disc_center=np.asarray([50.0, 50.0], dtype=np.float32),
+        )
+
+        settings = _segment_ring_settings(source)
+
+        self.assertEqual(16, settings.ring_count)
+        self.assertEqual(0.10, settings.inner_radius_frac)
+        self.assertEqual(0.025, settings.segment_length_frac)
+        self.assertAlmostEqual(
+            (settings.outer_radius_frac - settings.inner_radius_frac) / 16.0,
+            settings.ring_width_frac,
+        )
+
     def test_cross_section_centroids_are_recorded_in_waveform_axis_order(self) -> None:
         labels = np.zeros((7, 7), dtype=np.int32)
         labels[2, 1] = 1
@@ -179,6 +196,7 @@ class TopologyOutputTests(unittest.TestCase):
 def _source(*, optic_disc_mask):
     return SimpleNamespace(
         retinal_artery_mask=np.zeros((5, 7), dtype=bool),
+        retinal_vein_mask=np.zeros((5, 7), dtype=bool),
         optic_disc_mask=optic_disc_mask,
         optic_disc_center=np.asarray([3.0, 2.0], dtype=np.float32),
         optic_disc_width=np.float32(4.0),

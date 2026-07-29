@@ -44,14 +44,13 @@ def generate_cross_section_signals(
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings,
 ) -> CrossSectionSignalResult:
-    velocity_array = np.asarray(velocity, dtype=np.float32)
     vessel = np.asarray(vessel_mask, dtype=bool)
     branches = label_vessel_branches(vessel, optic_disc_center, ring_settings)
     if branches.branch_ids.size == 0:
-        return _empty_result(velocity_array, vessel, ring_settings, branches)
+        return _empty_result(velocity, vessel, ring_settings, branches)
 
     masks = section_masks(vessel.shape, optic_disc_center, ring_settings)
-    shape = (ring_settings.ring_count, branches.branch_ids.size, velocity_array.shape[0])
+    shape = (ring_settings.ring_count, branches.branch_ids.size, velocity.shape[0])
     segment_v = np.full(shape, np.nan, dtype=np.float32)
     segment_safe = np.full(shape, np.nan, dtype=np.float32)
     segment_center_xy = np.full(
@@ -63,7 +62,7 @@ def generate_cross_section_signals(
         segment_v,
         segment_safe,
         segment_center_xy,
-        velocity_array,
+        velocity,
         masks,
         branches,
         optic_disc_center,

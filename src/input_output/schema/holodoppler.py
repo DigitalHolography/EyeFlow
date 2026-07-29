@@ -12,7 +12,22 @@ HD_MOMENT0_PATH = "moment0"
 HD_MOMENT2_PATH = "moment2"
 HD_MOMENT0_PATHS = (HD_MOMENT0_PATH, "M0")
 HD_MOMENT2_PATHS = (HD_MOMENT2_PATH, "M2")
-HD_OUTPUT_PASSTHROUGH_PATHS = ("registration", "zernike_coefs_radians")
+HD_MOMENT0_FLAT_FIELD_PATHS = (
+    "moment0ff",
+    "moment0_ff",
+    "M0ff",
+    "M0_ff",
+)
+HD_MOMENT2_FLAT_FIELD_PATHS = (
+    "moment2ff",
+    "moment2_ff",
+    "M2ff",
+    "M2_ff",
+)
+HD_OUTPUT_PASSTHROUGH_PATHS = (
+    ("registration", "Meta/registration"),
+    ("zernike_coefs_radians", "zernike_coefs_radians"),
+)
 HD_SAMPLING_FREQ_KEY = "sampling_freq"
 HD_BATCH_STRIDE_KEY = "batch_stride"
 
@@ -41,6 +56,22 @@ class HolodopplerSource(TypedSource):
     def moment2(self) -> np.ndarray:
         return self._moment(HD_MOMENT2_PATHS)
 
+    def moment0_dataset(self):
+        return self._moment_dataset(
+            HD_MOMENT0_FLAT_FIELD_PATHS + HD_MOMENT0_PATHS
+        )
+
+    def moment2_dataset(self):
+        return self._moment_dataset(
+            HD_MOMENT2_FLAT_FIELD_PATHS + HD_MOMENT2_PATHS
+        )
+
+    def moment0_is_flat_fielded(self) -> bool:
+        return self._first_path(HD_MOMENT0_FLAT_FIELD_PATHS) is not None
+
+    def moment2_is_flat_fielded(self) -> bool:
+        return self._first_path(HD_MOMENT2_FLAT_FIELD_PATHS) is not None
+
     def timing(self) -> HolodopplerTiming:
         sampling_freq = self._scalar_h5_or_config(
             HD_SAMPLING_FREQ_KEY,
@@ -57,7 +88,7 @@ class HolodopplerSource(TypedSource):
         return HolodopplerTiming(float(sampling_freq), float(batch_stride))
 
     def _moment(self, paths: tuple[str, ...]) -> np.ndarray:
-        path = next((candidate for candidate in paths if candidate in self._reader), None)
+        path = self._first_path(paths)
         if path is None:
             raise KeyError(
                 "Missing Holodoppler moment dataset. Tried: "
@@ -70,3 +101,21 @@ class HolodopplerSource(TypedSource):
                 f"got shape {squeezed.shape}."
             )
         return squeezed
+
+    def _moment_dataset(self, paths: tuple[str, ...]):
+        path = self._first_path(paths)
+        if path is None:
+            raise KeyError(
+                "Missing Holodoppler moment dataset. Tried: "
+                + ", ".join(repr(candidate) for candidate in paths)
+            )
+        dataset = self._dataset(path)
+        if dataset.ndim != 3:
+            raise ValueError(
+                "Holodoppler moment datasets must be 3-D for lazy processing, "
+                f"got shape {dataset.shape}."
+            )
+        return dataset
+
+    def _first_path(self, paths: tuple[str, ...]) -> str | None:
+        return next((candidate for candidate in paths if candidate in self._reader), None)

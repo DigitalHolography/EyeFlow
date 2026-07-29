@@ -103,12 +103,18 @@ def initialize_output_h5(
     if holodoppler_source_file:
         h5file.attrs["holodoppler_source_file"] = holodoppler_source_file
 
-        # Pass registration and zernike data through directly
+        # Pass registration and zernike data through to their output schema paths.
         with open_h5(holodoppler_source_file, "r") as source_h5:
-            for path in HD_OUTPUT_PASSTHROUGH_PATHS:
-                if source_h5.get(path) is None:
+            for source_path, output_path in HD_OUTPUT_PASSTHROUGH_PATHS:
+                if source_h5.get(source_path) is None:
                     continue
-                source_h5.copy(path, h5file, name=path)
+                output_group, output_name = resolve_dataset_target(
+                    h5file,
+                    output_path,
+                )
+                if output_name in output_group:
+                    del output_group[output_name]
+                source_h5.copy(source_path, output_group, name=output_name)
     if doppler_vision_source_file:
         h5file.attrs["doppler_vision_source_file"] = doppler_vision_source_file
     _initialize_app_versions(h5file, doppler_vision_source_file)

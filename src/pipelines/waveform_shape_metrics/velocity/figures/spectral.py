@@ -115,16 +115,17 @@ def _phase_spectrum_plot(
     color: str,
 ) -> Path:
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
-    ax.plot(spectrum.frequencies, spectrum.phase, color="k", linewidth=2)
     peaks = _visible_peak_indexes(spectrum, SPECTRAL_XLIM_HZ)[:8]
     if peaks.size:
-        ax.scatter(
+        markerline, stemlines, _ = ax.stem(
             spectrum.frequencies[peaks],
             spectrum.phase[peaks],
-            color=color,
-            s=45,
-            edgecolor="k",
+            markerfmt="o",
+            basefmt="0.6",
         )
+        markerline.set_color(color)
+        markerline.set_markeredgecolor("k")
+        stemlines.set_color(color)
         _annotate_spectral_peaks(ax, spectrum, peaks, phase=True)
     ax.set_xlim(*SPECTRAL_XLIM_HZ)
     ax.set_ylim(-np.pi, np.pi)
@@ -181,11 +182,12 @@ def _synthetic_spectral_plot(
         s=25,
     )
     axes[0].set_ylabel("Magnitude |Y|")
-    axes[1].plot(spectrum.frequencies, spectrum.phase / np.pi, color="k", linewidth=2)
-    axes[1].scatter(
+    axes[1].stem(
         spectrum.frequencies[spectrum.peak_indexes],
         spectrum.phase[spectrum.peak_indexes] / np.pi,
-        s=25,
+        linefmt="k-",
+        markerfmt="ko",
+        basefmt="0.6",
     )
     axes[1].set_ylabel("Phase / pi")
     axes[1].set_xlabel("Frequency (Hz)")

@@ -11,7 +11,8 @@ def pack_dopplerview_analysis_outputs(
     analysis: Mapping[str, object],
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
-    paths = _resolve_output_paths(output_paths).analysis
+    schema = _resolve_output_paths(output_paths)
+    paths = schema.analysis
     metrics = {
         paths.retinal_artery_velocity_signal: metric_value(
             analysis["retinal_artery_velocity_signal"],
@@ -21,15 +22,14 @@ def pack_dopplerview_analysis_outputs(
             analysis["retinal_vein_velocity_signal"],
             unit="mm/s",
         ),
-        paths.velocity_map_avg: metric_value(analysis["velocity_map_avg"]),
         paths.fRMS_avg: metric_value(analysis["fRMS_avg"]),
         paths.fRMS_bkg_avg: metric_value(analysis["fRMS_bkg_avg"]),
-        paths.velocitysignal_per_beat: metric_value(
-            analysis["retinal_artery_velocity_signal_filtered_perbeat"],
+        paths.retinal_artery_velocity_signal_filtered: metric_value(
+            analysis["retinal_artery_velocity_signal_filtered"],
             unit="mm/s",
         ),
-        paths.velocitysignal_filtered: metric_value(
-            analysis["retinal_artery_velocity_signal_filtered"],
+        paths.retinal_vein_velocity_signal_filtered: metric_value(
+            analysis["retinal_vein_velocity_signal_filtered"],
             unit="mm/s",
         ),
         paths.beat_indices: metric_value(analysis["beat_indices"]),
@@ -38,10 +38,46 @@ def pack_dopplerview_analysis_outputs(
             unit="s",
         ),
     }
+    if paths.velocity_map_avg is not None:
+        metrics[paths.velocity_map_avg] = metric_value(analysis["velocity_map_avg"])
+    if paths.velocitysignal_per_beat is not None:
+        metrics[paths.velocitysignal_per_beat] = metric_value(
+            analysis["retinal_artery_velocity_signal_filtered_perbeat"],
+            unit="mm/s",
+        )
+    if paths.velocitysignal_filtered is not None:
+        metrics[paths.velocitysignal_filtered] = metric_value(
+            analysis["retinal_artery_velocity_signal_filtered"],
+            unit="mm/s",
+        )
     if paths.retinal_velocity_array is not None:
         metrics[paths.retinal_velocity_array] = metric_value(
             analysis["retinal_vessel_velocity"],
             unit="mm/s",
+        )
+    heartbeat = analysis.get("_heartbeat_analysis_result")
+    spectral = getattr(heartbeat, "spectral", None)
+    if spectral is not None:
+        heartbeat_paths = schema.heartbeat
+        metrics.update(
+            {
+                heartbeat_paths.spectral_fundamental_frequency_hz: metric_value(
+                    spectral.fundamental_hz,
+                    unit="Hz",
+                ),
+                heartbeat_paths.spectral_heart_rate_bpm: metric_value(
+                    spectral.heart_rate_bpm,
+                    unit="bpm",
+                ),
+                heartbeat_paths.spectral_heart_rate_standard_error_bpm: metric_value(
+                    spectral.heart_rate_ste_bpm,
+                    unit="bpm",
+                ),
+                heartbeat_paths.spectral_period_seconds: metric_value(
+                    spectral.period_seconds,
+                    unit="s",
+                ),
+            }
         )
     return metrics
 

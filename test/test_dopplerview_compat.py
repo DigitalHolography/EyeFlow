@@ -17,6 +17,9 @@ if str(SRC_DIR) not in sys.path:
 from input_output import load_h5_sidecar_config  # noqa: E402
 from input_output.schema import DopplerViewSource, HolodopplerSource  # noqa: E402
 from pipeline_engine.context import RawH5SourceReader  # noqa: E402
+from pipelines.waveform_shape_metrics.runner import (  # noqa: E402
+    _segment_ring_settings,
+)
 from pipelines.waveform_shape_metrics.sources import WaveformShapeSources  # noqa: E402
 
 
@@ -66,7 +69,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         self.assertFalse(source_data.provenance["dopplerview_analysis_available"])
         self.assertTrue(source_data.provenance["has_optic_disc_mask"])
 
-    def test_existing_analysis_spatial_arrays_align_to_hd_and_scale_velocity(self) -> None:
+    def test_existing_dopplerview_analysis_is_ignored(self) -> None:
         artery_raw = np.array(
             [[1, 0], [0, 0], [1, 1], [0, 1]],
             dtype=bool,
@@ -82,17 +85,82 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
             source_data = self._load_sources(hd_source, dv_source)
 
-        analysis = source_data.dopplerview_analysis
-        self.assertIsNotNone(analysis)
-        np.testing.assert_allclose(
-            analysis["retinal_vessel_velocity"],
-            np.swapaxes(velocity_raw, -1, -2) * 1.0e-3,
-        )
-        np.testing.assert_allclose(
-            analysis["velocity_map_avg"],
-            np.swapaxes(np.mean(velocity_raw, axis=0), -1, -2) * 1.0e-3,
-        )
-        self.assertTrue(source_data.provenance["dopplerview_analysis_available"])
+        self.assertIsNone(source_data.dopplerview_analysis)
+        self.assertFalse(source_data.provenance["dopplerview_analysis_available"])
+
+    def test_holodoppler_flat_field_moment_is_preferred(self) -> None:
+        artery = np.zeros((2, 4), dtype=bool)
+        vein = ~artery
+        with self._source_pair() as (hd_source, dv_source):
+            self._write_hd(hd_source)
+            with h5py.File(hd_source, "a") as hd:
+                hd.create_dataset(
+                    "moment0ff",
+                    data=np.full((3, 2, 4), 7.0, dtype=np.float32),
+                )
+            with h5py.File(dv_source, "w") as dv:
+                self._write_segmentation(dv, artery, vein)
+
+            source_data = self._load_sources(hd_source, dv_source)
+
+        self.assertTrue(source_data.moment0_is_flat_fielded)
+        self.assertFalse(source_data.moment2_is_flat_fielded)
+
+    def test_eyeflow_analysis_settings_are_not_read_from_source_configs(self) -> None:
+        artery = np.zeros((2, 4), dtype=bool)
+        vein = ~artery
+        with self._source_pair() as (hd_source, dv_source):
+            self._write_hd(hd_source)
+            with h5py.File(dv_source, "w") as dv:
+                self._write_segmentation(dv, artery, vein)
+
+            source_data = self._load_sources(
+                hd_source,
+                dv_source,
+                hd_config={
+                    "SizeOfField": {"SmallRadiusRatio": 0.45},
+                    "generateCrossSectionSignals": {
+                        "NumberOfCircles": 3,
+                        "SegmentsLength": 0.40,
+                        "ScaleFactorWidth": 99.0,
+                        "HydrodynamicDiameters": False,
+                        "velocityProfileThreshold": 0.99,
+                        "RotateFromMask": True,
+                        "RefPapillaSize": 99.0,
+                        "DefaultPixelSize": 99.0,
+                    },
+                    "Preprocess": {"InterpolationFactor": 7.0},
+                },
+                dv_config={
+                    "PeripapillaryRingAnalysis": {
+                        "RingsNumber": 4,
+                        "RingsWidth": 0.30,
+                    },
+                    "PeripapillaryVascularZone": {
+                        "InnerRadius": 0.35,
+                        "OuterRadius": 0.45,
+                    },
+                    "FlatFieldCorrection": {
+                        "GWRatio": 0.11,
+                        "Border": 0.22,
+                    },
+                    "VelocityEstimation": {"LocalBackgroundDist": 7},
+                },
+            )
+
+        ring_settings = _segment_ring_settings(source_data)
+        cross_section = source_data.cross_section_settings
+        self.assertEqual(16, ring_settings.ring_count)
+        self.assertEqual(0.10, ring_settings.inner_radius_frac)
+        self.assertEqual(0.025, ring_settings.segment_length_frac)
+        self.assertEqual(3.0, cross_section.scale_factor_width)
+        self.assertTrue(cross_section.hydrodynamic_diameters)
+        self.assertEqual(0.5, cross_section.velocity_profile_threshold)
+        self.assertFalse(cross_section.rotate_from_mask)
+        self.assertAlmostEqual(1.91 / 3.5, cross_section.pixel_size_mm)
+        self.assertEqual(7, source_data.local_background_dist)
+        self.assertEqual(0.11, source_data.flat_field_gaussian_ratio)
+        self.assertEqual(0.22, source_data.flat_field_border)
 
     @staticmethod
     def _write_hd(path: Path) -> None:
@@ -150,13 +218,25 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         analysis.create_dataset("time_per_beat", data=np.asarray([0.1, 0.1], dtype=np.float32))
 
     @staticmethod
-    def _load_sources(hd_path: Path, dv_path: Path):
+    def _load_sources(
+        hd_path: Path,
+        dv_path: Path,
+        *,
+        hd_config: dict[str, object] | None = None,
+        dv_config: dict[str, object] | None = None,
+    ):
         hd_file = h5py.File(hd_path, "r")
         dv_file = h5py.File(dv_path, "r")
         try:
             sources = WaveformShapeSources(
-                hd=HolodopplerSource(RawH5SourceReader(h5file=hd_file, label="HD")),
-                dv=DopplerViewSource(RawH5SourceReader(h5file=dv_file, label="DV")),
+                hd=HolodopplerSource(
+                    RawH5SourceReader(h5file=hd_file, label="HD"),
+                    hd_config,
+                ),
+                dv=DopplerViewSource(
+                    RawH5SourceReader(h5file=dv_file, label="DV"),
+                    dv_config,
+                ),
             )
             return sources.load()
         finally:
