@@ -10,6 +10,9 @@ from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines.waveform_shape_metrics.metrics.runner import (
     run_waveform_shape_metric_calculations,
 )
+from pipelines.waveform_shape_metrics.metrics.calculator import (
+    WaveformShapeMetricsCalculator,
+)
 
 
 class WaveformShapeMetricsTests(unittest.TestCase):
@@ -58,6 +61,27 @@ class WaveformShapeMetricsTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "Incomplete global waveform"):
             run_waveform_shape_metric_calculations(packed_metrics)
+
+    def test_ri_pi_use_unrectified_mean_repeating_cycle(self):
+        cycles = np.asarray(
+            [
+                [-2.0, 2.0],
+                [4.0, 2.0],
+                [0.0, 2.0],
+                [2.0, 2.0],
+            ],
+            dtype=np.float32,
+        )
+        periods = np.asarray([[1.0, 1.0]], dtype=np.float32)
+
+        result = WaveformShapeMetricsCalculator()._compute_block_global(
+            cycles,
+            periods,
+        )
+
+        # The unrectified mean cycle is [0, 3, 1, 2].
+        np.testing.assert_allclose(result["RI"], [1.0, 1.0])
+        np.testing.assert_allclose(result["PI"], [2.0, 2.0])
 
     @staticmethod
     def _global_artery_inputs(schema):

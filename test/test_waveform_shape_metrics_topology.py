@@ -28,20 +28,16 @@ from pipelines.waveform_shape_metrics.runner import _segment_ring_settings  # no
 
 
 class SegmentCenterTests(unittest.TestCase):
-    def test_segment_analysis_uses_sixteen_eyeflow_owned_rings(self) -> None:
+    def test_segment_analysis_uses_current_matlab_cross_section_rings(self) -> None:
         settings = _segment_ring_settings()
 
-        self.assertEqual(16, settings.ring_count)
+        self.assertEqual(10, settings.ring_count)
         self.assertEqual(0.10, settings.inner_radius_frac)
         self.assertEqual(0.35, settings.outer_radius_frac)
-        self.assertEqual((0.35 - 0.10) / 16.0, settings.ring_width_frac)
+        self.assertEqual((0.35 - 0.10) / 10.0, settings.ring_width_frac)
         self.assertEqual(0.025, settings.segment_length_frac)
-        self.assertGreater(
-            settings.segment_length_frac,
-            settings.ring_width_frac,
-        )
         self.assertAlmostEqual(
-            (settings.outer_radius_frac - settings.inner_radius_frac) / 16.0,
+            (settings.outer_radius_frac - settings.inner_radius_frac) / 10.0,
             settings.ring_width_frac,
         )
 

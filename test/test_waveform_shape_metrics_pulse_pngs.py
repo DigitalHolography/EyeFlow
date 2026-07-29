@@ -185,15 +185,15 @@ class PulsePngExporterTests(unittest.TestCase):
         data = spectrum_signal_analysis(values.astype(np.float32), dt)
         prominent = data.peak_indexes[data.frequencies[data.peak_indexes] < 10.0]
 
-        self.assertEqual(prominent.size, 3)
+        self.assertEqual(prominent.size, 5)
         np.testing.assert_allclose(
             data.frequencies[prominent],
-            fundamental * np.arange(1, 4, dtype=np.float32),
+            fundamental * np.arange(1, 6, dtype=np.float32),
             atol=0.05,
         )
         np.testing.assert_allclose(
             data.valid_harmonics_hz,
-            fundamental * np.arange(1, 7, dtype=np.float32),
+            fundamental * np.arange(1, 6, dtype=np.float32),
             atol=0.05,
         )
 
@@ -217,9 +217,10 @@ class PulsePngExporterTests(unittest.TestCase):
         self.assertEqual(synthetic.frequencies.shape, synthetic.magnitude.shape)
         self.assertEqual(synthetic.frequencies.shape, synthetic.phase.shape)
         self.assertTrue(synthetic.peak_indexes.size > 0)
+        self.assertEqual(0, synthetic.peak_indexes[0])
         self.assertAlmostEqual(
             heartbeat.heart_rate_hz,
-            synthetic.frequencies[synthetic.peak_indexes[0]],
+            synthetic.frequencies[synthetic.peak_indexes[1]],
             places=5,
         )
         self.assertEqual(paired.transfer.frequencies.shape, paired.transfer.transfer.shape)

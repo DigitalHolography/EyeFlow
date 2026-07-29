@@ -10,20 +10,18 @@ from calculations.math.arrays import nan_to_mean
 from .models import SpectralHeartbeatResult
 
 
-MATLAB_PADDING_FACTOR = 16
-MATLAB_MAX_HARMONICS = 6
+MATLAB_PADDING_FACTOR = 2
+MATLAB_MINIMUM_PROMINENCE_RATIO = 0.1
 
 
 def spectral_heartbeat_analysis(
     values,
     dt_seconds: float,
     systole_count: int,
-    *,
-    max_harmonics: int = MATLAB_MAX_HARMONICS,
 ) -> SpectralHeartbeatResult:
     """Reproduce the calculations in MATLAB SpectralWaveformAnalysis.m."""
     clean = nan_to_mean(values).reshape(-1)
-    _validate_inputs(clean, dt_seconds, systole_count, max_harmonics)
+    _validate_inputs(clean, dt_seconds, systole_count)
 
     sampling_frequency_hz = 1.0 / float(dt_seconds)
     duration_seconds = clean.size * float(dt_seconds)
@@ -56,7 +54,6 @@ def spectral_heartbeat_analysis(
         frequencies_hz,
         peak_indexes,
         sampling_frequency_hz,
-        max_harmonics,
     )
     heart_rate_hz, heart_rate_ste_hz = _harmonic_heart_rate(
         frequencies_hz,
@@ -91,7 +88,6 @@ def _validate_inputs(
     values: np.ndarray,
     dt_seconds: float,
     systole_count: int,
-    max_harmonics: int,
 ) -> None:
     if values.size < 2:
         raise ValueError("signal must contain at least two samples.")
@@ -99,8 +95,6 @@ def _validate_inputs(
         raise ValueError("dt_seconds must be positive.")
     if int(systole_count) < 0:
         raise ValueError("systole_count must be nonnegative.")
-    if int(max_harmonics) < 1:
-        raise ValueError("max_harmonics must be positive.")
 
 
 def _prominent_peak_indexes(
@@ -116,7 +110,9 @@ def _prominent_peak_indexes(
         return np.asarray([], dtype=np.int32)
 
     strongest = int(candidates[np.argmax(magnitude[candidates])])
-    minimum_prominence = float(magnitude[strongest]) * 0.2
+    minimum_prominence = (
+        float(magnitude[strongest]) * MATLAB_MINIMUM_PROMINENCE_RATIO
+    )
     peaks, _ = scipy_signal.find_peaks(
         magnitude,
         distance=_matlab_peak_distance(estimated_fundamental_hz * 0.8),
@@ -138,7 +134,6 @@ def _valid_harmonics(
     frequencies_hz: np.ndarray,
     peak_indexes: np.ndarray,
     sampling_frequency_hz: float,
-    max_harmonics: int,
 ) -> tuple[float, np.ndarray]:
     if peak_indexes.size == 0:
         return np.nan, np.asarray([], dtype=np.float32)
@@ -147,7 +142,7 @@ def _valid_harmonics(
     harmonics = [fundamental_hz]
     if peak_indexes.size >= 2:
         local_maxima, _ = scipy_signal.find_peaks(magnitude)
-        for harmonic_number in range(2, int(max_harmonics) + 1):
+        for harmonic_number in range(2, int(peak_indexes.size) + 1):
             expected_hz = fundamental_hz * harmonic_number
             half_window_hz = fundamental_hz * 0.48
             in_window = local_maxima[

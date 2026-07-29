@@ -6,6 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
+from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
+    mean_period_seconds,
+)
 from .spectrum import (
     SpectrumData,
     SyntheticSpectrumData,
@@ -29,8 +32,12 @@ SPECTRAL_XLIM_HZ = (0.0, 10.0)
 
 def _export_spectral_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     paths: list[Path] = []
-    artery = _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"]))
-    vein = _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"]))
+    artery = _display_velocity(
+        _vector(ctx.analysis["retinal_artery_velocity_signal_filtered"])
+    )
+    vein = _display_velocity(
+        _vector(ctx.analysis["retinal_vein_velocity_signal_filtered"])
+    )
     beat_indexes = ctx.cycle_boundary_indexes
     systole_count = int(beat_indexes.size)
     artery_spectrum = ctx.heartbeat
@@ -63,7 +70,11 @@ def _export_spectral_plots(writer: FigureWriter, ctx: PulseFigureContext) -> lis
         vein,
         artery,
         beat_indexes,
-        ctx.heartbeat_period_seconds,
+        mean_period_seconds(
+            beat_indexes,
+            ctx.dt_seconds,
+            default_samples=vein.size,
+        ),
     )
     if synthetic is not None:
         paths.append(_synthetic_spectral_plot(writer, synthetic))

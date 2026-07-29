@@ -7,7 +7,7 @@ from .models import (
 )
 from .runner import run_heartbeat_analysis
 from .spectral import (
-    MATLAB_MAX_HARMONICS,
+    MATLAB_MINIMUM_PROMINENCE_RATIO,
     MATLAB_PADDING_FACTOR,
     spectral_heartbeat_analysis,
 )
@@ -15,7 +15,7 @@ from .systole import find_systole_index
 
 __all__ = [
     "HeartbeatAnalysisResult",
-    "MATLAB_MAX_HARMONICS",
+    "MATLAB_MINIMUM_PROMINENCE_RATIO",
     "MATLAB_PADDING_FACTOR",
     "SpectralHeartbeatResult",
     "SystoleDetectionResult",

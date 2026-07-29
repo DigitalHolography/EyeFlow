@@ -101,13 +101,17 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
             ctx.time,
             [
                 (
-                    _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"])),
+                    _display_velocity(
+                        _vector(ctx.analysis["retinal_artery_velocity_signal_filtered"])
+                    ),
                     "-",
                     "tab:red",
                     "arteries",
                 ),
                 (
-                    _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"])),
+                    _display_velocity(
+                        _vector(ctx.analysis["retinal_vein_velocity_signal_filtered"])
+                    ),
                     "-",
                     "tab:blue",
                     "veins",

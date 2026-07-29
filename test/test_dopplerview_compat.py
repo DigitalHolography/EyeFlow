@@ -88,23 +88,23 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         self.assertIsNone(source_data.dopplerview_analysis)
         self.assertFalse(source_data.provenance["dopplerview_analysis_available"])
 
-    def test_holodoppler_flat_field_moment_is_preferred(self) -> None:
-        artery = np.zeros((2, 4), dtype=bool)
-        vein = ~artery
-        with self._source_pair() as (hd_source, dv_source):
+    def test_raw_holodoppler_moments_are_used_for_dopplerview_preprocessing(
+        self,
+    ) -> None:
+        with self._source_pair() as (hd_source, _):
             self._write_hd(hd_source)
             with h5py.File(hd_source, "a") as hd:
                 hd.create_dataset(
                     "moment0ff",
                     data=np.full((3, 2, 4), 7.0, dtype=np.float32),
                 )
-            with h5py.File(dv_source, "w") as dv:
-                self._write_segmentation(dv, artery, vein)
+            with h5py.File(hd_source, "r") as hd:
+                source = HolodopplerSource(
+                    RawH5SourceReader(h5file=hd, label="HD"),
+                )
+                selected = np.asarray(source.moment0_dataset())
 
-            source_data = self._load_sources(hd_source, dv_source)
-
-        self.assertTrue(source_data.moment0_is_flat_fielded)
-        self.assertFalse(source_data.moment2_is_flat_fielded)
+        np.testing.assert_array_equal(selected, np.ones((3, 2, 4)))
 
     def test_eyeflow_analysis_settings_are_not_read_from_source_configs(self) -> None:
         artery = np.zeros((2, 4), dtype=bool)
@@ -150,7 +150,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
         ring_settings = _segment_ring_settings()
         cross_section = source_data.cross_section_settings
-        self.assertEqual(16, ring_settings.ring_count)
+        self.assertEqual(10, ring_settings.ring_count)
         self.assertEqual(0.10, ring_settings.inner_radius_frac)
         self.assertEqual(0.025, ring_settings.segment_length_frac)
         self.assertEqual(3.0, cross_section.scale_factor_width)

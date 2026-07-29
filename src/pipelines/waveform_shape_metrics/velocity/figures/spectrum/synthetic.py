@@ -25,16 +25,21 @@ def synthetic_spectrum_analysis(
     repeated = np.tile(cycle, 512)
     period = float(period_seconds)
     fs = cycle.size / max(period, np.finfo(np.float32).eps)
-    frequencies = np.fft.rfftfreq(repeated.size, 1.0 / fs)
-    fft = np.fft.rfft(repeated)
+    positive_count = repeated.size // 2
+    frequencies = (
+        np.arange(positive_count, dtype=np.float64) * (fs / repeated.size)
+    )
+    fft = np.fft.fft(repeated)[:positive_count]
+    fft[1 : positive_count // 2] *= 2.0
     magnitude = np.abs(fft)
     magnitude = (
         magnitude
         / max(float(magnitude[0]), np.finfo(np.float32).eps)
-        * float(np.nanmean(repeated))
+        * float(np.mean(repeated))
     )
     phase = np.angle(fft)
     peaks, _ = signal.find_peaks(magnitude, height=0.001)
+    peaks = np.concatenate((np.asarray([0], dtype=np.int64), peaks))
     return SyntheticSpectrumData(
         frequencies.astype(np.float32),
         magnitude.astype(np.float32),

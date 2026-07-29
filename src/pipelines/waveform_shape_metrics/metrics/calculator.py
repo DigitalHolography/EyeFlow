@@ -65,6 +65,30 @@ class WaveformShapeMetricsCalculator:
         return np.where(np.isfinite(x), np.maximum(x, 0.0), np.nan)
 
     @staticmethod
+    def _mean_cycle_pulse_metrics(cycles: np.ndarray, beat_axis: int) -> tuple[float, float]:
+        """MATLAB ArterialResistivityIndex metrics on the mean repeating cycle."""
+        values = np.asarray(cycles, dtype=float)
+        if values.size == 0:
+            return np.nan, np.nan
+        cycle = np.mean(values, axis=beat_axis)
+        if cycle.size == 0 or not np.all(np.isfinite(cycle)):
+            return np.nan, np.nan
+
+        vmax = float(np.max(cycle))
+        vmin = float(np.min(cycle))
+        vmean = float(np.mean(cycle))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ri = float(np.divide(np.float64(vmax - vmin), np.float64(vmax)))
+            pi = float(np.divide(np.float64(vmax - vmin), np.float64(vmean)))
+        if ri < 0:
+            ri = 0.0
+        if ri > 1:
+            ri = 1.0
+        if pi < 0:
+            pi = 0.0
+        return ri, pi
+
+    @staticmethod
     def _safe_nanmean(x: np.ndarray) -> float:
         if x.size == 0 or not np.any(np.isfinite(x)):
             return np.nan
@@ -1284,6 +1308,15 @@ class WaveformShapeMetricsCalculator:
                     for key in metric_names:
                         seg[key][beat_idx, branch_idx, radius_idx] = m[key]
 
+        for branch_idx in range(n_branches):
+            for radius_idx in range(n_radii):
+                ri, pi = self._mean_cycle_pulse_metrics(
+                    v_block[:, :, branch_idx, radius_idx],
+                    beat_axis=1,
+                )
+                seg["RI"][:, branch_idx, radius_idx] = ri
+                seg["PI"][:, branch_idx, radius_idx] = pi
+
         if n_radii:
             for key in metric_names:
                 br[key][:] = self._nanmedian_no_warning(seg[key], axis=2)
@@ -1304,6 +1337,7 @@ class WaveformShapeMetricsCalculator:
         """
         n_beats = int(T.shape[1])
         v_global = self._ensure_time_by_beat(v_global, n_beats)
+        pulse_metric_cycles = np.asarray(v_global, dtype=float)
         v_global = self._rectify_keep_nan(v_global)
         metric_names = self._metric_names()
 
@@ -1318,6 +1352,12 @@ class WaveformShapeMetricsCalculator:
             for key in metric_names:
                 out[key][beat_idx] = m[key]
 
+        ri, pi = self._mean_cycle_pulse_metrics(
+            pulse_metric_cycles,
+            beat_axis=1,
+        )
+        out["RI"][:] = ri
+        out["PI"][:] = pi
         return out
 
     def _pack_segment_outputs(

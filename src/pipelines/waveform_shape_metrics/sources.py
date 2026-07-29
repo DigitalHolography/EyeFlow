@@ -36,8 +36,6 @@ class WaveformShapeSourceData:
 
     moment0: object
     moment2: object
-    moment0_is_flat_fielded: bool
-    moment2_is_flat_fielded: bool
     flat_field_gaussian_ratio: float
     flat_field_border: float
     retinal_artery_mask: np.ndarray
@@ -59,6 +57,7 @@ class WaveformShapeSourceData:
             "moment2": self.moment2,
             "retinal_artery_mask": self.retinal_artery_mask,
             "retinal_vein_mask": self.retinal_vein_mask,
+            "optic_disc_center": self.optic_disc_center,
         }
 
 
@@ -121,8 +120,6 @@ class WaveformShapeSources:
         return WaveformShapeSourceData(
             moment0=moment0,
             moment2=moment2,
-            moment0_is_flat_fielded=self.hd.moment0_is_flat_fielded(),
-            moment2_is_flat_fielded=self.hd.moment2_is_flat_fielded(),
             flat_field_gaussian_ratio=_config_float(
                 self.dv,
                 "FlatFieldCorrection",

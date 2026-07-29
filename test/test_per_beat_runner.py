@@ -69,7 +69,7 @@ class PerBeatRunnerTests(unittest.TestCase):
         self.assertEqual(artery.dtype, np.float32)
         self.assertEqual(vein.dtype, np.float32)
 
-    def test_beat_period_uses_spectral_heartbeat_not_systole_periods(self) -> None:
+    def test_beat_period_uses_each_matlab_systole_interval(self) -> None:
         dt_seconds = 0.05
         time = np.arange(200, dtype=np.float32) * dt_seconds
         signal = (
@@ -91,12 +91,18 @@ class PerBeatRunnerTests(unittest.TestCase):
             ),
             band_limited_signal_harmonic_count=4,
             heartbeat=heartbeat,
+            dt_seconds=dt_seconds,
             index_base=0,
         )
 
         result = run_per_beat_analysis(inputs)
 
-        np.testing.assert_allclose(result.beat_period_seconds, [1.0, 1.0, 1.0])
+        np.testing.assert_allclose(result.beat_period_seconds, [4.0, 3.0, 2.95])
+        np.testing.assert_allclose(
+            result.artery.vti_per_beat,
+            np.sum(result.artery.signal.velocity_signal_per_beat, axis=1)
+            * dt_seconds,
+        )
         self.assertIs(result.heartbeat, heartbeat)
         np.testing.assert_array_equal(
             result.cycle_boundary_indexes,

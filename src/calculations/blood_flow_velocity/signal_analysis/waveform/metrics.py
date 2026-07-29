@@ -26,19 +26,24 @@ def pulse_metric(cycle: np.ndarray, metric_name: str) -> PulseMetricData:
     if values.size == 0 or not np.any(np.isfinite(values)):
         return PulseMetricData(metric_name, np.nan, np.nan, np.nan, np.nan)
 
-    maximum = float(np.nanmax(values))
-    minimum = float(np.nanmin(values))
-    mean = float(np.nanmean(values))
+    maximum = float(np.max(values))
+    minimum = float(np.min(values))
+    mean = float(np.mean(values))
     excursion = maximum - minimum
 
-    if metric_name == "RI":
-        value = excursion / maximum if maximum else np.nan
-        value = float(np.clip(value, 0.0, 1.0)) if np.isfinite(value) else np.nan
-    elif metric_name == "PI":
-        value = excursion / mean if mean else np.nan
-        value = max(0.0, float(value)) if np.isfinite(value) else np.nan
-    else:
-        value = maximum / minimum if minimum else np.nan
+    with np.errstate(divide="ignore", invalid="ignore"):
+        if metric_name == "RI":
+            value = float(np.divide(np.float64(excursion), np.float64(maximum)))
+            if value < 0:
+                value = 0.0
+            if value > 1:
+                value = 1.0
+        elif metric_name == "PI":
+            value = float(np.divide(np.float64(excursion), np.float64(mean)))
+            if value < 0:
+                value = 0.0
+        else:
+            value = float(np.divide(np.float64(maximum), np.float64(minimum)))
 
     return PulseMetricData(metric_name, value, maximum, minimum, mean)
 

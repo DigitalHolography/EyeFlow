@@ -12,18 +12,6 @@ HD_MOMENT0_PATH = "moment0"
 HD_MOMENT2_PATH = "moment2"
 HD_MOMENT0_PATHS = (HD_MOMENT0_PATH, "M0")
 HD_MOMENT2_PATHS = (HD_MOMENT2_PATH, "M2")
-HD_MOMENT0_FLAT_FIELD_PATHS = (
-    "moment0ff",
-    "moment0_ff",
-    "M0ff",
-    "M0_ff",
-)
-HD_MOMENT2_FLAT_FIELD_PATHS = (
-    "moment2ff",
-    "moment2_ff",
-    "M2ff",
-    "M2_ff",
-)
 HD_OUTPUT_PASSTHROUGH_PATHS = (
     ("registration", "Meta/registration"),
     ("zernike_coefs_radians", "zernike_coefs_radians"),
@@ -57,20 +45,10 @@ class HolodopplerSource(TypedSource):
         return self._moment(HD_MOMENT2_PATHS)
 
     def moment0_dataset(self):
-        return self._moment_dataset(
-            HD_MOMENT0_FLAT_FIELD_PATHS + HD_MOMENT0_PATHS
-        )
+        return self._moment_dataset(HD_MOMENT0_PATHS)
 
     def moment2_dataset(self):
-        return self._moment_dataset(
-            HD_MOMENT2_FLAT_FIELD_PATHS + HD_MOMENT2_PATHS
-        )
-
-    def moment0_is_flat_fielded(self) -> bool:
-        return self._first_path(HD_MOMENT0_FLAT_FIELD_PATHS) is not None
-
-    def moment2_is_flat_fielded(self) -> bool:
-        return self._first_path(HD_MOMENT2_FLAT_FIELD_PATHS) is not None
+        return self._moment_dataset(HD_MOMENT2_PATHS)
 
     def timing(self) -> HolodopplerTiming:
         sampling_freq = self._scalar_h5_or_config(

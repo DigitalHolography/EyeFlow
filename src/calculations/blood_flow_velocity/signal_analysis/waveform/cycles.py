@@ -42,16 +42,10 @@ def average_cycle(values: np.ndarray, peaks: np.ndarray, samples: int) -> np.nda
     if not cycles:
         return None
 
-    stacked = np.asarray(cycles, dtype=np.float32)
-    valid_count = np.sum(np.isfinite(stacked), axis=0)
-    mean_cycle = np.full(samples, np.nan, dtype=np.float32)
-    np.divide(
-        np.nansum(stacked, axis=0),
-        valid_count,
-        out=mean_cycle,
-        where=valid_count > 0,
+    return np.mean(np.asarray(cycles, dtype=np.float32), axis=0).astype(
+        np.float32,
+        copy=False,
     )
-    return mean_cycle
 
 
 def cycle_extrema(values: np.ndarray, peaks: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -62,11 +56,11 @@ def cycle_extrema(values: np.ndarray, peaks: np.ndarray) -> tuple[np.ndarray, np
     for first, second in zip(peaks[:-1], peaks[1:]):
         if second <= first + 2:
             continue
-        midpoint = first + int(round((second - first) / 2))
-        maxima.append(first + int(np.nanargmax(values[first:midpoint])))
+        midpoint = first + int(np.floor((second - first) / 2.0 + 0.5))
+        maxima.append(first + int(np.nanargmax(values[first : midpoint + 1])))
         minima.append(midpoint + int(np.nanargmin(values[midpoint:second])))
     if peaks[0] > 0:
-        minima.insert(0, int(np.nanargmin(values[: peaks[0]])))
+        minima.insert(0, int(np.nanargmin(values[: peaks[0] + 1])))
     if peaks[-1] < values.size:
         maxima.append(peaks[-1] + int(np.nanargmax(values[peaks[-1]:])))
     return np.asarray(maxima, dtype=np.int32), np.asarray(minima, dtype=np.int32)

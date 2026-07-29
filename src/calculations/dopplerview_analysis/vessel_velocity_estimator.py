@@ -8,17 +8,26 @@ from functools import partial
 import numpy as np
 from scipy import ndimage as ndi
 
+from calculations.blood_flow_velocity.cross_section.segment_geometry import annulus_mask
 from runtime_limits import cap_parallel_jobs
 
-from ._masks import elliptical_mask
 from .flat_field import (
     corrected_flat_field_chunk,
     fit_flat_field_parameters,
-    source_chunk,
 )
 
 
 SCRATCH_FRAME_CHUNK_SIZE = 8
+SECTION_INNER_RADIUS_FRAC = 0.10
+SECTION_OUTER_RADIUS_FRAC = 0.35
+DOPPLER_WAVELENGTH_METERS = 8.52e-7
+DOPPLER_ANGLE_RADIANS = 0.25
+
+
+def _velocity_scale_mm_per_s_per_hz() -> np.float32:
+    return np.float32(
+        1000.0 * 2.0 * DOPPLER_WAVELENGTH_METERS / DOPPLER_ANGLE_RADIANS
+    )
 
 
 class VesselVelocityEstimatorStep:
@@ -73,7 +82,7 @@ class VesselVelocityEstimatorStep:
         deltafRMS = (np.sign(A) * np.sqrt(np.abs(A))).astype(np.float32, copy=False)
         ctx.set("deltafRMS", deltafRMS)
 
-        velocity_scale = np.float32(2 * 852e-9 / np.sin(0.25) * 1e3)
+        velocity_scale = _velocity_scale_mm_per_s_per_hz()
         velocity_map = (velocity_scale * deltafRMS).astype(
             np.float32,
             copy=False,
@@ -96,8 +105,13 @@ class VesselVelocityEstimatorStep:
         ctx.set("fRMS_bkg_avg", np.mean(fRMSbkg, axis=0, dtype=np.float32))
 
         sz = velocity_map.shape
-
-        section_mask = elliptical_mask(sz[-2], sz[-1], 0.5) & (~(elliptical_mask(sz[-2], sz[-1], 0.2)))
+        optic_disc_center = getattr(ctx, "cache", {}).get("optic_disc_center")
+        section_mask = annulus_mask(
+            (sz[-2], sz[-1]),
+            optic_disc_center,
+            SECTION_INNER_RADIUS_FRAC,
+            SECTION_OUTER_RADIUS_FRAC,
+        )
         ctx.set("velocity_section_mask", section_mask)
 
         artery_sig = _masked_signal(velocity_map, section_mask & artery_mask)
@@ -112,10 +126,11 @@ def run_chunked_velocity_estimator(
     *,
     moment0,
     moment2,
-    moment0_is_flat_fielded: bool,
-    moment2_is_flat_fielded: bool,
     artery_mask,
     vein_mask,
+    optic_disc_center=None,
+    section_inner_radius_frac: float = SECTION_INNER_RADIUS_FRAC,
+    section_outer_radius_frac: float = SECTION_OUTER_RADIUS_FRAC,
     local_background_dist: int,
     flat_field_gaussian_ratio: float,
     flat_field_border: float,
@@ -138,7 +153,6 @@ def run_chunked_velocity_estimator(
     gaussian_width = float(flat_field_gaussian_ratio) * float(width)
     moment0_params = _flat_field_parameters(
         moment0,
-        moment0_is_flat_fielded,
         gaussian_width,
         flat_field_border,
         log,
@@ -146,7 +160,6 @@ def run_chunked_velocity_estimator(
     )
     moment2_params = _flat_field_parameters(
         moment2,
-        moment2_is_flat_fielded,
         gaussian_width,
         flat_field_border,
         log,
@@ -171,10 +184,11 @@ def run_chunked_velocity_estimator(
     vessel_mask = artery | vein
     disk, inpaint = _skimage_dependencies()
     inpaint_mask = _dilated_mask(vessel_mask, disk(int(local_background_dist)))
-    section_mask = elliptical_mask(height, width, 0.5) & ~elliptical_mask(
-        height,
-        width,
-        0.2,
+    section_mask = annulus_mask(
+        (height, width),
+        optic_disc_center,
+        section_inner_radius_frac,
+        section_outer_radius_frac,
     )
     artery_section = section_mask & artery
     vein_section = section_mask & vein
@@ -185,7 +199,7 @@ def run_chunked_velocity_estimator(
     }
     artery_signal = np.full(frame_count, np.nan, dtype=np.float32)
     vein_signal = np.full(frame_count, np.nan, dtype=np.float32)
-    velocity_scale = np.float32(2 * 852e-9 / np.sin(0.25) * 1e3)
+    velocity_scale = _velocity_scale_mm_per_s_per_hz()
     n_jobs = min(cap_parallel_jobs(_cpu_count()), SCRATCH_FRAME_CHUNK_SIZE)
 
     for start in range(0, frame_count, SCRATCH_FRAME_CHUNK_SIZE):
@@ -244,28 +258,23 @@ def run_chunked_velocity_estimator(
         "retinal_artery_velocity_signal": artery_signal,
         "retinal_vein_velocity_signal": vein_signal,
         "moment0_flat_field_source": (
-            "holodoppler" if moment0_is_flat_fielded else "eyeflow_dopplerview_fallback"
+            "dopplerview_recomputed_from_raw"
         ),
         "moment2_flat_field_source": (
-            "holodoppler" if moment2_is_flat_fielded else "eyeflow_dopplerview_fallback"
+            "dopplerview_recomputed_from_raw"
         ),
     }
 
 
 def _flat_field_parameters(
     volume,
-    already_corrected: bool,
     gaussian_width: float,
     border_amount: float,
     log,
     name: str,
 ):
-    if already_corrected:
-        if callable(log):
-            log(f"Using flat-fielded HD {name} dataset.")
-        return None
     if callable(log):
-        log(f"Calculating DopplerView-compatible flat field for HD {name}.")
+        log(f"Calculating DopplerView flat field from raw HD {name}.")
     return fit_flat_field_parameters(
         volume,
         gaussian_width=gaussian_width,
@@ -275,8 +284,6 @@ def _flat_field_parameters(
 
 
 def _read_moment_chunk(volume, frame_slice: slice, parameters) -> np.ndarray:
-    if parameters is None:
-        return source_chunk(volume, frame_slice)
     return corrected_flat_field_chunk(volume, frame_slice, parameters)
 
 

@@ -183,6 +183,7 @@ def _per_beat_input_from_analysis(
         cycle_boundary_indexes=beat_indexes,
         band_limited_signal_harmonic_count=harmonic_count,
         heartbeat=heartbeat,
+        dt_seconds=timing.dt_seconds,
         arterial_velocity_segments=_waveform_segment_input(artery_segments),
         venous_velocity_segments=_waveform_segment_input(vein_segments),
         index_base=source_data.provenance["beat_index_base"],
@@ -318,16 +319,8 @@ def _context_attrs(
         ],
         "analysis_source": analysis_source,
         "output_schema": output_paths.name,
-        "moment0_flat_field_source": (
-            "holodoppler"
-            if source_data.moment0_is_flat_fielded
-            else "eyeflow_dopplerview_fallback"
-        ),
-        "moment2_flat_field_source": (
-            "holodoppler"
-            if source_data.moment2_is_flat_fielded
-            else "eyeflow_dopplerview_fallback"
-        ),
+        "moment0_flat_field_source": "dopplerview_recomputed_from_raw",
+        "moment2_flat_field_source": "dopplerview_recomputed_from_raw",
         "flat_field_gaussian_ratio": float(source_data.flat_field_gaussian_ratio),
         "flat_field_border": float(source_data.flat_field_border),
         "arterial_velocity_signal_path": (

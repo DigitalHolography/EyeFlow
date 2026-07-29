@@ -112,7 +112,7 @@ def _fill_cross_section_signals(
             if loc is None:
                 continue
             segment_center_xy[branch_index, circle_index] = loc
-            tilt = _tilt_angle(mask, optic_disc_center)
+            tilt = _tilt_angle(mask, section, optic_disc_center)
             raw, safe = _cross_section_velocity(
                 velocity,
                 mask,
@@ -129,19 +129,35 @@ def _centroid_xy(mask: np.ndarray) -> tuple[int, int] | None:
     labeled, count = ndi.label(mask, structure=np.ones((3, 3), dtype=np.uint8))
     if count == 0:
         return None
-    sizes = np.bincount(labeled.reshape(-1))
-    label_id = int(np.argmax(sizes[1:]) + 1)
-    y, x = ndi.center_of_mass(mask, labeled, label_id)
-    return int(np.rint(x)), int(np.rint(y))
+    y, x = ndi.center_of_mass(mask, labeled, 1)
+    return int(np.floor(x + 0.5)), int(np.floor(y + 0.5))
 
 
-def _tilt_angle(mask: np.ndarray, optic_disc_center) -> float:
+def _tilt_angle(
+    mask: np.ndarray,
+    section: np.ndarray,
+    optic_disc_center,
+) -> float:
     ny, nx = mask.shape
-    center = optic_disc_center_yx(optic_disc_center, ny, nx)
-    radius = _mean_radius(mask, center)
+    radii = _normalized_radius_grid(mask.shape, optic_disc_center)
+    section_radii = radii[np.asarray(section, dtype=bool)]
+    if section_radii.size == 0:
+        return np.nan
+    radius_inner = float(np.min(section_radii))
+    radius_outer = float(np.max(section_radii))
     step = np.float32(1.0 / max(float(np.mean(mask.shape)), 1.0))
-    inner = annulus_mask(mask.shape, optic_disc_center, max(radius - step, 0.0), radius)
-    outer = annulus_mask(mask.shape, optic_disc_center, radius, radius + step)
+    inner = annulus_mask(
+        mask.shape,
+        optic_disc_center,
+        max(radius_inner - float(step), 0.0),
+        radius_inner + float(step),
+    )
+    outer = annulus_mask(
+        mask.shape,
+        optic_disc_center,
+        max(radius_outer - float(step), 0.0),
+        radius_outer,
+    )
     p_in = _centroid_float(mask & inner)
     p_out = _centroid_float(mask & outer)
     if p_in is None or p_out is None:
@@ -149,14 +165,18 @@ def _tilt_angle(mask: np.ndarray, optic_disc_center) -> float:
     return float(np.degrees(np.arctan2(p_out[1] - p_in[1], p_out[0] - p_in[0])))
 
 
-def _mean_radius(mask: np.ndarray, center: tuple[float, float]) -> float:
-    y, x = np.nonzero(mask)
-    if y.size == 0:
-        return 0.0
-    cy, cx = center
-    y_norm = (y.astype(np.float32) - np.float32(cy)) / np.float32(mask.shape[0])
-    x_norm = (x.astype(np.float32) - np.float32(cx)) / np.float32(mask.shape[1])
-    return float(np.nanmean(np.sqrt(x_norm**2 + y_norm**2), dtype=np.float32))
+def _normalized_radius_grid(
+    shape: tuple[int, int],
+    optic_disc_center,
+) -> np.ndarray:
+    ny, nx = shape
+    cy, cx = optic_disc_center_yx(optic_disc_center, ny, nx)
+    y = np.linspace(0.0, 1.0, ny, dtype=np.float32)[:, None]
+    x = np.linspace(0.0, 1.0, nx, dtype=np.float32)[None, :]
+    return np.sqrt(
+        (y - np.float32(cy / max(ny, 1))) ** 2
+        + (x - np.float32(cx / max(nx, 1))) ** 2,
+    )
 
 
 def _centroid_float(mask: np.ndarray) -> tuple[float, float] | None:
@@ -196,7 +216,10 @@ def _subimage_stack(
     loc_xy: tuple[int, int],
     settings: CrossSectionSignalSettings,
 ) -> tuple[np.ndarray, np.ndarray]:
-    half_width = int(round(0.01 * mask.shape[0] * settings.scale_factor_width / 2.0))
+    window_width = int(
+        np.floor(0.01 * mask.shape[0] * settings.scale_factor_width + 0.5)
+    )
+    half_width = int(np.floor(window_width / 2.0 + 0.5))
     x, y = loc_xy
     x_range = slice(max(x - half_width, 0), min(x + half_width + 1, mask.shape[1]))
     y_range = slice(max(y - half_width, 0), min(y + half_width + 1, mask.shape[0]))
@@ -237,13 +260,17 @@ def _estimate_orientation(mean_image: np.ndarray, loc_xy, optic_disc_center) -> 
 def _radial_beta_deg(loc_xy, optic_disc_center, shape: tuple[int, int]) -> int:
     cy, cx = optic_disc_center_yx(optic_disc_center, shape[0], shape[1])
     alpha = np.degrees(np.arctan2(loc_xy[1] - cy, loc_xy[0] - cx))
-    return int(np.mod(90 + round(float(np.mod(alpha, 360.0))), 180))
+    alpha_360 = float(np.mod(alpha, 360.0))
+    matlab_rounded = int(np.floor(alpha_360 + 0.5))
+    return int(np.mod(90 + matlab_rounded, 180))
 
 
 def _projection_score(image: np.ndarray, angle: float) -> float:
     rotated = ndi.rotate(image, angle, reshape=False, order=0, mode="constant", cval=0.0)
     n_rows = rotated.shape[0]
-    central = rotated[n_rows // 3 : int(np.ceil(2 * n_rows / 3)), :]
+    start = max(int(np.floor(n_rows / 3)) - 1, 0)
+    stop = int(np.ceil(2 * n_rows / 3))
+    central = rotated[start:stop, :]
     proj = np.sum(central, axis=0, dtype=np.float32)
     total = np.sum(proj, dtype=np.float32)
     return 0.0 if total <= 0 else float(np.max(proj) / total)
@@ -314,7 +341,8 @@ def _frame_velocities(
     for frame_index, frame in enumerate(sub_stack):
         rotated = rotate_image_with_nan(frame, angle)
         profile = nanmean_float32(rotated, axis=0)
-        raw[frame_index] = nanmean_float32(profile[c1 : c2 + 1])
+        value = nanmean_float32(profile[c1 : c2 + 1])
+        raw[frame_index] = np.float32(0.0) if np.isnan(value) else value
         safe[frame_index] = nanmean_float32(profile)
     return raw, safe
 

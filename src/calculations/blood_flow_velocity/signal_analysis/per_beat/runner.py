@@ -23,6 +23,7 @@ class VesselPerBeatAnalysisResult:
     signal: PerBeatSignalAnalysisResult
     vmax_band_limited: np.ndarray
     vmin_band_limited: np.ndarray
+    vti_per_beat: np.ndarray
     segments: PerBeatSegmentAnalysisResult | None = None
 
 
@@ -33,6 +34,7 @@ class PerBeatAnalysisInput:
     cycle_boundary_indexes: np.ndarray
     band_limited_signal_harmonic_count: int
     heartbeat: SpectralHeartbeatResult
+    dt_seconds: float
     arterial_velocity_segments: np.ndarray | None = None
     venous_velocity_segments: np.ndarray | None = None
     index_base: int | None = None
@@ -55,8 +57,8 @@ def run_per_beat_analysis(inputs: PerBeatAnalysisInput) -> PerBeatAnalysisResult
     )
     return PerBeatAnalysisResult(
         beat_period_seconds=_beat_period_seconds(
-            inputs.heartbeat,
-            max(0, cycle_boundaries.size - 1),
+            cycle_boundaries,
+            inputs.dt_seconds,
         ),
         heartbeat=inputs.heartbeat,
         cycle_boundary_indexes=cycle_boundaries,
@@ -76,14 +78,13 @@ def run_per_beat_analysis(inputs: PerBeatAnalysisInput) -> PerBeatAnalysisResult
 
 
 def _beat_period_seconds(
-    heartbeat: SpectralHeartbeatResult,
-    number_of_periods: int,
+    cycle_boundaries: np.ndarray,
+    dt_seconds: float,
 ) -> np.ndarray:
-    return np.full(
-        number_of_periods,
-        heartbeat.period_seconds,
-        dtype=np.float32,
-    )
+    return (
+        np.diff(cycle_boundaries).astype(np.float32)
+        * np.float32(dt_seconds)
+    ).astype(np.float32, copy=False)
 
 
 def _run_vessel(
@@ -102,6 +103,10 @@ def _run_vessel(
         signal=signal,
         vmax_band_limited=np.max(signal.velocity_signal_per_beat_band_limited, axis=1),
         vmin_band_limited=np.min(signal.velocity_signal_per_beat_band_limited, axis=1),
+        vti_per_beat=(
+            np.sum(signal.velocity_signal_per_beat, axis=1)
+            * np.float32(inputs.dt_seconds)
+        ).astype(np.float32, copy=False),
         segments=_run_segments(velocity_segments, cycle_boundaries, inputs),
     )
 

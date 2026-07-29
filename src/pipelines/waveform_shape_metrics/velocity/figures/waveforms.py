@@ -6,6 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
+from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
+    mean_period_seconds,
+)
 from calculations.blood_flow_velocity.signal_analysis.waveform.metrics import (
     pulse_metric_from_signal,
 )
@@ -38,11 +41,11 @@ def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[P
     peaks = ctx.cycle_boundary_indexes
     unit_corrected_retinal_artery_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_artery_velocity_signal",
+        "retinal_artery_velocity_signal_filtered",
     )
     unit_corrected_retinal_vein_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_vein_velocity_signal",
+        "retinal_vein_velocity_signal_filtered",
     )
     cycles = paired_vessel_cycles(
         unit_corrected_retinal_artery_velocity_signal,
@@ -84,11 +87,11 @@ def _export_waveform_plots(writer: FigureWriter, ctx: PulseFigureContext) -> lis
     peaks = ctx.cycle_boundary_indexes
     unit_corrected_retinal_artery_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_artery_velocity_signal",
+        "retinal_artery_velocity_signal_filtered",
     )
     unit_corrected_retinal_vein_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_vein_velocity_signal",
+        "retinal_vein_velocity_signal_filtered",
     )
     cycles = paired_vessel_cycles(
         unit_corrected_retinal_artery_velocity_signal,
@@ -144,7 +147,13 @@ def _arterial_waveform_plot(
 ) -> Path:
     data = arterial_waveform_analysis(
         cycle,
-        ctx.heartbeat_period_seconds,
+        mean_period_seconds(
+            ctx.cycle_boundary_indexes,
+            ctx.dt_seconds,
+            default_samples=_vector(
+                ctx.analysis["retinal_artery_velocity_signal_filtered"]
+            ).size,
+        ),
     )
     return _arterial_waveform_analysis_plot(writer, cycle, data)
 
@@ -226,7 +235,13 @@ def _venous_waveform_plot(
 ) -> Path:
     data = venous_waveform_analysis(
         cycle,
-        ctx.heartbeat_period_seconds,
+        mean_period_seconds(
+            ctx.cycle_boundary_indexes,
+            ctx.dt_seconds,
+            default_samples=_vector(
+                ctx.analysis["retinal_vein_velocity_signal_filtered"]
+            ).size,
+        ),
     )
     return _venous_waveform_analysis_plot(writer, cycle, data)
 

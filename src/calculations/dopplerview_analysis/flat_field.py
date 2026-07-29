@@ -78,12 +78,6 @@ def corrected_flat_field_chunk(volume, frame_slice: slice, parameters) -> np.nda
     return corrected.astype(np.float32)
 
 
-def source_chunk(volume, frame_slice: slice) -> np.ndarray:
-    """Read an already flat-fielded source chunk as float32."""
-
-    return np.asarray(volume[frame_slice], dtype=np.float32)
-
-
 def _volume_range(volume, frame_chunk_size: int) -> tuple[float, float]:
     minimum = np.inf
     maximum = -np.inf
