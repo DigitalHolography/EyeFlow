@@ -6,7 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
-from calculations.blood_flow_velocity.signal_analysis.waveform.metrics import pulse_metric
+from calculations.blood_flow_velocity.signal_analysis.waveform.metrics import (
+    pulse_metric_from_signal,
+)
 from calculations.blood_flow_velocity.signal_analysis.waveform.morphology import (
     ArterialWaveformAnalysis,
     VenousWaveformAnalysis,
@@ -57,26 +59,25 @@ def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[P
         if cycle is None:
             _log(ctx, f"Skipping RI/PI plots for {suffix_prefix}; insufficient beats.")
             continue
-        paths.append(
-            _ri_pi_plot(
-                writer,
-                f"RI_{suffix_prefix}.png",
-                ctx.time,
+        for metric_name in ("RI", "PI"):
+            metric = pulse_metric_from_signal(
                 signal_values,
-                cycle,
-                "RI",
+                peaks,
+                metric_name,
+                samples=60,
             )
-        )
-        paths.append(
-            _ri_pi_plot(
-                writer,
-                f"PI_{suffix_prefix}.png",
-                ctx.time,
-                signal_values,
-                cycle,
-                "PI",
+            if metric is None:
+                continue
+            paths.append(
+                _ri_pi_plot(
+                    writer,
+                    f"{metric_name}_{suffix_prefix}.png",
+                    ctx.time,
+                    signal_values,
+                    metric,
+                    metric_name,
+                )
             )
-        )
     return paths
 
 def _export_waveform_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
@@ -111,10 +112,9 @@ def _ri_pi_plot(
     suffix: str,
     time: np.ndarray,
     values: np.ndarray,
-    cycle: np.ndarray,
+    metric,
     metric_name: str,
 ) -> Path:
-    metric = pulse_metric(cycle, metric_name)
     fig, ax = _plt().subplots(figsize=(7.0, 4.0))
     ax.plot(time[: values.size], values, color="k", linewidth=2)
     for y, label in (

@@ -8,18 +8,50 @@ from calculations.math.arrays import as_nonnegative_int_indexes
 
 
 def average_cycle(values: np.ndarray, peaks: np.ndarray, samples: int) -> np.ndarray | None:
-    if peaks.size < 2:
+    """Return a fixed-length mean cycle, matching MATLAB ``interpSignal``.
+
+    Each interval between consecutive systolic boundaries is interpolated onto
+    the same normalized time grid before the cycles are averaged.  Taking the
+    extrema after this function is therefore different from taking extrema on
+    the concatenated recording (or averaging per-cycle extrema).
+    """
+    values = np.asarray(values, dtype=np.float32).reshape(-1)
+    peaks = as_nonnegative_int_indexes(peaks)
+    samples = int(samples)
+    if samples < 1:
+        raise ValueError("samples must be positive.")
+    if values.size == 0:
         return None
-    cycles = []
-    base_x = np.linspace(0, 1, samples, dtype=np.float32)
+
+    if peaks.size < 2:
+        return np.interp(
+            np.linspace(0, values.size - 1, samples, dtype=np.float32),
+            np.arange(values.size, dtype=np.float32),
+            values,
+        ).astype(np.float32)
+
+    cycles: list[np.ndarray] = []
     for start, stop in zip(peaks[:-1], peaks[1:]):
-        if stop <= start + 1:
+        start = int(start)
+        stop = int(stop)
+        if start < 0 or stop > values.size or stop <= start + 1:
             continue
-        beat = values[start:stop]
-        cycles.append(np.interp(base_x, np.linspace(0, 1, beat.size), beat))
+        source_x = np.arange(start, stop, dtype=np.float32)
+        target_x = np.linspace(start, stop - 1, samples, dtype=np.float32)
+        cycles.append(np.interp(target_x, source_x, values[start:stop]))
     if not cycles:
         return None
-    return np.nanmean(np.asarray(cycles, dtype=np.float32), axis=0).astype(np.float32)
+
+    stacked = np.asarray(cycles, dtype=np.float32)
+    valid_count = np.sum(np.isfinite(stacked), axis=0)
+    mean_cycle = np.full(samples, np.nan, dtype=np.float32)
+    np.divide(
+        np.nansum(stacked, axis=0),
+        valid_count,
+        out=mean_cycle,
+        where=valid_count > 0,
+    )
+    return mean_cycle
 
 
 def cycle_extrema(values: np.ndarray, peaks: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

@@ -31,6 +31,7 @@ from calculations.blood_flow_velocity.signal_analysis.waveform import (  # noqa:
     average_cycle,
     cycle_extrema,
     pulse_metric,
+    pulse_metric_from_signal,
 )
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.writers.png import write_png_file  # noqa: E402
@@ -140,6 +141,27 @@ class PulsePngExporterTests(unittest.TestCase):
         np.testing.assert_array_equal(maxima, [1, 5])
         np.testing.assert_array_equal(minima, [0, 3])
 
+    def test_pulse_metrics_use_extrema_of_interpolated_mean_cycle(self) -> None:
+        values = np.asarray(
+            [1.0, 4.0, 1.0, 2.0, 1.0, 2.0, 1.0, 4.0, 1.0],
+            dtype=np.float32,
+        )
+        peaks = np.asarray([0, 4, 9], dtype=np.int32)
+        cycle = average_cycle(values, peaks, samples=5)
+        metric = pulse_metric_from_signal(values, peaks, "PI", samples=5)
+
+        np.testing.assert_allclose(
+            cycle,
+            [1.0, 2.625, 1.75, 2.625, 1.5],
+            atol=1e-6,
+        )
+        self.assertIsNotNone(metric)
+        self.assertAlmostEqual(2.625, metric.maximum)
+        self.assertAlmostEqual(1.0, metric.minimum)
+        self.assertAlmostEqual(1.9, metric.mean)
+        self.assertAlmostEqual((2.625 - 1.0) / 1.9, metric.value)
+        self.assertNotEqual(4.0, metric.maximum)
+
     def test_spectrum_reports_frequency_bins_and_ordered_peaks(self) -> None:
         time = np.arange(128, dtype=np.float32) * 0.05
         values = np.sin(2 * np.pi * 1.25 * time).astype(np.float32)
@@ -214,7 +236,14 @@ class PulsePngExporterTests(unittest.TestCase):
         metric = pulse_metric(cycle, "RI")
         markers = arterial_waveform_analysis(cycle, spectral_period_seconds)
 
-        self.assertAlmostEqual((metric.maximum - metric.minimum) / metric.maximum, metric.value)
+        self.assertAlmostEqual(
+            np.clip(
+                (metric.maximum - metric.minimum) / metric.maximum,
+                0.0,
+                1.0,
+            ),
+            metric.value,
+        )
         self.assertEqual(cycle.size, markers.gradient.size)
         self.assertGreaterEqual(markers.peak_indexes.size, 1)
         self.assertEqual(spectral_period_seconds, markers.period_seconds)

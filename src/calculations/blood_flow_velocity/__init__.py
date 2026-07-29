@@ -40,6 +40,7 @@ from .signal_analysis.waveform import (
     cycle_extrema,
     paired_vessel_cycles,
     pulse_metric,
+    pulse_metric_from_signal,
     venous_waveform_analysis,
 )
 
@@ -66,6 +67,7 @@ __all__ = [
     "per_beat_segment_analysis",
     "per_beat_signal_analysis",
     "pulse_metric",
+    "pulse_metric_from_signal",
     "run_heartbeat_analysis",
     "run_per_beat_analysis",
     "segment_velocity_inputs",
