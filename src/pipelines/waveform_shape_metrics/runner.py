@@ -220,6 +220,7 @@ def _segment_velocity_inputs(
         source_data.optic_disc_center,
         ring_settings,
         source_data.cross_section_settings,
+        log=getattr(ctx, "log", None),
     )
     _export_branch_identity_debug(
         ctx,

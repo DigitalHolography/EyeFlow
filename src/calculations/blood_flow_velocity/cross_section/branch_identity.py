@@ -7,16 +7,17 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import ndimage as ndi
 from skimage.measure import label as label_components
-from skimage.morphology import skeletonize
-from skimage.segmentation import watershed
+from skimage.morphology import disk, skeletonize
+from skimage.segmentation import find_boundaries, watershed
 
-from .segment_geometry import SegmentRingSettings, annulus_mask, ring_masks
+from .segment_geometry import SegmentRingSettings, annulus_mask
 
 
 LOW_RES_SMALL_BRANCH_PIXELS = 10
 BRANCH_POINT_CENTER_WEIGHT = 10
 BRANCH_POINT_MIN_NEIGHBORS = 3
-STREL_SIZE = 3
+BRANCH_POINT_DILATION_RADIUS = 2
+STREL_SIZE = BRANCH_POINT_DILATION_RADIUS
 EIGHT_CONNECTED = np.ones((3, 3), dtype=bool)
 BRANCH_POINT_KERNEL = np.array(
     [[1, 1, 1], [1, BRANCH_POINT_CENTER_WEIGHT, 1], [1, 1, 1]],
@@ -85,9 +86,8 @@ def _branch_identity_stages(
     )
     skeleton = skeletonize(vessel)
 
-    branch_points = _branch_points(skeleton)
-    footprint_size = max(1, int(strel_size))
-    branch_footprint = np.ones((footprint_size, footprint_size), dtype=bool)
+    branch_points = _branch_points(skeleton, min_arm_pixels=small_branch_pixels)
+    branch_footprint = disk(max(0, int(strel_size))).astype(bool, copy=False)
     cleaned_skeleton = skeleton & ~ndi.binary_dilation(branch_points, structure=branch_footprint)
     cleaned_skeleton = _remove_small(cleaned_skeleton, max(0, int(small_branch_pixels)))
 
@@ -108,6 +108,7 @@ def _branch_identity_stages(
             mask=watershed_mask,
             watershed_line=True,
         ).astype(np.int32, copy=False)
+        watershed_labels[find_boundaries(watershed_labels, mode="inner")] = 0
 
     annulus_refined = label_components((watershed_labels > 0) & section, connectivity=2)
     annulus_refined = annulus_refined.astype(np.int32, copy=False)
@@ -119,10 +120,39 @@ def _branch_identity_stages(
     )
 
 
-def _branch_points(skeleton: np.ndarray) -> np.ndarray:
+def _branch_points(skeleton: np.ndarray, min_arm_pixels: int = 1) -> np.ndarray:
     skel = np.asarray(skeleton, dtype=bool)
     scores = ndi.convolve(skel.astype(np.int16), BRANCH_POINT_KERNEL, mode="constant")
-    return skel & (scores >= BRANCH_POINT_THRESHOLD)
+    candidates = skel & (scores >= BRANCH_POINT_THRESHOLD)
+    arm_min = max(1, int(min_arm_pixels))
+    if arm_min <= 1 or not np.any(candidates):
+        return candidates
+
+    labeled, count = ndi.label(candidates, structure=EIGHT_CONNECTED)
+    branch_points = np.zeros(candidates.shape, dtype=bool)
+    for cluster_id in range(1, count + 1):
+        cluster = labeled == cluster_id
+        if _substantial_arm_count(skel, cluster, arm_min) >= BRANCH_POINT_MIN_NEIGHBORS:
+            branch_points |= cluster
+    return branch_points
+
+
+def _substantial_arm_count(
+    skeleton: np.ndarray,
+    branch_point_cluster: np.ndarray,
+    min_arm_pixels: int,
+) -> int:
+    cut_skeleton = skeleton & ~branch_point_cluster
+    labeled, count = ndi.label(cut_skeleton, structure=EIGHT_CONNECTED)
+    if count == 0:
+        return 0
+    neighborhood = ndi.binary_dilation(branch_point_cluster, structure=EIGHT_CONNECTED)
+    touching_ids = np.unique(labeled[neighborhood & cut_skeleton])
+    touching_ids = touching_ids[touching_ids > 0]
+    if touching_ids.size == 0:
+        return 0
+    sizes = np.bincount(labeled.reshape(-1))
+    return int(np.count_nonzero(sizes[touching_ids] >= int(min_arm_pixels)))
 
 
 def _impose_marker_minima(
@@ -144,9 +174,13 @@ def _per_circle_cleaned_labels(
     settings: SegmentRingSettings,
 ) -> np.ndarray:
     min_area = max(1, labels.shape[0] // 10)
-    cleaned = np.zeros(labels.shape, dtype=bool)
-    for circle in ring_masks(labels.shape, optic_disc_center, settings):
-        cleaned |= _remove_small((labels > 0) & circle, min_area)
+    section = annulus_mask(
+        labels.shape,
+        optic_disc_center,
+        settings.inner_radius_frac,
+        settings.outer_radius_frac,
+    )
+    cleaned = _remove_small((labels > 0) & section, min_area)
     return label_components(cleaned, connectivity=2).astype(np.int32, copy=False)
 
 

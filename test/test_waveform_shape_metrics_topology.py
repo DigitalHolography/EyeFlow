@@ -17,7 +17,13 @@ if str(SRC_DIR) not in sys.path:
 
 from calculations.blood_flow_velocity import CrossSectionSignalSettings  # noqa: E402
 from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
+    _adaptive_subimage_stack,
+    _circle_tilt_geometry,
     _fill_cross_section_signals,
+    _subimage_stack,
+)
+from calculations.blood_flow_velocity.cross_section.branch_identity import (  # noqa: E402
+    _branch_identity_stages,
 )
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
@@ -28,6 +34,87 @@ from pipelines.waveform_shape_metrics.runner import _segment_ring_settings  # no
 
 
 class SegmentCenterTests(unittest.TestCase):
+    def test_watershed_boundaries_remain_split_during_annulus_relabeling(self) -> None:
+        vessel = np.ones((9, 9), dtype=bool)
+        section = np.ones_like(vessel)
+        skeleton = np.zeros_like(vessel)
+        skeleton[4, 2] = True
+        skeleton[4, 6] = True
+        watershed_labels = np.zeros(vessel.shape, dtype=np.int32)
+        watershed_labels[:, 1:4] = 1
+        watershed_labels[:, 4:8] = 2
+        settings = SimpleNamespace(
+            inner_radius_frac=0.0,
+            outer_radius_frac=0.5,
+            ring_width_frac=0.5,
+            ring_count=1,
+        )
+
+        with patch(
+            "calculations.blood_flow_velocity.cross_section.branch_identity."
+            "annulus_mask",
+            return_value=section,
+        ), patch(
+            "calculations.blood_flow_velocity.cross_section.branch_identity."
+            "skeletonize",
+            return_value=skeleton,
+        ), patch(
+            "calculations.blood_flow_velocity.cross_section.branch_identity."
+            "_branch_points",
+            return_value=np.zeros_like(vessel),
+        ), patch(
+            "calculations.blood_flow_velocity.cross_section.branch_identity."
+            "_remove_small",
+            side_effect=lambda mask, _min_area: mask,
+        ), patch(
+            "calculations.blood_flow_velocity.cross_section.branch_identity."
+            "watershed",
+            return_value=watershed_labels,
+        ):
+            stages = _branch_identity_stages(vessel, None, settings)
+
+        self.assertEqual(2, int(stages.annulus_refined_labels.max()))
+
+    def test_adaptive_subimage_sizes_without_redressing_segment(self) -> None:
+        velocity = np.ones((2, 101, 101), dtype=np.float32)
+        segment = np.zeros((101, 101), dtype=bool)
+        segment[49:52, 60:71] = True
+        messages: list[str] = []
+
+        stack, mask = _adaptive_subimage_stack(
+            velocity,
+            segment,
+            log=messages.append,
+        )
+
+        self.assertEqual((2, 15, 15), stack.shape)
+        self.assertEqual((15, 15), mask.shape)
+        mask_y, mask_x = np.nonzero(mask)
+        self.assertGreater(mask_x.max() - mask_x.min(), mask_y.max() - mask_y.min())
+        self.assertIn("segment=11x3 px", messages[0])
+        self.assertIn("window=15x15 px", messages[0])
+
+        circle = _circle_tilt_geometry(segment, segment, (50, 50))
+        self.assertIsNotNone(circle)
+        self.assertAlmostEqual(0.0, circle.tilt_angle)
+
+    def test_subimage_logs_error_only_when_segment_reaches_crop_edge(self) -> None:
+        velocity = np.zeros((1, 100, 100), dtype=np.float32)
+        settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
+        messages: list[str] = []
+
+        contained = np.zeros((100, 100), dtype=bool)
+        contained[50, 50] = True
+        _subimage_stack(velocity, contained, (50, 50), settings, messages.append)
+        self.assertEqual([], messages)
+
+        clipped = contained.copy()
+        clipped[50, 48] = True
+        _subimage_stack(velocity, clipped, (50, 50), settings, messages.append)
+        self.assertEqual(1, len(messages))
+        self.assertTrue(messages[0].startswith("[ERROR] Cross-section window"))
+        self.assertIn("3x1 px segment", messages[0])
+
     def test_segment_analysis_uses_current_matlab_cross_section_rings(self) -> None:
         settings = _segment_ring_settings()
 
