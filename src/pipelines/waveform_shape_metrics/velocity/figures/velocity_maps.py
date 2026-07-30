@@ -10,7 +10,7 @@ from .signal_inputs import (
     histogram_matrix as _histogram_matrix,
 )
 from calculations.math.arrays import rescale as _rescale
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,

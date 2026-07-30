@@ -28,7 +28,7 @@ from calculations.math import rotate_image_with_nan  # noqa: E402
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
-from input_output.writers.png import PngArtifactWriter, write_png_file  # noqa: E402
+from input_output.writers.png import FigureArtifactWriter, write_png_file  # noqa: E402
 from pipelines.waveform_shape_metrics.velocity.figures.profiles import (  # noqa: E402
     _positive_focused_limits,
     export_cross_section_profile_artifacts,
@@ -206,7 +206,7 @@ class ProfileArtifactTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             output = _FakeOutput(Path(temp_dir))
-            writer = PngArtifactWriter(output, "sample")
+            writer = FigureArtifactWriter(output, "sample")
             context = SimpleNamespace(
                 source_data=SimpleNamespace(timing=SimpleNamespace(dt_seconds=0.05)),
                 artery_segment_result=_segments(radius_count=1, branch_count=1),

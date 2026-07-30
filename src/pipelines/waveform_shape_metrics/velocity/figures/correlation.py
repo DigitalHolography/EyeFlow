@@ -12,7 +12,7 @@ from .spectrum import (
     TransferData,
     paired_spectrum_analysis,
 )
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,

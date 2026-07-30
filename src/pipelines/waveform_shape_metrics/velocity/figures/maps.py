@@ -8,7 +8,7 @@ import numpy as np
 
 from .signal_inputs import mean_video
 
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,

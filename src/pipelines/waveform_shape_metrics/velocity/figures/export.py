@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from input_output.writers.png import PngArtifactWriter
+from input_output.writers.png import FigureArtifactWriter
 
 from .common import PulseFigureContext, _matplotlib, _output_stem, _section_mask
 from .correlation import _export_correlation_plots
@@ -116,7 +116,7 @@ def export_pulse_pngs(
         per_beat_result=per_beat_result,
         log=log,
     )
-    writer = PngArtifactWriter(output, pulse_context.stem)
+    writer = FigureArtifactWriter(output, pulse_context.stem)
     paths: list[Path] = []
     for exporter in EXPORTERS:
         paths.extend(exporter(writer, pulse_context))

@@ -15,7 +15,7 @@ from .spectrum import (
     spectrum_signal_analysis,
     synthetic_spectrum_from_signals,
 )
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,

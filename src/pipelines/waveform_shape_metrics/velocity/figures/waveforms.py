@@ -21,7 +21,7 @@ from calculations.blood_flow_velocity.signal_analysis.waveform.morphology import
 from calculations.blood_flow_velocity.signal_analysis.waveform.paired_cycles import (
     paired_vessel_cycles,
 )
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,

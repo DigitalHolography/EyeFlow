@@ -9,7 +9,7 @@ import numpy as np
 from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
     cycle_extrema as _cycle_extrema,
 )
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,

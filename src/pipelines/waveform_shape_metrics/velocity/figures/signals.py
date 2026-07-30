@@ -7,7 +7,7 @@ from pathlib import Path
 from .signal_inputs import (
     masked_video_signal as _masked_signal,
 )
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,

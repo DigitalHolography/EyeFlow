@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import _finite_image, _matplotlib, _plt
 
