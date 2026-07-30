@@ -36,6 +36,7 @@ from .scratch import waveform_scratch_h5
 from .sources import WaveformShapeSourceData, WaveformShapeSources
 from .velocity.branch_identity_debug import export_branch_identity_stage_pngs
 from .velocity.figures import export_pulse_pngs
+from .velocity.profiles import pack_cross_section_profile_outputs
 from .velocity.runner import run_velocity_per_beat_metrics
 from .velocity.topology import pack_segment_topology_outputs
 
@@ -67,6 +68,14 @@ def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object
                 context.source_data,
                 context.artery_segment_result,
                 context.vein_segment_result,
+            )
+        )
+        metrics.update(
+            pack_cross_section_profile_outputs(
+                context.artery_segment_result,
+                context.vein_segment_result,
+                per_beat_result.cycle_boundary_indexes,
+                index_base=0,
             )
         )
         ctx.state.set("velocity_per_beat_result", per_beat_result)

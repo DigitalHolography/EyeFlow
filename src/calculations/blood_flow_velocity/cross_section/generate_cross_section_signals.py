@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import warnings
 
 import numpy as np
 from scipy import ndimage as ndi
@@ -16,6 +17,7 @@ from .segment_geometry import (
     optic_disc_center_yx,
     section_masks,
 )
+from .profile_processing import process_velocity_profiles
 
 
 @dataclass(frozen=True)
@@ -27,8 +29,30 @@ class CrossSectionSignalSettings:
     pixel_size_mm: float
 
 
+@dataclass(frozen=True, kw_only=True)
+class CrossSectionProfileOutputs:
+    """Raw, centered, and fitted transverse profile outputs."""
+
+    velocity_profiles: np.ndarray
+    profile_x_micrometers: np.ndarray
+    profile_sample_count: np.ndarray
+    profile_rotation_degrees: np.ndarray
+    centered_velocity_profiles: np.ndarray
+    centered_profile_x_micrometers: np.ndarray
+    profile_center_micrometers: np.ndarray
+    profile_lumen_edges_micrometers: np.ndarray
+    profile_centering_fit_r_squared: np.ndarray
+    poiseuille_coefficients: np.ndarray
+    poiseuille_origin_micrometers: np.ndarray
+    poiseuille_roots_micrometers: np.ndarray
+    poiseuille_r_squared: np.ndarray
+    poiseuille_profile_spatial_std: np.ndarray
+
+
 @dataclass(frozen=True)
-class CrossSectionSignalResult:
+class CrossSectionSignalResult(CrossSectionProfileOutputs):
+    """Segment waveforms and their transverse profile measurements."""
+
     velocity: np.ndarray
     safe_velocity: np.ndarray
     labels: np.ndarray
@@ -38,19 +62,47 @@ class CrossSectionSignalResult:
 
 
 @dataclass(frozen=True)
-class _AdaptiveWindowGeometry:
-    segment_width: int
-    segment_height: int
-    window_width: int
-    center_x: int
-    center_y: int
-
-
-@dataclass(frozen=True)
 class _CircleTiltGeometry:
     radius_inner: float
     radius_outer: float
     tilt_angle: float
+
+
+@dataclass
+class _CrossSectionBuffers:
+    velocity: np.ndarray
+    safe_velocity: np.ndarray
+    segment_center_xy: np.ndarray
+    profile_cells: np.ndarray
+    profile_std_cells: np.ndarray
+    profile_rotation_degrees: np.ndarray
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        frame_count: int,
+        ring_count: int,
+        branch_count: int,
+    ) -> _CrossSectionBuffers:
+        signal_shape = (ring_count, branch_count, frame_count)
+        profile_shape = (ring_count, branch_count)
+        return cls(
+            velocity=np.full(signal_shape, np.nan, dtype=np.float32),
+            safe_velocity=np.full(signal_shape, np.nan, dtype=np.float32),
+            segment_center_xy=np.full(
+                (branch_count, ring_count, 2),
+                np.nan,
+                dtype=np.float32,
+            ),
+            profile_cells=_empty_profile_cells(profile_shape),
+            profile_std_cells=_empty_profile_cells(profile_shape),
+            profile_rotation_degrees=np.full(
+                profile_shape,
+                np.nan,
+                dtype=np.float32,
+            ),
+        )
 
 
 def generate_cross_section_signals(
@@ -68,18 +120,13 @@ def generate_cross_section_signals(
         return _empty_result(velocity, vessel, ring_settings, branches)
 
     masks = section_masks(vessel.shape, optic_disc_center, ring_settings)
-    shape = (ring_settings.ring_count, branches.branch_ids.size, velocity.shape[0])
-    segment_v = np.full(shape, np.nan, dtype=np.float32)
-    segment_safe = np.full(shape, np.nan, dtype=np.float32)
-    segment_center_xy = np.full(
-        (branches.branch_ids.size, ring_settings.ring_count, 2),
-        np.nan,
-        dtype=np.float32,
+    buffers = _CrossSectionBuffers.allocate(
+        frame_count=velocity.shape[0],
+        ring_count=ring_settings.ring_count,
+        branch_count=branches.branch_ids.size,
     )
-    _fill_cross_section_signals(
-        segment_v,
-        segment_safe,
-        segment_center_xy,
+    _fill_cross_section_buffers(
+        buffers,
         velocity,
         masks,
         branches,
@@ -87,13 +134,55 @@ def generate_cross_section_signals(
         cross_section_settings,
         log,
     )
+    velocity_profiles, _, profile_sample_count = (
+        _pack_transverse_profiles(
+            buffers.profile_cells,
+            frame_count=velocity.shape[0],
+        )
+    )
+    packed_std, _, _ = _pack_transverse_profiles(
+        buffers.profile_std_cells,
+        frame_count=1,
+    )
+    poiseuille_profile_spatial_std = packed_std[:, :, 0, :]
+    processed_profiles = process_velocity_profiles(
+        velocity_profiles,
+        pixel_size_mm=cross_section_settings.pixel_size_mm,
+        velocity_profile_threshold=(
+            cross_section_settings.velocity_profile_threshold
+        ),
+    )
     return CrossSectionSignalResult(
-        segment_v,
-        segment_safe,
-        branches.labels,
-        branches.branch_ids,
-        segment_center_xy,
-        branches,
+        velocity=buffers.velocity,
+        safe_velocity=buffers.safe_velocity,
+        labels=branches.labels,
+        branch_ids=branches.branch_ids,
+        segment_center_xy=buffers.segment_center_xy,
+        branch_identity=branches,
+        velocity_profiles=velocity_profiles,
+        profile_x_micrometers=processed_profiles.raw_x_micrometers,
+        profile_sample_count=profile_sample_count,
+        profile_rotation_degrees=buffers.profile_rotation_degrees,
+        centered_velocity_profiles=processed_profiles.centered_velocity,
+        centered_profile_x_micrometers=(
+            processed_profiles.centered_x_micrometers
+        ),
+        profile_center_micrometers=processed_profiles.center_micrometers,
+        profile_lumen_edges_micrometers=(
+            processed_profiles.lumen_edges_micrometers
+        ),
+        profile_centering_fit_r_squared=(
+            processed_profiles.centering_fit_r_squared
+        ),
+        poiseuille_coefficients=processed_profiles.poiseuille_coefficients,
+        poiseuille_origin_micrometers=(
+            processed_profiles.poiseuille_origin_micrometers
+        ),
+        poiseuille_roots_micrometers=(
+            processed_profiles.poiseuille_roots_micrometers
+        ),
+        poiseuille_r_squared=processed_profiles.poiseuille_r_squared,
+        poiseuille_profile_spatial_std=poiseuille_profile_spatial_std,
     )
 
 
@@ -104,20 +193,54 @@ def _empty_result(
     branches: BranchIdentityResult,
 ) -> CrossSectionSignalResult:
     shape = (settings.ring_count, 1, velocity.shape[0])
+    empty_profiles = np.full(
+        (settings.ring_count, 0, velocity.shape[0], 0),
+        np.nan,
+        dtype=np.float32,
+    )
+    processed = process_velocity_profiles(
+        empty_profiles,
+        pixel_size_mm=0.0,
+        velocity_profile_threshold=0.5,
+    )
     return CrossSectionSignalResult(
-        np.full(shape, np.nan, dtype=np.float32),
-        np.full(shape, np.nan, dtype=np.float32),
-        np.zeros(vessel.shape, dtype=np.int32),
-        branches.branch_ids,
-        np.full((0, settings.ring_count, 2), np.nan, dtype=np.float32),
-        branches,
+        velocity=np.full(shape, np.nan, dtype=np.float32),
+        safe_velocity=np.full(shape, np.nan, dtype=np.float32),
+        labels=np.zeros(vessel.shape, dtype=np.int32),
+        branch_ids=branches.branch_ids,
+        segment_center_xy=np.full(
+            (0, settings.ring_count, 2),
+            np.nan,
+            dtype=np.float32,
+        ),
+        branch_identity=branches,
+        velocity_profiles=empty_profiles,
+        profile_x_micrometers=processed.raw_x_micrometers,
+        profile_sample_count=np.zeros((settings.ring_count, 0), dtype=np.int32),
+        profile_rotation_degrees=np.full(
+            (settings.ring_count, 0),
+            np.nan,
+            dtype=np.float32,
+        ),
+        centered_velocity_profiles=processed.centered_velocity,
+        centered_profile_x_micrometers=processed.centered_x_micrometers,
+        profile_center_micrometers=processed.center_micrometers,
+        profile_lumen_edges_micrometers=processed.lumen_edges_micrometers,
+        profile_centering_fit_r_squared=processed.centering_fit_r_squared,
+        poiseuille_coefficients=processed.poiseuille_coefficients,
+        poiseuille_origin_micrometers=processed.poiseuille_origin_micrometers,
+        poiseuille_roots_micrometers=processed.poiseuille_roots_micrometers,
+        poiseuille_r_squared=processed.poiseuille_r_squared,
+        poiseuille_profile_spatial_std=np.full(
+            (settings.ring_count, 0, 0),
+            np.nan,
+            dtype=np.float32,
+        ),
     )
 
 
-def _fill_cross_section_signals(
-    segment_v: np.ndarray,
-    segment_safe: np.ndarray,
-    segment_center_xy: np.ndarray,
+def _fill_cross_section_buffers(
+    buffers: _CrossSectionBuffers,
     velocity: np.ndarray,
     masks: np.ndarray,
     branches: BranchIdentityResult,
@@ -131,8 +254,8 @@ def _fill_cross_section_signals(
             loc = _centroid_xy(mask)
             if loc is None:
                 continue
-            segment_center_xy[branch_index, circle_index] = loc
-            raw, safe = _cross_section_velocity(
+            buffers.segment_center_xy[branch_index, circle_index] = loc
+            measurement = _cross_section_velocity(
                 velocity,
                 mask,
                 section,
@@ -141,8 +264,20 @@ def _fill_cross_section_signals(
                 settings,
                 log,
             )
-            segment_v[circle_index, branch_index] = raw
-            segment_safe[circle_index, branch_index] = safe
+            raw, safe = measurement[:2]
+            buffers.velocity[circle_index, branch_index] = raw
+            buffers.safe_velocity[circle_index, branch_index] = safe
+            if len(measurement) < 5:
+                continue
+            buffers.profile_cells[circle_index, branch_index] = measurement[2]
+            buffers.profile_rotation_degrees[circle_index, branch_index] = measurement[3]
+            buffers.profile_std_cells[circle_index, branch_index] = measurement[4][None, :]
+
+
+def _empty_profile_cells(shape: tuple[int, int]) -> np.ndarray:
+    cells = np.empty(shape, dtype=object)
+    cells.fill(None)
+    return cells
 
 
 def _centroid_xy(mask: np.ndarray) -> tuple[int, int] | None:
@@ -225,58 +360,48 @@ def _cross_section_velocity(
     optic_disc_center,
     settings: CrossSectionSignalSettings,
     log=None,
-) -> tuple[np.ndarray, np.ndarray]:
-    sub_stack, sub_mask = _adaptive_subimage_stack(
-        velocity,
-        mask,
-        log=log,
-    )
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
+    sub_stack, sub_mask = _subimage_stack(velocity, mask, loc_xy, settings, log)
     if sub_stack.size == 0:
-        if callable(log):
-            log("[ERROR] Adaptive cross-section failed; using the legacy window.")
-        sub_stack, sub_mask = _subimage_stack(velocity, mask, loc_xy, settings, log)
-        if sub_stack.size == 0:
-            return _nan_signal(velocity), _nan_signal(velocity)
-        tilt_angle_mask = _tilt_angle(mask, section, optic_disc_center)
-        mean_image = nanmean_float32(sub_stack, axis=0)
-        rotated_mean, angle = _rotated_mean_image(
-            mean_image,
-            sub_mask,
-            loc_xy,
-            optic_disc_center,
-            tilt_angle_mask,
-            settings,
+        return (
+            _nan_signal(velocity),
+            _nan_signal(velocity),
+            np.full((velocity.shape[0], 0), np.nan, dtype=np.float32),
+            np.nan,
+            np.empty((0,), dtype=np.float32),
         )
-        c1, c2 = _cross_section_limits(rotated_mean, settings)
-        return _frame_velocities(sub_stack, angle, c1, c2)
-
-    circle = _circle_tilt_geometry(mask, section, optic_disc_center)
-    if circle is None:
-        if callable(log):
-            log(
-                "[ERROR] Adaptive cross-section circles do not intersect both "
-                "ends of the vessel segment; using legacy rotation."
-            )
-        tilt_angle_mask = _tilt_angle(mask, section, optic_disc_center)
-        mean_image = nanmean_float32(sub_stack, axis=0)
-        rotated_mean, angle = _rotated_mean_image(
-            mean_image,
-            sub_mask,
-            loc_xy,
-            optic_disc_center,
-            tilt_angle_mask,
-            settings,
-        )
-        c1, c2 = _cross_section_limits(rotated_mean, settings)
-        return _frame_velocities(sub_stack, angle, c1, c2)
-
-    redress_angle = circle.tilt_angle + 90.0
+    tilt_angle_mask = _tilt_angle(mask, section, optic_disc_center)
     mean_image = nanmean_float32(sub_stack, axis=0)
-    rotated_mean = _rotate_masked_image(mean_image, sub_mask, redress_angle)
+    rotated_mean, angle = _rotated_mean_image(
+        mean_image,
+        sub_mask,
+        loc_xy,
+        optic_disc_center,
+        tilt_angle_mask,
+        settings,
+    )
     c1, c2 = _cross_section_limits(rotated_mean, settings)
-    if callable(log):
-        _log_circle_tilt(log, circle, redress_angle)
-    return _frame_velocities(sub_stack, redress_angle, c1, c2)
+    return _profile_measurement(sub_stack, angle, c1, c2, rotated_mean)
+
+
+def _profile_measurement(
+    sub_stack: np.ndarray,
+    angle: float,
+    c1: int,
+    c2: int,
+    rotated_mean: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
+    raw, safe, profiles = _frame_velocities(sub_stack, angle, c1, c2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        spatial_std = np.nanstd(rotated_mean, axis=0, ddof=1)
+    return (
+        raw,
+        safe,
+        profiles,
+        float(angle),
+        spatial_std.astype(np.float32, copy=False),
+    )
 
 
 def _subimage_stack(
@@ -296,7 +421,7 @@ def _subimage_stack(
 
     # Debug log if the sub-mask is too small for the vessel segment
     sub_mask = mask[y_range, x_range]
-    if sub_mask.size and (
+    if callable(log) and sub_mask.size and (
         np.any(sub_mask[0])
         or np.any(sub_mask[-1])
         or np.any(sub_mask[:, 0])
@@ -306,7 +431,7 @@ def _subimage_stack(
         segment_width = int(segment_x.max() - segment_x.min() + 1)
         segment_height = int(segment_y.max() - segment_y.min() + 1)
         log(
-            "[ERROR] Cross-section window is too small for the vessel segment: "
+            "[WARNING] Cross-section window is too small for the vessel segment: "
             f"{x_range.stop - x_range.start}x{y_range.stop - y_range.start} px "
             f"window for a {segment_width}x{segment_height} px segment at ({x}, {y})."
         )
@@ -314,121 +439,6 @@ def _subimage_stack(
     sub_stack = velocity[:, y_range, x_range].astype(np.float32, copy=True)
     sub_stack[:, ~sub_mask] = np.nan
     return sub_stack, sub_mask
-
-
-def _adaptive_subimage_stack(
-    velocity: np.ndarray,
-    mask: np.ndarray,
-    *,
-    log=None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Crop a square window sized to contain the complete vessel segment."""
-
-    window = _adaptive_window_geometry(mask)
-    if window is None:
-        if callable(log):
-            log("[ERROR] Adaptive cross-section received an empty vessel segment.")
-        return _empty_subimage_stack(velocity, mask)
-
-    sub_stack, sub_mask, pad_width = _padded_adaptive_crop(
-        velocity,
-        mask,
-        window,
-    )
-
-    if callable(log):
-        _log_adaptive_geometry(log, window)
-        if _has_spatial_padding(pad_width):
-            log(
-                "[ERROR] Adaptive cross-section window extends beyond the image "
-                "FOV; missing pixels were padded."
-            )
-
-    return sub_stack, sub_mask
-
-
-def _adaptive_window_geometry(mask: np.ndarray) -> _AdaptiveWindowGeometry | None:
-    segment_y, segment_x = np.nonzero(mask)
-    if segment_x.size == 0:
-        return None
-
-    segment_width = int(segment_x.max() - segment_x.min() + 1)
-    segment_height = int(segment_y.max() - segment_y.min() + 1)
-    window_width = int(np.ceil(np.hypot(segment_width, segment_height))) + 2
-    if window_width % 2 == 0:
-        window_width += 1
-    center_x = int(np.floor((segment_x.min() + segment_x.max()) / 2.0 + 0.5))
-    center_y = int(np.floor((segment_y.min() + segment_y.max()) / 2.0 + 0.5))
-    return _AdaptiveWindowGeometry(
-        segment_width,
-        segment_height,
-        window_width,
-        center_x,
-        center_y,
-    )
-
-
-def _padded_adaptive_crop(
-    velocity: np.ndarray,
-    mask: np.ndarray,
-    geometry: _AdaptiveWindowGeometry,
-) -> tuple[np.ndarray, np.ndarray, tuple[tuple[int, int], ...]]:
-    half_width = geometry.window_width // 2
-    x_start = geometry.center_x - half_width
-    x_stop = geometry.center_x + half_width + 1
-    y_start = geometry.center_y - half_width
-    y_stop = geometry.center_y + half_width + 1
-    clipped_x_start, clipped_x_stop = max(x_start, 0), min(x_stop, mask.shape[1])
-    clipped_y_start, clipped_y_stop = max(y_start, 0), min(y_stop, mask.shape[0])
-    pad_width = (
-        (0, 0),
-        (clipped_y_start - y_start, y_stop - clipped_y_stop),
-        (clipped_x_start - x_start, x_stop - clipped_x_stop),
-    )
-    sub_stack = velocity[
-        :, clipped_y_start:clipped_y_stop, clipped_x_start:clipped_x_stop
-    ].astype(np.float32, copy=True)
-    sub_mask = mask[
-        clipped_y_start:clipped_y_stop, clipped_x_start:clipped_x_stop
-    ]
-    sub_stack = np.pad(sub_stack, pad_width, constant_values=np.nan)
-    sub_mask = np.pad(sub_mask, pad_width[1:], constant_values=False)
-    sub_stack[:, ~sub_mask] = np.nan
-    return sub_stack, sub_mask, pad_width
-
-
-def _empty_subimage_stack(
-    velocity: np.ndarray,
-    mask: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    return velocity[:, :0, :0].astype(np.float32), mask[:0, :0]
-
-
-def _log_adaptive_geometry(
-    log,
-    window: _AdaptiveWindowGeometry,
-) -> None:
-    log(
-        "[DEBUG] Adaptive cross-section geometry: "
-        f"segment={window.segment_width}x{window.segment_height} px, "
-        f"window={window.window_width}x{window.window_width} px."
-    )
-
-
-def _log_circle_tilt(
-    log,
-    circle: _CircleTiltGeometry,
-    redress_angle: float,
-) -> None:
-    log(
-        "[DEBUG] Cross-section tilt geometry: "
-        f"circles={circle.radius_inner:.4f}/{circle.radius_outer:.4f}, "
-        f"tilt={circle.tilt_angle:.2f} deg, redress={redress_angle:.2f} deg."
-    )
-
-
-def _has_spatial_padding(pad_width: tuple[tuple[int, int], ...]) -> bool:
-    return any(value > 0 for axis in pad_width[1:] for value in axis)
 
 
 def _rotated_mean_image(
@@ -545,16 +555,64 @@ def _frame_velocities(
     angle: float,
     c1: int,
     c2: int,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     raw = np.full((sub_stack.shape[0],), np.nan, dtype=np.float32)
     safe = np.full_like(raw, np.nan)
+    profiles = np.full(
+        (sub_stack.shape[0], sub_stack.shape[2]),
+        np.nan,
+        dtype=np.float32,
+    )
     for frame_index, frame in enumerate(sub_stack):
         rotated = rotate_image_with_nan(frame, angle)
         profile = nanmean_float32(rotated, axis=0)
+        profiles[frame_index] = profile
         value = nanmean_float32(profile[c1 : c2 + 1])
         raw[frame_index] = np.float32(0.0) if np.isnan(value) else value
         safe[frame_index] = nanmean_float32(profile)
-    return raw, safe
+    return raw, safe, profiles
+
+
+def _pack_transverse_profiles(
+    profile_cells: np.ndarray,
+    *,
+    frame_count: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Center-pad variable-width measured profiles onto one pixel grid.
+
+    The values remain on their measured transverse pixel support. No transverse
+    interpolation or extrapolation is performed here; those paper-specific
+    operations are intentionally left to the downstream asymmetry analysis.
+    """
+
+    widths = np.zeros(profile_cells.shape, dtype=np.int32)
+    for index in np.ndindex(profile_cells.shape):
+        profile = profile_cells[index]
+        if isinstance(profile, np.ndarray) and profile.ndim == 2:
+            widths[index] = np.int32(profile.shape[1])
+    max_width = int(np.max(widths, initial=0))
+    packed = np.full(
+        (*profile_cells.shape, frame_count, max_width),
+        np.nan,
+        dtype=np.float32,
+    )
+    for index in np.ndindex(profile_cells.shape):
+        profile = profile_cells[index]
+        if not isinstance(profile, np.ndarray) or profile.ndim != 2:
+            continue
+        width = int(profile.shape[1])
+        start = (max_width - width) // 2
+        copy_frames = min(frame_count, int(profile.shape[0]))
+        packed[index + (slice(0, copy_frames), slice(start, start + width))] = (
+            profile[:copy_frames]
+        )
+    x_pixels = (
+        np.arange(max_width, dtype=np.float32)
+        - np.float32((max_width - 1) / 2.0)
+    )
+    return packed, x_pixels, widths
+
+
 
 
 def _nan_signal(velocity: np.ndarray) -> np.ndarray:

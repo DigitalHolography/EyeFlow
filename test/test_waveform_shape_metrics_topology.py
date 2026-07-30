@@ -17,9 +17,9 @@ if str(SRC_DIR) not in sys.path:
 
 from calculations.blood_flow_velocity import CrossSectionSignalSettings  # noqa: E402
 from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
-    _adaptive_subimage_stack,
-    _circle_tilt_geometry,
-    _fill_cross_section_signals,
+    _CrossSectionBuffers,
+    _cross_section_velocity,
+    _fill_cross_section_buffers,
     _subimage_stack,
 )
 from calculations.blood_flow_velocity.cross_section.branch_identity import (  # noqa: E402
@@ -75,28 +75,25 @@ class SegmentCenterTests(unittest.TestCase):
 
         self.assertEqual(2, int(stages.annulus_refined_labels.max()))
 
-    def test_adaptive_subimage_sizes_without_redressing_segment(self) -> None:
+    def test_subimage_uses_matlab_fixed_scale_factor_width(self) -> None:
         velocity = np.ones((2, 101, 101), dtype=np.float32)
         segment = np.zeros((101, 101), dtype=bool)
         segment[49:52, 60:71] = True
         messages: list[str] = []
+        settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
 
-        stack, mask = _adaptive_subimage_stack(
+        stack, mask = _subimage_stack(
             velocity,
             segment,
-            log=messages.append,
+            (65, 50),
+            settings,
+            messages.append,
         )
 
-        self.assertEqual((2, 15, 15), stack.shape)
-        self.assertEqual((15, 15), mask.shape)
-        mask_y, mask_x = np.nonzero(mask)
-        self.assertGreater(mask_x.max() - mask_x.min(), mask_y.max() - mask_y.min())
-        self.assertIn("segment=11x3 px", messages[0])
-        self.assertIn("window=15x15 px", messages[0])
-
-        circle = _circle_tilt_geometry(segment, segment, (50, 50))
-        self.assertIsNotNone(circle)
-        self.assertAlmostEqual(0.0, circle.tilt_angle)
+        self.assertEqual((2, 5, 5), stack.shape)
+        self.assertEqual((5, 5), mask.shape)
+        self.assertEqual(1, len(messages))
+        self.assertIn("5x5 px window for a 11x3 px segment", messages[0])
 
     def test_subimage_logs_error_only_when_segment_reaches_crop_edge(self) -> None:
         velocity = np.zeros((1, 100, 100), dtype=np.float32)
@@ -114,6 +111,32 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertEqual(1, len(messages))
         self.assertTrue(messages[0].startswith("[ERROR] Cross-section window"))
         self.assertIn("3x1 px segment", messages[0])
+
+    def test_missing_annulus_intersections_do_not_select_another_crop_path(self) -> None:
+        velocity = np.ones((2, 101, 101), dtype=np.float32)
+        segment = np.zeros((101, 101), dtype=bool)
+        segment[49:52, 60:71] = True
+        settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
+
+        with patch(
+            "calculations.blood_flow_velocity.cross_section."
+            "generate_cross_section_signals._circle_tilt_geometry",
+            return_value=None,
+        ), patch(
+            "calculations.blood_flow_velocity.cross_section."
+            "generate_cross_section_signals._estimate_orientation",
+            return_value=0.0,
+        ):
+            measurement = _cross_section_velocity(
+                velocity,
+                segment,
+                segment,
+                (65, 50),
+                (50, 50),
+                settings,
+            )
+
+        self.assertEqual((2, 5), measurement[2].shape)
 
     def test_segment_analysis_uses_current_matlab_cross_section_rings(self) -> None:
         settings = _segment_ring_settings()
@@ -140,9 +163,11 @@ class SegmentCenterTests(unittest.TestCase):
         sections[0, 2, 1] = True
         sections[1, 5, 4] = True
         velocity = np.zeros((3, 7, 7), dtype=np.float32)
-        raw = np.full((2, 2, 3), np.nan, dtype=np.float32)
-        safe = np.full_like(raw, np.nan)
-        centers = np.full((2, 2, 2), np.nan, dtype=np.float32)
+        buffers = _CrossSectionBuffers.allocate(
+            frame_count=velocity.shape[0],
+            ring_count=sections.shape[0],
+            branch_count=branches.branch_ids.size,
+        )
         settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
 
         signal = np.arange(3, dtype=np.float32)
@@ -155,10 +180,8 @@ class SegmentCenterTests(unittest.TestCase):
             "generate_cross_section_signals._cross_section_velocity",
             return_value=(signal, signal),
         ):
-            _fill_cross_section_signals(
-                raw,
-                safe,
-                centers,
+            _fill_cross_section_buffers(
+                buffers,
                 velocity,
                 sections,
                 branches,
@@ -166,12 +189,18 @@ class SegmentCenterTests(unittest.TestCase):
                 settings,
             )
 
-        np.testing.assert_array_equal(centers[0, 0], [1.0, 2.0])
-        np.testing.assert_array_equal(centers[1, 1], [4.0, 5.0])
-        self.assertTrue(np.all(np.isnan(centers[0, 1])))
-        self.assertTrue(np.all(np.isnan(centers[1, 0])))
-        np.testing.assert_array_equal(raw[0, 0], signal)
-        np.testing.assert_array_equal(raw[1, 1], signal)
+        np.testing.assert_array_equal(
+            buffers.segment_center_xy[0, 0],
+            [1.0, 2.0],
+        )
+        np.testing.assert_array_equal(
+            buffers.segment_center_xy[1, 1],
+            [4.0, 5.0],
+        )
+        self.assertTrue(np.all(np.isnan(buffers.segment_center_xy[0, 1])))
+        self.assertTrue(np.all(np.isnan(buffers.segment_center_xy[1, 0])))
+        np.testing.assert_array_equal(buffers.velocity[0, 0], signal)
+        np.testing.assert_array_equal(buffers.velocity[1, 1], signal)
 
 
 class TopologyOutputTests(unittest.TestCase):

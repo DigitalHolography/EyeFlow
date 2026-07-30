@@ -1,6 +1,7 @@
 """Pure blood-flow velocity calculations for EyeFlow."""
 
 from .cross_section.generate_cross_section_signals import (
+    CrossSectionProfileOutputs,
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
 )
@@ -55,6 +56,7 @@ __all__ = [
     "PulseMetricData",
     "CrossSectionSignalSettings",
     "CrossSectionSignalResult",
+    "CrossSectionProfileOutputs",
     "SegmentRingSettings",
     "SpectralHeartbeatResult",
     "SystoleDetectionResult",

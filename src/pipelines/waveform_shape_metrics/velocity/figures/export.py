@@ -12,6 +12,7 @@ from input_output.writers.png import PngArtifactWriter
 from .common import PulseFigureContext, _matplotlib, _output_stem, _section_mask
 from .correlation import _export_correlation_plots
 from .maps import _export_maps
+from .profiles import export_cross_section_profile_artifacts
 from .signals import _export_signal_plots
 from .spectral import _export_spectral_plots
 from .systole import _export_systole_plots
@@ -119,4 +120,5 @@ def export_pulse_pngs(
     paths: list[Path] = []
     for exporter in EXPORTERS:
         paths.extend(exporter(writer, pulse_context))
+    paths.extend(export_cross_section_profile_artifacts(writer, context))
     return [str(path) for path in paths]

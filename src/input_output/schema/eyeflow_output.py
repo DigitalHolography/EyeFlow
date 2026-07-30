@@ -64,6 +64,12 @@ class TopologyOutputPaths:
 
 
 @dataclass(frozen=True)
+class CrossSectionProfileOutputPaths:
+    velocity_profile: str
+    transverse_coordinate_micrometers: str
+
+
+@dataclass(frozen=True)
 class HeartbeatOutputPaths:
     systolic_peak_frame_indices: str
     systolic_cycle_duration_seconds: str
@@ -80,6 +86,8 @@ class EyeFlowOutputPaths:
     artery_per_beat: VelocityPerBeatOutputPaths
     vein_per_beat: VelocityPerBeatOutputPaths
     topology: TopologyOutputPaths
+    artery_cross_section_profiles: CrossSectionProfileOutputPaths
+    vein_cross_section_profiles: CrossSectionProfileOutputPaths
     heartbeat: HeartbeatOutputPaths
     beat_period_seconds: str
     waveform_shape_metrics_root: str
@@ -114,6 +122,19 @@ def _topology_paths(root: str) -> TopologyOutputPaths:
             branch_label_map=f"{root}/Vein/BranchLabelMap/value",
             branch_ids=f"{root}/Vein/BranchIds/value",
             segment_center_xy=f"{root}/Vein/SegmentCenterXY/value",
+        ),
+    )
+
+
+def _cross_section_profile_paths(
+    root: str,
+    *,
+    velocity_profile_name: str = "VelocityProfile",
+) -> CrossSectionProfileOutputPaths:
+    return CrossSectionProfileOutputPaths(
+        velocity_profile=f"{root}/{velocity_profile_name}/value",
+        transverse_coordinate_micrometers=(
+            f"{root}/TransverseCoordinateMicrometers/value"
         ),
     )
 
@@ -198,6 +219,14 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
         ),
     ),
     topology=_topology_paths("Topology"),
+    artery_cross_section_profiles=_cross_section_profile_paths(
+        "Artery/CrossSections",
+        velocity_profile_name="VelocityProfileSeg",
+    ),
+    vein_cross_section_profiles=_cross_section_profile_paths(
+        "Vein/CrossSections",
+        velocity_profile_name="VelocityProfileSeg",
+    ),
     heartbeat=LEGACY_HEARTBEAT_OUTPUT,
     beat_period_seconds="Artery/VelocityPerBeat/beatPeriodSeconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
@@ -248,6 +277,12 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
         ),
     ),
     topology=_topology_paths("Topology"),
+    artery_cross_section_profiles=_cross_section_profile_paths(
+        "artery/cross_sections"
+    ),
+    vein_cross_section_profiles=_cross_section_profile_paths(
+        "vein/cross_sections"
+    ),
     heartbeat=LEGACY_HEARTBEAT_OUTPUT,
     beat_period_seconds="perbeat/beat_period_seconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
@@ -310,6 +345,12 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         ),
     ),
     topology=_topology_paths("Segmentation"),
+    artery_cross_section_profiles=_cross_section_profile_paths(
+        "Processing/CrossSections/Artery"
+    ),
+    vein_cross_section_profiles=_cross_section_profile_paths(
+        "Processing/CrossSections/Vein"
+    ),
     heartbeat=HEARTBEAT_OUTPUT,
     beat_period_seconds="Processing/VelocityPerBeat/BeatPeriodSeconds/value",
     waveform_shape_metrics_root="Processing/Metrics/waveform_shape_metrics",
