@@ -6,7 +6,12 @@ from pathlib import Path
 
 import numpy as np
 
-from calculations.blood_flow_velocity.signal_analysis.waveform.metrics import pulse_metric
+from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
+    mean_period_seconds,
+)
+from calculations.blood_flow_velocity.signal_analysis.waveform.metrics import (
+    pulse_metric_from_signal,
+)
 from calculations.blood_flow_velocity.signal_analysis.waveform.morphology import (
     ArterialWaveformAnalysis,
     VenousWaveformAnalysis,
@@ -16,13 +21,12 @@ from calculations.blood_flow_velocity.signal_analysis.waveform.morphology import
 from calculations.blood_flow_velocity.signal_analysis.waveform.paired_cycles import (
     paired_vessel_cycles,
 )
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,
     _log,
     _plt,
-    _safe_indexes,
     _vector,
     display_velocity as _display_velocity,
 )
@@ -34,14 +38,14 @@ def _unit_corrected_velocity_signal(ctx: PulseFigureContext, key: str) -> np.nda
 
 
 def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
-    peaks = _safe_indexes(ctx.analysis.get("beat_indices"))
+    peaks = ctx.cycle_boundary_indexes
     unit_corrected_retinal_artery_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_artery_velocity_signal",
+        "retinal_artery_velocity_signal_filtered",
     )
     unit_corrected_retinal_vein_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_vein_velocity_signal",
+        "retinal_vein_velocity_signal_filtered",
     )
     cycles = paired_vessel_cycles(
         unit_corrected_retinal_artery_velocity_signal,
@@ -58,37 +62,36 @@ def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[P
         if cycle is None:
             _log(ctx, f"Skipping RI/PI plots for {suffix_prefix}; insufficient beats.")
             continue
-        paths.append(
-            _ri_pi_plot(
-                writer,
-                f"RI_{suffix_prefix}.png",
-                ctx.time,
+        for metric_name in ("RI", "PI"):
+            metric = pulse_metric_from_signal(
                 signal_values,
-                cycle,
-                "RI",
+                peaks,
+                metric_name,
+                samples=60,
             )
-        )
-        paths.append(
-            _ri_pi_plot(
-                writer,
-                f"PI_{suffix_prefix}.png",
-                ctx.time,
-                signal_values,
-                cycle,
-                "PI",
+            if metric is None:
+                continue
+            paths.append(
+                _ri_pi_plot(
+                    writer,
+                    f"{metric_name}_{suffix_prefix}.png",
+                    ctx.time,
+                    signal_values,
+                    metric,
+                    metric_name,
+                )
             )
-        )
     return paths
 
 def _export_waveform_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
-    peaks = _safe_indexes(ctx.analysis.get("beat_indices"))
+    peaks = ctx.cycle_boundary_indexes
     unit_corrected_retinal_artery_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_artery_velocity_signal",
+        "retinal_artery_velocity_signal_filtered",
     )
     unit_corrected_retinal_vein_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_vein_velocity_signal",
+        "retinal_vein_velocity_signal_filtered",
     )
     cycles = paired_vessel_cycles(
         unit_corrected_retinal_artery_velocity_signal,
@@ -112,10 +115,9 @@ def _ri_pi_plot(
     suffix: str,
     time: np.ndarray,
     values: np.ndarray,
-    cycle: np.ndarray,
+    metric,
     metric_name: str,
 ) -> Path:
-    metric = pulse_metric(cycle, metric_name)
     fig, ax = _plt().subplots(figsize=(7.0, 4.0))
     ax.plot(time[: values.size], values, color="k", linewidth=2)
     for y, label in (
@@ -145,8 +147,13 @@ def _arterial_waveform_plot(
 ) -> Path:
     data = arterial_waveform_analysis(
         cycle,
-        _safe_indexes(ctx.analysis.get("beat_indices")),
-        ctx.dt_seconds,
+        mean_period_seconds(
+            ctx.cycle_boundary_indexes,
+            ctx.dt_seconds,
+            default_samples=_vector(
+                ctx.analysis["retinal_artery_velocity_signal_filtered"]
+            ).size,
+        ),
     )
     return _arterial_waveform_analysis_plot(writer, cycle, data)
 
@@ -228,8 +235,13 @@ def _venous_waveform_plot(
 ) -> Path:
     data = venous_waveform_analysis(
         cycle,
-        _safe_indexes(ctx.analysis.get("beat_indices")),
-        ctx.dt_seconds,
+        mean_period_seconds(
+            ctx.cycle_boundary_indexes,
+            ctx.dt_seconds,
+            default_samples=_vector(
+                ctx.analysis["retinal_vein_velocity_signal_filtered"]
+            ).size,
+        ),
     )
     return _venous_waveform_analysis_plot(writer, cycle, data)
 

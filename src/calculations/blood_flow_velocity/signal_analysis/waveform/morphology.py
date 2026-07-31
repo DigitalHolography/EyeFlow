@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import signal
 
-from .cycles import cycle_time, mean_period_seconds, padded_cycle
+from .cycles import cycle_time, padded_cycle
 
 
 @dataclass(frozen=True)
@@ -35,10 +35,9 @@ class VenousWaveformAnalysis:
 
 def arterial_waveform_analysis(
     cycle: np.ndarray,
-    beat_indexes: np.ndarray,
-    dt_seconds: float,
+    period_seconds: float,
 ) -> ArterialWaveformAnalysis:
-    period = mean_period_seconds(beat_indexes, dt_seconds, default_samples=cycle.size)
+    period = float(period_seconds)
     pulse_time = cycle_time(cycle, period)
     gradient = np.gradient(cycle)
     peak_indexes, properties = signal.find_peaks(
@@ -69,10 +68,9 @@ def arterial_waveform_analysis(
 
 def venous_waveform_analysis(
     cycle: np.ndarray,
-    beat_indexes: np.ndarray,
-    dt_seconds: float,
+    period_seconds: float,
 ) -> VenousWaveformAnalysis:
-    period = mean_period_seconds(beat_indexes, dt_seconds, default_samples=cycle.size)
+    period = float(period_seconds)
     pulse_time = cycle_time(cycle, period)
     padded_time, padded_signal = padded_cycle(pulse_time, cycle, period)
     return VenousWaveformAnalysis(

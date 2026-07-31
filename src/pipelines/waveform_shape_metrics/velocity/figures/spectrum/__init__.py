@@ -16,7 +16,7 @@ from .runner import (
     run_paired_vessel_spectrum_analysis,
     run_vessel_spectrum_analysis,
 )
-from .signal import SpectrumData, spectral_heart_rate, spectrum_signal_analysis
+from .signal import SpectrumData, spectrum_signal_analysis
 from .synthetic import (
     SyntheticSpectrumData,
     synthetic_spectrum_analysis,
@@ -37,7 +37,6 @@ __all__ = [
     "paired_spectrum_analysis",
     "run_paired_vessel_spectrum_analysis",
     "run_vessel_spectrum_analysis",
-    "spectral_heart_rate",
     "spectrum_signal_analysis",
     "synthetic_spectrum_analysis",
     "synthetic_spectrum_from_signals",

@@ -1,4 +1,4 @@
-"""Write PNG artifacts for EyeFlow runs."""
+"""Write figure artifacts for EyeFlow runs."""
 
 from pathlib import Path
 
@@ -6,8 +6,13 @@ import numpy as np
 from skimage.io import imsave
 
 
-class PngArtifactWriter:
-    """Write stem-prefixed PNG arrays and matplotlib figures for one output namespace."""
+class FigureArtifactWriter:
+    """Write stem-prefixed figures for one output namespace.
+
+    PNG is the default figure format. Other figure types, such as GIF, can
+    reuse this writer's output namespace and stem while selecting their own
+    output type at the call site.
+    """
 
     def __init__(self, output, stem: str | None = None) -> None:
         self.output = output
@@ -67,6 +72,10 @@ def _normalize_float(array: np.ndarray) -> np.ndarray:
     scaled = np.zeros(array.shape, dtype=np.float32)
     scaled[finite] = (array[finite] - min_value) / span
     return np.rint(scaled * 255).astype(np.uint8)
+
+
+# Backward-compatible name for callers that only use the PNG methods.
+PngArtifactWriter = FigureArtifactWriter
 
 
 def _output_stem(output) -> str:

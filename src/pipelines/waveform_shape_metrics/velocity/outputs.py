@@ -14,11 +14,6 @@ def pack_velocity_per_beat_outputs(
 ) -> dict[str, object]:
     schema = _resolve_output_paths(output_paths)
     metrics = {
-        schema.beat_period_idx: metric_value(
-            _matlab_row_vector(result.beat_period_idx),
-            unit="frame",
-            dim_desc=("row", "beat"),
-        ),
         schema.beat_period_seconds: metric_value(
             _matlab_row_vector(result.beat_period_seconds),
             unit="s",
@@ -55,6 +50,21 @@ def _pack_vessel_outputs(
             signal.velocity_signal_per_beat_band_limited,
             unit="mm/s",
             dim_desc=("beat", "sample"),
+        ),
+        paths.vmax_band_limited: metric_value(
+            vessel.vmax_band_limited,
+            unit="mm/s",
+            dim_desc=("beat",),
+        ),
+        paths.vmin_band_limited: metric_value(
+            vessel.vmin_band_limited,
+            unit="mm/s",
+            dim_desc=("beat",),
+        ),
+        paths.vti_per_beat: metric_value(
+            vessel.vti_per_beat,
+            unit="mm",
+            dim_desc=("beat",),
         ),
     }
     if vessel.segments is not None:

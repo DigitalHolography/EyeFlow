@@ -1,13 +1,22 @@
 """Pure blood-flow velocity calculations for EyeFlow."""
 
-from .analysis_preparation.segments.generate_cross_section_signals import (
+from .cross_section.generate_cross_section_signals import (
+    CrossSectionProfileOutputs,
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
 )
-from .analysis_preparation.segments.segment_geometry import SegmentRingSettings
-from .analysis_preparation.segments.segment_velocity_signals import (
+from .cross_section.segment_geometry import SegmentRingSettings
+from .cross_section.segment_velocity_signals import (
     segment_velocity_inputs,
     segment_velocity_results,
+)
+from .signal_analysis.heartbeat import (
+    HeartbeatAnalysisResult,
+    SpectralHeartbeatResult,
+    SystoleDetectionResult,
+    find_systole_index,
+    run_heartbeat_analysis,
+    spectral_heartbeat_analysis,
 )
 from .signal_analysis.per_beat.runner import (
     PerBeatAnalysisInput,
@@ -32,11 +41,13 @@ from .signal_analysis.waveform import (
     cycle_extrema,
     paired_vessel_cycles,
     pulse_metric,
+    pulse_metric_from_signal,
     venous_waveform_analysis,
 )
 
 __all__ = [
     "ArterialWaveformAnalysis",
+    "HeartbeatAnalysisResult",
     "PerBeatAnalysisInput",
     "PerBeatAnalysisResult",
     "PerBeatSegmentAnalysisResult",
@@ -45,18 +56,25 @@ __all__ = [
     "PulseMetricData",
     "CrossSectionSignalSettings",
     "CrossSectionSignalResult",
+    "CrossSectionProfileOutputs",
     "SegmentRingSettings",
+    "SpectralHeartbeatResult",
+    "SystoleDetectionResult",
     "VenousWaveformAnalysis",
     "arterial_waveform_analysis",
     "average_cycle",
     "cycle_extrema",
+    "find_systole_index",
     "paired_vessel_cycles",
     "per_beat_segment_analysis",
     "per_beat_signal_analysis",
     "pulse_metric",
+    "pulse_metric_from_signal",
+    "run_heartbeat_analysis",
     "run_per_beat_analysis",
     "segment_velocity_inputs",
     "segment_velocity_results",
+    "spectral_heartbeat_analysis",
     "venous_waveform_analysis",
 ]
 

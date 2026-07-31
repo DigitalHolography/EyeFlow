@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.blood_flow_velocity.analysis_preparation.beat_detection import find_systole_index
+from calculations.blood_flow_velocity.signal_analysis.heartbeat import find_systole_index
 from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (
     per_beat_signal_analysis,
 )
+from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import average_cycle
 from calculations.math import butter_lowpass_filtfilt
 from input_output.schema import HD_MOMENT0_PATH, HD_MOMENT2_PATH
 from pipeline_engine.imports import (
@@ -195,14 +196,12 @@ def run(ctx) -> ProcessResult:
                 _heart_rate_bpm(beat_period_seconds),
                 {"unit": "bpm"},
             ),
-            "poc/matlab_pulse/artery_resistivity_index": with_attrs(
-                artery_stats["resistivity_index"],
-                {"matlab_source": "ArterialResistivityIndex.m"},
-            ),
-            "poc/matlab_pulse/vein_resistivity_index": with_attrs(
-                vein_stats["resistivity_index"],
-                {"matlab_source": "ArterialResistivityIndex.m"},
-            ),
+            "poc/matlab_pulse/artery_resistivity_index": artery_stats[
+                "resistivity_index"
+            ],
+            "poc/matlab_pulse/vein_resistivity_index": vein_stats[
+                "resistivity_index"
+            ],
             "poc/matlab_pulse/artery_mean_velocity": with_attrs(
                 artery_stats["mean"],
                 {"unit": "mm/s"},
@@ -223,7 +222,6 @@ def run(ctx) -> ProcessResult:
     )
 
     attrs = {
-        "matlab_reference_step": "BloodFlowVelocity/pulseAnalysis.m",
         "poc_background_method": (
             "mean fRMS over non-vessel pixels in fixed elliptical annulus"
         ),
@@ -235,9 +233,6 @@ def run(ctx) -> ProcessResult:
         "poc_lowpass_freq_hz": float(LOWPASS_FREQ_HZ),
         "poc_band_limited_signal_harmonic_count": int(
             BAND_LIMITED_SIGNAL_HARMONIC_COUNT
-        ),
-        "poc_vti_method": (
-            "perBeatAnalysis.m style: sum(interpolated filtered velocity beat) * dt"
         ),
         "poc_hd_moment0_path": HD_MOMENT0_PATH,
         "poc_hd_moment2_path": HD_MOMENT2_PATH,
@@ -507,34 +502,10 @@ def _mean_interpolated_cycle(
     *,
     n_samples: int,
 ) -> np.ndarray:
-    values = np.asarray(signal, dtype=np.float32).reshape(-1)
-    indexes = np.asarray(systole_indexes, dtype=np.int32).reshape(-1)
-    if values.size == 0:
+    cycle = average_cycle(signal, systole_indexes, n_samples)
+    if cycle is None:
         return np.full(n_samples, np.nan, dtype=np.float32)
-    if indexes.size < 2:
-        return np.interp(
-            np.linspace(0, values.size - 1, n_samples, dtype=np.float32),
-            np.arange(values.size, dtype=np.float32),
-            values,
-        ).astype(np.float32)
-
-    cycles = []
-    for start, stop in zip(indexes[:-1], indexes[1:], strict=False):
-        start = int(start)
-        stop = int(stop)
-        if stop <= start + 1:
-            continue
-        x = np.arange(start, stop, dtype=np.float32)
-        cycles.append(
-            np.interp(
-                np.linspace(start, stop - 1, n_samples, dtype=np.float32),
-                x,
-                values[start:stop],
-            ).astype(np.float32)
-        )
-    if not cycles:
-        return np.full(n_samples, np.nan, dtype=np.float32)
-    return np.nanmean(np.stack(cycles, axis=0), axis=0).astype(np.float32)
+    return cycle
 
 
 def _clamped_ratio(

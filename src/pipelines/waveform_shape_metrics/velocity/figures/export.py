@@ -7,16 +7,18 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from input_output.writers.png import PngArtifactWriter
+from input_output.writers.png import FigureArtifactWriter
 
 from .common import PulseFigureContext, _matplotlib, _output_stem, _section_mask
 from .correlation import _export_correlation_plots
 from .maps import _export_maps
+from .profiles import export_cross_section_profile_artifacts
 from .signals import _export_signal_plots
 from .spectral import _export_spectral_plots
 from .systole import _export_systole_plots
 from .velocity_maps import _export_final_visualizations
 from .waveforms import _export_ri_pi_plots, _export_waveform_plots
+from .signal_inputs import mean_video
 
 if TYPE_CHECKING:
     from calculations.blood_flow_velocity import PerBeatAnalysisResult
@@ -98,12 +100,15 @@ def export_pulse_pngs(
     source_data = context.source_data
     analysis = context.dopplerview_analysis
     frame_count = int(np.asarray(analysis["retinal_artery_velocity_signal"]).size)
+    moment0_avg = analysis.get("moment0_avg")
+    if moment0_avg is None:
+        moment0_avg = mean_video(source_data.moment0)
     pulse_context = PulseFigureContext(
         output=output,
         stem=_output_stem(output),
         time=np.arange(frame_count, dtype=np.float32) * np.float32(source_data.timing.dt_seconds),
         dt_seconds=float(source_data.timing.dt_seconds),
-        moment0_avg=np.mean(source_data.moment0, axis=0, dtype=np.float32),
+        moment0_avg=np.asarray(moment0_avg, dtype=np.float32),
         artery_mask=np.asarray(source_data.retinal_artery_mask, dtype=bool),
         vein_mask=np.asarray(source_data.retinal_vein_mask, dtype=bool),
         section_mask=_section_mask(analysis, source_data.retinal_artery_mask.shape),
@@ -111,8 +116,9 @@ def export_pulse_pngs(
         per_beat_result=per_beat_result,
         log=log,
     )
-    writer = PngArtifactWriter(output, pulse_context.stem)
+    writer = FigureArtifactWriter(output, pulse_context.stem)
     paths: list[Path] = []
     for exporter in EXPORTERS:
         paths.extend(exporter(writer, pulse_context))
+    paths.extend(export_cross_section_profile_artifacts(writer, context))
     return [str(path) for path in paths]

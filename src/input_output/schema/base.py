@@ -60,6 +60,9 @@ class TypedSource:
     ) -> Any:
         return self._reader.array(path, dtype=dtype, default=default)
 
+    def _dataset(self, path: str):
+        return self._reader.dataset(path)
+
     def _value(self, path: str, *, default: Any = MISSING):
         return self._reader.value(path, default=default)
 

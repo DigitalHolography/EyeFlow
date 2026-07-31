@@ -297,8 +297,11 @@ jobs:
               git tag -f $env:TAG_NAME $env:RELEASE_COMMIT
           }
 
+          git checkout -B release-dev origin/dev
+          git merge --no-ff $env:RELEASE_COMMIT -m "Merge release $env:TAG_NAME into dev"
+
           git push --atomic origin `
-              HEAD:refs/heads/main `
+              "$($env:RELEASE_COMMIT):refs/heads/main" `
               HEAD:refs/heads/dev `
               "refs/tags/${env:TAG_NAME}:refs/tags/${env:TAG_NAME}" `
               "--force-with-lease=refs/heads/main`:${env:MAIN_SHA}" `
