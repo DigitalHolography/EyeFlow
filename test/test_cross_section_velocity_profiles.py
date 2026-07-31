@@ -56,7 +56,7 @@ class TransverseProfilePackingTests(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(profiles[0, 0, :, [0, 4]])))
         np.testing.assert_array_equal(profiles[0, 1], cells[0, 1])
 
-    def test_h5_export_contains_only_centered_profiles_and_coordinates(self) -> None:
+    def test_h5_export_contains_raw_and_interpolated_profiles(self) -> None:
         artery = _segments(radius_count=2, branch_count=1)
         vein = _segments(radius_count=2, branch_count=0)
         cycle_boundaries = np.asarray([0, 2, 5], dtype=np.int32)
@@ -66,14 +66,28 @@ class TransverseProfilePackingTests(unittest.TestCase):
             cycle_boundaries,
         )
         schema = EyeFlowOutputPaths.active()
-        self.assertEqual(4, len(metrics))
+        self.assertEqual(8, len(metrics))
 
         with h5py.File("profiles.h5", "w", driver="core", backing_store=False) as h5:
             for path, value in metrics.items():
                 write_value_dataset(h5, path, value)
-
+            raw_dataset = h5[
+                schema.artery_cross_section_profiles.raw_profile.velocity_profile
+            ]
+            self.assertEqual((7, 4, 2, 1, 2), raw_dataset.shape)
+            self.assertEqual(
+                list(raw_dataset.attrs["dimDesc"]),
+                ["x", "time", "beat", "branch", "radius"],
+            )
+            raw_coordinate = h5[
+                schema.artery_cross_section_profiles
+                .raw_profile.transverse_coordinate_micrometers
+            ]
+            self.assertEqual((7,), raw_coordinate.shape)
+            self.assertEqual("um", raw_coordinate.attrs["unit"])
             dataset = h5[
-                schema.artery_cross_section_profiles.velocity_profile
+                schema.artery_cross_section_profiles
+                .interpolated_profile.velocity_profile
             ]
             self.assertEqual((256, 4, 2, 1, 2), dataset.shape)
             self.assertEqual(
@@ -83,7 +97,7 @@ class TransverseProfilePackingTests(unittest.TestCase):
             self.assertEqual("mm/s", dataset.attrs["unit"])
             coordinate = h5[
                 schema.artery_cross_section_profiles
-                .transverse_coordinate_micrometers
+                .interpolated_profile.transverse_coordinate_micrometers
             ]
             self.assertEqual((256, 1, 2), coordinate.shape)
             self.assertEqual(
@@ -91,7 +105,14 @@ class TransverseProfilePackingTests(unittest.TestCase):
                 ["x", "branch", "radius"],
             )
             self.assertEqual("um", coordinate.attrs["unit"])
-            empty = h5[schema.vein_cross_section_profiles.velocity_profile]
+            empty_raw = h5[
+                schema.vein_cross_section_profiles.raw_profile.velocity_profile
+            ]
+            self.assertEqual((7, 4, 2, 0, 2), empty_raw.shape)
+            empty = h5[
+                schema.vein_cross_section_profiles
+                .interpolated_profile.velocity_profile
+            ]
             self.assertEqual((256, 4, 2, 0, 2), empty.shape)
 
     def test_profile_time_axis_matches_standard_per_beat_interpolation(self) -> None:
@@ -133,6 +154,19 @@ class TransverseProfilePackingTests(unittest.TestCase):
         )
 
         centered = result.centered_velocity[0, 0, 0]
+        np.testing.assert_array_equal(result.raw_profile.velocity, raw)
+        np.testing.assert_array_equal(
+            result.raw_profile.x_micrometers,
+            result.raw_x_micrometers,
+        )
+        np.testing.assert_array_equal(
+            result.interpolated_profile.velocity,
+            result.centered_velocity,
+        )
+        np.testing.assert_array_equal(
+            result.interpolated_profile.x_micrometers,
+            result.centered_x_micrometers,
+        )
         self.assertAlmostEqual(0.0, float(centered[0]), places=5)
         self.assertAlmostEqual(0.0, float(centered[-1]), places=5)
         self.assertTrue(np.allclose(

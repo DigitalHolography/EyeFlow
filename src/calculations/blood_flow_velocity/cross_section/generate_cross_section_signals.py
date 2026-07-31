@@ -17,7 +17,7 @@ from .segment_geometry import (
     optic_disc_center_yx,
     section_masks,
 )
-from .profile_processing import process_velocity_profiles
+from .profile_processing import ProfileData, process_velocity_profiles
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ class CrossSectionSignalSettings:
 
 @dataclass(frozen=True, kw_only=True)
 class CrossSectionProfileOutputs:
-    """Raw, centered, and fitted transverse profile outputs."""
+    """Raw, interpolated, centered, and fitted transverse profile outputs."""
 
     velocity_profiles: np.ndarray
     profile_x_micrometers: np.ndarray
@@ -47,6 +47,8 @@ class CrossSectionProfileOutputs:
     poiseuille_roots_micrometers: np.ndarray
     poiseuille_r_squared: np.ndarray
     poiseuille_profile_spatial_std: np.ndarray
+    raw_profile: ProfileData
+    interpolated_profile: ProfileData
 
 
 @dataclass(frozen=True)
@@ -183,6 +185,8 @@ def generate_cross_section_signals(
         ),
         poiseuille_r_squared=processed_profiles.poiseuille_r_squared,
         poiseuille_profile_spatial_std=poiseuille_profile_spatial_std,
+        raw_profile=processed_profiles.raw_profile,
+        interpolated_profile=processed_profiles.interpolated_profile,
     )
 
 
@@ -236,6 +240,8 @@ def _empty_result(
             np.nan,
             dtype=np.float32,
         ),
+        raw_profile=processed.raw_profile,
+        interpolated_profile=processed.interpolated_profile,
     )
 
 

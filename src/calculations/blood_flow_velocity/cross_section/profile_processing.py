@@ -14,7 +14,27 @@ from calculations.math import interpft_real, next_power_of_two
 
 
 @dataclass(frozen=True)
+class ProfileData:
+    """A transverse profile and the x coordinates it is sampled on."""
+
+    velocity: np.ndarray
+    x_micrometers: np.ndarray
+
+    @property
+    def velocity_profiles(self) -> np.ndarray:
+        """Compatibility name used by the cross-section result object."""
+        return self.velocity
+
+    @property
+    def profile_x_micrometers(self) -> np.ndarray:
+        """Compatibility name used by the cross-section result object."""
+        return self.x_micrometers
+
+
+@dataclass(frozen=True)
 class ProfileProcessingResult:
+    raw_profile: ProfileData
+    interpolated_profile: ProfileData
     raw_x_micrometers: np.ndarray
     centered_velocity: np.ndarray
     centered_x_micrometers: np.ndarray
@@ -34,7 +54,11 @@ def process_velocity_profiles(
     velocity_profile_threshold: float,
     interpolation_points: int = 256,
 ) -> ProfileProcessingResult:
-    """Center and interpolate profiles without temporal filtering or clipping.
+    """Center profiles while retaining both spatial representations.
+
+    ``raw_profile`` contains the input samples on their original transverse
+    pixel grid. ``interpolated_profile`` contains the same frames resampled
+    onto a common, centered grid between the fitted lumen roots.
 
     Poiseuille values reproduce ``computeVesselCrossSection.m``: the quadratic
     is fit to samples above the configured fraction of the time-mean maximum,
@@ -119,6 +143,14 @@ def process_velocity_profiles(
         centering_r2[segment_index] = np.float32(fit_r2)
 
     return ProfileProcessingResult(
+        raw_profile=ProfileData(
+            velocity=values,
+            x_micrometers=raw_x_um,
+        ),
+        interpolated_profile=ProfileData(
+            velocity=centered,
+            x_micrometers=centered_x,
+        ),
         raw_x_micrometers=raw_x_um,
         centered_velocity=centered,
         centered_x_micrometers=centered_x,
