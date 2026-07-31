@@ -12,13 +12,12 @@ from .spectrum import (
     TransferData,
     paired_spectrum_analysis,
 )
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,
     _log,
     _plt,
-    _safe_indexes,
     _vector,
     display_velocity as _display_velocity,
 )
@@ -26,8 +25,12 @@ from .plotting import _line_plot, _style_axes
 
 
 def _export_correlation_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
-    artery = _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"]))
-    vein = -_display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"]))
+    artery = _display_velocity(
+        _vector(ctx.analysis["retinal_artery_velocity_signal_filtered"])
+    )
+    vein = -_display_velocity(
+        _vector(ctx.analysis["retinal_vein_velocity_signal_filtered"])
+    )
     if artery.size != vein.size or artery.size < 3:
         _log(ctx, "Skipping arterial/venous correlation PNGs; signals are incompatible.")
         return []
@@ -35,7 +38,8 @@ def _export_correlation_plots(writer: FigureWriter, ctx: PulseFigureContext) -> 
         artery,
         vein,
         ctx.dt_seconds,
-        _safe_indexes(ctx.analysis.get("beat_indices")),
+        ctx.cycle_boundary_indexes,
+        heartbeat=ctx.heartbeat,
     )
     corr = analysis.correlation
     spectrum = analysis.transfer

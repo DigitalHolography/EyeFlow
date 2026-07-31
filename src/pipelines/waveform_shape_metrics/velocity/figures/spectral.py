@@ -6,19 +6,21 @@ from pathlib import Path
 
 import numpy as np
 
+from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
+    mean_period_seconds,
+)
 from .spectrum import (
     SpectrumData,
     SyntheticSpectrumData,
     spectrum_signal_analysis,
     synthetic_spectrum_from_signals,
 )
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,
     _log,
     _plt,
-    _safe_indexes,
     _vector,
     display_velocity as _display_velocity,
 )
@@ -30,13 +32,24 @@ SPECTRAL_XLIM_HZ = (0.0, 10.0)
 
 def _export_spectral_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     paths: list[Path] = []
-    artery = _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"]))
-    vein = _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"]))
-    for prefix, vessel_name, values, color in (
-        ("Arterial", "artery", artery, "tab:red"),
-        ("Venous", "vein", vein, "tab:blue"),
+    artery = _display_velocity(
+        _vector(ctx.analysis["retinal_artery_velocity_signal_filtered"])
+    )
+    vein = _display_velocity(
+        _vector(ctx.analysis["retinal_vein_velocity_signal_filtered"])
+    )
+    beat_indexes = ctx.cycle_boundary_indexes
+    systole_count = int(beat_indexes.size)
+    artery_spectrum = ctx.heartbeat
+    vein_spectrum = spectrum_signal_analysis(
+        vein,
+        ctx.dt_seconds,
+        systole_count,
+    )
+    for prefix, vessel_name, spectrum, color in (
+        ("Arterial", "artery", artery_spectrum, "tab:red"),
+        ("Venous", "vein", vein_spectrum, "tab:blue"),
     ):
-        spectrum = spectrum_signal_analysis(values, ctx.dt_seconds)
         paths.append(
             _spectrum_plot(
                 writer,
@@ -53,8 +66,16 @@ def _export_spectral_plots(writer: FigureWriter, ctx: PulseFigureContext) -> lis
                 color,
             )
     )
-    peaks = _safe_indexes(ctx.analysis.get("beat_indices"))
-    synthetic = synthetic_spectrum_from_signals(vein, artery, peaks, ctx.dt_seconds)
+    synthetic = synthetic_spectrum_from_signals(
+        vein,
+        artery,
+        beat_indexes,
+        mean_period_seconds(
+            beat_indexes,
+            ctx.dt_seconds,
+            default_samples=vein.size,
+        ),
+    )
     if synthetic is not None:
         paths.append(_synthetic_spectral_plot(writer, synthetic))
     else:
@@ -89,7 +110,7 @@ def _spectrum_plot(
             0.62,
             (
                 f"HR : {spectrum.heart_rate_bpm:.1f} BPM "
-                f"+/- {spectrum.heart_rate_se_bpm:.1f}"
+                f"+/- {spectrum.heart_rate_ste_bpm:.1f}"
             ),
             transform=ax.transAxes,
             fontsize=10,
@@ -105,16 +126,17 @@ def _phase_spectrum_plot(
     color: str,
 ) -> Path:
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
-    ax.plot(spectrum.frequencies, spectrum.phase, color="k", linewidth=2)
     peaks = _visible_peak_indexes(spectrum, SPECTRAL_XLIM_HZ)[:8]
     if peaks.size:
-        ax.scatter(
+        markerline, stemlines, _ = ax.stem(
             spectrum.frequencies[peaks],
             spectrum.phase[peaks],
-            color=color,
-            s=45,
-            edgecolor="k",
+            markerfmt="o",
+            basefmt="0.6",
         )
+        markerline.set_color(color)
+        markerline.set_markeredgecolor("k")
+        stemlines.set_color(color)
         _annotate_spectral_peaks(ax, spectrum, peaks, phase=True)
     ax.set_xlim(*SPECTRAL_XLIM_HZ)
     ax.set_ylim(-np.pi, np.pi)
@@ -171,11 +193,12 @@ def _synthetic_spectral_plot(
         s=25,
     )
     axes[0].set_ylabel("Magnitude |Y|")
-    axes[1].plot(spectrum.frequencies, spectrum.phase / np.pi, color="k", linewidth=2)
-    axes[1].scatter(
+    axes[1].stem(
         spectrum.frequencies[spectrum.peak_indexes],
         spectrum.phase[spectrum.peak_indexes] / np.pi,
-        s=25,
+        linefmt="k-",
+        markerfmt="ko",
+        basefmt="0.6",
     )
     axes[1].set_ylabel("Phase / pi")
     axes[1].set_xlabel("Frequency (Hz)")

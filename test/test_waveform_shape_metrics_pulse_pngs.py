@@ -31,6 +31,7 @@ from calculations.blood_flow_velocity.signal_analysis.waveform import (  # noqa:
     average_cycle,
     cycle_extrema,
     pulse_metric,
+    pulse_metric_from_signal,
 )
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.writers.png import write_png_file  # noqa: E402
@@ -140,6 +141,27 @@ class PulsePngExporterTests(unittest.TestCase):
         np.testing.assert_array_equal(maxima, [1, 5])
         np.testing.assert_array_equal(minima, [0, 3])
 
+    def test_pulse_metrics_use_extrema_of_interpolated_mean_cycle(self) -> None:
+        values = np.asarray(
+            [1.0, 4.0, 1.0, 2.0, 1.0, 2.0, 1.0, 4.0, 1.0],
+            dtype=np.float32,
+        )
+        peaks = np.asarray([0, 4, 9], dtype=np.int32)
+        cycle = average_cycle(values, peaks, samples=5)
+        metric = pulse_metric_from_signal(values, peaks, "PI", samples=5)
+
+        np.testing.assert_allclose(
+            cycle,
+            [1.0, 2.625, 1.75, 2.625, 1.5],
+            atol=1e-6,
+        )
+        self.assertIsNotNone(metric)
+        self.assertAlmostEqual(2.625, metric.maximum)
+        self.assertAlmostEqual(1.0, metric.minimum)
+        self.assertAlmostEqual(1.9, metric.mean)
+        self.assertAlmostEqual((2.625 - 1.0) / 1.9, metric.value)
+        self.assertNotEqual(4.0, metric.maximum)
+
     def test_spectrum_reports_frequency_bins_and_ordered_peaks(self) -> None:
         time = np.arange(128, dtype=np.float32) * 0.05
         values = np.sin(2 * np.pi * 1.25 * time).astype(np.float32)
@@ -151,7 +173,7 @@ class PulsePngExporterTests(unittest.TestCase):
         self.assertTrue(np.all(np.diff(data.frequencies[data.peak_indexes]) >= 0))
         self.assertTrue(np.isfinite(data.heart_rate_bpm))
 
-    def test_spectrum_reports_all_prominent_harmonic_peaks(self) -> None:
+    def test_spectrum_separates_prominent_peaks_from_valid_harmonics(self) -> None:
         dt = 0.025
         time = np.arange(1024, dtype=np.float32) * dt
         fundamental = 1.6
@@ -163,10 +185,15 @@ class PulsePngExporterTests(unittest.TestCase):
         data = spectrum_signal_analysis(values.astype(np.float32), dt)
         prominent = data.peak_indexes[data.frequencies[data.peak_indexes] < 10.0]
 
-        self.assertGreaterEqual(prominent.size, 6)
+        self.assertEqual(prominent.size, 5)
         np.testing.assert_allclose(
-            data.frequencies[prominent[:6]],
-            fundamental * np.arange(1, 7, dtype=np.float32),
+            data.frequencies[prominent],
+            fundamental * np.arange(1, 6, dtype=np.float32),
+            atol=0.05,
+        )
+        np.testing.assert_allclose(
+            data.valid_harmonics_hz,
+            fundamental * np.arange(1, 6, dtype=np.float32),
             atol=0.05,
         )
 
@@ -176,28 +203,51 @@ class PulsePngExporterTests(unittest.TestCase):
         second = np.sin(2 * np.pi * 1.0 * time + 0.35).astype(np.float32)
         beat_indexes = np.asarray([0, 24, 48, 72], dtype=np.int32)
         cycle = average_cycle(first, beat_indexes, 32)
+        heartbeat = spectrum_signal_analysis(first, 0.05, beat_indexes.size)
 
-        synthetic = synthetic_spectrum_analysis(cycle, 0.05, beat_indexes)
-        paired = paired_spectrum_analysis(first, second, 0.05, beat_indexes)
+        synthetic = synthetic_spectrum_analysis(cycle, heartbeat.period_seconds)
+        paired = paired_spectrum_analysis(
+            first,
+            second,
+            0.05,
+            beat_indexes,
+            heartbeat=heartbeat,
+        )
 
         self.assertEqual(synthetic.frequencies.shape, synthetic.magnitude.shape)
         self.assertEqual(synthetic.frequencies.shape, synthetic.phase.shape)
         self.assertTrue(synthetic.peak_indexes.size > 0)
+        self.assertEqual(0, synthetic.peak_indexes[0])
+        self.assertAlmostEqual(
+            heartbeat.heart_rate_hz,
+            synthetic.frequencies[synthetic.peak_indexes[1]],
+            places=5,
+        )
         self.assertEqual(paired.transfer.frequencies.shape, paired.transfer.transfer.shape)
         self.assertIsNotNone(paired.delay)
+        self.assertAlmostEqual(heartbeat.period_seconds, paired.delay.time[-1], places=6)
+        self.assertAlmostEqual(heartbeat.heart_rate_hz, paired.correlation.heart_rate_hz)
         self.assertGreaterEqual(paired.correlation.gamma_0, 0.0)
         self.assertLessEqual(paired.correlation.gamma_0, 1.0)
 
     def test_waveform_metric_and_marker_analysis_outputs(self) -> None:
         cycle = np.asarray([0.0, 3.0, 1.0, 2.0, 0.5, -1.0, 0.0, 1.0], dtype=np.float32)
-        beat_indexes = np.asarray([0, 8, 16], dtype=np.int32)
+        spectral_period_seconds = 0.625
 
         metric = pulse_metric(cycle, "RI")
-        markers = arterial_waveform_analysis(cycle, beat_indexes, 0.1)
+        markers = arterial_waveform_analysis(cycle, spectral_period_seconds)
 
-        self.assertAlmostEqual((metric.maximum - metric.minimum) / metric.maximum, metric.value)
+        self.assertAlmostEqual(
+            np.clip(
+                (metric.maximum - metric.minimum) / metric.maximum,
+                0.0,
+                1.0,
+            ),
+            metric.value,
+        )
         self.assertEqual(cycle.size, markers.gradient.size)
         self.assertGreaterEqual(markers.peak_indexes.size, 1)
+        self.assertEqual(spectral_period_seconds, markers.period_seconds)
 
     def test_masked_video_signal_averages_masked_pixels_per_frame(self) -> None:
         video = np.asarray(
@@ -245,7 +295,13 @@ class PulsePngExporterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output = FakeOutput(Path(temp_dir))
             context = _synthetic_context()
-            written = export_pulse_pngs(output, context, SimpleNamespace(), log=None)
+            artery = context.dopplerview_analysis["retinal_artery_velocity_signal"]
+            heartbeat = spectrum_signal_analysis(artery, 0.1, systole_count=4)
+            per_beat_result = SimpleNamespace(
+                heartbeat=heartbeat,
+                cycle_boundary_indexes=context.dopplerview_analysis["beat_indices"],
+            )
+            written = export_pulse_pngs(output, context, per_beat_result, log=None)
 
             self.assertGreaterEqual(len(written), 35)
             for required in (

@@ -10,7 +10,7 @@ from .signal_inputs import (
     histogram_matrix as _histogram_matrix,
 )
 from calculations.math.arrays import rescale as _rescale
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,
@@ -29,16 +29,13 @@ from .plotting import (
 
 
 def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
-    velocity_map = _array_or_none(ctx.analysis.get("retinal_vessel_velocity"))
+    velocity_map = ctx.analysis.get("retinal_vessel_velocity")
     velocity_avg = _array_or_none(ctx.analysis.get("velocity_map_avg"))
-    if velocity_avg is None and velocity_map is not None:
-        velocity_avg = np.nanmean(velocity_map, axis=0)
     if velocity_avg is None:
         _log(ctx, "Skipping final velocity visualizations; velocity map is unavailable.")
         return []
-    velocity_map_display = _display_velocity(velocity_map) if velocity_map is not None else None
     velocity_avg_display = _display_velocity(velocity_avg)
-    vmax = _velocity_colorbar_vmax(velocity_avg_display, ctx.section_mask, velocity_map_display)
+    vmax = _velocity_colorbar_vmax(velocity_avg_display, ctx.section_mask, None)
     paths = [
         _image_map(
             writer,
@@ -81,13 +78,13 @@ def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) 
             label="mm/s",
         ),
     ]
-    flow_rgb = _flow_rgb(ctx, velocity_avg_display, velocity_map_display)
+    flow_rgb = _flow_rgb(ctx, velocity_avg_display, None)
     writer.save_image(flow_rgb, "v_map.png")
     paths.append(writer.path("v_map.png"))
     hist_artery = _histogram_plot(
         writer,
         ctx,
-        velocity_map_display,
+        velocity_map,
         ctx.artery_section_mask,
         "histogramVelocityartery.png",
         "artery",
@@ -95,13 +92,13 @@ def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) 
     hist_vein = _histogram_plot(
         writer,
         ctx,
-        velocity_map_display,
+        velocity_map,
         ctx.vein_section_mask,
         "histogramVelocityvein.png",
         "vein",
     )
     paths.extend([hist_artery, hist_vein])
-    paths.append(_combined_plot(writer, ctx, flow_rgb, velocity_map_display))
+    paths.append(_combined_plot(writer, ctx, flow_rgb, velocity_map))
     return paths
 
 def _histogram_plot(

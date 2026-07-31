@@ -41,31 +41,56 @@ def array_or_none(values) -> np.ndarray | None:
 
 
 def masked_video_signal(video: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    data = np.asarray(video, dtype=np.float32)
     count = np.count_nonzero(mask)
     if count == 0:
-        return np.full((data.shape[0],), np.nan, dtype=np.float32)
-    return np.nanmean(np.where(mask[None, :, :], data, np.nan), axis=(1, 2)).astype(np.float32)
+        return np.full((video.shape[0],), np.nan, dtype=np.float32)
+    result = np.full((video.shape[0],), np.nan, dtype=np.float32)
+    for start, chunk in video_chunks(video):
+        result[start : start + chunk.shape[0]] = np.nanmean(
+            chunk[:, mask],
+            axis=1,
+            dtype=np.float32,
+        )
+    return result
 
 
 def histogram_matrix(video: np.ndarray, mask: np.ndarray, bins: int = 256) -> HistogramData:
-    data = np.asarray(video, dtype=np.float32)
-    selected = data[:, mask]
-    selected = selected[np.isfinite(selected)]
-    if selected.size == 0:
+    vmin = np.inf
+    vmax = -np.inf
+    has_finite = False
+    for _, chunk in video_chunks(video):
+        selected = chunk[:, mask]
+        finite = selected[np.isfinite(selected)]
+        if finite.size:
+            has_finite = True
+            vmin = min(vmin, float(np.min(finite)))
+            vmax = max(vmax, float(np.max(finite)))
+    if not has_finite:
         return HistogramData(
-            np.zeros((bins, data.shape[0]), dtype=np.float32),
+            np.zeros((bins, video.shape[0]), dtype=np.float32),
             0.0,
             1.0,
             1.0,
         )
-    vmin = float(np.nanmin(selected))
-    vmax = float(np.nanmax(selected))
     if vmax <= vmin:
         vmax = vmin + 1.0
-    counts = np.zeros((bins, data.shape[0]), dtype=np.float32)
+    counts = np.zeros((bins, video.shape[0]), dtype=np.float32)
     edges = np.linspace(vmin, vmax, bins + 1, dtype=np.float32)
-    for frame_idx, frame in enumerate(data):
-        counts[:, frame_idx] = np.histogram(frame[mask], bins=edges)[0]
+    for start, chunk in video_chunks(video):
+        for offset, frame in enumerate(chunk):
+            counts[:, start + offset] = np.histogram(frame[mask], bins=edges)[0]
     count_max = float(np.nanmax(counts))
     return HistogramData(counts, vmin, vmax, count_max if count_max > 0 else 1.0)
+
+
+def mean_video(video) -> np.ndarray:
+    total = np.zeros(tuple(int(size) for size in video.shape[-2:]), dtype=np.float64)
+    for _, chunk in video_chunks(video):
+        total += np.sum(chunk, axis=0, dtype=np.float64)
+    return (total / max(int(video.shape[0]), 1)).astype(np.float32)
+
+
+def video_chunks(video, frame_chunk_size: int = 8):
+    for start in range(0, int(video.shape[0]), frame_chunk_size):
+        stop = min(start + frame_chunk_size, int(video.shape[0]))
+        yield start, np.asarray(video[start:stop], dtype=np.float32)

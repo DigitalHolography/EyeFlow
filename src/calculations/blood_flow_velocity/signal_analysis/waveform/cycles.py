@@ -8,18 +8,44 @@ from calculations.math.arrays import as_nonnegative_int_indexes
 
 
 def average_cycle(values: np.ndarray, peaks: np.ndarray, samples: int) -> np.ndarray | None:
-    if peaks.size < 2:
+    """Return a fixed-length mean cycle, matching MATLAB ``interpSignal``.
+
+    Each interval between consecutive systolic boundaries is interpolated onto
+    the same normalized time grid before the cycles are averaged.  Taking the
+    extrema after this function is therefore different from taking extrema on
+    the concatenated recording (or averaging per-cycle extrema).
+    """
+    values = np.asarray(values, dtype=np.float32).reshape(-1)
+    peaks = as_nonnegative_int_indexes(peaks)
+    samples = int(samples)
+    if samples < 1:
+        raise ValueError("samples must be positive.")
+    if values.size == 0:
         return None
-    cycles = []
-    base_x = np.linspace(0, 1, samples, dtype=np.float32)
+
+    if peaks.size < 2:
+        return np.interp(
+            np.linspace(0, values.size - 1, samples, dtype=np.float32),
+            np.arange(values.size, dtype=np.float32),
+            values,
+        ).astype(np.float32)
+
+    cycles: list[np.ndarray] = []
     for start, stop in zip(peaks[:-1], peaks[1:]):
-        if stop <= start + 1:
+        start = int(start)
+        stop = int(stop)
+        if start < 0 or stop > values.size or stop <= start + 1:
             continue
-        beat = values[start:stop]
-        cycles.append(np.interp(base_x, np.linspace(0, 1, beat.size), beat))
+        source_x = np.arange(start, stop, dtype=np.float32)
+        target_x = np.linspace(start, stop - 1, samples, dtype=np.float32)
+        cycles.append(np.interp(target_x, source_x, values[start:stop]))
     if not cycles:
         return None
-    return np.nanmean(np.asarray(cycles, dtype=np.float32), axis=0).astype(np.float32)
+
+    return np.mean(np.asarray(cycles, dtype=np.float32), axis=0).astype(
+        np.float32,
+        copy=False,
+    )
 
 
 def cycle_extrema(values: np.ndarray, peaks: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -30,11 +56,11 @@ def cycle_extrema(values: np.ndarray, peaks: np.ndarray) -> tuple[np.ndarray, np
     for first, second in zip(peaks[:-1], peaks[1:]):
         if second <= first + 2:
             continue
-        midpoint = first + int(round((second - first) / 2))
-        maxima.append(first + int(np.nanargmax(values[first:midpoint])))
+        midpoint = first + int(np.floor((second - first) / 2.0 + 0.5))
+        maxima.append(first + int(np.nanargmax(values[first : midpoint + 1])))
         minima.append(midpoint + int(np.nanargmin(values[midpoint:second])))
     if peaks[0] > 0:
-        minima.insert(0, int(np.nanargmin(values[: peaks[0]])))
+        minima.insert(0, int(np.nanargmin(values[: peaks[0] + 1])))
     if peaks[-1] < values.size:
         maxima.append(peaks[-1] + int(np.nanargmax(values[peaks[-1]:])))
     return np.asarray(maxima, dtype=np.int32), np.asarray(minima, dtype=np.int32)

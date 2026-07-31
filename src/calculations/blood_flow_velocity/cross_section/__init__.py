@@ -1,4 +1,4 @@
-"""Segment preparation helpers for blood-flow velocity analyses."""
+"""Cross-section geometry and velocity-signal calculations."""
 
 from .branch_identity import (
     BranchIdentityResult,
@@ -6,6 +6,7 @@ from .branch_identity import (
     label_vessel_branches,
 )
 from .generate_cross_section_signals import (
+    CrossSectionProfileOutputs,
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
     generate_cross_section_signals,
@@ -17,6 +18,7 @@ __all__ = [
     "BranchIdentityResult",
     "BranchIdentityStages",
     "CrossSectionSignalResult",
+    "CrossSectionProfileOutputs",
     "CrossSectionSignalSettings",
     "SegmentRingSettings",
     "generate_cross_section_signals",

@@ -16,6 +16,7 @@ class OutputType(Enum):
     HTML = "html"
     MP4 = "mp4"
     AVI = "avi"
+    GIF = "gif"
     PDF = "pdf"
 
 

@@ -7,11 +7,10 @@ from pathlib import Path
 from .signal_inputs import (
     masked_video_signal as _masked_signal,
 )
-from input_output.writers.png import PngArtifactWriter as FigureWriter
+from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,
-    _array_or_none,
     _log,
     _vector,
     display_frequency as _display_frequency,
@@ -22,9 +21,9 @@ from .plotting import _line_plot
 
 def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     paths: list[Path] = []
-    f_video = _array_or_none(ctx.analysis.get("fRMS"))
-    f_bkg = _array_or_none(ctx.analysis.get("fRMS_bkg"))
-    delta = _array_or_none(ctx.analysis.get("deltafRMS"))
+    f_video = ctx.analysis.get("fRMS")
+    f_bkg = ctx.analysis.get("fRMS_bkg")
+    delta = ctx.analysis.get("deltafRMS")
     if f_video is not None and f_bkg is not None:
         f_artery = _display_frequency(_masked_signal(f_video, ctx.artery_section_mask))
         f_artery_bkg = _display_frequency(_masked_signal(f_bkg, ctx.artery_section_mask))
@@ -102,13 +101,17 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
             ctx.time,
             [
                 (
-                    _display_velocity(_vector(ctx.analysis["retinal_artery_velocity_signal"])),
+                    _display_velocity(
+                        _vector(ctx.analysis["retinal_artery_velocity_signal_filtered"])
+                    ),
                     "-",
                     "tab:red",
                     "arteries",
                 ),
                 (
-                    _display_velocity(_vector(ctx.analysis["retinal_vein_velocity_signal"])),
+                    _display_velocity(
+                        _vector(ctx.analysis["retinal_vein_velocity_signal_filtered"])
+                    ),
                     "-",
                     "tab:blue",
                     "veins",

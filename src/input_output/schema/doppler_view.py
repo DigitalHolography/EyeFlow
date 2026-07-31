@@ -134,23 +134,3 @@ class DopplerViewSource(TypedSource):
         return int(
             self._config_value("VelocityEstimation", "LocalBackgroundDist", 2)
         )
-
-    def peripapillary_inner_radius(self) -> np.float32:
-        return np.float32(
-            self._config_value("PeripapillaryVascularZone", "InnerRadius", 0.10)
-        )
-
-    def peripapillary_outer_radius(self) -> np.float32:
-        return np.float32(
-            self._config_value("PeripapillaryVascularZone", "OuterRadius", 0.35)
-        )
-
-    def peripapillary_ring_count(self) -> np.int32:
-        return np.int32(
-            self._config_value("PeripapillaryRingAnalysis", "RingsNumber", 10)
-        )
-
-    def peripapillary_ring_width(self) -> np.float32:
-        return np.float32(
-            self._config_value("PeripapillaryRingAnalysis", "RingsWidth", -1.0)
-        )

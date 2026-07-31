@@ -5,6 +5,78 @@ from __future__ import annotations
 import numpy as np
 
 
+def rfft_normalized(
+    signal: np.ndarray,
+    axis: int = -1,
+    dtype=np.float32,
+) -> np.ndarray:
+    """Return the real FFT normalized by the number of samples."""
+    values = np.asarray(signal, dtype=dtype)
+    sample_count = values.shape[axis]
+    if sample_count <= 0:
+        raise ValueError("The Fourier transform axis must contain samples")
+    return np.fft.rfft(values, axis=axis) / float(sample_count)
+
+
+def _axis_slice(ndim: int, axis: int, start: int, stop: int) -> tuple[slice, ...]:
+    selection = [slice(None)] * ndim
+    selection[axis] = slice(start, stop)
+    return tuple(selection)
+
+
+def truncate_harmonics(
+    coefficients: np.ndarray,
+    max_harmonic: int,
+    axis: int = -1,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """Keep harmonics ``0..H`` and return retained/full-truncated arrays."""
+    values = np.asarray(coefficients)
+    harmonic_count = values.shape[axis]
+    if harmonic_count == 0:
+        raise ValueError("The Fourier coefficient axis must not be empty")
+    if max_harmonic < 0:
+        raise ValueError("max_harmonic must be non-negative")
+
+    highest = min(int(max_harmonic), harmonic_count - 1)
+    kept = np.array(
+        values[_axis_slice(values.ndim, axis, 0, highest + 1)],
+        copy=True,
+    )
+    truncated = np.zeros_like(values)
+    truncated[_axis_slice(values.ndim, axis, 0, highest + 1)] = kept
+    return kept, truncated, highest
+
+
+def irfft_normalized(
+    coefficients: np.ndarray,
+    sample_count: int,
+    axis: int = -1,
+) -> np.ndarray:
+    """Reconstruct a signal from coefficients normalized by sample count."""
+    if sample_count <= 0:
+        raise ValueError("sample_count must be positive")
+    values = np.asarray(coefficients)
+    return np.fft.irfft(values * float(sample_count), n=sample_count, axis=axis)
+
+
+def harmonic_pack(
+    signal: np.ndarray,
+    max_harmonic: int,
+    axis: int = -1,
+    dtype=np.float32,
+) -> dict[str, np.ndarray | int | None]:
+    """Return full/truncated normalized Fourier representations."""
+    values = np.asarray(signal, dtype=dtype)
+    sample_count = values.shape[axis]
+    if sample_count < 2:
+        return {"V": None, "H": 0, "vb": None, "Vfull": None}
+
+    full = rfft_normalized(values, axis=axis, dtype=dtype)
+    kept, truncated, highest = truncate_harmonics(full, max_harmonic, axis=axis)
+    reconstructed = irfft_normalized(truncated, sample_count, axis=axis)
+    return {"V": kept, "H": highest, "vb": reconstructed, "Vfull": full}
+
+
 def next_power_of_two(value: int) -> int:
     if value < 1:
         raise ValueError("next_power_of_two expects a strictly positive integer.")

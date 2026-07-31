@@ -11,6 +11,16 @@ import numpy as np
 from calculations.blood_flow_velocity import CrossSectionSignalSettings
 from input_output.schema import DopplerViewSource, HolodopplerSource, HolodopplerTiming
 
+from .velocity.constants import (
+    CROSS_SECTION_HYDRODYNAMIC_DIAMETERS,
+    CROSS_SECTION_ROTATE_FROM_MASK,
+    CROSS_SECTION_SCALE_FACTOR_WIDTH,
+    CROSS_SECTION_VELOCITY_PROFILE_THRESHOLD,
+    DEFAULT_PIXEL_SIZE_MM,
+    REFERENCE_OPTIC_DISC_DIAMETER_MM,
+    SPATIAL_INTERPOLATION_FACTOR,
+)
+
 if TYPE_CHECKING:
     from pipeline_engine import PipelineContext
 
@@ -24,8 +34,10 @@ DOPPLERVIEW_BEAT_INDEX_BASE = 0
 class WaveformShapeSourceData:
     """Resolved source data with explicit axis contracts for waveform metrics."""
 
-    moment0: np.ndarray
-    moment2: np.ndarray
+    moment0: object
+    moment2: object
+    flat_field_gaussian_ratio: float
+    flat_field_border: float
     retinal_artery_mask: np.ndarray
     retinal_vein_mask: np.ndarray
     retinal_labeled_vessels: np.ndarray | None
@@ -35,10 +47,6 @@ class WaveformShapeSourceData:
     optic_disc_height: np.ndarray | None
     timing: HolodopplerTiming
     local_background_dist: int
-    peripapillary_inner_radius: np.float32
-    peripapillary_ring_count: np.int32
-    peripapillary_ring_width: np.float32
-    segment_length: np.float32
     cross_section_settings: CrossSectionSignalSettings
     dopplerview_analysis: dict[str, object] | None
     provenance: dict[str, object]
@@ -49,6 +57,7 @@ class WaveformShapeSourceData:
             "moment2": self.moment2,
             "retinal_artery_mask": self.retinal_artery_mask,
             "retinal_vein_mask": self.retinal_vein_mask,
+            "optic_disc_center": self.optic_disc_center,
         }
 
 
@@ -70,8 +79,8 @@ class WaveformShapeSources:
         )
 
     def load(self) -> WaveformShapeSourceData:
-        moment0 = self._timed_load("HD moment0", self.hd.moment0)
-        moment2 = self._timed_load("HD moment2", self.hd.moment2)
+        moment0 = self._timed_load("HD moment0 dataset", self.hd.moment0_dataset)
+        moment2 = self._timed_load("HD moment2 dataset", self.hd.moment2_dataset)
         spatial_shape = moment0.shape[-2:]
         timing = self._timed_load("HD timing", self.hd.timing)
         artery_mask, artery_axes_swapped = _align_spatial_array(
@@ -108,15 +117,21 @@ class WaveformShapeSources:
             self._timed_load("DV optic disc height", self.dv.optic_disc_height),
             swapped=spatial_axes_swapped,
         )
-        dopplerview_analysis = _align_analysis_spatial_arrays(
-            self._timed_load(
-                "DV analysis availability", lambda: self.dv.analysis(default=None)
-            ),
-            spatial_shape,
-        )
         return WaveformShapeSourceData(
             moment0=moment0,
             moment2=moment2,
+            flat_field_gaussian_ratio=_config_float(
+                self.dv,
+                "FlatFieldCorrection",
+                "GWRatio",
+                0.07,
+            ),
+            flat_field_border=_config_float(
+                self.dv,
+                "FlatFieldCorrection",
+                "Border",
+                0.15,
+            ),
             retinal_artery_mask=np.asarray(artery_mask, dtype=bool),
             retinal_vein_mask=np.asarray(vein_mask, dtype=bool),
             retinal_labeled_vessels=labeled_vessels,
@@ -126,15 +141,11 @@ class WaveformShapeSources:
             optic_disc_height=optic_disc_height,
             timing=timing,
             local_background_dist=self.dv.local_background_dist(),
-            peripapillary_inner_radius=self._inner_radius(),
-            peripapillary_ring_count=self._circle_count(),
-            peripapillary_ring_width=self._ring_width(),
-            segment_length=self._segment_length(),
             cross_section_settings=self._cross_section_settings(
                 optic_disc_width,
                 optic_disc_height,
             ),
-            dopplerview_analysis=dopplerview_analysis,
+            dopplerview_analysis=None,
             provenance=_source_provenance(
                 self.hd,
                 self.dv,
@@ -142,7 +153,7 @@ class WaveformShapeSources:
                 optic_disc_mask,
                 optic_disc_center,
                 spatial_axes_swapped=spatial_axes_swapped,
-                dopplerview_analysis_available=dopplerview_analysis is not None,
+                dopplerview_analysis_available=False,
             ),
         )
 
@@ -157,76 +168,20 @@ class WaveformShapeSources:
         if callable(self.log):
             self.log(message)
 
-    def _inner_radius(self) -> np.float32:
-        return np.float32(
-            _config_float(
-                self.hd,
-                "SizeOfField",
-                "SmallRadiusRatio",
-                float(self.dv.peripapillary_inner_radius()),
-            )
-        )
-
-    def _circle_count(self) -> np.int32:
-        return np.int32(
-            _config_int(
-                self.hd,
-                "generateCrossSectionSignals",
-                "NumberOfCircles",
-                int(self.dv.peripapillary_ring_count()),
-            )
-        )
-
-    def _ring_width(self) -> np.float32:
-        return np.float32(self.dv.peripapillary_ring_width())
-
-    def _segment_length(self) -> np.float32:
-        return np.float32(
-            _config_float(
-                self.hd,
-                "generateCrossSectionSignals",
-                "SegmentsLength",
-                -1.0,
-            )
-        )
-
     def _cross_section_settings(self, optic_disc_width, optic_disc_height):
         return CrossSectionSignalSettings(
-            scale_factor_width=_config_float(
-                self.hd,
-                "generateCrossSectionSignals",
-                "ScaleFactorWidth",
-                3.0,
-            ),
-            hydrodynamic_diameters=_config_bool(
-                self.hd,
-                "generateCrossSectionSignals",
-                "HydrodynamicDiameters",
-                True,
-            ),
-            velocity_profile_threshold=_config_float(
-                self.hd,
-                "generateCrossSectionSignals",
-                "velocityProfileThreshold",
-                0.5,
-            ),
-            rotate_from_mask=_config_bool(
-                self.hd,
-                "generateCrossSectionSignals",
-                "RotateFromMask",
-                False,
-            ),
+            scale_factor_width=CROSS_SECTION_SCALE_FACTOR_WIDTH,
+            hydrodynamic_diameters=CROSS_SECTION_HYDRODYNAMIC_DIAMETERS,
+            velocity_profile_threshold=CROSS_SECTION_VELOCITY_PROFILE_THRESHOLD,
+            rotate_from_mask=CROSS_SECTION_ROTATE_FROM_MASK,
             pixel_size_mm=self._pixel_size(optic_disc_width, optic_disc_height),
         )
 
     def _pixel_size(self, optic_disc_width, optic_disc_height) -> float:
         diameter = _mean_pair(optic_disc_width, optic_disc_height)
         if diameter is not None:
-            ref = _config_float(self.hd, "generateCrossSectionSignals", "RefPapillaSize", 1.91)
-            return ref / diameter
-        default = _config_float(self.hd, "generateCrossSectionSignals", "DefaultPixelSize", 0.0191)
-        factor = _config_float(self.hd, "Preprocess", "InterpolationFactor", 1.0)
-        return default / (2.0 ** factor)
+            return REFERENCE_OPTIC_DISC_DIAMETER_MM / diameter
+        return DEFAULT_PIXEL_SIZE_MM / (2.0**SPATIAL_INTERPOLATION_FACTOR)
 
 
 def load_waveform_shape_source_data(ctx: PipelineContext) -> WaveformShapeSourceData:
@@ -289,23 +244,6 @@ def _align_spatial_array(
     )
 
 
-def _align_analysis_spatial_arrays(
-    analysis: dict[str, object] | None,
-    spatial_shape: tuple[int, int],
-) -> dict[str, object] | None:
-    if analysis is None:
-        return None
-    aligned = dict(analysis)
-    for key in (
-        "retinal_vessel_velocity",
-        "velocity_map_avg",
-        "fRMS_avg",
-        "fRMS_bkg_avg",
-    ):
-        aligned[key], _ = _align_spatial_array(aligned[key], spatial_shape, key)
-    return aligned
-
-
 def _align_spatial_pair(value, *, swapped: bool):
     if value is None or not swapped:
         return value
@@ -326,17 +264,6 @@ def _config_float(source, section: str, key: str, default: float) -> float:
     value = source.config_value(section, key, default)
     array = np.asarray(value).reshape(-1)
     return float(default) if array.size == 0 else float(array[0])
-
-
-def _config_int(source, section: str, key: str, default: int) -> int:
-    return int(round(_config_float(source, section, key, float(default))))
-
-
-def _config_bool(source, section: str, key: str, default: bool) -> bool:
-    value = source.config_value(section, key, default)
-    if isinstance(value, str):
-        return value.lower() in {"1", "true", "yes"}
-    return bool(np.asarray(value).reshape(-1)[0])
 
 
 def _mean_pair(first, second) -> float | None:
