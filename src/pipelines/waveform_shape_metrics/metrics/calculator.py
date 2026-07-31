@@ -1,14 +1,20 @@
 """AngioEye waveform calculations ported from src/pipelines/waveform_shape_metrics.py."""
 
 from functools import cache
-import warnings
 
 import numpy as np
 
-from pipeline_engine import with_attrs
-
-from .formulas import LATEX_FORMULAS
-from .models import WaveformShapeMetricInputs
+from calculations.math import (
+    harmonic_pack as build_harmonic_pack,
+    nanargmax,
+    nanargmin,
+    nanmax,
+    nanmean,
+    nanmedian,
+    nanmin,
+    nansum,
+    rfft_normalized,
+)
 
 
 class WaveformShapeMetricsCalculator:
@@ -87,24 +93,6 @@ class WaveformShapeMetricsCalculator:
         if pi < 0:
             pi = 0.0
         return ri, pi
-
-    @staticmethod
-    def _safe_nanmean(x: np.ndarray) -> float:
-        if x.size == 0 or not np.any(np.isfinite(x)):
-            return np.nan
-        return float(np.nanmean(x))
-
-    @staticmethod
-    def _safe_nanmedian(x: np.ndarray) -> float:
-        if x.size == 0 or not np.any(np.isfinite(x)):
-            return np.nan
-        return float(np.nanmedian(x))
-
-    @staticmethod
-    def _nanmedian_no_warning(x: np.ndarray, axis=None) -> np.ndarray:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            return np.nanmedian(x, axis=axis)
 
     @staticmethod
     def _ensure_time_by_beat(v2: np.ndarray, n_beats: int) -> np.ndarray:
@@ -228,7 +216,7 @@ class WaveformShapeMetricsCalculator:
             return np.nan
 
         vv = np.asarray(v, dtype=float)
-        vmax = float(np.nanmax(vv))
+        vmax = float(nanmax(vv))
         if (not np.isfinite(vmax)) or vmax <= 0:
             return np.nan
 
@@ -292,7 +280,7 @@ class WaveformShapeMetricsCalculator:
         if n < 3:
             return np.nan
 
-        X = np.fft.rfft(vv)
+        X = rfft_normalized(vv, axis=0)
         P = np.abs(X) ** 2
         if P.size < 3:
             return np.nan
@@ -316,32 +304,6 @@ class WaveformShapeMetricsCalculator:
             return np.nan
 
         return float(E_LF / E_HF)
-
-    def _harmonic_pack(self, v: np.ndarray, Tbeat: float) -> dict:
-        """
-        Compute complex harmonic coefficients Vn for n=0..H, with H=min(H_MAX, n_rfft-1),
-        and synthesize band-limited waveform vb(t) using harmonics 0..H.
-        """
-        if (not np.isfinite(Tbeat)) or Tbeat <= 0:
-            return {"V": None, "H": 0, "vb": None, "Vfull": None}
-
-        if v.size == 0 or not np.any(np.isfinite(v)):
-            return {"V": None, "H": 0, "vb": None, "Vfull": None}
-
-        vv = np.where(np.isfinite(v), v, 0.0)
-        n = vv.size
-        if n < 2:
-            return {"V": None, "H": 0, "vb": None, "Vfull": None}
-
-        Vfull = np.fft.rfft(vv) / float(n)
-        H = int(min(self.H_MAX, Vfull.size - 1))
-        V = Vfull[: H + 1].copy()
-
-        Vtrunc = np.zeros_like(Vfull)
-        Vtrunc[: H + 1] = V
-        vb = np.fft.irfft(Vtrunc * float(n), n=n)
-
-        return {"V": V, "H": H, "vb": vb, "Vfull": Vfull}
 
     def _higher_harmonic_rolloff_metrics(self, V: np.ndarray) -> dict:
         """
@@ -375,7 +337,7 @@ class WaveformShapeMetricsCalculator:
 
         power = np.abs(V[2 : H + 1]) ** 2
         power = np.where(np.isfinite(power), power, np.nan)
-        s = float(np.nansum(power))
+        s = float(nansum(power))
         if (not np.isfinite(s)) or s <= 0:
             return out
 
@@ -438,10 +400,10 @@ class WaveformShapeMetricsCalculator:
         if not np.any(np.isfinite(v)):
             return np.nan
         x = np.where(np.isfinite(v), v, np.nan)
-        rms = float(np.sqrt(self._safe_nanmean(x * x)))
+        rms = float(np.sqrt(nanmean(x * x)))
         if rms <= 0:
             return np.nan
-        return float(np.nanmax(x) / rms)
+        return float(nanmax(x) / rms)
 
     def _phase_organization_metrics(self, V: np.ndarray, Tbeat: float) -> dict:
         """
@@ -522,8 +484,8 @@ class WaveformShapeMetricsCalculator:
         vals_over_T = np.asarray(
             [dphi / (2.0 * np.pi * n) for n, dphi, _ in selected], dtype=float
         )
-        center = float(np.nanmedian(vals_over_T))
-        spread = float(np.nanmedian(np.abs(vals_over_T - center)))
+        center = float(nanmedian(vals_over_T))
+        spread = float(nanmedian(np.abs(vals_over_T - center)))
 
         out["t_phi_over_T"] = center
         out["s_phi_over_T"] = spread
@@ -593,8 +555,8 @@ class WaveformShapeMetricsCalculator:
         if v.size == 0 or not np.any(np.isfinite(v)):
             return np.nan, np.nan, -1, -1
 
-        idx_peak = int(np.nanargmax(v))
-        idx_min = int(np.nanargmin(v))
+        idx_peak = int(nanargmax(v))
+        idx_min = int(nanargmin(v))
 
         return float(idx_peak / v.size), float(idx_min / v.size), idx_peak, idx_min
 
@@ -613,7 +575,7 @@ class WaveformShapeMetricsCalculator:
         ):
             return np.nan, np.nan, np.nan, np.nan
 
-        meanv = self._safe_nanmean(v)
+        meanv = float(nanmean(v))
         if (not np.isfinite(meanv)) or meanv <= 0:
             return np.nan, np.nan, np.nan, np.nan
 
@@ -622,11 +584,11 @@ class WaveformShapeMetricsCalculator:
         if not np.any(np.isfinite(dvdt)):
             return np.nan, np.nan, np.nan, np.nan
 
-        idx_up = int(np.nanargmax(dvdt))
-        idx_down = int(np.nanargmin(dvdt))
+        idx_up = int(nanargmax(dvdt))
+        idx_down = int(nanargmin(dvdt))
 
-        s_up = float(np.nanmax(dvdt))
-        s_down = float(np.nanmin(dvdt))
+        s_up = float(nanmax(dvdt))
+        s_down = float(nanmin(dvdt))
 
         return (
             float(Tbeat * s_up / (meanv + self.eps)),
@@ -643,7 +605,7 @@ class WaveformShapeMetricsCalculator:
         if v.size == 0 or not np.any(np.isfinite(v)):
             return np.nan
 
-        meanv = self._safe_nanmean(v)
+        meanv = float(nanmean(v))
         if (not np.isfinite(meanv)) or meanv <= 0:
             return np.nan
 
@@ -652,7 +614,7 @@ class WaveformShapeMetricsCalculator:
             return np.nan
 
         tail = np.asarray(v[k0:k1], dtype=float)
-        vend = self._safe_nanmean(tail)
+        vend = float(nanmean(tail))
         if (not np.isfinite(vend)) or vend < 0:
             return np.nan
 
@@ -762,7 +724,7 @@ class WaveformShapeMetricsCalculator:
             return np.nan
         z = (t - mu_t) / (sigma_t + self.eps)
         return float(
-            np.nansum(np.where(np.isfinite(v), v, 0.0) * (z**3)) / (m0 + self.eps)
+            nansum(np.where(np.isfinite(v), v, 0.0) * (z**3)) / (m0 + self.eps)
         )
 
     def _derivative_energy_slope(self, v: np.ndarray, Tbeat: float, m0: float) -> float:
@@ -801,9 +763,9 @@ class WaveformShapeMetricsCalculator:
             return {}
 
         tail = np.asarray(v[k0:k1], dtype=float)
-        vend = self._safe_nanmean(tail)
+        vend = float(nanmean(tail))
         vv = np.where(np.isfinite(v), v, np.nan)
-        m0_sum = float(np.nansum(vv))
+        m0_sum = float(nansum(vv))
         if m0_sum <= 0:
             return {}
 
@@ -811,9 +773,9 @@ class WaveformShapeMetricsCalculator:
         dt = Tbeat / n
         m0 = float(m0_sum * dt)
 
-        vmax = float(np.nanmax(vv))
-        vmin = float(np.nanmin(vv))
-        vmean = float(np.nanmean(vv))
+        vmax = float(nanmax(vv))
+        vmin = float(nanmin(vv))
+        vmean = float(nanmean(vv))
 
         d_full = np.concatenate(
             ([0.0], np.cumsum(np.where(np.isfinite(vv), vv, 0.0)) / m0_sum)
@@ -829,7 +791,9 @@ class WaveformShapeMetricsCalculator:
         dvdt_norm = (Tbeat**3 / ((m0 + self.eps) ** 2)) * (dvdt**2)
         d2vdt2_norm = (Tbeat**5 / ((m0 + self.eps) ** 2)) * (d2vdt2**2)
 
-        hp = self._harmonic_pack(vv, Tbeat)
+        hp = build_harmonic_pack(
+            np.where(np.isfinite(vv), vv, 0.0), self.H_MAX, axis=0
+        )
         V = hp["V"]
         vb = hp["vb"]
         H = int(hp["H"])
@@ -856,11 +820,11 @@ class WaveformShapeMetricsCalculator:
             power_h = power[1 : H + 1]
             mags_h = mags[1 : H + 1]
 
-            power_sum = float(np.nansum(power_h))
-            mag_sum = float(np.nansum(mags_h))
+            power_sum = float(nansum(power_h))
+            mag_sum = float(nansum(mags_h))
 
             E_total = power_sum
-            E_low = float(np.nansum(power[1 : self.H_LOW_MAX + 1]))
+            E_low = float(nansum(power[1 : self.H_LOW_MAX + 1]))
 
             if np.isfinite(power_sum) and power_sum > 0:
                 harmonic_energy_weights[0:H] = power_h / (power_sum + self.eps)
@@ -1047,7 +1011,7 @@ class WaveformShapeMetricsCalculator:
             return {key: np.nan for key in metric_names}
 
         vv = np.where(np.isfinite(v), v, np.nan)
-        m0 = float(np.nansum(vv))
+        m0 = float(nansum(vv))
         if m0 <= 0:
             return {key: np.nan for key in metric_names}
 
@@ -1055,13 +1019,13 @@ class WaveformShapeMetricsCalculator:
         t = np.arange(n, dtype=float) * dt
         d_full, tau_full = self._cumulative_profile(vv, m0)
 
-        m1 = float(np.nansum(vv * t))
+        m1 = float(nansum(vv * t))
         mu_t = m1 / m0
         mu_t_over_T = mu_t / Tbeat
 
-        vmax = float(np.nanmax(vv))
-        vmin = float(np.nanmin(vv))
-        meanv = float(self._safe_nanmean(vv))
+        vmax = float(nanmax(vv))
+        vmin = float(nanmin(vv))
+        meanv = float(nanmean(vv))
 
         if vmax <= 0:
             RI = np.nan
@@ -1078,18 +1042,18 @@ class WaveformShapeMetricsCalculator:
 
         k_R_VTI = int(np.ceil(n * self.ratio_R_VTI))
         k_R_VTI = max(0, min(n, k_R_VTI))
-        D1_R_VTI = float(np.nansum(vv[:k_R_VTI])) if k_R_VTI > 0 else np.nan
-        D2_R_VTI = float(np.nansum(vv[k_R_VTI:])) if k_R_VTI < n else np.nan
+        D1_R_VTI = float(nansum(vv[:k_R_VTI])) if k_R_VTI > 0 else np.nan
+        D2_R_VTI = float(nansum(vv[k_R_VTI:])) if k_R_VTI < n else np.nan
         R_VTI = D1_R_VTI / (D2_R_VTI + self.eps)
 
         k_sf = int(np.ceil(n * self.ratio_SF_VTI))
         k_sf = max(0, min(n, k_sf))
-        D1_sf = float(np.nansum(vv[:k_sf])) if k_sf > 0 else np.nan
-        D2_sf = float(np.nansum(vv[k_sf:])) if k_sf < n else np.nan
+        D1_sf = float(nansum(vv[:k_sf])) if k_sf > 0 else np.nan
+        D2_sf = float(nansum(vv[k_sf:])) if k_sf < n else np.nan
         SF_VTI = D1_sf / (D1_sf + D2_sf + self.eps)
 
         dtau = t - mu_t
-        m2 = float(np.nansum(vv * (dtau**2)))
+        m2 = float(nansum(vv * (dtau**2)))
         sigma_t = np.sqrt(m2 / m0 + self.eps)
         sigma_t_over_T = sigma_t / Tbeat
 
@@ -1110,7 +1074,13 @@ class WaveformShapeMetricsCalculator:
         d75 = d_samples["d75_over_D"]
         d90 = d_samples["d90_over_D"]
 
-        hp = harmonic_pack if harmonic_pack is not None else self._harmonic_pack(vv, Tbeat)
+        hp = (
+            harmonic_pack
+            if harmonic_pack is not None
+            else build_harmonic_pack(
+                np.where(np.isfinite(vv), vv, 0.0), self.H_MAX, axis=0
+            )
+        )
         vb = hp["vb"]
         E_LF_over_E_HF = self._spectral_ratio_LF_over_HF_from_harmonic_pack(hp)
 
@@ -1319,10 +1289,10 @@ class WaveformShapeMetricsCalculator:
 
         if n_radii:
             for key in metric_names:
-                br[key][:] = self._nanmedian_no_warning(seg[key], axis=2)
+                br[key][:] = nanmedian(seg[key], axis=2)
         if n_branches and n_radii:
             for key in metric_names:
-                gl[key][:] = self._nanmedian_no_warning(
+                gl[key][:] = nanmedian(
                     seg[key].reshape(n_beats, n_branches * n_radii),
                     axis=1,
                 )
@@ -1359,236 +1329,3 @@ class WaveformShapeMetricsCalculator:
         out["RI"][:] = ri
         out["PI"][:] = pi
         return out
-
-    def _pack_segment_outputs(
-        self,
-        metrics: dict,
-        vessel_prefix: str,
-        v_raw_seg: np.ndarray,
-        v_band_seg: np.ndarray,
-        T: np.ndarray,
-    ) -> None:
-        seg_b, br_b, gl_b, nb_b, nr_b, seg_note_b = self._compute_block_segment(
-            v_band_seg, T
-        )
-        seg_r, br_r, gl_r, nb_r, nr_r, seg_note_r = self._compute_block_segment(
-            v_raw_seg, T
-        )
-
-        seg_note = seg_note_b
-        if (nb_b != nb_r) or (nr_b != nr_r):
-            seg_note = seg_note_b + " | WARNING: raw/band branch/radius dims differ."
-
-        def pack(prefix: str, d: dict, attrs_common: dict):
-            for k, arr in d.items():
-                metrics[f"{vessel_prefix}/{prefix}/{k}"] = with_attrs(arr, attrs_common)
-
-        pack(
-            "by_segment/bandlimited_segment",
-            seg_b,
-            {
-                "definition": ["per-segment metrics stored as (beat, branch, radius)"],
-                "segment_indexing": [seg_note],
-            },
-        )
-        pack(
-            "by_segment/raw_segment",
-            seg_r,
-            {
-                "definition": ["per-segment metrics stored as (beat, branch, radius)"],
-                "segment_indexing": [seg_note],
-            },
-        )
-
-        pack(
-            "by_segment/bandlimited_branch",
-            br_b,
-            {"definition": ["median over radii per branch"]},
-        )
-        pack(
-            "by_segment/raw_branch",
-            br_r,
-            {"definition": ["median over radii per branch"]},
-        )
-
-        pack(
-            "by_segment/bandlimited_global",
-            gl_b,
-            {"definition": ["median over all branch-radius segment values per beat"]},
-        )
-        pack(
-            "by_segment/raw_global",
-            gl_r,
-            {"definition": ["median over all branch-radius segment values per beat"]},
-        )
-
-        metrics[f"{vessel_prefix}/by_segment/params/ratio_R_VTI"] = np.asarray(
-            self.ratio_R_VTI, dtype=float
-        )
-        metrics[f"{vessel_prefix}/by_segment/params/ratio_SF_VTI"] = np.asarray(
-            self.ratio_SF_VTI, dtype=float
-        )
-        metrics[f"{vessel_prefix}/by_segment/params/ratio_vend_start"] = np.asarray(
-            self.ratio_vend_start, dtype=float
-        )
-        metrics[f"{vessel_prefix}/by_segment/params/ratio_vend_end"] = np.asarray(
-            self.ratio_vend_end, dtype=float
-        )
-        metrics[f"{vessel_prefix}/by_segment/params/eps"] = np.asarray(
-            self.eps, dtype=float
-        )
-        metrics[f"{vessel_prefix}/by_segment/params/ratio_W50"] = np.asarray(
-            self.ratio_W50, dtype=float
-        )
-        metrics[f"{vessel_prefix}/by_segment/params/ratio_W80"] = np.asarray(
-            self.ratio_W80, dtype=float
-        )
-        metrics[f"{vessel_prefix}/by_segment/params/H_LOW_MAX"] = np.asarray(
-            self.H_LOW_MAX, dtype=int
-        )
-        metrics[f"{vessel_prefix}/by_segment/params/H_MAX"] = np.asarray(
-            self.H_MAX, dtype=int
-        )
-
-    def _pack_global_outputs(
-        self,
-        metrics: dict,
-        vessel_prefix: str,
-        v_raw_gl: np.ndarray,
-        v_band_gl: np.ndarray,
-        T: np.ndarray,
-        latex_formulas: dict,
-    ) -> None:
-        metric_keys = self._metric_keys()
-        out_raw = self._compute_block_global(v_raw_gl, T)
-        out_band = self._compute_block_global(v_band_gl, T)
-
-        for k in metric_keys:
-            metrics[f"{vessel_prefix}/global/raw/{k[0]}"] = with_attrs(
-                out_raw[k[0]],
-                {
-                    "unit": [k[2]],
-                    "definition": [k[1]],
-                    "metric_family": [k[3]],
-                    "latex_formula": [latex_formulas[k[0]]],
-                },
-            )
-
-            metrics[f"{vessel_prefix}/global/bandlimited/{k[0]}"] = with_attrs(
-                out_band[k[0]],
-                {
-                    "unit": [k[2]],
-                    "definition": [k[1]],
-                    "metric_family": [k[3]],
-                    "latex_formula": [latex_formulas[k[0]]],
-                },
-            )
-
-        metrics[f"{vessel_prefix}/global/params/ratio_R_VTI"] = np.asarray(
-            self.ratio_R_VTI, dtype=float
-        )
-        metrics[f"{vessel_prefix}/global/params/ratio_SF_VTI"] = np.asarray(
-            self.ratio_SF_VTI, dtype=float
-        )
-        metrics[f"{vessel_prefix}/global/params/ratio_vend_start"] = np.asarray(
-            self.ratio_vend_start, dtype=float
-        )
-        metrics[f"{vessel_prefix}/global/params/ratio_vend_end"] = np.asarray(
-            self.ratio_vend_end, dtype=float
-        )
-        metrics[f"{vessel_prefix}/global/params/eps"] = np.asarray(
-            self.eps, dtype=float
-        )
-        metrics[f"{vessel_prefix}/global/params/ratio_W50"] = np.asarray(
-            self.ratio_W50, dtype=float
-        )
-        metrics[f"{vessel_prefix}/global/params/ratio_W80"] = np.asarray(
-            self.ratio_W80, dtype=float
-        )
-        metrics[f"{vessel_prefix}/global/params/H_LOW_MAX"] = np.asarray(
-            self.H_LOW_MAX, dtype=int
-        )
-        metrics[f"{vessel_prefix}/global/params/H_MAX"] = np.asarray(
-            self.H_MAX, dtype=int
-        )
-
-        graphics_raw = self._compute_graphics_support_block(v_raw_gl, T)
-        graphics_band = self._compute_graphics_support_block(v_band_gl, T)
-
-        diagnostic_graphics = {
-            "A2_cumsum",
-            "A2_m",
-            "A2_cumsum_interp",
-            "A2_m_interp",
-            "m_50",
-            "m_80",
-            "rho_h",
-            "w_h",
-            "delta_phi_all",
-            "t_phi_n",
-            "t_phi_n_over_T",
-            "phase_harmonics_used",
-            "harmonic_phases",
-            "harmonic_weights",
-            "harmonic_energies_weights",
-        }
-
-        for name, arr in graphics_raw.items():
-            if name in diagnostic_graphics:
-                metrics[f"{vessel_prefix}/global/raw/diagnostics/{name}"] = arr
-            else:
-                metrics[f"{vessel_prefix}/global/raw/{name}"] = arr
-
-        for name, arr in graphics_band.items():
-            if name in diagnostic_graphics:
-                metrics[f"{vessel_prefix}/global/bandlimited/diagnostics/{name}"] = arr
-            else:
-                metrics[f"{vessel_prefix}/global/bandlimited/{name}"] = arr
-
-    def compute(self, inputs: WaveformShapeMetricInputs) -> dict[str, object]:
-        beat_periods = np.asarray(inputs.beat_period_seconds, dtype=np.float32)
-        metrics: dict[str, object] = {}
-        self._pack_vessel(
-            metrics,
-            "artery",
-            inputs.artery,
-            beat_periods,
-            LATEX_FORMULAS,
-        )
-        self._pack_vessel(
-            metrics,
-            "vein",
-            inputs.vein,
-            beat_periods,
-            LATEX_FORMULAS,
-        )
-        return metrics
-
-    def _pack_vessel(
-        self,
-        metrics,
-        prefix,
-        vessel,
-        beat_periods,
-        latex_formulas,
-    ) -> None:
-        if (
-            vessel.raw_segments is not None
-            and vessel.bandlimited_segments is not None
-        ):
-            self._pack_segment_outputs(
-                metrics,
-                prefix,
-                vessel.raw_segments,
-                vessel.bandlimited_segments,
-                beat_periods,
-            )
-        if vessel.raw_global is not None and vessel.bandlimited_global is not None:
-            self._pack_global_outputs(
-                metrics,
-                prefix,
-                vessel.raw_global,
-                vessel.bandlimited_global,
-                beat_periods,
-                latex_formulas,
-            )

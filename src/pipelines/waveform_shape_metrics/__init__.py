@@ -7,7 +7,9 @@ from .runner import run_waveform_shape_metrics
 
 @pipeline(
     name="waveform_shape_metrics",
-    description="Pipeline 1 MVP: global per-beat velocity outputs for AngioEye.",
+    description=(
+        "Compute global, by-segment, and hemifield waveform-shape metrics."
+    ),
     requires=["numpy", "h5py", "scipy", "skimage"],
     dag_produces=[
         "dopplerview_analysis",

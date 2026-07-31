@@ -132,8 +132,10 @@ class ScratchAndSchemaTests(unittest.TestCase):
         self.assertTrue(
             schema.analysis.fRMS_avg.startswith("Processing/FrequencyMaps/")
         )
-        self.assertTrue(schema.topology.optic_disc.mask.startswith("Segmentation/"))
-
+        self.assertFalse(hasattr(schema, "topology"))
+        self.assertTrue(
+            schema.segmentation.artery.branch_label_map.startswith("Segmentation/")
+        )
         analysis = {
             "retinal_artery_velocity_signal": np.arange(8, dtype=np.float32),
             "retinal_vein_velocity_signal": np.arange(8, dtype=np.float32),

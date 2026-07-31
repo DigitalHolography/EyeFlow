@@ -9,8 +9,8 @@ import numpy as np
 from input_output.schema import EyeFlowOutputPaths, VelocityPerBeatOutputPaths
 from pipeline_engine import DatasetValue
 
-from .calculator import WaveformShapeMetricsCalculator
 from .models import VesselWaveformInputs, WaveformShapeMetricInputs
+from .outputs import pack_waveform_shape_metric_calculations
 
 
 def run_waveform_shape_metric_calculations(
@@ -21,7 +21,7 @@ def run_waveform_shape_metric_calculations(
 
     schema = _resolve_output_paths(output_paths)
     inputs = waveform_shape_metric_inputs_from_outputs(metrics, schema)
-    computed = WaveformShapeMetricsCalculator().compute(inputs)
+    computed = pack_waveform_shape_metric_calculations(inputs)
     return {
         f"{schema.waveform_shape_metrics_root}/{key}": value
         for key, value in computed.items()

@@ -43,24 +43,21 @@ class VelocityPerBeatOutputPaths:
 
 
 @dataclass(frozen=True)
-class OpticDiscTopologyOutputPaths:
+class OpticDiscSegmentationOutputPaths:
     mask: str
-    center_xy: str
 
 
 @dataclass(frozen=True)
-class VesselTopologyOutputPaths:
-    mask: str | None
+class VesselSegmentationOutputPaths:
+    mask: str
     branch_label_map: str
-    branch_ids: str
-    segment_center_xy: str
 
 
 @dataclass(frozen=True)
-class TopologyOutputPaths:
-    optic_disc: OpticDiscTopologyOutputPaths
-    artery: VesselTopologyOutputPaths
-    vein: VesselTopologyOutputPaths
+class SegmentationOutputPaths:
+    optic_disc: OpticDiscSegmentationOutputPaths
+    artery: VesselSegmentationOutputPaths
+    vein: VesselSegmentationOutputPaths
 
 
 @dataclass(frozen=True)
@@ -101,7 +98,7 @@ class EyeFlowOutputPaths:
     analysis: DopplerViewAnalysisOutputPaths
     artery_per_beat: VelocityPerBeatOutputPaths
     vein_per_beat: VelocityPerBeatOutputPaths
-    topology: TopologyOutputPaths
+    segmentation: SegmentationOutputPaths
     artery_cross_section_profiles: CrossSectionProfileOutputPaths
     vein_cross_section_profiles: CrossSectionProfileOutputPaths
     heartbeat: HeartbeatOutputPaths
@@ -121,23 +118,18 @@ class EyeFlowOutputPaths:
             ) from exc
 
 
-def _topology_paths(root: str) -> TopologyOutputPaths:
-    return TopologyOutputPaths(
-        optic_disc=OpticDiscTopologyOutputPaths(
+def _segmentation_paths(root: str) -> SegmentationOutputPaths:
+    return SegmentationOutputPaths(
+        optic_disc=OpticDiscSegmentationOutputPaths(
             mask=f"{root}/OpticDisc/Mask/value",
-            center_xy=f"{root}/OpticDisc/CenterXY/value",
         ),
-        artery=VesselTopologyOutputPaths(
-            mask=f"{root}/Artery/Mask/value" if root == "Segmentation" else None,
+        artery=VesselSegmentationOutputPaths(
+            mask=f"{root}/Artery/Mask/value",
             branch_label_map=f"{root}/Artery/BranchLabelMap/value",
-            branch_ids=f"{root}/Artery/BranchIds/value",
-            segment_center_xy=f"{root}/Artery/SegmentCenterXY/value",
         ),
-        vein=VesselTopologyOutputPaths(
-            mask=f"{root}/Vein/Mask/value" if root == "Segmentation" else None,
+        vein=VesselSegmentationOutputPaths(
+            mask=f"{root}/Vein/Mask/value",
             branch_label_map=f"{root}/Vein/BranchLabelMap/value",
-            branch_ids=f"{root}/Vein/BranchIds/value",
-            segment_center_xy=f"{root}/Vein/SegmentCenterXY/value",
         ),
     )
 
@@ -241,7 +233,7 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
             "VelocitySignalPerBeatPerSegmentBandLimited/value"
         ),
     ),
-    topology=_topology_paths("Topology"),
+    segmentation=_segmentation_paths("Segmentation"),
     artery_cross_section_profiles=_cross_section_profile_paths(
         "Artery/CrossSections",
         velocity_profile_name="VelocityProfileSeg",
@@ -299,7 +291,7 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
             "vein/velocity/perbeat/segments/band_limited/value"
         ),
     ),
-    topology=_topology_paths("Topology"),
+    segmentation=_segmentation_paths("Segmentation"),
     artery_cross_section_profiles=_cross_section_profile_paths(
         "artery/cross_sections"
     ),
@@ -367,7 +359,7 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
             "Processing/VelocityPerBeat/Vein/Segments/BandLimited/value"
         ),
     ),
-    topology=_topology_paths("Segmentation"),
+    segmentation=_segmentation_paths("Segmentation"),
     artery_cross_section_profiles=_cross_section_profile_paths(
         "Processing/CrossSections/Artery"
     ),

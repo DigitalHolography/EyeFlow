@@ -1,6 +1,7 @@
 """Tests for waveform-shape metric calculation over packed EyeFlow outputs."""
 
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -13,12 +14,17 @@ from pipelines.waveform_shape_metrics.metrics.runner import (
 from pipelines.waveform_shape_metrics.metrics.calculator import (
     WaveformShapeMetricsCalculator,
 )
+from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
+from pipelines.waveform_shape_metrics.velocity.hemifield import (
+    pack_hemifield_metrics,
+)
 
 
 class WaveformShapeMetricsTests(unittest.TestCase):
     def test_waveform_shape_metrics_is_the_only_registered_pipeline(self):
         self.assertIn("waveform_shape_metrics", PIPELINE_REGISTRY)
         self.assertNotIn("waveform_shape_metrics_angioeye", PIPELINE_REGISTRY)
+        self.assertNotIn("topological_metrics", PIPELINE_REGISTRY)
         self.assertEqual(
             "Processing/Metrics/waveform_shape_metrics",
             EyeFlowOutputPaths.active().waveform_shape_metrics_root,
@@ -82,6 +88,124 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         # The unrectified mean cycle is [0, 3, 1, 2].
         np.testing.assert_allclose(result["RI"], [1.0, 1.0])
         np.testing.assert_allclose(result["PI"], [2.0, 2.0])
+
+    def test_hemifield_metrics_are_nested_below_waveform_shape_outputs(self):
+        schema = EyeFlowOutputPaths.active()
+        sample_count = 2
+        branch_count = 2
+        radius_count = 2
+        metric_values = np.ones(
+            (sample_count, branch_count, radius_count),
+            dtype=np.float32,
+        )
+        metrics = {}
+        for signal_group, signal_name in (
+            ("raw_segment", "raw"),
+            ("bandlimited_segment", "bandlimited"),
+        ):
+            for metric_name in WaveformShapeMetricsCalculator._metric_names():
+                metrics[
+                    f"{schema.waveform_shape_metrics_root}/artery/"
+                    f"by_segment/{signal_group}/{metric_name}"
+                ] = (metric_values, {"signal_type": signal_name})
+
+        labels = np.zeros((8, 8), dtype=np.int32)
+        labels[1, 1] = 1
+        labels[1, 6] = 2
+        segments = SimpleNamespace(
+            branch_ids=np.asarray([1, 2], dtype=np.int32),
+            labels=labels,
+            segment_center_xy=np.zeros((branch_count, radius_count, 2)),
+            velocity=np.zeros((radius_count, branch_count, 3)),
+        )
+        source_data = SimpleNamespace(
+            retinal_artery_mask=np.zeros((8, 8), dtype=bool),
+            retinal_vein_mask=np.zeros((8, 8), dtype=bool),
+            optic_disc_mask=np.zeros((8, 8), dtype=bool),
+            optic_disc_center=np.asarray([3.0, 2.0]),
+            optic_disc_width=None,
+            optic_disc_height=None,
+        )
+
+        regional = pack_hemifield_metrics(
+            metrics,
+            source_data,
+            segments,
+            None,
+        )
+
+        north_west = (
+            f"{schema.waveform_shape_metrics_root}/artery/hemifield/"
+            "north_west/global/raw/mu_t"
+        )
+        north_east_branch = (
+            f"{schema.waveform_shape_metrics_root}/artery/hemifield/"
+            "north_east/by_branch/branch_2/raw/mu_t"
+        )
+        self.assertIn(north_west, regional)
+        self.assertIn(north_east_branch, regional)
+        np.testing.assert_allclose(regional[north_west].data, [1.0, 1.0])
+        np.testing.assert_allclose(
+            regional[north_east_branch].data,
+            [1.0, 1.0],
+        )
+
+    def test_output_composer_combines_legacy_and_hemifield_groups(self):
+        schema = EyeFlowOutputPaths.active()
+        metrics = self._global_artery_inputs(schema)
+        waveform = np.asarray(
+            metrics[schema.artery_per_beat.velocity_signal],
+            dtype=np.float32,
+        )
+        segment_waveform = np.broadcast_to(
+            waveform[:, :, np.newaxis, np.newaxis],
+            (waveform.shape[0], waveform.shape[1], 2, 2),
+        ).copy()
+        metrics[schema.artery_per_beat.segment_velocity_signal] = segment_waveform
+        metrics[schema.artery_per_beat.segment_velocity_signal_band_limited] = (
+            segment_waveform
+        )
+
+        labels = np.zeros((8, 8), dtype=np.int32)
+        labels[1, 1] = 1
+        labels[1, 6] = 2
+        segments = SimpleNamespace(
+            branch_ids=np.asarray([1, 2], dtype=np.int32),
+            labels=labels,
+            segment_center_xy=np.zeros((2, 2, 2)),
+            velocity=np.zeros((2, 2, waveform.shape[0])),
+        )
+        source_data = SimpleNamespace(
+            retinal_artery_mask=np.zeros((8, 8), dtype=bool),
+            retinal_vein_mask=np.zeros((8, 8), dtype=bool),
+            optic_disc_mask=np.zeros((8, 8), dtype=bool),
+            optic_disc_center=np.asarray([3.0, 2.0]),
+            optic_disc_width=None,
+            optic_disc_height=None,
+        )
+
+        outputs = pack_waveform_shape_outputs(
+            metrics,
+            source_data,
+            segments,
+            None,
+        )
+
+        self.assertIn(schema.segmentation.artery.branch_label_map, outputs)
+        self.assertIn(
+            f"{schema.waveform_shape_metrics_root}/artery/global/raw/mu_t",
+            outputs,
+        )
+        self.assertIn(
+            f"{schema.waveform_shape_metrics_root}/artery/"
+            "by_segment/raw_segment/mu_t",
+            outputs,
+        )
+        self.assertIn(
+            f"{schema.waveform_shape_metrics_root}/artery/hemifield/"
+            "north_west/global/raw/mu_t",
+            outputs,
+        )
 
     @staticmethod
     def _global_artery_inputs(schema):

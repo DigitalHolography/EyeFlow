@@ -31,14 +31,13 @@ from .velocity.constants import (
 )
 from .dopplerview.outputs import pack_dopplerview_analysis_outputs
 from .dopplerview.runner import run_dopplerview_analysis
-from .metrics.runner import run_waveform_shape_metric_calculations
+from .outputs import pack_waveform_shape_outputs
 from .scratch import waveform_scratch_h5
 from .sources import WaveformShapeSourceData, WaveformShapeSources
 from .velocity.branch_identity_debug import export_branch_identity_stage_pngs
 from .velocity.figures import export_pulse_pngs
 from .velocity.profiles import pack_cross_section_profile_outputs
 from .velocity.runner import run_velocity_per_beat_metrics
-from .velocity.topology import pack_segment_topology_outputs
 
 
 @dataclass(frozen=True)
@@ -64,13 +63,6 @@ def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object
         metrics.update(velocity_metrics)
         metrics.update(_pack_meta_outputs(context))
         metrics.update(
-            pack_segment_topology_outputs(
-                context.source_data,
-                context.artery_segment_result,
-                context.vein_segment_result,
-            )
-        )
-        metrics.update(
             pack_cross_section_profile_outputs(
                 context.artery_segment_result,
                 context.vein_segment_result,
@@ -82,9 +74,14 @@ def run_waveform_shape_metrics(ctx) -> tuple[dict[str, object], dict[str, object
         _export_pulse_pngs(ctx, context, per_beat_result)
 
         _log(ctx, "Starting waveform-shape metric calculation...")
-        shape_metrics = run_waveform_shape_metric_calculations(metrics)
-        metrics.update(shape_metrics)
-        ctx.state.set("waveform_shape_metric_outputs", shape_metrics)
+        waveform_metric_outputs = pack_waveform_shape_outputs(
+            metrics,
+            context.source_data,
+            context.artery_segment_result,
+            context.vein_segment_result,
+        )
+        metrics.update(waveform_metric_outputs)
+        ctx.state.set("waveform_shape_metric_outputs", waveform_metric_outputs)
         attrs = context.attrs
 
     return metrics, attrs
