@@ -1,6 +1,6 @@
-"""Pipeline 1 MVP: compute DopplerView analysis, then AE waveform metrics."""
+"""Selectable waveform-shape metric products."""
 
-from pipeline_engine.imports import ProcessResult, pipeline
+from pipeline_engine.imports import PipelineOption, pipeline
 
 from .runner import run_waveform_shape_metrics
 
@@ -11,13 +11,21 @@ from .runner import run_waveform_shape_metrics
         "Compute global, by-segment, and hemifield waveform-shape metrics."
     ),
     requires=["numpy", "h5py", "scipy", "skimage"],
-    dag_produces=[
-        "dopplerview_analysis",
-        "velocity_per_beat",
-        "waveform_shape_metrics",
+    dag_requires=["waveform_velocity_core"],
+    options=[
+        PipelineOption(
+            "per_beat",
+            "Per beat",
+            "Global and segment waveform-shape metrics per beat.",
+        ),
+        PipelineOption(
+            "hemifield",
+            "Hemifield",
+            "Eight-region waveform-shape metric aggregates.",
+        ),
     ],
+    dag_produces=["waveform_shape_metrics"],
     input_slot="both",
 )
-def run(ctx) -> ProcessResult:
-    metrics, attrs = run_waveform_shape_metrics(ctx)
-    return ProcessResult(metrics=metrics, attrs=attrs)
+def run(ctx):
+    return run_waveform_shape_metrics(ctx)

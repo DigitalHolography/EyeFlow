@@ -1,6 +1,7 @@
 """Runtime execution helpers for resolved EyeFlow pipelines."""
 
-from collections.abc import Callable, Sequence
+import json
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
 
@@ -18,6 +19,7 @@ def run_pipelines_to_output(
     output_manager: OutputManager,
     pipelines: Sequence[PipelineDescriptor],
     target_names: Sequence[str] = (),
+    pipeline_options: Mapping[str, Sequence[str]] | None = None,
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
     on_log: Callable[[str], None] | None = None,
@@ -37,6 +39,7 @@ def run_pipelines_to_output(
             stack=stack,
             pipelines=pipelines,
             target_names=target_names,
+            pipeline_options=pipeline_options or {},
             holodoppler_h5=holodoppler_h5,
             doppler_vision_h5=doppler_vision_h5,
             on_log=on_log,
@@ -53,6 +56,7 @@ def _run_pipelines_with_work_h5(
     stack: ExitStack,
     pipelines: Sequence[PipelineDescriptor],
     target_names: Sequence[str],
+    pipeline_options: Mapping[str, Sequence[str]],
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
     on_log: Callable[[str], None] | None,
@@ -64,6 +68,7 @@ def _run_pipelines_with_work_h5(
         work_h5=work_h5,
         pipelines=pipelines,
         target_names=target_names,
+        pipeline_options=pipeline_options,
         holodoppler_h5=holodoppler_h5,
         doppler_vision_h5=doppler_vision_h5,
     )
@@ -82,6 +87,8 @@ def _run_pipelines_with_work_h5(
             holodoppler_config=hd_config,
             doppler_vision_config=dv_config,
             variables=context_vars,
+            pipeline_options=pipeline_options,
+            pipeline_order=tuple(pipeline.name for pipeline in pipelines),
             on_log=on_log,
             on_pipeline_success=on_pipeline_success,
             on_progress=on_progress,
@@ -112,6 +119,7 @@ def _initialize_work_h5(
     work_h5,
     pipelines: Sequence[PipelineDescriptor],
     target_names: Sequence[str],
+    pipeline_options: Mapping[str, Sequence[str]],
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
 ) -> None:
@@ -126,6 +134,13 @@ def _initialize_work_h5(
     )
     work_h5.attrs["pipeline_targets"] = list(target_names)
     work_h5.attrs["pipeline_order"] = [pipeline.name for pipeline in pipelines]
+    work_h5.attrs["pipeline_options"] = json.dumps(
+        {
+            name: list(options)
+            for name, options in pipeline_options.items()
+        },
+        sort_keys=True,
+    )
 
 
 def _run_pipeline_descriptor(
@@ -139,6 +154,8 @@ def _run_pipeline_descriptor(
     holodoppler_config,
     doppler_vision_config,
     variables: dict[str, object],
+    pipeline_options: Mapping[str, Sequence[str]],
+    pipeline_order: Sequence[str],
     on_log: Callable[[str], None] | None,
     on_pipeline_success: Callable[[str], None] | None,
     on_progress: Callable[[], None] | None,
@@ -155,6 +172,8 @@ def _run_pipeline_descriptor(
         output_manager=output_manager,
         pipeline_name=pipeline.name,
         variables=variables,
+        pipeline_options=pipeline_options,
+        pipeline_order=pipeline_order,
         on_log=on_log,
     )
     try:

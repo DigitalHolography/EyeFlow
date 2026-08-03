@@ -1,6 +1,6 @@
 """Pipeline context namespaces for inputs, runtime state, outputs, and run logs."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -325,6 +325,8 @@ class PipelineContext:
         preferred_input: str = "both",
         pipeline_name: str = "",
         variables: dict[str, Any] | None = None,
+        pipeline_options: Mapping[str, Sequence[str]] | None = None,
+        pipeline_order: Sequence[str] = (),
         output_manager: OutputManager | None = None,
         on_log: Callable[[str], None] | None = None,
     ) -> None:
@@ -343,6 +345,11 @@ class PipelineContext:
         )
         self.output = PipelineOutput(output_manager, PipelineH5Output(work_h5))
         self.state = PipelineState(variables)
+        self.pipeline_options = {
+            str(name): frozenset(str(option) for option in options)
+            for name, options in (pipeline_options or {}).items()
+        }
+        self.pipeline_order = tuple(str(name) for name in pipeline_order)
         self._on_log = on_log
         self.attrs = MergedAttrs(
             work_h5,
@@ -365,6 +372,16 @@ class PipelineContext:
     def log(self, message: str) -> None:
         if self._on_log is not None:
             self._on_log(message)
+
+    def option_enabled(self, name: str, *, pipeline: str | None = None) -> bool:
+        pipeline_name = pipeline or self.runtime.pipeline_name
+        return str(name) in self.pipeline_options.get(pipeline_name, frozenset())
+
+    def options_for(self, pipeline: str) -> frozenset[str]:
+        return self.pipeline_options.get(str(pipeline), frozenset())
+
+    def pipeline_scheduled(self, pipeline: str) -> bool:
+        return str(pipeline) in self.pipeline_order
 
     @property
     def filename(self) -> str:

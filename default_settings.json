@@ -1,7 +1,19 @@
 {
   "pipeline_visibility": {
-    "pdf_report_generator": true,
-    "waveform_shape_metrics": false
+    "pdf_report": true,
+    "waveform_shape_metrics": true,
+    "waveform_velocity": true
+  },
+  "pipeline_options": {
+    "waveform_shape_metrics": {
+      "hemifield": true,
+      "per_beat": true
+    },
+    "waveform_velocity": {
+      "hemifield": true,
+      "per_beat": true,
+      "velocity_profiles": true
+    }
   },
   "ui_mode": "minimal"
 }

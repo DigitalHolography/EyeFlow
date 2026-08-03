@@ -79,6 +79,9 @@ class RunController:
                 input_paths=input_paths,
                 target_names=target_names,
                 pipelines=self.app.pipeline_catalog.values(),
+                pipeline_options=(
+                    self.app.pipeline_library_controller.selected_pipeline_options()
+                ),
             )
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
             services_for(self.app).dialogs.showerror(

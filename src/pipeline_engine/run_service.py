@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +41,7 @@ class RunSpec:
 
     plan: PipelineExecutionPlan
     requests: tuple[RunRequest, ...]
+    pipeline_options: Mapping[str, tuple[str, ...]]
 
     @property
     def total_pipeline_units(self) -> int:
@@ -87,6 +88,7 @@ def resolve_run_spec(
     input_paths: Sequence[Path],
     target_names: Sequence[str],
     pipelines: Iterable[PipelineDescriptor],
+    pipeline_options: Mapping[str, Iterable[str]] | None = None,
     output_root: Path | None = None,
     batch_root: Path | None = None,
 ) -> RunSpec:
@@ -112,6 +114,7 @@ def resolve_run_spec(
         raise ValueError(
             "The DAG requires unavailable pipeline(s): " + ", ".join(details)
         )
+    resolved_options = _resolve_pipeline_options(plan, pipeline_options)
 
     layouts = resolve_selected_run_layouts(input_paths)
     resolved_output_root = (
@@ -134,7 +137,11 @@ def resolve_run_spec(
         for layout in layouts
     )
     _reject_duplicate_destinations(requests)
-    return RunSpec(plan=plan, requests=requests)
+    return RunSpec(
+        plan=plan,
+        requests=requests,
+        pipeline_options=resolved_options,
+    )
 
 
 def execute_run(
@@ -173,6 +180,7 @@ def execute_run(
                 output_manager=final_manager,
                 pipelines=spec.plan.descriptors,
                 target_names=spec.plan.targets,
+                pipeline_options=spec.pipeline_options,
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
                 on_log=on_log,
@@ -188,6 +196,37 @@ def execute_run(
         _emit(on_log, f"Completed run for {input_layout.holo_path.name}: {final_path}")
 
     return RunResult(tuple(outputs), tuple(failures))
+
+
+def _resolve_pipeline_options(
+    plan: PipelineExecutionPlan,
+    selections: Mapping[str, Iterable[str]] | None,
+) -> dict[str, tuple[str, ...]]:
+    requested_by_pipeline = selections or {}
+    resolved: dict[str, tuple[str, ...]] = {}
+    for descriptor in plan.descriptors:
+        if not descriptor.options:
+            continue
+        known = {option.name for option in descriptor.options}
+        requested = requested_by_pipeline.get(descriptor.name)
+        if requested is None:
+            selected = {
+                option.name
+                for option in descriptor.options
+                if option.default_enabled
+            }
+        else:
+            selected = {str(name).strip() for name in requested if str(name).strip()}
+            unknown = sorted(selected - known)
+            if unknown:
+                raise ValueError(
+                    f"Unknown option(s) for pipeline '{descriptor.name}': "
+                    + ", ".join(unknown)
+                )
+        resolved[descriptor.name] = tuple(
+            option.name for option in descriptor.options if option.name in selected
+        )
+    return resolved
 
 
 @contextmanager

@@ -2,7 +2,7 @@
 
 from calculations.blood_flow_velocity import run_per_beat_analysis
 
-from .outputs import pack_velocity_per_beat_outputs
+from .per_beat_outputs import pack_velocity_per_beat_outputs
 
 
 def run_velocity_per_beat_metrics(context):

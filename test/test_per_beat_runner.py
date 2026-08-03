@@ -20,7 +20,7 @@ from calculations.blood_flow_velocity.signal_analysis.heartbeat import (  # noqa
     spectral_heartbeat_analysis,
 )
 from calculations.math import band_limited_ifft_abs  # noqa: E402
-from pipelines.waveform_shape_metrics.runner import (  # noqa: E402
+from pipelines.waveform_velocity_core.runner import (  # noqa: E402
     _filtered_velocity_signals_for_per_beat,
 )
 

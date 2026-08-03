@@ -9,7 +9,7 @@ from calculations.blood_flow_velocity.cross_section.profile_processing import (
 )
 from input_output.schema import CrossSectionProfileOutputPaths, EyeFlowOutputPaths
 
-from .outputs import metric_value
+from pipelines.waveform_velocity_core.per_beat_outputs import metric_value
 
 
 def pack_cross_section_profile_outputs(

@@ -5,7 +5,11 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from app_settings import normalize_pipeline_visibility, runtime_pipelines_path
+from app_settings import (
+    normalize_pipeline_options,
+    normalize_pipeline_visibility,
+    runtime_pipelines_path,
+)
 from pipelines import PipelineDescriptor, load_pipeline_catalog
 from pipeline_engine import PipelineDAG, PipelineExecutionPlan
 
@@ -140,6 +144,7 @@ class PipelineLibraryController:
 
         self.app.pipeline_rows = rows
         self.sync_visibility(rows)
+        self.sync_options(rows)
         self.populate(rows)
 
     def selected_target_pipeline_names(self) -> list[str]:
@@ -149,6 +154,19 @@ class PipelineLibraryController:
             if pipeline.available
             and self.app.pipeline_visibility.get(pipeline.name, False)
         ]
+
+    def selected_pipeline_options(self) -> dict[str, tuple[str, ...]]:
+        return {
+            pipeline.name: tuple(
+                option.name
+                for option in pipeline.options
+                if self.app.pipeline_option_visibility
+                .get(pipeline.name, {})
+                .get(option.name, option.default_enabled)
+            )
+            for pipeline in self.app.pipeline_rows
+            if pipeline.options
+        }
 
     def resolve_plan(self, target_names: list[str]) -> PipelineExecutionPlan:
         dag = self.app.pipeline_dag
@@ -205,14 +223,19 @@ class PipelineLibraryController:
             child.destroy()
         self.app.pipeline_visibility_vars = {}
         self.app.pipeline_row_widgets = {}
+        self.app.pipeline_option_vars = {}
+        self.app.pipeline_option_widgets = {}
+        self.app.pipeline_expand_buttons = {}
+        row_count = 1 + sum(1 + len(pipeline.options) for pipeline in rows)
         self.configure_library_columns(
             self.app.pipeline_library_inner,
-            row_count=len(rows) + 1,
+            row_count=row_count,
         )
         self._build_header()
 
-        for idx, pipeline in enumerate(rows, start=1):
-            self._build_pipeline_row(idx, pipeline)
+        row_index = 1
+        for pipeline in rows:
+            row_index += self._build_pipeline_row(row_index, pipeline)
 
         self.update_summary()
 
@@ -240,6 +263,30 @@ class PipelineLibraryController:
                 f"Could not save pipeline selection preferences:\n{exc}",
             )
 
+    def sync_options(self, rows: list[PipelineDescriptor]) -> None:
+        selections, changed = normalize_pipeline_options(
+            {
+                pipeline.name: pipeline.options
+                for pipeline in rows
+                if pipeline.options
+            },
+            self.app.settings_store.load_pipeline_options(),
+        )
+        self.app.pipeline_option_visibility = selections
+        if changed:
+            self.persist_options()
+
+    def persist_options(self) -> None:
+        try:
+            self.app.settings_store.save_pipeline_options(
+                self.app.pipeline_option_visibility
+            )
+        except OSError as exc:
+            self.app.settings_controller.show_settings_warning(
+                "Settings not saved",
+                f"Could not save pipeline option preferences:\n{exc}",
+            )
+
     def set_visibility(self, name: str, visible: bool) -> None:
         pipeline = self.app.pipeline_catalog.get(name)
         if pipeline is not None and not pipeline.available:
@@ -251,6 +298,26 @@ class PipelineLibraryController:
         if var is not None and var.get() != visible:
             var.set(visible)
         self.persist_visibility()
+        self._update_option_widget_states(name)
+        self.update_summary()
+
+    def set_option_visibility(
+        self,
+        pipeline_name: str,
+        option_name: str,
+        enabled: bool,
+    ) -> None:
+        pipeline_values = self.app.pipeline_option_visibility.setdefault(
+            pipeline_name,
+            {},
+        )
+        if pipeline_values.get(option_name) == enabled:
+            return
+        pipeline_values[option_name] = enabled
+        var = self.app.pipeline_option_vars.get(pipeline_name, {}).get(option_name)
+        if var is not None and var.get() != enabled:
+            var.set(enabled)
+        self.persist_options()
         self.update_summary()
 
     def set_all_visibility(self, visible: bool) -> None:
@@ -263,11 +330,29 @@ class PipelineLibraryController:
             if self.app.pipeline_visibility.get(name) != target_value:
                 self.app.pipeline_visibility[name] = target_value
                 changed = True
-        if not changed:
-            return
         for name, var in self.app.pipeline_visibility_vars.items():
             var.set(self.app.pipeline_visibility.get(name, False))
-        self.persist_visibility()
+            self._update_option_widget_states(name)
+        options_changed = False
+        for pipeline in self.app.pipeline_rows:
+            values = self.app.pipeline_option_visibility.setdefault(
+                pipeline.name,
+                {},
+            )
+            for option in pipeline.options:
+                if values.get(option.name) != visible:
+                    values[option.name] = visible
+                    options_changed = True
+                option_var = self.app.pipeline_option_vars.get(
+                    pipeline.name,
+                    {},
+                ).get(option.name)
+                if option_var is not None:
+                    option_var.set(visible)
+        if changed:
+            self.persist_visibility()
+        if options_changed:
+            self.persist_options()
         self.update_summary()
 
     def update_summary(self) -> None:
@@ -379,14 +464,34 @@ class PipelineLibraryController:
         for widget in (selected_header, status_header):
             self.bind_vertical_mousewheel(widget, self.app.pipeline_library_canvas)
 
-    def _build_pipeline_row(self, idx: int, pipeline: PipelineDescriptor) -> None:
+    def _build_pipeline_row(self, idx: int, pipeline: PipelineDescriptor) -> int:
         is_available = getattr(pipeline, "available", True)
         var = tk.BooleanVar(
             value=self.app.pipeline_visibility.get(pipeline.name, False)
             and is_available
         )
+        target_frame = ttk.Frame(self.app.pipeline_library_inner)
+        target_frame.grid(row=idx, column=0, sticky="w", pady=(0, 6))
+        target_column = 0
+        if pipeline.options:
+            expanded = self.app.pipeline_expanded.setdefault(pipeline.name, True)
+            expand_button = ttk.Button(
+                target_frame,
+                text="-" if expanded else "+",
+                width=2,
+                command=lambda name=pipeline.name: (
+                    self._toggle_pipeline_options(name)
+                ),
+            )
+            expand_button.grid(row=0, column=0, sticky="w", padx=(0, 3))
+            self.bind_vertical_mousewheel(
+                expand_button,
+                self.app.pipeline_library_canvas,
+            )
+            self.app.pipeline_expand_buttons[pipeline.name] = expand_button
+            target_column = 1
         check = ttk.Checkbutton(
-            self.app.pipeline_library_inner,
+            target_frame,
             text=pipeline.name,
             variable=var,
             state="normal" if is_available else "disabled",
@@ -394,7 +499,7 @@ class PipelineLibraryController:
                 self.set_visibility(name, visible_var.get())
             ),
         )
-        check.grid(row=idx, column=0, sticky="w", pady=(0, 6))
+        check.grid(row=0, column=target_column, sticky="w")
         status = ttk.Label(
             self.app.pipeline_library_inner,
             text=pipeline_status_text(pipeline),
@@ -406,7 +511,7 @@ class PipelineLibraryController:
             padx=self._STATUS_COLUMN_PADDING,
             pady=(0, 6),
         )
-        self._bind_row_widgets(check, status)
+        self._bind_row_widgets(target_frame, check, status)
         self._bind_pipeline_row_toggle(
             pipeline.name,
             var,
@@ -415,6 +520,85 @@ class PipelineLibraryController:
         self._add_tooltips(pipeline, check, status)
         self.app.pipeline_row_widgets[pipeline.name] = check
         self.app.pipeline_visibility_vars[pipeline.name] = var
+        self.app.pipeline_option_vars[pipeline.name] = {}
+        option_widgets: list[tk.Widget] = []
+        expanded = self.app.pipeline_expanded.get(pipeline.name, True)
+        for offset, option in enumerate(pipeline.options, start=1):
+            option_var = tk.BooleanVar(
+                value=self.app.pipeline_option_visibility
+                .get(pipeline.name, {})
+                .get(option.name, option.default_enabled)
+            )
+            option_check = ttk.Checkbutton(
+                self.app.pipeline_library_inner,
+                text=option.label,
+                variable=option_var,
+                command=lambda pipeline_name=pipeline.name,
+                option_name=option.name,
+                selected_var=option_var: self.set_option_visibility(
+                    pipeline_name,
+                    option_name,
+                    selected_var.get(),
+                ),
+            )
+            option_check.grid(
+                row=idx + offset,
+                column=0,
+                sticky="w",
+                padx=(34, 0),
+                pady=(0, 4),
+            )
+            option_status = ttk.Label(
+                self.app.pipeline_library_inner,
+                text=option.description,
+            )
+            option_status.grid(
+                row=idx + offset,
+                column=2,
+                sticky="w",
+                padx=self._STATUS_COLUMN_PADDING,
+                pady=(0, 4),
+            )
+            self._bind_row_widgets(option_check, option_status)
+            if option.description:
+                Tooltip(
+                    option_check,
+                    option.description,
+                    bg=self.app._surface_color,
+                    fg=self.app._text_fg,
+                )
+            self.app.pipeline_option_vars[pipeline.name][option.name] = option_var
+            option_widgets.extend((option_check, option_status))
+            if not expanded:
+                option_check.grid_remove()
+                option_status.grid_remove()
+        self.app.pipeline_option_widgets[pipeline.name] = option_widgets
+        self._update_option_widget_states(pipeline.name)
+        return 1 + len(pipeline.options)
+
+    def _toggle_pipeline_options(self, pipeline_name: str) -> None:
+        expanded = not self.app.pipeline_expanded.get(pipeline_name, True)
+        self.app.pipeline_expanded[pipeline_name] = expanded
+        button = self.app.pipeline_expand_buttons.get(pipeline_name)
+        if button is not None:
+            button.configure(text="-" if expanded else "+")
+        for widget in self.app.pipeline_option_widgets.get(pipeline_name, []):
+            if expanded:
+                widget.grid()
+            else:
+                widget.grid_remove()
+
+    def _update_option_widget_states(self, pipeline_name: str) -> None:
+        pipeline = self.app.pipeline_catalog.get(pipeline_name)
+        enabled = bool(
+            pipeline is not None
+            and pipeline.available
+            and self.app.pipeline_visibility.get(pipeline_name, False)
+        )
+        state = "normal" if enabled else "disabled"
+        for widget in self.app.pipeline_option_widgets.get(pipeline_name, []):
+            if isinstance(widget, ttk.Checkbutton):
+                widget.configure(state=state)
 
     def _bind_row_widgets(self, *widgets: tk.Misc) -> None:
         for widget in widgets:

@@ -1,4 +1,4 @@
-"""Source assembly for the waveform-shape metrics pipeline."""
+"""Source assembly for shared waveform velocity analysis."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import numpy as np
 from calculations.blood_flow_velocity import CrossSectionSignalSettings
 from input_output.schema import DopplerViewSource, HolodopplerSource, HolodopplerTiming
 
-from .velocity.constants import (
+from .constants import (
     CROSS_SECTION_HYDRODYNAMIC_DIAMETERS,
     CROSS_SECTION_ROTATE_FROM_MASK,
     CROSS_SECTION_SCALE_FACTOR_WIDTH,
@@ -31,7 +31,7 @@ DOPPLERVIEW_BEAT_INDEX_BASE = 0
 
 
 @dataclass(frozen=True)
-class WaveformShapeSourceData:
+class WaveformVelocitySourceData:
     """Resolved source data with explicit axis contracts for waveform metrics."""
 
     moment0: object
@@ -62,15 +62,15 @@ class WaveformShapeSourceData:
 
 
 @dataclass(frozen=True)
-class WaveformShapeSources:
-    """Typed input adapters needed by the waveform-shape pipeline."""
+class WaveformVelocitySources:
+    """Typed input adapters needed by the waveform velocity core."""
 
     hd: HolodopplerSource
     dv: DopplerViewSource
     log: Callable[[str], None] | None = None
 
     @classmethod
-    def from_context(cls, ctx: PipelineContext) -> "WaveformShapeSources":
+    def from_context(cls, ctx: PipelineContext) -> "WaveformVelocitySources":
         ctx.require_inputs("hd", "dv")
         return cls(
             hd=ctx.inputs.hd.as_holodoppler(),
@@ -78,7 +78,7 @@ class WaveformShapeSources:
             log=getattr(ctx, "log", None),
         )
 
-    def load(self) -> WaveformShapeSourceData:
+    def load(self) -> WaveformVelocitySourceData:
         moment0 = self._timed_load("HD moment0 dataset", self.hd.moment0_dataset)
         moment2 = self._timed_load("HD moment2 dataset", self.hd.moment2_dataset)
         spatial_shape = moment0.shape[-2:]
@@ -117,7 +117,7 @@ class WaveformShapeSources:
             self._timed_load("DV optic disc height", self.dv.optic_disc_height),
             swapped=spatial_axes_swapped,
         )
-        return WaveformShapeSourceData(
+        return WaveformVelocitySourceData(
             moment0=moment0,
             moment2=moment2,
             flat_field_gaussian_ratio=_config_float(
@@ -184,8 +184,8 @@ class WaveformShapeSources:
         return DEFAULT_PIXEL_SIZE_MM / (2.0**SPATIAL_INTERPOLATION_FACTOR)
 
 
-def load_waveform_shape_source_data(ctx: PipelineContext) -> WaveformShapeSourceData:
-    return WaveformShapeSources.from_context(ctx).load()
+def load_waveform_velocity_source_data(ctx: PipelineContext) -> WaveformVelocitySourceData:
+    return WaveformVelocitySources.from_context(ctx).load()
 
 
 def _source_provenance(

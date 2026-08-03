@@ -11,6 +11,16 @@ from dependency_utils import find_missing_dependencies
 PIPELINE_REGISTRY: dict[str, PipelineDescriptor] = {}
 
 
+@dataclass(frozen=True)
+class PipelineOption:
+    """One independently selectable part of a visible pipeline."""
+
+    name: str
+    label: str
+    description: str = ""
+    default_enabled: bool = True
+
+
 # Decorator to attach metadata to coded pipeline classes.
 def registerPipeline(
     name: str,
@@ -19,6 +29,7 @@ def registerPipeline(
     *,
     dag_requires: Iterable[str] | None = None,
     dag_produces: Iterable[str] | None = None,
+    options: Iterable[PipelineOption | str] | None = None,
     visibility: str = "visible",
 ):
     def decorator(cls):
@@ -30,6 +41,9 @@ def registerPipeline(
         )
         cls.dag_produces = _pipeline_keys(
             dag_produces if dag_produces is not None else getattr(cls, "dag_produces", ())
+        )
+        cls.options = _pipeline_options(
+            options if options is not None else getattr(cls, "options", ())
         )
 
         missing = find_missing_dependencies(cls.requires)
@@ -45,6 +59,7 @@ def registerPipeline(
             missing_deps=list(cls.missing_deps),
             dag_requires=tuple(cls.dag_requires),
             dag_produces=tuple(cls.dag_produces),
+            options=tuple(cls.options),
             visibility=visibility,
             pipeline_factory=cls,
             source_path=_source_path(cls),
@@ -61,6 +76,7 @@ def pipeline(
     *,
     dag_requires: Iterable[str] | None = None,
     dag_produces: Iterable[str] | None = None,
+    options: Iterable[PipelineOption | str] | None = None,
     input_slot: str = "both",
     visibility: str = "visible",
 ):
@@ -75,6 +91,7 @@ def pipeline(
         required = list(requires or [])
         missing = find_missing_dependencies(required)
         available = len(missing) == 0
+        declared_options = _pipeline_options(options or ())
         descriptor = PipelineDescriptor(
             name=name,
             description=description or (inspect.getdoc(func) or ""),
@@ -84,6 +101,7 @@ def pipeline(
             missing_deps=missing,
             dag_requires=_pipeline_keys(dag_requires or ()),
             dag_produces=_pipeline_keys(dag_produces or ()),
+            options=declared_options,
             visibility=visibility,
             pipeline_factory=lambda: FunctionPipeline(
                 name=name,
@@ -95,6 +113,7 @@ def pipeline(
                 available=available,
                 dag_requires=_pipeline_keys(dag_requires or ()),
                 dag_produces=_pipeline_keys(dag_produces or ()),
+                options=declared_options,
                 visibility=visibility,
             ),
             source_path=_source_path(func),
@@ -107,6 +126,34 @@ def pipeline(
 
 def _pipeline_keys(keys: Iterable[str]) -> tuple[str, ...]:
     return tuple(str(key).strip() for key in keys if str(key).strip())
+
+
+def _pipeline_options(
+    options: Iterable[PipelineOption | str],
+) -> tuple[PipelineOption, ...]:
+    normalized: list[PipelineOption] = []
+    names: set[str] = set()
+    for option in options:
+        item = (
+            option
+            if isinstance(option, PipelineOption)
+            else PipelineOption(name=str(option), label=str(option))
+        )
+        name = item.name.strip()
+        if not name:
+            raise ValueError("Pipeline option names cannot be empty.")
+        if name in names:
+            raise ValueError(f"Duplicate pipeline option name: '{name}'")
+        names.add(name)
+        normalized.append(
+            PipelineOption(
+                name=name,
+                label=item.label.strip() or name,
+                description=item.description.strip(),
+                default_enabled=bool(item.default_enabled),
+            )
+        )
+    return tuple(normalized)
 
 
 @dataclass
@@ -137,6 +184,7 @@ class ProcessPipeline:
     requires: list[str]
     dag_requires: tuple[str, ...] = ()
     dag_produces: tuple[str, ...] = ()
+    options: tuple[PipelineOption, ...] = ()
     input_slot: str = "both"
     visibility: str = "visible"
     source_path: str | None = None
@@ -164,6 +212,7 @@ class FunctionPipeline(ProcessPipeline):
         available: bool,
         dag_requires: tuple[str, ...],
         dag_produces: tuple[str, ...],
+        options: tuple[PipelineOption, ...],
         visibility: str,
     ) -> None:
         self.name = name
@@ -175,6 +224,7 @@ class FunctionPipeline(ProcessPipeline):
         self.available = available
         self.dag_requires = dag_requires
         self.dag_produces = dag_produces
+        self.options = options
         self.visibility = visibility
         self.source_path = _source_path(func)
 
@@ -193,6 +243,7 @@ class PipelineDescriptor:
     missing_deps: list[str] = field(default_factory=list)
     dag_requires: tuple[str, ...] = ()
     dag_produces: tuple[str, ...] = ()
+    options: tuple[PipelineOption, ...] = ()
     visibility: str = "visible"
     pipeline_factory: Callable[[], ProcessPipeline] | None = None
     error_msg: str = ""

@@ -15,16 +15,22 @@ from pipelines.waveform_shape_metrics.metrics.calculator import (
     WaveformShapeMetricsCalculator,
 )
 from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
-from pipelines.waveform_shape_metrics.velocity.hemifield import (
-    REGION_NAMES,
-    pack_hemifield_metrics,
-    pack_hemifield_velocity_outputs,
-)
+from pipelines.waveform_shape_metrics.metrics.hemifield import pack_hemifield_metrics
+from pipelines.waveform_velocity.hemifield import pack_hemifield_velocity_outputs
 
 
 class WaveformShapeMetricsTests(unittest.TestCase):
-    def test_waveform_shape_metrics_is_the_only_registered_pipeline(self):
+    def test_waveform_pipelines_have_separate_dag_responsibilities(self):
+        pipelines.load_pipeline_catalog()
+
+        self.assertIn("waveform_velocity_core", PIPELINE_REGISTRY)
+        self.assertIn("waveform_velocity", PIPELINE_REGISTRY)
         self.assertIn("waveform_shape_metrics", PIPELINE_REGISTRY)
+        self.assertIn("pdf_report", PIPELINE_REGISTRY)
+        self.assertEqual(
+            "hidden",
+            PIPELINE_REGISTRY["waveform_velocity_core"].visibility,
+        )
         self.assertNotIn("waveform_shape_metrics_angioeye", PIPELINE_REGISTRY)
         self.assertNotIn("topological_metrics", PIPELINE_REGISTRY)
         self.assertEqual(
@@ -32,12 +38,24 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             EyeFlowOutputPaths.active().waveform_shape_metrics_root,
         )
 
-        plan = PipelineDAG(PIPELINE_REGISTRY.values()).resolve_targets(
-            ["waveform_shape_metrics"]
-        )
+        dag = PipelineDAG(PIPELINE_REGISTRY.values())
+        metrics_plan = dag.resolve_targets(["waveform_shape_metrics"])
+        report_plan = dag.resolve_targets(["pdf_report"])
 
-        self.assertEqual(plan.names[-1], "waveform_shape_metrics")
-        self.assertNotIn("waveform_shape_metrics_angioeye", plan.names)
+        self.assertEqual(
+            ("waveform_velocity_core", "waveform_shape_metrics"),
+            metrics_plan.names,
+        )
+        self.assertEqual("pdf_report", report_plan.names[-1])
+        self.assertLess(
+            report_plan.names.index("waveform_velocity_core"),
+            report_plan.names.index("waveform_velocity"),
+        )
+        self.assertLess(
+            report_plan.names.index("waveform_velocity_core"),
+            report_plan.names.index("waveform_shape_metrics"),
+        )
+        self.assertNotIn("waveform_shape_metrics_angioeye", metrics_plan.names)
 
     def test_runner_reads_packed_metrics_and_prefixes_outputs(self):
         schema = EyeFlowOutputPaths.active()
@@ -152,7 +170,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             [1.0, 1.0],
         )
 
-    def test_output_composer_combines_legacy_and_hemifield_groups(self):
+    def test_output_composer_contains_only_selected_metric_groups(self):
         schema = EyeFlowOutputPaths.active()
         metrics = self._global_artery_inputs(schema)
         waveform = np.asarray(
@@ -194,7 +212,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             None,
         )
 
-        self.assertIn(schema.segmentation.artery.branch_label_map, outputs)
+        self.assertNotIn(schema.segmentation.artery.branch_label_map, outputs)
         self.assertIn(
             f"{schema.waveform_shape_metrics_root}/artery/global/raw/mu_t",
             outputs,
@@ -210,17 +228,29 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             outputs,
         )
 
-        for region_name in REGION_NAMES:
-            velocity_root = (
-                f"Processing/Velocity/Artery/hemifield/{region_name}"
-            )
-            per_beat_root = (
-                f"Processing/VelocityPerBeat/Artery/hemifield/{region_name}"
-            )
-            self.assertIn(f"{velocity_root}/Raw/value", outputs)
-            self.assertIn(f"{velocity_root}/Filtered/value", outputs)
-            self.assertIn(f"{per_beat_root}/Raw/value", outputs)
-            self.assertIn(f"{per_beat_root}/BandLimited/value", outputs)
+        self.assertFalse(any(key.startswith("Processing/Velocity/") for key in outputs))
+        self.assertFalse(
+            any(key.startswith("Processing/VelocityPerBeat/") for key in outputs)
+        )
+
+        no_hemifield = pack_waveform_shape_outputs(
+            metrics,
+            source_data,
+            segments,
+            None,
+            include_hemifield=False,
+        )
+        self.assertFalse(any("/hemifield/" in key for key in no_hemifield))
+
+        no_metrics = pack_waveform_shape_outputs(
+            metrics,
+            source_data,
+            segments,
+            None,
+            include_per_beat=False,
+            include_hemifield=False,
+        )
+        self.assertEqual({}, no_metrics)
 
     def test_hemifield_velocity_outputs_reduce_segment_waveforms(self):
         schema = EyeFlowOutputPaths.active()

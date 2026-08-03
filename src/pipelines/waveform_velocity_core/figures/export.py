@@ -1,4 +1,4 @@
-"""Public PNG export entrypoint for waveform-shape velocity figures."""
+"""PNG export entrypoint for shared waveform velocity diagnostics."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from .signal_inputs import mean_video
 
 if TYPE_CHECKING:
     from calculations.blood_flow_velocity import PerBeatAnalysisResult
-    from pipelines.waveform_shape_metrics.runner import WaveformShapeMetricsContext
+    from pipelines.waveform_velocity_core.runner import WaveformVelocityCoreContext
 
 
 PULSE_PNG_SUFFIXES = (
@@ -87,12 +87,12 @@ EXPORTERS = (
 
 def export_pulse_pngs(
     output,
-    context: WaveformShapeMetricsContext,
+    context: WaveformVelocityCoreContext,
     per_beat_result: PerBeatAnalysisResult,
     *,
     log=None,
 ) -> list[str]:
-    """Export core pulse-analysis PNGs for a waveform-shape run."""
+    """Export core pulse-analysis PNGs for a waveform velocity run."""
 
     if not getattr(output, "available", False):
         return []
