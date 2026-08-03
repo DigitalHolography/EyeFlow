@@ -56,7 +56,7 @@ class ProcessApp(BaseAppTk):
         self.pipeline_option_vars: dict[str, dict[str, tk.BooleanVar]] = {}
         self.pipeline_option_widgets: dict[str, list[tk.Widget]] = {}
         self.pipeline_expanded: dict[str, bool] = {}
-        self.pipeline_expand_buttons: dict[str, tk.Widget] = {}
+        self.pipeline_disclosure_widgets: dict[str, tk.Widget] = {}
         self.holo_input_var = tk.StringVar()
         self.run_progress_var = tk.DoubleVar(value=0.0)
         self._selected_holo_input_paths: list[Path] = []

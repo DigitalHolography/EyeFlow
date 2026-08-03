@@ -22,6 +22,7 @@ from .runner import run_waveform_shape_metrics
             "hemifield",
             "Hemifield",
             "Eight-region waveform-shape metric aggregates.",
+            requires=("per_beat",),
         ),
     ],
     dag_produces=["waveform_shape_metrics"],

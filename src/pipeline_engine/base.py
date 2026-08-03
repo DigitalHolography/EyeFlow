@@ -19,6 +19,7 @@ class PipelineOption:
     label: str
     description: str = ""
     default_enabled: bool = True
+    requires: tuple[str, ...] = ()
 
 
 # Decorator to attach metadata to coded pipeline classes.
@@ -151,8 +152,21 @@ def _pipeline_options(
                 label=item.label.strip() or name,
                 description=item.description.strip(),
                 default_enabled=bool(item.default_enabled),
+                requires=_pipeline_keys(item.requires),
             )
         )
+    known_names = {option.name for option in normalized}
+    for option in normalized:
+        unknown = set(option.requires) - known_names
+        if unknown:
+            raise ValueError(
+                f"Pipeline option '{option.name}' requires unknown option(s): "
+                + ", ".join(sorted(unknown))
+            )
+        if option.name in option.requires:
+            raise ValueError(
+                f"Pipeline option '{option.name}' cannot require itself."
+            )
     return tuple(normalized)
 
 
