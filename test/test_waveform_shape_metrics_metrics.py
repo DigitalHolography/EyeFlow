@@ -16,7 +16,9 @@ from pipelines.waveform_shape_metrics.metrics.calculator import (
 )
 from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
 from pipelines.waveform_shape_metrics.velocity.hemifield import (
+    REGION_NAMES,
     pack_hemifield_metrics,
+    pack_hemifield_velocity_outputs,
 )
 
 
@@ -182,6 +184,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             optic_disc_center=np.asarray([3.0, 2.0]),
             optic_disc_width=None,
             optic_disc_height=None,
+            timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
         )
 
         outputs = pack_waveform_shape_outputs(
@@ -205,6 +208,88 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             f"{schema.waveform_shape_metrics_root}/artery/hemifield/"
             "north_west/global/raw/mu_t",
             outputs,
+        )
+
+        for region_name in REGION_NAMES:
+            velocity_root = (
+                f"Processing/Velocity/Artery/hemifield/{region_name}"
+            )
+            per_beat_root = (
+                f"Processing/VelocityPerBeat/Artery/hemifield/{region_name}"
+            )
+            self.assertIn(f"{velocity_root}/Raw/value", outputs)
+            self.assertIn(f"{velocity_root}/Filtered/value", outputs)
+            self.assertIn(f"{per_beat_root}/Raw/value", outputs)
+            self.assertIn(f"{per_beat_root}/BandLimited/value", outputs)
+
+    def test_hemifield_velocity_outputs_reduce_segment_waveforms(self):
+        schema = EyeFlowOutputPaths.active()
+        labels = np.zeros((8, 8), dtype=np.int32)
+        labels[1, 1] = 1
+        labels[1, 6] = 2
+        segment_velocity = np.asarray(
+            [
+                [[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]],
+                [[3.0, 4.0, 5.0], [30.0, 40.0, 50.0]],
+            ],
+            dtype=np.float32,
+        )
+        segment_per_beat = np.asarray(
+            [
+                [[[1.0, 3.0], [10.0, 30.0]], [[2.0, 4.0], [20.0, 40.0]]],
+                [[[5.0, 7.0], [50.0, 70.0]], [[6.0, 8.0], [60.0, 80.0]]],
+            ],
+            dtype=np.float32,
+        )
+        segments = SimpleNamespace(
+            branch_ids=np.asarray([1, 2], dtype=np.int32),
+            labels=labels,
+            segment_center_xy=np.zeros((2, 2, 2)),
+            velocity=segment_velocity,
+        )
+        source_data = SimpleNamespace(
+            retinal_artery_mask=np.zeros((8, 8), dtype=bool),
+            retinal_vein_mask=np.zeros((8, 8), dtype=bool),
+            optic_disc_mask=np.zeros((8, 8), dtype=bool),
+            optic_disc_center=np.asarray([3.0, 2.0]),
+            optic_disc_width=None,
+            optic_disc_height=None,
+            timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
+        )
+        metrics = {
+            schema.artery_per_beat.segment_velocity_signal: segment_per_beat,
+            schema.artery_per_beat.segment_velocity_signal_band_limited: (
+                segment_per_beat + 100.0
+            ),
+        }
+
+        outputs = pack_hemifield_velocity_outputs(
+            metrics,
+            source_data,
+            segments,
+            None,
+        )
+
+        north_west_raw = (
+            "Processing/Velocity/Artery/hemifield/north_west/Raw/value"
+        )
+        north_east_raw = (
+            "Processing/Velocity/Artery/hemifield/north_east/Raw/value"
+        )
+        north_west_per_beat = (
+            "Processing/VelocityPerBeat/Artery/hemifield/"
+            "north_west/Raw/value"
+        )
+        self.assertIn(north_west_raw, outputs)
+        self.assertIn(north_east_raw, outputs)
+        np.testing.assert_allclose(outputs[north_west_raw].data, [2.0, 3.0, 4.0])
+        np.testing.assert_allclose(
+            outputs[north_east_raw].data,
+            [20.0, 30.0, 40.0],
+        )
+        np.testing.assert_allclose(
+            outputs[north_west_per_beat].data,
+            [[2.0, 6.0], [3.0, 7.0]],
         )
 
     @staticmethod

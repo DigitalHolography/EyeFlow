@@ -7,7 +7,10 @@ from collections.abc import Mapping
 from input_output import EyeFlowOutputPaths
 
 from .metrics.runner import run_waveform_shape_metric_calculations
-from .velocity.hemifield import pack_hemifield_metrics
+from .velocity.hemifield import (
+    pack_hemifield_metrics,
+    pack_hemifield_velocity_outputs,
+)
 from .velocity.segmentation import pack_segmentation_outputs
 
 
@@ -45,8 +48,16 @@ def pack_waveform_shape_outputs(
         vein_segments,
         output_paths,
     )
+    hemifield_velocity_outputs = pack_hemifield_velocity_outputs(
+        metrics,
+        source_data,
+        artery_segments,
+        vein_segments,
+        output_paths,
+    )
     return {
         **segmentation_outputs,
         **global_and_by_segment_outputs,
         **hemifield_outputs,
+        **hemifield_velocity_outputs,
     }
