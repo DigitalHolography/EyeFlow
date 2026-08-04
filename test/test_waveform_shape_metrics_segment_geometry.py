@@ -24,7 +24,7 @@ from calculations.blood_flow_velocity.cross_section.generate_cross_section_signa
 from calculations.blood_flow_velocity.cross_section.branch_identity import (  # noqa: E402
     _branch_identity_stages,
 )
-from pipelines.waveform_shape_metrics.runner import _segment_ring_settings  # noqa: E402
+from pipelines.waveform_velocity_core.runner import _segment_ring_settings  # noqa: E402
 
 
 class SegmentCenterTests(unittest.TestCase):

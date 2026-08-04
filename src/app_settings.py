@@ -165,6 +165,42 @@ def normalize_pipeline_visibility(
     return normalize_named_visibility(pipeline_names, stored_visibility)
 
 
+def normalize_pipeline_options(
+    options_by_pipeline: Mapping[str, Iterable[object]],
+    stored_options: Mapping[str, Mapping[str, bool]] | None,
+) -> tuple[dict[str, dict[str, bool]], bool]:
+    """Normalize persisted option selections against the current catalog."""
+
+    clean_stored: dict[str, dict[str, bool]] = {}
+    for pipeline_name, values in (stored_options or {}).items():
+        if not isinstance(pipeline_name, str) or not isinstance(values, Mapping):
+            continue
+        clean_stored[pipeline_name] = {
+            name: enabled
+            for name, enabled in values.items()
+            if isinstance(name, str) and isinstance(enabled, bool)
+        }
+
+    normalized: dict[str, dict[str, bool]] = {}
+    for pipeline_name, options in options_by_pipeline.items():
+        pipeline_values: dict[str, bool] = {}
+        stored_pipeline = clean_stored.get(pipeline_name, {})
+        for option in options:
+            option_name = str(getattr(option, "name", option)).strip()
+            if not option_name:
+                continue
+            default_enabled = bool(getattr(option, "default_enabled", True))
+            pipeline_values[option_name] = stored_pipeline.get(
+                option_name,
+                default_enabled,
+            )
+        if pipeline_values:
+            normalized[pipeline_name] = pipeline_values
+
+    changed = normalized != clean_stored
+    return normalized, changed
+
+
 class AppSettingsStore:
     def __init__(
         self,
@@ -228,6 +264,38 @@ class AppSettingsStore:
 
     def save_pipeline_visibility(self, visibility: Mapping[str, bool]) -> None:
         self.save_named_visibility("pipeline_visibility", visibility)
+
+    def load_pipeline_options(self) -> dict[str, dict[str, bool]]:
+        raw_options = self.load().get("pipeline_options", {})
+        if not isinstance(raw_options, dict):
+            return {}
+        return {
+            pipeline_name: {
+                option_name: enabled
+                for option_name, enabled in values.items()
+                if isinstance(option_name, str) and isinstance(enabled, bool)
+            }
+            for pipeline_name, values in raw_options.items()
+            if isinstance(pipeline_name, str) and isinstance(values, dict)
+        }
+
+    def save_pipeline_options(
+        self,
+        selections: Mapping[str, Mapping[str, bool]],
+    ) -> None:
+        settings = self.load()
+        settings["pipeline_options"] = {
+            pipeline_name: {
+                option_name: bool(values[option_name])
+                for option_name in sorted(values, key=str.lower)
+            }
+            for pipeline_name, values in sorted(
+                selections.items(),
+                key=lambda item: item[0].lower(),
+            )
+            if values
+        }
+        self.save(settings)
 
     def load_ui_mode(self) -> str:
         mode = self.load().get("ui_mode")

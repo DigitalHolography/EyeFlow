@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from utils.logger import current_logger
+from utils.logger import LogLevel, current_logger, format_log_message
 
 from ..services import services_for
 
@@ -87,7 +87,12 @@ class ProgressController:
         self.app.run_log.configure(state="disabled")
         self.persist_run_log_snapshot()
 
-    def log_run(self, text: str) -> None:
+    def log_run(
+        self,
+        text: str,
+        level: LogLevel | str | None = None,
+    ) -> None:
+        text = format_log_message(text, level)
         self.app.run_log.configure(state="normal")
         self.app.run_log.insert("end", f"{text}\n")
         self.app.run_log.see("end")

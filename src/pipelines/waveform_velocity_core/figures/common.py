@@ -1,4 +1,4 @@
-"""Shared context and helpers for waveform-shape velocity PNG figures."""
+"""Shared context and helpers for waveform velocity PNG diagnostics."""
 
 from __future__ import annotations
 

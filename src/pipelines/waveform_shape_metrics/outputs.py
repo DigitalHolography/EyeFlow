@@ -7,8 +7,7 @@ from collections.abc import Mapping
 from input_output import EyeFlowOutputPaths
 
 from .metrics.runner import run_waveform_shape_metric_calculations
-from .velocity.hemifield import pack_hemifield_metrics
-from .velocity.segmentation import pack_segmentation_outputs
+from .metrics.hemifield import pack_hemifield_metrics
 
 
 def pack_waveform_shape_outputs(
@@ -17,24 +16,24 @@ def pack_waveform_shape_outputs(
     artery_segments,
     vein_segments,
     output_paths: EyeFlowOutputPaths | str | None = None,
+    *,
+    include_per_beat: bool = True,
+    include_segments: bool = True,
+    include_hemifield: bool = True,
 ) -> dict[str, object]:
-    """Build global, by-segment, and hemifield waveform-shape outputs.
+    """Build only the selected waveform-shape metric output groups.
 
     The calculator-relative global and by-segment groups are first added below
     the configured waveform-shape root.  The same calculated segment metrics
-    are then reused for the region-indexed hemifield groups.  The spatial
-    segmentation outputs are composed here as well so the pipeline has one
-    public waveform-output boundary.
+    are then reused for the region-indexed hemifield groups.
     """
-    segmentation_outputs = pack_segmentation_outputs(
-        source_data,
-        artery_segments,
-        vein_segments,
-        output_paths,
-    )
+    if not include_per_beat and not include_hemifield:
+        return {}
+
     global_and_by_segment_outputs = run_waveform_shape_metric_calculations(
         metrics,
         output_paths,
+        include_segments=include_segments or include_hemifield,
     )
     metrics_with_waveform_outputs = dict(metrics)
     metrics_with_waveform_outputs.update(global_and_by_segment_outputs)
@@ -44,9 +43,13 @@ def pack_waveform_shape_outputs(
         artery_segments,
         vein_segments,
         output_paths,
-    )
+    ) if include_hemifield else {}
     return {
-        **segmentation_outputs,
-        **global_and_by_segment_outputs,
+        **{
+            key: value
+            for key, value in global_and_by_segment_outputs.items()
+            if include_per_beat
+            and (include_segments or "/by_segment/" not in key)
+        },
         **hemifield_outputs,
     }

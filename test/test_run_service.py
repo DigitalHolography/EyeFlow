@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -17,10 +18,17 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from app_settings import AppSettingsStore  # noqa: E402
+from app_settings import (  # noqa: E402
+    AppSettingsStore,
+    normalize_pipeline_options,
+)
 from input_output.archives import extracted_zip_tree  # noqa: E402
 from input_output.output_manager import OutputType  # noqa: E402
-from pipeline_engine import PipelineDescriptor, ProcessPipeline  # noqa: E402
+from pipeline_engine import (  # noqa: E402
+    PipelineDescriptor,
+    PipelineOption,
+    ProcessPipeline,
+)
 from pipeline_engine.run_service import (  # noqa: E402
     execute_run,
     expand_run_inputs,
@@ -185,6 +193,73 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertEqual(("preparation", "sample"), spec.plan.names)
 
+    def test_pipeline_options_default_validate_and_preserve_empty_selection(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            holo = _write_input(Path(temp_dir))
+            descriptor = _descriptor()
+            descriptor.options = (
+                PipelineOption("default", "Default"),
+                PipelineOption("opt_in", "Opt in", default_enabled=False),
+            )
+
+            default_spec = resolve_run_spec(
+                input_paths=[holo],
+                target_names=["sample"],
+                pipelines=[descriptor],
+            )
+            empty_spec = resolve_run_spec(
+                input_paths=[holo],
+                target_names=["sample"],
+                pipelines=[descriptor],
+                pipeline_options={"sample": ()},
+            )
+
+            self.assertEqual(("default",), default_spec.pipeline_options["sample"])
+            self.assertEqual((), empty_spec.pipeline_options["sample"])
+            result = execute_run(empty_spec)
+            self.assertTrue(result.succeeded)
+            with h5py.File(result.outputs[0], "r") as output_h5:
+                self.assertEqual(
+                    {"sample": []},
+                    json.loads(output_h5.attrs["pipeline_options"]),
+                )
+            with self.assertRaisesRegex(ValueError, "Unknown option"):
+                resolve_run_spec(
+                    input_paths=[holo],
+                    target_names=["sample"],
+                    pipelines=[descriptor],
+                    pipeline_options={"sample": ("missing",)},
+                )
+
+    def test_pipeline_option_settings_are_normalized_and_persisted(self) -> None:
+        options = {
+            "waveform_velocity": (
+                PipelineOption("per_beat", "Per beat"),
+                PipelineOption("hemifield", "Hemifield"),
+            )
+        }
+        normalized, changed = normalize_pipeline_options(
+            options,
+            {
+                "waveform_velocity": {"per_beat": False, "removed": True},
+                "removed_pipeline": {"old": True},
+            },
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(
+            {"waveform_velocity": {"per_beat": False, "hemifield": True}},
+            normalized,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = AppSettingsStore(
+                path=Path(temp_dir) / "settings.json",
+                default_template_path=None,
+            )
+            store.save_pipeline_options(normalized)
+            self.assertEqual(normalized, store.load_pipeline_options())
+
     def test_duplicate_output_destinations_are_rejected_before_execution(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             holo = _write_input(Path(temp_dir))
@@ -210,6 +285,7 @@ class RunServiceTests(unittest.TestCase):
             with h5py.File(result.outputs[0], "r") as output_h5:
                 self.assertNotIn("trim_h5source", output_h5.attrs)
                 self.assertEqual(["sample"], list(output_h5.attrs["pipeline_targets"]))
+                self.assertEqual({}, json.loads(output_h5.attrs["pipeline_options"]))
 
     def test_cli_reports_zip_creation_failure_with_nonzero_status(self) -> None:
         import cli

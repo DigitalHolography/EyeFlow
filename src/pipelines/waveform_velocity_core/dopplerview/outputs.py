@@ -1,37 +1,23 @@
-"""Output packing for the waveform-shape metrics pipeline."""
+"""Output packing for shared DopplerView analysis products."""
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
 
 
-def pack_dopplerview_analysis_outputs(
+def pack_dopplerview_shared_outputs(
     analysis: Mapping[str, object],
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
+    """Pack shared frequency-map, heartbeat, and provenance analysis outputs."""
+
     schema = _resolve_output_paths(output_paths)
     paths = schema.analysis
     metrics = {
-        paths.retinal_artery_velocity_signal: metric_value(
-            analysis["retinal_artery_velocity_signal"],
-            unit="mm/s",
-        ),
-        paths.retinal_vein_velocity_signal: metric_value(
-            analysis["retinal_vein_velocity_signal"],
-            unit="mm/s",
-        ),
         paths.fRMS_avg: metric_value(analysis["fRMS_avg"]),
         paths.fRMS_bkg_avg: metric_value(analysis["fRMS_bkg_avg"]),
-        paths.retinal_artery_velocity_signal_filtered: metric_value(
-            analysis["retinal_artery_velocity_signal_filtered"],
-            unit="mm/s",
-        ),
-        paths.retinal_vein_velocity_signal_filtered: metric_value(
-            analysis["retinal_vein_velocity_signal_filtered"],
-            unit="mm/s",
-        ),
         paths.beat_indices: metric_value(analysis["beat_indices"]),
         paths.time_per_beat: metric_value(
             analysis["time_per_beat"],
@@ -40,16 +26,6 @@ def pack_dopplerview_analysis_outputs(
     }
     if paths.velocity_map_avg is not None:
         metrics[paths.velocity_map_avg] = metric_value(analysis["velocity_map_avg"])
-    if paths.velocitysignal_per_beat is not None:
-        metrics[paths.velocitysignal_per_beat] = metric_value(
-            analysis["retinal_artery_velocity_signal_filtered_perbeat"],
-            unit="mm/s",
-        )
-    if paths.velocitysignal_filtered is not None:
-        metrics[paths.velocitysignal_filtered] = metric_value(
-            analysis["retinal_artery_velocity_signal_filtered"],
-            unit="mm/s",
-        )
     if paths.retinal_velocity_array is not None:
         metrics[paths.retinal_velocity_array] = metric_value(
             analysis["retinal_vessel_velocity"],
@@ -90,10 +66,17 @@ def _resolve_output_paths(
     return EyeFlowOutputPaths.active(output_paths)
 
 
-def metric_value(data, *, unit: str | None = None):
+def metric_value(
+    data,
+    *,
+    unit: str | None = None,
+    dim_desc: Iterable[str] | None = None,
+):
     attrs: dict[str, object] = {}
     if unit:
         attrs["unit"] = unit
+    if dim_desc:
+        attrs["dimDesc"] = list(dim_desc)
     data = metric_data(data)
     return (data, attrs) if attrs else data
 

@@ -18,11 +18,12 @@ from calculations.dopplerview_analysis.vessel_velocity_estimator import (
     VesselVelocityEstimatorStep,
 )
 from input_output.schema import EyeFlowOutputPaths
-from pipelines.waveform_shape_metrics.dopplerview.models import DopplerViewStepContext
-from pipelines.waveform_shape_metrics.dopplerview.outputs import (
-    pack_dopplerview_analysis_outputs,
+from pipelines.waveform_velocity.continuous import pack_continuous_velocity_outputs
+from pipelines.waveform_velocity_core.dopplerview.models import DopplerViewStepContext
+from pipelines.waveform_velocity_core.dopplerview.outputs import (
+    pack_dopplerview_shared_outputs,
 )
-from pipelines.waveform_shape_metrics.scratch import waveform_scratch_h5
+from pipelines.waveform_velocity_core.scratch import waveform_scratch_h5
 
 
 class FlatFieldTests(unittest.TestCase):
@@ -127,6 +128,30 @@ class ScratchAndSchemaTests(unittest.TestCase):
     def test_active_schema_has_no_published_velocity_video_or_analysis_group(self) -> None:
         schema = EyeFlowOutputPaths.active()
         self.assertEqual("eyeflow_v2", schema.name)
+        self.assertEqual(
+            "Processing/Velocity/global/Artery/BandLimited/value",
+            schema.analysis.retinal_artery_velocity_signal_band_limited,
+        )
+        self.assertEqual(
+            "Processing/Velocity/global/Vein/BandLimited/value",
+            schema.analysis.retinal_vein_velocity_signal_band_limited,
+        )
+        self.assertEqual(
+            "Processing/Velocity/segments/Artery/Raw/value",
+            schema.artery_segments.velocity_signal,
+        )
+        self.assertEqual(
+            "Processing/Velocity/segments/Artery/BandLimited/value",
+            schema.artery_segments.velocity_signal_band_limited,
+        )
+        self.assertEqual(
+            "Processing/Velocity/segments/Vein/Raw/value",
+            schema.vein_segments.velocity_signal,
+        )
+        self.assertEqual(
+            "Processing/Velocity/segments/Vein/BandLimited/value",
+            schema.vein_segments.velocity_signal_band_limited,
+        )
         self.assertIsNone(schema.analysis.retinal_velocity_array)
         self.assertIsNone(schema.analysis.velocity_map_avg)
         self.assertTrue(
@@ -149,11 +174,24 @@ class ScratchAndSchemaTests(unittest.TestCase):
             "beat_indices": np.asarray([1, 5], dtype=np.int32),
             "time_per_beat": np.asarray([0.4], dtype=np.float32),
         }
-        metrics = pack_dopplerview_analysis_outputs(analysis)
+        shared = pack_dopplerview_shared_outputs(analysis)
+        velocity = pack_continuous_velocity_outputs(analysis)
+        metrics = {**shared, **velocity}
 
         self.assertFalse(any(path.startswith("analysis/") for path in metrics))
         self.assertFalse(
             any(value is analysis["retinal_vessel_velocity"] for value in metrics.values())
+        )
+        self.assertNotIn(schema.analysis.retinal_artery_velocity_signal, shared)
+        self.assertNotIn(schema.analysis.retinal_vein_velocity_signal, shared)
+        self.assertEqual(
+            {
+                schema.analysis.retinal_artery_velocity_signal,
+                schema.analysis.retinal_vein_velocity_signal,
+                schema.analysis.retinal_artery_velocity_signal_filtered,
+                schema.analysis.retinal_vein_velocity_signal_filtered,
+            },
+            set(velocity),
         )
 
 

@@ -21,7 +21,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from uuid import uuid4
 
-from app_settings import AppSettingsStore
+from app_settings import AppSettingsStore, normalize_pipeline_options
 from runtime_limits import configure_numeric_threads
 
 configure_numeric_threads()
@@ -90,6 +90,29 @@ def _load_configured_pipeline_targets(
     )
 
 
+def _load_configured_pipeline_options(
+    registry: dict[str, PipelineDescriptor],
+    settings_store: AppSettingsStore | None = None,
+) -> dict[str, tuple[str, ...]]:
+    store = settings_store or AppSettingsStore()
+    normalized, _changed = normalize_pipeline_options(
+        {
+            name: descriptor.options
+            for name, descriptor in registry.items()
+            if descriptor.options
+        },
+        store.load_pipeline_options(),
+    )
+    return {
+        pipeline_name: tuple(
+            option.name
+            for option in registry[pipeline_name].options
+            if values.get(option.name, False)
+        )
+        for pipeline_name, values in normalized.items()
+    }
+
+
 def _default_cli_output_root(data_path: Path) -> Path:
     source = data_path.expanduser().resolve()
     return source if source.is_dir() else source.parent
@@ -133,10 +156,18 @@ def run_cli(
 ) -> int:
     registry = _build_pipeline_registry()
     target_registry = selectable_pipeline_registry(registry.values())
+    settings_store = AppSettingsStore()
     target_names = (
         _load_pipeline_targets(pipelines_file, target_registry)
         if pipelines_file is not None
-        else _load_configured_pipeline_targets(target_registry)
+        else _load_configured_pipeline_targets(
+            target_registry,
+            settings_store=settings_store,
+        )
+    )
+    pipeline_options = _load_configured_pipeline_options(
+        target_registry,
+        settings_store=settings_store,
     )
     work_tempdir_path: Path | None = None
     clean_work_output = False
@@ -160,6 +191,7 @@ def run_cli(
             input_paths=expanded_inputs.paths,
             target_names=target_names,
             pipelines=registry.values(),
+            pipeline_options=pipeline_options,
             output_root=work_root,
             batch_root=expanded_inputs.batch_root,
         )

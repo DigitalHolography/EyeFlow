@@ -6,10 +6,10 @@ from .runner import run_pdf_report
 
 
 @pipeline(
-    name="pdf_report_generator",
+    name="pdf_report",
     description="Generate A4 PDF report from EyeFlow analysis outputs.",
     requires=["numpy", "matplotlib", "PIL"],
-    dag_requires=["waveform_shape_metrics"],
+    dag_requires=["waveform_velocity", "waveform_shape_metrics"],
     input_slot="both",
 )
 def run(ctx):

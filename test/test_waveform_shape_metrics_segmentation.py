@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
-from pipelines.waveform_shape_metrics.velocity.segmentation import (
+from pipelines.waveform_velocity_core.segmentation import (
     OPTIC_DISC_LABEL,
     REGION_AXIS_LABEL,
     pack_segmentation_outputs,

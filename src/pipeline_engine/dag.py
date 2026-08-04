@@ -77,6 +77,52 @@ class PipelineDAG:
         )
         return PipelineExecutionPlan(targets=target_names, descriptors=descriptors)
 
+    def dependencies_of(
+        self,
+        pipeline_name: str,
+        *,
+        transitive: bool = False,
+    ) -> tuple[str, ...]:
+        """Return direct or transitive upstream pipeline dependencies."""
+        return self._related_pipelines(
+            pipeline_name,
+            self._dependencies,
+            transitive=transitive,
+        )
+
+    def dependents_of(
+        self,
+        pipeline_name: str,
+        *,
+        transitive: bool = False,
+    ) -> tuple[str, ...]:
+        """Return direct or transitive downstream pipeline dependents."""
+        return self._related_pipelines(
+            pipeline_name,
+            self.graph,
+            transitive=transitive,
+        )
+
+    def _related_pipelines(
+        self,
+        pipeline_name: str,
+        relationships: dict[str, set[str]],
+        *,
+        transitive: bool,
+    ) -> tuple[str, ...]:
+        if pipeline_name not in self._pipelines_by_name:
+            raise ValueError(f"Unknown pipeline: '{pipeline_name}'")
+        related = set(relationships[pipeline_name])
+        if transitive:
+            pending = list(related)
+            while pending:
+                current = pending.pop()
+                for item in relationships[current]:
+                    if item not in related:
+                        related.add(item)
+                        pending.append(item)
+        return tuple(name for name in self.execution_order if name in related)
+
     def _build_pipeline_index(self) -> dict[str, PipelineDescriptor]:
         pipelines_by_name: dict[str, PipelineDescriptor] = {}
         for pipeline in self._pipelines:

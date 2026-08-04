@@ -17,10 +17,10 @@ if str(SRC_DIR) not in sys.path:
 from input_output import load_h5_sidecar_config  # noqa: E402
 from input_output.schema import DopplerViewSource, HolodopplerSource  # noqa: E402
 from pipeline_engine.context import RawH5SourceReader  # noqa: E402
-from pipelines.waveform_shape_metrics.runner import (  # noqa: E402
+from pipelines.waveform_velocity_core.runner import (  # noqa: E402
     _segment_ring_settings,
 )
-from pipelines.waveform_shape_metrics.sources import WaveformShapeSources  # noqa: E402
+from pipelines.waveform_velocity_core.sources import WaveformVelocitySources  # noqa: E402
 
 
 class DopplerViewCompatibilityTests(unittest.TestCase):
@@ -228,7 +228,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         hd_file = h5py.File(hd_path, "r")
         dv_file = h5py.File(dv_path, "r")
         try:
-            sources = WaveformShapeSources(
+            sources = WaveformVelocitySources(
                 hd=HolodopplerSource(
                     RawH5SourceReader(h5file=hd_file, label="HD"),
                     hd_config,

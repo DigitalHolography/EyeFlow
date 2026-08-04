@@ -1,4 +1,4 @@
-"""Signal time-series PNG exporters for waveform-shape velocity analysis."""
+"""Signal time-series PNG exporters for waveform velocity analysis."""
 
 from __future__ import annotations
 

@@ -9,6 +9,7 @@ import numpy as np
 from scipy import ndimage as ndi
 
 from calculations.math import nanmean_float32, rotate_array_threshold, rotate_image_with_nan
+from utils.logger import log_warning
 
 from .branch_identity import BranchIdentityResult, label_vessel_branches
 from .segment_geometry import (
@@ -436,8 +437,9 @@ def _subimage_stack(
         segment_y, segment_x = np.nonzero(mask)
         segment_width = int(segment_x.max() - segment_x.min() + 1)
         segment_height = int(segment_y.max() - segment_y.min() + 1)
-        log(
-            "[WARNING] Cross-section window is too small for the vessel segment: "
+        log_warning(
+            log,
+            "Cross-section window is too small for the vessel segment: "
             f"{x_range.stop - x_range.start}x{y_range.stop - y_range.start} px "
             f"window for a {segment_width}x{segment_height} px segment at ({x}, {y})."
         )
