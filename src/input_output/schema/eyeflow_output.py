@@ -18,8 +18,8 @@ class DopplerViewAnalysisOutputPaths:
     retinal_velocity_array: str | None
     retinal_artery_velocity_signal: str
     retinal_vein_velocity_signal: str
-    retinal_artery_velocity_signal_filtered: str
-    retinal_vein_velocity_signal_filtered: str
+    retinal_artery_velocity_signal_band_limited: str
+    retinal_vein_velocity_signal_band_limited: str
     velocity_map_avg: str | None
     fRMS_avg: str
     fRMS_bkg_avg: str
@@ -28,6 +28,16 @@ class DopplerViewAnalysisOutputPaths:
     beat_indices: str
     time_per_beat: str
 
+    @property
+    def retinal_artery_velocity_signal_filtered(self) -> str:
+        """Compatibility alias for the previous H5 path field name."""
+        return self.retinal_artery_velocity_signal_band_limited
+
+    @property
+    def retinal_vein_velocity_signal_filtered(self) -> str:
+        """Compatibility alias for the previous H5 path field name."""
+        return self.retinal_vein_velocity_signal_band_limited
+
 
 @dataclass(frozen=True)
 class VelocityPerBeatOutputPaths:
@@ -35,9 +45,6 @@ class VelocityPerBeatOutputPaths:
     velocity_signal_fft_abs: str
     velocity_signal_fft_arg: str
     velocity_signal_band_limited: str
-    vmax_band_limited: str
-    vmin_band_limited: str
-    vti_per_beat: str
     segment_velocity_signal: str | None = None
     segment_velocity_signal_band_limited: str | None = None
 
@@ -187,8 +194,8 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
         retinal_velocity_array="analysis/retinal_velocity_array",
         retinal_artery_velocity_signal="analysis/retinal_artery_velocity_signal",
         retinal_vein_velocity_signal="analysis/retinal_vein_velocity_signal",
-        retinal_artery_velocity_signal_filtered="analysis/velocitysignal_filtered",
-        retinal_vein_velocity_signal_filtered="analysis/vein_velocitysignal_filtered",
+        retinal_artery_velocity_signal_band_limited="analysis/velocitysignal_filtered",
+        retinal_vein_velocity_signal_band_limited="analysis/vein_velocitysignal_filtered",
         velocity_map_avg="analysis/velocity_map_avg",
         fRMS_avg="analysis/fRMS_avg",
         fRMS_bkg_avg="analysis/fRMS_bkg_avg",
@@ -204,9 +211,6 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
         velocity_signal_band_limited=(
             "Artery/VelocityPerBeat/VelocitySignalPerBeatBandLimited/value"
         ),
-        vmax_band_limited="Artery/VelocityPerBeat/VmaxPerBeatBandLimited/value",
-        vmin_band_limited="Artery/VelocityPerBeat/VminPerBeatBandLimited/value",
-        vti_per_beat="Artery/VelocityPerBeat/VTIPerBeat/value",
         segment_velocity_signal=(
             "Artery/VelocityPerBeat/Segments/VelocitySignalPerBeatPerSegment/value"
         ),
@@ -222,9 +226,6 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
         velocity_signal_band_limited=(
             "Vein/VelocityPerBeat/VelocitySignalPerBeatBandLimited/value"
         ),
-        vmax_band_limited="Vein/VelocityPerBeat/VmaxPerBeatBandLimited/value",
-        vmin_band_limited="Vein/VelocityPerBeat/VminPerBeatBandLimited/value",
-        vti_per_beat="Vein/VelocityPerBeat/VTIPerBeat/value",
         segment_velocity_signal=(
             "Vein/VelocityPerBeat/Segments/VelocitySignalPerBeatPerSegment/value"
         ),
@@ -255,8 +256,8 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
         retinal_velocity_array=None,
         retinal_artery_velocity_signal="artery/velocity/signal/value",
         retinal_vein_velocity_signal="vein/velocity/signal/value",
-        retinal_artery_velocity_signal_filtered="artery/velocity/filtered_signal/value",
-        retinal_vein_velocity_signal_filtered="vein/velocity/filtered_signal/value",
+        retinal_artery_velocity_signal_band_limited="artery/velocity/filtered_signal/value",
+        retinal_vein_velocity_signal_band_limited="vein/velocity/filtered_signal/value",
         velocity_map_avg="topo/velocity_map_avg/value",
         fRMS_avg="topo/fRMS_avg/value",
         fRMS_bkg_avg="topo/fRMS_bkg_avg/value",
@@ -270,9 +271,6 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
         velocity_signal_fft_abs="artery/velocity/perbeat/fft_abs/value",
         velocity_signal_fft_arg="artery/velocity/perbeat/fft_arg/value",
         velocity_signal_band_limited="artery/velocity/perbeat/band_limited/value",
-        vmax_band_limited="artery/velocity/perbeat/vmax_band_limited/value",
-        vmin_band_limited="artery/velocity/perbeat/vmin_band_limited/value",
-        vti_per_beat="artery/velocity/perbeat/vti/value",
         segment_velocity_signal="artery/velocity/perbeat/segments/signal/value",
         segment_velocity_signal_band_limited=(
             "artery/velocity/perbeat/segments/band_limited/value"
@@ -283,9 +281,6 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
         velocity_signal_fft_abs="vein/velocity/perbeat/fft_abs/value",
         velocity_signal_fft_arg="vein/velocity/perbeat/fft_arg/value",
         velocity_signal_band_limited="vein/velocity/perbeat/band_limited/value",
-        vmax_band_limited="vein/velocity/perbeat/vmax_band_limited/value",
-        vmin_band_limited="vein/velocity/perbeat/vmin_band_limited/value",
-        vti_per_beat="vein/velocity/perbeat/vti/value",
         segment_velocity_signal="vein/velocity/perbeat/segments/signal/value",
         segment_velocity_signal_band_limited=(
             "vein/velocity/perbeat/segments/band_limited/value"
@@ -309,13 +304,13 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     name=EYEFLOW_V2_OUTPUT_SCHEMA,
     analysis=DopplerViewAnalysisOutputPaths(
         retinal_velocity_array=None,
-        retinal_artery_velocity_signal="Processing/Velocity/Artery/Raw/value",
-        retinal_vein_velocity_signal="Processing/Velocity/Vein/Raw/value",
-        retinal_artery_velocity_signal_filtered=(
-            "Processing/Velocity/Artery/Filtered/value"
+        retinal_artery_velocity_signal="Processing/Velocity/global/Artery/Raw/value",
+        retinal_vein_velocity_signal="Processing/Velocity/global/Vein/Raw/value",
+        retinal_artery_velocity_signal_band_limited=(
+            "Processing/Velocity/global/Artery/BandLimited/value"
         ),
-        retinal_vein_velocity_signal_filtered=(
-            "Processing/Velocity/Vein/Filtered/value"
+        retinal_vein_velocity_signal_band_limited=(
+            "Processing/Velocity/global/Vein/BandLimited/value"
         ),
         velocity_map_avg=None,
         fRMS_avg="Processing/FrequencyMaps/fRMS_avg/value",
@@ -332,9 +327,6 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         velocity_signal_band_limited=(
             "Processing/VelocityPerBeat/Artery/BandLimited/value"
         ),
-        vmax_band_limited="Processing/VelocityPerBeat/Artery/VmaxBandLimited/value",
-        vmin_band_limited="Processing/VelocityPerBeat/Artery/VminBandLimited/value",
-        vti_per_beat="Processing/VelocityPerBeat/Artery/VTI/value",
         segment_velocity_signal=(
             "Processing/VelocityPerBeat/Artery/Segments/Raw/value"
         ),
@@ -349,9 +341,6 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         velocity_signal_band_limited=(
             "Processing/VelocityPerBeat/Vein/BandLimited/value"
         ),
-        vmax_band_limited="Processing/VelocityPerBeat/Vein/VmaxBandLimited/value",
-        vmin_band_limited="Processing/VelocityPerBeat/Vein/VminBandLimited/value",
-        vti_per_beat="Processing/VelocityPerBeat/Vein/VTI/value",
         segment_velocity_signal=(
             "Processing/VelocityPerBeat/Vein/Segments/Raw/value"
         ),

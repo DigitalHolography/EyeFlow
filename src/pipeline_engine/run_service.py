@@ -11,6 +11,7 @@ from pathlib import Path
 from input_output import INPUT_LIST_SUFFIX, HoloRunLayout, resolve_selected_run_layouts
 from input_output.archives import extracted_zip_tree
 from input_output.output_manager import OutputManager, OutputType
+from utils.logger import LogLevel, emit_log
 
 from .base import PipelineDescriptor
 from .dag import PipelineDAG, PipelineExecutionPlan
@@ -189,7 +190,7 @@ def execute_run(
         except Exception as exc:  # noqa: BLE001
             failure = RunFailure(input_layout.holo_path, str(exc))
             failures.append(failure)
-            _emit(on_log, f"[FAIL] {failure}")
+            _emit(on_log, str(failure), level=LogLevel.ERROR)
             continue
 
         outputs.append(final_path)
@@ -317,9 +318,13 @@ def _reject_duplicate_destinations(requests: Sequence[RunRequest]) -> None:
         destinations[key] = request.input_layout.holo_path
 
 
-def _emit(on_log: Callable[[str], None] | None, message: str) -> None:
-    if on_log is not None:
-        on_log(message)
+def _emit(
+    on_log: Callable[[str], None] | None,
+    message: str,
+    *,
+    level: LogLevel | str | None = None,
+) -> None:
+    emit_log(on_log, message, level)
 
 
 __all__ = [

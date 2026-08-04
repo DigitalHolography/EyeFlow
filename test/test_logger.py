@@ -7,7 +7,14 @@ import unittest
 from pathlib import Path
 
 from app_settings import LAST_RUN_LOG_FILENAME
-from utils.logger import RunLogger, configure_logger, current_logger
+from utils.logger import (
+    LogLevel,
+    RunLogger,
+    configure_logger,
+    current_logger,
+    emit_log,
+    format_log_message,
+)
 
 
 class RunLoggerTests(unittest.TestCase):
@@ -46,6 +53,30 @@ class RunLoggerTests(unittest.TestCase):
 
             self.assertIs(logger, current_logger())
             self.assertEqual(settings_path.with_name(LAST_RUN_LOG_FILENAME), logger.path)
+
+    def test_log_level_is_selected_without_embedded_markers(self) -> None:
+        messages: list[str] = []
+
+        emit_log(messages.append, "Something went wrong", LogLevel.ERROR)
+        emit_log(messages.append, "The vessel crop is small", LogLevel.WARNING)
+        emit_log(messages.append, "Timing detail", LogLevel.DEBUG)
+
+        self.assertEqual(
+            [
+                "[ERROR] Something went wrong",
+                "[WARNING] The vessel crop is small",
+                "[DEBUG] Timing detail",
+            ],
+            messages,
+        )
+
+    def test_legacy_level_markers_are_normalized(self) -> None:
+        self.assertEqual("[ERROR] Failure details", format_log_message("[FAIL] Failure details"))
+        self.assertEqual(
+            "[WARNING] Warning details",
+            format_log_message("[WARNING] Warning details"),
+        )
+        self.assertEqual("[INPUT] source.h5", format_log_message("[INPUT] source.h5"))
 
 
 if __name__ == "__main__":

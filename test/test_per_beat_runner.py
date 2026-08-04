@@ -20,6 +20,9 @@ from calculations.blood_flow_velocity.signal_analysis.heartbeat import (  # noqa
     spectral_heartbeat_analysis,
 )
 from calculations.math import band_limited_ifft_abs  # noqa: E402
+from pipelines.waveform_velocity_core.per_beat_outputs import (  # noqa: E402
+    pack_velocity_per_beat_outputs,
+)
 from pipelines.waveform_velocity_core.runner import (  # noqa: E402
     _filtered_velocity_signals_for_per_beat,
 )
@@ -108,6 +111,10 @@ class PerBeatRunnerTests(unittest.TestCase):
             result.cycle_boundary_indexes,
             inputs.cycle_boundary_indexes,
         )
+        outputs = pack_velocity_per_beat_outputs(result)
+        self.assertFalse(any("Vmax" in path for path in outputs))
+        self.assertFalse(any("Vmin" in path for path in outputs))
+        self.assertFalse(any("VTI" in path for path in outputs))
 
 
 if __name__ == "__main__":

@@ -128,6 +128,14 @@ class ScratchAndSchemaTests(unittest.TestCase):
     def test_active_schema_has_no_published_velocity_video_or_analysis_group(self) -> None:
         schema = EyeFlowOutputPaths.active()
         self.assertEqual("eyeflow_v2", schema.name)
+        self.assertEqual(
+            "Processing/Velocity/global/Artery/BandLimited/value",
+            schema.analysis.retinal_artery_velocity_signal_band_limited,
+        )
+        self.assertEqual(
+            "Processing/Velocity/global/Vein/BandLimited/value",
+            schema.analysis.retinal_vein_velocity_signal_band_limited,
+        )
         self.assertIsNone(schema.analysis.retinal_velocity_array)
         self.assertIsNone(schema.analysis.velocity_map_avg)
         self.assertTrue(

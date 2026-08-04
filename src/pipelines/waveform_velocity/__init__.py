@@ -8,7 +8,7 @@ from .runner import run_waveform_velocity
 @pipeline(
     name="waveform_velocity",
     description=(
-        "Compute raw and filtered waveform velocity with optional derived products."
+        "Compute raw and band-limited waveform velocity with optional derived products."
     ),
     requires=["numpy", "h5py", "scipy", "skimage"],
     dag_requires=["waveform_velocity_core"],

@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from time import perf_counter
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -67,7 +66,6 @@ class WaveformVelocitySources:
 
     hd: HolodopplerSource
     dv: DopplerViewSource
-    log: Callable[[str], None] | None = None
 
     @classmethod
     def from_context(cls, ctx: PipelineContext) -> "WaveformVelocitySources":
@@ -75,46 +73,43 @@ class WaveformVelocitySources:
         return cls(
             hd=ctx.inputs.hd.as_holodoppler(),
             dv=ctx.inputs.dv.as_dopplerview(),
-            log=getattr(ctx, "log", None),
         )
 
     def load(self) -> WaveformVelocitySourceData:
-        moment0 = self._timed_load("HD moment0 dataset", self.hd.moment0_dataset)
-        moment2 = self._timed_load("HD moment2 dataset", self.hd.moment2_dataset)
+        moment0 = self.hd.moment0_dataset()
+        moment2 = self.hd.moment2_dataset()
         spatial_shape = moment0.shape[-2:]
-        timing = self._timed_load("HD timing", self.hd.timing)
+        timing = self.hd.timing()
         artery_mask, artery_axes_swapped = _align_spatial_array(
-            self._timed_load("DV retinal artery mask", self.dv.retinal_artery_mask),
+            self.dv.retinal_artery_mask(),
             spatial_shape,
             "retinal_artery_mask",
         )
         vein_mask, vein_axes_swapped = _align_spatial_array(
-            self._timed_load("DV retinal vein mask", self.dv.retinal_vein_mask),
+            self.dv.retinal_vein_mask(),
             spatial_shape,
             "retinal_vein_mask",
         )
         spatial_axes_swapped = artery_axes_swapped or vein_axes_swapped
         labeled_vessels, labeled_axes_swapped = _align_optional_spatial_array(
-            self._timed_load(
-                "DV labeled vessels", self.dv.retinal_labeled_vessels
-            ),
+            self.dv.retinal_labeled_vessels(),
             spatial_shape,
             "retinal_labeled_vessels",
         )
         spatial_axes_swapped = spatial_axes_swapped or labeled_axes_swapped
         optic_disc_mask, optic_disc_axes_swapped = _align_optional_spatial_array(
-            self._timed_load("DV optic disc mask", self.dv.optic_disc_mask),
+            self.dv.optic_disc_mask(),
             spatial_shape,
             "optic_disc_mask",
         )
         spatial_axes_swapped = spatial_axes_swapped or optic_disc_axes_swapped
         optic_disc_center = _align_spatial_pair(
-            self._timed_load("DV optic disc center", self.dv.optic_disc_center),
+            self.dv.optic_disc_center(),
             swapped=spatial_axes_swapped,
         )
         optic_disc_width, optic_disc_height = _align_spatial_sizes(
-            self._timed_load("DV optic disc width", self.dv.optic_disc_width),
-            self._timed_load("DV optic disc height", self.dv.optic_disc_height),
+            self.dv.optic_disc_width(),
+            self.dv.optic_disc_height(),
             swapped=spatial_axes_swapped,
         )
         return WaveformVelocitySourceData(
@@ -156,17 +151,6 @@ class WaveformVelocitySources:
                 dopplerview_analysis_available=False,
             ),
         )
-
-    def _timed_load(self, label: str, loader):
-        started = perf_counter()
-        value = loader()
-        elapsed = perf_counter() - started
-        self._log(f"[IO] {label} loaded in {elapsed:.2f}s")
-        return value
-
-    def _log(self, message: str) -> None:
-        if callable(self.log):
-            self.log(message)
 
     def _cross_section_settings(self, optic_disc_width, optic_disc_height):
         return CrossSectionSignalSettings(

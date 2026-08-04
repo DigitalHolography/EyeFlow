@@ -8,6 +8,7 @@ from queue import Empty, Queue
 from threading import Thread
 
 from pipeline_engine import RunResult, RunSpec, execute_run, resolve_run_spec
+from utils.logger import LogLevel
 
 from ..services import services_for
 
@@ -193,7 +194,10 @@ class RunController:
         self._set_pipeline_run_active(False)
 
     def _finish_pipeline_run_failure(self, failure_message: str) -> None:
-        self.app.progress_controller.log_run(f"[FAIL] {failure_message}")
+        self.app.progress_controller.log_run(
+            failure_message,
+            level=LogLevel.ERROR,
+        )
         self.app.progress_controller.set_minimal_status("Run failed.")
         self._set_pipeline_run_active(False)
         services_for(self.app).dialogs.showerror("Run failed", failure_message)

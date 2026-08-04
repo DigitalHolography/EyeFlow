@@ -320,10 +320,10 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         )
 
         north_west_raw = (
-            "Processing/Velocity/Artery/hemifield/north_west/Raw/value"
+            "Processing/Velocity/hemifield/Artery/north_west/Raw/value"
         )
         north_east_raw = (
-            "Processing/Velocity/Artery/hemifield/north_east/Raw/value"
+            "Processing/Velocity/hemifield/Artery/north_east/Raw/value"
         )
         north_west_per_beat = (
             "Processing/VelocityPerBeat/Artery/hemifield/"

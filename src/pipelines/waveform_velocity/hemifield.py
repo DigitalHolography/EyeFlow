@@ -83,25 +83,25 @@ def _pack_region_velocity_outputs(
         if vessel_name == "artery"
         else schema.analysis.retinal_vein_velocity_signal
     )
-    velocity_filtered_path = (
-        schema.analysis.retinal_artery_velocity_signal_filtered
+    velocity_band_limited_path = (
+        schema.analysis.retinal_artery_velocity_signal_band_limited
         if vessel_name == "artery"
-        else schema.analysis.retinal_vein_velocity_signal_filtered
+        else schema.analysis.retinal_vein_velocity_signal_band_limited
     )
-    velocity_root = _dataset_group(velocity_signal_path)
+    velocity_root = _hemifield_root(velocity_signal_path, vessel_name)
     output: dict[str, object] = {}
     for region_index, region_name in enumerate(REGION_NAMES):
         selected = membership[region_index]
         raw = _reduce_segment_velocity(segment_velocity, selected)
-        filtered = _lowpass_velocity(raw, source_data)
-        root = f"{velocity_root}/hemifield/{region_name}"
+        band_limited = _lowpass_velocity(raw, source_data)
+        root = f"{velocity_root}/{region_name}"
         output[f"{root}/{_path_variant(velocity_signal_path)}/value"] = with_attrs(
             raw,
             _velocity_region_attrs(region_name, "raw", ("frame",)),
         )
-        output[f"{root}/{_path_variant(velocity_filtered_path)}/value"] = with_attrs(
-            filtered,
-            _velocity_region_attrs(region_name, "filtered", ("frame",)),
+        output[f"{root}/{_path_variant(velocity_band_limited_path)}/value"] = with_attrs(
+            band_limited,
+            _velocity_region_attrs(region_name, "bandlimited", ("frame",)),
         )
 
     output.update(
@@ -219,7 +219,7 @@ def _lowpass_velocity(values: np.ndarray, source_data) -> np.ndarray:
         return np.full(values.shape, np.nan, dtype=np.float32)
     timing = getattr(source_data, "timing", None)
     if timing is None:
-        raise ValueError("Hemifield filtered velocity requires source timing.")
+        raise ValueError("Hemifield band-limited velocity requires source timing.")
     return butter_lowpass_filtfilt(
         values,
         dt_seconds=np.float32(timing.dt_seconds),
@@ -247,6 +247,22 @@ def _dataset_group(path: str) -> str:
     if len(parts) >= 2 and parts[-1] == "value":
         return "/".join(parts[:-2])
     return "/".join(parts[:-1])
+
+
+def _hemifield_root(path: str, vessel_name: str) -> str:
+    """Return the shared continuous-velocity hemifield root."""
+
+    dataset_root = _dataset_group(path)
+    parts = dataset_root.split("/")
+    velocity_index = next(
+        (index for index, part in enumerate(parts) if part.lower() == "velocity"),
+        None,
+    )
+    if velocity_index is None:
+        return f"{dataset_root}/hemifield"
+    return "/".join(
+        [*parts[: velocity_index + 1], "hemifield", vessel_name.capitalize()]
+    )
 
 
 def _path_variant(path: str) -> str:

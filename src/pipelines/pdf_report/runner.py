@@ -15,12 +15,12 @@ def run_pdf_report(ctx) -> None:
     
     output_h5_path = ctx.output.h5.filename
     if output_h5_path is None:
-        ctx.log("No output H5 file available for PDF generation")
+        ctx.log_warning("No output H5 file available for PDF generation")
         return None
 
     output_manager = ctx.output.manager
     if output_manager is None:
-        ctx.log("No output manager available for PDF generation")
+        ctx.log_warning("No output manager available for PDF generation")
         return None
 
     layout = output_manager.layout
@@ -48,5 +48,5 @@ def run_pdf_report(ctx) -> None:
         ctx.log(f"PDF report generated: {pdf_path}")
         return None
     except Exception as e:
-        ctx.log(f"PDF generation failed: {e}")
+        ctx.log_error(f"PDF generation failed: {e}")
         return None

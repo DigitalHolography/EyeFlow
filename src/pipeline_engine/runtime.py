@@ -8,6 +8,7 @@ from pathlib import Path
 from input_output.inputs import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
 from input_output.writers.h5 import initialize_output_h5, open_h5
+from utils.logger import LogLevel, emit_log
 
 from .base import PipelineDescriptor, ProcessResult
 from .context import PipelineContext, apply_pipeline_result, finish_pipeline
@@ -180,7 +181,7 @@ def _run_pipeline_descriptor(
         result = pipeline.run(ctx)
         apply_pipeline_result(ctx, result)
     except Exception as exc:  # noqa: BLE001
-        _emit_log(on_log, f"[FAIL] {pipeline.name}: {exc}")
+        _emit_log(on_log, f"{pipeline.name}: {exc}", level=LogLevel.ERROR)
         raise RuntimeError(format_pipeline_exception(exc, pipeline)) from exc
     if isinstance(result, ProcessResult):
         result.output_h5_path = str(output_h5_path)
@@ -192,6 +193,10 @@ def _run_pipeline_descriptor(
         on_progress()
 
 
-def _emit_log(on_log: Callable[[str], None] | None, message: str) -> None:
-    if on_log is not None:
-        on_log(message)
+def _emit_log(
+    on_log: Callable[[str], None] | None,
+    message: str,
+    *,
+    level: LogLevel | str | None = None,
+) -> None:
+    emit_log(on_log, message, level)

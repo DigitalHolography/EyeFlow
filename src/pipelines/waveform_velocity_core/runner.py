@@ -393,10 +393,10 @@ def _context_attrs(
         "flat_field_gaussian_ratio": float(source_data.flat_field_gaussian_ratio),
         "flat_field_border": float(source_data.flat_field_border),
         "arterial_velocity_signal_path": (
-            analysis_paths.retinal_artery_velocity_signal_filtered
+            analysis_paths.retinal_artery_velocity_signal_band_limited
         ),
         "venous_velocity_signal_path": (
-            analysis_paths.retinal_vein_velocity_signal_filtered
+            analysis_paths.retinal_vein_velocity_signal_band_limited
         ),
         "systolic_peak_indexes_path": analysis_paths.beat_indices,
         "beat_period_seconds_path": output_paths.beat_period_seconds,

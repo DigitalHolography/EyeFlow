@@ -10,7 +10,7 @@ def pack_continuous_velocity_outputs(
     analysis: Mapping[str, object],
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
-    """Pack raw and filtered artery and vein velocity signals."""
+    """Pack raw and band-limited artery and vein velocity signals."""
     schema = _resolve_output_paths(output_paths)
     paths = schema.analysis
     metrics = {
@@ -22,11 +22,11 @@ def pack_continuous_velocity_outputs(
             analysis["retinal_vein_velocity_signal"],
             unit="mm/s",
         ),
-        paths.retinal_artery_velocity_signal_filtered: metric_value(
+        paths.retinal_artery_velocity_signal_band_limited: metric_value(
             analysis["retinal_artery_velocity_signal_filtered"],
             unit="mm/s",
         ),
-        paths.retinal_vein_velocity_signal_filtered: metric_value(
+        paths.retinal_vein_velocity_signal_band_limited: metric_value(
             analysis["retinal_vein_velocity_signal_filtered"],
             unit="mm/s",
         ),

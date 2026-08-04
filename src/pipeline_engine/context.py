@@ -14,6 +14,7 @@ from input_output.writers.h5 import (
     set_attr_safe,
     write_value_dataset,
 )
+from utils.logger import LogLevel, emit_log
 
 from .base import DatasetValue, ProcessResult
 
@@ -370,8 +371,19 @@ class PipelineContext:
             raise ValueError(f"Missing required input(s): {', '.join(missing)}.")
 
     def log(self, message: str) -> None:
-        if self._on_log is not None:
-            self._on_log(message)
+        emit_log(self._on_log, message)
+
+    def log_debug(self, message: str) -> None:
+        emit_log(self._on_log, message, LogLevel.DEBUG)
+
+    def log_info(self, message: str) -> None:
+        emit_log(self._on_log, message, LogLevel.INFO)
+
+    def log_warning(self, message: str) -> None:
+        emit_log(self._on_log, message, LogLevel.WARNING)
+
+    def log_error(self, message: str) -> None:
+        emit_log(self._on_log, message, LogLevel.ERROR)
 
     def option_enabled(self, name: str, *, pipeline: str | None = None) -> bool:
         pipeline_name = pipeline or self.runtime.pipeline_name
