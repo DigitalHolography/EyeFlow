@@ -1,6 +1,6 @@
 """Output packing for shared DopplerView analysis products."""
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 import numpy as np
 
@@ -66,10 +66,17 @@ def _resolve_output_paths(
     return EyeFlowOutputPaths.active(output_paths)
 
 
-def metric_value(data, *, unit: str | None = None):
+def metric_value(
+    data,
+    *,
+    unit: str | None = None,
+    dim_desc: Iterable[str] | None = None,
+):
     attrs: dict[str, object] = {}
     if unit:
         attrs["unit"] = unit
+    if dim_desc:
+        attrs["dimDesc"] = list(dim_desc)
     data = metric_data(data)
     return (data, attrs) if attrs else data
 

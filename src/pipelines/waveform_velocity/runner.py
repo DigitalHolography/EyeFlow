@@ -8,7 +8,10 @@ from pipelines.waveform_velocity_core.runner import (
 )
 from pipelines.waveform_velocity_core.per_beat import run_velocity_per_beat_metrics
 
-from .continuous import pack_continuous_velocity_outputs
+from .continuous import (
+    pack_continuous_velocity_outputs,
+    pack_segment_velocity_outputs,
+)
 from .hemifield import pack_hemifield_velocity_outputs
 from .profiles import pack_cross_section_profile_outputs
 
@@ -18,6 +21,14 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
     context = _required_state(ctx, WAVEFORM_CONTEXT_STATE)
     selected = ctx.options_for("waveform_velocity")
     metrics = pack_continuous_velocity_outputs(context.dopplerview_analysis)
+    if "segments" in selected:
+        metrics.update(
+            pack_segment_velocity_outputs(
+                context.artery_segment_result,
+                context.vein_segment_result,
+                source_data=context.source_data,
+            )
+        )
 
     per_beat_result = ctx.state.get(VELOCITY_PER_BEAT_RESULT_STATE)
     velocity_outputs = ctx.state.get(VELOCITY_PER_BEAT_OUTPUTS_STATE, {})

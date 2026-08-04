@@ -136,6 +136,22 @@ class ScratchAndSchemaTests(unittest.TestCase):
             "Processing/Velocity/global/Vein/BandLimited/value",
             schema.analysis.retinal_vein_velocity_signal_band_limited,
         )
+        self.assertEqual(
+            "Processing/Velocity/segments/Artery/Raw/value",
+            schema.artery_segments.velocity_signal,
+        )
+        self.assertEqual(
+            "Processing/Velocity/segments/Artery/BandLimited/value",
+            schema.artery_segments.velocity_signal_band_limited,
+        )
+        self.assertEqual(
+            "Processing/Velocity/segments/Vein/Raw/value",
+            schema.vein_segments.velocity_signal,
+        )
+        self.assertEqual(
+            "Processing/Velocity/segments/Vein/BandLimited/value",
+            schema.vein_segments.velocity_signal_band_limited,
+        )
         self.assertIsNone(schema.analysis.retinal_velocity_array)
         self.assertIsNone(schema.analysis.velocity_map_avg)
         self.assertTrue(

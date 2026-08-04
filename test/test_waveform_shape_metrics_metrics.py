@@ -17,6 +17,7 @@ from pipelines.waveform_shape_metrics.metrics.calculator import (
 from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
 from pipelines.waveform_shape_metrics.metrics.hemifield import pack_hemifield_metrics
 from pipelines.waveform_velocity.hemifield import pack_hemifield_velocity_outputs
+from pipelines.waveform_velocity.continuous import pack_segment_velocity_outputs
 
 
 class WaveformShapeMetricsTests(unittest.TestCase):
@@ -317,6 +318,27 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             source_data,
             segments,
             None,
+        )
+        segment_outputs = pack_segment_velocity_outputs(
+            segments,
+            None,
+            source_data=source_data,
+        )
+        continuous_segment_path = schema.artery_segments.velocity_signal
+        self.assertIsNotNone(continuous_segment_path)
+        self.assertIn(continuous_segment_path, segment_outputs)
+        np.testing.assert_allclose(
+            segment_outputs[continuous_segment_path][0],
+            segment_velocity.transpose(2, 1, 0),
+        )
+        continuous_band_limited_path = (
+            schema.artery_segments.velocity_signal_band_limited
+        )
+        self.assertIsNotNone(continuous_band_limited_path)
+        self.assertIn(continuous_band_limited_path, segment_outputs)
+        np.testing.assert_allclose(
+            segment_outputs[continuous_band_limited_path][0],
+            segment_velocity.transpose(2, 1, 0),
         )
 
         north_west_raw = (

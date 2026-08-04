@@ -40,6 +40,12 @@ class DopplerViewAnalysisOutputPaths:
 
 
 @dataclass(frozen=True)
+class SegmentVelocityOutputPaths:
+    velocity_signal: str | None
+    velocity_signal_band_limited: str | None = None
+
+
+@dataclass(frozen=True)
 class VelocityPerBeatOutputPaths:
     velocity_signal: str
     velocity_signal_fft_abs: str
@@ -103,6 +109,8 @@ class HeartbeatOutputPaths:
 class EyeFlowOutputPaths:
     name: str
     analysis: DopplerViewAnalysisOutputPaths
+    artery_segments: SegmentVelocityOutputPaths
+    vein_segments: SegmentVelocityOutputPaths
     artery_per_beat: VelocityPerBeatOutputPaths
     vein_per_beat: VelocityPerBeatOutputPaths
     segmentation: SegmentationOutputPaths
@@ -204,6 +212,8 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
         beat_indices="analysis/beat_indices",
         time_per_beat="analysis/time_per_beat",
     ),
+    artery_segments=SegmentVelocityOutputPaths(velocity_signal=None),
+    vein_segments=SegmentVelocityOutputPaths(velocity_signal=None),
     artery_per_beat=VelocityPerBeatOutputPaths(
         velocity_signal="Artery/VelocityPerBeat/VelocitySignalPerBeat/value",
         velocity_signal_fft_abs="Artery/VelocityPerBeat/VelocitySignalPerBeatFFT_abs/value",
@@ -266,6 +276,8 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
         beat_indices="perbeat/beat_indices/value",
         time_per_beat="perbeat/time_per_beat/value",
     ),
+    artery_segments=SegmentVelocityOutputPaths(velocity_signal=None),
+    vein_segments=SegmentVelocityOutputPaths(velocity_signal=None),
     artery_per_beat=VelocityPerBeatOutputPaths(
         velocity_signal="artery/velocity/perbeat/signal/value",
         velocity_signal_fft_abs="artery/velocity/perbeat/fft_abs/value",
@@ -319,6 +331,18 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         velocitysignal_filtered=None,
         beat_indices="Processing/Heartbeat/Systole/PeakFrameIndices/value",
         time_per_beat="Processing/Heartbeat/Systole/CycleDurationSeconds/value",
+    ),
+    artery_segments=SegmentVelocityOutputPaths(
+        velocity_signal="Processing/Velocity/segments/Artery/Raw/value",
+        velocity_signal_band_limited=(
+            "Processing/Velocity/segments/Artery/BandLimited/value"
+        ),
+    ),
+    vein_segments=SegmentVelocityOutputPaths(
+        velocity_signal="Processing/Velocity/segments/Vein/Raw/value",
+        velocity_signal_band_limited=(
+            "Processing/Velocity/segments/Vein/BandLimited/value"
+        ),
     ),
     artery_per_beat=VelocityPerBeatOutputPaths(
         velocity_signal="Processing/VelocityPerBeat/Artery/Raw/value",
