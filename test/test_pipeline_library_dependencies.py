@@ -161,6 +161,173 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             app.pipeline_option_visibility["velocity"],
         )
 
+    def test_waveform_segment_substeps_follow_upstream_selection(self) -> None:
+        velocity = _descriptor(
+            "waveform_velocity",
+            options=(
+                PipelineOption("segments", "Segments"),
+                PipelineOption("per_beat", "Per beat"),
+            ),
+        )
+        shape = _descriptor(
+            "waveform_shape_metrics",
+            options=(
+                PipelineOption("per_beat", "Per beat"),
+                PipelineOption(
+                    "segments",
+                    "Segments",
+                    requires=("per_beat",),
+                ),
+            ),
+        )
+        app = SimpleNamespace(
+            pipeline_catalog={
+                velocity.name: velocity,
+                shape.name: shape,
+            },
+            pipeline_option_visibility={
+                "waveform_velocity": {"segments": True, "per_beat": True},
+                "waveform_shape_metrics": {"segments": True, "per_beat": True},
+            },
+            pipeline_option_vars={"waveform_velocity": {}, "waveform_shape_metrics": {}},
+        )
+        controller = PipelineLibraryController(app)
+        controller.persist_options = Mock()
+        controller.update_summary = Mock()
+
+        controller.set_option_visibility("waveform_velocity", "segments", False)
+
+        self.assertFalse(
+            app.pipeline_option_visibility["waveform_velocity"]["segments"]
+        )
+        self.assertFalse(
+            app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
+        )
+
+        controller.set_option_visibility("waveform_shape_metrics", "segments", True)
+
+        self.assertTrue(
+            app.pipeline_option_visibility["waveform_velocity"]["segments"]
+        )
+        self.assertTrue(
+            app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
+        )
+
+        controller.set_option_visibility("waveform_velocity", "per_beat", False)
+
+        self.assertFalse(
+            app.pipeline_option_visibility["waveform_shape_metrics"]["per_beat"]
+        )
+        self.assertFalse(
+            app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
+        )
+
+        controller.set_option_visibility("waveform_shape_metrics", "per_beat", True)
+
+        self.assertTrue(
+            app.pipeline_option_visibility["waveform_velocity"]["per_beat"]
+        )
+
+    def test_pdf_report_keeps_upstream_per_beat_products_enabled(self) -> None:
+        velocity = _descriptor(
+            "waveform_velocity",
+            options=(PipelineOption("per_beat", "Per beat"),),
+        )
+        shape = _descriptor(
+            "waveform_shape_metrics",
+            options=(PipelineOption("per_beat", "Per beat"),),
+        )
+        report = _descriptor(
+            "pdf_report",
+            requires=("waveform_velocity", "waveform_shape_metrics"),
+        )
+        app = SimpleNamespace(
+            pipeline_catalog={
+                item.name: item for item in (velocity, shape, report)
+            },
+            pipeline_dag=PipelineDAG((velocity, shape, report)),
+            pipeline_visibility={
+                "waveform_velocity": False,
+                "waveform_shape_metrics": False,
+                "pdf_report": False,
+            },
+            pipeline_visibility_vars={},
+            pipeline_option_widgets={},
+            pipeline_option_visibility={
+                "waveform_velocity": {"per_beat": False},
+                "waveform_shape_metrics": {"per_beat": False},
+            },
+            pipeline_option_vars={
+                "waveform_velocity": {},
+                "waveform_shape_metrics": {},
+            },
+        )
+        controller = PipelineLibraryController(app)
+        controller.persist_visibility = Mock()
+        controller.persist_options = Mock()
+        controller.update_summary = Mock()
+
+        controller.set_visibility("pdf_report", True)
+
+        self.assertTrue(
+            app.pipeline_option_visibility["waveform_velocity"]["per_beat"]
+        )
+        self.assertTrue(
+            app.pipeline_option_visibility["waveform_shape_metrics"]["per_beat"]
+        )
+
+        controller.set_option_visibility("waveform_velocity", "per_beat", False)
+
+        self.assertTrue(
+            app.pipeline_option_visibility["waveform_velocity"]["per_beat"]
+        )
+        self.assertTrue(
+            app.pipeline_option_visibility["waveform_shape_metrics"]["per_beat"]
+        )
+
+    def test_stored_waveform_segment_selection_is_normalized_downstream(self) -> None:
+        velocity = _descriptor(
+            "waveform_velocity",
+            options=(PipelineOption("segments", "Segments"),),
+        )
+        shape = _descriptor(
+            "waveform_shape_metrics",
+            options=(
+                PipelineOption("segments", "Segments"),
+                PipelineOption(
+                    "hemifield",
+                    "Hemifield",
+                    requires=("segments",),
+                ),
+            ),
+        )
+        app = SimpleNamespace(
+            pipeline_catalog={
+                velocity.name: velocity,
+                shape.name: shape,
+            },
+            settings_store=SimpleNamespace(
+                load_pipeline_options=lambda: {
+                    "waveform_velocity": {"segments": False},
+                    "waveform_shape_metrics": {
+                        "segments": True,
+                        "hemifield": True,
+                    },
+                }
+            ),
+        )
+        controller = PipelineLibraryController(app)
+        controller.persist_options = Mock()
+
+        controller.sync_options([velocity, shape])
+
+        self.assertFalse(
+            app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
+        )
+        self.assertFalse(
+            app.pipeline_option_visibility["waveform_shape_metrics"]["hemifield"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

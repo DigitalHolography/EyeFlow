@@ -20,7 +20,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
 
     per_beat_result = ctx.state.get(VELOCITY_PER_BEAT_RESULT_STATE)
     velocity_outputs = ctx.state.get(VELOCITY_PER_BEAT_OUTPUTS_STATE, {})
-    if "per_beat" in selected:
+    if "per_beat" in selected or ctx.pipeline_scheduled("pdf_report"):
         if per_beat_result is None:
             per_beat_result, velocity_outputs = run_velocity_per_beat_metrics(context)
             ctx.state.set(VELOCITY_PER_BEAT_RESULT_STATE, per_beat_result)

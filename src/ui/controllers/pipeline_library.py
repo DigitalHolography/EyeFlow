@@ -292,6 +292,36 @@ class PipelineLibraryController:
                     if not values.get(required_name, False):
                         values[required_name] = True
                         changed = True
+        velocity_segments = selections.get("waveform_velocity", {}).get(
+            "segments",
+            False,
+        )
+        shape_segments = selections.get("waveform_shape_metrics", {}).get(
+            "segments",
+            False,
+        )
+        velocity_values = selections.get("waveform_velocity", {})
+        shape_values = selections.get("waveform_shape_metrics", {})
+        if not velocity_values.get("per_beat", False):
+            if any(
+                shape_values.get(name, False)
+                for name in ("per_beat", "segments", "hemifield")
+            ):
+                shape_values["per_beat"] = False
+                shape_values["segments"] = False
+                shape_values["hemifield"] = False
+                changed = True
+        elif not velocity_segments and shape_segments:
+            shape_values["segments"] = False
+            shape_values["hemifield"] = False
+            changed = True
+        if getattr(self.app, "pipeline_visibility", {}).get("pdf_report", False):
+            if not velocity_values.get("per_beat", False):
+                velocity_values["per_beat"] = True
+                changed = True
+            if not shape_values.get("per_beat", False):
+                shape_values["per_beat"] = True
+                changed = True
         self.app.pipeline_option_visibility = selections
         if changed:
             self.persist_options()
@@ -336,6 +366,16 @@ class PipelineLibraryController:
         self._sync_pipeline_selection_widgets(visible_names)
         if changed:
             self.persist_visibility()
+        if visible and name == "pdf_report" and hasattr(
+            self.app,
+            "pipeline_option_visibility",
+        ):
+            self.set_option_visibility("waveform_velocity", "per_beat", True)
+            self.set_option_visibility(
+                "waveform_shape_metrics",
+                "per_beat",
+                True,
+            )
         self.update_summary()
 
     def set_option_visibility(
@@ -344,28 +384,51 @@ class PipelineLibraryController:
         option_name: str,
         enabled: bool,
     ) -> None:
-        pipeline_values = self.app.pipeline_option_visibility.setdefault(
-            pipeline_name,
-            {},
-        )
-        pipeline = self.app.pipeline_catalog.get(pipeline_name)
-        if pipeline is None:
-            return
-        affected_names = option_selection_names(
-            pipeline.options,
-            option_name,
-            enabled=enabled,
-        )
+        if (
+            not enabled
+            and option_name == "per_beat"
+            and pipeline_name in {"waveform_velocity", "waveform_shape_metrics"}
+            and getattr(self.app, "pipeline_visibility", {}).get("pdf_report", False)
+        ):
+            enabled = True
+        changes = [(pipeline_name, option_name, enabled)]
+        if pipeline_name == "waveform_velocity":
+            if option_name in {"per_beat", "segments"} and not enabled:
+                changes.append(("waveform_shape_metrics", option_name, False))
+        elif pipeline_name == "waveform_shape_metrics" and enabled:
+            if option_name == "per_beat":
+                changes.append(("waveform_velocity", "per_beat", True))
+            elif option_name in {"segments", "hemifield"}:
+                changes.extend(
+                    (
+                        ("waveform_velocity", "per_beat", True),
+                        ("waveform_velocity", "segments", True),
+                    )
+                )
+
         changed = False
-        for affected_name in affected_names:
-            if pipeline_values.get(affected_name) != enabled:
-                pipeline_values[affected_name] = enabled
-                changed = True
-            var = self.app.pipeline_option_vars.get(pipeline_name, {}).get(
-                affected_name
+        for target_pipeline_name, target_option_name, target_enabled in changes:
+            pipeline_values = self.app.pipeline_option_visibility.setdefault(
+                target_pipeline_name,
+                {},
             )
-            if var is not None and var.get() != enabled:
-                var.set(enabled)
+            pipeline = self.app.pipeline_catalog.get(target_pipeline_name)
+            if pipeline is None:
+                continue
+            for affected_name in option_selection_names(
+                pipeline.options,
+                target_option_name,
+                enabled=target_enabled,
+            ):
+                if pipeline_values.get(affected_name) != target_enabled:
+                    pipeline_values[affected_name] = target_enabled
+                    changed = True
+                var = self.app.pipeline_option_vars.get(
+                    target_pipeline_name,
+                    {},
+                ).get(affected_name)
+                if var is not None and var.get() != target_enabled:
+                    var.set(target_enabled)
         if changed:
             self.persist_options()
         self.update_summary()

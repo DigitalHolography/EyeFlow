@@ -16,13 +16,19 @@ from .runner import run_waveform_shape_metrics
         PipelineOption(
             "per_beat",
             "Per beat",
-            "Global and segment waveform-shape metrics per beat.",
+            "Global waveform-shape metrics per beat.",
+        ),
+        PipelineOption(
+            "segments",
+            "Segments",
+            "By-segment waveform-shape metrics per beat.",
+            requires=("per_beat",),
         ),
         PipelineOption(
             "hemifield",
             "Hemifield",
             "Eight-region waveform-shape metric aggregates.",
-            requires=("per_beat",),
+            requires=("per_beat", "segments"),
         ),
     ],
     dag_produces=["waveform_shape_metrics"],

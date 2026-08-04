@@ -15,10 +15,15 @@ from .runner import run_waveform_velocity
     dag_produces=["waveform_velocity"],
     options=[
         PipelineOption(
+            "segments",
+            "Segments",
+            "Spatial vessel segments used by regional and profile products.",
+        ),
+        PipelineOption(
             "velocity_profiles",
             "Velocity profiles",
             "Per-beat transverse cross-section velocity profiles.",
-            requires=("per_beat",),
+            requires=("per_beat", "segments"),
         ),
         PipelineOption(
             "per_beat",
@@ -29,7 +34,7 @@ from .runner import run_waveform_velocity
             "hemifield",
             "Hemifield",
             "Eight-region velocity and per-beat velocity aggregates.",
-            requires=("per_beat",),
+            requires=("per_beat", "segments"),
         ),
     ],
     input_slot="both",

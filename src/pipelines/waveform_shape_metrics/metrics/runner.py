@@ -16,12 +16,17 @@ from .outputs import pack_waveform_shape_metric_calculations
 def run_waveform_shape_metric_calculations(
     metrics: Mapping[str, object],
     output_paths: EyeFlowOutputPaths | str | None = None,
+    *,
+    include_segments: bool = True,
 ) -> dict[str, object]:
     """Calculate waveform-shape metrics from already-packed EyeFlow outputs."""
 
     schema = _resolve_output_paths(output_paths)
     inputs = waveform_shape_metric_inputs_from_outputs(metrics, schema)
-    computed = pack_waveform_shape_metric_calculations(inputs)
+    computed = pack_waveform_shape_metric_calculations(
+        inputs,
+        include_segments=include_segments,
+    )
     return {
         f"{schema.waveform_shape_metrics_root}/{key}": value
         for key, value in computed.items()

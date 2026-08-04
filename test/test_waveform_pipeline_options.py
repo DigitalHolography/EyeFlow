@@ -23,15 +23,19 @@ class _State:
         self.values[key] = value
 
 
-def _context(options, state_values=None):
-    return SimpleNamespace(
-        state=_State(state_values),
-        options_for=lambda pipeline: frozenset(options.get(pipeline, ())),
-        pipeline_scheduled=lambda pipeline: pipeline in {
+def _context(options, state_values=None, scheduled=None):
+    scheduled = set(
+        scheduled
+        or {
             "waveform_velocity_core",
             "waveform_velocity",
             "waveform_shape_metrics",
-        },
+        }
+    )
+    return SimpleNamespace(
+        state=_State(state_values),
+        options_for=lambda pipeline: frozenset(options.get(pipeline, ())),
+        pipeline_scheduled=lambda pipeline: pipeline in scheduled,
         option_enabled=lambda name, pipeline=None: name
         in options.get(pipeline or "waveform_velocity", ()),
     )
@@ -155,6 +159,96 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertEqual({}, metric_runner.run_waveform_shape_metrics(ctx))
         self.assertFalse(core_runner._per_beat_required(ctx))
 
+    def test_core_segment_requirement_uses_synchronized_segment_selection(self) -> None:
+        ctx = _context(
+            {
+                "waveform_velocity": ("per_beat", "segments"),
+                "waveform_shape_metrics": ("per_beat", "segments"),
+            }
+        )
+
+        self.assertTrue(core_runner._segments_required(ctx))
+
+        ctx = _context(
+            {
+                "waveform_velocity": (),
+                "waveform_shape_metrics": ("per_beat", "segments"),
+            }
+        )
+
+        self.assertFalse(core_runner._segments_required(ctx))
+        self.assertFalse(core_runner._per_beat_required(ctx))
+
+        ctx = _context(
+            {
+                "waveform_velocity": ("per_beat",),
+                "waveform_shape_metrics": ("per_beat",),
+            }
+        )
+
+        self.assertFalse(core_runner._segments_required(ctx))
+
+    def test_global_shape_metrics_can_run_without_core_segments(self) -> None:
+        context = SimpleNamespace(
+            source_data="source",
+            artery_segment_result=None,
+            vein_segment_result=None,
+        )
+        ctx = _context(
+            {
+                "waveform_shape_metrics": ("per_beat",),
+            },
+            {
+                core_runner.WAVEFORM_CONTEXT_STATE: context,
+                core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: {"global": 1},
+            },
+        )
+
+        with patch.object(
+            metric_runner,
+            "pack_waveform_shape_outputs",
+            return_value={"shape": 1},
+        ) as pack:
+            outputs = metric_runner.run_waveform_shape_metrics(ctx)
+
+        self.assertEqual({"shape": 1}, outputs)
+        self.assertFalse(pack.call_args.kwargs["include_segments"])
+
+    def test_pdf_report_requires_shared_per_beat_products(self) -> None:
+        ctx = _context(
+            {"waveform_velocity": (), "waveform_shape_metrics": ()},
+            scheduled={
+                "waveform_velocity_core",
+                "waveform_velocity",
+                "waveform_shape_metrics",
+                "pdf_report",
+            },
+        )
+
+        self.assertTrue(core_runner._per_beat_required(ctx))
+        self.assertTrue(core_runner._pulse_pngs_required(ctx))
+
+    def test_pdf_report_publishes_velocity_per_beat_outputs(self) -> None:
+        context = SimpleNamespace(dopplerview_analysis={})
+        result = SimpleNamespace(cycle_boundary_indexes=(0, 2))
+        ctx = _context(
+            {"waveform_velocity": ()},
+            {
+                core_runner.WAVEFORM_CONTEXT_STATE: context,
+                core_runner.VELOCITY_PER_BEAT_RESULT_STATE: result,
+                core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: {"per_beat": 1},
+            },
+            scheduled={"waveform_velocity", "pdf_report"},
+        )
+
+        with patch.object(
+            velocity_runner,
+            "pack_continuous_velocity_outputs",
+            return_value={"base": 1},
+        ):
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+
+        self.assertEqual({"base": 1, "per_beat": 1}, outputs)
 
 if __name__ == "__main__":
     unittest.main()

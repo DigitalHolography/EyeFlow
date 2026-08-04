@@ -18,6 +18,7 @@ def pack_waveform_shape_outputs(
     output_paths: EyeFlowOutputPaths | str | None = None,
     *,
     include_per_beat: bool = True,
+    include_segments: bool = True,
     include_hemifield: bool = True,
 ) -> dict[str, object]:
     """Build only the selected waveform-shape metric output groups.
@@ -32,6 +33,7 @@ def pack_waveform_shape_outputs(
     global_and_by_segment_outputs = run_waveform_shape_metric_calculations(
         metrics,
         output_paths,
+        include_segments=include_segments or include_hemifield,
     )
     metrics_with_waveform_outputs = dict(metrics)
     metrics_with_waveform_outputs.update(global_and_by_segment_outputs)
@@ -43,6 +45,11 @@ def pack_waveform_shape_outputs(
         output_paths,
     ) if include_hemifield else {}
     return {
-        **(global_and_by_segment_outputs if include_per_beat else {}),
+        **{
+            key: value
+            for key, value in global_and_by_segment_outputs.items()
+            if include_per_beat
+            and (include_segments or "/by_segment/" not in key)
+        },
         **hemifield_outputs,
     }

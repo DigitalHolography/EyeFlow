@@ -11,7 +11,8 @@ from .outputs import pack_waveform_shape_outputs
 def run_waveform_shape_metrics(ctx) -> dict[str, object]:
     """Calculate only the selected waveform-shape metric products."""
     selected = ctx.options_for("waveform_shape_metrics")
-    if not selected:
+    report_required = ctx.pipeline_scheduled("pdf_report")
+    if not selected and not report_required:
         return {}
 
     context = _required_state(ctx, WAVEFORM_CONTEXT_STATE)
@@ -21,7 +22,8 @@ def run_waveform_shape_metrics(ctx) -> dict[str, object]:
         context.source_data,
         context.artery_segment_result,
         context.vein_segment_result,
-        include_per_beat="per_beat" in selected,
+        include_per_beat="per_beat" in selected or report_required,
+        include_segments="segments" in selected,
         include_hemifield="hemifield" in selected,
     )
     ctx.state.set("waveform_shape_metric_outputs", outputs)

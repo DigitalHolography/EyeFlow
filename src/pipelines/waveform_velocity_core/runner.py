@@ -50,8 +50,8 @@ VELOCITY_PER_BEAT_OUTPUTS_STATE = "velocity_per_beat_outputs"
 class WaveformVelocityCoreContext:
     source_data: WaveformVelocitySourceData
     per_beat_analysis: PerBeatAnalysisInput
-    artery_segment_result: CrossSectionSignalResult
-    vein_segment_result: CrossSectionSignalResult
+    artery_segment_result: CrossSectionSignalResult | None
+    vein_segment_result: CrossSectionSignalResult | None
     dopplerview_analysis: dict[str, object]
     attrs: dict[str, object]
 
@@ -64,16 +64,22 @@ def run_waveform_velocity_core(
 
     with waveform_scratch_h5(ctx) as scratch_h5:
         _log(ctx, "Starting waveform velocity core context build...")
-        context = _build_waveform_velocity_core_context(ctx, scratch_h5)
+        segments_required = _segments_required(ctx)
+        context = _build_waveform_velocity_core_context(
+            ctx,
+            scratch_h5,
+            segments_required=segments_required,
+        )
         metrics = pack_dopplerview_shared_outputs(context.dopplerview_analysis)
         metrics.update(_pack_meta_outputs(context))
-        metrics.update(
-            pack_segmentation_outputs(
-                context.source_data,
-                context.artery_segment_result,
-                context.vein_segment_result,
+        if segments_required:
+            metrics.update(
+                pack_segmentation_outputs(
+                    context.source_data,
+                    context.artery_segment_result,
+                    context.vein_segment_result,
+                )
             )
-        )
         ctx.state.set(WAVEFORM_CONTEXT_STATE, context)
 
         if _per_beat_required(ctx):
@@ -90,23 +96,44 @@ def run_waveform_velocity_core(
 def _per_beat_required(ctx) -> bool:
     velocity_options = ctx.options_for("waveform_velocity")
     metric_options = ctx.options_for("waveform_shape_metrics")
+    if ctx.pipeline_scheduled("pdf_report"):
+        return True
+    if ctx.pipeline_scheduled("waveform_velocity"):
+        return bool({"per_beat", "hemifield"} & velocity_options)
     return bool(
-        {"per_beat", "hemifield"} & velocity_options
-        or (
-            metric_options
-            and ctx.pipeline_scheduled("waveform_shape_metrics")
+        metric_options and ctx.pipeline_scheduled("waveform_shape_metrics")
+    )
+
+
+def _segments_required(ctx) -> bool:
+    """Return whether any selected product needs spatial vessel segments."""
+    velocity_options = ctx.options_for("waveform_velocity")
+    metric_options = ctx.options_for("waveform_shape_metrics")
+    if ctx.pipeline_scheduled("waveform_velocity"):
+        return bool(
+            {"segments", "velocity_profiles", "hemifield"} & velocity_options
         )
+    return bool(
+        {"segments", "hemifield"} & metric_options
     )
 
 
 def _pulse_pngs_required(ctx) -> bool:
     return bool(
-        ctx.pipeline_scheduled("waveform_velocity")
-        and ctx.option_enabled("per_beat", pipeline="waveform_velocity")
+        ctx.pipeline_scheduled("pdf_report")
+        or (
+            ctx.pipeline_scheduled("waveform_velocity")
+            and ctx.option_enabled("per_beat", pipeline="waveform_velocity")
+        )
     )
 
 
-def _build_waveform_velocity_core_context(ctx, scratch_h5) -> WaveformVelocityCoreContext:
+def _build_waveform_velocity_core_context(
+    ctx,
+    scratch_h5,
+    *,
+    segments_required: bool,
+) -> WaveformVelocityCoreContext:
     _log(ctx, "Starting waveform source loading...")
     source_data = WaveformVelocitySources.from_context(ctx).load()
     timing = source_data.timing
@@ -122,6 +149,7 @@ def _build_waveform_velocity_core_context(ctx, scratch_h5) -> WaveformVelocityCo
         timing,
         harmonic_count,
         ctx,
+        segments_required=segments_required,
     )
 
     return WaveformVelocityCoreContext(
@@ -173,18 +201,24 @@ def _per_beat_input_from_analysis(
     timing: HolodopplerTiming,
     harmonic_count: int,
     ctx,
+    *,
+    segments_required: bool,
 ) -> tuple[
     PerBeatAnalysisInput,
-    CrossSectionSignalResult,
-    CrossSectionSignalResult,
+    CrossSectionSignalResult | None,
+    CrossSectionSignalResult | None,
 ]:
-    ring_settings = _segment_ring_settings()
-    artery_segments, vein_segments = _segment_velocity_inputs(
-        analysis,
-        source_data,
-        ring_settings,
-        ctx,
-    )
+    if segments_required:
+        ring_settings = _segment_ring_settings()
+        artery_segments, vein_segments = _segment_velocity_inputs(
+            analysis,
+            source_data,
+            ring_settings,
+            ctx,
+        )
+    else:
+        artery_segments = None
+        vein_segments = None
     arterial_velocity_signal, venous_velocity_signal = (
         _filtered_velocity_signals_for_per_beat(analysis)
     )
@@ -264,8 +298,10 @@ def _segment_velocity_inputs(
     return artery, vein
 
 
-def _waveform_segment_input(result: CrossSectionSignalResult) -> np.ndarray | None:
-    if result.branch_ids.size == 0:
+def _waveform_segment_input(
+    result: CrossSectionSignalResult | None,
+) -> np.ndarray | None:
+    if result is None or result.branch_ids.size == 0:
         return None
     return result.velocity
 
