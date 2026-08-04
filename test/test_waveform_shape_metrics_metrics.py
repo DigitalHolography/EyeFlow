@@ -43,7 +43,11 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         report_plan = dag.resolve_targets(["pdf_report"])
 
         self.assertEqual(
-            ("waveform_velocity_core", "waveform_shape_metrics"),
+            (
+                "waveform_velocity_core",
+                "waveform_velocity",
+                "waveform_shape_metrics",
+            ),
             metrics_plan.names,
         )
         self.assertEqual("pdf_report", report_plan.names[-1])
@@ -241,6 +245,21 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             include_hemifield=False,
         )
         self.assertFalse(any("/hemifield/" in key for key in no_hemifield))
+
+        hemifield_without_segment_outputs = pack_waveform_shape_outputs(
+            metrics,
+            source_data,
+            segments,
+            None,
+            include_segments=False,
+            include_hemifield=True,
+        )
+        self.assertTrue(
+            any("/hemifield/" in key for key in hemifield_without_segment_outputs)
+        )
+        self.assertFalse(
+            any("/by_segment/" in key for key in hemifield_without_segment_outputs)
+        )
 
         no_metrics = pack_waveform_shape_outputs(
             metrics,

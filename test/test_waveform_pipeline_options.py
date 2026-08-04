@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_shape_metrics import runner as metric_runner
 from pipelines.waveform_velocity import runner as velocity_runner
 from pipelines.waveform_velocity_core import runner as core_runner
@@ -94,7 +95,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
     def test_velocity_children_publish_their_selected_products(self) -> None:
         per_beat_result = SimpleNamespace(cycle_boundary_indexes=(0, 5, 10))
-        velocity_outputs = {"per_beat": 2}
+        schema = EyeFlowOutputPaths.active()
+        velocity_outputs = {
+            "per_beat": 2,
+            schema.artery_per_beat.segment_velocity_signal: 5,
+        }
         context = SimpleNamespace(
             dopplerview_analysis={},
             artery_segment_result="artery",
@@ -178,6 +183,16 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
         self.assertFalse(core_runner._segments_required(ctx))
         self.assertFalse(core_runner._per_beat_required(ctx))
+
+        ctx = _context(
+            {
+                "waveform_velocity": (),
+                "waveform_shape_metrics": ("per_beat", "hemifield"),
+            }
+        )
+
+        self.assertTrue(core_runner._segments_required(ctx))
+        self.assertTrue(core_runner._per_beat_required(ctx))
 
         ctx = _context(
             {

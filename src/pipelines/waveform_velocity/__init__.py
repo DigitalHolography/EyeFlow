@@ -34,7 +34,7 @@ from .runner import run_waveform_velocity
             "hemifield",
             "Hemifield",
             "Eight-region velocity and per-beat velocity aggregates.",
-            requires=("per_beat", "segments"),
+            requires=("per_beat",),
         ),
     ],
     input_slot="both",

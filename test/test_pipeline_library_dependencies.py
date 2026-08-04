@@ -167,6 +167,11 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             options=(
                 PipelineOption("segments", "Segments"),
                 PipelineOption("per_beat", "Per beat"),
+                PipelineOption(
+                    "hemifield",
+                    "Hemifield",
+                    requires=("per_beat",),
+                ),
             ),
         )
         shape = _descriptor(
@@ -178,6 +183,11 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                     "Segments",
                     requires=("per_beat",),
                 ),
+                PipelineOption(
+                    "hemifield",
+                    "Hemifield",
+                    requires=("per_beat",),
+                ),
             ),
         )
         app = SimpleNamespace(
@@ -186,8 +196,16 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                 shape.name: shape,
             },
             pipeline_option_visibility={
-                "waveform_velocity": {"segments": True, "per_beat": True},
-                "waveform_shape_metrics": {"segments": True, "per_beat": True},
+                "waveform_velocity": {
+                    "segments": True,
+                    "per_beat": True,
+                    "hemifield": True,
+                },
+                "waveform_shape_metrics": {
+                    "segments": True,
+                    "per_beat": True,
+                    "hemifield": True,
+                },
             },
             pipeline_option_vars={"waveform_velocity": {}, "waveform_shape_metrics": {}},
         )
@@ -202,6 +220,12 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         )
         self.assertFalse(
             app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
+        )
+        self.assertTrue(
+            app.pipeline_option_visibility["waveform_velocity"]["hemifield"]
+        )
+        self.assertTrue(
+            app.pipeline_option_visibility["waveform_shape_metrics"]["hemifield"]
         )
 
         controller.set_option_visibility("waveform_shape_metrics", "segments", True)

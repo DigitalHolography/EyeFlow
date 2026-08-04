@@ -11,7 +11,7 @@ from .runner import run_waveform_shape_metrics
         "Compute global, by-segment, and hemifield waveform-shape metrics."
     ),
     requires=["numpy", "h5py", "scipy", "skimage"],
-    dag_requires=["waveform_velocity_core"],
+    dag_requires=["waveform_velocity"],
     options=[
         PipelineOption(
             "per_beat",
@@ -28,7 +28,7 @@ from .runner import run_waveform_shape_metrics
             "hemifield",
             "Hemifield",
             "Eight-region waveform-shape metric aggregates.",
-            requires=("per_beat", "segments"),
+            requires=("per_beat",),
         ),
     ],
     dag_produces=["waveform_shape_metrics"],

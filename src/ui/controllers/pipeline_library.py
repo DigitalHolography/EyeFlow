@@ -313,7 +313,6 @@ class PipelineLibraryController:
                 changed = True
         elif not velocity_segments and shape_segments:
             shape_values["segments"] = False
-            shape_values["hemifield"] = False
             changed = True
         if getattr(self.app, "pipeline_visibility", {}).get("pdf_report", False):
             if not velocity_values.get("per_beat", False):
@@ -398,13 +397,15 @@ class PipelineLibraryController:
         elif pipeline_name == "waveform_shape_metrics" and enabled:
             if option_name == "per_beat":
                 changes.append(("waveform_velocity", "per_beat", True))
-            elif option_name in {"segments", "hemifield"}:
+            elif option_name == "segments":
                 changes.extend(
                     (
                         ("waveform_velocity", "per_beat", True),
                         ("waveform_velocity", "segments", True),
                     )
                 )
+            elif option_name == "hemifield":
+                changes.append(("waveform_velocity", "per_beat", True))
 
         changed = False
         for target_pipeline_name, target_option_name, target_enabled in changes:
