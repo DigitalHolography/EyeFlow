@@ -1,11 +1,11 @@
-"""Run-log file ownership for EyeFlow."""
+"""Process-wide run logging for EyeFlow."""
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-import re
 from typing import Callable, ClassVar
 
 from app_settings import LAST_RUN_LOG_FILENAME
@@ -65,52 +65,35 @@ def format_log_message(
     return f"[{selected_level.value}] {text}" if text else f"[{selected_level.value}]"
 
 
-def emit_log(
-    on_log: Callable[[str], None] | None,
-    message: str,
-    level: LogLevel | str | None = None,
-) -> str:
-    """Send a normalized log message to a callback and return the text sent."""
-
-    formatted = format_log_message(message, level)
-    if on_log is not None:
-        on_log(formatted)
-    return formatted
-
-
-def log_debug(on_log: Callable[[str], None] | None, message: str) -> str:
-    return emit_log(on_log, message, LogLevel.DEBUG)
-
-
-def log_info(on_log: Callable[[str], None] | None, message: str) -> str:
-    return emit_log(on_log, message, LogLevel.INFO)
-
-
-def log_warning(on_log: Callable[[str], None] | None, message: str) -> str:
-    return emit_log(on_log, message, LogLevel.WARNING)
-
-
-def log_error(on_log: Callable[[str], None] | None, message: str) -> str:
-    return emit_log(on_log, message, LogLevel.ERROR)
-
-
 @dataclass
-class RunLogger:
-    _current: ClassVar["RunLogger | None"] = None
+class Logger:
+    """Process-wide logger and owner of the run-log snapshot file."""
 
-    settings_path: Path
+    _current: ClassVar["Logger | None"] = None
+
+    settings_path: Path | None = None
+    on_log: Callable[[str], None] | None = None
     last_saved_path: Path | None = None
 
     @classmethod
-    def configure(cls, settings_path: Path) -> "RunLogger":
-        logger = cls(settings_path)
-        cls._current = logger
-        return logger
+    def configure(
+        cls,
+        settings_path: Path | None = None,
+        *,
+        on_log: Callable[[str], None] | None = None,
+    ) -> "Logger":
+        if cls._current is None:
+            cls._current = cls(settings_path=settings_path, on_log=on_log)
+        else:
+            if settings_path is not None:
+                cls._current.settings_path = settings_path
+            cls._current.on_log = on_log
+        return cls._current
 
     @classmethod
-    def current(cls) -> "RunLogger":
+    def current(cls) -> "Logger":
         if cls._current is None:
-            raise RuntimeError("RunLogger has not been configured.")
+            raise RuntimeError("Logger has not been configured.")
         return cls._current
 
     @classmethod
@@ -119,7 +102,45 @@ class RunLogger:
 
     @property
     def path(self) -> Path:
+        if self.settings_path is None:
+            raise RuntimeError("Logger has no settings path.")
         return self.settings_path.with_name(LAST_RUN_LOG_FILENAME)
+
+    def _emit(
+        self,
+        message: str,
+        level: LogLevel | str | None = None,
+    ) -> str:
+        formatted = format_log_message(message, level)
+        if self.on_log is not None:
+            self.on_log(formatted)
+        return formatted
+
+    @classmethod
+    def log(
+        cls,
+        message: str,
+        level: LogLevel | str | None = None,
+    ) -> str:
+        if cls._current is None:
+            return format_log_message(message, level)
+        return cls._current._emit(message, level)
+
+    @classmethod
+    def log_debug(cls, message: str) -> str:
+        return cls.log(message, LogLevel.DEBUG)
+
+    @classmethod
+    def log_info(cls, message: str) -> str:
+        return cls.log(message, LogLevel.INFO)
+
+    @classmethod
+    def log_warning(cls, message: str) -> str:
+        return cls.log(message, LogLevel.WARNING)
+
+    @classmethod
+    def log_error(cls, message: str) -> str:
+        return cls.log(message, LogLevel.ERROR)
 
     def write_snapshot(self, text: str) -> Path:
         log_path = self.path
@@ -134,10 +155,5 @@ class RunLogger:
             self.write_snapshot("")
         return log_path
 
-
-def configure_logger(settings_path: Path) -> RunLogger:
-    return RunLogger.configure(settings_path)
-
-
-def current_logger() -> RunLogger:
-    return RunLogger.current()
+# Compatibility alias for code that still refers to the old class name.
+RunLogger = Logger

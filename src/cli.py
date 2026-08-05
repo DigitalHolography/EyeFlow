@@ -39,6 +39,7 @@ from pipeline_engine import (
     resolve_run_spec,
     selectable_pipeline_registry,
 )
+from utils.logger import Logger
 
 def _build_pipeline_registry() -> dict[str, PipelineDescriptor]:
     available, missing = load_pipeline_catalog()
@@ -157,6 +158,7 @@ def run_cli(
     registry = _build_pipeline_registry()
     target_registry = selectable_pipeline_registry(registry.values())
     settings_store = AppSettingsStore()
+    Logger.configure(settings_store.path, on_log=print)
     target_names = (
         _load_pipeline_targets(pipelines_file, target_registry)
         if pipelines_file is not None
@@ -195,7 +197,7 @@ def run_cli(
             output_root=work_root,
             batch_root=expanded_inputs.batch_root,
         )
-        result = execute_run(spec, on_log=print)
+        result = execute_run(spec)
         processed_outputs = list(result.outputs)
         archive_failed = False
 

@@ -9,7 +9,7 @@ import numpy as np
 from scipy import ndimage as ndi
 
 from calculations.math import nanmean_float32, rotate_array_threshold, rotate_image_with_nan
-from utils.logger import log_warning
+from utils.logger import Logger
 
 from .branch_identity import BranchIdentityResult, label_vessel_branches
 from .segment_geometry import (
@@ -114,8 +114,6 @@ def generate_cross_section_signals(
     optic_disc_center,
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings,
-    *,
-    log=None,
 ) -> CrossSectionSignalResult:
     vessel = np.asarray(vessel_mask, dtype=bool)
     branches = label_vessel_branches(vessel, optic_disc_center, ring_settings)
@@ -135,7 +133,6 @@ def generate_cross_section_signals(
         branches,
         optic_disc_center,
         cross_section_settings,
-        log,
     )
     velocity_profiles, _, profile_sample_count = (
         _pack_transverse_profiles(
@@ -253,7 +250,6 @@ def _fill_cross_section_buffers(
     branches: BranchIdentityResult,
     optic_disc_center,
     settings: CrossSectionSignalSettings,
-    log=None,
 ) -> None:
     for circle_index, section in enumerate(masks):
         for branch_index, branch_id in enumerate(branches.branch_ids):
@@ -269,7 +265,6 @@ def _fill_cross_section_buffers(
                 loc,
                 optic_disc_center,
                 settings,
-                log,
             )
             raw, safe = measurement[:2]
             buffers.velocity[circle_index, branch_index] = raw
@@ -366,9 +361,8 @@ def _cross_section_velocity(
     loc_xy: tuple[int, int],
     optic_disc_center,
     settings: CrossSectionSignalSettings,
-    log=None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
-    sub_stack, sub_mask = _subimage_stack(velocity, mask, loc_xy, settings, log)
+    sub_stack, sub_mask = _subimage_stack(velocity, mask, loc_xy, settings)
     if sub_stack.size == 0:
         return (
             _nan_signal(velocity),
@@ -416,7 +410,6 @@ def _subimage_stack(
     mask: np.ndarray,
     loc_xy: tuple[int, int],
     settings: CrossSectionSignalSettings,
-    log=None,
 ) -> tuple[np.ndarray, np.ndarray]:
     window_width = int(
         np.floor(0.01 * mask.shape[0] * settings.scale_factor_width + 0.5)
@@ -428,7 +421,7 @@ def _subimage_stack(
 
     # Debug log if the sub-mask is too small for the vessel segment
     sub_mask = mask[y_range, x_range]
-    if callable(log) and sub_mask.size and (
+    if sub_mask.size and (
         np.any(sub_mask[0])
         or np.any(sub_mask[-1])
         or np.any(sub_mask[:, 0])
@@ -437,8 +430,7 @@ def _subimage_stack(
         segment_y, segment_x = np.nonzero(mask)
         segment_width = int(segment_x.max() - segment_x.min() + 1)
         segment_height = int(segment_y.max() - segment_y.min() + 1)
-        log_warning(
-            log,
+        Logger.log_warning(
             "Cross-section window is too small for the vessel segment: "
             f"{x_range.stop - x_range.start}x{y_range.stop - y_range.start} px "
             f"window for a {segment_width}x{segment_height} px segment at ({x}, {y})."

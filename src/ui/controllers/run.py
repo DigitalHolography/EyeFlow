@@ -8,7 +8,7 @@ from queue import Empty, Queue
 from threading import Thread
 
 from pipeline_engine import RunResult, RunSpec, execute_run, resolve_run_spec
-from utils.logger import LogLevel
+from utils.logger import LogLevel, Logger
 
 from ..services import services_for
 
@@ -19,6 +19,10 @@ _PipelineUiEvent = tuple[str, object]
 class RunController:
     def __init__(self, app) -> None:
         self.app = app
+        Logger.configure(on_log=self._queue_log)
+
+    def _queue_log(self, message: str) -> None:
+        self._queue_pipeline_ui_event("log", message)
 
     def choose_holo_file(self) -> None:
         selected_holo = self.app.input_controller.selected_holo_path()
@@ -205,6 +209,5 @@ class RunController:
     def _execute_run(self, spec: RunSpec) -> RunResult:
         return execute_run(
             spec,
-            on_log=lambda message: self._queue_pipeline_ui_event("log", message),
             on_progress=lambda: self._queue_pipeline_ui_event("progress", None),
         )

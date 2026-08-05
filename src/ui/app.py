@@ -24,7 +24,7 @@ from .controllers import (
     ViewController,
 )
 from .services import UiServices
-from utils.logger import configure_logger
+from utils.logger import Logger
 
 try:
     from tkinterdnd2 import TkinterDnD
@@ -40,7 +40,7 @@ class ProcessApp(BaseAppTk):
         self.title(app_display_name())
         self.ui_services = UiServices()
         self.settings_store = AppSettingsStore()
-        configure_logger(self.settings_store.path)
+        Logger.configure(self.settings_store.path)
         self._settings_warning_shown = False
         self.settings_controller = SettingsController(self)
         self.settings_controller.ensure_default_settings()

@@ -301,7 +301,7 @@ class PulsePngExporterTests(unittest.TestCase):
                 heartbeat=heartbeat,
                 cycle_boundary_indexes=context.dopplerview_analysis["beat_indices"],
             )
-            written = export_pulse_pngs(output, context, per_beat_result, log=None)
+            written = export_pulse_pngs(output, context, per_beat_result)
 
             self.assertGreaterEqual(len(written), 35)
             for required in (

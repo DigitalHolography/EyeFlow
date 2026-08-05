@@ -25,9 +25,13 @@ from calculations.blood_flow_velocity.cross_section.branch_identity import (  # 
     _branch_identity_stages,
 )
 from pipelines.waveform_velocity_core.runner import _segment_ring_settings  # noqa: E402
+from utils.logger import Logger  # noqa: E402
 
 
 class SegmentCenterTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        Logger.reset_current()
+
     def test_watershed_boundaries_remain_split_during_annulus_relabeling(self) -> None:
         vessel = np.ones((9, 9), dtype=bool)
         section = np.ones_like(vessel)
@@ -76,13 +80,8 @@ class SegmentCenterTests(unittest.TestCase):
         messages: list[str] = []
         settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
 
-        stack, mask = _subimage_stack(
-            velocity,
-            segment,
-            (65, 50),
-            settings,
-            messages.append,
-        )
+        Logger.configure(on_log=messages.append)
+        stack, mask = _subimage_stack(velocity, segment, (65, 50), settings)
 
         self.assertEqual((2, 5, 5), stack.shape)
         self.assertEqual((5, 5), mask.shape)
@@ -93,15 +92,16 @@ class SegmentCenterTests(unittest.TestCase):
         velocity = np.zeros((1, 100, 100), dtype=np.float32)
         settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
         messages: list[str] = []
+        Logger.configure(on_log=messages.append)
 
         contained = np.zeros((100, 100), dtype=bool)
         contained[50, 50] = True
-        _subimage_stack(velocity, contained, (50, 50), settings, messages.append)
+        _subimage_stack(velocity, contained, (50, 50), settings)
         self.assertEqual([], messages)
 
         clipped = contained.copy()
         clipped[50, 48] = True
-        _subimage_stack(velocity, clipped, (50, 50), settings, messages.append)
+        _subimage_stack(velocity, clipped, (50, 50), settings)
         self.assertEqual(1, len(messages))
         self.assertTrue(messages[0].startswith("[WARNING] Cross-section window"))
         self.assertIn("3x1 px segment", messages[0])

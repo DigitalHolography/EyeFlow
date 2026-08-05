@@ -1,6 +1,6 @@
 """Pipeline context namespaces for inputs, runtime state, outputs, and run logs."""
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,7 +14,7 @@ from input_output.writers.h5 import (
     set_attr_safe,
     write_value_dataset,
 )
-from utils.logger import LogLevel, emit_log
+from utils.logger import Logger
 
 from .base import DatasetValue, ProcessResult
 
@@ -329,7 +329,6 @@ class PipelineContext:
         pipeline_options: Mapping[str, Sequence[str]] | None = None,
         pipeline_order: Sequence[str] = (),
         output_manager: OutputManager | None = None,
-        on_log: Callable[[str], None] | None = None,
     ) -> None:
         hd_config = dict(holodoppler_config or {})
         dv_config = dict(doppler_vision_config or {})
@@ -351,7 +350,6 @@ class PipelineContext:
             for name, options in (pipeline_options or {}).items()
         }
         self.pipeline_order = tuple(str(name) for name in pipeline_order)
-        self._on_log = on_log
         self.attrs = MergedAttrs(
             work_h5,
             self._preferred_raw_source(),
@@ -371,19 +369,19 @@ class PipelineContext:
             raise ValueError(f"Missing required input(s): {', '.join(missing)}.")
 
     def log(self, message: str) -> None:
-        emit_log(self._on_log, message)
+        Logger.log(message)
 
     def log_debug(self, message: str) -> None:
-        emit_log(self._on_log, message, LogLevel.DEBUG)
+        Logger.log_debug(message)
 
     def log_info(self, message: str) -> None:
-        emit_log(self._on_log, message, LogLevel.INFO)
+        Logger.log_info(message)
 
     def log_warning(self, message: str) -> None:
-        emit_log(self._on_log, message, LogLevel.WARNING)
+        Logger.log_warning(message)
 
     def log_error(self, message: str) -> None:
-        emit_log(self._on_log, message, LogLevel.ERROR)
+        Logger.log_error(message)
 
     def option_enabled(self, name: str, *, pipeline: str | None = None) -> bool:
         pipeline_name = pipeline or self.runtime.pipeline_name

@@ -9,11 +9,13 @@ import numpy as np
 
 from pipeline_engine import PipelineContext
 from pipeline_engine.context import RawH5SourceReader
+from utils.logger import Logger
 
 
 class PipelineContextTests(unittest.TestCase):
     def test_log_emits_to_callback(self) -> None:
         messages: list[str] = []
+        Logger.configure(on_log=messages.append)
         with h5py.File(
             "context_log_test.h5",
             "w",
@@ -24,14 +26,15 @@ class PipelineContextTests(unittest.TestCase):
                 work_h5=h5file,
                 holodoppler_h5=None,
                 doppler_vision_h5=None,
-                on_log=messages.append,
             )
 
             ctx.log("Starting test pipeline...")
 
+        Logger.reset_current()
         self.assertEqual(["Starting test pipeline..."], messages)
 
     def test_log_without_callback_is_noop(self) -> None:
+        Logger.reset_current()
         with h5py.File(
             "context_log_test.h5",
             "w",

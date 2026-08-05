@@ -18,6 +18,7 @@ from calculations.math.arrays import (
     as_nonnegative_int_indexes as _safe_indexes,
     finite_image as _finite_image,
 )
+from utils.logger import Logger
 
 __all__ = [
     "PulseFigureContext",
@@ -53,7 +54,6 @@ class PulseFigureContext:
     section_mask: np.ndarray
     analysis: dict[str, object]
     per_beat_result: PerBeatAnalysisResult
-    log: object | None = None
 
     @property
     def artery_section_mask(self) -> np.ndarray:
@@ -94,8 +94,7 @@ def _output_stem(output) -> str:
     stem = getattr(layout, "stem", None)
     return str(stem or "eyeflow")
 def _log(ctx: PulseFigureContext, message: str) -> None:
-    if callable(ctx.log):
-        ctx.log(message)
+    Logger.log(message)
 def _matplotlib():
     import matplotlib
 

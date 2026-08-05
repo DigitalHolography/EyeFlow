@@ -10,6 +10,7 @@ from scipy import ndimage as ndi
 
 from calculations.blood_flow_velocity.cross_section.segment_geometry import annulus_mask
 from runtime_limits import cap_parallel_jobs
+from utils.logger import Logger
 
 from .flat_field import (
     corrected_flat_field_chunk,
@@ -135,7 +136,6 @@ def run_chunked_velocity_estimator(
     flat_field_gaussian_ratio: float,
     flat_field_border: float,
     scratch_h5,
-    log=None,
 ) -> dict[str, object]:
     """Estimate velocity into scratch datasets without materializing full videos."""
 
@@ -155,14 +155,12 @@ def run_chunked_velocity_estimator(
         moment0,
         gaussian_width,
         flat_field_border,
-        log,
         "moment0",
     )
     moment2_params = _flat_field_parameters(
         moment2,
         gaussian_width,
         flat_field_border,
-        log,
         "moment2",
     )
 
@@ -270,11 +268,9 @@ def _flat_field_parameters(
     volume,
     gaussian_width: float,
     border_amount: float,
-    log,
     name: str,
 ):
-    if callable(log):
-        log(f"Calculating DopplerView flat field from raw HD {name}.")
+    Logger.log(f"Calculating DopplerView flat field from raw HD {name}.")
     return fit_flat_field_parameters(
         volume,
         gaussian_width=gaussian_width,

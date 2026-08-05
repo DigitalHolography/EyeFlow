@@ -165,7 +165,10 @@ def _pack_global_outputs(
         "harmonic_weights",
         "harmonic_energies_weights",
     }
-    raw_graphics = calculator._compute_graphics_support_block(raw_global, beat_periods)
+    raw_graphics = calculator._compute_graphics_support_block(
+        raw_global,
+        beat_periods,
+    )
     bandlimited_graphics = calculator._compute_graphics_support_block(
         bandlimited_global,
         beat_periods,

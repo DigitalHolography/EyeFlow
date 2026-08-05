@@ -17,6 +17,7 @@ from pipeline_engine.imports import (
     np,
     read_int_setting,
 )
+from utils.logger import Logger
 
 from .dopplerview.constants import (
     LEGACY_FILTER_VELOCITY_SIGNALS,
@@ -63,7 +64,7 @@ def run_waveform_velocity_core(
     ctx.require_inputs("hd", "dv")
 
     with waveform_scratch_h5(ctx) as scratch_h5:
-        _log(ctx, "Starting waveform velocity core context build...")
+        Logger.log("Starting waveform velocity core context build...")
         segments_required = _segments_required(ctx)
         context = _build_waveform_velocity_core_context(
             ctx,
@@ -82,7 +83,7 @@ def run_waveform_velocity_core(
         ctx.state.set(WAVEFORM_CONTEXT_STATE, context)
 
         if _per_beat_required(ctx):
-            _log(ctx, "Starting shared per-beat velocity analysis...")
+            Logger.log("Starting shared per-beat velocity analysis...")
             per_beat_result, velocity_outputs = run_velocity_per_beat_metrics(context)
             ctx.state.set(VELOCITY_PER_BEAT_RESULT_STATE, per_beat_result)
             ctx.state.set(VELOCITY_PER_BEAT_OUTPUTS_STATE, velocity_outputs)
@@ -137,7 +138,7 @@ def _build_waveform_velocity_core_context(
     *,
     segments_required: bool,
 ) -> WaveformVelocityCoreContext:
-    _log(ctx, "Starting waveform source loading...")
+    Logger.log("Starting waveform source loading...")
     source_data = WaveformVelocitySources.from_context(ctx).load()
     timing = source_data.timing
     dopplerview_analysis, analysis_source = _resolve_dopplerview_analysis(
@@ -176,15 +177,13 @@ def _resolve_dopplerview_analysis(
     ctx,
     scratch_h5,
 ) -> tuple[dict[str, object], str]:
-    _log(
-        ctx,
+    Logger.log(
         "Building EyeFlow velocity analysis from HD moments and DV segmentation.",
     )
     return (
         run_dopplerview_analysis(
             source_data,
             scratch_h5,
-            log=getattr(ctx, "log", None),
         ),
         "eyeflow_recomputed_dopplerview_analysis",
     )
@@ -276,7 +275,7 @@ def _segment_velocity_inputs(
     ring_settings: SegmentRingSettings,
     ctx,
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
-    _log(ctx, "Starting segment velocity extraction...")
+    Logger.log("Starting segment velocity extraction...")
     artery, vein = segment_velocity_results(
         analysis["retinal_vessel_velocity"],
         source_data.retinal_artery_mask,
@@ -284,7 +283,6 @@ def _segment_velocity_inputs(
         source_data.optic_disc_center,
         ring_settings,
         source_data.cross_section_settings,
-        log=getattr(ctx, "log", None),
     )
     _export_branch_identity_debug(
         ctx,
@@ -313,12 +311,6 @@ def _waveform_segment_input(
     return result.velocity
 
 
-def _log(ctx, message: str) -> None:
-    log = getattr(ctx, "log", None)
-    if callable(log):
-        log(message)
-
-
 def _export_branch_identity_debug(
     ctx,
     stages,
@@ -340,8 +332,8 @@ def _export_branch_identity_debug(
 def _export_pulse_pngs(ctx, context: WaveformVelocityCoreContext, per_beat_result) -> None:
     if not ctx.output.available:
         return
-    _log(ctx, "Exporting pulse-analysis PNG artifacts...")
-    export_pulse_pngs(ctx.output, context, per_beat_result, log=getattr(ctx, "log", None))
+    Logger.log("Exporting pulse-analysis PNG artifacts...")
+    export_pulse_pngs(ctx.output, context, per_beat_result)
 
 
 def _segment_ring_settings() -> SegmentRingSettings:
