@@ -18,6 +18,7 @@ from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
 from pipelines.waveform_shape_metrics.metrics.hemifield import pack_hemifield_metrics
 from pipelines.waveform_velocity.hemifield import pack_hemifield_velocity_outputs
 from pipelines.waveform_velocity.continuous import pack_segment_velocity_outputs
+from utils.logger import Logger
 
 
 class WaveformShapeMetricsTests(unittest.TestCase):
@@ -113,6 +114,33 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         # The unrectified mean cycle is [0, 3, 1, 2].
         np.testing.assert_allclose(result["RI"], [1.0, 1.0])
         np.testing.assert_allclose(result["PI"], [2.0, 2.0])
+
+    def test_graphics_support_logs_and_skips_invalid_or_missing_beats(self):
+        calculator = WaveformShapeMetricsCalculator()
+        waveform = np.column_stack(
+            (
+                np.ones(8),
+                -np.ones(8),
+                np.zeros(8),
+                np.full(8, np.nan),
+            )
+        )
+        periods = np.asarray([[1.0, 0.0, 1.0, 1.0, 1.0]], dtype=np.float32)
+        messages = []
+        Logger.configure(on_log=messages.append)
+
+        try:
+            result = calculator._compute_graphics_support_block(waveform, periods)
+        finally:
+            Logger.reset_current()
+
+        self.assertTrue(np.isfinite(result["m0"][0]))
+        self.assertTrue(np.all(np.isnan(result["m0"][1:])))
+        joined_messages = "\n".join(messages)
+        self.assertEqual(3, joined_messages.count("invalid input"))
+        self.assertIn("Tbeat=0.0", joined_messages)
+        self.assertIn("m0_sum=0.0", joined_messages)
+        self.assertIn("waveform column is missing", joined_messages)
 
     def test_hemifield_metrics_are_nested_below_waveform_shape_outputs(self):
         schema = EyeFlowOutputPaths.active()

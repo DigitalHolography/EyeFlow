@@ -12,6 +12,8 @@ HD_MOMENT0_PATH = "moment0"
 HD_MOMENT2_PATH = "moment2"
 HD_MOMENT0_PATHS = (HD_MOMENT0_PATH, "M0")
 HD_MOMENT2_PATHS = (HD_MOMENT2_PATH, "M2")
+HD_MOMENT0_FLAT_FIELD_PATHS = ("moment0ff", "M0FF")
+HD_MOMENT2_FLAT_FIELD_PATHS = ("moment2ff", "M2FF")
 HD_OUTPUT_PASSTHROUGH_PATHS = (
     ("registration", "Meta/registration"),
     ("zernike_coefs_radians", "zernike_coefs_radians"),
@@ -49,6 +51,14 @@ class HolodopplerSource(TypedSource):
 
     def moment2_dataset(self):
         return self._moment_dataset(HD_MOMENT2_PATHS)
+
+    def moment0_flat_field_dataset(self):
+        """Return a precomputed flat-field moment, when exported by Holodoppler."""
+        return self._optional_moment_dataset(HD_MOMENT0_FLAT_FIELD_PATHS)
+
+    def moment2_flat_field_dataset(self):
+        """Return a precomputed flat-field moment, when exported by Holodoppler."""
+        return self._optional_moment_dataset(HD_MOMENT2_FLAT_FIELD_PATHS)
 
     def timing(self) -> HolodopplerTiming:
         sampling_freq = self._scalar_h5_or_config(
@@ -92,6 +102,18 @@ class HolodopplerSource(TypedSource):
             raise ValueError(
                 "Holodoppler moment datasets must be 3-D for lazy processing, "
                 f"got shape {dataset.shape}."
+            )
+        return dataset
+
+    def _optional_moment_dataset(self, paths: tuple[str, ...]):
+        path = self._first_path(paths)
+        if path is None:
+            return None
+        dataset = self._dataset(path)
+        if dataset.ndim != 3:
+            raise ValueError(
+                "Holodoppler flat-field moment datasets must be 3-D for lazy "
+                f"processing, got shape {dataset.shape}."
             )
         return dataset
 

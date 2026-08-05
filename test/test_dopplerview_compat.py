@@ -88,23 +88,43 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         self.assertIsNone(source_data.dopplerview_analysis)
         self.assertFalse(source_data.provenance["dopplerview_analysis_available"])
 
-    def test_raw_holodoppler_moments_are_used_for_dopplerview_preprocessing(
+    def test_precomputed_holodoppler_flat_field_moments_are_reused(
         self,
     ) -> None:
-        with self._source_pair() as (hd_source, _):
+        with self._source_pair() as (hd_source, dv_source):
             self._write_hd(hd_source)
             with h5py.File(hd_source, "a") as hd:
                 hd.create_dataset(
                     "moment0ff",
                     data=np.full((3, 2, 4), 7.0, dtype=np.float32),
                 )
+            with h5py.File(dv_source, "w") as dv:
+                self._write_segmentation(
+                    dv,
+                    np.zeros((2, 4), dtype=bool),
+                    np.ones((2, 4), dtype=bool),
+                )
+            source_data = self._load_sources(hd_source, dv_source)
             with h5py.File(hd_source, "r") as hd:
                 source = HolodopplerSource(
                     RawH5SourceReader(h5file=hd, label="HD"),
                 )
-                selected = np.asarray(source.moment0_dataset())
+                selected_moment0 = np.asarray(source.moment0_flat_field_dataset())
+                selected_moment2 = source.moment2_flat_field_dataset()
 
-        np.testing.assert_array_equal(selected, np.ones((3, 2, 4)))
+        np.testing.assert_array_equal(
+            selected_moment0,
+            np.full((3, 2, 4), 7.0, dtype=np.float32),
+        )
+        self.assertIsNone(selected_moment2)
+        self.assertEqual(
+            "holodoppler_precomputed_flat_field",
+            source_data.moment0_flat_field_source,
+        )
+        self.assertEqual(
+            "dopplerview_recomputed_from_raw",
+            source_data.moment2_flat_field_source,
+        )
 
     def test_eyeflow_analysis_settings_are_not_read_from_source_configs(self) -> None:
         artery = np.zeros((2, 4), dtype=bool)

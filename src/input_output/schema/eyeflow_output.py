@@ -119,6 +119,7 @@ class EyeFlowOutputPaths:
     heartbeat: HeartbeatOutputPaths
     beat_period_seconds: str
     waveform_shape_metrics_root: str
+    absolute_waveform_metrics_root: str
     meta_root: str
 
     @classmethod
@@ -256,6 +257,7 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
     heartbeat=LEGACY_HEARTBEAT_OUTPUT,
     beat_period_seconds="Artery/VelocityPerBeat/beatPeriodSeconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
+    absolute_waveform_metrics_root="Metrics/absolute_waveform_metrics",
     meta_root="Meta",
 )
 
@@ -308,6 +310,7 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
     heartbeat=LEGACY_HEARTBEAT_OUTPUT,
     beat_period_seconds="perbeat/beat_period_seconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
+    absolute_waveform_metrics_root="Metrics/absolute_waveform_metrics",
     meta_root="Meta",
 )
 
@@ -382,6 +385,7 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     heartbeat=HEARTBEAT_OUTPUT,
     beat_period_seconds="Processing/VelocityPerBeat/BeatPeriodSeconds/value",
     waveform_shape_metrics_root="Processing/Metrics/waveform_shape_metrics",
+    absolute_waveform_metrics_root="Processing/Metrics/absolute_waveform_metrics",
     meta_root="Meta",
 )
 

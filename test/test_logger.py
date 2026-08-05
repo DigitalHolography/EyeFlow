@@ -8,23 +8,19 @@ from pathlib import Path
 
 from app_settings import LAST_RUN_LOG_FILENAME
 from utils.logger import (
-    LogLevel,
-    RunLogger,
-    configure_logger,
-    current_logger,
-    emit_log,
+    Logger,
     format_log_message,
 )
 
 
-class RunLoggerTests(unittest.TestCase):
+class LoggerTests(unittest.TestCase):
     def tearDown(self) -> None:
-        RunLogger.reset_current()
+        Logger.reset_current()
 
     def test_writes_versioned_settings_sibling_log_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             settings_path = Path(temp_dir) / "settings.json"
-            logger = RunLogger(settings_path)
+            logger = Logger.configure(settings_path)
 
             log_path = logger.write_snapshot("hello")
 
@@ -34,7 +30,7 @@ class RunLoggerTests(unittest.TestCase):
 
     def test_ensure_file_creates_empty_log(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            logger = RunLogger(Path(temp_dir) / "settings.json")
+            logger = Logger.configure(Path(temp_dir) / "settings.json")
 
             log_path = logger.ensure_file()
 
@@ -43,23 +39,31 @@ class RunLoggerTests(unittest.TestCase):
 
     def test_current_requires_configuration(self) -> None:
         with self.assertRaises(RuntimeError):
-            RunLogger.current()
+            Logger.current()
 
     def test_configure_sets_current_logger(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             settings_path = Path(temp_dir) / "settings.json"
 
-            logger = configure_logger(settings_path)
+            logger = Logger.configure(settings_path)
 
-            self.assertIs(logger, current_logger())
+            self.assertIs(logger, Logger.current())
             self.assertEqual(settings_path.with_name(LAST_RUN_LOG_FILENAME), logger.path)
+
+    def test_reconfigure_updates_the_existing_logger(self) -> None:
+        first = Logger.configure()
+        second = Logger.configure(on_log=lambda _message: None)
+
+        self.assertIs(first, second)
+        self.assertIs(first, Logger.current())
 
     def test_log_level_is_selected_without_embedded_markers(self) -> None:
         messages: list[str] = []
+        Logger.configure(on_log=messages.append)
 
-        emit_log(messages.append, "Something went wrong", LogLevel.ERROR)
-        emit_log(messages.append, "The vessel crop is small", LogLevel.WARNING)
-        emit_log(messages.append, "Timing detail", LogLevel.DEBUG)
+        Logger.log_error("Something went wrong")
+        Logger.log_warning("The vessel crop is small")
+        Logger.log_debug("Timing detail")
 
         self.assertEqual(
             [

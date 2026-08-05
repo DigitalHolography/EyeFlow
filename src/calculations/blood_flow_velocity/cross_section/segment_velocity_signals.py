@@ -19,8 +19,6 @@ def segment_velocity_inputs(
     optic_disc_center,
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings | None = None,
-    *,
-    log=None,
 ) -> tuple[np.ndarray, np.ndarray]:
     artery, vein = segment_velocity_results(
         velocity,
@@ -29,7 +27,6 @@ def segment_velocity_inputs(
         optic_disc_center,
         ring_settings,
         cross_section_settings,
-        log=log,
     )
     return artery.velocity, vein.velocity
 
@@ -41,16 +38,14 @@ def segment_velocity_results(
     optic_disc_center,
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings | None = None,
-    *,
-    log=None,
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
     settings = _cross_section_settings(cross_section_settings)
     return (
         _segment_velocity(
-            velocity, artery_mask, optic_disc_center, ring_settings, settings, log
+            velocity, artery_mask, optic_disc_center, ring_settings, settings
         ),
         _segment_velocity(
-            velocity, vein_mask, optic_disc_center, ring_settings, settings, log
+            velocity, vein_mask, optic_disc_center, ring_settings, settings
         ),
     )
 
@@ -61,7 +56,6 @@ def _segment_velocity(
     optic_disc_center,
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings,
-    log=None,
 ) -> CrossSectionSignalResult:
     return generate_cross_section_signals(
         velocity,
@@ -69,7 +63,6 @@ def _segment_velocity(
         optic_disc_center,
         ring_settings,
         cross_section_settings,
-        log=log,
     )
 
 

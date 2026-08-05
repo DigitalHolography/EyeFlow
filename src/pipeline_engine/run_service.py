@@ -11,7 +11,7 @@ from pathlib import Path
 from input_output import INPUT_LIST_SUFFIX, HoloRunLayout, resolve_selected_run_layouts
 from input_output.archives import extracted_zip_tree
 from input_output.output_manager import OutputManager, OutputType
-from utils.logger import LogLevel, emit_log
+from utils.logger import Logger
 
 from .base import PipelineDescriptor
 from .dag import PipelineDAG, PipelineExecutionPlan
@@ -148,13 +148,12 @@ def resolve_run_spec(
 def execute_run(
     spec: RunSpec,
     *,
-    on_log: Callable[[str], None] | None = None,
     on_progress: Callable[[], None] | None = None,
 ) -> RunResult:
     """Execute a batch, writing each run directly to its final output folder."""
 
-    _emit(on_log, f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
-    _emit(on_log, f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
+    Logger.log(f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
+    Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
     outputs: list[Path] = []
     failures: list[RunFailure] = []
 
@@ -162,11 +161,11 @@ def execute_run(
         input_layout = request.input_layout
         final_manager = request.output_manager
         final_path = final_manager.path_for(OutputType.H5)
-        _emit(on_log, f"[INPUT] HOLO -> {input_layout.holo_path}")
-        _emit(on_log, f"[INPUT] DATA DIR -> {input_layout.root_dir}")
-        _emit(on_log, f"[RESOLVED] HD -> {input_layout.hd_h5}")
-        _emit(on_log, f"[RESOLVED] DV -> {input_layout.dv_h5}")
-        _emit(on_log, f"[OUTPUT] {final_path}")
+        Logger.log(f"[INPUT] HOLO -> {input_layout.holo_path}")
+        Logger.log(f"[INPUT] DATA DIR -> {input_layout.root_dir}")
+        Logger.log(f"[RESOLVED] HD -> {input_layout.hd_h5}")
+        Logger.log(f"[RESOLVED] DV -> {input_layout.dv_h5}")
+        Logger.log(f"[OUTPUT] {final_path}")
 
         try:
             final_dir = final_manager.layout.ef_dir
@@ -184,17 +183,16 @@ def execute_run(
                 pipeline_options=spec.pipeline_options,
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
-                on_log=on_log,
                 on_progress=on_progress,
             )
         except Exception as exc:  # noqa: BLE001
             failure = RunFailure(input_layout.holo_path, str(exc))
             failures.append(failure)
-            _emit(on_log, str(failure), level=LogLevel.ERROR)
+            Logger.log_error(str(failure))
             continue
 
         outputs.append(final_path)
-        _emit(on_log, f"Completed run for {input_layout.holo_path.name}: {final_path}")
+        Logger.log(f"Completed run for {input_layout.holo_path.name}: {final_path}")
 
     return RunResult(tuple(outputs), tuple(failures))
 
@@ -316,15 +314,6 @@ def _reject_duplicate_destinations(requests: Sequence[RunRequest]) -> None:
                 f"{previous} and {request.input_layout.holo_path} -> {destination}"
             )
         destinations[key] = request.input_layout.holo_path
-
-
-def _emit(
-    on_log: Callable[[str], None] | None,
-    message: str,
-    *,
-    level: LogLevel | str | None = None,
-) -> None:
-    emit_log(on_log, message, level)
 
 
 __all__ = [

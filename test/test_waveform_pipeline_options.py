@@ -229,6 +229,41 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertEqual({"shape": 1}, outputs)
         self.assertFalse(pack.call_args.kwargs["include_segments"])
 
+    def test_core_skips_segment_extraction_when_not_required(self) -> None:
+        analysis = {
+            "retinal_artery_velocity_signal_filtered": [1.0, 2.0],
+            "retinal_vein_velocity_signal_filtered": [1.0, 2.0],
+            "beat_indices": [0, 1],
+        }
+        source = SimpleNamespace(
+            timing=SimpleNamespace(dt_seconds=0.1),
+            provenance={"beat_index_base": 0},
+            optic_disc_width=None,
+            optic_disc_height=None,
+        )
+        ctx = SimpleNamespace()
+
+        with (
+            patch.object(core_runner, "_segment_velocity_inputs") as extract,
+            patch.object(
+                core_runner,
+                "spectral_heartbeat_analysis",
+                return_value="heartbeat",
+            ),
+        ):
+            _, artery, vein = core_runner._per_beat_input_from_analysis(
+                analysis,
+                source,
+                source.timing,
+                4,
+                ctx,
+                segments_required=False,
+            )
+
+        extract.assert_not_called()
+        self.assertIsNone(artery)
+        self.assertIsNone(vein)
+
     def test_pdf_report_requires_shared_per_beat_products(self) -> None:
         ctx = _context(
             {"waveform_velocity": (), "waveform_shape_metrics": ()},

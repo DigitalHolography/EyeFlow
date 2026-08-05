@@ -15,6 +15,7 @@ from calculations.math import (
     nansum,
     rfft_normalized,
 )
+from utils.logger import Logger
 
 
 class WaveformShapeMetricsCalculator:
@@ -766,7 +767,7 @@ class WaveformShapeMetricsCalculator:
         vend = float(nanmean(tail))
         vv = np.where(np.isfinite(v), v, np.nan)
         m0_sum = float(nansum(vv))
-        if m0_sum <= 0:
+        if (not np.isfinite(m0_sum)) or m0_sum <= 0:
             return {}
 
         tau = np.linspace(0.0, 1.0, n, endpoint=False)
@@ -882,7 +883,9 @@ class WaveformShapeMetricsCalculator:
         }
 
     def _compute_graphics_support_block(
-        self, v_global: np.ndarray, T: np.ndarray
+        self,
+        v_global: np.ndarray,
+        T: np.ndarray,
     ) -> dict:
         n_beats = int(T.shape[1])
         v_global = self._ensure_time_by_beat(v_global, n_beats)
@@ -941,52 +944,96 @@ class WaveformShapeMetricsCalculator:
         for key in metric_names:
             out[key] = np.full((n_beats,), np.nan, dtype=float)
 
+        column_keys = (
+            "signal_mean",
+            "tau",
+            "cumulative",
+            "d_star",
+            "d0_star",
+            "delta_dti_curve",
+            "vb",
+            "dvdt",
+            "d2vdt2",
+            "dvdt_norm",
+            "d2vdt2_norm",
+        )
+        row_keys = (
+            "A2_cumsum",
+            "A2_m",
+            "A2_cumsum_interp",
+            "A2_m_interp",
+            "m_50",
+            "m_80",
+            "rho_h",
+            "w_h",
+            "m0",
+            "E_total",
+            "vend",
+            "E_low",
+            "harmonic_magnitudes",
+            "harmonic_weights",
+            "harmonic_phases",
+            "harmonic_energies",
+            "harmonic_energies_weights",
+            "delta_phi_all",
+            "t_phi_n",
+            "t_phi_n_over_T",
+            "phase_harmonics_used",
+            "vmax",
+            "vmin",
+            "vmean",
+            *metric_names,
+        )
+
+        if v_global.shape[1] != n_beats:
+            Logger.log_warning(
+                "Graphics support beat-count mismatch: "
+                f"periods={n_beats}, waveform columns={v_global.shape[1]}; "
+                "unmatched beats will be skipped.",
+            )
+
         for beat_idx in range(n_beats):
+            if beat_idx >= v_global.shape[1]:
+                Logger.log_warning(
+                    f"Skipping graphics support for beat {beat_idx}: "
+                    "waveform column is missing "
+                    f"(period count={n_beats}, waveform columns={v_global.shape[1]}).",
+                )
+                continue
+
             Tbeat = float(T[0][beat_idx])
             v = v_global[:, beat_idx]
-            s = self._compute_graphics_support_1d(v, Tbeat)
 
-            out["A2_cumsum"][beat_idx, :] = s["A2_cumsum"]
-            out["A2_m"][beat_idx, :] = s["A2_m"]
-            out["A2_cumsum_interp"][beat_idx, :] = s["A2_cumsum_interp"]
-            out["A2_m_interp"][beat_idx, :] = s["A2_m_interp"]
-            out["m_50"][beat_idx] = s["m_50"]
-            out["m_80"][beat_idx] = s["m_80"]
-            out["rho_h"][beat_idx] = s["rho_h"]
-            out["w_h"][beat_idx] = s["w_h"]
+            try:
+                s = self._compute_graphics_support_1d(v, Tbeat)
+            except (IndexError, TypeError, ValueError, FloatingPointError) as exc:
+                Logger.log_warning(
+                    f"Skipping graphics support for beat {beat_idx} "
+                    f"after calculation error: {exc}",
+                )
+                continue
 
-            out["E_total"][beat_idx] = s["E_total"]
-            out["E_low"][beat_idx] = s["E_low"]
-            out["signal_mean"][:, beat_idx] = s["signal_mean"]
-            out["tau"][:, beat_idx] = s["tau"]
-            out["cumulative"][:, beat_idx] = s["cumulative"]
-            out["d_star"][:, beat_idx] = s["d_star"]
-            out["d0_star"][:, beat_idx] = s["d0_star"]
-            out["delta_dti_curve"][:, beat_idx] = s["delta_dti_curve"]
-            out["vb"][:, beat_idx] = s["vb"]
-            out["dvdt"][:, beat_idx] = s["dvdt"]
-            out["d2vdt2"][:, beat_idx] = s["d2vdt2"]
-            out["dvdt_norm"][:, beat_idx] = s["dvdt_norm"]
-            out["d2vdt2_norm"][:, beat_idx] = s["d2vdt2_norm"]
-            out["m0"][beat_idx] = s["m0"]
-            out["harmonic_magnitudes"][beat_idx, :] = s["harmonic_magnitudes"]
-            out["harmonic_weights"][beat_idx, :] = s["harmonic_weights"]
-            out["harmonic_phases"][beat_idx, :] = s["harmonic_phases"]
-            out["harmonic_energies"][beat_idx, :] = s["harmonic_energies"]
-            out["harmonic_energies_weights"][beat_idx, :] = s[
-                "harmonic_energies_weights"
-            ]
-            out["delta_phi_all"][beat_idx, :] = s["delta_phi_all"]
-            out["t_phi_n"][beat_idx, :] = s["t_phi_n"]
-            out["t_phi_n_over_T"][beat_idx, :] = s["t_phi_n_over_T"]
-            out["phase_harmonics_used"][beat_idx, :] = s["phase_harmonics_used"]
-            out["vmax"][beat_idx] = s["vmax"]
-            out["vmin"][beat_idx] = s["vmin"]
-            out["vmean"][beat_idx] = s["vmean"]
-            out["vend"][beat_idx] = s["vend"]
+            if not s:
+                rectified = self._rectify_keep_nan(v)
+                m0_sum = float(nansum(rectified)) if rectified.size else np.nan
+                Logger.log_warning(
+                    f"Skipping graphics support for beat {beat_idx}: invalid input "
+                    f"(samples={rectified.size}, "
+                    f"finite_samples={np.count_nonzero(np.isfinite(rectified))}, "
+                    f"Tbeat={Tbeat!r}, m0_sum={m0_sum!r}).",
+                )
+                continue
 
-            for key in metric_names:
-                out[key][beat_idx] = s[key]
+            try:
+                for key in row_keys:
+                    out[key][beat_idx] = s[key]
+                for key in column_keys:
+                    out[key][:, beat_idx] = s[key]
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
+                Logger.log_warning(
+                    f"Skipping graphics support for beat {beat_idx} "
+                    f"after output packing error: {exc}",
+                )
 
         return out
 
