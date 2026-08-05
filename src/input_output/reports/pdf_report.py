@@ -11,6 +11,7 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from PIL import Image
 
+from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.h5 import open_h5
 
 
@@ -51,6 +52,11 @@ def generate_a4_report(
     """
     if not output_h5_paths:
         raise ValueError("No output H5 files provided for report generation")
+
+    output_dir = Path(output_dir)
+    png_dir = Path(png_dir) if png_dir is not None else None
+    hd_png_dir = Path(hd_png_dir) if hd_png_dir is not None else None
+    mask_dir = Path(mask_dir) if mask_dir is not None else None
     
     # Determine folder name if not provided
     if folder_name is None:
@@ -301,8 +307,10 @@ def _extract_parameters_from_h5(h5_paths: list[Path]) -> dict[str, Any]:
 
 def _extract_velocity_metrics(f: h5py.File, params: dict[str, Any]) -> None:
     """Extract velocity metrics from H5 file."""
+    schema = EyeFlowOutputPaths.active()
     # Try different possible paths
     artery_paths = [
+        schema.artery_per_beat.velocity_signal,
         "Artery/VelocityPerBeat/VelocitySignalPerBeat/value",
         "Artery/velocity/signal/value",
         "artery/velocity/perbeat/signal/value",
@@ -319,6 +327,7 @@ def _extract_velocity_metrics(f: h5py.File, params: dict[str, Any]) -> None:
                 break
     
     vein_paths = [
+        schema.vein_per_beat.velocity_signal,
         "Vein/VelocityPerBeat/VelocitySignalPerBeat/value",
         "Vein/velocity/signal/value",
         "vein/velocity/perbeat/signal/value",
@@ -337,7 +346,19 @@ def _extract_velocity_metrics(f: h5py.File, params: dict[str, Any]) -> None:
 
 def _extract_heart_rate(f: h5py.File, params: dict[str, Any]) -> None:
     """Extract heart rate from H5 file."""
+    schema = EyeFlowOutputPaths.active()
+    dataset = f.get(schema.heartbeat.spectral_heart_rate_bpm)
+    if dataset is not None:
+        arr = np.asarray(dataset)
+        if arr.size > 0:
+            params["heart_beat"] = {
+                "value": float(np.nanmean(arr)),
+                "unit": "bpm",
+            }
+            return
+
     beat_paths = [
+        schema.beat_period_seconds,
         "Artery/VelocityPerBeat/beatPeriodSeconds/value",
         "perbeat/beat_period_seconds/value",
     ]
@@ -353,6 +374,25 @@ def _extract_heart_rate(f: h5py.File, params: dict[str, Any]) -> None:
 
 def _extract_waveform_metrics(f: h5py.File, params: dict[str, Any]) -> None:
     """Extract metrics from waveform_shape_metrics output."""
+    schema = EyeFlowOutputPaths.active()
+    metric_mapping = {
+        "artery": {"RI": "ARI", "PI": "API"},
+        "vein": {"RI": "VRI", "PI": "VPI"},
+    }
+    for vessel_name, mapping in metric_mapping.items():
+        root = f"{schema.waveform_shape_metrics_root}/{vessel_name}/global/raw"
+        for metric_name, parameter_name in mapping.items():
+            dataset = f.get(f"{root}/{metric_name}")
+            if dataset is None:
+                continue
+            arr = np.asarray(dataset, dtype=float)
+            finite = arr[np.isfinite(arr)]
+            if finite.size:
+                params[parameter_name] = {
+                    "value": float(np.mean(finite)),
+                    "unit": "",
+                }
+
     # Look for Metrics group
     metrics = f.get("Metrics")
     if not metrics:
@@ -380,8 +420,9 @@ def _extract_waveform_metrics(f: h5py.File, params: dict[str, Any]) -> None:
             if arr.size > 0:
                 matlab_name = mapping.get(metric_name)
                 if matlab_name:
+                    value = float(np.nanmean(arr))
                     params[matlab_name] = {
-                        "value": float(arr[0] if arr.size == 1 else arr),
+                        "value": value,
                         "unit": ""
                     }
 

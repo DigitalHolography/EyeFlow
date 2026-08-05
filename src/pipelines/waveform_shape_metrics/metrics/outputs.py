@@ -13,6 +13,8 @@ from .models import WaveformShapeMetricInputs
 
 def pack_waveform_shape_metric_calculations(
     inputs: WaveformShapeMetricInputs,
+    *,
+    include_segments: bool = True,
 ) -> dict[str, object]:
     """Pack the existing global and by-segment waveform output groups."""
     beat_periods = np.asarray(inputs.beat_period_seconds, dtype=np.float32)
@@ -23,7 +25,11 @@ def pack_waveform_shape_metric_calculations(
         ("artery", inputs.artery),
         ("vein", inputs.vein),
     ):
-        if vessel.raw_segments is not None and vessel.bandlimited_segments is not None:
+        if (
+            include_segments
+            and vessel.raw_segments is not None
+            and vessel.bandlimited_segments is not None
+        ):
             _pack_segment_outputs(
                 metrics,
                 calculator,
@@ -159,7 +165,10 @@ def _pack_global_outputs(
         "harmonic_weights",
         "harmonic_energies_weights",
     }
-    raw_graphics = calculator._compute_graphics_support_block(raw_global, beat_periods)
+    raw_graphics = calculator._compute_graphics_support_block(
+        raw_global,
+        beat_periods,
+    )
     bandlimited_graphics = calculator._compute_graphics_support_block(
         bandlimited_global,
         beat_periods,

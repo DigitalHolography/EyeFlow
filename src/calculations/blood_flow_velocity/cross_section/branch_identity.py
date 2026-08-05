@@ -10,7 +10,7 @@ from skimage.measure import label as label_components
 from skimage.morphology import disk, skeletonize
 from skimage.segmentation import find_boundaries, watershed
 
-from .segment_geometry import SegmentRingSettings, annulus_mask
+from .segment_geometry import SegmentRingSettings, segment_annulus_mask
 
 
 LOW_RES_SMALL_BRANCH_PIXELS = 10
@@ -81,8 +81,12 @@ def _branch_identity_stages(
     vessel: np.ndarray, optic_disc_center, settings: SegmentRingSettings, *,
     small_branch_pixels: int = LOW_RES_SMALL_BRANCH_PIXELS, strel_size: int = STREL_SIZE,
 ) -> BranchIdentityStages:
-    section = annulus_mask(
-        vessel.shape, optic_disc_center, settings.inner_radius_frac, settings.outer_radius_frac
+    section = segment_annulus_mask(
+        vessel.shape,
+        optic_disc_center,
+        settings,
+        settings.inner_radius_frac,
+        settings.outer_radius_frac,
     )
     skeleton = skeletonize(vessel)
 
@@ -174,9 +178,10 @@ def _per_circle_cleaned_labels(
     settings: SegmentRingSettings,
 ) -> np.ndarray:
     min_area = max(1, labels.shape[0] // 10)
-    section = annulus_mask(
+    section = segment_annulus_mask(
         labels.shape,
         optic_disc_center,
+        settings,
         settings.inner_radius_frac,
         settings.outer_radius_frac,
     )

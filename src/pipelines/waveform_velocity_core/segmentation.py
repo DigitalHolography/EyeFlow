@@ -1,4 +1,4 @@
-"""Pack the segmentation images published by waveform-shape metrics."""
+"""Pack segmentation products created by the waveform velocity core."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from calculations.blood_flow_velocity.cross_section.segment_geometry import (
 )
 from input_output.schema import EyeFlowOutputPaths
 
-from .outputs import metric_data
+from .dopplerview.outputs import metric_data
 
 OPTIC_DISC_LABEL = -1
 REGION_AXIS_LABEL = -2

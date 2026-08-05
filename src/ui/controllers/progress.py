@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from utils.logger import current_logger
+from utils.logger import LogLevel, Logger, format_log_message
 
 from ..services import services_for
 
@@ -17,11 +17,11 @@ class ProgressController:
         self.app.minimal_status_var.set(text)
 
     def run_log_path(self) -> Path:
-        return current_logger().path
+        return Logger.current().path
 
     def persist_run_log_snapshot(self) -> None:
         try:
-            logger = current_logger()
+            logger = Logger.current()
             logger.write_snapshot(self.app.run_log.get("1.0", "end-1c"))
         except OSError:
             self.app._last_saved_run_log_path = None
@@ -32,7 +32,7 @@ class ProgressController:
         log_path = self.run_log_path()
         try:
             self.persist_run_log_snapshot()
-            current_logger().ensure_file()
+            Logger.current().ensure_file()
             services_for(self.app).path_opener.open_path(log_path)
         except OSError as exc:
             services_for(self.app).dialogs.showerror(
@@ -87,7 +87,12 @@ class ProgressController:
         self.app.run_log.configure(state="disabled")
         self.persist_run_log_snapshot()
 
-    def log_run(self, text: str) -> None:
+    def log_run(
+        self,
+        text: str,
+        level: LogLevel | str | None = None,
+    ) -> None:
+        text = format_log_message(text, level)
         self.app.run_log.configure(state="normal")
         self.app.run_log.insert("end", f"{text}\n")
         self.app.run_log.see("end")

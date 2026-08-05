@@ -24,7 +24,7 @@ from .controllers import (
     ViewController,
 )
 from .services import UiServices
-from utils.logger import configure_logger
+from utils.logger import Logger
 
 try:
     from tkinterdnd2 import TkinterDnD
@@ -40,7 +40,7 @@ class ProcessApp(BaseAppTk):
         self.title(app_display_name())
         self.ui_services = UiServices()
         self.settings_store = AppSettingsStore()
-        configure_logger(self.settings_store.path)
+        Logger.configure(self.settings_store.path)
         self._settings_warning_shown = False
         self.settings_controller = SettingsController(self)
         self.settings_controller.ensure_default_settings()
@@ -52,6 +52,11 @@ class ProcessApp(BaseAppTk):
         self.pipeline_visibility: dict[str, bool] = {}
         self.pipeline_visibility_vars: dict[str, tk.BooleanVar] = {}
         self.pipeline_row_widgets: dict[str, tk.Widget] = {}
+        self.pipeline_option_visibility: dict[str, dict[str, bool]] = {}
+        self.pipeline_option_vars: dict[str, dict[str, tk.BooleanVar]] = {}
+        self.pipeline_option_widgets: dict[str, list[tk.Widget]] = {}
+        self.pipeline_expanded: dict[str, bool] = {}
+        self.pipeline_disclosure_widgets: dict[str, tk.Widget] = {}
         self.holo_input_var = tk.StringVar()
         self.run_progress_var = tk.DoubleVar(value=0.0)
         self._selected_holo_input_paths: list[Path] = []

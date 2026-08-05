@@ -1,17 +1,16 @@
-"""Source assembly for the waveform-shape metrics pipeline."""
+"""Source assembly for shared waveform velocity analysis."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from time import perf_counter
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from calculations.blood_flow_velocity import CrossSectionSignalSettings
 from input_output.schema import DopplerViewSource, HolodopplerSource, HolodopplerTiming
 
-from .velocity.constants import (
+from .constants import (
     CROSS_SECTION_HYDRODYNAMIC_DIAMETERS,
     CROSS_SECTION_ROTATE_FROM_MASK,
     CROSS_SECTION_SCALE_FACTOR_WIDTH,
@@ -31,11 +30,13 @@ DOPPLERVIEW_BEAT_INDEX_BASE = 0
 
 
 @dataclass(frozen=True)
-class WaveformShapeSourceData:
+class WaveformVelocitySourceData:
     """Resolved source data with explicit axis contracts for waveform metrics."""
 
     moment0: object
     moment2: object
+    moment0_flat_field_source: str
+    moment2_flat_field_source: str
     flat_field_gaussian_ratio: float
     flat_field_border: float
     retinal_artery_mask: np.ndarray
@@ -62,64 +63,68 @@ class WaveformShapeSourceData:
 
 
 @dataclass(frozen=True)
-class WaveformShapeSources:
-    """Typed input adapters needed by the waveform-shape pipeline."""
+class WaveformVelocitySources:
+    """Typed input adapters needed by the waveform velocity core."""
 
     hd: HolodopplerSource
     dv: DopplerViewSource
-    log: Callable[[str], None] | None = None
 
     @classmethod
-    def from_context(cls, ctx: PipelineContext) -> "WaveformShapeSources":
+    def from_context(cls, ctx: PipelineContext) -> "WaveformVelocitySources":
         ctx.require_inputs("hd", "dv")
         return cls(
             hd=ctx.inputs.hd.as_holodoppler(),
             dv=ctx.inputs.dv.as_dopplerview(),
-            log=getattr(ctx, "log", None),
         )
 
-    def load(self) -> WaveformShapeSourceData:
-        moment0 = self._timed_load("HD moment0 dataset", self.hd.moment0_dataset)
-        moment2 = self._timed_load("HD moment2 dataset", self.hd.moment2_dataset)
+    def load(self) -> WaveformVelocitySourceData:
+        moment0, moment0_source = _preferred_moment_dataset(
+            self.hd.moment0_flat_field_dataset(),
+            self.hd.moment0_dataset,
+        )
+        moment2, moment2_source = _preferred_moment_dataset(
+            self.hd.moment2_flat_field_dataset(),
+            self.hd.moment2_dataset,
+        )
         spatial_shape = moment0.shape[-2:]
-        timing = self._timed_load("HD timing", self.hd.timing)
+        timing = self.hd.timing()
         artery_mask, artery_axes_swapped = _align_spatial_array(
-            self._timed_load("DV retinal artery mask", self.dv.retinal_artery_mask),
+            self.dv.retinal_artery_mask(),
             spatial_shape,
             "retinal_artery_mask",
         )
         vein_mask, vein_axes_swapped = _align_spatial_array(
-            self._timed_load("DV retinal vein mask", self.dv.retinal_vein_mask),
+            self.dv.retinal_vein_mask(),
             spatial_shape,
             "retinal_vein_mask",
         )
         spatial_axes_swapped = artery_axes_swapped or vein_axes_swapped
         labeled_vessels, labeled_axes_swapped = _align_optional_spatial_array(
-            self._timed_load(
-                "DV labeled vessels", self.dv.retinal_labeled_vessels
-            ),
+            self.dv.retinal_labeled_vessels(),
             spatial_shape,
             "retinal_labeled_vessels",
         )
         spatial_axes_swapped = spatial_axes_swapped or labeled_axes_swapped
         optic_disc_mask, optic_disc_axes_swapped = _align_optional_spatial_array(
-            self._timed_load("DV optic disc mask", self.dv.optic_disc_mask),
+            self.dv.optic_disc_mask(),
             spatial_shape,
             "optic_disc_mask",
         )
         spatial_axes_swapped = spatial_axes_swapped or optic_disc_axes_swapped
         optic_disc_center = _align_spatial_pair(
-            self._timed_load("DV optic disc center", self.dv.optic_disc_center),
+            self.dv.optic_disc_center(),
             swapped=spatial_axes_swapped,
         )
         optic_disc_width, optic_disc_height = _align_spatial_sizes(
-            self._timed_load("DV optic disc width", self.dv.optic_disc_width),
-            self._timed_load("DV optic disc height", self.dv.optic_disc_height),
+            self.dv.optic_disc_width(),
+            self.dv.optic_disc_height(),
             swapped=spatial_axes_swapped,
         )
-        return WaveformShapeSourceData(
+        return WaveformVelocitySourceData(
             moment0=moment0,
             moment2=moment2,
+            moment0_flat_field_source=moment0_source,
+            moment2_flat_field_source=moment2_source,
             flat_field_gaussian_ratio=_config_float(
                 self.dv,
                 "FlatFieldCorrection",
@@ -157,17 +162,6 @@ class WaveformShapeSources:
             ),
         )
 
-    def _timed_load(self, label: str, loader):
-        started = perf_counter()
-        value = loader()
-        elapsed = perf_counter() - started
-        self._log(f"[IO] {label} loaded in {elapsed:.2f}s")
-        return value
-
-    def _log(self, message: str) -> None:
-        if callable(self.log):
-            self.log(message)
-
     def _cross_section_settings(self, optic_disc_width, optic_disc_height):
         return CrossSectionSignalSettings(
             scale_factor_width=CROSS_SECTION_SCALE_FACTOR_WIDTH,
@@ -184,8 +178,14 @@ class WaveformShapeSources:
         return DEFAULT_PIXEL_SIZE_MM / (2.0**SPATIAL_INTERPOLATION_FACTOR)
 
 
-def load_waveform_shape_source_data(ctx: PipelineContext) -> WaveformShapeSourceData:
-    return WaveformShapeSources.from_context(ctx).load()
+def load_waveform_velocity_source_data(ctx: PipelineContext) -> WaveformVelocitySourceData:
+    return WaveformVelocitySources.from_context(ctx).load()
+
+
+def _preferred_moment_dataset(flat_field_dataset, raw_loader):
+    if flat_field_dataset is not None:
+        return flat_field_dataset, "holodoppler_precomputed_flat_field"
+    return raw_loader(), "dopplerview_recomputed_from_raw"
 
 
 def _source_provenance(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +11,7 @@ from pathlib import Path
 from input_output import INPUT_LIST_SUFFIX, HoloRunLayout, resolve_selected_run_layouts
 from input_output.archives import extracted_zip_tree
 from input_output.output_manager import OutputManager, OutputType
+from utils.logger import Logger
 
 from .base import PipelineDescriptor
 from .dag import PipelineDAG, PipelineExecutionPlan
@@ -41,6 +42,7 @@ class RunSpec:
 
     plan: PipelineExecutionPlan
     requests: tuple[RunRequest, ...]
+    pipeline_options: Mapping[str, tuple[str, ...]]
 
     @property
     def total_pipeline_units(self) -> int:
@@ -87,6 +89,7 @@ def resolve_run_spec(
     input_paths: Sequence[Path],
     target_names: Sequence[str],
     pipelines: Iterable[PipelineDescriptor],
+    pipeline_options: Mapping[str, Iterable[str]] | None = None,
     output_root: Path | None = None,
     batch_root: Path | None = None,
 ) -> RunSpec:
@@ -112,6 +115,7 @@ def resolve_run_spec(
         raise ValueError(
             "The DAG requires unavailable pipeline(s): " + ", ".join(details)
         )
+    resolved_options = _resolve_pipeline_options(plan, pipeline_options)
 
     layouts = resolve_selected_run_layouts(input_paths)
     resolved_output_root = (
@@ -134,19 +138,22 @@ def resolve_run_spec(
         for layout in layouts
     )
     _reject_duplicate_destinations(requests)
-    return RunSpec(plan=plan, requests=requests)
+    return RunSpec(
+        plan=plan,
+        requests=requests,
+        pipeline_options=resolved_options,
+    )
 
 
 def execute_run(
     spec: RunSpec,
     *,
-    on_log: Callable[[str], None] | None = None,
     on_progress: Callable[[], None] | None = None,
 ) -> RunResult:
     """Execute a batch, writing each run directly to its final output folder."""
 
-    _emit(on_log, f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
-    _emit(on_log, f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
+    Logger.log(f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
+    Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
     outputs: list[Path] = []
     failures: list[RunFailure] = []
 
@@ -154,11 +161,11 @@ def execute_run(
         input_layout = request.input_layout
         final_manager = request.output_manager
         final_path = final_manager.path_for(OutputType.H5)
-        _emit(on_log, f"[INPUT] HOLO -> {input_layout.holo_path}")
-        _emit(on_log, f"[INPUT] DATA DIR -> {input_layout.root_dir}")
-        _emit(on_log, f"[RESOLVED] HD -> {input_layout.hd_h5}")
-        _emit(on_log, f"[RESOLVED] DV -> {input_layout.dv_h5}")
-        _emit(on_log, f"[OUTPUT] {final_path}")
+        Logger.log(f"[INPUT] HOLO -> {input_layout.holo_path}")
+        Logger.log(f"[INPUT] DATA DIR -> {input_layout.root_dir}")
+        Logger.log(f"[RESOLVED] HD -> {input_layout.hd_h5}")
+        Logger.log(f"[RESOLVED] DV -> {input_layout.dv_h5}")
+        Logger.log(f"[OUTPUT] {final_path}")
 
         try:
             final_dir = final_manager.layout.ef_dir
@@ -173,21 +180,52 @@ def execute_run(
                 output_manager=final_manager,
                 pipelines=spec.plan.descriptors,
                 target_names=spec.plan.targets,
+                pipeline_options=spec.pipeline_options,
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
-                on_log=on_log,
                 on_progress=on_progress,
             )
         except Exception as exc:  # noqa: BLE001
             failure = RunFailure(input_layout.holo_path, str(exc))
             failures.append(failure)
-            _emit(on_log, f"[FAIL] {failure}")
+            Logger.log_error(str(failure))
             continue
 
         outputs.append(final_path)
-        _emit(on_log, f"Completed run for {input_layout.holo_path.name}: {final_path}")
+        Logger.log(f"Completed run for {input_layout.holo_path.name}: {final_path}")
 
     return RunResult(tuple(outputs), tuple(failures))
+
+
+def _resolve_pipeline_options(
+    plan: PipelineExecutionPlan,
+    selections: Mapping[str, Iterable[str]] | None,
+) -> dict[str, tuple[str, ...]]:
+    requested_by_pipeline = selections or {}
+    resolved: dict[str, tuple[str, ...]] = {}
+    for descriptor in plan.descriptors:
+        if not descriptor.options:
+            continue
+        known = {option.name for option in descriptor.options}
+        requested = requested_by_pipeline.get(descriptor.name)
+        if requested is None:
+            selected = {
+                option.name
+                for option in descriptor.options
+                if option.default_enabled
+            }
+        else:
+            selected = {str(name).strip() for name in requested if str(name).strip()}
+            unknown = sorted(selected - known)
+            if unknown:
+                raise ValueError(
+                    f"Unknown option(s) for pipeline '{descriptor.name}': "
+                    + ", ".join(unknown)
+                )
+        resolved[descriptor.name] = tuple(
+            option.name for option in descriptor.options if option.name in selected
+        )
+    return resolved
 
 
 @contextmanager
@@ -276,11 +314,6 @@ def _reject_duplicate_destinations(requests: Sequence[RunRequest]) -> None:
                 f"{previous} and {request.input_layout.holo_path} -> {destination}"
             )
         destinations[key] = request.input_layout.holo_path
-
-
-def _emit(on_log: Callable[[str], None] | None, message: str) -> None:
-    if on_log is not None:
-        on_log(message)
 
 
 __all__ = [

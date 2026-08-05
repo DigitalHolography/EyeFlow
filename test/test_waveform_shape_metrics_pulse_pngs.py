@@ -14,13 +14,13 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from pipelines.waveform_shape_metrics.velocity.figures.signal_inputs import (  # noqa: E402
+from pipelines.waveform_velocity_core.figures.signal_inputs import (  # noqa: E402
     display_frequency,
     display_velocity,
     histogram_matrix,
     masked_video_signal,
 )
-from pipelines.waveform_shape_metrics.velocity.figures.spectrum import (  # noqa: E402
+from pipelines.waveform_velocity_core.figures.spectrum import (  # noqa: E402
     correlation_data,
     paired_spectrum_analysis,
     spectrum_signal_analysis,
@@ -38,14 +38,14 @@ from input_output.writers.png import write_png_file  # noqa: E402
 from calculations.dopplerview_analysis.vessel_velocity_estimator import (  # noqa: E402
     _masked_signal as _velocity_masked_signal,
 )
-from pipelines.waveform_shape_metrics.velocity.figures import (  # noqa: E402
+from pipelines.waveform_velocity_core.figures import (  # noqa: E402
     PULSE_PNG_SUFFIXES,
     export_pulse_pngs,
 )
-from pipelines.waveform_shape_metrics.velocity.figures.plotting import (  # noqa: E402
+from pipelines.waveform_velocity_core.figures.plotting import (  # noqa: E402
     _velocity_gradient_values,
 )
-from pipelines.waveform_shape_metrics.velocity.figures.velocity_maps import (  # noqa: E402
+from pipelines.waveform_velocity_core.figures.velocity_maps import (  # noqa: E402
     _velocity_colorbar_vmax,
     _vessel_histogram_colormap,
 )
@@ -301,7 +301,7 @@ class PulsePngExporterTests(unittest.TestCase):
                 heartbeat=heartbeat,
                 cycle_boundary_indexes=context.dopplerview_analysis["beat_indices"],
             )
-            written = export_pulse_pngs(output, context, per_beat_result, log=None)
+            written = export_pulse_pngs(output, context, per_beat_result)
 
             self.assertGreaterEqual(len(written), 35)
             for required in (

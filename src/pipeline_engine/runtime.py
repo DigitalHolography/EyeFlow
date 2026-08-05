@@ -1,12 +1,14 @@
 """Runtime execution helpers for resolved EyeFlow pipelines."""
 
-from collections.abc import Callable, Sequence
+import json
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
 
 from input_output.inputs import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
 from input_output.writers.h5 import initialize_output_h5, open_h5
+from utils.logger import Logger
 
 from .base import PipelineDescriptor, ProcessResult
 from .context import PipelineContext, apply_pipeline_result, finish_pipeline
@@ -18,9 +20,9 @@ def run_pipelines_to_output(
     output_manager: OutputManager,
     pipelines: Sequence[PipelineDescriptor],
     target_names: Sequence[str] = (),
+    pipeline_options: Mapping[str, Sequence[str]] | None = None,
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
-    on_log: Callable[[str], None] | None = None,
     on_pipeline_success: Callable[[str], None] | None = None,
     on_progress: Callable[[], None] | None = None,
 ) -> Path:
@@ -37,9 +39,9 @@ def run_pipelines_to_output(
             stack=stack,
             pipelines=pipelines,
             target_names=target_names,
+            pipeline_options=pipeline_options or {},
             holodoppler_h5=holodoppler_h5,
             doppler_vision_h5=doppler_vision_h5,
-            on_log=on_log,
             on_pipeline_success=on_pipeline_success,
             on_progress=on_progress,
         )
@@ -53,9 +55,9 @@ def _run_pipelines_with_work_h5(
     stack: ExitStack,
     pipelines: Sequence[PipelineDescriptor],
     target_names: Sequence[str],
+    pipeline_options: Mapping[str, Sequence[str]],
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
-    on_log: Callable[[str], None] | None,
     on_pipeline_success: Callable[[str], None] | None,
     on_progress: Callable[[], None] | None,
 ) -> Path:
@@ -64,6 +66,7 @@ def _run_pipelines_with_work_h5(
         work_h5=work_h5,
         pipelines=pipelines,
         target_names=target_names,
+        pipeline_options=pipeline_options,
         holodoppler_h5=holodoppler_h5,
         doppler_vision_h5=doppler_vision_h5,
     )
@@ -82,7 +85,8 @@ def _run_pipelines_with_work_h5(
             holodoppler_config=hd_config,
             doppler_vision_config=dv_config,
             variables=context_vars,
-            on_log=on_log,
+            pipeline_options=pipeline_options,
+            pipeline_order=tuple(pipeline.name for pipeline in pipelines),
             on_pipeline_success=on_pipeline_success,
             on_progress=on_progress,
         )
@@ -112,6 +116,7 @@ def _initialize_work_h5(
     work_h5,
     pipelines: Sequence[PipelineDescriptor],
     target_names: Sequence[str],
+    pipeline_options: Mapping[str, Sequence[str]],
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
 ) -> None:
@@ -126,6 +131,13 @@ def _initialize_work_h5(
     )
     work_h5.attrs["pipeline_targets"] = list(target_names)
     work_h5.attrs["pipeline_order"] = [pipeline.name for pipeline in pipelines]
+    work_h5.attrs["pipeline_options"] = json.dumps(
+        {
+            name: list(options)
+            for name, options in pipeline_options.items()
+        },
+        sort_keys=True,
+    )
 
 
 def _run_pipeline_descriptor(
@@ -139,12 +151,13 @@ def _run_pipeline_descriptor(
     holodoppler_config,
     doppler_vision_config,
     variables: dict[str, object],
-    on_log: Callable[[str], None] | None,
+    pipeline_options: Mapping[str, Sequence[str]],
+    pipeline_order: Sequence[str],
     on_pipeline_success: Callable[[str], None] | None,
     on_progress: Callable[[], None] | None,
 ) -> None:
     pipeline = pipeline_desc.instantiate()
-    _emit_log(on_log, f"[START] {pipeline.name}")
+    Logger.log(f"[START] {pipeline.name}")
     ctx = PipelineContext(
         work_h5=work_h5,
         holodoppler_h5=holodoppler_h5,
@@ -155,24 +168,20 @@ def _run_pipeline_descriptor(
         output_manager=output_manager,
         pipeline_name=pipeline.name,
         variables=variables,
-        on_log=on_log,
+        pipeline_options=pipeline_options,
+        pipeline_order=pipeline_order,
     )
     try:
         result = pipeline.run(ctx)
         apply_pipeline_result(ctx, result)
     except Exception as exc:  # noqa: BLE001
-        _emit_log(on_log, f"[FAIL] {pipeline.name}: {exc}")
+        Logger.log_error(f"{pipeline.name}: {exc}")
         raise RuntimeError(format_pipeline_exception(exc, pipeline)) from exc
     if isinstance(result, ProcessResult):
         result.output_h5_path = str(output_h5_path)
     finish_pipeline(ctx, pipeline.name)
-    _emit_log(on_log, f"[OK] {pipeline.name}")
+    Logger.log(f"[OK] {pipeline.name}")
     if on_pipeline_success is not None:
         on_pipeline_success(pipeline.name)
     if on_progress is not None:
         on_progress()
-
-
-def _emit_log(on_log: Callable[[str], None] | None, message: str) -> None:
-    if on_log is not None:
-        on_log(message)

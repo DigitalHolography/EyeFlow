@@ -7,10 +7,14 @@ from scipy import ndimage as ndi
 
 from calculations.blood_flow_velocity.cross_section import (
     BranchIdentityStages,
+    CrossSectionSignalSettings,
     SegmentRingSettings,
 )
+from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (
+    _substack_window_bounds,
+)
 from calculations.blood_flow_velocity.cross_section.segment_geometry import (
-    annulus_mask,
+    segment_annulus_mask,
 )
 
 def export_branch_identity_stage_pngs(
@@ -19,9 +23,26 @@ def export_branch_identity_stage_pngs(
     prefix: str,
     optic_disc_center,
     ring_settings: SegmentRingSettings,
+    *,
+    segment_center_xy: np.ndarray | None = None,
+    cross_section_settings: CrossSectionSignalSettings | None = None,
 ) -> list[str]:
     paths = []
-    for name, image in _stage_images(stages, optic_disc_center, ring_settings):
+    stage_images = list(_stage_images(stages, optic_disc_center, ring_settings))
+    if segment_center_xy is not None and cross_section_settings is not None:
+        stage_images.append(
+            (
+                "13_substack_boxes_on_labels_with_rings",
+                _labels_with_substack_boxes(
+                    stages.per_circle_cleaned_labels,
+                    optic_disc_center,
+                    ring_settings,
+                    segment_center_xy,
+                    cross_section_settings,
+                ),
+            )
+        )
+    for name, image in stage_images:
         path = output.write_png(
             image,
             f"branch_identity/{prefix}_{name}.png",
@@ -88,6 +109,72 @@ def _labels_with_ring_overlay(
     return image
 
 
+def _labels_with_substack_boxes(
+    labels: np.ndarray,
+    optic_disc_center,
+    ring_settings: SegmentRingSettings,
+    segment_center_xy: np.ndarray,
+    cross_section_settings: CrossSectionSignalSettings,
+) -> np.ndarray:
+    """Overlay the actual rotating substacks on the stage-12 label image.
+
+    Box colors identify the ring. Pixels shared by two or more box outlines
+    are magenta, making exact box overlap visible instead of hiding it under
+    the later box drawn.
+    """
+    image = _labels_with_ring_overlay(labels, optic_disc_center, ring_settings)
+    centers = np.asarray(segment_center_xy, dtype=np.float32)
+    if centers.ndim != 3 or centers.shape[2] != 2:
+        return image
+
+    box_counts = np.zeros(labels.shape, dtype=np.uint8)
+    box_colors = np.zeros((*labels.shape, 3), dtype=np.uint8)
+    for branch_index in range(centers.shape[0]):
+        for ring_index in range(
+            min(centers.shape[1], int(ring_settings.ring_count))
+        ):
+            center = centers[branch_index, ring_index]
+            if not np.all(np.isfinite(center)):
+                continue
+            loc_xy = (int(center[0]), int(center[1]))
+            x_start, x_stop, y_start, y_stop = _substack_window_bounds(
+                labels.shape,
+                loc_xy,
+                cross_section_settings,
+            )
+            if x_start >= x_stop or y_start >= y_stop:
+                continue
+            boundary = np.zeros(labels.shape, dtype=bool)
+            boundary[y_start, x_start:x_stop] = True
+            boundary[y_stop - 1, x_start:x_stop] = True
+            boundary[y_start:y_stop, x_start] = True
+            boundary[y_start:y_stop, x_stop - 1] = True
+            box_counts[boundary] = np.minimum(box_counts[boundary] + 1, 255)
+            box_colors[boundary] = _ring_box_color(ring_index)
+
+    single_box = box_counts == 1
+    overlapping_boxes = box_counts > 1
+    image[single_box] = box_colors[single_box]
+    image[overlapping_boxes] = (255, 0, 255)
+    return image
+
+
+def _ring_box_color(ring_index: int) -> tuple[int, int, int]:
+    colors = (
+        (255, 255, 0),
+        (0, 255, 255),
+        (255, 128, 0),
+        (0, 255, 0),
+        (255, 64, 192),
+        (64, 192, 255),
+        (255, 64, 64),
+        (128, 255, 64),
+        (192, 64, 255),
+        (64, 255, 192),
+    )
+    return colors[ring_index % len(colors)]
+
+
 def _ring_boundaries(
     image_shape: tuple[int, int],
     optic_disc_center,
@@ -96,9 +183,10 @@ def _ring_boundaries(
     boundaries = np.zeros(image_shape, dtype=bool)
     for ring_index in range(settings.ring_count):
         ring_inner = settings.inner_radius_frac + ring_index * settings.ring_width_frac
-        ring = annulus_mask(
+        ring = segment_annulus_mask(
             image_shape,
             optic_disc_center,
+            settings,
             ring_inner,
             ring_inner + settings.ring_width_frac,
         )

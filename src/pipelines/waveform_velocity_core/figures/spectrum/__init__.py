@@ -1,4 +1,4 @@
-"""Spectrum helpers used by waveform-shape velocity figures."""
+"""Spectrum helpers used by waveform velocity figures."""
 
 from .pair import (
     CorrelationData,

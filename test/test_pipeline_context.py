@@ -9,11 +9,13 @@ import numpy as np
 
 from pipeline_engine import PipelineContext
 from pipeline_engine.context import RawH5SourceReader
+from utils.logger import Logger
 
 
 class PipelineContextTests(unittest.TestCase):
     def test_log_emits_to_callback(self) -> None:
         messages: list[str] = []
+        Logger.configure(on_log=messages.append)
         with h5py.File(
             "context_log_test.h5",
             "w",
@@ -24,14 +26,15 @@ class PipelineContextTests(unittest.TestCase):
                 work_h5=h5file,
                 holodoppler_h5=None,
                 doppler_vision_h5=None,
-                on_log=messages.append,
             )
 
             ctx.log("Starting test pipeline...")
 
+        Logger.reset_current()
         self.assertEqual(["Starting test pipeline..."], messages)
 
     def test_log_without_callback_is_noop(self) -> None:
+        Logger.reset_current()
         with h5py.File(
             "context_log_test.h5",
             "w",
@@ -45,6 +48,42 @@ class PipelineContextTests(unittest.TestCase):
             )
 
             ctx.log("No listener")
+
+    def test_pipeline_options_and_schedule_are_available_to_runners(self) -> None:
+        with h5py.File(
+            "context_options_test.h5",
+            "w",
+            driver="core",
+            backing_store=False,
+        ) as h5file:
+            ctx = PipelineContext(
+                work_h5=h5file,
+                holodoppler_h5=None,
+                doppler_vision_h5=None,
+                pipeline_name="waveform_velocity",
+                pipeline_options={
+                    "waveform_velocity": ("per_beat", "hemifield"),
+                    "waveform_shape_metrics": (),
+                },
+                pipeline_order=(
+                    "waveform_velocity_core",
+                    "waveform_velocity",
+                ),
+            )
+
+            self.assertTrue(ctx.option_enabled("per_beat"))
+            self.assertTrue(
+                ctx.option_enabled("hemifield", pipeline="waveform_velocity")
+            )
+            self.assertFalse(
+                ctx.option_enabled("hemifield", pipeline="waveform_shape_metrics")
+            )
+            self.assertEqual(
+                frozenset({"per_beat", "hemifield"}),
+                ctx.options_for("waveform_velocity"),
+            )
+            self.assertTrue(ctx.pipeline_scheduled("waveform_velocity_core"))
+            self.assertFalse(ctx.pipeline_scheduled("pdf_report"))
 
     def test_source_array_casts_during_numeric_hdf5_read(self) -> None:
         with h5py.File(

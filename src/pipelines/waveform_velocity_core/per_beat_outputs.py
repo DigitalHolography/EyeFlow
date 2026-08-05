@@ -51,21 +51,6 @@ def _pack_vessel_outputs(
             unit="mm/s",
             dim_desc=("beat", "sample"),
         ),
-        paths.vmax_band_limited: metric_value(
-            vessel.vmax_band_limited,
-            unit="mm/s",
-            dim_desc=("beat",),
-        ),
-        paths.vmin_band_limited: metric_value(
-            vessel.vmin_band_limited,
-            unit="mm/s",
-            dim_desc=("beat",),
-        ),
-        paths.vti_per_beat: metric_value(
-            vessel.vti_per_beat,
-            unit="mm",
-            dim_desc=("beat",),
-        ),
     }
     if vessel.segments is not None:
         metrics.update(_pack_vessel_segment_outputs(paths, vessel.segments))

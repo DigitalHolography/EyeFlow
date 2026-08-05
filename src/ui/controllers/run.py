@@ -8,6 +8,7 @@ from queue import Empty, Queue
 from threading import Thread
 
 from pipeline_engine import RunResult, RunSpec, execute_run, resolve_run_spec
+from utils.logger import LogLevel, Logger
 
 from ..services import services_for
 
@@ -18,6 +19,10 @@ _PipelineUiEvent = tuple[str, object]
 class RunController:
     def __init__(self, app) -> None:
         self.app = app
+        Logger.configure(on_log=self._queue_log)
+
+    def _queue_log(self, message: str) -> None:
+        self._queue_pipeline_ui_event("log", message)
 
     def choose_holo_file(self) -> None:
         selected_holo = self.app.input_controller.selected_holo_path()
@@ -79,6 +84,9 @@ class RunController:
                 input_paths=input_paths,
                 target_names=target_names,
                 pipelines=self.app.pipeline_catalog.values(),
+                pipeline_options=(
+                    self.app.pipeline_library_controller.selected_pipeline_options()
+                ),
             )
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
             services_for(self.app).dialogs.showerror(
@@ -190,7 +198,10 @@ class RunController:
         self._set_pipeline_run_active(False)
 
     def _finish_pipeline_run_failure(self, failure_message: str) -> None:
-        self.app.progress_controller.log_run(f"[FAIL] {failure_message}")
+        self.app.progress_controller.log_run(
+            failure_message,
+            level=LogLevel.ERROR,
+        )
         self.app.progress_controller.set_minimal_status("Run failed.")
         self._set_pipeline_run_active(False)
         services_for(self.app).dialogs.showerror("Run failed", failure_message)
@@ -198,6 +209,5 @@ class RunController:
     def _execute_run(self, spec: RunSpec) -> RunResult:
         return execute_run(
             spec,
-            on_log=lambda message: self._queue_pipeline_ui_event("log", message),
             on_progress=lambda: self._queue_pipeline_ui_event("progress", None),
         )
