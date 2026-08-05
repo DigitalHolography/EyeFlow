@@ -20,11 +20,18 @@ from calculations.blood_flow_velocity.cross_section.generate_cross_section_signa
     _cross_section_velocity,
     _fill_cross_section_buffers,
     _subimage_stack,
+    _subimage_stack2,
 )
 from calculations.blood_flow_velocity.cross_section.branch_identity import (  # noqa: E402
     _branch_identity_stages,
 )
+from calculations.blood_flow_velocity.cross_section.segment_geometry import (  # noqa: E402
+    annulus_mask,
+)
 from pipelines.waveform_velocity_core.runner import _segment_ring_settings  # noqa: E402
+from pipelines.waveform_velocity_core.branch_identity_debug import (  # noqa: E402
+    _labels_with_substack_boxes,
+)
 from utils.logger import Logger  # noqa: E402
 
 
@@ -50,7 +57,7 @@ class SegmentCenterTests(unittest.TestCase):
 
         with patch(
             "calculations.blood_flow_velocity.cross_section.branch_identity."
-            "annulus_mask",
+            "segment_annulus_mask",
             return_value=section,
         ), patch(
             "calculations.blood_flow_velocity.cross_section.branch_identity."
@@ -87,6 +94,53 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertEqual((5, 5), mask.shape)
         self.assertEqual(1, len(messages))
         self.assertIn("5x5 px window for a 11x3 px segment", messages[0])
+
+    def test_subimage_stack2_contains_segment_with_rotation_margin(self) -> None:
+        velocity = np.ones((2, 101, 101), dtype=np.float32)
+        segment = np.zeros((101, 101), dtype=bool)
+        segment[49:52, 60:71] = True
+        messages: list[str] = []
+        settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
+
+        Logger.configure(on_log=messages.append)
+        stack, mask = _subimage_stack2(velocity, segment, (65, 50), settings)
+
+        self.assertEqual((2, 15, 15), stack.shape)
+        self.assertEqual((15, 15), mask.shape)
+        self.assertEqual(33, int(np.count_nonzero(mask)))
+        self.assertEqual([], messages)
+
+    def test_substack_debug_overlay_marks_shared_box_edges(self) -> None:
+        labels = np.ones((20, 20), dtype=np.int32)
+        ring_settings = SimpleNamespace(
+            inner_radius_frac=0.0,
+            outer_radius_frac=1.0,
+            ring_width_frac=0.5,
+            ring_count=2,
+        )
+        cross_section_settings = CrossSectionSignalSettings(
+            3.0,
+            False,
+            0.5,
+            False,
+            0.01,
+        )
+        centers = np.asarray(
+            [[[5.0, 5.0], [np.nan, np.nan]], [[7.0, 5.0], [np.nan, np.nan]]],
+            dtype=np.float32,
+        )
+
+        image = _labels_with_substack_boxes(
+            labels,
+            None,
+            ring_settings,
+            centers,
+            cross_section_settings,
+        )
+
+        self.assertEqual((20, 20, 3), image.shape)
+        np.testing.assert_array_equal(image[4, 4], [255, 255, 0])
+        np.testing.assert_array_equal(image[4, 6], [255, 0, 255])
 
     def test_subimage_logs_error_only_when_segment_reaches_crop_edge(self) -> None:
         velocity = np.zeros((1, 100, 100), dtype=np.float32)
@@ -144,6 +198,50 @@ class SegmentCenterTests(unittest.TestCase):
             (settings.outer_radius_frac - settings.inner_radius_frac) / 10.0,
             settings.ring_width_frac,
         )
+
+    def test_segment_settings_carry_detected_optic_disc_dimensions(self) -> None:
+        settings = _segment_ring_settings(55, 69)
+
+        self.assertEqual(55.0, settings.optic_disc_width)
+        self.assertEqual(69.0, settings.optic_disc_height)
+
+    def test_disc_relative_annulus_starts_at_detected_ellipse_boundary(self) -> None:
+        mask = annulus_mask(
+            (512, 512),
+            np.asarray([267.0, 230.0]),
+            0.10,
+            0.35,
+            optic_disc_width=55,
+            optic_disc_height=69,
+            optic_disc_boundary_radius_frac=0.10,
+        )
+
+        # The inner contour follows the 55x69 optic-disc ellipse rather than
+        # the legacy 51-pixel, frame-relative circle.
+        self.assertFalse(mask[230, 294])
+        self.assertTrue(mask[230, 295])
+        self.assertFalse(mask[264, 267])
+        self.assertTrue(mask[265, 267])
+
+        # The outer contour remains 3.5 optic-disc radii from the center.
+        self.assertTrue(mask[230, 363])
+        self.assertFalse(mask[230, 364])
+        self.assertTrue(mask[350, 267])
+        self.assertFalse(mask[351, 267])
+
+    def test_invalid_disc_dimensions_keep_frame_relative_annulus(self) -> None:
+        legacy = annulus_mask((100, 200), None, 0.10, 0.35)
+        fallback = annulus_mask(
+            (100, 200),
+            None,
+            0.10,
+            0.35,
+            optic_disc_width=0,
+            optic_disc_height=np.nan,
+            optic_disc_boundary_radius_frac=0.10,
+        )
+
+        np.testing.assert_array_equal(legacy, fallback)
 
     def test_cross_section_centroids_are_recorded_in_waveform_axis_order(self) -> None:
         labels = np.zeros((7, 7), dtype=np.int32)

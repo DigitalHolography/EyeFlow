@@ -96,15 +96,27 @@ def run_waveform_velocity_core(
 def _per_beat_required(ctx) -> bool:
     velocity_options = ctx.options_for("waveform_velocity")
     metric_options = ctx.options_for("waveform_shape_metrics")
+    absolute_options = (
+        ctx.options_for("absolute_waveform_metrics")
+        if ctx.pipeline_scheduled("absolute_waveform_metrics")
+        else frozenset()
+    )
     if ctx.pipeline_scheduled("pdf_report"):
         return True
     if ctx.pipeline_scheduled("waveform_velocity"):
         return bool(
             {"per_beat", "hemifield"} & velocity_options
             or "hemifield" in metric_options
+            or absolute_options
         )
     return bool(
-        metric_options and ctx.pipeline_scheduled("waveform_shape_metrics")
+        (
+            metric_options and ctx.pipeline_scheduled("waveform_shape_metrics")
+        )
+        or (
+            absolute_options
+            and ctx.pipeline_scheduled("absolute_waveform_metrics")
+        )
     )
 
 
@@ -112,13 +124,21 @@ def _segments_required(ctx) -> bool:
     """Return whether any selected product needs spatial vessel segments."""
     velocity_options = ctx.options_for("waveform_velocity")
     metric_options = ctx.options_for("waveform_shape_metrics")
+    absolute_options = (
+        ctx.options_for("absolute_waveform_metrics")
+        if ctx.pipeline_scheduled("absolute_waveform_metrics")
+        else frozenset()
+    )
     if ctx.pipeline_scheduled("waveform_velocity"):
         return bool(
             {"segments", "velocity_profiles", "hemifield"} & velocity_options
             or "hemifield" in metric_options
+            or "segments" in absolute_options
+            or "hemifield" in absolute_options
         )
     return bool(
         {"segments", "hemifield"} & metric_options
+        or "segments" in absolute_options
     )
 
 
@@ -210,7 +230,10 @@ def _per_beat_input_from_analysis(
     CrossSectionSignalResult | None,
     CrossSectionSignalResult | None,
 ]:
-    ring_settings = _segment_ring_settings()
+    ring_settings = _segment_ring_settings(
+        source_data.optic_disc_width,
+        source_data.optic_disc_height,
+    )
     artery_segments, vein_segments = _segment_velocity_inputs(
         analysis,
         source_data,
@@ -286,16 +309,18 @@ def _segment_velocity_inputs(
     )
     _export_branch_identity_debug(
         ctx,
-        artery.branch_identity.stages,
+        artery,
         source_data.optic_disc_center,
         ring_settings,
+        source_data.cross_section_settings,
         "artery",
     )
     _export_branch_identity_debug(
         ctx,
-        vein.branch_identity.stages,
+        vein,
         source_data.optic_disc_center,
         ring_settings,
+        source_data.cross_section_settings,
         "vein",
     )
     return artery, vein
@@ -313,19 +338,22 @@ def _waveform_segment_input(
 
 def _export_branch_identity_debug(
     ctx,
-    stages,
+    result: CrossSectionSignalResult,
     optic_disc_center,
     ring_settings: SegmentRingSettings,
+    cross_section_settings,
     prefix: str,
 ) -> None:
     if not ctx.output.available:
         return
     export_branch_identity_stage_pngs(
         ctx.output,
-        stages,
+        result.branch_identity.stages,
         prefix,
         optic_disc_center,
         ring_settings,
+        segment_center_xy=result.segment_center_xy,
+        cross_section_settings=cross_section_settings,
     )
 
 
@@ -336,7 +364,10 @@ def _export_pulse_pngs(ctx, context: WaveformVelocityCoreContext, per_beat_resul
     export_pulse_pngs(ctx.output, context, per_beat_result)
 
 
-def _segment_ring_settings() -> SegmentRingSettings:
+def _segment_ring_settings(
+    optic_disc_width=None,
+    optic_disc_height=None,
+) -> SegmentRingSettings:
     inner = SEGMENT_INNER_RADIUS_FRAC
     outer = SEGMENT_OUTER_RADIUS_FRAC
     count = SEGMENT_RING_COUNT
@@ -347,11 +378,22 @@ def _segment_ring_settings() -> SegmentRingSettings:
         width,
         count,
         SEGMENT_LENGTH_FRAC,
+        _positive_geometry_scalar(optic_disc_width),
+        _positive_geometry_scalar(optic_disc_height),
     )
 
 
 def _ring_width(inner: float, outer: float, count: int) -> float:
     return max((outer - inner) / float(count), np.finfo(np.float32).eps)
+
+
+def _positive_geometry_scalar(value) -> float | None:
+    if value is None:
+        return None
+    array = np.asarray(value, dtype=np.float32).reshape(-1)
+    if array.size == 0 or not np.isfinite(array[0]) or array[0] <= 0:
+        return None
+    return float(array[0])
 
 
 def _context_attrs(
@@ -372,6 +414,8 @@ def _context_attrs(
             "eyeflow.dopplerview_analysis.recomputed",
         ]
     )
+    width = _positive_geometry_scalar(source_data.optic_disc_width)
+    height = _positive_geometry_scalar(source_data.optic_disc_height)
     return {
         "dependency_chain": dependency_chain + [
             "blood_flow_velocity.signal_analysis.heartbeat.spectral",
@@ -384,6 +428,20 @@ def _context_attrs(
         "moment2_flat_field_source": "dopplerview_recomputed_from_raw",
         "flat_field_gaussian_ratio": float(source_data.flat_field_gaussian_ratio),
         "flat_field_border": float(source_data.flat_field_border),
+        "velocity_section_geometry": (
+            "optic_disc_relative"
+            if width is not None and height is not None
+            else "frame_relative_fallback"
+        ),
+        "velocity_section_inner_radius_fraction": float(
+            SEGMENT_INNER_RADIUS_FRAC
+        ),
+        "velocity_section_outer_radius_fraction": float(
+            SEGMENT_OUTER_RADIUS_FRAC
+        ),
+        "velocity_section_outer_to_disc_radius": float(
+            SEGMENT_OUTER_RADIUS_FRAC / SEGMENT_INNER_RADIUS_FRAC
+        ),
         "arterial_velocity_signal_path": (
             analysis_paths.retinal_artery_velocity_signal_band_limited
         ),

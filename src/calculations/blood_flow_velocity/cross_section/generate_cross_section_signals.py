@@ -362,7 +362,7 @@ def _cross_section_velocity(
     optic_disc_center,
     settings: CrossSectionSignalSettings,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
-    sub_stack, sub_mask = _subimage_stack(velocity, mask, loc_xy, settings)
+    sub_stack, sub_mask = _subimage_stack2(velocity, mask, loc_xy, settings)
     if sub_stack.size == 0:
         return (
             _nan_signal(velocity),
@@ -411,13 +411,14 @@ def _subimage_stack(
     loc_xy: tuple[int, int],
     settings: CrossSectionSignalSettings,
 ) -> tuple[np.ndarray, np.ndarray]:
-    window_width = int(
-        np.floor(0.01 * mask.shape[0] * settings.scale_factor_width + 0.5)
+    x_start, x_stop, y_start, y_stop = _substack_window_bounds(
+        mask.shape,
+        loc_xy,
+        settings,
     )
-    half_width = int(np.floor(window_width / 2.0 + 0.5))
     x, y = loc_xy
-    x_range = slice(max(x - half_width, 0), min(x + half_width + 1, mask.shape[1]))
-    y_range = slice(max(y - half_width, 0), min(y + half_width + 1, mask.shape[0]))
+    x_range = slice(x_start, x_stop)
+    y_range = slice(y_start, y_stop)
 
     # Debug log if the sub-mask is too small for the vessel segment
     sub_mask = mask[y_range, x_range]
@@ -439,6 +440,128 @@ def _subimage_stack(
     sub_stack = velocity[:, y_range, x_range].astype(np.float32, copy=True)
     sub_stack[:, ~sub_mask] = np.nan
     return sub_stack, sub_mask
+
+
+def _subimage_stack2(
+    velocity: np.ndarray,
+    mask: np.ndarray,
+    loc_xy: tuple[int, int],
+    settings: CrossSectionSignalSettings,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Extract an adaptive square that contains the complete segment mask.
+
+    The segment mask is already restricted to one branch section between the
+    relevant annulus boundaries. Its axis-aligned bounding-box diagonal is
+    used as a conservative square size: that square can contain the segment
+    after any in-plane rotation, with a one-pixel interpolation margin. The
+    existing signal-based orientation estimation is intentionally unchanged.
+
+    The square is shifted inward when it reaches an image boundary. Pixels
+    outside the annular branch mask remain NaN, just as in ``_subimage_stack``.
+    """
+    x_start, x_stop, y_start, y_stop = _substack_window_bounds2(
+        mask.shape,
+        mask,
+        loc_xy,
+        settings,
+    )
+    x_range = slice(x_start, x_stop)
+    y_range = slice(y_start, y_stop)
+    sub_mask = mask[y_range, x_range]
+
+    segment_y, segment_x = np.nonzero(mask)
+    if segment_x.size and (
+        segment_x.min() < x_start
+        or segment_x.max() >= x_stop
+        or segment_y.min() < y_start
+        or segment_y.max() >= y_stop
+    ):
+        Logger.log_warning(
+            "Adaptive cross-section window cannot contain the vessel segment: "
+            f"{x_stop - x_start}x{y_stop - y_start} px window for a "
+            f"{int(segment_x.max() - segment_x.min() + 1)}x"
+            f"{int(segment_y.max() - segment_y.min() + 1)} px segment."
+        )
+
+    sub_stack = velocity[:, y_range, x_range].astype(np.float32, copy=True)
+    sub_stack[:, ~sub_mask] = np.nan
+    return sub_stack, sub_mask
+
+
+def _substack_window_bounds(
+    image_shape: tuple[int, int],
+    loc_xy: tuple[int, int],
+    settings: CrossSectionSignalSettings,
+) -> tuple[int, int, int, int]:
+    """Return the clipped pixel bounds used for one rotating substack.
+
+    The bounds are ``x_start, x_stop, y_start, y_stop`` with exclusive stop
+    coordinates, matching the slices used by ``_subimage_stack``.
+    Keeping this calculation shared with the debug exporter ensures that the
+    displayed boxes describe the actual rotating image area.
+    """
+    side = _substack_window_side(image_shape[0], settings)
+    half_width = side // 2
+    x, y = loc_xy
+    return (
+        max(x - half_width, 0),
+        min(x + half_width + 1, image_shape[1]),
+        max(y - half_width, 0),
+        min(y + half_width + 1, image_shape[0]),
+    )
+
+
+def _substack_window_bounds2(
+    image_shape: tuple[int, int],
+    mask: np.ndarray,
+    loc_xy: tuple[int, int],
+    settings: CrossSectionSignalSettings,
+) -> tuple[int, int, int, int]:
+    segment_y, segment_x = np.nonzero(mask)
+    if segment_x.size == 0:
+        return _substack_window_bounds(image_shape, loc_xy, settings)
+
+    segment_width = int(segment_x.max() - segment_x.min() + 1)
+    segment_height = int(segment_y.max() - segment_y.min() + 1)
+    diagonal = int(
+        np.ceil(np.hypot(float(segment_width), float(segment_height)))
+    )
+    side = max(
+        _substack_window_side(image_shape[0], settings),
+        diagonal + 2,
+    )
+    if side % 2 == 0:
+        side += 1
+
+    center_x = int(np.floor((segment_x.min() + segment_x.max()) / 2.0 + 0.5))
+    center_y = int(np.floor((segment_y.min() + segment_y.max()) / 2.0 + 0.5))
+    x_start, x_stop = _fit_window_to_axis(center_x, side, image_shape[1])
+    y_start, y_stop = _fit_window_to_axis(center_y, side, image_shape[0])
+    return x_start, x_stop, y_start, y_stop
+
+
+def _substack_window_side(
+    image_height: int,
+    settings: CrossSectionSignalSettings,
+) -> int:
+    window_width = int(
+        np.floor(0.01 * image_height * settings.scale_factor_width + 0.5)
+    )
+    half_width = int(np.floor(window_width / 2.0 + 0.5))
+    return 2 * half_width + 1
+
+
+def _fit_window_to_axis(
+    center: int,
+    side: int,
+    axis_length: int,
+) -> tuple[int, int]:
+    if axis_length <= 0:
+        return 0, 0
+    side = min(side, axis_length)
+    start = center - side // 2
+    start = min(max(start, 0), axis_length - side)
+    return start, start + side
 
 
 def _rotated_mean_image(

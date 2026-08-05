@@ -22,6 +22,8 @@ def run_dopplerview_analysis(
         artery_mask=source_data.retinal_artery_mask,
         vein_mask=source_data.retinal_vein_mask,
         optic_disc_center=source_data.optic_disc_center,
+        optic_disc_width=source_data.optic_disc_width,
+        optic_disc_height=source_data.optic_disc_height,
         local_background_dist=source_data.local_background_dist,
         flat_field_gaussian_ratio=source_data.flat_field_gaussian_ratio,
         flat_field_border=source_data.flat_field_border,

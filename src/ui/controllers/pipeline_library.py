@@ -302,6 +302,7 @@ class PipelineLibraryController:
         )
         velocity_values = selections.get("waveform_velocity", {})
         shape_values = selections.get("waveform_shape_metrics", {})
+        absolute_values = selections.get("absolute_waveform_metrics", {})
         if not velocity_values.get("per_beat", False):
             if any(
                 shape_values.get(name, False)
@@ -311,8 +312,19 @@ class PipelineLibraryController:
                 shape_values["segments"] = False
                 shape_values["hemifield"] = False
                 changed = True
+            if any(
+                absolute_values.get(name, False)
+                for name in ("per_beat", "segments", "hemifield")
+            ):
+                absolute_values["per_beat"] = False
+                absolute_values["segments"] = False
+                absolute_values["hemifield"] = False
+                changed = True
         elif not velocity_segments and shape_segments:
             shape_values["segments"] = False
+            changed = True
+        if not velocity_segments and absolute_values.get("segments", False):
+            absolute_values["segments"] = False
             changed = True
         if getattr(self.app, "pipeline_visibility", {}).get("pdf_report", False):
             if not velocity_values.get("per_beat", False):
@@ -394,6 +406,17 @@ class PipelineLibraryController:
         if pipeline_name == "waveform_velocity":
             if option_name in {"per_beat", "segments"} and not enabled:
                 changes.append(("waveform_shape_metrics", option_name, False))
+                changes.append(("absolute_waveform_metrics", option_name, False))
+        elif pipeline_name == "absolute_waveform_metrics" and enabled:
+            if option_name == "per_beat":
+                changes.append(("waveform_velocity", "per_beat", True))
+            elif option_name == "segments":
+                changes.extend(
+                    (
+                        ("waveform_velocity", "per_beat", True),
+                        ("waveform_velocity", "segments", True),
+                    )
+                )
         elif pipeline_name == "waveform_shape_metrics" and enabled:
             if option_name == "per_beat":
                 changes.append(("waveform_velocity", "per_beat", True))
