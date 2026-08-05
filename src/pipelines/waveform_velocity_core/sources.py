@@ -35,6 +35,8 @@ class WaveformVelocitySourceData:
 
     moment0: object
     moment2: object
+    moment0_flat_field_source: str
+    moment2_flat_field_source: str
     flat_field_gaussian_ratio: float
     flat_field_border: float
     retinal_artery_mask: np.ndarray
@@ -76,8 +78,14 @@ class WaveformVelocitySources:
         )
 
     def load(self) -> WaveformVelocitySourceData:
-        moment0 = self.hd.moment0_dataset()
-        moment2 = self.hd.moment2_dataset()
+        moment0, moment0_source = _preferred_moment_dataset(
+            self.hd.moment0_flat_field_dataset(),
+            self.hd.moment0_dataset,
+        )
+        moment2, moment2_source = _preferred_moment_dataset(
+            self.hd.moment2_flat_field_dataset(),
+            self.hd.moment2_dataset,
+        )
         spatial_shape = moment0.shape[-2:]
         timing = self.hd.timing()
         artery_mask, artery_axes_swapped = _align_spatial_array(
@@ -115,6 +123,8 @@ class WaveformVelocitySources:
         return WaveformVelocitySourceData(
             moment0=moment0,
             moment2=moment2,
+            moment0_flat_field_source=moment0_source,
+            moment2_flat_field_source=moment2_source,
             flat_field_gaussian_ratio=_config_float(
                 self.dv,
                 "FlatFieldCorrection",
@@ -170,6 +180,12 @@ class WaveformVelocitySources:
 
 def load_waveform_velocity_source_data(ctx: PipelineContext) -> WaveformVelocitySourceData:
     return WaveformVelocitySources.from_context(ctx).load()
+
+
+def _preferred_moment_dataset(flat_field_dataset, raw_loader):
+    if flat_field_dataset is not None:
+        return flat_field_dataset, "holodoppler_precomputed_flat_field"
+    return raw_loader(), "dopplerview_recomputed_from_raw"
 
 
 def _source_provenance(

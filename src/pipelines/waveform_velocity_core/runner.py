@@ -1,7 +1,9 @@
 """Build shared DopplerView, spatial, and segment-analysis state."""
 
 from collections.abc import Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
+from time import perf_counter
 
 from calculations.blood_flow_velocity import (
     CrossSectionSignalResult,
@@ -51,8 +53,8 @@ VELOCITY_PER_BEAT_OUTPUTS_STATE = "velocity_per_beat_outputs"
 class WaveformVelocityCoreContext:
     source_data: WaveformVelocitySourceData
     per_beat_analysis: PerBeatAnalysisInput
-    artery_segment_result: CrossSectionSignalResult
-    vein_segment_result: CrossSectionSignalResult
+    artery_segment_result: CrossSectionSignalResult | None
+    vein_segment_result: CrossSectionSignalResult | None
     dopplerview_analysis: dict[str, object]
     attrs: dict[str, object]
 
@@ -63,6 +65,7 @@ def run_waveform_velocity_core(
     """Run the shared DopplerView and spatial velocity foundation once."""
     ctx.require_inputs("hd", "dv")
 
+    core_started = perf_counter()
     with waveform_scratch_h5(ctx) as scratch_h5:
         Logger.log("Starting waveform velocity core context build...")
         segments_required = _segments_required(ctx)
@@ -83,13 +86,14 @@ def run_waveform_velocity_core(
         ctx.state.set(WAVEFORM_CONTEXT_STATE, context)
 
         if _per_beat_required(ctx):
-            Logger.log("Starting shared per-beat velocity analysis...")
-            per_beat_result, velocity_outputs = run_velocity_per_beat_metrics(context)
+            with _logged_stage("shared per-beat velocity analysis"):
+                per_beat_result, velocity_outputs = run_velocity_per_beat_metrics(context)
             ctx.state.set(VELOCITY_PER_BEAT_RESULT_STATE, per_beat_result)
             ctx.state.set(VELOCITY_PER_BEAT_OUTPUTS_STATE, velocity_outputs)
             if _pulse_pngs_required(ctx):
                 _export_pulse_pngs(ctx, context, per_beat_result)
 
+    Logger.log(f"Completed waveform velocity core in {perf_counter() - core_started:.1f}s.")
     return metrics, context.attrs
 
 
@@ -158,8 +162,8 @@ def _build_waveform_velocity_core_context(
     *,
     segments_required: bool,
 ) -> WaveformVelocityCoreContext:
-    Logger.log("Starting waveform source loading...")
-    source_data = WaveformVelocitySources.from_context(ctx).load()
+    with _logged_stage("waveform source loading"):
+        source_data = WaveformVelocitySources.from_context(ctx).load()
     timing = source_data.timing
     dopplerview_analysis, analysis_source = _resolve_dopplerview_analysis(
         source_data,
@@ -197,16 +201,12 @@ def _resolve_dopplerview_analysis(
     ctx,
     scratch_h5,
 ) -> tuple[dict[str, object], str]:
-    Logger.log(
-        "Building EyeFlow velocity analysis from HD moments and DV segmentation.",
-    )
-    return (
-        run_dopplerview_analysis(
+    with _logged_stage("EyeFlow velocity analysis from HD moments"):
+        analysis = run_dopplerview_analysis(
             source_data,
             scratch_h5,
-        ),
-        "eyeflow_recomputed_dopplerview_analysis",
-    )
+        )
+    return analysis, "eyeflow_recomputed_dopplerview_analysis"
 
 
 def _band_limited_harmonic_count(ctx) -> int:
@@ -234,12 +234,16 @@ def _per_beat_input_from_analysis(
         source_data.optic_disc_width,
         source_data.optic_disc_height,
     )
-    artery_segments, vein_segments = _segment_velocity_inputs(
-        analysis,
-        source_data,
-        ring_settings,
-        ctx,
-    )
+    if segments_required:
+        artery_segments, vein_segments = _segment_velocity_inputs(
+            analysis,
+            source_data,
+            ring_settings,
+            ctx,
+        )
+    else:
+        Logger.log("Skipping segment velocity extraction; no selected output requires it.")
+        artery_segments, vein_segments = None, None
     arterial_velocity_signal, venous_velocity_signal = (
         _filtered_velocity_signals_for_per_beat(analysis)
     )
@@ -298,15 +302,15 @@ def _segment_velocity_inputs(
     ring_settings: SegmentRingSettings,
     ctx,
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
-    Logger.log("Starting segment velocity extraction...")
-    artery, vein = segment_velocity_results(
-        analysis["retinal_vessel_velocity"],
-        source_data.retinal_artery_mask,
-        source_data.retinal_vein_mask,
-        source_data.optic_disc_center,
-        ring_settings,
-        source_data.cross_section_settings,
-    )
+    with _logged_stage("segment velocity extraction"):
+        artery, vein = segment_velocity_results(
+            analysis["retinal_vessel_velocity"],
+            source_data.retinal_artery_mask,
+            source_data.retinal_vein_mask,
+            source_data.optic_disc_center,
+            ring_settings,
+            source_data.cross_section_settings,
+        )
     _export_branch_identity_debug(
         ctx,
         artery,
@@ -360,8 +364,16 @@ def _export_branch_identity_debug(
 def _export_pulse_pngs(ctx, context: WaveformVelocityCoreContext, per_beat_result) -> None:
     if not ctx.output.available:
         return
-    Logger.log("Exporting pulse-analysis PNG artifacts...")
-    export_pulse_pngs(ctx.output, context, per_beat_result)
+    with _logged_stage("pulse-analysis PNG export"):
+        export_pulse_pngs(ctx.output, context, per_beat_result)
+
+
+@contextmanager
+def _logged_stage(label: str):
+    started = perf_counter()
+    Logger.log(f"Starting {label}...")
+    yield
+    Logger.log(f"Completed {label} in {perf_counter() - started:.1f}s.")
 
 
 def _segment_ring_settings(
@@ -424,8 +436,8 @@ def _context_attrs(
         ],
         "analysis_source": analysis_source,
         "output_schema": output_paths.name,
-        "moment0_flat_field_source": "dopplerview_recomputed_from_raw",
-        "moment2_flat_field_source": "dopplerview_recomputed_from_raw",
+        "moment0_flat_field_source": source_data.moment0_flat_field_source,
+        "moment2_flat_field_source": source_data.moment2_flat_field_source,
         "flat_field_gaussian_ratio": float(source_data.flat_field_gaussian_ratio),
         "flat_field_border": float(source_data.flat_field_border),
         "velocity_section_geometry": (

@@ -19,6 +19,8 @@ def run_dopplerview_analysis(
     cache = run_chunked_velocity_estimator(
         moment0=source_data.moment0,
         moment2=source_data.moment2,
+        moment0_flat_field_source=source_data.moment0_flat_field_source,
+        moment2_flat_field_source=source_data.moment2_flat_field_source,
         artery_mask=source_data.retinal_artery_mask,
         vein_mask=source_data.retinal_vein_mask,
         optic_disc_center=source_data.optic_disc_center,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from functools import partial
+from time import perf_counter
 
 import numpy as np
 from scipy import ndimage as ndi
@@ -127,6 +128,8 @@ def run_chunked_velocity_estimator(
     *,
     moment0,
     moment2,
+    moment0_flat_field_source: str = "dopplerview_recomputed_from_raw",
+    moment2_flat_field_source: str = "dopplerview_recomputed_from_raw",
     artery_mask,
     vein_mask,
     optic_disc_center=None,
@@ -153,17 +156,17 @@ def run_chunked_velocity_estimator(
         raise ValueError("Velocity masks must match the HD moment spatial shape.")
 
     gaussian_width = float(flat_field_gaussian_ratio) * float(width)
-    moment0_params = _flat_field_parameters(
-        moment0,
-        gaussian_width,
-        flat_field_border,
-        "moment0",
+    preparation_started = perf_counter()
+    moment0_params = _flat_field_parameters_if_needed(
+        moment0, gaussian_width, flat_field_border, "moment0", moment0_flat_field_source
     )
-    moment2_params = _flat_field_parameters(
-        moment2,
-        gaussian_width,
-        flat_field_border,
-        "moment2",
+    moment2_params = _flat_field_parameters_if_needed(
+        moment2, gaussian_width, flat_field_border, "moment2", moment2_flat_field_source
+    )
+    Logger.log(
+        "Completed DopplerView flat-field preparation "
+        f"in {perf_counter() - preparation_started:.1f}s "
+        f"(moment0={moment0_flat_field_source}, moment2={moment2_flat_field_source})."
     )
 
     group = scratch_h5.require_group("waveform")
@@ -205,7 +208,9 @@ def run_chunked_velocity_estimator(
     velocity_scale = _velocity_scale_mm_per_s_per_hz()
     n_jobs = min(cap_parallel_jobs(_cpu_count()), SCRATCH_FRAME_CHUNK_SIZE)
 
-    for start in range(0, frame_count, SCRATCH_FRAME_CHUNK_SIZE):
+    estimation_started = perf_counter()
+    chunk_count = max(1, (frame_count + SCRATCH_FRAME_CHUNK_SIZE - 1) // SCRATCH_FRAME_CHUNK_SIZE)
+    for chunk_index, start in enumerate(range(0, frame_count, SCRATCH_FRAME_CHUNK_SIZE), start=1):
         stop = min(start + SCRATCH_FRAME_CHUNK_SIZE, frame_count)
         frame_slice = slice(start, stop)
         m0 = _read_moment_chunk(moment0, frame_slice, moment0_params)
@@ -245,6 +250,15 @@ def run_chunked_velocity_estimator(
         averages["fRMS_bkg"] += np.sum(f_background, axis=0, dtype=np.float64)
         artery_signal[frame_slice] = _masked_signal(velocity, artery_section)
         vein_signal[frame_slice] = _masked_signal(velocity, vein_section)
+        if chunk_index == chunk_count or chunk_index % 10 == 0:
+            Logger.log(
+                f"Velocity estimation completed chunk {chunk_index}/{chunk_count} "
+                f"({stop}/{frame_count} frames)."
+            )
+
+    Logger.log(
+        f"Completed chunked velocity estimation in {perf_counter() - estimation_started:.1f}s."
+    )
 
     divisor = np.float64(max(frame_count, 1))
     return {
@@ -265,12 +279,8 @@ def run_chunked_velocity_estimator(
         ),
         "retinal_artery_velocity_signal": artery_signal,
         "retinal_vein_velocity_signal": vein_signal,
-        "moment0_flat_field_source": (
-            "dopplerview_recomputed_from_raw"
-        ),
-        "moment2_flat_field_source": (
-            "dopplerview_recomputed_from_raw"
-        ),
+        "moment0_flat_field_source": moment0_flat_field_source,
+        "moment2_flat_field_source": moment2_flat_field_source,
     }
 
 
@@ -299,7 +309,22 @@ def _flat_field_parameters(
     )
 
 
+def _flat_field_parameters_if_needed(
+    volume,
+    gaussian_width: float,
+    border_amount: float,
+    name: str,
+    source: str,
+):
+    if source == "holodoppler_precomputed_flat_field":
+        Logger.log(f"Reusing precomputed HD {name} flat field.")
+        return None
+    return _flat_field_parameters(volume, gaussian_width, border_amount, name)
+
+
 def _read_moment_chunk(volume, frame_slice: slice, parameters) -> np.ndarray:
+    if parameters is None:
+        return np.asarray(volume[frame_slice], dtype=np.float32)
     return corrected_flat_field_chunk(volume, frame_slice, parameters)
 
 
