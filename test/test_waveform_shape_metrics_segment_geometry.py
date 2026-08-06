@@ -27,6 +27,8 @@ from calculations.blood_flow_velocity.cross_section.branch_identity import (  # 
 )
 from calculations.blood_flow_velocity.cross_section.segment_geometry import (  # noqa: E402
     annulus_mask,
+    ring_masks,
+    section_masks,
 )
 from pipelines.waveform_velocity_core.runner import _segment_ring_settings  # noqa: E402
 from pipelines.waveform_velocity_core.branch_identity_debug import (  # noqa: E402
@@ -186,18 +188,23 @@ class SegmentCenterTests(unittest.TestCase):
 
         self.assertEqual((2, 5), measurement[2].shape)
 
-    def test_segment_analysis_uses_current_matlab_cross_section_rings(self) -> None:
-        settings = _segment_ring_settings()
-
-        self.assertEqual(10, settings.ring_count)
-        self.assertEqual(0.10, settings.inner_radius_frac)
-        self.assertEqual(0.35, settings.outer_radius_frac)
-        self.assertEqual((0.35 - 0.10) / 10.0, settings.ring_width_frac)
-        self.assertEqual(0.025, settings.segment_length_frac)
-        self.assertAlmostEqual(
-            (settings.outer_radius_frac - settings.inner_radius_frac) / 10.0,
-            settings.ring_width_frac,
+    def test_segment_analysis_uses_disc_extent_and_corner_spacing(self) -> None:
+        settings = _segment_ring_settings(
+            55,
+            69,
+            image_shape=(512, 512),
+            optic_disc_center=np.asarray([267.0, 230.0]),
         )
+
+        corner_radius = np.hypot(267.0, 281.0)
+        self.assertEqual(37, settings.ring_count)
+        self.assertAlmostEqual(
+            (69.0 / 2.0) / corner_radius,
+            settings.inner_radius_frac,
+        )
+        self.assertEqual(1.0, settings.outer_radius_frac)
+        self.assertEqual(0.025, settings.ring_width_frac)
+        self.assertEqual(0.025, settings.segment_length_frac)
 
     def test_segment_settings_carry_detected_optic_disc_dimensions(self) -> None:
         settings = _segment_ring_settings(55, 69)
@@ -205,31 +212,37 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertEqual(55.0, settings.optic_disc_width)
         self.assertEqual(69.0, settings.optic_disc_height)
 
-    def test_disc_relative_annulus_starts_at_detected_ellipse_boundary(self) -> None:
-        mask = annulus_mask(
-            (512, 512),
-            np.asarray([267.0, 230.0]),
-            0.10,
-            0.35,
-            optic_disc_width=55,
-            optic_disc_height=69,
-            optic_disc_boundary_radius_frac=0.10,
+    def test_annulus_starts_at_optic_disc_and_uses_corner_extent(self) -> None:
+        center = np.asarray([267.0, 230.0])
+        settings = _segment_ring_settings(
+            55,
+            69,
+            image_shape=(512, 512),
+            optic_disc_center=center,
         )
+        mask = section_masks(
+            (512, 512),
+            center,
+            settings,
+        )[0]
 
-        # The inner contour follows the 55x69 optic-disc ellipse rather than
-        # the legacy 51-pixel, frame-relative circle.
-        self.assertFalse(mask[230, 294])
-        self.assertTrue(mask[230, 295])
+        # The first annulus starts at max(width, height) / 2 = 34.5 px.
+        self.assertFalse(mask[230, 301])
+        self.assertTrue(mask[230, 302])
         self.assertFalse(mask[264, 267])
         self.assertTrue(mask[265, 267])
 
-        # The outer contour remains 3.5 optic-disc radii from the center.
-        self.assertTrue(mask[230, 363])
-        self.assertFalse(mask[230, 364])
-        self.assertTrue(mask[350, 267])
-        self.assertFalse(mask[351, 267])
+        # The first annulus has the configured 0.025 radial spacing.
+        self.assertTrue(mask[230, 311])
+        self.assertFalse(mask[230, 312])
+        self.assertTrue(mask[274, 267])
+        self.assertFalse(mask[275, 267])
 
-    def test_invalid_disc_dimensions_keep_frame_relative_annulus(self) -> None:
+        rings = ring_masks((512, 512), center, settings)
+        self.assertTrue(rings[-1, 511, 0])
+        self.assertFalse(rings[-1, 0, 0])
+
+    def test_annulus_is_independent_of_invalid_disc_dimensions(self) -> None:
         legacy = annulus_mask((100, 200), None, 0.10, 0.35)
         fallback = annulus_mask(
             (100, 200),
