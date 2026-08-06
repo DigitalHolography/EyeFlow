@@ -122,7 +122,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
             source_data.moment0_flat_field_source,
         )
         self.assertEqual(
-            "dopplerview_recomputed_from_raw",
+            "holodoppler_raw_moment2",
             source_data.moment2_flat_field_source,
         )
 

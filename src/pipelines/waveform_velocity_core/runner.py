@@ -13,6 +13,10 @@ from calculations.blood_flow_velocity import (
     segment_velocity_results,
     spectral_heartbeat_analysis,
 )
+from calculations.blood_flow_velocity.cross_section.segment_geometry import (
+    max_corner_radius,
+    optic_disc_center_yx,
+)
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.imports import (
     HolodopplerTiming,
@@ -233,6 +237,8 @@ def _per_beat_input_from_analysis(
     ring_settings = _segment_ring_settings(
         source_data.optic_disc_width,
         source_data.optic_disc_height,
+        image_shape=analysis["retinal_vessel_velocity"].shape[-2:],
+        optic_disc_center=source_data.optic_disc_center,
     )
     if segments_required:
         artery_segments, vein_segments = _segment_velocity_inputs(
@@ -379,7 +385,32 @@ def _logged_stage(label: str):
 def _segment_ring_settings(
     optic_disc_width=None,
     optic_disc_height=None,
+    *,
+    image_shape=None,
+    optic_disc_center=None,
 ) -> SegmentRingSettings:
+    width_px = _positive_geometry_scalar(optic_disc_width)
+    height_px = _positive_geometry_scalar(optic_disc_height)
+    if width_px is not None and height_px is not None and image_shape is not None:
+        ny, nx = (int(size) for size in image_shape)
+        cy, cx = optic_disc_center_yx(optic_disc_center, ny, nx)
+        corner_radius = max_corner_radius(ny, nx, cy, cx)
+        inner = min((max(width_px, height_px) / 2.0) / corner_radius, 1.0)
+        outer = 1.0
+        width = SEGMENT_LENGTH_FRAC
+        count = max(1, int(np.ceil((outer - inner) / width)))
+        return SegmentRingSettings(
+            inner,
+            outer,
+            width,
+            count,
+            SEGMENT_LENGTH_FRAC,
+            width_px,
+            height_px,
+        )
+
+    # Keep the historical defaults for direct callers that do not provide the
+    # image geometry needed to derive the physical ring extent.
     inner = SEGMENT_INNER_RADIUS_FRAC
     outer = SEGMENT_OUTER_RADIUS_FRAC
     count = SEGMENT_RING_COUNT
@@ -390,8 +421,8 @@ def _segment_ring_settings(
         width,
         count,
         SEGMENT_LENGTH_FRAC,
-        _positive_geometry_scalar(optic_disc_width),
-        _positive_geometry_scalar(optic_disc_height),
+        width_px,
+        height_px,
     )
 
 

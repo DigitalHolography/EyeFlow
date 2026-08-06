@@ -319,6 +319,9 @@ def _flat_field_parameters_if_needed(
     if source == "holodoppler_precomputed_flat_field":
         Logger.log(f"Reusing precomputed HD {name} flat field.")
         return None
+    if source == "holodoppler_raw_moment2":
+        Logger.log("Using raw HD moment2 (M2); skipping moment-2 flat field.")
+        return None
     return _flat_field_parameters(volume, gaussian_width, border_amount, name)
 
 

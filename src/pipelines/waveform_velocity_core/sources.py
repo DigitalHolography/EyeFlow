@@ -18,6 +18,7 @@ from .constants import (
     DEFAULT_PIXEL_SIZE_MM,
     REFERENCE_OPTIC_DISC_DIAMETER_MM,
     SPATIAL_INTERPOLATION_FACTOR,
+    USE_MOMENT2_FLAT_FIELD,
 )
 
 if TYPE_CHECKING:
@@ -83,9 +84,15 @@ class WaveformVelocitySources:
             self.hd.moment0_dataset,
         )
         moment2, moment2_source = _preferred_moment_dataset(
-            self.hd.moment2_flat_field_dataset(),
+            (
+                self.hd.moment2_flat_field_dataset()
+                if USE_MOMENT2_FLAT_FIELD
+                else None
+            ),
             self.hd.moment2_dataset,
         )
+        if not USE_MOMENT2_FLAT_FIELD:
+            moment2_source = "holodoppler_raw_moment2"
         spatial_shape = moment0.shape[-2:]
         timing = self.hd.timing()
         artery_mask, artery_axes_swapped = _align_spatial_array(
