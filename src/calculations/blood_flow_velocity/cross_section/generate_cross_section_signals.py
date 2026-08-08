@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import warnings
+from dataclasses import dataclass
 
 import numpy as np
 from scipy import ndimage as ndi
@@ -12,13 +12,13 @@ from calculations.math import nanmean_float32, rotate_array_threshold, rotate_im
 from utils.logger import Logger
 
 from .branch_identity import BranchIdentityResult, label_vessel_branches
+from .profile_processing import ProfileData, process_velocity_profiles
 from .segment_geometry import (
     SegmentRingSettings,
     annulus_mask,
     optic_disc_center_yx,
     section_masks,
 )
-from .profile_processing import ProfileData, process_velocity_profiles
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,8 @@ class CrossSectionProfileOutputs:
     profile_x_micrometers: np.ndarray
     profile_sample_count: np.ndarray
     profile_rotation_degrees: np.ndarray
+    profile_window_bounds_xyxy: np.ndarray
+    profile_integration_limits_pixels: np.ndarray
     centered_velocity_profiles: np.ndarray
     centered_profile_x_micrometers: np.ndarray
     profile_center_micrometers: np.ndarray
@@ -63,6 +65,21 @@ class CrossSectionSignalResult(CrossSectionProfileOutputs):
     segment_center_xy: np.ndarray
     branch_identity: BranchIdentityResult
 
+    @property
+    def projected_signal(self) -> np.ndarray:
+        """Generic alias for ``velocity`` when projecting another cube type."""
+        return self.velocity
+
+    @property
+    def full_profile_signal(self) -> np.ndarray:
+        """Generic alias for the full-width projection signal."""
+        return self.safe_velocity
+
+    @property
+    def transverse_profiles(self) -> np.ndarray:
+        """Generic alias for the uncropped transverse profiles."""
+        return self.velocity_profiles
+
 
 @dataclass(frozen=True)
 class _CircleTiltGeometry:
@@ -79,6 +96,8 @@ class _CrossSectionBuffers:
     profile_cells: np.ndarray
     profile_std_cells: np.ndarray
     profile_rotation_degrees: np.ndarray
+    profile_window_bounds_xyxy: np.ndarray
+    profile_integration_limits_pixels: np.ndarray
 
     @classmethod
     def allocate(
@@ -104,6 +123,16 @@ class _CrossSectionBuffers:
                 profile_shape,
                 np.nan,
                 dtype=np.float32,
+            ),
+            profile_window_bounds_xyxy=np.full(
+                (*profile_shape, 4),
+                -1,
+                dtype=np.int32,
+            ),
+            profile_integration_limits_pixels=np.full(
+                (*profile_shape, 2),
+                -1,
+                dtype=np.int32,
             ),
         )
 
@@ -134,11 +163,23 @@ def generate_cross_section_signals(
         optic_disc_center,
         cross_section_settings,
     )
-    velocity_profiles, _, profile_sample_count = (
-        _pack_transverse_profiles(
-            buffers.profile_cells,
-            frame_count=velocity.shape[0],
-        )
+    return _result_from_buffers(
+        buffers,
+        velocity,
+        branches,
+        cross_section_settings,
+    )
+
+
+def _result_from_buffers(
+    buffers: _CrossSectionBuffers,
+    data_cube,
+    branches: BranchIdentityResult,
+    settings: CrossSectionSignalSettings,
+) -> CrossSectionSignalResult:
+    velocity_profiles, _, profile_sample_count = _pack_transverse_profiles(
+        buffers.profile_cells,
+        frame_count=data_cube.shape[0],
     )
     packed_std, _, _ = _pack_transverse_profiles(
         buffers.profile_std_cells,
@@ -147,10 +188,8 @@ def generate_cross_section_signals(
     poiseuille_profile_spatial_std = packed_std[:, :, 0, :]
     processed_profiles = process_velocity_profiles(
         velocity_profiles,
-        pixel_size_mm=cross_section_settings.pixel_size_mm,
-        velocity_profile_threshold=(
-            cross_section_settings.velocity_profile_threshold
-        ),
+        pixel_size_mm=settings.pixel_size_mm,
+        velocity_profile_threshold=settings.velocity_profile_threshold,
     )
     return CrossSectionSignalResult(
         velocity=buffers.velocity,
@@ -163,6 +202,10 @@ def generate_cross_section_signals(
         profile_x_micrometers=processed_profiles.raw_x_micrometers,
         profile_sample_count=profile_sample_count,
         profile_rotation_degrees=buffers.profile_rotation_degrees,
+        profile_window_bounds_xyxy=buffers.profile_window_bounds_xyxy,
+        profile_integration_limits_pixels=(
+            buffers.profile_integration_limits_pixels
+        ),
         centered_velocity_profiles=processed_profiles.centered_velocity,
         centered_profile_x_micrometers=(
             processed_profiles.centered_x_micrometers
@@ -224,6 +267,16 @@ def _empty_result(
             np.nan,
             dtype=np.float32,
         ),
+        profile_window_bounds_xyxy=np.full(
+            (settings.ring_count, 0, 4),
+            -1,
+            dtype=np.int32,
+        ),
+        profile_integration_limits_pixels=np.full(
+            (settings.ring_count, 0, 2),
+            -1,
+            dtype=np.int32,
+        ),
         centered_velocity_profiles=processed.centered_velocity,
         centered_profile_x_micrometers=processed.centered_x_micrometers,
         profile_center_micrometers=processed.center_micrometers,
@@ -269,11 +322,37 @@ def _fill_cross_section_buffers(
             raw, safe = measurement[:2]
             buffers.velocity[circle_index, branch_index] = raw
             buffers.safe_velocity[circle_index, branch_index] = safe
-            if len(measurement) < 5:
+            if len(measurement) < 7:
                 continue
-            buffers.profile_cells[circle_index, branch_index] = measurement[2]
-            buffers.profile_rotation_degrees[circle_index, branch_index] = measurement[3]
-            buffers.profile_std_cells[circle_index, branch_index] = measurement[4][None, :]
+            _store_cross_section_measurement(
+                buffers,
+                circle_index,
+                branch_index,
+                loc,
+                measurement[:5],
+                measurement[5],
+                measurement[6],
+            )
+
+
+def _store_cross_section_measurement(
+    buffers: _CrossSectionBuffers,
+    circle_index: int,
+    branch_index: int,
+    loc_xy: tuple[int, int],
+    measurement: tuple[np.ndarray, np.ndarray, np.ndarray, float, np.ndarray],
+    bounds_xyxy: tuple[int, int, int, int],
+    limits: tuple[int, int],
+) -> None:
+    raw, safe, profiles, angle, spatial_std = measurement
+    buffers.velocity[circle_index, branch_index] = raw
+    buffers.safe_velocity[circle_index, branch_index] = safe
+    buffers.segment_center_xy[branch_index, circle_index] = loc_xy
+    buffers.profile_cells[circle_index, branch_index] = profiles
+    buffers.profile_std_cells[circle_index, branch_index] = spatial_std[None, :]
+    buffers.profile_rotation_degrees[circle_index, branch_index] = np.float32(angle)
+    buffers.profile_window_bounds_xyxy[circle_index, branch_index] = bounds_xyxy
+    buffers.profile_integration_limits_pixels[circle_index, branch_index] = limits
 
 
 def _empty_profile_cells(shape: tuple[int, int]) -> np.ndarray:
@@ -361,8 +440,21 @@ def _cross_section_velocity(
     loc_xy: tuple[int, int],
     optic_disc_center,
     settings: CrossSectionSignalSettings,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
-    sub_stack, sub_mask = _subimage_stack2(velocity, mask, loc_xy, settings)
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    float,
+    np.ndarray,
+    tuple[int, int, int, int],
+    tuple[int, int],
+]:
+    sub_stack, sub_mask, bounds_xyxy = _adaptive_subimage_stack(
+        velocity,
+        mask,
+        loc_xy,
+        settings,
+    )
     if sub_stack.size == 0:
         return (
             _nan_signal(velocity),
@@ -370,6 +462,8 @@ def _cross_section_velocity(
             np.full((velocity.shape[0], 0), np.nan, dtype=np.float32),
             np.nan,
             np.empty((0,), dtype=np.float32),
+            bounds_xyxy,
+            (-1, -1),
         )
     tilt_angle_mask = _tilt_angle(mask, section, optic_disc_center)
     mean_image = nanmean_float32(sub_stack, axis=0)
@@ -382,7 +476,11 @@ def _cross_section_velocity(
         settings,
     )
     c1, c2 = _cross_section_limits(rotated_mean, settings)
-    return _profile_measurement(sub_stack, angle, c1, c2, rotated_mean)
+    return (
+        *_profile_measurement(sub_stack, angle, c1, c2, rotated_mean),
+        bounds_xyxy,
+        (c1, c2),
+    )
 
 
 def _profile_measurement(
@@ -459,16 +557,28 @@ def _subimage_stack2(
     The square is shifted inward when it reaches an image boundary. Pixels
     outside the annular branch mask remain NaN, just as in ``_subimage_stack``.
     """
+    sub_stack, sub_mask, _ = _adaptive_subimage_stack(
+        velocity,
+        mask,
+        loc_xy,
+        settings,
+    )
+    return sub_stack, sub_mask
+
+
+def _adaptive_subimage_stack(
+    data_cube,
+    mask: np.ndarray,
+    loc_xy: tuple[int, int],
+    settings: CrossSectionSignalSettings,
+) -> tuple[np.ndarray, np.ndarray, tuple[int, int, int, int]]:
+    """Extract an adaptive window and return its exact reusable bounds."""
     x_start, x_stop, y_start, y_stop = _substack_window_bounds2(
         mask.shape,
         mask,
         loc_xy,
         settings,
     )
-    x_range = slice(x_start, x_stop)
-    y_range = slice(y_start, y_stop)
-    sub_mask = mask[y_range, x_range]
-
     segment_y, segment_x = np.nonzero(mask)
     if segment_x.size and (
         segment_x.min() < x_start
@@ -482,8 +592,25 @@ def _subimage_stack2(
             f"{int(segment_x.max() - segment_x.min() + 1)}x"
             f"{int(segment_y.max() - segment_y.min() + 1)} px segment."
         )
+    sub_stack, sub_mask = _subimage_stack_from_bounds(
+        data_cube,
+        mask,
+        (x_start, x_stop, y_start, y_stop),
+    )
+    return sub_stack, sub_mask, (x_start, x_stop, y_start, y_stop)
 
-    sub_stack = velocity[:, y_range, x_range].astype(np.float32, copy=True)
+
+def _subimage_stack_from_bounds(
+    data_cube,
+    mask: np.ndarray,
+    bounds_xyxy: tuple[int, int, int, int],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Extract one stored adaptive window from a registered data cube."""
+    x_start, x_stop, y_start, y_stop = bounds_xyxy
+    x_range = slice(x_start, x_stop)
+    y_range = slice(y_start, y_stop)
+    sub_mask = mask[y_range, x_range]
+    sub_stack = data_cube[:, y_range, x_range].astype(np.float32, copy=True)
     sub_stack[:, ~sub_mask] = np.nan
     return sub_stack, sub_mask
 

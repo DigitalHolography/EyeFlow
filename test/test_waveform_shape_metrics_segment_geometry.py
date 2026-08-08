@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import sys
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-from pathlib import Path
 
 import numpy as np
 
@@ -15,25 +15,29 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.blood_flow_velocity import CrossSectionSignalSettings  # noqa: E402
+from calculations.blood_flow_velocity.cross_section.branch_identity import (  # noqa: E402
+    _branch_identity_stages,
+)
 from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
-    _CrossSectionBuffers,
     _cross_section_velocity,
+    _CrossSectionBuffers,
     _fill_cross_section_buffers,
     _subimage_stack,
     _subimage_stack2,
 )
-from calculations.blood_flow_velocity.cross_section.branch_identity import (  # noqa: E402
-    _branch_identity_stages,
+from calculations.blood_flow_velocity.cross_section.reusable_cross_section_signals import (  # noqa: E402
+    generate_cross_section_signals_for_cubes,
+    project_cross_section_cube,
 )
 from calculations.blood_flow_velocity.cross_section.segment_geometry import (  # noqa: E402
     annulus_mask,
     ring_masks,
     section_masks,
 )
-from pipelines.waveform_velocity_core.runner import _segment_ring_settings  # noqa: E402
 from pipelines.waveform_velocity_core.branch_identity_debug import (  # noqa: E402
     _labels_with_substack_boxes,
 )
+from pipelines.waveform_velocity_core.runner import _segment_ring_settings  # noqa: E402
 from utils.logger import Logger  # noqa: E402
 
 
@@ -186,7 +190,7 @@ class SegmentCenterTests(unittest.TestCase):
                 settings,
             )
 
-        self.assertEqual((2, 5), measurement[2].shape)
+        self.assertEqual((2, 15), measurement[2].shape)
 
     def test_segment_analysis_uses_disc_extent_and_corner_spacing(self) -> None:
         settings = _segment_ring_settings(
@@ -306,6 +310,235 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(buffers.segment_center_xy[1, 0])))
         np.testing.assert_array_equal(buffers.velocity[0, 0], signal)
         np.testing.assert_array_equal(buffers.velocity[1, 1], signal)
+
+
+class ReusableCrossSectionProjectionTests(unittest.TestCase):
+    def test_named_cubes_reuse_adaptive_window_angle_and_limits(self) -> None:
+        reference, vessel, branches, sections, ring_settings, settings = (
+            self._projection_inputs()
+        )
+        additional = {
+            "second": reference.copy(),
+            "third": reference * np.float32(3.0),
+            "fourth": reference + np.float32(7.0),
+        }
+
+        with (
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "generate_cross_section_signals.label_vessel_branches",
+                return_value=branches,
+            ),
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "generate_cross_section_signals.section_masks",
+                return_value=sections,
+            ),
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "reusable_cross_section_signals.section_masks",
+                return_value=sections,
+            ),
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "generate_cross_section_signals._estimate_orientation",
+                return_value=37.0,
+            ) as estimate_orientation,
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "generate_cross_section_signals._cross_section_limits",
+                return_value=(1, 5),
+            ) as cross_section_limits,
+        ):
+            result = generate_cross_section_signals_for_cubes(
+                reference,
+                vessel,
+                (10, 10),
+                ring_settings,
+                settings,
+                additional_cubes=additional,
+                reference_name="velocity",
+            )
+
+        self.assertEqual(
+            ["velocity", "second", "third", "fourth"],
+            list(result.passes),
+        )
+        self.assertEqual(1, estimate_orientation.call_count)
+        self.assertEqual(1, cross_section_limits.call_count)
+        np.testing.assert_array_equal(
+            result.plan.rotation_angles_degrees,
+            [[37.0]],
+        )
+        np.testing.assert_array_equal(
+            result.plan.profile_window_bounds_xyxy,
+            [[[6, 15, 6, 15]]],
+        )
+        np.testing.assert_array_equal(
+            result.plan.profile_integration_limits_pixels,
+            [[[1, 5]]],
+        )
+        for name in ("second", "third", "fourth"):
+            projected = result.passes[name]
+            np.testing.assert_array_equal(
+                projected.profile_rotation_degrees,
+                result.plan.profile_rotation_degrees,
+            )
+            np.testing.assert_array_equal(
+                projected.profile_window_bounds_xyxy,
+                result.plan.profile_window_bounds_xyxy,
+            )
+            np.testing.assert_array_equal(
+                projected.profile_integration_limits_pixels,
+                result.plan.profile_integration_limits_pixels,
+            )
+        np.testing.assert_array_equal(
+            result.passes["second"].velocity,
+            result.reference.velocity,
+        )
+        self.assertFalse(
+            np.array_equal(
+                result.passes["third"].velocity,
+                result.reference.velocity,
+            )
+        )
+        self.assertIs(
+            result.passes["second"].projected_signal,
+            result.passes["second"].velocity,
+        )
+
+    def test_per_cube_mode_refits_only_profile_limits(self) -> None:
+        reference, vessel, branches, sections, ring_settings, settings = (
+            self._projection_inputs()
+        )
+        with (
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "generate_cross_section_signals.label_vessel_branches",
+                return_value=branches,
+            ),
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "generate_cross_section_signals.section_masks",
+                return_value=sections,
+            ),
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "generate_cross_section_signals._estimate_orientation",
+                return_value=21.0,
+            ),
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "generate_cross_section_signals._cross_section_limits",
+                return_value=(1, 5),
+            ),
+        ):
+            multi = generate_cross_section_signals_for_cubes(
+                reference,
+                vessel,
+                (10, 10),
+                ring_settings,
+                settings,
+            )
+
+        with (
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "reusable_cross_section_signals.section_masks",
+                return_value=sections,
+            ),
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "reusable_cross_section_signals._cross_section_limits",
+                return_value=(2, 4),
+            ) as cross_section_limits,
+        ):
+            projected = project_cross_section_cube(
+                reference,
+                multi.plan,
+                limits_mode="per_cube",
+            )
+
+        self.assertEqual(1, cross_section_limits.call_count)
+        np.testing.assert_array_equal(
+            projected.profile_rotation_degrees,
+            [[21.0]],
+        )
+        np.testing.assert_array_equal(
+            projected.profile_window_bounds_xyxy,
+            multi.plan.profile_window_bounds_xyxy,
+        )
+        np.testing.assert_array_equal(
+            projected.profile_integration_limits_pixels,
+            [[[2, 4]]],
+        )
+        np.testing.assert_array_equal(
+            multi.plan.profile_integration_limits_pixels,
+            [[[1, 5]]],
+        )
+
+    def test_registered_cube_spatial_shape_is_enforced(self) -> None:
+        reference, vessel, branches, sections, ring_settings, settings = (
+            self._projection_inputs()
+        )
+        with (
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "generate_cross_section_signals.label_vessel_branches",
+                return_value=branches,
+            ),
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "generate_cross_section_signals.section_masks",
+                return_value=sections,
+            ),
+            patch(
+                "calculations.blood_flow_velocity.cross_section."
+                "generate_cross_section_signals._estimate_orientation",
+                return_value=0.0,
+            ),
+        ):
+            multi = generate_cross_section_signals_for_cubes(
+                reference,
+                vessel,
+                (10, 10),
+                ring_settings,
+                settings,
+            )
+
+        with self.assertRaisesRegex(ValueError, "spatial shape"):
+            project_cross_section_cube(
+                np.ones((4, 20, 21), dtype=np.float32),
+                multi.plan,
+            )
+
+    @staticmethod
+    def _projection_inputs():
+        frame_count = 4
+        vessel = np.zeros((21, 21), dtype=bool)
+        vessel[8:13, 9:12] = True
+        labels = vessel.astype(np.int32)
+        branches = SimpleNamespace(
+            labels=labels,
+            branch_ids=np.asarray([1], dtype=np.int32),
+            stages=SimpleNamespace(),
+        )
+        sections = vessel[None, ...]
+        reference = np.zeros((frame_count, 21, 21), dtype=np.float32)
+        transverse = np.asarray([1.0, 3.0, 1.0], dtype=np.float32)
+        for frame_index in range(frame_count):
+            reference[frame_index, 8:13, 9:12] = (
+                np.float32(frame_index + 1) * transverse[None, :]
+            )
+        ring_settings = SimpleNamespace(
+            inner_radius_frac=0.0,
+            outer_radius_frac=0.5,
+            ring_width_frac=0.5,
+            ring_count=1,
+            segment_length_frac=0.5,
+        )
+        settings = CrossSectionSignalSettings(30.0, True, 0.5, False, 0.01)
+        return reference, vessel, branches, sections, ring_settings, settings
 
 
 if __name__ == "__main__":
