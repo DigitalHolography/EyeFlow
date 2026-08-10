@@ -5,6 +5,9 @@ from collections.abc import Iterable
 import numpy as np
 
 from calculations.blood_flow_velocity import PerBeatAnalysisResult
+from calculations.blood_flow_velocity.signal_analysis.per_beat.segments import (
+    SEGMENT_PER_BEAT_DIM_DESC,
+)
 from input_output.schema import EyeFlowOutputPaths, VelocityPerBeatOutputPaths
 
 
@@ -87,7 +90,7 @@ def _segment_metric_value(data, *, unit: str):
     return metric_value(
         value,
         unit=unit,
-        dim_desc=("sample", "beat", "branch", "radius"),
+        dim_desc=SEGMENT_PER_BEAT_DIM_DESC,
     )
 
 

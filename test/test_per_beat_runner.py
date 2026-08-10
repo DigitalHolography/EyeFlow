@@ -16,19 +16,94 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.runner import (  
     PerBeatAnalysisInput,
     run_per_beat_analysis,
 )
+from calculations.blood_flow_velocity.signal_analysis.per_beat.segments import (  # noqa: E402
+    PerBeatSegmentAnalysisResult,
+    aggregate_per_beat_segment_analysis,
+)
 from calculations.blood_flow_velocity.signal_analysis.heartbeat import (  # noqa: E402
     spectral_heartbeat_analysis,
+)
+from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  # noqa: E402
+    per_beat_signal_analysis,
+)
+from calculations.dopplerview_analysis.vessel_velocity_estimator import (  # noqa: E402
+    _velocity_from_delta_frequency,
 )
 from calculations.math import band_limited_ifft_abs  # noqa: E402
 from pipelines.waveform_velocity_core.per_beat_outputs import (  # noqa: E402
     pack_velocity_per_beat_outputs,
 )
 from pipelines.waveform_velocity_core.runner import (  # noqa: E402
-    _filtered_velocity_signals_for_per_beat,
+    _raw_velocity_signals_for_per_beat,
 )
 
 
 class PerBeatRunnerTests(unittest.TestCase):
+    def test_segment_aggregation_preserves_the_beat_axis(self) -> None:
+        raw = np.arange(128 * 7 * 15 * 23, dtype=np.float32).reshape(
+            128,
+            7,
+            15,
+            23,
+        )
+        segments = PerBeatSegmentAnalysisResult(
+            velocity_signal_per_beat_per_segment=raw,
+            velocity_signal_per_beat_per_segment_fft=raw.astype(np.complex64),
+            velocity_signal_per_beat_per_segment_band_limited=raw * 2.0,
+        )
+
+        result = aggregate_per_beat_segment_analysis(segments)
+
+        self.assertEqual((7, 128), result.velocity_signal_per_beat.shape)
+        np.testing.assert_allclose(
+            result.velocity_signal_per_beat,
+            np.nanmean(raw, axis=(2, 3)).T,
+        )
+
+    def test_velocity_conversion_uses_the_configured_wavelength_and_aperture(
+        self,
+    ) -> None:
+        result = _velocity_from_delta_frequency(np.asarray([1.0], dtype=np.float32))
+
+        np.testing.assert_allclose(result, [8.52e-7 / 0.124])
+
+    def test_global_per_beat_signal_uses_global_signal_when_segments_exist(self) -> None:
+        frame_count = 32
+        segments = np.zeros((2, 3, frame_count), dtype=np.float32)
+        time = np.arange(frame_count, dtype=np.float32)
+        for radius_index in range(2):
+            for branch_index in range(3):
+                segments[radius_index, branch_index] = (
+                    time + 10.0 * radius_index + branch_index
+                )
+        signal = (100.0 + time).astype(np.float32)
+        heartbeat = spectral_heartbeat_analysis(signal, 0.01, systole_count=2)
+        inputs = PerBeatAnalysisInput(
+            arterial_velocity_signal=signal,
+            venous_velocity_signal=signal,
+            cycle_boundary_indexes=np.asarray([0, 16, 31], dtype=np.int32),
+            band_limited_signal_harmonic_count=4,
+            heartbeat=heartbeat,
+            dt_seconds=0.01,
+            arterial_velocity_segments=segments,
+            venous_velocity_segments=segments,
+            index_base=0,
+        )
+
+        result = run_per_beat_analysis(inputs)
+
+        expected = per_beat_signal_analysis(
+            signal,
+            inputs.cycle_boundary_indexes,
+            inputs.band_limited_signal_harmonic_count,
+            index_base=0,
+        )
+        np.testing.assert_array_equal(
+            result.artery.signal.velocity_signal_per_beat,
+            expected.velocity_signal_per_beat,
+        )
+        self.assertIsNotNone(result.artery.segments)
+
     def test_band_limited_reconstruction_matches_matlab_abs_ifft(self) -> None:
         phase = np.linspace(
             0.0,
@@ -57,7 +132,7 @@ class PerBeatRunnerTests(unittest.TestCase):
         )
         np.testing.assert_allclose(reconstructed, expected, rtol=1e-6, atol=1e-5)
 
-    def test_per_beat_input_explicitly_uses_filtered_vessel_signals(self) -> None:
+    def test_per_beat_input_explicitly_uses_raw_global_vessel_signals(self) -> None:
         analysis = {
             "retinal_artery_velocity_signal": np.asarray([100.0, 200.0]),
             "retinal_vein_velocity_signal": np.asarray([300.0, 400.0]),
@@ -65,10 +140,10 @@ class PerBeatRunnerTests(unittest.TestCase):
             "retinal_vein_velocity_signal_filtered": np.asarray([3.0, 4.0]),
         }
 
-        artery, vein = _filtered_velocity_signals_for_per_beat(analysis)
+        artery, vein = _raw_velocity_signals_for_per_beat(analysis)
 
-        np.testing.assert_array_equal(artery, [1.0, 2.0])
-        np.testing.assert_array_equal(vein, [3.0, 4.0])
+        np.testing.assert_array_equal(artery, [100.0, 200.0])
+        np.testing.assert_array_equal(vein, [300.0, 400.0])
         self.assertEqual(artery.dtype, np.float32)
         self.assertEqual(vein.dtype, np.float32)
 

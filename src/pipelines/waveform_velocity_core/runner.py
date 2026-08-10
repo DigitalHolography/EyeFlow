@@ -234,13 +234,13 @@ def _per_beat_input_from_analysis(
     CrossSectionSignalResult | None,
     CrossSectionSignalResult | None,
 ]:
-    ring_settings = _segment_ring_settings(
-        source_data.optic_disc_width,
-        source_data.optic_disc_height,
-        image_shape=analysis["retinal_vessel_velocity"].shape[-2:],
-        optic_disc_center=source_data.optic_disc_center,
-    )
     if segments_required:
+        ring_settings = _segment_ring_settings(
+            source_data.optic_disc_width,
+            source_data.optic_disc_height,
+            image_shape=analysis["retinal_vessel_velocity"].shape[-2:],
+            optic_disc_center=source_data.optic_disc_center,
+        )
         artery_segments, vein_segments = _segment_velocity_inputs(
             analysis,
             source_data,
@@ -251,7 +251,7 @@ def _per_beat_input_from_analysis(
         Logger.log("Skipping segment velocity extraction; no selected output requires it.")
         artery_segments, vein_segments = None, None
     arterial_velocity_signal, venous_velocity_signal = (
-        _filtered_velocity_signals_for_per_beat(analysis)
+        _raw_velocity_signals_for_per_beat(analysis)
     )
     beat_indexes = np.asarray(
         analysis["beat_indices"],
@@ -287,16 +287,16 @@ def _per_beat_input_from_analysis(
     return inputs, artery_segments, vein_segments
 
 
-def _filtered_velocity_signals_for_per_beat(
+def _raw_velocity_signals_for_per_beat(
     analysis: Mapping[str, object],
 ) -> tuple[np.ndarray, np.ndarray]:
     return (
         np.asarray(
-            analysis["retinal_artery_velocity_signal_filtered"],
+            analysis["retinal_artery_velocity_signal"],
             dtype=np.float32,
         ),
         np.asarray(
-            analysis["retinal_vein_velocity_signal_filtered"],
+            analysis["retinal_vein_velocity_signal"],
             dtype=np.float32,
         ),
     )
@@ -486,10 +486,10 @@ def _context_attrs(
             SEGMENT_OUTER_RADIUS_FRAC / SEGMENT_INNER_RADIUS_FRAC
         ),
         "arterial_velocity_signal_path": (
-            analysis_paths.retinal_artery_velocity_signal_band_limited
+            analysis_paths.retinal_artery_velocity_signal
         ),
         "venous_velocity_signal_path": (
-            analysis_paths.retinal_vein_velocity_signal_band_limited
+            analysis_paths.retinal_vein_velocity_signal
         ),
         "systolic_peak_indexes_path": analysis_paths.beat_indices,
         "beat_period_seconds_path": output_paths.beat_period_seconds,

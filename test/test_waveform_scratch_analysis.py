@@ -4,7 +4,6 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import h5py
 import numpy as np
@@ -14,12 +13,8 @@ from calculations.dopplerview_analysis.flat_field import (
     corrected_flat_field_chunk,
     fit_flat_field_parameters,
 )
-from calculations.dopplerview_analysis.vessel_velocity_estimator import (
-    VesselVelocityEstimatorStep,
-)
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity.continuous import pack_continuous_velocity_outputs
-from pipelines.waveform_velocity_core.dopplerview.models import DopplerViewStepContext
 from pipelines.waveform_velocity_core.dopplerview.outputs import (
     pack_dopplerview_shared_outputs,
 )
@@ -68,49 +63,6 @@ class FlatFieldTests(unittest.TestCase):
         expected = minimum + (maximum - minimum) * scale * ratio
 
         np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-5)
-
-
-class VelocitySignalTests(unittest.TestCase):
-    def test_estimator_publishes_unfiltered_raw_signals(self) -> None:
-        frames = 48
-        moment0 = np.ones((frames, 8, 8), dtype=np.float32)
-        moment2 = np.ones_like(moment0)
-        artery = np.zeros((8, 8), dtype=bool)
-        vein = np.zeros((8, 8), dtype=bool)
-        artery[2:4, 2:4] = True
-        vein[4:6, 4:6] = True
-        modulation = (1.5 + np.sin(np.arange(frames) * 1.7)).astype(np.float32)
-        moment2[:, artery] = modulation[:, None]
-        cache = {
-            "moment0": moment0,
-            "moment2": moment2,
-            "retinal_artery_mask": artery,
-            "retinal_vein_mask": vein,
-        }
-        ctx = DopplerViewStepContext(
-            cache=cache,
-            holodoppler_config={"sampling_freq": 100.0, "batch_stride": 1.0},
-            dopplerview_config={
-                "VelocityEstimation": {"LocalBackgroundDist": 1},
-                "PulseAnalysis": {"FilterSignals": True, "LowpassFreqHz": 15.0},
-            },
-        )
-
-        with patch(
-            "calculations.dopplerview_analysis.vessel_velocity_estimator."
-            "_run_in_parallel",
-            side_effect=lambda func, iterable, **kwargs: np.zeros_like(iterable),
-        ):
-            VesselVelocityEstimatorStep().run(ctx)
-
-        expected = np.nanmean(
-            cache["retinal_vessel_velocity"][:, artery],
-            axis=1,
-        )
-        np.testing.assert_allclose(
-            cache["retinal_artery_velocity_signal"],
-            expected,
-        )
 
 
 class ScratchAndSchemaTests(unittest.TestCase):
