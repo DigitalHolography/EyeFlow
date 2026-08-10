@@ -5,9 +5,7 @@ SEGMENT_RING_COUNT = 10
 SEGMENT_INNER_RADIUS_FRAC = 0.10
 SEGMENT_OUTER_RADIUS_FRAC = 0.35
 SEGMENT_LENGTH_FRAC = 0.025
-# Temporary comparison switch: set True to select/use M2FF and restore the
-# normal moment-2 flat-field processing. False uses raw M2 for faster runs.
-USE_MOMENT2_FLAT_FIELD = False
+USE_PRECOMPUTED_FLAT_FIELD = False # For velocity calculation
 CROSS_SECTION_SCALE_FACTOR_WIDTH = 3.0
 CROSS_SECTION_HYDRODYNAMIC_DIAMETERS = True
 CROSS_SECTION_VELOCITY_PROFILE_THRESHOLD = 0.5

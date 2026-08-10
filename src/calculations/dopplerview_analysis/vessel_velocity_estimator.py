@@ -77,8 +77,6 @@ class VesselVelocityEstimatorStep:
         ctx.set("fRMS", fRMS)
         ctx.set("fRMS_bkg", fRMSbkg)
 
-        # fRMSbkg = np.stack(np.array([inpaint.inpaint_biharmonic(frame, mask) for frame in fRMS]), axis=0)
-
         # Velocity estimation
         A = (fRMS**2 - fRMSbkg**2).astype(np.float32, copy=False)
         deltafRMS = (np.sign(A) * np.sqrt(np.abs(A))).astype(np.float32, copy=False)
@@ -92,16 +90,6 @@ class VesselVelocityEstimatorStep:
 
         ctx.set("velocity_map", velocity_map)
 
-        # num_bins = 256  # for 8-bit grayscale
-        # hist_matrix = np.zeros((velocity_map.shape[2], num_bins))
-        # v_range = (velocity_map.min(),velocity_map.max())
-
-        # for i in range(velocity_map.shape[2]):
-        #     masked_pixels = velocity_map[:,:,i][mask]  # select only pixels under mask
-        #     hist, _ = np.histogram(masked_pixels, bins=num_bins, range=v_range)
-        #     hist_matrix[i,:] = hist
-
-        # ctx.set("hist_matrix", hist_matrix)
         ctx.set("velocity_map_avg", np.mean(velocity_map, axis=0, dtype=np.float32))
         ctx.set("fRMS_avg", np.mean(fRMS, axis=0, dtype=np.float32))
         ctx.set("fRMS_bkg_avg", np.mean(fRMSbkg, axis=0, dtype=np.float32))
@@ -128,8 +116,8 @@ def run_chunked_velocity_estimator(
     *,
     moment0,
     moment2,
-    moment0_flat_field_source: str = "dopplerview_recomputed_from_raw",
-    moment2_flat_field_source: str = "dopplerview_recomputed_from_raw",
+    moment0_flat_field_source: str = "holodoppler_raw_moment0",
+    moment2_flat_field_source: str = "holodoppler_raw_moment2",
     artery_mask,
     vein_mask,
     optic_disc_center=None,
@@ -318,9 +306,6 @@ def _flat_field_parameters_if_needed(
 ):
     if source == "holodoppler_precomputed_flat_field":
         Logger.log(f"Reusing precomputed HD {name} flat field.")
-        return None
-    if source == "holodoppler_raw_moment2":
-        Logger.log("Using raw HD moment2 (M2); skipping moment-2 flat field.")
         return None
     return _flat_field_parameters(volume, gaussian_width, border_amount, name)
 

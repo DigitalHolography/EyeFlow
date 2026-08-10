@@ -18,7 +18,7 @@ from .constants import (
     DEFAULT_PIXEL_SIZE_MM,
     REFERENCE_OPTIC_DISC_DIAMETER_MM,
     SPATIAL_INTERPOLATION_FACTOR,
-    USE_MOMENT2_FLAT_FIELD,
+    USE_PRECOMPUTED_FLAT_FIELD,
 )
 
 if TYPE_CHECKING:
@@ -79,20 +79,9 @@ class WaveformVelocitySources:
         )
 
     def load(self) -> WaveformVelocitySourceData:
-        moment0, moment0_source = _preferred_moment_dataset(
-            self.hd.moment0_flat_field_dataset(),
-            self.hd.moment0_dataset,
+        moment0, moment2, moment0_source, moment2_source = _load_moment_pair(
+            self.hd
         )
-        moment2, moment2_source = _preferred_moment_dataset(
-            (
-                self.hd.moment2_flat_field_dataset()
-                if USE_MOMENT2_FLAT_FIELD
-                else None
-            ),
-            self.hd.moment2_dataset,
-        )
-        if not USE_MOMENT2_FLAT_FIELD:
-            moment2_source = "holodoppler_raw_moment2"
         spatial_shape = moment0.shape[-2:]
         timing = self.hd.timing()
         artery_mask, artery_axes_swapped = _align_spatial_array(
@@ -189,10 +178,33 @@ def load_waveform_velocity_source_data(ctx: PipelineContext) -> WaveformVelocity
     return WaveformVelocitySources.from_context(ctx).load()
 
 
-def _preferred_moment_dataset(flat_field_dataset, raw_loader):
-    if flat_field_dataset is not None:
-        return flat_field_dataset, "holodoppler_precomputed_flat_field"
-    return raw_loader(), "dopplerview_recomputed_from_raw"
+def _load_moment_pair(hd: HolodopplerSource):
+    if not USE_PRECOMPUTED_FLAT_FIELD:
+        return (
+            hd.moment0_dataset(),
+            hd.moment2_dataset(),
+            "holodoppler_raw_moment0",
+            "holodoppler_raw_moment2",
+        )
+
+    moment0 = hd.moment0_flat_field_dataset()
+    moment2 = hd.moment2_flat_field_dataset()
+    missing = [
+        name
+        for name, dataset in (("moment0ff", moment0), ("moment2ff", moment2))
+        if dataset is None
+    ]
+    if missing:
+        raise KeyError(
+            "Precomputed Holodoppler flat-field mode requires both datasets: "
+            + ", ".join(missing)
+        )
+    return (
+        moment0,
+        moment2,
+        "holodoppler_precomputed_flat_field",
+        "holodoppler_precomputed_flat_field",
+    )
 
 
 def _source_provenance(

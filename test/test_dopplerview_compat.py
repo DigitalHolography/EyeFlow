@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import h5py
 import numpy as np
@@ -88,7 +89,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         self.assertIsNone(source_data.dopplerview_analysis)
         self.assertFalse(source_data.provenance["dopplerview_analysis_available"])
 
-    def test_precomputed_holodoppler_flat_field_moments_are_reused(
+    def test_waveform_velocity_uses_one_coherent_raw_moment_mode(
         self,
     ) -> None:
         with self._source_pair() as (hd_source, dv_source):
@@ -97,6 +98,10 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                 hd.create_dataset(
                     "moment0ff",
                     data=np.full((3, 2, 4), 7.0, dtype=np.float32),
+                )
+                hd.create_dataset(
+                    "moment2ff",
+                    data=np.full((3, 2, 4), 9.0, dtype=np.float32),
                 )
             with h5py.File(dv_source, "w") as dv:
                 self._write_segmentation(
@@ -109,20 +114,70 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                 source = HolodopplerSource(
                     RawH5SourceReader(h5file=hd, label="HD"),
                 )
-                selected_moment0 = np.asarray(source.moment0_flat_field_dataset())
-                selected_moment2 = source.moment2_flat_field_dataset()
+                selected_moment0 = np.asarray(source.moment0_dataset())
+                selected_moment0ff = np.asarray(
+                    source.moment0_flat_field_dataset()
+                )
+                selected_moment2 = np.asarray(source.moment2_dataset())
+                selected_moment2ff = np.asarray(
+                    source.moment2_flat_field_dataset()
+                )
 
         np.testing.assert_array_equal(
             selected_moment0,
+            np.ones((3, 2, 4), dtype=np.float32),
+        )
+        np.testing.assert_array_equal(
+            selected_moment0ff,
             np.full((3, 2, 4), 7.0, dtype=np.float32),
         )
-        self.assertIsNone(selected_moment2)
+        np.testing.assert_array_equal(
+            selected_moment2,
+            np.ones((3, 2, 4), dtype=np.float32),
+        )
+        np.testing.assert_array_equal(
+            selected_moment2ff,
+            np.full((3, 2, 4), 9.0, dtype=np.float32),
+        )
+        self.assertEqual(
+            "holodoppler_raw_moment0",
+            source_data.moment0_flat_field_source,
+        )
+        self.assertEqual(
+            "holodoppler_raw_moment2",
+            source_data.moment2_flat_field_source,
+        )
+
+    def test_waveform_velocity_can_select_both_precomputed_moments(self) -> None:
+        with self._source_pair() as (hd_source, dv_source):
+            self._write_hd(hd_source)
+            with h5py.File(hd_source, "a") as hd:
+                hd.create_dataset(
+                    "moment0ff",
+                    data=np.full((3, 2, 4), 7.0, dtype=np.float32),
+                )
+                hd.create_dataset(
+                    "moment2ff",
+                    data=np.full((3, 2, 4), 9.0, dtype=np.float32),
+                )
+            with h5py.File(dv_source, "w") as dv:
+                self._write_segmentation(
+                    dv,
+                    np.zeros((2, 4), dtype=bool),
+                    np.ones((2, 4), dtype=bool),
+                )
+            with patch(
+                "pipelines.waveform_velocity_core.sources.USE_PRECOMPUTED_FLAT_FIELD",
+                True,
+            ):
+                source_data = self._load_sources(hd_source, dv_source)
+
         self.assertEqual(
             "holodoppler_precomputed_flat_field",
             source_data.moment0_flat_field_source,
         )
         self.assertEqual(
-            "holodoppler_raw_moment2",
+            "holodoppler_precomputed_flat_field",
             source_data.moment2_flat_field_source,
         )
 
