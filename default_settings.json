@@ -1,10 +1,16 @@
 {
   "pipeline_visibility": {
+    "absolute_waveform_metrics": true,
     "pdf_report": true,
     "waveform_shape_metrics": true,
     "waveform_velocity": true
   },
   "pipeline_options": {
+    "absolute_waveform_metrics": {
+      "hemifield": true,
+      "per_beat": true,
+      "segments": true
+    },
     "waveform_shape_metrics": {
       "hemifield": true,
       "per_beat": true,

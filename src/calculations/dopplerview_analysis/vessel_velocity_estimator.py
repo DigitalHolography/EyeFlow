@@ -1,9 +1,8 @@
-"""Copied from DopplerView pipeline/steps/vessel_velocity_estimator.py."""
+"""Chunked DopplerView-compatible vessel velocity estimation."""
 
 from __future__ import annotations
 
 import os
-from functools import partial
 from time import perf_counter
 
 import numpy as np
@@ -22,114 +21,27 @@ from .flat_field import (
 SCRATCH_FRAME_CHUNK_SIZE = 8
 SECTION_INNER_RADIUS_FRAC = 0.10
 SECTION_OUTER_RADIUS_FRAC = 0.35
-DOPPLER_WAVELENGTH_METERS = 8.52e-7
-DOPPLER_ANGLE_RADIANS = 0.25
+DEFAULT_LASER_WAVELENGTH_METERS = 8.52e-7
+DEFAULT_NUMERICAL_APERTURE = 0.124
 
 
-def _velocity_scale_mm_per_s_per_hz() -> np.float32:
-    return np.float32(
-        1000.0 * 2.0 * DOPPLER_WAVELENGTH_METERS / DOPPLER_ANGLE_RADIANS
-    )
-
-
-class VesselVelocityEstimatorStep:
-
-    def _relevant_config(self, ctx):
-        return {
-            "LocalBackgroundDist": ctx.dv_config_value(
-                "VelocityEstimation",
-                "LocalBackgroundDist",
-            ),
-        }
-
-    def run(self, ctx):
-
-        # ---- Requires ----
-        moment0 = np.asarray(ctx.require("moment0"), dtype=np.float32)
-        moment2 = np.asarray(ctx.require("moment2"), dtype=np.float32)
-
-        artery_mask = ctx.require("retinal_artery_mask")
-        vein_mask = ctx.require("retinal_vein_mask")
-        vessel_mask = artery_mask | vein_mask
-
-        # Compute fRMS
-        mean_m0 = np.mean(moment0, axis=(-1, -2), keepdims=True, dtype=np.float32)
-        fRMS = np.sqrt(moment2 / mean_m0).astype(np.float32, copy=False)
-
-        # Inpaint fRMS to estimate background
-        local_background_dist = ctx.dv_config_value(
-            "VelocityEstimation",
-            "LocalBackgroundDist",
-        )
-        disk, inpaint = _skimage_dependencies()
-        mask = _dilated_mask(vessel_mask, disk(local_background_dist))
-
-        n_jobs = cap_parallel_jobs(_cpu_count())
-
-        print(f"    - Inpainting fRMS with {n_jobs} parallel jobs")
-
-        def _inpaint_frame(frame, mask):
-            return inpaint.inpaint_biharmonic(frame, mask).astype(np.float32)
-
-        fRMSbkg = _run_in_parallel(
-            partial(_inpaint_frame, mask=mask), fRMS, n_jobs=n_jobs, chunking=False
-        )
-        ctx.set("fRMS", fRMS)
-        ctx.set("fRMS_bkg", fRMSbkg)
-
-        # fRMSbkg = np.stack(np.array([inpaint.inpaint_biharmonic(frame, mask) for frame in fRMS]), axis=0)
-
-        # Velocity estimation
-        A = (fRMS**2 - fRMSbkg**2).astype(np.float32, copy=False)
-        deltafRMS = (np.sign(A) * np.sqrt(np.abs(A))).astype(np.float32, copy=False)
-        ctx.set("deltafRMS", deltafRMS)
-
-        velocity_scale = _velocity_scale_mm_per_s_per_hz()
-        velocity_map = (velocity_scale * deltafRMS).astype(
-            np.float32,
-            copy=False,
-        )  # mm/s
-
-        ctx.set("velocity_map", velocity_map)
-
-        # num_bins = 256  # for 8-bit grayscale
-        # hist_matrix = np.zeros((velocity_map.shape[2], num_bins))
-        # v_range = (velocity_map.min(),velocity_map.max())
-
-        # for i in range(velocity_map.shape[2]):
-        #     masked_pixels = velocity_map[:,:,i][mask]  # select only pixels under mask
-        #     hist, _ = np.histogram(masked_pixels, bins=num_bins, range=v_range)
-        #     hist_matrix[i,:] = hist
-
-        # ctx.set("hist_matrix", hist_matrix)
-        ctx.set("velocity_map_avg", np.mean(velocity_map, axis=0, dtype=np.float32))
-        ctx.set("fRMS_avg", np.mean(fRMS, axis=0, dtype=np.float32))
-        ctx.set("fRMS_bkg_avg", np.mean(fRMSbkg, axis=0, dtype=np.float32))
-
-        sz = velocity_map.shape
-        optic_disc_center = getattr(ctx, "cache", {}).get("optic_disc_center")
-        section_mask = annulus_mask(
-            (sz[-2], sz[-1]),
-            optic_disc_center,
-            SECTION_INNER_RADIUS_FRAC,
-            SECTION_OUTER_RADIUS_FRAC,
-        )
-        ctx.set("velocity_section_mask", section_mask)
-
-        artery_sig = _masked_signal(velocity_map, section_mask & artery_mask)
-
-        vein_sig = _masked_signal(velocity_map, section_mask & vein_mask)
-        ctx.set("retinal_vessel_velocity", velocity_map)
-        ctx.set("retinal_artery_velocity_signal", artery_sig)
-        ctx.set("retinal_vein_velocity_signal", vein_sig)
+def _velocity_from_delta_frequency(
+    delta_frequency,
+    laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
+    numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
+) -> np.ndarray:
+    delta_frequency = np.asarray(delta_frequency, dtype=np.float32)
+    return (
+        laser_wavelength * delta_frequency / numerical_aperture
+    ).astype(np.float32, copy=False)
 
 
 def run_chunked_velocity_estimator(
     *,
     moment0,
     moment2,
-    moment0_flat_field_source: str = "dopplerview_recomputed_from_raw",
-    moment2_flat_field_source: str = "dopplerview_recomputed_from_raw",
+    moment0_flat_field_source: str = "holodoppler_raw_moment0",
+    moment2_flat_field_source: str = "holodoppler_raw_moment2",
     artery_mask,
     vein_mask,
     optic_disc_center=None,
@@ -141,6 +53,8 @@ def run_chunked_velocity_estimator(
     flat_field_gaussian_ratio: float,
     flat_field_border: float,
     scratch_h5,
+    laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
+    numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
 ) -> dict[str, object]:
     """Estimate velocity into scratch datasets without materializing full videos."""
 
@@ -205,7 +119,6 @@ def run_chunked_velocity_estimator(
     }
     artery_signal = np.full(frame_count, np.nan, dtype=np.float32)
     vein_signal = np.full(frame_count, np.nan, dtype=np.float32)
-    velocity_scale = _velocity_scale_mm_per_s_per_hz()
     n_jobs = min(cap_parallel_jobs(_cpu_count()), SCRATCH_FRAME_CHUNK_SIZE)
 
     estimation_started = perf_counter()
@@ -224,7 +137,7 @@ def run_chunked_velocity_estimator(
                 where=mean_m0 != 0,
             )
         ).astype(np.float32, copy=False)
-        f_background = _run_in_parallel(
+        f_rms_background = _run_in_parallel(
             lambda frame: inpaint.inpaint_biharmonic(
                 frame,
                 inpaint_mask,
@@ -233,21 +146,25 @@ def run_chunked_velocity_estimator(
             n_jobs=n_jobs,
             chunking=False,
         )
-        difference = (f_rms**2 - f_background**2).astype(np.float32, copy=False)
+        difference = (f_rms**2 - f_rms_background**2).astype(np.float32, copy=False)
         delta = (np.sign(difference) * np.sqrt(np.abs(difference))).astype(
             np.float32,
             copy=False,
         )
-        velocity = (velocity_scale * delta).astype(np.float32, copy=False)
+        velocity = _velocity_from_delta_frequency(
+            delta,
+            laser_wavelength=laser_wavelength,
+            numerical_aperture=numerical_aperture,
+        )
 
         datasets["fRMS"][frame_slice] = f_rms
-        datasets["fRMS_bkg"][frame_slice] = f_background
+        datasets["fRMS_bkg"][frame_slice] = f_rms_background
         datasets["deltafRMS"][frame_slice] = delta
         datasets["velocity"][frame_slice] = velocity
         averages["moment0"] += np.sum(m0, axis=0, dtype=np.float64)
         averages["velocity"] += np.sum(velocity, axis=0, dtype=np.float64)
         averages["fRMS"] += np.sum(f_rms, axis=0, dtype=np.float64)
-        averages["fRMS_bkg"] += np.sum(f_background, axis=0, dtype=np.float64)
+        averages["fRMS_bkg"] += np.sum(f_rms_background, axis=0, dtype=np.float64)
         artery_signal[frame_slice] = _masked_signal(velocity, artery_section)
         vein_signal[frame_slice] = _masked_signal(velocity, vein_section)
         if chunk_index == chunk_count or chunk_index % 10 == 0:

@@ -93,6 +93,7 @@ def _run_vessel(
     cycle_boundaries: np.ndarray,
     inputs: PerBeatAnalysisInput,
 ) -> VesselPerBeatAnalysisResult:
+    segments = _run_segments(velocity_segments, cycle_boundaries, inputs)
     signal = per_beat_signal_analysis(
         velocity_signal,
         cycle_boundaries,
@@ -107,7 +108,7 @@ def _run_vessel(
             np.sum(signal.velocity_signal_per_beat, axis=1)
             * np.float32(inputs.dt_seconds)
         ).astype(np.float32, copy=False),
-        segments=_run_segments(velocity_segments, cycle_boundaries, inputs),
+        segments=segments,
     )
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -9,11 +10,48 @@ import numpy as np
 from .signal import PerBeatSignalAnalysisResult, per_beat_signal_analysis
 
 
+SEGMENT_PER_BEAT_DIM_DESC = ("sample", "beat", "branch", "radius")
+
+
 @dataclass(frozen=True)
 class PerBeatSegmentAnalysisResult:
     velocity_signal_per_beat_per_segment: np.ndarray
     velocity_signal_per_beat_per_segment_fft: np.ndarray
     velocity_signal_per_beat_per_segment_band_limited: np.ndarray
+
+
+def aggregate_per_beat_segment_analysis(
+    segments: PerBeatSegmentAnalysisResult,
+) -> PerBeatSignalAnalysisResult:
+    """Aggregate segment outputs into the canonical ``(beat, sample)`` form.
+
+    Segment outputs use ``(sample, beat, branch, radius)``.  Only the two
+    spatial axes are reduced here; reducing the beat axis would silently turn
+    separate beats into one average cycle.
+    """
+
+    raw = _aggregate_segment_values(
+        segments.velocity_signal_per_beat_per_segment,
+    )
+    fft = _aggregate_segment_values(
+        segments.velocity_signal_per_beat_per_segment_fft,
+    )
+    band_limited = _aggregate_segment_values(
+        segments.velocity_signal_per_beat_per_segment_band_limited,
+    )
+    return PerBeatSignalAnalysisResult(raw.T, fft.T, band_limited.T)
+
+
+def _aggregate_segment_values(values) -> np.ndarray:
+    array = np.asarray(values)
+    if array.ndim != 4:
+        raise ValueError(
+            "segment per-beat values must have shape "
+            f"{SEGMENT_PER_BEAT_DIM_DESC}, got {array.shape}."
+        )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        return np.nanmean(array, axis=(2, 3)).astype(array.dtype, copy=False)
 
 
 def per_beat_segment_analysis(

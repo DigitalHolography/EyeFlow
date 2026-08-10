@@ -28,8 +28,7 @@ def ring_masks(
             image_shape,
             optic_disc_center,
             settings,
-            _ring_inner(settings, ring_index),
-            _ring_inner(settings, ring_index) + settings.ring_width_frac,
+            *_ring_bounds(settings, ring_index),
         )
         for ring_index in range(settings.ring_count)
     ]
@@ -49,8 +48,7 @@ def section_masks(
             image_shape,
             optic_disc_center,
             settings,
-            _ring_inner(settings, ring_index),
-            _ring_inner(settings, ring_index) + length,
+            *_ring_bounds(settings, ring_index, length),
         )
         for ring_index in range(settings.ring_count)
     ]
@@ -67,33 +65,23 @@ def annulus_mask(
     optic_disc_height=None,
     optic_disc_boundary_radius_frac: float | None = None,
 ) -> np.ndarray:
-    """Return an annulus in either frame- or optic-disc-relative coordinates.
+    """Return a circular annulus centered on the optic disc.
 
-    The legacy coordinate system expresses radii as fractions of the image
-    axes.  When valid optic-disc dimensions and a boundary radius are supplied,
-    the coordinate system is rescaled independently along X and Y so that the
-    detected optic-disc ellipse lies exactly on ``optic_disc_boundary_radius_frac``.
+    Radii are fractions of the distance from the optic-disc center to the
+    furthest image corner. This makes an outer radius of ``1.0`` reach the
+    image boundary while keeping every annulus circular in pixel coordinates.
+    The optic-disc geometry arguments are retained for API compatibility.
     """
     ny, nx = image_shape
     cy, cx = optic_disc_center_yx(optic_disc_center, ny, nx)
-    disc_geometry = _optic_disc_geometry(
-        optic_disc_width,
-        optic_disc_height,
-        optic_disc_boundary_radius_frac,
-    )
-    if disc_geometry is None:
-        y_grid = np.linspace(0.0, 1.0, ny, dtype=np.float32)[:, None]
-        x_grid = np.linspace(0.0, 1.0, nx, dtype=np.float32)[None, :]
-        y_distance = y_grid - np.float32(cy / max(ny, 1))
-        x_distance = x_grid - np.float32(cx / max(nx, 1))
-    else:
-        width, height, boundary = disc_geometry
-        y_distance = (
-            np.arange(ny, dtype=np.float32)[:, None] - np.float32(cy)
-        ) * np.float32(2.0 * boundary / height)
-        x_distance = (
-            np.arange(nx, dtype=np.float32)[None, :] - np.float32(cx)
-        ) * np.float32(2.0 * boundary / width)
+    corner_radius = max_corner_radius(ny, nx, cy, cx)
+    scale = np.float32(1.0 / max(corner_radius, 1.0))
+    y_distance = (
+        np.arange(ny, dtype=np.float32)[:, None] - np.float32(cy)
+    ) * scale
+    x_distance = (
+        np.arange(nx, dtype=np.float32)[None, :] - np.float32(cx)
+    ) * scale
     radius_sq = x_distance**2 + y_distance**2
     return (radius_sq > inner_radius_frac**2) & (radius_sq <= outer_radius_frac**2)
 
@@ -130,13 +118,19 @@ def _ring_inner(settings: SegmentRingSettings, ring_index: int) -> float:
     return settings.inner_radius_frac + ring_index * settings.ring_width_frac
 
 
-def _optic_disc_geometry(width, height, boundary):
-    values = []
-    for value in (width, height, boundary):
-        if value is None:
-            return None
-        array = np.asarray(value, dtype=np.float32).reshape(-1)
-        if array.size == 0 or not np.isfinite(array[0]) or array[0] <= 0:
-            return None
-        values.append(float(array[0]))
-    return tuple(values)
+def _ring_bounds(
+    settings: SegmentRingSettings,
+    ring_index: int,
+    length: float | None = None,
+) -> tuple[float, float]:
+    inner = _ring_inner(settings, ring_index)
+    if length is None:
+        length = settings.ring_width_frac
+    outer = min(settings.outer_radius_frac, inner + length)
+    return inner, outer
+
+
+def max_corner_radius(ny: int, nx: int, cy: float, cx: float) -> float:
+    y_dist = max(abs(cy), abs((ny - 1) - cy))
+    x_dist = max(abs(cx), abs((nx - 1) - cx))
+    return float(np.hypot(y_dist, x_dist))

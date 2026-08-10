@@ -231,8 +231,8 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
     def test_core_skips_segment_extraction_when_not_required(self) -> None:
         analysis = {
-            "retinal_artery_velocity_signal_filtered": [1.0, 2.0],
-            "retinal_vein_velocity_signal_filtered": [1.0, 2.0],
+            "retinal_artery_velocity_signal": [1.0, 2.0],
+            "retinal_vein_velocity_signal": [1.0, 2.0],
             "beat_indices": [0, 1],
         }
         source = SimpleNamespace(
