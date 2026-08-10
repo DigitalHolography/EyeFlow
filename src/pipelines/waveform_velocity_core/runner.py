@@ -101,6 +101,8 @@ def run_waveform_velocity_core(
 
 
 def _per_beat_required(ctx) -> bool:
+    if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
+        return True
     velocity_options = ctx.options_for("waveform_velocity")
     metric_options = ctx.options_for("waveform_shape_metrics")
     absolute_options = (
@@ -129,6 +131,8 @@ def _per_beat_required(ctx) -> bool:
 
 def _segments_required(ctx) -> bool:
     """Return whether any selected product needs spatial vessel segments."""
+    if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
+        return True
     velocity_options = ctx.options_for("waveform_velocity")
     metric_options = ctx.options_for("waveform_shape_metrics")
     absolute_options = (
