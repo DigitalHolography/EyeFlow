@@ -22,6 +22,7 @@ from calculations.blood_flow_velocity.cross_section.generate_cross_section_signa
     _cross_section_velocity,
     _CrossSectionBuffers,
     _fill_cross_section_buffers,
+    _frame_velocities,
     _subimage_stack,
     _subimage_stack2,
 )
@@ -44,6 +45,36 @@ from utils.logger import Logger  # noqa: E402
 class SegmentCenterTests(unittest.TestCase):
     def tearDown(self) -> None:
         Logger.reset_current()
+
+    def test_raw_segment_velocity_is_the_unrotated_masked_mean(self) -> None:
+        sub_stack = np.asarray(
+            [
+                [[1.0, np.nan, 9.0], [3.0, np.nan, np.nan]],
+                [[2.0, 4.0, np.nan], [6.0, np.nan, np.nan]],
+            ],
+            dtype=np.float32,
+        )
+
+        with patch(
+            "calculations.blood_flow_velocity.cross_section."
+            "generate_cross_section_signals.rotate_image_with_nan",
+            side_effect=AssertionError("raw segment velocity must not rotate"),
+        ) as rotate:
+            raw, safe, profiles = _frame_velocities(
+                sub_stack,
+                angle=90.0,
+                c1=0,
+                c2=0,
+            )
+
+        rotate.assert_not_called()
+        np.testing.assert_allclose(raw, [13.0 / 3.0, 4.0])
+        np.testing.assert_allclose(
+            profiles,
+            [[2.0, np.nan, 9.0], [4.0, 4.0, np.nan]],
+            equal_nan=True,
+        )
+        np.testing.assert_allclose(safe, [5.5, 4.0])
 
     def test_watershed_boundaries_remain_split_during_annulus_relabeling(self) -> None:
         vessel = np.ones((9, 9), dtype=bool)
@@ -201,14 +232,14 @@ class SegmentCenterTests(unittest.TestCase):
         )
 
         corner_radius = np.hypot(267.0, 281.0)
-        self.assertEqual(37, settings.ring_count)
+        self.assertEqual(23, settings.ring_count)
         self.assertAlmostEqual(
             (69.0 / 2.0) / corner_radius,
             settings.inner_radius_frac,
         )
         self.assertEqual(1.0, settings.outer_radius_frac)
-        self.assertEqual(0.025, settings.ring_width_frac)
-        self.assertEqual(0.025, settings.segment_length_frac)
+        self.assertEqual(0.04, settings.ring_width_frac)
+        self.assertEqual(0.04, settings.segment_length_frac)
 
     def test_segment_settings_carry_detected_optic_disc_dimensions(self) -> None:
         settings = _segment_ring_settings(55, 69)
@@ -236,11 +267,11 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertFalse(mask[264, 267])
         self.assertTrue(mask[265, 267])
 
-        # The first annulus has the configured 0.025 radial spacing.
+        # The first annulus has the configured 0.04 radial spacing.
         self.assertTrue(mask[230, 311])
-        self.assertFalse(mask[230, 312])
+        self.assertTrue(mask[230, 317])
+        self.assertFalse(mask[230, 318])
         self.assertTrue(mask[274, 267])
-        self.assertFalse(mask[275, 267])
 
         rings = ring_masks((512, 512), center, settings)
         self.assertTrue(rings[-1, 511, 0])

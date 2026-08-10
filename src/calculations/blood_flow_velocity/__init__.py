@@ -33,6 +33,7 @@ from .signal_analysis.per_beat.runner import (
 )
 from .signal_analysis.per_beat.segments import (
     PerBeatSegmentAnalysisResult,
+    aggregate_per_beat_segment_analysis,
     per_beat_segment_analysis,
 )
 from .signal_analysis.per_beat.signal import (
@@ -66,6 +67,7 @@ __all__ = [
     "PerBeatAnalysisResult",
     "PerBeatSegmentAnalysisResult",
     "PerBeatSignalAnalysisResult",
+    "aggregate_per_beat_segment_analysis",
     "PulseMetricData",
     "SegmentRingSettings",
     "SpectralHeartbeatResult",

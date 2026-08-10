@@ -814,10 +814,17 @@ def _frame_velocities(
         dtype=np.float32,
     )
     for frame_index, frame in enumerate(sub_stack):
-        rotated = rotate_image_with_nan(frame, angle)
-        profile = nanmean_float32(rotated, axis=0)
+        # Previous cross-sectional implementation:
+        # rotated = rotate_image_with_nan(frame, angle)
+        # profile = nanmean_float32(rotated, axis=0)
+        # value = nanmean_float32(profile[c1 : c2 + 1])
+
+        # ``frame`` is already restricted to the current masked segment:
+        # pixels outside the segment are NaN. Keep the profile unrotated and
+        # use the direct mean of all finite segment pixels as the raw velocity.
+        profile = nanmean_float32(frame, axis=0)
         profiles[frame_index] = profile
-        value = nanmean_float32(profile[c1 : c2 + 1])
+        value = nanmean_float32(frame)
         raw[frame_index] = np.float32(0.0) if np.isnan(value) else value
         safe[frame_index] = nanmean_float32(profile)
     return raw, safe, profiles

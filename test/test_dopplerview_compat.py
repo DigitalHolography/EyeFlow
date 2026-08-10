@@ -227,7 +227,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         cross_section = source_data.cross_section_settings
         self.assertEqual(10, ring_settings.ring_count)
         self.assertEqual(0.10, ring_settings.inner_radius_frac)
-        self.assertEqual(0.025, ring_settings.segment_length_frac)
+        self.assertEqual(0.04, ring_settings.segment_length_frac)
         self.assertEqual(3.0, cross_section.scale_factor_width)
         self.assertTrue(cross_section.hydrodynamic_diameters)
         self.assertEqual(0.5, cross_section.velocity_profile_threshold)
