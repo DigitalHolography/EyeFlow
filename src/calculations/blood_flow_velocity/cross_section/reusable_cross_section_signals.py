@@ -17,6 +17,8 @@ from .generate_cross_section_signals import (
     _CrossSectionBuffers,
     _empty_result,
     _profile_measurement,
+    _resize_subimage_stack,
+    _resize_submask,
     _result_from_buffers,
     _rotate_masked_image,
     _store_cross_section_measurement,
@@ -42,7 +44,9 @@ class CrossSectionProjectionPlan:
     Segment-indexed arrays use ``(ring, branch, ...)`` axes, except
     ``segment_center_xy``, which retains EyeFlow's existing
     ``(branch, ring, xy)`` layout. Window bounds are stored as
-    ``(x_start, x_stop, y_start, y_stop)`` with exclusive stops.
+    clipped ``(x_start, x_stop, y_start, y_stop)`` source coordinates with
+    exclusive stops. ``profile_window_side_pixels`` plus each segment center
+    reconstruct the full centroid-centered square, including padded pixels.
     """
 
     spatial_shape: tuple[int, int]
@@ -50,6 +54,8 @@ class CrossSectionProjectionPlan:
     branch_ids: np.ndarray
     segment_center_xy: np.ndarray
     profile_window_bounds_xyxy: np.ndarray
+    profile_window_side_pixels: int
+    profile_pixel_size_mm: float
     profile_rotation_degrees: np.ndarray
     profile_integration_limits_pixels: np.ndarray
     valid_segments: np.ndarray
@@ -84,7 +90,7 @@ def fit_cross_section_plan(
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings,
 ) -> tuple[CrossSectionProjectionPlan, CrossSectionSignalResult]:
-    """Fit adaptive windows, angles, and limits on one reference cube."""
+    """Fit one fixed window size, angles, and limits on a reference cube."""
     vessel = np.asarray(vessel_mask, dtype=bool)
     if vessel.ndim != 2:
         raise ValueError("vessel_mask must be a 2-D array.")
@@ -127,6 +133,8 @@ def fit_cross_section_plan(
         branch_ids=result.branch_ids.copy(),
         segment_center_xy=result.segment_center_xy.copy(),
         profile_window_bounds_xyxy=bounds.copy(),
+        profile_window_side_pixels=result.profile_window_side_pixels,
+        profile_pixel_size_mm=result.profile_pixel_size_mm,
         profile_rotation_degrees=result.profile_rotation_degrees.copy(),
         profile_integration_limits_pixels=limits.copy(),
         valid_segments=valid_segments,
@@ -159,6 +167,8 @@ def project_cross_section_cube(
             vessel,
             plan.ring_settings,
             plan.branch_identity,
+            substack_side_pixels=plan.profile_window_side_pixels,
+            profile_pixel_size_mm=plan.profile_pixel_size_mm,
         )
 
     masks = section_masks(
@@ -191,17 +201,20 @@ def project_cross_section_cube(
                 data_cube,
                 mask,
                 bounds_xyxy,
+                loc_xy=loc_xy,
+                side_pixels=plan.profile_window_side_pixels,
             )
-            if sub_stack.size == 0:
-                continue
-
+            resized_stack = _resize_subimage_stack(sub_stack)
+            resized_mask = _resize_submask(sub_mask)
+            resized_stack[:, ~resized_mask] = np.nan
             angle = float(plan.profile_rotation_degrees[circle_index, branch_index])
-            mean_image = nanmean_float32(sub_stack, axis=0)
-            rotated_mean = _rotate_masked_image(mean_image, sub_mask, angle)
+            mean_image = nanmean_float32(resized_stack, axis=0)
+            rotated_mean = _rotate_masked_image(mean_image, resized_mask, angle)
             if limits_mode == "per_cube":
                 limits = _cross_section_limits(
                     rotated_mean,
                     plan.cross_section_settings,
+                    pixel_size_mm=plan.profile_pixel_size_mm,
                 )
             else:
                 limits = tuple(
@@ -213,7 +226,7 @@ def project_cross_section_cube(
                 )
             c1, c2 = limits
             measurement = _profile_measurement(
-                sub_stack,
+                resized_stack,
                 angle,
                 c1,
                 c2,
@@ -223,7 +236,6 @@ def project_cross_section_cube(
                 buffers,
                 circle_index,
                 branch_index,
-                loc_xy,
                 measurement,
                 bounds_xyxy,
                 limits,
@@ -231,9 +243,9 @@ def project_cross_section_cube(
 
     return _result_from_buffers(
         buffers,
-        data_cube,
         plan.branch_identity,
         plan.cross_section_settings,
+        plan.profile_window_side_pixels,
     )
 
 
@@ -314,6 +326,8 @@ def _empty_projection_plan(
             -1,
             dtype=np.int32,
         ),
+        profile_window_side_pixels=0,
+        profile_pixel_size_mm=0.0,
         profile_rotation_degrees=np.full(
             segment_shape,
             np.nan,

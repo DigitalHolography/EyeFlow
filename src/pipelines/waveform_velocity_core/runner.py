@@ -173,6 +173,7 @@ def _build_waveform_velocity_core_context(
         source_data,
         ctx,
         scratch_h5,
+        retain_velocity_video=(segments_required or _pulse_pngs_required(ctx)),
     )
     harmonic_count = _band_limited_harmonic_count(ctx)
     per_beat_analysis, artery_segments, vein_segments = _per_beat_input_from_analysis(
@@ -204,11 +205,14 @@ def _resolve_dopplerview_analysis(
     source_data: WaveformVelocitySourceData,
     ctx,
     scratch_h5,
+    *,
+    retain_velocity_video: bool,
 ) -> tuple[dict[str, object], str]:
     with _logged_stage("EyeFlow velocity analysis from HD moments"):
         analysis = run_dopplerview_analysis(
             source_data,
             scratch_h5,
+            retain_velocity_video=retain_velocity_video,
         )
     return analysis, "eyeflow_recomputed_dopplerview_analysis"
 
@@ -322,7 +326,6 @@ def _segment_velocity_inputs(
         artery,
         source_data.optic_disc_center,
         ring_settings,
-        source_data.cross_section_settings,
         "artery",
     )
     _export_branch_identity_debug(
@@ -330,7 +333,6 @@ def _segment_velocity_inputs(
         vein,
         source_data.optic_disc_center,
         ring_settings,
-        source_data.cross_section_settings,
         "vein",
     )
     return artery, vein
@@ -351,7 +353,6 @@ def _export_branch_identity_debug(
     result: CrossSectionSignalResult,
     optic_disc_center,
     ring_settings: SegmentRingSettings,
-    cross_section_settings,
     prefix: str,
 ) -> None:
     if not ctx.output.available:
@@ -363,7 +364,7 @@ def _export_branch_identity_debug(
         optic_disc_center,
         ring_settings,
         segment_center_xy=result.segment_center_xy,
-        cross_section_settings=cross_section_settings,
+        profile_window_bounds_xyxy=result.profile_window_bounds_xyxy,
     )
 
 
@@ -405,8 +406,6 @@ def _segment_ring_settings(
             width,
             count,
             SEGMENT_LENGTH_FRAC,
-            width_px,
-            height_px,
         )
 
     # Keep the historical defaults for direct callers that do not provide the
@@ -421,8 +420,6 @@ def _segment_ring_settings(
         width,
         count,
         SEGMENT_LENGTH_FRAC,
-        width_px,
-        height_px,
     )
 
 
@@ -467,10 +464,6 @@ def _context_attrs(
         ],
         "analysis_source": analysis_source,
         "output_schema": output_paths.name,
-        "moment0_flat_field_source": source_data.moment0_flat_field_source,
-        "moment2_flat_field_source": source_data.moment2_flat_field_source,
-        "flat_field_gaussian_ratio": float(source_data.flat_field_gaussian_ratio),
-        "flat_field_border": float(source_data.flat_field_border),
         "velocity_section_geometry": (
             "optic_disc_relative"
             if width is not None and height is not None

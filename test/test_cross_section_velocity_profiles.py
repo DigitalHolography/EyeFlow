@@ -13,9 +13,6 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
-    _pack_transverse_profiles,
-)
 from calculations.blood_flow_velocity.cross_section.profile_processing import (  # noqa: E402
     _matlab_poiseuille_fit,
     interpolate_velocity_profiles_per_beat,
@@ -39,23 +36,6 @@ from pipelines.waveform_velocity.profiles import (  # noqa: E402
 
 
 class TransverseProfilePackingTests(unittest.TestCase):
-    def test_variable_width_profiles_are_center_padded_without_interpolation(self) -> None:
-        cells = np.empty((1, 2), dtype=object)
-        cells[0, 0] = np.asarray([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
-        cells[0, 1] = np.asarray(
-            [[10, 11, 12, 13, 14], [20, 21, 22, 23, 24]],
-            dtype=np.float32,
-        )
-
-        profiles, x_pixels, counts = _pack_transverse_profiles(cells, frame_count=2)
-
-        self.assertEqual((1, 2, 2, 5), profiles.shape)
-        np.testing.assert_array_equal(x_pixels, [-2, -1, 0, 1, 2])
-        np.testing.assert_array_equal(counts, [[3, 5]])
-        np.testing.assert_array_equal(profiles[0, 0, :, 1:4], cells[0, 0])
-        self.assertTrue(np.all(np.isnan(profiles[0, 0, :, [0, 4]])))
-        np.testing.assert_array_equal(profiles[0, 1], cells[0, 1])
-
     def test_h5_export_contains_raw_and_interpolated_profiles(self) -> None:
         artery = _segments(radius_count=2, branch_count=1)
         vein = _segments(radius_count=2, branch_count=0)
@@ -95,6 +75,10 @@ class TransverseProfilePackingTests(unittest.TestCase):
                 ["x", "time", "beat", "branch", "radius"],
             )
             self.assertEqual("mm/s", dataset.attrs["unit"])
+            self.assertEqual("gzip", dataset.compression)
+            self.assertEqual(4, dataset.compression_opts)
+            self.assertTrue(dataset.shuffle)
+            self.assertEqual((256, 4, 1, 1, 1), dataset.chunks)
             coordinate = h5[
                 schema.artery_cross_section_profiles
                 .interpolated_profile.transverse_coordinate_micrometers
@@ -196,7 +180,7 @@ class TransverseProfilePackingTests(unittest.TestCase):
         )
         self.assertAlmostEqual(1.0, r_squared)
 
-    def test_nan_rotation_matches_matlab_imrotatecustom(self) -> None:
+    def test_nan_rotation_interpolates_only_finite_values(self) -> None:
         image = np.full((5, 5), np.nan, dtype=np.float32)
         image[1:4, 1:4] = np.arange(1, 10, dtype=np.float32).reshape(
             3,
@@ -206,9 +190,9 @@ class TransverseProfilePackingTests(unittest.TestCase):
         expected = np.asarray(
             [
                 [np.nan, np.nan, np.nan, np.nan, np.nan],
-                [np.nan, 1.839746, 5.633975, 4.839746, np.nan],
+                [np.nan, 2.901924, 5.633975, 7.633975, np.nan],
                 [np.nan, 1.901924, 5.0, 8.098076, np.nan],
-                [np.nan, 1.5, 4.366025, 4.5, np.nan],
+                [np.nan, 2.366025, 4.366025, 7.098076, np.nan],
                 [np.nan, np.nan, np.nan, np.nan, np.nan],
             ],
             dtype=np.float32,
@@ -219,6 +203,15 @@ class TransverseProfilePackingTests(unittest.TestCase):
             expected,
             rtol=1e-6,
             equal_nan=True,
+        )
+
+        low_velocity = np.full((7, 7), np.nan, dtype=np.float32)
+        low_velocity[2:5, 2:5] = np.float32(0.2)
+        finite_rotated = rotate_image_with_nan(low_velocity, 30.0)
+        np.testing.assert_allclose(
+            finite_rotated[np.isfinite(finite_rotated)],
+            np.float32(0.2),
+            rtol=1e-6,
         )
 
 

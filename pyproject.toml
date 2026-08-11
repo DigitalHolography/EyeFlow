@@ -28,6 +28,7 @@ dependencies = [
 [project.optional-dependencies]
 # For specific pipelines
 pipelines = ["torch>=2.2", "pandas>=2.1"]
+gpu = ["cupy>=14.1.1"]
 
 # =============== [ SCRIPTS ] ===============
 

@@ -260,6 +260,17 @@ nvtx = [
 ]
 
 [[package]]
+name = "cupy"
+version = "14.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cuda-pathfinder" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/85/86/e99f52f4a50e5faaf4932cf3574d64d870bce224314be7fca91a6d02cda7/cupy-14.1.1.tar.gz", hash = "sha256:3d4d193a5b028e1823d1d44fe6268364d8fb76c3793ad4e28e1427c56ceb2f80", size = 3953009, upload-time = "2026-06-01T04:55:30.379Z" }
+
+[[package]]
 name = "cycler"
 version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -290,6 +301,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+gpu = [
+    { name = "cupy" },
+]
 pipelines = [
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -298,6 +312,7 @@ pipelines = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cupy", marker = "extra == 'gpu'", specifier = ">=14.1.1" },
     { name = "h5py", specifier = ">=3.9" },
     { name = "joblib", specifier = ">=1.3" },
     { name = "matplotlib", specifier = ">=3.7" },
@@ -311,7 +326,7 @@ requires-dist = [
     { name = "tkinterdnd2" },
     { name = "torch", marker = "extra == 'pipelines'", specifier = ">=2.2" },
 ]
-provides-extras = ["pipelines"]
+provides-extras = ["pipelines", "gpu"]
 
 [[package]]
 name = "filelock"

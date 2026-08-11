@@ -67,11 +67,13 @@ def write_value_dataset(group: h5py.Group, key: str, value) -> None:
     from pipeline_engine import DatasetValue
 
     ds_attrs = None
+    h5_options = None
     data = value
 
     if hasattr(value, "data") and hasattr(value, "attrs"):
         data = value.data
         ds_attrs = value.attrs
+        h5_options = getattr(value, "h5_options", None)
     elif isinstance(value, DatasetValue):
         data = value.data
         ds_attrs = value.attrs
@@ -83,7 +85,12 @@ def write_value_dataset(group: h5py.Group, key: str, value) -> None:
         del target_group[dataset_key]
 
     payload, ds_attrs = _normalize_dataset_payload(data, ds_attrs)
-    dataset = _create_dataset(target_group, dataset_key, payload)
+    dataset = _create_dataset(
+        target_group,
+        dataset_key,
+        payload,
+        h5_options=h5_options,
+    )
 
     if ds_attrs:
         for attr_key, attr_val in ds_attrs.items():
@@ -236,7 +243,13 @@ def _downcast_numeric_payload(payload):
     return payload
 
 
-def _create_dataset(group: h5py.Group, dataset_key: str, payload):
+def _create_dataset(
+    group: h5py.Group,
+    dataset_key: str,
+    payload,
+    *,
+    h5_options: dict[str, object] | None = None,
+):
     if isinstance(payload, str):
         return group.create_dataset(
             dataset_key,
@@ -250,7 +263,11 @@ def _create_dataset(group: h5py.Group, dataset_key: str, payload):
             dtype=h5py.string_dtype(encoding="utf-8"),
         )
     try:
-        return group.create_dataset(dataset_key, data=payload)
+        return group.create_dataset(
+            dataset_key,
+            data=payload,
+            **dict(h5_options or {}),
+        )
     except (TypeError, ValueError):
         return _create_fallback_dataset(group, dataset_key, payload)
 

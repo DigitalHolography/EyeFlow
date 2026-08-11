@@ -6,7 +6,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 import h5py
 import numpy as np
@@ -21,7 +20,10 @@ from pipeline_engine.context import RawH5SourceReader  # noqa: E402
 from pipelines.waveform_velocity_core.runner import (  # noqa: E402
     _segment_ring_settings,
 )
-from pipelines.waveform_velocity_core.sources import WaveformVelocitySources  # noqa: E402
+from pipelines.waveform_velocity_core.sources import (  # noqa: E402
+    WaveformVelocitySources,
+    _load_moment_pair,
+)
 
 
 class DopplerViewCompatibilityTests(unittest.TestCase):
@@ -109,76 +111,21 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                     np.zeros((2, 4), dtype=bool),
                     np.ones((2, 4), dtype=bool),
                 )
-            source_data = self._load_sources(hd_source, dv_source)
             with h5py.File(hd_source, "r") as hd:
                 source = HolodopplerSource(
                     RawH5SourceReader(h5file=hd, label="HD"),
                 )
-                selected_moment0 = np.asarray(source.moment0_dataset())
-                selected_moment0ff = np.asarray(
-                    source.moment0_flat_field_dataset()
-                )
-                selected_moment2 = np.asarray(source.moment2_dataset())
-                selected_moment2ff = np.asarray(
-                    source.moment2_flat_field_dataset()
-                )
+                moment0, moment2 = _load_moment_pair(source)
+                selected_moment0 = np.asarray(moment0)
+                selected_moment2 = np.asarray(moment2)
 
         np.testing.assert_array_equal(
             selected_moment0,
             np.ones((3, 2, 4), dtype=np.float32),
         )
         np.testing.assert_array_equal(
-            selected_moment0ff,
-            np.full((3, 2, 4), 7.0, dtype=np.float32),
-        )
-        np.testing.assert_array_equal(
             selected_moment2,
             np.ones((3, 2, 4), dtype=np.float32),
-        )
-        np.testing.assert_array_equal(
-            selected_moment2ff,
-            np.full((3, 2, 4), 9.0, dtype=np.float32),
-        )
-        self.assertEqual(
-            "holodoppler_raw_moment0",
-            source_data.moment0_flat_field_source,
-        )
-        self.assertEqual(
-            "holodoppler_raw_moment2",
-            source_data.moment2_flat_field_source,
-        )
-
-    def test_waveform_velocity_can_select_both_precomputed_moments(self) -> None:
-        with self._source_pair() as (hd_source, dv_source):
-            self._write_hd(hd_source)
-            with h5py.File(hd_source, "a") as hd:
-                hd.create_dataset(
-                    "moment0ff",
-                    data=np.full((3, 2, 4), 7.0, dtype=np.float32),
-                )
-                hd.create_dataset(
-                    "moment2ff",
-                    data=np.full((3, 2, 4), 9.0, dtype=np.float32),
-                )
-            with h5py.File(dv_source, "w") as dv:
-                self._write_segmentation(
-                    dv,
-                    np.zeros((2, 4), dtype=bool),
-                    np.ones((2, 4), dtype=bool),
-                )
-            with patch(
-                "pipelines.waveform_velocity_core.sources.USE_PRECOMPUTED_FLAT_FIELD",
-                True,
-            ):
-                source_data = self._load_sources(hd_source, dv_source)
-
-        self.assertEqual(
-            "holodoppler_precomputed_flat_field",
-            source_data.moment0_flat_field_source,
-        )
-        self.assertEqual(
-            "holodoppler_precomputed_flat_field",
-            source_data.moment2_flat_field_source,
         )
 
     def test_eyeflow_analysis_settings_are_not_read_from_source_configs(self) -> None:
@@ -197,7 +144,6 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                     "generateCrossSectionSignals": {
                         "NumberOfCircles": 3,
                         "SegmentsLength": 0.40,
-                        "ScaleFactorWidth": 99.0,
                         "HydrodynamicDiameters": False,
                         "velocityProfileThreshold": 0.99,
                         "RotateFromMask": True,
@@ -215,10 +161,6 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                         "InnerRadius": 0.35,
                         "OuterRadius": 0.45,
                     },
-                    "FlatFieldCorrection": {
-                        "GWRatio": 0.11,
-                        "Border": 0.22,
-                    },
                     "VelocityEstimation": {"LocalBackgroundDist": 7},
                 },
             )
@@ -228,14 +170,12 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         self.assertEqual(10, ring_settings.ring_count)
         self.assertEqual(0.10, ring_settings.inner_radius_frac)
         self.assertEqual(0.04, ring_settings.segment_length_frac)
-        self.assertEqual(3.0, cross_section.scale_factor_width)
         self.assertTrue(cross_section.hydrodynamic_diameters)
         self.assertEqual(0.5, cross_section.velocity_profile_threshold)
         self.assertFalse(cross_section.rotate_from_mask)
         self.assertAlmostEqual(1.91 / 3.5, cross_section.pixel_size_mm)
+        self.assertEqual(0.95, cross_section.submask_size_percentile_kept)
         self.assertEqual(7, source_data.local_background_dist)
-        self.assertEqual(0.11, source_data.flat_field_gaussian_ratio)
-        self.assertEqual(0.22, source_data.flat_field_border)
 
     @staticmethod
     def _write_hd(path: Path) -> None:

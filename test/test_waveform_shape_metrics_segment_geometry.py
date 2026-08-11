@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -14,27 +15,34 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.blood_flow_velocity import CrossSectionSignalSettings  # noqa: E402
+from calculations.blood_flow_velocity import (  # noqa: E402
+    CrossSectionSignalSettings,
+    segment_velocity_results,
+)
 from calculations.blood_flow_velocity.cross_section.branch_identity import (  # noqa: E402
     _branch_identity_stages,
 )
 from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
-    _cross_section_velocity,
     _CrossSectionBuffers,
     _fill_cross_section_buffers,
+    _fixed_subimage_stack,
+    _fixed_substack_side_pixels,
     _frame_velocities,
-    _subimage_stack,
-    _subimage_stack2,
+    _PreparedCrossSectionGeometry,
+    _resize_subimage_stack,
+    _resize_submask,
+    _rotate_stack_with_nan,
+    _sample_nanstd_axis0,
 )
 from calculations.blood_flow_velocity.cross_section.reusable_cross_section_signals import (  # noqa: E402
     generate_cross_section_signals_for_cubes,
     project_cross_section_cube,
 )
 from calculations.blood_flow_velocity.cross_section.segment_geometry import (  # noqa: E402
-    annulus_mask,
     ring_masks,
     section_masks,
 )
+from calculations.math import rotate_image_with_nan  # noqa: E402
 from pipelines.waveform_velocity_core.branch_identity_debug import (  # noqa: E402
     _labels_with_substack_boxes,
 )
@@ -46,7 +54,29 @@ class SegmentCenterTests(unittest.TestCase):
     def tearDown(self) -> None:
         Logger.reset_current()
 
-    def test_raw_segment_velocity_is_the_unrotated_masked_mean(self) -> None:
+    def test_sample_nanstd_does_not_warn_for_undersampled_columns(self) -> None:
+        values = np.asarray(
+            [
+                [np.nan, 3.0, 1.0, 2.0],
+                [np.nan, np.nan, 3.0, 4.0],
+                [np.nan, np.nan, np.nan, 6.0],
+            ],
+            dtype=np.float32,
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            actual = _sample_nanstd_axis0(values)
+
+        self.assertEqual([], caught)
+        np.testing.assert_allclose(
+            actual,
+            [np.nan, np.nan, np.sqrt(2.0), 2.0],
+            rtol=1e-6,
+            equal_nan=True,
+        )
+
+    def test_frame_velocities_rotate_the_complete_batch_before_projection(self) -> None:
         sub_stack = np.asarray(
             [
                 [[1.0, np.nan, 9.0], [3.0, np.nan, np.nan]],
@@ -54,27 +84,46 @@ class SegmentCenterTests(unittest.TestCase):
             ],
             dtype=np.float32,
         )
+        rotated_frames = [
+            np.asarray([[1.0, 2.0, np.nan], [3.0, 4.0, 5.0]], dtype=np.float32),
+            np.asarray([[2.0, 4.0, 6.0], [4.0, 8.0, np.nan]], dtype=np.float32),
+        ]
 
         with patch(
             "calculations.blood_flow_velocity.cross_section."
-            "generate_cross_section_signals.rotate_image_with_nan",
-            side_effect=AssertionError("raw segment velocity must not rotate"),
+            "generate_cross_section_signals._rotate_stack_with_nan",
+            return_value=np.stack(rotated_frames),
         ) as rotate:
             raw, safe, profiles = _frame_velocities(
                 sub_stack,
                 angle=90.0,
-                c1=0,
-                c2=0,
+                c1=1,
+                c2=2,
             )
 
-        rotate.assert_not_called()
-        np.testing.assert_allclose(raw, [13.0 / 3.0, 4.0])
+        rotate.assert_called_once()
+        np.testing.assert_array_equal(rotate.call_args.args[0], sub_stack)
+        self.assertEqual(90.0, rotate.call_args.args[1])
         np.testing.assert_allclose(
             profiles,
-            [[2.0, np.nan, 9.0], [4.0, 4.0, np.nan]],
+            [[2.0, 3.0, 5.0], [3.0, 6.0, 6.0]],
             equal_nan=True,
         )
-        np.testing.assert_allclose(safe, [5.5, 4.0])
+        np.testing.assert_allclose(raw, [4.0, 6.0])
+        np.testing.assert_allclose(safe, [10.0 / 3.0, 5.0])
+
+    def test_batched_nan_rotation_matches_independent_frames(self) -> None:
+        rng = np.random.default_rng(5)
+        stack = rng.random((4, 17, 17), dtype=np.float32)
+        stack[:, :3, :] = np.nan
+
+        expected = np.stack(
+            [rotate_image_with_nan(frame, 31.0) for frame in stack],
+            axis=0,
+        )
+        actual = _rotate_stack_with_nan(stack, 31.0)
+
+        np.testing.assert_allclose(actual, expected, rtol=1e-6, equal_nan=True)
 
     def test_watershed_boundaries_remain_split_during_annulus_relabeling(self) -> None:
         vessel = np.ones((9, 9), dtype=bool)
@@ -94,7 +143,7 @@ class SegmentCenterTests(unittest.TestCase):
 
         with patch(
             "calculations.blood_flow_velocity.cross_section.branch_identity."
-            "segment_annulus_mask",
+            "annulus_mask",
             return_value=section,
         ), patch(
             "calculations.blood_flow_velocity.cross_section.branch_identity."
@@ -117,35 +166,114 @@ class SegmentCenterTests(unittest.TestCase):
 
         self.assertEqual(2, int(stages.annulus_refined_labels.max()))
 
-    def test_subimage_uses_matlab_fixed_scale_factor_width(self) -> None:
-        velocity = np.ones((2, 101, 101), dtype=np.float32)
-        segment = np.zeros((101, 101), dtype=bool)
-        segment[49:52, 60:71] = True
-        messages: list[str] = []
-        settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
+    def test_fixed_substack_side_uses_higher_joint_percentiles_and_next_odd(self) -> None:
+        sections = np.ones((1, 20, 20), dtype=bool)
+        artery_labels = np.zeros((20, 20), dtype=np.int32)
+        vein_labels = np.zeros((20, 20), dtype=np.int32)
+        artery_labels[1:4, 1:5] = 1
+        artery_labels[6:11, 1:7] = 2
+        vein_labels[1:9, 10:12] = 1
+        artery = _PreparedCrossSectionGeometry(
+            artery_labels > 0,
+            SimpleNamespace(
+                labels=artery_labels,
+                branch_ids=np.asarray([1, 2], dtype=np.int32),
+            ),
+            sections,
+        )
+        vein = _PreparedCrossSectionGeometry(
+            vein_labels > 0,
+            SimpleNamespace(
+                labels=vein_labels,
+                branch_ids=np.asarray([1], dtype=np.int32),
+            ),
+            sections,
+        )
 
-        Logger.configure(on_log=messages.append)
-        stack, mask = _subimage_stack(velocity, segment, (65, 50), settings)
+        self.assertEqual(9, _fixed_substack_side_pixels((artery, vein), 0.95))
+
+    def test_artery_and_vein_measurements_receive_one_joint_fixed_side(self) -> None:
+        sections = np.ones((1, 20, 20), dtype=bool)
+        artery_labels = np.zeros((20, 20), dtype=np.int32)
+        vein_labels = np.zeros((20, 20), dtype=np.int32)
+        artery_labels[1:4, 1:5] = 1
+        vein_labels[1:9, 10:12] = 1
+        geometries = (
+            _PreparedCrossSectionGeometry(
+                artery_labels > 0,
+                SimpleNamespace(
+                    labels=artery_labels,
+                    branch_ids=np.asarray([1], dtype=np.int32),
+                ),
+                sections,
+            ),
+            _PreparedCrossSectionGeometry(
+                vein_labels > 0,
+                SimpleNamespace(
+                    labels=vein_labels,
+                    branch_ids=np.asarray([1], dtype=np.int32),
+                ),
+                sections,
+            ),
+        )
+        settings = CrossSectionSignalSettings(False, 0.5, False, 0.01)
+
+        with patch(
+            "calculations.blood_flow_velocity.cross_section."
+            "segment_velocity_signals._prepare_cross_section_geometry",
+            side_effect=geometries,
+        ), patch(
+            "calculations.blood_flow_velocity.cross_section."
+            "segment_velocity_signals._generate_cross_section_signals_from_geometry",
+            side_effect=("artery", "vein"),
+        ) as generate:
+            results = segment_velocity_results(
+                np.zeros((1, 20, 20), dtype=np.float32),
+                artery_labels > 0,
+                vein_labels > 0,
+                (10, 10),
+                SimpleNamespace(ring_count=1),
+                settings,
+            )
+
+        self.assertEqual(("artery", "vein"), results)
+        self.assertEqual([9, 9], [call.args[-1] for call in generate.call_args_list])
+
+    def test_fixed_subimage_is_centroid_centered_and_padded_at_periphery(self) -> None:
+        velocity = np.arange(2 * 5 * 6, dtype=np.float32).reshape(2, 5, 6)
+        segment = np.ones((5, 6), dtype=bool)
+
+        stack, mask, bounds = _fixed_subimage_stack(
+            velocity,
+            segment,
+            (0, 1),
+            5,
+        )
 
         self.assertEqual((2, 5, 5), stack.shape)
         self.assertEqual((5, 5), mask.shape)
-        self.assertEqual(1, len(messages))
-        self.assertIn("5x5 px window for a 11x3 px segment", messages[0])
+        self.assertEqual((0, 3, 0, 4), bounds)
+        np.testing.assert_array_equal(mask[:, :2], False)
+        np.testing.assert_array_equal(mask[0], False)
+        self.assertTrue(np.all(np.isnan(stack[:, :, :2])))
+        self.assertTrue(np.all(np.isnan(stack[:, 0])))
+        np.testing.assert_array_equal(stack[:, 1:5, 2:5], velocity[:, 0:4, 0:3])
 
-    def test_subimage_stack2_contains_segment_with_rotation_margin(self) -> None:
-        velocity = np.ones((2, 101, 101), dtype=np.float32)
-        segment = np.zeros((101, 101), dtype=bool)
-        segment[49:52, 60:71] = True
-        messages: list[str] = []
-        settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
+    def test_image_and_mask_resize_use_separate_128_square_paths(self) -> None:
+        image = np.full((3, 3), np.nan, dtype=np.float32)
+        image[1, 1] = 7.0
+        mask = np.zeros((3, 3), dtype=bool)
+        mask[1, 1] = True
 
-        Logger.configure(on_log=messages.append)
-        stack, mask = _subimage_stack2(velocity, segment, (65, 50), settings)
+        resized_image = _resize_subimage_stack(image[None, ...])[0]
+        resized_mask = _resize_submask(mask)
 
-        self.assertEqual((2, 15, 15), stack.shape)
-        self.assertEqual((15, 15), mask.shape)
-        self.assertEqual(33, int(np.count_nonzero(mask)))
-        self.assertEqual([], messages)
+        self.assertEqual((128, 128), resized_image.shape)
+        self.assertEqual((128, 128), resized_mask.shape)
+        self.assertEqual(np.bool_, resized_mask.dtype)
+        self.assertTrue(np.allclose(resized_image[resized_mask], 7.0))
+        resized_image[~resized_mask] = np.nan
+        self.assertTrue(np.all(np.isnan(resized_image[~resized_mask])))
 
     def test_substack_debug_overlay_marks_shared_box_edges(self) -> None:
         labels = np.ones((20, 20), dtype=np.int32)
@@ -154,13 +282,6 @@ class SegmentCenterTests(unittest.TestCase):
             outer_radius_frac=1.0,
             ring_width_frac=0.5,
             ring_count=2,
-        )
-        cross_section_settings = CrossSectionSignalSettings(
-            3.0,
-            False,
-            0.5,
-            False,
-            0.01,
         )
         centers = np.asarray(
             [[[5.0, 5.0], [np.nan, np.nan]], [[7.0, 5.0], [np.nan, np.nan]]],
@@ -172,56 +293,18 @@ class SegmentCenterTests(unittest.TestCase):
             None,
             ring_settings,
             centers,
-            cross_section_settings,
+            np.asarray(
+                [
+                    [[4, 7, 4, 7], [6, 9, 4, 7]],
+                    [[-1, -1, -1, -1], [-1, -1, -1, -1]],
+                ],
+                dtype=np.int32,
+            ),
         )
 
         self.assertEqual((20, 20, 3), image.shape)
         np.testing.assert_array_equal(image[4, 4], [255, 255, 0])
         np.testing.assert_array_equal(image[4, 6], [255, 0, 255])
-
-    def test_subimage_logs_error_only_when_segment_reaches_crop_edge(self) -> None:
-        velocity = np.zeros((1, 100, 100), dtype=np.float32)
-        settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
-        messages: list[str] = []
-        Logger.configure(on_log=messages.append)
-
-        contained = np.zeros((100, 100), dtype=bool)
-        contained[50, 50] = True
-        _subimage_stack(velocity, contained, (50, 50), settings)
-        self.assertEqual([], messages)
-
-        clipped = contained.copy()
-        clipped[50, 48] = True
-        _subimage_stack(velocity, clipped, (50, 50), settings)
-        self.assertEqual(1, len(messages))
-        self.assertTrue(messages[0].startswith("[WARNING] Cross-section window"))
-        self.assertIn("3x1 px segment", messages[0])
-
-    def test_missing_annulus_intersections_do_not_select_another_crop_path(self) -> None:
-        velocity = np.ones((2, 101, 101), dtype=np.float32)
-        segment = np.zeros((101, 101), dtype=bool)
-        segment[49:52, 60:71] = True
-        settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
-
-        with patch(
-            "calculations.blood_flow_velocity.cross_section."
-            "generate_cross_section_signals._circle_tilt_geometry",
-            return_value=None,
-        ), patch(
-            "calculations.blood_flow_velocity.cross_section."
-            "generate_cross_section_signals._estimate_orientation",
-            return_value=0.0,
-        ):
-            measurement = _cross_section_velocity(
-                velocity,
-                segment,
-                segment,
-                (65, 50),
-                (50, 50),
-                settings,
-            )
-
-        self.assertEqual((2, 15), measurement[2].shape)
 
     def test_segment_analysis_uses_disc_extent_and_corner_spacing(self) -> None:
         settings = _segment_ring_settings(
@@ -240,12 +323,6 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertEqual(1.0, settings.outer_radius_frac)
         self.assertEqual(0.04, settings.ring_width_frac)
         self.assertEqual(0.04, settings.segment_length_frac)
-
-    def test_segment_settings_carry_detected_optic_disc_dimensions(self) -> None:
-        settings = _segment_ring_settings(55, 69)
-
-        self.assertEqual(55.0, settings.optic_disc_width)
-        self.assertEqual(69.0, settings.optic_disc_height)
 
     def test_annulus_starts_at_optic_disc_and_uses_corner_extent(self) -> None:
         center = np.asarray([267.0, 230.0])
@@ -277,20 +354,6 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertTrue(rings[-1, 511, 0])
         self.assertFalse(rings[-1, 0, 0])
 
-    def test_annulus_is_independent_of_invalid_disc_dimensions(self) -> None:
-        legacy = annulus_mask((100, 200), None, 0.10, 0.35)
-        fallback = annulus_mask(
-            (100, 200),
-            None,
-            0.10,
-            0.35,
-            optic_disc_width=0,
-            optic_disc_height=np.nan,
-            optic_disc_boundary_radius_frac=0.10,
-        )
-
-        np.testing.assert_array_equal(legacy, fallback)
-
     def test_cross_section_centroids_are_recorded_in_waveform_axis_order(self) -> None:
         labels = np.zeros((7, 7), dtype=np.int32)
         labels[2, 1] = 1
@@ -308,7 +371,7 @@ class SegmentCenterTests(unittest.TestCase):
             ring_count=sections.shape[0],
             branch_count=branches.branch_ids.size,
         )
-        settings = CrossSectionSignalSettings(3.0, False, 0.5, False, 0.01)
+        settings = CrossSectionSignalSettings(False, 0.5, False, 0.01)
 
         signal = np.arange(3, dtype=np.float32)
         with patch(
@@ -317,8 +380,15 @@ class SegmentCenterTests(unittest.TestCase):
             return_value=0.0,
         ), patch(
             "calculations.blood_flow_velocity.cross_section."
-            "generate_cross_section_signals._cross_section_velocity",
-            return_value=(signal, signal),
+            "generate_cross_section_signals._cross_section_velocity_from_substack",
+            return_value=(
+                signal,
+                signal,
+                np.zeros((3, 128), dtype=np.float32),
+                0.0,
+                np.zeros((128,), dtype=np.float32),
+                (0, 127),
+            ),
         ):
             _fill_cross_section_buffers(
                 buffers,
@@ -327,6 +397,7 @@ class SegmentCenterTests(unittest.TestCase):
                 branches,
                 np.asarray([3.0, 3.0], dtype=np.float32),
                 settings,
+                1,
             )
 
         np.testing.assert_array_equal(
@@ -341,10 +412,16 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(buffers.segment_center_xy[1, 0])))
         np.testing.assert_array_equal(buffers.velocity[0, 0], signal)
         np.testing.assert_array_equal(buffers.velocity[1, 1], signal)
+        self.assertEqual(128, buffers.profile_sample_count[0, 0])
+        self.assertEqual(128, buffers.profile_sample_count[1, 1])
+        self.assertEqual(
+            (2, 2, 3, 128),
+            buffers.velocity_profiles.shape,
+        )
 
 
 class ReusableCrossSectionProjectionTests(unittest.TestCase):
-    def test_named_cubes_reuse_adaptive_window_angle_and_limits(self) -> None:
+    def test_named_cubes_reuse_fixed_window_angle_and_limits(self) -> None:
         reference, vessel, branches, sections, ring_settings, settings = (
             self._projection_inputs()
         )
@@ -403,8 +480,12 @@ class ReusableCrossSectionProjectionTests(unittest.TestCase):
         )
         np.testing.assert_array_equal(
             result.plan.profile_window_bounds_xyxy,
-            [[[6, 15, 6, 15]]],
+            [[[8, 13, 8, 13]]],
         )
+        self.assertEqual(5, result.plan.profile_window_side_pixels)
+        self.assertAlmostEqual(0.01 * 5.0 / 128.0, result.plan.profile_pixel_size_mm)
+        self.assertEqual((1, 1, 4, 128), result.reference.velocity_profiles.shape)
+        np.testing.assert_array_equal(result.reference.profile_sample_count, [[128]])
         np.testing.assert_array_equal(
             result.plan.profile_integration_limits_pixels,
             [[[1, 5]]],
@@ -568,7 +649,7 @@ class ReusableCrossSectionProjectionTests(unittest.TestCase):
             ring_count=1,
             segment_length_frac=0.5,
         )
-        settings = CrossSectionSignalSettings(30.0, True, 0.5, False, 0.01)
+        settings = CrossSectionSignalSettings(True, 0.5, False, 0.01)
         return reference, vessel, branches, sections, ring_settings, settings
 
 

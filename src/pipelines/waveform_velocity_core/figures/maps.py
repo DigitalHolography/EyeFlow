@@ -30,6 +30,7 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     f_bkg_avg = _array_or_none(ctx.analysis.get("fRMS_bkg_avg"))
     f_avg = _array_or_none(ctx.analysis.get("fRMS_avg"))
     delta = ctx.analysis.get("deltafRMS")
+    delta_avg = _array_or_none(ctx.analysis.get("deltafRMS_avg"))
     if f_bkg_avg is not None:
         f_bkg_avg = _display_frequency(f_bkg_avg)
         paths.extend(
@@ -42,8 +43,10 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
                 label="background RMS frequency (kHz)",
             )
         )
-    if delta is not None:
-        df_mean = _display_frequency(mean_video(delta))
+    if delta_avg is not None or delta is not None:
+        df_mean = _display_frequency(
+            delta_avg if delta_avg is not None else mean_video(delta)
+        )
         paths.extend(
             _heatmap_with_colorbar(
                 writer,

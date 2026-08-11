@@ -8,6 +8,7 @@ from calculations.blood_flow_velocity.cross_section.profile_processing import (
     interpolate_velocity_profiles_per_beat,
 )
 from input_output.schema import CrossSectionProfileOutputPaths, EyeFlowOutputPaths
+from pipeline_engine.base import DatasetValue
 
 from pipelines.waveform_velocity_core.per_beat_outputs import metric_value
 
@@ -127,10 +128,13 @@ def _pack_profile_variant(
         index_base=index_base,
     )
     return {
-        paths.velocity_profile: metric_value(
-            profiles_per_beat,
-            unit="mm/s",
-            dim_desc=("x", "time", "beat", "branch", "radius"),
+        paths.velocity_profile: DatasetValue(
+            data=profiles_per_beat,
+            attrs={
+                "unit": "mm/s",
+                "dimDesc": ["x", "time", "beat", "branch", "radius"],
+            },
+            h5_options=_profile_h5_options(profiles_per_beat.shape),
         ),
         paths.transverse_coordinate_micrometers: metric_value(
             coordinates_by_x,
@@ -138,6 +142,23 @@ def _pack_profile_variant(
             dim_desc=coordinate_dim_desc,
         ),
     }
+
+
+def _profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
+    """Use lossless compression with chunks aligned to one segment profile."""
+    options: dict[str, object] = {
+        "compression": "gzip",
+        "compression_opts": 4,
+        "shuffle": True,
+    }
+    if len(shape) != 5 or not all(shape):
+        return options
+
+    x_count, time_count = shape[:2]
+    target_elements = (1024 * 1024) // np.dtype(np.float32).itemsize
+    time_chunk = min(time_count, max(target_elements // x_count, 1))
+    options["chunks"] = (x_count, time_chunk, 1, 1, 1)
+    return options
 
 
 def _resolve_output_paths(
