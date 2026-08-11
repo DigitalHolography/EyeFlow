@@ -158,13 +158,14 @@ def _append_representation(
     metrics[f"{prefix}/rms/total_pulsatile_rms_bkr"] = _velocity_bkr(
         rep["total_rms_bkr"]
     )
+    _mpr_bkr = rep.get("mean_pulsatile_ratio_bkr", rep.get("mean_to_pulsatile_ratio_bkr"))
     metrics[f"{prefix}/rms/mean_to_pulsatile_ratio_bkr"] = _metric(
-        rep["mean_to_pulsatile_ratio_bkr"],
+        _mpr_bkr,
         dims=("beat", "branch", "radius"),
         formula="abs(mu) / total_pulsatile_rms",
     )
     metrics[f"{prefix}/rms/mean_pulsatile_ratio_bkr"] = _metric(
-        rep["mean_pulsatile_ratio_bkr"],
+        _mpr_bkr,
         dims=("beat", "branch", "radius"),
         formula="compatibility alias for mean_to_pulsatile_ratio_bkr",
     )
@@ -181,21 +182,25 @@ def _append_representation(
     metrics[f"{prefix}/endpoints/R0"] = _metric(
         acq["R0"],
         unit="mm/s",
-        formula="median_bkr(RMS_t(w))",
+        formula="median_b(median_kr(RMS_t(w))); alias of TPR",
     )
     metrics[f"{prefix}/endpoints/TPR"] = _metric(
         acq["TPR"],
         unit="mm/s",
-        formula="compatibility alias for R0",
+        formula="median_b(median_kr(RMS_t(w)))",
     )
     metrics[f"{prefix}/endpoints/rho0"] = _metric(
         acq["rho0"], formula="R0 / R0 = 1"
     )
     metrics[f"{prefix}/endpoints/MPR"] = _metric(
-        acq["MPR"], formula="median_bkr(abs(mu) / RMS_t(w))"
+        acq["MPR"], formula="median_b(median_kr(abs(mu) / RMS_t(w)))"
     )
     metrics[f"{prefix}/endpoints/mpr"] = _metric(
         acq["mpr"], formula="compatibility alias for MPR"
+    )
+    metrics[f"{prefix}/endpoints/mpr_prime"] = _metric(
+        acq["mpr_prime"],
+        formula="median_b(median_kr(|mu|)) / TPR",
     )
     for name, unit in (
         ("sigma_R0_beat", "mm/s"),
@@ -258,7 +263,7 @@ def _append_representation(
         "eta12",
     ):
         attrs = (
-            {"formula": "sum(energy_2_to_M) / energy_1"}
+            {"formula": "(1 - p1) / p1 on leading exported modes"}
             if name == "alpha"
             else {}
         )
@@ -267,7 +272,7 @@ def _append_representation(
         )
     metrics[f"{prefix}/decomposition/G1"] = _metric(
         acq["G1"],
-        formula="(singular_value_1 - singular_value_2) / singular_value_1",
+        formula="1 - lambda2 / lambda1",
     )
 
     for mode in range(1, calculator.exported_modes + 1):
