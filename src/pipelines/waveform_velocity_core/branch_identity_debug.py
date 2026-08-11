@@ -7,14 +7,10 @@ from scipy import ndimage as ndi
 
 from calculations.blood_flow_velocity.cross_section import (
     BranchIdentityStages,
-    CrossSectionSignalSettings,
     SegmentRingSettings,
 )
-from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (
-    _substack_window_bounds,
-)
 from calculations.blood_flow_velocity.cross_section.segment_geometry import (
-    segment_annulus_mask,
+    annulus_mask,
 )
 
 def export_branch_identity_stage_pngs(
@@ -25,11 +21,11 @@ def export_branch_identity_stage_pngs(
     ring_settings: SegmentRingSettings,
     *,
     segment_center_xy: np.ndarray | None = None,
-    cross_section_settings: CrossSectionSignalSettings | None = None,
+    profile_window_bounds_xyxy: np.ndarray | None = None,
 ) -> list[str]:
     paths = []
     stage_images = list(_stage_images(stages, optic_disc_center, ring_settings))
-    if segment_center_xy is not None and cross_section_settings is not None:
+    if segment_center_xy is not None and profile_window_bounds_xyxy is not None:
         stage_images.append(
             (
                 "13_substack_boxes_on_labels_with_rings",
@@ -38,7 +34,7 @@ def export_branch_identity_stage_pngs(
                     optic_disc_center,
                     ring_settings,
                     segment_center_xy,
-                    cross_section_settings,
+                    profile_window_bounds_xyxy,
                 ),
             )
         )
@@ -114,7 +110,7 @@ def _labels_with_substack_boxes(
     optic_disc_center,
     ring_settings: SegmentRingSettings,
     segment_center_xy: np.ndarray,
-    cross_section_settings: CrossSectionSignalSettings,
+    profile_window_bounds_xyxy: np.ndarray,
 ) -> np.ndarray:
     """Overlay the actual rotating substacks on the stage-12 label image.
 
@@ -124,7 +120,13 @@ def _labels_with_substack_boxes(
     """
     image = _labels_with_ring_overlay(labels, optic_disc_center, ring_settings)
     centers = np.asarray(segment_center_xy, dtype=np.float32)
-    if centers.ndim != 3 or centers.shape[2] != 2:
+    bounds = np.asarray(profile_window_bounds_xyxy, dtype=np.int32)
+    if (
+        centers.ndim != 3
+        or centers.shape[2] != 2
+        or bounds.ndim != 3
+        or bounds.shape[2] != 4
+    ):
         return image
 
     box_counts = np.zeros(labels.shape, dtype=np.uint8)
@@ -134,13 +136,14 @@ def _labels_with_substack_boxes(
             min(centers.shape[1], int(ring_settings.ring_count))
         ):
             center = centers[branch_index, ring_index]
-            if not np.all(np.isfinite(center)):
+            if (
+                not np.all(np.isfinite(center))
+                or ring_index >= bounds.shape[0]
+                or branch_index >= bounds.shape[1]
+            ):
                 continue
-            loc_xy = (int(center[0]), int(center[1]))
-            x_start, x_stop, y_start, y_stop = _substack_window_bounds(
-                labels.shape,
-                loc_xy,
-                cross_section_settings,
+            x_start, x_stop, y_start, y_stop = (
+                int(value) for value in bounds[ring_index, branch_index]
             )
             if x_start >= x_stop or y_start >= y_stop:
                 continue
@@ -183,10 +186,9 @@ def _ring_boundaries(
     boundaries = np.zeros(image_shape, dtype=bool)
     for ring_index in range(settings.ring_count):
         ring_inner = settings.inner_radius_frac + ring_index * settings.ring_width_frac
-        ring = segment_annulus_mask(
+        ring = annulus_mask(
             image_shape,
             optic_disc_center,
-            settings,
             ring_inner,
             ring_inner + settings.ring_width_frac,
         )

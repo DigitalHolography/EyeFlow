@@ -179,10 +179,11 @@ class ProcessResult:
 
 @dataclass
 class DatasetValue:
-    """Represents a dataset payload plus optional attributes for that dataset."""
+    """Represent a dataset payload, attributes, and HDF5 creation options."""
 
     data: Any
     attrs: dict[str, Any] | None = None
+    h5_options: dict[str, Any] | None = None
 
 
 def with_attrs(data: Any, attrs: dict[str, Any]) -> DatasetValue:

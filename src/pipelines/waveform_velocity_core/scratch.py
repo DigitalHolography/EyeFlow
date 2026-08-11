@@ -9,6 +9,8 @@ from pathlib import Path
 
 import h5py
 
+SCRATCH_CHUNK_CACHE_BYTES = 128 * 1024 * 1024
+
 
 @contextmanager
 def waveform_scratch_h5(ctx):
@@ -28,7 +30,13 @@ def waveform_scratch_h5(ctx):
     os.close(descriptor)
     path = Path(filename)
     try:
-        with h5py.File(path, "w") as scratch:
+        with h5py.File(
+            path,
+            "w",
+            rdcc_nbytes=SCRATCH_CHUNK_CACHE_BYTES,
+            rdcc_nslots=1_000_003,
+            rdcc_w0=0.75,
+        ) as scratch:
             scratch.attrs["temporary"] = True
             scratch.attrs["purpose"] = "EyeFlow waveform intermediates"
             yield scratch

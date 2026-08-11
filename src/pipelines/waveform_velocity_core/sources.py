@@ -13,12 +13,11 @@ from input_output.schema import DopplerViewSource, HolodopplerSource, Holodopple
 from .constants import (
     CROSS_SECTION_HYDRODYNAMIC_DIAMETERS,
     CROSS_SECTION_ROTATE_FROM_MASK,
-    CROSS_SECTION_SCALE_FACTOR_WIDTH,
+    CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT,
     CROSS_SECTION_VELOCITY_PROFILE_THRESHOLD,
     DEFAULT_PIXEL_SIZE_MM,
     REFERENCE_OPTIC_DISC_DIAMETER_MM,
     SPATIAL_INTERPOLATION_FACTOR,
-    USE_PRECOMPUTED_FLAT_FIELD,
 )
 
 if TYPE_CHECKING:
@@ -36,10 +35,6 @@ class WaveformVelocitySourceData:
 
     moment0: object
     moment2: object
-    moment0_flat_field_source: str
-    moment2_flat_field_source: str
-    flat_field_gaussian_ratio: float
-    flat_field_border: float
     retinal_artery_mask: np.ndarray
     retinal_vein_mask: np.ndarray
     retinal_labeled_vessels: np.ndarray | None
@@ -79,9 +74,7 @@ class WaveformVelocitySources:
         )
 
     def load(self) -> WaveformVelocitySourceData:
-        moment0, moment2, moment0_source, moment2_source = _load_moment_pair(
-            self.hd
-        )
+        moment0, moment2 = _load_moment_pair(self.hd)
         spatial_shape = moment0.shape[-2:]
         timing = self.hd.timing()
         artery_mask, artery_axes_swapped = _align_spatial_array(
@@ -119,20 +112,6 @@ class WaveformVelocitySources:
         return WaveformVelocitySourceData(
             moment0=moment0,
             moment2=moment2,
-            moment0_flat_field_source=moment0_source,
-            moment2_flat_field_source=moment2_source,
-            flat_field_gaussian_ratio=_config_float(
-                self.dv,
-                "FlatFieldCorrection",
-                "GWRatio",
-                0.07,
-            ),
-            flat_field_border=_config_float(
-                self.dv,
-                "FlatFieldCorrection",
-                "Border",
-                0.15,
-            ),
             retinal_artery_mask=np.asarray(artery_mask, dtype=bool),
             retinal_vein_mask=np.asarray(vein_mask, dtype=bool),
             retinal_labeled_vessels=labeled_vessels,
@@ -160,11 +139,13 @@ class WaveformVelocitySources:
 
     def _cross_section_settings(self, optic_disc_width, optic_disc_height):
         return CrossSectionSignalSettings(
-            scale_factor_width=CROSS_SECTION_SCALE_FACTOR_WIDTH,
             hydrodynamic_diameters=CROSS_SECTION_HYDRODYNAMIC_DIAMETERS,
             velocity_profile_threshold=CROSS_SECTION_VELOCITY_PROFILE_THRESHOLD,
             rotate_from_mask=CROSS_SECTION_ROTATE_FROM_MASK,
             pixel_size_mm=self._pixel_size(optic_disc_width, optic_disc_height),
+            submask_size_percentile_kept=(
+                CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT
+            ),
         )
 
     def _pixel_size(self, optic_disc_width, optic_disc_height) -> float:
@@ -179,32 +160,7 @@ def load_waveform_velocity_source_data(ctx: PipelineContext) -> WaveformVelocity
 
 
 def _load_moment_pair(hd: HolodopplerSource):
-    if not USE_PRECOMPUTED_FLAT_FIELD:
-        return (
-            hd.moment0_dataset(),
-            hd.moment2_dataset(),
-            "holodoppler_raw_moment0",
-            "holodoppler_raw_moment2",
-        )
-
-    moment0 = hd.moment0_flat_field_dataset()
-    moment2 = hd.moment2_flat_field_dataset()
-    missing = [
-        name
-        for name, dataset in (("moment0ff", moment0), ("moment2ff", moment2))
-        if dataset is None
-    ]
-    if missing:
-        raise KeyError(
-            "Precomputed Holodoppler flat-field mode requires both datasets: "
-            + ", ".join(missing)
-        )
-    return (
-        moment0,
-        moment2,
-        "holodoppler_precomputed_flat_field",
-        "holodoppler_precomputed_flat_field",
-    )
+    return hd.moment0_dataset(), hd.moment2_dataset()
 
 
 def _source_provenance(
@@ -277,12 +233,6 @@ def _align_spatial_sizes(width, height, *, swapped: bool):
     if swapped:
         return height, width
     return width, height
-
-
-def _config_float(source, section: str, key: str, default: float) -> float:
-    value = source.config_value(section, key, default)
-    array = np.asarray(value).reshape(-1)
-    return float(default) if array.size == 0 else float(array[0])
 
 
 def _mean_pair(first, second) -> float | None:

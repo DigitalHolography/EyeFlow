@@ -14,8 +14,6 @@ class SegmentRingSettings:
     ring_width_frac: float
     ring_count: int
     segment_length_frac: float | None = None
-    optic_disc_width: float | None = None
-    optic_disc_height: float | None = None
 
 
 def ring_masks(
@@ -24,10 +22,9 @@ def ring_masks(
     settings: SegmentRingSettings,
 ) -> np.ndarray:
     masks = [
-        segment_annulus_mask(
+        annulus_mask(
             image_shape,
             optic_disc_center,
-            settings,
             *_ring_bounds(settings, ring_index),
         )
         for ring_index in range(settings.ring_count)
@@ -44,10 +41,9 @@ def section_masks(
     if length is None:
         length = settings.ring_width_frac
     masks = [
-        segment_annulus_mask(
+        annulus_mask(
             image_shape,
             optic_disc_center,
-            settings,
             *_ring_bounds(settings, ring_index, length),
         )
         for ring_index in range(settings.ring_count)
@@ -60,17 +56,12 @@ def annulus_mask(
     optic_disc_center,
     inner_radius_frac: float,
     outer_radius_frac: float,
-    *,
-    optic_disc_width=None,
-    optic_disc_height=None,
-    optic_disc_boundary_radius_frac: float | None = None,
 ) -> np.ndarray:
     """Return a circular annulus centered on the optic disc.
 
     Radii are fractions of the distance from the optic-disc center to the
     furthest image corner. This makes an outer radius of ``1.0`` reach the
     image boundary while keeping every annulus circular in pixel coordinates.
-    The optic-disc geometry arguments are retained for API compatibility.
     """
     ny, nx = image_shape
     cy, cx = optic_disc_center_yx(optic_disc_center, ny, nx)
@@ -84,25 +75,6 @@ def annulus_mask(
     ) * scale
     radius_sq = x_distance**2 + y_distance**2
     return (radius_sq > inner_radius_frac**2) & (radius_sq <= outer_radius_frac**2)
-
-
-def segment_annulus_mask(
-    image_shape: tuple[int, int],
-    optic_disc_center,
-    settings: SegmentRingSettings,
-    inner_radius_frac: float,
-    outer_radius_frac: float,
-) -> np.ndarray:
-    """Build one segment annulus using the geometry carried by its settings."""
-    return annulus_mask(
-        image_shape,
-        optic_disc_center,
-        inner_radius_frac,
-        outer_radius_frac,
-        optic_disc_width=getattr(settings, "optic_disc_width", None),
-        optic_disc_height=getattr(settings, "optic_disc_height", None),
-        optic_disc_boundary_radius_frac=settings.inner_radius_frac,
-    )
 
 
 def optic_disc_center_yx(optic_disc_center, ny: int, nx: int) -> tuple[float, float]:

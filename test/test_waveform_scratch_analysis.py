@@ -7,11 +7,9 @@ from types import SimpleNamespace
 
 import h5py
 import numpy as np
-from scipy.ndimage import gaussian_filter
-
-from calculations.dopplerview_analysis.flat_field import (
-    corrected_flat_field_chunk,
-    fit_flat_field_parameters,
+from calculations.dopplerview_analysis.vessel_velocity_estimator import (
+    _inpaint_frame_batch,
+    run_chunked_velocity_estimator,
 )
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity.continuous import pack_continuous_velocity_outputs
@@ -21,51 +19,71 @@ from pipelines.waveform_velocity_core.dopplerview.outputs import (
 from pipelines.waveform_velocity_core.scratch import waveform_scratch_h5
 
 
-class FlatFieldTests(unittest.TestCase):
-    def test_chunked_flat_field_matches_dopplerview_formula(self) -> None:
-        rng = np.random.default_rng(4)
-        source = (10.0 + rng.random((5, 12, 10)) * 30.0).astype(np.float32)
-        width = 1.4
-        border = 0.15
-
-        params = fit_flat_field_parameters(
-            source,
-            gaussian_width=width,
-            border_amount=border,
-            frame_chunk_size=2,
-        )
-        actual = np.concatenate(
-            [
-                corrected_flat_field_chunk(source, slice(0, 2), params),
-                corrected_flat_field_chunk(source, slice(2, 5), params),
-            ]
-        )
-
-        source64 = source.astype(np.float64)
-        minimum = source64.min()
-        maximum = source64.max()
-        normalized = (source64 - minimum) / (maximum - minimum)
-        ratio = normalized / (
-            gaussian_filter(
-                normalized,
-                sigma=(0, width, width),
-                mode="reflect",
-                truncate=2.0,
-            )
-            + 1e-8
-        )
-        y0, y1 = int(np.ceil(12 * border)), int(np.floor(12 * (1 - border)))
-        x0, x1 = int(np.ceil(10 * border)), int(np.floor(10 * (1 - border)))
-        scale = (
-            normalized[:, y0:y1, x0:x1].sum()
-            / ratio[:, y0:y1, x0:x1].sum()
-        )
-        expected = minimum + (maximum - minimum) * scale * ratio
-
-        np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-5)
-
-
 class ScratchAndSchemaTests(unittest.TestCase):
+    def test_batched_inpainting_matches_independent_frames(self) -> None:
+        from skimage.restoration import inpaint
+
+        rng = np.random.default_rng(8)
+        frames = rng.random((4, 12, 10), dtype=np.float32)
+        mask = np.zeros((12, 10), dtype=bool)
+        mask[4:8, 3:7] = True
+
+        expected = np.stack(
+            [inpaint.inpaint_biharmonic(frame, mask) for frame in frames],
+            axis=0,
+        )
+        actual = _inpaint_frame_batch(frames, mask, inpaint)
+
+        np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
+
+    def test_velocity_estimator_uses_summary_only_frequency_intermediates(
+        self,
+    ) -> None:
+        rng = np.random.default_rng(9)
+        moment0 = (1.0 + rng.random((3, 16, 16))).astype(np.float32)
+        moment2 = (2.0 + rng.random((3, 16, 16))).astype(np.float32)
+        artery = np.zeros((16, 16), dtype=bool)
+        vein = np.zeros_like(artery)
+        artery[6, 6] = True
+        vein[9, 9] = True
+
+        with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
+            result = run_chunked_velocity_estimator(
+                moment0=moment0,
+                moment2=moment2,
+                artery_mask=artery,
+                vein_mask=vein,
+                local_background_dist=1,
+                scratch_h5=h5,
+                retain_velocity_video=False,
+            )
+
+            self.assertEqual([], list(h5["waveform"].keys()))
+        self.assertIsNone(result["retinal_vessel_velocity"])
+        self.assertIsNone(result["fRMS"])
+        self.assertIsNone(result["fRMS_bkg"])
+        self.assertIsNone(result["deltafRMS"])
+        self.assertEqual((16, 16), result["deltafRMS_avg"].shape)
+        self.assertEqual((3,), result["retinal_artery_fRMS_signal"].shape)
+
+        with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
+            retained = run_chunked_velocity_estimator(
+                moment0=moment0,
+                moment2=moment2,
+                artery_mask=artery,
+                vein_mask=vein,
+                local_background_dist=1,
+                scratch_h5=h5,
+                retain_velocity_video=True,
+            )
+            dataset = h5["waveform/velocity"]
+            self.assertEqual(["velocity"], list(h5["waveform"].keys()))
+            self.assertEqual(
+                retained["retinal_vessel_velocity"].name,
+                dataset.name,
+            )
+            self.assertIsNone(dataset.compression)
+
     def test_scratch_h5_is_removed_after_context(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "output.h5"

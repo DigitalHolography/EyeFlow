@@ -24,12 +24,45 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
     f_video = ctx.analysis.get("fRMS")
     f_bkg = ctx.analysis.get("fRMS_bkg")
     delta = ctx.analysis.get("deltafRMS")
-    if f_video is not None and f_bkg is not None:
-        f_artery = _display_frequency(_masked_signal(f_video, ctx.artery_section_mask))
-        f_artery_bkg = _display_frequency(_masked_signal(f_bkg, ctx.artery_section_mask))
-        f_vein = _display_frequency(_masked_signal(f_video, ctx.vein_section_mask))
-        f_vein_bkg = _display_frequency(_masked_signal(f_bkg, ctx.vein_section_mask))
-        f_vessel_bkg = _display_frequency(_masked_signal(f_bkg, ctx.vessel_section_mask))
+    f_artery = _summary_or_masked_signal(
+        ctx,
+        "retinal_artery_fRMS_signal",
+        f_video,
+        ctx.artery_section_mask,
+    )
+    f_artery_bkg = _summary_or_masked_signal(
+        ctx,
+        "retinal_artery_fRMS_bkg_signal",
+        f_bkg,
+        ctx.artery_section_mask,
+    )
+    f_vein = _summary_or_masked_signal(
+        ctx,
+        "retinal_vein_fRMS_signal",
+        f_video,
+        ctx.vein_section_mask,
+    )
+    f_vein_bkg = _summary_or_masked_signal(
+        ctx,
+        "retinal_vein_fRMS_bkg_signal",
+        f_bkg,
+        ctx.vein_section_mask,
+    )
+    f_vessel_bkg = _summary_or_masked_signal(
+        ctx,
+        "retinal_vessel_fRMS_bkg_signal",
+        f_bkg,
+        ctx.vessel_section_mask,
+    )
+    if all(
+        value is not None
+        for value in (f_artery, f_artery_bkg, f_vein, f_vein_bkg, f_vessel_bkg)
+    ):
+        f_artery = _display_frequency(f_artery)
+        f_artery_bkg = _display_frequency(f_artery_bkg)
+        f_vein = _display_frequency(f_vein)
+        f_vein_bkg = _display_frequency(f_vein_bkg)
+        f_vessel_bkg = _display_frequency(f_vessel_bkg)
         paths.append(
             _line_plot(
                 writer,
@@ -67,7 +100,19 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
     else:
         _log(ctx, "Skipping fRMS signal PNGs; fRMS intermediates are unavailable.")
 
-    if delta is not None:
+    delta_artery = _summary_or_masked_signal(
+        ctx,
+        "retinal_artery_deltafRMS_signal",
+        delta,
+        ctx.artery_section_mask,
+    )
+    delta_vein = _summary_or_masked_signal(
+        ctx,
+        "retinal_vein_deltafRMS_signal",
+        delta,
+        ctx.vein_section_mask,
+    )
+    if delta_artery is not None and delta_vein is not None:
         paths.append(
             _line_plot(
                 writer,
@@ -75,13 +120,13 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
                 ctx.time,
                 [
                     (
-                        _display_frequency(_masked_signal(delta, ctx.artery_section_mask)),
+                        _display_frequency(delta_artery),
                         "-",
                         "tab:red",
                         "arteries",
                     ),
                     (
-                        _display_frequency(_masked_signal(delta, ctx.vein_section_mask)),
+                        _display_frequency(delta_vein),
                         "-",
                         "tab:blue",
                         "veins",
@@ -123,3 +168,12 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
         )
     )
     return paths
+
+
+def _summary_or_masked_signal(ctx, key: str, video, mask):
+    summary = ctx.analysis.get(key)
+    if summary is not None:
+        return _vector(summary)
+    if video is None:
+        return None
+    return _masked_signal(video, mask)
