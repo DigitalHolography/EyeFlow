@@ -20,16 +20,6 @@ class ProfileData:
     velocity: np.ndarray
     x_micrometers: np.ndarray
 
-    @property
-    def velocity_profiles(self) -> np.ndarray:
-        """Compatibility name used by the cross-section result object."""
-        return self.velocity
-
-    @property
-    def profile_x_micrometers(self) -> np.ndarray:
-        """Compatibility name used by the cross-section result object."""
-        return self.x_micrometers
-
 
 @dataclass(frozen=True)
 class ProfileProcessingResult:

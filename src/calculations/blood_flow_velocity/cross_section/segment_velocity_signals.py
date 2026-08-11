@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import numpy as np
 
+from calculations.compute_backend import optional_cupy_backend
+from utils.logger import Logger
+
 from .generate_cross_section_signals import (
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
-    generate_cross_section_signals,
+    _fixed_substack_side_pixels,
+    _generate_cross_section_signals_from_geometry,
+    _prepare_cross_section_geometry,
 )
 from .segment_geometry import SegmentRingSettings
 
@@ -40,29 +45,43 @@ def segment_velocity_results(
     cross_section_settings: CrossSectionSignalSettings | None = None,
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
     settings = _cross_section_settings(cross_section_settings)
-    return (
-        _segment_velocity(
-            velocity, artery_mask, optic_disc_center, ring_settings, settings
-        ),
-        _segment_velocity(
-            velocity, vein_mask, optic_disc_center, ring_settings, settings
-        ),
+    backend = optional_cupy_backend()
+    Logger.log(
+        "Cross-section compute backend: "
+        + ("CuPy/CUDA" if backend is not None else "CPU with parallel segments")
+        + "."
     )
-
-
-def _segment_velocity(
-    velocity,
-    vessel_mask,
-    optic_disc_center,
-    ring_settings: SegmentRingSettings,
-    cross_section_settings: CrossSectionSignalSettings,
-) -> CrossSectionSignalResult:
-    return generate_cross_section_signals(
-        velocity,
-        np.asarray(vessel_mask, dtype=bool),
+    artery_geometry = _prepare_cross_section_geometry(
+        artery_mask,
         optic_disc_center,
         ring_settings,
-        cross_section_settings,
+    )
+    vein_geometry = _prepare_cross_section_geometry(
+        vein_mask,
+        optic_disc_center,
+        ring_settings,
+    )
+    substack_side_pixels = _fixed_substack_side_pixels(
+        (artery_geometry, vein_geometry),
+        settings.submask_size_percentile_kept,
+    )
+    return (
+        _generate_cross_section_signals_from_geometry(
+            velocity,
+            artery_geometry,
+            optic_disc_center,
+            ring_settings,
+            settings,
+            substack_side_pixels,
+        ),
+        _generate_cross_section_signals_from_geometry(
+            velocity,
+            vein_geometry,
+            optic_disc_center,
+            ring_settings,
+            settings,
+            substack_side_pixels,
+        ),
     )
 
 
@@ -70,7 +89,6 @@ def _cross_section_settings(value: CrossSectionSignalSettings | None):
     if value is not None:
         return value
     return CrossSectionSignalSettings(
-        scale_factor_width=3.0,
         hydrodynamic_diameters=True,
         velocity_profile_threshold=0.5,
         rotate_from_mask=False,

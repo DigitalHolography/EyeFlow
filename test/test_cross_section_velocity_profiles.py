@@ -13,9 +13,6 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
-    _pack_transverse_profiles,
-)
 from calculations.blood_flow_velocity.cross_section.profile_processing import (  # noqa: E402
     _matlab_poiseuille_fit,
     interpolate_velocity_profiles_per_beat,
@@ -39,24 +36,7 @@ from pipelines.waveform_velocity.profiles import (  # noqa: E402
 
 
 class TransverseProfilePackingTests(unittest.TestCase):
-    def test_variable_width_profiles_are_center_padded_without_interpolation(self) -> None:
-        cells = np.empty((1, 2), dtype=object)
-        cells[0, 0] = np.asarray([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
-        cells[0, 1] = np.asarray(
-            [[10, 11, 12, 13, 14], [20, 21, 22, 23, 24]],
-            dtype=np.float32,
-        )
-
-        profiles, x_pixels, counts = _pack_transverse_profiles(cells, frame_count=2)
-
-        self.assertEqual((1, 2, 2, 5), profiles.shape)
-        np.testing.assert_array_equal(x_pixels, [-2, -1, 0, 1, 2])
-        np.testing.assert_array_equal(counts, [[3, 5]])
-        np.testing.assert_array_equal(profiles[0, 0, :, 1:4], cells[0, 0])
-        self.assertTrue(np.all(np.isnan(profiles[0, 0, :, [0, 4]])))
-        np.testing.assert_array_equal(profiles[0, 1], cells[0, 1])
-
-    def test_h5_export_contains_raw_and_interpolated_profiles(self) -> None:
+    def test_h5_export_contains_unmasked_and_masked_profiles(self) -> None:
         artery = _segments(radius_count=2, branch_count=1)
         vein = _segments(radius_count=2, branch_count=0)
         cycle_boundaries = np.asarray([0, 2, 5], dtype=np.int32)
@@ -66,54 +46,59 @@ class TransverseProfilePackingTests(unittest.TestCase):
             cycle_boundaries,
         )
         schema = EyeFlowOutputPaths.active()
-        self.assertEqual(8, len(metrics))
+        self.assertEqual(4, len(metrics))
+        self.assertEqual(
+            "Processing/CrossSections/Artery/VelocityProfile",
+            schema.artery_cross_section_profiles.velocity_profile,
+        )
+        self.assertEqual(
+            "Processing/CrossSections/Artery/VelocityProfileMasked",
+            schema.artery_cross_section_profiles.velocity_profile_masked,
+        )
+        self.assertEqual(
+            "Processing/CrossSections/Vein/VelocityProfile",
+            schema.vein_cross_section_profiles.velocity_profile,
+        )
+        self.assertEqual(
+            "Processing/CrossSections/Vein/VelocityProfileMasked",
+            schema.vein_cross_section_profiles.velocity_profile_masked,
+        )
 
         with h5py.File("profiles.h5", "w", driver="core", backing_store=False) as h5:
             for path, value in metrics.items():
                 write_value_dataset(h5, path, value)
-            raw_dataset = h5[
-                schema.artery_cross_section_profiles.raw_profile.velocity_profile
+            dataset = h5[schema.artery_cross_section_profiles.velocity_profile]
+            masked_dataset = h5[
+                schema.artery_cross_section_profiles.velocity_profile_masked
             ]
-            self.assertEqual((7, 4, 2, 1, 2), raw_dataset.shape)
-            self.assertEqual(
-                list(raw_dataset.attrs["dimDesc"]),
-                ["x", "time", "beat", "branch", "radius"],
-            )
-            raw_coordinate = h5[
-                schema.artery_cross_section_profiles
-                .raw_profile.transverse_coordinate_micrometers
-            ]
-            self.assertEqual((7,), raw_coordinate.shape)
-            self.assertEqual("um", raw_coordinate.attrs["unit"])
-            dataset = h5[
-                schema.artery_cross_section_profiles
-                .interpolated_profile.velocity_profile
-            ]
-            self.assertEqual((256, 4, 2, 1, 2), dataset.shape)
+            self.assertEqual((181, 4, 2, 1, 2), dataset.shape)
+            self.assertEqual(dataset.shape, masked_dataset.shape)
             self.assertEqual(
                 list(dataset.attrs["dimDesc"]),
                 ["x", "time", "beat", "branch", "radius"],
             )
             self.assertEqual("mm/s", dataset.attrs["unit"])
-            coordinate = h5[
-                schema.artery_cross_section_profiles
-                .interpolated_profile.transverse_coordinate_micrometers
-            ]
-            self.assertEqual((256, 1, 2), coordinate.shape)
-            self.assertEqual(
-                list(coordinate.attrs["dimDesc"]),
-                ["x", "branch", "radius"],
+            self.assertEqual("gzip", dataset.compression)
+            self.assertEqual(4, dataset.compression_opts)
+            self.assertTrue(dataset.shuffle)
+            self.assertEqual((181, 4, 1, 1, 1), dataset.chunks)
+            self.assertFalse(
+                np.array_equal(dataset[...], masked_dataset[...], equal_nan=True)
             )
-            self.assertEqual("um", coordinate.attrs["unit"])
-            empty_raw = h5[
-                schema.vein_cross_section_profiles.raw_profile.velocity_profile
+            empty = h5[schema.vein_cross_section_profiles.velocity_profile]
+            empty_masked = h5[
+                schema.vein_cross_section_profiles.velocity_profile_masked
             ]
-            self.assertEqual((7, 4, 2, 0, 2), empty_raw.shape)
-            empty = h5[
-                schema.vein_cross_section_profiles
-                .interpolated_profile.velocity_profile
-            ]
-            self.assertEqual((256, 4, 2, 0, 2), empty.shape)
+            self.assertEqual((181, 4, 2, 0, 2), empty.shape)
+            self.assertEqual(empty.shape, empty_masked.shape)
+            self.assertNotIn(
+                "Processing/CrossSections/Artery/InterpolatedProfile",
+                h5,
+            )
+            self.assertNotIn(
+                "Processing/CrossSections/Vein/InterpolatedProfile",
+                h5,
+            )
 
     def test_profile_time_axis_matches_standard_per_beat_interpolation(self) -> None:
         segments = _segments(radius_count=1, branch_count=1)
@@ -196,7 +181,7 @@ class TransverseProfilePackingTests(unittest.TestCase):
         )
         self.assertAlmostEqual(1.0, r_squared)
 
-    def test_nan_rotation_matches_matlab_imrotatecustom(self) -> None:
+    def test_nan_rotation_interpolates_only_finite_values(self) -> None:
         image = np.full((5, 5), np.nan, dtype=np.float32)
         image[1:4, 1:4] = np.arange(1, 10, dtype=np.float32).reshape(
             3,
@@ -206,9 +191,9 @@ class TransverseProfilePackingTests(unittest.TestCase):
         expected = np.asarray(
             [
                 [np.nan, np.nan, np.nan, np.nan, np.nan],
-                [np.nan, 1.839746, 5.633975, 4.839746, np.nan],
+                [np.nan, 2.901924, 5.633975, 7.633975, np.nan],
                 [np.nan, 1.901924, 5.0, 8.098076, np.nan],
-                [np.nan, 1.5, 4.366025, 4.5, np.nan],
+                [np.nan, 2.366025, 4.366025, 7.098076, np.nan],
                 [np.nan, np.nan, np.nan, np.nan, np.nan],
             ],
             dtype=np.float32,
@@ -219,6 +204,15 @@ class TransverseProfilePackingTests(unittest.TestCase):
             expected,
             rtol=1e-6,
             equal_nan=True,
+        )
+
+        low_velocity = np.full((7, 7), np.nan, dtype=np.float32)
+        low_velocity[2:5, 2:5] = np.float32(0.2)
+        finite_rotated = rotate_image_with_nan(low_velocity, 30.0)
+        np.testing.assert_allclose(
+            finite_rotated[np.isfinite(finite_rotated)],
+            np.float32(0.2),
+            rtol=1e-6,
         )
 
 
@@ -269,8 +263,8 @@ class ProfileArtifactTests(unittest.TestCase):
 
 def _segments(*, radius_count: int, branch_count: int):
     frames = 6
-    width = 7
-    x_pixels = np.arange(-3, 4, dtype=np.float32)
+    width = 181
+    x_pixels = np.linspace(-3.0, 3.0, width, dtype=np.float32)
     profiles = np.empty(
         (radius_count, branch_count, frames, width),
         dtype=np.float32,
@@ -287,9 +281,13 @@ def _segments(*, radius_count: int, branch_count: int):
         pixel_size_mm=0.01,
         velocity_profile_threshold=0.5,
     )
+    profiles_masked = profiles.copy()
+    if branch_count:
+        profiles_masked[..., 0] = np.nan
     return SimpleNamespace(
         branch_ids=np.arange(1, branch_count + 1, dtype=np.int32),
         velocity_profiles=profiles,
+        velocity_profiles_masked=profiles_masked,
         profile_x_micrometers=processed.raw_x_micrometers,
         profile_sample_count=np.full(
             (radius_count, branch_count),

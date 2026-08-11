@@ -74,25 +74,9 @@ class SegmentationOutputPaths:
 
 
 @dataclass(frozen=True)
-class CrossSectionProfileVariantOutputPaths:
-    velocity_profile: str
-    transverse_coordinate_micrometers: str
-
-
-@dataclass(frozen=True)
 class CrossSectionProfileOutputPaths:
-    raw_profile: CrossSectionProfileVariantOutputPaths
-    interpolated_profile: CrossSectionProfileVariantOutputPaths
-
-    @property
-    def velocity_profile(self) -> str:
-        """Compatibility path for the previously exported profile."""
-        return self.interpolated_profile.velocity_profile
-
-    @property
-    def transverse_coordinate_micrometers(self) -> str:
-        """Compatibility path for the previously exported coordinates."""
-        return self.interpolated_profile.transverse_coordinate_micrometers
+    velocity_profile: str
+    velocity_profile_masked: str
 
 
 @dataclass(frozen=True)
@@ -155,18 +139,9 @@ def _cross_section_profile_paths(
     *,
     velocity_profile_name: str = "VelocityProfile",
 ) -> CrossSectionProfileOutputPaths:
-    def variant_paths(prefix: str) -> CrossSectionProfileVariantOutputPaths:
-        variant_root = f"{root}/{prefix}"
-        return CrossSectionProfileVariantOutputPaths(
-            velocity_profile=f"{variant_root}/{velocity_profile_name}/value",
-            transverse_coordinate_micrometers=(
-                f"{variant_root}/TransverseCoordinateMicrometers/value"
-            ),
-        )
-
     return CrossSectionProfileOutputPaths(
-        raw_profile=variant_paths("RawProfile"),
-        interpolated_profile=variant_paths("InterpolatedProfile"),
+        velocity_profile=f"{root}/{velocity_profile_name}",
+        velocity_profile_masked=f"{root}/{velocity_profile_name}Masked",
     )
 
 
