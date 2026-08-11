@@ -1,6 +1,7 @@
 {
   "pipeline_visibility": {
     "absolute_waveform_metrics": true,
+    "displacement_map": true,
     "lowrank_waveform_decomposition": true,
     "pdf_report": true,
     "waveform_shape_metrics": true,

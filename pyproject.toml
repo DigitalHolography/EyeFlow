@@ -23,11 +23,20 @@ dependencies = [
     "sv-ttk>=2.6",
     "tkinterdnd2",
     "Pillow>=9.0.0",
+    "simpleitk>=2.5.6",
+    "opencv-python>=5.0.0.93",
+    "tqdm>=4.70.0",
 ]
 
 [project.optional-dependencies]
 # For specific pipelines
-pipelines = ["torch>=2.2", "pandas>=2.1"]
+pipelines = [
+    "torch>=2.2",
+    "pandas>=2.1",
+    "opencv-python>=4.8",
+    "SimpleITK>=2.3",
+    "tqdm>=4.66",
+]
 gpu = ["cupy>=14.1.1"]
 
 # =============== [ SCRIPTS ] ===============

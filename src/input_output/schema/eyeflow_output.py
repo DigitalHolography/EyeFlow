@@ -106,6 +106,7 @@ class EyeFlowOutputPaths:
     artery_velocity_profiles: VelocityProfileOutputPaths
     vein_velocity_profiles: VelocityProfileOutputPaths
     heartbeat: HeartbeatOutputPaths
+    displacement_map: str
     beat_period_seconds: str
     waveform_shape_metrics_root: str
     absolute_waveform_metrics_root: str
@@ -248,6 +249,7 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
         velocity_profile_name="VelocityProfileSeg",
     ),
     heartbeat=LEGACY_HEARTBEAT_OUTPUT,
+    displacement_map="Processing/DisplacementMap",
     beat_period_seconds="Artery/VelocityPerBeat/beatPeriodSeconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="Metrics/absolute_waveform_metrics",
@@ -306,6 +308,7 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
         "vein/cross_sections/RawProfile"
     ),
     heartbeat=LEGACY_HEARTBEAT_OUTPUT,
+    displacement_map="Processing/DisplacementMap",
     beat_period_seconds="perbeat/beat_period_seconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="Metrics/absolute_waveform_metrics",
@@ -404,6 +407,7 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         "Processing/VelocityProfiles/Vein"
     ),
     heartbeat=HEARTBEAT_OUTPUT,
+    displacement_map="Processing/DisplacementMap",
     beat_period_seconds="Processing/VelocityPerBeat/BeatPeriodSeconds/value",
     waveform_shape_metrics_root="Processing/Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="Processing/Metrics/absolute_waveform_metrics",
