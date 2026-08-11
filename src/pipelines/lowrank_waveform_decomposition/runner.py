@@ -20,7 +20,7 @@ def run_lowrank_waveform_decomposition(ctx) -> dict[str, object]:
     selected = ctx.options_for("lowrank_waveform_decomposition")
     outputs = pack_lowrank_waveform_decomposition_outputs(
         velocity_outputs,
-        include_veins="veins" in selected,
+        vein_flag="veins" in selected,
     )
     ctx.state.set(LOWRANK_WAVEFORM_OUTPUTS_STATE, outputs)
     return outputs

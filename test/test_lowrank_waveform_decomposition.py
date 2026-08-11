@@ -188,7 +188,7 @@ class LowRankWaveformDecompositionTests(unittest.TestCase):
         self.assertFalse(any(key.startswith(f"{root}/vein/") for key in artery_only))
 
         with_veins = pack_lowrank_waveform_decomposition_outputs(
-            inputs, include_veins=True
+            inputs, vein_flag=True
         )
         self.assertIn(f"{root}/vein/raw/endpoints/A1", with_veins)
         self.assertIn(f"{root}/artery/raw/per_beat/A1_b_pb", with_veins)

@@ -16,7 +16,7 @@ def pack_lowrank_waveform_decomposition_outputs(
     velocity_outputs: Mapping[str, object],
     output_paths: EyeFlowOutputPaths | str | None = None,
     *,
-    include_veins: bool = False,
+    vein_flag: bool = False,
 ) -> dict[str, object]:
     """Compute and prefix low-rank products from shared per-beat outputs."""
     schema = _resolve_output_paths(output_paths)
@@ -34,7 +34,7 @@ def pack_lowrank_waveform_decomposition_outputs(
             schema.artery_per_beat.segment_velocity_signal_band_limited,
         ),
     ]
-    if include_veins:
+    if vein_flag:
         sources.extend(
             (
                 ("vein/raw", schema.vein_per_beat.segment_velocity_signal),
