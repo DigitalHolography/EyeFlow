@@ -281,7 +281,7 @@ wheels = [
 
 [[package]]
 name = "eyeflow"
-version = "0.12.3"
+version = "1.13.0"
 source = { editable = "." }
 dependencies = [
     { name = "h5py" },
