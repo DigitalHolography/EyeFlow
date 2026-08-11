@@ -23,7 +23,10 @@ from calculations.blood_flow_velocity.cross_section.branch_identity import (  # 
     _branch_identity_stages,
 )
 from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
+    _ROTATED_SUBSTACK_SIDE,
     _CrossSectionBuffers,
+    _CrossSectionMeasurement,
+    _center_pad_for_rotation,
     _fill_cross_section_buffers,
     _fixed_subimage_stack,
     _fixed_substack_side_pixels,
@@ -31,6 +34,7 @@ from calculations.blood_flow_velocity.cross_section.generate_cross_section_signa
     _PreparedCrossSectionGeometry,
     _resize_subimage_stack,
     _resize_submask,
+    _rotated_profile_sample_count,
     _rotate_stack_with_nan,
     _sample_nanstd_axis0,
 )
@@ -45,6 +49,9 @@ from calculations.blood_flow_velocity.cross_section.segment_geometry import (  #
 from calculations.math import rotate_image_with_nan  # noqa: E402
 from pipelines.waveform_velocity_core.branch_identity_debug import (  # noqa: E402
     _labels_with_substack_boxes,
+)
+from pipelines.waveform_velocity_core.cross_section_images import (  # noqa: E402
+    export_rotated_mean_pngs,
 )
 from pipelines.waveform_velocity_core.runner import _segment_ring_settings  # noqa: E402
 from utils.logger import Logger  # noqa: E402
@@ -259,6 +266,22 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(stack[:, 0])))
         np.testing.assert_array_equal(stack[:, 1:5, 2:5], velocity[:, 0:4, 0:3])
 
+    def test_fixed_subimage_retains_in_bounds_pixels_outside_segment_mask(self) -> None:
+        velocity = np.arange(25, dtype=np.float32).reshape(1, 5, 5)
+        segment = np.zeros((5, 5), dtype=bool)
+        segment[2, 2] = True
+
+        stack, mask, _ = _fixed_subimage_stack(
+            velocity,
+            segment,
+            (2, 2),
+            3,
+        )
+
+        np.testing.assert_array_equal(stack[0], velocity[0, 1:4, 1:4])
+        self.assertEqual(1, int(np.count_nonzero(mask)))
+        self.assertTrue(mask[1, 1])
+
     def test_image_and_mask_resize_use_separate_128_square_paths(self) -> None:
         image = np.full((3, 3), np.nan, dtype=np.float32)
         image[1, 1] = 7.0
@@ -274,6 +297,25 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertTrue(np.allclose(resized_image[resized_mask], 7.0))
         resized_image[~resized_mask] = np.nan
         self.assertTrue(np.all(np.isnan(resized_image[~resized_mask])))
+
+    def test_rotation_canvas_and_unpadded_sample_count_cover_all_angles(self) -> None:
+        values = np.ones((2, 128, 128), dtype=np.float32)
+        mask = np.ones((128, 128), dtype=bool)
+
+        padded_values = _center_pad_for_rotation(values, np.nan)
+        padded_mask = _center_pad_for_rotation(mask, False)
+
+        self.assertEqual(181, _ROTATED_SUBSTACK_SIDE)
+        self.assertEqual((2, 181, 181), padded_values.shape)
+        self.assertEqual((181, 181), padded_mask.shape)
+        np.testing.assert_array_equal(padded_values[:, 26:154, 26:154], values)
+        np.testing.assert_array_equal(padded_mask[26:154, 26:154], mask)
+        self.assertTrue(np.all(np.isnan(padded_values[:, :26])))
+        self.assertFalse(np.any(padded_mask[:26]))
+        self.assertEqual(128, _rotated_profile_sample_count(0.0))
+        self.assertEqual(181, _rotated_profile_sample_count(45.0))
+        self.assertEqual(128, _rotated_profile_sample_count(90.0))
+        self.assertEqual(179, _rotated_profile_sample_count(37.0))
 
     def test_substack_debug_overlay_marks_shared_box_edges(self) -> None:
         labels = np.ones((20, 20), dtype=np.int32)
@@ -305,6 +347,54 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertEqual((20, 20, 3), image.shape)
         np.testing.assert_array_equal(image[4, 4], [255, 255, 0])
         np.testing.assert_array_equal(image[4, 6], [255, 0, 255])
+
+    def test_rotated_means_export_to_separate_vessel_subfolders(self) -> None:
+        class RecordingOutput:
+            def __init__(self) -> None:
+                self.writes = []
+
+            def write_png(self, image, filename):
+                self.writes.append((np.asarray(image).copy(), filename))
+                return Path(filename)
+
+        rotated_means = np.arange(
+            2 * 2 * 181 * 181,
+            dtype=np.float32,
+        ).reshape(2, 2, 181, 181)
+        result = SimpleNamespace(
+            rotated_mean_images=rotated_means,
+            rotated_mean_images_masked=-rotated_means,
+            profile_sample_count=np.asarray([[128, 0], [128, 128]]),
+            branch_ids=np.asarray([4, 9]),
+        )
+        output = RecordingOutput()
+
+        artery_paths = export_rotated_mean_pngs(output, result, "arteries")
+        vein_paths = export_rotated_mean_pngs(output, result, "veins")
+
+        self.assertEqual(
+            [
+                Path("rotated_mean/arteries/ring_001_branch_004.png"),
+                Path("rotated_mean/arteries/ring_002_branch_004.png"),
+                Path("rotated_mean/arteries/ring_002_branch_009.png"),
+                Path("rotated_mean_masked/arteries/ring_001_branch_004.png"),
+                Path("rotated_mean_masked/arteries/ring_002_branch_004.png"),
+                Path("rotated_mean_masked/arteries/ring_002_branch_009.png"),
+            ],
+            artery_paths,
+        )
+        self.assertEqual(
+            [
+                Path("rotated_mean/veins/ring_001_branch_004.png"),
+                Path("rotated_mean/veins/ring_002_branch_004.png"),
+                Path("rotated_mean/veins/ring_002_branch_009.png"),
+                Path("rotated_mean_masked/veins/ring_001_branch_004.png"),
+                Path("rotated_mean_masked/veins/ring_002_branch_004.png"),
+                Path("rotated_mean_masked/veins/ring_002_branch_009.png"),
+            ],
+            vein_paths,
+        )
+        np.testing.assert_array_equal(output.writes[0][0], rotated_means[0, 0])
 
     def test_segment_analysis_uses_disc_extent_and_corner_spacing(self) -> None:
         settings = _segment_ring_settings(
@@ -374,6 +464,10 @@ class SegmentCenterTests(unittest.TestCase):
         settings = CrossSectionSignalSettings(False, 0.5, False, 0.01)
 
         signal = np.arange(3, dtype=np.float32)
+        rotated_mean = np.full((181, 181), 7.0, dtype=np.float32)
+        rotated_mean_masked = np.full((181, 181), 5.0, dtype=np.float32)
+        profiles = np.ones((3, 181), dtype=np.float32)
+        profiles_masked = np.full((3, 181), 2.0, dtype=np.float32)
         with patch(
             "calculations.blood_flow_velocity.cross_section."
             "generate_cross_section_signals._tilt_angle",
@@ -381,13 +475,25 @@ class SegmentCenterTests(unittest.TestCase):
         ), patch(
             "calculations.blood_flow_velocity.cross_section."
             "generate_cross_section_signals._cross_section_velocity_from_substack",
-            return_value=(
-                signal,
-                signal,
-                np.zeros((3, 128), dtype=np.float32),
-                0.0,
-                np.zeros((128,), dtype=np.float32),
-                (0, 127),
+            return_value=_CrossSectionMeasurement(
+                unmasked=(
+                    signal,
+                    signal,
+                    profiles,
+                    0.0,
+                    np.zeros((181,), dtype=np.float32),
+                ),
+                masked=(
+                    signal,
+                    signal,
+                    profiles_masked,
+                    0.0,
+                    np.zeros((181,), dtype=np.float32),
+                ),
+                rotated_mean=rotated_mean,
+                rotated_mean_masked=rotated_mean_masked,
+                limits=(0, 127),
+                sample_count=128,
             ),
         ):
             _fill_cross_section_buffers(
@@ -415,8 +521,19 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertEqual(128, buffers.profile_sample_count[0, 0])
         self.assertEqual(128, buffers.profile_sample_count[1, 1])
         self.assertEqual(
-            (2, 2, 3, 128),
+            (2, 2, 3, 181),
             buffers.velocity_profiles.shape,
+        )
+        np.testing.assert_array_equal(buffers.rotated_mean_images[0, 0], rotated_mean)
+        np.testing.assert_array_equal(buffers.rotated_mean_images[1, 1], rotated_mean)
+        np.testing.assert_array_equal(buffers.velocity_profiles[0, 0], profiles)
+        np.testing.assert_array_equal(
+            buffers.velocity_profiles_masked[0, 0],
+            profiles_masked,
+        )
+        np.testing.assert_array_equal(
+            buffers.rotated_mean_images_masked[0, 0],
+            rotated_mean_masked,
         )
 
 
@@ -455,7 +572,7 @@ class ReusableCrossSectionProjectionTests(unittest.TestCase):
             patch(
                 "calculations.blood_flow_velocity.cross_section."
                 "generate_cross_section_signals._cross_section_limits",
-                return_value=(1, 5),
+                return_value=(80, 100),
             ) as cross_section_limits,
         ):
             result = generate_cross_section_signals_for_cubes(
@@ -484,11 +601,21 @@ class ReusableCrossSectionProjectionTests(unittest.TestCase):
         )
         self.assertEqual(5, result.plan.profile_window_side_pixels)
         self.assertAlmostEqual(0.01 * 5.0 / 128.0, result.plan.profile_pixel_size_mm)
-        self.assertEqual((1, 1, 4, 128), result.reference.velocity_profiles.shape)
-        np.testing.assert_array_equal(result.reference.profile_sample_count, [[128]])
+        self.assertEqual((1, 1, 4, 181), result.reference.velocity_profiles.shape)
+        self.assertEqual(
+            (1, 1, 4, 181),
+            result.reference.velocity_profiles_masked.shape,
+        )
+        self.assertEqual((1, 1, 181, 181), result.reference.rotated_mean_images.shape)
+        self.assertEqual(
+            (1, 1, 181, 181),
+            result.reference.rotated_mean_images_masked.shape,
+        )
+        self.assertEqual((181,), result.reference.profile_x_micrometers.shape)
+        np.testing.assert_array_equal(result.reference.profile_sample_count, [[179]])
         np.testing.assert_array_equal(
             result.plan.profile_integration_limits_pixels,
-            [[[1, 5]]],
+            [[[80, 100]]],
         )
         for name in ("second", "third", "fourth"):
             projected = result.passes[name]

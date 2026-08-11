@@ -36,6 +36,7 @@ from .constants import (
     SEGMENT_LENGTH_FRAC,
     SEGMENT_OUTER_RADIUS_FRAC,
 )
+from .cross_section_images import export_rotated_mean_pngs
 from .dopplerview.outputs import (
     pack_dopplerview_shared_outputs,
 )
@@ -321,6 +322,10 @@ def _segment_velocity_inputs(
             ring_settings,
             source_data.cross_section_settings,
         )
+    if ctx.output.available:
+        with _logged_stage("rotated mean PNG export"):
+            export_rotated_mean_pngs(ctx.output, artery, "arteries")
+            export_rotated_mean_pngs(ctx.output, vein, "veins")
     _export_branch_identity_debug(
         ctx,
         artery,

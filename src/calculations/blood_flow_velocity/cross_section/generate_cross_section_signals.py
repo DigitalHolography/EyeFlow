@@ -32,12 +32,15 @@ class CrossSectionSignalSettings:
 
 @dataclass(frozen=True, kw_only=True)
 class CrossSectionProfileOutputs:
-    """Raw, interpolated, centered, and fitted transverse profile outputs."""
+    """Unmasked, masked, centered, and fitted transverse profile outputs."""
 
     velocity_profiles: np.ndarray
+    velocity_profiles_masked: np.ndarray
     profile_x_micrometers: np.ndarray
     profile_sample_count: np.ndarray
     profile_rotation_degrees: np.ndarray
+    rotated_mean_images: np.ndarray
+    rotated_mean_images_masked: np.ndarray
     profile_window_bounds_xyxy: np.ndarray
     profile_window_side_pixels: int
     profile_pixel_size_mm: float
@@ -108,7 +111,18 @@ class _CrossSectionWork:
     tilt_angle_mask: float
 
 
+@dataclass(frozen=True)
+class _CrossSectionMeasurement:
+    unmasked: tuple[np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]
+    masked: tuple[np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]
+    rotated_mean: np.ndarray
+    rotated_mean_masked: np.ndarray
+    limits: tuple[int, int]
+    sample_count: int
+
+
 _INTERPOLATED_SUBSTACK_SIDE = 128
+_ROTATED_SUBSTACK_SIDE = int(_INTERPOLATED_SUBSTACK_SIDE * np.sqrt(2.0))
 _MAX_PARALLEL_CROSS_SECTIONS = 4
 
 
@@ -118,9 +132,12 @@ class _CrossSectionBuffers:
     safe_velocity: np.ndarray
     segment_center_xy: np.ndarray
     velocity_profiles: np.ndarray
+    velocity_profiles_masked: np.ndarray
     profile_sample_count: np.ndarray
     profile_spatial_std: np.ndarray
     profile_rotation_degrees: np.ndarray
+    rotated_mean_images: np.ndarray
+    rotated_mean_images_masked: np.ndarray
     profile_window_bounds_xyxy: np.ndarray
     profile_integration_limits_pixels: np.ndarray
 
@@ -143,18 +160,41 @@ class _CrossSectionBuffers:
                 dtype=np.float32,
             ),
             velocity_profiles=np.full(
-                (*signal_shape, _INTERPOLATED_SUBSTACK_SIDE),
+                (*signal_shape, _ROTATED_SUBSTACK_SIDE),
+                np.nan,
+                dtype=np.float32,
+            ),
+            velocity_profiles_masked=np.full(
+                (*signal_shape, _ROTATED_SUBSTACK_SIDE),
                 np.nan,
                 dtype=np.float32,
             ),
             profile_sample_count=np.zeros(profile_shape, dtype=np.int32),
             profile_spatial_std=np.full(
-                (*profile_shape, _INTERPOLATED_SUBSTACK_SIDE),
+                (*profile_shape, _ROTATED_SUBSTACK_SIDE),
                 np.nan,
                 dtype=np.float32,
             ),
             profile_rotation_degrees=np.full(
                 profile_shape,
+                np.nan,
+                dtype=np.float32,
+            ),
+            rotated_mean_images=np.full(
+                (
+                    *profile_shape,
+                    _ROTATED_SUBSTACK_SIDE,
+                    _ROTATED_SUBSTACK_SIDE,
+                ),
+                np.nan,
+                dtype=np.float32,
+            ),
+            rotated_mean_images_masked=np.full(
+                (
+                    *profile_shape,
+                    _ROTATED_SUBSTACK_SIDE,
+                    _ROTATED_SUBSTACK_SIDE,
+                ),
                 np.nan,
                 dtype=np.float32,
             ),
@@ -263,7 +303,7 @@ def _result_from_buffers(
         substack_side_pixels,
     )
     processed_profiles = process_velocity_profiles(
-        buffers.velocity_profiles,
+        buffers.velocity_profiles_masked,
         pixel_size_mm=profile_pixel_size_mm,
         velocity_profile_threshold=settings.velocity_profile_threshold,
     )
@@ -275,9 +315,12 @@ def _result_from_buffers(
         segment_center_xy=buffers.segment_center_xy,
         branch_identity=branches,
         velocity_profiles=buffers.velocity_profiles,
+        velocity_profiles_masked=buffers.velocity_profiles_masked,
         profile_x_micrometers=processed_profiles.raw_x_micrometers,
         profile_sample_count=buffers.profile_sample_count,
         profile_rotation_degrees=buffers.profile_rotation_degrees,
+        rotated_mean_images=buffers.rotated_mean_images,
+        rotated_mean_images_masked=buffers.rotated_mean_images_masked,
         profile_window_bounds_xyxy=buffers.profile_window_bounds_xyxy,
         profile_window_side_pixels=int(substack_side_pixels),
         profile_pixel_size_mm=profile_pixel_size_mm,
@@ -308,7 +351,12 @@ def _empty_result(
 ) -> CrossSectionSignalResult:
     shape = (settings.ring_count, 1, velocity.shape[0])
     empty_profiles = np.full(
-        (settings.ring_count, 0, velocity.shape[0], 0),
+        (
+            settings.ring_count,
+            0,
+            velocity.shape[0],
+            _ROTATED_SUBSTACK_SIDE,
+        ),
         np.nan,
         dtype=np.float32,
     )
@@ -329,10 +377,31 @@ def _empty_result(
         ),
         branch_identity=branches,
         velocity_profiles=empty_profiles,
+        velocity_profiles_masked=empty_profiles.copy(),
         profile_x_micrometers=processed.raw_x_micrometers,
         profile_sample_count=np.zeros((settings.ring_count, 0), dtype=np.int32),
         profile_rotation_degrees=np.full(
             (settings.ring_count, 0),
+            np.nan,
+            dtype=np.float32,
+        ),
+        rotated_mean_images=np.full(
+            (
+                settings.ring_count,
+                0,
+                _ROTATED_SUBSTACK_SIDE,
+                _ROTATED_SUBSTACK_SIDE,
+            ),
+            np.nan,
+            dtype=np.float32,
+        ),
+        rotated_mean_images_masked=np.full(
+            (
+                settings.ring_count,
+                0,
+                _ROTATED_SUBSTACK_SIDE,
+                _ROTATED_SUBSTACK_SIDE,
+            ),
             np.nan,
             dtype=np.float32,
         ),
@@ -358,7 +427,7 @@ def _empty_result(
         poiseuille_roots_micrometers=processed.poiseuille_roots_micrometers,
         poiseuille_r_squared=processed.poiseuille_r_squared,
         poiseuille_profile_spatial_std=np.full(
-            (settings.ring_count, 0, 0),
+            (settings.ring_count, 0, _ROTATED_SUBSTACK_SIDE),
             np.nan,
             dtype=np.float32,
         ),
@@ -428,9 +497,8 @@ def _fill_cross_section_buffers(
                 buffers,
                 work.circle_index,
                 work.branch_index,
-                measurement[:5],
+                measurement,
                 work.bounds_xyxy,
-                measurement[5],
             )
     finally:
         if worker_count > 1:
@@ -450,19 +518,26 @@ def _store_cross_section_measurement(
     buffers: _CrossSectionBuffers,
     circle_index: int,
     branch_index: int,
-    measurement: tuple[np.ndarray, np.ndarray, np.ndarray, float, np.ndarray],
+    measurement: _CrossSectionMeasurement,
     bounds_xyxy: tuple[int, int, int, int],
-    limits: tuple[int, int],
 ) -> None:
-    raw, safe, profiles, angle, spatial_std = measurement
+    _, _, profiles, _, _ = measurement.unmasked
+    raw, safe, profiles_masked, angle, spatial_std = measurement.masked
     buffers.velocity[circle_index, branch_index] = raw
     buffers.safe_velocity[circle_index, branch_index] = safe
     buffers.velocity_profiles[circle_index, branch_index] = profiles
-    buffers.profile_sample_count[circle_index, branch_index] = profiles.shape[1]
+    buffers.velocity_profiles_masked[circle_index, branch_index] = profiles_masked
+    buffers.profile_sample_count[circle_index, branch_index] = measurement.sample_count
     buffers.profile_spatial_std[circle_index, branch_index] = spatial_std
     buffers.profile_rotation_degrees[circle_index, branch_index] = np.float32(angle)
+    buffers.rotated_mean_images[circle_index, branch_index] = measurement.rotated_mean
+    buffers.rotated_mean_images_masked[circle_index, branch_index] = (
+        measurement.rotated_mean_masked
+    )
     buffers.profile_window_bounds_xyxy[circle_index, branch_index] = bounds_xyxy
-    buffers.profile_integration_limits_pixels[circle_index, branch_index] = limits
+    buffers.profile_integration_limits_pixels[circle_index, branch_index] = (
+        measurement.limits
+    )
 
 
 def _centroid_xy(mask: np.ndarray) -> tuple[int, int] | None:
@@ -582,38 +657,63 @@ def _cross_section_velocity_from_substack(
     tilt_angle_mask: float,
     settings: CrossSectionSignalSettings,
     substack_side_pixels: int,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    float,
-    np.ndarray,
-    tuple[int, int],
-]:
+) -> _CrossSectionMeasurement:
     resized_stack = _resize_subimage_stack(sub_stack)
     resized_mask = _resize_submask(sub_mask)
-    resized_stack[:, ~resized_mask] = np.nan
+    resized_stack_masked = resized_stack.copy()
+    resized_stack_masked[:, ~resized_mask] = np.nan
     mean_image = nanmean_float32(resized_stack, axis=0)
-    rotated_mean, angle = _rotated_mean_image(
-        mean_image,
-        resized_mask,
+    mean_image_masked = nanmean_float32(resized_stack_masked, axis=0)
+    angle = _mean_image_rotation_angle(
+        mean_image_masked,
         loc_xy,
         optic_disc_center,
         tilt_angle_mask,
         settings,
+    )
+    rotation_stack = _center_pad_for_rotation(resized_stack, np.nan)
+    rotation_stack_masked = _center_pad_for_rotation(
+        resized_stack_masked,
+        np.nan,
+    )
+    rotation_mask = _center_pad_for_rotation(resized_mask, False)
+    rotated_mean = _rotate_mean_image(
+        _center_pad_for_rotation(mean_image, np.nan),
+        angle,
+    )
+    rotated_mean_masked = _rotate_masked_image(
+        _center_pad_for_rotation(mean_image_masked, np.nan),
+        rotation_mask,
+        angle,
     )
     profile_pixel_size_mm = _interpolated_pixel_size_mm(
         settings.pixel_size_mm,
         substack_side_pixels,
     )
     c1, c2 = _cross_section_limits(
-        rotated_mean,
+        rotated_mean_masked,
         settings,
         pixel_size_mm=profile_pixel_size_mm,
     )
-    return (
-        *_profile_measurement(resized_stack, angle, c1, c2, rotated_mean),
-        (c1, c2),
+    return _CrossSectionMeasurement(
+        unmasked=_profile_measurement(
+            rotation_stack,
+            angle,
+            c1,
+            c2,
+            rotated_mean,
+        ),
+        masked=_profile_measurement(
+            rotation_stack_masked,
+            angle,
+            c1,
+            c2,
+            rotated_mean_masked,
+        ),
+        rotated_mean=rotated_mean,
+        rotated_mean_masked=rotated_mean_masked,
+        limits=(c1, c2),
+        sample_count=_rotated_profile_sample_count(angle),
     )
 
 
@@ -721,7 +821,6 @@ def _subimage_stack_from_bounds(
         target_x = slice(target_x_start, target_x_stop)
         sub_mask[target_y, target_x] = source_mask
         sub_stack[:, target_y, target_x] = source
-    sub_stack[:, ~sub_mask] = np.nan
     return sub_stack, sub_mask
 
 
@@ -784,6 +883,47 @@ def _resize_submask(mask: np.ndarray) -> np.ndarray:
         prefilter=False,
         grid_mode=True,
     ) >= np.float32(0.5)
+
+
+def _center_pad_for_rotation(
+    values: np.ndarray,
+    fill_value: float | bool,
+) -> np.ndarray:
+    """Center a 128-square array on the fixed diagonal-sized canvas."""
+    source = np.asarray(values)
+    expected_shape = (
+        _INTERPOLATED_SUBSTACK_SIDE,
+        _INTERPOLATED_SUBSTACK_SIDE,
+    )
+    if source.ndim < 2 or source.shape[-2:] != expected_shape:
+        raise ValueError(
+            "rotation input must end with the 128x128 interpolated shape."
+        )
+    total_padding = _ROTATED_SUBSTACK_SIDE - _INTERPOLATED_SUBSTACK_SIDE
+    padding_before = total_padding // 2
+    padding_after = total_padding - padding_before
+    padding = [(0, 0)] * source.ndim
+    padding[-2] = (padding_before, padding_after)
+    padding[-1] = (padding_before, padding_after)
+    return np.pad(
+        source,
+        padding,
+        mode="constant",
+        constant_values=fill_value,
+    )
+
+
+def _rotated_profile_sample_count(angle_degrees: float) -> int:
+    """Return the unpadded width of a 128-square rotated by ``angle``."""
+    if not np.isfinite(angle_degrees):
+        return 0
+    radians = np.deg2rad(float(angle_degrees))
+    scale = abs(float(np.cos(radians))) + abs(float(np.sin(radians)))
+    count = int(np.floor(_INTERPOLATED_SUBSTACK_SIDE * scale + 0.5))
+    return min(
+        max(count, _INTERPOLATED_SUBSTACK_SIDE),
+        _ROTATED_SUBSTACK_SIDE,
+    )
 
 
 def _resize_values_with_nan(values: np.ndarray) -> np.ndarray:
@@ -866,19 +1006,22 @@ def _resize_values_with_nan_cpu(values: np.ndarray) -> np.ndarray:
     return resized
 
 
-def _rotated_mean_image(
-    mean_image: np.ndarray,
-    sub_mask: np.ndarray,
+def _mean_image_rotation_angle(
+    mean_image_masked: np.ndarray,
     loc_xy: tuple[int, int],
     optic_disc_center,
     tilt_angle_mask: float,
     settings: CrossSectionSignalSettings,
-) -> tuple[np.ndarray, float]:
+) -> float:
     if settings.rotate_from_mask and np.isfinite(tilt_angle_mask):
         angle = tilt_angle_mask + 90.0
     else:
-        angle = _estimate_orientation(mean_image, loc_xy, optic_disc_center)
-    return _rotate_masked_image(mean_image, sub_mask, angle), float(angle)
+        angle = _estimate_orientation(mean_image_masked, loc_xy, optic_disc_center)
+    return float(angle)
+
+
+def _rotate_mean_image(image: np.ndarray, angle: float) -> np.ndarray:
+    return rotate_image_with_nan(image, angle).astype(np.float32, copy=False)
 
 
 def _rotate_masked_image(
@@ -886,7 +1029,7 @@ def _rotate_masked_image(
     mask: np.ndarray,
     angle: float,
 ) -> np.ndarray:
-    rotated = rotate_image_with_nan(image, angle)
+    rotated = _rotate_mean_image(image, angle)
     rotated_mask = rotate_array_threshold(mask, angle)
     rotated[~rotated_mask] = np.nan
     return rotated.astype(np.float32, copy=False)

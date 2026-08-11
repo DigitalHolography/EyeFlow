@@ -15,11 +15,15 @@ from .generate_cross_section_signals import (
     CrossSectionSignalSettings,
     _cross_section_limits,
     _CrossSectionBuffers,
+    _CrossSectionMeasurement,
+    _center_pad_for_rotation,
     _empty_result,
     _profile_measurement,
     _resize_subimage_stack,
     _resize_submask,
     _result_from_buffers,
+    _rotated_profile_sample_count,
+    _rotate_mean_image,
     _rotate_masked_image,
     _store_cross_section_measurement,
     _subimage_stack_from_bounds,
@@ -206,13 +210,29 @@ def project_cross_section_cube(
             )
             resized_stack = _resize_subimage_stack(sub_stack)
             resized_mask = _resize_submask(sub_mask)
-            resized_stack[:, ~resized_mask] = np.nan
+            resized_stack_masked = resized_stack.copy()
+            resized_stack_masked[:, ~resized_mask] = np.nan
             angle = float(plan.profile_rotation_degrees[circle_index, branch_index])
             mean_image = nanmean_float32(resized_stack, axis=0)
-            rotated_mean = _rotate_masked_image(mean_image, resized_mask, angle)
+            mean_image_masked = nanmean_float32(resized_stack_masked, axis=0)
+            rotation_stack = _center_pad_for_rotation(resized_stack, np.nan)
+            rotation_stack_masked = _center_pad_for_rotation(
+                resized_stack_masked,
+                np.nan,
+            )
+            rotation_mask = _center_pad_for_rotation(resized_mask, False)
+            rotated_mean = _rotate_mean_image(
+                _center_pad_for_rotation(mean_image, np.nan),
+                angle,
+            )
+            rotated_mean_masked = _rotate_masked_image(
+                _center_pad_for_rotation(mean_image_masked, np.nan),
+                rotation_mask,
+                angle,
+            )
             if limits_mode == "per_cube":
                 limits = _cross_section_limits(
-                    rotated_mean,
+                    rotated_mean_masked,
                     plan.cross_section_settings,
                     pixel_size_mm=plan.profile_pixel_size_mm,
                 )
@@ -225,12 +245,25 @@ def project_cross_section_cube(
                     ]
                 )
             c1, c2 = limits
-            measurement = _profile_measurement(
-                resized_stack,
-                angle,
-                c1,
-                c2,
-                rotated_mean,
+            measurement = _CrossSectionMeasurement(
+                unmasked=_profile_measurement(
+                    rotation_stack,
+                    angle,
+                    c1,
+                    c2,
+                    rotated_mean,
+                ),
+                masked=_profile_measurement(
+                    rotation_stack_masked,
+                    angle,
+                    c1,
+                    c2,
+                    rotated_mean_masked,
+                ),
+                rotated_mean=rotated_mean,
+                rotated_mean_masked=rotated_mean_masked,
+                limits=limits,
+                sample_count=_rotated_profile_sample_count(angle),
             )
             _store_cross_section_measurement(
                 buffers,
@@ -238,7 +271,6 @@ def project_cross_section_cube(
                 branch_index,
                 measurement,
                 bounds_xyxy,
-                limits,
             )
 
     return _result_from_buffers(
