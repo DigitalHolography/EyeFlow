@@ -76,7 +76,9 @@ class SegmentationOutputPaths:
 @dataclass(frozen=True)
 class CrossSectionProfileOutputPaths:
     velocity_profile: str
-    velocity_profile_masked: str
+    transverse_velocity_profile_masked: str
+    longitudinal_velocity_profile_masked: str
+    transverse_velocity_profile_masked_centroid: str
 
 
 @dataclass(frozen=True)
@@ -141,7 +143,15 @@ def _cross_section_profile_paths(
 ) -> CrossSectionProfileOutputPaths:
     return CrossSectionProfileOutputPaths(
         velocity_profile=f"{root}/{velocity_profile_name}",
-        velocity_profile_masked=f"{root}/{velocity_profile_name}Masked",
+        transverse_velocity_profile_masked=(
+            f"{root}/Transverse{velocity_profile_name}Masked"
+        ),
+        longitudinal_velocity_profile_masked=(
+            f"{root}/Longitudinal{velocity_profile_name}Masked"
+        ),
+        transverse_velocity_profile_masked_centroid=(
+            f"{root}/Transverse{velocity_profile_name}MaskedCentroid"
+        ),
     )
 
 

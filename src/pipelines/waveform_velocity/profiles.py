@@ -1,4 +1,4 @@
-"""Minimal HDF5 export for AngioEye transverse velocity profiles."""
+"""Minimal HDF5 export for transverse and longitudinal velocity profiles."""
 
 from __future__ import annotations
 
@@ -50,10 +50,33 @@ def _pack_vessel_profiles(
             cycle_boundary_indexes,
             index_base=index_base,
         ),
-        paths.velocity_profile_masked: _profile_dataset(
-            np.asarray(segments.velocity_profiles_masked, dtype=np.float32),
+        paths.transverse_velocity_profile_masked: _profile_dataset(
+            np.asarray(
+                segments.transverse_velocity_profiles_masked,
+                dtype=np.float32,
+            ),
             cycle_boundary_indexes,
             index_base=index_base,
+            spatial_axis="x",
+        ),
+        paths.longitudinal_velocity_profile_masked: _profile_dataset(
+            np.asarray(
+                segments.longitudinal_velocity_profiles_masked,
+                dtype=np.float32,
+            ),
+            cycle_boundary_indexes,
+            index_base=index_base,
+            spatial_axis="y",
+        ),
+        paths.transverse_velocity_profile_masked_centroid: _profile_dataset(
+            np.asarray(
+                segments.transverse_velocity_profile_masked_centroids,
+                dtype=np.float32,
+            ),
+            cycle_boundary_indexes,
+            index_base=index_base,
+            spatial_axis="y",
+            unit="pixel",
         ),
     }
 
@@ -63,11 +86,13 @@ def _profile_dataset(
     cycle_boundary_indexes,
     *,
     index_base: int,
+    spatial_axis: str = "x",
+    unit: str = "mm/s",
 ) -> DatasetValue:
     if profiles.ndim != 4:
         raise ValueError(
             "profile arrays must have shape "
-            "(radius, branch, frame, transverse_sample)."
+            "(radius, branch, frame, spatial_sample)."
         )
     profiles_per_beat = interpolate_velocity_profiles_per_beat(
         profiles,
@@ -77,8 +102,8 @@ def _profile_dataset(
     return DatasetValue(
         data=profiles_per_beat,
         attrs={
-            "unit": "mm/s",
-            "dimDesc": ["x", "time", "beat", "branch", "radius"],
+            "unit": unit,
+            "dimDesc": [spatial_axis, "time", "beat", "branch", "radius"],
         },
         h5_options=_profile_h5_options(profiles_per_beat.shape),
     )
