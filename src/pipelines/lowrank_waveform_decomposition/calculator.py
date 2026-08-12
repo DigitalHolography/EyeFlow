@@ -564,6 +564,7 @@ class LowRankWaveformDecompositionCalculator:
                 "participation_ratio": participation_ratio,
                 "alpha": alpha,
                 "g1": g1,
+                "singular_values": np.asarray([], dtype=float),
             }
 
         finite_fraction = np.mean(np.isfinite(v_beat), axis=0)
@@ -610,7 +611,9 @@ class LowRankWaveformDecompositionCalculator:
             residual = X - X_recon
             residual_rms[m][valid_mask] = np.sqrt(np.mean(residual**2, axis=0))
 
-        return _pack(valid_mask)
+        packed = _pack(valid_mask)
+        packed["singular_values"] = np.asarray(s, dtype=float)
+        return packed
 
     def per_beat_svd_panels(self, v_block: np.ndarray, T: np.ndarray) -> dict:
         T = normalize_periods(T)
@@ -631,6 +634,9 @@ class LowRankWaveformDecompositionCalculator:
         participation_ratio_b = np.full((n_beats,), np.nan, dtype=float)
         alpha_b = np.full((n_beats,), np.nan, dtype=float)
         g1_b = np.full((n_beats,), np.nan, dtype=float)
+        # Keep enough leading singular values for cohort spectrum plots.
+        n_spectrum = max(int(max_modes), 12)
+        singular_values_b = np.full((n_beats, n_spectrum), np.nan, dtype=float)
 
         for b in range(n_beats):
             beat = self._svd_beat_panel(v_block[:, b, :, :], beat_period=float(T[0, b]))
@@ -643,6 +649,10 @@ class LowRankWaveformDecompositionCalculator:
             participation_ratio_b[b] = beat["participation_ratio"]
             alpha_b[b] = beat["alpha"]
             g1_b[b] = beat["g1"]
+            s_beat = np.asarray(beat.get("singular_values", []), dtype=float)
+            n_keep = int(min(n_spectrum, s_beat.size))
+            if n_keep > 0:
+                singular_values_b[b, :n_keep] = s_beat[:n_keep]
 
         return {
             "mode_rms": mode_rms,
@@ -654,6 +664,7 @@ class LowRankWaveformDecompositionCalculator:
             "participation_ratio_b": participation_ratio_b,
             "alpha_b": alpha_b,
             "g1_b": g1_b,
+            "singular_values_b": singular_values_b,
         }
 
     def _compute_per_beat_endpoints(self, panels: dict) -> dict[str, np.ndarray]:
@@ -695,6 +706,9 @@ class LowRankWaveformDecompositionCalculator:
             "participation_ratio_b_pb": panels["participation_ratio_b"],
             "alpha_b_pb": panels["alpha_b"],
             "G1_b_pb": panels["g1_b"],
+            "singular_values_b": np.asarray(
+                panels.get("singular_values_b", []), dtype=float
+            ),
         }
 
     def _compute_representation(self, v_block: np.ndarray, T: np.ndarray) -> dict:
