@@ -21,7 +21,6 @@ class MotionMapConfig:
     registration_initialization: str = "zero"
     registration_metric_radius: int = 4
     registration_learning_rate: float = 1.0
-    bspline_mesh_size: int = 8
     temporal_median_window: int = 3
     temporal_alpha: float = 1.0
     photometric_normalization: PhotometricMode = "hybrid"
@@ -67,8 +66,6 @@ class MotionMapConfig:
             raise ValueError("registration_metric_radius must be greater than zero")
         if self.registration_learning_rate <= 0:
             raise ValueError("registration_learning_rate must be greater than zero")
-        if self.bspline_mesh_size <= 0:
-            raise ValueError("bspline_mesh_size must be greater than zero")
         if self.max_frames is not None and self.max_frames <= 0:
             raise ValueError("max_frames must be greater than zero")
 

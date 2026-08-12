@@ -17,11 +17,7 @@ try:
 except ImportError:
     tqdm = None
 
-from .constants import (
-    CURVATURE_CONSTRAINT_WEIGHT,
-    CURVATURE_TIME_STEP,
-    PDE_REGISTRATION_METHODS,
-)
+from .constants import PDE_REGISTRATION_METHODS
 from .filtering import CenteredMedianBuffer
 from .outputs import OutputCaches, select_display_range, write_magnitude_video
 from .parameters import MotionMapConfig, PhotometricConfig
@@ -173,7 +169,6 @@ def create_retinal_motion_map(
                 update_sigma=args.update_sigma,
                 metric_radius=args.registration_metric_radius,
                 learning_rate=args.registration_learning_rate,
-                bspline_mesh_size=args.bspline_mesh_size,
             )
             raw_field[analysis_mask == 0] = 0.0
             previous_registration_field = raw_field.copy()
@@ -244,9 +239,6 @@ def create_retinal_motion_map(
         ),
         "registration_metric_radius": int(args.registration_metric_radius),
         "registration_learning_rate": float(args.registration_learning_rate),
-        "bspline_mesh_size": int(args.bspline_mesh_size),
-        "curvature_time_step": float(CURVATURE_TIME_STEP),
-        "curvature_constraint_weight": float(CURVATURE_CONSTRAINT_WEIGHT),
         "temporal_median_window": int(args.temporal_median_window),
         "temporal_median": ("centered component-wise median on dx and dy with replicated edges"),
         "temporal_ema": "optional causal EMA applied after the centered median",
