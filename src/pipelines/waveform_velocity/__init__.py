@@ -20,6 +20,15 @@ from .runner import run_waveform_velocity
             "Spatial vessel segments used by regional and profile products.",
         ),
         PipelineOption(
+            "segment_velocity_maps",
+            "Segment velocity maps",
+            (
+                "Per-beat segment velocity-map datasets and first-beat "
+                "artery/vein mosaic movies."
+            ),
+            default_enabled=False,
+        ),
+        PipelineOption(
             "velocity_profiles",
             "Velocity profiles",
             "Per-beat transverse and longitudinal cross-section velocity profiles.",

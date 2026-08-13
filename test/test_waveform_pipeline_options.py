@@ -158,6 +158,100 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             "vein",
         )
 
+    def test_segments_option_does_not_build_velocity_maps(self) -> None:
+        context = SimpleNamespace(
+            dopplerview_analysis={},
+            artery_segment_result="artery",
+            vein_segment_result="vein",
+            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
+            source_data=SimpleNamespace(provenance={"beat_index_base": 1}),
+        )
+        ctx = _context(
+            {"waveform_velocity": ("segments",)},
+            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+        )
+        ctx.output = SimpleNamespace(available=True)
+
+        with (
+            patch.object(
+                velocity_runner,
+                "pack_continuous_velocity_outputs",
+                return_value={"base": 1},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_segment_velocity_outputs",
+                return_value={"signals": 2},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_segment_map_outputs",
+                return_value={"maps": 3},
+            ) as maps,
+            patch.object(
+                velocity_runner,
+                "export_segment_velocity_map_avis",
+                return_value=["artery.avi", "vein.avi"],
+            ) as avis,
+        ):
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+
+        self.assertEqual({"base": 1, "signals": 2}, outputs)
+        maps.assert_not_called()
+        avis.assert_not_called()
+
+    def test_segment_velocity_maps_option_publishes_maps_and_avis(self) -> None:
+        context = SimpleNamespace(
+            dopplerview_analysis={},
+            artery_segment_result="artery",
+            vein_segment_result="vein",
+            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
+            source_data=SimpleNamespace(provenance={"beat_index_base": 1}),
+        )
+        ctx = _context(
+            {"waveform_velocity": ("segment_velocity_maps",)},
+            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+        )
+        ctx.output = SimpleNamespace(available=True)
+
+        with (
+            patch.object(
+                velocity_runner,
+                "pack_continuous_velocity_outputs",
+                return_value={"base": 1},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_segment_velocity_outputs",
+            ) as segment_outputs,
+            patch.object(
+                velocity_runner,
+                "pack_segment_map_outputs",
+                return_value={"maps": 3},
+            ) as maps,
+            patch.object(
+                velocity_runner,
+                "export_segment_velocity_map_avis",
+                return_value=["artery.avi", "vein.avi"],
+            ) as avis,
+        ):
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+
+        self.assertEqual({"base": 1, "maps": 3}, outputs)
+        segment_outputs.assert_not_called()
+        maps.assert_called_once_with(
+            "artery",
+            "vein",
+            (1, 6, 11),
+            index_base=1,
+        )
+        avis.assert_called_once_with(
+            ctx.output,
+            "artery",
+            "vein",
+            {"maps": 3},
+        )
+
     def test_no_metric_children_skips_per_beat_metric_work(self) -> None:
         ctx = _context({"waveform_shape_metrics": ()})
 
@@ -169,6 +263,15 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             {
                 "waveform_velocity": ("per_beat", "segments"),
                 "waveform_shape_metrics": ("per_beat", "segments"),
+            }
+        )
+
+        self.assertTrue(core_runner._segments_required(ctx))
+
+        ctx = _context(
+            {
+                "waveform_velocity": ("segment_velocity_maps",),
+                "waveform_shape_metrics": (),
             }
         )
 

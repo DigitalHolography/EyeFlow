@@ -107,6 +107,7 @@ class SegmentCenterTests(unittest.TestCase):
                 safe,
                 profiles,
                 longitudinal_profiles,
+                rotated_stack,
             ) = _frame_velocities(
                 sub_stack,
                 angle=90.0,
@@ -128,6 +129,7 @@ class SegmentCenterTests(unittest.TestCase):
         )
         np.testing.assert_allclose(raw, [4.0, 6.0])
         np.testing.assert_allclose(safe, [10.0 / 3.0, 5.0])
+        np.testing.assert_array_equal(rotated_stack, np.stack(rotated_frames))
 
     def test_batched_nan_rotation_matches_independent_frames(self) -> None:
         rng = np.random.default_rng(5)
@@ -526,6 +528,7 @@ class SegmentCenterTests(unittest.TestCase):
                     safe_velocity=signal + np.float32(100.0),
                     transverse_profiles=profiles,
                     longitudinal_profiles=profiles,
+                    rotated_stack=np.full((3, 181, 181), 3.0, dtype=np.float32),
                     angle=0.0,
                     spatial_std=np.zeros((181,), dtype=np.float32),
                 ),
@@ -534,11 +537,13 @@ class SegmentCenterTests(unittest.TestCase):
                     safe_velocity=signal + np.float32(200.0),
                     transverse_profiles=profiles_masked,
                     longitudinal_profiles=profiles_masked,
+                    rotated_stack=np.full((3, 181, 181), 4.0, dtype=np.float32),
                     angle=0.0,
                     spatial_std=np.zeros((181,), dtype=np.float32),
                 ),
                 rotated_mean=rotated_mean,
                 rotated_mean_masked=rotated_mean_masked,
+                rotated_mask=np.ones((181, 181), dtype=bool),
                 limits=(0, 127),
                 sample_count=128,
             ),
@@ -598,6 +603,11 @@ class SegmentCenterTests(unittest.TestCase):
             buffers.rotated_mean_images_masked[0, 0],
             rotated_mean_masked,
         )
+        np.testing.assert_array_equal(
+            buffers.velocity_maps_per_segment[0, 0],
+            np.full((3, 181, 181), 3.0, dtype=np.float32),
+        )
+        self.assertTrue(np.all(buffers.segment_masks[0, 0]))
 
 
 class ReusableCrossSectionProjectionTests(unittest.TestCase):
@@ -681,6 +691,14 @@ class ReusableCrossSectionProjectionTests(unittest.TestCase):
         self.assertEqual(
             (1, 1, 181, 181),
             result.reference.rotated_mean_images_masked.shape,
+        )
+        self.assertEqual(
+            (1, 1, 4, 181, 181),
+            result.reference.velocity_maps_per_segment.shape,
+        )
+        self.assertEqual(
+            (1, 1, 181, 181),
+            result.reference.segment_masks.shape,
         )
         self.assertEqual((181,), result.reference.profile_x_micrometers.shape)
         np.testing.assert_array_equal(result.reference.profile_sample_count, [[179]])

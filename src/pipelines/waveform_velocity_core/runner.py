@@ -142,7 +142,13 @@ def _segments_required(ctx) -> bool:
     )
     if ctx.pipeline_scheduled("waveform_velocity"):
         return bool(
-            {"segments", "velocity_profiles", "hemifield"} & velocity_options
+            {
+                "segments",
+                "segment_velocity_maps",
+                "velocity_profiles",
+                "hemifield",
+            }
+            & velocity_options
             or "hemifield" in metric_options
             or "segments" in absolute_options
             or "hemifield" in absolute_options
