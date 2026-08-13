@@ -17,12 +17,21 @@ def pack_lowrank_waveform_decomposition_outputs(
     output_paths: EyeFlowOutputPaths | str | None = None,
     *,
     vein_flag: bool = False,
+    joint_svd: bool = True,
+    per_beat_svd: bool = False,
 ) -> dict[str, object]:
-    """Compute and prefix low-rank products from shared per-beat outputs."""
+    """Compute and prefix low-rank products from shared per-beat outputs.
+
+    ``joint_svd`` and ``per_beat_svd`` are independently selectable, matching
+    the pipeline options next to ``veins``. If neither SVD method is requested,
+    joint SVD is used so the pipeline still emits primary endpoints.
+    """
     schema = _resolve_output_paths(output_paths)
     periods = _required_array(velocity_outputs, schema.beat_period_seconds)
     calculator = LowRankWaveformDecompositionCalculator()
     outputs: dict[str, object] = {}
+    if not joint_svd and not per_beat_svd:
+        joint_svd = True
 
     sources = [
         (
@@ -58,17 +67,33 @@ def pack_lowrank_waveform_decomposition_outputs(
             np.uint8(1), original_class="bool"
         )
         waveforms = _metric_data(velocity_outputs[dataset_path])
-        representation = calculator.compute(waveforms, periods)
-        per_beat = calculator.compute_per_beat(waveforms, periods)
-        _append_representation(
-            outputs,
-            prefix,
-            source_name,
-            str(dataset_path),
-            representation,
-            per_beat,
-            calculator,
+        representation = (
+            calculator.compute(waveforms, periods) if joint_svd else None
         )
+        per_beat = (
+            calculator.compute_per_beat(waveforms, periods)
+            if per_beat_svd
+            else {}
+        )
+        if representation is not None:
+            _append_representation(
+                outputs,
+                prefix,
+                source_name,
+                str(dataset_path),
+                representation,
+                per_beat,
+                calculator,
+            )
+        else:
+            _append_per_beat_only(
+                outputs,
+                prefix,
+                source_name,
+                str(dataset_path),
+                per_beat,
+                calculator,
+            )
     return outputs
 
 
@@ -87,10 +112,7 @@ def _append_representation(
 
     metrics[f"{prefix}/config/signal_source"] = source_name
     metrics[f"{prefix}/config/input_dataset_path"] = dataset_path
-    metrics[f"{prefix}/config/svd_method"] = (
-        "joint (sample, beat*branch*radius) plus per-beat "
-        "(sample, branch*radius) SVD"
-    )
+    metrics[f"{prefix}/config/svd_method"] = _svd_method_label(per_beat)
     metrics[f"{prefix}/config/aggregation"] = (
         "acquisition median over all valid beat-location columns; "
         "beat endpoint median over valid locations"
@@ -182,25 +204,21 @@ def _append_representation(
     metrics[f"{prefix}/endpoints/R0"] = _metric(
         acq["R0"],
         unit="mm/s",
-        formula="median_b(median_kr(RMS_t(w))); alias of TPR",
+        formula="median_{b,k,r} RMS_t(w)",
     )
     metrics[f"{prefix}/endpoints/TPR"] = _metric(
         acq["TPR"],
         unit="mm/s",
-        formula="median_b(median_kr(RMS_t(w)))",
+        formula="alias of R0",
     )
     metrics[f"{prefix}/endpoints/rho0"] = _metric(
         acq["rho0"], formula="R0 / R0 = 1"
     )
     metrics[f"{prefix}/endpoints/MPR"] = _metric(
-        acq["MPR"], formula="median_b(median_kr(abs(mu) / RMS_t(w)))"
+        acq["MPR"], formula="median_{b,k,r}(|mu| / RMS_t(w))"
     )
     metrics[f"{prefix}/endpoints/mpr"] = _metric(
         acq["mpr"], formula="compatibility alias for MPR"
-    )
-    metrics[f"{prefix}/endpoints/mpr_prime"] = _metric(
-        acq["mpr_prime"],
-        formula="median_b(median_kr(|mu|)) / TPR",
     )
     for name, unit in (
         ("sigma_R0_beat", "mm/s"),
@@ -216,11 +234,7 @@ def _append_representation(
     ):
         metrics[f"{prefix}/variability/{name}"] = _metric(acq[name], unit=unit)
 
-    for key, values in per_beat.items():
-        unit = "mm/s" if key.startswith(("A", "R", "TPR")) else None
-        metrics[f"{prefix}/per_beat/{key}"] = _metric(
-            values, unit=unit, dims=("beat",)
-        )
+    _append_per_beat_group(metrics, prefix, per_beat)
 
     available = bool(rep.get("svd_available", False))
     metrics[f"{prefix}/qc/svd_available"] = _metric(
@@ -254,29 +268,133 @@ def _append_representation(
     metrics[f"{prefix}/decomposition/spectrum_mode_count_M"] = np.asarray(
         acq["spectrum_mode_count"], dtype=int
     )
-    for name in (
-        "effective_rank",
-        "participation_ratio",
-        "alpha",
-        "eta1",
-        "eta2",
-        "eta12",
-    ):
-        attrs = (
-            {"formula": "(1 - p1) / p1 on leading exported modes"}
-            if name == "alpha"
-            else {}
-        )
-        metrics[f"{prefix}/decomposition/{name}"] = _metric(
-            acq[name], **attrs
-        )
-    metrics[f"{prefix}/decomposition/G1"] = _metric(
-        acq["G1"],
-        formula="1 - lambda2 / lambda1",
+    metrics[f"{prefix}/decomposition/effective_rank"] = _metric(
+        acq["effective_rank"],
+        formula="exp(-sum p_m log p_m), p_m = sigma_m / sum_{l=1}^M sigma_l",
+    )
+    metrics[f"{prefix}/decomposition/participation_ratio"] = _metric(
+        acq["participation_ratio"],
+        formula="1 / sum p_m^2",
     )
 
     for mode in range(1, calculator.exported_modes + 1):
         _append_mode_outputs(metrics, prefix, mode, rep, acq)
+
+
+def _svd_method_label(per_beat: dict[str, np.ndarray]) -> str:
+    if per_beat:
+        return (
+            "joint (sample, beat*branch*radius) plus per-beat "
+            "(sample, branch*radius) SVD"
+        )
+    return "joint (sample, beat*branch*radius) SVD"
+
+
+def _append_per_beat_group(
+    metrics: dict[str, object],
+    prefix: str,
+    per_beat: dict[str, np.ndarray],
+) -> None:
+    for key, values in per_beat.items():
+        if key == "singular_values_b":
+            metrics[f"{prefix}/per_beat/{key}"] = _metric(
+                values, unit="mm/s", dims=("beat", "mode")
+            )
+            continue
+        unit = "mm/s" if key.startswith(("A", "R", "TPR")) else None
+        metrics[f"{prefix}/per_beat/{key}"] = _metric(
+            values, unit=unit, dims=("beat",)
+        )
+
+
+def _append_per_beat_only(
+    metrics: dict[str, object],
+    prefix: str,
+    source_name: str,
+    dataset_path: str,
+    per_beat: dict[str, np.ndarray],
+    calculator: LowRankWaveformDecompositionCalculator,
+) -> None:
+    """Pack the per-beat SVD variant without a joint decomposition."""
+    del calculator
+    metrics[f"{prefix}/config/signal_source"] = source_name
+    metrics[f"{prefix}/config/input_dataset_path"] = dataset_path
+    metrics[f"{prefix}/config/svd_method"] = (
+        "per-beat (sample, branch*radius) SVD"
+    )
+    available = bool(per_beat) and bool(
+        np.any(np.isfinite(np.asarray(per_beat.get("A1_b_pb", []), dtype=float)))
+    )
+    metrics[f"{prefix}/qc/svd_available"] = _metric(
+        np.uint8(available), original_class="bool"
+    )
+    metrics[f"{prefix}/qc/svd_reason"] = (
+        "ok" if available else "per_beat_svd_unavailable"
+    )
+    _append_per_beat_group(metrics, prefix, per_beat)
+    if not per_beat:
+        return
+    tpr_b = np.asarray(per_beat.get("TPR_b_pb", []), dtype=float)
+    metrics[f"{prefix}/endpoints/A1"] = _metric(
+        _median_finite(per_beat.get("A1_b_pb")),
+        unit="mm/s",
+        formula="median_b RMS of per-beat mode-1 recon",
+    )
+    metrics[f"{prefix}/endpoints/A2"] = _metric(
+        _median_finite(per_beat.get("A2_b_pb")),
+        unit="mm/s",
+        formula="median_b RMS of per-beat mode-2 recon",
+    )
+    metrics[f"{prefix}/endpoints/R1"] = _metric(
+        _median_finite(per_beat.get("R1_b_pb")),
+        unit="mm/s",
+        formula="median_b residual RMS after per-beat rank-1",
+    )
+    metrics[f"{prefix}/endpoints/R2"] = _metric(
+        _median_finite(per_beat.get("R2_b_pb")),
+        unit="mm/s",
+        formula="median_b residual RMS after per-beat rank-2",
+    )
+    metrics[f"{prefix}/endpoints/TPR"] = _metric(
+        _median_finite(tpr_b), unit="mm/s", formula="median_b RMS_t(w) per beat"
+    )
+    metrics[f"{prefix}/endpoints/R0"] = _metric(
+        _median_finite(per_beat.get("R0_b_pb", tpr_b)),
+        unit="mm/s",
+        formula="alias of TPR",
+    )
+    metrics[f"{prefix}/endpoints/rho1"] = _metric(
+        _median_finite(per_beat.get("rho1_b_pb")),
+        formula="median_b R1_b_pb / TPR_b_pb",
+    )
+    metrics[f"{prefix}/endpoints/rho2"] = _metric(
+        _median_finite(per_beat.get("rho2_b_pb")),
+        formula="median_b R2_b_pb / TPR_b_pb",
+    )
+    metrics[f"{prefix}/endpoints/MPR"] = _metric(
+        _median_finite(per_beat.get("MPR_b_pb", per_beat.get("mpr_b_pb"))),
+        formula="median_b |mu| / RMS_t(w) per beat",
+    )
+    metrics[f"{prefix}/endpoints/mpr"] = _metric(
+        _median_finite(per_beat.get("mpr_b_pb", per_beat.get("MPR_b_pb"))),
+        formula="compatibility alias for MPR",
+    )
+    metrics[f"{prefix}/decomposition/effective_rank"] = _metric(
+        _median_finite(per_beat.get("effective_rank_b_pb")),
+        formula="median_b Reff of per-beat singular spectrum",
+    )
+    metrics[f"{prefix}/decomposition/participation_ratio"] = _metric(
+        _median_finite(per_beat.get("participation_ratio_b_pb")),
+        formula="median_b PR of per-beat singular spectrum",
+    )
+
+
+def _median_finite(values) -> float:
+    x = np.asarray([] if values is None else values, dtype=float)
+    x = x[np.isfinite(x)]
+    if x.size == 0:
+        return float("nan")
+    return float(np.median(x))
 
 
 def _append_mode_outputs(
@@ -319,7 +437,16 @@ def _append_mode_outputs(
         (f"rho{mode}", None),
         (f"median_abs_a{mode}", "mm/s"),
     ):
-        metrics[f"{prefix}/endpoints/{name}"] = _metric(acq[name], unit=unit)
+        formula = None
+        if name.startswith("A"):
+            formula = f"median_{{b,k,r}} RMS_t(a{mode} u{mode})"
+        elif name.startswith("R"):
+            formula = f"median_{{b,k,r}} RMS_t(r{mode})"
+        elif name.startswith("rho"):
+            formula = f"R{mode} / R0"
+        metrics[f"{prefix}/endpoints/{name}"] = _metric(
+            acq[name], unit=unit, formula=formula
+        )
     for stem, unit in (
         ("sigma_A", "mm/s"),
         ("mad_A", "mm/s"),

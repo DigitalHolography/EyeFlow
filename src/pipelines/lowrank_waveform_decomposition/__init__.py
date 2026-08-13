@@ -8,10 +8,9 @@ from .runner import run_lowrank_waveform_decomposition
 @pipeline(
     name="lowrank_waveform_decomposition",
     description=(
-        "Joint and per-beat low-rank SVD decomposition of beat-aligned "
-        "arterial segment waveforms, with optional venous processing, "
-        "reporting R0, modal/residual amplitudes, robust ratios, and "
-        "singular-spectrum endpoints."
+        "Low-rank SVD decomposition of beat-aligned arterial segment "
+        "waveforms, with optional venous processing. Joint SVD and "
+        "per-beat SVD are independently selectable."
     ),
     requires=["numpy", "h5py"],
     dag_requires=["waveform_velocity"],
@@ -21,6 +20,18 @@ from .runner import run_lowrank_waveform_decomposition
             "veins",
             "Veins",
             "Also decompose raw and band-limited venous segment waveforms.",
+            default_enabled=False,
+        ),
+        PipelineOption(
+            "joint_svd",
+            "Joint SVD",
+            "One SVD over all valid beat-location waveforms (primary endpoints).",
+            default_enabled=True,
+        ),
+        PipelineOption(
+            "per_beat_svd",
+            "Per-beat SVD",
+            "Independent SVD of each beat's spatial columns (robustness variant).",
             default_enabled=False,
         ),
     ],

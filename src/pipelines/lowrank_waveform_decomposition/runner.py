@@ -18,9 +18,15 @@ def run_lowrank_waveform_decomposition(ctx) -> dict[str, object]:
             "unavailable; check the pipeline DAG dependencies."
         )
     selected = ctx.options_for("lowrank_waveform_decomposition")
+    joint_svd = "joint_svd" in selected
+    per_beat_svd = "per_beat_svd" in selected
+    if not joint_svd and not per_beat_svd:
+        joint_svd = True
     outputs = pack_lowrank_waveform_decomposition_outputs(
         velocity_outputs,
         vein_flag="veins" in selected,
+        joint_svd=joint_svd,
+        per_beat_svd=per_beat_svd,
     )
     ctx.state.set(LOWRANK_WAVEFORM_OUTPUTS_STATE, outputs)
     return outputs

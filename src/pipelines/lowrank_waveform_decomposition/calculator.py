@@ -62,9 +62,11 @@ class LowRankWaveformDecompositionCalculator:
     """Compute joint and beat-local SVD endpoint panels.
 
     Input waveforms use EyeFlow\'s native ``(sample, beat, branch, radius)``
-    order. Formulas follow AngioEye\'s manuscript-aligned definitions
-    (two-stage beat medians for acquisition TPR/A/rho; alpha = (1-p1)/p1;
-    G1 = 1 - lambda2/lambda1; mpr_prime = abs_mu_acq / TPR).
+    order. Acquisition endpoints follow the article definitions: a single
+    median over valid ``(beat, branch, radius)`` columns for R0, Am, Rm,
+    and MPR; rho_m = Rm / R0; Reff and PR from the full singular spectrum.
+    Beat-level endpoints replace that median with a per-beat median over
+    valid locations.
     """
 
     eps = 1e-12
@@ -175,6 +177,15 @@ class LowRankWaveformDecompositionCalculator:
             return np.nan
         return float(sd / (abs(mu) + self.eps))
 
+    def _median_valid(
+        self, arr_bkr: np.ndarray, valid_mask: np.ndarray
+    ) -> float:
+        """Article acquisition median over valid ``(b, k, r)`` columns."""
+        vals = np.asarray(arr_bkr, dtype=float)[
+            np.asarray(valid_mask, dtype=bool)
+        ]
+        return self._safe_nanmedian(vals)
+
     def _median_kr_per_beat(
         self, arr_bkr: np.ndarray, valid_mask: np.ndarray
     ) -> np.ndarray:
@@ -223,13 +234,15 @@ class LowRankWaveformDecompositionCalculator:
         return float(R / (T + self.eps))
 
     def _effective_rank(self, energy_fraction: np.ndarray) -> float:
+        """Article Reff = exp(-sum p_m log p_m) on the retained spectrum."""
         p = np.asarray(energy_fraction, dtype=float)
         p = p[np.isfinite(p) & (p > 0)]
         if p.size == 0:
             return np.nan
-        return float(np.exp(-np.sum(p * np.log(p + self.eps))))
+        return float(np.exp(-np.sum(p * np.log(p))))
 
     def _participation_ratio(self, energy_fraction: np.ndarray) -> float:
+        """Article PR = 1 / sum p_m^2 on the retained spectrum."""
         p = np.asarray(energy_fraction, dtype=float)
         p = p[np.isfinite(p) & (p > 0)]
         if p.size == 0:
@@ -238,28 +251,6 @@ class LowRankWaveformDecompositionCalculator:
         if denom <= 0:
             return np.nan
         return float(1.0 / denom)
-
-    def _alpha(self, s: np.ndarray, n_modes: int) -> float:
-        """AngioEye formula: (1 - p1) / p1 on the leading exported modes."""
-        s = np.asarray(s, dtype=float)
-        if n_modes < 2 or s.size < 2:
-            return np.nan
-        energy_panel = s[:n_modes] ** 2
-        p1 = float(energy_panel[0] / (np.sum(energy_panel) + self.eps))
-        if not np.isfinite(p1) or p1 <= 0:
-            return np.nan
-        return float((1.0 - p1) / p1)
-
-    def _g1(self, s: np.ndarray) -> float:
-        """AngioEye formula: 1 - lambda2/lambda1."""
-        s = np.asarray(s, dtype=float)
-        if s.size < 2:
-            return np.nan
-        lam1 = float(s[0])
-        lam2 = float(s[1])
-        if not (np.isfinite(lam1) and np.isfinite(lam2) and lam1 > 0):
-            return np.nan
-        return float(1.0 - lam2 / lam1)
 
     # ------------------------------------------------------------------
     # Baseline / modal endpoints
@@ -287,39 +278,35 @@ class LowRankWaveformDecompositionCalculator:
         ) / (rms_x[valid_column_mask] + self.eps)
 
         tpr_b = self._median_kr_per_beat(rms_x, valid_column_mask)
-        tpr = self._safe_nanmedian(tpr_b)
+        tpr = self._median_valid(rms_x, valid_column_mask)
         mpr_b = self._median_kr_per_beat(mean_pulsatile_ratio_bkr, valid_column_mask)
-        mpr = self._safe_nanmedian(mpr_b)
+        mpr = self._median_valid(mean_pulsatile_ratio_bkr, valid_column_mask)
         abs_mu_b = self._median_kr_per_beat(np.abs(mu), valid_column_mask)
-        abs_mu_acq = self._safe_nanmedian(abs_mu_b)
+        abs_mu_acq = self._median_valid(np.abs(mu), valid_column_mask)
         mu_b = self._median_kr_per_beat(mu, valid_column_mask)
-        mpr_prime = (
-            float(abs_mu_acq / (tpr + self.eps))
-            if np.isfinite(abs_mu_acq) and np.isfinite(tpr) and tpr > self.eps
-            else np.nan
-        )
         rho0_b = np.where(np.isfinite(tpr_b) & (tpr_b > self.eps), 1.0, np.nan)
+        rho0 = 1.0 if np.isfinite(tpr) and tpr > self.eps else np.nan
 
         beatwise = {
             "mu_b": mu_b,
             "abs_mu_b": abs_mu_b,
             "TPR_b": tpr_b,
-            "R0_b": tpr_b,  # EyeFlow alias
+            "R0_b": tpr_b,
             "rho0_b": rho0_b,
             "mpr_b": mpr_b,
             "MPR_b": mpr_b,
             "spatial_mad_mu_b": self._spatial_mad_per_beat(mu, valid_column_mask),
         }
         acq = {
-            "mu_acq": self._safe_nanmedian(mu_b),
+            "mu_acq": self._median_valid(mu, valid_column_mask),
             "beat_period_mean": self._safe_nanmean(T[0][beat_period_valid]),
             "beat_period_median": self._safe_nanmedian(T[0][beat_period_valid]),
             "beat_period_std": self._safe_nanstd(T[0][beat_period_valid]),
             "sigma_mu_beat": self._safe_nanstd(mu_b),
             "mad_mu_beat": self._safe_nanmad(mu_b),
             "TPR": tpr,
-            "R0": tpr,  # EyeFlow alias of AngioEye TPR (two-stage median)
-            "rho0": self._safe_nanmedian(rho0_b),
+            "R0": tpr,
+            "rho0": rho0,
             "sigma_TPR_beat": self._safe_nanstd(tpr_b),
             "mad_TPR_beat": self._safe_nanmad(tpr_b),
             "sigma_R0_beat": self._safe_nanstd(tpr_b),
@@ -333,7 +320,6 @@ class LowRankWaveformDecompositionCalculator:
             "mad_mpr_beat": self._safe_nanmad(mpr_b),
             "cv_mpr_beat": self._safe_nancv(mpr_b),
             "abs_mu_acq": abs_mu_acq,
-            "mpr_prime": mpr_prime,
             "spatial_mad_mu_median_over_beats": self._safe_nanmedian(
                 beatwise["spatial_mad_mu_b"]
             ),
@@ -436,7 +422,8 @@ class LowRankWaveformDecompositionCalculator:
                 r_b / (tpr_b + self.eps),
                 np.nan,
             )
-            R_m = self._safe_nanmedian(r_b)
+            A_m = self._median_valid(rms_mode_panel[m - 1], valid_column_mask)
+            R_m = self._median_valid(residual_rms_bkr, valid_column_mask)
 
             beatwise[f"A{m}_b"] = a_b
             beatwise[f"R{m}_b"] = r_b
@@ -445,7 +432,7 @@ class LowRankWaveformDecompositionCalculator:
                 np.abs(score_panel_bkr[m - 1]), valid_column_mask
             )
 
-            acq[f"A{m}"] = self._safe_nanmedian(a_b)
+            acq[f"A{m}"] = A_m
             acq[f"R{m}"] = R_m
             acq[f"rho{m}"] = (
                 float(R_m / (tpr + self.eps))
@@ -471,15 +458,8 @@ class LowRankWaveformDecompositionCalculator:
                 self._spatial_mad_per_beat(residual_rms_bkr, valid_column_mask)
             )
 
-        acq["eta1"] = float(energy_fraction[0]) if len(energy_fraction) >= 1 else np.nan
-        acq["eta2"] = float(energy_fraction[1]) if len(energy_fraction) >= 2 else np.nan
-        acq["eta12"] = (
-            float(np.sum(energy_fraction[:2])) if len(energy_fraction) >= 1 else np.nan
-        )
         acq["effective_rank"] = self._effective_rank(energy_fraction)
         acq["participation_ratio"] = self._participation_ratio(energy_fraction)
-        acq["alpha"] = self._alpha(s, n_modes)
-        acq["G1"] = self._g1(s)
         acq["spectrum_mode_count"] = int(np.asarray(s).size)
 
         return {
@@ -550,8 +530,6 @@ class LowRankWaveformDecompositionCalculator:
         mean_pulsatile_ratio = np.full((n_branches, n_radii), np.nan, dtype=float)
         effective_rank = np.nan
         participation_ratio = np.nan
-        alpha = np.nan
-        g1 = np.nan
 
         def _pack(valid_mask: np.ndarray) -> dict:
             return {
@@ -562,8 +540,6 @@ class LowRankWaveformDecompositionCalculator:
                 "valid_mask": valid_mask,
                 "effective_rank": effective_rank,
                 "participation_ratio": participation_ratio,
-                "alpha": alpha,
-                "g1": g1,
                 "singular_values": np.asarray([], dtype=float),
             }
 
@@ -591,9 +567,6 @@ class LowRankWaveformDecompositionCalculator:
         energy_fraction = energy / (np.sum(energy) + self.eps)
         effective_rank = self._effective_rank(energy_fraction)
         participation_ratio = self._participation_ratio(energy_fraction)
-        n_modes_alpha = int(min(self.exported_modes, len(s)))
-        alpha = self._alpha(s, n_modes_alpha)
-        g1 = self._g1(s)
 
         n_modes = int(min(max_modes, len(s)))
         scores_list: list[np.ndarray] = []
@@ -632,8 +605,6 @@ class LowRankWaveformDecompositionCalculator:
         valid_mask = np.zeros((n_beats, n_branches, n_radii), dtype=bool)
         effective_rank_b = np.full((n_beats,), np.nan, dtype=float)
         participation_ratio_b = np.full((n_beats,), np.nan, dtype=float)
-        alpha_b = np.full((n_beats,), np.nan, dtype=float)
-        g1_b = np.full((n_beats,), np.nan, dtype=float)
         # Keep enough leading singular values for cohort spectrum plots.
         n_spectrum = max(int(max_modes), 12)
         singular_values_b = np.full((n_beats, n_spectrum), np.nan, dtype=float)
@@ -647,8 +618,6 @@ class LowRankWaveformDecompositionCalculator:
             valid_mask[b, :, :] = beat["valid_mask"]
             effective_rank_b[b] = beat["effective_rank"]
             participation_ratio_b[b] = beat["participation_ratio"]
-            alpha_b[b] = beat["alpha"]
-            g1_b[b] = beat["g1"]
             s_beat = np.asarray(beat.get("singular_values", []), dtype=float)
             n_keep = int(min(n_spectrum, s_beat.size))
             if n_keep > 0:
@@ -662,8 +631,6 @@ class LowRankWaveformDecompositionCalculator:
             "valid_mask": valid_mask,
             "effective_rank_b": effective_rank_b,
             "participation_ratio_b": participation_ratio_b,
-            "alpha_b": alpha_b,
-            "g1_b": g1_b,
             "singular_values_b": singular_values_b,
         }
 
@@ -704,8 +671,6 @@ class LowRankWaveformDecompositionCalculator:
             "mpr_b_pb": mpr_b_pb,
             "effective_rank_b_pb": panels["effective_rank_b"],
             "participation_ratio_b_pb": panels["participation_ratio_b"],
-            "alpha_b_pb": panels["alpha_b"],
-            "G1_b_pb": panels["g1_b"],
             "singular_values_b": np.asarray(
                 panels.get("singular_values_b", []), dtype=float
             ),
