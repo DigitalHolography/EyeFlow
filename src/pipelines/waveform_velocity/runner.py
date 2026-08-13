@@ -26,7 +26,9 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
     context = _required_state(ctx, WAVEFORM_CONTEXT_STATE)
     selected = ctx.options_for("waveform_velocity")
     metrics = pack_continuous_velocity_outputs(context.dopplerview_analysis)
-    if "segments" in selected:
+    segments_selected = "segments" in selected
+    maps_selected = "segment_velocity_maps" in selected
+    if segments_selected:
         metrics.update(
             pack_segment_velocity_outputs(
                 context.artery_segment_result,
@@ -34,6 +36,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 source_data=context.source_data,
             )
         )
+    if maps_selected:
         map_started = perf_counter()
         Logger.log("Starting per-beat segment velocity-map interpolation...")
         segment_map_outputs = pack_segment_map_outputs(
@@ -69,7 +72,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             per_beat_result, velocity_outputs = run_velocity_per_beat_metrics(context)
             ctx.state.set(VELOCITY_PER_BEAT_RESULT_STATE, per_beat_result)
             ctx.state.set(VELOCITY_PER_BEAT_OUTPUTS_STATE, velocity_outputs)
-        if "segments" in selected:
+        if segments_selected:
             metrics.update(velocity_outputs)
         else:
             schema = EyeFlowOutputPaths.active()

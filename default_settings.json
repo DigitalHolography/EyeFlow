@@ -24,7 +24,8 @@
       "hemifield": true,
       "per_beat": true,
       "segments": true,
-      "velocity_profiles": true
+      "velocity_profiles": false,
+      "segment_velocity_maps": false
     }
   },
   "ui_mode": "minimal"
