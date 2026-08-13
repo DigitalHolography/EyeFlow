@@ -158,6 +158,58 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             "vein",
         )
 
+    def test_segments_option_publishes_rotated_maps_and_masks(self) -> None:
+        context = SimpleNamespace(
+            dopplerview_analysis={},
+            artery_segment_result="artery",
+            vein_segment_result="vein",
+            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
+            source_data=SimpleNamespace(provenance={"beat_index_base": 1}),
+        )
+        ctx = _context(
+            {"waveform_velocity": ("segments",)},
+            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+        )
+        ctx.output = SimpleNamespace(available=True)
+
+        with (
+            patch.object(
+                velocity_runner,
+                "pack_continuous_velocity_outputs",
+                return_value={"base": 1},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_segment_velocity_outputs",
+                return_value={"signals": 2},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_segment_map_outputs",
+                return_value={"maps": 3},
+            ) as maps,
+            patch.object(
+                velocity_runner,
+                "export_segment_velocity_map_avis",
+                return_value=["artery.avi", "vein.avi"],
+            ) as avis,
+        ):
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+
+        self.assertEqual({"base": 1, "signals": 2, "maps": 3}, outputs)
+        maps.assert_called_once_with(
+            "artery",
+            "vein",
+            (1, 6, 11),
+            index_base=1,
+        )
+        avis.assert_called_once_with(
+            ctx.output,
+            "artery",
+            "vein",
+            {"maps": 3},
+        )
+
     def test_no_metric_children_skips_per_beat_metric_work(self) -> None:
         ctx = _context({"waveform_shape_metrics": ()})
 

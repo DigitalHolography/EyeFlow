@@ -43,6 +43,8 @@ class DopplerViewAnalysisOutputPaths:
 class SegmentVelocityOutputPaths:
     velocity_signal: str | None
     velocity_signal_band_limited: str | None = None
+    velocity_map_per_segment: str | None = None
+    segments: str | None = None
 
 
 @dataclass(frozen=True)
@@ -339,12 +341,16 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         velocity_signal_band_limited=(
             "Processing/Velocity/segments/Artery/BandLimited/value"
         ),
+        velocity_map_per_segment="Processing/VelocityMapPerSegment/Artery",
+        segments="Segmentation/Artery/Segments",
     ),
     vein_segments=SegmentVelocityOutputPaths(
         velocity_signal="Processing/Velocity/segments/Vein/Raw/value",
         velocity_signal_band_limited=(
             "Processing/Velocity/segments/Vein/BandLimited/value"
         ),
+        velocity_map_per_segment="Processing/VelocityMapPerSegment/Vein",
+        segments="Segmentation/Vein/Segments",
     ),
     artery_per_beat=VelocityPerBeatOutputPaths(
         velocity_signal="Processing/VelocityPerBeat/Artery/Raw/value",

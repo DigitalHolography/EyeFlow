@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy import ndimage as ndi
+from scipy import special
 
 from calculations.compute_backend import optional_cupy_backend
 from calculations.math import nanmean_float32, rotate_array_threshold, rotate_image_with_nan
@@ -67,6 +68,8 @@ class CrossSectionSignalResult(CrossSectionProfileOutputs):
 
     velocity: np.ndarray
     safe_velocity: np.ndarray
+    velocity_maps_per_segment: np.ndarray
+    segment_masks: np.ndarray
     labels: np.ndarray
     branch_ids: np.ndarray
     segment_center_xy: np.ndarray
@@ -119,6 +122,7 @@ class _CrossSectionVelocityMeasurement:
     safe_velocity: np.ndarray
     transverse_profiles: np.ndarray
     longitudinal_profiles: np.ndarray
+    rotated_stack: np.ndarray
     angle: float
     spatial_std: np.ndarray
 
@@ -129,19 +133,22 @@ class _CrossSectionMeasurement:
     masked: _CrossSectionVelocityMeasurement
     rotated_mean: np.ndarray
     rotated_mean_masked: np.ndarray
+    rotated_mask: np.ndarray
     limits: tuple[int, int]
     sample_count: int
 
 
 _INTERPOLATED_SUBSTACK_SIDE = 128
 _ROTATED_SUBSTACK_SIDE = int(_INTERPOLATED_SUBSTACK_SIDE * np.sqrt(2.0))
-_MAX_PARALLEL_CROSS_SECTIONS = 4
+_MAX_PARALLEL_CROSS_SECTIONS = 8
 
 
 @dataclass
 class _CrossSectionBuffers:
     velocity: np.ndarray
     safe_velocity: np.ndarray
+    velocity_maps_per_segment: np.ndarray
+    segment_masks: np.ndarray
     segment_center_xy: np.ndarray
     velocity_profiles: np.ndarray
     transverse_velocity_profiles_masked: np.ndarray
@@ -168,6 +175,23 @@ class _CrossSectionBuffers:
         return cls(
             velocity=np.full(signal_shape, np.nan, dtype=np.float32),
             safe_velocity=np.full(signal_shape, np.nan, dtype=np.float32),
+            velocity_maps_per_segment=np.full(
+                (
+                    *signal_shape,
+                    _ROTATED_SUBSTACK_SIDE,
+                    _ROTATED_SUBSTACK_SIDE,
+                ),
+                np.nan,
+                dtype=np.float32,
+            ),
+            segment_masks=np.zeros(
+                (
+                    *profile_shape,
+                    _ROTATED_SUBSTACK_SIDE,
+                    _ROTATED_SUBSTACK_SIDE,
+                ),
+                dtype=bool,
+            ),
             segment_center_xy=np.full(
                 (branch_count, ring_count, 2),
                 np.nan,
@@ -334,6 +358,8 @@ def _result_from_buffers(
     return CrossSectionSignalResult(
         velocity=buffers.velocity,
         safe_velocity=buffers.safe_velocity,
+        velocity_maps_per_segment=buffers.velocity_maps_per_segment,
+        segment_masks=buffers.segment_masks,
         labels=branches.labels,
         branch_ids=branches.branch_ids,
         segment_center_xy=buffers.segment_center_xy,
@@ -392,6 +418,26 @@ def _empty_result(
         np.nan,
         dtype=np.float32,
     )
+    empty_velocity_maps = np.full(
+        (
+            settings.ring_count,
+            0,
+            velocity.shape[0],
+            _ROTATED_SUBSTACK_SIDE,
+            _ROTATED_SUBSTACK_SIDE,
+        ),
+        np.nan,
+        dtype=np.float32,
+    )
+    empty_segment_masks = np.zeros(
+        (
+            settings.ring_count,
+            0,
+            _ROTATED_SUBSTACK_SIDE,
+            _ROTATED_SUBSTACK_SIDE,
+        ),
+        dtype=bool,
+    )
     processed = process_velocity_profiles(
         empty_profiles,
         pixel_size_mm=0.0,
@@ -400,6 +446,8 @@ def _empty_result(
     return CrossSectionSignalResult(
         velocity=np.full(shape, np.nan, dtype=np.float32),
         safe_velocity=np.full(shape, np.nan, dtype=np.float32),
+        velocity_maps_per_segment=empty_velocity_maps,
+        segment_masks=empty_segment_masks,
         labels=np.zeros(vessel.shape, dtype=np.int32),
         branch_ids=branches.branch_ids,
         segment_center_xy=np.full(
@@ -558,6 +606,10 @@ def _store_cross_section_measurement(
     masked = measurement.masked
     buffers.velocity[circle_index, branch_index] = masked.raw
     buffers.safe_velocity[circle_index, branch_index] = masked.safe_velocity
+    buffers.velocity_maps_per_segment[circle_index, branch_index] = (
+        measurement.unmasked.rotated_stack
+    )
+    buffers.segment_masks[circle_index, branch_index] = measurement.rotated_mask
     buffers.velocity_profiles[circle_index, branch_index] = (
         measurement.unmasked.transverse_profiles
     )
@@ -731,6 +783,7 @@ def _cross_section_velocity_from_substack(
         rotation_mask,
         angle,
     )
+    rotated_mask = _rotate_mask(rotation_mask, angle)
     profile_pixel_size_mm = _interpolated_pixel_size_mm(
         settings.pixel_size_mm,
         substack_side_pixels,
@@ -757,6 +810,7 @@ def _cross_section_velocity_from_substack(
         ),
         rotated_mean=rotated_mean,
         rotated_mean_masked=rotated_mean_masked,
+        rotated_mask=rotated_mask,
         limits=(c1, c2),
         sample_count=_rotated_profile_sample_count(angle),
     )
@@ -774,6 +828,7 @@ def _profile_measurement(
         safe_velocity,
         transverse_profiles,
         longitudinal_profiles,
+        rotated_stack,
     ) = _frame_velocities(
         sub_stack,
         angle,
@@ -786,6 +841,7 @@ def _profile_measurement(
         safe_velocity=safe_velocity,
         transverse_profiles=transverse_profiles,
         longitudinal_profiles=longitudinal_profiles,
+        rotated_stack=rotated_stack,
         angle=float(angle),
         spatial_std=spatial_std,
     )
@@ -902,10 +958,56 @@ def _resize_subimage_stack(sub_stack: np.ndarray) -> np.ndarray:
     values = np.asarray(sub_stack, dtype=np.float32)
     if optional_cupy_backend() is not None:
         return _resize_values_with_nan(values)
+    shared_validity = _shared_validity_mask(values)
+    if shared_validity is not None:
+        return _resize_stack_with_shared_validity_cpu(values, shared_validity)
     return np.stack(
         [_resize_values_with_nan_cpu(frame) for frame in values],
         axis=0,
     )
+
+
+def _resize_stack_with_shared_validity_cpu(
+    values: np.ndarray,
+    shared_validity: np.ndarray,
+) -> np.ndarray:
+    """Resize a temporal stack while interpolating its shared validity once."""
+    zoom_factors = (
+        _INTERPOLATED_SUBSTACK_SIDE / values.shape[-2],
+        _INTERPOLATED_SUBSTACK_SIDE / values.shape[-1],
+    )
+    resized_weights = ndi.zoom(
+        shared_validity.astype(np.float32),
+        zoom_factors,
+        order=1,
+        mode="grid-constant",
+        cval=0.0,
+        prefilter=False,
+        grid_mode=True,
+    ).astype(np.float32, copy=False)
+    resized_values = np.stack(
+        [
+            ndi.zoom(
+                np.where(shared_validity, frame, np.float32(0.0)),
+                zoom_factors,
+                order=1,
+                mode="grid-constant",
+                cval=0.0,
+                prefilter=False,
+                grid_mode=True,
+            ).astype(np.float32, copy=False)
+            for frame in values
+        ],
+        axis=0,
+    )
+    resized = np.full(resized_values.shape, np.nan, dtype=np.float32)
+    np.divide(
+        resized_values,
+        resized_weights[None, :, :],
+        out=resized,
+        where=resized_weights[None, :, :] > np.float32(1e-6),
+    )
+    return resized
 
 
 def _resize_submask(mask: np.ndarray) -> np.ndarray:
@@ -1086,9 +1188,13 @@ def _rotate_masked_image(
     angle: float,
 ) -> np.ndarray:
     rotated = _rotate_mean_image(image, angle)
-    rotated_mask = rotate_array_threshold(mask, angle)
+    rotated_mask = _rotate_mask(mask, angle)
     rotated[~rotated_mask] = np.nan
     return rotated.astype(np.float32, copy=False)
+
+
+def _rotate_mask(mask: np.ndarray, angle: float) -> np.ndarray:
+    return rotate_array_threshold(mask, angle).astype(bool, copy=False)
 
 
 def _estimate_orientation(mean_image: np.ndarray, loc_xy, optic_disc_center) -> float:
@@ -1186,7 +1292,7 @@ def _frame_velocities(
     angle: float,
     c1: int,
     c2: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     rotated = _rotate_stack_with_nan(sub_stack, angle)
     transverse_profiles = nanmean_float32(rotated, axis=1)
     longitudinal_profiles = nanmean_float32(rotated, axis=2)
@@ -1201,6 +1307,7 @@ def _frame_velocities(
         safe_velocity,
         transverse_profiles,
         longitudinal_profiles,
+        rotated,
     )
 
 
@@ -1245,6 +1352,14 @@ def _rotate_stack_with_nan(sub_stack: np.ndarray, angle: float) -> np.ndarray:
         except Exception:
             pass
 
+    shared_validity = _shared_validity_mask(sub_stack)
+    if shared_validity is not None:
+        return _rotate_stack_with_shared_validity_cpu(
+            sub_stack,
+            shared_validity,
+            angle,
+        )
+
     valid = np.isfinite(sub_stack)
     rotated_values = ndi.rotate(
         np.where(valid, sub_stack, np.float32(0.0)),
@@ -1274,3 +1389,90 @@ def _rotate_stack_with_nan(sub_stack: np.ndarray, angle: float) -> np.ndarray:
         where=rotated_weights >= np.float32(0.5),
     )
     return rotated.astype(np.float32, copy=False)
+
+
+def _rotate_stack_with_shared_validity_cpu(
+    sub_stack: np.ndarray,
+    shared_validity: np.ndarray,
+    angle: float,
+) -> np.ndarray:
+    """Rotate a temporal stack while rotating its shared validity only once."""
+    rotated_weights = ndi.rotate(
+        shared_validity.astype(np.float32),
+        angle,
+        reshape=False,
+        order=1,
+        mode="constant",
+        cval=0.0,
+        prefilter=False,
+    ).astype(np.float32, copy=False)
+    finite_output = rotated_weights >= np.float32(0.5)
+    finite_y, finite_x = np.nonzero(finite_output)
+    rotated = np.full(sub_stack.shape, np.nan, dtype=np.float32)
+    if finite_y.size == 0:
+        return rotated
+
+    y_start = int(finite_y.min())
+    y_stop = int(finite_y.max()) + 1
+    x_start = int(finite_x.min())
+    x_stop = int(finite_x.max()) + 1
+    output_shape = (y_stop - y_start, x_stop - x_start)
+    rotation_matrix, rotation_offset = _rotation_affine(
+        shared_validity.shape,
+        angle,
+    )
+    cropped_offset = rotation_offset + rotation_matrix @ np.asarray(
+        [y_start, x_start],
+        dtype=np.float64,
+    )
+    rotated_values = np.empty(
+        (sub_stack.shape[0], *output_shape),
+        dtype=np.float32,
+    )
+    for frame_index, frame in enumerate(sub_stack):
+        ndi.affine_transform(
+            np.where(shared_validity, frame, np.float32(0.0)),
+            rotation_matrix,
+            cropped_offset,
+            output_shape=output_shape,
+            output=rotated_values[frame_index],
+            order=1,
+            mode="constant",
+            cval=0.0,
+            prefilter=False,
+        )
+    cropped_weights = rotated_weights[y_start:y_stop, x_start:x_stop]
+    np.divide(
+        rotated_values,
+        cropped_weights[None, :, :],
+        out=rotated[:, y_start:y_stop, x_start:x_stop],
+        where=cropped_weights[None, :, :] >= np.float32(0.5),
+    )
+    return rotated
+
+
+def _rotation_affine(
+    image_shape: tuple[int, int],
+    angle: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return SciPy ``rotate(..., reshape=False)`` matrix and offset."""
+    cosine = special.cosdg(angle)
+    sine = special.sindg(angle)
+    matrix = np.asarray(
+        [[cosine, sine], [-sine, cosine]],
+        dtype=np.float64,
+    )
+    center = (np.asarray(image_shape, dtype=np.float64) - 1.0) / 2.0
+    return matrix, center - matrix @ center
+
+
+def _shared_validity_mask(values: np.ndarray) -> np.ndarray | None:
+    """Return a 2-D validity mask when every frame has the same finite pixels."""
+    source = np.asarray(values)
+    if source.ndim != 3 or source.shape[0] == 0:
+        return None
+    first = np.isfinite(source[0])
+    for frame in source[1:]:
+        if not np.array_equal(np.isfinite(frame), first):
+            return None
+    return first

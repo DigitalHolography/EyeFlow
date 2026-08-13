@@ -24,6 +24,7 @@ from .generate_cross_section_signals import (
     _result_from_buffers,
     _rotated_profile_sample_count,
     _rotate_mean_image,
+    _rotate_mask,
     _rotate_masked_image,
     _store_cross_section_measurement,
     _subimage_stack_from_bounds,
@@ -262,6 +263,7 @@ def project_cross_section_cube(
                 ),
                 rotated_mean=rotated_mean,
                 rotated_mean_masked=rotated_mean_masked,
+                rotated_mask=_rotate_mask(rotation_mask, angle),
                 limits=limits,
                 sample_count=_rotated_profile_sample_count(angle),
             )
