@@ -74,11 +74,40 @@ class SegmentationOutputPaths:
 
 
 @dataclass(frozen=True)
-class CrossSectionProfileOutputPaths:
+class CrossSectionProfileVariantOutputPaths:
     velocity_profile: str
+    transverse_coordinate_micrometers: str
+
+
+@dataclass(frozen=True)
+class CrossSectionRawProfileOutputPaths(CrossSectionProfileVariantOutputPaths):
     transverse_velocity_profile_masked: str
     longitudinal_velocity_profile_masked: str
     transverse_velocity_profile_masked_centroid: str
+    longitudinal_coordinate_micrometers: str
+
+
+@dataclass(frozen=True)
+class CrossSectionProfileOutputPaths:
+    raw_profile: CrossSectionRawProfileOutputPaths
+    interpolated_profile: CrossSectionProfileVariantOutputPaths
+
+    @property
+    def velocity_profile(self) -> str:
+        """Compatibility alias for the raw unmasked velocity profile."""
+        return self.raw_profile.velocity_profile
+
+    @property
+    def transverse_velocity_profile_masked(self) -> str:
+        return self.raw_profile.transverse_velocity_profile_masked
+
+    @property
+    def longitudinal_velocity_profile_masked(self) -> str:
+        return self.raw_profile.longitudinal_velocity_profile_masked
+
+    @property
+    def transverse_velocity_profile_masked_centroid(self) -> str:
+        return self.raw_profile.transverse_velocity_profile_masked_centroid
 
 
 @dataclass(frozen=True)
@@ -99,6 +128,8 @@ class EyeFlowOutputPaths:
     vein_segments: SegmentVelocityOutputPaths
     artery_per_beat: VelocityPerBeatOutputPaths
     vein_per_beat: VelocityPerBeatOutputPaths
+    artery_per_beat_safe: SegmentVelocityOutputPaths
+    vein_per_beat_safe: SegmentVelocityOutputPaths
     segmentation: SegmentationOutputPaths
     artery_cross_section_profiles: CrossSectionProfileOutputPaths
     vein_cross_section_profiles: CrossSectionProfileOutputPaths
@@ -141,16 +172,34 @@ def _cross_section_profile_paths(
     *,
     velocity_profile_name: str = "VelocityProfile",
 ) -> CrossSectionProfileOutputPaths:
+    raw_root = f"{root}/RawProfile"
+    interpolated_root = f"{root}/InterpolatedProfile"
     return CrossSectionProfileOutputPaths(
-        velocity_profile=f"{root}/{velocity_profile_name}",
-        transverse_velocity_profile_masked=(
-            f"{root}/Transverse{velocity_profile_name}Masked"
+        raw_profile=CrossSectionRawProfileOutputPaths(
+            velocity_profile=f"{raw_root}/{velocity_profile_name}/value",
+            transverse_coordinate_micrometers=(
+                f"{raw_root}/TransverseCoordinateMicrometers/value"
+            ),
+            transverse_velocity_profile_masked=(
+                f"{raw_root}/Transverse{velocity_profile_name}Masked/value"
+            ),
+            longitudinal_velocity_profile_masked=(
+                f"{raw_root}/Longitudinal{velocity_profile_name}Masked/value"
+            ),
+            transverse_velocity_profile_masked_centroid=(
+                f"{raw_root}/Transverse{velocity_profile_name}MaskedCentroid/value"
+            ),
+            longitudinal_coordinate_micrometers=(
+                f"{raw_root}/LongitudinalCoordinateMicrometers/value"
+            ),
         ),
-        longitudinal_velocity_profile_masked=(
-            f"{root}/Longitudinal{velocity_profile_name}Masked"
-        ),
-        transverse_velocity_profile_masked_centroid=(
-            f"{root}/Transverse{velocity_profile_name}MaskedCentroid"
+        interpolated_profile=CrossSectionProfileVariantOutputPaths(
+            velocity_profile=(
+                f"{interpolated_root}/{velocity_profile_name}/value"
+            ),
+            transverse_coordinate_micrometers=(
+                f"{interpolated_root}/TransverseCoordinateMicrometers/value"
+            ),
         ),
     )
 
@@ -230,6 +279,8 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
             "VelocitySignalPerBeatPerSegmentBandLimited/value"
         ),
     ),
+    artery_per_beat_safe=SegmentVelocityOutputPaths(velocity_signal=None),
+    vein_per_beat_safe=SegmentVelocityOutputPaths(velocity_signal=None),
     segmentation=_segmentation_paths("Segmentation"),
     artery_cross_section_profiles=_cross_section_profile_paths(
         "Artery/CrossSections",
@@ -285,6 +336,8 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
             "vein/velocity/perbeat/segments/band_limited/value"
         ),
     ),
+    artery_per_beat_safe=SegmentVelocityOutputPaths(velocity_signal=None),
+    vein_per_beat_safe=SegmentVelocityOutputPaths(velocity_signal=None),
     segmentation=_segmentation_paths("Segmentation"),
     artery_cross_section_profiles=_cross_section_profile_paths(
         "artery/cross_sections"
@@ -358,6 +411,22 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         ),
         segment_velocity_signal_band_limited=(
             "Processing/VelocityPerBeat/Vein/Segments/BandLimited/value"
+        ),
+    ),
+    artery_per_beat_safe=SegmentVelocityOutputPaths(
+        velocity_signal=(
+            "Processing/VelocityPerBeatSafe/Artery/Segments/Raw/value"
+        ),
+        velocity_signal_band_limited=(
+            "Processing/VelocityPerBeatSafe/Artery/Segments/BandLimited/value"
+        ),
+    ),
+    vein_per_beat_safe=SegmentVelocityOutputPaths(
+        velocity_signal=(
+            "Processing/VelocityPerBeatSafe/Vein/Segments/Raw/value"
+        ),
+        velocity_signal_band_limited=(
+            "Processing/VelocityPerBeatSafe/Vein/Segments/BandLimited/value"
         ),
     ),
     segmentation=_segmentation_paths("Segmentation"),

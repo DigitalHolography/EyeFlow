@@ -26,6 +26,7 @@ from calculations.blood_flow_velocity.cross_section.generate_cross_section_signa
     _ROTATED_SUBSTACK_SIDE,
     _CrossSectionBuffers,
     _CrossSectionMeasurement,
+    _CrossSectionVelocityMeasurement,
     _center_pad_for_rotation,
     _fill_cross_section_buffers,
     _fixed_subimage_stack,
@@ -538,23 +539,23 @@ class SegmentCenterTests(unittest.TestCase):
             "calculations.blood_flow_velocity.cross_section."
             "generate_cross_section_signals._cross_section_velocity_from_substack",
             return_value=_CrossSectionMeasurement(
-                unmasked=(
-                    signal,
-                    signal,
-                    profiles,
-                    profiles,
-                    profiles,
-                    0.0,
-                    np.zeros((181,), dtype=np.float32),
+                unmasked=_CrossSectionVelocityMeasurement(
+                    raw=signal,
+                    safe_velocity=signal + np.float32(100.0),
+                    transverse_profiles=profiles,
+                    longitudinal_profiles=profiles,
+                    transverse_profile_centroids=profiles,
+                    angle=0.0,
+                    spatial_std=np.zeros((181,), dtype=np.float32),
                 ),
-                masked=(
-                    signal,
-                    signal,
-                    profiles_masked,
-                    profiles_masked,
-                    profiles_masked,
-                    0.0,
-                    np.zeros((181,), dtype=np.float32),
+                masked=_CrossSectionVelocityMeasurement(
+                    raw=signal,
+                    safe_velocity=signal + np.float32(200.0),
+                    transverse_profiles=profiles_masked,
+                    longitudinal_profiles=profiles_masked,
+                    transverse_profile_centroids=profiles_masked,
+                    angle=0.0,
+                    spatial_std=np.zeros((181,), dtype=np.float32),
                 ),
                 rotated_mean=rotated_mean,
                 rotated_mean_masked=rotated_mean_masked,
@@ -584,6 +585,14 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(buffers.segment_center_xy[1, 0])))
         np.testing.assert_array_equal(buffers.velocity[0, 0], signal)
         np.testing.assert_array_equal(buffers.velocity[1, 1], signal)
+        np.testing.assert_array_equal(
+            buffers.safe_velocity[0, 0],
+            signal + np.float32(200.0),
+        )
+        np.testing.assert_array_equal(
+            buffers.safe_velocity[1, 1],
+            signal + np.float32(200.0),
+        )
         self.assertEqual(128, buffers.profile_sample_count[0, 0])
         self.assertEqual(128, buffers.profile_sample_count[1, 1])
         self.assertEqual(

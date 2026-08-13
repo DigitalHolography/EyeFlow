@@ -114,25 +114,20 @@ class _CrossSectionWork:
 
 
 @dataclass(frozen=True)
+class _CrossSectionVelocityMeasurement:
+    raw: np.ndarray
+    safe_velocity: np.ndarray
+    transverse_profiles: np.ndarray
+    longitudinal_profiles: np.ndarray
+    transverse_profile_centroids: np.ndarray
+    angle: float
+    spatial_std: np.ndarray
+
+
+@dataclass(frozen=True)
 class _CrossSectionMeasurement:
-    unmasked: tuple[
-        np.ndarray,
-        np.ndarray,
-        np.ndarray,
-        np.ndarray,
-        np.ndarray,
-        float,
-        np.ndarray,
-    ]
-    masked: tuple[
-        np.ndarray,
-        np.ndarray,
-        np.ndarray,
-        np.ndarray,
-        np.ndarray,
-        float,
-        np.ndarray,
-    ]
+    unmasked: _CrossSectionVelocityMeasurement
+    masked: _CrossSectionVelocityMeasurement
     rotated_mean: np.ndarray
     rotated_mean_masked: np.ndarray
     limits: tuple[int, int]
@@ -561,32 +556,27 @@ def _store_cross_section_measurement(
     measurement: _CrossSectionMeasurement,
     bounds_xyxy: tuple[int, int, int, int],
 ) -> None:
-    _, _, profiles, _, _, _, _ = measurement.unmasked
-    (
-        raw,
-        safe,
-        transverse_profiles_masked,
-        longitudinal_profiles_masked,
-        transverse_profile_masked_centroids,
-        angle,
-        spatial_std,
-    ) = measurement.masked
-    buffers.velocity[circle_index, branch_index] = raw
-    buffers.safe_velocity[circle_index, branch_index] = safe
-    buffers.velocity_profiles[circle_index, branch_index] = profiles
+    masked = measurement.masked
+    buffers.velocity[circle_index, branch_index] = masked.raw
+    buffers.safe_velocity[circle_index, branch_index] = masked.safe_velocity
+    buffers.velocity_profiles[circle_index, branch_index] = (
+        measurement.unmasked.transverse_profiles
+    )
     buffers.transverse_velocity_profiles_masked[circle_index, branch_index] = (
-        transverse_profiles_masked
+        masked.transverse_profiles
     )
     buffers.longitudinal_velocity_profiles_masked[circle_index, branch_index] = (
-        longitudinal_profiles_masked
+        masked.longitudinal_profiles
     )
     buffers.transverse_velocity_profile_masked_centroids[
         circle_index,
         branch_index,
-    ] = transverse_profile_masked_centroids
+    ] = masked.transverse_profile_centroids
     buffers.profile_sample_count[circle_index, branch_index] = measurement.sample_count
-    buffers.profile_spatial_std[circle_index, branch_index] = spatial_std
-    buffers.profile_rotation_degrees[circle_index, branch_index] = np.float32(angle)
+    buffers.profile_spatial_std[circle_index, branch_index] = masked.spatial_std
+    buffers.profile_rotation_degrees[circle_index, branch_index] = np.float32(
+        masked.angle
+    )
     buffers.rotated_mean_images[circle_index, branch_index] = measurement.rotated_mean
     buffers.rotated_mean_images_masked[circle_index, branch_index] = (
         measurement.rotated_mean_masked
@@ -780,18 +770,10 @@ def _profile_measurement(
     c1: int,
     c2: int,
     rotated_mean: np.ndarray,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    float,
-    np.ndarray,
-]:
+) -> _CrossSectionVelocityMeasurement:
     (
         raw,
-        safe,
+        safe_velocity,
         transverse_profiles,
         longitudinal_profiles,
         transverse_profile_centroids,
@@ -802,14 +784,14 @@ def _profile_measurement(
         c2,
     )
     spatial_std = _sample_nanstd_axis0(rotated_mean)
-    return (
-        raw,
-        safe,
-        transverse_profiles,
-        longitudinal_profiles,
-        transverse_profile_centroids,
-        float(angle),
-        spatial_std,
+    return _CrossSectionVelocityMeasurement(
+        raw=raw,
+        safe_velocity=safe_velocity,
+        transverse_profiles=transverse_profiles,
+        longitudinal_profiles=longitudinal_profiles,
+        transverse_profile_centroids=transverse_profile_centroids,
+        angle=float(angle),
+        spatial_std=spatial_std,
     )
 
 
@@ -1218,10 +1200,10 @@ def _frame_velocities(
         np.float32,
         copy=False,
     )
-    safe = nanmean_float32(transverse_profiles, axis=1)
+    safe_velocity = nanmean_float32(transverse_profiles, axis=1)
     return (
         raw,
-        safe,
+        safe_velocity,
         transverse_profiles,
         longitudinal_profiles,
         transverse_profile_centroids,

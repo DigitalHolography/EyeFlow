@@ -46,67 +46,52 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
             cycle_boundaries,
         )
         schema = EyeFlowOutputPaths.active()
-        self.assertEqual(8, len(metrics))
+        self.assertEqual(16, len(metrics))
+        artery_paths = schema.artery_cross_section_profiles
+        vein_paths = schema.vein_cross_section_profiles
         self.assertEqual(
-            "Processing/CrossSections/Artery/VelocityProfile",
-            schema.artery_cross_section_profiles.velocity_profile,
+            "Processing/CrossSections/Artery/RawProfile/VelocityProfile/value",
+            artery_paths.raw_profile.velocity_profile,
         )
         self.assertEqual(
-            "Processing/CrossSections/Artery/TransverseVelocityProfileMasked",
-            schema.artery_cross_section_profiles.transverse_velocity_profile_masked,
+            "Processing/CrossSections/Artery/RawProfile/"
+            "LongitudinalVelocityProfileMasked/value",
+            artery_paths.raw_profile.longitudinal_velocity_profile_masked,
         )
         self.assertEqual(
-            "Processing/CrossSections/Artery/LongitudinalVelocityProfileMasked",
-            schema.artery_cross_section_profiles.longitudinal_velocity_profile_masked,
+            "Processing/CrossSections/Artery/RawProfile/"
+            "LongitudinalCoordinateMicrometers/value",
+            artery_paths.raw_profile.longitudinal_coordinate_micrometers,
         )
         self.assertEqual(
-            "Processing/CrossSections/Artery/"
-            "TransverseVelocityProfileMaskedCentroid",
-            (
-                schema.artery_cross_section_profiles
-                .transverse_velocity_profile_masked_centroid
-            ),
-        )
-        self.assertEqual(
-            "Processing/CrossSections/Vein/VelocityProfile",
-            schema.vein_cross_section_profiles.velocity_profile,
-        )
-        self.assertEqual(
-            "Processing/CrossSections/Vein/TransverseVelocityProfileMasked",
-            schema.vein_cross_section_profiles.transverse_velocity_profile_masked,
-        )
-        self.assertEqual(
-            "Processing/CrossSections/Vein/LongitudinalVelocityProfileMasked",
-            schema.vein_cross_section_profiles.longitudinal_velocity_profile_masked,
-        )
-        self.assertEqual(
-            "Processing/CrossSections/Vein/TransverseVelocityProfileMaskedCentroid",
-            (
-                schema.vein_cross_section_profiles
-                .transverse_velocity_profile_masked_centroid
-            ),
+            "Processing/CrossSections/Vein/RawProfile/"
+            "LongitudinalVelocityProfileMasked/value",
+            vein_paths.raw_profile.longitudinal_velocity_profile_masked,
         )
 
         with h5py.File("profiles.h5", "w", driver="core", backing_store=False) as h5:
             for path, value in metrics.items():
                 write_value_dataset(h5, path, value)
-            dataset = h5[schema.artery_cross_section_profiles.velocity_profile]
+            raw_dataset = h5[artery_paths.raw_profile.velocity_profile]
             transverse_dataset = h5[
-                schema.artery_cross_section_profiles.transverse_velocity_profile_masked
+                artery_paths.raw_profile.transverse_velocity_profile_masked
             ]
             longitudinal_dataset = h5[
-                schema.artery_cross_section_profiles.longitudinal_velocity_profile_masked
+                artery_paths.raw_profile.longitudinal_velocity_profile_masked
             ]
             centroid_dataset = h5[
-                schema.artery_cross_section_profiles
-                .transverse_velocity_profile_masked_centroid
+                artery_paths.raw_profile.transverse_velocity_profile_masked_centroid
             ]
-            self.assertEqual((181, 4, 2, 1, 2), dataset.shape)
-            self.assertEqual(dataset.shape, transverse_dataset.shape)
-            self.assertEqual(dataset.shape, longitudinal_dataset.shape)
-            self.assertEqual(dataset.shape, centroid_dataset.shape)
+            interpolated_dataset = h5[
+                artery_paths.interpolated_profile.velocity_profile
+            ]
+            self.assertEqual((181, 4, 2, 1, 2), raw_dataset.shape)
+            self.assertEqual(raw_dataset.shape, transverse_dataset.shape)
+            self.assertEqual(raw_dataset.shape, longitudinal_dataset.shape)
+            self.assertEqual(raw_dataset.shape, centroid_dataset.shape)
+            self.assertEqual((256, 4, 2, 1, 2), interpolated_dataset.shape)
             self.assertEqual(
-                list(dataset.attrs["dimDesc"]),
+                list(raw_dataset.attrs["dimDesc"]),
                 ["x", "time", "beat", "branch", "radius"],
             )
             self.assertEqual(
@@ -122,13 +107,13 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
                 ["y", "time", "beat", "branch", "radius"],
             )
             self.assertEqual("pixel", centroid_dataset.attrs["unit"])
-            self.assertEqual("mm/s", dataset.attrs["unit"])
-            self.assertEqual("gzip", dataset.compression)
-            self.assertEqual(4, dataset.compression_opts)
-            self.assertTrue(dataset.shuffle)
-            self.assertEqual((181, 4, 1, 1, 1), dataset.chunks)
+            self.assertEqual("mm/s", raw_dataset.attrs["unit"])
+            self.assertEqual("gzip", raw_dataset.compression)
+            self.assertEqual(4, raw_dataset.compression_opts)
+            self.assertTrue(raw_dataset.shuffle)
+            self.assertEqual((181, 4, 1, 1, 1), raw_dataset.chunks)
             self.assertFalse(
-                np.array_equal(dataset[...], transverse_dataset[...], equal_nan=True)
+                np.array_equal(raw_dataset[...], transverse_dataset[...], equal_nan=True)
             )
             self.assertFalse(
                 np.array_equal(
@@ -137,32 +122,18 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
                     equal_nan=True,
                 )
             )
-            empty = h5[schema.vein_cross_section_profiles.velocity_profile]
-            empty_transverse = h5[
-                schema.vein_cross_section_profiles.transverse_velocity_profile_masked
-            ]
             empty_longitudinal = h5[
-                schema.vein_cross_section_profiles.longitudinal_velocity_profile_masked
+                vein_paths.raw_profile.longitudinal_velocity_profile_masked
             ]
-            empty_centroid = h5[
-                schema.vein_cross_section_profiles
-                .transverse_velocity_profile_masked_centroid
+            self.assertEqual((181, 4, 2, 0, 2), empty_longitudinal.shape)
+            longitudinal_coordinate = h5[
+                artery_paths.raw_profile.longitudinal_coordinate_micrometers
             ]
-            self.assertEqual((181, 4, 2, 0, 2), empty.shape)
-            self.assertEqual(empty.shape, empty_transverse.shape)
-            self.assertEqual(empty.shape, empty_longitudinal.shape)
-            self.assertEqual(empty.shape, empty_centroid.shape)
-            self.assertNotIn(
-                "Processing/CrossSections/Artery/InterpolatedProfile",
-                h5,
-            )
-            self.assertNotIn(
-                "Processing/CrossSections/Vein/InterpolatedProfile",
-                h5,
-            )
-            self.assertNotIn(
-                "Processing/CrossSections/Artery/VelocityProfileMasked",
-                h5,
+            self.assertEqual((181,), longitudinal_coordinate.shape)
+            self.assertEqual("um", longitudinal_coordinate.attrs["unit"])
+            self.assertEqual(
+                ["y"],
+                list(longitudinal_coordinate.attrs["dimDesc"]),
             )
 
     def test_profile_time_axis_matches_standard_per_beat_interpolation(self) -> None:

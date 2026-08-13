@@ -25,6 +25,7 @@ class VesselPerBeatAnalysisResult:
     vmin_band_limited: np.ndarray
     vti_per_beat: np.ndarray
     segments: PerBeatSegmentAnalysisResult | None = None
+    safe_segments: PerBeatSegmentAnalysisResult | None = None
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,8 @@ class PerBeatAnalysisInput:
     arterial_velocity_segments: np.ndarray | None = None
     venous_velocity_segments: np.ndarray | None = None
     index_base: int | None = None
+    arterial_safe_velocity_segments: np.ndarray | None = None
+    venous_safe_velocity_segments: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -65,12 +68,14 @@ def run_per_beat_analysis(inputs: PerBeatAnalysisInput) -> PerBeatAnalysisResult
         vein=_run_vessel(
             inputs.venous_velocity_signal,
             inputs.venous_velocity_segments,
+            inputs.venous_safe_velocity_segments,
             cycle_boundaries,
             inputs,
         ),
         artery=_run_vessel(
             inputs.arterial_velocity_signal,
             inputs.arterial_velocity_segments,
+            inputs.arterial_safe_velocity_segments,
             cycle_boundaries,
             inputs,
         ),
@@ -90,10 +95,16 @@ def _beat_period_seconds(
 def _run_vessel(
     velocity_signal,
     velocity_segments,
+    safe_velocity_segments,
     cycle_boundaries: np.ndarray,
     inputs: PerBeatAnalysisInput,
 ) -> VesselPerBeatAnalysisResult:
     segments = _run_segments(velocity_segments, cycle_boundaries, inputs)
+    safe_segments = _run_segments(
+        safe_velocity_segments,
+        cycle_boundaries,
+        inputs,
+    )
     signal = per_beat_signal_analysis(
         velocity_signal,
         cycle_boundaries,
@@ -109,6 +120,7 @@ def _run_vessel(
             * np.float32(inputs.dt_seconds)
         ).astype(np.float32, copy=False),
         segments=segments,
+        safe_segments=safe_segments,
     )
 
 

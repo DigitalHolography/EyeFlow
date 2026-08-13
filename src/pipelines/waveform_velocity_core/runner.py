@@ -309,6 +309,14 @@ def _per_beat_input_from_analysis(
             vein_segments,
             include_segments=segments_required,
         ),
+        arterial_safe_velocity_segments=_safe_waveform_segment_input(
+            artery_segments,
+            include_segments=segments_required,
+        ),
+        venous_safe_velocity_segments=_safe_waveform_segment_input(
+            vein_segments,
+            include_segments=segments_required,
+        ),
         index_base=source_data.provenance["beat_index_base"],
     )
     return inputs, artery_segments, vein_segments
@@ -373,6 +381,16 @@ def _waveform_segment_input(
     if not include_segments or result is None or result.branch_ids.size == 0:
         return None
     return result.velocity
+
+
+def _safe_waveform_segment_input(
+    result: CrossSectionSignalResult | None,
+    *,
+    include_segments: bool,
+) -> np.ndarray | None:
+    if not include_segments or result is None or result.branch_ids.size == 0:
+        return None
+    return result.safe_velocity
 
 
 def _export_branch_identity_debug(

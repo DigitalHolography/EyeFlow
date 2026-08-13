@@ -22,9 +22,10 @@ def _velocity_from_delta_frequency(
     laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
     numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
 ) -> np.ndarray:
+    """Convert a Doppler-frequency shift in Hz to velocity in mm/s."""
     delta_frequency = np.asarray(delta_frequency, dtype=np.float32)
     return (
-        laser_wavelength * delta_frequency / numerical_aperture
+        np.float32(1e3) * laser_wavelength * delta_frequency / numerical_aperture
     ).astype(np.float32, copy=False)
 
 

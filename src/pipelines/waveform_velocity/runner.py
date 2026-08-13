@@ -46,6 +46,10 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 schema.artery_per_beat.segment_velocity_signal_band_limited,
                 schema.vein_per_beat.segment_velocity_signal,
                 schema.vein_per_beat.segment_velocity_signal_band_limited,
+                schema.artery_per_beat_safe.velocity_signal,
+                schema.artery_per_beat_safe.velocity_signal_band_limited,
+                schema.vein_per_beat_safe.velocity_signal,
+                schema.vein_per_beat_safe.velocity_signal_band_limited,
             }
             metrics.update(
                 {

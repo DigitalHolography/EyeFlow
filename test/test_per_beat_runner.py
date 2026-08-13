@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -30,15 +31,28 @@ from calculations.dopplerview_analysis.vessel_velocity_estimator import (  # noq
     _velocity_from_delta_frequency,
 )
 from calculations.math import band_limited_ifft_abs  # noqa: E402
+from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from pipelines.waveform_velocity_core.per_beat_outputs import (  # noqa: E402
     pack_velocity_per_beat_outputs,
 )
 from pipelines.waveform_velocity_core.runner import (  # noqa: E402
     _raw_velocity_signals_for_per_beat,
+    _safe_waveform_segment_input,
 )
 
 
 class PerBeatRunnerTests(unittest.TestCase):
+    def test_safe_segment_input_uses_public_masked_safe_velocity(self) -> None:
+        safe_velocity = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
+        result = SimpleNamespace(
+            branch_ids=np.asarray([1, 2, 3], dtype=np.int32),
+            safe_velocity=safe_velocity,
+        )
+
+        actual = _safe_waveform_segment_input(result, include_segments=True)
+
+        self.assertIs(actual, safe_velocity)
+
     def test_segment_aggregation_preserves_the_beat_axis(self) -> None:
         raw = np.arange(128 * 7 * 15 * 23, dtype=np.float32).reshape(
             128,
@@ -65,7 +79,7 @@ class PerBeatRunnerTests(unittest.TestCase):
     ) -> None:
         result = _velocity_from_delta_frequency(np.asarray([1.0], dtype=np.float32))
 
-        np.testing.assert_allclose(result, [8.52e-7 / 0.124])
+        np.testing.assert_allclose(result, [1e3 * 8.52e-7 / 0.124])
 
     def test_global_per_beat_signal_uses_global_signal_when_segments_exist(self) -> None:
         frame_count = 32
@@ -87,6 +101,8 @@ class PerBeatRunnerTests(unittest.TestCase):
             dt_seconds=0.01,
             arterial_velocity_segments=segments,
             venous_velocity_segments=segments,
+            arterial_safe_velocity_segments=segments + np.float32(1e3),
+            venous_safe_velocity_segments=segments + np.float32(2e3),
             index_base=0,
         )
 
@@ -103,6 +119,43 @@ class PerBeatRunnerTests(unittest.TestCase):
             expected.velocity_signal_per_beat,
         )
         self.assertIsNotNone(result.artery.segments)
+        self.assertIsNotNone(result.artery.safe_segments)
+        self.assertIsNotNone(result.vein.safe_segments)
+
+        outputs = pack_velocity_per_beat_outputs(result)
+        schema = EyeFlowOutputPaths.active()
+        self.assertEqual(
+            "Processing/VelocityPerBeatSafe/Artery/Segments/Raw/value",
+            schema.artery_per_beat_safe.velocity_signal,
+        )
+        self.assertEqual(
+            "Processing/VelocityPerBeatSafe/Artery/Segments/BandLimited/value",
+            schema.artery_per_beat_safe.velocity_signal_band_limited,
+        )
+        artery_safe_raw, artery_safe_attrs = outputs[
+            schema.artery_per_beat_safe.velocity_signal
+        ]
+        np.testing.assert_array_equal(
+            artery_safe_raw,
+            result.artery.safe_segments.velocity_signal_per_beat_per_segment,
+        )
+        self.assertEqual("mm/s", artery_safe_attrs["unit"])
+        self.assertIn(schema.vein_per_beat_safe.velocity_signal, outputs)
+        self.assertIn(
+            schema.vein_per_beat_safe.velocity_signal_band_limited,
+            outputs,
+        )
+        artery_safe_band_limited, artery_safe_band_limited_attrs = outputs[
+            schema.artery_per_beat_safe.velocity_signal_band_limited
+        ]
+        np.testing.assert_array_equal(
+            artery_safe_band_limited,
+            (
+                result.artery.safe_segments
+                .velocity_signal_per_beat_per_segment_band_limited
+            ),
+        )
+        self.assertEqual("mm/s", artery_safe_band_limited_attrs["unit"])
 
     def test_band_limited_reconstruction_matches_matlab_abs_ifft(self) -> None:
         phase = np.linspace(
