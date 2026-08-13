@@ -7,9 +7,8 @@ import numpy as np
 from calculations.blood_flow_velocity.cross_section.profile_processing import (
     interpolate_velocity_profiles_per_beat,
 )
-from input_output.schema import CrossSectionProfileOutputPaths, EyeFlowOutputPaths
+from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
-from pipelines.waveform_velocity_core.dopplerview.outputs import metric_value
 
 
 def pack_cross_section_profile_outputs(
@@ -22,14 +21,14 @@ def pack_cross_section_profile_outputs(
 ) -> dict[str, object]:
     schema = _resolve_output_paths(output_paths)
     metrics = _pack_vessel_profiles(
-        schema.artery_cross_section_profiles,
+        schema.artery_velocity_profiles,
         artery_segments,
         cycle_boundary_indexes,
         index_base=index_base,
     )
     metrics.update(
         _pack_vessel_profiles(
-            schema.vein_cross_section_profiles,
+            schema.vein_velocity_profiles,
             vein_segments,
             cycle_boundary_indexes,
             index_base=index_base,
@@ -39,31 +38,19 @@ def pack_cross_section_profile_outputs(
 
 
 def _pack_vessel_profiles(
-    paths: CrossSectionProfileOutputPaths,
+    paths: VelocityProfileOutputPaths,
     segments,
     cycle_boundary_indexes,
     *,
     index_base: int,
 ) -> dict[str, object]:
-    raw_coordinates = np.asarray(
-        segments.profile_x_micrometers,
-        dtype=np.float32,
-    )
-    interpolated_coordinates = np.asarray(
-        segments.centered_profile_x_micrometers,
-        dtype=np.float32,
-    )
     return {
-        paths.raw_profile.velocity_profile: _profile_dataset(
+        paths.transverse_velocity_profile_unmasked: _profile_dataset(
             np.asarray(segments.velocity_profiles, dtype=np.float32),
             cycle_boundary_indexes,
             index_base=index_base,
         ),
-        paths.raw_profile.transverse_coordinate_micrometers: _coordinate_dataset(
-            raw_coordinates,
-            spatial_axis="x",
-        ),
-        paths.raw_profile.transverse_velocity_profile_masked: _profile_dataset(
+        paths.transverse_velocity_profile_masked: _profile_dataset(
             np.asarray(
                 segments.transverse_velocity_profiles_masked,
                 dtype=np.float32,
@@ -72,7 +59,16 @@ def _pack_vessel_profiles(
             index_base=index_base,
             spatial_axis="x",
         ),
-        paths.raw_profile.longitudinal_velocity_profile_masked: _profile_dataset(
+        paths.longitudinal_velocity_profile_unmasked: _profile_dataset(
+            np.asarray(
+                segments.longitudinal_velocity_profiles_unmasked,
+                dtype=np.float32,
+            ),
+            cycle_boundary_indexes,
+            index_base=index_base,
+            spatial_axis="y",
+        ),
+        paths.longitudinal_velocity_profile_masked: _profile_dataset(
             np.asarray(
                 segments.longitudinal_velocity_profiles_masked,
                 dtype=np.float32,
@@ -81,50 +77,7 @@ def _pack_vessel_profiles(
             index_base=index_base,
             spatial_axis="y",
         ),
-        paths.raw_profile.transverse_velocity_profile_masked_centroid: (
-            _profile_dataset(
-                np.asarray(
-                    segments.transverse_velocity_profile_masked_centroids,
-                    dtype=np.float32,
-                ),
-                cycle_boundary_indexes,
-                index_base=index_base,
-                spatial_axis="y",
-                unit="pixel",
-            )
-        ),
-        paths.raw_profile.longitudinal_coordinate_micrometers: _coordinate_dataset(
-            raw_coordinates,
-            spatial_axis="y",
-        ),
-        paths.interpolated_profile.velocity_profile: _profile_dataset(
-            np.asarray(segments.centered_velocity_profiles, dtype=np.float32),
-            cycle_boundary_indexes,
-            index_base=index_base,
-        ),
-        paths.interpolated_profile.transverse_coordinate_micrometers: (
-            _coordinate_dataset(interpolated_coordinates, spatial_axis="x")
-        ),
     }
-
-
-def _coordinate_dataset(coordinates: np.ndarray, *, spatial_axis: str):
-    if coordinates.ndim == 1:
-        return metric_value(
-            coordinates,
-            unit="um",
-            dim_desc=(spatial_axis,),
-        )
-    if coordinates.ndim != 3:
-        raise ValueError(
-            "profile coordinates must have shape (sample,) or "
-            "(radius, branch, sample)."
-        )
-    return metric_value(
-        np.transpose(coordinates, (2, 1, 0)),
-        unit="um",
-        dim_desc=(spatial_axis, "branch", "radius"),
-    )
 
 
 def _profile_dataset(

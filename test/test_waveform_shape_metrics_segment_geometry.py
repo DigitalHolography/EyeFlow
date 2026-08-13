@@ -32,7 +32,6 @@ from calculations.blood_flow_velocity.cross_section.generate_cross_section_signa
     _fixed_subimage_stack,
     _fixed_substack_side_pixels,
     _frame_velocities,
-    _positive_velocity_centroid_x,
     _PreparedCrossSectionGeometry,
     _resize_subimage_stack,
     _resize_submask,
@@ -108,7 +107,6 @@ class SegmentCenterTests(unittest.TestCase):
                 safe,
                 profiles,
                 longitudinal_profiles,
-                transverse_profile_centroids,
             ) = _frame_velocities(
                 sub_stack,
                 angle=90.0,
@@ -128,24 +126,8 @@ class SegmentCenterTests(unittest.TestCase):
             longitudinal_profiles,
             [[1.5, 4.0], [4.0, 6.0]],
         )
-        np.testing.assert_allclose(
-            transverse_profile_centroids,
-            [[-1.0 / 3.0, 1.0 / 6.0], [1.0 / 3.0, -1.0 / 3.0]],
-            rtol=1e-6,
-        )
         np.testing.assert_allclose(raw, [4.0, 6.0])
         np.testing.assert_allclose(safe, [10.0 / 3.0, 5.0])
-
-    def test_transverse_centroid_clips_negative_velocity_and_ignores_nan(self) -> None:
-        rotated = np.asarray(
-            [[[np.nan, -10.0, 2.0, 6.0], [np.nan, -1.0, 0.0, np.nan]]],
-            dtype=np.float32,
-        )
-
-        centroid = _positive_velocity_centroid_x(rotated)
-
-        np.testing.assert_allclose(centroid[0, 0], 1.25)
-        self.assertTrue(np.isnan(centroid[0, 1]))
 
     def test_batched_nan_rotation_matches_independent_frames(self) -> None:
         rng = np.random.default_rng(5)
@@ -544,7 +526,6 @@ class SegmentCenterTests(unittest.TestCase):
                     safe_velocity=signal + np.float32(100.0),
                     transverse_profiles=profiles,
                     longitudinal_profiles=profiles,
-                    transverse_profile_centroids=profiles,
                     angle=0.0,
                     spatial_std=np.zeros((181,), dtype=np.float32),
                 ),
@@ -553,7 +534,6 @@ class SegmentCenterTests(unittest.TestCase):
                     safe_velocity=signal + np.float32(200.0),
                     transverse_profiles=profiles_masked,
                     longitudinal_profiles=profiles_masked,
-                    transverse_profile_centroids=profiles_masked,
                     angle=0.0,
                     spatial_std=np.zeros((181,), dtype=np.float32),
                 ),
@@ -607,11 +587,11 @@ class SegmentCenterTests(unittest.TestCase):
             profiles_masked,
         )
         np.testing.assert_array_equal(
-            buffers.longitudinal_velocity_profiles_masked[0, 0],
-            profiles_masked,
+            buffers.longitudinal_velocity_profiles_unmasked[0, 0],
+            profiles,
         )
         np.testing.assert_array_equal(
-            buffers.transverse_velocity_profile_masked_centroids[0, 0],
+            buffers.longitudinal_velocity_profiles_masked[0, 0],
             profiles_masked,
         )
         np.testing.assert_array_equal(
@@ -691,11 +671,11 @@ class ReusableCrossSectionProjectionTests(unittest.TestCase):
         )
         self.assertEqual(
             (1, 1, 4, 181),
-            result.reference.longitudinal_velocity_profiles_masked.shape,
+            result.reference.longitudinal_velocity_profiles_unmasked.shape,
         )
         self.assertEqual(
             (1, 1, 4, 181),
-            result.reference.transverse_velocity_profile_masked_centroids.shape,
+            result.reference.longitudinal_velocity_profiles_masked.shape,
         )
         self.assertEqual((1, 1, 181, 181), result.reference.rotated_mean_images.shape)
         self.assertEqual(

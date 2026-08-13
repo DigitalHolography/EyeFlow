@@ -36,8 +36,8 @@ class CrossSectionProfileOutputs:
 
     velocity_profiles: np.ndarray
     transverse_velocity_profiles_masked: np.ndarray
+    longitudinal_velocity_profiles_unmasked: np.ndarray
     longitudinal_velocity_profiles_masked: np.ndarray
-    transverse_velocity_profile_masked_centroids: np.ndarray
     profile_x_micrometers: np.ndarray
     profile_sample_count: np.ndarray
     profile_rotation_degrees: np.ndarray
@@ -119,7 +119,6 @@ class _CrossSectionVelocityMeasurement:
     safe_velocity: np.ndarray
     transverse_profiles: np.ndarray
     longitudinal_profiles: np.ndarray
-    transverse_profile_centroids: np.ndarray
     angle: float
     spatial_std: np.ndarray
 
@@ -146,8 +145,8 @@ class _CrossSectionBuffers:
     segment_center_xy: np.ndarray
     velocity_profiles: np.ndarray
     transverse_velocity_profiles_masked: np.ndarray
+    longitudinal_velocity_profiles_unmasked: np.ndarray
     longitudinal_velocity_profiles_masked: np.ndarray
-    transverse_velocity_profile_masked_centroids: np.ndarray
     profile_sample_count: np.ndarray
     profile_spatial_std: np.ndarray
     profile_rotation_degrees: np.ndarray
@@ -184,12 +183,12 @@ class _CrossSectionBuffers:
                 np.nan,
                 dtype=np.float32,
             ),
-            longitudinal_velocity_profiles_masked=np.full(
+            longitudinal_velocity_profiles_unmasked=np.full(
                 (*signal_shape, _ROTATED_SUBSTACK_SIDE),
                 np.nan,
                 dtype=np.float32,
             ),
-            transverse_velocity_profile_masked_centroids=np.full(
+            longitudinal_velocity_profiles_masked=np.full(
                 (*signal_shape, _ROTATED_SUBSTACK_SIDE),
                 np.nan,
                 dtype=np.float32,
@@ -343,11 +342,11 @@ def _result_from_buffers(
         transverse_velocity_profiles_masked=(
             buffers.transverse_velocity_profiles_masked
         ),
+        longitudinal_velocity_profiles_unmasked=(
+            buffers.longitudinal_velocity_profiles_unmasked
+        ),
         longitudinal_velocity_profiles_masked=(
             buffers.longitudinal_velocity_profiles_masked
-        ),
-        transverse_velocity_profile_masked_centroids=(
-            buffers.transverse_velocity_profile_masked_centroids
         ),
         profile_x_micrometers=processed_profiles.raw_x_micrometers,
         profile_sample_count=buffers.profile_sample_count,
@@ -411,8 +410,8 @@ def _empty_result(
         branch_identity=branches,
         velocity_profiles=empty_profiles,
         transverse_velocity_profiles_masked=empty_profiles.copy(),
+        longitudinal_velocity_profiles_unmasked=empty_profiles.copy(),
         longitudinal_velocity_profiles_masked=empty_profiles.copy(),
-        transverse_velocity_profile_masked_centroids=empty_profiles.copy(),
         profile_x_micrometers=processed.raw_x_micrometers,
         profile_sample_count=np.zeros((settings.ring_count, 0), dtype=np.int32),
         profile_rotation_degrees=np.full(
@@ -565,13 +564,12 @@ def _store_cross_section_measurement(
     buffers.transverse_velocity_profiles_masked[circle_index, branch_index] = (
         masked.transverse_profiles
     )
+    buffers.longitudinal_velocity_profiles_unmasked[circle_index, branch_index] = (
+        measurement.unmasked.longitudinal_profiles
+    )
     buffers.longitudinal_velocity_profiles_masked[circle_index, branch_index] = (
         masked.longitudinal_profiles
     )
-    buffers.transverse_velocity_profile_masked_centroids[
-        circle_index,
-        branch_index,
-    ] = masked.transverse_profile_centroids
     buffers.profile_sample_count[circle_index, branch_index] = measurement.sample_count
     buffers.profile_spatial_std[circle_index, branch_index] = masked.spatial_std
     buffers.profile_rotation_degrees[circle_index, branch_index] = np.float32(
@@ -776,7 +774,6 @@ def _profile_measurement(
         safe_velocity,
         transverse_profiles,
         longitudinal_profiles,
-        transverse_profile_centroids,
     ) = _frame_velocities(
         sub_stack,
         angle,
@@ -789,7 +786,6 @@ def _profile_measurement(
         safe_velocity=safe_velocity,
         transverse_profiles=transverse_profiles,
         longitudinal_profiles=longitudinal_profiles,
-        transverse_profile_centroids=transverse_profile_centroids,
         angle=float(angle),
         spatial_std=spatial_std,
     )
@@ -1190,11 +1186,10 @@ def _frame_velocities(
     angle: float,
     c1: int,
     c2: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     rotated = _rotate_stack_with_nan(sub_stack, angle)
     transverse_profiles = nanmean_float32(rotated, axis=1)
     longitudinal_profiles = nanmean_float32(rotated, axis=2)
-    transverse_profile_centroids = _positive_velocity_centroid_x(rotated)
     raw = nanmean_float32(transverse_profiles[:, c1 : c2 + 1], axis=1)
     raw = np.where(np.isnan(raw), np.float32(0.0), raw).astype(
         np.float32,
@@ -1206,26 +1201,7 @@ def _frame_velocities(
         safe_velocity,
         transverse_profiles,
         longitudinal_profiles,
-        transverse_profile_centroids,
     )
-
-
-def _positive_velocity_centroid_x(rotated: np.ndarray) -> np.ndarray:
-    """Return the positive-velocity weighted x centroid for every frame/y row."""
-    positive = np.where(
-        np.isfinite(rotated),
-        np.maximum(rotated, np.float32(0.0)),
-        np.float32(0.0),
-    ).astype(np.float32, copy=False)
-    x = (
-        np.arange(rotated.shape[2], dtype=np.float32)
-        - np.float32((rotated.shape[2] - 1) / 2.0)
-    )
-    weight = np.sum(positive, axis=2, dtype=np.float32)
-    weighted_position = np.sum(positive * x[None, None, :], axis=2, dtype=np.float32)
-    centroid = np.full(weight.shape, np.nan, dtype=np.float32)
-    np.divide(weighted_position, weight, out=centroid, where=weight > 0)
-    return centroid
 
 
 def _rotate_stack_with_nan(sub_stack: np.ndarray, angle: float) -> np.ndarray:
