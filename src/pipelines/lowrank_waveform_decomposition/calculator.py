@@ -523,11 +523,15 @@ class LowRankWaveformDecompositionCalculator:
 
     def _svd_beat_panel(self, v_beat: np.ndarray, beat_period: float) -> dict:
         max_modes = self.exported_modes
-        _, n_branches, n_radii = v_beat.shape
+        n_t, n_branches, n_radii = v_beat.shape
         mode_rms = np.full((max_modes, n_branches, n_radii), np.nan, dtype=float)
         residual_rms = np.full((max_modes, n_branches, n_radii), np.nan, dtype=float)
         total_rms = np.full((n_branches, n_radii), np.nan, dtype=float)
         mean_pulsatile_ratio = np.full((n_branches, n_radii), np.nan, dtype=float)
+        u_panel = np.full((n_t, max_modes), np.nan, dtype=float)
+        score_panel_bkr = np.full(
+            (max_modes, n_branches, n_radii), np.nan, dtype=float
+        )
         effective_rank = np.nan
         participation_ratio = np.nan
 
@@ -541,6 +545,8 @@ class LowRankWaveformDecompositionCalculator:
                 "effective_rank": effective_rank,
                 "participation_ratio": participation_ratio,
                 "singular_values": np.asarray([], dtype=float),
+                "U_panel": u_panel,
+                "score_panel_bkr": score_panel_bkr,
             }
 
         finite_fraction = np.mean(np.isfinite(v_beat), axis=0)
@@ -583,6 +589,8 @@ class LowRankWaveformDecompositionCalculator:
             )
             residual = X - X_recon
             residual_rms[m][valid_mask] = np.sqrt(np.mean(residual**2, axis=0))
+            u_panel[:, m] = U[:, m]
+            score_panel_bkr[m, valid_mask] = scores
 
         packed = _pack(valid_mask)
         packed["singular_values"] = np.asarray(s, dtype=float)
@@ -590,7 +598,7 @@ class LowRankWaveformDecompositionCalculator:
 
     def per_beat_svd_panels(self, v_block: np.ndarray, T: np.ndarray) -> dict:
         T = normalize_periods(T)
-        _, n_beats, n_branches, n_radii = v_block.shape
+        n_t, n_beats, n_branches, n_radii = v_block.shape
         max_modes = self.exported_modes
         mode_rms = np.full(
             (max_modes, n_beats, n_branches, n_radii), np.nan, dtype=float
@@ -608,6 +616,10 @@ class LowRankWaveformDecompositionCalculator:
         # Keep enough leading singular values for cohort spectrum plots.
         n_spectrum = max(int(max_modes), 12)
         singular_values_b = np.full((n_beats, n_spectrum), np.nan, dtype=float)
+        u_mode_tb = np.full((max_modes, n_t, n_beats), np.nan, dtype=float)
+        scores_mode_bkr = np.full(
+            (max_modes, n_beats, n_branches, n_radii), np.nan, dtype=float
+        )
 
         for b in range(n_beats):
             beat = self._svd_beat_panel(v_block[:, b, :, :], beat_period=float(T[0, b]))
@@ -622,6 +634,13 @@ class LowRankWaveformDecompositionCalculator:
             n_keep = int(min(n_spectrum, s_beat.size))
             if n_keep > 0:
                 singular_values_b[b, :n_keep] = s_beat[:n_keep]
+            u_panel = np.asarray(beat.get("U_panel", []), dtype=float)
+            if u_panel.ndim == 2 and u_panel.shape[0] == n_t:
+                n_u = int(min(max_modes, u_panel.shape[1]))
+                u_mode_tb[:n_u, :, b] = u_panel[:, :n_u].T
+            scores = np.asarray(beat.get("score_panel_bkr", []), dtype=float)
+            if scores.shape == (max_modes, n_branches, n_radii):
+                scores_mode_bkr[:, b, :, :] = scores
 
         return {
             "mode_rms": mode_rms,
@@ -632,6 +651,8 @@ class LowRankWaveformDecompositionCalculator:
             "effective_rank_b": effective_rank_b,
             "participation_ratio_b": participation_ratio_b,
             "singular_values_b": singular_values_b,
+            "u_mode_tb": u_mode_tb,
+            "scores_mode_bkr": scores_mode_bkr,
         }
 
     def _compute_per_beat_endpoints(self, panels: dict) -> dict[str, np.ndarray]:
@@ -657,7 +678,7 @@ class LowRankWaveformDecompositionCalculator:
         rho0_b_pb = np.where(
             np.isfinite(tpr_b_pb) & (tpr_b_pb > self.eps), 1.0, np.nan
         )
-        return {
+        out = {
             "A1_b_pb": a1_b_pb,
             "A2_b_pb": a2_b_pb,
             "R1_b_pb": r1_b_pb,
@@ -675,6 +696,19 @@ class LowRankWaveformDecompositionCalculator:
                 panels.get("singular_values_b", []), dtype=float
             ),
         }
+        u_mode_tb = np.asarray(panels.get("u_mode_tb", []), dtype=float)
+        scores_mode_bkr = np.asarray(panels.get("scores_mode_bkr", []), dtype=float)
+        n_export = int(self.exported_modes)
+        if u_mode_tb.ndim == 3:
+            n_export = int(min(n_export, u_mode_tb.shape[0]))
+        if scores_mode_bkr.ndim == 4:
+            n_export = int(min(n_export, scores_mode_bkr.shape[0]))
+        for mode in range(1, n_export + 1):
+            if u_mode_tb.ndim == 3 and mode <= u_mode_tb.shape[0]:
+                out[f"u_mode{mode}_tb"] = u_mode_tb[mode - 1]
+            if scores_mode_bkr.ndim == 4 and mode <= scores_mode_bkr.shape[0]:
+                out[f"scores_mode{mode}_bkr"] = scores_mode_bkr[mode - 1]
+        return out
 
     def _compute_representation(self, v_block: np.ndarray, T: np.ndarray) -> dict:
         T = normalize_periods(T)
