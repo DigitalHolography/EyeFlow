@@ -14,8 +14,7 @@ from calculations.blood_flow_velocity import (
     spectral_heartbeat_analysis,
 )
 from calculations.blood_flow_velocity.cross_section.segment_geometry import (
-    max_corner_radius,
-    optic_disc_center_yx,
+    image_half_diagonal,
 )
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.imports import (
@@ -31,9 +30,8 @@ from .dopplerview.constants import (
 )
 from .constants import (
     LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
-    SEGMENT_RING_COUNT,
+    NUMBER_OF_RADII_IN_FOV,
     SEGMENT_INNER_RADIUS_FRAC,
-    SEGMENT_LENGTH_FRAC,
     SEGMENT_OUTER_RADIUS_FRAC,
 )
 from .cross_section_images import export_rotated_mean_pngs
@@ -103,6 +101,8 @@ def run_waveform_velocity_core(
 
 
 def _per_beat_required(ctx) -> bool:
+    if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
+        return True
     velocity_options = ctx.options_for("waveform_velocity")
     metric_options = ctx.options_for("waveform_shape_metrics")
     absolute_options = (
@@ -131,6 +131,8 @@ def _per_beat_required(ctx) -> bool:
 
 def _segments_required(ctx) -> bool:
     """Return whether any selected product needs spatial vessel segments."""
+    if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
+        return True
     velocity_options = ctx.options_for("waveform_velocity")
     metric_options = ctx.options_for("waveform_shape_metrics")
     absolute_options = (
@@ -140,7 +142,13 @@ def _segments_required(ctx) -> bool:
     )
     if ctx.pipeline_scheduled("waveform_velocity"):
         return bool(
-            {"segments", "velocity_profiles", "hemifield"} & velocity_options
+            {
+                "segments",
+                "segment_velocity_maps",
+                "velocity_profiles",
+                "hemifield",
+            }
+            & velocity_options
             or "hemifield" in metric_options
             or "segments" in absolute_options
             or "hemifield" in absolute_options
@@ -177,12 +185,14 @@ def _build_waveform_velocity_core_context(
         retain_velocity_video=(segments_required or _pulse_pngs_required(ctx)),
     )
     harmonic_count = _band_limited_harmonic_count(ctx)
+    number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
     per_beat_analysis, artery_segments, vein_segments = _per_beat_input_from_analysis(
         dopplerview_analysis,
         source_data,
         timing,
         harmonic_count,
         ctx,
+        number_of_radii_in_fov=number_of_radii_in_fov,
         segments_required=segments_required,
     )
 
@@ -198,6 +208,7 @@ def _build_waveform_velocity_core_context(
             harmonic_count,
             analysis_source,
             per_beat_analysis.heartbeat,
+            number_of_radii_in_fov,
         ),
     )
 
@@ -226,6 +237,25 @@ def _band_limited_harmonic_count(ctx) -> int:
     )
 
 
+def _number_of_radii_in_fov(ctx) -> int:
+    value = read_int_setting(
+        ctx,
+        default=NUMBER_OF_RADII_IN_FOV,
+        keys=(
+            "number_of_radii_in_FOV",
+            "number_of_radii_in_fov",
+            "NumberOfRadiiInFOV",
+            # Accept the earlier spelling for compatibility.
+            "number_of_radii_over_FOV",
+            "number_of_radii_over_fov",
+            "NumberOfRadiiOverFOV",
+        ),
+    )
+    if value < 1:
+        raise ValueError("number_of_radii_in_FOV must be positive.")
+    return value
+
+
 def _per_beat_input_from_analysis(
     analysis: Mapping[str, object],
     source_data: WaveformVelocitySourceData,
@@ -233,6 +263,7 @@ def _per_beat_input_from_analysis(
     harmonic_count: int,
     ctx,
     *,
+    number_of_radii_in_fov: int = NUMBER_OF_RADII_IN_FOV,
     segments_required: bool,
 ) -> tuple[
     PerBeatAnalysisInput,
@@ -245,6 +276,7 @@ def _per_beat_input_from_analysis(
             source_data.optic_disc_height,
             image_shape=analysis["retinal_vessel_velocity"].shape[-2:],
             optic_disc_center=source_data.optic_disc_center,
+            number_of_radii_in_FOV=number_of_radii_in_fov,
         )
         artery_segments, vein_segments = _segment_velocity_inputs(
             analysis,
@@ -284,6 +316,14 @@ def _per_beat_input_from_analysis(
             include_segments=segments_required,
         ),
         venous_velocity_segments=_waveform_segment_input(
+            vein_segments,
+            include_segments=segments_required,
+        ),
+        arterial_safe_velocity_segments=_safe_waveform_segment_input(
+            artery_segments,
+            include_segments=segments_required,
+        ),
+        venous_safe_velocity_segments=_safe_waveform_segment_input(
             vein_segments,
             include_segments=segments_required,
         ),
@@ -353,6 +393,16 @@ def _waveform_segment_input(
     return result.velocity
 
 
+def _safe_waveform_segment_input(
+    result: CrossSectionSignalResult | None,
+    *,
+    include_segments: bool,
+) -> np.ndarray | None:
+    if not include_segments or result is None or result.branch_ids.size == 0:
+        return None
+    return result.safe_velocity
+
+
 def _export_branch_identity_debug(
     ctx,
     result: CrossSectionSignalResult,
@@ -394,42 +444,40 @@ def _segment_ring_settings(
     *,
     image_shape=None,
     optic_disc_center=None,
+    number_of_radii_in_FOV: int = NUMBER_OF_RADII_IN_FOV,
 ) -> SegmentRingSettings:
+    if number_of_radii_in_FOV < 1:
+        raise ValueError("number_of_radii_in_FOV must be positive.")
     width_px = _positive_geometry_scalar(optic_disc_width)
     height_px = _positive_geometry_scalar(optic_disc_height)
     if width_px is not None and height_px is not None and image_shape is not None:
         ny, nx = (int(size) for size in image_shape)
-        cy, cx = optic_disc_center_yx(optic_disc_center, ny, nx)
-        corner_radius = max_corner_radius(ny, nx, cy, cx)
-        inner = min((max(width_px, height_px) / 2.0) / corner_radius, 1.0)
+        radius_scale = image_half_diagonal(ny, nx)
+        ring_width_px = max(nx, ny) / float(number_of_radii_in_FOV)
+        radial_step = ring_width_px / max(radius_scale, 1.0)
+        inner = min((max(width_px, height_px) / 2.0) / radius_scale, 1.0)
         outer = 1.0
-        width = SEGMENT_LENGTH_FRAC
-        count = max(1, int(np.ceil((outer - inner) / width)))
+        count = max(1, int(np.ceil((outer - inner) / radial_step)))
         return SegmentRingSettings(
             inner,
             outer,
-            width,
+            radial_step,
             count,
-            SEGMENT_LENGTH_FRAC,
+            radial_step,
         )
 
-    # Keep the historical defaults for direct callers that do not provide the
-    # image geometry needed to derive the physical ring extent.
+    # Use the historical radial range when image/disc geometry is unavailable.
     inner = SEGMENT_INNER_RADIUS_FRAC
     outer = SEGMENT_OUTER_RADIUS_FRAC
-    count = SEGMENT_RING_COUNT
-    width = _ring_width(inner, outer, count)
+    radial_step = 1.0 / float(number_of_radii_in_FOV)
+    count = max(1, int(np.ceil((outer - inner) / radial_step)))
     return SegmentRingSettings(
         inner,
         outer,
-        width,
+        radial_step,
         count,
-        SEGMENT_LENGTH_FRAC,
+        radial_step,
     )
-
-
-def _ring_width(inner: float, outer: float, count: int) -> float:
-    return max((outer - inner) / float(count), np.finfo(np.float32).eps)
 
 
 def _positive_geometry_scalar(value) -> float | None:
@@ -447,6 +495,7 @@ def _context_attrs(
     harmonic_count: int,
     analysis_source: str,
     heartbeat,
+    number_of_radii_in_fov: int,
 ) -> dict[str, object]:
     output_paths = EyeFlowOutputPaths.active()
     analysis_paths = output_paths.analysis
@@ -483,6 +532,7 @@ def _context_attrs(
         "velocity_section_outer_to_disc_radius": float(
             SEGMENT_OUTER_RADIUS_FRAC / SEGMENT_INNER_RADIUS_FRAC
         ),
+        "number_of_radii_in_FOV": int(number_of_radii_in_fov),
         "arterial_velocity_signal_path": (
             analysis_paths.retinal_artery_velocity_signal
         ),

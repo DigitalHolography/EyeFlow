@@ -164,6 +164,11 @@ class ScratchAndSchemaTests(unittest.TestCase):
             set(velocity),
         )
 
+        slim_schema = EyeFlowOutputPaths.active("slim_temp")
+        slim_shared = pack_dopplerview_shared_outputs(analysis, slim_schema)
+        _, velocity_map_attrs = slim_shared[slim_schema.analysis.velocity_map_avg]
+        self.assertEqual("mm/s", velocity_map_attrs["unit"])
+
 
 if __name__ == "__main__":
     unittest.main()

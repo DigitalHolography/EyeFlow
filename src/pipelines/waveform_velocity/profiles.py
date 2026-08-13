@@ -1,4 +1,4 @@
-"""Minimal HDF5 export for AngioEye transverse velocity profiles."""
+"""Minimal HDF5 export for transverse and longitudinal velocity profiles."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import numpy as np
 from calculations.blood_flow_velocity.cross_section.profile_processing import (
     interpolate_velocity_profiles_per_beat,
 )
-from input_output.schema import CrossSectionProfileOutputPaths, EyeFlowOutputPaths
+from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 
 
@@ -21,14 +21,14 @@ def pack_cross_section_profile_outputs(
 ) -> dict[str, object]:
     schema = _resolve_output_paths(output_paths)
     metrics = _pack_vessel_profiles(
-        schema.artery_cross_section_profiles,
+        schema.artery_velocity_profiles,
         artery_segments,
         cycle_boundary_indexes,
         index_base=index_base,
     )
     metrics.update(
         _pack_vessel_profiles(
-            schema.vein_cross_section_profiles,
+            schema.vein_velocity_profiles,
             vein_segments,
             cycle_boundary_indexes,
             index_base=index_base,
@@ -38,22 +38,44 @@ def pack_cross_section_profile_outputs(
 
 
 def _pack_vessel_profiles(
-    paths: CrossSectionProfileOutputPaths,
+    paths: VelocityProfileOutputPaths,
     segments,
     cycle_boundary_indexes,
     *,
     index_base: int,
 ) -> dict[str, object]:
     return {
-        paths.velocity_profile: _profile_dataset(
+        paths.transverse_velocity_profile_unmasked: _profile_dataset(
             np.asarray(segments.velocity_profiles, dtype=np.float32),
             cycle_boundary_indexes,
             index_base=index_base,
         ),
-        paths.velocity_profile_masked: _profile_dataset(
-            np.asarray(segments.velocity_profiles_masked, dtype=np.float32),
+        paths.transverse_velocity_profile_masked: _profile_dataset(
+            np.asarray(
+                segments.transverse_velocity_profiles_masked,
+                dtype=np.float32,
+            ),
             cycle_boundary_indexes,
             index_base=index_base,
+            spatial_axis="x",
+        ),
+        paths.longitudinal_velocity_profile_unmasked: _profile_dataset(
+            np.asarray(
+                segments.longitudinal_velocity_profiles_unmasked,
+                dtype=np.float32,
+            ),
+            cycle_boundary_indexes,
+            index_base=index_base,
+            spatial_axis="y",
+        ),
+        paths.longitudinal_velocity_profile_masked: _profile_dataset(
+            np.asarray(
+                segments.longitudinal_velocity_profiles_masked,
+                dtype=np.float32,
+            ),
+            cycle_boundary_indexes,
+            index_base=index_base,
+            spatial_axis="y",
         ),
     }
 
@@ -63,11 +85,13 @@ def _profile_dataset(
     cycle_boundary_indexes,
     *,
     index_base: int,
+    spatial_axis: str = "x",
+    unit: str = "mm/s",
 ) -> DatasetValue:
     if profiles.ndim != 4:
         raise ValueError(
             "profile arrays must have shape "
-            "(radius, branch, frame, transverse_sample)."
+            "(radius, branch, frame, spatial_sample)."
         )
     profiles_per_beat = interpolate_velocity_profiles_per_beat(
         profiles,
@@ -77,8 +101,8 @@ def _profile_dataset(
     return DatasetValue(
         data=profiles_per_beat,
         attrs={
-            "unit": "mm/s",
-            "dimDesc": ["x", "time", "beat", "branch", "radius"],
+            "unit": unit,
+            "dimDesc": [spatial_axis, "time", "beat", "branch", "radius"],
         },
         h5_options=_profile_h5_options(profiles_per_beat.shape),
     )

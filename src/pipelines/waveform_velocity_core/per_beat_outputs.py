@@ -25,6 +25,18 @@ def pack_velocity_per_beat_outputs(
     }
     metrics.update(_pack_vessel_outputs(schema.artery_per_beat, result.artery))
     metrics.update(_pack_vessel_outputs(schema.vein_per_beat, result.vein))
+    metrics.update(
+        _pack_safe_segment_outputs(
+            schema.artery_per_beat_safe,
+            result.artery.safe_segments,
+        )
+    )
+    metrics.update(
+        _pack_safe_segment_outputs(
+            schema.vein_per_beat_safe,
+            result.vein.safe_segments,
+        )
+    )
     return metrics
 
 
@@ -74,6 +86,23 @@ def _pack_vessel_segment_outputs(
             unit="mm/s",
         ),
         paths.segment_velocity_signal_band_limited: _segment_metric_value(
+            segments.velocity_signal_per_beat_per_segment_band_limited,
+            unit="mm/s",
+        ),
+    }
+
+
+def _pack_safe_segment_outputs(paths, segments) -> dict[str, object]:
+    if segments is None or paths.velocity_signal is None:
+        return {}
+    if paths.velocity_signal_band_limited is None:
+        return {}
+    return {
+        paths.velocity_signal: _segment_metric_value(
+            segments.velocity_signal_per_beat_per_segment,
+            unit="mm/s",
+        ),
+        paths.velocity_signal_band_limited: _segment_metric_value(
             segments.velocity_signal_per_beat_per_segment_band_limited,
             unit="mm/s",
         ),

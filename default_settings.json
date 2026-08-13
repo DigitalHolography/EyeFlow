@@ -1,6 +1,7 @@
 {
   "pipeline_visibility": {
     "absolute_waveform_metrics": true,
+    "lowrank_waveform_decomposition": false,
     "pdf_report": true,
     "waveform_shape_metrics": true,
     "waveform_velocity": true
@@ -11,6 +12,9 @@
       "per_beat": true,
       "segments": true
     },
+    "lowrank_waveform_decomposition": {
+      "veins": false
+    },
     "waveform_shape_metrics": {
       "hemifield": true,
       "per_beat": true,
@@ -20,7 +24,8 @@
       "hemifield": true,
       "per_beat": true,
       "segments": true,
-      "velocity_profiles": true
+      "velocity_profiles": false,
+      "segment_velocity_maps": false
     }
   },
   "ui_mode": "minimal"

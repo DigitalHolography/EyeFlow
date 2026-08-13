@@ -59,13 +59,13 @@ def annulus_mask(
 ) -> np.ndarray:
     """Return a circular annulus centered on the optic disc.
 
-    Radii are fractions of the distance from the optic-disc center to the
-    furthest image corner. This makes an outer radius of ``1.0`` reach the
-    image boundary while keeping every annulus circular in pixel coordinates.
+    Radii are fractions of the image half-diagonal. This keeps circle sizes
+    independent of the optic-disc position: changing the center translates
+    an annulus without rescaling it.
     """
     ny, nx = image_shape
     cy, cx = optic_disc_center_yx(optic_disc_center, ny, nx)
-    corner_radius = max_corner_radius(ny, nx, cy, cx)
+    corner_radius = image_half_diagonal(ny, nx)
     scale = np.float32(1.0 / max(corner_radius, 1.0))
     y_distance = (
         np.arange(ny, dtype=np.float32)[:, None] - np.float32(cy)
@@ -102,7 +102,16 @@ def _ring_bounds(
     return inner, outer
 
 
+def image_half_diagonal(ny: int, nx: int) -> float:
+    """Return the center-independent image half-diagonal in pixels."""
+    return float(np.hypot((ny - 1) / 2.0, (nx - 1) / 2.0))
+
+
 def max_corner_radius(ny: int, nx: int, cy: float, cx: float) -> float:
-    y_dist = max(abs(cy), abs((ny - 1) - cy))
-    x_dist = max(abs(cx), abs((nx - 1) - cx))
-    return float(np.hypot(y_dist, x_dist))
+    """Compatibility wrapper for the center-independent half-diagonal.
+
+    ``cy`` and ``cx`` are retained for API compatibility but intentionally do
+    not affect the radius scale.
+    """
+    del cy, cx
+    return image_half_diagonal(ny, nx)

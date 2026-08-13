@@ -71,7 +71,13 @@ def _systole_plot(
     minima: np.ndarray,
 ) -> Path:
     fig, ax = _plt().subplots(figsize=(7.5, 4.0))
-    ax.plot(time[: derivative.size], derivative, color="0.55", linewidth=1.5)
+    derivative_ax = ax.twinx()
+    derivative_ax.plot(
+        time[: derivative.size],
+        derivative,
+        color="0.55",
+        linewidth=1.5,
+    )
     ax.plot(time[: filtered.size], filtered, color="k", linewidth=1.5)
     for indexes, color in ((peaks, "k"), (maxima, "tab:red"), (minima, "tab:blue")):
         valid = indexes[(indexes >= 0) & (indexes < filtered.size)]
@@ -81,5 +87,7 @@ def _systole_plot(
                 ax.axvline(time[idx], color=color, linestyle="--", linewidth=1.0, alpha=0.75)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Velocity (mm/s)")
+    derivative_ax.set_ylabel("Acceleration (mm/s²)")
     _style_axes(ax)
+    _style_axes(derivative_ax)
     return writer.savefig(fig, suffix)

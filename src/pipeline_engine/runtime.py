@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
+from time import perf_counter
 
 from input_output.inputs import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
@@ -173,7 +174,14 @@ def _run_pipeline_descriptor(
     )
     try:
         result = pipeline.run(ctx)
-        apply_pipeline_result(ctx, result)
+        if result is not None:
+            write_started = perf_counter()
+            Logger.log(f"Starting {pipeline.name} HDF5 output write...")
+            apply_pipeline_result(ctx, result)
+            Logger.log(
+                f"Completed {pipeline.name} HDF5 output write in "
+                f"{perf_counter() - write_started:.1f}s."
+            )
     except Exception as exc:  # noqa: BLE001
         Logger.log_error(f"{pipeline.name}: {exc}")
         raise RuntimeError(format_pipeline_exception(exc, pipeline)) from exc

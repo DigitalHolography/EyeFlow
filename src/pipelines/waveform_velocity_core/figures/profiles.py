@@ -26,7 +26,10 @@ def export_cross_section_profile_artifacts(
     ):
         if segments is None:
             continue
-        raw = np.asarray(segments.velocity_profiles_masked, dtype=np.float32)
+        raw = np.asarray(
+            segments.transverse_velocity_profiles_masked,
+            dtype=np.float32,
+        )
         if raw.ndim == 4 and raw.shape[-1] > 0 and np.any(np.isfinite(raw)):
             raw_aggregate = _hierarchical_profile_median(raw)
             raw_x_pixels = (
@@ -163,10 +166,11 @@ def _save_profile_gif(
     y_min, y_max = _positive_focused_limits(finite)
     frames: list[Image.Image] = []
     plt = _plt()
+    fig, ax = plt.subplots(figsize=(6.4, 3.8), dpi=90)
+    (line,) = ax.plot(x_um, aggregate[indexes[0]], color=color, linewidth=2.2)
+    ax.axhline(0.0, color="0.25", linestyle="--", linewidth=0.8)
     for frame_index in indexes:
-        fig, ax = plt.subplots(figsize=(6.4, 3.8), dpi=90)
-        ax.plot(x_um, aggregate[frame_index], color=color, linewidth=2.2)
-        ax.axhline(0.0, color="0.25", linestyle="--", linewidth=0.8)
+        line.set_ydata(aggregate[frame_index])
         ax.set(
             xlim=(float(x_um[0]), float(x_um[-1])),
             ylim=(y_min, y_max),
@@ -178,11 +182,10 @@ def _save_profile_gif(
             ),
         )
         ax.grid(alpha=0.18)
-        fig.tight_layout()
         fig.canvas.draw()
         rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
         frames.append(Image.fromarray(rgba[..., :3].copy()))
-        plt.close(fig)
+    plt.close(fig)
     path = _artifact_path(
         writer,
         f"{vessel_name}_velocity_profiles.gif",
@@ -201,7 +204,10 @@ def _save_profile_gif(
 
 
 def _save_poiseuille_profiles(writer, segments, vessel_name: str) -> list[Path]:
-    raw = np.asarray(segments.velocity_profiles_masked, dtype=np.float32)
+    raw = np.asarray(
+        segments.transverse_velocity_profiles_masked,
+        dtype=np.float32,
+    )
     x_um = np.asarray(segments.profile_x_micrometers, dtype=np.float32)
     coefficients = np.asarray(segments.poiseuille_coefficients, dtype=np.float32)
     origins = np.asarray(
@@ -322,7 +328,7 @@ def _artifact_path(writer, suffix: str, *, gif: bool = False) -> Path:
 
 def _save_figure(writer, fig, suffix: str) -> Path:
     path = _artifact_path(writer, suffix)
-    fig.savefig(path, dpi=180, bbox_inches="tight")
+    fig.savefig(path, dpi=120, bbox_inches="tight")
     _plt().close(fig)
     return path
 
