@@ -26,6 +26,7 @@ from calculations.blood_flow_velocity.cross_section.generate_cross_section_signa
     _ROTATED_SUBSTACK_SIDE,
     _CrossSectionBuffers,
     _CrossSectionMeasurement,
+    _CrossSectionVelocityMeasurement,
     _center_pad_for_rotation,
     _fill_cross_section_buffers,
     _fixed_subimage_stack,
@@ -101,7 +102,12 @@ class SegmentCenterTests(unittest.TestCase):
             "generate_cross_section_signals._rotate_stack_with_nan",
             return_value=np.stack(rotated_frames),
         ) as rotate:
-            raw, safe, profiles = _frame_velocities(
+            (
+                raw,
+                safe,
+                profiles,
+                longitudinal_profiles,
+            ) = _frame_velocities(
                 sub_stack,
                 angle=90.0,
                 c1=1,
@@ -115,6 +121,10 @@ class SegmentCenterTests(unittest.TestCase):
             profiles,
             [[2.0, 3.0, 5.0], [3.0, 6.0, 6.0]],
             equal_nan=True,
+        )
+        np.testing.assert_allclose(
+            longitudinal_profiles,
+            [[1.5, 4.0], [4.0, 6.0]],
         )
         np.testing.assert_allclose(raw, [4.0, 6.0])
         np.testing.assert_allclose(safe, [10.0 / 3.0, 5.0])
@@ -396,7 +406,7 @@ class SegmentCenterTests(unittest.TestCase):
         )
         np.testing.assert_array_equal(output.writes[0][0], rotated_means[0, 0])
 
-    def test_segment_analysis_uses_disc_extent_and_corner_spacing(self) -> None:
+    def test_segment_analysis_uses_disc_extent_and_fixed_fov_spacing(self) -> None:
         settings = _segment_ring_settings(
             55,
             69,
@@ -404,17 +414,36 @@ class SegmentCenterTests(unittest.TestCase):
             optic_disc_center=np.asarray([267.0, 230.0]),
         )
 
-        corner_radius = np.hypot(267.0, 281.0)
-        self.assertEqual(23, settings.ring_count)
+        corner_radius = np.hypot(255.5, 255.5)
+        self.assertEqual(16, settings.ring_count)
         self.assertAlmostEqual(
             (69.0 / 2.0) / corner_radius,
             settings.inner_radius_frac,
         )
         self.assertEqual(1.0, settings.outer_radius_frac)
-        self.assertEqual(0.04, settings.ring_width_frac)
-        self.assertEqual(0.04, settings.segment_length_frac)
+        expected_width = (512.0 / 25.0) / corner_radius
+        self.assertAlmostEqual(expected_width, settings.ring_width_frac)
+        self.assertAlmostEqual(expected_width, settings.segment_length_frac)
 
-    def test_annulus_starts_at_optic_disc_and_uses_corner_extent(self) -> None:
+    def test_number_of_radii_in_fov_controls_pixel_width_and_count(self) -> None:
+        settings = _segment_ring_settings(
+            40,
+            40,
+            image_shape=(101, 101),
+            optic_disc_center=np.asarray([20.0, 30.0]),
+            number_of_radii_in_FOV=10,
+        )
+
+        radius_scale = np.hypot(50.0, 50.0)
+        self.assertAlmostEqual(101.0 / 10.0, settings.ring_width_frac * radius_scale)
+        self.assertEqual(settings.ring_width_frac, settings.segment_length_frac)
+        self.assertEqual(6, settings.ring_count)
+
+    def test_number_of_radii_in_fov_must_be_positive(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must be positive"):
+            _segment_ring_settings(number_of_radii_in_FOV=0)
+
+    def test_annulus_starts_at_optic_disc_and_uses_fixed_fov_extent(self) -> None:
         center = np.asarray([267.0, 230.0])
         settings = _segment_ring_settings(
             55,
@@ -436,13 +465,29 @@ class SegmentCenterTests(unittest.TestCase):
 
         # The first annulus has the configured 0.04 radial spacing.
         self.assertTrue(mask[230, 311])
-        self.assertTrue(mask[230, 317])
-        self.assertFalse(mask[230, 318])
-        self.assertTrue(mask[274, 267])
+        self.assertTrue(mask[230, 321])
+        self.assertFalse(mask[230, 322])
+        self.assertTrue(mask[284, 267])
 
         rings = ring_masks((512, 512), center, settings)
-        self.assertTrue(rings[-1, 511, 0])
-        self.assertFalse(rings[-1, 0, 0])
+        self.assertTrue(rings[-1, 0, 0])
+        self.assertFalse(rings[-1, 511, 511])
+
+    def test_annulus_pixel_radius_is_independent_of_optic_disc_position(self) -> None:
+        settings = SimpleNamespace(
+            inner_radius_frac=0.0,
+            outer_radius_frac=0.5,
+            ring_width_frac=0.25,
+            ring_count=1,
+            segment_length_frac=0.25,
+        )
+        centered = section_masks((101, 101), (50, 50), settings)[0]
+        shifted = section_masks((101, 101), (30, 40), settings)[0]
+
+        centered_y, centered_x = np.nonzero(centered)
+        shifted_y, shifted_x = np.nonzero(shifted)
+        self.assertEqual(centered_x.max() - 50, shifted_x.max() - 30)
+        self.assertEqual(centered_y.max() - 50, shifted_y.max() - 40)
 
     def test_cross_section_centroids_are_recorded_in_waveform_axis_order(self) -> None:
         labels = np.zeros((7, 7), dtype=np.int32)
@@ -476,19 +521,21 @@ class SegmentCenterTests(unittest.TestCase):
             "calculations.blood_flow_velocity.cross_section."
             "generate_cross_section_signals._cross_section_velocity_from_substack",
             return_value=_CrossSectionMeasurement(
-                unmasked=(
-                    signal,
-                    signal,
-                    profiles,
-                    0.0,
-                    np.zeros((181,), dtype=np.float32),
+                unmasked=_CrossSectionVelocityMeasurement(
+                    raw=signal,
+                    safe_velocity=signal + np.float32(100.0),
+                    transverse_profiles=profiles,
+                    longitudinal_profiles=profiles,
+                    angle=0.0,
+                    spatial_std=np.zeros((181,), dtype=np.float32),
                 ),
-                masked=(
-                    signal,
-                    signal,
-                    profiles_masked,
-                    0.0,
-                    np.zeros((181,), dtype=np.float32),
+                masked=_CrossSectionVelocityMeasurement(
+                    raw=signal,
+                    safe_velocity=signal + np.float32(200.0),
+                    transverse_profiles=profiles_masked,
+                    longitudinal_profiles=profiles_masked,
+                    angle=0.0,
+                    spatial_std=np.zeros((181,), dtype=np.float32),
                 ),
                 rotated_mean=rotated_mean,
                 rotated_mean_masked=rotated_mean_masked,
@@ -518,6 +565,14 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(buffers.segment_center_xy[1, 0])))
         np.testing.assert_array_equal(buffers.velocity[0, 0], signal)
         np.testing.assert_array_equal(buffers.velocity[1, 1], signal)
+        np.testing.assert_array_equal(
+            buffers.safe_velocity[0, 0],
+            signal + np.float32(200.0),
+        )
+        np.testing.assert_array_equal(
+            buffers.safe_velocity[1, 1],
+            signal + np.float32(200.0),
+        )
         self.assertEqual(128, buffers.profile_sample_count[0, 0])
         self.assertEqual(128, buffers.profile_sample_count[1, 1])
         self.assertEqual(
@@ -528,7 +583,15 @@ class SegmentCenterTests(unittest.TestCase):
         np.testing.assert_array_equal(buffers.rotated_mean_images[1, 1], rotated_mean)
         np.testing.assert_array_equal(buffers.velocity_profiles[0, 0], profiles)
         np.testing.assert_array_equal(
-            buffers.velocity_profiles_masked[0, 0],
+            buffers.transverse_velocity_profiles_masked[0, 0],
+            profiles_masked,
+        )
+        np.testing.assert_array_equal(
+            buffers.longitudinal_velocity_profiles_unmasked[0, 0],
+            profiles,
+        )
+        np.testing.assert_array_equal(
+            buffers.longitudinal_velocity_profiles_masked[0, 0],
             profiles_masked,
         )
         np.testing.assert_array_equal(
@@ -604,7 +667,15 @@ class ReusableCrossSectionProjectionTests(unittest.TestCase):
         self.assertEqual((1, 1, 4, 181), result.reference.velocity_profiles.shape)
         self.assertEqual(
             (1, 1, 4, 181),
-            result.reference.velocity_profiles_masked.shape,
+            result.reference.transverse_velocity_profiles_masked.shape,
+        )
+        self.assertEqual(
+            (1, 1, 4, 181),
+            result.reference.longitudinal_velocity_profiles_unmasked.shape,
+        )
+        self.assertEqual(
+            (1, 1, 4, 181),
+            result.reference.longitudinal_velocity_profiles_masked.shape,
         )
         self.assertEqual((1, 1, 181, 181), result.reference.rotated_mean_images.shape)
         self.assertEqual(

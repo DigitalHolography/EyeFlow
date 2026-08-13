@@ -25,7 +25,10 @@ def pack_dopplerview_shared_outputs(
         ),
     }
     if paths.velocity_map_avg is not None:
-        metrics[paths.velocity_map_avg] = metric_value(analysis["velocity_map_avg"])
+        metrics[paths.velocity_map_avg] = metric_value(
+            analysis["velocity_map_avg"],
+            unit="mm/s",
+        )
     if paths.retinal_velocity_array is not None:
         metrics[paths.retinal_velocity_array] = metric_value(
             analysis["retinal_vessel_velocity"],

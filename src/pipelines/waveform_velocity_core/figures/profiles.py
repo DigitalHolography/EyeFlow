@@ -26,7 +26,10 @@ def export_cross_section_profile_artifacts(
     ):
         if segments is None:
             continue
-        raw = np.asarray(segments.velocity_profiles_masked, dtype=np.float32)
+        raw = np.asarray(
+            segments.transverse_velocity_profiles_masked,
+            dtype=np.float32,
+        )
         if raw.ndim == 4 and raw.shape[-1] > 0 and np.any(np.isfinite(raw)):
             raw_aggregate = _hierarchical_profile_median(raw)
             raw_x_pixels = (
@@ -201,7 +204,10 @@ def _save_profile_gif(
 
 
 def _save_poiseuille_profiles(writer, segments, vessel_name: str) -> list[Path]:
-    raw = np.asarray(segments.velocity_profiles_masked, dtype=np.float32)
+    raw = np.asarray(
+        segments.transverse_velocity_profiles_masked,
+        dtype=np.float32,
+    )
     x_um = np.asarray(segments.profile_x_micrometers, dtype=np.float32)
     coefficients = np.asarray(segments.poiseuille_coefficients, dtype=np.float32)
     origins = np.asarray(

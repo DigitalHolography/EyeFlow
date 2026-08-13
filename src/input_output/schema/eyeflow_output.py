@@ -74,10 +74,11 @@ class SegmentationOutputPaths:
 
 
 @dataclass(frozen=True)
-class CrossSectionProfileOutputPaths:
-    velocity_profile: str
-    velocity_profile_masked: str
-
+class VelocityProfileOutputPaths:
+    transverse_velocity_profile_unmasked: str
+    transverse_velocity_profile_masked: str
+    longitudinal_velocity_profile_unmasked: str
+    longitudinal_velocity_profile_masked: str
 
 @dataclass(frozen=True)
 class HeartbeatOutputPaths:
@@ -97,13 +98,16 @@ class EyeFlowOutputPaths:
     vein_segments: SegmentVelocityOutputPaths
     artery_per_beat: VelocityPerBeatOutputPaths
     vein_per_beat: VelocityPerBeatOutputPaths
+    artery_per_beat_safe: SegmentVelocityOutputPaths
+    vein_per_beat_safe: SegmentVelocityOutputPaths
     segmentation: SegmentationOutputPaths
-    artery_cross_section_profiles: CrossSectionProfileOutputPaths
-    vein_cross_section_profiles: CrossSectionProfileOutputPaths
+    artery_velocity_profiles: VelocityProfileOutputPaths
+    vein_velocity_profiles: VelocityProfileOutputPaths
     heartbeat: HeartbeatOutputPaths
     beat_period_seconds: str
     waveform_shape_metrics_root: str
     absolute_waveform_metrics_root: str
+    lowrank_waveform_decomposition_root: str
     meta_root: str
 
     @classmethod
@@ -134,14 +138,24 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
     )
 
 
-def _cross_section_profile_paths(
+def _velocity_profile_paths(
     root: str,
     *,
     velocity_profile_name: str = "VelocityProfile",
-) -> CrossSectionProfileOutputPaths:
-    return CrossSectionProfileOutputPaths(
-        velocity_profile=f"{root}/{velocity_profile_name}",
-        velocity_profile_masked=f"{root}/{velocity_profile_name}Masked",
+) -> VelocityProfileOutputPaths:
+    return VelocityProfileOutputPaths(
+        transverse_velocity_profile_unmasked=(
+            f"{root}/Transverse{velocity_profile_name}Unmasked/value"
+        ),
+        transverse_velocity_profile_masked=(
+            f"{root}/Transverse{velocity_profile_name}Masked/value"
+        ),
+        longitudinal_velocity_profile_unmasked=(
+            f"{root}/Longitudinal{velocity_profile_name}Unmasked/value"
+        ),
+        longitudinal_velocity_profile_masked=(
+            f"{root}/Longitudinal{velocity_profile_name}Masked/value"
+        ),
     )
 
 
@@ -220,19 +234,24 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
             "VelocitySignalPerBeatPerSegmentBandLimited/value"
         ),
     ),
+    artery_per_beat_safe=SegmentVelocityOutputPaths(velocity_signal=None),
+    vein_per_beat_safe=SegmentVelocityOutputPaths(velocity_signal=None),
     segmentation=_segmentation_paths("Segmentation"),
-    artery_cross_section_profiles=_cross_section_profile_paths(
-        "Artery/CrossSections",
+    artery_velocity_profiles=_velocity_profile_paths(
+        "Artery/CrossSections/RawProfile",
         velocity_profile_name="VelocityProfileSeg",
     ),
-    vein_cross_section_profiles=_cross_section_profile_paths(
-        "Vein/CrossSections",
+    vein_velocity_profiles=_velocity_profile_paths(
+        "Vein/CrossSections/RawProfile",
         velocity_profile_name="VelocityProfileSeg",
     ),
     heartbeat=LEGACY_HEARTBEAT_OUTPUT,
     beat_period_seconds="Artery/VelocityPerBeat/beatPeriodSeconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="Metrics/absolute_waveform_metrics",
+    lowrank_waveform_decomposition_root=(
+        "Metrics/lowrank_waveform_decomposition"
+    ),
     meta_root="Meta",
 )
 
@@ -275,17 +294,22 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
             "vein/velocity/perbeat/segments/band_limited/value"
         ),
     ),
+    artery_per_beat_safe=SegmentVelocityOutputPaths(velocity_signal=None),
+    vein_per_beat_safe=SegmentVelocityOutputPaths(velocity_signal=None),
     segmentation=_segmentation_paths("Segmentation"),
-    artery_cross_section_profiles=_cross_section_profile_paths(
-        "artery/cross_sections"
+    artery_velocity_profiles=_velocity_profile_paths(
+        "artery/cross_sections/RawProfile"
     ),
-    vein_cross_section_profiles=_cross_section_profile_paths(
-        "vein/cross_sections"
+    vein_velocity_profiles=_velocity_profile_paths(
+        "vein/cross_sections/RawProfile"
     ),
     heartbeat=LEGACY_HEARTBEAT_OUTPUT,
     beat_period_seconds="perbeat/beat_period_seconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="Metrics/absolute_waveform_metrics",
+    lowrank_waveform_decomposition_root=(
+        "Metrics/lowrank_waveform_decomposition"
+    ),
     meta_root="Meta",
 )
 
@@ -350,17 +374,36 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
             "Processing/VelocityPerBeat/Vein/Segments/BandLimited/value"
         ),
     ),
-    segmentation=_segmentation_paths("Segmentation"),
-    artery_cross_section_profiles=_cross_section_profile_paths(
-        "Processing/CrossSections/Artery"
+    artery_per_beat_safe=SegmentVelocityOutputPaths(
+        velocity_signal=(
+            "Processing/VelocityPerBeatSafe/Artery/Segments/Raw/value"
+        ),
+        velocity_signal_band_limited=(
+            "Processing/VelocityPerBeatSafe/Artery/Segments/BandLimited/value"
+        ),
     ),
-    vein_cross_section_profiles=_cross_section_profile_paths(
-        "Processing/CrossSections/Vein"
+    vein_per_beat_safe=SegmentVelocityOutputPaths(
+        velocity_signal=(
+            "Processing/VelocityPerBeatSafe/Vein/Segments/Raw/value"
+        ),
+        velocity_signal_band_limited=(
+            "Processing/VelocityPerBeatSafe/Vein/Segments/BandLimited/value"
+        ),
+    ),
+    segmentation=_segmentation_paths("Segmentation"),
+    artery_velocity_profiles=_velocity_profile_paths(
+        "Processing/VelocityProfiles/Artery"
+    ),
+    vein_velocity_profiles=_velocity_profile_paths(
+        "Processing/VelocityProfiles/Vein"
     ),
     heartbeat=HEARTBEAT_OUTPUT,
     beat_period_seconds="Processing/VelocityPerBeat/BeatPeriodSeconds/value",
     waveform_shape_metrics_root="Processing/Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="Processing/Metrics/absolute_waveform_metrics",
+    lowrank_waveform_decomposition_root=(
+        "Processing/Metrics/lowrank_waveform_decomposition"
+    ),
     meta_root="Meta",
 )
 

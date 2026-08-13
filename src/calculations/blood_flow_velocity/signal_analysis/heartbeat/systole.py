@@ -26,7 +26,7 @@ def find_systole_index(
         lowpass_freq_hz=np.float32(lowpass_freq_hz),
         order=4,
     )
-    derivative = np.gradient(filtered_pulse).astype(np.float32)
+    derivative = np.gradient(filtered_pulse, np.float32(dt)).astype(np.float32)
     min_peak_height = np.float32(np.percentile(derivative, 95))
     min_peak_distance = _min_peak_distance(dt, min_duration_seconds)
 

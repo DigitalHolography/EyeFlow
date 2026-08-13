@@ -73,7 +73,7 @@ class ArterialWaveformAnalysisStep:
         ctx.set("retinal_vein_velocity_signal_filtered", vein_filtered)
         ctx.set(
             "retinal_vein_velocity_signal_derivative",
-            np.gradient(vein_filtered).astype(np.float32),
+            np.gradient(vein_filtered, dt).astype(np.float32),
         )
         ctx.set("beat_indices", peaks)
         ctx.set(

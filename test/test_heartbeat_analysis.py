@@ -20,6 +20,19 @@ from calculations.blood_flow_velocity.signal_analysis.heartbeat import (  # noqa
 
 
 class SpectralHeartbeatTests(unittest.TestCase):
+    def test_systole_derivative_is_velocity_per_second(self) -> None:
+        dt_seconds = 0.01
+        time = np.arange(1000, dtype=np.float32) * dt_seconds
+        waveform = (10.0 + time + np.sin(2.0 * np.pi * time)).astype(np.float32)
+
+        result = run_heartbeat_analysis(waveform, dt_seconds=dt_seconds)
+
+        expected = np.gradient(
+            result.systole.artery_signal_filtered,
+            np.float32(dt_seconds),
+        )
+        np.testing.assert_allclose(result.systole.derivative_signal, expected)
+
     def test_matlab_padding_and_harmonic_fit(self) -> None:
         dt_seconds = 0.05
         time = np.arange(200, dtype=np.float32) * dt_seconds
