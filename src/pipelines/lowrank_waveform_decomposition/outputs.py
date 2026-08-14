@@ -218,11 +218,6 @@ def _append_fig4_energy_spectrum(
     metrics[f"{group}/mode"] = _metric(mode, dims=("mode",))
     metrics[f"{group}/lambda"] = _metric(energy_fraction, dims=("mode",))
 
-    cumulative = np.cumsum(energy_fraction)
-    group = f"{prefix}/figures/fig4_energy_spectrum_cumulative"
-    metrics[f"{group}/mode"] = _metric(mode, dims=("mode",))
-    metrics[f"{group}/lambda_cumulative"] = _metric(cumulative, dims=("mode",))
-
     pb_lambda = _per_beat_energy_fraction(per_beat.get("singular_values_b", []))
     pb_mode = np.arange(1, pb_lambda.shape[1] + 1, dtype=int)
     pb_summary = _summarize_mode_rows(pb_lambda)
@@ -232,22 +227,6 @@ def _append_fig4_energy_spectrum(
     metrics[f"{group}/lambda_mean"] = _metric(pb_summary["mean"], dims=("mode",))
     metrics[f"{group}/lambda_lo"] = _metric(pb_summary["lo"], dims=("mode",))
     metrics[f"{group}/lambda_hi"] = _metric(pb_summary["hi"], dims=("mode",))
-
-    pb_cumulative = np.cumsum(np.where(np.isfinite(pb_lambda), pb_lambda, 0.0), axis=1)
-    pb_cumulative[~np.isfinite(pb_lambda)] = np.nan
-    pb_cumulative_summary = _summarize_mode_rows(pb_cumulative)
-
-    group = f"{prefix}/figures/fig4_energy_spectrum_cumulative_pb"
-    metrics[f"{group}/mode"] = _metric(pb_mode, dims=("mode",))
-    metrics[f"{group}/lambda_cumulative_mean"] = _metric(
-        pb_cumulative_summary["mean"], dims=("mode",)
-    )
-    metrics[f"{group}/lambda_cumulative_lo"] = _metric(
-        pb_cumulative_summary["lo"], dims=("mode",)
-    )
-    metrics[f"{group}/lambda_cumulative_hi"] = _metric(
-        pb_cumulative_summary["hi"], dims=("mode",)
-    )
 
 
 def _joint_decomposition_components(
@@ -364,11 +343,13 @@ def _summarize_time_columns(
         }
 
     columns = values[:, valid_mask]
+    mean = _nan_reducer(columns, np.nanmean, axis=1)
+    std = _nan_sample_std(columns, axis=1)
     return {
-        "mean": _nan_reducer(columns, np.nanmean, axis=1),
-        "std": _nan_reducer(columns, np.nanstd, axis=1),
-        "lo": _nan_percentile(columns, 2.5, axis=1),
-        "hi": _nan_percentile(columns, 97.5, axis=1),
+        "mean": mean,
+        "std": std,
+        "lo": mean - std,
+        "hi": mean + std,
     }
 
 
@@ -376,10 +357,12 @@ def _summarize_mode_rows(values: np.ndarray) -> dict[str, np.ndarray]:
     values = np.asarray(values, dtype=float)
     if values.ndim != 2:
         values = np.empty((0, 0), dtype=float)
+    mean = _nan_reducer(values, np.nanmean, axis=0)
+    std = _nan_sample_std(values, axis=0)
     return {
-        "mean": _nan_reducer(values, np.nanmean, axis=0),
-        "lo": _nan_percentile(values, 2.5, axis=0),
-        "hi": _nan_percentile(values, 97.5, axis=0),
+        "mean": mean,
+        "lo": mean - std,
+        "hi": mean + std,
     }
 
 
@@ -418,13 +401,16 @@ def _nan_reducer(values: np.ndarray, reducer, *, axis: int) -> np.ndarray:
         return np.asarray(reducer(values, axis=axis), dtype=float)
 
 
-def _nan_percentile(values: np.ndarray, q: float, *, axis: int) -> np.ndarray:
+def _nan_sample_std(values: np.ndarray, *, axis: int) -> np.ndarray:
+    """Sample SD (``ddof=1``); zero when fewer than two finite samples."""
     if values.size == 0 or not np.any(np.isfinite(values)):
         shape = tuple(dim for index, dim in enumerate(values.shape) if index != axis)
         return np.full(shape, np.nan, dtype=float)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
-        return np.asarray(np.nanpercentile(values, q, axis=axis), dtype=float)
+        std = np.asarray(np.nanstd(values, axis=axis, ddof=1), dtype=float)
+    n = np.sum(np.isfinite(values), axis=axis)
+    return np.where(n > 1, std, 0.0)
 
 
 def _unit_for(metric_name: str) -> str | None:
