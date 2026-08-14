@@ -114,8 +114,8 @@ def _per_beat_required(ctx) -> bool:
         return True
     if ctx.pipeline_scheduled("waveform_velocity"):
         return bool(
-            {"per_beat", "hemifield"} & velocity_options
-            or "hemifield" in metric_options
+            {"per_beat", "quadrants"} & velocity_options
+            or "quadrants" in metric_options
             or absolute_options
         )
     return bool(
@@ -146,15 +146,15 @@ def _segments_required(ctx) -> bool:
                 "segments",
                 "segment_velocity_maps",
                 "velocity_profiles",
-                "hemifield",
+                "quadrants",
             }
             & velocity_options
-            or "hemifield" in metric_options
+            or "quadrants" in metric_options
             or "segments" in absolute_options
-            or "hemifield" in absolute_options
+            or "quadrants" in absolute_options
         )
     return bool(
-        {"segments", "hemifield"} & metric_options
+        {"segments", "quadrants"} & metric_options
         or "segments" in absolute_options
     )
 

@@ -23,6 +23,7 @@ from pipelines.waveform_velocity.segment_velocity_map_avi import (  # noqa: E402
     _frame_indexes,
     _global_velocity_range,
     _mosaic_frame,
+    _mosaic_frame_chunk,
     _mosaic_source,
     _turbo_lut,
     export_segment_velocity_map_avis,
@@ -30,6 +31,48 @@ from pipelines.waveform_velocity.segment_velocity_map_avi import (  # noqa: E402
 
 
 class SegmentVelocityMapAviTests(unittest.TestCase):
+    def test_source_preparation_uses_only_the_exported_beat(self) -> None:
+        maps = np.full((2, 2, 2, 2, 2, 1), np.nan, dtype=np.float32)
+        maps[:, :, :, 0, 0, 0] = np.asarray(
+            [
+                [[1.0, 2.0], [1.0, 2.0]],
+                [[1.0, 2.0], [1.0, 2.0]],
+            ],
+            dtype=np.float32,
+        )
+        maps[:, :, :, 1, 0, 0] = 1000.0
+        maps[:, :, :, 1, 1, 0] = 500.0
+        segments = SimpleNamespace(branch_ids=np.asarray([4, 9], dtype=np.int32))
+
+        source = _mosaic_source("artery", segments, DatasetValue(maps))
+
+        self.assertIsNotNone(source)
+        self.assertEqual((0,), source.exported_beat_indexes)
+        self.assertEqual(
+            [(0, 0)],
+            [(tile.branch_index, tile.radius_index) for tile in source.tiles],
+        )
+        self.assertEqual((1.0, 2.0), _global_velocity_range((source,)))
+
+    def test_segment_masks_limit_range_candidates(self) -> None:
+        maps = np.full((2, 2, 2, 2, 2, 1), 7.0, dtype=np.float32)
+        maps[:, :, :, 0, 1, 0] = 99.0
+        masks = np.zeros((1, 2, 2, 2), dtype=bool)
+        masks[0, 0] = True
+        segments = SimpleNamespace(
+            branch_ids=np.asarray([4, 9], dtype=np.int32),
+            segment_masks=masks,
+        )
+
+        source = _mosaic_source("artery", segments, DatasetValue(maps))
+
+        self.assertIsNotNone(source)
+        self.assertEqual(
+            [(0, 0)],
+            [(tile.branch_index, tile.radius_index) for tile in source.tiles],
+        )
+        self.assertEqual((6.5, 7.5), _global_velocity_range((source,)))
+
     def test_mosaic_filters_nan_tiles_and_uses_square_layout(self) -> None:
         maps = np.full((2, 3, 2, 2, 2, 2), np.nan, dtype=np.float32)
         maps[:, :, :, :, 0, 0] = 0.0
@@ -55,6 +98,16 @@ class SegmentVelocityMapAviTests(unittest.TestCase):
         self.assertTrue(np.any(frame[0:3, 3:6]))
         self.assertTrue(np.any(frame[3:6, 0:3]))
         self.assertFalse(np.any(frame[3:6, 3:6]))
+
+        chunk = _mosaic_frame_chunk(
+            source,
+            np.asarray([0, 1], dtype=np.intp),
+            0,
+            velocity_range,
+            _turbo_lut(),
+        )
+        self.assertEqual((2, 6, 6, 3), chunk.shape)
+        np.testing.assert_array_equal(frame, chunk[0])
 
     def test_two_movies_share_global_range_and_embed_tile_labels(self) -> None:
         schema = EyeFlowOutputPaths.active()

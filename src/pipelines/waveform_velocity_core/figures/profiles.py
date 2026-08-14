@@ -300,7 +300,27 @@ def _has_centered_profiles(segments) -> bool:
 
 
 def _hierarchical_profile_median(profiles: np.ndarray) -> np.ndarray:
-    return _nanmedian(_nanmedian(profiles, axis=1), axis=0)
+    values = np.asarray(profiles, dtype=np.float32)
+    if values.ndim != 4:
+        raise ValueError(
+            "profile aggregation requires (radius, branch, frame, sample) values."
+        )
+    if values.shape[0] == 0:
+        return np.full(values.shape[2:], np.nan, dtype=np.float32)
+
+    # Reducing the full radius/branch tensor at once makes NumPy's masked
+    # median sort a very large temporary array.  Process one radius at a time
+    # to preserve the hierarchical median while bounding peak memory.
+    per_radius = np.empty(
+        (values.shape[0], *values.shape[2:]),
+        dtype=np.float32,
+    )
+    for radius_index in range(values.shape[0]):
+        per_radius[radius_index] = _nanmedian(
+            values[radius_index],
+            axis=0,
+        )
+    return _nanmedian(per_radius, axis=0)
 
 
 def _positive_focused_limits(values: np.ndarray) -> tuple[float, float]:
@@ -342,4 +362,50 @@ def _nanmean(values: np.ndarray, *, axis):
 def _nanmedian(values: np.ndarray, *, axis):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
-        return np.nanmedian(values, axis=axis)
+        try:
+            return np.nanmedian(values, axis=axis)
+        except IndexError:
+            # NumPy's small-axis nanmedian uses masked sorting and
+            # take_along_axis.  Fall back to explicit finite sorting if that
+            # implementation produces an invalid integer index.
+            return _finite_median(values, axis=axis)
+
+
+def _finite_median(values: np.ndarray, *, axis) -> np.ndarray:
+    array = np.asarray(values, dtype=np.float32)
+    axes = (axis,) if isinstance(axis, int) else tuple(axis)
+    normalized = tuple(item % array.ndim for item in axes)
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("median reduction axes must be unique.")
+
+    retained = tuple(index for index in range(array.ndim) if index not in normalized)
+    ordered = np.transpose(array, retained + normalized)
+    retained_shape = tuple(array.shape[index] for index in retained)
+    reduction_size = int(np.prod([array.shape[index] for index in normalized]))
+    if reduction_size == 0:
+        return np.full(retained_shape, np.nan, dtype=np.float32)
+
+    flattened = ordered.reshape(*retained_shape, reduction_size)
+    finite = np.isfinite(flattened)
+    counts = np.sum(finite, axis=-1, dtype=np.intp)
+    sorted_values = np.sort(
+        np.where(finite, flattened, np.float32(np.inf)),
+        axis=-1,
+    )
+    low_indexes = np.maximum((counts - 1) // 2, 0)
+    high_indexes = np.maximum(counts // 2, 0)
+    low = np.take_along_axis(
+        sorted_values,
+        low_indexes[..., None],
+        axis=-1,
+    )[..., 0]
+    high = np.take_along_axis(
+        sorted_values,
+        high_indexes[..., None],
+        axis=-1,
+    )[..., 0]
+    has_values = counts > 0
+    low = np.where(has_values, low, np.float32(0.0))
+    high = np.where(has_values, high, np.float32(0.0))
+    median = low + (high - low) * np.float32(0.5)
+    return np.where(has_values, median, np.nan).astype(np.float32, copy=False)

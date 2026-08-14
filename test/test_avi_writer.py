@@ -64,6 +64,14 @@ class AviWriterTests(unittest.TestCase):
             self.assertLess(float(np.mean(frames[0])), 2.0)
             self.assertAlmostEqual(180.0, float(np.mean(frames[1])), delta=2.0)
 
+            performance = video.performance_stats
+            self.assertGreater(performance["encoded_bytes"], 0)
+            self.assertGreaterEqual(performance["rgb_conversion_seconds"], 0.0)
+            self.assertGreaterEqual(performance["jpeg_encode_seconds"], 0.0)
+            self.assertGreaterEqual(performance["chunk_pack_seconds"], 0.0)
+            self.assertGreaterEqual(performance["file_write_seconds"], 0.0)
+            self.assertGreaterEqual(performance["finalize_seconds"], 0.0)
+
 
 def _main_header_frame_count(contents: bytes) -> int:
     position = contents.index(b"avih")

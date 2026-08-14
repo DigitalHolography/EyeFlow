@@ -40,9 +40,9 @@ from .runner import run_waveform_velocity
             "Raw and band-limited vessel velocity for each beat.",
         ),
         PipelineOption(
-            "hemifield",
-            "Hemifield",
-            "Eight-region velocity and per-beat velocity aggregates.",
+            "quadrants",
+            "Quadrants",
+            "Four-quadrant velocity and per-beat velocity aggregates.",
             requires=("per_beat",),
         ),
     ],

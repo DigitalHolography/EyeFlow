@@ -3,8 +3,10 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import h5py
 import numpy as np
@@ -27,6 +29,9 @@ from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from input_output.writers.png import FigureArtifactWriter, write_png_file  # noqa: E402
 from pipelines.waveform_velocity_core.figures.profiles import (  # noqa: E402
+    _finite_median,
+    _hierarchical_profile_median,
+    _nanmedian,
     _positive_focused_limits,
     export_cross_section_profile_artifacts,
 )
@@ -257,6 +262,34 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
 
 
 class ProfileArtifactTests(unittest.TestCase):
+    def test_profile_median_handles_twelve_sparse_branches_by_radius(self) -> None:
+        values = np.arange(2 * 12 * 3 * 4, dtype=np.float32).reshape(2, 12, 3, 4)
+        values[0, :10, 1, 2] = np.nan
+        values[1, :, 2, 3] = np.nan
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            expected = np.nanmedian(np.nanmedian(values, axis=1), axis=0)
+
+        actual = _hierarchical_profile_median(values)
+
+        np.testing.assert_allclose(actual, expected, equal_nan=True)
+
+    def test_profile_median_falls_back_when_masked_sort_indexing_fails(self) -> None:
+        values = np.arange(2 * 12 * 3, dtype=np.float32).reshape(2, 12, 3)
+        values[:, :9, 1] = np.nan
+        values[0, :, 2] = np.inf
+        expected = _finite_median(values, axis=1)
+
+        with patch(
+            "pipelines.waveform_velocity_core.figures.profiles.np.nanmedian",
+            side_effect=IndexError(
+                "index -9223372036854775799 is out of bounds for axis 1 with size 12"
+            ),
+        ):
+            actual = _nanmedian(values, axis=1)
+
+        np.testing.assert_allclose(actual, expected, equal_nan=True)
+
     def test_profile_plot_limits_focus_positive_flow(self) -> None:
         y_min, y_max = _positive_focused_limits(
             np.asarray([-40.0, -12.0, 0.0, 4.0, 3.0], dtype=np.float32)

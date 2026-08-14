@@ -24,7 +24,7 @@ def run_waveform_shape_metrics(ctx) -> dict[str, object]:
         context.vein_segment_result,
         include_per_beat="per_beat" in selected or report_required,
         include_segments="segments" in selected,
-        include_hemifield="hemifield" in selected,
+        include_quadrants="quadrants" in selected,
     )
     ctx.state.set("waveform_shape_metric_outputs", outputs)
     return outputs

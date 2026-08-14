@@ -8,7 +8,9 @@ from types import SimpleNamespace
 import h5py
 import numpy as np
 from calculations.dopplerview_analysis.vessel_velocity_estimator import (
+    _bounded_inpaint_result,
     _inpaint_frame_batch,
+    _signed_rms_difference,
     run_chunked_velocity_estimator,
 )
 from input_output.schema import EyeFlowOutputPaths
@@ -20,6 +22,45 @@ from pipelines.waveform_velocity_core.scratch import waveform_scratch_h5
 
 
 class ScratchAndSchemaTests(unittest.TestCase):
+    def test_inpaint_result_is_finite_and_bounded_by_each_frame_background(self) -> None:
+        source = np.asarray(
+            [
+                [[1.0, 2.0], [3.0, 4.0]],
+                [[10.0, 20.0], [30.0, 40.0]],
+            ],
+            dtype=np.float32,
+        )
+        mask = np.asarray([[True, False], [False, False]])
+        unstable = np.asarray(
+            [
+                [[np.inf, -100.0], [3.0, 100.0]],
+                [[np.nan, -100.0], [30.0, 100.0]],
+            ],
+            dtype=np.float32,
+        )
+
+        actual = _bounded_inpaint_result(unstable, source, mask)
+
+        self.assertTrue(np.all(np.isfinite(actual)))
+        self.assertGreaterEqual(float(actual[0].min()), 2.0)
+        self.assertLessEqual(float(actual[0].max()), 4.0)
+        self.assertGreaterEqual(float(actual[1].min()), 20.0)
+        self.assertLessEqual(float(actual[1].max()), 40.0)
+
+    def test_signed_rms_difference_avoids_float32_square_overflow(self) -> None:
+        foreground = np.asarray([3.0e20], dtype=np.float32)
+        background = np.asarray([1.0e20], dtype=np.float32)
+
+        with np.errstate(over="raise"):
+            actual = _signed_rms_difference(foreground, background)
+
+        self.assertTrue(np.all(np.isfinite(actual)))
+        np.testing.assert_allclose(
+            actual,
+            np.sqrt(8.0) * np.float32(1.0e20),
+            rtol=1e-6,
+        )
+
     def test_batched_inpainting_matches_independent_frames(self) -> None:
         from skimage.restoration import inpaint
 

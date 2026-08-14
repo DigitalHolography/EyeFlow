@@ -26,7 +26,7 @@ def pack_segmentation_outputs(
     The source arrays use EyeFlow's image frame, whose Y direction is inverted
     relative to the lower-left image frame used by the published maps.  All
     maps are therefore flipped vertically and transposed to ``(x, y)`` before
-    writing.  Hemifield calculations continue to use the original in-memory
+    writing. Quadrant calculations continue to use the original in-memory
     arrays and do not consume these visualization overlays.
     """
     schema = _resolve_output_paths(output_paths)

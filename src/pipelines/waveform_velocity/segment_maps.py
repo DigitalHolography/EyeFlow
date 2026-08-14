@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 from scipy.signal import resample
 
@@ -11,6 +13,10 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils imp
 from calculations.math import next_power_of_two
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
+from runtime_limits import cap_parallel_jobs
+
+
+_MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
 
 
 def pack_segment_map_outputs(
@@ -74,19 +80,46 @@ def interpolate_velocity_maps_per_beat(
         dtype=np.float32,
     )
 
-    for radius_index in range(radius_count):
-        for branch_index in range(branch_count):
-            for beat_index in range(beat_count):
-                start = int(boundaries[beat_index])
-                stop = int(boundaries[beat_index + 1]) + 1
-                interpolated = _interpft_maps_axis0(
-                    maps[radius_index, branch_index, start:stop],
-                    time_count + 1,
-                )[:-1]
-                output[
-                    :, :, :, beat_index, branch_index, radius_index
-                ] = interpolated.transpose(2, 1, 0)
+    segment_indexes = [
+        (radius_index, branch_index)
+        for radius_index in range(radius_count)
+        for branch_index in range(branch_count)
+    ]
+
+    def interpolate_segment(segment_index: tuple[int, int]) -> None:
+        radius_index, branch_index = segment_index
+        for beat_index in range(beat_count):
+            start = int(boundaries[beat_index])
+            stop = int(boundaries[beat_index + 1]) + 1
+            interpolated = _interpft_maps_axis0(
+                maps[radius_index, branch_index, start:stop],
+                time_count + 1,
+            )[:-1]
+            output[
+                :, :, :, beat_index, branch_index, radius_index
+            ] = interpolated.transpose(2, 1, 0)
+
+    worker_count = _segment_map_worker_count(len(segment_indexes))
+    if worker_count == 1:
+        for segment_index in segment_indexes:
+            interpolate_segment(segment_index)
+    else:
+        with ThreadPoolExecutor(
+            max_workers=worker_count,
+            thread_name_prefix="segment-map",
+        ) as executor:
+            for _ in executor.map(interpolate_segment, segment_indexes):
+                pass
     return output
+
+
+def _segment_map_worker_count(segment_count: int) -> int:
+    if segment_count <= 1:
+        return 1
+    return min(
+        segment_count,
+        cap_parallel_jobs(_MAX_PARALLEL_SEGMENT_INTERPOLATIONS),
+    )
 
 
 def _pack_vessel_segment_maps(

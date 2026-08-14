@@ -8,7 +8,7 @@ from .runner import run_waveform_shape_metrics
 @pipeline(
     name="waveform_shape_metrics",
     description=(
-        "Compute global, by-segment, and hemifield waveform-shape metrics."
+        "Compute global, by-segment, and quadrant waveform-shape metrics."
     ),
     requires=["numpy", "h5py", "scipy", "skimage"],
     dag_requires=["waveform_velocity"],
@@ -25,9 +25,9 @@ from .runner import run_waveform_shape_metrics
             requires=("per_beat",),
         ),
         PipelineOption(
-            "hemifield",
-            "Hemifield",
-            "Eight-region waveform-shape metric aggregates.",
+            "quadrants",
+            "Quadrants",
+            "Four-quadrant waveform-shape metric aggregates.",
             requires=("per_beat",),
         ),
     ],
