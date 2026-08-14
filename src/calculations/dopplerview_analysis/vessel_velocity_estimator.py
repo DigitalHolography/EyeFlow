@@ -133,11 +133,7 @@ def run_chunked_velocity_estimator(
             inpaint_mask,
             inpaint,
         )
-        difference = (f_rms**2 - f_rms_background**2).astype(np.float32, copy=False)
-        delta = (np.sign(difference) * np.sqrt(np.abs(difference))).astype(
-            np.float32,
-            copy=False,
-        )
+        delta = _signed_rms_difference(f_rms, f_rms_background)
         velocity = _velocity_from_delta_frequency(
             delta,
             laser_wavelength=laser_wavelength,
@@ -241,13 +237,62 @@ def _inpaint_frame_batch(
     inpaint,
 ) -> np.ndarray:
     """Inpaint all frames as channels so the sparse system is built once."""
-    channels_last = np.moveaxis(np.asarray(frames, dtype=np.float32), 0, -1)
+    source = np.asarray(frames, dtype=np.float32)
+    channels_last = np.moveaxis(source, 0, -1)
     result = inpaint.inpaint_biharmonic(
         channels_last,
         np.asarray(mask, dtype=bool),
         channel_axis=-1,
     )
-    return np.moveaxis(result, -1, 0).astype(np.float32, copy=False)
+    inpainted = np.moveaxis(result, -1, 0).astype(np.float32, copy=False)
+    square_safe_limit = np.float32(np.sqrt(np.finfo(np.float32).max))
+    if np.all(np.isfinite(inpainted)) and np.all(
+        np.abs(inpainted) <= square_safe_limit
+    ):
+        return inpainted
+    return _bounded_inpaint_result(inpainted, source, mask)
+
+
+def _bounded_inpaint_result(
+    inpainted: np.ndarray,
+    source: np.ndarray,
+    mask: np.ndarray,
+) -> np.ndarray:
+    """Keep each inpainted frame within its finite background range."""
+    background = np.asarray(source, dtype=np.float32)[:, ~np.asarray(mask, dtype=bool)]
+    finite = np.isfinite(background)
+    if background.shape[1] == 0 or np.any(~np.any(finite, axis=1)):
+        raise ValueError("Background inpainting requires a finite unmasked pixel per frame.")
+
+    finite_background = np.where(finite, background, np.nan)
+    lower = np.nanmin(finite_background, axis=1)
+    upper = np.nanmax(finite_background, axis=1)
+    fallback = np.nanmean(finite_background, axis=1, dtype=np.float32)
+    bounded = np.where(
+        np.isfinite(inpainted),
+        inpainted,
+        fallback[:, None, None],
+    )
+    return np.clip(
+        bounded,
+        lower[:, None, None],
+        upper[:, None, None],
+    ).astype(np.float32, copy=False)
+
+
+def _signed_rms_difference(
+    f_rms: np.ndarray,
+    f_rms_background: np.ndarray,
+) -> np.ndarray:
+    """Return signed root-square difference without float32 square overflow.
+    Reason: Encountered overflow.
+    """
+    foreground64 = np.asarray(f_rms, dtype=np.float64)
+    background64 = np.asarray(f_rms_background, dtype=np.float64)
+    with np.errstate(invalid="ignore"):
+        difference64 = np.square(foreground64) - np.square(background64)
+        delta64 = np.sign(difference64) * np.sqrt(np.abs(difference64))
+    return delta64.astype(np.float32, copy=False)
 
 
 def _skimage_dependencies():
