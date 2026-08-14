@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import h5py
 import numpy as np
@@ -18,6 +19,7 @@ from calculations.math import interpft_real  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
+    _segment_map_worker_count,
     interpolate_velocity_maps_per_beat,
     pack_segment_map_outputs,
 )
@@ -39,6 +41,61 @@ class SegmentMapOutputTests(unittest.TestCase):
 
         self.assertEqual((3, 2, 4, 2, 1, 1), actual.shape)
         np.testing.assert_allclose(actual[2, 1, :, 0, 0, 0], expected, rtol=1e-6)
+
+    def test_threaded_segments_match_scalar_interpft(self) -> None:
+        maps = np.arange(2 * 3 * 8 * 2 * 3, dtype=np.float32).reshape(
+            2,
+            3,
+            8,
+            2,
+            3,
+        )
+        maps[1, 2, :, 0, 1] = np.nan
+        boundaries = np.asarray([0, 3, 7], dtype=np.int32)
+
+        actual = interpolate_velocity_maps_per_beat(maps, boundaries)
+
+        self.assertEqual((3, 2, 4, 2, 3, 2), actual.shape)
+        for radius_index in range(2):
+            for branch_index in range(3):
+                for beat_index, (start, stop) in enumerate(((0, 4), (3, 8))):
+                    for y_index in range(2):
+                        for x_index in range(3):
+                            expected = interpft_real(
+                                maps[
+                                    radius_index,
+                                    branch_index,
+                                    start:stop,
+                                    y_index,
+                                    x_index,
+                                ],
+                                5,
+                            )[:-1]
+                            np.testing.assert_allclose(
+                                actual[
+                                    x_index,
+                                    y_index,
+                                    :,
+                                    beat_index,
+                                    branch_index,
+                                    radius_index,
+                                ],
+                                expected,
+                                rtol=1e-6,
+                                equal_nan=True,
+                            )
+
+    def test_segment_worker_count_honors_parallel_job_cap(self) -> None:
+        with patch(
+            "pipelines.waveform_velocity.segment_maps.cap_parallel_jobs",
+            return_value=4,
+        ) as capped:
+            self.assertEqual(1, _segment_map_worker_count(0))
+            self.assertEqual(1, _segment_map_worker_count(1))
+            self.assertEqual(3, _segment_map_worker_count(3))
+            self.assertEqual(4, _segment_map_worker_count(20))
+
+        capped.assert_called_with(8)
 
     def test_h5_outputs_have_requested_paths_shapes_and_types(self) -> None:
         artery = _segments(radius_count=2, branch_count=1)
