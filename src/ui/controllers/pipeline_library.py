@@ -25,13 +25,16 @@ _PIPELINE_UI_ORDER = {
 
 class PipelineLibraryController:
     _STATUS_COLUMN_PADDING = (24, 24)
+    _DIVIDER_WIDTH = 6
+    _FALLBACK_STATUS_WRAPLENGTH = 320
 
     def __init__(self, app) -> None:
         self.app = app
+        self._status_labels: list[ttk.Label] = []
 
     def configure_library_columns(self, inner, *, row_count: int = 1) -> None:
         inner.columnconfigure(0, weight=1, minsize=180)
-        inner.columnconfigure(1, weight=0, minsize=6)
+        inner.columnconfigure(1, weight=0, minsize=self._DIVIDER_WIDTH)
         inner.columnconfigure(2, weight=0, minsize=0)
         divider_slot = ttk.Frame(inner, cursor="sb_h_double_arrow")
         divider_slot.grid(
@@ -84,7 +87,7 @@ class PipelineLibraryController:
         if state is None:
             return
         inner, start_x, start_width, status_min_width = state
-        divider_width = 6
+        divider_width = self._DIVIDER_WIDTH
         new_width = start_width + event.x_root - start_x
         max_width = max(180, inner.winfo_width() - status_min_width - divider_width)
         new_width = min(max(180, new_width), max_width)
@@ -228,6 +231,7 @@ class PipelineLibraryController:
     def populate(self, rows: list[PipelineDescriptor]) -> None:
         for child in self.app.pipeline_library_inner.winfo_children():
             child.destroy()
+        self._status_labels = []
         self.app.pipeline_visibility_vars = {}
         self.app.pipeline_row_widgets = {}
         self.app.pipeline_option_vars = {}
@@ -244,6 +248,9 @@ class PipelineLibraryController:
         for pipeline in rows:
             row_index += self._build_pipeline_row(row_index, pipeline)
 
+        self._update_status_wraplength(
+            self.app.pipeline_library_canvas.winfo_width()
+        )
         self.update_summary()
 
     def sync_visibility(self, rows: list[PipelineDescriptor]) -> None:
@@ -608,9 +615,7 @@ class PipelineLibraryController:
         )
         self.app.pipeline_library_canvas.bind(
             "<Configure>",
-            lambda evt: self.app.pipeline_library_canvas.itemconfigure(
-                self.app.pipeline_library_window, width=evt.width
-            ),
+            self._on_library_canvas_configure,
         )
         for widget in (
             self.app.pipeline_library_canvas,
@@ -618,6 +623,23 @@ class PipelineLibraryController:
             library_scroll,
         ):
             self.bind_vertical_mousewheel(widget, self.app.pipeline_library_canvas)
+
+    def _on_library_canvas_configure(self, event: tk.Event) -> None:
+        self.app.pipeline_library_canvas.itemconfigure(
+            self.app.pipeline_library_window,
+            width=event.width,
+        )
+        self._update_status_wraplength(event.width)
+
+    def _update_status_wraplength(self, container_width: int) -> None:
+        wraplength = status_text_wraplength(
+            container_width,
+            horizontal_padding=sum(self._STATUS_COLUMN_PADDING),
+            divider_width=self._DIVIDER_WIDTH,
+            fallback=self._FALLBACK_STATUS_WRAPLENGTH,
+        )
+        for label in self._status_labels:
+            label.configure(wraplength=wraplength)
 
     def _build_header(self) -> None:
         selected_header = ttk.Label(self.app.pipeline_library_inner, text="Target")
@@ -684,7 +706,9 @@ class PipelineLibraryController:
         status = ttk.Label(
             self.app.pipeline_library_inner,
             text=pipeline_status_text(pipeline),
+            justify="left",
         )
+        self._status_labels.append(status)
         status.grid(
             row=idx,
             column=2,
@@ -732,7 +756,9 @@ class PipelineLibraryController:
             option_status = ttk.Label(
                 self.app.pipeline_library_inner,
                 text=option.description,
+                justify="left",
             )
+            self._status_labels.append(option_status)
             option_status.grid(
                 row=idx + offset,
                 column=2,
@@ -818,6 +844,20 @@ class PipelineLibraryController:
             return
         for widget in widgets:
             Tooltip(widget, tip_text, bg=self.app._surface_color, fg=self.app._text_fg)
+
+
+def status_text_wraplength(
+    container_width: int,
+    *,
+    horizontal_padding: int,
+    divider_width: int,
+    fallback: int,
+) -> int:
+    """Cap status text to half of the two-column library area."""
+    if container_width <= divider_width:
+        return fallback
+    column_width = (container_width - divider_width) // 2
+    return max(1, column_width - horizontal_padding)
 
 
 def mousewheel_scroll_units(event: tk.Event) -> int:

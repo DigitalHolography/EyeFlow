@@ -12,9 +12,6 @@
       "per_beat": true,
       "segments": true
     },
-    "lowrank_waveform_decomposition": {
-      "veins": false
-    },
     "waveform_shape_metrics": {
       "hemifield": true,
       "per_beat": true,

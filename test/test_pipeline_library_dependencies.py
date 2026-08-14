@@ -11,6 +11,7 @@ from ui.controllers.pipeline_library import (
     PipelineLibraryController,
     option_selection_names,
     pipeline_ui_sort_key,
+    status_text_wraplength,
 )
 
 
@@ -34,6 +35,26 @@ def _descriptor(
 
 
 class PipelineLibraryDependencyTests(unittest.TestCase):
+    def test_status_text_is_limited_to_half_the_library_width(self) -> None:
+        self.assertEqual(
+            399,
+            status_text_wraplength(
+                900,
+                horizontal_padding=48,
+                divider_width=6,
+                fallback=320,
+            ),
+        )
+        self.assertEqual(
+            320,
+            status_text_wraplength(
+                1,
+                horizontal_padding=48,
+                divider_width=6,
+                fallback=320,
+            ),
+        )
+
     def test_pipeline_ui_order_is_explicit_and_extensible(self) -> None:
         rows = [
             _descriptor("pdf_report"),

@@ -17,10 +17,9 @@ def run_lowrank_waveform_decomposition(ctx) -> dict[str, object]:
             f"Required pipeline state '{VELOCITY_PER_BEAT_OUTPUTS_STATE}' is "
             "unavailable; check the pipeline DAG dependencies."
         )
-    selected = ctx.options_for("lowrank_waveform_decomposition")
     outputs = pack_lowrank_waveform_decomposition_outputs(
         velocity_outputs,
-        vein_flag="veins" in selected,
+        vein_flag=True,
     )
     ctx.state.set(LOWRANK_WAVEFORM_OUTPUTS_STATE, outputs)
     return outputs

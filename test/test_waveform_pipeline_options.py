@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from input_output.schema import EyeFlowOutputPaths
+from pipelines.lowrank_waveform_decomposition import runner as lowrank_runner
 from pipelines.waveform_shape_metrics import runner as metric_runner
 from pipelines.waveform_velocity import runner as velocity_runner
 from pipelines.waveform_velocity_core import runner as core_runner
@@ -43,6 +44,26 @@ def _context(options, state_values=None, scheduled=None):
 
 
 class WaveformPipelineOptionTests(unittest.TestCase):
+    def test_lowrank_pipeline_always_includes_veins(self) -> None:
+        velocity_outputs = {"per_beat": 1}
+        ctx = SimpleNamespace(
+            state=_State(
+                {
+                    core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: velocity_outputs,
+                }
+            )
+        )
+
+        with patch.object(
+            lowrank_runner,
+            "pack_lowrank_waveform_decomposition_outputs",
+            return_value={"lowrank": 2},
+        ) as pack:
+            outputs = lowrank_runner.run_lowrank_waveform_decomposition(ctx)
+
+        self.assertEqual({"lowrank": 2}, outputs)
+        pack.assert_called_once_with(velocity_outputs, vein_flag=True)
+
     def test_pipeline_implementation_ownership_is_cleanly_split(self) -> None:
         pipeline_root = Path(__file__).resolve().parents[1] / "src" / "pipelines"
         metrics_root = pipeline_root / "waveform_shape_metrics"

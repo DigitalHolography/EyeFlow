@@ -68,7 +68,7 @@ def pack_lowrank_waveform_decomposition_outputs(
     velocity_outputs: Mapping[str, object],
     output_paths: EyeFlowOutputPaths | str | None = None,
     *,
-    vein_flag: bool = False,
+    vein_flag: bool = True,
 ) -> dict[str, object]:
     """Compute the requested low-rank endpoint and per-beat metric outputs."""
     schema = _resolve_output_paths(output_paths)
