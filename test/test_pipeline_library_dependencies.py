@@ -139,18 +139,18 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             ),
             PipelineOption("per_beat", "Per beat"),
             PipelineOption(
-                "hemifield",
-                "Hemifield",
+                "quadrants",
+                "Quadrants",
                 requires=("per_beat",),
             ),
         )
 
         self.assertEqual(
-            ("per_beat", "hemifield"),
-            option_selection_names(options, "hemifield", enabled=True),
+            ("per_beat", "quadrants"),
+            option_selection_names(options, "quadrants", enabled=True),
         )
         self.assertEqual(
-            ("profiles", "per_beat", "hemifield"),
+            ("profiles", "per_beat", "quadrants"),
             option_selection_names(options, "per_beat", enabled=False),
         )
 
@@ -161,7 +161,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                 "velocity": {
                     "profiles": False,
                     "per_beat": False,
-                    "hemifield": False,
+                    "quadrants": False,
                 }
             },
             pipeline_option_vars={"velocity": {}},
@@ -170,15 +170,15 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         controller.persist_options = Mock()
         controller.update_summary = Mock()
 
-        controller.set_option_visibility("velocity", "hemifield", True)
+        controller.set_option_visibility("velocity", "quadrants", True)
         self.assertEqual(
-            {"profiles": False, "per_beat": True, "hemifield": True},
+            {"profiles": False, "per_beat": True, "quadrants": True},
             app.pipeline_option_visibility["velocity"],
         )
 
         controller.set_option_visibility("velocity", "per_beat", False)
         self.assertEqual(
-            {"profiles": False, "per_beat": False, "hemifield": False},
+            {"profiles": False, "per_beat": False, "quadrants": False},
             app.pipeline_option_visibility["velocity"],
         )
 
@@ -189,8 +189,8 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                 PipelineOption("segments", "Segments"),
                 PipelineOption("per_beat", "Per beat"),
                 PipelineOption(
-                    "hemifield",
-                    "Hemifield",
+                    "quadrants",
+                    "Quadrants",
                     requires=("per_beat",),
                 ),
             ),
@@ -205,8 +205,8 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                     requires=("per_beat",),
                 ),
                 PipelineOption(
-                    "hemifield",
-                    "Hemifield",
+                    "quadrants",
+                    "Quadrants",
                     requires=("per_beat",),
                 ),
             ),
@@ -220,12 +220,12 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                 "waveform_velocity": {
                     "segments": True,
                     "per_beat": True,
-                    "hemifield": True,
+                    "quadrants": True,
                 },
                 "waveform_shape_metrics": {
                     "segments": True,
                     "per_beat": True,
-                    "hemifield": True,
+                    "quadrants": True,
                 },
             },
             pipeline_option_vars={"waveform_velocity": {}, "waveform_shape_metrics": {}},
@@ -243,10 +243,10 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
         )
         self.assertTrue(
-            app.pipeline_option_visibility["waveform_velocity"]["hemifield"]
+            app.pipeline_option_visibility["waveform_velocity"]["quadrants"]
         )
         self.assertTrue(
-            app.pipeline_option_visibility["waveform_shape_metrics"]["hemifield"]
+            app.pipeline_option_visibility["waveform_shape_metrics"]["quadrants"]
         )
 
         controller.set_option_visibility("waveform_shape_metrics", "segments", True)
@@ -340,8 +340,8 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             options=(
                 PipelineOption("segments", "Segments"),
                 PipelineOption(
-                    "hemifield",
-                    "Hemifield",
+                    "quadrants",
+                    "Quadrants",
                     requires=("segments",),
                 ),
             ),
@@ -356,7 +356,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                     "waveform_velocity": {"segments": False},
                     "waveform_shape_metrics": {
                         "segments": True,
-                        "hemifield": True,
+                        "quadrants": True,
                     },
                 }
             ),
@@ -370,7 +370,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
         )
         self.assertFalse(
-            app.pipeline_option_visibility["waveform_shape_metrics"]["hemifield"]
+            app.pipeline_option_visibility["waveform_shape_metrics"]["quadrants"]
         )
 
 

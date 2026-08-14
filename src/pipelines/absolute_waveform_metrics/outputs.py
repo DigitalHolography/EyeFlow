@@ -10,7 +10,7 @@ from input_output.schema import EyeFlowOutputPaths, VelocityPerBeatOutputPaths
 from pipeline_engine import DatasetValue
 
 from .calculator import AbsoluteWaveformMetricsCalculator
-from .hemifield import pack_hemifield_metrics
+from .quadrants import pack_quadrant_metrics
 from .models import (
     AbsoluteWaveformMetricInputs,
     VesselAbsoluteWaveformInputs,
@@ -64,17 +64,17 @@ def pack_absolute_waveform_outputs(
     vein_segments=None,
     include_per_beat: bool = True,
     include_segments: bool = True,
-    include_hemifield: bool = False,
+    include_quadrants: bool = False,
 ) -> dict[str, object]:
     """Build the selected absolute waveform metric output groups."""
-    if not include_per_beat and not include_hemifield:
+    if not include_per_beat and not include_quadrants:
         return {}
 
     schema = _resolve_output_paths(output_paths)
     inputs = absolute_waveform_metric_inputs_from_outputs(metrics, schema)
     computed = pack_absolute_waveform_metric_calculations(
         inputs,
-        include_segments=include_segments or include_hemifield,
+        include_segments=include_segments or include_quadrants,
     )
     computed_outputs = {
         f"{schema.absolute_waveform_metrics_root}/{key}": value
@@ -82,15 +82,15 @@ def pack_absolute_waveform_outputs(
     }
     metrics_with_absolute_outputs = dict(metrics)
     metrics_with_absolute_outputs.update(computed_outputs)
-    hemifield_outputs = (
-        pack_hemifield_metrics(
+    quadrant_outputs = (
+        pack_quadrant_metrics(
             metrics_with_absolute_outputs,
             source_data,
             artery_segments,
             vein_segments,
             schema,
         )
-        if include_hemifield
+        if include_quadrants
         else {}
     )
     return {
@@ -100,7 +100,7 @@ def pack_absolute_waveform_outputs(
             if include_per_beat
             and (include_segments or "/by_segment/" not in key)
         },
-        **hemifield_outputs,
+        **quadrant_outputs,
     }
 
 

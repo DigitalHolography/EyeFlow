@@ -313,19 +313,19 @@ class PipelineLibraryController:
         if not velocity_values.get("per_beat", False):
             if any(
                 shape_values.get(name, False)
-                for name in ("per_beat", "segments", "hemifield")
+                for name in ("per_beat", "segments", "quadrants")
             ):
                 shape_values["per_beat"] = False
                 shape_values["segments"] = False
-                shape_values["hemifield"] = False
+                shape_values["quadrants"] = False
                 changed = True
             if any(
                 absolute_values.get(name, False)
-                for name in ("per_beat", "segments", "hemifield")
+                for name in ("per_beat", "segments", "quadrants")
             ):
                 absolute_values["per_beat"] = False
                 absolute_values["segments"] = False
-                absolute_values["hemifield"] = False
+                absolute_values["quadrants"] = False
                 changed = True
         elif not velocity_segments and shape_segments:
             shape_values["segments"] = False
@@ -434,7 +434,7 @@ class PipelineLibraryController:
                         ("waveform_velocity", "segments", True),
                     )
                 )
-            elif option_name == "hemifield":
+            elif option_name == "quadrants":
                 changes.append(("waveform_velocity", "per_beat", True))
 
         changed = False

@@ -15,8 +15,8 @@ from pipelines.waveform_shape_metrics.metrics.calculator import (
     WaveformShapeMetricsCalculator,
 )
 from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
-from pipelines.waveform_shape_metrics.metrics.hemifield import pack_hemifield_metrics
-from pipelines.waveform_velocity.hemifield import pack_hemifield_velocity_outputs
+from pipelines.waveform_shape_metrics.metrics.quadrants import pack_quadrant_metrics
+from pipelines.waveform_velocity.quadrants import pack_quadrant_velocity_outputs
 from pipelines.waveform_velocity.continuous import pack_segment_velocity_outputs
 from utils.logger import Logger
 
@@ -35,6 +35,18 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         )
         self.assertNotIn("waveform_shape_metrics_angioeye", PIPELINE_REGISTRY)
         self.assertNotIn("topological_metrics", PIPELINE_REGISTRY)
+        for pipeline_name in (
+            "waveform_velocity",
+            "waveform_shape_metrics",
+            "absolute_waveform_metrics",
+            "lowrank_waveform_decomposition",
+        ):
+            quadrant_option = next(
+                option
+                for option in PIPELINE_REGISTRY[pipeline_name].options
+                if option.name == "quadrants"
+            )
+            self.assertEqual("Quadrants", quadrant_option.label)
         self.assertEqual(
             "Processing/Metrics/waveform_shape_metrics",
             EyeFlowOutputPaths.active().waveform_shape_metrics_root,
@@ -142,7 +154,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         self.assertIn("m0_sum=0.0", joined_messages)
         self.assertIn("waveform column is missing", joined_messages)
 
-    def test_hemifield_metrics_are_nested_below_waveform_shape_outputs(self):
+    def test_quadrant_metrics_are_nested_below_waveform_shape_outputs(self):
         schema = EyeFlowOutputPaths.active()
         sample_count = 2
         branch_count = 2
@@ -180,7 +192,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             optic_disc_height=None,
         )
 
-        regional = pack_hemifield_metrics(
+        regional = pack_quadrant_metrics(
             metrics,
             source_data,
             segments,
@@ -188,11 +200,11 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         )
 
         north_west = (
-            f"{schema.waveform_shape_metrics_root}/artery/hemifield/"
+            f"{schema.waveform_shape_metrics_root}/artery/Quadrants/"
             "north_west/global/raw/mu_t"
         )
         north_east_branch = (
-            f"{schema.waveform_shape_metrics_root}/artery/hemifield/"
+            f"{schema.waveform_shape_metrics_root}/artery/Quadrants/"
             "north_east/by_branch/branch_2/raw/mu_t"
         )
         self.assertIn(north_west, regional)
@@ -201,6 +213,17 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         np.testing.assert_allclose(
             regional[north_east_branch].data,
             [1.0, 1.0],
+        )
+        quadrant_root = (
+            f"{schema.waveform_shape_metrics_root}/artery/Quadrants/"
+        )
+        self.assertEqual(
+            {"north_east", "south_east", "north_west", "south_west"},
+            {
+                key.removeprefix(quadrant_root).split("/", 1)[0]
+                for key in regional
+                if key.startswith(quadrant_root)
+            },
         )
 
     def test_output_composer_contains_only_selected_metric_groups(self):
@@ -256,7 +279,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             outputs,
         )
         self.assertIn(
-            f"{schema.waveform_shape_metrics_root}/artery/hemifield/"
+            f"{schema.waveform_shape_metrics_root}/artery/Quadrants/"
             "north_west/global/raw/mu_t",
             outputs,
         )
@@ -266,28 +289,28 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             any(key.startswith("Processing/VelocityPerBeat/") for key in outputs)
         )
 
-        no_hemifield = pack_waveform_shape_outputs(
+        no_quadrants = pack_waveform_shape_outputs(
             metrics,
             source_data,
             segments,
             None,
-            include_hemifield=False,
+            include_quadrants=False,
         )
-        self.assertFalse(any("/hemifield/" in key for key in no_hemifield))
+        self.assertFalse(any("/Quadrants/" in key for key in no_quadrants))
 
-        hemifield_without_segment_outputs = pack_waveform_shape_outputs(
+        quadrants_without_segment_outputs = pack_waveform_shape_outputs(
             metrics,
             source_data,
             segments,
             None,
             include_segments=False,
-            include_hemifield=True,
+            include_quadrants=True,
         )
         self.assertTrue(
-            any("/hemifield/" in key for key in hemifield_without_segment_outputs)
+            any("/Quadrants/" in key for key in quadrants_without_segment_outputs)
         )
         self.assertFalse(
-            any("/by_segment/" in key for key in hemifield_without_segment_outputs)
+            any("/by_segment/" in key for key in quadrants_without_segment_outputs)
         )
 
         no_metrics = pack_waveform_shape_outputs(
@@ -296,11 +319,11 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             segments,
             None,
             include_per_beat=False,
-            include_hemifield=False,
+            include_quadrants=False,
         )
         self.assertEqual({}, no_metrics)
 
-    def test_hemifield_velocity_outputs_reduce_segment_waveforms(self):
+    def test_quadrant_velocity_outputs_reduce_segment_waveforms(self):
         schema = EyeFlowOutputPaths.active()
         labels = np.zeros((8, 8), dtype=np.int32)
         labels[1, 1] = 1
@@ -341,7 +364,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             ),
         }
 
-        outputs = pack_hemifield_velocity_outputs(
+        outputs = pack_quadrant_velocity_outputs(
             metrics,
             source_data,
             segments,
@@ -370,13 +393,13 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         )
 
         north_west_raw = (
-            "Processing/Velocity/hemifield/Artery/north_west/Raw/value"
+            "Processing/Velocity/Quadrants/Artery/north_west/Raw/value"
         )
         north_east_raw = (
-            "Processing/Velocity/hemifield/Artery/north_east/Raw/value"
+            "Processing/Velocity/Quadrants/Artery/north_east/Raw/value"
         )
         north_west_per_beat = (
-            "Processing/VelocityPerBeat/Artery/hemifield/"
+            "Processing/VelocityPerBeat/Artery/Quadrants/"
             "north_west/Raw/value"
         )
         self.assertIn(north_west_raw, outputs)
@@ -389,6 +412,15 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         np.testing.assert_allclose(
             outputs[north_west_per_beat].data,
             [[2.0, 6.0], [3.0, 7.0]],
+        )
+        continuous_quadrant_root = "Processing/Velocity/Quadrants/Artery/"
+        self.assertEqual(
+            {"north_east", "south_east", "north_west", "south_west"},
+            {
+                key.removeprefix(continuous_quadrant_root).split("/", 1)[0]
+                for key in outputs
+                if key.startswith(continuous_quadrant_root)
+            },
         )
 
     @staticmethod

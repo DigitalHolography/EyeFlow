@@ -11,6 +11,7 @@ from pipelines.waveform_velocity_core.dopplerview.constants import (
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
 from pipelines.waveform_velocity_core.regions import (
+    QUADRANTS_GROUP_NAME,
     REGION_NAMES,
     normalize_spatial_frame,
     optic_disc_center_xy,
@@ -18,14 +19,14 @@ from pipelines.waveform_velocity_core.regions import (
 )
 
 
-def pack_hemifield_velocity_outputs(
+def pack_quadrant_velocity_outputs(
     metrics: dict[str, object],
     source_data,
     artery_segments,
     vein_segments,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
-    """Pack eight-region continuous and per-beat velocity signals."""
+    """Pack quadrant-level continuous and per-beat velocity signals."""
     schema = _resolve_output_paths(output_paths)
     result: dict[str, object] = {}
 
@@ -74,7 +75,7 @@ def _pack_region_velocity_outputs(
         )
     if segment_velocity.shape[:2] != membership.shape[1:][::-1]:
         raise ValueError(
-            "Segment velocity and hemifield membership dimensions do not match: "
+            "Segment velocity and quadrant membership dimensions do not match: "
             f"{segment_velocity.shape[:2]} versus {membership.shape[1:][::-1]}."
         )
 
@@ -88,7 +89,7 @@ def _pack_region_velocity_outputs(
         if vessel_name == "artery"
         else schema.analysis.retinal_vein_velocity_signal_band_limited
     )
-    velocity_root = _hemifield_root(velocity_signal_path, vessel_name)
+    velocity_root = _quadrants_root(velocity_signal_path, vessel_name)
     output: dict[str, object] = {}
     for region_index, region_name in enumerate(REGION_NAMES):
         selected = membership[region_index]
@@ -133,7 +134,7 @@ def _pack_region_per_beat_velocity_outputs(
     )
     if (raw is None) != (band_limited is None):
         raise ValueError(
-            f"Incomplete {vessel_name} hemifield per-beat segment outputs."
+            f"Incomplete {vessel_name} quadrant per-beat segment outputs."
         )
     if raw is None:
         return {}
@@ -158,7 +159,7 @@ def _pack_region_per_beat_velocity_outputs(
             band_limited,
             selected,
         )
-        region_root = f"{root}/hemifield/{region_name}"
+        region_root = f"{root}/{QUADRANTS_GROUP_NAME}/{region_name}"
         result[
             f"{region_root}/{_path_variant(paths.velocity_signal)}/value"
         ] = with_attrs(
@@ -219,7 +220,7 @@ def _lowpass_velocity(values: np.ndarray, source_data) -> np.ndarray:
         return np.full(values.shape, np.nan, dtype=np.float32)
     timing = getattr(source_data, "timing", None)
     if timing is None:
-        raise ValueError("Hemifield band-limited velocity requires source timing.")
+        raise ValueError("Quadrant band-limited velocity requires source timing.")
     return butter_lowpass_filtfilt(
         values,
         dt_seconds=np.float32(timing.dt_seconds),
@@ -249,8 +250,8 @@ def _dataset_group(path: str) -> str:
     return "/".join(parts[:-1])
 
 
-def _hemifield_root(path: str, vessel_name: str) -> str:
-    """Return the shared continuous-velocity hemifield root."""
+def _quadrants_root(path: str, vessel_name: str) -> str:
+    """Return the shared continuous-velocity quadrant root."""
 
     dataset_root = _dataset_group(path)
     parts = dataset_root.split("/")
@@ -259,9 +260,13 @@ def _hemifield_root(path: str, vessel_name: str) -> str:
         None,
     )
     if velocity_index is None:
-        return f"{dataset_root}/hemifield"
+        return f"{dataset_root}/{QUADRANTS_GROUP_NAME}"
     return "/".join(
-        [*parts[: velocity_index + 1], "hemifield", vessel_name.capitalize()]
+        [
+            *parts[: velocity_index + 1],
+            QUADRANTS_GROUP_NAME,
+            vessel_name.capitalize(),
+        ]
     )
 
 

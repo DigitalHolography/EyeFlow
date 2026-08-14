@@ -62,7 +62,7 @@ class PipelineContextTests(unittest.TestCase):
                 doppler_vision_h5=None,
                 pipeline_name="waveform_velocity",
                 pipeline_options={
-                    "waveform_velocity": ("per_beat", "hemifield"),
+                    "waveform_velocity": ("per_beat", "quadrants"),
                     "waveform_shape_metrics": (),
                 },
                 pipeline_order=(
@@ -73,13 +73,13 @@ class PipelineContextTests(unittest.TestCase):
 
             self.assertTrue(ctx.option_enabled("per_beat"))
             self.assertTrue(
-                ctx.option_enabled("hemifield", pipeline="waveform_velocity")
+                ctx.option_enabled("quadrants", pipeline="waveform_velocity")
             )
             self.assertFalse(
-                ctx.option_enabled("hemifield", pipeline="waveform_shape_metrics")
+                ctx.option_enabled("quadrants", pipeline="waveform_shape_metrics")
             )
             self.assertEqual(
-                frozenset({"per_beat", "hemifield"}),
+                frozenset({"per_beat", "quadrants"}),
                 ctx.options_for("waveform_velocity"),
             )
             self.assertTrue(ctx.pipeline_scheduled("waveform_velocity_core"))

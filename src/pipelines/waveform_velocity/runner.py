@@ -15,7 +15,7 @@ from .continuous import (
     pack_continuous_velocity_outputs,
     pack_segment_velocity_outputs,
 )
-from .hemifield import pack_hemifield_velocity_outputs
+from .quadrants import pack_quadrant_velocity_outputs
 from .profiles import pack_cross_section_profile_outputs
 from .segment_maps import pack_segment_map_outputs
 from .segment_velocity_map_avi import export_segment_velocity_map_avis
@@ -114,9 +114,9 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             )
         )
 
-    if "hemifield" in selected:
+    if "quadrants" in selected:
         metrics.update(
-            pack_hemifield_velocity_outputs(
+            pack_quadrant_velocity_outputs(
                 velocity_outputs,
                 context.source_data,
                 context.artery_segment_result,

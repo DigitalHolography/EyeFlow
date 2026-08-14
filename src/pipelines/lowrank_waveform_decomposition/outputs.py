@@ -9,6 +9,13 @@ import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue, with_attrs
+from pipelines.waveform_velocity_core.regions import (
+    QUADRANTS_GROUP_NAME,
+    REGION_NAMES,
+    normalize_spatial_frame,
+    optic_disc_center_xy,
+    region_membership,
+)
 
 from .calculator import (
     LowRankWaveformDecompositionCalculator,
@@ -69,6 +76,10 @@ def pack_lowrank_waveform_decomposition_outputs(
     output_paths: EyeFlowOutputPaths | str | None = None,
     *,
     vein_flag: bool = True,
+    include_quadrants: bool = False,
+    source_data=None,
+    artery_segments=None,
+    vein_segments=None,
 ) -> dict[str, object]:
     """Compute the requested low-rank endpoint and per-beat metric outputs."""
     schema = _resolve_output_paths(output_paths)
@@ -76,46 +87,130 @@ def pack_lowrank_waveform_decomposition_outputs(
     calculator = LowRankWaveformDecompositionCalculator()
     outputs: dict[str, object] = {}
 
-    for source_name, dataset_path in _source_paths(schema, vein_flag=vein_flag):
+    quadrant_memberships: dict[str, np.ndarray] = {}
+    segments_by_vessel = {
+        "artery": artery_segments,
+        "vein": vein_segments,
+    }
+    for vessel_name, signal_name, dataset_path in _source_paths(
+        schema,
+        vein_flag=vein_flag,
+    ):
         if dataset_path is None or dataset_path not in velocity_outputs:
             continue
 
-        prefix = f"{schema.lowrank_waveform_decomposition_root}/{source_name}"
         waveforms = _metric_data(velocity_outputs[dataset_path])
         waveforms = ensure_segment_shape(waveforms, periods)
-        representation = calculator.compute(waveforms, periods)
-        per_beat_panels = calculator.per_beat_svd_panels(waveforms, periods)
-        per_beat = calculator._compute_per_beat_endpoints(per_beat_panels)
-        _append_requested_outputs(
+        prefix = (
+            f"{schema.lowrank_waveform_decomposition_root}/"
+            f"{vessel_name}/{signal_name}"
+        )
+        _compute_and_append_outputs(
             outputs,
             prefix,
-            representation,
-            per_beat,
-            per_beat_panels,
+            calculator,
             waveforms,
+            periods,
         )
 
+        if not include_quadrants:
+            continue
+        membership = quadrant_memberships.get(vessel_name)
+        if membership is None:
+            membership = _quadrant_membership(
+                source_data,
+                segments_by_vessel[vessel_name],
+                waveforms,
+                vessel_name,
+            )
+            quadrant_memberships[vessel_name] = membership
+        for region_index, region_name in enumerate(REGION_NAMES):
+            selected = membership[region_index]
+            quadrant_waveforms = np.where(
+                selected[np.newaxis, np.newaxis, :, :],
+                waveforms,
+                np.nan,
+            )
+            quadrant_prefix = (
+                f"{schema.lowrank_waveform_decomposition_root}/{vessel_name}/"
+                f"{QUADRANTS_GROUP_NAME}/{region_name}/{signal_name}"
+            )
+            _compute_and_append_outputs(
+                outputs,
+                quadrant_prefix,
+                calculator,
+                quadrant_waveforms,
+                periods,
+            )
+
     return outputs
+
+
+def _compute_and_append_outputs(
+    outputs: dict[str, object],
+    prefix: str,
+    calculator: LowRankWaveformDecompositionCalculator,
+    waveforms: np.ndarray,
+    periods: np.ndarray,
+) -> None:
+    representation = calculator.compute(waveforms, periods)
+    per_beat_panels = calculator.per_beat_svd_panels(waveforms, periods)
+    per_beat = calculator._compute_per_beat_endpoints(per_beat_panels)
+    _append_requested_outputs(
+        outputs,
+        prefix,
+        representation,
+        per_beat,
+        per_beat_panels,
+        waveforms,
+    )
+
+
+def _quadrant_membership(
+    source_data,
+    segments,
+    waveforms: np.ndarray,
+    vessel_name: str,
+) -> np.ndarray:
+    if source_data is None or segments is None:
+        raise RuntimeError(
+            f"Quadrant low-rank outputs require {vessel_name} segment geometry."
+        )
+    branch_ids = np.asarray(segments.branch_ids, dtype=np.int32).reshape(-1)
+    labels = np.asarray(segments.labels, dtype=np.int32)
+    centers = np.asarray(segments.segment_center_xy, dtype=float)
+    center_xy = optic_disc_center_xy(source_data, labels.shape)
+    labels, center_xy = normalize_spatial_frame(labels, center_xy)
+    membership = region_membership(branch_ids, labels, centers, center_xy)
+    if membership.shape[1:] != waveforms.shape[2:]:
+        raise ValueError(
+            f"{vessel_name.capitalize()} quadrant membership shape "
+            f"{membership.shape[1:]} does not match low-rank waveform "
+            f"branch/radius shape {waveforms.shape[2:]}."
+        )
+    return membership
 
 
 def _source_paths(
     schema: EyeFlowOutputPaths,
     *,
     vein_flag: bool,
-) -> tuple[tuple[str, str | None], ...]:
-    sources: list[tuple[str, str | None]] = [
-        ("artery/raw", schema.artery_per_beat.segment_velocity_signal),
+) -> tuple[tuple[str, str, str | None], ...]:
+    sources: list[tuple[str, str, str | None]] = [
+        ("artery", "raw", schema.artery_per_beat.segment_velocity_signal),
         (
-            "artery/bandlimited",
+            "artery",
+            "bandlimited",
             schema.artery_per_beat.segment_velocity_signal_band_limited,
         ),
     ]
     if vein_flag:
         sources.extend(
             (
-                ("vein/raw", schema.vein_per_beat.segment_velocity_signal),
+                ("vein", "raw", schema.vein_per_beat.segment_velocity_signal),
                 (
-                    "vein/bandlimited",
+                    "vein",
+                    "bandlimited",
                     schema.vein_per_beat.segment_velocity_signal_band_limited,
                 ),
             )
