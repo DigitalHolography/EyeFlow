@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from input_output.schema import EyeFlowOutputPaths
+from pipelines.lowrank_waveform_decomposition import runner as lowrank_runner
 from pipelines.waveform_shape_metrics import runner as metric_runner
 from pipelines.waveform_velocity import runner as velocity_runner
 from pipelines.waveform_velocity_core import runner as core_runner
@@ -43,6 +44,40 @@ def _context(options, state_values=None, scheduled=None):
 
 
 class WaveformPipelineOptionTests(unittest.TestCase):
+    def test_lowrank_pipeline_includes_veins_and_selected_quadrants(self) -> None:
+        velocity_outputs = {"per_beat": 1}
+        context = SimpleNamespace(
+            source_data="source",
+            artery_segment_result="artery",
+            vein_segment_result="vein",
+        )
+        ctx = SimpleNamespace(
+            state=_State(
+                {
+                    core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: velocity_outputs,
+                    core_runner.WAVEFORM_CONTEXT_STATE: context,
+                }
+            ),
+            options_for=lambda _pipeline: frozenset({"quadrants"}),
+        )
+
+        with patch.object(
+            lowrank_runner,
+            "pack_lowrank_waveform_decomposition_outputs",
+            return_value={"lowrank": 2},
+        ) as pack:
+            outputs = lowrank_runner.run_lowrank_waveform_decomposition(ctx)
+
+        self.assertEqual({"lowrank": 2}, outputs)
+        pack.assert_called_once_with(
+            velocity_outputs,
+            vein_flag=True,
+            include_quadrants=True,
+            source_data="source",
+            artery_segments="artery",
+            vein_segments="vein",
+        )
+
     def test_pipeline_implementation_ownership_is_cleanly_split(self) -> None:
         pipeline_root = Path(__file__).resolve().parents[1] / "src" / "pipelines"
         metrics_root = pipeline_root / "waveform_shape_metrics"
@@ -83,15 +118,15 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as profiles,
             patch.object(
                 velocity_runner,
-                "pack_hemifield_velocity_outputs",
-            ) as hemifield,
+                "pack_quadrant_velocity_outputs",
+            ) as quadrants,
         ):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 
         self.assertEqual({"base": 1}, outputs)
         per_beat.assert_not_called()
         profiles.assert_not_called()
-        hemifield.assert_not_called()
+        quadrants.assert_not_called()
 
     def test_velocity_children_publish_their_selected_products(self) -> None:
         per_beat_result = SimpleNamespace(cycle_boundary_indexes=(0, 5, 10))
@@ -112,7 +147,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "waveform_velocity": (
                     "velocity_profiles",
                     "per_beat",
-                    "hemifield",
+                    "quadrants",
                 )
             },
             {
@@ -135,14 +170,14 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as profiles,
             patch.object(
                 velocity_runner,
-                "pack_hemifield_velocity_outputs",
-                return_value={"hemifield": 4},
-            ) as hemifield,
+                "pack_quadrant_velocity_outputs",
+                return_value={"quadrants": 4},
+            ) as quadrants,
         ):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 
         self.assertEqual(
-            {"base": 1, "per_beat": 2, "profile": 3, "hemifield": 4},
+            {"base": 1, "per_beat": 2, "profile": 3, "quadrants": 4},
             outputs,
         )
         profiles.assert_called_once_with(
@@ -151,7 +186,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             (0, 5, 10),
             index_base=0,
         )
-        hemifield.assert_called_once_with(
+        quadrants.assert_called_once_with(
             velocity_outputs,
             context.source_data,
             "artery",
@@ -290,7 +325,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         ctx = _context(
             {
                 "waveform_velocity": (),
-                "waveform_shape_metrics": ("per_beat", "hemifield"),
+                "waveform_shape_metrics": ("per_beat", "quadrants"),
             }
         )
 

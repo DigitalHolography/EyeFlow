@@ -8,6 +8,7 @@ from calculations.math import nanmedian
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue, with_attrs
 from pipelines.waveform_velocity_core.regions import (
+    QUADRANTS_GROUP_NAME,
     REGION_NAMES,
     normalize_spatial_frame,
     optic_disc_center_xy,
@@ -17,7 +18,7 @@ from pipelines.waveform_velocity_core.regions import (
 from .calculator import AbsoluteWaveformMetricsCalculator
 
 
-def pack_hemifield_metrics(
+def pack_quadrant_metrics(
     metrics: dict[str, object],
     source_data,
     artery_segments,
@@ -128,7 +129,10 @@ def _pack_region_metrics(
     first_values = next(iter(segment_metrics.values()))
     first_metric = next(iter(first_values.values()))
     n_beats = first_metric.shape[0]
-    root = f"{schema.absolute_waveform_metrics_root}/{vessel_name}/hemifield"
+    root = (
+        f"{schema.absolute_waveform_metrics_root}/{vessel_name}/"
+        f"{QUADRANTS_GROUP_NAME}"
+    )
 
     for region_index, region_name in enumerate(REGION_NAMES):
         selected = membership[region_index]

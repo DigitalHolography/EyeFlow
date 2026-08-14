@@ -235,7 +235,7 @@ class RunServiceTests(unittest.TestCase):
         options = {
             "waveform_velocity": (
                 PipelineOption("per_beat", "Per beat"),
-                PipelineOption("hemifield", "Hemifield"),
+                PipelineOption("quadrants", "Quadrants"),
             )
         }
         normalized, changed = normalize_pipeline_options(
@@ -248,7 +248,7 @@ class RunServiceTests(unittest.TestCase):
 
         self.assertTrue(changed)
         self.assertEqual(
-            {"waveform_velocity": {"per_beat": False, "hemifield": True}},
+            {"waveform_velocity": {"per_beat": False, "quadrants": True}},
             normalized,
         )
 

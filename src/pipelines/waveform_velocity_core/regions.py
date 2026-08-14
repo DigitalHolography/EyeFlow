@@ -1,4 +1,4 @@
-"""Shared retinal region geometry for velocity and metric hemifields."""
+"""Shared retinal quadrant geometry for velocity and metric outputs."""
 
 from __future__ import annotations
 
@@ -9,11 +9,9 @@ REGION_NAMES = (
     "north_east",
     "south_west",
     "south_east",
-    "north",
-    "south",
-    "west",
-    "east",
 )
+
+QUADRANTS_GROUP_NAME = "Quadrants"
 
 _TRIGONOMETRIC_QUADRANT_ORDER = (
     "north_east",
@@ -33,7 +31,7 @@ def region_membership(
     segment_center_xy: np.ndarray,
     optic_disc_center: np.ndarray,
 ) -> np.ndarray:
-    """Assign every branch/radius to its majority quadrant and half-planes."""
+    """Assign every branch/radius to its majority quadrant."""
     if branch_label_map.ndim != 2:
         raise ValueError(
             f"BranchLabelMap must have shape (y, x), got {branch_label_map.shape}."
@@ -87,19 +85,7 @@ def region_membership(
         assigned_quadrants[:, :, np.newaxis],
         (4, n_branches, n_radii),
     )
-    return np.asarray(
-        (
-            assigned_quadrants[0],
-            assigned_quadrants[1],
-            assigned_quadrants[2],
-            assigned_quadrants[3],
-            assigned_quadrants[0] | assigned_quadrants[1],
-            assigned_quadrants[2] | assigned_quadrants[3],
-            assigned_quadrants[0] | assigned_quadrants[2],
-            assigned_quadrants[1] | assigned_quadrants[3],
-        ),
-        dtype=bool,
-    )
+    return assigned_quadrants.copy()
 
 
 def optic_disc_center_xy(source_data, image_shape: tuple[int, int]) -> np.ndarray:

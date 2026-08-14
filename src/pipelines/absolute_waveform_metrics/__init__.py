@@ -9,7 +9,7 @@ from .runner import run_absolute_waveform_metrics
     name="absolute_waveform_metrics",
     description=(
         "Compute gain-sensitive absolute velocity, VTI, derivative, energy, "
-        "harmonic, raw-vs-band-limited QC, segment, and hemifield metrics."
+        "harmonic, raw-vs-band-limited QC, segment, and quadrant metrics."
     ),
     requires=["numpy", "h5py"],
     dag_requires=["waveform_velocity"],
@@ -27,9 +27,9 @@ from .runner import run_absolute_waveform_metrics
             requires=("per_beat",),
         ),
         PipelineOption(
-            "hemifield",
-            "Hemifield",
-            "Eight-region absolute metric aggregates.",
+            "quadrants",
+            "Quadrants",
+            "Four-quadrant absolute metric aggregates.",
             requires=("per_beat",),
         ),
     ],

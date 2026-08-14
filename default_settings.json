@@ -8,20 +8,20 @@
   },
   "pipeline_options": {
     "absolute_waveform_metrics": {
-      "hemifield": true,
+      "quadrants": true,
       "per_beat": true,
       "segments": true
     },
     "lowrank_waveform_decomposition": {
-      "veins": false
+      "quadrants": true
     },
     "waveform_shape_metrics": {
-      "hemifield": true,
+      "quadrants": true,
       "per_beat": true,
       "segments": true
     },
     "waveform_velocity": {
-      "hemifield": true,
+      "quadrants": true,
       "per_beat": true,
       "segments": true,
       "velocity_profiles": false,

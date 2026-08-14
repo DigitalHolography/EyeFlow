@@ -17,7 +17,7 @@ def run_absolute_waveform_metrics(ctx) -> dict[str, object]:
     velocity_outputs = _required_state(ctx, VELOCITY_PER_BEAT_OUTPUTS_STATE)
     context = (
         _required_state(ctx, WAVEFORM_CONTEXT_STATE)
-        if "hemifield" in selected
+        if "quadrants" in selected
         else None
     )
     outputs = pack_absolute_waveform_outputs(
@@ -31,7 +31,7 @@ def run_absolute_waveform_metrics(ctx) -> dict[str, object]:
         ),
         include_per_beat="per_beat" in selected,
         include_segments="segments" in selected,
-        include_hemifield="hemifield" in selected,
+        include_quadrants="quadrants" in selected,
     )
     ctx.state.set("absolute_waveform_metric_outputs", outputs)
     return outputs

@@ -6,6 +6,7 @@ from io import BytesIO
 import json
 from pathlib import Path
 import struct
+from time import perf_counter
 from typing import BinaryIO, Mapping
 
 import numpy as np
@@ -88,6 +89,12 @@ class MjpegAviWriter:
         self._hdrl_size = 0
         self._movi_size_position = 0
         self._movi_type_position = 0
+        self._rgb_conversion_seconds = 0.0
+        self._jpeg_encode_seconds = 0.0
+        self._chunk_pack_seconds = 0.0
+        self._file_write_seconds = 0.0
+        self._finalize_seconds = 0.0
+        self._encoded_bytes = 0
 
     def __enter__(self) -> MjpegAviWriter:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,26 +117,49 @@ class MjpegAviWriter:
     def frame_count(self) -> int:
         return len(self._frame_index)
 
+    @property
+    def performance_stats(self) -> dict[str, float | int]:
+        """Return aggregate encoding and container timings for this movie."""
+        return {
+            "rgb_conversion_seconds": self._rgb_conversion_seconds,
+            "jpeg_encode_seconds": self._jpeg_encode_seconds,
+            "chunk_pack_seconds": self._chunk_pack_seconds,
+            "file_write_seconds": self._file_write_seconds,
+            "finalize_seconds": self._finalize_seconds,
+            "encoded_bytes": self._encoded_bytes,
+        }
+
     def write_frame(self, frame) -> None:
         """JPEG-encode and append one RGB frame."""
         file = self._required_file()
+        conversion_started = perf_counter()
         image = _rgb_uint8(frame)
+        self._rgb_conversion_seconds += perf_counter() - conversion_started
         if image.shape[:2] != (self.height, self.width):
             raise ValueError(
                 "AVI frame shape does not match the configured canvas: "
                 f"expected {(self.height, self.width, 3)}, got {image.shape}."
             )
+        encode_started = perf_counter()
         encoded = _jpeg_bytes(image, quality=self.jpeg_quality)
+        self._jpeg_encode_seconds += perf_counter() - encode_started
+        self._encoded_bytes += len(encoded)
         chunk_position = file.tell()
         relative_offset = chunk_position - self._movi_type_position
         if relative_offset > _UINT32_MAX:
             raise ValueError("AVI 1.0 output exceeded its 4 GiB offset limit.")
-        file.write(_chunk(b"00dc", encoded))
+        pack_started = perf_counter()
+        chunk = _chunk(b"00dc", encoded)
+        self._chunk_pack_seconds += perf_counter() - pack_started
+        write_started = perf_counter()
+        file.write(chunk)
+        self._file_write_seconds += perf_counter() - write_started
         self._frame_index.append((relative_offset, len(encoded)))
         self._maximum_frame_size = max(self._maximum_frame_size, len(encoded))
 
     def close(self) -> Path:
         """Finalize the AVI index and patch its frame-count headers."""
+        finalize_started = perf_counter()
         file = self._required_file()
         movi_end = file.tell()
         index_payload = b"".join(
@@ -164,6 +194,7 @@ class MjpegAviWriter:
         file.flush()
         file.close()
         self._file = None
+        self._finalize_seconds += perf_counter() - finalize_started
         return self.path
 
     def _write_container_header(self) -> None:

@@ -51,7 +51,7 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
         descriptor = PIPELINE_REGISTRY["absolute_waveform_metrics"]
         self.assertEqual(("waveform_velocity",), descriptor.dag_requires)
         self.assertEqual(
-            ("per_beat", "segments", "hemifield"),
+            ("per_beat", "segments", "quadrants"),
             tuple(option.name for option in descriptor.options),
         )
         self.assertEqual(
@@ -133,7 +133,7 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Incomplete global waveform"):
             pack_absolute_waveform_outputs(inputs)
 
-    def test_hemifield_outputs_use_absolute_metric_root_and_regions(self) -> None:
+    def test_quadrant_outputs_use_absolute_metric_root_and_regions(self) -> None:
         schema = EyeFlowOutputPaths.active()
         waveform = np.ones((2, 8), dtype=np.float32)
         segment_waveform = np.empty((8, 2, 2, 2), dtype=np.float32)
@@ -165,15 +165,15 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             artery_segments=segments,
             include_per_beat=False,
             include_segments=False,
-            include_hemifield=True,
+            include_quadrants=True,
         )
 
         north_west = (
-            f"{schema.absolute_waveform_metrics_root}/artery/hemifield/"
+            f"{schema.absolute_waveform_metrics_root}/artery/Quadrants/"
             "north_west/global/raw/vmax"
         )
         north_east_branch = (
-            f"{schema.absolute_waveform_metrics_root}/artery/hemifield/"
+            f"{schema.absolute_waveform_metrics_root}/artery/Quadrants/"
             "north_east/by_branch/branch_2/raw/vmax"
         )
         self.assertIn(north_west, outputs)
@@ -183,6 +183,17 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
         np.testing.assert_allclose(
             outputs[north_east_branch].data,
             [3.0, 3.0],
+        )
+        quadrant_root = (
+            f"{schema.absolute_waveform_metrics_root}/artery/Quadrants/"
+        )
+        self.assertEqual(
+            {"north_east", "south_east", "north_west", "south_west"},
+            {
+                key.removeprefix(quadrant_root).split("/", 1)[0]
+                for key in outputs
+                if key.startswith(quadrant_root)
+            },
         )
 
     def test_runner_consumes_shared_per_beat_state(self) -> None:
