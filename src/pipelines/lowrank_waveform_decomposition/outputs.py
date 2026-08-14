@@ -57,7 +57,11 @@ _PER_BEAT_KEY_MAP = {
 
 _VELOCITY_METRICS = frozenset({"A1", "A2", "R0", "R1", "R2"})
 
-_SUMMARY_STATS = ("mean", "lo", "hi")
+_CROSS_COLUMN_STATS = {
+    "mean": "cross_column_mean",
+    "lo": "cross_column_lo",
+    "hi": "cross_column_hi",
+}
 
 
 def pack_lowrank_waveform_decomposition_outputs(
@@ -154,58 +158,68 @@ def _append_requested_outputs(
         acq.get("sigma_mu_beat", np.nan), unit="mm/s"
     )
 
-    _append_fig2_frequency_velocity(metrics, prefix, rep, waveforms)
-    _append_fig3_waveform_decomposition(metrics, prefix, rep, waveforms)
-    _append_fig3_waveform_decomposition_pb(
+    _append_acquisition_level_velocity(metrics, prefix, rep, waveforms)
+    _append_waveform_components_joint(metrics, prefix, rep, waveforms)
+    _append_waveform_components_per_beat(
         metrics, prefix, per_beat_panels, waveforms
     )
-    _append_fig4_energy_spectrum(metrics, prefix, rep, per_beat)
+    _append_svd_spectrum(metrics, prefix, rep, per_beat)
 
 
-def _append_fig2_frequency_velocity(
+def _append_acquisition_level_velocity(
     metrics: dict[str, object],
     prefix: str,
     rep: Mapping[str, object],
     waveforms: np.ndarray,
 ) -> None:
-    group = f"{prefix}/figures/fig2_frequency_velocity"
-    metrics[f"{group}/t"] = _metric(_time_axis(waveforms), dims=("sample",))
+    group = f"{prefix}/misc/acquisition_level_velocity"
+    metrics[f"{group}/cardiac_phase"] = _metric(
+        _time_axis(waveforms), dims=("sample",)
+    )
     summary = _summarize_time_columns(waveforms, _valid_mask(rep, waveforms))
-    metrics[f"{group}/mean"] = _metric(summary["mean"], unit="mm/s", dims=("sample",))
-    metrics[f"{group}/std"] = _metric(summary["std"], unit="mm/s", dims=("sample",))
+    metrics[f"{group}/velocity_cross_column_mean"] = _metric(
+        summary["mean"], unit="mm/s", dims=("sample",)
+    )
+    metrics[f"{group}/velocity_cross_column_std"] = _metric(
+        summary["std"], unit="mm/s", dims=("sample",)
+    )
 
 
-def _append_fig3_waveform_decomposition(
+def _append_waveform_components_joint(
     metrics: dict[str, object],
     prefix: str,
     rep: Mapping[str, object],
     waveforms: np.ndarray,
 ) -> None:
-    group = f"{prefix}/figures/fig3_waveform_decomposition"
+    group = f"{prefix}/misc/waveform_components_joint"
     valid_mask = _valid_mask(rep, waveforms)
-    metrics[f"{group}/t"] = _metric(_time_axis(waveforms), dims=("sample",))
+    metrics[f"{group}/cardiac_phase"] = _metric(
+        _time_axis(waveforms), dims=("sample",)
+    )
     for name, panel in _joint_decomposition_components(rep, waveforms).items():
         _append_component_summary(metrics, f"{group}/{name}", panel, valid_mask)
 
 
-def _append_fig3_waveform_decomposition_pb(
+def _append_waveform_components_per_beat(
     metrics: dict[str, object],
     prefix: str,
     per_beat_panels: Mapping[str, np.ndarray],
     waveforms: np.ndarray,
 ) -> None:
-    group = f"{prefix}/figures/fig3_waveform_decomposition_pb"
+    group = f"{prefix}/misc/waveform_components_per_beat"
     valid_mask = np.asarray(per_beat_panels.get("valid_mask", []), dtype=bool)
     if valid_mask.shape != waveforms.shape[1:]:
         valid_mask = np.zeros(waveforms.shape[1:], dtype=bool)
-    metrics[f"{group}/t"] = _metric(_time_axis(waveforms), dims=("sample",))
+    metrics[f"{group}/cardiac_phase"] = _metric(
+        _time_axis(waveforms), dims=("sample",)
+    )
     for name, panel in _per_beat_decomposition_components(
         per_beat_panels, waveforms
     ).items():
         _append_component_summary(metrics, f"{group}/{name}", panel, valid_mask)
 
 
-def _append_fig4_energy_spectrum(
+def _append_svd_spectrum(
     metrics: dict[str, object],
     prefix: str,
     rep: Mapping[str, object],
@@ -214,16 +228,16 @@ def _append_fig4_energy_spectrum(
     energy_fraction = np.asarray(rep.get("energy_fraction", []), dtype=float)
     mode = np.arange(1, energy_fraction.size + 1, dtype=int)
 
-    group = f"{prefix}/figures/fig4_energy_spectrum"
-    metrics[f"{group}/mode"] = _metric(mode, dims=("mode",))
+    group = f"{prefix}/misc/svd_spectrum_joint"
+    metrics[f"{group}/svd_mode_index"] = _metric(mode, dims=("mode",))
     metrics[f"{group}/lambda"] = _metric(energy_fraction, dims=("mode",))
 
     pb_lambda = _per_beat_energy_fraction(per_beat.get("singular_values_b", []))
     pb_mode = np.arange(1, pb_lambda.shape[1] + 1, dtype=int)
     pb_summary = _summarize_mode_rows(pb_lambda)
 
-    group = f"{prefix}/figures/fig4_energy_spectrum_pb"
-    metrics[f"{group}/mode"] = _metric(pb_mode, dims=("mode",))
+    group = f"{prefix}/misc/svd_spectrum_joint_per_beat"
+    metrics[f"{group}/svd_mode_index"] = _metric(pb_mode, dims=("mode",))
     metrics[f"{group}/lambda_mean"] = _metric(pb_summary["mean"], dims=("mode",))
     metrics[f"{group}/lambda_lo"] = _metric(pb_summary["lo"], dims=("mode",))
     metrics[f"{group}/lambda_hi"] = _metric(pb_summary["hi"], dims=("mode",))
@@ -236,11 +250,11 @@ def _joint_decomposition_components(
     mu = np.asarray(rep.get("mu", np.full(waveforms.shape[1:], np.nan)), dtype=float)
     x = np.asarray(rep.get("x_full", np.full_like(waveforms, np.nan)), dtype=float)
     return {
-        "v": np.asarray(waveforms, dtype=float),
-        "mu": np.broadcast_to(mu[None, :, :, :], waveforms.shape),
-        "x": x,
-        "a1u1": _joint_mode_component(rep, waveforms, mode=1),
-        "a2u2": _joint_mode_component(rep, waveforms, mode=2),
+        "segment_velocity": np.asarray(waveforms, dtype=float),
+        "temporal_baseline": np.broadcast_to(mu[None, :, :, :], waveforms.shape),
+        "centered_velocity": x,
+        "svd_mode1": _joint_mode_component(rep, waveforms, mode=1),
+        "svd_mode2": _joint_mode_component(rep, waveforms, mode=2),
     }
 
 
@@ -250,11 +264,11 @@ def _per_beat_decomposition_components(
 ) -> dict[str, np.ndarray]:
     mu, x = mean_subtract(waveforms)
     return {
-        "v": np.asarray(waveforms, dtype=float),
-        "mu": np.broadcast_to(mu[None, :, :, :], waveforms.shape),
-        "x": x,
-        "a1u1": _per_beat_mode_component(per_beat_panels, waveforms, mode=1),
-        "a2u2": _per_beat_mode_component(per_beat_panels, waveforms, mode=2),
+        "segment_velocity": np.asarray(waveforms, dtype=float),
+        "temporal_baseline": np.broadcast_to(mu[None, :, :, :], waveforms.shape),
+        "centered_velocity": x,
+        "svd_mode1": _per_beat_mode_component(per_beat_panels, waveforms, mode=1),
+        "svd_mode2": _per_beat_mode_component(per_beat_panels, waveforms, mode=2),
     }
 
 
@@ -315,8 +329,8 @@ def _append_component_summary(
     valid_mask: np.ndarray,
 ) -> None:
     summary = _summarize_time_columns(panel, valid_mask)
-    for stat in _SUMMARY_STATS:
-        metrics[f"{group}/{stat}"] = _metric(
+    for stat, output_name in _CROSS_COLUMN_STATS.items():
+        metrics[f"{group}/{output_name}"] = _metric(
             summary[stat],
             unit="mm/s",
             dims=("sample",),
