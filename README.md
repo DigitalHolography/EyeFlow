@@ -48,6 +48,72 @@ eyeflow --data path\to\input.holo
 eyeflow-cli --data path\to\input.holo
 ```
 
+## Extracting Waveform Fixtures
+
+`tools/extract_waveform_fixture.py` creates compact waveform-only H5 files for
+algorithm development and robustness testing. It copies only an explicit
+allow-list of numeric artery/vein waveforms, beat timing, and optional per-beat
+signals. Source filenames, source attributes, images, masks, maps, and
+acquisition metadata are not copied.
+
+### Windows executable
+
+The downloadable `EyeFlowWaveformFixtureExtractor.exe` provides a double-click
+interface:
+
+1. Choose one EyeFlow H5 file or a folder of EyeFlow outputs.
+2. Choose a separate output folder.
+3. Select **Validate inputs** to check compatibility without writing files.
+4. Select **Extract fixtures** to create the compact waveform fixtures.
+
+The executable is published with a `.sha256` checksum file. It is not
+code-signed, so Windows SmartScreen may display an unrecognized-app warning.
+Verify the checksum before running a downloaded copy.
+
+To build the executable from source, install PyInstaller in the active Python
+environment and run:
+
+```powershell
+py -m pip install numpy h5py pyinstaller
+.\tools\build_waveform_fixture_executable.ps1
+```
+
+The executable and checksum are written to
+`dist\waveform-fixture-extractor\`.
+
+### Python command line
+
+Install the two required packages if EyeFlow is not already installed:
+
+```powershell
+py -m pip install numpy h5py
+```
+
+Validate a folder before writing anything:
+
+```powershell
+py tools\extract_waveform_fixture.py "D:\EyeFlowOutputs" `
+  --output-dir "D:\WaveformFixtures" `
+  --recursive `
+  --dry-run
+```
+
+Create the compact fixtures:
+
+```powershell
+py tools\extract_waveform_fixture.py "D:\EyeFlowOutputs" `
+  --output-dir "D:\WaveformFixtures" `
+  --recursive
+```
+
+Output filenames are derived from waveform content rather than source filenames.
+Repeating an extraction reuses an identical fixture. Run the script with
+`--help` for size limits and overwrite behavior.
+
+Metadata removal does not make clinical waveforms non-sensitive. Treat the
+fixtures as patient-derived data, follow the applicable data-governance rules,
+and do not commit them to a public repository without explicit approval.
+
 ## Scope
 
 ### In Scope
