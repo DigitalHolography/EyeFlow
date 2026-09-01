@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .constants import PhotometricMode, RegistrationMethod
+from .constants import DEFAULT_REGISTRATION_METHOD, PhotometricMode, RegistrationMethod
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,7 +15,7 @@ class MotionMapConfig:
     analysis_mask: Path | None = None
     h5_dataset: str = "moment0"
     h5_frame_axis: int = 0
-    registration_method: RegistrationMethod = "symmetric_forces_demons"
+    registration_method: RegistrationMethod = DEFAULT_REGISTRATION_METHOD
     iterations: int = 20
     scale: float = 0.5
     registration_initialization: str = "zero"

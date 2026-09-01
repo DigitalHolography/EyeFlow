@@ -21,9 +21,9 @@ from .plotting import _line_plot
 
 def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     paths: list[Path] = []
-    f_video = ctx.analysis.get("fRMS")
-    f_bkg = ctx.analysis.get("fRMS_bkg")
-    delta = ctx.analysis.get("deltafRMS")
+    f_video = ctx.velocity_analysis.get("fRMS")
+    f_bkg = ctx.velocity_analysis.get("fRMS_bkg")
+    delta = ctx.velocity_analysis.get("deltafRMS")
     f_artery = _summary_or_masked_signal(
         ctx,
         "retinal_artery_fRMS_signal",
@@ -147,7 +147,11 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
             [
                 (
                     _display_velocity(
-                        _vector(ctx.analysis["retinal_artery_velocity_signal_filtered"])
+                        _vector(
+                            ctx.velocity_analysis[
+                                "retinal_artery_velocity_signal_filtered"
+                            ]
+                        )
                     ),
                     "-",
                     "tab:red",
@@ -155,7 +159,11 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
                 ),
                 (
                     _display_velocity(
-                        _vector(ctx.analysis["retinal_vein_velocity_signal_filtered"])
+                        _vector(
+                            ctx.velocity_analysis[
+                                "retinal_vein_velocity_signal_filtered"
+                            ]
+                        )
                     ),
                     "-",
                     "tab:blue",
@@ -171,7 +179,7 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
 
 
 def _summary_or_masked_signal(ctx, key: str, video, mask):
-    summary = ctx.analysis.get(key)
+    summary = ctx.velocity_analysis.get(key)
     if summary is not None:
         return _vector(summary)
     if video is None:

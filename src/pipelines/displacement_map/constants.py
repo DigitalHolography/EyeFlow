@@ -10,6 +10,7 @@ RegistrationMethod = Literal[
     "level_set_motion",
     "displacement_field",
 ]
+DEFAULT_REGISTRATION_METHOD: RegistrationMethod = "level_set_motion"
 PhotometricMode = Literal["none", "homomorphic", "local_contrast", "hybrid"]
 PDE_REGISTRATION_METHODS = frozenset(
     {

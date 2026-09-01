@@ -34,7 +34,7 @@ from .plotting import _annotated_hline, _annotated_vline, _style_axes
 
 
 def _unit_corrected_velocity_signal(ctx: PulseFigureContext, key: str) -> np.ndarray:
-    return _display_velocity(_vector(ctx.analysis[key]))
+    return _display_velocity(_vector(ctx.velocity_analysis[key]))
 
 
 def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
@@ -151,7 +151,7 @@ def _arterial_waveform_plot(
             ctx.cycle_boundary_indexes,
             ctx.dt_seconds,
             default_samples=_vector(
-                ctx.analysis["retinal_artery_velocity_signal_filtered"]
+                ctx.velocity_analysis["retinal_artery_velocity_signal_filtered"]
             ).size,
         ),
     )
@@ -239,7 +239,7 @@ def _venous_waveform_plot(
             ctx.cycle_boundary_indexes,
             ctx.dt_seconds,
             default_samples=_vector(
-                ctx.analysis["retinal_vein_velocity_signal_filtered"]
+                ctx.velocity_analysis["retinal_vein_velocity_signal_filtered"]
             ).size,
         ),
     )

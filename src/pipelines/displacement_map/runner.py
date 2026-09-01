@@ -15,6 +15,7 @@ from input_output.output_manager import OutputType
 from input_output.schema import EyeFlowOutputPaths
 
 from .calculator import create_retinal_motion_map
+from .constants import DEFAULT_REGISTRATION_METHOD, RegistrationMethod
 from .parameters import MotionMapConfig
 
 DISPLACEMENT_MAP_PATH = EyeFlowOutputPaths.active().displacement_map
@@ -37,6 +38,7 @@ class DisplacementMapPipelineConfig:
     moment_path: str = DEFAULT_MOMENT_PATH
     mask_mode: MaskMode = "combined"
     fallback_fps: float = DEFAULT_FPS
+    registration_method: RegistrationMethod = DEFAULT_REGISTRATION_METHOD
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +70,7 @@ def run_displacement_map(
             output_dir=Path(tmp_dir),
             h5_dataset=inputs.moment.name.lstrip("/"),
             h5_fps=inputs.fps,
+            registration_method=selected.registration_method,
             save_field=True,
         )
         outputs = create_retinal_motion_map(
@@ -86,6 +89,7 @@ def run_displacement_map(
                 reference="displacement from each frame to the temporal mean",
                 source_moment_path=inputs.moment.name,
                 source_mask_path=inputs.mask_source,
+                registration_method=selected.registration_method,
             )
             ctx.output.h5.flush()
         finally:

@@ -6,18 +6,12 @@ from .branch_identity import (
     label_vessel_branches,
 )
 from .generate_cross_section_signals import (
+    CrossSectionDisplacementResult,
     CrossSectionProfileOutputs,
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
+    CrossSectionTopology,
     generate_cross_section_signals,
-)
-from .reusable_cross_section_signals import (
-    CrossSectionProjectionPlan,
-    MultiCubeCrossSectionSignalResult,
-    fit_cross_section_plan,
-    generate_cross_section_signals_for_cubes,
-    project_cross_section_cube,
-    project_cross_section_cubes,
 )
 from .segment_geometry import SegmentRingSettings
 from .segment_velocity_signals import segment_velocity_inputs, segment_velocity_results
@@ -25,18 +19,14 @@ from .segment_velocity_signals import segment_velocity_inputs, segment_velocity_
 __all__ = [
     "BranchIdentityResult",
     "BranchIdentityStages",
+    "CrossSectionDisplacementResult",
     "CrossSectionProfileOutputs",
-    "CrossSectionProjectionPlan",
     "CrossSectionSignalResult",
     "CrossSectionSignalSettings",
-    "MultiCubeCrossSectionSignalResult",
+    "CrossSectionTopology",
     "SegmentRingSettings",
-    "fit_cross_section_plan",
     "generate_cross_section_signals",
-    "generate_cross_section_signals_for_cubes",
     "label_vessel_branches",
-    "project_cross_section_cube",
-    "project_cross_section_cubes",
     "segment_velocity_inputs",
     "segment_velocity_results",
 ]

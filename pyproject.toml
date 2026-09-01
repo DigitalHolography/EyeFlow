@@ -26,6 +26,7 @@ dependencies = [
     "simpleitk>=2.5.6",
     "opencv-python>=5.0.0.93",
     "tqdm>=4.70.0",
+    "ipdb>=0.13.13",
 ]
 
 [project.optional-dependencies]

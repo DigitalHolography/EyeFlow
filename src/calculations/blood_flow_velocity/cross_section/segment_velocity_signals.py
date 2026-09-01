@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import numpy as np
 
 from calculations.compute_backend import optional_cupy_backend
@@ -13,12 +15,13 @@ from .generate_cross_section_signals import (
     _fixed_substack_side_pixels,
     _generate_cross_section_signals_from_geometry,
     _prepare_cross_section_geometry,
+    _validate_velocity_map,
 )
 from .segment_geometry import SegmentRingSettings
 
 
 def segment_velocity_inputs(
-    velocity,
+    velocity_map,
     artery_mask,
     vein_mask,
     optic_disc_center,
@@ -26,7 +29,7 @@ def segment_velocity_inputs(
     cross_section_settings: CrossSectionSignalSettings | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     artery, vein = segment_velocity_results(
-        velocity,
+        velocity_map,
         artery_mask,
         vein_mask,
         optic_disc_center,
@@ -37,14 +40,20 @@ def segment_velocity_inputs(
 
 
 def segment_velocity_results(
-    velocity,
+    velocity_map,
     artery_mask,
     vein_mask,
     optic_disc_center,
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings | None = None,
+    *,
+    displacement_maps: Mapping[str, object] | None = None,
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
     settings = _cross_section_settings(cross_section_settings)
+    artery_vessel = np.asarray(artery_mask, dtype=bool)
+    vein_vessel = np.asarray(vein_mask, dtype=bool)
+    _validate_velocity_map(velocity_map, artery_vessel)
+    _validate_velocity_map(velocity_map, vein_vessel)
     backend = optional_cupy_backend()
     Logger.log(
         "Cross-section compute backend: "
@@ -52,12 +61,12 @@ def segment_velocity_results(
         + "."
     )
     artery_geometry = _prepare_cross_section_geometry(
-        artery_mask,
+        artery_vessel,
         optic_disc_center,
         ring_settings,
     )
     vein_geometry = _prepare_cross_section_geometry(
-        vein_mask,
+        vein_vessel,
         optic_disc_center,
         ring_settings,
     )
@@ -67,20 +76,22 @@ def segment_velocity_results(
     )
     return (
         _generate_cross_section_signals_from_geometry(
-            velocity,
+            velocity_map,
             artery_geometry,
             optic_disc_center,
             ring_settings,
             settings,
             substack_side_pixels,
+            displacement_maps=displacement_maps,
         ),
         _generate_cross_section_signals_from_geometry(
-            velocity,
+            velocity_map,
             vein_geometry,
             optic_disc_center,
             ring_settings,
             settings,
             substack_side_pixels,
+            displacement_maps=displacement_maps,
         ),
     )
 

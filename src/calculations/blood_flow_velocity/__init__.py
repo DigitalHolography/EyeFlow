@@ -5,19 +5,8 @@ from .cross_section.generate_cross_section_signals import (
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
 )
-from .cross_section.reusable_cross_section_signals import (
-    CrossSectionProjectionPlan,
-    MultiCubeCrossSectionSignalResult,
-    fit_cross_section_plan,
-    generate_cross_section_signals_for_cubes,
-    project_cross_section_cube,
-    project_cross_section_cubes,
-)
 from .cross_section.segment_geometry import SegmentRingSettings
-from .cross_section.segment_velocity_signals import (
-    segment_velocity_inputs,
-    segment_velocity_results,
-)
+from .cross_section.segment_velocity_signals import segment_velocity_results
 from .signal_analysis.heartbeat import (
     HeartbeatAnalysisResult,
     SpectralHeartbeatResult,
@@ -57,11 +46,9 @@ from .signal_analysis.waveform import (
 __all__ = [
     "ArterialWaveformAnalysis",
     "CrossSectionProfileOutputs",
-    "CrossSectionProjectionPlan",
     "CrossSectionSignalResult",
     "CrossSectionSignalSettings",
     "HeartbeatAnalysisResult",
-    "MultiCubeCrossSectionSignalResult",
     "PairedVesselCycles",
     "PerBeatAnalysisInput",
     "PerBeatAnalysisResult",
@@ -77,18 +64,13 @@ __all__ = [
     "average_cycle",
     "cycle_extrema",
     "find_systole_index",
-    "fit_cross_section_plan",
-    "generate_cross_section_signals_for_cubes",
     "paired_vessel_cycles",
     "per_beat_segment_analysis",
     "per_beat_signal_analysis",
-    "project_cross_section_cube",
-    "project_cross_section_cubes",
     "pulse_metric",
     "pulse_metric_from_signal",
     "run_heartbeat_analysis",
     "run_per_beat_analysis",
-    "segment_velocity_inputs",
     "segment_velocity_results",
     "spectral_heartbeat_analysis",
     "venous_waveform_analysis",

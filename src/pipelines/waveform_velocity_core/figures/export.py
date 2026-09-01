@@ -96,9 +96,11 @@ def export_pulse_pngs(
         return []
     _matplotlib()
     source_data = context.source_data
-    analysis = context.dopplerview_analysis
-    frame_count = int(np.asarray(analysis["retinal_artery_velocity_signal"]).size)
-    moment0_avg = analysis.get("moment0_avg")
+    velocity_analysis = context.velocity_analysis
+    frame_count = int(
+        np.asarray(velocity_analysis["retinal_artery_velocity_signal"]).size
+    )
+    moment0_avg = velocity_analysis.get("moment0_avg")
     if moment0_avg is None:
         moment0_avg = mean_video(source_data.moment0)
     pulse_context = PulseFigureContext(
@@ -109,8 +111,11 @@ def export_pulse_pngs(
         moment0_avg=np.asarray(moment0_avg, dtype=np.float32),
         artery_mask=np.asarray(source_data.retinal_artery_mask, dtype=bool),
         vein_mask=np.asarray(source_data.retinal_vein_mask, dtype=bool),
-        section_mask=_section_mask(analysis, source_data.retinal_artery_mask.shape),
-        analysis=analysis,
+        section_mask=_section_mask(
+            velocity_analysis,
+            source_data.retinal_artery_mask.shape,
+        ),
+        velocity_analysis=velocity_analysis,
         per_beat_result=per_beat_result,
     )
     writer = FigureArtifactWriter(output, pulse_context.stem)

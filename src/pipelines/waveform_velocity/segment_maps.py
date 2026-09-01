@@ -17,6 +17,8 @@ from runtime_limits import cap_parallel_jobs
 
 
 _MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
+_DISPLACEMENT_MAP_ROOT = "Processing/DisplacementMapPerSegment"
+_DEBUG_DISPLACEMENT_MAP_ROOT = "Processing/Debug/DisplacementMapPerSegment"
 
 
 def pack_segment_map_outputs(
@@ -43,6 +45,108 @@ def pack_segment_map_outputs(
             index_base=index_base,
         )
     )
+    return outputs
+
+
+def pack_displacement_segment_map_outputs(
+    artery_segments,
+    vein_segments,
+    cycle_boundary_indexes,
+    *,
+    index_base: int = 0,
+) -> dict[str, object]:
+    outputs = _pack_vessel_displacement_maps(
+        artery_segments,
+        "Artery",
+        cycle_boundary_indexes,
+        index_base=index_base,
+    )
+    outputs.update(
+        _pack_vessel_displacement_maps(
+            vein_segments,
+            "Vein",
+            cycle_boundary_indexes,
+            index_base=index_base,
+        )
+    )
+    return outputs
+
+
+def _pack_vessel_displacement_maps(
+    segments,
+    vessel_name: str,
+    cycle_boundary_indexes,
+    *,
+    index_base: int,
+) -> dict[str, object]:
+    if segments is None:
+        return {}
+
+    outputs: dict[str, object] = {}
+    displacement_results = getattr(segments, "displacements", {})
+    for raw_method, displacement in sorted(displacement_results.items()):
+        method = _hdf_method_name(raw_method)
+        maps_per_beat = interpolate_velocity_maps_per_beat(
+            displacement.displacement_maps_per_segment,
+            cycle_boundary_indexes,
+            index_base=index_base,
+        )
+        outputs[f"{_DISPLACEMENT_MAP_ROOT}/{method}/{vessel_name}"] = (
+            DatasetValue(
+                data=maps_per_beat,
+                attrs={
+                    "unit": "pixels",
+                    "dimDesc": [
+                        "x",
+                        "y",
+                        "time",
+                        "beat",
+                        "branch",
+                        "radius",
+                    ],
+                    "coordinate_system": "rotated_segment_pixel",
+                    "component": "signed_local_y",
+                },
+                h5_options=_velocity_map_h5_options(maps_per_beat.shape),
+            )
+        )
+
+        vector_maps_per_beat = np.stack(
+            [
+                interpolate_velocity_maps_per_beat(
+                    displacement.displacement_vectors_per_segment[
+                        ..., component_index
+                    ],
+                    cycle_boundary_indexes,
+                    index_base=index_base,
+                )
+                for component_index in range(2)
+            ],
+            axis=-1,
+        )
+        outputs[f"{_DEBUG_DISPLACEMENT_MAP_ROOT}/{method}/{vessel_name}"] = (
+            DatasetValue(
+                data=vector_maps_per_beat,
+                attrs={
+                    "unit": "pixels",
+                    "dimDesc": [
+                        "x",
+                        "y",
+                        "time",
+                        "beat",
+                        "branch",
+                        "radius",
+                        "displacement_orientation",
+                    ],
+                    "coordinate_system": "rotated_segment_pixel",
+                    "components": ["local_x", "local_y"],
+                    "temporary_debug_output": True,
+                },
+                h5_options=_velocity_map_h5_options(
+                    vector_maps_per_beat.shape
+                ),
+            )
+        )
     return outputs
 
 
@@ -201,9 +305,22 @@ def _velocity_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
         "compression": "lzf",
         "shuffle": True,
     }
-    if len(shape) == 6 and all(shape):
-        options["chunks"] = (shape[0], shape[1], 1, 1, 1, 1)
+    if len(shape) in (6, 7) and all(shape):
+        options["chunks"] = (
+            (shape[0], shape[1], 1, 1, 1, 1)
+            if len(shape) == 6
+            else (shape[0], shape[1], 1, 1, 1, 1, shape[-1])
+        )
     return options
+
+
+def _hdf_method_name(value: object) -> str:
+    method = str(value).strip()
+    if not method or "/" in method:
+        raise ValueError(
+            "Displacement registration method names must be non-empty HDF5 path segments."
+        )
+    return method
 
 
 def _segment_mask_h5_options(shape: tuple[int, ...]) -> dict[str, object]:

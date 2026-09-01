@@ -16,8 +16,14 @@ from .continuous import (
     pack_segment_velocity_outputs,
 )
 from .quadrants import pack_quadrant_velocity_outputs
-from .profiles import pack_cross_section_profile_outputs
-from .segment_maps import pack_segment_map_outputs
+from .profiles import (
+    pack_cross_section_profile_outputs,
+    pack_displacement_profile_outputs,
+)
+from .segment_maps import (
+    pack_displacement_segment_map_outputs,
+    pack_segment_map_outputs,
+)
 from .segment_velocity_map_avi import export_segment_velocity_map_avis
 
 
@@ -25,7 +31,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
     """Publish base velocity plus the selected derived velocity products."""
     context = _required_state(ctx, WAVEFORM_CONTEXT_STATE)
     selected = ctx.options_for("waveform_velocity")
-    metrics = pack_continuous_velocity_outputs(context.dopplerview_analysis)
+    metrics = pack_continuous_velocity_outputs(context.velocity_analysis)
     segments_selected = "segments" in selected
     maps_selected = "segment_velocity_maps" in selected
     if segments_selected:
@@ -50,6 +56,16 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             f"{perf_counter() - map_started:.1f}s."
         )
         metrics.update(segment_map_outputs)
+        metrics.update(
+            pack_displacement_segment_map_outputs(
+                context.artery_segment_result,
+                context.vein_segment_result,
+                context.per_beat_analysis.cycle_boundary_indexes,
+                index_base=int(
+                    context.source_data.provenance["beat_index_base"]
+                ),
+            )
+        )
         output = getattr(ctx, "output", None)
         if getattr(output, "available", False):
             avi_started = perf_counter()
@@ -107,6 +123,14 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
         )
         metrics.update(
             pack_cross_section_profile_outputs(
+                context.artery_segment_result,
+                context.vein_segment_result,
+                cycle_boundaries,
+                index_base=index_base,
+            )
+        )
+        metrics.update(
+            pack_displacement_profile_outputs(
                 context.artery_segment_result,
                 context.vein_segment_result,
                 cycle_boundaries,
