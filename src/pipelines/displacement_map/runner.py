@@ -12,18 +12,17 @@ import h5py
 import numpy as np
 
 from input_output.output_manager import OutputType
-from input_output.schema import EyeFlowOutputPaths
 
 from .calculator import create_retinal_motion_map
 from .constants import DEFAULT_REGISTRATION_METHOD, RegistrationMethod
 from .parameters import MotionMapConfig
 
-DISPLACEMENT_MAP_PATH = EyeFlowOutputPaths.active().displacement_map
+DISPLACEMENT_MAP_STATE = "displacement_map_artifacts"
 MAGNITUDE_VIDEO_FILENAME = "displacement_magnitude.mp4"
 DEFAULT_MOMENT_PATH = "moment0"
 DEFAULT_FPS = 25.0
 
-MaskMode = Literal["combined", "artery", "vein", "labeled"]
+MaskMode = Literal["both", "combined", "artery", "vein", "labeled"]
 
 ARTERY_MASK_PATH = "segmentation/Retina/artery_mask"
 VEIN_MASK_PATH = "segmentation/Retina/vein_mask"
@@ -36,24 +35,43 @@ class DisplacementMapPipelineConfig:
     """Input choices owned by the pipeline rather than by the algorithm."""
 
     moment_path: str = DEFAULT_MOMENT_PATH
-    mask_mode: MaskMode = "combined"
+    mask_mode: MaskMode = "both"
     fallback_fps: float = DEFAULT_FPS
     registration_method: RegistrationMethod = DEFAULT_REGISTRATION_METHOD
 
 
 @dataclass(frozen=True, slots=True)
+class DisplacementMaskInput:
+    name: str
+    vessels: tuple[str, ...]
+    mask: np.ndarray
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
 class DisplacementMapInputs:
     moment: h5py.Dataset
-    mask: np.ndarray
-    mask_source: str
+    masks: tuple[DisplacementMaskInput, ...]
     fps: float
+
+
+@dataclass(slots=True)
+class DisplacementMapArtifacts:
+    registration_method: str
+    field_paths_by_vessel: dict[str, Path]
+    temporary_directory: object
+
+    def cleanup(self) -> None:
+        cleanup = getattr(self.temporary_directory, "cleanup", None)
+        if cleanup is not None:
+            cleanup()
 
 
 def run_displacement_map(
     ctx,
     config: DisplacementMapPipelineConfig | None = None,
 ) -> None:
-    """Estimate and persist the dense field plus its magnitude visualization."""
+    """Estimate vessel-specific fields for downstream use without HDF5 persistence."""
 
     selected = config or DisplacementMapPipelineConfig()
     inputs = load_displacement_map_inputs(ctx, selected)
@@ -61,44 +79,57 @@ def run_displacement_map(
     if not source_filename:
         raise ValueError("The HoloDoppler input does not have a filesystem path.")
 
-    output_video = ctx.output.path_for(OutputType.MP4, MAGNITUDE_VIDEO_FILENAME)
-    output_video.parent.mkdir(parents=True, exist_ok=True)
-
-    with tempfile.TemporaryDirectory(prefix="eyeflow-displacement-map-") as tmp_dir:
-        algorithm_config = MotionMapConfig(
-            input=Path(source_filename),
-            output_dir=Path(tmp_dir),
-            h5_dataset=inputs.moment.name.lstrip("/"),
-            h5_fps=inputs.fps,
-            registration_method=selected.registration_method,
-            save_field=True,
-        )
-        outputs = create_retinal_motion_map(
-            algorithm_config,
-            analysis_mask_array=inputs.mask,
-            magnitude_video_path=output_video,
-        )
-        displacement = np.load(outputs["displacement_field"], mmap_mode="r")
-        try:
-            ctx.output.h5.write(
-                DISPLACEMENT_MAP_PATH,
-                displacement,
-                axes=["frame", "y", "x", "component"],
-                components=["dx", "dy"],
-                units="pixels",
-                reference="displacement from each frame to the temporal mean",
-                source_moment_path=inputs.moment.name,
-                source_mask_path=inputs.mask_source,
-                registration_method=selected.registration_method,
+    temporary_directory = tempfile.TemporaryDirectory(
+        prefix="eyeflow-displacement-map-"
+    )
+    field_paths_by_vessel: dict[str, Path] = {}
+    output_videos: list[Path] = []
+    try:
+        for mask_input in inputs.masks:
+            output_dir = Path(temporary_directory.name) / mask_input.name
+            output_dir.mkdir(parents=True, exist_ok=True)
+            video_filename = (
+                MAGNITUDE_VIDEO_FILENAME
+                if len(inputs.masks) == 1
+                else f"{mask_input.name}_{MAGNITUDE_VIDEO_FILENAME}"
             )
-            ctx.output.h5.flush()
-        finally:
-            mmap = getattr(displacement, "_mmap", None)
-            if mmap is not None:
-                mmap.close()
+            output_video = ctx.output.path_for(OutputType.MP4, video_filename)
+            output_video.parent.mkdir(parents=True, exist_ok=True)
+            algorithm_config = MotionMapConfig(
+                input=Path(source_filename),
+                output_dir=output_dir,
+                h5_dataset=inputs.moment.name.lstrip("/"),
+                h5_fps=inputs.fps,
+                registration_method=selected.registration_method,
+                save_field=True,
+            )
+            outputs = create_retinal_motion_map(
+                algorithm_config,
+                analysis_mask_array=mask_input.mask,
+                magnitude_video_path=output_video,
+            )
+            field_path = Path(outputs["displacement_field"])
+            for vessel in mask_input.vessels:
+                field_paths_by_vessel[vessel] = field_path
+            output_videos.append(output_video)
+    except Exception:
+        temporary_directory.cleanup()
+        raise
 
-    ctx.log(f"Dense displacement map written to {DISPLACEMENT_MAP_PATH}.")
-    ctx.log(f"Displacement magnitude video written to {output_video}.")
+    previous = ctx.state.get(DISPLACEMENT_MAP_STATE)
+    if isinstance(previous, DisplacementMapArtifacts):
+        previous.cleanup()
+    ctx.state.set(
+        DISPLACEMENT_MAP_STATE,
+        DisplacementMapArtifacts(
+            registration_method=selected.registration_method,
+            field_paths_by_vessel=field_paths_by_vessel,
+            temporary_directory=temporary_directory,
+        ),
+    )
+    ctx.log("Dense displacement maps prepared for waveform velocity processing.")
+    for output_video in output_videos:
+        ctx.log(f"Displacement magnitude video written to {output_video}.")
 
 
 def load_displacement_map_inputs(
@@ -110,13 +141,55 @@ def load_displacement_map_inputs(
     ctx.require_inputs("hd", "dv")
     moment = resolve_moment_dataset(ctx.inputs.hd.h5.h5file, config.moment_path)
     spatial_shape = tuple(int(size) for size in moment.shape[-2:])
-    mask, mask_source = resolve_retina_mask(
+    masks = resolve_retina_masks(
         ctx.inputs.dv.h5.h5file,
         spatial_shape,
         config.mask_mode,
     )
     fps = resolve_frame_rate(ctx, config.fallback_fps)
-    return DisplacementMapInputs(moment, mask, mask_source, fps)
+    return DisplacementMapInputs(moment, masks, fps)
+
+
+def resolve_retina_masks(
+    h5file: h5py.File | None,
+    spatial_shape: tuple[int, int],
+    mode: MaskMode,
+) -> tuple[DisplacementMaskInput, ...]:
+    """Resolve one shared mask or separate artery and vein masks."""
+
+    if mode == "both":
+        masks: list[DisplacementMaskInput] = []
+        for vessel in ("artery", "vein"):
+            mask, resolved_source = resolve_retina_mask(
+                h5file,
+                spatial_shape,
+                vessel,
+            )
+            masks.append(
+                DisplacementMaskInput(
+                    name=vessel,
+                    vessels=(vessel,),
+                    mask=mask,
+                    source=resolved_source,
+                )
+            )
+        return tuple(masks)
+
+    mask, source = resolve_retina_mask(h5file, spatial_shape, mode)
+    if mode == "artery":
+        vessels = ("artery",)
+    elif mode == "vein":
+        vessels = ("vein",)
+    else:
+        vessels = ("artery", "vein")
+    return (
+        DisplacementMaskInput(
+            name=mode,
+            vessels=vessels,
+            mask=mask,
+            source=source,
+        ),
+    )
 
 
 def resolve_moment_dataset(
@@ -262,10 +335,12 @@ def resolve_frame_rate(ctx, fallback: float = DEFAULT_FPS) -> float:
 
 
 __all__ = [
-    "DISPLACEMENT_MAP_PATH",
+    "DISPLACEMENT_MAP_STATE",
+    "DisplacementMapArtifacts",
     "DisplacementMapPipelineConfig",
     "load_displacement_map_inputs",
     "resolve_moment_dataset",
     "resolve_retina_mask",
+    "resolve_retina_masks",
     "run_displacement_map",
 ]

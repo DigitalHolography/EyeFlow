@@ -34,7 +34,9 @@ class CrossSectionDisplacementTests(unittest.TestCase):
         np.testing.assert_allclose(corrected[..., 0], 3.0, atol=1e-6)
         np.testing.assert_allclose(corrected[..., 1], -2.0, atol=1e-6)
 
-    def test_projection_retains_scalar_and_vector_outputs(self) -> None:
+    def test_projection_keeps_and_sums_the_full_unmasked_local_xy_map(
+        self,
+    ) -> None:
         topology = _single_segment_topology(frame_count=2, angle=90.0)
         displacement = np.empty((2, 5, 5, 2), dtype=np.float32)
         displacement[..., 0] = 1.0
@@ -53,46 +55,73 @@ class CrossSectionDisplacementTests(unittest.TestCase):
 
         self.assertEqual((1, 1, 2), result.displacement.shape)
         self.assertEqual(
-            (1, 1, 2, 181, 181),
-            result.displacement_maps_per_segment.shape,
-        )
-        self.assertEqual(
             (1, 1, 2, 181, 181, 2),
-            result.displacement_vectors_per_segment.shape,
-        )
-        self.assertEqual(
-            (1, 1, 2, 181, 2),
-            result.displacement_vector_profiles.shape,
+            result.displacement_maps_per_segment.shape,
         )
         np.testing.assert_allclose(result.displacement, -1.0, atol=1e-6)
         np.testing.assert_allclose(result.safe_displacement, -1.0, atol=1e-6)
-        _assert_scalar_is_local_y(
-            self,
-            result.displacement_maps_per_segment,
-            result.displacement_vectors_per_segment,
+        vectors = result.displacement_maps_per_segment[0, 0]
+        resized_window = np.zeros(vectors.shape[1:3], dtype=bool)
+        resized_window[26:154, 26:154] = True
+        outside_segment = resized_window & ~topology.segment_masks[0, 0]
+        self.assertTrue(np.all(np.isfinite(vectors[:, outside_segment, :])))
+        self.assertTrue(np.all(np.isnan(vectors[:, ~resized_window, :])))
+        np.testing.assert_allclose(
+            vectors[:, resized_window, 0],
+            2.0,
+            atol=1e-6,
         )
-        _assert_scalar_is_local_y(
-            self,
-            result.displacement_profiles,
-            result.displacement_vector_profiles,
+        np.testing.assert_allclose(
+            vectors[:, resized_window, 1],
+            -1.0,
+            atol=1e-6,
         )
-        _assert_scalar_is_local_y(
-            self,
-            result.transverse_displacement_profiles_masked,
-            result.transverse_displacement_vector_profiles_masked,
+        pixel_count = np.count_nonzero(resized_window)
+        self.assertEqual(
+            (1, 1, 2),
+            result.x_sum_displacement_profile.shape,
         )
-        _assert_scalar_is_local_y(
-            self,
-            result.longitudinal_displacement_profiles_unmasked,
-            result.longitudinal_displacement_vector_profiles_unmasked,
+        self.assertEqual(
+            (1, 1, 2),
+            result.y_sum_displacement_profile.shape,
         )
-        _assert_scalar_is_local_y(
-            self,
-            result.longitudinal_displacement_profiles_masked,
-            result.longitudinal_displacement_vector_profiles_masked,
+        np.testing.assert_allclose(
+            result.x_sum_displacement_profile,
+            2.0 * pixel_count,
+        )
+        np.testing.assert_allclose(
+            result.y_sum_displacement_profile,
+            -1.0 * pixel_count,
         )
 
-    def test_lazy_displacement_reads_only_bounded_component_slices(self) -> None:
+    def test_sum_profiles_preserve_signed_components_per_frame(self) -> None:
+        topology = _single_segment_topology(frame_count=2, angle=0.0)
+        displacement = np.empty((2, 5, 5, 2), dtype=np.float32)
+        displacement[..., 0] = np.asarray([3.0, 4.0])[:, None, None]
+        displacement[..., 1] = np.asarray([-5.0, -6.0])[:, None, None]
+
+        with patch(
+            'calculations.blood_flow_velocity.cross_section.'
+            'generate_cross_section_signals._resize_subimage_stack',
+            side_effect=_constant_resize,
+        ), patch(
+            'calculations.blood_flow_velocity.cross_section.'
+            'generate_cross_section_signals._rotate_stack_with_nan',
+            side_effect=lambda values, _angle: values,
+        ):
+            result = _project_displacement_map(displacement, topology)
+
+        pixel_count = 128 * 128
+        np.testing.assert_allclose(
+            result.x_sum_displacement_profile[0, 0],
+            np.asarray([3.0, 4.0]) * pixel_count,
+        )
+        np.testing.assert_allclose(
+            result.y_sum_displacement_profile[0, 0],
+            np.asarray([-5.0, -6.0]) * pixel_count,
+        )
+
+    def test_lazy_displacement_reads_one_bounded_vector_slice(self) -> None:
         topology = _single_segment_topology(frame_count=2, angle=90.0)
         displacement = np.empty((2, 5, 5, 2), dtype=np.float32)
         displacement[..., 0] = 1.0
@@ -112,8 +141,12 @@ class CrossSectionDisplacementTests(unittest.TestCase):
 
         self.assertEqual(
             [
-                (slice(None), slice(1, 4), slice(1, 4), 0),
-                (slice(None), slice(1, 4), slice(1, 4), 1),
+                (
+                    slice(None),
+                    slice(1, 4),
+                    slice(1, 4),
+                    slice(None),
+                ),
             ],
             lazy_displacement.reads,
         )
@@ -140,7 +173,15 @@ class CrossSectionDisplacementTests(unittest.TestCase):
             self.assertEqual((1, 0, 2), displacement_result.displacement.shape)
             self.assertEqual(
                 (1, 0, 2, 181, 181, 2),
-                displacement_result.displacement_vectors_per_segment.shape,
+                displacement_result.displacement_maps_per_segment.shape,
+            )
+            self.assertEqual(
+                (1, 0, 2),
+                displacement_result.x_sum_displacement_profile.shape,
+            )
+            self.assertEqual(
+                (1, 0, 2),
+                displacement_result.y_sum_displacement_profile.shape,
             )
 
     def test_multiple_methods_reuse_one_velocity_fitted_topology(self) -> None:
@@ -191,6 +232,17 @@ class CrossSectionDisplacementTests(unittest.TestCase):
         np.testing.assert_array_equal(result.topology.profile_rotation_degrees, [[90.0]])
         np.testing.assert_allclose(result.displacements['first'].displacement, -1.0)
         np.testing.assert_allclose(result.displacements['second'].displacement, -3.0)
+        rotated_mask = result.segment_masks[0, 0]
+        for displacement_result in result.displacements.values():
+            self.assertTrue(
+                np.any(
+                    np.isfinite(
+                        displacement_result.displacement_maps_per_segment[
+                            0, 0, :, ~rotated_mask, :
+                        ]
+                    )
+                )
+            )
 
     def test_velocity_only_and_displacement_shape_validation(self) -> None:
         velocity_map = np.zeros((2, 9, 9), dtype=np.float32)
@@ -231,7 +283,7 @@ def _single_segment_topology(
     angle: float,
 ) -> CrossSectionTopology:
     rotated_mask = np.zeros((1, 1, 181, 181), dtype=bool)
-    rotated_mask[:, :, 26:154, 26:154] = True
+    rotated_mask[:, :, 50:130, 60:120] = True
     return CrossSectionTopology(
         spatial_shape=(5, 5),
         frame_count=frame_count,
@@ -271,15 +323,6 @@ class _RecordingLazyArray:
             raise AssertionError('whole displacement components must not be read')
         self.reads.append(key)
         return self._values[key]
-
-
-def _assert_scalar_is_local_y(
-    test: unittest.TestCase,
-    scalar: np.ndarray,
-    vectors: np.ndarray,
-) -> None:
-    test.assertEqual((*scalar.shape, 2), vectors.shape)
-    np.testing.assert_allclose(scalar, vectors[..., 1], equal_nan=True)
 
 
 if __name__ == '__main__':

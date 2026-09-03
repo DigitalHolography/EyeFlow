@@ -121,7 +121,7 @@ def export_segment_velocity_map_avis(
                 f"input={source.maps.nbytes / (1024**3):.2f} GiB, "
                 f"candidates={stats.candidate_count}, tiles={len(source.tiles)}, "
                 f"candidate discovery={stats.candidate_discovery_seconds:.3f}s, "
-                f"exported-beat range scan={stats.range_scan_seconds:.3f}s "
+                f"median-image range scan={stats.range_scan_seconds:.3f}s "
                 f"({stats.range_values_inspected:,} values per reduction)."
             )
     available_sources = tuple(source for source in sources if source is not None)
@@ -253,7 +253,7 @@ def _prepare_mosaic_source(
             if branch_index < branch_ids.size
             else branch_index + 1
         )
-        tile_minimum, tile_maximum = _tile_velocity_range(
+        tile_minimum, tile_maximum = _tile_median_image_range(
             maps,
             exported_beat_indexes,
             branch_index,
@@ -335,25 +335,28 @@ def _candidate_segment_indexes(segments, maps: np.ndarray) -> list[tuple[int, in
     ]
 
 
-def _tile_velocity_range(
+def _tile_median_image_range(
     maps: np.ndarray,
     beat_indexes: tuple[int, ...],
     branch_index: int,
     radius_index: int,
 ) -> tuple[float, float]:
-    minimum = np.inf
-    maximum = -np.inf
-    for beat_index in beat_indexes:
-        values = maps[:, :, :, beat_index, branch_index, radius_index]
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            beat_minimum = float(np.nanmin(values))
-            beat_maximum = float(np.nanmax(values))
-        if np.isfinite(beat_minimum):
-            minimum = min(minimum, beat_minimum)
-        if np.isfinite(beat_maximum):
-            maximum = max(maximum, beat_maximum)
-    return float(minimum), float(maximum)
+    if not beat_indexes:
+        return float("inf"), float("-inf")
+    frames = np.concatenate(
+        [
+            maps[:, :, :, beat_index, branch_index, radius_index]
+            for beat_index in beat_indexes
+        ],
+        axis=2,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        median_image = np.nanmedian(frames, axis=2)
+    finite = median_image[np.isfinite(median_image)]
+    if finite.size == 0:
+        return float("inf"), float("-inf")
+    return float(np.min(finite)), float(np.max(finite))
 
 
 def _global_velocity_range(
@@ -511,6 +514,7 @@ def _video_metadata(
         "fps": float(fps),
         "velocity_unit": "mm/s",
         "velocity_range": [float(value) for value in velocity_range],
+        "velocity_range_source": "temporal_median_image",
         "colormap": SEGMENT_VELOCITY_MAP_COLORMAP,
         "source_dimensions": ["x", "y", "time", "beat", "branch", "radius"],
         "frame_order": ["beat", "time"],

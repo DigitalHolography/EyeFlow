@@ -18,7 +18,6 @@ from runtime_limits import cap_parallel_jobs
 
 _MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
 _DISPLACEMENT_MAP_ROOT = "Processing/DisplacementMapPerSegment"
-_DEBUG_DISPLACEMENT_MAP_ROOT = "Processing/Debug/DisplacementMapPerSegment"
 
 
 def pack_segment_map_outputs(
@@ -86,35 +85,10 @@ def _pack_vessel_displacement_maps(
     displacement_results = getattr(segments, "displacements", {})
     for raw_method, displacement in sorted(displacement_results.items()):
         method = _hdf_method_name(raw_method)
-        maps_per_beat = interpolate_velocity_maps_per_beat(
-            displacement.displacement_maps_per_segment,
-            cycle_boundary_indexes,
-            index_base=index_base,
-        )
-        outputs[f"{_DISPLACEMENT_MAP_ROOT}/{method}/{vessel_name}"] = (
-            DatasetValue(
-                data=maps_per_beat,
-                attrs={
-                    "unit": "pixels",
-                    "dimDesc": [
-                        "x",
-                        "y",
-                        "time",
-                        "beat",
-                        "branch",
-                        "radius",
-                    ],
-                    "coordinate_system": "rotated_segment_pixel",
-                    "component": "signed_local_y",
-                },
-                h5_options=_velocity_map_h5_options(maps_per_beat.shape),
-            )
-        )
-
-        vector_maps_per_beat = np.stack(
+        displacement_maps_per_beat = np.stack(
             [
                 interpolate_velocity_maps_per_beat(
-                    displacement.displacement_vectors_per_segment[
+                    displacement.displacement_maps_per_segment[
                         ..., component_index
                     ],
                     cycle_boundary_indexes,
@@ -124,9 +98,9 @@ def _pack_vessel_displacement_maps(
             ],
             axis=-1,
         )
-        outputs[f"{_DEBUG_DISPLACEMENT_MAP_ROOT}/{method}/{vessel_name}"] = (
+        outputs[f"{_DISPLACEMENT_MAP_ROOT}/{method}/{vessel_name}"] = (
             DatasetValue(
-                data=vector_maps_per_beat,
+                data=displacement_maps_per_beat,
                 attrs={
                     "unit": "pixels",
                     "dimDesc": [
@@ -140,10 +114,10 @@ def _pack_vessel_displacement_maps(
                     ],
                     "coordinate_system": "rotated_segment_pixel",
                     "components": ["local_x", "local_y"],
-                    "temporary_debug_output": True,
+                    "component_basis": "rotated_segment_local",
                 },
                 h5_options=_velocity_map_h5_options(
-                    vector_maps_per_beat.shape
+                    displacement_maps_per_beat.shape
                 ),
             )
         )

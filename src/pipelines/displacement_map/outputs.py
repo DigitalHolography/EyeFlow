@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import warnings
 
 import numpy as np
 
@@ -46,9 +47,6 @@ class OutputCaches:
             )
 
         self.valid_mask = valid_mask.astype(bool, copy=True)
-        self.samples: list[np.ndarray] = []
-        self.minimum = float("inf")
-        self.maximum = float("-inf")
         self.count = 0
 
     def append(
@@ -60,22 +58,6 @@ class OutputCaches:
 
         if self.field is not None:
             self.field[self.count] = field
-
-        valid = self.valid_mask & np.isfinite(magnitude)
-        finite = magnitude[valid]
-        if finite.size:
-            self.minimum = min(self.minimum, float(finite.min()))
-            self.maximum = max(self.maximum, float(finite.max()))
-
-            step = max(
-                1,
-                int(np.sqrt(finite.size / 4096.0)),
-            )
-            sample_image = magnitude[::step, ::step]
-            sample_mask = valid[::step, ::step]
-            sample = sample_image[sample_mask]
-            if sample.size:
-                self.samples.append(sample.astype(np.float32, copy=True))
 
         self.count += 1
 
@@ -104,18 +86,30 @@ def select_display_range(
     if mode == "fixed":
         return 0.0, float(fixed_maximum)
 
-    if mode == "global-minmax":
-        return float(cache.minimum), float(cache.maximum)
-
-    samples = [sample for sample in cache.samples if sample.size]
-    if not samples:
+    values = _median_magnitude_image_values(cache)
+    if values.size == 0:
         return 0.0, 0.0
 
-    values = np.concatenate(samples)
+    if mode == "global-minmax":
+        return float(np.min(values)), float(np.max(values))
+
     return (
         float(np.percentile(values, low_percentile)),
         float(np.percentile(values, high_percentile)),
     )
+
+
+def _median_magnitude_image_values(cache: OutputCaches) -> np.ndarray:
+    if cache.count <= 0:
+        return np.empty(0, dtype=np.float32)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        median_image = np.nanmedian(
+            np.asarray(cache.magnitude[: cache.count], dtype=np.float32),
+            axis=0,
+        )
+    valid = cache.valid_mask & np.isfinite(median_image)
+    return np.asarray(median_image[valid], dtype=np.float32)
 
 
 def create_writer(

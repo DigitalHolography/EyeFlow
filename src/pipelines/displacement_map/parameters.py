@@ -21,12 +21,12 @@ class MotionMapConfig:
     registration_initialization: str = "zero"
     registration_metric_radius: int = 4
     registration_learning_rate: float = 1.0
-    temporal_median_window: int = 3
+    temporal_median_window: int = 7
     temporal_alpha: float = 1.0
     photometric_normalization: PhotometricMode = "hybrid"
-    illumination_sigma: float = 8.0
-    local_contrast_sigma: float = 4.0
-    photometric_confidence_floor: float = 0.30
+    illumination_sigma: float = 16.0
+    local_contrast_sigma: float = 32.0
+    photometric_confidence_floor: float = 0.3
     save_field: bool = True
     max_frames: int | None = None
     invert_analysis_mask: bool = False
@@ -50,24 +50,24 @@ class MotionMapConfig:
     def __post_init__(self) -> None:
         if self.iterations <= 0:
             raise ValueError("iterations must be greater than zero")
-        if not 0.0 < self.scale <= 1.0:
-            raise ValueError("scale must be in (0, 1]")
-        if self.registration_initialization not in {"zero", "previous"}:
-            raise ValueError("registration_initialization must be 'zero' or 'previous'")
-        if self.temporal_median_window not in {1, 3, 5, 7}:
-            raise ValueError("temporal_median_window must be one of 1, 3, 5, or 7")
-        if not 0.0 < self.temporal_alpha <= 1.0:
-            raise ValueError("temporal_alpha must be in (0, 1]")
-        if self.illumination_sigma < 0 or self.local_contrast_sigma < 0:
-            raise ValueError("photometric sigmas must be non-negative")
-        if not 0.0 <= self.photometric_confidence_floor <= 1.0:
-            raise ValueError("photometric_confidence_floor must be in [0, 1]")
-        if self.registration_metric_radius <= 0:
-            raise ValueError("registration_metric_radius must be greater than zero")
-        if self.registration_learning_rate <= 0:
-            raise ValueError("registration_learning_rate must be greater than zero")
-        if self.max_frames is not None and self.max_frames <= 0:
-            raise ValueError("max_frames must be greater than zero")
+        # if not 0.0 < self.scale <= 1.0:
+        #     raise ValueError("scale must be in (0, 1]")
+        # if self.registration_initialization not in {"zero", "previous"}:
+        #     raise ValueError("registration_initialization must be 'zero' or 'previous'")
+        # if self.temporal_median_window not in {1, 3, 5, 7}:
+        #     raise ValueError("temporal_median_window must be one of 1, 3, 5, or 7")
+        # if not 0.0 < self.temporal_alpha <= 1.0:
+        #     raise ValueError("temporal_alpha must be in (0, 1]")
+        # if self.illumination_sigma < 0 or self.local_contrast_sigma < 0:
+        #     raise ValueError("photometric sigmas must be non-negative")
+        # if not 0.0 <= self.photometric_confidence_floor <= 1.0:
+        #     raise ValueError("photometric_confidence_floor must be in [0, 1]")
+        # if self.registration_metric_radius <= 0:
+        #     raise ValueError("registration_metric_radius must be greater than zero")
+        # if self.registration_learning_rate <= 0:
+        #     raise ValueError("registration_learning_rate must be greater than zero")
+        # if self.max_frames is not None and self.max_frames <= 0:
+        #     raise ValueError("max_frames must be greater than zero")
 
 
 @dataclass(frozen=True, slots=True)

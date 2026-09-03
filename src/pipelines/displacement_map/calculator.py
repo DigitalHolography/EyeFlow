@@ -70,6 +70,7 @@ def create_retinal_motion_map(
         analysis_mask = (supplied_mask != 0).astype(np.uint8) * 255
         if args.invert_analysis_mask:
             analysis_mask = cv2.bitwise_not(analysis_mask)
+        analysis_mask = cv2.dilate(analysis_mask, np.ones((3, 3), np.uint8), iterations=3)
     elif args.analysis_mask is not None:
         analysis_mask = load_binary_mask(
             args.analysis_mask,
@@ -271,6 +272,7 @@ def create_retinal_motion_map(
         ),
         "dense_field_components": ["dx", "dy"] if args.save_field else None,
         "normalization": args.normalization,
+        "display_range_source": "temporal_median_magnitude_image",
         "display_minimum_px": float(display_minimum),
         "display_maximum_px": float(display_maximum),
         "gamma": float(args.gamma),

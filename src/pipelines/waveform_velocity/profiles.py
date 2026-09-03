@@ -1,4 +1,4 @@
-"""Minimal HDF5 export for transverse and longitudinal velocity profiles."""
+"""HDF5 export for transverse and longitudinal velocity/displacement profiles."""
 
 from __future__ import annotations
 
@@ -12,32 +12,9 @@ from pipeline_engine.base import DatasetValue
 
 
 _DISPLACEMENT_PROFILE_ROOT = "Processing/DisplacementProfiles"
-_DEBUG_DISPLACEMENT_PROFILE_ROOT = "Processing/Debug/DisplacementProfiles"
 _DISPLACEMENT_PROFILE_FIELDS = (
-    (
-        "TransverseDisplacementProfileUnmasked",
-        "displacement_profiles",
-        "displacement_vector_profiles",
-        "x",
-    ),
-    (
-        "TransverseDisplacementProfileMasked",
-        "transverse_displacement_profiles_masked",
-        "transverse_displacement_vector_profiles_masked",
-        "x",
-    ),
-    (
-        "LongitudinalDisplacementProfileUnmasked",
-        "longitudinal_displacement_profiles_unmasked",
-        "longitudinal_displacement_vector_profiles_unmasked",
-        "y",
-    ),
-    (
-        "LongitudinalDisplacementProfileMasked",
-        "longitudinal_displacement_profiles_masked",
-        "longitudinal_displacement_vector_profiles_masked",
-        "y",
-    ),
+    ("X", "x_sum_displacement_profile", "local_x"),
+    ("Y", "y_sum_displacement_profile", "local_y"),
 )
 
 
@@ -74,6 +51,8 @@ def pack_displacement_profile_outputs(
     *,
     index_base: int = 0,
 ) -> dict[str, object]:
+    """Pack signed local-component sums for each vessel segment."""
+
     outputs = _pack_vessel_displacement_profiles(
         artery_segments,
         "Artery",
@@ -106,24 +85,17 @@ def _pack_vessel_displacement_profiles(
     for raw_method, displacement in sorted(displacement_results.items()):
         method = _hdf_method_name(raw_method)
         root = f"{_DISPLACEMENT_PROFILE_ROOT}/{method}/{vessel_name}"
-        debug_root = (
-            f"{_DEBUG_DISPLACEMENT_PROFILE_ROOT}/{method}/{vessel_name}"
-        )
-        for leaf, scalar_field, vector_field, spatial_axis in (
-            _DISPLACEMENT_PROFILE_FIELDS
-        ):
-            outputs[f"{root}/{leaf}/value"] = _profile_dataset(
-                np.asarray(getattr(displacement, scalar_field), dtype=np.float32),
-                cycle_boundary_indexes,
-                index_base=index_base,
-                spatial_axis=spatial_axis,
-                unit="pixels",
-            )
-            outputs[f"{debug_root}/{leaf}/value"] = _vector_profile_dataset(
-                np.asarray(getattr(displacement, vector_field), dtype=np.float32),
-                cycle_boundary_indexes,
-                index_base=index_base,
-                spatial_axis=spatial_axis,
+        for axis_name, profile_field, component in _DISPLACEMENT_PROFILE_FIELDS:
+            outputs[f"{root}/{axis_name}_sum_displacement_profile/value"] = (
+                _summed_displacement_profile_dataset(
+                    np.asarray(
+                        getattr(displacement, profile_field),
+                        dtype=np.float32,
+                    ),
+                    cycle_boundary_indexes,
+                    index_base=index_base,
+                    component=component,
+                )
             )
     return outputs
 
@@ -199,45 +171,38 @@ def _profile_dataset(
     )
 
 
-def _vector_profile_dataset(
+def _summed_displacement_profile_dataset(
     profiles: np.ndarray,
     cycle_boundary_indexes,
     *,
     index_base: int,
-    spatial_axis: str,
+    component: str,
 ) -> DatasetValue:
-    if profiles.ndim != 5 or profiles.shape[-1] != 2:
+    """Interpolate one signed unmasked-subimage component sum per beat."""
+
+    if profiles.ndim != 3:
         raise ValueError(
-            "displacement vector profiles must have shape "
-            "(radius, branch, frame, spatial_sample, 2)."
+            "summed displacement profiles must have shape "
+            "(radius, branch, frame)."
         )
-    profiles_per_beat = np.stack(
-        [
-            interpolate_velocity_profiles_per_beat(
-                profiles[..., component_index],
-                cycle_boundary_indexes,
-                index_base=index_base,
-            )
-            for component_index in range(2)
-        ],
-        axis=-1,
+    profiles_per_beat = interpolate_velocity_profiles_per_beat(
+        profiles[..., None],
+        cycle_boundary_indexes,
+        index_base=index_base,
     )
     return DatasetValue(
-        data=profiles_per_beat,
+        data=profiles_per_beat[0],
         attrs={
             "unit": "pixels",
-            "dimDesc": [
-                spatial_axis,
-                "time",
-                "beat",
-                "branch",
-                "radius",
-                "displacement_orientation",
-            ],
-            "components": ["local_x", "local_y"],
-            "temporary_debug_output": True,
+            "dimDesc": ["time", "beat", "branch", "radius"],
+            "coordinate_system": "rotated_segment_pixel",
+            "component_basis": "rotated_segment_local",
+            "component": component,
+            "spatial_region": "full_unmasked_subimage",
+            "spatial_reduction": "sum_over_valid_subimage_pixels",
+            "displacement_reference": "temporal_mean_image",
         },
-        h5_options=_profile_h5_options(profiles_per_beat.shape),
+        h5_options=_profile_h5_options(profiles_per_beat.shape[1:]),
     )
 
 
@@ -248,17 +213,16 @@ def _profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
         "compression_opts": 4,
         "shuffle": True,
     }
-    if len(shape) not in (5, 6) or not all(shape):
+    if len(shape) not in (4, 5) or not all(shape):
         return options
 
-    x_count, time_count = shape[:2]
+    sample_count, time_count = shape[:2]
     target_elements = (1024 * 1024) // np.dtype(np.float32).itemsize
-    time_chunk = min(time_count, max(target_elements // x_count, 1))
-    options["chunks"] = (
-        (x_count, time_chunk, 1, 1, 1)
-        if len(shape) == 5
-        else (x_count, time_chunk, 1, 1, 1, shape[-1])
-    )
+    if len(shape) == 4:
+        options["chunks"] = (sample_count, 1, 1, 1)
+        return options
+    time_chunk = min(time_count, max(target_elements // sample_count, 1))
+    options["chunks"] = (sample_count, time_chunk, 1, 1, 1)
     return options
 
 

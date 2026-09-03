@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
@@ -87,22 +88,13 @@ class CrossSectionTopology:
 
 @dataclass(frozen=True, kw_only=True)
 class CrossSectionDisplacementResult:
+    """Signed local waveforms, unmasked local maps, and component sums."""
+
     displacement: np.ndarray
     safe_displacement: np.ndarray
     displacement_maps_per_segment: np.ndarray
-    displacement_vectors_per_segment: np.ndarray
-    displacement_profiles: np.ndarray
-    transverse_displacement_profiles_masked: np.ndarray
-    longitudinal_displacement_profiles_unmasked: np.ndarray
-    longitudinal_displacement_profiles_masked: np.ndarray
-    displacement_vector_profiles: np.ndarray
-    transverse_displacement_vector_profiles_masked: np.ndarray
-    longitudinal_displacement_vector_profiles_unmasked: np.ndarray
-    longitudinal_displacement_vector_profiles_masked: np.ndarray
-
-    @property
-    def corrected_displacement_vectors_per_segment(self) -> np.ndarray:
-        return self.displacement_vectors_per_segment
+    x_sum_displacement_profile: np.ndarray
+    y_sum_displacement_profile: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -185,14 +177,24 @@ class _CrossSectionMeasurement:
 
 
 @dataclass(frozen=True)
+class _DisplacementProfileMeasurement:
+    raw: np.ndarray
+    safe_displacement: np.ndarray
+
+
+@dataclass(frozen=True)
 class _CrossSectionDisplacementMeasurement:
-    unmasked: _CrossSectionVelocityMeasurement
-    masked: _CrossSectionVelocityMeasurement
+    waveform: _DisplacementProfileMeasurement
     vectors: np.ndarray
-    vector_profiles: np.ndarray
-    transverse_vector_profiles_masked: np.ndarray
-    longitudinal_vector_profiles_unmasked: np.ndarray
-    longitudinal_vector_profiles_masked: np.ndarray
+    summed_displacement_xy: np.ndarray
+
+
+@dataclass(frozen=True)
+class _CrossSectionDisplacementWork:
+    component_stacks: np.ndarray
+    angle: float
+    rotated_mask: np.ndarray
+    limits: tuple[int, int]
 
 
 _INTERPOLATED_SUBSTACK_SIDE = 128
@@ -321,15 +323,8 @@ class _CrossSectionDisplacementBuffers:
     displacement: np.ndarray
     safe_displacement: np.ndarray
     displacement_maps_per_segment: np.ndarray
-    displacement_vectors_per_segment: np.ndarray
-    displacement_profiles: np.ndarray
-    transverse_displacement_profiles_masked: np.ndarray
-    longitudinal_displacement_profiles_unmasked: np.ndarray
-    longitudinal_displacement_profiles_masked: np.ndarray
-    displacement_vector_profiles: np.ndarray
-    transverse_displacement_vector_profiles_masked: np.ndarray
-    longitudinal_displacement_vector_profiles_unmasked: np.ndarray
-    longitudinal_displacement_vector_profiles_masked: np.ndarray
+    x_sum_displacement_profile: np.ndarray
+    y_sum_displacement_profile: np.ndarray
 
     @classmethod
     def allocate(
@@ -340,12 +335,12 @@ class _CrossSectionDisplacementBuffers:
         branch_count: int,
     ) -> _CrossSectionDisplacementBuffers:
         signal_shape = (ring_count, branch_count, frame_count)
-        scalar_map_shape = (
+        map_shape = (
             *signal_shape,
             _ROTATED_SUBSTACK_SIDE,
             _ROTATED_SUBSTACK_SIDE,
+            2,
         )
-        scalar_profile_shape = (*signal_shape, _ROTATED_SUBSTACK_SIDE)
 
         def filled(shape):
             return np.full(shape, np.nan, dtype=np.float32)
@@ -353,22 +348,9 @@ class _CrossSectionDisplacementBuffers:
         return cls(
             displacement=filled(signal_shape),
             safe_displacement=filled(signal_shape),
-            displacement_maps_per_segment=filled(scalar_map_shape),
-            displacement_vectors_per_segment=filled((*scalar_map_shape, 2)),
-            displacement_profiles=filled(scalar_profile_shape),
-            transverse_displacement_profiles_masked=filled(scalar_profile_shape),
-            longitudinal_displacement_profiles_unmasked=filled(scalar_profile_shape),
-            longitudinal_displacement_profiles_masked=filled(scalar_profile_shape),
-            displacement_vector_profiles=filled((*scalar_profile_shape, 2)),
-            transverse_displacement_vector_profiles_masked=filled(
-                (*scalar_profile_shape, 2)
-            ),
-            longitudinal_displacement_vector_profiles_unmasked=filled(
-                (*scalar_profile_shape, 2)
-            ),
-            longitudinal_displacement_vector_profiles_masked=filled(
-                (*scalar_profile_shape, 2)
-            ),
+            displacement_maps_per_segment=filled(map_shape),
+            x_sum_displacement_profile=filled(signal_shape),
+            y_sum_displacement_profile=filled(signal_shape),
         )
 
 
@@ -885,7 +867,7 @@ def _project_displacement_map(
         branch_count=topology.branch_ids.size,
     )
     work_items = [
-        (circle_index, branch_index)
+        (int(circle_index), int(branch_index))
         for circle_index, branch_index in np.argwhere(topology.valid_segments)
     ]
 
@@ -894,33 +876,96 @@ def _project_displacement_map(
         return _cross_section_displacement_from_topology(
             displacement_map,
             topology,
-            int(circle_index),
-            int(branch_index),
+            circle_index,
+            branch_index,
         )
 
     worker_count = _cross_section_worker_count(len(work_items))
-    if not isinstance(displacement_map, np.ndarray):
-        worker_count = 1
     if worker_count == 1:
-        measurements = map(measure, work_items)
-    else:
-        executor = ThreadPoolExecutor(
-            max_workers=worker_count,
-            thread_name_prefix='cross-section-displacement',
-        )
-        measurements = executor.map(measure, work_items)
-    try:
-        for indexes, measurement in zip(work_items, measurements, strict=True):
+        for indexes in work_items:
             _store_displacement_measurement(
                 buffers,
-                int(indexes[0]),
-                int(indexes[1]),
-                measurement,
+                indexes[0],
+                indexes[1],
+                measure(indexes),
             )
-    finally:
-        if worker_count > 1:
-            executor.shutdown(wait=True)
+    elif isinstance(displacement_map, np.ndarray):
+        with ThreadPoolExecutor(
+            max_workers=worker_count,
+            thread_name_prefix='cross-section-displacement',
+        ) as executor:
+            measurements = executor.map(measure, work_items)
+            for indexes, measurement in zip(
+                work_items,
+                measurements,
+                strict=True,
+            ):
+                _store_displacement_measurement(
+                    buffers,
+                    indexes[0],
+                    indexes[1],
+                    measurement,
+                )
+    else:
+        _project_lazy_displacement_map(
+            buffers,
+            displacement_map,
+            topology,
+            work_items,
+            worker_count,
+        )
     return _displacement_result_from_buffers(buffers)
+
+
+def _project_lazy_displacement_map(
+    buffers: _CrossSectionDisplacementBuffers,
+    displacement_map,
+    topology: CrossSectionTopology,
+    work_items: list[tuple[int, int]],
+    worker_count: int,
+) -> None:
+    pending: deque[
+        tuple[int, int, Future[_CrossSectionDisplacementMeasurement]]
+    ] = deque()
+    with ThreadPoolExecutor(
+        max_workers=worker_count,
+        thread_name_prefix='cross-section-displacement',
+    ) as executor:
+        for circle_index, branch_index in work_items:
+            work = _prepare_cross_section_displacement_work(
+                displacement_map,
+                topology,
+                circle_index,
+                branch_index,
+            )
+            pending.append(
+                (
+                    circle_index,
+                    branch_index,
+                    executor.submit(_measure_cross_section_displacement, work),
+                )
+            )
+            if len(pending) >= worker_count:
+                _store_pending_displacement(buffers, pending.popleft())
+        while pending:
+            _store_pending_displacement(buffers, pending.popleft())
+
+
+def _store_pending_displacement(
+    buffers: _CrossSectionDisplacementBuffers,
+    pending: tuple[
+        int,
+        int,
+        Future[_CrossSectionDisplacementMeasurement],
+    ],
+) -> None:
+    circle_index, branch_index, future = pending
+    _store_displacement_measurement(
+        buffers,
+        circle_index,
+        branch_index,
+        future.result(),
+    )
 
 
 def _store_displacement_measurement(
@@ -929,32 +974,15 @@ def _store_displacement_measurement(
     branch_index: int,
     measurement: _CrossSectionDisplacementMeasurement,
 ) -> None:
-    unmasked = measurement.unmasked
-    masked = measurement.masked
     index = (circle_index, branch_index)
-    buffers.displacement[index] = masked.raw
-    buffers.safe_displacement[index] = masked.safe_velocity
-    buffers.displacement_maps_per_segment[index] = unmasked.rotated_stack
-    buffers.displacement_vectors_per_segment[index] = measurement.vectors
-    buffers.displacement_profiles[index] = unmasked.transverse_profiles
-    buffers.transverse_displacement_profiles_masked[index] = (
-        masked.transverse_profiles
+    buffers.displacement[index] = measurement.waveform.raw
+    buffers.safe_displacement[index] = measurement.waveform.safe_displacement
+    buffers.displacement_maps_per_segment[index] = measurement.vectors
+    buffers.x_sum_displacement_profile[index] = (
+        measurement.summed_displacement_xy[:, 0]
     )
-    buffers.longitudinal_displacement_profiles_unmasked[index] = (
-        unmasked.longitudinal_profiles
-    )
-    buffers.longitudinal_displacement_profiles_masked[index] = (
-        masked.longitudinal_profiles
-    )
-    buffers.displacement_vector_profiles[index] = measurement.vector_profiles
-    buffers.transverse_displacement_vector_profiles_masked[index] = (
-        measurement.transverse_vector_profiles_masked
-    )
-    buffers.longitudinal_displacement_vector_profiles_unmasked[index] = (
-        measurement.longitudinal_vector_profiles_unmasked
-    )
-    buffers.longitudinal_displacement_vector_profiles_masked[index] = (
-        measurement.longitudinal_vector_profiles_masked
+    buffers.y_sum_displacement_profile[index] = (
+        measurement.summed_displacement_xy[:, 1]
     )
 
 
@@ -1003,27 +1031,8 @@ def _displacement_result_from_buffers(
         displacement=buffers.displacement,
         safe_displacement=buffers.safe_displacement,
         displacement_maps_per_segment=buffers.displacement_maps_per_segment,
-        displacement_vectors_per_segment=buffers.displacement_vectors_per_segment,
-        displacement_profiles=buffers.displacement_profiles,
-        transverse_displacement_profiles_masked=(
-            buffers.transverse_displacement_profiles_masked
-        ),
-        longitudinal_displacement_profiles_unmasked=(
-            buffers.longitudinal_displacement_profiles_unmasked
-        ),
-        longitudinal_displacement_profiles_masked=(
-            buffers.longitudinal_displacement_profiles_masked
-        ),
-        displacement_vector_profiles=buffers.displacement_vector_profiles,
-        transverse_displacement_vector_profiles_masked=(
-            buffers.transverse_displacement_vector_profiles_masked
-        ),
-        longitudinal_displacement_vector_profiles_unmasked=(
-            buffers.longitudinal_displacement_vector_profiles_unmasked
-        ),
-        longitudinal_displacement_vector_profiles_masked=(
-            buffers.longitudinal_displacement_vector_profiles_masked
-        ),
+        x_sum_displacement_profile=buffers.x_sum_displacement_profile,
+        y_sum_displacement_profile=buffers.y_sum_displacement_profile,
     )
 
 
@@ -1156,6 +1165,22 @@ def _cross_section_displacement_from_topology(
     circle_index: int,
     branch_index: int,
 ) -> _CrossSectionDisplacementMeasurement:
+    return _measure_cross_section_displacement(
+        _prepare_cross_section_displacement_work(
+            displacement_map,
+            topology,
+            circle_index,
+            branch_index,
+        )
+    )
+
+
+def _prepare_cross_section_displacement_work(
+    displacement_map,
+    topology: CrossSectionTopology,
+    circle_index: int,
+    branch_index: int,
+) -> _CrossSectionDisplacementWork:
     loc_values = topology.segment_center_xy[branch_index, circle_index]
     loc_xy = (int(loc_values[0]), int(loc_values[1]))
     bounds_xyxy = tuple(
@@ -1165,64 +1190,59 @@ def _cross_section_displacement_from_topology(
             branch_index,
         ]
     )
-    component_stacks = []
-    for component_index in range(2):
-        sub_stack = _subimage_values_from_bounds(
-            displacement_map,
-            bounds_xyxy,
-            loc_xy=loc_xy,
-            side_pixels=topology.profile_window_side_pixels,
-            component_index=component_index,
-        )
-        resized = _resize_subimage_stack(sub_stack)
-        padded = _center_pad_for_rotation(resized, np.nan)
-        component_stacks.append(
-            _rotate_stack_with_nan(
-                padded,
-                float(topology.profile_rotation_degrees[circle_index, branch_index]),
-            )
-        )
-    angle = float(topology.profile_rotation_degrees[circle_index, branch_index])
-    vectors = _correct_displacement_basis(
-        component_stacks[0],
-        component_stacks[1],
-        angle,
-    )
-    masked_vectors = vectors.copy()
-    rotated_mask = topology.segment_masks[circle_index, branch_index]
-    masked_vectors[:, ~rotated_mask, :] = np.nan
-    c1, c2 = (
+    limits = tuple(
         int(value)
         for value in topology.profile_integration_limits_pixels[
             circle_index,
             branch_index,
         ]
     )
-    unmasked_axial = vectors[..., 1]
-    masked_axial = masked_vectors[..., 1]
-    return _CrossSectionDisplacementMeasurement(
-        unmasked=_profile_measurement_from_rotated_scalar(
-            unmasked_axial,
-            angle,
-            c1,
-            c2,
+    return _CrossSectionDisplacementWork(
+        component_stacks=_subimage_vector_components_from_bounds(
+            displacement_map,
+            bounds_xyxy,
+            loc_xy=loc_xy,
+            side_pixels=topology.profile_window_side_pixels,
         ),
-        masked=_profile_measurement_from_rotated_scalar(
-            masked_axial,
-            angle,
+        angle=float(
+            topology.profile_rotation_degrees[circle_index, branch_index]
+        ),
+        rotated_mask=topology.segment_masks[circle_index, branch_index],
+        limits=limits,
+    )
+
+
+def _measure_cross_section_displacement(
+    work: _CrossSectionDisplacementWork,
+) -> _CrossSectionDisplacementMeasurement:
+    frame_count = work.component_stacks.shape[0]
+    component_frames = work.component_stacks.reshape(
+        frame_count * 2,
+        work.component_stacks.shape[-2],
+        work.component_stacks.shape[-1],
+    )
+    resized = _resize_subimage_stack(component_frames)
+    rotated = _rotate_stack_with_nan(
+        _center_pad_for_rotation(resized, np.nan),
+        work.angle,
+    ).reshape(frame_count, 2, _ROTATED_SUBSTACK_SIDE, _ROTATED_SUBSTACK_SIDE)
+    vectors = _correct_displacement_basis(
+        rotated[:, 0],
+        rotated[:, 1],
+        work.angle,
+    )
+    c1, c2 = work.limits
+    return _CrossSectionDisplacementMeasurement(
+        waveform=_displacement_profile_measurement(
+            vectors,
             c1,
             c2,
+            mask=work.rotated_mask,
         ),
         vectors=vectors,
-        vector_profiles=nanmean_float32(vectors, axis=1),
-        transverse_vector_profiles_masked=nanmean_float32(
-            masked_vectors,
-            axis=1,
-        ),
-        longitudinal_vector_profiles_unmasked=nanmean_float32(vectors, axis=2),
-        longitudinal_vector_profiles_masked=nanmean_float32(
-            masked_vectors,
-            axis=2,
+        summed_displacement_xy=_nansum_float32(
+            vectors,
+            axis=(1, 2),
         ),
     )
 
@@ -1239,30 +1259,75 @@ def _correct_displacement_basis(
     return np.stack((local_x, local_y), axis=-1).astype(np.float32, copy=False)
 
 
-def _profile_measurement_from_rotated_scalar(
-    rotated_stack: np.ndarray,
-    angle: float,
+def _displacement_profile_measurement(
+    rotated_vectors: np.ndarray,
     c1: int,
     c2: int,
-) -> _CrossSectionVelocityMeasurement:
-    transverse_profiles = nanmean_float32(rotated_stack, axis=1)
-    longitudinal_profiles = nanmean_float32(rotated_stack, axis=2)
-    raw = nanmean_float32(transverse_profiles[:, c1 : c2 + 1], axis=1)
+    *,
+    mask: np.ndarray | None = None,
+) -> _DisplacementProfileMeasurement:
+    axial_values = rotated_vectors[..., 1]
+    finite = np.isfinite(axial_values)
+    if mask is not None:
+        if mask.shape != axial_values.shape[1:]:
+            raise ValueError('displacement profile mask must match the vector field.')
+        finite &= mask[None, ...]
+    axial_profiles = _nanmean_float32_where(
+        axial_values,
+        finite,
+        axis=1,
+    )
+    raw = nanmean_float32(axial_profiles[:, c1 : c2 + 1], axis=1)
     raw = np.where(np.isnan(raw), np.float32(0.0), raw).astype(
         np.float32,
         copy=False,
     )
-    safe_displacement = nanmean_float32(transverse_profiles, axis=1)
-    mean_image = nanmean_float32(rotated_stack, axis=0)
-    return _CrossSectionVelocityMeasurement(
+    safe_displacement = nanmean_float32(axial_profiles, axis=1)
+    return _DisplacementProfileMeasurement(
         raw=raw,
-        safe_velocity=safe_displacement,
-        transverse_profiles=transverse_profiles,
-        longitudinal_profiles=longitudinal_profiles,
-        rotated_stack=rotated_stack,
-        angle=float(angle),
-        spatial_std=_sample_nanstd_axis0(mean_image),
+        safe_displacement=safe_displacement,
     )
+
+
+def _nanmean_float32_where(
+    values: np.ndarray,
+    finite: np.ndarray,
+    *,
+    axis: int,
+) -> np.ndarray:
+    count = np.sum(finite, axis=axis, dtype=np.int32)
+    total = np.sum(
+        values,
+        axis=axis,
+        dtype=np.float32,
+        where=finite,
+    )
+    return np.divide(
+        total,
+        count,
+        out=np.full_like(total, np.nan, dtype=np.float32),
+        where=count > 0,
+    )
+
+
+def _nansum_float32(
+    values: np.ndarray,
+    *,
+    axis: tuple[int, ...],
+) -> np.ndarray:
+    finite = np.isfinite(values)
+    count = np.sum(finite, axis=axis, dtype=np.int32)
+    total = np.sum(
+        values,
+        axis=axis,
+        dtype=np.float32,
+        where=finite,
+    )
+    return np.where(
+        count > 0,
+        total,
+        np.float32(np.nan),
+    ).astype(np.float32, copy=False)
 
 
 def _cross_section_velocity_from_substack(
@@ -1457,7 +1522,6 @@ def _subimage_values_from_bounds(
     *,
     loc_xy: tuple[int, int],
     side_pixels: int,
-    component_index: int | None = None,
 ) -> np.ndarray:
     if side_pixels <= 0 or side_pixels % 2 == 0:
         raise ValueError('side_pixels must be a positive odd integer.')
@@ -1469,8 +1533,7 @@ def _subimage_values_from_bounds(
     target_y_start = y_start - conceptual_y_start
     target_x_stop = target_x_start + (x_stop - x_start)
     target_y_stop = target_y_start + (y_stop - y_start)
-    spatial_axis_count = 3 if component_index is not None else 2
-    leading_shape = tuple(data_cube.shape[:-spatial_axis_count])
+    leading_shape = tuple(data_cube.shape[:-2])
     sub_stack = np.full(
         (*leading_shape, side_pixels, side_pixels),
         np.nan,
@@ -1483,8 +1546,6 @@ def _subimage_values_from_bounds(
             slice(y_start, y_stop),
             slice(x_start, x_stop),
         )
-        if component_index is not None:
-            source_slices = (*source_slices, int(component_index))
         source = np.asarray(
             data_cube[source_slices],
             dtype=np.float32,
@@ -1495,6 +1556,49 @@ def _subimage_values_from_bounds(
             target_x_start:target_x_stop,
         ] = source
     return sub_stack
+
+
+def _subimage_vector_components_from_bounds(
+    data_cube,
+    bounds_xyxy: tuple[int, int, int, int],
+    *,
+    loc_xy: tuple[int, int],
+    side_pixels: int,
+) -> np.ndarray:
+    if side_pixels <= 0 or side_pixels % 2 == 0:
+        raise ValueError('side_pixels must be a positive odd integer.')
+    x_start, x_stop, y_start, y_stop = bounds_xyxy
+    x, y = loc_xy
+    conceptual_x_start = x - side_pixels // 2
+    conceptual_y_start = y - side_pixels // 2
+    target_x_start = x_start - conceptual_x_start
+    target_y_start = y_start - conceptual_y_start
+    target_x_stop = target_x_start + (x_stop - x_start)
+    target_y_stop = target_y_start + (y_stop - y_start)
+    frame_count = int(data_cube.shape[0])
+    component_count = int(data_cube.shape[-1])
+    component_stacks = np.full(
+        (frame_count, component_count, side_pixels, side_pixels),
+        np.nan,
+        dtype=np.float32,
+    )
+    if x_start < x_stop and y_start < y_stop:
+        source = np.asarray(
+            data_cube[
+                slice(None),
+                slice(y_start, y_stop),
+                slice(x_start, x_stop),
+                slice(None),
+            ],
+            dtype=np.float32,
+        )
+        component_stacks[
+            :,
+            :,
+            target_y_start:target_y_stop,
+            target_x_start:target_x_stop,
+        ] = np.moveaxis(source, -1, 1)
+    return component_stacks
 
 
 def _centered_substack_bounds(

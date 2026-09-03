@@ -16,13 +16,16 @@ from pipeline_engine import PipelineContext
 from pipelines.displacement_map import registration
 from pipelines.displacement_map.runner import (
     ARTERY_MASK_PATH,
-    DISPLACEMENT_MAP_PATH,
+    DISPLACEMENT_MAP_STATE,
     LABELED_VESSELS_PATH,
     MAGNITUDE_VIDEO_FILENAME,
     VEIN_MASK_PATH,
     VESSEL_MASK_PATH,
+    DisplacementMapArtifacts,
+    DisplacementMapPipelineConfig,
     resolve_moment_dataset,
     resolve_retina_mask,
+    resolve_retina_masks,
     run_displacement_map,
 )
 
@@ -48,7 +51,6 @@ class DisplacementRegistrationTests(unittest.TestCase):
             update_sigma=0.0,
             metric_radius=4,
             learning_rate=1.0,
-            bspline_mesh_size=8,
         )
 
         self.assertEqual((16, 16, 2), field.shape)
@@ -134,17 +136,35 @@ class DisplacementMapInputTests(unittest.TestCase):
                     self.assertEqual(path, source)
                     np.testing.assert_array_equal(mask, values[path] != 0)
 
+    def test_both_mode_resolves_separate_artery_and_vein_masks(self) -> None:
+        artery = np.asarray([[1, 0], [0, 0]], dtype=np.uint8)
+        vein = np.asarray([[0, 0], [0, 1]], dtype=np.uint8)
+        with h5py.File("mask.h5", "w", driver="core", backing_store=False) as dv:
+            dv.create_dataset(ARTERY_MASK_PATH, data=artery)
+            dv.create_dataset(VEIN_MASK_PATH, data=vein)
+
+            masks = resolve_retina_masks(dv, artery.shape, "both")
+
+        self.assertEqual("both", DisplacementMapPipelineConfig().mask_mode)
+        self.assertEqual(["artery", "vein"], [item.name for item in masks])
+        np.testing.assert_array_equal(masks[0].mask, artery != 0)
+        np.testing.assert_array_equal(masks[1].mask, vein != 0)
+
 
 class DisplacementMapRunnerTests(unittest.TestCase):
-    def test_writes_dense_field_and_magnitude_video_to_managed_outputs(self) -> None:
+    def test_prepares_both_fields_without_writing_dense_field_to_h5(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             hd_path = root / "scan_HD.h5"
             dv_path = root / "scan_DV.h5"
             output_h5_path = root / "work.h5"
             moment = np.ones((3, 2, 4), dtype=np.float32)
-            vessel = np.asarray(
+            artery = np.asarray(
                 [[1, 0, 1, 0], [0, 1, 0, 1]],
+                dtype=np.uint8,
+            )
+            vein = np.asarray(
+                [[0, 1, 0, 1], [1, 0, 1, 0]],
                 dtype=np.uint8,
             )
             with h5py.File(hd_path, "w") as hd:
@@ -152,7 +172,8 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                 hd.create_dataset("sampling_freq", data=np.float32(100.0))
                 hd.create_dataset("batch_stride", data=np.float32(10.0))
             with h5py.File(dv_path, "w") as dv:
-                dv.create_dataset(VESSEL_MASK_PATH, data=vessel)
+                dv.create_dataset(ARTERY_MASK_PATH, data=artery)
+                dv.create_dataset(VEIN_MASK_PATH, data=vein)
 
             manager = OutputManager(
                 HoloRunLayout.from_holo(
@@ -160,15 +181,21 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     output_root=root / "outputs",
                 )
             )
-            expected_field = np.arange(48, dtype=np.float32).reshape(3, 2, 4, 2)
-
             def fake_motion_map(config, *, analysis_mask_array, magnitude_video_path):
                 self.assertEqual("moment0", config.h5_dataset)
                 self.assertEqual(10.0, config.h5_fps)
-                np.testing.assert_array_equal(analysis_mask_array, vessel.astype(bool))
+                if np.array_equal(analysis_mask_array, artery.astype(bool)):
+                    field_value = 1.0
+                elif np.array_equal(analysis_mask_array, vein.astype(bool)):
+                    field_value = 2.0
+                else:
+                    self.fail("Unexpected displacement analysis mask.")
                 magnitude_video_path.write_bytes(b"fake mp4")
                 field_path = config.output_dir / "displacement_field.npy"
-                np.save(field_path, expected_field)
+                np.save(
+                    field_path,
+                    np.full((3, 2, 4, 2), field_value, dtype=np.float32),
+                )
                 return {"displacement_field": field_path}
 
             with (
@@ -188,15 +215,28 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     pipeline_name="displacement_map",
                 )
                 run_displacement_map(ctx)
-                saved = output_h5[DISPLACEMENT_MAP_PATH]
-                np.testing.assert_array_equal(saved[()], expected_field)
-                self.assertEqual("pixels", saved.attrs["units"])
-                self.assertEqual("/moment0", saved.attrs["source_moment_path"])
-                self.assertEqual(VESSEL_MASK_PATH, saved.attrs["source_mask_path"])
+                self.assertNotIn("Processing/DisplacementMap", output_h5)
+                artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
+                self.assertIsInstance(artifacts, DisplacementMapArtifacts)
+                try:
+                    np.testing.assert_array_equal(
+                        np.load(artifacts.field_paths_by_vessel["artery"]),
+                        1.0,
+                    )
+                    np.testing.assert_array_equal(
+                        np.load(artifacts.field_paths_by_vessel["vein"]),
+                        2.0,
+                    )
+                finally:
+                    artifacts.cleanup()
 
-            video_path = manager.path_for(OutputType.MP4, MAGNITUDE_VIDEO_FILENAME)
-            self.assertEqual(manager.layout.ef_dir / "mp4", video_path.parent)
-            self.assertEqual(b"fake mp4", video_path.read_bytes())
+            for vessel in ("artery", "vein"):
+                video_path = manager.path_for(
+                    OutputType.MP4,
+                    f"{vessel}_{MAGNITUDE_VIDEO_FILENAME}",
+                )
+                self.assertEqual(manager.layout.ef_dir / "mp4", video_path.parent)
+                self.assertEqual(b"fake mp4", video_path.read_bytes())
 
 
 if __name__ == "__main__":
