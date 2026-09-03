@@ -63,12 +63,21 @@ def _build_input_controls(
         row=3, column=0, pady=(0, 4), sticky="ew"
     )
     _build_status_row(app, content)
+    run_controls = ttk.Frame(content)
+    run_controls.grid(row=5, column=0, pady=(0, 18))
     app.minimal_run_button = ttk.Button(
-        content,
+        run_controls,
         text="Run",
         command=app.run_controller.run_process,
     )
-    app.minimal_run_button.grid(row=5, column=0, pady=(0, 18))
+    app.minimal_run_button.grid(row=0, column=0, padx=(0, 6))
+    app.minimal_stop_button = ttk.Button(
+        run_controls,
+        text="Stop",
+        command=app.run_controller.stop_process,
+        state="disabled",
+    )
+    app.minimal_stop_button.grid(row=0, column=1, padx=(6, 0))
 
 
 def _build_status_row(app, content: ttk.Frame) -> None:
