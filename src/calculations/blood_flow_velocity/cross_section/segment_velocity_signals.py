@@ -50,6 +50,7 @@ def segment_velocity_results(
     displacement_maps: Mapping[str, object] | None = None,
     artery_displacement_maps: Mapping[str, object] | None = None,
     vein_displacement_maps: Mapping[str, object] | None = None,
+    retain_displacement_maps: bool = True,
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
     settings = _cross_section_settings(cross_section_settings)
     artery_vessel = np.asarray(artery_mask, dtype=bool)
@@ -95,6 +96,7 @@ def segment_velocity_results(
             settings,
             substack_side_pixels,
             displacement_maps=artery_maps,
+            retain_displacement_maps=retain_displacement_maps,
         ),
         _generate_cross_section_signals_from_geometry(
             velocity_map,
@@ -104,6 +106,7 @@ def segment_velocity_results(
             settings,
             substack_side_pixels,
             displacement_maps=vein_maps,
+            retain_displacement_maps=retain_displacement_maps,
         ),
     )
 

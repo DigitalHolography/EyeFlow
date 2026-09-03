@@ -92,7 +92,7 @@ class CrossSectionDisplacementResult:
 
     displacement: np.ndarray
     safe_displacement: np.ndarray
-    displacement_maps_per_segment: np.ndarray
+    displacement_maps_per_segment: np.ndarray | None
     x_sum_displacement_profile: np.ndarray
     y_sum_displacement_profile: np.ndarray
     cross_sectional_radial_movement_amplitude: np.ndarray
@@ -326,7 +326,7 @@ class _CrossSectionBuffers:
 class _CrossSectionDisplacementBuffers:
     displacement: np.ndarray
     safe_displacement: np.ndarray
-    displacement_maps_per_segment: np.ndarray
+    displacement_maps_per_segment: np.ndarray | None
     x_sum_displacement_profile: np.ndarray
     y_sum_displacement_profile: np.ndarray
     cross_sectional_radial_movement_amplitude: np.ndarray
@@ -339,6 +339,7 @@ class _CrossSectionDisplacementBuffers:
         frame_count: int,
         ring_count: int,
         branch_count: int,
+        retain_maps: bool = True,
     ) -> _CrossSectionDisplacementBuffers:
         signal_shape = (ring_count, branch_count, frame_count)
         map_shape = (
@@ -354,7 +355,7 @@ class _CrossSectionDisplacementBuffers:
         return cls(
             displacement=filled(signal_shape),
             safe_displacement=filled(signal_shape),
-            displacement_maps_per_segment=filled(map_shape),
+            displacement_maps_per_segment=(filled(map_shape) if retain_maps else None),
             x_sum_displacement_profile=filled(signal_shape),
             y_sum_displacement_profile=filled(signal_shape),
             cross_sectional_radial_movement_amplitude=filled(signal_shape),
@@ -410,6 +411,7 @@ def generate_cross_section_signals(
     cross_section_settings: CrossSectionSignalSettings,
     *,
     displacement_maps: Mapping[str, object] | None = None,
+    retain_displacement_maps: bool = True,
 ) -> CrossSectionSignalResult:
     vessel = np.asarray(vessel_mask, dtype=bool)
     _validate_velocity_map(velocity_map, vessel)
@@ -434,6 +436,7 @@ def generate_cross_section_signals(
         cross_section_settings,
         substack_side_pixels,
         displacement_maps=normalized_displacements,
+        retain_displacement_maps=retain_displacement_maps,
     )
 
 
@@ -457,6 +460,7 @@ def _generate_cross_section_signals_from_geometry(
     substack_side_pixels: int,
     *,
     displacement_maps: Mapping[str, object] | None = None,
+    retain_displacement_maps: bool = True,
 ) -> CrossSectionSignalResult:
     branches = geometry.branches
     _validate_velocity_map(velocity_map, geometry.vessel)
@@ -504,7 +508,11 @@ def _generate_cross_section_signals_from_geometry(
         substack_side_pixels=substack_side_pixels,
     )
     displacement_results = {
-        method: _project_displacement_map(displacement_map, topology)
+        method: _project_displacement_map(
+            displacement_map,
+            topology,
+            retain_maps=retain_displacement_maps,
+        )
         for method, displacement_map in normalized_displacements.items()
     }
     return _result_from_buffers(
@@ -868,11 +876,14 @@ def _store_cross_section_measurement(
 def _project_displacement_map(
     displacement_map,
     topology: CrossSectionTopology,
+    *,
+    retain_maps: bool = True,
 ) -> CrossSectionDisplacementResult:
     buffers = _CrossSectionDisplacementBuffers.allocate(
         frame_count=topology.frame_count,
         ring_count=topology.section_masks.shape[0],
         branch_count=topology.branch_ids.size,
+        retain_maps=retain_maps,
     )
     work_items = [
         (int(circle_index), int(branch_index))
@@ -888,7 +899,11 @@ def _project_displacement_map(
             branch_index,
         )
 
-    worker_count = _cross_section_worker_count(len(work_items))
+    worker_count = (
+        1
+        if isinstance(displacement_map, np.memmap)
+        else _cross_section_worker_count(len(work_items))
+    )
     if worker_count == 1:
         for indexes in work_items:
             _store_displacement_measurement(
@@ -897,7 +912,9 @@ def _project_displacement_map(
                 indexes[1],
                 measure(indexes),
             )
-    elif isinstance(displacement_map, np.ndarray):
+    elif isinstance(displacement_map, np.ndarray) and not isinstance(
+        displacement_map, np.memmap
+    ):
         with ThreadPoolExecutor(
             max_workers=worker_count,
             thread_name_prefix='cross-section-displacement',
@@ -985,7 +1002,8 @@ def _store_displacement_measurement(
     index = (circle_index, branch_index)
     buffers.displacement[index] = measurement.waveform.raw
     buffers.safe_displacement[index] = measurement.waveform.safe_displacement
-    buffers.displacement_maps_per_segment[index] = measurement.vectors
+    if buffers.displacement_maps_per_segment is not None:
+        buffers.displacement_maps_per_segment[index] = measurement.vectors
     buffers.x_sum_displacement_profile[index] = (
         measurement.summed_displacement_xy[:, 0]
     )

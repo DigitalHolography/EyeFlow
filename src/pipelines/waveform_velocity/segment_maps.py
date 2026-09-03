@@ -85,6 +85,11 @@ def _pack_vessel_displacement_maps(
     displacement_results = getattr(segments, "displacements", {})
     for raw_method, displacement in sorted(displacement_results.items()):
         method = _hdf_method_name(raw_method)
+        if displacement.displacement_maps_per_segment is None:
+            raise RuntimeError(
+                "Per-segment displacement maps were not retained. They must be "
+                "requested during waveform-velocity core processing."
+            )
         displacement_maps_per_beat = np.stack(
             [
                 interpolate_velocity_maps_per_beat(

@@ -174,6 +174,16 @@ def _pulse_pngs_required(ctx) -> bool:
     )
 
 
+def _displacement_segment_maps_required(ctx) -> bool:
+    """Return whether full rotated displacement maps must remain in memory."""
+    return bool(
+        ctx.pipeline_scheduled("waveform_velocity")
+        and ctx.option_enabled(
+            "segment_velocity_maps",
+            pipeline="waveform_velocity",
+        )
+    )
+
 def _build_waveform_velocity_core_context(
     ctx,
     scratch_h5,
@@ -453,6 +463,7 @@ def _segment_velocity_inputs(
             source_data.cross_section_settings,
             artery_displacement_maps=displacement_maps.get("artery", {}),
             vein_displacement_maps=displacement_maps.get("vein", {}),
+            retain_displacement_maps=_displacement_segment_maps_required(ctx),
         )
     if ctx.output.available:
         with _logged_stage("rotated mean PNG export"):
