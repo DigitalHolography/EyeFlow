@@ -242,6 +242,17 @@ class AppSettingsStore:
         )
         tmp_path.replace(self.path)
 
+    def import_file(self, path: Path) -> None:
+        try:
+            settings = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Invalid JSON at line {exc.lineno}, column {exc.colno}: {exc.msg}"
+            ) from exc
+        if not isinstance(settings, dict):
+            raise TypeError("The configuration must contain a JSON object.")
+        self.save(settings)
+
     def load_named_visibility(self, key: str) -> dict[str, bool]:
         raw_visibility = self.load().get(key, {})
         if not isinstance(raw_visibility, dict):
