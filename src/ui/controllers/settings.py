@@ -55,7 +55,16 @@ class SettingsController:
         if not selected_path:
             return
 
-        config_path = Path(selected_path)
+        self.load_config_file(Path(selected_path))
+
+    def load_config_file(self, config_path: Path) -> bool:
+        if getattr(self.app, "_pipeline_run_active", False):
+            services_for(self.app).dialogs.showwarning(
+                "Run in progress",
+                "Wait for the current pipeline run to finish before loading a configuration.",
+            )
+            return False
+
         try:
             self.app.settings_store.import_file(config_path)
         except (OSError, TypeError, ValueError) as exc:
@@ -63,7 +72,7 @@ class SettingsController:
                 "Configuration not loaded",
                 f"Could not load the configuration file:\n{config_path}\n\n{exc}",
             )
-            return
+            return False
 
         self.app.pipeline_library_controller.register()
         self.apply_ui_mode(self.app.settings_store.load_ui_mode(), persist=False)
@@ -71,6 +80,7 @@ class SettingsController:
             "Configuration loaded",
             f"Loaded configuration from:\n{config_path}",
         )
+        return True
 
     def window_size_for_mode(self, mode: str) -> tuple[int, int, int, int]:
         screen_width = self.app.winfo_screenwidth()
