@@ -21,6 +21,7 @@ from pipelines.displacement_map.outputs import (  # noqa: E402
     select_display_range,
 )
 from pipelines.waveform_velocity.profiles import (  # noqa: E402
+    _combined_displacement_magnitude_dataset,
     pack_displacement_profile_outputs,
 )
 from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
@@ -109,7 +110,7 @@ class DisplacementOutputTests(unittest.TestCase):
         displacement_map_path = (
             "Processing/DisplacementMapPerSegment/fast_symmetric_demons/Artery"
         )
-        self.assertEqual(12, len(outputs))
+        self.assertEqual(24, len(outputs))
         self.assertFalse(
             any(path.startswith("Processing/Debug/") for path in outputs)
         )
@@ -135,6 +136,22 @@ class DisplacementOutputTests(unittest.TestCase):
             outputs,
         )
 
+        magnitude_profile_path = (
+            "Processing/DisplacementProfiles/level_set_motion/Vein/"
+            "Magnitude_displacement_profile/value"
+        )
+        amplitude_profile_path = (
+            "Processing/DisplacementProfiles/level_set_motion/Vein/"
+            "Cross_sectional_radial_movement_amplitude_profile/value"
+        )
+        asymmetry_profile_path = (
+            "Processing/DisplacementProfiles/level_set_motion/Vein/"
+            "Cross_sectional_radial_asymmetry_index_profile/value"
+        )
+        self.assertIn(magnitude_profile_path, outputs)
+        self.assertIn(amplitude_profile_path, outputs)
+        self.assertIn(asymmetry_profile_path, outputs)
+
         with h5py.File(
             "displacement_outputs.h5",
             "w",
@@ -147,10 +164,16 @@ class DisplacementOutputTests(unittest.TestCase):
             x_sum_profile = h5[x_sum_profile_path]
             y_sum_profile = h5[y_sum_profile_path]
             displacement_map = h5[displacement_map_path]
+            magnitude_profile = h5[magnitude_profile_path]
+            amplitude_profile = h5[amplitude_profile_path]
+            asymmetry_profile = h5[asymmetry_profile_path]
 
             self.assertEqual((4, 2, 1, 1), x_sum_profile.shape)
             self.assertEqual((4, 2, 1, 1), y_sum_profile.shape)
             self.assertEqual((4, 3, 4, 2, 1, 1, 2), displacement_map.shape)
+            self.assertEqual((4, 2), magnitude_profile.shape)
+            self.assertEqual((4, 2, 1, 1), amplitude_profile.shape)
+            self.assertEqual((4, 2, 1, 1), asymmetry_profile.shape)
             self.assertEqual("pixels", x_sum_profile.attrs["unit"])
             self.assertEqual("pixels", y_sum_profile.attrs["unit"])
             self.assertEqual(
@@ -184,6 +207,37 @@ class DisplacementOutputTests(unittest.TestCase):
                 ["local_x", "local_y"],
                 list(displacement_map.attrs["components"]),
             )
+            self.assertEqual("pixels", magnitude_profile.attrs["unit"])
+            self.assertEqual(
+                ["time", "beat"],
+                list(magnitude_profile.attrs["dimDesc"]),
+            )
+            self.assertEqual(
+                "sum_of_segment_vector_magnitudes",
+                magnitude_profile.attrs["spatial_reduction"],
+            )
+            np.testing.assert_allclose(
+                magnitude_profile[...],
+                np.hypot(24.0, -48.0),
+                atol=1e-5,
+            )
+            self.assertEqual("pixels", amplitude_profile.attrs["unit"])
+            self.assertEqual("1", asymmetry_profile.attrs["unit"])
+            self.assertEqual(
+                ["time", "beat", "branch", "radius"],
+                list(amplitude_profile.attrs["dimDesc"]),
+            )
+            self.assertEqual(
+                "rotated_vessel_segment_mask",
+                amplitude_profile.attrs["centerline_source"],
+            )
+            self.assertEqual(
+                "symmetric_wall_bands_extending_outside_mask",
+                asymmetry_profile.attrs["spatial_region"],
+            )
+            np.testing.assert_allclose(amplitude_profile[...], 6.0, atol=1e-6)
+            np.testing.assert_allclose(asymmetry_profile[...], 0.25, atol=1e-6)
+
             self.assertGreater(
                 float(np.nanmin(x_sum_profile[...])),
                 0.0,
@@ -200,6 +254,22 @@ class DisplacementOutputTests(unittest.TestCase):
                 float(np.nanmax(displacement_map[..., 1])),
                 0.0,
             )
+
+    def test_combined_magnitude_adds_segments_without_directional_cancellation(
+        self,
+    ) -> None:
+        x_sums = np.asarray([[[3.0] * 6, [-3.0] * 6]], dtype=np.float32)
+        y_sums = np.asarray([[[4.0] * 6, [-4.0] * 6]], dtype=np.float32)
+
+        dataset = _combined_displacement_magnitude_dataset(
+            x_sums,
+            y_sums,
+            np.asarray([0, 2, 5], dtype=np.int32),
+            index_base=0,
+        )
+
+        self.assertEqual((4, 2), dataset.data.shape)
+        np.testing.assert_allclose(dataset.data, 10.0, atol=1e-6)
 
     def test_velocity_only_packing_emits_no_displacement_keys(self) -> None:
         segments = SimpleNamespace(displacements={})
@@ -265,6 +335,8 @@ def _segments():
     scalar_maps = np.full((1, 1, 6, 3, 4), -2.0, dtype=np.float32)
     x_sum_profile = np.full((1, 1, 6), 12.0, dtype=np.float32)
     y_sum_profile = np.full((1, 1, 6), -24.0, dtype=np.float32)
+    radial_amplitude = np.full((1, 1, 6), 3.0, dtype=np.float32)
+    radial_asymmetry = np.full((1, 1, 6), 0.25, dtype=np.float32)
     vector_maps = np.stack(
         (
             np.full_like(scalar_maps, 1.0),
@@ -278,6 +350,10 @@ def _segments():
             displacement_maps_per_segment=vector_maps * scale,
             x_sum_displacement_profile=x_sum_profile * scale,
             y_sum_displacement_profile=y_sum_profile * scale,
+            cross_sectional_radial_movement_amplitude=(
+                radial_amplitude * scale
+            ),
+            cross_sectional_radial_asymmetry_index=radial_asymmetry,
         )
 
     return SimpleNamespace(

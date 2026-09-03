@@ -20,11 +20,28 @@ from calculations.blood_flow_velocity.cross_section import (  # noqa: E402
 )
 from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
     _correct_displacement_basis,
+    _cross_sectional_radial_metrics,
     _project_displacement_map,
 )
 
 
 class CrossSectionDisplacementTests(unittest.TestCase):
+    def test_radial_metrics_use_mask_geometry_but_sample_outside_it(self) -> None:
+        vessel_mask = np.zeros((5, 7), dtype=bool)
+        vessel_mask[1:4, 2:5] = True
+        vectors = np.zeros((1, 5, 7, 2), dtype=np.float32)
+        vectors[:, 1:4, 0:2, 0] = -2.0
+        vectors[:, 1:4, 5:7, 0] = 4.0
+        vectors[..., 1] = 100.0
+
+        amplitude, asymmetry = _cross_sectional_radial_metrics(
+            vectors,
+            vessel_mask,
+        )
+
+        np.testing.assert_allclose(amplitude, [2.0], atol=1e-6)
+        np.testing.assert_allclose(asymmetry, [-1.0 / 3.0], atol=1e-6)
+
     def test_basis_correction_keeps_signed_local_y(self) -> None:
         dx = np.full((2, 3, 4), 2.0, dtype=np.float32)
         dy = np.full_like(dx, 3.0)
@@ -92,6 +109,15 @@ class CrossSectionDisplacementTests(unittest.TestCase):
         np.testing.assert_allclose(
             result.y_sum_displacement_profile,
             -1.0 * pixel_count,
+        )
+        np.testing.assert_allclose(
+            result.cross_sectional_radial_movement_amplitude,
+            2.0,
+        )
+        np.testing.assert_allclose(
+            result.cross_sectional_radial_asymmetry_index,
+            0.0,
+            atol=1e-6,
         )
 
     def test_sum_profiles_preserve_signed_components_per_frame(self) -> None:
@@ -182,6 +208,14 @@ class CrossSectionDisplacementTests(unittest.TestCase):
             self.assertEqual(
                 (1, 0, 2),
                 displacement_result.y_sum_displacement_profile.shape,
+            )
+            self.assertEqual(
+                (1, 0, 2),
+                displacement_result.cross_sectional_radial_movement_amplitude.shape,
+            )
+            self.assertEqual(
+                (1, 0, 2),
+                displacement_result.cross_sectional_radial_asymmetry_index.shape,
             )
 
     def test_multiple_methods_reuse_one_velocity_fitted_topology(self) -> None:

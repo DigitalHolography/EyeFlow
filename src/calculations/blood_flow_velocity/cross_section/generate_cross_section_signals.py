@@ -88,13 +88,15 @@ class CrossSectionTopology:
 
 @dataclass(frozen=True, kw_only=True)
 class CrossSectionDisplacementResult:
-    """Signed local waveforms, unmasked local maps, and component sums."""
+    """Local waveforms, maps, sums, and cross-sectional motion metrics."""
 
     displacement: np.ndarray
     safe_displacement: np.ndarray
     displacement_maps_per_segment: np.ndarray
     x_sum_displacement_profile: np.ndarray
     y_sum_displacement_profile: np.ndarray
+    cross_sectional_radial_movement_amplitude: np.ndarray
+    cross_sectional_radial_asymmetry_index: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -187,6 +189,8 @@ class _CrossSectionDisplacementMeasurement:
     waveform: _DisplacementProfileMeasurement
     vectors: np.ndarray
     summed_displacement_xy: np.ndarray
+    radial_movement_amplitude: np.ndarray
+    radial_asymmetry_index: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -325,6 +329,8 @@ class _CrossSectionDisplacementBuffers:
     displacement_maps_per_segment: np.ndarray
     x_sum_displacement_profile: np.ndarray
     y_sum_displacement_profile: np.ndarray
+    cross_sectional_radial_movement_amplitude: np.ndarray
+    cross_sectional_radial_asymmetry_index: np.ndarray
 
     @classmethod
     def allocate(
@@ -351,6 +357,8 @@ class _CrossSectionDisplacementBuffers:
             displacement_maps_per_segment=filled(map_shape),
             x_sum_displacement_profile=filled(signal_shape),
             y_sum_displacement_profile=filled(signal_shape),
+            cross_sectional_radial_movement_amplitude=filled(signal_shape),
+            cross_sectional_radial_asymmetry_index=filled(signal_shape),
         )
 
 
@@ -984,6 +992,12 @@ def _store_displacement_measurement(
     buffers.y_sum_displacement_profile[index] = (
         measurement.summed_displacement_xy[:, 1]
     )
+    buffers.cross_sectional_radial_movement_amplitude[index] = (
+        measurement.radial_movement_amplitude
+    )
+    buffers.cross_sectional_radial_asymmetry_index[index] = (
+        measurement.radial_asymmetry_index
+    )
 
 
 def _topology_from_buffers(
@@ -1033,6 +1047,12 @@ def _displacement_result_from_buffers(
         displacement_maps_per_segment=buffers.displacement_maps_per_segment,
         x_sum_displacement_profile=buffers.x_sum_displacement_profile,
         y_sum_displacement_profile=buffers.y_sum_displacement_profile,
+        cross_sectional_radial_movement_amplitude=(
+            buffers.cross_sectional_radial_movement_amplitude
+        ),
+        cross_sectional_radial_asymmetry_index=(
+            buffers.cross_sectional_radial_asymmetry_index
+        ),
     )
 
 
@@ -1231,6 +1251,10 @@ def _measure_cross_section_displacement(
         rotated[:, 1],
         work.angle,
     )
+    radial_amplitude, radial_asymmetry = _cross_sectional_radial_metrics(
+        vectors,
+        work.rotated_mask,
+    )
     c1, c2 = work.limits
     return _CrossSectionDisplacementMeasurement(
         waveform=_displacement_profile_measurement(
@@ -1244,6 +1268,87 @@ def _measure_cross_section_displacement(
             vectors,
             axis=(1, 2),
         ),
+        radial_movement_amplitude=radial_amplitude,
+        radial_asymmetry_index=radial_asymmetry,
+    )
+
+
+def _cross_sectional_radial_metrics(
+    vectors: np.ndarray,
+    vessel_mask: np.ndarray,
+    *,
+    epsilon: float = 1e-6,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Measure radial strength in wall bands extending outside the vessel mask."""
+
+    if vectors.ndim != 4 or vectors.shape[-1] != 2:
+        raise ValueError("vectors must have shape (frame, y, x, 2).")
+    mask = np.asarray(vessel_mask, dtype=bool)
+    if mask.shape != vectors.shape[1:3]:
+        raise ValueError("vessel_mask must match the vector field spatial shape.")
+
+    left_region, right_region = _wall_analysis_regions(mask)
+    radial_strength = np.abs(vectors[..., 0])
+    left = _mean_in_spatial_region(radial_strength, left_region)
+    right = _mean_in_spatial_region(radial_strength, right_region)
+    amplitude = np.float32(0.5) * (left + right)
+    denominator = left + right + np.float32(epsilon)
+    asymmetry = np.divide(
+        left - right,
+        denominator,
+        out=np.full_like(amplitude, np.nan),
+        where=np.isfinite(denominator),
+    )
+    return (
+        amplitude.astype(np.float32, copy=False),
+        asymmetry.astype(np.float32, copy=False),
+    )
+
+
+def _wall_analysis_regions(vessel_mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Use mask rows to locate walls; return equally scaled exterior bands."""
+
+    height, width = vessel_mask.shape
+    left_region = np.zeros((height, width), dtype=bool)
+    right_region = np.zeros((height, width), dtype=bool)
+    x = np.arange(width)
+    for row in np.flatnonzero(np.any(vessel_mask, axis=1)):
+        mask_x = np.flatnonzero(vessel_mask[row])
+        left_wall = int(mask_x[0])
+        right_wall = int(mask_x[-1])
+        centerline = np.float32(0.5 * (left_wall + right_wall))
+        band_width = max(
+            int(np.ceil((right_wall - left_wall + 1) / 2.0)),
+            1,
+        )
+        left_start = max(left_wall - band_width, 0)
+        right_stop = min(right_wall + band_width + 1, width)
+        left_region[row] = (
+            (x >= left_start) & (x <= left_wall) & (x < centerline)
+        )
+        right_region[row] = (
+            (x >= right_wall) & (x < right_stop) & (x > centerline)
+        )
+    return left_region, right_region
+
+
+def _mean_in_spatial_region(
+    values: np.ndarray,
+    region: np.ndarray,
+) -> np.ndarray:
+    finite = np.isfinite(values) & region[None, ...]
+    count = np.sum(finite, axis=(1, 2), dtype=np.int32)
+    total = np.sum(
+        values,
+        axis=(1, 2),
+        dtype=np.float32,
+        where=finite,
+    )
+    return np.divide(
+        total,
+        count,
+        out=np.full(values.shape[0], np.nan, dtype=np.float32),
+        where=count > 0,
     )
 
 
