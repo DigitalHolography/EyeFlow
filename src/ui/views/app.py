@@ -47,10 +47,14 @@ class AppViewBuilder:
             ),
         )
         menu_bar.add_cascade(label="View", menu=view_menu)
-        help_menu = tk.Menu(menu_bar, tearoff=False)
-        help_menu.add_command(
+        tools_menu = tk.Menu(menu_bar, tearoff=False)
+        tools_menu.add_command(
             label="Open Log File",
             command=self.app.progress_controller.open_run_log_file,
         )
-        menu_bar.add_cascade(label="Help", menu=help_menu)
+        tools_menu.add_command(
+            label="Load Config File...",
+            command=self.app.settings_controller.choose_config_file,
+        )
+        menu_bar.add_cascade(label="Tools", menu=tools_menu)
         self.app.configure(menu=menu_bar)

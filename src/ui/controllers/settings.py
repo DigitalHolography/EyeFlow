@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import tkinter as tk
+from pathlib import Path
+
+from app_settings import default_settings_template_path
 
 from ..services import services_for
 
@@ -34,6 +37,40 @@ class SettingsController:
                 "Settings not saved",
                 f"Could not save UI mode preference:\n{exc}",
             )
+
+    def choose_config_file(self) -> None:
+        if getattr(self.app, "_pipeline_run_active", False):
+            services_for(self.app).dialogs.showwarning(
+                "Run in progress",
+                "Wait for the current pipeline run to finish before loading a configuration.",
+            )
+            return
+
+        template_path = default_settings_template_path()
+        selected_path = services_for(self.app).file_dialogs.askopenfilename(
+            filetypes=[("JSON configuration", "*.json"), ("All files", "*.*")],
+            initialdir=str(template_path.parent if template_path else Path.cwd()),
+            title="Load EyeFlow configuration",
+        )
+        if not selected_path:
+            return
+
+        config_path = Path(selected_path)
+        try:
+            self.app.settings_store.import_file(config_path)
+        except (OSError, TypeError, ValueError) as exc:
+            services_for(self.app).dialogs.showerror(
+                "Configuration not loaded",
+                f"Could not load the configuration file:\n{config_path}\n\n{exc}",
+            )
+            return
+
+        self.app.pipeline_library_controller.register()
+        self.apply_ui_mode(self.app.settings_store.load_ui_mode(), persist=False)
+        services_for(self.app).dialogs.showinfo(
+            "Configuration loaded",
+            f"Loaded configuration from:\n{config_path}",
+        )
 
     def window_size_for_mode(self, mode: str) -> tuple[int, int, int, int]:
         screen_width = self.app.winfo_screenwidth()

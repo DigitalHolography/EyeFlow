@@ -21,6 +21,8 @@ class DialogService(Protocol):
 
 
 class FileDialogService(Protocol):
+    def askopenfilename(self, **options) -> str: ...
+
     def askopenfilenames(self, **options) -> Sequence[str]: ...
 
 
@@ -40,6 +42,9 @@ class TkDialogService:
 
 
 class TkFileDialogService:
+    def askopenfilename(self, **options) -> str:
+        return filedialog.askopenfilename(**options)
+
     def askopenfilenames(self, **options) -> Sequence[str]:
         return filedialog.askopenfilenames(**options)
 
