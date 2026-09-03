@@ -24,6 +24,7 @@ def run_pipelines_to_output(
     pipeline_options: Mapping[str, Sequence[str]] | None = None,
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
+    on_pipeline_start: Callable[[str, int, int], None] | None = None,
     on_pipeline_success: Callable[[str], None] | None = None,
     on_progress: Callable[[], None] | None = None,
 ) -> Path:
@@ -43,6 +44,7 @@ def run_pipelines_to_output(
             pipeline_options=pipeline_options or {},
             holodoppler_h5=holodoppler_h5,
             doppler_vision_h5=doppler_vision_h5,
+            on_pipeline_start=on_pipeline_start,
             on_pipeline_success=on_pipeline_success,
             on_progress=on_progress,
         )
@@ -59,6 +61,7 @@ def _run_pipelines_with_work_h5(
     pipeline_options: Mapping[str, Sequence[str]],
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
+    on_pipeline_start: Callable[[str, int, int], None] | None,
     on_pipeline_success: Callable[[str], None] | None,
     on_progress: Callable[[], None] | None,
 ) -> Path:
@@ -75,7 +78,14 @@ def _run_pipelines_with_work_h5(
     dv_config = load_h5_sidecar_config(dv_h5, source="dv")
     context_vars: dict[str, object] = {}
 
-    for pipeline_desc in pipelines:
+    pipeline_count = len(pipelines)
+    for pipeline_index, pipeline_desc in enumerate(pipelines, start=1):
+        if on_pipeline_start is not None:
+            on_pipeline_start(
+                pipeline_desc.name,
+                pipeline_index,
+                pipeline_count,
+            )
         _run_pipeline_descriptor(
             pipeline_desc,
             work_h5=work_h5,
@@ -182,7 +192,7 @@ def _run_pipeline_descriptor(
                 f"Completed {pipeline.name} HDF5 output write in "
                 f"{perf_counter() - write_started:.1f}s."
             )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         Logger.log_error(f"{pipeline.name}: {exc}")
         raise RuntimeError(format_pipeline_exception(exc, pipeline)) from exc
     if isinstance(result, ProcessResult):
