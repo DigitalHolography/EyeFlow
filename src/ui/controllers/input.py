@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tkinter as tk
 from collections.abc import Sequence
 from pathlib import Path
@@ -21,6 +22,7 @@ except ImportError:  # optional dependency
     DND_FILES = None
 
 HOLO_SUFFIX = ".holo"
+CONFIG_SUFFIX = ".json"
 
 
 class InputController:
@@ -128,7 +130,23 @@ class InputController:
         slot_hint: str | None = None,
     ) -> bool:
         del slot_hint
-        valid_paths = [path for path in self._clean_dropped_paths(dropped_paths)]
+        cleaned_paths = self._clean_drop_values(dropped_paths)
+        config_paths = [
+            path
+            for path in cleaned_paths
+            if path.is_file() and path.suffix.lower() == CONFIG_SUFFIX
+        ]
+        if config_paths:
+            if len(cleaned_paths) != 1:
+                services_for(self.app).dialogs.showwarning(
+                    "Unsupported drop",
+                    "Drop one .json configuration file by itself.",
+                )
+                return True
+            self.app.settings_controller.load_config_file(config_paths[0])
+            return True
+
+        valid_paths = self._clean_dropped_paths(cleaned_paths)
         if not valid_paths:
             return False
 
@@ -159,7 +177,8 @@ class InputController:
 
         services_for(self.app).dialogs.showwarning(
             "Unsupported drop",
-            "Drop one or more .holo files, or one .txt path list.",
+            "Drop one or more .holo files, a folder containing .holo files, "
+            "one .txt path list, or one .json configuration file.",
         )
 
     def update_minimal_path_labels(self) -> None:
@@ -270,19 +289,47 @@ class InputController:
         path = input_path.expanduser()
         return path if path.is_absolute() else Path.cwd() / path
 
+    def _clean_drop_values(self, dropped_paths: Sequence[Path]) -> list[Path]:
+        cleaned_paths: list[Path] = []
+        for dropped_path in dropped_paths:
+            cleaned = str(dropped_path).strip().strip("{}")
+            if cleaned:
+                cleaned_paths.append(Path(cleaned).expanduser())
+        return cleaned_paths
+
     def _clean_dropped_paths(self, dropped_paths: Sequence[Path]) -> list[Path]:
         valid_paths: list[Path] = []
         for dropped_path in dropped_paths:
-            cleaned = str(dropped_path).strip().strip("{}")
-            if not cleaned:
-                continue
-            candidate = Path(cleaned).expanduser()
-            if candidate.is_file() and candidate.suffix.lower() in {
+            if dropped_path.is_dir():
+                try:
+                    valid_paths.extend(
+                        sorted(
+                            (
+                                path
+                                for path in dropped_path.rglob("*")
+                                if path.is_file()
+                                and path.suffix.lower() == HOLO_SUFFIX
+                            ),
+                            key=lambda path: str(path).casefold(),
+                        )
+                    )
+                except OSError:
+                    continue
+            elif dropped_path.is_file() and dropped_path.suffix.lower() in {
                 HOLO_SUFFIX,
                 INPUT_LIST_SUFFIX,
             }:
-                valid_paths.append(candidate)
-        return valid_paths
+                valid_paths.append(dropped_path)
+
+        unique_paths: list[Path] = []
+        seen_paths: set[str] = set()
+        for path in valid_paths:
+            normalized_path = self._normalize_path(path)
+            path_key = os.path.normcase(str(normalized_path))
+            if path_key not in seen_paths:
+                seen_paths.add(path_key)
+                unique_paths.append(normalized_path)
+        return unique_paths
 
     def _count_holo_statuses(
         self,
