@@ -62,10 +62,11 @@ class RunFailure:
 class RunResult:
     outputs: tuple[Path, ...]
     failures: tuple[RunFailure, ...]
+    stopped: bool = False
 
     @property
     def succeeded(self) -> bool:
-        return not self.failures
+        return not self.failures and not self.stopped
 
     @property
     def last_output_path(self) -> Path | None:
@@ -148,19 +149,29 @@ def resolve_run_spec(
 def execute_run(
     spec: RunSpec,
     *,
+    on_file_start: Callable[[Path, int, int], None] | None = None,
+    on_pipeline_start: Callable[[str, int, int], None] | None = None,
     on_progress: Callable[[], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> RunResult:
-    """Execute a batch, writing each run directly to its final output folder."""
+    """Execute a batch, optionally stopping between input files."""
 
     Logger.log(f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
     Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
     outputs: list[Path] = []
     failures: list[RunFailure] = []
+    stopped = False
 
-    for request in spec.requests:
+    for request_index, request in enumerate(spec.requests):
         input_layout = request.input_layout
         final_manager = request.output_manager
         final_path = final_manager.path_for(OutputType.H5)
+        if on_file_start is not None:
+            on_file_start(
+                input_layout.holo_path,
+                request_index + 1,
+                len(spec.requests),
+            )
         Logger.log(f"[INPUT] HOLO -> {input_layout.holo_path}")
         Logger.log(f"[INPUT] DATA DIR -> {input_layout.root_dir}")
         Logger.log(f"[RESOLVED] HD -> {input_layout.hd_h5}")
@@ -183,18 +194,27 @@ def execute_run(
                 pipeline_options=spec.pipeline_options,
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
+                on_pipeline_start=on_pipeline_start,
                 on_progress=on_progress,
             )
         except Exception as exc:  # noqa: BLE001
             failure = RunFailure(input_layout.holo_path, str(exc))
             failures.append(failure)
             Logger.log_error(str(failure))
-            continue
+        else:
+            outputs.append(final_path)
+            Logger.log(f"Completed run for {input_layout.holo_path.name}: {final_path}")
 
-        outputs.append(final_path)
-        Logger.log(f"Completed run for {input_layout.holo_path.name}: {final_path}")
+        remaining_count = len(spec.requests) - request_index - 1
+        if remaining_count and should_stop is not None and should_stop():
+            stopped = True
+            Logger.log(
+                f"[STOP] Batch stopped after {input_layout.holo_path.name}; "
+                f"{remaining_count} input file(s) not started."
+            )
+            break
 
-    return RunResult(tuple(outputs), tuple(failures))
+    return RunResult(tuple(outputs), tuple(failures), stopped=stopped)
 
 
 def _resolve_pipeline_options(
