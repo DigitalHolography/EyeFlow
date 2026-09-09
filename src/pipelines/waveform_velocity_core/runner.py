@@ -77,32 +77,40 @@ def run_waveform_velocity_core(
 
     core_started = perf_counter()
     with velocity_scratch_h5(ctx) as scratch_h5:
-        Logger.log("Starting waveform velocity core context build...")
+        Logger.log("Starting waveform velocity core context build (scratch=RAM)...")
         segments_required = _segments_required(ctx)
+        velocity_options = ctx.options_for("waveform_velocity")
+        Logger.log(
+            "Waveform segment options: "
+            f"selected={tuple(sorted(velocity_options))}, "
+            f"segments_required={segments_required}, "
+            "segment_velocity_maps="
+            f"{'segment_velocity_maps' in velocity_options}."
+        )
         context = _build_waveform_velocity_core_context(
             ctx,
             scratch_h5,
             heartbeat_result(ctx),
             segments_required=segments_required,
         )
-    metrics = pack_retinal_velocity_outputs(context.velocity_analysis)
-    metrics.update(_pack_meta_outputs(context))
-    metrics.update(
-        pack_segmentation_outputs(
-            context.source_data,
-            context.artery_segment_result,
-            context.vein_segment_result,
+        metrics = pack_retinal_velocity_outputs(context.velocity_analysis)
+        metrics.update(_pack_meta_outputs(context))
+        metrics.update(
+            pack_segmentation_outputs(
+                context.source_data,
+                context.artery_segment_result,
+                context.vein_segment_result,
+            )
         )
-    )
-    ctx.state.set(WAVEFORM_CONTEXT_STATE, context)
+        ctx.state.set(WAVEFORM_CONTEXT_STATE, context)
 
-    if _per_beat_required(ctx):
-        with _logged_stage("shared per-beat velocity analysis"):
-            per_beat_result, velocity_outputs = run_velocity_per_beat_metrics(context)
-        ctx.state.set(VELOCITY_PER_BEAT_RESULT_STATE, per_beat_result)
-        ctx.state.set(VELOCITY_PER_BEAT_OUTPUTS_STATE, velocity_outputs)
-        if _pulse_pngs_required(ctx):
-            _export_pulse_pngs(ctx, context, per_beat_result)
+        if _per_beat_required(ctx):
+            with _logged_stage("shared per-beat velocity analysis"):
+                per_beat_result, velocity_outputs = run_velocity_per_beat_metrics(context)
+            ctx.state.set(VELOCITY_PER_BEAT_RESULT_STATE, per_beat_result)
+            ctx.state.set(VELOCITY_PER_BEAT_OUTPUTS_STATE, velocity_outputs)
+            if _pulse_pngs_required(ctx):
+                _export_pulse_pngs(ctx, context, per_beat_result)
 
     Logger.log(f"Completed waveform velocity core in {perf_counter() - core_started:.1f}s.")
     return metrics, context.attrs

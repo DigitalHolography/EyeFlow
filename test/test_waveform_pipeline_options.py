@@ -146,6 +146,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             {
                 "waveform_velocity": (
                     "velocity_profiles",
+                    "segment_velocity_maps",
                     "per_beat",
                     "quadrants",
                 )
@@ -168,6 +169,21 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "pack_cross_section_profile_outputs",
                 return_value={"profile": 3},
             ) as profiles,
+            patch.object(
+                velocity_runner,
+                "prepare_segment_velocity_maps_per_beat",
+                return_value=("artery_maps", "vein_maps"),
+            ) as prepare_maps,
+            patch.object(
+                velocity_runner,
+                "pack_segment_map_outputs",
+                return_value={"maps": 8},
+            ) as maps,
+            patch.object(
+                velocity_runner,
+                "pack_displacement_segment_map_outputs",
+                return_value={"displacement_maps": 9},
+            ) as displacement_maps,
             patch.object(
                 velocity_runner,
                 "pack_velocity_profile_fft_outputs",
@@ -201,6 +217,8 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "per_beat": 2,
                 "profile": 3,
                 "fft_profile": 7,
+                "maps": 8,
+                "displacement_maps": 9,
                 "displacement_magnitude": 5,
                 "displacement_profiles": 6,
                 "quadrants": 4,
@@ -216,8 +234,26 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         fft_profiles.assert_called_once_with(
             "artery",
             "vein",
-            (0, 5, 10),
-            index_base=0,
+            "artery_maps",
+            "vein_maps",
+        )
+        prepare_maps.assert_called_once_with(
+            "artery",
+            "vein",
+            (1, 6, 11),
+            index_base=1,
+        )
+        maps.assert_called_once_with(
+            "artery",
+            "vein",
+            "artery_maps",
+            "vein_maps",
+        )
+        displacement_maps.assert_called_once_with(
+            "artery",
+            "vein",
+            (1, 6, 11),
+            index_base=1,
         )
         displacement_magnitude.assert_called_once_with(
             "artery",
@@ -312,6 +348,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as maps,
             patch.object(
                 velocity_runner,
+                "prepare_segment_velocity_maps_per_beat",
+                return_value=("artery_maps", "vein_maps"),
+            ) as prepare_maps,
+            patch.object(
+                velocity_runner,
                 "export_segment_velocity_map_avis",
                 return_value=["artery.avi", "vein.avi"],
             ) as avis,
@@ -321,6 +362,12 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertEqual({"base": 1, "maps": 3}, outputs)
         segment_outputs.assert_not_called()
         maps.assert_called_once_with(
+            "artery",
+            "vein",
+            "artery_maps",
+            "vein_maps",
+        )
+        prepare_maps.assert_called_once_with(
             "artery",
             "vein",
             (1, 6, 11),

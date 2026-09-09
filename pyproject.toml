@@ -27,6 +27,7 @@ dependencies = [
     "opencv-python>=5.0.0.93",
     "tqdm>=4.70.0",
     "ipdb>=0.13.13",
+    "cupy-cuda13x>=14.2.0",
 ]
 
 [project.optional-dependencies]

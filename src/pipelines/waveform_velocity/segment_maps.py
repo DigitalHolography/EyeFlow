@@ -23,28 +23,63 @@ _DISPLACEMENT_MAP_ROOT = "Processing/DisplacementMapPerSegment"
 def pack_segment_map_outputs(
     artery_segments,
     vein_segments,
-    cycle_boundary_indexes,
+    artery_velocity_maps_per_beat: np.ndarray | None,
+    vein_velocity_maps_per_beat: np.ndarray | None,
     output_paths: EyeFlowOutputPaths | str | None = None,
-    *,
-    index_base: int = 0,
 ) -> dict[str, object]:
-    """Pack rotated maps and masks for artery and vein segments."""
+    """Pack prepared per-beat maps and masks for artery and vein segments."""
     schema = _resolve_output_paths(output_paths)
     outputs = _pack_vessel_segment_maps(
         artery_segments,
+        artery_velocity_maps_per_beat,
         schema.artery_segments,
-        cycle_boundary_indexes,
-        index_base=index_base,
     )
     outputs.update(
         _pack_vessel_segment_maps(
             vein_segments,
+            vein_velocity_maps_per_beat,
             schema.vein_segments,
-            cycle_boundary_indexes,
-            index_base=index_base,
         )
     )
     return outputs
+
+
+def prepare_segment_velocity_maps_per_beat(
+    artery_segments,
+    vein_segments,
+    cycle_boundary_indexes,
+    *,
+    index_base: int = 0,
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """Interpolate each vessel's maps once for reuse by output products."""
+
+    return (
+        _prepare_vessel_velocity_maps_per_beat(
+            artery_segments,
+            cycle_boundary_indexes,
+            index_base=index_base,
+        ),
+        _prepare_vessel_velocity_maps_per_beat(
+            vein_segments,
+            cycle_boundary_indexes,
+            index_base=index_base,
+        ),
+    )
+
+
+def _prepare_vessel_velocity_maps_per_beat(
+    segments,
+    cycle_boundary_indexes,
+    *,
+    index_base: int,
+) -> np.ndarray | None:
+    if segments is None:
+        return None
+    return interpolate_velocity_maps_per_beat(
+        segments.velocity_maps_per_segment,
+        cycle_boundary_indexes,
+        index_base=index_base,
+    )
 
 
 def pack_displacement_segment_map_outputs(
@@ -207,21 +242,40 @@ def _segment_map_worker_count(segment_count: int) -> int:
 
 def _pack_vessel_segment_maps(
     segments,
+    velocity_maps_per_beat: np.ndarray | None,
     paths,
-    cycle_boundary_indexes,
-    *,
-    index_base: int,
 ) -> dict[str, object]:
     if segments is None:
+        if velocity_maps_per_beat is not None:
+            raise ValueError(
+                "velocity_maps_per_beat must be None when segments is None."
+            )
         return {}
 
     outputs: dict[str, object] = {}
     if paths.velocity_map_per_segment is not None:
-        maps_per_beat = interpolate_velocity_maps_per_beat(
-            segments.velocity_maps_per_segment,
-            cycle_boundary_indexes,
-            index_base=index_base,
+        if velocity_maps_per_beat is None:
+            raise ValueError(
+                "velocity_maps_per_beat is required when map output is enabled."
+            )
+        maps_per_beat = np.asarray(velocity_maps_per_beat, dtype=np.float32)
+        if maps_per_beat.ndim != 6:
+            raise ValueError(
+                "velocity_maps_per_beat must have shape "
+                "(x, y, time, beat, branch, radius)."
+            )
+        masks = np.asarray(segments.segment_masks, dtype=bool)
+        expected_mask_shape = (
+            maps_per_beat.shape[5],
+            maps_per_beat.shape[4],
+            maps_per_beat.shape[1],
+            maps_per_beat.shape[0],
         )
+        if masks.shape != expected_mask_shape:
+            raise ValueError(
+                "segment_masks must have shape (radius, branch, y, x) "
+                "matching velocity_maps_per_beat."
+            )
         outputs[paths.velocity_map_per_segment] = DatasetValue(
             data=maps_per_beat,
             attrs={

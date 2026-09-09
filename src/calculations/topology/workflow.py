@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
+from time import perf_counter
 
 import numpy as np
+
+from utils.logger import Logger
 
 from .cache import TopologyCacheKey, topology_cache_key
 from .geometry import SegmentRingSettings
@@ -159,22 +162,48 @@ def prepare_segments(
 ) -> PreparedSegments:
     """Extract, uniformly interpolate, and rotate one map's segment arrays."""
 
+    total_started = perf_counter()
+    Logger.log(
+        "Starting topology segment preparation: "
+        f"source_shape={tuple(int(size) for size in data_map.shape)}, "
+        f"source_type={type(data_map).__name__}."
+    )
+    started = perf_counter()
     extracted = extract_segments(
         data_map,
         prepared_topology.topology,
         spatial_axes=spatial_axes,
     )
+    Logger.log(
+        "Completed segment extraction in "
+        f"{perf_counter() - started:.2f}s; {_array_summary(extracted)}."
+    )
+    started = perf_counter()
     interpolated = interpolate_segments(
         extracted,
         prepared_topology.interpolated_masks.shape[-1],
     )
-    return PreparedSegments(
-        interpolated=interpolated,
-        rotated=rotate_segments(
-            interpolated,
-            prepared_topology.rotation_degrees,
-        ),
+    Logger.log(
+        "Completed segment interpolation in "
+        f"{perf_counter() - started:.2f}s; {_array_summary(interpolated)}."
     )
+    started = perf_counter()
+    rotated = rotate_segments(
+        interpolated,
+        prepared_topology.rotation_degrees,
+    )
+    Logger.log(
+        "Completed segment rotation in "
+        f"{perf_counter() - started:.2f}s; {_array_summary(rotated)}."
+    )
+    prepared = PreparedSegments(
+        interpolated=interpolated,
+        rotated=rotated,
+    )
+    Logger.log(
+        f"Completed topology segment preparation in {perf_counter() - total_started:.2f}s."
+    )
+    return prepared
 
 
 def _cached_topology(
@@ -267,6 +296,7 @@ def _shared_window_side(
                     continue
                 widths.append(int(x.max() - x.min() + 1))
                 heights.append(int(y.max() - y.min() + 1))
+
     if not widths:
         return 0
 
@@ -274,3 +304,11 @@ def _shared_window_side(
     height = int(np.quantile(heights, percentile, method="higher"))
     side = max(width, height)
     return side if side % 2 == 1 else side + 1
+
+
+def _array_summary(values: np.ndarray) -> str:
+    array = np.asarray(values)
+    return (
+        f"shape={array.shape}, dtype={array.dtype}, "
+        f"allocated={array.nbytes / (1024 ** 3):.2f} GiB"
+    )

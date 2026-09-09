@@ -22,6 +22,7 @@ from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
     _segment_map_worker_count,
     interpolate_velocity_maps_per_beat,
     pack_segment_map_outputs,
+    prepare_segment_velocity_maps_per_beat,
 )
 
 
@@ -100,10 +101,16 @@ class SegmentMapOutputTests(unittest.TestCase):
     def test_h5_outputs_have_requested_paths_shapes_and_types(self) -> None:
         artery = _segments(radius_count=2, branch_count=1)
         vein = _segments(radius_count=2, branch_count=0)
-        metrics = pack_segment_map_outputs(
+        artery_maps, vein_maps = prepare_segment_velocity_maps_per_beat(
             artery,
             vein,
             np.asarray([0, 2, 5], dtype=np.int32),
+        )
+        metrics = pack_segment_map_outputs(
+            artery,
+            vein,
+            artery_maps,
+            vein_maps,
         )
         schema = EyeFlowOutputPaths.active()
 

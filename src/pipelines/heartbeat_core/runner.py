@@ -36,7 +36,7 @@ def run_heartbeat_core(ctx) -> HeartbeatResult:
     """Compute heartbeat boundaries once and place them in run-scoped state."""
 
     started = perf_counter()
-    Logger.log("Starting shared heartbeat analysis...")
+    Logger.log("Starting shared heartbeat analysis (scratch=RAM)...")
     inputs = load_heartbeat_inputs(ctx)
     with heartbeat_scratch_h5(ctx) as scratch_h5:
         velocity = run_chunked_velocity_estimator(
