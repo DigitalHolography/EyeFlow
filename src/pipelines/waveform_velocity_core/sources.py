@@ -12,7 +12,6 @@ from input_output.schema import DopplerViewSource, HolodopplerSource, Holodopple
 
 from .constants import (
     CROSS_SECTION_HYDRODYNAMIC_DIAMETERS,
-    CROSS_SECTION_ROTATE_FROM_MASK,
     CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT,
     CROSS_SECTION_VELOCITY_PROFILE_THRESHOLD,
     DEFAULT_PIXEL_SIZE_MM,
@@ -26,7 +25,7 @@ if TYPE_CHECKING:
 
 MOMENT_AXES = ("frame", "y", "x")
 MASK_AXES = ("y", "x")
-DOPPLERVIEW_BEAT_INDEX_BASE = 0
+BEAT_INDEX_BASE = 0
 
 
 @dataclass(frozen=True)
@@ -45,17 +44,7 @@ class WaveformVelocitySourceData:
     timing: HolodopplerTiming
     local_background_dist: int
     cross_section_settings: CrossSectionSignalSettings
-    velocity_analysis: dict[str, object] | None
     provenance: dict[str, object]
-
-    def dopplerview_cache(self) -> dict[str, object]:
-        return {
-            "moment0": self.moment0,
-            "moment2": self.moment2,
-            "retinal_artery_mask": self.retinal_artery_mask,
-            "retinal_vein_mask": self.retinal_vein_mask,
-            "optic_disc_center": self.optic_disc_center,
-        }
 
 
 @dataclass(frozen=True)
@@ -125,7 +114,6 @@ class WaveformVelocitySources:
                 optic_disc_width,
                 optic_disc_height,
             ),
-            velocity_analysis=None,
             provenance=_source_provenance(
                 self.hd,
                 self.dv,
@@ -133,7 +121,6 @@ class WaveformVelocitySources:
                 optic_disc_mask,
                 optic_disc_center,
                 spatial_axes_swapped=spatial_axes_swapped,
-                dopplerview_analysis_available=False,
             ),
         )
 
@@ -141,7 +128,6 @@ class WaveformVelocitySources:
         return CrossSectionSignalSettings(
             hydrodynamic_diameters=CROSS_SECTION_HYDRODYNAMIC_DIAMETERS,
             velocity_profile_threshold=CROSS_SECTION_VELOCITY_PROFILE_THRESHOLD,
-            rotate_from_mask=CROSS_SECTION_ROTATE_FROM_MASK,
             pixel_size_mm=self._pixel_size(optic_disc_width, optic_disc_height),
             submask_size_percentile_kept=(
                 CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT
@@ -171,7 +157,6 @@ def _source_provenance(
     optic_disc_center,
     *,
     spatial_axes_swapped: bool,
-    dopplerview_analysis_available: bool,
 ) -> dict[str, object]:
     return {
         "hd_source_file": str(hd.filename or ""),
@@ -179,9 +164,8 @@ def _source_provenance(
         "has_retinal_labeled_vessels": labeled_vessels is not None,
         "has_optic_disc_mask": optic_disc_mask is not None,
         "has_optic_disc_center": optic_disc_center is not None,
-        "dopplerview_analysis_available": dopplerview_analysis_available,
         "dv_spatial_axes_swapped_to_match_hd": spatial_axes_swapped,
-        "beat_index_base": DOPPLERVIEW_BEAT_INDEX_BASE,
+        "beat_index_base": BEAT_INDEX_BASE,
         "moment_axes": list(MOMENT_AXES),
         "mask_axes": list(MASK_AXES),
     }

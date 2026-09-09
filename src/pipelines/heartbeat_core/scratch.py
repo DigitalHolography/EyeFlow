@@ -1,4 +1,4 @@
-"""Temporary HDF5 workspace for retinal velocity intermediates."""
+"""Temporary HDF5 workspace for large waveform intermediates."""
 
 from __future__ import annotations
 
@@ -9,9 +9,13 @@ from pathlib import Path
 
 import h5py
 
+SCRATCH_CHUNK_CACHE_BYTES = 128 * 1024 * 1024
+
 
 @contextmanager
-def velocity_scratch_h5(ctx):
+def heartbeat_scratch_h5(ctx):
+    """Yield a scratch H5 and always remove its exact temporary path."""
+
     output_filename = getattr(ctx.runtime.work_h5, "filename", None)
     preferred_dir = None
     if output_filename:
@@ -19,19 +23,22 @@ def velocity_scratch_h5(ctx):
         if candidate.is_dir():
             preferred_dir = candidate
     descriptor, filename = tempfile.mkstemp(
-        prefix=".eyeflow-velocity-",
+        prefix=".eyeflow-heartbeat-",
         suffix=".scratch.h5",
         dir=preferred_dir,
     )
     os.close(descriptor)
     path = Path(filename)
     try:
-        with h5py.File(path, "w", rdcc_nbytes=128 * 1024 * 1024) as scratch:
+        with h5py.File(
+            path,
+            "w",
+            rdcc_nbytes=SCRATCH_CHUNK_CACHE_BYTES,
+            rdcc_nslots=1_000_003,
+            rdcc_w0=0.75,
+        ) as scratch:
             scratch.attrs["temporary"] = True
-            scratch.attrs["purpose"] = "EyeFlow retinal velocity intermediates"
+            scratch.attrs["purpose"] = "EyeFlow heartbeat intermediates"
             yield scratch
     finally:
         path.unlink(missing_ok=True)
-
-
-__all__ = ["velocity_scratch_h5"]

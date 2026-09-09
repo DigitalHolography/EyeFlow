@@ -1,6 +1,6 @@
 """Pure EyeFlow scientific calculations."""
 
-from .dopplerview_analysis import (
+from .retinal_velocity import (
     ArterialWaveformAnalysisStep,
 )
 

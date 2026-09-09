@@ -9,17 +9,23 @@ from scipy.signal import find_peaks
 from calculations.blood_flow_velocity.cross_section.profile_processing import (
     interpolate_velocity_profiles_per_beat,
 )
-from calculations.topology import mean_profiles, profile_deviation_power
+from calculations.math import nanmean_float32
+from calculations.topology import (
+    dilate_segment_masks,
+    mean_profiles,
+    profile_deviation_power,
+    transverse_profiles,
+)
 from calculations.topology.profiles import fit_inverse_parabola_profiles_with_roots
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 
-from .displacement_gaussian import fit_two_gaussian_profiles
+from .flow_asymmetry import pack_flow_asymmetry_outputs
+from .segment_maps import interpolate_velocity_maps_per_beat
 
 
 _DISPLACEMENT_PROFILE_ROOT = "Processing/DisplacementProfiles"
-_DISPLACEMENT_METRICS_ROOT = "Processing/DisplacementMetrics"
-_BLOOD_VOLUME_RATE_ROOT = "Processing/BloodVolumeRate"
+_PROFILE_MASK_DILATION_ITERATIONS = 20
 _DISPLACEMENT_PROFILE_FIELDS = (
     ("X", "x_sum_displacement_profile", "local_x"),
     ("Y", "y_sum_displacement_profile", "local_y"),
@@ -53,169 +59,124 @@ def pack_cross_section_profile_outputs(
     return metrics
 
 
-def pack_blood_volume_rate_outputs(
-    velocity_profile_outputs: dict[str, object],
-    spatial_gradient_outputs: dict[str, object],
+def pack_velocity_profile_fft_outputs(
+    artery_segments,
+    vein_segments,
+    cycle_boundary_indexes,
     output_paths: EyeFlowOutputPaths | str | None = None,
-) -> dict[str, DatasetValue]:
-    """Sum masked transverse velocity profiles within detected vessel edges."""
+    *,
+    index_base: int = 0,
+) -> dict[str, object]:
+    """Pack transverse profiles of per-pixel velocity FFT magnitudes."""
 
     schema = _resolve_output_paths(output_paths)
-    vessel_sources = {
-        "Artery": (
-            schema.artery_velocity_profiles.transverse_velocity_profile_masked,
-            (
-                "Processing/SpatialGradientMetrics/Artery/Transverse/"
-                "Masked/tbkr/left_edge_index"
-            ),
-            (
-                "Processing/SpatialGradientMetrics/Artery/Transverse/"
-                "Masked/tbkr/right_edge_index"
-            ),
-        ),
-        "Vein": (
-            schema.vein_velocity_profiles.transverse_velocity_profile_masked,
-            (
-                "Processing/SpatialGradientMetrics/Vein/Transverse/"
-                "Masked/tbkr/left_edge_index"
-            ),
-            (
-                "Processing/SpatialGradientMetrics/Vein/Transverse/"
-                "Masked/tbkr/right_edge_index"
-            ),
-        ),
-    }
-    outputs: dict[str, DatasetValue] = {}
-    for vessel_name, (profile_path, left_path, right_path) in vessel_sources.items():
-        profile = velocity_profile_outputs[profile_path]
-        left_edge = spatial_gradient_outputs[left_path]
-        right_edge = spatial_gradient_outputs[right_path]
-        output_path = (
-            f"{_BLOOD_VOLUME_RATE_ROOT}/{vessel_name}/dynamicEdges/value"
+    outputs = _pack_vessel_velocity_fft_profiles(
+        schema.artery_velocity_profiles,
+        artery_segments,
+        cycle_boundary_indexes,
+        index_base=index_base,
+    )
+    outputs.update(
+        _pack_vessel_velocity_fft_profiles(
+            schema.vein_velocity_profiles,
+            vein_segments,
+            cycle_boundary_indexes,
+            index_base=index_base,
         )
-        outputs[output_path] = _blood_volume_rate_dataset(
-            profile,
-            left_edge,
-            right_edge,
-            profile_path=profile_path,
-            left_edge_path=left_path,
-            right_edge_path=right_path,
-        )
-        outputs[
-            f"{_BLOOD_VOLUME_RATE_ROOT}/{vessel_name}/staticEdges/value"
-        ] = _blood_volume_rate_dataset(
-            profile,
-            left_edge,
-            right_edge,
-            profile_path=profile_path,
-            left_edge_path=left_path,
-            right_edge_path=right_path,
-            static_edges=True,
-        )
+    )
     return outputs
 
 
-def _blood_volume_rate_dataset(
-    profile: DatasetValue,
-    left_edge: DatasetValue,
-    right_edge: DatasetValue,
+def velocity_fft_transverse_profiles(
+    velocity_maps: np.ndarray,
+    segment_masks: np.ndarray,
+    cycle_boundary_indexes,
     *,
-    profile_path: str,
-    left_edge_path: str,
-    right_edge_path: str,
-    static_edges: bool = False,
-) -> DatasetValue:
-    values = np.asarray(profile.data, dtype=np.float32)
-    left = np.asarray(left_edge.data, dtype=np.float32)
-    right = np.asarray(right_edge.data, dtype=np.float32)
-    if values.ndim != 5:
-        raise ValueError("velocity profile must have dimensions (x, t, b, k, r).")
-    if left.shape != values.shape[1:] or right.shape != values.shape[1:]:
+    index_base: int = 0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return FFT profiles shaped ``(x, frequency, beat, branch, radius)``.
+
+    The two returned arrays contain the unmasked and dilated-mask projections.
+    """
+
+    maps = np.asarray(velocity_maps, dtype=np.float32)
+    masks = np.asarray(segment_masks, dtype=bool)
+    if maps.ndim != 5:
         raise ValueError(
-            "spatial-gradient edges must match velocity profile dimensions (t, b, k, r)."
+            "velocity_maps must have shape (radius, branch, frame, y, x)."
         )
-    if static_edges:
-        left = np.broadcast_to(
-            nanmean_float32(left, axis=(0, 1)),
-            left.shape,
-        )
-        right = np.broadcast_to(
-            nanmean_float32(right, axis=(0, 1)),
-            right.shape,
+    if masks.shape != (*maps.shape[:2], *maps.shape[-2:]):
+        raise ValueError(
+            "segment_masks must have shape (radius, branch, y, x) matching "
+            "velocity_maps."
         )
 
-    rate = _integrate_profiles_between_edges(values, left, right)
-    profile_attrs = dict(profile.attrs or {})
-    profile_unit = str(profile_attrs.get("unit", "mm/s"))
-    return DatasetValue(
-        rate,
-        {
-            "unit": f"{profile_unit}*pixel",
-            "dimDesc": ["time", "beat", "branch", "radius"],
-            "definition": (
-                "piecewise-linear trapezoidal integral of the masked transverse "
-                "velocity profile between the exact "
-                + (
-                    "time-and-beat-mean spatial-gradient edge indexes"
-                    if static_edges
-                    else "spatial-gradient edge indexes"
-                )
-            ),
-            "source_profile": f"/{profile_path.lstrip('/')}",
-            "source_left_edge_index": f"/{left_edge_path.lstrip('/')}",
-            "source_right_edge_index": f"/{right_edge_path.lstrip('/')}",
-            "edge_interpolation": "linear",
-            "integration_method": "trapezoidal",
-            "integration_coordinate": "profile_index_pixels",
-            "edge_temporal_reduction": (
-                "mean_over_time_and_beats" if static_edges else "none"
-            ),
-        },
-        h5_options=_profile_h5_options(rate.shape),
+    masks = dilate_segment_masks(
+        masks,
+        iterations=_PROFILE_MASK_DILATION_ITERATIONS,
     )
-
-
-def _integrate_profiles_between_edges(
-    profiles: np.ndarray,
-    left_edge: np.ndarray,
-    right_edge: np.ndarray,
-) -> np.ndarray:
-    """Integrate piecewise-linear profiles at exact fractional edge indexes."""
-
-    values = np.asarray(profiles, dtype=np.float32)
-    left = np.asarray(left_edge, dtype=np.float32)
-    right = np.asarray(right_edge, dtype=np.float32)
-    integral = np.zeros(left.shape, dtype=np.float32)
-    has_finite_interval = np.zeros(left.shape, dtype=bool)
-    valid_edges = np.isfinite(left) & np.isfinite(right) & (left <= right)
-
-    for index in range(max(values.shape[0] - 1, 0)):
-        interval_start = np.maximum(left, np.float32(index))
-        interval_end = np.minimum(right, np.float32(index + 1))
-        width = interval_end - interval_start
-        start_value = values[index]
-        end_value = values[index + 1]
-        active = (
-            valid_edges
-            & (width > 0.0)
-            & np.isfinite(start_value)
-            & np.isfinite(end_value)
+    radius_count, branch_count = maps.shape[:2]
+    if radius_count == 0 or branch_count == 0:
+        maps_per_beat = interpolate_velocity_maps_per_beat(
+            maps,
+            cycle_boundary_indexes,
+            index_base=index_base,
         )
-        start_fraction = interval_start - np.float32(index)
-        end_fraction = interval_end - np.float32(index)
-        slope = end_value - start_value
-        interpolated_start = start_value + slope * start_fraction
-        interpolated_end = start_value + slope * end_fraction
-        contribution = (
-            np.float32(0.5)
-            * (interpolated_start + interpolated_end)
-            * width
+        magnitude = np.abs(np.fft.fft(maps_per_beat, axis=2)).astype(
+            np.float32,
+            copy=False,
         )
-        integral += np.where(active, contribution, np.float32(0.0))
-        has_finite_interval |= active
+        profile = nanmean_float32(magnitude, axis=1)
+        return profile, profile.copy()
 
-    integral[~has_finite_interval] = np.nan
-    return integral
+    unmasked = None
+    masked = None
+    for radius_index in range(radius_count):
+        for branch_index in range(branch_count):
+            maps_per_beat = interpolate_velocity_maps_per_beat(
+                maps[
+                    radius_index : radius_index + 1,
+                    branch_index : branch_index + 1,
+                ],
+                cycle_boundary_indexes,
+                index_base=index_base,
+            )[..., 0, 0]
+            magnitude = np.abs(np.fft.fft(maps_per_beat, axis=2)).astype(
+                np.float32,
+                copy=False,
+            )
+            oriented_magnitude = magnitude.transpose(2, 3, 1, 0)[
+                None,
+                None,
+            ]
+            local_unmasked = transverse_profiles(oriented_magnitude)[0, 0]
+            local_masked = transverse_profiles(
+                oriented_magnitude,
+                masks[radius_index, branch_index][None, None],
+            )[0, 0]
+            if unmasked is None:
+                output_shape = (
+                    magnitude.shape[0],
+                    magnitude.shape[2],
+                    magnitude.shape[3],
+                    branch_count,
+                    radius_count,
+                )
+                unmasked = np.full(output_shape, np.nan, dtype=np.float32)
+                masked = np.full(output_shape, np.nan, dtype=np.float32)
+            unmasked[..., branch_index, radius_index] = local_unmasked.transpose(
+                2,
+                0,
+                1,
+            )
+            masked[..., branch_index, radius_index] = local_masked.transpose(
+                2,
+                0,
+                1,
+            )
+
+    assert unmasked is not None and masked is not None
+    return unmasked, masked
 
 
 def pack_displacement_profile_outputs(
@@ -711,6 +672,62 @@ def _pack_vessel_profiles(
             }
         )
     return outputs
+
+
+def _pack_vessel_velocity_fft_profiles(
+    paths: VelocityProfileOutputPaths,
+    segments,
+    cycle_boundary_indexes,
+    *,
+    index_base: int,
+) -> dict[str, object]:
+    unmasked_path = paths.transverse_velocity_profile_fft_unmasked
+    masked_path = paths.transverse_velocity_profile_fft_masked
+    if segments is None or unmasked_path is None or masked_path is None:
+        return {}
+
+    unmasked, masked = velocity_fft_transverse_profiles(
+        segments.velocity_maps_per_segment,
+        segments.segment_masks,
+        cycle_boundary_indexes,
+        index_base=index_base,
+    )
+    shared_attrs = {
+        "unit": "a.u.",
+        "dimDesc": ["x", "frequency", "beat", "branch", "radius"],
+        "source_dimensions": [
+            "x",
+            "y",
+            "time",
+            "beat",
+            "branch",
+            "radius",
+        ],
+        "temporal_transform": "absolute_value_of_fft_over_time",
+        "fft_spectrum": "full",
+        "fft_normalization": "none",
+        "spatial_reduction": "nanmean_over_y",
+    }
+    return {
+        unmasked_path: DatasetValue(
+            data=unmasked,
+            attrs={
+                **shared_attrs,
+                "mask_applied": False,
+                "mask_dilation_iterations": 0,
+            },
+            h5_options=_profile_h5_options(unmasked.shape),
+        ),
+        masked_path: DatasetValue(
+            data=masked,
+            attrs={
+                **shared_attrs,
+                "mask_applied": True,
+                "mask_dilation_iterations": _PROFILE_MASK_DILATION_ITERATIONS,
+            },
+            h5_options=_profile_h5_options(masked.shape),
+        ),
+    }
 
 
 def _profile_fit_root_dataset(

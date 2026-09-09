@@ -36,8 +36,9 @@ def fit_inverse_parabola_profiles(
     participate in a fit. Profiles with fewer than three usable samples, a
     rank-deficient fit, or a non-negative quadratic coefficient remain NaN.
 
-    The fitted quadratic is evaluated at every supplied X value and the
-    returned array has the same shape as ``profiles``.
+    The fitted quadratic is evaluated only at usable source samples. The
+    returned array has the same shape as ``profiles``, with NaN padding
+    preserved outside each profile's finite support.
     """
 
     fitted, _ = fit_inverse_parabola_profiles_with_roots(
@@ -53,9 +54,10 @@ def fit_inverse_parabola_profiles_with_roots(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Fit inverse parabolas and return their ordered X-axis roots.
 
-    The fitted profiles have the same shape as ``profiles``. The roots have
-    shape ``(*profiles.shape[:-1], 2)`` and are ordered from lowest to highest
-    X value. Fits without real roots retain NaN root values.
+    The fitted profiles have the same shape as ``profiles`` and remain NaN
+    outside each source profile's finite support. The roots have shape
+    ``(*profiles.shape[:-1], 2)`` and are ordered from lowest to highest X
+    value. Fits without real roots retain NaN root values.
     """
 
     values = np.asarray(profiles, dtype=np.float32)
@@ -99,8 +101,8 @@ def fit_inverse_parabola_profiles_with_roots(
         if coefficients[0] >= 0.0:
             continue
 
-        evaluation_x = x[finite_x]
-        flat_fitted[profile_index, finite_x] = (
+        evaluation_x = x[fit_samples]
+        flat_fitted[profile_index, fit_samples] = (
             coefficients[0] * evaluation_x * evaluation_x
             + coefficients[1] * evaluation_x
             + coefficients[2]

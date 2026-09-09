@@ -5,6 +5,11 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage as ndi
 
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
 from calculations.compute_backend import optional_cupy_backend
 
 from .geometry import image_half_diagonal, optic_disc_center_yx
@@ -98,6 +103,35 @@ def interpolate_segment_masks(
         prefilter=False,
         grid_mode=True,
     ) >= np.float32(0.5)
+
+
+def dilate_segment_masks(
+    segment_masks: np.ndarray,
+    *,
+    iterations: int,
+) -> np.ndarray:
+    """Expand masks along their final two spatial axes."""
+
+    masks = np.asarray(segment_masks, dtype=bool)
+    if masks.ndim < 2:
+        raise ValueError("segment_masks must end with spatial (y, x) axes.")
+    if iterations < 0:
+        raise ValueError("iterations must be non-negative.")
+    if iterations == 0:
+        return masks.copy()
+    if cv2 is None:
+        raise RuntimeError("OpenCV is required to dilate segment masks.")
+
+    flat_masks = masks.reshape((-1, *masks.shape[-2:]))
+    dilated = np.empty_like(flat_masks)
+    kernel = np.ones((3, 3), dtype=np.uint8)
+    for mask_index, mask in enumerate(flat_masks):
+        dilated[mask_index] = cv2.dilate(
+            mask.astype(np.uint8),
+            kernel,
+            iterations=iterations,
+        ).astype(bool)
+    return dilated.reshape(masks.shape)
 
 
 def rotate_segments(

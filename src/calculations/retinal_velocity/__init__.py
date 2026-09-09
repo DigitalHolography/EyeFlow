@@ -1,4 +1,4 @@
-"""DopplerView analysis calculations used by EyeFlow pipelines."""
+"""Retinal vessel-velocity calculations used by EyeFlow pipelines."""
 
 from .arterial_waveform_analysis import (
     ArterialWaveformAnalysisStep,

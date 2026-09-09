@@ -260,23 +260,9 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as profiles,
             patch.object(
                 velocity_runner,
-                "extract_spatial_gradient_segments",
-                return_value=("gradient_artery", "gradient_vein"),
-            ),
-            patch.object(
-                velocity_runner,
-                "pack_spatial_gradient_profile_outputs",
-                return_value={"gradient_profiles": 7},
-            ) as gradient_profiles,
-            patch.object(
-                velocity_runner,
-                "_validate_profile_segment_alignment",
-            ),
-            patch.object(
-                velocity_runner,
-                "pack_blood_volume_rate_outputs",
-                return_value={"blood_volume_rate": 8},
-            ) as blood_volume_rate,
+                "pack_velocity_profile_fft_outputs",
+                return_value={"fft_profile": 7},
+            ) as fft_profiles,
             patch.object(
                 velocity_runner,
                 "pack_displacement_magnitude_outputs",
@@ -304,6 +290,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "base": 1,
                 "per_beat": 2,
                 "profile": 3,
+                "fft_profile": 7,
                 "displacement_magnitude": 5,
                 "displacement_profiles": 6,
                 "gradient_profiles": 7,
@@ -318,15 +305,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             (0, 5, 10),
             index_base=0,
         )
-        gradient_profiles.assert_called_once_with(
-            "gradient_artery",
-            "gradient_vein",
+        fft_profiles.assert_called_once_with(
+            "artery",
+            "vein",
             (0, 5, 10),
             index_base=0,
-        )
-        blood_volume_rate.assert_called_once_with(
-            {"profile": 3},
-            {"gradient_profiles": 7},
         )
         displacement_magnitude.assert_called_once_with(
             "artery",

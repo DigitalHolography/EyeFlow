@@ -1,4 +1,4 @@
-from calculations.dopplerview_analysis import (
+from calculations.retinal_velocity import (
     ArterialWaveformAnalysisStep,
     run_chunked_velocity_estimator,
 )
@@ -8,12 +8,13 @@ from .constants import (
     LEGACY_FILTER_VELOCITY_SIGNALS,
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
-from .models import DopplerViewStepContext
+from .models import VelocityAnalysisContext
 
 
-def run_dopplerview_analysis(
+def run_retinal_velocity_analysis(
     source_data,
     scratch_h5,
+    heartbeat_analysis,
     *,
     retain_velocity_video: bool = True,
 ) -> dict[str, object]:
@@ -30,13 +31,13 @@ def run_dopplerview_analysis(
         scratch_h5=scratch_h5,
         retain_velocity_video=retain_velocity_video,
     )
-    step_context = DopplerViewStepContext(
+    step_context = VelocityAnalysisContext(
         cache=cache,
         holodoppler_config={
             "sampling_freq": timing.sampling_freq,
             "batch_stride": timing.batch_stride,
         },
-        dopplerview_config={
+        analysis_config={
             "VelocityEstimation": {
                 "LocalBackgroundDist": source_data.local_background_dist,
             },
@@ -46,5 +47,5 @@ def run_dopplerview_analysis(
             },
         },
     )
-    ArterialWaveformAnalysisStep().run(step_context)
+    ArterialWaveformAnalysisStep().run(step_context, heartbeat_analysis)
     return step_context.cache

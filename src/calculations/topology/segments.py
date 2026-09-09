@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import ndimage as ndi
 
-from .branch_identity import label_vessel_branches
+from .branch_identity import BranchIdentityResult, label_vessel_branches
 from .geometry import SegmentRingSettings, section_masks
 
 
@@ -30,6 +30,7 @@ class SegmentTopology:
     segment_centers_xy: np.ndarray
     window_bounds_xyxy: np.ndarray
     window_side_pixels: int
+    branch_identity: BranchIdentityResult | None = None
 
     @property
     def valid_segments(self) -> np.ndarray:
@@ -180,6 +181,7 @@ def _build_segment_topology_from_center(
         segment_centers_xy=centers,
         window_bounds_xyxy=bounds,
         window_side_pixels=side,
+        branch_identity=branches,
     )
 
 

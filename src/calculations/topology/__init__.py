@@ -1,5 +1,12 @@
 """General-purpose topology calculations for retinal maps."""
 
+from .cache import (
+    TOPOLOGY_CACHE_STATE,
+    TopologyCacheKey,
+    run_topology_cache,
+    topology_cache_key,
+    topology_source_id,
+)
 from .branch_identity import (
     BranchIdentityResult,
     BranchIdentityStages,
@@ -10,6 +17,7 @@ from .geometry import (
     annulus_mask,
     image_half_diagonal,
     optic_disc_center_yx,
+    segment_ring_settings,
     ring_masks,
     section_masks,
 )
@@ -22,6 +30,7 @@ from .profiles import (
 from .segments import SegmentTopology, build_segment_topology, extract_segments
 from .transforms import (
     determine_segment_rotations,
+    dilate_segment_masks,
     interpolate_segment_masks,
     interpolate_segments,
     rotate_segment_masks,
@@ -31,6 +40,7 @@ from .workflow import (
     PreparedSegments,
     PreparedTopology,
     prepare_segments,
+    prepare_topologies,
     prepare_topology,
 )
 
@@ -41,23 +51,31 @@ __all__ = [
     "PreparedTopology",
     "SegmentRingSettings",
     "SegmentTopology",
+    "TOPOLOGY_CACHE_STATE",
+    "TopologyCacheKey",
     "annulus_mask",
     "build_segment_topology",
     "determine_segment_rotations",
+    "dilate_segment_masks",
     "extract_segments",
     "image_half_diagonal",
     "interpolate_segment_masks",
     "interpolate_segments",
     "label_vessel_branches",
+    "segment_ring_settings",
     "longitudinal_profiles",
     "mean_profiles",
     "optic_disc_center_yx",
     "prepare_segments",
+    "prepare_topologies",
     "prepare_topology",
     "profile_deviation_power",
     "ring_masks",
     "rotate_segment_masks",
     "rotate_segments",
+    "run_topology_cache",
     "section_masks",
+    "topology_cache_key",
+    "topology_source_id",
     "transverse_profiles",
 ]
