@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from time import perf_counter
 import numpy as np
 from scipy import ndimage as ndi
 
@@ -11,6 +12,7 @@ except ImportError:
     cv2 = None
 
 from calculations.compute_backend import optional_cupy_backend
+from utils.logger import Logger
 
 from .geometry import image_half_diagonal, optic_disc_center_yx
 from .segments import SegmentTopology
@@ -152,12 +154,24 @@ def rotate_segments(
         np.nan,
         dtype=np.float32,
     )
-    for annulus_index, branch_index in np.argwhere(np.isfinite(rotation_degrees)):
+    valid_indexes = np.argwhere(np.isfinite(rotation_degrees))
+    progress_step = max(1, len(valid_indexes) // 10)
+    started = perf_counter()
+    Logger.log(
+        f"Starting rotation of {len(valid_indexes)} segment stacks onto "
+        f"{canvas_side}x{canvas_side} canvases."
+    )
+    for work_index, (annulus_index, branch_index) in enumerate(valid_indexes, start=1):
         segment = _pad_for_rotation(values[annulus_index, branch_index], np.nan)
         rotated[annulus_index, branch_index] = _rotate_values(
             segment,
             float(rotation_degrees[annulus_index, branch_index]),
         )
+        if work_index % progress_step == 0 or work_index == len(valid_indexes):
+            Logger.log(
+                f"Segment rotation progress: {work_index}/{len(valid_indexes)} "
+                f"in {perf_counter() - started:.2f}s."
+            )
     return rotated
 
 

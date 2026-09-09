@@ -125,7 +125,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
             )
             self.assertIsNone(dataset.compression)
 
-    def test_scratch_h5_is_removed_after_context(self) -> None:
+    def test_scratch_h5_is_memory_backed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "output.h5"
             with h5py.File(output_path, "w") as output:
@@ -133,7 +133,9 @@ class ScratchAndSchemaTests(unittest.TestCase):
                 with velocity_scratch_h5(ctx) as scratch:
                     scratch_path = Path(scratch.filename)
                     scratch.create_dataset("large", data=np.ones((2, 3, 4)))
-                    self.assertTrue(scratch_path.exists())
+                    self.assertEqual("core", scratch.driver)
+                    self.assertEqual("memory", scratch.attrs["storage"])
+                    self.assertFalse(scratch_path.exists())
                 self.assertFalse(scratch_path.exists())
 
     def test_active_schema_has_no_published_velocity_video_or_analysis_group(self) -> None:

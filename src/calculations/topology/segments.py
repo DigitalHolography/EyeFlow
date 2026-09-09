@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 
 import numpy as np
 from scipy import ndimage as ndi
+
+from utils.logger import Logger
 
 from .branch_identity import BranchIdentityResult, label_vessel_branches
 from .geometry import SegmentRingSettings, section_masks
@@ -96,8 +99,14 @@ def extract_segments(
     )
     ring_count, branch_count = topology.segment_centers_xy.shape[:2]
     side = topology.window_side_pixels
+    output_shape = (ring_count, branch_count, *nonspatial_shape, side, side)
+    output_gib = np.prod(output_shape, dtype=np.int64) * 4 / (1024 ** 3)
+    Logger.log(
+        f"Allocating extracted segment array: shape={output_shape}, "
+        f"allocated={output_gib:.2f} GiB."
+    )
     extracted = np.full(
-        (ring_count, branch_count, *nonspatial_shape, side, side),
+        output_shape,
         np.nan,
         dtype=np.float32,
     )
@@ -105,13 +114,19 @@ def extract_segments(
         return extracted
 
     target_prefix = (slice(None),) * len(nonspatial_shape)
-    for ring_index, branch_index in np.argwhere(topology.valid_segments):
+    valid_indexes = np.argwhere(topology.valid_segments)
+    progress_step = max(1, len(valid_indexes) // 10)
+    read_seconds = 0.0
+    extraction_started = perf_counter()
+    for work_index, (ring_index, branch_index) in enumerate(valid_indexes, start=1):
         bounds = topology.window_bounds_xyxy[ring_index, branch_index]
         center = topology.segment_centers_xy[ring_index, branch_index]
         source_slices = [slice(None)] * len(shape)
         source_slices[x_axis] = slice(int(bounds[0]), int(bounds[1]))
         source_slices[y_axis] = slice(int(bounds[2]), int(bounds[3]))
+        read_started = perf_counter()
         source = np.asarray(data_map[tuple(source_slices)], dtype=np.float32)
+        read_seconds += perf_counter() - read_started
         source = np.moveaxis(source, (y_axis, x_axis), (-2, -1))
         target_y, target_x = _window_target_slices(bounds, center, side)
         extracted[
@@ -121,6 +136,15 @@ def extract_segments(
             target_y,
             target_x,
         ] = source
+        if work_index % progress_step == 0 or work_index == len(valid_indexes):
+            Logger.log(
+                f"Segment extraction progress: {work_index}/{len(valid_indexes)} "
+                f"in {perf_counter() - extraction_started:.2f}s."
+            )
+    Logger.log(
+        f"Segment source slicing accounted for {read_seconds:.2f}s across "
+        f"{len(valid_indexes)} segment reads."
+    )
     return extracted
 
 

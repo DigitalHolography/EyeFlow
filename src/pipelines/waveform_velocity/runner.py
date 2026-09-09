@@ -29,6 +29,7 @@ from .quadrants import pack_quadrant_velocity_outputs
 from .segment_maps import (
     pack_displacement_segment_map_outputs,
     pack_segment_map_outputs,
+    prepare_segment_velocity_maps_per_beat,
 )
 from .segment_velocity_map_avi import export_segment_velocity_map_avis
 from .spatial_gradient_profiles import (
@@ -50,6 +51,24 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
     metrics = pack_continuous_velocity_outputs(velocity_analysis)
     segments_selected = "segments" in selected
     maps_selected = "segment_velocity_maps" in selected
+    profiles_selected = "velocity_profiles" in selected
+    artery_velocity_maps_per_beat = None
+    vein_velocity_maps_per_beat = None
+    if maps_selected or profiles_selected:
+        map_started = perf_counter()
+        Logger.log("Starting shared per-beat segment velocity-map interpolation...")
+        artery_velocity_maps_per_beat, vein_velocity_maps_per_beat = (
+            prepare_segment_velocity_maps_per_beat(
+                context.artery_segment_result,
+                context.vein_segment_result,
+                context.per_beat_analysis.cycle_boundary_indexes,
+                index_base=int(context.source_data.provenance["beat_index_base"]),
+            )
+        )
+        Logger.log(
+            "Completed shared per-beat segment velocity-map interpolation in "
+            f"{perf_counter() - map_started:.1f}s."
+        )
     if segments_selected:
         metrics.update(
             pack_segment_velocity_outputs(
@@ -59,17 +78,11 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             )
         )
     if maps_selected:
-        map_started = perf_counter()
-        Logger.log("Starting per-beat segment velocity-map interpolation...")
         segment_map_outputs = pack_segment_map_outputs(
             context.artery_segment_result,
             context.vein_segment_result,
-            context.per_beat_analysis.cycle_boundary_indexes,
-            index_base=int(context.source_data.provenance["beat_index_base"]),
-        )
-        Logger.log(
-            "Completed per-beat segment velocity-map interpolation in "
-            f"{perf_counter() - map_started:.1f}s."
+            artery_velocity_maps_per_beat,
+            vein_velocity_maps_per_beat,
         )
         metrics.update(segment_map_outputs)
         metrics.update(
@@ -126,11 +139,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 }
             )
 
-    profile_products_required = bool(
-        "velocity_profiles" in selected
-        or ctx.pipeline_scheduled("velocity_profile_analysis")
-    )
-    if segments_selected or profile_products_required:
+    if profiles_selected:
         cycle_boundaries = (
             per_beat_result.cycle_boundary_indexes
             if per_beat_result is not None
@@ -180,8 +189,8 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             pack_velocity_profile_fft_outputs(
                 context.artery_segment_result,
                 context.vein_segment_result,
-                cycle_boundaries,
-                index_base=index_base,
+                artery_velocity_maps_per_beat,
+                vein_velocity_maps_per_beat,
             )
         )
         # Displacement profile metrics are temporarily disabled.

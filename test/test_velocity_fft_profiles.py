@@ -20,6 +20,9 @@ from pipelines.waveform_velocity.profiles import (  # noqa: E402
     pack_velocity_profile_fft_outputs,
     velocity_fft_transverse_profiles,
 )
+from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
+    interpolate_velocity_maps_per_beat,
+)
 
 
 class VelocityFFTProfileTests(unittest.TestCase):
@@ -36,12 +39,15 @@ class VelocityFFTProfileTests(unittest.TestCase):
             segment_masks=masks,
         )
         self.boundaries = np.asarray([0, 2, 5], dtype=np.int32)
+        self.maps_per_beat = interpolate_velocity_maps_per_beat(
+            maps,
+            self.boundaries,
+        )
 
     def test_fft_then_nanmean_uses_dilated_mask(self) -> None:
         unmasked, masked = velocity_fft_transverse_profiles(
-            self.segments.velocity_maps_per_segment,
+            self.maps_per_beat,
             self.segments.segment_masks,
-            self.boundaries,
         )
 
         self.assertEqual((2, 4, 2, 1, 1), unmasked.shape)
@@ -55,7 +61,8 @@ class VelocityFFTProfileTests(unittest.TestCase):
         outputs = pack_velocity_profile_fft_outputs(
             self.segments,
             self.segments,
-            self.boundaries,
+            self.maps_per_beat,
+            self.maps_per_beat,
         )
         schema = EyeFlowOutputPaths.active()
         paths = schema.artery_velocity_profiles
