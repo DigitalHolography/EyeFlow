@@ -52,7 +52,7 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
             cycle_boundaries,
         )
         schema = EyeFlowOutputPaths.active()
-        self.assertEqual(8, len(metrics))
+        self.assertEqual(14, len(metrics))
         artery_paths = schema.artery_velocity_profiles
         vein_paths = schema.vein_velocity_profiles
         self.assertEqual(

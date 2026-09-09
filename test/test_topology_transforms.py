@@ -10,6 +10,7 @@ from calculations.topology.geometry import annulus_mask
 from calculations.topology.segments import SegmentTopology
 from calculations.topology.transforms import (
     determine_segment_rotations,
+    dilate_segment_masks,
     interpolate_segment_masks,
     interpolate_segments,
     rotate_segment_masks,
@@ -67,6 +68,20 @@ class TestTopologyTransforms(unittest.TestCase):
             interpolated_values[np.isfinite(interpolated_values)],
             7.0,
         )
+
+    def test_mask_dilation_treats_each_segment_independently(self) -> None:
+        masks = np.zeros((1, 2, 7, 7), dtype=bool)
+        masks[0, 0, 3, 3] = True
+        masks[0, 1, 0, 0] = True
+
+        dilated = dilate_segment_masks(masks, iterations=2)
+
+        self.assertEqual(masks.shape, dilated.shape)
+        self.assertEqual(np.bool_, dilated.dtype)
+        self.assertEqual(25, np.count_nonzero(dilated[0, 0]))
+        self.assertEqual(9, np.count_nonzero(dilated[0, 1]))
+        self.assertFalse(dilated[0, 0, 0, 0])
+        self.assertFalse(dilated[0, 1, 4, 4])
 
     def test_rotation_occurs_after_interpolation_on_a_larger_canvas(self) -> None:
         values = np.arange(18, dtype=np.float32).reshape(1, 1, 2, 3, 3)

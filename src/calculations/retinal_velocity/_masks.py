@@ -1,4 +1,4 @@
-"""Mask helpers used by migrated DopplerView calculation steps."""
+"""Mask helpers used by retinal velocity calculations."""
 
 from __future__ import annotations
 

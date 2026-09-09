@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import h5py
 import numpy as np
-from calculations.dopplerview_analysis.vessel_velocity_estimator import (
+from calculations.retinal_velocity.vessel_velocity_estimator import (
     _bounded_inpaint_result,
     _inpaint_frame_batch,
     _signed_rms_difference,
@@ -15,10 +15,10 @@ from calculations.dopplerview_analysis.vessel_velocity_estimator import (
 )
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity.continuous import pack_continuous_velocity_outputs
-from pipelines.waveform_velocity_core.dopplerview.outputs import (
-    pack_dopplerview_shared_outputs,
+from pipelines.waveform_velocity_core.retinal_velocity.outputs import (
+    pack_retinal_velocity_outputs,
 )
-from pipelines.waveform_velocity_core.scratch import waveform_scratch_h5
+from pipelines.waveform_velocity_core.scratch import velocity_scratch_h5
 
 
 class ScratchAndSchemaTests(unittest.TestCase):
@@ -130,7 +130,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
             output_path = Path(temp_dir) / "output.h5"
             with h5py.File(output_path, "w") as output:
                 ctx = SimpleNamespace(runtime=SimpleNamespace(work_h5=output))
-                with waveform_scratch_h5(ctx) as scratch:
+                with velocity_scratch_h5(ctx) as scratch:
                     scratch_path = Path(scratch.filename)
                     scratch.create_dataset("large", data=np.ones((2, 3, 4)))
                     self.assertTrue(scratch_path.exists())
@@ -185,7 +185,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
             "beat_indices": np.asarray([1, 5], dtype=np.int32),
             "time_per_beat": np.asarray([0.4], dtype=np.float32),
         }
-        shared = pack_dopplerview_shared_outputs(analysis)
+        shared = pack_retinal_velocity_outputs(analysis)
         velocity = pack_continuous_velocity_outputs(analysis)
         metrics = {**shared, **velocity}
 
@@ -206,7 +206,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
         )
 
         slim_schema = EyeFlowOutputPaths.active("slim_temp")
-        slim_shared = pack_dopplerview_shared_outputs(analysis, slim_schema)
+        slim_shared = pack_retinal_velocity_outputs(analysis, slim_schema)
         _, velocity_map_attrs = slim_shared[slim_schema.analysis.velocity_map_avg]
         self.assertEqual("mm/s", velocity_map_attrs["unit"])
 

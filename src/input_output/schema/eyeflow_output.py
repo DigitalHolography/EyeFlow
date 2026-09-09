@@ -82,6 +82,8 @@ class VelocityProfileOutputPaths:
     longitudinal_velocity_profile_unmasked: str
     longitudinal_velocity_profile_masked: str
     flow_asymmetry_root: str
+    transverse_velocity_profile_fft_unmasked: str | None = None
+    transverse_velocity_profile_fft_masked: str | None = None
 
 
 @dataclass(frozen=True)
@@ -147,6 +149,7 @@ def _velocity_profile_paths(
     root: str,
     *,
     velocity_profile_name: str = "VelocityProfile",
+    fft_root: str | None = None,
 ) -> VelocityProfileOutputPaths:
     return VelocityProfileOutputPaths(
         transverse_velocity_profile_unmasked=(
@@ -162,6 +165,16 @@ def _velocity_profile_paths(
             f"{root}/Longitudinal{velocity_profile_name}Masked/value"
         ),
         flow_asymmetry_root=f"{root}/FlowAsymmetry",
+        transverse_velocity_profile_fft_unmasked=(
+            None
+            if fft_root is None
+            else f"{fft_root}/TransverseVelocityProfileUnmasked"
+        ),
+        transverse_velocity_profile_fft_masked=(
+            None
+            if fft_root is None
+            else f"{fft_root}/TransverseVelocityProfileMasked"
+        ),
     )
 
 
@@ -404,10 +417,12 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     ),
     segmentation=_segmentation_paths("Segmentation"),
     artery_velocity_profiles=_velocity_profile_paths(
-        "Processing/VelocityProfiles/Artery"
+        "Processing/VelocityProfiles/Artery",
+        fft_root="Processing/VelocityProfilesFFT/Artery",
     ),
     vein_velocity_profiles=_velocity_profile_paths(
-        "Processing/VelocityProfiles/Vein"
+        "Processing/VelocityProfiles/Vein",
+        fft_root="Processing/VelocityProfilesFFT/Vein",
     ),
     heartbeat=HEARTBEAT_OUTPUT,
     displacement_map="Processing/DisplacementMap",

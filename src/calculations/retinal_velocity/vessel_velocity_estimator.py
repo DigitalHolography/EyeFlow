@@ -1,4 +1,4 @@
-"""Chunked DopplerView-compatible vessel velocity estimation."""
+"""Chunked retinal vessel-velocity estimation."""
 
 from __future__ import annotations
 
@@ -301,7 +301,7 @@ def _skimage_dependencies():
         from skimage.restoration import inpaint
     except ModuleNotFoundError as exc:
         raise ImportError(
-            "DopplerView velocity estimation requires scikit-image."
+            "Retinal velocity estimation requires scikit-image."
         ) from exc
     return disk, inpaint
 

@@ -21,6 +21,7 @@ from .profiles import (
     pack_cross_section_profile_outputs,
     pack_displacement_magnitude_outputs,
     pack_displacement_profile_outputs,
+    pack_velocity_profile_fft_outputs,
 )
 from .segment_maps import (
     pack_displacement_segment_map_outputs,
@@ -125,6 +126,14 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
         )
         metrics.update(
             pack_cross_section_profile_outputs(
+                context.artery_segment_result,
+                context.vein_segment_result,
+                cycle_boundaries,
+                index_base=index_base,
+            )
+        )
+        metrics.update(
+            pack_velocity_profile_fft_outputs(
                 context.artery_segment_result,
                 context.vein_segment_result,
                 cycle_boundaries,

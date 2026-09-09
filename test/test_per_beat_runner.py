@@ -27,7 +27,7 @@ from calculations.blood_flow_velocity.signal_analysis.heartbeat import (  # noqa
 from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  # noqa: E402
     per_beat_signal_analysis,
 )
-from calculations.dopplerview_analysis.vessel_velocity_estimator import (  # noqa: E402
+from calculations.retinal_velocity.vessel_velocity_estimator import (  # noqa: E402
     _velocity_from_delta_frequency,
 )
 from calculations.math import band_limited_ifft_abs  # noqa: E402

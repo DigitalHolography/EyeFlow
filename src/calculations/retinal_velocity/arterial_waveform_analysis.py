@@ -15,7 +15,7 @@ class ArterialWaveformAnalysisStep:
         return {
             "sampling_freq": ctx.hd_config_value("sampling_freq"),
             "stride": ctx.hd_config_value("batch_stride"),
-            "LowpassFreqHz": ctx.dv_config_value(
+            "LowpassFreqHz": ctx.analysis_config_value(
                 "PulseAnalysis",
                 "LowpassFreqHz",
                 15.0,
@@ -38,20 +38,21 @@ class ArterialWaveformAnalysisStep:
 
         return sig_perbeat
 
-    def run(self, ctx):
+    def run(self, ctx, heartbeat=None):
         # ---- Requires ----
         sig = ctx.require("retinal_artery_velocity_signal")
         stride = np.float32(ctx.hd_config_value("batch_stride"))
         fs = np.float32(ctx.hd_config_value("sampling_freq"))
         dt = stride / fs
 
-        heartbeat = run_heartbeat_analysis(
-            sig,
-            dt_seconds=float(dt),
-            lowpass_freq_hz=float(
-                ctx.dv_config_value("PulseAnalysis", "LowpassFreqHz", 15.0)
-            ),
-        )
+        if heartbeat is None:
+            heartbeat = run_heartbeat_analysis(
+                sig,
+                dt_seconds=float(dt),
+                lowpass_freq_hz=float(
+                    ctx.analysis_config_value("PulseAnalysis", "LowpassFreqHz", 15.0)
+                ),
+            )
         detection = heartbeat.systole
         peaks = detection.systole_indexes
         sig_filtered = detection.artery_signal_filtered
@@ -60,7 +61,7 @@ class ArterialWaveformAnalysisStep:
             vein_sig,
             dt_seconds=dt,
             lowpass_freq_hz=np.float32(
-                ctx.dv_config_value("PulseAnalysis", "LowpassFreqHz", 15.0)
+                ctx.analysis_config_value("PulseAnalysis", "LowpassFreqHz", 15.0)
             ),
             order=4,
         )

@@ -11,11 +11,6 @@ import numpy as np
 from scipy import ndimage as ndi
 from scipy import special
 
-try:
-    import cv2
-except ImportError:
-    cv2 = None
-
 from calculations.compute_backend import optional_cupy_backend
 from calculations.math import (
     nanmean_float32,
@@ -24,8 +19,11 @@ from calculations.math import (
 )
 from calculations.topology import (
     BranchIdentityResult,
+    PreparedSegments,
+    PreparedTopology,
     SegmentRingSettings,
     annulus_mask,
+    dilate_segment_masks,
     label_vessel_branches,
     longitudinal_profiles as calculate_longitudinal_profiles,
     optic_disc_center_yx,
@@ -41,7 +39,6 @@ from .profile_processing import ProfileData, process_velocity_profiles
 class CrossSectionSignalSettings:
     hydrodynamic_diameters: bool
     velocity_profile_threshold: float
-    rotate_from_mask: bool
     pixel_size_mm: float
     submask_size_percentile_kept: float = 0.95
 
@@ -145,13 +142,6 @@ class CrossSectionSignalResult(CrossSectionProfileOutputs):
 
 
 @dataclass(frozen=True)
-class _CircleTiltGeometry:
-    radius_inner: float
-    radius_outer: float
-    tilt_angle: float
-
-
-@dataclass(frozen=True)
 class _PreparedCrossSectionGeometry:
     vessel: np.ndarray
     branches: BranchIdentityResult
@@ -166,7 +156,6 @@ class _CrossSectionWork:
     sub_stack: np.ndarray
     sub_mask: np.ndarray
     bounds_xyxy: tuple[int, int, int, int]
-    tilt_angle_mask: float
 
 
 @dataclass(frozen=True)
@@ -221,6 +210,7 @@ class _CrossSectionDisplacementWork:
 _INTERPOLATED_SUBSTACK_SIDE = 128
 _ROTATED_SUBSTACK_SIDE = int(_INTERPOLATED_SUBSTACK_SIDE * np.sqrt(2.0))
 _MAX_PARALLEL_CROSS_SECTIONS = 8
+_PROFILE_MASK_DILATION_ITERATIONS = 20
 
 
 @dataclass
@@ -551,6 +541,146 @@ def _generate_cross_section_signals_from_geometry(
     )
 
 
+def _generate_cross_section_signals_from_prepared(
+    velocity_map,
+    prepared_topology: PreparedTopology,
+    prepared_segments: PreparedSegments,
+    ring_settings: SegmentRingSettings,
+    cross_section_settings: CrossSectionSignalSettings,
+    *,
+    displacement_maps: Mapping[str, object] | None = None,
+    retain_displacement_maps: bool = True,
+) -> CrossSectionSignalResult:
+    segment_topology = prepared_topology.topology
+    branches = segment_topology.branch_identity
+    if branches is None:
+        raise ValueError("prepared topology must retain its branch identity result.")
+
+    vessel = np.asarray(branches.stages.vessel, dtype=bool)
+    _validate_velocity_map(velocity_map, vessel)
+    normalized_displacements = _validate_displacement_maps(
+        displacement_maps,
+        velocity_map,
+    )
+    substack_side_pixels = segment_topology.window_side_pixels
+    profile_pixel_size_mm = _interpolated_pixel_size_mm(
+        cross_section_settings.pixel_size_mm,
+        substack_side_pixels,
+    )
+    if branches.branch_ids.size == 0:
+        return _empty_result(
+            velocity_map,
+            vessel,
+            ring_settings,
+            branches,
+            substack_side_pixels=substack_side_pixels,
+            profile_pixel_size_mm=profile_pixel_size_mm,
+            section_masks=segment_topology.annulus_masks,
+            displacement_maps=normalized_displacements,
+        )
+
+    buffers = _CrossSectionBuffers.allocate(
+        frame_count=velocity_map.shape[0],
+        ring_count=ring_settings.ring_count,
+        branch_count=branches.branch_ids.size,
+    )
+    _fill_cross_section_buffers_from_prepared(
+        buffers,
+        prepared_topology,
+        prepared_segments,
+        cross_section_settings,
+        substack_side_pixels,
+    )
+    topology = _legacy_topology_from_prepared(
+        buffers,
+        prepared_topology,
+        frame_count=velocity_map.shape[0],
+        profile_pixel_size_mm=profile_pixel_size_mm,
+    )
+    displacement_results = {
+        method: _project_displacement_map(
+            displacement_map,
+            topology,
+            retain_maps=retain_displacement_maps,
+        )
+        for method, displacement_map in normalized_displacements.items()
+    }
+    return _result_from_buffers(
+        buffers,
+        branches,
+        cross_section_settings,
+        substack_side_pixels,
+        topology=topology,
+        displacements=displacement_results,
+    )
+
+
+def _fill_cross_section_buffers_from_prepared(
+    buffers: _CrossSectionBuffers,
+    prepared_topology: PreparedTopology,
+    prepared_segments: PreparedSegments,
+    settings: CrossSectionSignalSettings,
+    substack_side_pixels: int,
+) -> None:
+    topology = prepared_topology.topology
+    usable = topology.valid_segments & np.isfinite(
+        prepared_topology.rotation_degrees
+    )
+    profile_pixel_size_mm = _interpolated_pixel_size_mm(
+        settings.pixel_size_mm,
+        substack_side_pixels,
+    )
+    for ring_index, branch_index in np.argwhere(usable):
+        index = (int(ring_index), int(branch_index))
+        angle = float(prepared_topology.rotation_degrees[index])
+        rotated = prepared_segments.rotated[index]
+        rotated_mask = prepared_topology.rotated_masks[index]
+        profile_mask = _dilate_profile_mask(rotated_mask)
+        rotated_masked = np.where(
+            profile_mask[None, ...],
+            rotated,
+            np.float32(np.nan),
+        )
+        rotated_mean = nanmean_float32(rotated, axis=0)
+        rotated_mean_masked = nanmean_float32(rotated_masked, axis=0)
+        c1, c2 = _cross_section_limits(
+            rotated_mean_masked,
+            settings,
+            pixel_size_mm=profile_pixel_size_mm,
+        )
+        measurement = _CrossSectionMeasurement(
+            unmasked=_profile_measurement_from_rotated(
+                rotated,
+                angle,
+                c1,
+                c2,
+                rotated_mean,
+            ),
+            masked=_profile_measurement_from_rotated(
+                rotated_masked,
+                angle,
+                c1,
+                c2,
+                rotated_mean_masked,
+            ),
+            rotated_mean=rotated_mean,
+            rotated_mean_masked=rotated_mean_masked,
+            rotated_mask=rotated_mask,
+            limits=(c1, c2),
+            sample_count=_rotated_profile_sample_count(angle),
+        )
+        buffers.segment_center_xy[index[1], index[0]] = (
+            topology.segment_centers_xy[index]
+        )
+        _store_cross_section_measurement(
+            buffers,
+            index[0],
+            index[1],
+            measurement,
+            tuple(int(value) for value in topology.window_bounds_xyxy[index]),
+        )
+
+
 def _result_from_buffers(
     buffers: _CrossSectionBuffers,
     branches: BranchIdentityResult,
@@ -811,7 +941,6 @@ def _fill_cross_section_buffers(
                     sub_stack=sub_stack,
                     sub_mask=sub_mask,
                     bounds_xyxy=bounds_xyxy,
-                    tilt_angle_mask=_tilt_angle(mask, section, optic_disc_center),
                 )
             )
 
@@ -821,7 +950,6 @@ def _fill_cross_section_buffers(
             work.sub_mask,
             work.loc_xy,
             optic_disc_center,
-            work.tilt_angle_mask,
             settings,
             substack_side_pixels,
         )
@@ -1094,6 +1222,50 @@ def _topology_from_buffers(
     )
 
 
+def _legacy_topology_from_prepared(
+    buffers: _CrossSectionBuffers,
+    prepared_topology: PreparedTopology,
+    *,
+    frame_count: int,
+    profile_pixel_size_mm: float,
+) -> CrossSectionTopology:
+    topology = prepared_topology.topology
+    branches = topology.branch_identity
+    if branches is None:
+        raise ValueError("prepared topology must retain its branch identity result.")
+
+    bounds = topology.window_bounds_xyxy
+    limits = buffers.profile_integration_limits_pixels
+    valid_segments = (
+        topology.valid_segments
+        & np.isfinite(prepared_topology.rotation_degrees)
+        & np.all(bounds >= 0, axis=-1)
+        & (bounds[..., 0] < bounds[..., 1])
+        & (bounds[..., 2] < bounds[..., 3])
+        & (limits[..., 0] >= 0)
+        & (limits[..., 0] <= limits[..., 1])
+    )
+    return CrossSectionTopology(
+        spatial_shape=topology.spatial_shape,
+        frame_count=int(frame_count),
+        labels=topology.labels.copy(),
+        branch_ids=topology.branch_ids.copy(),
+        section_masks=topology.annulus_masks.copy(),
+        segment_masks=buffers.segment_masks.copy(),
+        segment_center_xy=np.transpose(
+            topology.segment_centers_xy,
+            (1, 0, 2),
+        ).copy(),
+        profile_window_bounds_xyxy=bounds.copy(),
+        profile_window_side_pixels=int(topology.window_side_pixels),
+        profile_pixel_size_mm=float(profile_pixel_size_mm),
+        profile_rotation_degrees=prepared_topology.rotation_degrees.copy(),
+        profile_integration_limits_pixels=limits.copy(),
+        valid_segments=valid_segments,
+        branch_identity=branches,
+    )
+
+
 def _displacement_result_from_buffers(
     buffers: _CrossSectionDisplacementBuffers,
 ) -> CrossSectionDisplacementResult:
@@ -1186,67 +1358,6 @@ def _interpolated_pixel_size_mm(
     )
 
 
-def _tilt_angle(
-    mask: np.ndarray,
-    section: np.ndarray,
-    optic_disc_center,
-) -> float:
-    geometry = _circle_tilt_geometry(mask, section, optic_disc_center)
-    return np.nan if geometry is None else geometry.tilt_angle
-
-
-def _circle_tilt_geometry(
-    mask: np.ndarray,
-    section: np.ndarray,
-    optic_disc_center,
-) -> _CircleTiltGeometry | None:
-    radii = _normalized_radius_grid(mask.shape, optic_disc_center)
-    section_radii = radii[np.asarray(section, dtype=bool)]
-    if section_radii.size == 0:
-        return None
-    radius_inner = float(np.min(section_radii))
-    radius_outer = float(np.max(section_radii))
-    step = np.float32(1.0 / max(float(np.mean(mask.shape)), 1.0))
-    inner = annulus_mask(
-        mask.shape,
-        optic_disc_center,
-        max(radius_inner - float(step), 0.0),
-        radius_inner + float(step),
-    )
-    outer = annulus_mask(
-        mask.shape,
-        optic_disc_center,
-        max(radius_outer - float(step), 0.0),
-        radius_outer,
-    )
-    p_in = _centroid_float(mask & inner)
-    p_out = _centroid_float(mask & outer)
-    if p_in is None or p_out is None:
-        return None
-    tilt_angle = float(np.degrees(np.arctan2(p_out[1] - p_in[1], p_out[0] - p_in[0])))
-    return _CircleTiltGeometry(radius_inner, radius_outer, tilt_angle)
-
-
-def _normalized_radius_grid(
-    shape: tuple[int, int],
-    optic_disc_center,
-) -> np.ndarray:
-    ny, nx = shape
-    cy, cx = optic_disc_center_yx(optic_disc_center, ny, nx)
-    y = np.linspace(0.0, 1.0, ny, dtype=np.float32)[:, None]
-    x = np.linspace(0.0, 1.0, nx, dtype=np.float32)[None, :]
-    return np.sqrt(
-        (y - np.float32(cy / max(ny, 1))) ** 2 + (x - np.float32(cx / max(nx, 1))) ** 2,
-    )
-
-
-def _centroid_float(mask: np.ndarray) -> tuple[float, float] | None:
-    if not np.any(mask):
-        return None
-    y, x = ndi.center_of_mass(mask)
-    return float(x), float(y)
-
-
 def _cross_section_displacement_from_topology(
     displacement_map,
     topology: CrossSectionTopology,
@@ -1319,6 +1430,7 @@ def _measure_cross_section_displacement(
         rotated[:, 1],
         work.angle,
     )
+    profile_mask = _dilate_profile_mask(work.rotated_mask)
     radial_amplitude, radial_asymmetry = _cross_sectional_radial_metrics(
         vectors,
         work.rotated_mask,
@@ -1328,14 +1440,14 @@ def _measure_cross_section_displacement(
         transverse_profiles_masked,
         longitudinal_profiles_unmasked,
         longitudinal_profiles_masked,
-    ) = _displacement_profiles(vectors, work.rotated_mask)
+    ) = _displacement_profiles(vectors, profile_mask)
     c1, c2 = work.limits
     return _CrossSectionDisplacementMeasurement(
         waveform=_displacement_profile_measurement(
             vectors,
             c1,
             c2,
-            mask=work.rotated_mask,
+            mask=profile_mask,
         ),
         vectors=vectors,
         transverse_profiles_unmasked=transverse_profiles_unmasked,
@@ -1385,25 +1497,18 @@ def _cross_sectional_radial_metrics(
 
 def _displacement_profiles(
     rotated_vectors: np.ndarray,
-    vessel_mask: np.ndarray,
+    profile_mask: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Project displacement magnitudes using the velocity-profile reductions."""
 
-    if cv2 is None:
-        raise RuntimeError("OpenCV is required for displacement profiles.")
     magnitude = np.hypot(
         rotated_vectors[..., 0],
         rotated_vectors[..., 1],
     ).astype(np.float32, copy=False)
     transverse_unmasked = calculate_transverse_profiles(magnitude)
     longitudinal_unmasked = calculate_longitudinal_profiles(magnitude)
-    dilated_mask = cv2.dilate(
-        np.asarray(vessel_mask, dtype=np.uint8),
-        np.ones((3, 3), dtype=np.uint8),
-        iterations=20,
-    ).astype(bool)
     masked_magnitude = magnitude.copy()
-    masked_magnitude[:, ~dilated_mask] = np.nan
+    masked_magnitude[:, ~np.asarray(profile_mask, dtype=bool)] = np.nan
     transverse_masked = calculate_transverse_profiles(masked_magnitude)
     longitudinal_masked = calculate_longitudinal_profiles(masked_magnitude)
     return (
@@ -1549,36 +1654,31 @@ def _cross_section_velocity_from_substack(
     sub_mask: np.ndarray,
     loc_xy: tuple[int, int],
     optic_disc_center,
-    tilt_angle_mask: float,
     settings: CrossSectionSignalSettings,
     substack_side_pixels: int,
 ) -> _CrossSectionMeasurement:
     resized_stack = _resize_subimage_stack(sub_stack)
     resized_mask = _resize_submask(sub_mask)
+    profile_mask = _dilate_profile_mask(resized_mask)
     resized_stack_masked = resized_stack.copy()
-    resized_stack_masked[:, ~resized_mask] = np.nan
+    resized_stack_masked[:, ~profile_mask] = np.nan
     mean_image = nanmean_float32(resized_stack, axis=0)
     mean_image_masked = nanmean_float32(resized_stack_masked, axis=0)
-    angle = _mean_image_rotation_angle(
-        mean_image_masked,
-        loc_xy,
-        optic_disc_center,
-        tilt_angle_mask,
-        settings,
-    )
+    angle = _estimate_orientation(mean_image_masked, loc_xy, optic_disc_center)
     rotation_stack = _center_pad_for_rotation(resized_stack, np.nan)
     rotation_stack_masked = _center_pad_for_rotation(
         resized_stack_masked,
         np.nan,
     )
     rotation_mask = _center_pad_for_rotation(resized_mask, False)
+    rotation_profile_mask = _center_pad_for_rotation(profile_mask, False)
     rotated_mean = _rotate_mean_image(
         _center_pad_for_rotation(mean_image, np.nan),
         angle,
     )
     rotated_mean_masked = _rotate_masked_image(
         _center_pad_for_rotation(mean_image_masked, np.nan),
-        rotation_mask,
+        rotation_profile_mask,
         angle,
     )
     rotated_mask = _rotate_mask(rotation_mask, angle)
@@ -1611,6 +1711,41 @@ def _cross_section_velocity_from_substack(
         rotated_mask=rotated_mask,
         limits=(c1, c2),
         sample_count=_rotated_profile_sample_count(angle),
+    )
+
+
+def _dilate_profile_mask(mask: np.ndarray) -> np.ndarray:
+    """Expand a segment mask before restricting profile signal values."""
+
+    return dilate_segment_masks(
+        mask,
+        iterations=_PROFILE_MASK_DILATION_ITERATIONS,
+    )
+
+
+def _profile_measurement_from_rotated(
+    rotated_stack: np.ndarray,
+    angle: float,
+    c1: int,
+    c2: int,
+    rotated_mean: np.ndarray,
+) -> _CrossSectionVelocityMeasurement:
+    transverse_profiles = calculate_transverse_profiles(rotated_stack)
+    longitudinal_profiles = calculate_longitudinal_profiles(rotated_stack)
+    raw = nanmean_float32(transverse_profiles[:, c1 : c2 + 1], axis=1)
+    raw = np.where(np.isnan(raw), np.float32(0.0), raw).astype(
+        np.float32,
+        copy=False,
+    )
+    safe_velocity = nanmean_float32(transverse_profiles, axis=1)
+    return _CrossSectionVelocityMeasurement(
+        raw=raw,
+        safe_velocity=safe_velocity,
+        transverse_profiles=transverse_profiles,
+        longitudinal_profiles=longitudinal_profiles,
+        rotated_stack=np.asarray(rotated_stack, dtype=np.float32),
+        angle=float(angle),
+        spatial_std=_sample_nanstd_axis0(rotated_mean),
     )
 
 
@@ -2041,20 +2176,6 @@ def _resize_values_with_nan_cpu(values: np.ndarray) -> np.ndarray:
         where=resized_weights > np.float32(1e-6),
     )
     return resized
-
-
-def _mean_image_rotation_angle(
-    mean_image_masked: np.ndarray,
-    loc_xy: tuple[int, int],
-    optic_disc_center,
-    tilt_angle_mask: float,
-    settings: CrossSectionSignalSettings,
-) -> float:
-    if settings.rotate_from_mask and np.isfinite(tilt_angle_mask):
-        angle = tilt_angle_mask + 90.0
-    else:
-        angle = _estimate_orientation(mean_image_masked, loc_xy, optic_disc_center)
-    return float(angle)
 
 
 def _rotate_mean_image(image: np.ndarray, angle: float) -> np.ndarray:

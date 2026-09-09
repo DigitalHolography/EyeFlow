@@ -69,7 +69,6 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         self.assertTrue(
             source_data.provenance["dv_spatial_axes_swapped_to_match_hd"]
         )
-        self.assertFalse(source_data.provenance["dopplerview_analysis_available"])
         self.assertTrue(source_data.provenance["has_optic_disc_mask"])
 
     def test_existing_dopplerview_analysis_is_ignored(self) -> None:
@@ -89,7 +88,6 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
             source_data = self._load_sources(hd_source, dv_source)
 
         self.assertIsNone(source_data.velocity_analysis)
-        self.assertFalse(source_data.provenance["dopplerview_analysis_available"])
 
     def test_waveform_velocity_uses_one_coherent_raw_moment_mode(
         self,
@@ -173,7 +171,6 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         self.assertEqual(0.04, ring_settings.segment_length_frac)
         self.assertTrue(cross_section.hydrodynamic_diameters)
         self.assertEqual(0.5, cross_section.velocity_profile_threshold)
-        self.assertFalse(cross_section.rotate_from_mask)
         self.assertAlmostEqual(1.91 / 3.5, cross_section.pixel_size_mm)
         self.assertEqual(0.95, cross_section.submask_size_percentile_kept)
         self.assertEqual(7, source_data.local_background_dist)

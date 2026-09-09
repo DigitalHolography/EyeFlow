@@ -1,4 +1,4 @@
-"""Output packing for shared DopplerView analysis products."""
+"""Output packing for shared retinal velocity products."""
 
 from collections.abc import Iterable, Mapping
 
@@ -7,7 +7,7 @@ import numpy as np
 from input_output.schema import EyeFlowOutputPaths
 
 
-def pack_dopplerview_shared_outputs(
+def pack_retinal_velocity_outputs(
     velocity_analysis: Mapping[str, object],
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:

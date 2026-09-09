@@ -170,6 +170,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as profiles,
             patch.object(
                 velocity_runner,
+                "pack_velocity_profile_fft_outputs",
+                return_value={"fft_profile": 7},
+            ) as fft_profiles,
+            patch.object(
+                velocity_runner,
                 "pack_displacement_magnitude_outputs",
                 return_value={"displacement_magnitude": 5},
             ) as displacement_magnitude,
@@ -195,6 +200,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "base": 1,
                 "per_beat": 2,
                 "profile": 3,
+                "fft_profile": 7,
                 "displacement_magnitude": 5,
                 "displacement_profiles": 6,
                 "quadrants": 4,
@@ -202,6 +208,12 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             outputs,
         )
         profiles.assert_called_once_with(
+            "artery",
+            "vein",
+            (0, 5, 10),
+            index_base=0,
+        )
+        fft_profiles.assert_called_once_with(
             "artery",
             "vein",
             (0, 5, 10),

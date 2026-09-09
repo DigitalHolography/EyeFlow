@@ -17,7 +17,6 @@ if str(SRC_DIR) not in sys.path:
 
 from calculations.blood_flow_velocity import (  # noqa: E402
     CrossSectionSignalSettings,
-    segment_velocity_results,
 )
 from calculations.topology.branch_identity import (  # noqa: E402
     _branch_identity_stages,
@@ -28,6 +27,7 @@ from calculations.blood_flow_velocity.cross_section.generate_cross_section_signa
     _CrossSectionMeasurement,
     _CrossSectionVelocityMeasurement,
     _center_pad_for_rotation,
+    _dilate_profile_mask,
     _fill_cross_section_buffers,
     _fixed_subimage_stack,
     _fixed_substack_side_pixels,
@@ -46,6 +46,9 @@ from calculations.topology import (  # noqa: E402
 from calculations.math import rotate_image_with_nan  # noqa: E402
 from pipelines.waveform_velocity_core.branch_identity_debug import (  # noqa: E402
     _labels_with_substack_boxes,
+)
+from pipelines.waveform_velocity_core.segments import (  # noqa: E402
+    analyze_velocity_segments,
 )
 from pipelines.waveform_velocity_core.cross_section_images import (  # noqa: E402
     export_rotated_mean_pngs,
@@ -208,55 +211,60 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertEqual(9, _fixed_substack_side_pixels((artery, vein), 0.95))
 
     def test_artery_and_vein_measurements_receive_one_joint_fixed_side(self) -> None:
-        sections = np.ones((1, 20, 20), dtype=bool)
         artery_labels = np.zeros((20, 20), dtype=np.int32)
         vein_labels = np.zeros((20, 20), dtype=np.int32)
         artery_labels[1:4, 1:5] = 1
         vein_labels[1:9, 10:12] = 1
-        geometries = (
-            _PreparedCrossSectionGeometry(
-                artery_labels > 0,
-                SimpleNamespace(
-                    labels=artery_labels,
-                    branch_ids=np.asarray([1], dtype=np.int32),
-                ),
-                sections,
-            ),
-            _PreparedCrossSectionGeometry(
-                vein_labels > 0,
-                SimpleNamespace(
-                    labels=vein_labels,
-                    branch_ids=np.asarray([1], dtype=np.int32),
-                ),
-                sections,
-            ),
+        artery_initial = SimpleNamespace(
+            topology=SimpleNamespace(window_side_pixels=5)
         )
-        settings = CrossSectionSignalSettings(False, 0.5, False, 0.01)
+        vein_prepared = SimpleNamespace(
+            topology=SimpleNamespace(window_side_pixels=9)
+        )
+        artery_prepared = SimpleNamespace(
+            topology=SimpleNamespace(window_side_pixels=9)
+        )
+        settings = CrossSectionSignalSettings(False, 0.5, 0.01)
         artery_displacements = {"method": "artery-field"}
         vein_displacements = {"method": "vein-field"}
 
         with patch(
-            "calculations.blood_flow_velocity.cross_section."
-            "segment_velocity_signals._prepare_cross_section_geometry",
-            side_effect=geometries,
+            "calculations.topology.workflow.prepare_topology",
+            side_effect=(artery_initial, vein_prepared, artery_prepared),
+        ) as prepare_topology, patch(
+            "calculations.topology.workflow._shared_window_side",
+            return_value=9,
         ), patch(
-            "calculations.blood_flow_velocity.cross_section."
-            "segment_velocity_signals._generate_cross_section_signals_from_geometry",
+            "pipelines.waveform_velocity_core."
+            "segments.prepare_segments",
+            side_effect=("artery segments", "vein segments"),
+        ), patch(
+            "pipelines.waveform_velocity_core."
+            "segments._generate_cross_section_signals_from_prepared",
             side_effect=("artery", "vein"),
         ) as generate:
-            results = segment_velocity_results(
+            results = analyze_velocity_segments(
                 np.zeros((1, 20, 20), dtype=np.float32),
-                artery_labels > 0,
-                vein_labels > 0,
+                {
+                    "artery": artery_labels > 0,
+                    "vein": vein_labels > 0,
+                },
                 (10, 10),
                 SimpleNamespace(ring_count=1),
                 settings,
-                artery_displacement_maps=artery_displacements,
-                vein_displacement_maps=vein_displacements,
+                displacement_maps_by_vessel={
+                    "artery": artery_displacements,
+                    "vein": vein_displacements,
+                },
             )
 
-        self.assertEqual(("artery", "vein"), results)
-        self.assertEqual([9, 9], [call.args[-1] for call in generate.call_args_list])
+        self.assertEqual({"artery": "artery", "vein": "vein"}, results)
+        self.assertEqual(3, prepare_topology.call_count)
+        self.assertEqual(9, prepare_topology.call_args_list[2].kwargs["window_side_pixels"])
+        self.assertIs(artery_prepared, generate.call_args_list[0].args[1])
+        self.assertEqual("artery segments", generate.call_args_list[0].args[2])
+        self.assertIs(vein_prepared, generate.call_args_list[1].args[1])
+        self.assertEqual("vein segments", generate.call_args_list[1].args[2])
         self.assertIs(
             artery_displacements,
             generate.call_args_list[0].kwargs["displacement_maps"],
@@ -265,6 +273,58 @@ class SegmentCenterTests(unittest.TestCase):
             vein_displacements,
             generate.call_args_list[1].kwargs["displacement_maps"],
         )
+
+    def test_segment_velocity_results_runs_with_prepared_topology(self) -> None:
+        velocity = np.ones((3, 61, 61), dtype=np.float32)
+        artery_mask = np.zeros((61, 61), dtype=bool)
+        artery_mask[27:34, 5:56] = True
+        vein_mask = np.zeros_like(artery_mask)
+        vein_mask[5:56, 37:44] = True
+        optic_disc_mask = np.zeros_like(artery_mask)
+        optic_disc_mask[27:34, 27:34] = True
+        ring_settings = SimpleNamespace(
+            inner_radius_frac=0.1,
+            outer_radius_frac=0.7,
+            ring_width_frac=0.25,
+            ring_count=2,
+            segment_length_frac=None,
+        )
+        settings = CrossSectionSignalSettings(False, 0.5, 0.01, 1.0)
+
+        results = analyze_velocity_segments(
+            velocity,
+            {
+                "artery": artery_mask,
+                "vein": vein_mask,
+            },
+            (30, 30),
+            ring_settings,
+            settings,
+            optic_disc_mask=optic_disc_mask,
+        )
+
+        for result in results.values():
+            self.assertGreater(result.branch_ids.size, 0)
+            self.assertEqual(
+                (181, 181),
+                result.velocity_maps_per_segment.shape[-2:],
+            )
+            valid = result.topology.valid_segments
+            self.assertTrue(np.any(valid))
+            np.testing.assert_allclose(result.velocity[valid], 1.0)
+
+    def test_profile_mask_dilation_expands_twenty_pixels(self) -> None:
+        mask = np.zeros((51, 51), dtype=bool)
+        mask[25, 25] = True
+
+        dilated = _dilate_profile_mask(mask)
+
+        self.assertEqual(np.bool_, dilated.dtype)
+        self.assertEqual(41 * 41, int(np.count_nonzero(dilated)))
+        self.assertTrue(np.all(dilated[5:46, 5:46]))
+        self.assertFalse(np.any(dilated[:5]))
+        self.assertFalse(np.any(dilated[:, :5]))
+        self.assertEqual(1, int(np.count_nonzero(mask)))
 
     def test_fixed_subimage_is_centroid_centered_and_padded_at_periphery(self) -> None:
         velocity = np.arange(2 * 5 * 6, dtype=np.float32).reshape(2, 5, 6)
@@ -516,7 +576,7 @@ class SegmentCenterTests(unittest.TestCase):
             ring_count=sections.shape[0],
             branch_count=branches.branch_ids.size,
         )
-        settings = CrossSectionSignalSettings(False, 0.5, False, 0.01)
+        settings = CrossSectionSignalSettings(False, 0.5, 0.01)
 
         signal = np.arange(3, dtype=np.float32)
         rotated_mean = np.full((181, 181), 7.0, dtype=np.float32)
@@ -524,10 +584,6 @@ class SegmentCenterTests(unittest.TestCase):
         profiles = np.ones((3, 181), dtype=np.float32)
         profiles_masked = np.full((3, 181), 2.0, dtype=np.float32)
         with patch(
-            "calculations.blood_flow_velocity.cross_section."
-            "generate_cross_section_signals._tilt_angle",
-            return_value=0.0,
-        ), patch(
             "calculations.blood_flow_velocity.cross_section."
             "generate_cross_section_signals._cross_section_velocity_from_substack",
             return_value=_CrossSectionMeasurement(

@@ -227,7 +227,7 @@ class CrossSectionDisplacementTests(unittest.TestCase):
             vessel_mask,
             (4, 4),
             SegmentRingSettings(0.0, 0.5, 0.5, 1),
-            CrossSectionSignalSettings(False, 0.5, False, 0.01),
+            CrossSectionSignalSettings(False, 0.5, 0.01),
             displacement_maps={'method_a': displacement, 'method_b': displacement},
         )
 
@@ -311,7 +311,7 @@ class CrossSectionDisplacementTests(unittest.TestCase):
                 vessel_mask,
                 (4, 4),
                 SegmentRingSettings(0.0, 0.5, 0.5, 1),
-                CrossSectionSignalSettings(False, 0.5, False, 0.01),
+                CrossSectionSignalSettings(False, 0.5, 0.01),
                 displacement_maps={'first': first, 'second': second},
             )
 
@@ -340,7 +340,6 @@ class CrossSectionDisplacementTests(unittest.TestCase):
         cross_section_settings = CrossSectionSignalSettings(
             False,
             0.5,
-            False,
             0.01,
         )
 

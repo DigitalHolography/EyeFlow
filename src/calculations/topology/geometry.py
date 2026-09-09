@@ -17,6 +17,52 @@ class SegmentRingSettings:
     ring_count: int
     segment_length_frac: float | None = None
 
+def segment_ring_settings(
+    optic_disc_width=None,
+    optic_disc_height=None,
+    *,
+    image_shape: tuple[int, int] | None = None,
+    number_of_radii_in_fov: int = 25,
+    fallback_inner_radius_frac: float = 0.10,
+    fallback_outer_radius_frac: float = 0.35,
+) -> SegmentRingSettings:
+    """Derive uniformly spaced segment rings from retinal image geometry."""
+
+    if number_of_radii_in_fov < 1:
+        raise ValueError("number_of_radii_in_fov must be positive.")
+    width_px = _positive_scalar(optic_disc_width)
+    height_px = _positive_scalar(optic_disc_height)
+    radial_step = 1.0 / float(number_of_radii_in_fov)
+    if width_px is not None and height_px is not None and image_shape is not None:
+        ny, nx = (int(size) for size in image_shape)
+        radius_scale = image_half_diagonal(ny, nx)
+        radial_step = (
+            max(nx, ny) / float(number_of_radii_in_fov) / max(radius_scale, 1.0)
+        )
+        inner = min((max(width_px, height_px) / 2.0) / radius_scale, 1.0)
+        outer = 1.0
+    else:
+        inner = float(fallback_inner_radius_frac)
+        outer = float(fallback_outer_radius_frac)
+    count = max(1, int(np.ceil((outer - inner) / radial_step)))
+    return SegmentRingSettings(
+        inner_radius_frac=inner,
+        outer_radius_frac=outer,
+        ring_width_frac=radial_step,
+        ring_count=count,
+        segment_length_frac=radial_step,
+    )
+
+
+def _positive_scalar(value) -> float | None:
+    if value is None:
+        return None
+    array = np.asarray(value, dtype=np.float32).reshape(-1)
+    if array.size == 0 or not np.isfinite(array[0]) or array[0] <= 0:
+        return None
+    return float(array[0])
+
+
 
 def ring_masks(
     image_shape: tuple[int, int],
