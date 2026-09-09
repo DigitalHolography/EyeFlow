@@ -777,7 +777,7 @@ class ReusableCrossSectionProjectionTests(unittest.TestCase):
             ),
             patch(
                 "calculations.blood_flow_velocity.cross_section."
-                "reusable_cross_section_signals._cross_section_limits",
+                "generate_cross_section_signals._cross_section_limits",
                 return_value=(2, 4),
             ) as cross_section_limits,
         ):

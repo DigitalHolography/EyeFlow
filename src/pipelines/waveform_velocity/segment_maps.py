@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from scipy.signal import resample
 
+from calculations.blood_flow_velocity.cross_section.segment_array import SegmentArray
 from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils import (
     normalize_cycle_boundaries,
 )
@@ -14,7 +15,6 @@ from calculations.math import next_power_of_two
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
 from runtime_limits import cap_parallel_jobs
-
 
 _MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
 
@@ -53,11 +53,13 @@ def interpolate_velocity_maps_per_beat(
     index_base: int = 0,
 ) -> np.ndarray:
     """Interpolate maps to ``(x, y, time, beat, branch, radius)``."""
-    maps = np.asarray(velocity_maps, dtype=np.float32)
+    maps = (
+        velocity_maps
+        if isinstance(velocity_maps, SegmentArray)
+        else np.asarray(velocity_maps, dtype=np.float32)
+    )
     if maps.ndim != 5:
-        raise ValueError(
-            "velocity maps must have shape (radius, branch, frame, y, x)."
-        )
+        raise ValueError("velocity maps must have shape (radius, branch, frame, y, x).")
 
     radius_count, branch_count, frame_count, y_count, x_count = maps.shape
     boundaries = normalize_cycle_boundaries(
@@ -80,11 +82,15 @@ def interpolate_velocity_maps_per_beat(
         dtype=np.float32,
     )
 
-    segment_indexes = [
-        (radius_index, branch_index)
-        for radius_index in range(radius_count)
-        for branch_index in range(branch_count)
-    ]
+    segment_indexes = (
+        maps.segment_indexes
+        if isinstance(maps, SegmentArray)
+        else [
+            (radius_index, branch_index)
+            for radius_index in range(radius_count)
+            for branch_index in range(branch_count)
+        ]
+    )
 
     def interpolate_segment(segment_index: tuple[int, int]) -> None:
         radius_index, branch_index = segment_index
@@ -95,9 +101,9 @@ def interpolate_velocity_maps_per_beat(
                 maps[radius_index, branch_index, start:stop],
                 time_count + 1,
             )[:-1]
-            output[
-                :, :, :, beat_index, branch_index, radius_index
-            ] = interpolated.transpose(2, 1, 0)
+            output[:, :, :, beat_index, branch_index, radius_index] = interpolated.transpose(
+                2, 1, 0
+            )
 
     worker_count = _segment_map_worker_count(len(segment_indexes))
     if worker_count == 1:
@@ -153,9 +159,7 @@ def _pack_vessel_segment_maps(
     if paths.segments is not None:
         masks = np.asarray(segments.segment_masks, dtype=bool)
         if masks.ndim != 4:
-            raise ValueError(
-                "segment masks must have shape (radius, branch, y, x)."
-            )
+            raise ValueError("segment masks must have shape (radius, branch, y, x).")
         serialized_masks = masks.transpose(3, 2, 1, 0)
         outputs[paths.segments] = DatasetValue(
             data=serialized_masks,

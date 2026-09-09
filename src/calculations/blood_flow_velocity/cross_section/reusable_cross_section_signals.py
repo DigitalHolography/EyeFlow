@@ -7,27 +7,18 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from calculations.math import nanmean_float32
-
 from .branch_identity import BranchIdentityResult
 from .generate_cross_section_signals import (
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
-    _cross_section_limits,
+    _cross_section_worker_count,
     _CrossSectionBuffers,
-    _CrossSectionMeasurement,
-    _center_pad_for_rotation,
+    _CrossSectionWork,
     _empty_result,
-    _profile_measurement,
-    _resize_subimage_stack,
-    _resize_submask,
+    _measure_windowed_work,
     _result_from_buffers,
-    _rotated_profile_sample_count,
-    _rotate_mean_image,
-    _rotate_mask,
-    _rotate_masked_image,
-    _store_cross_section_measurement,
-    _subimage_stack_from_bounds,
+    _SegmentGeometry,
+    _validate_velocity_cube,
     generate_cross_section_signals,
 )
 from .segment_geometry import SegmentRingSettings, section_masks
@@ -176,6 +167,12 @@ def project_cross_section_cube(
             profile_pixel_size_mm=plan.profile_pixel_size_mm,
         )
 
+    _cross_section_worker_count(
+        int(np.count_nonzero(plan.valid_segments)),
+        frame_count=data_cube.shape[0],
+        side_pixels=plan.profile_window_side_pixels,
+        memory_mb=plan.cross_section_settings.working_memory_mb,
+    )
     masks = section_masks(
         plan.spatial_shape,
         plan.optic_disc_center,
@@ -202,77 +199,27 @@ def project_cross_section_cube(
                     branch_index,
                 ]
             )
-            sub_stack, sub_mask = _subimage_stack_from_bounds(
-                data_cube,
-                mask,
-                bounds_xyxy,
-                loc_xy=loc_xy,
-                side_pixels=plan.profile_window_side_pixels,
-            )
-            resized_stack = _resize_subimage_stack(sub_stack)
-            resized_mask = _resize_submask(sub_mask)
-            resized_stack_masked = resized_stack.copy()
-            resized_stack_masked[:, ~resized_mask] = np.nan
             angle = float(plan.profile_rotation_degrees[circle_index, branch_index])
-            mean_image = nanmean_float32(resized_stack, axis=0)
-            mean_image_masked = nanmean_float32(resized_stack_masked, axis=0)
-            rotation_stack = _center_pad_for_rotation(resized_stack, np.nan)
-            rotation_stack_masked = _center_pad_for_rotation(
-                resized_stack_masked,
-                np.nan,
-            )
-            rotation_mask = _center_pad_for_rotation(resized_mask, False)
-            rotated_mean = _rotate_mean_image(
-                _center_pad_for_rotation(mean_image, np.nan),
-                angle,
-            )
-            rotated_mean_masked = _rotate_masked_image(
-                _center_pad_for_rotation(mean_image_masked, np.nan),
-                rotation_mask,
-                angle,
-            )
-            if limits_mode == "per_cube":
-                limits = _cross_section_limits(
-                    rotated_mean_masked,
-                    plan.cross_section_settings,
-                    pixel_size_mm=plan.profile_pixel_size_mm,
-                )
-            else:
+            limits = None
+            if limits_mode == "reference":
                 limits = tuple(
-                    int(value)
-                    for value in plan.profile_integration_limits_pixels[
-                        circle_index,
-                        branch_index,
-                    ]
+                    int(v)
+                    for v in plan.profile_integration_limits_pixels[circle_index, branch_index]
                 )
-            c1, c2 = limits
-            measurement = _CrossSectionMeasurement(
-                unmasked=_profile_measurement(
-                    rotation_stack,
-                    angle,
-                    c1,
-                    c2,
-                    rotated_mean,
-                ),
-                masked=_profile_measurement(
-                    rotation_stack_masked,
-                    angle,
-                    c1,
-                    c2,
-                    rotated_mean_masked,
-                ),
-                rotated_mean=rotated_mean,
-                rotated_mean_masked=rotated_mean_masked,
-                rotated_mask=_rotate_mask(rotation_mask, angle),
-                limits=limits,
-                sample_count=_rotated_profile_sample_count(angle),
-            )
-            _store_cross_section_measurement(
-                buffers,
-                circle_index,
-                branch_index,
-                measurement,
+            ys, xs = np.nonzero(mask)
+            work = _CrossSectionWork(
+                _SegmentGeometry(circle_index, branch_index, loc_xy, ys, xs, np.nan),
                 bounds_xyxy,
+            )
+            _measure_windowed_work(
+                buffers,
+                data_cube,
+                work,
+                plan.optic_disc_center,
+                plan.cross_section_settings,
+                plan.profile_window_side_pixels,
+                angle_override=angle,
+                limits_override=limits,
             )
 
     return _result_from_buffers(
@@ -385,6 +332,7 @@ def _validate_data_cube(
     spatial_shape: tuple[int, int],
     name: str,
 ) -> None:
+    _validate_velocity_cube(data_cube, spatial_shape)
     shape = getattr(data_cube, "shape", None)
     if shape is None or len(shape) != 3:
         raise ValueError(f"{name} must have shape (frame, y, x), got {shape!r}.")
