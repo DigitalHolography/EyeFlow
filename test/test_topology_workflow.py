@@ -23,20 +23,27 @@ class TopologyWorkflowTests(unittest.TestCase):
             window_size_percentile_kept=1.0,
         )
 
-        first = prepare_segments(np.ones((2, 41, 41), dtype=np.float32), prepared)
-        second = prepare_segments(
-            np.full((2, 41, 41), 2.0, dtype=np.float32),
-            prepared,
+        first = list(
+            prepare_segments(np.ones((2, 41, 41), dtype=np.float32), prepared)
+        )
+        second = list(
+            prepare_segments(
+                np.full((2, 41, 41), 2.0, dtype=np.float32),
+                prepared,
+            )
         )
 
         ring_count, branch_count = prepared.topology.valid_segments.shape
-        self.assertEqual(
-            (ring_count, branch_count, 2, 128, 128),
-            first.interpolated.shape,
+        expected_count = np.count_nonzero(
+            prepared.topology.valid_segments
+            & np.isfinite(prepared.rotation_degrees)
         )
+        self.assertEqual(expected_count, len(first))
+        self.assertEqual(expected_count, len(second))
+        self.assertTrue(all(item.rotated.shape == (2, 181, 181) for item in first))
         self.assertEqual(
-            (ring_count, branch_count, 2, 181, 181),
-            first.rotated.shape,
+            [(item.ring_index, item.branch_index) for item in first],
+            [(item.ring_index, item.branch_index) for item in second],
         )
         self.assertEqual(
             (ring_count, branch_count, 128, 128),
@@ -47,7 +54,12 @@ class TopologyWorkflowTests(unittest.TestCase):
             prepared.rotated_masks.shape,
         )
         np.testing.assert_allclose(
-            second.interpolated[np.isfinite(second.interpolated)],
+            np.concatenate(
+                [
+                    item.rotated[np.isfinite(item.rotated)]
+                    for item in second
+                ]
+            ),
             2.0,
         )
 

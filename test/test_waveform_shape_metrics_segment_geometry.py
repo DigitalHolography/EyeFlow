@@ -301,13 +301,22 @@ class SegmentCenterTests(unittest.TestCase):
             ring_settings,
             settings,
             optic_disc_mask=optic_disc_mask,
+            retain_velocity_maps=False,
+            cycle_boundary_indexes=np.asarray([0, 2], dtype=np.int32),
+            velocity_profile_fft=True,
         )
 
         for result in results.values():
             self.assertGreater(result.branch_ids.size, 0)
+            self.assertIsNone(result.velocity_maps_per_segment)
+            self.assertEqual((0, 2), result.velocity_map_segment_indexes.shape)
             self.assertEqual(
-                (181, 181),
-                result.velocity_maps_per_segment.shape[-2:],
+                (181, 2, 1, result.branch_ids.size, 2),
+                result.transverse_velocity_fft_profiles_unmasked.shape,
+            )
+            self.assertEqual(
+                result.transverse_velocity_fft_profiles_unmasked.shape,
+                result.transverse_velocity_fft_profiles_masked.shape,
             )
             valid = result.topology.valid_segments
             self.assertTrue(np.any(valid))
@@ -575,6 +584,11 @@ class SegmentCenterTests(unittest.TestCase):
             frame_count=velocity.shape[0],
             ring_count=sections.shape[0],
             branch_count=branches.branch_ids.size,
+            velocity_map_segment_indexes=np.asarray(
+                [[0, 0], [1, 1]],
+                dtype=np.int32,
+            ),
+            retain_velocity_maps=True,
         )
         settings = CrossSectionSignalSettings(False, 0.5, 0.01)
 
@@ -668,8 +682,12 @@ class SegmentCenterTests(unittest.TestCase):
             rotated_mean_masked,
         )
         np.testing.assert_array_equal(
-            buffers.velocity_maps_per_segment[0, 0],
+            buffers.velocity_maps_per_segment[0],
             np.full((3, 181, 181), 3.0, dtype=np.float32),
+        )
+        np.testing.assert_array_equal(
+            buffers.velocity_map_segment_indexes,
+            [[0, 0], [1, 1]],
         )
         self.assertTrue(np.all(buffers.segment_masks[0, 0]))
 

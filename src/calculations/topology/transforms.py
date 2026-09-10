@@ -66,6 +66,31 @@ def interpolate_segments(
     return _interpolate_values(values, output_side_pixels)
 
 
+def resample_rotate_segment(
+    segment_maps: np.ndarray,
+    rotation_degrees: float,
+    output_side_pixels: int = INTERPOLATED_SEGMENT_SIDE,
+) -> np.ndarray:
+    """Resize and rotate one segment stack with a single affine resampling."""
+
+    values = np.asarray(segment_maps, dtype=np.float32)
+    _assert_spatial_array(values, output_side_pixels)
+    if values.shape[-2] != values.shape[-1]:
+        raise ValueError("native segment arrays must be square.")
+    canvas_side = _rotation_canvas_side(output_side_pixels)
+    output_shape = (*values.shape[:-2], canvas_side, canvas_side)
+    if not np.isfinite(rotation_degrees):
+        return np.full(output_shape, np.nan, dtype=np.float32)
+    if values.shape[-1] == 0:
+        return np.full(output_shape, np.nan, dtype=np.float32)
+    return _resample_rotate_values(
+        values,
+        float(rotation_degrees),
+        output_side_pixels,
+        canvas_side,
+    )
+
+
 def interpolate_segment_masks(
     segment_masks: np.ndarray,
     output_side_pixels: int = INTERPOLATED_SEGMENT_SIDE,
@@ -265,6 +290,151 @@ def _radius_grid(
     y = (np.arange(ny, dtype=np.float32)[:, None] - np.float32(center_y)) * scale
     x = (np.arange(nx, dtype=np.float32)[None, :] - np.float32(center_x)) * scale
     return np.sqrt(x**2 + y**2)
+
+
+def _resample_rotate_values(
+    values: np.ndarray,
+    angle_degrees: float,
+    output_side_pixels: int,
+    canvas_side: int,
+) -> np.ndarray:
+    matrix, offset = _fused_affine_mapping(
+        values.ndim,
+        values.shape[-1],
+        output_side_pixels,
+        canvas_side,
+        angle_degrees,
+    )
+    output_shape = (*values.shape[:-2], canvas_side, canvas_side)
+    valid = np.isfinite(values)
+    shared_validity = _shared_spatial_validity(valid)
+    backend = optional_cupy_backend()
+    if backend is not None:
+        try:
+            gpu_values = backend.cupy.asarray(values)
+            gpu_valid = backend.cupy.asarray(
+                shared_validity if shared_validity is not None else valid
+            )
+            resampled_values = backend.ndimage.affine_transform(
+                backend.cupy.where(
+                    gpu_valid,
+                    gpu_values,
+                    backend.cupy.float32(0.0),
+                ),
+                backend.cupy.asarray(matrix),
+                backend.cupy.asarray(offset),
+                output_shape=output_shape,
+                order=1,
+                mode="grid-constant",
+                cval=0.0,
+                prefilter=False,
+            )
+            weight_matrix = matrix[-2:, -2:] if shared_validity is not None else matrix
+            weight_offset = offset[-2:] if shared_validity is not None else offset
+            weight_shape = (
+                (canvas_side, canvas_side)
+                if shared_validity is not None
+                else output_shape
+            )
+            resampled_weights = backend.ndimage.affine_transform(
+                gpu_valid.astype(backend.cupy.float32),
+                backend.cupy.asarray(weight_matrix),
+                backend.cupy.asarray(weight_offset),
+                output_shape=weight_shape,
+                order=1,
+                mode="grid-constant",
+                cval=0.0,
+                prefilter=False,
+            )
+            finite_output = resampled_weights >= backend.cupy.float32(0.5)
+            backend.cupy.divide(
+                resampled_values,
+                resampled_weights,
+                out=resampled_values,
+                where=finite_output,
+            )
+            backend.cupy.copyto(
+                resampled_values,
+                backend.cupy.nan,
+                where=~finite_output,
+            )
+            return backend.cupy.asnumpy(resampled_values)
+        except Exception:
+            pass
+
+    filled = np.where(valid, values, np.float32(0.0))
+    resampled_values = ndi.affine_transform(
+        filled,
+        matrix,
+        offset,
+        output_shape=output_shape,
+        order=1,
+        mode="grid-constant",
+        cval=0.0,
+        prefilter=False,
+    ).astype(np.float32, copy=False)
+    weight_values = shared_validity if shared_validity is not None else valid
+    weight_matrix = matrix[-2:, -2:] if shared_validity is not None else matrix
+    weight_offset = offset[-2:] if shared_validity is not None else offset
+    weight_shape = (
+        (canvas_side, canvas_side)
+        if shared_validity is not None
+        else output_shape
+    )
+    resampled_weights = ndi.affine_transform(
+        weight_values.astype(np.float32),
+        weight_matrix,
+        weight_offset,
+        output_shape=weight_shape,
+        order=1,
+        mode="grid-constant",
+        cval=0.0,
+        prefilter=False,
+    ).astype(np.float32, copy=False)
+    finite_output = resampled_weights >= np.float32(0.5)
+    np.divide(
+        resampled_values,
+        resampled_weights,
+        out=resampled_values,
+        where=finite_output,
+    )
+    np.copyto(resampled_values, np.nan, where=~finite_output)
+    return resampled_values
+
+
+def _fused_affine_mapping(
+    ndim: int,
+    source_side: int,
+    interpolated_side: int,
+    canvas_side: int,
+    angle_degrees: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    radians = np.deg2rad(angle_degrees)
+    cosine = float(np.cos(radians))
+    sine = float(np.sin(radians))
+    rotation = np.asarray(((cosine, sine), (-sine, cosine)), dtype=np.float64)
+    zoom = float(interpolated_side) / float(source_side)
+    canvas_center = np.full(2, (canvas_side - 1.0) / 2.0, dtype=np.float64)
+    padding_before = (canvas_side - interpolated_side) // 2
+    spatial_offset = (
+        canvas_center
+        - rotation @ canvas_center
+        - float(padding_before)
+        + 0.5
+    ) / zoom - 0.5
+    matrix = np.eye(ndim, dtype=np.float64)
+    matrix[-2:, -2:] = rotation / zoom
+    offset = np.zeros(ndim, dtype=np.float64)
+    offset[-2:] = spatial_offset
+    return matrix, offset
+
+
+def _shared_spatial_validity(valid: np.ndarray) -> np.ndarray | None:
+    if valid.ndim == 2:
+        return valid
+    flattened = valid.reshape((-1, *valid.shape[-2:]))
+    first = flattened[0]
+    return first if np.all(flattened == first) else None
 
 
 def _interpolate_values(values: np.ndarray, output_side_pixels: int) -> np.ndarray:

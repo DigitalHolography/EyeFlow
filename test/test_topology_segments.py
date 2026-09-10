@@ -14,6 +14,7 @@ from calculations.topology import (  # noqa: E402
     SegmentRingSettings,
     SegmentTopology,
     build_segment_topology,
+    extract_segment,
     extract_segments,
 )
 
@@ -53,6 +54,21 @@ class SegmentTopologyTests(unittest.TestCase):
             segments[0, 0, :, :, 1:, 1:],
             np.moveaxis(vector_map[:, :2, :2, :], (1, 2), (-2, -1)),
         )
+
+    def test_single_segment_extraction_matches_dense_extraction(self) -> None:
+        topology = _edge_topology()
+        vector_map = np.arange(2 * 4 * 5 * 2, dtype=np.float32).reshape(2, 4, 5, 2)
+
+        dense = extract_segments(vector_map, topology, spatial_axes=(1, 2))
+        streamed = extract_segment(
+            vector_map,
+            topology,
+            0,
+            0,
+            spatial_axes=(1, 2),
+        )
+
+        np.testing.assert_array_equal(streamed, dense[0, 0])
 
     def test_extracts_scalar_stacks_without_topology_recalculation(self) -> None:
         topology = _edge_topology()

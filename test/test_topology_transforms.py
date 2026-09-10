@@ -13,6 +13,7 @@ from calculations.topology.transforms import (
     dilate_segment_masks,
     interpolate_segment_masks,
     interpolate_segments,
+    resample_rotate_segment,
     rotate_segment_masks,
     rotate_segments,
 )
@@ -106,6 +107,72 @@ class TestTopologyTransforms(unittest.TestCase):
             rotated_masks[..., 26:154, 26:154],
             interpolated_masks,
         )
+
+    def test_fused_transform_preserves_alignment_with_bounded_scientific_delta(
+        self,
+    ) -> None:
+        y, x = np.mgrid[-1:1:29j, -1:1:29j]
+        base = np.exp(-4.0 * (x**2 + y**2)).astype(np.float32)
+        values = np.stack(
+            [(1.0 + 0.15 * frame) * base for frame in range(4)]
+        ).astype(np.float32)
+        angle = np.float32(27.0)
+
+        legacy = rotate_segments(
+            interpolate_segments(values[None, None], 128),
+            np.asarray([[angle]], dtype=np.float32),
+        )[0, 0]
+        fused = resample_rotate_segment(values, float(angle), 128)
+
+        self.assertEqual(legacy.shape, fused.shape)
+        legacy_y, legacy_x = np.nonzero(np.isfinite(legacy[0]))
+        fused_y, fused_x = np.nonzero(np.isfinite(fused[0]))
+        np.testing.assert_allclose(
+            (np.mean(fused_y), np.mean(fused_x)),
+            (np.mean(legacy_y), np.mean(legacy_x)),
+            atol=0.1,
+        )
+        self.assertLessEqual(
+            abs(int(np.isfinite(fused[0]).sum()) - int(np.isfinite(legacy[0]).sum())),
+            16,
+        )
+
+        overlap = np.isfinite(legacy) & np.isfinite(fused)
+        pixel_rmse = np.sqrt(np.mean((legacy[overlap] - fused[overlap]) ** 2))
+        pixel_scale = np.sqrt(np.mean(legacy[overlap] ** 2))
+        pixel_nrmse = float(pixel_rmse / pixel_scale)
+        self.assertGreater(pixel_nrmse, 1e-5)
+        self.assertLess(pixel_nrmse, 0.002)
+
+        legacy_signal = np.nanmean(legacy, axis=(-2, -1))
+        fused_signal = np.nanmean(fused, axis=(-2, -1))
+        signal_relative_error = np.max(
+            np.abs(legacy_signal - fused_signal)
+            / np.maximum(np.abs(legacy_signal), 1e-6)
+        )
+        self.assertLess(float(signal_relative_error), 0.002)
+
+        def transverse_profile(stack: np.ndarray) -> np.ndarray:
+            finite = np.isfinite(stack)
+            count = np.sum(finite, axis=-2)
+            total = np.sum(stack, axis=-2, where=finite)
+            return np.divide(
+                total,
+                count,
+                out=np.full(total.shape, np.nan, dtype=np.float32),
+                where=count > 0,
+            )
+
+        legacy_profile = transverse_profile(legacy)
+        fused_profile = transverse_profile(fused)
+        profile_overlap = np.isfinite(legacy_profile) & np.isfinite(fused_profile)
+        profile_rmse = np.sqrt(
+            np.mean(
+                (legacy_profile[profile_overlap] - fused_profile[profile_overlap]) ** 2
+            )
+        )
+        profile_scale = np.sqrt(np.mean(legacy_profile[profile_overlap] ** 2))
+        self.assertLess(float(profile_rmse / profile_scale), 0.003)
 
     def test_invalid_rotation_keeps_segment_outputs_empty(self) -> None:
         values = np.ones((1, 1, 4, 4), dtype=np.float32)

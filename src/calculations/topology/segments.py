@@ -148,6 +148,40 @@ def extract_segments(
     return extracted
 
 
+def extract_segment(
+    data_map,
+    topology: SegmentTopology,
+    ring_index: int,
+    branch_index: int,
+    *,
+    spatial_axes: tuple[int, int] = (-2, -1),
+) -> np.ndarray:
+    """Extract one padded segment while retaining all non-spatial axes."""
+
+    shape = tuple(int(size) for size in data_map.shape)
+    y_axis, x_axis = _normalized_spatial_axes(len(shape), spatial_axes)
+    assert (shape[y_axis], shape[x_axis]) == topology.spatial_shape
+    nonspatial_shape = tuple(
+        size for axis, size in enumerate(shape) if axis not in (y_axis, x_axis)
+    )
+    side = topology.window_side_pixels
+    extracted = np.full((*nonspatial_shape, side, side), np.nan, dtype=np.float32)
+    index = (int(ring_index), int(branch_index))
+    if side == 0 or not topology.valid_segments[index]:
+        return extracted
+
+    bounds = topology.window_bounds_xyxy[index]
+    center = topology.segment_centers_xy[index]
+    source_slices = [slice(None)] * len(shape)
+    source_slices[x_axis] = slice(int(bounds[0]), int(bounds[1]))
+    source_slices[y_axis] = slice(int(bounds[2]), int(bounds[3]))
+    source = np.asarray(data_map[tuple(source_slices)], dtype=np.float32)
+    source = np.moveaxis(source, (y_axis, x_axis), (-2, -1))
+    target_y, target_x = _window_target_slices(bounds, center, side)
+    extracted[..., target_y, target_x] = source
+    return extracted
+
+
 def _build_segment_topology_from_center(
     vessel_mask: np.ndarray,
     optic_disc_center_xy: tuple[float, float],

@@ -16,12 +16,16 @@ if str(SRC_DIR) not in sys.path:
 
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
+from calculations.topology import dilate_segment_masks  # noqa: E402
 from pipelines.waveform_velocity.profiles import (  # noqa: E402
     pack_velocity_profile_fft_outputs,
     velocity_fft_transverse_profiles,
 )
 from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
     interpolate_velocity_maps_per_beat,
+)
+from pipelines.waveform_velocity_core.segments import (  # noqa: E402
+    _VelocityProfileFftAccumulator,
 )
 
 
@@ -34,14 +38,30 @@ class VelocityFFTProfileTests(unittest.TestCase):
         ).copy()
         masks = np.zeros((1, 1, 51, 2), dtype=bool)
         masks[0, 0, 10, :] = True
-        self.segments = SimpleNamespace(
-            velocity_maps_per_segment=maps,
-            segment_masks=masks,
-        )
         self.boundaries = np.asarray([0, 2, 5], dtype=np.int32)
         self.maps_per_beat = interpolate_velocity_maps_per_beat(
             maps,
             self.boundaries,
+        )
+        accumulator = _VelocityProfileFftAccumulator(
+            frame_count=maps.shape[2],
+            ring_count=1,
+            branch_count=1,
+            canvas_side=maps.shape[-1],
+            cycle_boundary_indexes=self.boundaries,
+            index_base=0,
+        )
+        accumulator.observe(
+            0,
+            0,
+            maps[0, 0],
+            dilate_segment_masks(masks, iterations=20)[0, 0],
+        )
+        self.segments = SimpleNamespace(
+            velocity_maps_per_segment=maps,
+            segment_masks=masks,
+            transverse_velocity_fft_profiles_unmasked=accumulator.unmasked,
+            transverse_velocity_fft_profiles_masked=accumulator.masked,
         )
 
     def test_fft_then_nanmean_uses_dilated_mask(self) -> None:
@@ -61,8 +81,6 @@ class VelocityFFTProfileTests(unittest.TestCase):
         outputs = pack_velocity_profile_fft_outputs(
             self.segments,
             self.segments,
-            self.maps_per_beat,
-            self.maps_per_beat,
         )
         schema = EyeFlowOutputPaths.active()
         paths = schema.artery_velocity_profiles
@@ -118,6 +136,70 @@ class VelocityFFTProfileTests(unittest.TestCase):
             self.assertEqual(20, masked.attrs["mask_dilation_iterations"])
             self.assertEqual(0, unmasked.attrs["mask_dilation_iterations"])
             self.assertEqual("gzip", masked.compression)
+
+    def test_streamed_accumulator_matches_legacy_retained_map_path(self) -> None:
+        expected_unmasked, expected_masked = velocity_fft_transverse_profiles(
+            self.maps_per_beat,
+            self.segments.segment_masks,
+        )
+
+        np.testing.assert_allclose(
+            self.segments.transverse_velocity_fft_profiles_unmasked,
+            expected_unmasked,
+            rtol=1e-6,
+            atol=1e-6,
+            equal_nan=True,
+        )
+        np.testing.assert_allclose(
+            self.segments.transverse_velocity_fft_profiles_masked,
+            expected_masked,
+            rtol=1e-6,
+            atol=1e-6,
+            equal_nan=True,
+        )
+
+    def test_streamed_accumulator_matches_legacy_for_temporal_data(self) -> None:
+        rng = np.random.default_rng(3401)
+        maps = rng.normal(size=(1, 1, 7, 51, 5)).astype(np.float32)
+        maps[0, 0, :, :4, 0] = np.nan
+        masks = np.zeros((1, 1, 51, 5), dtype=bool)
+        masks[0, 0, 25, 1:4] = True
+        boundaries = np.asarray([0, 3, 6], dtype=np.int32)
+        maps_per_beat = interpolate_velocity_maps_per_beat(maps, boundaries)
+        expected_unmasked, expected_masked = velocity_fft_transverse_profiles(
+            maps_per_beat,
+            masks,
+        )
+        accumulator = _VelocityProfileFftAccumulator(
+            frame_count=maps.shape[2],
+            ring_count=1,
+            branch_count=1,
+            canvas_side=maps.shape[-1],
+            cycle_boundary_indexes=boundaries,
+            index_base=0,
+        )
+
+        accumulator.observe(
+            0,
+            0,
+            maps[0, 0],
+            dilate_segment_masks(masks, iterations=20)[0, 0],
+        )
+
+        np.testing.assert_allclose(
+            accumulator.unmasked,
+            expected_unmasked,
+            rtol=1e-6,
+            atol=1e-6,
+            equal_nan=True,
+        )
+        np.testing.assert_allclose(
+            accumulator.masked,
+            expected_masked,
+            rtol=1e-6,
+            atol=1e-6,
+            equal_nan=True,
+        )
 
 
 if __name__ == "__main__":

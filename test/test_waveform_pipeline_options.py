@@ -234,8 +234,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         fft_profiles.assert_called_once_with(
             "artery",
             "vein",
-            "artery_maps",
-            "vein_maps",
         )
         prepare_maps.assert_called_once_with(
             "artery",
@@ -316,6 +314,56 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertEqual({"base": 1, "signals": 2}, outputs)
         maps.assert_not_called()
         avis.assert_not_called()
+
+    def test_velocity_profiles_do_not_build_per_beat_velocity_maps(self) -> None:
+        context = SimpleNamespace(
+            velocity_analysis={},
+            artery_segment_result="artery",
+            vein_segment_result="vein",
+            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
+            source_data=SimpleNamespace(provenance={"beat_index_base": 1}),
+        )
+        ctx = _context(
+            {"waveform_velocity": ("velocity_profiles",)},
+            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+        )
+
+        with (
+            patch.object(
+                velocity_runner,
+                "pack_continuous_velocity_outputs",
+                return_value={"base": 1},
+            ),
+            patch.object(
+                velocity_runner,
+                "prepare_segment_velocity_maps_per_beat",
+            ) as prepare_maps,
+            patch.object(
+                velocity_runner,
+                "pack_cross_section_profile_outputs",
+                return_value={"profiles": 2},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_velocity_profile_fft_outputs",
+                return_value={"fft": 3},
+            ) as fft_profiles,
+            patch.object(
+                velocity_runner,
+                "pack_displacement_magnitude_outputs",
+                return_value={},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_cross_section_displacement_profile_outputs",
+                return_value={},
+            ),
+        ):
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+
+        self.assertEqual({"base": 1, "profiles": 2, "fft": 3}, outputs)
+        prepare_maps.assert_not_called()
+        fft_profiles.assert_called_once_with("artery", "vein")
 
     def test_segment_velocity_maps_option_publishes_maps_and_avis(self) -> None:
         context = SimpleNamespace(
@@ -494,6 +542,48 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         extract.assert_not_called()
         self.assertIsNone(artery)
         self.assertIsNone(vein)
+
+    def test_core_profiles_stream_fft_without_retaining_velocity_maps(self) -> None:
+        source = SimpleNamespace(
+            retinal_artery_mask="artery_mask",
+            retinal_vein_mask="vein_mask",
+            optic_disc_center=(10, 10),
+            optic_disc_mask="disc_mask",
+            cross_section_settings="settings",
+            provenance={"beat_index_base": 1},
+        )
+        ctx = SimpleNamespace(
+            pipeline_scheduled=lambda name: name == "waveform_velocity",
+            option_enabled=lambda name, pipeline=None: name == "velocity_profiles",
+            inputs=SimpleNamespace(
+                hd=SimpleNamespace(filename="hd.h5"),
+                dv=SimpleNamespace(filename="dv.h5"),
+            ),
+            state=SimpleNamespace(raw={}),
+            output=SimpleNamespace(available=False),
+        )
+
+        with patch.object(
+            core_runner,
+            "analyze_velocity_segments",
+            return_value={"artery": "artery", "vein": "vein"},
+        ) as analyze:
+            artery, vein = core_runner._segment_velocity_inputs(
+                "velocity_map",
+                source,
+                "rings",
+                ctx,
+                cycle_boundary_indexes=(1, 6, 11),
+            )
+
+        self.assertEqual(("artery", "vein"), (artery, vein))
+        self.assertFalse(analyze.call_args.kwargs["retain_velocity_maps"])
+        self.assertTrue(analyze.call_args.kwargs["velocity_profile_fft"])
+        self.assertEqual(
+            (1, 6, 11),
+            analyze.call_args.kwargs["cycle_boundary_indexes"],
+        )
+        self.assertEqual(1, analyze.call_args.kwargs["index_base"])
 
     def test_pdf_report_requires_shared_per_beat_products(self) -> None:
         ctx = _context(

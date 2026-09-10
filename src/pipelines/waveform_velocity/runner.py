@@ -41,7 +41,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
     profiles_selected = "velocity_profiles" in selected
     artery_velocity_maps_per_beat = None
     vein_velocity_maps_per_beat = None
-    if maps_selected or profiles_selected:
+    if maps_selected:
         map_started = perf_counter()
         Logger.log("Starting shared per-beat segment velocity-map interpolation...")
         artery_velocity_maps_per_beat, vein_velocity_maps_per_beat = (
@@ -149,8 +149,6 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             pack_velocity_profile_fft_outputs(
                 context.artery_segment_result,
                 context.vein_segment_result,
-                artery_velocity_maps_per_beat,
-                vein_velocity_maps_per_beat,
             )
         )
         # Displacement profile metrics are temporarily disabled.

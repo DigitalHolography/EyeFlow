@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Iterator, Mapping, MutableMapping
 from dataclasses import dataclass
 from time import perf_counter
+from typing import NamedTuple
 
 import numpy as np
 
@@ -12,13 +13,12 @@ from utils.logger import Logger
 
 from .cache import TopologyCacheKey, topology_cache_key
 from .geometry import SegmentRingSettings
-from .segments import SegmentTopology, build_segment_topology, extract_segments
+from .segments import SegmentTopology, build_segment_topology, extract_segment
 from .transforms import (
     determine_segment_rotations,
     interpolate_segment_masks,
-    interpolate_segments,
+    resample_rotate_segment,
     rotate_segment_masks,
-    rotate_segments,
 )
 
 
@@ -32,12 +32,15 @@ class PreparedTopology:
     rotated_masks: np.ndarray
 
 
-@dataclass(frozen=True)
-class PreparedSegments:
-    """Uniform non-rotated and upright views extracted from one retinal map."""
+class PreparedSegment(NamedTuple):
+    """One uniformly resized and upright segment from a retinal map."""
 
-    interpolated: np.ndarray
+    ring_index: int
+    branch_index: int
     rotated: np.ndarray
+
+
+PreparedSegments = Iterator[PreparedSegment]
 
 
 def prepare_topology(
@@ -159,51 +162,58 @@ def prepare_segments(
     prepared_topology: PreparedTopology,
     *,
     spatial_axes: tuple[int, int] = (-2, -1),
-) -> PreparedSegments:
-    """Extract, uniformly interpolate, and rotate one map's segment arrays."""
+) -> Iterator[PreparedSegment]:
+    """Yield prepared stacks for valid segments without dense materialization."""
 
     total_started = perf_counter()
+    topology = prepared_topology.topology
+    valid_indexes = np.argwhere(
+        topology.valid_segments & np.isfinite(prepared_topology.rotation_degrees)
+    )
+    progress_step = max(1, len(valid_indexes) // 10)
     Logger.log(
-        "Starting topology segment preparation: "
+        "Starting streamed topology segment preparation: "
         f"source_shape={tuple(int(size) for size in data_map.shape)}, "
-        f"source_type={type(data_map).__name__}."
+        f"source_type={type(data_map).__name__}, "
+        f"valid_segments={len(valid_indexes)}."
     )
-    started = perf_counter()
-    extracted = extract_segments(
-        data_map,
-        prepared_topology.topology,
-        spatial_axes=spatial_axes,
-    )
+    for work_index, (ring_index, branch_index) in enumerate(valid_indexes, start=1):
+        ring = int(ring_index)
+        branch = int(branch_index)
+        started = perf_counter()
+        extracted = extract_segment(
+            data_map,
+            topology,
+            ring,
+            branch,
+            spatial_axes=spatial_axes,
+        )
+        extraction_seconds = perf_counter() - started
+        started = perf_counter()
+        rotated = resample_rotate_segment(
+            extracted,
+            float(prepared_topology.rotation_degrees[ring, branch]),
+            prepared_topology.interpolated_masks.shape[-1],
+        )
+        transform_seconds = perf_counter() - started
+        if work_index % progress_step == 0 or work_index == len(valid_indexes):
+            Logger.log(
+                f"Streamed segment progress: {work_index}/{len(valid_indexes)}; "
+                f"index=({ring}, {branch}), extraction={extraction_seconds:.2f}s, "
+                f"fused_transform={transform_seconds:.2f}s; "
+                f"rotated={_array_summary(rotated)}."
+            )
+        yield PreparedSegment(
+            ring_index=ring,
+            branch_index=branch,
+            rotated=rotated,
+        )
+        del extracted, rotated
+
     Logger.log(
-        "Completed segment extraction in "
-        f"{perf_counter() - started:.2f}s; {_array_summary(extracted)}."
+        "Completed streamed topology segment preparation in "
+        f"{perf_counter() - total_started:.2f}s."
     )
-    started = perf_counter()
-    interpolated = interpolate_segments(
-        extracted,
-        prepared_topology.interpolated_masks.shape[-1],
-    )
-    Logger.log(
-        "Completed segment interpolation in "
-        f"{perf_counter() - started:.2f}s; {_array_summary(interpolated)}."
-    )
-    started = perf_counter()
-    rotated = rotate_segments(
-        interpolated,
-        prepared_topology.rotation_degrees,
-    )
-    Logger.log(
-        "Completed segment rotation in "
-        f"{perf_counter() - started:.2f}s; {_array_summary(rotated)}."
-    )
-    prepared = PreparedSegments(
-        interpolated=interpolated,
-        rotated=rotated,
-    )
-    Logger.log(
-        f"Completed topology segment preparation in {perf_counter() - total_started:.2f}s."
-    )
-    return prepared
 
 
 def _cached_topology(

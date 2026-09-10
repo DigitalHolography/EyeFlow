@@ -55,23 +55,19 @@ def pack_cross_section_profile_outputs(
 def pack_velocity_profile_fft_outputs(
     artery_segments,
     vein_segments,
-    artery_velocity_maps_per_beat: np.ndarray | None,
-    vein_velocity_maps_per_beat: np.ndarray | None,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
-    """Pack FFT profiles from prepared per-beat segment velocity maps."""
+    """Pack FFT profiles accumulated during streamed segment processing."""
 
     schema = _resolve_output_paths(output_paths)
     outputs = _pack_vessel_velocity_fft_profiles(
         schema.artery_velocity_profiles,
         artery_segments,
-        artery_velocity_maps_per_beat,
     )
     outputs.update(
         _pack_vessel_velocity_fft_profiles(
             schema.vein_velocity_profiles,
             vein_segments,
-            vein_velocity_maps_per_beat,
         )
     )
     return outputs
@@ -561,21 +557,33 @@ def _pack_vessel_profiles(
 def _pack_vessel_velocity_fft_profiles(
     paths: VelocityProfileOutputPaths,
     segments,
-    velocity_maps_per_beat: np.ndarray | None,
 ) -> dict[str, object]:
     unmasked_path = paths.transverse_velocity_profile_fft_unmasked
     masked_path = paths.transverse_velocity_profile_fft_masked
     if segments is None or unmasked_path is None or masked_path is None:
         return {}
-    if velocity_maps_per_beat is None:
-        raise ValueError(
-            "velocity_maps_per_beat is required when FFT profile output is enabled."
-        )
-
-    unmasked, masked = velocity_fft_transverse_profiles(
-        velocity_maps_per_beat,
-        segments.segment_masks,
+    unmasked_values = getattr(
+        segments,
+        "transverse_velocity_fft_profiles_unmasked",
+        None,
     )
+    masked_values = getattr(
+        segments,
+        "transverse_velocity_fft_profiles_masked",
+        None,
+    )
+    if unmasked_values is None or masked_values is None:
+        raise RuntimeError(
+            "Velocity FFT profiles were not accumulated during streamed "
+            "segment processing."
+        )
+    unmasked = np.asarray(unmasked_values, dtype=np.float32)
+    masked = np.asarray(masked_values, dtype=np.float32)
+    if unmasked.ndim != 5 or masked.shape != unmasked.shape:
+        raise ValueError(
+            "Streamed FFT profiles must have matching "
+            "(x, frequency, beat, branch, radius) shapes."
+        )
     shared_attrs = {
         "unit": "a.u.",
         "dimDesc": ["x", "frequency", "beat", "branch", "radius"],

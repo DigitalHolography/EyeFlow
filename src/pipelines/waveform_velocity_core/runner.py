@@ -296,6 +296,7 @@ def _per_beat_input_from_analysis(
             source_data,
             ring_settings,
             ctx,
+            cycle_boundary_indexes=velocity_analysis["beat_indices"],
         )
     else:
         Logger.log("Skipping segment velocity extraction; no selected output requires it.")
@@ -365,7 +366,24 @@ def _segment_velocity_inputs(
     source_data: WaveformVelocitySourceData,
     ring_settings: SegmentRingSettings,
     ctx,
+    *,
+    cycle_boundary_indexes,
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
+    waveform_velocity_scheduled = ctx.pipeline_scheduled("waveform_velocity")
+    retain_velocity_maps = bool(
+        waveform_velocity_scheduled
+        and ctx.option_enabled(
+            "segment_velocity_maps",
+            pipeline="waveform_velocity",
+        )
+    )
+    velocity_profile_fft = bool(
+        waveform_velocity_scheduled
+        and ctx.option_enabled(
+            "velocity_profiles",
+            pipeline="waveform_velocity",
+        )
+    )
     with _logged_stage("segment velocity extraction"):
         results = analyze_velocity_segments(
             velocity_map,
@@ -382,6 +400,10 @@ def _segment_velocity_inputs(
                 ctx.inputs.dv.filename,
             ),
             topology_cache=run_topology_cache(ctx.state.raw),
+            retain_velocity_maps=retain_velocity_maps,
+            cycle_boundary_indexes=cycle_boundary_indexes,
+            velocity_profile_fft=velocity_profile_fft,
+            index_base=int(source_data.provenance["beat_index_base"]),
         )
     if ctx.output.available:
         with _logged_stage("rotated mean PNG export"):

@@ -86,6 +86,29 @@ class SegmentMapOutputTests(unittest.TestCase):
                                 equal_nan=True,
                             )
 
+    def test_compact_maps_expand_only_indexed_valid_segments(self) -> None:
+        maps = np.arange(2 * 6 * 2 * 3, dtype=np.float32).reshape(
+            2,
+            6,
+            2,
+            3,
+        )
+        indexes = np.asarray([[0, 1], [1, 0]], dtype=np.int32)
+
+        actual = interpolate_velocity_maps_per_beat(
+            maps,
+            np.asarray([0, 2, 5], dtype=np.int32),
+            segment_indexes=indexes,
+            radius_count=2,
+            branch_count=2,
+        )
+
+        self.assertEqual((3, 2, 4, 2, 2, 2), actual.shape)
+        self.assertTrue(np.all(np.isnan(actual[..., 0, 0])))
+        self.assertTrue(np.all(np.isnan(actual[..., 1, 1])))
+        expected = interpft_real(maps[0, 0:3, 1, 2], 5)[:-1]
+        np.testing.assert_allclose(actual[2, 1, :, 0, 1, 0], expected)
+
     def test_segment_worker_count_honors_parallel_job_cap(self) -> None:
         with patch(
             "pipelines.waveform_velocity.segment_maps.cap_parallel_jobs",
@@ -159,14 +182,24 @@ class SegmentMapOutputTests(unittest.TestCase):
 
 
 def _segments(*, radius_count: int, branch_count: int):
-    maps = np.arange(
+    dense_maps = np.arange(
         radius_count * branch_count * 6 * 3 * 4,
         dtype=np.float32,
     ).reshape(radius_count, branch_count, 6, 3, 4)
+    indexes = np.asarray(
+        [
+            (radius_index, branch_index)
+            for radius_index in range(radius_count)
+            for branch_index in range(branch_count)
+        ],
+        dtype=np.int32,
+    ).reshape((-1, 2))
+    maps = dense_maps.reshape((-1, 6, 3, 4))
     masks = np.zeros((radius_count, branch_count, 3, 4), dtype=bool)
     masks[..., 1:, 1:3] = True
     return SimpleNamespace(
         velocity_maps_per_segment=maps,
+        velocity_map_segment_indexes=indexes,
         segment_masks=masks,
     )
 
