@@ -7,6 +7,7 @@ import numpy as np
 from calculations.blood_flow_velocity.cross_section.profile_processing import (
     interpolate_velocity_profiles_per_beat,
 )
+from calculations.math import nanmean_float32
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 
@@ -25,6 +26,7 @@ def pack_cross_section_profile_outputs(
         artery_segments,
         cycle_boundary_indexes,
         index_base=index_base,
+        include_temporal_means=True,
     )
     metrics.update(
         _pack_vessel_profiles(
@@ -43,41 +45,64 @@ def _pack_vessel_profiles(
     cycle_boundary_indexes,
     *,
     index_base: int,
+    include_temporal_means: bool = False,
 ) -> dict[str, object]:
-    return {
-        paths.transverse_velocity_profile_unmasked: _profile_dataset(
-            np.asarray(segments.velocity_profiles, dtype=np.float32),
-            cycle_boundary_indexes,
-            index_base=index_base,
+    transverse_unmasked = _profile_dataset(
+        np.asarray(segments.velocity_profiles, dtype=np.float32),
+        cycle_boundary_indexes,
+        index_base=index_base,
+    )
+    transverse_masked = _profile_dataset(
+        np.asarray(
+            segments.transverse_velocity_profiles_masked,
+            dtype=np.float32,
         ),
-        paths.transverse_velocity_profile_masked: _profile_dataset(
-            np.asarray(
-                segments.transverse_velocity_profiles_masked,
-                dtype=np.float32,
-            ),
-            cycle_boundary_indexes,
-            index_base=index_base,
-            spatial_axis="x",
+        cycle_boundary_indexes,
+        index_base=index_base,
+        spatial_axis="x",
+    )
+    longitudinal_unmasked = _profile_dataset(
+        np.asarray(
+            segments.longitudinal_velocity_profiles_unmasked,
+            dtype=np.float32,
         ),
-        paths.longitudinal_velocity_profile_unmasked: _profile_dataset(
-            np.asarray(
-                segments.longitudinal_velocity_profiles_unmasked,
-                dtype=np.float32,
-            ),
-            cycle_boundary_indexes,
-            index_base=index_base,
-            spatial_axis="y",
+        cycle_boundary_indexes,
+        index_base=index_base,
+        spatial_axis="y",
+    )
+    longitudinal_masked = _profile_dataset(
+        np.asarray(
+            segments.longitudinal_velocity_profiles_masked,
+            dtype=np.float32,
         ),
-        paths.longitudinal_velocity_profile_masked: _profile_dataset(
-            np.asarray(
-                segments.longitudinal_velocity_profiles_masked,
-                dtype=np.float32,
-            ),
-            cycle_boundary_indexes,
-            index_base=index_base,
-            spatial_axis="y",
-        ),
+        cycle_boundary_indexes,
+        index_base=index_base,
+        spatial_axis="y",
+    )
+    outputs = {
+        paths.transverse_velocity_profile_unmasked: transverse_unmasked,
+        paths.transverse_velocity_profile_masked: transverse_masked,
+        paths.longitudinal_velocity_profile_unmasked: longitudinal_unmasked,
+        paths.longitudinal_velocity_profile_masked: longitudinal_masked,
     }
+    if include_temporal_means:
+        outputs.update(
+            {
+                paths.transverse_velocity_profile_unmasked_meaned: (
+                    _temporally_meaned_profile_dataset(transverse_unmasked)
+                ),
+                paths.transverse_velocity_profile_masked_meaned: (
+                    _temporally_meaned_profile_dataset(transverse_masked)
+                ),
+                paths.longitudinal_velocity_profile_unmasked_meaned: (
+                    _temporally_meaned_profile_dataset(longitudinal_unmasked)
+                ),
+                paths.longitudinal_velocity_profile_masked_meaned: (
+                    _temporally_meaned_profile_dataset(longitudinal_masked)
+                ),
+            }
+        )
+    return outputs
 
 
 def _profile_dataset(
@@ -105,6 +130,23 @@ def _profile_dataset(
             "dimDesc": [spatial_axis, "time", "beat", "branch", "radius"],
         },
         h5_options=_profile_h5_options(profiles_per_beat.shape),
+    )
+
+
+def _temporally_meaned_profile_dataset(profile: DatasetValue) -> DatasetValue:
+    """Average an interpolated profile over time within each beat."""
+    data = nanmean_float32(np.asarray(profile.data), axis=1)
+    attrs = dict(profile.attrs or {})
+    dim_desc = list(attrs.get("dimDesc", ()))
+    if len(dim_desc) < 2 or dim_desc[1] != "time":
+        raise ValueError("profile dataset must have time as its second dimension.")
+    del dim_desc[1]
+    attrs["dimDesc"] = dim_desc
+    attrs["temporal_reduction"] = "mean_over_interpolated_beat_time"
+    return DatasetValue(
+        data=data,
+        attrs=attrs,
+        h5_options=_profile_h5_options(data.shape),
     )
 
 

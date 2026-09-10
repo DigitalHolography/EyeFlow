@@ -8,6 +8,7 @@ from calculations.compute_backend import optional_cupy_backend
 from utils.logger import Logger
 
 from .generate_cross_section_signals import (
+    _ARTERY_TRANSVERSE_MASK_DILATION_PIXELS,
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
     _fixed_substack_side_pixels,
@@ -73,6 +74,9 @@ def segment_velocity_results(
             ring_settings,
             settings,
             substack_side_pixels,
+            transverse_mask_dilation_pixels=(
+                _ARTERY_TRANSVERSE_MASK_DILATION_PIXELS
+            ),
         ),
         _generate_cross_section_signals_from_geometry(
             velocity,

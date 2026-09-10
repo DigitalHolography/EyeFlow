@@ -257,6 +257,14 @@ class SegmentCenterTests(unittest.TestCase):
 
         self.assertEqual(("artery", "vein"), results)
         self.assertEqual([9, 9], [call.args[-1] for call in generate.call_args_list])
+        self.assertEqual(
+            20,
+            generate.call_args_list[0].kwargs["transverse_mask_dilation_pixels"],
+        )
+        self.assertNotIn(
+            "transverse_mask_dilation_pixels",
+            generate.call_args_list[1].kwargs,
+        )
 
     def test_fixed_subimage_is_centroid_centered_and_padded_at_periphery(self) -> None:
         velocity = np.arange(2 * 5 * 6, dtype=np.float32).reshape(2, 5, 6)

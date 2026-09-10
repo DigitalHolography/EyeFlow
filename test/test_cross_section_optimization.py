@@ -123,6 +123,50 @@ def test_missing_frames_remain_missing_and_zero_flow_remains_zero():
     np.testing.assert_array_equal(safe, [np.nan, 0])
 
 
+def test_transverse_profile_mask_dilates_twenty_pixels_horizontally_only():
+    rotated_stack = np.broadcast_to(
+        np.arange(5, dtype=np.float32)[None, :, None],
+        (1, 5, 51),
+    ).copy()
+    rotated_mask = np.zeros((5, 51), dtype=bool)
+    rotated_mask[2, 25] = True
+    placeholder = np.full((1, 51), np.nan, dtype=np.float32)
+    velocity = cs._CrossSectionVelocityMeasurement(
+        raw=np.asarray([1.0], dtype=np.float32),
+        safe_velocity=np.asarray([2.0], dtype=np.float32),
+        transverse_profiles=placeholder,
+        longitudinal_profiles=np.full((1, 5), 3.0, dtype=np.float32),
+        rotated_stack=rotated_stack,
+        angle=0.0,
+        spatial_std=placeholder[0],
+    )
+    measurement = cs._CrossSectionMeasurement(
+        unmasked=velocity,
+        masked=replace(velocity, rotated_stack=None),
+        rotated_mean=np.ones((5, 51), dtype=np.float32),
+        rotated_mean_masked=np.ones((5, 51), dtype=np.float32),
+        rotated_mask=rotated_mask,
+        limits=(0, 50),
+        sample_count=51,
+    )
+
+    actual = cs._with_dilated_transverse_profile(measurement, 20)
+
+    expected = np.full((1, 51), np.nan, dtype=np.float32)
+    expected[:, 5:46] = 2.0
+    np.testing.assert_array_equal(actual.masked.transverse_profiles, expected)
+    np.testing.assert_array_equal(actual.rotated_mask, measurement.rotated_mask)
+    np.testing.assert_array_equal(
+        actual.masked.longitudinal_profiles,
+        measurement.masked.longitudinal_profiles,
+    )
+    np.testing.assert_array_equal(actual.masked.raw, measurement.masked.raw)
+    np.testing.assert_array_equal(
+        actual.masked.safe_velocity,
+        measurement.masked.safe_velocity,
+    )
+
+
 def test_empty_result_has_zero_branches_everywhere():
     branches = SimpleNamespace(branch_ids=np.array([], np.int32), labels=np.zeros((3, 3), np.int32))
     result = cs._empty_result(

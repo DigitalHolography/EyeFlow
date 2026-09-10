@@ -23,7 +23,7 @@ from calculations.blood_flow_velocity.cross_section.profile_processing import ( 
 from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  # noqa: E402
     per_beat_signal_analysis,
 )
-from calculations.math import rotate_image_with_nan  # noqa: E402
+from calculations.math import nanmean_float32, rotate_image_with_nan  # noqa: E402
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
@@ -51,7 +51,7 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
             cycle_boundaries,
         )
         schema = EyeFlowOutputPaths.active()
-        self.assertEqual(8, len(metrics))
+        self.assertEqual(12, len(metrics))
         artery_paths = schema.artery_velocity_profiles
         vein_paths = schema.vein_velocity_profiles
         self.assertEqual(
@@ -68,6 +68,26 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
             "Processing/VelocityProfiles/Artery/"
             "LongitudinalVelocityProfileUnmasked/value",
             artery_paths.longitudinal_velocity_profile_unmasked,
+        )
+        self.assertEqual(
+            "Processing/VelocityProfiles/Artery/"
+            "TransverseVelocityProfileUnmaskedMeaned/value",
+            artery_paths.transverse_velocity_profile_unmasked_meaned,
+        )
+        self.assertEqual(
+            "Processing/VelocityProfiles/Artery/"
+            "TransverseVelocityProfileMaskedMeaned/value",
+            artery_paths.transverse_velocity_profile_masked_meaned,
+        )
+        self.assertEqual(
+            "Processing/VelocityProfiles/Artery/"
+            "LongitudinalVelocityProfileUnmaskedMeaned/value",
+            artery_paths.longitudinal_velocity_profile_unmasked_meaned,
+        )
+        self.assertEqual(
+            "Processing/VelocityProfiles/Artery/"
+            "LongitudinalVelocityProfileMaskedMeaned/value",
+            artery_paths.longitudinal_velocity_profile_masked_meaned,
         )
         self.assertEqual(
             "Processing/VelocityProfiles/Vein/"
@@ -94,6 +114,28 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
                 artery_paths.longitudinal_velocity_profile_unmasked
             ]
             longitudinal_dataset = h5[artery_paths.longitudinal_velocity_profile_masked]
+            meaned_datasets = (
+                (
+                    raw_dataset,
+                    h5[artery_paths.transverse_velocity_profile_unmasked_meaned],
+                    "x",
+                ),
+                (
+                    transverse_dataset,
+                    h5[artery_paths.transverse_velocity_profile_masked_meaned],
+                    "x",
+                ),
+                (
+                    longitudinal_unmasked_dataset,
+                    h5[artery_paths.longitudinal_velocity_profile_unmasked_meaned],
+                    "y",
+                ),
+                (
+                    longitudinal_dataset,
+                    h5[artery_paths.longitudinal_velocity_profile_masked_meaned],
+                    "y",
+                ),
+            )
             self.assertEqual((181, 4, 2, 1, 2), raw_dataset.shape)
             self.assertEqual(raw_dataset.shape, transverse_dataset.shape)
             self.assertEqual(raw_dataset.shape, longitudinal_unmasked_dataset.shape)
@@ -140,6 +182,38 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
                 vein_paths.longitudinal_velocity_profile_masked
             ]
             self.assertEqual((181, 4, 2, 0, 2), empty_longitudinal.shape)
+            for source, meaned, spatial_axis in meaned_datasets:
+                self.assertEqual((181, 2, 1, 2), meaned.shape)
+                self.assertEqual(
+                    [spatial_axis, "beat", "branch", "radius"],
+                    list(meaned.attrs["dimDesc"]),
+                )
+                self.assertEqual(
+                    "mean_over_interpolated_beat_time",
+                    meaned.attrs["temporal_reduction"],
+                )
+                np.testing.assert_allclose(
+                    meaned[...],
+                    nanmean_float32(source[...], axis=1),
+                    atol=1e-6,
+                    equal_nan=True,
+                )
+            self.assertNotIn(
+                vein_paths.transverse_velocity_profile_unmasked_meaned,
+                h5,
+            )
+            self.assertNotIn(
+                vein_paths.transverse_velocity_profile_masked_meaned,
+                h5,
+            )
+            self.assertNotIn(
+                vein_paths.longitudinal_velocity_profile_unmasked_meaned,
+                h5,
+            )
+            self.assertNotIn(
+                vein_paths.longitudinal_velocity_profile_masked_meaned,
+                h5,
+            )
             self.assertNotIn("Processing/CrossSections", h5)
             for vessel in ("Artery", "Vein"):
                 root = f"Processing/VelocityProfiles/{vessel}"

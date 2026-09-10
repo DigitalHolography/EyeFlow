@@ -173,6 +173,7 @@ class _CrossSectionMeasurement:
 _INTERPOLATED_SUBSTACK_SIDE = 128
 _ROTATED_SUBSTACK_SIDE = int(_INTERPOLATED_SUBSTACK_SIDE * np.sqrt(2.0))
 _MAX_PARALLEL_CROSS_SECTIONS = 8
+_ARTERY_TRANSVERSE_MASK_DILATION_PIXELS = 20
 
 
 @dataclass
@@ -337,6 +338,8 @@ def _generate_cross_section_signals_from_geometry(
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings,
     substack_side_pixels: int,
+    *,
+    transverse_mask_dilation_pixels: int = 0,
 ) -> CrossSectionSignalResult:
     _validate_velocity_cube(velocity, geometry.vessel.shape)
     branches = geometry.branches
@@ -367,6 +370,7 @@ def _generate_cross_section_signals_from_geometry(
         cross_section_settings,
         substack_side_pixels,
         segments=geometry.segments,
+        transverse_mask_dilation_pixels=transverse_mask_dilation_pixels,
     )
     return _result_from_buffers(
         buffers,
@@ -609,6 +613,7 @@ def _fill_cross_section_buffers(
     substack_side_pixels,
     *,
     segments=None,
+    transverse_mask_dilation_pixels=0,
 ) -> None:
     if segments is None:
         segments = _prepare_segments(masks, branches, optic_disc_center)
@@ -638,6 +643,7 @@ def _fill_cross_section_buffers(
             optic_disc_center,
             settings,
             substack_side_pixels,
+            transverse_mask_dilation_pixels=transverse_mask_dilation_pixels,
         )
 
     if worker_count == 1:
@@ -694,6 +700,7 @@ def _measure_windowed_work(
     *,
     angle_override=None,
     limits_override=None,
+    transverse_mask_dilation_pixels=0,
 ):
     """Bound temporal scratch memory; retained outputs are outside this budget.
 
@@ -721,6 +728,7 @@ def _measure_windowed_work(
             side_pixels,
             angle_override=angle_override,
             limits_override=limits_override,
+            transverse_mask_dilation_pixels=transverse_mask_dilation_pixels,
         )
         _store_cross_section_measurement(
             buffers,
@@ -781,6 +789,7 @@ def _measure_windowed_work(
             side_pixels,
             angle_override=angle,
             limits_override=limits,
+            transverse_mask_dilation_pixels=transverse_mask_dilation_pixels,
         )
         measurement = replace(
             measurement,
@@ -950,13 +959,14 @@ def _cross_section_velocity_from_substack(
     *,
     angle_override: float | None = None,
     limits_override: tuple[int, int] | None = None,
+    transverse_mask_dilation_pixels: int = 0,
 ) -> _CrossSectionMeasurement:
     backend = _cross_section_backend()
     if backend is not None:
         try:
             from .gpu_cross_section import measure_cross_section_gpu
 
-            return measure_cross_section_gpu(
+            measurement = measure_cross_section_gpu(
                 backend,
                 sub_stack,
                 sub_mask,
@@ -967,6 +977,10 @@ def _cross_section_velocity_from_substack(
                 substack_side_pixels,
                 angle_override,
                 limits_override,
+            )
+            return _with_dilated_transverse_profile(
+                measurement,
+                transverse_mask_dilation_pixels,
             )
         except Exception as exc:  # noqa: BLE001 -- optional CUDA boundary; warn or raise below
             _disable_cross_section_gpu(exc)
@@ -1017,7 +1031,7 @@ def _cross_section_velocity_from_substack(
             pixel_size_mm=profile_pixel_size_mm,
         )
     )
-    return _CrossSectionMeasurement(
+    measurement = _CrossSectionMeasurement(
         unmasked=_profile_measurement(
             rotation_stack,
             angle,
@@ -1038,6 +1052,47 @@ def _cross_section_velocity_from_substack(
         rotated_mask=rotated_mask,
         limits=(c1, c2),
         sample_count=_rotated_profile_sample_count(angle),
+    )
+    return _with_dilated_transverse_profile(
+        measurement,
+        transverse_mask_dilation_pixels,
+    )
+
+
+def _with_dilated_transverse_profile(
+    measurement: _CrossSectionMeasurement,
+    dilation_pixels: int,
+) -> _CrossSectionMeasurement:
+    """Use a horizontally dilated rotated mask for only the masked x-profile."""
+    pixels = int(dilation_pixels)
+    if pixels < 0 or pixels != dilation_pixels:
+        raise ValueError("transverse mask dilation must be a nonnegative integer.")
+    if pixels == 0:
+        return measurement
+
+    rotated_stack = measurement.unmasked.rotated_stack
+    if rotated_stack is None:
+        raise ValueError("the unmasked rotated stack is required for mask dilation.")
+    transverse_mask = ndi.binary_dilation(
+        measurement.rotated_mask,
+        structure=np.ones((1, 2 * pixels + 1), dtype=bool),
+    )
+    rotated_values = np.asarray(rotated_stack, dtype=np.float32)
+    transverse_profiles = np.empty(
+        (rotated_values.shape[0], rotated_values.shape[2]),
+        dtype=np.float32,
+    )
+    for frame_index, frame in enumerate(rotated_values):
+        transverse_profiles[frame_index] = nanmean_float32(
+            np.where(transverse_mask, frame, np.nan),
+            axis=0,
+        )
+    return replace(
+        measurement,
+        masked=replace(
+            measurement.masked,
+            transverse_profiles=transverse_profiles,
+        ),
     )
 
 
