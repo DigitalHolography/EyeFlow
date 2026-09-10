@@ -182,6 +182,59 @@ def extract_segment(
     return extracted
 
 
+def resize_segment_topology_windows(
+    topology: SegmentTopology,
+    window_side_pixels: int,
+) -> SegmentTopology:
+    """Rebuild local windows without repeating branch identification."""
+
+    side = int(window_side_pixels)
+    if side < 0 or (side > 0 and side % 2 == 0):
+        raise ValueError("window_side_pixels must be zero or a positive odd integer.")
+    if side == topology.window_side_pixels:
+        return topology
+
+    ring_count, branch_count = topology.segment_centers_xy.shape[:2]
+    bounds = np.full((ring_count, branch_count, 4), -1, dtype=np.int32)
+    masks = np.zeros((ring_count, branch_count, side, side), dtype=bool)
+    if side:
+        for ring_index, branch_index in np.argwhere(topology.valid_segments):
+            center = tuple(
+                int(value)
+                for value in topology.segment_centers_xy[ring_index, branch_index]
+            )
+            segment_bounds = _centered_window_bounds(
+                topology.spatial_shape,
+                center,
+                side,
+            )
+            bounds[ring_index, branch_index] = segment_bounds
+            target_y, target_x = _window_target_slices(segment_bounds, center, side)
+            x_start, x_stop, y_start, y_stop = segment_bounds
+            branch_id = int(topology.branch_ids[branch_index])
+            full_mask = topology.annulus_masks[ring_index] & (
+                topology.labels == branch_id
+            )
+            masks[ring_index, branch_index, target_y, target_x] = full_mask[
+                y_start:y_stop,
+                x_start:x_stop,
+            ]
+
+    return SegmentTopology(
+        spatial_shape=topology.spatial_shape,
+        optic_disc_center_xy=topology.optic_disc_center_xy,
+        labels=topology.labels,
+        centerline=topology.centerline,
+        branch_ids=topology.branch_ids,
+        annulus_masks=topology.annulus_masks,
+        segment_masks=masks,
+        segment_centers_xy=topology.segment_centers_xy,
+        window_bounds_xyxy=bounds,
+        window_side_pixels=side,
+        branch_identity=topology.branch_identity,
+    )
+
+
 def _build_segment_topology_from_center(
     vessel_mask: np.ndarray,
     optic_disc_center_xy: tuple[float, float],

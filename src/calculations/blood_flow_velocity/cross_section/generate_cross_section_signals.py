@@ -34,19 +34,8 @@ from calculations.topology import (
 )
 
 from runtime_limits import cap_parallel_jobs
-from .profile_processing import ProfileData, process_velocity_profiles
-
-
 @dataclass(frozen=True)
 class CrossSectionSignalSettings:
-    """Cross-section configuration.
-
-    ``working_memory_mb`` bounds estimated concurrent scratch memory, excluding
-    the input cube and retained outputs. Oversized windows use temporal batches.
-    """
-
-    hydrodynamic_diameters: bool
-    velocity_profile_threshold: float
     pixel_size_mm: float
     submask_size_percentile_kept: float = 0.95
     working_memory_mb: float = 512.0
@@ -54,11 +43,6 @@ class CrossSectionSignalSettings:
     def __post_init__(self):
         if not np.isfinite(self.pixel_size_mm) or self.pixel_size_mm <= 0:
             raise ValueError("pixel_size_mm must be finite and positive.")
-        if (
-            not np.isfinite(self.velocity_profile_threshold)
-            or not 0 < self.velocity_profile_threshold < 1
-        ):
-            raise ValueError("velocity_profile_threshold must be in (0, 1).")
         if not np.isfinite(self.working_memory_mb) or self.working_memory_mb <= 0:
             raise ValueError("working_memory_mb must be finite and positive.")
         if not 0 < self.submask_size_percentile_kept <= 1:
@@ -69,11 +53,10 @@ class CrossSectionSignalSettings:
 class CrossSectionProfileOutputs:
     """Transverse and longitudinal cross-section profile outputs."""
 
-    velocity_profiles: np.ndarray | SegmentArray
-    transverse_velocity_profiles_masked: np.ndarray | SegmentArray
-    longitudinal_velocity_profiles_unmasked: np.ndarray | SegmentArray
-    longitudinal_velocity_profiles_masked: np.ndarray | SegmentArray
-    profile_x_micrometers: np.ndarray
+    velocity_profiles: np.ndarray
+    transverse_velocity_profiles_masked: np.ndarray
+    longitudinal_velocity_profiles_unmasked: np.ndarray
+    longitudinal_velocity_profiles_masked: np.ndarray
     profile_sample_count: np.ndarray
     profile_rotation_degrees: np.ndarray
     rotated_mean_images: np.ndarray | SegmentArray
@@ -82,18 +65,6 @@ class CrossSectionProfileOutputs:
     profile_window_side_pixels: int
     profile_pixel_size_mm: float
     profile_integration_limits_pixels: np.ndarray
-    centered_velocity_profiles: np.ndarray | SegmentArray
-    centered_profile_x_micrometers: np.ndarray
-    profile_center_micrometers: np.ndarray
-    profile_lumen_edges_micrometers: np.ndarray
-    profile_centering_fit_r_squared: np.ndarray
-    poiseuille_coefficients: np.ndarray
-    poiseuille_origin_micrometers: np.ndarray
-    poiseuille_roots_micrometers: np.ndarray
-    poiseuille_r_squared: np.ndarray
-    poiseuille_profile_spatial_std: np.ndarray
-    raw_profile: ProfileData
-    interpolated_profile: ProfileData
 
 
 @dataclass(frozen=True)
@@ -198,7 +169,6 @@ class _CrossSectionVelocityMeasurement:
     longitudinal_profiles: np.ndarray
     rotated_stack: np.ndarray | None
     angle: float
-    spatial_std: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -259,7 +229,6 @@ class _CrossSectionBuffers:
     longitudinal_velocity_profiles_unmasked: np.ndarray | SegmentArray
     longitudinal_velocity_profiles_masked: np.ndarray | SegmentArray
     profile_sample_count: np.ndarray
-    profile_spatial_std: np.ndarray
     profile_rotation_degrees: np.ndarray
     rotated_mean_images: np.ndarray | SegmentArray
     rotated_mean_images_masked: np.ndarray | SegmentArray
@@ -358,11 +327,6 @@ class _CrossSectionBuffers:
                 dtype=np.float32,
             ),
             profile_sample_count=np.zeros(profile_shape, dtype=np.int32),
-            profile_spatial_std=np.full(
-                (*profile_shape, _ROTATED_SUBSTACK_SIDE),
-                np.nan,
-                dtype=np.float32,
-            ),
             profile_rotation_degrees=np.full(
                 profile_shape,
                 np.nan,
@@ -732,10 +696,6 @@ def _fill_cross_section_buffers_from_prepared(
     segment_observer=None,
 ) -> None:
     topology = prepared_topology.topology
-    profile_pixel_size_mm = _interpolated_pixel_size_mm(
-        settings.pixel_size_mm,
-        substack_side_pixels,
-    )
     for prepared_segment in prepared_segments:
         index = (
             prepared_segment.ring_index,
@@ -745,32 +705,66 @@ def _fill_cross_section_buffers_from_prepared(
         rotated = prepared_segment.rotated
         rotated_mask = prepared_topology.rotated_masks[index]
         profile_mask = _dilate_profile_mask(rotated_mask)
-        rotated_masked = np.where(
-            profile_mask[None, ...],
+        backend = optional_cupy_backend()
+        if backend is not None and isinstance(rotated, backend.cupy.ndarray):
+            if segment_observer is not None:
+                segment_observer(index[0], index[1], rotated, profile_mask)
+            measurement = _gpu_cross_section_measurement(
+                rotated,
+                rotated_mask,
+                profile_mask,
+                angle,
+                retain_rotated_stack=buffers.velocity_maps_per_segment is not None,
+                cupy=backend.cupy,
+            )
+            buffers.segment_center_xy[index[1], index[0]] = (
+                topology.segment_centers_xy[index]
+            )
+            _store_cross_section_measurement(
+                buffers,
+                index[0],
+                index[1],
+                measurement,
+                tuple(int(value) for value in topology.window_bounds_xyxy[index]),
+            )
+            del measurement, rotated, prepared_segment
+            continue
+        finite_masked = np.isfinite(rotated) & profile_mask[None, ...]
+        transverse = calculate_transverse_profiles(rotated)
+        longitudinal = calculate_longitudinal_profiles(rotated)
+        transverse_masked = _nanmean_float32_where(
             rotated,
-            np.float32(np.nan),
+            finite_masked,
+            axis=1,
+        )
+        longitudinal_masked = _nanmean_float32_where(
+            rotated,
+            finite_masked,
+            axis=2,
         )
         rotated_mean = nanmean_float32(rotated, axis=0)
-        rotated_mean_masked = nanmean_float32(rotated_masked, axis=0)
-        c1, c2 = _cross_section_limits(
-            rotated_mean_masked,
-            settings,
-            pixel_size_mm=profile_pixel_size_mm,
+        rotated_mean_masked = _nanmean_float32_where(
+            rotated,
+            finite_masked,
+            axis=0,
         )
+        c1, c2 = _cross_section_limits(rotated_mean_masked)
         measurement = _CrossSectionMeasurement(
-            unmasked=_profile_measurement_from_rotated(
-                rotated,
+            unmasked=_profile_measurement_from_profiles(
+                transverse,
+                longitudinal,
                 angle,
                 c1,
                 c2,
-                rotated_mean,
+                rotated_stack=rotated,
             ),
-            masked=_profile_measurement_from_rotated(
-                rotated_masked,
+            masked=_profile_measurement_from_profiles(
+                transverse_masked,
+                longitudinal_masked,
                 angle,
                 c1,
                 c2,
-                rotated_mean_masked,
+                rotated_stack=None,
             ),
             rotated_mean=rotated_mean,
             rotated_mean_masked=rotated_mean_masked,
@@ -795,7 +789,7 @@ def _fill_cross_section_buffers_from_prepared(
             measurement,
             tuple(int(value) for value in topology.window_bounds_xyxy[index]),
         )
-        del measurement, rotated, rotated_masked, prepared_segment
+        del measurement, rotated, finite_masked, prepared_segment
 
 
 def _result_from_buffers(
@@ -811,11 +805,6 @@ def _result_from_buffers(
         settings.pixel_size_mm,
         substack_side_pixels,
     )
-    processed_profiles = process_velocity_profiles(
-        buffers.transverse_velocity_profiles_masked,
-        pixel_size_mm=profile_pixel_size_mm,
-        velocity_profile_threshold=settings.velocity_profile_threshold,
-    )
     return CrossSectionSignalResult(
         velocity=buffers.velocity,
         safe_velocity=buffers.safe_velocity,
@@ -829,10 +818,15 @@ def _result_from_buffers(
         topology=topology,
         displacements=displacements,
         velocity_profiles=buffers.velocity_profiles,
-        transverse_velocity_profiles_masked=(buffers.transverse_velocity_profiles_masked),
-        longitudinal_velocity_profiles_unmasked=(buffers.longitudinal_velocity_profiles_unmasked),
-        longitudinal_velocity_profiles_masked=(buffers.longitudinal_velocity_profiles_masked),
-        profile_x_micrometers=processed_profiles.raw_x_micrometers,
+        transverse_velocity_profiles_masked=(
+            buffers.transverse_velocity_profiles_masked
+        ),
+        longitudinal_velocity_profiles_unmasked=(
+            buffers.longitudinal_velocity_profiles_unmasked
+        ),
+        longitudinal_velocity_profiles_masked=(
+            buffers.longitudinal_velocity_profiles_masked
+        ),
         profile_sample_count=buffers.profile_sample_count,
         profile_rotation_degrees=buffers.profile_rotation_degrees,
         rotated_mean_images=buffers.rotated_mean_images,
@@ -841,20 +835,6 @@ def _result_from_buffers(
         profile_window_side_pixels=int(substack_side_pixels),
         profile_pixel_size_mm=profile_pixel_size_mm,
         profile_integration_limits_pixels=(buffers.profile_integration_limits_pixels),
-        centered_velocity_profiles=processed_profiles.centered_velocity,
-        centered_profile_x_micrometers=(processed_profiles.centered_x_micrometers),
-        profile_center_micrometers=processed_profiles.center_micrometers,
-        profile_lumen_edges_micrometers=(processed_profiles.lumen_edges_micrometers),
-        profile_centering_fit_r_squared=(processed_profiles.centering_fit_r_squared),
-        poiseuille_coefficients=processed_profiles.poiseuille_coefficients,
-        poiseuille_origin_micrometers=(
-            processed_profiles.poiseuille_origin_micrometers
-        ),
-        poiseuille_roots_micrometers=(processed_profiles.poiseuille_roots_micrometers),
-        poiseuille_r_squared=processed_profiles.poiseuille_r_squared,
-        poiseuille_profile_spatial_std=buffers.profile_spatial_std,
-        raw_profile=processed_profiles.raw_profile,
-        interpolated_profile=processed_profiles.interpolated_profile,
     )
 
 
@@ -904,11 +884,6 @@ def _empty_result(
             _ROTATED_SUBSTACK_SIDE,
         ),
         dtype=bool,
-    )
-    processed = process_velocity_profiles(
-        empty_profiles,
-        pixel_size_mm=0.0,
-        velocity_profile_threshold=0.5,
     )
     topology = CrossSectionTopology(
         spatial_shape=tuple(vessel.shape),
@@ -970,7 +945,6 @@ def _empty_result(
         transverse_velocity_profiles_masked=empty_profiles.copy(),
         longitudinal_velocity_profiles_unmasked=empty_profiles.copy(),
         longitudinal_velocity_profiles_masked=empty_profiles.copy(),
-        profile_x_micrometers=processed.raw_x_micrometers,
         profile_sample_count=np.zeros((settings.ring_count, 0), dtype=np.int32),
         profile_rotation_degrees=np.full(
             (settings.ring_count, 0),
@@ -1009,22 +983,6 @@ def _empty_result(
             -1,
             dtype=np.int32,
         ),
-        centered_velocity_profiles=processed.centered_velocity,
-        centered_profile_x_micrometers=processed.centered_x_micrometers,
-        profile_center_micrometers=processed.center_micrometers,
-        profile_lumen_edges_micrometers=processed.lumen_edges_micrometers,
-        profile_centering_fit_r_squared=processed.centering_fit_r_squared,
-        poiseuille_coefficients=processed.poiseuille_coefficients,
-        poiseuille_origin_micrometers=processed.poiseuille_origin_micrometers,
-        poiseuille_roots_micrometers=processed.poiseuille_roots_micrometers,
-        poiseuille_r_squared=processed.poiseuille_r_squared,
-        poiseuille_profile_spatial_std=np.full(
-            (settings.ring_count, 0, _ROTATED_SUBSTACK_SIDE),
-            np.nan,
-            dtype=np.float32,
-        ),
-        raw_profile=processed.raw_profile,
-        interpolated_profile=processed.interpolated_profile,
     )
 
 
@@ -1153,12 +1111,27 @@ def _fill_cross_section_buffers(
                     pending.add(executor.submit(measure, work))
 
 
-def _estimated_work_bytes(frame_count, side_pixels):
-    # Conservative allowance for input, both masked/unmasked paths, normalized
-    # interpolation scratch arrays and copying the result into sparse storage.
-    return int(
-        4 * frame_count * (2 * side_pixels**2 + 24 * _ROTATED_SUBSTACK_SIDE**2)
-        + 4 * 32 * _ROTATED_SUBSTACK_SIDE**2
+def _cross_section_worker_count(
+    work_count: int,
+    *,
+    frame_count: int = 1,
+    working_memory_mb: float = 512.0,
+) -> int:
+    if work_count <= 1 or optional_cupy_backend() is not None:
+        return 1
+    # Bound each worker by one native and several transformed float32 stacks.
+    bytes_per_worker = max(
+        1,
+        int(frame_count) * _ROTATED_SUBSTACK_SIDE**2 * 4 * 5,
+    )
+    memory_workers = max(
+        1,
+        int(float(working_memory_mb) * 1024**2) // bytes_per_worker,
+    )
+    return min(
+        work_count,
+        cap_parallel_jobs(_MAX_PARALLEL_CROSS_SECTIONS),
+        memory_workers,
     )
 
 
@@ -1310,9 +1283,9 @@ def _store_cross_section_measurement(
         map_row = int(buffers.velocity_map_rows[circle_index, branch_index])
         if map_row < 0:
             raise ValueError("Missing compact velocity-map row for valid segment.")
-        buffers.velocity_maps_per_segment[map_row] = (
-            measurement.unmasked.rotated_stack
-        )
+        if measurement.unmasked.rotated_stack is None:
+            raise ValueError("Retained velocity maps require a rotated stack.")
+        buffers.velocity_maps_per_segment[map_row] = measurement.unmasked.rotated_stack
     buffers.segment_masks[circle_index, branch_index] = measurement.rotated_mask
     buffers.velocity_profiles[circle_index, branch_index, frame_slice] = (
         measurement.unmasked.transverse_profiles
@@ -1327,8 +1300,9 @@ def _store_cross_section_measurement(
         masked.longitudinal_profiles
     )
     buffers.profile_sample_count[circle_index, branch_index] = measurement.sample_count
-    buffers.profile_spatial_std[circle_index, branch_index] = masked.spatial_std
-    buffers.profile_rotation_degrees[circle_index, branch_index] = np.float32(masked.angle)
+    buffers.profile_rotation_degrees[circle_index, branch_index] = np.float32(
+        masked.angle
+    )
     buffers.rotated_mean_images[circle_index, branch_index] = measurement.rotated_mean
     buffers.rotated_mean_images_masked[circle_index, branch_index] = measurement.rotated_mean_masked
     buffers.profile_window_bounds_xyxy[circle_index, branch_index] = bounds_xyxy
@@ -2019,21 +1993,9 @@ def _cross_section_velocity_from_substack(
         rotation_profile_mask,
         angle,
     )
-    rotated_mean_masked[~rotated_mask] = np.nan
-    profile_pixel_size_mm = _interpolated_pixel_size_mm(
-        settings.pixel_size_mm,
-        substack_side_pixels,
-    )
-    c1, c2 = (
-        limits_override
-        if limits_override is not None
-        else _cross_section_limits(
-            rotated_mean_masked,
-            settings,
-            pixel_size_mm=profile_pixel_size_mm,
-        )
-    )
-    measurement = _CrossSectionMeasurement(
+    rotated_mask = _rotate_mask(rotation_mask, angle)
+    c1, c2 = _cross_section_limits(rotated_mean_masked)
+    return _CrossSectionMeasurement(
         unmasked=_profile_measurement(
             rotation_stack,
             angle,
@@ -2107,29 +2069,122 @@ def _dilate_profile_mask(mask: np.ndarray) -> np.ndarray:
     )
 
 
-def _profile_measurement_from_rotated(
-    rotated_stack: np.ndarray,
+def _gpu_cross_section_measurement(
+    rotated_stack,
+    rotated_mask: np.ndarray,
+    profile_mask: np.ndarray,
+    angle: float,
+    *,
+    retain_rotated_stack: bool,
+    cupy,
+) -> _CrossSectionMeasurement:
+    """Reduce a resident CUDA segment and transfer only profiles/summaries."""
+
+    gpu_mask = cupy.asarray(profile_mask, dtype=cupy.bool_)
+    transverse = _gpu_nanmean(rotated_stack, axis=1, cupy=cupy)
+    longitudinal = _gpu_nanmean(rotated_stack, axis=2, cupy=cupy)
+    transverse_masked = _gpu_nanmean(
+        rotated_stack,
+        axis=1,
+        spatial_mask=gpu_mask,
+        cupy=cupy,
+    )
+    longitudinal_masked = _gpu_nanmean(
+        rotated_stack,
+        axis=2,
+        spatial_mask=gpu_mask,
+        cupy=cupy,
+    )
+    rotated_mean = _gpu_nanmean(rotated_stack, axis=0, cupy=cupy)
+    rotated_mean_masked = _gpu_nanmean(
+        rotated_stack,
+        axis=0,
+        spatial_mask=gpu_mask,
+        cupy=cupy,
+    )
+    (
+        transverse_host,
+        longitudinal_host,
+        transverse_masked_host,
+        longitudinal_masked_host,
+        rotated_mean_host,
+        rotated_mean_masked_host,
+    ) = (
+        cupy.asnumpy(value)
+        for value in (
+            transverse,
+            longitudinal,
+            transverse_masked,
+            longitudinal_masked,
+            rotated_mean,
+            rotated_mean_masked,
+        )
+    )
+    c1, c2 = _cross_section_limits(rotated_mean_masked_host)
+    retained = cupy.asnumpy(rotated_stack) if retain_rotated_stack else None
+    return _CrossSectionMeasurement(
+        unmasked=_profile_measurement_from_profiles(
+            transverse_host,
+            longitudinal_host,
+            angle,
+            c1,
+            c2,
+            rotated_stack=retained,
+        ),
+        masked=_profile_measurement_from_profiles(
+            transverse_masked_host,
+            longitudinal_masked_host,
+            angle,
+            c1,
+            c2,
+            rotated_stack=None,
+        ),
+        rotated_mean=rotated_mean_host,
+        rotated_mean_masked=rotated_mean_masked_host,
+        rotated_mask=rotated_mask,
+        limits=(c1, c2),
+        sample_count=_rotated_profile_sample_count(angle),
+    )
+
+
+def _gpu_nanmean(values, *, axis: int, cupy, spatial_mask=None):
+    finite = cupy.isfinite(values)
+    if spatial_mask is not None:
+        finite &= spatial_mask[None, ...]
+    counts = cupy.sum(finite, axis=axis, dtype=cupy.int32)
+    totals = cupy.sum(
+        cupy.where(finite, values, cupy.float32(0.0)),
+        axis=axis,
+        dtype=cupy.float32,
+    )
+    result = cupy.full(totals.shape, cupy.nan, dtype=cupy.float32)
+    cupy.divide(totals, counts, out=result, where=counts > 0)
+    return result
+
+
+def _profile_measurement_from_profiles(
+    transverse_profiles: np.ndarray,
+    longitudinal_profiles: np.ndarray,
     angle: float,
     c1: int,
     c2: int,
-    rotated_mean: np.ndarray,
+    *,
+    rotated_stack: np.ndarray | None,
 ) -> _CrossSectionVelocityMeasurement:
-    transverse_profiles = calculate_transverse_profiles(rotated_stack)
-    longitudinal_profiles = calculate_longitudinal_profiles(rotated_stack)
-    raw = nanmean_float32(transverse_profiles[:, c1 : c2 + 1], axis=1)
+    transverse = np.asarray(transverse_profiles, dtype=np.float32)
+    longitudinal = np.asarray(longitudinal_profiles, dtype=np.float32)
+    raw = nanmean_float32(transverse[:, c1 : c2 + 1], axis=1)
     raw = np.where(np.isnan(raw), np.float32(0.0), raw).astype(
         np.float32,
         copy=False,
     )
-    safe_velocity = nanmean_float32(transverse_profiles, axis=1)
     return _CrossSectionVelocityMeasurement(
         raw=raw,
-        safe_velocity=safe_velocity,
-        transverse_profiles=transverse_profiles,
-        longitudinal_profiles=longitudinal_profiles,
-        rotated_stack=np.asarray(rotated_stack, dtype=np.float32),
+        safe_velocity=nanmean_float32(transverse, axis=1),
+        transverse_profiles=transverse,
+        longitudinal_profiles=longitudinal,
+        rotated_stack=rotated_stack,
         angle=float(angle),
-        spatial_std=_sample_nanstd_axis0(rotated_mean),
     )
 
 
@@ -2154,7 +2209,6 @@ def _profile_measurement(
         c1,
         c2,
     )
-    spatial_std = _sample_nanstd_axis0(rotated_mean)
     return _CrossSectionVelocityMeasurement(
         raw=raw,
         safe_velocity=safe_velocity,
@@ -2162,7 +2216,6 @@ def _profile_measurement(
         longitudinal_profiles=longitudinal_profiles,
         rotated_stack=rotated_stack if retain_movie else None,
         angle=float(angle),
-        spatial_std=spatial_std,
     )
 
 
@@ -2620,78 +2673,10 @@ def _crop_circle(image: np.ndarray) -> np.ndarray:
     return cropped
 
 
-def _cross_section_limits(
-    image: np.ndarray,
-    settings: CrossSectionSignalSettings,
-    *,
-    pixel_size_mm: float,
-) -> tuple[int, int]:
-    if not settings.hydrodynamic_diameters:
-        return 0, max(image.shape[1] - 1, 0)
-    profile = nanmean_float32(image, axis=0)
-    limits = _hydrodynamic_limits(
-        profile,
-        settings,
-        pixel_size_mm,
-    )
-    return limits if limits is not None else (0, max(profile.size - 1, 0))
+def _cross_section_limits(image: np.ndarray) -> tuple[int, int]:
+    """Use the complete transverse support; fitting belongs to analysis."""
 
-
-def _hydrodynamic_limits(
-    profile: np.ndarray,
-    settings: CrossSectionSignalSettings,
-    pixel_size_mm: float,
-) -> tuple[int, int] | None:
-    if not np.isfinite(pixel_size_mm) or pixel_size_mm <= 0:
-        raise ValueError("pixel_size_mm must be finite and positive.")
-    if profile.size == 0 or np.all(~np.isfinite(profile)):
-        return None
-    threshold = settings.velocity_profile_threshold * float(np.max(profile[np.isfinite(profile)]))
-    central = np.flatnonzero(np.isfinite(profile) & (profile > threshold))
-    if central.size < 3:
-        return None
-    center = float(np.mean(central))
-    roots = _half_height_roots(profile, central, center, threshold, pixel_size_mm)
-    if roots is None:
-        return None
-    c1 = max(int(np.ceil(center + roots[0] / pixel_size_mm)), 0)
-    c2 = min(int(np.floor(center + roots[1] / pixel_size_mm)), profile.size - 1)
-    return (c1, c2) if c1 <= c2 else None
-
-
-def _half_height_roots(
-    profile: np.ndarray,
-    central: np.ndarray,
-    center: float,
-    threshold: float,
-    pixel_size_mm: float,
-) -> tuple[float, float] | None:
-    # Fit in pixel units to avoid ill-conditioning from very small mm scales.
-    x = central.astype(np.float64) - center
-    y = np.asarray(profile[central], dtype=np.float64)
-    if x.size < 3 or not np.all(np.isfinite(y)):
-        return None
-    try:
-        coeff, _, rank, _, _ = np.polyfit(x, y, 2, full=True)
-    except (ValueError, np.linalg.LinAlgError):
-        return None
-    p1, p2, p3 = coeff[0], coeff[1], coeff[2] - threshold
-    if rank < 3 or not np.all(np.isfinite(coeff)) or p1 >= 0:
-        return None
-    if (
-        abs(p1) * max(float(np.max(x * x)), 1.0)
-        <= np.finfo(float).eps * max(float(np.max(np.abs(y))), 1.0) * 32
-    ):
-        return None
-    disc = p2**2 - 4.0 * p1 * p3
-    if not np.isfinite(disc) or disc <= 0:
-        return None
-    # Stable quadratic formula avoids cancellation for asymmetric fits.
-    q = -0.5 * (p2 + np.copysign(np.sqrt(disc), p2))
-    roots = np.sort(np.asarray([q / p1, p3 / q]) * pixel_size_mm)
-    if not np.all(np.isfinite(roots)):
-        return None
-    return float(roots[0]), float(roots[1])
+    return 0, max(int(image.shape[1]) - 1, 0)
 
 
 def _frame_velocities(

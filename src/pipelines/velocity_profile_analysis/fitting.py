@@ -1,8 +1,6 @@
-"""Independent weighted quadratic fits to (x, time, beat, branch, radius)."""
+"""Independent weighted quadratic fits to per-beat velocity profiles."""
 
 from __future__ import annotations
-
-from numbers import Real
 
 import numpy as np
 
@@ -24,23 +22,15 @@ FLOAT_OUTPUTS = (
 )
 COUNT_OUTPUTS = ("n_fit_samples", "n_area_samples")
 DEFAULT_TIME_BLOCK_SIZE = 256
-DEFAULT_WEIGHT_POWER = 2.0
 
 
-def border_weights(sample_count: int, *, power=DEFAULT_WEIGHT_POWER) -> np.ndarray:
-    """Endpoint-preserving power weights fixed to the original index domain."""
-    if isinstance(power, (bool, np.bool_)) or not isinstance(power, Real):
-        raise ValueError(  # noqa: TRY004 - use one exception for every invalid power
-            "weight power must be a finite positive real number."
-        )
-    power = float(power)
-    if not np.isfinite(power) or power <= 0:
-        raise ValueError("weight power must be a finite positive real number.")
+def border_weights(sample_count: int) -> np.ndarray:
+    """Give half weight to samples in the outer quarters of the index domain."""
+
     weights = np.ones(sample_count, dtype=np.float64)
     if sample_count > 1:
-        u = np.arange(sample_count, dtype=np.float64) / (sample_count - 1)
-        distance = np.abs(2.0 * u - 1.0)
-        weights = 1.0 - distance**power
+        normalized = np.arange(sample_count, dtype=np.float64) / (sample_count - 1)
+        weights[(normalized < 0.25) | (normalized > 0.75)] = 0.5
     return weights
 
 
@@ -50,37 +40,50 @@ def _allocate(shape, *, dtype=np.float64):
     return outputs
 
 
-def analyze_velocity_profiles(
-    v,
-    *,
-    time_block_size=DEFAULT_TIME_BLOCK_SIZE,
-    weight_power=DEFAULT_WEIGHT_POWER,
-):
-    """Read bounded time slabs from a NumPy array or HDF5 dataset.
+def analyze_velocity_profiles(values, *, time_block_size=DEFAULT_TIME_BLOCK_SIZE):
+    """Analyze ``(x, time, beat, branch, radius)`` data in bounded time slabs."""
 
-    Return float32 measurements and int32 counts with (time, beat, branch,
-    radius) axes. Neither the entire input nor a full fitted movie is copied.
-    """
-    shape = getattr(v, "shape", None)
+    shape = getattr(values, "shape", None)
     if shape is None or len(shape) != 5:
-        raise ValueError("v must have shape (x, time, beat, branch, radius).")
-    if np.dtype(v.dtype).kind not in "biuf":
-        raise ValueError("v must contain real numeric velocity samples.")
+        raise ValueError("values must have shape (x, time, beat, branch, radius).")
+    if np.dtype(values.dtype).kind not in "biuf":
+        raise ValueError("values must contain real numeric velocity samples.")
     if not isinstance(time_block_size, (int, np.integer)) or time_block_size < 1:
         raise ValueError("time_block_size must be a positive integer.")
-    nx, nt, nb, nk, nr = shape
-    outputs = _allocate((nt, nb, nk, nr), dtype=np.float32)
-    x = np.arange(nx, dtype=np.float64)
-    weights = border_weights(nx, power=weight_power)
-    midpoint = (nx - 1) / 2.0
+
+    sample_count, time_count, beat_count, branch_count, radius_count = shape
+    outputs = _allocate(
+        (time_count, beat_count, branch_count, radius_count),
+        dtype=np.float32,
+    )
+    x = np.arange(sample_count, dtype=np.float64)
+    weights = border_weights(sample_count)
+    midpoint = (sample_count - 1) / 2.0
     scale = max(midpoint, 1.0)
-    z = (x - midpoint) / scale
-    design = np.column_stack((z * z, z, np.ones(nx)))
-    for beat, branch, radius in np.ndindex(nb, nk, nr):
-        for start in range(0, nt, time_block_size):
-            stop = min(start + time_block_size, nt)
-            values = np.asarray(v[:, start:stop, beat, branch, radius], dtype=np.float64)
-            block = _fit_block(values, x, weights, design, midpoint, scale)
+    normalized_x = (x - midpoint) / scale
+    design = np.column_stack(
+        (normalized_x * normalized_x, normalized_x, np.ones(sample_count))
+    )
+
+    for beat, branch, radius in np.ndindex(
+        beat_count,
+        branch_count,
+        radius_count,
+    ):
+        for start in range(0, time_count, time_block_size):
+            stop = min(start + time_block_size, time_count)
+            block_values = np.asarray(
+                values[:, start:stop, beat, branch, radius],
+                dtype=np.float64,
+            )
+            block = _fit_block(
+                block_values,
+                x,
+                weights,
+                design,
+                midpoint,
+                scale,
+            )
             for name, result in block.items():
                 outputs[name][start:stop, beat, branch, radius] = result
     return outputs
@@ -92,81 +95,125 @@ def _fit_block(values, x, weights, design, midpoint, scale):
     result["n_fit_samples"][:] = valid.sum(axis=0)
     if values.shape[0] < 3:
         return result
-    # Each distinct finite mask needs one factorization for all its time samples.
+
+    # Reuse one factorization for all time samples sharing the same finite mask.
     _, groups = np.unique(np.packbits(valid.T, axis=1), axis=0, return_inverse=True)
     for group in range(int(groups.max()) + 1):
         columns = np.flatnonzero(groups == group)
         finite = valid[:, columns[0]]
-        n = int(finite.sum())
-        if n < 3:
+        sample_count = int(finite.sum())
+        if sample_count < 3:
             continue
-        y = values[np.ix_(finite, columns)]
-        w = weights[finite]
-        sqrt_w = np.sqrt(w)
+        observed = values[np.ix_(finite, columns)]
+        finite_weights = weights[finite]
+        square_root_weights = np.sqrt(finite_weights)
         matrix = design[finite]
         try:
             coefficients, _, rank, _ = np.linalg.lstsq(
-                matrix * sqrt_w[:, None],
-                y * sqrt_w[:, None],
+                matrix * square_root_weights[:, None],
+                observed * square_root_weights[:, None],
                 rcond=None,
             )
         except np.linalg.LinAlgError:
             continue
         if rank < 3:
             continue
+
         alpha, beta, gamma = coefficients
         converted = np.array(
             (
                 alpha / scale**2,
                 beta / scale - 2 * alpha * midpoint / scale**2,
-                gamma - beta * midpoint / scale + alpha * (midpoint / scale) ** 2,
+                gamma
+                - beta * midpoint / scale
+                + alpha * (midpoint / scale) ** 2,
             )
         )
-        good = np.all(np.isfinite(coefficients), axis=0) & np.all(np.isfinite(converted), axis=0)
+        good = np.all(np.isfinite(coefficients), axis=0) & np.all(
+            np.isfinite(converted),
+            axis=0,
+        )
         if not np.any(good):
             continue
-        columns, y = columns[good], y[:, good]
-        coefficients, converted = coefficients[:, good], converted[:, good]
+        columns = columns[good]
+        observed = observed[:, good]
+        coefficients = coefficients[:, good]
+        converted = converted[:, good]
         for name, row in zip(("a", "b", "c"), converted, strict=True):
             result[name][columns] = row
+
         fitted = matrix @ coefficients
-        residual_sq = (y - fitted) ** 2
-        rss = residual_sq.sum(axis=0)
-        wrss = (w[:, None] * residual_sq).sum(axis=0)
-        sst = ((y - y.mean(axis=0)) ** 2).sum(axis=0)
-        wmean = (w[:, None] * y).sum(axis=0) / w.sum()
-        wsst = (w[:, None] * (y - wmean) ** 2).sum(axis=0)
+        residual_squared = (observed - fitted) ** 2
+        rss = residual_squared.sum(axis=0)
+        weighted_rss = (finite_weights[:, None] * residual_squared).sum(axis=0)
+        sst = ((observed - observed.mean(axis=0)) ** 2).sum(axis=0)
+        weighted_mean = (
+            (finite_weights[:, None] * observed).sum(axis=0)
+            / finite_weights.sum()
+        )
+        weighted_sst = (
+            finite_weights[:, None] * (observed - weighted_mean) ** 2
+        ).sum(axis=0)
         result["fit_rss"][columns] = rss
-        result["fit_rmse"][columns] = np.sqrt(rss / n)
-        result["fit_weighted_rss"][columns] = wrss
-        result["fit_weighted_rmse"][columns] = np.sqrt(wrss / w.sum())
-        # An exactly constant observed profile has no defined R-squared, even
-        # when reduction roundoff would produce a tiny nonzero SST.
-        nonconstant = np.any(y != y[0], axis=0)
-        ok = (sst > 0) & nonconstant
-        result["fit_r_squared"][columns[ok]] = 1 - rss[ok] / sst[ok]
-        ok = (wsst > 0) & nonconstant
-        result["fit_weighted_r_squared"][columns[ok]] = 1 - wrss[ok] / wsst[ok]
-        _geometry_and_areas(result, columns, coefficients, x[finite], y, fitted, midpoint, scale)
+        result["fit_rmse"][columns] = np.sqrt(rss / sample_count)
+        result["fit_weighted_rss"][columns] = weighted_rss
+        result["fit_weighted_rmse"][columns] = np.sqrt(
+            weighted_rss / finite_weights.sum()
+        )
+        nonconstant = np.any(observed != observed[0], axis=0)
+        valid_r_squared = (sst > 0) & nonconstant
+        result["fit_r_squared"][columns[valid_r_squared]] = (
+            1 - rss[valid_r_squared] / sst[valid_r_squared]
+        )
+        valid_weighted = (weighted_sst > 0) & nonconstant
+        result["fit_weighted_r_squared"][columns[valid_weighted]] = (
+            1 - weighted_rss[valid_weighted] / weighted_sst[valid_weighted]
+        )
+        _geometry_and_areas(
+            result,
+            columns,
+            coefficients,
+            x[finite],
+            observed,
+            fitted,
+            midpoint,
+            scale,
+        )
     return result
 
 
-def _geometry_and_areas(result, columns, coefficients, observed_x, y, fitted, midpoint, scale):
+def _geometry_and_areas(
+    result,
+    columns,
+    coefficients,
+    observed_x,
+    observed,
+    fitted,
+    midpoint,
+    scale,
+):
     alpha, beta, gamma = coefficients
-    tolerance = 64 * np.finfo(np.float64).eps * np.maximum(1.0, np.max(np.abs(y), axis=0))
-    for j in np.flatnonzero(alpha < -tolerance):
-        column = columns[j]
-        a, b, c = alpha[j], beta[j], gamma[j]
+    tolerance = 64 * np.finfo(np.float64).eps * np.maximum(
+        1.0,
+        np.max(np.abs(observed), axis=0),
+    )
+    for column_index in np.flatnonzero(alpha < -tolerance):
+        column = columns[column_index]
+        a, b, c = alpha[column_index], beta[column_index], gamma[column_index]
         center = midpoint - scale * b / (2 * a)
         if not np.isfinite(center):
             continue
         result["index_center"][column] = center
-        disc = b * b - 4 * a * c
-        # Roundoff around a repeated root must not create two artificial zeros.
-        disc_tolerance = 64 * np.finfo(np.float64).eps * max(1.0, a * a, b * b, abs(4 * a * c))
-        if not np.isfinite(disc) or disc <= disc_tolerance:
+        discriminant = b * b - 4 * a * c
+        discriminant_tolerance = 64 * np.finfo(np.float64).eps * max(
+            1.0,
+            a * a,
+            b * b,
+            abs(4 * a * c),
+        )
+        if not np.isfinite(discriminant) or discriminant <= discriminant_tolerance:
             continue
-        q = -0.5 * (b + np.copysign(np.sqrt(disc), b))
+        q = -0.5 * (b + np.copysign(np.sqrt(discriminant), b))
         roots = np.sort(midpoint + scale * np.array((q / a, c / q)))
         if not np.all(np.isfinite(roots)) or roots[0] >= roots[1]:
             continue
@@ -174,8 +221,17 @@ def _geometry_and_areas(result, columns, coefficients, observed_x, y, fitted, mi
         result["index_left_zero"][column] = left
         result["index_right_zero"][column] = right
         support = (observed_x >= left) & (observed_x <= right)
-        count = np.count_nonzero(support)
-        result["n_area_samples"][column] = count
-        if count:
-            result["Qv_fit"][column] = fitted[support, j].sum()
-            result["Qv"][column] = y[support, j].sum()
+        area_sample_count = np.count_nonzero(support)
+        result["n_area_samples"][column] = area_sample_count
+        if area_sample_count:
+            result["Qv_fit"][column] = fitted[support, column_index].sum()
+            result["Qv"][column] = observed[support, column_index].sum()
+
+
+__all__ = [
+    "COUNT_OUTPUTS",
+    "DEFAULT_TIME_BLOCK_SIZE",
+    "FLOAT_OUTPUTS",
+    "analyze_velocity_profiles",
+    "border_weights",
+]

@@ -166,6 +166,7 @@ def _segments_required(ctx) -> bool:
                 "segments",
                 "segment_velocity_maps",
                 "velocity_profiles",
+                "velocity_profile_fft",
                 "quadrants",
             }
             & velocity_options
@@ -388,7 +389,7 @@ def _segment_velocity_inputs(
     velocity_profile_fft = bool(
         waveform_velocity_scheduled
         and ctx.option_enabled(
-            "velocity_profiles",
+            "velocity_profile_fft",
             pipeline="waveform_velocity",
         )
     )

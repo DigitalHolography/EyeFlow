@@ -81,11 +81,6 @@ class VelocityProfileOutputPaths:
     transverse_velocity_profile_masked: str
     longitudinal_velocity_profile_unmasked: str
     longitudinal_velocity_profile_masked: str
-    transverse_velocity_profile_unmasked_meaned: str
-    transverse_velocity_profile_masked_meaned: str
-    longitudinal_velocity_profile_unmasked_meaned: str
-    longitudinal_velocity_profile_masked_meaned: str
-    flow_asymmetry_root: str
     transverse_velocity_profile_fft_unmasked: str | None = None
     transverse_velocity_profile_fft_masked: str | None = None
 
@@ -197,19 +192,6 @@ def _velocity_profile_paths(
         longitudinal_velocity_profile_masked=(
             f"{root}/Longitudinal{velocity_profile_name}Masked/value"
         ),
-        transverse_velocity_profile_unmasked_meaned=(
-            f"{root}/Transverse{velocity_profile_name}UnmaskedMeaned/value"
-        ),
-        transverse_velocity_profile_masked_meaned=(
-            f"{root}/Transverse{velocity_profile_name}MaskedMeaned/value"
-        ),
-        longitudinal_velocity_profile_unmasked_meaned=(
-            f"{root}/Longitudinal{velocity_profile_name}UnmaskedMeaned/value"
-        ),
-        longitudinal_velocity_profile_masked_meaned=(
-            f"{root}/Longitudinal{velocity_profile_name}MaskedMeaned/value"
-        ),
-        flow_asymmetry_root=f"{root}/FlowAsymmetry",
         transverse_velocity_profile_fft_unmasked=(
             None
             if fft_root is None

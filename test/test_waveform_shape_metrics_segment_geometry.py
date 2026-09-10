@@ -215,26 +215,31 @@ class SegmentCenterTests(unittest.TestCase):
         vein_labels = np.zeros((20, 20), dtype=np.int32)
         artery_labels[1:4, 1:5] = 1
         vein_labels[1:9, 10:12] = 1
-        artery_initial = SimpleNamespace(
-            topology=SimpleNamespace(window_side_pixels=5)
-        )
-        vein_prepared = SimpleNamespace(
-            topology=SimpleNamespace(window_side_pixels=9)
-        )
-        artery_prepared = SimpleNamespace(
-            topology=SimpleNamespace(window_side_pixels=9)
-        )
-        settings = CrossSectionSignalSettings(False, 0.5, 0.01)
-        artery_displacements = {"method": "artery-field"}
-        vein_displacements = {"method": "vein-field"}
+        def prepared(side):
+            return SimpleNamespace(
+                topology=SimpleNamespace(
+                    window_side_pixels=side,
+                    annulus_masks=np.zeros((1, 20, 20), dtype=bool),
+                    branch_ids=np.array([1], dtype=np.int32),
+                    valid_segments=np.ones((1, 1), dtype=bool),
+                ),
+                rotated_masks=np.zeros((1, 1, 181, 181), dtype=bool),
+            )
 
+        artery_initial = prepared(5)
+        vein_prepared = prepared(9)
+        artery_prepared = prepared(9)
+        settings = CrossSectionSignalSettings(0.01)
         with patch(
             "calculations.topology.workflow.prepare_topology",
-            side_effect=(artery_initial, vein_prepared, artery_prepared),
+            side_effect=(artery_initial, vein_prepared),
         ) as prepare_topology, patch(
             "calculations.topology.workflow._shared_window_side",
             return_value=9,
         ), patch(
+            "calculations.topology.workflow._resize_prepared_topology",
+            return_value=artery_prepared,
+        ) as resize_topology, patch(
             "pipelines.waveform_velocity_core."
             "segments.prepare_segments",
             side_effect=("artery segments", "vein segments"),
@@ -242,7 +247,10 @@ class SegmentCenterTests(unittest.TestCase):
             "pipelines.waveform_velocity_core."
             "segments._generate_cross_section_signals_from_prepared",
             side_effect=("artery", "vein"),
-        ) as generate:
+        ) as generate, patch(
+            "pipelines.waveform_velocity_core.segments.replace",
+            side_effect=lambda value, **_changes: value,
+        ):
             results = analyze_velocity_segments(
                 np.zeros((1, 20, 20), dtype=np.float32),
                 {
@@ -252,27 +260,15 @@ class SegmentCenterTests(unittest.TestCase):
                 (10, 10),
                 SimpleNamespace(ring_count=1),
                 settings,
-                displacement_maps_by_vessel={
-                    "artery": artery_displacements,
-                    "vein": vein_displacements,
-                },
             )
 
         self.assertEqual({"artery": "artery", "vein": "vein"}, results)
-        self.assertEqual(3, prepare_topology.call_count)
-        self.assertEqual(9, prepare_topology.call_args_list[2].kwargs["window_side_pixels"])
+        self.assertEqual(2, prepare_topology.call_count)
+        resize_topology.assert_called_once_with(artery_initial, 9, 128)
         self.assertIs(artery_prepared, generate.call_args_list[0].args[1])
         self.assertEqual("artery segments", generate.call_args_list[0].args[2])
         self.assertIs(vein_prepared, generate.call_args_list[1].args[1])
         self.assertEqual("vein segments", generate.call_args_list[1].args[2])
-        self.assertIs(
-            artery_displacements,
-            generate.call_args_list[0].kwargs["displacement_maps"],
-        )
-        self.assertIs(
-            vein_displacements,
-            generate.call_args_list[1].kwargs["displacement_maps"],
-        )
 
     def test_segment_velocity_results_runs_with_prepared_topology(self) -> None:
         velocity = np.ones((3, 61, 61), dtype=np.float32)
@@ -289,7 +285,7 @@ class SegmentCenterTests(unittest.TestCase):
             ring_count=2,
             segment_length_frac=None,
         )
-        settings = CrossSectionSignalSettings(False, 0.5, 0.01, 1.0)
+        settings = CrossSectionSignalSettings(0.01, 1.0)
 
         results = analyze_velocity_segments(
             velocity,
@@ -590,7 +586,7 @@ class SegmentCenterTests(unittest.TestCase):
             ),
             retain_velocity_maps=True,
         )
-        settings = CrossSectionSignalSettings(False, 0.5, 0.01)
+        settings = CrossSectionSignalSettings(0.01)
 
         signal = np.arange(3, dtype=np.float32)
         rotated_mean = np.full((181, 181), 7.0, dtype=np.float32)
@@ -608,7 +604,6 @@ class SegmentCenterTests(unittest.TestCase):
                     longitudinal_profiles=profiles,
                     rotated_stack=np.full((3, 181, 181), 3.0, dtype=np.float32),
                     angle=0.0,
-                    spatial_std=np.zeros((181,), dtype=np.float32),
                 ),
                 masked=_CrossSectionVelocityMeasurement(
                     raw=signal,
@@ -617,7 +612,6 @@ class SegmentCenterTests(unittest.TestCase):
                     longitudinal_profiles=profiles_masked,
                     rotated_stack=np.full((3, 181, 181), 4.0, dtype=np.float32),
                     angle=0.0,
-                    spatial_std=np.zeros((181,), dtype=np.float32),
                 ),
                 rotated_mean=rotated_mean,
                 rotated_mean_masked=rotated_mean_masked,

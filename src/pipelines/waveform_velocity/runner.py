@@ -18,11 +18,7 @@ from .continuous import (
     pack_segment_velocity_outputs,
 )
 from .profiles import (
-    pack_blood_volume_rate_outputs,
-    pack_cross_section_displacement_profile_outputs,
     pack_cross_section_profile_outputs,
-    pack_displacement_magnitude_outputs,
-    pack_displacement_profile_outputs,
     pack_velocity_profile_fft_outputs,
 )
 from .quadrants import pack_quadrant_velocity_outputs
@@ -51,7 +47,13 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
     metrics = pack_continuous_velocity_outputs(velocity_analysis)
     segments_selected = "segments" in selected
     maps_selected = "segment_velocity_maps" in selected
-    profiles_selected = "velocity_profiles" in selected
+    profiles_selected = bool(
+        {"velocity_profiles", "velocity_profile_fft"} & selected
+    )
+    profile_fft_selected = "velocity_profile_fft" in selected
+    profile_analysis_scheduled = ctx.pipeline_scheduled(
+        "velocity_profile_analysis"
+    )
     artery_velocity_maps_per_beat = None
     vein_velocity_maps_per_beat = None
     if maps_selected:
@@ -139,7 +141,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 }
             )
 
-    if profiles_selected:
+    if profiles_selected or profile_analysis_scheduled:
         cycle_boundaries = (
             per_beat_result.cycle_boundary_indexes
             if per_beat_result is not None
@@ -185,37 +187,13 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 spatial_gradient_outputs,
             )
         )
-        metrics.update(
-            pack_velocity_profile_fft_outputs(
-                context.artery_segment_result,
-                context.vein_segment_result,
+        if profile_fft_selected:
+            metrics.update(
+                pack_velocity_profile_fft_outputs(
+                    context.artery_segment_result,
+                    context.vein_segment_result,
+                )
             )
-        )
-        # Displacement profile metrics are temporarily disabled.
-        # metrics.update(
-        #     pack_displacement_profile_outputs(
-        #         context.artery_segment_result,
-        #         context.vein_segment_result,
-        #         cycle_boundaries,
-        #         index_base=index_base,
-        #     )
-        # )
-        metrics.update(
-            pack_displacement_magnitude_outputs(
-                context.artery_segment_result,
-                context.vein_segment_result,
-                cycle_boundaries,
-                index_base=index_base,
-            )
-        )
-        metrics.update(
-            pack_cross_section_displacement_profile_outputs(
-                context.artery_segment_result,
-                context.vein_segment_result,
-                cycle_boundaries,
-                index_base=index_base,
-            )
-        )
 
     if "quadrants" in selected:
         metrics.update(

@@ -11,9 +11,7 @@ from calculations.blood_flow_velocity import CrossSectionSignalSettings
 from input_output.schema import DopplerViewSource, HolodopplerSource, HolodopplerTiming
 
 from .constants import (
-    CROSS_SECTION_HYDRODYNAMIC_DIAMETERS,
     CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT,
-    CROSS_SECTION_VELOCITY_PROFILE_THRESHOLD,
     DEFAULT_PIXEL_SIZE_MM,
     REFERENCE_OPTIC_DISC_DIAMETER_MM,
     SPATIAL_INTERPOLATION_FACTOR,
@@ -126,8 +124,6 @@ class WaveformVelocitySources:
 
     def _cross_section_settings(self, optic_disc_width, optic_disc_height):
         return CrossSectionSignalSettings(
-            hydrodynamic_diameters=CROSS_SECTION_HYDRODYNAMIC_DIAMETERS,
-            velocity_profile_threshold=CROSS_SECTION_VELOCITY_PROFILE_THRESHOLD,
             pixel_size_mm=self._pixel_size(optic_disc_width, optic_disc_height),
             submask_size_percentile_kept=(
                 CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT
