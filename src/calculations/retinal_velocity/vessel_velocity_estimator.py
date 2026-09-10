@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
+from dataclasses import dataclass
 from time import perf_counter
 
 import numpy as np
@@ -15,6 +18,68 @@ SECTION_INNER_RADIUS_FRAC = 0.10
 SECTION_OUTER_RADIUS_FRAC = 0.35
 DEFAULT_LASER_WAVELENGTH_METERS = 8.52e-7
 DEFAULT_NUMERICAL_APERTURE = 0.124
+
+
+@dataclass(frozen=True)
+class VelocityEstimatorCacheKey:
+    """Run-local identity of every input that affects velocity estimation."""
+
+    moment0_source: tuple[object, ...]
+    moment2_source: tuple[object, ...]
+    artery_mask: tuple[object, ...]
+    vein_mask: tuple[object, ...]
+    optic_disc_center: tuple[object, ...] | None
+    optic_disc_width: tuple[object, ...] | None
+    optic_disc_height: tuple[object, ...] | None
+    section_inner_radius_frac: float
+    section_outer_radius_frac: float
+    local_background_dist: int
+    laser_wavelength: float
+    numerical_aperture: float
+    frame_chunk_size: int
+
+
+def velocity_estimator_cache_key(
+    *,
+    moment0,
+    moment2,
+    artery_mask,
+    vein_mask,
+    optic_disc_center=None,
+    optic_disc_width=None,
+    optic_disc_height=None,
+    section_inner_radius_frac: float = SECTION_INNER_RADIUS_FRAC,
+    section_outer_radius_frac: float = SECTION_OUTER_RADIUS_FRAC,
+    local_background_dist: int,
+    laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
+    numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
+) -> VelocityEstimatorCacheKey:
+    """Build a conservative key for run-scoped estimator-result reuse."""
+
+    return VelocityEstimatorCacheKey(
+        moment0_source=_volume_source_key(moment0),
+        moment2_source=_volume_source_key(moment2),
+        artery_mask=_array_value_key(artery_mask, dtype=bool),
+        vein_mask=_array_value_key(vein_mask, dtype=bool),
+        optic_disc_center=_optional_array_value_key(
+            optic_disc_center,
+            dtype=np.float32,
+        ),
+        optic_disc_width=_optional_array_value_key(
+            optic_disc_width,
+            dtype=np.float32,
+        ),
+        optic_disc_height=_optional_array_value_key(
+            optic_disc_height,
+            dtype=np.float32,
+        ),
+        section_inner_radius_frac=float(section_inner_radius_frac),
+        section_outer_radius_frac=float(section_outer_radius_frac),
+        local_background_dist=int(local_background_dist),
+        laser_wavelength=float(laser_wavelength),
+        numerical_aperture=float(numerical_aperture),
+        frame_chunk_size=SCRATCH_FRAME_CHUNK_SIZE,
+    )
 
 
 def _velocity_from_delta_frequency(
@@ -45,6 +110,7 @@ def run_chunked_velocity_estimator(
     laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
     numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
     retain_velocity_video: bool = True,
+    velocity_video_output=None,
 ) -> dict[str, object]:
     """Estimate velocity into scratch datasets without materializing full videos."""
 
@@ -65,21 +131,11 @@ def run_chunked_velocity_estimator(
         "inpainting and summary-only frequency intermediates."
     )
 
-    group = scratch_h5.require_group("waveform")
-    velocity_dataset = (
-        group.create_dataset(
-            "velocity",
-            shape=(frame_count, height, width),
-            dtype=np.float32,
-            chunks=(
-                min(64, frame_count),
-                min(32, height),
-                min(32, width),
-            ),
-            compression=None,
-        )
-        if retain_velocity_video
-        else None
+    velocity_dataset = _velocity_video_storage(
+        scratch_h5,
+        (frame_count, height, width),
+        retain_velocity_video=retain_velocity_video,
+        velocity_video_output=velocity_video_output,
     )
     vessel_mask = artery | vein
     disk, inpaint = _skimage_dependencies()
@@ -225,6 +281,75 @@ def _has_optic_disc_geometry(width, height) -> bool:
         if array.size == 0 or not np.isfinite(array[0]) or array[0] <= 0:
             return False
     return True
+
+
+def _velocity_video_storage(
+    scratch_h5,
+    shape: tuple[int, int, int],
+    *,
+    retain_velocity_video: bool,
+    velocity_video_output,
+):
+    group = scratch_h5.require_group("waveform")
+    if not retain_velocity_video:
+        if velocity_video_output is not None:
+            raise ValueError(
+                "velocity_video_output requires retain_velocity_video=True."
+            )
+        return None
+    if velocity_video_output is not None:
+        if tuple(velocity_video_output.shape) != shape:
+            raise ValueError(
+                "velocity_video_output must match the moment volume shape."
+            )
+        if np.dtype(velocity_video_output.dtype) != np.dtype(np.float32):
+            raise ValueError("velocity_video_output must have dtype float32.")
+        return velocity_video_output
+
+    return group.create_dataset(
+        "velocity",
+        shape=shape,
+        dtype=np.float32,
+        chunks=(
+            min(64, shape[0]),
+            min(32, shape[1]),
+            min(32, shape[2]),
+        ),
+        compression=None,
+    )
+
+
+def _volume_source_key(value) -> tuple[object, ...]:
+    shape = tuple(int(size) for size in value.shape)
+    dtype = np.dtype(value.dtype).str
+    try:
+        filename = value.file.filename
+        dataset_name = value.name
+    except (AttributeError, RuntimeError, ValueError):
+        filename = None
+        dataset_name = None
+    if filename is not None and dataset_name is not None:
+        return (
+            "hdf5",
+            os.path.normcase(os.path.abspath(str(filename))),
+            str(dataset_name),
+            shape,
+            dtype,
+        )
+    return ("run_object", id(value), shape, dtype)
+
+
+def _optional_array_value_key(value, *, dtype) -> tuple[object, ...] | None:
+    return None if value is None else _array_value_key(value, dtype=dtype)
+
+
+def _array_value_key(value, *, dtype) -> tuple[object, ...]:
+    array = np.ascontiguousarray(np.asarray(value, dtype=dtype))
+    digest = hashlib.blake2b(
+        array.view(np.uint8),
+        digest_size=16,
+    ).hexdigest()
+    return (array.shape, array.dtype.str, digest)
 
 
 def _read_moment_chunk(volume, frame_slice: slice) -> np.ndarray:

@@ -9,6 +9,12 @@ from time import perf_counter
 import numpy as np
 from scipy.signal import resample
 
+from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (
+    CrossSectionSignalResult,
+    CrossSectionSignalSettings,
+    _generate_cross_section_signals_from_prepared,
+    _validate_velocity_map,
+)
 from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils import (
     normalize_cycle_boundaries,
 )
@@ -20,14 +26,7 @@ from calculations.topology import (
     prepare_segments,
     prepare_topologies,
 )
-from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (
-    CrossSectionSignalResult,
-    CrossSectionSignalSettings,
-    _generate_cross_section_signals_from_prepared,
-    _validate_velocity_map,
-)
 from utils.logger import Logger
-
 
 _FFT_PROFILE_X_BATCH = 32
 
@@ -81,6 +80,31 @@ class _VelocityProfileFftAccumulator:
         if stack.shape[0] <= int(self.boundaries[-1]):
             raise ValueError("FFT profile boundaries exceed the segment stack.")
 
+        backend = optional_cupy_backend()
+        if backend is not None:
+            try:
+                self._observe_gpu(
+                    ring_index,
+                    branch_index,
+                    stack,
+                    mask,
+                    backend.cupy,
+                )
+                return
+            except Exception as exc:
+                Logger.log_debug(
+                    "CuPy velocity FFT profiles failed; using CPU fallback: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+        self._observe_cpu(ring_index, branch_index, stack, mask)
+
+    def _observe_cpu(
+        self,
+        ring_index: int,
+        branch_index: int,
+        stack: np.ndarray,
+        mask: np.ndarray,
+    ) -> None:
         for beat_index in range(self.boundaries.size - 1):
             start = int(self.boundaries[beat_index])
             stop = int(self.boundaries[beat_index + 1]) + 1
@@ -114,6 +138,71 @@ class _VelocityProfileFftAccumulator:
                 ).T
                 del interpolated, magnitude
 
+    def _observe_gpu(
+        self,
+        ring_index: int,
+        branch_index: int,
+        stack: np.ndarray,
+        mask: np.ndarray,
+        cupy,
+    ) -> None:
+        gpu_stack = cupy.asarray(stack, dtype=cupy.float32)
+        gpu_mask = cupy.asarray(mask, dtype=cupy.bool_)
+        pixel_count = int(stack.shape[1] * stack.shape[2])
+        beat_count = int(self.boundaries.size - 1)
+        gpu_profiles = cupy.full(
+            (2, self.time_count, stack.shape[2], beat_count),
+            cupy.nan,
+            dtype=cupy.float32,
+        )
+        for beat_index in range(beat_count):
+            start = int(self.boundaries[beat_index])
+            stop = int(self.boundaries[beat_index + 1]) + 1
+            flattened = gpu_stack[start:stop].reshape((stop - start, pixel_count))
+            active_pixels = cupy.any(cupy.isfinite(flattened), axis=0)
+            if int(cupy.count_nonzero(active_pixels)) == 0:
+                continue
+            # Exclude all-NaN rotated padding from the FFT workload while
+            # retaining the legacy propagation of intermittent temporal NaNs.
+            interpolated = _gpu_fourier_resample_axis0(
+                flattened[:, active_pixels],
+                self.time_count + 1,
+                cupy,
+            )[:-1]
+            magnitude_active = cupy.abs(
+                cupy.fft.fft(interpolated, axis=0)
+            ).astype(cupy.float32, copy=False)
+            magnitude = cupy.full(
+                (self.time_count, pixel_count),
+                cupy.nan,
+                dtype=cupy.float32,
+            )
+            magnitude[:, active_pixels] = magnitude_active
+            magnitude = magnitude.reshape(
+                (self.time_count, stack.shape[1], stack.shape[2])
+            )
+            gpu_profiles[0, :, :, beat_index] = _gpu_nanmean_axis1(
+                magnitude,
+                cupy,
+            )
+            gpu_profiles[1, :, :, beat_index] = _gpu_nanmean_axis1(
+                magnitude,
+                cupy,
+                mask=gpu_mask,
+            )
+            del interpolated, magnitude_active, magnitude
+
+        profiles = cupy.asnumpy(gpu_profiles)
+        output_slice = (
+            slice(None),
+            slice(None),
+            slice(None),
+            branch_index,
+            ring_index,
+        )
+        self.unmasked[output_slice] = profiles[0].transpose(1, 0, 2)
+        self.masked[output_slice] = profiles[1].transpose(1, 0, 2)
+
 
 def _interpft_stack_axis0(values: np.ndarray, target_length: int) -> np.ndarray:
     """Vectorized Fourier interpolation of one segment stack's frame axis."""
@@ -142,6 +231,51 @@ def _interpft_stack_axis0(values: np.ndarray, target_length: int) -> np.ndarray:
             axis=0,
         ).astype(np.float32, copy=False)
     return interpolated.reshape(int(target_length), *spatial_shape)
+
+
+def _gpu_fourier_resample_axis0(values, target_length: int, cupy):
+    """CuPy equivalent of SciPy's real Fourier resampling along axis zero."""
+
+    source_length = int(values.shape[0])
+    if source_length == 0:
+        raise ValueError("interpft requires a non-empty frame axis.")
+    if target_length <= 0:
+        raise ValueError("interpft target_length must be positive.")
+    if target_length == source_length:
+        return values.copy()
+
+    spectrum = cupy.fft.rfft(values, axis=0)
+    output_spectrum = cupy.zeros(
+        (target_length // 2 + 1, *spectrum.shape[1:]),
+        dtype=spectrum.dtype,
+    )
+    common_length = min(source_length, int(target_length))
+    nyquist_stop = common_length // 2 + 1
+    output_spectrum[:nyquist_stop] = spectrum[:nyquist_stop]
+    if common_length % 2 == 0:
+        nyquist_index = common_length // 2
+        if target_length < source_length:
+            output_spectrum[nyquist_index] *= cupy.float32(2.0)
+        else:
+            output_spectrum[nyquist_index] *= cupy.float32(0.5)
+    result = cupy.fft.irfft(output_spectrum, n=target_length, axis=0)
+    result *= cupy.float32(target_length / source_length)
+    return result
+
+
+def _gpu_nanmean_axis1(values, cupy, *, mask=None):
+    finite = cupy.isfinite(values)
+    if mask is not None:
+        finite &= mask[None, ...]
+    counts = cupy.sum(finite, axis=1)
+    totals = cupy.sum(
+        cupy.where(finite, values, cupy.float32(0.0)),
+        axis=1,
+        dtype=cupy.float32,
+    )
+    result = cupy.divide(totals, counts)
+    cupy.copyto(result, cupy.nan, where=counts == 0)
+    return result.astype(cupy.float32, copy=False)
 
 
 def analyze_velocity_segments(

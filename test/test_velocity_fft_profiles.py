@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import h5py
 import numpy as np
@@ -14,9 +15,10 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from calculations.compute_backend import optional_cupy_backend  # noqa: E402
+from calculations.topology import dilate_segment_masks  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
-from calculations.topology import dilate_segment_masks  # noqa: E402
 from pipelines.waveform_velocity.profiles import (  # noqa: E402
     pack_velocity_profile_fft_outputs,
     velocity_fft_transverse_profiles,
@@ -196,6 +198,55 @@ class VelocityFFTProfileTests(unittest.TestCase):
         np.testing.assert_allclose(
             accumulator.masked,
             expected_masked,
+            rtol=1e-6,
+            atol=1e-6,
+            equal_nan=True,
+        )
+
+    def test_gpu_accumulator_does_not_silently_fall_back_to_cpu(self) -> None:
+        if optional_cupy_backend() is None:
+            self.skipTest("CuPy/CUDA is unavailable.")
+
+        rng = np.random.default_rng(3402)
+        stack = rng.normal(size=(7, 51, 5)).astype(np.float32)
+        stack[:, :4, 0] = np.nan
+        mask = np.zeros((51, 5), dtype=bool)
+        mask[20:31, 1:4] = True
+        accumulator = _VelocityProfileFftAccumulator(
+            frame_count=stack.shape[0],
+            ring_count=1,
+            branch_count=1,
+            canvas_side=stack.shape[-1],
+            cycle_boundary_indexes=np.asarray([0, 3, 6], dtype=np.int32),
+            index_base=0,
+        )
+        expected = _VelocityProfileFftAccumulator(
+            frame_count=stack.shape[0],
+            ring_count=1,
+            branch_count=1,
+            canvas_side=stack.shape[-1],
+            cycle_boundary_indexes=np.asarray([0, 3, 6], dtype=np.int32),
+            index_base=0,
+        )
+        expected._observe_cpu(0, 0, stack, mask)
+
+        with patch.object(
+            _VelocityProfileFftAccumulator,
+            "_observe_cpu",
+            side_effect=AssertionError("unexpected CPU fallback"),
+        ):
+            accumulator.observe(0, 0, stack, mask)
+
+        np.testing.assert_allclose(
+            accumulator.unmasked,
+            expected.unmasked,
+            rtol=1e-6,
+            atol=1e-6,
+            equal_nan=True,
+        )
+        np.testing.assert_allclose(
+            accumulator.masked,
+            expected.masked,
             rtol=1e-6,
             atol=1e-6,
             equal_nan=True,
