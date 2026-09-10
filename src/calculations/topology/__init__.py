@@ -32,6 +32,7 @@ from .segments import (
     build_segment_topology,
     extract_segment,
     extract_segments,
+    resize_segment_topology_windows,
 )
 from .transforms import (
     determine_segment_rotations,
@@ -67,6 +68,7 @@ __all__ = [
     "dilate_segment_masks",
     "extract_segments",
     "extract_segment",
+    "resize_segment_topology_windows",
     "image_half_diagonal",
     "interpolate_segment_masks",
     "interpolate_segments",

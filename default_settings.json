@@ -4,6 +4,7 @@
     "displacement_map": true,
     "lowrank_waveform_decomposition": true,
     "pdf_report": true,
+    "velocity_profile_analysis": true,
     "waveform_shape_metrics": true,
     "waveform_velocity": true
   },
@@ -26,6 +27,7 @@
       "per_beat": true,
       "segments": true,
       "velocity_profiles": false,
+      "velocity_profile_fft": false,
       "segment_velocity_maps": false
     }
   },

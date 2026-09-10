@@ -3,17 +3,25 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, MutableMapping
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from time import perf_counter
 from typing import NamedTuple
 
 import numpy as np
 
+from calculations.compute_backend import optional_cupy_backend
 from utils.logger import Logger
 
 from .cache import TopologyCacheKey, topology_cache_key
 from .geometry import SegmentRingSettings
-from .segments import SegmentTopology, build_segment_topology, extract_segment
+from .segments import (
+    SegmentTopology,
+    build_segment_topology,
+    extract_segment,
+    resize_segment_topology_windows,
+)
 from .transforms import (
     determine_segment_rotations,
     interpolate_segment_masks,
@@ -37,7 +45,7 @@ class PreparedSegment(NamedTuple):
 
     ring_index: int
     branch_index: int
-    rotated: np.ndarray
+    rotated: object
 
 
 PreparedSegments = Iterator[PreparedSegment]
@@ -141,20 +149,38 @@ def prepare_topologies(
         name: (
             topology
             if topology.topology.window_side_pixels == shared_side
-            else _cached_topology(
-                name,
-                masks[name],
-                disc,
-                settings,
-                source_id=source_id,
-                cache=cache,
-                output_side_pixels=output_side_pixels,
-                window_size_percentile_kept=window_size_percentile_kept,
-                window_side_pixels=shared_side,
+            else _resize_prepared_topology(
+                topology,
+                shared_side,
+                output_side_pixels,
             )
         )
         for name, topology in initial.items()
     }
+
+
+def _resize_prepared_topology(
+    prepared: PreparedTopology,
+    window_side_pixels: int,
+    output_side_pixels: int,
+) -> PreparedTopology:
+    topology = resize_segment_topology_windows(
+        prepared.topology,
+        window_side_pixels,
+    )
+    interpolated_masks = interpolate_segment_masks(
+        topology.segment_masks,
+        output_side_pixels,
+    )
+    return PreparedTopology(
+        topology=topology,
+        rotation_degrees=prepared.rotation_degrees,
+        interpolated_masks=interpolated_masks,
+        rotated_masks=rotate_segment_masks(
+            interpolated_masks,
+            prepared.rotation_degrees,
+        ),
+    )
 
 
 def prepare_segments(
@@ -162,6 +188,8 @@ def prepare_segments(
     prepared_topology: PreparedTopology,
     *,
     spatial_axes: tuple[int, int] = (-2, -1),
+    worker_count: int = 1,
+    keep_on_device: bool = False,
 ) -> Iterator[PreparedSegment]:
     """Yield prepared stacks for valid segments without dense materialization."""
 
@@ -177,7 +205,11 @@ def prepare_segments(
         f"source_type={type(data_map).__name__}, "
         f"valid_segments={len(valid_indexes)}."
     )
-    for work_index, (ring_index, branch_index) in enumerate(valid_indexes, start=1):
+    if worker_count < 1:
+        raise ValueError("worker_count must be positive.")
+
+    def prepare_index(index) -> tuple[PreparedSegment, float, float]:
+        ring_index, branch_index = index
         ring = int(ring_index)
         branch = int(branch_index)
         started = perf_counter()
@@ -194,21 +226,55 @@ def prepare_segments(
             extracted,
             float(prepared_topology.rotation_degrees[ring, branch]),
             prepared_topology.interpolated_masks.shape[-1],
+            return_device=keep_on_device,
         )
+        backend = optional_cupy_backend() if keep_on_device else None
+        if backend is not None:
+            backend.cupy.cuda.get_current_stream().synchronize()
         transform_seconds = perf_counter() - started
+        return (
+            PreparedSegment(
+                ring_index=ring,
+                branch_index=branch,
+                rotated=rotated,
+            ),
+            extraction_seconds,
+            transform_seconds,
+        )
+
+    def prepared_results():
+        if worker_count == 1:
+            for index in valid_indexes:
+                yield prepare_index(index)
+            return
+        with ThreadPoolExecutor(
+            max_workers=min(worker_count, len(valid_indexes)),
+            thread_name_prefix="topology-segment",
+        ) as executor:
+            pending = deque()
+            indexes = iter(valid_indexes)
+            for _ in range(min(worker_count, len(valid_indexes))):
+                pending.append(executor.submit(prepare_index, next(indexes)))
+            while pending:
+                future = pending.popleft()
+                yield future.result()
+                try:
+                    index = next(indexes)
+                except StopIteration:
+                    continue
+                pending.append(executor.submit(prepare_index, index))
+
+    for work_index, result in enumerate(prepared_results(), start=1):
+        prepared, extraction_seconds, transform_seconds = result
         if work_index % progress_step == 0 or work_index == len(valid_indexes):
             Logger.log(
                 f"Streamed segment progress: {work_index}/{len(valid_indexes)}; "
-                f"index=({ring}, {branch}), extraction={extraction_seconds:.2f}s, "
+                f"index=({prepared.ring_index}, {prepared.branch_index}), "
+                f"extraction={extraction_seconds:.2f}s, "
                 f"fused_transform={transform_seconds:.2f}s; "
-                f"rotated={_array_summary(rotated)}."
+                f"rotated={_array_summary(prepared.rotated)}."
             )
-        yield PreparedSegment(
-            ring_index=ring,
-            branch_index=branch,
-            rotated=rotated,
-        )
-        del extracted, rotated
+        yield prepared
 
     Logger.log(
         "Completed streamed topology segment preparation in "
@@ -316,9 +382,8 @@ def _shared_window_side(
     return side if side % 2 == 1 else side + 1
 
 
-def _array_summary(values: np.ndarray) -> str:
-    array = np.asarray(values)
+def _array_summary(values) -> str:
     return (
-        f"shape={array.shape}, dtype={array.dtype}, "
-        f"allocated={array.nbytes / (1024 ** 3):.2f} GiB"
+        f"shape={values.shape}, dtype={values.dtype}, "
+        f"allocated={values.nbytes / (1024 ** 3):.2f} GiB"
     )

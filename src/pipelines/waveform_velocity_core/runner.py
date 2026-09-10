@@ -147,6 +147,8 @@ def _per_beat_required(ctx) -> bool:
 
 def _segments_required(ctx) -> bool:
     """Return whether any selected product needs spatial vessel segments."""
+    if ctx.pipeline_scheduled("velocity_profile_analysis"):
+        return True
     if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
         return True
     velocity_options = ctx.options_for("waveform_velocity")
@@ -162,6 +164,7 @@ def _segments_required(ctx) -> bool:
                 "segments",
                 "segment_velocity_maps",
                 "velocity_profiles",
+                "velocity_profile_fft",
                 "quadrants",
             }
             & velocity_options
@@ -384,7 +387,7 @@ def _segment_velocity_inputs(
     velocity_profile_fft = bool(
         waveform_velocity_scheduled
         and ctx.option_enabled(
-            "velocity_profiles",
+            "velocity_profile_fft",
             pipeline="waveform_velocity",
         )
     )

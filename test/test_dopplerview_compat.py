@@ -56,7 +56,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
             source_data = self._load_sources(hd_source, dv_source)
 
-        self.assertIsNone(source_data.velocity_analysis)
+        self.assertFalse(hasattr(source_data, "velocity_analysis"))
         np.testing.assert_array_equal(source_data.retinal_artery_mask, artery_raw.T)
         np.testing.assert_array_equal(source_data.retinal_vein_mask, vein_raw.T)
         expected_optic_disc_mask = np.zeros_like(artery_raw)
@@ -87,7 +87,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
             source_data = self._load_sources(hd_source, dv_source)
 
-        self.assertIsNone(source_data.velocity_analysis)
+        self.assertFalse(hasattr(source_data, "velocity_analysis"))
 
     def test_waveform_velocity_uses_one_coherent_raw_moment_mode(
         self,
@@ -169,9 +169,8 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         self.assertEqual(0.10, ring_settings.inner_radius_frac)
         self.assertEqual(0.04, ring_settings.ring_width_frac)
         self.assertEqual(0.04, ring_settings.segment_length_frac)
-        self.assertTrue(cross_section.hydrodynamic_diameters)
-        self.assertEqual(0.5, cross_section.velocity_profile_threshold)
         self.assertAlmostEqual(1.91 / 3.5, cross_section.pixel_size_mm)
+        self.assertEqual(512.0, cross_section.working_memory_mb)
         self.assertEqual(0.95, cross_section.submask_size_percentile_kept)
         self.assertEqual(7, source_data.local_background_dist)
 

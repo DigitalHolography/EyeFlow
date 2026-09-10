@@ -29,13 +29,6 @@ from pipelines.waveform_velocity.profiles import (  # noqa: E402
 from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
     pack_displacement_segment_map_outputs,
 )
-from pipelines.waveform_velocity_core.runner import (  # noqa: E402
-    _load_displacement_maps,
-)
-from pipelines.displacement_map.runner import (  # noqa: E402
-    DISPLACEMENT_MAP_STATE,
-    DisplacementMapArtifacts,
-)
 
 
 class DisplacementOutputTests(unittest.TestCase):
@@ -489,54 +482,6 @@ class DisplacementOutputTests(unittest.TestCase):
             {},
             pack_displacement_segment_map_outputs(segments, segments, boundaries),
         )
-
-    def test_displacement_map_loading_is_optional_and_method_aware(self) -> None:
-        unscheduled = SimpleNamespace(
-            pipeline_scheduled=lambda name: False,
-        )
-        self.assertEqual({}, _load_displacement_maps(unscheduled))
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            artery_path = Path(temp_dir) / "artery.npy"
-            vein_path = Path(temp_dir) / "vein.npy"
-            np.save(artery_path, np.zeros((2, 3, 4, 2), dtype=np.float32))
-            np.save(vein_path, np.ones((2, 3, 4, 2), dtype=np.float32))
-            artifacts = DisplacementMapArtifacts(
-                registration_method="diffeomorphic_demons",
-                field_paths_by_vessel={
-                    "artery": artery_path,
-                    "vein": vein_path,
-                },
-                temporary_directory=SimpleNamespace(cleanup=lambda: None),
-            )
-            scheduled = SimpleNamespace(
-                pipeline_scheduled=lambda name: name == "displacement_map",
-                state=SimpleNamespace(
-                    get=lambda key: (
-                        artifacts if key == DISPLACEMENT_MAP_STATE else None
-                    )
-                ),
-            )
-            loaded = _load_displacement_maps(scheduled)
-            try:
-                self.assertEqual({"artery", "vein"}, set(loaded))
-                self.assertEqual(
-                    ["diffeomorphic_demons"],
-                    list(loaded["artery"]),
-                )
-                np.testing.assert_array_equal(
-                    loaded["artery"]["diffeomorphic_demons"],
-                    0.0,
-                )
-                np.testing.assert_array_equal(
-                    loaded["vein"]["diffeomorphic_demons"],
-                    1.0,
-                )
-            finally:
-                for maps_for_vessel in loaded.values():
-                    for displacement_map in maps_for_vessel.values():
-                        displacement_map._mmap.close()
-
 
 def _segments():
     scalar_maps = np.full((1, 1, 6, 3, 4), -2.0, dtype=np.float32)

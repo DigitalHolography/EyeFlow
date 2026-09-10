@@ -12,6 +12,7 @@ from scipy.signal import resample
 from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
+    _cross_section_worker_count,
     _generate_cross_section_signals_from_prepared,
     _validate_velocity_map,
 )
@@ -62,6 +63,7 @@ class _VelocityProfileFftAccumulator:
         )
         self.unmasked = np.full(output_shape, np.nan, dtype=np.float32)
         self.masked = np.full(output_shape, np.nan, dtype=np.float32)
+        self.elapsed_seconds = 0.0
 
     def observe(
         self,
@@ -70,8 +72,13 @@ class _VelocityProfileFftAccumulator:
         rotated_stack: np.ndarray,
         profile_mask: np.ndarray,
     ) -> None:
-        stack = np.asarray(rotated_stack, dtype=np.float32)
+        started = perf_counter()
         mask = np.asarray(profile_mask, dtype=bool)
+        backend = optional_cupy_backend()
+        if backend is not None and isinstance(rotated_stack, backend.cupy.ndarray):
+            stack = rotated_stack
+        else:
+            stack = np.asarray(rotated_stack, dtype=np.float32)
         if stack.ndim != 3 or mask.shape != stack.shape[1:]:
             raise ValueError(
                 "FFT profile input must contain a (frame, y, x) stack and "
@@ -80,7 +87,6 @@ class _VelocityProfileFftAccumulator:
         if stack.shape[0] <= int(self.boundaries[-1]):
             raise ValueError("FFT profile boundaries exceed the segment stack.")
 
-        backend = optional_cupy_backend()
         if backend is not None:
             try:
                 self._observe_gpu(
@@ -90,13 +96,18 @@ class _VelocityProfileFftAccumulator:
                     mask,
                     backend.cupy,
                 )
+                backend.cupy.cuda.get_current_stream().synchronize()
+                self.elapsed_seconds += perf_counter() - started
                 return
             except Exception as exc:
                 Logger.log_debug(
                     "CuPy velocity FFT profiles failed; using CPU fallback: "
                     f"{type(exc).__name__}: {exc}"
                 )
+                if isinstance(stack, backend.cupy.ndarray):
+                    stack = backend.cupy.asnumpy(stack)
         self._observe_cpu(ring_index, branch_index, stack, mask)
+        self.elapsed_seconds += perf_counter() - started
 
     def _observe_cpu(
         self,
@@ -348,7 +359,17 @@ def analyze_velocity_segments(
             f"valid_segments={int(np.count_nonzero(geometry.valid_segments))}, "
             f"native_window={geometry.window_side_pixels}px."
         )
-        segments = prepare_segments(velocity_map, topology)
+        worker_count = _cross_section_worker_count(
+            int(np.count_nonzero(geometry.valid_segments)),
+            frame_count=int(velocity_map.shape[0]),
+            working_memory_mb=float(cross_section_settings.working_memory_mb),
+        )
+        segments = prepare_segments(
+            velocity_map,
+            topology,
+            worker_count=worker_count,
+            keep_on_device=backend is not None,
+        )
         Logger.log(f"Streaming {name} segments into profile measurement.")
         fft_profiles = (
             _VelocityProfileFftAccumulator(
@@ -363,6 +384,8 @@ def analyze_velocity_segments(
             else None
         )
         measurement_started = perf_counter()
+        if backend is not None:
+            backend.cupy.cuda.get_current_stream().synchronize()
         result = _generate_cross_section_signals_from_prepared(
             velocity_map,
             topology,
@@ -381,6 +404,13 @@ def analyze_velocity_segments(
                 fft_profiles.masked if fft_profiles else None
             ),
         )
+        if backend is not None:
+            backend.cupy.cuda.get_current_stream().synchronize()
+        if fft_profiles is not None:
+            Logger.log(
+                f"Completed {name} optional velocity-profile FFT in "
+                f"{fft_profiles.elapsed_seconds:.2f}s."
+            )
         Logger.log(
             f"Completed {name} segment profile measurements in "
             f"{perf_counter() - measurement_started:.2f}s."

@@ -70,7 +70,9 @@ def resample_rotate_segment(
     segment_maps: np.ndarray,
     rotation_degrees: float,
     output_side_pixels: int = INTERPOLATED_SEGMENT_SIDE,
-) -> np.ndarray:
+    *,
+    return_device: bool = False,
+):
     """Resize and rotate one segment stack with a single affine resampling."""
 
     values = np.asarray(segment_maps, dtype=np.float32)
@@ -88,6 +90,7 @@ def resample_rotate_segment(
         float(rotation_degrees),
         output_side_pixels,
         canvas_side,
+        return_device=return_device,
     )
 
 
@@ -297,7 +300,9 @@ def _resample_rotate_values(
     angle_degrees: float,
     output_side_pixels: int,
     canvas_side: int,
-) -> np.ndarray:
+    *,
+    return_device: bool = False,
+):
     matrix, offset = _fused_affine_mapping(
         values.ndim,
         values.shape[-1],
@@ -357,6 +362,8 @@ def _resample_rotate_values(
                 backend.cupy.nan,
                 where=~finite_output,
             )
+            if return_device:
+                return resampled_values
             return backend.cupy.asnumpy(resampled_values)
         except Exception as exc:
             _log_gpu_fallback("fused segment transform", exc)
