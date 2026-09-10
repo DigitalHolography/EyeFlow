@@ -3,6 +3,7 @@
     "absolute_waveform_metrics": true,
     "lowrank_waveform_decomposition": true,
     "pdf_report": true,
+    "velocity_profile_analysis": true,
     "waveform_shape_metrics": true,
     "waveform_velocity": true
   },

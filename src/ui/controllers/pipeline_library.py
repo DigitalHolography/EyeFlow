@@ -18,8 +18,9 @@ from ..widgets import Tooltip
 
 _PIPELINE_UI_ORDER = {
     "waveform_velocity": 0,
-    "waveform_shape_metrics": 1,
-    "pdf_report": 2,
+    "velocity_profile_analysis": 1,
+    "waveform_shape_metrics": 2,
+    "pdf_report": 3,
 }
 
 
