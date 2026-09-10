@@ -24,10 +24,7 @@ from pipeline_engine.imports import (
 )
 from utils.logger import Logger
 
-from .dopplerview.constants import (
-    LEGACY_FILTER_VELOCITY_SIGNALS,
-    LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
-)
+from .branch_identity_debug import export_branch_identity_stage_pngs
 from .constants import (
     LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
     NUMBER_OF_RADII_IN_FOV,
@@ -35,17 +32,19 @@ from .constants import (
     SEGMENT_OUTER_RADIUS_FRAC,
 )
 from .cross_section_images import export_rotated_mean_pngs
+from .dopplerview.constants import (
+    LEGACY_FILTER_VELOCITY_SIGNALS,
+    LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
+)
 from .dopplerview.outputs import (
     pack_dopplerview_shared_outputs,
 )
 from .dopplerview.runner import run_dopplerview_analysis
-from .scratch import waveform_scratch_h5
-from .sources import WaveformVelocitySourceData, WaveformVelocitySources
-from .branch_identity_debug import export_branch_identity_stage_pngs
 from .figures import export_pulse_pngs
 from .per_beat import run_velocity_per_beat_metrics
+from .scratch import waveform_scratch_h5
 from .segmentation import pack_segmentation_outputs
-
+from .sources import WaveformVelocitySourceData, WaveformVelocitySources
 
 WAVEFORM_CONTEXT_STATE = "waveform_velocity_context"
 VELOCITY_PER_BEAT_RESULT_STATE = "velocity_per_beat_result"
@@ -101,6 +100,8 @@ def run_waveform_velocity_core(
 
 
 def _per_beat_required(ctx) -> bool:
+    if ctx.pipeline_scheduled("velocity_profile_analysis"):
+        return True
     if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
         return True
     velocity_options = ctx.options_for("waveform_velocity")
@@ -131,6 +132,8 @@ def _per_beat_required(ctx) -> bool:
 
 def _segments_required(ctx) -> bool:
     """Return whether any selected product needs spatial vessel segments."""
+    if ctx.pipeline_scheduled("velocity_profile_analysis"):
+        return True
     if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
         return True
     velocity_options = ctx.options_for("waveform_velocity")

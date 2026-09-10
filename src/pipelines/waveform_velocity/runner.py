@@ -3,20 +3,20 @@
 from time import perf_counter
 
 from input_output import EyeFlowOutputPaths
+from pipelines.waveform_velocity_core.per_beat import run_velocity_per_beat_metrics
 from pipelines.waveform_velocity_core.runner import (
     VELOCITY_PER_BEAT_OUTPUTS_STATE,
     VELOCITY_PER_BEAT_RESULT_STATE,
     WAVEFORM_CONTEXT_STATE,
 )
-from pipelines.waveform_velocity_core.per_beat import run_velocity_per_beat_metrics
 from utils.logger import Logger
 
 from .continuous import (
     pack_continuous_velocity_outputs,
     pack_segment_velocity_outputs,
 )
-from .quadrants import pack_quadrant_velocity_outputs
 from .profiles import pack_cross_section_profile_outputs
+from .quadrants import pack_quadrant_velocity_outputs
 from .segment_maps import pack_segment_map_outputs
 from .segment_velocity_map_avi import export_segment_velocity_map_avis
 
@@ -94,7 +94,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 }
             )
 
-    if "velocity_profiles" in selected:
+    if "velocity_profiles" in selected or ctx.pipeline_scheduled("velocity_profile_analysis"):
         cycle_boundaries = (
             per_beat_result.cycle_boundary_indexes
             if per_beat_result is not None

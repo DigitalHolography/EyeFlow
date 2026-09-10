@@ -44,6 +44,26 @@ def _context(options, state_values=None, scheduled=None):
 
 
 class WaveformPipelineOptionTests(unittest.TestCase):
+    def test_profile_analysis_requires_and_publishes_profiles_with_options_disabled(self):
+        context = SimpleNamespace(
+            dopplerview_analysis={}, artery_segment_result="artery", vein_segment_result="vein",
+        )
+        result = SimpleNamespace(cycle_boundary_indexes=(0, 2))
+        ctx = _context(
+            {"waveform_velocity": ()},
+            {core_runner.WAVEFORM_CONTEXT_STATE: context,
+             core_runner.VELOCITY_PER_BEAT_RESULT_STATE: result},
+            scheduled={"waveform_velocity_core", "waveform_velocity", "velocity_profile_analysis"},
+        )
+        self.assertTrue(core_runner._per_beat_required(ctx))
+        self.assertTrue(core_runner._segments_required(ctx))
+        self.assertFalse(core_runner._pulse_pngs_required(ctx))
+        with patch.object(velocity_runner, "pack_continuous_velocity_outputs", return_value={}), \
+             patch.object(velocity_runner, "pack_cross_section_profile_outputs", return_value={"profiles": 1}) as pack:
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+        self.assertEqual(outputs, {"profiles": 1})
+        pack.assert_called_once_with("artery", "vein", (0, 2), index_base=0)
+
     def test_lowrank_pipeline_includes_veins_and_selected_quadrants(self) -> None:
         velocity_outputs = {"per_beat": 1}
         context = SimpleNamespace(
