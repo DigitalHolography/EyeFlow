@@ -27,16 +27,23 @@ from .profiles import (
     profile_deviation_power,
     transverse_profiles,
 )
-from .segments import SegmentTopology, build_segment_topology, extract_segments
+from .segments import (
+    SegmentTopology,
+    build_segment_topology,
+    extract_segment,
+    extract_segments,
+)
 from .transforms import (
     determine_segment_rotations,
     dilate_segment_masks,
     interpolate_segment_masks,
     interpolate_segments,
+    resample_rotate_segment,
     rotate_segment_masks,
     rotate_segments,
 )
 from .workflow import (
+    PreparedSegment,
     PreparedSegments,
     PreparedTopology,
     prepare_segments,
@@ -48,6 +55,7 @@ __all__ = [
     "BranchIdentityResult",
     "BranchIdentityStages",
     "PreparedSegments",
+    "PreparedSegment",
     "PreparedTopology",
     "SegmentRingSettings",
     "SegmentTopology",
@@ -58,9 +66,11 @@ __all__ = [
     "determine_segment_rotations",
     "dilate_segment_masks",
     "extract_segments",
+    "extract_segment",
     "image_half_diagonal",
     "interpolate_segment_masks",
     "interpolate_segments",
+    "resample_rotate_segment",
     "label_vessel_branches",
     "segment_ring_settings",
     "longitudinal_profiles",

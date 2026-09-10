@@ -135,16 +135,19 @@ class CrossSectionDisplacementResult:
 class CrossSectionSignalResult(CrossSectionProfileOutputs):
     """Segment waveforms and their transverse profile measurements."""
 
-    velocity: np.ndarray | SegmentArray
-    safe_velocity: np.ndarray | SegmentArray
-    velocity_maps_per_segment: np.ndarray | SegmentArray
-    segment_masks: np.ndarray | SegmentArray
+    velocity: np.ndarray
+    safe_velocity: np.ndarray
+    velocity_maps_per_segment: np.ndarray | None
+    velocity_map_segment_indexes: np.ndarray
+    segment_masks: np.ndarray
     labels: np.ndarray
     branch_ids: np.ndarray
     segment_center_xy: np.ndarray
     branch_identity: BranchIdentityResult
     topology: CrossSectionTopology
     displacements: dict[str, CrossSectionDisplacementResult]
+    transverse_velocity_fft_profiles_unmasked: np.ndarray | None = None
+    transverse_velocity_fft_profiles_masked: np.ndarray | None = None
 
     @property
     def displacement_by_method(self) -> dict[str, CrossSectionDisplacementResult]:
@@ -244,10 +247,12 @@ _PROFILE_MASK_DILATION_ITERATIONS = 20
 
 @dataclass
 class _CrossSectionBuffers:
-    velocity: np.ndarray | SegmentArray
-    safe_velocity: np.ndarray | SegmentArray
-    velocity_maps_per_segment: np.ndarray | SegmentArray
-    segment_masks: np.ndarray | SegmentArray
+    velocity: np.ndarray
+    safe_velocity: np.ndarray
+    velocity_maps_per_segment: np.ndarray | None
+    velocity_map_segment_indexes: np.ndarray
+    velocity_map_rows: np.ndarray
+    segment_masks: np.ndarray
     segment_center_xy: np.ndarray
     velocity_profiles: np.ndarray | SegmentArray
     transverse_velocity_profiles_masked: np.ndarray | SegmentArray
@@ -268,22 +273,57 @@ class _CrossSectionBuffers:
         frame_count: int,
         ring_count: int,
         branch_count: int,
+        velocity_map_segment_indexes: np.ndarray,
+        retain_velocity_maps: bool,
     ) -> _CrossSectionBuffers:
         signal_shape = (ring_count, branch_count, frame_count)
         profile_shape = (ring_count, branch_count)
+        segment_indexes = np.asarray(velocity_map_segment_indexes, dtype=np.int32)
+        if segment_indexes.ndim != 2 or segment_indexes.shape[1] != 2:
+            raise ValueError("velocity-map segment indexes must have shape (segment, 2).")
+        if segment_indexes.size and (
+            np.any(segment_indexes[:, 0] < 0)
+            or np.any(segment_indexes[:, 0] >= ring_count)
+            or np.any(segment_indexes[:, 1] < 0)
+            or np.any(segment_indexes[:, 1] >= branch_count)
+        ):
+            raise ValueError("velocity-map segment indexes are out of range.")
+        if (
+            segment_indexes.size
+            and np.unique(segment_indexes, axis=0).shape[0]
+            != segment_indexes.shape[0]
+        ):
+            raise ValueError("velocity-map segment indexes must be unique.")
+        map_rows = np.full(profile_shape, -1, dtype=np.int32)
+        if retain_velocity_maps and segment_indexes.size:
+            map_rows[segment_indexes[:, 0], segment_indexes[:, 1]] = np.arange(
+                segment_indexes.shape[0],
+                dtype=np.int32,
+            )
         return cls(
-            velocity=SegmentArray(signal_shape, np.nan, dtype=np.float32),
-            safe_velocity=SegmentArray(signal_shape, np.nan, dtype=np.float32),
-            velocity_maps_per_segment=SegmentArray(
-                (
-                    *signal_shape,
-                    _ROTATED_SUBSTACK_SIDE,
-                    _ROTATED_SUBSTACK_SIDE,
-                ),
-                np.nan,
-                dtype=np.float32,
+            velocity=np.full(signal_shape, np.nan, dtype=np.float32),
+            safe_velocity=np.full(signal_shape, np.nan, dtype=np.float32),
+            velocity_maps_per_segment=(
+                np.full(
+                    (
+                        segment_indexes.shape[0],
+                        frame_count,
+                        _ROTATED_SUBSTACK_SIDE,
+                        _ROTATED_SUBSTACK_SIDE,
+                    ),
+                    np.nan,
+                    dtype=np.float32,
+                )
+                if retain_velocity_maps
+                else None
             ),
-            segment_masks=SegmentArray(
+            velocity_map_segment_indexes=(
+                segment_indexes
+                if retain_velocity_maps
+                else np.empty((0, 2), dtype=np.int32)
+            ),
+            velocity_map_rows=map_rows,
+            segment_masks=np.zeros(
                 (
                     *profile_shape,
                     _ROTATED_SUBSTACK_SIDE,
@@ -458,6 +498,7 @@ def generate_cross_section_signals(
     *,
     displacement_maps: Mapping[str, object] | None = None,
     retain_displacement_maps: bool = True,
+    retain_velocity_maps: bool = True,
 ) -> CrossSectionSignalResult:
     vessel = np.asarray(vessel_mask, dtype=bool)
     _validate_velocity_map(velocity_map, vessel)
@@ -483,6 +524,7 @@ def generate_cross_section_signals(
         substack_side_pixels,
         displacement_maps=normalized_displacements,
         retain_displacement_maps=retain_displacement_maps,
+        retain_velocity_maps=retain_velocity_maps,
     )
 
 
@@ -498,6 +540,21 @@ def _prepare_cross_section_geometry(
     return _PreparedCrossSectionGeometry(vessel, branches, masks, segments)
 
 
+def _geometry_valid_segment_indexes(
+    geometry: _PreparedCrossSectionGeometry,
+) -> np.ndarray:
+    indexes = [
+        (ring_index, branch_index)
+        for ring_index, section in enumerate(geometry.masks)
+        for branch_index, branch_id in enumerate(geometry.branches.branch_ids)
+        if _centroid_xy(
+            section & (geometry.branches.labels == int(branch_id))
+        )
+        is not None
+    ]
+    return np.asarray(indexes, dtype=np.int32).reshape((-1, 2))
+
+
 def _generate_cross_section_signals_from_geometry(
     velocity_map,
     geometry: _PreparedCrossSectionGeometry,
@@ -509,6 +566,7 @@ def _generate_cross_section_signals_from_geometry(
     transverse_mask_dilation_pixels: int = 0,
     displacement_maps: Mapping[str, object] | None = None,
     retain_displacement_maps: bool = True,
+    retain_velocity_maps: bool = True,
 ) -> CrossSectionSignalResult:
     _validate_velocity_cube(velocity_map, geometry.vessel.shape)
     branches = geometry.branches
@@ -530,12 +588,16 @@ def _generate_cross_section_signals_from_geometry(
             ),
             section_masks=geometry.masks,
             displacement_maps=normalized_displacements,
+            retain_velocity_maps=retain_velocity_maps,
         )
 
+    velocity_map_indexes = _geometry_valid_segment_indexes(geometry)
     buffers = _CrossSectionBuffers.allocate(
         frame_count=velocity_map.shape[0],
         ring_count=ring_settings.ring_count,
         branch_count=branches.branch_ids.size,
+        velocity_map_segment_indexes=velocity_map_indexes,
+        retain_velocity_maps=retain_velocity_maps,
     )
     _fill_cross_section_buffers(
         buffers,
@@ -585,6 +647,8 @@ def _generate_cross_section_signals_from_prepared(
     *,
     displacement_maps: Mapping[str, object] | None = None,
     retain_displacement_maps: bool = True,
+    retain_velocity_maps: bool = True,
+    segment_observer=None,
 ) -> CrossSectionSignalResult:
     segment_topology = prepared_topology.topology
     branches = segment_topology.branch_identity
@@ -612,12 +676,19 @@ def _generate_cross_section_signals_from_prepared(
             profile_pixel_size_mm=profile_pixel_size_mm,
             section_masks=segment_topology.annulus_masks,
             displacement_maps=normalized_displacements,
+            retain_velocity_maps=retain_velocity_maps,
         )
 
+    velocity_map_indexes = np.argwhere(
+        segment_topology.valid_segments
+        & np.isfinite(prepared_topology.rotation_degrees)
+    )
     buffers = _CrossSectionBuffers.allocate(
         frame_count=velocity_map.shape[0],
         ring_count=ring_settings.ring_count,
         branch_count=branches.branch_ids.size,
+        velocity_map_segment_indexes=velocity_map_indexes,
+        retain_velocity_maps=retain_velocity_maps,
     )
     _fill_cross_section_buffers_from_prepared(
         buffers,
@@ -625,6 +696,7 @@ def _generate_cross_section_signals_from_prepared(
         prepared_segments,
         cross_section_settings,
         substack_side_pixels,
+        segment_observer=segment_observer,
     )
     topology = _legacy_topology_from_prepared(
         buffers,
@@ -656,19 +728,21 @@ def _fill_cross_section_buffers_from_prepared(
     prepared_segments: PreparedSegments,
     settings: CrossSectionSignalSettings,
     substack_side_pixels: int,
+    *,
+    segment_observer=None,
 ) -> None:
     topology = prepared_topology.topology
-    usable = topology.valid_segments & np.isfinite(
-        prepared_topology.rotation_degrees
-    )
     profile_pixel_size_mm = _interpolated_pixel_size_mm(
         settings.pixel_size_mm,
         substack_side_pixels,
     )
-    for ring_index, branch_index in np.argwhere(usable):
-        index = (int(ring_index), int(branch_index))
+    for prepared_segment in prepared_segments:
+        index = (
+            prepared_segment.ring_index,
+            prepared_segment.branch_index,
+        )
         angle = float(prepared_topology.rotation_degrees[index])
-        rotated = prepared_segments.rotated[index]
+        rotated = prepared_segment.rotated
         rotated_mask = prepared_topology.rotated_masks[index]
         profile_mask = _dilate_profile_mask(rotated_mask)
         rotated_masked = np.where(
@@ -704,6 +778,13 @@ def _fill_cross_section_buffers_from_prepared(
             limits=(c1, c2),
             sample_count=_rotated_profile_sample_count(angle),
         )
+        if segment_observer is not None:
+            segment_observer(
+                index[0],
+                index[1],
+                measurement.unmasked.rotated_stack,
+                profile_mask,
+            )
         buffers.segment_center_xy[index[1], index[0]] = (
             topology.segment_centers_xy[index]
         )
@@ -714,6 +795,7 @@ def _fill_cross_section_buffers_from_prepared(
             measurement,
             tuple(int(value) for value in topology.window_bounds_xyxy[index]),
         )
+        del measurement, rotated, rotated_masked, prepared_segment
 
 
 def _result_from_buffers(
@@ -738,6 +820,7 @@ def _result_from_buffers(
         velocity=buffers.velocity,
         safe_velocity=buffers.safe_velocity,
         velocity_maps_per_segment=buffers.velocity_maps_per_segment,
+        velocity_map_segment_indexes=buffers.velocity_map_segment_indexes,
         segment_masks=buffers.segment_masks,
         labels=branches.labels,
         branch_ids=branches.branch_ids,
@@ -783,8 +866,9 @@ def _empty_result(
     *,
     substack_side_pixels: int,
     profile_pixel_size_mm: float,
-    section_masks: np.ndarray | None = None,
-    displacement_maps: Mapping[str, object] | None = None,
+    section_masks: np.ndarray,
+    displacement_maps: Mapping[str, object],
+    retain_velocity_maps: bool,
 ) -> CrossSectionSignalResult:
     if section_masks is None:
         section_masks = np.zeros(
@@ -804,16 +888,13 @@ def _empty_result(
         np.nan,
         dtype=np.float32,
     )
-    empty_velocity_maps = np.full(
-        (
-            settings.ring_count,
-            0,
-            velocity_map.shape[0],
-            _ROTATED_SUBSTACK_SIDE,
-            _ROTATED_SUBSTACK_SIDE,
-        ),
-        np.nan,
-        dtype=np.float32,
+    empty_velocity_maps = (
+        np.empty(
+            (0, velocity_map.shape[0], _ROTATED_SUBSTACK_SIDE, _ROTATED_SUBSTACK_SIDE),
+            dtype=np.float32,
+        )
+        if retain_velocity_maps
+        else None
     )
     empty_segment_masks = np.zeros(
         (
@@ -873,6 +954,7 @@ def _empty_result(
         velocity=np.full(shape, np.nan, dtype=np.float32),
         safe_velocity=np.full(shape, np.nan, dtype=np.float32),
         velocity_maps_per_segment=empty_velocity_maps,
+        velocity_map_segment_indexes=np.empty((0, 2), dtype=np.int32),
         segment_masks=empty_segment_masks,
         labels=branches.labels,
         branch_ids=branches.branch_ids,
@@ -1222,11 +1304,15 @@ def _store_cross_section_measurement(
     frame_slice=slice(None),
 ) -> None:
     masked = measurement.masked
-    buffers.velocity[circle_index, branch_index, frame_slice] = masked.raw
-    buffers.safe_velocity[circle_index, branch_index, frame_slice] = masked.safe_velocity
-    buffers.velocity_maps_per_segment[circle_index, branch_index, frame_slice] = (
-        measurement.unmasked.rotated_stack
-    )
+    buffers.velocity[circle_index, branch_index] = masked.raw
+    buffers.safe_velocity[circle_index, branch_index] = masked.safe_velocity
+    if buffers.velocity_maps_per_segment is not None:
+        map_row = int(buffers.velocity_map_rows[circle_index, branch_index])
+        if map_row < 0:
+            raise ValueError("Missing compact velocity-map row for valid segment.")
+        buffers.velocity_maps_per_segment[map_row] = (
+            measurement.unmasked.rotated_stack
+        )
     buffers.segment_masks[circle_index, branch_index] = measurement.rotated_mask
     buffers.velocity_profiles[circle_index, branch_index, frame_slice] = (
         measurement.unmasked.transverse_profiles
