@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from time import perf_counter
+
 import numpy as np
 from scipy import ndimage as ndi
 
@@ -16,7 +17,6 @@ from utils.logger import Logger
 
 from .geometry import image_half_diagonal, optic_disc_center_yx
 from .segments import SegmentTopology
-
 
 INTERPOLATED_SEGMENT_SIDE = 128
 
@@ -351,7 +351,6 @@ def _resample_rotate_values(
                 resampled_values,
                 resampled_weights,
                 out=resampled_values,
-                where=finite_output,
             )
             backend.cupy.copyto(
                 resampled_values,
@@ -359,8 +358,8 @@ def _resample_rotate_values(
                 where=~finite_output,
             )
             return backend.cupy.asnumpy(resampled_values)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_gpu_fallback("fused segment transform", exc)
 
     filled = np.where(valid, values, np.float32(0.0))
     resampled_values = ndi.affine_transform(
@@ -601,6 +600,13 @@ def _pad_for_rotation(
     padding[-2] = (padding_before, padding_after)
     padding[-1] = (padding_before, padding_after)
     return np.pad(values, padding, mode="constant", constant_values=fill_value)
+
+
+def _log_gpu_fallback(operation: str, exc: Exception) -> None:
+    Logger.log_debug(
+        f"CuPy {operation} failed; using CPU fallback: "
+        f"{type(exc).__name__}: {exc}"
+    )
 
 
 def _assert_spatial_array(values: np.ndarray, output_side_pixels: int) -> None:

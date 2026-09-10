@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
+from calculations.compute_backend import optional_cupy_backend
 from calculations.topology.geometry import annulus_mask
 from calculations.topology.segments import SegmentTopology
 from calculations.topology.transforms import (
@@ -184,6 +186,36 @@ class TestTopologyTransforms(unittest.TestCase):
 
         self.assertTrue(np.all(np.isnan(rotated_values)))
         self.assertFalse(np.any(rotated_masks))
+
+    def test_cupy_fused_transform_does_not_fall_back_to_scipy(self) -> None:
+        if optional_cupy_backend() is None:
+            self.skipTest("CuPy/CUDA is unavailable.")
+        rng = np.random.default_rng(91)
+        values = rng.normal(size=(8, 29, 29)).astype(np.float32)
+        values[:, :4, :] = np.nan
+        values[:, 20:, 25:] = np.nan
+
+        with patch(
+            "calculations.topology.transforms.ndi.affine_transform",
+            side_effect=AssertionError("unexpected CPU fallback"),
+        ):
+            gpu = resample_rotate_segment(values, 31.7)
+        with patch(
+            "calculations.topology.transforms.optional_cupy_backend",
+            return_value=None,
+        ):
+            cpu = resample_rotate_segment(values, 31.7)
+
+        self.assertEqual(cpu.shape, gpu.shape)
+        self.assertEqual(cpu.dtype, gpu.dtype)
+        np.testing.assert_array_equal(np.isnan(gpu), np.isnan(cpu))
+        np.testing.assert_allclose(gpu, cpu, rtol=5e-5, atol=2e-5, equal_nan=True)
+        np.testing.assert_allclose(
+            np.nanmean(gpu, axis=(-2, -1)),
+            np.nanmean(cpu, axis=(-2, -1)),
+            rtol=1e-5,
+            atol=1e-6,
+        )
 
 
 if __name__ == "__main__":

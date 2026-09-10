@@ -17,19 +17,24 @@ def run_retinal_velocity_analysis(
     heartbeat_analysis,
     *,
     retain_velocity_video: bool = True,
+    velocity_estimation: dict[str, object] | None = None,
 ) -> dict[str, object]:
     timing: HolodopplerTiming = source_data.timing
-    cache = run_chunked_velocity_estimator(
-        moment0=source_data.moment0,
-        moment2=source_data.moment2,
-        artery_mask=source_data.retinal_artery_mask,
-        vein_mask=source_data.retinal_vein_mask,
-        optic_disc_center=source_data.optic_disc_center,
-        optic_disc_width=source_data.optic_disc_width,
-        optic_disc_height=source_data.optic_disc_height,
-        local_background_dist=source_data.local_background_dist,
-        scratch_h5=scratch_h5,
-        retain_velocity_video=retain_velocity_video,
+    cache = (
+        dict(velocity_estimation)
+        if velocity_estimation is not None
+        else run_chunked_velocity_estimator(
+            moment0=source_data.moment0,
+            moment2=source_data.moment2,
+            artery_mask=source_data.retinal_artery_mask,
+            vein_mask=source_data.retinal_vein_mask,
+            optic_disc_center=source_data.optic_disc_center,
+            optic_disc_width=source_data.optic_disc_width,
+            optic_disc_height=source_data.optic_disc_height,
+            local_background_dist=source_data.local_background_dist,
+            scratch_h5=scratch_h5,
+            retain_velocity_video=retain_velocity_video,
+        )
     )
     step_context = VelocityAnalysisContext(
         cache=cache,

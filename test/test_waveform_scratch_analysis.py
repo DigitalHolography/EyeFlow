@@ -4,9 +4,11 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import h5py
 import numpy as np
+
 from calculations.retinal_velocity.vessel_velocity_estimator import (
     _bounded_inpaint_result,
     _inpaint_frame_batch,
@@ -18,10 +20,45 @@ from pipelines.waveform_velocity.continuous import pack_continuous_velocity_outp
 from pipelines.waveform_velocity_core.retinal_velocity.outputs import (
     pack_retinal_velocity_outputs,
 )
+from pipelines.waveform_velocity_core.retinal_velocity.runner import (
+    run_retinal_velocity_analysis,
+)
 from pipelines.waveform_velocity_core.scratch import velocity_scratch_h5
 
 
 class ScratchAndSchemaTests(unittest.TestCase):
+    def test_retinal_analysis_reuses_supplied_velocity_estimation(self) -> None:
+        source = SimpleNamespace(
+            timing=SimpleNamespace(sampling_freq=50.0, batch_stride=1),
+            local_background_dist=3,
+        )
+        cached = {
+            "velocity_map": np.ones((2, 3, 4), dtype=np.float32),
+            "retinal_artery_velocity_signal": np.ones(2, dtype=np.float32),
+        }
+
+        with (
+            patch(
+                "pipelines.waveform_velocity_core.retinal_velocity.runner."
+                "run_chunked_velocity_estimator"
+            ) as estimator,
+            patch(
+                "pipelines.waveform_velocity_core.retinal_velocity.runner."
+                "ArterialWaveformAnalysisStep"
+            ) as analysis_step,
+        ):
+            actual = run_retinal_velocity_analysis(
+                source,
+                scratch_h5=object(),
+                heartbeat_analysis="heartbeat",
+                velocity_estimation=cached,
+            )
+
+        estimator.assert_not_called()
+        analysis_step.return_value.run.assert_called_once()
+        self.assertIsNot(actual, cached)
+        self.assertIs(actual["velocity_map"], cached["velocity_map"])
+
     def test_inpaint_result_is_finite_and_bounded_by_each_frame_background(self) -> None:
         source = np.asarray(
             [
@@ -118,12 +155,39 @@ class ScratchAndSchemaTests(unittest.TestCase):
                 retain_velocity_video=True,
             )
             dataset = h5["waveform/velocity"]
+            expected_velocity = np.asarray(dataset)
             self.assertEqual(["velocity"], list(h5["waveform"].keys()))
             self.assertEqual(
                 retained["velocity_map"].name,
                 dataset.name,
             )
             self.assertIsNone(dataset.compression)
+
+        velocity_output = np.empty_like(moment0)
+        with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
+            buffered = run_chunked_velocity_estimator(
+                moment0=moment0,
+                moment2=moment2,
+                artery_mask=artery,
+                vein_mask=vein,
+                local_background_dist=1,
+                scratch_h5=h5,
+                retain_velocity_video=True,
+                velocity_video_output=velocity_output,
+            )
+            self.assertEqual([], list(h5["waveform"].keys()))
+
+        self.assertIs(buffered["velocity_map"], velocity_output)
+        np.testing.assert_array_equal(velocity_output, expected_velocity)
+        for key in (
+            "velocity_map_avg",
+            "fRMS_avg",
+            "fRMS_bkg_avg",
+            "deltafRMS_avg",
+            "retinal_artery_velocity_signal",
+            "retinal_vein_velocity_signal",
+        ):
+            np.testing.assert_array_equal(buffered[key], retained[key])
 
     def test_scratch_h5_is_memory_backed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

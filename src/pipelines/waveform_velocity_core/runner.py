@@ -23,19 +23,24 @@ from pipeline_engine.imports import (
     np,
     read_int_setting,
 )
-from utils.logger import Logger
-
 from pipelines.heartbeat_core.runner import (
     HeartbeatResult,
     cached_heartbeat_analysis,
+    cached_velocity_estimation,
     heartbeat_result,
 )
+from utils.logger import Logger
+
+from .branch_identity_debug import export_branch_identity_stage_pngs
 from .constants import (
     LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
     NUMBER_OF_RADII_IN_FOV,
     SEGMENT_INNER_RADIUS_FRAC,
     SEGMENT_OUTER_RADIUS_FRAC,
 )
+from .cross_section_images import export_rotated_mean_pngs
+from .figures import export_pulse_pngs
+from .per_beat import run_velocity_per_beat_metrics
 from .retinal_velocity.constants import (
     LEGACY_FILTER_VELOCITY_SIGNALS,
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
@@ -45,14 +50,9 @@ from .retinal_velocity.outputs import (
 )
 from .retinal_velocity.runner import run_retinal_velocity_analysis
 from .scratch import velocity_scratch_h5
-from .sources import WaveformVelocitySourceData, WaveformVelocitySources
-from .cross_section_images import export_rotated_mean_pngs
-from .branch_identity_debug import export_branch_identity_stage_pngs
-from .figures import export_pulse_pngs
-from .per_beat import run_velocity_per_beat_metrics
 from .segmentation import pack_segmentation_outputs
 from .segments import analyze_velocity_segments
-
+from .sources import WaveformVelocitySourceData, WaveformVelocitySources
 
 WAVEFORM_CONTEXT_STATE = "waveform_velocity_context"
 VELOCITY_PER_BEAT_RESULT_STATE = "velocity_per_beat_result"
@@ -195,12 +195,16 @@ def _build_waveform_velocity_core_context(
     with _logged_stage("waveform source loading"):
         source_data = WaveformVelocitySources.from_context(ctx).load()
     timing = source_data.timing
+    heartbeat_velocity = cached_velocity_estimation(ctx, source_data)
     with _logged_stage("retinal velocity analysis from HD moments"):
+        if heartbeat_velocity is not None:
+            Logger.log("Reusing velocity estimation from heartbeat core.")
         velocity_analysis = run_retinal_velocity_analysis(
             source_data,
             scratch_h5,
             cached_heartbeat_analysis(ctx),
             retain_velocity_video=True,
+            velocity_estimation=heartbeat_velocity,
         )
     velocity_analysis["beat_indices"] = np.asarray(
         heartbeat.cycle_boundary_indexes,
