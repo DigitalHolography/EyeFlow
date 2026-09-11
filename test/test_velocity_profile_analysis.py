@@ -32,10 +32,35 @@ def _scalar(result, name):
 
 
 class VelocityProfileFittingTests(unittest.TestCase):
-    def test_border_weights_have_exact_quarter_boundaries(self) -> None:
+    def test_border_weights_are_quadratic_over_complete_domain(self) -> None:
         np.testing.assert_array_equal(
-            fitting.border_weights(9), [0.5, 0.5, 1, 1, 1, 1, 1, 0.5, 0.5]
+            fitting.border_weights(9),
+            [0, 0.4375, 0.75, 0.9375, 1, 0.9375, 0.75, 0.4375, 0],
         )
+        np.testing.assert_allclose(
+            fitting.border_weights(6),
+            [0, 0.64, 0.96, 0.96, 0.64, 0],
+        )
+        np.testing.assert_array_equal(fitting.border_weights(1), [1])
+        self.assertEqual(0, fitting.border_weights(0).size)
+
+    def test_border_weight_power_is_parameterized(self) -> None:
+        np.testing.assert_array_equal(
+            fitting.border_weights(5, power=1),
+            [0, 0.5, 1, 0.5, 0],
+        )
+        np.testing.assert_array_equal(
+            fitting.border_weights(5, power=4),
+            [0, 0.9375, 1, 0.9375, 0],
+        )
+
+    def test_border_weight_power_must_be_finite_positive_real(self) -> None:
+        for power in (0, -1, np.nan, np.inf, -np.inf, True, "2", 1 + 0j):
+            with self.subTest(power=power):
+                with self.assertRaisesRegex(ValueError, "finite positive real"):
+                    fitting.border_weights(9, power=power)
+                with self.assertRaisesRegex(ValueError, "finite positive real"):
+                    _analyze(np.arange(9.0), weight_power=power)
 
     def test_coefficients_fractional_roots_center_and_areas(self) -> None:
         x = np.arange(11.0)
@@ -164,6 +189,14 @@ class VelocityProfileAnalysisPipelineTests(unittest.TestCase):
                             list(dataset.attrs["dimDesc"]),
                         )
                         self.assertEqual(source_path, dataset.attrs["source_path"])
+                        self.assertEqual(
+                            fitting.DEFAULT_WEIGHT_POWER,
+                            dataset.attrs["weight_power"],
+                        )
+                        self.assertEqual(
+                            "u=x/(Nx-1); d=abs(2*u-1); w=1-d^p",
+                            dataset.attrs["weight_definition"],
+                        )
 
     def test_missing_source_names_the_missing_vessel_and_path(self) -> None:
         for missing in SOURCE_PATHS:

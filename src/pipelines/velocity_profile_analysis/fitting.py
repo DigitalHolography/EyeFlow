@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from numbers import Real
+
 import numpy as np
 
 FLOAT_OUTPUTS = (
@@ -22,15 +24,29 @@ FLOAT_OUTPUTS = (
 )
 COUNT_OUTPUTS = ("n_fit_samples", "n_area_samples")
 DEFAULT_TIME_BLOCK_SIZE = 256
+DEFAULT_WEIGHT_POWER = 2.0
 
 
-def border_weights(sample_count: int) -> np.ndarray:
-    """Give half weight to samples in the outer quarters of the index domain."""
+def border_weights(
+    sample_count: int,
+    *,
+    power=DEFAULT_WEIGHT_POWER,
+) -> np.ndarray:
+    """Return power-shaped weights peaking at the profile-domain center."""
+
+    if isinstance(power, (bool, np.bool_)) or not isinstance(power, Real):
+        raise ValueError(  # noqa: TRY004 - one error contract for invalid powers
+            "weight power must be a finite positive real number."
+        )
+    power = float(power)
+    if not np.isfinite(power) or power <= 0:
+        raise ValueError("weight power must be a finite positive real number.")
 
     weights = np.ones(sample_count, dtype=np.float64)
     if sample_count > 1:
         normalized = np.arange(sample_count, dtype=np.float64) / (sample_count - 1)
-        weights[(normalized < 0.25) | (normalized > 0.75)] = 0.5
+        distance = np.abs(2.0 * normalized - 1.0)
+        weights = 1.0 - distance**power
     return weights
 
 
@@ -40,7 +56,12 @@ def _allocate(shape, *, dtype=np.float64):
     return outputs
 
 
-def analyze_velocity_profiles(values, *, time_block_size=DEFAULT_TIME_BLOCK_SIZE):
+def analyze_velocity_profiles(
+    values,
+    *,
+    time_block_size=DEFAULT_TIME_BLOCK_SIZE,
+    weight_power=DEFAULT_WEIGHT_POWER,
+):
     """Analyze ``(x, time, beat, branch, radius)`` data in bounded time slabs."""
 
     shape = getattr(values, "shape", None)
@@ -57,7 +78,7 @@ def analyze_velocity_profiles(values, *, time_block_size=DEFAULT_TIME_BLOCK_SIZE
         dtype=np.float32,
     )
     x = np.arange(sample_count, dtype=np.float64)
-    weights = border_weights(sample_count)
+    weights = border_weights(sample_count, power=weight_power)
     midpoint = (sample_count - 1) / 2.0
     scale = max(midpoint, 1.0)
     normalized_x = (x - midpoint) / scale
@@ -231,6 +252,7 @@ def _geometry_and_areas(
 __all__ = [
     "COUNT_OUTPUTS",
     "DEFAULT_TIME_BLOCK_SIZE",
+    "DEFAULT_WEIGHT_POWER",
     "FLOAT_OUTPUTS",
     "analyze_velocity_profiles",
     "border_weights",

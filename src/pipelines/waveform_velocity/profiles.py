@@ -17,7 +17,7 @@ from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 
 _DISPLACEMENT_PROFILE_ROOT = "Processing/DisplacementProfiles"
-_PROFILE_MASK_DILATION_ITERATIONS = 20
+_PROFILE_MASK_DILATION_ITERATIONS = 10
 _DISPLACEMENT_PROFILE_FIELDS = (
     ("X", "x_sum_displacement_profile", "local_x"),
     ("Y", "y_sum_displacement_profile", "local_y"),

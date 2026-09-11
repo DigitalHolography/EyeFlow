@@ -468,17 +468,22 @@ def _interpolate_values(values: np.ndarray, output_side_pixels: int) -> np.ndarr
                 prefilter=False,
                 grid_mode=True,
             )
-            resized = backend.cupy.full(
+            valid_output = resized_weights > backend.cupy.float32(1e-6)
+            safe_weights = backend.cupy.where(
+                valid_output,
+                resized_weights,
+                backend.cupy.float32(1.0),
+            )
+            resized = backend.cupy.empty(
                 resized_values.shape,
-                backend.cupy.nan,
                 dtype=backend.cupy.float32,
             )
             backend.cupy.divide(
                 resized_values,
-                resized_weights,
+                safe_weights,
                 out=resized,
-                where=resized_weights > backend.cupy.float32(1e-6),
             )
+            resized[~valid_output] = backend.cupy.nan
             return backend.cupy.asnumpy(resized)
         except Exception:
             pass
@@ -538,17 +543,22 @@ def _rotate_values(values: np.ndarray, angle_degrees: float) -> np.ndarray:
                 cval=0.0,
                 prefilter=False,
             )
-            rotated = backend.cupy.full(
+            valid_output = rotated_weights >= backend.cupy.float32(0.5)
+            safe_weights = backend.cupy.where(
+                valid_output,
+                rotated_weights,
+                backend.cupy.float32(1.0),
+            )
+            rotated = backend.cupy.empty(
                 rotated_values.shape,
-                backend.cupy.nan,
                 dtype=backend.cupy.float32,
             )
             backend.cupy.divide(
                 rotated_values,
-                rotated_weights,
+                safe_weights,
                 out=rotated,
-                where=rotated_weights >= backend.cupy.float32(0.5),
             )
+            rotated[~valid_output] = backend.cupy.nan
             return backend.cupy.asnumpy(rotated)
         except Exception:
             pass

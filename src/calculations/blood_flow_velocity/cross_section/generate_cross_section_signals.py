@@ -203,7 +203,7 @@ class _CrossSectionDisplacementWork:
 _INTERPOLATED_SUBSTACK_SIDE = 128
 _ROTATED_SUBSTACK_SIDE = int(_INTERPOLATED_SUBSTACK_SIDE * np.sqrt(2.0))
 _MAX_PARALLEL_CROSS_SECTIONS = 8
-_PROFILE_MASK_DILATION_ITERATIONS = 20
+_PROFILE_MASK_DILATION_ITERATIONS = 10
 
 
 @dataclass
@@ -1875,8 +1875,11 @@ def _gpu_nanmean(values, *, axis: int, cupy, spatial_mask=None):
         axis=axis,
         dtype=cupy.float32,
     )
-    result = cupy.full(totals.shape, cupy.nan, dtype=cupy.float32)
-    cupy.divide(totals, counts, out=result, where=counts > 0)
+    nonempty = counts > 0
+    safe_counts = cupy.where(nonempty, counts, cupy.int32(1))
+    result = cupy.empty(totals.shape, dtype=cupy.float32)
+    cupy.divide(totals, safe_counts, out=result)
+    result[~nonempty] = cupy.nan
     return result
 
 
@@ -2281,17 +2284,22 @@ def _resize_values_with_nan(values: np.ndarray) -> np.ndarray:
                 prefilter=False,
                 grid_mode=True,
             )
-            resized = backend.cupy.full(
+            valid_output = resized_weights > backend.cupy.float32(1e-6)
+            safe_weights = backend.cupy.where(
+                valid_output,
+                resized_weights,
+                backend.cupy.float32(1.0),
+            )
+            resized = backend.cupy.empty(
                 resized_values.shape,
-                backend.cupy.nan,
                 dtype=backend.cupy.float32,
             )
             backend.cupy.divide(
                 resized_values,
-                resized_weights,
+                safe_weights,
                 out=resized,
-                where=resized_weights > backend.cupy.float32(1e-6),
             )
+            resized[~valid_output] = backend.cupy.nan
             return backend.cupy.asnumpy(resized)
         except Exception:
             pass
@@ -2446,17 +2454,22 @@ def _rotate_stack_with_nan(sub_stack: np.ndarray, angle: float) -> np.ndarray:
                 cval=0.0,
                 prefilter=False,
             )
-            rotated = backend.cupy.full(
+            valid_output = rotated_weights >= backend.cupy.float32(0.5)
+            safe_weights = backend.cupy.where(
+                valid_output,
+                rotated_weights,
+                backend.cupy.float32(1.0),
+            )
+            rotated = backend.cupy.empty(
                 rotated_values.shape,
-                backend.cupy.nan,
                 dtype=backend.cupy.float32,
             )
             backend.cupy.divide(
                 rotated_values,
-                rotated_weights,
+                safe_weights,
                 out=rotated,
-                where=rotated_weights >= backend.cupy.float32(0.5),
             )
+            rotated[~valid_output] = backend.cupy.nan
             return backend.cupy.asnumpy(rotated)
         except Exception:
             pass

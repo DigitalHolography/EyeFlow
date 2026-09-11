@@ -16,7 +16,7 @@ from calculations.topology import (
 )
 
 
-PROFILE_MASK_DILATION_ITERATIONS = 20
+PROFILE_MASK_DILATION_ITERATIONS = 10
 
 
 @dataclass(frozen=True)
