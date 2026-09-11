@@ -52,7 +52,7 @@ class PulseFigureContext:
     artery_mask: np.ndarray
     vein_mask: np.ndarray
     section_mask: np.ndarray
-    analysis: dict[str, object]
+    velocity_analysis: dict[str, object]
     per_beat_result: PerBeatAnalysisResult
 
     @property

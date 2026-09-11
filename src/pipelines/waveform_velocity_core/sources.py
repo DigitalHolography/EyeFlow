@@ -45,7 +45,7 @@ class WaveformVelocitySourceData:
     timing: HolodopplerTiming
     local_background_dist: int
     cross_section_settings: CrossSectionSignalSettings
-    dopplerview_analysis: dict[str, object] | None
+    velocity_analysis: dict[str, object] | None
     provenance: dict[str, object]
 
     def dopplerview_cache(self) -> dict[str, object]:
@@ -125,7 +125,7 @@ class WaveformVelocitySources:
                 optic_disc_width,
                 optic_disc_height,
             ),
-            dopplerview_analysis=None,
+            velocity_analysis=None,
             provenance=_source_provenance(
                 self.hd,
                 self.dv,

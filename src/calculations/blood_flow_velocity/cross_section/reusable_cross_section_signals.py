@@ -11,6 +11,7 @@ from .branch_identity import BranchIdentityResult
 from .generate_cross_section_signals import (
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
+    CrossSectionTopology,
     _cross_section_worker_count,
     _CrossSectionBuffers,
     _CrossSectionWork,
@@ -222,11 +223,31 @@ def project_cross_section_cube(
                 limits_override=limits,
             )
 
+    topology = CrossSectionTopology(
+        spatial_shape=plan.spatial_shape,
+        frame_count=int(data_cube.shape[0]),
+        labels=plan.labels.copy(),
+        branch_ids=plan.branch_ids.copy(),
+        section_masks=np.asarray(masks, dtype=bool).copy(),
+        segment_masks=np.asarray(buffers.segment_masks),
+        segment_center_xy=buffers.segment_center_xy.copy(),
+        profile_window_bounds_xyxy=buffers.profile_window_bounds_xyxy.copy(),
+        profile_window_side_pixels=plan.profile_window_side_pixels,
+        profile_pixel_size_mm=plan.profile_pixel_size_mm,
+        profile_rotation_degrees=buffers.profile_rotation_degrees.copy(),
+        profile_integration_limits_pixels=(
+            buffers.profile_integration_limits_pixels.copy()
+        ),
+        valid_segments=plan.valid_segments.copy(),
+        branch_identity=plan.branch_identity,
+    )
     return _result_from_buffers(
         buffers,
         plan.branch_identity,
         plan.cross_section_settings,
         plan.profile_window_side_pixels,
+        topology=topology,
+        displacements={},
     )
 
 

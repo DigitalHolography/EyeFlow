@@ -56,7 +56,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
             source_data = self._load_sources(hd_source, dv_source)
 
-        self.assertIsNone(source_data.dopplerview_analysis)
+        self.assertIsNone(source_data.velocity_analysis)
         np.testing.assert_array_equal(source_data.retinal_artery_mask, artery_raw.T)
         np.testing.assert_array_equal(source_data.retinal_vein_mask, vein_raw.T)
         expected_optic_disc_mask = np.zeros_like(artery_raw)
@@ -88,7 +88,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
             source_data = self._load_sources(hd_source, dv_source)
 
-        self.assertIsNone(source_data.dopplerview_analysis)
+        self.assertIsNone(source_data.velocity_analysis)
         self.assertFalse(source_data.provenance["dopplerview_analysis_available"])
 
     def test_waveform_velocity_uses_one_coherent_raw_moment_mode(

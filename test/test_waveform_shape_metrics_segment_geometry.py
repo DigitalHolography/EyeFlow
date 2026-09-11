@@ -236,6 +236,8 @@ class SegmentCenterTests(unittest.TestCase):
             ),
         )
         settings = CrossSectionSignalSettings(False, 0.5, False, 0.01)
+        artery_displacements = {"method": "artery-field"}
+        vein_displacements = {"method": "vein-field"}
 
         with patch(
             "calculations.blood_flow_velocity.cross_section."
@@ -253,6 +255,8 @@ class SegmentCenterTests(unittest.TestCase):
                 (10, 10),
                 SimpleNamespace(ring_count=1),
                 settings,
+                artery_displacement_maps=artery_displacements,
+                vein_displacement_maps=vein_displacements,
             )
 
         self.assertEqual(("artery", "vein"), results)
@@ -264,6 +268,14 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertNotIn(
             "transverse_mask_dilation_pixels",
             generate.call_args_list[1].kwargs,
+        )
+        self.assertIs(
+            artery_displacements,
+            generate.call_args_list[0].kwargs["displacement_maps"],
+        )
+        self.assertIs(
+            vein_displacements,
+            generate.call_args_list[1].kwargs["displacement_maps"],
         )
 
     def test_fixed_subimage_is_centroid_centered_and_padded_at_periphery(self) -> None:

@@ -295,11 +295,11 @@ class PulsePngExporterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output = FakeOutput(Path(temp_dir))
             context = _synthetic_context()
-            artery = context.dopplerview_analysis["retinal_artery_velocity_signal"]
+            artery = context.velocity_analysis["retinal_artery_velocity_signal"]
             heartbeat = spectrum_signal_analysis(artery, 0.1, systole_count=4)
             per_beat_result = SimpleNamespace(
                 heartbeat=heartbeat,
-                cycle_boundary_indexes=context.dopplerview_analysis["beat_indices"],
+                cycle_boundary_indexes=context.velocity_analysis["beat_indices"],
             )
             written = export_pulse_pngs(output, context, per_beat_result)
 
@@ -347,7 +347,7 @@ def _synthetic_context():
         "fRMS_bkg_avg": np.mean(f_bkg, axis=0),
         "deltafRMS": delta,
         "velocity_section_mask": section_mask,
-        "retinal_vessel_velocity": velocity,
+        "velocity_map": velocity,
         "velocity_map_avg": np.mean(velocity, axis=0),
         "retinal_artery_velocity_signal": artery_signal,
         "retinal_vein_velocity_signal": vein_signal,
@@ -363,7 +363,7 @@ def _synthetic_context():
         retinal_artery_mask=artery_mask,
         retinal_vein_mask=vein_mask,
     )
-    return SimpleNamespace(source_data=source_data, dopplerview_analysis=analysis)
+    return SimpleNamespace(source_data=source_data, velocity_analysis=analysis)
 
 
 if __name__ == "__main__":

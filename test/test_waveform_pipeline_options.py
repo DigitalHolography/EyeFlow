@@ -116,7 +116,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertNotIn("pipelines.waveform_shape_metrics", velocity_source)
 
     def test_velocity_parent_always_publishes_base_velocity_only(self) -> None:
-        context = SimpleNamespace(dopplerview_analysis={})
+        context = SimpleNamespace(velocity_analysis={})
         ctx = _context(
             {"waveform_velocity": ()},
             {core_runner.WAVEFORM_CONTEXT_STATE: context},
@@ -156,7 +156,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             schema.artery_per_beat.segment_velocity_signal: 5,
         }
         context = SimpleNamespace(
-            dopplerview_analysis={},
+            velocity_analysis={},
             artery_segment_result="artery",
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
@@ -190,6 +190,20 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as profiles,
             patch.object(
                 velocity_runner,
+                "pack_displacement_magnitude_outputs",
+                return_value={"displacement_magnitude": 5},
+            ) as displacement_magnitude,
+            patch.object(
+                velocity_runner,
+                "pack_cross_section_displacement_profile_outputs",
+                return_value={"displacement_profiles": 6},
+            ) as displacement_profiles,
+            patch.object(
+                velocity_runner,
+                "pack_displacement_profile_outputs",
+            ) as legacy_displacement_profiles,
+            patch.object(
+                velocity_runner,
                 "pack_quadrant_velocity_outputs",
                 return_value={"quadrants": 4},
             ) as quadrants,
@@ -197,7 +211,14 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 
         self.assertEqual(
-            {"base": 1, "per_beat": 2, "profile": 3, "quadrants": 4},
+            {
+                "base": 1,
+                "per_beat": 2,
+                "profile": 3,
+                "displacement_magnitude": 5,
+                "displacement_profiles": 6,
+                "quadrants": 4,
+            },
             outputs,
         )
         profiles.assert_called_once_with(
@@ -206,6 +227,19 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             (0, 5, 10),
             index_base=0,
         )
+        displacement_magnitude.assert_called_once_with(
+            "artery",
+            "vein",
+            (0, 5, 10),
+            index_base=0,
+        )
+        displacement_profiles.assert_called_once_with(
+            "artery",
+            "vein",
+            (0, 5, 10),
+            index_base=0,
+        )
+        legacy_displacement_profiles.assert_not_called()
         quadrants.assert_called_once_with(
             velocity_outputs,
             context.source_data,
@@ -215,7 +249,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
     def test_segments_option_does_not_build_velocity_maps(self) -> None:
         context = SimpleNamespace(
-            dopplerview_analysis={},
+            velocity_analysis={},
             artery_segment_result="artery",
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
@@ -257,7 +291,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
     def test_segment_velocity_maps_option_publishes_maps_and_avis(self) -> None:
         context = SimpleNamespace(
-            dopplerview_analysis={},
+            velocity_analysis={},
             artery_segment_result="artery",
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
@@ -437,7 +471,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertTrue(core_runner._pulse_pngs_required(ctx))
 
     def test_pdf_report_publishes_velocity_per_beat_outputs(self) -> None:
-        context = SimpleNamespace(dopplerview_analysis={})
+        context = SimpleNamespace(velocity_analysis={})
         result = SimpleNamespace(cycle_boundary_indexes=(0, 2))
         ctx = _context(
             {"waveform_velocity": ()},
