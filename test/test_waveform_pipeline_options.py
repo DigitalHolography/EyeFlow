@@ -58,10 +58,30 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertTrue(core_runner._per_beat_required(ctx))
         self.assertTrue(core_runner._segments_required(ctx))
         self.assertFalse(core_runner._pulse_pngs_required(ctx))
-        with patch.object(velocity_runner, "pack_continuous_velocity_outputs", return_value={}), \
-             patch.object(velocity_runner, "pack_cross_section_profile_outputs", return_value={"profiles": 1}) as pack:
+        with (
+            patch.object(
+                velocity_runner,
+                "pack_continuous_velocity_outputs",
+                return_value={},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_cross_section_profile_outputs",
+                return_value={"profiles": 1},
+            ) as pack,
+            patch.object(
+                velocity_runner,
+                "extract_spatial_gradient_segments",
+                return_value=("gradient_artery", "gradient_vein"),
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_spatial_gradient_profile_outputs",
+                return_value={"gradient_profiles": 2},
+            ),
+        ):
             outputs = velocity_runner.run_waveform_velocity(ctx)
-        self.assertEqual(outputs, {"profiles": 1})
+        self.assertEqual(outputs, {"profiles": 1, "gradient_profiles": 2})
         pack.assert_called_once_with("artery", "vein", (0, 2), index_base=0)
 
     def test_lowrank_pipeline_includes_veins_and_selected_quadrants(self) -> None:
@@ -190,6 +210,16 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as profiles,
             patch.object(
                 velocity_runner,
+                "extract_spatial_gradient_segments",
+                return_value=("gradient_artery", "gradient_vein"),
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_spatial_gradient_profile_outputs",
+                return_value={"gradient_profiles": 7},
+            ) as gradient_profiles,
+            patch.object(
+                velocity_runner,
                 "pack_displacement_magnitude_outputs",
                 return_value={"displacement_magnitude": 5},
             ) as displacement_magnitude,
@@ -217,6 +247,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "profile": 3,
                 "displacement_magnitude": 5,
                 "displacement_profiles": 6,
+                "gradient_profiles": 7,
                 "quadrants": 4,
             },
             outputs,
@@ -224,6 +255,12 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         profiles.assert_called_once_with(
             "artery",
             "vein",
+            (0, 5, 10),
+            index_base=0,
+        )
+        gradient_profiles.assert_called_once_with(
+            "gradient_artery",
+            "gradient_vein",
             (0, 5, 10),
             index_base=0,
         )
@@ -274,6 +311,16 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ),
             patch.object(
                 velocity_runner,
+                "extract_spatial_gradient_segments",
+                return_value=("gradient_artery", "gradient_vein"),
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_spatial_gradient_profile_outputs",
+                return_value={"gradient_profiles": 4},
+            ) as gradient_profiles,
+            patch.object(
+                velocity_runner,
                 "pack_segment_map_outputs",
                 return_value={"maps": 3},
             ) as maps,
@@ -285,7 +332,16 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         ):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 
-        self.assertEqual({"base": 1, "signals": 2}, outputs)
+        self.assertEqual(
+            {"base": 1, "signals": 2, "gradient_profiles": 4},
+            outputs,
+        )
+        gradient_profiles.assert_called_once_with(
+            "gradient_artery",
+            "gradient_vein",
+            (1, 6, 11),
+            index_base=1,
+        )
         maps.assert_not_called()
         avis.assert_not_called()
 

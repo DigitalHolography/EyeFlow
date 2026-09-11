@@ -27,6 +27,11 @@ from .segment_maps import (
     pack_segment_map_outputs,
 )
 from .segment_velocity_map_avi import export_segment_velocity_map_avis
+from .spatial_gradient_profiles import (
+    cleanup_spatial_gradient_artifacts,
+    extract_spatial_gradient_segments,
+    pack_spatial_gradient_profile_outputs,
+)
 
 
 def run_waveform_velocity(ctx) -> dict[str, object]:
@@ -117,7 +122,11 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 }
             )
 
-    if "velocity_profiles" in selected or ctx.pipeline_scheduled("velocity_profile_analysis"):
+    profile_products_required = bool(
+        "velocity_profiles" in selected
+        or ctx.pipeline_scheduled("velocity_profile_analysis")
+    )
+    if segments_selected or profile_products_required:
         cycle_boundaries = (
             per_beat_result.cycle_boundary_indexes
             if per_beat_result is not None
@@ -128,6 +137,19 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             if per_beat_result is not None
             else int(context.source_data.provenance["beat_index_base"])
         )
+        gradient_artery_segments, gradient_vein_segments = (
+            extract_spatial_gradient_segments(ctx, context)
+        )
+        metrics.update(
+            pack_spatial_gradient_profile_outputs(
+                gradient_artery_segments,
+                gradient_vein_segments,
+                cycle_boundaries,
+                index_base=index_base,
+            )
+        )
+
+    if profile_products_required:
         metrics.update(
             pack_cross_section_profile_outputs(
                 context.artery_segment_result,
@@ -172,6 +194,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             )
         )
 
+    cleanup_spatial_gradient_artifacts(ctx)
     return metrics
 
 
