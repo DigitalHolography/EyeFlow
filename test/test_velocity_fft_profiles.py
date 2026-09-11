@@ -28,10 +28,38 @@ from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
 )
 from pipelines.waveform_velocity_core.segments import (  # noqa: E402
     _VelocityProfileFftAccumulator,
+    _gpu_nanmean_axis1,
 )
 
 
 class VelocityFFTProfileTests(unittest.TestCase):
+    def test_gpu_nanmean_does_not_require_copyto_where_support(self) -> None:
+        class ArrayBackendWithoutCopyto:
+            float32 = np.float32
+            nan = np.nan
+            isfinite = staticmethod(np.isfinite)
+            sum = staticmethod(np.sum)
+            where = staticmethod(np.where)
+            divide = staticmethod(np.divide)
+
+        values = np.asarray(
+            [
+                [[1.0, np.nan], [3.0, np.nan]],
+                [[2.0, 4.0], [np.nan, 8.0]],
+            ],
+            dtype=np.float32,
+        )
+        mask = np.asarray([[True, False], [True, False]])
+
+        result = _gpu_nanmean_axis1(
+            values,
+            ArrayBackendWithoutCopyto,
+            mask=mask,
+        )
+
+        np.testing.assert_allclose(result[:, 0], [2.0, 2.0])
+        self.assertTrue(np.all(np.isnan(result[:, 1])))
+
     def setUp(self) -> None:
         y_values = np.arange(51, dtype=np.float32)
         maps = np.broadcast_to(
@@ -57,7 +85,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
             0,
             0,
             maps[0, 0],
-            dilate_segment_masks(masks, iterations=20)[0, 0],
+            dilate_segment_masks(masks, iterations=10)[0, 0],
         )
         self.segments = SimpleNamespace(
             velocity_maps_per_segment=maps,
@@ -75,7 +103,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
         self.assertEqual((2, 4, 2, 1, 1), unmasked.shape)
         self.assertEqual(unmasked.shape, masked.shape)
         np.testing.assert_allclose(unmasked[:, 0, :, 0, 0], 100.0, atol=1e-5)
-        np.testing.assert_allclose(masked[:, 0, :, 0, 0], 60.0, atol=1e-5)
+        np.testing.assert_allclose(masked[:, 0, :, 0, 0], 40.0, atol=1e-5)
         np.testing.assert_allclose(unmasked[:, 1:, :, 0, 0], 0.0, atol=1e-5)
         np.testing.assert_allclose(masked[:, 1:, :, 0, 0], 0.0, atol=1e-5)
 
@@ -135,7 +163,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
                 list(masked.attrs["dimDesc"]),
             )
             self.assertEqual("full", masked.attrs["fft_spectrum"])
-            self.assertEqual(20, masked.attrs["mask_dilation_iterations"])
+            self.assertEqual(10, masked.attrs["mask_dilation_iterations"])
             self.assertEqual(0, unmasked.attrs["mask_dilation_iterations"])
             self.assertEqual("gzip", masked.compression)
 
@@ -185,7 +213,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
             0,
             0,
             maps[0, 0],
-            dilate_segment_masks(masks, iterations=20)[0, 0],
+            dilate_segment_masks(masks, iterations=10)[0, 0],
         )
 
         np.testing.assert_allclose(

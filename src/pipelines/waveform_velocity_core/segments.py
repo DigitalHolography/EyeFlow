@@ -284,8 +284,10 @@ def _gpu_nanmean_axis1(values, cupy, *, mask=None):
         axis=1,
         dtype=cupy.float32,
     )
-    result = cupy.divide(totals, counts)
-    cupy.copyto(result, cupy.nan, where=counts == 0)
+    safe_counts = counts.copy()
+    safe_counts[safe_counts == 0] = 1
+    result = cupy.divide(totals, safe_counts)
+    result[counts == 0] = cupy.nan
     return result.astype(cupy.float32, copy=False)
 
 
