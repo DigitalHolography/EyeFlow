@@ -83,6 +83,46 @@ class TopologyCacheTests(unittest.TestCase):
             topology_source_id("scan_HD.h5", "scan_DV.h5"),
         )
 
+    def test_changed_competing_vessel_mask_invalidates_cached_topology(self) -> None:
+        artery = np.zeros((9, 9), dtype=bool)
+        artery[3:6, 2:4] = True
+        vein = np.zeros_like(artery)
+        vein[3:6, 6] = True
+        changed_vein = vein.copy()
+        changed_vein[2, 6] = True
+        disc = np.zeros_like(artery)
+        disc[4, 4] = True
+        settings = SegmentRingSettings(0.0, 1.0, 1.0, 1)
+        prepared = [
+            _prepared_topology(artery.shape, marker=float(index))
+            for index in range(4)
+        ]
+        cache = {}
+
+        with patch(
+            "calculations.topology.workflow.prepare_topology",
+            side_effect=prepared,
+        ) as prepare:
+            first = prepare_topologies(
+                {"artery": artery, "vein": vein},
+                disc,
+                settings,
+                source_id="scan-a",
+                cache=cache,
+                window_side_pixels=3,
+            )
+            changed = prepare_topologies(
+                {"artery": artery, "vein": changed_vein},
+                disc,
+                settings,
+                source_id="scan-a",
+                cache=cache,
+                window_side_pixels=3,
+            )
+
+        self.assertIsNot(first["artery"], changed["artery"])
+        self.assertEqual(4, prepare.call_count)
+
 
 def _prepared_topology(
     shape: tuple[int, int],

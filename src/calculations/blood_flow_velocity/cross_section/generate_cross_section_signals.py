@@ -689,7 +689,11 @@ def _fill_cross_section_buffers_from_prepared(
         angle = float(prepared_topology.rotation_degrees[index])
         rotated = prepared_segment.rotated
         rotated_mask = prepared_topology.rotated_masks[index]
-        profile_mask = _dilate_profile_mask(rotated_mask)
+        competing_masks = prepared_topology.rotated_competing_masks
+        profile_mask = _dilate_profile_mask(
+            rotated_mask,
+            None if competing_masks is None else competing_masks[index],
+        )
         backend = optional_cupy_backend()
         if backend is not None and isinstance(rotated, backend.cupy.ndarray):
             if segment_observer is not None:
@@ -1778,12 +1782,16 @@ def _cross_section_velocity_from_substack(
     )
 
 
-def _dilate_profile_mask(mask: np.ndarray) -> np.ndarray:
+def _dilate_profile_mask(
+    mask: np.ndarray,
+    exclusion_mask: np.ndarray | None = None,
+) -> np.ndarray:
     """Expand a segment mask before restricting profile signal values."""
 
     return dilate_segment_masks(
         mask,
         iterations=_PROFILE_MASK_DILATION_ITERATIONS,
+        exclusion_masks=exclusion_mask,
     )
 
 

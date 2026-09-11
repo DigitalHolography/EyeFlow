@@ -182,6 +182,52 @@ def extract_segment(
     return extracted
 
 
+def competing_segment_masks(
+    topology: SegmentTopology,
+    vessel_mask,
+    other_vessel_mask=None,
+) -> np.ndarray:
+    """Return local masks for vessels other than each segment's own branch."""
+
+    vessels = np.asarray(vessel_mask, dtype=bool)
+    if vessels.shape != topology.spatial_shape:
+        raise ValueError(
+            "vessel_mask must match the topology spatial shape, got "
+            f"{vessels.shape}."
+        )
+    other_vessels = (
+        np.zeros_like(vessels)
+        if other_vessel_mask is None
+        else np.asarray(other_vessel_mask, dtype=bool)
+    )
+    if other_vessels.shape != topology.spatial_shape:
+        raise ValueError(
+            "other_vessel_mask must match the topology spatial shape, got "
+            f"{other_vessels.shape}."
+        )
+    ring_count, branch_count = topology.segment_centers_xy.shape[:2]
+    side = topology.window_side_pixels
+    masks = np.zeros((ring_count, branch_count, side, side), dtype=bool)
+    if side == 0:
+        return masks
+
+    for ring_index, branch_index in np.argwhere(topology.valid_segments):
+        index = (int(ring_index), int(branch_index))
+        bounds = topology.window_bounds_xyxy[index]
+        center = topology.segment_centers_xy[index]
+        target_y, target_x = _window_target_slices(bounds, center, side)
+        x_start, x_stop, y_start, y_stop = bounds
+        branch_id = int(topology.branch_ids[index[1]])
+        source_y = slice(int(y_start), int(y_stop))
+        source_x = slice(int(x_start), int(x_stop))
+        own_branch = topology.labels[source_y, source_x] == branch_id
+        masks[index][target_y, target_x] = (
+            (vessels[source_y, source_x] & ~own_branch)
+            | (other_vessels[source_y, source_x] & ~own_branch)
+        )
+    return masks
+
+
 def resize_segment_topology_windows(
     topology: SegmentTopology,
     window_side_pixels: int,

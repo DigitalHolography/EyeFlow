@@ -116,19 +116,19 @@ class CrossSectionDisplacementTests(unittest.TestCase):
         )
         np.testing.assert_array_equal(
             np.flatnonzero(np.isfinite(transverse_masked[0])),
-            np.arange(40, 140),
+            np.arange(50, 130),
         )
         np.testing.assert_array_equal(
             np.flatnonzero(np.isfinite(longitudinal_masked[0])),
-            np.arange(30, 150),
+            np.arange(40, 140),
         )
         np.testing.assert_allclose(
-            transverse_masked[:, 40:140],
+            transverse_masked[:, 50:130],
             expected_magnitude,
             atol=1e-6,
         )
         np.testing.assert_allclose(
-            longitudinal_masked[:, 30:150],
+            longitudinal_masked[:, 40:140],
             expected_magnitude,
             atol=1e-6,
         )
