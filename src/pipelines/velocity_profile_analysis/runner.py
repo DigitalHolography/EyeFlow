@@ -4,7 +4,7 @@ import h5py
 
 from pipeline_engine.base import DatasetValue
 
-from .fitting import analyze_velocity_profiles
+from .fitting import DEFAULT_WEIGHT_POWER, analyze_velocity_profiles
 
 SOURCE_PATH = "/Processing/VelocityProfiles/Artery/TransverseVelocityProfileMasked/value"
 OUTPUT_ROOT = "/Processing/VelocityProfileAnalysis/Artery"
@@ -25,7 +25,8 @@ def run_velocity_profile_analysis(ctx) -> dict[str, object]:
         "index_base": 0,
         "model": "a*x^2 + b*x + c",
         "fit_method": "weighted_least_squares",
-        "weight_definition": "u=x/(Nx-1); w=0.5 if u<0.25 or u>0.75, else w=1",
+        "weight_definition": "u=x/(Nx-1); d=abs(2*u-1); w=1-d^p",
+        "weight_power": DEFAULT_WEIGHT_POWER,
         "integration_method": "unweighted_sum_of_finite_observed_integer_indexes_between_roots",
         "geometry_policy": "downward_opening_only; fractional_indexes",
     }

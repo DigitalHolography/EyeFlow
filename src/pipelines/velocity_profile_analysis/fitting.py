@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from numbers import Real
+
 import numpy as np
 
 FLOAT_OUTPUTS = (
@@ -22,14 +24,23 @@ FLOAT_OUTPUTS = (
 )
 COUNT_OUTPUTS = ("n_fit_samples", "n_area_samples")
 DEFAULT_TIME_BLOCK_SIZE = 256
+DEFAULT_WEIGHT_POWER = 2.0
 
 
-def border_weights(sample_count: int) -> np.ndarray:
-    """Half weight in the outer quarters of the original index domain."""
+def border_weights(sample_count: int, *, power=DEFAULT_WEIGHT_POWER) -> np.ndarray:
+    """Endpoint-preserving power weights fixed to the original index domain."""
+    if isinstance(power, (bool, np.bool_)) or not isinstance(power, Real):
+        raise ValueError(  # noqa: TRY004 - use one exception for every invalid power
+            "weight power must be a finite positive real number."
+        )
+    power = float(power)
+    if not np.isfinite(power) or power <= 0:
+        raise ValueError("weight power must be a finite positive real number.")
     weights = np.ones(sample_count, dtype=np.float64)
     if sample_count > 1:
         u = np.arange(sample_count, dtype=np.float64) / (sample_count - 1)
-        weights[(u < 0.25) | (u > 0.75)] = 0.5
+        distance = np.abs(2.0 * u - 1.0)
+        weights = 1.0 - distance**power
     return weights
 
 
@@ -39,7 +50,12 @@ def _allocate(shape, *, dtype=np.float64):
     return outputs
 
 
-def analyze_velocity_profiles(v, *, time_block_size=DEFAULT_TIME_BLOCK_SIZE):
+def analyze_velocity_profiles(
+    v,
+    *,
+    time_block_size=DEFAULT_TIME_BLOCK_SIZE,
+    weight_power=DEFAULT_WEIGHT_POWER,
+):
     """Read bounded time slabs from a NumPy array or HDF5 dataset.
 
     Return float32 measurements and int32 counts with (time, beat, branch,
@@ -55,7 +71,7 @@ def analyze_velocity_profiles(v, *, time_block_size=DEFAULT_TIME_BLOCK_SIZE):
     nx, nt, nb, nk, nr = shape
     outputs = _allocate((nt, nb, nk, nr), dtype=np.float32)
     x = np.arange(nx, dtype=np.float64)
-    weights = border_weights(nx)
+    weights = border_weights(nx, power=weight_power)
     midpoint = (nx - 1) / 2.0
     scale = max(midpoint, 1.0)
     z = (x - midpoint) / scale

@@ -28,10 +28,33 @@ def scalar(result, name):
     return result[name].item()
 
 
-def test_border_weights_have_exact_quarter_boundaries():
-    np.testing.assert_array_equal(fitting.border_weights(9), [0.5, 0.5, 1, 1, 1, 1, 1, 0.5, 0.5])
+def test_border_weights_are_quadratic_over_the_complete_domain():
+    np.testing.assert_array_equal(
+        fitting.border_weights(9),
+        [0, 0.4375, 0.75, 0.9375, 1, 0.9375, 0.75, 0.4375, 0],
+    )
+    np.testing.assert_allclose(fitting.border_weights(6), [0, 0.64, 0.96, 0.96, 0.64, 0])
     np.testing.assert_array_equal(fitting.border_weights(1), [1])
     assert fitting.border_weights(0).size == 0
+
+
+def test_border_weight_power_is_parameterized():
+    np.testing.assert_array_equal(
+        fitting.border_weights(5, power=1),
+        [0, 0.5, 1, 0.5, 0],
+    )
+    np.testing.assert_array_equal(
+        fitting.border_weights(5, power=4),
+        [0, 0.9375, 1, 0.9375, 0],
+    )
+
+
+@pytest.mark.parametrize("power", [0, -1, np.nan, np.inf, -np.inf, True, "2", 1 + 0j])
+def test_border_weight_power_must_be_a_finite_positive_real(power):
+    with pytest.raises(ValueError, match="finite positive real"):
+        fitting.border_weights(9, power=power)
+    with pytest.raises(ValueError, match="finite positive real"):
+        analyze(np.arange(9.0), weight_power=power)
 
 
 def test_exact_quadratic_coefficients_vertex_roots_and_unweighted_sums():
@@ -56,15 +79,16 @@ def test_exact_quadratic_coefficients_vertex_roots_and_unweighted_sums():
     assert scalar(r, "fit_rmse") < 1e-12
 
 
-def test_weighted_fit_matches_explicit_reference_and_quality_formulas():
+@pytest.mark.parametrize("power", [1.0, fitting.DEFAULT_WEIGHT_POWER, 4.0])
+def test_weighted_fit_matches_explicit_reference_and_quality_formulas(power):
     x = np.arange(17.0)
     y = 10 - 0.3 * (x - 7) ** 2 + np.sin(x)
     y[[0, 7, 15]] = [np.nan, np.inf, np.nan]
     finite = np.isfinite(y)
-    w = fitting.border_weights(len(x))[finite]
+    w = fitting.border_weights(len(x), power=power)[finite]
     matrix = np.column_stack((x[finite] ** 2, x[finite], np.ones(finite.sum())))
     expected = np.linalg.lstsq(matrix * np.sqrt(w)[:, None], y[finite] * np.sqrt(w), rcond=None)[0]
-    r = analyze(y)
+    r = analyze(y, weight_power=power)
     np.testing.assert_allclose([scalar(r, n) for n in ("a", "b", "c")], expected, rtol=1e-6)
     residual = y[finite] - matrix @ expected
     rss, wrss = np.sum(residual**2), np.sum(w * residual**2)
@@ -125,15 +149,15 @@ def test_repeated_root_is_not_mistaken_for_two_distinct_zeros():
 def test_observed_area_preserves_negative_sign():
     y = np.array(
         [
-            -13.36642793,
-            4.95246973,
-            -2.44477933,
-            3.64198431,
-            3.74933936,
-            -17.78927324,
-            15.21729681,
-            -9.49787064,
-            -7.89613635,
+            -2.92171186,
+            -1.03488268,
+            -2.51977378,
+            1.52562512,
+            14.71491973,
+            -25.66658441,
+            -2.36850265,
+            1.76512421,
+            2.9599399,
         ]
     )
     r = analyze(y)
@@ -231,6 +255,10 @@ def test_hdf5_round_trip_and_bounded_reads(tmp_path):
             assert list(ds.attrs["dimDesc"]) == ["time", "beat", "branch", "radius"]
             assert ds.attrs["index_base"] == 0
             assert ds.attrs["source_path"] == SOURCE_PATH
+            assert ds.attrs["weight_power"] == fitting.DEFAULT_WEIGHT_POWER
+            assert ds.attrs["weight_definition"] == (
+                "u=x/(Nx-1); d=abs(2*u-1); w=1-d^p"
+            )
         assert "/Processing/VelocityProfileAnalysis/Vein" not in h5
         np.testing.assert_array_equal(h5[SOURCE_PATH], v)
 

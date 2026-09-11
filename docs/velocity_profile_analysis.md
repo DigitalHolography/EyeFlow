@@ -12,10 +12,12 @@ there is no averaging across time, beats, branches or radii.
 ## Fit definition
 
 Use `x = 0, ..., Nx-1` and minimize `sum(w * (v - (a*x*x+b*x+c))**2)` over
-finite observed samples. For `u=x/(Nx-1)`, use `w=0.5` when `u<0.25` or
-`u>0.75`, otherwise `w=1`. Quarter-boundary samples have weight one. Weights
-remain tied to the complete input domain when some samples are missing.
-The weights are constant within each region, not a cosine or linear taper.
+finite observed samples. For `u=x/(Nx-1)` and `d=abs(2*u-1)`, use `w=1-d^p`.
+The default `p=2` gives a quadratic decrease from weight one at the domain
+center to weight zero at either border. Direct API callers may supply any finite
+`p>0`. With an even number of samples, the two samples nearest the center have
+equal maximum sampled weights below one. Weights remain tied to the complete
+input domain when some samples are missing. A one-sample domain has weight one.
 
 The solver scales design rows and observations by `sqrt(w)` and works in
 float64 on centered/scaled coordinates. Stored coefficients refer to the original
@@ -51,7 +53,8 @@ factor in either area sum. In particular, negative observed samples retain their
 sign. Coefficients and area sums use index coordinates, not physical distances.
 
 All datasets include axis, source path, zero-based-index, model, weighting, and
-integration metadata. Only artery analysis is produced.
+integration metadata. The `weight_power` attribute records the production value
+`2.0`. Only artery analysis is produced.
 
 ## Invalid or degenerate profiles
 

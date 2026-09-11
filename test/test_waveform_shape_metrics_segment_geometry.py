@@ -258,7 +258,7 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertEqual(("artery", "vein"), results)
         self.assertEqual([9, 9], [call.args[-1] for call in generate.call_args_list])
         self.assertEqual(
-            20,
+            10,
             generate.call_args_list[0].kwargs["transverse_mask_dilation_pixels"],
         )
         self.assertNotIn(
