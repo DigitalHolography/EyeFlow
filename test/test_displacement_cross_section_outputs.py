@@ -347,6 +347,7 @@ class DisplacementOutputTests(unittest.TestCase):
         artery_longitudinal = f"{artery_root}/Longitudinal"
         artery_transverse = f"{artery_root}/Transverse"
         vein_longitudinal = f"{vein_root}/Longitudinal"
+        vein_transverse = f"{vein_root}/Transverse"
         profile_paths = {
             f"{artery_longitudinal}/LongitudinalDisplacementProfileMasked",
             f"{artery_longitudinal}/LongitudinalDisplacementProfileUnmasked",
@@ -358,12 +359,67 @@ class DisplacementOutputTests(unittest.TestCase):
         meaned_paths = {
             f"{artery_longitudinal}/LongitudinalDisplacementProfileMaskedMeaned",
             f"{artery_transverse}/TransverseDisplacementProfileMaskedMeaned",
+            f"{vein_transverse}/TransverseDisplacementProfileMaskedMeaned",
+        }
+        global_meaned_paths = {
+            f"{artery_longitudinal}/"
+            "LongitudinalDisplacementProfileMaskedGlobalMeaned",
+            f"{artery_transverse}/"
+            "TransverseDisplacementProfileMaskedGlobalMeaned",
+        }
+        mean_power_paths = {
+            f"{artery_transverse}/Mean_P_D_transverse",
+            f"{vein_transverse}/Mean_P_D_transverse",
+        }
+        gaussian_profile_paths = {
+            f"{artery_transverse}/Gaussian_Fit",
+            f"{vein_transverse}/Gaussian_Fit",
         }
         power_paths = {
             f"{artery_longitudinal}/P_D_longitudinal",
             f"{artery_transverse}/P_D_transverse",
         }
-        level_set_paths = profile_paths | meaned_paths | power_paths
+        metric_names = {
+            "Max_X_Position",
+            "Max_Y_Position",
+            "Diff_Y_Value",
+            "Mean_X_Position",
+            "Mean_Y_Position",
+            "Mean_Diff_Y_Value",
+            "Area_L",
+            "Area_R",
+            "Diff_Area_L",
+            "Diff_Area_R",
+            "Gaussian_Baseline",
+            "Gaussian_A_L",
+            "Gaussian_A_R",
+            "Gaussian_Mu_L",
+            "Gaussian_Mu_R",
+            "Gaussian_Sigma_L",
+            "Gaussian_Sigma_R",
+            "Gaussian_FWHM_L",
+            "Gaussian_FWHM_R",
+            "Gaussian_Area_L",
+            "Gaussian_Area_R",
+            "Gaussian_Peak_Separation",
+            "Gaussian_RMSE",
+            "Gaussian_Fit_Success",
+            "Gaussian_Initialization_Complete",
+        }
+        metric_paths = {
+            "Processing/DisplacementMetrics/level_set_motion/"
+            f"{vessel_name}/Transverse/{metric_name}"
+            for vessel_name in ("Artery", "Vein")
+            for metric_name in metric_names
+        }
+        level_set_paths = (
+            profile_paths
+            | meaned_paths
+            | global_meaned_paths
+            | mean_power_paths
+            | gaussian_profile_paths
+            | power_paths
+        )
         other_method_paths = {
             path.replace(
                 "/level_set_motion/",
@@ -371,7 +427,19 @@ class DisplacementOutputTests(unittest.TestCase):
             )
             for path in level_set_paths
         }
-        expected_paths = level_set_paths | other_method_paths
+        other_method_metric_paths = {
+            path.replace(
+                "/level_set_motion/",
+                "/fast_symmetric_demons/",
+            )
+            for path in metric_paths
+        }
+        expected_paths = (
+            level_set_paths
+            | other_method_paths
+            | metric_paths
+            | other_method_metric_paths
+        )
         self.assertEqual(expected_paths, set(outputs))
 
         with h5py.File(
@@ -459,6 +527,23 @@ class DisplacementOutputTests(unittest.TestCase):
                     np.nanmean(source[...], axis=1),
                     atol=1e-6,
                 )
+                global_meaned = h5[
+                    f"{direction_root}/{profile_name}GlobalMeaned"
+                ]
+                self.assertEqual((181, 2), global_meaned.shape)
+                self.assertEqual(
+                    [expected_axis, "beat"],
+                    list(global_meaned.attrs["dimDesc"]),
+                )
+                self.assertEqual(
+                    "mean_over_valid_branch_radius_segments",
+                    global_meaned.attrs["segment_reduction"],
+                )
+                np.testing.assert_allclose(
+                    global_meaned[...],
+                    np.nanmean(meaned[...], axis=(2, 3)),
+                    atol=1e-6,
+                )
                 power = h5[f"{direction_root}/P_D_{direction}"]
                 self.assertEqual(source.shape, power.shape)
                 self.assertEqual("pixels^2", power.attrs["unit"])
@@ -477,6 +562,240 @@ class DisplacementOutputTests(unittest.TestCase):
                     atol=1e-6,
                 )
                 self.assertGreater(float(np.nanmax(power[...])), 0.0)
+                if direction == "transverse":
+                    mean_power = h5[
+                        f"{direction_root}/Mean_P_D_transverse"
+                    ]
+                    self.assertEqual((181, 2, 1, 1), mean_power.shape)
+                    self.assertEqual(
+                        ["x", "beat", "branch", "radius"],
+                        list(mean_power.attrs["dimDesc"]),
+                    )
+                    np.testing.assert_allclose(
+                        mean_power[...],
+                        np.nanmean(power[...], axis=1),
+                        atol=1e-6,
+                    )
+
+            np.testing.assert_allclose(
+                h5[f"{vein_root}/Transverse/Mean_P_D_transverse"][...],
+                h5[f"{artery_transverse}/Mean_P_D_transverse"][...],
+                atol=1e-6,
+            )
+
+    def test_global_displacement_profiles_average_all_valid_segments(
+        self,
+    ) -> None:
+        segments = _segments()
+        displacement = segments.displacements["level_set_motion"]
+        segment_scales = np.asarray(
+            [[1.0, 2.0], [3.0, np.nan]],
+            dtype=np.float32,
+        )[:, :, None, None]
+        for field in (
+            "transverse_displacement_profiles_unmasked",
+            "transverse_displacement_profiles_masked",
+            "longitudinal_displacement_profiles_unmasked",
+            "longitudinal_displacement_profiles_masked",
+        ):
+            base_profile = getattr(displacement, field)
+            setattr(displacement, field, base_profile * segment_scales)
+        segments.displacements = {"level_set_motion": displacement}
+
+        outputs = pack_cross_section_displacement_profile_outputs(
+            segments,
+            None,
+            np.asarray([0, 2, 5], dtype=np.int32),
+        )
+
+        for direction in ("Longitudinal", "Transverse"):
+            root = (
+                "Processing/DisplacementProfiles/level_set_motion/Artery/"
+                f"{direction}/{direction}DisplacementProfileMasked"
+            )
+            source = outputs[f"{root}Meaned"]
+            global_meaned = outputs[f"{root}GlobalMeaned"]
+            self.assertEqual((181, 2), global_meaned.data.shape)
+            np.testing.assert_allclose(
+                global_meaned.data,
+                np.nanmean(source.data, axis=(2, 3)),
+                atol=1e-6,
+            )
+            np.testing.assert_allclose(
+                global_meaned.data,
+                2.0 * source.data[..., 0, 0],
+                atol=1e-6,
+            )
+
+    def test_transverse_peak_metrics_use_first_two_curve_peaks(
+        self,
+    ) -> None:
+        curves = np.asarray(
+            [
+                [
+                    [0, 1, 0, 5, 0, 3, 0, 0, 0],
+                    [0, 2, 2, 0, 3, 3, 0, 0, 0],
+                ],
+                [
+                    [0, 0, 1, 4, 1, 0, 0, 0, 0],
+                    [0, 1, 2, 3, 4, 5, 6, 7, 8],
+                ],
+            ],
+            dtype=np.float32,
+        )
+        frame_scales = np.arange(1, 7, dtype=np.float32)[None, None, :, None]
+        profiles = curves[:, :, None, :] * frame_scales
+        displacement = SimpleNamespace(
+            transverse_displacement_profiles_unmasked=profiles,
+            transverse_displacement_profiles_masked=profiles,
+            longitudinal_displacement_profiles_unmasked=profiles,
+            longitudinal_displacement_profiles_masked=profiles,
+        )
+        segments = SimpleNamespace(
+            displacements={"level_set_motion": displacement}
+        )
+
+        outputs = pack_cross_section_displacement_profile_outputs(
+            segments,
+            segments,
+            np.asarray([0, 2, 5], dtype=np.int32),
+        )
+
+        for vessel_name in ("Artery", "Vein"):
+            metrics_root = (
+                "Processing/DisplacementMetrics/level_set_motion/"
+                f"{vessel_name}/Transverse"
+            )
+            max_x = outputs[f"{metrics_root}/Max_X_Position"]
+            max_y = outputs[f"{metrics_root}/Max_Y_Position"]
+            diff_y = outputs[f"{metrics_root}/Diff_Y_Value"]
+            mean_x = outputs[f"{metrics_root}/Mean_X_Position"]
+            mean_y = outputs[f"{metrics_root}/Mean_Y_Position"]
+            mean_diff_y = outputs[f"{metrics_root}/Mean_Diff_Y_Value"]
+            area_l = outputs[f"{metrics_root}/Area_L"]
+            area_r = outputs[f"{metrics_root}/Area_R"]
+            diff_area_l = outputs[f"{metrics_root}/Diff_Area_L"]
+            diff_area_r = outputs[f"{metrics_root}/Diff_Area_R"]
+
+            self.assertEqual((2, 2, 2, 2), max_x.data.shape)
+            self.assertEqual(
+                ["peak", "beat", "branch", "radius"],
+                max_x.attrs["dimDesc"],
+            )
+            self.assertEqual(
+                ["first_peak_x", "second_peak_x"], max_x.attrs["value_order"]
+            )
+            np.testing.assert_array_equal(
+                max_x.data[:, :, 0, 0],
+                np.asarray([[1, 1], [3, 3]], dtype=np.float32),
+            )
+            np.testing.assert_array_equal(
+                max_x.data[:, :, 1, 0],
+                np.asarray([[1, 1], [4, 4]], dtype=np.float32),
+            )
+            np.testing.assert_array_equal(max_x.data[0, :, 0, 1], 3.0)
+            self.assertTrue(np.isnan(max_x.data[1, :, 0, 1]).all())
+            self.assertTrue(np.isnan(max_x.data[:, :, 1, 1]).all())
+
+            self.assertEqual(max_x.data.shape, max_y.data.shape)
+            self.assertEqual(
+                ["peak", "beat", "branch", "radius"],
+                max_y.attrs["dimDesc"],
+            )
+            self.assertEqual(max_y.data.shape, diff_y.data.shape)
+            self.assertEqual("pixels", max_y.attrs["unit"])
+            self.assertEqual("pixels^2", diff_y.attrs["unit"])
+
+            self.assertEqual((2, 2), mean_x.data.shape)
+            self.assertEqual(["peak", "beat"], mean_x.attrs["dimDesc"])
+            self.assertEqual(mean_x.data.shape, mean_y.data.shape)
+            self.assertEqual(mean_x.data.shape, mean_diff_y.data.shape)
+            np.testing.assert_allclose(
+                mean_x.data,
+                np.nanmean(max_x.data, axis=(2, 3)),
+                atol=1e-6,
+            )
+            np.testing.assert_allclose(
+                mean_y.data,
+                np.nanmean(max_y.data, axis=(2, 3)),
+                atol=1e-6,
+            )
+            np.testing.assert_allclose(
+                mean_diff_y.data,
+                np.nanmean(diff_y.data, axis=(2, 3)),
+                atol=1e-6,
+            )
+            for area in (area_l, area_r, diff_area_l, diff_area_r):
+                self.assertEqual((2, 2, 2), area.data.shape)
+                self.assertEqual(
+                    ["beat", "branch", "radius"],
+                    area.attrs["dimDesc"],
+                )
+            self.assertEqual("pixels^2", area_l.attrs["unit"])
+            self.assertEqual("pixels^2", area_r.attrs["unit"])
+            self.assertEqual("pixels^3", diff_area_l.attrs["unit"])
+            self.assertEqual("pixels^3", diff_area_r.attrs["unit"])
+
+        artery_metrics_root = (
+            "Processing/DisplacementMetrics/level_set_motion/"
+            "Artery/Transverse"
+        )
+        transverse_root = (
+            "Processing/DisplacementProfiles/level_set_motion/"
+            "Artery/Transverse"
+        )
+        max_x = outputs[f"{artery_metrics_root}/Max_X_Position"].data
+        max_y = outputs[f"{artery_metrics_root}/Max_Y_Position"].data
+        diff_y = outputs[f"{artery_metrics_root}/Diff_Y_Value"].data
+        meaned = outputs[
+            f"{transverse_root}/TransverseDisplacementProfileMaskedMeaned"
+        ].data
+        mean_power = outputs[f"{transverse_root}/Mean_P_D_transverse"].data
+        area_l = outputs[f"{artery_metrics_root}/Area_L"].data
+        area_r = outputs[f"{artery_metrics_root}/Area_R"].data
+        diff_area_l = outputs[f"{artery_metrics_root}/Diff_Area_L"].data
+        diff_area_r = outputs[f"{artery_metrics_root}/Diff_Area_R"].data
+        for peak_index, beat_index, branch_index, radius_index in np.ndindex(
+            max_x.shape
+        ):
+            position = max_x[
+                peak_index, beat_index, branch_index, radius_index
+            ]
+            if not np.isfinite(position):
+                continue
+            spatial_index = int(position)
+            np.testing.assert_allclose(
+                max_y[peak_index, beat_index, branch_index, radius_index],
+                meaned[spatial_index, beat_index, branch_index, radius_index],
+                atol=1e-6,
+            )
+            np.testing.assert_allclose(
+                diff_y[peak_index, beat_index, branch_index, radius_index],
+                mean_power[
+                    spatial_index, beat_index, branch_index, radius_index
+                ],
+                atol=1e-6,
+            )
+
+        for beat_index, branch_index in np.ndindex((2, 2)):
+            curve = meaned[:, beat_index, branch_index, 0]
+            expected_area = np.sum((curve[:-1] + curve[1:]) / 2.0)
+            np.testing.assert_allclose(
+                area_l[beat_index, branch_index, 0]
+                + area_r[beat_index, branch_index, 0],
+                expected_area,
+                atol=1e-6,
+            )
+            difference_curve = mean_power[:, beat_index, branch_index, 0]
+            expected_diff_area = np.sum(
+                (difference_curve[:-1] + difference_curve[1:]) / 2.0
+            )
+            np.testing.assert_allclose(
+                diff_area_l[beat_index, branch_index, 0]
+                + diff_area_r[beat_index, branch_index, 0],
+                expected_diff_area,
+                atol=1e-6,
+            )
 
     def test_velocity_only_packing_emits_no_displacement_keys(self) -> None:
         segments = SimpleNamespace(displacements={})

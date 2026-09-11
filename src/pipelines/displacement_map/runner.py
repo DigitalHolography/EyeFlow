@@ -224,7 +224,7 @@ def resolve_moment_dataset(
 def resolve_retina_mask(
     h5file: h5py.File | None,
     spatial_shape: tuple[int, int],
-    mode: MaskMode = "combined",
+    mode: MaskMode = "artery",
 ) -> tuple[np.ndarray, str]:
     """Resolve and align one DopplerView retina mask."""
 

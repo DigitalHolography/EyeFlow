@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.integrate import trapezoid
+from scipy.signal import find_peaks
 
 from calculations.blood_flow_velocity.cross_section.profile_processing import (
     interpolate_velocity_profiles_per_beat,
@@ -11,10 +13,12 @@ from calculations.math import nanmean_float32
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 
+from .displacement_gaussian import fit_two_gaussian_profiles
 from .flow_asymmetry import pack_flow_asymmetry_outputs
 
 
 _DISPLACEMENT_PROFILE_ROOT = "Processing/DisplacementProfiles"
+_DISPLACEMENT_METRICS_ROOT = "Processing/DisplacementMetrics"
 _DISPLACEMENT_PROFILE_FIELDS = (
     ("X", "x_sum_displacement_profile", "local_x"),
     ("Y", "y_sum_displacement_profile", "local_y"),
@@ -143,10 +147,12 @@ def _pack_vessel_displacement_axis_profiles(
     for raw_method, displacement in sorted(displacement_results.items()):
         method = _hdf_method_name(raw_method)
         root = f"{_DISPLACEMENT_PROFILE_ROOT}/{method}/{vessel_name}"
+        metrics_root = f"{_DISPLACEMENT_METRICS_ROOT}/{method}/{vessel_name}"
         outputs.update(
             _pack_displacement_axis_profiles_for_method(
                 displacement,
                 root,
+                metrics_root=metrics_root,
                 vessel_name=vessel_name,
                 cycle_boundary_indexes=cycle_boundary_indexes,
                 include_transverse=include_transverse,
@@ -160,6 +166,7 @@ def _pack_displacement_axis_profiles_for_method(
     displacement,
     root: str,
     *,
+    metrics_root: str,
     vessel_name: str,
     cycle_boundary_indexes,
     include_transverse: bool,
@@ -201,11 +208,97 @@ def _pack_displacement_axis_profiles_for_method(
         outputs[
             f"{longitudinal_root}/LongitudinalDisplacementProfileMaskedMeaned"
         ] = longitudinal_meaned
+        outputs[
+            f"{longitudinal_root}/"
+            "LongitudinalDisplacementProfileMaskedGlobalMeaned"
+        ] = _globally_meaned_profile_dataset(longitudinal_meaned)
         outputs[f"{longitudinal_root}/P_D_longitudinal"] = (
             _temporally_centered_profile_power_dataset(
                 longitudinal_masked,
                 longitudinal_meaned,
             )
+        )
+    transverse_masked_values = getattr(
+        displacement,
+        "transverse_displacement_profiles_masked",
+        None,
+    )
+    if include_transverse or transverse_masked_values is not None:
+        if transverse_masked_values is None:
+            raise ValueError("Artery displacement is missing transverse profiles.")
+        transverse_masked = _profile_dataset(
+            np.asarray(transverse_masked_values, dtype=np.float32),
+            cycle_boundary_indexes,
+            index_base=index_base,
+            unit="pixels",
+        )
+        transverse_meaned = _temporally_meaned_profile_dataset(
+            transverse_masked
+        )
+        transverse_power = _temporally_centered_profile_power_dataset(
+            transverse_masked,
+            transverse_meaned,
+        )
+        mean_transverse_power = _temporally_meaned_profile_dataset(
+            transverse_power
+        )
+        transverse_root = f"{root}/Transverse"
+        outputs[
+            f"{transverse_root}/TransverseDisplacementProfileMaskedMeaned"
+        ] = transverse_meaned
+        outputs[f"{transverse_root}/Mean_P_D_transverse"] = (
+            mean_transverse_power
+        )
+        max_x_position = _transverse_max_x_position_dataset(
+            transverse_meaned
+        )
+        max_y_position = _mean_profile_values_at_peak_positions(
+            transverse_meaned,
+            max_x_position,
+        )
+        diff_y_value = _mean_profile_values_at_peak_positions(
+            mean_transverse_power,
+            max_x_position,
+            value_order=("first_peak_diff_y", "second_peak_diff_y"),
+        )
+        area_l, area_r = _profile_peak_area_datasets(
+            transverse_meaned,
+            max_x_position,
+        )
+        diff_area_l, diff_area_r = _profile_peak_area_datasets(
+            mean_transverse_power,
+            max_x_position,
+        )
+        gaussian_fit, gaussian_metrics = fit_two_gaussian_profiles(
+            transverse_meaned,
+            max_x_position,
+            max_y_position,
+        )
+        outputs[f"{transverse_root}/Gaussian_Fit"] = gaussian_fit
+        transverse_metrics_root = f"{metrics_root}/Transverse"
+        outputs.update(
+            {
+                f"{transverse_metrics_root}/Max_X_Position": max_x_position,
+                f"{transverse_metrics_root}/Max_Y_Position": max_y_position,
+                f"{transverse_metrics_root}/Diff_Y_Value": diff_y_value,
+                f"{transverse_metrics_root}/Mean_X_Position": (
+                    _mean_peak_metric(max_x_position)
+                ),
+                f"{transverse_metrics_root}/Mean_Y_Position": (
+                    _mean_peak_metric(max_y_position)
+                ),
+                f"{transverse_metrics_root}/Mean_Diff_Y_Value": (
+                    _mean_peak_metric(diff_y_value)
+                ),
+                f"{transverse_metrics_root}/Area_L": area_l,
+                f"{transverse_metrics_root}/Area_R": area_r,
+                f"{transverse_metrics_root}/Diff_Area_L": diff_area_l,
+                f"{transverse_metrics_root}/Diff_Area_R": diff_area_r,
+                **{
+                    f"{transverse_metrics_root}/{name}": value
+                    for name, value in gaussian_metrics.items()
+                },
+            }
         )
     if include_transverse:
         transverse_unmasked = _profile_dataset(
@@ -217,19 +310,6 @@ def _pack_displacement_axis_profiles_for_method(
             index_base=index_base,
             unit="pixels",
         )
-        transverse_masked = _profile_dataset(
-            np.asarray(
-                displacement.transverse_displacement_profiles_masked,
-                dtype=np.float32,
-            ),
-            cycle_boundary_indexes,
-            index_base=index_base,
-            unit="pixels",
-        )
-        transverse_meaned = _temporally_meaned_profile_dataset(
-            transverse_masked
-        )
-        transverse_root = f"{root}/Transverse"
         outputs.update(
             {
                 f"{transverse_root}/TransverseDisplacementProfileUnmasked": (
@@ -238,14 +318,12 @@ def _pack_displacement_axis_profiles_for_method(
                 f"{transverse_root}/TransverseDisplacementProfileMasked": (
                     transverse_masked
                 ),
-                f"{transverse_root}/TransverseDisplacementProfileMaskedMeaned": (
-                    transverse_meaned
+                f"{transverse_root}/"
+                "TransverseDisplacementProfileMaskedGlobalMeaned": (
+                    _globally_meaned_profile_dataset(transverse_meaned)
                 ),
                 f"{transverse_root}/P_D_transverse": (
-                    _temporally_centered_profile_power_dataset(
-                        transverse_masked,
-                        transverse_meaned,
-                    )
+                    transverse_power
                 ),
             }
         )
@@ -464,6 +542,291 @@ def _temporally_meaned_profile_dataset(profile: DatasetValue) -> DatasetValue:
         attrs=attrs,
         h5_options=_profile_h5_options(data.shape),
     )
+
+
+def _globally_meaned_profile_dataset(profile: DatasetValue) -> DatasetValue:
+    """Merge time-meaned branch/radius profiles into one profile per beat."""
+
+    values = np.asarray(profile.data)
+    attrs = dict(profile.attrs or {})
+    dim_desc = list(attrs.get("dimDesc", ()))
+    if (
+        values.ndim != 4
+        or len(dim_desc) != 4
+        or dim_desc[1:] != ["beat", "branch", "radius"]
+    ):
+        raise ValueError(
+            "profile dataset must have dimensions "
+            "(spatial_sample, beat, branch, radius)."
+        )
+    data = nanmean_float32(values, axis=(2, 3))
+    attrs["dimDesc"] = dim_desc[:2]
+    attrs["segment_reduction"] = "mean_over_valid_branch_radius_segments"
+    return DatasetValue(
+        data=data,
+        attrs=attrs,
+        h5_options=_profile_h5_options(data.shape),
+    )
+
+
+def _transverse_max_x_position_dataset(profile: DatasetValue) -> DatasetValue:
+    """Store the first two transverse-profile local maxima from left to right."""
+
+    values = np.asarray(profile.data, dtype=np.float32)
+    attrs = dict(profile.attrs or {})
+    dim_desc = list(attrs.get("dimDesc", ()))
+    if (
+        values.ndim != 4
+        or len(dim_desc) != 4
+        or dim_desc[1:] != ["beat", "branch", "radius"]
+    ):
+        raise ValueError(
+            "time-meaned profile dataset must have dimensions "
+            "(spatial_sample, beat, branch, radius)."
+        )
+
+    positions = np.full((2, *values.shape[1:]), np.nan, dtype=np.float32)
+    for beat_index, branch_index, radius_index in np.ndindex(values.shape[1:]):
+        peaks = _first_two_peak_positions(
+            values[:, beat_index, branch_index, radius_index]
+        )
+        positions[: peaks.size, beat_index, branch_index, radius_index] = peaks
+
+    return DatasetValue(
+        data=positions,
+        attrs={
+            "unit": "pixels",
+            "dimDesc": ["peak", "beat", "branch", "radius"],
+            "index_base": np.int32(0),
+            "position_axis": dim_desc[0],
+            "position_representation": "zero_based_profile_sample_index",
+            "value_order": ["first_peak_x", "second_peak_x"],
+            "peak_selection": "first_two_local_maxima_left_to_right",
+            "source_temporal_reduction": attrs.get("temporal_reduction", ""),
+        },
+        h5_options=_profile_h5_options(positions.shape),
+    )
+
+
+def _mean_profile_values_at_peak_positions(
+    profile: DatasetValue,
+    peak_positions: DatasetValue,
+    *,
+    value_order: tuple[str, str] = ("first_peak_y", "second_peak_y"),
+) -> DatasetValue:
+    """Extract both peak values from a time-meaned profile."""
+
+    values, positions, spatial_axis = _validate_meaned_peak_metric_sources(
+        profile,
+        peak_positions,
+    )
+    extracted = np.full(positions.shape, np.nan, dtype=np.float32)
+    for peak_index, beat_index, branch_index, radius_index in np.ndindex(
+        positions.shape
+    ):
+        position = positions[peak_index, beat_index, branch_index, radius_index]
+        if not np.isfinite(position):
+            continue
+        spatial_index = int(position)
+        if spatial_index < 0 or spatial_index >= values.shape[0]:
+            continue
+        extracted[peak_index, beat_index, branch_index, radius_index] = (
+            values[spatial_index, beat_index, branch_index, radius_index]
+        )
+
+    attrs = dict(profile.attrs or {})
+    return DatasetValue(
+        data=extracted,
+        attrs={
+            "unit": attrs.get("unit", "pixels"),
+            "dimDesc": ["peak", "beat", "branch", "radius"],
+            "peak_position_axis": spatial_axis,
+            "peak_position_index_base": np.int32(0),
+            "value_order": list(value_order),
+            "source_temporal_reduction": attrs.get("temporal_reduction", ""),
+        },
+        h5_options=_profile_h5_options(extracted.shape),
+    )
+
+
+def _profile_peak_area_datasets(
+    profile: DatasetValue,
+    peak_positions: DatasetValue,
+) -> tuple[DatasetValue, DatasetValue]:
+    """Integrate the left and right curve regions split between both peaks."""
+
+    values = np.asarray(profile.data, dtype=np.float32)
+    profile_attrs = dict(profile.attrs or {})
+    profile_dims = list(profile_attrs.get("dimDesc", ()))
+    positions = np.asarray(peak_positions.data, dtype=np.float32)
+    position_dims = list((peak_positions.attrs or {}).get("dimDesc", ()))
+    if (
+        values.ndim != 4
+        or len(profile_dims) != 4
+        or profile_dims[1:] != ["beat", "branch", "radius"]
+        or positions.shape != (2, *values.shape[1:])
+        or position_dims != ["peak", "beat", "branch", "radius"]
+    ):
+        raise ValueError(
+            "area sources must have compatible spatial/peak, beat, branch, "
+            "and radius dimensions."
+        )
+
+    left_area = np.full(values.shape[1:], np.nan, dtype=np.float32)
+    right_area = np.full(values.shape[1:], np.nan, dtype=np.float32)
+    for beat_index, branch_index, radius_index in np.ndindex(values.shape[1:]):
+        first_peak = positions[0, beat_index, branch_index, radius_index]
+        second_peak = positions[1, beat_index, branch_index, radius_index]
+        if not np.isfinite(first_peak) or not np.isfinite(second_peak):
+            continue
+        if first_peak >= second_peak:
+            continue
+        curve = values[:, beat_index, branch_index, radius_index]
+        finite_indexes = np.flatnonzero(np.isfinite(curve))
+        if finite_indexes.size < 2:
+            continue
+        left_edge = float(finite_indexes[0])
+        right_edge = float(finite_indexes[-1])
+        midpoint = (float(first_peak) + float(second_peak)) / 2.0
+        if midpoint <= left_edge or midpoint >= right_edge:
+            continue
+        left_area[beat_index, branch_index, radius_index] = (
+            _finite_trapezoid_area(curve, left_edge, midpoint)
+        )
+        right_area[beat_index, branch_index, radius_index] = (
+            _finite_trapezoid_area(curve, midpoint, right_edge)
+        )
+
+    common_attrs = {
+        "unit": _integrated_profile_unit(profile_attrs.get("unit", "")),
+        "dimDesc": ["beat", "branch", "radius"],
+        "integration_axis": profile_dims[0],
+        "integration_method": "trapezoidal",
+        "outer_boundaries": "first_and_last_finite_profile_samples",
+        "shared_boundary": "midpoint_between_Max_X_Position_values",
+    }
+    return (
+        DatasetValue(
+            data=left_area,
+            attrs={**common_attrs, "side": "left"},
+            h5_options=_profile_h5_options(left_area.shape),
+        ),
+        DatasetValue(
+            data=right_area,
+            attrs={**common_attrs, "side": "right"},
+            h5_options=_profile_h5_options(right_area.shape),
+        ),
+    )
+
+
+def _finite_trapezoid_area(
+    curve: np.ndarray,
+    start: float,
+    stop: float,
+) -> np.float32:
+    """Integrate finite curve runs without bridging across NaN gaps."""
+
+    values = np.asarray(curve, dtype=np.float32)
+    finite_indexes = np.flatnonzero(np.isfinite(values))
+    if finite_indexes.size < 2 or stop <= start:
+        return np.float32(np.nan)
+
+    gap_indexes = np.flatnonzero(np.diff(finite_indexes) > 1) + 1
+    finite_runs = np.split(finite_indexes, gap_indexes)
+    total = 0.0
+    integrated = False
+    for run in finite_runs:
+        run_start = max(start, float(run[0]))
+        run_stop = min(stop, float(run[-1]))
+        if run.size < 2 or run_stop <= run_start:
+            continue
+        interior = run[(run > run_start) & (run < run_stop)].astype(np.float64)
+        x_values = np.concatenate(([run_start], interior, [run_stop]))
+        y_values = np.interp(x_values, run, values[run])
+        total += float(trapezoid(y_values, x_values))
+        integrated = True
+    return np.float32(total) if integrated else np.float32(np.nan)
+
+
+def _integrated_profile_unit(unit: object) -> str:
+    source_unit = str(unit)
+    if source_unit == "pixels":
+        return "pixels^2"
+    if source_unit == "pixels^2":
+        return "pixels^3"
+    return f"{source_unit}*pixels" if source_unit else "pixels"
+
+
+def _validate_meaned_peak_metric_sources(
+    profile: DatasetValue,
+    peak_positions: DatasetValue,
+) -> tuple[np.ndarray, np.ndarray, str]:
+    values = np.asarray(profile.data, dtype=np.float32)
+    profile_dims = list((profile.attrs or {}).get("dimDesc", ()))
+    positions = np.asarray(peak_positions.data, dtype=np.float32)
+    position_dims = list((peak_positions.attrs or {}).get("dimDesc", ()))
+    if (
+        values.ndim != 4
+        or len(profile_dims) != 4
+        or profile_dims[1:] != ["beat", "branch", "radius"]
+    ):
+        raise ValueError(
+            "time-meaned profile dataset must have dimensions "
+            "(spatial_sample, beat, branch, radius)."
+        )
+    if (
+        positions.shape != (2, *values.shape[1:])
+        or position_dims != ["peak", "beat", "branch", "radius"]
+    ):
+        raise ValueError(
+            "peak positions must have dimensions "
+            "(two_peaks, beat, branch, radius)."
+        )
+    return values, positions, profile_dims[0]
+
+
+def _mean_peak_metric(metric: DatasetValue) -> DatasetValue:
+    """Average one time-meaned peak metric over all branch/radius segments."""
+
+    values = np.asarray(metric.data, dtype=np.float32)
+    attrs = dict(metric.attrs or {})
+    dim_desc = list(attrs.get("dimDesc", ()))
+    if (
+        dim_desc != ["peak", "beat", "branch", "radius"]
+        or values.ndim != 4
+    ):
+        raise ValueError(
+            "peak metric must have peak, beat, branch, and radius dimensions."
+        )
+    data = nanmean_float32(values, axis=(2, 3))
+    attrs["dimDesc"] = ["peak", "beat"]
+    attrs["aggregation"] = "mean_over_valid_branch_radius_values"
+    return DatasetValue(
+        data=data,
+        attrs=attrs,
+        h5_options=_profile_h5_options(data.shape),
+    )
+
+
+def _first_two_peak_positions(curve: np.ndarray) -> np.ndarray:
+    """Find local maxima without treating either side of a NaN gap as a peak."""
+
+    values = np.asarray(curve, dtype=np.float32)
+    finite_indexes = np.flatnonzero(np.isfinite(values))
+    if finite_indexes.size < 3:
+        return np.empty(0, dtype=np.float32)
+
+    gap_indexes = np.flatnonzero(np.diff(finite_indexes) > 1) + 1
+    finite_runs = np.split(finite_indexes, gap_indexes)
+    positions: list[int] = []
+    for run in finite_runs:
+        if run.size < 3:
+            continue
+        local_positions, _ = find_peaks(values[run])
+        positions.extend(int(run[index]) for index in local_positions)
+        if len(positions) >= 2:
+            break
+    return np.asarray(positions[:2], dtype=np.float32)
 
 
 def _temporally_centered_profile_power_dataset(
