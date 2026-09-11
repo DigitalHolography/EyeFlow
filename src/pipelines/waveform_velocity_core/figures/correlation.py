@@ -26,10 +26,10 @@ from .plotting import _line_plot, _style_axes
 
 def _export_correlation_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     artery = _display_velocity(
-        _vector(ctx.analysis["retinal_artery_velocity_signal_filtered"])
+        _vector(ctx.velocity_analysis["retinal_artery_velocity_signal_filtered"])
     )
     vein = -_display_velocity(
-        _vector(ctx.analysis["retinal_vein_velocity_signal_filtered"])
+        _vector(ctx.velocity_analysis["retinal_vein_velocity_signal_filtered"])
     )
     if artery.size != vein.size or artery.size < 3:
         _log(ctx, "Skipping arterial/venous correlation PNGs; signals are incompatible.")

@@ -2,21 +2,38 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+import os
+import warnings
+from collections import deque
+from collections.abc import Mapping
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass, replace
 
 import numpy as np
 from scipy import ndimage as ndi
 from scipy import special
 
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
 from calculations.compute_backend import optional_cupy_backend
-from calculations.math import nanmean_float32, rotate_array_threshold, rotate_image_with_nan
+from calculations.math import (
+    nanmean_float32,
+    rotate_array_threshold,
+    rotate_image_with_nan,
+)
 from runtime_limits import cap_parallel_jobs
+
 from .branch_identity import BranchIdentityResult, label_vessel_branches
 from .profile_processing import ProfileData, process_velocity_profiles
+from .segment_array import SegmentArray
 from .segment_geometry import (
     SegmentRingSettings,
     annulus_mask,
+    image_half_diagonal,
+    normalized_radius_squared,
     optic_disc_center_yx,
     section_masks,
 )
@@ -24,31 +41,51 @@ from .segment_geometry import (
 
 @dataclass(frozen=True)
 class CrossSectionSignalSettings:
+    """Cross-section configuration.
+
+    ``working_memory_mb`` bounds estimated concurrent scratch memory, excluding
+    the input cube and retained outputs. Oversized windows use temporal batches.
+    """
+
     hydrodynamic_diameters: bool
     velocity_profile_threshold: float
     rotate_from_mask: bool
     pixel_size_mm: float
     submask_size_percentile_kept: float = 0.95
+    working_memory_mb: float = 512.0
+
+    def __post_init__(self):
+        if not np.isfinite(self.pixel_size_mm) or self.pixel_size_mm <= 0:
+            raise ValueError("pixel_size_mm must be finite and positive.")
+        if (
+            not np.isfinite(self.velocity_profile_threshold)
+            or not 0 < self.velocity_profile_threshold < 1
+        ):
+            raise ValueError("velocity_profile_threshold must be in (0, 1).")
+        if not np.isfinite(self.working_memory_mb) or self.working_memory_mb <= 0:
+            raise ValueError("working_memory_mb must be finite and positive.")
+        if not 0 < self.submask_size_percentile_kept <= 1:
+            raise ValueError("submask_size_percentile_kept must be in (0, 1].")
 
 
 @dataclass(frozen=True, kw_only=True)
 class CrossSectionProfileOutputs:
     """Transverse and longitudinal cross-section profile outputs."""
 
-    velocity_profiles: np.ndarray
-    transverse_velocity_profiles_masked: np.ndarray
-    longitudinal_velocity_profiles_unmasked: np.ndarray
-    longitudinal_velocity_profiles_masked: np.ndarray
+    velocity_profiles: np.ndarray | SegmentArray
+    transverse_velocity_profiles_masked: np.ndarray | SegmentArray
+    longitudinal_velocity_profiles_unmasked: np.ndarray | SegmentArray
+    longitudinal_velocity_profiles_masked: np.ndarray | SegmentArray
     profile_x_micrometers: np.ndarray
     profile_sample_count: np.ndarray
     profile_rotation_degrees: np.ndarray
-    rotated_mean_images: np.ndarray
-    rotated_mean_images_masked: np.ndarray
+    rotated_mean_images: np.ndarray | SegmentArray
+    rotated_mean_images_masked: np.ndarray | SegmentArray
     profile_window_bounds_xyxy: np.ndarray
     profile_window_side_pixels: int
     profile_pixel_size_mm: float
     profile_integration_limits_pixels: np.ndarray
-    centered_velocity_profiles: np.ndarray
+    centered_velocity_profiles: np.ndarray | SegmentArray
     centered_profile_x_micrometers: np.ndarray
     profile_center_micrometers: np.ndarray
     profile_lumen_edges_micrometers: np.ndarray
@@ -63,31 +100,69 @@ class CrossSectionProfileOutputs:
 
 
 @dataclass(frozen=True)
+class CrossSectionTopology:
+    spatial_shape: tuple[int, int]
+    frame_count: int
+    labels: np.ndarray
+    branch_ids: np.ndarray
+    section_masks: np.ndarray
+    segment_masks: np.ndarray
+    segment_center_xy: np.ndarray
+    profile_window_bounds_xyxy: np.ndarray
+    profile_window_side_pixels: int
+    profile_pixel_size_mm: float
+    profile_rotation_degrees: np.ndarray
+    profile_integration_limits_pixels: np.ndarray
+    valid_segments: np.ndarray
+    branch_identity: BranchIdentityResult
+
+
+@dataclass(frozen=True, kw_only=True)
+class CrossSectionDisplacementResult:
+    """Local waveforms, maps, sums, and cross-sectional motion metrics."""
+
+    displacement: np.ndarray
+    safe_displacement: np.ndarray
+    displacement_maps_per_segment: np.ndarray | None
+    transverse_displacement_profiles_unmasked: np.ndarray
+    transverse_displacement_profiles_masked: np.ndarray
+    longitudinal_displacement_profiles_unmasked: np.ndarray
+    longitudinal_displacement_profiles_masked: np.ndarray
+    x_sum_displacement_profile: np.ndarray
+    y_sum_displacement_profile: np.ndarray
+    cross_sectional_radial_movement_amplitude: np.ndarray
+    cross_sectional_radial_asymmetry_index: np.ndarray
+
+
+@dataclass(frozen=True)
 class CrossSectionSignalResult(CrossSectionProfileOutputs):
     """Segment waveforms and their transverse profile measurements."""
 
-    velocity: np.ndarray
-    safe_velocity: np.ndarray
-    velocity_maps_per_segment: np.ndarray
-    segment_masks: np.ndarray
+    velocity: np.ndarray | SegmentArray
+    safe_velocity: np.ndarray | SegmentArray
+    velocity_maps_per_segment: np.ndarray | SegmentArray
+    segment_masks: np.ndarray | SegmentArray
     labels: np.ndarray
     branch_ids: np.ndarray
     segment_center_xy: np.ndarray
     branch_identity: BranchIdentityResult
+    topology: CrossSectionTopology
+    displacements: dict[str, CrossSectionDisplacementResult]
+
+    @property
+    def displacement_by_method(self) -> dict[str, CrossSectionDisplacementResult]:
+        return self.displacements
 
     @property
     def projected_signal(self) -> np.ndarray:
-        """Generic alias for ``velocity`` when projecting another cube type."""
         return self.velocity
 
     @property
     def full_profile_signal(self) -> np.ndarray:
-        """Generic alias for the full-width projection signal."""
         return self.safe_velocity
 
     @property
     def transverse_profiles(self) -> np.ndarray:
-        """Generic alias for the uncropped transverse profiles."""
         return self.velocity_profiles
 
 
@@ -103,26 +178,32 @@ class _PreparedCrossSectionGeometry:
     vessel: np.ndarray
     branches: BranchIdentityResult
     masks: np.ndarray
+    segments: tuple[_SegmentGeometry, ...] | None = None
+
+
+@dataclass(frozen=True)
+class _SegmentGeometry:
+    circle_index: int
+    branch_index: int
+    loc_xy: tuple[int, int]
+    ys: np.ndarray
+    xs: np.ndarray
+    tilt_angle_mask: float
 
 
 @dataclass(frozen=True)
 class _CrossSectionWork:
-    circle_index: int
-    branch_index: int
-    loc_xy: tuple[int, int]
-    sub_stack: np.ndarray
-    sub_mask: np.ndarray
+    segment: _SegmentGeometry
     bounds_xyxy: tuple[int, int, int, int]
-    tilt_angle_mask: float
 
 
 @dataclass(frozen=True)
 class _CrossSectionVelocityMeasurement:
     raw: np.ndarray
-    safe_velocity: np.ndarray
+    safe_velocity: np.ndarray | SegmentArray
     transverse_profiles: np.ndarray
     longitudinal_profiles: np.ndarray
-    rotated_stack: np.ndarray
+    rotated_stack: np.ndarray | None
     angle: float
     spatial_std: np.ndarray
 
@@ -138,27 +219,55 @@ class _CrossSectionMeasurement:
     sample_count: int
 
 
+@dataclass(frozen=True)
+class _DisplacementProfileMeasurement:
+    raw: np.ndarray
+    safe_displacement: np.ndarray
+
+
+@dataclass(frozen=True)
+class _CrossSectionDisplacementMeasurement:
+    waveform: _DisplacementProfileMeasurement
+    vectors: np.ndarray
+    transverse_profiles_unmasked: np.ndarray
+    transverse_profiles_masked: np.ndarray
+    longitudinal_profiles_unmasked: np.ndarray
+    longitudinal_profiles_masked: np.ndarray
+    summed_displacement_xy: np.ndarray
+    radial_movement_amplitude: np.ndarray
+    radial_asymmetry_index: np.ndarray
+
+
+@dataclass(frozen=True)
+class _CrossSectionDisplacementWork:
+    component_stacks: np.ndarray
+    angle: float
+    rotated_mask: np.ndarray
+    limits: tuple[int, int]
+
+
 _INTERPOLATED_SUBSTACK_SIDE = 128
 _ROTATED_SUBSTACK_SIDE = int(_INTERPOLATED_SUBSTACK_SIDE * np.sqrt(2.0))
 _MAX_PARALLEL_CROSS_SECTIONS = 8
+_ARTERY_TRANSVERSE_MASK_DILATION_PIXELS = 10
 
 
 @dataclass
 class _CrossSectionBuffers:
-    velocity: np.ndarray
-    safe_velocity: np.ndarray
-    velocity_maps_per_segment: np.ndarray
-    segment_masks: np.ndarray
+    velocity: np.ndarray | SegmentArray
+    safe_velocity: np.ndarray | SegmentArray
+    velocity_maps_per_segment: np.ndarray | SegmentArray
+    segment_masks: np.ndarray | SegmentArray
     segment_center_xy: np.ndarray
-    velocity_profiles: np.ndarray
-    transverse_velocity_profiles_masked: np.ndarray
-    longitudinal_velocity_profiles_unmasked: np.ndarray
-    longitudinal_velocity_profiles_masked: np.ndarray
+    velocity_profiles: np.ndarray | SegmentArray
+    transverse_velocity_profiles_masked: np.ndarray | SegmentArray
+    longitudinal_velocity_profiles_unmasked: np.ndarray | SegmentArray
+    longitudinal_velocity_profiles_masked: np.ndarray | SegmentArray
     profile_sample_count: np.ndarray
     profile_spatial_std: np.ndarray
     profile_rotation_degrees: np.ndarray
-    rotated_mean_images: np.ndarray
-    rotated_mean_images_masked: np.ndarray
+    rotated_mean_images: np.ndarray | SegmentArray
+    rotated_mean_images_masked: np.ndarray | SegmentArray
     profile_window_bounds_xyxy: np.ndarray
     profile_integration_limits_pixels: np.ndarray
 
@@ -173,9 +282,9 @@ class _CrossSectionBuffers:
         signal_shape = (ring_count, branch_count, frame_count)
         profile_shape = (ring_count, branch_count)
         return cls(
-            velocity=np.full(signal_shape, np.nan, dtype=np.float32),
-            safe_velocity=np.full(signal_shape, np.nan, dtype=np.float32),
-            velocity_maps_per_segment=np.full(
+            velocity=SegmentArray(signal_shape, np.nan, dtype=np.float32),
+            safe_velocity=SegmentArray(signal_shape, np.nan, dtype=np.float32),
+            velocity_maps_per_segment=SegmentArray(
                 (
                     *signal_shape,
                     _ROTATED_SUBSTACK_SIDE,
@@ -184,12 +293,13 @@ class _CrossSectionBuffers:
                 np.nan,
                 dtype=np.float32,
             ),
-            segment_masks=np.zeros(
+            segment_masks=SegmentArray(
                 (
                     *profile_shape,
                     _ROTATED_SUBSTACK_SIDE,
                     _ROTATED_SUBSTACK_SIDE,
                 ),
+                fill_value=False,
                 dtype=bool,
             ),
             segment_center_xy=np.full(
@@ -197,22 +307,22 @@ class _CrossSectionBuffers:
                 np.nan,
                 dtype=np.float32,
             ),
-            velocity_profiles=np.full(
+            velocity_profiles=SegmentArray(
                 (*signal_shape, _ROTATED_SUBSTACK_SIDE),
                 np.nan,
                 dtype=np.float32,
             ),
-            transverse_velocity_profiles_masked=np.full(
+            transverse_velocity_profiles_masked=SegmentArray(
                 (*signal_shape, _ROTATED_SUBSTACK_SIDE),
                 np.nan,
                 dtype=np.float32,
             ),
-            longitudinal_velocity_profiles_unmasked=np.full(
+            longitudinal_velocity_profiles_unmasked=SegmentArray(
                 (*signal_shape, _ROTATED_SUBSTACK_SIDE),
                 np.nan,
                 dtype=np.float32,
             ),
-            longitudinal_velocity_profiles_masked=np.full(
+            longitudinal_velocity_profiles_masked=SegmentArray(
                 (*signal_shape, _ROTATED_SUBSTACK_SIDE),
                 np.nan,
                 dtype=np.float32,
@@ -228,7 +338,7 @@ class _CrossSectionBuffers:
                 np.nan,
                 dtype=np.float32,
             ),
-            rotated_mean_images=np.full(
+            rotated_mean_images=SegmentArray(
                 (
                     *profile_shape,
                     _ROTATED_SUBSTACK_SIDE,
@@ -237,7 +347,7 @@ class _CrossSectionBuffers:
                 np.nan,
                 dtype=np.float32,
             ),
-            rotated_mean_images_masked=np.full(
+            rotated_mean_images_masked=SegmentArray(
                 (
                     *profile_shape,
                     _ROTATED_SUBSTACK_SIDE,
@@ -259,15 +369,114 @@ class _CrossSectionBuffers:
         )
 
 
+@dataclass
+class _CrossSectionDisplacementBuffers:
+    displacement: np.ndarray
+    safe_displacement: np.ndarray
+    displacement_maps_per_segment: np.ndarray | None
+    transverse_displacement_profiles_unmasked: np.ndarray
+    transverse_displacement_profiles_masked: np.ndarray
+    longitudinal_displacement_profiles_unmasked: np.ndarray
+    longitudinal_displacement_profiles_masked: np.ndarray
+    x_sum_displacement_profile: np.ndarray
+    y_sum_displacement_profile: np.ndarray
+    cross_sectional_radial_movement_amplitude: np.ndarray
+    cross_sectional_radial_asymmetry_index: np.ndarray
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        frame_count: int,
+        ring_count: int,
+        branch_count: int,
+        retain_maps: bool = True,
+    ) -> _CrossSectionDisplacementBuffers:
+        signal_shape = (ring_count, branch_count, frame_count)
+        map_shape = (
+            *signal_shape,
+            _ROTATED_SUBSTACK_SIDE,
+            _ROTATED_SUBSTACK_SIDE,
+            2,
+        )
+
+        def filled(shape):
+            return np.full(shape, np.nan, dtype=np.float32)
+
+        profile_shape = (*signal_shape, _ROTATED_SUBSTACK_SIDE)
+        return cls(
+            displacement=filled(signal_shape),
+            safe_displacement=filled(signal_shape),
+            displacement_maps_per_segment=(filled(map_shape) if retain_maps else None),
+            transverse_displacement_profiles_unmasked=filled(profile_shape),
+            transverse_displacement_profiles_masked=filled(profile_shape),
+            longitudinal_displacement_profiles_unmasked=filled(profile_shape),
+            longitudinal_displacement_profiles_masked=filled(profile_shape),
+            x_sum_displacement_profile=filled(signal_shape),
+            y_sum_displacement_profile=filled(signal_shape),
+            cross_sectional_radial_movement_amplitude=filled(signal_shape),
+            cross_sectional_radial_asymmetry_index=filled(signal_shape),
+        )
+
+
+def _validate_velocity_map(velocity_map, vessel_mask: np.ndarray) -> None:
+    if vessel_mask.ndim != 2:
+        raise ValueError(
+            f'vessel_mask must have shape (y, x), got {vessel_mask.shape!r}.'
+        )
+    shape = getattr(velocity_map, 'shape', None)
+    if shape is None or len(shape) != 3:
+        raise ValueError(
+            f'velocity_map must have shape (frame, y, x), got {shape!r}.'
+        )
+    if tuple(shape[1:]) != tuple(vessel_mask.shape):
+        raise ValueError(
+            'velocity_map spatial shape must match vessel_mask: '
+            f'{tuple(shape[1:])!r} != {tuple(vessel_mask.shape)!r}.'
+        )
+
+
+def _validate_displacement_maps(
+    displacement_maps: Mapping[str, object] | None,
+    velocity_map,
+) -> dict[str, object]:
+    if displacement_maps is None:
+        return {}
+    if not isinstance(displacement_maps, Mapping):
+        raise ValueError('displacement_maps must be a mapping keyed by method.')
+    expected_shape = (*tuple(velocity_map.shape), 2)
+    normalized: dict[str, object] = {}
+    for method, displacement_map in displacement_maps.items():
+        if not isinstance(method, str) or not method:
+            raise ValueError('displacement method names must be non-empty strings.')
+        shape = getattr(displacement_map, 'shape', None)
+        if shape is None or tuple(shape) != expected_shape:
+            raise ValueError(
+                f'displacement map {method!r} must have shape '
+                f'{expected_shape!r}, got {shape!r}.'
+            )
+        normalized[method] = displacement_map
+    return normalized
+
+
 def generate_cross_section_signals(
-    velocity,
+    velocity_map,
     vessel_mask,
     optic_disc_center,
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings,
+    *,
+    displacement_maps: Mapping[str, object] | None = None,
+    retain_displacement_maps: bool = True,
 ) -> CrossSectionSignalResult:
+    vessel = np.asarray(vessel_mask, dtype=bool)
+    _validate_velocity_map(velocity_map, vessel)
+    normalized_displacements = _validate_displacement_maps(
+        displacement_maps,
+        velocity_map,
+    )
     geometry = _prepare_cross_section_geometry(
-        vessel_mask,
+        vessel,
         optic_disc_center,
         ring_settings,
     )
@@ -276,12 +485,14 @@ def generate_cross_section_signals(
         cross_section_settings.submask_size_percentile_kept,
     )
     return _generate_cross_section_signals_from_geometry(
-        velocity,
+        velocity_map,
         geometry,
         optic_disc_center,
         ring_settings,
         cross_section_settings,
         substack_side_pixels,
+        displacement_maps=normalized_displacements,
+        retain_displacement_maps=retain_displacement_maps,
     )
 
 
@@ -293,21 +504,32 @@ def _prepare_cross_section_geometry(
     vessel = np.asarray(vessel_mask, dtype=bool)
     branches = label_vessel_branches(vessel, optic_disc_center, ring_settings)
     masks = section_masks(vessel.shape, optic_disc_center, ring_settings)
-    return _PreparedCrossSectionGeometry(vessel, branches, masks)
+    segments = _prepare_segments(masks, branches, optic_disc_center)
+    return _PreparedCrossSectionGeometry(vessel, branches, masks, segments)
 
 
 def _generate_cross_section_signals_from_geometry(
-    velocity,
+    velocity_map,
     geometry: _PreparedCrossSectionGeometry,
     optic_disc_center,
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings,
     substack_side_pixels: int,
+    *,
+    transverse_mask_dilation_pixels: int = 0,
+    displacement_maps: Mapping[str, object] | None = None,
+    retain_displacement_maps: bool = True,
 ) -> CrossSectionSignalResult:
+    _validate_velocity_cube(velocity_map, geometry.vessel.shape)
     branches = geometry.branches
+    _validate_velocity_map(velocity_map, geometry.vessel)
+    normalized_displacements = _validate_displacement_maps(
+        displacement_maps,
+        velocity_map,
+    )
     if branches.branch_ids.size == 0:
         return _empty_result(
-            velocity,
+            velocity_map,
             geometry.vessel,
             ring_settings,
             branches,
@@ -316,27 +538,51 @@ def _generate_cross_section_signals_from_geometry(
                 cross_section_settings.pixel_size_mm,
                 substack_side_pixels,
             ),
+            section_masks=geometry.masks,
+            displacement_maps=normalized_displacements,
         )
 
     buffers = _CrossSectionBuffers.allocate(
-        frame_count=velocity.shape[0],
+        frame_count=velocity_map.shape[0],
         ring_count=ring_settings.ring_count,
         branch_count=branches.branch_ids.size,
     )
     _fill_cross_section_buffers(
         buffers,
-        velocity,
+        velocity_map,
         geometry.masks,
         branches,
         optic_disc_center,
         cross_section_settings,
         substack_side_pixels,
+        segments=geometry.segments,
+        transverse_mask_dilation_pixels=transverse_mask_dilation_pixels,
     )
+    topology = _topology_from_buffers(
+        buffers,
+        geometry,
+        frame_count=velocity_map.shape[0],
+        profile_pixel_size_mm=_interpolated_pixel_size_mm(
+            cross_section_settings.pixel_size_mm,
+            substack_side_pixels,
+        ),
+        substack_side_pixels=substack_side_pixels,
+    )
+    displacement_results = {
+        method: _project_displacement_map(
+            displacement_map,
+            topology,
+            retain_maps=retain_displacement_maps,
+        )
+        for method, displacement_map in normalized_displacements.items()
+    }
     return _result_from_buffers(
         buffers,
         branches,
         cross_section_settings,
         substack_side_pixels,
+        topology=topology,
+        displacements=displacement_results,
     )
 
 
@@ -345,6 +591,9 @@ def _result_from_buffers(
     branches: BranchIdentityResult,
     settings: CrossSectionSignalSettings,
     substack_side_pixels: int,
+    *,
+    topology: CrossSectionTopology,
+    displacements: dict[str, CrossSectionDisplacementResult],
 ) -> CrossSectionSignalResult:
     profile_pixel_size_mm = _interpolated_pixel_size_mm(
         settings.pixel_size_mm,
@@ -364,16 +613,12 @@ def _result_from_buffers(
         branch_ids=branches.branch_ids,
         segment_center_xy=buffers.segment_center_xy,
         branch_identity=branches,
+        topology=topology,
+        displacements=displacements,
         velocity_profiles=buffers.velocity_profiles,
-        transverse_velocity_profiles_masked=(
-            buffers.transverse_velocity_profiles_masked
-        ),
-        longitudinal_velocity_profiles_unmasked=(
-            buffers.longitudinal_velocity_profiles_unmasked
-        ),
-        longitudinal_velocity_profiles_masked=(
-            buffers.longitudinal_velocity_profiles_masked
-        ),
+        transverse_velocity_profiles_masked=(buffers.transverse_velocity_profiles_masked),
+        longitudinal_velocity_profiles_unmasked=(buffers.longitudinal_velocity_profiles_unmasked),
+        longitudinal_velocity_profiles_masked=(buffers.longitudinal_velocity_profiles_masked),
         profile_x_micrometers=processed_profiles.raw_x_micrometers,
         profile_sample_count=buffers.profile_sample_count,
         profile_rotation_degrees=buffers.profile_rotation_degrees,
@@ -389,7 +634,9 @@ def _result_from_buffers(
         profile_lumen_edges_micrometers=(processed_profiles.lumen_edges_micrometers),
         profile_centering_fit_r_squared=(processed_profiles.centering_fit_r_squared),
         poiseuille_coefficients=processed_profiles.poiseuille_coefficients,
-        poiseuille_origin_micrometers=(processed_profiles.poiseuille_origin_micrometers),
+        poiseuille_origin_micrometers=(
+            processed_profiles.poiseuille_origin_micrometers
+        ),
         poiseuille_roots_micrometers=(processed_profiles.poiseuille_roots_micrometers),
         poiseuille_r_squared=processed_profiles.poiseuille_r_squared,
         poiseuille_profile_spatial_std=buffers.profile_spatial_std,
@@ -399,20 +646,29 @@ def _result_from_buffers(
 
 
 def _empty_result(
-    velocity: np.ndarray,
+    velocity_map: np.ndarray,
     vessel: np.ndarray,
     settings: SegmentRingSettings,
     branches: BranchIdentityResult,
     *,
     substack_side_pixels: int,
     profile_pixel_size_mm: float,
+    section_masks: np.ndarray | None = None,
+    displacement_maps: Mapping[str, object] | None = None,
 ) -> CrossSectionSignalResult:
-    shape = (settings.ring_count, 1, velocity.shape[0])
+    if section_masks is None:
+        section_masks = np.zeros(
+            (settings.ring_count, *vessel.shape),
+            dtype=bool,
+        )
+    if displacement_maps is None:
+        displacement_maps = {}
+    shape = (settings.ring_count, 0, velocity_map.shape[0])
     empty_profiles = np.full(
         (
             settings.ring_count,
             0,
-            velocity.shape[0],
+            velocity_map.shape[0],
             _ROTATED_SUBSTACK_SIDE,
         ),
         np.nan,
@@ -422,7 +678,7 @@ def _empty_result(
         (
             settings.ring_count,
             0,
-            velocity.shape[0],
+            velocity_map.shape[0],
             _ROTATED_SUBSTACK_SIDE,
             _ROTATED_SUBSTACK_SIDE,
         ),
@@ -443,12 +699,52 @@ def _empty_result(
         pixel_size_mm=0.0,
         velocity_profile_threshold=0.5,
     )
+    topology = CrossSectionTopology(
+        spatial_shape=tuple(vessel.shape),
+        frame_count=int(velocity_map.shape[0]),
+        labels=branches.labels.copy(),
+        branch_ids=branches.branch_ids.copy(),
+        section_masks=np.asarray(section_masks, dtype=bool).copy(),
+        segment_masks=empty_segment_masks,
+        segment_center_xy=np.full(
+            (0, settings.ring_count, 2),
+            np.nan,
+            dtype=np.float32,
+        ),
+        profile_window_bounds_xyxy=np.full(
+            (settings.ring_count, 0, 4),
+            -1,
+            dtype=np.int32,
+        ),
+        profile_window_side_pixels=int(substack_side_pixels),
+        profile_pixel_size_mm=float(profile_pixel_size_mm),
+        profile_rotation_degrees=np.full(
+            (settings.ring_count, 0),
+            np.nan,
+            dtype=np.float32,
+        ),
+        profile_integration_limits_pixels=np.full(
+            (settings.ring_count, 0, 2),
+            -1,
+            dtype=np.int32,
+        ),
+        valid_segments=np.zeros((settings.ring_count, 0), dtype=bool),
+        branch_identity=branches,
+    )
+    displacement_results = {
+        method: _empty_displacement_result(
+            frame_count=velocity_map.shape[0],
+            ring_count=settings.ring_count,
+        )
+        for method in displacement_maps
+    }
+
     return CrossSectionSignalResult(
         velocity=np.full(shape, np.nan, dtype=np.float32),
         safe_velocity=np.full(shape, np.nan, dtype=np.float32),
         velocity_maps_per_segment=empty_velocity_maps,
         segment_masks=empty_segment_masks,
-        labels=np.zeros(vessel.shape, dtype=np.int32),
+        labels=branches.labels,
         branch_ids=branches.branch_ids,
         segment_center_xy=np.full(
             (0, settings.ring_count, 2),
@@ -456,6 +752,8 @@ def _empty_result(
             dtype=np.float32,
         ),
         branch_identity=branches,
+        topology=topology,
+        displacements=displacement_results,
         velocity_profiles=empty_profiles,
         transverse_velocity_profiles_masked=empty_profiles.copy(),
         longitudinal_velocity_profiles_unmasked=empty_profiles.copy(),
@@ -518,82 +816,260 @@ def _empty_result(
     )
 
 
-def _fill_cross_section_buffers(
-    buffers: _CrossSectionBuffers,
-    velocity: np.ndarray,
-    masks: np.ndarray,
-    branches: BranchIdentityResult,
-    optic_disc_center,
-    settings: CrossSectionSignalSettings,
-    substack_side_pixels: int,
-) -> None:
-    work_items: list[_CrossSectionWork] = []
+def _validate_velocity_cube(velocity, spatial_shape):
+    shape = getattr(velocity, "shape", None)
+    if shape is None or len(shape) != 3 or tuple(shape[1:]) != tuple(spatial_shape):
+        raise ValueError(
+            "velocity must have shape (frame, y, x) with spatial shape matching vessel_mask."
+        )
+    if shape[0] == 0 or any(n == 0 for n in shape[1:]):
+        raise ValueError("velocity axes must be nonempty.")
+
+
+def _prepare_segments(masks, branches, optic_disc_center):
+    segments = []
+    radii = _normalized_radius_grid(branches.labels.shape, optic_disc_center)
+    step = 1.0 / max(image_half_diagonal(*branches.labels.shape), 1.0)
     for circle_index, section in enumerate(masks):
+        section_radii = radii[section]
+        if not section_radii.size:
+            continue
+        r_in, r_out = float(section_radii.min()), float(section_radii.max())
+        inner = (radii > max(r_in - step, 0)) & (radii <= r_in + step)
+        outer = (radii > max(r_out - step, 0)) & (radii <= r_out)
         for branch_index, branch_id in enumerate(branches.branch_ids):
             mask = section & (branches.labels == int(branch_id))
             loc = _centroid_xy(mask)
             if loc is None:
                 continue
-            buffers.segment_center_xy[branch_index, circle_index] = loc
-            sub_stack, sub_mask, bounds_xyxy = _fixed_subimage_stack(
-                velocity,
-                mask,
-                loc,
-                substack_side_pixels,
-            )
-            work_items.append(
-                _CrossSectionWork(
-                    circle_index=circle_index,
-                    branch_index=branch_index,
-                    loc_xy=loc,
-                    sub_stack=sub_stack,
-                    sub_mask=sub_mask,
-                    bounds_xyxy=bounds_xyxy,
-                    tilt_angle_mask=_tilt_angle(mask, section, optic_disc_center),
-                )
-            )
+            ys, xs = np.nonzero(mask)
+            p_in, p_out = _centroid_float(mask & inner), _centroid_float(mask & outer)
+            tilt = np.nan
+            if p_in is not None and p_out is not None and p_in != p_out:
+                tilt = float(np.degrees(np.arctan2(p_out[1] - p_in[1], p_out[0] - p_in[0])))
+            segments.append(_SegmentGeometry(circle_index, branch_index, loc, ys, xs, tilt))
+    return tuple(segments)
 
-    def measure(work: _CrossSectionWork):
-        return _cross_section_velocity_from_substack(
-            work.sub_stack,
-            work.sub_mask,
-            work.loc_xy,
+
+def _extract_work(velocity, work, side_pixels, start=0, stop=None):
+    """Allocate only the window of the segment currently being measured."""
+    segment = work.segment
+    x0, x1, y0, y1 = work.bounds_xyxy
+    left = segment.loc_xy[0] - side_pixels // 2
+    top = segment.loc_xy[1] - side_pixels // 2
+    stop = velocity.shape[0] if stop is None else stop
+    stack = np.full((stop - start, side_pixels, side_pixels), np.nan, np.float32)
+    stack[:, y0 - top : y1 - top, x0 - left : x1 - left] = velocity[start:stop, y0:y1, x0:x1]
+    mask = np.zeros((side_pixels, side_pixels), dtype=bool)
+    yy, xx = segment.ys - top, segment.xs - left
+    inside = (yy >= 0) & (yy < side_pixels) & (xx >= 0) & (xx < side_pixels)
+    mask[yy[inside], xx[inside]] = True
+    return stack, mask
+
+
+def _fill_cross_section_buffers(
+    buffers,
+    velocity,
+    masks,
+    branches,
+    optic_disc_center,
+    settings,
+    substack_side_pixels,
+    *,
+    segments=None,
+    transverse_mask_dilation_pixels=0,
+) -> None:
+    if segments is None:
+        segments = _prepare_segments(masks, branches, optic_disc_center)
+    worker_count = _cross_section_worker_count(
+        len(segments),
+        frame_count=velocity.shape[0],
+        side_pixels=substack_side_pixels,
+        memory_mb=settings.working_memory_mb,
+    )
+    work_items = (
+        _CrossSectionWork(
+            segment,
+            _centered_substack_bounds(
+                branches.labels.shape,
+                segment.loc_xy,
+                substack_side_pixels,
+            ),
+        )
+        for segment in segments
+    )
+
+    def measure(work):
+        _measure_windowed_work(
+            buffers,
+            velocity,
+            work,
             optic_disc_center,
-            work.tilt_angle_mask,
             settings,
             substack_side_pixels,
+            transverse_mask_dilation_pixels=transverse_mask_dilation_pixels,
         )
 
-    worker_count = _cross_section_worker_count(len(work_items))
     if worker_count == 1:
-        measurements = map(measure, work_items)
-    else:
-        executor = ThreadPoolExecutor(
-            max_workers=worker_count,
-            thread_name_prefix="cross-section",
-        )
-        measurements = executor.map(measure, work_items)
-    try:
-        for work, measurement in zip(work_items, measurements, strict=True):
-            _store_cross_section_measurement(
-                buffers,
-                work.circle_index,
-                work.branch_index,
-                measurement,
-                work.bounds_xyxy,
-            )
-    finally:
-        if worker_count > 1:
-            executor.shutdown(wait=True)
+        for work in work_items:
+            measure(work)
+        return
+    with ThreadPoolExecutor(
+        max_workers=worker_count, thread_name_prefix="cross-section"
+    ) as executor:
+        pending = {
+            executor.submit(measure, work)
+            for work in (next(work_items, None) for _ in range(worker_count))
+            if work is not None
+        }
+        while pending:
+            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+            for future in done:
+                future.result()
+                work = next(work_items, None)
+                if work is not None:
+                    pending.add(executor.submit(measure, work))
 
 
-def _cross_section_worker_count(work_count: int) -> int:
-    if work_count <= 1 or optional_cupy_backend() is not None:
-        return 1
-    return min(
-        work_count,
-        cap_parallel_jobs(_MAX_PARALLEL_CROSS_SECTIONS),
+def _estimated_work_bytes(frame_count, side_pixels):
+    # Conservative allowance for input, both masked/unmasked paths, normalized
+    # interpolation scratch arrays and copying the result into sparse storage.
+    return int(
+        4 * frame_count * (2 * side_pixels**2 + 24 * _ROTATED_SUBSTACK_SIDE**2)
+        + 4 * 32 * _ROTATED_SUBSTACK_SIDE**2
     )
+
+
+def _cross_section_worker_count(work_count, *, frame_count=1, side_pixels=1, memory_mb=512):
+    if work_count == 0:
+        return 1
+    per_work = _estimated_work_bytes(frame_count, side_pixels)
+    budget = int(memory_mb * 1024**2)
+    if _estimated_work_bytes(1, side_pixels) > budget:
+        raise MemoryError("working_memory_mb is too small for one cross-section frame.")
+    if per_work > budget:
+        return 1  # The window is processed in temporal batches.
+    if _cross_section_backend() is not None:
+        return 1
+    return min(work_count, cap_parallel_jobs(_MAX_PARALLEL_CROSS_SECTIONS), budget // per_work)
+
+
+def _measure_windowed_work(
+    buffers,
+    velocity,
+    work,
+    optic_disc_center,
+    settings,
+    side_pixels,
+    *,
+    angle_override=None,
+    limits_override=None,
+    transverse_mask_dilation_pixels=0,
+):
+    """Bound temporal scratch memory; retained outputs are outside this budget.
+
+    Oversized windows use two passes: global time-mean geometry first, then
+    frame batches with that same angle and limits. No per-batch fit is used.
+    """
+    frame_count = velocity.shape[0]
+    budget = int(settings.working_memory_mb * 1024**2)
+    fixed = _estimated_work_bytes(0, side_pixels)
+    per_frame = _estimated_work_bytes(1, side_pixels) - fixed
+    batch = min(frame_count, (budget - fixed) // per_frame)
+    if batch < 1:
+        raise MemoryError("working_memory_mb is too small for one cross-section frame.")
+    seg = work.segment
+    buffers.segment_center_xy[seg.branch_index, seg.circle_index] = seg.loc_xy
+    if batch == frame_count:
+        stack, mask = _extract_work(velocity, work, side_pixels)
+        measurement = _cross_section_velocity_from_substack(
+            stack,
+            mask,
+            seg.loc_xy,
+            optic_disc_center,
+            seg.tilt_angle_mask,
+            settings,
+            side_pixels,
+            angle_override=angle_override,
+            limits_override=limits_override,
+            transverse_mask_dilation_pixels=transverse_mask_dilation_pixels,
+        )
+        _store_cross_section_measurement(
+            buffers,
+            seg.circle_index,
+            seg.branch_index,
+            measurement,
+            work.bounds_xyxy,
+        )
+        return
+
+    sums = np.zeros((_INTERPOLATED_SUBSTACK_SIDE,) * 2, np.float64)
+    counts = np.zeros(sums.shape, np.int64)
+    for start in range(0, frame_count, batch):
+        stack, mask = _extract_work(
+            velocity, work, side_pixels, start, min(start + batch, frame_count)
+        )
+        resized = _resize_subimage_stack(stack)
+        finite = np.isfinite(resized)
+        sums += np.sum(np.where(finite, resized, 0.0), axis=0, dtype=np.float64)
+        counts += np.sum(finite, axis=0, dtype=np.int64)
+        del stack, resized, finite
+    mean_image = np.full(sums.shape, np.nan, np.float32)
+    np.divide(sums, counts, out=mean_image, where=counts > 0)
+    resized_mask = _resize_submask(mask)
+    mean_masked = mean_image.copy()
+    mean_masked[~resized_mask] = np.nan
+    angle = angle_override
+    if angle is None:
+        angle = _mean_image_rotation_angle(
+            mean_masked,
+            seg.loc_xy,
+            optic_disc_center,
+            seg.tilt_angle_mask,
+            settings,
+        )
+    rotated_mean = _rotate_mean_image(_center_pad_for_rotation(mean_image, np.nan), angle)
+    rotated_mask = _rotate_mask(_center_pad_for_rotation(resized_mask, False), angle)
+    rotated_mean_masked = _rotate_mean_image(_center_pad_for_rotation(mean_masked, np.nan), angle)
+    rotated_mean_masked[~rotated_mask] = np.nan
+    limits = limits_override
+    if limits is None:
+        limits = _cross_section_limits(
+            rotated_mean_masked,
+            settings,
+            pixel_size_mm=_interpolated_pixel_size_mm(settings.pixel_size_mm, side_pixels),
+        )
+    spatial_std = _sample_nanstd_axis0(rotated_mean_masked)
+    for start in range(0, frame_count, batch):
+        stop = min(start + batch, frame_count)
+        stack, mask = _extract_work(velocity, work, side_pixels, start, stop)
+        measurement = _cross_section_velocity_from_substack(
+            stack,
+            mask,
+            seg.loc_xy,
+            optic_disc_center,
+            seg.tilt_angle_mask,
+            settings,
+            side_pixels,
+            angle_override=angle,
+            limits_override=limits,
+            transverse_mask_dilation_pixels=transverse_mask_dilation_pixels,
+        )
+        measurement = replace(
+            measurement,
+            rotated_mean=rotated_mean,
+            rotated_mean_masked=rotated_mean_masked,
+            masked=replace(measurement.masked, spatial_std=spatial_std),
+        )
+        _store_cross_section_measurement(
+            buffers,
+            seg.circle_index,
+            seg.branch_index,
+            measurement,
+            work.bounds_xyxy,
+            frame_slice=slice(start, stop),
+        )
+        del stack, measurement
 
 
 def _store_cross_section_measurement(
@@ -602,38 +1078,273 @@ def _store_cross_section_measurement(
     branch_index: int,
     measurement: _CrossSectionMeasurement,
     bounds_xyxy: tuple[int, int, int, int],
+    *,
+    frame_slice=slice(None),
 ) -> None:
     masked = measurement.masked
-    buffers.velocity[circle_index, branch_index] = masked.raw
-    buffers.safe_velocity[circle_index, branch_index] = masked.safe_velocity
-    buffers.velocity_maps_per_segment[circle_index, branch_index] = (
+    buffers.velocity[circle_index, branch_index, frame_slice] = masked.raw
+    buffers.safe_velocity[circle_index, branch_index, frame_slice] = masked.safe_velocity
+    buffers.velocity_maps_per_segment[circle_index, branch_index, frame_slice] = (
         measurement.unmasked.rotated_stack
     )
     buffers.segment_masks[circle_index, branch_index] = measurement.rotated_mask
-    buffers.velocity_profiles[circle_index, branch_index] = (
+    buffers.velocity_profiles[circle_index, branch_index, frame_slice] = (
         measurement.unmasked.transverse_profiles
     )
-    buffers.transverse_velocity_profiles_masked[circle_index, branch_index] = (
+    buffers.transverse_velocity_profiles_masked[circle_index, branch_index, frame_slice] = (
         masked.transverse_profiles
     )
-    buffers.longitudinal_velocity_profiles_unmasked[circle_index, branch_index] = (
+    buffers.longitudinal_velocity_profiles_unmasked[circle_index, branch_index, frame_slice] = (
         measurement.unmasked.longitudinal_profiles
     )
-    buffers.longitudinal_velocity_profiles_masked[circle_index, branch_index] = (
+    buffers.longitudinal_velocity_profiles_masked[circle_index, branch_index, frame_slice] = (
         masked.longitudinal_profiles
     )
     buffers.profile_sample_count[circle_index, branch_index] = measurement.sample_count
     buffers.profile_spatial_std[circle_index, branch_index] = masked.spatial_std
-    buffers.profile_rotation_degrees[circle_index, branch_index] = np.float32(
-        masked.angle
-    )
+    buffers.profile_rotation_degrees[circle_index, branch_index] = np.float32(masked.angle)
     buffers.rotated_mean_images[circle_index, branch_index] = measurement.rotated_mean
-    buffers.rotated_mean_images_masked[circle_index, branch_index] = (
-        measurement.rotated_mean_masked
-    )
+    buffers.rotated_mean_images_masked[circle_index, branch_index] = measurement.rotated_mean_masked
     buffers.profile_window_bounds_xyxy[circle_index, branch_index] = bounds_xyxy
-    buffers.profile_integration_limits_pixels[circle_index, branch_index] = (
-        measurement.limits
+    buffers.profile_integration_limits_pixels[circle_index, branch_index] = measurement.limits
+
+
+def _project_displacement_map(
+    displacement_map,
+    topology: CrossSectionTopology,
+    *,
+    retain_maps: bool = True,
+) -> CrossSectionDisplacementResult:
+    buffers = _CrossSectionDisplacementBuffers.allocate(
+        frame_count=topology.frame_count,
+        ring_count=topology.section_masks.shape[0],
+        branch_count=topology.branch_ids.size,
+        retain_maps=retain_maps,
+    )
+    work_items = [
+        (int(circle_index), int(branch_index))
+        for circle_index, branch_index in np.argwhere(topology.valid_segments)
+    ]
+
+    def measure(indexes):
+        circle_index, branch_index = indexes
+        return _cross_section_displacement_from_topology(
+            displacement_map,
+            topology,
+            circle_index,
+            branch_index,
+        )
+
+    worker_count = (
+        1
+        if isinstance(displacement_map, np.memmap)
+        else _cross_section_worker_count(len(work_items))
+    )
+    if worker_count == 1:
+        for indexes in work_items:
+            _store_displacement_measurement(
+                buffers,
+                indexes[0],
+                indexes[1],
+                measure(indexes),
+            )
+    elif isinstance(displacement_map, np.ndarray) and not isinstance(
+        displacement_map, np.memmap
+    ):
+        with ThreadPoolExecutor(
+            max_workers=worker_count,
+            thread_name_prefix='cross-section-displacement',
+        ) as executor:
+            measurements = executor.map(measure, work_items)
+            for indexes, measurement in zip(
+                work_items,
+                measurements,
+                strict=True,
+            ):
+                _store_displacement_measurement(
+                    buffers,
+                    indexes[0],
+                    indexes[1],
+                    measurement,
+                )
+    else:
+        _project_lazy_displacement_map(
+            buffers,
+            displacement_map,
+            topology,
+            work_items,
+            worker_count,
+        )
+    return _displacement_result_from_buffers(buffers)
+
+
+def _project_lazy_displacement_map(
+    buffers: _CrossSectionDisplacementBuffers,
+    displacement_map,
+    topology: CrossSectionTopology,
+    work_items: list[tuple[int, int]],
+    worker_count: int,
+) -> None:
+    pending: deque[
+        tuple[int, int, Future[_CrossSectionDisplacementMeasurement]]
+    ] = deque()
+    with ThreadPoolExecutor(
+        max_workers=worker_count,
+        thread_name_prefix='cross-section-displacement',
+    ) as executor:
+        for circle_index, branch_index in work_items:
+            work = _prepare_cross_section_displacement_work(
+                displacement_map,
+                topology,
+                circle_index,
+                branch_index,
+            )
+            pending.append(
+                (
+                    circle_index,
+                    branch_index,
+                    executor.submit(_measure_cross_section_displacement, work),
+                )
+            )
+            if len(pending) >= worker_count:
+                _store_pending_displacement(buffers, pending.popleft())
+        while pending:
+            _store_pending_displacement(buffers, pending.popleft())
+
+
+def _store_pending_displacement(
+    buffers: _CrossSectionDisplacementBuffers,
+    pending: tuple[
+        int,
+        int,
+        Future[_CrossSectionDisplacementMeasurement],
+    ],
+) -> None:
+    circle_index, branch_index, future = pending
+    _store_displacement_measurement(
+        buffers,
+        circle_index,
+        branch_index,
+        future.result(),
+    )
+
+
+def _store_displacement_measurement(
+    buffers: _CrossSectionDisplacementBuffers,
+    circle_index: int,
+    branch_index: int,
+    measurement: _CrossSectionDisplacementMeasurement,
+) -> None:
+    index = (circle_index, branch_index)
+    buffers.displacement[index] = measurement.waveform.raw
+    buffers.safe_displacement[index] = measurement.waveform.safe_displacement
+    if buffers.displacement_maps_per_segment is not None:
+        buffers.displacement_maps_per_segment[index] = measurement.vectors
+    buffers.transverse_displacement_profiles_unmasked[index] = (
+        measurement.transverse_profiles_unmasked
+    )
+    buffers.transverse_displacement_profiles_masked[index] = (
+        measurement.transverse_profiles_masked
+    )
+    buffers.longitudinal_displacement_profiles_unmasked[index] = (
+        measurement.longitudinal_profiles_unmasked
+    )
+    buffers.longitudinal_displacement_profiles_masked[index] = (
+        measurement.longitudinal_profiles_masked
+    )
+    buffers.x_sum_displacement_profile[index] = (
+        measurement.summed_displacement_xy[:, 0]
+    )
+    buffers.y_sum_displacement_profile[index] = (
+        measurement.summed_displacement_xy[:, 1]
+    )
+    buffers.cross_sectional_radial_movement_amplitude[index] = (
+        measurement.radial_movement_amplitude
+    )
+    buffers.cross_sectional_radial_asymmetry_index[index] = (
+        measurement.radial_asymmetry_index
+    )
+
+
+def _topology_from_buffers(
+    buffers: _CrossSectionBuffers,
+    geometry: _PreparedCrossSectionGeometry,
+    *,
+    frame_count: int,
+    profile_pixel_size_mm: float,
+    substack_side_pixels: int,
+) -> CrossSectionTopology:
+    center_valid = np.all(np.isfinite(buffers.segment_center_xy), axis=-1).T
+    bounds = buffers.profile_window_bounds_xyxy
+    limits = buffers.profile_integration_limits_pixels
+    valid_segments = (
+        center_valid
+        & np.isfinite(buffers.profile_rotation_degrees)
+        & np.all(bounds >= 0, axis=-1)
+        & (bounds[..., 0] < bounds[..., 1])
+        & (bounds[..., 2] < bounds[..., 3])
+        & (limits[..., 0] >= 0)
+        & (limits[..., 0] <= limits[..., 1])
+    )
+    return CrossSectionTopology(
+        spatial_shape=tuple(geometry.vessel.shape),
+        frame_count=int(frame_count),
+        labels=geometry.branches.labels.copy(),
+        branch_ids=geometry.branches.branch_ids.copy(),
+        section_masks=geometry.masks.copy(),
+        segment_masks=buffers.segment_masks.copy(),
+        segment_center_xy=buffers.segment_center_xy.copy(),
+        profile_window_bounds_xyxy=bounds.copy(),
+        profile_window_side_pixels=int(substack_side_pixels),
+        profile_pixel_size_mm=float(profile_pixel_size_mm),
+        profile_rotation_degrees=buffers.profile_rotation_degrees.copy(),
+        profile_integration_limits_pixels=limits.copy(),
+        valid_segments=valid_segments,
+        branch_identity=geometry.branches,
+    )
+
+
+def _displacement_result_from_buffers(
+    buffers: _CrossSectionDisplacementBuffers,
+) -> CrossSectionDisplacementResult:
+    return CrossSectionDisplacementResult(
+        displacement=buffers.displacement,
+        safe_displacement=buffers.safe_displacement,
+        displacement_maps_per_segment=buffers.displacement_maps_per_segment,
+        transverse_displacement_profiles_unmasked=(
+            buffers.transverse_displacement_profiles_unmasked
+        ),
+        transverse_displacement_profiles_masked=(
+            buffers.transverse_displacement_profiles_masked
+        ),
+        longitudinal_displacement_profiles_unmasked=(
+            buffers.longitudinal_displacement_profiles_unmasked
+        ),
+        longitudinal_displacement_profiles_masked=(
+            buffers.longitudinal_displacement_profiles_masked
+        ),
+        x_sum_displacement_profile=buffers.x_sum_displacement_profile,
+        y_sum_displacement_profile=buffers.y_sum_displacement_profile,
+        cross_sectional_radial_movement_amplitude=(
+            buffers.cross_sectional_radial_movement_amplitude
+        ),
+        cross_sectional_radial_asymmetry_index=(
+            buffers.cross_sectional_radial_asymmetry_index
+        ),
+    )
+
+
+def _empty_displacement_result(
+    *,
+    frame_count: int,
+    ring_count: int,
+) -> CrossSectionDisplacementResult:
+    return _displacement_result_from_buffers(
+        _CrossSectionDisplacementBuffers.allocate(
+            frame_count=frame_count,
+            ring_count=ring_count,
+            branch_count=0,
+        )
     )
 
 
@@ -641,7 +1352,9 @@ def _centroid_xy(mask: np.ndarray) -> tuple[int, int] | None:
     labeled, count = ndi.label(mask, structure=np.ones((3, 3), dtype=np.uint8))
     if count == 0:
         return None
-    y, x = ndi.center_of_mass(mask, labeled, 1)
+    sizes = np.bincount(labeled.ravel())
+    sizes[0] = 0
+    y, x = ndi.center_of_mass(mask, labeled, int(np.argmax(sizes)))
     return int(np.floor(x + 0.5)), int(np.floor(y + 0.5))
 
 
@@ -657,14 +1370,12 @@ def _fixed_substack_side_pixels(
     widths: list[int] = []
     heights: list[int] = []
     for geometry in geometries:
-        for section in geometry.masks:
-            for branch_id in geometry.branches.branch_ids:
-                mask = section & (geometry.branches.labels == int(branch_id))
-                segment_y, segment_x = np.nonzero(mask)
-                if segment_x.size == 0:
-                    continue
-                widths.append(int(segment_x.max() - segment_x.min() + 1))
-                heights.append(int(segment_y.max() - segment_y.min() + 1))
+        segments = geometry.segments
+        if segments is None:
+            segments = _prepare_segments(geometry.masks, geometry.branches, None)
+        for segment in segments:
+            widths.append(int(segment.xs.max() - segment.xs.min() + 1))
+            heights.append(int(segment.ys.max() - segment.ys.min() + 1))
 
     if not widths:
         return 0
@@ -705,7 +1416,7 @@ def _circle_tilt_geometry(
         return None
     radius_inner = float(np.min(section_radii))
     radius_outer = float(np.max(section_radii))
-    step = np.float32(1.0 / max(float(np.mean(mask.shape)), 1.0))
+    step = np.float32(1.0 / max(image_half_diagonal(*mask.shape), 1.0))
     inner = annulus_mask(
         mask.shape,
         optic_disc_center,
@@ -730,13 +1441,7 @@ def _normalized_radius_grid(
     shape: tuple[int, int],
     optic_disc_center,
 ) -> np.ndarray:
-    ny, nx = shape
-    cy, cx = optic_disc_center_yx(optic_disc_center, ny, nx)
-    y = np.linspace(0.0, 1.0, ny, dtype=np.float32)[:, None]
-    x = np.linspace(0.0, 1.0, nx, dtype=np.float32)[None, :]
-    return np.sqrt(
-        (y - np.float32(cy / max(ny, 1))) ** 2 + (x - np.float32(cx / max(nx, 1))) ** 2,
-    )
+    return np.sqrt(normalized_radius_squared(shape, optic_disc_center))
 
 
 def _centroid_float(mask: np.ndarray) -> tuple[float, float] | None:
@@ -744,6 +1449,305 @@ def _centroid_float(mask: np.ndarray) -> tuple[float, float] | None:
         return None
     y, x = ndi.center_of_mass(mask)
     return float(x), float(y)
+
+
+def _cross_section_displacement_from_topology(
+    displacement_map,
+    topology: CrossSectionTopology,
+    circle_index: int,
+    branch_index: int,
+) -> _CrossSectionDisplacementMeasurement:
+    return _measure_cross_section_displacement(
+        _prepare_cross_section_displacement_work(
+            displacement_map,
+            topology,
+            circle_index,
+            branch_index,
+        )
+    )
+
+
+def _prepare_cross_section_displacement_work(
+    displacement_map,
+    topology: CrossSectionTopology,
+    circle_index: int,
+    branch_index: int,
+) -> _CrossSectionDisplacementWork:
+    loc_values = topology.segment_center_xy[branch_index, circle_index]
+    loc_xy = (int(loc_values[0]), int(loc_values[1]))
+    bounds_xyxy = tuple(
+        int(value)
+        for value in topology.profile_window_bounds_xyxy[
+            circle_index,
+            branch_index,
+        ]
+    )
+    limits = tuple(
+        int(value)
+        for value in topology.profile_integration_limits_pixels[
+            circle_index,
+            branch_index,
+        ]
+    )
+    return _CrossSectionDisplacementWork(
+        component_stacks=_subimage_vector_components_from_bounds(
+            displacement_map,
+            bounds_xyxy,
+            loc_xy=loc_xy,
+            side_pixels=topology.profile_window_side_pixels,
+        ),
+        angle=float(
+            topology.profile_rotation_degrees[circle_index, branch_index]
+        ),
+        rotated_mask=topology.segment_masks[circle_index, branch_index],
+        limits=limits,
+    )
+
+
+def _measure_cross_section_displacement(
+    work: _CrossSectionDisplacementWork,
+) -> _CrossSectionDisplacementMeasurement:
+    frame_count = work.component_stacks.shape[0]
+    component_frames = work.component_stacks.reshape(
+        frame_count * 2,
+        work.component_stacks.shape[-2],
+        work.component_stacks.shape[-1],
+    )
+    resized = _resize_subimage_stack(component_frames)
+    rotated = _rotate_stack_with_nan(
+        _center_pad_for_rotation(resized, np.nan),
+        work.angle,
+    ).reshape(frame_count, 2, _ROTATED_SUBSTACK_SIDE, _ROTATED_SUBSTACK_SIDE)
+    vectors = _correct_displacement_basis(
+        rotated[:, 0],
+        rotated[:, 1],
+        work.angle,
+    )
+    radial_amplitude, radial_asymmetry = _cross_sectional_radial_metrics(
+        vectors,
+        work.rotated_mask,
+    )
+    (
+        transverse_profiles_unmasked,
+        transverse_profiles_masked,
+        longitudinal_profiles_unmasked,
+        longitudinal_profiles_masked,
+    ) = _displacement_profiles(vectors, work.rotated_mask)
+    c1, c2 = work.limits
+    return _CrossSectionDisplacementMeasurement(
+        waveform=_displacement_profile_measurement(
+            vectors,
+            c1,
+            c2,
+            mask=work.rotated_mask,
+        ),
+        vectors=vectors,
+        transverse_profiles_unmasked=transverse_profiles_unmasked,
+        transverse_profiles_masked=transverse_profiles_masked,
+        longitudinal_profiles_unmasked=longitudinal_profiles_unmasked,
+        longitudinal_profiles_masked=longitudinal_profiles_masked,
+        summed_displacement_xy=_nansum_float32(
+            vectors,
+            axis=(1, 2),
+        ),
+        radial_movement_amplitude=radial_amplitude,
+        radial_asymmetry_index=radial_asymmetry,
+    )
+
+
+def _cross_sectional_radial_metrics(
+    vectors: np.ndarray,
+    vessel_mask: np.ndarray,
+    *,
+    epsilon: float = 1e-6,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Measure radial strength in wall bands extending outside the vessel mask."""
+
+    if vectors.ndim != 4 or vectors.shape[-1] != 2:
+        raise ValueError("vectors must have shape (frame, y, x, 2).")
+    mask = np.asarray(vessel_mask, dtype=bool)
+    if mask.shape != vectors.shape[1:3]:
+        raise ValueError("vessel_mask must match the vector field spatial shape.")
+
+    left_region, right_region = _wall_analysis_regions(mask)
+    radial_strength = np.abs(vectors[..., 0])
+    left = _mean_in_spatial_region(radial_strength, left_region)
+    right = _mean_in_spatial_region(radial_strength, right_region)
+    amplitude = np.float32(0.5) * (left + right)
+    denominator = left + right + np.float32(epsilon)
+    asymmetry = np.divide(
+        left - right,
+        denominator,
+        out=np.full_like(amplitude, np.nan),
+        where=np.isfinite(denominator),
+    )
+    return (
+        amplitude.astype(np.float32, copy=False),
+        asymmetry.astype(np.float32, copy=False),
+    )
+
+
+def _displacement_profiles(
+    rotated_vectors: np.ndarray,
+    vessel_mask: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Project displacement magnitudes using the velocity-profile reductions."""
+
+    if cv2 is None:
+        raise RuntimeError("OpenCV is required for displacement profiles.")
+    magnitude = np.hypot(
+        rotated_vectors[..., 0],
+        rotated_vectors[..., 1],
+    ).astype(np.float32, copy=False)
+    transverse_unmasked, longitudinal_unmasked = (
+        _transverse_and_longitudinal_profiles(magnitude)
+    )
+    dilated_mask = cv2.dilate(
+        np.asarray(vessel_mask, dtype=np.uint8),
+        np.ones((3, 3), dtype=np.uint8),
+        iterations=20,
+    ).astype(bool)
+    masked_magnitude = magnitude.copy()
+    masked_magnitude[:, ~dilated_mask] = np.nan
+    transverse_masked, longitudinal_masked = (
+        _transverse_and_longitudinal_profiles(masked_magnitude)
+    )
+    return (
+        transverse_unmasked,
+        transverse_masked,
+        longitudinal_unmasked,
+        longitudinal_masked,
+    )
+
+
+def _wall_analysis_regions(vessel_mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Use mask rows to locate walls; return equally scaled exterior bands."""
+
+    height, width = vessel_mask.shape
+    left_region = np.zeros((height, width), dtype=bool)
+    right_region = np.zeros((height, width), dtype=bool)
+    x = np.arange(width)
+    for row in np.flatnonzero(np.any(vessel_mask, axis=1)):
+        mask_x = np.flatnonzero(vessel_mask[row])
+        left_wall = int(mask_x[0])
+        right_wall = int(mask_x[-1])
+        centerline = np.float32(0.5 * (left_wall + right_wall))
+        band_width = max(
+            int(np.ceil((right_wall - left_wall + 1) / 2.0)),
+            1,
+        )
+        left_start = max(left_wall - band_width, 0)
+        right_stop = min(right_wall + band_width + 1, width)
+        left_region[row] = (
+            (x >= left_start) & (x <= left_wall) & (x < centerline)
+        )
+        right_region[row] = (
+            (x >= right_wall) & (x < right_stop) & (x > centerline)
+        )
+    return left_region, right_region
+
+
+def _mean_in_spatial_region(
+    values: np.ndarray,
+    region: np.ndarray,
+) -> np.ndarray:
+    finite = np.isfinite(values) & region[None, ...]
+    count = np.sum(finite, axis=(1, 2), dtype=np.int32)
+    total = np.sum(
+        values,
+        axis=(1, 2),
+        dtype=np.float32,
+        where=finite,
+    )
+    return np.divide(
+        total,
+        count,
+        out=np.full(values.shape[0], np.nan, dtype=np.float32),
+        where=count > 0,
+    )
+
+
+def _correct_displacement_basis(
+    rotated_dx: np.ndarray,
+    rotated_dy: np.ndarray,
+    angle_degrees: float,
+) -> np.ndarray:
+    cosine = np.float32(special.cosdg(angle_degrees))
+    sine = np.float32(special.sindg(angle_degrees))
+    local_x = cosine * rotated_dx + sine * rotated_dy
+    local_y = -sine * rotated_dx + cosine * rotated_dy
+    return np.stack((local_x, local_y), axis=-1).astype(np.float32, copy=False)
+
+
+def _displacement_profile_measurement(
+    rotated_vectors: np.ndarray,
+    c1: int,
+    c2: int,
+    *,
+    mask: np.ndarray | None = None,
+) -> _DisplacementProfileMeasurement:
+    axial_values = rotated_vectors[..., 1]
+    finite = np.isfinite(axial_values)
+    if mask is not None:
+        if mask.shape != axial_values.shape[1:]:
+            raise ValueError('displacement profile mask must match the vector field.')
+        finite &= mask[None, ...]
+    axial_profiles = _nanmean_float32_where(
+        axial_values,
+        finite,
+        axis=1,
+    )
+    raw = nanmean_float32(axial_profiles[:, c1 : c2 + 1], axis=1)
+    raw = np.where(np.isnan(raw), np.float32(0.0), raw).astype(
+        np.float32,
+        copy=False,
+    )
+    safe_displacement = nanmean_float32(axial_profiles, axis=1)
+    return _DisplacementProfileMeasurement(
+        raw=raw,
+        safe_displacement=safe_displacement,
+    )
+
+
+def _nanmean_float32_where(
+    values: np.ndarray,
+    finite: np.ndarray,
+    *,
+    axis: int,
+) -> np.ndarray:
+    count = np.sum(finite, axis=axis, dtype=np.int32)
+    total = np.sum(
+        values,
+        axis=axis,
+        dtype=np.float32,
+        where=finite,
+    )
+    return np.divide(
+        total,
+        count,
+        out=np.full_like(total, np.nan, dtype=np.float32),
+        where=count > 0,
+    )
+
+
+def _nansum_float32(
+    values: np.ndarray,
+    *,
+    axis: tuple[int, ...],
+) -> np.ndarray:
+    finite = np.isfinite(values)
+    count = np.sum(finite, axis=axis, dtype=np.int32)
+    total = np.sum(
+        values,
+        axis=axis,
+        dtype=np.float32,
+        where=finite,
+    )
+    return np.where(
+        count > 0,
+        total,
+        np.float32(np.nan),
+    ).astype(np.float32, copy=False)
 
 
 def _cross_section_velocity_from_substack(
@@ -754,46 +1758,82 @@ def _cross_section_velocity_from_substack(
     tilt_angle_mask: float,
     settings: CrossSectionSignalSettings,
     substack_side_pixels: int,
+    *,
+    angle_override: float | None = None,
+    limits_override: tuple[int, int] | None = None,
+    transverse_mask_dilation_pixels: int = 0,
 ) -> _CrossSectionMeasurement:
+    backend = _cross_section_backend()
+    if backend is not None:
+        try:
+            from .gpu_cross_section import measure_cross_section_gpu
+
+            measurement = measure_cross_section_gpu(
+                backend,
+                sub_stack,
+                sub_mask,
+                loc_xy,
+                optic_disc_center,
+                tilt_angle_mask,
+                settings,
+                substack_side_pixels,
+                angle_override,
+                limits_override,
+            )
+            return _with_dilated_transverse_profile(
+                measurement,
+                transverse_mask_dilation_pixels,
+            )
+        except Exception as exc:  # noqa: BLE001 -- optional CUDA boundary; warn or raise below
+            _disable_cross_section_gpu(exc)
     resized_stack = _resize_subimage_stack(sub_stack)
     resized_mask = _resize_submask(sub_mask)
-    resized_stack_masked = resized_stack.copy()
-    resized_stack_masked[:, ~resized_mask] = np.nan
     mean_image = nanmean_float32(resized_stack, axis=0)
-    mean_image_masked = nanmean_float32(resized_stack_masked, axis=0)
-    angle = _mean_image_rotation_angle(
-        mean_image_masked,
-        loc_xy,
-        optic_disc_center,
-        tilt_angle_mask,
-        settings,
+    mean_image_masked = mean_image.copy()
+    mean_image_masked[~resized_mask] = np.nan
+    angle = (
+        angle_override
+        if angle_override is not None
+        else _mean_image_rotation_angle(
+            mean_image_masked,
+            loc_xy,
+            optic_disc_center,
+            tilt_angle_mask,
+            settings,
+        )
     )
     rotation_stack = _center_pad_for_rotation(resized_stack, np.nan)
+    resized_stack[:, ~resized_mask] = np.nan
     rotation_stack_masked = _center_pad_for_rotation(
-        resized_stack_masked,
+        resized_stack,
         np.nan,
     )
+    del resized_stack
     rotation_mask = _center_pad_for_rotation(resized_mask, False)
     rotated_mean = _rotate_mean_image(
         _center_pad_for_rotation(mean_image, np.nan),
         angle,
     )
-    rotated_mean_masked = _rotate_masked_image(
+    rotated_mask = _rotate_mask(rotation_mask, angle)
+    rotated_mean_masked = _rotate_mean_image(
         _center_pad_for_rotation(mean_image_masked, np.nan),
-        rotation_mask,
         angle,
     )
-    rotated_mask = _rotate_mask(rotation_mask, angle)
+    rotated_mean_masked[~rotated_mask] = np.nan
     profile_pixel_size_mm = _interpolated_pixel_size_mm(
         settings.pixel_size_mm,
         substack_side_pixels,
     )
-    c1, c2 = _cross_section_limits(
-        rotated_mean_masked,
-        settings,
-        pixel_size_mm=profile_pixel_size_mm,
+    c1, c2 = (
+        limits_override
+        if limits_override is not None
+        else _cross_section_limits(
+            rotated_mean_masked,
+            settings,
+            pixel_size_mm=profile_pixel_size_mm,
+        )
     )
-    return _CrossSectionMeasurement(
+    measurement = _CrossSectionMeasurement(
         unmasked=_profile_measurement(
             rotation_stack,
             angle,
@@ -807,12 +1847,54 @@ def _cross_section_velocity_from_substack(
             c1,
             c2,
             rotated_mean_masked,
+            retain_movie=False,
         ),
         rotated_mean=rotated_mean,
         rotated_mean_masked=rotated_mean_masked,
         rotated_mask=rotated_mask,
         limits=(c1, c2),
         sample_count=_rotated_profile_sample_count(angle),
+    )
+    return _with_dilated_transverse_profile(
+        measurement,
+        transverse_mask_dilation_pixels,
+    )
+
+
+def _with_dilated_transverse_profile(
+    measurement: _CrossSectionMeasurement,
+    dilation_pixels: int,
+) -> _CrossSectionMeasurement:
+    """Use a horizontally dilated rotated mask for only the masked x-profile."""
+    pixels = int(dilation_pixels)
+    if pixels < 0 or pixels != dilation_pixels:
+        raise ValueError("transverse mask dilation must be a nonnegative integer.")
+    if pixels == 0:
+        return measurement
+
+    rotated_stack = measurement.unmasked.rotated_stack
+    if rotated_stack is None:
+        raise ValueError("the unmasked rotated stack is required for mask dilation.")
+    transverse_mask = ndi.binary_dilation(
+        measurement.rotated_mask,
+        structure=np.ones((1, 2 * pixels + 1), dtype=bool),
+    )
+    rotated_values = np.asarray(rotated_stack, dtype=np.float32)
+    transverse_profiles = np.empty(
+        (rotated_values.shape[0], rotated_values.shape[2]),
+        dtype=np.float32,
+    )
+    for frame_index, frame in enumerate(rotated_values):
+        transverse_profiles[frame_index] = nanmean_float32(
+            np.where(transverse_mask, frame, np.nan),
+            axis=0,
+        )
+    return replace(
+        measurement,
+        masked=replace(
+            measurement.masked,
+            transverse_profiles=transverse_profiles,
+        ),
     )
 
 
@@ -822,6 +1904,8 @@ def _profile_measurement(
     c1: int,
     c2: int,
     rotated_mean: np.ndarray,
+    *,
+    retain_movie: bool = True,
 ) -> _CrossSectionVelocityMeasurement:
     (
         raw,
@@ -841,7 +1925,7 @@ def _profile_measurement(
         safe_velocity=safe_velocity,
         transverse_profiles=transverse_profiles,
         longitudinal_profiles=longitudinal_profiles,
-        rotated_stack=rotated_stack,
+        rotated_stack=rotated_stack if retain_movie else None,
         angle=float(angle),
         spatial_std=spatial_std,
     )
@@ -915,16 +1999,13 @@ def _subimage_stack_from_bounds(
     target_y_stop = target_y_start + (y_stop - y_start)
 
     sub_mask = np.zeros((side_pixels, side_pixels), dtype=bool)
-    sub_stack = np.full(
-        (data_cube.shape[0], side_pixels, side_pixels),
-        np.nan,
-        dtype=np.float32,
+    sub_stack = _subimage_values_from_bounds(
+        data_cube,
+        bounds_xyxy,
+        loc_xy=loc_xy,
+        side_pixels=side_pixels,
     )
     if x_start < x_stop and y_start < y_stop:
-        source = np.asarray(
-            data_cube[:, y_start:y_stop, x_start:x_stop],
-            dtype=np.float32,
-        )
         source_mask = np.asarray(
             mask[y_start:y_stop, x_start:x_stop],
             dtype=bool,
@@ -932,8 +2013,92 @@ def _subimage_stack_from_bounds(
         target_y = slice(target_y_start, target_y_stop)
         target_x = slice(target_x_start, target_x_stop)
         sub_mask[target_y, target_x] = source_mask
-        sub_stack[:, target_y, target_x] = source
     return sub_stack, sub_mask
+
+
+def _subimage_values_from_bounds(
+    data_cube,
+    bounds_xyxy: tuple[int, int, int, int],
+    *,
+    loc_xy: tuple[int, int],
+    side_pixels: int,
+) -> np.ndarray:
+    if side_pixels <= 0 or side_pixels % 2 == 0:
+        raise ValueError('side_pixels must be a positive odd integer.')
+    x_start, x_stop, y_start, y_stop = bounds_xyxy
+    x, y = loc_xy
+    conceptual_x_start = x - side_pixels // 2
+    conceptual_y_start = y - side_pixels // 2
+    target_x_start = x_start - conceptual_x_start
+    target_y_start = y_start - conceptual_y_start
+    target_x_stop = target_x_start + (x_stop - x_start)
+    target_y_stop = target_y_start + (y_stop - y_start)
+    leading_shape = tuple(data_cube.shape[:-2])
+    sub_stack = np.full(
+        (*leading_shape, side_pixels, side_pixels),
+        np.nan,
+        dtype=np.float32,
+    )
+    if x_start < x_stop and y_start < y_stop:
+        leading_slices = (slice(None),) * len(leading_shape)
+        source_slices = (
+            *leading_slices,
+            slice(y_start, y_stop),
+            slice(x_start, x_stop),
+        )
+        source = np.asarray(
+            data_cube[source_slices],
+            dtype=np.float32,
+        )
+        sub_stack[
+            ...,
+            target_y_start:target_y_stop,
+            target_x_start:target_x_stop,
+        ] = source
+    return sub_stack
+
+
+def _subimage_vector_components_from_bounds(
+    data_cube,
+    bounds_xyxy: tuple[int, int, int, int],
+    *,
+    loc_xy: tuple[int, int],
+    side_pixels: int,
+) -> np.ndarray:
+    if side_pixels <= 0 or side_pixels % 2 == 0:
+        raise ValueError('side_pixels must be a positive odd integer.')
+    x_start, x_stop, y_start, y_stop = bounds_xyxy
+    x, y = loc_xy
+    conceptual_x_start = x - side_pixels // 2
+    conceptual_y_start = y - side_pixels // 2
+    target_x_start = x_start - conceptual_x_start
+    target_y_start = y_start - conceptual_y_start
+    target_x_stop = target_x_start + (x_stop - x_start)
+    target_y_stop = target_y_start + (y_stop - y_start)
+    frame_count = int(data_cube.shape[0])
+    component_count = int(data_cube.shape[-1])
+    component_stacks = np.full(
+        (frame_count, component_count, side_pixels, side_pixels),
+        np.nan,
+        dtype=np.float32,
+    )
+    if x_start < x_stop and y_start < y_stop:
+        source = np.asarray(
+            data_cube[
+                slice(None),
+                slice(y_start, y_stop),
+                slice(x_start, x_stop),
+                slice(None),
+            ],
+            dtype=np.float32,
+        )
+        component_stacks[
+            :,
+            :,
+            target_y_start:target_y_stop,
+            target_x_start:target_x_stop,
+        ] = np.moveaxis(source, -1, 1)
+    return component_stacks
 
 
 def _centered_substack_bounds(
@@ -956,15 +2121,17 @@ def _centered_substack_bounds(
 
 def _resize_subimage_stack(sub_stack: np.ndarray) -> np.ndarray:
     values = np.asarray(sub_stack, dtype=np.float32)
-    if optional_cupy_backend() is not None:
+    if _cross_section_backend() is not None:
         return _resize_values_with_nan(values)
     shared_validity = _shared_validity_mask(values)
     if shared_validity is not None:
         return _resize_stack_with_shared_validity_cpu(values, shared_validity)
-    return np.stack(
-        [_resize_values_with_nan_cpu(frame) for frame in values],
-        axis=0,
+    resized = np.empty(
+        (len(values), _INTERPOLATED_SUBSTACK_SIDE, _INTERPOLATED_SUBSTACK_SIDE), np.float32
     )
+    for i, frame in enumerate(values):
+        resized[i] = _resize_values_with_nan_cpu(frame)
+    return resized
 
 
 def _resize_stack_with_shared_validity_cpu(
@@ -985,21 +2152,21 @@ def _resize_stack_with_shared_validity_cpu(
         prefilter=False,
         grid_mode=True,
     ).astype(np.float32, copy=False)
-    resized_values = np.stack(
-        [
-            ndi.zoom(
-                np.where(shared_validity, frame, np.float32(0.0)),
-                zoom_factors,
-                order=1,
-                mode="grid-constant",
-                cval=0.0,
-                prefilter=False,
-                grid_mode=True,
-            ).astype(np.float32, copy=False)
-            for frame in values
-        ],
-        axis=0,
+    resized_values = np.empty(
+        (len(values), _INTERPOLATED_SUBSTACK_SIDE, _INTERPOLATED_SUBSTACK_SIDE),
+        np.float32,
     )
+    for i, frame in enumerate(values):
+        ndi.zoom(
+            np.where(shared_validity, frame, np.float32(0.0)),
+            zoom_factors,
+            output=resized_values[i],
+            order=1,
+            mode="grid-constant",
+            cval=0.0,
+            prefilter=False,
+            grid_mode=True,
+        )
     resized = np.full(resized_values.shape, np.nan, dtype=np.float32)
     np.divide(
         resized_values,
@@ -1016,7 +2183,7 @@ def _resize_submask(mask: np.ndarray) -> np.ndarray:
         _INTERPOLATED_SUBSTACK_SIDE / source.shape[-2],
         _INTERPOLATED_SUBSTACK_SIDE / source.shape[-1],
     )
-    backend = optional_cupy_backend()
+    backend = _cross_section_backend()
     if backend is not None:
         try:
             gpu_mask = backend.cupy.asarray(source)
@@ -1030,8 +2197,8 @@ def _resize_submask(mask: np.ndarray) -> np.ndarray:
                 grid_mode=True,
             )
             return backend.cupy.asnumpy(resized) >= np.float32(0.5)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 -- optional CUDA boundary; warn or raise below
+            _disable_cross_section_gpu(exc)
     return ndi.zoom(
         source,
         zoom_factors,
@@ -1054,9 +2221,7 @@ def _center_pad_for_rotation(
         _INTERPOLATED_SUBSTACK_SIDE,
     )
     if source.ndim < 2 or source.shape[-2:] != expected_shape:
-        raise ValueError(
-            "rotation input must end with the 128x128 interpolated shape."
-        )
+        raise ValueError("rotation input must end with the 128x128 interpolated shape.")
     total_padding = _ROTATED_SUBSTACK_SIDE - _INTERPOLATED_SUBSTACK_SIDE
     padding_before = total_padding // 2
     padding_after = total_padding - padding_before
@@ -1089,7 +2254,7 @@ def _resize_values_with_nan(values: np.ndarray) -> np.ndarray:
         _INTERPOLATED_SUBSTACK_SIDE / values.shape[-2],
         _INTERPOLATED_SUBSTACK_SIDE / values.shape[-1],
     )
-    backend = optional_cupy_backend()
+    backend = _cross_section_backend()
     if backend is not None:
         try:
             gpu_values = backend.cupy.asarray(values)
@@ -1117,15 +2282,16 @@ def _resize_values_with_nan(values: np.ndarray) -> np.ndarray:
                 backend.cupy.nan,
                 dtype=backend.cupy.float32,
             )
+            keep = resized_weights > backend.cupy.float32(1e-6)
             backend.cupy.divide(
                 resized_values,
-                resized_weights,
+                backend.cupy.where(keep, resized_weights, backend.cupy.float32(1)),
                 out=resized,
-                where=resized_weights > backend.cupy.float32(1e-6),
             )
+            resized[~keep] = backend.cupy.nan
             return backend.cupy.asnumpy(resized)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 -- optional CUDA boundary; warn or raise below
+            _disable_cross_section_gpu(exc)
 
     return _resize_values_with_nan_cpu(values)
 
@@ -1255,10 +2421,12 @@ def _hydrodynamic_limits(
     settings: CrossSectionSignalSettings,
     pixel_size_mm: float,
 ) -> tuple[int, int] | None:
+    if not np.isfinite(pixel_size_mm) or pixel_size_mm <= 0:
+        raise ValueError("pixel_size_mm must be finite and positive.")
     if profile.size == 0 or np.all(~np.isfinite(profile)):
         return None
-    threshold = settings.velocity_profile_threshold * float(np.nanmax(profile))
-    central = np.flatnonzero(profile > threshold)
+    threshold = settings.velocity_profile_threshold * float(np.max(profile[np.isfinite(profile)]))
+    central = np.flatnonzero(np.isfinite(profile) & (profile > threshold))
     if central.size < 3:
         return None
     center = float(np.mean(central))
@@ -1277,13 +2445,31 @@ def _half_height_roots(
     threshold: float,
     pixel_size_mm: float,
 ) -> tuple[float, float] | None:
-    x = (central.astype(np.float32) - np.float32(center)) * np.float32(pixel_size_mm)
-    coeff = np.polyfit(x.astype(np.float64), profile[central].astype(np.float64), 2)
-    p1, p2, p3 = coeff[0], coeff[1], coeff[2] - threshold
-    disc = p2**2 - 4.0 * p1 * p3
-    if disc < 0 or p1 == 0:
+    # Fit in pixel units to avoid ill-conditioning from very small mm scales.
+    x = central.astype(np.float64) - center
+    y = np.asarray(profile[central], dtype=np.float64)
+    if x.size < 3 or not np.all(np.isfinite(y)):
         return None
-    roots = np.sort(((-p2 + np.sqrt(disc)) / (2.0 * p1), (-p2 - np.sqrt(disc)) / (2.0 * p1)))
+    try:
+        coeff, _, rank, _, _ = np.polyfit(x, y, 2, full=True)
+    except (ValueError, np.linalg.LinAlgError):
+        return None
+    p1, p2, p3 = coeff[0], coeff[1], coeff[2] - threshold
+    if rank < 3 or not np.all(np.isfinite(coeff)) or p1 >= 0:
+        return None
+    if (
+        abs(p1) * max(float(np.max(x * x)), 1.0)
+        <= np.finfo(float).eps * max(float(np.max(np.abs(y))), 1.0) * 32
+    ):
+        return None
+    disc = p2**2 - 4.0 * p1 * p3
+    if not np.isfinite(disc) or disc <= 0:
+        return None
+    # Stable quadratic formula avoids cancellation for asymmetric fits.
+    q = -0.5 * (p2 + np.copysign(np.sqrt(disc), p2))
+    roots = np.sort(np.asarray([q / p1, p3 / q]) * pixel_size_mm)
+    if not np.all(np.isfinite(roots)):
+        return None
     return float(roots[0]), float(roots[1])
 
 
@@ -1294,13 +2480,10 @@ def _frame_velocities(
     c2: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     rotated = _rotate_stack_with_nan(sub_stack, angle)
-    transverse_profiles = nanmean_float32(rotated, axis=1)
-    longitudinal_profiles = nanmean_float32(rotated, axis=2)
-    raw = nanmean_float32(transverse_profiles[:, c1 : c2 + 1], axis=1)
-    raw = np.where(np.isnan(raw), np.float32(0.0), raw).astype(
-        np.float32,
-        copy=False,
+    transverse_profiles, longitudinal_profiles = (
+        _transverse_and_longitudinal_profiles(rotated)
     )
+    raw = nanmean_float32(transverse_profiles[:, c1 : c2 + 1], axis=1)
     safe_velocity = nanmean_float32(transverse_profiles, axis=1)
     return (
         raw,
@@ -1311,8 +2494,17 @@ def _frame_velocities(
     )
 
 
+def _transverse_and_longitudinal_profiles(
+    rotated_stack: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    return (
+        nanmean_float32(rotated_stack, axis=1),
+        nanmean_float32(rotated_stack, axis=2),
+    )
+
+
 def _rotate_stack_with_nan(sub_stack: np.ndarray, angle: float) -> np.ndarray:
-    backend = optional_cupy_backend()
+    backend = _cross_section_backend()
     if backend is not None:
         try:
             gpu_stack = backend.cupy.asarray(sub_stack, dtype=backend.cupy.float32)
@@ -1342,15 +2534,16 @@ def _rotate_stack_with_nan(sub_stack: np.ndarray, angle: float) -> np.ndarray:
                 backend.cupy.nan,
                 dtype=backend.cupy.float32,
             )
+            keep = rotated_weights >= backend.cupy.float32(0.5)
             backend.cupy.divide(
                 rotated_values,
-                rotated_weights,
+                backend.cupy.where(keep, rotated_weights, backend.cupy.float32(1)),
                 out=rotated,
-                where=rotated_weights >= backend.cupy.float32(0.5),
             )
+            rotated[~keep] = backend.cupy.nan
             return backend.cupy.asnumpy(rotated)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 -- optional CUDA boundary; warn or raise below
+            _disable_cross_section_gpu(exc)
 
     shared_validity = _shared_validity_mask(sub_stack)
     if shared_validity is not None:
@@ -1476,3 +2669,23 @@ def _shared_validity_mask(values: np.ndarray) -> np.ndarray | None:
         if not np.array_equal(np.isfinite(frame), first):
             return None
     return first
+
+
+_GPU_FAILED = False
+
+
+def _cross_section_backend():
+    if _GPU_FAILED and os.environ.get("EYEFLOW_COMPUTE_BACKEND", "auto").strip().lower() != "cupy":
+        return None
+    return optional_cupy_backend()
+
+
+def _disable_cross_section_gpu(exc):
+    global _GPU_FAILED
+    if os.environ.get("EYEFLOW_COMPUTE_BACKEND", "auto").strip().lower() == "cupy":
+        raise RuntimeError("Explicit CuPy cross-section processing failed") from exc
+    if not _GPU_FAILED:
+        warnings.warn(
+            f"CuPy cross-section processing failed; using CPU: {exc}", RuntimeWarning, stacklevel=2
+        )
+    _GPU_FAILED = True

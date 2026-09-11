@@ -54,6 +54,22 @@ class SegmentVelocityMapAviTests(unittest.TestCase):
         )
         self.assertEqual((1.0, 2.0), _global_velocity_range((source,)))
 
+    def test_color_range_comes_from_the_temporal_median_image(self) -> None:
+        maps = np.empty((2, 1, 3, 1, 1, 1), dtype=np.float32)
+        maps[:, 0, :, 0, 0, 0] = np.asarray(
+            [
+                [0.0, 1.0, 100.0],
+                [10.0, 11.0, -100.0],
+            ],
+            dtype=np.float32,
+        )
+        segments = SimpleNamespace(branch_ids=np.asarray([4], dtype=np.int32))
+
+        source = _mosaic_source("artery", segments, DatasetValue(maps))
+
+        self.assertIsNotNone(source)
+        self.assertEqual((1.0, 10.0), _global_velocity_range((source,)))
+
     def test_segment_masks_limit_range_candidates(self) -> None:
         maps = np.full((2, 2, 2, 2, 2, 1), 7.0, dtype=np.float32)
         maps[:, :, :, 0, 1, 0] = 99.0
@@ -135,6 +151,12 @@ class SegmentVelocityMapAviTests(unittest.TestCase):
             self.assertEqual(["A3/R1"], [tile["label"] for tile in metadata[0]["tiles"]])
             self.assertEqual(["V7/R1"], [tile["label"] for tile in metadata[1]["tiles"]])
             self.assertTrue(all(m["fps"] == 60.0 for m in metadata))
+            self.assertTrue(
+                all(
+                    m["velocity_range_source"] == "temporal_median_image"
+                    for m in metadata
+                )
+            )
             self.assertEqual([3, 3], [m["source_beat_count"] for m in metadata])
             self.assertEqual([1, 1], [m["exported_beat_count"] for m in metadata])
             self.assertEqual([[0], [0]], [m["exported_beat_indexes"] for m in metadata])

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import warnings
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -12,12 +12,14 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils imp
 )
 from calculations.math import interpft_real, next_power_of_two
 
+from .segment_array import SegmentArray
+
 
 @dataclass(frozen=True)
 class ProfileData:
     """A transverse profile and the x coordinates it is sampled on."""
 
-    velocity: np.ndarray
+    velocity: np.ndarray | SegmentArray
     x_micrometers: np.ndarray
 
 
@@ -26,7 +28,7 @@ class ProfileProcessingResult:
     raw_profile: ProfileData
     interpolated_profile: ProfileData
     raw_x_micrometers: np.ndarray
-    centered_velocity: np.ndarray
+    centered_velocity: np.ndarray | SegmentArray
     centered_x_micrometers: np.ndarray
     center_micrometers: np.ndarray
     lumen_edges_micrometers: np.ndarray
@@ -61,20 +63,19 @@ def process_velocity_profiles(
     extrapolation beyond those anchors is applied.
     """
 
-    values = np.asarray(profiles, dtype=np.float32)
+    values = (
+        profiles if isinstance(profiles, SegmentArray) else np.asarray(profiles, dtype=np.float32)
+    )
     if values.ndim != 4:
-        raise ValueError(
-            "profiles must have shape (radius, branch, frame, transverse_sample)."
-        )
+        raise ValueError("profiles must have shape (radius, branch, frame, transverse_sample).")
     radius_count, branch_count, frame_count, sample_count = values.shape
     if interpolation_points < 2:
         raise ValueError("interpolation_points must be at least 2.")
     raw_x_um = (
-        np.arange(sample_count, dtype=np.float32)
-        - np.float32((sample_count - 1) / 2.0)
+        np.arange(sample_count, dtype=np.float32) - np.float32((sample_count - 1) / 2.0)
     ) * np.float32(pixel_size_mm * 1000.0)
     segment_shape = (radius_count, branch_count)
-    centered = np.full(
+    centered = (SegmentArray if isinstance(values, SegmentArray) else np.full)(
         (*segment_shape, frame_count, interpolation_points),
         np.nan,
         dtype=np.float32,
@@ -92,7 +93,10 @@ def process_velocity_profiles(
     poiseuille_roots_um = np.full((*segment_shape, 2), np.nan, dtype=np.float32)
     poiseuille_r2 = np.full(segment_shape, np.nan, dtype=np.float32)
 
-    for segment_index in np.ndindex(segment_shape):
+    indexes = (
+        values.segment_indexes if isinstance(values, SegmentArray) else np.ndindex(segment_shape)
+    )
+    for segment_index in indexes:
         segment = values[segment_index]
         mean_profile = _nanmean(segment, axis=0)
         poiseuille = _matlab_poiseuille_fit(
@@ -169,8 +173,7 @@ def interpolate_velocity_profiles_per_beat(
     profiles = np.asarray(velocity_profiles, dtype=np.float32)
     if profiles.ndim != 4:
         raise ValueError(
-            "velocity_profiles must have shape "
-            "(radius, branch, frame, transverse_sample)."
+            "velocity_profiles must have shape (radius, branch, frame, transverse_sample)."
         )
 
     radius_count, branch_count, frame_count, x_count = profiles.shape

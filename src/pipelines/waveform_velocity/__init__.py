@@ -11,7 +11,7 @@ from .runner import run_waveform_velocity
         "Compute raw and band-limited waveform velocity with optional derived products."
     ),
     requires=["numpy", "h5py", "scipy", "skimage"],
-    dag_requires=["waveform_velocity_core"],
+    dag_requires=["spatial_gradient_moment0", "waveform_velocity_core"],
     dag_produces=["waveform_velocity"],
     options=[
         PipelineOption(
@@ -31,7 +31,7 @@ from .runner import run_waveform_velocity
         PipelineOption(
             "velocity_profiles",
             "Velocity profiles",
-            "Per-beat transverse and longitudinal cross-section velocity profiles.",
+            "Per-beat cross-section velocity profiles.",
             requires=("per_beat", "segments"),
         ),
         PipelineOption(

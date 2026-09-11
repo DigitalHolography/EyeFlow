@@ -27,14 +27,28 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
         _log(ctx, "Skipping systole index PNGs; no beat indices are available.")
         return []
     artery = _display_velocity(
-        _vector(ctx.analysis.get("retinal_artery_velocity_signal_filtered"))
+        _vector(
+            ctx.velocity_analysis.get(
+                "retinal_artery_velocity_signal_filtered"
+            )
+        )
     )
     artery_deriv = _display_velocity(
-        _vector(ctx.analysis.get("retinal_artery_velocity_signal_derivative"))
+        _vector(
+            ctx.velocity_analysis.get(
+                "retinal_artery_velocity_signal_derivative"
+            )
+        )
     )
-    vein = _display_velocity(_vector(ctx.analysis.get("retinal_vein_velocity_signal_filtered")))
+    vein = _display_velocity(
+        _vector(ctx.velocity_analysis.get("retinal_vein_velocity_signal_filtered"))
+    )
     vein_deriv = _display_velocity(
-        _vector(ctx.analysis.get("retinal_vein_velocity_signal_derivative"))
+        _vector(
+            ctx.velocity_analysis.get(
+                "retinal_vein_velocity_signal_derivative"
+            )
+        )
     )
     maxima, minima = _cycle_extrema(artery, peaks)
     return [

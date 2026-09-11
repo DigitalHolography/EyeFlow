@@ -29,8 +29,10 @@ from .plotting import (
 
 
 def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
-    velocity_map = ctx.analysis.get("retinal_vessel_velocity")
-    velocity_avg = _array_or_none(ctx.analysis.get("velocity_map_avg"))
+    velocity_map = ctx.velocity_analysis.get("velocity_map")
+    velocity_avg = _array_or_none(
+        ctx.velocity_analysis.get("velocity_map_avg")
+    )
     if velocity_avg is None:
         _log(ctx, "Skipping final velocity visualizations; velocity map is unavailable.")
         return []
@@ -111,7 +113,10 @@ def _histogram_plot(
 ) -> Path:
     if velocity_map is None:
         velocity_map = _display_velocity(
-            np.asarray(ctx.analysis["velocity_map_avg"], dtype=np.float32)
+            np.asarray(
+                ctx.velocity_analysis["velocity_map_avg"],
+                dtype=np.float32,
+            )
         )[None, :, :]
     histo = _histogram_matrix(velocity_map, mask)
     fig, ax = _plt().subplots(figsize=(6.0, 2.75))
@@ -173,7 +178,9 @@ def _combined_plot(
         histogram_source = (
             velocity_map
             if velocity_map is not None
-            else _display_velocity(np.asarray(ctx.analysis["velocity_map_avg"]))[None, :, :]
+            else _display_velocity(
+                np.asarray(ctx.velocity_analysis["velocity_map_avg"])
+            )[None, :, :]
         )
         histo = _histogram_matrix(
             histogram_source,
