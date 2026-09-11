@@ -14,12 +14,45 @@ from calculations.topology import (  # noqa: E402
     SegmentRingSettings,
     SegmentTopology,
     build_segment_topology,
+    competing_segment_masks,
     extract_segment,
     extract_segments,
 )
 
 
 class SegmentTopologyTests(unittest.TestCase):
+    def test_competing_masks_include_other_branches_and_vessel_classes(self) -> None:
+        labels = np.zeros((7, 7), dtype=np.int32)
+        labels[2:5, 3] = 1
+        labels[2:5, 5] = 2
+        own_vessels = labels > 0
+        other_vessels = np.zeros_like(own_vessels)
+        other_vessels[3, 1] = True
+        other_vessels[3, 3] = True  # Overlap must not erase the selected branch.
+        topology = SegmentTopology(
+            spatial_shape=(7, 7),
+            optic_disc_center_xy=(3.0, 3.0),
+            labels=labels,
+            centerline=labels > 0,
+            branch_ids=np.asarray([1], dtype=np.int32),
+            annulus_masks=np.ones((1, 7, 7), dtype=bool),
+            segment_masks=(labels == 1)[None, None],
+            segment_centers_xy=np.asarray([[[3.0, 3.0]]], dtype=np.float32),
+            window_bounds_xyxy=np.asarray([[[0, 7, 0, 7]]], dtype=np.int32),
+            window_side_pixels=7,
+        )
+
+        competing = competing_segment_masks(
+            topology,
+            own_vessels,
+            other_vessels,
+        )[0, 0]
+
+        self.assertFalse(competing[2, 3])
+        self.assertFalse(competing[3, 3])
+        self.assertTrue(np.all(competing[2:5, 5]))
+        self.assertTrue(competing[3, 1])
+
     def test_builds_map_independent_segment_windows(self) -> None:
         vessel = np.zeros((41, 41), dtype=bool)
         vessel[18:23, 5:36] = True

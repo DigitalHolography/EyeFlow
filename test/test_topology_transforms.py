@@ -86,6 +86,24 @@ class TestTopologyTransforms(unittest.TestCase):
         self.assertFalse(dilated[0, 0, 0, 0])
         self.assertFalse(dilated[0, 1, 4, 4])
 
+    def test_mask_dilation_removes_competing_vessel_pixels(self) -> None:
+        masks = np.zeros((1, 1, 7, 7), dtype=bool)
+        masks[0, 0, 3, 3] = True
+        competing = np.zeros_like(masks)
+        competing[0, 0, 3, 3] = True
+        competing[0, 0, 3, 4:6] = True
+
+        analysis_mask = dilate_segment_masks(
+            masks,
+            iterations=2,
+            exclusion_masks=competing,
+        )
+
+        self.assertTrue(analysis_mask[0, 0, 3, 2])
+        self.assertTrue(analysis_mask[0, 0, 3, 3])
+        self.assertFalse(analysis_mask[0, 0, 3, 4])
+        self.assertFalse(analysis_mask[0, 0, 3, 5])
+
     def test_rotation_occurs_after_interpolation_on_a_larger_canvas(self) -> None:
         values = np.arange(18, dtype=np.float32).reshape(1, 1, 2, 3, 3)
         masks = np.ones((1, 1, 3, 3), dtype=bool)

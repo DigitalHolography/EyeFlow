@@ -56,6 +56,7 @@ def analyze_displacement_segments(
         profile_masks = dilate_segment_masks(
             topology.rotated_masks,
             iterations=PROFILE_MASK_DILATION_ITERATIONS,
+            exclusion_masks=topology.rotated_competing_masks,
         )
         maps = np.full(map_shape, np.nan, dtype=np.float32) if retain_maps else None
         transverse_unmasked = np.full(profile_shape, np.nan, dtype=np.float32)

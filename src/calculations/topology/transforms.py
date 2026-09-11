@@ -139,10 +139,16 @@ def dilate_segment_masks(
     segment_masks: np.ndarray,
     *,
     iterations: int,
+    exclusion_masks: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Expand masks along their final two spatial axes."""
+    """Expand masks while excluding competitors only from the added fringe."""
 
     masks = np.asarray(segment_masks, dtype=bool)
+    exclusions = None
+    if exclusion_masks is not None:
+        exclusions = np.asarray(exclusion_masks, dtype=bool)
+        if exclusions.shape != masks.shape:
+            raise ValueError("exclusion_masks must match segment_masks shape.")
     if masks.ndim < 2:
         raise ValueError("segment_masks must end with spatial (y, x) axes.")
     if iterations < 0:
@@ -161,7 +167,10 @@ def dilate_segment_masks(
             kernel,
             iterations=iterations,
         ).astype(bool)
-    return dilated.reshape(masks.shape)
+    result = dilated.reshape(masks.shape)
+    if exclusions is not None:
+        result = masks | (result & ~exclusions)
+    return result
 
 
 def rotate_segments(

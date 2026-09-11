@@ -21,6 +21,7 @@ class TopologyCacheKey:
     source_id: str
     vessel_name: str
     vessel_mask_fingerprint: str
+    competing_vessel_mask_fingerprint: str
     optic_disc_mask_fingerprint: str
     settings: SegmentRingSettings
     output_side_pixels: int
@@ -38,6 +39,7 @@ def topology_cache_key(
     output_side_pixels: int,
     window_size_percentile_kept: float,
     window_side_pixels: int | None,
+    competing_vessel_mask=None,
 ) -> TopologyCacheKey:
     """Create a stable cache key from topology-defining inputs."""
 
@@ -45,6 +47,11 @@ def topology_cache_key(
         source_id=str(source_id),
         vessel_name=str(vessel_name),
         vessel_mask_fingerprint=_mask_fingerprint(vessel_mask),
+        competing_vessel_mask_fingerprint=_mask_fingerprint(
+            np.zeros_like(np.asarray(vessel_mask, dtype=bool))
+            if competing_vessel_mask is None
+            else competing_vessel_mask
+        ),
         optic_disc_mask_fingerprint=_mask_fingerprint(optic_disc_mask),
         settings=settings,
         output_side_pixels=int(output_side_pixels),

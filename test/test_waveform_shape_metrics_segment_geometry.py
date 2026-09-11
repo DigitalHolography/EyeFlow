@@ -264,7 +264,12 @@ class SegmentCenterTests(unittest.TestCase):
 
         self.assertEqual({"artery": "artery", "vein": "vein"}, results)
         self.assertEqual(2, prepare_topology.call_count)
-        resize_topology.assert_called_once_with(artery_initial, 9, 128)
+        resize_topology.assert_called_once()
+        resize_args = resize_topology.call_args.args
+        self.assertIs(artery_initial, resize_args[0])
+        self.assertEqual((9, 128), resize_args[1:3])
+        np.testing.assert_array_equal(artery_labels > 0, resize_args[3])
+        np.testing.assert_array_equal(vein_labels > 0, resize_args[4])
         self.assertIs(artery_prepared, generate.call_args_list[0].args[1])
         self.assertEqual("artery segments", generate.call_args_list[0].args[2])
         self.assertIs(vein_prepared, generate.call_args_list[1].args[1])
@@ -318,17 +323,17 @@ class SegmentCenterTests(unittest.TestCase):
             self.assertTrue(np.any(valid))
             np.testing.assert_allclose(result.velocity[valid], 1.0)
 
-    def test_profile_mask_dilation_expands_twenty_pixels(self) -> None:
+    def test_profile_mask_dilation_expands_ten_pixels(self) -> None:
         mask = np.zeros((51, 51), dtype=bool)
         mask[25, 25] = True
 
         dilated = _dilate_profile_mask(mask)
 
         self.assertEqual(np.bool_, dilated.dtype)
-        self.assertEqual(41 * 41, int(np.count_nonzero(dilated)))
-        self.assertTrue(np.all(dilated[5:46, 5:46]))
-        self.assertFalse(np.any(dilated[:5]))
-        self.assertFalse(np.any(dilated[:, :5]))
+        self.assertEqual(21 * 21, int(np.count_nonzero(dilated)))
+        self.assertTrue(np.all(dilated[15:36, 15:36]))
+        self.assertFalse(np.any(dilated[:15]))
+        self.assertFalse(np.any(dilated[:, :15]))
         self.assertEqual(1, int(np.count_nonzero(mask)))
 
     def test_fixed_subimage_is_centroid_centered_and_padded_at_periphery(self) -> None:

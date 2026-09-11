@@ -19,6 +19,7 @@ from .geometry import SegmentRingSettings
 from .segments import (
     SegmentTopology,
     build_segment_topology,
+    competing_segment_masks,
     extract_segment,
     resize_segment_topology_windows,
 )
@@ -38,6 +39,7 @@ class PreparedTopology:
     rotation_degrees: np.ndarray
     interpolated_masks: np.ndarray
     rotated_masks: np.ndarray
+    rotated_competing_masks: np.ndarray | None = None
 
 
 class PreparedSegment(NamedTuple):
@@ -59,6 +61,7 @@ def prepare_topology(
     output_side_pixels: int = 128,
     window_size_percentile_kept: float = 0.95,
     window_side_pixels: int | None = None,
+    competing_vessel_mask=None,
 ) -> PreparedTopology:
     """Build segment geometry, orientations, and uniform masks once."""
 
@@ -74,12 +77,25 @@ def prepare_topology(
         topology.segment_masks,
         output_side_pixels,
     )
+    competing_masks = competing_segment_masks(
+        topology,
+        vessel_mask,
+        competing_vessel_mask,
+    )
+    interpolated_competing_masks = interpolate_segment_masks(
+        competing_masks,
+        output_side_pixels,
+    )
     return PreparedTopology(
         topology=topology,
         rotation_degrees=rotation_degrees,
         interpolated_masks=interpolated_masks,
         rotated_masks=rotate_segment_masks(
             interpolated_masks,
+            rotation_degrees,
+        ),
+        rotated_competing_masks=rotate_segment_masks(
+            interpolated_competing_masks,
             rotation_degrees,
         ),
     )
@@ -113,6 +129,13 @@ def prepare_topologies(
         optic_disc_center,
         image_shape,
     )
+    competing_masks = {}
+    for name in masks:
+        competing = np.zeros(image_shape, dtype=bool)
+        for other_name, mask in masks.items():
+            if other_name != name:
+                np.logical_or(competing, mask, out=competing)
+        competing_masks[name] = competing
 
     if window_side_pixels is not None:
         return {
@@ -126,6 +149,7 @@ def prepare_topologies(
                 output_side_pixels=output_side_pixels,
                 window_size_percentile_kept=window_size_percentile_kept,
                 window_side_pixels=window_side_pixels,
+                competing_vessel_mask=competing_masks[name],
             )
             for name, mask in masks.items()
         }
@@ -141,6 +165,7 @@ def prepare_topologies(
             output_side_pixels=output_side_pixels,
             window_size_percentile_kept=window_size_percentile_kept,
             window_side_pixels=None,
+            competing_vessel_mask=competing_masks[name],
         )
         for name, mask in masks.items()
     }
@@ -153,6 +178,8 @@ def prepare_topologies(
                 topology,
                 shared_side,
                 output_side_pixels,
+                masks[name],
+                competing_masks[name],
             )
         )
         for name, topology in initial.items()
@@ -163,6 +190,8 @@ def _resize_prepared_topology(
     prepared: PreparedTopology,
     window_side_pixels: int,
     output_side_pixels: int,
+    vessel_mask: np.ndarray,
+    competing_vessel_mask: np.ndarray,
 ) -> PreparedTopology:
     topology = resize_segment_topology_windows(
         prepared.topology,
@@ -172,12 +201,20 @@ def _resize_prepared_topology(
         topology.segment_masks,
         output_side_pixels,
     )
+    interpolated_competing_masks = interpolate_segment_masks(
+        competing_segment_masks(topology, vessel_mask, competing_vessel_mask),
+        output_side_pixels,
+    )
     return PreparedTopology(
         topology=topology,
         rotation_degrees=prepared.rotation_degrees,
         interpolated_masks=interpolated_masks,
         rotated_masks=rotate_segment_masks(
             interpolated_masks,
+            prepared.rotation_degrees,
+        ),
+        rotated_competing_masks=rotate_segment_masks(
+            interpolated_competing_masks,
             prepared.rotation_degrees,
         ),
     )
@@ -293,6 +330,7 @@ def _cached_topology(
     output_side_pixels: int,
     window_size_percentile_kept: float,
     window_side_pixels: int | None,
+    competing_vessel_mask: np.ndarray,
 ) -> PreparedTopology:
     key = topology_cache_key(
         source_id,
@@ -303,6 +341,7 @@ def _cached_topology(
         output_side_pixels=output_side_pixels,
         window_size_percentile_kept=window_size_percentile_kept,
         window_side_pixels=window_side_pixels,
+        competing_vessel_mask=competing_vessel_mask,
     )
     if cache is not None:
         found = cache.get(key)
@@ -318,6 +357,7 @@ def _cached_topology(
         output_side_pixels=output_side_pixels,
         window_size_percentile_kept=window_size_percentile_kept,
         window_side_pixels=window_side_pixels,
+        competing_vessel_mask=competing_vessel_mask,
     )
     if cache is not None:
         cache[key] = prepared

@@ -30,6 +30,7 @@ from .profiles import (
 from .segments import (
     SegmentTopology,
     build_segment_topology,
+    competing_segment_masks,
     extract_segment,
     extract_segments,
     resize_segment_topology_windows,
@@ -64,6 +65,7 @@ __all__ = [
     "TopologyCacheKey",
     "annulus_mask",
     "build_segment_topology",
+    "competing_segment_masks",
     "determine_segment_rotations",
     "dilate_segment_masks",
     "extract_segments",
