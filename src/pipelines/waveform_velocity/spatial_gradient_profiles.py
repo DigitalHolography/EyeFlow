@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from calculations.blood_flow_velocity import segment_velocity_results
+from calculations.math import nanmean_float32
 from pipeline_engine.base import DatasetValue
 from pipelines.spatial_gradient_moment0.runner import (
     STATE_KEY,
@@ -119,6 +120,7 @@ def _pack_vessel_spatial_gradient_profiles(
     )
     meaned = _temporally_meaned_profile_dataset(masked)
     peak_metrics = _spatial_gradient_peak_metrics(
+        masked,
         meaned,
         minimum_gap=SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES,
     )
@@ -135,55 +137,57 @@ def _pack_vessel_spatial_gradient_profiles(
 
 
 def _spatial_gradient_peak_metrics(
+    masked_profile: DatasetValue,
     meaned_profile: DatasetValue,
     *,
     minimum_gap: int,
 ) -> dict[str, DatasetValue]:
-    """Find the two highest samples separated by ``minimum_gap`` samples."""
+    """Find time-resolved peak positions and derive lumen diameters."""
 
-    values = np.asarray(meaned_profile.data, dtype=np.float32)
-    attrs = dict(meaned_profile.attrs or {})
-    dim_desc = list(attrs.get("dimDesc", ()))
-    if values.ndim != 4 or dim_desc != ["x", "beat", "branch", "radius"]:
-        raise ValueError(
-            "meaned spatial-gradient profiles must have dimensions "
-            "(x, beat, branch, radius)."
-        )
     if minimum_gap < 1:
         raise ValueError("minimum peak gap must be at least one sample.")
 
-    metric_shape = values.shape[1:]
-    left_indexes = np.full(metric_shape, np.nan, dtype=np.float32)
-    right_indexes = np.full(metric_shape, np.nan, dtype=np.float32)
-    left_values = np.full(metric_shape, np.nan, dtype=np.float32)
-    right_values = np.full(metric_shape, np.nan, dtype=np.float32)
-    for indexes in np.ndindex(metric_shape):
-        curve = values[(slice(None), *indexes)]
-        peaks = _two_highest_separated_indexes(curve, minimum_gap)
-        if len(peaks) >= 1:
-            left_indexes[indexes] = peaks[0]
-            left_values[indexes] = curve[peaks[0]]
-        if len(peaks) == 2:
-            right_indexes[indexes] = peaks[1]
-            right_values[indexes] = curve[peaks[1]]
-
+    left_indexes, right_indexes, _, _ = _spatial_gradient_peak_arrays(
+        masked_profile,
+        ["x", "time", "beat", "branch", "radius"],
+        minimum_gap=minimum_gap,
+    )
+    _, _, left_values, right_values = _spatial_gradient_peak_arrays(
+        meaned_profile,
+        ["x", "beat", "branch", "radius"],
+        minimum_gap=minimum_gap,
+    )
+    meaned_attrs = dict(meaned_profile.attrs or {})
     common_attrs = {
-        "dimDesc": ["beat", "branch", "radius"],
         "minimum_peak_gap_samples": np.int32(minimum_gap),
         "peak_selection": "two_highest_finite_values_with_minimum_index_gap",
-        "source_profile": "TransverseSpatialGradientProfileMaskedMeaned",
     }
     index_attrs = {
         **common_attrs,
+        "dimDesc": ["time", "beat", "branch", "radius"],
+        "source_profile": "TransverseSpatialGradientProfileMasked",
         "unit": "pixels",
         "index_base": np.int32(0),
         "position_axis": "x",
     }
     value_attrs = {
         **common_attrs,
-        "unit": attrs.get("unit", "a.u."),
+        "dimDesc": ["beat", "branch", "radius"],
+        "source_profile": "TransverseSpatialGradientProfileMaskedMeaned",
+        "unit": meaned_attrs.get("unit", "a.u."),
     }
-    lumen_diameter = right_indexes - left_indexes
+    time_mean_left = nanmean_float32(left_indexes, axis=0)
+    time_mean_right = nanmean_float32(right_indexes, axis=0)
+    radius_mean_left = nanmean_float32(left_indexes, axis=-1)
+    radius_mean_right = nanmean_float32(right_indexes, axis=-1)
+    diameter_attrs = {
+        **common_attrs,
+        "source_profile": "TransverseSpatialGradientProfileMasked",
+        "unit": "pixels",
+        "definition": "index_right_max - index_left_max",
+    }
+    temporal_reduction = "mean_over_interpolated_beat_time"
+    radius_reduction = "mean_over_valid_radii"
     return {
         "index_left_max": DatasetValue(
             left_indexes,
@@ -201,15 +205,70 @@ def _spatial_gradient_peak_metrics(
             right_values,
             {**value_attrs, "peak_side": "right"},
         ),
-        "lumen_diameter": DatasetValue(
-            lumen_diameter,
+        "lumen_diameter_branch": DatasetValue(
+            nanmean_float32(time_mean_right, axis=-1)
+            - nanmean_float32(time_mean_left, axis=-1),
             {
-                **common_attrs,
-                "unit": "pixels",
-                "definition": "index_right_max - index_left_max",
+                **diameter_attrs,
+                "dimDesc": ["beat", "branch"],
+                "temporal_reduction": temporal_reduction,
+                "radius_reduction": radius_reduction,
             },
         ),
+        "lumen_diameter_radius": DatasetValue(
+            time_mean_right - time_mean_left,
+            {
+                **diameter_attrs,
+                "dimDesc": ["beat", "branch", "radius"],
+                "temporal_reduction": temporal_reduction,
+            },
+        ),
+        "lumen_diameter_time": DatasetValue(
+            radius_mean_right - radius_mean_left,
+            {
+                **diameter_attrs,
+                "dimDesc": ["time", "beat", "branch"],
+                "radius_reduction": radius_reduction,
+            },
+        ),
+        "lumen_diameter": DatasetValue(
+            right_indexes - left_indexes,
+            {**diameter_attrs, "dimDesc": ["time", "beat", "branch", "radius"]},
+        ),
     }
+
+
+def _spatial_gradient_peak_arrays(
+    profile: DatasetValue,
+    expected_dimensions: list[str],
+    *,
+    minimum_gap: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Find the two strongest separated peaks along each profile's x axis."""
+
+    values = np.asarray(profile.data, dtype=np.float32)
+    dim_desc = list((profile.attrs or {}).get("dimDesc", ()))
+    if values.ndim != len(expected_dimensions) or dim_desc != expected_dimensions:
+        raise ValueError(
+            "spatial-gradient profile dimensions must be "
+            f"{tuple(expected_dimensions)}."
+        )
+    metric_shape = values.shape[1:]
+    left_indexes = np.full(metric_shape, np.nan, dtype=np.float32)
+    right_indexes = np.full(metric_shape, np.nan, dtype=np.float32)
+    left_values = np.full(metric_shape, np.nan, dtype=np.float32)
+    right_values = np.full(metric_shape, np.nan, dtype=np.float32)
+    for indexes in np.ndindex(metric_shape):
+        curve = values[(slice(None), *indexes)]
+        peaks = _two_highest_separated_indexes(curve, minimum_gap)
+        if len(peaks) >= 1:
+            left_indexes[indexes] = peaks[0]
+            left_values[indexes] = curve[peaks[0]]
+        if len(peaks) == 2:
+            right_indexes[indexes] = peaks[1]
+            right_values[indexes] = curve[peaks[1]]
+
+    return left_indexes, right_indexes, left_values, right_values
 
 
 def _two_highest_separated_indexes(
