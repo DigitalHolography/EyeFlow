@@ -442,7 +442,7 @@ def _masked_signal(velocity_map: np.ndarray, mask: np.ndarray) -> np.ndarray:
     selected = velocity_map[:, np.asarray(mask, dtype=bool)]
     if not np.any(np.isfinite(selected)):
         return np.full((velocity_map.shape[0],), np.nan, dtype=np.float32)
-    return np.nanmean(selected, axis=1, dtype=np.float32).astype(
+    return np.nanmean(selected, axis=1, dtype=np.float64).astype(
         np.float32,
         copy=False,
     )

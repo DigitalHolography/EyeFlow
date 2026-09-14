@@ -189,6 +189,76 @@ class ScratchAndSchemaTests(unittest.TestCase):
         ):
             np.testing.assert_array_equal(buffered[key], retained[key])
 
+    def test_velocity_estimator_is_independent_of_frame_chunk_size(self) -> None:
+        rng = np.random.default_rng(10)
+        shape = (17, 20, 18)
+        moment0 = (0.5 + 2.0 * rng.random(shape)).astype(np.float32)
+        frequency = (
+            np.linspace(2.0e5, 8.0e5, shape[0], dtype=np.float32)[:, None, None]
+            * (0.8 + 0.4 * rng.random(shape, dtype=np.float32))
+        )
+        moment2 = (
+            np.mean(moment0, axis=(-1, -2), keepdims=True, dtype=np.float32)
+            * np.square(frequency)
+        ).astype(np.float32)
+        artery = np.zeros(shape[1:], dtype=bool)
+        vein = np.zeros_like(artery)
+        artery[6:9, 5:8] = True
+        vein[12:15, 11:14] = True
+
+        results = []
+        for chunk_size in (1, 2, 7, 32):
+            velocity_output = np.empty(shape, dtype=np.float32)
+            with (
+                patch(
+                    "calculations.retinal_velocity.vessel_velocity_estimator."
+                    "SCRATCH_FRAME_CHUNK_SIZE",
+                    chunk_size,
+                ),
+                h5py.File(
+                    "scratch.h5",
+                    "w",
+                    driver="core",
+                    backing_store=False,
+                ) as h5,
+            ):
+                result = run_chunked_velocity_estimator(
+                    moment0=moment0,
+                    moment2=moment2,
+                    artery_mask=artery,
+                    vein_mask=vein,
+                    local_background_dist=2,
+                    scratch_h5=h5,
+                    velocity_video_output=velocity_output,
+                )
+                results.append(
+                    {
+                        key: np.asarray(result[key]).copy()
+                        for key in (
+                            "velocity_map",
+                            "moment0_avg",
+                            "velocity_map_avg",
+                            "fRMS_avg",
+                            "fRMS_bkg_avg",
+                            "deltafRMS_avg",
+                            "retinal_artery_velocity_signal",
+                            "retinal_vein_velocity_signal",
+                            "retinal_artery_fRMS_signal",
+                            "retinal_vein_fRMS_signal",
+                            "retinal_artery_fRMS_bkg_signal",
+                            "retinal_vein_fRMS_bkg_signal",
+                            "retinal_vessel_fRMS_bkg_signal",
+                            "retinal_artery_deltafRMS_signal",
+                            "retinal_vein_deltafRMS_signal",
+                        )
+                    }
+                )
+
+        expected = results[0]
+        for actual in results[1:]:
+            for key in expected:
+                np.testing.assert_array_equal(actual[key], expected[key])
+
     def test_scratch_h5_is_memory_backed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "output.h5"
