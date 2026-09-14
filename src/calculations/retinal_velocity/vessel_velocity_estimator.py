@@ -371,11 +371,20 @@ def _inpaint_frame_batch(
     )
     inpainted = np.moveaxis(result, -1, 0).astype(np.float32, copy=False)
     square_safe_limit = np.float32(np.sqrt(np.finfo(np.float32).max))
-    if np.all(np.isfinite(inpainted)) and np.all(
-        np.abs(inpainted) <= square_safe_limit
-    ):
+    valid_frames = np.all(np.isfinite(inpainted), axis=(-1, -2)) & np.all(
+        np.abs(inpainted) <= square_safe_limit,
+        axis=(-1, -2),
+    )
+    if np.all(valid_frames):
         return inpainted
-    return _bounded_inpaint_result(inpainted, source, mask)
+
+    output = inpainted.copy()
+    output[~valid_frames] = _bounded_inpaint_result(
+        inpainted[~valid_frames],
+        source[~valid_frames],
+        mask,
+    )
+    return output
 
 
 def _bounded_inpaint_result(

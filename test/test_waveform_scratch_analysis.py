@@ -114,6 +114,37 @@ class ScratchAndSchemaTests(unittest.TestCase):
 
         np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
+    def test_inpaint_fallback_only_bounds_invalid_frames(self) -> None:
+        frames = np.asarray(
+            [
+                [[1.0, 2.0], [3.0, 4.0]],
+                [[10.0, 20.0], [30.0, 40.0]],
+            ],
+            dtype=np.float32,
+        )
+        mask = np.asarray([[True, False], [False, False]])
+        inpainted = np.asarray(
+            [
+                [[100.0, 2.0], [3.0, 4.0]],
+                [[np.inf, 20.0], [30.0, 40.0]],
+            ],
+            dtype=np.float32,
+        )
+        fake_inpaint = SimpleNamespace(
+            inpaint_biharmonic=lambda *args, **kwargs: np.moveaxis(
+                inpainted,
+                0,
+                -1,
+            )
+        )
+
+        actual = _inpaint_frame_batch(frames, mask, fake_inpaint)
+
+        np.testing.assert_array_equal(actual[0], inpainted[0])
+        self.assertTrue(np.all(np.isfinite(actual[1])))
+        self.assertGreaterEqual(float(actual[1].min()), 20.0)
+        self.assertLessEqual(float(actual[1].max()), 40.0)
+
     def test_velocity_estimator_uses_summary_only_frequency_intermediates(
         self,
     ) -> None:
