@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from calculations.blood_flow_velocity import segment_velocity_results
-from calculations.math import nanmean_float32
+from calculations.math import nanmedian
 from pipeline_engine.base import DatasetValue
 from pipelines.spatial_gradient_moment0.runner import (
     STATE_KEY,
@@ -122,6 +122,7 @@ def _pack_vessel_spatial_gradient_profiles(
     peak_metrics = _spatial_gradient_peak_metrics(
         masked,
         meaned,
+        unmasked_profile=unmasked if vessel_name == "Artery" else None,
         minimum_gap=SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES,
     )
     metrics_root = f"{SPATIAL_GRADIENT_METRICS_ROOT}/{vessel_name}/Transverse"
@@ -140,6 +141,7 @@ def _spatial_gradient_peak_metrics(
     masked_profile: DatasetValue,
     meaned_profile: DatasetValue,
     *,
+    unmasked_profile: DatasetValue | None = None,
     minimum_gap: int,
 ) -> dict[str, DatasetValue]:
     """Find time-resolved peak positions and derive lumen diameters."""
@@ -147,10 +149,12 @@ def _spatial_gradient_peak_metrics(
     if minimum_gap < 1:
         raise ValueError("minimum peak gap must be at least one sample.")
 
-    left_indexes, right_indexes, _, _ = _spatial_gradient_peak_arrays(
-        masked_profile,
-        ["x", "time", "beat", "branch", "radius"],
-        minimum_gap=minimum_gap,
+    masked_left_indexes, masked_right_indexes, _, _ = (
+        _spatial_gradient_peak_arrays(
+            masked_profile,
+            ["x", "time", "beat", "branch", "radius"],
+            minimum_gap=minimum_gap,
+        )
     )
     _, _, left_values, right_values = _spatial_gradient_peak_arrays(
         meaned_profile,
@@ -162,80 +166,288 @@ def _spatial_gradient_peak_metrics(
         "minimum_peak_gap_samples": np.int32(minimum_gap),
         "peak_selection": "two_highest_finite_values_with_minimum_index_gap",
     }
-    index_attrs = {
-        **common_attrs,
-        "dimDesc": ["time", "beat", "branch", "radius"],
-        "source_profile": "TransverseSpatialGradientProfileMasked",
-        "unit": "pixels",
-        "index_base": np.int32(0),
-        "position_axis": "x",
-    }
+
     value_attrs = {
         **common_attrs,
         "dimDesc": ["beat", "branch", "radius"],
         "source_profile": "TransverseSpatialGradientProfileMaskedMeaned",
         "unit": meaned_attrs.get("unit", "a.u."),
     }
-    time_mean_left = nanmean_float32(left_indexes, axis=0)
-    time_mean_right = nanmean_float32(right_indexes, axis=0)
-    radius_mean_left = nanmean_float32(left_indexes, axis=-1)
-    radius_mean_right = nanmean_float32(right_indexes, axis=-1)
-    diameter_attrs = {
-        **common_attrs,
-        "source_profile": "TransverseSpatialGradientProfileMasked",
-        "unit": "pixels",
-        "definition": "index_right_max - index_left_max",
-    }
-    temporal_reduction = "mean_over_interpolated_beat_time"
-    radius_reduction = "mean_over_valid_radii"
-    return {
-        "index_left_max": DatasetValue(
+    if unmasked_profile is not None:
+        metrics = _spatial_gradient_edge_index_metrics(
+            masked_left_indexes,
+            masked_right_indexes,
+            mask_name="Masked",
+            source_profile="TransverseSpatialGradientProfileMasked",
+            common_attrs=common_attrs,
+        )
+    else:
+        index_attrs = {
+            **common_attrs,
+            "dimDesc": ["time", "beat", "branch", "radius"],
+            "source_profile": "TransverseSpatialGradientProfileMasked",
+            "unit": "pixels",
+            "index_base": np.int32(0),
+            "position_axis": "x",
+            "index_refinement": "three_point_quadratic_vertex_with_integer_fallback",
+        }
+        metrics = {
+            "index_left_max": DatasetValue(
+                masked_left_indexes,
+                {**index_attrs, "peak_side": "left"},
+            ),
+            "index_right_max": DatasetValue(
+                masked_right_indexes,
+                {**index_attrs, "peak_side": "right"},
+            ),
+        }
+    metrics.update(
+        {
+            "peak_value_left_max": DatasetValue(
+                left_values,
+                {**value_attrs, "peak_side": "left"},
+            ),
+            "peak_value_right_max": DatasetValue(
+                right_values,
+                {**value_attrs, "peak_side": "right"},
+            ),
+        }
+    )
+    if unmasked_profile is not None:
+        unmasked_left_indexes, unmasked_right_indexes, _, _ = (
+            _spatial_gradient_peak_arrays(
+                unmasked_profile,
+                ["x", "time", "beat", "branch", "radius"],
+                minimum_gap=minimum_gap,
+            )
+        )
+        metrics.update(
+            _spatial_gradient_edge_index_metrics(
+                unmasked_left_indexes,
+                unmasked_right_indexes,
+                mask_name="Unmasked",
+                source_profile="TransverseSpatialGradientProfileUnmasked",
+                common_attrs=common_attrs,
+            )
+        )
+    return metrics
+
+
+def _spatial_gradient_edge_index_metrics(
+    left_indexes: np.ndarray,
+    right_indexes: np.ndarray,
+    *,
+    mask_name: str,
+    source_profile: str,
+    common_attrs: dict[str, object],
+) -> dict[str, DatasetValue]:
+    """Build the requested hierarchy of NaN-median edge-index reductions."""
+
+    left_bkr = nanmedian(left_indexes, axis=0)
+    right_bkr = nanmedian(right_indexes, axis=0)
+    left_kr = nanmedian(left_bkr, axis=0)
+    right_kr = nanmedian(right_bkr, axis=0)
+    hierarchy = {
+        "tbkr": (
             left_indexes,
-            {**index_attrs, "peak_side": "left"},
-        ),
-        "index_right_max": DatasetValue(
             right_indexes,
-            {**index_attrs, "peak_side": "right"},
+            ["time", "beat", "branch", "radius"],
         ),
-        "peak_value_left_max": DatasetValue(
-            left_values,
-            {**value_attrs, "peak_side": "left"},
+        "bkr": (
+            left_bkr,
+            right_bkr,
+            ["beat", "branch", "radius"],
         ),
-        "peak_value_right_max": DatasetValue(
-            right_values,
-            {**value_attrs, "peak_side": "right"},
+        "bk": (
+            nanmedian(left_bkr, axis=-1),
+            nanmedian(right_bkr, axis=-1),
+            ["beat", "branch"],
         ),
-        "lumen_diameter_branch": DatasetValue(
-            nanmean_float32(time_mean_right, axis=-1)
-            - nanmean_float32(time_mean_left, axis=-1),
-            {
-                **diameter_attrs,
-                "dimDesc": ["beat", "branch"],
-                "temporal_reduction": temporal_reduction,
-                "radius_reduction": radius_reduction,
-            },
+        "kr": (
+            left_kr,
+            right_kr,
+            ["branch", "radius"],
         ),
-        "lumen_diameter_radius": DatasetValue(
-            time_mean_right - time_mean_left,
-            {
-                **diameter_attrs,
-                "dimDesc": ["beat", "branch", "radius"],
-                "temporal_reduction": temporal_reduction,
-            },
-        ),
-        "lumen_diameter_time": DatasetValue(
-            radius_mean_right - radius_mean_left,
-            {
-                **diameter_attrs,
-                "dimDesc": ["time", "beat", "branch"],
-                "radius_reduction": radius_reduction,
-            },
-        ),
-        "lumen_diameter": DatasetValue(
-            right_indexes - left_indexes,
-            {**diameter_attrs, "dimDesc": ["time", "beat", "branch", "radius"]},
+        "k": (
+            nanmedian(left_kr, axis=-1),
+            nanmedian(right_kr, axis=-1),
+            ["branch"],
         ),
     }
+    tbkr_lumen_size = right_indexes - left_indexes
+    tbkr_lumen_size_qc, tbkr_median, tbkr_standard_deviation = (
+        _lumen_size_standard_deviation_quality_control(tbkr_lumen_size)
+    )
+    metrics: dict[str, DatasetValue] = {}
+    for dimension_tag, (left, right, dim_desc) in hierarchy.items():
+        attrs = {
+            **common_attrs,
+            "dimDesc": dim_desc,
+            "source_profile": source_profile,
+            "unit": "pixels",
+            "index_base": np.int32(0),
+            "position_axis": "x",
+            "index_refinement": "three_point_quadratic_vertex_with_integer_fallback",
+        }
+        metrics[f"{mask_name}/{dimension_tag}/left_edge_index"] = DatasetValue(
+            left,
+            {**attrs, "peak_side": "left"},
+        )
+        metrics[f"{mask_name}/{dimension_tag}/right_edge_index"] = DatasetValue(
+            right,
+            {**attrs, "peak_side": "right"},
+        )
+        lumen_size = right - left
+        if dimension_tag == "tbkr":
+            lumen_size_qc = tbkr_lumen_size_qc
+            median = tbkr_median
+            standard_deviation = tbkr_standard_deviation
+            lower_limit = np.float32(median - standard_deviation)
+            upper_limit = np.float32(median + standard_deviation)
+            qc_unit = "binary"
+            qc_attrs = {
+                "definition": (
+                    "1 for finite lumen_size values within the inclusive "
+                    "median plus or minus one population standard deviation; "
+                    "0 otherwise"
+                ),
+                "median": median,
+                "standard_deviation": standard_deviation,
+                "ddof": np.int32(0),
+                "lower_limit": lower_limit,
+                "upper_limit": upper_limit,
+            }
+        elif dimension_tag == "kr":
+            lumen_size_qc = _kr_lumen_size_quality_control(tbkr_lumen_size_qc)
+            qc_unit = "fraction"
+            qc_attrs = {
+                "definition": (
+                    "fraction of time-and-beat samples passing tbkr lumen_size QC"
+                ),
+                "source_metric": f"{mask_name}/tbkr/lumen_size_qc",
+                "reduction": "mean_over_time_and_beat",
+            }
+        else:
+            lumen_size_qc, lower_limit, upper_limit = (
+                _lumen_size_quality_control(lumen_size)
+            )
+            qc_unit = "binary"
+            qc_attrs = {
+                "definition": (
+                    "1 for finite lumen_size values within the inclusive "
+                    "0.5th-to-99.5th percentile interval; 0 otherwise"
+                ),
+                "lower_percentile": np.float32(0.5),
+                "upper_percentile": np.float32(99.5),
+                "lower_limit": lower_limit,
+                "upper_limit": upper_limit,
+            }
+        lumen_path = f"{mask_name}/{dimension_tag}/lumen_size"
+        metrics[lumen_path] = DatasetValue(
+            lumen_size,
+            {
+                **attrs,
+                "definition": "right_edge_index - left_edge_index",
+            },
+        )
+        metrics[f"{lumen_path}_qc"] = DatasetValue(
+            lumen_size_qc,
+            {
+                **attrs,
+                "unit": qc_unit,
+                **qc_attrs,
+            },
+        )
+        if mask_name == "Masked" and dimension_tag == "tbkr":
+            statistic_attrs = {
+                **attrs,
+                "dimDesc": [],
+                "source_metric": "Masked/tbkr/lumen_size",
+                "distribution": "all_finite_values",
+            }
+            metrics[f"{lumen_path}_median"] = DatasetValue(
+                median,
+                {
+                    **statistic_attrs,
+                    "statistic": "median",
+                },
+            )
+            metrics[f"{lumen_path}_std"] = DatasetValue(
+                standard_deviation,
+                {
+                    **statistic_attrs,
+                    "statistic": "standard_deviation",
+                    "ddof": np.int32(0),
+                },
+            )
+    return metrics
+
+
+def _lumen_size_quality_control(
+    lumen_size: np.ndarray,
+) -> tuple[np.ndarray, np.float32, np.float32]:
+    """Flag the inclusive central 99% of a finite lumen-size distribution."""
+
+    values = np.asarray(lumen_size, dtype=np.float32)
+    qc = np.zeros(values.shape, dtype=np.uint8)
+    finite = np.isfinite(values)
+    if not np.any(finite):
+        nan = np.float32(np.nan)
+        return qc, nan, nan
+
+    lower_limit, upper_limit = np.percentile(values[finite], [0.5, 99.5])
+    qc[finite & (values >= lower_limit) & (values <= upper_limit)] = 1
+    return qc, np.float32(lower_limit), np.float32(upper_limit)
+
+
+def _lumen_size_distribution_statistics(
+    lumen_size: np.ndarray,
+) -> tuple[np.float32, np.float32]:
+    """Return the median and population standard deviation of finite values."""
+
+    values = np.asarray(lumen_size, dtype=np.float32)
+    finite_values = values[np.isfinite(values)]
+    if finite_values.size == 0:
+        nan = np.float32(np.nan)
+        return nan, nan
+    return (
+        np.float32(np.median(finite_values)),
+        np.float32(np.std(finite_values, dtype=np.float64, ddof=0)),
+    )
+
+
+def _lumen_size_standard_deviation_quality_control(
+    lumen_size: np.ndarray,
+) -> tuple[np.ndarray, np.float32, np.float32]:
+    """Flag finite values within the inclusive median-plus/minus-std interval."""
+
+    values = np.asarray(lumen_size, dtype=np.float32)
+    qc = np.zeros(values.shape, dtype=np.uint8)
+    median, standard_deviation = _lumen_size_distribution_statistics(values)
+    if not np.isfinite(median) or not np.isfinite(standard_deviation):
+        return qc, median, standard_deviation
+
+    finite = np.isfinite(values)
+    lower_limit = median - standard_deviation
+    upper_limit = median + standard_deviation
+    qc[finite & (values >= lower_limit) & (values <= upper_limit)] = 1
+    return qc, median, standard_deviation
+
+
+def _kr_lumen_size_quality_control(
+    tbkr_lumen_size_qc: np.ndarray,
+) -> np.ndarray:
+    """Average binary time/beat QC into a fractional branch/radius heatmap."""
+
+    tbkr_qc = np.asarray(tbkr_lumen_size_qc, dtype=np.uint8)
+    if tbkr_qc.ndim != 4:
+        raise ValueError("tbkr lumen-size QC must have dimensions (t, b, k, r).")
+    if tbkr_qc.shape[0] == 0 or tbkr_qc.shape[1] == 0:
+        return np.zeros(tbkr_qc.shape[2:], dtype=np.float32)
+
+    kr_qc = np.mean(tbkr_qc, axis=(0, 1), dtype=np.float32)
+    kr_qc = np.asarray(kr_qc, dtype=np.float32)
+    return np.clip(kr_qc, 0.0, 1.0).astype(np.float32, copy=False)
 
 
 def _spatial_gradient_peak_arrays(
@@ -262,13 +474,38 @@ def _spatial_gradient_peak_arrays(
         curve = values[(slice(None), *indexes)]
         peaks = _two_highest_separated_indexes(curve, minimum_gap)
         if len(peaks) >= 1:
-            left_indexes[indexes] = peaks[0]
+            left_indexes[indexes] = _fractional_peak_index(curve, peaks[0])
             left_values[indexes] = curve[peaks[0]]
         if len(peaks) == 2:
-            right_indexes[indexes] = peaks[1]
+            right_indexes[indexes] = _fractional_peak_index(curve, peaks[1])
             right_values[indexes] = curve[peaks[1]]
 
     return left_indexes, right_indexes, left_values, right_values
+
+
+def _fractional_peak_index(profile: np.ndarray, peak_index: int) -> np.float32:
+    """Refine an integer peak with a three-sample quadratic vertex."""
+
+    integer_position = np.float32(peak_index)
+    if peak_index <= 0 or peak_index >= profile.size - 1:
+        return integer_position
+
+    left, center, right = np.asarray(
+        profile[peak_index - 1 : peak_index + 2],
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite((left, center, right))):
+        return integer_position
+    if center < left or center < right:
+        return integer_position
+
+    curvature = left - 2.0 * center + right
+    if curvature >= 0.0:
+        return integer_position
+    offset = 0.5 * (left - right) / curvature
+    if not np.isfinite(offset) or abs(offset) > 0.5:
+        return integer_position
+    return np.float32(peak_index + offset)
 
 
 def _two_highest_separated_indexes(
