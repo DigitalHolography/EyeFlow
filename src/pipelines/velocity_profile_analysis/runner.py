@@ -6,7 +6,9 @@ from pipeline_engine.base import DatasetValue
 
 from .fitting import DEFAULT_WEIGHT_POWER, analyze_velocity_profiles
 
-SOURCE_PATH = "/Processing/VelocityProfiles/Artery/TransverseVelocityProfileMasked/value"
+SOURCE_PATH = (
+    "/Processing/VelocityProfiles/Artery/Transversal/Masked/VelocityProfile/value"
+)
 OUTPUT_ROOT = "/Processing/VelocityProfileAnalysis/Artery"
 
 

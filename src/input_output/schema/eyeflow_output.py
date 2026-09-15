@@ -150,7 +150,38 @@ def _velocity_profile_paths(
     root: str,
     *,
     velocity_profile_name: str = "VelocityProfile",
+    hierarchical: bool = False,
 ) -> VelocityProfileOutputPaths:
+    if hierarchical:
+        return VelocityProfileOutputPaths(
+            transverse_velocity_profile_unmasked=(
+                f"{root}/Transversal/Unmasked/{velocity_profile_name}/value"
+            ),
+            transverse_velocity_profile_masked=(
+                f"{root}/Transversal/Masked/{velocity_profile_name}/value"
+            ),
+            longitudinal_velocity_profile_unmasked=(
+                f"{root}/Longitudinal/Unmasked/{velocity_profile_name}/value"
+            ),
+            longitudinal_velocity_profile_masked=(
+                f"{root}/Longitudinal/Masked/{velocity_profile_name}/value"
+            ),
+            transverse_velocity_profile_unmasked_meaned=(
+                f"{root}/Transversal/Unmasked/{velocity_profile_name}Meaned/value"
+            ),
+            transverse_velocity_profile_masked_meaned=(
+                f"{root}/Transversal/Masked/{velocity_profile_name}Meaned/value"
+            ),
+            longitudinal_velocity_profile_unmasked_meaned=(
+                f"{root}/Longitudinal/Unmasked/{velocity_profile_name}Meaned/value"
+            ),
+            longitudinal_velocity_profile_masked_meaned=(
+                f"{root}/Longitudinal/Masked/{velocity_profile_name}Meaned/value"
+            ),
+            flow_asymmetry_root=(
+                f"{root}/Transversal/Masked/FlowAsymmetry"
+            ),
+        )
     return VelocityProfileOutputPaths(
         transverse_velocity_profile_unmasked=(
             f"{root}/Transverse{velocity_profile_name}Unmasked/value"
@@ -419,10 +450,12 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     ),
     segmentation=_segmentation_paths("Segmentation"),
     artery_velocity_profiles=_velocity_profile_paths(
-        "Processing/VelocityProfiles/Artery"
+        "Processing/VelocityProfiles/Artery",
+        hierarchical=True,
     ),
     vein_velocity_profiles=_velocity_profile_paths(
-        "Processing/VelocityProfiles/Vein"
+        "Processing/VelocityProfiles/Vein",
+        hierarchical=True,
     ),
     heartbeat=HEARTBEAT_OUTPUT,
     displacement_map="Processing/DisplacementMap",

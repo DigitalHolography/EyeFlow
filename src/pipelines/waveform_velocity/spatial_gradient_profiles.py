@@ -22,6 +22,7 @@ from .profiles import (
 SPATIAL_GRADIENT_PROFILE_ROOT = "Processing/SpatialGradientProfiles"
 SPATIAL_GRADIENT_METRICS_ROOT = "Processing/SpatialGradientMetrics"
 SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES = 5
+TBKR_LUMEN_SIZE_QC_THRESHOLD = 0.75
 
 
 def extract_spatial_gradient_segments(ctx, waveform_context):
@@ -127,9 +128,9 @@ def _pack_vessel_spatial_gradient_profiles(
     )
     metrics_root = f"{SPATIAL_GRADIENT_METRICS_ROOT}/{vessel_name}/Transverse"
     return {
-        f"{root}/TransverseSpatialGradientProfileMasked": masked,
-        f"{root}/TransverseSpatialGradientProfileMaskedMeaned": meaned,
-        f"{root}/TransverseSpatialGradientProfileUnmasked": unmasked,
+        f"{root}/Masked/SpatialGradientProfile/value": masked,
+        f"{root}/Masked/SpatialGradientProfileMeaned/value": meaned,
+        f"{root}/Unmasked/SpatialGradientProfile/value": unmasked,
         **{
             f"{metrics_root}/{name}": value
             for name, value in peak_metrics.items()
@@ -156,36 +157,23 @@ def _spatial_gradient_peak_metrics(
             minimum_gap=minimum_gap,
         )
     )
-    _, _, left_values, right_values = _spatial_gradient_peak_arrays(
-        meaned_profile,
-        ["x", "beat", "branch", "radius"],
-        minimum_gap=minimum_gap,
-    )
-    meaned_attrs = dict(meaned_profile.attrs or {})
     common_attrs = {
         "minimum_peak_gap_samples": np.int32(minimum_gap),
         "peak_selection": "two_highest_finite_values_with_minimum_index_gap",
-    }
-
-    value_attrs = {
-        **common_attrs,
-        "dimDesc": ["beat", "branch", "radius"],
-        "source_profile": "TransverseSpatialGradientProfileMaskedMeaned",
-        "unit": meaned_attrs.get("unit", "a.u."),
     }
     if unmasked_profile is not None:
         metrics = _spatial_gradient_edge_index_metrics(
             masked_left_indexes,
             masked_right_indexes,
             mask_name="Masked",
-            source_profile="TransverseSpatialGradientProfileMasked",
+            source_profile="Masked/SpatialGradientProfile/value",
             common_attrs=common_attrs,
         )
     else:
         index_attrs = {
             **common_attrs,
             "dimDesc": ["time", "beat", "branch", "radius"],
-            "source_profile": "TransverseSpatialGradientProfileMasked",
+            "source_profile": "Masked/SpatialGradientProfile/value",
             "unit": "pixels",
             "index_base": np.int32(0),
             "position_axis": "x",
@@ -201,18 +189,31 @@ def _spatial_gradient_peak_metrics(
                 {**index_attrs, "peak_side": "right"},
             ),
         }
-    metrics.update(
-        {
-            "peak_value_left_max": DatasetValue(
-                left_values,
-                {**value_attrs, "peak_side": "left"},
-            ),
-            "peak_value_right_max": DatasetValue(
-                right_values,
-                {**value_attrs, "peak_side": "right"},
-            ),
+    if unmasked_profile is None:
+        _, _, left_values, right_values = _spatial_gradient_peak_arrays(
+            meaned_profile,
+            ["x", "beat", "branch", "radius"],
+            minimum_gap=minimum_gap,
+        )
+        meaned_attrs = dict(meaned_profile.attrs or {})
+        value_attrs = {
+            **common_attrs,
+            "dimDesc": ["beat", "branch", "radius"],
+            "source_profile": "Masked/SpatialGradientProfileMeaned/value",
+            "unit": meaned_attrs.get("unit", "a.u."),
         }
-    )
+        metrics.update(
+            {
+                "peak_value_left_max": DatasetValue(
+                    left_values,
+                    {**value_attrs, "peak_side": "left"},
+                ),
+                "peak_value_right_max": DatasetValue(
+                    right_values,
+                    {**value_attrs, "peak_side": "right"},
+                ),
+            }
+        )
     if unmasked_profile is not None:
         unmasked_left_indexes, unmasked_right_indexes, _, _ = (
             _spatial_gradient_peak_arrays(
@@ -226,7 +227,7 @@ def _spatial_gradient_peak_metrics(
                 unmasked_left_indexes,
                 unmasked_right_indexes,
                 mask_name="Unmasked",
-                source_profile="TransverseSpatialGradientProfileUnmasked",
+                source_profile="Unmasked/SpatialGradientProfile/value",
                 common_attrs=common_attrs,
             )
         )
@@ -275,8 +276,14 @@ def _spatial_gradient_edge_index_metrics(
         ),
     }
     tbkr_lumen_size = right_indexes - left_indexes
-    tbkr_lumen_size_qc, tbkr_median, tbkr_standard_deviation = (
+    tbkr_distribution_qc, tbkr_median, tbkr_standard_deviation = (
         _lumen_size_standard_deviation_quality_control(tbkr_lumen_size)
+    )
+    kr_lumen_size_qc = _kr_lumen_size_quality_control(tbkr_distribution_qc)
+    tbkr_lumen_size_qc = _tbkr_lumen_size_quality_control(
+        kr_lumen_size_qc,
+        tbkr_lumen_size.shape,
+        threshold=TBKR_LUMEN_SIZE_QC_THRESHOLD,
     )
     metrics: dict[str, DatasetValue] = {}
     for dimension_tag, (left, right, dim_desc) in hierarchy.items():
@@ -302,30 +309,38 @@ def _spatial_gradient_edge_index_metrics(
             lumen_size_qc = tbkr_lumen_size_qc
             median = tbkr_median
             standard_deviation = tbkr_standard_deviation
-            lower_limit = np.float32(median - standard_deviation)
-            upper_limit = np.float32(median + standard_deviation)
             qc_unit = "binary"
             qc_attrs = {
                 "definition": (
-                    "1 for finite lumen_size values within the inclusive "
-                    "median plus or minus one population standard deviation; "
-                    "0 otherwise"
+                    "1 when the corresponding kr lumen_size QC is strictly "
+                    "greater than the threshold; 0 otherwise. Time and beat "
+                    "dimensions are broadcast and do not affect the result"
                 ),
-                "median": median,
-                "standard_deviation": standard_deviation,
-                "ddof": np.int32(0),
-                "lower_limit": lower_limit,
-                "upper_limit": upper_limit,
+                "source_metric": f"{mask_name}/kr/lumen/size_qc",
+                "threshold": np.float32(TBKR_LUMEN_SIZE_QC_THRESHOLD),
+                "comparison": "greater_than",
+                "broadcast_dimensions": ["time", "beat"],
             }
         elif dimension_tag == "kr":
-            lumen_size_qc = _kr_lumen_size_quality_control(tbkr_lumen_size_qc)
+            lumen_size_qc = kr_lumen_size_qc
             qc_unit = "fraction"
             qc_attrs = {
                 "definition": (
-                    "fraction of time-and-beat samples passing tbkr lumen_size QC"
+                    "fraction of time-and-beat lumen_size samples within the "
+                    "inclusive median plus or minus one population standard "
+                    "deviation"
                 ),
-                "source_metric": f"{mask_name}/tbkr/lumen_size_qc",
+                "source_metric": f"{mask_name}/tbkr/lumen/size",
                 "reduction": "mean_over_time_and_beat",
+                "median": tbkr_median,
+                "standard_deviation": tbkr_standard_deviation,
+                "ddof": np.int32(0),
+                "lower_limit": np.float32(
+                    tbkr_median - tbkr_standard_deviation
+                ),
+                "upper_limit": np.float32(
+                    tbkr_median + tbkr_standard_deviation
+                ),
             }
         else:
             lumen_size_qc, lower_limit, upper_limit = (
@@ -342,7 +357,7 @@ def _spatial_gradient_edge_index_metrics(
                 "lower_limit": lower_limit,
                 "upper_limit": upper_limit,
             }
-        lumen_path = f"{mask_name}/{dimension_tag}/lumen_size"
+        lumen_path = f"{mask_name}/{dimension_tag}/lumen/size"
         metrics[lumen_path] = DatasetValue(
             lumen_size,
             {
@@ -362,7 +377,7 @@ def _spatial_gradient_edge_index_metrics(
             statistic_attrs = {
                 **attrs,
                 "dimDesc": [],
-                "source_metric": "Masked/tbkr/lumen_size",
+                "source_metric": "Masked/tbkr/lumen/size",
                 "distribution": "all_finite_values",
             }
             metrics[f"{lumen_path}_median"] = DatasetValue(
@@ -435,19 +450,44 @@ def _lumen_size_standard_deviation_quality_control(
 
 
 def _kr_lumen_size_quality_control(
-    tbkr_lumen_size_qc: np.ndarray,
+    tbkr_distribution_qc: np.ndarray,
 ) -> np.ndarray:
-    """Average binary time/beat QC into a fractional branch/radius heatmap."""
+    """Average preliminary time/beat QC into a branch/radius fraction."""
 
-    tbkr_qc = np.asarray(tbkr_lumen_size_qc, dtype=np.uint8)
+    tbkr_qc = np.asarray(tbkr_distribution_qc, dtype=np.uint8)
     if tbkr_qc.ndim != 4:
-        raise ValueError("tbkr lumen-size QC must have dimensions (t, b, k, r).")
+        raise ValueError(
+            "tbkr lumen-size distribution QC must have dimensions (t, b, k, r)."
+        )
     if tbkr_qc.shape[0] == 0 or tbkr_qc.shape[1] == 0:
         return np.zeros(tbkr_qc.shape[2:], dtype=np.float32)
 
     kr_qc = np.mean(tbkr_qc, axis=(0, 1), dtype=np.float32)
     kr_qc = np.asarray(kr_qc, dtype=np.float32)
     return np.clip(kr_qc, 0.0, 1.0).astype(np.float32, copy=False)
+
+
+def _tbkr_lumen_size_quality_control(
+    kr_lumen_size_qc: np.ndarray,
+    tbkr_shape: tuple[int, ...],
+    *,
+    threshold: float,
+) -> np.ndarray:
+    """Threshold kr QC and broadcast it across unchanged time/beat axes."""
+
+    kr_qc = np.asarray(kr_lumen_size_qc, dtype=np.float32)
+    if kr_qc.ndim != 2:
+        raise ValueError("kr lumen-size QC must have dimensions (k, r).")
+    if len(tbkr_shape) != 4 or tuple(tbkr_shape[2:]) != kr_qc.shape:
+        raise ValueError(
+            "tbkr shape must have dimensions (t, b, k, r) matching kr QC."
+        )
+
+    binary_kr_qc = np.asarray(kr_qc > threshold, dtype=np.uint8)
+    return np.broadcast_to(binary_kr_qc, tbkr_shape).astype(
+        np.uint8,
+        copy=True,
+    )
 
 
 def _spatial_gradient_peak_arrays(
@@ -562,6 +602,7 @@ __all__ = [
     "SPATIAL_GRADIENT_PROFILE_ROOT",
     "SPATIAL_GRADIENT_METRICS_ROOT",
     "SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES",
+    "TBKR_LUMEN_SIZE_QC_THRESHOLD",
     "cleanup_spatial_gradient_artifacts",
     "extract_spatial_gradient_segments",
     "pack_spatial_gradient_profile_outputs",
