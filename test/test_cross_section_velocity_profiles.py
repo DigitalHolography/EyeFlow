@@ -28,6 +28,7 @@ from input_output.output_manager import OutputType  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from input_output.writers.png import FigureArtifactWriter, write_png_file  # noqa: E402
+from pipeline_engine.base import DatasetValue  # noqa: E402
 from pipelines.waveform_velocity_core.figures.profiles import (  # noqa: E402
     _finite_median,
     _hierarchical_profile_median,
@@ -37,11 +38,107 @@ from pipelines.waveform_velocity_core.figures.profiles import (  # noqa: E402
 )
 from pipelines.waveform_velocity.flow_asymmetry import pack_flow_asymmetry_outputs  # noqa: E402
 from pipelines.waveform_velocity.profiles import (  # noqa: E402
+    pack_blood_volume_rate_outputs,
     pack_cross_section_profile_outputs,
 )
 
 
 class CrossSectionProfilePackingTests(unittest.TestCase):
+    def test_blood_volume_rate_sums_profiles_between_vessel_edges(self) -> None:
+        schema = EyeFlowOutputPaths.active()
+        shape = (6, 2, 1, 1, 2)
+        artery_values = np.broadcast_to(
+            np.arange(6, dtype=np.float32)[:, None, None, None, None],
+            shape,
+        ).copy()
+        artery_values[..., 1] += 10.0
+        vein_values = np.ones(shape, dtype=np.float32)
+        artery_left = np.asarray(
+            [[[[1.0, 1.2]]], [[[np.nan, 0.0]]]], dtype=np.float32
+        )
+        artery_right = np.asarray(
+            [[[[3.0, 3.8]]], [[[4.0, 1.0]]]], dtype=np.float32
+        )
+        vein_left = np.zeros((2, 1, 1, 2), dtype=np.float32)
+        vein_right = np.asarray(
+            [[[[2.0, 4.0]]], [[[1.0, 3.0]]]], dtype=np.float32
+        )
+        velocity_outputs = {
+            schema.artery_velocity_profiles.transverse_velocity_profile_masked: (
+                DatasetValue(artery_values, {"unit": "mm/s"})
+            ),
+            schema.vein_velocity_profiles.transverse_velocity_profile_masked: (
+                DatasetValue(vein_values, {"unit": "mm/s"})
+            ),
+        }
+        gradient_root = "Processing/SpatialGradientMetrics"
+        gradient_outputs = {
+            f"{gradient_root}/Artery/Transverse/Masked/tbkr/left_edge_index": (
+                DatasetValue(artery_left)
+            ),
+            f"{gradient_root}/Artery/Transverse/Masked/tbkr/right_edge_index": (
+                DatasetValue(artery_right)
+            ),
+            f"{gradient_root}/Vein/Transverse/Masked/tbkr/left_edge_index": (
+                DatasetValue(vein_left)
+            ),
+            f"{gradient_root}/Vein/Transverse/Masked/tbkr/right_edge_index": (
+                DatasetValue(vein_right)
+            ),
+        }
+
+        outputs = pack_blood_volume_rate_outputs(
+            velocity_outputs,
+            gradient_outputs,
+        )
+
+        self.assertEqual(4, len(outputs))
+        artery = outputs[
+            "Processing/BloodVolumeRate/Artery/dynamicEdges/value"
+        ]
+        artery_static = outputs[
+            "Processing/BloodVolumeRate/Artery/staticEdges/value"
+        ]
+        vein = outputs[
+            "Processing/BloodVolumeRate/Vein/dynamicEdges/value"
+        ]
+        vein_static = outputs[
+            "Processing/BloodVolumeRate/Vein/staticEdges/value"
+        ]
+        self.assertEqual((2, 1, 1, 2), artery.data.shape)
+        np.testing.assert_allclose(
+            artery.data,
+            [[[[4.0, 32.5]]], [[[np.nan, 10.5]]]],
+            equal_nan=True,
+        )
+        np.testing.assert_array_equal(
+            vein.data,
+            [[[[2.0, 4.0]]], [[[1.0, 3.0]]]],
+        )
+        np.testing.assert_array_equal(
+            vein_static.data,
+            [[[[1.5, 3.5]]], [[[1.5, 3.5]]]],
+        )
+        np.testing.assert_allclose(
+            artery_static.data,
+            [[[[5.625, 20.7]]], [[[5.625, 20.7]]]],
+        )
+        self.assertEqual(
+            "mean_over_time_and_beats",
+            artery_static.attrs["edge_temporal_reduction"],
+        )
+        self.assertEqual(
+            ["time", "beat", "branch", "radius"],
+            artery.attrs["dimDesc"],
+        )
+        self.assertEqual("trapezoidal", artery.attrs["integration_method"])
+        self.assertEqual("mm/s*pixel", artery.attrs["unit"])
+        self.assertEqual(
+            "/Processing/SpatialGradientMetrics/Artery/Transverse/"
+            "Masked/tbkr/left_edge_index",
+            artery.attrs["source_left_edge_index"],
+        )
+
     def test_h5_export_contains_transverse_and_longitudinal_profiles(self) -> None:
         artery = _segments(radius_count=2, branch_count=1)
         vein = _segments(radius_count=2, branch_count=0)

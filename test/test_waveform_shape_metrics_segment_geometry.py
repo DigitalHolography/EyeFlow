@@ -265,9 +265,11 @@ class SegmentCenterTests(unittest.TestCase):
             10,
             generate.call_args_list[0].kwargs["transverse_mask_dilation_pixels"],
         )
-        self.assertNotIn(
-            "transverse_mask_dilation_pixels",
-            generate.call_args_list[1].kwargs,
+        self.assertEqual(
+            0,
+            generate.call_args_list[1].kwargs[
+                "transverse_mask_dilation_pixels"
+            ],
         )
         self.assertIs(
             artery_displacements,

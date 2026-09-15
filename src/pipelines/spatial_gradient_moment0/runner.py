@@ -21,7 +21,8 @@ PNG_FILENAME = "spatial_gradient_moment0.png"
 DEFAULT_FPS = 25.0
 CONTRAST_HIGH_PERCENTILE = 99.9
 CONTRAST_GAMMA = 1.0
-TEMPORAL_MEDIAN_WINDOW = 5
+TEMPORAL_MEDIAN_WINDOW = 17
+TBKR_LUMEN_SIZE_QC_THRESHOLD = 0.5
 STATE_KEY = "spatial_gradient_moment0_artifacts"
 
 
@@ -223,6 +224,7 @@ __all__ = [
     "CONTRAST_HIGH_PERCENTILE",
     "PNG_FILENAME",
     "STATE_KEY",
+    "TBKR_LUMEN_SIZE_QC_THRESHOLD",
     "TEMPORAL_MEDIAN_WINDOW",
     "SpatialGradientMoment0Artifacts",
     "resolve_frame_rate",

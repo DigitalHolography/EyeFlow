@@ -9,6 +9,7 @@ from calculations.math import nanmedian
 from pipeline_engine.base import DatasetValue
 from pipelines.spatial_gradient_moment0.runner import (
     STATE_KEY,
+    TBKR_LUMEN_SIZE_QC_THRESHOLD,
     TEMPORAL_MEDIAN_WINDOW,
     SpatialGradientMoment0Artifacts,
 )
@@ -23,7 +24,7 @@ from .profiles import (
 SPATIAL_GRADIENT_PROFILE_ROOT = "Processing/SpatialGradientProfiles"
 SPATIAL_GRADIENT_METRICS_ROOT = "Processing/SpatialGradientMetrics"
 SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES = 5
-TBKR_LUMEN_SIZE_QC_THRESHOLD = 0.75
+_SPATIAL_GRADIENT_MASK_DILATION_PIXELS = 5
 
 
 def extract_spatial_gradient_segments(ctx, waveform_context):
@@ -54,6 +55,12 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
             source.optic_disc_center,
             ring_settings,
             source.cross_section_settings,
+            artery_transverse_mask_dilation_pixels=(
+                _SPATIAL_GRADIENT_MASK_DILATION_PIXELS
+            ),
+            vein_transverse_mask_dilation_pixels=(
+                _SPATIAL_GRADIENT_MASK_DILATION_PIXELS
+            ),
             retain_displacement_maps=False,
         )
     finally:
@@ -124,7 +131,7 @@ def _pack_vessel_spatial_gradient_profiles(
     peak_metrics = _spatial_gradient_peak_metrics(
         masked,
         meaned,
-        unmasked_profile=unmasked if vessel_name == "Artery" else None,
+        unmasked_profile=unmasked,
         minimum_gap=SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES,
     )
     metrics_root = f"{SPATIAL_GRADIENT_METRICS_ROOT}/{vessel_name}/Transverse"

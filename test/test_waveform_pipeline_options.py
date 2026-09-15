@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import numpy as np
+
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.lowrank_waveform_decomposition import runner as lowrank_runner
 from pipelines.waveform_shape_metrics import runner as metric_runner
@@ -44,6 +46,34 @@ def _context(options, state_values=None, scheduled=None):
 
 
 class WaveformPipelineOptionTests(unittest.TestCase):
+    def test_blood_volume_rate_requires_matching_segment_order(self) -> None:
+        velocity_segments = SimpleNamespace(
+            labels=np.asarray([[0, 1], [0, 1]], dtype=np.int32),
+            branch_ids=np.asarray([1], dtype=np.int32),
+            segment_center_xy=np.asarray([[[1.0, 0.5]]], dtype=np.float32),
+            velocity_profiles=np.zeros((1, 1, 2, 3), dtype=np.float32),
+        )
+        gradient_segments = SimpleNamespace(
+            labels=velocity_segments.labels.copy(),
+            branch_ids=velocity_segments.branch_ids.copy(),
+            segment_center_xy=velocity_segments.segment_center_xy.copy(),
+            velocity_profiles=np.ones((1, 1, 2, 3), dtype=np.float32),
+        )
+
+        velocity_runner._validate_profile_segment_alignment(
+            "Artery",
+            velocity_segments,
+            gradient_segments,
+        )
+
+        gradient_segments.labels[0, 1] = 0
+        with self.assertRaisesRegex(RuntimeError, "labels do not match"):
+            velocity_runner._validate_profile_segment_alignment(
+                "Artery",
+                velocity_segments,
+                gradient_segments,
+            )
+
     def test_profile_analysis_requires_and_publishes_profiles_with_options_disabled(self):
         context = SimpleNamespace(
             dopplerview_analysis={}, artery_segment_result="artery", vein_segment_result="vein",
@@ -79,10 +109,30 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "pack_spatial_gradient_profile_outputs",
                 return_value={"gradient_profiles": 2},
             ),
+            patch.object(
+                velocity_runner,
+                "_validate_profile_segment_alignment",
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_blood_volume_rate_outputs",
+                return_value={"blood_volume_rate": 3},
+            ) as blood_volume_rate,
         ):
             outputs = velocity_runner.run_waveform_velocity(ctx)
-        self.assertEqual(outputs, {"profiles": 1, "gradient_profiles": 2})
+        self.assertEqual(
+            outputs,
+            {
+                "profiles": 1,
+                "gradient_profiles": 2,
+                "blood_volume_rate": 3,
+            },
+        )
         pack.assert_called_once_with("artery", "vein", (0, 2), index_base=0)
+        blood_volume_rate.assert_called_once_with(
+            {"profiles": 1},
+            {"gradient_profiles": 2},
+        )
 
     def test_lowrank_pipeline_includes_veins_and_selected_quadrants(self) -> None:
         velocity_outputs = {"per_beat": 1}
@@ -220,6 +270,15 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as gradient_profiles,
             patch.object(
                 velocity_runner,
+                "_validate_profile_segment_alignment",
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_blood_volume_rate_outputs",
+                return_value={"blood_volume_rate": 8},
+            ) as blood_volume_rate,
+            patch.object(
+                velocity_runner,
                 "pack_displacement_magnitude_outputs",
                 return_value={"displacement_magnitude": 5},
             ) as displacement_magnitude,
@@ -248,6 +307,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "displacement_magnitude": 5,
                 "displacement_profiles": 6,
                 "gradient_profiles": 7,
+                "blood_volume_rate": 8,
                 "quadrants": 4,
             },
             outputs,
@@ -263,6 +323,10 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             "gradient_vein",
             (0, 5, 10),
             index_base=0,
+        )
+        blood_volume_rate.assert_called_once_with(
+            {"profile": 3},
+            {"gradient_profiles": 7},
         )
         displacement_magnitude.assert_called_once_with(
             "artery",

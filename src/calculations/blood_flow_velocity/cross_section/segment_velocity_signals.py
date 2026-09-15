@@ -48,6 +48,10 @@ def segment_velocity_results(
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings | None = None,
     *,
+    artery_transverse_mask_dilation_pixels: int = (
+        _ARTERY_TRANSVERSE_MASK_DILATION_PIXELS
+    ),
+    vein_transverse_mask_dilation_pixels: int = 0,
     displacement_maps: Mapping[str, object] | None = None,
     artery_displacement_maps: Mapping[str, object] | None = None,
     vein_displacement_maps: Mapping[str, object] | None = None,
@@ -97,7 +101,7 @@ def segment_velocity_results(
             settings,
             substack_side_pixels,
             transverse_mask_dilation_pixels=(
-                _ARTERY_TRANSVERSE_MASK_DILATION_PIXELS
+                artery_transverse_mask_dilation_pixels
             ),
             displacement_maps=artery_maps,
             retain_displacement_maps=retain_displacement_maps,
@@ -109,6 +113,9 @@ def segment_velocity_results(
             ring_settings,
             settings,
             substack_side_pixels,
+            transverse_mask_dilation_pixels=(
+                vein_transverse_mask_dilation_pixels
+            ),
             displacement_maps=vein_maps,
             retain_displacement_maps=retain_displacement_maps,
         ),

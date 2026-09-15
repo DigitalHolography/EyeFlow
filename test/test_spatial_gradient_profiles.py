@@ -67,6 +67,14 @@ class SpatialGradientProfileTests(unittest.TestCase):
         self.assertEqual((3, 8, 8), args[0].shape)
         np.testing.assert_array_equal(source.retinal_artery_mask, args[1])
         np.testing.assert_array_equal(source.retinal_vein_mask, args[2])
+        self.assertEqual(
+            5,
+            kwargs["artery_transverse_mask_dilation_pixels"],
+        )
+        self.assertEqual(
+            5,
+            kwargs["vein_transverse_mask_dilation_pixels"],
+        )
         self.assertFalse(kwargs["retain_displacement_maps"])
         self.assertFalse(gradient_path.exists())
 
@@ -93,37 +101,27 @@ class SpatialGradientProfileTests(unittest.TestCase):
             )
             expected_paths.update(
                 {
-                    f"{root}/TransverseSpatialGradientProfileMasked",
-                    f"{root}/TransverseSpatialGradientProfileMaskedMeaned",
-                    f"{root}/TransverseSpatialGradientProfileUnmasked",
-                    f"{metrics_root}/peak_value_left_max",
-                    f"{metrics_root}/peak_value_right_max",
+                    f"{root}/Masked/SpatialGradientProfile/value",
+                    f"{root}/Masked/SpatialGradientProfileMeaned/value",
+                    f"{root}/Unmasked/SpatialGradientProfile/value",
                 }
             )
-            if vessel == "Artery":
-                for mask_name in ("Masked", "Unmasked"):
-                    for dimension_tag in ("tbkr", "bkr", "bk", "kr", "k"):
-                        expected_paths.update(
-                            {
-                                f"{metrics_root}/{mask_name}/{dimension_tag}/left_edge_index",
-                                f"{metrics_root}/{mask_name}/{dimension_tag}/right_edge_index",
-                                f"{metrics_root}/{mask_name}/{dimension_tag}/lumen_size",
-                                f"{metrics_root}/{mask_name}/{dimension_tag}/lumen_size_qc",
-                            }
-                        )
-                expected_paths.update(
-                    {
-                        f"{metrics_root}/Masked/tbkr/lumen_size_median",
-                        f"{metrics_root}/Masked/tbkr/lumen_size_std",
-                    }
-                )
-            else:
-                expected_paths.update(
-                    {
-                        f"{metrics_root}/index_left_max",
-                        f"{metrics_root}/index_right_max",
-                    }
-                )
+            for mask_name in ("Masked", "Unmasked"):
+                for dimension_tag in ("tbkr", "bkr", "bk", "kr", "k"):
+                    expected_paths.update(
+                        {
+                            f"{metrics_root}/{mask_name}/{dimension_tag}/left_edge_index",
+                            f"{metrics_root}/{mask_name}/{dimension_tag}/right_edge_index",
+                            f"{metrics_root}/{mask_name}/{dimension_tag}/lumen/size",
+                            f"{metrics_root}/{mask_name}/{dimension_tag}/lumen/size_qc",
+                        }
+                    )
+            expected_paths.update(
+                {
+                    f"{metrics_root}/Masked/tbkr/lumen/size_median",
+                    f"{metrics_root}/Masked/tbkr/lumen/size_std",
+                }
+            )
         self.assertEqual(expected_paths, set(outputs))
         for path, value in outputs.items():
             if "SpatialGradientProfiles" in path:
@@ -132,7 +130,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
                     "3x3 Sobel magnitude",
                     value.attrs["spatial_operator"],
                 )
-                if path.endswith("Meaned"):
+                if "/SpatialGradientProfileMeaned/" in path:
                     self.assertEqual(
                         ["x", "beat", "branch", "radius"],
                         value.attrs["dimDesc"],
@@ -145,13 +143,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
                     )
                     self.assertEqual((3, 2, 2, 1, 2), value.data.shape)
 
-        artery_metrics_root = (
-            f"{SPATIAL_GRADIENT_METRICS_ROOT}/Artery/Transverse"
-        )
-        metric_dimensions = {
-            "peak_value_left_max": ["beat", "branch", "radius"],
-            "peak_value_right_max": ["beat", "branch", "radius"],
-        }
+        metric_dimensions = {}
         for mask_name in ("Masked", "Unmasked"):
             for dimension_tag, dimensions in {
                 "tbkr": ["time", "beat", "branch", "radius"],
@@ -164,33 +156,35 @@ class SpatialGradientProfileTests(unittest.TestCase):
                     {
                         f"{mask_name}/{dimension_tag}/left_edge_index": dimensions,
                         f"{mask_name}/{dimension_tag}/right_edge_index": dimensions,
-                        f"{mask_name}/{dimension_tag}/lumen_size": dimensions,
-                        f"{mask_name}/{dimension_tag}/lumen_size_qc": dimensions,
+                        f"{mask_name}/{dimension_tag}/lumen/size": dimensions,
+                        f"{mask_name}/{dimension_tag}/lumen/size_qc": dimensions,
                     }
                 )
         metric_dimensions.update(
             {
-                "Masked/tbkr/lumen_size_median": [],
-                "Masked/tbkr/lumen_size_std": [],
+                "Masked/tbkr/lumen/size_median": [],
+                "Masked/tbkr/lumen/size_std": [],
             }
         )
-        for name, dimensions in metric_dimensions.items():
-            self.assertEqual(
-                dimensions,
-                outputs[f"{artery_metrics_root}/{name}"].attrs["dimDesc"],
-            )
-        for mask_name in ("Masked", "Unmasked"):
-            kr_qc = outputs[
-                f"{artery_metrics_root}/{mask_name}/kr/lumen_size_qc"
-            ]
-            self.assertEqual(np.float32, kr_qc.data.dtype)
-            self.assertEqual((1, 2), kr_qc.data.shape)
-            self.assertTrue(np.all((kr_qc.data >= 0.0) & (kr_qc.data <= 1.0)))
-            self.assertEqual("fraction", kr_qc.attrs["unit"])
-            self.assertEqual(
-                ["branch", "radius"],
-                kr_qc.attrs["dimDesc"],
-            )
+        for vessel in ("Artery", "Vein"):
+            metrics_root = f"{SPATIAL_GRADIENT_METRICS_ROOT}/{vessel}/Transverse"
+            for name, dimensions in metric_dimensions.items():
+                self.assertEqual(
+                    dimensions,
+                    outputs[f"{metrics_root}/{name}"].attrs["dimDesc"],
+                )
+            for mask_name in ("Masked", "Unmasked"):
+                kr_qc = outputs[
+                    f"{metrics_root}/{mask_name}/kr/lumen/size_qc"
+                ]
+                self.assertEqual(np.float32, kr_qc.data.dtype)
+                self.assertEqual((1, 2), kr_qc.data.shape)
+                self.assertTrue(np.all((kr_qc.data >= 0.0) & (kr_qc.data <= 1.0)))
+                self.assertEqual("fraction", kr_qc.attrs["unit"])
+                self.assertEqual(
+                    ["branch", "radius"],
+                    kr_qc.attrs["dimDesc"],
+                )
 
     def test_gradient_peak_metrics_select_highest_separated_values(self) -> None:
         masked_profile = np.asarray(
@@ -216,14 +210,8 @@ class SpatialGradientProfileTests(unittest.TestCase):
 
         for vessel in ("Artery", "Vein"):
             root = f"{SPATIAL_GRADIENT_METRICS_ROOT}/{vessel}/Transverse"
-            if vessel == "Artery":
-                masked_left_index = outputs[f"{root}/Masked/tbkr/left_edge_index"]
-                masked_right_index = outputs[f"{root}/Masked/tbkr/right_edge_index"]
-            else:
-                masked_left_index = outputs[f"{root}/index_left_max"]
-                masked_right_index = outputs[f"{root}/index_right_max"]
-            left_value = outputs[f"{root}/peak_value_left_max"]
-            right_value = outputs[f"{root}/peak_value_right_max"]
+            masked_left_index = outputs[f"{root}/Masked/tbkr/left_edge_index"]
+            masked_right_index = outputs[f"{root}/Masked/tbkr/right_edge_index"]
             np.testing.assert_allclose(
                 masked_left_index.data[:, 0, 0, 0],
                 [2.4333334, 2.4333334],
@@ -232,37 +220,33 @@ class SpatialGradientProfileTests(unittest.TestCase):
                 masked_right_index.data[:, 0, 0, 0],
                 [7.625, 7.625],
             )
-            np.testing.assert_allclose(left_value.data[:, 0, 0], [8.0, 8.0])
-            np.testing.assert_allclose(right_value.data[:, 0, 0], [7.0, 7.0])
             self.assertEqual("pixels", masked_left_index.attrs["unit"])
-            self.assertEqual("a.u.", left_value.attrs["unit"])
-            if vessel == "Artery":
-                unmasked_left_index = outputs[
-                    f"{root}/Unmasked/tbkr/left_edge_index"
-                ]
-                unmasked_right_index = outputs[
-                    f"{root}/Unmasked/tbkr/right_edge_index"
-                ]
-                np.testing.assert_array_equal(
-                    unmasked_left_index.data[:, 0, 0, 0],
-                    [0, 0],
-                )
-                np.testing.assert_array_equal(
-                    unmasked_right_index.data[:, 0, 0, 0],
-                    [6, 6],
-                )
-                self.assertEqual(
-                    "TransverseSpatialGradientProfileUnmasked",
-                    unmasked_left_index.attrs["source_profile"],
-                )
-                self.assertEqual(
-                    "right_edge_index - left_edge_index",
-                    outputs[f"{root}/Masked/tbkr/lumen_size"].attrs["definition"],
-                )
-                np.testing.assert_allclose(
-                    outputs[f"{root}/Masked/tbkr/lumen_size"].data[:, 0, 0, 0],
-                    [5.1916666, 5.1916666],
-                )
+            unmasked_left_index = outputs[
+                f"{root}/Unmasked/tbkr/left_edge_index"
+            ]
+            unmasked_right_index = outputs[
+                f"{root}/Unmasked/tbkr/right_edge_index"
+            ]
+            np.testing.assert_array_equal(
+                unmasked_left_index.data[:, 0, 0, 0],
+                [0, 0],
+            )
+            np.testing.assert_array_equal(
+                unmasked_right_index.data[:, 0, 0, 0],
+                [6, 6],
+            )
+            self.assertEqual(
+                "Unmasked/SpatialGradientProfile/value",
+                unmasked_left_index.attrs["source_profile"],
+            )
+            self.assertEqual(
+                "right_edge_index - left_edge_index",
+                outputs[f"{root}/Masked/tbkr/lumen/size"].attrs["definition"],
+            )
+            np.testing.assert_allclose(
+                outputs[f"{root}/Masked/tbkr/lumen/size"].data[:, 0, 0, 0],
+                [5.1916666, 5.1916666],
+            )
             self.assertEqual(
                 SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES,
                 masked_left_index.attrs["minimum_peak_gap_samples"],
@@ -340,13 +324,24 @@ class SpatialGradientProfileTests(unittest.TestCase):
                 if side == "right":
                     lumen_size = values - expected_hierarchies["left"][dimension_tag]
                     np.testing.assert_array_equal(
-                        metrics[f"{edge_path}/lumen_size"].data,
+                        metrics[f"{edge_path}/lumen/size"].data,
                         lumen_size,
                     )
                     if dimension_tag == "tbkr":
-                        expected_qc, _, _ = (
+                        distribution_qc, _, _ = (
                             profile_module._lumen_size_standard_deviation_quality_control(
                                 lumen_size
+                            )
+                        )
+                        expected_qc = (
+                            profile_module._tbkr_lumen_size_quality_control(
+                                profile_module._kr_lumen_size_quality_control(
+                                    distribution_qc
+                                ),
+                                lumen_size.shape,
+                                threshold=(
+                                    profile_module.TBKR_LUMEN_SIZE_QC_THRESHOLD
+                                ),
                             )
                         )
                     elif dimension_tag == "kr":
@@ -367,17 +362,17 @@ class SpatialGradientProfileTests(unittest.TestCase):
                             profile_module._lumen_size_quality_control(lumen_size)
                         )
                     np.testing.assert_array_equal(
-                        metrics[f"{edge_path}/lumen_size_qc"].data,
+                        metrics[f"{edge_path}/lumen/size_qc"].data,
                         expected_qc,
                     )
         masked_lumen_size = right_tbkr - left_tbkr
         self.assertEqual(
             np.nanmedian(masked_lumen_size),
-            metrics["Masked/tbkr/lumen_size_median"].data,
+            metrics["Masked/tbkr/lumen/size_median"].data,
         )
         self.assertEqual(
             np.nanstd(masked_lumen_size),
-            metrics["Masked/tbkr/lumen_size_std"].data,
+            metrics["Masked/tbkr/lumen/size_std"].data,
         )
 
     def test_lumen_size_qc_uses_inclusive_percentiles_and_rejects_nan(self) -> None:
@@ -469,6 +464,21 @@ class SpatialGradientProfileTests(unittest.TestCase):
         np.testing.assert_array_equal(
             empty,
             np.zeros((3, 4), dtype=np.float32),
+        )
+
+    def test_tbkr_lumen_size_qc_uses_half_threshold(self) -> None:
+        kr_qc = np.asarray([[0.5, 0.6]], dtype=np.float32)
+
+        actual = profile_module._tbkr_lumen_size_quality_control(
+            kr_qc,
+            (2, 1, 1, 2),
+            threshold=profile_module.TBKR_LUMEN_SIZE_QC_THRESHOLD,
+        )
+
+        self.assertEqual(0.5, profile_module.TBKR_LUMEN_SIZE_QC_THRESHOLD)
+        np.testing.assert_array_equal(
+            actual,
+            np.asarray([[[[0, 1]]], [[[0, 1]]]], dtype=np.uint8),
         )
 
 
