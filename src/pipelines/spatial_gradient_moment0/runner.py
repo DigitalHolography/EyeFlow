@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 import math
 import tempfile
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from scipy import ndimage
 
 from input_output.output_manager import OutputType
 from input_output.writers.avi import MjpegAviWriter
+from pipelines.displacement_map.filtering import CenteredMedianBuffer
 
 
 AVI_FILENAME = "spatial_gradient_moment0.avi"
@@ -19,6 +21,7 @@ PNG_FILENAME = "spatial_gradient_moment0.png"
 DEFAULT_FPS = 25.0
 CONTRAST_HIGH_PERCENTILE = 99.9
 CONTRAST_GAMMA = 1.0
+TEMPORAL_MEDIAN_WINDOW = 5
 STATE_KEY = "spatial_gradient_moment0_artifacts"
 
 
@@ -49,6 +52,24 @@ def spatial_gradient(frame) -> np.ndarray:
     horizontal = ndimage.sobel(finite_image, axis=1, mode="nearest")
     vertical = ndimage.sobel(finite_image, axis=0, mode="nearest")
     return np.hypot(horizontal, vertical, dtype=np.float32)
+
+
+def temporal_median_filter(
+    frames: Iterable[np.ndarray],
+    *,
+    window: int = TEMPORAL_MEDIAN_WINDOW,
+) -> Iterator[np.ndarray]:
+    """Yield centered temporal medians using replicated boundary frames."""
+
+    if window < 1 or window % 2 == 0:
+        raise ValueError("temporal median window must be a positive odd integer.")
+    median_buffer = CenteredMedianBuffer(window)
+    for frame in frames:
+        image = np.asarray(frame, dtype=np.float32)
+        if image.ndim != 2:
+            raise ValueError(f"A moment0 frame must be 2-D, got shape {image.shape}.")
+        yield from median_buffer.push(image)
+    yield from median_buffer.finish()
 
 
 def run_spatial_gradient_moment0(ctx) -> SpatialGradientMoment0Artifacts:
@@ -82,12 +103,23 @@ def run_spatial_gradient_moment0(ctx) -> SpatialGradientMoment0Artifacts:
     )
     gradient_sum = np.zeros((height, width), dtype=np.float64)
     observed_maximum = 0.0
-    for frame_index in range(frame_count):
-        gradient = spatial_gradient(moment0ff[frame_index])
+    filtered_frames = temporal_median_filter(
+        (moment0ff[frame_index] for frame_index in range(frame_count)),
+        window=TEMPORAL_MEDIAN_WINDOW,
+    )
+    filtered_frame_count = 0
+    for frame_index, filtered_frame in enumerate(filtered_frames):
+        gradient = spatial_gradient(filtered_frame)
         gradient_video[frame_index] = gradient
         gradient_sum += gradient
         frame_maximum = float(np.max(gradient, initial=0.0))
         observed_maximum = max(observed_maximum, frame_maximum)
+        filtered_frame_count += 1
+    if filtered_frame_count != frame_count:
+        raise RuntimeError(
+            "Temporal median filtering changed the spatial-gradient frame count: "
+            f"{filtered_frame_count} != {frame_count}."
+        )
 
     mean_gradient = (gradient_sum / float(frame_count)).astype(np.float32)
     gradient_video.flush()
@@ -98,8 +130,13 @@ def run_spatial_gradient_moment0(ctx) -> SpatialGradientMoment0Artifacts:
     metadata = {
         "title": "EyeFlow spatial gradient of moment0ff",
         "artifact": "spatial_gradient_moment0",
-        "algorithm": "Sobel gradient magnitude (ImageJ/Fiji Find Edges)",
+        "algorithm": (
+            "Centered temporal median followed by Sobel gradient magnitude "
+            "(ImageJ/Fiji Find Edges)"
+        ),
         "source_dataset": "/moment0ff",
+        "temporal_median_window": TEMPORAL_MEDIAN_WINDOW,
+        "temporal_median": "centered pixel-wise median with replicated edges",
         "display_range": [0.0, display_maximum],
         "contrast_high_percentile": CONTRAST_HIGH_PERCENTILE,
         "contrast_gamma": CONTRAST_GAMMA,
@@ -186,8 +223,10 @@ __all__ = [
     "CONTRAST_HIGH_PERCENTILE",
     "PNG_FILENAME",
     "STATE_KEY",
+    "TEMPORAL_MEDIAN_WINDOW",
     "SpatialGradientMoment0Artifacts",
     "resolve_frame_rate",
     "run_spatial_gradient_moment0",
     "spatial_gradient",
+    "temporal_median_filter",
 ]

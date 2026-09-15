@@ -8,8 +8,8 @@ from .runner import run_spatial_gradient_moment0
 @pipeline(
     name="spatial_gradient_moment0",
     description=(
-        "Export a contrast-enhanced framewise Sobel spatial gradient of "
-        "HoloDoppler moment0ff."
+        "Apply a centered temporal median and export a contrast-enhanced "
+        "framewise Sobel spatial gradient of HoloDoppler moment0ff."
     ),
     requires=["numpy", "scipy", "PIL"],
     dag_produces=["spatial_gradient_moment0"],

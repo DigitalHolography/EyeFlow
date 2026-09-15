@@ -9,6 +9,7 @@ from calculations.math import nanmedian
 from pipeline_engine.base import DatasetValue
 from pipelines.spatial_gradient_moment0.runner import (
     STATE_KEY,
+    TEMPORAL_MEDIAN_WINDOW,
     SpatialGradientMoment0Artifacts,
 )
 from pipelines.waveform_velocity_core.runner import _segment_ring_settings
@@ -590,6 +591,9 @@ def _gradient_profile_dataset(
         {
             "measurement": "spatial_gradient_magnitude",
             "source_dataset": "/moment0ff",
+            "temporal_filter": "centered_pixelwise_median",
+            "temporal_median_window": np.int32(TEMPORAL_MEDIAN_WINDOW),
+            "temporal_boundary_mode": "replicated_edges",
             "spatial_operator": "3x3 Sobel magnitude",
             "spatial_region": mask,
         }
