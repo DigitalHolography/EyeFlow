@@ -27,6 +27,7 @@ from .profiles import (
     profile_deviation_power,
     transverse_profiles,
 )
+from .profile_interpolation import interpolate_profiles_per_beat
 from .segments import (
     SegmentTopology,
     build_segment_topology,
@@ -74,6 +75,7 @@ __all__ = [
     "image_half_diagonal",
     "interpolate_segment_masks",
     "interpolate_segments",
+    "interpolate_profiles_per_beat",
     "resample_rotate_segment",
     "label_vessel_branches",
     "segment_ring_settings",

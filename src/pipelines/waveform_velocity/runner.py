@@ -31,11 +31,8 @@ from .segment_maps import (
     prepare_segment_velocity_maps_per_beat,
 )
 from .segment_velocity_map_avi import export_segment_velocity_map_avis
-from .spatial_gradient_profiles import (
-    cleanup_spatial_gradient_artifacts,
-    extract_spatial_gradient_segments,
-    pack_spatial_gradient_profile_outputs,
-)
+from pipelines.spatial_gradient_moment0.runner import spatial_gradient_profile_products
+from pipelines.spatial_gradient_moment0.profiles import pack_spatial_gradient_profile_outputs
 
 
 def run_waveform_velocity(ctx) -> dict[str, object]:
@@ -145,7 +142,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             )
 
     profile_products_required = profiles_selected or profile_analysis_scheduled
-    if segments_selected or profile_products_required:
+    if profile_products_required:
         cycle_boundaries = (
             per_beat_result.cycle_boundary_indexes
             if per_beat_result is not None
@@ -156,16 +153,17 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             if per_beat_result is not None
             else int(context.source_data.provenance["beat_index_base"])
         )
-        gradient_artery_segments, gradient_vein_segments = (
-            extract_spatial_gradient_segments(ctx, context)
-        )
+        gradient_products = spatial_gradient_profile_products(ctx)
+        gradient_artery_segments = gradient_products.artery_segments
+        gradient_vein_segments = gradient_products.vein_segments
+        # Reuse raw profiles for volume-rate integration on velocity's beat grid.
+        # The gradient pipeline owns its own HDF5 products and all transforms.
         spatial_gradient_outputs = pack_spatial_gradient_profile_outputs(
             gradient_artery_segments,
             gradient_vein_segments,
             cycle_boundaries,
             index_base=index_base,
         )
-        metrics.update(spatial_gradient_outputs)
 
     if profile_products_required:
         velocity_profile_outputs = pack_cross_section_profile_outputs(
@@ -217,7 +215,6 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             )
         )
 
-    cleanup_spatial_gradient_artifacts(ctx)
     return metrics
 
 
@@ -263,7 +260,9 @@ def _validate_profile_segment_alignment(
         )
 
     velocity_profile_shape = tuple(velocity_segments.velocity_profiles.shape[:2])
-    gradient_profile_shape = tuple(gradient_segments.velocity_profiles.shape[:2])
+    gradient_profile_shape = tuple(
+        gradient_segments.transverse_gradient_profiles_unmasked.shape[:2]
+    )
     if velocity_profile_shape != gradient_profile_shape:
         raise RuntimeError(
             f"{vessel_name} velocity and gradient (radius, branch) dimensions "

@@ -15,6 +15,23 @@ from calculations.topology.profiles import (
 
 
 class TopologyProfileTests(unittest.TestCase):
+    def test_cuda_profiles_stay_on_device_and_match_cpu(self) -> None:
+        from calculations.compute_backend import optional_cupy_backend
+        backend = optional_cupy_backend()
+        if backend is None:
+            self.skipTest("CuPy/CUDA unavailable.")
+        cupy = backend.cupy
+        segments = np.arange(2 * 3 * 4, dtype=np.float32).reshape(1, 1, 2, 3, 4)
+        segments[:, :, 0] = np.nan
+        masks = np.zeros((1, 1, 3, 4), bool)
+        masks[..., 1, 1:3] = True
+        for reduce in (transverse_profiles, longitudinal_profiles):
+            expected = reduce(segments, masks)
+            actual = reduce(cupy.asarray(segments), masks)
+            self.assertIsInstance(actual, cupy.ndarray)
+            self.assertEqual(cupy.float32, actual.dtype)
+            np.testing.assert_allclose(cupy.asnumpy(actual), expected, equal_nan=True)
+
     def test_transverse_and_longitudinal_profiles_preserve_segment_axes(self) -> None:
         segments = np.asarray(
             [[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]]]],

@@ -24,6 +24,39 @@ from calculations.topology import (  # noqa: E402
 
 
 class TopologyCacheTests(unittest.TestCase):
+    def test_caches_final_joint_windows_and_logs_hits(self) -> None:
+        from dataclasses import replace
+        from utils.logger import Logger
+        vessel = np.ones((9, 9), bool)
+        disc = np.zeros_like(vessel)
+        settings = SegmentRingSettings(0., 1., 1., 1)
+        initial = [_prepared_topology(vessel.shape, marker=float(i)) for i in (1, 2)]
+        for prepared in initial:
+            prepared.topology.window_side_pixels = 1
+        final = [
+            replace(prepared, topology=SimpleNamespace(
+                **{**vars(prepared.topology), "window_side_pixels": 3},
+            ))
+            for prepared in initial
+        ]
+        cache = {}
+        with patch("calculations.topology.workflow.prepare_topology", side_effect=initial) as prepare, patch(
+            "calculations.topology.workflow._resize_prepared_topology", side_effect=final,
+        ) as resize, patch.object(Logger, "log") as log:
+            first = prepare_topologies(
+                {"artery": vessel, "vein": vessel}, disc, settings, source_id="scan", cache=cache,
+            )
+            second = prepare_topologies(
+                {"artery": vessel, "vein": vessel}, disc, settings, source_id="scan", cache=cache,
+            )
+        self.assertEqual(2, prepare.call_count)
+        self.assertEqual(2, resize.call_count)
+        for name in first:
+            self.assertIs(first[name], second[name])
+        messages = [call.args[0] for call in log.call_args_list]
+        self.assertTrue(any("Topology cache hit: artery" in message for message in messages))
+        self.assertTrue(any("Topology cache hit: vein" in message for message in messages))
+
     def test_cache_is_owned_by_one_run_state(self) -> None:
         first_state: dict[str, object] = {}
         second_state: dict[str, object] = {}

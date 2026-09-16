@@ -172,7 +172,7 @@ def prepare_topologies(
         for name, mask in masks.items()
     }
     shared_side = _shared_window_side(initial, window_size_percentile_kept)
-    return {
+    prepared_topologies = {
         name: (
             topology
             if topology.topology.window_side_pixels == shared_side
@@ -186,6 +186,20 @@ def prepare_topologies(
         )
         for name, topology in initial.items()
     }
+    if cache is not None:
+        for name, prepared in prepared_topologies.items():
+            key = topology_cache_key(
+                source_id, name, masks[name], disc, settings,
+                output_side_pixels=output_side_pixels,
+                window_size_percentile_kept=window_size_percentile_kept,
+                window_side_pixels=None,
+                competing_vessel_mask=competing_masks[name],
+            )
+            # Cache the final joint-window geometry, not just the initial
+            # per-vessel geometry, so every pipeline reuses the same objects.
+            cache[key] = prepared
+    Logger.log(f"Prepared topology: vessels={tuple(masks)}, shared_window={shared_side}px.")
+    return prepared_topologies
 
 
 def _resize_prepared_topology(
@@ -249,7 +263,7 @@ def prepare_segments(
         "Starting streamed topology segment preparation: "
         f"source_shape={tuple(int(size) for size in data_map.shape)}, "
         f"source_type={type(data_map).__name__}, "
-        f"valid_segments={len(valid_indexes)}."
+        f"valid_segments={len(valid_indexes)}, transform_mode={transform_mode}."
     )
     if worker_count < 1:
         raise ValueError("worker_count must be positive.")
@@ -322,7 +336,7 @@ def prepare_segments(
                 f"Streamed segment progress: {work_index}/{len(valid_indexes)}; "
                 f"index=({prepared.ring_index}, {prepared.branch_index}), "
                 f"extraction={extraction_seconds:.2f}s, "
-                f"fused_transform={transform_seconds:.2f}s; "
+                f"{transform_mode}_transform={transform_seconds:.2f}s; "
                 f"rotated={_array_summary(prepared.rotated)}."
             )
         yield prepared
@@ -362,8 +376,10 @@ def _cached_topology(
         if found is not None:
             if not isinstance(found, PreparedTopology):
                 raise TypeError("Topology cache values must be PreparedTopology.")
+            Logger.log(f"Topology cache hit: {vessel_name}; reusing prepared topology.")
             return found
 
+    Logger.log(f"Topology cache {'miss' if cache is not None else 'disabled'}: {vessel_name}; preparing topology.")
     prepared = prepare_topology(
         vessel_mask,
         optic_disc_mask,

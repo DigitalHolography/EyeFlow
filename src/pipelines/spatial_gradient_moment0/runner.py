@@ -13,7 +13,7 @@ from scipy import ndimage
 
 from input_output.output_manager import OutputType
 from input_output.writers.avi import MjpegAviWriter
-from pipelines.displacement_map.filtering import CenteredMedianBuffer
+from calculations.math.temporal_median import CenteredMedianBuffer
 
 
 AVI_FILENAME = "spatial_gradient_moment0.avi"
@@ -24,6 +24,21 @@ CONTRAST_GAMMA = 1.0
 TEMPORAL_MEDIAN_WINDOW = 17
 TBKR_LUMEN_SIZE_QC_THRESHOLD = 0.5
 STATE_KEY = "spatial_gradient_moment0_artifacts"
+PROFILE_STATE_KEY = "spatial_gradient_moment0_profiles"
+
+
+@dataclass(frozen=True)
+class SpatialGradientProfileProducts:
+    artery_segments: object
+    vein_segments: object
+    outputs: dict[str, object]
+
+
+def spatial_gradient_profile_products(ctx) -> SpatialGradientProfileProducts:
+    products = ctx.state.get(PROFILE_STATE_KEY)
+    if not isinstance(products, SpatialGradientProfileProducts):
+        raise RuntimeError("The spatial-gradient pipeline did not publish its profile products.")
+    return products
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,10 +88,17 @@ def temporal_median_filter(
     yield from median_buffer.finish()
 
 
-def run_spatial_gradient_moment0(ctx) -> SpatialGradientMoment0Artifacts:
-    """Export a globally scaled gradient AVI and its temporal-mean PNG."""
+def run_spatial_gradient_moment0(ctx, *, profiles: bool = True) -> SpatialGradientMoment0Artifacts:
+    """Export gradient artifacts and independently prepare per-beat profiles.
+
+    Set profiles=False only for HD-only artifact export.
+    """
 
     ctx.require_inputs("hd")
+    if profiles:
+        ctx.require_inputs("dv")
+        from pipelines.heartbeat_core.runner import heartbeat_result
+        beat_info = heartbeat_result(ctx)
     if not ctx.output.available:
         raise ValueError("An output manager is required to export gradient artifacts.")
 
@@ -90,7 +112,7 @@ def run_spatial_gradient_moment0(ctx) -> SpatialGradientMoment0Artifacts:
     if frame_count <= 0 or height <= 0 or width <= 0:
         raise ValueError(f"moment0ff must have non-empty dimensions, got {moment0ff.shape}.")
 
-    # Preserve the quantitative float32 gradient cube for waveform_velocity.
+    # Preserve quantitative values for this pipeline's streamed profile stage.
     # Display-only contrast is applied later and never reaches profile data.
     temporary_directory = tempfile.TemporaryDirectory(
         prefix=".eyeflow-spatial-gradient-"
@@ -178,6 +200,16 @@ def run_spatial_gradient_moment0(ctx) -> SpatialGradientMoment0Artifacts:
         "Exported moment0 spatial gradients: "
         f"{avi_path} ({frame_count} frames) and {mean_png_path}."
     )
+    if profiles:
+        from .profiles import extract_spatial_gradient_segments, pack_spatial_gradient_profile_outputs
+        ctx.log("Spatial gradient: starting cached topology and fused segment transforms.")
+        artery, vein = extract_spatial_gradient_segments(ctx)
+        outputs = pack_spatial_gradient_profile_outputs(
+            artery, vein, beat_info.cycle_boundary_indexes, index_base=beat_info.index_base,
+        )
+        ctx.output.h5.write_many(outputs)
+        ctx.state.set(PROFILE_STATE_KEY, SpatialGradientProfileProducts(artery, vein, outputs))
+        ctx.log("Spatial gradient: completed fused segment transforms and per-beat profile export.")
     return artifacts
 
 

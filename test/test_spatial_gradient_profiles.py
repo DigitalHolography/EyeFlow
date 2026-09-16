@@ -14,8 +14,8 @@ from pipelines.spatial_gradient_moment0.runner import (
     STATE_KEY,
     SpatialGradientMoment0Artifacts,
 )
-from pipelines.waveform_velocity import spatial_gradient_profiles as profile_module
-from pipelines.waveform_velocity.spatial_gradient_profiles import (
+from pipelines.spatial_gradient_moment0 import profiles as profile_module
+from pipelines.spatial_gradient_moment0.profiles import (
     SPATIAL_GRADIENT_METRICS_ROOT,
     SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES,
     SPATIAL_GRADIENT_PROFILE_ROOT,
@@ -25,6 +25,64 @@ from pipelines.waveform_velocity.spatial_gradient_profiles import (
 
 
 class SpatialGradientProfileTests(unittest.TestCase):
+    def test_projects_fused_segments_with_horizontal_masking(self) -> None:
+        from calculations.compute_backend import optional_cupy_backend
+        from calculations.math import nanmean_float32
+        from calculations.topology import prepare_topology, prepare_segments, SegmentRingSettings
+
+        vessel = np.zeros((61, 61), bool)
+        vessel[27:34, 5:56] = True
+        disc = np.zeros_like(vessel)
+        disc[27:34, 27:34] = True
+        prepared = prepare_topology(vessel, disc, SegmentRingSettings(.1, .7, .25, 2))
+        cube = np.arange(3 * 61 * 61, dtype=np.float32).reshape(3, 61, 61)
+        cube[0] = np.nan
+        with patch.object(
+            profile_module, "prepare_segments", wraps=profile_module.prepare_segments,
+        ) as stream, patch.object(
+            profile_module, "dilate_segment_masks", wraps=profile_module.dilate_segment_masks,
+        ) as dilate:
+            result = profile_module._project_spatial_gradient_segments(cube, prepared)
+
+        self.assertIs(prepared, result.prepared_topology)
+        self.assertEqual("fused", stream.call_args.kwargs["transform_mode"])
+        self.assertEqual(
+            optional_cupy_backend() is not None,
+            stream.call_args.kwargs["keep_on_device"],
+        )
+        self.assertTrue(dilate.call_count)
+        for call in dilate.call_args_list:
+            self.assertEqual(5, call.kwargs["iterations"])
+            self.assertTrue(call.kwargs["horizontal_only"])
+        for item in prepare_segments(cube, prepared, transform_mode="fused"):
+            index = (item.ring_index, item.branch_index)
+            mask = profile_module.dilate_segment_masks(
+                prepared.rotated_masks[index], iterations=5, horizontal_only=True,
+            )
+            np.testing.assert_allclose(
+                result.transverse_gradient_profiles_unmasked[index],
+                nanmean_float32(item.rotated, axis=-2),
+                rtol=1e-5, atol=1e-4, equal_nan=True,
+            )
+            np.testing.assert_allclose(
+                result.transverse_gradient_profiles_masked[index],
+                nanmean_float32(np.where(mask, item.rotated, np.nan), axis=-2),
+                rtol=1e-5, atol=1e-4, equal_nan=True,
+            )
+        self.assertFalse(hasattr(result, "velocity"))
+        self.assertFalse(hasattr(result, "velocity_maps_per_segment"))
+
+    def test_empty_topology_produces_empty_gradient_profiles(self) -> None:
+        from calculations.topology import prepare_topology, SegmentRingSettings
+        mask = np.zeros((21, 21), bool)
+        prepared = prepare_topology(mask, mask, SegmentRingSettings(0., .5, .5, 1))
+        result = profile_module._project_spatial_gradient_segments(
+            np.zeros((3, 21, 21), np.float32), prepared,
+        )
+        self.assertEqual((1, 0, 3, 181), result.transverse_gradient_profiles_unmasked.shape)
+        self.assertEqual((0, 1, 2), result.segment_center_xy.shape)
+        self.assertEqual(0, result.transverse_gradient_profiles_masked.nbytes)
+
     def test_extracts_both_vessels_using_annular_cross_section_engine(self) -> None:
         temporary_directory = tempfile.TemporaryDirectory()
         gradient_path = Path(temporary_directory.name) / "gradient.npy"
@@ -43,7 +101,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
             optic_disc_center=np.asarray([4.0, 4.0]),
             retinal_artery_mask=np.ones((8, 8), dtype=bool),
             retinal_vein_mask=np.eye(8, dtype=bool),
-            cross_section_settings="settings",
+            window_size_percentile_kept=.95,
             optic_disc_mask=np.zeros((8, 8), bool),
         )
         ctx = SimpleNamespace(
@@ -62,26 +120,23 @@ class SpatialGradientProfileTests(unittest.TestCase):
         )
 
         with patch.object(
-            profile_module,
-            "analyze_velocity_segments",
-            return_value={"artery": "artery", "vein": "vein"},
-        ) as extract:
-            result = extract_spatial_gradient_segments(ctx, waveform_context)
+            profile_module, "prepare_topologies",
+            return_value={"artery": "artery topology", "vein": "vein topology"},
+        ) as prepare, patch.object(
+            profile_module, "_project_spatial_gradient_segments",
+            side_effect=("artery", "vein"),
+        ) as project:
+            result = extract_spatial_gradient_segments(ctx, source, number_of_radii_in_fov=4)
 
         self.assertEqual(("artery", "vein"), result)
-        args, kwargs = extract.call_args
-        self.assertEqual((3, 8, 8), args[0].shape)
-        np.testing.assert_array_equal(source.retinal_artery_mask, args[1]["artery"])
-        np.testing.assert_array_equal(source.retinal_vein_mask, args[1]["vein"])
-        self.assertEqual(
-            5,
-            kwargs["transverse_mask_dilation_pixels"],
-        )
-        self.assertEqual(
-            5,
-            kwargs["transverse_mask_dilation_pixels"],
-        )
-        self.assertFalse(kwargs["retain_velocity_maps"])
+        args, kwargs = prepare.call_args
+        np.testing.assert_array_equal(source.retinal_artery_mask, args[0]["artery"])
+        np.testing.assert_array_equal(source.retinal_vein_mask, args[0]["vein"])
+        np.testing.assert_array_equal(source.optic_disc_mask, args[1])
+        self.assertEqual(.95, kwargs["window_size_percentile_kept"])
+        self.assertEqual((3, 8, 8), project.call_args_list[0].args[0].shape)
+        self.assertEqual("artery topology", project.call_args_list[0].args[1])
+        self.assertEqual("vein topology", project.call_args_list[1].args[1])
         self.assertFalse(gradient_path.exists())
 
     def test_packs_requested_profiles_for_arteries_and_veins(self) -> None:
@@ -89,8 +144,8 @@ class SpatialGradientProfileTests(unittest.TestCase):
         masked = unmasked.copy()
         masked[..., 0] = np.nan
         segments = SimpleNamespace(
-            velocity_profiles=unmasked,
-            transverse_velocity_profiles_masked=masked,
+            transverse_gradient_profiles_unmasked=unmasked,
+            transverse_gradient_profiles_masked=masked,
         )
 
         outputs = pack_spatial_gradient_profile_outputs(
@@ -204,8 +259,8 @@ class SpatialGradientProfileTests(unittest.TestCase):
         masked_profiles = np.broadcast_to(masked_profile, (1, 1, 5, 11)).copy()
         unmasked_profiles = np.broadcast_to(unmasked_profile, (1, 1, 5, 11)).copy()
         segments = SimpleNamespace(
-            velocity_profiles=unmasked_profiles,
-            transverse_velocity_profiles_masked=masked_profiles,
+            transverse_gradient_profiles_unmasked=unmasked_profiles,
+            transverse_gradient_profiles_masked=masked_profiles,
         )
 
         outputs = pack_spatial_gradient_profile_outputs(

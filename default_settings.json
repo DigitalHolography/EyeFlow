@@ -6,7 +6,8 @@
     "pdf_report": true,
     "velocity_profile_analysis": true,
     "waveform_shape_metrics": true,
-    "waveform_velocity": true
+      "waveform_velocity": true,
+      "spatial_gradient_moment0": true
   },
   "pipeline_options": {
     "absolute_waveform_metrics": {

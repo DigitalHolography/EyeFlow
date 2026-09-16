@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
 from calculations.math import nanmedian
-from calculations.topology import run_topology_cache, topology_source_id
+from calculations.compute_backend import optional_cupy_backend
+from calculations.topology import (
+    PreparedTopology, dilate_segment_masks, prepare_segments, prepare_topologies,
+    run_topology_cache, topology_source_id, transverse_profiles,
+)
 from pipeline_engine.base import DatasetValue
 from pipelines.spatial_gradient_moment0.runner import (
     STATE_KEY,
@@ -13,10 +19,12 @@ from pipelines.spatial_gradient_moment0.runner import (
     TEMPORAL_MEDIAN_WINDOW,
     SpatialGradientMoment0Artifacts,
 )
-from pipelines.waveform_velocity_core.runner import _segment_ring_settings
-from pipelines.waveform_velocity_core.segments import analyze_velocity_segments
+from calculations.topology import segment_ring_settings
+from input_output.input_access import read_int_setting
+from .sources import load_spatial_gradient_source
+from utils.logger import Logger
 
-from .profiles import (
+from input_output.profile_datasets import (
     _profile_dataset,
     _temporally_meaned_profile_dataset,
 )
@@ -28,7 +36,30 @@ SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES = 5
 _SPATIAL_GRADIENT_MASK_DILATION_PIXELS = 5
 
 
-def extract_spatial_gradient_segments(ctx, waveform_context):
+@dataclass(frozen=True)
+class SpatialGradientSegmentResult:
+    """Gradient profiles and their map-independent branch/radius geometry."""
+
+    prepared_topology: PreparedTopology
+    transverse_gradient_profiles_unmasked: np.ndarray
+    transverse_gradient_profiles_masked: np.ndarray
+
+    @property
+    def labels(self) -> np.ndarray:
+        return self.prepared_topology.topology.labels
+
+    @property
+    def branch_ids(self) -> np.ndarray:
+        return self.prepared_topology.topology.branch_ids
+
+    @property
+    def segment_center_xy(self) -> np.ndarray:
+        centers = self.prepared_topology.topology.segment_centers_xy.copy()
+        centers[~np.isfinite(self.prepared_topology.rotation_degrees)] = np.nan
+        return centers.swapaxes(0, 1)
+
+
+def extract_spatial_gradient_segments(ctx, source=None, *, number_of_radii_in_fov=None):
     """Prepare annular branch topology and project the gradient video onto it."""
 
     artifacts = ctx.state.get(STATE_KEY)
@@ -38,35 +69,80 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
             "quantitative gradient video."
         )
     gradient_map = np.load(artifacts.gradient_path, mmap_mode="r")
-    source = waveform_context.source_data
     try:
-        ring_settings = _segment_ring_settings(
+        source = source or load_spatial_gradient_source(ctx, gradient_map.shape[-2:])
+        if number_of_radii_in_fov is None:
+            number_of_radii_in_fov = read_int_setting(
+                ctx, default=25, keys=("number_of_radii_in_FOV", "number_of_radii_in_fov",
+                    "NumberOfRadiiInFOV", "number_of_radii_over_FOV",
+                    "number_of_radii_over_fov", "NumberOfRadiiOverFOV"),
+            )
+        Logger.log("Spatial gradient: preparing/reusing cached vessel topology.")
+        ring_settings = segment_ring_settings(
             source.optic_disc_width,
             source.optic_disc_height,
             image_shape=gradient_map.shape[-2:],
-            optic_disc_center=source.optic_disc_center,
-            number_of_radii_in_FOV=int(
-                waveform_context.attrs["number_of_radii_in_FOV"]
-            ),
+            number_of_radii_in_fov=int(number_of_radii_in_fov),
         )
-        results = analyze_velocity_segments(
-            gradient_map,
+        topologies = prepare_topologies(
             {"artery": source.retinal_artery_mask, "vein": source.retinal_vein_mask},
-            source.optic_disc_center,
+            source.optic_disc_mask,
             ring_settings,
-            source.cross_section_settings,
-            optic_disc_mask=source.optic_disc_mask,
             source_id=topology_source_id(ctx.inputs.hd.filename, ctx.inputs.dv.filename),
-            topology_cache=run_topology_cache(ctx.state.raw),
-            retain_velocity_maps=False,
-            transverse_mask_dilation_pixels=_SPATIAL_GRADIENT_MASK_DILATION_PIXELS,
+            cache=run_topology_cache(ctx.state.raw),
+            optic_disc_center=source.optic_disc_center,
+            window_size_percentile_kept=source.window_size_percentile_kept,
         )
+        results = {}
+        for name, prepared in topologies.items():
+            Logger.log(f"Spatial gradient: preparing {name} segment profiles.")
+            results[name] = _project_spatial_gradient_segments(gradient_map, prepared)
         return results["artery"], results["vein"]
     finally:
         mmap = getattr(gradient_map, "_mmap", None)
         if mmap is not None:
             mmap.close()
         artifacts.cleanup()
+
+
+def _project_spatial_gradient_segments(
+    gradient_map, prepared: PreparedTopology,
+) -> SpatialGradientSegmentResult:
+    """Stream fused topology transforms and retain only transverse profiles."""
+    topology = prepared.topology
+    side = int(prepared.rotated_masks.shape[-1])
+    shape = (*topology.valid_segments.shape, int(gradient_map.shape[0]), side)
+    unmasked = np.full(shape, np.nan, dtype=np.float32)
+    masked = np.full(shape, np.nan, dtype=np.float32)
+    backend = optional_cupy_backend()
+    Logger.log(
+        f"Spatial gradient: streaming fused interpolation+rotation; "
+        f"valid_segments={int(np.count_nonzero(topology.valid_segments))}, "
+        f"backend={'CuPy/CUDA' if backend is not None else 'CPU/SciPy'}, "
+        f"horizontal_dilation={_SPATIAL_GRADIENT_MASK_DILATION_PIXELS}px."
+    )
+    segments = prepare_segments(
+        gradient_map, prepared, transform_mode="fused",
+        keep_on_device=backend is not None,
+    )
+    for segment in segments:
+        index = (segment.ring_index, segment.branch_index)
+        mask = dilate_segment_masks(
+            prepared.rotated_masks[index],
+            iterations=_SPATIAL_GRADIENT_MASK_DILATION_PIXELS,
+            horizontal_only=True,
+        )
+        # The public profile API expects (radius, branch, ..., y, x).
+        values = segment.rotated[None, None]
+        raw_profile = transverse_profiles(values)[0, 0]
+        masked_profile = transverse_profiles(values, mask[None, None])[0, 0]
+        if backend is not None and isinstance(raw_profile, backend.cupy.ndarray):
+            raw_profile = backend.cupy.asnumpy(raw_profile)
+            masked_profile = backend.cupy.asnumpy(masked_profile)
+        unmasked[index] = raw_profile
+        masked[index] = masked_profile
+        del values, segment, raw_profile, masked_profile
+    return SpatialGradientSegmentResult(prepared, unmasked, masked)
 
 
 def pack_spatial_gradient_profile_outputs(
@@ -112,14 +188,14 @@ def _pack_vessel_spatial_gradient_profiles(
         return {}
     root = f"{SPATIAL_GRADIENT_PROFILE_ROOT}/{vessel_name}/Transverse"
     unmasked = _gradient_profile_dataset(
-        np.asarray(segments.velocity_profiles, dtype=np.float32),
+        np.asarray(segments.transverse_gradient_profiles_unmasked, dtype=np.float32),
         cycle_boundary_indexes,
         index_base=index_base,
         mask="unmasked",
     )
     masked = _gradient_profile_dataset(
         np.asarray(
-            segments.transverse_velocity_profiles_masked,
+            segments.transverse_gradient_profiles_masked,
             dtype=np.float32,
         ),
         cycle_boundary_indexes,
@@ -609,6 +685,7 @@ def _gradient_profile_dataset(
 
 
 __all__ = [
+    "SpatialGradientSegmentResult",
     "SPATIAL_GRADIENT_PROFILE_ROOT",
     "SPATIAL_GRADIENT_METRICS_ROOT",
     "SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES",

@@ -137,7 +137,7 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
         from scipy.signal import resample as scipy_resample
 
         with patch(
-            "calculations.blood_flow_velocity.cross_section.profile_processing.resample",
+            "calculations.topology.profile_interpolation.resample",
             wraps=scipy_resample,
         ) as resample:
             result = interpolate_velocity_profiles_per_beat(

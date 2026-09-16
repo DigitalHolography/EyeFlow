@@ -51,7 +51,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
     def setUp(self) -> None:
         # These orchestration tests use string segment sentinels.
         for name, result in {
-            "extract_spatial_gradient_segments": ("artery", "vein"),
+            "spatial_gradient_profile_products": SimpleNamespace(artery_segments="artery", vein_segments="vein"),
             "pack_spatial_gradient_profile_outputs": {},
             "pack_blood_volume_rate_outputs": {},
             "pack_cross_section_displacement_profile_outputs": {},
@@ -300,8 +300,8 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ),
             patch.object(
                 velocity_runner,
-                "extract_spatial_gradient_segments",
-                return_value=("gradient_artery", "gradient_vein"),
+                "spatial_gradient_profile_products",
+                return_value=SimpleNamespace(artery_segments="gradient_artery", vein_segments="gradient_vein"),
             ),
             patch.object(
                 velocity_runner,
@@ -322,15 +322,10 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 
         self.assertEqual(
-            {"base": 1, "signals": 2, "gradient_profiles": 4},
+            {"base": 1, "signals": 2},
             outputs,
         )
-        gradient_profiles.assert_called_once_with(
-            "gradient_artery",
-            "gradient_vein",
-            (1, 6, 11),
-            index_base=1,
-        )
+        gradient_profiles.assert_not_called()
         maps.assert_not_called()
         avis.assert_not_called()
 

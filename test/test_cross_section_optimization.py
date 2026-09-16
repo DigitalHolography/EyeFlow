@@ -138,15 +138,20 @@ def test_velocity_and_gradient_share_topology_and_segment_axes(geometry):
     velocity = analyze_velocity_segments(
         cube, masks, (30, 30), rings, cs.CrossSectionSignalSettings(.01), **common,
     )
-    gradient = analyze_velocity_segments(
-        cube * 3, masks, (30, 30), rings, cs.CrossSectionSignalSettings(.01),
-        transverse_mask_dilation_pixels=5, **common,
+    from calculations.topology import prepare_topologies
+    from pipelines.spatial_gradient_moment0.profiles import _project_spatial_gradient_segments
+    topologies = prepare_topologies(
+        masks, disc, rings, source_id="registered", cache=cache, optic_disc_center=(30, 30),
     )
+    gradient = {
+        name: _project_spatial_gradient_segments(cube * 3, prepared)
+        for name, prepared in topologies.items()
+    }
     for name in masks:
         _validate_profile_segment_alignment(name, velocity[name], gradient[name])
         if velocity[name].branch_ids.size:
-            assert velocity[name].topology.prepared_topology is gradient[name].topology.prepared_topology
-        assert gradient[name].velocity_maps_per_segment is None
+            assert velocity[name].topology.prepared_topology is gradient[name].prepared_topology
+        assert not hasattr(gradient[name], "velocity_maps_per_segment")
 
 
 @pytest.mark.parametrize("mode", ["reference", "per_cube"])
