@@ -10,8 +10,8 @@ from utils.logger import Logger
 from .fitting import DEFAULT_WEIGHT_POWER, analyze_velocity_profiles
 
 SOURCE_PATHS = {
-    "Artery": "/Processing/VelocityProfiles/Artery/TransverseVelocityProfileMasked/value",
-    "Vein": "/Processing/VelocityProfiles/Vein/TransverseVelocityProfileMasked/value",
+    "Artery": "/Processing/VelocityProfiles/Artery/Transversal/Masked/VelocityProfile/value",
+    "Vein": "/Processing/VelocityProfiles/Vein/Transversal/Masked/VelocityProfile/value",
 }
 OUTPUT_ROOT = "/Processing/VelocityProfileAnalysis"
 

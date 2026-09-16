@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.blood_flow_velocity import segment_velocity_results
 from calculations.math import nanmedian
+from calculations.topology import run_topology_cache, topology_source_id
 from pipeline_engine.base import DatasetValue
 from pipelines.spatial_gradient_moment0.runner import (
     STATE_KEY,
@@ -14,6 +14,7 @@ from pipelines.spatial_gradient_moment0.runner import (
     SpatialGradientMoment0Artifacts,
 )
 from pipelines.waveform_velocity_core.runner import _segment_ring_settings
+from pipelines.waveform_velocity_core.segments import analyze_velocity_segments
 
 from .profiles import (
     _profile_dataset,
@@ -48,21 +49,19 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
                 waveform_context.attrs["number_of_radii_in_FOV"]
             ),
         )
-        return segment_velocity_results(
+        results = analyze_velocity_segments(
             gradient_map,
-            source.retinal_artery_mask,
-            source.retinal_vein_mask,
+            {"artery": source.retinal_artery_mask, "vein": source.retinal_vein_mask},
             source.optic_disc_center,
             ring_settings,
             source.cross_section_settings,
-            artery_transverse_mask_dilation_pixels=(
-                _SPATIAL_GRADIENT_MASK_DILATION_PIXELS
-            ),
-            vein_transverse_mask_dilation_pixels=(
-                _SPATIAL_GRADIENT_MASK_DILATION_PIXELS
-            ),
-            retain_displacement_maps=False,
+            optic_disc_mask=source.optic_disc_mask,
+            source_id=topology_source_id(ctx.inputs.hd.filename, ctx.inputs.dv.filename),
+            topology_cache=run_topology_cache(ctx.state.raw),
+            retain_velocity_maps=False,
+            transverse_mask_dilation_pixels=_SPATIAL_GRADIENT_MASK_DILATION_PIXELS,
         )
+        return results["artery"], results["vein"]
     finally:
         mmap = getattr(gradient_map, "_mmap", None)
         if mmap is not None:

@@ -27,6 +27,9 @@ import numpy as np
 import scipy
 
 from calculations.compute_backend import optional_cupy_backend
+from calculations.topology import (SegmentTopology, PreparedTopology, SegmentRingSettings,
+    PreparedSegment, prepare_segments, interpolate_segment_masks, rotate_segment_masks,
+    resample_rotate_segment)
 
 cs = importlib.import_module(
     "calculations.blood_flow_velocity.cross_section.generate_cross_section_signals"
@@ -49,34 +52,49 @@ def movie(frames, side, varying):
 def select_backend(mode):
     os.environ["EYEFLOW_COMPUTE_BACKEND"] = mode
     optional_cupy_backend.cache_clear()
-    cs._GPU_FAILED = False
+
+
+def topology_measurement(values, mask, *, windowed=False):
+    side = values.shape[-1]
+    angle = -59.0
+    geometry = SegmentTopology(
+        spatial_shape=mask.shape, optic_disc_center_xy=(0., 0.),
+        labels=mask.astype(np.int32), centerline=mask,
+        branch_ids=np.array([1], np.int32), annulus_masks=np.ones((1, *mask.shape), bool),
+        segment_masks=mask[None, None], segment_centers_xy=np.array([[[(side - 1) / 2] * 2]]),
+        window_bounds_xyxy=np.array([[[0, side, 0, side]]]), window_side_pixels=side,
+        branch_identity=type("Branches", (), {
+            "branch_ids": np.array([1], np.int32), "labels": mask.astype(np.int32),
+            "stages": type("Stages", (), {"vessel": mask})(),
+        })(),
+    )
+    angles = np.array([[angle]], np.float32)
+    resized = interpolate_segment_masks(mask[None, None])
+    prepared = PreparedTopology(geometry, angles, resized, rotate_segment_masks(resized, angles))
+    device = optional_cupy_backend() is not None
+    segments = prepare_segments(values, prepared, keep_on_device=device) if windowed else iter([
+        PreparedSegment(0, 0, resample_rotate_segment(values, angle, return_device=device))
+    ])
+    return cs._generate_cross_section_signals_from_prepared(
+        values, prepared, segments, SegmentRingSettings(0., 1., 1., 1),
+        cs.CrossSectionSignalSettings(.01), retain_velocity_maps=False,
+    )
 
 
 def measure(module, mode, values, mask, repeats, windowed=False):
     select_backend(mode)
     cp.get_default_memory_pool().free_all_blocks()
-    settings = module.CrossSectionSignalSettings(True, 0.5, True, 0.01)
 
     def call():
-        if windowed:
-            side = values.shape[-1]
-            ys, xs = np.nonzero(mask)
-            work = cs._CrossSectionWork(
-                cs._SegmentGeometry(0, 0, (side // 2,) * 2, ys, xs, -59.0),
-                (0, side, 0, side),
-            )
-            buffers = cs._CrossSectionBuffers.allocate(
-                frame_count=len(values), ring_count=1, branch_count=1
-            )
-            cs._measure_windowed_work(buffers, values, work, (0, 0), settings, side)
-            return buffers
+        if module is cs:
+            return topology_measurement(values, mask, windowed=windowed)
         return module._cross_section_velocity_from_substack(
             values,
             mask,
             (values.shape[-1] // 2,) * 2,
             (0, 0),
             -59.0,
-            settings,
+            module.CrossSectionSignalSettings(True, 0.5, True, 0.01),
             values.shape[-1],
         )
 
@@ -101,29 +119,18 @@ def measure(module, mode, values, mask, repeats, windowed=False):
 
 
 def parity(values, mask):
-    settings = cs.CrossSectionSignalSettings(True, 0.5, True, 0.01)
     results = []
     for mode in ("cpu", "cupy"):
         select_backend(mode)
-        results.append(
-            cs._cross_section_velocity_from_substack(
-                values,
-                mask,
-                (values.shape[-1] // 2,) * 2,
-                (0, 0),
-                -59.0,
-                settings,
-                values.shape[-1],
-            )
-        )
+        results.append(topology_measurement(values, mask))
     errors = {}
-    assert results[0].limits == results[1].limits
-    for kind in ("masked", "unmasked"):
-        for name in ("raw", "safe_velocity", "transverse_profiles", "longitudinal_profiles"):
-            cpu = getattr(getattr(results[0], kind), name)
-            gpu = getattr(getattr(results[1], kind), name)
-            np.testing.assert_allclose(gpu, cpu, rtol=1e-5, atol=1e-5, equal_nan=True)
-            errors[f"{kind}.{name}"] = float(np.nanmax(np.abs(cpu - gpu)))
+    for name in ("velocity", "safe_velocity", "velocity_profiles",
+                 "transverse_velocity_profiles_masked",
+                 "longitudinal_velocity_profiles_unmasked",
+                 "longitudinal_velocity_profiles_masked"):
+        cpu, gpu = (getattr(result, name) for result in results)
+        np.testing.assert_allclose(gpu, cpu, rtol=1e-5, atol=1e-5, equal_nan=True)
+        errors[name] = float(np.nanmax(np.abs(cpu - gpu)))
     return errors
 
 
@@ -150,7 +157,7 @@ def main():
         "cuda_runtime": cp.cuda.runtime.runtimeGetVersion(),
         "cuda_driver": cp.cuda.runtime.driverGetVersion(),
         "cases": [],
-        "scope": "One segment: resize, rotate, fit limits, profiles and host outputs. "
+        "scope": "One segment: fused resize/rotate, profiles and host summaries. "
         "Synchronized wall time; compilation excluded. Synthetic data; "
         "excludes branch labeling, profile postprocessing, and export.",
     }

@@ -305,6 +305,9 @@ def analyze_velocity_segments(
     cycle_boundary_indexes=None,
     velocity_profile_fft: bool = False,
     index_base: int = 0,
+    transverse_mask_dilation_pixels: int | None = None,
+    displacement_maps_by_vessel: Mapping[str, Mapping[str, object]] | None = None,
+    retain_displacement_maps: bool = False,
 ) -> dict[str, CrossSectionSignalResult]:
     """Analyze velocity-map segments for every named vessel mask.
 
@@ -396,6 +399,9 @@ def analyze_velocity_segments(
             cross_section_settings,
             retain_velocity_maps=retain_velocity_maps,
             segment_observer=(fft_profiles.observe if fft_profiles else None),
+            transverse_mask_dilation_pixels=transverse_mask_dilation_pixels,
+            displacement_maps=(displacement_maps_by_vessel or {}).get(name),
+            retain_displacement_maps=retain_displacement_maps,
         )
         results[name] = replace(
             result,

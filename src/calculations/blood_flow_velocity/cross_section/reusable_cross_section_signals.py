@@ -7,22 +7,17 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .branch_identity import BranchIdentityResult
+from calculations.topology import (
+    BranchIdentityResult, PreparedTopology, SegmentRingSettings,
+    prepare_topologies, prepare_segments,
+)
 from .generate_cross_section_signals import (
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
-    CrossSectionTopology,
     _cross_section_worker_count,
-    _CrossSectionBuffers,
-    _CrossSectionWork,
-    _empty_result,
-    _measure_windowed_work,
-    _result_from_buffers,
-    _SegmentGeometry,
-    _validate_velocity_cube,
-    generate_cross_section_signals,
+    _generate_cross_section_signals_from_prepared,
 )
-from .segment_geometry import SegmentRingSettings, section_masks
+
 
 __all__ = [
     "CrossSectionProjectionPlan",
@@ -46,6 +41,7 @@ class CrossSectionProjectionPlan:
     reconstruct the full centroid-centered square, including padded pixels.
     """
 
+    prepared_topology: PreparedTopology
     spatial_shape: tuple[int, int]
     labels: np.ndarray
     branch_ids: np.ndarray
@@ -87,54 +83,29 @@ def fit_cross_section_plan(
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings,
 ) -> tuple[CrossSectionProjectionPlan, CrossSectionSignalResult]:
-    """Fit one fixed window size, angles, and limits on a reference cube."""
+    """Prepare shared topology once and measure the reference cube."""
     vessel = np.asarray(vessel_mask, dtype=bool)
     if vessel.ndim != 2:
         raise ValueError("vessel_mask must be a 2-D array.")
     _validate_data_cube(reference_cube, vessel.shape, "reference_cube")
-
-    result = generate_cross_section_signals(
-        reference_cube,
-        vessel,
-        optic_disc_center,
-        ring_settings,
-        cross_section_settings,
-    )
-    if result.branch_ids.size == 0:
-        return (
-            _empty_projection_plan(
-                vessel,
-                result.branch_identity,
-                optic_disc_center,
-                ring_settings,
-                cross_section_settings,
-            ),
-            result,
-        )
-
-    center_valid = np.all(np.isfinite(result.segment_center_xy), axis=-1).T
-    bounds = result.profile_window_bounds_xyxy
-    limits = result.profile_integration_limits_pixels
-    valid_segments = (
-        center_valid
-        & np.isfinite(result.profile_rotation_degrees)
-        & np.all(bounds >= 0, axis=-1)
-        & (bounds[..., 0] < bounds[..., 1])
-        & (bounds[..., 2] < bounds[..., 3])
-        & (limits[..., 0] >= 0)
-        & (limits[..., 0] <= limits[..., 1])
-    )
+    prepared = prepare_topologies(
+        {"vessel": vessel}, None, ring_settings, source_id="",
+        optic_disc_center=optic_disc_center,
+        window_size_percentile_kept=cross_section_settings.submask_size_percentile_kept,
+    )["vessel"]
+    result = _project_prepared(reference_cube, prepared, ring_settings, cross_section_settings)
     plan = CrossSectionProjectionPlan(
+        prepared_topology=prepared,
         spatial_shape=vessel.shape,
         labels=result.labels.copy(),
         branch_ids=result.branch_ids.copy(),
         segment_center_xy=result.segment_center_xy.copy(),
-        profile_window_bounds_xyxy=bounds.copy(),
+        profile_window_bounds_xyxy=result.profile_window_bounds_xyxy.copy(),
         profile_window_side_pixels=result.profile_window_side_pixels,
         profile_pixel_size_mm=result.profile_pixel_size_mm,
         profile_rotation_degrees=result.profile_rotation_degrees.copy(),
-        profile_integration_limits_pixels=limits.copy(),
-        valid_segments=valid_segments,
+        profile_integration_limits_pixels=result.profile_integration_limits_pixels.copy(),
+        valid_segments=result.topology.valid_segments.copy(),
         branch_identity=result.branch_identity,
         optic_disc_center=_copy_optional_array(optic_disc_center),
         ring_settings=ring_settings,
@@ -149,105 +120,15 @@ def project_cross_section_cube(
     *,
     limits_mode: str = "reference",
 ) -> CrossSectionSignalResult:
-    """Apply a fitted cross-section plan to one registered data cube.
+    """Project a registered cube through the same topology and transforms.
 
-    ``limits_mode='reference'`` reuses the reference cube's transverse
-    integration limits. ``limits_mode='per_cube'`` keeps the reference window
-    and angle but estimates new limits from the projected cube.
+    Both limits modes use the full transverse width, matching the refactor's
+    removal of hydrodynamic fitting from segment extraction.
     """
     _validate_limits_mode(limits_mode)
     _validate_data_cube(data_cube, plan.spatial_shape, "data_cube")
-    if plan.branch_ids.size == 0:
-        vessel = np.zeros(plan.spatial_shape, dtype=bool)
-        return _empty_result(
-            data_cube,
-            vessel,
-            plan.ring_settings,
-            plan.branch_identity,
-            substack_side_pixels=plan.profile_window_side_pixels,
-            profile_pixel_size_mm=plan.profile_pixel_size_mm,
-        )
-
-    _cross_section_worker_count(
-        int(np.count_nonzero(plan.valid_segments)),
-        frame_count=data_cube.shape[0],
-        side_pixels=plan.profile_window_side_pixels,
-        memory_mb=plan.cross_section_settings.working_memory_mb,
-    )
-    masks = section_masks(
-        plan.spatial_shape,
-        plan.optic_disc_center,
-        plan.ring_settings,
-    )
-    buffers = _CrossSectionBuffers.allocate(
-        frame_count=data_cube.shape[0],
-        ring_count=plan.ring_settings.ring_count,
-        branch_count=plan.branch_ids.size,
-    )
-    buffers.segment_center_xy[...] = plan.segment_center_xy
-
-    for circle_index, section in enumerate(masks):
-        for branch_index, branch_id in enumerate(plan.branch_ids):
-            if not plan.valid_segments[circle_index, branch_index]:
-                continue
-            mask = section & (plan.labels == int(branch_id))
-            loc_values = plan.segment_center_xy[branch_index, circle_index]
-            loc_xy = (int(loc_values[0]), int(loc_values[1]))
-            bounds_xyxy = tuple(
-                int(value)
-                for value in plan.profile_window_bounds_xyxy[
-                    circle_index,
-                    branch_index,
-                ]
-            )
-            angle = float(plan.profile_rotation_degrees[circle_index, branch_index])
-            limits = None
-            if limits_mode == "reference":
-                limits = tuple(
-                    int(v)
-                    for v in plan.profile_integration_limits_pixels[circle_index, branch_index]
-                )
-            ys, xs = np.nonzero(mask)
-            work = _CrossSectionWork(
-                _SegmentGeometry(circle_index, branch_index, loc_xy, ys, xs, np.nan),
-                bounds_xyxy,
-            )
-            _measure_windowed_work(
-                buffers,
-                data_cube,
-                work,
-                plan.optic_disc_center,
-                plan.cross_section_settings,
-                plan.profile_window_side_pixels,
-                angle_override=angle,
-                limits_override=limits,
-            )
-
-    topology = CrossSectionTopology(
-        spatial_shape=plan.spatial_shape,
-        frame_count=int(data_cube.shape[0]),
-        labels=plan.labels.copy(),
-        branch_ids=plan.branch_ids.copy(),
-        section_masks=np.asarray(masks, dtype=bool).copy(),
-        segment_masks=np.asarray(buffers.segment_masks),
-        segment_center_xy=buffers.segment_center_xy.copy(),
-        profile_window_bounds_xyxy=buffers.profile_window_bounds_xyxy.copy(),
-        profile_window_side_pixels=plan.profile_window_side_pixels,
-        profile_pixel_size_mm=plan.profile_pixel_size_mm,
-        profile_rotation_degrees=buffers.profile_rotation_degrees.copy(),
-        profile_integration_limits_pixels=(
-            buffers.profile_integration_limits_pixels.copy()
-        ),
-        valid_segments=plan.valid_segments.copy(),
-        branch_identity=plan.branch_identity,
-    )
-    return _result_from_buffers(
-        buffers,
-        plan.branch_identity,
-        plan.cross_section_settings,
-        plan.profile_window_side_pixels,
-        topology=topology,
-        displacements={},
+    return _project_prepared(
+        data_cube, plan.prepared_topology, plan.ring_settings, plan.cross_section_settings,
     )
 
 
@@ -306,45 +187,16 @@ def generate_cross_section_signals_for_cubes(
     return MultiCubeCrossSectionSignalResult(plan, reference_name, passes)
 
 
-def _empty_projection_plan(
-    vessel: np.ndarray,
-    branches: BranchIdentityResult,
-    optic_disc_center,
-    ring_settings: SegmentRingSettings,
-    cross_section_settings: CrossSectionSignalSettings,
-) -> CrossSectionProjectionPlan:
-    segment_shape = (ring_settings.ring_count, 0)
-    return CrossSectionProjectionPlan(
-        spatial_shape=vessel.shape,
-        labels=branches.labels.copy(),
-        branch_ids=branches.branch_ids.copy(),
-        segment_center_xy=np.full(
-            (0, ring_settings.ring_count, 2),
-            np.nan,
-            dtype=np.float32,
-        ),
-        profile_window_bounds_xyxy=np.full(
-            (*segment_shape, 4),
-            -1,
-            dtype=np.int32,
-        ),
-        profile_window_side_pixels=0,
-        profile_pixel_size_mm=0.0,
-        profile_rotation_degrees=np.full(
-            segment_shape,
-            np.nan,
-            dtype=np.float32,
-        ),
-        profile_integration_limits_pixels=np.full(
-            (*segment_shape, 2),
-            -1,
-            dtype=np.int32,
-        ),
-        valid_segments=np.zeros(segment_shape, dtype=bool),
-        branch_identity=branches,
-        optic_disc_center=_copy_optional_array(optic_disc_center),
-        ring_settings=ring_settings,
-        cross_section_settings=cross_section_settings,
+def _project_prepared(data_cube, prepared, ring_settings, settings):
+    workers = _cross_section_worker_count(
+        int(np.count_nonzero(prepared.topology.valid_segments)),
+        frame_count=int(data_cube.shape[0]),
+        working_memory_mb=settings.working_memory_mb,
+    )
+    return _generate_cross_section_signals_from_prepared(
+        data_cube, prepared,
+        prepare_segments(data_cube, prepared, worker_count=workers),
+        ring_settings, settings,
     )
 
 
@@ -353,10 +205,11 @@ def _validate_data_cube(
     spatial_shape: tuple[int, int],
     name: str,
 ) -> None:
-    _validate_velocity_cube(data_cube, spatial_shape)
     shape = getattr(data_cube, "shape", None)
     if shape is None or len(shape) != 3:
         raise ValueError(f"{name} must have shape (frame, y, x), got {shape!r}.")
+    if any(int(size) <= 0 for size in shape):
+        raise ValueError(f"{name} axes must be nonempty.")
     if tuple(shape[-2:]) != tuple(spatial_shape):
         raise ValueError(
             f"{name} spatial shape must be {tuple(spatial_shape)}, got {tuple(shape[-2:])}."

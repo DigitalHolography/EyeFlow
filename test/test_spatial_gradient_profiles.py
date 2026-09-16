@@ -44,11 +44,17 @@ class SpatialGradientProfileTests(unittest.TestCase):
             retinal_artery_mask=np.ones((8, 8), dtype=bool),
             retinal_vein_mask=np.eye(8, dtype=bool),
             cross_section_settings="settings",
+            optic_disc_mask=np.zeros((8, 8), bool),
         )
         ctx = SimpleNamespace(
             state=SimpleNamespace(
+                raw={},
                 get=lambda key: artifacts if key == STATE_KEY else None
-            )
+            ),
+            inputs=SimpleNamespace(
+                hd=SimpleNamespace(filename="hd.h5"),
+                dv=SimpleNamespace(filename="dv.h5"),
+            ),
         )
         waveform_context = SimpleNamespace(
             source_data=source,
@@ -57,25 +63,25 @@ class SpatialGradientProfileTests(unittest.TestCase):
 
         with patch.object(
             profile_module,
-            "segment_velocity_results",
-            return_value=("artery", "vein"),
+            "analyze_velocity_segments",
+            return_value={"artery": "artery", "vein": "vein"},
         ) as extract:
             result = extract_spatial_gradient_segments(ctx, waveform_context)
 
         self.assertEqual(("artery", "vein"), result)
         args, kwargs = extract.call_args
         self.assertEqual((3, 8, 8), args[0].shape)
-        np.testing.assert_array_equal(source.retinal_artery_mask, args[1])
-        np.testing.assert_array_equal(source.retinal_vein_mask, args[2])
+        np.testing.assert_array_equal(source.retinal_artery_mask, args[1]["artery"])
+        np.testing.assert_array_equal(source.retinal_vein_mask, args[1]["vein"])
         self.assertEqual(
             5,
-            kwargs["artery_transverse_mask_dilation_pixels"],
+            kwargs["transverse_mask_dilation_pixels"],
         )
         self.assertEqual(
             5,
-            kwargs["vein_transverse_mask_dilation_pixels"],
+            kwargs["transverse_mask_dilation_pixels"],
         )
-        self.assertFalse(kwargs["retain_displacement_maps"])
+        self.assertFalse(kwargs["retain_velocity_maps"])
         self.assertFalse(gradient_path.exists())
 
     def test_packs_requested_profiles_for_arteries_and_veins(self) -> None:

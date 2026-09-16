@@ -129,13 +129,13 @@ def extract_segments(
         read_seconds += perf_counter() - read_started
         source = np.moveaxis(source, (y_axis, x_axis), (-2, -1))
         target_y, target_x = _window_target_slices(bounds, center, side)
-        extracted[
+        extracted[(
             int(ring_index),
             int(branch_index),
             *target_prefix,
             target_y,
             target_x,
-        ] = source
+        )] = source
         if work_index % progress_step == 0 or work_index == len(valid_indexes):
             Logger.log(
                 f"Segment extraction progress: {work_index}/{len(valid_indexes)} "

@@ -18,6 +18,9 @@ from .continuous import (
     pack_segment_velocity_outputs,
 )
 from .profiles import (
+    pack_blood_volume_rate_outputs,
+    pack_cross_section_displacement_profile_outputs,
+    pack_displacement_magnitude_outputs,
     pack_cross_section_profile_outputs,
     pack_velocity_profile_fft_outputs,
 )
@@ -141,7 +144,8 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 }
             )
 
-    if profiles_selected or profile_analysis_scheduled:
+    profile_products_required = profiles_selected or profile_analysis_scheduled
+    if segments_selected or profile_products_required:
         cycle_boundaries = (
             per_beat_result.cycle_boundary_indexes
             if per_beat_result is not None
@@ -194,6 +198,14 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                     context.vein_segment_result,
                 )
             )
+        metrics.update(pack_displacement_magnitude_outputs(
+            context.artery_segment_result, context.vein_segment_result,
+            cycle_boundaries, index_base=index_base,
+        ))
+        metrics.update(pack_cross_section_displacement_profile_outputs(
+            context.artery_segment_result, context.vein_segment_result,
+            cycle_boundaries, index_base=index_base,
+        ))
 
     if "quadrants" in selected:
         metrics.update(

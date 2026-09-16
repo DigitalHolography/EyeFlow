@@ -86,7 +86,7 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
         artery = _segments(radius_count=2, branch_count=1)
         vein = _segments(radius_count=2, branch_count=0)
         metrics = pack_cross_section_profile_outputs(artery, vein, [0, 2, 5])
-        self.assertEqual(8, len(metrics))
+        self.assertEqual(12, len(metrics))
 
         schema = EyeFlowOutputPaths.active()
         expected = set()
@@ -99,6 +99,13 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
                     paths.longitudinal_velocity_profile_masked,
                 }
             )
+        paths = schema.artery_velocity_profiles
+        expected.update({
+            paths.transverse_velocity_profile_unmasked_meaned,
+            paths.transverse_velocity_profile_masked_meaned,
+            paths.longitudinal_velocity_profile_unmasked_meaned,
+            paths.longitudinal_velocity_profile_masked_meaned,
+        })
         self.assertEqual(expected, set(metrics))
         self.assertFalse(any("Fit" in path or "FFT" in path for path in metrics))
 

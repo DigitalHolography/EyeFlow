@@ -18,6 +18,8 @@ from calculations.topology import (
     topology_source_id,
 )
 from input_output import EyeFlowOutputPaths
+from pipelines.displacement_map.constants import DEFAULT_REGISTRATION_METHOD
+from pipelines.displacement_map.runner import DISPLACEMENT_MAP_STATE, DisplacementMapArtifacts
 from pipeline_engine.imports import (
     HolodopplerTiming,
     np,
@@ -248,6 +250,78 @@ def _build_waveform_velocity_core_context(
     )
 
 
+@contextmanager
+def _loaded_displacement_maps(ctx, *, enabled: bool):
+    if not enabled:
+        yield {}
+        return
+    with _logged_stage("displacement map loading"):
+        displacement_maps = _load_displacement_maps(ctx)
+    try:
+        yield displacement_maps
+    finally:
+        _release_displacement_maps(ctx, displacement_maps)
+
+
+def _load_displacement_maps(ctx) -> dict[str, dict[str, object]]:
+    if not ctx.pipeline_scheduled("displacement_map"):
+        return {}
+
+    artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
+    if not isinstance(artifacts, DisplacementMapArtifacts):
+        raise RuntimeError(
+            "The scheduled displacement_map pipeline did not prepare its "
+            "in-run displacement artifacts."
+        )
+    method = _displacement_method_name(
+        artifacts.registration_method or DEFAULT_REGISTRATION_METHOD
+    )
+    loaded_by_path: dict[str, object] = {}
+    displacement_maps: dict[str, dict[str, object]] = {}
+    for vessel, field_path in artifacts.field_paths_by_vessel.items():
+        normalized_path = str(field_path.resolve())
+        displacement_map = loaded_by_path.get(normalized_path)
+        if displacement_map is None:
+            displacement_map = np.load(field_path, mmap_mode="r")
+            loaded_by_path[normalized_path] = displacement_map
+        displacement_maps[vessel] = {method: displacement_map}
+    if not displacement_maps:
+        raise RuntimeError("No vessel displacement-map artifacts were prepared.")
+    return displacement_maps
+
+
+def _release_displacement_maps(
+    ctx,
+    displacement_maps: Mapping[str, Mapping[str, object]],
+) -> None:
+    if not displacement_maps:
+        return
+    closed: set[int] = set()
+    for maps_for_vessel in displacement_maps.values():
+        for displacement_map in maps_for_vessel.values():
+            identity = id(displacement_map)
+            if identity in closed:
+                continue
+            closed.add(identity)
+            mmap = getattr(displacement_map, "_mmap", None)
+            if mmap is not None:
+                mmap.close()
+    artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
+    if isinstance(artifacts, DisplacementMapArtifacts):
+        artifacts.cleanup()
+
+
+def _displacement_method_name(value) -> str:
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    method = str(value).strip()
+    if not method or "/" in method:
+        raise ValueError(
+            "Displacement registration method names must be non-empty HDF5 path segments."
+        )
+    return method
+
+
 def _band_limited_harmonic_count(ctx) -> int:
     return read_int_setting(
         ctx,
@@ -393,7 +467,7 @@ def _segment_velocity_inputs(
             pipeline="waveform_velocity",
         )
     )
-    with _logged_stage("segment velocity extraction"):
+    with _loaded_displacement_maps(ctx, enabled=True) as displacement_maps, _logged_stage("segment velocity extraction"):
         results = analyze_velocity_segments(
             velocity_map,
             {
@@ -413,6 +487,8 @@ def _segment_velocity_inputs(
             cycle_boundary_indexes=cycle_boundary_indexes,
             velocity_profile_fft=velocity_profile_fft,
             index_base=int(source_data.provenance["beat_index_base"]),
+            displacement_maps_by_vessel=displacement_maps,
+            retain_displacement_maps=retain_velocity_maps,
         )
     if ctx.output.available:
         with _logged_stage("rotated mean PNG export"):

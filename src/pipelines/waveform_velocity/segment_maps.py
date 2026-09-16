@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from scipy.signal import resample
 
-from calculations.blood_flow_velocity.cross_section.segment_array import SegmentArray
 from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils import (
     normalize_cycle_boundaries,
 )

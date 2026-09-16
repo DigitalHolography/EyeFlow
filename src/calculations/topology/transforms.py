@@ -140,8 +140,9 @@ def dilate_segment_masks(
     *,
     iterations: int,
     exclusion_masks: np.ndarray | None = None,
+    horizontal_only: bool = False,
 ) -> np.ndarray:
-    """Expand masks while excluding competitors only from the added fringe."""
+    """Expand masks, optionally along x only, excluding competing fringe."""
 
     masks = np.asarray(segment_masks, dtype=bool)
     exclusions = None
@@ -160,7 +161,7 @@ def dilate_segment_masks(
 
     flat_masks = masks.reshape((-1, *masks.shape[-2:]))
     dilated = np.empty_like(flat_masks)
-    kernel = np.ones((3, 3), dtype=np.uint8)
+    kernel = np.ones((1 if horizontal_only else 3, 3), dtype=np.uint8)
     for mask_index, mask in enumerate(flat_masks):
         dilated[mask_index] = cv2.dilate(
             mask.astype(np.uint8),

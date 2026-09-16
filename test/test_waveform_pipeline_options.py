@@ -48,6 +48,20 @@ def _context(options, state_values=None, scheduled=None):
 
 
 class WaveformPipelineOptionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # These orchestration tests use string segment sentinels.
+        for name, result in {
+            "extract_spatial_gradient_segments": ("artery", "vein"),
+            "pack_spatial_gradient_profile_outputs": {},
+            "pack_blood_volume_rate_outputs": {},
+            "pack_cross_section_displacement_profile_outputs": {},
+            "pack_displacement_magnitude_outputs": {},
+            "_validate_profile_segment_alignment": None,
+        }.items():
+            mock = patch.object(velocity_runner, name, return_value=result)
+            mock.start()
+            self.addCleanup(mock.stop)
+
     def test_fft_option_is_disabled_by_default_and_requires_profiles(self) -> None:
         load_pipeline_catalog()
         options = {

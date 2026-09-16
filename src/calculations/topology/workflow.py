@@ -26,8 +26,10 @@ from .segments import (
 from .transforms import (
     determine_segment_rotations,
     interpolate_segment_masks,
+    interpolate_segments,
     resample_rotate_segment,
     rotate_segment_masks,
+    rotate_segments,
 )
 
 
@@ -227,9 +229,16 @@ def prepare_segments(
     spatial_axes: tuple[int, int] = (-2, -1),
     worker_count: int = 1,
     keep_on_device: bool = False,
+    transform_mode: str = "fused",
 ) -> Iterator[PreparedSegment]:
-    """Yield prepared stacks for valid segments without dense materialization."""
+    """Stream segments using fused or sequential interpolation and rotation.
 
+    The fused default can keep values on CUDA when requested. The sequential
+    workflow returns host arrays after separate interpolation and rotation.
+    """
+
+    if transform_mode not in {"fused", "sequential"}:
+        raise ValueError("transform_mode must be 'fused' or 'sequential'.")
     total_started = perf_counter()
     topology = prepared_topology.topology
     valid_indexes = np.argwhere(
@@ -259,12 +268,17 @@ def prepare_segments(
         )
         extraction_seconds = perf_counter() - started
         started = perf_counter()
-        rotated = resample_rotate_segment(
-            extracted,
-            float(prepared_topology.rotation_degrees[ring, branch]),
-            prepared_topology.interpolated_masks.shape[-1],
-            return_device=keep_on_device,
-        )
+        angle = float(prepared_topology.rotation_degrees[ring, branch])
+        side = prepared_topology.interpolated_masks.shape[-1]
+        if transform_mode == "fused":
+            rotated = resample_rotate_segment(
+                extracted, angle, side, return_device=keep_on_device,
+            )
+        else:
+            interpolated = interpolate_segments(extracted, side)
+            rotated = rotate_segments(
+                interpolated[None, None], np.asarray([[angle]], dtype=np.float32),
+            )[0, 0]
         backend = optional_cupy_backend() if keep_on_device else None
         if backend is not None:
             backend.cupy.cuda.get_current_stream().synchronize()
@@ -280,7 +294,7 @@ def prepare_segments(
         )
 
     def prepared_results():
-        if worker_count == 1:
+        if worker_count == 1 or len(valid_indexes) == 0:
             for index in valid_indexes:
                 yield prepare_index(index)
             return

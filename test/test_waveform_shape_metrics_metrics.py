@@ -59,6 +59,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         self.assertEqual(
             (
                 "heartbeat_core",
+                "spatial_gradient_moment0",
                 "waveform_velocity_core",
                 "waveform_velocity",
                 "waveform_shape_metrics",
