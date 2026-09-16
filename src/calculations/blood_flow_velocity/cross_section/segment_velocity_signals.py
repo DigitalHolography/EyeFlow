@@ -28,6 +28,8 @@ def segment_velocity_inputs(
     optic_disc_center,
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings | None = None,
+    *,
+    optic_disc_mask=None,
 ) -> tuple[np.ndarray, np.ndarray]:
     artery, vein = segment_velocity_results(
         velocity_map,
@@ -36,6 +38,7 @@ def segment_velocity_inputs(
         optic_disc_center,
         ring_settings,
         cross_section_settings,
+        optic_disc_mask=optic_disc_mask,
     )
     return artery.velocity, vein.velocity
 
@@ -48,6 +51,7 @@ def segment_velocity_results(
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings | None = None,
     *,
+    optic_disc_mask=None,
     artery_transverse_mask_dilation_pixels: int = (
         _ARTERY_TRANSVERSE_MASK_DILATION_PIXELS
     ),
@@ -72,11 +76,13 @@ def segment_velocity_results(
         artery_vessel,
         optic_disc_center,
         ring_settings,
+        optic_disc_mask=optic_disc_mask,
     )
     vein_geometry = _prepare_cross_section_geometry(
         vein_vessel,
         optic_disc_center,
         ring_settings,
+        optic_disc_mask=optic_disc_mask,
     )
     substack_side_pixels = _fixed_substack_side_pixels(
         (artery_geometry, vein_geometry),

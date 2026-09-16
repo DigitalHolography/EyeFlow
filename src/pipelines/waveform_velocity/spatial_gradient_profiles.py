@@ -14,6 +14,7 @@ from pipelines.spatial_gradient_moment0.runner import (
     SpatialGradientMoment0Artifacts,
 )
 from pipelines.waveform_velocity_core.runner import _segment_ring_settings
+from pipelines.waveform_velocity_core.segmentation import _optic_disc_mask
 
 from .profiles import (
     _profile_dataset,
@@ -48,6 +49,9 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
                 waveform_context.attrs["number_of_radii_in_FOV"]
             ),
         )
+        optic_disc_mask, _ = _optic_disc_mask(
+            source, source.retinal_artery_mask.shape
+        )
         return segment_velocity_results(
             gradient_map,
             source.retinal_artery_mask,
@@ -55,6 +59,7 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
             source.optic_disc_center,
             ring_settings,
             source.cross_section_settings,
+            optic_disc_mask=optic_disc_mask if np.any(optic_disc_mask) else None,
             artery_transverse_mask_dilation_pixels=(
                 _SPATIAL_GRADIENT_MASK_DILATION_PIXELS
             ),

@@ -466,6 +466,7 @@ def generate_cross_section_signals(
     ring_settings: SegmentRingSettings,
     cross_section_settings: CrossSectionSignalSettings,
     *,
+    optic_disc_mask=None,
     displacement_maps: Mapping[str, object] | None = None,
     retain_displacement_maps: bool = True,
 ) -> CrossSectionSignalResult:
@@ -479,6 +480,7 @@ def generate_cross_section_signals(
         vessel,
         optic_disc_center,
         ring_settings,
+        optic_disc_mask=optic_disc_mask,
     )
     substack_side_pixels = _fixed_substack_side_pixels(
         (geometry,),
@@ -500,10 +502,18 @@ def _prepare_cross_section_geometry(
     vessel_mask,
     optic_disc_center,
     ring_settings: SegmentRingSettings,
+    *,
+    optic_disc_mask=None,
 ) -> _PreparedCrossSectionGeometry:
     vessel = np.asarray(vessel_mask, dtype=bool)
-    branches = label_vessel_branches(vessel, optic_disc_center, ring_settings)
+    branches = label_vessel_branches(
+        vessel, optic_disc_center, ring_settings, optic_disc_mask=optic_disc_mask
+    )
     masks = section_masks(vessel.shape, optic_disc_center, ring_settings)
+    if optic_disc_mask is not None:
+        disc = np.asarray(optic_disc_mask, dtype=bool)
+        vessel = vessel & ~disc
+        masks &= ~disc
     segments = _prepare_segments(masks, branches, optic_disc_center)
     return _PreparedCrossSectionGeometry(vessel, branches, masks, segments)
 

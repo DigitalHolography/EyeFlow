@@ -55,9 +55,15 @@ def label_vessel_branches(
     optic_disc_center,
     settings: SegmentRingSettings,
     *,
+    optic_disc_mask=None,
     small_branch_pixels: int = LOW_RES_SMALL_BRANCH_PIXELS,
     strel_size: int = STREL_SIZE,
 ) -> BranchIdentityResult:
+    """Label vessels outside the disc, using its mask when available.
+
+    The explicit mask replaces the circular inner cutoff for branch labeling.
+    Measurement rings still use the configured radial bounds.
+    """
     vessel = np.asarray(vessel_mask, dtype=bool)
     if vessel.ndim != 2:
         raise ValueError("vessel_mask must be a 2-D array.")
@@ -66,6 +72,7 @@ def label_vessel_branches(
         vessel,
         optic_disc_center,
         settings,
+        optic_disc_mask=optic_disc_mask,
         small_branch_pixels=small_branch_pixels,
         strel_size=strel_size,
     )
@@ -79,14 +86,24 @@ def label_vessel_branches(
 
 def _branch_identity_stages(
     vessel: np.ndarray, optic_disc_center, settings: SegmentRingSettings, *,
+    optic_disc_mask=None,
     small_branch_pixels: int = LOW_RES_SMALL_BRANCH_PIXELS, strel_size: int = STREL_SIZE,
 ) -> BranchIdentityStages:
+    if optic_disc_mask is not None:
+        disc = np.asarray(optic_disc_mask, dtype=bool)
+        if disc.shape != vessel.shape:
+            raise ValueError(
+                f"optic_disc_mask must have shape {vessel.shape}, got {disc.shape}."
+            )
+        vessel = vessel & ~disc
     section = annulus_mask(
         vessel.shape,
         optic_disc_center,
-        settings.inner_radius_frac,
+        settings.inner_radius_frac if optic_disc_mask is None else 0.0,
         settings.outer_radius_frac,
     )
+    if optic_disc_mask is not None:
+        section &= ~disc
     skeleton = skeletonize(vessel)
 
     branch_points = _branch_points(skeleton, min_arm_pixels=small_branch_pixels)
@@ -115,7 +132,9 @@ def _branch_identity_stages(
 
     annulus_refined = label_components((watershed_labels > 0) & section, connectivity=2)
     annulus_refined = annulus_refined.astype(np.int32, copy=False)
-    cleaned_labels = _per_circle_cleaned_labels(annulus_refined, optic_disc_center, settings)
+    cleaned_labels = _per_circle_cleaned_labels(
+        annulus_refined, optic_disc_center, settings, section=section
+    )
     return BranchIdentityStages(
         vessel, section, skeleton, branch_points, cleaned_skeleton, marker_labels,
         distance_topography, imposed_topography, watershed_labels, annulus_refined,
@@ -175,14 +194,17 @@ def _per_circle_cleaned_labels(
     labels: np.ndarray,
     optic_disc_center,
     settings: SegmentRingSettings,
+    *,
+    section: np.ndarray | None = None,
 ) -> np.ndarray:
     min_area = max(1, labels.shape[0] // 10)
-    section = annulus_mask(
-        labels.shape,
-        optic_disc_center,
-        settings.inner_radius_frac,
-        settings.outer_radius_frac,
-    )
+    if section is None:
+        section = annulus_mask(
+            labels.shape,
+            optic_disc_center,
+            settings.inner_radius_frac,
+            settings.outer_radius_frac,
+        )
     cleaned = _remove_small((labels > 0) & section, min_area)
     return label_components(cleaned, connectivity=2).astype(np.int32, copy=False)
 

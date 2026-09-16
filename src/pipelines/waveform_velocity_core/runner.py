@@ -48,7 +48,7 @@ from .dopplerview.runner import run_dopplerview_analysis
 from .figures import export_pulse_pngs
 from .per_beat import run_velocity_per_beat_metrics
 from .scratch import waveform_scratch_h5
-from .segmentation import pack_segmentation_outputs
+from .segmentation import _optic_disc_mask, pack_segmentation_outputs
 from .sources import WaveformVelocitySourceData, WaveformVelocitySources
 
 WAVEFORM_CONTEXT_STATE = "waveform_velocity_context"
@@ -456,6 +456,9 @@ def _segment_velocity_inputs(
     ring_settings: SegmentRingSettings,
     ctx,
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
+    optic_disc_mask, _ = _optic_disc_mask(
+        source_data, source_data.retinal_artery_mask.shape
+    )
     with _logged_stage("segment velocity extraction"):
         artery, vein = segment_velocity_results(
             velocity_map,
@@ -464,6 +467,7 @@ def _segment_velocity_inputs(
             source_data.optic_disc_center,
             ring_settings,
             source_data.cross_section_settings,
+            optic_disc_mask=optic_disc_mask if np.any(optic_disc_mask) else None,
             artery_displacement_maps=displacement_maps.get("artery", {}),
             vein_displacement_maps=displacement_maps.get("vein", {}),
             retain_displacement_maps=_displacement_segment_maps_required(ctx),

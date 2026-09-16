@@ -38,6 +38,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
             temporary_directory=temporary_directory,
         )
         source = SimpleNamespace(
+            optic_disc_mask=None,
             optic_disc_width=2.0,
             optic_disc_height=2.0,
             optic_disc_center=np.asarray([4.0, 4.0]),
@@ -67,6 +68,10 @@ class SpatialGradientProfileTests(unittest.TestCase):
         self.assertEqual((3, 8, 8), args[0].shape)
         np.testing.assert_array_equal(source.retinal_artery_mask, args[1])
         np.testing.assert_array_equal(source.retinal_vein_mask, args[2])
+        disc = kwargs["optic_disc_mask"]
+        self.assertEqual((8, 8), disc.shape)
+        self.assertTrue(disc[4, 4])
+        self.assertFalse(disc[0, 0])
         self.assertEqual(
             5,
             kwargs["artery_transverse_mask_dilation_pixels"],
