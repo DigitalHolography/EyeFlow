@@ -2,20 +2,14 @@
 
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 
+from pipelines.spatial_gradient_moment0 import runner as profile_module
 from pipelines.spatial_gradient_moment0.runner import (
-    STATE_KEY,
-    SpatialGradientMoment0Artifacts,
-)
-from pipelines.waveform_velocity import spatial_gradient_profiles as profile_module
-from pipelines.waveform_velocity.spatial_gradient_profiles import (
     SPATIAL_GRADIENT_METRICS_ROOT,
     SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES,
     SPATIAL_GRADIENT_PROFILE_ROOT,
@@ -25,63 +19,58 @@ from pipelines.waveform_velocity.spatial_gradient_profiles import (
 
 
 class SpatialGradientProfileTests(unittest.TestCase):
-    def test_extracts_both_vessels_using_annular_cross_section_engine(self) -> None:
-        temporary_directory = tempfile.TemporaryDirectory()
-        gradient_path = Path(temporary_directory.name) / "gradient.npy"
-        np.save(gradient_path, np.ones((3, 8, 8), dtype=np.float32))
-        artifacts = SpatialGradientMoment0Artifacts(
-            avi_path=Path("gradient.avi"),
-            mean_png_path=Path("gradient.png"),
-            gradient_path=gradient_path,
-            frame_count=3,
-            display_maximum=1.0,
-            temporary_directory=temporary_directory,
+    def test_reuses_velocity_geometry_and_filters_rotated_moment0(self) -> None:
+        from pipelines.spatial_gradient_moment0.runner import spatial_gradient
+        cube = np.zeros((19, 5, 5), dtype=np.float32)
+        cube[:, :, 2:] = 10
+        cube[9, 2, 2] = 1000  # An impulse must disappear before edge detection.
+        segments = SimpleNamespace(
+            velocity_profiles=np.zeros((1, 1, 19, 5), np.float32),
+            topology=SimpleNamespace(valid_segments=np.ones((1, 1), bool)),
+            segment_center_xy=np.array([[[2, 2]]]),
+            profile_window_bounds_xyxy=np.array([[[0, 5, 0, 5]]]),
+            profile_window_side_pixels=5,
+            profile_rotation_degrees=np.array([[23.0]]),
+            segment_masks=np.ones((1, 1, 5, 5), bool),
+            labels=np.ones((5, 5)), branch_ids=np.array([1]),
         )
-        source = SimpleNamespace(
-            optic_disc_mask=None,
-            optic_disc_width=2.0,
-            optic_disc_height=2.0,
-            optic_disc_center=np.asarray([4.0, 4.0]),
-            retinal_artery_mask=np.ones((8, 8), dtype=bool),
-            retinal_vein_mask=np.eye(8, dtype=bool),
-            cross_section_settings="settings",
-        )
-        ctx = SimpleNamespace(
-            state=SimpleNamespace(
-                get=lambda key: artifacts if key == STATE_KEY else None
-            )
-        )
-        waveform_context = SimpleNamespace(
-            source_data=source,
-            attrs={"number_of_radii_in_FOV": 4},
-        )
+        hd = SimpleNamespace(moment0_flat_field_dataset=lambda: cube)
+        ctx = SimpleNamespace(inputs=SimpleNamespace(
+            hd=SimpleNamespace(as_holodoppler=lambda: hd)))
+        context = SimpleNamespace(artery_segment_result=segments,
+                                  vein_segment_result=segments)
+        # Isolate geometry transforms to verify ordering and exact angle reuse.
+        def rotate(stack, angle):
+            self.assertEqual(23.0, angle)
+            return stack * 2
+        with patch.object(profile_module, "_resize_subimage_stack", side_effect=lambda s: s), \
+             patch.object(profile_module, "_center_pad_for_rotation", side_effect=lambda s, _: s), \
+             patch.object(profile_module, "_rotate_stack_with_nan", side_effect=rotate) as rotation:
+            artery, vein = extract_spatial_gradient_segments(ctx, context)
+        self.assertEqual(2, rotation.call_count)
+        expected = spatial_gradient(cube[0] * 2).mean(axis=0)
+        for result in (artery, vein):
+            np.testing.assert_allclose(result.velocity_profiles[0, 0],
+                                       np.broadcast_to(expected, (19, 5)))
+            self.assertIs(result.labels, segments.labels)
+            self.assertIs(result.segment_center_xy, segments.segment_center_xy)
 
-        with patch.object(
-            profile_module,
-            "segment_velocity_results",
-            return_value=("artery", "vein"),
-        ) as extract:
-            result = extract_spatial_gradient_segments(ctx, waveform_context)
-
-        self.assertEqual(("artery", "vein"), result)
-        args, kwargs = extract.call_args
-        self.assertEqual((3, 8, 8), args[0].shape)
-        np.testing.assert_array_equal(source.retinal_artery_mask, args[1])
-        np.testing.assert_array_equal(source.retinal_vein_mask, args[2])
-        disc = kwargs["optic_disc_mask"]
-        self.assertEqual((8, 8), disc.shape)
-        self.assertTrue(disc[4, 4])
-        self.assertFalse(disc[0, 0])
-        self.assertEqual(
-            5,
-            kwargs["artery_transverse_mask_dilation_pixels"],
-        )
-        self.assertEqual(
-            5,
-            kwargs["vein_transverse_mask_dilation_pixels"],
-        )
-        self.assertFalse(kwargs["retain_displacement_maps"])
-        self.assertFalse(gradient_path.exists())
+    def test_missing_m0ff_logs_error_and_falls_back_to_m0(self):
+        from unittest.mock import Mock
+        cube = np.ones((3, 4, 4), np.float32)
+        hd = SimpleNamespace(moment0_flat_field_dataset=lambda: None,
+                             moment0_dataset=lambda: cube)
+        ctx = SimpleNamespace(inputs=SimpleNamespace(
+            hd=SimpleNamespace(as_holodoppler=lambda: hd)), log_error=Mock())
+        context = SimpleNamespace(artery_segment_result="artery", vein_segment_result="vein")
+        with patch.object(profile_module, "_gradient_segments_from_velocity_geometry", return_value="result") as project:
+            self.assertEqual(("result", "result"), extract_spatial_gradient_segments(ctx, context))
+        ctx.log_error.assert_called_once()
+        self.assertIs(cube, project.call_args.args[0])
+        self.assertEqual("/moment0", project.call_args.kwargs["source_dataset"])
+        hd.moment0_dataset = lambda: None
+        with self.assertRaisesRegex(KeyError, "neither dataset"):
+            extract_spatial_gradient_segments(ctx, context)
 
     def test_packs_requested_profiles_for_arteries_and_veins(self) -> None:
         unmasked = np.arange(30, dtype=np.float32).reshape(2, 1, 5, 3)

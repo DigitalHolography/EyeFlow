@@ -1,5 +1,7 @@
 """Build shared DopplerView, spatial, and segment-analysis state."""
 
+from pipelines.spatial_gradient_moment0.runner import TRANSVERSE_MASK_DILATION_PIXELS
+
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -468,6 +470,8 @@ def _segment_velocity_inputs(
             ring_settings,
             source_data.cross_section_settings,
             optic_disc_mask=optic_disc_mask if np.any(optic_disc_mask) else None,
+            artery_transverse_mask_dilation_pixels=TRANSVERSE_MASK_DILATION_PIXELS,
+            vein_transverse_mask_dilation_pixels=TRANSVERSE_MASK_DILATION_PIXELS,
             artery_displacement_maps=displacement_maps.get("artery", {}),
             vein_displacement_maps=displacement_maps.get("vein", {}),
             retain_displacement_maps=_displacement_segment_maps_required(ctx),
