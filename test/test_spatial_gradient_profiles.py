@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import numpy as np
 
+from calculations.blood_flow_velocity import CrossSectionSignalSettings
 from pipelines.spatial_gradient_moment0.runner import (
     STATE_KEY,
     SpatialGradientMoment0Artifacts,
@@ -44,12 +45,20 @@ class SpatialGradientProfileTests(unittest.TestCase):
             optic_disc_center=np.asarray([4.0, 4.0]),
             retinal_artery_mask=np.ones((8, 8), dtype=bool),
             retinal_vein_mask=np.eye(8, dtype=bool),
-            cross_section_settings="settings",
+            cross_section_settings=CrossSectionSignalSettings(False, 0.5, False, 0.01),
         )
+        moment0ff = np.full((3, 8, 8), 42.0, dtype=np.float32)
         ctx = SimpleNamespace(
             state=SimpleNamespace(
                 get=lambda key: artifacts if key == STATE_KEY else None
-            )
+            ),
+            inputs=SimpleNamespace(
+                hd=SimpleNamespace(
+                    as_holodoppler=lambda: SimpleNamespace(
+                        moment0_flat_field_dataset=lambda: moment0ff
+                    )
+                )
+            ),
         )
         waveform_context = SimpleNamespace(
             source_data=source,
@@ -66,6 +75,9 @@ class SpatialGradientProfileTests(unittest.TestCase):
         self.assertEqual(("artery", "vein"), result)
         args, kwargs = extract.call_args
         self.assertEqual((3, 8, 8), args[0].shape)
+        self.assertIs(moment0ff, args[0])
+        self.assertTrue(args[5].spatial_gradient)
+        self.assertFalse(source.cross_section_settings.spatial_gradient)
         np.testing.assert_array_equal(source.retinal_artery_mask, args[1])
         np.testing.assert_array_equal(source.retinal_vein_mask, args[2])
         disc = kwargs["optic_disc_mask"]
@@ -131,6 +143,13 @@ class SpatialGradientProfileTests(unittest.TestCase):
         for path, value in outputs.items():
             if "SpatialGradientProfiles" in path:
                 self.assertEqual("/moment0ff", value.attrs["source_dataset"])
+                self.assertEqual(9, value.attrs["temporal_median_window"])
+                self.assertEqual(2, value.attrs["temporal_median_passes"])
+                self.assertEqual(
+                    "spatial_interpolation, temporal_median, sobel_magnitude, "
+                    "temporal_median, segment_rotation",
+                    value.attrs["processing_order"],
+                )
                 self.assertEqual(
                     "3x3 Sobel magnitude",
                     value.attrs["spatial_operator"],

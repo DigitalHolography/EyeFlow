@@ -6,6 +6,8 @@ The masked movie is reduced on-device and is never downloaded.
 
 from __future__ import annotations
 
+from calculations.math.spatial_gradient import sobel_spatial_gradient, temporal_median_window
+
 
 def measure_cross_section_gpu(
     backend,
@@ -18,6 +20,8 @@ def measure_cross_section_gpu(
     side_pixels,
     angle_override=None,
     limits_override=None,
+    *,
+    frame_slice=slice(None),
 ):
     # Local import avoids a cycle with the public dispatcher.
     from .generate_cross_section_signals import (
@@ -70,6 +74,11 @@ def measure_cross_section_gpu(
         1e-6,
     )
     del stack
+    if settings.spatial_gradient:
+        resized = temporal_median_window(resized, array_module=xp)
+        resized = sobel_spatial_gradient(resized, array_module=xp, ndimage=ndi)
+        resized = temporal_median_window(resized, array_module=xp)
+    resized = resized[frame_slice]
     mask = ndi.zoom(
         xp.asarray(sub_mask, dtype=xp.float32),
         zoom[-2:],

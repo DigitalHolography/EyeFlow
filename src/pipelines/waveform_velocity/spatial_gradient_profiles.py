@@ -1,6 +1,8 @@
-"""Cross-section profiles extracted from the quantitative moment0ff gradient."""
+"""Cross-section gradients computed after interpolating raw moment0ff."""
 
 from __future__ import annotations
+
+from dataclasses import replace
 
 import numpy as np
 
@@ -21,7 +23,6 @@ from .profiles import (
     _temporally_meaned_profile_dataset,
 )
 
-
 SPATIAL_GRADIENT_PROFILE_ROOT = "Processing/SpatialGradientProfiles"
 SPATIAL_GRADIENT_METRICS_ROOT = "Processing/SpatialGradientMetrics"
 SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES = 5
@@ -29,7 +30,7 @@ _SPATIAL_GRADIENT_MASK_DILATION_PIXELS = 5
 
 
 def extract_spatial_gradient_segments(ctx, waveform_context):
-    """Prepare annular branch topology and project the gradient video onto it."""
+    """Interpolate raw moment0ff, filter its gradient, then rotate each segment."""
 
     artifacts = ctx.state.get(STATE_KEY)
     if not isinstance(artifacts, SpatialGradientMoment0Artifacts):
@@ -37,13 +38,15 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
             "The spatial_gradient_moment0 prerequisite did not publish its "
             "quantitative gradient video."
         )
-    gradient_map = np.load(artifacts.gradient_path, mmap_mode="r")
     source = waveform_context.source_data
     try:
+        moment0ff = ctx.inputs.hd.as_holodoppler().moment0_flat_field_dataset()
+        if moment0ff is None:
+            raise KeyError("Missing flat-field HoloDoppler moment0 dataset: moment0ff/M0FF.")
         ring_settings = _segment_ring_settings(
             source.optic_disc_width,
             source.optic_disc_height,
-            image_shape=gradient_map.shape[-2:],
+            image_shape=moment0ff.shape[-2:],
             optic_disc_center=source.optic_disc_center,
             number_of_radii_in_FOV=int(
                 waveform_context.attrs["number_of_radii_in_FOV"]
@@ -53,12 +56,12 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
             source, source.retinal_artery_mask.shape
         )
         return segment_velocity_results(
-            gradient_map,
+            moment0ff,
             source.retinal_artery_mask,
             source.retinal_vein_mask,
             source.optic_disc_center,
             ring_settings,
-            source.cross_section_settings,
+            replace(source.cross_section_settings, spatial_gradient=True),
             optic_disc_mask=optic_disc_mask if np.any(optic_disc_mask) else None,
             artery_transverse_mask_dilation_pixels=(
                 _SPATIAL_GRADIENT_MASK_DILATION_PIXELS
@@ -69,9 +72,6 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
             retain_displacement_maps=False,
         )
     finally:
-        mmap = getattr(gradient_map, "_mmap", None)
-        if mmap is not None:
-            mmap.close()
         artifacts.cleanup()
 
 
@@ -605,8 +605,13 @@ def _gradient_profile_dataset(
             "source_dataset": "/moment0ff",
             "temporal_filter": "centered_pixelwise_median",
             "temporal_median_window": np.int32(TEMPORAL_MEDIAN_WINDOW),
+            "temporal_median_passes": np.int32(2),
             "temporal_boundary_mode": "replicated_edges",
             "spatial_operator": "3x3 Sobel magnitude",
+            "processing_order": (
+                "spatial_interpolation, temporal_median, sobel_magnitude, "
+                "temporal_median, segment_rotation"
+            ),
             "spatial_region": mask,
         }
     )

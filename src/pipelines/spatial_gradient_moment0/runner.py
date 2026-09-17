@@ -2,26 +2,24 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
 import math
 import tempfile
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from scipy import ndimage
 
+from calculations.math.spatial_gradient import TEMPORAL_MEDIAN_WINDOW, spatial_gradient
 from input_output.output_manager import OutputType
 from input_output.writers.avi import MjpegAviWriter
 from pipelines.displacement_map.filtering import CenteredMedianBuffer
-
 
 AVI_FILENAME = "spatial_gradient_moment0.avi"
 PNG_FILENAME = "spatial_gradient_moment0.png"
 DEFAULT_FPS = 25.0
 CONTRAST_HIGH_PERCENTILE = 99.9
 CONTRAST_GAMMA = 1.0
-TEMPORAL_MEDIAN_WINDOW = 17
 TBKR_LUMEN_SIZE_QC_THRESHOLD = 0.5
 STATE_KEY = "spatial_gradient_moment0_artifacts"
 
@@ -39,20 +37,6 @@ class SpatialGradientMoment0Artifacts:
         cleanup = getattr(self.temporary_directory, "cleanup", None)
         if cleanup is not None:
             cleanup()
-
-
-def spatial_gradient(frame) -> np.ndarray:
-    """Return the magnitude of the horizontal and vertical 3x3 Sobel filters."""
-
-    image = np.asarray(frame, dtype=np.float32)
-    if image.ndim != 2:
-        raise ValueError(f"A moment0 frame must be 2-D, got shape {image.shape}.")
-    # ImageJ's Find Edges command combines the two Sobel responses as
-    # sqrt(Gx**2 + Gy**2). Nearest-edge extension matches its border handling.
-    finite_image = np.nan_to_num(image, nan=0.0, posinf=0.0, neginf=0.0)
-    horizontal = ndimage.sobel(finite_image, axis=1, mode="nearest")
-    vertical = ndimage.sobel(finite_image, axis=0, mode="nearest")
-    return np.hypot(horizontal, vertical, dtype=np.float32)
 
 
 def temporal_median_filter(
@@ -90,8 +74,8 @@ def run_spatial_gradient_moment0(ctx) -> SpatialGradientMoment0Artifacts:
     if frame_count <= 0 or height <= 0 or width <= 0:
         raise ValueError(f"moment0ff must have non-empty dimensions, got {moment0ff.shape}.")
 
-    # Preserve the quantitative float32 gradient cube for waveform_velocity.
-    # Display-only contrast is applied later and never reaches profile data.
+    # Preserve the quantitative float32 cube for the full-frame display export.
+    # Segment profiles filter raw moment0ff after their spatial interpolation.
     temporary_directory = tempfile.TemporaryDirectory(
         prefix=".eyeflow-spatial-gradient-"
     )
@@ -108,9 +92,12 @@ def run_spatial_gradient_moment0(ctx) -> SpatialGradientMoment0Artifacts:
         (moment0ff[frame_index] for frame_index in range(frame_count)),
         window=TEMPORAL_MEDIAN_WINDOW,
     )
+    filtered_gradients = temporal_median_filter(
+        (spatial_gradient(frame) for frame in filtered_frames),
+        window=TEMPORAL_MEDIAN_WINDOW,
+    )
     filtered_frame_count = 0
-    for frame_index, filtered_frame in enumerate(filtered_frames):
-        gradient = spatial_gradient(filtered_frame)
+    for frame_index, gradient in enumerate(filtered_gradients):
         gradient_video[frame_index] = gradient
         gradient_sum += gradient
         frame_maximum = float(np.max(gradient, initial=0.0))
@@ -133,7 +120,7 @@ def run_spatial_gradient_moment0(ctx) -> SpatialGradientMoment0Artifacts:
         "artifact": "spatial_gradient_moment0",
         "algorithm": (
             "Centered temporal median followed by Sobel gradient magnitude "
-            "(ImageJ/Fiji Find Edges)"
+            "(ImageJ/Fiji Find Edges) followed by a second centered temporal median"
         ),
         "source_dataset": "/moment0ff",
         "temporal_median_window": TEMPORAL_MEDIAN_WINDOW,

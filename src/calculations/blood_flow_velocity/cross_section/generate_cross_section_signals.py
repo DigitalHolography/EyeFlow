@@ -24,6 +24,11 @@ from calculations.math import (
     rotate_array_threshold,
     rotate_image_with_nan,
 )
+from calculations.math.spatial_gradient import (
+    TEMPORAL_MEDIAN_WINDOW,
+    sobel_spatial_gradient,
+    temporal_median_window,
+)
 from runtime_limits import cap_parallel_jobs
 
 from .branch_identity import BranchIdentityResult, label_vessel_branches
@@ -45,6 +50,8 @@ class CrossSectionSignalSettings:
 
     ``working_memory_mb`` bounds estimated concurrent scratch memory, excluding
     the input cube and retained outputs. Oversized windows use temporal batches.
+    ``spatial_gradient`` filters interpolated moment0ff before segment rotation
+    with a centered 9-frame median, Sobel magnitude, and another 9-frame median.
     """
 
     hydrodynamic_diameters: bool
@@ -53,6 +60,7 @@ class CrossSectionSignalSettings:
     pixel_size_mm: float
     submask_size_percentile_kept: float = 0.95
     working_memory_mb: float = 512.0
+    spatial_gradient: bool = False
 
     def __post_init__(self):
         if not np.isfinite(self.pixel_size_mm) or self.pixel_size_mm <= 0:
@@ -986,8 +994,15 @@ def _measure_windowed_work(
     fixed = _estimated_work_bytes(0, side_pixels)
     per_frame = _estimated_work_bytes(1, side_pixels) - fixed
     batch = min(frame_count, (budget - fixed) // per_frame)
+    # Two centered medians need eight source frames on each side of a batch.
+    halo = TEMPORAL_MEDIAN_WINDOW - 1 if settings.spatial_gradient else 0
+    if batch < frame_count:
+        batch -= 2 * halo
     if batch < 1:
-        raise MemoryError("working_memory_mb is too small for one cross-section frame.")
+        raise MemoryError(
+            "working_memory_mb is too small for one cross-section frame "
+            "and its temporal filtering context."
+        )
     seg = work.segment
     buffers.segment_center_xy[seg.branch_index, seg.circle_index] = seg.loc_xy
     if batch == frame_count:
@@ -1016,10 +1031,18 @@ def _measure_windowed_work(
     sums = np.zeros((_INTERPOLATED_SUBSTACK_SIDE,) * 2, np.float64)
     counts = np.zeros(sums.shape, np.int64)
     for start in range(0, frame_count, batch):
+        stop = min(start + batch, frame_count)
+        context_start = max(0, start - halo)
+        context_stop = min(frame_count, stop + halo)
         stack, mask = _extract_work(
-            velocity, work, side_pixels, start, min(start + batch, frame_count)
+            velocity, work, side_pixels, context_start, context_stop
         )
         resized = _resize_subimage_stack(stack)
+        if settings.spatial_gradient:
+            resized = temporal_median_window(resized)
+            resized = sobel_spatial_gradient(resized)
+            resized = temporal_median_window(resized)
+        resized = resized[start - context_start : stop - context_start]
         finite = np.isfinite(resized)
         sums += np.sum(np.where(finite, resized, 0.0), axis=0, dtype=np.float64)
         counts += np.sum(finite, axis=0, dtype=np.int64)
@@ -1052,7 +1075,9 @@ def _measure_windowed_work(
     spatial_std = _sample_nanstd_axis0(rotated_mean_masked)
     for start in range(0, frame_count, batch):
         stop = min(start + batch, frame_count)
-        stack, mask = _extract_work(velocity, work, side_pixels, start, stop)
+        context_start = max(0, start - halo)
+        context_stop = min(frame_count, stop + halo)
+        stack, mask = _extract_work(velocity, work, side_pixels, context_start, context_stop)
         measurement = _cross_section_velocity_from_substack(
             stack,
             mask,
@@ -1064,6 +1089,7 @@ def _measure_windowed_work(
             angle_override=angle,
             limits_override=limits,
             transverse_mask_dilation_pixels=transverse_mask_dilation_pixels,
+            frame_slice=slice(start - context_start, stop - context_start),
         )
         measurement = replace(
             measurement,
@@ -1772,6 +1798,7 @@ def _cross_section_velocity_from_substack(
     angle_override: float | None = None,
     limits_override: tuple[int, int] | None = None,
     transverse_mask_dilation_pixels: int = 0,
+    frame_slice: slice = slice(None),
 ) -> _CrossSectionMeasurement:
     backend = _cross_section_backend()
     if backend is not None:
@@ -1789,6 +1816,7 @@ def _cross_section_velocity_from_substack(
                 substack_side_pixels,
                 angle_override,
                 limits_override,
+                frame_slice=frame_slice,
             )
             return _with_dilated_transverse_profile(
                 measurement,
@@ -1797,6 +1825,11 @@ def _cross_section_velocity_from_substack(
         except Exception as exc:  # noqa: BLE001 -- optional CUDA boundary; warn or raise below
             _disable_cross_section_gpu(exc)
     resized_stack = _resize_subimage_stack(sub_stack)
+    if settings.spatial_gradient:
+        resized_stack = temporal_median_window(resized_stack)
+        resized_stack = sobel_spatial_gradient(resized_stack)
+        resized_stack = temporal_median_window(resized_stack)
+    resized_stack = resized_stack[frame_slice]
     resized_mask = _resize_submask(sub_mask)
     mean_image = nanmean_float32(resized_stack, axis=0)
     mean_image_masked = mean_image.copy()

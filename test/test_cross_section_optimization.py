@@ -192,9 +192,9 @@ def test_flat_and_upward_fits_rejected_and_parabolic_roots_scale():
         assert cs._hydrodynamic_limits(profile, settings, scale) == (2, 8)
 
 
-def _window_fixture():
+def _window_fixture(frame_count=7):
     rng = np.random.default_rng(24)
-    velocity = rng.uniform(1, 5, (7, 13, 13)).astype(np.float32)
+    velocity = rng.uniform(1, 5, (frame_count, 13, 13)).astype(np.float32)
     velocity[2, 4:6, 4:7] = np.nan
     velocity[5] = np.nan
     mask = np.zeros((13, 13), bool)
@@ -204,13 +204,18 @@ def _window_fixture():
     return velocity, cs._CrossSectionWork(seg, (2, 11, 2, 11))
 
 
-def test_temporal_batches_match_full_window_with_global_fit():
-    velocity, work = _window_fixture()
-    settings = cs.CrossSectionSignalSettings(True, 0.5, True, 0.01)
-    full = cs._CrossSectionBuffers.allocate(frame_count=7, ring_count=1, branch_count=1)
-    batched = cs._CrossSectionBuffers.allocate(frame_count=7, ring_count=1, branch_count=1)
+@pytest.mark.parametrize("spatial_gradient", [False, True])
+def test_temporal_batches_match_full_window_with_global_fit(spatial_gradient):
+    frame_count = 23 if spatial_gradient else 7
+    velocity, work = _window_fixture(frame_count)
+    settings = cs.CrossSectionSignalSettings(
+        True, 0.5, True, 0.01, spatial_gradient=spatial_gradient
+    )
+    full = cs._CrossSectionBuffers.allocate(frame_count=frame_count, ring_count=1, branch_count=1)
+    batched = cs._CrossSectionBuffers.allocate(frame_count=frame_count, ring_count=1, branch_count=1)
     cs._measure_windowed_work(full, velocity, work, (6, 6), settings, 9)
-    budget = (cs._estimated_work_bytes(2, 9) + 1) / 1024**2
+    capacity = 19 if spatial_gradient else 2
+    budget = (cs._estimated_work_bytes(capacity, 9) + 1) / 1024**2
     with (
         patch.object(cs, "_extract_work", wraps=cs._extract_work) as extract,
         patch.object(cs, "_cross_section_limits", wraps=cs._cross_section_limits) as fit,
@@ -219,7 +224,7 @@ def test_temporal_batches_match_full_window_with_global_fit():
             batched, velocity, work, (6, 6), replace(settings, working_memory_mb=budget), 9
         )
     assert fit.call_count == 1
-    assert all(call.args[4] - call.args[3] <= 2 for call in extract.call_args_list)
+    assert all(call.args[4] - call.args[3] <= capacity for call in extract.call_args_list)
     for name in (
         "velocity",
         "safe_velocity",
@@ -238,6 +243,30 @@ def test_temporal_batches_match_full_window_with_global_fit():
     np.testing.assert_array_equal(
         batched.profile_integration_limits_pixels, full.profile_integration_limits_pixels
     )
+
+
+def test_spatial_gradient_is_filtered_after_interpolation_before_rotation():
+    rng = np.random.default_rng(53)
+    stack = rng.uniform(1, 5, (23, 9, 9)).astype(np.float32)
+    mask = np.ones((9, 9), dtype=bool)
+    settings = cs.CrossSectionSignalSettings(False, 0.5, True, 0.01, spatial_gradient=True)
+    resized = cs._resize_subimage_stack(stack)
+    median = ndimage.median_filter(resized, size=(9, 1, 1), mode="nearest")
+    sobel = np.stack([
+        np.hypot(ndimage.sobel(frame, axis=1, mode="nearest"),
+                 ndimage.sobel(frame, axis=0, mode="nearest"))
+        for frame in median
+    ])
+    filtered = ndimage.median_filter(sobel, size=(9, 1, 1), mode="nearest")
+    assert np.any(filtered != sobel)
+    expected = cs._rotate_stack_with_nan(cs._center_pad_for_rotation(filtered, np.nan), 31)
+
+    actual = cs._cross_section_velocity_from_substack(
+        stack, mask, (6, 6), (6, 6), 0, settings, 9,
+        angle_override=31, limits_override=(0, cs._ROTATED_SUBSTACK_SIDE - 1),
+    )
+
+    np.testing.assert_allclose(actual.unmasked.rotated_stack, expected, equal_nan=True)
 
 
 def test_worker_count_obeys_memory_and_runtime_caps():
@@ -307,10 +336,13 @@ class NumpyDevice:
         return value.copy()
 
 
-def test_device_path_matches_cpu_and_downloads_only_one_movie():
-    velocity, work = _window_fixture()
+@pytest.mark.parametrize("spatial_gradient", [False, True])
+def test_device_path_matches_cpu_and_downloads_only_one_movie(spatial_gradient):
+    velocity, work = _window_fixture(23 if spatial_gradient else 7)
     stack, mask = cs._extract_work(velocity, work, 9)
-    settings = cs.CrossSectionSignalSettings(True, 0.5, True, 0.01)
+    settings = cs.CrossSectionSignalSettings(
+        True, 0.5, True, 0.01, spatial_gradient=spatial_gradient
+    )
     cpu_result = cs._cross_section_velocity_from_substack(
         stack,
         mask,
@@ -398,7 +430,8 @@ def test_failed_device_dispatch_retries_on_cpu(monkeypatch):
     assert cs._cross_section_backend() is None
 
 
-def test_cuda_parity_when_available(monkeypatch):
+@pytest.mark.parametrize("spatial_gradient", [False, True])
+def test_cuda_parity_when_available(monkeypatch, spatial_gradient):
     cupy = pytest.importorskip("cupy")
     try:
         if cupy.cuda.runtime.getDeviceCount() == 0:
@@ -407,9 +440,12 @@ def test_cuda_parity_when_available(monkeypatch):
         pytest.skip("CUDA runtime unavailable")
     from cupyx.scipy import ndimage as gpu_ndi
 
-    velocity, work = _window_fixture()
+    frame_count = 23 if spatial_gradient else 7
+    velocity, work = _window_fixture(frame_count)
     stack, mask = cs._extract_work(velocity, work, 9)
-    settings = cs.CrossSectionSignalSettings(False, 0.5, True, 0.01)
+    settings = cs.CrossSectionSignalSettings(
+        False, 0.5, True, 0.01, spatial_gradient=spatial_gradient
+    )
     expected = cs._cross_section_velocity_from_substack(
         stack, mask, (6, 6), (6, 6), 0, settings, 9, angle_override=31
     )
@@ -429,10 +465,11 @@ def test_cuda_parity_when_available(monkeypatch):
     )
     # Exercise the GPU helpers used in the global-mean pass as well as the
     # device-resident path, with explicit mode preventing silent CPU fallback.
-    budget = (cs._estimated_work_bytes(2, 9) + 1) / 1024**2
+    capacity = 19 if spatial_gradient else 2
+    budget = (cs._estimated_work_bytes(capacity, 9) + 1) / 1024**2
     small = replace(settings, working_memory_mb=budget)
-    cpu_buffers = cs._CrossSectionBuffers.allocate(frame_count=7, ring_count=1, branch_count=1)
-    gpu_buffers = cs._CrossSectionBuffers.allocate(frame_count=7, ring_count=1, branch_count=1)
+    cpu_buffers = cs._CrossSectionBuffers.allocate(frame_count=frame_count, ring_count=1, branch_count=1)
+    gpu_buffers = cs._CrossSectionBuffers.allocate(frame_count=frame_count, ring_count=1, branch_count=1)
     cs._measure_windowed_work(cpu_buffers, velocity, work, (6, 6), small, 9, angle_override=31)
     monkeypatch.setenv("EYEFLOW_COMPUTE_BACKEND", "cupy")
     monkeypatch.setattr(
