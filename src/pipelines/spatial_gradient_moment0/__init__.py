@@ -8,10 +8,10 @@ from .runner import run_spatial_gradient_moment0
 @pipeline(
     name="spatial_gradient_moment0",
     description=(
-        "Reuse velocity segment geometry, extract and rotate M0ff segments, "
-        "then apply selectable temporal filters before and after Sobel gradients."
+        "Reuse velocity segment geometry and run configurable, reorderable "
+        "float-preserving preprocessing before the existing transverse profiles."
     ),
-    requires=["numpy", "scipy", "PIL"],
+    requires=["numpy", "scipy", "skimage", "PIL"],
     dag_requires=["waveform_velocity_core"],
     dag_produces=["spatial_gradient_moment0"],
     input_slot="hd",

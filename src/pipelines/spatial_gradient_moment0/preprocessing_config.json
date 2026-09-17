@@ -1,0 +1,262 @@
+{
+  "schema_version": 1,
+  "active_preset": "legacy_existing",
+  "preprocessing": {
+    "name": "resolved_from_active_preset",
+    "pipeline": [
+      "crop",
+      "rotate",
+      "temporal_filter",
+      "gradient",
+      "post_gradient_filter"
+    ],
+    "crop": {
+      "enabled": true,
+      "source": "velocity_geometry"
+    },
+    "rotation": {
+      "enabled": true,
+      "interpolation": "existing_bilinear"
+    },
+    "gaussian3d": {
+      "enabled": true,
+      "sigma_x": 1.0,
+      "sigma_y": 1.0,
+      "sigma_t": 2.0,
+      "truncate": 4.0
+    },
+    "temporal_filter": {
+      "enabled": true,
+      "method": "median",
+      "window": 17,
+      "sigma": 2.0,
+      "truncate": 4.0
+    },
+    "spatial_filter": {
+      "enabled": false,
+      "method": "gaussian",
+      "kernel_x": 3,
+      "kernel_y": 7,
+      "sigma_x": 1.0,
+      "sigma_y": 3.0,
+      "truncate": 4.0
+    },
+    "gradient": {
+      "enabled": true,
+      "method": "sobel",
+      "direction": "magnitude",
+      "signed": false,
+      "derivative_sigma_t": 0.0,
+      "derivative_sigma_x": 1.0,
+      "derivative_sigma_y": 1.0,
+      "truncate": 4.0
+    },
+    "clahe": {
+      "enabled": false,
+      "clip_limit": 0.01,
+      "tile_x": 8,
+      "tile_y": 8
+    },
+    "dog": {
+      "enabled": false,
+      "sigma_small_x": 1.0,
+      "sigma_small_y": 1.0,
+      "sigma_small_t": 0.0,
+      "sigma_large_x": 4.0,
+      "sigma_large_y": 4.0,
+      "sigma_large_t": 0.0,
+      "truncate": 4.0
+    },
+    "non_local_means": {
+      "enabled": false,
+      "patch_size": 5,
+      "patch_distance": 6,
+      "h": 0.8,
+      "fast_mode": true
+    },
+    "bilateral": {
+      "enabled": false,
+      "sigma_color": 0.05,
+      "sigma_spatial": 3.0,
+      "window_size": 7
+    },
+    "longitudinal_filter": {
+      "enabled": false,
+      "method": "mean",
+      "kernel_y": 7,
+      "trim_fraction": 0.1
+    },
+    "post_gradient_filter": {
+      "enabled": true,
+      "method": "gaussian",
+      "sigma_x": 0.0,
+      "sigma_y": 0.0,
+      "sigma_t": 2.0,
+      "kernel_x": 1,
+      "kernel_y": 1,
+      "kernel_t": 1,
+      "truncate": 4.0
+    },
+    "output": {
+      "save_debug_avi": true,
+      "save_intermediates": false,
+      "save_final_float_tiff": false,
+      "save_previews": true,
+      "diagnostic_frames": [0],
+      "directory_name": "spatial_gradient_experiments"
+    }
+  },
+  "presets": {
+    "legacy_existing": {},
+    "experiment_a_reference": {
+      "pipeline": ["crop", "gaussian3d", "gradient", "rotate", "post_gradient_filter"],
+      "gaussian3d": {"sigma_x": 1.0, "sigma_y": 1.0, "sigma_t": 2.0},
+      "post_gradient_filter": {
+        "method": "gaussian",
+        "sigma_x": 1.0,
+        "sigma_y": 1.0,
+        "sigma_t": 2.0
+      }
+    },
+    "experiment_b_no_second_gaussian": {
+      "pipeline": ["crop", "gaussian3d", "gradient", "rotate"],
+      "gaussian3d": {"sigma_x": 1.0, "sigma_y": 1.0, "sigma_t": 2.0}
+    },
+    "experiment_c_temporal_gaussian_3": {
+      "pipeline": ["crop", "gaussian3d", "gradient", "rotate"],
+      "gaussian3d": {"sigma_x": 1.0, "sigma_y": 1.0, "sigma_t": 3.0}
+    },
+    "experiment_d_longitudinal": {
+      "pipeline": ["crop", "rotate", "gaussian3d", "gradient"],
+      "gaussian3d": {"sigma_x": 1.0, "sigma_y": 3.0, "sigma_t": 2.0}
+    },
+    "experiment_e_temporal_median": {
+      "pipeline": ["crop", "temporal_filter", "gradient", "rotate"],
+      "temporal_filter": {"enabled": true, "method": "median", "window": 5}
+    },
+    "experiment_e_temporal_median_9": {
+      "pipeline": ["crop", "temporal_filter", "gradient", "rotate"],
+      "temporal_filter": {"enabled": true, "method": "median", "window": 9}
+    },
+    "experiment_e_temporal_median_15": {
+      "pipeline": ["crop", "temporal_filter", "gradient", "rotate"],
+      "temporal_filter": {"enabled": true, "method": "median", "window": 15}
+    },
+    "experiment_f_temporal_mean": {
+      "pipeline": ["crop", "temporal_filter", "gradient", "rotate"],
+      "temporal_filter": {"enabled": true, "method": "mean", "window": 5}
+    },
+    "experiment_f_temporal_mean_9": {
+      "pipeline": ["crop", "temporal_filter", "gradient", "rotate"],
+      "temporal_filter": {"enabled": true, "method": "mean", "window": 9}
+    },
+    "experiment_f_temporal_mean_15": {
+      "pipeline": ["crop", "temporal_filter", "gradient", "rotate"],
+      "temporal_filter": {"enabled": true, "method": "mean", "window": 15}
+    },
+    "experiment_g_derivative_gaussian": {
+      "pipeline": ["crop", "gradient", "rotate"],
+      "gradient": {
+        "method": "derivative_gaussian",
+        "direction": "magnitude",
+        "signed": false,
+        "derivative_sigma_t": 0.0,
+        "derivative_sigma_x": 1.5,
+        "derivative_sigma_y": 1.5
+      }
+    },
+    "experiment_g_derivative_gaussian_1": {
+      "pipeline": ["crop", "gradient", "rotate"],
+      "gradient": {
+        "method": "derivative_gaussian",
+        "direction": "magnitude",
+        "signed": false,
+        "derivative_sigma_t": 0.0,
+        "derivative_sigma_x": 1.0,
+        "derivative_sigma_y": 1.0
+      }
+    },
+    "experiment_g_derivative_gaussian_2": {
+      "pipeline": ["crop", "gradient", "rotate"],
+      "gradient": {
+        "method": "derivative_gaussian",
+        "direction": "magnitude",
+        "signed": false,
+        "derivative_sigma_t": 0.0,
+        "derivative_sigma_x": 2.0,
+        "derivative_sigma_y": 2.0
+      }
+    },
+    "experiment_h_clahe": {
+      "pipeline": ["crop", "gaussian3d", "clahe", "gradient", "rotate"],
+      "clahe": {"enabled": true, "clip_limit": 0.01, "tile_x": 8, "tile_y": 8}
+    },
+    "experiment_i_dog": {
+      "pipeline": ["crop", "dog", "gradient", "rotate"],
+      "dog": {
+        "enabled": true,
+        "sigma_small_x": 1.0,
+        "sigma_small_y": 1.0,
+        "sigma_large_x": 4.0,
+        "sigma_large_y": 4.0
+      }
+    },
+    "experiment_j_gradient_before_rotation": {
+      "pipeline": ["crop", "gaussian3d", "gradient", "rotate"],
+      "gaussian3d": {"sigma_x": 1.0, "sigma_y": 1.0, "sigma_t": 2.0}
+    },
+    "experiment_j_rotation_before_gradient": {
+      "pipeline": ["crop", "gaussian3d", "rotate", "gradient"],
+      "gaussian3d": {"sigma_x": 1.0, "sigma_y": 1.0, "sigma_t": 2.0}
+    },
+    "anisotropic_vertical_mean": {
+      "pipeline": ["crop", "rotate", "longitudinal_filter", "gradient"],
+      "longitudinal_filter": {"enabled": true, "method": "mean", "kernel_y": 11}
+    },
+    "anisotropic_vertical_median": {
+      "pipeline": ["crop", "rotate", "longitudinal_filter", "gradient"],
+      "longitudinal_filter": {"enabled": true, "method": "median", "kernel_y": 11}
+    },
+    "anisotropic_vertical_trimmed_mean": {
+      "pipeline": ["crop", "rotate", "longitudinal_filter", "gradient"],
+      "longitudinal_filter": {
+        "enabled": true,
+        "method": "trimmed_mean",
+        "kernel_y": 11,
+        "trim_fraction": 0.1
+      }
+    },
+    "non_local_means": {
+      "pipeline": ["crop", "non_local_means", "gradient", "rotate"],
+      "non_local_means": {"enabled": true}
+    },
+    "bilateral": {
+      "pipeline": ["crop", "bilateral", "gradient", "rotate"],
+      "bilateral": {"enabled": true}
+    }
+  },
+  "overrides": {},
+  "sweep": {
+    "enabled": true,
+    "presets": [
+      "experiment_a_reference",
+      "experiment_b_no_second_gaussian",
+      "experiment_c_temporal_gaussian_3",
+      "experiment_d_longitudinal",
+      "experiment_e_temporal_median",
+      "experiment_e_temporal_median_9",
+      "experiment_e_temporal_median_15",
+      "experiment_f_temporal_mean",
+      "experiment_f_temporal_mean_9",
+      "experiment_f_temporal_mean_15",
+      "experiment_g_derivative_gaussian_1",
+      "experiment_g_derivative_gaussian",
+      "experiment_g_derivative_gaussian_2",
+      "experiment_h_clahe",
+      "experiment_i_dog",
+      "experiment_j_gradient_before_rotation",
+      "experiment_j_rotation_before_gradient"
+    ],
+    "parameters": {}
+  }
+}

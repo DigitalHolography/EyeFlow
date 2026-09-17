@@ -26,6 +26,15 @@ from pipeline_engine.base import DatasetValue
 from input_output.output_manager import OutputType
 from input_output.writers.avi import MjpegAviWriter
 from pipelines.displacement_map.filtering import CenteredMedianBuffer
+from pipelines.spatial_gradient_moment0.config import (
+    ConfigurationBundle,
+    PreprocessingConfig,
+    load_configuration,
+)
+from pipelines.spatial_gradient_moment0.preprocessing import (
+    processing_metadata,
+    run_preprocessing_pipeline,
+)
 
 # Shared settings for processing and output metadata.
 # Each stage independently accepts "none", "median", or "gaussian".
@@ -54,7 +63,12 @@ def run_spatial_gradient_moment0(ctx):
     context = ctx.state.get(WAVEFORM_CONTEXT_STATE)
     if context is None:
         raise RuntimeError("Spatial gradient requires waveform_velocity_core geometry.")
-    segments = extract_spatial_gradient_segments(ctx, context)
+    configuration = load_configuration()
+    segments = extract_spatial_gradient_segments(
+        ctx,
+        context,
+        configuration_bundle=configuration,
+    )
     ctx.state.set(STATE_KEY, segments)
     return segments
 
@@ -165,50 +179,113 @@ def _temporal_filter_metadata():
     return attrs
 
 
-def extract_spatial_gradient_segments(ctx, waveform_context):
+def extract_spatial_gradient_segments(
+    ctx,
+    waveform_context,
+    *,
+    configuration_bundle: ConfigurationBundle | None = None,
+):
     """Project M0ff using velocity geometry, then filter and find segment edges."""
     cached = getattr(ctx, "state", None)
     cached = cached.get(STATE_KEY) if cached is not None else None
     if cached is not None:
         return cached
+    configuration_bundle = configuration_bundle or load_configuration()
+    preprocessing_config = configuration_bundle.preprocessing
     debug_exported = False
-    def export_debug(stack, ring, branch, vessel):
+
+    def export_debug(result, cropped_stack, mask, angle, ring, branch, vessel):
         nonlocal debug_exported
-        if (EXPORT_DEBUG_SEGMENT_VIDEO and not debug_exported
-                and getattr(getattr(ctx, "output", None), "available", False)):
-            _export_debug_segment(ctx, stack, ring, branch, vessel, source_dataset=source_dataset)
-            debug_exported = True
+        if debug_exported or not getattr(getattr(ctx, "output", None), "available", False):
+            return
+        if EXPORT_DEBUG_SEGMENT_VIDEO and preprocessing_config.output.save_debug_avi:
+            _export_debug_segment(
+                ctx,
+                result.data,
+                ring,
+                branch,
+                vessel,
+                source_dataset=source_dataset,
+                preprocessing_config=preprocessing_config,
+            )
+        if (
+            preprocessing_config.output.save_intermediates
+            or preprocessing_config.output.save_final_float_tiff
+        ):
+            _export_configured_experiments(
+                ctx,
+                cropped_stack,
+                mask=mask,
+                angle=angle,
+                bundle=configuration_bundle,
+            )
+        debug_exported = True
     hd = ctx.inputs.hd.as_holodoppler()
     moment0ff = hd.moment0_flat_field_dataset()
     source_dataset = "/moment0ff"
     if moment0ff is None:
-        ctx.log_error("Missing flat-field HoloDoppler moment0 dataset (moment0ff/M0FF); falling back to M0.")
+        ctx.log_error(
+            "Missing flat-field HoloDoppler moment0 dataset (moment0ff/M0FF); "
+            "falling back to M0."
+        )
         moment0ff = hd.moment0_dataset()
         source_dataset = "/moment0"
         if moment0ff is None:
-            raise KeyError("Spatial gradient requires M0ff or fallback M0; neither dataset is available.")
+            raise KeyError(
+                "Spatial gradient requires M0ff or fallback M0; neither dataset "
+                "is available."
+            )
     results = []
     for vessel, segments in (
         ("Artery", waveform_context.artery_segment_result),
         ("Vein", waveform_context.vein_segment_result),
     ):
         debug_callback = None
-        if (not debug_exported and EXPORT_DEBUG_SEGMENT_VIDEO
-                and getattr(getattr(ctx, "output", None), "available", False)):
-            def debug_callback(stack, ring, branch):
-                export_debug(stack, ring, branch, vessel)
+        needs_debug_callback = (
+            (EXPORT_DEBUG_SEGMENT_VIDEO and preprocessing_config.output.save_debug_avi)
+            or preprocessing_config.output.save_intermediates
+            or preprocessing_config.output.save_final_float_tiff
+        )
+        if (
+            not debug_exported
+            and needs_debug_callback
+            and getattr(getattr(ctx, "output", None), "available", False)
+        ):
+            def debug_callback(result, cropped_stack, mask, angle, ring, branch):
+                export_debug(result, cropped_stack, mask, angle, ring, branch, vessel)
         results.append(_gradient_segments_from_velocity_geometry(
-            moment0ff, segments, debug_callback=debug_callback, source_dataset=source_dataset,
+            moment0ff,
+            segments,
+            debug_callback=debug_callback,
+            source_dataset=source_dataset,
+            preprocessing_config=preprocessing_config,
         ))
+    if (
+        configuration_bundle.sweep.enabled
+        and getattr(getattr(ctx, "output", None), "available", False)
+    ):
+        _export_lumen_size_sweep(
+            ctx,
+            moment0ff,
+            waveform_context=waveform_context,
+            bundle=configuration_bundle,
+            source_dataset=source_dataset,
+        )
     return tuple(results)
 
 
 def _gradient_segments_from_velocity_geometry(
-    moment0ff, segments, *, debug_callback=None, source_dataset="/moment0ff",
+    moment0ff,
+    segments,
+    *,
+    debug_callback=None,
+    source_dataset="/moment0ff",
+    preprocessing_config: PreprocessingConfig | None = None,
 ):
     """Reuse fitted windows, angles and rotated masks without refitting topology."""
     if segments is None:
         return None
+    preprocessing_config = preprocessing_config or load_configuration().preprocessing
     shape = tuple(segments.velocity_profiles.shape)
     if shape[2] != moment0ff.shape[0]:
         raise ValueError("M0ff and velocity segment frame counts must match.")
@@ -218,20 +295,31 @@ def _gradient_segments_from_velocity_geometry(
     for ring, branch in np.argwhere(topology.valid_segments):
         center = tuple(int(v) for v in segments.segment_center_xy[branch, ring])
         bounds = tuple(int(v) for v in segments.profile_window_bounds_xyxy[ring, branch])
-        stack = _subimage_values_from_bounds(
+        cropped_stack = _subimage_values_from_bounds(
             moment0ff, bounds, loc_xy=center,
             side_pixels=segments.profile_window_side_pixels,
         )
-        stack = _rotate_stack_with_nan(
-            _center_pad_for_rotation(_resize_subimage_stack(stack), np.nan),
-            float(segments.profile_rotation_degrees[ring, branch]),
+        angle = float(segments.profile_rotation_degrees[ring, branch])
+        pipeline_result = run_preprocessing_pipeline(
+            cropped_stack,
+            rotation_angle=angle,
+            config=preprocessing_config,
+            capture_intermediates=False,
+            rotation_operation=_rotate_with_shared_geometry,
         )
+        stack = pipeline_result.data
         mask = ndimage.binary_dilation(
             np.asarray(segments.segment_masks[ring, branch], dtype=bool),
             structure=np.ones((1, 2 * TRANSVERSE_MASK_DILATION_PIXELS + 1), bool),
         )
         debug_stack = np.empty_like(stack) if debug_callback is not None else None
-        for time, gradient in enumerate(filtered_segment_gradients(stack)):
+        if stack.shape[0] != shape[2] or stack.shape[2] != shape[3]:
+            raise ValueError(
+                "Configured spatial-gradient pipeline produced shape "
+                f"{stack.shape}; existing profile geometry expects time/x "
+                f"({shape[2]}, {shape[3]})."
+            )
+        for time, gradient in enumerate(stack):
             if debug_stack is not None:
                 debug_stack[time] = gradient
             unmasked[ring, branch, time] = _mean_transverse(gradient)
@@ -239,7 +327,15 @@ def _gradient_segments_from_velocity_geometry(
                 np.where(mask, gradient, np.nan)
             )
         if debug_stack is not None:
-            debug_callback(debug_stack, ring, branch)
+            pipeline_result.data = debug_stack
+            debug_callback(
+                pipeline_result,
+                cropped_stack,
+                mask,
+                angle,
+                ring,
+                branch,
+            )
             debug_callback = None  # Only retain the first valid segment movie.
     return SimpleNamespace(
         source_dataset=source_dataset,
@@ -248,6 +344,18 @@ def _gradient_segments_from_velocity_geometry(
         labels=segments.labels,
         branch_ids=segments.branch_ids,
         segment_center_xy=segments.segment_center_xy,
+        preprocessing_metadata=processing_metadata(preprocessing_config),
+    )
+
+
+def _rotate_with_shared_geometry(stack, angle: float, interpolation: str):
+    """Keep rotation routed through the established, testable geometry helpers."""
+
+    if interpolation not in {"existing_bilinear", "bilinear"}:
+        raise ValueError("Only the existing bilinear interpolation is supported.")
+    return _rotate_stack_with_nan(
+        _center_pad_for_rotation(_resize_subimage_stack(stack), np.nan),
+        float(angle),
     )
 
 
@@ -295,6 +403,7 @@ def _pack_vessel_spatial_gradient_profiles(
 ) -> dict[str, object]:
     if segments is None:
         return {}
+    preprocessing_metadata = getattr(segments, "preprocessing_metadata", None)
     root = f"{SPATIAL_GRADIENT_PROFILE_ROOT}/{vessel_name}/Transverse"
     unmasked = _gradient_profile_dataset(
         np.asarray(segments.velocity_profiles, dtype=np.float32),
@@ -302,6 +411,7 @@ def _pack_vessel_spatial_gradient_profiles(
         index_base=index_base,
         mask="unmasked",
         source_dataset=getattr(segments, "source_dataset", "/moment0ff"),
+        preprocessing_metadata=preprocessing_metadata,
     )
     masked = _gradient_profile_dataset(
         np.asarray(
@@ -312,6 +422,7 @@ def _pack_vessel_spatial_gradient_profiles(
         index_base=index_base,
         mask="vessel_segment",
         source_dataset=getattr(segments, "source_dataset", "/moment0ff"),
+        preprocessing_metadata=preprocessing_metadata,
     )
     from pipelines.waveform_velocity.profiles import _temporally_meaned_profile_dataset
     meaned = _temporally_meaned_profile_dataset(masked)
@@ -774,6 +885,7 @@ def _gradient_profile_dataset(
     index_base: int,
     mask: str,
     source_dataset: str = "/moment0ff",
+    preprocessing_metadata: dict[str, object] | None = None,
 ) -> DatasetValue:
     from pipelines.waveform_velocity.profiles import _profile_dataset
     value = _profile_dataset(
@@ -783,12 +895,19 @@ def _gradient_profile_dataset(
         unit="a.u.",
     )
     attrs = dict(value.attrs or {})
+    pipeline_metadata = (
+        dict(preprocessing_metadata)
+        if preprocessing_metadata is not None
+        else {
+            **_temporal_filter_metadata(),
+            "spatial_operator": "3x3 Sobel magnitude",
+        }
+    )
     attrs.update(
         {
             "measurement": "spatial_gradient_magnitude",
             "source_dataset": source_dataset,
-            **_temporal_filter_metadata(),
-            "spatial_operator": "3x3 Sobel magnitude",
+            **pipeline_metadata,
             "spatial_region": mask,
             "transverse_mask_dilation_pixels": np.int32(TRANSVERSE_MASK_DILATION_PIXELS),
         }
@@ -797,7 +916,16 @@ def _gradient_profile_dataset(
     return value
 
 
-def _export_debug_segment(ctx, stack, ring, branch, vessel, *, source_dataset="/moment0ff"):
+def _export_debug_segment(
+    ctx,
+    stack,
+    ring,
+    branch,
+    vessel,
+    *,
+    source_dataset="/moment0ff",
+    preprocessing_config: PreprocessingConfig | None = None,
+):
     finite_stack = np.nan_to_num(stack, nan=0.0, posinf=0.0, neginf=0.0)
     maximum = _contrast_maximum(finite_stack.mean(axis=0), float(finite_stack.max()))
     fps = resolve_frame_rate(ctx)
@@ -805,7 +933,11 @@ def _export_debug_segment(ctx, stack, ring, branch, vessel, *, source_dataset="/
     metadata = {
         "source_dataset": source_dataset, "vessel": vessel,
         "ring_index": int(ring), "branch_index": int(branch),
-        **_temporal_filter_metadata(),
+        **(
+            processing_metadata(preprocessing_config)
+            if preprocessing_config is not None
+            else _temporal_filter_metadata()
+        ),
         "display_range": [0.0, maximum], "fps": fps,
     }
     with MjpegAviWriter(path, width=stack.shape[2], height=stack.shape[1],
@@ -813,6 +945,68 @@ def _export_debug_segment(ctx, stack, ring, branch, vessel, *, source_dataset="/
         for frame in finite_stack:
             video.write_frame(_display_frame(frame, maximum))
     ctx.log(f"Exported temporary spatial gradient segment video: {path}.")
+
+
+def _export_configured_experiments(
+    ctx,
+    cropped_stack,
+    *,
+    mask: np.ndarray,
+    angle: float,
+    bundle: ConfigurationBundle,
+) -> None:
+    """Export the selected segment only; all scientific profiles remain unchanged."""
+
+    from pipelines.spatial_gradient_moment0.experiments import run_experiment
+
+    output_root = (
+        ctx.output.manager.layout.ef_dir
+        / bundle.preprocessing.output.directory_name
+    )
+    if (
+        bundle.preprocessing.output.save_intermediates
+        or bundle.preprocessing.output.save_final_float_tiff
+    ):
+        run_experiment(
+            cropped_stack,
+            rotation_angle=angle,
+            config=bundle.preprocessing,
+            output_root=output_root,
+            mask=mask,
+        )
+    ctx.log(f"Exported spatial-gradient experiments: {output_root}.")
+
+
+def _export_lumen_size_sweep(
+    ctx,
+    moment0ff,
+    *,
+    waveform_context,
+    bundle: ConfigurationBundle,
+    source_dataset: str,
+) -> None:
+    """Run all configs on all branches and export reduced lumen-size checks."""
+
+    from pipelines.spatial_gradient_moment0.experiments import run_lumen_size_sweep
+
+    per_beat = waveform_context.per_beat_analysis
+    source_data = getattr(waveform_context, "source_data", None)
+    provenance = getattr(source_data, "provenance", {}) or {}
+    output_root = (
+        ctx.output.manager.layout.ef_dir
+        / bundle.preprocessing.output.directory_name
+    )
+    run_lumen_size_sweep(
+        moment0ff,
+        artery_geometry=waveform_context.artery_segment_result,
+        vein_geometry=waveform_context.vein_segment_result,
+        cycle_boundary_indexes=per_beat.cycle_boundary_indexes,
+        index_base=int(provenance.get("beat_index_base", 0)),
+        bundle=bundle,
+        output_root=output_root,
+        source_dataset=source_dataset,
+    )
+    ctx.log(f"Exported masked lumen-size sweep comparisons: {output_root}.")
 
 
 def _display_frame(gradient: np.ndarray, maximum: float) -> np.ndarray:
