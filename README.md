@@ -48,6 +48,22 @@ eyeflow --data path\to\input.holo
 eyeflow-cli --data path\to\input.holo
 ```
 
+## Lumen-size plots
+
+When masked spatial-gradient lumen metrics are computed, PNGs are exported
+immediately to `png/lumen_size/`, with separate `_artery` and `_vein` files.
+`lumen_size_by_branch` plots the joint NaN-ignoring median over beat and radius
+for each branch against time in seconds, with lumen size in pixels. The time
+axis spans the mean cardiac-cycle duration derived from beat boundaries and
+the acquisition frame interval.
+`lumen_size_by_branch_top_quartile` plots the mean curve of branches whose
+temporal median is at or above the 75th percentile of branch medians, including
+ties. Both plots use only `Processing/SpatialGradientMetrics/{Vessel}/Transverse/Masked/tbkr/lumen/size`,
+without applying QC.
+The branch curves are also stored in HDF5 at
+`Processing/SpatialGradientMetrics/{Vessel}/Transverse/Masked/tk/lumen_size`,
+with axes `(time, branch)` and units of pixels. PNGs use these same arrays.
+
 ## Flow-asymmetry outputs
 
 Enable **Waveform velocity > Velocity profiles** to export the paired lumen

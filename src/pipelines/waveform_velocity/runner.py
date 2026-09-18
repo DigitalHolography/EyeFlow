@@ -4,7 +4,9 @@ from time import perf_counter
 
 import numpy as np
 
+from calculations.blood_flow_velocity.signal_analysis.waveform import mean_period_seconds
 from input_output import EyeFlowOutputPaths
+from pipelines.spatial_gradient_moment0.lumen_size import export_lumen_size_pngs
 from pipelines.waveform_velocity_core.per_beat import run_velocity_per_beat_metrics
 from pipelines.waveform_velocity_core.runner import (
     VELOCITY_PER_BEAT_OUTPUTS_STATE,
@@ -31,6 +33,7 @@ from .segment_maps import (
 )
 from .segment_velocity_map_avi import export_segment_velocity_map_avis
 from .spatial_gradient_profiles import (
+    SPATIAL_GRADIENT_METRICS_ROOT,
     cleanup_spatial_gradient_artifacts,
     extract_spatial_gradient_segments,
     pack_spatial_gradient_profile_outputs,
@@ -150,6 +153,28 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             index_base=index_base,
         )
         metrics.update(spatial_gradient_outputs)
+        output = getattr(ctx, "output", None)
+        if getattr(output, "available", False):
+            for vessel_name, gradient_segments in (
+                ("Artery", gradient_artery_segments),
+                ("Vein", gradient_vein_segments),
+            ):
+                lumen_path = (
+                    f"{SPATIAL_GRADIENT_METRICS_ROOT}/{vessel_name}/"
+                    "Transverse/Masked/tk/lumen_size"
+                )
+                lumen_size = spatial_gradient_outputs.get(lumen_path)
+                if lumen_size is not None:
+                    export_lumen_size_pngs(
+                        output,
+                        lumen_size.data,
+                        gradient_segments.branch_ids,
+                        vessel_name=vessel_name,
+                        period_seconds=mean_period_seconds(
+                            cycle_boundaries,
+                            float(context.source_data.timing.dt_seconds),
+                        ),
+                    )
 
     if profile_products_required:
         velocity_profile_outputs = pack_cross_section_profile_outputs(

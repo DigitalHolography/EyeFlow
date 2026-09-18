@@ -10,7 +10,7 @@ from .runner import run_waveform_velocity
     description=(
         "Compute raw and band-limited waveform velocity with optional derived products."
     ),
-    requires=["numpy", "h5py", "scipy", "skimage"],
+    requires=["numpy", "h5py", "scipy", "skimage", "matplotlib"],
     dag_requires=["spatial_gradient_moment0", "waveform_velocity_core"],
     dag_produces=["waveform_velocity"],
     options=[

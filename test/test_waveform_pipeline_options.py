@@ -10,6 +10,7 @@ from unittest.mock import patch
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
+from pipeline_engine import DatasetValue
 from pipelines.lowrank_waveform_decomposition import runner as lowrank_runner
 from pipelines.waveform_shape_metrics import runner as metric_runner
 from pipelines.waveform_velocity import runner as velocity_runner
@@ -46,6 +47,73 @@ def _context(options, state_values=None, scheduled=None):
 
 
 class WaveformPipelineOptionTests(unittest.TestCase):
+    def test_lumen_size_pngs_export_when_gradient_metrics_become_available(self):
+        artery = SimpleNamespace(branch_ids=np.asarray([11]))
+        vein = SimpleNamespace(branch_ids=np.asarray([21]))
+        context = SimpleNamespace(
+            velocity_analysis={},
+            artery_segment_result=artery,
+            vein_segment_result=vein,
+            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(0, 4, 10)),
+            source_data=SimpleNamespace(
+                provenance={"beat_index_base": 0}, timing=SimpleNamespace(dt_seconds=0.1)
+            ),
+        )
+        ctx = _context(
+            {"waveform_velocity": ("segments",)},
+            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+        )
+        ctx.output = SimpleNamespace(available=True)
+        gradient_outputs = {}
+        for vessel in ("Artery", "Vein"):
+            path = (
+                f"Processing/SpatialGradientMetrics/{vessel}/Transverse/"
+                "Masked/tbkr/lumen/size"
+            )
+            gradient_outputs[path] = DatasetValue(np.full((4, 2, 1, 1), 8.0))
+            branch_path = (
+                f"Processing/SpatialGradientMetrics/{vessel}/Transverse/"
+                "Masked/tk/lumen_size"
+            )
+            gradient_outputs[branch_path] = DatasetValue(np.full((4, 1), 8.0))
+            # The exporter must use the size data even when every QC flag is 0.
+            gradient_outputs[f"{path}_qc"] = DatasetValue(np.zeros((4, 2, 1, 1)))
+        events = []
+        with (
+            patch.object(velocity_runner, "pack_continuous_velocity_outputs", return_value={}),
+            patch.object(velocity_runner, "pack_segment_velocity_outputs", return_value={}),
+            patch.object(
+                velocity_runner, "extract_spatial_gradient_segments", return_value=(artery, vein)
+            ),
+            patch.object(
+                velocity_runner, "pack_spatial_gradient_profile_outputs",
+                return_value=gradient_outputs,
+            ),
+            patch.object(
+                velocity_runner, "export_lumen_size_pngs",
+                side_effect=lambda *args, **kwargs: events.append(kwargs["vessel_name"]),
+            ) as export,
+            patch.object(
+                velocity_runner, "cleanup_spatial_gradient_artifacts",
+                side_effect=lambda ctx: events.append("cleanup"),
+            ),
+        ):
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+
+        self.assertEqual(["Artery", "Vein", "cleanup"], events)
+        self.assertEqual(gradient_outputs, outputs)
+        for call, vessel, segments in zip(
+            export.call_args_list, ("Artery", "Vein"), (artery, vein)
+        ):
+            path = (
+                f"Processing/SpatialGradientMetrics/{vessel}/Transverse/"
+                "Masked/tk/lumen_size"
+            )
+            self.assertIs(ctx.output, call.args[0])
+            self.assertIs(gradient_outputs[path].data, call.args[1])
+            self.assertIs(segments.branch_ids, call.args[2])
+            self.assertAlmostEqual(0.5, call.kwargs["period_seconds"])
+
     def test_blood_volume_rate_requires_matching_segment_order(self) -> None:
         velocity_segments = SimpleNamespace(
             labels=np.asarray([[0, 1], [0, 1]], dtype=np.int32),

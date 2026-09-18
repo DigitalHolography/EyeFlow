@@ -137,6 +137,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
                 {
                     f"{metrics_root}/Masked/tbkr/lumen/size_median",
                     f"{metrics_root}/Masked/tbkr/lumen/size_std",
+                    f"{metrics_root}/Masked/tk/lumen_size",
                 }
             )
         self.assertEqual(expected_paths, set(outputs))
@@ -188,6 +189,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
             {
                 "Masked/tbkr/lumen/size_median": [],
                 "Masked/tbkr/lumen/size_std": [],
+                "Masked/tk/lumen_size": ["time", "branch"],
             }
         )
         for vessel in ("Artery", "Vein"):

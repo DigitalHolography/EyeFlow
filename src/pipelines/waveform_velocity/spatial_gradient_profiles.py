@@ -140,10 +140,22 @@ def _pack_vessel_spatial_gradient_profiles(
         minimum_gap=SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES,
     )
     metrics_root = f"{SPATIAL_GRADIENT_METRICS_ROOT}/{vessel_name}/Transverse"
+    lumen_size = peak_metrics["Masked/tbkr/lumen/size"]
+    branch_lumen_size = DatasetValue(
+        nanmedian(lumen_size.data, axis=(1, 3)),
+        {
+            "dimDesc": ["time", "branch"],
+            "unit": "pixels",
+            "source_metric": f"/{metrics_root}/Masked/tbkr/lumen/size",
+            "reduction": "nanmedian_over_beat_and_radius",
+            "qc_applied": np.uint8(0),
+        },
+    )
     return {
         f"{root}/Masked/SpatialGradientProfile/value": masked,
         f"{root}/Masked/SpatialGradientProfileMeaned/value": meaned,
         f"{root}/Unmasked/SpatialGradientProfile/value": unmasked,
+        f"{metrics_root}/Masked/tk/lumen_size": branch_lumen_size,
         **{
             f"{metrics_root}/{name}": value
             for name, value in peak_metrics.items()
