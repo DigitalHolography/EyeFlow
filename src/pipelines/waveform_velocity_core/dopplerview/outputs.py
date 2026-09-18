@@ -8,7 +8,7 @@ from input_output.schema import EyeFlowOutputPaths
 
 
 def pack_dopplerview_shared_outputs(
-    analysis: Mapping[str, object],
+    velocity_analysis: Mapping[str, object],
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
     """Pack shared frequency-map, heartbeat, and provenance analysis outputs."""
@@ -16,25 +16,25 @@ def pack_dopplerview_shared_outputs(
     schema = _resolve_output_paths(output_paths)
     paths = schema.analysis
     metrics = {
-        paths.fRMS_avg: metric_value(analysis["fRMS_avg"]),
-        paths.fRMS_bkg_avg: metric_value(analysis["fRMS_bkg_avg"]),
-        paths.beat_indices: metric_value(analysis["beat_indices"]),
+        paths.fRMS_avg: metric_value(velocity_analysis["fRMS_avg"]),
+        paths.fRMS_bkg_avg: metric_value(velocity_analysis["fRMS_bkg_avg"]),
+        paths.beat_indices: metric_value(velocity_analysis["beat_indices"]),
         paths.time_per_beat: metric_value(
-            analysis["time_per_beat"],
+            velocity_analysis["time_per_beat"],
             unit="s",
         ),
     }
     if paths.velocity_map_avg is not None:
         metrics[paths.velocity_map_avg] = metric_value(
-            analysis["velocity_map_avg"],
+            velocity_analysis["velocity_map_avg"],
             unit="mm/s",
         )
     if paths.retinal_velocity_array is not None:
         metrics[paths.retinal_velocity_array] = metric_value(
-            analysis["retinal_vessel_velocity"],
+            velocity_analysis["velocity_map"],
             unit="mm/s",
         )
-    heartbeat = analysis.get("_heartbeat_analysis_result")
+    heartbeat = velocity_analysis.get("_heartbeat_analysis_result")
     spectral = getattr(heartbeat, "spectral", None)
     if spectral is not None:
         heartbeat_paths = schema.heartbeat

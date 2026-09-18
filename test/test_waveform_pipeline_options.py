@@ -7,7 +7,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import numpy as np
+
 from input_output.schema import EyeFlowOutputPaths
+from pipeline_engine import DatasetValue
 from pipelines.lowrank_waveform_decomposition import runner as lowrank_runner
 from pipelines.waveform_shape_metrics import runner as metric_runner
 from pipelines.waveform_velocity import runner as velocity_runner
@@ -44,6 +47,157 @@ def _context(options, state_values=None, scheduled=None):
 
 
 class WaveformPipelineOptionTests(unittest.TestCase):
+    def test_lumen_size_pngs_export_when_gradient_metrics_become_available(self):
+        artery = SimpleNamespace(branch_ids=np.asarray([11]))
+        vein = SimpleNamespace(branch_ids=np.asarray([21]))
+        context = SimpleNamespace(
+            velocity_analysis={},
+            artery_segment_result=artery,
+            vein_segment_result=vein,
+            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(0, 4, 10)),
+            source_data=SimpleNamespace(
+                provenance={"beat_index_base": 0}, timing=SimpleNamespace(dt_seconds=0.1)
+            ),
+        )
+        ctx = _context(
+            {"waveform_velocity": ("segments",)},
+            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+        )
+        ctx.output = SimpleNamespace(available=True)
+        gradient_outputs = {}
+        for vessel in ("Artery", "Vein"):
+            path = (
+                f"Processing/SpatialGradientMetrics/{vessel}/Transverse/"
+                "Masked/tbkr/lumen/size"
+            )
+            gradient_outputs[path] = DatasetValue(np.full((4, 2, 1, 1), 8.0))
+            branch_path = (
+                f"Processing/SpatialGradientMetrics/{vessel}/Transverse/"
+                "Masked/tk/lumen_size"
+            )
+            gradient_outputs[branch_path] = DatasetValue(np.full((4, 1), 8.0))
+            # The exporter must use the size data even when every QC flag is 0.
+            gradient_outputs[f"{path}_qc"] = DatasetValue(np.zeros((4, 2, 1, 1)))
+        events = []
+        with (
+            patch.object(velocity_runner, "pack_continuous_velocity_outputs", return_value={}),
+            patch.object(velocity_runner, "pack_segment_velocity_outputs", return_value={}),
+            patch.object(
+                velocity_runner, "extract_spatial_gradient_segments", return_value=(artery, vein)
+            ),
+            patch.object(
+                velocity_runner, "pack_spatial_gradient_profile_outputs",
+                return_value=gradient_outputs,
+            ),
+            patch.object(
+                velocity_runner, "export_lumen_size_pngs",
+                side_effect=lambda *args, **kwargs: events.append(kwargs["vessel_name"]),
+            ) as export,
+        ):
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+
+        self.assertEqual(["Artery", "Vein"], events)
+        self.assertEqual(gradient_outputs, outputs)
+        for call, vessel, segments in zip(
+            export.call_args_list, ("Artery", "Vein"), (artery, vein)
+        ):
+            path = (
+                f"Processing/SpatialGradientMetrics/{vessel}/Transverse/"
+                "Masked/tk/lumen_size"
+            )
+            self.assertIs(ctx.output, call.args[0])
+            self.assertIs(gradient_outputs[path].data, call.args[1])
+            self.assertIs(segments.branch_ids, call.args[2])
+            self.assertAlmostEqual(0.5, call.kwargs["period_seconds"])
+
+    def test_blood_volume_rate_requires_matching_segment_order(self) -> None:
+        velocity_segments = SimpleNamespace(
+            labels=np.asarray([[0, 1], [0, 1]], dtype=np.int32),
+            branch_ids=np.asarray([1], dtype=np.int32),
+            segment_center_xy=np.asarray([[[1.0, 0.5]]], dtype=np.float32),
+            velocity_profiles=np.zeros((1, 1, 2, 3), dtype=np.float32),
+        )
+        gradient_segments = SimpleNamespace(
+            labels=velocity_segments.labels.copy(),
+            branch_ids=velocity_segments.branch_ids.copy(),
+            segment_center_xy=velocity_segments.segment_center_xy.copy(),
+            velocity_profiles=np.ones((1, 1, 2, 3), dtype=np.float32),
+        )
+
+        velocity_runner._validate_profile_segment_alignment(
+            "Artery",
+            velocity_segments,
+            gradient_segments,
+        )
+
+        gradient_segments.labels[0, 1] = 0
+        with self.assertRaisesRegex(RuntimeError, "labels do not match"):
+            velocity_runner._validate_profile_segment_alignment(
+                "Artery",
+                velocity_segments,
+                gradient_segments,
+            )
+
+    def test_profile_analysis_requires_and_publishes_profiles_with_options_disabled(self):
+        context = SimpleNamespace(
+            dopplerview_analysis={}, artery_segment_result="artery", vein_segment_result="vein",
+        )
+        result = SimpleNamespace(cycle_boundary_indexes=(0, 2))
+        ctx = _context(
+            {"waveform_velocity": ()},
+            {core_runner.WAVEFORM_CONTEXT_STATE: context,
+             core_runner.VELOCITY_PER_BEAT_RESULT_STATE: result},
+            scheduled={"waveform_velocity_core", "waveform_velocity", "velocity_profile_analysis"},
+        )
+        self.assertTrue(core_runner._per_beat_required(ctx))
+        self.assertTrue(core_runner._segments_required(ctx))
+        self.assertFalse(core_runner._pulse_pngs_required(ctx))
+        with (
+            patch.object(
+                velocity_runner,
+                "pack_continuous_velocity_outputs",
+                return_value={},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_cross_section_profile_outputs",
+                return_value={"profiles": 1},
+            ) as pack,
+            patch.object(
+                velocity_runner,
+                "extract_spatial_gradient_segments",
+                return_value=("gradient_artery", "gradient_vein"),
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_spatial_gradient_profile_outputs",
+                return_value={"gradient_profiles": 2},
+            ),
+            patch.object(
+                velocity_runner,
+                "_validate_profile_segment_alignment",
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_blood_volume_rate_outputs",
+                return_value={"blood_volume_rate": 3},
+            ) as blood_volume_rate,
+        ):
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+        self.assertEqual(
+            outputs,
+            {
+                "profiles": 1,
+                "gradient_profiles": 2,
+                "blood_volume_rate": 3,
+            },
+        )
+        pack.assert_called_once_with("artery", "vein", (0, 2), index_base=0)
+        blood_volume_rate.assert_called_once_with(
+            {"profiles": 1},
+            {"gradient_profiles": 2},
+        )
+
     def test_lowrank_pipeline_includes_veins_and_selected_quadrants(self) -> None:
         velocity_outputs = {"per_beat": 1}
         context = SimpleNamespace(
@@ -96,7 +250,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertNotIn("pipelines.waveform_shape_metrics", velocity_source)
 
     def test_velocity_parent_always_publishes_base_velocity_only(self) -> None:
-        context = SimpleNamespace(dopplerview_analysis={})
+        context = SimpleNamespace(velocity_analysis={})
         ctx = _context(
             {"waveform_velocity": ()},
             {core_runner.WAVEFORM_CONTEXT_STATE: context},
@@ -136,7 +290,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             schema.artery_per_beat.segment_velocity_signal: 5,
         }
         context = SimpleNamespace(
-            dopplerview_analysis={},
+            velocity_analysis={},
             artery_segment_result="artery",
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
@@ -170,6 +324,39 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as profiles,
             patch.object(
                 velocity_runner,
+                "extract_spatial_gradient_segments",
+                return_value=("gradient_artery", "gradient_vein"),
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_spatial_gradient_profile_outputs",
+                return_value={"gradient_profiles": 7},
+            ) as gradient_profiles,
+            patch.object(
+                velocity_runner,
+                "_validate_profile_segment_alignment",
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_blood_volume_rate_outputs",
+                return_value={"blood_volume_rate": 8},
+            ) as blood_volume_rate,
+            patch.object(
+                velocity_runner,
+                "pack_displacement_magnitude_outputs",
+                return_value={"displacement_magnitude": 5},
+            ) as displacement_magnitude,
+            patch.object(
+                velocity_runner,
+                "pack_cross_section_displacement_profile_outputs",
+                return_value={"displacement_profiles": 6},
+            ) as displacement_profiles,
+            patch.object(
+                velocity_runner,
+                "pack_displacement_profile_outputs",
+            ) as legacy_displacement_profiles,
+            patch.object(
+                velocity_runner,
                 "pack_quadrant_velocity_outputs",
                 return_value={"quadrants": 4},
             ) as quadrants,
@@ -177,7 +364,16 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 
         self.assertEqual(
-            {"base": 1, "per_beat": 2, "profile": 3, "quadrants": 4},
+            {
+                "base": 1,
+                "per_beat": 2,
+                "profile": 3,
+                "displacement_magnitude": 5,
+                "displacement_profiles": 6,
+                "gradient_profiles": 7,
+                "blood_volume_rate": 8,
+                "quadrants": 4,
+            },
             outputs,
         )
         profiles.assert_called_once_with(
@@ -186,6 +382,29 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             (0, 5, 10),
             index_base=0,
         )
+        gradient_profiles.assert_called_once_with(
+            "gradient_artery",
+            "gradient_vein",
+            (0, 5, 10),
+            index_base=0,
+        )
+        blood_volume_rate.assert_called_once_with(
+            {"profile": 3},
+            {"gradient_profiles": 7},
+        )
+        displacement_magnitude.assert_called_once_with(
+            "artery",
+            "vein",
+            (0, 5, 10),
+            index_base=0,
+        )
+        displacement_profiles.assert_called_once_with(
+            "artery",
+            "vein",
+            (0, 5, 10),
+            index_base=0,
+        )
+        legacy_displacement_profiles.assert_not_called()
         quadrants.assert_called_once_with(
             velocity_outputs,
             context.source_data,
@@ -195,7 +414,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
     def test_segments_option_does_not_build_velocity_maps(self) -> None:
         context = SimpleNamespace(
-            dopplerview_analysis={},
+            velocity_analysis={},
             artery_segment_result="artery",
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
@@ -220,6 +439,16 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ),
             patch.object(
                 velocity_runner,
+                "extract_spatial_gradient_segments",
+                return_value=("gradient_artery", "gradient_vein"),
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_spatial_gradient_profile_outputs",
+                return_value={"gradient_profiles": 4},
+            ) as gradient_profiles,
+            patch.object(
+                velocity_runner,
                 "pack_segment_map_outputs",
                 return_value={"maps": 3},
             ) as maps,
@@ -231,13 +460,22 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         ):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 
-        self.assertEqual({"base": 1, "signals": 2}, outputs)
+        self.assertEqual(
+            {"base": 1, "signals": 2, "gradient_profiles": 4},
+            outputs,
+        )
+        gradient_profiles.assert_called_once_with(
+            "gradient_artery",
+            "gradient_vein",
+            (1, 6, 11),
+            index_base=1,
+        )
         maps.assert_not_called()
         avis.assert_not_called()
 
     def test_segment_velocity_maps_option_publishes_maps_and_avis(self) -> None:
         context = SimpleNamespace(
-            dopplerview_analysis={},
+            velocity_analysis={},
             artery_segment_result="artery",
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
@@ -417,7 +655,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertTrue(core_runner._pulse_pngs_required(ctx))
 
     def test_pdf_report_publishes_velocity_per_beat_outputs(self) -> None:
-        context = SimpleNamespace(dopplerview_analysis={})
+        context = SimpleNamespace(velocity_analysis={})
         result = SimpleNamespace(cycle_boundary_indexes=(0, 2))
         ctx = _context(
             {"waveform_velocity": ()},

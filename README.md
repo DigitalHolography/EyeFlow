@@ -48,6 +48,71 @@ eyeflow --data path\to\input.holo
 eyeflow-cli --data path\to\input.holo
 ```
 
+## Lumen-size plots
+
+Spatial gradients are computed directly on interpolated vessel segments.
+The filter order is a centered 7-frame moving average, Sobel magnitude, an
+ImageJ Gaussian blur with radius (sigma) 6 pixels, an ImageJ unsharp mask with
+radius 8 pixels and mask weight 0.6, then a final 7-frame moving average.
+The averaging windows shrink at recording boundaries and propagate NaNs.
+Both spatial filters operate independently per frame, propagate NaNs, and set
+valid pixels on the outermost rows and columns to zero. The unsharp mask clips
+negative values to zero.
+The obsolete full-frame `spatial_gradient_moment0` AVI/PNG export pipeline has
+been retired.
+
+When masked spatial-gradient lumen metrics are computed, PNGs are exported
+immediately to `png/lumen_size/`, with separate `_artery` and `_vein` files.
+`lumen_size_by_branch` plots the joint NaN-ignoring median over beat and radius
+for each branch against time in seconds, with lumen size in pixels. The time
+axis spans the mean cardiac-cycle duration derived from beat boundaries and
+the acquisition frame interval.
+`lumen_size_by_branch_top_quartile` plots the mean curve of branches whose
+temporal median is at or above the 75th percentile of branch medians, including
+ties. Both plots use only `Processing/SpatialGradientMetrics/{Vessel}/Transverse/Masked/tbkr/lumen/size`,
+without applying QC.
+The branch curves are also stored in HDF5 at
+`Processing/SpatialGradientMetrics/{Vessel}/Transverse/Masked/tk/lumen_size`,
+with axes `(time, branch)` and units of pixels. PNGs use these same arrays.
+
+## Flow-asymmetry outputs
+
+Enable **Waveform velocity > Velocity profiles** to export the paired lumen
+flow-asymmetry metrics for arteries and veins. In the active output schema,
+datasets are under `Processing/VelocityProfiles/{Artery,Vein}/FlowAsymmetry/<metric>/value`.
+
+The lumen is recentered at the midpoint of the fitted zero roots, with
+`R = (x2 - x1) / 2`. Signed profile samples at `x` and `-x` are paired over
+`0 < x <= R`. The metric is the ratio of sums
+`A = sum(v(x) - v(-x)) / sum(v(x) + v(-x))`.
+The two component sums use the standard Fourier interpolation to each beat's
+time grid before division.
+
+| Dataset | Definition |
+| --- | --- |
+| `A`, `A_abs` | Signed instantaneous asymmetry and its magnitude `abs(A)` |
+| `A_mean` | Full-beat temporal mean of `A` |
+| `A_RMS` | Total RMS magnitude `sqrt(mean(A**2))` |
+| `p_A` | Instantaneous dynamic power `(A - A_mean)**2` |
+| `a` | Centered dynamic RMS `sqrt(mean(p_A))` |
+| `a_early`, `a_late` | RMS of `p_A` in the first and last thirds of each beat |
+| `R_a` | `a_early / a_late` |
+| `FFA`, `FFAR`, `PFA` | Hierarchical medians of `a`, `R_a`, and `abs(A_mean)` |
+| `N_t`, `N_early`, `N_late` | Finite sample counts used in the temporal averages |
+
+Time series have dimensions `(time, beat, branch, radius)`; beat summaries
+have `(beat, branch, radius)`. Global indices are scalars per vessel type,
+reducing branch, then beat, then radius. Both windows use the full-beat mean
+and contain `floor(Nt/3)` samples. The population-moment identity is
+`A_RMS**2 = A_mean**2 + a**2`.
+
+Missing spatial pairs invalidate a frame; Fourier interpolation propagates
+missing source samples across the interpolated beat. Temporal averages and
+hierarchical medians omit nonfinite values. Empty reductions and ratios with
+zero denominators produce `NaN`, including `R_a` when `a_late` is zero. No
+absolute-value conversion, clipping, or epsilon is applied to the signed
+profile ratio. Dataset attributes record formulas and window bounds.
+
 ## Scope
 
 ### In Scope

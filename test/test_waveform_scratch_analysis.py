@@ -100,7 +100,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
             )
 
             self.assertEqual([], list(h5["waveform"].keys()))
-        self.assertIsNone(result["retinal_vessel_velocity"])
+        self.assertIsNone(result["velocity_map"])
         self.assertIsNone(result["fRMS"])
         self.assertIsNone(result["fRMS_bkg"])
         self.assertIsNone(result["deltafRMS"])
@@ -120,7 +120,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
             dataset = h5["waveform/velocity"]
             self.assertEqual(["velocity"], list(h5["waveform"].keys()))
             self.assertEqual(
-                retained["retinal_vessel_velocity"].name,
+                retained["velocity_map"].name,
                 dataset.name,
             )
             self.assertIsNone(dataset.compression)
@@ -178,7 +178,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
             "retinal_artery_velocity_signal_filtered": np.arange(8, dtype=np.float32),
             "retinal_vein_velocity_signal_filtered": np.arange(8, dtype=np.float32),
             "retinal_artery_velocity_signal_filtered_perbeat": np.ones((1, 8)),
-            "retinal_vessel_velocity": np.ones((8, 4, 4)),
+            "velocity_map": np.ones((8, 4, 4)),
             "velocity_map_avg": np.ones((4, 4)),
             "fRMS_avg": np.ones((4, 4)),
             "fRMS_bkg_avg": np.ones((4, 4)),
@@ -191,7 +191,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
 
         self.assertFalse(any(path.startswith("analysis/") for path in metrics))
         self.assertFalse(
-            any(value is analysis["retinal_vessel_velocity"] for value in metrics.values())
+            any(value is analysis["velocity_map"] for value in metrics.values())
         )
         self.assertNotIn(schema.analysis.retinal_artery_velocity_signal, shared)
         self.assertNotIn(schema.analysis.retinal_vein_velocity_signal, shared)

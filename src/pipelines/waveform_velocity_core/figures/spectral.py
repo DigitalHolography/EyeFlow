@@ -33,10 +33,10 @@ SPECTRAL_XLIM_HZ = (0.0, 10.0)
 def _export_spectral_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     paths: list[Path] = []
     artery = _display_velocity(
-        _vector(ctx.analysis["retinal_artery_velocity_signal_filtered"])
+        _vector(ctx.velocity_analysis["retinal_artery_velocity_signal_filtered"])
     )
     vein = _display_velocity(
-        _vector(ctx.analysis["retinal_vein_velocity_signal_filtered"])
+        _vector(ctx.velocity_analysis["retinal_vein_velocity_signal_filtered"])
     )
     beat_indexes = ctx.cycle_boundary_indexes
     systole_count = int(beat_indexes.size)

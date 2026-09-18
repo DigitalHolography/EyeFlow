@@ -11,7 +11,7 @@ from .runner import run_waveform_velocity_core
         "Load waveform sources and run shared DopplerView with optional segment extraction."
     ),
     requires=["numpy", "h5py", "scipy", "skimage"],
-    dag_produces=["dopplerview_analysis", "waveform_velocity_core"],
+    dag_produces=["velocity_analysis", "waveform_velocity_core"],
     input_slot="both",
     visibility="hidden",
 )

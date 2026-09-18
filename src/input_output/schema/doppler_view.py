@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .base import MISSING, SourceFileLayout, TypedSource
+from .base import SourceFileLayout, TypedSource
 
 DV_CONFIG_DIR_NAME = "json"
 DV_CONFIG_FILENAME = "DV_params.json"
@@ -17,21 +17,6 @@ DOPPLER_VIEW_LAYOUT = SourceFileLayout(
     config_dir_name=DV_CONFIG_DIR_NAME,
     config_filename=DV_CONFIG_FILENAME,
 )
-VELOCITY_ANALYSIS_SCALE = np.float32(1.0e-3)
-
-DV_ANALYSIS_REQUIRED_PATHS = (
-    "analysis/retinal_velocity_array",
-    "analysis/retinal_artery_velocity_signal",
-    "analysis/retinal_vein_velocity_signal",
-    "analysis/velocity_map_avg",
-    "analysis/fRMS_avg",
-    "analysis/fRMS_bkg_avg",
-    "analysis/velocitysignal_per_beat",
-    "analysis/velocitysignal_filtered",
-    "analysis/beat_indices",
-    "analysis/time_per_beat",
-)
-
 
 class DopplerViewSource(TypedSource):
     """Typed access to the DopplerView HDF5 file and sidecar config."""
@@ -41,53 +26,6 @@ class DopplerViewSource(TypedSource):
     @classmethod
     def from_context(cls, ctx) -> "DopplerViewSource":
         return cls(ctx.inputs.dv.h5, ctx.inputs.dv.config)
-
-    def has_analysis(self) -> bool:
-        return all(path in self._reader for path in DV_ANALYSIS_REQUIRED_PATHS)
-
-    def analysis(self, *, default=MISSING) -> dict[str, object] | None:
-        if not self.has_analysis():
-            if default is not MISSING:
-                return default
-            missing = [
-                path for path in DV_ANALYSIS_REQUIRED_PATHS if path not in self._reader
-            ]
-            raise KeyError(
-                "Missing DopplerView analysis dataset(s): " + ", ".join(missing)
-            )
-        artery_signal = self._velocity_array("analysis/retinal_artery_velocity_signal")
-        vein_signal = self._velocity_array("analysis/retinal_vein_velocity_signal")
-        artery_filtered = self._velocity_array("analysis/velocitysignal_filtered")
-        return {
-            "retinal_vessel_velocity": self._velocity_array(
-                "analysis/retinal_velocity_array"
-            ),
-            "retinal_artery_velocity_signal": artery_signal,
-            "retinal_vein_velocity_signal": vein_signal,
-            "velocity_map_avg": self._velocity_array("analysis/velocity_map_avg"),
-            "fRMS_avg": self._array("analysis/fRMS_avg"),
-            "fRMS_bkg_avg": self._array("analysis/fRMS_bkg_avg"),
-            "retinal_artery_velocity_signal_filtered_perbeat": self._velocity_array(
-                "analysis/velocitysignal_per_beat"
-            ),
-            "retinal_artery_velocity_signal_filtered": artery_filtered,
-            "retinal_artery_velocity_signal_derivative": np.gradient(
-                artery_filtered
-            ).astype(np.float32),
-            "retinal_vein_velocity_signal_filtered": vein_signal,
-            "retinal_vein_velocity_signal_derivative": np.gradient(vein_signal).astype(
-                np.float32
-            ),
-            "beat_indices": self._array("analysis/beat_indices"),
-            "time_per_beat": self._array("analysis/time_per_beat"),
-        }
-
-    def _velocity_array(self, path: str) -> np.ndarray:
-        values = self._array(path, dtype=np.float32)
-        # ``_array`` returns a newly read array, so scale it in place instead
-        # of allocating a second full analysis array for the multiplication.
-        values *= VELOCITY_ANALYSIS_SCALE
-        return values
 
     def retinal_artery_mask(self) -> np.ndarray:
         return self._array("segmentation/Retina/artery_mask", dtype=bool)

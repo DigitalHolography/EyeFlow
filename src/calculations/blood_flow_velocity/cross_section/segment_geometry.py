@@ -63,18 +63,18 @@ def annulus_mask(
     independent of the optic-disc position: changing the center translates
     an annulus without rescaling it.
     """
+    radius_sq = normalized_radius_squared(image_shape, optic_disc_center)
+    return (radius_sq > inner_radius_frac**2) & (radius_sq <= outer_radius_frac**2)
+
+
+def normalized_radius_squared(image_shape, optic_disc_center) -> np.ndarray:
+    """Squared pixel distances in units of the image half-diagonal."""
     ny, nx = image_shape
     cy, cx = optic_disc_center_yx(optic_disc_center, ny, nx)
-    corner_radius = image_half_diagonal(ny, nx)
-    scale = np.float32(1.0 / max(corner_radius, 1.0))
-    y_distance = (
-        np.arange(ny, dtype=np.float32)[:, None] - np.float32(cy)
-    ) * scale
-    x_distance = (
-        np.arange(nx, dtype=np.float32)[None, :] - np.float32(cx)
-    ) * scale
-    radius_sq = x_distance**2 + y_distance**2
-    return (radius_sq > inner_radius_frac**2) & (radius_sq <= outer_radius_frac**2)
+    scale = np.float32(1.0 / max(image_half_diagonal(ny, nx), 1.0))
+    y_distance = (np.arange(ny, dtype=np.float32)[:, None] - np.float32(cy)) * scale
+    x_distance = (np.arange(nx, dtype=np.float32)[None, :] - np.float32(cx)) * scale
+    return x_distance**2 + y_distance**2
 
 
 def optic_disc_center_yx(optic_disc_center, ny: int, nx: int) -> tuple[float, float]:
