@@ -2,19 +2,13 @@
 
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 
 from calculations.blood_flow_velocity import CrossSectionSignalSettings
-from pipelines.spatial_gradient_moment0.runner import (
-    STATE_KEY,
-    SpatialGradientMoment0Artifacts,
-)
 from pipelines.waveform_velocity import spatial_gradient_profiles as profile_module
 from pipelines.waveform_velocity.spatial_gradient_profiles import (
     SPATIAL_GRADIENT_METRICS_ROOT,
@@ -27,17 +21,6 @@ from pipelines.waveform_velocity.spatial_gradient_profiles import (
 
 class SpatialGradientProfileTests(unittest.TestCase):
     def test_extracts_both_vessels_using_annular_cross_section_engine(self) -> None:
-        temporary_directory = tempfile.TemporaryDirectory()
-        gradient_path = Path(temporary_directory.name) / "gradient.npy"
-        np.save(gradient_path, np.ones((3, 8, 8), dtype=np.float32))
-        artifacts = SpatialGradientMoment0Artifacts(
-            avi_path=Path("gradient.avi"),
-            mean_png_path=Path("gradient.png"),
-            gradient_path=gradient_path,
-            frame_count=3,
-            display_maximum=1.0,
-            temporary_directory=temporary_directory,
-        )
         source = SimpleNamespace(
             optic_disc_mask=None,
             optic_disc_width=2.0,
@@ -49,9 +32,6 @@ class SpatialGradientProfileTests(unittest.TestCase):
         )
         moment0ff = np.full((3, 8, 8), 42.0, dtype=np.float32)
         ctx = SimpleNamespace(
-            state=SimpleNamespace(
-                get=lambda key: artifacts if key == STATE_KEY else None
-            ),
             inputs=SimpleNamespace(
                 hd=SimpleNamespace(
                     as_holodoppler=lambda: SimpleNamespace(
@@ -93,7 +73,6 @@ class SpatialGradientProfileTests(unittest.TestCase):
             kwargs["vein_transverse_mask_dilation_pixels"],
         )
         self.assertFalse(kwargs["retain_displacement_maps"])
-        self.assertFalse(gradient_path.exists())
 
     def test_packs_requested_profiles_for_arteries_and_veins(self) -> None:
         unmasked = np.arange(30, dtype=np.float32).reshape(2, 1, 5, 3)
@@ -144,11 +123,28 @@ class SpatialGradientProfileTests(unittest.TestCase):
         for path, value in outputs.items():
             if "SpatialGradientProfiles" in path:
                 self.assertEqual("/moment0ff", value.attrs["source_dataset"])
-                self.assertEqual(9, value.attrs["temporal_median_window"])
-                self.assertEqual(2, value.attrs["temporal_median_passes"])
+                self.assertEqual(7, value.attrs["temporal_moving_average_window"])
+                self.assertEqual(2, value.attrs["temporal_moving_average_passes"])
                 self.assertEqual(
-                    "spatial_interpolation, temporal_median, sobel_magnitude, "
-                    "temporal_median, segment_rotation",
+                    "centered_pixelwise_moving_average", value.attrs["temporal_filter"]
+                )
+                self.assertEqual("truncated_window", value.attrs["temporal_boundary_mode"])
+                self.assertEqual("propagate", value.attrs["temporal_nan_policy"])
+                self.assertEqual("ImageJ", value.attrs["gaussian_blur_algorithm"])
+                self.assertEqual(6.0, value.attrs["gaussian_blur_radius_pixels"])
+                self.assertEqual("propagate", value.attrs["gaussian_blur_nan_policy"])
+                self.assertEqual(
+                    "nearest_extension_zero_output_border",
+                    value.attrs["gaussian_blur_boundary_mode"],
+                )
+                self.assertEqual("ImageJ", value.attrs["unsharp_mask_algorithm"])
+                self.assertEqual(8.0, value.attrs["unsharp_mask_radius_pixels"])
+                self.assertAlmostEqual(0.6, value.attrs["unsharp_mask_weight"])
+                self.assertEqual("propagate", value.attrs["unsharp_mask_nan_policy"])
+                self.assertEqual("clip_to_zero", value.attrs["unsharp_mask_negative_values"])
+                self.assertEqual(
+                    "spatial_interpolation, moving_average, sobel_magnitude, "
+                    "gaussian2d_blur, unsharp_mask, moving_average, segment_rotation",
                     value.attrs["processing_order"],
                 )
                 self.assertEqual(

@@ -50,6 +50,17 @@ eyeflow-cli --data path\to\input.holo
 
 ## Lumen-size plots
 
+Spatial gradients are computed directly on interpolated vessel segments.
+The filter order is a centered 7-frame moving average, Sobel magnitude, an
+ImageJ Gaussian blur with radius (sigma) 6 pixels, an ImageJ unsharp mask with
+radius 8 pixels and mask weight 0.6, then a final 7-frame moving average.
+The averaging windows shrink at recording boundaries and propagate NaNs.
+Both spatial filters operate independently per frame, propagate NaNs, and set
+valid pixels on the outermost rows and columns to zero. The unsharp mask clips
+negative values to zero.
+The obsolete full-frame `spatial_gradient_moment0` AVI/PNG export pipeline has
+been retired.
+
 When masked spatial-gradient lumen metrics are computed, PNGs are exported
 immediately to `png/lumen_size/`, with separate `_artery` and `_vein` files.
 `lumen_size_by_branch` plots the joint NaN-ignoring median over beat and radius

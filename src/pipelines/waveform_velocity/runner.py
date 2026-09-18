@@ -34,7 +34,6 @@ from .segment_maps import (
 from .segment_velocity_map_avi import export_segment_velocity_map_avis
 from .spatial_gradient_profiles import (
     SPATIAL_GRADIENT_METRICS_ROOT,
-    cleanup_spatial_gradient_artifacts,
     extract_spatial_gradient_segments,
     pack_spatial_gradient_profile_outputs,
 )
@@ -236,7 +235,6 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             )
         )
 
-    cleanup_spatial_gradient_artifacts(ctx)
     return metrics
 
 

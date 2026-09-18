@@ -93,14 +93,10 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 velocity_runner, "export_lumen_size_pngs",
                 side_effect=lambda *args, **kwargs: events.append(kwargs["vessel_name"]),
             ) as export,
-            patch.object(
-                velocity_runner, "cleanup_spatial_gradient_artifacts",
-                side_effect=lambda ctx: events.append("cleanup"),
-            ),
         ):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 
-        self.assertEqual(["Artery", "Vein", "cleanup"], events)
+        self.assertEqual(["Artery", "Vein"], events)
         self.assertEqual(gradient_outputs, outputs)
         for call, vessel, segments in zip(
             export.call_args_list, ("Artery", "Vein"), (artery, vein)

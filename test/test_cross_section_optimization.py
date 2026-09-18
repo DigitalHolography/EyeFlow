@@ -11,6 +11,8 @@ import numpy as np
 import pytest
 from scipy import ndimage
 
+from calculations.math.spatial_gradient import gaussian2d_blur, unsharpen
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 cs = importlib.import_module(
     "calculations.blood_flow_velocity.cross_section.generate_cross_section_signals"
@@ -204,8 +206,8 @@ def _window_fixture(frame_count=7):
     return velocity, cs._CrossSectionWork(seg, (2, 11, 2, 11))
 
 
-@pytest.mark.parametrize("spatial_gradient", [False, True])
-def test_temporal_batches_match_full_window_with_global_fit(spatial_gradient):
+@pytest.mark.parametrize("spatial_gradient,capacity", [(False, 2), (True, 13), (True, 19)])
+def test_temporal_batches_match_full_window_with_global_fit(spatial_gradient, capacity):
     frame_count = 23 if spatial_gradient else 7
     velocity, work = _window_fixture(frame_count)
     settings = cs.CrossSectionSignalSettings(
@@ -214,7 +216,6 @@ def test_temporal_batches_match_full_window_with_global_fit(spatial_gradient):
     full = cs._CrossSectionBuffers.allocate(frame_count=frame_count, ring_count=1, branch_count=1)
     batched = cs._CrossSectionBuffers.allocate(frame_count=frame_count, ring_count=1, branch_count=1)
     cs._measure_windowed_work(full, velocity, work, (6, 6), settings, 9)
-    capacity = 19 if spatial_gradient else 2
     budget = (cs._estimated_work_bytes(capacity, 9) + 1) / 1024**2
     with (
         patch.object(cs, "_extract_work", wraps=cs._extract_work) as extract,
@@ -245,20 +246,29 @@ def test_temporal_batches_match_full_window_with_global_fit(spatial_gradient):
     )
 
 
-def test_spatial_gradient_is_filtered_after_interpolation_before_rotation():
+def test_spatial_gradient_is_blurred_then_unsharpened_before_final_average_and_rotation():
     rng = np.random.default_rng(53)
     stack = rng.uniform(1, 5, (23, 9, 9)).astype(np.float32)
     mask = np.ones((9, 9), dtype=bool)
     settings = cs.CrossSectionSignalSettings(False, 0.5, True, 0.01, spatial_gradient=True)
     resized = cs._resize_subimage_stack(stack)
-    median = ndimage.median_filter(resized, size=(9, 1, 1), mode="nearest")
+    weights = np.ones(7, dtype=np.float32)
+    counts = ndimage.correlate1d(
+        np.ones((len(stack), 1, 1), dtype=np.float32), weights, axis=0, mode="constant", cval=0.0
+    )
+    averaged = ndimage.correlate1d(
+        resized, weights, axis=0, mode="constant", cval=0.0
+    ) / counts
     sobel = np.stack([
         np.hypot(ndimage.sobel(frame, axis=1, mode="nearest"),
                  ndimage.sobel(frame, axis=0, mode="nearest"))
-        for frame in median
+        for frame in averaged
     ])
-    filtered = ndimage.median_filter(sobel, size=(9, 1, 1), mode="nearest")
-    assert np.any(filtered != sobel)
+    sharpened = unsharpen(gaussian2d_blur(sobel))
+    filtered = ndimage.correlate1d(
+        sharpened, weights, axis=0, mode="constant", cval=0.0
+    ) / counts
+    assert np.any(filtered != sharpened)
     expected = cs._rotate_stack_with_nan(cs._center_pad_for_rotation(filtered, np.nan), 31)
 
     actual = cs._cross_section_velocity_from_substack(
@@ -266,7 +276,11 @@ def test_spatial_gradient_is_filtered_after_interpolation_before_rotation():
         angle_override=31, limits_override=(0, cs._ROTATED_SUBSTACK_SIDE - 1),
     )
 
-    np.testing.assert_allclose(actual.unmasked.rotated_stack, expected, equal_nan=True)
+    # Correlation and direct means accumulate float32 samples in different orders;
+    # the unsharp mask amplifies those differences by up to 1 / (1 - 0.6) = 2.5.
+    np.testing.assert_allclose(
+        actual.unmasked.rotated_stack, expected, rtol=3e-6, atol=5e-6, equal_nan=True
+    )
 
 
 def test_worker_count_obeys_memory_and_runtime_caps():

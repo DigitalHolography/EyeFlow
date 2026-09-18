@@ -25,9 +25,11 @@ from calculations.math import (
     rotate_image_with_nan,
 )
 from calculations.math.spatial_gradient import (
-    TEMPORAL_MEDIAN_WINDOW,
+    TEMPORAL_MOVING_AVERAGE_WINDOW,
+    gaussian2d_blur,
+    moving_avg_window,
     sobel_spatial_gradient,
-    temporal_median_window,
+    unsharpen,
 )
 from runtime_limits import cap_parallel_jobs
 
@@ -51,7 +53,9 @@ class CrossSectionSignalSettings:
     ``working_memory_mb`` bounds estimated concurrent scratch memory, excluding
     the input cube and retained outputs. Oversized windows use temporal batches.
     ``spatial_gradient`` filters interpolated moment0ff before segment rotation
-    with a centered 9-frame median, Sobel magnitude, and another 9-frame median.
+    with a centered 7-frame moving average, Sobel magnitude, and another
+    7-frame moving average. Temporal windows shrink at the recording edges
+    and propagate NaNs.
     """
 
     hydrodynamic_diameters: bool
@@ -994,8 +998,8 @@ def _measure_windowed_work(
     fixed = _estimated_work_bytes(0, side_pixels)
     per_frame = _estimated_work_bytes(1, side_pixels) - fixed
     batch = min(frame_count, (budget - fixed) // per_frame)
-    # Two centered medians need eight source frames on each side of a batch.
-    halo = TEMPORAL_MEDIAN_WINDOW - 1 if settings.spatial_gradient else 0
+    # Two centered averages need six source frames on each side of a batch.
+    halo = TEMPORAL_MOVING_AVERAGE_WINDOW - 1 if settings.spatial_gradient else 0
     if batch < frame_count:
         batch -= 2 * halo
     if batch < 1:
@@ -1039,9 +1043,11 @@ def _measure_windowed_work(
         )
         resized = _resize_subimage_stack(stack)
         if settings.spatial_gradient:
-            resized = temporal_median_window(resized)
+            resized = moving_avg_window(resized)
             resized = sobel_spatial_gradient(resized)
-            resized = temporal_median_window(resized)
+            resized = gaussian2d_blur(resized)
+            resized = unsharpen(resized)
+            resized = moving_avg_window(resized)
         resized = resized[start - context_start : stop - context_start]
         finite = np.isfinite(resized)
         sums += np.sum(np.where(finite, resized, 0.0), axis=0, dtype=np.float64)
@@ -1826,9 +1832,11 @@ def _cross_section_velocity_from_substack(
             _disable_cross_section_gpu(exc)
     resized_stack = _resize_subimage_stack(sub_stack)
     if settings.spatial_gradient:
-        resized_stack = temporal_median_window(resized_stack)
+        resized_stack = moving_avg_window(resized_stack)
         resized_stack = sobel_spatial_gradient(resized_stack)
-        resized_stack = temporal_median_window(resized_stack)
+        resized_stack = gaussian2d_blur(resized_stack)
+        resized_stack = unsharpen(resized_stack)
+        resized_stack = moving_avg_window(resized_stack)
     resized_stack = resized_stack[frame_slice]
     resized_mask = _resize_submask(sub_mask)
     mean_image = nanmean_float32(resized_stack, axis=0)

@@ -8,13 +8,13 @@ import numpy as np
 
 from calculations.blood_flow_velocity import segment_velocity_results
 from calculations.math import nanmedian
-from pipeline_engine.base import DatasetValue
-from pipelines.spatial_gradient_moment0.runner import (
-    STATE_KEY,
-    TBKR_LUMEN_SIZE_QC_THRESHOLD,
-    TEMPORAL_MEDIAN_WINDOW,
-    SpatialGradientMoment0Artifacts,
+from calculations.math.spatial_gradient import (
+    GAUSSIAN_BLUR_RADIUS,
+    TEMPORAL_MOVING_AVERAGE_WINDOW,
+    UNSHARP_MASK_RADIUS,
+    UNSHARP_MASK_WEIGHT,
 )
+from pipeline_engine.base import DatasetValue
 from pipelines.waveform_velocity_core.runner import _segment_ring_settings
 from pipelines.waveform_velocity_core.segmentation import _optic_disc_mask
 
@@ -26,53 +26,37 @@ from .profiles import (
 SPATIAL_GRADIENT_PROFILE_ROOT = "Processing/SpatialGradientProfiles"
 SPATIAL_GRADIENT_METRICS_ROOT = "Processing/SpatialGradientMetrics"
 SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES = 5
+TBKR_LUMEN_SIZE_QC_THRESHOLD = 0.5
 _SPATIAL_GRADIENT_MASK_DILATION_PIXELS = 5
 
 
 def extract_spatial_gradient_segments(ctx, waveform_context):
     """Interpolate raw moment0ff, filter its gradient, then rotate each segment."""
 
-    artifacts = ctx.state.get(STATE_KEY)
-    if not isinstance(artifacts, SpatialGradientMoment0Artifacts):
-        raise RuntimeError(
-            "The spatial_gradient_moment0 prerequisite did not publish its "
-            "quantitative gradient video."
-        )
     source = waveform_context.source_data
-    try:
-        moment0ff = ctx.inputs.hd.as_holodoppler().moment0_flat_field_dataset()
-        if moment0ff is None:
-            raise KeyError("Missing flat-field HoloDoppler moment0 dataset: moment0ff/M0FF.")
-        ring_settings = _segment_ring_settings(
-            source.optic_disc_width,
-            source.optic_disc_height,
-            image_shape=moment0ff.shape[-2:],
-            optic_disc_center=source.optic_disc_center,
-            number_of_radii_in_FOV=int(
-                waveform_context.attrs["number_of_radii_in_FOV"]
-            ),
-        )
-        optic_disc_mask, _ = _optic_disc_mask(
-            source, source.retinal_artery_mask.shape
-        )
-        return segment_velocity_results(
-            moment0ff,
-            source.retinal_artery_mask,
-            source.retinal_vein_mask,
-            source.optic_disc_center,
-            ring_settings,
-            replace(source.cross_section_settings, spatial_gradient=True),
-            optic_disc_mask=optic_disc_mask if np.any(optic_disc_mask) else None,
-            artery_transverse_mask_dilation_pixels=(
-                _SPATIAL_GRADIENT_MASK_DILATION_PIXELS
-            ),
-            vein_transverse_mask_dilation_pixels=(
-                _SPATIAL_GRADIENT_MASK_DILATION_PIXELS
-            ),
-            retain_displacement_maps=False,
-        )
-    finally:
-        artifacts.cleanup()
+    moment0ff = ctx.inputs.hd.as_holodoppler().moment0_flat_field_dataset()
+    if moment0ff is None:
+        raise KeyError("Missing flat-field HoloDoppler moment0 dataset: moment0ff/M0FF.")
+    ring_settings = _segment_ring_settings(
+        source.optic_disc_width,
+        source.optic_disc_height,
+        image_shape=moment0ff.shape[-2:],
+        optic_disc_center=source.optic_disc_center,
+        number_of_radii_in_FOV=int(waveform_context.attrs["number_of_radii_in_FOV"]),
+    )
+    optic_disc_mask, _ = _optic_disc_mask(source, source.retinal_artery_mask.shape)
+    return segment_velocity_results(
+        moment0ff,
+        source.retinal_artery_mask,
+        source.retinal_vein_mask,
+        source.optic_disc_center,
+        ring_settings,
+        replace(source.cross_section_settings, spatial_gradient=True),
+        optic_disc_mask=optic_disc_mask if np.any(optic_disc_mask) else None,
+        artery_transverse_mask_dilation_pixels=_SPATIAL_GRADIENT_MASK_DILATION_PIXELS,
+        vein_transverse_mask_dilation_pixels=_SPATIAL_GRADIENT_MASK_DILATION_PIXELS,
+        retain_displacement_maps=False,
+    )
 
 
 def pack_spatial_gradient_profile_outputs(
@@ -99,12 +83,6 @@ def pack_spatial_gradient_profile_outputs(
         )
     )
     return outputs
-
-
-def cleanup_spatial_gradient_artifacts(ctx) -> None:
-    artifacts = ctx.state.get(STATE_KEY)
-    if isinstance(artifacts, SpatialGradientMoment0Artifacts):
-        artifacts.cleanup()
 
 
 def _pack_vessel_spatial_gradient_profiles(
@@ -615,14 +593,25 @@ def _gradient_profile_dataset(
         {
             "measurement": "spatial_gradient_magnitude",
             "source_dataset": "/moment0ff",
-            "temporal_filter": "centered_pixelwise_median",
-            "temporal_median_window": np.int32(TEMPORAL_MEDIAN_WINDOW),
-            "temporal_median_passes": np.int32(2),
-            "temporal_boundary_mode": "replicated_edges",
+            "temporal_filter": "centered_pixelwise_moving_average",
+            "temporal_moving_average_window": np.int32(TEMPORAL_MOVING_AVERAGE_WINDOW),
+            "temporal_moving_average_passes": np.int32(2),
+            "temporal_boundary_mode": "truncated_window",
+            "temporal_nan_policy": "propagate",
             "spatial_operator": "3x3 Sobel magnitude",
+            "gaussian_blur_algorithm": "ImageJ",
+            "gaussian_blur_radius_pixels": np.float32(GAUSSIAN_BLUR_RADIUS),
+            "gaussian_blur_boundary_mode": "nearest_extension_zero_output_border",
+            "gaussian_blur_nan_policy": "propagate",
+            "unsharp_mask_algorithm": "ImageJ",
+            "unsharp_mask_radius_pixels": np.float32(UNSHARP_MASK_RADIUS),
+            "unsharp_mask_weight": np.float32(UNSHARP_MASK_WEIGHT),
+            "unsharp_mask_boundary_mode": "nearest_extension_zero_output_border",
+            "unsharp_mask_nan_policy": "propagate",
+            "unsharp_mask_negative_values": "clip_to_zero",
             "processing_order": (
-                "spatial_interpolation, temporal_median, sobel_magnitude, "
-                "temporal_median, segment_rotation"
+                "spatial_interpolation, moving_average, sobel_magnitude, "
+                "gaussian2d_blur, unsharp_mask, moving_average, segment_rotation"
             ),
             "spatial_region": mask,
         }
@@ -632,11 +621,10 @@ def _gradient_profile_dataset(
 
 
 __all__ = [
-    "SPATIAL_GRADIENT_PROFILE_ROOT",
     "SPATIAL_GRADIENT_METRICS_ROOT",
     "SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES",
+    "SPATIAL_GRADIENT_PROFILE_ROOT",
     "TBKR_LUMEN_SIZE_QC_THRESHOLD",
-    "cleanup_spatial_gradient_artifacts",
     "extract_spatial_gradient_segments",
     "pack_spatial_gradient_profile_outputs",
 ]
