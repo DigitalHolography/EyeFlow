@@ -22,7 +22,6 @@ from calculations.blood_flow_velocity.cross_section.profile_processing import ( 
 )
 from calculations.blood_flow_velocity.cross_section.mask_area import (  # noqa: E402
     annulus_widths_pixels,
-    circle_pixel_coverage,
 )
 from calculations.blood_flow_velocity.cross_section.segment_geometry import (  # noqa: E402
     SegmentRingSettings,
@@ -52,20 +51,7 @@ from pipelines.waveform_velocity.profiles import (  # noqa: E402
 
 
 class CrossSectionProfilePackingTests(unittest.TestCase):
-    def test_circle_pixel_coverage_conserves_exact_circle_area(self) -> None:
-        radius = 12.4
-        coverage = circle_pixel_coverage(
-            (61, 57),
-            cy=28.3,
-            cx=27.7,
-            radius_pixels=radius,
-        )
-
-        self.assertGreaterEqual(float(coverage.min()), 0.0)
-        self.assertLessEqual(float(coverage.max()), 1.0)
-        self.assertAlmostEqual(np.pi * radius**2, float(coverage.sum()), places=9)
-
-    def test_mask_detection_uses_clipped_final_annulus_width(self) -> None:
+    def test_masked_edges_uses_clipped_final_annulus_width(self) -> None:
         widths = annulus_widths_pixels(
             (7, 9),
             SegmentRingSettings(0.0, 0.6, 0.5, 2, 0.25),
@@ -74,7 +60,9 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
 
         np.testing.assert_allclose(widths, [1.25, 0.5], rtol=1e-6)
 
-    def test_mask_detection_blood_volume_rate_uses_native_segment_geometry(self) -> None:
+    def test_masked_edges_blood_volume_rate_uses_safe_velocity_and_pixel_area(
+        self,
+    ) -> None:
         labels = np.ones((41, 41), dtype=np.int32)
         yy, xx = np.indices(labels.shape, dtype=np.float32)
         radius_scale = np.hypot(20.0, 20.0)
@@ -93,44 +81,63 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
             section_masks=sections,
             ring_settings=SegmentRingSettings(0.0, 0.5, 0.25, 2, 0.25),
         )
-        segments = SimpleNamespace(
-            velocity=np.full((2, 1, 3), 2.0, dtype=np.float32),
-            topology=topology,
+        segments = SimpleNamespace(topology=topology)
+        schema = EyeFlowOutputPaths.active()
+        artery_velocity = np.asarray(
+            [[[[2.0, 3.0]]], [[[4.0, 5.0]]]],
+            dtype=np.float32,
         )
+        velocity_outputs = {
+            schema.artery_per_beat_safe.velocity_signal: (
+                artery_velocity,
+                {"unit": "mm/s"},
+            ),
+            schema.vein_per_beat_safe.velocity_signal: DatasetValue(
+                artery_velocity + 1.0,
+                {"unit": "mm/s"},
+            ),
+        }
 
         outputs = pack_mask_detection_blood_volume_rate_outputs(
             segments,
             segments,
-            np.asarray([0, 2], dtype=np.int32),
-            optic_disc_center=(20.0, 20.0),
+            velocity_outputs,
             pixel_size_mm=0.1,
         )
 
         self.assertEqual(
             {
-                "Processing/BloodVolumeRate/Artery/maskDetection/value",
-                "Processing/BloodVolumeRate/Vein/maskDetection/value",
+                "Processing/BloodVolumeRate/Artery/maskedEdges/value",
+                "Processing/BloodVolumeRate/Vein/maskedEdges/value",
             },
             set(outputs),
         )
         artery = outputs[
-            "Processing/BloodVolumeRate/Artery/maskDetection/value"
+            "Processing/BloodVolumeRate/Artery/maskedEdges/value"
         ]
         self.assertEqual((2, 1, 1, 2), artery.data.shape)
-        # For full annuli, area/dR = pi * (r_out + r_in). The outer ring
-        # therefore has the larger inferred diameter even though dR is fixed.
-        diameter_mm = np.pi * radius_scale * np.asarray([0.25, 0.75]) * 0.1
-        expected = 2.0 * np.pi / 4.0 * diameter_mm**2
+        radial_widths = annulus_widths_pixels(
+            labels.shape,
+            topology.ring_settings,
+            len(sections),
+        )
+        area_pixels = np.count_nonzero(sections, axis=(1, 2))
+        diameter_mm = area_pixels * 0.1 / radial_widths
+        expected = artery_velocity[:, :, 0, :] * np.pi / 4.0 * diameter_mm**2
         np.testing.assert_allclose(
             artery.data[:, 0, 0, :],
-            np.broadcast_to(expected, (2, 2)),
-            rtol=0.01,
+            expected[:, 0, :],
+            rtol=1e-6,
         )
         self.assertEqual("mm^3/s", artery.attrs["unit"])
         self.assertEqual(["time", "beat", "branch", "radius"], artery.attrs["dimDesc"])
         self.assertEqual(
             "native_binary_pixels_as_unit_squares",
             artery.attrs["vessel_mask_model"],
+        )
+        self.assertEqual(
+            "/Processing/VelocityPerBeatSafe/Artery/Segments/Raw/value",
+            artery.attrs["source_velocity"],
         )
 
     def test_blood_volume_rate_sums_profiles_between_vessel_edges(self) -> None:

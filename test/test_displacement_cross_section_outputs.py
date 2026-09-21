@@ -371,10 +371,6 @@ class DisplacementOutputTests(unittest.TestCase):
             f"{artery_transverse}/Mean_P_D_transverse",
             f"{vein_transverse}/Mean_P_D_transverse",
         }
-        gaussian_profile_paths = {
-            f"{artery_transverse}/Gaussian_Fit",
-            f"{vein_transverse}/Gaussian_Fit",
-        }
         power_paths = {
             f"{artery_longitudinal}/P_D_longitudinal",
             f"{artery_transverse}/P_D_transverse",
@@ -390,21 +386,6 @@ class DisplacementOutputTests(unittest.TestCase):
             "Area_R",
             "Diff_Area_L",
             "Diff_Area_R",
-            "Gaussian_Baseline",
-            "Gaussian_A_L",
-            "Gaussian_A_R",
-            "Gaussian_Mu_L",
-            "Gaussian_Mu_R",
-            "Gaussian_Sigma_L",
-            "Gaussian_Sigma_R",
-            "Gaussian_FWHM_L",
-            "Gaussian_FWHM_R",
-            "Gaussian_Area_L",
-            "Gaussian_Area_R",
-            "Gaussian_Peak_Separation",
-            "Gaussian_RMSE",
-            "Gaussian_Fit_Success",
-            "Gaussian_Initialization_Complete",
         }
         metric_paths = {
             "Processing/DisplacementMetrics/level_set_motion/"
@@ -417,7 +398,6 @@ class DisplacementOutputTests(unittest.TestCase):
             | meaned_paths
             | global_meaned_paths
             | mean_power_paths
-            | gaussian_profile_paths
             | power_paths
         )
         other_method_paths = {

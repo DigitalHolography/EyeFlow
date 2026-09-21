@@ -205,10 +205,8 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             pack_mask_detection_blood_volume_rate_outputs(
                 context.artery_segment_result,
                 context.vein_segment_result,
-                cycle_boundaries,
-                optic_disc_center=source.optic_disc_center,
+                velocity_outputs,
                 pixel_size_mm=float(source.cross_section_settings.pixel_size_mm),
-                index_base=index_base,
             )
         )
         # Displacement profile metrics are temporarily disabled.
