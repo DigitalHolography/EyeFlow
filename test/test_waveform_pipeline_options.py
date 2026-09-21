@@ -215,6 +215,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             optic_disc_center=source.optic_disc_center,
             pixel_size_mm=0.1,
             index_base=0,
+            apply_circular_area=False,
         )
 
     def test_lowrank_pipeline_includes_veins_and_selected_quadrants(self) -> None:
@@ -428,6 +429,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             optic_disc_center=context.source_data.optic_disc_center,
             pixel_size_mm=0.1,
             index_base=0,
+            apply_circular_area=False,
         )
         displacement_magnitude.assert_called_once_with(
             "artery",

@@ -209,6 +209,9 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 optic_disc_center=source.optic_disc_center,
                 pixel_size_mm=float(source.cross_section_settings.pixel_size_mm),
                 index_base=index_base,
+                # area/dR assumes a locally radial vessel; retain the value as
+                # a clearly attributed mean-velocity diagnostic for now.
+                apply_circular_area=False,
             )
         )
         # Displacement profile metrics are temporarily disabled.

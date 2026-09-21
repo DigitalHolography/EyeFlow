@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 import warnings
+from functools import cache
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -15,17 +16,24 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
+    CrossSectionSignalSettings,
+    _frame_velocities,
+    _hydrodynamic_limits,
+)
+from calculations.blood_flow_velocity.cross_section.mask_area import (  # noqa: E402
+    annulus_widths_pixels,
+    circle_pixel_coverage,
+    exact_annulus_pixel_coverages,
+)
 from calculations.blood_flow_velocity.cross_section.profile_processing import (  # noqa: E402
     _matlab_poiseuille_fit,
     interpolate_velocity_profiles_per_beat,
     process_velocity_profiles,
 )
-from calculations.blood_flow_velocity.cross_section.mask_area import (  # noqa: E402
-    annulus_widths_pixels,
-    circle_pixel_coverage,
-)
 from calculations.blood_flow_velocity.cross_section.segment_geometry import (  # noqa: E402
     SegmentRingSettings,
+    image_half_diagonal,
 )
 from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  # noqa: E402
     per_beat_signal_analysis,
@@ -45,10 +53,89 @@ from pipelines.waveform_velocity_core.figures.profiles import (  # noqa: E402
 )
 from pipelines.waveform_velocity.flow_asymmetry import pack_flow_asymmetry_outputs  # noqa: E402
 from pipelines.waveform_velocity.profiles import (  # noqa: E402
+    _mask_detected_diameters_mm,
     pack_blood_volume_rate_outputs,
     pack_cross_section_profile_outputs,
     pack_mask_detection_blood_volume_rate_outputs,
 )
+
+
+def _mask_detection_segments():
+    labels = np.ones((41, 41), dtype=np.int32)
+    yy, xx = np.indices(labels.shape, dtype=np.float32)
+    radius_scale = np.hypot(20.0, 20.0)
+    radius_sq = (yy - 20.0) ** 2 + (xx - 20.0) ** 2
+    middle_radius = 0.25 * radius_scale
+    outer_radius = 0.5 * radius_scale
+    sections = np.asarray(
+        [
+            radius_sq <= middle_radius**2,
+            (radius_sq > middle_radius**2) & (radius_sq <= outer_radius**2),
+        ]
+    )
+    topology = SimpleNamespace(
+        labels=labels,
+        branch_ids=np.asarray([1], dtype=np.int32),
+        section_masks=sections,
+        ring_settings=SegmentRingSettings(0.0, 0.5, 0.25, 2, 0.25),
+    )
+    return SimpleNamespace(
+        velocity=np.full((2, 1, 3), 2.0, dtype=np.float32),
+        topology=topology,
+    )
+
+
+@cache
+def _synthetic_annulus():
+    shape = (401, 401)
+    center = 200.0
+    inner_radius = 150.0
+    radial_width = 20.0
+    vessel_radius = inner_radius + radial_width / 2.0
+    radius_scale = image_half_diagonal(*shape)
+    settings = SegmentRingSettings(
+        inner_radius / radius_scale,
+        (inner_radius + radial_width) / radius_scale,
+        radial_width / radius_scale,
+        1,
+        radial_width / radius_scale,
+    )
+    _, coverage, measured_width = next(
+        exact_annulus_pixel_coverages(shape, (center, center), settings, 1)
+    )
+    yy, xx = np.indices(shape, dtype=np.float64)
+    return coverage, measured_width, xx, yy, center, vessel_radius
+
+
+def _local_strip(
+    xx: np.ndarray,
+    yy: np.ndarray,
+    *,
+    origin: tuple[float, float],
+    angle_degrees: float,
+    width: float = 8.0,
+    along_bounds: tuple[float, float] = (-60.0, 60.0),
+) -> np.ndarray:
+    radians = np.deg2rad(angle_degrees)
+    tangent_x, tangent_y = np.cos(radians), np.sin(radians)
+    normal_x, normal_y = -tangent_y, tangent_x
+    offset_x = xx - origin[0]
+    offset_y = yy - origin[1]
+    along = tangent_x * offset_x + tangent_y * offset_y
+    normal = normal_x * offset_x + normal_y * offset_y
+    return (
+        (np.abs(normal) <= width / 2.0)
+        & (along >= along_bounds[0])
+        & (along <= along_bounds[1])
+    )
+
+
+def _annular_width(
+    mask: np.ndarray,
+    annulus_coverage: np.ndarray,
+    radial_width: float,
+) -> float:
+    return float(np.sum(np.asarray(mask, dtype=bool) * annulus_coverage) / radial_width)
 
 
 class CrossSectionProfilePackingTests(unittest.TestCase):
@@ -74,29 +161,8 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
 
         np.testing.assert_allclose(widths, [1.25, 0.5], rtol=1e-6)
 
-    def test_mask_detection_blood_volume_rate_uses_native_segment_geometry(self) -> None:
-        labels = np.ones((41, 41), dtype=np.int32)
-        yy, xx = np.indices(labels.shape, dtype=np.float32)
-        radius_scale = np.hypot(20.0, 20.0)
-        radius_sq = (yy - 20.0) ** 2 + (xx - 20.0) ** 2
-        middle_radius = 0.25 * radius_scale
-        outer_radius = 0.5 * radius_scale
-        sections = np.asarray(
-            [
-                radius_sq <= middle_radius**2,
-                (radius_sq > middle_radius**2) & (radius_sq <= outer_radius**2),
-            ]
-        )
-        topology = SimpleNamespace(
-            labels=labels,
-            branch_ids=np.asarray([1], dtype=np.int32),
-            section_masks=sections,
-            ring_settings=SegmentRingSettings(0.0, 0.5, 0.25, 2, 0.25),
-        )
-        segments = SimpleNamespace(
-            velocity=np.full((2, 1, 3), 2.0, dtype=np.float32),
-            topology=topology,
-        )
+    def test_mask_detection_is_unscaled_mean_velocity_by_default(self) -> None:
+        segments = _mask_detection_segments()
 
         outputs = pack_mask_detection_blood_volume_rate_outputs(
             segments,
@@ -104,6 +170,191 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
             np.asarray([0, 2], dtype=np.int32),
             optic_disc_center=(20.0, 20.0),
             pixel_size_mm=0.1,
+        )
+
+        artery = outputs[
+            "Processing/BloodVolumeRate/Artery/maskDetection/value"
+        ]
+        np.testing.assert_allclose(artery.data, 2.0)
+        self.assertEqual("mm/s", artery.attrs["unit"])
+        self.assertEqual("mean_velocity", artery.attrs["quantity"])
+        self.assertEqual(0, artery.attrs["circular_area_scaling_applied"])
+        self.assertNotIn("native_pixel_size_mm", artery.attrs)
+        self.assertNotIn("radial_width_pixels", artery.attrs)
+
+    def test_mask_diameter_applies_native_pixel_size_exactly_once(self) -> None:
+        segments = _mask_detection_segments()
+
+        diameter_01, radial_width_01 = _mask_detected_diameters_mm(
+            (segments,),
+            optic_disc_center=(20.0, 20.0),
+            pixel_size_mm=0.1,
+        )
+        diameter_02, radial_width_02 = _mask_detected_diameters_mm(
+            (segments,),
+            optic_disc_center=(20.0, 20.0),
+            pixel_size_mm=0.2,
+        )
+
+        np.testing.assert_allclose(diameter_02[0], 2.0 * diameter_01[0])
+        np.testing.assert_array_equal(radial_width_02, radial_width_01)
+
+    def test_segment_velocity_is_a_mean_not_a_spatial_integral(self) -> None:
+        stack = np.full((2, 7, 7), np.nan, dtype=np.float32)
+        stack[0, 2:5, 1:6] = 2.0
+        stack[1, 2:5, 1:6] = 4.0
+
+        raw, safe, transverse, _, _ = _frame_velocities(stack, 0.0, 1, 5)
+
+        np.testing.assert_allclose(raw, [2.0, 4.0])
+        np.testing.assert_allclose(safe, [2.0, 4.0])
+        np.testing.assert_allclose(transverse[:, 1:6], [[2.0] * 5, [4.0] * 5])
+
+    def test_hydrodynamic_crop_is_not_circular_area_mean_velocity(self) -> None:
+        sample_count = 201
+        x = np.linspace(-1.0, 1.0, sample_count, dtype=np.float32)
+        parabolic_profile = 1.0 - x**2
+        stack = np.broadcast_to(
+            parabolic_profile[None, None, :],
+            (1, 5, sample_count),
+        ).copy()
+        settings = CrossSectionSignalSettings(
+            hydrodynamic_diameters=True,
+            velocity_profile_threshold=0.5,
+            rotate_from_mask=False,
+            pixel_size_mm=2.0 / (sample_count - 1),
+        )
+        c1, c2 = _hydrodynamic_limits(
+            parabolic_profile,
+            settings,
+            settings.pixel_size_mm,
+        )
+
+        raw, safe, _, _, _ = _frame_velocities(stack, 0.0, c1, c2)
+
+        # For v(r)=vmax*(1-r^2/R^2), averaging the transverse chord between
+        # half-height roots gives 5/6 vmax. The actual circular area mean is
+        # 1/2 vmax; even the full chord mean is 2/3 vmax.
+        self.assertAlmostEqual(float(raw[0]), 5.0 / 6.0, delta=0.01)
+        self.assertAlmostEqual(float(safe[0]), 2.0 / 3.0, delta=0.01)
+        self.assertAlmostEqual(float(raw[0]) / 0.5, 5.0 / 3.0, delta=0.02)
+
+    def test_annular_area_over_radial_width_has_orientation_bias(self) -> None:
+        coverage, radial_width, xx, yy, center, vessel_radius = _synthetic_annulus()
+        radial = _local_strip(
+            xx,
+            yy,
+            origin=(center + vessel_radius, center),
+            angle_degrees=0.0,
+        )
+        diagonal = _local_strip(
+            xx,
+            yy,
+            origin=(center + vessel_radius, center),
+            angle_degrees=45.0,
+        )
+        steep = _local_strip(
+            xx,
+            yy,
+            origin=(center + vessel_radius, center),
+            angle_degrees=60.0,
+        )
+
+        radial_diameter = _annular_width(radial, coverage, radial_width)
+        diagonal_diameter = _annular_width(diagonal, coverage, radial_width)
+        steep_diameter = _annular_width(steep, coverage, radial_width)
+
+        diagonal_ratio = diagonal_diameter / radial_diameter
+        steep_ratio = steep_diameter / radial_diameter
+        self.assertGreater(diagonal_ratio**2, 1.45)
+        self.assertGreater(steep_ratio**2, 3.2)
+        # The planar cos(theta) projection removes most, but not all, of the
+        # bias because the source vessel mask itself is binary-rasterized.
+        self.assertAlmostEqual(
+            diagonal_ratio * np.cos(np.deg2rad(45.0)),
+            1.0,
+            delta=0.15,
+        )
+        self.assertAlmostEqual(
+            steep_ratio * np.cos(np.deg2rad(60.0)),
+            1.0,
+            delta=0.15,
+        )
+
+    def test_annular_width_is_biased_by_endpoints_duplicates_and_crossings(self) -> None:
+        coverage, radial_width, xx, yy, center, vessel_radius = _synthetic_annulus()
+        origin = (center + vessel_radius, center)
+        artery = _local_strip(xx, yy, origin=origin, angle_degrees=0.0)
+        endpoint = artery & (xx <= origin[0])
+        duplicate = artery | np.flip(artery, axis=1)
+        vein = (
+            (np.abs(xx - origin[0]) <= 4.0)
+            & (np.abs(yy - origin[1]) <= 25.0)
+        )
+        contaminated_artery = artery | vein
+
+        baseline = _annular_width(artery, coverage, radial_width)
+        endpoint_ratio = _annular_width(endpoint, coverage, radial_width) / baseline
+        duplicate_ratio = _annular_width(duplicate, coverage, radial_width) / baseline
+        contaminated_ratio = (
+            _annular_width(contaminated_artery, coverage, radial_width) / baseline
+        )
+        overlap_fraction = float(
+            np.sum(coverage * artery * vein) / np.sum(coverage * artery)
+        )
+
+        self.assertAlmostEqual(endpoint_ratio, 0.526, delta=0.02)
+        self.assertAlmostEqual(endpoint_ratio**2, 0.277, delta=0.03)
+        self.assertAlmostEqual(duplicate_ratio, 2.0, places=6)
+        self.assertAlmostEqual(duplicate_ratio**2, 4.0, places=6)
+        self.assertAlmostEqual(overlap_fraction, 0.45, delta=0.02)
+        self.assertGreater(contaminated_ratio**2, 9.0)
+
+    def test_annular_width_is_not_well_defined_inside_a_bifurcation(self) -> None:
+        coverage, radial_width, xx, yy, center, vessel_radius = _synthetic_annulus()
+        origin = (center + vessel_radius, center)
+        straight = _local_strip(xx, yy, origin=origin, angle_degrees=0.0)
+        parent = _local_strip(
+            xx,
+            yy,
+            origin=origin,
+            angle_degrees=0.0,
+            along_bounds=(-40.0, 0.0),
+        )
+        upper = _local_strip(
+            xx,
+            yy,
+            origin=origin,
+            angle_degrees=30.0,
+            along_bounds=(0.0, 40.0),
+        )
+        lower = _local_strip(
+            xx,
+            yy,
+            origin=origin,
+            angle_degrees=-30.0,
+            along_bounds=(0.0, 40.0),
+        )
+        bifurcation = parent | upper | lower
+
+        straight_width = _annular_width(straight, coverage, radial_width)
+        bifurcation_width = _annular_width(bifurcation, coverage, radial_width)
+        ratio = bifurcation_width / straight_width
+
+        self.assertAlmostEqual(ratio, 1.308, delta=0.03)
+        self.assertAlmostEqual(ratio**2, 1.710, delta=0.08)
+
+    def test_mask_detection_blood_volume_rate_uses_native_segment_geometry(self) -> None:
+        segments = _mask_detection_segments()
+        radius_scale = np.hypot(20.0, 20.0)
+
+        outputs = pack_mask_detection_blood_volume_rate_outputs(
+            segments,
+            segments,
+            np.asarray([0, 2], dtype=np.int32),
+            optic_disc_center=(20.0, 20.0),
+            pixel_size_mm=0.1,
+            apply_circular_area=True,
         )
 
         self.assertEqual(
@@ -116,7 +367,13 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
         artery = outputs[
             "Processing/BloodVolumeRate/Artery/maskDetection/value"
         ]
+        vein = outputs[
+            "Processing/BloodVolumeRate/Vein/maskDetection/value"
+        ]
         self.assertEqual((2, 1, 1, 2), artery.data.shape)
+        # Artery and vein topologies are intentionally evaluated independently;
+        # identical overlapping masks are therefore counted in both classes.
+        np.testing.assert_array_equal(vein.data, artery.data)
         # For full annuli, area/dR = pi * (r_out + r_in). The outer ring
         # therefore has the larger inferred diameter even though dR is fixed.
         diameter_mm = np.pi * radius_scale * np.asarray([0.25, 0.75]) * 0.1
@@ -127,6 +384,8 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
             rtol=0.01,
         )
         self.assertEqual("mm^3/s", artery.attrs["unit"])
+        self.assertEqual("volume_flow_rate", artery.attrs["quantity"])
+        self.assertEqual(1, artery.attrs["circular_area_scaling_applied"])
         self.assertEqual(["time", "beat", "branch", "radius"], artery.attrs["dimDesc"])
         self.assertEqual(
             "native_binary_pixels_as_unit_squares",

@@ -126,18 +126,34 @@ def pack_mask_detection_blood_volume_rate_outputs(
     optic_disc_center,
     pixel_size_mm: float,
     index_base: int = 0,
+    apply_circular_area: bool = False,
 ) -> dict[str, DatasetValue]:
-    """Estimate volumetric flow from binary-mask and exact-annulus geometry."""
+    """Pack the mask-detection diagnostic, with circular flow opt-in.
+
+    The annular mask-area diameter is orientation-sensitive: dividing by the
+    radial annulus width assumes a vessel locally crosses the annulus in the
+    radial direction.  Production therefore publishes the interpolated mean
+    velocity without the circular-area multiplier while that diameter model is
+    being validated.  ``apply_circular_area=True`` retains the original
+    calculation for explicit comparisons and regression tests.
+    """
 
     if not np.isfinite(pixel_size_mm) or pixel_size_mm <= 0:
         raise ValueError("pixel_size_mm must be finite and positive.")
 
+    if not isinstance(apply_circular_area, (bool, np.bool_)):
+        raise TypeError("apply_circular_area must be boolean.")
+
     segment_sets = (artery_segments, vein_segments)
-    diameters_mm, radial_width_pixels = _mask_detected_diameters_mm(
-        segment_sets,
-        optic_disc_center=optic_disc_center,
-        pixel_size_mm=pixel_size_mm,
-    )
+    if apply_circular_area:
+        diameters_mm, radial_width_pixels = _mask_detected_diameters_mm(
+            segment_sets,
+            optic_disc_center=optic_disc_center,
+            pixel_size_mm=pixel_size_mm,
+        )
+    else:
+        diameters_mm = (None,) * len(segment_sets)
+        radial_width_pixels = None
     outputs: dict[str, DatasetValue] = {}
     for vessel_name, segments, diameter_mm in zip(
         ("Artery", "Vein"),
@@ -162,8 +178,8 @@ def _mask_detection_blood_volume_rate_dataset(
     segments,
     cycle_boundary_indexes,
     *,
-    diameter_mm: np.ndarray,
-    radial_width_pixels: np.ndarray,
+    diameter_mm: np.ndarray | None,
+    radial_width_pixels: np.ndarray | None,
     pixel_size_mm: float,
     index_base: int,
 ) -> DatasetValue:
@@ -176,29 +192,50 @@ def _mask_detection_blood_volume_rate_dataset(
         cycle_boundary_indexes,
         index_base=index_base,
     )[0]
-    cross_section_mm2 = np.float32(np.pi / 4.0) * diameter_mm**2
-    rate = velocity_tbkr * cross_section_mm2[None, None, :, :]
-    rate = rate.astype(np.float32, copy=False)
+    circular_area_applied = diameter_mm is not None
+    if circular_area_applied:
+        cross_section_mm2 = np.float32(np.pi / 4.0) * diameter_mm**2
+        values = velocity_tbkr * cross_section_mm2[None, None, :, :]
+        unit = "mm^3/s"
+        definition = (
+            "segment mean velocity multiplied by a circular lumen area; "
+            "diameter is the fractional overlap of native vessel-mask "
+            "pixel squares with the exact annulus divided by annulus width"
+        )
+    else:
+        values = velocity_tbkr
+        unit = "mm/s"
+        definition = (
+            "temporary diagnostic containing interpolated segment mean "
+            "velocity; the orientation-sensitive mask-derived circular-area "
+            "multiplier is intentionally disabled"
+        )
+    values = values.astype(np.float32, copy=False)
+    attrs = {
+        "unit": unit,
+        "dimDesc": ["time", "beat", "branch", "radius"],
+        "definition": definition,
+        "quantity": "volume_flow_rate" if circular_area_applied else "mean_velocity",
+        "circular_area_scaling_applied": np.uint8(circular_area_applied),
+    }
+    if circular_area_applied:
+        attrs.update(
+            {
+                "diameter_model": "fractional_annular_mask_area_over_radial_width",
+                "diameter_model_assumption": "locally_radial_vessel",
+                "cross_section_model": "circular_pi_diameter_squared_over_4",
+                "annulus_geometry": "exact_optic_disc_centered_radii",
+                "annulus_edge_handling": "outer_radius_clipped_to_configured_limit",
+                "vessel_mask_model": "native_binary_pixels_as_unit_squares",
+                "annulus_pixel_coverage": "analytic_circle_square_intersection",
+                "native_pixel_size_mm": np.float32(pixel_size_mm),
+                "radial_width_pixels": radial_width_pixels,
+            }
+        )
     return DatasetValue(
-        rate,
-        {
-            "unit": "mm^3/s",
-            "dimDesc": ["time", "beat", "branch", "radius"],
-            "definition": (
-                "segment mean velocity multiplied by a circular lumen area; "
-                "diameter is the fractional overlap of native vessel-mask "
-                "pixel squares with the exact annulus divided by annulus width"
-            ),
-            "diameter_model": "fractional_annular_mask_area_over_radial_width",
-            "cross_section_model": "circular_pi_diameter_squared_over_4",
-            "annulus_geometry": "exact_optic_disc_centered_radii",
-            "annulus_edge_handling": "outer_radius_clipped_to_configured_limit",
-            "vessel_mask_model": "native_binary_pixels_as_unit_squares",
-            "annulus_pixel_coverage": "analytic_circle_square_intersection",
-            "native_pixel_size_mm": np.float32(pixel_size_mm),
-            "radial_width_pixels": radial_width_pixels,
-        },
-        h5_options=_profile_h5_options(rate.shape),
+        values,
+        attrs,
+        h5_options=_profile_h5_options(values.shape),
     )
 
 
