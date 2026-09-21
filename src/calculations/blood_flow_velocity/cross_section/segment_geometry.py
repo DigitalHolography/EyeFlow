@@ -25,7 +25,7 @@ def ring_masks(
         annulus_mask(
             image_shape,
             optic_disc_center,
-            *_ring_bounds(settings, ring_index),
+            *ring_bounds(settings, ring_index),
         )
         for ring_index in range(settings.ring_count)
     ]
@@ -37,14 +37,11 @@ def section_masks(
     optic_disc_center,
     settings: SegmentRingSettings,
 ) -> np.ndarray:
-    length = settings.segment_length_frac
-    if length is None:
-        length = settings.ring_width_frac
     masks = [
         annulus_mask(
             image_shape,
             optic_disc_center,
-            *_ring_bounds(settings, ring_index, length),
+            *section_bounds(settings, ring_index),
         )
         for ring_index in range(settings.ring_count)
     ]
@@ -90,16 +87,27 @@ def _ring_inner(settings: SegmentRingSettings, ring_index: int) -> float:
     return settings.inner_radius_frac + ring_index * settings.ring_width_frac
 
 
-def _ring_bounds(
+def ring_bounds(
     settings: SegmentRingSettings,
     ring_index: int,
     length: float | None = None,
 ) -> tuple[float, float]:
+    """Return exact normalized inner/outer radii, clipping the final ring."""
+
     inner = _ring_inner(settings, ring_index)
     if length is None:
         length = settings.ring_width_frac
     outer = min(settings.outer_radius_frac, inner + length)
     return inner, outer
+
+
+def section_bounds(
+    settings: SegmentRingSettings,
+    ring_index: int,
+) -> tuple[float, float]:
+    """Return the bounds used for a measured vessel segment."""
+
+    return ring_bounds(settings, ring_index, settings.segment_length_frac)
 
 
 def image_half_diagonal(ny: int, nx: int) -> float:

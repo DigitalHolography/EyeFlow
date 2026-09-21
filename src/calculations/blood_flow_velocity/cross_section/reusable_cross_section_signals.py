@@ -240,6 +240,7 @@ def project_cross_section_cube(
         ),
         valid_segments=plan.valid_segments.copy(),
         branch_identity=plan.branch_identity,
+        ring_settings=plan.ring_settings,
     )
     return _result_from_buffers(
         buffers,

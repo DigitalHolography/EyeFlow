@@ -387,6 +387,7 @@ def _single_segment_topology(
         profile_rotation_degrees=np.asarray([[angle]], dtype=np.float32),
         profile_integration_limits_pixels=np.asarray([[[0, 180]]], dtype=np.int32),
         valid_segments=np.asarray([[True]], dtype=bool),
+        ring_settings=SegmentRingSettings(0.0, 1.0, 1.0, 1),
         branch_identity=SimpleNamespace(),
     )
 

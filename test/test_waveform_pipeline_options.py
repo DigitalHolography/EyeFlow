@@ -139,8 +139,13 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             )
 
     def test_profile_analysis_requires_and_publishes_profiles_with_options_disabled(self):
+        source = SimpleNamespace(
+            optic_disc_center=np.asarray([1.0, 1.0]),
+            cross_section_settings=SimpleNamespace(pixel_size_mm=0.1),
+        )
         context = SimpleNamespace(
             dopplerview_analysis={}, artery_segment_result="artery", vein_segment_result="vein",
+            source_data=source,
         )
         result = SimpleNamespace(cycle_boundary_indexes=(0, 2))
         ctx = _context(
@@ -182,6 +187,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "pack_blood_volume_rate_outputs",
                 return_value={"blood_volume_rate": 3},
             ) as blood_volume_rate,
+            patch.object(
+                velocity_runner,
+                "pack_mask_detection_blood_volume_rate_outputs",
+                return_value={"mask_blood_volume_rate": 4},
+            ) as mask_blood_volume_rate,
         ):
             outputs = velocity_runner.run_waveform_velocity(ctx)
         self.assertEqual(
@@ -190,12 +200,21 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "profiles": 1,
                 "gradient_profiles": 2,
                 "blood_volume_rate": 3,
+                "mask_blood_volume_rate": 4,
             },
         )
         pack.assert_called_once_with("artery", "vein", (0, 2), index_base=0)
         blood_volume_rate.assert_called_once_with(
             {"profiles": 1},
             {"gradient_profiles": 2},
+        )
+        mask_blood_volume_rate.assert_called_once_with(
+            "artery",
+            "vein",
+            (0, 2),
+            optic_disc_center=source.optic_disc_center,
+            pixel_size_mm=0.1,
+            index_base=0,
         )
 
     def test_lowrank_pipeline_includes_veins_and_selected_quadrants(self) -> None:
@@ -294,7 +313,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             artery_segment_result="artery",
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
-            source_data=SimpleNamespace(provenance={"beat_index_base": 1}),
+            source_data=SimpleNamespace(
+                provenance={"beat_index_base": 1},
+                optic_disc_center=np.asarray([1.0, 1.0]),
+                cross_section_settings=SimpleNamespace(pixel_size_mm=0.1),
+            ),
         )
         ctx = _context(
             {
@@ -343,6 +366,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as blood_volume_rate,
             patch.object(
                 velocity_runner,
+                "pack_mask_detection_blood_volume_rate_outputs",
+                return_value={"mask_blood_volume_rate": 9},
+            ) as mask_blood_volume_rate,
+            patch.object(
+                velocity_runner,
                 "pack_displacement_magnitude_outputs",
                 return_value={"displacement_magnitude": 5},
             ) as displacement_magnitude,
@@ -372,6 +400,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "displacement_profiles": 6,
                 "gradient_profiles": 7,
                 "blood_volume_rate": 8,
+                "mask_blood_volume_rate": 9,
                 "quadrants": 4,
             },
             outputs,
@@ -391,6 +420,14 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         blood_volume_rate.assert_called_once_with(
             {"profile": 3},
             {"gradient_profiles": 7},
+        )
+        mask_blood_volume_rate.assert_called_once_with(
+            "artery",
+            "vein",
+            (0, 5, 10),
+            optic_disc_center=context.source_data.optic_disc_center,
+            pixel_size_mm=0.1,
+            index_base=0,
         )
         displacement_magnitude.assert_called_once_with(
             "artery",

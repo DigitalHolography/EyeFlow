@@ -25,6 +25,7 @@ from .profiles import (
     pack_cross_section_profile_outputs,
     pack_displacement_magnitude_outputs,
     pack_displacement_profile_outputs,  # noqa: F401 - retained for disabled legacy export
+    pack_mask_detection_blood_volume_rate_outputs,
 )
 from .quadrants import pack_quadrant_velocity_outputs
 from .segment_maps import (
@@ -197,6 +198,17 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             pack_blood_volume_rate_outputs(
                 velocity_profile_outputs,
                 spatial_gradient_outputs,
+            )
+        )
+        source = context.source_data
+        metrics.update(
+            pack_mask_detection_blood_volume_rate_outputs(
+                context.artery_segment_result,
+                context.vein_segment_result,
+                cycle_boundaries,
+                optic_disc_center=source.optic_disc_center,
+                pixel_size_mm=float(source.cross_section_settings.pixel_size_mm),
+                index_base=index_base,
             )
         )
         # Displacement profile metrics are temporarily disabled.

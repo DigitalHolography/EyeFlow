@@ -126,6 +126,7 @@ class CrossSectionTopology:
     profile_rotation_degrees: np.ndarray
     profile_integration_limits_pixels: np.ndarray
     valid_segments: np.ndarray
+    ring_settings: SegmentRingSettings
     branch_identity: BranchIdentityResult
 
 
@@ -583,6 +584,7 @@ def _generate_cross_section_signals_from_geometry(
     topology = _topology_from_buffers(
         buffers,
         geometry,
+        ring_settings,
         frame_count=velocity_map.shape[0],
         profile_pixel_size_mm=_interpolated_pixel_size_mm(
             cross_section_settings.pixel_size_mm,
@@ -752,6 +754,7 @@ def _empty_result(
         ),
         valid_segments=np.zeros((settings.ring_count, 0), dtype=bool),
         branch_identity=branches,
+        ring_settings=settings,
     )
     displacement_results = {
         method: _empty_displacement_result(
@@ -1311,6 +1314,7 @@ def _store_displacement_measurement(
 def _topology_from_buffers(
     buffers: _CrossSectionBuffers,
     geometry: _PreparedCrossSectionGeometry,
+    ring_settings: SegmentRingSettings,
     *,
     frame_count: int,
     profile_pixel_size_mm: float,
@@ -1343,6 +1347,7 @@ def _topology_from_buffers(
         profile_integration_limits_pixels=limits.copy(),
         valid_segments=valid_segments,
         branch_identity=geometry.branches,
+        ring_settings=ring_settings,
     )
 
 

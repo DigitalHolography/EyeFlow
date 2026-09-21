@@ -20,6 +20,13 @@ from calculations.blood_flow_velocity.cross_section.profile_processing import ( 
     interpolate_velocity_profiles_per_beat,
     process_velocity_profiles,
 )
+from calculations.blood_flow_velocity.cross_section.mask_area import (  # noqa: E402
+    annulus_widths_pixels,
+    circle_pixel_coverage,
+)
+from calculations.blood_flow_velocity.cross_section.segment_geometry import (  # noqa: E402
+    SegmentRingSettings,
+)
 from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  # noqa: E402
     per_beat_signal_analysis,
 )
@@ -40,10 +47,92 @@ from pipelines.waveform_velocity.flow_asymmetry import pack_flow_asymmetry_outpu
 from pipelines.waveform_velocity.profiles import (  # noqa: E402
     pack_blood_volume_rate_outputs,
     pack_cross_section_profile_outputs,
+    pack_mask_detection_blood_volume_rate_outputs,
 )
 
 
 class CrossSectionProfilePackingTests(unittest.TestCase):
+    def test_circle_pixel_coverage_conserves_exact_circle_area(self) -> None:
+        radius = 12.4
+        coverage = circle_pixel_coverage(
+            (61, 57),
+            cy=28.3,
+            cx=27.7,
+            radius_pixels=radius,
+        )
+
+        self.assertGreaterEqual(float(coverage.min()), 0.0)
+        self.assertLessEqual(float(coverage.max()), 1.0)
+        self.assertAlmostEqual(np.pi * radius**2, float(coverage.sum()), places=9)
+
+    def test_mask_detection_uses_clipped_final_annulus_width(self) -> None:
+        widths = annulus_widths_pixels(
+            (7, 9),
+            SegmentRingSettings(0.0, 0.6, 0.5, 2, 0.25),
+            2,
+        )
+
+        np.testing.assert_allclose(widths, [1.25, 0.5], rtol=1e-6)
+
+    def test_mask_detection_blood_volume_rate_uses_native_segment_geometry(self) -> None:
+        labels = np.ones((41, 41), dtype=np.int32)
+        yy, xx = np.indices(labels.shape, dtype=np.float32)
+        radius_scale = np.hypot(20.0, 20.0)
+        radius_sq = (yy - 20.0) ** 2 + (xx - 20.0) ** 2
+        middle_radius = 0.25 * radius_scale
+        outer_radius = 0.5 * radius_scale
+        sections = np.asarray(
+            [
+                radius_sq <= middle_radius**2,
+                (radius_sq > middle_radius**2) & (radius_sq <= outer_radius**2),
+            ]
+        )
+        topology = SimpleNamespace(
+            labels=labels,
+            branch_ids=np.asarray([1], dtype=np.int32),
+            section_masks=sections,
+            ring_settings=SegmentRingSettings(0.0, 0.5, 0.25, 2, 0.25),
+        )
+        segments = SimpleNamespace(
+            velocity=np.full((2, 1, 3), 2.0, dtype=np.float32),
+            topology=topology,
+        )
+
+        outputs = pack_mask_detection_blood_volume_rate_outputs(
+            segments,
+            segments,
+            np.asarray([0, 2], dtype=np.int32),
+            optic_disc_center=(20.0, 20.0),
+            pixel_size_mm=0.1,
+        )
+
+        self.assertEqual(
+            {
+                "Processing/BloodVolumeRate/Artery/maskDetection/value",
+                "Processing/BloodVolumeRate/Vein/maskDetection/value",
+            },
+            set(outputs),
+        )
+        artery = outputs[
+            "Processing/BloodVolumeRate/Artery/maskDetection/value"
+        ]
+        self.assertEqual((2, 1, 1, 2), artery.data.shape)
+        # For full annuli, area/dR = pi * (r_out + r_in). The outer ring
+        # therefore has the larger inferred diameter even though dR is fixed.
+        diameter_mm = np.pi * radius_scale * np.asarray([0.25, 0.75]) * 0.1
+        expected = 2.0 * np.pi / 4.0 * diameter_mm**2
+        np.testing.assert_allclose(
+            artery.data[:, 0, 0, :],
+            np.broadcast_to(expected, (2, 2)),
+            rtol=0.01,
+        )
+        self.assertEqual("mm^3/s", artery.attrs["unit"])
+        self.assertEqual(["time", "beat", "branch", "radius"], artery.attrs["dimDesc"])
+        self.assertEqual(
+            "native_binary_pixels_as_unit_squares",
+            artery.attrs["vessel_mask_model"],
+        )
+
     def test_blood_volume_rate_sums_profiles_between_vessel_edges(self) -> None:
         schema = EyeFlowOutputPaths.active()
         shape = (6, 2, 1, 1, 2)
