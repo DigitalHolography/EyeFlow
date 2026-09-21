@@ -10,6 +10,7 @@ import numpy as np
 from scipy.signal import resample
 
 from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (
+    _ARTERY_TRANSVERSE_MASK_DILATION_PIXELS,
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
     _cross_section_worker_count,
@@ -429,6 +430,7 @@ def analyze_velocity_segments(
             post_interpolation=post_interpolation,
             temporal_halo=temporal_halo,
             scratch_array_count=scratch_array_count,
+            include_masked_before_rotation=True,
         )
         Logger.log(f"Streaming {name} segments into profile measurement.")
         fft_profiles = (
@@ -454,7 +456,11 @@ def analyze_velocity_segments(
             cross_section_settings,
             retain_velocity_maps=retain_velocity_maps,
             segment_observer=(fft_profiles.observe if fft_profiles else None),
-            transverse_mask_dilation_pixels=transverse_mask_dilation_pixels,
+            transverse_mask_dilation_pixels=(
+                _legacy_profile_dilation_pixels(name)
+                if transverse_mask_dilation_pixels is None
+                else int(transverse_mask_dilation_pixels)
+            ),
             displacement_maps=None,
             retain_displacement_maps=retain_displacement_maps,
         )
@@ -486,3 +492,13 @@ def analyze_velocity_segments(
             f"{perf_counter() - measurement_started:.2f}s."
         )
     return results
+
+
+def _legacy_profile_dilation_pixels(vessel_name: str) -> int:
+    """Retain the historical artery-only transverse profile expansion."""
+
+    return (
+        _ARTERY_TRANSVERSE_MASK_DILATION_PIXELS
+        if str(vessel_name).lower() == "artery"
+        else 0
+    )

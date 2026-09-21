@@ -51,16 +51,14 @@ class WaveformPipelineOptionTests(unittest.TestCase):
     def setUp(self) -> None:
         # These orchestration tests use string segment sentinels.
         for name, result in {
-            "extract_spatial_gradient_segments": ("artery", "vein"),
-            "pack_spatial_gradient_profile_outputs": {},
-            "pack_blood_volume_rate_outputs": {},
             "pack_mask_detection_blood_volume_rate_outputs": {},
             "pack_cross_section_displacement_profile_outputs": {},
             "pack_displacement_magnitude_outputs": {},
-            "_validate_profile_segment_alignment": None,
         }.items():
             mock = patch.object(velocity_runner, name, return_value=result)
-            mock.start()
+            started = mock.start()
+            if name == "pack_mask_detection_blood_volume_rate_outputs":
+                self.mask_bvr = started
             self.addCleanup(mock.stop)
 
     def test_fft_option_is_disabled_by_default_and_requires_profiles(self) -> None:
@@ -112,6 +110,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         metrics_root = pipeline_root / "waveform_shape_metrics"
         velocity_root = pipeline_root / "waveform_velocity"
         core_root = pipeline_root / "waveform_velocity_core"
+        gradient_root = pipeline_root / "spatial_gradient_moment0"
 
         self.assertFalse((metrics_root / "velocity").exists())
         core_source = "\n".join(
@@ -123,6 +122,8 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertNotIn("pipelines.waveform_velocity.", core_source)
         self.assertNotIn("pipelines.waveform_shape_metrics", core_source)
         self.assertNotIn("pipelines.waveform_shape_metrics", velocity_source)
+        self.assertNotIn("spatial_gradient", velocity_source)
+        self.assertTrue((gradient_root / "profiles.py").is_file())
 
     def test_velocity_parent_always_publishes_base_velocity_only(self) -> None:
         context = SimpleNamespace(velocity_analysis={})
@@ -169,7 +170,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             artery_segment_result="artery",
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
-            source_data=SimpleNamespace(provenance={"beat_index_base": 1}),
+            source_data=SimpleNamespace(
+                provenance={"beat_index_base": 1},
+                optic_disc_center=(12.0, 13.0),
+                cross_section_settings=SimpleNamespace(pixel_size_mm=0.01),
+            ),
         )
         ctx = _context(
             {
@@ -273,6 +278,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             "artery",
             "vein",
         )
+        self.assertTrue(self.mask_bvr.call_args.kwargs["apply_circular_area"])
 
     def test_segments_option_does_not_build_velocity_maps(self) -> None:
         context = SimpleNamespace(
@@ -301,16 +307,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ),
             patch.object(
                 velocity_runner,
-                "extract_spatial_gradient_segments",
-                return_value=("gradient_artery", "gradient_vein"),
-            ),
-            patch.object(
-                velocity_runner,
-                "pack_spatial_gradient_profile_outputs",
-                return_value={"gradient_profiles": 4},
-            ) as gradient_profiles,
-            patch.object(
-                velocity_runner,
                 "pack_segment_map_outputs",
                 return_value={"maps": 3},
             ) as maps,
@@ -326,7 +322,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             {"base": 1, "signals": 2},
             outputs,
         )
-        gradient_profiles.assert_not_called()
         maps.assert_not_called()
         avis.assert_not_called()
 

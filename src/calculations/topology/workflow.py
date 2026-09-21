@@ -20,7 +20,6 @@ from .geometry import SegmentRingSettings
 from .segments import (
     SegmentTopology,
     build_segment_topology,
-    competing_segment_masks,
     extract_segment,
     resize_segment_topology_windows,
 )
@@ -42,8 +41,6 @@ class PreparedTopology:
     rotation_degrees: np.ndarray
     interpolated_masks: np.ndarray
     rotated_masks: np.ndarray
-    rotated_competing_masks: np.ndarray | None = None
-    interpolated_competing_masks: np.ndarray | None = None
 
 
 class PreparedSegment(NamedTuple):
@@ -64,6 +61,7 @@ class PreparedSegmentChunk(NamedTuple):
     branch_index: int
     frame_slice: slice
     rotated: object
+    rotated_masked: object | None = None
 
 
 PreparedSegmentChunks = Iterator[PreparedSegmentChunk]
@@ -78,7 +76,6 @@ def prepare_topology(
     output_side_pixels: int = 128,
     window_size_percentile_kept: float = 0.95,
     window_side_pixels: int | None = None,
-    competing_vessel_mask=None,
 ) -> PreparedTopology:
     """Build segment geometry, orientations, and uniform masks once."""
 
@@ -95,26 +92,12 @@ def prepare_topology(
         topology.segment_masks,
         output_side_pixels,
     )
-    competing_masks = competing_segment_masks(
-        topology,
-        vessel_mask,
-        competing_vessel_mask,
-    )
-    interpolated_competing_masks = interpolate_segment_masks(
-        competing_masks,
-        output_side_pixels,
-    )
     return PreparedTopology(
         topology=topology,
         rotation_degrees=rotation_degrees,
         interpolated_masks=interpolated_masks,
-        interpolated_competing_masks=interpolated_competing_masks,
         rotated_masks=rotate_segment_masks(
             interpolated_masks,
-            rotation_degrees,
-        ),
-        rotated_competing_masks=rotate_segment_masks(
-            interpolated_competing_masks,
             rotation_degrees,
         ),
     )
@@ -149,13 +132,6 @@ def prepare_topologies(
         image_shape,
     )
     masks = {name: mask & ~disc for name, mask in masks.items()}
-    competing_masks = {}
-    for name in masks:
-        competing = np.zeros(image_shape, dtype=bool)
-        for other_name, mask in masks.items():
-            if other_name != name:
-                np.logical_or(competing, mask, out=competing)
-        competing_masks[name] = competing
 
     if window_side_pixels is not None:
         return {
@@ -170,7 +146,6 @@ def prepare_topologies(
                 output_side_pixels=output_side_pixels,
                 window_size_percentile_kept=window_size_percentile_kept,
                 window_side_pixels=window_side_pixels,
-                competing_vessel_mask=competing_masks[name],
             )
             for name, mask in masks.items()
         }
@@ -187,7 +162,6 @@ def prepare_topologies(
             output_side_pixels=output_side_pixels,
             window_size_percentile_kept=window_size_percentile_kept,
             window_side_pixels=None,
-            competing_vessel_mask=competing_masks[name],
         )
         for name, mask in masks.items()
     }
@@ -200,8 +174,6 @@ def prepare_topologies(
                 topology,
                 shared_side,
                 output_side_pixels,
-                masks[name],
-                competing_masks[name],
             )
         )
         for name, topology in initial.items()
@@ -214,7 +186,6 @@ def prepare_topologies(
                 output_side_pixels=output_side_pixels,
                 window_size_percentile_kept=window_size_percentile_kept,
                 window_side_pixels=None,
-                competing_vessel_mask=competing_masks[name],
             )
             # Cache the final joint-window geometry, not just the initial
             # per-vessel geometry, so every pipeline reuses the same objects.
@@ -227,8 +198,6 @@ def _resize_prepared_topology(
     prepared: PreparedTopology,
     window_side_pixels: int,
     output_side_pixels: int,
-    vessel_mask: np.ndarray,
-    competing_vessel_mask: np.ndarray,
 ) -> PreparedTopology:
     topology = resize_segment_topology_windows(
         prepared.topology,
@@ -238,21 +207,12 @@ def _resize_prepared_topology(
         topology.segment_masks,
         output_side_pixels,
     )
-    interpolated_competing_masks = interpolate_segment_masks(
-        competing_segment_masks(topology, vessel_mask, competing_vessel_mask),
-        output_side_pixels,
-    )
     return PreparedTopology(
         topology=topology,
         rotation_degrees=prepared.rotation_degrees,
         interpolated_masks=interpolated_masks,
-        interpolated_competing_masks=interpolated_competing_masks,
         rotated_masks=rotate_segment_masks(
             interpolated_masks,
-            prepared.rotation_degrees,
-        ),
-        rotated_competing_masks=rotate_segment_masks(
-            interpolated_competing_masks,
             prepared.rotation_degrees,
         ),
     )
@@ -314,14 +274,10 @@ def resolve_segment_rotations(
         if np.isfinite(angle):
             rotations[int(ring), int(branch)] = np.float32(angle)
 
-    competing = prepared.interpolated_competing_masks
     return replace(
         prepared,
         rotation_degrees=rotations,
         rotated_masks=rotate_segment_masks(prepared.interpolated_masks, rotations),
-        rotated_competing_masks=(
-            None if competing is None else rotate_segment_masks(competing, rotations)
-        ),
     )
 
 
@@ -378,12 +334,15 @@ def prepare_segment_chunks(
     post_interpolation: Callable[[np.ndarray], np.ndarray] | None = None,
     temporal_halo: int = 0,
     scratch_array_count: int | None = None,
+    include_masked_before_rotation: bool = False,
 ) -> PreparedSegmentChunks:
     """Stream bounded temporal chunks of every valid prepared segment.
 
     Fused mode performs resize and rotation in one affine operation. Staged
     mode interpolates first, filters the halo context, trims, then rotates.
-    Retained result arrays are outside this scratch-memory budget.
+    When ``include_masked_before_rotation`` is enabled, each chunk also carries
+    a companion following the legacy scientific order ``interpolate/filter ->
+    mask -> rotate``. Retained result arrays are outside this scratch budget.
     """
 
     if transform_mode not in {"fused", "sequential", "staged"}:
@@ -420,6 +379,12 @@ def prepare_segment_chunks(
             if scratch_array_count is not None
             else (7 if transform_mode == "staged" else 0)
         ),
+        interpolated_array_count=(
+            1
+            if transform_mode != "fused" or include_masked_before_rotation
+            else 0
+        ),
+        rotated_array_count=2 if include_masked_before_rotation else 1,
         requested_workers=worker_count,
         keep_on_device=keep_on_device,
     )
@@ -450,6 +415,7 @@ def prepare_segment_chunks(
         )
         angle = float(prepared_topology.rotation_degrees[ring, branch])
         side = prepared_topology.interpolated_masks.shape[-1]
+        interpolated_for_mask = None
         if transform_mode == "fused":
             rotated = resample_rotate_segment(
                 extracted,
@@ -457,6 +423,8 @@ def prepare_segment_chunks(
                 side,
                 return_device=keep_on_device,
             )
+            if include_masked_before_rotation:
+                interpolated_for_mask = interpolate_segments(extracted, side)
         else:
             interpolated = interpolate_segments(extracted, side)
             if post_interpolation is not None:
@@ -474,8 +442,21 @@ def prepare_segment_chunks(
                 output_stop - context_start,
             )
             interpolated = interpolated[trim]
+            interpolated_for_mask = interpolated
             rotated = resample_rotate_segment(
                 interpolated,
+                angle,
+                side,
+                return_device=keep_on_device,
+            )
+        rotated_masked = None
+        if include_masked_before_rotation:
+            if interpolated_for_mask is None:
+                raise RuntimeError("masked transforms require interpolated data.")
+            masked = np.asarray(interpolated_for_mask, dtype=np.float32).copy()
+            masked[..., ~prepared_topology.interpolated_masks[ring, branch]] = np.nan
+            rotated_masked = resample_rotate_segment(
+                masked,
                 angle,
                 side,
                 return_device=keep_on_device,
@@ -488,6 +469,7 @@ def prepare_segment_chunks(
             branch,
             slice(output_start, output_stop),
             rotated,
+            rotated_masked,
         )
 
     started = perf_counter()
@@ -566,6 +548,8 @@ def _bounded_chunk_plan(
     working_memory_mb: float,
     temporal_halo: int,
     scratch_array_count: int,
+    interpolated_array_count: int,
+    rotated_array_count: int,
     requested_workers: int | None,
     keep_on_device: bool,
 ) -> tuple[int, int]:
@@ -583,11 +567,14 @@ def _bounded_chunk_plan(
     interpolated_bytes = output_side**2 * component_count * 4
     canvas_side = int(output_side * np.sqrt(2.0))
     rotated_bytes = canvas_side**2 * component_count * 4
-    context_arrays = max(0, int(scratch_array_count))
+    context_arrays = max(0, int(scratch_array_count)) + max(
+        0, int(interpolated_array_count)
+    )
     context_per_frame = native_bytes + context_arrays * interpolated_bytes
     required_context = min(frame_count, 1 + 2 * temporal_halo)
     maximum_extra_context = required_context - 1
-    minimum_worker_bytes = required_context * context_per_frame + rotated_bytes
+    output_bytes = max(1, int(rotated_array_count)) * rotated_bytes
+    minimum_worker_bytes = required_context * context_per_frame + output_bytes
     if minimum_worker_bytes > budget:
         raise MemoryError(
             "working_memory_mb is too small for one output frame and its "
@@ -602,11 +589,11 @@ def _bounded_chunk_plan(
     workers = min(maximum_workers, max(1, budget // minimum_worker_bytes))
     per_worker_budget = budget // workers
     numerator = per_worker_budget - maximum_extra_context * context_per_frame
-    chunk_frames = numerator // max(context_per_frame + rotated_bytes, 1)
+    chunk_frames = numerator // max(context_per_frame + output_bytes, 1)
     if chunk_frames < 1:
         workers = 1
         numerator = budget - maximum_extra_context * context_per_frame
-        chunk_frames = numerator // max(context_per_frame + rotated_bytes, 1)
+        chunk_frames = numerator // max(context_per_frame + output_bytes, 1)
     if chunk_frames < 1:
         raise MemoryError(
             "working_memory_mb is too small for one output frame and its "
@@ -645,7 +632,6 @@ def _cached_topology(
     output_side_pixels: int,
     window_size_percentile_kept: float,
     window_side_pixels: int | None,
-    competing_vessel_mask: np.ndarray,
 ) -> PreparedTopology:
     key = topology_cache_key(
         source_id,
@@ -657,7 +643,6 @@ def _cached_topology(
         output_side_pixels=output_side_pixels,
         window_size_percentile_kept=window_size_percentile_kept,
         window_side_pixels=window_side_pixels,
-        competing_vessel_mask=competing_vessel_mask,
     )
     if cache is not None:
         found = cache.get(key)
@@ -676,7 +661,6 @@ def _cached_topology(
         output_side_pixels=output_side_pixels,
         window_size_percentile_kept=window_size_percentile_kept,
         window_side_pixels=window_side_pixels,
-        competing_vessel_mask=competing_vessel_mask,
     )
     if cache is not None:
         cache[key] = prepared

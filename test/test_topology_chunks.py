@@ -15,11 +15,13 @@ from calculations.topology import (
     SegmentRingSettings,
     SegmentTopology,
     interpolate_segment_masks,
+    interpolate_segments,
     prepare_segment_chunks,
+    resample_rotate_segment,
     resolve_segment_rotations,
     rotate_segment_masks,
 )
-from pipelines.waveform_velocity.spatial_gradient_profiles import (
+from pipelines.spatial_gradient_moment0.profiles import (
     _spatial_gradient_chain,
 )
 
@@ -46,14 +48,11 @@ def _prepared(*, angle: float = 23.0, centerline_points: int = 9) -> PreparedTop
     )
     rotations = np.asarray([[angle]], dtype=np.float32)
     interpolated = interpolate_segment_masks(topology.segment_masks)
-    competing = np.zeros_like(interpolated)
     return PreparedTopology(
         topology=topology,
         rotation_degrees=rotations,
         interpolated_masks=interpolated,
         rotated_masks=rotate_segment_masks(interpolated, rotations),
-        rotated_competing_masks=rotate_segment_masks(competing, rotations),
-        interpolated_competing_masks=competing,
     )
 
 
@@ -76,6 +75,36 @@ def test_fused_chunks_match_one_chunk_across_budget_boundary() -> None:
         prepare_segment_chunks(cube, prepared, working_memory_mb=0.30)
     )
     np.testing.assert_allclose(chunked, whole, rtol=1e-6, atol=1e-6, equal_nan=True)
+
+
+def test_masked_companion_applies_mask_after_interpolation_before_rotation() -> None:
+    prepared = _prepared()
+    cube = np.arange(3 * 9 * 9, dtype=np.float32).reshape(3, 9, 9)
+    chunks = list(
+        prepare_segment_chunks(
+            cube,
+            prepared,
+            working_memory_mb=64.0,
+            include_masked_before_rotation=True,
+        )
+    )
+    actual = np.concatenate(
+        [np.asarray(chunk.rotated_masked) for chunk in chunks],
+        axis=0,
+    )
+    interpolated = interpolate_segments(cube)
+    interpolated[..., ~prepared.interpolated_masks[0, 0]] = np.nan
+    expected = resample_rotate_segment(
+        interpolated,
+        float(prepared.rotation_degrees[0, 0]),
+    )
+    np.testing.assert_allclose(
+        actual,
+        expected,
+        rtol=1e-6,
+        atol=1e-6,
+        equal_nan=True,
+    )
 
 
 @pytest.mark.parametrize("frame_count", [5, 17])
@@ -150,7 +179,7 @@ def test_spatial_gradient_chain_has_the_exact_scientific_order() -> None:
 
         return operation
 
-    module = "pipelines.waveform_velocity.spatial_gradient_profiles"
+    module = "pipelines.spatial_gradient_moment0.profiles"
     with (
         patch(f"{module}.moving_avg_window", side_effect=record("moving_average")),
         patch(f"{module}.sobel_spatial_gradient", side_effect=record("sobel")),

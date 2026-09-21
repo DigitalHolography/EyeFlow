@@ -151,6 +151,8 @@ def _per_beat_required(ctx) -> bool:
 
 def _segments_required(ctx) -> bool:
     """Return whether any selected product needs spatial vessel segments."""
+    if ctx.pipeline_scheduled("spatial_gradient_moment0"):
+        return True
     if ctx.pipeline_scheduled("velocity_profile_analysis"):
         return True
     if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):

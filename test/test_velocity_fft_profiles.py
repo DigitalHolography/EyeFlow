@@ -85,7 +85,9 @@ class VelocityFFTProfileTests(unittest.TestCase):
             0,
             0,
             maps[0, 0],
-            dilate_segment_masks(masks, iterations=10)[0, 0],
+            dilate_segment_masks(
+                masks, iterations=10, horizontal_only=True
+            )[0, 0],
         )
         self.segments = SimpleNamespace(
             velocity_maps_per_segment=maps,
@@ -213,7 +215,9 @@ class VelocityFFTProfileTests(unittest.TestCase):
             0,
             0,
             maps[0, 0],
-            dilate_segment_masks(masks, iterations=10)[0, 0],
+            dilate_segment_masks(
+                masks, iterations=10, horizontal_only=True
+            )[0, 0],
         )
 
         np.testing.assert_allclose(
@@ -250,7 +254,9 @@ class VelocityFFTProfileTests(unittest.TestCase):
             cycle_boundary_indexes=boundaries,
             index_base=0,
         )
-        profile_mask = dilate_segment_masks(masks, iterations=10)[0, 0]
+        profile_mask = dilate_segment_masks(
+            masks, iterations=10, horizontal_only=True
+        )[0, 0]
         for start, stop in ((0, 2), (2, 4), (4, 7), (7, 9)):
             accumulator.observe(
                 0,

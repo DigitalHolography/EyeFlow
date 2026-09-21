@@ -207,6 +207,7 @@ def _project_prepared(data_cube, prepared, ring_settings, settings):
             prepared,
             worker_count=workers,
             working_memory_mb=settings.working_memory_mb,
+            include_masked_before_rotation=True,
         ),
         ring_settings, settings,
     )

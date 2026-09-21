@@ -18,7 +18,7 @@ from input_output.output_manager import OutputManager
 from pipeline_engine import DatasetValue, PipelineContext
 from pipeline_engine.context import apply_pipeline_result
 from pipelines.spatial_gradient_moment0.lumen_size import export_lumen_size_pngs
-from pipelines.waveform_velocity.spatial_gradient_profiles import (
+from pipelines.spatial_gradient_moment0.profiles import (
     pack_spatial_gradient_profile_outputs,
 )
 
@@ -44,7 +44,7 @@ class LumenSizePngTests(unittest.TestCase):
             transverse_velocity_profiles_masked=profiles,
         )
         with patch(
-            "pipelines.waveform_velocity.spatial_gradient_profiles._spatial_gradient_peak_metrics",
+            "pipelines.spatial_gradient_moment0.profiles._spatial_gradient_peak_metrics",
             return_value={
                 "Masked/tbkr/lumen/size": DatasetValue(values),
                 "Masked/tbkr/lumen/size_qc": DatasetValue(np.zeros_like(values)),

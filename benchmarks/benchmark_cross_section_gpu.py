@@ -37,7 +37,7 @@ from calculations.topology import (
     prepare_segment_chunks,
     rotate_segment_masks,
 )
-from pipelines.waveform_velocity.spatial_gradient_profiles import (
+from pipelines.spatial_gradient_moment0.profiles import (
     _spatial_gradient_chain,
 )
 
@@ -98,14 +98,11 @@ def _prepared_topology(mask: np.ndarray) -> PreparedTopology:
     )
     angles = np.asarray([[-59.0]], dtype=np.float32)
     interpolated = interpolate_segment_masks(mask[None, None])
-    empty = np.zeros_like(interpolated)
     return PreparedTopology(
         topology=geometry,
         rotation_degrees=angles,
         interpolated_masks=interpolated,
         rotated_masks=rotate_segment_masks(interpolated, angles),
-        interpolated_competing_masks=empty,
-        rotated_competing_masks=rotate_segment_masks(empty, angles),
     )
 
 
@@ -128,6 +125,7 @@ def topology_measurement(
         post_interpolation=_spatial_gradient_chain if staged else None,
         temporal_halo=6 if staged else 0,
         scratch_array_count=7 if staged else None,
+        include_masked_before_rotation=True,
     )
     settings = cs.CrossSectionSignalSettings(
         pixel_size_mm=0.01,

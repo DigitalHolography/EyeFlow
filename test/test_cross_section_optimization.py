@@ -130,7 +130,9 @@ def test_cuda_profile_measurement_matches_cpu(geometry, monkeypatch):
 
 def test_velocity_and_gradient_share_topology_and_segment_axes(geometry):
     from pipelines.waveform_velocity_core.segments import analyze_velocity_segments
-    from pipelines.waveform_velocity.runner import _validate_profile_segment_alignment
+    from pipelines.spatial_gradient_moment0.runner import (
+        _validate_profile_segment_alignment,
+    )
     vessel, disc, rings = geometry
     cube = np.ones((2, *vessel.shape), np.float32)
     masks = {"artery": vessel, "vein": np.zeros_like(vessel)}
@@ -139,7 +141,7 @@ def test_velocity_and_gradient_share_topology_and_segment_axes(geometry):
     velocity = analyze_velocity_segments(
         cube, masks, (30, 30), rings, cs.CrossSectionSignalSettings(.01), **common,
     )
-    from pipelines.waveform_velocity.spatial_gradient_profiles import _spatial_gradient_chain
+    from pipelines.spatial_gradient_moment0.profiles import _spatial_gradient_chain
     topologies = {
         name: result.topology.prepared_topology
         for name, result in velocity.items()
@@ -164,6 +166,37 @@ def test_velocity_and_gradient_share_topology_and_segment_axes(geometry):
                 is gradient[name].topology.prepared_topology
             )
         assert gradient[name].velocity_maps_per_segment is None
+
+
+def test_legacy_profile_dilation_does_not_change_segment_velocity(geometry):
+    from pipelines.waveform_velocity_core.segments import analyze_velocity_segments
+
+    vessel, disc, rings = geometry
+    cube = np.broadcast_to(
+        np.where(vessel, np.float32(10.0), np.float32(1.0)),
+        (3, *vessel.shape),
+    ).copy()
+    results = analyze_velocity_segments(
+        cube,
+        {"artery": vessel, "vein": vessel},
+        (30, 30),
+        rings,
+        cs.CrossSectionSignalSettings(.01),
+        optic_disc_mask=disc,
+    )
+    artery = results["artery"]
+    vein = results["vein"]
+    np.testing.assert_allclose(artery.velocity, vein.velocity, equal_nan=True)
+    np.testing.assert_allclose(
+        artery.rotated_mean_images_masked,
+        vein.rotated_mean_images_masked,
+        equal_nan=True,
+    )
+    assert np.count_nonzero(
+        np.isfinite(artery.transverse_velocity_profiles_masked)
+    ) > np.count_nonzero(
+        np.isfinite(vein.transverse_velocity_profiles_masked)
+    )
 
 
 @pytest.mark.parametrize("mode", ["reference", "per_cube"])

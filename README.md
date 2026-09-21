@@ -58,8 +58,14 @@ The averaging windows shrink at recording boundaries and propagate NaNs.
 Both spatial filters operate independently per frame, propagate NaNs, and set
 valid pixels on the outermost rows and columns to zero. The unsharp mask clips
 negative values to zero.
-The obsolete full-frame `spatial_gradient_moment0` AVI/PNG export pipeline has
-been retired.
+These calculations run only when the independently selectable
+`spatial_gradient_moment0` pipeline is enabled. The pipeline reuses the
+topology prepared by the hidden waveform core; `waveform_velocity` does not
+execute or import spatial-gradient processing.
+The optional gradient pipeline also owns its dynamic-edge and static-edge
+blood-volume-rate calculations. Mask-detection blood-volume rate remains a
+waveform-profile product and applies mask-derived circular-area scaling by
+default.
 
 When masked spatial-gradient lumen metrics are computed, PNGs are exported
 immediately to `png/lumen_size/`, with separate `_artery` and `_vein` files.

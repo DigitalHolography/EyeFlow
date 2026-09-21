@@ -52,7 +52,6 @@ def analyze_displacement_segments(
     profile_masks = dilate_segment_masks(
         topology.rotated_masks,
         iterations=PROFILE_MASK_DILATION_ITERATIONS,
-        exclusion_masks=topology.rotated_competing_masks,
     )
     for method, displacement_map in displacement_maps.items():
         frame_count = int(displacement_map.shape[0])

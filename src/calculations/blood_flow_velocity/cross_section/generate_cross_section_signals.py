@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 from scipy import special
@@ -186,7 +186,7 @@ class _CrossSectionDisplacementWork:
 _INTERPOLATED_SUBSTACK_SIDE = 128
 _ROTATED_SUBSTACK_SIDE = int(_INTERPOLATED_SUBSTACK_SIDE * np.sqrt(2.0))
 _MAX_PARALLEL_CROSS_SECTIONS = 8
-_PROFILE_MASK_DILATION_ITERATIONS = 10
+_ARTERY_TRANSVERSE_MASK_DILATION_PIXELS = 10
 
 
 @dataclass
@@ -466,6 +466,7 @@ def generate_cross_section_signals(
         worker_count=workers,
         working_memory_mb=cross_section_settings.working_memory_mb,
         keep_on_device=optional_cupy_backend() is not None,
+        include_masked_before_rotation=True,
     )
     return _generate_cross_section_signals_from_prepared(
         velocity_map, prepared, segments, ring_settings, cross_section_settings,
@@ -485,7 +486,7 @@ def _generate_cross_section_signals_from_prepared(
     retain_displacement_maps: bool = True,
     retain_velocity_maps: bool = True,
     segment_observer=None,
-    transverse_mask_dilation_pixels: int | None = None,
+    transverse_mask_dilation_pixels: int = 0,
 ) -> CrossSectionSignalResult:
     segment_topology = prepared_topology.topology
     branches = segment_topology.branch_identity
@@ -570,7 +571,7 @@ def _fill_cross_section_buffers_from_prepared(
     substack_side_pixels: int,
     *,
     segment_observer=None,
-    transverse_mask_dilation_pixels: int | None = None,
+    transverse_mask_dilation_pixels: int = 0,
 ) -> None:
     """Reduce transformed chunks directly into retained output arrays."""
 
@@ -585,18 +586,16 @@ def _fill_cross_section_buffers_from_prepared(
         frame_slice = prepared_segment.frame_slice
         angle = float(prepared_topology.rotation_degrees[index])
         rotated = prepared_segment.rotated
+        rotated_masked = prepared_segment.rotated_masked
+        if rotated_masked is None:
+            raise ValueError(
+                "velocity segments must include the pre-rotation masked companion."
+            )
         rotated_mask = prepared_topology.rotated_masks[index]
-        competing_masks = prepared_topology.rotated_competing_masks
         profile_mask = _dilate_profile_mask(
             rotated_mask,
-            None if competing_masks is None else competing_masks[index],
+            transverse_mask_dilation_pixels,
         )
-        if transverse_mask_dilation_pixels is not None:
-            profile_mask = dilate_segment_masks(
-                rotated_mask,
-                iterations=transverse_mask_dilation_pixels,
-                horizontal_only=True,
-            )
         if segment_observer is not None:
             segment_observer(
                 index[0],
@@ -607,7 +606,8 @@ def _fill_cross_section_buffers_from_prepared(
             )
         _accumulate_rotated_means(
             rotated,
-            profile_mask,
+            rotated_masked,
+            rotated_mask,
             mean_sum[index],
             mean_count[index],
             masked_sum[index],
@@ -617,26 +617,47 @@ def _fill_cross_section_buffers_from_prepared(
         if backend is not None and isinstance(rotated, backend.cupy.ndarray):
             measurement = _gpu_cross_section_measurement(
                 rotated,
+                rotated_masked,
                 rotated_mask,
                 profile_mask,
                 angle,
+                use_dilated_transverse_profile=(
+                    transverse_mask_dilation_pixels > 0
+                ),
                 retain_rotated_stack=buffers.velocity_maps_per_segment is not None,
                 cupy=backend.cupy,
             )
         else:
             rotated = np.asarray(rotated, dtype=np.float32)
-            finite_masked = np.isfinite(rotated) & profile_mask[None, ...]
+            rotated_masked = np.asarray(rotated_masked, dtype=np.float32)
             transverse = calculate_transverse_profiles(rotated)
             longitudinal = calculate_longitudinal_profiles(rotated)
-            transverse_masked = _nanmean_float32_where(
-                rotated,
-                finite_masked,
-                axis=1,
+            transverse_masked = calculate_transverse_profiles(rotated_masked)
+            longitudinal_masked = calculate_longitudinal_profiles(rotated_masked)
+            profile_transverse = (
+                _nanmean_float32_where(
+                    rotated,
+                    np.isfinite(rotated) & profile_mask[None, ...],
+                    axis=1,
+                )
+                if transverse_mask_dilation_pixels > 0
+                else transverse_masked
             )
-            longitudinal_masked = _nanmean_float32_where(
-                rotated,
-                finite_masked,
-                axis=2,
+            masked_measurement = _profile_measurement_from_profiles(
+                transverse_masked,
+                longitudinal_masked,
+                angle,
+                0,
+                rotated.shape[-1] - 1,
+                rotated_stack=None,
+            )
+            if transverse_mask_dilation_pixels > 0:
+                masked_measurement = replace(
+                    masked_measurement,
+                    transverse_profiles=profile_transverse,
+                )
+            finite_masked_mean = (
+                np.isfinite(rotated_masked) & rotated_mask[None, ...]
             )
             measurement = _CrossSectionMeasurement(
                 unmasked=_profile_measurement_from_profiles(
@@ -647,18 +668,11 @@ def _fill_cross_section_buffers_from_prepared(
                     rotated.shape[-1] - 1,
                     rotated_stack=rotated,
                 ),
-                masked=_profile_measurement_from_profiles(
-                    transverse_masked,
-                    longitudinal_masked,
-                    angle,
-                    0,
-                    rotated.shape[-1] - 1,
-                    rotated_stack=None,
-                ),
+                masked=masked_measurement,
                 rotated_mean=nanmean_float32(rotated, axis=0),
                 rotated_mean_masked=_nanmean_float32_where(
-                    rotated,
-                    finite_masked,
+                    rotated_masked,
+                    finite_masked_mean,
                     axis=0,
                 ),
                 rotated_mask=rotated_mask,
@@ -695,7 +709,8 @@ def _fill_cross_section_buffers_from_prepared(
 
 def _accumulate_rotated_means(
     rotated,
-    profile_mask: np.ndarray,
+    rotated_masked,
+    rotated_mask: np.ndarray,
     total: np.ndarray,
     count: np.ndarray,
     masked_total: np.ndarray,
@@ -708,8 +723,12 @@ def _accumulate_rotated_means(
         values = cupy.where(finite, rotated, cupy.float32(0.0))
         chunk_total = cupy.asnumpy(cupy.sum(values, axis=0, dtype=cupy.float64))
         chunk_count = cupy.asnumpy(cupy.sum(finite, axis=0, dtype=cupy.int64))
-        masked_finite = finite & cupy.asarray(profile_mask, dtype=cupy.bool_)[None]
-        masked_values = cupy.where(masked_finite, rotated, cupy.float32(0.0))
+        masked_finite = cupy.isfinite(rotated_masked) & cupy.asarray(
+            rotated_mask, dtype=cupy.bool_
+        )[None]
+        masked_values = cupy.where(
+            masked_finite, rotated_masked, cupy.float32(0.0)
+        )
         chunk_masked_total = cupy.asnumpy(
             cupy.sum(masked_values, axis=0, dtype=cupy.float64)
         )
@@ -726,9 +745,10 @@ def _accumulate_rotated_means(
             where=finite,
         )
         chunk_count = np.sum(finite, axis=0, dtype=np.int64)
-        masked_finite = finite & profile_mask[None]
+        masked_values = np.asarray(rotated_masked, dtype=np.float32)
+        masked_finite = np.isfinite(masked_values) & rotated_mask[None]
         chunk_masked_total = np.sum(
-            values,
+            masked_values,
             axis=0,
             dtype=np.float64,
             where=masked_finite,
@@ -1309,7 +1329,10 @@ def _measure_cross_section_displacement(
         rotated[:, 1],
         work.angle,
     )
-    profile_mask = _dilate_profile_mask(work.rotated_mask)
+    profile_mask = dilate_segment_masks(
+        work.rotated_mask,
+        iterations=_ARTERY_TRANSVERSE_MASK_DILATION_PIXELS,
+    )
     radial_amplitude, radial_asymmetry = _cross_sectional_radial_metrics(
         vectors,
         work.rotated_mask,
@@ -1526,54 +1549,60 @@ def _nansum_float32(
 
 def _dilate_profile_mask(
     mask: np.ndarray,
-    exclusion_mask: np.ndarray | None = None,
+    dilation_pixels: int = 0,
 ) -> np.ndarray:
-    """Expand a segment mask before restricting profile signal values."""
+    """Expand a rotated mask horizontally for profile export only."""
 
     return dilate_segment_masks(
         mask,
-        iterations=_PROFILE_MASK_DILATION_ITERATIONS,
-        exclusion_masks=exclusion_mask,
+        iterations=dilation_pixels,
+        horizontal_only=True,
     )
 
 
 def _gpu_cross_section_measurement(
     rotated_stack,
+    rotated_masked_stack,
     rotated_mask: np.ndarray,
     profile_mask: np.ndarray,
     angle: float,
     *,
+    use_dilated_transverse_profile: bool,
     retain_rotated_stack: bool,
     cupy,
 ) -> _CrossSectionMeasurement:
     """Reduce a resident CUDA segment and transfer only profiles/summaries."""
 
-    gpu_mask = cupy.asarray(profile_mask, dtype=cupy.bool_)
     transverse = _gpu_nanmean(rotated_stack, axis=1, cupy=cupy)
     longitudinal = _gpu_nanmean(rotated_stack, axis=2, cupy=cupy)
-    transverse_masked = _gpu_nanmean(
-        rotated_stack,
-        axis=1,
-        spatial_mask=gpu_mask,
+    transverse_masked = _gpu_nanmean(rotated_masked_stack, axis=1, cupy=cupy)
+    longitudinal_masked = _gpu_nanmean(
+        rotated_masked_stack,
+        axis=2,
         cupy=cupy,
     )
-    longitudinal_masked = _gpu_nanmean(
-        rotated_stack,
-        axis=2,
-        spatial_mask=gpu_mask,
-        cupy=cupy,
+    transverse_profile = (
+        _gpu_nanmean(
+            rotated_stack,
+            axis=1,
+            spatial_mask=cupy.asarray(profile_mask, dtype=cupy.bool_),
+            cupy=cupy,
+        )
+        if use_dilated_transverse_profile
+        else transverse_masked
     )
     rotated_mean = _gpu_nanmean(rotated_stack, axis=0, cupy=cupy)
     rotated_mean_masked = _gpu_nanmean(
-        rotated_stack,
+        rotated_masked_stack,
         axis=0,
-        spatial_mask=gpu_mask,
+        spatial_mask=cupy.asarray(rotated_mask, dtype=cupy.bool_),
         cupy=cupy,
     )
     (
         transverse_host,
         longitudinal_host,
         transverse_masked_host,
+        transverse_profile_host,
         longitudinal_masked_host,
         rotated_mean_host,
         rotated_mean_masked_host,
@@ -1583,6 +1612,7 @@ def _gpu_cross_section_measurement(
             transverse,
             longitudinal,
             transverse_masked,
+            transverse_profile,
             longitudinal_masked,
             rotated_mean,
             rotated_mean_masked,
@@ -1590,6 +1620,19 @@ def _gpu_cross_section_measurement(
     )
     c1, c2 = _cross_section_limits(rotated_mean_masked_host)
     retained = cupy.asnumpy(rotated_stack) if retain_rotated_stack else None
+    masked_measurement = _profile_measurement_from_profiles(
+        transverse_masked_host,
+        longitudinal_masked_host,
+        angle,
+        c1,
+        c2,
+        rotated_stack=None,
+    )
+    if use_dilated_transverse_profile:
+        masked_measurement = replace(
+            masked_measurement,
+            transverse_profiles=transverse_profile_host,
+        )
     return _CrossSectionMeasurement(
         unmasked=_profile_measurement_from_profiles(
             transverse_host,
@@ -1599,14 +1642,7 @@ def _gpu_cross_section_measurement(
             c2,
             rotated_stack=retained,
         ),
-        masked=_profile_measurement_from_profiles(
-            transverse_masked_host,
-            longitudinal_masked_host,
-            angle,
-            c1,
-            c2,
-            rotated_stack=None,
-        ),
+        masked=masked_measurement,
         rotated_mean=rotated_mean_host,
         rotated_mean_masked=rotated_mean_masked_host,
         rotated_mask=rotated_mask,

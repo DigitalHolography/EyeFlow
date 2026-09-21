@@ -133,16 +133,17 @@ class SegmentCenterTests(unittest.TestCase):
             self.assertTrue(np.any(valid))
             np.testing.assert_allclose(result.velocity[valid], 1.0)
 
-    def test_profile_mask_dilation_expands_ten_pixels(self) -> None:
+    def test_profile_mask_dilation_expands_ten_pixels_horizontally(self) -> None:
         mask = np.zeros((51, 51), dtype=bool)
         mask[25, 25] = True
 
-        dilated = _dilate_profile_mask(mask)
+        dilated = _dilate_profile_mask(mask, 10)
 
         self.assertEqual(np.bool_, dilated.dtype)
-        self.assertEqual(21 * 21, int(np.count_nonzero(dilated)))
-        self.assertTrue(np.all(dilated[15:36, 15:36]))
-        self.assertFalse(np.any(dilated[:15]))
+        self.assertEqual(21, int(np.count_nonzero(dilated)))
+        self.assertTrue(np.all(dilated[25, 15:36]))
+        self.assertFalse(np.any(dilated[:25]))
+        self.assertFalse(np.any(dilated[26:]))
         self.assertFalse(np.any(dilated[:, :15]))
         self.assertEqual(1, int(np.count_nonzero(mask)))
 

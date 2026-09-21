@@ -60,7 +60,7 @@ def test_annulus_width_uses_clipped_last_ring() -> None:
     np.testing.assert_allclose(widths, [1.25, 0.5], rtol=1e-6)
 
 
-def test_mask_detection_circular_area_is_disabled_by_default() -> None:
+def test_mask_detection_circular_area_can_be_disabled_explicitly() -> None:
     segments = _segments()
     outputs = pack_mask_detection_blood_volume_rate_outputs(
         segments,
@@ -68,6 +68,7 @@ def test_mask_detection_circular_area_is_disabled_by_default() -> None:
         np.asarray([0, 2], dtype=np.int32),
         optic_disc_center=(20.0, 20.0),
         pixel_size_mm=0.1,
+        apply_circular_area=False,
     )
     artery = outputs["Processing/BloodVolumeRate/Artery/maskDetection/value"]
     np.testing.assert_allclose(artery.data, 2.0)
@@ -77,7 +78,7 @@ def test_mask_detection_circular_area_is_disabled_by_default() -> None:
     assert "radial_width_pixels" not in artery.attrs
 
 
-def test_mask_detection_circular_area_remains_explicitly_available() -> None:
+def test_mask_detection_circular_area_is_enabled_by_default() -> None:
     segments = _segments()
     outputs = pack_mask_detection_blood_volume_rate_outputs(
         segments,
@@ -85,7 +86,6 @@ def test_mask_detection_circular_area_remains_explicitly_available() -> None:
         np.asarray([0, 2], dtype=np.int32),
         optic_disc_center=(20.0, 20.0),
         pixel_size_mm=0.1,
-        apply_circular_area=True,
     )
     artery = outputs["Processing/BloodVolumeRate/Artery/maskDetection/value"]
     radius_scale = np.hypot(20.0, 20.0)

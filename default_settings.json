@@ -4,6 +4,7 @@
     "displacement_map": true,
     "lowrank_waveform_decomposition": true,
     "pdf_report": true,
+    "spatial_gradient_moment0": false,
     "velocity_profile_analysis": true,
     "waveform_shape_metrics": true,
     "waveform_velocity": true
