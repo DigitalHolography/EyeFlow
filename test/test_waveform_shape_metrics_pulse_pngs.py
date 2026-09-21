@@ -35,7 +35,7 @@ from calculations.blood_flow_velocity.signal_analysis.waveform import (  # noqa:
 )
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.writers.png import write_png_file  # noqa: E402
-from calculations.dopplerview_analysis.vessel_velocity_estimator import (  # noqa: E402
+from calculations.retinal_velocity.vessel_velocity_estimator import (  # noqa: E402
     _masked_signal as _velocity_masked_signal,
 )
 from pipelines.waveform_velocity_core.figures import (  # noqa: E402

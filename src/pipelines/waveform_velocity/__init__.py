@@ -35,6 +35,13 @@ from .runner import run_waveform_velocity
             requires=("per_beat", "segments"),
         ),
         PipelineOption(
+            "velocity_profile_fft",
+            "Velocity profile FFT",
+            "Per-beat temporal FFTs of cross-section velocity profiles.",
+            default_enabled=False,
+            requires=("velocity_profiles",),
+        ),
+        PipelineOption(
             "per_beat",
             "Per beat",
             "Raw and band-limited vessel velocity for each beat.",

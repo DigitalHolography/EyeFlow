@@ -1,4 +1,4 @@
-"""Build shared DopplerView, spatial, and segment-analysis state."""
+"""Build shared retinal velocity, spatial, and segment-analysis state."""
 
 from collections.abc import Mapping
 from contextlib import contextmanager
@@ -9,23 +9,27 @@ from calculations.blood_flow_velocity import (
     CrossSectionSignalResult,
     HeartbeatAnalysisResult,
     PerBeatAnalysisInput,
-    SegmentRingSettings,
-    segment_velocity_results,
     spectral_heartbeat_analysis,
 )
-from calculations.blood_flow_velocity.cross_section.segment_geometry import (
+from calculations.topology import (
+    SegmentRingSettings,
     image_half_diagonal,
+    run_topology_cache,
+    topology_source_id,
 )
 from input_output import EyeFlowOutputPaths
 from pipelines.displacement_map.constants import DEFAULT_REGISTRATION_METHOD
-from pipelines.displacement_map.runner import (
-    DISPLACEMENT_MAP_STATE,
-    DisplacementMapArtifacts,
-)
+from pipelines.displacement_map.runner import DISPLACEMENT_MAP_STATE, DisplacementMapArtifacts
 from pipeline_engine.imports import (
     HolodopplerTiming,
     np,
     read_int_setting,
+)
+from pipelines.heartbeat_core.runner import (
+    HeartbeatResult,
+    cached_heartbeat_analysis,
+    cached_velocity_estimation,
+    heartbeat_result,
 )
 from utils.logger import Logger
 
@@ -37,18 +41,19 @@ from .constants import (
     SEGMENT_OUTER_RADIUS_FRAC,
 )
 from .cross_section_images import export_rotated_mean_pngs
-from .dopplerview.constants import (
+from .figures import export_pulse_pngs
+from .per_beat import run_velocity_per_beat_metrics
+from .retinal_velocity.constants import (
     LEGACY_FILTER_VELOCITY_SIGNALS,
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
-from .dopplerview.outputs import (
-    pack_dopplerview_shared_outputs,
+from .retinal_velocity.outputs import (
+    pack_retinal_velocity_outputs,
 )
-from .dopplerview.runner import run_dopplerview_analysis
-from .figures import export_pulse_pngs
-from .per_beat import run_velocity_per_beat_metrics
-from .scratch import waveform_scratch_h5
+from .retinal_velocity.runner import run_retinal_velocity_analysis
+from .scratch import velocity_scratch_h5
 from .segmentation import _optic_disc_mask, pack_segmentation_outputs
+from .segments import analyze_velocity_segments
 from .sources import WaveformVelocitySourceData, WaveformVelocitySources
 
 WAVEFORM_CONTEXT_STATE = "waveform_velocity_context"
@@ -69,19 +74,28 @@ class WaveformVelocityCoreContext:
 def run_waveform_velocity_core(
     ctx,
 ) -> tuple[dict[str, object], dict[str, object]]:
-    """Run the shared DopplerView and spatial velocity foundation once."""
+    """Run the shared retinal velocity and spatial foundation once."""
     ctx.require_inputs("hd", "dv")
 
     core_started = perf_counter()
-    with waveform_scratch_h5(ctx) as scratch_h5:
-        Logger.log("Starting waveform velocity core context build...")
+    with velocity_scratch_h5(ctx) as scratch_h5:
+        Logger.log("Starting waveform velocity core context build (scratch=RAM)...")
         segments_required = _segments_required(ctx)
+        velocity_options = ctx.options_for("waveform_velocity")
+        Logger.log(
+            "Waveform segment options: "
+            f"selected={tuple(sorted(velocity_options))}, "
+            f"segments_required={segments_required}, "
+            "segment_velocity_maps="
+            f"{'segment_velocity_maps' in velocity_options}."
+        )
         context = _build_waveform_velocity_core_context(
             ctx,
             scratch_h5,
+            heartbeat_result(ctx),
             segments_required=segments_required,
         )
-        metrics = pack_dopplerview_shared_outputs(context.velocity_analysis)
+        metrics = pack_retinal_velocity_outputs(context.velocity_analysis)
         metrics.update(_pack_meta_outputs(context))
         metrics.update(
             pack_segmentation_outputs(
@@ -154,6 +168,7 @@ def _segments_required(ctx) -> bool:
                 "segments",
                 "segment_velocity_maps",
                 "velocity_profiles",
+                "velocity_profile_fft",
                 "quadrants",
             }
             & velocity_options
@@ -177,51 +192,46 @@ def _pulse_pngs_required(ctx) -> bool:
     )
 
 
-def _displacement_segment_maps_required(ctx) -> bool:
-    """Return whether full rotated displacement maps must remain in memory."""
-    return bool(
-        ctx.pipeline_scheduled("waveform_velocity")
-        and ctx.option_enabled(
-            "segment_velocity_maps",
-            pipeline="waveform_velocity",
-        )
-    )
-
 def _build_waveform_velocity_core_context(
     ctx,
     scratch_h5,
+    heartbeat: HeartbeatResult,
     *,
     segments_required: bool,
 ) -> WaveformVelocityCoreContext:
     with _logged_stage("waveform source loading"):
         source_data = WaveformVelocitySources.from_context(ctx).load()
     timing = source_data.timing
-    velocity_analysis, analysis_source = _resolve_velocity_analysis(
-        source_data,
-        ctx,
-        scratch_h5,
-        retain_velocity_video=(segments_required or _pulse_pngs_required(ctx)),
-    )
-    with _loaded_displacement_maps(
-        ctx,
-        enabled=segments_required,
-    ) as displacement_maps:
-        velocity_map = velocity_analysis["velocity_map"] if segments_required else None
-        harmonic_count = _band_limited_harmonic_count(ctx)
-        number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
-        per_beat_analysis, artery_segments, vein_segments = (
-            _per_beat_input_from_analysis(
-                velocity_analysis,
-                source_data,
-                timing,
-                harmonic_count,
-                ctx,
-                velocity_map=velocity_map,
-                displacement_maps=displacement_maps,
-                number_of_radii_in_fov=number_of_radii_in_fov,
-                segments_required=segments_required,
-            )
+    heartbeat_velocity = cached_velocity_estimation(ctx, source_data)
+    with _logged_stage("retinal velocity analysis from HD moments"):
+        if heartbeat_velocity is not None:
+            Logger.log("Reusing velocity estimation from heartbeat core.")
+        velocity_analysis = run_retinal_velocity_analysis(
+            source_data,
+            scratch_h5,
+            cached_heartbeat_analysis(ctx),
+            retain_velocity_video=True,
+            velocity_estimation=heartbeat_velocity,
         )
+    velocity_analysis["beat_indices"] = np.asarray(
+        heartbeat.cycle_boundary_indexes,
+        dtype=np.int32,
+    )
+    velocity_map = velocity_analysis["velocity_map"] if segments_required else None
+    harmonic_count = _band_limited_harmonic_count(ctx)
+    number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
+    per_beat_analysis, artery_segments, vein_segments = (
+        _per_beat_input_from_analysis(
+            velocity_analysis,
+            source_data,
+            timing,
+            harmonic_count,
+            ctx,
+            velocity_map=velocity_map,
+            number_of_radii_in_fov=number_of_radii_in_fov,
+            segments_required=segments_required,
+        )
+    )
 
     return WaveformVelocityCoreContext(
         source_data=source_data,
@@ -233,27 +243,11 @@ def _build_waveform_velocity_core_context(
             source_data,
             timing,
             harmonic_count,
-            analysis_source,
+            "eyeflow_retinal_velocity_analysis",
             per_beat_analysis.heartbeat,
             number_of_radii_in_fov,
         ),
     )
-
-
-def _resolve_velocity_analysis(
-    source_data: WaveformVelocitySourceData,
-    ctx,
-    scratch_h5,
-    *,
-    retain_velocity_video: bool,
-) -> tuple[dict[str, object], str]:
-    with _logged_stage("EyeFlow velocity analysis from HD moments"):
-        velocity_analysis = run_dopplerview_analysis(
-            source_data,
-            scratch_h5,
-            retain_velocity_video=retain_velocity_video,
-        )
-    return velocity_analysis, "eyeflow_recomputed_dopplerview_analysis"
 
 
 @contextmanager
@@ -300,6 +294,8 @@ def _release_displacement_maps(
     ctx,
     displacement_maps: Mapping[str, Mapping[str, object]],
 ) -> None:
+    if not displacement_maps:
+        return
     closed: set[int] = set()
     for maps_for_vessel in displacement_maps.values():
         for displacement_map in maps_for_vessel.values():
@@ -361,7 +357,6 @@ def _per_beat_input_from_analysis(
     ctx,
     *,
     velocity_map=None,
-    displacement_maps: Mapping[str, Mapping[str, object]] | None = None,
     number_of_radii_in_fov: int = NUMBER_OF_RADII_IN_FOV,
     segments_required: bool,
 ) -> tuple[
@@ -381,10 +376,10 @@ def _per_beat_input_from_analysis(
         )
         artery_segments, vein_segments = _segment_velocity_inputs(
             velocity_map,
-            displacement_maps or {},
             source_data,
             ring_settings,
             ctx,
+            cycle_boundary_indexes=velocity_analysis["beat_indices"],
         )
     else:
         Logger.log("Skipping segment velocity extraction; no selected output requires it.")
@@ -451,46 +446,73 @@ def _raw_velocity_signals_for_per_beat(
 
 def _segment_velocity_inputs(
     velocity_map,
-    displacement_maps: Mapping[str, Mapping[str, object]],
     source_data: WaveformVelocitySourceData,
     ring_settings: SegmentRingSettings,
     ctx,
+    *,
+    cycle_boundary_indexes,
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
-    optic_disc_mask, _ = _optic_disc_mask(
-        source_data, source_data.retinal_artery_mask.shape
+    mask_shape = getattr(source_data.retinal_artery_mask, "shape", None)
+    if mask_shape is None:
+        optic_disc_mask = source_data.optic_disc_mask
+    else:
+        optic_disc_mask, _ = _optic_disc_mask(source_data, mask_shape)
+    waveform_velocity_scheduled = ctx.pipeline_scheduled("waveform_velocity")
+    retain_velocity_maps = bool(
+        waveform_velocity_scheduled
+        and ctx.option_enabled(
+            "segment_velocity_maps",
+            pipeline="waveform_velocity",
+        )
     )
-    with _logged_stage("segment velocity extraction"):
-        artery, vein = segment_velocity_results(
+    velocity_profile_fft = bool(
+        waveform_velocity_scheduled
+        and ctx.option_enabled(
+            "velocity_profile_fft",
+            pipeline="waveform_velocity",
+        )
+    )
+    with _loaded_displacement_maps(ctx, enabled=True) as displacement_maps, _logged_stage("segment velocity extraction"):
+        results = analyze_velocity_segments(
             velocity_map,
-            source_data.retinal_artery_mask,
-            source_data.retinal_vein_mask,
+            {
+                "artery": source_data.retinal_artery_mask,
+                "vein": source_data.retinal_vein_mask,
+            },
             source_data.optic_disc_center,
             ring_settings,
             source_data.cross_section_settings,
-            optic_disc_mask=optic_disc_mask if np.any(optic_disc_mask) else None,
-            artery_displacement_maps=displacement_maps.get("artery", {}),
-            vein_displacement_maps=displacement_maps.get("vein", {}),
-            retain_displacement_maps=_displacement_segment_maps_required(ctx),
+            optic_disc_mask=(
+                optic_disc_mask
+                if optic_disc_mask is not None and np.any(optic_disc_mask)
+                else None
+            ),
+            source_id=topology_source_id(
+                ctx.inputs.hd.filename,
+                ctx.inputs.dv.filename,
+            ),
+            topology_cache=run_topology_cache(ctx.state.raw),
+            retain_velocity_maps=retain_velocity_maps,
+            cycle_boundary_indexes=cycle_boundary_indexes,
+            velocity_profile_fft=velocity_profile_fft,
+            index_base=int(source_data.provenance["beat_index_base"]),
+            displacement_maps_by_vessel=displacement_maps,
+            retain_displacement_maps=retain_velocity_maps,
         )
     if ctx.output.available:
         with _logged_stage("rotated mean PNG export"):
-            export_rotated_mean_pngs(ctx.output, artery, "arteries")
-            export_rotated_mean_pngs(ctx.output, vein, "veins")
-    _export_branch_identity_debug(
-        ctx,
-        artery,
-        source_data.optic_disc_center,
-        ring_settings,
-        "artery",
-    )
-    _export_branch_identity_debug(
-        ctx,
-        vein,
-        source_data.optic_disc_center,
-        ring_settings,
-        "vein",
-    )
-    return artery, vein
+            for name, result in results.items():
+                output_name = "arteries" if name == "artery" else f"{name}s"
+                export_rotated_mean_pngs(ctx.output, result, output_name)
+    for name, result in results.items():
+        _export_branch_identity_debug(
+            ctx,
+            result,
+            source_data.optic_disc_center,
+            ring_settings,
+            name,
+        )
+    return results["artery"], results["vein"]
 
 
 def _waveform_segment_input(
@@ -610,12 +632,12 @@ def _context_attrs(
     output_paths = EyeFlowOutputPaths.active()
     analysis_paths = output_paths.analysis
     dependency_chain = (
-        ["dopplerview.h5.analysis"]
-        if analysis_source == "dopplerview_h5_analysis"
+        ["external_velocity_analysis"]
+        if analysis_source == "external_velocity_analysis"
         else [
             "holodoppler.h5.moment0_moment2",
-            "dopplerview.h5.segmentation",
-            "eyeflow.dopplerview_analysis.recomputed",
+            "retinal_segmentation_input",
+            "eyeflow.retinal_velocity.recomputed",
         ]
     )
     width = _positive_geometry_scalar(source_data.optic_disc_width)

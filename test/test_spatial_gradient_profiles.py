@@ -28,7 +28,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
             optic_disc_center=np.asarray([4.0, 4.0]),
             retinal_artery_mask=np.ones((8, 8), dtype=bool),
             retinal_vein_mask=np.eye(8, dtype=bool),
-            cross_section_settings=CrossSectionSignalSettings(False, 0.5, False, 0.01),
+            cross_section_settings=CrossSectionSignalSettings(0.01),
         )
         moment0ff = np.full((3, 8, 8), 42.0, dtype=np.float32)
         ctx = SimpleNamespace(
@@ -43,12 +43,18 @@ class SpatialGradientProfileTests(unittest.TestCase):
         waveform_context = SimpleNamespace(
             source_data=source,
             attrs={"number_of_radii_in_FOV": 4},
+            artery_segment_result=SimpleNamespace(
+                topology=SimpleNamespace(prepared_topology="artery topology")
+            ),
+            vein_segment_result=SimpleNamespace(
+                topology=SimpleNamespace(prepared_topology="vein topology")
+            ),
         )
 
         with patch.object(
             profile_module,
-            "segment_velocity_results",
-            return_value=("artery", "vein"),
+            "analyze_velocity_segments",
+            return_value={"artery": "artery", "vein": "vein"},
         ) as extract:
             result = extract_spatial_gradient_segments(ctx, waveform_context)
 
@@ -56,21 +62,22 @@ class SpatialGradientProfileTests(unittest.TestCase):
         args, kwargs = extract.call_args
         self.assertEqual((3, 8, 8), args[0].shape)
         self.assertIs(moment0ff, args[0])
-        self.assertTrue(args[5].spatial_gradient)
-        self.assertFalse(source.cross_section_settings.spatial_gradient)
-        np.testing.assert_array_equal(source.retinal_artery_mask, args[1])
-        np.testing.assert_array_equal(source.retinal_vein_mask, args[2])
+        self.assertIs(source.cross_section_settings, args[4])
+        np.testing.assert_array_equal(source.retinal_artery_mask, args[1]["artery"])
+        np.testing.assert_array_equal(source.retinal_vein_mask, args[1]["vein"])
         disc = kwargs["optic_disc_mask"]
         self.assertEqual((8, 8), disc.shape)
         self.assertTrue(disc[4, 4])
         self.assertFalse(disc[0, 0])
         self.assertEqual(
             5,
-            kwargs["artery_transverse_mask_dilation_pixels"],
+            kwargs["transverse_mask_dilation_pixels"],
         )
+        self.assertEqual("staged", kwargs["transform_mode"])
+        self.assertEqual(6, kwargs["temporal_halo"])
         self.assertEqual(
-            5,
-            kwargs["vein_transverse_mask_dilation_pixels"],
+            {"artery": "artery topology", "vein": "vein topology"},
+            kwargs["prepared_topologies"],
         )
         self.assertFalse(kwargs["retain_displacement_maps"])
 

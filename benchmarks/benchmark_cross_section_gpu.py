@@ -1,8 +1,11 @@
-"""Synchronized host-to-host timings on synthetic cross-section movies.
+"""Benchmark bounded fused and staged cross-section processing.
 
-Run from the repository with CuPy installed:
-    python benchmarks/benchmark_cross_section_gpu.py --output benchmark.json
-Optionally pass --baseline-file containing the original main implementation.
+Run a CPU-only report from the repository with::
+
+    python benchmarks/benchmark_cross_section_gpu.py --cpu-only --output report.json
+
+When a usable CuPy/CUDA installation is present, the default also verifies
+CPU/GPU parity and records CUDA allocator peak usage.
 """
 
 from __future__ import annotations
@@ -10,35 +13,47 @@ from __future__ import annotations
 import argparse
 import gc
 import importlib
-import importlib.util
 import json
 import os
 import statistics
 import sys
 import time
+import tracemalloc
 from pathlib import Path
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import cupy as cp
 import numpy as np
 import scipy
 
 from calculations.compute_backend import optional_cupy_backend
+from calculations.topology import (
+    PreparedTopology,
+    SegmentRingSettings,
+    SegmentTopology,
+    interpolate_segment_masks,
+    prepare_segment_chunks,
+    rotate_segment_masks,
+)
+from pipelines.waveform_velocity.spatial_gradient_profiles import (
+    _spatial_gradient_chain,
+)
 
 cs = importlib.import_module(
     "calculations.blood_flow_velocity.cross_section.generate_cross_section_signals"
 )
 
 
-def movie(frames, side, varying):
+def movie(frames: int, side: int, varying: bool):
     y, x = np.mgrid[:side, :side].astype(np.float32)
     center = (side - 1) / 2
     mask = (np.abs(x - center) <= side / 6) & (np.abs(y - center) <= side / 3)
     spatial = 2 + 10 * np.maximum(0, 1 - ((x - center) / (side / 5)) ** 2)
-    temporal = 1 + 0.3 * np.sin(np.arange(frames, dtype=np.float32) * 2 * np.pi / 32)
+    temporal = 1 + 0.3 * np.sin(
+        np.arange(frames, dtype=np.float32) * 2 * np.pi / 32
+    )
     values = temporal[:, None, None] * spatial[None]
     values[:, :2] = np.nan
     if varying:
@@ -46,131 +61,261 @@ def movie(frames, side, varying):
     return values.astype(np.float32), mask
 
 
-def select_backend(mode):
+def select_backend(mode: str) -> None:
     os.environ["EYEFLOW_COMPUTE_BACKEND"] = mode
     optional_cupy_backend.cache_clear()
-    cs._GPU_FAILED = False
 
 
-def measure(module, mode, values, mask, repeats, windowed=False):
+def _prepared_topology(mask: np.ndarray) -> PreparedTopology:
+    side = mask.shape[-1]
+    branch_ids = np.asarray([1], dtype=np.int32)
+    branch_stages = type("Stages", (), {"vessel": mask})()
+    branch_identity = type(
+        "Branches",
+        (),
+        {
+            "branch_ids": branch_ids,
+            "labels": mask.astype(np.int32),
+            "stages": branch_stages,
+        },
+    )()
+    geometry = SegmentTopology(
+        spatial_shape=mask.shape,
+        optic_disc_center_xy=(0.0, 0.0),
+        labels=mask.astype(np.int32),
+        centerline=mask,
+        branch_ids=branch_ids,
+        annulus_masks=np.ones((1, *mask.shape), dtype=bool),
+        segment_masks=mask[None, None],
+        segment_centers_xy=np.asarray(
+            [[[(side - 1) / 2, (side - 1) / 2]]], dtype=np.float32
+        ),
+        window_bounds_xyxy=np.asarray([[[0, side, 0, side]]], dtype=np.int32),
+        window_side_pixels=side,
+        optic_disc_mask=np.zeros(mask.shape, dtype=bool),
+        ring_settings=SegmentRingSettings(0.0, 1.0, 1.0, 1),
+        branch_identity=branch_identity,
+    )
+    angles = np.asarray([[-59.0]], dtype=np.float32)
+    interpolated = interpolate_segment_masks(mask[None, None])
+    empty = np.zeros_like(interpolated)
+    return PreparedTopology(
+        topology=geometry,
+        rotation_degrees=angles,
+        interpolated_masks=interpolated,
+        rotated_masks=rotate_segment_masks(interpolated, angles),
+        interpolated_competing_masks=empty,
+        rotated_competing_masks=rotate_segment_masks(empty, angles),
+    )
+
+
+def topology_measurement(
+    values: np.ndarray,
+    mask: np.ndarray,
+    *,
+    transform_mode: str,
+    working_memory_mb: float,
+):
+    prepared = _prepared_topology(mask)
+    backend = optional_cupy_backend()
+    staged = transform_mode == "staged"
+    chunks = prepare_segment_chunks(
+        values,
+        prepared,
+        working_memory_mb=working_memory_mb,
+        keep_on_device=backend is not None,
+        transform_mode=transform_mode,
+        post_interpolation=_spatial_gradient_chain if staged else None,
+        temporal_halo=6 if staged else 0,
+        scratch_array_count=7 if staged else None,
+    )
+    settings = cs.CrossSectionSignalSettings(
+        pixel_size_mm=0.01,
+        working_memory_mb=working_memory_mb,
+    )
+    return cs._generate_cross_section_signals_from_prepared(
+        values,
+        prepared,
+        chunks,
+        prepared.topology.ring_settings,
+        settings,
+        retain_velocity_maps=False,
+    )
+
+
+def _synchronize() -> None:
+    backend = optional_cupy_backend()
+    if backend is not None:
+        backend.cupy.cuda.get_current_stream().synchronize()
+
+
+def measure(
+    mode: str,
+    values: np.ndarray,
+    mask: np.ndarray,
+    repeats: int,
+    *,
+    transform_mode: str,
+    working_memory_mb: float,
+):
     select_backend(mode)
-    cp.get_default_memory_pool().free_all_blocks()
-    settings = module.CrossSectionSignalSettings(True, 0.5, True, 0.01)
+    backend = optional_cupy_backend()
+    if backend is not None:
+        backend.cupy.get_default_memory_pool().free_all_blocks()
 
     def call():
-        if windowed:
-            side = values.shape[-1]
-            ys, xs = np.nonzero(mask)
-            work = cs._CrossSectionWork(
-                cs._SegmentGeometry(0, 0, (side // 2,) * 2, ys, xs, -59.0),
-                (0, side, 0, side),
-            )
-            buffers = cs._CrossSectionBuffers.allocate(
-                frame_count=len(values), ring_count=1, branch_count=1
-            )
-            cs._measure_windowed_work(buffers, values, work, (0, 0), settings, side)
-            return buffers
-        return module._cross_section_velocity_from_substack(
+        return topology_measurement(
             values,
             mask,
-            (values.shape[-1] // 2,) * 2,
-            (0, 0),
-            -59.0,
-            settings,
-            values.shape[-1],
+            transform_mode=transform_mode,
+            working_memory_mb=working_memory_mb,
         )
 
-    # Warm every shape and mode, including compilation and allocator initialization.
     warm = call()
-    cp.cuda.Stream.null.synchronize()
+    _synchronize()
     del warm
     times = []
+    peak_python_bytes = 0
     for _ in range(repeats):
         gc.collect()
-        cp.cuda.Stream.null.synchronize()
+        _synchronize()
+        tracemalloc.start()
         start = time.perf_counter()
         result = call()
-        cp.cuda.Stream.null.synchronize()
+        _synchronize()
         times.append(time.perf_counter() - start)
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        peak_python_bytes = max(peak_python_bytes, peak)
         del result
     return {
         "seconds": times,
         "median_seconds": statistics.median(times),
-        "cuda_pool_reserved_mib": cp.get_default_memory_pool().total_bytes() / 1024**2,
+        "python_tracemalloc_peak_mib": peak_python_bytes / 1024**2,
+        "cuda_pool_reserved_mib": (
+            backend.cupy.get_default_memory_pool().total_bytes() / 1024**2
+            if backend is not None
+            else None
+        ),
     }
 
 
-def parity(values, mask):
-    settings = cs.CrossSectionSignalSettings(True, 0.5, True, 0.01)
+def parity(
+    values: np.ndarray,
+    mask: np.ndarray,
+    *,
+    transform_mode: str,
+    working_memory_mb: float,
+):
     results = []
     for mode in ("cpu", "cupy"):
         select_backend(mode)
         results.append(
-            cs._cross_section_velocity_from_substack(
+            topology_measurement(
                 values,
                 mask,
-                (values.shape[-1] // 2,) * 2,
-                (0, 0),
-                -59.0,
-                settings,
-                values.shape[-1],
+                transform_mode=transform_mode,
+                working_memory_mb=working_memory_mb,
             )
         )
     errors = {}
-    assert results[0].limits == results[1].limits
-    for kind in ("masked", "unmasked"):
-        for name in ("raw", "safe_velocity", "transverse_profiles", "longitudinal_profiles"):
-            cpu = getattr(getattr(results[0], kind), name)
-            gpu = getattr(getattr(results[1], kind), name)
-            np.testing.assert_allclose(gpu, cpu, rtol=1e-5, atol=1e-5, equal_nan=True)
-            errors[f"{kind}.{name}"] = float(np.nanmax(np.abs(cpu - gpu)))
+    for name in (
+        "velocity",
+        "safe_velocity",
+        "velocity_profiles",
+        "transverse_velocity_profiles_masked",
+        "longitudinal_velocity_profiles_unmasked",
+        "longitudinal_velocity_profiles_masked",
+    ):
+        cpu, gpu = (getattr(result, name) for result in results)
+        np.testing.assert_allclose(gpu, cpu, rtol=1e-5, atol=1e-5, equal_nan=True)
+        difference = np.abs(cpu - gpu)
+        errors[name] = (
+            float(np.nanmax(difference)) if np.any(np.isfinite(difference)) else 0.0
+        )
     return errors
 
 
-def main():
+def _cuda_metadata() -> dict[str, object] | None:
+    select_backend("auto")
+    backend = optional_cupy_backend()
+    if backend is None:
+        return None
+    cupy = backend.cupy
+    properties = cupy.cuda.runtime.getDeviceProperties(0)
+    name = properties["name"]
+    return {
+        "gpu": name.decode() if isinstance(name, bytes) else str(name),
+        "cupy": cupy.__version__,
+        "cuda_runtime": cupy.cuda.runtime.runtimeGetVersion(),
+        "cuda_driver": cupy.cuda.runtime.driverGetVersion(),
+    }
+
+
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--baseline-file", type=Path)
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--working-memory-mb", type=float, default=64.0)
+    parser.add_argument("--cpu-only", action="store_true")
+    parser.add_argument("--quick", action="store_true")
     args = parser.parse_args()
-    baseline = None
-    if args.baseline_file:
-        name = "calculations.blood_flow_velocity.cross_section._benchmark_baseline"
-        spec = importlib.util.spec_from_file_location(name, args.baseline_file)
-        baseline = importlib.util.module_from_spec(spec)
-        sys.modules[name] = baseline
-        spec.loader.exec_module(baseline)
-    props = cp.cuda.runtime.getDeviceProperties(0)
+    cuda = None if args.cpu_only else _cuda_metadata()
     report = {
-        "gpu": props["name"].decode(),
         "python": sys.version.split()[0],
         "numpy": np.__version__,
         "scipy": scipy.__version__,
-        "cupy": cp.__version__,
-        "cuda_runtime": cp.cuda.runtime.runtimeGetVersion(),
-        "cuda_driver": cp.cuda.runtime.driverGetVersion(),
+        "working_memory_mb": args.working_memory_mb,
+        "cuda": cuda,
         "cases": [],
-        "scope": "One segment: resize, rotate, fit limits, profiles and host outputs. "
-        "Synchronized wall time; compilation excluded. Synthetic data; "
-        "excludes branch labeling, profile postprocessing, and export.",
+        "scope": (
+            "One segment through bounded fused or staged transform, profile "
+            "reduction, and host summaries. Staged mode uses the production "
+            "two-moving-average spatial-gradient chain with a six-frame halo."
+        ),
     }
-    for frames, side, varying in ((64, 33, False), (256, 65, False), (256, 65, True)):
+    cases = (
+        ((12, 17, True),)
+        if args.quick
+        else ((64, 33, False), (128, 65, False), (128, 65, True))
+    )
+    for frames, side, varying in cases:
         values, mask = movie(frames, side, varying)
-        row = {"frames": frames, "native_side": side, "varying_validity": varying}
-        row["parity_max_abs_error"] = parity(values, mask)
-        if baseline:
-            row["main_cpu"] = measure(baseline, "cpu", values, mask, args.repeats)
-        row["new_cpu"] = measure(cs, "cpu", values, mask, args.repeats)
-        row["new_gpu"] = measure(cs, "cupy", values, mask, args.repeats)
-        row["windowed_cpu"] = measure(cs, "cpu", values, mask, args.repeats, windowed=True)
-        row["windowed_gpu"] = measure(cs, "cupy", values, mask, args.repeats, windowed=True)
-        row["windowed_gpu_speedup"] = (
-            row["windowed_cpu"]["median_seconds"] / row["windowed_gpu"]["median_seconds"]
-        )
-        row["gpu_speedup_vs_new_cpu"] = (
-            row["new_cpu"]["median_seconds"] / row["new_gpu"]["median_seconds"]
-        )
+        row: dict[str, object] = {
+            "frames": frames,
+            "native_side": side,
+            "varying_validity": varying,
+            "paths": {},
+        }
+        for transform_mode in ("fused", "staged"):
+            measurements = {
+                "cpu": measure(
+                    "cpu",
+                    values,
+                    mask,
+                    args.repeats,
+                    transform_mode=transform_mode,
+                    working_memory_mb=args.working_memory_mb,
+                )
+            }
+            if cuda is not None:
+                measurements["gpu"] = measure(
+                    "cupy",
+                    values,
+                    mask,
+                    args.repeats,
+                    transform_mode=transform_mode,
+                    working_memory_mb=args.working_memory_mb,
+                )
+                measurements["parity_max_abs_error"] = parity(
+                    values,
+                    mask,
+                    transform_mode=transform_mode,
+                    working_memory_mb=args.working_memory_mb,
+                )
+            row["paths"][transform_mode] = measurements
         report["cases"].append(row)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(json.dumps(row), flush=True)
 

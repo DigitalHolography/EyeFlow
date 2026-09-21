@@ -12,11 +12,9 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.blood_flow_velocity.cross_section.branch_identity import (
+from calculations.topology import (
+    build_segment_topology,
     label_vessel_branches,
-)
-from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (
-    _prepare_cross_section_geometry,
 )
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity_core import runner
@@ -63,21 +61,30 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         vessel, disc, source, settings = self._inputs()
         # A nonelliptical extension reaches beyond the nominal disc dimensions.
         disc[40:49, 90:97] = True
-        geometry = _prepare_cross_section_geometry(
-            vessel, source.optic_disc_center, settings, optic_disc_mask=disc
+        topology = build_segment_topology(
+            vessel,
+            disc,
+            settings,
+            optic_disc_center=source.optic_disc_center,
         )
 
-        self.assertFalse(np.any(geometry.vessel[disc]))
-        self.assertFalse(np.any(geometry.branches.labels[disc]))
-        self.assertFalse(np.any(geometry.masks[:, disc]))
-        self.assertGreater(geometry.branches.labels[43, 73], 0)
-        self.assertTrue(np.any(geometry.masks[:, 43, 105]))
+        self.assertFalse(np.any(topology.branch_identity.stages.vessel[disc]))
+        self.assertFalse(np.any(topology.labels[disc]))
+        self.assertFalse(np.any(topology.annulus_masks[:, disc]))
+        self.assertGreater(topology.labels[43, 73], 0)
+        self.assertTrue(np.any(topology.annulus_masks[:, 43, 105]))
 
     def test_pipeline_uses_the_published_disc_mask_with_geometry_fallback(self):
         vessel, disc, source, settings = self._inputs()
         ctx = SimpleNamespace(
             output=SimpleNamespace(available=False),
             pipeline_scheduled=lambda name: False,
+            option_enabled=lambda *args, **kwargs: False,
+            inputs=SimpleNamespace(
+                hd=SimpleNamespace(filename="hd.h5"),
+                dv=SimpleNamespace(filename="dv.h5"),
+            ),
+            state=SimpleNamespace(raw={}),
         )
         schema = EyeFlowOutputPaths.active()
         for source_mask in (disc, None):
@@ -88,11 +95,20 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
                 ]
                 expected_disc = np.flip(published.T, axis=0)
                 with patch.object(
-                    runner, "segment_velocity_results", return_value=("artery", "vein")
-                ) as extract:
+                    runner,
+                    "analyze_velocity_segments",
+                    return_value={"artery": "artery", "vein": "vein"},
+                ) as extract, patch.object(
+                    runner, "_loaded_displacement_maps"
+                ) as loaded:
+                    loaded.return_value.__enter__.return_value = {}
+                    loaded.return_value.__exit__.return_value = None
                     result = runner._segment_velocity_inputs(
                         np.zeros((1, *vessel.shape), dtype=np.float32),
-                        {}, source, settings, ctx,
+                        source,
+                        settings,
+                        ctx,
+                        cycle_boundary_indexes=np.asarray([0, 0]),
                     )
                 self.assertEqual(("artery", "vein"), result)
                 np.testing.assert_array_equal(
@@ -128,6 +144,7 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
             optic_disc_width=20.0,
             optic_disc_height=50.0,
             cross_section_settings="settings",
+            provenance={"beat_index_base": 0},
         )
         settings = runner._segment_ring_settings(20.0, 50.0, image_shape=shape)
         return vessel, disc, source, settings

@@ -6,7 +6,7 @@ from collections.abc import Iterator
 
 import numpy as np
 
-from .segment_geometry import (
+from .geometry import (
     SegmentRingSettings,
     image_half_diagonal,
     optic_disc_center_yx,

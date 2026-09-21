@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.blood_flow_velocity.cross_section.segment_geometry import (
+from calculations.topology import (
     optic_disc_center_yx,
 )
 from input_output.schema import EyeFlowOutputPaths
 
-from .dopplerview.outputs import metric_data
+from .retinal_velocity.outputs import metric_data
 
 OPTIC_DISC_LABEL = -1
 REGION_AXIS_LABEL = -2

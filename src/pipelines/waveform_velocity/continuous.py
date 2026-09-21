@@ -6,8 +6,8 @@ import numpy as np
 
 from calculations.math import butter_lowpass_filtfilt
 from input_output.schema import EyeFlowOutputPaths
-from pipelines.waveform_velocity_core.dopplerview.outputs import metric_value
-from pipelines.waveform_velocity_core.dopplerview.constants import (
+from pipelines.waveform_velocity_core.retinal_velocity.outputs import metric_value
+from pipelines.waveform_velocity_core.retinal_velocity.constants import (
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
 

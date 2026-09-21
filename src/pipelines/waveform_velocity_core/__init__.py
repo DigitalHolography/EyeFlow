@@ -8,9 +8,10 @@ from .runner import run_waveform_velocity_core
 @pipeline(
     name="waveform_velocity_core",
     description=(
-        "Load waveform sources and run shared DopplerView with optional segment extraction."
+        "Compute shared retinal velocity with optional segment extraction."
     ),
     requires=["numpy", "h5py", "scipy", "skimage"],
+    dag_requires=["heartbeat"],
     dag_produces=["velocity_analysis", "waveform_velocity_core"],
     input_slot="both",
     visibility="hidden",

@@ -2,21 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 import numpy as np
 
-from calculations.blood_flow_velocity import segment_velocity_results
 from calculations.math import nanmedian
 from calculations.math.spatial_gradient import (
     GAUSSIAN_BLUR_RADIUS,
     TEMPORAL_MOVING_AVERAGE_WINDOW,
     UNSHARP_MASK_RADIUS,
     UNSHARP_MASK_WEIGHT,
+    gaussian2d_blur,
+    moving_avg_window,
+    sobel_spatial_gradient,
+    unsharpen,
 )
 from pipeline_engine.base import DatasetValue
 from pipelines.waveform_velocity_core.runner import _segment_ring_settings
 from pipelines.waveform_velocity_core.segmentation import _optic_disc_mask
+from pipelines.waveform_velocity_core.segments import analyze_velocity_segments
 
 from .profiles import (
     _profile_dataset,
@@ -45,18 +47,39 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
         number_of_radii_in_FOV=int(waveform_context.attrs["number_of_radii_in_FOV"]),
     )
     optic_disc_mask, _ = _optic_disc_mask(source, source.retinal_artery_mask.shape)
-    return segment_velocity_results(
+    prepared_topologies = {
+        "artery": waveform_context.artery_segment_result.topology.prepared_topology,
+        "vein": waveform_context.vein_segment_result.topology.prepared_topology,
+    }
+    results = analyze_velocity_segments(
         moment0ff,
-        source.retinal_artery_mask,
-        source.retinal_vein_mask,
+        {
+            "artery": source.retinal_artery_mask,
+            "vein": source.retinal_vein_mask,
+        },
         source.optic_disc_center,
         ring_settings,
-        replace(source.cross_section_settings, spatial_gradient=True),
+        source.cross_section_settings,
         optic_disc_mask=optic_disc_mask if np.any(optic_disc_mask) else None,
-        artery_transverse_mask_dilation_pixels=_SPATIAL_GRADIENT_MASK_DILATION_PIXELS,
-        vein_transverse_mask_dilation_pixels=_SPATIAL_GRADIENT_MASK_DILATION_PIXELS,
+        prepared_topologies=prepared_topologies,
+        transform_mode="staged",
+        post_interpolation=_spatial_gradient_chain,
+        temporal_halo=TEMPORAL_MOVING_AVERAGE_WINDOW - 1,
+        scratch_array_count=7,
+        transverse_mask_dilation_pixels=_SPATIAL_GRADIENT_MASK_DILATION_PIXELS,
         retain_displacement_maps=False,
     )
+    return results["artery"], results["vein"]
+
+
+def _spatial_gradient_chain(interpolated: np.ndarray) -> np.ndarray:
+    """Apply the scientifically ordered filter chain before rotation."""
+
+    filtered = moving_avg_window(interpolated)
+    filtered = sobel_spatial_gradient(filtered)
+    filtered = gaussian2d_blur(filtered)
+    filtered = unsharpen(filtered)
+    return moving_avg_window(filtered)
 
 
 def pack_spatial_gradient_profile_outputs(

@@ -1,0 +1,164 @@
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+import numpy as np
+
+SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from calculations.topology import (  # noqa: E402
+    SegmentRingSettings,
+    SegmentTopology,
+    build_segment_topology,
+    competing_segment_masks,
+    extract_segment,
+    extract_segments,
+)
+
+
+class SegmentTopologyTests(unittest.TestCase):
+    def test_competing_masks_include_other_branches_and_vessel_classes(self) -> None:
+        labels = np.zeros((7, 7), dtype=np.int32)
+        labels[2:5, 3] = 1
+        labels[2:5, 5] = 2
+        own_vessels = labels > 0
+        other_vessels = np.zeros_like(own_vessels)
+        other_vessels[3, 1] = True
+        other_vessels[3, 3] = True  # Overlap must not erase the selected branch.
+        topology = SegmentTopology(
+            spatial_shape=(7, 7),
+            optic_disc_center_xy=(3.0, 3.0),
+            labels=labels,
+            centerline=labels > 0,
+            branch_ids=np.asarray([1], dtype=np.int32),
+            annulus_masks=np.ones((1, 7, 7), dtype=bool),
+            segment_masks=(labels == 1)[None, None],
+            segment_centers_xy=np.asarray([[[3.0, 3.0]]], dtype=np.float32),
+            window_bounds_xyxy=np.asarray([[[0, 7, 0, 7]]], dtype=np.int32),
+            window_side_pixels=7,
+        )
+
+        competing = competing_segment_masks(
+            topology,
+            own_vessels,
+            other_vessels,
+        )[0, 0]
+
+        self.assertFalse(competing[2, 3])
+        self.assertFalse(competing[3, 3])
+        self.assertTrue(np.all(competing[2:5, 5]))
+        self.assertTrue(competing[3, 1])
+
+    def test_builds_map_independent_segment_windows(self) -> None:
+        vessel = np.zeros((41, 41), dtype=bool)
+        vessel[18:23, 5:36] = True
+        optic_disc = np.zeros_like(vessel)
+        optic_disc[18:23, 18:23] = True
+
+        topology = build_segment_topology(
+            vessel,
+            optic_disc,
+            SegmentRingSettings(0.1, 0.6, 0.25, 2),
+            window_size_percentile_kept=1.0,
+        )
+
+        self.assertEqual((20.0, 20.0), topology.optic_disc_center_xy)
+        self.assertEqual((2, 2, 2), topology.segment_centers_xy.shape)
+        self.assertEqual((2, 2, 7, 7), topology.segment_masks.shape)
+        self.assertEqual((41, 41), topology.centerline.shape)
+        self.assertEqual(np.bool_, topology.centerline.dtype)
+        self.assertEqual(7, topology.window_side_pixels)
+        self.assertTrue(np.all(topology.valid_segments))
+
+    def test_explicit_center_has_priority_and_disc_is_excluded_everywhere(self) -> None:
+        vessel = np.ones((31, 35), dtype=bool)
+        disc = np.zeros_like(vessel)
+        disc[4:9, 5:12] = True
+        settings = SegmentRingSettings(0.0, 0.8, 0.4, 2)
+        topology = build_segment_topology(
+            vessel,
+            disc,
+            settings,
+            optic_disc_center=(24.0, 20.0),
+        )
+        self.assertEqual((24.0, 20.0), topology.optic_disc_center_xy)
+        self.assertIs(topology.ring_settings, settings)
+        self.assertFalse(np.any(topology.labels[disc]))
+        self.assertFalse(np.any(topology.centerline[disc]))
+        self.assertFalse(np.any(topology.annulus_masks[:, disc]))
+        self.assertFalse(np.any(topology.branch_identity.stages.vessel[disc]))
+
+    def test_center_falls_back_from_mask_centroid_to_image_center(self) -> None:
+        vessel = np.zeros((21, 31), dtype=bool)
+        disc = np.zeros_like(vessel)
+        disc[4:7, 8:11] = True
+        settings = SegmentRingSettings(0.0, 0.8, 0.4, 1)
+        from_mask = build_segment_topology(vessel, disc, settings)
+        from_image = build_segment_topology(vessel, np.zeros_like(disc), settings)
+        self.assertEqual((9.0, 5.0), from_mask.optic_disc_center_xy)
+        self.assertEqual((15.5, 10.5), from_image.optic_disc_center_xy)
+
+    def test_extracts_vector_maps_with_explicit_spatial_axes(self) -> None:
+        topology = _edge_topology()
+        vector_map = np.arange(2 * 4 * 5 * 2, dtype=np.float32).reshape(2, 4, 5, 2)
+
+        segments = extract_segments(vector_map, topology, spatial_axes=(1, 2))
+
+        self.assertEqual((1, 1, 2, 2, 3, 3), segments.shape)
+        self.assertTrue(np.all(np.isnan(segments[0, 0, :, :, 0, :])))
+        self.assertTrue(np.all(np.isnan(segments[0, 0, :, :, :, 0])))
+        np.testing.assert_array_equal(
+            segments[0, 0, :, :, 1:, 1:],
+            np.moveaxis(vector_map[:, :2, :2, :], (1, 2), (-2, -1)),
+        )
+
+    def test_single_segment_extraction_matches_dense_extraction(self) -> None:
+        topology = _edge_topology()
+        vector_map = np.arange(2 * 4 * 5 * 2, dtype=np.float32).reshape(2, 4, 5, 2)
+
+        dense = extract_segments(vector_map, topology, spatial_axes=(1, 2))
+        streamed = extract_segment(
+            vector_map,
+            topology,
+            0,
+            0,
+            spatial_axes=(1, 2),
+        )
+
+        np.testing.assert_array_equal(streamed, dense[0, 0])
+
+    def test_extracts_scalar_stacks_without_topology_recalculation(self) -> None:
+        topology = _edge_topology()
+        scalar_stack = np.arange(2 * 4 * 5, dtype=np.float32).reshape(2, 4, 5)
+
+        first = extract_segments(scalar_stack, topology)
+        second = extract_segments(scalar_stack + 100.0, topology)
+
+        self.assertEqual((1, 1, 2, 3, 3), first.shape)
+        np.testing.assert_array_equal(
+            second[..., 1:, 1:],
+            first[..., 1:, 1:] + 100.0,
+        )
+
+
+def _edge_topology() -> SegmentTopology:
+    return SegmentTopology(
+        spatial_shape=(4, 5),
+        optic_disc_center_xy=(2.0, 2.0),
+        labels=np.ones((4, 5), dtype=np.int32),
+        centerline=np.ones((4, 5), dtype=bool),
+        branch_ids=np.asarray([1], dtype=np.int32),
+        annulus_masks=np.ones((1, 4, 5), dtype=bool),
+        segment_masks=np.ones((1, 1, 3, 3), dtype=bool),
+        segment_centers_xy=np.asarray([[[0.0, 0.0]]], dtype=np.float32),
+        window_bounds_xyxy=np.asarray([[[0, 2, 0, 2]]], dtype=np.int32),
+        window_side_pixels=3,
+    )
+
+
+if __name__ == "__main__":
+    unittest.main()

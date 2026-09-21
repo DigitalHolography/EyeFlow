@@ -15,9 +15,9 @@ if str(SRC_DIR) not in sys.path:
 from calculations.blood_flow_velocity.cross_section import (  # noqa: E402
     CrossSectionSignalSettings,
     CrossSectionTopology,
-    SegmentRingSettings,
     generate_cross_section_signals,
 )
+from calculations.topology import SegmentRingSettings  # noqa: E402
 from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
     _correct_displacement_basis,
     _cross_sectional_radial_metrics,
@@ -61,12 +61,8 @@ class CrossSectionDisplacementTests(unittest.TestCase):
 
         with patch(
             'calculations.blood_flow_velocity.cross_section.'
-            'generate_cross_section_signals._resize_subimage_stack',
-            side_effect=_constant_resize,
-        ), patch(
-            'calculations.blood_flow_velocity.cross_section.'
-            'generate_cross_section_signals._rotate_stack_with_nan',
-            side_effect=lambda values, _angle: values,
+            'generate_cross_section_signals.resample_rotate_segment',
+            side_effect=_constant_transform,
         ):
             result = _project_displacement_map(displacement, topology)
 
@@ -116,19 +112,19 @@ class CrossSectionDisplacementTests(unittest.TestCase):
         )
         np.testing.assert_array_equal(
             np.flatnonzero(np.isfinite(transverse_masked[0])),
-            np.arange(40, 140),
+            np.arange(50, 130),
         )
         np.testing.assert_array_equal(
             np.flatnonzero(np.isfinite(longitudinal_masked[0])),
-            np.arange(30, 150),
+            np.arange(40, 140),
         )
         np.testing.assert_allclose(
-            transverse_masked[:, 40:140],
+            transverse_masked[:, 50:130],
             expected_magnitude,
             atol=1e-6,
         )
         np.testing.assert_allclose(
-            longitudinal_masked[:, 30:150],
+            longitudinal_masked[:, 40:140],
             expected_magnitude,
             atol=1e-6,
         )
@@ -167,12 +163,8 @@ class CrossSectionDisplacementTests(unittest.TestCase):
 
         with patch(
             'calculations.blood_flow_velocity.cross_section.'
-            'generate_cross_section_signals._resize_subimage_stack',
-            side_effect=_constant_resize,
-        ), patch(
-            'calculations.blood_flow_velocity.cross_section.'
-            'generate_cross_section_signals._rotate_stack_with_nan',
-            side_effect=lambda values, _angle: values,
+            'generate_cross_section_signals.resample_rotate_segment',
+            side_effect=_constant_transform,
         ):
             result = _project_displacement_map(displacement, topology)
 
@@ -195,12 +187,8 @@ class CrossSectionDisplacementTests(unittest.TestCase):
 
         with patch(
             'calculations.blood_flow_velocity.cross_section.'
-            'generate_cross_section_signals._resize_subimage_stack',
-            side_effect=_constant_resize,
-        ), patch(
-            'calculations.blood_flow_velocity.cross_section.'
-            'generate_cross_section_signals._rotate_stack_with_nan',
-            side_effect=lambda values, _angle: values,
+            'generate_cross_section_signals.resample_rotate_segment',
+            side_effect=_constant_transform,
         ):
             result = _project_displacement_map(lazy_displacement, topology)
 
@@ -227,7 +215,7 @@ class CrossSectionDisplacementTests(unittest.TestCase):
             vessel_mask,
             (4, 4),
             SegmentRingSettings(0.0, 0.5, 0.5, 1),
-            CrossSectionSignalSettings(False, 0.5, False, 0.01),
+            CrossSectionSignalSettings(0.01),
             displacement_maps={'method_a': displacement, 'method_b': displacement},
         )
 
@@ -274,73 +262,35 @@ class CrossSectionDisplacementTests(unittest.TestCase):
             )
 
     def test_multiple_methods_reuse_one_velocity_fitted_topology(self) -> None:
-        vessel_mask = np.zeros((9, 9), dtype=bool)
-        vessel_mask[2:7, 3:6] = True
-        branches = SimpleNamespace(
-            labels=vessel_mask.astype(np.int32),
-            branch_ids=np.asarray([1], dtype=np.int32),
-            stages=SimpleNamespace(),
+        import importlib
+        module = importlib.import_module(
+            "calculations.blood_flow_velocity.cross_section.generate_cross_section_signals"
         )
-        velocity_map = np.ones((2, 9, 9), dtype=np.float32)
-        first = np.empty((2, 9, 9, 2), dtype=np.float32)
-        first[..., 0] = 1.0
-        first[..., 1] = 2.0
-        second = np.empty_like(first)
-        second[..., 0] = 3.0
-        second[..., 1] = 4.0
-
-        with patch(
-            'calculations.blood_flow_velocity.cross_section.'
-            'generate_cross_section_signals.label_vessel_branches',
-            return_value=branches,
-        ), patch(
-            'calculations.blood_flow_velocity.cross_section.'
-            'generate_cross_section_signals.section_masks',
-            return_value=vessel_mask[None, ...],
-        ), patch(
-            'calculations.blood_flow_velocity.cross_section.'
-            'generate_cross_section_signals._estimate_orientation',
-            return_value=90.0,
-        ) as estimate_orientation, patch(
-            'calculations.blood_flow_velocity.cross_section.'
-            'generate_cross_section_signals._cross_section_limits',
-            return_value=(0, 180),
-        ) as cross_section_limits:
+        vessel = np.zeros((61, 61), bool)
+        vessel[27:34, 5:56] = True
+        cube = np.ones((2, 61, 61), np.float32)
+        first = np.empty((*cube.shape, 2), np.float32)
+        first[..., 0], first[..., 1] = 1., 2.
+        with patch.object(module, "prepare_topologies", wraps=module.prepare_topologies) as prepare:
             result = generate_cross_section_signals(
-                velocity_map,
-                vessel_mask,
-                (4, 4),
-                SegmentRingSettings(0.0, 0.5, 0.5, 1),
-                CrossSectionSignalSettings(False, 0.5, False, 0.01),
-                displacement_maps={'first': first, 'second': second},
+                cube, vessel, (30, 30), SegmentRingSettings(.1, .7, .25, 2),
+                CrossSectionSignalSettings(.01),
+                displacement_maps={"first": first, "second": first * 3},
             )
-
-        self.assertEqual(1, estimate_orientation.call_count)
-        self.assertEqual(1, cross_section_limits.call_count)
-        self.assertEqual({'first', 'second'}, set(result.displacements))
-        np.testing.assert_array_equal(result.topology.profile_rotation_degrees, [[90.0]])
-        np.testing.assert_allclose(result.displacements['first'].displacement, -1.0)
-        np.testing.assert_allclose(result.displacements['second'].displacement, -3.0)
-        rotated_mask = result.segment_masks[0, 0]
-        for displacement_result in result.displacements.values():
-            self.assertTrue(
-                np.any(
-                    np.isfinite(
-                        displacement_result.displacement_maps_per_segment[
-                            0, 0, :, ~rotated_mask, :
-                        ]
-                    )
-                )
-            )
+        prepare.assert_called_once()
+        self.assertTrue(np.any(result.topology.valid_segments))
+        self.assertIsNotNone(result.topology.prepared_topology)
+        np.testing.assert_allclose(
+            result.displacements["second"].displacement,
+            result.displacements["first"].displacement * 3,
+            atol=1e-5, equal_nan=True,
+        )
 
     def test_velocity_only_and_displacement_shape_validation(self) -> None:
         velocity_map = np.zeros((2, 9, 9), dtype=np.float32)
         vessel_mask = np.zeros((9, 9), dtype=bool)
         settings = SegmentRingSettings(0.0, 0.5, 0.5, 1)
         cross_section_settings = CrossSectionSignalSettings(
-            False,
-            0.5,
-            False,
             0.01,
         )
 
@@ -389,7 +339,20 @@ def _single_segment_topology(
         valid_segments=np.asarray([[True]], dtype=bool),
         ring_settings=SegmentRingSettings(0.0, 1.0, 1.0, 1),
         branch_identity=SimpleNamespace(),
+        prepared_topology=SimpleNamespace(topology=SimpleNamespace(
+            spatial_shape=(5, 5), window_side_pixels=3,
+            valid_segments=np.array([[True]]),
+            window_bounds_xyxy=np.array([[[1, 4, 1, 4]]]),
+            segment_centers_xy=np.array([[[2., 2.]]]),
+        )),
     )
+
+
+def _constant_transform(values, _angle, _side):
+    resized = _constant_resize(values)
+    result = np.full((values.shape[0], 181, 181), np.nan, dtype=np.float32)
+    result[:, 26:154, 26:154] = resized
+    return result
 
 
 def _constant_resize(values: np.ndarray) -> np.ndarray:
