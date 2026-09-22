@@ -19,7 +19,7 @@ class ArterialWaveformAnalysis:
     padded_signal: np.ndarray
     padded_gradient: np.ndarray
     peak_indexes: np.ndarray
-    end_min_index: int
+    end_min_index: int | None
     notch_index: int | None
 
 
@@ -29,8 +29,8 @@ class VenousWaveformAnalysis:
     period_seconds: float
     padded_time: np.ndarray
     padded_signal: np.ndarray
-    peak_index: int
-    trough_index: int
+    peak_index: int | None
+    trough_index: int | None
 
 
 def arterial_waveform_analysis(
@@ -40,6 +40,20 @@ def arterial_waveform_analysis(
     period = float(period_seconds)
     pulse_time = cycle_time(cycle, period)
     gradient = np.gradient(cycle)
+    if not np.any(np.isfinite(cycle)):
+        padded_time, padded_signal = padded_cycle(pulse_time, cycle, period)
+        _, padded_gradient = padded_cycle(pulse_time, gradient, period)
+        return ArterialWaveformAnalysis(
+            pulse_time=pulse_time,
+            period_seconds=period,
+            gradient=gradient,
+            padded_time=padded_time,
+            padded_signal=padded_signal,
+            padded_gradient=padded_gradient,
+            peak_indexes=np.asarray([], dtype=np.int32),
+            end_min_index=None,
+            notch_index=None,
+        )
     peak_indexes, properties = signal.find_peaks(
         cycle,
         height=float(np.nanmax(cycle)) * 0.3,
@@ -73,6 +87,15 @@ def venous_waveform_analysis(
     period = float(period_seconds)
     pulse_time = cycle_time(cycle, period)
     padded_time, padded_signal = padded_cycle(pulse_time, cycle, period)
+    if not np.any(np.isfinite(cycle)):
+        return VenousWaveformAnalysis(
+            pulse_time=pulse_time,
+            period_seconds=period,
+            padded_time=padded_time,
+            padded_signal=padded_signal,
+            peak_index=None,
+            trough_index=None,
+        )
     return VenousWaveformAnalysis(
         pulse_time=pulse_time,
         period_seconds=period,

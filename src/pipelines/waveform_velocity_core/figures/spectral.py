@@ -40,7 +40,15 @@ def _export_spectral_plots(writer: FigureWriter, ctx: PulseFigureContext) -> lis
     )
     beat_indexes = ctx.cycle_boundary_indexes
     systole_count = int(beat_indexes.size)
-    artery_spectrum = ctx.heartbeat
+    artery_spectrum = (
+        ctx.heartbeat
+        if np.any(np.isfinite(artery))
+        else spectrum_signal_analysis(
+            artery,
+            ctx.dt_seconds,
+            systole_count,
+        )
+    )
     vein_spectrum = spectrum_signal_analysis(
         vein,
         ctx.dt_seconds,

@@ -17,9 +17,60 @@ from calculations.blood_flow_velocity.signal_analysis.heartbeat import (  # noqa
     run_heartbeat_analysis,
     spectral_heartbeat_analysis,
 )
+from calculations.dopplerview_analysis.arterial_waveform_analysis import (  # noqa: E402
+    ArterialWaveformAnalysisStep,
+    _heartbeat_from_available_vessel,
+)
+from pipelines.waveform_velocity_core.dopplerview.models import (  # noqa: E402
+    DopplerViewStepContext,
+)
 
 
 class SpectralHeartbeatTests(unittest.TestCase):
+    def test_missing_artery_uses_vein_for_timing_and_keeps_artery_nan(self) -> None:
+        dt_seconds = 0.01
+        time = np.arange(1000, dtype=np.float32) * dt_seconds
+        vein = (10.0 + 2.0 * np.sin(2.0 * np.pi * 1.2 * time)).astype(
+            np.float32
+        )
+        artery = np.full_like(vein, np.nan)
+        ctx = DopplerViewStepContext(
+            cache={
+                "retinal_artery_velocity_signal": artery,
+                "retinal_vein_velocity_signal": vein,
+            },
+            holodoppler_config={"sampling_freq": 100.0, "batch_stride": 1.0},
+            dopplerview_config={"PulseAnalysis": {"LowpassFreqHz": 15.0}},
+        )
+
+        ArterialWaveformAnalysisStep().run(ctx)
+
+        self.assertEqual("vein", ctx.cache["beat_detection_source"])
+        self.assertGreater(ctx.cache["beat_indices"].size, 2)
+        self.assertTrue(
+            np.all(np.isnan(ctx.cache["retinal_artery_velocity_signal_filtered"]))
+        )
+        self.assertTrue(
+            np.all(np.isfinite(ctx.cache["retinal_vein_velocity_signal_filtered"]))
+        )
+
+    def test_missing_both_vessels_produces_full_record_nan_cycle(self) -> None:
+        missing = np.full(32, np.nan, dtype=np.float32)
+
+        heartbeat, source = _heartbeat_from_available_vessel(
+            missing,
+            missing,
+            dt_seconds=0.1,
+            lowpass_freq_hz=4.0,
+        )
+
+        self.assertEqual("none", source)
+        np.testing.assert_array_equal(
+            heartbeat.systole.systole_indexes,
+            [0, 31],
+        )
+        self.assertTrue(np.isnan(heartbeat.spectral.heart_rate_hz))
+
     def test_systole_derivative_is_velocity_per_second(self) -> None:
         dt_seconds = 0.01
         time = np.arange(1000, dtype=np.float32) * dt_seconds

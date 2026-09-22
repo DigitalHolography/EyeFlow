@@ -57,7 +57,7 @@ def synthetic_spectrum_from_signals(
     samples: int = 128,
 ) -> SyntheticSpectrumData | None:
     cycle = average_cycle(first_values, beat_indexes, samples)
-    if cycle is None:
+    if cycle is None or not np.any(np.isfinite(cycle)):
         cycle = average_cycle(fallback_values, beat_indexes, samples)
     if cycle is None:
         return None

@@ -315,6 +315,63 @@ class PulsePngExporterTests(unittest.TestCase):
                 self.assertTrue(path.is_file(), required)
                 self.assertGreater(path.stat().st_size, 0, required)
 
+    @unittest.skipUnless(_has_matplotlib(), "matplotlib is not installed")
+    def test_export_pulse_pngs_keeps_waveform_files_for_missing_vessels(self) -> None:
+        expected_waveform = {
+            "artery": "ArterialWaveformAnalysis_v_artery.png",
+            "vein": "VenousWaveformAnalysis_v_vein.png",
+        }
+        for missing_vessel in ("artery", "vein"):
+            with self.subTest(missing_vessel=missing_vessel):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    context = _synthetic_context()
+                    signal_key = f"retinal_{missing_vessel}_velocity_signal"
+                    missing = np.full_like(
+                        context.velocity_analysis[signal_key],
+                        np.nan,
+                    )
+                    context.velocity_analysis[signal_key] = missing
+                    context.velocity_analysis[f"{signal_key}_filtered"] = missing
+                    context.velocity_analysis[f"{signal_key}_derivative"] = missing
+                    setattr(
+                        context.source_data,
+                        f"retinal_{missing_vessel}_mask",
+                        np.zeros_like(
+                            getattr(
+                                context.source_data,
+                                f"retinal_{missing_vessel}_mask",
+                            )
+                        ),
+                    )
+                    available_vessel = (
+                        "vein" if missing_vessel == "artery" else "artery"
+                    )
+                    heartbeat = spectrum_signal_analysis(
+                        context.velocity_analysis[
+                            f"retinal_{available_vessel}_velocity_signal"
+                        ],
+                        0.1,
+                        systole_count=4,
+                    )
+                    per_beat_result = SimpleNamespace(
+                        heartbeat=heartbeat,
+                        cycle_boundary_indexes=context.velocity_analysis["beat_indices"],
+                    )
+
+                    export_pulse_pngs(
+                        FakeOutput(Path(temp_dir)),
+                        context,
+                        per_beat_result,
+                    )
+
+                    path = (
+                        Path(temp_dir)
+                        / "png"
+                        / f"sample_{expected_waveform[missing_vessel]}"
+                    )
+                    self.assertTrue(path.is_file(), path.name)
+                    self.assertGreater(path.stat().st_size, 0, path.name)
+
 
 def _synthetic_context():
     frames = 32

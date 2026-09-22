@@ -53,6 +53,53 @@ class PerBeatRunnerTests(unittest.TestCase):
 
         self.assertIs(actual, safe_velocity)
 
+    def test_empty_segment_axes_are_packed_instead_of_omitted(self) -> None:
+        frame_count = 32
+        radius_count = 2
+        empty_segments = np.full(
+            (radius_count, 0, frame_count),
+            np.nan,
+            dtype=np.float32,
+        )
+        signal = np.linspace(1.0, 2.0, frame_count, dtype=np.float32)
+        heartbeat = spectral_heartbeat_analysis(signal, 0.01, systole_count=2)
+        inputs = PerBeatAnalysisInput(
+            arterial_velocity_signal=signal,
+            venous_velocity_signal=np.full_like(signal, np.nan),
+            cycle_boundary_indexes=np.asarray([0, 16, 31], dtype=np.int32),
+            band_limited_signal_harmonic_count=4,
+            heartbeat=heartbeat,
+            dt_seconds=0.01,
+            arterial_velocity_segments=empty_segments,
+            venous_velocity_segments=empty_segments,
+            arterial_safe_velocity_segments=empty_segments,
+            venous_safe_velocity_segments=empty_segments,
+            index_base=0,
+        )
+
+        result = run_per_beat_analysis(inputs)
+        outputs = pack_velocity_per_beat_outputs(result)
+        schema = EyeFlowOutputPaths.active()
+
+        self.assertEqual(
+            (16, 2, 0, radius_count),
+            result.vein.safe_segments.velocity_signal_per_beat_per_segment.shape,
+        )
+        self.assertTrue(
+            np.all(np.isnan(result.vein.signal.velocity_signal_per_beat))
+        )
+        self.assertTrue(
+            np.all(
+                np.isnan(
+                    result.vein.signal.velocity_signal_per_beat_band_limited
+                )
+            )
+        )
+        self.assertIn(schema.artery_per_beat_safe.velocity_signal, outputs)
+        self.assertIn(schema.vein_per_beat_safe.velocity_signal, outputs)
+        self.assertIn(schema.artery_per_beat.segment_velocity_signal, outputs)
+        self.assertIn(schema.vein_per_beat.segment_velocity_signal, outputs)
+
     def test_segment_aggregation_preserves_the_beat_axis(self) -> None:
         raw = np.arange(128 * 7 * 15 * 23, dtype=np.float32).reshape(
             128,

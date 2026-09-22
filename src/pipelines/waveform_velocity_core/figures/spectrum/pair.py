@@ -68,7 +68,15 @@ def paired_spectrum_analysis(
         systole_count = int(peaks.size)
         first_cycle = average_cycle(first, peaks, 128)
         second_cycle = average_cycle(second, peaks, 128)
-        if first_cycle is not None and second_cycle is not None and heartbeat is not None:
+        if (
+            first_cycle is not None
+            and second_cycle is not None
+            and np.any(np.isfinite(first_cycle))
+            and np.any(np.isfinite(second_cycle))
+            and heartbeat is not None
+            and np.isfinite(heartbeat.period_seconds)
+            and heartbeat.period_seconds > 0
+        ):
             delay = delay_fit_analysis(
                 first_cycle,
                 second_cycle,
@@ -104,15 +112,20 @@ def correlation_data(
     max_idx = int(np.nanargmax(cross))
     fs = 1.0 / dt_seconds
     nperseg = min(64, a.size)
-    freqs, coherence = signal.coherence(
-        a,
-        v,
-        fs=fs,
-        window=np.hamming(nperseg),
-        nperseg=nperseg,
-        noverlap=None,
-        nfft=max(256, nperseg),
-    )
+    nfft = max(256, nperseg)
+    if np.any(a) and np.any(v):
+        freqs, coherence = signal.coherence(
+            a,
+            v,
+            fs=fs,
+            window=np.hamming(nperseg),
+            nperseg=nperseg,
+            noverlap=None,
+            nfft=nfft,
+        )
+    else:
+        freqs = np.fft.rfftfreq(nfft, d=dt_seconds)
+        coherence = np.full(freqs.shape, np.nan, dtype=np.float32)
     if heartbeat is None:
         heartbeat = spectrum_signal_analysis(a, dt_seconds, systole_count)
     heart_rate = heartbeat.heart_rate_hz
@@ -139,7 +152,12 @@ def transfer_function(
     n = max(np.asarray(input_signal).size, 1) * 10
     input_fft = np.fft.fft(nan_to_mean(input_signal), n)
     output_fft = np.fft.fft(nan_to_mean(output_signal), n)
-    transfer = output_fft / np.where(np.abs(input_fft) == 0, np.nan + 0j, input_fft)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        transfer = output_fft / np.where(
+            np.abs(input_fft) == 0,
+            np.nan + 0j,
+            input_fft,
+        )
     freqs = np.fft.fftfreq(n, d=dt_seconds)
     order = np.argsort(freqs)
     return TransferData(freqs[order].astype(np.float32), transfer[order].astype(np.complex64))
@@ -185,6 +203,7 @@ def gamma_0(coherence: np.ndarray, frequencies: np.ndarray, heart_rate_hz: float
     if not np.isfinite(heart_rate_hz):
         return np.nan
     valid = (frequencies < heart_rate_hz + 0.3) & (frequencies > heart_rate_hz - 0.3)
-    if not np.any(valid):
+    selected = coherence[valid]
+    if not np.any(np.isfinite(selected)):
         return np.nan
-    return float(np.nanmean(coherence[valid]))
+    return float(np.nanmean(selected))

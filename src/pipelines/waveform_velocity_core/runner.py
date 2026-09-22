@@ -498,7 +498,7 @@ def _waveform_segment_input(
     *,
     include_segments: bool,
 ) -> np.ndarray | None:
-    if not include_segments or result is None or result.branch_ids.size == 0:
+    if not include_segments or result is None:
         return None
     return result.velocity
 
@@ -508,7 +508,7 @@ def _safe_waveform_segment_input(
     *,
     include_segments: bool,
 ) -> np.ndarray | None:
-    if not include_segments or result is None or result.branch_ids.size == 0:
+    if not include_segments or result is None:
         return None
     return result.safe_velocity
 

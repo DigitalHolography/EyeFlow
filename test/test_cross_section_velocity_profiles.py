@@ -140,6 +140,57 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
             artery.attrs["source_velocity"],
         )
 
+    def test_masked_edges_blood_volume_rate_keeps_empty_vessel_output(self) -> None:
+        settings = SegmentRingSettings(0.0, 0.5, 0.5, 1, 0.5)
+        sections = np.ones((1, 5, 5), dtype=bool)
+        artery = SimpleNamespace(
+            topology=SimpleNamespace(
+                labels=np.ones((5, 5), dtype=np.int32),
+                branch_ids=np.asarray([1], dtype=np.int32),
+                section_masks=sections,
+                ring_settings=settings,
+            )
+        )
+        vein = SimpleNamespace(
+            topology=SimpleNamespace(
+                labels=np.zeros((5, 5), dtype=np.int32),
+                branch_ids=np.asarray([], dtype=np.int32),
+                section_masks=sections,
+                ring_settings=settings,
+            )
+        )
+        schema = EyeFlowOutputPaths.active()
+        velocity_outputs = {
+            schema.artery_per_beat_safe.velocity_signal: np.ones(
+                (4, 2, 1, 1),
+                dtype=np.float32,
+            ),
+            schema.vein_per_beat_safe.velocity_signal: np.full(
+                (4, 2, 0, 1),
+                np.nan,
+                dtype=np.float32,
+            ),
+        }
+
+        outputs = pack_mask_detection_blood_volume_rate_outputs(
+            artery,
+            vein,
+            velocity_outputs,
+            pixel_size_mm=0.1,
+        )
+
+        vein_rate = outputs[
+            "Processing/BloodVolumeRate/Vein/maskedEdges/value"
+        ]
+        self.assertEqual((4, 2, 0, 1), vein_rate.data.shape)
+        with h5py.File("empty-vessel.h5", "w", driver="core", backing_store=False) as h5:
+            for path, value in outputs.items():
+                write_value_dataset(h5, path, value)
+            self.assertEqual(
+                (4, 2, 0, 1),
+                h5["Processing/BloodVolumeRate/Vein/maskedEdges/value"].shape,
+            )
+
     def test_blood_volume_rate_sums_profiles_between_vessel_edges(self) -> None:
         schema = EyeFlowOutputPaths.active()
         shape = (6, 2, 1, 1, 2)

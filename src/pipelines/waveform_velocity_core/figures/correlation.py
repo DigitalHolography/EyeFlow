@@ -132,7 +132,10 @@ def _transfer_plot(writer: FigureWriter, suffix: str, data: TransferData, *, pha
     else:
         y = np.abs(data.transfer[positive])
         ylabel = "transfer function"
-        ax.semilogy(x, y, color="k", linewidth=2)
+        if np.any(np.isfinite(y) & (y > 0)):
+            ax.semilogy(x, y, color="k", linewidth=2)
+        else:
+            ax.plot(x, y, color="k", linewidth=2)
     ax.set_xlim(0, 10)
     ax.set_xlabel("Freq (Hz)")
     ax.set_ylabel(ylabel)

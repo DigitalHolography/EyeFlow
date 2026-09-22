@@ -62,6 +62,16 @@ def per_beat_segment_analysis(
     index_base: int | None = None,
 ) -> PerBeatSegmentAnalysisResult:
     segments = _segment_array(segment_velocity_signals)
+    if segments.shape[0] == 0 or segments.shape[1] == 0:
+        sample = per_beat_signal_analysis(
+            np.full(segments.shape[2], np.nan, dtype=np.float32),
+            cycle_boundary_indexes,
+            band_limited_signal_harmonic_count,
+            index_base=index_base,
+        )
+        return PerBeatSegmentAnalysisResult(
+            *_empty_segment_outputs(segments.shape, sample)
+        )
     first = per_beat_signal_analysis(
         segments[0, 0, :],
         cycle_boundary_indexes,
@@ -86,8 +96,6 @@ def _segment_array(segment_velocity_signals) -> np.ndarray:
         raise ValueError(
             "segment_velocity_signals must have shape (radius, branch, frame)."
         )
-    if segments.shape[0] == 0 or segments.shape[1] == 0:
-        raise ValueError("segment_velocity_signals must include at least one segment.")
     return segments
 
 

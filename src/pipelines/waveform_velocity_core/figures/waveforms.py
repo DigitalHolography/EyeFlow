@@ -168,26 +168,32 @@ def _arterial_waveform_analysis_plot(
     ax.plot(data.padded_time, data.padded_signal, color="0.85", linewidth=2)
     ax.plot(data.pulse_time, data.gradient, color="0.70", linewidth=2)
     ax.plot(data.pulse_time, cycle, color="k", linewidth=2)
-    primary_peak = int(data.peak_indexes[0])
-    _annotated_vline(
-        ax,
-        data.pulse_time[primary_peak],
-        f"{data.pulse_time[primary_peak]:.2f} s",
-    )
+    if data.peak_indexes.size:
+        primary_peak = int(data.peak_indexes[0])
+        _annotated_vline(
+            ax,
+            data.pulse_time[primary_peak],
+            f"{data.pulse_time[primary_peak]:.2f} s",
+        )
+        _annotated_hline(
+            ax,
+            cycle[primary_peak],
+            f"{cycle[primary_peak]:.1f} mm/s",
+        )
     _annotated_vline(ax, data.period_seconds, f"{data.period_seconds:.2f} s")
-    _annotated_hline(ax, cycle[primary_peak], f"{cycle[primary_peak]:.1f} mm/s")
-    _annotated_vline(
-        ax,
-        data.pulse_time[data.end_min_index],
-        f"{data.pulse_time[data.end_min_index]:.2f} s",
-    )
-    _annotated_hline(
-        ax,
-        cycle[data.end_min_index],
-        f"{cycle[data.end_min_index]:.1f} mm/s",
-        color="tab:blue",
-        vertical_alignment="bottom",
-    )
+    if data.end_min_index is not None:
+        _annotated_vline(
+            ax,
+            data.pulse_time[data.end_min_index],
+            f"{data.pulse_time[data.end_min_index]:.2f} s",
+        )
+        _annotated_hline(
+            ax,
+            cycle[data.end_min_index],
+            f"{cycle[data.end_min_index]:.1f} mm/s",
+            color="tab:blue",
+            vertical_alignment="bottom",
+        )
     if data.notch_index is not None:
         _annotated_vline(
             ax,
@@ -208,20 +214,22 @@ def _arterial_waveform_analysis_plot(
             f"{cycle[secondary_peak]:.1f} mm/s",
             vertical_alignment="top",
         )
-    ax.scatter(
-        data.pulse_time[data.peak_indexes],
-        cycle[data.peak_indexes],
-        color="tab:red",
-        s=55,
-        edgecolor="k",
-    )
-    ax.scatter(
-        [data.pulse_time[data.end_min_index]],
-        [cycle[data.end_min_index]],
-        color="lightcoral",
-        s=55,
-        edgecolor="k",
-    )
+    if data.peak_indexes.size:
+        ax.scatter(
+            data.pulse_time[data.peak_indexes],
+            cycle[data.peak_indexes],
+            color="tab:red",
+            s=55,
+            edgecolor="k",
+        )
+    if data.end_min_index is not None:
+        ax.scatter(
+            [data.pulse_time[data.end_min_index]],
+            [cycle[data.end_min_index]],
+            color="lightcoral",
+            s=55,
+            edgecolor="k",
+        )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Velocity (mm/s)")
     ax.margins(y=0.18)
@@ -254,39 +262,47 @@ def _venous_waveform_analysis_plot(
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
     ax.plot(data.padded_time, data.padded_signal, color="0.85", linewidth=2)
     ax.plot(data.pulse_time, cycle, color="k", linewidth=2)
-    _annotated_vline(
-        ax,
-        data.pulse_time[data.peak_index],
-        f"{data.pulse_time[data.peak_index]:.2f} s",
-    )
+    if data.peak_index is not None:
+        _annotated_vline(
+            ax,
+            data.pulse_time[data.peak_index],
+            f"{data.pulse_time[data.peak_index]:.2f} s",
+        )
+        _annotated_hline(
+            ax,
+            cycle[data.peak_index],
+            f"{cycle[data.peak_index]:.1f} mm/s",
+        )
     _annotated_vline(ax, data.period_seconds, f"{data.period_seconds:.2f} s")
-    _annotated_hline(ax, cycle[data.peak_index], f"{cycle[data.peak_index]:.1f} mm/s")
-    _annotated_vline(
-        ax,
-        data.pulse_time[data.trough_index],
-        f"{data.pulse_time[data.trough_index]:.2f} s",
-    )
-    _annotated_hline(
-        ax,
-        cycle[data.trough_index],
-        f"{cycle[data.trough_index]:.1f} mm/s",
-        color="tab:blue",
-        vertical_alignment="bottom",
-    )
-    ax.scatter(
-        [data.pulse_time[data.peak_index]],
-        [cycle[data.peak_index]],
-        color="tab:blue",
-        s=55,
-        edgecolor="k",
-    )
-    ax.scatter(
-        [data.pulse_time[data.trough_index]],
-        [cycle[data.trough_index]],
-        color="lightskyblue",
-        s=55,
-        edgecolor="k",
-    )
+    if data.trough_index is not None:
+        _annotated_vline(
+            ax,
+            data.pulse_time[data.trough_index],
+            f"{data.pulse_time[data.trough_index]:.2f} s",
+        )
+        _annotated_hline(
+            ax,
+            cycle[data.trough_index],
+            f"{cycle[data.trough_index]:.1f} mm/s",
+            color="tab:blue",
+            vertical_alignment="bottom",
+        )
+    if data.peak_index is not None:
+        ax.scatter(
+            [data.pulse_time[data.peak_index]],
+            [cycle[data.peak_index]],
+            color="tab:blue",
+            s=55,
+            edgecolor="k",
+        )
+    if data.trough_index is not None:
+        ax.scatter(
+            [data.pulse_time[data.trough_index]],
+            [cycle[data.trough_index]],
+            color="lightskyblue",
+            s=55,
+            edgecolor="k",
+        )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Velocity (mm/s)")
     ax.margins(y=0.18)

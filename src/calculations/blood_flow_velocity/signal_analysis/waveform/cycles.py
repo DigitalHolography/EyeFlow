@@ -57,12 +57,18 @@ def cycle_extrema(values: np.ndarray, peaks: np.ndarray) -> tuple[np.ndarray, np
         if second <= first + 2:
             continue
         midpoint = first + int(np.floor((second - first) / 2.0 + 0.5))
-        maxima.append(first + int(np.nanargmax(values[first : midpoint + 1])))
-        minima.append(midpoint + int(np.nanargmin(values[midpoint:second])))
-    if peaks[0] > 0:
-        minima.insert(0, int(np.nanargmin(values[: peaks[0] + 1])))
-    if peaks[-1] < values.size:
-        maxima.append(peaks[-1] + int(np.nanargmax(values[peaks[-1]:])))
+        first_half = values[first : midpoint + 1]
+        second_half = values[midpoint:second]
+        if np.any(np.isfinite(first_half)):
+            maxima.append(first + int(np.nanargmax(first_half)))
+        if np.any(np.isfinite(second_half)):
+            minima.append(midpoint + int(np.nanargmin(second_half)))
+    leading = values[: peaks[0] + 1]
+    if peaks[0] > 0 and np.any(np.isfinite(leading)):
+        minima.insert(0, int(np.nanargmin(leading)))
+    trailing = values[peaks[-1]:]
+    if peaks[-1] < values.size and np.any(np.isfinite(trailing)):
+        maxima.append(peaks[-1] + int(np.nanargmax(trailing)))
     return np.asarray(maxima, dtype=np.int32), np.asarray(minima, dtype=np.int32)
 
 
