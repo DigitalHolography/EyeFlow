@@ -140,8 +140,8 @@ def _validate_profile_segment_alignment(
             raise RuntimeError(
                 f"{vessel_name} velocity and gradient segment {field} do not match."
             )
-    velocity_centers = np.asarray(velocity_segments.segment_center_xy)
-    gradient_centers = np.asarray(gradient_segments.segment_center_xy)
+    velocity_centers = _ring_branch_segment_centers(velocity_segments)
+    gradient_centers = _ring_branch_segment_centers(gradient_segments)
     if velocity_centers.shape != gradient_centers.shape or not np.allclose(
         velocity_centers,
         gradient_centers,
@@ -150,13 +150,25 @@ def _validate_profile_segment_alignment(
         raise RuntimeError(
             f"{vessel_name} velocity and gradient segment centers do not match."
         )
-    velocity_shape = tuple(velocity_segments.velocity_profiles.shape[:2])
-    gradient_shape = tuple(gradient_segments.velocity_profiles.shape[:2])
+    velocity_shape = tuple(_unmasked_transverse_profiles(velocity_segments).shape[:2])
+    gradient_shape = tuple(_unmasked_transverse_profiles(gradient_segments).shape[:2])
     if velocity_shape != gradient_shape:
         raise RuntimeError(
             f"{vessel_name} velocity and gradient (radius, branch) dimensions "
             f"do not match: {velocity_shape} != {gradient_shape}."
         )
+
+
+def _ring_branch_segment_centers(segments) -> np.ndarray:
+    if hasattr(segments, "segment_centers_xy"):
+        return np.asarray(segments.segment_centers_xy)
+    return np.transpose(np.asarray(segments.segment_center_xy), (1, 0, 2))
+
+
+def _unmasked_transverse_profiles(segments) -> np.ndarray:
+    if hasattr(segments, "transverse_profiles_unmasked"):
+        return np.asarray(segments.transverse_profiles_unmasked)
+    return np.asarray(segments.velocity_profiles)
 
 
 __all__ = [

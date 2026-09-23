@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping
-from dataclasses import replace
 from time import perf_counter
 
 import numpy as np
@@ -13,23 +12,18 @@ from calculations.blood_flow_velocity.cross_section.generate_cross_section_signa
     _ARTERY_TRANSVERSE_MASK_DILATION_PIXELS,
     CrossSectionSignalResult,
     CrossSectionSignalSettings,
-    _cross_section_worker_count,
-    _generate_cross_section_signals_from_prepared,
-    _validate_velocity_map,
+    CrossSectionTopology,
 )
 from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils import (
     normalize_cycle_boundaries,
 )
 from calculations.compute_backend import optional_cupy_backend
 from calculations.math import nanmean_float32, next_power_of_two
+from calculations.segment_profiles import SegmentProfileResult, analyze_segment_profiles
 from calculations.topology import (
     SegmentRingSettings,
     TopologyCacheKey,
-    prepare_segment_chunks,
-    prepare_topologies,
-    resolve_segment_rotations,
 )
-from pipelines.displacement_map.segments import analyze_displacement_segments
 from utils.logger import Logger
 
 _FFT_PROFILE_X_BATCH = 32
@@ -324,7 +318,7 @@ def _gpu_nanmean_axis1(values, cupy, *, mask=None):
     return result.astype(cupy.float32, copy=False)
 
 
-def analyze_velocity_segments(
+def analyze_velocity_segment_profiles(
     velocity_map,
     vessel_masks: Mapping[str, object],
     optic_disc_center,
@@ -339,159 +333,144 @@ def analyze_velocity_segments(
     velocity_profile_fft: bool = False,
     index_base: int = 0,
     transverse_mask_dilation_pixels: int | None = None,
-    displacement_maps_by_vessel: Mapping[str, Mapping[str, object]] | None = None,
-    retain_displacement_maps: bool = False,
     prepared_topologies: Mapping[str, object] | None = None,
     transform_mode: str = "fused",
     post_interpolation=None,
     temporal_halo: int = 0,
     scratch_array_count: int | None = None,
 ) -> dict[str, CrossSectionSignalResult]:
-    """Analyze velocity-map segments for every named vessel mask.
+    """Measure velocity profiles and attach velocity-only optional products."""
 
-    Vessel names are retained as result keys. All selected vessels contribute
-    to one shared segment-window size before their maps are prepared.
-    """
-
-    masks = {
-        str(name): np.asarray(mask, dtype=bool)
-        for name, mask in vessel_masks.items()
-    }
-    if not masks:
+    if not vessel_masks:
         return {}
     if velocity_profile_fft and cycle_boundary_indexes is None:
         raise ValueError(
             "cycle_boundary_indexes are required for velocity FFT profiles."
-        )
-    for mask in masks.values():
-        _validate_velocity_map(velocity_map, mask)
+    )
+    fft_profiles: dict[str, _VelocityProfileFftAccumulator] = {}
 
-    backend = optional_cupy_backend()
-    Logger.log(
-        "Cross-section compute backend: "
-        + ("CuPy/CUDA" if backend is not None else "CPU/SciPy")
-        + "."
-    )
-    Logger.log(
-        "Segment input: "
-        f"map_shape={tuple(int(size) for size in velocity_map.shape)}, "
-        f"map_type={type(velocity_map).__name__}, vessels={tuple(masks)}."
-    )
-    topology_started = perf_counter()
-    if prepared_topologies is None:
-        topologies = prepare_topologies(
-            masks,
-            optic_disc_mask,
-            ring_settings,
-            source_id=source_id,
-            cache=topology_cache,
-            optic_disc_center=optic_disc_center,
-            window_size_percentile_kept=(
-                cross_section_settings.submask_size_percentile_kept
-            ),
+    def segment_observer_factory(name, topology):
+        geometry = topology.topology
+        if not velocity_profile_fft:
+            return None
+        accumulator = _VelocityProfileFftAccumulator(
+            frame_count=int(velocity_map.shape[0]),
+            ring_count=int(geometry.annulus_masks.shape[0]),
+            branch_count=int(geometry.branch_ids.size),
+            canvas_side=int(topology.rotated_masks.shape[-1]),
+            cycle_boundary_indexes=cycle_boundary_indexes,
+            index_base=index_base,
         )
-    else:
-        topologies = dict(prepared_topologies)
-        if set(topologies) != set(masks):
-            raise ValueError("prepared_topologies must match vessel mask names.")
-    topologies = {
-        name: resolve_segment_rotations(
-            topology,
-            velocity_map,
-            working_memory_mb=cross_section_settings.working_memory_mb,
-        )
-        for name, topology in topologies.items()
-    }
-    Logger.log(
-        f"Completed topology preparation in {perf_counter() - topology_started:.2f}s."
+        fft_profiles[name] = accumulator
+        return accumulator.observe
+
+    dilation_pixels = (
+        {
+            str(name): _legacy_profile_dilation_pixels(str(name))
+            for name in vessel_masks
+        }
+        if transverse_mask_dilation_pixels is None
+        else int(transverse_mask_dilation_pixels)
+    )
+    profile_results = analyze_segment_profiles(
+        velocity_map,
+        vessel_masks,
+        optic_disc_center,
+        ring_settings,
+        cross_section_settings,
+        optic_disc_mask=optic_disc_mask,
+        source_id=source_id,
+        topology_cache=topology_cache,
+        retain_segment_maps=retain_velocity_maps,
+        transverse_mask_dilation_pixels=dilation_pixels,
+        prepared_topologies=prepared_topologies,
+        transform_mode=transform_mode,
+        post_interpolation=post_interpolation,
+        temporal_halo=temporal_halo,
+        scratch_array_count=scratch_array_count,
+        segment_observer_factory=segment_observer_factory,
     )
 
     results: dict[str, CrossSectionSignalResult] = {}
-    for name, topology in topologies.items():
-        geometry = topology.topology
-        Logger.log(
-            f"Preparing {name} segments: radii={geometry.annulus_masks.shape[0]}, "
-            f"branches={geometry.branch_ids.size}, "
-            f"valid_segments={int(np.count_nonzero(geometry.valid_segments))}, "
-            f"native_window={geometry.window_side_pixels}px."
+    for name, profile_result in profile_results.items():
+        accumulator = fft_profiles.get(name)
+        results[name] = _velocity_result(
+            profile_result,
+            fft_profiles=accumulator,
         )
-        worker_count = _cross_section_worker_count(
-            int(np.count_nonzero(geometry.valid_segments)),
-            frame_count=int(velocity_map.shape[0]),
-            working_memory_mb=float(cross_section_settings.working_memory_mb),
-        )
-        segments = prepare_segment_chunks(
-            velocity_map,
-            topology,
-            worker_count=worker_count,
-            working_memory_mb=cross_section_settings.working_memory_mb,
-            keep_on_device=backend is not None,
-            transform_mode=transform_mode,
-            post_interpolation=post_interpolation,
-            temporal_halo=temporal_halo,
-            scratch_array_count=scratch_array_count,
-            include_masked_before_rotation=True,
-        )
-        Logger.log(f"Streaming {name} segments into profile measurement.")
-        fft_profiles = (
-            _VelocityProfileFftAccumulator(
-                frame_count=int(velocity_map.shape[0]),
-                ring_count=int(geometry.annulus_masks.shape[0]),
-                branch_count=int(geometry.branch_ids.size),
-                canvas_side=int(topology.rotated_masks.shape[-1]),
-                cycle_boundary_indexes=cycle_boundary_indexes,
-                index_base=index_base,
-            )
-            if velocity_profile_fft
-            else None
-        )
-        measurement_started = perf_counter()
-        if backend is not None:
-            backend.cupy.cuda.get_current_stream().synchronize()
-        result = _generate_cross_section_signals_from_prepared(
-            velocity_map,
-            topology,
-            segments,
-            ring_settings,
-            cross_section_settings,
-            retain_velocity_maps=retain_velocity_maps,
-            segment_observer=(fft_profiles.observe if fft_profiles else None),
-            transverse_mask_dilation_pixels=(
-                _legacy_profile_dilation_pixels(name)
-                if transverse_mask_dilation_pixels is None
-                else int(transverse_mask_dilation_pixels)
-            ),
-            displacement_maps=None,
-            retain_displacement_maps=retain_displacement_maps,
-        )
-        displacement_results = analyze_displacement_segments(
-            (displacement_maps_by_vessel or {}).get(name, {}),
-            topology,
-            retain_maps=retain_displacement_maps,
-            working_memory_mb=cross_section_settings.working_memory_mb,
-        )
-        results[name] = replace(
-            result,
-            displacements=displacement_results,
-            transverse_velocity_fft_profiles_unmasked=(
-                fft_profiles.unmasked if fft_profiles else None
-            ),
-            transverse_velocity_fft_profiles_masked=(
-                fft_profiles.masked if fft_profiles else None
-            ),
-        )
-        if backend is not None:
-            backend.cupy.cuda.get_current_stream().synchronize()
-        if fft_profiles is not None:
+        if accumulator is not None:
             Logger.log(
                 f"Completed {name} optional velocity-profile FFT in "
-                f"{fft_profiles.elapsed_seconds:.2f}s."
+                f"{accumulator.elapsed_seconds:.2f}s."
             )
-        Logger.log(
-            f"Completed {name} segment profile measurements in "
-            f"{perf_counter() - measurement_started:.2f}s."
-        )
     return results
+
+
+def _velocity_result(
+    profiles: SegmentProfileResult,
+    *,
+    fft_profiles: _VelocityProfileFftAccumulator | None,
+) -> CrossSectionSignalResult:
+    """Adapt a neutral profile result to the established velocity result schema."""
+
+    profile_topology = profiles.topology
+    legacy_centers = np.transpose(
+        profile_topology.segment_centers_xy,
+        (1, 0, 2),
+    ).copy()
+    topology = CrossSectionTopology(
+        spatial_shape=profile_topology.spatial_shape,
+        frame_count=profile_topology.frame_count,
+        labels=profile_topology.labels,
+        branch_ids=profile_topology.branch_ids,
+        section_masks=profile_topology.section_masks,
+        segment_masks=profile_topology.segment_masks,
+        segment_center_xy=legacy_centers,
+        profile_window_bounds_xyxy=profile_topology.profile_window_bounds_xyxy,
+        profile_window_side_pixels=profile_topology.profile_window_side_pixels,
+        profile_pixel_size_mm=profile_topology.profile_pixel_size_mm,
+        profile_rotation_degrees=profile_topology.profile_rotation_degrees,
+        profile_integration_limits_pixels=(
+            profile_topology.profile_integration_limits_pixels
+        ),
+        valid_segments=profile_topology.valid_segments,
+        ring_settings=profile_topology.ring_settings,
+        branch_identity=profile_topology.branch_identity,
+        prepared_topology=profile_topology.prepared_topology,
+    )
+    return CrossSectionSignalResult(
+        velocity=profiles.projected_signal,
+        safe_velocity=profiles.full_profile_signal,
+        velocity_maps_per_segment=profiles.segment_maps,
+        velocity_map_segment_indexes=profiles.segment_map_indexes,
+        segment_masks=profiles.segment_masks,
+        labels=profiles.labels,
+        branch_ids=profiles.branch_ids,
+        segment_center_xy=legacy_centers,
+        branch_identity=profiles.branch_identity,
+        topology=topology,
+        displacements={},
+        velocity_profiles=profiles.transverse_profiles_unmasked,
+        transverse_velocity_profiles_masked=profiles.transverse_profiles_masked,
+        longitudinal_velocity_profiles_unmasked=(
+            profiles.longitudinal_profiles_unmasked
+        ),
+        longitudinal_velocity_profiles_masked=profiles.longitudinal_profiles_masked,
+        profile_sample_count=profiles.profile_sample_count,
+        profile_rotation_degrees=profiles.profile_rotation_degrees,
+        rotated_mean_images=profiles.rotated_mean_images,
+        rotated_mean_images_masked=profiles.rotated_mean_images_masked,
+        profile_window_bounds_xyxy=profiles.profile_window_bounds_xyxy,
+        profile_window_side_pixels=profiles.profile_window_side_pixels,
+        profile_pixel_size_mm=profiles.profile_pixel_size_mm,
+        profile_integration_limits_pixels=profiles.profile_integration_limits_pixels,
+        transverse_velocity_fft_profiles_unmasked=(
+            fft_profiles.unmasked if fft_profiles else None
+        ),
+        transverse_velocity_fft_profiles_masked=(
+            fft_profiles.masked if fft_profiles else None
+        ),
+    )
 
 
 def _legacy_profile_dilation_pixels(vessel_name: str) -> int:

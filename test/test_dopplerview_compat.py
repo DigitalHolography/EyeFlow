@@ -14,12 +14,10 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from calculations.topology import segment_ring_settings  # noqa: E402
 from input_output import load_h5_sidecar_config  # noqa: E402
 from input_output.schema import DopplerViewSource, HolodopplerSource  # noqa: E402
 from pipeline_engine.context import RawH5SourceReader  # noqa: E402
-from pipelines.waveform_velocity_core.runner import (  # noqa: E402
-    _segment_ring_settings,
-)
 from pipelines.waveform_velocity_core.sources import (  # noqa: E402
     WaveformVelocitySources,
     _load_moment_pair,
@@ -163,7 +161,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                 },
             )
 
-        ring_settings = _segment_ring_settings()
+        ring_settings = segment_ring_settings()
         cross_section = source_data.cross_section_settings
         self.assertEqual(7, ring_settings.ring_count)
         self.assertEqual(0.10, ring_settings.inner_radius_frac)

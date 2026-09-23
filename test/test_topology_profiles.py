@@ -15,6 +15,21 @@ from calculations.topology.profiles import (
 
 
 class TopologyProfileTests(unittest.TestCase):
+    def test_spatial_mask_broadcasts_over_a_frame_stack(self) -> None:
+        segments = np.arange(2 * 3 * 4, dtype=np.float32).reshape(2, 3, 4)
+        mask = np.zeros((3, 4), dtype=bool)
+        mask[1, 1:3] = True
+
+        transverse = transverse_profiles(segments, mask)
+        longitudinal = longitudinal_profiles(segments, mask)
+
+        expected_transverse = np.full((2, 4), np.nan, dtype=np.float32)
+        expected_transverse[:, 1:3] = segments[:, 1, 1:3]
+        expected_longitudinal = np.full((2, 3), np.nan, dtype=np.float32)
+        expected_longitudinal[:, 1] = np.mean(segments[:, 1, 1:3], axis=1)
+        np.testing.assert_allclose(transverse, expected_transverse, equal_nan=True)
+        np.testing.assert_allclose(longitudinal, expected_longitudinal, equal_nan=True)
+
     def test_cuda_profiles_stay_on_device_and_match_cpu(self) -> None:
         from calculations.compute_backend import optional_cupy_backend
         backend = optional_cupy_backend()

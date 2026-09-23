@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import h5py
@@ -23,11 +25,18 @@ from pipelines.displacement_map.runner import (
     VESSEL_MASK_PATH,
     DisplacementMapArtifacts,
     DisplacementMapPipelineConfig,
+    attach_displacement_segment_profiles,
     resolve_moment_dataset,
     resolve_retina_mask,
     resolve_retina_masks,
     run_displacement_map,
 )
+
+
+@dataclass(frozen=True)
+class _SegmentProfiles:
+    topology: object
+    displacements: dict[str, object]
 
 
 class DisplacementRegistrationTests(unittest.TestCase):
@@ -61,6 +70,52 @@ class DisplacementRegistrationTests(unittest.TestCase):
 
 
 class DisplacementMapInputTests(unittest.TestCase):
+    def test_displacement_pipeline_attaches_segment_results(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            field_path = Path(temp_dir) / "field.npy"
+            np.save(field_path, np.zeros((2, 3, 4, 2), dtype=np.float32))
+            artifacts = DisplacementMapArtifacts(
+                registration_method="method",
+                field_paths_by_vessel={
+                    "artery": field_path,
+                    "vein": field_path,
+                },
+                temporary_directory=SimpleNamespace(cleanup=lambda: None),
+            )
+            ctx = SimpleNamespace(
+                pipeline_scheduled=lambda name: name == "displacement_map",
+                state=SimpleNamespace(get=lambda key: artifacts),
+            )
+            profiles = {
+                name: _SegmentProfiles(
+                    topology=SimpleNamespace(prepared_topology=f"{name} topology"),
+                    displacements={},
+                )
+                for name in ("artery", "vein")
+            }
+
+            with patch(
+                "pipelines.displacement_map.runner.analyze_displacement_segments",
+                side_effect=lambda maps, topology, **kwargs: {
+                    "method": (next(iter(maps)), topology, kwargs["retain_maps"])
+                },
+            ):
+                attached = attach_displacement_segment_profiles(
+                    ctx,
+                    profiles,
+                    retain_maps=True,
+                    profile_settings=SimpleNamespace(working_memory_mb=64.0),
+                )
+
+        self.assertEqual(
+            ("method", "artery topology", True),
+            attached["artery"].displacements["method"],
+        )
+        self.assertEqual(
+            ("method", "vein topology", True),
+            attached["vein"].displacements["method"],
+        )
+
     def test_resolves_root_moment0_alias(self) -> None:
         with h5py.File("moment_alias.h5", "w", driver="core", backing_store=False) as hd:
             expected = hd.create_dataset("M0", data=np.ones((3, 2, 4), np.float32))

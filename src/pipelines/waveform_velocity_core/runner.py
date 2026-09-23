@@ -13,13 +13,13 @@ from calculations.blood_flow_velocity import (
 )
 from calculations.topology import (
     SegmentRingSettings,
-    image_half_diagonal,
+    optic_disc_mask,
     run_topology_cache,
+    segment_ring_settings,
     topology_source_id,
 )
 from input_output import EyeFlowOutputPaths
-from pipelines.displacement_map.constants import DEFAULT_REGISTRATION_METHOD
-from pipelines.displacement_map.runner import DISPLACEMENT_MAP_STATE, DisplacementMapArtifacts
+from pipelines.displacement_map.runner import attach_displacement_segment_profiles
 from pipeline_engine.imports import (
     HolodopplerTiming,
     np,
@@ -52,8 +52,8 @@ from .retinal_velocity.outputs import (
 )
 from .retinal_velocity.runner import run_retinal_velocity_analysis
 from .scratch import velocity_scratch_h5
-from .segmentation import _optic_disc_mask, pack_segmentation_outputs
-from .segments import analyze_velocity_segments
+from .segmentation import pack_segmentation_outputs
+from .segments import analyze_velocity_segment_profiles
 from .sources import WaveformVelocitySourceData, WaveformVelocitySources
 
 WAVEFORM_CONTEXT_STATE = "waveform_velocity_context"
@@ -252,78 +252,6 @@ def _build_waveform_velocity_core_context(
     )
 
 
-@contextmanager
-def _loaded_displacement_maps(ctx, *, enabled: bool):
-    if not enabled:
-        yield {}
-        return
-    with _logged_stage("displacement map loading"):
-        displacement_maps = _load_displacement_maps(ctx)
-    try:
-        yield displacement_maps
-    finally:
-        _release_displacement_maps(ctx, displacement_maps)
-
-
-def _load_displacement_maps(ctx) -> dict[str, dict[str, object]]:
-    if not ctx.pipeline_scheduled("displacement_map"):
-        return {}
-
-    artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
-    if not isinstance(artifacts, DisplacementMapArtifacts):
-        raise RuntimeError(
-            "The scheduled displacement_map pipeline did not prepare its "
-            "in-run displacement artifacts."
-        )
-    method = _displacement_method_name(
-        artifacts.registration_method or DEFAULT_REGISTRATION_METHOD
-    )
-    loaded_by_path: dict[str, object] = {}
-    displacement_maps: dict[str, dict[str, object]] = {}
-    for vessel, field_path in artifacts.field_paths_by_vessel.items():
-        normalized_path = str(field_path.resolve())
-        displacement_map = loaded_by_path.get(normalized_path)
-        if displacement_map is None:
-            displacement_map = np.load(field_path, mmap_mode="r")
-            loaded_by_path[normalized_path] = displacement_map
-        displacement_maps[vessel] = {method: displacement_map}
-    if not displacement_maps:
-        raise RuntimeError("No vessel displacement-map artifacts were prepared.")
-    return displacement_maps
-
-
-def _release_displacement_maps(
-    ctx,
-    displacement_maps: Mapping[str, Mapping[str, object]],
-) -> None:
-    if not displacement_maps:
-        return
-    closed: set[int] = set()
-    for maps_for_vessel in displacement_maps.values():
-        for displacement_map in maps_for_vessel.values():
-            identity = id(displacement_map)
-            if identity in closed:
-                continue
-            closed.add(identity)
-            mmap = getattr(displacement_map, "_mmap", None)
-            if mmap is not None:
-                mmap.close()
-    artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
-    if isinstance(artifacts, DisplacementMapArtifacts):
-        artifacts.cleanup()
-
-
-def _displacement_method_name(value) -> str:
-    if isinstance(value, bytes):
-        value = value.decode("utf-8")
-    method = str(value).strip()
-    if not method or "/" in method:
-        raise ValueError(
-            "Displacement registration method names must be non-empty HDF5 path segments."
-        )
-    return method
-
-
 def _band_limited_harmonic_count(ctx) -> int:
     return read_int_setting(
         ctx,
@@ -369,12 +297,11 @@ def _per_beat_input_from_analysis(
     if segments_required:
         if velocity_map is None:
             raise ValueError("velocity_map is required for segment extraction.")
-        ring_settings = _segment_ring_settings(
+        ring_settings = segment_ring_settings(
             source_data.optic_disc_width,
             source_data.optic_disc_height,
             image_shape=velocity_map.shape[-2:],
-            optic_disc_center=source_data.optic_disc_center,
-            number_of_radii_in_FOV=number_of_radii_in_fov,
+            number_of_radii_in_fov=number_of_radii_in_fov,
         )
         artery_segments, vein_segments = _segment_velocity_inputs(
             velocity_map,
@@ -456,9 +383,15 @@ def _segment_velocity_inputs(
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
     mask_shape = getattr(source_data.retinal_artery_mask, "shape", None)
     if mask_shape is None:
-        optic_disc_mask = source_data.optic_disc_mask
+        disc_mask = source_data.optic_disc_mask
     else:
-        optic_disc_mask, _ = _optic_disc_mask(source_data, mask_shape)
+        disc_mask = optic_disc_mask(
+            mask_shape,
+            source_data.optic_disc_center,
+            source_data.optic_disc_width,
+            source_data.optic_disc_height,
+            mask=source_data.optic_disc_mask,
+        )
     waveform_velocity_scheduled = ctx.pipeline_scheduled("waveform_velocity")
     retain_velocity_maps = bool(
         waveform_velocity_scheduled
@@ -474,8 +407,8 @@ def _segment_velocity_inputs(
             pipeline="waveform_velocity",
         )
     )
-    with _loaded_displacement_maps(ctx, enabled=True) as displacement_maps, _logged_stage("segment velocity extraction"):
-        results = analyze_velocity_segments(
+    with _logged_stage("segment velocity extraction"):
+        results = analyze_velocity_segment_profiles(
             velocity_map,
             {
                 "artery": source_data.retinal_artery_mask,
@@ -485,8 +418,8 @@ def _segment_velocity_inputs(
             ring_settings,
             source_data.cross_section_settings,
             optic_disc_mask=(
-                optic_disc_mask
-                if optic_disc_mask is not None and np.any(optic_disc_mask)
+                disc_mask
+                if disc_mask is not None and np.any(disc_mask)
                 else None
             ),
             source_id=topology_source_id(
@@ -498,9 +431,13 @@ def _segment_velocity_inputs(
             cycle_boundary_indexes=cycle_boundary_indexes,
             velocity_profile_fft=velocity_profile_fft,
             index_base=int(source_data.provenance["beat_index_base"]),
-            displacement_maps_by_vessel=displacement_maps,
-            retain_displacement_maps=retain_velocity_maps,
         )
+    results = attach_displacement_segment_profiles(
+        ctx,
+        results,
+        retain_maps=retain_velocity_maps,
+        profile_settings=source_data.cross_section_settings,
+    )
     if ctx.output.available:
         with _logged_stage("rotated mean PNG export"):
             for name, result in results.items():
@@ -570,48 +507,6 @@ def _logged_stage(label: str):
     Logger.log(f"Starting {label}...")
     yield
     Logger.log(f"Completed {label} in {perf_counter() - started:.1f}s.")
-
-
-def _segment_ring_settings(
-    optic_disc_width=None,
-    optic_disc_height=None,
-    *,
-    image_shape=None,
-    optic_disc_center=None,
-    number_of_radii_in_FOV: int = NUMBER_OF_RADII_IN_FOV,
-) -> SegmentRingSettings:
-    if number_of_radii_in_FOV < 1:
-        raise ValueError("number_of_radii_in_FOV must be positive.")
-    width_px = _positive_geometry_scalar(optic_disc_width)
-    height_px = _positive_geometry_scalar(optic_disc_height)
-    if width_px is not None and height_px is not None and image_shape is not None:
-        ny, nx = (int(size) for size in image_shape)
-        radius_scale = image_half_diagonal(ny, nx)
-        ring_width_px = max(nx, ny) / float(number_of_radii_in_FOV)
-        radial_step = ring_width_px / max(radius_scale, 1.0)
-        inner = min((max(width_px, height_px) / 2.0) / radius_scale, 1.0)
-        outer = 1.0
-        count = max(1, int(np.ceil((outer - inner) / radial_step)))
-        return SegmentRingSettings(
-            inner,
-            outer,
-            radial_step,
-            count,
-            radial_step,
-        )
-
-    # Use the historical radial range when image/disc geometry is unavailable.
-    inner = SEGMENT_INNER_RADIUS_FRAC
-    outer = SEGMENT_OUTER_RADIUS_FRAC
-    radial_step = 1.0 / float(number_of_radii_in_FOV)
-    count = max(1, int(np.ceil((outer - inner) / radial_step)))
-    return SegmentRingSettings(
-        inner,
-        outer,
-        radial_step,
-        count,
-        radial_step,
-    )
 
 
 def _positive_geometry_scalar(value) -> float | None:

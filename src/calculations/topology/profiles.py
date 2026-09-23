@@ -66,14 +66,22 @@ def _masked_segments(
         return values
 
     masks = xp.asarray(segment_masks, dtype=bool)
-    expected_shape = (*values.shape[:2], *values.shape[-2:])
-    if masks.shape != expected_shape:
+    if (
+        masks.ndim < 2
+        or masks.ndim > values.ndim
+        or masks.shape[-2:] != values.shape[-2:]
+    ):
         raise ValueError(
-            "segment_masks must match the segment, annulus, branch, and spatial axes."
+            "segment_masks must match the segment spatial axes."
+        )
+    leading_mask_shape = masks.shape[:-2]
+    if tuple(values.shape[: len(leading_mask_shape)]) != leading_mask_shape:
+        raise ValueError(
+            "segment_masks leading axes must match the corresponding segment axes."
         )
     expanded_shape = (
-        *masks.shape[:2],
-        *((1,) * (values.ndim - 4)),
+        *leading_mask_shape,
+        *((1,) * (values.ndim - masks.ndim)),
         *masks.shape[-2:],
     )
     return xp.where(masks.reshape(expanded_shape), values, xp.float32(np.nan))

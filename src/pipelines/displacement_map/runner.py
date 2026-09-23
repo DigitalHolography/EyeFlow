@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import math
 import tempfile
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
@@ -16,6 +17,7 @@ from input_output.output_manager import OutputType
 from .calculator import create_retinal_motion_map
 from .constants import DEFAULT_REGISTRATION_METHOD, RegistrationMethod
 from .parameters import MotionMapConfig
+from .segments import analyze_displacement_segments
 
 DISPLACEMENT_MAP_STATE = "displacement_map_artifacts"
 MAGNITUDE_VIDEO_FILENAME = "displacement_magnitude.mp4"
@@ -65,6 +67,95 @@ class DisplacementMapArtifacts:
         cleanup = getattr(self.temporary_directory, "cleanup", None)
         if cleanup is not None:
             cleanup()
+
+
+def attach_displacement_segment_profiles(
+    ctx,
+    segment_profiles: Mapping[str, object],
+    *,
+    retain_maps: bool,
+    profile_settings,
+) -> dict[str, object]:
+    """Attach topology-aligned displacement results when this pipeline is scheduled."""
+
+    results = dict(segment_profiles)
+    if not ctx.pipeline_scheduled("displacement_map"):
+        return results
+
+    artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
+    if not isinstance(artifacts, DisplacementMapArtifacts):
+        raise RuntimeError(
+            "The scheduled displacement_map pipeline did not prepare its "
+            "in-run displacement artifacts."
+        )
+    displacement_maps = _load_displacement_maps(artifacts)
+    try:
+        for vessel_name, profiles in tuple(results.items()):
+            topology = profiles.topology.prepared_topology
+            if topology is None:
+                raise RuntimeError(
+                    f"{vessel_name} segment profiles do not retain prepared topology."
+                )
+            displacement_results = analyze_displacement_segments(
+                displacement_maps.get(vessel_name, {}),
+                topology,
+                retain_maps=retain_maps,
+                working_memory_mb=float(profile_settings.working_memory_mb),
+            )
+            results[vessel_name] = replace(
+                profiles,
+                displacements=displacement_results,
+            )
+    finally:
+        _release_displacement_maps(displacement_maps)
+        artifacts.cleanup()
+    return results
+
+
+def _load_displacement_maps(
+    artifacts: DisplacementMapArtifacts,
+) -> dict[str, dict[str, object]]:
+    method = _displacement_method_name(
+        artifacts.registration_method or DEFAULT_REGISTRATION_METHOD
+    )
+    loaded_by_path: dict[str, object] = {}
+    displacement_maps: dict[str, dict[str, object]] = {}
+    for vessel, field_path in artifacts.field_paths_by_vessel.items():
+        normalized_path = str(field_path.resolve())
+        displacement_map = loaded_by_path.get(normalized_path)
+        if displacement_map is None:
+            displacement_map = np.load(field_path, mmap_mode="r")
+            loaded_by_path[normalized_path] = displacement_map
+        displacement_maps[vessel] = {method: displacement_map}
+    if not displacement_maps:
+        raise RuntimeError("No vessel displacement-map artifacts were prepared.")
+    return displacement_maps
+
+
+def _release_displacement_maps(
+    displacement_maps: Mapping[str, Mapping[str, object]],
+) -> None:
+    closed: set[int] = set()
+    for maps_for_vessel in displacement_maps.values():
+        for displacement_map in maps_for_vessel.values():
+            identity = id(displacement_map)
+            if identity in closed:
+                continue
+            closed.add(identity)
+            mmap = getattr(displacement_map, "_mmap", None)
+            if mmap is not None:
+                mmap.close()
+
+
+def _displacement_method_name(value) -> str:
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    method = str(value).strip()
+    if not method or "/" in method:
+        raise ValueError(
+            "Displacement registration method names must be non-empty HDF5 path segments."
+        )
+    return method
 
 
 def run_displacement_map(
@@ -338,6 +429,7 @@ __all__ = [
     "DISPLACEMENT_MAP_STATE",
     "DisplacementMapArtifacts",
     "DisplacementMapPipelineConfig",
+    "attach_displacement_segment_profiles",
     "load_displacement_map_inputs",
     "resolve_moment_dataset",
     "resolve_retina_mask",

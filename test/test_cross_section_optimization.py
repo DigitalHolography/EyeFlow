@@ -129,7 +129,7 @@ def test_cuda_profile_measurement_matches_cpu(geometry, monkeypatch):
 
 
 def test_velocity_and_gradient_share_topology_and_segment_axes(geometry):
-    from pipelines.waveform_velocity_core.segments import analyze_velocity_segments
+    from calculations.segment_profiles import analyze_segment_profiles
     from pipelines.spatial_gradient_moment0.runner import (
         _validate_profile_segment_alignment,
     )
@@ -138,7 +138,7 @@ def test_velocity_and_gradient_share_topology_and_segment_axes(geometry):
     masks = {"artery": vessel, "vein": np.zeros_like(vessel)}
     cache = {}
     common = dict(optic_disc_mask=disc, source_id="registered", topology_cache=cache)
-    velocity = analyze_velocity_segments(
+    velocity = analyze_segment_profiles(
         cube, masks, (30, 30), rings, cs.CrossSectionSignalSettings(.01), **common,
     )
     from pipelines.spatial_gradient_moment0.profiles import _spatial_gradient_chain
@@ -146,7 +146,7 @@ def test_velocity_and_gradient_share_topology_and_segment_axes(geometry):
         name: result.topology.prepared_topology
         for name, result in velocity.items()
     }
-    gradient = analyze_velocity_segments(
+    gradient = analyze_segment_profiles(
         cube * 3,
         masks,
         (30, 30),
@@ -159,24 +159,81 @@ def test_velocity_and_gradient_share_topology_and_segment_axes(geometry):
         scratch_array_count=7,
     )
     for name in masks:
+        assert not hasattr(velocity[name], "velocity")
+        assert not hasattr(velocity[name], "displacements")
         _validate_profile_segment_alignment(name, velocity[name], gradient[name])
         if velocity[name].branch_ids.size:
             assert (
                 velocity[name].topology.prepared_topology
                 is gradient[name].topology.prepared_topology
             )
-        assert gradient[name].velocity_maps_per_segment is None
+        assert gradient[name].segment_maps is None
+
+
+def test_velocity_adapter_preserves_legacy_profile_values(geometry):
+    from pipelines.waveform_velocity_core.segments import (
+        analyze_velocity_segment_profiles,
+    )
+
+    vessel, disc, rings = geometry
+    y, x = np.indices(vessel.shape, dtype=np.float32)
+    cube = np.stack((x + y, 2 * x - y), axis=0)
+    settings = cs.CrossSectionSignalSettings(.01)
+    legacy = cs.generate_cross_section_signals(
+        cube,
+        vessel,
+        (30, 30),
+        rings,
+        settings,
+        optic_disc_mask=disc,
+        retain_velocity_maps=False,
+    )
+    adapted = analyze_velocity_segment_profiles(
+        cube,
+        {"vessel": vessel},
+        (30, 30),
+        rings,
+        settings,
+        optic_disc_mask=disc,
+        retain_velocity_maps=False,
+        transverse_mask_dilation_pixels=0,
+    )["vessel"]
+
+    for field in (
+        "velocity",
+        "safe_velocity",
+        "velocity_profiles",
+        "transverse_velocity_profiles_masked",
+        "longitudinal_velocity_profiles_unmasked",
+        "longitudinal_velocity_profiles_masked",
+        "rotated_mean_images",
+        "rotated_mean_images_masked",
+    ):
+        np.testing.assert_allclose(
+            getattr(adapted, field),
+            getattr(legacy, field),
+            rtol=1e-6,
+            atol=1e-6,
+            equal_nan=True,
+        )
+    np.testing.assert_array_equal(adapted.segment_masks, legacy.segment_masks)
+    np.testing.assert_array_equal(
+        adapted.topology.valid_segments,
+        legacy.topology.valid_segments,
+    )
 
 
 def test_legacy_profile_dilation_does_not_change_segment_velocity(geometry):
-    from pipelines.waveform_velocity_core.segments import analyze_velocity_segments
+    from pipelines.waveform_velocity_core.segments import (
+        analyze_velocity_segment_profiles,
+    )
 
     vessel, disc, rings = geometry
     cube = np.broadcast_to(
         np.where(vessel, np.float32(10.0), np.float32(1.0)),
         (3, *vessel.shape),
     ).copy()
-    results = analyze_velocity_segments(
+    results = analyze_velocity_segment_profiles(
         cube,
         {"artery": vessel, "vein": vessel},
         (30, 30),

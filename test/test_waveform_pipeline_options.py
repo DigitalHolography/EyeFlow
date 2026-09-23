@@ -565,7 +565,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
         with patch.object(
             core_runner,
-            "analyze_velocity_segments",
+            "analyze_velocity_segment_profiles",
             return_value={"artery": "artery", "vein": "vein"},
         ) as analyze:
             artery, vein = core_runner._segment_velocity_inputs(
@@ -607,7 +607,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         )
         with patch.object(
             core_runner,
-            "analyze_velocity_segments",
+            "analyze_velocity_segment_profiles",
             return_value={"artery": "artery", "vein": "vein"},
         ) as analyze:
             core_runner._segment_velocity_inputs(

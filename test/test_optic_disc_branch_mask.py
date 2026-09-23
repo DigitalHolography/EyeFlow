@@ -15,6 +15,7 @@ if str(SRC_DIR) not in sys.path:
 from calculations.topology import (
     build_segment_topology,
     label_vessel_branches,
+    segment_ring_settings,
 )
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity_core import runner
@@ -96,13 +97,9 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
                 expected_disc = np.flip(published.T, axis=0)
                 with patch.object(
                     runner,
-                    "analyze_velocity_segments",
+                    "analyze_velocity_segment_profiles",
                     return_value={"artery": "artery", "vein": "vein"},
-                ) as extract, patch.object(
-                    runner, "_loaded_displacement_maps"
-                ) as loaded:
-                    loaded.return_value.__enter__.return_value = {}
-                    loaded.return_value.__exit__.return_value = None
+                ) as extract:
                     result = runner._segment_velocity_inputs(
                         np.zeros((1, *vessel.shape), dtype=np.float32),
                         source,
@@ -146,7 +143,7 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
             cross_section_settings="settings",
             provenance={"beat_index_base": 0},
         )
-        settings = runner._segment_ring_settings(20.0, 50.0, image_shape=shape)
+        settings = segment_ring_settings(20.0, 50.0, image_shape=shape)
         return vessel, disc, source, settings
 
 

@@ -17,6 +17,7 @@ class SegmentRingSettings:
     ring_count: int
     segment_length_frac: float | None = None
 
+
 def segment_ring_settings(
     optic_disc_width=None,
     optic_disc_height=None,
@@ -54,6 +55,44 @@ def segment_ring_settings(
     )
 
 
+def optic_disc_mask(
+    image_shape: tuple[int, int],
+    optic_disc_center=None,
+    optic_disc_width=None,
+    optic_disc_height=None,
+    *,
+    mask=None,
+) -> np.ndarray:
+    """Return a supplied optic-disc mask or reconstruct one from its geometry."""
+
+    if mask is not None:
+        disc = np.asarray(mask, dtype=bool)
+        if disc.shape != image_shape:
+            raise ValueError(
+                f"optic_disc_mask must have shape {image_shape}, got {disc.shape}."
+            )
+        return disc
+
+    width = _positive_scalar(optic_disc_width)
+    height = _positive_scalar(optic_disc_height)
+    if width is None or height is None:
+        return np.zeros(image_shape, dtype=bool)
+
+    center_y, center_x = optic_disc_center_yx(
+        optic_disc_center,
+        image_shape[0],
+        image_shape[1],
+    )
+    y, x = np.indices(image_shape, dtype=np.float32)
+    x_radius = np.float32(width / 2.0)
+    y_radius = np.float32(height / 2.0)
+    return (
+        ((x - center_x) / x_radius) ** 2
+        + ((y - center_y) / y_radius) ** 2
+        <= 1.0
+    )
+
+
 def _positive_scalar(value) -> float | None:
     if value is None:
         return None
@@ -61,7 +100,6 @@ def _positive_scalar(value) -> float | None:
     if array.size == 0 or not np.isfinite(array[0]) or array[0] <= 0:
         return None
     return float(array[0])
-
 
 
 def ring_masks(

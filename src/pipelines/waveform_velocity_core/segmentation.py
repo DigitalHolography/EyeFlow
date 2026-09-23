@@ -6,6 +6,7 @@ import numpy as np
 
 from calculations.topology import (
     optic_disc_center_yx,
+    optic_disc_mask,
 )
 from input_output.schema import EyeFlowOutputPaths
 
@@ -31,13 +32,26 @@ def pack_segmentation_outputs(
     """
     schema = _resolve_output_paths(output_paths)
     image_shape = tuple(int(size) for size in source_data.retinal_artery_mask.shape)
-    optic_disc_mask, mask_source = _optic_disc_mask(source_data, image_shape)
+    source_mask = source_data.optic_disc_mask
+    disc_mask = optic_disc_mask(
+        image_shape,
+        source_data.optic_disc_center,
+        source_data.optic_disc_width,
+        source_data.optic_disc_height,
+        mask=source_mask,
+    )
+    if source_mask is not None:
+        mask_source = "dopplerview_segmentation"
+    elif np.any(disc_mask):
+        mask_source = "reconstructed_from_dopplerview_center_width_height"
+    else:
+        mask_source = "unavailable"
     center_xy = _optic_disc_center_xy(source_data.optic_disc_center, image_shape)
 
     segmentation = schema.segmentation
     metrics = {
         segmentation.optic_disc.mask: _segmentation_value(
-            _serialize_spatial_image(optic_disc_mask),
+            _serialize_spatial_image(disc_mask),
             _mask_attrs(mask_source),
         ),
     }
@@ -46,7 +60,7 @@ def pack_segmentation_outputs(
             segmentation.artery,
             artery_segments,
             source_data.retinal_artery_mask,
-            optic_disc_mask,
+            disc_mask,
             center_xy,
         )
     )
@@ -55,7 +69,7 @@ def pack_segmentation_outputs(
             segmentation.vein,
             vein_segments,
             source_data.retinal_vein_mask,
-            optic_disc_mask,
+            disc_mask,
             center_xy,
         )
     )
@@ -157,48 +171,6 @@ def _segmentation_value(data, attrs: dict[str, object]):
     return metric_data(data), attrs
 
 
-def _optic_disc_mask(source_data, image_shape: tuple[int, int]):
-    if source_data.optic_disc_mask is not None:
-        mask = np.asarray(source_data.optic_disc_mask, dtype=bool)
-        if mask.shape != image_shape:
-            raise ValueError(
-                f"optic_disc_mask must have shape {image_shape}, got {mask.shape}."
-            )
-        return mask, "dopplerview_segmentation"
-
-    mask = _ellipse_mask(
-        image_shape,
-        source_data.optic_disc_center,
-        source_data.optic_disc_width,
-        source_data.optic_disc_height,
-    )
-    if np.any(mask):
-        return mask, "reconstructed_from_dopplerview_center_width_height"
-    return mask, "unavailable"
-
-
-def _ellipse_mask(
-    image_shape: tuple[int, int],
-    optic_disc_center,
-    optic_disc_width,
-    optic_disc_height,
-) -> np.ndarray:
-    width = _positive_scalar(optic_disc_width)
-    height = _positive_scalar(optic_disc_height)
-    if width is None or height is None:
-        return np.zeros(image_shape, dtype=bool)
-
-    center_x, center_y = _optic_disc_center_xy(optic_disc_center, image_shape)
-    y, x = np.indices(image_shape, dtype=np.float32)
-    x_radius = np.float32(width / 2.0)
-    y_radius = np.float32(height / 2.0)
-    return (
-        ((x - center_x) / x_radius) ** 2
-        + ((y - center_y) / y_radius) ** 2
-        <= 1.0
-    )
-
-
 def _optic_disc_center_xy(optic_disc_center, image_shape: tuple[int, int]) -> np.ndarray:
     center_y, center_x = optic_disc_center_yx(
         optic_disc_center,
@@ -206,17 +178,6 @@ def _optic_disc_center_xy(optic_disc_center, image_shape: tuple[int, int]) -> np
         image_shape[1],
     )
     return np.asarray([center_x, center_y], dtype=np.float32)
-
-
-def _positive_scalar(value) -> float | None:
-    if value is None:
-        return None
-    array = np.asarray(value, dtype=np.float32).reshape(-1)
-    if array.size == 0 or not np.isfinite(array[0]) or array[0] <= 0:
-        return None
-    return float(array[0])
-
-
 def _resolve_output_paths(
     output_paths: EyeFlowOutputPaths | str | None,
 ) -> EyeFlowOutputPaths:

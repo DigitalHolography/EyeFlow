@@ -15,10 +15,9 @@ from calculations.math.spatial_gradient import (
     sobel_spatial_gradient,
     unsharpen,
 )
+from calculations.segment_profiles import analyze_segment_profiles
+from calculations.topology import optic_disc_mask, segment_ring_settings
 from pipeline_engine.base import DatasetValue
-from pipelines.waveform_velocity_core.runner import _segment_ring_settings
-from pipelines.waveform_velocity_core.segmentation import _optic_disc_mask
-from pipelines.waveform_velocity_core.segments import analyze_velocity_segments
 
 from input_output.profile_datasets import (
     _profile_dataset,
@@ -239,19 +238,24 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
     moment0ff = ctx.inputs.hd.as_holodoppler().moment0_flat_field_dataset()
     if moment0ff is None:
         raise KeyError("Missing flat-field HoloDoppler moment0 dataset: moment0ff/M0FF.")
-    ring_settings = _segment_ring_settings(
+    ring_settings = segment_ring_settings(
         source.optic_disc_width,
         source.optic_disc_height,
         image_shape=moment0ff.shape[-2:],
-        optic_disc_center=source.optic_disc_center,
-        number_of_radii_in_FOV=int(waveform_context.attrs["number_of_radii_in_FOV"]),
+        number_of_radii_in_fov=int(waveform_context.attrs["number_of_radii_in_FOV"]),
     )
-    optic_disc_mask, _ = _optic_disc_mask(source, source.retinal_artery_mask.shape)
+    disc_mask = optic_disc_mask(
+        source.retinal_artery_mask.shape,
+        source.optic_disc_center,
+        source.optic_disc_width,
+        source.optic_disc_height,
+        mask=source.optic_disc_mask,
+    )
     prepared_topologies = {
         "artery": waveform_context.artery_segment_result.topology.prepared_topology,
         "vein": waveform_context.vein_segment_result.topology.prepared_topology,
     }
-    results = analyze_velocity_segments(
+    results = analyze_segment_profiles(
         moment0ff,
         {
             "artery": source.retinal_artery_mask,
@@ -260,14 +264,14 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
         source.optic_disc_center,
         ring_settings,
         source.cross_section_settings,
-        optic_disc_mask=optic_disc_mask if np.any(optic_disc_mask) else None,
+        optic_disc_mask=disc_mask if np.any(disc_mask) else None,
         prepared_topologies=prepared_topologies,
         transform_mode="staged",
         post_interpolation=_spatial_gradient_chain,
         temporal_halo=TEMPORAL_MOVING_AVERAGE_WINDOW - 1,
         scratch_array_count=7,
         transverse_mask_dilation_pixels=_SPATIAL_GRADIENT_MASK_DILATION_PIXELS,
-        retain_displacement_maps=False,
+        retain_segment_maps=False,
     )
     return results["artery"], results["vein"]
 
@@ -319,14 +323,14 @@ def _pack_vessel_spatial_gradient_profiles(
         return {}
     root = f"{SPATIAL_GRADIENT_PROFILE_ROOT}/{vessel_name}/Transverse"
     unmasked = _gradient_profile_dataset(
-        np.asarray(segments.velocity_profiles, dtype=np.float32),
+        np.asarray(segments.transverse_profiles_unmasked, dtype=np.float32),
         cycle_boundary_indexes,
         index_base=index_base,
         mask="unmasked",
     )
     masked = _gradient_profile_dataset(
         np.asarray(
-            segments.transverse_velocity_profiles_masked,
+            segments.transverse_profiles_masked,
             dtype=np.float32,
         ),
         cycle_boundary_indexes,

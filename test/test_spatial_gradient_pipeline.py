@@ -65,14 +65,19 @@ class SpatialGradientPipelineTests(unittest.TestCase):
         velocity_segments = SimpleNamespace(
             labels=np.asarray([1]),
             branch_ids=np.asarray([7]),
-            segment_center_xy=np.asarray([[2.0, 3.0]]),
+            segment_center_xy=np.asarray([[[2.0, 3.0], [4.0, 5.0]]]),
             velocity_profiles=np.zeros((2, 1, 3), dtype=np.float32),
         )
         gradient_segments = SimpleNamespace(
             labels=velocity_segments.labels.copy(),
             branch_ids=velocity_segments.branch_ids.copy(),
-            segment_center_xy=velocity_segments.segment_center_xy.copy(),
-            velocity_profiles=np.ones((2, 1, 3), dtype=np.float32),
+            segment_centers_xy=np.transpose(
+                velocity_segments.segment_center_xy,
+                (1, 0, 2),
+            ),
+            transverse_profiles_unmasked=np.ones(
+                (2, 1, 3), dtype=np.float32
+            ),
         )
         context = SimpleNamespace(
             artery_segment_result=velocity_segments,

@@ -94,7 +94,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
 
         with patch.object(
             profile_module,
-            "analyze_velocity_segments",
+            "analyze_segment_profiles",
             return_value={"artery": "artery", "vein": "vein"},
         ) as extract:
             result = extract_spatial_gradient_segments(ctx, waveform_context)
@@ -120,15 +120,15 @@ class SpatialGradientProfileTests(unittest.TestCase):
             {"artery": "artery topology", "vein": "vein topology"},
             kwargs["prepared_topologies"],
         )
-        self.assertFalse(kwargs["retain_displacement_maps"])
+        self.assertFalse(kwargs["retain_segment_maps"])
 
     def test_packs_requested_profiles_for_arteries_and_veins(self) -> None:
         unmasked = np.arange(30, dtype=np.float32).reshape(2, 1, 5, 3)
         masked = unmasked.copy()
         masked[..., 0] = np.nan
         segments = SimpleNamespace(
-            velocity_profiles=unmasked,
-            transverse_velocity_profiles_masked=masked,
+            transverse_profiles_unmasked=unmasked,
+            transverse_profiles_masked=masked,
         )
 
         outputs = pack_spatial_gradient_profile_outputs(
@@ -268,8 +268,8 @@ class SpatialGradientProfileTests(unittest.TestCase):
         masked_profiles = np.broadcast_to(masked_profile, (1, 1, 5, 11)).copy()
         unmasked_profiles = np.broadcast_to(unmasked_profile, (1, 1, 5, 11)).copy()
         segments = SimpleNamespace(
-            velocity_profiles=unmasked_profiles,
-            transverse_velocity_profiles_masked=masked_profiles,
+            transverse_profiles_unmasked=unmasked_profiles,
+            transverse_profiles_masked=masked_profiles,
         )
 
         outputs = pack_spatial_gradient_profile_outputs(
