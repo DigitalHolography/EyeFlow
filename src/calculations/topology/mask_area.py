@@ -7,9 +7,8 @@ from collections.abc import Iterator
 import numpy as np
 
 from .geometry import (
-    SegmentRingSettings,
+    AnnulusGeometry,
     image_half_diagonal,
-    optic_disc_center_yx,
     section_bounds,
 )
 
@@ -17,7 +16,7 @@ from .geometry import (
 def exact_annulus_pixel_coverages(
     image_shape: tuple[int, int],
     optic_disc_center,
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
     ring_count: int,
 ) -> Iterator[tuple[int, np.ndarray, float]]:
     """Yield ``(ring, fractional_pixel_coverage, radial_width_pixels)``.
@@ -27,7 +26,10 @@ def exact_annulus_pixel_coverages(
     """
 
     radius_scale = image_half_diagonal(*image_shape)
-    cy, cx = optic_disc_center_yx(optic_disc_center, *image_shape)
+    center = np.asarray(optic_disc_center, dtype=np.float64).reshape(-1)
+    if center.size != 2 or not np.all(np.isfinite(center)):
+        raise ValueError("optic-disc center must contain two finite (x, y) values.")
+    cx, cy = (float(value) for value in center)
     previous_outer_frac: float | None = None
     previous_outer_coverage: np.ndarray | None = None
     for ring_index in range(ring_count):
@@ -62,7 +64,7 @@ def exact_annulus_pixel_coverages(
 
 def annulus_widths_pixels(
     image_shape: tuple[int, int],
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
     ring_count: int,
 ) -> np.ndarray:
     """Return exact radial widths, including a clipped final annulus."""

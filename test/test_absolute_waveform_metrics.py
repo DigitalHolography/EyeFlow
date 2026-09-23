@@ -148,6 +148,7 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             labels=labels,
             segment_center_xy=np.zeros((2, 2, 2), dtype=float),
             velocity=np.zeros((2, 2, 3), dtype=np.float32),
+            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
         )
         source_data = SimpleNamespace(optic_disc_center=np.asarray([3.0, 2.0]))
         inputs = {

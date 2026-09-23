@@ -28,9 +28,7 @@ class VelocityEstimatorCacheKey:
     moment2_source: tuple[object, ...]
     artery_mask: tuple[object, ...]
     vein_mask: tuple[object, ...]
-    optic_disc_center: tuple[object, ...] | None
-    optic_disc_width: tuple[object, ...] | None
-    optic_disc_height: tuple[object, ...] | None
+    optic_disc_center: tuple[object, ...]
     section_inner_radius_frac: float
     section_outer_radius_frac: float
     local_background_dist: int
@@ -45,9 +43,7 @@ def velocity_estimator_cache_key(
     moment2,
     artery_mask,
     vein_mask,
-    optic_disc_center=None,
-    optic_disc_width=None,
-    optic_disc_height=None,
+    optic_disc_center,
     section_inner_radius_frac: float = SECTION_INNER_RADIUS_FRAC,
     section_outer_radius_frac: float = SECTION_OUTER_RADIUS_FRAC,
     local_background_dist: int,
@@ -61,16 +57,8 @@ def velocity_estimator_cache_key(
         moment2_source=_volume_source_key(moment2),
         artery_mask=_array_value_key(artery_mask, dtype=bool),
         vein_mask=_array_value_key(vein_mask, dtype=bool),
-        optic_disc_center=_optional_array_value_key(
+        optic_disc_center=_array_value_key(
             optic_disc_center,
-            dtype=np.float32,
-        ),
-        optic_disc_width=_optional_array_value_key(
-            optic_disc_width,
-            dtype=np.float32,
-        ),
-        optic_disc_height=_optional_array_value_key(
-            optic_disc_height,
             dtype=np.float32,
         ),
         section_inner_radius_frac=float(section_inner_radius_frac),
@@ -100,9 +88,7 @@ def run_chunked_velocity_estimator(
     moment2,
     artery_mask,
     vein_mask,
-    optic_disc_center=None,
-    optic_disc_width=None,
-    optic_disc_height=None,
+    optic_disc_center,
     section_inner_radius_frac: float = SECTION_INNER_RADIUS_FRAC,
     section_outer_radius_frac: float = SECTION_OUTER_RADIUS_FRAC,
     local_background_dist: int,
@@ -256,11 +242,7 @@ def run_chunked_velocity_estimator(
         "fRMS_bkg_avg": (averages["fRMS_bkg"] / divisor).astype(np.float32),
         "deltafRMS_avg": (averages["deltafRMS"] / divisor).astype(np.float32),
         "velocity_section_mask": section_mask,
-        "velocity_section_geometry": (
-            "optic_disc_relative"
-            if _has_optic_disc_geometry(optic_disc_width, optic_disc_height)
-            else "frame_relative_fallback"
-        ),
+        "velocity_section_geometry": "optic_disc_centered_frame_fraction",
         "retinal_artery_velocity_signal": signals["artery_velocity"],
         "retinal_vein_velocity_signal": signals["vein_velocity"],
         "retinal_artery_fRMS_signal": signals["artery_fRMS"],
@@ -271,16 +253,6 @@ def run_chunked_velocity_estimator(
         "retinal_artery_deltafRMS_signal": signals["artery_deltafRMS"],
         "retinal_vein_deltafRMS_signal": signals["vein_deltafRMS"],
     }
-
-
-def _has_optic_disc_geometry(width, height) -> bool:
-    for value in (width, height):
-        if value is None:
-            return False
-        array = np.asarray(value, dtype=np.float32).reshape(-1)
-        if array.size == 0 or not np.isfinite(array[0]) or array[0] <= 0:
-            return False
-    return True
 
 
 def _velocity_video_storage(

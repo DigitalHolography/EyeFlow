@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from calculations.topology import (
-    BranchIdentityResult, PreparedTopology, SegmentRingSettings,
+    AnnulusGeometry, BranchIdentityResult, OpticDisc, PreparedTopology,
     prepare_segment_chunks, prepare_topologies, resolve_segment_rotations,
 )
 from .generate_cross_section_signals import (
@@ -53,8 +53,8 @@ class CrossSectionProjectionPlan:
     profile_integration_limits_pixels: np.ndarray
     valid_segments: np.ndarray
     branch_identity: BranchIdentityResult
-    optic_disc_center: object
-    ring_settings: SegmentRingSettings
+    optic_disc: OpticDisc
+    ring_settings: AnnulusGeometry
     cross_section_settings: CrossSectionSignalSettings
 
     @property
@@ -79,11 +79,9 @@ class MultiCubeCrossSectionSignalResult:
 def fit_cross_section_plan(
     reference_cube,
     vessel_mask,
-    optic_disc_center,
-    ring_settings: SegmentRingSettings,
+    optic_disc: OpticDisc,
+    ring_settings: AnnulusGeometry,
     cross_section_settings: CrossSectionSignalSettings,
-    *,
-    optic_disc_mask=None,
 ) -> tuple[CrossSectionProjectionPlan, CrossSectionSignalResult]:
     """Prepare shared topology once and measure the reference cube."""
     vessel = np.asarray(vessel_mask, dtype=bool)
@@ -91,8 +89,7 @@ def fit_cross_section_plan(
         raise ValueError("vessel_mask must be a 2-D array.")
     _validate_data_cube(reference_cube, vessel.shape, "reference_cube")
     prepared = prepare_topologies(
-        {"vessel": vessel}, optic_disc_mask, ring_settings, source_id="",
-        optic_disc_center=optic_disc_center,
+        {"vessel": vessel}, optic_disc, ring_settings, source_id="",
         window_size_percentile_kept=cross_section_settings.submask_size_percentile_kept,
     )["vessel"]
     prepared = resolve_segment_rotations(
@@ -114,7 +111,7 @@ def fit_cross_section_plan(
         profile_integration_limits_pixels=result.profile_integration_limits_pixels.copy(),
         valid_segments=result.topology.valid_segments.copy(),
         branch_identity=result.branch_identity,
-        optic_disc_center=_copy_optional_array(optic_disc_center),
+        optic_disc=optic_disc,
         ring_settings=ring_settings,
         cross_section_settings=cross_section_settings,
     )
@@ -161,8 +158,8 @@ def project_cross_section_cubes(
 def generate_cross_section_signals_for_cubes(
     reference_cube,
     vessel_mask,
-    optic_disc_center,
-    ring_settings: SegmentRingSettings,
+    optic_disc: OpticDisc,
+    ring_settings: AnnulusGeometry,
     cross_section_settings: CrossSectionSignalSettings,
     *,
     additional_cubes: Mapping[str, object] | None = None,
@@ -179,7 +176,7 @@ def generate_cross_section_signals_for_cubes(
     plan, reference_result = fit_cross_section_plan(
         reference_cube,
         vessel_mask,
-        optic_disc_center,
+        optic_disc,
         ring_settings,
         cross_section_settings,
     )
@@ -237,7 +234,3 @@ def _validate_limits_mode(limits_mode: str) -> None:
 def _validate_pass_name(name, *, parameter: str = "cube name") -> None:
     if not isinstance(name, str) or not name:
         raise ValueError(f"{parameter} must be a non-empty string.")
-
-
-def _copy_optional_array(value):
-    return None if value is None else np.asarray(value).copy()

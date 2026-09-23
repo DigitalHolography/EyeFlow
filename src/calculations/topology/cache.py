@@ -8,7 +8,7 @@ from hashlib import blake2b
 
 import numpy as np
 
-from .geometry import SegmentRingSettings
+from .geometry import AnnulusGeometry
 
 
 TOPOLOGY_CACHE_STATE = "topology.prepared"
@@ -22,8 +22,8 @@ class TopologyCacheKey:
     vessel_name: str
     vessel_mask_fingerprint: str
     optic_disc_mask_fingerprint: str
-    optic_disc_center_xy: tuple[float, float] | None
-    settings: SegmentRingSettings
+    optic_disc_center_xy: tuple[float, float]
+    settings: AnnulusGeometry
     output_side_pixels: int
     window_size_percentile_kept: float
     window_side_pixels: int | None
@@ -34,9 +34,9 @@ def topology_cache_key(
     vessel_name: str,
     vessel_mask,
     optic_disc_mask,
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
     *,
-    optic_disc_center=None,
+    optic_disc_center,
     output_side_pixels: int,
     window_size_percentile_kept: float,
     window_side_pixels: int | None,
@@ -89,10 +89,8 @@ def _mask_fingerprint(mask) -> str:
     return digest.hexdigest()
 
 
-def _center_identity(center) -> tuple[float, float] | None:
-    if center is None:
-        return None
+def _center_identity(center) -> tuple[float, float]:
     values = np.asarray(center, dtype=np.float64).reshape(-1)
-    if values.size < 2 or not np.all(np.isfinite(values[:2])):
-        return None
+    if values.size != 2 or not np.all(np.isfinite(values)):
+        raise ValueError("optic-disc center must contain two finite (x, y) values.")
     return float(values[0]), float(values[1])

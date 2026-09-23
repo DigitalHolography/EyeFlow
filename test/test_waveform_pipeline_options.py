@@ -100,7 +100,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             velocity_outputs,
             vein_flag=True,
             include_quadrants=True,
-            source_data="source",
             artery_segments="artery",
             vein_segments="vein",
         )
@@ -161,18 +160,20 @@ class WaveformPipelineOptionTests(unittest.TestCase):
     def test_velocity_children_publish_their_selected_products(self) -> None:
         per_beat_result = SimpleNamespace(cycle_boundary_indexes=(0, 5, 10))
         schema = EyeFlowOutputPaths.active()
+        artery_segments = SimpleNamespace(
+            topology=SimpleNamespace(optic_disc_center_xy=(12.0, 13.0))
+        )
         velocity_outputs = {
             "per_beat": 2,
             schema.artery_per_beat.segment_velocity_signal: 5,
         }
         context = SimpleNamespace(
             velocity_analysis={},
-            artery_segment_result="artery",
+            artery_segment_result=artery_segments,
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
             source_data=SimpleNamespace(
                 provenance={"beat_index_base": 1},
-                optic_disc_center=(12.0, 13.0),
                 cross_section_settings=SimpleNamespace(pixel_size_mm=0.01),
             ),
         )
@@ -245,29 +246,29 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             outputs,
         )
         profiles.assert_called_once_with(
-            "artery",
+            artery_segments,
             "vein",
             (0, 5, 10),
             index_base=0,
         )
         fft_profiles.assert_called_once_with(
-            "artery",
+            artery_segments,
             "vein",
         )
         prepare_maps.assert_called_once_with(
-            "artery",
+            artery_segments,
             "vein",
             (1, 6, 11),
             index_base=1,
         )
         maps.assert_called_once_with(
-            "artery",
+            artery_segments,
             "vein",
             "artery_maps",
             "vein_maps",
         )
         displacement_maps.assert_called_once_with(
-            "artery",
+            artery_segments,
             "vein",
             (1, 6, 11),
             index_base=1,
@@ -275,7 +276,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         quadrants.assert_called_once_with(
             velocity_outputs,
             context.source_data,
-            "artery",
+            artery_segments,
             "vein",
         )
         self.assertTrue(self.mask_bvr.call_args.kwargs["apply_circular_area"])
@@ -517,8 +518,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         source = SimpleNamespace(
             timing=SimpleNamespace(dt_seconds=0.1),
             provenance={"beat_index_base": 0},
-            optic_disc_width=None,
-            optic_disc_height=None,
         )
         ctx = SimpleNamespace()
 
@@ -547,8 +546,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         source = SimpleNamespace(
             retinal_artery_mask="artery_mask",
             retinal_vein_mask="vein_mask",
-            optic_disc_center=(10, 10),
-            optic_disc_mask="disc_mask",
+            optic_disc="optic_disc",
             cross_section_settings="settings",
             provenance={"beat_index_base": 1},
         )
@@ -589,8 +587,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         source = SimpleNamespace(
             retinal_artery_mask="artery_mask",
             retinal_vein_mask="vein_mask",
-            optic_disc_center=(10, 10),
-            optic_disc_mask="disc_mask",
+            optic_disc="optic_disc",
             cross_section_settings="settings",
             provenance={"beat_index_base": 0},
         )

@@ -11,7 +11,8 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.topology import (  # noqa: E402
-    SegmentRingSettings,
+    AnnulusGeometry,
+    OpticDisc,
     SegmentTopology,
     build_segment_topology,
     competing_segment_masks,
@@ -61,8 +62,8 @@ class SegmentTopologyTests(unittest.TestCase):
 
         topology = build_segment_topology(
             vessel,
-            optic_disc,
-            SegmentRingSettings(0.1, 0.6, 0.25, 2),
+            OpticDisc(optic_disc, (20.0, 20.0), None, None),
+            AnnulusGeometry(0.1, 0.6, 0.25, 2),
             window_size_percentile_kept=1.0,
         )
 
@@ -78,12 +79,11 @@ class SegmentTopologyTests(unittest.TestCase):
         vessel = np.ones((31, 35), dtype=bool)
         disc = np.zeros_like(vessel)
         disc[4:9, 5:12] = True
-        settings = SegmentRingSettings(0.0, 0.8, 0.4, 2)
+        settings = AnnulusGeometry(0.0, 0.8, 0.4, 2)
         topology = build_segment_topology(
             vessel,
-            disc,
+            OpticDisc(disc, (24.0, 20.0), None, None),
             settings,
-            optic_disc_center=(24.0, 20.0),
         )
         self.assertEqual((24.0, 20.0), topology.optic_disc_center_xy)
         self.assertIs(topology.ring_settings, settings)
@@ -92,15 +92,20 @@ class SegmentTopologyTests(unittest.TestCase):
         self.assertFalse(np.any(topology.annulus_masks[:, disc]))
         self.assertFalse(np.any(topology.branch_identity.stages.vessel[disc]))
 
-    def test_center_falls_back_from_mask_centroid_to_image_center(self) -> None:
+    def test_explicit_center_is_used_for_nonempty_and_empty_masks(self) -> None:
         vessel = np.zeros((21, 31), dtype=bool)
         disc = np.zeros_like(vessel)
         disc[4:7, 8:11] = True
-        settings = SegmentRingSettings(0.0, 0.8, 0.4, 1)
-        from_mask = build_segment_topology(vessel, disc, settings)
-        from_image = build_segment_topology(vessel, np.zeros_like(disc), settings)
-        self.assertEqual((9.0, 5.0), from_mask.optic_disc_center_xy)
-        self.assertEqual((15.5, 10.5), from_image.optic_disc_center_xy)
+        settings = AnnulusGeometry(0.0, 0.8, 0.4, 1)
+        center = (13.0, 8.0)
+        from_mask = build_segment_topology(
+            vessel, OpticDisc(disc, center, None, None), settings
+        )
+        from_empty = build_segment_topology(
+            vessel, OpticDisc(np.zeros_like(disc), center, None, None), settings
+        )
+        self.assertEqual(center, from_mask.optic_disc_center_xy)
+        self.assertEqual(center, from_empty.optic_disc_center_xy)
 
     def test_extracts_vector_maps_with_explicit_spatial_axes(self) -> None:
         topology = _edge_topology()

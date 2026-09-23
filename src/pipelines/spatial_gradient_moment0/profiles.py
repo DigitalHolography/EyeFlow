@@ -16,7 +16,6 @@ from calculations.math.spatial_gradient import (
     unsharpen,
 )
 from calculations.segment_profiles import analyze_segment_profiles
-from calculations.topology import optic_disc_mask, segment_ring_settings
 from pipeline_engine.base import DatasetValue
 
 from input_output.profile_datasets import (
@@ -238,18 +237,9 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
     moment0ff = ctx.inputs.hd.as_holodoppler().moment0_flat_field_dataset()
     if moment0ff is None:
         raise KeyError("Missing flat-field HoloDoppler moment0 dataset: moment0ff/M0FF.")
-    ring_settings = segment_ring_settings(
-        source.optic_disc_width,
-        source.optic_disc_height,
-        image_shape=moment0ff.shape[-2:],
+    ring_settings = source.optic_disc.annulus_geometry(
+        moment0ff.shape[-2:],
         number_of_radii_in_fov=int(waveform_context.attrs["number_of_radii_in_FOV"]),
-    )
-    disc_mask = optic_disc_mask(
-        source.retinal_artery_mask.shape,
-        source.optic_disc_center,
-        source.optic_disc_width,
-        source.optic_disc_height,
-        mask=source.optic_disc_mask,
     )
     prepared_topologies = {
         "artery": waveform_context.artery_segment_result.topology.prepared_topology,
@@ -261,10 +251,9 @@ def extract_spatial_gradient_segments(ctx, waveform_context):
             "artery": source.retinal_artery_mask,
             "vein": source.retinal_vein_mask,
         },
-        source.optic_disc_center,
+        source.optic_disc,
         ring_settings,
         source.cross_section_settings,
-        optic_disc_mask=disc_mask if np.any(disc_mask) else None,
         prepared_topologies=prepared_topologies,
         transform_mode="staged",
         post_interpolation=_spatial_gradient_chain,

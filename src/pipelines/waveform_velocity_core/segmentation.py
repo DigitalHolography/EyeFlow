@@ -4,10 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.topology import (
-    optic_disc_center_yx,
-    optic_disc_mask,
-)
 from input_output.schema import EyeFlowOutputPaths
 
 from .retinal_velocity.outputs import metric_data
@@ -32,21 +28,13 @@ def pack_segmentation_outputs(
     """
     schema = _resolve_output_paths(output_paths)
     image_shape = tuple(int(size) for size in source_data.retinal_artery_mask.shape)
-    source_mask = source_data.optic_disc_mask
-    disc_mask = optic_disc_mask(
-        image_shape,
-        source_data.optic_disc_center,
-        source_data.optic_disc_width,
-        source_data.optic_disc_height,
-        mask=source_mask,
-    )
-    if source_mask is not None:
+    optic_disc = source_data.optic_disc
+    disc_mask = optic_disc.mask_for(image_shape)
+    if optic_disc.mask is not None:
         mask_source = "dopplerview_segmentation"
-    elif np.any(disc_mask):
-        mask_source = "reconstructed_from_dopplerview_center_width_height"
     else:
-        mask_source = "unavailable"
-    center_xy = _optic_disc_center_xy(source_data.optic_disc_center, image_shape)
+        mask_source = "reconstructed_from_dopplerview_center_width_height"
+    center_xy = np.asarray(optic_disc.center, dtype=np.float32)
 
     segmentation = schema.segmentation
     metrics = {
@@ -171,13 +159,6 @@ def _segmentation_value(data, attrs: dict[str, object]):
     return metric_data(data), attrs
 
 
-def _optic_disc_center_xy(optic_disc_center, image_shape: tuple[int, int]) -> np.ndarray:
-    center_y, center_x = optic_disc_center_yx(
-        optic_disc_center,
-        image_shape[0],
-        image_shape[1],
-    )
-    return np.asarray([center_x, center_y], dtype=np.float32)
 def _resolve_output_paths(
     output_paths: EyeFlowOutputPaths | str | None,
 ) -> EyeFlowOutputPaths:

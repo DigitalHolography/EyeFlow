@@ -8,7 +8,7 @@ import numpy as np
 
 
 @dataclass(frozen=True)
-class SegmentRingSettings:
+class AnnulusGeometry:
     """Radial regions used to identify and sample vessel segments."""
 
     inner_radius_frac: float
@@ -18,94 +18,10 @@ class SegmentRingSettings:
     segment_length_frac: float | None = None
 
 
-def segment_ring_settings(
-    optic_disc_width=None,
-    optic_disc_height=None,
-    *,
-    image_shape: tuple[int, int] | None = None,
-    number_of_radii_in_fov: int = 25,
-    fallback_inner_radius_frac: float = 0.10,
-    fallback_outer_radius_frac: float = 0.35,
-) -> SegmentRingSettings:
-    """Derive uniformly spaced segment rings from retinal image geometry."""
-
-    if number_of_radii_in_fov < 1:
-        raise ValueError("number_of_radii_in_fov must be positive.")
-    width_px = _positive_scalar(optic_disc_width)
-    height_px = _positive_scalar(optic_disc_height)
-    radial_step = 1.0 / float(number_of_radii_in_fov)
-    if width_px is not None and height_px is not None and image_shape is not None:
-        ny, nx = (int(size) for size in image_shape)
-        radius_scale = image_half_diagonal(ny, nx)
-        radial_step = (
-            max(nx, ny) / float(number_of_radii_in_fov) / max(radius_scale, 1.0)
-        )
-        inner = min((max(width_px, height_px) / 2.0) / radius_scale, 1.0)
-        outer = 1.0
-    else:
-        inner = float(fallback_inner_radius_frac)
-        outer = float(fallback_outer_radius_frac)
-    count = max(1, int(np.ceil((outer - inner) / radial_step)))
-    return SegmentRingSettings(
-        inner_radius_frac=inner,
-        outer_radius_frac=outer,
-        ring_width_frac=radial_step,
-        ring_count=count,
-        segment_length_frac=radial_step,
-    )
-
-
-def optic_disc_mask(
-    image_shape: tuple[int, int],
-    optic_disc_center=None,
-    optic_disc_width=None,
-    optic_disc_height=None,
-    *,
-    mask=None,
-) -> np.ndarray:
-    """Return a supplied optic-disc mask or reconstruct one from its geometry."""
-
-    if mask is not None:
-        disc = np.asarray(mask, dtype=bool)
-        if disc.shape != image_shape:
-            raise ValueError(
-                f"optic_disc_mask must have shape {image_shape}, got {disc.shape}."
-            )
-        return disc
-
-    width = _positive_scalar(optic_disc_width)
-    height = _positive_scalar(optic_disc_height)
-    if width is None or height is None:
-        return np.zeros(image_shape, dtype=bool)
-
-    center_y, center_x = optic_disc_center_yx(
-        optic_disc_center,
-        image_shape[0],
-        image_shape[1],
-    )
-    y, x = np.indices(image_shape, dtype=np.float32)
-    x_radius = np.float32(width / 2.0)
-    y_radius = np.float32(height / 2.0)
-    return (
-        ((x - center_x) / x_radius) ** 2
-        + ((y - center_y) / y_radius) ** 2
-        <= 1.0
-    )
-
-
-def _positive_scalar(value) -> float | None:
-    if value is None:
-        return None
-    array = np.asarray(value, dtype=np.float32).reshape(-1)
-    if array.size == 0 or not np.isfinite(array[0]) or array[0] <= 0:
-        return None
-    return float(array[0])
-
-
 def ring_masks(
     image_shape: tuple[int, int],
     optic_disc_center,
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
 ) -> np.ndarray:
     """Return the configured non-overlapping annuli."""
 
@@ -125,7 +41,7 @@ def ring_masks(
 def section_masks(
     image_shape: tuple[int, int],
     optic_disc_center,
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
 ) -> np.ndarray:
     """Return the annuli in which branch-centered maps are sampled."""
 
@@ -157,8 +73,8 @@ def annulus_mask(
     translates the annulus without changing its size.
     """
 
-    ny, nx = image_shape
-    cy, cx = optic_disc_center_yx(optic_disc_center, ny, nx)
+    ny, nx = _validated_image_shape(image_shape)
+    cx, cy = _validated_center_xy(optic_disc_center)
     scale = np.float32(1.0 / max(image_half_diagonal(ny, nx), 1.0))
     y_distance = (
         np.arange(ny, dtype=np.float32)[:, None] - np.float32(cy)
@@ -170,19 +86,8 @@ def annulus_mask(
     return (radius_sq > inner_radius_frac**2) & (radius_sq <= outer_radius_frac**2)
 
 
-def optic_disc_center_yx(optic_disc_center, ny: int, nx: int) -> tuple[float, float]:
-    """Return a valid ``(y, x)`` center, falling back to the image center."""
-
-    if optic_disc_center is None:
-        return ny / 2.0, nx / 2.0
-    center = np.asarray(optic_disc_center, dtype=np.float32).reshape(-1)
-    if center.size < 2 or not np.all(np.isfinite(center[:2])):
-        return ny / 2.0, nx / 2.0
-    return float(center[1]), float(center[0])
-
-
 def _ring_bounds(
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
     ring_index: int,
     length: float | None = None,
 ) -> tuple[float, float]:
@@ -193,7 +98,7 @@ def _ring_bounds(
 
 
 def section_bounds(
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
     ring_index: int,
 ) -> tuple[float, float]:
     """Return the radial bounds used for one measured vessel segment."""
@@ -205,3 +110,17 @@ def image_half_diagonal(ny: int, nx: int) -> float:
     """Return the center-independent image half-diagonal in pixels."""
 
     return float(np.hypot((ny - 1) / 2.0, (nx - 1) / 2.0))
+
+
+def _validated_image_shape(image_shape) -> tuple[int, int]:
+    shape = tuple(int(size) for size in image_shape)
+    if len(shape) != 2 or any(size < 1 for size in shape):
+        raise ValueError(f"image_shape must contain two positive sizes, got {shape}.")
+    return shape
+
+
+def _validated_center_xy(center) -> tuple[float, float]:
+    values = np.asarray(center, dtype=np.float64).reshape(-1)
+    if values.size != 2 or not np.all(np.isfinite(values)):
+        raise ValueError("optic-disc center must contain two finite (x, y) values.")
+    return float(values[0]), float(values[1])

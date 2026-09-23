@@ -155,6 +155,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
         vein = np.zeros_like(artery)
         artery[6, 6] = True
         vein[9, 9] = True
+        optic_disc_center = (8.0, 8.0)
 
         with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
             result = run_chunked_velocity_estimator(
@@ -162,6 +163,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
                 moment2=moment2,
                 artery_mask=artery,
                 vein_mask=vein,
+                optic_disc_center=optic_disc_center,
                 local_background_dist=1,
                 scratch_h5=h5,
                 retain_velocity_video=False,
@@ -181,6 +183,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
                 moment2=moment2,
                 artery_mask=artery,
                 vein_mask=vein,
+                optic_disc_center=optic_disc_center,
                 local_background_dist=1,
                 scratch_h5=h5,
                 retain_velocity_video=True,
@@ -201,6 +204,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
                 moment2=moment2,
                 artery_mask=artery,
                 vein_mask=vein,
+                optic_disc_center=optic_disc_center,
                 local_background_dist=1,
                 scratch_h5=h5,
                 retain_velocity_video=True,
@@ -236,6 +240,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
         vein = np.zeros_like(artery)
         artery[6:9, 5:8] = True
         vein[12:15, 11:14] = True
+        optic_disc_center = (9.0, 10.0)
 
         results = []
         for chunk_size in (1, 2, 7, 32):
@@ -258,6 +263,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
                     moment2=moment2,
                     artery_mask=artery,
                     vein_mask=vein,
+                    optic_disc_center=optic_disc_center,
                     local_background_dist=2,
                     scratch_h5=h5,
                     velocity_video_output=velocity_output,

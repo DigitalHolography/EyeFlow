@@ -15,7 +15,7 @@ except ImportError:
 from calculations.compute_backend import optional_cupy_backend
 from utils.logger import Logger
 
-from .geometry import image_half_diagonal, optic_disc_center_yx
+from .geometry import image_half_diagonal
 from .segments import SegmentTopology
 
 INTERPOLATED_SEGMENT_SIDE = 128
@@ -277,10 +277,7 @@ def _segment_tilt(
     if upper_radius < lower_radius:
         axis = -axis
     elif np.isclose(upper_radius, lower_radius):
-        optic_center_y, optic_center_x = optic_disc_center_yx(
-            optic_disc_center_xy,
-            *segment_centerline.shape,
-        )
+        optic_center_x, optic_center_y = optic_disc_center_xy
         radial_direction = np.asarray(
             (center[0] - optic_center_x, center[1] - optic_center_y),
             dtype=np.float64,
@@ -298,7 +295,7 @@ def _radius_grid(
     optic_disc_center_xy: tuple[float, float],
 ) -> np.ndarray:
     ny, nx = image_shape
-    center_y, center_x = optic_disc_center_yx(optic_disc_center_xy, ny, nx)
+    center_x, center_y = optic_disc_center_xy
     scale = np.float32(1.0 / max(image_half_diagonal(ny, nx), 1.0))
     y = (np.arange(ny, dtype=np.float32)[:, None] - np.float32(center_y)) * scale
     x = (np.arange(nx, dtype=np.float32)[None, :] - np.float32(center_x)) * scale

@@ -13,7 +13,8 @@ from calculations.math import nanmean_float32
 from calculations.topology import (
     BranchIdentityResult,
     PreparedTopology,
-    SegmentRingSettings,
+    AnnulusGeometry,
+    OpticDisc,
     TopologyCacheKey,
     dilate_segment_masks,
     longitudinal_profiles,
@@ -64,6 +65,7 @@ class SegmentProfileTopology:
     """Topology and profile geometry shared by every measured signal map."""
 
     spatial_shape: tuple[int, int]
+    optic_disc_center_xy: tuple[float, float]
     frame_count: int
     labels: np.ndarray
     branch_ids: np.ndarray
@@ -76,7 +78,7 @@ class SegmentProfileTopology:
     profile_rotation_degrees: np.ndarray
     profile_integration_limits_pixels: np.ndarray
     valid_segments: np.ndarray
-    ring_settings: SegmentRingSettings
+    ring_settings: AnnulusGeometry
     branch_identity: BranchIdentityResult
     prepared_topology: PreparedTopology
 
@@ -186,11 +188,10 @@ class _SegmentProfileBuffers:
 def analyze_segment_profiles(
     signal_map,
     vessel_masks: Mapping[str, object],
-    optic_disc_center,
-    ring_settings: SegmentRingSettings,
+    optic_disc: OpticDisc,
+    ring_settings: AnnulusGeometry,
     profile_settings,
     *,
-    optic_disc_mask=None,
     source_id: str = "",
     topology_cache: MutableMapping[TopologyCacheKey, object] | None = None,
     retain_segment_maps: bool = False,
@@ -229,11 +230,10 @@ def analyze_segment_profiles(
     if prepared_topologies is None:
         topologies = prepare_topologies(
             masks,
-            optic_disc_mask,
+            optic_disc,
             ring_settings,
             source_id=source_id,
             cache=topology_cache,
-            optic_disc_center=optic_disc_center,
             window_size_percentile_kept=settings.submask_size_percentile_kept,
         )
     else:
@@ -314,7 +314,7 @@ def _measure_segment_profiles_from_prepared(
     signal_map,
     prepared_topology: PreparedTopology,
     prepared_segments,
-    ring_settings: SegmentRingSettings,
+    ring_settings: AnnulusGeometry,
     settings: SegmentProfileSettings,
     *,
     retain_segment_maps: bool,
@@ -458,6 +458,7 @@ def _measure_segment_profiles_from_prepared(
     )
     topology = SegmentProfileTopology(
         spatial_shape=geometry.spatial_shape,
+        optic_disc_center_xy=geometry.optic_disc_center_xy,
         frame_count=frame_count,
         labels=geometry.labels.copy(),
         branch_ids=geometry.branch_ids.copy(),

@@ -9,7 +9,7 @@ from scipy.signal import find_peaks
 from calculations.topology.mask_area import (
     exact_annulus_pixel_coverages,
 )
-from calculations.topology import SegmentRingSettings
+from calculations.topology import AnnulusGeometry
 from calculations.blood_flow_velocity.cross_section.profile_processing import (
     interpolate_velocity_profiles_per_beat,
 )
@@ -190,12 +190,12 @@ def _mask_detected_diameters_mm(
         raise ValueError("at least one segment result is required.")
 
     geometries: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
-    ring_settings: SegmentRingSettings | None = None
+    ring_settings: AnnulusGeometry | None = None
     spatial_shape: tuple[int, int] | None = None
     for segments in segment_sets:
         topology = segments.topology
         settings = topology.ring_settings
-        if not isinstance(settings, SegmentRingSettings):
+        if not isinstance(settings, AnnulusGeometry):
             raise ValueError("segment topology must retain its ring settings.")
         if ring_settings is None:
             ring_settings = settings

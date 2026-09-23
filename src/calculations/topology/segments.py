@@ -6,12 +6,12 @@ from dataclasses import dataclass
 from time import perf_counter
 
 import numpy as np
-from scipy import ndimage as ndi
 
 from utils.logger import Logger
 
 from .branch_identity import BranchIdentityResult, label_vessel_branches
-from .geometry import SegmentRingSettings, section_masks
+from .geometry import AnnulusGeometry, section_masks
+from .optic_disc import OpticDisc
 
 
 @dataclass(frozen=True)
@@ -34,7 +34,7 @@ class SegmentTopology:
     window_bounds_xyxy: np.ndarray
     window_side_pixels: int
     optic_disc_mask: np.ndarray | None = None
-    ring_settings: SegmentRingSettings | None = None
+    ring_settings: AnnulusGeometry | None = None
     branch_identity: BranchIdentityResult | None = None
 
     @property
@@ -44,19 +44,17 @@ class SegmentTopology:
 
 def build_segment_topology(
     vessel_mask,
-    optic_disc_mask,
-    settings: SegmentRingSettings,
+    optic_disc: OpticDisc,
+    settings: AnnulusGeometry,
     *,
-    optic_disc_center=None,
     window_size_percentile_kept: float = 0.95,
     window_side_pixels: int | None = None,
 ) -> SegmentTopology:
-    """Find branch segments around an optic-disc mask.
+    """Find branch segments around an optic disc.
 
     Args:
         vessel_mask: Two-dimensional mask containing one vessel class.
-        optic_disc_mask: Two-dimensional optic-disc mask. An empty mask uses
-            the image center.
+        optic_disc: Authoritative optic-disc geometry in the vessel-mask frame.
         settings: Annulus placement and sampling settings.
         window_size_percentile_kept: Fraction of segment widths and heights
             represented by the automatically selected square window.
@@ -67,15 +65,10 @@ def build_segment_topology(
     """
 
     vessel = np.asarray(vessel_mask, dtype=bool)
-    disc = np.asarray(optic_disc_mask, dtype=bool)
     assert vessel.ndim == 2
-    assert disc.shape == vessel.shape
-    center_xy = _resolved_center_xy(optic_disc_center, disc, vessel.shape)
-    vessel = vessel & ~disc
-    return _build_segment_topology_from_center(
+    return _build_segment_topology(
         vessel,
-        disc,
-        center_xy,
+        optic_disc,
         settings,
         window_size_percentile_kept=window_size_percentile_kept,
         window_side_pixels=window_side_pixels,
@@ -288,21 +281,21 @@ def resize_segment_topology_windows(
     )
 
 
-def _build_segment_topology_from_center(
+def _build_segment_topology(
     vessel_mask: np.ndarray,
-    optic_disc_mask: np.ndarray,
-    optic_disc_center_xy: tuple[float, float],
-    settings: SegmentRingSettings,
+    optic_disc: OpticDisc,
+    settings: AnnulusGeometry,
     *,
     window_size_percentile_kept: float,
     window_side_pixels: int | None,
 ) -> SegmentTopology:
     branches = label_vessel_branches(
         vessel_mask,
-        optic_disc_center_xy,
+        optic_disc,
         settings,
-        optic_disc_mask=optic_disc_mask,
     )
+    optic_disc_mask = optic_disc.mask_for(vessel_mask.shape)
+    optic_disc_center_xy = optic_disc.center
     centerline = branches.stages.skeleton
     annuli = section_masks(vessel_mask.shape, optic_disc_center_xy, settings)
     annuli &= ~optic_disc_mask[None, ...]
@@ -356,21 +349,6 @@ def _build_segment_topology_from_center(
         window_side_pixels=side,
         branch_identity=branches,
     )
-
-
-def _resolved_center_xy(
-    explicit_center,
-    mask: np.ndarray,
-    image_shape: tuple[int, int],
-) -> tuple[float, float]:
-    if explicit_center is not None:
-        center = np.asarray(explicit_center, dtype=np.float32).reshape(-1)
-        if center.size >= 2 and np.all(np.isfinite(center[:2])):
-            return float(center[0]), float(center[1])
-    if not np.any(mask):
-        return image_shape[1] / 2.0, image_shape[0] / 2.0
-    center_y, center_x = ndi.center_of_mass(mask)
-    return float(center_x), float(center_y)
 
 
 def _segment_center_xy(

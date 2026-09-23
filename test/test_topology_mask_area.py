@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from calculations.topology import SegmentRingSettings, circle_pixel_coverage
+from calculations.topology import AnnulusGeometry, circle_pixel_coverage
 from calculations.topology.mask_area import annulus_widths_pixels
 from pipelines.waveform_velocity.profiles import (
     pack_mask_detection_blood_volume_rate_outputs,
@@ -30,7 +30,7 @@ def _segments():
         labels=labels,
         branch_ids=np.asarray([1], dtype=np.int32),
         section_masks=sections,
-        ring_settings=SegmentRingSettings(0.0, 0.5, 0.25, 2, 0.25),
+        ring_settings=AnnulusGeometry(0.0, 0.5, 0.25, 2, 0.25),
     )
     return SimpleNamespace(
         velocity=np.full((2, 1, 3), 2.0, dtype=np.float32),
@@ -54,7 +54,7 @@ def test_circle_pixel_coverage_conserves_exact_area() -> None:
 def test_annulus_width_uses_clipped_last_ring() -> None:
     widths = annulus_widths_pixels(
         (7, 9),
-        SegmentRingSettings(0.0, 0.6, 0.5, 2, 0.25),
+        AnnulusGeometry(0.0, 0.6, 0.5, 2, 0.25),
         2,
     )
     np.testing.assert_allclose(widths, [1.25, 0.5], rtol=1e-6)

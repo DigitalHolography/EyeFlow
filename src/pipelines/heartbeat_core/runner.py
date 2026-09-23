@@ -60,9 +60,7 @@ def run_heartbeat_core(ctx) -> HeartbeatResult:
             moment2=inputs.moment2,
             artery_mask=inputs.artery_mask,
             vein_mask=inputs.vein_mask,
-            optic_disc_center=inputs.optic_disc_center,
-            optic_disc_width=inputs.optic_disc_width,
-            optic_disc_height=inputs.optic_disc_height,
+            optic_disc_center=inputs.optic_disc.center,
             local_background_dist=inputs.local_background_dist,
             scratch_h5=scratch_h5,
             retain_velocity_video=retain_velocity_video,
@@ -145,9 +143,7 @@ def _velocity_estimator_key(source) -> VelocityEstimatorCacheKey:
         vein_mask=source.vein_mask
         if hasattr(source, "vein_mask")
         else source.retinal_vein_mask,
-        optic_disc_center=source.optic_disc_center,
-        optic_disc_width=source.optic_disc_width,
-        optic_disc_height=source.optic_disc_height,
+        optic_disc_center=source.optic_disc.center,
         local_background_dist=source.local_background_dist,
     )
 

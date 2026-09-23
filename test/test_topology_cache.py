@@ -16,7 +16,8 @@ if str(SRC_DIR) not in sys.path:
 
 from calculations.topology import (  # noqa: E402
     PreparedTopology,
-    SegmentRingSettings,
+    AnnulusGeometry,
+    OpticDisc,
     prepare_topologies,
     run_topology_cache,
     topology_source_id,
@@ -29,7 +30,7 @@ class TopologyCacheTests(unittest.TestCase):
         from utils.logger import Logger
         vessel = np.ones((9, 9), bool)
         disc = np.zeros_like(vessel)
-        settings = SegmentRingSettings(0., 1., 1., 1)
+        settings = AnnulusGeometry(0., 1., 1., 1)
         initial = [_prepared_topology(vessel.shape, marker=float(i)) for i in (1, 2)]
         for prepared in initial:
             prepared.topology.window_side_pixels = 1
@@ -44,10 +45,10 @@ class TopologyCacheTests(unittest.TestCase):
             "calculations.topology.workflow._resize_prepared_topology", side_effect=final,
         ) as resize, patch.object(Logger, "log") as log:
             first = prepare_topologies(
-                {"artery": vessel, "vein": vessel}, disc, settings, source_id="scan", cache=cache,
+                {"artery": vessel, "vein": vessel}, _disc(disc), settings, source_id="scan", cache=cache,
             )
             second = prepare_topologies(
-                {"artery": vessel, "vein": vessel}, disc, settings, source_id="scan", cache=cache,
+                {"artery": vessel, "vein": vessel}, _disc(disc), settings, source_id="scan", cache=cache,
             )
         self.assertEqual(2, prepare.call_count)
         self.assertEqual(2, resize.call_count)
@@ -75,7 +76,7 @@ class TopologyCacheTests(unittest.TestCase):
         changed_mask[2, 4] = True
         optic_disc_mask = np.zeros_like(vessel_mask)
         optic_disc_mask[4, 4] = True
-        settings = SegmentRingSettings(0.0, 1.0, 1.0, 1)
+        settings = AnnulusGeometry(0.0, 1.0, 1.0, 1)
         first_prepared = _prepared_topology(vessel_mask.shape, marker=1.0)
         changed_prepared = _prepared_topology(vessel_mask.shape, marker=2.0)
         cache = {}
@@ -86,21 +87,21 @@ class TopologyCacheTests(unittest.TestCase):
         ) as prepare:
             first = prepare_topologies(
                 {"artery": vessel_mask},
-                optic_disc_mask,
+                _disc(optic_disc_mask),
                 settings,
                 source_id="scan-a",
                 cache=cache,
             )
             reused = prepare_topologies(
                 {"artery": vessel_mask.copy()},
-                optic_disc_mask.copy(),
+                _disc(optic_disc_mask.copy()),
                 settings,
                 source_id="scan-a",
                 cache=cache,
             )
             changed = prepare_topologies(
                 {"artery": changed_mask},
-                optic_disc_mask,
+                _disc(optic_disc_mask),
                 settings,
                 source_id="scan-a",
                 cache=cache,
@@ -125,7 +126,7 @@ class TopologyCacheTests(unittest.TestCase):
         changed_vein[2, 6] = True
         disc = np.zeros_like(artery)
         disc[4, 4] = True
-        settings = SegmentRingSettings(0.0, 1.0, 1.0, 1)
+        settings = AnnulusGeometry(0.0, 1.0, 1.0, 1)
         prepared = [
             _prepared_topology(artery.shape, marker=float(index))
             for index in range(3)
@@ -138,7 +139,7 @@ class TopologyCacheTests(unittest.TestCase):
         ) as prepare:
             first = prepare_topologies(
                 {"artery": artery, "vein": vein},
-                disc,
+                _disc(disc),
                 settings,
                 source_id="scan-a",
                 cache=cache,
@@ -146,7 +147,7 @@ class TopologyCacheTests(unittest.TestCase):
             )
             changed = prepare_topologies(
                 {"artery": artery, "vein": changed_vein},
-                disc,
+                _disc(disc),
                 settings,
                 source_id="scan-a",
                 cache=cache,
@@ -161,7 +162,7 @@ class TopologyCacheTests(unittest.TestCase):
         vessel = np.zeros((9, 9), dtype=bool)
         vessel[3:6, 2:7] = True
         disc = np.zeros_like(vessel)
-        settings = SegmentRingSettings(0.0, 1.0, 1.0, 1)
+        settings = AnnulusGeometry(0.0, 1.0, 1.0, 1)
         prepared = [
             _prepared_topology(vessel.shape, marker=float(index))
             for index in range(2)
@@ -172,12 +173,12 @@ class TopologyCacheTests(unittest.TestCase):
             side_effect=prepared,
         ) as prepare:
             first = prepare_topologies(
-                {"artery": vessel}, disc, settings, source_id="scan",
-                cache=cache, optic_disc_center=(3.0, 4.0),
+                {"artery": vessel}, _disc(disc, (3.0, 4.0)), settings,
+                source_id="scan", cache=cache,
             )
             second = prepare_topologies(
-                {"artery": vessel}, disc, settings, source_id="scan",
-                cache=cache, optic_disc_center=(4.0, 4.0),
+                {"artery": vessel}, _disc(disc, (4.0, 4.0)), settings,
+                source_id="scan", cache=cache,
             )
         self.assertIsNot(first["artery"], second["artery"])
         self.assertEqual(2, prepare.call_count)
@@ -202,6 +203,10 @@ def _prepared_topology(
         interpolated_masks=np.ones((1, 1, 3, 3), dtype=bool),
         rotated_masks=np.ones((1, 1, 5, 5), dtype=bool),
     )
+
+
+def _disc(mask: np.ndarray, center=(4.0, 4.0)) -> OpticDisc:
+    return OpticDisc(mask, center, None, None)
 
 
 if __name__ == "__main__":

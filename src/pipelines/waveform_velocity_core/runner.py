@@ -12,10 +12,8 @@ from calculations.blood_flow_velocity import (
     spectral_heartbeat_analysis,
 )
 from calculations.topology import (
-    SegmentRingSettings,
-    optic_disc_mask,
+    AnnulusGeometry,
     run_topology_cache,
-    segment_ring_settings,
     topology_source_id,
 )
 from input_output import EyeFlowOutputPaths
@@ -297,10 +295,8 @@ def _per_beat_input_from_analysis(
     if segments_required:
         if velocity_map is None:
             raise ValueError("velocity_map is required for segment extraction.")
-        ring_settings = segment_ring_settings(
-            source_data.optic_disc_width,
-            source_data.optic_disc_height,
-            image_shape=velocity_map.shape[-2:],
+        ring_settings = source_data.optic_disc.annulus_geometry(
+            velocity_map.shape[-2:],
             number_of_radii_in_fov=number_of_radii_in_fov,
         )
         artery_segments, vein_segments = _segment_velocity_inputs(
@@ -376,22 +372,11 @@ def _raw_velocity_signals_for_per_beat(
 def _segment_velocity_inputs(
     velocity_map,
     source_data: WaveformVelocitySourceData,
-    ring_settings: SegmentRingSettings,
+    ring_settings: AnnulusGeometry,
     ctx,
     *,
     cycle_boundary_indexes,
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
-    mask_shape = getattr(source_data.retinal_artery_mask, "shape", None)
-    if mask_shape is None:
-        disc_mask = source_data.optic_disc_mask
-    else:
-        disc_mask = optic_disc_mask(
-            mask_shape,
-            source_data.optic_disc_center,
-            source_data.optic_disc_width,
-            source_data.optic_disc_height,
-            mask=source_data.optic_disc_mask,
-        )
     waveform_velocity_scheduled = ctx.pipeline_scheduled("waveform_velocity")
     retain_velocity_maps = bool(
         waveform_velocity_scheduled
@@ -414,14 +399,9 @@ def _segment_velocity_inputs(
                 "artery": source_data.retinal_artery_mask,
                 "vein": source_data.retinal_vein_mask,
             },
-            source_data.optic_disc_center,
+            source_data.optic_disc,
             ring_settings,
             source_data.cross_section_settings,
-            optic_disc_mask=(
-                disc_mask
-                if disc_mask is not None and np.any(disc_mask)
-                else None
-            ),
             source_id=topology_source_id(
                 ctx.inputs.hd.filename,
                 ctx.inputs.dv.filename,
@@ -447,7 +427,7 @@ def _segment_velocity_inputs(
         _export_branch_identity_debug(
             ctx,
             result,
-            source_data.optic_disc_center,
+            source_data.optic_disc.center,
             ring_settings,
             name,
         )
@@ -478,7 +458,7 @@ def _export_branch_identity_debug(
     ctx,
     result: CrossSectionSignalResult,
     optic_disc_center,
-    ring_settings: SegmentRingSettings,
+    ring_settings: AnnulusGeometry,
     prefix: str,
 ) -> None:
     if not ctx.output.available:
@@ -509,15 +489,6 @@ def _logged_stage(label: str):
     Logger.log(f"Completed {label} in {perf_counter() - started:.1f}s.")
 
 
-def _positive_geometry_scalar(value) -> float | None:
-    if value is None:
-        return None
-    array = np.asarray(value, dtype=np.float32).reshape(-1)
-    if array.size == 0 or not np.isfinite(array[0]) or array[0] <= 0:
-        return None
-    return float(array[0])
-
-
 def _context_attrs(
     source_data: WaveformVelocitySourceData,
     timing: HolodopplerTiming,
@@ -537,8 +508,6 @@ def _context_attrs(
             "eyeflow.retinal_velocity.recomputed",
         ]
     )
-    width = _positive_geometry_scalar(source_data.optic_disc_width)
-    height = _positive_geometry_scalar(source_data.optic_disc_height)
     return {
         "dependency_chain": dependency_chain + [
             "blood_flow_velocity.signal_analysis.heartbeat.spectral",
@@ -547,11 +516,7 @@ def _context_attrs(
         ],
         "analysis_source": analysis_source,
         "output_schema": output_paths.name,
-        "velocity_section_geometry": (
-            "optic_disc_relative"
-            if width is not None and height is not None
-            else "frame_relative_fallback"
-        ),
+        "velocity_section_geometry": "optic_disc_centered_frame_fraction",
         "velocity_section_inner_radius_fraction": float(
             SEGMENT_INNER_RADIUS_FRAC
         ),

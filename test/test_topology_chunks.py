@@ -12,7 +12,7 @@ from calculations.math.spatial_gradient import (
 )
 from calculations.topology import (
     PreparedTopology,
-    SegmentRingSettings,
+    AnnulusGeometry,
     SegmentTopology,
     interpolate_segment_masks,
     interpolate_segments,
@@ -44,7 +44,7 @@ def _prepared(*, angle: float = 23.0, centerline_points: int = 9) -> PreparedTop
         window_bounds_xyxy=np.asarray([[[0, side, 0, side]]], dtype=np.int32),
         window_side_pixels=side,
         optic_disc_mask=np.zeros((side, side), dtype=bool),
-        ring_settings=SegmentRingSettings(0.0, 1.0, 1.0, 1),
+        ring_settings=AnnulusGeometry(0.0, 1.0, 1.0, 1),
     )
     rotations = np.asarray([[angle]], dtype=np.float32)
     interpolated = interpolate_segment_masks(topology.segment_masks)

@@ -10,7 +10,8 @@ from skimage.measure import label as label_components
 from skimage.morphology import disk, skeletonize
 from skimage.segmentation import find_boundaries, watershed
 
-from .geometry import SegmentRingSettings, annulus_mask
+from .geometry import AnnulusGeometry, annulus_mask
+from .optic_disc import OpticDisc
 
 
 LOW_RES_SMALL_BRANCH_PIXELS = 10
@@ -54,10 +55,9 @@ class BranchIdentityResult:
 
 def label_vessel_branches(
     vessel_mask,
-    optic_disc_center,
-    settings: SegmentRingSettings,
+    optic_disc: OpticDisc,
+    settings: AnnulusGeometry,
     *,
-    optic_disc_mask=None,
     small_branch_pixels: int = LOW_RES_SMALL_BRANCH_PIXELS,
     strel_size: int = STREL_SIZE,
 ) -> BranchIdentityResult:
@@ -66,11 +66,12 @@ def label_vessel_branches(
     vessel = np.asarray(vessel_mask, dtype=bool)
     if vessel.ndim != 2:
         raise ValueError("vessel_mask must be a 2-D array.")
+    disc = optic_disc.mask_for(vessel.shape)
     stages = _branch_identity_stages(
-        vessel,
-        optic_disc_center,
+        optic_disc.subtract_from(vessel),
+        optic_disc.center,
         settings,
-        optic_disc_mask=optic_disc_mask,
+        optic_disc_mask=disc,
         small_branch_pixels=small_branch_pixels,
         strel_size=strel_size,
     )
@@ -85,27 +86,25 @@ def label_vessel_branches(
 def _branch_identity_stages(
     vessel: np.ndarray,
     optic_disc_center,
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
     *,
-    optic_disc_mask=None,
+    optic_disc_mask,
     small_branch_pixels: int = LOW_RES_SMALL_BRANCH_PIXELS,
     strel_size: int = STREL_SIZE,
 ) -> BranchIdentityStages:
-    disc = None
-    if optic_disc_mask is not None:
-        disc = np.asarray(optic_disc_mask, dtype=bool)
-        if disc.shape != vessel.shape:
-            raise ValueError(
-                f"optic_disc_mask must have shape {vessel.shape}, got {disc.shape}."
-            )
-        vessel = vessel & ~disc
+    disc = np.asarray(optic_disc_mask, dtype=bool)
+    if disc.shape != vessel.shape:
+        raise ValueError(
+            f"optic_disc_mask must have shape {vessel.shape}, got {disc.shape}."
+        )
+    has_disc = bool(np.any(disc))
     section = annulus_mask(
         vessel.shape,
         optic_disc_center,
-        settings.inner_radius_frac if disc is None else 0.0,
+        0.0 if has_disc else settings.inner_radius_frac,
         settings.outer_radius_frac,
     )
-    if disc is not None:
+    if has_disc:
         section &= ~disc
     skeleton = skeletonize(vessel)
 
@@ -212,7 +211,7 @@ def _impose_marker_minima(
 def _per_circle_cleaned_labels(
     labels: np.ndarray,
     optic_disc_center,
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
     *,
     section: np.ndarray | None = None,
 ) -> np.ndarray:

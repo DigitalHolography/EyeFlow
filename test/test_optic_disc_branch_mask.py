@@ -13,9 +13,10 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.topology import (
+    AnnulusGeometry,
+    OpticDisc,
     build_segment_topology,
     label_vessel_branches,
-    segment_ring_settings,
 )
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity_core import runner
@@ -27,13 +28,38 @@ from pipelines.waveform_velocity_core.segmentation import (
 
 
 class OpticDiscBranchMaskTests(unittest.TestCase):
+    def test_empty_mask_retains_the_configured_inner_boundary(self):
+        shape = (21, 21)
+        vessel = np.ones(shape, dtype=bool)
+        center = (10.0, 10.0)
+        settings = AnnulusGeometry(0.4, 0.9, 0.5, 1)
+        empty = label_vessel_branches(
+            vessel,
+            OpticDisc(np.zeros(shape, dtype=bool), center, None, None),
+            settings,
+        )
+        exact = np.zeros(shape, dtype=bool)
+        exact[10, 10] = True
+        nonempty = label_vessel_branches(
+            vessel,
+            OpticDisc(exact, center, None, None),
+            settings,
+        )
+
+        self.assertFalse(empty.stages.section[10, 13])
+        self.assertTrue(empty.stages.section[10, 18])
+        self.assertTrue(nonempty.stages.section[10, 13])
+
     def test_elliptical_disc_keeps_vessels_inside_the_old_circular_cutoff(self):
         vessel, disc, source, settings = self._inputs()
         original_vessel = vessel.copy()
         original_disc = disc.copy()
-        circular = label_vessel_branches(vessel, source.optic_disc_center, settings)
+        circular_disc = OpticDisc(
+            np.zeros_like(disc), source.optic_disc.center, 20.0, 50.0
+        )
+        circular = label_vessel_branches(vessel, circular_disc, settings)
         branches = label_vessel_branches(
-            vessel, source.optic_disc_center, settings, optic_disc_mask=disc
+            vessel, source.optic_disc, settings
         )
 
         # This vessel lies outside the ellipse but inside its bounding circle.
@@ -64,9 +90,8 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         disc[40:49, 90:97] = True
         topology = build_segment_topology(
             vessel,
-            disc,
+            OpticDisc(disc, source.optic_disc.center, 20.0, 50.0),
             settings,
-            optic_disc_center=source.optic_disc_center,
         )
 
         self.assertFalse(np.any(topology.branch_identity.stages.vessel[disc]))
@@ -90,7 +115,12 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         schema = EyeFlowOutputPaths.active()
         for source_mask in (disc, None):
             with self.subTest(has_source_mask=source_mask is not None):
-                source.optic_disc_mask = source_mask
+                source.optic_disc = OpticDisc(
+                    source_mask,
+                    (60.0, 45.0),
+                    20.0,
+                    50.0,
+                )
                 published, _ = pack_segmentation_outputs(source, None, None)[
                     schema.segmentation.optic_disc.mask
                 ]
@@ -109,20 +139,25 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
                     )
                 self.assertEqual(("artery", "vein"), result)
                 np.testing.assert_array_equal(
-                    extract.call_args.kwargs["optic_disc_mask"], expected_disc
+                    extract.call_args.args[2].mask_for(vessel.shape), expected_disc
                 )
                 branches = label_vessel_branches(
-                    vessel, source.optic_disc_center, settings,
-                    optic_disc_mask=expected_disc,
+                    vessel, source.optic_disc, settings,
                 )
                 self.assertGreater(branches.labels[43, 73], 0)
 
     def test_wrong_disc_mask_shape_is_rejected(self):
         vessel, _, source, settings = self._inputs()
-        with self.assertRaisesRegex(ValueError, "optic_disc_mask must have shape"):
+        with self.assertRaisesRegex(ValueError, "same orientation and shape"):
             label_vessel_branches(
-                vessel, source.optic_disc_center, settings,
-                optic_disc_mask=np.zeros(vessel.shape[::-1], dtype=bool),
+                vessel,
+                OpticDisc(
+                    np.zeros(vessel.shape[::-1], dtype=bool),
+                    source.optic_disc.center,
+                    20.0,
+                    50.0,
+                ),
+                settings,
             )
 
     @staticmethod
@@ -136,14 +171,11 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         source = SimpleNamespace(
             retinal_artery_mask=vessel,
             retinal_vein_mask=vessel.copy(),
-            optic_disc_mask=disc,
-            optic_disc_center=np.asarray([60.0, 45.0], dtype=np.float32),
-            optic_disc_width=20.0,
-            optic_disc_height=50.0,
+            optic_disc=OpticDisc(disc, (60.0, 45.0), 20.0, 50.0),
             cross_section_settings="settings",
             provenance={"beat_index_base": 0},
         )
-        settings = segment_ring_settings(20.0, 50.0, image_shape=shape)
+        settings = source.optic_disc.annulus_geometry(shape)
         return vessel, disc, source, settings
 
 

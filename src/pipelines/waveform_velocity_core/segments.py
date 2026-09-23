@@ -21,7 +21,8 @@ from calculations.compute_backend import optional_cupy_backend
 from calculations.math import nanmean_float32, next_power_of_two
 from calculations.segment_profiles import SegmentProfileResult, analyze_segment_profiles
 from calculations.topology import (
-    SegmentRingSettings,
+    AnnulusGeometry,
+    OpticDisc,
     TopologyCacheKey,
 )
 from utils.logger import Logger
@@ -321,11 +322,10 @@ def _gpu_nanmean_axis1(values, cupy, *, mask=None):
 def analyze_velocity_segment_profiles(
     velocity_map,
     vessel_masks: Mapping[str, object],
-    optic_disc_center,
-    ring_settings: SegmentRingSettings,
+    optic_disc: OpticDisc,
+    ring_settings: AnnulusGeometry,
     cross_section_settings: CrossSectionSignalSettings,
     *,
-    optic_disc_mask=None,
     source_id: str = "",
     topology_cache: MutableMapping[TopologyCacheKey, object] | None = None,
     retain_velocity_maps: bool = False,
@@ -375,10 +375,9 @@ def analyze_velocity_segment_profiles(
     profile_results = analyze_segment_profiles(
         velocity_map,
         vessel_masks,
-        optic_disc_center,
+        optic_disc,
         ring_settings,
         cross_section_settings,
-        optic_disc_mask=optic_disc_mask,
         source_id=source_id,
         topology_cache=topology_cache,
         retain_segment_maps=retain_velocity_maps,
@@ -420,6 +419,7 @@ def _velocity_result(
     ).copy()
     topology = CrossSectionTopology(
         spatial_shape=profile_topology.spatial_shape,
+        optic_disc_center_xy=profile_topology.optic_disc_center_xy,
         frame_count=profile_topology.frame_count,
         labels=profile_topology.labels,
         branch_ids=profile_topology.branch_ids,

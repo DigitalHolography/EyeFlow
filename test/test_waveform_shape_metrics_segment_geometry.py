@@ -24,8 +24,8 @@ from calculations.blood_flow_velocity.cross_section.generate_cross_section_signa
     _dilate_profile_mask,
 )
 from calculations.topology import (  # noqa: E402
+    OpticDisc,
     ring_masks,
-    segment_ring_settings,
     section_masks,
 )
 from pipelines.waveform_velocity_core.branch_identity_debug import (  # noqa: E402
@@ -81,7 +81,12 @@ class SegmentCenterTests(unittest.TestCase):
             "watershed",
             return_value=watershed_labels,
         ):
-            stages = _branch_identity_stages(vessel, None, settings)
+            stages = _branch_identity_stages(
+                vessel,
+                (4.0, 4.0),
+                settings,
+                optic_disc_mask=np.zeros_like(vessel),
+            )
 
         self.assertEqual(2, int(stages.annulus_refined_labels.max()))
 
@@ -108,10 +113,9 @@ class SegmentCenterTests(unittest.TestCase):
                 "artery": artery_mask,
                 "vein": vein_mask,
             },
-            (30, 30),
+            OpticDisc(optic_disc_mask, (30.0, 30.0), None, None),
             ring_settings,
             settings,
-            optic_disc_mask=optic_disc_mask,
             retain_velocity_maps=False,
             cycle_boundary_indexes=np.asarray([0, 2], dtype=np.int32),
             velocity_profile_fft=True,
@@ -162,7 +166,7 @@ class SegmentCenterTests(unittest.TestCase):
 
         image = _labels_with_substack_boxes(
             labels,
-            None,
+            (10.0, 10.0),
             ring_settings,
             centers,
             np.asarray(
@@ -227,10 +231,8 @@ class SegmentCenterTests(unittest.TestCase):
         np.testing.assert_array_equal(output.writes[0][0], rotated_means[0, 0])
 
     def test_segment_analysis_uses_disc_extent_and_fixed_fov_spacing(self) -> None:
-        settings = segment_ring_settings(
-            55,
-            69,
-            image_shape=(512, 512),
+        settings = OpticDisc(None, (267.0, 230.0), 55, 69).annulus_geometry(
+            (512, 512)
         )
 
         corner_radius = np.hypot(255.5, 255.5)
@@ -245,10 +247,8 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertAlmostEqual(expected_width, settings.segment_length_frac)
 
     def test_number_of_radii_in_fov_controls_pixel_width_and_count(self) -> None:
-        settings = segment_ring_settings(
-            40,
-            40,
-            image_shape=(101, 101),
+        settings = OpticDisc(None, (50.0, 50.0), 40, 40).annulus_geometry(
+            (101, 101),
             number_of_radii_in_fov=10,
         )
 
@@ -259,15 +259,13 @@ class SegmentCenterTests(unittest.TestCase):
 
     def test_number_of_radii_in_fov_must_be_positive(self) -> None:
         with self.assertRaisesRegex(ValueError, "must be positive"):
-            segment_ring_settings(number_of_radii_in_fov=0)
+            OpticDisc(None, (1.0, 1.0), 1, 1).annulus_geometry(
+                (10, 10), number_of_radii_in_fov=0
+            )
 
     def test_annulus_starts_at_optic_disc_and_uses_fixed_fov_extent(self) -> None:
         center = np.asarray([267.0, 230.0])
-        settings = segment_ring_settings(
-            55,
-            69,
-            image_shape=(512, 512),
-        )
+        settings = OpticDisc(None, center, 55, 69).annulus_geometry((512, 512))
         mask = section_masks(
             (512, 512),
             center,

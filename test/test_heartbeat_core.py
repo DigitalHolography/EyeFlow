@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import numpy as np
 
+from calculations.topology import OpticDisc
 from pipeline_engine.context import PipelineState
 from pipelines.heartbeat_core.runner import (
     HeartbeatResult,
@@ -22,9 +23,9 @@ class HeartbeatCoreTests(unittest.TestCase):
             moment2=object(),
             artery_mask=np.ones((3, 3), dtype=bool),
             vein_mask=np.ones((3, 3), dtype=bool),
-            optic_disc_center=None,
-            optic_disc_width=None,
-            optic_disc_height=None,
+            optic_disc=OpticDisc(
+                np.zeros((3, 3), dtype=bool), (1.0, 1.0), None, None
+            ),
             timing=SimpleNamespace(dt_seconds=0.02),
             local_background_dist=4,
             index_base=0,
@@ -76,9 +77,9 @@ class HeartbeatCoreTests(unittest.TestCase):
             moment2=moment2,
             artery_mask=artery,
             vein_mask=vein,
-            optic_disc_center=None,
-            optic_disc_width=None,
-            optic_disc_height=None,
+            optic_disc=OpticDisc(
+                np.zeros((3, 3), dtype=bool), (1.0, 1.0), None, None
+            ),
             timing=SimpleNamespace(dt_seconds=0.02),
             local_background_dist=1,
             index_base=0,
@@ -124,9 +125,7 @@ class HeartbeatCoreTests(unittest.TestCase):
             moment2=moment2,
             retinal_artery_mask=artery.copy(),
             retinal_vein_mask=vein.copy(),
-            optic_disc_center=None,
-            optic_disc_width=None,
-            optic_disc_height=None,
+            optic_disc=inputs.optic_disc,
             local_background_dist=1,
         )
         reused = cached_velocity_estimation(ctx, waveform_source)

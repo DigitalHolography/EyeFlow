@@ -17,7 +17,7 @@ from calculations.blood_flow_velocity.cross_section import (  # noqa: E402
     CrossSectionTopology,
     generate_cross_section_signals,
 )
-from calculations.topology import SegmentRingSettings  # noqa: E402
+from calculations.topology import AnnulusGeometry, OpticDisc  # noqa: E402
 from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
     _correct_displacement_basis,
     _cross_sectional_radial_metrics,
@@ -213,8 +213,8 @@ class CrossSectionDisplacementTests(unittest.TestCase):
         result = generate_cross_section_signals(
             velocity_map,
             vessel_mask,
-            (4, 4),
-            SegmentRingSettings(0.0, 0.5, 0.5, 1),
+            _optic_disc((9, 9), (4.0, 4.0)),
+            AnnulusGeometry(0.0, 0.5, 0.5, 1),
             CrossSectionSignalSettings(0.01),
             displacement_maps={'method_a': displacement, 'method_b': displacement},
         )
@@ -273,7 +273,8 @@ class CrossSectionDisplacementTests(unittest.TestCase):
         first[..., 0], first[..., 1] = 1., 2.
         with patch.object(module, "prepare_topologies", wraps=module.prepare_topologies) as prepare:
             result = generate_cross_section_signals(
-                cube, vessel, (30, 30), SegmentRingSettings(.1, .7, .25, 2),
+                cube, vessel, _optic_disc((61, 61), (30.0, 30.0)),
+                AnnulusGeometry(.1, .7, .25, 2),
                 CrossSectionSignalSettings(.01),
                 displacement_maps={"first": first, "second": first * 3},
             )
@@ -289,7 +290,7 @@ class CrossSectionDisplacementTests(unittest.TestCase):
     def test_velocity_only_and_displacement_shape_validation(self) -> None:
         velocity_map = np.zeros((2, 9, 9), dtype=np.float32)
         vessel_mask = np.zeros((9, 9), dtype=bool)
-        settings = SegmentRingSettings(0.0, 0.5, 0.5, 1)
+        settings = AnnulusGeometry(0.0, 0.5, 0.5, 1)
         cross_section_settings = CrossSectionSignalSettings(
             0.01,
         )
@@ -297,7 +298,7 @@ class CrossSectionDisplacementTests(unittest.TestCase):
         result = generate_cross_section_signals(
             velocity_map,
             vessel_mask,
-            (4, 4),
+            _optic_disc((9, 9), (4.0, 4.0)),
             settings,
             cross_section_settings,
         )
@@ -307,7 +308,7 @@ class CrossSectionDisplacementTests(unittest.TestCase):
             generate_cross_section_signals(
                 velocity_map,
                 vessel_mask,
-                (4, 4),
+                _optic_disc((9, 9), (4.0, 4.0)),
                 settings,
                 cross_section_settings,
                 displacement_maps={
@@ -325,6 +326,7 @@ def _single_segment_topology(
     rotated_mask[:, :, 50:130, 60:120] = True
     return CrossSectionTopology(
         spatial_shape=(5, 5),
+        optic_disc_center_xy=(2.0, 2.0),
         frame_count=frame_count,
         labels=np.ones((5, 5), dtype=np.int32),
         branch_ids=np.asarray([1], dtype=np.int32),
@@ -337,7 +339,7 @@ def _single_segment_topology(
         profile_rotation_degrees=np.asarray([[angle]], dtype=np.float32),
         profile_integration_limits_pixels=np.asarray([[[0, 180]]], dtype=np.int32),
         valid_segments=np.asarray([[True]], dtype=bool),
-        ring_settings=SegmentRingSettings(0.0, 1.0, 1.0, 1),
+        ring_settings=AnnulusGeometry(0.0, 1.0, 1.0, 1),
         branch_identity=SimpleNamespace(),
         prepared_topology=SimpleNamespace(topology=SimpleNamespace(
             spatial_shape=(5, 5), window_side_pixels=3,
@@ -346,6 +348,10 @@ def _single_segment_topology(
             segment_centers_xy=np.array([[[2., 2.]]]),
         )),
     )
+
+
+def _optic_disc(shape, center) -> OpticDisc:
+    return OpticDisc(np.zeros(shape, dtype=bool), center, None, None)
 
 
 def _constant_transform(values, _angle, _side):

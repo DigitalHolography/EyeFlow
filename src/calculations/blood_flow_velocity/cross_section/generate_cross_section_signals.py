@@ -18,7 +18,8 @@ from calculations.topology import (
     BranchIdentityResult,
     PreparedSegmentChunks,
     PreparedTopology,
-    SegmentRingSettings,
+    AnnulusGeometry,
+    OpticDisc,
     extract_segment,
     prepare_topologies,
     prepare_segment_chunks,
@@ -66,6 +67,7 @@ class CrossSectionProfileOutputs:
 @dataclass(frozen=True)
 class CrossSectionTopology:
     spatial_shape: tuple[int, int]
+    optic_disc_center_xy: tuple[float, float]
     frame_count: int
     labels: np.ndarray
     branch_ids: np.ndarray
@@ -78,7 +80,7 @@ class CrossSectionTopology:
     profile_rotation_degrees: np.ndarray
     profile_integration_limits_pixels: np.ndarray
     valid_segments: np.ndarray
-    ring_settings: SegmentRingSettings
+    ring_settings: AnnulusGeometry
     branch_identity: BranchIdentityResult
     prepared_topology: PreparedTopology | None = None
 
@@ -429,11 +431,10 @@ def _validate_displacement_maps(
 def generate_cross_section_signals(
     velocity_map,
     vessel_mask,
-    optic_disc_center,
-    ring_settings: SegmentRingSettings,
+    optic_disc: OpticDisc,
+    ring_settings: AnnulusGeometry,
     cross_section_settings: CrossSectionSignalSettings,
     *,
-    optic_disc_mask=None,
     displacement_maps: Mapping[str, object] | None = None,
     retain_displacement_maps: bool = True,
     retain_velocity_maps: bool = True,
@@ -444,10 +445,9 @@ def generate_cross_section_signals(
     _validate_velocity_map(velocity_map, vessel)
     prepared = prepare_topologies(
         {"vessel": vessel},
-        optic_disc_mask,
+        optic_disc,
         ring_settings,
         source_id="",
-        optic_disc_center=optic_disc_center,
         window_size_percentile_kept=cross_section_settings.submask_size_percentile_kept,
     )["vessel"]
     prepared = resolve_segment_rotations(
@@ -479,7 +479,7 @@ def _generate_cross_section_signals_from_prepared(
     velocity_map,
     prepared_topology: PreparedTopology,
     prepared_segments: PreparedSegmentChunks,
-    ring_settings: SegmentRingSettings,
+    ring_settings: AnnulusGeometry,
     cross_section_settings: CrossSectionSignalSettings,
     *,
     displacement_maps: Mapping[str, object] | None = None,
@@ -808,7 +808,7 @@ def _result_from_buffers(
 def _empty_result(
     velocity_map: np.ndarray,
     vessel: np.ndarray,
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
     branches: BranchIdentityResult,
     *,
     substack_side_pixels: int,
@@ -848,6 +848,7 @@ def _empty_result(
     )
     topology = CrossSectionTopology(
         spatial_shape=tuple(vessel.shape),
+        optic_disc_center_xy=prepared_topology.topology.optic_disc_center_xy,
         frame_count=int(velocity_map.shape[0]),
         labels=branches.labels.copy(),
         branch_ids=branches.branch_ids.copy(),
@@ -1178,7 +1179,7 @@ def _store_displacement_measurement(
 def _legacy_topology_from_prepared(
     buffers: _CrossSectionBuffers,
     prepared_topology: PreparedTopology,
-    ring_settings: SegmentRingSettings,
+    ring_settings: AnnulusGeometry,
     *,
     frame_count: int,
     profile_pixel_size_mm: float,
@@ -1201,6 +1202,7 @@ def _legacy_topology_from_prepared(
     )
     return CrossSectionTopology(
         spatial_shape=topology.spatial_shape,
+        optic_disc_center_xy=topology.optic_disc_center_xy,
         frame_count=int(frame_count),
         labels=topology.labels.copy(),
         branch_ids=topology.branch_ids.copy(),

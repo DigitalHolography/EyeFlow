@@ -30,8 +30,8 @@ import scipy
 
 from calculations.compute_backend import optional_cupy_backend
 from calculations.topology import (
+    AnnulusGeometry,
     PreparedTopology,
-    SegmentRingSettings,
     SegmentTopology,
     interpolate_segment_masks,
     prepare_segment_chunks,
@@ -93,7 +93,7 @@ def _prepared_topology(mask: np.ndarray) -> PreparedTopology:
         window_bounds_xyxy=np.asarray([[[0, side, 0, side]]], dtype=np.int32),
         window_side_pixels=side,
         optic_disc_mask=np.zeros(mask.shape, dtype=bool),
-        ring_settings=SegmentRingSettings(0.0, 1.0, 1.0, 1),
+        ring_settings=AnnulusGeometry(0.0, 1.0, 1.0, 1),
         branch_identity=branch_identity,
     )
     angles = np.asarray([[-59.0]], dtype=np.float32)

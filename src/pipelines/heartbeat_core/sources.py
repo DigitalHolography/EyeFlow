@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from calculations.topology import OpticDisc
 from input_output.schema import HolodopplerTiming
 
 
@@ -15,9 +16,7 @@ class HeartbeatInputs:
     moment2: object
     artery_mask: np.ndarray
     vein_mask: np.ndarray
-    optic_disc_center: np.ndarray | None
-    optic_disc_width: np.ndarray | None
-    optic_disc_height: np.ndarray | None
+    optic_disc: OpticDisc
     timing: HolodopplerTiming
     local_background_dist: int
     index_base: int = 0
@@ -37,26 +36,26 @@ def load_heartbeat_inputs(ctx) -> HeartbeatInputs:
         spatial_shape,
         "retinal_artery_mask",
     )
-    vein_mask, vein_swapped = _align_mask(
+    vein_mask = _apply_mask_alignment(
         dv.retinal_vein_mask(),
         spatial_shape,
         "retinal_vein_mask",
+        swapped=artery_swapped,
     )
-    swapped = artery_swapped or vein_swapped
-    center = _pair(dv.optic_disc_center(), swapped=swapped)
-    width, height = _sizes(
-        dv.optic_disc_width(),
-        dv.optic_disc_height(),
-        swapped=swapped,
-    )
+    optic_disc = dv.optic_disc()
+    if artery_swapped:
+        optic_disc = optic_disc.transposed()
+    if optic_disc.mask is not None and optic_disc.mask.shape != spatial_shape:
+        raise ValueError(
+            "optic-disc mask must share the DopplerView vessel-mask frame; "
+            f"expected {spatial_shape}, got {optic_disc.mask.shape}."
+        )
     return HeartbeatInputs(
         moment0=moment0,
         moment2=moment2,
         artery_mask=artery_mask,
         vein_mask=vein_mask,
-        optic_disc_center=center,
-        optic_disc_width=width,
-        optic_disc_height=height,
+        optic_disc=optic_disc,
         timing=hd.timing(),
         local_background_dist=dv.local_background_dist(),
     )
@@ -71,17 +70,21 @@ def _align_mask(array, shape: tuple[int, int], name: str) -> tuple[np.ndarray, b
     raise ValueError(f"{name} spatial shape {value.shape[-2:]} does not match {shape}.")
 
 
-def _pair(value, *, swapped: bool) -> np.ndarray | None:
-    if value is None:
-        return None
-    pair = np.asarray(value, dtype=np.float32).reshape(-1)
-    if pair.size < 2:
-        return None
-    return pair[[1, 0]] if swapped else pair[:2]
-
-
-def _sizes(width, height, *, swapped: bool):
-    return (height, width) if swapped else (width, height)
+def _apply_mask_alignment(
+    array,
+    shape: tuple[int, int],
+    name: str,
+    *,
+    swapped: bool,
+) -> np.ndarray:
+    value = np.asarray(array)
+    aligned = np.swapaxes(value, -1, -2) if swapped else value
+    if aligned.shape[-2:] != shape:
+        raise ValueError(
+            f"{name} does not share the selected DopplerView spatial orientation; "
+            f"aligned shape {aligned.shape[-2:]} does not match {shape}."
+        )
+    return np.asarray(aligned, dtype=bool)
 
 
 __all__ = ["HeartbeatInputs", "load_heartbeat_inputs"]

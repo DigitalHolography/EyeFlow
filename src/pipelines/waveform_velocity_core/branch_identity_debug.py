@@ -7,7 +7,7 @@ from scipy import ndimage as ndi
 
 from calculations.topology import (
     BranchIdentityStages,
-    SegmentRingSettings,
+    AnnulusGeometry,
     annulus_mask,
 )
 
@@ -16,7 +16,7 @@ def export_branch_identity_stage_pngs(
     stages: BranchIdentityStages,
     prefix: str,
     optic_disc_center,
-    ring_settings: SegmentRingSettings,
+    ring_settings: AnnulusGeometry,
     *,
     segment_center_xy: np.ndarray | None = None,
     profile_window_bounds_xyxy: np.ndarray | None = None,
@@ -48,7 +48,7 @@ def export_branch_identity_stage_pngs(
 def _stage_images(
     stages: BranchIdentityStages,
     optic_disc_center,
-    ring_settings: SegmentRingSettings,
+    ring_settings: AnnulusGeometry,
 ):
     return (
         ("01_input", _mask_image(stages.vessel)),
@@ -96,7 +96,7 @@ def _label_image(labels: np.ndarray) -> np.ndarray:
 def _labels_with_ring_overlay(
     labels: np.ndarray,
     optic_disc_center,
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
 ) -> np.ndarray:
     image = _label_image(labels)
     image[_ring_boundaries(labels.shape, optic_disc_center, settings)] = (255, 255, 255)
@@ -106,7 +106,7 @@ def _labels_with_ring_overlay(
 def _labels_with_substack_boxes(
     labels: np.ndarray,
     optic_disc_center,
-    ring_settings: SegmentRingSettings,
+    ring_settings: AnnulusGeometry,
     segment_center_xy: np.ndarray,
     profile_window_bounds_xyxy: np.ndarray,
 ) -> np.ndarray:
@@ -179,7 +179,7 @@ def _ring_box_color(ring_index: int) -> tuple[int, int, int]:
 def _ring_boundaries(
     image_shape: tuple[int, int],
     optic_disc_center,
-    settings: SegmentRingSettings,
+    settings: AnnulusGeometry,
 ) -> np.ndarray:
     boundaries = np.zeros(image_shape, dtype=bool)
     for ring_index in range(settings.ring_count):

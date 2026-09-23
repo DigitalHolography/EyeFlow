@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from calculations.topology import OpticDisc
+
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity_core.segmentation import (
     OPTIC_DISC_LABEL,
@@ -30,10 +32,7 @@ class SegmentationOutputTests(unittest.TestCase):
         source_data = SimpleNamespace(
             retinal_artery_mask=artery_mask,
             retinal_vein_mask=vein_mask,
-            optic_disc_mask=optic_disc_mask,
-            optic_disc_center=np.asarray([8.0, 7.0], dtype=np.float32),
-            optic_disc_width=np.float32(4.0),
-            optic_disc_height=np.float32(4.0),
+            optic_disc=OpticDisc(optic_disc_mask, (8.0, 7.0), 4.0, 4.0),
         )
 
         outputs = pack_segmentation_outputs(source_data, segments, segments)

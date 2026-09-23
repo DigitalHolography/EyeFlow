@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from calculations.topology import OpticDisc
+
 from .base import SourceFileLayout, TypedSource
 
 DV_CONFIG_DIR_NAME = "json"
@@ -17,6 +19,7 @@ DOPPLER_VIEW_LAYOUT = SourceFileLayout(
     config_dir_name=DV_CONFIG_DIR_NAME,
     config_filename=DV_CONFIG_FILENAME,
 )
+
 
 class DopplerViewSource(TypedSource):
     """Typed access to the DopplerView HDF5 file and sidecar config."""
@@ -40,32 +43,30 @@ class DopplerViewSource(TypedSource):
             default=None,
         )
 
-    def optic_disc_center(self) -> np.ndarray | None:
-        return self._array(
-            "segmentation/OpticDisc/center",
-            dtype=np.float32,
-            default=None,
-        )
+    def optic_disc(self) -> OpticDisc:
+        """Return DopplerView's optic-disc measurements in its native frame."""
 
-    def optic_disc_mask(self) -> np.ndarray | None:
-        return self._array(
-            "segmentation/OpticDisc/mask",
-            dtype=bool,
-            default=None,
-        )
-
-    def optic_disc_width(self) -> np.float32 | None:
-        return self._array(
-            "segmentation/OpticDisc/width",
-            dtype=np.float32,
-            default=None,
-        )
-
-    def optic_disc_height(self) -> np.float32 | None:
-        return self._array(
-            "segmentation/OpticDisc/height",
-            dtype=np.float32,
-            default=None,
+        return OpticDisc(
+            mask=self._array(
+                "segmentation/OpticDisc/mask",
+                dtype=bool,
+                default=None,
+            ),
+            center=self._array(
+                "segmentation/OpticDisc/center",
+                dtype=np.float32,
+                default=None,
+            ),
+            width=self._array(
+                "segmentation/OpticDisc/width",
+                dtype=np.float32,
+                default=None,
+            ),
+            height=self._array(
+                "segmentation/OpticDisc/height",
+                dtype=np.float32,
+                default=None,
+            ),
         )
 
     def local_background_dist(self) -> int:

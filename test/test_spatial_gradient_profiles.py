@@ -9,6 +9,7 @@ from unittest.mock import patch
 import numpy as np
 
 from calculations.blood_flow_velocity import CrossSectionSignalSettings
+from calculations.topology import OpticDisc
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
 from pipelines.spatial_gradient_moment0 import profiles as profile_module
@@ -63,10 +64,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
 
     def test_extracts_both_vessels_using_annular_cross_section_engine(self) -> None:
         source = SimpleNamespace(
-            optic_disc_mask=None,
-            optic_disc_width=2.0,
-            optic_disc_height=2.0,
-            optic_disc_center=np.asarray([4.0, 4.0]),
+            optic_disc=OpticDisc(None, (4.0, 4.0), 2.0, 2.0),
             retinal_artery_mask=np.ones((8, 8), dtype=bool),
             retinal_vein_mask=np.eye(8, dtype=bool),
             cross_section_settings=CrossSectionSignalSettings(0.01),
@@ -106,7 +104,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
         self.assertIs(source.cross_section_settings, args[4])
         np.testing.assert_array_equal(source.retinal_artery_mask, args[1]["artery"])
         np.testing.assert_array_equal(source.retinal_vein_mask, args[1]["vein"])
-        disc = kwargs["optic_disc_mask"]
+        disc = args[2].mask_for((8, 8))
         self.assertEqual((8, 8), disc.shape)
         self.assertTrue(disc[4, 4])
         self.assertFalse(disc[0, 0])

@@ -6,7 +6,8 @@ import unittest
 
 import numpy as np
 
-from calculations.topology.geometry import SegmentRingSettings
+from calculations.topology.geometry import AnnulusGeometry
+from calculations.topology.optic_disc import OpticDisc
 from calculations.topology.workflow import prepare_segments, prepare_topology
 
 
@@ -21,7 +22,8 @@ class TopologyWorkflowTests(unittest.TestCase):
         disc = np.zeros_like(vessel)
         disc[18:23, 18:23] = True
         prepared = prepare_topology(
-            vessel, disc, SegmentRingSettings(.1, .6, .25, 2)
+            vessel, OpticDisc(disc, (20.0, 20.0), None, None),
+            AnnulusGeometry(.1, .6, .25, 2)
         )
         cube = np.arange(2 * 41 * 41, dtype=np.float32).reshape(2, 41, 41)
         for mode in ("fused", "sequential"):
@@ -43,7 +45,8 @@ class TopologyWorkflowTests(unittest.TestCase):
     def test_empty_topology_allows_parallel_preparation(self) -> None:
         vessel = np.zeros((21, 21), bool)
         prepared = prepare_topology(
-            vessel, vessel, SegmentRingSettings(0., .5, .5, 1)
+            vessel, OpticDisc(vessel, (10.0, 10.0), None, None),
+            AnnulusGeometry(0., .5, .5, 1)
         )
         self.assertEqual([], list(prepare_segments(
             np.zeros((2, 21, 21), np.float32), prepared, worker_count=2,
@@ -56,8 +59,8 @@ class TopologyWorkflowTests(unittest.TestCase):
         optic_disc[18:23, 18:23] = True
         prepared = prepare_topology(
             vessel,
-            optic_disc,
-            SegmentRingSettings(0.1, 0.6, 0.25, 2),
+            OpticDisc(optic_disc, (20.0, 20.0), None, None),
+            AnnulusGeometry(0.1, 0.6, 0.25, 2),
             window_size_percentile_kept=1.0,
         )
 

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from calculations.blood_flow_velocity import CrossSectionSignalSettings
+from calculations.topology import OpticDisc
 from input_output.schema import DopplerViewSource, HolodopplerSource, HolodopplerTiming
 
 from .constants import (
@@ -35,10 +36,7 @@ class WaveformVelocitySourceData:
     retinal_artery_mask: np.ndarray
     retinal_vein_mask: np.ndarray
     retinal_labeled_vessels: np.ndarray | None
-    optic_disc_mask: np.ndarray | None
-    optic_disc_center: np.ndarray | None
-    optic_disc_width: np.ndarray | None
-    optic_disc_height: np.ndarray | None
+    optic_disc: OpticDisc
     timing: HolodopplerTiming
     local_background_dist: int
     cross_section_settings: CrossSectionSignalSettings
@@ -69,69 +67,56 @@ class WaveformVelocitySources:
             spatial_shape,
             "retinal_artery_mask",
         )
-        vein_mask, vein_axes_swapped = _align_spatial_array(
+        vein_mask = _apply_spatial_alignment(
             self.dv.retinal_vein_mask(),
             spatial_shape,
             "retinal_vein_mask",
+            swapped=artery_axes_swapped,
         )
-        spatial_axes_swapped = artery_axes_swapped or vein_axes_swapped
-        labeled_vessels, labeled_axes_swapped = _align_optional_spatial_array(
+        spatial_axes_swapped = artery_axes_swapped
+        labeled_vessels = _apply_optional_spatial_alignment(
             self.dv.retinal_labeled_vessels(),
             spatial_shape,
             "retinal_labeled_vessels",
-        )
-        spatial_axes_swapped = spatial_axes_swapped or labeled_axes_swapped
-        optic_disc_mask, optic_disc_axes_swapped = _align_optional_spatial_array(
-            self.dv.optic_disc_mask(),
-            spatial_shape,
-            "optic_disc_mask",
-        )
-        spatial_axes_swapped = spatial_axes_swapped or optic_disc_axes_swapped
-        optic_disc_center = _align_spatial_pair(
-            self.dv.optic_disc_center(),
             swapped=spatial_axes_swapped,
         )
-        optic_disc_width, optic_disc_height = _align_spatial_sizes(
-            self.dv.optic_disc_width(),
-            self.dv.optic_disc_height(),
-            swapped=spatial_axes_swapped,
-        )
+        optic_disc = self.dv.optic_disc()
+        if spatial_axes_swapped:
+            optic_disc = optic_disc.transposed()
+        if optic_disc.mask is not None and optic_disc.mask.shape != tuple(spatial_shape):
+            raise ValueError(
+                "optic-disc mask must share the DopplerView vessel-mask frame; "
+                f"expected {tuple(spatial_shape)}, got {optic_disc.mask.shape}."
+            )
         return WaveformVelocitySourceData(
             moment0=moment0,
             moment2=moment2,
             retinal_artery_mask=np.asarray(artery_mask, dtype=bool),
             retinal_vein_mask=np.asarray(vein_mask, dtype=bool),
             retinal_labeled_vessels=labeled_vessels,
-            optic_disc_mask=optic_disc_mask,
-            optic_disc_center=optic_disc_center,
-            optic_disc_width=optic_disc_width,
-            optic_disc_height=optic_disc_height,
+            optic_disc=optic_disc,
             timing=timing,
             local_background_dist=self.dv.local_background_dist(),
-            cross_section_settings=self._cross_section_settings(
-                optic_disc_width,
-                optic_disc_height,
-            ),
+            cross_section_settings=self._cross_section_settings(optic_disc),
             provenance=_source_provenance(
                 self.hd,
                 self.dv,
                 labeled_vessels,
-                optic_disc_mask,
-                optic_disc_center,
+                optic_disc,
                 spatial_axes_swapped=spatial_axes_swapped,
             ),
         )
 
-    def _cross_section_settings(self, optic_disc_width, optic_disc_height):
+    def _cross_section_settings(self, optic_disc: OpticDisc):
         return CrossSectionSignalSettings(
-            pixel_size_mm=self._pixel_size(optic_disc_width, optic_disc_height),
+            pixel_size_mm=self._pixel_size(optic_disc),
             submask_size_percentile_kept=(
                 CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT
             ),
         )
 
-    def _pixel_size(self, optic_disc_width, optic_disc_height) -> float:
-        diameter = _mean_pair(optic_disc_width, optic_disc_height)
+    def _pixel_size(self, optic_disc: OpticDisc) -> float:
+        diameter = _mean_pair(optic_disc.width, optic_disc.height)
         if diameter is not None:
             return REFERENCE_OPTIC_DISC_DIAMETER_MM / diameter
         return DEFAULT_PIXEL_SIZE_MM / (2.0**SPATIAL_INTERPOLATION_FACTOR)
@@ -149,8 +134,7 @@ def _source_provenance(
     hd,
     dv,
     labeled_vessels,
-    optic_disc_mask,
-    optic_disc_center,
+    optic_disc: OpticDisc,
     *,
     spatial_axes_swapped: bool,
 ) -> dict[str, object]:
@@ -158,8 +142,8 @@ def _source_provenance(
         "hd_source_file": str(hd.filename or ""),
         "dv_source_file": str(dv.filename or ""),
         "has_retinal_labeled_vessels": labeled_vessels is not None,
-        "has_optic_disc_mask": optic_disc_mask is not None,
-        "has_optic_disc_center": optic_disc_center is not None,
+        "has_optic_disc_mask": optic_disc.mask is not None,
+        "has_optic_disc_center": True,
         "dv_spatial_axes_swapped_to_match_hd": spatial_axes_swapped,
         "beat_index_base": BEAT_INDEX_BASE,
         "moment_axes": list(MOMENT_AXES),
@@ -167,14 +151,16 @@ def _source_provenance(
     }
 
 
-def _align_optional_spatial_array(
+def _apply_optional_spatial_alignment(
     array,
     spatial_shape: tuple[int, int],
     name: str,
+    *,
+    swapped: bool,
 ):
     if array is None:
-        return None, False
-    return _align_spatial_array(array, spatial_shape, name)
+        return None
+    return _apply_spatial_alignment(array, spatial_shape, name, swapped=swapped)
 
 
 def _align_spatial_array(
@@ -199,20 +185,26 @@ def _align_spatial_array(
     )
 
 
-def _align_spatial_pair(value, *, swapped: bool):
-    if value is None or not swapped:
-        return value
-    array = np.asarray(value).copy()
-    flat = array.reshape(-1)
-    if flat.size >= 2:
-        flat[0], flat[1] = flat[1].copy(), flat[0].copy()
-    return array
-
-
-def _align_spatial_sizes(width, height, *, swapped: bool):
-    if swapped:
-        return height, width
-    return width, height
+def _apply_spatial_alignment(
+    array,
+    spatial_shape: tuple[int, int],
+    name: str,
+    *,
+    swapped: bool,
+):
+    value = np.asarray(array)
+    if value.ndim < 2:
+        raise ValueError(
+            f"{name} must include two spatial axes, got shape {value.shape}."
+        )
+    aligned = np.swapaxes(value, -1, -2) if swapped else value
+    expected = tuple(int(size) for size in spatial_shape)
+    if tuple(int(size) for size in aligned.shape[-2:]) != expected:
+        raise ValueError(
+            f"{name} does not share the selected DopplerView spatial orientation; "
+            f"aligned shape {aligned.shape[-2:]} does not match {expected}."
+        )
+    return aligned
 
 
 def _mean_pair(first, second) -> float | None:

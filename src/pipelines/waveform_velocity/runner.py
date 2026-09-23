@@ -157,15 +157,15 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
         )
         metrics.update(velocity_profile_outputs)
         source = context.source_data
-        if hasattr(source, "optic_disc_center") and hasattr(
-            source, "cross_section_settings"
-        ):
+        if hasattr(source, "cross_section_settings"):
             metrics.update(
                 pack_mask_detection_blood_volume_rate_outputs(
                     context.artery_segment_result,
                     context.vein_segment_result,
                     cycle_boundaries,
-                    optic_disc_center=source.optic_disc_center,
+                    optic_disc_center=(
+                        context.artery_segment_result.topology.optic_disc_center_xy
+                    ),
                     pixel_size_mm=float(source.cross_section_settings.pixel_size_mm),
                     index_base=index_base,
                     apply_circular_area=True,

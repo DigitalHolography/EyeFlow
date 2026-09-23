@@ -16,7 +16,8 @@ from calculations.compute_backend import optional_cupy_backend
 from utils.logger import Logger
 
 from .cache import TopologyCacheKey, topology_cache_key
-from .geometry import SegmentRingSettings
+from .geometry import AnnulusGeometry
+from .optic_disc import OpticDisc
 from .segments import (
     SegmentTopology,
     build_segment_topology,
@@ -69,10 +70,9 @@ PreparedSegmentChunks = Iterator[PreparedSegmentChunk]
 
 def prepare_topology(
     vessel_mask,
-    optic_disc_mask,
-    settings: SegmentRingSettings,
+    optic_disc: OpticDisc,
+    settings: AnnulusGeometry,
     *,
-    optic_disc_center=None,
     output_side_pixels: int = 128,
     window_size_percentile_kept: float = 0.95,
     window_side_pixels: int | None = None,
@@ -81,9 +81,8 @@ def prepare_topology(
 
     topology = build_segment_topology(
         vessel_mask,
-        optic_disc_mask,
+        optic_disc,
         settings,
-        optic_disc_center=optic_disc_center,
         window_size_percentile_kept=window_size_percentile_kept,
         window_side_pixels=window_side_pixels,
     )
@@ -105,12 +104,11 @@ def prepare_topology(
 
 def prepare_topologies(
     vessel_masks: Mapping[str, object],
-    optic_disc_mask,
-    settings: SegmentRingSettings,
+    optic_disc: OpticDisc,
+    settings: AnnulusGeometry,
     *,
     source_id: str,
     cache: MutableMapping[TopologyCacheKey, object] | None = None,
-    optic_disc_center=None,
     output_side_pixels: int = 128,
     window_size_percentile_kept: float = 0.95,
     window_side_pixels: int | None = None,
@@ -126,23 +124,17 @@ def prepare_topologies(
     image_shape = next(iter(masks.values())).shape
     if any(mask.shape != image_shape for mask in masks.values()):
         raise ValueError("All vessel masks must have the same spatial shape.")
-    disc = _resolved_optic_disc_mask(
-        optic_disc_mask,
-        optic_disc_center,
-        image_shape,
-    )
-    masks = {name: mask & ~disc for name, mask in masks.items()}
+    disc = optic_disc.mask_for(image_shape)
 
     if window_side_pixels is not None:
         return {
             name: _cached_topology(
                 name,
                 mask,
-                disc,
+                optic_disc,
                 settings,
                 source_id=source_id,
                 cache=cache,
-                optic_disc_center=optic_disc_center,
                 output_side_pixels=output_side_pixels,
                 window_size_percentile_kept=window_size_percentile_kept,
                 window_side_pixels=window_side_pixels,
@@ -154,11 +146,10 @@ def prepare_topologies(
         name: _cached_topology(
             name,
             mask,
-            disc,
+            optic_disc,
             settings,
             source_id=source_id,
             cache=cache,
-            optic_disc_center=optic_disc_center,
             output_side_pixels=output_side_pixels,
             window_size_percentile_kept=window_size_percentile_kept,
             window_side_pixels=None,
@@ -182,7 +173,7 @@ def prepare_topologies(
         for name, prepared in prepared_topologies.items():
             key = topology_cache_key(
                 source_id, name, masks[name], disc, settings,
-                optic_disc_center=optic_disc_center,
+                optic_disc_center=optic_disc.center,
                 output_side_pixels=output_side_pixels,
                 window_size_percentile_kept=window_size_percentile_kept,
                 window_side_pixels=None,
@@ -620,26 +611,27 @@ def _frame_slice(data_map, start: int, stop: int):
     slices[0] = slice(int(start), int(stop))
     return data_map[tuple(slices)]
 
+
 def _cached_topology(
     vessel_name: str,
     vessel_mask: np.ndarray,
-    optic_disc_mask: np.ndarray,
-    settings: SegmentRingSettings,
+    optic_disc: OpticDisc,
+    settings: AnnulusGeometry,
     *,
     source_id: str,
     cache: MutableMapping[TopologyCacheKey, object] | None,
-    optic_disc_center,
     output_side_pixels: int,
     window_size_percentile_kept: float,
     window_side_pixels: int | None,
 ) -> PreparedTopology:
+    optic_disc_mask = optic_disc.mask_for(vessel_mask.shape)
     key = topology_cache_key(
         source_id,
         vessel_name,
         vessel_mask,
         optic_disc_mask,
         settings,
-        optic_disc_center=optic_disc_center,
+        optic_disc_center=optic_disc.center,
         output_side_pixels=output_side_pixels,
         window_size_percentile_kept=window_size_percentile_kept,
         window_side_pixels=window_side_pixels,
@@ -652,12 +644,14 @@ def _cached_topology(
             Logger.log(f"Topology cache hit: {vessel_name}; reusing prepared topology.")
             return found
 
-    Logger.log(f"Topology cache {'miss' if cache is not None else 'disabled'}: {vessel_name}; preparing topology.")
+    cache_status = "miss" if cache is not None else "disabled"
+    Logger.log(
+        f"Topology cache {cache_status}: {vessel_name}; preparing topology."
+    )
     prepared = prepare_topology(
         vessel_mask,
-        optic_disc_mask,
+        optic_disc,
         settings,
-        optic_disc_center=optic_disc_center,
         output_side_pixels=output_side_pixels,
         window_size_percentile_kept=window_size_percentile_kept,
         window_side_pixels=window_side_pixels,
@@ -665,22 +659,6 @@ def _cached_topology(
     if cache is not None:
         cache[key] = prepared
     return prepared
-
-
-def _resolved_optic_disc_mask(
-    optic_disc_mask,
-    optic_disc_center,
-    image_shape: tuple[int, int],
-) -> np.ndarray:
-    if optic_disc_mask is not None:
-        disc = np.asarray(optic_disc_mask, dtype=bool)
-        if disc.shape != image_shape:
-            raise ValueError(
-                f"optic_disc_mask must have shape {image_shape}, got {disc.shape}."
-            )
-        return disc
-
-    return np.zeros(image_shape, dtype=bool)
 
 
 def _shared_window_side(

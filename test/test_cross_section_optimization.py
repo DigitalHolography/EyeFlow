@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 from calculations.topology import (
-    SegmentRingSettings, dilate_segment_masks, prepare_segments, prepare_topology,
+    AnnulusGeometry, OpticDisc, dilate_segment_masks, prepare_segments,
+    prepare_topology,
 )
 from calculations.blood_flow_velocity.cross_section.reusable_cross_section_signals import (
     fit_cross_section_plan, project_cross_section_cube,
@@ -33,7 +34,7 @@ def geometry():
     vessel[27:34, 5:56] = True
     disc = np.zeros_like(vessel)
     disc[27:34, 27:34] = True
-    return vessel, disc, SegmentRingSettings(.1, .7, .25, 2)
+    return vessel, OpticDisc(disc, (30.0, 30.0), None, None), AnnulusGeometry(.1, .7, .25, 2)
 
 
 @pytest.mark.parametrize("field,value", [
@@ -46,12 +47,11 @@ def test_invalid_settings_are_rejected(field, value):
 
 
 def test_missing_frames_remain_missing_and_zero_flow_remains_zero(geometry):
-    vessel, disc, rings = geometry
+    vessel, optic_disc, rings = geometry
     cube = np.zeros((2, *vessel.shape), np.float32)
     cube[0] = np.nan
     result = cs.generate_cross_section_signals(
-        cube, vessel, (30, 30), rings, cs.CrossSectionSignalSettings(.01),
-        optic_disc_mask=disc,
+        cube, vessel, optic_disc, rings, cs.CrossSectionSignalSettings(.01),
         retain_velocity_maps=False,
     )
     valid = result.topology.valid_segments
@@ -81,8 +81,8 @@ def test_spatial_gradient_mask_expands_five_pixels_horizontally():
 
 
 def test_windows_are_extracted_only_when_iteration_starts(geometry):
-    vessel, disc, rings = geometry
-    prepared = prepare_topology(vessel, disc, rings)
+    vessel, optic_disc, rings = geometry
+    prepared = prepare_topology(vessel, optic_disc, rings)
     workflow = importlib.import_module("calculations.topology.workflow")
     cube = np.ones((2, *vessel.shape), np.float32)
     with patch.object(workflow, "extract_segment", wraps=workflow.extract_segment) as extract:
@@ -101,11 +101,11 @@ def test_worker_count_obeys_memory_budget():
 
 def test_cuda_profile_measurement_matches_cpu(geometry, monkeypatch):
     from calculations.compute_backend import optional_cupy_backend
-    vessel, disc, rings = geometry
+    vessel, optic_disc, rings = geometry
     cube = np.ones((3, *vessel.shape), np.float32)
     cube[0] = np.nan
     cpu_result = cs.generate_cross_section_signals(
-        cube, vessel, (30, 30), rings, cs.CrossSectionSignalSettings(.01),
+        cube, vessel, optic_disc, rings, cs.CrossSectionSignalSettings(.01),
         retain_velocity_maps=False,
     )
     monkeypatch.setenv("EYEFLOW_COMPUTE_BACKEND", "auto")
@@ -113,7 +113,7 @@ def test_cuda_profile_measurement_matches_cpu(geometry, monkeypatch):
     if optional_cupy_backend() is None:
         pytest.skip("CuPy/CUDA unavailable")
     gpu_result = cs.generate_cross_section_signals(
-        cube, vessel, (30, 30), rings, cs.CrossSectionSignalSettings(.01),
+        cube, vessel, optic_disc, rings, cs.CrossSectionSignalSettings(.01),
         retain_velocity_maps=False,
     )
     for field in (
@@ -133,13 +133,13 @@ def test_velocity_and_gradient_share_topology_and_segment_axes(geometry):
     from pipelines.spatial_gradient_moment0.runner import (
         _validate_profile_segment_alignment,
     )
-    vessel, disc, rings = geometry
+    vessel, optic_disc, rings = geometry
     cube = np.ones((2, *vessel.shape), np.float32)
     masks = {"artery": vessel, "vein": np.zeros_like(vessel)}
     cache = {}
-    common = dict(optic_disc_mask=disc, source_id="registered", topology_cache=cache)
+    common = dict(source_id="registered", topology_cache=cache)
     velocity = analyze_segment_profiles(
-        cube, masks, (30, 30), rings, cs.CrossSectionSignalSettings(.01), **common,
+        cube, masks, optic_disc, rings, cs.CrossSectionSignalSettings(.01), **common,
     )
     from pipelines.spatial_gradient_moment0.profiles import _spatial_gradient_chain
     topologies = {
@@ -149,7 +149,7 @@ def test_velocity_and_gradient_share_topology_and_segment_axes(geometry):
     gradient = analyze_segment_profiles(
         cube * 3,
         masks,
-        (30, 30),
+        optic_disc,
         rings,
         cs.CrossSectionSignalSettings(.01),
         prepared_topologies=topologies,
@@ -175,26 +175,24 @@ def test_velocity_adapter_preserves_legacy_profile_values(geometry):
         analyze_velocity_segment_profiles,
     )
 
-    vessel, disc, rings = geometry
+    vessel, optic_disc, rings = geometry
     y, x = np.indices(vessel.shape, dtype=np.float32)
     cube = np.stack((x + y, 2 * x - y), axis=0)
     settings = cs.CrossSectionSignalSettings(.01)
     legacy = cs.generate_cross_section_signals(
         cube,
         vessel,
-        (30, 30),
+        optic_disc,
         rings,
         settings,
-        optic_disc_mask=disc,
         retain_velocity_maps=False,
     )
     adapted = analyze_velocity_segment_profiles(
         cube,
         {"vessel": vessel},
-        (30, 30),
+        optic_disc,
         rings,
         settings,
-        optic_disc_mask=disc,
         retain_velocity_maps=False,
         transverse_mask_dilation_pixels=0,
     )["vessel"]
@@ -228,7 +226,7 @@ def test_legacy_profile_dilation_does_not_change_segment_velocity(geometry):
         analyze_velocity_segment_profiles,
     )
 
-    vessel, disc, rings = geometry
+    vessel, optic_disc, rings = geometry
     cube = np.broadcast_to(
         np.where(vessel, np.float32(10.0), np.float32(1.0)),
         (3, *vessel.shape),
@@ -236,10 +234,9 @@ def test_legacy_profile_dilation_does_not_change_segment_velocity(geometry):
     results = analyze_velocity_segment_profiles(
         cube,
         {"artery": vessel, "vein": vessel},
-        (30, 30),
+        optic_disc,
         rings,
         cs.CrossSectionSignalSettings(.01),
-        optic_disc_mask=disc,
     )
     artery = results["artery"]
     vein = results["vein"]
@@ -258,10 +255,10 @@ def test_legacy_profile_dilation_does_not_change_segment_velocity(geometry):
 
 @pytest.mark.parametrize("mode", ["reference", "per_cube"])
 def test_registered_cubes_reuse_one_prepared_topology(geometry, mode):
-    vessel, disc, rings = geometry
+    vessel, optic_disc, rings = geometry
     cube = np.ones((2, *vessel.shape), np.float32)
     plan, first = fit_cross_section_plan(
-        cube, vessel, (30, 30), rings, cs.CrossSectionSignalSettings(.01)
+        cube, vessel, optic_disc, rings, cs.CrossSectionSignalSettings(.01)
     )
     with patch(
         "calculations.blood_flow_velocity.cross_section.reusable_cross_section_signals.prepare_topologies",

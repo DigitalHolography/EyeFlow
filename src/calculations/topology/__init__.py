@@ -13,15 +13,13 @@ from .branch_identity import (
     label_vessel_branches,
 )
 from .geometry import (
-    SegmentRingSettings,
+    AnnulusGeometry,
     annulus_mask,
     image_half_diagonal,
-    optic_disc_center_yx,
-    optic_disc_mask,
-    segment_ring_settings,
     ring_masks,
     section_masks,
 )
+from .optic_disc import OpticDisc
 from .profiles import (
     longitudinal_profiles,
     mean_profiles,
@@ -68,7 +66,8 @@ __all__ = [
     "PreparedSegmentChunk",
     "PreparedSegmentChunks",
     "PreparedTopology",
-    "SegmentRingSettings",
+    "AnnulusGeometry",
+    "OpticDisc",
     "SegmentTopology",
     "TOPOLOGY_CACHE_STATE",
     "TopologyCacheKey",
@@ -88,11 +87,8 @@ __all__ = [
     "interpolate_profiles_per_beat",
     "resample_rotate_segment",
     "label_vessel_branches",
-    "segment_ring_settings",
     "longitudinal_profiles",
     "mean_profiles",
-    "optic_disc_center_yx",
-    "optic_disc_mask",
     "prepare_segments",
     "prepare_segment_chunks",
     "prepare_topologies",
