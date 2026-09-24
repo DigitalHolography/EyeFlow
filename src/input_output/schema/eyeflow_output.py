@@ -66,6 +66,7 @@ class OpticDiscSegmentationOutputPaths:
 class VesselSegmentationOutputPaths:
     mask: str
     branch_label_map: str
+    segment_mask_area: str
 
 
 @dataclass(frozen=True)
@@ -138,10 +139,12 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
         artery=VesselSegmentationOutputPaths(
             mask=f"{root}/Artery/Mask/value",
             branch_label_map=f"{root}/Artery/BranchLabelMap/value",
+            segment_mask_area=f"{root}/Artery/SegmentMaskArea",
         ),
         vein=VesselSegmentationOutputPaths(
             mask=f"{root}/Vein/Mask/value",
             branch_label_map=f"{root}/Vein/BranchLabelMap/value",
+            segment_mask_area=f"{root}/Vein/SegmentMaskArea",
         ),
     )
 

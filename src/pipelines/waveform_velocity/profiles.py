@@ -15,7 +15,7 @@ from calculations.blood_flow_velocity.cross_section.profile_processing import (
 from calculations.blood_flow_velocity.cross_section.segment_geometry import (
     SegmentRingSettings,
 )
-from calculations.math import nanmean_float32
+from calculations.math import nanmean_float32, nanmedian
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 
@@ -132,18 +132,34 @@ def pack_mask_detection_blood_volume_rate_outputs(
 
     schema = _resolve_output_paths(output_paths)
     segment_sets = (artery_segments, vein_segments)
-    diameters_mm, radial_width_pixels = _masked_edge_diameters_mm(
-        segment_sets,
-        pixel_size_mm=pixel_size_mm,
+    diameters_mm, mask_areas_pixels, radial_width_pixels = (
+        _masked_edge_diameters_mm(
+            segment_sets,
+            pixel_size_mm=pixel_size_mm,
+        )
     )
     outputs: dict[str, DatasetValue] = {}
     velocity_sources = (
-        ("Artery", schema.artery_per_beat_safe.velocity_signal),
-        ("Vein", schema.vein_per_beat_safe.velocity_signal),
+        (
+            "Artery",
+            schema.artery_per_beat_safe.velocity_signal,
+            schema.segmentation.artery.segment_mask_area,
+        ),
+        (
+            "Vein",
+            schema.vein_per_beat_safe.velocity_signal,
+            schema.segmentation.vein.segment_mask_area,
+        ),
     )
-    for (vessel_name, velocity_path), diameter_mm in zip(
+    for (
+        vessel_name,
+        velocity_path,
+        mask_area_path,
+    ), diameter_mm, area_pixels, segments in zip(
         velocity_sources,
         diameters_mm,
+        mask_areas_pixels,
+        segment_sets,
         strict=True,
     ):
         if velocity_path is None:
@@ -157,16 +173,49 @@ def pack_mask_detection_blood_volume_rate_outputs(
                 "Required safe per-beat velocity output "
                 f"'{velocity_path}' is unavailable."
             ) from exc
-        outputs[
+        outputs[mask_area_path] = _segment_mask_area_dataset(
+            area_pixels,
+            branch_ids=np.asarray(segments.topology.branch_ids, dtype=np.int32),
+        )
+        masked_edges_path = (
             f"{_BLOOD_VOLUME_RATE_ROOT}/{vessel_name}/maskedEdges/value"
-        ] = _masked_edges_blood_volume_rate_dataset(
+        )
+        masked_edges = _masked_edges_blood_volume_rate_dataset(
             velocity,
             diameter_mm=diameter_mm,
             radial_width_pixels=radial_width_pixels,
             pixel_size_mm=pixel_size_mm,
             velocity_path=velocity_path,
         )
+        outputs[masked_edges_path] = masked_edges
+        outputs[
+            f"{_BLOOD_VOLUME_RATE_ROOT}/{vessel_name}/totalMaskedEdges/value"
+        ] = _total_masked_edges_blood_volume_rate_dataset(
+            masked_edges,
+            source_path=masked_edges_path,
+        )
     return outputs
+
+
+def _segment_mask_area_dataset(
+    area_pixels: np.ndarray,
+    *,
+    branch_ids: np.ndarray,
+) -> DatasetValue:
+    return DatasetValue(
+        np.asarray(area_pixels, dtype=np.int32),
+        {
+            "unit": "pixels^2",
+            "dimDesc": ["branch", "radius"],
+            "definition": (
+                "count of native vessel-mask pixels belonging to each branch "
+                "inside each annular section"
+            ),
+            "branch_ids": branch_ids,
+            "annulus_geometry": "native_pixel_center_section_mask",
+            "annulus_pixel_coverage": "binary_pixel_center_membership",
+        },
+    )
 
 
 def _masked_edges_blood_volume_rate_dataset(
@@ -215,11 +264,49 @@ def _masked_edges_blood_volume_rate_dataset(
     )
 
 
+def _total_masked_edges_blood_volume_rate_dataset(
+    masked_edges: DatasetValue,
+    *,
+    source_path: str,
+) -> DatasetValue:
+    rate_tbkr = np.asarray(masked_edges.data, dtype=np.float32)
+    if rate_tbkr.ndim != 4:
+        raise ValueError(
+            "masked-edge blood-volume rate must have dimensions "
+            "(time, beat, branch, radius)."
+        )
+
+    finite = np.isfinite(rate_tbkr)
+    rate_tbr = np.sum(
+        np.where(finite, rate_tbkr, np.float32(0.0)),
+        axis=2,
+        dtype=np.float32,
+    )
+    rate_tbr[~np.any(finite, axis=2)] = np.nan
+    total_tb = nanmedian(rate_tbr, axis=2).astype(np.float32, copy=False)
+    return DatasetValue(
+        total_tb,
+        {
+            "unit": "mm^3/s",
+            "dimDesc": ["time", "beat"],
+            "definition": (
+                "median over radius of the sum over branches of masked-edge "
+                "blood-volume rate"
+            ),
+            "source": f"/{source_path.lstrip('/')}",
+            "aggregation": "median_over_radius_of_sum_over_branches",
+            "branch_reduction": "sum_over_finite_values",
+            "radius_reduction": "median_over_finite_values",
+        },
+        h5_options=_profile_h5_options(total_tb.shape),
+    )
+
+
 def _masked_edge_diameters_mm(
     segment_sets: tuple[object, ...],
     *,
     pixel_size_mm: float,
-) -> tuple[tuple[np.ndarray, ...], np.ndarray]:
+) -> tuple[tuple[np.ndarray, ...], tuple[np.ndarray, ...], np.ndarray]:
     if not segment_sets:
         raise ValueError("at least one segment result is required.")
 
@@ -260,11 +347,16 @@ def _masked_edge_diameters_mm(
         np.full((ring_count, branch_ids.size), np.nan, dtype=np.float32)
         for _, _, branch_ids in geometries
     ]
+    mask_areas = [
+        np.zeros((ring_count, branch_ids.size), dtype=np.int32)
+        for _, _, branch_ids in geometries
+    ]
     for radius_index, radial_width in enumerate(radial_widths):
         if radial_width <= 0:
             continue
-        for diameter, (labels, sections, branch_ids) in zip(
+        for diameter, mask_area, (labels, sections, branch_ids) in zip(
             diameters,
+            mask_areas,
             geometries,
             strict=True,
         ):
@@ -276,12 +368,17 @@ def _masked_edge_diameters_mm(
             for branch_index, branch_id in enumerate(branch_ids):
                 label_id = int(branch_id)
                 area_pixels = int(area_by_label[label_id])
+                mask_area[radius_index, branch_index] = area_pixels
                 if area_pixels == 0:
                     continue
                 diameter[radius_index, branch_index] = np.float32(
                     area_pixels * pixel_size_mm / radial_width
                 )
-    return tuple(diameter.T for diameter in diameters), radial_widths
+    return (
+        tuple(diameter.T for diameter in diameters),
+        tuple(mask_area.T for mask_area in mask_areas),
+        radial_widths,
+    )
 
 
 def _metric_data(value) -> np.ndarray:
