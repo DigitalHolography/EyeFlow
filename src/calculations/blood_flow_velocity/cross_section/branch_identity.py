@@ -10,8 +10,12 @@ from skimage.measure import label as label_components
 from skimage.morphology import disk, skeletonize
 from skimage.segmentation import find_boundaries, watershed
 
-from .segment_geometry import SegmentRingSettings, annulus_mask
-
+from .segment_geometry import (
+    SegmentRingSettings,
+    annulus_mask,
+    image_half_diagonal,
+    optic_disc_center_yx,
+)
 
 LOW_RES_SMALL_BRANCH_PIXELS = 10
 BRANCH_POINT_CENTER_WEIGHT = 10
@@ -59,10 +63,11 @@ def label_vessel_branches(
     small_branch_pixels: int = LOW_RES_SMALL_BRANCH_PIXELS,
     strel_size: int = STREL_SIZE,
 ) -> BranchIdentityResult:
-    """Label vessels outside the disc, using its mask when available.
+    """Label vessels outside a centered circular optic-disc cutout.
 
-    The explicit mask replaces the circular inner cutoff for branch labeling.
-    Measurement rings still use the configured radial bounds.
+    The supplied optic-disc mask is validated for compatibility but is not
+    subtracted from the image used for skeletonization and watershed. Branch
+    identity instead uses the circular inner cutoff encoded in ``settings``.
     """
     vessel = np.asarray(vessel_mask, dtype=bool)
     if vessel.ndim != 2:
@@ -90,20 +95,21 @@ def _branch_identity_stages(
     small_branch_pixels: int = LOW_RES_SMALL_BRANCH_PIXELS, strel_size: int = STREL_SIZE,
 ) -> BranchIdentityStages:
     if optic_disc_mask is not None:
-        disc = np.asarray(optic_disc_mask, dtype=bool)
-        if disc.shape != vessel.shape:
+        supplied_disc = np.asarray(optic_disc_mask, dtype=bool)
+        if supplied_disc.shape != vessel.shape:
             raise ValueError(
-                f"optic_disc_mask must have shape {vessel.shape}, got {disc.shape}."
+                f"optic_disc_mask must have shape {vessel.shape}, got {supplied_disc.shape}."
             )
-        vessel = vessel & ~disc
+
+    disc = _centered_disc_mask(vessel.shape, optic_disc_center, settings)
+    vessel = vessel & ~disc
     section = annulus_mask(
         vessel.shape,
         optic_disc_center,
-        settings.inner_radius_frac if optic_disc_mask is None else 0.0,
+        0.0,
         settings.outer_radius_frac,
     )
-    if optic_disc_mask is not None:
-        section &= ~disc
+    section &= ~disc
     skeleton = skeletonize(vessel)
 
     branch_points = _branch_points(skeleton, min_arm_pixels=small_branch_pixels)
@@ -140,6 +146,30 @@ def _branch_identity_stages(
         distance_topography, imposed_topography, watershed_labels, annulus_refined,
         cleaned_labels,
     )
+
+
+def _centered_disc_mask(
+    image_shape: tuple[int, int],
+    optic_disc_center,
+    settings: SegmentRingSettings,
+) -> np.ndarray:
+    """Return the clipped circular cutout used before skeletonization.
+
+    The pipeline defines ``inner_radius_frac`` as half the larger optic-disc
+    dimension in units of the image half-diagonal. Converting it back to
+    pixels and rounding up therefore implements
+    ``ceil(max(optic_disc_height, optic_disc_width) / 2)``.
+    """
+    ny, nx = image_shape
+    radius = int(
+        np.ceil(
+            min(0.0, float(settings.inner_radius_frac))
+            * image_half_diagonal(ny, nx)
+        )
+    )
+    center_y, center_x = optic_disc_center_yx(optic_disc_center, ny, nx)
+    y, x = np.ogrid[:ny, :nx]
+    return (y - center_y) ** 2 + (x - center_x) ** 2 <= radius**2
 
 
 def _branch_points(skeleton: np.ndarray, min_arm_pixels: int = 1) -> np.ndarray:

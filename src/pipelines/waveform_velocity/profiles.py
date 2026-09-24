@@ -22,6 +22,8 @@ from pipeline_engine.base import DatasetValue
 _DISPLACEMENT_PROFILE_ROOT = "Processing/DisplacementProfiles"
 _DISPLACEMENT_METRICS_ROOT = "Processing/DisplacementMetrics"
 _BLOOD_VOLUME_RATE_ROOT = "Processing/BloodVolumeRate"
+_TOTAL_BLOOD_VOLUME_RATE_TAU_WINDOW_SIZE = 16
+_TOTAL_BLOOD_VOLUME_RATE_TAU_WINDOW_STRIDE = 1
 _DISPLACEMENT_PROFILE_FIELDS = (
     ("X", "x_sum_displacement_profile", "local_x"),
     ("Y", "y_sum_displacement_profile", "local_y"),
@@ -269,16 +271,35 @@ def _total_masked_edges_blood_volume_rate_dataset(
     *,
     source_path: str,
 ) -> DatasetValue:
-    rate_tbkr = np.asarray(masked_edges.data, dtype=np.float32)
-    if rate_tbkr.ndim != 4:
+    blood_volume_rate_tbkr = np.asarray(masked_edges.data, dtype=np.float32)
+    if blood_volume_rate_tbkr.ndim != 4:
         raise ValueError(
             "masked-edge blood-volume rate must have dimensions "
             "(time, beat, branch, radius)."
         )
 
-    finite = np.isfinite(rate_tbkr)
+    window_size = _TOTAL_BLOOD_VOLUME_RATE_TAU_WINDOW_SIZE
+    window_stride = _TOTAL_BLOOD_VOLUME_RATE_TAU_WINDOW_STRIDE
+    if blood_volume_rate_tbkr.shape[0] > 0:
+        periodic_blood_volume_rate_tbkr = np.pad(
+            blood_volume_rate_tbkr,
+            ((0, window_size - 1), (0, 0), (0, 0), (0, 0)),
+            mode="wrap",
+        )
+        tau_windows = np.lib.stride_tricks.sliding_window_view(
+            periodic_blood_volume_rate_tbkr,
+            window_shape=window_size,
+            axis=0,
+        )[::window_stride]
+        blood_volume_rate_tbkr = np.mean(
+            tau_windows,
+            axis=-1,
+            dtype=np.float32,
+        )
+
+    finite = np.isfinite(blood_volume_rate_tbkr)
     rate_tbr = np.sum(
-        np.where(finite, rate_tbkr, np.float32(0.0)),
+        np.where(finite, blood_volume_rate_tbkr, np.float32(0.0)),
         axis=2,
         dtype=np.float32,
     )
@@ -291,10 +312,16 @@ def _total_masked_edges_blood_volume_rate_dataset(
             "dimDesc": ["time", "beat"],
             "definition": (
                 "median over radius of the sum over branches of masked-edge "
-                "blood-volume rate"
+                "blood-volume rate after a circular sliding average over tau"
             ),
             "source": f"/{source_path.lstrip('/')}",
             "aggregation": "median_over_radius_of_sum_over_branches",
+            "temporal_filter": "circular_sliding_average_over_tau",
+            "temporal_window_size": np.int32(window_size),
+            "temporal_window_stride": np.int32(window_stride),
+            "temporal_boundary_mode": "circular",
+            "temporal_window_alignment": "forward",
+            "temporal_nan_policy": "propagate",
             "branch_reduction": "sum_over_finite_values",
             "radius_reduction": "median_over_finite_values",
         },

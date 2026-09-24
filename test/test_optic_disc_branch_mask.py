@@ -13,10 +13,15 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.blood_flow_velocity.cross_section.branch_identity import (
+    _centered_disc_mask,
     label_vessel_branches,
 )
 from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (
     _prepare_cross_section_geometry,
+)
+from calculations.blood_flow_velocity.cross_section.segment_geometry import (
+    SegmentRingSettings,
+    image_half_diagonal,
 )
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity_core import runner
@@ -28,7 +33,7 @@ from pipelines.waveform_velocity_core.segmentation import (
 
 
 class OpticDiscBranchMaskTests(unittest.TestCase):
-    def test_elliptical_disc_keeps_vessels_inside_the_old_circular_cutoff(self):
+    def test_centered_disc_replaces_supplied_mask_for_branch_identity(self):
         vessel, disc, source, settings = self._inputs()
         original_vessel = vessel.copy()
         original_disc = disc.copy()
@@ -40,8 +45,8 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         # This vessel lies outside the ellipse but inside its bounding circle.
         self.assertFalse(disc[43, 73])
         self.assertEqual(0, circular.labels[43, 73])
-        self.assertGreater(branches.labels[43, 73], 0)
-        self.assertEqual(4, branches.branch_ids.size)
+        self.assertEqual(0, branches.labels[43, 73])
+        np.testing.assert_array_equal(branches.labels, circular.labels)
         self.assertFalse(np.any(branches.labels[disc]))
         self.assertFalse(np.any(branches.stages.skeleton[disc]))
         np.testing.assert_array_equal(vessel, original_vessel)
@@ -52,7 +57,7 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         mask, _ = outputs[schema.segmentation.optic_disc.mask]
         for paths in (schema.segmentation.artery, schema.segmentation.vein):
             image, _ = outputs[paths.branch_label_map]
-            self.assertGreater(image[73, 57], 0)
+            self.assertGreater(image[90, 57], 0)
             self.assertFalse(np.any(image[mask] > 0))
             np.testing.assert_array_equal(
                 mask[image != REGION_AXIS_LABEL],
@@ -68,9 +73,9 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         )
 
         self.assertFalse(np.any(geometry.vessel[disc]))
-        self.assertFalse(np.any(geometry.branches.labels[disc]))
         self.assertFalse(np.any(geometry.masks[:, disc]))
-        self.assertGreater(geometry.branches.labels[43, 73], 0)
+        # Branch identity uses the centered circle, not this mask extension.
+        self.assertGreater(geometry.branches.labels[43, 93], 0)
         self.assertTrue(np.any(geometry.masks[:, 43, 105]))
 
     def test_pipeline_uses_the_published_disc_mask_with_geometry_fallback(self):
@@ -102,7 +107,22 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
                     vessel, source.optic_disc_center, settings,
                     optic_disc_mask=expected_disc,
                 )
-                self.assertGreater(branches.labels[43, 73], 0)
+                self.assertEqual(0, branches.labels[43, 73])
+
+    def test_centered_disc_radius_is_rounded_up_and_clipped_at_image_edge(self):
+        shape = (5, 6)
+        radius_pixels = 2.1
+        settings = SegmentRingSettings(
+            radius_pixels / image_half_diagonal(*shape),
+            1.0,
+            1.0,
+            1,
+        )
+
+        disc = _centered_disc_mask(shape, np.asarray([0.0, 0.0]), settings)
+
+        y, x = np.indices(shape)
+        np.testing.assert_array_equal(disc, x**2 + y**2 <= 3**2)
 
     def test_wrong_disc_mask_shape_is_rejected(self):
         vessel, _, source, settings = self._inputs()

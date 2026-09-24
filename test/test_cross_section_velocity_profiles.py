@@ -15,13 +15,13 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from calculations.blood_flow_velocity.cross_section.mask_area import (  # noqa: E402
+    annulus_widths_pixels,
+)
 from calculations.blood_flow_velocity.cross_section.profile_processing import (  # noqa: E402
     _matlab_poiseuille_fit,
     interpolate_velocity_profiles_per_beat,
     process_velocity_profiles,
-)
-from calculations.blood_flow_velocity.cross_section.mask_area import (  # noqa: E402
-    annulus_widths_pixels,
 )
 from calculations.blood_flow_velocity.cross_section.segment_geometry import (  # noqa: E402
     SegmentRingSettings,
@@ -35,6 +35,13 @@ from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from input_output.writers.png import FigureArtifactWriter, write_png_file  # noqa: E402
 from pipeline_engine.base import DatasetValue  # noqa: E402
+from pipelines.waveform_velocity.flow_asymmetry import pack_flow_asymmetry_outputs  # noqa: E402
+from pipelines.waveform_velocity.profiles import (  # noqa: E402
+    _total_masked_edges_blood_volume_rate_dataset,
+    pack_blood_volume_rate_outputs,
+    pack_cross_section_profile_outputs,
+    pack_mask_detection_blood_volume_rate_outputs,
+)
 from pipelines.waveform_velocity_core.figures.profiles import (  # noqa: E402
     _finite_median,
     _hierarchical_profile_median,
@@ -42,15 +49,49 @@ from pipelines.waveform_velocity_core.figures.profiles import (  # noqa: E402
     _positive_focused_limits,
     export_cross_section_profile_artifacts,
 )
-from pipelines.waveform_velocity.flow_asymmetry import pack_flow_asymmetry_outputs  # noqa: E402
-from pipelines.waveform_velocity.profiles import (  # noqa: E402
-    pack_blood_volume_rate_outputs,
-    pack_cross_section_profile_outputs,
-    pack_mask_detection_blood_volume_rate_outputs,
-)
 
 
 class CrossSectionProfilePackingTests(unittest.TestCase):
+    def test_total_masked_edges_rate_is_averaged_over_tau_before_reduction(
+        self,
+    ) -> None:
+        tau = np.arange(9, dtype=np.float32)
+        blood_volume_rate_tbkr = np.empty((9, 1, 2, 2), dtype=np.float32)
+        blood_volume_rate_tbkr[:, 0, 0, 0] = tau
+        blood_volume_rate_tbkr[:, 0, 1, 0] = 2.0 * tau
+        blood_volume_rate_tbkr[:, 0, 0, 1] = 4.0 * tau
+        blood_volume_rate_tbkr[:, 0, 1, 1] = 0.0
+
+        result = _total_masked_edges_blood_volume_rate_dataset(
+            DatasetValue(blood_volume_rate_tbkr),
+            source_path="masked-edges",
+        )
+
+        np.testing.assert_allclose(
+            result.data,
+            np.asarray(
+                [
+                    [12.25],
+                    [15.75],
+                    [15.3125],
+                    [14.875],
+                    [14.4375],
+                    [14.0],
+                    [13.5625],
+                    [13.125],
+                    [12.6875],
+                ],
+                dtype=np.float32,
+            ),
+        )
+        self.assertEqual(
+            "circular_sliding_average_over_tau",
+            result.attrs["temporal_filter"],
+        )
+        self.assertEqual("circular", result.attrs["temporal_boundary_mode"])
+        self.assertEqual(8, result.attrs["temporal_window_size"])
+        self.assertEqual(1, result.attrs["temporal_window_stride"])
+
     def test_masked_edges_uses_clipped_final_annulus_width(self) -> None:
         widths = annulus_widths_pixels(
             (7, 9),
