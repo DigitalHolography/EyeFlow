@@ -155,9 +155,14 @@ class _SegmentProfileBuffers:
         def filled(shape):
             return np.full(shape, np.nan, dtype=np.float32)
 
+        projected_signal = filled(signal_shape)
         return cls(
-            projected_signal=filled(signal_shape),
-            full_profile_signal=filled(signal_shape),
+            projected_signal=projected_signal,
+            # The current integration limits cover the complete transverse
+            # profile, so the projected and full-profile signals are
+            # identical. Keep one shared array so downstream per-beat
+            # processing can safely reuse its result.
+            full_profile_signal=projected_signal,
             segment_maps=(
                 filled((indexes.shape[0], frame_count, canvas_side, canvas_side))
                 if retain_segment_maps
@@ -263,9 +268,7 @@ def analyze_segment_profiles(
         )
         worker_count = _profile_worker_count(
             int(np.count_nonzero(geometry.valid_segments)),
-            frame_count=int(signal_map.shape[0]),
-            canvas_side=int(topology.rotated_masks.shape[-1]),
-            working_memory_mb=settings.working_memory_mb,
+            keep_on_device=backend is not None,
         )
         segments = prepare_segment_chunks(
             signal_map,
@@ -394,7 +397,6 @@ def _measure_segment_profiles_from_prepared(
         frame_slice = segment.frame_slice
         masked_signal = _to_numpy(_profile_mean(transverse_masked))
         buffers.projected_signal[index][frame_slice] = masked_signal
-        buffers.full_profile_signal[index][frame_slice] = masked_signal
         buffers.transverse_profiles_unmasked[index][frame_slice] = _to_numpy(
             transverse_unmasked
         )
@@ -629,18 +631,13 @@ def _interpolated_pixel_size_mm(
 def _profile_worker_count(
     work_count: int,
     *,
-    frame_count: int,
-    canvas_side: int,
-    working_memory_mb: float,
+    keep_on_device: bool,
 ) -> int:
-    if work_count <= 1 or optional_cupy_backend() is not None:
+    """Return the concurrency cap; chunk planning enforces the memory bound."""
+
+    if work_count <= 1 or keep_on_device:
         return 1
-    bytes_per_worker = max(1, frame_count * canvas_side**2 * 4 * 5)
-    memory_workers = max(
-        1,
-        int(float(working_memory_mb) * 1024**2) // bytes_per_worker,
-    )
-    return min(work_count, cap_parallel_jobs(8), memory_workers)
+    return min(work_count, cap_parallel_jobs(8))
 
 
 def _dilation_pixels(value: int | Mapping[str, int], vessel_name: str) -> int:
