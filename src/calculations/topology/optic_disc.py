@@ -97,7 +97,7 @@ class OpticDisc:
         """
 
         if self.width is not None and self.height is not None:
-            radius = max(self.width, self.height) / 2.0
+            radius = min(self.width, self.height) / 2.0
         else:
             radius = _optional_nonnegative_scalar(
                 fallback_radius_pixels,

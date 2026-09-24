@@ -75,7 +75,7 @@ class SegmentTopologyTests(unittest.TestCase):
         self.assertEqual(7, topology.window_side_pixels)
         self.assertTrue(np.all(topology.valid_segments))
 
-    def test_explicit_center_has_priority_and_disc_is_excluded_everywhere(self) -> None:
+    def test_explicit_center_drives_the_centered_circle_exclusion(self) -> None:
         vessel = np.ones((31, 35), dtype=bool)
         disc = np.zeros_like(vessel)
         disc[4:9, 5:12] = True
@@ -87,10 +87,13 @@ class SegmentTopologyTests(unittest.TestCase):
         )
         self.assertEqual((24.0, 20.0), topology.optic_disc_center_xy)
         self.assertIs(topology.ring_settings, settings)
-        self.assertFalse(np.any(topology.labels[disc]))
-        self.assertFalse(np.any(topology.centerline[disc]))
-        self.assertFalse(np.any(topology.annulus_masks[:, disc]))
-        self.assertFalse(np.any(topology.branch_identity.stages.vessel[disc]))
+        circle = topology.optic_disc_mask
+        self.assertFalse(np.any(topology.labels[circle]))
+        self.assertFalse(np.any(topology.centerline[circle]))
+        self.assertFalse(np.any(topology.annulus_masks[:, circle]))
+        self.assertFalse(np.any(topology.branch_identity.stages.vessel[circle]))
+        self.assertTrue(np.any(topology.annulus_masks[:, disc]))
+        self.assertTrue(np.any(topology.branch_identity.stages.vessel[disc]))
 
     def test_explicit_center_is_used_for_nonempty_and_empty_masks(self) -> None:
         vessel = np.zeros((21, 31), dtype=bool)

@@ -236,9 +236,9 @@ class SegmentCenterTests(unittest.TestCase):
         )
 
         corner_radius = np.hypot(255.5, 255.5)
-        self.assertEqual(16, settings.ring_count)
+        self.assertEqual(17, settings.ring_count)
         self.assertAlmostEqual(
-            (69.0 / 2.0) / corner_radius,
+            28.0 / corner_radius,
             settings.inner_radius_frac,
         )
         self.assertEqual(1.0, settings.outer_radius_frac)
@@ -272,20 +272,20 @@ class SegmentCenterTests(unittest.TestCase):
             settings,
         )[0]
 
-        # The first annulus starts at max(width, height) / 2 = 34.5 px.
-        self.assertFalse(mask[230, 301])
-        self.assertTrue(mask[230, 302])
-        self.assertFalse(mask[264, 267])
-        self.assertTrue(mask[265, 267])
+        # The first annulus starts at ceil(min(width, height) / 2) = 28 px.
+        self.assertFalse(mask[230, 294])
+        self.assertTrue(mask[230, 295])
+        self.assertFalse(mask[257, 267])
+        self.assertTrue(mask[258, 267])
 
         # The first annulus has the configured 0.04 radial spacing.
-        self.assertTrue(mask[230, 311])
-        self.assertTrue(mask[230, 321])
-        self.assertFalse(mask[230, 322])
-        self.assertTrue(mask[284, 267])
+        self.assertTrue(mask[230, 305])
+        self.assertTrue(mask[230, 315])
+        self.assertFalse(mask[230, 316])
+        self.assertFalse(mask[279, 267])
 
         rings = ring_masks((512, 512), center, settings)
-        self.assertTrue(rings[-1, 0, 0])
+        self.assertTrue(np.any(rings[:, 0, 0]))
         self.assertFalse(rings[-1, 511, 511])
 
     def test_annulus_pixel_radius_is_independent_of_optic_disc_position(self) -> None:

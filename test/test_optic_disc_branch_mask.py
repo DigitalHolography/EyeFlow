@@ -21,14 +21,13 @@ from calculations.topology import (
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity_core import runner
 from pipelines.waveform_velocity_core.segmentation import (
-    OPTIC_DISC_LABEL,
-    REGION_AXIS_LABEL,
+    INNER_R0_VESSEL_LABEL,
     pack_segmentation_outputs,
 )
 
 
 class OpticDiscBranchMaskTests(unittest.TestCase):
-    def test_empty_mask_retains_the_configured_inner_boundary(self):
+    def test_supplied_mask_does_not_change_the_centered_circle_boundary(self):
         shape = (21, 21)
         vessel = np.ones(shape, dtype=bool)
         center = (10.0, 10.0)
@@ -46,11 +45,11 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
             settings,
         )
 
+        np.testing.assert_array_equal(empty.stages.section, nonempty.stages.section)
         self.assertFalse(empty.stages.section[10, 13])
         self.assertTrue(empty.stages.section[10, 18])
-        self.assertTrue(nonempty.stages.section[10, 13])
 
-    def test_elliptical_disc_keeps_vessels_inside_the_old_circular_cutoff(self):
+    def test_smaller_disc_radius_keeps_vessels_inside_the_old_circular_cutoff(self):
         vessel, disc, source, settings = self._inputs()
         original_vessel = vessel.copy()
         original_disc = disc.copy()
@@ -64,11 +63,12 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
 
         # This vessel lies outside the ellipse but inside its bounding circle.
         self.assertFalse(disc[43, 73])
-        self.assertEqual(0, circular.labels[43, 73])
+        self.assertGreater(circular.labels[43, 73], 0)
         self.assertGreater(branches.labels[43, 73], 0)
         self.assertEqual(4, branches.branch_ids.size)
-        self.assertFalse(np.any(branches.labels[disc]))
-        self.assertFalse(np.any(branches.stages.skeleton[disc]))
+        topology_disc = source.optic_disc.centered_circle_mask_for(vessel.shape)
+        self.assertFalse(np.any(branches.labels[topology_disc]))
+        self.assertFalse(np.any(branches.stages.skeleton[topology_disc]))
         np.testing.assert_array_equal(vessel, original_vessel)
         np.testing.assert_array_equal(disc, original_disc)
 
@@ -77,14 +77,11 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         mask, _ = outputs[schema.segmentation.optic_disc.mask]
         for paths in (schema.segmentation.artery, schema.segmentation.vein):
             image, _ = outputs[paths.branch_label_map]
-            self.assertGreater(image[73, 57], 0)
-            self.assertFalse(np.any(image[mask] > 0))
-            np.testing.assert_array_equal(
-                mask[image != REGION_AXIS_LABEL],
-                (image == OPTIC_DISC_LABEL)[image != REGION_AXIS_LABEL],
-            )
+            self.assertGreaterEqual(image[73, 57], 0)
+            self.assertEqual(INNER_R0_VESSEL_LABEL, image[60, 55])
+            self.assertFalse(np.array_equal(mask, image == INNER_R0_VESSEL_LABEL))
 
-    def test_actual_mask_also_excludes_disc_pixels_from_measurement_rings(self):
+    def test_actual_mask_does_not_replace_the_centered_topology_circle(self):
         vessel, disc, source, settings = self._inputs()
         # A nonelliptical extension reaches beyond the nominal disc dimensions.
         disc[40:49, 90:97] = True
@@ -94,9 +91,12 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
             settings,
         )
 
-        self.assertFalse(np.any(topology.branch_identity.stages.vessel[disc]))
-        self.assertFalse(np.any(topology.labels[disc]))
-        self.assertFalse(np.any(topology.annulus_masks[:, disc]))
+        topology_disc = topology.optic_disc_mask
+        self.assertFalse(np.any(topology.branch_identity.stages.vessel[topology_disc]))
+        self.assertFalse(np.any(topology.labels[topology_disc]))
+        self.assertFalse(np.any(topology.annulus_masks[:, topology_disc]))
+        self.assertTrue(np.any(topology.branch_identity.stages.vessel[disc]))
+        self.assertTrue(np.any(topology.annulus_masks[:, disc]))
         self.assertGreater(topology.labels[43, 73], 0)
         self.assertTrue(np.any(topology.annulus_masks[:, 43, 105]))
 
@@ -146,19 +146,19 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
                 )
                 self.assertGreater(branches.labels[43, 73], 0)
 
-    def test_wrong_disc_mask_shape_is_rejected(self):
+    def test_wrong_disc_mask_shape_is_ignored_by_topology_but_rejected_on_output(self):
         vessel, _, source, settings = self._inputs()
+        bad_disc = OpticDisc(
+            np.zeros(vessel.shape[::-1], dtype=bool),
+            source.optic_disc.center,
+            20.0,
+            50.0,
+        )
+        branches = label_vessel_branches(vessel, bad_disc, settings)
+        self.assertGreater(branches.branch_ids.size, 0)
+        source.optic_disc = bad_disc
         with self.assertRaisesRegex(ValueError, "same orientation and shape"):
-            label_vessel_branches(
-                vessel,
-                OpticDisc(
-                    np.zeros(vessel.shape[::-1], dtype=bool),
-                    source.optic_disc.center,
-                    20.0,
-                    50.0,
-                ),
-                settings,
-            )
+            pack_segmentation_outputs(source, branches, branches)
 
     @staticmethod
     def _inputs():

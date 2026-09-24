@@ -99,7 +99,7 @@ def test_annulus_geometry_preserves_established_calculation() -> None:
     geometry = disc.annulus_geometry((10, 20), number_of_radii_in_fov=10)
     scale = image_half_diagonal(10, 20)
     expected_step = 20.0 / 10.0 / scale
-    expected_inner = 3.0 / scale
+    expected_inner = 2.0 / scale
 
     assert isinstance(geometry, AnnulusGeometry)
     assert geometry.inner_radius_frac == pytest.approx(expected_inner)
@@ -111,4 +111,4 @@ def test_annulus_geometry_preserves_established_calculation() -> None:
         disc.annulus_geometry((10, 20), number_of_radii_in_fov=0)
     assert OpticDisc(None, (0.0, 0.0), 1.0, 1.0).annulus_geometry(
         (1, 1)
-    ).inner_radius_frac == 0.5
+    ).inner_radius_frac == 1.0
