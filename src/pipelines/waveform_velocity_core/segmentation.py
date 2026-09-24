@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from calculations.topology.geometry import image_half_diagonal
 from input_output.schema import EyeFlowOutputPaths
 
 from .retinal_velocity.outputs import metric_data
@@ -29,7 +30,13 @@ def pack_segmentation_outputs(
     schema = _resolve_output_paths(output_paths)
     image_shape = tuple(int(size) for size in source_data.retinal_artery_mask.shape)
     optic_disc = source_data.optic_disc
-    disc_mask = optic_disc.mask_for(image_shape)
+    source_disc_mask = optic_disc.mask_for(image_shape)
+    topology_disc_mask, topology_disc_radius = _topology_optic_disc_mask(
+        optic_disc,
+        image_shape,
+        artery_segments,
+        vein_segments,
+    )
     if optic_disc.mask is not None:
         mask_source = "dopplerview_segmentation"
     else:
@@ -39,7 +46,7 @@ def pack_segmentation_outputs(
     segmentation = schema.segmentation
     metrics = {
         segmentation.optic_disc.mask: _segmentation_value(
-            _serialize_spatial_image(disc_mask),
+            _serialize_spatial_image(source_disc_mask),
             _mask_attrs(mask_source),
         ),
     }
@@ -48,8 +55,9 @@ def pack_segmentation_outputs(
             segmentation.artery,
             artery_segments,
             source_data.retinal_artery_mask,
-            disc_mask,
+            topology_disc_mask,
             center_xy,
+            topology_disc_radius,
         )
     )
     metrics.update(
@@ -57,8 +65,9 @@ def pack_segmentation_outputs(
             segmentation.vein,
             vein_segments,
             source_data.retinal_vein_mask,
-            disc_mask,
+            topology_disc_mask,
             center_xy,
+            topology_disc_radius,
         )
     )
     return metrics
@@ -70,6 +79,7 @@ def _pack_vessel_segmentation(
     vessel_mask,
     optic_disc_mask: np.ndarray,
     center_xy: np.ndarray,
+    topology_disc_radius: int,
 ) -> dict[str, object]:
     expected_shape = tuple(int(size) for size in vessel_mask.shape)
     labels = (
@@ -89,9 +99,41 @@ def _pack_vessel_segmentation(
         ),
         paths.branch_label_map: _segmentation_value(
             _serialize_branch_label_map(labels, optic_disc_mask, center_xy),
-            _branch_label_attrs(_axis_thickness(labels.shape)),
+            _branch_label_attrs(
+                _axis_thickness(labels.shape),
+                topology_disc_radius,
+            ),
         ),
     }
+
+
+def _topology_optic_disc_mask(
+    optic_disc,
+    image_shape: tuple[int, int],
+    artery_segments,
+    vein_segments,
+) -> tuple[np.ndarray, int]:
+    fallback_radius = None
+    for segments in (artery_segments, vein_segments):
+        topology = getattr(segments, "topology", None)
+        settings = getattr(topology, "ring_settings", None)
+        if settings is None:
+            continue
+        fallback_radius = (
+            float(settings.inner_radius_frac)
+            * max(image_half_diagonal(*image_shape), 1.0)
+        )
+        break
+    radius = optic_disc.centered_circle_radius_pixels(
+        fallback_radius_pixels=fallback_radius,
+    )
+    return (
+        optic_disc.centered_circle_mask_for(
+            image_shape,
+            fallback_radius_pixels=fallback_radius,
+        ),
+        radius,
+    )
 
 
 def _serialize_branch_label_map(
@@ -136,7 +178,10 @@ def _mask_attrs(source: str) -> dict[str, object]:
     }
 
 
-def _branch_label_attrs(axis_thickness: int) -> dict[str, object]:
+def _branch_label_attrs(
+    axis_thickness: int,
+    topology_disc_radius: int,
+) -> dict[str, object]:
     return {
         "axis_label": REGION_AXIS_LABEL,
         "axis_thickness_pixels": axis_thickness,
@@ -150,6 +195,8 @@ def _branch_label_attrs(axis_thickness: int) -> dict[str, object]:
         "dimDesc": ["x", "y"],
         "image_origin": "lower_left",
         "optic_disc_label": OPTIC_DISC_LABEL,
+        "optic_disc_overlay": "centered_bounding_circle_used_by_topology",
+        "optic_disc_overlay_radius_pixels": np.int32(topology_disc_radius),
         "overlay_priority": "quadrant axes, optic disc, vessel branches",
         "y_axis_direction": "increasing_toward_north",
     }

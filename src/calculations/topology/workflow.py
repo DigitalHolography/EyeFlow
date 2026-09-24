@@ -16,7 +16,7 @@ from calculations.compute_backend import optional_cupy_backend
 from utils.logger import Logger
 
 from .cache import TopologyCacheKey, topology_cache_key
-from .geometry import AnnulusGeometry
+from .geometry import AnnulusGeometry, image_half_diagonal
 from .optic_disc import OpticDisc
 from .segments import (
     SegmentTopology,
@@ -124,7 +124,7 @@ def prepare_topologies(
     image_shape = next(iter(masks.values())).shape
     if any(mask.shape != image_shape for mask in masks.values()):
         raise ValueError("All vessel masks must have the same spatial shape.")
-    disc = optic_disc.mask_for(image_shape)
+    disc = _topology_optic_disc_mask(optic_disc, image_shape, settings)
 
     if window_side_pixels is not None:
         return {
@@ -624,7 +624,11 @@ def _cached_topology(
     window_size_percentile_kept: float,
     window_side_pixels: int | None,
 ) -> PreparedTopology:
-    optic_disc_mask = optic_disc.mask_for(vessel_mask.shape)
+    optic_disc_mask = _topology_optic_disc_mask(
+        optic_disc,
+        vessel_mask.shape,
+        settings,
+    )
     key = topology_cache_key(
         source_id,
         vessel_name,
@@ -659,6 +663,21 @@ def _cached_topology(
     if cache is not None:
         cache[key] = prepared
     return prepared
+
+
+def _topology_optic_disc_mask(
+    optic_disc: OpticDisc,
+    image_shape: tuple[int, int],
+    settings: AnnulusGeometry,
+) -> np.ndarray:
+    fallback_radius = (
+        float(settings.inner_radius_frac)
+        * max(image_half_diagonal(*image_shape), 1.0)
+    )
+    return optic_disc.centered_circle_mask_for(
+        image_shape,
+        fallback_radius_pixels=fallback_radius,
+    )
 
 
 def _shared_window_side(

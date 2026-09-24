@@ -27,7 +27,7 @@ from .profiles import (
     transverse_profiles,
 )
 from .profile_interpolation import interpolate_profiles_per_beat
-from .mask_area import circle_pixel_coverage, exact_annulus_pixel_coverages
+from .mask_area import annulus_widths_pixels, segment_mask_areas_pixels
 from .segments import (
     SegmentTopology,
     build_segment_topology,
@@ -74,11 +74,10 @@ __all__ = [
     "annulus_mask",
     "build_segment_topology",
     "competing_segment_masks",
-    "circle_pixel_coverage",
     "determine_segment_rotations",
     "dilate_segment_masks",
     "extract_segments",
-    "exact_annulus_pixel_coverages",
+    "annulus_widths_pixels",
     "extract_segment",
     "resize_segment_topology_windows",
     "image_half_diagonal",
@@ -100,6 +99,7 @@ __all__ = [
     "rotate_segments",
     "run_topology_cache",
     "section_masks",
+    "segment_mask_areas_pixels",
     "topology_cache_key",
     "topology_source_id",
     "transverse_profiles",

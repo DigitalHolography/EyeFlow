@@ -10,7 +10,7 @@ import numpy as np
 from utils.logger import Logger
 
 from .branch_identity import BranchIdentityResult, label_vessel_branches
-from .geometry import AnnulusGeometry, section_masks
+from .geometry import AnnulusGeometry, image_half_diagonal, section_masks
 from .optic_disc import OpticDisc
 
 
@@ -294,7 +294,14 @@ def _build_segment_topology(
         optic_disc,
         settings,
     )
-    optic_disc_mask = optic_disc.mask_for(vessel_mask.shape)
+    fallback_radius = (
+        float(settings.inner_radius_frac)
+        * max(image_half_diagonal(*vessel_mask.shape), 1.0)
+    )
+    optic_disc_mask = optic_disc.centered_circle_mask_for(
+        vessel_mask.shape,
+        fallback_radius_pixels=fallback_radius,
+    )
     optic_disc_center_xy = optic_disc.center
     centerline = branches.stages.skeleton
     annuli = section_masks(vessel_mask.shape, optic_disc_center_xy, settings)

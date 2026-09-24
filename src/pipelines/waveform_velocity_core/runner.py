@@ -26,6 +26,7 @@ from pipeline_engine.imports import (
 from pipelines.heartbeat_core.runner import (
     HeartbeatResult,
     cached_heartbeat_analysis,
+    cached_heartbeat_source,
     cached_velocity_estimation,
     heartbeat_result,
 )
@@ -203,6 +204,7 @@ def _build_waveform_velocity_core_context(
         source_data = WaveformVelocitySources.from_context(ctx).load()
     timing = source_data.timing
     heartbeat_velocity = cached_velocity_estimation(ctx, source_data)
+    heartbeat_source = cached_heartbeat_source(ctx)
     with _logged_stage("retinal velocity analysis from HD moments"):
         if heartbeat_velocity is not None:
             Logger.log("Reusing velocity estimation from heartbeat core.")
@@ -210,6 +212,7 @@ def _build_waveform_velocity_core_context(
             source_data,
             scratch_h5,
             cached_heartbeat_analysis(ctx),
+            heartbeat_detection_source=heartbeat_source,
             retain_velocity_video=True,
             velocity_estimation=heartbeat_velocity,
         )
@@ -246,6 +249,7 @@ def _build_waveform_velocity_core_context(
             "eyeflow_retinal_velocity_analysis",
             per_beat_analysis.heartbeat,
             number_of_radii_in_fov,
+            heartbeat_source,
         ),
     )
 
@@ -439,7 +443,7 @@ def _waveform_segment_input(
     *,
     include_segments: bool,
 ) -> np.ndarray | None:
-    if not include_segments or result is None or result.branch_ids.size == 0:
+    if not include_segments or result is None:
         return None
     return result.velocity
 
@@ -449,7 +453,7 @@ def _safe_waveform_segment_input(
     *,
     include_segments: bool,
 ) -> np.ndarray | None:
-    if not include_segments or result is None or result.branch_ids.size == 0:
+    if not include_segments or result is None:
         return None
     return result.safe_velocity
 
@@ -496,6 +500,7 @@ def _context_attrs(
     analysis_source: str,
     heartbeat,
     number_of_radii_in_fov: int,
+    beat_detection_source: str,
 ) -> dict[str, object]:
     output_paths = EyeFlowOutputPaths.active()
     analysis_paths = output_paths.analysis
@@ -545,6 +550,7 @@ def _context_attrs(
         "band_limited_signal_harmonic_count": int(harmonic_count),
         "filter_velocity_signals": bool(LEGACY_FILTER_VELOCITY_SIGNALS),
         "velocity_signal_lowpass_hz": float(LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ),
+        "beat_detection_source": beat_detection_source,
     }
 
 

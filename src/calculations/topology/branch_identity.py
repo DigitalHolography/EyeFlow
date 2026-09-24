@@ -10,7 +10,7 @@ from skimage.measure import label as label_components
 from skimage.morphology import disk, skeletonize
 from skimage.segmentation import find_boundaries, watershed
 
-from .geometry import AnnulusGeometry, annulus_mask
+from .geometry import AnnulusGeometry, annulus_mask, image_half_diagonal
 from .optic_disc import OpticDisc
 
 
@@ -61,14 +61,24 @@ def label_vessel_branches(
     small_branch_pixels: int = LOW_RES_SMALL_BRANCH_PIXELS,
     strel_size: int = STREL_SIZE,
 ) -> BranchIdentityResult:
-    """Label continuous vessel branches across the configured radial region."""
+    """Label branches outside the centered circular optic-disc cutoff."""
 
     vessel = np.asarray(vessel_mask, dtype=bool)
     if vessel.ndim != 2:
         raise ValueError("vessel_mask must be a 2-D array.")
-    disc = optic_disc.mask_for(vessel.shape)
+    fallback_radius = (
+        float(settings.inner_radius_frac)
+        * max(image_half_diagonal(*vessel.shape), 1.0)
+    )
+    disc = optic_disc.centered_circle_mask_for(
+        vessel.shape,
+        fallback_radius_pixels=fallback_radius,
+    )
     stages = _branch_identity_stages(
-        optic_disc.subtract_from(vessel),
+        optic_disc.subtract_centered_circle_from(
+            vessel,
+            fallback_radius_pixels=fallback_radius,
+        ),
         optic_disc.center,
         settings,
         optic_disc_mask=disc,
@@ -97,15 +107,13 @@ def _branch_identity_stages(
         raise ValueError(
             f"optic_disc_mask must have shape {vessel.shape}, got {disc.shape}."
         )
-    has_disc = bool(np.any(disc))
     section = annulus_mask(
         vessel.shape,
         optic_disc_center,
-        0.0 if has_disc else settings.inner_radius_frac,
+        0.0,
         settings.outer_radius_frac,
     )
-    if has_disc:
-        section &= ~disc
+    section &= ~disc
     skeleton = skeletonize(vessel)
 
     branch_points = _branch_points(skeleton, min_arm_pixels=small_branch_pixels)

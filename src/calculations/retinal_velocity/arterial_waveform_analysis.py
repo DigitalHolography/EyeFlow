@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from calculations.blood_flow_velocity.signal_analysis.heartbeat import (
-    run_heartbeat_analysis,
+    heartbeat_from_available_vessel,
 )
 from calculations.math import butter_lowpass_filtfilt
 
@@ -38,31 +38,44 @@ class ArterialWaveformAnalysisStep:
 
         return sig_perbeat
 
-    def run(self, ctx, heartbeat=None):
+    def run(self, ctx, heartbeat=None, *, beat_detection_source=None):
         # ---- Requires ----
-        sig = ctx.require("retinal_artery_velocity_signal")
+        sig = np.asarray(
+            ctx.require("retinal_artery_velocity_signal"),
+            dtype=np.float32,
+        )
+        vein_sig = np.asarray(
+            ctx.require("retinal_vein_velocity_signal"),
+            dtype=np.float32,
+        )
         stride = np.float32(ctx.hd_config_value("batch_stride"))
         fs = np.float32(ctx.hd_config_value("sampling_freq"))
         dt = stride / fs
+        lowpass_freq_hz = np.float32(
+            ctx.analysis_config_value("PulseAnalysis", "LowpassFreqHz", 15.0)
+        )
 
         if heartbeat is None:
-            heartbeat = run_heartbeat_analysis(
+            heartbeat, beat_detection_source = heartbeat_from_available_vessel(
                 sig,
+                vein_sig,
                 dt_seconds=float(dt),
-                lowpass_freq_hz=float(
-                    ctx.analysis_config_value("PulseAnalysis", "LowpassFreqHz", 15.0)
-                ),
+                lowpass_freq_hz=float(lowpass_freq_hz),
             )
+        elif beat_detection_source is None:
+            beat_detection_source = "artery"
         detection = heartbeat.systole
         peaks = detection.systole_indexes
-        sig_filtered = detection.artery_signal_filtered
-        vein_sig = np.asarray(ctx.require("retinal_vein_velocity_signal"), dtype=np.float32)
+        sig_filtered = butter_lowpass_filtfilt(
+            sig,
+            dt_seconds=dt,
+            lowpass_freq_hz=lowpass_freq_hz,
+            order=4,
+        )
         vein_filtered = butter_lowpass_filtfilt(
             vein_sig,
             dt_seconds=dt,
-            lowpass_freq_hz=np.float32(
-                ctx.analysis_config_value("PulseAnalysis", "LowpassFreqHz", 15.0)
-            ),
+            lowpass_freq_hz=lowpass_freq_hz,
             order=4,
         )
 
@@ -70,7 +83,10 @@ class ArterialWaveformAnalysisStep:
 
         ctx.set("retinal_artery_velocity_signal_filtered_perbeat", sig_perbeat)
         ctx.set("retinal_artery_velocity_signal_filtered", sig_filtered)
-        ctx.set("retinal_artery_velocity_signal_derivative", detection.derivative_signal)
+        ctx.set(
+            "retinal_artery_velocity_signal_derivative",
+            np.gradient(sig_filtered, dt).astype(np.float32),
+        )
         ctx.set("retinal_vein_velocity_signal_filtered", vein_filtered)
         ctx.set(
             "retinal_vein_velocity_signal_derivative",
@@ -83,4 +99,5 @@ class ArterialWaveformAnalysisStep:
         ) # TODO parametrize look for params
         ctx.set("beat_detection_min_peak_distance", detection.min_peak_distance)
         ctx.set("beat_detection_min_peak_height", detection.min_peak_height)
+        ctx.set("beat_detection_source", beat_detection_source)
         ctx.set("_heartbeat_analysis_result", heartbeat)

@@ -15,6 +15,7 @@ def run_retinal_velocity_analysis(
     source_data,
     scratch_h5,
     heartbeat_analysis,
+    heartbeat_detection_source: str = "artery",
     *,
     retain_velocity_video: bool = True,
     velocity_estimation: dict[str, object] | None = None,
@@ -50,5 +51,9 @@ def run_retinal_velocity_analysis(
             },
         },
     )
-    ArterialWaveformAnalysisStep().run(step_context, heartbeat_analysis)
+    ArterialWaveformAnalysisStep().run(
+        step_context,
+        heartbeat_analysis,
+        beat_detection_source=heartbeat_detection_source,
+    )
     return step_context.cache

@@ -6,14 +6,15 @@ import numpy as np
 from scipy.integrate import trapezoid
 from scipy.signal import find_peaks
 
-from calculations.topology.mask_area import (
-    exact_annulus_pixel_coverages,
+from calculations.topology import (
+    AnnulusGeometry,
+    annulus_widths_pixels,
+    segment_mask_areas_pixels,
 )
-from calculations.topology import AnnulusGeometry
 from calculations.blood_flow_velocity.cross_section.profile_processing import (
     interpolate_velocity_profiles_per_beat,
 )
-from calculations.math import nanmean_float32
+from calculations.math import nanmean_float32, nanmedian
 from calculations.topology import dilate_segment_masks
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from input_output.profile_datasets import (
@@ -21,13 +22,12 @@ from input_output.profile_datasets import (
 )
 from pipeline_engine.base import DatasetValue
 
-from .displacement_gaussian import fit_two_gaussian_profiles
-
-
 _PROFILE_MASK_DILATION_ITERATIONS = 10
 _DISPLACEMENT_PROFILE_ROOT = "Processing/DisplacementProfiles"
 _DISPLACEMENT_METRICS_ROOT = "Processing/DisplacementMetrics"
 _BLOOD_VOLUME_RATE_ROOT = "Processing/BloodVolumeRate"
+_TOTAL_BLOOD_VOLUME_RATE_TAU_WINDOW_SIZE = 8
+_TOTAL_BLOOD_VOLUME_RATE_TAU_WINDOW_STRIDE = 1
 _DISPLACEMENT_PROFILE_FIELDS = (
     ("X", "x_sum_displacement_profile", "local_x"),
     ("Y", "y_sum_displacement_profile", "local_y"),
@@ -61,137 +61,230 @@ def pack_cross_section_profile_outputs(
     return metrics
 
 
-def pack_mask_detection_blood_volume_rate_outputs(
+def pack_masked_edge_blood_volume_rate_outputs(
     artery_segments,
     vein_segments,
-    cycle_boundary_indexes,
+    velocity_per_beat_outputs: dict[str, object],
+    output_paths: EyeFlowOutputPaths | str | None = None,
     *,
-    optic_disc_center,
     pixel_size_mm: float,
-    index_base: int = 0,
-    apply_circular_area: bool = True,
 ) -> dict[str, DatasetValue]:
-    """Pack mask-detection BVR, with circular cross-sectional scaling by default.
-
-    The annular mask-area diameter is orientation-sensitive: dividing by the
-    radial annulus width assumes a vessel locally crosses the annulus in the
-    radial direction. Set ``apply_circular_area=False`` only for diagnostic
-    comparisons that need the unscaled interpolated mean velocity.
-    """
+    """Pack mask geometry, masked-edge flow, and aggregate ``Q(t,b)``."""
 
     if not np.isfinite(pixel_size_mm) or pixel_size_mm <= 0:
         raise ValueError("pixel_size_mm must be finite and positive.")
 
-    if not isinstance(apply_circular_area, (bool, np.bool_)):
-        raise TypeError("apply_circular_area must be boolean.")
-
+    schema = _resolve_output_paths(output_paths)
     segment_sets = (artery_segments, vein_segments)
-    if apply_circular_area:
-        diameters_mm, radial_width_pixels = _mask_detected_diameters_mm(
+    diameters_mm, mask_areas_pixels, radial_width_pixels = (
+        _masked_edge_geometry(
             segment_sets,
-            optic_disc_center=optic_disc_center,
             pixel_size_mm=pixel_size_mm,
         )
-    else:
-        diameters_mm = (None,) * len(segment_sets)
-        radial_width_pixels = None
+    )
     outputs: dict[str, DatasetValue] = {}
-    for vessel_name, segments, diameter_mm in zip(
-        ("Artery", "Vein"),
-        segment_sets,
+    velocity_sources = (
+        (
+            "Artery",
+            schema.artery_per_beat_safe.velocity_signal,
+            schema.segmentation.artery.segment_mask_area,
+        ),
+        (
+            "Vein",
+            schema.vein_per_beat_safe.velocity_signal,
+            schema.segmentation.vein.segment_mask_area,
+        ),
+    )
+    for (
+        vessel_name,
+        velocity_path,
+        mask_area_path,
+    ), diameter_mm, area_pixels, segments in zip(
+        velocity_sources,
         diameters_mm,
+        mask_areas_pixels,
+        segment_sets,
         strict=True,
     ):
-        outputs[
-            f"{_BLOOD_VOLUME_RATE_ROOT}/{vessel_name}/maskDetection/value"
-        ] = _mask_detection_blood_volume_rate_dataset(
-            segments,
-            cycle_boundary_indexes,
+        if velocity_path is None:
+            raise ValueError(
+                f"Safe per-beat velocity path is unavailable for {vessel_name}."
+            )
+        try:
+            velocity = velocity_per_beat_outputs[velocity_path]
+        except KeyError as exc:
+            raise KeyError(
+                "Required safe per-beat velocity output "
+                f"'{velocity_path}' is unavailable."
+            ) from exc
+        outputs[mask_area_path] = _segment_mask_area_dataset(
+            area_pixels,
+            branch_ids=np.asarray(segments.topology.branch_ids, dtype=np.int32),
+        )
+        masked_edges_path = (
+            f"{_BLOOD_VOLUME_RATE_ROOT}/{vessel_name}/maskedEdges/value"
+        )
+        masked_edges = _masked_edges_blood_volume_rate_dataset(
+            velocity,
             diameter_mm=diameter_mm,
             radial_width_pixels=radial_width_pixels,
             pixel_size_mm=pixel_size_mm,
-            index_base=index_base,
+            velocity_path=velocity_path,
+        )
+        outputs[masked_edges_path] = masked_edges
+        outputs[
+            f"{_BLOOD_VOLUME_RATE_ROOT}/{vessel_name}/totalMaskedEdges/value"
+        ] = _total_masked_edges_blood_volume_rate_dataset(
+            masked_edges,
+            source_path=masked_edges_path,
         )
     return outputs
 
 
-def _mask_detection_blood_volume_rate_dataset(
-    segments,
-    cycle_boundary_indexes,
+def _segment_mask_area_dataset(
+    area_pixels: np.ndarray,
     *,
-    diameter_mm: np.ndarray | None,
-    radial_width_pixels: np.ndarray | None,
-    pixel_size_mm: float,
-    index_base: int,
+    branch_ids: np.ndarray,
 ) -> DatasetValue:
-    velocity = np.asarray(segments.velocity, dtype=np.float32)
-    if velocity.ndim != 3:
-        raise ValueError("segment velocity must have shape (radius, branch, frame).")
-
-    velocity_tbkr = interpolate_velocity_profiles_per_beat(
-        velocity[..., None],
-        cycle_boundary_indexes,
-        index_base=index_base,
-    )[0]
-    circular_area_applied = diameter_mm is not None
-    if circular_area_applied:
-        cross_section_mm2 = np.float32(np.pi / 4.0) * diameter_mm**2
-        values = velocity_tbkr * cross_section_mm2[None, None, :, :]
-        unit = "mm^3/s"
-        definition = (
-            "segment mean velocity multiplied by a circular lumen area; "
-            "diameter is the fractional overlap of native vessel-mask "
-            "pixel squares with the exact annulus divided by annulus width"
-        )
-    else:
-        values = velocity_tbkr
-        unit = "mm/s"
-        definition = (
-            "temporary diagnostic containing interpolated segment mean "
-            "velocity; the orientation-sensitive mask-derived circular-area "
-            "multiplier is intentionally disabled"
-        )
-    values = values.astype(np.float32, copy=False)
-    attrs = {
-        "unit": unit,
-        "dimDesc": ["time", "beat", "branch", "radius"],
-        "definition": definition,
-        "quantity": "volume_flow_rate" if circular_area_applied else "mean_velocity",
-        "circular_area_scaling_applied": np.uint8(circular_area_applied),
-    }
-    if circular_area_applied:
-        attrs.update(
-            {
-                "diameter_model": "fractional_annular_mask_area_over_radial_width",
-                "diameter_model_assumption": "locally_radial_vessel",
-                "cross_section_model": "circular_pi_diameter_squared_over_4",
-                "annulus_geometry": "exact_optic_disc_centered_radii",
-                "annulus_edge_handling": "outer_radius_clipped_to_configured_limit",
-                "vessel_mask_model": "native_binary_pixels_as_unit_squares",
-                "annulus_pixel_coverage": "analytic_circle_square_intersection",
-                "native_pixel_size_mm": np.float32(pixel_size_mm),
-                "radial_width_pixels": radial_width_pixels,
-            }
-        )
     return DatasetValue(
-        values,
-        attrs,
-        h5_options=_profile_h5_options(values.shape),
+        np.asarray(area_pixels, dtype=np.int32),
+        {
+            "unit": "pixels^2",
+            "dimDesc": ["branch", "radius"],
+            "definition": (
+                "count of native vessel-mask pixels belonging to each branch "
+                "inside each annular section"
+            ),
+            "branch_ids": branch_ids,
+            "annulus_geometry": "native_pixel_center_section_mask",
+            "annulus_pixel_coverage": "binary_pixel_center_membership",
+        },
     )
 
 
-def _mask_detected_diameters_mm(
+def _masked_edges_blood_volume_rate_dataset(
+    velocity_source,
+    *,
+    diameter_mm: np.ndarray,
+    radial_width_pixels: np.ndarray,
+    pixel_size_mm: float,
+    velocity_path: str,
+) -> DatasetValue:
+    velocity_tbkr = _metric_data(velocity_source).astype(np.float32, copy=False)
+    if velocity_tbkr.ndim != 4:
+        raise ValueError(
+            "safe per-beat segment velocity must have dimensions "
+            "(time, beat, branch, radius)."
+        )
+    if velocity_tbkr.shape[2:] != diameter_mm.shape:
+        raise ValueError(
+            "safe per-beat segment velocity branch/radius dimensions must "
+            "match the masked-edge geometry."
+        )
+    cross_section_mm2 = np.float32(np.pi / 4.0) * diameter_mm**2
+    rate = (velocity_tbkr * cross_section_mm2[None, None, :, :]).astype(
+        np.float32,
+        copy=False,
+    )
+    return DatasetValue(
+        rate,
+        {
+            "unit": "mm^3/s",
+            "dimDesc": ["time", "beat", "branch", "radius"],
+            "definition": (
+                "safe per-beat segment velocity multiplied by a circular lumen "
+                "area; diameter is the count of native vessel-mask pixels in "
+                "the annular section divided by its radial width"
+            ),
+            "source_velocity": f"/{velocity_path.lstrip('/')}",
+            "diameter_model": "masked_pixel_count_over_radial_width",
+            "diameter_model_assumption": "locally_radial_vessel",
+            "cross_section_model": "circular_pi_diameter_squared_over_4",
+            "annulus_geometry": "native_pixel_center_section_mask",
+            "annulus_edge_handling": "outer_radius_clipped_to_configured_limit",
+            "vessel_mask_model": "native_binary_pixels",
+            "annulus_pixel_coverage": "binary_pixel_center_membership",
+            "native_pixel_size_mm": np.float32(pixel_size_mm),
+            "radial_width_pixels": radial_width_pixels,
+        },
+        h5_options=_profile_h5_options(rate.shape),
+    )
+
+
+def _total_masked_edges_blood_volume_rate_dataset(
+    masked_edges: DatasetValue,
+    *,
+    source_path: str,
+) -> DatasetValue:
+    blood_volume_rate_tbkr = np.asarray(masked_edges.data, dtype=np.float32)
+    if blood_volume_rate_tbkr.ndim != 4:
+        raise ValueError(
+            "masked-edge blood-volume rate must have dimensions "
+            "(time, beat, branch, radius)."
+        )
+
+    window_size = _TOTAL_BLOOD_VOLUME_RATE_TAU_WINDOW_SIZE
+    window_stride = _TOTAL_BLOOD_VOLUME_RATE_TAU_WINDOW_STRIDE
+    if blood_volume_rate_tbkr.shape[0] > 0:
+        periodic = np.pad(
+            blood_volume_rate_tbkr,
+            ((0, window_size - 1), (0, 0), (0, 0), (0, 0)),
+            mode="wrap",
+        )
+        windows = np.lib.stride_tricks.sliding_window_view(
+            periodic,
+            window_shape=window_size,
+            axis=0,
+        )[::window_stride]
+        blood_volume_rate_tbkr = np.mean(
+            windows,
+            axis=-1,
+            dtype=np.float32,
+        )
+
+    finite = np.isfinite(blood_volume_rate_tbkr)
+    rate_tbr = np.sum(
+        np.where(finite, blood_volume_rate_tbkr, np.float32(0.0)),
+        axis=2,
+        dtype=np.float32,
+    )
+    rate_tbr[~np.any(finite, axis=2)] = np.nan
+    total_tb = nanmedian(rate_tbr, axis=2).astype(np.float32, copy=False)
+    return DatasetValue(
+        total_tb,
+        {
+            "unit": "mm^3/s",
+            "dimDesc": ["time", "beat"],
+            "definition": (
+                "median over radius of the sum over branches of masked-edge "
+                "blood-volume rate after a circular sliding average over tau"
+            ),
+            "source": f"/{source_path.lstrip('/')}",
+            "aggregation": "median_over_radius_of_sum_over_branches",
+            "temporal_filter": "circular_sliding_average_over_tau",
+            "temporal_window_size": np.int32(window_size),
+            "temporal_window_stride": np.int32(window_stride),
+            "temporal_boundary_mode": "circular",
+            "temporal_window_alignment": "forward",
+            "temporal_nan_policy": "propagate",
+            "branch_reduction": "sum_over_finite_values",
+            "radius_reduction": "median_over_finite_values",
+        },
+        h5_options=_profile_h5_options(total_tb.shape),
+    )
+
+
+def _masked_edge_geometry(
     segment_sets: tuple[object, ...],
     *,
-    optic_disc_center,
     pixel_size_mm: float,
-) -> tuple[tuple[np.ndarray, ...], np.ndarray]:
+) -> tuple[tuple[np.ndarray, ...], tuple[np.ndarray, ...], np.ndarray]:
     if not segment_sets:
         raise ValueError("at least one segment result is required.")
 
-    geometries: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     ring_settings: AnnulusGeometry | None = None
     spatial_shape: tuple[int, int] | None = None
+    mask_areas: list[np.ndarray] = []
     for segments in segment_sets:
         topology = segments.topology
         settings = topology.ring_settings
@@ -202,62 +295,47 @@ def _mask_detected_diameters_mm(
         elif settings != ring_settings:
             raise ValueError("artery and vein segment ring settings must match.")
         labels = np.asarray(topology.labels, dtype=np.int32)
-        sections = np.asarray(topology.section_masks, dtype=bool)
-        branch_ids = np.asarray(topology.branch_ids, dtype=np.int32)
-        expected_shape = (sections.shape[0], branch_ids.size)
-        if sections.ndim != 3 or sections.shape[1:] != labels.shape:
-            raise ValueError("segment topology section masks must match its label image.")
-        if expected_shape != tuple(np.asarray(segments.velocity).shape[:2]):
-            raise ValueError("segment topology does not match velocity radius/branch order.")
         if spatial_shape is None:
             spatial_shape = labels.shape
         elif labels.shape != spatial_shape:
             raise ValueError("artery and vein segment image shapes must match.")
-        geometries.append((labels, sections, branch_ids))
+        mask_areas.append(segment_mask_areas_pixels(topology))
 
     if ring_settings is None or spatial_shape is None:
         raise RuntimeError("segment geometry preparation produced no topology.")
-    ring_count = geometries[0][1].shape[0]
-    if any(sections.shape[0] != ring_count for _, sections, _ in geometries):
+    ring_count = int(mask_areas[0].shape[1])
+    if any(area.shape[1] != ring_count for area in mask_areas):
         raise ValueError("artery and vein segment ring counts must match.")
-    radial_widths = np.zeros(ring_count, dtype=np.float32)
-    diameters = [
-        np.full((ring_count, branch_ids.size), np.nan, dtype=np.float32)
-        for _, _, branch_ids in geometries
-    ]
-    for radius_index, annulus_coverage, radial_width in exact_annulus_pixel_coverages(
+    radial_widths = annulus_widths_pixels(
         spatial_shape,
-        optic_disc_center,
         ring_settings,
         ring_count,
-    ):
-        radial_widths[radius_index] = np.float32(radial_width)
-        if radial_width <= 0:
-            continue
-        for diameter, (labels, sections, branch_ids) in zip(
-            diameters,
-            geometries,
-            strict=True,
-        ):
-            label_count = int(labels.max()) + 1
-            area_by_label = np.bincount(
-                labels.ravel(),
-                weights=annulus_coverage.ravel(),
-                minlength=label_count,
+    )
+    diameters: list[np.ndarray] = []
+    for area in mask_areas:
+        diameter = np.full(area.shape, np.nan, dtype=np.float32)
+        valid_widths = radial_widths > 0
+        if np.any(valid_widths):
+            calculated = (
+                area[:, valid_widths].astype(np.float32)
+                * np.float32(pixel_size_mm)
+                / radial_widths[None, valid_widths]
             )
-            present_labels = np.bincount(
-                labels[sections[radius_index]].ravel(),
-                minlength=label_count,
+            diameter[:, valid_widths] = np.where(
+                area[:, valid_widths] > 0,
+                calculated,
+                np.float32(np.nan),
             )
-            for branch_index, branch_id in enumerate(branch_ids):
-                label_id = int(branch_id)
-                if present_labels[label_id] == 0:
-                    continue
-                area_pixels = float(area_by_label[label_id])
-                diameter[radius_index, branch_index] = np.float32(
-                    area_pixels * pixel_size_mm / radial_width
-                )
-    return tuple(diameter.T for diameter in diameters), radial_widths
+        diameters.append(diameter)
+    return tuple(diameters), tuple(mask_areas), radial_widths
+
+
+def _metric_data(value) -> np.ndarray:
+    if isinstance(value, DatasetValue):
+        value = value.data
+    elif isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
+        value = value[0]
+    return np.asarray(value)
 
 
 def pack_displacement_profile_outputs(
@@ -478,12 +556,6 @@ def _pack_displacement_axis_profiles_for_method(
             mean_transverse_power,
             max_x_position,
         )
-        gaussian_fit, gaussian_metrics = fit_two_gaussian_profiles(
-            transverse_meaned,
-            max_x_position,
-            max_y_position,
-        )
-        outputs[f"{transverse_root}/Gaussian_Fit"] = gaussian_fit
         transverse_metrics_root = f"{metrics_root}/Transverse"
         outputs.update(
             {
@@ -503,10 +575,6 @@ def _pack_displacement_axis_profiles_for_method(
                 f"{transverse_metrics_root}/Area_R": area_r,
                 f"{transverse_metrics_root}/Diff_Area_L": diff_area_l,
                 f"{transverse_metrics_root}/Diff_Area_R": diff_area_r,
-                **{
-                    f"{transverse_metrics_root}/{name}": value
-                    for name, value in gaussian_metrics.items()
-                },
             }
         )
     if include_transverse:

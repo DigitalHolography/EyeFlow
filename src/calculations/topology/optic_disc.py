@@ -84,6 +84,67 @@ class OpticDisc:
             raise TypeError("vessel_mask must be a 2-D boolean array.")
         return vessel & ~self.mask_for(vessel.shape)
 
+    def centered_circle_radius_pixels(
+        self,
+        *,
+        fallback_radius_pixels: float | None = None,
+    ) -> int:
+        """Return the integer radius used by topology around the optic disc.
+
+        DopplerView dimensions are authoritative when present.  The fallback
+        keeps mask-only callers usable when they provide an explicit annulus
+        geometry.
+        """
+
+        if self.width is not None and self.height is not None:
+            radius = max(self.width, self.height) / 2.0
+        else:
+            radius = _optional_nonnegative_scalar(
+                fallback_radius_pixels,
+                "fallback radius",
+            )
+            if radius is None:
+                raise ValueError(
+                    "optic-disc width and height or a fallback radius are "
+                    "required to derive the centered circular topology mask."
+                )
+        return int(np.ceil(radius))
+
+    def centered_circle_mask_for(
+        self,
+        image_shape: tuple[int, int],
+        *,
+        fallback_radius_pixels: float | None = None,
+    ) -> np.ndarray:
+        """Return the clipped centered circular mask used by topology."""
+
+        ny, nx = _validated_image_shape(image_shape)
+        radius = self.centered_circle_radius_pixels(
+            fallback_radius_pixels=fallback_radius_pixels,
+        )
+        center_x, center_y = self.center
+        y, x = np.ogrid[:ny, :nx]
+        return (
+            (y - float(center_y)) ** 2 + (x - float(center_x)) ** 2
+            <= float(radius**2)
+        )
+
+    def subtract_centered_circle_from(
+        self,
+        vessel_mask,
+        *,
+        fallback_radius_pixels: float | None = None,
+    ) -> np.ndarray:
+        """Return a vessel mask with the topology's circular disc removed."""
+
+        vessel = np.asarray(vessel_mask)
+        if vessel.ndim != 2 or vessel.dtype != np.bool_:
+            raise TypeError("vessel_mask must be a 2-D boolean array.")
+        return vessel & ~self.centered_circle_mask_for(
+            vessel.shape,
+            fallback_radius_pixels=fallback_radius_pixels,
+        )
+
     def annulus_geometry(
         self,
         image_shape: tuple[int, int],
@@ -93,13 +154,13 @@ class OpticDisc:
 
         if number_of_radii_in_fov < 1:
             raise ValueError("number_of_radii_in_fov must be positive.")
-        width, height = self._required_dimensions("derive annulus geometry")
+        self._required_dimensions("derive annulus geometry")
         ny, nx = _validated_image_shape(image_shape)
         radius_scale = max(image_half_diagonal(ny, nx), 1.0)
         radial_step = (
             max(nx, ny) / float(number_of_radii_in_fov) / radius_scale
         )
-        inner = min((max(width, height) / 2.0) / radius_scale, 1.0)
+        inner = min(self.centered_circle_radius_pixels() / radius_scale, 1.0)
         outer = 1.0
         count = max(1, int(np.ceil((outer - inner) / radial_step)))
         return AnnulusGeometry(
@@ -122,4 +183,13 @@ def _optional_positive_scalar(value, name: str) -> float | None:
     values = np.asarray(value, dtype=np.float64).reshape(-1)
     if values.size != 1 or not np.isfinite(values[0]) or values[0] <= 0:
         raise ValueError(f"optic-disc {name} must be a finite positive scalar.")
+    return float(values[0])
+
+
+def _optional_nonnegative_scalar(value, name: str) -> float | None:
+    if value is None:
+        return None
+    values = np.asarray(value, dtype=np.float64).reshape(-1)
+    if values.size != 1 or not np.isfinite(values[0]) or values[0] < 0:
+        raise ValueError(f"optic-disc {name} must be a finite nonnegative scalar.")
     return float(values[0])
