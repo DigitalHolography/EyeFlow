@@ -120,6 +120,15 @@ def test_mask_geometry_and_signed_flow_keep_established_model() -> None:
     np.testing.assert_allclose(total_masked_edges_flow(rate), expected_rate)
 
 
+def test_total_masked_edges_flow_uses_centered_periodic_nine_point_window() -> None:
+    rate = np.zeros((10, 1, 1, 1), dtype=np.float32)
+    rate[0] = 9.0
+
+    expected = np.ones((10, 1), dtype=np.float32)
+    expected[5, 0] = 0.0
+    np.testing.assert_array_equal(total_masked_edges_flow(rate), expected)
+
+
 def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
     prepared = object()
     velocity_topology = SimpleNamespace(

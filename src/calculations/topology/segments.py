@@ -11,6 +11,7 @@ from utils.logger import Logger
 
 from .branch_identity import BranchIdentityResult, label_vessel_branches
 from .geometry import AnnulusGeometry, image_half_diagonal, section_masks
+from .mask_area import annulus_widths_pixels
 from .optic_disc import OpticDisc
 
 
@@ -33,6 +34,7 @@ class SegmentTopology:
     segment_centers_xy: np.ndarray
     window_bounds_xyxy: np.ndarray
     window_side_pixels: int
+    delta_radius: np.ndarray | None = None
     optic_disc_mask: np.ndarray | None = None
     ring_settings: AnnulusGeometry | None = None
     branch_identity: BranchIdentityResult | None = None
@@ -277,6 +279,7 @@ def resize_segment_topology_windows(
         segment_centers_xy=topology.segment_centers_xy,
         window_bounds_xyxy=bounds,
         window_side_pixels=side,
+        delta_radius=topology.delta_radius,
         branch_identity=topology.branch_identity,
     )
 
@@ -321,6 +324,11 @@ def _build_segment_topology(
 
     ring_count = int(annuli.shape[0])
     branch_count = int(branches.branch_ids.size)
+    delta_radius = annulus_widths_pixels(
+        vessel_mask.shape,
+        settings,
+        ring_count,
+    )
     centers = np.full((ring_count, branch_count, 2), np.nan, dtype=np.float32)
     bounds = np.full((ring_count, branch_count, 4), -1, dtype=np.int32)
     masks = np.zeros((ring_count, branch_count, side, side), dtype=bool)
@@ -354,6 +362,7 @@ def _build_segment_topology(
         segment_centers_xy=centers,
         window_bounds_xyxy=bounds,
         window_side_pixels=side,
+        delta_radius=delta_radius,
         branch_identity=branches,
     )
 

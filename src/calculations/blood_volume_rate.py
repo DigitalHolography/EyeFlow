@@ -8,7 +8,7 @@ from calculations.math import nanmedian
 from calculations.topology import annulus_widths_pixels, segment_mask_areas_pixels
 from calculations.topology.geometry import AnnulusGeometry
 
-TOTAL_MASKED_EDGES_WINDOW_SIZE = 8
+TOTAL_MASKED_EDGES_WINDOW_SIZE = 9
 TOTAL_MASKED_EDGES_WINDOW_STRIDE = 1
 
 
@@ -185,9 +185,10 @@ def total_masked_edges_flow(masked_edges) -> np.ndarray:
             "(time, beat, branch, radius)."
         )
     if values.shape[0] > 0:
+        half_window = TOTAL_MASKED_EDGES_WINDOW_SIZE // 2
         periodic = np.pad(
             values,
-            ((0, TOTAL_MASKED_EDGES_WINDOW_SIZE - 1), (0, 0), (0, 0), (0, 0)),
+            ((half_window, half_window), (0, 0), (0, 0), (0, 0)),
             mode="wrap",
         )
         windows = np.lib.stride_tricks.sliding_window_view(

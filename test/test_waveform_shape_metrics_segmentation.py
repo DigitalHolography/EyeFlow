@@ -6,14 +6,15 @@ from types import SimpleNamespace
 import numpy as np
 
 from calculations.topology import AnnulusGeometry, OpticDisc
-
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity_core.segmentation import (
     ANNULUS_OUTLINE_LABEL,
     BACKGROUND_LABEL,
     INNER_R0_VESSEL_LABEL,
     _annulus_outlines,
+    _topology_delta_radius,
     pack_segmentation_outputs,
+    pack_topology_outputs,
 )
 
 
@@ -114,6 +115,66 @@ class SegmentationOutputTests(unittest.TestCase):
 
         # The last outline is at 0.7 of the half-diagonal, not clipped to 0.5.
         self.assertTrue(outlines[50, 99])
+
+    def test_lumen_diameter_uses_each_vessels_area_and_float32_delta_radius(self):
+        image_shape = (4, 4)
+        annuli = np.zeros((2, *image_shape), dtype=bool)
+        annuli[0, :2] = True
+        annuli[1, 2:] = True
+        artery_labels = np.zeros(image_shape, dtype=np.int32)
+        artery_labels[0, :2] = 1
+        artery_labels[2, :3] = 1
+        vein_labels = np.zeros(image_shape, dtype=np.int32)
+        vein_labels[0, :4] = 1
+        vein_labels[2, :1] = 1
+        settings = AnnulusGeometry(0.0, 1.0, 0.5, 2)
+
+        def topology(labels):
+            return SimpleNamespace(
+                labels=labels,
+                branch_ids=np.asarray([1], dtype=np.int32),
+                annulus_masks=annuli,
+                ring_settings=settings,
+                delta_radius=np.asarray([2.0, 0.0], dtype=np.float32),
+            )
+
+        outputs = pack_topology_outputs(
+            artery_labels > 0,
+            vein_labels > 0,
+            OpticDisc(None, (1.5, 1.5), 1.0, 1.0),
+            {
+                "artery": topology(artery_labels),
+                "vein": topology(vein_labels),
+            },
+        )
+        schema = EyeFlowOutputPaths.active()
+
+        artery_diameter, artery_attrs = outputs[
+            schema.segmentation.artery.lumen_diameter
+        ]
+        vein_diameter, _ = outputs[schema.segmentation.vein.lumen_diameter]
+        delta_radius, delta_attrs = outputs[
+            schema.segmentation.artery.delta_radius
+        ]
+
+        self.assertEqual(np.float32, artery_diameter.dtype)
+        self.assertEqual(np.float32, vein_diameter.dtype)
+        self.assertEqual(np.float32, delta_radius.dtype)
+        np.testing.assert_array_equal(delta_radius, [2.0, 0.0])
+        np.testing.assert_allclose(artery_diameter[:, 0], [1.0])
+        np.testing.assert_allclose(vein_diameter[:, 0], [2.0])
+        self.assertTrue(np.isnan(artery_diameter[0, 1]))
+        self.assertTrue(np.isnan(vein_diameter[0, 1]))
+        self.assertEqual("pixels", artery_attrs["unit"])
+        self.assertEqual(["branch", "radius"], artery_attrs["dimDesc"])
+        self.assertEqual("pixels", delta_attrs["unit"])
+        self.assertEqual(["radius"], delta_attrs["dimDesc"])
+
+    def test_missing_delta_radius_is_float32_nan(self):
+        delta_radius = _topology_delta_radius(SimpleNamespace(), 2)
+
+        self.assertEqual(np.float32, delta_radius.dtype)
+        self.assertTrue(np.all(np.isnan(delta_radius)))
 
     @staticmethod
     def _assert_xy_lower_left_attrs(attrs):

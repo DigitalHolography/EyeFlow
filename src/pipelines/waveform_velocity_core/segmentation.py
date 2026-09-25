@@ -166,8 +166,9 @@ def _pack_vessel_segmentation(
         hasattr(topology, field)
         for field in ("branch_ids", "annulus_masks")
     ):
+        segment_mask_area = segment_mask_areas_pixels(topology)
         outputs[paths.segment_mask_area] = _segmentation_value(
-            segment_mask_areas_pixels(topology),
+            segment_mask_area,
             {
                 "unit": "pixels^2",
                 "dimDesc": ["branch", "radius"],
@@ -180,7 +181,53 @@ def _pack_vessel_segmentation(
                 "annulus_pixel_coverage": "binary_pixel_center_membership",
             },
         )
+        delta_radius = _topology_delta_radius(
+            topology,
+            segment_mask_area.shape[1],
+        )
+        lumen_diameter = np.full(
+            segment_mask_area.shape,
+            np.nan,
+            dtype=np.float32,
+        )
+        valid_delta = np.isfinite(delta_radius) & (delta_radius != 0)
+        np.divide(
+            segment_mask_area.astype(np.float32),
+            delta_radius[None, :],
+            out=lumen_diameter,
+            where=valid_delta[None, :],
+        )
+        outputs[paths.lumen_diameter] = _segmentation_value(
+            lumen_diameter,
+            {
+                "unit": "pixels",
+                "dimDesc": ["branch", "radius"],
+                "definition": "segment mask area divided by delta radius",
+                "branch_ids": np.asarray(topology.branch_ids, dtype=np.int32),
+            },
+        )
+        outputs[paths.delta_radius] = _segmentation_value(
+            delta_radius,
+            {
+                "unit": "pixels",
+                "dimDesc": ["radius"],
+                "definition": "radial width of each annular section",
+            },
+        )
     return outputs
+
+
+def _topology_delta_radius(topology, radius_count: int) -> np.ndarray:
+    source = getattr(topology, "delta_radius", None)
+    if source is None:
+        return np.full(radius_count, np.nan, dtype=np.float32)
+    delta_radius = np.asarray(source, dtype=np.float32).reshape(-1)
+    if delta_radius.shape != (radius_count,):
+        raise ValueError(
+            "segment topology delta radius must have one value per annular "
+            f"section, got {delta_radius.shape} for {radius_count} sections."
+        )
+    return delta_radius
 
 
 def _topology_geometry(

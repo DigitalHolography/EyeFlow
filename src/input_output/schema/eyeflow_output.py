@@ -68,6 +68,8 @@ class VesselSegmentationOutputPaths:
     branch_label_map: str
     segment_map: str
     segment_mask_area: str
+    lumen_diameter: str
+    delta_radius: str
 
 
 @dataclass(frozen=True)
@@ -158,12 +160,16 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
             branch_label_map=f"{root}/Artery/BranchLabelMap/value",
             segment_map=f"{root}/Artery/SegmentMap/value",
             segment_mask_area=f"{root}/Artery/SegmentMaskArea/value",
+            lumen_diameter=f"{root}/Artery/LumenDiameter/value",
+            delta_radius=f"{root}/Artery/DeltaRadius/value",
         ),
         vein=VesselSegmentationOutputPaths(
             mask=f"{root}/Vein/Mask/value",
             branch_label_map=f"{root}/Vein/BranchLabelMap/value",
             segment_map=f"{root}/Vein/SegmentMap/value",
             segment_mask_area=f"{root}/Vein/SegmentMaskArea/value",
+            lumen_diameter=f"{root}/Vein/LumenDiameter/value",
+            delta_radius=f"{root}/Vein/DeltaRadius/value",
         ),
     )
 

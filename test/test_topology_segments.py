@@ -73,6 +73,11 @@ class SegmentTopologyTests(unittest.TestCase):
         self.assertEqual((41, 41), topology.centerline.shape)
         self.assertEqual(np.bool_, topology.centerline.dtype)
         self.assertEqual(7, topology.window_side_pixels)
+        self.assertEqual(np.float32, topology.delta_radius.dtype)
+        np.testing.assert_allclose(
+            topology.delta_radius,
+            np.full(2, np.hypot(20.0, 20.0) * 0.25, dtype=np.float32),
+        )
         self.assertTrue(np.all(topology.valid_segments))
 
     def test_explicit_center_drives_the_centered_circle_exclusion(self) -> None:
