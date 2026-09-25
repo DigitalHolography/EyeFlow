@@ -11,11 +11,7 @@ from calculations.blood_flow_velocity import (
     PerBeatAnalysisInput,
     spectral_heartbeat_analysis,
 )
-from calculations.topology import (
-    AnnulusGeometry,
-    run_topology_cache,
-    topology_source_id,
-)
+from calculations.topology import AnnulusGeometry
 from input_output import EyeFlowOutputPaths
 from pipelines.displacement_map.runner import attach_displacement_segment_profiles
 from pipeline_engine.imports import (
@@ -30,6 +26,7 @@ from pipelines.heartbeat_core.runner import (
     cached_velocity_estimation,
     heartbeat_result,
 )
+from pipelines.topology_core.runner import prepared_topologies
 from utils.logger import Logger
 
 from .branch_identity_debug import export_branch_identity_stage_pngs
@@ -51,7 +48,6 @@ from .retinal_velocity.outputs import (
 )
 from .retinal_velocity.runner import run_retinal_velocity_analysis
 from .scratch import velocity_scratch_h5
-from .segmentation import pack_segmentation_outputs
 from .segments import analyze_velocity_segment_profiles
 from .sources import WaveformVelocitySourceData, WaveformVelocitySources
 
@@ -96,13 +92,6 @@ def run_waveform_velocity_core(
         )
         metrics = pack_retinal_velocity_outputs(context.velocity_analysis)
         metrics.update(_pack_meta_outputs(context))
-        metrics.update(
-            pack_segmentation_outputs(
-                context.source_data,
-                context.artery_segment_result,
-                context.vein_segment_result,
-            )
-        )
         ctx.state.set(WAVEFORM_CONTEXT_STATE, context)
 
         if _per_beat_required(ctx):
@@ -118,6 +107,11 @@ def run_waveform_velocity_core(
 
 
 def _per_beat_required(ctx) -> bool:
+    if (
+        ctx.pipeline_scheduled("blood_volume_rate")
+        and ctx.option_enabled("masked_edges", pipeline="blood_volume_rate")
+    ):
+        return True
     if ctx.pipeline_scheduled("velocity_profile_analysis"):
         return True
     if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
@@ -150,7 +144,9 @@ def _per_beat_required(ctx) -> bool:
 
 def _segments_required(ctx) -> bool:
     """Return whether any selected product needs spatial vessel segments."""
-    if ctx.pipeline_scheduled("spatial_gradient_moment0"):
+    if ctx.pipeline_scheduled("blood_volume_rate") and ctx.options_for(
+        "blood_volume_rate"
+    ):
         return True
     if ctx.pipeline_scheduled("velocity_profile_analysis"):
         return True
@@ -299,16 +295,17 @@ def _per_beat_input_from_analysis(
     if segments_required:
         if velocity_map is None:
             raise ValueError("velocity_map is required for segment extraction.")
-        ring_settings = source_data.optic_disc.annulus_geometry(
-            velocity_map.shape[-2:],
-            number_of_radii_in_fov=number_of_radii_in_fov,
-        )
+        shared_topologies = prepared_topologies(ctx)
+        ring_settings = shared_topologies["artery"].topology.ring_settings
+        if not isinstance(ring_settings, AnnulusGeometry):
+            raise RuntimeError("Prepared topology has no annulus geometry.")
         artery_segments, vein_segments = _segment_velocity_inputs(
             velocity_map,
             source_data,
             ring_settings,
             ctx,
             cycle_boundary_indexes=velocity_analysis["beat_indices"],
+            prepared_topologies=shared_topologies,
         )
     else:
         Logger.log("Skipping segment velocity extraction; no selected output requires it.")
@@ -380,6 +377,7 @@ def _segment_velocity_inputs(
     ctx,
     *,
     cycle_boundary_indexes,
+    prepared_topologies=None,
 ) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
     waveform_velocity_scheduled = ctx.pipeline_scheduled("waveform_velocity")
     retain_velocity_maps = bool(
@@ -406,11 +404,7 @@ def _segment_velocity_inputs(
             source_data.optic_disc,
             ring_settings,
             source_data.cross_section_settings,
-            source_id=topology_source_id(
-                ctx.inputs.hd.filename,
-                ctx.inputs.dv.filename,
-            ),
-            topology_cache=run_topology_cache(ctx.state.raw),
+            prepared_topologies=prepared_topologies,
             retain_velocity_maps=retain_velocity_maps,
             cycle_boundary_indexes=cycle_boundary_indexes,
             velocity_profile_fft=velocity_profile_fft,

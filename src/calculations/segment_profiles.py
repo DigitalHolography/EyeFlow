@@ -69,7 +69,6 @@ class SegmentProfileTopology:
     frame_count: int
     labels: np.ndarray
     branch_ids: np.ndarray
-    section_masks: np.ndarray
     segment_masks: np.ndarray
     segment_centers_xy: np.ndarray
     profile_window_bounds_xyxy: np.ndarray
@@ -241,18 +240,18 @@ def analyze_segment_profiles(
             cache=topology_cache,
             window_size_percentile_kept=settings.submask_size_percentile_kept,
         )
+        topologies = {
+            name: resolve_segment_rotations(
+                topology,
+                signal_map,
+                working_memory_mb=settings.working_memory_mb,
+            )
+            for name, topology in topologies.items()
+        }
     else:
         topologies = dict(prepared_topologies)
         if set(topologies) != set(masks):
             raise ValueError("prepared_topologies must match vessel mask names.")
-    topologies = {
-        name: resolve_segment_rotations(
-            topology,
-            signal_map,
-            working_memory_mb=settings.working_memory_mb,
-        )
-        for name, topology in topologies.items()
-    }
     Logger.log(
         f"Completed topology preparation in {perf_counter() - topology_started:.2f}s."
     )
@@ -464,7 +463,6 @@ def _measure_segment_profiles_from_prepared(
         frame_count=frame_count,
         labels=geometry.labels.copy(),
         branch_ids=geometry.branch_ids.copy(),
-        section_masks=geometry.annulus_masks.copy(),
         segment_masks=buffers.segment_masks.copy(),
         segment_centers_xy=geometry.segment_centers_xy.copy(),
         profile_window_bounds_xyxy=bounds.copy(),

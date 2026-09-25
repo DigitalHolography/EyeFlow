@@ -1,10 +1,10 @@
-"""Cross-section gradients computed after interpolating raw moment0ff."""
+"""Vessel-aligned gradients computed after interpolating raw moment0ff."""
 
 from __future__ import annotations
 
 import numpy as np
 
-from calculations.math import nanmean_float32, nanmedian
+from calculations.math import nanmedian
 from calculations.math.spatial_gradient import (
     GAUSSIAN_BLUR_RADIUS,
     TEMPORAL_MOVING_AVERAGE_WINDOW,
@@ -20,240 +20,75 @@ from pipeline_engine.base import DatasetValue
 
 from input_output.profile_datasets import (
     _profile_dataset,
-    _profile_h5_options,
     _temporally_meaned_profile_dataset,
 )
-from input_output.schema import EyeFlowOutputPaths
 
 SPATIAL_GRADIENT_PROFILE_ROOT = "Processing/SpatialGradientProfiles"
 SPATIAL_GRADIENT_METRICS_ROOT = "Processing/SpatialGradientMetrics"
 SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES = 5
 TBKR_LUMEN_SIZE_QC_THRESHOLD = 0.5
 _SPATIAL_GRADIENT_MASK_DILATION_PIXELS = 5
-_BLOOD_VOLUME_RATE_ROOT = "Processing/BloodVolumeRate"
 
 
-def pack_bvr_velocity_profile_outputs(
-    artery_segments,
-    vein_segments,
-    cycle_boundary_indexes,
-    output_paths: EyeFlowOutputPaths | str | None = None,
+def extract_spatial_gradient_segments(
+    ctx,
+    source,
+    prepared_topologies=None,
     *,
-    index_base: int = 0,
-) -> dict[str, DatasetValue]:
-    """Pack only the masked velocity profiles consumed by gradient-derived BVR."""
-
-    schema = (
-        output_paths
-        if isinstance(output_paths, EyeFlowOutputPaths)
-        else EyeFlowOutputPaths.active(output_paths)
-    )
-    outputs: dict[str, DatasetValue] = {}
-    for paths, segments in (
-        (schema.artery_velocity_profiles, artery_segments),
-        (schema.vein_velocity_profiles, vein_segments),
-    ):
-        outputs[paths.transverse_velocity_profile_masked] = _profile_dataset(
-            np.asarray(
-                segments.transverse_velocity_profiles_masked,
-                dtype=np.float32,
-            ),
-            cycle_boundary_indexes,
-            index_base=index_base,
-            spatial_axis="x",
-            valid_segments=np.asarray(
-                segments.topology.valid_segments,
-                dtype=bool,
-            ),
-        )
-    return outputs
-
-
-def pack_blood_volume_rate_outputs(
-    velocity_profile_outputs: dict[str, object],
-    spatial_gradient_outputs: dict[str, object],
-    output_paths: EyeFlowOutputPaths | str | None = None,
-) -> dict[str, DatasetValue]:
-    """Integrate masked velocity profiles within gradient-detected edges."""
-
-    schema = (
-        output_paths
-        if isinstance(output_paths, EyeFlowOutputPaths)
-        else EyeFlowOutputPaths.active(output_paths)
-    )
-    vessel_sources = {
-        "Artery": (
-            schema.artery_velocity_profiles.transverse_velocity_profile_masked,
-            (
-                "Processing/SpatialGradientMetrics/Artery/Transverse/"
-                "Masked/tbkr/left_edge_index"
-            ),
-            (
-                "Processing/SpatialGradientMetrics/Artery/Transverse/"
-                "Masked/tbkr/right_edge_index"
-            ),
-        ),
-        "Vein": (
-            schema.vein_velocity_profiles.transverse_velocity_profile_masked,
-            (
-                "Processing/SpatialGradientMetrics/Vein/Transverse/"
-                "Masked/tbkr/left_edge_index"
-            ),
-            (
-                "Processing/SpatialGradientMetrics/Vein/Transverse/"
-                "Masked/tbkr/right_edge_index"
-            ),
-        ),
-    }
-    outputs: dict[str, DatasetValue] = {}
-    for vessel_name, (profile_path, left_path, right_path) in vessel_sources.items():
-        profile = velocity_profile_outputs[profile_path]
-        left_edge = spatial_gradient_outputs[left_path]
-        right_edge = spatial_gradient_outputs[right_path]
-        outputs[f"{_BLOOD_VOLUME_RATE_ROOT}/{vessel_name}/dynamicEdges/value"] = (
-            _blood_volume_rate_dataset(
-                profile,
-                left_edge,
-                right_edge,
-                profile_path=profile_path,
-                left_edge_path=left_path,
-                right_edge_path=right_path,
-            )
-        )
-        outputs[f"{_BLOOD_VOLUME_RATE_ROOT}/{vessel_name}/staticEdges/value"] = (
-            _blood_volume_rate_dataset(
-                profile,
-                left_edge,
-                right_edge,
-                profile_path=profile_path,
-                left_edge_path=left_path,
-                right_edge_path=right_path,
-                static_edges=True,
-            )
-        )
-    return outputs
-
-
-def _blood_volume_rate_dataset(
-    profile: DatasetValue,
-    left_edge: DatasetValue,
-    right_edge: DatasetValue,
-    *,
-    profile_path: str,
-    left_edge_path: str,
-    right_edge_path: str,
-    static_edges: bool = False,
-) -> DatasetValue:
-    values = np.asarray(profile.data, dtype=np.float32)
-    left = np.asarray(left_edge.data, dtype=np.float32)
-    right = np.asarray(right_edge.data, dtype=np.float32)
-    if values.ndim != 5:
-        raise ValueError("velocity profile must have dimensions (x, t, b, k, r).")
-    if left.shape != values.shape[1:] or right.shape != values.shape[1:]:
-        raise ValueError(
-            "spatial-gradient edges must match velocity profile dimensions (t, b, k, r)."
-        )
-    if static_edges:
-        left = np.broadcast_to(nanmean_float32(left, axis=(0, 1)), left.shape)
-        right = np.broadcast_to(nanmean_float32(right, axis=(0, 1)), right.shape)
-
-    rate = _integrate_profiles_between_edges(values, left, right)
-    profile_unit = str(dict(profile.attrs or {}).get("unit", "mm/s"))
-    return DatasetValue(
-        rate,
-        {
-            "unit": f"{profile_unit}*pixel",
-            "dimDesc": ["time", "beat", "branch", "radius"],
-            "definition": (
-                "piecewise-linear trapezoidal integral of the masked transverse "
-                "velocity profile between the exact "
-                + (
-                    "time-and-beat-mean spatial-gradient edge indexes"
-                    if static_edges
-                    else "spatial-gradient edge indexes"
-                )
-            ),
-            "source_profile": f"/{profile_path.lstrip('/')}",
-            "source_left_edge_index": f"/{left_edge_path.lstrip('/')}",
-            "source_right_edge_index": f"/{right_edge_path.lstrip('/')}",
-            "edge_interpolation": "linear",
-            "integration_method": "trapezoidal",
-            "integration_coordinate": "profile_index_pixels",
-            "edge_temporal_reduction": (
-                "mean_over_time_and_beats" if static_edges else "none"
-            ),
-        },
-        h5_options=_profile_h5_options(rate.shape),
-    )
-
-
-def _integrate_profiles_between_edges(
-    profiles: np.ndarray,
-    left_edge: np.ndarray,
-    right_edge: np.ndarray,
-) -> np.ndarray:
-    """Integrate piecewise-linear profiles at exact fractional edge indexes."""
-
-    values = np.asarray(profiles, dtype=np.float32)
-    left = np.asarray(left_edge, dtype=np.float32)
-    right = np.asarray(right_edge, dtype=np.float32)
-    integral = np.zeros(left.shape, dtype=np.float32)
-    has_finite_interval = np.zeros(left.shape, dtype=bool)
-    valid_edges = np.isfinite(left) & np.isfinite(right) & (left <= right)
-
-    for index in range(max(values.shape[0] - 1, 0)):
-        interval_start = np.maximum(left, np.float32(index))
-        interval_end = np.minimum(right, np.float32(index + 1))
-        width = interval_end - interval_start
-        start_value = values[index]
-        end_value = values[index + 1]
-        active = (
-            valid_edges
-            & (width > 0.0)
-            & np.isfinite(start_value)
-            & np.isfinite(end_value)
-        )
-        start_fraction = interval_start - np.float32(index)
-        end_fraction = interval_end - np.float32(index)
-        slope = end_value - start_value
-        interpolated_start = start_value + slope * start_fraction
-        interpolated_end = start_value + slope * end_fraction
-        contribution = (
-            np.float32(0.5)
-            * (interpolated_start + interpolated_end)
-            * width
-        )
-        integral += np.where(active, contribution, np.float32(0.0))
-        has_finite_interval |= active
-
-    integral[~has_finite_interval] = np.nan
-    return integral
-
-
-def extract_spatial_gradient_segments(ctx, waveform_context):
+    profile_settings=None,
+):
     """Interpolate raw moment0ff, filter its gradient, then rotate each segment."""
 
-    source = waveform_context.source_data
+    legacy_number_of_radii = None
+    if hasattr(source, "source_data"):
+        waveform_context = source
+        source = waveform_context.source_data
+        legacy_number_of_radii = waveform_context.attrs.get(
+            "number_of_radii_in_FOV"
+        )
+        if prepared_topologies is None:
+            prepared_topologies = {
+                "artery": waveform_context.artery_segment_result.topology.prepared_topology,
+                "vein": waveform_context.vein_segment_result.topology.prepared_topology,
+            }
+        if profile_settings is None:
+            profile_settings = source.cross_section_settings
+    artery_mask = getattr(source, "artery_mask", None)
+    if artery_mask is None:
+        artery_mask = source.retinal_artery_mask
+    vein_mask = getattr(source, "vein_mask", None)
+    if vein_mask is None:
+        vein_mask = source.retinal_vein_mask
+    if profile_settings is None:
+        profile_settings = source.cross_section_settings
+    if prepared_topologies is None:
+        raise RuntimeError("Spatial-gradient analysis requires prepared topology.")
+
     moment0ff = ctx.inputs.hd.as_holodoppler().moment0_flat_field_dataset()
     if moment0ff is None:
         raise KeyError("Missing flat-field HoloDoppler moment0 dataset: moment0ff/M0FF.")
-    ring_settings = source.optic_disc.annulus_geometry(
-        moment0ff.shape[-2:],
-        number_of_radii_in_fov=int(waveform_context.attrs["number_of_radii_in_FOV"]),
+    artery_topology = prepared_topologies["artery"]
+    ring_settings = getattr(
+        getattr(artery_topology, "topology", None),
+        "ring_settings",
+        None,
     )
-    prepared_topologies = {
-        "artery": waveform_context.artery_segment_result.topology.prepared_topology,
-        "vein": waveform_context.vein_segment_result.topology.prepared_topology,
-    }
+    if ring_settings is None and legacy_number_of_radii is not None:
+        ring_settings = source.optic_disc.annulus_geometry(
+            tuple(int(size) for size in artery_mask.shape),
+            number_of_radii_in_fov=int(legacy_number_of_radii),
+        )
+    if ring_settings is None:
+        raise RuntimeError("Prepared topology has no annulus geometry.")
     results = analyze_segment_profiles(
         moment0ff,
         {
-            "artery": source.retinal_artery_mask,
-            "vein": source.retinal_vein_mask,
+            "artery": artery_mask,
+            "vein": vein_mask,
         },
         source.optic_disc,
         ring_settings,
-        source.cross_section_settings,
+        profile_settings,
         prepared_topologies=prepared_topologies,
         transform_mode="staged",
         post_interpolation=_spatial_gradient_chain,
@@ -842,7 +677,5 @@ __all__ = [
     "SPATIAL_GRADIENT_PROFILE_ROOT",
     "TBKR_LUMEN_SIZE_QC_THRESHOLD",
     "extract_spatial_gradient_segments",
-    "pack_blood_volume_rate_outputs",
-    "pack_bvr_velocity_profile_outputs",
     "pack_spatial_gradient_profile_outputs",
 ]

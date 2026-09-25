@@ -51,14 +51,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
     def setUp(self) -> None:
         # These orchestration tests use string segment sentinels.
         for name, result in {
-            "pack_mask_detection_blood_volume_rate_outputs": {},
             "pack_cross_section_displacement_profile_outputs": {},
             "pack_displacement_magnitude_outputs": {},
         }.items():
             mock = patch.object(velocity_runner, name, return_value=result)
-            started = mock.start()
-            if name == "pack_mask_detection_blood_volume_rate_outputs":
-                self.mask_bvr = started
+            mock.start()
             self.addCleanup(mock.stop)
 
     def test_fft_option_is_disabled_by_default_and_requires_profiles(self) -> None:
@@ -279,7 +276,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             artery_segments,
             "vein",
         )
-        self.assertTrue(self.mask_bvr.call_args.kwargs["apply_circular_area"])
 
     def test_segments_option_does_not_build_velocity_maps(self) -> None:
         context = SimpleNamespace(

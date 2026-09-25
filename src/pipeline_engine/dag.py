@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from .base import PipelineDescriptor
@@ -44,7 +44,12 @@ class PipelineDAG:
             self._pipelines_by_name[name] for name in self.execution_order
         )
 
-    def resolve_targets(self, targets: Sequence[str]) -> PipelineExecutionPlan:
+    def resolve_targets(
+        self,
+        targets: Sequence[str],
+        *,
+        pipeline_options: Mapping[str, Sequence[str]] | None = None,
+    ) -> PipelineExecutionPlan:
         target_names = tuple(dict.fromkeys(name for name in targets if name))
         unknown = [
             name for name in target_names if name not in self._pipelines_by_name
@@ -64,7 +69,10 @@ class PipelineDAG:
             if pipeline_name in required:
                 return
             required.add(pipeline_name)
-            for dependency in self._dependencies[pipeline_name]:
+            for dependency in self._active_dependencies(
+                pipeline_name,
+                pipeline_options,
+            ):
                 collect(dependency)
 
         for target in target_names:
@@ -82,11 +90,13 @@ class PipelineDAG:
         pipeline_name: str,
         *,
         transitive: bool = False,
+        pipeline_options: Mapping[str, Sequence[str]] | None = None,
     ) -> tuple[str, ...]:
         """Return direct or transitive upstream pipeline dependencies."""
+        dependencies = self._active_dependency_graph(pipeline_options)
         return self._related_pipelines(
             pipeline_name,
-            self._dependencies,
+            dependencies,
             transitive=transitive,
         )
 
@@ -95,13 +105,62 @@ class PipelineDAG:
         pipeline_name: str,
         *,
         transitive: bool = False,
+        pipeline_options: Mapping[str, Sequence[str]] | None = None,
     ) -> tuple[str, ...]:
         """Return direct or transitive downstream pipeline dependents."""
+        dependencies = self._active_dependency_graph(pipeline_options)
+        graph = {name: set() for name in self._pipelines_by_name}
+        for child, parents in dependencies.items():
+            for parent in parents:
+                graph[parent].add(child)
         return self._related_pipelines(
             pipeline_name,
-            self.graph,
+            graph,
             transitive=transitive,
         )
+
+    def _active_dependency_graph(
+        self,
+        pipeline_options: Mapping[str, Sequence[str]] | None,
+    ) -> dict[str, set[str]]:
+        return {
+            name: self._active_dependencies(name, pipeline_options)
+            for name in self._pipelines_by_name
+        }
+
+    def _active_dependencies(
+        self,
+        pipeline_name: str,
+        pipeline_options: Mapping[str, Sequence[str]] | None,
+    ) -> set[str]:
+        pipeline = self._pipelines_by_name[pipeline_name]
+        required_keys = list(pipeline.dag_requires)
+        selected_options = self._selected_option_names(
+            pipeline,
+            pipeline_options,
+        )
+        for option in pipeline.options:
+            if option.name in selected_options:
+                required_keys.extend(option.dag_requires)
+        return {
+            producer
+            for key in required_keys
+            if (producer := self._key_producers.get(key)) is not None
+            and producer != pipeline_name
+        }
+
+    @staticmethod
+    def _selected_option_names(
+        pipeline: PipelineDescriptor,
+        pipeline_options: Mapping[str, Sequence[str]] | None,
+    ) -> set[str]:
+        if pipeline_options is None or pipeline.name not in pipeline_options:
+            return {
+                option.name
+                for option in pipeline.options
+                if option.default_enabled
+            }
+        return {str(name) for name in pipeline_options[pipeline.name]}
 
     def _related_pipelines(
         self,
@@ -154,7 +213,15 @@ class PipelineDAG:
             dependencies[pipeline_name]
 
         for pipeline in self._pipelines:
-            for required_key in pipeline.dag_requires:
+            required_keys = [
+                *pipeline.dag_requires,
+                *(
+                    key
+                    for option in pipeline.options
+                    for key in option.dag_requires
+                ),
+            ]
+            for required_key in required_keys:
                 producer = self._key_producers.get(required_key)
                 if producer is None or producer == pipeline.name:
                     continue

@@ -18,9 +18,11 @@ from ..widgets import Tooltip
 
 _PIPELINE_UI_ORDER = {
     "waveform_velocity": 0,
-    "velocity_profile_analysis": 1,
-    "waveform_shape_metrics": 2,
-    "pdf_report": 3,
+    "spatial_gradient_moment0": 1,
+    "blood_volume_rate": 2,
+    "velocity_profile_analysis": 3,
+    "waveform_shape_metrics": 4,
+    "pdf_report": 5,
 }
 
 
@@ -32,6 +34,7 @@ class PipelineLibraryController:
     def __init__(self, app) -> None:
         self.app = app
         self._status_labels: list[ttk.Label] = []
+        self._pipeline_status_labels: dict[str, ttk.Label] = {}
 
     def configure_library_columns(self, inner, *, row_count: int = 1) -> None:
         inner.columnconfigure(0, weight=1, minsize=180)
@@ -156,17 +159,32 @@ class PipelineLibraryController:
         self.app.pipeline_rows = rows
         self.sync_visibility(rows)
         self.sync_options(rows)
+        self._refresh_required_pipelines()
         self.populate(rows)
 
     def selected_target_pipeline_names(self) -> list[str]:
+        rows = getattr(
+            self.app,
+            "pipeline_rows",
+            tuple(
+                pipeline
+                for pipeline in getattr(self.app, "pipeline_catalog", {}).values()
+                if pipeline.visibility != "hidden"
+            ),
+        )
         return [
             pipeline.name
-            for pipeline in self.app.pipeline_rows
+            for pipeline in rows
             if pipeline.available
             and self.app.pipeline_visibility.get(pipeline.name, False)
         ]
 
     def selected_pipeline_options(self) -> dict[str, tuple[str, ...]]:
+        rows = getattr(
+            self.app,
+            "pipeline_rows",
+            tuple(getattr(self.app, "pipeline_catalog", {}).values()),
+        )
         return {
             pipeline.name: tuple(
                 option.name
@@ -175,7 +193,7 @@ class PipelineLibraryController:
                 .get(pipeline.name, {})
                 .get(option.name, option.default_enabled)
             )
-            for pipeline in self.app.pipeline_rows
+            for pipeline in rows
             if pipeline.options
         }
 
@@ -184,7 +202,10 @@ class PipelineLibraryController:
         if dag is None:
             dag = PipelineDAG(self.app.pipeline_rows)
             self.app.pipeline_dag = dag
-        return dag.resolve_targets(target_names)
+        return dag.resolve_targets(
+            target_names,
+            pipeline_options=self.selected_pipeline_options(),
+        )
 
     def select_all(self) -> None:
         self.set_all_visibility(True)
@@ -233,6 +254,7 @@ class PipelineLibraryController:
         for child in self.app.pipeline_library_inner.winfo_children():
             child.destroy()
         self._status_labels = []
+        self._pipeline_status_labels = {}
         self.app.pipeline_visibility_vars = {}
         self.app.pipeline_row_widgets = {}
         self.app.pipeline_option_vars = {}
@@ -258,13 +280,16 @@ class PipelineLibraryController:
         visibility, changed = normalize_pipeline_visibility(
             (pipeline.name for pipeline in rows),
             self.app.settings_store.load_pipeline_visibility(),
+            missing_defaults={
+                pipeline.name: pipeline.default_selected for pipeline in rows
+            },
         )
         for pipeline in rows:
             if not pipeline.available and visibility.get(pipeline.name, False):
                 visibility[pipeline.name] = False
                 changed = True
         self.app.pipeline_visibility = visibility
-        changed = self._select_required_upstream_pipelines() or changed
+        self.app.pipeline_required_names = set()
         if changed:
             self.persist_visibility()
 
@@ -360,29 +385,10 @@ class PipelineLibraryController:
         pipeline = self.app.pipeline_catalog.get(name)
         if pipeline is not None and not pipeline.available:
             visible = False
-        affected_names = {name}
-        dag = self.app.pipeline_dag
-        if dag is not None:
-            related = (
-                dag.dependencies_of(name, transitive=True)
-                if visible
-                else dag.dependents_of(name, transitive=True)
-            )
-            affected_names.update(related)
-
-        changed = False
-        visible_names: set[str] = set()
-        for affected_name in affected_names:
-            affected = self.app.pipeline_catalog.get(affected_name)
-            if affected is None or affected.visibility == "hidden":
-                continue
-            target_value = bool(visible and affected.available)
-            if self.app.pipeline_visibility.get(affected_name) != target_value:
-                self.app.pipeline_visibility[affected_name] = target_value
-                changed = True
-            visible_names.add(affected_name)
-
-        self._sync_pipeline_selection_widgets(visible_names)
+        target_value = bool(visible and pipeline is not None and pipeline.available)
+        changed = self.app.pipeline_visibility.get(name) != target_value
+        if changed:
+            self.app.pipeline_visibility[name] = target_value
         if changed:
             self.persist_visibility()
         if visible and name == "pdf_report" and hasattr(
@@ -395,6 +401,8 @@ class PipelineLibraryController:
                 "per_beat",
                 True,
             )
+        self._refresh_required_pipelines()
+        self._sync_pipeline_selection_widgets(set(self.app.pipeline_catalog))
         self.update_summary()
 
     def set_option_visibility(
@@ -463,38 +471,65 @@ class PipelineLibraryController:
                     var.set(target_enabled)
         if changed:
             self.persist_options()
+        self._refresh_required_pipelines()
+        self._sync_pipeline_selection_widgets(set(self.app.pipeline_catalog))
         self.update_summary()
 
-    def _select_required_upstream_pipelines(self) -> bool:
-        dag = self.app.pipeline_dag
+    def _refresh_required_pipelines(self) -> None:
+        dag = getattr(self.app, "pipeline_dag", None)
         if dag is None:
-            return False
-        changed = False
-        selected_names = [
-            name
-            for name, selected in self.app.pipeline_visibility.items()
-            if selected
-        ]
-        for name in selected_names:
-            for required_name in dag.dependencies_of(name, transitive=True):
-                pipeline = self.app.pipeline_catalog.get(required_name)
-                if (
-                    pipeline is None
-                    or pipeline.visibility == "hidden"
-                    or not pipeline.available
-                ):
-                    continue
-                if not self.app.pipeline_visibility.get(required_name, False):
-                    self.app.pipeline_visibility[required_name] = True
-                    changed = True
-        return changed
+            self.app.pipeline_required_names = set()
+            return
+        targets = self.selected_target_pipeline_names()
+        if not targets:
+            self.app.pipeline_required_names = set()
+            return
+        try:
+            plan = self.resolve_plan(targets)
+        except (RuntimeError, ValueError):
+            self.app.pipeline_required_names = set()
+            return
+        explicit = set(targets)
+        self.app.pipeline_required_names = {
+            pipeline.name
+            for pipeline in plan.descriptors
+            if pipeline.visibility != "hidden"
+            and pipeline.available
+            and pipeline.name not in explicit
+        }
 
     def _sync_pipeline_selection_widgets(self, names: set[str]) -> None:
+        visibility_vars = getattr(self.app, "pipeline_visibility_vars", {})
+        row_widgets = getattr(self.app, "pipeline_row_widgets", {})
+        required_names = getattr(self.app, "pipeline_required_names", set())
+        visibility = getattr(self.app, "pipeline_visibility", {})
         for name in names:
-            selected = self.app.pipeline_visibility.get(name, False)
-            var = self.app.pipeline_visibility_vars.get(name)
+            selected = visibility.get(name, False) or name in required_names
+            var = visibility_vars.get(name)
             if var is not None and var.get() != selected:
                 var.set(selected)
+            widget = row_widgets.get(name)
+            pipeline = self.app.pipeline_catalog.get(name)
+            if widget is not None:
+                widget.configure(
+                    state=(
+                        "normal"
+                        if pipeline is not None
+                        and pipeline.available
+                        and name not in required_names
+                        else "disabled"
+                    )
+                )
+            status = self._pipeline_status_labels.get(name)
+            if status is not None and pipeline is not None:
+                description = pipeline_status_text(pipeline)
+                status.configure(
+                    text=(
+                        f"Required — {description}"
+                        if name in required_names
+                        else description
+                    )
+                )
             self._update_option_widget_states(name)
 
     def set_all_visibility(self, visible: bool) -> None:
@@ -507,9 +542,6 @@ class PipelineLibraryController:
             if self.app.pipeline_visibility.get(name) != target_value:
                 self.app.pipeline_visibility[name] = target_value
                 changed = True
-        for name, var in self.app.pipeline_visibility_vars.items():
-            var.set(self.app.pipeline_visibility.get(name, False))
-            self._update_option_widget_states(name)
         options_changed = False
         for pipeline in self.app.pipeline_rows:
             values = self.app.pipeline_option_visibility.setdefault(
@@ -530,6 +562,8 @@ class PipelineLibraryController:
             self.persist_visibility()
         if options_changed:
             self.persist_options()
+        self._refresh_required_pipelines()
+        self._sync_pipeline_selection_widgets(set(target_values))
         self.update_summary()
 
     def update_summary(self) -> None:
@@ -659,7 +693,10 @@ class PipelineLibraryController:
     def _build_pipeline_row(self, idx: int, pipeline: PipelineDescriptor) -> int:
         is_available = getattr(pipeline, "available", True)
         var = tk.BooleanVar(
-            value=self.app.pipeline_visibility.get(pipeline.name, False)
+            value=(
+                self.app.pipeline_visibility.get(pipeline.name, False)
+                or pipeline.name in getattr(self.app, "pipeline_required_names", set())
+            )
             and is_available
         )
         target_frame = ttk.Frame(self.app.pipeline_library_inner)
@@ -669,7 +706,14 @@ class PipelineLibraryController:
             target_frame,
             text=pipeline.name,
             variable=var,
-            state="normal" if is_available else "disabled",
+            state=(
+                "normal"
+                if is_available
+                and pipeline.name not in getattr(
+                    self.app, "pipeline_required_names", set()
+                )
+                else "disabled"
+            ),
             command=lambda name=pipeline.name, visible_var=var: (
                 self.set_visibility(name, visible_var.get())
             ),
@@ -706,10 +750,16 @@ class PipelineLibraryController:
             disclosure_widgets = (disclosure, hairline)
         status = ttk.Label(
             self.app.pipeline_library_inner,
-            text=pipeline_status_text(pipeline),
+            text=(
+                f"Required — {pipeline_status_text(pipeline)}"
+                if pipeline.name
+                in getattr(self.app, "pipeline_required_names", set())
+                else pipeline_status_text(pipeline)
+            ),
             justify="left",
         )
         self._status_labels.append(status)
+        self._pipeline_status_labels[pipeline.name] = status
         status.grid(
             row=idx,
             column=2,
@@ -796,7 +846,10 @@ class PipelineLibraryController:
                     else "\N{BLACK RIGHT-POINTING SMALL TRIANGLE}"
                 )
             )
-        for widget in self.app.pipeline_option_widgets.get(pipeline_name, []):
+        for widget in getattr(self.app, "pipeline_option_widgets", {}).get(
+            pipeline_name,
+            [],
+        ):
             if expanded:
                 widget.grid()
             else:
@@ -807,10 +860,20 @@ class PipelineLibraryController:
         enabled = bool(
             pipeline is not None
             and pipeline.available
-            and self.app.pipeline_visibility.get(pipeline_name, False)
+            and (
+                getattr(self.app, "pipeline_visibility", {}).get(
+                    pipeline_name,
+                    False,
+                )
+                or pipeline_name
+                in getattr(self.app, "pipeline_required_names", set())
+            )
         )
         state = "normal" if enabled else "disabled"
-        for widget in self.app.pipeline_option_widgets.get(pipeline_name, []):
+        for widget in getattr(self.app, "pipeline_option_widgets", {}).get(
+            pipeline_name,
+            [],
+        ):
             if isinstance(widget, ttk.Checkbutton):
                 widget.configure(state=state)
 
@@ -826,7 +889,10 @@ class PipelineLibraryController:
     ) -> None:
         def toggle(_event: tk.Event) -> str:
             pipeline = self.app.pipeline_catalog.get(name)
-            if pipeline is not None and not pipeline.available:
+            if pipeline is not None and (
+                not pipeline.available
+                or name in getattr(self.app, "pipeline_required_names", set())
+            ):
                 return "break"
             var.set(not var.get())
             self.set_visibility(name, var.get())

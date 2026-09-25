@@ -330,7 +330,6 @@ def _single_segment_topology(
         frame_count=frame_count,
         labels=np.ones((5, 5), dtype=np.int32),
         branch_ids=np.asarray([1], dtype=np.int32),
-        section_masks=np.ones((1, 5, 5), dtype=bool),
         segment_masks=rotated_mask,
         segment_center_xy=np.asarray([[[2.0, 2.0]]], dtype=np.float32),
         profile_window_bounds_xyxy=np.asarray([[[1, 4, 1, 4]]], dtype=np.int32),

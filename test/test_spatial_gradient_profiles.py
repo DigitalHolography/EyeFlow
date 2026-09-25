@@ -10,58 +10,17 @@ import numpy as np
 
 from calculations.blood_flow_velocity import CrossSectionSignalSettings
 from calculations.topology import OpticDisc
-from input_output.schema import EyeFlowOutputPaths
-from pipeline_engine.base import DatasetValue
 from pipelines.spatial_gradient_moment0 import profiles as profile_module
 from pipelines.spatial_gradient_moment0.profiles import (
     SPATIAL_GRADIENT_METRICS_ROOT,
     SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES,
     SPATIAL_GRADIENT_PROFILE_ROOT,
     extract_spatial_gradient_segments,
-    pack_blood_volume_rate_outputs,
     pack_spatial_gradient_profile_outputs,
 )
 
 
 class SpatialGradientProfileTests(unittest.TestCase):
-    def test_gradient_pipeline_integrates_dynamic_and_static_bvr(self) -> None:
-        schema = EyeFlowOutputPaths.active()
-        values = np.asarray([0.0, 2.0, 0.0], dtype=np.float32).reshape(
-            3, 1, 1, 1, 1
-        )
-        edge = lambda value: DatasetValue(  # noqa: E731
-            np.full((1, 1, 1, 1), value, dtype=np.float32)
-        )
-        velocity_outputs = {
-            schema.artery_velocity_profiles.transverse_velocity_profile_masked: (
-                DatasetValue(values, {"unit": "mm/s"})
-            ),
-            schema.vein_velocity_profiles.transverse_velocity_profile_masked: (
-                DatasetValue(values, {"unit": "mm/s"})
-            ),
-        }
-        gradient_outputs = {}
-        for vessel in ("Artery", "Vein"):
-            root = (
-                f"Processing/SpatialGradientMetrics/{vessel}/Transverse/"
-                "Masked/tbkr"
-            )
-            gradient_outputs[f"{root}/left_edge_index"] = edge(0.5)
-            gradient_outputs[f"{root}/right_edge_index"] = edge(1.5)
-
-        outputs = pack_blood_volume_rate_outputs(
-            velocity_outputs,
-            gradient_outputs,
-        )
-
-        for vessel in ("Artery", "Vein"):
-            for edge_mode in ("dynamicEdges", "staticEdges"):
-                result = outputs[
-                    f"Processing/BloodVolumeRate/{vessel}/{edge_mode}/value"
-                ]
-                np.testing.assert_allclose(result.data, 1.5)
-                self.assertEqual("mm/s*pixel", result.attrs["unit"])
-
     def test_extracts_both_vessels_using_annular_cross_section_engine(self) -> None:
         source = SimpleNamespace(
             optic_disc=OpticDisc(None, (4.0, 4.0), 2.0, 2.0),

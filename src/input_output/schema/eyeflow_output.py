@@ -78,6 +78,20 @@ class SegmentationOutputPaths:
 
 
 @dataclass(frozen=True)
+class VesselBloodVolumeRateOutputPaths:
+    dynamic_edges: str
+    static_edges: str
+    masked_edges: str
+    total_masked_edges: str
+
+
+@dataclass(frozen=True)
+class BloodVolumeRateOutputPaths:
+    artery: VesselBloodVolumeRateOutputPaths
+    vein: VesselBloodVolumeRateOutputPaths
+
+
+@dataclass(frozen=True)
 class VelocityProfileOutputPaths:
     transverse_velocity_profile_unmasked: str
     transverse_velocity_profile_masked: str
@@ -120,6 +134,7 @@ class EyeFlowOutputPaths:
     absolute_waveform_metrics_root: str
     lowrank_waveform_decomposition_root: str
     meta_root: str
+    blood_volume_rate: BloodVolumeRateOutputPaths
 
     @classmethod
     def active(cls, name: str | None = None) -> "EyeFlowOutputPaths":
@@ -150,6 +165,22 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
             segment_map=f"{root}/Vein/SegmentMap/value",
             segment_mask_area=f"{root}/Vein/SegmentMaskArea/value",
         ),
+    )
+
+
+def _blood_volume_rate_paths(root: str) -> BloodVolumeRateOutputPaths:
+    def vessel(name: str) -> VesselBloodVolumeRateOutputPaths:
+        vessel_root = f"{root}/{name}"
+        return VesselBloodVolumeRateOutputPaths(
+            dynamic_edges=f"{vessel_root}/dynamicEdges/value",
+            static_edges=f"{vessel_root}/staticEdges/value",
+            masked_edges=f"{vessel_root}/maskedEdges/value",
+            total_masked_edges=f"{vessel_root}/totalMaskedEdges/value",
+        )
+
+    return BloodVolumeRateOutputPaths(
+        artery=vessel("Artery"),
+        vein=vessel("Vein"),
     )
 
 
@@ -322,6 +353,7 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
         "Metrics/lowrank_waveform_decomposition"
     ),
     meta_root="Meta",
+    blood_volume_rate=_blood_volume_rate_paths("Processing/BloodVolumeRate"),
 )
 
 
@@ -381,6 +413,7 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
         "Metrics/lowrank_waveform_decomposition"
     ),
     meta_root="Meta",
+    blood_volume_rate=_blood_volume_rate_paths("Processing/BloodVolumeRate"),
 )
 
 
@@ -484,6 +517,7 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         "Processing/Metrics/lowrank_waveform_decomposition"
     ),
     meta_root="Meta",
+    blood_volume_rate=_blood_volume_rate_paths("Processing/BloodVolumeRate"),
 )
 
 

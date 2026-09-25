@@ -8,14 +8,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from calculations.blood_flow_velocity import CrossSectionSignalSettings
-from calculations.topology import OpticDisc
+from calculations.topology import OpticDisc, retinal_pixel_size_mm
 from input_output.schema import DopplerViewSource, HolodopplerSource, HolodopplerTiming
 
 from .constants import (
     CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT,
-    DEFAULT_PIXEL_SIZE_MM,
-    REFERENCE_OPTIC_DISC_DIAMETER_MM,
-    SPATIAL_INTERPOLATION_FACTOR,
 )
 
 if TYPE_CHECKING:
@@ -116,10 +113,7 @@ class WaveformVelocitySources:
         )
 
     def _pixel_size(self, optic_disc: OpticDisc) -> float:
-        diameter = _mean_pair(optic_disc.width, optic_disc.height)
-        if diameter is not None:
-            return REFERENCE_OPTIC_DISC_DIAMETER_MM / diameter
-        return DEFAULT_PIXEL_SIZE_MM / (2.0**SPATIAL_INTERPOLATION_FACTOR)
+        return retinal_pixel_size_mm(optic_disc)
 
 
 def load_waveform_velocity_source_data(ctx: PipelineContext) -> WaveformVelocitySourceData:
@@ -205,12 +199,3 @@ def _apply_spatial_alignment(
             f"aligned shape {aligned.shape[-2:]} does not match {expected}."
         )
     return aligned
-
-
-def _mean_pair(first, second) -> float | None:
-    if first is None or second is None:
-        return None
-    values = np.asarray([first, second], dtype=np.float32).reshape(-1)
-    if values.size < 2 or not np.all(np.isfinite(values[:2])):
-        return None
-    return float(np.mean(values[:2], dtype=np.float32))

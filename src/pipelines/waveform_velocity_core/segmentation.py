@@ -1,10 +1,11 @@
-"""Pack segmentation products created by the waveform velocity core."""
+"""Pack generic vessel topology and segmentation products."""
 
 from __future__ import annotations
 
 import numpy as np
 from scipy import ndimage as ndi
 
+from calculations.topology import segment_mask_areas_pixels
 from calculations.topology.geometry import AnnulusGeometry, image_half_diagonal
 from input_output.schema import EyeFlowOutputPaths
 
@@ -30,9 +31,28 @@ def pack_segmentation_outputs(
     Published branch IDs are contiguous and zero-based; negative values are
     reserved for the background, annulus outlines, and vessel pixels in R0.
     """
+    return _pack_segmentation_outputs(
+        source_data.retinal_artery_mask,
+        source_data.retinal_vein_mask,
+        source_data.optic_disc,
+        artery_segments,
+        vein_segments,
+        output_paths,
+    )
+
+
+def _pack_segmentation_outputs(
+    artery_mask,
+    vein_mask,
+    optic_disc,
+    artery_segments,
+    vein_segments,
+    output_paths: EyeFlowOutputPaths | str | None,
+) -> dict[str, object]:
     schema = _resolve_output_paths(output_paths)
-    image_shape = tuple(int(size) for size in source_data.retinal_artery_mask.shape)
-    optic_disc = source_data.optic_disc
+    artery_mask = np.asarray(artery_mask, dtype=bool)
+    vein_mask = np.asarray(vein_mask, dtype=bool)
+    image_shape = tuple(int(size) for size in artery_mask.shape)
     source_disc_mask = optic_disc.mask_for(image_shape)
     topology_disc_mask, topology_disc_radius, ring_settings = _topology_geometry(
         optic_disc,
@@ -57,7 +77,7 @@ def pack_segmentation_outputs(
         _pack_vessel_segmentation(
             segmentation.artery,
             artery_segments,
-            source_data.retinal_artery_mask,
+            artery_mask,
             topology_disc_mask,
             center_xy,
             topology_disc_radius,
@@ -68,7 +88,7 @@ def pack_segmentation_outputs(
         _pack_vessel_segmentation(
             segmentation.vein,
             vein_segments,
-            source_data.retinal_vein_mask,
+            vein_mask,
             topology_disc_mask,
             center_xy,
             topology_disc_radius,
@@ -76,6 +96,25 @@ def pack_segmentation_outputs(
         )
     )
     return metrics
+
+
+def pack_topology_outputs(
+    artery_mask,
+    vein_mask,
+    optic_disc,
+    prepared_topologies,
+    output_paths: EyeFlowOutputPaths | str | None = None,
+) -> dict[str, object]:
+    """Pack segmentation products directly from shared prepared topology."""
+
+    return _pack_segmentation_outputs(
+        artery_mask,
+        vein_mask,
+        optic_disc,
+        prepared_topologies.get("artery"),
+        prepared_topologies.get("vein"),
+        output_paths,
+    )
 
 
 def _pack_vessel_segmentation(
@@ -88,10 +127,11 @@ def _pack_vessel_segmentation(
     ring_settings: AnnulusGeometry,
 ) -> dict[str, object]:
     expected_shape = tuple(int(size) for size in vessel_mask.shape)
+    topology = _segment_topology(segments)
     labels = (
         np.zeros(expected_shape, dtype=np.int32)
-        if segments is None
-        else np.asarray(segments.labels, dtype=np.int32)
+        if topology is None
+        else np.asarray(topology.labels, dtype=np.int32)
     )
     if labels.shape != expected_shape:
         raise ValueError(
@@ -108,7 +148,7 @@ def _pack_vessel_segmentation(
         ring_settings,
     )
 
-    return {
+    outputs = {
         paths.mask: _segmentation_value(
             _serialize_spatial_image(vessel),
             _mask_attrs("dopplerview_segmentation"),
@@ -122,6 +162,25 @@ def _pack_vessel_segmentation(
             _label_map_attrs("all calculated annulus outlines", topology_disc_radius),
         ),
     }
+    if topology is not None and all(
+        hasattr(topology, field)
+        for field in ("branch_ids", "annulus_masks")
+    ):
+        outputs[paths.segment_mask_area] = _segmentation_value(
+            segment_mask_areas_pixels(topology),
+            {
+                "unit": "pixels^2",
+                "dimDesc": ["branch", "radius"],
+                "definition": (
+                    "count of native vessel-mask pixels belonging to each "
+                    "branch inside each annular section"
+                ),
+                "branch_ids": np.asarray(topology.branch_ids, dtype=np.int32),
+                "annulus_geometry": "native_pixel_center_section_mask",
+                "annulus_pixel_coverage": "binary_pixel_center_membership",
+            },
+        )
+    return outputs
 
 
 def _topology_geometry(
@@ -133,7 +192,7 @@ def _topology_geometry(
     settings = None
     fallback_radius = None
     for segments in (artery_segments, vein_segments):
-        topology = getattr(segments, "topology", None)
+        topology = _segment_topology(segments)
         candidate = getattr(topology, "ring_settings", None)
         if candidate is None:
             continue
@@ -156,6 +215,14 @@ def _topology_geometry(
         radius,
         settings,
     )
+
+
+def _segment_topology(value):
+    if value is None:
+        return None
+    topology = getattr(value, "topology", value)
+    nested = getattr(topology, "topology", None)
+    return nested if nested is not None else topology
 
 
 def _base_branch_label_map(

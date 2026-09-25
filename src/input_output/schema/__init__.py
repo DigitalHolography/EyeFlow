@@ -13,6 +13,7 @@ from .eyeflow_output import (
     ANGIOEYE_FULL_OUTPUT_SCHEMA,
     EYEFLOW_V2_OUTPUT,
     EYEFLOW_V2_OUTPUT_SCHEMA,
+    BloodVolumeRateOutputPaths,
     HeartbeatOutputPaths,
     OUTPUT_PATH_VARIANTS,
     SLIM_TEMP_OUTPUT,
@@ -24,6 +25,7 @@ from .eyeflow_output import (
     VelocityProfileOutputPaths,
     VelocityPerBeatOutputPaths,
     VesselSegmentationOutputPaths,
+    VesselBloodVolumeRateOutputPaths,
     iter_metric_datasets,
     systolic_index_base_for_path,
 )
@@ -43,6 +45,7 @@ __all__ = [
     "ACTIVE_OUTPUT_SCHEMA_VARIANT",
     "ANGIOEYE_FULL_OUTPUT",
     "ANGIOEYE_FULL_OUTPUT_SCHEMA",
+    "BloodVolumeRateOutputPaths",
     "EYEFLOW_V2_OUTPUT",
     "EYEFLOW_V2_OUTPUT_SCHEMA",
     "DOPPLER_VIEW_LAYOUT",
@@ -71,6 +74,7 @@ __all__ = [
     "VelocityPerBeatOutputPaths",
     "VelocityProfileOutputPaths",
     "VesselSegmentationOutputPaths",
+    "VesselBloodVolumeRateOutputPaths",
     "iter_metric_datasets",
     "systolic_index_base_for_path",
 ]

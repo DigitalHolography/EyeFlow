@@ -423,7 +423,6 @@ def _velocity_result(
         frame_count=profile_topology.frame_count,
         labels=profile_topology.labels,
         branch_ids=profile_topology.branch_ids,
-        section_masks=profile_topology.section_masks,
         segment_masks=profile_topology.segment_masks,
         segment_center_xy=legacy_centers,
         profile_window_bounds_xyxy=profile_topology.profile_window_bounds_xyxy,

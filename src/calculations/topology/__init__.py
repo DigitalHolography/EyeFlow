@@ -28,6 +28,7 @@ from .profiles import (
 )
 from .profile_interpolation import interpolate_profiles_per_beat
 from .mask_area import annulus_widths_pixels, segment_mask_areas_pixels
+from .scale import retinal_pixel_size_mm
 from .segments import (
     SegmentTopology,
     build_segment_topology,
@@ -94,6 +95,7 @@ __all__ = [
     "prepare_topology",
     "resolve_segment_rotations",
     "profile_deviation_power",
+    "retinal_pixel_size_mm",
     "ring_masks",
     "rotate_segment_masks",
     "rotate_segments",

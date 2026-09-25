@@ -9,11 +9,11 @@ from .runner import run_spatial_gradient_moment0
     name="spatial_gradient_moment0",
     description=(
         "Compute topology-aligned moment0 spatial-gradient profiles, lumen "
-        "metrics, and gradient-derived blood-volume-rate outputs."
+        "metrics, and reusable lumen-edge outputs."
     ),
     requires=["numpy", "h5py", "scipy", "skimage", "matplotlib"],
-    dag_requires=["waveform_velocity_core"],
-    dag_produces=["spatial_gradient_moment0"],
+    dag_requires=["heartbeat", "prepared_topology"],
+    dag_produces=["spatial_gradient_moment0", "spatial_gradient_edges"],
     input_slot="both",
 )
 def run(ctx):

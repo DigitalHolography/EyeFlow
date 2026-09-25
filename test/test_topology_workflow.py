@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -102,6 +103,66 @@ class TopologyWorkflowTests(unittest.TestCase):
                 ]
             ),
             2.0,
+        )
+
+    def test_velocity_and_generic_profiles_share_authoritative_topology(self) -> None:
+        from calculations.blood_flow_velocity import CrossSectionSignalSettings
+        from calculations.segment_profiles import (
+            SegmentProfileSettings,
+            analyze_segment_profiles,
+        )
+        from pipelines.waveform_velocity_core.segments import (
+            analyze_velocity_segment_profiles,
+        )
+
+        vessel = np.zeros((31, 31), dtype=bool)
+        vessel[13:18, 3:28] = True
+        optic_disc = OpticDisc(None, (15.0, 15.0), 6.0, 6.0)
+        rings = AnnulusGeometry(0.1, 0.6, 0.25, 2)
+        prepared = prepare_topology(
+            vessel,
+            optic_disc,
+            rings,
+            window_size_percentile_kept=1.0,
+        )
+        topologies = {"artery": prepared}
+        signal = np.ones((3, 31, 31), dtype=np.float32)
+
+        with patch(
+            "calculations.segment_profiles.resolve_segment_rotations"
+        ) as resolve:
+            generic = analyze_segment_profiles(
+                signal,
+                {"artery": vessel},
+                optic_disc,
+                rings,
+                SegmentProfileSettings(0.01),
+                prepared_topologies=topologies,
+            )["artery"]
+            velocity = analyze_velocity_segment_profiles(
+                signal,
+                {"artery": vessel},
+                optic_disc,
+                rings,
+                CrossSectionSignalSettings(0.01),
+                prepared_topologies=topologies,
+            )["artery"]
+
+        resolve.assert_not_called()
+        self.assertIs(generic.topology.prepared_topology, prepared)
+        self.assertIs(velocity.topology.prepared_topology, prepared)
+        self.assertFalse(hasattr(generic.topology, "section_masks"))
+        self.assertFalse(hasattr(velocity.topology, "section_masks"))
+        np.testing.assert_array_equal(generic.branch_ids, velocity.branch_ids)
+        np.testing.assert_allclose(
+            generic.segment_centers_xy,
+            np.transpose(velocity.segment_center_xy, (1, 0, 2)),
+            equal_nan=True,
+        )
+        np.testing.assert_allclose(
+            generic.profile_rotation_degrees,
+            velocity.profile_rotation_degrees,
+            equal_nan=True,
         )
 
 

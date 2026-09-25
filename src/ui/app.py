@@ -50,6 +50,7 @@ class ProcessApp(BaseAppTk):
         self.pipeline_dag: PipelineDAG | None = None
         self.pipeline_rows: list[PipelineDescriptor] = []
         self.pipeline_visibility: dict[str, bool] = {}
+        self.pipeline_required_names: set[str] = set()
         self.pipeline_visibility_vars: dict[str, tk.BooleanVar] = {}
         self.pipeline_row_widgets: dict[str, tk.Widget] = {}
         self.pipeline_option_visibility: dict[str, dict[str, bool]] = {}

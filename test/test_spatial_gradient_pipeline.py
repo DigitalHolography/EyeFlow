@@ -8,9 +8,9 @@ import numpy as np
 
 import pipelines
 from calculations.math.spatial_gradient import spatial_gradient
+from calculations.topology import OpticDisc
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines.spatial_gradient_moment0 import runner as gradient_runner
-from pipelines.waveform_velocity_core.runner import WAVEFORM_CONTEXT_STATE
 
 
 class _State:
@@ -41,12 +41,13 @@ class SpatialGradientPipelineTests(unittest.TestCase):
         gradient_plan = dag.resolve_targets(["spatial_gradient_moment0"])
         self.assertLess(
             gradient_plan.names.index("heartbeat_core"),
-            gradient_plan.names.index("waveform_velocity_core"),
-        )
-        self.assertLess(
-            gradient_plan.names.index("waveform_velocity_core"),
             gradient_plan.names.index("spatial_gradient_moment0"),
         )
+        self.assertLess(
+            gradient_plan.names.index("topology_core"),
+            gradient_plan.names.index("spatial_gradient_moment0"),
+        )
+        self.assertNotIn("waveform_velocity_core", gradient_plan.names)
         self.assertNotIn("waveform_velocity", gradient_plan.names)
 
         waveform_plan = dag.resolve_targets(["waveform_velocity"])
@@ -61,68 +62,59 @@ class SpatialGradientPipelineTests(unittest.TestCase):
 
         self.assertEqual(("displacement_map",), plan.names)
 
-    def test_runner_owns_gradient_lumen_and_bvr_outputs(self) -> None:
-        velocity_segments = SimpleNamespace(
+    def test_runner_owns_only_gradient_and_lumen_outputs(self) -> None:
+        gradient_segments = SimpleNamespace(
             labels=np.asarray([1]),
             branch_ids=np.asarray([7]),
-            segment_center_xy=np.asarray([[[2.0, 3.0], [4.0, 5.0]]]),
-            velocity_profiles=np.zeros((2, 1, 3), dtype=np.float32),
-        )
-        gradient_segments = SimpleNamespace(
-            labels=velocity_segments.labels.copy(),
-            branch_ids=velocity_segments.branch_ids.copy(),
-            segment_centers_xy=np.transpose(
-                velocity_segments.segment_center_xy,
-                (1, 0, 2),
-            ),
             transverse_profiles_unmasked=np.ones(
                 (2, 1, 3), dtype=np.float32
             ),
         )
-        context = SimpleNamespace(
-            artery_segment_result=velocity_segments,
-            vein_segment_result=velocity_segments,
-            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(0, 3)),
-            source_data=SimpleNamespace(
-                provenance={"beat_index_base": 0},
-                timing=SimpleNamespace(dt_seconds=0.1),
-            ),
+        inputs = SimpleNamespace(
+            optic_disc=OpticDisc(None, (4.0, 4.0), 2.0, 2.0),
+            timing=SimpleNamespace(dt_seconds=0.1),
         )
-        state = _State({WAVEFORM_CONTEXT_STATE: context})
+        topology = {"artery": object(), "vein": object()}
+        state = _State()
         ctx = SimpleNamespace(
             state=state,
-            pipeline_scheduled=lambda name: name == "spatial_gradient_moment0",
             output=SimpleNamespace(available=False),
         )
 
         with (
             patch.object(
                 gradient_runner,
+                "load_heartbeat_inputs",
+                return_value=inputs,
+            ),
+            patch.object(
+                gradient_runner,
+                "heartbeat_result",
+                return_value=SimpleNamespace(
+                    cycle_boundary_indexes=(0, 3),
+                    index_base=0,
+                ),
+            ),
+            patch.object(
+                gradient_runner,
+                "prepared_topologies",
+                return_value=topology,
+            ),
+            patch.object(
+                gradient_runner,
                 "extract_spatial_gradient_segments",
                 return_value=(gradient_segments, gradient_segments),
-            ),
+            ) as extract,
             patch.object(
                 gradient_runner,
                 "pack_spatial_gradient_profile_outputs",
                 return_value={"gradient": 1},
             ),
-            patch.object(
-                gradient_runner,
-                "pack_bvr_velocity_profile_outputs",
-                return_value={"velocity_profile": 2},
-            ),
-            patch.object(
-                gradient_runner,
-                "pack_blood_volume_rate_outputs",
-                return_value={"blood_volume_rate": 3},
-            ),
         ):
             outputs = gradient_runner.run_spatial_gradient_moment0(ctx)
 
-        self.assertEqual(
-            {"gradient": 1, "velocity_profile": 2, "blood_volume_rate": 3},
-            outputs,
-        )
+        self.assertEqual({"gradient": 1}, outputs)
+        self.assertIs(extract.call_args.args[2], topology)
         products = state.get(gradient_runner.SPATIAL_GRADIENT_PRODUCTS_STATE)
         self.assertEqual(outputs, products.outputs)
 

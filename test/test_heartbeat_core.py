@@ -47,12 +47,13 @@ class HeartbeatCoreTests(unittest.TestCase):
             patch(
                 "pipelines.heartbeat_core.runner.run_chunked_velocity_estimator",
                 return_value={
-                    "retinal_artery_velocity_signal": np.arange(15, dtype=np.float32)
+                    "retinal_artery_velocity_signal": np.arange(15, dtype=np.float32),
+                    "retinal_vein_velocity_signal": np.arange(15, dtype=np.float32),
                 },
             ),
             patch(
-                "pipelines.heartbeat_core.runner.run_heartbeat_analysis",
-                return_value=analysis,
+                "pipelines.heartbeat_core.runner.heartbeat_from_available_vessel",
+                return_value=(analysis, "artery"),
             ),
         ):
             result = run_heartbeat_core(ctx)
@@ -98,6 +99,7 @@ class HeartbeatCoreTests(unittest.TestCase):
             return {
                 "velocity_map": video,
                 "retinal_artery_velocity_signal": np.arange(4, dtype=np.float32),
+                "retinal_vein_velocity_signal": np.arange(4, dtype=np.float32),
             }
 
         with (
@@ -114,8 +116,8 @@ class HeartbeatCoreTests(unittest.TestCase):
                 side_effect=estimator,
             ),
             patch(
-                "pipelines.heartbeat_core.runner.run_heartbeat_analysis",
-                return_value=analysis,
+                "pipelines.heartbeat_core.runner.heartbeat_from_available_vessel",
+                return_value=(analysis, "artery"),
             ),
         ):
             run_heartbeat_core(ctx)

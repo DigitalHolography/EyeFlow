@@ -19,7 +19,6 @@ from .profiles import (
     pack_cross_section_displacement_profile_outputs,
     pack_displacement_magnitude_outputs,
     pack_cross_section_profile_outputs,
-    pack_masked_edge_blood_volume_rate_outputs,
     pack_velocity_profile_fft_outputs,
 )
 from .quadrants import pack_quadrant_velocity_outputs
@@ -156,16 +155,6 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             index_base=index_base,
         )
         metrics.update(velocity_profile_outputs)
-        source = context.source_data
-        if hasattr(source, "cross_section_settings"):
-            metrics.update(
-                pack_masked_edge_blood_volume_rate_outputs(
-                    context.artery_segment_result,
-                    context.vein_segment_result,
-                    velocity_outputs,
-                    pixel_size_mm=float(source.cross_section_settings.pixel_size_mm),
-                )
-            )
         if profile_fft_selected:
             metrics.update(
                 pack_velocity_profile_fft_outputs(

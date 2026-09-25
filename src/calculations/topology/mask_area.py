@@ -32,22 +32,22 @@ def segment_mask_areas_pixels(topology) -> np.ndarray:
     """
 
     labels = np.asarray(topology.labels, dtype=np.int32)
-    sections = np.asarray(topology.section_masks, dtype=bool)
+    annuli = np.asarray(topology.annulus_masks, dtype=bool)
     branch_ids = np.asarray(topology.branch_ids, dtype=np.int32).reshape(-1)
     if labels.ndim != 2:
         raise ValueError("segment topology labels must be a 2-D array.")
-    if sections.ndim != 3 or tuple(sections.shape[1:]) != labels.shape:
+    if annuli.ndim != 3 or tuple(annuli.shape[1:]) != labels.shape:
         raise ValueError(
-            "segment topology section masks must match its label image."
+            "segment topology annulus masks must match its label image."
         )
     if np.any(branch_ids < 1):
         raise ValueError("segment topology branch IDs must be positive.")
 
-    areas = np.zeros((branch_ids.size, sections.shape[0]), dtype=np.int32)
+    areas = np.zeros((branch_ids.size, annuli.shape[0]), dtype=np.int32)
     label_count = max(int(labels.max()) + 1, 1)
-    for radius_index, section in enumerate(sections):
+    for radius_index, annulus in enumerate(annuli):
         counts = np.bincount(
-            labels[section].ravel(),
+            labels[annulus].ravel(),
             minlength=label_count,
         )
         for branch_index, branch_id in enumerate(branch_ids):

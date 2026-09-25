@@ -71,7 +71,6 @@ class CrossSectionTopology:
     frame_count: int
     labels: np.ndarray
     branch_ids: np.ndarray
-    section_masks: np.ndarray
     segment_masks: np.ndarray
     segment_center_xy: np.ndarray
     profile_window_bounds_xyxy: np.ndarray
@@ -512,7 +511,6 @@ def _generate_cross_section_signals_from_prepared(
             branches,
             substack_side_pixels=substack_side_pixels,
             profile_pixel_size_mm=profile_pixel_size_mm,
-            section_masks=segment_topology.annulus_masks,
             prepared_topology=prepared_topology,
             displacement_maps=normalized_displacements,
             retain_velocity_maps=retain_velocity_maps,
@@ -813,7 +811,6 @@ def _empty_result(
     *,
     substack_side_pixels: int,
     profile_pixel_size_mm: float,
-    section_masks: np.ndarray,
     prepared_topology: PreparedTopology | None = None,
     displacement_maps: Mapping[str, object],
     retain_velocity_maps: bool,
@@ -852,7 +849,6 @@ def _empty_result(
         frame_count=int(velocity_map.shape[0]),
         labels=branches.labels.copy(),
         branch_ids=branches.branch_ids.copy(),
-        section_masks=np.asarray(section_masks, dtype=bool).copy(),
         segment_masks=empty_segment_masks,
         segment_center_xy=np.full(
             (0, settings.ring_count, 2),
@@ -1027,7 +1023,7 @@ def _project_displacement_map(
 ) -> CrossSectionDisplacementResult:
     buffers = _CrossSectionDisplacementBuffers.allocate(
         frame_count=topology.frame_count,
-        ring_count=topology.section_masks.shape[0],
+        ring_count=topology.valid_segments.shape[0],
         branch_count=topology.branch_ids.size,
         retain_maps=retain_maps,
     )
@@ -1206,7 +1202,6 @@ def _legacy_topology_from_prepared(
         frame_count=int(frame_count),
         labels=topology.labels.copy(),
         branch_ids=topology.branch_ids.copy(),
-        section_masks=topology.annulus_masks.copy(),
         segment_masks=buffers.segment_masks.copy(),
         segment_center_xy=np.transpose(
             topology.segment_centers_xy,

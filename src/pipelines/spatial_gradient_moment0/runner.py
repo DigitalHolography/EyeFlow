@@ -9,14 +9,16 @@ import numpy as np
 from calculations.blood_flow_velocity.signal_analysis.waveform import (
     mean_period_seconds,
 )
-from pipelines.waveform_velocity_core.runner import WAVEFORM_CONTEXT_STATE
+from calculations.segment_profiles import SegmentProfileSettings
+from calculations.topology import retinal_pixel_size_mm
+from pipelines.heartbeat_core.runner import heartbeat_result
+from pipelines.heartbeat_core.sources import load_heartbeat_inputs
+from pipelines.topology_core.runner import prepared_topologies
 
 from .lumen_size import export_lumen_size_pngs
 from .profiles import (
     SPATIAL_GRADIENT_METRICS_ROOT,
     extract_spatial_gradient_segments,
-    pack_blood_volume_rate_outputs,
-    pack_bvr_velocity_profile_outputs,
     pack_spatial_gradient_profile_outputs,
 )
 
@@ -36,19 +38,18 @@ class SpatialGradientProducts:
 def run_spatial_gradient_moment0(ctx) -> dict[str, object]:
     """Calculate staged gradient profiles only when this pipeline is selected."""
 
-    context = ctx.state.get(WAVEFORM_CONTEXT_STATE)
-    if context is None:
-        raise RuntimeError(
-            "Spatial-gradient profiles require the waveform velocity core state."
-        )
-    if context.artery_segment_result is None or context.vein_segment_result is None:
-        raise RuntimeError(
-            "Spatial-gradient profiles require prepared artery and vein topology."
-        )
-
-    cycle_boundaries = context.per_beat_analysis.cycle_boundary_indexes
-    index_base = int(context.source_data.provenance["beat_index_base"])
-    artery_segments, vein_segments = extract_spatial_gradient_segments(ctx, context)
+    inputs = load_heartbeat_inputs(ctx)
+    heartbeat = heartbeat_result(ctx)
+    cycle_boundaries = heartbeat.cycle_boundary_indexes
+    index_base = int(heartbeat.index_base)
+    artery_segments, vein_segments = extract_spatial_gradient_segments(
+        ctx,
+        inputs,
+        prepared_topologies(ctx),
+        profile_settings=SegmentProfileSettings(
+            pixel_size_mm=retinal_pixel_size_mm(inputs.optic_disc),
+        ),
+    )
     gradient_outputs = pack_spatial_gradient_profile_outputs(
         artery_segments,
         vein_segments,
@@ -56,41 +57,13 @@ def run_spatial_gradient_moment0(ctx) -> dict[str, object]:
         index_base=index_base,
     )
 
-    # BVR is downstream of gradient-derived lumen edges. Build the matching
-    # velocity profiles from the already-retained core segment results.
-    velocity_profile_outputs = pack_bvr_velocity_profile_outputs(
-        context.artery_segment_result,
-        context.vein_segment_result,
-        cycle_boundaries,
-        index_base=index_base,
-    )
-    _validate_profile_segment_alignment(
-        "Artery",
-        context.artery_segment_result,
-        artery_segments,
-    )
-    _validate_profile_segment_alignment(
-        "Vein",
-        context.vein_segment_result,
-        vein_segments,
-    )
     outputs = dict(gradient_outputs)
-    outputs.update(
-        pack_blood_volume_rate_outputs(
-            velocity_profile_outputs,
-            gradient_outputs,
-        )
-    )
-    # Keep BVR source paths self-contained when waveform_velocity was not
-    # selected. If it was selected, that pipeline publishes the same profiles.
-    if not ctx.pipeline_scheduled("waveform_velocity"):
-        outputs.update(velocity_profile_outputs)
 
     output = getattr(ctx, "output", None)
     if getattr(output, "available", False):
         period_seconds = mean_period_seconds(
             cycle_boundaries,
-            float(context.source_data.timing.dt_seconds),
+            float(inputs.timing.dt_seconds),
         )
         for vessel_name, segments in (
             ("Artery", artery_segments),
