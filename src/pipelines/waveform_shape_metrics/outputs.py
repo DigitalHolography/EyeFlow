@@ -39,7 +39,6 @@ def pack_waveform_shape_outputs(
     metrics_with_waveform_outputs.update(global_and_by_segment_outputs)
     quadrant_outputs = pack_quadrant_metrics(
         metrics_with_waveform_outputs,
-        source_data,
         artery_segments,
         vein_segments,
         output_paths,

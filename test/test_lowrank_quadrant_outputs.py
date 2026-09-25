@@ -46,6 +46,7 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
                 (branch_count, radius_count, 2),
                 dtype=float,
             ),
+            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 3.0)),
         )
         velocity_outputs = {
             schema.beat_period_seconds: np.asarray([[0.8, 0.9]], dtype=np.float32),
@@ -56,9 +57,6 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
             velocity_outputs,
             vein_flag=False,
             include_quadrants=True,
-            source_data=SimpleNamespace(
-                optic_disc_center=np.asarray([3.0, 3.0]),
-            ),
             artery_segments=segments,
         )
 

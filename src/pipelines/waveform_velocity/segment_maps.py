@@ -15,34 +15,167 @@ from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
 from runtime_limits import cap_parallel_jobs
 
-
 _MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
+_DISPLACEMENT_MAP_ROOT = "Processing/DisplacementMapPerSegment"
 
 
 def pack_segment_map_outputs(
     artery_segments,
     vein_segments,
-    cycle_boundary_indexes,
+    artery_velocity_maps_per_beat: np.ndarray | None,
+    vein_velocity_maps_per_beat: np.ndarray | None,
     output_paths: EyeFlowOutputPaths | str | None = None,
-    *,
-    index_base: int = 0,
 ) -> dict[str, object]:
-    """Pack rotated maps and masks for artery and vein segments."""
+    """Pack prepared per-beat maps and masks for artery and vein segments."""
     schema = _resolve_output_paths(output_paths)
     outputs = _pack_vessel_segment_maps(
         artery_segments,
+        artery_velocity_maps_per_beat,
         schema.artery_segments,
-        cycle_boundary_indexes,
-        index_base=index_base,
     )
     outputs.update(
         _pack_vessel_segment_maps(
             vein_segments,
+            vein_velocity_maps_per_beat,
             schema.vein_segments,
+        )
+    )
+    return outputs
+
+
+def prepare_segment_velocity_maps_per_beat(
+    artery_segments,
+    vein_segments,
+    cycle_boundary_indexes,
+    *,
+    index_base: int = 0,
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """Interpolate each vessel's maps once for reuse by output products."""
+
+    return (
+        _prepare_vessel_velocity_maps_per_beat(
+            artery_segments,
+            cycle_boundary_indexes,
+            index_base=index_base,
+        ),
+        _prepare_vessel_velocity_maps_per_beat(
+            vein_segments,
+            cycle_boundary_indexes,
+            index_base=index_base,
+        ),
+    )
+
+
+def _prepare_vessel_velocity_maps_per_beat(
+    segments,
+    cycle_boundary_indexes,
+    *,
+    index_base: int,
+) -> np.ndarray | None:
+    if segments is None:
+        return None
+    if segments.velocity_maps_per_segment is None:
+        raise RuntimeError(
+            "Per-segment velocity maps were not retained. They must be "
+            "explicitly requested during waveform-velocity core processing."
+        )
+    maps = np.asarray(segments.velocity_maps_per_segment)
+    compact_arguments = (
+        {
+            "segment_indexes": segments.velocity_map_segment_indexes,
+            "radius_count": int(segments.segment_masks.shape[0]),
+            "branch_count": int(segments.segment_masks.shape[1]),
+        }
+        if maps.ndim == 4
+        else {}
+    )
+    return interpolate_velocity_maps_per_beat(
+        maps,
+        cycle_boundary_indexes,
+        index_base=index_base,
+        **compact_arguments,
+    )
+
+
+def pack_displacement_segment_map_outputs(
+    artery_segments,
+    vein_segments,
+    cycle_boundary_indexes,
+    *,
+    index_base: int = 0,
+) -> dict[str, object]:
+    outputs = _pack_vessel_displacement_maps(
+        artery_segments,
+        "Artery",
+        cycle_boundary_indexes,
+        index_base=index_base,
+    )
+    outputs.update(
+        _pack_vessel_displacement_maps(
+            vein_segments,
+            "Vein",
             cycle_boundary_indexes,
             index_base=index_base,
         )
     )
+    return outputs
+
+
+def _pack_vessel_displacement_maps(
+    segments,
+    vessel_name: str,
+    cycle_boundary_indexes,
+    *,
+    index_base: int,
+) -> dict[str, object]:
+    if segments is None:
+        return {}
+
+    outputs: dict[str, object] = {}
+    displacement_results = getattr(segments, "displacements", {})
+    for raw_method, displacement in sorted(displacement_results.items()):
+        method = _hdf_method_name(raw_method)
+        if displacement.displacement_maps_per_segment is None:
+            raise RuntimeError(
+                "Per-segment displacement maps were not retained. They must be "
+                "requested during waveform-velocity core processing."
+            )
+        displacement_maps_per_beat = np.stack(
+            [
+                interpolate_velocity_maps_per_beat(
+                    displacement.displacement_maps_per_segment[
+                        ..., component_index
+                    ],
+                    cycle_boundary_indexes,
+                    index_base=index_base,
+                )
+                for component_index in range(2)
+            ],
+            axis=-1,
+        )
+        outputs[f"{_DISPLACEMENT_MAP_ROOT}/{method}/{vessel_name}"] = (
+            DatasetValue(
+                data=displacement_maps_per_beat,
+                attrs={
+                    "unit": "pixels",
+                    "dimDesc": [
+                        "x",
+                        "y",
+                        "time",
+                        "beat",
+                        "branch",
+                        "radius",
+                        "displacement_orientation",
+                    ],
+                    "coordinate_system": "rotated_segment_pixel",
+                    "components": ["local_x", "local_y"],
+                    "component_basis": "rotated_segment_local",
+                },
+                h5_options=_velocity_map_h5_options(
+                    displacement_maps_per_beat.shape
+                ),
+            )
+        )
     return outputs
 
 
@@ -51,15 +184,66 @@ def interpolate_velocity_maps_per_beat(
     cycle_boundary_indexes,
     *,
     index_base: int = 0,
+    segment_indexes: np.ndarray | None = None,
+    radius_count: int | None = None,
+    branch_count: int | None = None,
 ) -> np.ndarray:
-    """Interpolate maps to ``(x, y, time, beat, branch, radius)``."""
+    """Interpolate dense or compact maps to the serialized output layout.
+
+    Compact input has shape ``(segment, frame, y, x)`` and is paired with a
+    ``(segment, 2)`` radius/branch index table. Dense legacy input with shape
+    ``(radius, branch, frame, y, x)`` remains supported.
+    """
     maps = np.asarray(velocity_maps, dtype=np.float32)
-    if maps.ndim != 5:
+    if maps.ndim == 5:
+        (
+            resolved_radius_count,
+            resolved_branch_count,
+            frame_count,
+            y_count,
+            x_count,
+        ) = maps.shape
+        indexed_rows = [
+            (radius_index, branch_index, maps[radius_index, branch_index])
+            for radius_index in range(resolved_radius_count)
+            for branch_index in range(resolved_branch_count)
+        ]
+    elif maps.ndim == 4:
+        if segment_indexes is None or radius_count is None or branch_count is None:
+            raise ValueError(
+                "Compact velocity maps require segment_indexes, radius_count, "
+                "and branch_count."
+            )
+        resolved_radius_count = int(radius_count)
+        resolved_branch_count = int(branch_count)
+        if resolved_radius_count < 0 or resolved_branch_count < 0:
+            raise ValueError("radius_count and branch_count must be non-negative.")
+        indexes = np.asarray(segment_indexes, dtype=np.int32)
+        if indexes.shape != (maps.shape[0], 2):
+            raise ValueError(
+                "segment_indexes must have shape (segment, 2) matching maps."
+            )
+        if indexes.size:
+            if (
+                np.any(indexes[:, 0] < 0)
+                or np.any(indexes[:, 0] >= resolved_radius_count)
+                or np.any(indexes[:, 1] < 0)
+                or np.any(indexes[:, 1] >= resolved_branch_count)
+            ):
+                raise ValueError("segment_indexes contain an out-of-range index.")
+            if np.unique(indexes, axis=0).shape[0] != indexes.shape[0]:
+                raise ValueError("segment_indexes must not contain duplicates.")
+        _, frame_count, y_count, x_count = maps.shape
+        indexed_rows = [
+            (int(radius_index), int(branch_index), maps[row_index])
+            for row_index, (radius_index, branch_index) in enumerate(indexes)
+        ]
+    else:
         raise ValueError(
-            "velocity maps must have shape (radius, branch, frame, y, x)."
+            "velocity maps must have dense (radius, branch, frame, y, x) or "
+            "compact (segment, frame, y, x) shape."
         )
 
-    radius_count, branch_count, frame_count, y_count, x_count = maps.shape
     boundaries = normalize_cycle_boundaries(
         cycle_boundary_indexes,
         frame_count,
@@ -73,42 +257,36 @@ def interpolate_velocity_maps_per_beat(
             y_count,
             time_count,
             beat_count,
-            branch_count,
-            radius_count,
+            resolved_branch_count,
+            resolved_radius_count,
         ),
         np.nan,
         dtype=np.float32,
     )
 
-    segment_indexes = [
-        (radius_index, branch_index)
-        for radius_index in range(radius_count)
-        for branch_index in range(branch_count)
-    ]
-
-    def interpolate_segment(segment_index: tuple[int, int]) -> None:
-        radius_index, branch_index = segment_index
+    def interpolate_segment(indexed_row) -> None:
+        radius_index, branch_index, segment_maps = indexed_row
         for beat_index in range(beat_count):
             start = int(boundaries[beat_index])
             stop = int(boundaries[beat_index + 1]) + 1
             interpolated = _interpft_maps_axis0(
-                maps[radius_index, branch_index, start:stop],
+                segment_maps[start:stop],
                 time_count + 1,
             )[:-1]
-            output[
-                :, :, :, beat_index, branch_index, radius_index
-            ] = interpolated.transpose(2, 1, 0)
+            output[:, :, :, beat_index, branch_index, radius_index] = interpolated.transpose(
+                2, 1, 0
+            )
 
-    worker_count = _segment_map_worker_count(len(segment_indexes))
+    worker_count = _segment_map_worker_count(len(indexed_rows))
     if worker_count == 1:
-        for segment_index in segment_indexes:
-            interpolate_segment(segment_index)
+        for indexed_row in indexed_rows:
+            interpolate_segment(indexed_row)
     else:
         with ThreadPoolExecutor(
             max_workers=worker_count,
             thread_name_prefix="segment-map",
         ) as executor:
-            for _ in executor.map(interpolate_segment, segment_indexes):
+            for _ in executor.map(interpolate_segment, indexed_rows):
                 pass
     return output
 
@@ -124,21 +302,40 @@ def _segment_map_worker_count(segment_count: int) -> int:
 
 def _pack_vessel_segment_maps(
     segments,
+    velocity_maps_per_beat: np.ndarray | None,
     paths,
-    cycle_boundary_indexes,
-    *,
-    index_base: int,
 ) -> dict[str, object]:
     if segments is None:
+        if velocity_maps_per_beat is not None:
+            raise ValueError(
+                "velocity_maps_per_beat must be None when segments is None."
+            )
         return {}
 
     outputs: dict[str, object] = {}
     if paths.velocity_map_per_segment is not None:
-        maps_per_beat = interpolate_velocity_maps_per_beat(
-            segments.velocity_maps_per_segment,
-            cycle_boundary_indexes,
-            index_base=index_base,
+        if velocity_maps_per_beat is None:
+            raise ValueError(
+                "velocity_maps_per_beat is required when map output is enabled."
+            )
+        maps_per_beat = np.asarray(velocity_maps_per_beat, dtype=np.float32)
+        if maps_per_beat.ndim != 6:
+            raise ValueError(
+                "velocity_maps_per_beat must have shape "
+                "(x, y, time, beat, branch, radius)."
+            )
+        masks = np.asarray(segments.segment_masks, dtype=bool)
+        expected_mask_shape = (
+            maps_per_beat.shape[5],
+            maps_per_beat.shape[4],
+            maps_per_beat.shape[1],
+            maps_per_beat.shape[0],
         )
+        if masks.shape != expected_mask_shape:
+            raise ValueError(
+                "segment_masks must have shape (radius, branch, y, x) "
+                "matching velocity_maps_per_beat."
+            )
         outputs[paths.velocity_map_per_segment] = DatasetValue(
             data=maps_per_beat,
             attrs={
@@ -153,9 +350,7 @@ def _pack_vessel_segment_maps(
     if paths.segments is not None:
         masks = np.asarray(segments.segment_masks, dtype=bool)
         if masks.ndim != 4:
-            raise ValueError(
-                "segment masks must have shape (radius, branch, y, x)."
-            )
+            raise ValueError("segment masks must have shape (radius, branch, y, x).")
         serialized_masks = masks.transpose(3, 2, 1, 0)
         outputs[paths.segments] = DatasetValue(
             data=serialized_masks,
@@ -201,9 +396,22 @@ def _velocity_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
         "compression": "lzf",
         "shuffle": True,
     }
-    if len(shape) == 6 and all(shape):
-        options["chunks"] = (shape[0], shape[1], 1, 1, 1, 1)
+    if len(shape) in (6, 7) and all(shape):
+        options["chunks"] = (
+            (shape[0], shape[1], 1, 1, 1, 1)
+            if len(shape) == 6
+            else (shape[0], shape[1], 1, 1, 1, 1, shape[-1])
+        )
     return options
+
+
+def _hdf_method_name(value: object) -> str:
+    method = str(value).strip()
+    if not method or "/" in method:
+        raise ValueError(
+            "Displacement registration method names must be non-empty HDF5 path segments."
+        )
+    return method
 
 
 def _segment_mask_h5_options(shape: tuple[int, ...]) -> dict[str, object]:

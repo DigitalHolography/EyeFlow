@@ -93,7 +93,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             dag.dependents_of("core", transitive=True),
         )
 
-    def test_selecting_downstream_checks_upstream_and_unchecking_reverses(self) -> None:
+    def test_selected_targets_stay_explicit_while_upstream_is_derived(self) -> None:
         core = _descriptor("core", visibility="hidden")
         velocity = _descriptor("velocity", requires=("core",))
         metrics = _descriptor("metrics", requires=("core",))
@@ -111,6 +111,8 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             },
             pipeline_visibility_vars={},
             pipeline_option_widgets={},
+            pipeline_rows=[velocity, metrics, report],
+            pipeline_option_visibility={},
         )
         controller = PipelineLibraryController(app)
         controller.persist_visibility = Mock()
@@ -119,16 +121,95 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         controller.set_visibility("report", True)
 
         self.assertEqual(
-            {"velocity": True, "metrics": True, "report": True},
+            {"velocity": False, "metrics": False, "report": True},
             app.pipeline_visibility,
         )
+        self.assertEqual({"velocity", "metrics"}, app.pipeline_required_names)
 
-        controller.set_visibility("metrics", False)
+        controller.set_visibility("report", False)
 
         self.assertEqual(
-            {"velocity": True, "metrics": False, "report": False},
+            {"velocity": False, "metrics": False, "report": False},
             app.pipeline_visibility,
         )
+        self.assertEqual(set(), app.pipeline_required_names)
+
+    def test_option_dependencies_replan_required_visible_pipelines(self) -> None:
+        topology = _descriptor(
+            "topology_core",
+            produces=("prepared_topology",),
+            visibility="hidden",
+        )
+        heartbeat = _descriptor(
+            "heartbeat_core",
+            produces=("heartbeat",),
+            visibility="hidden",
+        )
+        gradient = _descriptor(
+            "spatial_gradient_moment0",
+            requires=("heartbeat", "prepared_topology"),
+            produces=("spatial_gradient_edges",),
+        )
+        velocity = _descriptor(
+            "waveform_velocity_core",
+            requires=("heartbeat", "prepared_topology"),
+            produces=("velocity_profiles", "segment_velocity_per_beat"),
+            visibility="hidden",
+        )
+        bvr = _descriptor(
+            "blood_volume_rate",
+            options=(
+                PipelineOption(
+                    "gradient_edges",
+                    "Gradient",
+                    dag_requires=("spatial_gradient_edges", "velocity_profiles"),
+                ),
+                PipelineOption(
+                    "masked_edges",
+                    "Masked",
+                    dag_requires=("segment_velocity_per_beat", "prepared_topology"),
+                ),
+            ),
+        )
+        catalog = {
+            item.name: item
+            for item in (heartbeat, topology, gradient, velocity, bvr)
+        }
+        app = SimpleNamespace(
+            pipeline_catalog=catalog,
+            pipeline_dag=PipelineDAG(catalog.values()),
+            pipeline_rows=[gradient, bvr],
+            pipeline_visibility={
+                "spatial_gradient_moment0": False,
+                "blood_volume_rate": True,
+            },
+            pipeline_option_visibility={
+                "blood_volume_rate": {
+                    "gradient_edges": True,
+                    "masked_edges": True,
+                }
+            },
+            pipeline_visibility_vars={},
+            pipeline_row_widgets={},
+            pipeline_option_vars={"blood_volume_rate": {}},
+            pipeline_option_widgets={},
+        )
+        controller = PipelineLibraryController(app)
+        controller.persist_options = Mock()
+        controller.update_summary = Mock()
+        controller._refresh_required_pipelines()
+
+        self.assertEqual(
+            {"spatial_gradient_moment0"},
+            app.pipeline_required_names,
+        )
+        controller.set_option_visibility(
+            "blood_volume_rate",
+            "gradient_edges",
+            False,
+        )
+        self.assertEqual(set(), app.pipeline_required_names)
+        self.assertFalse(app.pipeline_visibility["spatial_gradient_moment0"])
 
     def test_child_option_selection_follows_declared_requirements(self) -> None:
         options = (

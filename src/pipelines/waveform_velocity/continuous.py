@@ -6,14 +6,14 @@ import numpy as np
 
 from calculations.math import butter_lowpass_filtfilt
 from input_output.schema import EyeFlowOutputPaths
-from pipelines.waveform_velocity_core.dopplerview.outputs import metric_value
-from pipelines.waveform_velocity_core.dopplerview.constants import (
+from pipelines.waveform_velocity_core.retinal_velocity.outputs import metric_value
+from pipelines.waveform_velocity_core.retinal_velocity.constants import (
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
 
 
 def pack_continuous_velocity_outputs(
-    analysis: Mapping[str, object],
+    velocity_analysis: Mapping[str, object],
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
     """Pack raw and band-limited artery and vein velocity signals."""
@@ -21,30 +21,30 @@ def pack_continuous_velocity_outputs(
     paths = schema.analysis
     metrics = {
         paths.retinal_artery_velocity_signal: metric_value(
-            analysis["retinal_artery_velocity_signal"],
+            velocity_analysis["retinal_artery_velocity_signal"],
             unit="mm/s",
         ),
         paths.retinal_vein_velocity_signal: metric_value(
-            analysis["retinal_vein_velocity_signal"],
+            velocity_analysis["retinal_vein_velocity_signal"],
             unit="mm/s",
         ),
         paths.retinal_artery_velocity_signal_band_limited: metric_value(
-            analysis["retinal_artery_velocity_signal_filtered"],
+            velocity_analysis["retinal_artery_velocity_signal_filtered"],
             unit="mm/s",
         ),
         paths.retinal_vein_velocity_signal_band_limited: metric_value(
-            analysis["retinal_vein_velocity_signal_filtered"],
+            velocity_analysis["retinal_vein_velocity_signal_filtered"],
             unit="mm/s",
         ),
     }
     if paths.velocitysignal_per_beat is not None:
         metrics[paths.velocitysignal_per_beat] = metric_value(
-            analysis["retinal_artery_velocity_signal_filtered_perbeat"],
+            velocity_analysis["retinal_artery_velocity_signal_filtered_perbeat"],
             unit="mm/s",
         )
     if paths.velocitysignal_filtered is not None:
         metrics[paths.velocitysignal_filtered] = metric_value(
-            analysis["retinal_artery_velocity_signal_filtered"],
+            velocity_analysis["retinal_artery_velocity_signal_filtered"],
             unit="mm/s",
         )
     return metrics

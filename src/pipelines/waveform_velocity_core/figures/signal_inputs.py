@@ -27,8 +27,11 @@ def display_velocity(values) -> np.ndarray:
     return np.asarray(values, dtype=np.float32) * VELOCITY_DISPLAY_SCALE
 
 
-def section_mask(analysis: dict[str, object], shape: tuple[int, int]) -> np.ndarray:
-    section = analysis.get("velocity_section_mask")
+def section_mask(
+    velocity_analysis: dict[str, object],
+    shape: tuple[int, int],
+) -> np.ndarray:
+    section = velocity_analysis.get("velocity_section_mask")
     if section is not None:
         return np.asarray(section, dtype=bool)
     return np.ones(shape, dtype=bool)

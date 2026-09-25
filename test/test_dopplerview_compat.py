@@ -17,9 +17,6 @@ if str(SRC_DIR) not in sys.path:
 from input_output import load_h5_sidecar_config  # noqa: E402
 from input_output.schema import DopplerViewSource, HolodopplerSource  # noqa: E402
 from pipeline_engine.context import RawH5SourceReader  # noqa: E402
-from pipelines.waveform_velocity_core.runner import (  # noqa: E402
-    _segment_ring_settings,
-)
 from pipelines.waveform_velocity_core.sources import (  # noqa: E402
     WaveformVelocitySources,
     _load_moment_pair,
@@ -56,20 +53,19 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
             source_data = self._load_sources(hd_source, dv_source)
 
-        self.assertIsNone(source_data.dopplerview_analysis)
+        self.assertFalse(hasattr(source_data, "velocity_analysis"))
         np.testing.assert_array_equal(source_data.retinal_artery_mask, artery_raw.T)
         np.testing.assert_array_equal(source_data.retinal_vein_mask, vein_raw.T)
         expected_optic_disc_mask = np.zeros_like(artery_raw)
         expected_optic_disc_mask[1:3, 0] = True
         np.testing.assert_array_equal(
-            source_data.optic_disc_mask,
+            source_data.optic_disc.mask,
             expected_optic_disc_mask.T,
         )
-        np.testing.assert_array_equal(source_data.optic_disc_center, [2.0, 1.0])
+        self.assertEqual(source_data.optic_disc.center, (2.0, 1.0))
         self.assertTrue(
             source_data.provenance["dv_spatial_axes_swapped_to_match_hd"]
         )
-        self.assertFalse(source_data.provenance["dopplerview_analysis_available"])
         self.assertTrue(source_data.provenance["has_optic_disc_mask"])
 
     def test_existing_dopplerview_analysis_is_ignored(self) -> None:
@@ -88,8 +84,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
             source_data = self._load_sources(hd_source, dv_source)
 
-        self.assertIsNone(source_data.dopplerview_analysis)
-        self.assertFalse(source_data.provenance["dopplerview_analysis_available"])
+        self.assertFalse(hasattr(source_data, "velocity_analysis"))
 
     def test_waveform_velocity_uses_one_coherent_raw_moment_mode(
         self,
@@ -165,16 +160,15 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                 },
             )
 
-        ring_settings = _segment_ring_settings()
+        ring_settings = source_data.optic_disc.annulus_geometry((200, 400))
         cross_section = source_data.cross_section_settings
-        self.assertEqual(7, ring_settings.ring_count)
-        self.assertEqual(0.10, ring_settings.inner_radius_frac)
-        self.assertEqual(0.04, ring_settings.ring_width_frac)
-        self.assertEqual(0.04, ring_settings.segment_length_frac)
-        self.assertTrue(cross_section.hydrodynamic_diameters)
-        self.assertEqual(0.5, cross_section.velocity_profile_threshold)
-        self.assertFalse(cross_section.rotate_from_mask)
+        radius_scale = np.hypot(99.5, 199.5)
+        expected_width = 400 / 25 / radius_scale
+        self.assertAlmostEqual(2.0 / radius_scale, ring_settings.inner_radius_frac)
+        self.assertAlmostEqual(expected_width, ring_settings.ring_width_frac)
+        self.assertAlmostEqual(expected_width, ring_settings.segment_length_frac)
         self.assertAlmostEqual(1.91 / 3.5, cross_section.pixel_size_mm)
+        self.assertEqual(512.0, cross_section.working_memory_mb)
         self.assertEqual(0.95, cross_section.submask_size_percentile_kept)
         self.assertEqual(7, source_data.local_background_dist)
 
@@ -197,7 +191,9 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         retina.create_dataset("vein_mask", data=vein_mask)
         retina.create_dataset(
             "labeled_vessels",
-            data=np.arange(8, dtype=np.int32).reshape(4, 2),
+            data=np.arange(artery_mask.size, dtype=np.int32).reshape(
+                artery_mask.shape
+            ),
         )
         optic_disc = h5.create_group("segmentation/OpticDisc")
         optic_disc_mask = np.zeros_like(artery_mask)

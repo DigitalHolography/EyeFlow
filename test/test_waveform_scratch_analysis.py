@@ -4,10 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import h5py
 import numpy as np
-from calculations.dopplerview_analysis.vessel_velocity_estimator import (
+
+from calculations.retinal_velocity.vessel_velocity_estimator import (
     _bounded_inpaint_result,
     _inpaint_frame_batch,
     _signed_rms_difference,
@@ -15,13 +17,48 @@ from calculations.dopplerview_analysis.vessel_velocity_estimator import (
 )
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity.continuous import pack_continuous_velocity_outputs
-from pipelines.waveform_velocity_core.dopplerview.outputs import (
-    pack_dopplerview_shared_outputs,
+from pipelines.waveform_velocity_core.retinal_velocity.outputs import (
+    pack_retinal_velocity_outputs,
 )
-from pipelines.waveform_velocity_core.scratch import waveform_scratch_h5
+from pipelines.waveform_velocity_core.retinal_velocity.runner import (
+    run_retinal_velocity_analysis,
+)
+from pipelines.waveform_velocity_core.scratch import velocity_scratch_h5
 
 
 class ScratchAndSchemaTests(unittest.TestCase):
+    def test_retinal_analysis_reuses_supplied_velocity_estimation(self) -> None:
+        source = SimpleNamespace(
+            timing=SimpleNamespace(sampling_freq=50.0, batch_stride=1),
+            local_background_dist=3,
+        )
+        cached = {
+            "velocity_map": np.ones((2, 3, 4), dtype=np.float32),
+            "retinal_artery_velocity_signal": np.ones(2, dtype=np.float32),
+        }
+
+        with (
+            patch(
+                "pipelines.waveform_velocity_core.retinal_velocity.runner."
+                "run_chunked_velocity_estimator"
+            ) as estimator,
+            patch(
+                "pipelines.waveform_velocity_core.retinal_velocity.runner."
+                "ArterialWaveformAnalysisStep"
+            ) as analysis_step,
+        ):
+            actual = run_retinal_velocity_analysis(
+                source,
+                scratch_h5=object(),
+                heartbeat_analysis="heartbeat",
+                velocity_estimation=cached,
+            )
+
+        estimator.assert_not_called()
+        analysis_step.return_value.run.assert_called_once()
+        self.assertIsNot(actual, cached)
+        self.assertIs(actual["velocity_map"], cached["velocity_map"])
+
     def test_inpaint_result_is_finite_and_bounded_by_each_frame_background(self) -> None:
         source = np.asarray(
             [
@@ -77,6 +114,37 @@ class ScratchAndSchemaTests(unittest.TestCase):
 
         np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
+    def test_inpaint_fallback_only_bounds_invalid_frames(self) -> None:
+        frames = np.asarray(
+            [
+                [[1.0, 2.0], [3.0, 4.0]],
+                [[10.0, 20.0], [30.0, 40.0]],
+            ],
+            dtype=np.float32,
+        )
+        mask = np.asarray([[True, False], [False, False]])
+        inpainted = np.asarray(
+            [
+                [[100.0, 2.0], [3.0, 4.0]],
+                [[np.inf, 20.0], [30.0, 40.0]],
+            ],
+            dtype=np.float32,
+        )
+        fake_inpaint = SimpleNamespace(
+            inpaint_biharmonic=lambda *args, **kwargs: np.moveaxis(
+                inpainted,
+                0,
+                -1,
+            )
+        )
+
+        actual = _inpaint_frame_batch(frames, mask, fake_inpaint)
+
+        np.testing.assert_array_equal(actual[0], inpainted[0])
+        self.assertTrue(np.all(np.isfinite(actual[1])))
+        self.assertGreaterEqual(float(actual[1].min()), 20.0)
+        self.assertLessEqual(float(actual[1].max()), 40.0)
+
     def test_velocity_estimator_uses_summary_only_frequency_intermediates(
         self,
     ) -> None:
@@ -87,6 +155,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
         vein = np.zeros_like(artery)
         artery[6, 6] = True
         vein[9, 9] = True
+        optic_disc_center = (8.0, 8.0)
 
         with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
             result = run_chunked_velocity_estimator(
@@ -94,13 +163,14 @@ class ScratchAndSchemaTests(unittest.TestCase):
                 moment2=moment2,
                 artery_mask=artery,
                 vein_mask=vein,
+                optic_disc_center=optic_disc_center,
                 local_background_dist=1,
                 scratch_h5=h5,
                 retain_velocity_video=False,
             )
 
             self.assertEqual([], list(h5["waveform"].keys()))
-        self.assertIsNone(result["retinal_vessel_velocity"])
+        self.assertIsNone(result["velocity_map"])
         self.assertIsNone(result["fRMS"])
         self.assertIsNone(result["fRMS_bkg"])
         self.assertIsNone(result["deltafRMS"])
@@ -113,27 +183,130 @@ class ScratchAndSchemaTests(unittest.TestCase):
                 moment2=moment2,
                 artery_mask=artery,
                 vein_mask=vein,
+                optic_disc_center=optic_disc_center,
                 local_background_dist=1,
                 scratch_h5=h5,
                 retain_velocity_video=True,
             )
             dataset = h5["waveform/velocity"]
+            expected_velocity = np.asarray(dataset)
             self.assertEqual(["velocity"], list(h5["waveform"].keys()))
             self.assertEqual(
-                retained["retinal_vessel_velocity"].name,
+                retained["velocity_map"].name,
                 dataset.name,
             )
             self.assertIsNone(dataset.compression)
 
-    def test_scratch_h5_is_removed_after_context(self) -> None:
+        velocity_output = np.empty_like(moment0)
+        with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
+            buffered = run_chunked_velocity_estimator(
+                moment0=moment0,
+                moment2=moment2,
+                artery_mask=artery,
+                vein_mask=vein,
+                optic_disc_center=optic_disc_center,
+                local_background_dist=1,
+                scratch_h5=h5,
+                retain_velocity_video=True,
+                velocity_video_output=velocity_output,
+            )
+            self.assertEqual([], list(h5["waveform"].keys()))
+
+        self.assertIs(buffered["velocity_map"], velocity_output)
+        np.testing.assert_array_equal(velocity_output, expected_velocity)
+        for key in (
+            "velocity_map_avg",
+            "fRMS_avg",
+            "fRMS_bkg_avg",
+            "deltafRMS_avg",
+            "retinal_artery_velocity_signal",
+            "retinal_vein_velocity_signal",
+        ):
+            np.testing.assert_array_equal(buffered[key], retained[key])
+
+    def test_velocity_estimator_is_independent_of_frame_chunk_size(self) -> None:
+        rng = np.random.default_rng(10)
+        shape = (17, 20, 18)
+        moment0 = (0.5 + 2.0 * rng.random(shape)).astype(np.float32)
+        frequency = (
+            np.linspace(2.0e5, 8.0e5, shape[0], dtype=np.float32)[:, None, None]
+            * (0.8 + 0.4 * rng.random(shape, dtype=np.float32))
+        )
+        moment2 = (
+            np.mean(moment0, axis=(-1, -2), keepdims=True, dtype=np.float32)
+            * np.square(frequency)
+        ).astype(np.float32)
+        artery = np.zeros(shape[1:], dtype=bool)
+        vein = np.zeros_like(artery)
+        artery[6:9, 5:8] = True
+        vein[12:15, 11:14] = True
+        optic_disc_center = (9.0, 10.0)
+
+        results = []
+        for chunk_size in (1, 2, 7, 32):
+            velocity_output = np.empty(shape, dtype=np.float32)
+            with (
+                patch(
+                    "calculations.retinal_velocity.vessel_velocity_estimator."
+                    "SCRATCH_FRAME_CHUNK_SIZE",
+                    chunk_size,
+                ),
+                h5py.File(
+                    "scratch.h5",
+                    "w",
+                    driver="core",
+                    backing_store=False,
+                ) as h5,
+            ):
+                result = run_chunked_velocity_estimator(
+                    moment0=moment0,
+                    moment2=moment2,
+                    artery_mask=artery,
+                    vein_mask=vein,
+                    optic_disc_center=optic_disc_center,
+                    local_background_dist=2,
+                    scratch_h5=h5,
+                    velocity_video_output=velocity_output,
+                )
+                results.append(
+                    {
+                        key: np.asarray(result[key]).copy()
+                        for key in (
+                            "velocity_map",
+                            "moment0_avg",
+                            "velocity_map_avg",
+                            "fRMS_avg",
+                            "fRMS_bkg_avg",
+                            "deltafRMS_avg",
+                            "retinal_artery_velocity_signal",
+                            "retinal_vein_velocity_signal",
+                            "retinal_artery_fRMS_signal",
+                            "retinal_vein_fRMS_signal",
+                            "retinal_artery_fRMS_bkg_signal",
+                            "retinal_vein_fRMS_bkg_signal",
+                            "retinal_vessel_fRMS_bkg_signal",
+                            "retinal_artery_deltafRMS_signal",
+                            "retinal_vein_deltafRMS_signal",
+                        )
+                    }
+                )
+
+        expected = results[0]
+        for actual in results[1:]:
+            for key in expected:
+                np.testing.assert_array_equal(actual[key], expected[key])
+
+    def test_scratch_h5_is_memory_backed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "output.h5"
             with h5py.File(output_path, "w") as output:
                 ctx = SimpleNamespace(runtime=SimpleNamespace(work_h5=output))
-                with waveform_scratch_h5(ctx) as scratch:
+                with velocity_scratch_h5(ctx) as scratch:
                     scratch_path = Path(scratch.filename)
                     scratch.create_dataset("large", data=np.ones((2, 3, 4)))
-                    self.assertTrue(scratch_path.exists())
+                    self.assertEqual("core", scratch.driver)
+                    self.assertEqual("memory", scratch.attrs["storage"])
+                    self.assertFalse(scratch_path.exists())
                 self.assertFalse(scratch_path.exists())
 
     def test_active_schema_has_no_published_velocity_video_or_analysis_group(self) -> None:
@@ -178,20 +351,20 @@ class ScratchAndSchemaTests(unittest.TestCase):
             "retinal_artery_velocity_signal_filtered": np.arange(8, dtype=np.float32),
             "retinal_vein_velocity_signal_filtered": np.arange(8, dtype=np.float32),
             "retinal_artery_velocity_signal_filtered_perbeat": np.ones((1, 8)),
-            "retinal_vessel_velocity": np.ones((8, 4, 4)),
+            "velocity_map": np.ones((8, 4, 4)),
             "velocity_map_avg": np.ones((4, 4)),
             "fRMS_avg": np.ones((4, 4)),
             "fRMS_bkg_avg": np.ones((4, 4)),
             "beat_indices": np.asarray([1, 5], dtype=np.int32),
             "time_per_beat": np.asarray([0.4], dtype=np.float32),
         }
-        shared = pack_dopplerview_shared_outputs(analysis)
+        shared = pack_retinal_velocity_outputs(analysis)
         velocity = pack_continuous_velocity_outputs(analysis)
         metrics = {**shared, **velocity}
 
         self.assertFalse(any(path.startswith("analysis/") for path in metrics))
         self.assertFalse(
-            any(value is analysis["retinal_vessel_velocity"] for value in metrics.values())
+            any(value is analysis["velocity_map"] for value in metrics.values())
         )
         self.assertNotIn(schema.analysis.retinal_artery_velocity_signal, shared)
         self.assertNotIn(schema.analysis.retinal_vein_velocity_signal, shared)
@@ -206,7 +379,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
         )
 
         slim_schema = EyeFlowOutputPaths.active("slim_temp")
-        slim_shared = pack_dopplerview_shared_outputs(analysis, slim_schema)
+        slim_shared = pack_retinal_velocity_outputs(analysis, slim_schema)
         _, velocity_map_attrs = slim_shared[slim_schema.analysis.velocity_map_avg]
         self.assertEqual("mm/s", velocity_map_attrs["unit"])
 

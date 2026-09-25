@@ -88,16 +88,6 @@ def region_membership(
     return assigned_quadrants.copy()
 
 
-def optic_disc_center_xy(source_data, image_shape: tuple[int, int]) -> np.ndarray:
-    center = np.asarray(source_data.optic_disc_center, dtype=float).reshape(-1)
-    if center.size < 2 or not np.all(np.isfinite(center[:2])):
-        return np.asarray(
-            [image_shape[1] / 2.0, image_shape[0] / 2.0],
-            dtype=float,
-        )
-    return center[:2].copy()
-
-
 def normalize_spatial_frame(
     branch_label_map: np.ndarray,
     optic_disc_center: np.ndarray,

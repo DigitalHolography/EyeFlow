@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 
 import pipelines  # noqa: F401
+from calculations.topology import OpticDisc
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines.waveform_shape_metrics.metrics.runner import (
@@ -58,6 +59,8 @@ class WaveformShapeMetricsTests(unittest.TestCase):
 
         self.assertEqual(
             (
+                "heartbeat_core",
+                "topology_core",
                 "waveform_velocity_core",
                 "waveform_velocity",
                 "waveform_shape_metrics",
@@ -182,19 +185,18 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             labels=labels,
             segment_center_xy=np.zeros((branch_count, radius_count, 2)),
             velocity=np.zeros((radius_count, branch_count, 3)),
+            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
         )
         source_data = SimpleNamespace(
             retinal_artery_mask=np.zeros((8, 8), dtype=bool),
             retinal_vein_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_center=np.asarray([3.0, 2.0]),
-            optic_disc_width=None,
-            optic_disc_height=None,
+            optic_disc=OpticDisc(
+                np.zeros((8, 8), dtype=bool), (3.0, 2.0), None, None
+            ),
         )
 
         regional = pack_quadrant_metrics(
             metrics,
-            source_data,
             segments,
             None,
         )
@@ -250,14 +252,14 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             labels=labels,
             segment_center_xy=np.zeros((2, 2, 2)),
             velocity=np.zeros((2, 2, waveform.shape[0])),
+            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
         )
         source_data = SimpleNamespace(
             retinal_artery_mask=np.zeros((8, 8), dtype=bool),
             retinal_vein_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_center=np.asarray([3.0, 2.0]),
-            optic_disc_width=None,
-            optic_disc_height=None,
+            optic_disc=OpticDisc(
+                np.zeros((8, 8), dtype=bool), (3.0, 2.0), None, None
+            ),
             timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
         )
 
@@ -347,14 +349,14 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             labels=labels,
             segment_center_xy=np.zeros((2, 2, 2)),
             velocity=segment_velocity,
+            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
         )
         source_data = SimpleNamespace(
             retinal_artery_mask=np.zeros((8, 8), dtype=bool),
             retinal_vein_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_center=np.asarray([3.0, 2.0]),
-            optic_disc_width=None,
-            optic_disc_height=None,
+            optic_disc=OpticDisc(
+                np.zeros((8, 8), dtype=bool), (3.0, 2.0), None, None
+            ),
             timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
         )
         metrics = {

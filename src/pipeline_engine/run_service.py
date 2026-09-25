@@ -103,7 +103,11 @@ def resolve_run_spec(
             "Unknown or hidden pipeline target(s): " + ", ".join(hidden_targets)
         )
 
-    plan = PipelineDAG(descriptors).resolve_targets(target_names)
+    resolved_options = _resolve_pipeline_options(descriptors, pipeline_options)
+    plan = PipelineDAG(descriptors).resolve_targets(
+        target_names,
+        pipeline_options=resolved_options,
+    )
     if not plan.targets:
         raise ValueError("Select at least one pipeline target.")
     unavailable = [pipeline for pipeline in plan.descriptors if not pipeline.available]
@@ -115,7 +119,11 @@ def resolve_run_spec(
         raise ValueError(
             "The DAG requires unavailable pipeline(s): " + ", ".join(details)
         )
-    resolved_options = _resolve_pipeline_options(plan, pipeline_options)
+    resolved_options = {
+        descriptor.name: resolved_options[descriptor.name]
+        for descriptor in plan.descriptors
+        if descriptor.name in resolved_options
+    }
 
     layouts = resolve_selected_run_layouts(input_paths)
     resolved_output_root = (
@@ -198,12 +206,12 @@ def execute_run(
 
 
 def _resolve_pipeline_options(
-    plan: PipelineExecutionPlan,
+    pipelines: Sequence[PipelineDescriptor],
     selections: Mapping[str, Iterable[str]] | None,
 ) -> dict[str, tuple[str, ...]]:
     requested_by_pipeline = selections or {}
     resolved: dict[str, tuple[str, ...]] = {}
-    for descriptor in plan.descriptors:
+    for descriptor in pipelines:
         if not descriptor.options:
             continue
         known = {option.name for option in descriptor.options}
@@ -222,6 +230,16 @@ def _resolve_pipeline_options(
                     f"Unknown option(s) for pipeline '{descriptor.name}': "
                     + ", ".join(unknown)
                 )
+        options_by_name = {
+            option.name: option for option in descriptor.options
+        }
+        pending = list(selected)
+        while pending:
+            option_name = pending.pop()
+            for required_name in options_by_name[option_name].requires:
+                if required_name not in selected:
+                    selected.add(required_name)
+                    pending.append(required_name)
         resolved[descriptor.name] = tuple(
             option.name for option in descriptor.options if option.name in selected
         )

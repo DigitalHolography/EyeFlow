@@ -5,7 +5,11 @@ from .models import (
     SpectralHeartbeatResult,
     SystoleDetectionResult,
 )
-from .runner import run_heartbeat_analysis
+from .runner import (
+    heartbeat_from_available_vessel,
+    missing_vessel_heartbeat,
+    run_heartbeat_analysis,
+)
 from .spectral import (
     MATLAB_MINIMUM_PROMINENCE_RATIO,
     MATLAB_PADDING_FACTOR,
@@ -20,6 +24,8 @@ __all__ = [
     "SpectralHeartbeatResult",
     "SystoleDetectionResult",
     "find_systole_index",
+    "heartbeat_from_available_vessel",
+    "missing_vessel_heartbeat",
     "run_heartbeat_analysis",
     "spectral_heartbeat_analysis",
 ]

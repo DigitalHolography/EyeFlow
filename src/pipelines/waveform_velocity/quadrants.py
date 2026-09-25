@@ -7,14 +7,13 @@ import numpy as np
 from calculations.math import butter_lowpass_filtfilt, nanmedian
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue, with_attrs
-from pipelines.waveform_velocity_core.dopplerview.constants import (
+from pipelines.waveform_velocity_core.retinal_velocity.constants import (
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
 from pipelines.waveform_velocity_core.regions import (
     QUADRANTS_GROUP_NAME,
     REGION_NAMES,
     normalize_spatial_frame,
-    optic_disc_center_xy,
     region_membership,
 )
 
@@ -40,7 +39,10 @@ def pack_quadrant_velocity_outputs(
         branch_ids = np.asarray(segments.branch_ids, dtype=np.int32).reshape(-1)
         labels = np.asarray(segments.labels, dtype=np.int32)
         centers = np.asarray(segments.segment_center_xy, dtype=float)
-        center_xy = optic_disc_center_xy(source_data, labels.shape)
+        center_xy = np.asarray(
+            segments.topology.optic_disc_center_xy,
+            dtype=float,
+        ).copy()
         labels, center_xy = normalize_spatial_frame(labels, center_xy)
         membership = region_membership(branch_ids, labels, centers, center_xy)
         result.update(

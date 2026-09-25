@@ -20,6 +20,7 @@ class PipelineOption:
     description: str = ""
     default_enabled: bool = True
     requires: tuple[str, ...] = ()
+    dag_requires: tuple[str, ...] = ()
 
 
 # Decorator to attach metadata to coded pipeline classes.
@@ -32,6 +33,7 @@ def registerPipeline(
     dag_produces: Iterable[str] | None = None,
     options: Iterable[PipelineOption | str] | None = None,
     visibility: str = "visible",
+    default_selected: bool = False,
 ):
     def decorator(cls):
         cls.name = name
@@ -62,6 +64,7 @@ def registerPipeline(
             dag_produces=tuple(cls.dag_produces),
             options=tuple(cls.options),
             visibility=visibility,
+            default_selected=bool(default_selected),
             pipeline_factory=cls,
             source_path=_source_path(cls),
         )
@@ -80,6 +83,7 @@ def pipeline(
     options: Iterable[PipelineOption | str] | None = None,
     input_slot: str = "both",
     visibility: str = "visible",
+    default_selected: bool = False,
 ):
     """Register a function pipeline.
 
@@ -104,6 +108,7 @@ def pipeline(
             dag_produces=_pipeline_keys(dag_produces or ()),
             options=declared_options,
             visibility=visibility,
+            default_selected=bool(default_selected),
             pipeline_factory=lambda: FunctionPipeline(
                 name=name,
                 description=description or (inspect.getdoc(func) or ""),
@@ -116,6 +121,7 @@ def pipeline(
                 dag_produces=_pipeline_keys(dag_produces or ()),
                 options=declared_options,
                 visibility=visibility,
+                default_selected=bool(default_selected),
             ),
             source_path=_source_path(func),
         )
@@ -153,6 +159,7 @@ def _pipeline_options(
                 description=item.description.strip(),
                 default_enabled=bool(item.default_enabled),
                 requires=_pipeline_keys(item.requires),
+                dag_requires=_pipeline_keys(item.dag_requires),
             )
         )
     known_names = {option.name for option in normalized}
@@ -202,6 +209,7 @@ class ProcessPipeline:
     options: tuple[PipelineOption, ...] = ()
     input_slot: str = "both"
     visibility: str = "visible"
+    default_selected: bool = False
     source_path: str | None = None
 
     def __init__(self) -> None:
@@ -229,6 +237,7 @@ class FunctionPipeline(ProcessPipeline):
         dag_produces: tuple[str, ...],
         options: tuple[PipelineOption, ...],
         visibility: str,
+        default_selected: bool,
     ) -> None:
         self.name = name
         self.description = description
@@ -241,6 +250,7 @@ class FunctionPipeline(ProcessPipeline):
         self.dag_produces = dag_produces
         self.options = options
         self.visibility = visibility
+        self.default_selected = default_selected
         self.source_path = _source_path(func)
 
     def run(self, ctx: Any) -> ProcessResult | Mapping[str, Any] | None:
@@ -260,6 +270,7 @@ class PipelineDescriptor:
     dag_produces: tuple[str, ...] = ()
     options: tuple[PipelineOption, ...] = ()
     visibility: str = "visible"
+    default_selected: bool = False
     pipeline_factory: Callable[[], ProcessPipeline] | None = None
     error_msg: str = ""
     source_path: str | None = None

@@ -1,0 +1,59 @@
+from calculations.retinal_velocity import (
+    ArterialWaveformAnalysisStep,
+    run_chunked_velocity_estimator,
+)
+from pipeline_engine.imports import HolodopplerTiming
+
+from .constants import (
+    LEGACY_FILTER_VELOCITY_SIGNALS,
+    LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
+)
+from .models import VelocityAnalysisContext
+
+
+def run_retinal_velocity_analysis(
+    source_data,
+    scratch_h5,
+    heartbeat_analysis,
+    heartbeat_detection_source: str = "artery",
+    *,
+    retain_velocity_video: bool = True,
+    velocity_estimation: dict[str, object] | None = None,
+) -> dict[str, object]:
+    timing: HolodopplerTiming = source_data.timing
+    cache = (
+        dict(velocity_estimation)
+        if velocity_estimation is not None
+        else run_chunked_velocity_estimator(
+            moment0=source_data.moment0,
+            moment2=source_data.moment2,
+            artery_mask=source_data.retinal_artery_mask,
+            vein_mask=source_data.retinal_vein_mask,
+            optic_disc_center=source_data.optic_disc.center,
+            local_background_dist=source_data.local_background_dist,
+            scratch_h5=scratch_h5,
+            retain_velocity_video=retain_velocity_video,
+        )
+    )
+    step_context = VelocityAnalysisContext(
+        cache=cache,
+        holodoppler_config={
+            "sampling_freq": timing.sampling_freq,
+            "batch_stride": timing.batch_stride,
+        },
+        analysis_config={
+            "VelocityEstimation": {
+                "LocalBackgroundDist": source_data.local_background_dist,
+            },
+            "PulseAnalysis": {
+                "FilterSignals": LEGACY_FILTER_VELOCITY_SIGNALS,
+                "LowpassFreqHz": LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
+            },
+        },
+    )
+    ArterialWaveformAnalysisStep().run(
+        step_context,
+        heartbeat_analysis,
+        beat_detection_source=heartbeat_detection_source,
+    )
+    return step_context.cache

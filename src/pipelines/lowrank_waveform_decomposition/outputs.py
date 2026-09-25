@@ -13,7 +13,6 @@ from pipelines.waveform_velocity_core.regions import (
     QUADRANTS_GROUP_NAME,
     REGION_NAMES,
     normalize_spatial_frame,
-    optic_disc_center_xy,
     region_membership,
 )
 
@@ -77,7 +76,6 @@ def pack_lowrank_waveform_decomposition_outputs(
     *,
     vein_flag: bool = True,
     include_quadrants: bool = False,
-    source_data=None,
     artery_segments=None,
     vein_segments=None,
 ) -> dict[str, object]:
@@ -118,7 +116,6 @@ def pack_lowrank_waveform_decomposition_outputs(
         membership = quadrant_memberships.get(vessel_name)
         if membership is None:
             membership = _quadrant_membership(
-                source_data,
                 segments_by_vessel[vessel_name],
                 waveforms,
                 vessel_name,
@@ -167,19 +164,21 @@ def _compute_and_append_outputs(
 
 
 def _quadrant_membership(
-    source_data,
     segments,
     waveforms: np.ndarray,
     vessel_name: str,
 ) -> np.ndarray:
-    if source_data is None or segments is None:
+    if segments is None:
         raise RuntimeError(
             f"Quadrant low-rank outputs require {vessel_name} segment geometry."
         )
     branch_ids = np.asarray(segments.branch_ids, dtype=np.int32).reshape(-1)
     labels = np.asarray(segments.labels, dtype=np.int32)
     centers = np.asarray(segments.segment_center_xy, dtype=float)
-    center_xy = optic_disc_center_xy(source_data, labels.shape)
+    center_xy = np.asarray(
+        segments.topology.optic_disc_center_xy,
+        dtype=float,
+    ).copy()
     labels, center_xy = normalize_spatial_frame(labels, center_xy)
     membership = region_membership(branch_ids, labels, centers, center_xy)
     if membership.shape[1:] != waveforms.shape[2:]:

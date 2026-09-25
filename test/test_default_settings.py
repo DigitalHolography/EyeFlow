@@ -6,6 +6,7 @@ import json
 import unittest
 from pathlib import Path
 
+from app_settings import normalize_pipeline_visibility
 from pipelines import load_pipeline_catalog
 
 
@@ -36,6 +37,24 @@ class DefaultSettingsTests(unittest.TestCase):
             for name, options in settings["pipeline_options"].items()
         }
         self.assertEqual(expected_options, configured_options)
+        self.assertTrue(settings["pipeline_visibility"]["blood_volume_rate"])
+        self.assertEqual(
+            {"gradient_edges": True, "masked_edges": True},
+            settings["pipeline_options"]["blood_volume_rate"],
+        )
+
+    def test_new_default_selected_pipeline_is_enabled_in_existing_settings(self) -> None:
+        visibility, changed = normalize_pipeline_visibility(
+            ("waveform_velocity", "blood_volume_rate"),
+            {"waveform_velocity": False},
+            missing_defaults={"blood_volume_rate": True},
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(
+            {"waveform_velocity": False, "blood_volume_rate": True},
+            visibility,
+        )
 
 
 if __name__ == "__main__":

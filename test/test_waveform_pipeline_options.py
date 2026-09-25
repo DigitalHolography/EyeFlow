@@ -7,7 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import numpy as np
+
 from input_output.schema import EyeFlowOutputPaths
+from pipeline_engine.base import PIPELINE_REGISTRY
+from pipelines import load_pipeline_catalog
 from pipelines.lowrank_waveform_decomposition import runner as lowrank_runner
 from pipelines.waveform_shape_metrics import runner as metric_runner
 from pipelines.waveform_velocity import runner as velocity_runner
@@ -44,6 +48,26 @@ def _context(options, state_values=None, scheduled=None):
 
 
 class WaveformPipelineOptionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # These orchestration tests use string segment sentinels.
+        for name, result in {
+            "pack_cross_section_displacement_profile_outputs": {},
+            "pack_displacement_magnitude_outputs": {},
+        }.items():
+            mock = patch.object(velocity_runner, name, return_value=result)
+            mock.start()
+            self.addCleanup(mock.stop)
+
+    def test_fft_option_is_disabled_by_default_and_requires_profiles(self) -> None:
+        load_pipeline_catalog()
+        options = {
+            option.name: option
+            for option in PIPELINE_REGISTRY["waveform_velocity"].options
+        }
+        fft = options["velocity_profile_fft"]
+        self.assertFalse(fft.default_enabled)
+        self.assertEqual(("velocity_profiles",), fft.requires)
+
     def test_lowrank_pipeline_includes_veins_and_selected_quadrants(self) -> None:
         velocity_outputs = {"per_beat": 1}
         context = SimpleNamespace(
@@ -73,7 +97,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             velocity_outputs,
             vein_flag=True,
             include_quadrants=True,
-            source_data="source",
             artery_segments="artery",
             vein_segments="vein",
         )
@@ -83,6 +106,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         metrics_root = pipeline_root / "waveform_shape_metrics"
         velocity_root = pipeline_root / "waveform_velocity"
         core_root = pipeline_root / "waveform_velocity_core"
+        gradient_root = pipeline_root / "spatial_gradient_moment0"
 
         self.assertFalse((metrics_root / "velocity").exists())
         core_source = "\n".join(
@@ -94,9 +118,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertNotIn("pipelines.waveform_velocity.", core_source)
         self.assertNotIn("pipelines.waveform_shape_metrics", core_source)
         self.assertNotIn("pipelines.waveform_shape_metrics", velocity_source)
+        self.assertNotIn("spatial_gradient", velocity_source)
+        self.assertTrue((gradient_root / "profiles.py").is_file())
 
     def test_velocity_parent_always_publishes_base_velocity_only(self) -> None:
-        context = SimpleNamespace(dopplerview_analysis={})
+        context = SimpleNamespace(velocity_analysis={})
         ctx = _context(
             {"waveform_velocity": ()},
             {core_runner.WAVEFORM_CONTEXT_STATE: context},
@@ -131,21 +157,29 @@ class WaveformPipelineOptionTests(unittest.TestCase):
     def test_velocity_children_publish_their_selected_products(self) -> None:
         per_beat_result = SimpleNamespace(cycle_boundary_indexes=(0, 5, 10))
         schema = EyeFlowOutputPaths.active()
+        artery_segments = SimpleNamespace(
+            topology=SimpleNamespace(optic_disc_center_xy=(12.0, 13.0))
+        )
         velocity_outputs = {
             "per_beat": 2,
             schema.artery_per_beat.segment_velocity_signal: 5,
         }
         context = SimpleNamespace(
-            dopplerview_analysis={},
-            artery_segment_result="artery",
+            velocity_analysis={},
+            artery_segment_result=artery_segments,
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
-            source_data=SimpleNamespace(provenance={"beat_index_base": 1}),
+            source_data=SimpleNamespace(
+                provenance={"beat_index_base": 1},
+                cross_section_settings=SimpleNamespace(pixel_size_mm=0.01),
+            ),
         )
         ctx = _context(
             {
                 "waveform_velocity": (
                     "velocity_profiles",
+                    "velocity_profile_fft",
+                    "segment_velocity_maps",
                     "per_beat",
                     "quadrants",
                 )
@@ -170,6 +204,26 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as profiles,
             patch.object(
                 velocity_runner,
+                "prepare_segment_velocity_maps_per_beat",
+                return_value=("artery_maps", "vein_maps"),
+            ) as prepare_maps,
+            patch.object(
+                velocity_runner,
+                "pack_segment_map_outputs",
+                return_value={"maps": 8},
+            ) as maps,
+            patch.object(
+                velocity_runner,
+                "pack_displacement_segment_map_outputs",
+                return_value={"displacement_maps": 9},
+            ) as displacement_maps,
+            patch.object(
+                velocity_runner,
+                "pack_velocity_profile_fft_outputs",
+                return_value={"fft_profile": 7},
+            ) as fft_profiles,
+            patch.object(
+                velocity_runner,
                 "pack_quadrant_velocity_outputs",
                 return_value={"quadrants": 4},
             ) as quadrants,
@@ -177,25 +231,55 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 
         self.assertEqual(
-            {"base": 1, "per_beat": 2, "profile": 3, "quadrants": 4},
+            {
+                "base": 1,
+                "per_beat": 2,
+                "profile": 3,
+                "fft_profile": 7,
+                "maps": 8,
+                "displacement_maps": 9,
+                "quadrants": 4,
+            },
             outputs,
         )
         profiles.assert_called_once_with(
-            "artery",
+            artery_segments,
             "vein",
             (0, 5, 10),
             index_base=0,
         )
+        fft_profiles.assert_called_once_with(
+            artery_segments,
+            "vein",
+        )
+        prepare_maps.assert_called_once_with(
+            artery_segments,
+            "vein",
+            (1, 6, 11),
+            index_base=1,
+        )
+        maps.assert_called_once_with(
+            artery_segments,
+            "vein",
+            "artery_maps",
+            "vein_maps",
+        )
+        displacement_maps.assert_called_once_with(
+            artery_segments,
+            "vein",
+            (1, 6, 11),
+            index_base=1,
+        )
         quadrants.assert_called_once_with(
             velocity_outputs,
             context.source_data,
-            "artery",
+            artery_segments,
             "vein",
         )
 
     def test_segments_option_does_not_build_velocity_maps(self) -> None:
         context = SimpleNamespace(
-            dopplerview_analysis={},
+            velocity_analysis={},
             artery_segment_result="artery",
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
@@ -231,13 +315,56 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         ):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 
-        self.assertEqual({"base": 1, "signals": 2}, outputs)
+        self.assertEqual(
+            {"base": 1, "signals": 2},
+            outputs,
+        )
         maps.assert_not_called()
         avis.assert_not_called()
 
+    def test_velocity_profiles_do_not_build_per_beat_velocity_maps(self) -> None:
+        context = SimpleNamespace(
+            velocity_analysis={},
+            artery_segment_result="artery",
+            vein_segment_result="vein",
+            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
+            source_data=SimpleNamespace(provenance={"beat_index_base": 1}),
+        )
+        ctx = _context(
+            {"waveform_velocity": ("velocity_profiles",)},
+            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+        )
+
+        with (
+            patch.object(
+                velocity_runner,
+                "pack_continuous_velocity_outputs",
+                return_value={"base": 1},
+            ),
+            patch.object(
+                velocity_runner,
+                "prepare_segment_velocity_maps_per_beat",
+            ) as prepare_maps,
+            patch.object(
+                velocity_runner,
+                "pack_cross_section_profile_outputs",
+                return_value={"profiles": 2},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_velocity_profile_fft_outputs",
+                return_value={"fft": 3},
+            ) as fft_profiles,
+        ):
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+
+        self.assertEqual({"base": 1, "profiles": 2}, outputs)
+        prepare_maps.assert_not_called()
+        fft_profiles.assert_not_called()
+
     def test_segment_velocity_maps_option_publishes_maps_and_avis(self) -> None:
         context = SimpleNamespace(
-            dopplerview_analysis={},
+            velocity_analysis={},
             artery_segment_result="artery",
             vein_segment_result="vein",
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
@@ -266,6 +393,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as maps,
             patch.object(
                 velocity_runner,
+                "prepare_segment_velocity_maps_per_beat",
+                return_value=("artery_maps", "vein_maps"),
+            ) as prepare_maps,
+            patch.object(
+                velocity_runner,
                 "export_segment_velocity_map_avis",
                 return_value=["artery.avi", "vein.avi"],
             ) as avis,
@@ -275,6 +407,12 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertEqual({"base": 1, "maps": 3}, outputs)
         segment_outputs.assert_not_called()
         maps.assert_called_once_with(
+            "artery",
+            "vein",
+            "artery_maps",
+            "vein_maps",
+        )
+        prepare_maps.assert_called_once_with(
             "artery",
             "vein",
             (1, 6, 11),
@@ -376,8 +514,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         source = SimpleNamespace(
             timing=SimpleNamespace(dt_seconds=0.1),
             provenance={"beat_index_base": 0},
-            optic_disc_width=None,
-            optic_disc_height=None,
         )
         ctx = SimpleNamespace()
 
@@ -402,6 +538,116 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertIsNone(artery)
         self.assertIsNone(vein)
 
+    def test_core_plain_profiles_do_not_stream_fft_or_retain_velocity_maps(self) -> None:
+        source = SimpleNamespace(
+            retinal_artery_mask="artery_mask",
+            retinal_vein_mask="vein_mask",
+            optic_disc="optic_disc",
+            cross_section_settings="settings",
+            provenance={"beat_index_base": 1},
+        )
+        ctx = SimpleNamespace(
+            pipeline_scheduled=lambda name: name == "waveform_velocity",
+            option_enabled=lambda name, pipeline=None: name == "velocity_profiles",
+            inputs=SimpleNamespace(
+                hd=SimpleNamespace(filename="hd.h5"),
+                dv=SimpleNamespace(filename="dv.h5"),
+            ),
+            state=SimpleNamespace(raw={}),
+            output=SimpleNamespace(available=False),
+        )
+
+        with patch.object(
+            core_runner,
+            "analyze_velocity_segment_profiles",
+            return_value={"artery": "artery", "vein": "vein"},
+        ) as analyze:
+            artery, vein = core_runner._segment_velocity_inputs(
+                "velocity_map",
+                source,
+                "rings",
+                ctx,
+                cycle_boundary_indexes=(1, 6, 11),
+            )
+
+        self.assertEqual(("artery", "vein"), (artery, vein))
+        self.assertFalse(analyze.call_args.kwargs["retain_velocity_maps"])
+        self.assertFalse(analyze.call_args.kwargs["velocity_profile_fft"])
+        self.assertEqual(
+            (1, 6, 11),
+            analyze.call_args.kwargs["cycle_boundary_indexes"],
+        )
+        self.assertEqual(1, analyze.call_args.kwargs["index_base"])
+
+    def test_core_explicit_fft_option_streams_fft_without_retaining_maps(self) -> None:
+        source = SimpleNamespace(
+            retinal_artery_mask="artery_mask",
+            retinal_vein_mask="vein_mask",
+            optic_disc="optic_disc",
+            cross_section_settings="settings",
+            provenance={"beat_index_base": 0},
+        )
+        ctx = SimpleNamespace(
+            pipeline_scheduled=lambda name: name == "waveform_velocity",
+            option_enabled=lambda name, pipeline=None: name
+            in {"velocity_profiles", "velocity_profile_fft"},
+            inputs=SimpleNamespace(
+                hd=SimpleNamespace(filename="hd.h5"),
+                dv=SimpleNamespace(filename="dv.h5"),
+            ),
+            state=SimpleNamespace(raw={}),
+            output=SimpleNamespace(available=False),
+        )
+        with patch.object(
+            core_runner,
+            "analyze_velocity_segment_profiles",
+            return_value={"artery": "artery", "vein": "vein"},
+        ) as analyze:
+            core_runner._segment_velocity_inputs(
+                "velocity_map",
+                source,
+                "rings",
+                ctx,
+                cycle_boundary_indexes=(0, 5, 10),
+            )
+        self.assertTrue(analyze.call_args.kwargs["velocity_profile_fft"])
+        self.assertFalse(analyze.call_args.kwargs["retain_velocity_maps"])
+
+    def test_analysis_schedule_generates_both_source_profiles_automatically(self) -> None:
+        context = SimpleNamespace(
+            velocity_analysis={},
+            artery_segment_result="artery",
+            vein_segment_result="vein",
+            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(0, 5, 10)),
+            source_data=SimpleNamespace(provenance={"beat_index_base": 0}),
+        )
+        ctx = _context(
+            {"waveform_velocity": ()},
+            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+            scheduled={"waveform_velocity", "velocity_profile_analysis"},
+        )
+        with (
+            patch.object(
+                velocity_runner,
+                "pack_continuous_velocity_outputs",
+                return_value={"base": 1},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_cross_section_profile_outputs",
+                return_value={"both_profiles": 2},
+            ) as profiles,
+            patch.object(
+                velocity_runner,
+                "pack_velocity_profile_fft_outputs",
+            ) as fft,
+        ):
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+        self.assertEqual({"base": 1, "both_profiles": 2}, outputs)
+        profiles.assert_called_once_with("artery", "vein", (0, 5, 10), index_base=0)
+        fft.assert_not_called()
+        self.assertTrue(core_runner._segments_required(ctx))
+
     def test_pdf_report_requires_shared_per_beat_products(self) -> None:
         ctx = _context(
             {"waveform_velocity": (), "waveform_shape_metrics": ()},
@@ -417,7 +663,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertTrue(core_runner._pulse_pngs_required(ctx))
 
     def test_pdf_report_publishes_velocity_per_beat_outputs(self) -> None:
-        context = SimpleNamespace(dopplerview_analysis={})
+        context = SimpleNamespace(velocity_analysis={})
         result = SimpleNamespace(cycle_boundary_indexes=(0, 2))
         ctx = _context(
             {"waveform_velocity": ()},

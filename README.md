@@ -48,6 +48,55 @@ eyeflow --data path\to\input.holo
 eyeflow-cli --data path\to\input.holo
 ```
 
+## Lumen-size plots
+
+Spatial gradients are computed directly on interpolated vessel segments.
+The filter order is a centered 7-frame moving average, Sobel magnitude, an
+ImageJ Gaussian blur with radius (sigma) 6 pixels, an ImageJ unsharp mask with
+radius 8 pixels and mask weight 0.6, then a final 7-frame moving average.
+The averaging windows shrink at recording boundaries and propagate NaNs.
+Both spatial filters operate independently per frame, propagate NaNs, and set
+valid pixels on the outermost rows and columns to zero. The unsharp mask clips
+negative values to zero.
+These calculations run only when the independently selectable
+`spatial_gradient_moment0` pipeline is enabled. The pipeline reuses the
+topology prepared by the hidden waveform core; `waveform_velocity` does not
+execute or import spatial-gradient processing.
+The optional gradient pipeline also owns its dynamic-edge and static-edge
+blood-volume-rate calculations. Mask-detection blood-volume rate remains a
+waveform-profile product and applies mask-derived circular-area scaling by
+default.
+
+When masked spatial-gradient lumen metrics are computed, PNGs are exported
+immediately to `png/lumen_size/`, with separate `_artery` and `_vein` files.
+`lumen_size_by_branch` plots the joint NaN-ignoring median over beat and radius
+for each branch against time in seconds, with lumen size in pixels. The time
+axis spans the mean cardiac-cycle duration derived from beat boundaries and
+the acquisition frame interval.
+`lumen_size_by_branch_top_quartile` plots the mean curve of branches whose
+temporal median is at or above the 75th percentile of branch medians, including
+ties. Both plots use only `Processing/SpatialGradientMetrics/{Vessel}/Transverse/Masked/tbkr/lumen/size`,
+without applying QC.
+The branch curves are also stored in HDF5 at
+`Processing/SpatialGradientMetrics/{Vessel}/Transverse/Masked/tk/lumen_size`,
+with axes `(time, branch)` and units of pixels. PNGs use these same arrays.
+
+## Cross-section topology and memory
+
+Branch identity, annular geometry, segment masks, orientation, transforms, and
+run-scoped caching live in `calculations.topology`. An explicit optic-disc
+center controls annuli and radial direction; the published optic-disc mask is
+excluded from vessels, skeletons, labels, and measurement rings.
+
+Velocity and displacement segments use a fused resize-and-rotate affine
+transform. Spatial gradients are the deliberate exception: interpolation and
+the radius-6/radius-8 filter chain above must complete before rotation.
+Production segment processing is temporally chunked. Worker count and chunk
+length share the configured `working_memory_mb` scratch budget; retained
+result arrays are not charged to that budget. The staged gradient path carries
+a six-frame halo on both sides of each output chunk so chunk boundaries match
+whole-recording filtering.
+
 ## Scope
 
 ### In Scope

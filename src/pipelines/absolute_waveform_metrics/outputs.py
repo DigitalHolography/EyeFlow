@@ -85,7 +85,6 @@ def pack_absolute_waveform_outputs(
     quadrant_outputs = (
         pack_quadrant_metrics(
             metrics_with_absolute_outputs,
-            source_data,
             artery_segments,
             vein_segments,
             schema,
