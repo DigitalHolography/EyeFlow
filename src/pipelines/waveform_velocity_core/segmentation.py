@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage as ndi
 
-from calculations.topology import segment_mask_areas_pixels
+from calculations.topology import retinal_pixel_size_mm, segment_mask_areas_pixels
 from calculations.topology.geometry import AnnulusGeometry, image_half_diagonal
 from input_output.schema import EyeFlowOutputPaths
 
@@ -65,12 +65,49 @@ def _pack_segmentation_outputs(
     else:
         mask_source = "reconstructed_from_dopplerview_center_width_height"
     center_xy = np.asarray(optic_disc.center, dtype=np.float32)
+    published_center_xy = np.asarray(
+        [center_xy[0], np.float32(image_shape[0] - 1) - center_xy[1]],
+        dtype=np.float32,
+    )
+    optic_disc_width = np.float32(
+        np.nan if optic_disc.width is None else optic_disc.width
+    )
+    optic_disc_height = np.float32(
+        np.nan if optic_disc.height is None else optic_disc.height
+    )
+    pixel_pitch_m = np.float32(retinal_pixel_size_mm(optic_disc) * 1e-3)
 
     segmentation = schema.segmentation
     metrics = {
         segmentation.optic_disc.mask: _segmentation_value(
             _serialize_spatial_image(source_disc_mask),
             _mask_attrs(mask_source),
+        ),
+        segmentation.optic_disc.height: _segmentation_value(
+            optic_disc_height,
+            _optic_disc_dimension_attrs("height"),
+        ),
+        segmentation.optic_disc.width: _segmentation_value(
+            optic_disc_width,
+            _optic_disc_dimension_attrs("width"),
+        ),
+        segmentation.optic_disc.center: _segmentation_value(
+            published_center_xy,
+            {
+                "unit": "pixels",
+                "dimDesc": ["coordinate"],
+                "coordinates": ["x", "y"],
+                "coordinate_system": "image_pixel",
+                "image_origin": "lower_left",
+                "y_axis_direction": "increasing_toward_north",
+            },
+        ),
+        segmentation.pixel_pitch_m: _segmentation_value(
+            pixel_pitch_m,
+            {
+                "unit": "m",
+                "definition": "native retinal pixel pitch",
+            },
         ),
     }
     metrics.update(
@@ -181,21 +218,36 @@ def _pack_vessel_segmentation(
                 "annulus_pixel_coverage": "binary_pixel_center_membership",
             },
         )
-        delta_radius = _topology_delta_radius(
+        annulus_delta_radius = _topology_delta_radius(
             topology,
             segment_mask_area.shape[1],
+        )
+        delta_radius = np.full(
+            segment_mask_area.shape[1],
+            np.nan,
+            dtype=np.float32,
         )
         lumen_diameter = np.full(
             segment_mask_area.shape,
             np.nan,
             dtype=np.float32,
         )
-        valid_delta = np.isfinite(delta_radius) & (delta_radius != 0)
+        valid_radius = (
+            np.any(segment_mask_area > 0, axis=0)
+            & np.isfinite(annulus_delta_radius)
+            & (annulus_delta_radius != 0)
+        )
+        np.copyto(
+            delta_radius,
+            annulus_delta_radius,
+            where=valid_radius,
+        )
+        valid_segment = (segment_mask_area > 0) & valid_radius[None, :]
         np.divide(
             segment_mask_area.astype(np.float32),
             delta_radius[None, :],
             out=lumen_diameter,
-            where=valid_delta[None, :],
+            where=valid_segment,
         )
         outputs[paths.lumen_diameter] = _segmentation_value(
             lumen_diameter,
@@ -211,7 +263,10 @@ def _pack_vessel_segmentation(
             {
                 "unit": "pixels",
                 "dimDesc": ["radius"],
-                "definition": "radial width of each annular section",
+                "definition": (
+                    "radial width of each annular section; NaN when no branch "
+                    "segment or a finite nonzero width is available"
+                ),
             },
         )
     return outputs
@@ -342,6 +397,13 @@ def _mask_attrs(source: str) -> dict[str, object]:
         "image_origin": "lower_left",
         "source": source,
         "y_axis_direction": "increasing_toward_north",
+    }
+
+
+def _optic_disc_dimension_attrs(dimension: str) -> dict[str, object]:
+    return {
+        "unit": "pixels",
+        "definition": f"optic-disc {dimension} in the aligned image frame",
     }
 
 

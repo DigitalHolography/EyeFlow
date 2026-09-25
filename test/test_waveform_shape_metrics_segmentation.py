@@ -46,6 +46,10 @@ class SegmentationOutputTests(unittest.TestCase):
         self.assertEqual(
             {
                 schema.segmentation.optic_disc.mask,
+                schema.segmentation.optic_disc.height,
+                schema.segmentation.optic_disc.width,
+                schema.segmentation.optic_disc.center,
+                schema.segmentation.pixel_pitch_m,
                 schema.segmentation.artery.mask,
                 schema.segmentation.artery.branch_label_map,
                 schema.segmentation.artery.segment_map,
@@ -59,6 +63,27 @@ class SegmentationOutputTests(unittest.TestCase):
         optic_disc, optic_disc_attrs = outputs[schema.segmentation.optic_disc.mask]
         np.testing.assert_array_equal(optic_disc[4, 11], True)
         self._assert_xy_lower_left_attrs(optic_disc_attrs)
+
+        height, height_attrs = outputs[schema.segmentation.optic_disc.height]
+        width, width_attrs = outputs[schema.segmentation.optic_disc.width]
+        center, center_attrs = outputs[schema.segmentation.optic_disc.center]
+        pixel_pitch_m, pixel_pitch_attrs = outputs[
+            schema.segmentation.pixel_pitch_m
+        ]
+        self.assertEqual(np.float32, height.dtype)
+        self.assertEqual(np.float32, width.dtype)
+        self.assertEqual(np.float32, center.dtype)
+        self.assertEqual(np.float32, pixel_pitch_m.dtype)
+        self.assertEqual(np.float32(4.0), height)
+        self.assertEqual(np.float32(4.0), width)
+        np.testing.assert_array_equal(center, [8.0, 8.0])
+        self.assertAlmostEqual(float(pixel_pitch_m), 1.91e-3 / 4.0)
+        self.assertEqual("pixels", height_attrs["unit"])
+        self.assertEqual("pixels", width_attrs["unit"])
+        self.assertEqual(["coordinate"], center_attrs["dimDesc"])
+        self.assertEqual(["x", "y"], center_attrs["coordinates"])
+        self.assertEqual("lower_left", center_attrs["image_origin"])
+        self.assertEqual("m", pixel_pitch_attrs["unit"])
 
         artery_mask_output, _ = outputs[schema.segmentation.artery.mask]
         np.testing.assert_array_equal(artery_mask_output[2, 13], True)
@@ -118,24 +143,28 @@ class SegmentationOutputTests(unittest.TestCase):
 
     def test_lumen_diameter_uses_each_vessels_area_and_float32_delta_radius(self):
         image_shape = (4, 4)
-        annuli = np.zeros((2, *image_shape), dtype=bool)
+        annuli = np.zeros((4, *image_shape), dtype=bool)
         annuli[0, :2] = True
         annuli[1, 2:] = True
+        annuli[2, 2:] = True
         artery_labels = np.zeros(image_shape, dtype=np.int32)
         artery_labels[0, :2] = 1
         artery_labels[2, :3] = 1
         vein_labels = np.zeros(image_shape, dtype=np.int32)
         vein_labels[0, :4] = 1
         vein_labels[2, :1] = 1
-        settings = AnnulusGeometry(0.0, 1.0, 0.5, 2)
+        settings = AnnulusGeometry(0.0, 1.0, 0.25, 4)
 
         def topology(labels):
             return SimpleNamespace(
                 labels=labels,
-                branch_ids=np.asarray([1], dtype=np.int32),
+                branch_ids=np.asarray([1, 2], dtype=np.int32),
                 annulus_masks=annuli,
                 ring_settings=settings,
-                delta_radius=np.asarray([2.0, 0.0], dtype=np.float32),
+                delta_radius=np.asarray(
+                    [2.0, 0.0, np.nan, 2.0],
+                    dtype=np.float32,
+                ),
             )
 
         outputs = pack_topology_outputs(
@@ -160,11 +189,23 @@ class SegmentationOutputTests(unittest.TestCase):
         self.assertEqual(np.float32, artery_diameter.dtype)
         self.assertEqual(np.float32, vein_diameter.dtype)
         self.assertEqual(np.float32, delta_radius.dtype)
-        np.testing.assert_array_equal(delta_radius, [2.0, 0.0])
-        np.testing.assert_allclose(artery_diameter[:, 0], [1.0])
-        np.testing.assert_allclose(vein_diameter[:, 0], [2.0])
-        self.assertTrue(np.isnan(artery_diameter[0, 1]))
-        self.assertTrue(np.isnan(vein_diameter[0, 1]))
+        np.testing.assert_allclose(
+            delta_radius,
+            [2.0, np.nan, np.nan, np.nan],
+            equal_nan=True,
+        )
+        np.testing.assert_allclose(
+            artery_diameter[:, 0],
+            [1.0, np.nan],
+            equal_nan=True,
+        )
+        np.testing.assert_allclose(
+            vein_diameter[:, 0],
+            [2.0, np.nan],
+            equal_nan=True,
+        )
+        self.assertTrue(np.all(np.isnan(artery_diameter[:, 1:])))
+        self.assertTrue(np.all(np.isnan(vein_diameter[:, 1:])))
         self.assertEqual("pixels", artery_attrs["unit"])
         self.assertEqual(["branch", "radius"], artery_attrs["dimDesc"])
         self.assertEqual("pixels", delta_attrs["unit"])

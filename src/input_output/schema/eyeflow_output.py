@@ -60,6 +60,9 @@ class VelocityPerBeatOutputPaths:
 @dataclass(frozen=True)
 class OpticDiscSegmentationOutputPaths:
     mask: str
+    height: str
+    width: str
+    center: str
 
 
 @dataclass(frozen=True)
@@ -77,6 +80,7 @@ class SegmentationOutputPaths:
     optic_disc: OpticDiscSegmentationOutputPaths
     artery: VesselSegmentationOutputPaths
     vein: VesselSegmentationOutputPaths
+    pixel_pitch_m: str
 
 
 @dataclass(frozen=True)
@@ -154,6 +158,9 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
     return SegmentationOutputPaths(
         optic_disc=OpticDiscSegmentationOutputPaths(
             mask=f"{root}/OpticDisc/Mask/value",
+            height=f"{root}/OpticDisc/Height/value",
+            width=f"{root}/OpticDisc/Width/value",
+            center=f"{root}/OpticDisc/Center/value",
         ),
         artery=VesselSegmentationOutputPaths(
             mask=f"{root}/Artery/Mask/value",
@@ -171,6 +178,7 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
             lumen_diameter=f"{root}/Vein/LumenDiameter/value",
             delta_radius=f"{root}/Vein/DeltaRadius/value",
         ),
+        pixel_pitch_m=f"{root}/PixelPitch_m/value",
     )
 
 
