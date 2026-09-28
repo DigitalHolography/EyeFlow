@@ -7,11 +7,11 @@ from types import SimpleNamespace
 import numpy as np
 
 from calculations.blood_volume_rate import (
-    circular_lumen_profile_flow,
+    circular_lumen_flow,
     mask_derived_lumen_geometry,
-    masked_edges_flow,
     total_masked_edges_flow,
 )
+from calculations.math import nanmean_float32
 from calculations.topology import AnnulusGeometry
 from input_output.profile_datasets import _profile_dataset
 from input_output.schema import EyeFlowOutputPaths
@@ -22,71 +22,25 @@ from pipelines.blood_volume_rate.outputs import (
 )
 
 
-def _profile(values: np.ndarray) -> np.ndarray:
-    return np.asarray(values, dtype=np.float32).reshape((-1, 1, 1, 1, 1))
-
-
-def _edge(value: float) -> np.ndarray:
-    return np.full((1, 1, 1, 1), value, dtype=np.float32)
-
-
-def test_constant_velocity_integrates_to_velocity_times_circle_area() -> None:
-    velocity = 3.25
-    left = 2.25
-    right = 7.75
-    pixel_size_mm = 0.02
-
-    actual = circular_lumen_profile_flow(
-        _profile(np.full(11, velocity)),
-        _edge(left),
-        _edge(right),
-        profile_pixel_size_mm=pixel_size_mm,
+def test_circular_lumen_flow_supports_dynamic_and_static_geometry() -> None:
+    velocity = np.asarray(
+        [[[[2.0]]], [[[3.0]]]],
+        dtype=np.float32,
+    )
+    static_diameter = np.asarray([[0.4]], dtype=np.float32)
+    dynamic_diameter = np.asarray(
+        [[[[0.2]]], [[[0.4]]]],
+        dtype=np.float32,
     )
 
-    radius_mm = (right - left) * 0.5 * pixel_size_mm
-    expected = velocity * np.pi * radius_mm**2
-    np.testing.assert_allclose(actual, expected, rtol=2e-6)
-
-
-def test_linear_fractional_profile_matches_high_accuracy_integration() -> None:
-    coordinates = np.arange(12, dtype=np.float64)
-    samples = 1.75 - 0.32 * coordinates
-    left = 1.4
-    right = 9.65
-    pixel_size_mm = 0.017
-
-    actual = circular_lumen_profile_flow(
-        _profile(samples),
-        _edge(left),
-        _edge(right),
-        profile_pixel_size_mm=pixel_size_mm,
-    )[0, 0, 0, 0]
-
-    x = np.linspace(left, right, 1_000_001)
-    center = 0.5 * (left + right)
-    radius = 0.5 * (right - left)
-    chord = 2.0 * np.sqrt(np.maximum(radius**2 - (x - center) ** 2, 0.0))
-    expected = np.trapezoid((1.75 - 0.32 * x) * chord, x) * pixel_size_mm**2
-    np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=1e-9)
-
-
-def test_invalid_edges_and_profiles_without_finite_intervals_are_nan() -> None:
-    profiles = np.broadcast_to(
-        _profile(np.arange(6)),
-        (6, 1, 1, 1, 4),
-    ).copy()
-    profiles[:, :, :, :, 3] = np.nan
-    left = np.asarray([[[[4.0, 2.0, 2.5, 1.0]]]], dtype=np.float32)
-    right = np.asarray([[[[2.0, 2.0, np.nan, 4.0]]]], dtype=np.float32)
-
-    actual = circular_lumen_profile_flow(
-        profiles,
-        left,
-        right,
-        profile_pixel_size_mm=0.01,
+    np.testing.assert_allclose(
+        circular_lumen_flow(velocity, static_diameter),
+        velocity * np.pi * static_diameter**2 / 4.0,
     )
-
-    assert np.all(np.isnan(actual))
+    np.testing.assert_allclose(
+        circular_lumen_flow(velocity, dynamic_diameter),
+        velocity * np.pi * dynamic_diameter**2 / 4.0,
+    )
 
 
 def test_mask_geometry_and_signed_flow_keep_established_model() -> None:
@@ -114,7 +68,7 @@ def test_mask_geometry_and_signed_flow_keep_established_model() -> None:
     np.testing.assert_allclose(diameters[0], [[expected_diameter]])
 
     velocity = np.full((8, 1, 1, 1), -2.0, dtype=np.float32)
-    rate = masked_edges_flow(velocity, diameters[0])
+    rate = circular_lumen_flow(velocity, diameters[0])
     expected_rate = -2.0 * np.pi / 4.0 * expected_diameter**2
     np.testing.assert_allclose(rate, expected_rate)
     np.testing.assert_allclose(total_masked_edges_flow(rate), expected_rate)
@@ -137,7 +91,10 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         profile_rotation_degrees=np.asarray([[17.0]], dtype=np.float32),
         prepared_topology=prepared,
     )
-    profiles = np.full((1, 1, 3, 6), -2.0, dtype=np.float32)
+    profiles = np.broadcast_to(
+        np.asarray([0.0, 1.0, 4.0, 9.0, 16.0, 25.0], dtype=np.float32),
+        (1, 1, 3, 6),
+    ).copy()
     velocity_segments = SimpleNamespace(
         labels=np.asarray([[1]], dtype=np.int32),
         branch_ids=np.asarray([1], dtype=np.int32),
@@ -204,6 +161,11 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
     )
     outputs = {**gradient_outputs, **mask_outputs}
 
+    expected_gradient_rate = circular_lumen_flow(
+        nanmean_float32(profile_dataset.data, axis=0),
+        np.full(edge_shape, (4.5 - 0.5) * 0.02, dtype=np.float32),
+    )
+
     for vessel_paths in (
         schema.blood_volume_rate.artery,
         schema.blood_volume_rate.vein,
@@ -219,6 +181,16 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         assert not gradient_outputs[vessel_paths.dynamic_edges].attrs[
             "source_velocity"
         ].startswith("/")
+        np.testing.assert_allclose(
+            gradient_outputs[vessel_paths.dynamic_edges].data,
+            expected_gradient_rate,
+        )
+        assert (
+            gradient_outputs[vessel_paths.dynamic_edges].attrs[
+                "cross_section_model"
+            ]
+            == "circular_pi_diameter_squared_over_4"
+        )
         assert (
             mask_outputs[vessel_paths.total_masked_edges].attrs["source"]
             == f"/{vessel_paths.masked_edges}"

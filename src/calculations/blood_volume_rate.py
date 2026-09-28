@@ -12,88 +12,6 @@ TOTAL_MASKED_EDGES_WINDOW_SIZE = 9
 TOTAL_MASKED_EDGES_WINDOW_STRIDE = 1
 
 
-def circular_lumen_profile_flow(
-    profiles,
-    left_edge,
-    right_edge,
-    *,
-    profile_pixel_size_mm: float,
-) -> np.ndarray:
-    """Integrate a transverse velocity profile over a circular lumen.
-
-    Velocity is piecewise linear between profile samples.  At each transverse
-    coordinate it is multiplied by the circular chord implied by the two edge
-    positions, then integrated analytically and converted to ``mm^3/s``.
-    """
-
-    values = np.asarray(profiles, dtype=np.float64)
-    left = np.asarray(left_edge, dtype=np.float64)
-    right = np.asarray(right_edge, dtype=np.float64)
-    if values.ndim != 5:
-        raise ValueError("velocity profile must have dimensions (x, t, b, k, r).")
-    if left.shape != values.shape[1:] or right.shape != values.shape[1:]:
-        raise ValueError(
-            "lumen edges must match velocity profile dimensions (t, b, k, r)."
-        )
-    if not np.isfinite(profile_pixel_size_mm) or profile_pixel_size_mm <= 0:
-        raise ValueError("profile_pixel_size_mm must be finite and positive.")
-
-    center = 0.5 * (left + right)
-    radius = 0.5 * (right - left)
-    valid_edges = np.isfinite(left) & np.isfinite(right) & (radius > 0.0)
-    safe_radius = np.where(valid_edges, radius, 1.0)
-    integral = np.zeros(left.shape, dtype=np.float64)
-    has_finite_interval = np.zeros(left.shape, dtype=bool)
-
-    for index in range(max(values.shape[0] - 1, 0)):
-        start = np.maximum(left, float(index))
-        stop = np.minimum(right, float(index + 1))
-        start_value = values[index]
-        stop_value = values[index + 1]
-        active = (
-            valid_edges
-            & (stop > start)
-            & np.isfinite(start_value)
-            & np.isfinite(stop_value)
-        )
-        slope = stop_value - start_value
-        velocity_at_center = start_value + slope * (center - float(index))
-        start_u = start - center
-        stop_u = stop - center
-        contribution = _linear_velocity_chord_antiderivative(
-            stop_u,
-            safe_radius,
-            velocity_at_center,
-            slope,
-        ) - _linear_velocity_chord_antiderivative(
-            start_u,
-            safe_radius,
-            velocity_at_center,
-            slope,
-        )
-        integral += np.where(active, contribution, 0.0)
-        has_finite_interval |= active
-
-    integral *= float(profile_pixel_size_mm) ** 2
-    integral[~has_finite_interval] = np.nan
-    return integral.astype(np.float32)
-
-
-def _linear_velocity_chord_antiderivative(
-    coordinate,
-    radius,
-    center_velocity,
-    slope,
-) -> np.ndarray:
-    clipped = np.clip(np.asarray(coordinate, dtype=np.float64), -radius, radius)
-    radial_square = np.maximum(radius**2 - clipped**2, 0.0)
-    root = np.sqrt(radial_square)
-    normalized = np.clip(clipped / radius, -1.0, 1.0)
-    constant_term = clipped * root + radius**2 * np.arcsin(normalized)
-    linear_term = -(2.0 / 3.0) * radial_square * root
-    return center_velocity * constant_term + slope * linear_term
-
-
 def mask_derived_lumen_geometry(
     topologies,
     *,
@@ -154,22 +72,25 @@ def mask_derived_lumen_geometry(
     return tuple(diameters), tuple(mask_areas), radial_widths
 
 
-def masked_edges_flow(velocity, diameter_mm) -> np.ndarray:
-    """Multiply safe per-beat velocity by equivalent circular lumen area."""
+def circular_lumen_flow(velocity, diameter_mm) -> np.ndarray:
+    """Multiply per-beat velocity by circular lumen area."""
 
     velocity_tbkr = np.asarray(velocity, dtype=np.float32)
     diameter = np.asarray(diameter_mm, dtype=np.float32)
     if velocity_tbkr.ndim != 4:
         raise ValueError(
-            "safe per-beat segment velocity must have dimensions "
+            "per-beat segment velocity must have dimensions "
             "(time, beat, branch, radius)."
         )
-    if velocity_tbkr.shape[2:] != diameter.shape:
+    if diameter.shape == velocity_tbkr.shape[2:]:
+        diameter = diameter[None, None, :, :]
+    elif diameter.shape != velocity_tbkr.shape:
         raise ValueError(
-            "safe per-beat velocity branch/radius dimensions must match geometry."
+            "lumen diameter must have dimensions (branch, radius) or match "
+            "per-beat velocity dimensions."
         )
     area_mm2 = np.float32(np.pi / 4.0) * diameter**2
-    return (velocity_tbkr * area_mm2[None, None, :, :]).astype(
+    return (velocity_tbkr * area_mm2).astype(
         np.float32,
         copy=False,
     )
@@ -211,8 +132,7 @@ def total_masked_edges_flow(masked_edges) -> np.ndarray:
 __all__ = [
     "TOTAL_MASKED_EDGES_WINDOW_SIZE",
     "TOTAL_MASKED_EDGES_WINDOW_STRIDE",
-    "circular_lumen_profile_flow",
+    "circular_lumen_flow",
     "mask_derived_lumen_geometry",
-    "masked_edges_flow",
     "total_masked_edges_flow",
 ]

@@ -7,9 +7,8 @@ import numpy as np
 from calculations.blood_volume_rate import (
     TOTAL_MASKED_EDGES_WINDOW_SIZE,
     TOTAL_MASKED_EDGES_WINDOW_STRIDE,
-    circular_lumen_profile_flow,
+    circular_lumen_flow,
     mask_derived_lumen_geometry,
-    masked_edges_flow,
     total_masked_edges_flow,
 )
 from calculations.math import nanmean_float32
@@ -99,27 +98,30 @@ def _gradient_edge_dataset(
     if static_edges:
         left = np.broadcast_to(nanmean_float32(left, axis=(0, 1)), left.shape)
         right = np.broadcast_to(nanmean_float32(right, axis=(0, 1)), right.shape)
-    rate = circular_lumen_profile_flow(
-        profile.data,
-        left,
-        right,
-        profile_pixel_size_mm=profile_pixel_size_mm,
+    if not np.isfinite(profile_pixel_size_mm) or profile_pixel_size_mm <= 0:
+        raise ValueError("profile_pixel_size_mm must be finite and positive.")
+    velocity = nanmean_float32(profile.data, axis=0)
+    diameter_mm = np.where(
+        right > left,
+        (right - left) * np.float32(profile_pixel_size_mm),
+        np.float32(np.nan),
     )
+    rate = circular_lumen_flow(velocity, diameter_mm)
     return DatasetValue(
         rate,
         {
             "unit": "mm^3/s",
             "dimDesc": ["time", "beat", "branch", "radius"],
             "definition": (
-                "analytic piecewise-linear integration of transverse velocity "
-                "weighted by the circular chord implied by the lumen edges"
+                "mean masked transverse velocity multiplied by the circular "
+                "lumen area implied by the spatial-gradient edges"
             ),
             "source_velocity": "waveform_velocity_core.masked_transverse_profile",
             "source_left_edge_index": f"/{left_edge_path.lstrip('/')}",
             "source_right_edge_index": f"/{right_edge_path.lstrip('/')}",
-            "cross_section_model": "circular_chord_from_gradient_edges",
-            "velocity_interpolation": "piecewise_linear",
-            "integration_method": "analytic_linear_velocity_times_circular_chord",
+            "diameter_model": "gradient_edge_separation_times_profile_pixel_size",
+            "cross_section_model": "circular_pi_diameter_squared_over_4",
+            "velocity_reduction": "mean_over_finite_transverse_profile_samples",
             "profile_pixel_size_mm": np.float32(profile_pixel_size_mm),
             "edge_temporal_reduction": (
                 "mean_over_time_and_beats" if static_edges else "none"
@@ -164,7 +166,7 @@ def pack_mask_derived_outputs(
                 f"Required safe per-beat velocity is unavailable for {vessel_name}."
             )
         velocity = _metric_data(velocity_per_beat_outputs[velocity_path])
-        rate = masked_edges_flow(velocity, diameter_mm)
+        rate = circular_lumen_flow(velocity, diameter_mm)
         masked = DatasetValue(
             rate,
             {

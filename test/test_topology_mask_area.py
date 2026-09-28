@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import numpy as np
 
 from calculations.blood_volume_rate import (
+    circular_lumen_flow,
     mask_derived_lumen_geometry,
-    masked_edges_flow,
 )
 from calculations.topology import AnnulusGeometry, OpticDisc, prepare_topology
 from calculations.topology.mask_area import (
@@ -82,7 +82,7 @@ def test_mask_derived_flow_keeps_equivalent_diameter_model() -> None:
         (segments.topology,),
         pixel_size_mm=0.1,
     )
-    artery = masked_edges_flow(segments.velocity, diameters[0])
+    artery = circular_lumen_flow(segments.velocity, diameters[0])
     diameter_mm = areas[0][0] * 0.1 / radial_widths
     expected = 2.0 * np.pi / 4.0 * diameter_mm**2
     np.testing.assert_allclose(
