@@ -15,10 +15,11 @@ from .continuous import (
     pack_continuous_velocity_outputs,
     pack_segment_velocity_outputs,
 )
+from .outputs import export_velocity_signals
 from .profiles import (
     pack_cross_section_displacement_profile_outputs,
-    pack_displacement_magnitude_outputs,
     pack_cross_section_profile_outputs,
+    pack_displacement_magnitude_outputs,
     pack_velocity_profile_fft_outputs,
 )
 from .quadrants import pack_quadrant_velocity_outputs
@@ -134,6 +135,18 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                     for key, value in velocity_outputs.items()
                     if key not in segment_paths
                 }
+            )
+
+    output = getattr(ctx, "output", None)
+    if getattr(output, "available", False):
+        schema = EyeFlowOutputPaths.active()
+        artery_path = schema.artery_per_beat_safe.velocity_signal
+        vein_path = schema.vein_per_beat_safe.velocity_signal
+        if artery_path in velocity_outputs and vein_path in velocity_outputs:
+            export_velocity_signals(
+                output,
+                velocity_outputs[artery_path],
+                velocity_outputs[vein_path],
             )
 
     profile_products_required = profiles_selected or profile_analysis_scheduled

@@ -154,6 +154,39 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         profiles.assert_not_called()
         quadrants.assert_not_called()
 
+    def test_velocity_figures_export_whenever_safe_per_beat_data_is_available(
+        self,
+    ) -> None:
+        schema = EyeFlowOutputPaths.active()
+        artery = (np.ones((3, 2, 1, 1), dtype=np.float32), {"unit": "mm/s"})
+        vein = (np.full((3, 2, 1, 1), 2.0, dtype=np.float32), {"unit": "mm/s"})
+        velocity_outputs = {
+            schema.artery_per_beat_safe.velocity_signal: artery,
+            schema.vein_per_beat_safe.velocity_signal: vein,
+        }
+        context = SimpleNamespace(velocity_analysis={})
+        ctx = _context(
+            {"waveform_velocity": ()},
+            {
+                core_runner.WAVEFORM_CONTEXT_STATE: context,
+                core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: velocity_outputs,
+            },
+        )
+        ctx.output = SimpleNamespace(available=True)
+
+        with (
+            patch.object(
+                velocity_runner,
+                "pack_continuous_velocity_outputs",
+                return_value={"base": 1},
+            ),
+            patch.object(velocity_runner, "export_velocity_signals") as export,
+        ):
+            outputs = velocity_runner.run_waveform_velocity(ctx)
+
+        self.assertEqual({"base": 1}, outputs)
+        export.assert_called_once_with(ctx.output, artery, vein)
+
     def test_velocity_children_publish_their_selected_products(self) -> None:
         per_beat_result = SimpleNamespace(cycle_boundary_indexes=(0, 5, 10))
         schema = EyeFlowOutputPaths.active()
