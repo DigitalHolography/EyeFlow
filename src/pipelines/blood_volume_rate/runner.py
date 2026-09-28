@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from input_output.schema import EyeFlowOutputPaths
 from pipelines.spatial_gradient_moment0.runner import (
     SPATIAL_GRADIENT_PRODUCTS_STATE,
     SpatialGradientProducts,
@@ -12,7 +13,12 @@ from pipelines.waveform_velocity_core.runner import (
     WAVEFORM_CONTEXT_STATE,
 )
 
-from .outputs import pack_gradient_edge_outputs, pack_mask_derived_outputs
+from .outputs import (
+    export_blood_volume_rate_signals,
+    export_lumen_diameter_distributions,
+    pack_gradient_edge_outputs,
+    pack_mask_derived_outputs,
+)
 
 
 def run_blood_volume_rate(ctx) -> dict[str, object]:
@@ -47,14 +53,28 @@ def run_blood_volume_rate(ctx) -> dict[str, object]:
             raise RuntimeError(
                 "Mask-derived blood-volume rate requires per-beat velocity state."
             )
-        outputs.update(
-            pack_mask_derived_outputs(
-                prepared_topologies(ctx),
-                velocity_outputs,
-                pixel_size_mm=float(
-                    context.source_data.cross_section_settings.pixel_size_mm
-                ),
+        mask_outputs = pack_mask_derived_outputs(
+            prepared_topologies(ctx),
+            velocity_outputs,
+            pixel_size_mm=float(
+                context.source_data.cross_section_settings.pixel_size_mm
+            ),
+        )
+        outputs.update(mask_outputs)
+        if ctx.output.available:
+            schema = EyeFlowOutputPaths.active()
+            export_blood_volume_rate_signals(
+                ctx.output,
+                mask_outputs[schema.blood_volume_rate.artery.total_masked_edges],
+                mask_outputs[schema.blood_volume_rate.vein.total_masked_edges],
             )
+    if ctx.output.available:
+        schema = EyeFlowOutputPaths.active()
+        export_lumen_diameter_distributions(
+            ctx.output,
+            ctx.output.h5.array(schema.segmentation.artery.lumen_diameter),
+            ctx.output.h5.array(schema.segmentation.vein.lumen_diameter),
+            pixel_pitch_m=ctx.output.h5.read(schema.segmentation.pixel_pitch_m),
         )
     return outputs
 
