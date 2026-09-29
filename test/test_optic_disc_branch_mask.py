@@ -172,7 +172,7 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
             retinal_artery_mask=vessel,
             retinal_vein_mask=vessel.copy(),
             optic_disc=OpticDisc(disc, (60.0, 45.0), 20.0, 50.0),
-            cross_section_settings="settings",
+            profile_settings="settings",
             provenance={"beat_index_base": 0},
         )
         settings = source.optic_disc.annulus_geometry(shape)

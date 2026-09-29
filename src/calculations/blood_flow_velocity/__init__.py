@@ -3,9 +3,6 @@
 from importlib import import_module
 
 _EXPORTS = {
-    "CrossSectionProfileOutputs": ".cross_section.generate_cross_section_signals",
-    "CrossSectionSignalResult": ".cross_section.generate_cross_section_signals",
-    "CrossSectionSignalSettings": ".cross_section.generate_cross_section_signals",
     "HeartbeatAnalysisResult": ".signal_analysis.heartbeat",
     "SpectralHeartbeatResult": ".signal_analysis.heartbeat",
     "SystoleDetectionResult": ".signal_analysis.heartbeat",
@@ -47,9 +44,6 @@ def __getattr__(name):
 
 __all__ = [
     "ArterialWaveformAnalysis",
-    "CrossSectionProfileOutputs",
-    "CrossSectionSignalResult",
-    "CrossSectionSignalSettings",
     "HeartbeatAnalysisResult",
     "PairedVesselCycles",
     "PerBeatAnalysisInput",

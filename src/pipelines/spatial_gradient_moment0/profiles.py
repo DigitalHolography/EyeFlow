@@ -16,12 +16,11 @@ from calculations.math.spatial_gradient import (
     unsharpen,
 )
 from calculations.segment_profiles import analyze_segment_profiles
-from pipeline_engine.base import DatasetValue
-
 from input_output.profile_datasets import (
     _profile_dataset,
     _temporally_meaned_profile_dataset,
 )
+from pipeline_engine.base import DatasetValue
 
 SPATIAL_GRADIENT_PROFILE_ROOT = "Processing/SpatialGradientProfiles"
 SPATIAL_GRADIENT_METRICS_ROOT = "Processing/SpatialGradientMetrics"
@@ -52,7 +51,7 @@ def extract_spatial_gradient_segments(
                 "vein": waveform_context.vein_segment_result.topology.prepared_topology,
             }
         if profile_settings is None:
-            profile_settings = source.cross_section_settings
+            profile_settings = source.profile_settings
     artery_mask = getattr(source, "artery_mask", None)
     if artery_mask is None:
         artery_mask = source.retinal_artery_mask
@@ -60,7 +59,7 @@ def extract_spatial_gradient_segments(
     if vein_mask is None:
         vein_mask = source.retinal_vein_mask
     if profile_settings is None:
-        profile_settings = source.cross_section_settings
+        profile_settings = source.profile_settings
     if prepared_topologies is None:
         raise RuntimeError("Spatial-gradient analysis requires prepared topology.")
 

@@ -42,8 +42,8 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
         segments = SimpleNamespace(
             branch_ids=np.arange(1, branch_count + 1, dtype=np.int32),
             labels=labels,
-            segment_center_xy=np.zeros(
-                (branch_count, radius_count, 2),
+            segment_centers_xy=np.zeros(
+                (radius_count, branch_count, 2),
                 dtype=float,
             ),
             topology=SimpleNamespace(optic_disc_center_xy=(3.0, 3.0)),

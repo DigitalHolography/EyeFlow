@@ -6,10 +6,10 @@ import numpy as np
 
 from calculations.math import butter_lowpass_filtfilt
 from input_output.schema import EyeFlowOutputPaths
-from pipelines.waveform_velocity_core.retinal_velocity.outputs import metric_value
 from pipelines.waveform_velocity_core.retinal_velocity.constants import (
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
+from pipelines.waveform_velocity_core.retinal_velocity.outputs import metric_value
 
 
 def pack_continuous_velocity_outputs(
@@ -80,7 +80,7 @@ def _pack_segment_velocity_output(segments, paths, source_data) -> dict[str, obj
     if np.asarray(segments.branch_ids).size == 0:
         return {}
 
-    values = np.asarray(segments.velocity, dtype=np.float32)
+    values = np.asarray(segments.projected_signal, dtype=np.float32)
     if values.ndim != 3:
         raise ValueError(
             "segment velocity must have shape (radius, branch, frame), "

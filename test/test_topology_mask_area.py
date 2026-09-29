@@ -37,7 +37,7 @@ def _segments():
         ring_settings=AnnulusGeometry(0.0, 0.5, 0.25, 2, 0.25),
     )
     return SimpleNamespace(
-        velocity=np.full((2, 1, 1, 2), 2.0, dtype=np.float32),
+        projected_signal=np.full((2, 1, 1, 2), 2.0, dtype=np.float32),
         topology=topology,
     )
 
@@ -82,7 +82,7 @@ def test_mask_derived_flow_keeps_equivalent_diameter_model() -> None:
         (segments.topology,),
         pixel_size_mm=0.1,
     )
-    artery = circular_lumen_flow(segments.velocity, diameters[0])
+    artery = circular_lumen_flow(segments.projected_signal, diameters[0])
     diameter_mm = areas[0][0] * 0.1 / radial_widths
     expected = 2.0 * np.pi / 4.0 * diameter_mm**2
     np.testing.assert_allclose(

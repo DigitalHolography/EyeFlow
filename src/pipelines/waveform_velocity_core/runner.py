@@ -6,19 +6,18 @@ from dataclasses import dataclass
 from time import perf_counter
 
 from calculations.blood_flow_velocity import (
-    CrossSectionSignalResult,
     HeartbeatAnalysisResult,
     PerBeatAnalysisInput,
     spectral_heartbeat_analysis,
 )
 from calculations.topology import AnnulusGeometry
 from input_output import EyeFlowOutputPaths
-from pipelines.displacement_map.runner import attach_displacement_segment_profiles
 from pipeline_engine.imports import (
     HolodopplerTiming,
     np,
     read_int_setting,
 )
+from pipelines.displacement_map.runner import attach_displacement_segment_profiles
 from pipelines.heartbeat_core.runner import (
     HeartbeatResult,
     cached_heartbeat_analysis,
@@ -38,6 +37,7 @@ from .constants import (
 )
 from .cross_section_images import export_rotated_mean_pngs
 from .figures import export_pulse_pngs
+from .models import VelocitySegmentResult
 from .per_beat import run_velocity_per_beat_metrics
 from .retinal_velocity.constants import (
     LEGACY_FILTER_VELOCITY_SIGNALS,
@@ -60,8 +60,8 @@ VELOCITY_PER_BEAT_OUTPUTS_STATE = "velocity_per_beat_outputs"
 class WaveformVelocityCoreContext:
     source_data: WaveformVelocitySourceData
     per_beat_analysis: PerBeatAnalysisInput
-    artery_segment_result: CrossSectionSignalResult | None
-    vein_segment_result: CrossSectionSignalResult | None
+    artery_segment_result: VelocitySegmentResult | None
+    vein_segment_result: VelocitySegmentResult | None
     velocity_analysis: dict[str, object]
     attrs: dict[str, object]
 
@@ -289,8 +289,8 @@ def _per_beat_input_from_analysis(
     segments_required: bool,
 ) -> tuple[
     PerBeatAnalysisInput,
-    CrossSectionSignalResult | None,
-    CrossSectionSignalResult | None,
+    VelocitySegmentResult | None,
+    VelocitySegmentResult | None,
 ]:
     if segments_required:
         if velocity_map is None:
@@ -378,7 +378,7 @@ def _segment_velocity_inputs(
     *,
     cycle_boundary_indexes,
     prepared_topologies=None,
-) -> tuple[CrossSectionSignalResult, CrossSectionSignalResult]:
+) -> tuple[VelocitySegmentResult, VelocitySegmentResult]:
     waveform_velocity_scheduled = ctx.pipeline_scheduled("waveform_velocity")
     retain_velocity_maps = bool(
         waveform_velocity_scheduled
@@ -403,7 +403,7 @@ def _segment_velocity_inputs(
             },
             source_data.optic_disc,
             ring_settings,
-            source_data.cross_section_settings,
+            source_data.profile_settings,
             prepared_topologies=prepared_topologies,
             retain_velocity_maps=retain_velocity_maps,
             cycle_boundary_indexes=cycle_boundary_indexes,
@@ -414,7 +414,7 @@ def _segment_velocity_inputs(
         ctx,
         results,
         retain_maps=retain_velocity_maps,
-        profile_settings=source_data.cross_section_settings,
+        profile_settings=source_data.profile_settings,
     )
     if ctx.output.available:
         with _logged_stage("rotated mean PNG export"):
@@ -433,28 +433,28 @@ def _segment_velocity_inputs(
 
 
 def _waveform_segment_input(
-    result: CrossSectionSignalResult | None,
+    result: VelocitySegmentResult | None,
     *,
     include_segments: bool,
 ) -> np.ndarray | None:
     if not include_segments or result is None:
         return None
-    return result.velocity
+    return result.projected_signal
 
 
 def _safe_waveform_segment_input(
-    result: CrossSectionSignalResult | None,
+    result: VelocitySegmentResult | None,
     *,
     include_segments: bool,
 ) -> np.ndarray | None:
     if not include_segments or result is None:
         return None
-    return result.safe_velocity
+    return result.full_profile_signal
 
 
 def _export_branch_identity_debug(
     ctx,
-    result: CrossSectionSignalResult,
+    result: VelocitySegmentResult,
     optic_disc_center,
     ring_settings: AnnulusGeometry,
     prefix: str,
@@ -467,7 +467,7 @@ def _export_branch_identity_debug(
         prefix,
         optic_disc_center,
         ring_settings,
-        segment_center_xy=result.segment_center_xy,
+        segment_centers_xy=result.segment_centers_xy,
         profile_window_bounds_xyxy=result.profile_window_bounds_xyxy,
     )
 

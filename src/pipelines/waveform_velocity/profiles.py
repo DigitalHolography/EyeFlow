@@ -6,23 +6,22 @@ import numpy as np
 from scipy.integrate import trapezoid
 from scipy.signal import find_peaks
 
-from calculations.blood_flow_velocity.cross_section.profile_processing import (
-    interpolate_velocity_profiles_per_beat,
-)
 from calculations.math import nanmean_float32
-from calculations.topology import dilate_segment_masks
-from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
+from calculations.topology import dilate_segment_masks, interpolate_profiles_per_beat
 from input_output.profile_datasets import (
-    _profile_dataset, _temporally_meaned_profile_dataset, _profile_h5_options,
+    _profile_dataset,
+    _profile_h5_options,
+    _temporally_meaned_profile_dataset,
 )
+from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 
 _PROFILE_MASK_DILATION_ITERATIONS = 10
 _DISPLACEMENT_PROFILE_ROOT = "Processing/DisplacementProfiles"
 _DISPLACEMENT_METRICS_ROOT = "Processing/DisplacementMetrics"
 _DISPLACEMENT_PROFILE_FIELDS = (
-    ("X", "x_sum_displacement_profile", "local_x"),
-    ("Y", "y_sum_displacement_profile", "local_y"),
+    ("X", "x_sum_profile", "local_x"),
+    ("Y", "y_sum_profile", "local_y"),
 )
 
 
@@ -177,7 +176,7 @@ def _pack_displacement_axis_profiles_for_method(
     longitudinal_root = f"{root}/Longitudinal"
     longitudinal_unmasked = _profile_dataset(
         np.asarray(
-            displacement.longitudinal_displacement_profiles_unmasked,
+            displacement.longitudinal_profiles_unmasked,
             dtype=np.float32,
         ),
         cycle_boundary_indexes,
@@ -187,7 +186,7 @@ def _pack_displacement_axis_profiles_for_method(
     )
     longitudinal_masked = _profile_dataset(
         np.asarray(
-            displacement.longitudinal_displacement_profiles_masked,
+            displacement.longitudinal_profiles_masked,
             dtype=np.float32,
         ),
         cycle_boundary_indexes,
@@ -222,7 +221,7 @@ def _pack_displacement_axis_profiles_for_method(
         )
     transverse_masked_values = getattr(
         displacement,
-        "transverse_displacement_profiles_masked",
+        "transverse_profiles_masked",
         None,
     )
     if include_transverse or transverse_masked_values is not None:
@@ -295,7 +294,7 @@ def _pack_displacement_axis_profiles_for_method(
     if include_transverse:
         transverse_unmasked = _profile_dataset(
             np.asarray(
-                displacement.transverse_displacement_profiles_unmasked,
+                displacement.transverse_profiles_unmasked,
                 dtype=np.float32,
             ),
             cycle_boundary_indexes,
@@ -342,11 +341,11 @@ def _pack_vessel_displacement_magnitudes(
         )
         outputs[path] = _segment_displacement_magnitude_dataset(
             np.asarray(
-                displacement.x_sum_displacement_profile,
+                displacement.x_sum_profile,
                 dtype=np.float32,
             ),
             np.asarray(
-                displacement.y_sum_displacement_profile,
+                displacement.y_sum_profile,
                 dtype=np.float32,
             ),
             cycle_boundary_indexes,
@@ -386,7 +385,7 @@ def _pack_vessel_displacement_profiles(
             f"{root}/Cross_sectional_radial_movement_amplitude_profile/value"
         ] = _segment_displacement_metric_dataset(
             np.asarray(
-                displacement.cross_sectional_radial_movement_amplitude,
+                displacement.radial_movement_amplitude,
                 dtype=np.float32,
             ),
             cycle_boundary_indexes,
@@ -403,7 +402,7 @@ def _pack_vessel_displacement_profiles(
             f"{root}/Cross_sectional_radial_asymmetry_index_profile/value"
         ] = _segment_displacement_metric_dataset(
             np.asarray(
-                displacement.cross_sectional_radial_asymmetry_index,
+                displacement.radial_asymmetry_index,
                 dtype=np.float32,
             ),
             cycle_boundary_indexes,
@@ -423,11 +422,11 @@ def _pack_vessel_displacement_profiles(
         outputs[f"{root}/Magnitude_displacement_profile/value"] = (
             _combined_displacement_magnitude_dataset(
                 np.asarray(
-                    displacement.x_sum_displacement_profile,
+                    displacement.x_sum_profile,
                     dtype=np.float32,
                 ),
                 np.asarray(
-                    displacement.y_sum_displacement_profile,
+                    displacement.y_sum_profile,
                     dtype=np.float32,
                 ),
                 cycle_boundary_indexes,
@@ -447,12 +446,12 @@ def _pack_vessel_profiles(
 ) -> dict[str, object]:
     valid_segments = np.asarray(segments.topology.valid_segments, dtype=bool)
     transverse_masked = np.asarray(
-        segments.transverse_velocity_profiles_masked,
+        segments.transverse_profiles_masked,
         dtype=np.float32,
     )
     outputs = {
         paths.transverse_velocity_profile_unmasked: _profile_dataset(
-            np.asarray(segments.velocity_profiles, dtype=np.float32),
+            np.asarray(segments.transverse_profiles_unmasked, dtype=np.float32),
             cycle_boundary_indexes,
             index_base=index_base,
             valid_segments=valid_segments,
@@ -466,7 +465,7 @@ def _pack_vessel_profiles(
         ),
         paths.longitudinal_velocity_profile_unmasked: _profile_dataset(
             np.asarray(
-                segments.longitudinal_velocity_profiles_unmasked,
+                segments.longitudinal_profiles_unmasked,
                 dtype=np.float32,
             ),
             cycle_boundary_indexes,
@@ -476,7 +475,7 @@ def _pack_vessel_profiles(
         ),
         paths.longitudinal_velocity_profile_masked: _profile_dataset(
             np.asarray(
-                segments.longitudinal_velocity_profiles_masked,
+                segments.longitudinal_profiles_masked,
                 dtype=np.float32,
             ),
             cycle_boundary_indexes,
@@ -823,7 +822,7 @@ def _summed_displacement_profile_dataset(
             "summed displacement profiles must have shape "
             "(radius, branch, frame)."
         )
-    profiles_per_beat = interpolate_velocity_profiles_per_beat(
+    profiles_per_beat = interpolate_profiles_per_beat(
         profiles[..., None],
         cycle_boundary_indexes,
         index_base=index_base,
@@ -859,7 +858,7 @@ def _segment_displacement_metric_dataset(
             "segment displacement metrics must have shape "
             "(radius, branch, frame)."
         )
-    profiles_per_beat = interpolate_velocity_profiles_per_beat(
+    profiles_per_beat = interpolate_profiles_per_beat(
         profiles[..., None],
         cycle_boundary_indexes,
         index_base=index_base,
@@ -896,7 +895,7 @@ def _segment_displacement_magnitude_dataset(
         np.float32,
         copy=False,
     )
-    profiles_per_beat = interpolate_velocity_profiles_per_beat(
+    profiles_per_beat = interpolate_profiles_per_beat(
         magnitude[..., None],
         cycle_boundary_indexes,
         index_base=index_base,
@@ -940,7 +939,7 @@ def _combined_displacement_magnitude_dataset(
         dtype=np.float32,
     )
     vessel_magnitude[~np.any(finite, axis=(0, 1))] = np.nan
-    profiles_per_beat = interpolate_velocity_profiles_per_beat(
+    profiles_per_beat = interpolate_profiles_per_beat(
         vessel_magnitude[None, None, :, None],
         cycle_boundary_indexes,
         index_base=index_base,
@@ -1086,12 +1085,12 @@ def _pack_vessel_velocity_fft_profiles(
         return {}
     unmasked_values = getattr(
         segments,
-        "transverse_velocity_fft_profiles_unmasked",
+        "transverse_fft_profiles_unmasked",
         None,
     )
     masked_values = getattr(
         segments,
-        "transverse_velocity_fft_profiles_masked",
+        "transverse_fft_profiles_masked",
         None,
     )
     if unmasked_values is None or masked_values is None:

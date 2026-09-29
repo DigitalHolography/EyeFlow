@@ -14,28 +14,23 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.blood_flow_velocity import (  # noqa: E402
-    CrossSectionSignalSettings,
-)
-from calculations.topology.branch_identity import (  # noqa: E402
-    _branch_identity_stages,
-)
-from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (
-    _dilate_profile_mask,
-)
+from calculations.segment_profiles import SegmentProfileSettings  # noqa: E402
 from calculations.topology import (  # noqa: E402
     OpticDisc,
     ring_masks,
     section_masks,
 )
+from calculations.topology.branch_identity import (  # noqa: E402
+    _branch_identity_stages,
+)
 from pipelines.waveform_velocity_core.branch_identity_debug import (  # noqa: E402
     _labels_with_substack_boxes,
 )
-from pipelines.waveform_velocity_core.segments import (  # noqa: E402
-    analyze_velocity_segment_profiles,
-)
 from pipelines.waveform_velocity_core.cross_section_images import (  # noqa: E402
     export_rotated_mean_pngs,
+)
+from pipelines.waveform_velocity_core.segments import (  # noqa: E402
+    analyze_velocity_segment_profiles,
 )
 from utils.logger import Logger  # noqa: E402
 
@@ -105,7 +100,7 @@ class SegmentCenterTests(unittest.TestCase):
             ring_count=2,
             segment_length_frac=None,
         )
-        settings = CrossSectionSignalSettings(0.01, 1.0)
+        settings = SegmentProfileSettings(0.01, 1.0)
 
         results = analyze_velocity_segment_profiles(
             velocity,
@@ -123,33 +118,19 @@ class SegmentCenterTests(unittest.TestCase):
 
         for result in results.values():
             self.assertGreater(result.branch_ids.size, 0)
-            self.assertIsNone(result.velocity_maps_per_segment)
-            self.assertEqual((0, 2), result.velocity_map_segment_indexes.shape)
+            self.assertIsNone(result.segment_maps)
+            self.assertEqual((0, 2), result.segment_map_indexes.shape)
             self.assertEqual(
                 (181, 2, 1, result.branch_ids.size, 2),
-                result.transverse_velocity_fft_profiles_unmasked.shape,
+                result.transverse_fft_profiles_unmasked.shape,
             )
             self.assertEqual(
-                result.transverse_velocity_fft_profiles_unmasked.shape,
-                result.transverse_velocity_fft_profiles_masked.shape,
+                result.transverse_fft_profiles_unmasked.shape,
+                result.transverse_fft_profiles_masked.shape,
             )
             valid = result.topology.valid_segments
             self.assertTrue(np.any(valid))
-            np.testing.assert_allclose(result.velocity[valid], 1.0)
-
-    def test_profile_mask_dilation_expands_ten_pixels_horizontally(self) -> None:
-        mask = np.zeros((51, 51), dtype=bool)
-        mask[25, 25] = True
-
-        dilated = _dilate_profile_mask(mask, 10)
-
-        self.assertEqual(np.bool_, dilated.dtype)
-        self.assertEqual(21, int(np.count_nonzero(dilated)))
-        self.assertTrue(np.all(dilated[25, 15:36]))
-        self.assertFalse(np.any(dilated[:25]))
-        self.assertFalse(np.any(dilated[26:]))
-        self.assertFalse(np.any(dilated[:, :15]))
-        self.assertEqual(1, int(np.count_nonzero(mask)))
+            np.testing.assert_allclose(result.projected_signal[valid], 1.0)
 
     def test_substack_debug_overlay_marks_shared_box_edges(self) -> None:
         labels = np.ones((20, 20), dtype=np.int32)
@@ -160,7 +141,7 @@ class SegmentCenterTests(unittest.TestCase):
             ring_count=2,
         )
         centers = np.asarray(
-            [[[5.0, 5.0], [np.nan, np.nan]], [[7.0, 5.0], [np.nan, np.nan]]],
+            [[[5.0, 5.0], [7.0, 5.0]], [[np.nan, np.nan], [np.nan, np.nan]]],
             dtype=np.float32,
         )
 

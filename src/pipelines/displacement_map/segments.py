@@ -7,9 +7,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (
-    CrossSectionDisplacementResult,
-)
 from calculations.topology import (
     PreparedTopology,
     dilate_segment_masks,
@@ -17,7 +14,6 @@ from calculations.topology import (
     prepare_segment_chunks,
     transverse_profiles,
 )
-
 
 PROFILE_MASK_DILATION_ITERATIONS = 10
 
@@ -43,10 +39,10 @@ def analyze_displacement_segments(
     *,
     retain_maps: bool,
     working_memory_mb: float,
-) -> dict[str, CrossSectionDisplacementResult]:
+) -> dict[str, DisplacementSegmentResult]:
     """Prepare bounded topology-aligned displacement chunks by method."""
 
-    results: dict[str, CrossSectionDisplacementResult] = {}
+    results: dict[str, DisplacementSegmentResult] = {}
     ring_count, branch_count = topology.rotation_degrees.shape
     canvas_side = int(topology.rotated_masks.shape[-1])
     profile_masks = dilate_segment_masks(
@@ -71,8 +67,6 @@ def analyze_displacement_segments(
         y_sum = filled(signal_shape)
         radial_amplitude = filled(signal_shape)
         radial_asymmetry = filled(signal_shape)
-        displacement = filled(signal_shape)
-        safe_displacement = filled(signal_shape)
         for prepared in prepare_segment_chunks(
             displacement_map,
             topology,
@@ -103,32 +97,22 @@ def analyze_displacement_segments(
             )
             x_sum[output_index] = _finite_sum(vectors[..., 0], axis=(-2, -1))
             y_sum[output_index] = _finite_sum(vectors[..., 1], axis=(-2, -1))
-            displacement[output_index] = _mean_in_region(
-                vectors[..., 1],
-                profile_masks[segment_index],
-            )
-            safe_displacement[output_index] = _finite_mean(
-                vectors[..., 1],
-                axis=(-2, -1),
-            )
             amplitude, asymmetry = _radial_metrics(
                 vectors,
                 topology.rotated_masks[segment_index],
             )
             radial_amplitude[output_index] = amplitude
             radial_asymmetry[output_index] = asymmetry
-        results[str(method)] = CrossSectionDisplacementResult(
-            displacement=displacement,
-            safe_displacement=safe_displacement,
-            displacement_maps_per_segment=maps,
-            transverse_displacement_profiles_unmasked=transverse_unmasked,
-            transverse_displacement_profiles_masked=transverse_masked,
-            longitudinal_displacement_profiles_unmasked=longitudinal_unmasked,
-            longitudinal_displacement_profiles_masked=longitudinal_masked,
-            x_sum_displacement_profile=x_sum,
-            y_sum_displacement_profile=y_sum,
-            cross_sectional_radial_movement_amplitude=radial_amplitude,
-            cross_sectional_radial_asymmetry_index=radial_asymmetry,
+        results[str(method)] = DisplacementSegmentResult(
+            maps=maps,
+            transverse_profiles_unmasked=transverse_unmasked,
+            transverse_profiles_masked=transverse_masked,
+            longitudinal_profiles_unmasked=longitudinal_unmasked,
+            longitudinal_profiles_masked=longitudinal_masked,
+            x_sum_profile=x_sum,
+            y_sum_profile=y_sum,
+            radial_movement_amplitude=radial_amplitude,
+            radial_asymmetry_index=radial_asymmetry,
         )
     return results
 
@@ -221,18 +205,6 @@ def _finite_sum(values: np.ndarray, *, axis: tuple[int, ...]) -> np.ndarray:
     total = np.sum(values, axis=axis, dtype=np.float32, where=finite)
     total[count == 0] = np.nan
     return total
-
-
-def _finite_mean(values: np.ndarray, *, axis: tuple[int, ...]) -> np.ndarray:
-    finite = np.isfinite(values)
-    count = np.sum(finite, axis=axis, dtype=np.int32)
-    total = np.sum(values, axis=axis, dtype=np.float32, where=finite)
-    return np.divide(
-        total,
-        count,
-        out=np.full(total.shape, np.nan, dtype=np.float32),
-        where=count > 0,
-    )
 
 
 __all__ = ["DisplacementSegmentResult", "analyze_displacement_segments"]

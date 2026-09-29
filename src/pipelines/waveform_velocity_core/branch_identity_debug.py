@@ -6,10 +6,11 @@ import numpy as np
 from scipy import ndimage as ndi
 
 from calculations.topology import (
-    BranchIdentityStages,
     AnnulusGeometry,
+    BranchIdentityStages,
     annulus_mask,
 )
+
 
 def export_branch_identity_stage_pngs(
     output,
@@ -18,12 +19,12 @@ def export_branch_identity_stage_pngs(
     optic_disc_center,
     ring_settings: AnnulusGeometry,
     *,
-    segment_center_xy: np.ndarray | None = None,
+    segment_centers_xy: np.ndarray | None = None,
     profile_window_bounds_xyxy: np.ndarray | None = None,
 ) -> list[str]:
     paths = []
     stage_images = list(_stage_images(stages, optic_disc_center, ring_settings))
-    if segment_center_xy is not None and profile_window_bounds_xyxy is not None:
+    if segment_centers_xy is not None and profile_window_bounds_xyxy is not None:
         stage_images.append(
             (
                 "13_substack_boxes_on_labels_with_rings",
@@ -31,7 +32,7 @@ def export_branch_identity_stage_pngs(
                     stages.per_circle_cleaned_labels,
                     optic_disc_center,
                     ring_settings,
-                    segment_center_xy,
+                    segment_centers_xy,
                     profile_window_bounds_xyxy,
                 ),
             )
@@ -107,7 +108,7 @@ def _labels_with_substack_boxes(
     labels: np.ndarray,
     optic_disc_center,
     ring_settings: AnnulusGeometry,
-    segment_center_xy: np.ndarray,
+    segment_centers_xy: np.ndarray,
     profile_window_bounds_xyxy: np.ndarray,
 ) -> np.ndarray:
     """Overlay the actual rotating substacks on the stage-12 label image.
@@ -117,7 +118,7 @@ def _labels_with_substack_boxes(
     the later box drawn.
     """
     image = _labels_with_ring_overlay(labels, optic_disc_center, ring_settings)
-    centers = np.asarray(segment_center_xy, dtype=np.float32)
+    centers = np.asarray(segment_centers_xy, dtype=np.float32)
     bounds = np.asarray(profile_window_bounds_xyxy, dtype=np.int32)
     if (
         centers.ndim != 3
@@ -129,11 +130,11 @@ def _labels_with_substack_boxes(
 
     box_counts = np.zeros(labels.shape, dtype=np.uint8)
     box_colors = np.zeros((*labels.shape, 3), dtype=np.uint8)
-    for branch_index in range(centers.shape[0]):
-        for ring_index in range(
-            min(centers.shape[1], int(ring_settings.ring_count))
-        ):
-            center = centers[branch_index, ring_index]
+    for ring_index in range(
+        min(centers.shape[0], int(ring_settings.ring_count))
+    ):
+        for branch_index in range(centers.shape[1]):
+            center = centers[ring_index, branch_index]
             if (
                 not np.all(np.isfinite(center))
                 or ring_index >= bounds.shape[0]

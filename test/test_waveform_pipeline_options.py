@@ -204,7 +204,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
             source_data=SimpleNamespace(
                 provenance={"beat_index_base": 1},
-                cross_section_settings=SimpleNamespace(pixel_size_mm=0.01),
+                profile_settings=SimpleNamespace(pixel_size_mm=0.01),
             ),
         )
         ctx = _context(
@@ -576,7 +576,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             retinal_artery_mask="artery_mask",
             retinal_vein_mask="vein_mask",
             optic_disc="optic_disc",
-            cross_section_settings="settings",
+            profile_settings="settings",
             provenance={"beat_index_base": 1},
         )
         ctx = SimpleNamespace(
@@ -617,7 +617,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             retinal_artery_mask="artery_mask",
             retinal_vein_mask="vein_mask",
             optic_disc="optic_disc",
-            cross_section_settings="settings",
+            profile_settings="settings",
             provenance={"beat_index_base": 0},
         )
         ctx = SimpleNamespace(

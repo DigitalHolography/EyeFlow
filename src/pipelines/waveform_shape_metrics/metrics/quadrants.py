@@ -48,7 +48,7 @@ def pack_quadrant_metrics(
 
         branch_ids = np.asarray(segments.branch_ids, dtype=np.int32).reshape(-1)
         labels = np.asarray(segments.labels, dtype=np.int32)
-        centers = np.asarray(segments.segment_center_xy, dtype=float)
+        centers = np.asarray(segments.segment_centers_xy, dtype=float)
         center_xy = np.asarray(
             segments.topology.optic_disc_center_xy,
             dtype=float,
@@ -79,7 +79,10 @@ def _read_segment_metrics(
     if segments.branch_ids.size == 0:
         return None
 
-    expected_tail = (int(segments.branch_ids.size), int(segments.velocity.shape[0]))
+    expected_tail = (
+        int(segments.branch_ids.size),
+        int(segments.projected_signal.shape[0]),
+    )
     outputs: dict[str, dict[str, np.ndarray]] = {}
     for signal_type, group_name in (
         ("raw", "raw_segment"),

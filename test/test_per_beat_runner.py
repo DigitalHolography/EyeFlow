@@ -13,6 +13,9 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from calculations.blood_flow_velocity.signal_analysis.heartbeat import (  # noqa: E402
+    spectral_heartbeat_analysis,
+)
 from calculations.blood_flow_velocity.signal_analysis.per_beat.runner import (  # noqa: E402
     PerBeatAnalysisInput,
     run_per_beat_analysis,
@@ -21,16 +24,13 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.segments import (
     PerBeatSegmentAnalysisResult,
     aggregate_per_beat_segment_analysis,
 )
-from calculations.blood_flow_velocity.signal_analysis.heartbeat import (  # noqa: E402
-    spectral_heartbeat_analysis,
-)
 from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  # noqa: E402
     per_beat_signal_analysis,
 )
+from calculations.math import band_limited_ifft_abs  # noqa: E402
 from calculations.retinal_velocity.vessel_velocity_estimator import (  # noqa: E402
     _velocity_from_delta_frequency,
 )
-from calculations.math import band_limited_ifft_abs  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from pipelines.waveform_velocity_core.per_beat_outputs import (  # noqa: E402
     pack_velocity_per_beat_outputs,
@@ -46,7 +46,7 @@ class PerBeatRunnerTests(unittest.TestCase):
         safe_velocity = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
         result = SimpleNamespace(
             branch_ids=np.asarray([1, 2, 3], dtype=np.int32),
-            safe_velocity=safe_velocity,
+            full_profile_signal=safe_velocity,
         )
 
         actual = _safe_waveform_segment_input(result, include_segments=True)

@@ -15,8 +15,10 @@ from calculations.topology.workflow import prepare_segments, prepare_topology
 class TopologyWorkflowTests(unittest.TestCase):
     def test_both_transform_workflows_use_the_standard_topology(self) -> None:
         from calculations.topology import (
-            extract_segment, interpolate_segments, rotate_segments,
+            extract_segment,
+            interpolate_segments,
             resample_rotate_segment,
+            rotate_segments,
         )
         vessel = np.zeros((41, 41), dtype=bool)
         vessel[18:23, 5:36] = True
@@ -106,7 +108,6 @@ class TopologyWorkflowTests(unittest.TestCase):
         )
 
     def test_velocity_and_generic_profiles_share_authoritative_topology(self) -> None:
-        from calculations.blood_flow_velocity import CrossSectionSignalSettings
         from calculations.segment_profiles import (
             SegmentProfileSettings,
             analyze_segment_profiles,
@@ -144,7 +145,7 @@ class TopologyWorkflowTests(unittest.TestCase):
                 {"artery": vessel},
                 optic_disc,
                 rings,
-                CrossSectionSignalSettings(0.01),
+                SegmentProfileSettings(0.01),
                 prepared_topologies=topologies,
             )["artery"]
 
@@ -156,7 +157,7 @@ class TopologyWorkflowTests(unittest.TestCase):
         np.testing.assert_array_equal(generic.branch_ids, velocity.branch_ids)
         np.testing.assert_allclose(
             generic.segment_centers_xy,
-            np.transpose(velocity.segment_center_xy, (1, 0, 2)),
+            velocity.segment_centers_xy,
             equal_nan=True,
         )
         np.testing.assert_allclose(

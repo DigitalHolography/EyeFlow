@@ -17,16 +17,10 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.blood_flow_velocity.cross_section.profile_processing import (  # noqa: E402
-    interpolate_velocity_profiles_per_beat,
-)
-from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (  # noqa: E402
-    CrossSectionProfileOutputs,
-    _gpu_nanmean,
-)
-from calculations.compute_backend import optional_cupy_backend  # noqa: E402
-from calculations.topology import profiles as topology_profiles  # noqa: E402
 from calculations.math import rotate_image_with_nan  # noqa: E402
+from calculations.segment_profiles import SegmentProfileResult  # noqa: E402
+from calculations.topology import interpolate_profiles_per_beat  # noqa: E402
+from calculations.topology import profiles as topology_profiles  # noqa: E402
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
@@ -42,28 +36,6 @@ from pipelines.waveform_velocity_core.figures.profiles import (  # noqa: E402
 
 
 class CrossSectionProfilePackingTests(unittest.TestCase):
-    def test_gpu_nanmean_avoids_unsupported_ufunc_where_argument(self) -> None:
-        backend = optional_cupy_backend()
-        if backend is None:
-            self.skipTest("CuPy/CUDA is unavailable.")
-
-        cupy = backend.cupy
-        values = cupy.asarray(
-            [
-                [[1.0, cupy.nan], [3.0, cupy.nan]],
-                [[2.0, 4.0], [4.0, 6.0]],
-            ],
-            dtype=cupy.float32,
-        )
-
-        result = cupy.asnumpy(_gpu_nanmean(values, axis=1, cupy=cupy))
-
-        np.testing.assert_allclose(
-            result,
-            np.asarray([[2.0, np.nan], [3.0, 5.0]], dtype=np.float32),
-            equal_nan=True,
-        )
-
     def test_obsolete_centering_poiseuille_and_inverse_fit_interfaces_are_gone(self) -> None:
         removed = {
             "centered_velocity_profiles",
@@ -76,7 +48,7 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
             "poiseuille_roots_micrometers",
             "poiseuille_r_squared",
         }
-        self.assertTrue(removed.isdisjoint(CrossSectionProfileOutputs.__dataclass_fields__))
+        self.assertTrue(removed.isdisjoint(SegmentProfileResult.__dataclass_fields__))
         self.assertFalse(
             hasattr(topology_profiles, "fit_inverse_parabola_profiles_with_roots")
         )
@@ -140,7 +112,7 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
             "calculations.topology.profile_interpolation.resample",
             wraps=scipy_resample,
         ) as resample:
-            result = interpolate_velocity_profiles_per_beat(
+            result = interpolate_profiles_per_beat(
                 profiles,
                 [0, 2, 5],
                 valid_segments=np.array([[True, False]]),
@@ -222,10 +194,10 @@ def _segments(*, radius_count: int, branch_count: int):
             valid_segments=np.ones((radius_count, branch_count), dtype=bool)
         ),
         branch_ids=np.arange(1, branch_count + 1, dtype=np.int32),
-        velocity_profiles=profiles,
-        transverse_velocity_profiles_masked=masked,
-        longitudinal_velocity_profiles_unmasked=profiles + np.float32(50),
-        longitudinal_velocity_profiles_masked=masked + np.float32(100),
+        transverse_profiles_unmasked=profiles,
+        transverse_profiles_masked=masked,
+        longitudinal_profiles_unmasked=profiles + np.float32(50),
+        longitudinal_profiles_masked=masked + np.float32(100),
     )
 
 

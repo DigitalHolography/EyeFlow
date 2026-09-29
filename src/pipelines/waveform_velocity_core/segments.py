@@ -8,18 +8,16 @@ from time import perf_counter
 import numpy as np
 from scipy.signal import resample
 
-from calculations.blood_flow_velocity.cross_section.generate_cross_section_signals import (
-    _ARTERY_TRANSVERSE_MASK_DILATION_PIXELS,
-    CrossSectionSignalResult,
-    CrossSectionSignalSettings,
-    CrossSectionTopology,
-)
 from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils import (
     normalize_cycle_boundaries,
 )
 from calculations.compute_backend import optional_cupy_backend
 from calculations.math import nanmean_float32, next_power_of_two
-from calculations.segment_profiles import SegmentProfileResult, analyze_segment_profiles
+from calculations.segment_profiles import (
+    SegmentProfileResult,
+    SegmentProfileSettings,
+    analyze_segment_profiles,
+)
 from calculations.topology import (
     AnnulusGeometry,
     OpticDisc,
@@ -27,7 +25,10 @@ from calculations.topology import (
 )
 from utils.logger import Logger
 
+from .models import VelocitySegmentResult
+
 _FFT_PROFILE_X_BATCH = 32
+_ARTERY_TRANSVERSE_MASK_DILATION_PIXELS = 10
 
 
 class _VelocityProfileFftAccumulator:
@@ -324,7 +325,7 @@ def analyze_velocity_segment_profiles(
     vessel_masks: Mapping[str, object],
     optic_disc: OpticDisc,
     ring_settings: AnnulusGeometry,
-    cross_section_settings: CrossSectionSignalSettings,
+    profile_settings: SegmentProfileSettings,
     *,
     source_id: str = "",
     topology_cache: MutableMapping[TopologyCacheKey, object] | None = None,
@@ -338,7 +339,7 @@ def analyze_velocity_segment_profiles(
     post_interpolation=None,
     temporal_halo: int = 0,
     scratch_array_count: int | None = None,
-) -> dict[str, CrossSectionSignalResult]:
+) -> dict[str, VelocitySegmentResult]:
     """Measure velocity profiles and attach velocity-only optional products."""
 
     if not vessel_masks:
@@ -377,7 +378,7 @@ def analyze_velocity_segment_profiles(
         vessel_masks,
         optic_disc,
         ring_settings,
-        cross_section_settings,
+        profile_settings,
         source_id=source_id,
         topology_cache=topology_cache,
         retain_segment_maps=retain_velocity_maps,
@@ -390,7 +391,7 @@ def analyze_velocity_segment_profiles(
         segment_observer_factory=segment_observer_factory,
     )
 
-    results: dict[str, CrossSectionSignalResult] = {}
+    results: dict[str, VelocitySegmentResult] = {}
     for name, profile_result in profile_results.items():
         accumulator = fft_profiles.get(name)
         results[name] = _velocity_result(
@@ -409,64 +410,15 @@ def _velocity_result(
     profiles: SegmentProfileResult,
     *,
     fft_profiles: _VelocityProfileFftAccumulator | None,
-) -> CrossSectionSignalResult:
-    """Adapt a neutral profile result to the established velocity result schema."""
+) -> VelocitySegmentResult:
+    """Attach velocity-only optional products to neutral segment profiles."""
 
-    profile_topology = profiles.topology
-    legacy_centers = np.transpose(
-        profile_topology.segment_centers_xy,
-        (1, 0, 2),
-    ).copy()
-    topology = CrossSectionTopology(
-        spatial_shape=profile_topology.spatial_shape,
-        optic_disc_center_xy=profile_topology.optic_disc_center_xy,
-        frame_count=profile_topology.frame_count,
-        labels=profile_topology.labels,
-        branch_ids=profile_topology.branch_ids,
-        segment_masks=profile_topology.segment_masks,
-        segment_center_xy=legacy_centers,
-        profile_window_bounds_xyxy=profile_topology.profile_window_bounds_xyxy,
-        profile_window_side_pixels=profile_topology.profile_window_side_pixels,
-        profile_pixel_size_mm=profile_topology.profile_pixel_size_mm,
-        profile_rotation_degrees=profile_topology.profile_rotation_degrees,
-        profile_integration_limits_pixels=(
-            profile_topology.profile_integration_limits_pixels
-        ),
-        valid_segments=profile_topology.valid_segments,
-        ring_settings=profile_topology.ring_settings,
-        branch_identity=profile_topology.branch_identity,
-        prepared_topology=profile_topology.prepared_topology,
-    )
-    return CrossSectionSignalResult(
-        velocity=profiles.projected_signal,
-        safe_velocity=profiles.full_profile_signal,
-        velocity_maps_per_segment=profiles.segment_maps,
-        velocity_map_segment_indexes=profiles.segment_map_indexes,
-        segment_masks=profiles.segment_masks,
-        labels=profiles.labels,
-        branch_ids=profiles.branch_ids,
-        segment_center_xy=legacy_centers,
-        branch_identity=profiles.branch_identity,
-        topology=topology,
-        displacements={},
-        velocity_profiles=profiles.transverse_profiles_unmasked,
-        transverse_velocity_profiles_masked=profiles.transverse_profiles_masked,
-        longitudinal_velocity_profiles_unmasked=(
-            profiles.longitudinal_profiles_unmasked
-        ),
-        longitudinal_velocity_profiles_masked=profiles.longitudinal_profiles_masked,
-        profile_sample_count=profiles.profile_sample_count,
-        profile_rotation_degrees=profiles.profile_rotation_degrees,
-        rotated_mean_images=profiles.rotated_mean_images,
-        rotated_mean_images_masked=profiles.rotated_mean_images_masked,
-        profile_window_bounds_xyxy=profiles.profile_window_bounds_xyxy,
-        profile_window_side_pixels=profiles.profile_window_side_pixels,
-        profile_pixel_size_mm=profiles.profile_pixel_size_mm,
-        profile_integration_limits_pixels=profiles.profile_integration_limits_pixels,
-        transverse_velocity_fft_profiles_unmasked=(
+    return VelocitySegmentResult.from_profile_result(
+        profiles,
+        transverse_fft_profiles_unmasked=(
             fft_profiles.unmasked if fft_profiles else None
         ),
-        transverse_velocity_fft_profiles_masked=(
+        transverse_fft_profiles_masked=(
             fft_profiles.masked if fft_profiles else None
         ),
     )

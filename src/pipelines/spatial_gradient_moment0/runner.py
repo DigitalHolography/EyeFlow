@@ -22,7 +22,6 @@ from .profiles import (
     pack_spatial_gradient_profile_outputs,
 )
 
-
 SPATIAL_GRADIENT_PRODUCTS_STATE = "spatial_gradient_moment0.products"
 
 
@@ -133,15 +132,11 @@ def _validate_profile_segment_alignment(
 
 
 def _ring_branch_segment_centers(segments) -> np.ndarray:
-    if hasattr(segments, "segment_centers_xy"):
-        return np.asarray(segments.segment_centers_xy)
-    return np.transpose(np.asarray(segments.segment_center_xy), (1, 0, 2))
+    return np.asarray(segments.segment_centers_xy)
 
 
 def _unmasked_transverse_profiles(segments) -> np.ndarray:
-    if hasattr(segments, "transverse_profiles_unmasked"):
-        return np.asarray(segments.transverse_profiles_unmasked)
-    return np.asarray(segments.velocity_profiles)
+    return np.asarray(segments.transverse_profiles_unmasked)
 
 
 __all__ = [

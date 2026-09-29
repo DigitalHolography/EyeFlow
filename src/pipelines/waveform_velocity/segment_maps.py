@@ -74,15 +74,15 @@ def _prepare_vessel_velocity_maps_per_beat(
 ) -> np.ndarray | None:
     if segments is None:
         return None
-    if segments.velocity_maps_per_segment is None:
+    if segments.segment_maps is None:
         raise RuntimeError(
             "Per-segment velocity maps were not retained. They must be "
             "explicitly requested during waveform-velocity core processing."
         )
-    maps = np.asarray(segments.velocity_maps_per_segment)
+    maps = np.asarray(segments.segment_maps)
     compact_arguments = (
         {
-            "segment_indexes": segments.velocity_map_segment_indexes,
+            "segment_indexes": segments.segment_map_indexes,
             "radius_count": int(segments.segment_masks.shape[0]),
             "branch_count": int(segments.segment_masks.shape[1]),
         }
@@ -135,7 +135,7 @@ def _pack_vessel_displacement_maps(
     displacement_results = getattr(segments, "displacements", {})
     for raw_method, displacement in sorted(displacement_results.items()):
         method = _hdf_method_name(raw_method)
-        if displacement.displacement_maps_per_segment is None:
+        if displacement.maps is None:
             raise RuntimeError(
                 "Per-segment displacement maps were not retained. They must be "
                 "requested during waveform-velocity core processing."
@@ -143,7 +143,7 @@ def _pack_vessel_displacement_maps(
         displacement_maps_per_beat = np.stack(
             [
                 interpolate_velocity_maps_per_beat(
-                    displacement.displacement_maps_per_segment[
+                    displacement.maps[
                         ..., component_index
                     ],
                     cycle_boundary_indexes,

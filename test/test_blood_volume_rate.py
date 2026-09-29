@@ -97,7 +97,7 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
     prepared = object()
     velocity_topology = SimpleNamespace(
         valid_segments=np.ones((1, 1), dtype=bool),
-        segment_center_xy=np.asarray([[[2.0, 3.0]]], dtype=np.float32),
+        segment_centers_xy=np.asarray([[[2.0, 3.0]]], dtype=np.float32),
         profile_rotation_degrees=np.asarray([[17.0]], dtype=np.float32),
         prepared_topology=prepared,
     )
@@ -109,7 +109,7 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         labels=np.asarray([[1]], dtype=np.int32),
         branch_ids=np.asarray([1], dtype=np.int32),
         topology=velocity_topology,
-        transverse_velocity_profiles_masked=profiles,
+        transverse_profiles_masked=profiles,
         profile_pixel_size_mm=0.02,
     )
     gradient_segments = SimpleNamespace(

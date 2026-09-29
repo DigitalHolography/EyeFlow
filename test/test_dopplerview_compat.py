@@ -161,7 +161,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
             )
 
         ring_settings = source_data.optic_disc.annulus_geometry((200, 400))
-        cross_section = source_data.cross_section_settings
+        cross_section = source_data.profile_settings
         radius_scale = np.hypot(99.5, 199.5)
         expected_width = 400 / 25 / radius_scale
         self.assertAlmostEqual(2.0 / radius_scale, ring_settings.inner_radius_frac)

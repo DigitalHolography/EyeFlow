@@ -198,8 +198,8 @@ def _segments(*, radius_count: int, branch_count: int):
     masks = np.zeros((radius_count, branch_count, 3, 4), dtype=bool)
     masks[..., 1:, 1:3] = True
     return SimpleNamespace(
-        velocity_maps_per_segment=maps,
-        velocity_map_segment_indexes=indexes,
+        segment_maps=maps,
+        segment_map_indexes=indexes,
         segment_masks=masks,
     )
 

@@ -2,7 +2,7 @@
   "pipeline_visibility": {
     "absolute_waveform_metrics": true,
     "blood_volume_rate": true,
-    "displacement_map": true,
+    "displacement_map": false,
     "lowrank_waveform_decomposition": true,
     "pdf_report": true,
     "spatial_gradient_moment0": false,
@@ -17,7 +17,7 @@
       "segments": true
     },
     "blood_volume_rate": {
-      "gradient_edges": true,
+      "gradient_edges": false,
       "masked_edges": true
     },
     "lowrank_waveform_decomposition": {
@@ -32,7 +32,7 @@
       "quadrants": true,
       "per_beat": true,
       "segments": true,
-      "velocity_profiles": false,
+      "velocity_profiles": true,
       "velocity_profile_fft": false,
       "segment_velocity_maps": false
     }

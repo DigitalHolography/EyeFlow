@@ -65,7 +65,7 @@ def pack_gradient_edge_outputs(
     for vessel_name, velocity, gradient, paths in vessels:
         _validate_profile_segment_alignment(vessel_name, velocity, gradient)
         profile = _profile_dataset(
-            np.asarray(velocity.transverse_velocity_profiles_masked, dtype=np.float32),
+            np.asarray(velocity.transverse_profiles_masked, dtype=np.float32),
             cycle_boundary_indexes,
             index_base=index_base,
             spatial_axis="x",
@@ -494,10 +494,7 @@ def _validate_profile_segment_alignment(vessel_name, velocity, gradient) -> None
             raise RuntimeError(f"{vessel_name} segment {field} do not match.")
     velocity_topology = velocity.topology
     gradient_topology = gradient.topology
-    velocity_centers = np.transpose(
-        np.asarray(velocity_topology.segment_center_xy),
-        (1, 0, 2),
-    )
+    velocity_centers = np.asarray(velocity_topology.segment_centers_xy)
     if not np.allclose(
         velocity_centers,
         np.asarray(gradient_topology.segment_centers_xy),

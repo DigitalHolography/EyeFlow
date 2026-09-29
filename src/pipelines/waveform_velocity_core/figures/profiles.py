@@ -29,7 +29,7 @@ def export_cross_section_profile_artifacts(
         if segments is None:
             continue
         raw = np.asarray(
-            segments.transverse_velocity_profiles_masked,
+            segments.transverse_profiles_masked,
             dtype=np.float32,
         )
         if raw.ndim != 4 or raw.shape[-1] == 0 or not np.any(np.isfinite(raw)):

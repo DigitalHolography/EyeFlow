@@ -271,12 +271,12 @@ class DisplacementOutputTests(unittest.TestCase):
     ) -> None:
         shape = (2, 3, 131)
         displacement = SimpleNamespace(
-            x_sum_displacement_profile=np.full(
+            x_sum_profile=np.full(
                 shape,
                 3.0,
                 dtype=np.float32,
             ),
-            y_sum_displacement_profile=np.full(
+            y_sum_profile=np.full(
                 shape,
                 4.0,
                 dtype=np.float32,
@@ -567,10 +567,10 @@ class DisplacementOutputTests(unittest.TestCase):
             dtype=np.float32,
         )[:, :, None, None]
         for field in (
-            "transverse_displacement_profiles_unmasked",
-            "transverse_displacement_profiles_masked",
-            "longitudinal_displacement_profiles_unmasked",
-            "longitudinal_displacement_profiles_masked",
+            "transverse_profiles_unmasked",
+            "transverse_profiles_masked",
+            "longitudinal_profiles_unmasked",
+            "longitudinal_profiles_masked",
         ):
             base_profile = getattr(displacement, field)
             setattr(displacement, field, base_profile * segment_scales)
@@ -620,10 +620,10 @@ class DisplacementOutputTests(unittest.TestCase):
         frame_scales = np.arange(1, 7, dtype=np.float32)[None, None, :, None]
         profiles = curves[:, :, None, :] * frame_scales
         displacement = SimpleNamespace(
-            transverse_displacement_profiles_unmasked=profiles,
-            transverse_displacement_profiles_masked=profiles,
-            longitudinal_displacement_profiles_unmasked=profiles,
-            longitudinal_displacement_profiles_masked=profiles,
+            transverse_profiles_unmasked=profiles,
+            transverse_profiles_masked=profiles,
+            longitudinal_profiles_unmasked=profiles,
+            longitudinal_profiles_masked=profiles,
         )
         segments = SimpleNamespace(
             displacements={"level_set_motion": displacement}
@@ -804,25 +804,25 @@ def _segments():
 
     def result(scale: float):
         return SimpleNamespace(
-            displacement_maps_per_segment=vector_maps * scale,
-            transverse_displacement_profiles_unmasked=(
+            maps=vector_maps * scale,
+            transverse_profiles_unmasked=(
                 profile_time * scale
             ),
-            transverse_displacement_profiles_masked=(
+            transverse_profiles_masked=(
                 profile_time * np.float32(2.0) * scale
             ),
-            longitudinal_displacement_profiles_unmasked=(
+            longitudinal_profiles_unmasked=(
                 profile_time * np.float32(3.0) * scale
             ),
-            longitudinal_displacement_profiles_masked=(
+            longitudinal_profiles_masked=(
                 profile_time * np.float32(4.0) * scale
             ),
-            x_sum_displacement_profile=x_sum_profile * scale,
-            y_sum_displacement_profile=y_sum_profile * scale,
-            cross_sectional_radial_movement_amplitude=(
+            x_sum_profile=x_sum_profile * scale,
+            y_sum_profile=y_sum_profile * scale,
+            radial_movement_amplitude=(
                 radial_amplitude * scale
             ),
-            cross_sectional_radial_asymmetry_index=radial_asymmetry,
+            radial_asymmetry_index=radial_asymmetry,
         )
 
     return SimpleNamespace(

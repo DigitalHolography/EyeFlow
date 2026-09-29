@@ -57,7 +57,7 @@ def run_blood_volume_rate(ctx) -> dict[str, object]:
             prepared_topologies(ctx),
             velocity_outputs,
             pixel_size_mm=float(
-                context.source_data.cross_section_settings.pixel_size_mm
+                context.source_data.profile_settings.pixel_size_mm
             ),
         )
         outputs.update(mask_outputs)

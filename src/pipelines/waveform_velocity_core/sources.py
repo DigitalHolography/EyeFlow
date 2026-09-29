@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from calculations.blood_flow_velocity import CrossSectionSignalSettings
+from calculations.segment_profiles import SegmentProfileSettings
 from calculations.topology import OpticDisc, retinal_pixel_size_mm
 from input_output.schema import DopplerViewSource, HolodopplerSource, HolodopplerTiming
 
@@ -36,7 +36,7 @@ class WaveformVelocitySourceData:
     optic_disc: OpticDisc
     timing: HolodopplerTiming
     local_background_dist: int
-    cross_section_settings: CrossSectionSignalSettings
+    profile_settings: SegmentProfileSettings
     provenance: dict[str, object]
 
 
@@ -94,7 +94,7 @@ class WaveformVelocitySources:
             optic_disc=optic_disc,
             timing=timing,
             local_background_dist=self.dv.local_background_dist(),
-            cross_section_settings=self._cross_section_settings(optic_disc),
+            profile_settings=self._profile_settings(optic_disc),
             provenance=_source_provenance(
                 self.hd,
                 self.dv,
@@ -104,8 +104,8 @@ class WaveformVelocitySources:
             ),
         )
 
-    def _cross_section_settings(self, optic_disc: OpticDisc):
-        return CrossSectionSignalSettings(
+    def _profile_settings(self, optic_disc: OpticDisc) -> SegmentProfileSettings:
+        return SegmentProfileSettings(
             pixel_size_mm=self._pixel_size(optic_disc),
             submask_size_percentile_kept=(
                 CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT

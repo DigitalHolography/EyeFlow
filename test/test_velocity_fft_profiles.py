@@ -27,8 +27,8 @@ from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
     interpolate_velocity_maps_per_beat,
 )
 from pipelines.waveform_velocity_core.segments import (  # noqa: E402
-    _VelocityProfileFftAccumulator,
     _gpu_nanmean_axis1,
+    _VelocityProfileFftAccumulator,
 )
 
 
@@ -90,10 +90,10 @@ class VelocityFFTProfileTests(unittest.TestCase):
             )[0, 0],
         )
         self.segments = SimpleNamespace(
-            velocity_maps_per_segment=maps,
+            segment_maps=maps,
             segment_masks=masks,
-            transverse_velocity_fft_profiles_unmasked=accumulator.unmasked,
-            transverse_velocity_fft_profiles_masked=accumulator.masked,
+            transverse_fft_profiles_unmasked=accumulator.unmasked,
+            transverse_fft_profiles_masked=accumulator.masked,
         )
 
     def test_fft_then_nanmean_uses_dilated_mask(self) -> None:
@@ -176,14 +176,14 @@ class VelocityFFTProfileTests(unittest.TestCase):
         )
 
         np.testing.assert_allclose(
-            self.segments.transverse_velocity_fft_profiles_unmasked,
+            self.segments.transverse_fft_profiles_unmasked,
             expected_unmasked,
             rtol=1e-6,
             atol=1e-6,
             equal_nan=True,
         )
         np.testing.assert_allclose(
-            self.segments.transverse_velocity_fft_profiles_masked,
+            self.segments.transverse_fft_profiles_masked,
             expected_masked,
             rtol=1e-6,
             atol=1e-6,
