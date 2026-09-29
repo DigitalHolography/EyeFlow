@@ -220,7 +220,7 @@ def _lowpass_velocity(values: np.ndarray, source_data) -> np.ndarray:
     values = np.asarray(values, dtype=np.float32)
     if not np.any(np.isfinite(values)):
         return np.full(values.shape, np.nan, dtype=np.float32)
-    timing = getattr(source_data, "timing", None)
+    timing = source_data.source.holodoppler.timing
     if timing is None:
         raise ValueError("Quadrant band-limited velocity requires source timing.")
     return butter_lowpass_filtfilt(

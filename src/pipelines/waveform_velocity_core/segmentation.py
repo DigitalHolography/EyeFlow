@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage as ndi
 
-from calculations.topology import retinal_pixel_size_mm, segment_mask_areas_pixels
+from calculations.topology import segment_mask_areas_pixels
 from calculations.topology.geometry import AnnulusGeometry, image_half_diagonal
 from input_output.schema import EyeFlowOutputPaths
 
@@ -31,12 +31,14 @@ def pack_segmentation_outputs(
     Published branch IDs are contiguous and zero-based; negative values are
     reserved for the background, annulus outlines, and vessel pixels in R0.
     """
+    source = source_data.source
     return _pack_segmentation_outputs(
-        source_data.retinal_artery_mask,
-        source_data.retinal_vein_mask,
-        source_data.optic_disc,
+        source.segmentation.vessels.artery,
+        source.segmentation.vessels.vein,
+        source.segmentation.optic_disc,
         artery_segments,
         vein_segments,
+        source.holodoppler.pixel_pitch,
         output_paths,
     )
 
@@ -47,6 +49,7 @@ def _pack_segmentation_outputs(
     optic_disc,
     artery_segments,
     vein_segments,
+    pixel_pitch,
     output_paths: EyeFlowOutputPaths | str | None,
 ) -> dict[str, object]:
     schema = _resolve_output_paths(output_paths)
@@ -60,7 +63,9 @@ def _pack_segmentation_outputs(
         artery_segments,
         vein_segments,
     )
-    if optic_disc.mask is not None:
+    if optic_disc.is_fallback:
+        mask_source = "frame_center_10_percent_half_diagonal_fallback"
+    elif optic_disc.mask is not None:
         mask_source = "dopplerview_segmentation"
     else:
         mask_source = "reconstructed_from_dopplerview_center_width_height"
@@ -69,13 +74,9 @@ def _pack_segmentation_outputs(
         [center_xy[0], np.float32(image_shape[0] - 1) - center_xy[1]],
         dtype=np.float32,
     )
-    optic_disc_width = np.float32(
-        np.nan if optic_disc.width is None else optic_disc.width
-    )
-    optic_disc_height = np.float32(
-        np.nan if optic_disc.height is None else optic_disc.height
-    )
-    pixel_pitch_m = np.float32(retinal_pixel_size_mm(optic_disc) * 1e-3)
+    optic_disc_width = np.float32(np.nan if optic_disc.width is None else optic_disc.width)
+    optic_disc_height = np.float32(np.nan if optic_disc.height is None else optic_disc.height)
+    pixel_pitch_m = np.float32(pixel_pitch.isotropic_m)
 
     segmentation = schema.segmentation
     metrics = {
@@ -107,6 +108,11 @@ def _pack_segmentation_outputs(
             {
                 "unit": "m",
                 "definition": "native retinal pixel pitch",
+                "source": "Holodoppler HD_parameters.pixel_pitch",
+                "source_pixel_pitch_xy_m": np.asarray(
+                    pixel_pitch.xy_m,
+                    dtype=np.float64,
+                ),
             },
         ),
     }
@@ -140,6 +146,7 @@ def pack_topology_outputs(
     vein_mask,
     optic_disc,
     prepared_topologies,
+    pixel_pitch,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
     """Pack segmentation products directly from shared prepared topology."""
@@ -150,6 +157,7 @@ def pack_topology_outputs(
         optic_disc,
         prepared_topologies.get("artery"),
         prepared_topologies.get("vein"),
+        pixel_pitch,
         output_paths,
     )
 
@@ -171,9 +179,7 @@ def _pack_vessel_segmentation(
         else np.asarray(topology.labels, dtype=np.int32)
     )
     if labels.shape != expected_shape:
-        raise ValueError(
-            f"segment labels must have shape {expected_shape}, got {labels.shape}."
-        )
+        raise ValueError(f"segment labels must have shape {expected_shape}, got {labels.shape}.")
 
     vessel = np.asarray(vessel_mask, dtype=bool)
     branch_map = _base_branch_label_map(labels, vessel, optic_disc_mask)
@@ -200,8 +206,7 @@ def _pack_vessel_segmentation(
         ),
     }
     if topology is not None and all(
-        hasattr(topology, field)
-        for field in ("branch_ids", "annulus_masks")
+        hasattr(topology, field) for field in ("branch_ids", "annulus_masks")
     ):
         segment_mask_area = segment_mask_areas_pixels(topology)
         outputs[paths.segment_mask_area] = _segmentation_value(
@@ -299,9 +304,8 @@ def _topology_geometry(
         if candidate is None:
             continue
         settings = candidate
-        fallback_radius = (
-            float(settings.inner_radius_frac)
-            * max(image_half_diagonal(*image_shape), 1.0)
+        fallback_radius = float(settings.inner_radius_frac) * max(
+            image_half_diagonal(*image_shape), 1.0
         )
         break
     if settings is None:
@@ -353,10 +357,7 @@ def _circle_outline(
 ) -> np.ndarray:
     center_x, center_y = (float(value) for value in center_xy)
     y, x = np.ogrid[: image_shape[0], : image_shape[1]]
-    circle = (
-        (y - center_y) ** 2 + (x - center_x) ** 2
-        <= float(radius_pixels) ** 2
-    )
+    circle = (y - center_y) ** 2 + (x - center_x) ** 2 <= float(radius_pixels) ** 2
     return circle & ~ndi.binary_erosion(circle, structure=_FOUR_CONNECTED)
 
 
@@ -369,10 +370,7 @@ def _annulus_outlines(
     scale = max(image_half_diagonal(*image_shape), 1.0)
     radii = [float(r0_radius_pixels)]
     radii.extend(
-        (
-            float(settings.inner_radius_frac)
-            + (ring_index + 1) * float(settings.ring_width_frac)
-        )
+        (float(settings.inner_radius_frac) + (ring_index + 1) * float(settings.ring_width_frac))
         * scale
         for ring_index in range(int(settings.ring_count))
     )
@@ -417,9 +415,7 @@ def _label_map_attrs(
         "background_label": BACKGROUND_LABEL,
         "branch_labels": "contiguous zero-based branch IDs",
         "coordinate_system": "image_pixel",
-        "description": (
-            "Two-dimensional vessel branch label map with thin annulus outlines"
-        ),
+        "description": ("Two-dimensional vessel branch label map with thin annulus outlines"),
         "dimDesc": ["x", "y"],
         "image_origin": "lower_left",
         "inner_r0_vessel_label": INNER_R0_VESSEL_LABEL,

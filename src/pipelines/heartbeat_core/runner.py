@@ -49,20 +49,23 @@ def run_heartbeat_core(ctx) -> HeartbeatResult:
     started = perf_counter()
     Logger.log("Starting shared heartbeat analysis (scratch=RAM)...")
     inputs = load_heartbeat_inputs(ctx)
+    images = inputs.image_maps
+    segmentation = inputs.segmentation
+    vessels = segmentation.vessels
     retain_velocity_video = _pipeline_scheduled(ctx, "waveform_velocity_core")
     velocity_video = (
-        np.empty(tuple(int(size) for size in inputs.moment0.shape), dtype=np.float32)
+        np.empty(tuple(int(size) for size in images.moment0.shape), dtype=np.float32)
         if retain_velocity_video
         else None
     )
     with heartbeat_scratch_h5(ctx) as scratch_h5:
         velocity = run_chunked_velocity_estimator(
-            moment0=inputs.moment0,
-            moment2=inputs.moment2,
-            artery_mask=inputs.artery_mask,
-            vein_mask=inputs.vein_mask,
-            optic_disc_center=inputs.optic_disc.center,
-            local_background_dist=inputs.local_background_dist,
+            moment0=images.moment0,
+            moment2=images.moment2,
+            artery_mask=vessels.artery,
+            vein_mask=vessels.vein,
+            optic_disc_center=segmentation.optic_disc.center,
+            local_background_dist=inputs.doppler_view.local_background_dist,
             scratch_h5=scratch_h5,
             retain_velocity_video=retain_velocity_video,
             velocity_video_output=velocity_video,
@@ -86,7 +89,7 @@ def run_heartbeat_core(ctx) -> HeartbeatResult:
     analysis, detection_source = heartbeat_from_available_vessel(
         arterial_signal,
         venous_signal,
-        dt_seconds=float(inputs.timing.dt_seconds),
+        dt_seconds=float(inputs.holodoppler.timing.dt_seconds),
         lowpass_freq_hz=_DEFAULT_LOWPASS_HZ,
     )
     result = HeartbeatResult(
@@ -94,7 +97,7 @@ def run_heartbeat_core(ctx) -> HeartbeatResult:
             analysis.systole.systole_indexes,
             dtype=np.int32,
         ),
-        index_base=inputs.index_base,
+        index_base=0,
     )
     ctx.state.set(HEARTBEAT_RESULT_STATE, result)
     ctx.state.set(_ARTERIAL_SIGNAL_CACHE_STATE, arterial_signal)
@@ -150,17 +153,16 @@ def cached_velocity_estimation(ctx, source_data) -> dict[str, object] | None:
 
 
 def _velocity_estimator_key(source) -> VelocityEstimatorCacheKey:
+    images = source.image_maps
+    segmentation = source.segmentation
+    vessels = segmentation.vessels
     return velocity_estimator_cache_key(
-        moment0=source.moment0,
-        moment2=source.moment2,
-        artery_mask=source.artery_mask
-        if hasattr(source, "artery_mask")
-        else source.retinal_artery_mask,
-        vein_mask=source.vein_mask
-        if hasattr(source, "vein_mask")
-        else source.retinal_vein_mask,
-        optic_disc_center=source.optic_disc.center,
-        local_background_dist=source.local_background_dist,
+        moment0=images.moment0,
+        moment2=images.moment2,
+        artery_mask=vessels.artery,
+        vein_mask=vessels.vein,
+        optic_disc_center=segmentation.optic_disc.center,
+        local_background_dist=source.doppler_view.local_background_dist,
     )
 
 

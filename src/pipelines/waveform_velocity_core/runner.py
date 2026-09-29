@@ -198,8 +198,8 @@ def _build_waveform_velocity_core_context(
 ) -> WaveformVelocityCoreContext:
     with _logged_stage("waveform source loading"):
         source_data = WaveformVelocitySources.from_context(ctx).load()
-    timing = source_data.timing
-    heartbeat_velocity = cached_velocity_estimation(ctx, source_data)
+    timing = source_data.source.holodoppler.timing
+    heartbeat_velocity = cached_velocity_estimation(ctx, source_data.source)
     heartbeat_source = cached_heartbeat_source(ctx)
     with _logged_stage("retinal velocity analysis from HD moments"):
         if heartbeat_velocity is not None:
@@ -398,10 +398,10 @@ def _segment_velocity_inputs(
         results = analyze_velocity_segment_profiles(
             velocity_map,
             {
-                "artery": source_data.retinal_artery_mask,
-                "vein": source_data.retinal_vein_mask,
+                "artery": source_data.source.segmentation.vessels.artery,
+                "vein": source_data.source.segmentation.vessels.vein,
             },
-            source_data.optic_disc,
+            source_data.source.segmentation.optic_disc,
             ring_settings,
             source_data.profile_settings,
             prepared_topologies=prepared_topologies,
@@ -425,7 +425,7 @@ def _segment_velocity_inputs(
         _export_branch_identity_debug(
             ctx,
             result,
-            source_data.optic_disc.center,
+            source_data.source.segmentation.optic_disc.center,
             ring_settings,
             name,
         )
@@ -550,7 +550,7 @@ def _context_attrs(
 
 def _pack_meta_outputs(context: WaveformVelocityCoreContext) -> dict[str, object]:
     schema = EyeFlowOutputPaths.active()
-    timing = context.source_data.timing
+    timing = context.source_data.source.holodoppler.timing
     return {
         f"{schema.meta_root}/SamplingFrequencyHz/value": (
             np.float32(timing.sampling_freq),

@@ -22,6 +22,7 @@ class OpticDisc:
     center: tuple[float, float]
     width: float | None
     height: float | None
+    is_fallback: bool = False
 
     def __post_init__(self) -> None:
         center = _validated_center_xy(self.center)
@@ -43,7 +44,72 @@ class OpticDisc:
         object.__setattr__(self, "width", width)
         object.__setattr__(self, "height", height)
 
-    def transposed(self) -> "OpticDisc":
+    @classmethod
+    def from_measurements(
+        cls,
+        mask,
+        center,
+        width,
+        height,
+        image_shape: tuple[int, int],
+    ) -> OpticDisc:
+        """Resolve incomplete DopplerView measurements for one image frame.
+
+        A finite, nonempty mask supplies any missing center or dimensions.  If
+        the mask is invalid, or neither a usable mask nor complete geometry is
+        available, a centered circular R0 with radius ten percent of the image
+        half-diagonal is used.
+        """
+
+        ny, nx = _validated_image_shape(image_shape)
+        resolved_mask, invalid_mask = _resolved_source_mask(mask, (ny, nx))
+        resolved_center = _valid_center_or_none(center)
+        resolved_width = _valid_positive_scalar_or_none(width)
+        resolved_height = _valid_positive_scalar_or_none(height)
+
+        if resolved_mask is not None:
+            y, x = np.nonzero(resolved_mask)
+            if resolved_center is None:
+                resolved_center = (float(np.mean(x)), float(np.mean(y)))
+            if resolved_width is None:
+                resolved_width = float(x.max() - x.min() + 1)
+            if resolved_height is None:
+                resolved_height = float(y.max() - y.min() + 1)
+            return cls(
+                resolved_mask,
+                resolved_center,
+                resolved_width,
+                resolved_height,
+            )
+
+        if (
+            not invalid_mask
+            and resolved_center is not None
+            and resolved_width is not None
+            and resolved_height is not None
+        ):
+            return cls(
+                None,
+                resolved_center,
+                resolved_width,
+                resolved_height,
+            )
+
+        radius = 0.10 * image_half_diagonal(ny, nx)
+        diameter = max(2.0 * radius, float(np.finfo(np.float32).eps))
+        integer_radius = int(np.ceil(radius))
+        center_x, center_y = nx / 2.0, ny / 2.0
+        y, x = np.ogrid[:ny, :nx]
+        fallback_mask = (y - center_y) ** 2 + (x - center_x) ** 2 <= float(integer_radius**2)
+        return cls(
+            fallback_mask,
+            (center_x, center_y),
+            diameter,
+            diameter,
+            is_fallback=True,
+        )
+
+    def transposed(self) -> OpticDisc:
         """Return this geometry after swapping its spatial axes."""
 
         center_x, center_y = self.center
@@ -52,6 +118,7 @@ class OpticDisc:
             center=(center_y, center_x),
             width=self.height,
             height=self.width,
+            is_fallback=self.is_fallback,
         )
 
     def mask_for(self, image_shape: tuple[int, int]) -> np.ndarray:
@@ -70,11 +137,9 @@ class OpticDisc:
         y, x = np.indices((ny, nx), dtype=np.float32)
         x_radius = np.float32(width / 2.0)
         y_radius = np.float32(height / 2.0)
-        return (
-            ((x - np.float32(center_x)) / x_radius) ** 2
-            + ((y - np.float32(center_y)) / y_radius) ** 2
-            <= 1.0
-        )
+        return ((x - np.float32(center_x)) / x_radius) ** 2 + (
+            (y - np.float32(center_y)) / y_radius
+        ) ** 2 <= 1.0
 
     def subtract_from(self, vessel_mask) -> np.ndarray:
         """Return a boolean vessel mask with optic-disc pixels removed."""
@@ -124,10 +189,7 @@ class OpticDisc:
         )
         center_x, center_y = self.center
         y, x = np.ogrid[:ny, :nx]
-        return (
-            (y - float(center_y)) ** 2 + (x - float(center_x)) ** 2
-            <= float(radius**2)
-        )
+        return (y - float(center_y)) ** 2 + (x - float(center_x)) ** 2 <= float(radius**2)
 
     def subtract_centered_circle_from(
         self,
@@ -157,9 +219,7 @@ class OpticDisc:
         self._required_dimensions("derive annulus geometry")
         ny, nx = _validated_image_shape(image_shape)
         radius_scale = max(image_half_diagonal(ny, nx), 1.0)
-        radial_step = (
-            max(nx, ny) / float(number_of_radii_in_fov) / radius_scale
-        )
+        radial_step = max(nx, ny) / float(number_of_radii_in_fov) / radius_scale
         inner = min(self.centered_circle_radius_pixels() / radius_scale, 1.0)
         outer = 1.0
         count = max(1, int(np.ceil((outer - inner) / radial_step)))
@@ -184,6 +244,46 @@ def _optional_positive_scalar(value, name: str) -> float | None:
     if values.size != 1 or not np.isfinite(values[0]) or values[0] <= 0:
         raise ValueError(f"optic-disc {name} must be a finite positive scalar.")
     return float(values[0])
+
+
+def _valid_positive_scalar_or_none(value) -> float | None:
+    if value is None:
+        return None
+    values = np.asarray(value, dtype=np.float64).reshape(-1)
+    if values.size != 1 or not np.isfinite(values[0]) or values[0] <= 0:
+        return None
+    return float(values[0])
+
+
+def _valid_center_or_none(value) -> tuple[float, float] | None:
+    if value is None:
+        return None
+    values = np.asarray(value, dtype=np.float64).reshape(-1)
+    if values.size != 2 or not np.all(np.isfinite(values)):
+        return None
+    return float(values[0]), float(values[1])
+
+
+def _resolved_source_mask(
+    value,
+    image_shape: tuple[int, int],
+) -> tuple[np.ndarray | None, bool]:
+    if value is None:
+        return None, False
+    mask = np.asarray(value)
+    if mask.ndim != 2:
+        return None, True
+    if mask.shape != image_shape:
+        return None, True
+    try:
+        if not np.all(np.isfinite(mask)):
+            return None, True
+    except TypeError:
+        return None, True
+    mask = np.asarray(mask, dtype=bool)
+    if not np.any(mask):
+        return None, False
+    return mask, False
 
 
 def _optional_nonnegative_scalar(value, name: str) -> float | None:

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from calculations.topology import AnnulusGeometry, OpticDisc
-from input_output.schema import EyeFlowOutputPaths
+from input_output.schema import EyeFlowOutputPaths, PixelPitch
 from pipelines.waveform_velocity_core.segmentation import (
     ANNULUS_OUTLINE_LABEL,
     BACKGROUND_LABEL,
@@ -35,9 +35,23 @@ class SegmentationOutputTests(unittest.TestCase):
         labels[12, 12] = 9
         segments = SimpleNamespace(labels=labels)
         source_data = SimpleNamespace(
-            retinal_artery_mask=artery_mask,
-            retinal_vein_mask=vein_mask,
-            optic_disc=OpticDisc(optic_disc_mask, (8.0, 7.0), 4.0, 4.0),
+            source=SimpleNamespace(
+                segmentation=SimpleNamespace(
+                    vessels=SimpleNamespace(
+                        artery=artery_mask,
+                        vein=vein_mask,
+                    ),
+                    optic_disc=OpticDisc(
+                        optic_disc_mask,
+                        (8.0, 7.0),
+                        4.0,
+                        4.0,
+                    ),
+                ),
+                holodoppler=SimpleNamespace(
+                    pixel_pitch=PixelPitch(20e-6, 20e-6),
+                ),
+            ),
         )
 
         outputs = pack_segmentation_outputs(source_data, segments, segments)
@@ -67,9 +81,7 @@ class SegmentationOutputTests(unittest.TestCase):
         height, height_attrs = outputs[schema.segmentation.optic_disc.height]
         width, width_attrs = outputs[schema.segmentation.optic_disc.width]
         center, center_attrs = outputs[schema.segmentation.optic_disc.center]
-        pixel_pitch_m, pixel_pitch_attrs = outputs[
-            schema.segmentation.pixel_pitch_m
-        ]
+        pixel_pitch_m, pixel_pitch_attrs = outputs[schema.segmentation.pixel_pitch_m]
         self.assertEqual(np.float32, height.dtype)
         self.assertEqual(np.float32, width.dtype)
         self.assertEqual(np.float32, center.dtype)
@@ -77,7 +89,7 @@ class SegmentationOutputTests(unittest.TestCase):
         self.assertEqual(np.float32(4.0), height)
         self.assertEqual(np.float32(4.0), width)
         np.testing.assert_array_equal(center, [8.0, 8.0])
-        self.assertAlmostEqual(float(pixel_pitch_m), 1.91e-3 / 4.0)
+        self.assertAlmostEqual(float(pixel_pitch_m), 20e-6)
         self.assertEqual("pixels", height_attrs["unit"])
         self.assertEqual("pixels", width_attrs["unit"])
         self.assertEqual(["coordinate"], center_attrs["dimDesc"])
@@ -88,9 +100,7 @@ class SegmentationOutputTests(unittest.TestCase):
         artery_mask_output, _ = outputs[schema.segmentation.artery.mask]
         np.testing.assert_array_equal(artery_mask_output[2, 13], True)
 
-        branch_map, branch_attrs = outputs[
-            schema.segmentation.artery.branch_label_map
-        ]
+        branch_map, branch_attrs = outputs[schema.segmentation.artery.branch_label_map]
         self.assertEqual((16, 16), branch_map.shape)
         self.assertEqual(0, branch_map[2, 13])
         self.assertEqual(1, branch_map[12, 3])
@@ -175,16 +185,13 @@ class SegmentationOutputTests(unittest.TestCase):
                 "artery": topology(artery_labels),
                 "vein": topology(vein_labels),
             },
+            PixelPitch(20e-6, 20e-6),
         )
         schema = EyeFlowOutputPaths.active()
 
-        artery_diameter, artery_attrs = outputs[
-            schema.segmentation.artery.lumen_diameter
-        ]
+        artery_diameter, artery_attrs = outputs[schema.segmentation.artery.lumen_diameter]
         vein_diameter, _ = outputs[schema.segmentation.vein.lumen_diameter]
-        delta_radius, delta_attrs = outputs[
-            schema.segmentation.artery.delta_radius
-        ]
+        delta_radius, delta_attrs = outputs[schema.segmentation.artery.delta_radius]
 
         self.assertEqual(np.float32, artery_diameter.dtype)
         self.assertEqual(np.float32, vein_diameter.dtype)

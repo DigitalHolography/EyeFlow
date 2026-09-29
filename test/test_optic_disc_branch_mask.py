@@ -18,7 +18,7 @@ from calculations.topology import (
     build_segment_topology,
     label_vessel_branches,
 )
-from input_output.schema import EyeFlowOutputPaths
+from input_output.schema import EyeFlowOutputPaths, PixelPitch
 from pipelines.waveform_velocity_core import runner
 from pipelines.waveform_velocity_core.segmentation import (
     INNER_R0_VESSEL_LABEL,
@@ -53,20 +53,17 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         vessel, disc, source, settings = self._inputs()
         original_vessel = vessel.copy()
         original_disc = disc.copy()
-        circular_disc = OpticDisc(
-            np.zeros_like(disc), source.optic_disc.center, 20.0, 50.0
-        )
+        source_disc = source.source.segmentation.optic_disc
+        circular_disc = OpticDisc(np.zeros_like(disc), source_disc.center, 20.0, 50.0)
         circular = label_vessel_branches(vessel, circular_disc, settings)
-        branches = label_vessel_branches(
-            vessel, source.optic_disc, settings
-        )
+        branches = label_vessel_branches(vessel, source_disc, settings)
 
         # This vessel lies outside the ellipse but inside its bounding circle.
         self.assertFalse(disc[43, 73])
         self.assertGreater(circular.labels[43, 73], 0)
         self.assertGreater(branches.labels[43, 73], 0)
         self.assertEqual(4, branches.branch_ids.size)
-        topology_disc = source.optic_disc.centered_circle_mask_for(vessel.shape)
+        topology_disc = source_disc.centered_circle_mask_for(vessel.shape)
         self.assertFalse(np.any(branches.labels[topology_disc]))
         self.assertFalse(np.any(branches.stages.skeleton[topology_disc]))
         np.testing.assert_array_equal(vessel, original_vessel)
@@ -87,7 +84,7 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         disc[40:49, 90:97] = True
         topology = build_segment_topology(
             vessel,
-            OpticDisc(disc, source.optic_disc.center, 20.0, 50.0),
+            OpticDisc(disc, source.source.segmentation.optic_disc.center, 20.0, 50.0),
             settings,
         )
 
@@ -115,7 +112,7 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         schema = EyeFlowOutputPaths.active()
         for source_mask in (disc, None):
             with self.subTest(has_source_mask=source_mask is not None):
-                source.optic_disc = OpticDisc(
+                source.source.segmentation.optic_disc = OpticDisc(
                     source_mask,
                     (60.0, 45.0),
                     20.0,
@@ -142,7 +139,9 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
                     extract.call_args.args[2].mask_for(vessel.shape), expected_disc
                 )
                 branches = label_vessel_branches(
-                    vessel, source.optic_disc, settings,
+                    vessel,
+                    source.source.segmentation.optic_disc,
+                    settings,
                 )
                 self.assertGreater(branches.labels[43, 73], 0)
 
@@ -150,13 +149,13 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         vessel, _, source, settings = self._inputs()
         bad_disc = OpticDisc(
             np.zeros(vessel.shape[::-1], dtype=bool),
-            source.optic_disc.center,
+            source.source.segmentation.optic_disc.center,
             20.0,
             50.0,
         )
         branches = label_vessel_branches(vessel, bad_disc, settings)
         self.assertGreater(branches.branch_ids.size, 0)
-        source.optic_disc = bad_disc
+        source.source.segmentation.optic_disc = bad_disc
         with self.assertRaisesRegex(ValueError, "same orientation and shape"):
             pack_segmentation_outputs(source, branches, branches)
 
@@ -169,13 +168,22 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         y, x = np.indices(shape)
         disc = ((x - 60) / 10.0) ** 2 + ((y - 45) / 25.0) ** 2 <= 1.0
         source = SimpleNamespace(
-            retinal_artery_mask=vessel,
-            retinal_vein_mask=vessel.copy(),
-            optic_disc=OpticDisc(disc, (60.0, 45.0), 20.0, 50.0),
+            source=SimpleNamespace(
+                segmentation=SimpleNamespace(
+                    vessels=SimpleNamespace(
+                        artery=vessel,
+                        vein=vessel.copy(),
+                    ),
+                    optic_disc=OpticDisc(disc, (60.0, 45.0), 20.0, 50.0),
+                ),
+                holodoppler=SimpleNamespace(
+                    pixel_pitch=PixelPitch(20e-6, 20e-6),
+                ),
+            ),
             profile_settings="settings",
             provenance={"beat_index_base": 0},
         )
-        settings = source.optic_disc.annulus_geometry(shape)
+        settings = source.source.segmentation.optic_disc.annulus_geometry(shape)
         return vessel, disc, source, settings
 
 

@@ -27,7 +27,7 @@ class DopplerViewSource(TypedSource):
     layout = DOPPLER_VIEW_LAYOUT
 
     @classmethod
-    def from_context(cls, ctx) -> "DopplerViewSource":
+    def from_context(cls, ctx) -> DopplerViewSource:
         return cls(ctx.inputs.dv.h5, ctx.inputs.dv.config)
 
     def retinal_artery_mask(self) -> np.ndarray:
@@ -43,13 +43,12 @@ class DopplerViewSource(TypedSource):
             default=None,
         )
 
-    def optic_disc(self) -> OpticDisc:
+    def optic_disc(self, image_shape: tuple[int, int]) -> OpticDisc:
         """Return DopplerView's optic-disc measurements in its native frame."""
 
-        return OpticDisc(
+        return OpticDisc.from_measurements(
             mask=self._array(
                 "segmentation/OpticDisc/mask",
-                dtype=bool,
                 default=None,
             ),
             center=self._array(
@@ -67,9 +66,8 @@ class DopplerViewSource(TypedSource):
                 dtype=np.float32,
                 default=None,
             ),
+            image_shape=image_shape,
         )
 
     def local_background_dist(self) -> int:
-        return int(
-            self._config_value("VelocityEstimation", "LocalBackgroundDist", 2)
-        )
+        return int(self._config_value("VelocityEstimation", "LocalBackgroundDist", 2))

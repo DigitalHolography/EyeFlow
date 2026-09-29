@@ -23,6 +23,9 @@ def run_topology_core(ctx) -> dict[str, object]:
     """Prepare and publish the canonical artery and vein topology."""
 
     inputs = load_vessel_topology_inputs(ctx)
+    images = inputs.image_maps
+    segmentation = inputs.segmentation
+    vessels = segmentation.vessels
     number_of_radii = read_int_setting(
         ctx,
         default=_DEFAULT_NUMBER_OF_RADII_IN_FOV,
@@ -38,28 +41,26 @@ def run_topology_core(ctx) -> dict[str, object]:
     if number_of_radii < 1:
         raise ValueError("number_of_radii_in_FOV must be positive.")
 
-    ring_settings = inputs.optic_disc.annulus_geometry(
-        tuple(int(size) for size in inputs.moment0.shape[-2:]),
+    ring_settings = segmentation.optic_disc.annulus_geometry(
+        tuple(int(size) for size in images.moment0.shape[-2:]),
         number_of_radii_in_fov=number_of_radii,
     )
     prepared = prepare_topologies(
         {
-            "artery": inputs.artery_mask,
-            "vein": inputs.vein_mask,
+            "artery": vessels.artery,
+            "vein": vessels.vein,
         },
-        inputs.optic_disc,
+        segmentation.optic_disc,
         ring_settings,
         source_id=topology_source_id(
             ctx.inputs.hd.filename,
             ctx.inputs.dv.filename,
         ),
         cache=run_topology_cache(ctx.state.raw),
-        window_size_percentile_kept=(
-            _TOPOLOGY_WINDOW_SIZE_PERCENTILE_KEPT
-        ),
+        window_size_percentile_kept=(_TOPOLOGY_WINDOW_SIZE_PERCENTILE_KEPT),
     )
     prepared = {
-        name: resolve_segment_rotations(topology, inputs.moment0)
+        name: resolve_segment_rotations(topology, images.moment0)
         for name, topology in prepared.items()
     }
     ctx.state.set(TOPOLOGY_CORE_STATE, prepared)
@@ -68,10 +69,11 @@ def run_topology_core(ctx) -> dict[str, object]:
     from pipelines.waveform_velocity_core.segmentation import pack_topology_outputs
 
     return pack_topology_outputs(
-        inputs.artery_mask,
-        inputs.vein_mask,
-        inputs.optic_disc,
+        vessels.artery,
+        vessels.vein,
+        segmentation.optic_disc,
         prepared,
+        inputs.holodoppler.pixel_pitch,
     )
 
 
@@ -80,9 +82,7 @@ def prepared_topologies(ctx) -> Mapping[str, PreparedTopology]:
 
     value = ctx.state.get(TOPOLOGY_CORE_STATE)
     if not isinstance(value, Mapping) or set(value) != {"artery", "vein"}:
-        raise RuntimeError(
-            "Prepared topology state is unavailable; check the pipeline DAG."
-        )
+        raise RuntimeError("Prepared topology state is unavailable; check the pipeline DAG.")
     if not all(isinstance(item, PreparedTopology) for item in value.values()):
         raise TypeError("Prepared topology state contains an invalid value.")
     return value

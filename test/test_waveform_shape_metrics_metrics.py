@@ -252,7 +252,11 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             optic_disc=OpticDisc(
                 np.zeros((8, 8), dtype=bool), (3.0, 2.0), None, None
             ),
-            timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
+            source=SimpleNamespace(
+                holodoppler=SimpleNamespace(
+                    timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
+                ),
+            ),
         )
 
         outputs = pack_waveform_shape_outputs(
@@ -349,7 +353,11 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             optic_disc=OpticDisc(
                 np.zeros((8, 8), dtype=bool), (3.0, 2.0), None, None
             ),
-            timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
+            source=SimpleNamespace(
+                holodoppler=SimpleNamespace(
+                    timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
+                ),
+            ),
         )
         metrics = {
             schema.artery_per_beat.segment_velocity_signal: segment_per_beat,

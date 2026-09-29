@@ -7,6 +7,16 @@ from unittest.mock import patch
 import numpy as np
 
 from calculations.topology import OpticDisc
+from input_output.schema import (
+    DopplerViewMetadata,
+    HolodopplerMetadata,
+    HolodopplerTiming,
+    ImageMaps,
+    PixelPitch,
+    RetinalSegmentation,
+    RetinalSourceData,
+    VesselMasks,
+)
 from pipeline_engine.context import PipelineState
 from pipelines.heartbeat_core.runner import (
     HeartbeatResult,
@@ -18,17 +28,16 @@ from pipelines.heartbeat_core.runner import (
 
 class HeartbeatCoreTests(unittest.TestCase):
     def test_exposes_only_cycle_boundaries_and_index_base(self):
-        inputs = SimpleNamespace(
-            moment0=object(),
-            moment2=object(),
-            artery_mask=np.ones((3, 3), dtype=bool),
-            vein_mask=np.ones((3, 3), dtype=bool),
-            optic_disc=OpticDisc(
+        inputs = _source_data(
+            object(),
+            object(),
+            np.ones((3, 3), dtype=bool),
+            np.ones((3, 3), dtype=bool),
+            OpticDisc(
                 np.zeros((3, 3), dtype=bool), (1.0, 1.0), None, None
             ),
-            timing=SimpleNamespace(dt_seconds=0.02),
+            dt_seconds=0.02,
             local_background_dist=4,
-            index_base=0,
         )
         analysis = SimpleNamespace(
             systole=SimpleNamespace(systole_indexes=np.asarray([2, 7, 12]))
@@ -73,17 +82,16 @@ class HeartbeatCoreTests(unittest.TestCase):
         vein = np.zeros_like(artery)
         artery[1, 0] = True
         vein[1, 2] = True
-        inputs = SimpleNamespace(
-            moment0=moment0,
-            moment2=moment2,
-            artery_mask=artery,
-            vein_mask=vein,
-            optic_disc=OpticDisc(
+        inputs = _source_data(
+            moment0,
+            moment2,
+            artery,
+            vein,
+            OpticDisc(
                 np.zeros((3, 3), dtype=bool), (1.0, 1.0), None, None
             ),
-            timing=SimpleNamespace(dt_seconds=0.02),
+            dt_seconds=0.02,
             local_background_dist=1,
-            index_base=0,
         )
         analysis = SimpleNamespace(
             systole=SimpleNamespace(systole_indexes=np.asarray([0, 3]))
@@ -122,14 +130,7 @@ class HeartbeatCoreTests(unittest.TestCase):
         ):
             run_heartbeat_core(ctx)
 
-        waveform_source = SimpleNamespace(
-            moment0=moment0,
-            moment2=moment2,
-            retinal_artery_mask=artery.copy(),
-            retinal_vein_mask=vein.copy(),
-            optic_disc=inputs.optic_disc,
-            local_background_dist=1,
-        )
+        waveform_source = inputs
         reused = cached_velocity_estimation(ctx, waveform_source)
 
         self.assertIsNotNone(reused)
@@ -138,8 +139,32 @@ class HeartbeatCoreTests(unittest.TestCase):
         ).analysis["velocity_map"])
         np.testing.assert_array_equal(reused["velocity_map"], 7.0)
 
-        waveform_source.retinal_artery_mask[0, 0] = True
+        waveform_source.segmentation.vessels.artery[0, 0] = True
         self.assertIsNone(cached_velocity_estimation(ctx, waveform_source))
+
+
+def _source_data(
+    moment0,
+    moment2,
+    artery,
+    vein,
+    optic_disc,
+    *,
+    dt_seconds: float,
+    local_background_dist: int,
+) -> RetinalSourceData:
+    return RetinalSourceData(
+        image_maps=ImageMaps(moment0, moment2),
+        segmentation=RetinalSegmentation(
+            VesselMasks(artery, vein),
+            optic_disc,
+        ),
+        holodoppler=HolodopplerMetadata(
+            HolodopplerTiming(1.0 / dt_seconds, 1.0),
+            PixelPitch(20e-6, 20e-6),
+        ),
+        doppler_view=DopplerViewMetadata(local_background_dist, False),
+    )
 
 
 if __name__ == "__main__":

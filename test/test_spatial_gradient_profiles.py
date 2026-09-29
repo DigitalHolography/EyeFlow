@@ -22,10 +22,18 @@ from pipelines.spatial_gradient_moment0.profiles import (
 
 class SpatialGradientProfileTests(unittest.TestCase):
     def test_extracts_both_vessels_using_annular_cross_section_engine(self) -> None:
+        vessels = SimpleNamespace(
+            artery=np.ones((8, 8), dtype=bool),
+            vein=np.eye(8, dtype=bool),
+        )
+        retinal_source = SimpleNamespace(
+            segmentation=SimpleNamespace(
+                vessels=vessels,
+                optic_disc=OpticDisc(None, (4.0, 4.0), 2.0, 2.0),
+            ),
+        )
         source = SimpleNamespace(
-            optic_disc=OpticDisc(None, (4.0, 4.0), 2.0, 2.0),
-            retinal_artery_mask=np.ones((8, 8), dtype=bool),
-            retinal_vein_mask=np.eye(8, dtype=bool),
+            source=retinal_source,
             profile_settings=SegmentProfileSettings(0.01),
         )
         moment0ff = np.full((3, 8, 8), 42.0, dtype=np.float32)
@@ -61,8 +69,8 @@ class SpatialGradientProfileTests(unittest.TestCase):
         self.assertEqual((3, 8, 8), args[0].shape)
         self.assertIs(moment0ff, args[0])
         self.assertIs(source.profile_settings, args[4])
-        np.testing.assert_array_equal(source.retinal_artery_mask, args[1]["artery"])
-        np.testing.assert_array_equal(source.retinal_vein_mask, args[1]["vein"])
+        np.testing.assert_array_equal(vessels.artery, args[1]["artery"])
+        np.testing.assert_array_equal(vessels.vein, args[1]["vein"])
         disc = args[2].mask_for((8, 8))
         self.assertEqual((8, 8), disc.shape)
         self.assertTrue(disc[4, 4])

@@ -105,7 +105,7 @@ def _pack_segment_velocity_output(segments, paths, source_data) -> dict[str, obj
 
 
 def _lowpass_segment_velocity(values: np.ndarray, source_data) -> np.ndarray:
-    timing = getattr(source_data, "timing", None)
+    timing = source_data.source.holodoppler.timing
     if timing is None:
         raise ValueError("Segment band-limited velocity requires source timing.")
 

@@ -8,7 +8,7 @@ import numpy as np
 
 import pipelines
 from calculations.math.spatial_gradient import spatial_gradient
-from calculations.topology import OpticDisc
+from input_output.schema import PixelPitch
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines.spatial_gradient_moment0 import runner as gradient_runner
 
@@ -56,9 +56,7 @@ class SpatialGradientPipelineTests(unittest.TestCase):
     def test_displacement_map_has_no_heartbeat_or_waveform_dependency(self) -> None:
         pipelines.load_pipeline_catalog()
 
-        plan = PipelineDAG(PIPELINE_REGISTRY.values()).resolve_targets(
-            ["displacement_map"]
-        )
+        plan = PipelineDAG(PIPELINE_REGISTRY.values()).resolve_targets(["displacement_map"])
 
         self.assertEqual(("displacement_map",), plan.names)
 
@@ -66,13 +64,13 @@ class SpatialGradientPipelineTests(unittest.TestCase):
         gradient_segments = SimpleNamespace(
             labels=np.asarray([1]),
             branch_ids=np.asarray([7]),
-            transverse_profiles_unmasked=np.ones(
-                (2, 1, 3), dtype=np.float32
-            ),
+            transverse_profiles_unmasked=np.ones((2, 1, 3), dtype=np.float32),
         )
         inputs = SimpleNamespace(
-            optic_disc=OpticDisc(None, (4.0, 4.0), 2.0, 2.0),
-            timing=SimpleNamespace(dt_seconds=0.1),
+            holodoppler=SimpleNamespace(
+                pixel_pitch=PixelPitch(20e-6, 20e-6),
+                timing=SimpleNamespace(dt_seconds=0.1),
+            ),
         )
         topology = {"artery": object(), "vein": object()}
         state = _State()

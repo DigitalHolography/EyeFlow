@@ -10,7 +10,6 @@ from calculations.blood_flow_velocity.signal_analysis.waveform import (
     mean_period_seconds,
 )
 from calculations.segment_profiles import SegmentProfileSettings
-from calculations.topology import retinal_pixel_size_mm
 from pipelines.heartbeat_core.runner import heartbeat_result
 from pipelines.heartbeat_core.sources import load_heartbeat_inputs
 from pipelines.topology_core.runner import prepared_topologies
@@ -46,7 +45,7 @@ def run_spatial_gradient_moment0(ctx) -> dict[str, object]:
         inputs,
         prepared_topologies(ctx),
         profile_settings=SegmentProfileSettings(
-            pixel_size_mm=retinal_pixel_size_mm(inputs.optic_disc),
+            pixel_size_mm=inputs.holodoppler.pixel_pitch.isotropic_mm,
         ),
     )
     gradient_outputs = pack_spatial_gradient_profile_outputs(
@@ -62,15 +61,14 @@ def run_spatial_gradient_moment0(ctx) -> dict[str, object]:
     if getattr(output, "available", False):
         period_seconds = mean_period_seconds(
             cycle_boundaries,
-            float(inputs.timing.dt_seconds),
+            float(inputs.holodoppler.timing.dt_seconds),
         )
         for vessel_name, segments in (
             ("Artery", artery_segments),
             ("Vein", vein_segments),
         ):
             lumen_path = (
-                f"{SPATIAL_GRADIENT_METRICS_ROOT}/{vessel_name}/"
-                "Transverse/Masked/tk/lumen_size"
+                f"{SPATIAL_GRADIENT_METRICS_ROOT}/{vessel_name}/Transverse/Masked/tk/lumen_size"
             )
             lumen_size = gradient_outputs.get(lumen_path)
             if lumen_size is not None:
@@ -109,9 +107,7 @@ def _validate_profile_segment_alignment(
             np.asarray(getattr(velocity_segments, field)),
             np.asarray(getattr(gradient_segments, field)),
         ):
-            raise RuntimeError(
-                f"{vessel_name} velocity and gradient segment {field} do not match."
-            )
+            raise RuntimeError(f"{vessel_name} velocity and gradient segment {field} do not match.")
     velocity_centers = _ring_branch_segment_centers(velocity_segments)
     gradient_centers = _ring_branch_segment_centers(gradient_segments)
     if velocity_centers.shape != gradient_centers.shape or not np.allclose(
@@ -119,9 +115,7 @@ def _validate_profile_segment_alignment(
         gradient_centers,
         equal_nan=True,
     ):
-        raise RuntimeError(
-            f"{vessel_name} velocity and gradient segment centers do not match."
-        )
+        raise RuntimeError(f"{vessel_name} velocity and gradient segment centers do not match.")
     velocity_shape = tuple(_unmasked_transverse_profiles(velocity_segments).shape[:2])
     gradient_shape = tuple(_unmasked_transverse_profiles(gradient_segments).shape[:2])
     if velocity_shape != gradient_shape:

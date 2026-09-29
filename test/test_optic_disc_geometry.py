@@ -109,6 +109,47 @@ def test_annulus_geometry_preserves_established_calculation() -> None:
     assert geometry.ring_count == int(np.ceil((1.0 - expected_inner) / expected_step))
     with pytest.raises(ValueError, match="positive"):
         disc.annulus_geometry((10, 20), number_of_radii_in_fov=0)
-    assert OpticDisc(None, (0.0, 0.0), 1.0, 1.0).annulus_geometry(
-        (1, 1)
-    ).inner_radius_frac == 1.0
+    assert OpticDisc(None, (0.0, 0.0), 1.0, 1.0).annulus_geometry((1, 1)).inner_radius_frac == 1.0
+
+
+def test_missing_measurements_fall_back_to_centered_ten_percent_circle() -> None:
+    shape = (101, 201)
+    disc = OpticDisc.from_measurements(None, None, None, None, shape)
+    radius_scale = image_half_diagonal(*shape)
+
+    assert disc.is_fallback
+    assert disc.center == (shape[1] / 2.0, shape[0] / 2.0)
+    assert disc.width == pytest.approx(0.20 * radius_scale)
+    assert disc.height == pytest.approx(0.20 * radius_scale)
+    assert disc.annulus_geometry(shape).inner_radius_frac == pytest.approx(
+        np.ceil(0.10 * radius_scale) / radius_scale
+    )
+    expected = disc.centered_circle_mask_for(shape)
+    np.testing.assert_array_equal(disc.mask_for(shape), expected)
+
+
+def test_nonfinite_mask_uses_full_fallback() -> None:
+    shape = (21, 31)
+    mask = np.full(shape, np.nan, dtype=np.float32)
+    disc = OpticDisc.from_measurements(mask, (2.0, 3.0), 8.0, 10.0, shape)
+
+    assert disc.is_fallback
+    assert disc.center == (15.5, 10.5)
+
+
+def test_mask_supplies_missing_center_and_bounding_box_dimensions() -> None:
+    mask = np.zeros((20, 30), dtype=np.float32)
+    mask[4:10, 8:17] = 1.0
+    disc = OpticDisc.from_measurements(
+        mask,
+        np.asarray([np.nan, np.nan]),
+        None,
+        np.asarray(np.nan),
+        mask.shape,
+    )
+
+    assert not disc.is_fallback
+    assert disc.center == pytest.approx((12.0, 6.5))
+    assert disc.width == 9.0
+    assert disc.height == 6.0
+    np.testing.assert_array_equal(disc.mask, mask.astype(bool))

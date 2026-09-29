@@ -573,9 +573,15 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
     def test_core_plain_profiles_do_not_stream_fft_or_retain_velocity_maps(self) -> None:
         source = SimpleNamespace(
-            retinal_artery_mask="artery_mask",
-            retinal_vein_mask="vein_mask",
-            optic_disc="optic_disc",
+            source=SimpleNamespace(
+                segmentation=SimpleNamespace(
+                    vessels=SimpleNamespace(
+                        artery="artery_mask",
+                        vein="vein_mask",
+                    ),
+                    optic_disc="optic_disc",
+                ),
+            ),
             profile_settings="settings",
             provenance={"beat_index_base": 1},
         )
@@ -614,9 +620,15 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
     def test_core_explicit_fft_option_streams_fft_without_retaining_maps(self) -> None:
         source = SimpleNamespace(
-            retinal_artery_mask="artery_mask",
-            retinal_vein_mask="vein_mask",
-            optic_disc="optic_disc",
+            source=SimpleNamespace(
+                segmentation=SimpleNamespace(
+                    vessels=SimpleNamespace(
+                        artery="artery_mask",
+                        vein="vein_mask",
+                    ),
+                    optic_disc="optic_disc",
+                ),
+            ),
             profile_settings="settings",
             provenance={"beat_index_base": 0},
         )

@@ -20,17 +20,22 @@ def run_retinal_velocity_analysis(
     retain_velocity_video: bool = True,
     velocity_estimation: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    timing: HolodopplerTiming = source_data.timing
+    source = source_data.source
+    images = source.image_maps
+    segmentation = source.segmentation
+    vessels = segmentation.vessels
+    timing: HolodopplerTiming = source.holodoppler.timing
+    local_background_dist = source.doppler_view.local_background_dist
     cache = (
         dict(velocity_estimation)
         if velocity_estimation is not None
         else run_chunked_velocity_estimator(
-            moment0=source_data.moment0,
-            moment2=source_data.moment2,
-            artery_mask=source_data.retinal_artery_mask,
-            vein_mask=source_data.retinal_vein_mask,
-            optic_disc_center=source_data.optic_disc.center,
-            local_background_dist=source_data.local_background_dist,
+            moment0=images.moment0,
+            moment2=images.moment2,
+            artery_mask=vessels.artery,
+            vein_mask=vessels.vein,
+            optic_disc_center=segmentation.optic_disc.center,
+            local_background_dist=local_background_dist,
             scratch_h5=scratch_h5,
             retain_velocity_video=retain_velocity_video,
         )
@@ -43,7 +48,7 @@ def run_retinal_velocity_analysis(
         },
         analysis_config={
             "VelocityEstimation": {
-                "LocalBackgroundDist": source_data.local_background_dist,
+                "LocalBackgroundDist": local_background_dist,
             },
             "PulseAnalysis": {
                 "FilterSignals": LEGACY_FILTER_VELOCITY_SIGNALS,

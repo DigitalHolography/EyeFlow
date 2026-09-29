@@ -44,7 +44,7 @@ def export_cross_section_profile_artifacts(
                 writer,
                 raw_aggregate,
                 raw_x_pixels,
-                float(context.source_data.timing.dt_seconds),
+                float(context.source_data.source.holodoppler.timing.dt_seconds),
                 vessel_name,
             )
         )

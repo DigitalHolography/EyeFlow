@@ -13,12 +13,12 @@ from .common import PulseFigureContext, _matplotlib, _output_stem, _section_mask
 from .correlation import _export_correlation_plots
 from .maps import _export_maps
 from .profiles import export_cross_section_profile_artifacts
+from .signal_inputs import mean_video
 from .signals import _export_signal_plots
 from .spectral import _export_spectral_plots
 from .systole import _export_systole_plots
 from .velocity_maps import _export_final_visualizations
 from .waveforms import _export_ri_pi_plots, _export_waveform_plots
-from .signal_inputs import mean_video
 
 if TYPE_CHECKING:
     from calculations.blood_flow_velocity import PerBeatAnalysisResult
@@ -96,24 +96,28 @@ def export_pulse_pngs(
         return []
     _matplotlib()
     source_data = context.source_data
+    source = source_data.source
+    images = source.image_maps
+    vessels = source.segmentation.vessels
+    timing = source.holodoppler.timing
     velocity_analysis = context.velocity_analysis
     frame_count = int(
         np.asarray(velocity_analysis["retinal_artery_velocity_signal"]).size
     )
     moment0_avg = velocity_analysis.get("moment0_avg")
     if moment0_avg is None:
-        moment0_avg = mean_video(source_data.moment0)
+        moment0_avg = mean_video(images.moment0)
     pulse_context = PulseFigureContext(
         output=output,
         stem=_output_stem(output),
-        time=np.arange(frame_count, dtype=np.float32) * np.float32(source_data.timing.dt_seconds),
-        dt_seconds=float(source_data.timing.dt_seconds),
+        time=np.arange(frame_count, dtype=np.float32) * np.float32(timing.dt_seconds),
+        dt_seconds=float(timing.dt_seconds),
         moment0_avg=np.asarray(moment0_avg, dtype=np.float32),
-        artery_mask=np.asarray(source_data.retinal_artery_mask, dtype=bool),
-        vein_mask=np.asarray(source_data.retinal_vein_mask, dtype=bool),
+        artery_mask=np.asarray(vessels.artery, dtype=bool),
+        vein_mask=np.asarray(vessels.vein, dtype=bool),
         section_mask=_section_mask(
             velocity_analysis,
-            source_data.retinal_artery_mask.shape,
+            vessels.artery.shape,
         ),
         velocity_analysis=velocity_analysis,
         per_beat_result=per_beat_result,

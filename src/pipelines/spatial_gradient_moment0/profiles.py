@@ -41,7 +41,8 @@ def extract_spatial_gradient_segments(
     legacy_number_of_radii = None
     if hasattr(source, "source_data"):
         waveform_context = source
-        source = waveform_context.source_data
+        waveform_source = waveform_context.source_data
+        source = waveform_source.source
         legacy_number_of_radii = waveform_context.attrs.get(
             "number_of_radii_in_FOV"
         )
@@ -51,15 +52,12 @@ def extract_spatial_gradient_segments(
                 "vein": waveform_context.vein_segment_result.topology.prepared_topology,
             }
         if profile_settings is None:
-            profile_settings = source.profile_settings
-    artery_mask = getattr(source, "artery_mask", None)
-    if artery_mask is None:
-        artery_mask = source.retinal_artery_mask
-    vein_mask = getattr(source, "vein_mask", None)
-    if vein_mask is None:
-        vein_mask = source.retinal_vein_mask
+            profile_settings = waveform_source.profile_settings
+    vessels = source.segmentation.vessels
+    artery_mask = vessels.artery
+    vein_mask = vessels.vein
     if profile_settings is None:
-        profile_settings = source.profile_settings
+        raise RuntimeError("Spatial-gradient analysis requires profile settings.")
     if prepared_topologies is None:
         raise RuntimeError("Spatial-gradient analysis requires prepared topology.")
 
@@ -73,7 +71,7 @@ def extract_spatial_gradient_segments(
         None,
     )
     if ring_settings is None and legacy_number_of_radii is not None:
-        ring_settings = source.optic_disc.annulus_geometry(
+        ring_settings = source.segmentation.optic_disc.annulus_geometry(
             tuple(int(size) for size in artery_mask.shape),
             number_of_radii_in_fov=int(legacy_number_of_radii),
         )
@@ -85,7 +83,7 @@ def extract_spatial_gradient_segments(
             "artery": artery_mask,
             "vein": vein_mask,
         },
-        source.optic_disc,
+        source.segmentation.optic_disc,
         ring_settings,
         profile_settings,
         prepared_topologies=prepared_topologies,
