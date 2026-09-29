@@ -21,7 +21,11 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from uuid import uuid4
 
-from app_settings import AppSettingsStore, normalize_pipeline_options
+from app_settings import (
+    AppSettingsStore,
+    normalize_pipeline_options,
+    normalize_pipeline_visibility,
+)
 from runtime_limits import configure_numeric_threads
 
 configure_numeric_threads()
@@ -79,7 +83,16 @@ def _load_configured_pipeline_targets(
     settings_store: AppSettingsStore | None = None,
 ) -> tuple[str, ...]:
     store = settings_store or AppSettingsStore()
-    visibility = store.load_pipeline_visibility()
+    visibility, changed = normalize_pipeline_visibility(
+        registry,
+        store.load_pipeline_visibility(),
+        missing_defaults={
+            name: descriptor.default_selected
+            for name, descriptor in registry.items()
+        },
+    )
+    if changed:
+        store.save_pipeline_visibility(visibility)
     selected_names = tuple(
         name for name in registry if visibility.get(name, False)
     )

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import h5py
 import numpy as np
 
-from input_output.schema.base import HolodopplerTiming
+from input_output.schema.source_data import HolodopplerTiming
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

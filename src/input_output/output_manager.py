@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .archives import reset_output_dir
 from .holo_run_layout import HoloRunLayout
-from .writers import open_h5, write_json_file, write_png_file
+from .writers import open_h5, write_eps_file, write_json_file, write_png_file
 
 
 class OutputType(Enum):
@@ -18,6 +18,7 @@ class OutputType(Enum):
     AVI = "avi"
     GIF = "gif"
     PDF = "pdf"
+    EPS = "eps"
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,8 @@ class OutputManager:
             return write_json_file(self.path_for(output_type, filename), output)
         if output_type is OutputType.PNG:
             return write_png_file(self.path_for(output_type, filename), output)
+        if output_type is OutputType.EPS:
+            return write_eps_file(self.path_for(output_type, filename), output)
         if output_type is OutputType.H5:
             raise NotImplementedError("Use open_h5() for session-based H5 output.")
         raise NotImplementedError(
@@ -76,6 +79,9 @@ class OutputManager:
 
     def write_png(self, output, filename: str | None = None) -> Path:
         return self.write_sidecar(output, OutputType.PNG, filename)
+
+    def write_eps(self, figure, filename: str | None = None) -> Path:
+        return self.write_sidecar(figure, OutputType.EPS, filename)
 
     def _filename_for(self, output_type: OutputType, filename: str | None) -> str:
         if filename:

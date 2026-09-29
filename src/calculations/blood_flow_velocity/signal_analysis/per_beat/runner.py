@@ -100,10 +100,14 @@ def _run_vessel(
     inputs: PerBeatAnalysisInput,
 ) -> VesselPerBeatAnalysisResult:
     segments = _run_segments(velocity_segments, cycle_boundaries, inputs)
-    safe_segments = _run_segments(
-        safe_velocity_segments,
-        cycle_boundaries,
-        inputs,
+    safe_segments = (
+        segments
+        if safe_velocity_segments is velocity_segments
+        else _run_segments(
+            safe_velocity_segments,
+            cycle_boundaries,
+            inputs,
+        )
     )
     signal = per_beat_signal_analysis(
         velocity_signal,

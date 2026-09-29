@@ -89,12 +89,48 @@ def _build_status_row(app, parent: ttk.Frame) -> None:
 def _build_run_controls(app, parent: ttk.Frame) -> None:
     controls = ttk.Frame(parent)
     controls.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 4))
+    controls.columnconfigure(2, weight=1)
     app.advanced_run_button = ttk.Button(
         controls,
         text="Run",
         command=app.run_controller.run_process,
     )
-    app.advanced_run_button.grid(row=0, column=0, sticky="w")
+    app.advanced_run_button.grid(row=0, column=0, sticky="w", padx=(0, 6))
+    app.advanced_stop_button = ttk.Button(
+        controls,
+        text="Stop",
+        command=app.run_controller.stop_process,
+        state="disabled",
+    )
+    app.advanced_stop_button.grid(row=0, column=1, sticky="w", padx=(6, 0))
+    app.advanced_progress = ttk.Progressbar(
+        controls,
+        orient="horizontal",
+        mode="determinate",
+        maximum=100,
+        variable=app.run_progress_var,
+        style=app._progress_primary_style,
+    )
+    app.advanced_progress.grid(
+        row=1,
+        column=0,
+        columnspan=3,
+        sticky="ew",
+        pady=(10, 0),
+    )
+    app.advanced_status_label = ttk.Label(
+        controls,
+        textvariable=app.minimal_status_var,
+        justify="left",
+        wraplength=720,
+    )
+    app.advanced_status_label.grid(
+        row=2,
+        column=0,
+        columnspan=3,
+        sticky="ew",
+        pady=(6, 0),
+    )
 
 
 def _build_run_log(app, parent: ttk.Frame) -> None:

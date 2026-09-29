@@ -7,7 +7,6 @@ from typing import Any
 
 import numpy as np
 
-
 MISSING = object()
 
 
@@ -21,18 +20,6 @@ class SourceFileLayout:
     h5_filename_template: str
     config_dir_name: str | None = None
     config_filename: str | None = None
-
-
-@dataclass(frozen=True)
-class HolodopplerTiming:
-    """Sampling metadata exported by Holodoppler."""
-
-    sampling_freq: float
-    batch_stride: float
-
-    @property
-    def dt_seconds(self) -> float:
-        return self.batch_stride / self.sampling_freq
 
 
 class TypedSource:

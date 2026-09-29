@@ -297,6 +297,9 @@ class PipelineOutput:
     def write_png(self, output, filename: str | None = None):
         return self._manager().write_png(output, filename)
 
+    def write_eps(self, figure, filename: str | None = None):
+        return self._manager().write_eps(figure, filename)
+
     def _manager(self) -> OutputManager:
         if self.manager is None:
             raise ValueError("No output manager is available for this pipeline run.")

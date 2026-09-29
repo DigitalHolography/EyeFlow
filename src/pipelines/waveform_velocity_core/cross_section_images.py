@@ -6,12 +6,12 @@ from pathlib import Path
 
 import numpy as np
 
-from calculations.blood_flow_velocity import CrossSectionSignalResult
+from .models import VelocitySegmentResult
 
 
 def export_rotated_mean_pngs(
     output,
-    result: CrossSectionSignalResult,
+    result: VelocitySegmentResult,
     vessel_folder: str,
 ) -> list[Path]:
     """Export every valid unmasked and masked rotated time-mean image."""

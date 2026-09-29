@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from utils.logger import LogLevel, Logger, format_log_message
+from utils.logger import Logger, LogLevel, format_log_message
 
 from ..services import services_for
 
@@ -41,8 +41,10 @@ class ProgressController:
             )
 
     def set_progress_style(self, style_name: str) -> None:
-        if hasattr(self.app, "minimal_progress"):
-            self.app.minimal_progress.configure(style=style_name)
+        for attr in ("minimal_progress", "advanced_progress"):
+            progress = getattr(self.app, attr, None)
+            if progress is not None:
+                progress.configure(style=style_name)
 
     def reset_progress(self) -> None:
         self.app._progress_total_units = 1.0

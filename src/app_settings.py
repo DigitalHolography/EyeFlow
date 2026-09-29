@@ -160,9 +160,27 @@ def normalize_named_visibility(
 
 
 def normalize_pipeline_visibility(
-    pipeline_names: Iterable[str], stored_visibility: Mapping[str, bool] | None
+    pipeline_names: Iterable[str],
+    stored_visibility: Mapping[str, bool] | None,
+    *,
+    missing_defaults: Mapping[str, bool] | None = None,
 ) -> tuple[dict[str, bool], bool]:
-    return normalize_named_visibility(pipeline_names, stored_visibility)
+    names = list(dict.fromkeys(pipeline_names))
+    visibility, changed = normalize_named_visibility(names, stored_visibility)
+    stored_names = {
+        name
+        for name, value in (stored_visibility or {}).items()
+        if isinstance(name, str) and isinstance(value, bool)
+    }
+    if stored_names:
+        for name in names:
+            if name in stored_names:
+                continue
+            default = bool((missing_defaults or {}).get(name, False))
+            if visibility.get(name) != default:
+                visibility[name] = default
+                changed = True
+    return visibility, changed
 
 
 def normalize_pipeline_options(
@@ -241,6 +259,17 @@ class AppSettingsStore:
             encoding="utf-8",
         )
         tmp_path.replace(self.path)
+
+    def import_file(self, path: Path) -> None:
+        try:
+            settings = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Invalid JSON at line {exc.lineno}, column {exc.colno}: {exc.msg}"
+            ) from exc
+        if not isinstance(settings, dict):
+            raise TypeError("The configuration must contain a JSON object.")
+        self.save(settings)
 
     def load_named_visibility(self, key: str) -> dict[str, bool]:
         raw_visibility = self.load().get(key, {})

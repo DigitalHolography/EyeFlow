@@ -62,10 +62,11 @@ class RunFailure:
 class RunResult:
     outputs: tuple[Path, ...]
     failures: tuple[RunFailure, ...]
+    stopped: bool = False
 
     @property
     def succeeded(self) -> bool:
-        return not self.failures
+        return not self.failures and not self.stopped
 
     @property
     def last_output_path(self) -> Path | None:
@@ -103,7 +104,11 @@ def resolve_run_spec(
             "Unknown or hidden pipeline target(s): " + ", ".join(hidden_targets)
         )
 
-    plan = PipelineDAG(descriptors).resolve_targets(target_names)
+    resolved_options = _resolve_pipeline_options(descriptors, pipeline_options)
+    plan = PipelineDAG(descriptors).resolve_targets(
+        target_names,
+        pipeline_options=resolved_options,
+    )
     if not plan.targets:
         raise ValueError("Select at least one pipeline target.")
     unavailable = [pipeline for pipeline in plan.descriptors if not pipeline.available]
@@ -115,7 +120,11 @@ def resolve_run_spec(
         raise ValueError(
             "The DAG requires unavailable pipeline(s): " + ", ".join(details)
         )
-    resolved_options = _resolve_pipeline_options(plan, pipeline_options)
+    resolved_options = {
+        descriptor.name: resolved_options[descriptor.name]
+        for descriptor in plan.descriptors
+        if descriptor.name in resolved_options
+    }
 
     layouts = resolve_selected_run_layouts(input_paths)
     resolved_output_root = (
@@ -148,19 +157,29 @@ def resolve_run_spec(
 def execute_run(
     spec: RunSpec,
     *,
+    on_file_start: Callable[[Path, int, int], None] | None = None,
+    on_pipeline_start: Callable[[str, int, int], None] | None = None,
     on_progress: Callable[[], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> RunResult:
-    """Execute a batch, writing each run directly to its final output folder."""
+    """Execute a batch, optionally stopping between input files."""
 
     Logger.log(f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
     Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
     outputs: list[Path] = []
     failures: list[RunFailure] = []
+    stopped = False
 
-    for request in spec.requests:
+    for request_index, request in enumerate(spec.requests):
         input_layout = request.input_layout
         final_manager = request.output_manager
         final_path = final_manager.path_for(OutputType.H5)
+        if on_file_start is not None:
+            on_file_start(
+                input_layout.holo_path,
+                request_index + 1,
+                len(spec.requests),
+            )
         Logger.log(f"[INPUT] HOLO -> {input_layout.holo_path}")
         Logger.log(f"[INPUT] DATA DIR -> {input_layout.root_dir}")
         Logger.log(f"[RESOLVED] HD -> {input_layout.hd_h5}")
@@ -183,27 +202,36 @@ def execute_run(
                 pipeline_options=spec.pipeline_options,
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
+                on_pipeline_start=on_pipeline_start,
                 on_progress=on_progress,
             )
         except Exception as exc:  # noqa: BLE001
             failure = RunFailure(input_layout.holo_path, str(exc))
             failures.append(failure)
             Logger.log_error(str(failure))
-            continue
+        else:
+            outputs.append(final_path)
+            Logger.log(f"Completed run for {input_layout.holo_path.name}: {final_path}")
 
-        outputs.append(final_path)
-        Logger.log(f"Completed run for {input_layout.holo_path.name}: {final_path}")
+        remaining_count = len(spec.requests) - request_index - 1
+        if remaining_count and should_stop is not None and should_stop():
+            stopped = True
+            Logger.log(
+                f"[STOP] Batch stopped after {input_layout.holo_path.name}; "
+                f"{remaining_count} input file(s) not started."
+            )
+            break
 
-    return RunResult(tuple(outputs), tuple(failures))
+    return RunResult(tuple(outputs), tuple(failures), stopped=stopped)
 
 
 def _resolve_pipeline_options(
-    plan: PipelineExecutionPlan,
+    pipelines: Sequence[PipelineDescriptor],
     selections: Mapping[str, Iterable[str]] | None,
 ) -> dict[str, tuple[str, ...]]:
     requested_by_pipeline = selections or {}
     resolved: dict[str, tuple[str, ...]] = {}
-    for descriptor in plan.descriptors:
+    for descriptor in pipelines:
         if not descriptor.options:
             continue
         known = {option.name for option in descriptor.options}
@@ -222,6 +250,16 @@ def _resolve_pipeline_options(
                     f"Unknown option(s) for pipeline '{descriptor.name}': "
                     + ", ".join(unknown)
                 )
+        options_by_name = {
+            option.name: option for option in descriptor.options
+        }
+        pending = list(selected)
+        while pending:
+            option_name = pending.pop()
+            for required_name in options_by_name[option_name].requires:
+                if required_name not in selected:
+                    selected.add(required_name)
+                    pending.append(required_name)
         resolved[descriptor.name] = tuple(
             option.name for option in descriptor.options if option.name in selected
         )

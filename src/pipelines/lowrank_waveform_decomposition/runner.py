@@ -30,7 +30,6 @@ def run_lowrank_waveform_decomposition(ctx) -> dict[str, object]:
         velocity_outputs,
         vein_flag=True,
         include_quadrants=include_quadrants,
-        source_data=context.source_data if context is not None else None,
         artery_segments=(
             context.artery_segment_result if context is not None else None
         ),
