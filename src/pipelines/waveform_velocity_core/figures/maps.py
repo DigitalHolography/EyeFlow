@@ -27,10 +27,10 @@ from .plotting import (
 
 def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     paths: list[Path] = []
-    f_bkg_avg = _array_or_none(ctx.analysis.get("fRMS_bkg_avg"))
-    f_avg = _array_or_none(ctx.analysis.get("fRMS_avg"))
-    delta = ctx.analysis.get("deltafRMS")
-    delta_avg = _array_or_none(ctx.analysis.get("deltafRMS_avg"))
+    f_bkg_avg = _array_or_none(ctx.velocity_analysis.get("fRMS_bkg_avg"))
+    f_avg = _array_or_none(ctx.velocity_analysis.get("fRMS_avg"))
+    delta = ctx.velocity_analysis.get("deltafRMS")
+    delta_avg = _array_or_none(ctx.velocity_analysis.get("deltafRMS_avg"))
     if f_bkg_avg is not None:
         f_bkg_avg = _display_frequency(f_bkg_avg)
         paths.extend(
@@ -79,7 +79,9 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
         )
     if f_avg is not None:
         f_avg = _display_frequency(f_avg)
-        velocity_avg = _array_or_none(ctx.analysis.get("velocity_map_avg"))
+        velocity_avg = _array_or_none(
+            ctx.velocity_analysis.get("velocity_map_avg")
+        )
         velocity_values = None
         if velocity_avg is not None:
             velocity_values = _velocity_gradient_values(

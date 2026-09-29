@@ -7,15 +7,14 @@ import numpy as np
 from calculations.math import butter_lowpass_filtfilt, nanmedian
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue, with_attrs
-from pipelines.waveform_velocity_core.dopplerview.constants import (
-    LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
-)
 from pipelines.waveform_velocity_core.regions import (
     QUADRANTS_GROUP_NAME,
     REGION_NAMES,
     normalize_spatial_frame,
-    optic_disc_center_xy,
     region_membership,
+)
+from pipelines.waveform_velocity_core.retinal_velocity.constants import (
+    LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
 
 
@@ -39,8 +38,11 @@ def pack_quadrant_velocity_outputs(
 
         branch_ids = np.asarray(segments.branch_ids, dtype=np.int32).reshape(-1)
         labels = np.asarray(segments.labels, dtype=np.int32)
-        centers = np.asarray(segments.segment_center_xy, dtype=float)
-        center_xy = optic_disc_center_xy(source_data, labels.shape)
+        centers = np.asarray(segments.segment_centers_xy, dtype=float)
+        center_xy = np.asarray(
+            segments.topology.optic_disc_center_xy,
+            dtype=float,
+        ).copy()
         labels, center_xy = normalize_spatial_frame(labels, center_xy)
         membership = region_membership(branch_ids, labels, centers, center_xy)
         result.update(
@@ -67,7 +69,7 @@ def _pack_region_velocity_outputs(
     membership: np.ndarray,
     metrics: dict[str, object],
 ) -> dict[str, object]:
-    segment_velocity = np.asarray(segments.velocity, dtype=np.float32)
+    segment_velocity = np.asarray(segments.projected_signal, dtype=np.float32)
     if segment_velocity.ndim != 3:
         raise ValueError(
             "Segment velocity must have shape (radius, branch, frame), got "
@@ -218,7 +220,7 @@ def _lowpass_velocity(values: np.ndarray, source_data) -> np.ndarray:
     values = np.asarray(values, dtype=np.float32)
     if not np.any(np.isfinite(values)):
         return np.full(values.shape, np.nan, dtype=np.float32)
-    timing = getattr(source_data, "timing", None)
+    timing = source_data.source.holodoppler.timing
     if timing is None:
         raise ValueError("Quadrant band-limited velocity requires source timing.")
     return butter_lowpass_filtfilt(

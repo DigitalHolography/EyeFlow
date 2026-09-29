@@ -1,0 +1,228 @@
+{
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "python": "3.12.14",
+  "numpy": "2.5.3",
+  "scipy": "1.18.1",
+  "cupy": "14.2.0",
+  "cuda_runtime": 13020,
+  "cuda_driver": 13030,
+  "cases": [
+    {
+      "frames": 64,
+      "native_side": 33,
+      "varying_validity": false,
+      "parity_max_abs_error": {
+        "masked.raw": 1.9073486328125e-06,
+        "masked.safe_velocity": 1.9073486328125e-06,
+        "masked.transverse_profiles": 5.7220458984375e-06,
+        "masked.longitudinal_profiles": 3.814697265625e-06,
+        "unmasked.raw": 4.76837158203125e-06,
+        "unmasked.safe_velocity": 2.384185791015625e-06,
+        "unmasked.transverse_profiles": 1.7642974853515625e-05,
+        "unmasked.longitudinal_profiles": 1.430511474609375e-06
+      },
+      "main_cpu": {
+        "seconds": [
+          0.2631446998566389,
+          0.26410079980269074,
+          0.26410700008273125,
+          0.26214379956945777,
+          0.26418490009382367
+        ],
+        "median_seconds": 0.26410079980269074,
+        "cuda_pool_reserved_mib": 0.0
+      },
+      "new_cpu": {
+        "seconds": [
+          0.2563567999750376,
+          0.2561121000908315,
+          0.25351430010050535,
+          0.2551613003015518,
+          0.2575320000760257
+        ],
+        "median_seconds": 0.2561121000908315,
+        "cuda_pool_reserved_mib": 0.0
+      },
+      "new_gpu": {
+        "seconds": [
+          0.021474100183695555,
+          0.02153669996187091,
+          0.021507100202143192,
+          0.021516299806535244,
+          0.02161499997600913
+        ],
+        "median_seconds": 0.021516299806535244,
+        "cuda_pool_reserved_mib": 61.59228515625
+      },
+      "windowed_cpu": {
+        "seconds": [
+          0.2579212998971343,
+          0.261404599994421,
+          0.25806180015206337,
+          0.25859880028292537,
+          0.25796290021389723
+        ],
+        "median_seconds": 0.25806180015206337,
+        "cuda_pool_reserved_mib": 0.0
+      },
+      "windowed_gpu": {
+        "seconds": [
+          0.025804100092500448,
+          0.02564609982073307,
+          0.025661500170826912,
+          0.02562159998342395,
+          0.025511799845844507
+        ],
+        "median_seconds": 0.02564609982073307,
+        "cuda_pool_reserved_mib": 61.59228515625
+      },
+      "windowed_gpu_speedup": 10.062418923575995,
+      "gpu_speedup_vs_new_cpu": 11.903166547857891
+    },
+    {
+      "frames": 256,
+      "native_side": 65,
+      "varying_validity": false,
+      "parity_max_abs_error": {
+        "masked.raw": 1.9073486328125e-06,
+        "masked.safe_velocity": 1.9073486328125e-06,
+        "masked.transverse_profiles": 4.76837158203125e-06,
+        "masked.longitudinal_profiles": 3.814697265625e-06,
+        "unmasked.raw": 4.76837158203125e-06,
+        "unmasked.safe_velocity": 2.86102294921875e-06,
+        "unmasked.transverse_profiles": 1.9550323486328125e-05,
+        "unmasked.longitudinal_profiles": 1.9073486328125e-06
+      },
+      "main_cpu": {
+        "seconds": [
+          1.0224035996943712,
+          1.0433074999600649,
+          1.047608199995011,
+          1.0430449000559747,
+          1.0473556998185813
+        ],
+        "median_seconds": 1.0433074999600649,
+        "cuda_pool_reserved_mib": 0.0
+      },
+      "new_cpu": {
+        "seconds": [
+          0.9985433002002537,
+          0.9808040000498295,
+          0.9933404000476003,
+          0.9864547997713089,
+          1.0235187001526356
+        ],
+        "median_seconds": 0.9933404000476003,
+        "cuda_pool_reserved_mib": 0.0
+      },
+      "new_gpu": {
+        "seconds": [
+          0.06685409974306822,
+          0.05280760023742914,
+          0.04665900021791458,
+          0.046986100263893604,
+          0.04645359981805086
+        ],
+        "median_seconds": 0.046986100263893604,
+        "cuda_pool_reserved_mib": 249.25
+      },
+      "windowed_cpu": {
+        "seconds": [
+          1.2096396000124514,
+          1.2046519997529685,
+          1.2129534999839962,
+          1.211948299780488,
+          1.2076723002828658
+        ],
+        "median_seconds": 1.2096396000124514,
+        "cuda_pool_reserved_mib": 0.0
+      },
+      "windowed_gpu": {
+        "seconds": [
+          0.1467368002049625,
+          0.13858129968866706,
+          0.11636310024186969,
+          0.11598289990797639,
+          0.11542609985917807
+        ],
+        "median_seconds": 0.11636310024186969,
+        "cuda_pool_reserved_mib": 162.59814453125
+      },
+      "windowed_gpu_speedup": 10.395388207242005,
+      "gpu_speedup_vs_new_cpu": 21.141154393928947
+    },
+    {
+      "frames": 256,
+      "native_side": 65,
+      "varying_validity": true,
+      "parity_max_abs_error": {
+        "masked.raw": 1.9073486328125e-06,
+        "masked.safe_velocity": 1.9073486328125e-06,
+        "masked.transverse_profiles": 4.76837158203125e-06,
+        "masked.longitudinal_profiles": 3.814697265625e-06,
+        "unmasked.raw": 4.76837158203125e-06,
+        "unmasked.safe_velocity": 2.86102294921875e-06,
+        "unmasked.transverse_profiles": 1.9550323486328125e-05,
+        "unmasked.longitudinal_profiles": 1.9073486328125e-06
+      },
+      "main_cpu": {
+        "seconds": [
+          1.2038238998502493,
+          1.2135808998718858,
+          1.2070334004238248,
+          1.2202066997997463,
+          1.2052440997213125
+        ],
+        "median_seconds": 1.2070334004238248,
+        "cuda_pool_reserved_mib": 0.0
+      },
+      "new_cpu": {
+        "seconds": [
+          1.156547799706459,
+          1.1561942999251187,
+          1.1536400001496077,
+          1.1679037003777921,
+          1.1553869000636041
+        ],
+        "median_seconds": 1.1561942999251187,
+        "cuda_pool_reserved_mib": 0.0
+      },
+      "new_gpu": {
+        "seconds": [
+          0.08417529985308647,
+          0.04954920010641217,
+          0.04705600021407008,
+          0.047077199909836054,
+          0.04683490004390478
+        ],
+        "median_seconds": 0.047077199909836054,
+        "cuda_pool_reserved_mib": 249.25
+      },
+      "windowed_cpu": {
+        "seconds": [
+          1.566662299912423,
+          1.5547615000978112,
+          1.5674175997264683,
+          1.5488176997750998,
+          1.5544372000731528
+        ],
+        "median_seconds": 1.5547615000978112,
+        "cuda_pool_reserved_mib": 0.0
+      },
+      "windowed_gpu": {
+        "seconds": [
+          0.13331930013373494,
+          0.11624439992010593,
+          0.11497739981859922,
+          0.11569879995658994,
+          0.11613699980080128
+        ],
+        "median_seconds": 0.11613699980080128,
+        "cuda_pool_reserved_mib": 162.59814453125
+      },
+      "windowed_gpu_speedup": 13.387305533676136,
+      "gpu_speedup_vs_new_cpu": 24.559538420711164
+    }
+  ],
+  "scope": "One segment: resize, rotate, fit limits, profiles and host outputs. Synchronized wall time; compilation excluded. Synthetic data; excludes branch labeling, profile postprocessing, and export."
+}

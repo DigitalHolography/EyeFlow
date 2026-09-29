@@ -28,17 +28,36 @@ class FigureArtifactWriter:
         filename = f"{self.stem}_{suffix}"
         return self.output.write_png(image, filename)
 
-    def save_figure(self, fig, suffix: str, *, dpi: int = 150) -> Path:
+    def save_figure(
+        self,
+        fig,
+        suffix: str,
+        *,
+        dpi: int = 150,
+        bbox_inches="tight",
+    ) -> Path:
         path = self.path(suffix)
-        fig.savefig(path, dpi=dpi, bbox_inches="tight")
+        fig.savefig(path, dpi=dpi, bbox_inches=bbox_inches)
         _close_figure(fig)
         return path
 
     def save_image(self, image, suffix: str) -> Path:
         return self.save_array(image, suffix)
 
-    def savefig(self, fig, suffix: str, *, dpi: int = 150) -> Path:
-        return self.save_figure(fig, suffix, dpi=dpi)
+    def savefig(
+        self,
+        fig,
+        suffix: str,
+        *,
+        dpi: int = 150,
+        bbox_inches="tight",
+    ) -> Path:
+        return self.save_figure(
+            fig,
+            suffix,
+            dpi=dpi,
+            bbox_inches=bbox_inches,
+        )
 
 
 def write_png_file(path: str | Path, image) -> Path:

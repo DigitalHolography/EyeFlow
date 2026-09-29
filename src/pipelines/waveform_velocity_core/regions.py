@@ -28,7 +28,7 @@ _EYEFLOW_SPATIAL_Y_INVERTED = True
 def region_membership(
     branch_ids: np.ndarray,
     branch_label_map: np.ndarray,
-    segment_center_xy: np.ndarray,
+    segment_centers_xy: np.ndarray,
     optic_disc_center: np.ndarray,
 ) -> np.ndarray:
     """Assign every branch/radius to its majority quadrant."""
@@ -36,13 +36,13 @@ def region_membership(
         raise ValueError(
             f"BranchLabelMap must have shape (y, x), got {branch_label_map.shape}."
         )
-    if segment_center_xy.ndim != 3 or segment_center_xy.shape[2] != 2:
+    if segment_centers_xy.ndim != 3 or segment_centers_xy.shape[2] != 2:
         raise ValueError(
-            "SegmentCenterXY must have shape (branch, radius, 2), got "
-            f"{segment_center_xy.shape}."
+            "segment_centers_xy must have shape (radius, branch, 2), got "
+            f"{segment_centers_xy.shape}."
         )
 
-    n_branches, n_radii = segment_center_xy.shape[:2]
+    n_radii, n_branches = segment_centers_xy.shape[:2]
     if branch_ids.size != n_branches:
         raise ValueError("BranchIds and SegmentCenterXY must have the same branch count.")
 
@@ -86,16 +86,6 @@ def region_membership(
         (4, n_branches, n_radii),
     )
     return assigned_quadrants.copy()
-
-
-def optic_disc_center_xy(source_data, image_shape: tuple[int, int]) -> np.ndarray:
-    center = np.asarray(source_data.optic_disc_center, dtype=float).reshape(-1)
-    if center.size < 2 or not np.all(np.isfinite(center[:2])):
-        return np.asarray(
-            [image_shape[1] / 2.0, image_shape[0] / 2.0],
-            dtype=float,
-        )
-    return center[:2].copy()
 
 
 def normalize_spatial_frame(

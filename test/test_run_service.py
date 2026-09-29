@@ -414,7 +414,10 @@ class RunServiceTests(unittest.TestCase):
             first.write_text("holo", encoding="utf-8")
 
             with expand_run_inputs(root) as expanded:
-                self.assertEqual((first, second), expanded.paths)
+                self.assertEqual(
+                    (Path("a/first.holo"), Path("b/second.holo")),
+                    tuple(path.relative_to(expanded.batch_root) for path in expanded.paths),
+                )
                 self.assertEqual(root.resolve(), expanded.batch_root)
 
     def test_zip_extraction_rejects_parent_traversal(self) -> None:

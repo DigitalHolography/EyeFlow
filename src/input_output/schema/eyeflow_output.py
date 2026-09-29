@@ -60,12 +60,19 @@ class VelocityPerBeatOutputPaths:
 @dataclass(frozen=True)
 class OpticDiscSegmentationOutputPaths:
     mask: str
+    height: str
+    width: str
+    center: str
 
 
 @dataclass(frozen=True)
 class VesselSegmentationOutputPaths:
     mask: str
     branch_label_map: str
+    segment_map: str
+    segment_mask_area: str
+    lumen_diameter: str
+    delta_radius: str
 
 
 @dataclass(frozen=True)
@@ -73,6 +80,21 @@ class SegmentationOutputPaths:
     optic_disc: OpticDiscSegmentationOutputPaths
     artery: VesselSegmentationOutputPaths
     vein: VesselSegmentationOutputPaths
+    pixel_pitch_m: str
+
+
+@dataclass(frozen=True)
+class VesselBloodVolumeRateOutputPaths:
+    dynamic_edges: str
+    static_edges: str
+    masked_edges: str
+    total_masked_edges: str
+
+
+@dataclass(frozen=True)
+class BloodVolumeRateOutputPaths:
+    artery: VesselBloodVolumeRateOutputPaths
+    vein: VesselBloodVolumeRateOutputPaths
 
 
 @dataclass(frozen=True)
@@ -81,6 +103,12 @@ class VelocityProfileOutputPaths:
     transverse_velocity_profile_masked: str
     longitudinal_velocity_profile_unmasked: str
     longitudinal_velocity_profile_masked: str
+    transverse_velocity_profile_unmasked_meaned: str
+    transverse_velocity_profile_masked_meaned: str
+    longitudinal_velocity_profile_unmasked_meaned: str
+    longitudinal_velocity_profile_masked_meaned: str
+    transverse_velocity_profile_fft_unmasked: str | None = None
+    transverse_velocity_profile_fft_masked: str | None = None
 
 @dataclass(frozen=True)
 class HeartbeatOutputPaths:
@@ -106,11 +134,13 @@ class EyeFlowOutputPaths:
     artery_velocity_profiles: VelocityProfileOutputPaths
     vein_velocity_profiles: VelocityProfileOutputPaths
     heartbeat: HeartbeatOutputPaths
+    displacement_map: str
     beat_period_seconds: str
     waveform_shape_metrics_root: str
     absolute_waveform_metrics_root: str
     lowrank_waveform_decomposition_root: str
     meta_root: str
+    blood_volume_rate: BloodVolumeRateOutputPaths
 
     @classmethod
     def active(cls, name: str | None = None) -> "EyeFlowOutputPaths":
@@ -128,15 +158,43 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
     return SegmentationOutputPaths(
         optic_disc=OpticDiscSegmentationOutputPaths(
             mask=f"{root}/OpticDisc/Mask/value",
+            height=f"{root}/OpticDisc/Height/value",
+            width=f"{root}/OpticDisc/Width/value",
+            center=f"{root}/OpticDisc/Center/value",
         ),
         artery=VesselSegmentationOutputPaths(
             mask=f"{root}/Artery/Mask/value",
             branch_label_map=f"{root}/Artery/BranchLabelMap/value",
+            segment_map=f"{root}/Artery/SegmentMap/value",
+            segment_mask_area=f"{root}/Artery/SegmentMaskArea/value",
+            lumen_diameter=f"{root}/Artery/LumenDiameter/value",
+            delta_radius=f"{root}/Artery/DeltaRadius/value",
         ),
         vein=VesselSegmentationOutputPaths(
             mask=f"{root}/Vein/Mask/value",
             branch_label_map=f"{root}/Vein/BranchLabelMap/value",
+            segment_map=f"{root}/Vein/SegmentMap/value",
+            segment_mask_area=f"{root}/Vein/SegmentMaskArea/value",
+            lumen_diameter=f"{root}/Vein/LumenDiameter/value",
+            delta_radius=f"{root}/Vein/DeltaRadius/value",
         ),
+        pixel_pitch_m=f"{root}/PixelPitch_m/value",
+    )
+
+
+def _blood_volume_rate_paths(root: str) -> BloodVolumeRateOutputPaths:
+    def vessel(name: str) -> VesselBloodVolumeRateOutputPaths:
+        vessel_root = f"{root}/{name}"
+        return VesselBloodVolumeRateOutputPaths(
+            dynamic_edges=f"{vessel_root}/dynamicEdges/value",
+            static_edges=f"{vessel_root}/staticEdges/value",
+            masked_edges=f"{vessel_root}/maskedEdges/value",
+            total_masked_edges=f"{vessel_root}/totalMaskedEdges/value",
+        )
+
+    return BloodVolumeRateOutputPaths(
+        artery=vessel("Artery"),
+        vein=vessel("Vein"),
     )
 
 
@@ -144,8 +202,49 @@ def _velocity_profile_paths(
     root: str,
     *,
     velocity_profile_name: str = "VelocityProfile",
+    hierarchical: bool = False,
+    fft_root: str | None = None,
 ) -> VelocityProfileOutputPaths:
+    if hierarchical:
+        return VelocityProfileOutputPaths(
+            transverse_velocity_profile_fft_unmasked=(
+                None if fft_root is None else f"{fft_root}/TransverseVelocityProfileUnmasked"
+            ),
+            transverse_velocity_profile_fft_masked=(
+                None if fft_root is None else f"{fft_root}/TransverseVelocityProfileMasked"
+            ),
+            transverse_velocity_profile_unmasked=(
+                f"{root}/Transversal/Unmasked/{velocity_profile_name}/value"
+            ),
+            transverse_velocity_profile_masked=(
+                f"{root}/Transversal/Masked/{velocity_profile_name}/value"
+            ),
+            longitudinal_velocity_profile_unmasked=(
+                f"{root}/Longitudinal/Unmasked/{velocity_profile_name}/value"
+            ),
+            longitudinal_velocity_profile_masked=(
+                f"{root}/Longitudinal/Masked/{velocity_profile_name}/value"
+            ),
+            transverse_velocity_profile_unmasked_meaned=(
+                f"{root}/Transversal/Unmasked/{velocity_profile_name}Meaned/value"
+            ),
+            transverse_velocity_profile_masked_meaned=(
+                f"{root}/Transversal/Masked/{velocity_profile_name}Meaned/value"
+            ),
+            longitudinal_velocity_profile_unmasked_meaned=(
+                f"{root}/Longitudinal/Unmasked/{velocity_profile_name}Meaned/value"
+            ),
+            longitudinal_velocity_profile_masked_meaned=(
+                f"{root}/Longitudinal/Masked/{velocity_profile_name}Meaned/value"
+            ),
+        )
     return VelocityProfileOutputPaths(
+            transverse_velocity_profile_fft_unmasked=(
+                None if fft_root is None else f"{fft_root}/TransverseVelocityProfileUnmasked"
+            ),
+            transverse_velocity_profile_fft_masked=(
+                None if fft_root is None else f"{fft_root}/TransverseVelocityProfileMasked"
+            ),
         transverse_velocity_profile_unmasked=(
             f"{root}/Transverse{velocity_profile_name}Unmasked/value"
         ),
@@ -157,6 +256,18 @@ def _velocity_profile_paths(
         ),
         longitudinal_velocity_profile_masked=(
             f"{root}/Longitudinal{velocity_profile_name}Masked/value"
+        ),
+        transverse_velocity_profile_unmasked_meaned=(
+            f"{root}/Transverse{velocity_profile_name}UnmaskedMeaned/value"
+        ),
+        transverse_velocity_profile_masked_meaned=(
+            f"{root}/Transverse{velocity_profile_name}MaskedMeaned/value"
+        ),
+        longitudinal_velocity_profile_unmasked_meaned=(
+            f"{root}/Longitudinal{velocity_profile_name}UnmaskedMeaned/value"
+        ),
+        longitudinal_velocity_profile_masked_meaned=(
+            f"{root}/Longitudinal{velocity_profile_name}MaskedMeaned/value"
         ),
     )
 
@@ -248,6 +359,7 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
         velocity_profile_name="VelocityProfileSeg",
     ),
     heartbeat=LEGACY_HEARTBEAT_OUTPUT,
+    displacement_map="Processing/DisplacementMap",
     beat_period_seconds="Artery/VelocityPerBeat/beatPeriodSeconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="Metrics/absolute_waveform_metrics",
@@ -255,6 +367,7 @@ ANGIOEYE_FULL_OUTPUT = EyeFlowOutputPaths(
         "Metrics/lowrank_waveform_decomposition"
     ),
     meta_root="Meta",
+    blood_volume_rate=_blood_volume_rate_paths("Processing/BloodVolumeRate"),
 )
 
 
@@ -306,6 +419,7 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
         "vein/cross_sections/RawProfile"
     ),
     heartbeat=LEGACY_HEARTBEAT_OUTPUT,
+    displacement_map="Processing/DisplacementMap",
     beat_period_seconds="perbeat/beat_period_seconds/value",
     waveform_shape_metrics_root="Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="Metrics/absolute_waveform_metrics",
@@ -313,6 +427,7 @@ SLIM_TEMP_OUTPUT = EyeFlowOutputPaths(
         "Metrics/lowrank_waveform_decomposition"
     ),
     meta_root="Meta",
+    blood_volume_rate=_blood_volume_rate_paths("Processing/BloodVolumeRate"),
 )
 
 
@@ -398,12 +513,17 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     ),
     segmentation=_segmentation_paths("Segmentation"),
     artery_velocity_profiles=_velocity_profile_paths(
-        "Processing/VelocityProfiles/Artery"
+        "Processing/VelocityProfiles/Artery",
+        hierarchical=True,
+        fft_root="Processing/VelocityProfilesFFT/Artery",
     ),
     vein_velocity_profiles=_velocity_profile_paths(
-        "Processing/VelocityProfiles/Vein"
+        "Processing/VelocityProfiles/Vein",
+        hierarchical=True,
+        fft_root="Processing/VelocityProfilesFFT/Vein",
     ),
     heartbeat=HEARTBEAT_OUTPUT,
+    displacement_map="Processing/DisplacementMap",
     beat_period_seconds="Processing/VelocityPerBeat/BeatPeriodSeconds/value",
     waveform_shape_metrics_root="Processing/Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="Processing/Metrics/absolute_waveform_metrics",
@@ -411,6 +531,7 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         "Processing/Metrics/lowrank_waveform_decomposition"
     ),
     meta_root="Meta",
+    blood_volume_rate=_blood_volume_rate_paths("Processing/BloodVolumeRate"),
 )
 
 

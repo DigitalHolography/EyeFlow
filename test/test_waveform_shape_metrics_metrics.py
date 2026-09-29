@@ -6,18 +6,19 @@ from types import SimpleNamespace
 import numpy as np
 
 import pipelines  # noqa: F401
+from calculations.topology import OpticDisc
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
-from pipelines.waveform_shape_metrics.metrics.runner import (
-    run_waveform_shape_metric_calculations,
-)
 from pipelines.waveform_shape_metrics.metrics.calculator import (
     WaveformShapeMetricsCalculator,
 )
-from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
 from pipelines.waveform_shape_metrics.metrics.quadrants import pack_quadrant_metrics
-from pipelines.waveform_velocity.quadrants import pack_quadrant_velocity_outputs
+from pipelines.waveform_shape_metrics.metrics.runner import (
+    run_waveform_shape_metric_calculations,
+)
+from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
 from pipelines.waveform_velocity.continuous import pack_segment_velocity_outputs
+from pipelines.waveform_velocity.quadrants import pack_quadrant_velocity_outputs
 from utils.logger import Logger
 
 
@@ -58,6 +59,8 @@ class WaveformShapeMetricsTests(unittest.TestCase):
 
         self.assertEqual(
             (
+                "heartbeat_core",
+                "topology_core",
                 "waveform_velocity_core",
                 "waveform_velocity",
                 "waveform_shape_metrics",
@@ -180,21 +183,12 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         segments = SimpleNamespace(
             branch_ids=np.asarray([1, 2], dtype=np.int32),
             labels=labels,
-            segment_center_xy=np.zeros((branch_count, radius_count, 2)),
-            velocity=np.zeros((radius_count, branch_count, 3)),
+            segment_centers_xy=np.zeros((radius_count, branch_count, 2)),
+            projected_signal=np.zeros((radius_count, branch_count, 3)),
+            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
         )
-        source_data = SimpleNamespace(
-            retinal_artery_mask=np.zeros((8, 8), dtype=bool),
-            retinal_vein_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_center=np.asarray([3.0, 2.0]),
-            optic_disc_width=None,
-            optic_disc_height=None,
-        )
-
         regional = pack_quadrant_metrics(
             metrics,
-            source_data,
             segments,
             None,
         )
@@ -248,17 +242,21 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         segments = SimpleNamespace(
             branch_ids=np.asarray([1, 2], dtype=np.int32),
             labels=labels,
-            segment_center_xy=np.zeros((2, 2, 2)),
-            velocity=np.zeros((2, 2, waveform.shape[0])),
+            segment_centers_xy=np.zeros((2, 2, 2)),
+            projected_signal=np.zeros((2, 2, waveform.shape[0])),
+            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
         )
         source_data = SimpleNamespace(
             retinal_artery_mask=np.zeros((8, 8), dtype=bool),
             retinal_vein_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_center=np.asarray([3.0, 2.0]),
-            optic_disc_width=None,
-            optic_disc_height=None,
-            timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
+            optic_disc=OpticDisc(
+                np.zeros((8, 8), dtype=bool), (3.0, 2.0), None, None
+            ),
+            source=SimpleNamespace(
+                holodoppler=SimpleNamespace(
+                    timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
+                ),
+            ),
         )
 
         outputs = pack_waveform_shape_outputs(
@@ -345,17 +343,21 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         segments = SimpleNamespace(
             branch_ids=np.asarray([1, 2], dtype=np.int32),
             labels=labels,
-            segment_center_xy=np.zeros((2, 2, 2)),
-            velocity=segment_velocity,
+            segment_centers_xy=np.zeros((2, 2, 2)),
+            projected_signal=segment_velocity,
+            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
         )
         source_data = SimpleNamespace(
             retinal_artery_mask=np.zeros((8, 8), dtype=bool),
             retinal_vein_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_mask=np.zeros((8, 8), dtype=bool),
-            optic_disc_center=np.asarray([3.0, 2.0]),
-            optic_disc_width=None,
-            optic_disc_height=None,
-            timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
+            optic_disc=OpticDisc(
+                np.zeros((8, 8), dtype=bool), (3.0, 2.0), None, None
+            ),
+            source=SimpleNamespace(
+                holodoppler=SimpleNamespace(
+                    timing=SimpleNamespace(dt_seconds=np.float32(0.01)),
+                ),
+            ),
         )
         metrics = {
             schema.artery_per_beat.segment_velocity_signal: segment_per_beat,

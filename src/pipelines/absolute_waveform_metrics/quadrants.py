@@ -11,7 +11,6 @@ from pipelines.waveform_velocity_core.regions import (
     QUADRANTS_GROUP_NAME,
     REGION_NAMES,
     normalize_spatial_frame,
-    optic_disc_center_xy,
     region_membership,
 )
 
@@ -20,7 +19,6 @@ from .calculator import AbsoluteWaveformMetricsCalculator
 
 def pack_quadrant_metrics(
     metrics: dict[str, object],
-    source_data,
     artery_segments,
     vein_segments,
     output_paths: EyeFlowOutputPaths | str | None = None,
@@ -59,8 +57,11 @@ def pack_quadrant_metrics(
 
         branch_ids = np.asarray(segments.branch_ids, dtype=np.int32).reshape(-1)
         labels = np.asarray(segments.labels, dtype=np.int32)
-        centers = np.asarray(segments.segment_center_xy, dtype=float)
-        center_xy = optic_disc_center_xy(source_data, labels.shape)
+        centers = np.asarray(segments.segment_centers_xy, dtype=float)
+        center_xy = np.asarray(
+            segments.topology.optic_disc_center_xy,
+            dtype=float,
+        ).copy()
         labels, center_xy = normalize_spatial_frame(labels, center_xy)
         membership = region_membership(branch_ids, labels, centers, center_xy)
         result.update(
@@ -90,7 +91,7 @@ def _read_segment_metrics(
 
     expected_tail = (
         int(branch_ids.size),
-        int(np.asarray(segments.velocity).shape[0]),
+        int(np.asarray(segments.projected_signal).shape[0]),
     )
     outputs: dict[str, dict[str, np.ndarray]] = {}
     for signal_type, group_name in (
