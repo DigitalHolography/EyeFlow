@@ -289,16 +289,66 @@ jobs:
           RELEASE_COMMIT: ${{ steps.commit.outputs.release_commit }}
         run: |
           $ErrorActionPreference = "Stop"
-          $PSNativeCommandUseErrorActionPreference = $true
+          # The merge below may return 1 for the one generated-file conflict
+          # handled explicitly in this step.
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          function Assert-LastExit {
+              param([Parameter(Mandatory = $true)][string]$Message)
+              if ($LASTEXITCODE -ne 0) {
+                  throw $Message
+              }
+          }
 
           if ($env:TAG_IS_ANNOTATED -eq "true") {
               git tag -a -f $env:TAG_NAME $env:RELEASE_COMMIT -F $env:TAG_MESSAGE_PATH
           } else {
               git tag -f $env:TAG_NAME $env:RELEASE_COMMIT
           }
+          Assert-LastExit "Could not move the release tag to the release commit."
 
           git checkout -B release-dev origin/dev
-          git merge --no-ff $env:RELEASE_COMMIT -m "Merge release $env:TAG_NAME into dev"
+          Assert-LastExit "Could not check out origin/dev for the release merge."
+
+          git merge --no-ff --no-commit $env:RELEASE_COMMIT
+          $mergeExitCode = $LASTEXITCODE
+          if ($mergeExitCode -ne 0) {
+              $conflictedPaths = @(git diff --name-only --diff-filter=U)
+              Assert-LastExit "Could not inspect release merge conflicts."
+              $unexpectedConflicts = @($conflictedPaths | Where-Object { $_ -ne "uv.lock" })
+
+              if ($conflictedPaths.Count -eq 0 -or $unexpectedConflicts.Count -gt 0) {
+                  $conflictSummary = $conflictedPaths -join ", "
+                  git merge --abort
+                  throw "Release merge has unexpected conflicts: $conflictSummary"
+              }
+
+              # uv sync updates the root package version for the release commit.
+              # Keep that generated release lockfile when merging back into dev.
+              git checkout --theirs -- uv.lock
+              Assert-LastExit "Could not select the release version of uv.lock."
+              git add -- uv.lock
+              Assert-LastExit "Could not stage the resolved uv.lock."
+
+              $remainingConflicts = @(git diff --name-only --diff-filter=U)
+              Assert-LastExit "Could not verify the resolved release merge."
+              if ($remainingConflicts.Count -gt 0) {
+                  $conflictSummary = $remainingConflicts -join ", "
+                  git merge --abort
+                  throw "Release merge still has unresolved conflicts: $conflictSummary"
+              }
+          }
+
+          $releaseVersion = $env:TAG_NAME.Substring(1)
+          $escapedReleaseVersion = [regex]::Escape($releaseVersion)
+          $lockfile = Get-Content -LiteralPath "uv.lock" -Raw -Encoding UTF8
+          if ($lockfile -notmatch "(?m)^name = `"eyeflow`"\r?\nversion = `"$escapedReleaseVersion`"\r?$") {
+              git merge --abort
+              throw "Merged uv.lock does not contain EyeFlow version $releaseVersion."
+          }
+
+          git commit -m "Merge release $env:TAG_NAME into dev"
+          Assert-LastExit "Could not commit the release merge into dev."
 
           git push --atomic origin `
               "$($env:RELEASE_COMMIT):refs/heads/main" `
@@ -307,6 +357,7 @@ jobs:
               "--force-with-lease=refs/heads/main`:${env:MAIN_SHA}" `
               "--force-with-lease=refs/heads/dev`:${env:TAG_COMMIT_SHA}" `
               "--force-with-lease=refs/tags/${env:TAG_NAME}`:${env:TAG_REF_SHA}"
+          Assert-LastExit "Could not atomically publish the release refs."
 
       - name: Publish GitHub release
         env:

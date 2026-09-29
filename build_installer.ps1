@@ -346,6 +346,7 @@ $pyInstallerArgs = @(
     "--add-data", "$((Join-Path $RepoRoot "default_settings.json"));.",
     "--add-data", "$($PyprojectPath);.",
     "--hidden-import", "eye_flow",
+    "--hidden-import", "matplotlib.backends.backend_ps",
     "--collect-submodules", "pipelines",
     "--collect-all", "tkinterdnd2",
     "--collect-all", "sv_ttk"
