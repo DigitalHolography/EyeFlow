@@ -29,7 +29,12 @@ BRANCH_POINT_THRESHOLD = BRANCH_POINT_CENTER_WEIGHT + BRANCH_POINT_MIN_NEIGHBORS
 
 @dataclass(frozen=True)
 class BranchIdentityStages:
-    """Intermediate arrays retained for branch-label diagnostics."""
+    """Intermediate arrays retained for branch-label diagnostics.
+
+    ``vessel``, ``skeleton``, and ``branch_points`` retain the complete input
+    context, including the optic-disc region.  ``cleaned_skeleton`` and every
+    subsequent stage exclude the centered optic-disc circle.
+    """
 
     vessel: np.ndarray
     section: np.ndarray
@@ -61,7 +66,11 @@ def label_vessel_branches(
     small_branch_pixels: int = LOW_RES_SMALL_BRANCH_PIXELS,
     strel_size: int = STREL_SIZE,
 ) -> BranchIdentityResult:
-    """Label branches outside the centered circular optic-disc cutoff."""
+    """Label branches outside the centered circular optic-disc cutoff.
+
+    Branch points are detected before applying the cutoff so junctions close
+    to its boundary retain their complete set of arms.
+    """
 
     vessel = np.asarray(vessel_mask, dtype=bool)
     if vessel.ndim != 2:
@@ -75,10 +84,7 @@ def label_vessel_branches(
         fallback_radius_pixels=fallback_radius,
     )
     stages = _branch_identity_stages(
-        optic_disc.subtract_centered_circle_from(
-            vessel,
-            fallback_radius_pixels=fallback_radius,
-        ),
+        vessel,
         optic_disc.center,
         settings,
         optic_disc_mask=disc,
@@ -122,6 +128,7 @@ def _branch_identity_stages(
         branch_points,
         structure=branch_footprint,
     )
+    cleaned_skeleton &= ~disc
     cleaned_skeleton = _remove_small(cleaned_skeleton, max(0, int(small_branch_pixels)))
     marker_labels = label_components(cleaned_skeleton, connectivity=2).astype(
         np.int32,
