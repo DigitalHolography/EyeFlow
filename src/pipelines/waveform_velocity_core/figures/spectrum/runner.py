@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from calculations.blood_flow_velocity.signal_analysis.heartbeat import (
-    SpectralHeartbeatResult,
+from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
+    SpectralCardiacCycleAnalysis,
 )
 
 from .pair import PairedSpectrumAnalysisResult, paired_spectrum_analysis
@@ -37,12 +37,12 @@ def run_paired_vessel_spectrum_analysis(
     vein_values: np.ndarray,
     dt_seconds: float,
     beat_indexes: np.ndarray | None = None,
-    heartbeat: SpectralHeartbeatResult | None = None,
+    cardiac_cycle: SpectralCardiacCycleAnalysis | None = None,
 ) -> PairedSpectrumAnalysisResult:
     return paired_spectrum_analysis(
         artery_values,
         vein_values,
         dt_seconds,
         beat_indexes,
-        heartbeat,
+        cardiac_cycle,
     )

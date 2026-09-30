@@ -1,4 +1,4 @@
-"""Spectral heartbeat analysis translated from SpectralWaveformAnalysis.m."""
+"""Spectral cardiac-cycle analysis translated from SpectralWaveformAnalysis.m."""
 
 from __future__ import annotations
 
@@ -7,18 +7,18 @@ from scipy import signal as scipy_signal
 
 from calculations.math.arrays import nan_to_mean
 
-from .models import SpectralHeartbeatResult
+from .models import SpectralCardiacCycleAnalysis
 
 
 MATLAB_PADDING_FACTOR = 2
 MATLAB_MINIMUM_PROMINENCE_RATIO = 0.1
 
 
-def spectral_heartbeat_analysis(
+def spectral_cardiac_cycle_analysis(
     values,
     dt_seconds: float,
     systole_count: int,
-) -> SpectralHeartbeatResult:
+) -> SpectralCardiacCycleAnalysis:
     """Reproduce the calculations in MATLAB SpectralWaveformAnalysis.m."""
     clean = nan_to_mean(values).reshape(-1)
     _validate_inputs(clean, dt_seconds, systole_count)
@@ -67,7 +67,7 @@ def spectral_heartbeat_analysis(
     )
 
     positive_fft = fft_coefficients[: frequencies_hz.size]
-    return SpectralHeartbeatResult(
+    return SpectralCardiacCycleAnalysis(
         fft_coefficients=fft_coefficients.astype(np.complex64),
         frequencies_hz=frequencies_hz.astype(np.float32),
         magnitude=magnitude.astype(np.float32),

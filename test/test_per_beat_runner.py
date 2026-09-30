@@ -13,8 +13,8 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.blood_flow_velocity.signal_analysis.heartbeat import (  # noqa: E402
-    spectral_heartbeat_analysis,
+from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (  # noqa: E402
+    spectral_cardiac_cycle_analysis,
 )
 from calculations.blood_flow_velocity.signal_analysis.per_beat.runner import (  # noqa: E402
     PerBeatAnalysisInput,
@@ -28,7 +28,7 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  
     per_beat_signal_analysis,
 )
 from calculations.math import band_limited_ifft_abs  # noqa: E402
-from calculations.retinal_velocity.vessel_velocity_estimator import (  # noqa: E402
+from pipelines.retinal_velocity.estimation import (  # noqa: E402
     _velocity_from_delta_frequency,
 )
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
@@ -91,13 +91,13 @@ class PerBeatRunnerTests(unittest.TestCase):
                     time + 10.0 * radius_index + branch_index
                 )
         signal = (100.0 + time).astype(np.float32)
-        heartbeat = spectral_heartbeat_analysis(signal, 0.01, systole_count=2)
+        cardiac_cycle = spectral_cardiac_cycle_analysis(signal, 0.01, systole_count=2)
         inputs = PerBeatAnalysisInput(
             arterial_velocity_signal=signal,
             venous_velocity_signal=signal,
             cycle_boundary_indexes=np.asarray([0, 16, 31], dtype=np.int32),
             band_limited_signal_harmonic_count=4,
-            heartbeat=heartbeat,
+            cardiac_cycle=cardiac_cycle,
             dt_seconds=0.01,
             arterial_velocity_segments=segments,
             venous_velocity_segments=segments,
@@ -208,7 +208,7 @@ class PerBeatRunnerTests(unittest.TestCase):
             + np.sin(2.0 * np.pi * 1.0 * time)
             + 0.45 * np.sin(2.0 * np.pi * 2.0 * time)
         ).astype(np.float32)
-        heartbeat = spectral_heartbeat_analysis(
+        cardiac_cycle = spectral_cardiac_cycle_analysis(
             signal,
             dt_seconds,
             systole_count=4,
@@ -221,7 +221,7 @@ class PerBeatRunnerTests(unittest.TestCase):
                 dtype=np.int32,
             ),
             band_limited_signal_harmonic_count=4,
-            heartbeat=heartbeat,
+            cardiac_cycle=cardiac_cycle,
             dt_seconds=dt_seconds,
             index_base=0,
         )
@@ -234,7 +234,7 @@ class PerBeatRunnerTests(unittest.TestCase):
             np.sum(result.artery.signal.velocity_signal_per_beat, axis=1)
             * dt_seconds,
         )
-        self.assertIs(result.heartbeat, heartbeat)
+        self.assertIs(result.cardiac_cycle, cardiac_cycle)
         np.testing.assert_array_equal(
             result.cycle_boundary_indexes,
             inputs.cycle_boundary_indexes,

@@ -1,4 +1,4 @@
-"""Tests for MATLAB-grounded heartbeat calculations."""
+"""Tests for MATLAB-grounded cardiac-cycle calculations."""
 
 from __future__ import annotations
 
@@ -12,23 +12,23 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.blood_flow_velocity.signal_analysis.heartbeat import (  # noqa: E402
+from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (  # noqa: E402
     MATLAB_PADDING_FACTOR,
-    run_heartbeat_analysis,
-    spectral_heartbeat_analysis,
+    analyze_cardiac_cycles,
+    spectral_cardiac_cycle_analysis,
 )
 
 
-class SpectralHeartbeatTests(unittest.TestCase):
+class SpectralCardiacCycleTests(unittest.TestCase):
     def test_systole_derivative_is_velocity_per_second(self) -> None:
         dt_seconds = 0.01
         time = np.arange(1000, dtype=np.float32) * dt_seconds
         waveform = (10.0 + time + np.sin(2.0 * np.pi * time)).astype(np.float32)
 
-        result = run_heartbeat_analysis(waveform, dt_seconds=dt_seconds)
+        result = analyze_cardiac_cycles(waveform, dt_seconds=dt_seconds)
 
         expected = np.gradient(
-            result.systole.artery_signal_filtered,
+            result.systole.signal_filtered,
             np.float32(dt_seconds),
         )
         np.testing.assert_allclose(result.systole.derivative_signal, expected)
@@ -43,7 +43,7 @@ class SpectralHeartbeatTests(unittest.TestCase):
             + 0.25 * np.sin(2.0 * np.pi * 3.0 * time)
         ).astype(np.float32)
 
-        result = spectral_heartbeat_analysis(
+        result = spectral_cardiac_cycle_analysis(
             waveform,
             dt_seconds,
             systole_count=10,
@@ -71,7 +71,7 @@ class SpectralHeartbeatTests(unittest.TestCase):
             + np.sin(2.0 * np.pi * 2.4 * time)
         ).astype(np.float32)
 
-        result = spectral_heartbeat_analysis(
+        result = spectral_cardiac_cycle_analysis(
             waveform,
             dt_seconds,
             systole_count=12,
@@ -101,14 +101,14 @@ class SpectralHeartbeatTests(unittest.TestCase):
         )
         self.assertAlmostEqual(result.period_seconds, 1.0 / result.heart_rate_hz)
 
-    def test_heartbeat_runner_combines_systole_boundaries_and_spectral_rate(self) -> None:
+    def test_cardiac_cycle_analysis_combines_boundaries_and_spectral_rate(self) -> None:
         dt_seconds = 0.01
         time = np.arange(1000, dtype=np.float32) * dt_seconds
         waveform = (10.0 + 2.0 * np.sin(2.0 * np.pi * 1.2 * time)).astype(
             np.float32
         )
 
-        result = run_heartbeat_analysis(
+        result = analyze_cardiac_cycles(
             waveform,
             dt_seconds=dt_seconds,
         )

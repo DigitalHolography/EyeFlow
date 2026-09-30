@@ -75,7 +75,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
 
         self.assertEqual(
             (
-                "heartbeat_core",
+                "retinal_velocity",
                 "topology_core",
                 "waveform_velocity_core",
                 "waveform_velocity",

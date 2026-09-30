@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from time import perf_counter
 
 from calculations.blood_flow_velocity import (
-    HeartbeatAnalysisResult,
+    CardiacCycleAnalysis,
     PerBeatAnalysisInput,
-    spectral_heartbeat_analysis,
+    spectral_cardiac_cycle_analysis,
 )
 from calculations.topology import AnnulusGeometry
 from input_output import EyeFlowOutputPaths
@@ -17,12 +17,10 @@ from pipeline_engine.imports import (
     np,
     read_int_setting,
 )
-from pipelines.heartbeat_core.runner import (
-    HeartbeatResult,
-    cached_heartbeat_analysis,
-    cached_heartbeat_source,
-    cached_velocity_estimation,
-    heartbeat_result,
+from pipelines.retinal_velocity.models import RetinalVelocity
+from pipelines.retinal_velocity.runner import retinal_velocity
+from pipelines.retinal_velocity.signal_processing import (
+    DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
 from pipelines.topology_core.runner import prepared_topologies
 from utils.logger import Logger
@@ -38,15 +36,6 @@ from .cross_section_images import export_rotated_mean_pngs
 from .figures import export_pulse_pngs
 from .models import VelocitySegmentResult
 from .per_beat import run_velocity_per_beat_metrics
-from .retinal_velocity.constants import (
-    LEGACY_FILTER_VELOCITY_SIGNALS,
-    LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
-)
-from .retinal_velocity.outputs import (
-    pack_retinal_velocity_outputs,
-)
-from .retinal_velocity.runner import run_retinal_velocity_analysis
-from .scratch import velocity_scratch_h5
 from .segments import analyze_velocity_segment_profiles
 from .sources import WaveformVelocitySourceData, WaveformVelocitySources
 
@@ -61,7 +50,7 @@ class WaveformVelocityCoreContext:
     per_beat_analysis: PerBeatAnalysisInput
     artery_segment_result: VelocitySegmentResult | None
     vein_segment_result: VelocitySegmentResult | None
-    velocity_analysis: dict[str, object]
+    velocity_analysis: RetinalVelocity
     attrs: dict[str, object]
 
 
@@ -72,34 +61,31 @@ def run_waveform_velocity_core(
     ctx.require_inputs("hd", "dv")
 
     core_started = perf_counter()
-    with velocity_scratch_h5(ctx) as scratch_h5:
-        Logger.log("Starting waveform velocity core context build (scratch=RAM)...")
-        segments_required = _segments_required(ctx)
-        velocity_options = ctx.options_for("waveform_velocity")
-        Logger.log(
-            "Waveform segment options: "
-            f"selected={tuple(sorted(velocity_options))}, "
-            f"segments_required={segments_required}, "
-            "segment_velocity_maps="
-            f"{'segment_velocity_maps' in velocity_options}."
-        )
-        context = _build_waveform_velocity_core_context(
-            ctx,
-            scratch_h5,
-            heartbeat_result(ctx),
-            segments_required=segments_required,
-        )
-        metrics = pack_retinal_velocity_outputs(context.velocity_analysis)
-        metrics.update(_pack_meta_outputs(context))
-        ctx.state.set(WAVEFORM_CONTEXT_STATE, context)
+    Logger.log("Starting waveform velocity core context build...")
+    segments_required = _segments_required(ctx)
+    velocity_options = ctx.options_for("waveform_velocity")
+    Logger.log(
+        "Waveform segment options: "
+        f"selected={tuple(sorted(velocity_options))}, "
+        f"segments_required={segments_required}, "
+        "segment_velocity_maps="
+        f"{'segment_velocity_maps' in velocity_options}."
+    )
+    context = _build_waveform_velocity_core_context(
+        ctx,
+        retinal_velocity(ctx),
+        segments_required=segments_required,
+    )
+    metrics = _pack_meta_outputs(context)
+    ctx.state.set(WAVEFORM_CONTEXT_STATE, context)
 
-        if _per_beat_required(ctx):
-            with _logged_stage("shared per-beat velocity analysis"):
-                per_beat_result, velocity_outputs = run_velocity_per_beat_metrics(context)
-            ctx.state.set(VELOCITY_PER_BEAT_RESULT_STATE, per_beat_result)
-            ctx.state.set(VELOCITY_PER_BEAT_OUTPUTS_STATE, velocity_outputs)
-            if _pulse_pngs_required(ctx):
-                _export_pulse_pngs(ctx, context, per_beat_result)
+    if _per_beat_required(ctx):
+        with _logged_stage("shared per-beat velocity analysis"):
+            per_beat_result, velocity_outputs = run_velocity_per_beat_metrics(context)
+        ctx.state.set(VELOCITY_PER_BEAT_RESULT_STATE, per_beat_result)
+        ctx.state.set(VELOCITY_PER_BEAT_OUTPUTS_STATE, velocity_outputs)
+        if _pulse_pngs_required(ctx):
+            _export_pulse_pngs(ctx, context, per_beat_result)
 
     Logger.log(f"Completed waveform velocity core in {perf_counter() - core_started:.1f}s.")
     return metrics, context.attrs
@@ -190,32 +176,15 @@ def _pulse_pngs_required(ctx) -> bool:
 
 def _build_waveform_velocity_core_context(
     ctx,
-    scratch_h5,
-    heartbeat: HeartbeatResult,
+    velocity_analysis: RetinalVelocity,
     *,
     segments_required: bool,
 ) -> WaveformVelocityCoreContext:
     with _logged_stage("waveform source loading"):
         source_data = WaveformVelocitySources.from_context(ctx).load()
     timing = source_data.source.holodoppler.timing
-    heartbeat_velocity = cached_velocity_estimation(ctx, source_data.source)
-    heartbeat_source = cached_heartbeat_source(ctx)
-    with _logged_stage("retinal velocity analysis from HD moments"):
-        if heartbeat_velocity is not None:
-            Logger.log("Reusing velocity estimation from heartbeat core.")
-        velocity_analysis = run_retinal_velocity_analysis(
-            source_data,
-            scratch_h5,
-            cached_heartbeat_analysis(ctx),
-            heartbeat_detection_source=heartbeat_source,
-            retain_velocity_video=True,
-            velocity_estimation=heartbeat_velocity,
-        )
-    velocity_analysis["beat_indices"] = np.asarray(
-        heartbeat.cycle_boundary_indexes,
-        dtype=np.int32,
-    )
-    velocity_map = velocity_analysis["velocity_map"] if segments_required else None
+    cardiac_cycle_source = velocity_analysis.cardiac_cycle_source
+    velocity_map = velocity_analysis.velocity_map if segments_required else None
     harmonic_count = _band_limited_harmonic_count(ctx)
     number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
     per_beat_analysis, artery_segments, vein_segments = (
@@ -242,9 +211,9 @@ def _build_waveform_velocity_core_context(
             timing,
             harmonic_count,
             "eyeflow_retinal_velocity_analysis",
-            per_beat_analysis.heartbeat,
+            per_beat_analysis.cardiac_cycle,
             number_of_radii_in_fov,
-            heartbeat_source,
+            cardiac_cycle_source,
         ),
     )
 
@@ -277,7 +246,7 @@ def _number_of_radii_in_fov(ctx) -> int:
 
 
 def _per_beat_input_from_analysis(
-    velocity_analysis: Mapping[str, object],
+    velocity_analysis: RetinalVelocity,
     source_data: WaveformVelocitySourceData,
     timing: HolodopplerTiming,
     harmonic_count: int,
@@ -316,11 +285,11 @@ def _per_beat_input_from_analysis(
         velocity_analysis["beat_indices"],
         dtype=np.int32,
     )
-    cached_heartbeat = velocity_analysis.get("_heartbeat_analysis_result")
-    heartbeat = (
-        cached_heartbeat.spectral
-        if isinstance(cached_heartbeat, HeartbeatAnalysisResult)
-        else spectral_heartbeat_analysis(
+    cached_cardiac_cycle = velocity_analysis.get("_cardiac_cycle_analysis")
+    cardiac_cycle = (
+        cached_cardiac_cycle.spectral
+        if isinstance(cached_cardiac_cycle, CardiacCycleAnalysis)
+        else spectral_cardiac_cycle_analysis(
             arterial_velocity_signal,
             timing.dt_seconds,
             beat_indexes.size,
@@ -331,7 +300,7 @@ def _per_beat_input_from_analysis(
         venous_velocity_signal=venous_velocity_signal,
         cycle_boundary_indexes=beat_indexes,
         band_limited_signal_harmonic_count=harmonic_count,
-        heartbeat=heartbeat,
+        cardiac_cycle=cardiac_cycle,
         dt_seconds=timing.dt_seconds,
         arterial_velocity_segments=_waveform_segment_input(
             artery_segments,
@@ -355,17 +324,22 @@ def _per_beat_input_from_analysis(
 
 
 def _raw_velocity_signals_for_per_beat(
-    velocity_analysis: Mapping[str, object],
+    velocity_analysis: RetinalVelocity | Mapping[str, object],
 ) -> tuple[np.ndarray, np.ndarray]:
-    return (
-        np.asarray(
-            velocity_analysis["retinal_artery_velocity_signal"],
-            dtype=np.float32,
-        ),
-        np.asarray(
-            velocity_analysis["retinal_vein_velocity_signal"],
-            dtype=np.float32,
-        ),
+    if not isinstance(velocity_analysis, RetinalVelocity):
+        return (
+            np.asarray(
+                velocity_analysis["retinal_artery_velocity_signal"],
+                dtype=np.float32,
+            ),
+            np.asarray(
+                velocity_analysis["retinal_vein_velocity_signal"],
+                dtype=np.float32,
+            ),
+        )
+    return velocity_analysis.continuous("artery", raw=True), velocity_analysis.continuous(
+        "vein",
+        raw=True,
     )
 
 
@@ -485,9 +459,9 @@ def _context_attrs(
     timing: HolodopplerTiming,
     harmonic_count: int,
     analysis_source: str,
-    heartbeat,
+    cardiac_cycle,
     number_of_radii_in_fov: int,
-    beat_detection_source: str,
+    cardiac_cycle_detection_source: str,
 ) -> dict[str, object]:
     output_paths = EyeFlowOutputPaths.active()
     analysis_paths = output_paths.analysis
@@ -502,7 +476,7 @@ def _context_attrs(
     )
     return {
         "dependency_chain": dependency_chain + [
-            "blood_flow_velocity.signal_analysis.heartbeat.spectral",
+            "blood_flow_velocity.signal_analysis.cardiac_cycle.spectral",
             "blood_flow_velocity.signal_analysis.per_beat.signal",
             "blood_flow_velocity.signal_analysis.per_beat.runner",
         ],
@@ -527,17 +501,17 @@ def _context_attrs(
         ),
         "systolic_peak_indexes_path": analysis_paths.beat_indices,
         "beat_period_seconds_path": output_paths.beat_period_seconds,
-        "heart_rate_hz": float(heartbeat.heart_rate_hz),
-        "heart_rate_bpm": float(heartbeat.heart_rate_bpm),
-        "heart_rate_ste_hz": float(heartbeat.heart_rate_ste_hz),
-        "heart_rate_ste_bpm": float(heartbeat.heart_rate_ste_bpm),
+        "heart_rate_hz": float(cardiac_cycle.heart_rate_hz),
+        "heart_rate_bpm": float(cardiac_cycle.heart_rate_bpm),
+        "heart_rate_ste_hz": float(cardiac_cycle.heart_rate_ste_hz),
+        "heart_rate_ste_bpm": float(cardiac_cycle.heart_rate_ste_bpm),
         "sampling_freq": float(timing.sampling_freq),
         "batch_stride": float(timing.batch_stride),
         "dt_seconds": float(timing.dt_seconds),
         "band_limited_signal_harmonic_count": int(harmonic_count),
-        "filter_velocity_signals": bool(LEGACY_FILTER_VELOCITY_SIGNALS),
-        "velocity_signal_lowpass_hz": float(LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ),
-        "beat_detection_source": beat_detection_source,
+        "filter_velocity_signals": True,
+        "velocity_signal_lowpass_hz": float(DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ),
+        "cardiac_cycle_detection_source": cardiac_cycle_detection_source,
     }
 
 

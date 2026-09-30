@@ -1,7 +1,5 @@
 """Output packing for per-beat velocity calculations."""
 
-from collections.abc import Iterable
-
 import numpy as np
 
 from calculations.blood_flow_velocity import PerBeatAnalysisResult
@@ -9,6 +7,7 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.segments import (
     SEGMENT_PER_BEAT_DIM_DESC,
 )
 from input_output.schema import EyeFlowOutputPaths, VelocityPerBeatOutputPaths
+from pipelines.retinal_velocity.outputs import metric_data, metric_value
 
 
 def pack_velocity_per_beat_outputs(
@@ -135,37 +134,4 @@ def _resolve_output_paths(
     return EyeFlowOutputPaths.active(output_paths)
 
 
-def metric_value(
-    data,
-    *,
-    unit: str | None = None,
-    dim_desc: Iterable[str] | None = None,
-):
-    attrs: dict[str, object] = {}
-    if unit:
-        attrs["unit"] = unit
-    if dim_desc:
-        attrs["dimDesc"] = list(dim_desc)
-    data = metric_data(data)
-    return (data, attrs) if attrs else data
-
-
-def metric_data(data):
-    if isinstance(data, bool):
-        return data
-    if isinstance(data, float):
-        return np.float32(data)
-    if isinstance(data, int):
-        return np.int32(data)
-    if isinstance(data, complex):
-        return np.complex64(data)
-    value = np.asarray(data)
-    if value.dtype.kind == "f":
-        return value.astype(np.float32, copy=False)
-    if value.dtype.kind == "c":
-        return value.astype(np.complex64, copy=False)
-    if value.dtype.kind == "i":
-        return value.astype(np.int32, copy=False)
-    if value.dtype.kind == "u":
-        return value.astype(np.uint32, copy=False)
-    return value
+__all__ = ["pack_velocity_per_beat_outputs"]

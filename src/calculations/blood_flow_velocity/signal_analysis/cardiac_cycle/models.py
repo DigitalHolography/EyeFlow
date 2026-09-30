@@ -1,4 +1,4 @@
-"""Typed results for cardiac timing analyses."""
+"""Typed results for cardiac-cycle timing analyses."""
 
 from __future__ import annotations
 
@@ -10,14 +10,14 @@ import numpy as np
 @dataclass(frozen=True)
 class SystoleDetectionResult:
     systole_indexes: np.ndarray
-    artery_signal_filtered: np.ndarray
+    signal_filtered: np.ndarray
     derivative_signal: np.ndarray
     min_peak_distance: int
     min_peak_height: np.float32
 
 
 @dataclass(frozen=True)
-class SpectralHeartbeatResult:
+class SpectralCardiacCycleAnalysis:
     fft_coefficients: np.ndarray
     frequencies_hz: np.ndarray
     magnitude: np.ndarray
@@ -44,6 +44,6 @@ class SpectralHeartbeatResult:
 
 
 @dataclass(frozen=True)
-class HeartbeatAnalysisResult:
+class CardiacCycleAnalysis:
     systole: SystoleDetectionResult
-    spectral: SpectralHeartbeatResult
+    spectral: SpectralCardiacCycleAnalysis

@@ -10,7 +10,7 @@ from .models import SystoleDetectionResult
 
 
 def find_systole_index(
-    pulse_artery,
+    signal,
     *,
     dt: np.float32,
     lowpass_freq_hz: np.float32 = np.float32(15.0),
@@ -19,7 +19,7 @@ def find_systole_index(
 ) -> SystoleDetectionResult:
     find_peaks = _scipy_signal_dependencies()
 
-    pulse = np.asarray(pulse_artery, dtype=np.float32).reshape(-1)
+    pulse = np.asarray(signal, dtype=np.float32).reshape(-1)
     filtered_pulse = butter_lowpass_filtfilt(
         pulse,
         dt_seconds=np.float32(dt),
@@ -40,7 +40,7 @@ def find_systole_index(
         raise ValueError("No systole peaks detected. Check signal quality or parameters.")
     return SystoleDetectionResult(
         systole_indexes=indexes,
-        artery_signal_filtered=filtered_pulse,
+        signal_filtered=filtered_pulse,
         derivative_signal=derivative,
         min_peak_distance=min_peak_distance,
         min_peak_height=min_peak_height,

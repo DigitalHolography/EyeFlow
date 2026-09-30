@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import os
-from dataclasses import dataclass
 from time import perf_counter
 
 import numpy as np
@@ -19,67 +16,6 @@ SECTION_OUTER_RADIUS_FRAC = 0.35
 DEFAULT_LASER_WAVELENGTH_METERS = 8.52e-7
 DEFAULT_NUMERICAL_APERTURE = 0.124
 
-
-@dataclass(frozen=True)
-class VelocityEstimatorCacheKey:
-    """Run-local identity of every input that affects velocity estimation."""
-
-    moment0_source: tuple[object, ...]
-    moment2_source: tuple[object, ...]
-    artery_mask: tuple[object, ...]
-    vein_mask: tuple[object, ...]
-    background_mask: tuple[object, ...]
-    optic_disc_center: tuple[object, ...]
-    section_inner_radius_frac: float
-    section_outer_radius_frac: float
-    local_background_dist: int
-    laser_wavelength: float
-    numerical_aperture: float
-    frame_chunk_size: int
-
-
-def velocity_estimator_cache_key(
-    *,
-    moment0,
-    moment2,
-    artery_mask,
-    vein_mask,
-    background_mask=None,
-    optic_disc_center,
-    section_inner_radius_frac: float = SECTION_INNER_RADIUS_FRAC,
-    section_outer_radius_frac: float = SECTION_OUTER_RADIUS_FRAC,
-    local_background_dist: int,
-    laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
-    numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
-) -> VelocityEstimatorCacheKey:
-    """Build a conservative key for run-scoped estimator-result reuse."""
-
-    artery = np.asarray(artery_mask, dtype=bool)
-    vein = np.asarray(vein_mask, dtype=bool)
-    background = (
-        artery | vein
-        if background_mask is None
-        else np.asarray(background_mask, dtype=bool)
-    )
-    return VelocityEstimatorCacheKey(
-        moment0_source=_volume_source_key(moment0),
-        moment2_source=_volume_source_key(moment2),
-        artery_mask=_array_value_key(artery, dtype=bool),
-        vein_mask=_array_value_key(vein, dtype=bool),
-        background_mask=_array_value_key(background, dtype=bool),
-        optic_disc_center=_array_value_key(
-            optic_disc_center,
-            dtype=np.float32,
-        ),
-        section_inner_radius_frac=float(section_inner_radius_frac),
-        section_outer_radius_frac=float(section_outer_radius_frac),
-        local_background_dist=int(local_background_dist),
-        laser_wavelength=float(laser_wavelength),
-        numerical_aperture=float(numerical_aperture),
-        frame_chunk_size=SCRATCH_FRAME_CHUNK_SIZE,
-    )
-
-
 def _velocity_from_delta_frequency(
     delta_frequency,
     laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
@@ -92,7 +28,7 @@ def _velocity_from_delta_frequency(
     ).astype(np.float32, copy=False)
 
 
-def run_chunked_velocity_estimator(
+def estimate_retinal_velocity(
     *,
     moment0,
     moment2,
@@ -308,39 +244,6 @@ def _velocity_video_storage(
         ),
         compression=None,
     )
-
-
-def _volume_source_key(value) -> tuple[object, ...]:
-    shape = tuple(int(size) for size in value.shape)
-    dtype = np.dtype(value.dtype).str
-    try:
-        filename = value.file.filename
-        dataset_name = value.name
-    except (AttributeError, RuntimeError, ValueError):
-        filename = None
-        dataset_name = None
-    if filename is not None and dataset_name is not None:
-        return (
-            "hdf5",
-            os.path.normcase(os.path.abspath(str(filename))),
-            str(dataset_name),
-            shape,
-            dtype,
-        )
-    return ("run_object", id(value), shape, dtype)
-
-
-def _optional_array_value_key(value, *, dtype) -> tuple[object, ...] | None:
-    return None if value is None else _array_value_key(value, dtype=dtype)
-
-
-def _array_value_key(value, *, dtype) -> tuple[object, ...]:
-    array = np.ascontiguousarray(np.asarray(value, dtype=dtype))
-    digest = hashlib.blake2b(
-        array.view(np.uint8),
-        digest_size=16,
-    ).hexdigest()
-    return (array.shape, array.dtype.str, digest)
 
 
 def _read_moment_chunk(volume, frame_slice: slice) -> np.ndarray:

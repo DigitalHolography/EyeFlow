@@ -1,16 +1,16 @@
-"""Figure adapter for the shared spectral heartbeat calculation."""
+"""Figure adapter for the shared spectral cardiac-cycle calculation."""
 
 from __future__ import annotations
 
 import numpy as np
 
-from calculations.blood_flow_velocity.signal_analysis.heartbeat import (
-    SpectralHeartbeatResult,
-    spectral_heartbeat_analysis,
+from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
+    SpectralCardiacCycleAnalysis,
+    spectral_cardiac_cycle_analysis,
 )
 
 
-SpectrumData = SpectralHeartbeatResult
+SpectrumData = SpectralCardiacCycleAnalysis
 
 
 def spectrum_signal_analysis(
@@ -18,7 +18,7 @@ def spectrum_signal_analysis(
     dt_seconds: float,
     systole_count: int = 0,
 ) -> SpectrumData:
-    return spectral_heartbeat_analysis(
+    return spectral_cardiac_cycle_analysis(
         values,
         dt_seconds,
         systole_count,

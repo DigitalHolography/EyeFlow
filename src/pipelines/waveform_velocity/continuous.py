@@ -6,37 +6,59 @@ import numpy as np
 
 from calculations.math import butter_lowpass_filtfilt
 from input_output.schema import EyeFlowOutputPaths
-from pipelines.waveform_velocity_core.retinal_velocity.constants import (
-    LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
+from pipelines.retinal_velocity.models import RetinalVelocity
+from pipelines.retinal_velocity.outputs import metric_value
+from pipelines.retinal_velocity.signal_processing import (
+    DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
-from pipelines.waveform_velocity_core.retinal_velocity.outputs import metric_value
 
 
 def pack_continuous_velocity_outputs(
-    velocity_analysis: Mapping[str, object],
+    velocity_analysis: RetinalVelocity | Mapping[str, object],
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
     """Pack raw and band-limited artery and vein velocity signals."""
     schema = _resolve_output_paths(output_paths)
     paths = schema.analysis
+    artery_raw, vein_raw, artery_filtered, vein_filtered = _continuous_signals(
+        velocity_analysis
+    )
     return {
         paths.retinal_artery_velocity_signal: metric_value(
-            velocity_analysis["retinal_artery_velocity_signal"],
+            artery_raw,
             unit="mm/s",
         ),
         paths.retinal_vein_velocity_signal: metric_value(
-            velocity_analysis["retinal_vein_velocity_signal"],
+            vein_raw,
             unit="mm/s",
         ),
         paths.retinal_artery_velocity_signal_band_limited: metric_value(
-            velocity_analysis["retinal_artery_velocity_signal_filtered"],
+            artery_filtered,
             unit="mm/s",
         ),
         paths.retinal_vein_velocity_signal_band_limited: metric_value(
-            velocity_analysis["retinal_vein_velocity_signal_filtered"],
+            vein_filtered,
             unit="mm/s",
         ),
     }
+
+
+def _continuous_signals(
+    velocity_analysis: RetinalVelocity | Mapping[str, object],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    if isinstance(velocity_analysis, RetinalVelocity):
+        return (
+            velocity_analysis.continuous("artery", raw=True),
+            velocity_analysis.continuous("vein", raw=True),
+            velocity_analysis.continuous("artery"),
+            velocity_analysis.continuous("vein"),
+        )
+    return (
+        np.asarray(velocity_analysis["retinal_artery_velocity_signal"]),
+        np.asarray(velocity_analysis["retinal_vein_velocity_signal"]),
+        np.asarray(velocity_analysis["retinal_artery_velocity_signal_filtered"]),
+        np.asarray(velocity_analysis["retinal_vein_velocity_signal_filtered"]),
+    )
 
 
 def pack_segment_velocity_outputs(
@@ -107,7 +129,7 @@ def _lowpass_segment_velocity(values: np.ndarray, source_data) -> np.ndarray:
             filtered[radius_index, branch_index] = butter_lowpass_filtfilt(
                 signal,
                 dt_seconds=np.float32(timing.dt_seconds),
-                lowpass_freq_hz=np.float32(LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ),
+                lowpass_freq_hz=np.float32(DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ),
                 order=4,
             )
     return filtered

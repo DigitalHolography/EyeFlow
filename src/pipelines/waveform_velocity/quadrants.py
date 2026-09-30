@@ -8,8 +8,8 @@ from calculations.math import butter_lowpass_filtfilt, nanmedian
 from calculations.topology import QUADRANT_NAMES, quadrant_membership
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue, with_attrs
-from pipelines.waveform_velocity_core.retinal_velocity.constants import (
-    LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
+from pipelines.retinal_velocity.signal_processing import (
+    DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
 
 QUADRANTS_GROUP_NAME = "Quadrants"
@@ -215,7 +215,7 @@ def _lowpass_velocity(values: np.ndarray, source_data) -> np.ndarray:
     return butter_lowpass_filtfilt(
         values,
         dt_seconds=np.float32(timing.dt_seconds),
-        lowpass_freq_hz=np.float32(LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ),
+            lowpass_freq_hz=np.float32(DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ),
         order=4,
     )
 

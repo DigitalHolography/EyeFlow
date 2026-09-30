@@ -46,7 +46,7 @@ def test_bvr_option_dependencies_are_resolved_independently() -> None:
 def test_spatial_gradient_alone_does_not_schedule_velocity_core() -> None:
     names = _dag().resolve_targets(["spatial_gradient_moment0"]).names
 
-    assert "heartbeat_core" in names
+    assert "retinal_velocity" in names
     assert "topology_core" in names
     assert "waveform_velocity_core" not in names
 

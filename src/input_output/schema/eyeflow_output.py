@@ -13,8 +13,10 @@ class DopplerViewAnalysisOutputPaths:
     retinal_vein_velocity_signal: str
     retinal_artery_velocity_signal_band_limited: str
     retinal_vein_velocity_signal_band_limited: str
+    velocity_map_avg: str
     fRMS_avg: str
     fRMS_bkg_avg: str
+    delta_fRMS_avg: str
     beat_indices: str
     time_per_beat: str
 
@@ -91,7 +93,9 @@ class VelocityProfileOutputPaths:
     transverse_velocity_profile_fft_masked: str | None = None
 
 @dataclass(frozen=True)
-class HeartbeatOutputPaths:
+class CardiacCycleOutputPaths:
+    systolic_peak_frame_indices: str
+    systolic_cycle_duration_seconds: str
     spectral_fundamental_frequency_hz: str
     spectral_heart_rate_bpm: str
     spectral_heart_rate_standard_error_bpm: str
@@ -111,7 +115,8 @@ class EyeFlowOutputPaths:
     segmentation: SegmentationOutputPaths
     artery_velocity_profiles: VelocityProfileOutputPaths
     vein_velocity_profiles: VelocityProfileOutputPaths
-    heartbeat: HeartbeatOutputPaths
+    cardiac_cycle: CardiacCycleOutputPaths
+    displacement_map: str
     beat_period_seconds: str
     waveform_shape_metrics_root: str
     absolute_waveform_metrics_root: str
@@ -212,15 +217,19 @@ def _velocity_profile_paths(
     )
 
 
-HEARTBEAT_OUTPUT = HeartbeatOutputPaths(
+CARDIAC_CYCLE_OUTPUT = CardiacCycleOutputPaths(
+    systolic_peak_frame_indices="Processing/CardiacCycle/Systole/PeakFrameIndices/value",
+    systolic_cycle_duration_seconds=(
+        "Processing/CardiacCycle/Systole/CycleDurationSeconds/value"
+    ),
     spectral_fundamental_frequency_hz=(
-        "Processing/Heartbeat/Spectral/FundamentalFrequencyHz/value"
+        "Processing/CardiacCycle/Spectral/FundamentalFrequencyHz/value"
     ),
-    spectral_heart_rate_bpm="Processing/Heartbeat/Spectral/HeartRateBpm/value",
+    spectral_heart_rate_bpm="Processing/CardiacCycle/Spectral/HeartRateBpm/value",
     spectral_heart_rate_standard_error_bpm=(
-        "Processing/Heartbeat/Spectral/HeartRateStandardErrorBpm/value"
+        "Processing/CardiacCycle/Spectral/HeartRateStandardErrorBpm/value"
     ),
-    spectral_period_seconds="Processing/Heartbeat/Spectral/PeriodSeconds/value",
+    spectral_period_seconds="Processing/CardiacCycle/Spectral/PeriodSeconds/value",
 )
 
 
@@ -235,10 +244,12 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         retinal_vein_velocity_signal_band_limited=(
             "Processing/Velocity/global/Vein/BandLimited/value"
         ),
-        fRMS_avg="Processing/FrequencyMaps/fRMS_avg/value",
-        fRMS_bkg_avg="Processing/FrequencyMaps/fRMS_bkg_avg/value",
-        beat_indices="Processing/Heartbeat/Systole/PeakFrameIndices/value",
-        time_per_beat="Processing/Heartbeat/Systole/CycleDurationSeconds/value",
+        velocity_map_avg="Processing/Maps/VelocityAverage/value",
+        fRMS_avg="Processing/Maps/FRMSAverage/value",
+        fRMS_bkg_avg="Processing/Maps/FRMSBackgroundAverage/value",
+        delta_fRMS_avg="Processing/Maps/DeltaFRMSAverage/value",
+        beat_indices="Processing/CardiacCycle/Systole/PeakFrameIndices/value",
+        time_per_beat="Processing/CardiacCycle/Systole/CycleDurationSeconds/value",
     ),
     artery_segments=SegmentVelocityOutputPaths(
         velocity_signal="Processing/Velocity/segments/Artery/Raw/value",
@@ -309,7 +320,8 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         "Processing/VelocityProfiles/Vein",
         fft_root="Processing/VelocityProfilesFFT/Vein",
     ),
-    heartbeat=HEARTBEAT_OUTPUT,
+    cardiac_cycle=CARDIAC_CYCLE_OUTPUT,
+    displacement_map="Processing/DisplacementMap",
     beat_period_seconds="Processing/VelocityPerBeat/BeatPeriodSeconds/value",
     waveform_shape_metrics_root="Processing/Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="Processing/Metrics/absolute_waveform_metrics",

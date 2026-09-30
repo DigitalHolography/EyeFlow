@@ -194,7 +194,7 @@ Preprocessing remains part of the Python app even if masks are already provided.
 
 - blood-flow velocity analysis
 - arterial and venous waveform analysis
-- heartbeat-related metrics
+- cardiac-cycle-related metrics
 - per-beat and statistical metrics
 
 ### Stage 4: Advanced Analysis

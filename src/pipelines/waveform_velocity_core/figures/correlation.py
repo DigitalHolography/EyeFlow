@@ -39,7 +39,7 @@ def _export_correlation_plots(writer: FigureWriter, ctx: PulseFigureContext) -> 
         vein,
         ctx.dt_seconds,
         ctx.cycle_boundary_indexes,
-        heartbeat=ctx.heartbeat,
+        cardiac_cycle=ctx.cardiac_cycle,
     )
     corr = analysis.correlation
     spectrum = analysis.transfer

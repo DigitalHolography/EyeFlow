@@ -71,7 +71,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                     data=np.asarray([[0.5, 0.5]]),
                 )
                 output_h5.create_dataset(
-                    schema.heartbeat.spectral_heart_rate_bpm,
+                    schema.cardiac_cycle.spectral_heart_rate_bpm,
                     data=np.asarray(96.795),
                 )
                 output_h5.create_dataset(
