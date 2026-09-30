@@ -33,19 +33,22 @@ from .common import (
 from .plotting import _annotated_hline, _annotated_vline, _style_axes
 
 
-def _unit_corrected_velocity_signal(ctx: PulseFigureContext, key: str) -> np.ndarray:
-    return _display_velocity(_vector(ctx.velocity_analysis[key]))
+def _unit_corrected_velocity_signal(
+    ctx: PulseFigureContext,
+    vessel: str,
+) -> np.ndarray:
+    return _display_velocity(_vector(ctx.retinal_velocity.continuous(vessel)))
 
 
 def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     peaks = ctx.cycle_boundary_indexes
     unit_corrected_retinal_artery_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_artery_velocity_signal_filtered",
+        "artery",
     )
     unit_corrected_retinal_vein_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_vein_velocity_signal_filtered",
+        "vein",
     )
     cycles = paired_vessel_cycles(
         unit_corrected_retinal_artery_velocity_signal,
@@ -87,11 +90,11 @@ def _export_waveform_plots(writer: FigureWriter, ctx: PulseFigureContext) -> lis
     peaks = ctx.cycle_boundary_indexes
     unit_corrected_retinal_artery_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_artery_velocity_signal_filtered",
+        "artery",
     )
     unit_corrected_retinal_vein_velocity_signal = _unit_corrected_velocity_signal(
         ctx,
-        "retinal_vein_velocity_signal_filtered",
+        "vein",
     )
     cycles = paired_vessel_cycles(
         unit_corrected_retinal_artery_velocity_signal,
@@ -151,7 +154,7 @@ def _arterial_waveform_plot(
             ctx.cycle_boundary_indexes,
             ctx.dt_seconds,
             default_samples=_vector(
-                ctx.velocity_analysis["retinal_artery_velocity_signal_filtered"]
+                ctx.retinal_velocity.continuous("artery")
             ).size,
         ),
     )
@@ -238,9 +241,7 @@ def _venous_waveform_plot(
         mean_period_seconds(
             ctx.cycle_boundary_indexes,
             ctx.dt_seconds,
-            default_samples=_vector(
-                ctx.velocity_analysis["retinal_vein_velocity_signal_filtered"]
-            ).size,
+            default_samples=_vector(ctx.retinal_velocity.continuous("vein")).size,
         ),
     )
     return _venous_waveform_analysis_plot(writer, cycle, data)

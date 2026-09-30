@@ -23,22 +23,22 @@ def pack_retinal_velocity_outputs(
     spectral = velocity.cardiac_cycle.spectral
     outputs = {
         analysis_paths.velocity_map_avg: metric_value(
-            velocity.velocity_average,
+            velocity.maps.velocity_average,
             unit="mm/s",
             dim_desc=("y", "x"),
         ),
         analysis_paths.fRMS_avg: metric_value(
-            velocity.frms_average,
+            velocity.maps.frms_average,
             unit="Hz",
             dim_desc=("y", "x"),
         ),
         analysis_paths.fRMS_bkg_avg: metric_value(
-            velocity.frms_background_average,
+            velocity.maps.frms_background_average,
             unit="Hz",
             dim_desc=("y", "x"),
         ),
         analysis_paths.delta_fRMS_avg: metric_value(
-            velocity.delta_frms_average,
+            velocity.maps.delta_frms_average,
             unit="Hz",
             dim_desc=("y", "x"),
         ),

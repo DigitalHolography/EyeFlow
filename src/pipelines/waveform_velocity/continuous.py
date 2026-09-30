@@ -1,7 +1,5 @@
 """Whole-vessel continuous velocity output packing."""
 
-from collections.abc import Mapping
-
 import numpy as np
 
 from calculations.math import butter_lowpass_filtfilt
@@ -14,15 +12,16 @@ from pipelines.retinal_velocity.signal_processing import (
 
 
 def pack_continuous_velocity_outputs(
-    velocity_analysis: RetinalVelocity | Mapping[str, object],
+    velocity: RetinalVelocity,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
     """Pack raw and band-limited artery and vein velocity signals."""
     schema = _resolve_output_paths(output_paths)
     paths = schema.analysis
-    artery_raw, vein_raw, artery_filtered, vein_filtered = _continuous_signals(
-        velocity_analysis
-    )
+    artery_raw = velocity.continuous("artery", raw=True)
+    vein_raw = velocity.continuous("vein", raw=True)
+    artery_filtered = velocity.continuous("artery")
+    vein_filtered = velocity.continuous("vein")
     return {
         paths.retinal_artery_velocity_signal: metric_value(
             artery_raw,
@@ -41,26 +40,6 @@ def pack_continuous_velocity_outputs(
             unit="mm/s",
         ),
     }
-
-
-def _continuous_signals(
-    velocity_analysis: RetinalVelocity | Mapping[str, object],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    if isinstance(velocity_analysis, RetinalVelocity):
-        return (
-            velocity_analysis.continuous("artery", raw=True),
-            velocity_analysis.continuous("vein", raw=True),
-            velocity_analysis.continuous("artery"),
-            velocity_analysis.continuous("vein"),
-        )
-    return (
-        np.asarray(velocity_analysis["retinal_artery_velocity_signal"]),
-        np.asarray(velocity_analysis["retinal_vein_velocity_signal"]),
-        np.asarray(velocity_analysis["retinal_artery_velocity_signal_filtered"]),
-        np.asarray(velocity_analysis["retinal_vein_velocity_signal_filtered"]),
-    )
-
-
 def pack_segment_velocity_outputs(
     artery_segments,
     vein_segments,

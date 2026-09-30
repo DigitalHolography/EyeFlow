@@ -7,12 +7,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .signal_inputs import (
-    array_or_none as _array_or_none,
-    display_frequency,
-    display_velocity,
-    section_mask as _section_mask,
-)
 from calculations.math.arrays import (
     as_float32_vector as _vector,
     as_nonnegative_int_indexes as _safe_indexes,
@@ -20,16 +14,16 @@ from calculations.math.arrays import (
 )
 from utils.logger import Logger
 
+from .signal_inputs import display_frequency, display_velocity
+
 __all__ = [
     "PulseFigureContext",
-    "_array_or_none",
     "_finite_image",
     "_log",
     "_matplotlib",
     "_output_stem",
     "_plt",
     "_safe_indexes",
-    "_section_mask",
     "_vector",
     "display_frequency",
     "display_velocity",
@@ -40,6 +34,7 @@ if TYPE_CHECKING:
     from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
         SpectralCardiacCycleAnalysis,
     )
+    from pipelines.retinal_velocity.models import RetinalVelocity
 
 
 @dataclass(frozen=True)
@@ -48,11 +43,11 @@ class PulseFigureContext:
     stem: str
     time: np.ndarray
     dt_seconds: float
-    moment0_avg: np.ndarray
+    moment0_average: np.ndarray
     artery_mask: np.ndarray
     vein_mask: np.ndarray
     section_mask: np.ndarray
-    velocity_analysis: dict[str, object]
+    retinal_velocity: RetinalVelocity
     per_beat_result: PerBeatAnalysisResult
 
     @property
@@ -97,13 +92,19 @@ def _output_stem(output) -> str:
     layout = getattr(manager, "layout", None)
     stem = getattr(layout, "stem", None)
     return str(stem or "eyeflow")
+
+
 def _log(ctx: PulseFigureContext, message: str) -> None:
     Logger.log(message)
+
+
 def _matplotlib():
     import matplotlib
 
     matplotlib.use("Agg", force=True)
     return matplotlib
+
+
 def _plt():
     _matplotlib()
     import matplotlib.pyplot as plt

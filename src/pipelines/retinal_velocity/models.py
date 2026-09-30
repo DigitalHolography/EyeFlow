@@ -1,10 +1,9 @@
-"""Canonical retinal-velocity data shared by downstream pipelines."""
+"""Typed retinal-velocity calculation and pipeline data."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
-from typing import ClassVar, Literal
+from typing import Literal
 
 import numpy as np
 
@@ -17,71 +16,73 @@ VesselName = Literal["artery", "vein"]
 
 
 @dataclass(frozen=True)
-class RetinalVelocity(Mapping[str, object]):
-    """Base retinal velocity, frequency maps, and cardiac-cycle timing.
+class RetinalVelocityMaps:
+    """Spatial maps shared throughout retinal-velocity processing."""
 
-    The mapping interface is a temporary bridge for figure code that still
-    consumes the former analysis dictionary. New code should use fields and
-    methods directly.
-    """
-
-    artery_velocity_raw: np.ndarray
-    vein_velocity_raw: np.ndarray
-    artery_velocity_filtered: np.ndarray
-    vein_velocity_filtered: np.ndarray
-    velocity_map: object | None
+    velocity: object | None
     moment0_average: np.ndarray
     velocity_average: np.ndarray
     frms_average: np.ndarray
     frms_background_average: np.ndarray
     delta_frms_average: np.ndarray
-    velocity_section_mask: np.ndarray
-    artery_frms: np.ndarray
-    vein_frms: np.ndarray
-    artery_frms_background: np.ndarray
-    vein_frms_background: np.ndarray
+    section_mask: np.ndarray
+
+
+@dataclass(frozen=True)
+class VesselVelocitySignals:
+    """Unfiltered signals calculated for one retinal vessel class."""
+
+    velocity: np.ndarray
+    frms: np.ndarray
+    frms_background: np.ndarray
+    delta_frms: np.ndarray
+
+
+@dataclass(frozen=True)
+class RetinalVelocityData:
+    """Neutral components available before cardiac-cycle processing."""
+
+    maps: RetinalVelocityMaps
+    artery: VesselVelocitySignals
+    vein: VesselVelocitySignals
     vessel_frms_background: np.ndarray
-    artery_delta_frms: np.ndarray
-    vein_delta_frms: np.ndarray
+
+
+@dataclass(frozen=True)
+class VesselVelocity:
+    """Raw vessel signals paired with their filtered velocity."""
+
+    signals: VesselVelocitySignals
+    velocity_filtered: np.ndarray
+
+    def continuous(self, *, raw: bool = False) -> np.ndarray:
+        return self.signals.velocity if raw else self.velocity_filtered
+
+    @property
+    def frms(self) -> np.ndarray:
+        return self.signals.frms
+
+    @property
+    def frms_background(self) -> np.ndarray:
+        return self.signals.frms_background
+
+    @property
+    def delta_frms(self) -> np.ndarray:
+        return self.signals.delta_frms
+
+
+@dataclass(frozen=True)
+class RetinalVelocity:
+    """Base retinal velocity, frequency maps, and cardiac-cycle timing."""
+
+    maps: RetinalVelocityMaps
+    artery: VesselVelocity
+    vein: VesselVelocity
+    vessel_frms_background: np.ndarray
     cardiac_cycle: CardiacCycleAnalysis
     cardiac_cycle_source: str
     dt_seconds: float
     index_base: int = 0
-
-    _COMPATIBILITY_KEYS: ClassVar[tuple[str, ...]] = (
-        "fRMS",
-        "fRMS_bkg",
-        "deltafRMS",
-        "velocity_map",
-        "retinal_vessel_velocity",
-        "moment0_avg",
-        "velocity_map_avg",
-        "fRMS_avg",
-        "fRMS_bkg_avg",
-        "deltafRMS_avg",
-        "velocity_section_mask",
-        "velocity_section_geometry",
-        "retinal_artery_velocity_signal",
-        "retinal_vein_velocity_signal",
-        "retinal_artery_velocity_signal_filtered",
-        "retinal_vein_velocity_signal_filtered",
-        "retinal_artery_velocity_signal_derivative",
-        "retinal_vein_velocity_signal_derivative",
-        "retinal_artery_velocity_signal_filtered_perbeat",
-        "retinal_artery_fRMS_signal",
-        "retinal_vein_fRMS_signal",
-        "retinal_artery_fRMS_bkg_signal",
-        "retinal_vein_fRMS_bkg_signal",
-        "retinal_vessel_fRMS_bkg_signal",
-        "retinal_artery_deltafRMS_signal",
-        "retinal_vein_deltafRMS_signal",
-        "beat_indices",
-        "time_per_beat",
-        "beat_detection_min_peak_distance",
-        "beat_detection_min_peak_height",
-        "cardiac_cycle_detection_source",
-        "_cardiac_cycle_analysis",
-    )
 
     def continuous(
         self,
@@ -91,9 +92,12 @@ class RetinalVelocity(Mapping[str, object]):
     ) -> np.ndarray:
         """Return one whole-vessel velocity signal."""
 
-        vessel_name = _validate_vessel(vessel)
-        suffix = "raw" if raw else "filtered"
-        return getattr(self, f"{vessel_name}_velocity_{suffix}")
+        return self.vessel(vessel).continuous(raw=raw)
+
+    def vessel(self, vessel: VesselName) -> VesselVelocity:
+        """Return the composed signals for one vessel class."""
+
+        return getattr(self, _validate_vessel(vessel))
 
     def per_beat(
         self,
@@ -132,6 +136,22 @@ class RetinalVelocity(Mapping[str, object]):
             np.float32(self.dt_seconds),
         ).astype(np.float32)
 
+    def per_beat_matrix(
+        self,
+        vessel: VesselName,
+        *,
+        raw: bool = False,
+        sample_count: int = 128,
+    ) -> np.ndarray:
+        """Return cardiac cycles interpolated to a common sample count."""
+
+        if sample_count < 1:
+            raise ValueError("sample_count must be positive.")
+        return _interpolate_cycles(
+            self.per_beat(vessel, raw=raw),
+            sample_count=sample_count,
+        )
+
     @property
     def cycle_boundary_indexes(self) -> np.ndarray:
         indexes = np.asarray(
@@ -153,66 +173,7 @@ class RetinalVelocity(Mapping[str, object]):
 
     @property
     def has_velocity_map(self) -> bool:
-        return self.velocity_map is not None
-
-    def __getitem__(self, key: str) -> object:
-        detection = self.cardiac_cycle.systole
-        values = {
-            "fRMS": lambda: None,
-            "fRMS_bkg": lambda: None,
-            "deltafRMS": lambda: None,
-            "velocity_map": lambda: self.velocity_map,
-            "retinal_vessel_velocity": lambda: self.velocity_map,
-            "moment0_avg": lambda: self.moment0_average,
-            "velocity_map_avg": lambda: self.velocity_average,
-            "fRMS_avg": lambda: self.frms_average,
-            "fRMS_bkg_avg": lambda: self.frms_background_average,
-            "deltafRMS_avg": lambda: self.delta_frms_average,
-            "velocity_section_mask": lambda: self.velocity_section_mask,
-            "velocity_section_geometry": lambda: (
-                "optic_disc_centered_frame_fraction"
-            ),
-            "retinal_artery_velocity_signal": lambda: self.artery_velocity_raw,
-            "retinal_vein_velocity_signal": lambda: self.vein_velocity_raw,
-            "retinal_artery_velocity_signal_filtered": lambda: (
-                self.artery_velocity_filtered
-            ),
-            "retinal_vein_velocity_signal_filtered": lambda: (
-                self.vein_velocity_filtered
-            ),
-            "retinal_artery_velocity_signal_derivative": lambda: self.derivative(
-                "artery"
-            ),
-            "retinal_vein_velocity_signal_derivative": lambda: self.derivative(
-                "vein"
-            ),
-            "retinal_artery_velocity_signal_filtered_perbeat": lambda: (
-                _interpolate_cycles(self.per_beat("artery"), sample_count=128)
-            ),
-            "retinal_artery_fRMS_signal": lambda: self.artery_frms,
-            "retinal_vein_fRMS_signal": lambda: self.vein_frms,
-            "retinal_artery_fRMS_bkg_signal": lambda: self.artery_frms_background,
-            "retinal_vein_fRMS_bkg_signal": lambda: self.vein_frms_background,
-            "retinal_vessel_fRMS_bkg_signal": lambda: self.vessel_frms_background,
-            "retinal_artery_deltafRMS_signal": lambda: self.artery_delta_frms,
-            "retinal_vein_deltafRMS_signal": lambda: self.vein_delta_frms,
-            "beat_indices": lambda: self.cycle_boundary_indexes,
-            "time_per_beat": lambda: self.cycle_durations_seconds,
-            "beat_detection_min_peak_distance": lambda: detection.min_peak_distance,
-            "beat_detection_min_peak_height": lambda: detection.min_peak_height,
-            "cardiac_cycle_detection_source": lambda: self.cardiac_cycle_source,
-            "_cardiac_cycle_analysis": lambda: self.cardiac_cycle,
-        }
-        try:
-            return values[key]()
-        except KeyError as exc:
-            raise KeyError(key) from exc
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._COMPATIBILITY_KEYS)
-
-    def __len__(self) -> int:
-        return len(self._COMPATIBILITY_KEYS)
+        return self.maps.velocity is not None
 
 
 def _validate_vessel(vessel: str) -> VesselName:
@@ -234,4 +195,11 @@ def _interpolate_cycles(
     return output
 
 
-__all__ = ["RetinalVelocity", "VesselName"]
+__all__ = [
+    "RetinalVelocity",
+    "RetinalVelocityData",
+    "RetinalVelocityMaps",
+    "VesselName",
+    "VesselVelocity",
+    "VesselVelocitySignals",
+]

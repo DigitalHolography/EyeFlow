@@ -194,7 +194,7 @@ def _build_waveform_velocity_inputs(
         source_data = WaveformVelocitySources.from_context(ctx).load()
     timing = source_data.source.holodoppler.timing
     cardiac_cycle_source = retinal.cardiac_cycle_source
-    velocity_map = retinal.velocity_map if segments_required else None
+    velocity_map = retinal.maps.velocity if segments_required else None
     harmonic_count = _band_limited_harmonic_count(ctx)
     number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
     per_beat_analysis, artery_segments, vein_segments = (
