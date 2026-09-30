@@ -19,6 +19,10 @@ from runtime_limits import cap_parallel_jobs
 _MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
 _DISPLACEMENT_MAP_ROOT = "Processing/Displacement/Map"
 
+# TODO: Move the legacy displacement-map packers to the displacement pipeline.
+# They remain import-compatible for now, but waveform velocity must not call
+# them or consume displacement state.
+
 
 def pack_segment_map_outputs(
     artery_segments,

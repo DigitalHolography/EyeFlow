@@ -48,16 +48,6 @@ def _context(options, state_values=None, scheduled=None):
 
 
 class WaveformPipelineOptionTests(unittest.TestCase):
-    def setUp(self) -> None:
-        # These orchestration tests use string segment sentinels.
-        for name, result in {
-            "pack_cross_section_displacement_profile_outputs": {},
-            "pack_displacement_magnitude_outputs": {},
-        }.items():
-            mock = patch.object(velocity_runner, name, return_value=result)
-            mock.start()
-            self.addCleanup(mock.stop)
-
     def test_fft_option_is_disabled_by_default_and_requires_profiles(self) -> None:
         load_pipeline_catalog()
         options = {
@@ -119,6 +109,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertNotIn("pipelines.waveform_shape_metrics", core_source)
         self.assertNotIn("pipelines.waveform_shape_metrics", velocity_source)
         self.assertNotIn("spatial_gradient", velocity_source)
+        self.assertNotIn("displacement", (velocity_root / "runner.py").read_text())
         self.assertTrue((gradient_root / "profiles.py").is_file())
 
     def test_velocity_parent_always_publishes_base_velocity_only(self) -> None:
@@ -247,11 +238,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             ) as maps,
             patch.object(
                 velocity_runner,
-                "pack_displacement_segment_map_outputs",
-                return_value={"displacement_maps": 9},
-            ) as displacement_maps,
-            patch.object(
-                velocity_runner,
                 "pack_velocity_profile_fft_outputs",
                 return_value={"fft_profile": 7},
             ) as fft_profiles,
@@ -270,7 +256,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "profile": 3,
                 "fft_profile": 7,
                 "maps": 8,
-                "displacement_maps": 9,
                 "quadrants": 4,
             },
             outputs,
@@ -296,12 +281,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             "vein",
             "artery_maps",
             "vein_maps",
-        )
-        displacement_maps.assert_called_once_with(
-            artery_segments,
-            "vein",
-            (1, 6, 11),
-            index_base=1,
         )
         quadrants.assert_called_once_with(
             velocity_outputs,

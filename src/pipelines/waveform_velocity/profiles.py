@@ -25,6 +25,10 @@ _DISPLACEMENT_PROFILE_FIELDS = (
     ("Y", "y_sum_profile", "local_y"),
 )
 
+# TODO: Move the legacy displacement packers in this module to the
+# displacement pipeline. They remain import-compatible for now, but the
+# waveform-velocity runner must not invoke them or consume displacement state.
+
 
 def pack_cross_section_profile_outputs(
     artery_segments,

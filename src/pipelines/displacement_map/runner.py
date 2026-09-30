@@ -76,7 +76,12 @@ def attach_displacement_segment_profiles(
     retain_maps: bool,
     profile_settings,
 ) -> dict[str, object]:
-    """Attach topology-aligned displacement results when this pipeline is scheduled."""
+    """Attach topology-aligned displacement results.
+
+    TODO: Replace this legacy adapter with displacement-owned segment products.
+    Waveform velocity deliberately no longer calls it or consumes displacement
+    state.
+    """
 
     results = dict(segment_profiles)
     if not ctx.pipeline_scheduled("displacement_map"):

@@ -7,11 +7,28 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from calculations.topology import SegmentTopology
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue
 from pipelines.lowrank_waveform_decomposition.outputs import (
     pack_lowrank_waveform_decomposition_outputs,
 )
+
+
+def _segment_topology(labels, branch_ids, centers, optic_disc_center):
+    radius_count, branch_count = centers.shape[:2]
+    return SegmentTopology(
+        spatial_shape=labels.shape,
+        optic_disc_center_xy=optic_disc_center,
+        labels=labels,
+        centerline=np.zeros(labels.shape, dtype=bool),
+        branch_ids=branch_ids,
+        annulus_masks=np.zeros((radius_count, *labels.shape), dtype=bool),
+        segment_masks=np.zeros((radius_count, branch_count, 1, 1), dtype=bool),
+        segment_centers_xy=centers,
+        window_bounds_xyxy=np.zeros((radius_count, branch_count, 4), dtype=int),
+        window_side_pixels=1,
+    )
 
 
 class LowRankQuadrantOutputTests(unittest.TestCase):
@@ -46,7 +63,17 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
                 (radius_count, branch_count, 2),
                 dtype=float,
             ),
-            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 3.0)),
+            topology=SimpleNamespace(
+                prepared_topology=_segment_topology(
+                    labels,
+                    np.arange(1, branch_count + 1, dtype=np.int32),
+                    np.zeros(
+                        (radius_count, branch_count, 2),
+                        dtype=float,
+                    ),
+                    (3.0, 3.0),
+                )
+            ),
         )
         velocity_outputs = {
             schema.beat_period_seconds: np.asarray([[0.8, 0.9]], dtype=np.float32),

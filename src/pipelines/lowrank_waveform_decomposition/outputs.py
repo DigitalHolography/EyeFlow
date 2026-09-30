@@ -7,20 +7,17 @@ from collections.abc import Mapping
 
 import numpy as np
 
+from calculations.topology import QUADRANT_NAMES, quadrant_membership
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue, with_attrs
-from pipelines.waveform_velocity_core.regions import (
-    QUADRANTS_GROUP_NAME,
-    REGION_NAMES,
-    normalize_spatial_frame,
-    region_membership,
-)
 
 from .calculator import (
     LowRankWaveformDecompositionCalculator,
     ensure_segment_shape,
     mean_subtract,
 )
+
+QUADRANTS_GROUP_NAME = "Quadrants"
 
 ENDPOINT_METRICS = (
     "A1",
@@ -121,7 +118,7 @@ def pack_lowrank_waveform_decomposition_outputs(
                 vessel_name,
             )
             quadrant_memberships[vessel_name] = membership
-        for region_index, region_name in enumerate(REGION_NAMES):
+        for region_index, region_name in enumerate(QUADRANT_NAMES):
             selected = membership[region_index]
             quadrant_waveforms = np.where(
                 selected[np.newaxis, np.newaxis, :, :],
@@ -172,15 +169,7 @@ def _quadrant_membership(
         raise RuntimeError(
             f"Quadrant low-rank outputs require {vessel_name} segment geometry."
         )
-    branch_ids = np.asarray(segments.branch_ids, dtype=np.int32).reshape(-1)
-    labels = np.asarray(segments.labels, dtype=np.int32)
-    centers = np.asarray(segments.segment_centers_xy, dtype=float)
-    center_xy = np.asarray(
-        segments.topology.optic_disc_center_xy,
-        dtype=float,
-    ).copy()
-    labels, center_xy = normalize_spatial_frame(labels, center_xy)
-    membership = region_membership(branch_ids, labels, centers, center_xy)
+    membership = quadrant_membership(segments.topology.prepared_topology)
     if membership.shape[1:] != waveforms.shape[2:]:
         raise ValueError(
             f"{vessel_name.capitalize()} quadrant membership shape "

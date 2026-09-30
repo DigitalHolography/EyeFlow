@@ -7,7 +7,7 @@ import numpy as np
 
 from calculations.topology import AnnulusGeometry, OpticDisc
 from input_output.schema import EyeFlowOutputPaths, PixelPitch
-from pipelines.waveform_velocity_core.segmentation import (
+from pipelines.topology_core.outputs import (
     ANNULUS_OUTLINE_LABEL,
     BACKGROUND_LABEL,
     INNER_R0_VESSEL_LABEL,

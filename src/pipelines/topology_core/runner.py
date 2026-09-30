@@ -14,6 +14,8 @@ from calculations.topology import (
 from pipeline_engine.imports import read_int_setting
 from pipelines.vessel_inputs import load_vessel_topology_inputs
 
+from .outputs import pack_topology_outputs
+
 TOPOLOGY_CORE_STATE = "topology_core.prepared"
 _DEFAULT_NUMBER_OF_RADII_IN_FOV = 25
 _TOPOLOGY_WINDOW_SIZE_PERCENTILE_KEPT = 0.95
@@ -64,10 +66,6 @@ def run_topology_core(ctx) -> dict[str, object]:
         for name, topology in prepared.items()
     }
     ctx.state.set(TOPOLOGY_CORE_STATE, prepared)
-    # Import lazily to retain the legacy module as a compatibility surface
-    # without coupling topology registration to the waveform package import.
-    from pipelines.waveform_velocity_core.segmentation import pack_topology_outputs
-
     return pack_topology_outputs(
         vessels.artery,
         vessels.vein,

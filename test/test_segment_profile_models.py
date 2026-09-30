@@ -29,7 +29,6 @@ def test_velocity_result_only_adds_pipeline_specific_products():
 
     assert issubclass(VelocitySegmentResult, SegmentProfileResult)
     assert velocity_fields - base_fields == {
-        "displacements",
         "transverse_fft_profiles_masked",
         "transverse_fft_profiles_unmasked",
     }
