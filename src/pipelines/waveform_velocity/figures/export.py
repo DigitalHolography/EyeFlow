@@ -22,7 +22,7 @@ from .waveforms import _export_ri_pi_plots, _export_waveform_plots
 
 if TYPE_CHECKING:
     from calculations.blood_flow_velocity import PerBeatAnalysisResult
-    from pipelines.waveform_velocity_core.runner import WaveformVelocityCoreContext
+    from pipelines.waveform_velocity.models import WaveformVelocity
 
 
 PULSE_PNG_SUFFIXES = (
@@ -87,10 +87,10 @@ EXPORTERS = (
 
 def export_pulse_pngs(
     output,
-    context: WaveformVelocityCoreContext,
+    context: WaveformVelocity,
     per_beat_result: PerBeatAnalysisResult,
 ) -> list[str]:
-    """Export core pulse-analysis PNGs for a waveform velocity run."""
+    """Export pulse-analysis PNGs for a waveform velocity run."""
 
     if not getattr(output, "available", False):
         return []
@@ -100,7 +100,7 @@ def export_pulse_pngs(
     images = source.image_maps
     vessels = source.segmentation.vessels
     timing = source.holodoppler.timing
-    velocity_analysis = context.velocity_analysis
+    velocity_analysis = context.retinal_velocity
     frame_count = int(
         np.asarray(velocity_analysis["retinal_artery_velocity_signal"]).size
     )

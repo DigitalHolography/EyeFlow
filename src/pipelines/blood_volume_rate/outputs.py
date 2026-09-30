@@ -134,7 +134,7 @@ def _gradient_edge_dataset(
                 "mean masked transverse velocity multiplied by the circular "
                 "lumen area implied by the spatial-gradient edges"
             ),
-            "source_velocity": "waveform_velocity_core.masked_transverse_profile",
+            "source_velocity": "waveform_velocity.masked_transverse_profile",
             "source_left_edge_index": f"/{left_edge_path.lstrip('/')}",
             "source_right_edge_index": f"/{right_edge_path.lstrip('/')}",
             "diameter_model": "gradient_edge_separation_times_profile_pixel_size",
@@ -194,7 +194,7 @@ def pack_mask_derived_outputs(
                     "safe per-beat segment velocity multiplied by an equivalent "
                     "circular lumen area derived from native vessel-mask pixels"
                 ),
-                "source_velocity": "waveform_velocity_core.safe_per_beat_segment_velocity",
+                "source_velocity": "waveform_velocity.safe_per_beat_segment_velocity",
                 "diameter_model": "masked_pixel_count_over_radial_width",
                 "diameter_model_assumption": "locally_radial_vessel",
                 "cross_section_model": "circular_pi_diameter_squared_over_4",

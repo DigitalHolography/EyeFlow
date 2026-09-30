@@ -15,7 +15,7 @@ from pipelines import load_pipeline_catalog
 from pipelines.lowrank_waveform_decomposition import runner as lowrank_runner
 from pipelines.waveform_shape_metrics import runner as metric_runner
 from pipelines.waveform_velocity import runner as velocity_runner
-from pipelines.waveform_velocity_core import runner as core_runner
+from pipelines.waveform_velocity import workflow as core_runner
 
 
 class _State:
@@ -33,7 +33,7 @@ def _context(options, state_values=None, scheduled=None):
     scheduled = set(
         scheduled
         or {
-            "waveform_velocity_core",
+            "retinal_velocity",
             "waveform_velocity",
             "waveform_shape_metrics",
         }
@@ -62,24 +62,36 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         velocity_outputs = {"per_beat": 1}
         context = SimpleNamespace(
             source_data="source",
-            artery_segment_result="artery",
-            vein_segment_result="vein",
+            artery_segments="artery",
+            vein_segments="vein",
+            require_per_beat=lambda: "per-beat",
         )
         ctx = SimpleNamespace(
             state=_State(
                 {
-                    core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: velocity_outputs,
-                    core_runner.WAVEFORM_CONTEXT_STATE: context,
+                    core_runner.WAVEFORM_VELOCITY_STATE: context,
                 }
             ),
             options_for=lambda _pipeline: frozenset({"quadrants"}),
         )
 
-        with patch.object(
-            lowrank_runner,
-            "pack_lowrank_waveform_decomposition_outputs",
-            return_value={"lowrank": 2},
-        ) as pack:
+        with (
+            patch.object(
+                lowrank_runner,
+                "waveform_velocity",
+                return_value=context,
+            ),
+            patch.object(
+                lowrank_runner,
+                "pack_velocity_per_beat_outputs",
+                return_value=velocity_outputs,
+            ),
+            patch.object(
+                lowrank_runner,
+                "pack_lowrank_waveform_decomposition_outputs",
+                return_value={"lowrank": 2},
+            ) as pack,
+        ):
             outputs = lowrank_runner.run_lowrank_waveform_decomposition(ctx)
 
         self.assertEqual({"lowrank": 2}, outputs)
@@ -95,28 +107,26 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         pipeline_root = Path(__file__).resolve().parents[1] / "src" / "pipelines"
         metrics_root = pipeline_root / "waveform_shape_metrics"
         velocity_root = pipeline_root / "waveform_velocity"
-        core_root = pipeline_root / "waveform_velocity_core"
         gradient_root = pipeline_root / "spatial_gradient_moment0"
 
         self.assertFalse((metrics_root / "velocity").exists())
-        core_source = "\n".join(
-            path.read_text(encoding="utf-8") for path in core_root.rglob("*.py")
-        )
+        self.assertFalse((pipeline_root / "waveform_velocity_core").exists())
         velocity_source = "\n".join(
             path.read_text(encoding="utf-8") for path in velocity_root.rglob("*.py")
         )
-        self.assertNotIn("pipelines.waveform_velocity.", core_source)
-        self.assertNotIn("pipelines.waveform_shape_metrics", core_source)
         self.assertNotIn("pipelines.waveform_shape_metrics", velocity_source)
         self.assertNotIn("spatial_gradient", velocity_source)
         self.assertNotIn("displacement", (velocity_root / "runner.py").read_text())
         self.assertTrue((gradient_root / "profiles.py").is_file())
 
     def test_velocity_parent_always_publishes_base_velocity_only(self) -> None:
-        context = SimpleNamespace(velocity_analysis={})
+        context = SimpleNamespace(
+            retinal_velocity={},
+            per_beat_result=None,
+        )
         ctx = _context(
             {"waveform_velocity": ()},
-            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+            {core_runner.WAVEFORM_VELOCITY_STATE: context},
         )
 
         with (
@@ -125,10 +135,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 "pack_continuous_velocity_outputs",
                 return_value={"base": 1},
             ),
-            patch.object(
-                velocity_runner,
-                "run_velocity_per_beat_metrics",
-            ) as per_beat,
             patch.object(
                 velocity_runner,
                 "pack_cross_section_profile_outputs",
@@ -141,7 +147,6 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 
         self.assertEqual({"base": 1}, outputs)
-        per_beat.assert_not_called()
         profiles.assert_not_called()
         quadrants.assert_not_called()
 
@@ -155,12 +160,14 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             schema.artery_per_beat_safe.velocity_signal: artery,
             schema.vein_per_beat_safe.velocity_signal: vein,
         }
-        context = SimpleNamespace(velocity_analysis={})
+        context = SimpleNamespace(
+            retinal_velocity={},
+            per_beat_result="per-beat",
+        )
         ctx = _context(
             {"waveform_velocity": ()},
             {
-                core_runner.WAVEFORM_CONTEXT_STATE: context,
-                core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: velocity_outputs,
+                core_runner.WAVEFORM_VELOCITY_STATE: context,
             },
         )
         ctx.output = SimpleNamespace(available=True)
@@ -170,6 +177,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 velocity_runner,
                 "pack_continuous_velocity_outputs",
                 return_value={"base": 1},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_velocity_per_beat_outputs",
+                return_value=velocity_outputs,
             ),
             patch.object(velocity_runner, "export_velocity_signals") as export,
         ):
@@ -189,10 +201,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             schema.artery_per_beat.segment_velocity_signal: 5,
         }
         context = SimpleNamespace(
-            velocity_analysis={},
-            artery_segment_result=artery_segments,
-            vein_segment_result="vein",
-            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
+            retinal_velocity={},
+            artery_segments=artery_segments,
+            vein_segments="vein",
+            cycle_boundary_indexes=(0, 5, 10),
+            per_beat_result=per_beat_result,
             source_data=SimpleNamespace(
                 provenance={"beat_index_base": 1},
                 profile_settings=SimpleNamespace(pixel_size_mm=0.01),
@@ -209,9 +222,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 )
             },
             {
-                core_runner.WAVEFORM_CONTEXT_STATE: context,
-                core_runner.VELOCITY_PER_BEAT_RESULT_STATE: per_beat_result,
-                core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: velocity_outputs,
+                core_runner.WAVEFORM_VELOCITY_STATE: context,
             },
         )
 
@@ -220,6 +231,11 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 velocity_runner,
                 "pack_continuous_velocity_outputs",
                 return_value={"base": 1},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_velocity_per_beat_outputs",
+                return_value=velocity_outputs,
             ),
             patch.object(
                 velocity_runner,
@@ -273,8 +289,8 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         prepare_maps.assert_called_once_with(
             artery_segments,
             "vein",
-            (1, 6, 11),
-            index_base=1,
+            (0, 5, 10),
+            index_base=0,
         )
         maps.assert_called_once_with(
             artery_segments,
@@ -291,15 +307,16 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
     def test_segments_option_does_not_build_velocity_maps(self) -> None:
         context = SimpleNamespace(
-            velocity_analysis={},
-            artery_segment_result="artery",
-            vein_segment_result="vein",
-            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
+            retinal_velocity={},
+            artery_segments="artery",
+            vein_segments="vein",
+            cycle_boundary_indexes=(0, 5, 10),
+            per_beat_result=None,
             source_data=SimpleNamespace(provenance={"beat_index_base": 1}),
         )
         ctx = _context(
             {"waveform_velocity": ("segments",)},
-            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+            {core_runner.WAVEFORM_VELOCITY_STATE: context},
         )
         ctx.output = SimpleNamespace(available=True)
 
@@ -336,15 +353,16 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
     def test_velocity_profiles_do_not_build_per_beat_velocity_maps(self) -> None:
         context = SimpleNamespace(
-            velocity_analysis={},
-            artery_segment_result="artery",
-            vein_segment_result="vein",
-            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
+            retinal_velocity={},
+            artery_segments="artery",
+            vein_segments="vein",
+            cycle_boundary_indexes=(0, 5, 10),
+            per_beat_result=None,
             source_data=SimpleNamespace(provenance={"beat_index_base": 1}),
         )
         ctx = _context(
             {"waveform_velocity": ("velocity_profiles",)},
-            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+            {core_runner.WAVEFORM_VELOCITY_STATE: context},
         )
 
         with (
@@ -376,15 +394,16 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
     def test_segment_velocity_maps_option_publishes_maps_and_avis(self) -> None:
         context = SimpleNamespace(
-            velocity_analysis={},
-            artery_segment_result="artery",
-            vein_segment_result="vein",
-            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(1, 6, 11)),
+            retinal_velocity={},
+            artery_segments="artery",
+            vein_segments="vein",
+            cycle_boundary_indexes=(0, 5, 10),
+            per_beat_result=None,
             source_data=SimpleNamespace(provenance={"beat_index_base": 1}),
         )
         ctx = _context(
             {"waveform_velocity": ("segment_velocity_maps",)},
-            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+            {core_runner.WAVEFORM_VELOCITY_STATE: context},
         )
         ctx.output = SimpleNamespace(available=True)
 
@@ -427,8 +446,8 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         prepare_maps.assert_called_once_with(
             "artery",
             "vein",
-            (1, 6, 11),
-            index_base=1,
+            (0, 5, 10),
+            index_base=0,
         )
         avis.assert_called_once_with(
             ctx.output,
@@ -494,50 +513,57 @@ class WaveformPipelineOptionTests(unittest.TestCase):
     def test_global_shape_metrics_can_run_without_core_segments(self) -> None:
         context = SimpleNamespace(
             source_data="source",
-            artery_segment_result=None,
-            vein_segment_result=None,
+            artery_segments=None,
+            vein_segments=None,
+            require_per_beat=lambda: "per-beat",
         )
         ctx = _context(
             {
                 "waveform_shape_metrics": ("per_beat",),
             },
             {
-                core_runner.WAVEFORM_CONTEXT_STATE: context,
-                core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: {"global": 1},
+                core_runner.WAVEFORM_VELOCITY_STATE: context,
             },
         )
 
-        with patch.object(
-            metric_runner,
-            "pack_waveform_shape_outputs",
-            return_value={"shape": 1},
-        ) as pack:
+        with (
+            patch.object(
+                metric_runner,
+                "waveform_velocity",
+                return_value=context,
+            ),
+            patch.object(
+                metric_runner,
+                "pack_velocity_per_beat_outputs",
+                return_value={"global": 1},
+            ),
+            patch.object(
+                metric_runner,
+                "pack_waveform_shape_outputs",
+                return_value={"shape": 1},
+            ) as pack,
+        ):
             outputs = metric_runner.run_waveform_shape_metrics(ctx)
 
         self.assertEqual({"shape": 1}, outputs)
         self.assertFalse(pack.call_args.kwargs["include_segments"])
 
     def test_core_skips_segment_extraction_when_not_required(self) -> None:
-        analysis = {
-            "retinal_artery_velocity_signal": [1.0, 2.0],
-            "retinal_vein_velocity_signal": [1.0, 2.0],
-            "beat_indices": [0, 1],
-        }
+        analysis = SimpleNamespace(
+            cycle_boundary_indexes=np.asarray([0, 1], dtype=np.int32),
+            cardiac_cycle=SimpleNamespace(spectral="cardiac_cycle"),
+            continuous=lambda vessel, raw=False: np.asarray(
+                [1.0, 2.0], dtype=np.float32
+            ),
+        )
         source = SimpleNamespace(
             timing=SimpleNamespace(dt_seconds=0.1),
             provenance={"beat_index_base": 0},
         )
         ctx = SimpleNamespace()
 
-        with (
-            patch.object(core_runner, "_segment_velocity_inputs") as extract,
-            patch.object(
-                core_runner,
-                "spectral_cardiac_cycle_analysis",
-                return_value="cardiac_cycle",
-            ),
-        ):
-            _, artery, vein = core_runner._per_beat_input_from_analysis(
+        with patch.object(core_runner, "_segment_velocity_inputs") as extract:
+            _, artery, vein = core_runner._build_per_beat_input(
                 analysis,
                 source,
                 source.timing,
@@ -639,15 +665,16 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
     def test_analysis_schedule_generates_both_source_profiles_automatically(self) -> None:
         context = SimpleNamespace(
-            velocity_analysis={},
-            artery_segment_result="artery",
-            vein_segment_result="vein",
-            per_beat_analysis=SimpleNamespace(cycle_boundary_indexes=(0, 5, 10)),
+            retinal_velocity={},
+            artery_segments="artery",
+            vein_segments="vein",
+            cycle_boundary_indexes=(0, 5, 10),
+            per_beat_result=None,
             source_data=SimpleNamespace(provenance={"beat_index_base": 0}),
         )
         ctx = _context(
             {"waveform_velocity": ()},
-            {core_runner.WAVEFORM_CONTEXT_STATE: context},
+            {core_runner.WAVEFORM_VELOCITY_STATE: context},
             scheduled={"waveform_velocity", "velocity_profile_analysis"},
         )
         with (
@@ -676,7 +703,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         ctx = _context(
             {"waveform_velocity": (), "waveform_shape_metrics": ()},
             scheduled={
-                "waveform_velocity_core",
+                "retinal_velocity",
                 "waveform_velocity",
                 "waveform_shape_metrics",
                 "pdf_report",
@@ -687,22 +714,30 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertTrue(core_runner._pulse_pngs_required(ctx))
 
     def test_pdf_report_publishes_velocity_per_beat_outputs(self) -> None:
-        context = SimpleNamespace(velocity_analysis={})
         result = SimpleNamespace(cycle_boundary_indexes=(0, 2))
+        context = SimpleNamespace(
+            retinal_velocity={},
+            per_beat_result=result,
+        )
         ctx = _context(
             {"waveform_velocity": ()},
             {
-                core_runner.WAVEFORM_CONTEXT_STATE: context,
-                core_runner.VELOCITY_PER_BEAT_RESULT_STATE: result,
-                core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: {"per_beat": 1},
+                core_runner.WAVEFORM_VELOCITY_STATE: context,
             },
             scheduled={"waveform_velocity", "pdf_report"},
         )
 
-        with patch.object(
-            velocity_runner,
-            "pack_continuous_velocity_outputs",
-            return_value={"base": 1},
+        with (
+            patch.object(
+                velocity_runner,
+                "pack_continuous_velocity_outputs",
+                return_value={"base": 1},
+            ),
+            patch.object(
+                velocity_runner,
+                "pack_velocity_per_beat_outputs",
+                return_value={"per_beat": 1},
+            ),
         ):
             outputs = velocity_runner.run_waveform_velocity(ctx)
 

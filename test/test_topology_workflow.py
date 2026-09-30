@@ -112,7 +112,7 @@ class TopologyWorkflowTests(unittest.TestCase):
             SegmentProfileSettings,
             analyze_segment_profiles,
         )
-        from pipelines.waveform_velocity_core.segments import (
+        from pipelines.waveform_velocity.segments import (
             analyze_velocity_segment_profiles,
         )
 

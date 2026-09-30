@@ -48,7 +48,7 @@ class RetinalVelocityTests(unittest.TestCase):
         analysis = _cardiac_cycle()
         ctx = SimpleNamespace(
             state=PipelineState(),
-            pipeline_scheduled=lambda name: name == "waveform_velocity_core",
+            pipeline_scheduled=lambda name: name == "waveform_velocity",
         )
 
         def estimator(**kwargs):

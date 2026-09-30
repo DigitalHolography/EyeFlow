@@ -49,10 +49,10 @@ class SpatialGradientProfileTests(unittest.TestCase):
         waveform_context = SimpleNamespace(
             source_data=source,
             attrs={"number_of_radii_in_FOV": 4},
-            artery_segment_result=SimpleNamespace(
+            artery_segments=SimpleNamespace(
                 topology=SimpleNamespace(prepared_topology="artery topology")
             ),
-            vein_segment_result=SimpleNamespace(
+            vein_segments=SimpleNamespace(
                 topology=SimpleNamespace(prepared_topology="vein topology")
             ),
         )

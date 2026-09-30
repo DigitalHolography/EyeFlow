@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
@@ -26,7 +27,6 @@ from pipelines.absolute_waveform_metrics.outputs import (  # noqa: E402
 from pipelines.absolute_waveform_metrics.runner import (  # noqa: E402
     run_absolute_waveform_metrics,
 )
-from pipelines.waveform_velocity_core import runner as core_runner  # noqa: E402
 
 
 def _segment_topology(labels, branch_ids, centers, optic_disc_center):
@@ -83,7 +83,6 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             (
                 "retinal_velocity",
                 "topology_core",
-                "waveform_velocity_core",
                 "waveform_velocity",
                 "absolute_waveform_metrics",
             ),
@@ -226,18 +225,13 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
     def test_runner_consumes_shared_per_beat_state(self) -> None:
         schema = EyeFlowOutputPaths.active()
         waveform = np.ones((1, 8), dtype=np.float32)
-        state = _State(
-            {
-                core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: {
-                    schema.beat_period_seconds: np.asarray(
-                        [[0.8]],
-                        dtype=np.float32,
-                    ),
-                    schema.artery_per_beat.velocity_signal: waveform,
-                    schema.artery_per_beat.velocity_signal_band_limited: waveform,
-                }
-            }
-        )
+        state = _State()
+        packed = {
+            schema.beat_period_seconds: np.asarray([[0.8]], dtype=np.float32),
+            schema.artery_per_beat.velocity_signal: waveform,
+            schema.artery_per_beat.velocity_signal_band_limited: waveform,
+        }
+        shared = SimpleNamespace(require_per_beat=lambda: "per-beat")
         ctx = SimpleNamespace(
             state=state,
             options_for=lambda name: (
@@ -247,7 +241,17 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             ),
         )
 
-        outputs = run_absolute_waveform_metrics(ctx)
+        with (
+            patch(
+                "pipelines.absolute_waveform_metrics.runner.waveform_velocity",
+                return_value=shared,
+            ),
+            patch(
+                "pipelines.absolute_waveform_metrics.runner.pack_velocity_per_beat_outputs",
+                return_value=packed,
+            ),
+        ):
+            outputs = run_absolute_waveform_metrics(ctx)
 
         self.assertTrue(outputs)
         self.assertEqual(

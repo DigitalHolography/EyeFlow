@@ -26,7 +26,7 @@ from pipelines.waveform_velocity.profiles import (  # noqa: E402
 from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
     interpolate_velocity_maps_per_beat,
 )
-from pipelines.waveform_velocity_core.segments import (  # noqa: E402
+from pipelines.waveform_velocity.segments import (  # noqa: E402
     _gpu_nanmean_axis1,
     _VelocityProfileFftAccumulator,
 )

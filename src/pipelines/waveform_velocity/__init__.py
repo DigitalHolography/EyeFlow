@@ -1,8 +1,10 @@
 """Selectable waveform velocity products."""
 
-from pipeline_engine.imports import PipelineOption, pipeline
+from pipeline_engine.imports import PipelineOption, ProcessResult, pipeline
 
+from .models import WaveformVelocity
 from .runner import run_waveform_velocity
+from .workflow import pack_waveform_meta_outputs, waveform_velocity
 
 
 @pipeline(
@@ -11,7 +13,7 @@ from .runner import run_waveform_velocity
         "Compute raw and band-limited waveform velocity with optional derived products."
     ),
     requires=["numpy", "h5py", "scipy", "skimage", "matplotlib"],
-    dag_requires=["waveform_velocity_core"],
+    dag_requires=["retinal_velocity", "prepared_topology"],
     dag_produces=["waveform_velocity"],
     options=[
         PipelineOption(
@@ -55,8 +57,11 @@ from .runner import run_waveform_velocity
     ],
     input_slot="both",
 )
-def run(ctx):
-    return run_waveform_velocity(ctx)
+def run(ctx) -> ProcessResult:
+    metrics = run_waveform_velocity(ctx)
+    waveform = waveform_velocity(ctx)
+    metrics.update(pack_waveform_meta_outputs(waveform))
+    return ProcessResult(metrics=metrics, attrs=waveform.attrs)
 
 
-__all__ = ["run"]
+__all__ = ["WaveformVelocity", "run", "waveform_velocity"]

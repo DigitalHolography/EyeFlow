@@ -26,7 +26,7 @@ from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from input_output.writers.png import FigureArtifactWriter, write_png_file  # noqa: E402
 from pipelines.waveform_velocity.profiles import pack_cross_section_profile_outputs  # noqa: E402
-from pipelines.waveform_velocity_core.figures.profiles import (  # noqa: E402
+from pipelines.waveform_velocity.figures.profiles import (  # noqa: E402
     _finite_median,
     _hierarchical_profile_median,
     _nanmedian,
@@ -147,7 +147,7 @@ class ProfileArtifactTests(unittest.TestCase):
         values = np.arange(2 * 12 * 3, dtype=np.float32).reshape(2, 12, 3)
         expected = _finite_median(values, axis=1)
         with patch(
-            "pipelines.waveform_velocity_core.figures.profiles.np.nanmedian",
+            "pipelines.waveform_velocity.figures.profiles.np.nanmedian",
             side_effect=IndexError("sparse partition failure"),
         ):
             actual = _nanmedian(values, axis=1)
@@ -169,9 +169,15 @@ class ProfileArtifactTests(unittest.TestCase):
             output = _FakeOutput(Path(temp_dir))
             writer = FigureArtifactWriter(output, "sample")
             context = SimpleNamespace(
-                source_data=SimpleNamespace(timing=SimpleNamespace(dt_seconds=0.05)),
-                artery_segment_result=_segments(radius_count=1, branch_count=1),
-                vein_segment_result=_segments(radius_count=1, branch_count=1),
+                source_data=SimpleNamespace(
+                    source=SimpleNamespace(
+                        holodoppler=SimpleNamespace(
+                            timing=SimpleNamespace(dt_seconds=0.05)
+                        )
+                    )
+                ),
+                artery_segments=_segments(radius_count=1, branch_count=1),
+                vein_segments=_segments(radius_count=1, branch_count=1),
             )
             paths = export_cross_section_profile_artifacts(writer, context)
             self.assertEqual(2, len(paths))

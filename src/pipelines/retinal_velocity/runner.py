@@ -31,7 +31,7 @@ def run_retinal_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
     images = source.image_maps
     segmentation = source.segmentation
     timing = source.holodoppler.timing
-    retain_velocity_map = _pipeline_scheduled(ctx, "waveform_velocity_core")
+    retain_velocity_map = _pipeline_scheduled(ctx, "waveform_velocity")
     velocity_map_output = (
         np.empty(tuple(int(size) for size in images.moment0.shape), dtype=np.float32)
         if retain_velocity_map

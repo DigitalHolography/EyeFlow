@@ -32,10 +32,10 @@ from pipelines.retinal_velocity.estimation import (  # noqa: E402
     _velocity_from_delta_frequency,
 )
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
-from pipelines.waveform_velocity_core.per_beat_outputs import (  # noqa: E402
+from pipelines.waveform_velocity.per_beat_outputs import (  # noqa: E402
     pack_velocity_per_beat_outputs,
 )
-from pipelines.waveform_velocity_core.runner import (  # noqa: E402
+from pipelines.waveform_velocity.workflow import (  # noqa: E402
     _raw_velocity_signals_for_per_beat,
     _safe_waveform_segment_input,
 )
@@ -186,12 +186,13 @@ class PerBeatRunnerTests(unittest.TestCase):
         np.testing.assert_allclose(reconstructed, expected, rtol=1e-6, atol=1e-5)
 
     def test_per_beat_input_explicitly_uses_raw_global_vessel_signals(self) -> None:
-        analysis = {
-            "retinal_artery_velocity_signal": np.asarray([100.0, 200.0]),
-            "retinal_vein_velocity_signal": np.asarray([300.0, 400.0]),
-            "retinal_artery_velocity_signal_filtered": np.asarray([1.0, 2.0]),
-            "retinal_vein_velocity_signal_filtered": np.asarray([3.0, 4.0]),
+        raw_values = {
+            "artery": np.asarray([100.0, 200.0], dtype=np.float32),
+            "vein": np.asarray([300.0, 400.0], dtype=np.float32),
         }
+        analysis = SimpleNamespace(
+            continuous=lambda vessel, raw=False: raw_values[vessel]
+        )
 
         artery, vein = _raw_velocity_signals_for_per_beat(analysis)
 

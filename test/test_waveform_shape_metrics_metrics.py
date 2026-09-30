@@ -42,14 +42,10 @@ class WaveformShapeMetricsTests(unittest.TestCase):
     def test_waveform_pipelines_have_separate_dag_responsibilities(self):
         pipelines.load_pipeline_catalog()
 
-        self.assertIn("waveform_velocity_core", PIPELINE_REGISTRY)
+        self.assertNotIn("waveform_velocity_core", PIPELINE_REGISTRY)
         self.assertIn("waveform_velocity", PIPELINE_REGISTRY)
         self.assertIn("waveform_shape_metrics", PIPELINE_REGISTRY)
         self.assertIn("pdf_report", PIPELINE_REGISTRY)
-        self.assertEqual(
-            "hidden",
-            PIPELINE_REGISTRY["waveform_velocity_core"].visibility,
-        )
         self.assertNotIn("waveform_shape_metrics_angioeye", PIPELINE_REGISTRY)
         self.assertNotIn("topological_metrics", PIPELINE_REGISTRY)
         for pipeline_name in (
@@ -77,7 +73,6 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             (
                 "retinal_velocity",
                 "topology_core",
-                "waveform_velocity_core",
                 "waveform_velocity",
                 "waveform_shape_metrics",
             ),
@@ -85,11 +80,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         )
         self.assertEqual("pdf_report", report_plan.names[-1])
         self.assertLess(
-            report_plan.names.index("waveform_velocity_core"),
             report_plan.names.index("waveform_velocity"),
-        )
-        self.assertLess(
-            report_plan.names.index("waveform_velocity_core"),
             report_plan.names.index("waveform_shape_metrics"),
         )
         self.assertNotIn("waveform_shape_metrics_angioeye", metrics_plan.names)

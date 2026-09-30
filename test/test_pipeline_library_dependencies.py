@@ -151,23 +151,23 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             produces=("spatial_gradient_edges",),
         )
         velocity = _descriptor(
-            "waveform_velocity_core",
+            "waveform_velocity",
             requires=("retinal_velocity", "prepared_topology"),
-            produces=("velocity_profiles", "segment_velocity_per_beat"),
+            produces=("waveform_velocity",),
             visibility="hidden",
         )
         bvr = _descriptor(
             "blood_volume_rate",
+            requires=("waveform_velocity",),
             options=(
                 PipelineOption(
                     "gradient_edges",
                     "Gradient",
-                    dag_requires=("spatial_gradient_edges", "velocity_profiles"),
+                    dag_requires=("spatial_gradient_edges",),
                 ),
                 PipelineOption(
                     "masked_edges",
                     "Masked",
-                    dag_requires=("segment_velocity_per_beat", "prepared_topology"),
                 ),
             ),
         )

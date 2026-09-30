@@ -1,15 +1,9 @@
-"""Build shared retinal velocity, spatial, and segment-analysis state."""
+"""Assemble the typed scientific state used by waveform products."""
 
-from collections.abc import Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
 from time import perf_counter
 
-from calculations.blood_flow_velocity import (
-    CardiacCycleAnalysis,
-    PerBeatAnalysisInput,
-    spectral_cardiac_cycle_analysis,
-)
+from calculations.blood_flow_velocity import PerBeatAnalysisInput
 from calculations.topology import AnnulusGeometry
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.imports import (
@@ -34,34 +28,20 @@ from .constants import (
 )
 from .cross_section_images import export_rotated_mean_pngs
 from .figures import export_pulse_pngs
-from .models import VelocitySegmentResult
-from .per_beat import run_velocity_per_beat_metrics
+from .models import VelocitySegmentResult, WaveformVelocity
+from .per_beat import analyze_velocity_per_beat
 from .segments import analyze_velocity_segment_profiles
 from .sources import WaveformVelocitySourceData, WaveformVelocitySources
 
-WAVEFORM_CONTEXT_STATE = "waveform_velocity_context"
-VELOCITY_PER_BEAT_RESULT_STATE = "velocity_per_beat_result"
-VELOCITY_PER_BEAT_OUTPUTS_STATE = "velocity_per_beat_outputs"
+WAVEFORM_VELOCITY_STATE = "waveform_velocity"
 
 
-@dataclass(frozen=True)
-class WaveformVelocityCoreContext:
-    source_data: WaveformVelocitySourceData
-    per_beat_analysis: PerBeatAnalysisInput
-    artery_segment_result: VelocitySegmentResult | None
-    vein_segment_result: VelocitySegmentResult | None
-    velocity_analysis: RetinalVelocity
-    attrs: dict[str, object]
-
-
-def run_waveform_velocity_core(
-    ctx,
-) -> tuple[dict[str, object], dict[str, object]]:
-    """Run the shared retinal velocity and spatial foundation once."""
+def build_waveform_velocity(ctx) -> WaveformVelocity:
+    """Build waveform state once for output and metric consumers."""
     ctx.require_inputs("hd", "dv")
 
     core_started = perf_counter()
-    Logger.log("Starting waveform velocity core context build...")
+    Logger.log("Starting waveform velocity processing...")
     segments_required = _segments_required(ctx)
     velocity_options = ctx.options_for("waveform_velocity")
     Logger.log(
@@ -71,24 +51,48 @@ def run_waveform_velocity_core(
         "segment_velocity_maps="
         f"{'segment_velocity_maps' in velocity_options}."
     )
-    context = _build_waveform_velocity_core_context(
+    retinal = retinal_velocity(ctx)
+    (
+        source_data,
+        per_beat_input,
+        artery_segments,
+        vein_segments,
+        attrs,
+    ) = _build_waveform_velocity_inputs(
         ctx,
-        retinal_velocity(ctx),
+        retinal,
         segments_required=segments_required,
     )
-    metrics = _pack_meta_outputs(context)
-    ctx.state.set(WAVEFORM_CONTEXT_STATE, context)
-
+    per_beat_result = None
     if _per_beat_required(ctx):
         with _logged_stage("shared per-beat velocity analysis"):
-            per_beat_result, velocity_outputs = run_velocity_per_beat_metrics(context)
-        ctx.state.set(VELOCITY_PER_BEAT_RESULT_STATE, per_beat_result)
-        ctx.state.set(VELOCITY_PER_BEAT_OUTPUTS_STATE, velocity_outputs)
-        if _pulse_pngs_required(ctx):
-            _export_pulse_pngs(ctx, context, per_beat_result)
+            per_beat_result = analyze_velocity_per_beat(per_beat_input)
 
-    Logger.log(f"Completed waveform velocity core in {perf_counter() - core_started:.1f}s.")
-    return metrics, context.attrs
+    waveform = WaveformVelocity(
+        retinal_velocity=retinal,
+        source_data=source_data,
+        artery_segments=artery_segments,
+        vein_segments=vein_segments,
+        per_beat_result=per_beat_result,
+        attrs=attrs,
+    )
+    ctx.state.set(WAVEFORM_VELOCITY_STATE, waveform)
+    if per_beat_result is not None and _pulse_pngs_required(ctx):
+        _export_pulse_pngs(ctx, waveform, per_beat_result)
+
+    Logger.log(f"Completed waveform velocity in {perf_counter() - core_started:.1f}s.")
+    return waveform
+
+
+def waveform_velocity(ctx) -> WaveformVelocity:
+    """Return the typed result produced by the waveform-velocity pipeline."""
+
+    value = ctx.state.get(WAVEFORM_VELOCITY_STATE)
+    if not isinstance(value, WaveformVelocity):
+        raise RuntimeError(
+            "Waveform velocity state is unavailable; check the pipeline DAG dependency."
+        )
+    return value
 
 
 def _per_beat_required(ctx) -> bool:
@@ -174,22 +178,28 @@ def _pulse_pngs_required(ctx) -> bool:
     )
 
 
-def _build_waveform_velocity_core_context(
+def _build_waveform_velocity_inputs(
     ctx,
-    velocity_analysis: RetinalVelocity,
+    retinal: RetinalVelocity,
     *,
     segments_required: bool,
-) -> WaveformVelocityCoreContext:
+) -> tuple[
+    WaveformVelocitySourceData,
+    PerBeatAnalysisInput,
+    VelocitySegmentResult | None,
+    VelocitySegmentResult | None,
+    dict[str, object],
+]:
     with _logged_stage("waveform source loading"):
         source_data = WaveformVelocitySources.from_context(ctx).load()
     timing = source_data.source.holodoppler.timing
-    cardiac_cycle_source = velocity_analysis.cardiac_cycle_source
-    velocity_map = velocity_analysis.velocity_map if segments_required else None
+    cardiac_cycle_source = retinal.cardiac_cycle_source
+    velocity_map = retinal.velocity_map if segments_required else None
     harmonic_count = _band_limited_harmonic_count(ctx)
     number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
     per_beat_analysis, artery_segments, vein_segments = (
-        _per_beat_input_from_analysis(
-            velocity_analysis,
+        _build_per_beat_input(
+            retinal,
             source_data,
             timing,
             harmonic_count,
@@ -200,13 +210,12 @@ def _build_waveform_velocity_core_context(
         )
     )
 
-    return WaveformVelocityCoreContext(
-        source_data=source_data,
-        per_beat_analysis=per_beat_analysis,
-        artery_segment_result=artery_segments,
-        vein_segment_result=vein_segments,
-        velocity_analysis=velocity_analysis,
-        attrs=_context_attrs(
+    return (
+        source_data,
+        per_beat_analysis,
+        artery_segments,
+        vein_segments,
+        _context_attrs(
             source_data,
             timing,
             harmonic_count,
@@ -245,8 +254,8 @@ def _number_of_radii_in_fov(ctx) -> int:
     return value
 
 
-def _per_beat_input_from_analysis(
-    velocity_analysis: RetinalVelocity,
+def _build_per_beat_input(
+    retinal: RetinalVelocity,
     source_data: WaveformVelocitySourceData,
     timing: HolodopplerTiming,
     harmonic_count: int,
@@ -272,29 +281,20 @@ def _per_beat_input_from_analysis(
             source_data,
             ring_settings,
             ctx,
-            cycle_boundary_indexes=velocity_analysis["beat_indices"],
+            cycle_boundary_indexes=retinal.cycle_boundary_indexes,
             prepared_topologies=shared_topologies,
         )
     else:
         Logger.log("Skipping segment velocity extraction; no selected output requires it.")
         artery_segments, vein_segments = None, None
     arterial_velocity_signal, venous_velocity_signal = (
-        _raw_velocity_signals_for_per_beat(velocity_analysis)
+        _raw_velocity_signals_for_per_beat(retinal)
     )
     beat_indexes = np.asarray(
-        velocity_analysis["beat_indices"],
+        retinal.cycle_boundary_indexes,
         dtype=np.int32,
     )
-    cached_cardiac_cycle = velocity_analysis.get("_cardiac_cycle_analysis")
-    cardiac_cycle = (
-        cached_cardiac_cycle.spectral
-        if isinstance(cached_cardiac_cycle, CardiacCycleAnalysis)
-        else spectral_cardiac_cycle_analysis(
-            arterial_velocity_signal,
-            timing.dt_seconds,
-            beat_indexes.size,
-        )
-    )
+    cardiac_cycle = retinal.cardiac_cycle.spectral
     inputs = PerBeatAnalysisInput(
         arterial_velocity_signal=arterial_velocity_signal,
         venous_velocity_signal=venous_velocity_signal,
@@ -324,22 +324,11 @@ def _per_beat_input_from_analysis(
 
 
 def _raw_velocity_signals_for_per_beat(
-    velocity_analysis: RetinalVelocity | Mapping[str, object],
+    retinal: RetinalVelocity,
 ) -> tuple[np.ndarray, np.ndarray]:
-    if not isinstance(velocity_analysis, RetinalVelocity):
-        return (
-            np.asarray(
-                velocity_analysis["retinal_artery_velocity_signal"],
-                dtype=np.float32,
-            ),
-            np.asarray(
-                velocity_analysis["retinal_vein_velocity_signal"],
-                dtype=np.float32,
-            ),
-        )
-    return velocity_analysis.continuous("artery", raw=True), velocity_analysis.continuous(
-        "vein",
-        raw=True,
+    return (
+        retinal.continuous("artery", raw=True),
+        retinal.continuous("vein", raw=True),
     )
 
 
@@ -439,11 +428,11 @@ def _export_branch_identity_debug(
     )
 
 
-def _export_pulse_pngs(ctx, context: WaveformVelocityCoreContext, per_beat_result) -> None:
+def _export_pulse_pngs(ctx, waveform: WaveformVelocity, per_beat_result) -> None:
     if not ctx.output.available:
         return
     with _logged_stage("pulse-analysis PNG export"):
-        export_pulse_pngs(ctx.output, context, per_beat_result)
+        export_pulse_pngs(ctx.output, waveform, per_beat_result)
 
 
 @contextmanager
@@ -515,9 +504,9 @@ def _context_attrs(
     }
 
 
-def _pack_meta_outputs(context: WaveformVelocityCoreContext) -> dict[str, object]:
+def pack_waveform_meta_outputs(waveform: WaveformVelocity) -> dict[str, object]:
     schema = EyeFlowOutputPaths.active()
-    timing = context.source_data.source.holodoppler.timing
+    timing = waveform.source_data.source.holodoppler.timing
     return {
         f"{schema.meta_root}/SamplingFrequencyHz/value": (
             np.float32(timing.sampling_freq),
@@ -529,3 +518,11 @@ def _pack_meta_outputs(context: WaveformVelocityCoreContext) -> dict[str, object
             {"unit": "s"},
         ),
     }
+
+
+__all__ = [
+    "WAVEFORM_VELOCITY_STATE",
+    "build_waveform_velocity",
+    "pack_waveform_meta_outputs",
+    "waveform_velocity",
+]

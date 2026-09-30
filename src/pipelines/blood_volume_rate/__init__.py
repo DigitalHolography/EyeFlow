@@ -11,18 +11,18 @@ from .runner import run_blood_volume_rate
         "Compute signed physical blood-volume rate from gradient- or mask-derived lumen geometry."
     ),
     requires=["numpy", "h5py", "scipy", "skimage", "matplotlib"],
+    dag_requires=["waveform_velocity"],
     options=[
         PipelineOption(
             "gradient_edges",
             "Spatial-gradient edges",
             "Dynamic- and static-edge blood-volume rate.",
-            dag_requires=("spatial_gradient_edges", "velocity_profiles"),
+            dag_requires=("spatial_gradient_edges",),
         ),
         PipelineOption(
             "masked_edges",
             "Mask-derived geometry",
             "Masked-edge and total masked-edge blood-volume rate.",
-            dag_requires=("segment_velocity_per_beat", "prepared_topology"),
         ),
     ],
     dag_produces=["blood_volume_rate"],

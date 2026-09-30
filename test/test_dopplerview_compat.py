@@ -18,7 +18,7 @@ if str(SRC_DIR) not in sys.path:
 from input_output.inputs import load_h5_sidecar_config
 from input_output.schema import DopplerViewSource, HolodopplerSource
 from pipeline_engine.context import RawH5SourceReader
-from pipelines.waveform_velocity_core.sources import (
+from pipelines.waveform_velocity.sources import (
     WaveformVelocitySources,
     _load_moment_pair,
 )

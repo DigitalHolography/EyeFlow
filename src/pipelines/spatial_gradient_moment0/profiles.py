@@ -51,8 +51,8 @@ def extract_spatial_gradient_segments(
         )
         if prepared_topologies is None:
             prepared_topologies = {
-                "artery": waveform_context.artery_segment_result.topology.prepared_topology,
-                "vein": waveform_context.vein_segment_result.topology.prepared_topology,
+                "artery": waveform_context.artery_segments.topology.prepared_topology,
+                "vein": waveform_context.vein_segments.topology.prepared_topology,
             }
         if profile_settings is None:
             profile_settings = waveform_source.profile_settings
