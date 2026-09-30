@@ -14,8 +14,6 @@ from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
     PulseFigureContext,
-    _array_or_none,
-    _log,
     _plt,
     display_velocity as _display_velocity,
 )
@@ -29,13 +27,11 @@ from .plotting import (
 
 
 def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
-    velocity_map = ctx.velocity_analysis.get("velocity_map")
-    velocity_avg = _array_or_none(
-        ctx.velocity_analysis.get("velocity_map_avg")
+    velocity_map = ctx.retinal_velocity.maps.velocity
+    velocity_avg = np.asarray(
+        ctx.retinal_velocity.maps.velocity_average,
+        dtype=np.float32,
     )
-    if velocity_avg is None:
-        _log(ctx, "Skipping final velocity visualizations; velocity map is unavailable.")
-        return []
     velocity_avg_display = _display_velocity(velocity_avg)
     vmax = _velocity_colorbar_vmax(velocity_avg_display, ctx.section_mask, None)
     paths = [
@@ -114,7 +110,7 @@ def _histogram_plot(
     if velocity_map is None:
         velocity_map = _display_velocity(
             np.asarray(
-                ctx.velocity_analysis["velocity_map_avg"],
+                ctx.retinal_velocity.maps.velocity_average,
                 dtype=np.float32,
             )
         )[None, :, :]
@@ -179,7 +175,7 @@ def _combined_plot(
             velocity_map
             if velocity_map is not None
             else _display_velocity(
-                np.asarray(ctx.velocity_analysis["velocity_map_avg"])
+                np.asarray(ctx.retinal_velocity.maps.velocity_average)
             )[None, :, :]
         )
         histo = _histogram_matrix(
@@ -209,7 +205,7 @@ def _flow_rgb(
     velocity_avg: np.ndarray,
     velocity_map: np.ndarray | None = None,
 ) -> np.ndarray:
-    background = _rescale(ctx.moment0_avg)
+    background = _rescale(ctx.moment0_average)
     rgb = np.dstack([background, background, background])
     value = _velocity_gradient_values(velocity_avg, ctx.section_mask, velocity_map)
     artery_color = _matlab_vessel_colormap("artery")(value)[..., :3]

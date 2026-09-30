@@ -31,22 +31,22 @@ def pack_retinal_velocity_outputs(
     frequency_attrs.update({"unit": "Hz", "quantity": "rms_frequency"})
     outputs = {
         analysis_paths.velocity_map_avg: metric_value(
-            velocity.velocity_average,
+            velocity.maps.velocity_average,
             dim_desc=("y", "x"),
             attrs=velocity_attrs,
         ),
         analysis_paths.fRMS_avg: metric_value(
-            velocity.frms_average,
+            velocity.maps.frms_average,
             dim_desc=("y", "x"),
             attrs=frequency_attrs,
         ),
         analysis_paths.fRMS_bkg_avg: metric_value(
-            velocity.frms_background_average,
+            velocity.maps.frms_background_average,
             dim_desc=("y", "x"),
             attrs=frequency_attrs,
         ),
         analysis_paths.delta_fRMS_avg: metric_value(
-            velocity.delta_frms_average,
+            velocity.maps.delta_frms_average,
             dim_desc=("y", "x"),
             attrs=frequency_attrs,
         ),

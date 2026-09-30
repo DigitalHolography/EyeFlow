@@ -1,6 +1,5 @@
 """Assemble the typed scientific state used by waveform products."""
 
-from collections.abc import Mapping
 from contextlib import contextmanager
 from time import perf_counter
 
@@ -195,7 +194,7 @@ def _build_waveform_velocity_inputs(
         source_data = WaveformVelocitySources.from_context(ctx).load()
     timing = source_data.source.holodoppler.timing
     cardiac_cycle_source = retinal.cardiac_cycle_source
-    velocity_map = retinal.velocity_map if segments_required else None
+    velocity_map = retinal.maps.velocity if segments_required else None
     harmonic_count = _band_limited_harmonic_count(ctx)
     number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
     per_beat_analysis, artery_segments, vein_segments = (
@@ -218,7 +217,7 @@ def _build_waveform_velocity_inputs(
         vein_segments,
         _context_attrs(
             source_data,
-            velocity_analysis,
+            retinal,
             timing,
             harmonic_count,
             "eyeflow_retinal_velocity_analysis",
@@ -447,7 +446,7 @@ def _logged_stage(label: str):
 
 def _context_attrs(
     source_data: WaveformVelocitySourceData,
-    velocity_analysis: Mapping[str, object],
+    velocity_analysis: RetinalVelocity,
     timing: HolodopplerTiming,
     harmonic_count: int,
     analysis_source: str,
@@ -513,8 +512,8 @@ def _context_attrs(
     for key, value in source_data.provenance.items():
         if value is not None:
             attrs[key] = value
-    for key, value in velocity_analysis.items():
-        if key.startswith("band_lf_") and value is not None:
+    for key, value in velocity_analysis.provenance.items():
+        if value is not None:
             attrs[key] = value
     return attrs
 

@@ -8,6 +8,7 @@ from calculations.math import butter_lowpass_filtfilt, nanmedian
 from calculations.topology import QUADRANT_NAMES, quadrant_membership
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue, with_attrs
+from pipelines.retinal_velocity.models import RetinalVelocity
 from pipelines.retinal_velocity.signal_processing import (
     DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
@@ -25,7 +26,7 @@ def pack_quadrant_velocity_outputs(
     vein_segments,
     output_paths: EyeFlowOutputPaths | str | None = None,
     *,
-    velocity_analysis: dict[str, object] | None = None,
+    velocity_analysis: RetinalVelocity | None = None,
 ) -> dict[str, object]:
     """Pack quadrant-level continuous and per-beat velocity signals."""
     schema = _resolve_output_paths(output_paths)

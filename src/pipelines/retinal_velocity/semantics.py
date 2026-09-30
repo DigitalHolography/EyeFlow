@@ -43,7 +43,7 @@ _SEMANTICS = {
 
 
 def resolve_velocity_semantics(
-    metadata: Mapping[str, object] | None = None,
+    metadata: object | None = None,
     *,
     unit: str | None = None,
 ) -> VelocitySemantics:
@@ -84,7 +84,7 @@ def velocity_unit_from_payload(value: object, *, default: str = "mm/s") -> str:
 
 
 def velocity_dataset_attrs(
-    metadata: Mapping[str, object] | None = None,
+    metadata: object | None = None,
 ) -> dict[str, object]:
     semantics = resolve_velocity_semantics(metadata)
     attrs: dict[str, object] = semantics.dataset_attrs()
@@ -95,21 +95,23 @@ def velocity_dataset_attrs(
 
 
 def _metadata_mapping(
-    metadata: Mapping[str, object] | None,
+    metadata: object | None,
     key: str,
 ) -> Mapping[str, object] | None:
-    if not isinstance(metadata, Mapping):
-        return None
-    value = metadata.get(key)
+    value = (
+        metadata.get(key)
+        if isinstance(metadata, Mapping)
+        else getattr(metadata, key, None)
+    )
     return value if isinstance(value, Mapping) else None
 
 
 def _metadata_value(
-    metadata: Mapping[str, object] | None,
+    metadata: object | None,
     provenance: Mapping[str, object] | None,
     key: str,
 ) -> str | None:
-    for source in (metadata, provenance):
+    for source in (metadata if isinstance(metadata, Mapping) else None, provenance):
         if isinstance(source, Mapping):
             value = source.get(key)
             if value is not None:

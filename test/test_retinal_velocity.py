@@ -17,7 +17,13 @@ from input_output.schema import (
     VesselMasks,
 )
 from pipeline_engine.context import PipelineState
-from pipelines.retinal_velocity.models import RetinalVelocity
+from pipelines.retinal_velocity.models import (
+    RetinalVelocity,
+    RetinalVelocityData,
+    RetinalVelocityMaps,
+    VesselVelocity,
+    VesselVelocitySignals,
+)
 from pipelines.retinal_velocity.runner import (
     cardiac_cycle_indexes,
     retinal_velocity,
@@ -50,11 +56,14 @@ class RetinalVelocityTests(unittest.TestCase):
             state=PipelineState(),
             pipeline_scheduled=lambda name: name == "waveform_velocity",
         )
+        estimated = {}
 
         def estimator(**kwargs):
             video = kwargs["velocity_video_output"]
             video.fill(np.float32(7.0))
-            return _estimation(video)
+            data = _retinal_velocity_data(video)
+            estimated["data"] = data
+            return data
 
         with (
             patch(
@@ -83,32 +92,27 @@ class RetinalVelocityTests(unittest.TestCase):
         self.assertIs(result, retinal_velocity(ctx))
         np.testing.assert_array_equal(cardiac_cycle_indexes(ctx), [0, 3, 5])
         self.assertIsInstance(result, RetinalVelocity)
+        self.assertIs(result.maps, estimated["data"].maps)
+        self.assertIs(result.artery.signals, estimated["data"].artery)
+        self.assertIs(result.vein.signals, estimated["data"].vein)
         self.assertTrue(result.has_velocity_map)
-        np.testing.assert_array_equal(result.velocity_map, 7.0)
+        np.testing.assert_array_equal(result.maps.velocity, 7.0)
         self.assertIn("Processing/Maps/VelocityAverage/value", outputs)
         self.assertIn("Processing/Maps/DeltaFRMSAverage/value", outputs)
 
 
 def _retinal_velocity() -> RetinalVelocity:
     return RetinalVelocity(
-        artery_velocity_raw=np.arange(6, dtype=np.float32),
-        vein_velocity_raw=np.arange(6, dtype=np.float32) + 20.0,
-        artery_velocity_filtered=np.arange(6, dtype=np.float32) + 10.0,
-        vein_velocity_filtered=np.arange(6, dtype=np.float32) + 30.0,
-        velocity_map=None,
-        moment0_average=np.ones((2, 2), dtype=np.float32),
-        velocity_average=np.ones((2, 2), dtype=np.float32),
-        frms_average=np.ones((2, 2), dtype=np.float32),
-        frms_background_average=np.ones((2, 2), dtype=np.float32),
-        delta_frms_average=np.ones((2, 2), dtype=np.float32),
-        velocity_section_mask=np.ones((2, 2), dtype=bool),
-        artery_frms=np.ones(6, dtype=np.float32),
-        vein_frms=np.ones(6, dtype=np.float32),
-        artery_frms_background=np.ones(6, dtype=np.float32),
-        vein_frms_background=np.ones(6, dtype=np.float32),
+        maps=_maps(None, shape=(2, 2)),
+        artery=VesselVelocity(
+            signals=_vessel_signals(np.arange(6, dtype=np.float32)),
+            velocity_filtered=np.arange(6, dtype=np.float32) + 10.0,
+        ),
+        vein=VesselVelocity(
+            signals=_vessel_signals(np.arange(6, dtype=np.float32) + 20.0),
+            velocity_filtered=np.arange(6, dtype=np.float32) + 30.0,
+        ),
         vessel_frms_background=np.ones(6, dtype=np.float32),
-        artery_delta_frms=np.ones(6, dtype=np.float32),
-        vein_delta_frms=np.ones(6, dtype=np.float32),
         cardiac_cycle=_cardiac_cycle(),
         cardiac_cycle_source="artery",
         dt_seconds=0.02,
@@ -131,27 +135,37 @@ def _cardiac_cycle():
     return SimpleNamespace(systole=systole, spectral=spectral)
 
 
-def _estimation(velocity_map):
+def _retinal_velocity_data(velocity_map):
     signal = np.arange(velocity_map.shape[0], dtype=np.float32)
-    image = np.ones((3, 3), dtype=np.float32)
-    return {
-        "velocity_map": velocity_map,
-        "moment0_avg": image,
-        "velocity_map_avg": image,
-        "fRMS_avg": image,
-        "fRMS_bkg_avg": image,
-        "deltafRMS_avg": image,
-        "velocity_section_mask": image.astype(bool),
-        "retinal_artery_velocity_signal": signal,
-        "retinal_vein_velocity_signal": signal,
-        "retinal_artery_fRMS_signal": signal,
-        "retinal_vein_fRMS_signal": signal,
-        "retinal_artery_fRMS_bkg_signal": signal,
-        "retinal_vein_fRMS_bkg_signal": signal,
-        "retinal_vessel_fRMS_bkg_signal": signal,
-        "retinal_artery_deltafRMS_signal": signal,
-        "retinal_vein_deltafRMS_signal": signal,
-    }
+    return RetinalVelocityData(
+        maps=_maps(velocity_map, shape=(3, 3)),
+        artery=_vessel_signals(signal),
+        vein=_vessel_signals(signal),
+        vessel_frms_background=signal,
+    )
+
+
+def _maps(velocity, *, shape: tuple[int, int]) -> RetinalVelocityMaps:
+    image = np.ones(shape, dtype=np.float32)
+    return RetinalVelocityMaps(
+        velocity=velocity,
+        moment0_average=image,
+        velocity_average=image,
+        frms_average=image,
+        frms_background_average=image,
+        delta_frms_average=image,
+        section_mask=image.astype(bool),
+    )
+
+
+def _vessel_signals(velocity: np.ndarray) -> VesselVelocitySignals:
+    values = np.ones(velocity.size, dtype=np.float32)
+    return VesselVelocitySignals(
+        velocity=velocity,
+        frms=values,
+        frms_background=values,
+        delta_frms=values,
+    )
 
 
 def _source_data() -> RetinalSourceData:

@@ -19,6 +19,12 @@ from velocity_calibration import (
     validate_band_ratio_frequency_scale_hz,
 )
 
+from .models import (
+    RetinalVelocityData,
+    RetinalVelocityMaps,
+    VesselVelocitySignals,
+)
+
 SCRATCH_FRAME_CHUNK_SIZE = 32
 SECTION_INNER_RADIUS_FRAC = 0.10
 SECTION_OUTER_RADIUS_FRAC = 0.35
@@ -65,7 +71,7 @@ def estimate_retinal_velocity(
     ),
     retain_velocity_video: bool = True,
     velocity_video_output=None,
-) -> dict[str, object]:
+) -> RetinalVelocityData:
     """Estimate velocity into scratch datasets without materializing full videos."""
 
     method, first_volume, second_volume = _active_velocity_volumes(
@@ -134,20 +140,26 @@ def estimate_retinal_velocity(
 
     averages = {
         name: np.zeros((height, width), dtype=np.float64)
-        for name in ("background", "velocity", "fRMS", "fRMS_bkg", "deltafRMS")
+        for name in (
+            "background",
+            "velocity",
+            "frms",
+            "frms_background",
+            "delta_frms",
+        )
     }
     signals = {
         name: np.full(frame_count, np.nan, dtype=np.float32)
         for name in (
             "artery_velocity",
             "vein_velocity",
-            "artery_fRMS",
-            "vein_fRMS",
-            "artery_fRMS_bkg",
-            "vein_fRMS_bkg",
-            "vessel_fRMS_bkg",
-            "artery_deltafRMS",
-            "vein_deltafRMS",
+            "artery_frms",
+            "vein_frms",
+            "artery_frms_background",
+            "vein_frms_background",
+            "vessel_frms_background",
+            "artery_delta_frms",
+            "vein_delta_frms",
         )
     }
 
@@ -219,9 +231,13 @@ def estimate_retinal_velocity(
             dtype=np.float64,
         )
         averages["velocity"] += np.sum(velocity, axis=0, dtype=np.float64)
-        averages["fRMS"] += np.sum(f_rms, axis=0, dtype=np.float64)
-        averages["fRMS_bkg"] += np.sum(f_rms_background, axis=0, dtype=np.float64)
-        averages["deltafRMS"] += np.sum(delta, axis=0, dtype=np.float64)
+        averages["frms"] += np.sum(f_rms, axis=0, dtype=np.float64)
+        averages["frms_background"] += np.sum(
+            f_rms_background,
+            axis=0,
+            dtype=np.float64,
+        )
+        averages["delta_frms"] += np.sum(delta, axis=0, dtype=np.float64)
         signals["artery_velocity"][frame_slice] = _masked_signal(
             velocity,
             artery_section,
@@ -230,25 +246,25 @@ def estimate_retinal_velocity(
             velocity,
             vein_section,
         )
-        signals["artery_fRMS"][frame_slice] = _masked_signal(f_rms, artery_section)
-        signals["vein_fRMS"][frame_slice] = _masked_signal(f_rms, vein_section)
-        signals["artery_fRMS_bkg"][frame_slice] = _masked_signal(
+        signals["artery_frms"][frame_slice] = _masked_signal(f_rms, artery_section)
+        signals["vein_frms"][frame_slice] = _masked_signal(f_rms, vein_section)
+        signals["artery_frms_background"][frame_slice] = _masked_signal(
             f_rms_background,
             artery_section,
         )
-        signals["vein_fRMS_bkg"][frame_slice] = _masked_signal(
+        signals["vein_frms_background"][frame_slice] = _masked_signal(
             f_rms_background,
             vein_section,
         )
-        signals["vessel_fRMS_bkg"][frame_slice] = _masked_signal(
+        signals["vessel_frms_background"][frame_slice] = _masked_signal(
             f_rms_background,
             artery_section | vein_section,
         )
-        signals["artery_deltafRMS"][frame_slice] = _masked_signal(
+        signals["artery_delta_frms"][frame_slice] = _masked_signal(
             delta,
             artery_section,
         )
-        signals["vein_deltafRMS"][frame_slice] = _masked_signal(
+        signals["vein_delta_frms"][frame_slice] = _masked_signal(
             delta,
             vein_section,
         )
@@ -263,56 +279,55 @@ def estimate_retinal_velocity(
     )
 
     divisor = np.float64(max(frame_count, 1))
-    background_average = (averages["background"] / divisor).astype(np.float32)
-    result = {
-        "fRMS": None,
-        "fRMS_bkg": None,
-        "deltafRMS": None,
-        "velocity_map": velocity_dataset,
-        "retinal_vessel_velocity": velocity_dataset,
-        # Preserve the legacy key consumed by existing figures. In band mode,
-        # it intentionally contains the LF temporal mean used as the display
-        # background rather than requiring moment0 only for visualization.
-        "moment0_avg": background_average,
-        "background_image_avg": background_average,
-        "velocity_map_avg": (averages["velocity"] / divisor).astype(np.float32),
-        "fRMS_avg": (averages["fRMS"] / divisor).astype(np.float32),
-        "fRMS_bkg_avg": (averages["fRMS_bkg"] / divisor).astype(np.float32),
-        "deltafRMS_avg": (averages["deltafRMS"] / divisor).astype(np.float32),
-        "velocity_section_mask": section_mask,
-        "velocity_section_geometry": "optic_disc_centered_frame_fraction",
-        "retinal_artery_velocity_signal": signals["artery_velocity"],
-        "retinal_vein_velocity_signal": signals["vein_velocity"],
-        "retinal_artery_fRMS_signal": signals["artery_fRMS"],
-        "retinal_vein_fRMS_signal": signals["vein_fRMS"],
-        "retinal_artery_fRMS_bkg_signal": signals["artery_fRMS_bkg"],
-        "retinal_vein_fRMS_bkg_signal": signals["vein_fRMS_bkg"],
-        "retinal_vessel_fRMS_bkg_signal": signals["vessel_fRMS_bkg"],
-        "retinal_artery_deltafRMS_signal": signals["artery_deltafRMS"],
-        "retinal_vein_deltafRMS_signal": signals["vein_deltafRMS"],
-        "band_lf_source_path": (
-            FREQUENCY_BAND_LF_PATH if method == FREQUENCY_BANDS_METHOD else None
-        ),
-        "band_hf_source_path": (
-            FREQUENCY_BAND_HF_PATH if method == FREQUENCY_BANDS_METHOD else None
-        ),
-    }
-    result.update(
-        physical_velocity_provenance(
-            velocity_estimation_method=method,
-            band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
-            laser_wavelength_m=laser_wavelength,
-            numerical_aperture=numerical_aperture,
-        )
+    provenance = physical_velocity_provenance(
+        velocity_estimation_method=method,
+        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
+        laser_wavelength_m=laser_wavelength,
+        numerical_aperture=numerical_aperture,
     )
     if method == FREQUENCY_BANDS_METHOD:
-        result.update(band_qc)
+        provenance.update(
+            {
+                "band_lf_source_path": FREQUENCY_BAND_LF_PATH,
+                "band_hf_source_path": FREQUENCY_BAND_HF_PATH,
+                **band_qc,
+            }
+        )
         Logger.log(
             "Frequency-band LF quality counts: "
             f"zero={band_qc['band_lf_zero_sample_count']}, "
             f"near_zero={band_qc['band_lf_near_zero_sample_count']}."
         )
-    return result
+    return RetinalVelocityData(
+        maps=RetinalVelocityMaps(
+            velocity=velocity_dataset,
+            # In band mode this is the LF mean used as the display background.
+            moment0_average=(averages["background"] / divisor).astype(np.float32),
+            velocity_average=(averages["velocity"] / divisor).astype(np.float32),
+            frms_average=(averages["frms"] / divisor).astype(np.float32),
+            frms_background_average=(
+                averages["frms_background"] / divisor
+            ).astype(np.float32),
+            delta_frms_average=(averages["delta_frms"] / divisor).astype(
+                np.float32
+            ),
+            section_mask=section_mask,
+        ),
+        artery=VesselVelocitySignals(
+            velocity=signals["artery_velocity"],
+            frms=signals["artery_frms"],
+            frms_background=signals["artery_frms_background"],
+            delta_frms=signals["artery_delta_frms"],
+        ),
+        vein=VesselVelocitySignals(
+            velocity=signals["vein_velocity"],
+            frms=signals["vein_frms"],
+            frms_background=signals["vein_frms_background"],
+            delta_frms=signals["vein_delta_frms"],
+        ),
+        vessel_frms_background=signals["vessel_frms_background"],
+        provenance=provenance,
+    )
 
 
 def _velocity_video_storage(

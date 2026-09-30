@@ -24,10 +24,9 @@ def export_cross_section_profile_artifacts(
     del max_gif_frames
     paths: list[Path] = []
     source_data = context.source_data
-    source = getattr(source_data, "source", None)
-    timing = source.holodoppler.timing if source is not None else source_data.timing
+    timing = source_data.source.holodoppler.timing
     velocity_label = resolve_velocity_semantics(
-        getattr(context, "velocity_analysis", None)
+        context.retinal_velocity
     ).axis_label
     for vessel_name, segments in (
         ("artery", getattr(context, "artery_segments", None)),

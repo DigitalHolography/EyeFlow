@@ -39,7 +39,7 @@ def run_retinal_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
         else None
     )
     with retinal_velocity_scratch_h5(ctx) as scratch_h5:
-        estimation = estimate_retinal_velocity(
+        velocity_data = estimate_retinal_velocity(
             moment0=images.moment0,
             moment2=images.moment2,
             band_lf=images.band_lf,
@@ -58,11 +58,11 @@ def run_retinal_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
             velocity_video_output=velocity_map_output,
         )
     cycle_analysis, cycle_source = detect_cardiac_cycles(
-        estimation,
+        velocity_data,
         dt_seconds=float(timing.dt_seconds),
     )
     velocity = build_retinal_velocity(
-        estimation,
+        velocity_data,
         cycle_analysis,
         cycle_source,
         dt_seconds=float(timing.dt_seconds),

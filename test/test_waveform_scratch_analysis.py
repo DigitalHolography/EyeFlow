@@ -17,7 +17,12 @@ from pipelines.retinal_velocity.estimation import (
 )
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity.continuous import pack_continuous_velocity_outputs
-from pipelines.retinal_velocity.models import RetinalVelocity
+from pipelines.retinal_velocity.models import (
+    RetinalVelocity,
+    RetinalVelocityMaps,
+    VesselVelocity,
+    VesselVelocitySignals,
+)
 from pipelines.retinal_velocity.outputs import (
     pack_retinal_velocity_outputs,
 )
@@ -136,12 +141,9 @@ class ScratchAndSchemaTests(unittest.TestCase):
             )
 
             self.assertEqual([], list(h5["waveform"].keys()))
-        self.assertIsNone(result["velocity_map"])
-        self.assertIsNone(result["fRMS"])
-        self.assertIsNone(result["fRMS_bkg"])
-        self.assertIsNone(result["deltafRMS"])
-        self.assertEqual((16, 16), result["deltafRMS_avg"].shape)
-        self.assertEqual((3,), result["retinal_artery_fRMS_signal"].shape)
+        self.assertIsNone(result.maps.velocity)
+        self.assertEqual((16, 16), result.maps.delta_frms_average.shape)
+        self.assertEqual((3,), result.artery.frms.shape)
 
         with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
             retained = estimate_retinal_velocity(
@@ -158,7 +160,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
             expected_velocity = np.asarray(dataset)
             self.assertEqual(["velocity"], list(h5["waveform"].keys()))
             self.assertEqual(
-                retained["velocity_map"].name,
+                retained.maps.velocity.name,
                 dataset.name,
             )
             self.assertIsNone(dataset.compression)
@@ -178,17 +180,33 @@ class ScratchAndSchemaTests(unittest.TestCase):
             )
             self.assertEqual([], list(h5["waveform"].keys()))
 
-        self.assertIs(buffered["velocity_map"], velocity_output)
+        self.assertIs(buffered.maps.velocity, velocity_output)
         np.testing.assert_array_equal(velocity_output, expected_velocity)
-        for key in (
-            "velocity_map_avg",
-            "fRMS_avg",
-            "fRMS_bkg_avg",
-            "deltafRMS_avg",
-            "retinal_artery_velocity_signal",
-            "retinal_vein_velocity_signal",
+        for field, buffered_value, retained_value in (
+            (
+                "velocity_average",
+                buffered.maps.velocity_average,
+                retained.maps.velocity_average,
+            ),
+            ("frms_average", buffered.maps.frms_average, retained.maps.frms_average),
+            (
+                "frms_background_average",
+                buffered.maps.frms_background_average,
+                retained.maps.frms_background_average,
+            ),
+            (
+                "delta_frms_average",
+                buffered.maps.delta_frms_average,
+                retained.maps.delta_frms_average,
+            ),
+            ("artery_velocity", buffered.artery.velocity, retained.artery.velocity),
+            ("vein_velocity", buffered.vein.velocity, retained.vein.velocity),
         ):
-            np.testing.assert_array_equal(buffered[key], retained[key])
+            np.testing.assert_array_equal(
+                buffered_value,
+                retained_value,
+                err_msg=field,
+            )
 
     def test_disabled_vein_keeps_artery_background_and_returns_nan_signals(
         self,
@@ -227,20 +245,20 @@ class ScratchAndSchemaTests(unittest.TestCase):
             )
 
         np.testing.assert_array_equal(
-            actual["retinal_artery_velocity_signal"],
-            expected["retinal_artery_velocity_signal"],
+            actual.artery.velocity,
+            expected.artery.velocity,
         )
         np.testing.assert_array_equal(
-            actual["velocity_map_avg"],
-            expected["velocity_map_avg"],
+            actual.maps.velocity_average,
+            expected.maps.velocity_average,
         )
-        for key in (
-            "retinal_vein_velocity_signal",
-            "retinal_vein_fRMS_signal",
-            "retinal_vein_fRMS_bkg_signal",
-            "retinal_vein_deltafRMS_signal",
+        for values in (
+            actual.vein.velocity,
+            actual.vein.frms,
+            actual.vein.frms_background,
+            actual.vein.delta_frms,
         ):
-            self.assertTrue(np.all(np.isnan(actual[key])))
+            self.assertTrue(np.all(np.isnan(values)))
 
     def test_velocity_estimator_is_independent_of_frame_chunk_size(self) -> None:
         rng = np.random.default_rng(10)
@@ -286,28 +304,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
                     scratch_h5=h5,
                     velocity_video_output=velocity_output,
                 )
-                results.append(
-                    {
-                        key: np.asarray(result[key]).copy()
-                        for key in (
-                            "velocity_map",
-                            "moment0_avg",
-                            "velocity_map_avg",
-                            "fRMS_avg",
-                            "fRMS_bkg_avg",
-                            "deltafRMS_avg",
-                            "retinal_artery_velocity_signal",
-                            "retinal_vein_velocity_signal",
-                            "retinal_artery_fRMS_signal",
-                            "retinal_vein_fRMS_signal",
-                            "retinal_artery_fRMS_bkg_signal",
-                            "retinal_vein_fRMS_bkg_signal",
-                            "retinal_vessel_fRMS_bkg_signal",
-                            "retinal_artery_deltafRMS_signal",
-                            "retinal_vein_deltafRMS_signal",
-                        )
-                    }
-                )
+                results.append(_retinal_velocity_data_arrays(result))
 
         expected = results[0]
         for actual in results[1:]:
@@ -374,27 +371,14 @@ class ScratchAndSchemaTests(unittest.TestCase):
         self.assertTrue(
             schema.segmentation.artery.branch_label_map.startswith("Segmentation/")
         )
-        analysis = {
-            "retinal_artery_velocity_signal": np.arange(8, dtype=np.float32),
-            "retinal_vein_velocity_signal": np.arange(8, dtype=np.float32),
-            "retinal_artery_velocity_signal_filtered": np.arange(8, dtype=np.float32),
-            "retinal_vein_velocity_signal_filtered": np.arange(8, dtype=np.float32),
-            "velocity_map": np.ones((8, 4, 4)),
-            "velocity_map_avg": np.ones((4, 4)),
-            "fRMS_avg": np.ones((4, 4)),
-            "fRMS_bkg_avg": np.ones((4, 4)),
-            "deltafRMS_avg": np.ones((4, 4)),
-            "beat_indices": np.asarray([1, 5], dtype=np.int32),
-            "time_per_beat": np.asarray([0.4], dtype=np.float32),
-        }
-        typed = _typed_velocity(analysis)
+        typed = _typed_velocity()
         shared = pack_retinal_velocity_outputs(typed)
-        velocity = pack_continuous_velocity_outputs(analysis)
+        velocity = pack_continuous_velocity_outputs(typed)
         metrics = {**shared, **velocity}
 
         self.assertFalse(any(path.startswith("analysis/") for path in metrics))
         self.assertFalse(
-            any(value is analysis["velocity_map"] for value in metrics.values())
+            any(value is typed.maps.velocity for value in metrics.values())
         )
         self.assertNotIn(schema.analysis.retinal_artery_velocity_signal, shared)
         self.assertNotIn(schema.analysis.retinal_vein_velocity_signal, shared)
@@ -408,12 +392,12 @@ class ScratchAndSchemaTests(unittest.TestCase):
             set(velocity),
         )
 
-def _typed_velocity(analysis: dict[str, object]) -> RetinalVelocity:
-    signal = np.asarray(analysis["retinal_artery_velocity_signal"], dtype=np.float32)
+def _typed_velocity() -> RetinalVelocity:
+    signal = np.arange(8, dtype=np.float32)
     zeros = np.zeros_like(signal)
     cardiac_cycle = SimpleNamespace(
         systole=SimpleNamespace(
-            systole_indexes=np.asarray(analysis["beat_indices"], dtype=np.int32),
+            systole_indexes=np.asarray([1, 5], dtype=np.int32),
             min_peak_distance=1,
             min_peak_height=np.float32(0.0),
         ),
@@ -425,40 +409,49 @@ def _typed_velocity(analysis: dict[str, object]) -> RetinalVelocity:
         ),
     )
     return RetinalVelocity(
-        artery_velocity_raw=signal,
-        vein_velocity_raw=np.asarray(
-            analysis["retinal_vein_velocity_signal"],
-            dtype=np.float32,
+        maps=RetinalVelocityMaps(
+            velocity=np.ones((8, 4, 4), dtype=np.float32),
+            moment0_average=np.ones((4, 4), dtype=np.float32),
+            velocity_average=np.ones((4, 4), dtype=np.float32),
+            frms_average=np.ones((4, 4), dtype=np.float32),
+            frms_background_average=np.ones((4, 4), dtype=np.float32),
+            delta_frms_average=np.ones((4, 4), dtype=np.float32),
+            section_mask=np.ones((4, 4), dtype=bool),
         ),
-        artery_velocity_filtered=np.asarray(
-            analysis["retinal_artery_velocity_signal_filtered"],
-            dtype=np.float32,
+        artery=VesselVelocity(
+            signals=VesselVelocitySignals(signal, zeros, zeros, zeros),
+            velocity_filtered=signal,
         ),
-        vein_velocity_filtered=np.asarray(
-            analysis["retinal_vein_velocity_signal_filtered"],
-            dtype=np.float32,
+        vein=VesselVelocity(
+            signals=VesselVelocitySignals(signal, zeros, zeros, zeros),
+            velocity_filtered=signal,
         ),
-        velocity_map=analysis["velocity_map"],
-        moment0_average=np.ones((4, 4), dtype=np.float32),
-        velocity_average=np.asarray(analysis["velocity_map_avg"], dtype=np.float32),
-        frms_average=np.asarray(analysis["fRMS_avg"], dtype=np.float32),
-        frms_background_average=np.asarray(
-            analysis["fRMS_bkg_avg"],
-            dtype=np.float32,
-        ),
-        delta_frms_average=np.asarray(analysis["deltafRMS_avg"], dtype=np.float32),
-        velocity_section_mask=np.ones((4, 4), dtype=bool),
-        artery_frms=zeros,
-        vein_frms=zeros,
-        artery_frms_background=zeros,
-        vein_frms_background=zeros,
         vessel_frms_background=zeros,
-        artery_delta_frms=zeros,
-        vein_delta_frms=zeros,
         cardiac_cycle=cardiac_cycle,
         cardiac_cycle_source="artery",
         dt_seconds=0.1,
     )
+
+
+def _retinal_velocity_data_arrays(result) -> dict[str, np.ndarray]:
+    values = {
+        "velocity": result.maps.velocity,
+        "moment0_average": result.maps.moment0_average,
+        "velocity_average": result.maps.velocity_average,
+        "frms_average": result.maps.frms_average,
+        "frms_background_average": result.maps.frms_background_average,
+        "delta_frms_average": result.maps.delta_frms_average,
+        "artery_velocity": result.artery.velocity,
+        "vein_velocity": result.vein.velocity,
+        "artery_frms": result.artery.frms,
+        "vein_frms": result.vein.frms,
+        "artery_frms_background": result.artery.frms_background,
+        "vein_frms_background": result.vein.frms_background,
+        "vessel_frms_background": result.vessel_frms_background,
+        "artery_delta_frms": result.artery.delta_frms,
+        "vein_delta_frms": result.vein.delta_frms,
+    }
+    return {name: np.asarray(value).copy() for name, value in values.items()}
 
 
 if __name__ == "__main__":

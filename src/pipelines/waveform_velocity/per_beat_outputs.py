@@ -7,6 +7,7 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.segments import (
     SEGMENT_PER_BEAT_DIM_DESC,
 )
 from input_output.schema import EyeFlowOutputPaths, VelocityPerBeatOutputPaths
+from pipelines.retinal_velocity.models import RetinalVelocity
 from pipelines.retinal_velocity.outputs import metric_data, metric_value
 from pipelines.retinal_velocity.semantics import (
     resolve_velocity_semantics,
@@ -17,7 +18,7 @@ def pack_velocity_per_beat_outputs(
     result: PerBeatAnalysisResult,
     output_paths: EyeFlowOutputPaths | str | None = None,
     *,
-    velocity_analysis: dict[str, object] | None = None,
+    velocity_analysis: RetinalVelocity | None = None,
 ) -> dict[str, object]:
     schema = _resolve_output_paths(output_paths)
     velocity_unit = resolve_velocity_semantics(velocity_analysis).unit

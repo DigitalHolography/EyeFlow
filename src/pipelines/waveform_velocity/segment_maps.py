@@ -13,19 +13,13 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils imp
 from calculations.math import next_power_of_two
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
-from pipelines.displacement_map.constants import registration_method_output_name
+from pipelines.retinal_velocity.models import RetinalVelocity
 from pipelines.retinal_velocity.semantics import (
     resolve_velocity_semantics,
 )
 from runtime_limits import cap_parallel_jobs
 
 _MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
-_DISPLACEMENT_MAP_ROOT = "Processing/Displacement/Map"
-
-# TODO: Move the legacy displacement-map packers to the displacement pipeline.
-# They remain import-compatible for now, but waveform velocity must not call
-# them or consume displacement state.
-
 
 def pack_segment_map_outputs(
     artery_segments,
@@ -34,7 +28,7 @@ def pack_segment_map_outputs(
     vein_velocity_maps_per_beat: np.ndarray | None,
     output_paths: EyeFlowOutputPaths | str | None = None,
     *,
-    velocity_analysis: dict[str, object] | None = None,
+    velocity_analysis: RetinalVelocity | None = None,
 ) -> dict[str, object]:
     """Pack prepared per-beat maps and masks for artery and vein segments."""
     schema = _resolve_output_paths(output_paths)
@@ -108,90 +102,6 @@ def _prepare_vessel_velocity_maps_per_beat(
         index_base=index_base,
         **compact_arguments,
     )
-
-
-def pack_displacement_segment_map_outputs(
-    artery_segments,
-    vein_segments,
-    cycle_boundary_indexes,
-    *,
-    index_base: int = 0,
-) -> dict[str, object]:
-    outputs = _pack_vessel_displacement_maps(
-        artery_segments,
-        "Artery",
-        cycle_boundary_indexes,
-        index_base=index_base,
-    )
-    outputs.update(
-        _pack_vessel_displacement_maps(
-            vein_segments,
-            "Vein",
-            cycle_boundary_indexes,
-            index_base=index_base,
-        )
-    )
-    return outputs
-
-
-def _pack_vessel_displacement_maps(
-    segments,
-    vessel_name: str,
-    cycle_boundary_indexes,
-    *,
-    index_base: int,
-) -> dict[str, object]:
-    if segments is None:
-        return {}
-
-    outputs: dict[str, object] = {}
-    displacement_results = getattr(segments, "displacements", {})
-    for raw_method, displacement in sorted(displacement_results.items()):
-        method = registration_method_output_name(raw_method)
-        if displacement.maps is None:
-            raise RuntimeError(
-                "Per-segment displacement maps were not retained. They must be "
-                "requested during waveform-velocity processing."
-            )
-        displacement_maps_per_beat = np.stack(
-            [
-                interpolate_velocity_maps_per_beat(
-                    displacement.maps[
-                        ..., component_index
-                    ],
-                    cycle_boundary_indexes,
-                    index_base=index_base,
-                )
-                for component_index in range(2)
-            ],
-            axis=-1,
-        )
-        outputs[
-            f"{_DISPLACEMENT_MAP_ROOT}/{method}/{vessel_name}/PerSegment"
-        ] = (
-            DatasetValue(
-                data=displacement_maps_per_beat,
-                attrs={
-                    "unit": "pixels",
-                    "dimDesc": [
-                        "x",
-                        "y",
-                        "time",
-                        "beat",
-                        "branch",
-                        "radius",
-                        "displacement_orientation",
-                    ],
-                    "coordinate_system": "rotated_segment_pixel",
-                    "components": ["local_x", "local_y"],
-                    "component_basis": "rotated_segment_local",
-                },
-                h5_options=_velocity_map_h5_options(
-                    displacement_maps_per_beat.shape
-                ),
-            )
-        )
-    return outputs
 
 
 def interpolate_velocity_maps_per_beat(
