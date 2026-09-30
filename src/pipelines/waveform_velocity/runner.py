@@ -3,12 +3,6 @@
 from time import perf_counter
 
 from input_output import EyeFlowOutputPaths
-from pipelines.waveform_velocity_core.per_beat import run_velocity_per_beat_metrics
-from pipelines.waveform_velocity_core.runner import (
-    VELOCITY_PER_BEAT_OUTPUTS_STATE,
-    VELOCITY_PER_BEAT_RESULT_STATE,
-    WAVEFORM_CONTEXT_STATE,
-)
 from utils.logger import Logger
 
 from .continuous import (
@@ -16,6 +10,7 @@ from .continuous import (
     pack_segment_velocity_outputs,
 )
 from .outputs import export_velocity_signals
+from .per_beat_outputs import pack_velocity_per_beat_outputs
 from .profiles import (
     pack_cross_section_profile_outputs,
     pack_velocity_profile_fft_outputs,
@@ -26,18 +21,20 @@ from .segment_maps import (
     prepare_segment_velocity_maps_per_beat,
 )
 from .segment_velocity_map_avi import export_segment_velocity_map_avis
+from .workflow import (
+    WAVEFORM_VELOCITY_STATE,
+    build_waveform_velocity,
+)
 
 
 def run_waveform_velocity(ctx) -> dict[str, object]:
     """Publish base velocity plus the selected derived velocity products."""
-    context = _required_state(ctx, WAVEFORM_CONTEXT_STATE)
+    waveform = ctx.state.get(WAVEFORM_VELOCITY_STATE)
+    if waveform is None:
+        waveform = build_waveform_velocity(ctx)
     selected = ctx.options_for("waveform_velocity")
-    velocity_analysis = getattr(
-        context,
-        "velocity_analysis",
-        getattr(context, "dopplerview_analysis", None),
-    )
-    velocity_semantics_kwargs = _velocity_semantics_kwargs(velocity_analysis)
+    velocity_analysis = waveform.retinal_velocity
+    velocity_semantics_kwargs = {"velocity_analysis": velocity_analysis}
     metrics = pack_continuous_velocity_outputs(velocity_analysis)
     segments_selected = "segments" in selected
     maps_selected = "segment_velocity_maps" in selected
@@ -55,10 +52,10 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
         Logger.log("Starting shared per-beat segment velocity-map interpolation...")
         artery_velocity_maps_per_beat, vein_velocity_maps_per_beat = (
             prepare_segment_velocity_maps_per_beat(
-                context.artery_segment_result,
-                context.vein_segment_result,
-                context.per_beat_analysis.cycle_boundary_indexes,
-                index_base=int(context.source_data.provenance["beat_index_base"]),
+                waveform.artery_segments,
+                waveform.vein_segments,
+                waveform.cycle_boundary_indexes,
+                index_base=0,
             )
         )
         Logger.log(
@@ -68,16 +65,16 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
     if segments_selected:
         metrics.update(
             pack_segment_velocity_outputs(
-                context.artery_segment_result,
-                context.vein_segment_result,
-                source_data=context.source_data,
+                waveform.artery_segments,
+                waveform.vein_segments,
+                source_data=waveform.source_data,
                 **velocity_semantics_kwargs,
             )
         )
     if maps_selected:
         segment_map_outputs = pack_segment_map_outputs(
-            context.artery_segment_result,
-            context.vein_segment_result,
+            waveform.artery_segments,
+            waveform.vein_segments,
             artery_velocity_maps_per_beat,
             vein_velocity_maps_per_beat,
             **velocity_semantics_kwargs,
@@ -89,8 +86,8 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             Logger.log("Starting segment velocity-map AVI export...")
             export_segment_velocity_map_avis(
                 output,
-                context.artery_segment_result,
-                context.vein_segment_result,
+                waveform.artery_segments,
+                waveform.vein_segments,
                 segment_map_outputs,
             )
             Logger.log(
@@ -98,13 +95,20 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 f"{perf_counter() - avi_started:.1f}s."
             )
 
-    per_beat_result = ctx.state.get(VELOCITY_PER_BEAT_RESULT_STATE)
-    velocity_outputs = ctx.state.get(VELOCITY_PER_BEAT_OUTPUTS_STATE, {})
+    per_beat_result = waveform.per_beat_result
+    velocity_outputs = (
+        pack_velocity_per_beat_outputs(
+            per_beat_result,
+            **velocity_semantics_kwargs,
+        )
+        if per_beat_result is not None
+        else {}
+    )
     if "per_beat" in selected or ctx.pipeline_scheduled("pdf_report"):
         if per_beat_result is None:
-            per_beat_result, velocity_outputs = run_velocity_per_beat_metrics(context)
-            ctx.state.set(VELOCITY_PER_BEAT_RESULT_STATE, per_beat_result)
-            ctx.state.set(VELOCITY_PER_BEAT_OUTPUTS_STATE, velocity_outputs)
+            raise RuntimeError(
+                "Per-beat waveform products were selected but were not computed."
+            )
         if segments_selected:
             metrics.update(velocity_outputs)
         else:
@@ -141,60 +145,30 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
 
     profile_products_required = profiles_selected or profile_analysis_scheduled
     if profile_products_required:
-        cycle_boundaries = (
-            per_beat_result.cycle_boundary_indexes
-            if per_beat_result is not None
-            else context.per_beat_analysis.cycle_boundary_indexes
-        )
-        index_base = (
-            0
-            if per_beat_result is not None
-            else int(context.source_data.provenance["beat_index_base"])
-        )
         velocity_profile_outputs = pack_cross_section_profile_outputs(
-            context.artery_segment_result,
-            context.vein_segment_result,
-            cycle_boundaries,
-            index_base=index_base,
+            waveform.artery_segments,
+            waveform.vein_segments,
+            waveform.cycle_boundary_indexes,
+            index_base=0,
             **velocity_semantics_kwargs,
         )
         metrics.update(velocity_profile_outputs)
         if profile_fft_selected:
             metrics.update(
                 pack_velocity_profile_fft_outputs(
-                    context.artery_segment_result,
-                    context.vein_segment_result,
+                    waveform.artery_segments,
+                    waveform.vein_segments,
                 )
             )
     if "quadrants" in selected:
         metrics.update(
             pack_quadrant_velocity_outputs(
                 velocity_outputs,
-                context.source_data,
-                context.artery_segment_result,
-                context.vein_segment_result,
+                waveform.source_data,
+                waveform.artery_segments,
+                waveform.vein_segments,
                 **velocity_semantics_kwargs,
             )
         )
 
     return metrics
-
-
-def _required_state(ctx, key: str):
-    value = ctx.state.get(key)
-    if value is None:
-        raise RuntimeError(
-            f"Required pipeline state '{key}' is unavailable; "
-            "check the pipeline DAG dependencies."
-        )
-    return value
-
-
-def _velocity_semantics_kwargs(velocity_analysis) -> dict[str, object]:
-    """Keep legacy call signatures unchanged for the default physical mode."""
-
-    if isinstance(velocity_analysis, dict) and (
-        velocity_analysis.get("velocity_estimation_method") == "frequency_bands"
-    ):
-        return {"velocity_analysis": velocity_analysis}
-    return {}

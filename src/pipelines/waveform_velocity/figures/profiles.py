@@ -30,8 +30,8 @@ def export_cross_section_profile_artifacts(
         getattr(context, "velocity_analysis", None)
     ).axis_label
     for vessel_name, segments in (
-        ("artery", getattr(context, "artery_segment_result", None)),
-        ("vein", getattr(context, "vein_segment_result", None)),
+        ("artery", getattr(context, "artery_segments", None)),
+        ("vein", getattr(context, "vein_segments", None)),
     ):
         if segments is None:
             continue

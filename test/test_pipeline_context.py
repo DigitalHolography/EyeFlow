@@ -91,7 +91,7 @@ class PipelineContextTests(unittest.TestCase):
                     "waveform_shape_metrics": (),
                 },
                 pipeline_order=(
-                    "waveform_velocity_core",
+                    "retinal_velocity",
                     "waveform_velocity",
                 ),
                 pipeline_targets=("waveform_velocity",),
@@ -108,7 +108,7 @@ class PipelineContextTests(unittest.TestCase):
                 frozenset({"per_beat", "quadrants"}),
                 ctx.options_for("waveform_velocity"),
             )
-            self.assertTrue(ctx.pipeline_scheduled("waveform_velocity_core"))
+            self.assertTrue(ctx.pipeline_scheduled("retinal_velocity"))
             self.assertFalse(ctx.pipeline_scheduled("pdf_report"))
             self.assertTrue(ctx.pipeline_targeted("waveform_velocity"))
             self.assertFalse(ctx.pipeline_targeted("waveform_velocity_core"))

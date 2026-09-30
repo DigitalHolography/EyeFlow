@@ -47,7 +47,6 @@ class SpatialGradientPipelineTests(unittest.TestCase):
             gradient_plan.names.index("topology_core"),
             gradient_plan.names.index("spatial_gradient_moment0"),
         )
-        self.assertNotIn("waveform_velocity_core", gradient_plan.names)
         self.assertNotIn("waveform_velocity", gradient_plan.names)
 
         waveform_plan = dag.resolve_targets(["waveform_velocity"])

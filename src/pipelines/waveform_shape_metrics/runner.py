@@ -1,8 +1,8 @@
 """Orchestrate selectable waveform-shape metric products."""
 
-from pipelines.waveform_velocity_core.runner import (
-    VELOCITY_PER_BEAT_OUTPUTS_STATE,
-    WAVEFORM_CONTEXT_STATE,
+from pipelines.waveform_velocity import waveform_velocity
+from pipelines.waveform_velocity.per_beat_outputs import (
+    pack_velocity_per_beat_outputs,
 )
 
 from .outputs import pack_waveform_shape_outputs
@@ -15,26 +15,18 @@ def run_waveform_shape_metrics(ctx) -> dict[str, object]:
     if not selected and not report_required:
         return {}
 
-    context = _required_state(ctx, WAVEFORM_CONTEXT_STATE)
-    velocity_outputs = _required_state(ctx, VELOCITY_PER_BEAT_OUTPUTS_STATE)
+    waveform = waveform_velocity(ctx)
+    velocity_outputs = pack_velocity_per_beat_outputs(
+        waveform.require_per_beat()
+    )
     outputs = pack_waveform_shape_outputs(
         velocity_outputs,
-        context.source_data,
-        context.artery_segment_result,
-        context.vein_segment_result,
+        waveform.source_data,
+        waveform.artery_segments,
+        waveform.vein_segments,
         include_per_beat="per_beat" in selected or report_required,
         include_segments="segments" in selected,
         include_quadrants="quadrants" in selected,
     )
     ctx.state.set("waveform_shape_metric_outputs", outputs)
     return outputs
-
-
-def _required_state(ctx, key: str):
-    value = ctx.state.get(key)
-    if value is None:
-        raise RuntimeError(
-            f"Required pipeline state '{key}' is unavailable; "
-            "check the pipeline DAG dependencies."
-        )
-    return value

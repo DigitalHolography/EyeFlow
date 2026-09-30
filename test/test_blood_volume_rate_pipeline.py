@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines import load_pipeline_catalog
-from pipelines.waveform_velocity_core.runner import _per_beat_required
+from pipelines.waveform_velocity.workflow import _per_beat_required
 
 
 def _dag() -> PipelineDAG:
@@ -35,20 +35,25 @@ def test_bvr_option_dependencies_are_resolved_independently() -> None:
     ).names
 
     assert "spatial_gradient_moment0" in both
-    assert "waveform_velocity_core" in both
+    assert "waveform_velocity" in both
     assert "spatial_gradient_moment0" in gradient
-    assert "waveform_velocity_core" in gradient
+    assert "waveform_velocity" in gradient
     assert "spatial_gradient_moment0" not in masked
-    assert "waveform_velocity_core" in masked
-    assert neither == ("blood_volume_rate",)
+    assert "waveform_velocity" in masked
+    assert neither == (
+        "retinal_velocity",
+        "topology_core",
+        "waveform_velocity",
+        "blood_volume_rate",
+    )
 
 
-def test_spatial_gradient_alone_does_not_schedule_velocity_core() -> None:
+def test_spatial_gradient_alone_does_not_schedule_waveform_velocity() -> None:
     names = _dag().resolve_targets(["spatial_gradient_moment0"]).names
 
     assert "retinal_velocity" in names
     assert "topology_core" in names
-    assert "waveform_velocity_core" not in names
+    assert "waveform_velocity" not in names
 
 
 def test_bvr_defaults_to_mask_derived_outputs_only() -> None:
@@ -68,7 +73,7 @@ def test_only_mask_family_requests_per_beat_segment_velocity() -> None:
             self.bvr_options = frozenset(bvr_options)
 
         def pipeline_scheduled(self, name):
-            return name in {"blood_volume_rate", "waveform_velocity_core"}
+            return name in {"blood_volume_rate", "waveform_velocity"}
 
         def option_enabled(self, name, *, pipeline):
             return pipeline == "blood_volume_rate" and name in self.bvr_options

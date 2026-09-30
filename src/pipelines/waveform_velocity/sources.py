@@ -44,7 +44,7 @@ class WaveformVelocitySourceData:
 
 @dataclass(frozen=True)
 class WaveformVelocitySources:
-    """Typed input adapters needed by the waveform velocity core."""
+    """Typed input adapters needed by waveform velocity processing."""
 
     hd: HolodopplerSource
     dv: DopplerViewSource

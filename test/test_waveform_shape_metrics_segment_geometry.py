@@ -23,13 +23,13 @@ from calculations.topology import (  # noqa: E402
 from calculations.topology.branch_identity import (  # noqa: E402
     _branch_identity_stages,
 )
-from pipelines.waveform_velocity_core.branch_identity_debug import (  # noqa: E402
+from pipelines.waveform_velocity.branch_identity_debug import (  # noqa: E402
     _labels_with_substack_boxes,
 )
-from pipelines.waveform_velocity_core.cross_section_images import (  # noqa: E402
+from pipelines.waveform_velocity.cross_section_images import (  # noqa: E402
     export_rotated_mean_pngs,
 )
-from pipelines.waveform_velocity_core.segments import (  # noqa: E402
+from pipelines.waveform_velocity.segments import (  # noqa: E402
     analyze_velocity_segment_profiles,
 )
 from utils.logger import Logger  # noqa: E402

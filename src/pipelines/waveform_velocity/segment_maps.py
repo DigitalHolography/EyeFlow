@@ -90,7 +90,7 @@ def _prepare_vessel_velocity_maps_per_beat(
     if segments.segment_maps is None:
         raise RuntimeError(
             "Per-segment velocity maps were not retained. They must be "
-            "explicitly requested during waveform-velocity core processing."
+            "explicitly requested during waveform-velocity processing."
         )
     maps = np.asarray(segments.segment_maps)
     compact_arguments = (
@@ -151,7 +151,7 @@ def _pack_vessel_displacement_maps(
         if displacement.maps is None:
             raise RuntimeError(
                 "Per-segment displacement maps were not retained. They must be "
-                "requested during waveform-velocity core processing."
+                "requested during waveform-velocity processing."
             )
         displacement_maps_per_beat = np.stack(
             [

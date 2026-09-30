@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from calculations.segment_profiles import SegmentProfileResult, SegmentProfileSettings
-from pipelines.waveform_velocity_core.models import VelocitySegmentResult
+from pipelines.waveform_velocity.models import VelocitySegmentResult
 
 
 @pytest.mark.parametrize(
