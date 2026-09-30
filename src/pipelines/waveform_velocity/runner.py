@@ -17,14 +17,11 @@ from .continuous import (
 )
 from .outputs import export_velocity_signals
 from .profiles import (
-    pack_cross_section_displacement_profile_outputs,
     pack_cross_section_profile_outputs,
-    pack_displacement_magnitude_outputs,
     pack_velocity_profile_fft_outputs,
 )
 from .quadrants import pack_quadrant_velocity_outputs
 from .segment_maps import (
-    pack_displacement_segment_map_outputs,
     pack_segment_map_outputs,
     prepare_segment_velocity_maps_per_beat,
 )
@@ -86,16 +83,6 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             **velocity_semantics_kwargs,
         )
         metrics.update(segment_map_outputs)
-        metrics.update(
-            pack_displacement_segment_map_outputs(
-                context.artery_segment_result,
-                context.vein_segment_result,
-                context.per_beat_analysis.cycle_boundary_indexes,
-                index_base=int(
-                    context.source_data.provenance["beat_index_base"]
-                ),
-            )
-        )
         output = getattr(ctx, "output", None)
         if getattr(output, "available", False):
             avi_started = perf_counter()
@@ -179,15 +166,6 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                     context.vein_segment_result,
                 )
             )
-        metrics.update(pack_displacement_magnitude_outputs(
-            context.artery_segment_result, context.vein_segment_result,
-            cycle_boundaries, index_base=index_base,
-        ))
-        metrics.update(pack_cross_section_displacement_profile_outputs(
-            context.artery_segment_result, context.vein_segment_result,
-            cycle_boundaries, index_base=index_base,
-        ))
-
     if "quadrants" in selected:
         metrics.update(
             pack_quadrant_velocity_outputs(

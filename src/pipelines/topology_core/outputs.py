@@ -1,15 +1,19 @@
-"""Pack generic vessel topology and segmentation products."""
+"""Pack canonical vessel topology and segmentation products."""
 
 from __future__ import annotations
+
+from collections.abc import Mapping
 
 import numpy as np
 from scipy import ndimage as ndi
 
-from calculations.topology import segment_mask_areas_pixels
+from calculations.topology import (
+    OpticDisc,
+    PreparedTopology,
+    segment_mask_areas_pixels,
+)
 from calculations.topology.geometry import AnnulusGeometry, image_half_diagonal
-from input_output.schema import EyeFlowOutputPaths
-
-from .retinal_velocity.outputs import metric_data
+from input_output.schema import EyeFlowOutputPaths, PixelPitch
 
 BACKGROUND_LABEL = -1
 ANNULUS_OUTLINE_LABEL = -2
@@ -145,9 +149,9 @@ def _pack_segmentation_outputs(
 def pack_topology_outputs(
     artery_mask,
     vein_mask,
-    optic_disc,
-    prepared_topologies,
-    pixel_pitch,
+    optic_disc: OpticDisc,
+    prepared_topologies: Mapping[str, PreparedTopology],
+    pixel_pitch: PixelPitch,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
     """Pack segmentation products directly from shared prepared topology."""
@@ -452,7 +456,29 @@ def _label_map_attrs(
 
 
 def _segmentation_value(data, attrs: dict[str, object]):
-    return metric_data(data), attrs
+    return _metric_data(data), attrs
+
+
+def _metric_data(data):
+    """Normalize topology outputs to the portable EyeFlow numeric dtypes."""
+    if isinstance(data, bool):
+        return data
+    if isinstance(data, float):
+        return np.float32(data)
+    if isinstance(data, int):
+        return np.int32(data)
+    if isinstance(data, complex):
+        return np.complex64(data)
+    value = np.asarray(data)
+    if value.dtype.kind == "f":
+        return value.astype(np.float32, copy=False)
+    if value.dtype.kind == "c":
+        return value.astype(np.complex64, copy=False)
+    if value.dtype.kind == "i":
+        return value.astype(np.int32, copy=False)
+    if value.dtype.kind == "u":
+        return value.astype(np.uint32, copy=False)
+    return value
 
 
 def _resolve_output_paths(

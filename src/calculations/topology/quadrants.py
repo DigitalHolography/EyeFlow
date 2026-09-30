@@ -1,17 +1,18 @@
-"""Shared retinal quadrant geometry for velocity and metric outputs."""
+"""Assign reusable retinal segment topology to anatomical quadrants."""
 
 from __future__ import annotations
 
 import numpy as np
 
-REGION_NAMES = (
+from .segments import SegmentTopology
+from .workflow import PreparedTopology
+
+QUADRANT_NAMES = (
     "north_west",
     "north_east",
     "south_west",
     "south_east",
 )
-
-QUADRANTS_GROUP_NAME = "Quadrants"
 
 _TRIGONOMETRIC_QUADRANT_ORDER = (
     "north_east",
@@ -20,18 +21,36 @@ _TRIGONOMETRIC_QUADRANT_ORDER = (
     "south_east",
 )
 _TRIGONOMETRIC_QUADRANT_INDICES = tuple(
-    REGION_NAMES.index(name) for name in _TRIGONOMETRIC_QUADRANT_ORDER
+    QUADRANT_NAMES.index(name) for name in _TRIGONOMETRIC_QUADRANT_ORDER
 )
 _EYEFLOW_SPATIAL_Y_INVERTED = True
 
 
-def region_membership(
-    branch_ids: np.ndarray,
-    branch_label_map: np.ndarray,
-    segment_centers_xy: np.ndarray,
-    optic_disc_center: np.ndarray,
+def quadrant_membership(
+    topology: SegmentTopology | PreparedTopology,
 ) -> np.ndarray:
-    """Assign every branch/radius to its majority quadrant."""
+    """Assign every branch/radius in ``topology`` to one anatomical quadrant.
+
+    Branches are assigned by the majority of their labeled full-frame pixels.
+    The returned array is ordered as :data:`QUADRANT_NAMES` and has shape
+    ``(quadrant, branch, annulus)``.
+    """
+    segment_topology = (
+        topology.topology if isinstance(topology, PreparedTopology) else topology
+    )
+    if not isinstance(segment_topology, SegmentTopology):
+        raise TypeError("topology must be SegmentTopology or PreparedTopology.")
+
+    branch_ids = np.asarray(segment_topology.branch_ids, dtype=np.int32).reshape(-1)
+    branch_label_map = np.asarray(segment_topology.labels, dtype=np.int32)
+    segment_centers_xy = np.asarray(
+        segment_topology.segment_centers_xy,
+        dtype=float,
+    )
+    optic_disc_center = np.asarray(
+        segment_topology.optic_disc_center_xy,
+        dtype=float,
+    )
     if branch_label_map.ndim != 2:
         raise ValueError(
             f"BranchLabelMap must have shape (y, x), got {branch_label_map.shape}."
@@ -46,6 +65,10 @@ def region_membership(
     if branch_ids.size != n_branches:
         raise ValueError("BranchIds and SegmentCenterXY must have the same branch count.")
 
+    branch_label_map, optic_disc_center = _normalized_spatial_frame(
+        branch_label_map,
+        optic_disc_center,
+    )
     height, width = branch_label_map.shape
     pixel_y, pixel_x = np.indices((height, width), dtype=float)
     west = pixel_x < optic_disc_center[0]
@@ -88,7 +111,7 @@ def region_membership(
     return assigned_quadrants.copy()
 
 
-def normalize_spatial_frame(
+def _normalized_spatial_frame(
     branch_label_map: np.ndarray,
     optic_disc_center: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -98,3 +121,6 @@ def normalize_spatial_frame(
     normalized_center = optic_disc_center.copy()
     normalized_center[1] = branch_label_map.shape[0] - 1 - normalized_center[1]
     return np.flip(branch_label_map, axis=0).copy(), normalized_center
+
+
+__all__ = ["QUADRANT_NAMES", "quadrant_membership"]

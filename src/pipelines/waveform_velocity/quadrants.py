@@ -5,20 +5,17 @@ from __future__ import annotations
 import numpy as np
 
 from calculations.math import butter_lowpass_filtfilt, nanmedian
+from calculations.topology import QUADRANT_NAMES, quadrant_membership
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue, with_attrs
-from pipelines.waveform_velocity_core.regions import (
-    QUADRANTS_GROUP_NAME,
-    REGION_NAMES,
-    normalize_spatial_frame,
-    region_membership,
-)
 from pipelines.waveform_velocity_core.retinal_velocity.constants import (
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
 from pipelines.waveform_velocity_core.velocity_semantics import (
     resolve_velocity_semantics,
 )
+
+QUADRANTS_GROUP_NAME = "Quadrants"
 
 
 def pack_quadrant_velocity_outputs(
@@ -42,15 +39,7 @@ def pack_quadrant_velocity_outputs(
         if segments is None or np.asarray(segments.branch_ids).size == 0:
             continue
 
-        branch_ids = np.asarray(segments.branch_ids, dtype=np.int32).reshape(-1)
-        labels = np.asarray(segments.labels, dtype=np.int32)
-        centers = np.asarray(segments.segment_centers_xy, dtype=float)
-        center_xy = np.asarray(
-            segments.topology.optic_disc_center_xy,
-            dtype=float,
-        ).copy()
-        labels, center_xy = normalize_spatial_frame(labels, center_xy)
-        membership = region_membership(branch_ids, labels, centers, center_xy)
+        membership = quadrant_membership(segments.topology.prepared_topology)
         result.update(
             _pack_region_velocity_outputs(
                 schema,
@@ -101,7 +90,7 @@ def _pack_region_velocity_outputs(
     )
     velocity_root = _quadrants_root(velocity_signal_path, vessel_name)
     output: dict[str, object] = {}
-    for region_index, region_name in enumerate(REGION_NAMES):
+    for region_index, region_name in enumerate(QUADRANT_NAMES):
         selected = membership[region_index]
         raw = _reduce_segment_velocity(segment_velocity, selected)
         band_limited = _lowpass_velocity(raw, source_data)
@@ -174,7 +163,7 @@ def _pack_region_per_beat_velocity_outputs(
 
     root = _dataset_group(paths.velocity_signal)
     result: dict[str, object] = {}
-    for region_index, region_name in enumerate(REGION_NAMES):
+    for region_index, region_name in enumerate(QUADRANT_NAMES):
         selected = membership[region_index]
         region_raw = _reduce_per_beat_segment_velocity(raw, selected)
         region_band_limited = _reduce_per_beat_segment_velocity(

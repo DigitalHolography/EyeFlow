@@ -17,7 +17,6 @@ from pipeline_engine.imports import (
     np,
     read_int_setting,
 )
-from pipelines.displacement_map.runner import attach_displacement_segment_profiles
 from pipelines.heartbeat_core.runner import (
     HeartbeatResult,
     cached_heartbeat_analysis,
@@ -411,12 +410,6 @@ def _segment_velocity_inputs(
             velocity_profile_fft=velocity_profile_fft,
             index_base=int(source_data.provenance["beat_index_base"]),
         )
-    results = attach_displacement_segment_profiles(
-        ctx,
-        results,
-        retain_maps=retain_velocity_maps,
-        profile_settings=source_data.profile_settings,
-    )
     if ctx.output.available:
         with _logged_stage("rotated mean PNG export"):
             for name, result in results.items():

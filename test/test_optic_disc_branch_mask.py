@@ -20,7 +20,7 @@ from calculations.topology import (
 )
 from input_output.schema import EyeFlowOutputPaths, PixelPitch
 from pipelines.waveform_velocity_core import runner
-from pipelines.waveform_velocity_core.segmentation import (
+from pipelines.topology_core.outputs import (
     INNER_R0_VESSEL_LABEL,
     pack_segmentation_outputs,
 )

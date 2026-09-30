@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 
 import pipelines  # noqa: F401
-from calculations.topology import OpticDisc
+from calculations.topology import OpticDisc, SegmentTopology
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines.waveform_shape_metrics.metrics.calculator import (
@@ -20,6 +20,22 @@ from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
 from pipelines.waveform_velocity.continuous import pack_segment_velocity_outputs
 from pipelines.waveform_velocity.quadrants import pack_quadrant_velocity_outputs
 from utils.logger import Logger
+
+
+def _segment_topology(labels, branch_ids, centers, optic_disc_center):
+    radius_count, branch_count = centers.shape[:2]
+    return SegmentTopology(
+        spatial_shape=labels.shape,
+        optic_disc_center_xy=optic_disc_center,
+        labels=labels,
+        centerline=np.zeros(labels.shape, dtype=bool),
+        branch_ids=branch_ids,
+        annulus_masks=np.zeros((radius_count, *labels.shape), dtype=bool),
+        segment_masks=np.zeros((radius_count, branch_count, 1, 1), dtype=bool),
+        segment_centers_xy=centers,
+        window_bounds_xyxy=np.zeros((radius_count, branch_count, 4), dtype=int),
+        window_side_pixels=1,
+    )
 
 
 class WaveformShapeMetricsTests(unittest.TestCase):
@@ -185,7 +201,14 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             labels=labels,
             segment_centers_xy=np.zeros((radius_count, branch_count, 2)),
             projected_signal=np.zeros((radius_count, branch_count, 3)),
-            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
+            topology=SimpleNamespace(
+                prepared_topology=_segment_topology(
+                    labels,
+                    np.asarray([1, 2], dtype=np.int32),
+                    np.zeros((radius_count, branch_count, 2)),
+                    (3.0, 2.0),
+                )
+            ),
         )
         regional = pack_quadrant_metrics(
             metrics,
@@ -244,7 +267,14 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             labels=labels,
             segment_centers_xy=np.zeros((2, 2, 2)),
             projected_signal=np.zeros((2, 2, waveform.shape[0])),
-            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
+            topology=SimpleNamespace(
+                prepared_topology=_segment_topology(
+                    labels,
+                    np.asarray([1, 2], dtype=np.int32),
+                    np.zeros((2, 2, 2)),
+                    (3.0, 2.0),
+                )
+            ),
         )
         source_data = SimpleNamespace(
             retinal_artery_mask=np.zeros((8, 8), dtype=bool),
@@ -345,7 +375,14 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             labels=labels,
             segment_centers_xy=np.zeros((2, 2, 2)),
             projected_signal=segment_velocity,
-            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
+            topology=SimpleNamespace(
+                prepared_topology=_segment_topology(
+                    labels,
+                    np.asarray([1, 2], dtype=np.int32),
+                    np.zeros((2, 2, 2)),
+                    (3.0, 2.0),
+                )
+            ),
         )
         source_data = SimpleNamespace(
             retinal_artery_mask=np.zeros((8, 8), dtype=bool),

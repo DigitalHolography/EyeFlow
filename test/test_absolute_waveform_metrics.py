@@ -14,6 +14,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 import pipelines  # noqa: E402
+from calculations.topology import SegmentTopology  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG  # noqa: E402
 from pipelines.absolute_waveform_metrics.calculator import (  # noqa: E402
@@ -26,6 +27,22 @@ from pipelines.absolute_waveform_metrics.runner import (  # noqa: E402
     run_absolute_waveform_metrics,
 )
 from pipelines.waveform_velocity_core import runner as core_runner  # noqa: E402
+
+
+def _segment_topology(labels, branch_ids, centers, optic_disc_center):
+    radius_count, branch_count = centers.shape[:2]
+    return SegmentTopology(
+        spatial_shape=labels.shape,
+        optic_disc_center_xy=optic_disc_center,
+        labels=labels,
+        centerline=np.zeros(labels.shape, dtype=bool),
+        branch_ids=branch_ids,
+        annulus_masks=np.zeros((radius_count, *labels.shape), dtype=bool),
+        segment_masks=np.zeros((radius_count, branch_count, 1, 1), dtype=bool),
+        segment_centers_xy=centers,
+        window_bounds_xyxy=np.zeros((radius_count, branch_count, 4), dtype=int),
+        window_side_pixels=1,
+    )
 
 
 class _State:
@@ -149,7 +166,14 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             labels=labels,
             segment_centers_xy=np.zeros((2, 2, 2), dtype=float),
             projected_signal=np.zeros((2, 2, 3), dtype=np.float32),
-            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
+            topology=SimpleNamespace(
+                prepared_topology=_segment_topology(
+                    labels,
+                    np.asarray([1, 2], dtype=np.int32),
+                    np.zeros((2, 2, 2), dtype=float),
+                    (3.0, 2.0),
+                )
+            ),
         )
         source_data = SimpleNamespace(optic_disc_center=np.asarray([3.0, 2.0]))
         inputs = {
