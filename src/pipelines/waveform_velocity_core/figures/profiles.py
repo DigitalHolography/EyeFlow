@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from .common import _plt
-from ..velocity_semantics import resolve_velocity_semantics
+from pipelines.retinal_velocity.semantics import resolve_velocity_semantics
 
 PROFILE_FOLDER = "velocityProfiles"
 

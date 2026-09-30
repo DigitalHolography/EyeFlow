@@ -1,4 +1,4 @@
-"""Mask helpers used by retinal velocity calculations."""
+"""Mask helpers used by retinal velocity estimation."""
 
 from __future__ import annotations
 

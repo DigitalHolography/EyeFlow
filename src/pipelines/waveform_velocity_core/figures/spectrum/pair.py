@@ -7,8 +7,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import optimize, signal
 
-from calculations.blood_flow_velocity.signal_analysis.heartbeat import (
-    SpectralHeartbeatResult,
+from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
+    SpectralCardiacCycleAnalysis,
 )
 from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import average_cycle
 from calculations.math.arrays import nan_to_mean, rescale, standardize
@@ -59,7 +59,7 @@ def paired_spectrum_analysis(
     second: np.ndarray,
     dt_seconds: float,
     beat_indexes: np.ndarray | None = None,
-    heartbeat: SpectralHeartbeatResult | None = None,
+    cardiac_cycle: SpectralCardiacCycleAnalysis | None = None,
 ) -> PairedSpectrumAnalysisResult:
     delay = None
     systole_count = 0
@@ -68,11 +68,11 @@ def paired_spectrum_analysis(
         systole_count = int(peaks.size)
         first_cycle = average_cycle(first, peaks, 128)
         second_cycle = average_cycle(second, peaks, 128)
-        if first_cycle is not None and second_cycle is not None and heartbeat is not None:
+        if first_cycle is not None and second_cycle is not None and cardiac_cycle is not None:
             delay = delay_fit_analysis(
                 first_cycle,
                 second_cycle,
-                heartbeat.period_seconds,
+                cardiac_cycle.period_seconds,
             )
     return PairedSpectrumAnalysisResult(
         correlation=correlation_data(
@@ -80,7 +80,7 @@ def paired_spectrum_analysis(
             second,
             dt_seconds,
             systole_count=systole_count,
-            heartbeat=heartbeat,
+            cardiac_cycle=cardiac_cycle,
         ),
         transfer=transfer_function(first, second, dt_seconds),
         delay=delay,
@@ -93,7 +93,7 @@ def correlation_data(
     dt_seconds: float,
     *,
     systole_count: int = 0,
-    heartbeat: SpectralHeartbeatResult | None = None,
+    cardiac_cycle: SpectralCardiacCycleAnalysis | None = None,
 ) -> CorrelationData:
     a = standardize(first)
     v = standardize(second)
@@ -113,9 +113,9 @@ def correlation_data(
         noverlap=None,
         nfft=max(256, nperseg),
     )
-    if heartbeat is None:
-        heartbeat = spectrum_signal_analysis(a, dt_seconds, systole_count)
-    heart_rate = heartbeat.heart_rate_hz
+    if cardiac_cycle is None:
+        cardiac_cycle = spectrum_signal_analysis(a, dt_seconds, systole_count)
+    heart_rate = cardiac_cycle.heart_rate_hz
     coherence_at_heart_rate = gamma_0(coherence, freqs, heart_rate)
     return CorrelationData(
         a.astype(np.float32),

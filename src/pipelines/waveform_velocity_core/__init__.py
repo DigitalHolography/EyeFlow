@@ -11,7 +11,7 @@ from .runner import run_waveform_velocity_core
         "Compute shared retinal velocity with optional segment extraction."
     ),
     requires=["numpy", "h5py", "scipy", "skimage"],
-    dag_requires=["heartbeat", "prepared_topology"],
+    dag_requires=["retinal_velocity", "prepared_topology"],
     dag_produces=[
         "velocity_analysis",
         "velocity_profiles",

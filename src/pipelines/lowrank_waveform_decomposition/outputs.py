@@ -10,7 +10,7 @@ import numpy as np
 from calculations.topology import QUADRANT_NAMES, quadrant_membership
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue, with_attrs
-from pipelines.waveform_velocity_core.velocity_semantics import (
+from pipelines.retinal_velocity.semantics import (
     velocity_unit_from_payload,
 )
 

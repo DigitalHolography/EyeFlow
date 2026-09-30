@@ -22,7 +22,7 @@ from calculations.blood_flow_velocity.signal_analysis.waveform.paired_cycles imp
     paired_vessel_cycles,
 )
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
-from pipelines.waveform_velocity_core.velocity_semantics import (
+from pipelines.retinal_velocity.semantics import (
     resolve_velocity_semantics,
 )
 

@@ -545,8 +545,8 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             patch.object(core_runner, "_segment_velocity_inputs") as extract,
             patch.object(
                 core_runner,
-                "spectral_heartbeat_analysis",
-                return_value="heartbeat",
+                "spectral_cardiac_cycle_analysis",
+                return_value="cardiac_cycle",
             ),
         ):
             _, artery, vein = core_runner._per_beat_input_from_analysis(

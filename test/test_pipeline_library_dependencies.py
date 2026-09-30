@@ -140,19 +140,19 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             produces=("prepared_topology",),
             visibility="hidden",
         )
-        heartbeat = _descriptor(
-            "heartbeat_core",
-            produces=("heartbeat",),
+        retinal_velocity = _descriptor(
+            "retinal_velocity",
+            produces=("retinal_velocity", "cardiac_cycles"),
             visibility="hidden",
         )
         gradient = _descriptor(
             "spatial_gradient_moment0",
-            requires=("heartbeat", "prepared_topology"),
+            requires=("cardiac_cycles", "prepared_topology"),
             produces=("spatial_gradient_edges",),
         )
         velocity = _descriptor(
             "waveform_velocity_core",
-            requires=("heartbeat", "prepared_topology"),
+            requires=("retinal_velocity", "prepared_topology"),
             produces=("velocity_profiles", "segment_velocity_per_beat"),
             visibility="hidden",
         )
@@ -173,7 +173,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         )
         catalog = {
             item.name: item
-            for item in (heartbeat, topology, gradient, velocity, bvr)
+            for item in (retinal_velocity, topology, gradient, velocity, bvr)
         }
         app = SimpleNamespace(
             pipeline_catalog=catalog,

@@ -325,7 +325,7 @@ def _velocity_dataset_unit(f: h5py.File, dataset: h5py.Dataset) -> str:
 def _extract_heart_rate(f: h5py.File, params: dict[str, Any]) -> None:
     """Extract heart rate from H5 file."""
     schema = EyeFlowOutputPaths.active()
-    dataset = f.get(schema.heartbeat.spectral_heart_rate_bpm)
+    dataset = f.get(schema.cardiac_cycle.spectral_heart_rate_bpm)
     if dataset is not None:
         arr = np.asarray(dataset)
         if arr.size > 0:

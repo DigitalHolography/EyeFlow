@@ -16,7 +16,7 @@ from input_output.profile_datasets import (
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 from pipelines.displacement_map.constants import registration_method_output_name
-from pipelines.waveform_velocity_core.velocity_semantics import (
+from pipelines.retinal_velocity.semantics import (
     resolve_velocity_semantics,
 )
 

@@ -1,4 +1,4 @@
-"""RAM-backed HDF5 workspace for heartbeat intermediates."""
+"""RAM-backed HDF5 workspace for retinal-velocity intermediates."""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ SCRATCH_BLOCK_BYTES = 64 * 1024 * 1024
 
 
 @contextmanager
-def heartbeat_scratch_h5(_ctx):
+def retinal_velocity_scratch_h5(_ctx):
     """Yield a non-persistent HDF5 file allocated entirely in RAM."""
 
-    filename = f"eyeflow-heartbeat-{uuid4().hex}.h5"
+    filename = f"eyeflow-retinal-velocity-{uuid4().hex}.h5"
     with h5py.File(
         filename,
         "w",
@@ -28,5 +28,8 @@ def heartbeat_scratch_h5(_ctx):
     ) as scratch:
         scratch.attrs["temporary"] = True
         scratch.attrs["storage"] = "memory"
-        scratch.attrs["purpose"] = "EyeFlow heartbeat intermediates"
+        scratch.attrs["purpose"] = "EyeFlow retinal velocity intermediates"
         yield scratch
+
+
+__all__ = ["retinal_velocity_scratch_h5"]

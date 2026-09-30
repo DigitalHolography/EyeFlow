@@ -12,7 +12,7 @@ from .runner import run_spatial_gradient_moment0
         "metrics, and reusable lumen-edge outputs."
     ),
     requires=["numpy", "h5py", "scipy", "skimage", "matplotlib"],
-    dag_requires=["heartbeat", "prepared_topology"],
+    dag_requires=["cardiac_cycles", "prepared_topology"],
     dag_produces=["spatial_gradient_moment0", "spatial_gradient_edges"],
     input_slot="both",
 )

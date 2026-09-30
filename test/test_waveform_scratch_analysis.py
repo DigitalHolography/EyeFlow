@@ -9,56 +9,22 @@ from unittest.mock import patch
 import h5py
 import numpy as np
 
-from calculations.retinal_velocity.vessel_velocity_estimator import (
+from pipelines.retinal_velocity.estimation import (
     _bounded_inpaint_result,
     _inpaint_frame_batch,
     _signed_rms_difference,
-    run_chunked_velocity_estimator,
+    estimate_retinal_velocity,
 )
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.waveform_velocity.continuous import pack_continuous_velocity_outputs
-from pipelines.waveform_velocity_core.retinal_velocity.outputs import (
+from pipelines.retinal_velocity.models import RetinalVelocity
+from pipelines.retinal_velocity.outputs import (
     pack_retinal_velocity_outputs,
 )
-from pipelines.waveform_velocity_core.retinal_velocity.runner import (
-    run_retinal_velocity_analysis,
-)
-from pipelines.waveform_velocity_core.scratch import velocity_scratch_h5
+from pipelines.retinal_velocity.scratch import retinal_velocity_scratch_h5
 
 
 class ScratchAndSchemaTests(unittest.TestCase):
-    def test_retinal_analysis_reuses_supplied_velocity_estimation(self) -> None:
-        source = SimpleNamespace(
-            timing=SimpleNamespace(sampling_freq=50.0, batch_stride=1),
-            local_background_dist=3,
-        )
-        cached = {
-            "velocity_map": np.ones((2, 3, 4), dtype=np.float32),
-            "retinal_artery_velocity_signal": np.ones(2, dtype=np.float32),
-        }
-
-        with (
-            patch(
-                "pipelines.waveform_velocity_core.retinal_velocity.runner."
-                "run_chunked_velocity_estimator"
-            ) as estimator,
-            patch(
-                "pipelines.waveform_velocity_core.retinal_velocity.runner."
-                "ArterialWaveformAnalysisStep"
-            ) as analysis_step,
-        ):
-            actual = run_retinal_velocity_analysis(
-                source,
-                scratch_h5=object(),
-                heartbeat_analysis="heartbeat",
-                velocity_estimation=cached,
-            )
-
-        estimator.assert_not_called()
-        analysis_step.return_value.run.assert_called_once()
-        self.assertIsNot(actual, cached)
-        self.assertIs(actual["velocity_map"], cached["velocity_map"])
-
     def test_inpaint_result_is_finite_and_bounded_by_each_frame_background(self) -> None:
         source = np.asarray(
             [
@@ -158,7 +124,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
         optic_disc_center = (8.0, 8.0)
 
         with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
-            result = run_chunked_velocity_estimator(
+            result = estimate_retinal_velocity(
                 moment0=moment0,
                 moment2=moment2,
                 artery_mask=artery,
@@ -178,7 +144,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
         self.assertEqual((3,), result["retinal_artery_fRMS_signal"].shape)
 
         with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
-            retained = run_chunked_velocity_estimator(
+            retained = estimate_retinal_velocity(
                 moment0=moment0,
                 moment2=moment2,
                 artery_mask=artery,
@@ -199,7 +165,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
 
         velocity_output = np.empty_like(moment0)
         with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
-            buffered = run_chunked_velocity_estimator(
+            buffered = estimate_retinal_velocity(
                 moment0=moment0,
                 moment2=moment2,
                 artery_mask=artery,
@@ -237,7 +203,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
         background = artery | source_vein
 
         with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
-            expected = run_chunked_velocity_estimator(
+            expected = estimate_retinal_velocity(
                 moment0=moment0,
                 moment2=moment2,
                 artery_mask=artery,
@@ -248,7 +214,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
                 retain_velocity_video=False,
             )
         with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
-            actual = run_chunked_velocity_estimator(
+            actual = estimate_retinal_velocity(
                 moment0=moment0,
                 moment2=moment2,
                 artery_mask=artery,
@@ -299,7 +265,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
             velocity_output = np.empty(shape, dtype=np.float32)
             with (
                 patch(
-                    "calculations.retinal_velocity.vessel_velocity_estimator."
+                    "pipelines.retinal_velocity.estimation."
                     "SCRATCH_FRAME_CHUNK_SIZE",
                     chunk_size,
                 ),
@@ -310,7 +276,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
                     backing_store=False,
                 ) as h5,
             ):
-                result = run_chunked_velocity_estimator(
+                result = estimate_retinal_velocity(
                     moment0=moment0,
                     moment2=moment2,
                     artery_mask=artery,
@@ -353,7 +319,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
             output_path = Path(temp_dir) / "output.h5"
             with h5py.File(output_path, "w") as output:
                 ctx = SimpleNamespace(runtime=SimpleNamespace(work_h5=output))
-                with velocity_scratch_h5(ctx) as scratch:
+                with retinal_velocity_scratch_h5(ctx) as scratch:
                     scratch_path = Path(scratch.filename)
                     scratch.create_dataset("large", data=np.ones((2, 3, 4)))
                     self.assertEqual("core", scratch.driver)
@@ -388,8 +354,21 @@ class ScratchAndSchemaTests(unittest.TestCase):
             "Processing/Velocity/segments/Vein/BandLimited/value",
             schema.vein_segments.velocity_signal_band_limited,
         )
-        self.assertTrue(
-            schema.analysis.fRMS_avg.startswith("Processing/FrequencyMaps/")
+        self.assertEqual(
+            "Processing/Maps/VelocityAverage/value",
+            schema.analysis.velocity_map_avg,
+        )
+        self.assertEqual(
+            "Processing/Maps/FRMSAverage/value",
+            schema.analysis.fRMS_avg,
+        )
+        self.assertEqual(
+            "Processing/Maps/FRMSBackgroundAverage/value",
+            schema.analysis.fRMS_bkg_avg,
+        )
+        self.assertEqual(
+            "Processing/Maps/DeltaFRMSAverage/value",
+            schema.analysis.delta_fRMS_avg,
         )
         self.assertFalse(hasattr(schema, "topology"))
         self.assertTrue(
@@ -401,12 +380,15 @@ class ScratchAndSchemaTests(unittest.TestCase):
             "retinal_artery_velocity_signal_filtered": np.arange(8, dtype=np.float32),
             "retinal_vein_velocity_signal_filtered": np.arange(8, dtype=np.float32),
             "velocity_map": np.ones((8, 4, 4)),
+            "velocity_map_avg": np.ones((4, 4)),
             "fRMS_avg": np.ones((4, 4)),
             "fRMS_bkg_avg": np.ones((4, 4)),
+            "deltafRMS_avg": np.ones((4, 4)),
             "beat_indices": np.asarray([1, 5], dtype=np.int32),
             "time_per_beat": np.asarray([0.4], dtype=np.float32),
         }
-        shared = pack_retinal_velocity_outputs(analysis)
+        typed = _typed_velocity(analysis)
+        shared = pack_retinal_velocity_outputs(typed)
         velocity = pack_continuous_velocity_outputs(analysis)
         metrics = {**shared, **velocity}
 
@@ -425,6 +407,58 @@ class ScratchAndSchemaTests(unittest.TestCase):
             },
             set(velocity),
         )
+
+def _typed_velocity(analysis: dict[str, object]) -> RetinalVelocity:
+    signal = np.asarray(analysis["retinal_artery_velocity_signal"], dtype=np.float32)
+    zeros = np.zeros_like(signal)
+    cardiac_cycle = SimpleNamespace(
+        systole=SimpleNamespace(
+            systole_indexes=np.asarray(analysis["beat_indices"], dtype=np.int32),
+            min_peak_distance=1,
+            min_peak_height=np.float32(0.0),
+        ),
+        spectral=SimpleNamespace(
+            fundamental_hz=1.0,
+            heart_rate_bpm=60.0,
+            heart_rate_ste_bpm=0.0,
+            period_seconds=1.0,
+        ),
+    )
+    return RetinalVelocity(
+        artery_velocity_raw=signal,
+        vein_velocity_raw=np.asarray(
+            analysis["retinal_vein_velocity_signal"],
+            dtype=np.float32,
+        ),
+        artery_velocity_filtered=np.asarray(
+            analysis["retinal_artery_velocity_signal_filtered"],
+            dtype=np.float32,
+        ),
+        vein_velocity_filtered=np.asarray(
+            analysis["retinal_vein_velocity_signal_filtered"],
+            dtype=np.float32,
+        ),
+        velocity_map=analysis["velocity_map"],
+        moment0_average=np.ones((4, 4), dtype=np.float32),
+        velocity_average=np.asarray(analysis["velocity_map_avg"], dtype=np.float32),
+        frms_average=np.asarray(analysis["fRMS_avg"], dtype=np.float32),
+        frms_background_average=np.asarray(
+            analysis["fRMS_bkg_avg"],
+            dtype=np.float32,
+        ),
+        delta_frms_average=np.asarray(analysis["deltafRMS_avg"], dtype=np.float32),
+        velocity_section_mask=np.ones((4, 4), dtype=bool),
+        artery_frms=zeros,
+        vein_frms=zeros,
+        artery_frms_background=zeros,
+        vein_frms_background=zeros,
+        vessel_frms_background=zeros,
+        artery_delta_frms=zeros,
+        vein_delta_frms=zeros,
+        cardiac_cycle=cardiac_cycle,
+        cardiac_cycle_source="artery",
+        dt_seconds=0.1,
+    )
 
 
 if __name__ == "__main__":

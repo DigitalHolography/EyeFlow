@@ -35,7 +35,7 @@ from calculations.blood_flow_velocity.signal_analysis.waveform import (  # noqa:
 )
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.writers.png import write_png_file  # noqa: E402
-from calculations.retinal_velocity.vessel_velocity_estimator import (  # noqa: E402
+from pipelines.retinal_velocity.estimation import (  # noqa: E402
     _masked_signal as _velocity_masked_signal,
 )
 from pipelines.waveform_velocity_core.figures import (  # noqa: E402
@@ -203,15 +203,15 @@ class PulsePngExporterTests(unittest.TestCase):
         second = np.sin(2 * np.pi * 1.0 * time + 0.35).astype(np.float32)
         beat_indexes = np.asarray([0, 24, 48, 72], dtype=np.int32)
         cycle = average_cycle(first, beat_indexes, 32)
-        heartbeat = spectrum_signal_analysis(first, 0.05, beat_indexes.size)
+        cardiac_cycle = spectrum_signal_analysis(first, 0.05, beat_indexes.size)
 
-        synthetic = synthetic_spectrum_analysis(cycle, heartbeat.period_seconds)
+        synthetic = synthetic_spectrum_analysis(cycle, cardiac_cycle.period_seconds)
         paired = paired_spectrum_analysis(
             first,
             second,
             0.05,
             beat_indexes,
-            heartbeat=heartbeat,
+            cardiac_cycle=cardiac_cycle,
         )
 
         self.assertEqual(synthetic.frequencies.shape, synthetic.magnitude.shape)
@@ -219,14 +219,14 @@ class PulsePngExporterTests(unittest.TestCase):
         self.assertTrue(synthetic.peak_indexes.size > 0)
         self.assertEqual(0, synthetic.peak_indexes[0])
         self.assertAlmostEqual(
-            heartbeat.heart_rate_hz,
+            cardiac_cycle.heart_rate_hz,
             synthetic.frequencies[synthetic.peak_indexes[1]],
             places=5,
         )
         self.assertEqual(paired.transfer.frequencies.shape, paired.transfer.transfer.shape)
         self.assertIsNotNone(paired.delay)
-        self.assertAlmostEqual(heartbeat.period_seconds, paired.delay.time[-1], places=6)
-        self.assertAlmostEqual(heartbeat.heart_rate_hz, paired.correlation.heart_rate_hz)
+        self.assertAlmostEqual(cardiac_cycle.period_seconds, paired.delay.time[-1], places=6)
+        self.assertAlmostEqual(cardiac_cycle.heart_rate_hz, paired.correlation.heart_rate_hz)
         self.assertGreaterEqual(paired.correlation.gamma_0, 0.0)
         self.assertLessEqual(paired.correlation.gamma_0, 1.0)
 
@@ -296,9 +296,9 @@ class PulsePngExporterTests(unittest.TestCase):
             output = FakeOutput(Path(temp_dir))
             context = _synthetic_context()
             artery = context.velocity_analysis["retinal_artery_velocity_signal"]
-            heartbeat = spectrum_signal_analysis(artery, 0.1, systole_count=4)
+            cardiac_cycle = spectrum_signal_analysis(artery, 0.1, systole_count=4)
             per_beat_result = SimpleNamespace(
-                heartbeat=heartbeat,
+                cardiac_cycle=cardiac_cycle,
                 cycle_boundary_indexes=context.velocity_analysis["beat_indices"],
             )
             written = export_pulse_pngs(output, context, per_beat_result)

@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import os
-from dataclasses import dataclass
 from time import perf_counter
 
 import numpy as np
@@ -34,110 +31,6 @@ FREQUENCY_BAND_LF_PATH = f"/{HD_BAND_LF_PATH}"
 FREQUENCY_BAND_HF_PATH = f"/{HD_BAND_HF_PATH}"
 
 
-@dataclass(frozen=True)
-class VelocityEstimatorCacheKey:
-    """Run-local identity of every input that affects velocity estimation."""
-
-    velocity_estimation_method: str
-    moment0_source: tuple[object, ...] | None
-    moment2_source: tuple[object, ...] | None
-    band_lf_source: tuple[object, ...] | None
-    band_hf_source: tuple[object, ...] | None
-    artery_mask: tuple[object, ...]
-    vein_mask: tuple[object, ...]
-    background_mask: tuple[object, ...]
-    optic_disc_center: tuple[object, ...]
-    section_inner_radius_frac: float
-    section_outer_radius_frac: float
-    local_background_dist: int
-    laser_wavelength: float
-    numerical_aperture: float
-    band_ratio_frequency_scale_hz: float | None
-    frame_chunk_size: int
-
-
-def velocity_estimator_cache_key(
-    *,
-    moment0=None,
-    moment2=None,
-    band_lf=None,
-    band_hf=None,
-    velocity_estimation_method: str = DOPPLER_MOMENTS_METHOD,
-    artery_mask,
-    vein_mask,
-    background_mask=None,
-    optic_disc_center,
-    section_inner_radius_frac: float = SECTION_INNER_RADIUS_FRAC,
-    section_outer_radius_frac: float = SECTION_OUTER_RADIUS_FRAC,
-    local_background_dist: int,
-    laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
-    numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
-    band_ratio_frequency_scale_hz: float = (
-        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
-    ),
-) -> VelocityEstimatorCacheKey:
-    """Build a conservative key for run-scoped estimator-result reuse."""
-
-    method, first_volume, second_volume = _active_velocity_volumes(
-        velocity_estimation_method=velocity_estimation_method,
-        moment0=moment0,
-        moment2=moment2,
-        band_lf=band_lf,
-        band_hf=band_hf,
-    )
-    _validate_matching_volumes(method, first_volume, second_volume)
-    artery = np.asarray(artery_mask, dtype=bool)
-    vein = np.asarray(vein_mask, dtype=bool)
-    background = (
-        artery | vein
-        if background_mask is None
-        else np.asarray(background_mask, dtype=bool)
-    )
-    return VelocityEstimatorCacheKey(
-        velocity_estimation_method=method,
-        moment0_source=(
-            _volume_source_key(first_volume)
-            if method == DOPPLER_MOMENTS_METHOD
-            else None
-        ),
-        moment2_source=(
-            _volume_source_key(second_volume)
-            if method == DOPPLER_MOMENTS_METHOD
-            else None
-        ),
-        band_lf_source=(
-            _volume_source_key(first_volume)
-            if method == FREQUENCY_BANDS_METHOD
-            else None
-        ),
-        band_hf_source=(
-            _volume_source_key(second_volume)
-            if method == FREQUENCY_BANDS_METHOD
-            else None
-        ),
-        artery_mask=_array_value_key(artery, dtype=bool),
-        vein_mask=_array_value_key(vein, dtype=bool),
-        background_mask=_array_value_key(background, dtype=bool),
-        optic_disc_center=_array_value_key(
-            optic_disc_center,
-            dtype=np.float32,
-        ),
-        section_inner_radius_frac=float(section_inner_radius_frac),
-        section_outer_radius_frac=float(section_outer_radius_frac),
-        local_background_dist=int(local_background_dist),
-        laser_wavelength=float(laser_wavelength),
-        numerical_aperture=float(numerical_aperture),
-        band_ratio_frequency_scale_hz=(
-            validate_band_ratio_frequency_scale_hz(
-                band_ratio_frequency_scale_hz
-            )
-            if method == FREQUENCY_BANDS_METHOD
-            else None
-        ),
-        frame_chunk_size=SCRATCH_FRAME_CHUNK_SIZE,
-    )
-
-
 def _velocity_from_delta_frequency(
     delta_frequency,
     laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
@@ -150,7 +43,7 @@ def _velocity_from_delta_frequency(
     ).astype(np.float32, copy=False)
 
 
-def run_chunked_velocity_estimator(
+def estimate_retinal_velocity(
     *,
     moment0=None,
     moment2=None,
@@ -523,39 +416,6 @@ def _validate_matching_volumes(method: str, first_volume, second_volume) -> None
             f"(frame, y, x) shapes, got {first_volume.shape} and "
             f"{second_volume.shape}."
         )
-
-
-def _volume_source_key(value) -> tuple[object, ...]:
-    shape = tuple(int(size) for size in value.shape)
-    dtype = np.dtype(value.dtype).str
-    try:
-        filename = value.file.filename
-        dataset_name = value.name
-    except (AttributeError, RuntimeError, ValueError):
-        filename = None
-        dataset_name = None
-    if filename is not None and dataset_name is not None:
-        return (
-            "hdf5",
-            os.path.normcase(os.path.abspath(str(filename))),
-            str(dataset_name),
-            shape,
-            dtype,
-        )
-    return ("run_object", id(value), shape, dtype)
-
-
-def _optional_array_value_key(value, *, dtype) -> tuple[object, ...] | None:
-    return None if value is None else _array_value_key(value, dtype=dtype)
-
-
-def _array_value_key(value, *, dtype) -> tuple[object, ...]:
-    array = np.ascontiguousarray(np.asarray(value, dtype=dtype))
-    digest = hashlib.blake2b(
-        array.view(np.uint8),
-        digest_size=16,
-    ).hexdigest()
-    return (array.shape, array.dtype.str, digest)
 
 
 def _read_volume_chunk(volume, frame_slice: slice) -> np.ndarray:

@@ -9,7 +9,7 @@ import numpy as np
 from calculations.math import nanmedian
 from input_output.writers.eps import EpsArtifactWriter
 from input_output.writers.png import PngArtifactWriter
-from pipelines.waveform_velocity_core.velocity_semantics import (
+from pipelines.retinal_velocity.semantics import (
     resolve_velocity_semantics,
     velocity_unit_from_payload,
 )

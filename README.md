@@ -71,9 +71,9 @@ Band mode never falls back to moments. Missing bands, invalid values, or
 mismatched shapes produce explicit errors. Exact-zero LF values map to ratio
 zero without an epsilon. Output provenance reports exact-zero and frame-relative
 near-zero LF counts for all, vessel, and inpainting-neighborhood samples. All
-pipelines remain selectable in band mode,
-including `blood_volume_rate` and `absolute_waveform_metrics`; their outputs
-carry the stored velocity method, calibration, quantity, and unit provenance.
+pipelines remain selectable in band mode, including `blood_volume_rate` and
+`absolute_waveform_metrics`; their outputs carry the stored velocity method,
+calibration, quantity, and unit provenance.
 
 The fresh-install defaults are in `default_settings.json`. Existing user
 settings are loaded and normalized by `AppSettingsStore`. Velocity is always

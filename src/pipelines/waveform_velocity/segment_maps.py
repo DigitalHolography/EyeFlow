@@ -14,7 +14,7 @@ from calculations.math import next_power_of_two
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
 from pipelines.displacement_map.constants import registration_method_output_name
-from pipelines.waveform_velocity_core.velocity_semantics import (
+from pipelines.retinal_velocity.semantics import (
     resolve_velocity_semantics,
 )
 from runtime_limits import cap_parallel_jobs

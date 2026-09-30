@@ -13,7 +13,7 @@ import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.avi import AviArtifactWriter
-from pipelines.waveform_velocity_core.velocity_semantics import (
+from pipelines.retinal_velocity.semantics import (
     resolve_velocity_semantics,
     velocity_unit_from_payload,
 )

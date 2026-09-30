@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.blood_flow_velocity.signal_analysis.heartbeat import find_systole_index
+from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
+    find_systole_index,
+)
 from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (
     per_beat_signal_analysis,
 )
@@ -31,7 +33,7 @@ DV_VEIN_MASK_PATH = "segmentation/Retina/vein_mask"
 @pipeline(
     name="matlab_pulse_poc",
     description=(
-        "POC: compute MATLAB-like retinal velocity and heartbeat metrics from HD "
+        "POC: compute MATLAB-like retinal velocity and cardiac-cycle metrics from HD "
         "moments plus DopplerView artery/vein masks."
     ),
     requires=["numpy", "h5py", "scipy"],
@@ -391,7 +393,7 @@ def _legacy_arterial_waveform_metrics(
             systole_matlab,
             {"unit": "frame", "index_base": np.int32(1), "dimDesc": ["beat"]},
         ),
-        "Artery/WaveformAnalysis/HeartBeat/value": with_attrs(
+        "Artery/WaveformAnalysis/CardiacCycle/value": with_attrs(
             heart_rate_bpm,
             {"unit": "bpm"},
         ),

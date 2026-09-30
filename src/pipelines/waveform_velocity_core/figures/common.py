@@ -19,7 +19,7 @@ from calculations.math.arrays import (
     finite_image as _finite_image,
 )
 from utils.logger import Logger
-from pipelines.waveform_velocity_core.velocity_semantics import (
+from pipelines.retinal_velocity.semantics import (
     VelocitySemantics,
     resolve_velocity_semantics,
 )
@@ -41,8 +41,8 @@ __all__ = [
 
 if TYPE_CHECKING:
     from calculations.blood_flow_velocity import PerBeatAnalysisResult
-    from calculations.blood_flow_velocity.signal_analysis.heartbeat import (
-        SpectralHeartbeatResult,
+    from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
+        SpectralCardiacCycleAnalysis,
     )
 
 
@@ -77,18 +77,22 @@ class PulseFigureContext:
         return _safe_indexes(self.per_beat_result.cycle_boundary_indexes)
 
     @property
-    def heartbeat(self) -> SpectralHeartbeatResult:
-        """MATLAB-compatible spectral heartbeat used for all figure timing."""
-        heartbeat = getattr(self.per_beat_result, "heartbeat", None)
-        if heartbeat is None:
-            raise ValueError("Pulse figures require the shared spectral heartbeat result.")
-        return heartbeat
+    def cardiac_cycle(self) -> SpectralCardiacCycleAnalysis:
+        """Shared spectral cardiac-cycle analysis used for figure timing."""
+        cardiac_cycle = getattr(self.per_beat_result, "cardiac_cycle", None)
+        if cardiac_cycle is None:
+            raise ValueError(
+                "Pulse figures require the shared spectral cardiac-cycle analysis."
+            )
+        return cardiac_cycle
 
     @property
-    def heartbeat_period_seconds(self) -> float:
-        period = float(self.heartbeat.period_seconds)
+    def cardiac_cycle_period_seconds(self) -> float:
+        period = float(self.cardiac_cycle.period_seconds)
         if not np.isfinite(period) or period <= 0:
-            raise ValueError("Pulse figures require a positive spectral heartbeat period.")
+            raise ValueError(
+                "Pulse figures require a positive spectral cardiac-cycle period."
+            )
         return period
 
     @property
