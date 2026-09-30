@@ -94,9 +94,11 @@ class SegmentTopologyTests(unittest.TestCase):
         self.assertIs(topology.ring_settings, settings)
         circle = topology.optic_disc_mask
         self.assertFalse(np.any(topology.labels[circle]))
-        self.assertFalse(np.any(topology.centerline[circle]))
         self.assertFalse(np.any(topology.annulus_masks[:, circle]))
-        self.assertFalse(np.any(topology.branch_identity.stages.vessel[circle]))
+        self.assertTrue(np.any(topology.branch_identity.stages.vessel[circle]))
+        self.assertFalse(
+            np.any(topology.branch_identity.stages.cleaned_skeleton[circle])
+        )
         self.assertTrue(np.any(topology.annulus_masks[:, disc]))
         self.assertTrue(np.any(topology.branch_identity.stages.vessel[disc]))
 

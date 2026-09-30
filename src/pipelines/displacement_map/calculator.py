@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
+from calculations.math.temporal_median import CenteredMedianBuffer
+
 try:
     import cv2
 except ImportError:
@@ -18,7 +20,6 @@ except ImportError:
     tqdm = None
 
 from .constants import PDE_REGISTRATION_METHODS
-from .filtering import CenteredMedianBuffer
 from .outputs import OutputCaches, select_display_range, write_magnitude_video
 from .parameters import MotionMapConfig, PhotometricConfig
 from .preprocessing import (

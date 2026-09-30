@@ -16,7 +16,7 @@ from pipeline_engine.base import DatasetValue
 from runtime_limits import cap_parallel_jobs
 
 _MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
-_DISPLACEMENT_MAP_ROOT = "Processing/DisplacementMapPerSegment"
+_DISPLACEMENT_MAP_ROOT = "Processing/DisplacementMap"
 
 
 def pack_segment_map_outputs(
@@ -153,7 +153,9 @@ def _pack_vessel_displacement_maps(
             ],
             axis=-1,
         )
-        outputs[f"{_DISPLACEMENT_MAP_ROOT}/{method}/{vessel_name}"] = (
+        outputs[
+            f"{_DISPLACEMENT_MAP_ROOT}/{method}/{vessel_name}/PerSegment/value"
+        ] = (
             DatasetValue(
                 data=displacement_maps_per_beat,
                 attrs={

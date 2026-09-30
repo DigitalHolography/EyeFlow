@@ -45,10 +45,6 @@ class HoloRunLayout:
         return self._run_dir("EF")
 
     @property
-    def ef_h5(self) -> Path:
-        return self.ef_dir / "h5" / f"{self._stem}_EF.h5"
-
-    @property
     def hd_h5(self) -> Path:
         return self._input_h5(HOLODOPPLER_LAYOUT)
 
@@ -63,17 +59,6 @@ class HoloRunLayout:
     @property
     def has_dv_h5(self) -> bool:
         return self._has_h5(DOPPLER_VIEW_LAYOUT)
-
-    @property
-    def has_ef_h5(self) -> bool:
-        return _is_hdf5_file(self.ef_h5)
-
-    def with_root_dir(self, root_dir: str | Path) -> "HoloRunLayout":
-        return HoloRunLayout(
-            _holo_path=self._holo_path,
-            _stem=self._stem,
-            _root_dir=_absolute(Path(root_dir).expanduser()),
-        )
 
     def require_inputs(self) -> None:
         if not self.root_dir.is_dir():
