@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.math import nanmedian
+from calculations.math import (
+    SlidingWindowMethod,
+    centered_sliding_window,
+    nanmedian,
+)
 from calculations.math.spatial_gradient import (
     GAUSSIAN_BLUR_RADIUS,
     TEMPORAL_MOVING_AVERAGE_WINDOW,
     UNSHARP_MASK_RADIUS,
     UNSHARP_MASK_WEIGHT,
     gaussian2d_blur,
-    moving_avg_window,
     sobel_spatial_gradient,
     unsharpen,
 )
@@ -100,11 +103,19 @@ def extract_spatial_gradient_segments(
 def _spatial_gradient_chain(interpolated: np.ndarray) -> np.ndarray:
     """Apply the scientifically ordered filter chain before rotation."""
 
-    filtered = moving_avg_window(interpolated)
+    filtered = centered_sliding_window(
+        interpolated,
+        TEMPORAL_MOVING_AVERAGE_WINDOW,
+        SlidingWindowMethod.AVERAGE,
+    )
     filtered = sobel_spatial_gradient(filtered)
     filtered = gaussian2d_blur(filtered)
     filtered = unsharpen(filtered)
-    return moving_avg_window(filtered)
+    return centered_sliding_window(
+        filtered,
+        TEMPORAL_MOVING_AVERAGE_WINDOW,
+        SlidingWindowMethod.AVERAGE,
+    )
 
 
 def pack_spatial_gradient_profile_outputs(
@@ -644,7 +655,7 @@ def _gradient_profile_dataset(
             "temporal_filter": "centered_pixelwise_moving_average",
             "temporal_moving_average_window": np.int32(TEMPORAL_MOVING_AVERAGE_WINDOW),
             "temporal_moving_average_passes": np.int32(2),
-            "temporal_boundary_mode": "truncated_window",
+            "temporal_boundary_mode": "periodic_wrap",
             "temporal_nan_policy": "propagate",
             "spatial_operator": "3x3 Sobel magnitude",
             "gaussian_blur_algorithm": "ImageJ",

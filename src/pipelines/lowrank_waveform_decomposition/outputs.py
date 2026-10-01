@@ -566,4 +566,6 @@ def _resolve_output_paths(
     return EyeFlowOutputPaths.active(output_paths)
 
 
-__all__ = ["pack_lowrank_waveform_decomposition_outputs"]
+__all__ = [
+    "pack_lowrank_waveform_decomposition_outputs",
+]

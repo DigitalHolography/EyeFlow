@@ -19,6 +19,7 @@ from .fourier import (
     truncate_harmonics,
 )
 from .image import rotate_array_threshold, rotate_image_with_nan
+from .periodic import SlidingWindowMethod, centered_sliding_window
 from .statistics import (
     nanargmax,
     nanargmin,
@@ -31,19 +32,21 @@ from .statistics import (
 )
 
 __all__ = [
+    "SlidingWindowMethod",
     "as_float32_vector",
     "as_nonnegative_int_indexes",
     "band_limited_ifft_abs",
     "butter_lowpass_filtfilt",
+    "centered_sliding_window",
     "finite_image",
     "harmonic_pack",
     "interpft_real",
     "irfft_normalized",
+    "nan_to_mean",
     "nanargmax",
     "nanargmin",
     "nanmax",
     "nanmean",
-    "nan_to_mean",
     "nanmean_float32",
     "nanmedian",
     "nanmin",
@@ -51,9 +54,9 @@ __all__ = [
     "next_power_of_two",
     "normalized_lowpass_cutoff",
     "rescale",
+    "rfft_normalized",
     "rotate_array_threshold",
     "rotate_image_with_nan",
     "standardize",
-    "rfft_normalized",
     "truncate_harmonics",
 ]

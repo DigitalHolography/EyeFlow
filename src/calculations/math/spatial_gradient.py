@@ -8,6 +8,8 @@ from math import ceil, exp, log, sqrt
 import numpy as np
 from scipy import ndimage as ndi
 
+from .periodic import SlidingWindowMethod, centered_sliding_window
+
 TEMPORAL_MOVING_AVERAGE_WINDOW = 7
 GAUSSIAN_BLUR_RADIUS = 6.0
 UNSHARP_MASK_RADIUS = 8.0
@@ -17,22 +19,16 @@ _IMAGEJ_UNSHARP_ACCURACY = 0.01
 
 
 def moving_avg_window(stack, *, window=TEMPORAL_MOVING_AVERAGE_WINDOW, array_module=np):
-    """Average each pixel in time, truncating centered windows at the edges.
+    """Compatibility wrapper for a periodic temporal moving average."""
 
-    Windows contain only available frames, with no padding or duplication.
-    Any NaN in a pixel's window propagates to that pixel's average.
-    """
-    if window < 1 or window % 2 == 0:
-        raise ValueError("moving average window must be a positive odd integer.")
     xp = array_module
-    values = xp.asarray(stack, dtype=xp.float32)
-    filtered = xp.empty_like(values)
-    half_window = window // 2
-    for index in range(len(values)):
-        start = max(0, index - half_window)
-        stop = min(len(values), index + half_window + 1)
-        filtered[index] = xp.mean(values[start:stop], axis=0)
-    return filtered
+    return centered_sliding_window(
+        xp.asarray(stack, dtype=xp.float32),
+        window,
+        SlidingWindowMethod.AVERAGE,
+        axis=0,
+        array_module=xp,
+    )
 
 
 def spatial_gradient(frame, *, array_module=np, ndimage=ndi):
