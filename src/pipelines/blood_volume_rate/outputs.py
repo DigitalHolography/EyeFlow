@@ -222,7 +222,7 @@ def pack_mask_derived_outputs(
                 "temporal_window_size": np.int32(TOTAL_MASKED_EDGES_WINDOW_SIZE),
                 "temporal_window_stride": np.int32(TOTAL_MASKED_EDGES_WINDOW_STRIDE),
                 "temporal_boundary_mode": "circular",
-                "temporal_window_alignment": "forward",
+                "temporal_window_alignment": "centered",
                 "temporal_nan_policy": "propagate",
                 "branch_reduction": "sum_over_finite_values",
                 "radius_reduction": "median_over_finite_values",

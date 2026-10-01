@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.math import nanmedian
+from calculations.math import (
+    SlidingWindowMethod,
+    centered_sliding_window,
+    nanmedian,
+)
 from calculations.topology import annulus_widths_pixels, segment_mask_areas_pixels
 from calculations.topology.geometry import AnnulusGeometry
 
@@ -105,19 +109,13 @@ def total_masked_edges_flow(masked_edges) -> np.ndarray:
             "masked-edge blood-volume rate must have dimensions "
             "(time, beat, branch, radius)."
         )
-    if values.shape[0] > 0:
-        half_window = TOTAL_MASKED_EDGES_WINDOW_SIZE // 2
-        periodic = np.pad(
-            values,
-            ((half_window, half_window), (0, 0), (0, 0), (0, 0)),
-            mode="wrap",
-        )
-        windows = np.lib.stride_tricks.sliding_window_view(
-            periodic,
-            window_shape=TOTAL_MASKED_EDGES_WINDOW_SIZE,
-            axis=0,
-        )[::TOTAL_MASKED_EDGES_WINDOW_STRIDE]
-        values = np.mean(windows, axis=-1, dtype=np.float32)
+    values = centered_sliding_window(
+        values,
+        TOTAL_MASKED_EDGES_WINDOW_SIZE,
+        SlidingWindowMethod.AVERAGE,
+        window_stride=TOTAL_MASKED_EDGES_WINDOW_STRIDE,
+        axis=0,
+    )
 
     finite = np.isfinite(values)
     rate_tbr = np.sum(

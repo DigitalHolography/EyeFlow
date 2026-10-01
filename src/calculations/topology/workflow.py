@@ -330,7 +330,7 @@ def prepare_segment_chunks(
     """Stream bounded temporal chunks of every valid prepared segment.
 
     Fused mode performs resize and rotation in one affine operation. Staged
-    mode interpolates first, filters the halo context, trims, then rotates.
+    mode interpolates first, filters periodic halo context, trims, then rotates.
     When ``include_masked_before_rotation`` is enabled, each chunk also carries
     a companion following the legacy scientific order ``interpolate/filter ->
     mask -> rotate``. Retained result arrays are outside this scratch budget.
@@ -394,9 +394,18 @@ def prepare_segment_chunks(
     def prepare_job(job) -> PreparedSegmentChunk:
         ring, branch, output_start, output_stop = job
         halo = temporal_halo if transform_mode == "staged" else 0
-        context_start = max(0, output_start - halo)
-        context_stop = min(frame_count, output_stop + halo)
-        source = _frame_slice(data_map, context_start, context_stop)
+        if halo and output_stop - output_start + 2 * halo < frame_count:
+            context_start = output_start - halo
+            context_stop = output_stop + halo
+            source = _periodic_frame_slice(data_map, context_start, context_stop)
+        elif halo:
+            context_start = 0
+            context_stop = frame_count
+            source = _frame_slice(data_map, context_start, context_stop)
+        else:
+            context_start = output_start
+            context_stop = output_stop
+            source = _frame_slice(data_map, context_start, context_stop)
         extracted = extract_segment(
             source,
             topology,
@@ -428,10 +437,8 @@ def prepare_segment_chunks(
                     raise ValueError(
                         "post_interpolation must preserve all array dimensions."
                     )
-            trim = slice(
-                output_start - context_start,
-                output_stop - context_start,
-            )
+            trim_start = output_start - context_start
+            trim = slice(trim_start, trim_start + output_stop - output_start)
             interpolated = interpolated[trim]
             interpolated_for_mask = interpolated
             rotated = resample_rotate_segment(
@@ -610,6 +617,33 @@ def _frame_slice(data_map, start: int, stop: int):
     slices = [slice(None)] * len(data_map.shape)
     slices[0] = slice(int(start), int(stop))
     return data_map[tuple(slices)]
+
+
+def _periodic_frame_slice(data_map, start: int, stop: int):
+    """Read a possibly wrapped frame interval without fancy dataset indexing."""
+
+    frame_count = int(data_map.shape[0])
+    if frame_count < 1:
+        raise ValueError("periodic frame slicing requires at least one frame.")
+    parts = []
+    cursor = int(start)
+    stop = int(stop)
+    while cursor < stop:
+        wrapped_start = cursor % frame_count
+        part_length = min(stop - cursor, frame_count - wrapped_start)
+        parts.append(
+            np.asarray(
+                _frame_slice(
+                    data_map,
+                    wrapped_start,
+                    wrapped_start + part_length,
+                )
+            )
+        )
+        cursor += part_length
+    if len(parts) == 1:
+        return parts[0]
+    return np.concatenate(parts, axis=0)
 
 
 def _cached_topology(

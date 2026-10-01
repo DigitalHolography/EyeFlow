@@ -141,7 +141,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
                 self.assertEqual(
                     "centered_pixelwise_moving_average", value.attrs["temporal_filter"]
                 )
-                self.assertEqual("truncated_window", value.attrs["temporal_boundary_mode"])
+                self.assertEqual("periodic_wrap", value.attrs["temporal_boundary_mode"])
                 self.assertEqual("propagate", value.attrs["temporal_nan_policy"])
                 self.assertEqual("ImageJ", value.attrs["gaussian_blur_algorithm"])
                 self.assertEqual(6.0, value.attrs["gaussian_blur_radius_pixels"])

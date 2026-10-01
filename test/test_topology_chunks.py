@@ -173,7 +173,7 @@ def test_spatial_gradient_chain_has_the_exact_scientific_order() -> None:
     calls: list[str] = []
 
     def record(name):
-        def operation(values):
+        def operation(values, *args, **kwargs):
             calls.append(name)
             return values
 
@@ -181,7 +181,10 @@ def test_spatial_gradient_chain_has_the_exact_scientific_order() -> None:
 
     module = "pipelines.spatial_gradient_moment0.profiles"
     with (
-        patch(f"{module}.moving_avg_window", side_effect=record("moving_average")),
+        patch(
+            f"{module}.centered_sliding_window",
+            side_effect=record("moving_average"),
+        ),
         patch(f"{module}.sobel_spatial_gradient", side_effect=record("sobel")),
         patch(f"{module}.gaussian2d_blur", side_effect=record("gaussian_6")),
         patch(f"{module}.unsharpen", side_effect=record("unsharp_8_weight_0.6")),
