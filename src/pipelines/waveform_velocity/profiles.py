@@ -368,20 +368,6 @@ def _pack_vessel_displacement_profiles(
                 "side_convention": "left_right_in_rotated_segment_coordinates",
             },
         )
-        outputs[f"{root}/Magnitude_displacement_profile/value"] = (
-            _combined_displacement_magnitude_dataset(
-                np.asarray(
-                    displacement.x_sum_profile,
-                    dtype=np.float32,
-                ),
-                np.asarray(
-                    displacement.y_sum_profile,
-                    dtype=np.float32,
-                ),
-                cycle_boundary_indexes,
-                index_base=index_base,
-            )
-        )
     return outputs
 
 
@@ -862,49 +848,6 @@ def _segment_displacement_magnitude_dataset(
             "displacement_reference": "temporal_mean_image",
         },
         h5_options=_profile_h5_options(data.shape),
-    )
-
-
-def _combined_displacement_magnitude_dataset(
-    x_sum_profiles: np.ndarray,
-    y_sum_profiles: np.ndarray,
-    cycle_boundary_indexes,
-    *,
-    index_base: int,
-) -> DatasetValue:
-    """Combine all segment vector magnitudes into one vessel signal."""
-
-    if x_sum_profiles.ndim != 3 or x_sum_profiles.shape != y_sum_profiles.shape:
-        raise ValueError(
-            "X and Y summed displacement profiles must have matching "
-            "(radius, branch, frame) shapes."
-        )
-
-    segment_magnitudes = np.hypot(x_sum_profiles, y_sum_profiles)
-    finite = np.isfinite(segment_magnitudes)
-    vessel_magnitude = np.sum(
-        np.where(finite, segment_magnitudes, np.float32(0.0)),
-        axis=(0, 1),
-        dtype=np.float32,
-    )
-    vessel_magnitude[~np.any(finite, axis=(0, 1))] = np.nan
-    profiles_per_beat = interpolate_profiles_per_beat(
-        vessel_magnitude[None, None, :, None],
-        cycle_boundary_indexes,
-        index_base=index_base,
-    )
-    magnitude_per_beat = profiles_per_beat[0, :, :, 0, 0]
-    return DatasetValue(
-        data=magnitude_per_beat,
-        attrs={
-            "unit": "pixels",
-            "dimDesc": ["time", "beat"],
-            "coordinate_system": "rotation_invariant",
-            "spatial_region": "all_vessel_segments",
-            "spatial_reduction": "sum_of_segment_vector_magnitudes",
-            "displacement_reference": "temporal_mean_image",
-        },
-        h5_options=_profile_h5_options(magnitude_per_beat.shape),
     )
 
 
