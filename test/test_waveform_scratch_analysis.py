@@ -224,6 +224,58 @@ class ScratchAndSchemaTests(unittest.TestCase):
         ):
             np.testing.assert_array_equal(buffered[key], retained[key])
 
+    def test_disabled_vein_keeps_artery_background_and_returns_nan_signals(
+        self,
+    ) -> None:
+        rng = np.random.default_rng(19)
+        moment0 = (1.0 + rng.random((3, 16, 16))).astype(np.float32)
+        moment2 = (2.0 + rng.random((3, 16, 16))).astype(np.float32)
+        artery = np.zeros((16, 16), dtype=bool)
+        source_vein = np.zeros_like(artery)
+        artery[6, 6] = True
+        source_vein[9, 9] = True
+        background = artery | source_vein
+
+        with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
+            expected = run_chunked_velocity_estimator(
+                moment0=moment0,
+                moment2=moment2,
+                artery_mask=artery,
+                vein_mask=source_vein,
+                optic_disc_center=(8.0, 8.0),
+                local_background_dist=1,
+                scratch_h5=h5,
+                retain_velocity_video=False,
+            )
+        with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
+            actual = run_chunked_velocity_estimator(
+                moment0=moment0,
+                moment2=moment2,
+                artery_mask=artery,
+                vein_mask=np.zeros_like(source_vein),
+                background_mask=background,
+                optic_disc_center=(8.0, 8.0),
+                local_background_dist=1,
+                scratch_h5=h5,
+                retain_velocity_video=False,
+            )
+
+        np.testing.assert_array_equal(
+            actual["retinal_artery_velocity_signal"],
+            expected["retinal_artery_velocity_signal"],
+        )
+        np.testing.assert_array_equal(
+            actual["velocity_map_avg"],
+            expected["velocity_map_avg"],
+        )
+        for key in (
+            "retinal_vein_velocity_signal",
+            "retinal_vein_fRMS_signal",
+            "retinal_vein_fRMS_bkg_signal",
+            "retinal_vein_deltafRMS_signal",
+        ):
+            self.assertTrue(np.all(np.isnan(actual[key])))
+
     def test_velocity_estimator_is_independent_of_frame_chunk_size(self) -> None:
         rng = np.random.default_rng(10)
         shape = (17, 20, 18)

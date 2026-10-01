@@ -16,6 +16,9 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
+from pipelines.displacement_map.constants import (  # noqa: E402
+    registration_method_output_name,
+)
 from pipelines.displacement_map.outputs import (  # noqa: E402
     OutputCaches,
     select_display_range,
@@ -31,6 +34,36 @@ from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
 
 
 class DisplacementOutputTests(unittest.TestCase):
+    def assert_no_value_fields(self, h5: h5py.File, *roots: str) -> None:
+        value_paths: list[str] = []
+        for root in roots:
+            names: list[str] = []
+            h5[root].visit(names.append)
+            value_paths.extend(
+                f"{root}/{name}"
+                for name in names
+                if name.rsplit("/", 1)[-1] == "value"
+            )
+        self.assertEqual([], value_paths)
+
+    def test_registration_methods_use_canonical_itk_output_names(self) -> None:
+        expected = {
+            "classic_demons": "Demons",
+            "symmetric_forces_demons": "SymmetricForcesDemons",
+            "fast_symmetric_demons": "FastSymmetricForcesDemons",
+            "diffeomorphic_demons": "DiffeomorphicDemons",
+            "level_set_motion": "LevelSetMotion",
+            "displacement_field": "DisplacementField",
+        }
+
+        self.assertEqual(
+            expected,
+            {
+                method: registration_method_output_name(method)
+                for method in expected
+            },
+        )
+
     def test_displacement_color_range_uses_temporal_median_image(self) -> None:
         frames = np.asarray(
             [
@@ -94,16 +127,16 @@ class DisplacementOutputTests(unittest.TestCase):
         )
 
         x_sum_profile_path = (
-            "Processing/DisplacementProfiles/fast_symmetric_demons/Artery/"
-            "X_sum_displacement_profile/value"
+            "Processing/Displacement/Profiles/FastSymmetricForcesDemons/Artery/"
+            "X_sum_displacement_profile"
         )
         y_sum_profile_path = (
-            "Processing/DisplacementProfiles/fast_symmetric_demons/Artery/"
-            "Y_sum_displacement_profile/value"
+            "Processing/Displacement/Profiles/FastSymmetricForcesDemons/Artery/"
+            "Y_sum_displacement_profile"
         )
         displacement_map_path = (
-            "Processing/DisplacementMap/fast_symmetric_demons/Artery/"
-            "PerSegment/value"
+            "Processing/Displacement/Map/FastSymmetricForcesDemons/Artery/"
+            "PerSegment"
         )
         self.assertEqual(20, len(outputs))
         self.assertFalse(
@@ -121,23 +154,23 @@ class DisplacementOutputTests(unittest.TestCase):
             any("/Y_displacement_profile/" in path for path in outputs)
         )
         self.assertIn(
-            "Processing/DisplacementProfiles/level_set_motion/Artery/"
-            "X_sum_displacement_profile/value",
+            "Processing/Displacement/Profiles/LevelSetMotion/Artery/"
+            "X_sum_displacement_profile",
             outputs,
         )
         self.assertIn(
-            "Processing/DisplacementProfiles/level_set_motion/Vein/"
-            "Y_sum_displacement_profile/value",
+            "Processing/Displacement/Profiles/LevelSetMotion/Vein/"
+            "Y_sum_displacement_profile",
             outputs,
         )
 
         amplitude_profile_path = (
-            "Processing/DisplacementProfiles/level_set_motion/Vein/"
-            "Cross_sectional_radial_movement_amplitude_profile/value"
+            "Processing/Displacement/Profiles/LevelSetMotion/Vein/"
+            "Cross_sectional_radial_movement_amplitude_profile"
         )
         asymmetry_profile_path = (
-            "Processing/DisplacementProfiles/level_set_motion/Vein/"
-            "Cross_sectional_radial_asymmetry_index_profile/value"
+            "Processing/Displacement/Profiles/LevelSetMotion/Vein/"
+            "Cross_sectional_radial_asymmetry_index_profile"
         )
         self.assertIn(amplitude_profile_path, outputs)
         self.assertIn(asymmetry_profile_path, outputs)
@@ -151,6 +184,12 @@ class DisplacementOutputTests(unittest.TestCase):
             for path, value in outputs.items():
                 write_value_dataset(h5, path, value)
 
+            self.assert_no_value_fields(
+                h5,
+                "Processing/Displacement/Profiles",
+                "Processing/Displacement/Map",
+            )
+
             x_sum_profile = h5[x_sum_profile_path]
             y_sum_profile = h5[y_sum_profile_path]
             displacement_map = h5[displacement_map_path]
@@ -158,17 +197,22 @@ class DisplacementOutputTests(unittest.TestCase):
             asymmetry_profile = h5[asymmetry_profile_path]
 
             self.assertIsInstance(
-                h5["Processing/DisplacementMap/fast_symmetric_demons/Artery"],
+                h5[
+                    "Processing/Displacement/Map/"
+                    "FastSymmetricForcesDemons/Artery"
+                ],
                 h5py.Group,
             )
             self.assertIsInstance(
                 h5[
-                    "Processing/DisplacementMap/fast_symmetric_demons/Artery/"
+                    "Processing/Displacement/Map/"
+                    "FastSymmetricForcesDemons/Artery/"
                     "PerSegment"
                 ],
-                h5py.Group,
+                h5py.Dataset,
             )
             self.assertNotIn("Processing/DisplacementMapPerSegment", h5)
+            self.assertNotIn("Processing/DisplacementMap", h5)
 
             self.assertEqual((4, 2, 1, 1), x_sum_profile.shape)
             self.assertEqual((4, 2, 1, 1), y_sum_profile.shape)
@@ -271,9 +315,9 @@ class DisplacementOutputTests(unittest.TestCase):
             np.asarray([0, 65, 130], dtype=np.int32),
         )
         magnitude_paths = {
-            "Processing/DisplacementProfiles/"
-            f"{method}/{vessel}/DisplacementMagnitude/value"
-            for method in ("fast_symmetric_demons", "level_set_motion")
+            "Processing/Displacement/Profiles/"
+            f"{method}/{vessel}/DisplacementMagnitude"
+            for method in ("FastSymmetricForcesDemons", "LevelSetMotion")
             for vessel in ("Artery", "Vein")
         }
 
@@ -286,6 +330,11 @@ class DisplacementOutputTests(unittest.TestCase):
         ) as h5:
             for path, value in outputs.items():
                 write_value_dataset(h5, path, value)
+
+            self.assert_no_value_fields(
+                h5,
+                "Processing/Displacement/Profiles",
+            )
 
             for path in magnitude_paths:
                 dataset = h5[path]
@@ -310,19 +359,19 @@ class DisplacementOutputTests(unittest.TestCase):
             segments,
             np.asarray([0, 2, 5], dtype=np.int32),
         )
-        methods = ("fast_symmetric_demons", "level_set_motion")
+        methods = ("FastSymmetricForcesDemons", "LevelSetMotion")
         vessels = ("Artery", "Vein")
         directions = {"Longitudinal": "y", "Transverse": "x"}
         masks = ("Masked", "Unmasked")
         profile_relative_paths = {
-            "tbkr/Profile/value",
-            "bkr/Profile/value",
-            "b/Profile/value",
-            "tbkr/SquaredDeviation/value",
-            "bkr/SquaredDeviation/value",
+            "tbkr/Profile",
+            "bkr/Profile",
+            "b/Profile",
+            "tbkr/SquaredDeviation",
+            "bkr/SquaredDeviation",
         }
         profile_paths = {
-            "Processing/DisplacementProfiles/"
+            "Processing/Displacement/Profiles/"
             f"{method}/{vessel}/{direction}/{mask}/{relative_path}"
             for method in methods
             for vessel in vessels
@@ -330,23 +379,23 @@ class DisplacementOutputTests(unittest.TestCase):
             for mask in masks
             for relative_path in profile_relative_paths
         }
-        artery_root = "Processing/DisplacementProfiles/level_set_motion/Artery"
+        artery_root = "Processing/Displacement/Profiles/LevelSetMotion/Artery"
         artery_longitudinal = f"{artery_root}/Longitudinal"
         artery_transverse = f"{artery_root}/Transverse"
         metric_relative_paths = {
-            "Position/XMax/value",
-            "Position/YMax/value",
-            "Position/YMaxTemporalVariance/value",
-            "Position/XMaxMeaned/value",
-            "Position/YMaxMeaned/value",
-            "Position/YMaxMeanedTemporalVariance/value",
-            "Area/Left/value",
-            "Area/Right/value",
-            "Area/LeftTemporalVariance/value",
-            "Area/RightTemporalVariance/value",
+            "Position/XMax",
+            "Position/YMax",
+            "Position/YMaxTemporalVariance",
+            "Position/XMaxMeaned",
+            "Position/YMaxMeaned",
+            "Position/YMaxMeanedTemporalVariance",
+            "Area/Left",
+            "Area/Right",
+            "Area/LeftTemporalVariance",
+            "Area/RightTemporalVariance",
         }
         metric_paths = {
-            "Processing/DisplacementMetrics/"
+            "Processing/Displacement/Metrics/"
             f"{method}/{vessel}/Transverse/{metric_relative_path}"
             for method in methods
             for vessel in vessels
@@ -365,8 +414,14 @@ class DisplacementOutputTests(unittest.TestCase):
             for path, value in outputs.items():
                 write_value_dataset(h5, path, value)
 
+            self.assert_no_value_fields(
+                h5,
+                "Processing/Displacement/Profiles",
+                "Processing/Displacement/Metrics",
+            )
+
             metrics_group = h5[
-                "Processing/DisplacementMetrics/level_set_motion/"
+                "Processing/Displacement/Metrics/LevelSetMotion/"
                 "Artery/Transverse"
             ]
             self.assertIsInstance(metrics_group["Position"], h5py.Group)
@@ -377,19 +432,19 @@ class DisplacementOutputTests(unittest.TestCase):
                     for direction, spatial_axis in directions.items():
                         for mask in masks:
                             profile_root = (
-                                "Processing/DisplacementProfiles/"
+                                "Processing/Displacement/Profiles/"
                                 f"{method}/{vessel}/{direction}/{mask}"
                             )
-                            source = h5[f"{profile_root}/tbkr/Profile/value"]
-                            meaned = h5[f"{profile_root}/bkr/Profile/value"]
+                            source = h5[f"{profile_root}/tbkr/Profile"]
+                            meaned = h5[f"{profile_root}/bkr/Profile"]
                             global_meaned = h5[
-                                f"{profile_root}/b/Profile/value"
+                                f"{profile_root}/b/Profile"
                             ]
                             power = h5[
-                                f"{profile_root}/tbkr/SquaredDeviation/value"
+                                f"{profile_root}/tbkr/SquaredDeviation"
                             ]
                             mean_power = h5[
-                                f"{profile_root}/bkr/SquaredDeviation/value"
+                                f"{profile_root}/bkr/SquaredDeviation"
                             ]
 
                             self.assertEqual((181, 4, 2, 1, 1), source.shape)
@@ -442,20 +497,20 @@ class DisplacementOutputTests(unittest.TestCase):
                                 atol=1e-6,
                             )
             transverse_unmasked = h5[
-                f"{artery_transverse}/Unmasked/tbkr/Profile/value"
+                f"{artery_transverse}/Unmasked/tbkr/Profile"
             ][...]
             np.testing.assert_allclose(
-                h5[f"{artery_transverse}/Masked/tbkr/Profile/value"][...],
+                h5[f"{artery_transverse}/Masked/tbkr/Profile"][...],
                 2.0 * transverse_unmasked,
                 atol=1e-5,
             )
             np.testing.assert_allclose(
-                h5[f"{artery_longitudinal}/Unmasked/tbkr/Profile/value"][...],
+                h5[f"{artery_longitudinal}/Unmasked/tbkr/Profile"][...],
                 3.0 * transverse_unmasked,
                 atol=1e-5,
             )
             np.testing.assert_allclose(
-                h5[f"{artery_longitudinal}/Masked/tbkr/Profile/value"][...],
+                h5[f"{artery_longitudinal}/Masked/tbkr/Profile"][...],
                 4.0 * transverse_unmasked,
                 atol=1e-5,
             )
@@ -488,11 +543,11 @@ class DisplacementOutputTests(unittest.TestCase):
         for direction in ("Longitudinal", "Transverse"):
             for mask in ("Masked", "Unmasked"):
                 root = (
-                    "Processing/DisplacementProfiles/level_set_motion/Artery/"
+                    "Processing/Displacement/Profiles/LevelSetMotion/Artery/"
                     f"{direction}/{mask}"
                 )
-                source = outputs[f"{root}/bkr/Profile/value"]
-                global_meaned = outputs[f"{root}/b/Profile/value"]
+                source = outputs[f"{root}/bkr/Profile"]
+                global_meaned = outputs[f"{root}/b/Profile"]
                 self.assertEqual((181, 2), global_meaned.data.shape)
                 np.testing.assert_allclose(
                     global_meaned.data,
@@ -541,23 +596,23 @@ class DisplacementOutputTests(unittest.TestCase):
 
         for vessel_name in ("Artery", "Vein"):
             metrics_root = (
-                "Processing/DisplacementMetrics/level_set_motion/"
+                "Processing/Displacement/Metrics/LevelSetMotion/"
                 f"{vessel_name}/Transverse"
             )
             position_root = f"{metrics_root}/Position"
             area_root = f"{metrics_root}/Area"
-            max_x = outputs[f"{position_root}/XMax/value"]
-            max_y = outputs[f"{position_root}/YMax/value"]
-            diff_y = outputs[f"{position_root}/YMaxTemporalVariance/value"]
-            mean_x = outputs[f"{position_root}/XMaxMeaned/value"]
-            mean_y = outputs[f"{position_root}/YMaxMeaned/value"]
+            max_x = outputs[f"{position_root}/XMax"]
+            max_y = outputs[f"{position_root}/YMax"]
+            diff_y = outputs[f"{position_root}/YMaxTemporalVariance"]
+            mean_x = outputs[f"{position_root}/XMaxMeaned"]
+            mean_y = outputs[f"{position_root}/YMaxMeaned"]
             mean_diff_y = outputs[
-                f"{position_root}/YMaxMeanedTemporalVariance/value"
+                f"{position_root}/YMaxMeanedTemporalVariance"
             ]
-            area_l = outputs[f"{area_root}/Left/value"]
-            area_r = outputs[f"{area_root}/Right/value"]
-            diff_area_l = outputs[f"{area_root}/LeftTemporalVariance/value"]
-            diff_area_r = outputs[f"{area_root}/RightTemporalVariance/value"]
+            area_l = outputs[f"{area_root}/Left"]
+            area_r = outputs[f"{area_root}/Right"]
+            diff_area_l = outputs[f"{area_root}/LeftTemporalVariance"]
+            diff_area_r = outputs[f"{area_root}/RightTemporalVariance"]
 
             self.assertEqual((2, 2, 2, 2), max_x.data.shape)
             self.assertEqual(
@@ -619,26 +674,26 @@ class DisplacementOutputTests(unittest.TestCase):
             self.assertEqual("pixels^3", diff_area_r.attrs["unit"])
 
         artery_metrics_root = (
-            "Processing/DisplacementMetrics/level_set_motion/"
+            "Processing/Displacement/Metrics/LevelSetMotion/"
             "Artery/Transverse"
         )
         transverse_root = (
-            "Processing/DisplacementProfiles/level_set_motion/"
+            "Processing/Displacement/Profiles/LevelSetMotion/"
             "Artery/Transverse"
         )
         position_root = f"{artery_metrics_root}/Position"
         area_root = f"{artery_metrics_root}/Area"
-        max_x = outputs[f"{position_root}/XMax/value"].data
-        max_y = outputs[f"{position_root}/YMax/value"].data
-        diff_y = outputs[f"{position_root}/YMaxTemporalVariance/value"].data
-        meaned = outputs[f"{transverse_root}/Masked/bkr/Profile/value"].data
+        max_x = outputs[f"{position_root}/XMax"].data
+        max_y = outputs[f"{position_root}/YMax"].data
+        diff_y = outputs[f"{position_root}/YMaxTemporalVariance"].data
+        meaned = outputs[f"{transverse_root}/Masked/bkr/Profile"].data
         mean_power = outputs[
-            f"{transverse_root}/Masked/bkr/SquaredDeviation/value"
+            f"{transverse_root}/Masked/bkr/SquaredDeviation"
         ].data
-        area_l = outputs[f"{area_root}/Left/value"].data
-        area_r = outputs[f"{area_root}/Right/value"].data
-        diff_area_l = outputs[f"{area_root}/LeftTemporalVariance/value"].data
-        diff_area_r = outputs[f"{area_root}/RightTemporalVariance/value"].data
+        area_l = outputs[f"{area_root}/Left"].data
+        area_r = outputs[f"{area_root}/Right"].data
+        diff_area_l = outputs[f"{area_root}/LeftTemporalVariance"].data
+        diff_area_r = outputs[f"{area_root}/RightTemporalVariance"].data
         for peak_index, beat_index, branch_index, radius_index in np.ndindex(
             max_x.shape
         ):

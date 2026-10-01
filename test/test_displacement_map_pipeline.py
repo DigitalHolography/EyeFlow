@@ -207,7 +207,7 @@ class DisplacementMapInputTests(unittest.TestCase):
 
 
 class DisplacementMapRunnerTests(unittest.TestCase):
-    def test_prepares_both_fields_without_writing_dense_field_to_h5(self) -> None:
+    def test_missing_optic_disc_prepares_only_artery_field(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             hd_path = root / "scan_HD.h5"
@@ -270,7 +270,7 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     pipeline_name="displacement_map",
                 )
                 run_displacement_map(ctx)
-                self.assertNotIn("Processing/DisplacementMap", output_h5)
+                self.assertNotIn("Processing/Displacement/Map", output_h5)
                 artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
                 self.assertIsInstance(artifacts, DisplacementMapArtifacts)
                 try:
@@ -278,20 +278,16 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                         np.load(artifacts.field_paths_by_vessel["artery"]),
                         1.0,
                     )
-                    np.testing.assert_array_equal(
-                        np.load(artifacts.field_paths_by_vessel["vein"]),
-                        2.0,
-                    )
+                    self.assertNotIn("vein", artifacts.field_paths_by_vessel)
                 finally:
                     artifacts.cleanup()
 
-            for vessel in ("artery", "vein"):
-                video_path = manager.path_for(
-                    OutputType.MP4,
-                    f"{vessel}_{MAGNITUDE_VIDEO_FILENAME}",
-                )
-                self.assertEqual(manager.layout.ef_dir / "mp4", video_path.parent)
-                self.assertEqual(b"fake mp4", video_path.read_bytes())
+            video_path = manager.path_for(
+                OutputType.MP4,
+                MAGNITUDE_VIDEO_FILENAME,
+            )
+            self.assertEqual(manager.layout.ef_dir / "mp4", video_path.parent)
+            self.assertEqual(b"fake mp4", video_path.read_bytes())
 
 
 if __name__ == "__main__":

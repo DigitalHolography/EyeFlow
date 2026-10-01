@@ -34,6 +34,7 @@ def run_retinal_velocity_analysis(
             moment2=images.moment2,
             artery_mask=vessels.artery,
             vein_mask=vessels.vein,
+            background_mask=getattr(vessels, "velocity_background", None),
             optic_disc_center=segmentation.optic_disc.center,
             local_background_dist=local_background_dist,
             scratch_h5=scratch_h5,

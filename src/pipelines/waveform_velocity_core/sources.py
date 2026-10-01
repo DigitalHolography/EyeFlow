@@ -92,6 +92,7 @@ def _source_provenance(
         "has_optic_disc_mask": (optic_disc.mask is not None and not optic_disc.is_fallback),
         "has_optic_disc_center": True,
         "optic_disc_geometry_fallback": optic_disc.is_fallback,
+        "vein_analysis_enabled": not optic_disc.is_fallback,
         "pixel_pitch_xy_m": list(source.holodoppler.pixel_pitch.xy_m),
         "dv_spatial_axes_swapped_to_match_hd": (
             source.doppler_view.spatial_axes_swapped_to_match_hd

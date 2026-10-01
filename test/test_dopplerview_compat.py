@@ -99,12 +99,18 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
             source_data = self._load_sources(hd_source, dv_source)
 
         disc = source_data.source.segmentation.optic_disc
+        vessels = source_data.source.segmentation.vessels
         radius_scale = np.hypot(0.5, 1.5)
         self.assertTrue(disc.is_fallback)
         self.assertEqual((2.0, 1.0), disc.center)
         self.assertAlmostEqual(0.20 * radius_scale, disc.width)
         self.assertAlmostEqual(0.20 * radius_scale, disc.height)
         self.assertEqual((2, 4), disc.mask.shape)
+        self.assertFalse(np.any(vessels.vein))
+        np.testing.assert_array_equal(
+            vessels.velocity_background,
+            vein_raw.T,
+        )
 
     def test_nonfinite_optic_disc_mask_uses_the_same_fallback(self) -> None:
         artery_raw = np.zeros((4, 2), dtype=bool)
@@ -125,6 +131,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
         self.assertTrue(source_data.source.segmentation.optic_disc.is_fallback)
         self.assertEqual((2.0, 1.0), source_data.source.segmentation.optic_disc.center)
+        self.assertFalse(np.any(source_data.source.segmentation.vessels.vein))
 
     def test_hd_pixel_pitch_has_no_legacy_fallback_and_must_be_isotropic(self) -> None:
         with self._source_pair() as (hd_source, _):

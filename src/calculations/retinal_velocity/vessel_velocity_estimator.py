@@ -28,6 +28,7 @@ class VelocityEstimatorCacheKey:
     moment2_source: tuple[object, ...]
     artery_mask: tuple[object, ...]
     vein_mask: tuple[object, ...]
+    background_mask: tuple[object, ...]
     optic_disc_center: tuple[object, ...]
     section_inner_radius_frac: float
     section_outer_radius_frac: float
@@ -43,6 +44,7 @@ def velocity_estimator_cache_key(
     moment2,
     artery_mask,
     vein_mask,
+    background_mask=None,
     optic_disc_center,
     section_inner_radius_frac: float = SECTION_INNER_RADIUS_FRAC,
     section_outer_radius_frac: float = SECTION_OUTER_RADIUS_FRAC,
@@ -52,11 +54,19 @@ def velocity_estimator_cache_key(
 ) -> VelocityEstimatorCacheKey:
     """Build a conservative key for run-scoped estimator-result reuse."""
 
+    artery = np.asarray(artery_mask, dtype=bool)
+    vein = np.asarray(vein_mask, dtype=bool)
+    background = (
+        artery | vein
+        if background_mask is None
+        else np.asarray(background_mask, dtype=bool)
+    )
     return VelocityEstimatorCacheKey(
         moment0_source=_volume_source_key(moment0),
         moment2_source=_volume_source_key(moment2),
-        artery_mask=_array_value_key(artery_mask, dtype=bool),
-        vein_mask=_array_value_key(vein_mask, dtype=bool),
+        artery_mask=_array_value_key(artery, dtype=bool),
+        vein_mask=_array_value_key(vein, dtype=bool),
+        background_mask=_array_value_key(background, dtype=bool),
         optic_disc_center=_array_value_key(
             optic_disc_center,
             dtype=np.float32,
@@ -88,6 +98,7 @@ def run_chunked_velocity_estimator(
     moment2,
     artery_mask,
     vein_mask,
+    background_mask=None,
     optic_disc_center,
     section_inner_radius_frac: float = SECTION_INNER_RADIUS_FRAC,
     section_outer_radius_frac: float = SECTION_OUTER_RADIUS_FRAC,
@@ -108,7 +119,16 @@ def run_chunked_velocity_estimator(
     frame_count, height, width = (int(size) for size in moment0.shape)
     artery = np.asarray(artery_mask, dtype=bool)
     vein = np.asarray(vein_mask, dtype=bool)
-    if artery.shape != (height, width) or vein.shape != (height, width):
+    background = (
+        artery | vein
+        if background_mask is None
+        else np.asarray(background_mask, dtype=bool)
+    )
+    if (
+        artery.shape != (height, width)
+        or vein.shape != (height, width)
+        or background.shape != (height, width)
+    ):
         raise ValueError("Velocity masks must match the HD moment spatial shape.")
 
     Logger.log("Velocity estimator uses raw HD moments.")
@@ -123,9 +143,8 @@ def run_chunked_velocity_estimator(
         retain_velocity_video=retain_velocity_video,
         velocity_video_output=velocity_video_output,
     )
-    vessel_mask = artery | vein
     disk, inpaint = _skimage_dependencies()
-    inpaint_mask = _dilated_mask(vessel_mask, disk(int(local_background_dist)))
+    inpaint_mask = _dilated_mask(background, disk(int(local_background_dist)))
     section_mask = annulus_mask(
         (height, width),
         optic_disc_center,

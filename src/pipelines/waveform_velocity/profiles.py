@@ -15,10 +15,11 @@ from input_output.profile_datasets import (
 )
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
+from pipelines.displacement_map.constants import registration_method_output_name
 
 _PROFILE_MASK_DILATION_ITERATIONS = 10
-_DISPLACEMENT_PROFILE_ROOT = "Processing/DisplacementProfiles"
-_DISPLACEMENT_METRICS_ROOT = "Processing/DisplacementMetrics"
+_DISPLACEMENT_PROFILE_ROOT = "Processing/Displacement/Profiles"
+_DISPLACEMENT_METRICS_ROOT = "Processing/Displacement/Metrics"
 _DISPLACEMENT_PROFILE_FIELDS = (
     ("X", "x_sum_profile", "local_x"),
     ("Y", "y_sum_profile", "local_y"),
@@ -143,7 +144,7 @@ def _pack_vessel_displacement_axis_profiles(
     outputs: dict[str, object] = {}
     displacement_results = getattr(segments, "displacements", {})
     for raw_method, displacement in sorted(displacement_results.items()):
-        method = _hdf_method_name(raw_method)
+        method = registration_method_output_name(raw_method)
         root = f"{_DISPLACEMENT_PROFILE_ROOT}/{method}/{vessel_name}"
         metrics_root = f"{_DISPLACEMENT_METRICS_ROOT}/{method}/{vessel_name}"
         outputs.update(
@@ -194,15 +195,15 @@ def _pack_displacement_axis_profiles_for_method(
             profile_root = f"{root}/{direction_name}/{mask_name}"
             outputs.update(
                 {
-                    f"{profile_root}/tbkr/Profile/value": profile,
-                    f"{profile_root}/bkr/Profile/value": meaned_profile,
-                    f"{profile_root}/b/Profile/value": (
+                    f"{profile_root}/tbkr/Profile": profile,
+                    f"{profile_root}/bkr/Profile": meaned_profile,
+                    f"{profile_root}/b/Profile": (
                         _globally_meaned_profile_dataset(meaned_profile)
                     ),
-                    f"{profile_root}/tbkr/SquaredDeviation/value": (
+                    f"{profile_root}/tbkr/SquaredDeviation": (
                         displacement_power
                     ),
-                    f"{profile_root}/bkr/SquaredDeviation/value": (
+                    f"{profile_root}/bkr/SquaredDeviation": (
                         meaned_displacement_power
                     ),
                 }
@@ -243,26 +244,26 @@ def _pack_displacement_axis_profiles_for_method(
     area_metrics_root = f"{transverse_metrics_root}/Area"
     outputs.update(
         {
-            f"{position_metrics_root}/XMax/value": max_x_position,
-            f"{position_metrics_root}/YMax/value": max_y_position,
-            f"{position_metrics_root}/YMaxTemporalVariance/value": (
+            f"{position_metrics_root}/XMax": max_x_position,
+            f"{position_metrics_root}/YMax": max_y_position,
+            f"{position_metrics_root}/YMaxTemporalVariance": (
                 temporal_variance_at_peaks
             ),
-            f"{position_metrics_root}/XMaxMeaned/value": (
+            f"{position_metrics_root}/XMaxMeaned": (
                 _mean_peak_metric(max_x_position)
             ),
-            f"{position_metrics_root}/YMaxMeaned/value": (
+            f"{position_metrics_root}/YMaxMeaned": (
                 _mean_peak_metric(max_y_position)
             ),
-            f"{position_metrics_root}/YMaxMeanedTemporalVariance/value": (
+            f"{position_metrics_root}/YMaxMeanedTemporalVariance": (
                 _mean_peak_metric(temporal_variance_at_peaks)
             ),
-            f"{area_metrics_root}/Left/value": area_l,
-            f"{area_metrics_root}/Right/value": area_r,
-            f"{area_metrics_root}/LeftTemporalVariance/value": (
+            f"{area_metrics_root}/Left": area_l,
+            f"{area_metrics_root}/Right": area_r,
+            f"{area_metrics_root}/LeftTemporalVariance": (
                 temporal_variance_area_l
             ),
-            f"{area_metrics_root}/RightTemporalVariance/value": (
+            f"{area_metrics_root}/RightTemporalVariance": (
                 temporal_variance_area_r
             ),
         }
@@ -283,10 +284,10 @@ def _pack_vessel_displacement_magnitudes(
     outputs: dict[str, object] = {}
     displacement_results = getattr(segments, "displacements", {})
     for raw_method, displacement in sorted(displacement_results.items()):
-        method = _hdf_method_name(raw_method)
+        method = registration_method_output_name(raw_method)
         path = (
             f"{_DISPLACEMENT_PROFILE_ROOT}/{method}/{vessel_name}/"
-            "DisplacementMagnitude/value"
+            "DisplacementMagnitude"
         )
         outputs[path] = _segment_displacement_magnitude_dataset(
             np.asarray(
@@ -316,10 +317,10 @@ def _pack_vessel_displacement_profiles(
     outputs: dict[str, object] = {}
     displacement_results = getattr(segments, "displacements", {})
     for raw_method, displacement in sorted(displacement_results.items()):
-        method = _hdf_method_name(raw_method)
+        method = registration_method_output_name(raw_method)
         root = f"{_DISPLACEMENT_PROFILE_ROOT}/{method}/{vessel_name}"
         for axis_name, profile_field, component in _DISPLACEMENT_PROFILE_FIELDS:
-            outputs[f"{root}/{axis_name}_sum_displacement_profile/value"] = (
+            outputs[f"{root}/{axis_name}_sum_displacement_profile"] = (
                 _summed_displacement_profile_dataset(
                     np.asarray(
                         getattr(displacement, profile_field),
@@ -331,7 +332,7 @@ def _pack_vessel_displacement_profiles(
                 )
             )
         outputs[
-            f"{root}/Cross_sectional_radial_movement_amplitude_profile/value"
+            f"{root}/Cross_sectional_radial_movement_amplitude_profile"
         ] = _segment_displacement_metric_dataset(
             np.asarray(
                 displacement.radial_movement_amplitude,
@@ -348,7 +349,7 @@ def _pack_vessel_displacement_profiles(
             },
         )
         outputs[
-            f"{root}/Cross_sectional_radial_asymmetry_index_profile/value"
+            f"{root}/Cross_sectional_radial_asymmetry_index_profile"
         ] = _segment_displacement_metric_dataset(
             np.asarray(
                 displacement.radial_asymmetry_index,
@@ -849,15 +850,6 @@ def _segment_displacement_magnitude_dataset(
         },
         h5_options=_profile_h5_options(data.shape),
     )
-
-
-def _hdf_method_name(value: object) -> str:
-    method = str(value).strip()
-    if not method or "/" in method:
-        raise ValueError(
-            "Displacement registration method names must be non-empty HDF5 path segments."
-        )
-    return method
 
 
 def _resolve_output_paths(
