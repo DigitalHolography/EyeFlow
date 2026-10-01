@@ -21,7 +21,6 @@ from pipelines.displacement_map.outputs import (  # noqa: E402
     select_display_range,
 )
 from pipelines.waveform_velocity.profiles import (  # noqa: E402
-    _combined_displacement_magnitude_dataset,
     pack_cross_section_displacement_profile_outputs,
     pack_displacement_magnitude_outputs,
     pack_displacement_profile_outputs,
@@ -106,7 +105,7 @@ class DisplacementOutputTests(unittest.TestCase):
             "Processing/DisplacementMap/fast_symmetric_demons/Artery/"
             "PerSegment/value"
         )
-        self.assertEqual(24, len(outputs))
+        self.assertEqual(20, len(outputs))
         self.assertFalse(
             any(path.startswith("Processing/Debug/") for path in outputs)
         )
@@ -132,10 +131,6 @@ class DisplacementOutputTests(unittest.TestCase):
             outputs,
         )
 
-        magnitude_profile_path = (
-            "Processing/DisplacementProfiles/level_set_motion/Vein/"
-            "Magnitude_displacement_profile/value"
-        )
         amplitude_profile_path = (
             "Processing/DisplacementProfiles/level_set_motion/Vein/"
             "Cross_sectional_radial_movement_amplitude_profile/value"
@@ -144,7 +139,6 @@ class DisplacementOutputTests(unittest.TestCase):
             "Processing/DisplacementProfiles/level_set_motion/Vein/"
             "Cross_sectional_radial_asymmetry_index_profile/value"
         )
-        self.assertIn(magnitude_profile_path, outputs)
         self.assertIn(amplitude_profile_path, outputs)
         self.assertIn(asymmetry_profile_path, outputs)
 
@@ -160,7 +154,6 @@ class DisplacementOutputTests(unittest.TestCase):
             x_sum_profile = h5[x_sum_profile_path]
             y_sum_profile = h5[y_sum_profile_path]
             displacement_map = h5[displacement_map_path]
-            magnitude_profile = h5[magnitude_profile_path]
             amplitude_profile = h5[amplitude_profile_path]
             asymmetry_profile = h5[asymmetry_profile_path]
 
@@ -180,7 +173,6 @@ class DisplacementOutputTests(unittest.TestCase):
             self.assertEqual((4, 2, 1, 1), x_sum_profile.shape)
             self.assertEqual((4, 2, 1, 1), y_sum_profile.shape)
             self.assertEqual((4, 3, 4, 2, 1, 1, 2), displacement_map.shape)
-            self.assertEqual((4, 2), magnitude_profile.shape)
             self.assertEqual((4, 2, 1, 1), amplitude_profile.shape)
             self.assertEqual((4, 2, 1, 1), asymmetry_profile.shape)
             self.assertEqual("pixels", x_sum_profile.attrs["unit"])
@@ -216,20 +208,6 @@ class DisplacementOutputTests(unittest.TestCase):
                 ["local_x", "local_y"],
                 list(displacement_map.attrs["components"]),
             )
-            self.assertEqual("pixels", magnitude_profile.attrs["unit"])
-            self.assertEqual(
-                ["time", "beat"],
-                list(magnitude_profile.attrs["dimDesc"]),
-            )
-            self.assertEqual(
-                "sum_of_segment_vector_magnitudes",
-                magnitude_profile.attrs["spatial_reduction"],
-            )
-            np.testing.assert_allclose(
-                magnitude_profile[...],
-                np.hypot(24.0, -48.0),
-                atol=1e-5,
-            )
             self.assertEqual("pixels", amplitude_profile.attrs["unit"])
             self.assertEqual("1", asymmetry_profile.attrs["unit"])
             self.assertEqual(
@@ -263,22 +241,6 @@ class DisplacementOutputTests(unittest.TestCase):
                 float(np.nanmax(displacement_map[..., 1])),
                 0.0,
             )
-
-    def test_combined_magnitude_adds_segments_without_directional_cancellation(
-        self,
-    ) -> None:
-        x_sums = np.asarray([[[3.0] * 6, [-3.0] * 6]], dtype=np.float32)
-        y_sums = np.asarray([[[4.0] * 6, [-4.0] * 6]], dtype=np.float32)
-
-        dataset = _combined_displacement_magnitude_dataset(
-            x_sums,
-            y_sums,
-            np.asarray([0, 2, 5], dtype=np.int32),
-            index_base=0,
-        )
-
-        self.assertEqual((4, 2), dataset.data.shape)
-        np.testing.assert_allclose(dataset.data, 10.0, atol=1e-6)
 
     def test_displacement_magnitude_is_a_per_segment_per_beat_trace(
         self,
