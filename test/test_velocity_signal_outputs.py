@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager
 from pipelines.waveform_velocity.outputs import (
     VELOCITY_ENVELOPE_GRAY,
@@ -74,9 +75,11 @@ def test_velocity_figure_reduces_space_then_plots_beat_median_and_sd() -> None:
 
 def test_velocity_signals_export_png_and_eps_for_both_vessels() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
-        output = OutputManager.from_holo(
-            Path(temp_dir) / "sample.holo",
-            output_root=Path(temp_dir),
+        output = OutputManager(
+            HoloRunLayout.from_holo(
+                Path(temp_dir) / "sample.holo",
+                output_root=Path(temp_dir),
+            )
         )
         values = _segment_values(np.asarray([[1.0, 2.0], [3.0, 5.0]]))
         metric = (values, {"unit": "mm/s"})

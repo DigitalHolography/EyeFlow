@@ -1,7 +1,5 @@
 """Resolve HOLO selections and expose HD/DV/work HDF5 inputs to pipelines."""
 
-"""Resolve selected HOLO inputs and their companion data files."""
-
 import json
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -11,7 +9,6 @@ import h5py
 
 from .holo_run_layout import HoloRunLayout
 from .schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
-from .writers.h5 import normalize_h5_path
 
 HOLO_SUFFIX = ".holo"
 INPUT_LIST_SUFFIX = ".txt"
@@ -30,11 +27,9 @@ class HoloInputList:
 
 def resolve_holo_run_layout(
     holo_path: Path,
-    *,
-    require_holo_file: bool = True,
 ) -> HoloRunLayout:
     holo_path = _absolute(holo_path)
-    _validate_holo_file(holo_path, require_file=require_holo_file)
+    _validate_holo_file(holo_path)
     run_layout = HoloRunLayout.from_holo(holo_path)
     run_layout.require_inputs()
     return run_layout
@@ -106,12 +101,6 @@ def read_holo_input_list(input_list_path: Path) -> HoloInputList:
     )
 
 
-def default_output_dir_for_input(input_path: Path) -> Path:
-    if input_path.suffix.lower() == HOLO_SUFFIX:
-        return HoloRunLayout.from_holo(input_path).ef_dir
-    return input_path.parent if input_path.is_file() else input_path
-
-
 def sidecar_dir_for_h5(h5_path: str | Path, folder_name: str) -> Path:
     """Return a sibling sidecar folder next to an exported HDF5 folder."""
     return Path(h5_path).parent.parent / folder_name
@@ -119,12 +108,10 @@ def sidecar_dir_for_h5(h5_path: str | Path, folder_name: str) -> Path:
 
 def holo_input_status(
     holo_path: Path,
-    *,
-    require_holo_file: bool,
 ) -> HoloInputStatus:
     holo_path = _absolute(holo_path)
     try:
-        _validate_holo_file(holo_path, require_file=require_holo_file)
+        _validate_holo_file(holo_path)
     except (FileNotFoundError, ValueError):
         return HoloInputStatus(hd=False, dv=False)
 
@@ -148,10 +135,6 @@ def stem_input_status(stem: str, root_dir: Path) -> HoloInputStatus:
     )
 
 
-def _lookup_key(path: str) -> str:
-    return normalize_h5_path(path)
-
-
 def _parse_input_list_entries(
     entries: Sequence[str],
     default_root_dir: Path,
@@ -173,11 +156,9 @@ def _absolute(path: str | Path) -> Path:
     return resolved if resolved.is_absolute() else Path.cwd() / resolved
 
 
-def _validate_holo_file(holo_path: Path, *, require_file: bool) -> None:
+def _validate_holo_file(holo_path: Path) -> None:
     if holo_path.suffix.lower() != HOLO_SUFFIX:
         raise ValueError(f"HOLO input must be a {HOLO_SUFFIX} file:\n{holo_path}")
-    if not require_file:
-        return
     if not holo_path.exists():
         raise FileNotFoundError(f"HOLO input does not exist:\n{holo_path}")
     if not holo_path.is_file():
@@ -213,26 +194,6 @@ class MergedAttrs(Mapping[str, object]):
             if key in source:
                 return source[key]
         return default
-
-
-class EyeFlowView:
-    def __init__(self, work_h5: h5py.File) -> None:
-        self.work_h5 = work_h5
-
-    def get(self, key: str, default=None):
-        normalized_key = _lookup_key(key)
-        if not normalized_key:
-            return default
-        return self.work_h5.get(normalized_key, default)
-
-    def __getitem__(self, key: str):
-        found = self.get(key)
-        if found is None:
-            raise KeyError(key)
-        return found
-
-    def __contains__(self, key: object) -> bool:
-        return isinstance(key, str) and self.get(key) is not None
 
 
 def _attr_source(source: h5py.File | Mapping[str, object]) -> Mapping[str, object]:

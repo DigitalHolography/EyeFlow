@@ -9,7 +9,6 @@ import numpy as np
 from input_output.input_access import (
     HolodopplerTiming,
     read_int_setting,
-    resolve_dt_seconds,
     resolve_holodoppler_timing,
 )
 
@@ -24,7 +23,6 @@ __all__ = [
     "np",
     "pipeline",
     "read_int_setting",
-    "resolve_dt_seconds",
     "resolve_holodoppler_timing",
     "with_attrs",
 ]
