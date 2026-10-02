@@ -113,7 +113,11 @@ class HoloRunLayout:
         )
 
     def _has_h5(self, schema: SourceFileLayout) -> bool:
-        return bool(self._h5_files(schema))
+        try:
+            self._input_h5(schema)
+        except FileNotFoundError:
+            return False
+        return True
 
     def _h5_files(self, schema: SourceFileLayout) -> list[Path]:
         folder = self._h5_dir(schema)

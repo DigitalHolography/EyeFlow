@@ -9,14 +9,13 @@ import numpy as np
 from calculations.topology import OpticDisc
 from input_output.schema import (
     DopplerViewMetadata,
-    HolodopplerMetadata,
-    HolodopplerTiming,
     ImageMaps,
     PixelPitch,
     RetinalSegmentation,
     RetinalSourceData,
     VesselMasks,
 )
+from input_output.schema.source_data import HolodopplerMetadata, HolodopplerTiming
 from pipeline_engine.context import PipelineState
 from pipelines.heartbeat_core.runner import (
     HeartbeatResult,

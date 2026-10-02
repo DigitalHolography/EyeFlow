@@ -16,6 +16,7 @@ from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from pipeline_engine import PipelineContext
 from pipelines.displacement_map import registration
+from pipelines.displacement_map.sources import FrameSequence
 from pipelines.displacement_map.runner import (
     ARTERY_MASK_PATH,
     DISPLACEMENT_MAP_STATE,
@@ -70,6 +71,26 @@ class DisplacementRegistrationTests(unittest.TestCase):
 
 
 class DisplacementMapInputTests(unittest.TestCase):
+    def test_frame_sequence_reuses_open_h5_dataset(self) -> None:
+        with h5py.File("already_open.h5", "w", driver="core", backing_store=False) as hd:
+            dataset = hd.create_dataset(
+                "moment0",
+                data=np.arange(24, dtype=np.float32).reshape(3, 2, 4),
+            )
+            with patch(
+                "pipelines.displacement_map.sources.h5py.File",
+                side_effect=AssertionError("HDF5 input was reopened"),
+            ):
+                sequence = FrameSequence(
+                    Path("not-on-disk.h5"), "moment0", 0, 10.0, 1.0, 99.5,
+                    h5_source=dataset,
+                )
+                frames = list(sequence.iter_frames())
+
+        self.assertEqual(3, sequence.frame_count)
+        self.assertEqual(3, len(frames))
+        self.assertEqual((2, 4, 3), frames[0].shape)
+
     def test_displacement_pipeline_attaches_segment_results(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             field_path = Path(temp_dir) / "field.npy"
@@ -236,9 +257,10 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     output_root=root / "outputs",
                 )
             )
-            def fake_motion_map(config, *, analysis_mask_array, magnitude_video_path):
+            def fake_motion_map(config, *, analysis_mask_array, magnitude_video_path, h5_source):
                 self.assertEqual("moment0", config.h5_dataset)
                 self.assertEqual(10.0, config.h5_fps)
+                self.assertEqual("/moment0", h5_source.name)
                 if np.array_equal(analysis_mask_array, artery.astype(bool)):
                     field_value = 1.0
                 elif np.array_equal(analysis_mask_array, vein.astype(bool)):

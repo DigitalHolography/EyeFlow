@@ -16,10 +16,60 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from input_output.writers.h5 import initialize_output_h5  # noqa: E402
+from input_output.writers.h5 import (  # noqa: E402
+    initialize_output_h5,
+    set_attr_safe,
+    write_value_dataset,
+)
+from pipeline_engine.base import DatasetValue  # noqa: E402
 
 
 class H5WriterTests(unittest.TestCase):
+    def test_integer_values_are_not_narrowed_out_of_range(self) -> None:
+        with h5py.File("integer_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
+            signed = np.array([2**40, -(2**40)], dtype=np.int64)
+            unsigned = np.array([2**63 + 1], dtype=np.uint64)
+            write_value_dataset(h5file, "signed", signed)
+            write_value_dataset(h5file, "unsigned", unsigned)
+            write_value_dataset(h5file, "large_scalar", 2**63 + 1)
+            write_value_dataset(h5file, "unsigned_list", [0, 2**63 + 1])
+            set_attr_safe(h5file, "large_integer", 2**40)
+
+            np.testing.assert_array_equal(h5file["signed"][()], signed)
+            np.testing.assert_array_equal(h5file["unsigned"][()], unsigned)
+            self.assertEqual(2**63 + 1, h5file["large_scalar"][()])
+            np.testing.assert_array_equal(
+                h5file["unsigned_list"][()], np.array([0, 2**63 + 1], dtype=np.uint64)
+            )
+            self.assertEqual(2**40, h5file.attrs["large_integer"])
+
+    def test_integer_outside_hdf5_range_raises(self) -> None:
+        with h5py.File("integer_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
+            with self.assertRaises(OverflowError):
+                write_value_dataset(h5file, "too_large", 2**64)
+            with self.assertRaises(OverflowError):
+                write_value_dataset(h5file, "mixed_range", [-1, 2**63 + 1])
+            self.assertNotIn("too_large", h5file)
+            self.assertNotIn("mixed_range", h5file)
+
+    def test_invalid_h5_options_do_not_stringify_numeric_data(self) -> None:
+        with h5py.File("options_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
+            value = DatasetValue(np.array([1, 2]), h5_options={"chunks": (3,)})
+            with self.assertRaisesRegex(ValueError, "Could not write HDF5 dataset 'values'"):
+                write_value_dataset(h5file, "values", value)
+            self.assertNotIn("values", h5file)
+
+    def test_invalid_attribute_does_not_become_a_string(self) -> None:
+        with h5py.File("attribute_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
+            with self.assertRaisesRegex(TypeError, "Could not write HDF5 attribute 'bad'"):
+                set_attr_safe(h5file, "bad", {"unexpected": "mapping"})
+            self.assertNotIn("bad", h5file.attrs)
+
+    def test_unicode_array_is_written_as_string_array(self) -> None:
+        with h5py.File("strings_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
+            write_value_dataset(h5file, "labels", np.array(["artery", "vein"]))
+            self.assertEqual([b"artery", b"vein"], list(h5file["labels"][()]))
+
     def test_initialize_output_h5_writes_eyeflow_version(self) -> None:
         version = _pyproject_version()
         with tempfile.TemporaryDirectory() as tmp_dir:

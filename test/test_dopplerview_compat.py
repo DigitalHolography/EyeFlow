@@ -15,7 +15,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from input_output import load_h5_sidecar_config
+from input_output.inputs import load_h5_sidecar_config
 from input_output.schema import DopplerViewSource, HolodopplerSource
 from pipeline_engine.context import RawH5SourceReader
 from pipelines.waveform_velocity_core.sources import (

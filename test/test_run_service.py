@@ -89,7 +89,9 @@ class RunServiceTests(unittest.TestCase):
 
             def fake_run(*, output_manager, **_kwargs):
                 output_manager.prepare()
-                output_manager.write_json({"new": True})
+                (output_manager.layout.ef_dir / "new.txt").write_text(
+                    "new", encoding="utf-8"
+                )
                 return output_manager.path_for(OutputType.H5)
 
             with patch(
@@ -100,8 +102,7 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertTrue(result.succeeded)
             self.assertFalse((final_dir / "old.txt").exists())
-            json_path = spec.requests[0].output_manager.path_for(OutputType.JSON)
-            self.assertTrue(json_path.is_file())
+            self.assertEqual("new", (final_dir / "new.txt").read_text(encoding="utf-8"))
             self.assertFalse(list(final_dir.parent.glob(".*eyeflow-staging-*")))
 
     def test_failed_direct_run_leaves_partial_output(self) -> None:
@@ -120,7 +121,9 @@ class RunServiceTests(unittest.TestCase):
 
             def fake_failure(*, output_manager, **_kwargs):
                 output_manager.prepare()
-                output_manager.write_json({"partial": True})
+                (output_manager.layout.ef_dir / "partial.txt").write_text(
+                    "partial", encoding="utf-8"
+                )
                 raise RuntimeError("analysis failed")
 
             with patch(
@@ -131,8 +134,9 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertEqual(1, len(result.failures))
             self.assertFalse(marker.exists())
-            json_path = spec.requests[0].output_manager.path_for(OutputType.JSON)
-            self.assertTrue(json_path.is_file())
+            self.assertEqual(
+                "partial", (final_dir / "partial.txt").read_text(encoding="utf-8")
+            )
             self.assertFalse(list(final_dir.parent.glob(".*eyeflow-staging-*")))
 
     def test_direct_run_refuses_to_replace_non_directory_output(self) -> None:
@@ -150,7 +154,6 @@ class RunServiceTests(unittest.TestCase):
 
             def fake_run(*, output_manager, **_kwargs):
                 output_manager.prepare()
-                output_manager.write_json({"new": True})
 
             with patch(
                 "pipeline_engine.run_service.run_pipelines_to_output",

@@ -40,12 +40,16 @@ class TypedSource:
         dtype=None,
         default: Any = MISSING,
     ) -> Any:
+        if default is MISSING:
+            return self._reader.array(path, dtype=dtype)
         return self._reader.array(path, dtype=dtype, default=default)
 
     def _dataset(self, path: str):
         return self._reader.dataset(path)
 
     def _value(self, path: str, *, default: Any = MISSING):
+        if default is MISSING:
+            return self._reader.value(path)
         return self._reader.value(path, default=default)
 
     def _scalar_h5_or_config(self, h5_path: str, config_key: str):

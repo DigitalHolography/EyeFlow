@@ -196,6 +196,7 @@ def run_displacement_map(
                 algorithm_config,
                 analysis_mask_array=mask_input.mask,
                 magnitude_video_path=output_video,
+                h5_source=inputs.moment,
             )
             field_path = Path(outputs["displacement_field"])
             for vessel in mask_input.vessels:

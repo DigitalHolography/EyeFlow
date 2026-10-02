@@ -55,12 +55,12 @@ def set_attr_safe(h5obj: h5py.File | h5py.Group | h5py.Dataset, key: str, value)
         if all(isinstance(item, str) for item in value):
             data = np.asarray(value, dtype=h5py.string_dtype(encoding="utf-8"))
         else:
-            data = np.asarray(value)
+            data = _array_from_sequence(value)
     data = _downcast_numeric_payload(data)
     try:
         h5obj.attrs[key] = data
-    except (TypeError, ValueError):
-        h5obj.attrs[key] = str(value)
+    except (TypeError, ValueError) as exc:
+        raise type(exc)(f"Could not write HDF5 attribute '{key}': {exc}") from exc
 
 
 def write_value_dataset(group: h5py.Group, key: str, value) -> None:
@@ -205,7 +205,7 @@ def _normalize_dataset_payload(data, ds_attrs):
         payload = np.asarray(payload, dtype=np.uint8)
         original_class = "bool"
     elif isinstance(payload, (list, tuple)):
-        payload = np.asarray(payload)
+        payload = _array_from_sequence(payload)
 
     payload = _downcast_numeric_payload(payload)
 
@@ -216,13 +216,39 @@ def _normalize_dataset_payload(data, ds_attrs):
     return payload, ds_attrs
 
 
+def _array_from_sequence(values: list | tuple) -> np.ndarray:
+    # NumPy can silently coerce mixed signed/large-unsigned integers to float.
+    objects = np.asarray(values, dtype=object)
+    if objects.size and all(
+        isinstance(item, (int, np.integer)) and not isinstance(item, (bool, np.bool_))
+        for item in objects.flat
+    ):
+        minimum = min(int(item) for item in objects.flat)
+        maximum = max(int(item) for item in objects.flat)
+        if minimum < np.iinfo(np.int64).min or maximum > np.iinfo(np.uint64).max:
+            raise OverflowError("Integer sequence is outside the HDF5 64-bit range.")
+        if minimum < 0:
+            if maximum > np.iinfo(np.int64).max:
+                raise OverflowError(
+                    "Integer sequence cannot fit in a single signed HDF5 64-bit dtype."
+                )
+            return np.asarray(values, dtype=np.int64)
+        dtype = np.uint64 if maximum > np.iinfo(np.int64).max else np.int64
+        return np.asarray(values, dtype=dtype)
+    return np.asarray(values)
+
+
 def _downcast_numeric_payload(payload):
     if isinstance(payload, bool):
         return payload
     if isinstance(payload, float):
         return np.float32(payload)
     if isinstance(payload, int):
-        return np.int32(payload)
+        if np.iinfo(np.int64).min <= payload <= np.iinfo(np.int64).max:
+            return np.int64(payload)
+        if 0 <= payload <= np.iinfo(np.uint64).max:
+            return np.uint64(payload)
+        raise OverflowError(f"Integer value is outside the HDF5 64-bit range: {payload}")
     if isinstance(payload, complex):
         return np.complex64(payload)
     if not isinstance(payload, np.ndarray):
@@ -231,10 +257,9 @@ def _downcast_numeric_payload(payload):
         return payload.astype(np.float32, copy=False)
     if payload.dtype.kind == "c":
         return payload.astype(np.complex64, copy=False)
-    if payload.dtype.kind == "i":
-        return payload.astype(np.int32, copy=False)
-    if payload.dtype.kind == "u":
-        return payload.astype(np.uint32, copy=False)
+    if payload.dtype.kind in {"i", "u"}:
+        # Preserve integer arrays rather than narrowing them without a range check.
+        return payload
     return payload
 
 
@@ -251,25 +276,12 @@ def _create_dataset(
             data=payload,
             dtype=h5py.string_dtype(encoding="utf-8"),
         )
-    try:
-        return group.create_dataset(
-            dataset_key,
-            data=payload,
-            **dict(h5_options or {}),
-        )
-    except (TypeError, ValueError):
-        return _create_fallback_dataset(group, dataset_key, payload)
-
-
-def _create_fallback_dataset(group: h5py.Group, dataset_key: str, payload):
+    options = dict(h5_options or {})
     if isinstance(payload, np.ndarray) and payload.dtype.kind in {"U", "O"}:
-        return group.create_dataset(
-            dataset_key,
-            data=np.asarray(payload, dtype=object),
-            dtype=h5py.string_dtype(encoding="utf-8"),
-        )
-    return group.create_dataset(
-        dataset_key,
-        data=str(payload),
-        dtype=h5py.string_dtype(encoding="utf-8"),
-    )
+        if all(isinstance(item, (str, bytes)) for item in payload.flat):
+            payload = np.asarray(payload, dtype=object)
+            options.setdefault("dtype", h5py.string_dtype(encoding="utf-8"))
+    try:
+        return group.create_dataset(dataset_key, data=payload, **options)
+    except (TypeError, ValueError) as exc:
+        raise type(exc)(f"Could not write HDF5 dataset '{dataset_key}': {exc}") from exc

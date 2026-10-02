@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -33,10 +34,20 @@ class FrameSequence:
         h5_fps: float,
         h5_low_percentile: float,
         h5_high_percentile: float,
+        *,
+        h5_source: h5py.Dataset | None = None,
     ) -> None:
         self.path = path
-        self.is_h5 = path.suffix.lower() in {".h5", ".hdf5", ".hdf"}
+        self.h5_source = h5_source
+        self.is_h5 = h5_source is not None or path.suffix.lower() in {
+            ".h5", ".hdf5", ".hdf"
+        }
         self.h5_dataset = h5_dataset.lstrip("/")
+        if h5_source is not None and h5_source.name.lstrip("/") != self.h5_dataset:
+            raise ValueError(
+                f"Supplied HDF5 dataset {h5_source.name!r} does not match "
+                f"the requested path {self.h5_dataset!r}."
+            )
         self.h5_frame_axis = int(h5_frame_axis)
         self.h5_low_percentile = float(h5_low_percentile)
         self.h5_high_percentile = float(h5_high_percentile)
@@ -46,14 +57,7 @@ class FrameSequence:
         if self.is_h5:
             if h5py is None:
                 raise RuntimeError("h5py est requis pour lire un fichier HDF5.")
-            with h5py.File(self.path, "r") as handle:
-                if self.h5_dataset not in handle:
-                    available = ", ".join(sorted(handle.keys()))
-                    raise RuntimeError(
-                        f"Dataset HDF5 introuvable : {self.h5_dataset}. "
-                        f"Clés disponibles : {available}"
-                    )
-                dataset = handle[self.h5_dataset]
+            with self._open_h5_dataset() as dataset:
                 if not isinstance(dataset, h5py.Dataset) or dataset.ndim != 3:
                     raise RuntimeError(
                         f"Le dataset {self.h5_dataset} doit être 3-D, forme trouvée : "
@@ -80,6 +84,21 @@ class FrameSequence:
             if not math.isfinite(self.fps) or self.fps <= 0:
                 self.fps = 25.0
 
+    @contextmanager
+    def _open_h5_dataset(self) -> Iterator[h5py.Dataset]:
+        if self.h5_source is not None:
+            yield self.h5_source
+            return
+        assert h5py is not None
+        with h5py.File(self.path, "r") as handle:
+            if self.h5_dataset not in handle:
+                available = ", ".join(sorted(handle.keys()))
+                raise RuntimeError(
+                    f"Dataset HDF5 introuvable : {self.h5_dataset}. "
+                    f"Clés disponibles : {available}"
+                )
+            yield handle[self.h5_dataset]
+
     def _slice_h5_frame(self, dataset: Any, index: int) -> np.ndarray:
         selector: list[Any] = [slice(None), slice(None), slice(None)]
         selector[self.h5_frame_axis] = int(index)
@@ -93,9 +112,7 @@ class FrameSequence:
         sample_count = min(max(self.frame_count, 1), 32)
         indices = np.linspace(0, max(0, self.frame_count - 1), sample_count).astype(int)
         samples: list[np.ndarray] = []
-        assert h5py is not None
-        with h5py.File(self.path, "r") as handle:
-            dataset = handle[self.h5_dataset]
+        with self._open_h5_dataset() as dataset:
             for index in np.unique(indices):
                 frame = self._slice_h5_frame(dataset, int(index))
                 values = frame[np.isfinite(frame)]
@@ -133,9 +150,7 @@ class FrameSequence:
     def iter_frames(self, max_frames: int | None = None) -> Iterator[np.ndarray]:
         limit = self.frame_count if max_frames is None else min(self.frame_count, max_frames)
         if self.is_h5:
-            assert h5py is not None
-            with h5py.File(self.path, "r") as handle:
-                dataset = handle[self.h5_dataset]
+            with self._open_h5_dataset() as dataset:
                 for index in range(limit):
                     yield self._h5_to_bgr_u8(self._slice_h5_frame(dataset, index))
             return
