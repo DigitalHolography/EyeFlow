@@ -30,10 +30,13 @@ def pack_quadrant_velocity_outputs(
         ("artery", artery_segments, schema.artery_per_beat),
         ("vein", vein_segments, schema.vein_per_beat),
     ):
-        if segments is None or np.asarray(segments.branch_ids).size == 0:
+        if (
+            segments is None
+            or np.asarray(segments.profile.topology.native.branch_ids).size == 0
+        ):
             continue
 
-        membership = quadrant_membership(segments.topology.prepared_topology)
+        membership = quadrant_membership(segments.profile.topology)
         result.update(
             _pack_region_velocity_outputs(
                 schema,
@@ -58,7 +61,7 @@ def _pack_region_velocity_outputs(
     membership: np.ndarray,
     metrics: dict[str, object],
 ) -> dict[str, object]:
-    segment_velocity = np.asarray(segments.projected_signal, dtype=np.float32)
+    segment_velocity = np.asarray(segments.profile.segment_signal, dtype=np.float32)
     if segment_velocity.ndim != 3:
         raise ValueError(
             "Segment velocity must have shape (radius, branch, frame), got "

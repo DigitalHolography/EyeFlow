@@ -45,8 +45,7 @@ class PerBeatRunnerTests(unittest.TestCase):
     def test_safe_segment_input_uses_public_masked_safe_velocity(self) -> None:
         safe_velocity = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
         result = SimpleNamespace(
-            branch_ids=np.asarray([1, 2, 3], dtype=np.int32),
-            full_profile_signal=safe_velocity,
+            profile=SimpleNamespace(segment_signal=safe_velocity),
         )
 
         actual = _safe_waveform_segment_input(result, include_segments=True)

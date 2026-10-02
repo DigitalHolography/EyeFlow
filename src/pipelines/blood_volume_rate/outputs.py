@@ -64,12 +64,15 @@ def pack_gradient_edge_outputs(
     )
     for vessel_name, velocity, gradient, paths in vessels:
         _validate_profile_segment_alignment(vessel_name, velocity, gradient)
+        velocity_profile = velocity.profile
         profile = _profile_dataset(
-            np.asarray(velocity.transverse_profiles_masked, dtype=np.float32),
+            np.asarray(velocity_profile.transverse.masked, dtype=np.float32),
             cycle_boundary_indexes,
             index_base=index_base,
             spatial_axis="x",
-            valid_segments=np.asarray(velocity.topology.valid_segments, dtype=bool),
+            valid_segments=np.asarray(
+                velocity_profile.topology.valid_segments, dtype=bool
+            ),
         )
         metrics_root = (
             f"Processing/SpatialGradientMetrics/{vessel_name}/"
@@ -79,7 +82,7 @@ def pack_gradient_edge_outputs(
         right_path = f"{metrics_root}/right_edge_index"
         left_value = gradient_products.outputs[left_path]
         right_value = gradient_products.outputs[right_path]
-        pixel_size_mm = float(velocity.profile_pixel_size_mm)
+        pixel_size_mm = float(velocity_profile.sample_spacing_mm)
         outputs[paths.dynamic_edges] = _gradient_edge_dataset(
             profile,
             left_value,
@@ -486,29 +489,13 @@ def _eps_output_type():
 
 
 def _validate_profile_segment_alignment(vessel_name, velocity, gradient) -> None:
-    for field in ("labels", "branch_ids"):
-        if not np.array_equal(
-            np.asarray(getattr(velocity, field)),
-            np.asarray(getattr(gradient, field)),
-        ):
-            raise RuntimeError(f"{vessel_name} segment {field} do not match.")
-    velocity_topology = velocity.topology
+    velocity_topology = velocity.profile.topology
     gradient_topology = gradient.topology
-    velocity_centers = np.asarray(velocity_topology.segment_centers_xy)
-    if not np.allclose(
-        velocity_centers,
-        np.asarray(gradient_topology.segment_centers_xy),
-        equal_nan=True,
+    if (
+        velocity_topology is not gradient_topology
+        and not velocity_topology.is_aligned_with(gradient_topology)
     ):
-        raise RuntimeError(f"{vessel_name} segment centers do not match.")
-    if not np.allclose(
-        np.asarray(velocity_topology.profile_rotation_degrees),
-        np.asarray(gradient_topology.profile_rotation_degrees),
-        equal_nan=True,
-    ):
-        raise RuntimeError(f"{vessel_name} segment rotations do not match.")
-    if velocity_topology.prepared_topology is not gradient_topology.prepared_topology:
-        raise RuntimeError(f"{vessel_name} analyses did not share prepared topology.")
+        raise RuntimeError(f"{vessel_name} profile segment topologies do not align.")
 
 
 def _metric_data(value) -> np.ndarray:

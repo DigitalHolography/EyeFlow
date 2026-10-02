@@ -72,17 +72,14 @@ def _prepare_vessel_velocity_maps_per_beat(
 ) -> np.ndarray | None:
     if segments is None:
         return None
-    if segments.segment_maps is None:
-        raise RuntimeError(
-            "Per-segment velocity maps were not retained. They must be "
-            "explicitly requested during waveform-velocity processing."
-        )
-    maps = np.asarray(segments.segment_maps)
+    profile = segments.profile
+    retained = profile.require_maps()
+    maps = np.asarray(retained.values)
     compact_arguments = (
         {
-            "segment_indexes": segments.segment_map_indexes,
-            "radius_count": int(segments.segment_masks.shape[0]),
-            "branch_count": int(segments.segment_masks.shape[1]),
+            "segment_indexes": retained.indexes,
+            "radius_count": profile.segment_shape[0],
+            "branch_count": profile.segment_shape[1],
         }
         if maps.ndim == 4
         else {}
@@ -240,7 +237,7 @@ def _pack_vessel_segment_maps(
                 "velocity_maps_per_beat must have shape "
                 "(x, y, time, beat, branch, radius)."
             )
-        masks = np.asarray(segments.segment_masks, dtype=bool)
+        masks = np.asarray(segments.profile.topology.rotated_masks, dtype=bool)
         expected_mask_shape = (
             maps_per_beat.shape[5],
             maps_per_beat.shape[4],
@@ -264,7 +261,7 @@ def _pack_vessel_segment_maps(
         )
 
     if paths.segments is not None:
-        masks = np.asarray(segments.segment_masks, dtype=bool)
+        masks = np.asarray(segments.profile.topology.rotated_masks, dtype=bool)
         if masks.ndim != 4:
             raise ValueError("segment masks must have shape (radius, branch, y, x).")
         serialized_masks = masks.transpose(3, 2, 1, 0)

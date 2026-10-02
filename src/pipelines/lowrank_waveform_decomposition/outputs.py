@@ -169,7 +169,7 @@ def _quadrant_membership(
         raise RuntimeError(
             f"Quadrant low-rank outputs require {vessel_name} segment geometry."
         )
-    membership = quadrant_membership(segments.topology.prepared_topology)
+    membership = quadrant_membership(segments.profile.topology)
     if membership.shape[1:] != waveforms.shape[2:]:
         raise ValueError(
             f"{vessel_name.capitalize()} quadrant membership shape "

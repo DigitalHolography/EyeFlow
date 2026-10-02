@@ -95,32 +95,22 @@ def test_total_masked_edges_flow_uses_centered_periodic_nine_point_window() -> N
 
 
 def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
-    prepared = object()
-    velocity_topology = SimpleNamespace(
+    topology = SimpleNamespace(
         valid_segments=np.ones((1, 1), dtype=bool),
-        segment_centers_xy=np.asarray([[[2.0, 3.0]]], dtype=np.float32),
-        profile_rotation_degrees=np.asarray([[17.0]], dtype=np.float32),
-        prepared_topology=prepared,
     )
     profiles = np.broadcast_to(
         np.asarray([0.0, 1.0, 4.0, 9.0, 16.0, 25.0], dtype=np.float32),
         (1, 1, 3, 6),
     ).copy()
     velocity_segments = SimpleNamespace(
-        labels=np.asarray([[1]], dtype=np.int32),
-        branch_ids=np.asarray([1], dtype=np.int32),
-        topology=velocity_topology,
-        transverse_profiles_masked=profiles,
-        profile_pixel_size_mm=0.02,
+        profile=SimpleNamespace(
+            topology=topology,
+            transverse=SimpleNamespace(masked=profiles),
+            sample_spacing_mm=0.02,
+        ),
     )
     gradient_segments = SimpleNamespace(
-        labels=velocity_segments.labels,
-        branch_ids=velocity_segments.branch_ids,
-        topology=SimpleNamespace(
-            segment_centers_xy=np.asarray([[[2.0, 3.0]]], dtype=np.float32),
-            profile_rotation_degrees=np.asarray([[17.0]], dtype=np.float32),
-            prepared_topology=prepared,
-        ),
+        topology=topology,
     )
     cycle_boundaries = np.asarray([0, 2], dtype=np.int32)
     profile_dataset = _profile_dataset(

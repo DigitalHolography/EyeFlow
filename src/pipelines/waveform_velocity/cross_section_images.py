@@ -15,18 +15,19 @@ def export_rotated_mean_pngs(
     vessel_folder: str,
 ) -> list[Path]:
     """Export every valid unmasked and masked rotated time-mean image."""
-    sample_counts = np.asarray(result.profile_sample_count, dtype=np.int32)
-    branch_ids = np.asarray(result.branch_ids, dtype=np.int32)
+    profile = result.profile
+    valid_segments = np.asarray(profile.topology.valid_segments, dtype=bool)
+    branch_ids = np.asarray(profile.topology.native.branch_ids, dtype=np.int32)
     paths: list[Path] = []
     variants = (
-        ("rotated_mean", result.rotated_mean_images),
-        ("rotated_mean_masked", result.rotated_mean_images_masked),
+        ("rotated_mean", profile.mean_images.unmasked),
+        ("rotated_mean_masked", profile.mean_images.masked),
     )
     for root_folder, variant_images in variants:
         images = np.asarray(variant_images, dtype=np.float32)
         for ring_index in range(images.shape[0]):
             for branch_index, branch_id in enumerate(branch_ids):
-                if sample_counts[ring_index, branch_index] <= 0:
+                if not valid_segments[ring_index, branch_index]:
                     continue
                 path = output.write_png(
                     images[ring_index, branch_index],

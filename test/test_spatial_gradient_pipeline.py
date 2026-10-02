@@ -61,9 +61,12 @@ class SpatialGradientPipelineTests(unittest.TestCase):
 
     def test_runner_owns_only_gradient_and_lumen_outputs(self) -> None:
         gradient_segments = SimpleNamespace(
-            labels=np.asarray([1]),
-            branch_ids=np.asarray([7]),
-            transverse_profiles_unmasked=np.ones((2, 1, 3), dtype=np.float32),
+            topology=SimpleNamespace(
+                native=SimpleNamespace(branch_ids=np.asarray([7]))
+            ),
+            transverse=SimpleNamespace(
+                unmasked=np.ones((2, 1, 3), dtype=np.float32)
+            ),
         )
         inputs = SimpleNamespace(
             holodoppler=SimpleNamespace(
