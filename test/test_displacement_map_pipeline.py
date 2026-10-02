@@ -25,6 +25,8 @@ from pipelines.displacement_map.runner import (
     VEIN_MASK_PATH,
     VESSEL_MASK_PATH,
     DisplacementMapArtifacts,
+    DisplacementMapInputs,
+    DisplacementMaskInput,
     DisplacementMapPipelineConfig,
     attach_displacement_segment_profiles,
     resolve_moment_dataset,
@@ -228,6 +230,68 @@ class DisplacementMapInputTests(unittest.TestCase):
 
 
 class DisplacementMapRunnerTests(unittest.TestCase):
+    def test_both_masks_keep_two_separate_videos_in_displacement_avi_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            hd_path = root / "scan_HD.h5"
+            manager = OutputManager(
+                HoloRunLayout.from_holo(root / "scan.holo", output_root=root / "outputs")
+            )
+            written: list[Path] = []
+
+            def fake_motion_map(config, *, analysis_mask_array, magnitude_video_path, h5_source):
+                self.assertEqual("/moment0", h5_source.name)
+                self.assertEqual((2, 4), analysis_mask_array.shape)
+                magnitude_video_path.write_bytes(b"fake avi")
+                written.append(magnitude_video_path)
+                field_path = config.output_dir / "displacement_field.npy"
+                np.save(field_path, np.zeros((3, 2, 4, 2), dtype=np.float32))
+                return {"displacement_field": field_path}
+
+            with (
+                h5py.File(hd_path, "w") as hd,
+                h5py.File(root / "work.h5", "w") as work_h5,
+            ):
+                moment = hd.create_dataset("moment0", data=np.ones((3, 2, 4), np.float32))
+                masks = tuple(
+                    DisplacementMaskInput(
+                        name=vessel,
+                        vessels=(vessel,),
+                        mask=np.ones((2, 4), dtype=bool),
+                        source=f"{vessel}_mask",
+                    )
+                    for vessel in ("artery", "vein")
+                )
+                ctx = PipelineContext(
+                    work_h5=work_h5,
+                    holodoppler_h5=hd,
+                    doppler_vision_h5=None,
+                    output_manager=manager,
+                )
+                with (
+                    patch(
+                        "pipelines.displacement_map.runner.load_displacement_map_inputs",
+                        return_value=DisplacementMapInputs(moment, masks, 10.0),
+                    ),
+                    patch(
+                        "pipelines.displacement_map.runner.create_retinal_motion_map",
+                        side_effect=fake_motion_map,
+                    ),
+                ):
+                    run_displacement_map(ctx)
+                artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
+                self.assertEqual({"artery", "vein"}, set(artifacts.field_paths_by_vessel))
+                artifacts.cleanup()
+
+            expected = [
+                manager.path_for(
+                    OutputType.AVI,
+                    f"displacement_maps/{vessel}_{MAGNITUDE_VIDEO_FILENAME}",
+                )
+                for vessel in ("artery", "vein")
+            ]
+            self.assertEqual(expected, written)
+
     def test_missing_optic_disc_prepares_only_artery_field(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -267,7 +331,7 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     field_value = 2.0
                 else:
                     self.fail("Unexpected displacement analysis mask.")
-                magnitude_video_path.write_bytes(b"fake mp4")
+                magnitude_video_path.write_bytes(b"fake avi")
                 field_path = config.output_dir / "displacement_field.npy"
                 np.save(
                     field_path,
@@ -305,11 +369,11 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     artifacts.cleanup()
 
             video_path = manager.path_for(
-                OutputType.MP4,
-                MAGNITUDE_VIDEO_FILENAME,
+                OutputType.AVI,
+                f"displacement_maps/{MAGNITUDE_VIDEO_FILENAME}",
             )
-            self.assertEqual(manager.layout.ef_dir / "mp4", video_path.parent)
-            self.assertEqual(b"fake mp4", video_path.read_bytes())
+            self.assertEqual(manager.layout.ef_dir / "avi" / "displacement_maps", video_path.parent)
+            self.assertEqual(b"fake avi", video_path.read_bytes())
 
 
 if __name__ == "__main__":

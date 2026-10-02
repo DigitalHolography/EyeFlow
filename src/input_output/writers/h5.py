@@ -1,7 +1,6 @@
 """Write EyeFlow runtime values into HDF5 files."""
 
 import json
-import re
 from pathlib import Path
 
 import h5py
@@ -185,14 +184,7 @@ def _scalar_text(value) -> str | None:
 
 
 def _project_version() -> str:
-    pyproject_path = Path(__file__).resolve().parents[3] / "pyproject.toml"
-    try:
-        pyproject_text = pyproject_path.read_text(encoding="utf-8")
-    except OSError:
-        pyproject_text = ""
-
-    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', pyproject_text)
-    return match.group(1) if match else (app_version() or "unknown")
+    return app_version() or "unknown"
 
 
 def _normalize_dataset_payload(data, ds_attrs):

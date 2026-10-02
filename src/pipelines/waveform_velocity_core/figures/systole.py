@@ -51,28 +51,17 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
         )
     )
     maxima, minima = _cycle_extrema(artery, peaks)
-    return [
-        _systole_plot(
-            writer,
-            "find_systoles_indices_artery.png",
-            ctx.time,
-            artery,
-            artery_deriv,
-            peaks,
-            maxima,
-            minima,
-        ),
-        _systole_plot(
-            writer,
-            "find_systoles_indices_vein.png",
-            ctx.time,
-            vein,
-            vein_deriv,
-            peaks,
-            maxima,
-            minima,
-        ),
-    ]
+    artery_path = _systole_plot(
+        writer, "find_systoles_indices_artery.png", ctx.time,
+        artery, artery_deriv, peaks, maxima, minima,
+    )
+    vein_path = _systole_plot(
+        writer, "find_systoles_indices_vein.png", ctx.time,
+        vein, vein_deriv, peaks, maxima, minima,
+    )
+    writer.register_artifact("systole", "artery", artery_path)
+    writer.register_artifact("systole", "vein", vein_path)
+    return [artery_path, vein_path]
 
 def _systole_plot(
     writer: FigureWriter,

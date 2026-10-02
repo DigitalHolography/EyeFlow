@@ -11,7 +11,7 @@ from pipeline_engine import (
     PipelineDescriptor,
 )
 
-_IGNORED_MODULES = {"utils"}
+_IGNORED_MODULES = {"utils", "shared"}
 _BASE_PIPELINE_PATHS = tuple(Path(path).resolve() for path in __path__)
 
 

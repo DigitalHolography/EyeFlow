@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import h5py
-import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.figure import Figure
 from PIL import Image
 
 from input_output.schema import EyeFlowOutputPaths
@@ -19,7 +19,7 @@ def generate_a4_report(
     output_h5_path: Path,
     output_dir: Path,
     folder_name: str,
-    png_dir: Path | None = None,
+    report_images: Mapping[tuple[str, str], Path] | None = None,
     hd_png_dir: Path | None = None,
     mask_dir: Path | None = None,
 ) -> Path:
@@ -35,7 +35,7 @@ def generate_a4_report(
         output_h5_path: Output H5 file from processing
         output_dir: Directory to save the PDF
         folder_name: Name of the folder (for title)
-        png_dir: Directory containing PNG outputs
+        report_images: Actual PNG paths registered by the figure exporters
         hd_png_dir: Directory containing HoloDoppler M0 PNGs
         mask_dir: Directory containing mask PNGs
 
@@ -44,7 +44,7 @@ def generate_a4_report(
     """
     output_h5_path = Path(output_h5_path)
     output_dir = Path(output_dir)
-    png_dir = Path(png_dir) if png_dir is not None else None
+    report_images = report_images or {}
     hd_png_dir = Path(hd_png_dir) if hd_png_dir is not None else None
     mask_dir = Path(mask_dir) if mask_dir is not None else None
 
@@ -58,7 +58,7 @@ def generate_a4_report(
     # Create the report
     with PdfPages(pdf_path) as pdf:
         # Create A4 figure (21cm x 29.7cm)
-        fig = plt.figure(figsize=(21/2.54, 29.7/2.54), dpi=150)
+        fig = Figure(figsize=(21/2.54, 29.7/2.54), dpi=150)
         fig.patch.set_facecolor('white')
         
         # Create grid layout: 16 rows, 2 columns
@@ -82,20 +82,22 @@ def generate_a4_report(
             # Top row: vessel map (4 rows high)
             ax1 = fig.add_subplot(gs[1:5, col])
             ax1.axis('off')
-            im1 = _try_load_vessel_image(png_dir, mask_dir, hd_png_dir, folder_name, vessel_type)
+            im1 = _try_load_vessel_image(
+                report_images, mask_dir, hd_png_dir, folder_name, vessel_type
+            )
             _show_report_image(ax1, im1)
             
             # Middle row: RI plot (3 rows high)
             ax2 = fig.add_subplot(gs[5:8, col])
             ax2.axis('off')
-            im2 = _try_load_ri_image(png_dir, folder_name, vessel_type)
+            im2 = _try_load_ri_image(report_images, vessel_type)
             if im2 is not None:
                 _show_report_image(ax2, im2, zoom=1.02, right_pad_fraction=0.04)
             
             # Bottom row: systole indices (3 rows high)
             ax3 = fig.add_subplot(gs[8:11, col])
             ax3.axis('off')
-            im3 = _try_load_systole_image(png_dir, folder_name, vessel_type)
+            im3 = _try_load_systole_image(report_images, vessel_type)
             if im3 is not None:
                 _show_report_image(ax3, im3, zoom=1.02, right_pad_fraction=0.04)
         
@@ -106,7 +108,6 @@ def generate_a4_report(
         
         # Save the figure
         pdf.savefig(fig, dpi=300)
-        plt.close(fig)
     
     return pdf_path
 
@@ -191,14 +192,12 @@ def _add_parameters_section(ax, parameters: dict[str, Any]) -> None:
                         fontsize=9, va='top')
 
 
-def _try_load_vessel_image(png_dir, mask_dir, hd_png_dir, folder_name, vessel_type):
-    """Try multiple patterns for vessel image."""
+def _try_load_vessel_image(report_images, mask_dir, hd_png_dir, folder_name, vessel_type):
+    """Prefer the exported vessel map, then legacy external HD source images."""
     possible_paths = []
-    
-    if png_dir:
-        possible_paths.append(
-            png_dir / f"{folder_name}_{vessel_type}_seg_map_bkg.png"
-        )
+    exported = report_images.get(("vessel_map", vessel_type))
+    if exported is not None:
+        possible_paths.append(Path(exported))
     
     if mask_dir:
         possible_paths.append(mask_dir / f"{folder_name}_M0_{vessel_type}.png")
@@ -211,24 +210,20 @@ def _try_load_vessel_image(png_dir, mask_dir, hd_png_dir, folder_name, vessel_ty
     return _load_or_placeholder(possible_paths)
 
 
-def _try_load_ri_image(png_dir, folder_name, vessel_type):
-    """Load the RI image when the PNG output directory is available."""
-    if not png_dir:
+def _try_load_ri_image(report_images, vessel_type):
+    """Load the RI image registered by its producer."""
+    path = report_images.get(("ri", vessel_type))
+    if path is None:
         return None
-    
-    return _load_or_placeholder(
-        [png_dir / f"{folder_name}_RI_v_{vessel_type}.png"]
-    )
+    return _load_or_placeholder([Path(path)])
 
 
-def _try_load_systole_image(png_dir, folder_name, vessel_type):
-    """Load the systole image when the PNG output directory is available."""
-    if not png_dir:
+def _try_load_systole_image(report_images, vessel_type):
+    """Load the systole image registered by its producer."""
+    path = report_images.get(("systole", vessel_type))
+    if path is None:
         return None
-    
-    return _load_or_placeholder(
-        [png_dir / f"{folder_name}_find_systoles_indices_{vessel_type}.png"]
-    )
+    return _load_or_placeholder([Path(path)])
 
 
 def _load_or_placeholder(paths: list[Path]) -> np.ndarray:

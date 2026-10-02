@@ -4,14 +4,16 @@ from time import perf_counter
 
 import h5py
 
+from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
 from utils.logger import Logger
 
 from .fitting import DEFAULT_WEIGHT_POWER, analyze_velocity_profiles
 
+_schema = EyeFlowOutputPaths.active()
 SOURCE_PATHS = {
-    "Artery": "/Processing/VelocityProfiles/Artery/Transversal/Masked/VelocityProfile/value",
-    "Vein": "/Processing/VelocityProfiles/Vein/Transversal/Masked/VelocityProfile/value",
+    "Artery": _schema.artery_velocity_profiles.transverse_velocity_profile_masked,
+    "Vein": _schema.vein_velocity_profiles.transverse_velocity_profile_masked,
 }
 OUTPUT_ROOT = "/Processing/VelocityProfileAnalysis"
 

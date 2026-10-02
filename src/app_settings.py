@@ -34,10 +34,6 @@ def _read_version_from_pyproject(pyproject_path: Path) -> str | None:
 
 
 def app_version() -> str | None:
-    env_version = os.getenv("EYEFLOW_VERSION", "").strip()
-    if env_version:
-        return env_version
-
     try:
         return importlib_metadata.version(APP_NAME)
     except importlib_metadata.PackageNotFoundError:

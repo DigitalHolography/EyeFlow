@@ -19,10 +19,42 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from input_output.output_manager import OutputType  # noqa: E402
-from input_output.writers.avi import AviArtifactWriter  # noqa: E402
+from input_output.writers.avi import AviArtifactWriter, write_magnitude_avi  # noqa: E402
 
 
 class AviWriterTests(unittest.TestCase):
+    def test_magnitude_avi_renders_grayscale_frames_and_mask(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "displacement_maps" / "artery_displacement_magnitude.avi"
+            magnitudes = np.zeros((2, 8, 8), dtype=np.float32)
+            magnitudes[0] = 5.0
+            magnitudes[1] = 10.0
+            valid_mask = np.ones((8, 8), dtype=bool)
+            valid_mask[:, :4] = False
+
+            display_range = write_magnitude_avi(
+                target,
+                magnitudes,
+                frame_count=2,
+                valid_mask=valid_mask,
+                fps=10.0,
+                normalization="fixed",
+                low_percentile=1.0,
+                high_percentile=99.5,
+                fixed_maximum=10.0,
+                gamma=1.0,
+                visualization_sigma=0.0,
+            )
+
+            contents = target.read_bytes()
+            frames = _jpeg_frames(contents)
+            self.assertEqual((0.0, 10.0), display_range)
+            self.assertEqual(b"RIFF", contents[:4])
+            self.assertEqual(2, len(frames))
+            self.assertLess(float(np.mean(frames[0][:, :3])), 5.0)
+            self.assertAlmostEqual(128.0, float(np.mean(frames[0][:, 5:])), delta=7.0)
+            self.assertAlmostEqual(255.0, float(np.mean(frames[1][:, 5:])), delta=7.0)
+
     def test_mjpeg_avi_has_index_metadata_and_decodable_frames(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output = _FakeOutput(Path(temp_dir))

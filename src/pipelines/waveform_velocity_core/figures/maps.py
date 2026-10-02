@@ -99,26 +99,25 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
                 label="RMS frequency (kHz)",
             )
         )
-        paths.extend(
-            [
-                _mask_background_map(
-                    writer,
-                    f_avg,
-                    ctx.artery_mask,
-                    "artery_seg_map_bkg.png",
-                    color="red",
-                    cmap=_matlab_vessel_colormap("artery"),
-                    values=velocity_values,
-                ),
-                _mask_background_map(
-                    writer,
-                    f_avg,
-                    ctx.vein_mask,
-                    "vein_seg_map_bkg.png",
-                    color="blue",
-                    cmap=_matlab_vessel_colormap("vein"),
-                    values=velocity_values,
-                ),
-            ]
+        artery_path = _mask_background_map(
+            writer,
+            f_avg,
+            ctx.artery_mask,
+            "artery_seg_map_bkg.png",
+            color="red",
+            cmap=_matlab_vessel_colormap("artery"),
+            values=velocity_values,
         )
+        vein_path = _mask_background_map(
+            writer,
+            f_avg,
+            ctx.vein_mask,
+            "vein_seg_map_bkg.png",
+            color="blue",
+            cmap=_matlab_vessel_colormap("vein"),
+            values=velocity_values,
+        )
+        writer.register_artifact("vessel_map", "artery", artery_path)
+        writer.register_artifact("vessel_map", "vein", vein_path)
+        paths.extend((artery_path, vein_path))
     return paths

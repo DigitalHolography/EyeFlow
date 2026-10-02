@@ -12,6 +12,7 @@ from calculations.blood_flow_velocity import (
 )
 from calculations.topology import AnnulusGeometry
 from input_output import EyeFlowOutputPaths
+from input_output.report_images import REPORT_IMAGES_STATE, ReportImagePaths
 from pipeline_engine.imports import (
     HolodopplerTiming,
     np,
@@ -476,7 +477,11 @@ def _export_pulse_pngs(ctx, context: WaveformVelocityCoreContext, per_beat_resul
     if not ctx.output.available:
         return
     with _logged_stage("pulse-analysis PNG export"):
-        export_pulse_pngs(ctx.output, context, per_beat_result)
+        report_images: ReportImagePaths = {}
+        export_pulse_pngs(
+            ctx.output, context, per_beat_result, report_images=report_images
+        )
+        ctx.state.set(REPORT_IMAGES_STATE, report_images)
 
 
 @contextmanager

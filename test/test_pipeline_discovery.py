@@ -25,6 +25,11 @@ class PipelineDiscoveryTests(unittest.TestCase):
         self.assertEqual("v0.11.0", app_version_dir_name("0.11.0"))
         self.assertEqual("v0.11.0", app_version_dir_name("v0.11.0"))
 
+    def test_shared_helpers_are_not_discovered_as_a_pipeline(self) -> None:
+        available, missing = pipeline_package.load_pipeline_catalog()
+        names = {descriptor.name for descriptor in [*available, *missing]}
+        self.assertNotIn("shared", names)
+
     def test_load_catalog_includes_runtime_pipeline_folder(self) -> None:
         original_env = os.environ.get(PIPELINES_DIR_ENV)
         original_package_path = list(pipeline_package.__path__)

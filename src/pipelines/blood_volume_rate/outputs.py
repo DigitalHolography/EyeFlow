@@ -14,11 +14,12 @@ from calculations.blood_volume_rate import (
     total_masked_edges_flow,
 )
 from calculations.math import nanmean_float32, nanmedian
-from input_output.profile_datasets import _profile_dataset, _profile_h5_options
+from input_output.profile_datasets import _profile_h5_options
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.eps import EpsArtifactWriter, write_eps_file
-from input_output.writers.png import PngArtifactWriter
+from input_output.writers.png import PngArtifactWriter, write_png_figure
 from pipeline_engine.base import DatasetValue
+from pipelines.shared.profile_datasets import _profile_dataset
 
 LUMEN_DIAMETER_BIN_WIDTH_MICRONS = 5.0
 LUMEN_DIAMETER_FIGURE_DPI = 320
@@ -263,10 +264,13 @@ def export_lumen_diameter_distributions(
         filename = f"lumen_diameter/{vessel}_lumen_diameter_distribution"
         png_path = output.path_for(_png_output_type(), f"{filename}.png")
         eps_path = output.path_for(_eps_output_type(), f"{filename}.eps")
-        png_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(png_path, dpi=LUMEN_DIAMETER_FIGURE_DPI)
-        write_eps_file(eps_path, fig, dpi=LUMEN_DIAMETER_FIGURE_DPI)
-        _close_figure(fig)
+        write_png_figure(
+            png_path,
+            fig,
+            dpi=LUMEN_DIAMETER_FIGURE_DPI,
+            bbox_inches=None,
+        )
+        write_eps_file(eps_path, fig, dpi=LUMEN_DIAMETER_FIGURE_DPI, close=True)
         paths.extend((png_path, eps_path))
     return paths
 
@@ -465,12 +469,6 @@ def _statistic_label(name: str, value: float) -> str:
     if not np.isfinite(value):
         return f"{name}: n/a"
     return f"{name}: {value:.1f} µm"
-
-
-def _close_figure(fig) -> None:
-    import matplotlib.pyplot as plt
-
-    plt.close(fig)
 
 
 def _png_output_type():

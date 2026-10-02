@@ -9,6 +9,8 @@ import h5py
 import numpy as np
 
 from calculations.math.temporal_median import CenteredMedianBuffer
+from input_output.writers.avi import write_magnitude_avi
+from input_output.writers.png import write_png_file
 
 try:
     import cv2
@@ -21,7 +23,7 @@ except ImportError:
     tqdm = None
 
 from .constants import PDE_REGISTRATION_METHODS
-from .outputs import OutputCaches, select_display_range, write_magnitude_video
+from .outputs import OutputCaches
 from .parameters import MotionMapConfig, PhotometricConfig
 from .preprocessing import (
     photometric_confidence,
@@ -95,7 +97,7 @@ def create_retinal_motion_map(
         confidence_floor=float(args.photometric_confidence_floor),
         dark_percentile=float(args.photometric_dark_percentile),
     )
-    cv2.imwrite(str(args.output_dir / "analysis_mask.png"), analysis_mask)
+    write_png_file(args.output_dir / "analysis_mask.png", analysis_mask)
 
     print("Calcul de la référence moyenne...")
     reference_raw, actual_reference_count = compute_mean_reference(sequence, args.max_frames)
@@ -106,16 +108,16 @@ def create_retinal_motion_map(
         reference_raw, photometric_config, valid_analysis, args.structure_edge_weight
     )
 
-    cv2.imwrite(
-        str(args.output_dir / "reference_mean.png"),
+    write_png_file(
+        args.output_dir / "reference_mean.png",
         np.round(np.clip(reference_raw, 0.0, 1.0) * 255.0).astype(np.uint8),
     )
-    cv2.imwrite(
-        str(args.output_dir / "reference_registration.png"),
+    write_png_file(
+        args.output_dir / "reference_registration.png",
         np.round(np.clip(reference, 0.0, 1.0) * 255.0).astype(np.uint8),
     )
-    cv2.imwrite(
-        str(args.output_dir / "registration_confidence.png"),
+    write_png_file(
+        args.output_dir / "registration_confidence.png",
         np.round(np.clip(confidence, 0.0, 1.0) * 255.0).astype(np.uint8),
     )
 
@@ -190,26 +192,19 @@ def create_retinal_motion_map(
         progress.close()
         caches.flush()
 
-    display_minimum, display_maximum = select_display_range(
-        caches,
-        args.normalization,
-        args.low_percentile,
-        args.high_percentile,
-        args.fixed_max_px,
-    )
-    output_video = magnitude_video_path or (args.output_dir / "displacement_magnitude.mp4")
-    output_video.parent.mkdir(parents=True, exist_ok=True)
-    write_magnitude_video(
-        caches,
+    output_video = magnitude_video_path or (args.output_dir / "displacement_magnitude.avi")
+    display_minimum, display_maximum = write_magnitude_avi(
         output_video,
-        args.codec,
-        sequence.fps,
-        (sequence.width, sequence.height),
-        display_minimum,
-        display_maximum,
-        args.gamma,
-        args.visualization_sigma,
-        analysis_mask > 0,
+        caches.magnitude,
+        frame_count=caches.count,
+        valid_mask=analysis_mask > 0,
+        fps=sequence.fps,
+        normalization=args.normalization,
+        low_percentile=args.low_percentile,
+        high_percentile=args.high_percentile,
+        fixed_maximum=args.fixed_max_px,
+        gamma=args.gamma,
+        visualization_sigma=args.visualization_sigma,
     )
 
     metadata = {

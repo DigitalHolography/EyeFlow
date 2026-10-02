@@ -8,14 +8,14 @@ from scipy.signal import find_peaks
 
 from calculations.math import nanmean_float32
 from calculations.topology import dilate_segment_masks, interpolate_profiles_per_beat
-from input_output.profile_datasets import (
-    _profile_dataset,
-    _profile_h5_options,
-    _temporally_meaned_profile_dataset,
-)
+from input_output.profile_datasets import _profile_h5_options
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 from pipelines.displacement_map.constants import registration_method_output_name
+from pipelines.shared.profile_datasets import (
+    _profile_dataset,
+    _temporally_meaned_profile_dataset,
+)
 
 _PROFILE_MASK_DILATION_ITERATIONS = 10
 _DISPLACEMENT_PROFILE_ROOT = "Processing/Displacement/Profiles"

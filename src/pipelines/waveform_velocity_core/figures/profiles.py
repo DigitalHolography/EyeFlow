@@ -113,20 +113,14 @@ def _positive_focused_limits(values: np.ndarray) -> tuple[float, float]:
     return min(0.0, max(np.min(finite), -0.25 * upper)), upper
 
 
-def _artifact_path(writer, suffix: str) -> Path:
-    from input_output.output_manager import OutputType
-
-    filename = f"{PROFILE_FOLDER}/{writer.stem}_{suffix}"
-    path = writer.output.path_for(OutputType.PNG, filename)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
-
-
 def _save_figure(writer, fig, suffix: str) -> Path:
-    path = _artifact_path(writer, suffix)
-    fig.savefig(path, dpi=120, bbox_inches="tight")
-    _plt().close(fig)
-    return path
+    return writer.savefig(
+        fig,
+        suffix,
+        dpi=120,
+        bbox_inches="tight",
+        subfolder=PROFILE_FOLDER,
+    )
 
 
 def _nanmedian(values: np.ndarray, *, axis):

@@ -16,13 +16,11 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
+from input_output.writers.avi import select_display_range  # noqa: E402
 from pipelines.displacement_map.constants import (  # noqa: E402
     registration_method_output_name,
 )
-from pipelines.displacement_map.outputs import (  # noqa: E402
-    OutputCaches,
-    select_display_range,
-)
+from pipelines.displacement_map.outputs import OutputCaches  # noqa: E402
 from pipelines.waveform_velocity.profiles import (  # noqa: E402
     pack_cross_section_displacement_profile_outputs,
     pack_displacement_magnitude_outputs,
@@ -90,7 +88,10 @@ class DisplacementOutputTests(unittest.TestCase):
                     )
                 self.assertEqual(
                     (2.0, 52.0),
-                    select_display_range(cache, "global-minmax", 1.0, 99.0, 5.0),
+                    select_display_range(
+                        cache.magnitude, cache.count, cache.valid_mask,
+                        "global-minmax", 1.0, 99.0, 5.0,
+                    ),
                 )
                 expected = tuple(
                     float(value)
@@ -101,7 +102,10 @@ class DisplacementOutputTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     expected,
-                    select_display_range(cache, "percentile", 25.0, 75.0, 5.0),
+                    select_display_range(
+                        cache.magnitude, cache.count, cache.valid_mask,
+                        "percentile", 25.0, 75.0, 5.0,
+                    ),
                 )
             finally:
                 cache.close()

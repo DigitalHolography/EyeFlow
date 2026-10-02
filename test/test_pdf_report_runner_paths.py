@@ -18,6 +18,7 @@ if str(SRC_DIR) not in sys.path:
 
 from input_output.holo_run_layout import HoloRunLayout  # noqa: E402
 from input_output.output_manager import OutputManager, OutputType  # noqa: E402
+from input_output.report_images import REPORT_IMAGES_STATE  # noqa: E402
 from input_output.reports.pdf_report import _extract_parameters_from_h5  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from pipelines.pdf_report.runner import run_pdf_report  # noqa: E402
@@ -35,9 +36,16 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                 HoloRunLayout.from_holo(holo_path, output_root=output_root)
             )
             output_h5_path = manager.path_for(OutputType.H5)
-            (manager.layout.ef_dir / "png").mkdir(parents=True)
+            report_image = manager.path_for(OutputType.PNG, "report-map.png")
+            report_image.parent.mkdir(parents=True)
             (hd_h5_path.parent.parent / "png").mkdir(parents=True)
             ctx = _fake_context(manager, output_h5_path, hd_h5_path)
+            ctx.state = SimpleNamespace(
+                get=lambda key, default=None: (
+                    {("vessel_map", "artery"): report_image}
+                    if key == REPORT_IMAGES_STATE else default
+                )
+            )
 
             def fake_generate_a4_report(**kwargs):
                 return kwargs["output_dir"] / f"{kwargs['folder_name']}_report.pdf"
@@ -52,7 +60,9 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             self.assertEqual(output_h5_path, kwargs["output_h5_path"])
             self.assertEqual("scan", kwargs["folder_name"])
             self.assertEqual(manager.layout.ef_dir / "pdf", kwargs["output_dir"])
-            self.assertEqual(manager.layout.ef_dir / "png", kwargs["png_dir"])
+            self.assertEqual(
+                {("vessel_map", "artery"): report_image}, kwargs["report_images"]
+            )
             self.assertEqual(hd_h5_path.parent.parent / "png", kwargs["hd_png_dir"])
             self.assertNotIn("_HD_output_EF", str(kwargs["output_dir"]))
             self.assertIsNone(result)

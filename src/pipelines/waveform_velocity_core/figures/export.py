@@ -89,6 +89,8 @@ def export_pulse_pngs(
     output,
     context: WaveformVelocityCoreContext,
     per_beat_result: PerBeatAnalysisResult,
+    *,
+    report_images: dict[tuple[str, str], Path] | None = None,
 ) -> list[str]:
     """Export core pulse-analysis PNGs for a waveform velocity run."""
 
@@ -127,4 +129,6 @@ def export_pulse_pngs(
     for exporter in EXPORTERS:
         paths.extend(exporter(writer, pulse_context))
     paths.extend(export_cross_section_profile_artifacts(writer, context))
+    if report_images is not None:
+        report_images.update(writer.artifacts)
     return [str(path) for path in paths]

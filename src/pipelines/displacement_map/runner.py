@@ -20,7 +20,8 @@ from .parameters import MotionMapConfig
 from .segments import analyze_displacement_segments
 
 DISPLACEMENT_MAP_STATE = "displacement_map_artifacts"
-MAGNITUDE_VIDEO_FILENAME = "displacement_magnitude.mp4"
+MAGNITUDE_VIDEO_FILENAME = "displacement_magnitude.avi"
+DISPLACEMENT_AVI_SUBFOLDER = "displacement_maps"
 DEFAULT_MOMENT_PATH = "moment0"
 DEFAULT_FPS = 25.0
 
@@ -182,7 +183,10 @@ def run_displacement_map(
                 if len(inputs.masks) == 1
                 else f"{mask_input.name}_{MAGNITUDE_VIDEO_FILENAME}"
             )
-            output_video = ctx.output.path_for(OutputType.MP4, video_filename)
+            output_video = ctx.output.path_for(
+                OutputType.AVI,
+                f"{DISPLACEMENT_AVI_SUBFOLDER}/{video_filename}",
+            )
             output_video.parent.mkdir(parents=True, exist_ok=True)
             algorithm_config = MotionMapConfig(
                 input=Path(source_filename),

@@ -16,7 +16,7 @@ from calculations.math.spatial_gradient import (
     unsharpen,
 )
 from calculations.segment_profiles import analyze_segment_profiles
-from input_output.profile_datasets import (
+from pipelines.shared.profile_datasets import (
     _profile_dataset,
     _temporally_meaned_profile_dataset,
 )

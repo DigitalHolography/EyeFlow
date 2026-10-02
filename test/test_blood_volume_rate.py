@@ -18,7 +18,6 @@ from calculations.math import nanmean_float32
 from calculations.topology import AnnulusGeometry
 from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager
-from input_output.profile_datasets import _profile_dataset
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue
 from pipelines.blood_volume_rate.outputs import (
@@ -31,6 +30,7 @@ from pipelines.blood_volume_rate.outputs import (
     pack_gradient_edge_outputs,
     pack_mask_derived_outputs,
 )
+from pipelines.shared.profile_datasets import _profile_dataset
 
 
 def test_circular_lumen_flow_supports_dynamic_and_static_geometry() -> None:

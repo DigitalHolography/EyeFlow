@@ -19,17 +19,19 @@ class FigureArtifactWriter:
         return path
 
     def save_figure(self, fig, suffix: str, *, dpi: int = 150) -> Path:
-        path = write_eps_file(self.path(suffix), fig, dpi=dpi)
-        _close_figure(fig)
-        return path
+        return write_eps_file(self.path(suffix), fig, dpi=dpi, close=True)
 
 
-def write_eps_file(path: str | Path, fig, *, dpi: int = 150) -> Path:
+def write_eps_file(path: str | Path, fig, *, dpi: int = 150, close: bool = False) -> Path:
     """Save a Matplotlib figure as EPS, creating parent directories."""
 
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(target, format="eps", dpi=dpi)
+    try:
+        fig.savefig(target, format="eps", dpi=dpi)
+    finally:
+        if close:
+            _close_figure(fig)
     return target
 
 

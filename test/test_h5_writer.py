@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import h5py
 import numpy as np
@@ -21,10 +22,22 @@ from input_output.writers.h5 import (  # noqa: E402
     set_attr_safe,
     write_value_dataset,
 )
+from app_settings import app_version  # noqa: E402
 from pipeline_engine.base import DatasetValue  # noqa: E402
 
 
 class H5WriterTests(unittest.TestCase):
+    def test_output_version_uses_real_package_version_not_environment_override(self) -> None:
+        with patch.dict("os.environ", {"EYEFLOW_VERSION": "9.9-test"}):
+            with h5py.File("version_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
+                initialize_output_h5(h5file)
+                self.assertEqual(_pyproject_version(), app_version())
+                self.assertEqual(_pyproject_version(), h5file.attrs["eyeflow_version"])
+                self.assertEqual(
+                    _pyproject_version(),
+                    json.loads(_read_scalar_string(h5file["app_versions"]))["EF_version"],
+                )
+
     def test_integer_values_are_not_narrowed_out_of_range(self) -> None:
         with h5py.File("integer_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
             signed = np.array([2**40, -(2**40)], dtype=np.int64)

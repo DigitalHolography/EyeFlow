@@ -12,9 +12,16 @@ class FigureArtifactWriter:
     def __init__(self, output, stem: str | None = None) -> None:
         self.output = output
         self.stem = str(stem) if stem else _output_stem(output)
+        self.artifacts: dict[tuple[str, str], Path] = {}
 
-    def path(self, suffix: str) -> Path:
+    def register_artifact(self, kind: str, vessel: str, path: Path) -> None:
+        """Record the actual PNG path for a downstream consumer."""
+        self.artifacts[(kind, vessel)] = Path(path)
+
+    def path(self, suffix: str, *, subfolder: str | None = None) -> Path:
         filename = f"{self.stem}_{suffix}"
+        if subfolder:
+            filename = f"{subfolder}/{filename}"
         path = self.output.path_for(_png_output_type(), filename)
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
@@ -30,11 +37,15 @@ class FigureArtifactWriter:
         *,
         dpi: int = 150,
         bbox_inches="tight",
+        subfolder: str | None = None,
     ) -> Path:
-        path = self.path(suffix)
-        fig.savefig(path, dpi=dpi, bbox_inches=bbox_inches)
-        _close_figure(fig)
-        return path
+        return write_png_figure(
+            self.path(suffix, subfolder=subfolder),
+            fig,
+            dpi=dpi,
+            bbox_inches=bbox_inches,
+            close=True,
+        )
 
     def save_image(self, image, suffix: str) -> Path:
         return self.save_array(image, suffix)
@@ -46,13 +57,34 @@ class FigureArtifactWriter:
         *,
         dpi: int = 150,
         bbox_inches="tight",
+        subfolder: str | None = None,
     ) -> Path:
         return self.save_figure(
             fig,
             suffix,
             dpi=dpi,
             bbox_inches=bbox_inches,
+            subfolder=subfolder,
         )
+
+
+def write_png_figure(
+    path: str | Path,
+    fig,
+    *,
+    dpi: int = 150,
+    bbox_inches="tight",
+    close: bool = False,
+) -> Path:
+    """Save a Matplotlib figure to PNG at an explicitly chosen path."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fig.savefig(target, dpi=dpi, bbox_inches=bbox_inches)
+    finally:
+        if close:
+            _close_figure(fig)
+    return target
 
 
 def write_png_file(path: str | Path, image) -> Path:

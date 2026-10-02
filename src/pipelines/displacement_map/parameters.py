@@ -45,7 +45,6 @@ class MotionMapConfig:
     fixed_max_px: float = 3.0
     gamma: float = 1.0
     visualization_sigma: float = 0.0
-    codec: str = "mp4v"
 
     def __post_init__(self) -> None:
         if self.iterations <= 0:
