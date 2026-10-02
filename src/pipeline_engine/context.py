@@ -288,12 +288,6 @@ class PipelineOutput:
     def open_h5(self, filename: str | None = None, mode: str = "w"):
         return self._manager().open_h5(filename, mode)
 
-    def write_sidecar(self, output, output_type, filename: str | None = None):
-        return self._manager().write_sidecar(output, output_type, filename)
-
-    def write_json(self, output, filename: str | None = None):
-        return self._manager().write_json(output, filename)
-
     def write_png(self, output, filename: str | None = None):
         return self._manager().write_png(output, filename)
 

@@ -64,8 +64,6 @@ def set_attr_safe(h5obj: h5py.File | h5py.Group | h5py.Dataset, key: str, value)
 
 
 def write_value_dataset(group: h5py.Group, key: str, value) -> None:
-    from pipeline_engine import DatasetValue
-
     ds_attrs = None
     h5_options = None
     data = value
@@ -74,9 +72,6 @@ def write_value_dataset(group: h5py.Group, key: str, value) -> None:
         data = value.data
         ds_attrs = value.attrs
         h5_options = getattr(value, "h5_options", None)
-    elif isinstance(value, DatasetValue):
-        data = value.data
-        ds_attrs = value.attrs
     elif isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
         data, ds_attrs = value
 
@@ -254,12 +249,6 @@ def _create_dataset(
         return group.create_dataset(
             dataset_key,
             data=payload,
-            dtype=h5py.string_dtype(encoding="utf-8"),
-        )
-    if isinstance(payload, (list, tuple)) and all(isinstance(item, str) for item in payload):
-        return group.create_dataset(
-            dataset_key,
-            data=np.asarray(payload, dtype=object),
             dtype=h5py.string_dtype(encoding="utf-8"),
         )
     try:

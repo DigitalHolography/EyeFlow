@@ -24,16 +24,6 @@ def pack_retinal_velocity_outputs(
             unit="s",
         ),
     }
-    if paths.velocity_map_avg is not None:
-        metrics[paths.velocity_map_avg] = metric_value(
-            velocity_analysis["velocity_map_avg"],
-            unit="mm/s",
-        )
-    if paths.retinal_velocity_array is not None:
-        metrics[paths.retinal_velocity_array] = metric_value(
-            velocity_analysis["velocity_map"],
-            unit="mm/s",
-        )
     heartbeat = velocity_analysis.get("_heartbeat_analysis_result")
     spectral = getattr(heartbeat, "spectral", None)
     if spectral is not None:

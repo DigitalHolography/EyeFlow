@@ -25,8 +25,6 @@ class SourceFileLayout:
 class TypedSource:
     """Thin typed facade over one raw HDF5 reader and its sidecar config."""
 
-    layout: SourceFileLayout
-
     def __init__(self, reader, config: dict[str, object] | None = None) -> None:
         self._reader = reader
         self._config = dict(config or {})
@@ -34,9 +32,6 @@ class TypedSource:
     @property
     def filename(self) -> str | None:
         return self._reader.filename
-
-    def require(self) -> None:
-        self._reader.require()
 
     def _array(
         self,
@@ -64,9 +59,6 @@ class TypedSource:
         if not isinstance(source, dict):
             return default
         return source.get(key, default)
-
-    def config_value(self, section: str, key: str, default=None):
-        return self._config_value(section, key, default)
 
 
 def scalar_from_value(value):

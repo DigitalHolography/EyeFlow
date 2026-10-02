@@ -6,13 +6,12 @@ from pathlib import Path
 
 from .archives import reset_output_dir
 from .holo_run_layout import HoloRunLayout
-from .writers import open_h5, write_json_file, write_png_file
+from .writers import open_h5, write_png_file
 
 
 class OutputType(Enum):
     H5 = "h5"
     PNG = "png"
-    JSON = "json"
     MP4 = "mp4"
     AVI = "avi"
     PDF = "pdf"
@@ -45,33 +44,12 @@ class OutputManager:
         path.parent.mkdir(parents=True, exist_ok=True)
         return open_h5(path, mode)
 
-    def write_sidecar(
-        self,
-        output,
-        output_type: OutputType,
-        filename: str | None = None,
-    ) -> Path:
-        if output_type is OutputType.JSON:
-            return write_json_file(self.path_for(output_type, filename), output)
-        if output_type is OutputType.PNG:
-            return write_png_file(self.path_for(output_type, filename), output)
-        if output_type is OutputType.H5:
-            raise NotImplementedError("Use open_h5() for session-based H5 output.")
-        raise NotImplementedError(
-            f"Output writer for {output_type.value!r} is not implemented yet."
-        )
-
-    def write_json(self, output, filename: str | None = None) -> Path:
-        return self.write_sidecar(output, OutputType.JSON, filename)
-
     def write_png(self, output, filename: str | None = None) -> Path:
-        return self.write_sidecar(output, OutputType.PNG, filename)
+        return write_png_file(self.path_for(OutputType.PNG, filename), output)
 
     def _filename_for(self, output_type: OutputType, filename: str | None) -> str:
         if filename:
             return filename
         if output_type is OutputType.H5:
             return f"{self.layout.stem}_EF.h5"
-        if output_type is OutputType.JSON:
-            return f"{self.layout.stem}.json"
         return self.layout.stem

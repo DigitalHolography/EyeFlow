@@ -23,9 +23,6 @@ class FigureArtifactWriter:
         _close_figure(fig)
         return path
 
-    def savefig(self, fig, suffix: str, *, dpi: int = 150) -> Path:
-        return self.save_figure(fig, suffix, dpi=dpi)
-
 
 def write_eps_file(path: str | Path, fig, *, dpi: int = 150) -> Path:
     """Save a Matplotlib figure as EPS, creating parent directories."""
@@ -59,5 +56,5 @@ def _eps_output_type():
     return OutputType.EPS
 
 
-__all__ = ["EpsArtifactWriter", "FigureArtifactWriter", "write_eps_file"]
+__all__ = ["EpsArtifactWriter", "write_eps_file"]
 
