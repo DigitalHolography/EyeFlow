@@ -224,6 +224,58 @@ class ScratchAndSchemaTests(unittest.TestCase):
         ):
             np.testing.assert_array_equal(buffered[key], retained[key])
 
+    def test_disabled_vein_keeps_artery_background_and_returns_nan_signals(
+        self,
+    ) -> None:
+        rng = np.random.default_rng(19)
+        moment0 = (1.0 + rng.random((3, 16, 16))).astype(np.float32)
+        moment2 = (2.0 + rng.random((3, 16, 16))).astype(np.float32)
+        artery = np.zeros((16, 16), dtype=bool)
+        source_vein = np.zeros_like(artery)
+        artery[6, 6] = True
+        source_vein[9, 9] = True
+        background = artery | source_vein
+
+        with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
+            expected = run_chunked_velocity_estimator(
+                moment0=moment0,
+                moment2=moment2,
+                artery_mask=artery,
+                vein_mask=source_vein,
+                optic_disc_center=(8.0, 8.0),
+                local_background_dist=1,
+                scratch_h5=h5,
+                retain_velocity_video=False,
+            )
+        with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as h5:
+            actual = run_chunked_velocity_estimator(
+                moment0=moment0,
+                moment2=moment2,
+                artery_mask=artery,
+                vein_mask=np.zeros_like(source_vein),
+                background_mask=background,
+                optic_disc_center=(8.0, 8.0),
+                local_background_dist=1,
+                scratch_h5=h5,
+                retain_velocity_video=False,
+            )
+
+        np.testing.assert_array_equal(
+            actual["retinal_artery_velocity_signal"],
+            expected["retinal_artery_velocity_signal"],
+        )
+        np.testing.assert_array_equal(
+            actual["velocity_map_avg"],
+            expected["velocity_map_avg"],
+        )
+        for key in (
+            "retinal_vein_velocity_signal",
+            "retinal_vein_fRMS_signal",
+            "retinal_vein_fRMS_bkg_signal",
+            "retinal_vein_deltafRMS_signal",
+        ):
+            self.assertTrue(np.all(np.isnan(actual[key])))
+
     def test_velocity_estimator_is_independent_of_frame_chunk_size(self) -> None:
         rng = np.random.default_rng(10)
         shape = (17, 20, 18)
@@ -336,8 +388,6 @@ class ScratchAndSchemaTests(unittest.TestCase):
             "Processing/Velocity/segments/Vein/BandLimited/value",
             schema.vein_segments.velocity_signal_band_limited,
         )
-        self.assertIsNone(schema.analysis.retinal_velocity_array)
-        self.assertIsNone(schema.analysis.velocity_map_avg)
         self.assertTrue(
             schema.analysis.fRMS_avg.startswith("Processing/FrequencyMaps/")
         )
@@ -350,9 +400,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
             "retinal_vein_velocity_signal": np.arange(8, dtype=np.float32),
             "retinal_artery_velocity_signal_filtered": np.arange(8, dtype=np.float32),
             "retinal_vein_velocity_signal_filtered": np.arange(8, dtype=np.float32),
-            "retinal_artery_velocity_signal_filtered_perbeat": np.ones((1, 8)),
             "velocity_map": np.ones((8, 4, 4)),
-            "velocity_map_avg": np.ones((4, 4)),
             "fRMS_avg": np.ones((4, 4)),
             "fRMS_bkg_avg": np.ones((4, 4)),
             "beat_indices": np.asarray([1, 5], dtype=np.int32),
@@ -372,16 +420,11 @@ class ScratchAndSchemaTests(unittest.TestCase):
             {
                 schema.analysis.retinal_artery_velocity_signal,
                 schema.analysis.retinal_vein_velocity_signal,
-                schema.analysis.retinal_artery_velocity_signal_filtered,
-                schema.analysis.retinal_vein_velocity_signal_filtered,
+                schema.analysis.retinal_artery_velocity_signal_band_limited,
+                schema.analysis.retinal_vein_velocity_signal_band_limited,
             },
             set(velocity),
         )
-
-        slim_schema = EyeFlowOutputPaths.active("slim_temp")
-        slim_shared = pack_retinal_velocity_outputs(analysis, slim_schema)
-        _, velocity_map_attrs = slim_shared[slim_schema.analysis.velocity_map_avg]
-        self.assertEqual("mm/s", velocity_map_attrs["unit"])
 
 
 if __name__ == "__main__":

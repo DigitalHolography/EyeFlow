@@ -17,7 +17,6 @@ HD_MOMENT2_PATH = "moment2"
 HD_MOMENT0_PATHS = (HD_MOMENT0_PATH, "M0")
 HD_MOMENT2_PATHS = (HD_MOMENT2_PATH, "M2")
 HD_MOMENT0_FLAT_FIELD_PATHS = ("moment0ff", "M0FF")
-HD_MOMENT2_FLAT_FIELD_PATHS = ("moment2ff", "M2FF")
 HD_OUTPUT_PASSTHROUGH_PATHS = (
     ("registration", "Meta/registration"),
     ("zernike_coefs_radians", "zernike_coefs_radians"),
@@ -39,17 +38,9 @@ HOLODOPPLER_LAYOUT = SourceFileLayout(
 class HolodopplerSource(TypedSource):
     """Typed access to the Holodoppler HDF5 file and sidecar config."""
 
-    layout = HOLODOPPLER_LAYOUT
-
     @classmethod
     def from_context(cls, ctx) -> HolodopplerSource:
         return cls(ctx.inputs.hd.h5, ctx.inputs.hd.config)
-
-    def moment0(self) -> np.ndarray:
-        return self._moment(HD_MOMENT0_PATHS)
-
-    def moment2(self) -> np.ndarray:
-        return self._moment(HD_MOMENT2_PATHS)
 
     def moment0_dataset(self):
         return self._moment_dataset(HD_MOMENT0_PATHS)
@@ -60,10 +51,6 @@ class HolodopplerSource(TypedSource):
     def moment0_flat_field_dataset(self):
         """Return a precomputed flat-field moment, when exported by Holodoppler."""
         return self._optional_moment_dataset(HD_MOMENT0_FLAT_FIELD_PATHS)
-
-    def moment2_flat_field_dataset(self):
-        """Return a precomputed flat-field moment, when exported by Holodoppler."""
-        return self._optional_moment_dataset(HD_MOMENT2_FLAT_FIELD_PATHS)
 
     def timing(self) -> HolodopplerTiming:
         sampling_freq = self._scalar_h5_or_config(
@@ -113,21 +100,6 @@ class HolodopplerSource(TypedSource):
             timing=self.timing(),
             pixel_pitch=self.pixel_pitch(),
         )
-
-    def _moment(self, paths: tuple[str, ...]) -> np.ndarray:
-        path = self._first_path(paths)
-        if path is None:
-            raise KeyError(
-                "Missing Holodoppler moment dataset. Tried: "
-                + ", ".join(repr(candidate) for candidate in paths)
-            )
-        squeezed = np.squeeze(np.asarray(self._array(path, dtype=np.float32)))
-        if squeezed.ndim != 3:
-            raise ValueError(
-                "Holodoppler moment datasets must become 3-D after squeeze, "
-                f"got shape {squeezed.shape}."
-            )
-        return squeezed
 
     def _moment_dataset(self, paths: tuple[str, ...]):
         path = self._first_path(paths)

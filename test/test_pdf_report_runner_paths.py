@@ -49,6 +49,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                 result = run_pdf_report(ctx)
 
             kwargs = generate.call_args.kwargs
+            self.assertEqual(output_h5_path, kwargs["output_h5_path"])
             self.assertEqual("scan", kwargs["folder_name"])
             self.assertEqual(manager.layout.ef_dir / "pdf", kwargs["output_dir"])
             self.assertEqual(manager.layout.ef_dir / "png", kwargs["png_dir"])
@@ -78,7 +79,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                     data=np.asarray([0.2, 0.4]),
                 )
 
-            parameters = _extract_parameters_from_h5([path])
+            parameters = _extract_parameters_from_h5(path)
 
         self.assertEqual(4.0, parameters["Average_Arterial_Velocity"]["value"])
         self.assertAlmostEqual(96.795, parameters["heart_beat"]["value"])

@@ -49,6 +49,29 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         self.assertFalse(empty.stages.section[10, 13])
         self.assertTrue(empty.stages.section[10, 18])
 
+    def test_near_disc_branch_points_use_the_complete_vessel_context(self):
+        vessel = np.zeros((61, 61), dtype=bool)
+        vessel[30, 5:56] = True
+        vessel[5:31, 39] = True
+        optic_disc = OpticDisc(None, (30.0, 30.0), 16.0, 16.0)
+
+        branches = label_vessel_branches(
+            vessel,
+            optic_disc,
+            AnnulusGeometry(0.0, 1.0, 0.2, 4),
+        )
+        circle = optic_disc.centered_circle_mask_for(vessel.shape)
+
+        np.testing.assert_array_equal(branches.stages.vessel, vessel)
+        self.assertTrue(np.any(branches.stages.skeleton[circle]))
+        self.assertTrue(branches.stages.branch_points[30, 39])
+        self.assertFalse(np.any(branches.stages.cleaned_skeleton[circle]))
+        upper_marker = branches.stages.marker_labels[15, 39]
+        right_marker = branches.stages.marker_labels[30, 50]
+        self.assertGreater(upper_marker, 0)
+        self.assertGreater(right_marker, 0)
+        self.assertNotEqual(upper_marker, right_marker)
+
     def test_smaller_disc_radius_keeps_vessels_inside_the_old_circular_cutoff(self):
         vessel, disc, source, settings = self._inputs()
         original_vessel = vessel.copy()
@@ -65,7 +88,8 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         self.assertEqual(4, branches.branch_ids.size)
         topology_disc = source_disc.centered_circle_mask_for(vessel.shape)
         self.assertFalse(np.any(branches.labels[topology_disc]))
-        self.assertFalse(np.any(branches.stages.skeleton[topology_disc]))
+        self.assertTrue(np.any(branches.stages.skeleton[topology_disc]))
+        self.assertFalse(np.any(branches.stages.cleaned_skeleton[topology_disc]))
         np.testing.assert_array_equal(vessel, original_vessel)
         np.testing.assert_array_equal(disc, original_disc)
 
@@ -89,7 +113,10 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         )
 
         topology_disc = topology.optic_disc_mask
-        self.assertFalse(np.any(topology.branch_identity.stages.vessel[topology_disc]))
+        self.assertTrue(np.any(topology.branch_identity.stages.vessel[topology_disc]))
+        self.assertFalse(
+            np.any(topology.branch_identity.stages.cleaned_skeleton[topology_disc])
+        )
         self.assertFalse(np.any(topology.labels[topology_disc]))
         self.assertFalse(np.any(topology.annulus_masks[:, topology_disc]))
         self.assertTrue(np.any(topology.branch_identity.stages.vessel[disc]))

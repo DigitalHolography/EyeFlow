@@ -67,11 +67,16 @@ class ImageMaps:
 
 @dataclass(frozen=True)
 class VesselMasks:
-    """Aligned DopplerView vessel segmentation maps."""
+    """Aligned DopplerView vessel masks used by retinal analysis.
+
+    ``velocity_background`` may retain the original combined vessel support
+    when a vessel is intentionally disabled for measurement.
+    """
 
     artery: np.ndarray
     vein: np.ndarray
     labeled: np.ndarray | None = None
+    velocity_background: np.ndarray | None = None
 
 
 @dataclass(frozen=True)

@@ -7,12 +7,7 @@ from skimage.io import imsave
 
 
 class FigureArtifactWriter:
-    """Write stem-prefixed figures for one output namespace.
-
-    PNG is the default figure format. Other figure types, such as GIF, can
-    reuse this writer's output namespace and stem while selecting their own
-    output type at the call site.
-    """
+    """Write stem-prefixed PNG figures for one output namespace."""
 
     def __init__(self, output, stem: str | None = None) -> None:
         self.output = output

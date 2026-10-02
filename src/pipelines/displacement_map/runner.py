@@ -127,8 +127,6 @@ def _load_displacement_maps(
             displacement_map = np.load(field_path, mmap_mode="r")
             loaded_by_path[normalized_path] = displacement_map
         displacement_maps[vessel] = {method: displacement_map}
-    if not displacement_maps:
-        raise RuntimeError("No vessel displacement-map artifacts were prepared.")
     return displacement_maps
 
 
@@ -198,6 +196,7 @@ def run_displacement_map(
                 algorithm_config,
                 analysis_mask_array=mask_input.mask,
                 magnitude_video_path=output_video,
+                h5_source=inputs.moment,
             )
             field_path = Path(outputs["displacement_field"])
             for vessel in mask_input.vessels:
@@ -218,7 +217,13 @@ def run_displacement_map(
             temporary_directory=temporary_directory,
         ),
     )
-    ctx.log("Dense displacement maps prepared for waveform velocity processing.")
+    if field_paths_by_vessel:
+        ctx.log("Dense displacement maps prepared for waveform velocity processing.")
+    else:
+        ctx.log_warning(
+            "Dense displacement-map processing was skipped because no eligible "
+            "vessel mask is available."
+        )
     for output_video in output_videos:
         ctx.log(f"Displacement magnitude video written to {output_video}.")
 
@@ -232,11 +237,35 @@ def load_displacement_map_inputs(
     ctx.require_inputs("hd", "dv")
     moment = resolve_moment_dataset(ctx.inputs.hd.h5.h5file, config.moment_path)
     spatial_shape = tuple(int(size) for size in moment.shape[-2:])
-    masks = resolve_retina_masks(
-        ctx.inputs.dv.h5.h5file,
-        spatial_shape,
-        config.mask_mode,
-    )
+    dv = ctx.inputs.dv.as_dopplerview()
+    dv_shape = tuple(int(size) for size in dv.retinal_artery_mask().shape[-2:])
+    if dv.optic_disc(dv_shape).is_fallback:
+        if config.mask_mode == "vein":
+            masks = ()
+        else:
+            artery_mask, artery_source = resolve_retina_mask(
+                ctx.inputs.dv.h5.h5file,
+                spatial_shape,
+                "artery",
+            )
+            masks = (
+                DisplacementMaskInput(
+                    name="artery",
+                    vessels=("artery",),
+                    mask=artery_mask,
+                    source=artery_source,
+                ),
+            )
+        ctx.log_warning(
+            "DopplerView optic disc is unavailable; skipping venous "
+            "displacement-map processing."
+        )
+    else:
+        masks = resolve_retina_masks(
+            ctx.inputs.dv.h5.h5file,
+            spatial_shape,
+            config.mask_mode,
+        )
     fps = resolve_frame_rate(ctx, config.fallback_fps)
     return DisplacementMapInputs(moment, masks, fps)
 

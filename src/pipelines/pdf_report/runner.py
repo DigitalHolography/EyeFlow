@@ -38,12 +38,12 @@ def run_pdf_report(ctx) -> None:
     
     try:
         pdf_path = generate_a4_report(
-            output_h5_paths=[Path(output_h5_path)],
+            output_h5_path=Path(output_h5_path),
             output_dir=report_dir,
+            folder_name=folder_name,
             png_dir=png_dir if png_dir.exists() else None,
             hd_png_dir=hd_png_dir if hd_png_dir and hd_png_dir.exists() else None,
             mask_dir=mask_dir if mask_dir and mask_dir.exists() else None,
-            folder_name=folder_name,
         )
         ctx.log(f"PDF report generated: {pdf_path}")
         return None

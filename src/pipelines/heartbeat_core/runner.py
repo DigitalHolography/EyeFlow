@@ -64,6 +64,7 @@ def run_heartbeat_core(ctx) -> HeartbeatResult:
             moment2=images.moment2,
             artery_mask=vessels.artery,
             vein_mask=vessels.vein,
+            background_mask=getattr(vessels, "velocity_background", None),
             optic_disc_center=segmentation.optic_disc.center,
             local_background_dist=inputs.doppler_view.local_background_dist,
             scratch_h5=scratch_h5,
@@ -161,6 +162,7 @@ def _velocity_estimator_key(source) -> VelocityEstimatorCacheKey:
         moment2=images.moment2,
         artery_mask=vessels.artery,
         vein_mask=vessels.vein,
+        background_mask=getattr(vessels, "velocity_background", None),
         optic_disc_center=segmentation.optic_disc.center,
         local_background_dist=source.doppler_view.local_background_dist,
     )

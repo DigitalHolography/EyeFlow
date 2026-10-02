@@ -13,10 +13,11 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils imp
 from calculations.math import next_power_of_two
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
+from pipelines.displacement_map.constants import registration_method_output_name
 from runtime_limits import cap_parallel_jobs
 
 _MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
-_DISPLACEMENT_MAP_ROOT = "Processing/DisplacementMapPerSegment"
+_DISPLACEMENT_MAP_ROOT = "Processing/Displacement/Map"
 
 
 def pack_segment_map_outputs(
@@ -134,7 +135,7 @@ def _pack_vessel_displacement_maps(
     outputs: dict[str, object] = {}
     displacement_results = getattr(segments, "displacements", {})
     for raw_method, displacement in sorted(displacement_results.items()):
-        method = _hdf_method_name(raw_method)
+        method = registration_method_output_name(raw_method)
         if displacement.maps is None:
             raise RuntimeError(
                 "Per-segment displacement maps were not retained. They must be "
@@ -153,7 +154,9 @@ def _pack_vessel_displacement_maps(
             ],
             axis=-1,
         )
-        outputs[f"{_DISPLACEMENT_MAP_ROOT}/{method}/{vessel_name}"] = (
+        outputs[
+            f"{_DISPLACEMENT_MAP_ROOT}/{method}/{vessel_name}/PerSegment"
+        ] = (
             DatasetValue(
                 data=displacement_maps_per_beat,
                 attrs={
@@ -403,15 +406,6 @@ def _velocity_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
             else (shape[0], shape[1], 1, 1, 1, 1, shape[-1])
         )
     return options
-
-
-def _hdf_method_name(value: object) -> str:
-    method = str(value).strip()
-    if not method or "/" in method:
-        raise ValueError(
-            "Displacement registration method names must be non-empty HDF5 path segments."
-        )
-    return method
 
 
 def _segment_mask_h5_options(shape: tuple[int, ...]) -> dict[str, object]:

@@ -35,7 +35,7 @@ def load_retinal_source_data(hd, dv) -> RetinalSourceData:
         spatial_shape,
         "retinal_artery_mask",
     )
-    vein_mask = apply_mask_alignment(
+    source_vein_mask = apply_mask_alignment(
         dv.retinal_vein_mask(),
         spatial_shape,
         "retinal_vein_mask",
@@ -56,6 +56,16 @@ def load_retinal_source_data(hd, dv) -> RetinalSourceData:
         "retinal_labeled_vessels",
         swapped=artery_swapped,
     )
+    # A fallback disc means DopplerView did not provide usable optic-disc
+    # detection. Venous analysis is not meaningful without that reference,
+    # so expose an empty processing mask. Keep the original vein mask only in
+    # the shared velocity-background support so arterial inpainting remains
+    # exactly as it was before this guard was introduced.
+    vein_mask = (
+        np.zeros_like(source_vein_mask, dtype=bool)
+        if optic_disc.is_fallback
+        else source_vein_mask
+    )
     return RetinalSourceData(
         image_maps=image_maps,
         segmentation=RetinalSegmentation(
@@ -63,6 +73,7 @@ def load_retinal_source_data(hd, dv) -> RetinalSourceData:
                 artery=artery_mask,
                 vein=vein_mask,
                 labeled=labeled_vessels,
+                velocity_background=(artery_mask | source_vein_mask),
             ),
             optic_disc=optic_disc,
         ),

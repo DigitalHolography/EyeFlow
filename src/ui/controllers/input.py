@@ -341,7 +341,7 @@ class InputController:
         missing_dv: list[str] = []
         for holo_path in holo_paths:
             normalized_holo = self._normalize_path(holo_path)
-            status = holo_input_status(normalized_holo, require_holo_file=True)
+            status = holo_input_status(normalized_holo)
             if status.hd:
                 hd_found_count += 1
             else:

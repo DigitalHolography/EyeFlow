@@ -136,6 +136,7 @@ def _pack_segmentation_outputs(
             center_xy,
             topology_disc_radius,
             ring_settings,
+            unavailable=optic_disc.is_fallback,
         )
     )
     return metrics
@@ -170,6 +171,8 @@ def _pack_vessel_segmentation(
     center_xy: np.ndarray,
     topology_disc_radius: int,
     ring_settings: AnnulusGeometry,
+    *,
+    unavailable: bool = False,
 ) -> dict[str, object]:
     expected_shape = tuple(int(size) for size in vessel_mask.shape)
     topology = _segment_topology(segments)
@@ -191,17 +194,41 @@ def _pack_vessel_segmentation(
         ring_settings,
     )
 
+    published_mask = (
+        np.full(expected_shape, np.nan, dtype=np.float32)
+        if unavailable
+        else vessel
+    )
+    published_branch_map = (
+        np.full(expected_shape, np.nan, dtype=np.float32)
+        if unavailable
+        else _with_outlines(branch_map, r0_outline)
+    )
+    published_segment_map = (
+        np.full(expected_shape, np.nan, dtype=np.float32)
+        if unavailable
+        else _with_outlines(branch_map, all_outlines)
+    )
+    mask_source = (
+        "unavailable_without_dopplerview_optic_disc"
+        if unavailable
+        else "dopplerview_segmentation"
+    )
     outputs = {
         paths.mask: _segmentation_value(
-            _serialize_spatial_image(vessel),
-            _mask_attrs("dopplerview_segmentation"),
+            _serialize_spatial_image(published_mask),
+            _mask_attrs(mask_source),
         ),
         paths.branch_label_map: _segmentation_value(
-            _serialize_label_map(_with_outlines(branch_map, r0_outline)),
+            _serialize_spatial_image(published_branch_map)
+            if unavailable
+            else _serialize_label_map(published_branch_map),
             _label_map_attrs("innermost R0 outline", topology_disc_radius),
         ),
         paths.segment_map: _segmentation_value(
-            _serialize_label_map(_with_outlines(branch_map, all_outlines)),
+            _serialize_spatial_image(published_segment_map)
+            if unavailable
+            else _serialize_label_map(published_segment_map),
             _label_map_attrs("all calculated annulus outlines", topology_disc_radius),
         ),
     }

@@ -19,7 +19,7 @@ def pack_continuous_velocity_outputs(
     """Pack raw and band-limited artery and vein velocity signals."""
     schema = _resolve_output_paths(output_paths)
     paths = schema.analysis
-    metrics = {
+    return {
         paths.retinal_artery_velocity_signal: metric_value(
             velocity_analysis["retinal_artery_velocity_signal"],
             unit="mm/s",
@@ -37,17 +37,6 @@ def pack_continuous_velocity_outputs(
             unit="mm/s",
         ),
     }
-    if paths.velocitysignal_per_beat is not None:
-        metrics[paths.velocitysignal_per_beat] = metric_value(
-            velocity_analysis["retinal_artery_velocity_signal_filtered_perbeat"],
-            unit="mm/s",
-        )
-    if paths.velocitysignal_filtered is not None:
-        metrics[paths.velocitysignal_filtered] = metric_value(
-            velocity_analysis["retinal_artery_velocity_signal_filtered"],
-            unit="mm/s",
-        )
-    return metrics
 
 
 def pack_segment_velocity_outputs(

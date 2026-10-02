@@ -16,6 +16,7 @@ from calculations.blood_volume_rate import (
 )
 from calculations.math import nanmean_float32
 from calculations.topology import AnnulusGeometry
+from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager
 from input_output.profile_datasets import _profile_dataset
 from input_output.schema import EyeFlowOutputPaths
@@ -250,9 +251,11 @@ def test_lumen_diameter_distribution_uses_five_micron_bins_and_scaled_gaussian()
 
 def test_lumen_diameter_distributions_export_png_and_eps_for_both_vessels() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
-        output = OutputManager.from_holo(
-            Path(temp_dir) / "sample.holo",
-            output_root=Path(temp_dir),
+        output = OutputManager(
+            HoloRunLayout.from_holo(
+                Path(temp_dir) / "sample.holo",
+                output_root=Path(temp_dir),
+            )
         )
         paths = export_lumen_diameter_distributions(
             output,
@@ -329,9 +332,11 @@ def test_blood_volume_rate_figure_plots_median_and_one_sd_over_beats() -> None:
 
 def test_blood_volume_rate_signals_export_png_and_eps_for_both_vessels() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
-        output = OutputManager.from_holo(
-            Path(temp_dir) / "sample.holo",
-            output_root=Path(temp_dir),
+        output = OutputManager(
+            HoloRunLayout.from_holo(
+                Path(temp_dir) / "sample.holo",
+                output_root=Path(temp_dir),
+            )
         )
         total = DatasetValue(
             np.asarray([[1.0, 2.0], [3.0, 5.0]], dtype=np.float32)
