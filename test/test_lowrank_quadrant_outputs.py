@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from calculations.topology import SegmentTopology
+from calculations.topology import BranchIdentityResult, PreparedTopology, SegmentTopology
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue
 from pipelines.lowrank_waveform_decomposition.outputs import (
@@ -17,17 +17,23 @@ from pipelines.lowrank_waveform_decomposition.outputs import (
 
 def _segment_topology(labels, branch_ids, centers, optic_disc_center):
     radius_count, branch_count = centers.shape[:2]
-    return SegmentTopology(
-        spatial_shape=labels.shape,
+    native = SegmentTopology(
         optic_disc_center_xy=optic_disc_center,
-        labels=labels,
-        centerline=np.zeros(labels.shape, dtype=bool),
-        branch_ids=branch_ids,
+        branches=BranchIdentityResult(
+            labels,
+            branch_ids,
+            np.zeros(labels.shape, dtype=bool),
+        ),
         annulus_masks=np.zeros((radius_count, *labels.shape), dtype=bool),
         segment_masks=np.zeros((radius_count, branch_count, 1, 1), dtype=bool),
         segment_centers_xy=centers,
         window_bounds_xyxy=np.zeros((radius_count, branch_count, 4), dtype=int),
-        window_side_pixels=1,
+    )
+    return PreparedTopology(
+        native=native,
+        rotation_degrees=np.zeros((radius_count, branch_count), dtype=np.float32),
+        interpolated_masks=native.segment_masks,
+        rotated_masks=native.segment_masks,
     )
 
 
@@ -57,14 +63,8 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
         labels[6, 1] = 3
         labels[6, 6] = 4
         segments = SimpleNamespace(
-            branch_ids=np.arange(1, branch_count + 1, dtype=np.int32),
-            labels=labels,
-            segment_centers_xy=np.zeros(
-                (radius_count, branch_count, 2),
-                dtype=float,
-            ),
-            topology=SimpleNamespace(
-                prepared_topology=_segment_topology(
+            profile=SimpleNamespace(
+                topology=_segment_topology(
                     labels,
                     np.arange(1, branch_count + 1, dtype=np.int32),
                     np.zeros(
@@ -72,7 +72,7 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
                         dtype=float,
                     ),
                     (3.0, 3.0),
-                )
+                ),
             ),
         )
         velocity_outputs = {

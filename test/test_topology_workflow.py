@@ -150,19 +150,20 @@ class TopologyWorkflowTests(unittest.TestCase):
             )["artery"]
 
         resolve.assert_not_called()
-        self.assertIs(generic.topology.prepared_topology, prepared)
-        self.assertIs(velocity.topology.prepared_topology, prepared)
-        self.assertFalse(hasattr(generic.topology, "section_masks"))
-        self.assertFalse(hasattr(velocity.topology, "section_masks"))
-        np.testing.assert_array_equal(generic.branch_ids, velocity.branch_ids)
+        self.assertIs(generic.topology, prepared)
+        self.assertIs(velocity.profile.topology, prepared)
+        np.testing.assert_array_equal(
+            generic.topology.native.branch_ids,
+            velocity.profile.topology.native.branch_ids,
+        )
         np.testing.assert_allclose(
-            generic.segment_centers_xy,
-            velocity.segment_centers_xy,
+            generic.topology.native.segment_centers_xy,
+            velocity.profile.topology.native.segment_centers_xy,
             equal_nan=True,
         )
         np.testing.assert_allclose(
-            generic.profile_rotation_degrees,
-            velocity.profile_rotation_degrees,
+            generic.topology.rotation_degrees,
+            velocity.profile.topology.rotation_degrees,
             equal_nan=True,
         )
 

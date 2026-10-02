@@ -74,7 +74,7 @@ def run_spatial_gradient_moment0(ctx) -> dict[str, object]:
                 export_lumen_size_pngs(
                     output,
                     lumen_size.data,
-                    segments.branch_ids,
+                    segments.topology.native.branch_ids,
                     vessel_name=vessel_name,
                     period_seconds=period_seconds,
                 )
@@ -127,11 +127,11 @@ def _validate_profile_segment_alignment(
 
 
 def _ring_branch_segment_centers(segments) -> np.ndarray:
-    return np.asarray(segments.segment_centers_xy)
+    return np.asarray(segments.topology.native.segment_centers_xy)
 
 
 def _unmasked_transverse_profiles(segments) -> np.ndarray:
-    return np.asarray(segments.transverse_profiles_unmasked)
+    return np.asarray(segments.transverse.unmasked)
 
 
 __all__ = [

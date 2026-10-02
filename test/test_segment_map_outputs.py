@@ -16,6 +16,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.math import interpft_real  # noqa: E402
+from calculations.segment_profiles import CompactSegmentMaps  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
@@ -197,11 +198,14 @@ def _segments(*, radius_count: int, branch_count: int):
     maps = dense_maps.reshape((-1, 6, 3, 4))
     masks = np.zeros((radius_count, branch_count, 3, 4), dtype=bool)
     masks[..., 1:, 1:3] = True
-    return SimpleNamespace(
-        segment_maps=maps,
-        segment_map_indexes=indexes,
-        segment_masks=masks,
+    retained = CompactSegmentMaps(maps, indexes)
+    profile = SimpleNamespace(
+        maps=retained,
+        segment_shape=(radius_count, branch_count),
+        topology=SimpleNamespace(rotated_masks=masks),
+        require_maps=lambda: retained,
     )
+    return SimpleNamespace(profile=profile)
 
 
 if __name__ == "__main__":

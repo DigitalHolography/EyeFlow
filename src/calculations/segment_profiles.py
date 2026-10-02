@@ -5,16 +5,16 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, MutableMapping
 from dataclasses import dataclass
 from time import perf_counter
+from typing import Literal
 
 import numpy as np
 
 from calculations.compute_backend import optional_cupy_backend
 from calculations.math import nanmean_float32
 from calculations.topology import (
-    BranchIdentityResult,
-    PreparedTopology,
     AnnulusGeometry,
     OpticDisc,
+    PreparedTopology,
     TopologyCacheKey,
     dilate_segment_masks,
     longitudinal_profiles,
@@ -25,7 +25,6 @@ from calculations.topology import (
 )
 from runtime_limits import cap_parallel_jobs
 from utils.logger import Logger
-
 
 SegmentObserver = Callable[[int, int, slice, object, np.ndarray], None]
 SegmentObserverFactory = Callable[[str, PreparedTopology], SegmentObserver | None]
@@ -60,132 +59,270 @@ class SegmentProfileSettings:
         )
 
 
-@dataclass(frozen=True)
-class SegmentProfileTopology:
-    """Topology and profile geometry shared by every measured signal map."""
+@dataclass(frozen=True, slots=True)
+class MaskedArrays:
+    """Matched unmasked and masked forms of one measured array."""
 
-    spatial_shape: tuple[int, int]
-    optic_disc_center_xy: tuple[float, float]
-    frame_count: int
-    labels: np.ndarray
-    branch_ids: np.ndarray
-    segment_masks: np.ndarray
-    segment_centers_xy: np.ndarray
-    profile_window_bounds_xyxy: np.ndarray
-    profile_window_side_pixels: int
-    profile_pixel_size_mm: float
-    profile_rotation_degrees: np.ndarray
-    profile_integration_limits_pixels: np.ndarray
-    valid_segments: np.ndarray
-    ring_settings: AnnulusGeometry
-    branch_identity: BranchIdentityResult
-    prepared_topology: PreparedTopology
+    unmasked: np.ndarray
+    masked: np.ndarray
+
+    def __post_init__(self) -> None:
+        unmasked = np.asarray(self.unmasked)
+        masked = np.asarray(self.masked)
+        if unmasked.shape != masked.shape:
+            raise ValueError(
+                "masked and unmasked arrays must have the same shape: "
+                f"{masked.shape!r} != {unmasked.shape!r}."
+            )
+        object.__setattr__(self, "unmasked", unmasked)
+        object.__setattr__(self, "masked", masked)
+
+    def select(self, *, masked: bool) -> np.ndarray:
+        return self.masked if masked else self.unmasked
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, slots=True)
+class CompactSegmentMaps:
+    """Maps retained only for valid segments, plus their grid indexes."""
+
+    values: np.ndarray
+    indexes: np.ndarray
+
+    def __post_init__(self) -> None:
+        values = np.asarray(self.values)
+        indexes = np.asarray(self.indexes)
+        if indexes.ndim != 2 or indexes.shape[1] != 2:
+            raise ValueError("segment map indexes must have shape (segment, 2).")
+        if not np.issubdtype(indexes.dtype, np.integer):
+            raise ValueError("segment map indexes must contain integers.")
+        if values.ndim != 4:
+            raise ValueError(
+                "compact segment maps must have shape (segment, frame, y, x)."
+            )
+        if values.shape[0] != indexes.shape[0]:
+            raise ValueError("segment map values and indexes must have equal row counts.")
+        if indexes.shape[0] != np.unique(indexes, axis=0).shape[0]:
+            raise ValueError("segment map indexes must be unique.")
+        object.__setattr__(self, "values", values)
+        object.__setattr__(self, "indexes", indexes.astype(np.int32, copy=False))
+
+    def row_for(self, ring_index: int, branch_index: int) -> int | None:
+        matches = np.flatnonzero(
+            (self.indexes[:, 0] == int(ring_index))
+            & (self.indexes[:, 1] == int(branch_index))
+        )
+        return None if matches.size == 0 else int(matches[0])
+
+    def to_dense(self, segment_shape: tuple[int, int]) -> np.ndarray:
+        """Expand compact maps to ``(ring, branch, frame, y, x)``."""
+
+        shape = tuple(int(size) for size in segment_shape)
+        if len(shape) != 2 or any(size < 0 for size in shape):
+            raise ValueError("segment_shape must contain two non-negative sizes.")
+        if self.indexes.size and (
+            np.any(self.indexes < 0)
+            or np.any(self.indexes[:, 0] >= shape[0])
+            or np.any(self.indexes[:, 1] >= shape[1])
+        ):
+            raise ValueError("segment map indexes fall outside segment_shape.")
+        dense = np.full((*shape, *self.values.shape[1:]), np.nan, dtype=self.values.dtype)
+        if self.indexes.size:
+            dense[self.indexes[:, 0], self.indexes[:, 1]] = self.values
+        return dense
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class SegmentProfileResult:
-    """Signal-neutral segment waveforms, maps, and spatial profiles."""
+    """Measurements for every segment in one prepared vessel topology."""
 
-    projected_signal: np.ndarray
-    full_profile_signal: np.ndarray
-    segment_maps: np.ndarray | None
-    segment_map_indexes: np.ndarray
-    segment_masks: np.ndarray
-    labels: np.ndarray
-    branch_ids: np.ndarray
-    segment_centers_xy: np.ndarray
-    branch_identity: BranchIdentityResult
-    topology: SegmentProfileTopology
-    transverse_profiles_unmasked: np.ndarray
-    transverse_profiles_masked: np.ndarray
-    longitudinal_profiles_unmasked: np.ndarray
-    longitudinal_profiles_masked: np.ndarray
-    profile_sample_count: np.ndarray
-    profile_rotation_degrees: np.ndarray
-    rotated_mean_images: np.ndarray
-    rotated_mean_images_masked: np.ndarray
-    profile_window_bounds_xyxy: np.ndarray
-    profile_window_side_pixels: int
-    profile_pixel_size_mm: float
-    profile_integration_limits_pixels: np.ndarray
+    topology: PreparedTopology
+    segment_signal: np.ndarray
+    transverse: MaskedArrays
+    longitudinal: MaskedArrays
+    mean_images: MaskedArrays
+    sample_spacing_mm: float
+    maps: CompactSegmentMaps | None = None
+
+    def __post_init__(self) -> None:
+        segment_shape = self.topology.segment_shape
+        profile_side = self.topology.profile_side_pixels
+        if self.segment_signal.ndim != 3 or self.segment_signal.shape[:2] != segment_shape:
+            raise ValueError(
+                "segment_signal must have shape (ring, branch, frame) matching topology."
+            )
+        expected_prefix = self.segment_signal.shape
+        for name, pair in (
+            ("transverse", self.transverse),
+            ("longitudinal", self.longitudinal),
+        ):
+            if pair.unmasked.ndim != 4 or pair.unmasked.shape[:3] != expected_prefix:
+                raise ValueError(
+                    f"{name} profiles must have shape (ring, branch, frame, sample)."
+                )
+            if pair.unmasked.shape[-1] != profile_side:
+                raise ValueError(f"{name} profiles must match the prepared profile size.")
+        if self.mean_images.unmasked.ndim != 4:
+            raise ValueError("mean images must have shape (ring, branch, y, x).")
+        if self.mean_images.unmasked.shape[:2] != segment_shape:
+            raise ValueError("mean images must match the topology segment grid.")
+        if self.mean_images.unmasked.shape[-2:] != (profile_side, profile_side):
+            raise ValueError("mean images must match the prepared profile size.")
+        if not np.isfinite(self.sample_spacing_mm) or self.sample_spacing_mm < 0:
+            raise ValueError("sample_spacing_mm must be finite and non-negative.")
+        if self.maps is not None:
+            if self.maps.values.shape[1:] != (
+                self.frame_count,
+                profile_side,
+                profile_side,
+            ):
+                raise ValueError("retained maps must match the frame and profile sizes.")
+            if not np.array_equal(self.maps.indexes, self.topology.valid_indexes()):
+                raise ValueError("retained map indexes must match valid topology segments.")
+
+    def profile(
+        self,
+        direction: Literal["transverse", "longitudinal"],
+        *,
+        masked: bool,
+    ) -> np.ndarray:
+        if direction == "transverse":
+            return self.transverse.select(masked=masked)
+        if direction == "longitudinal":
+            return self.longitudinal.select(masked=masked)
+        raise ValueError("direction must be 'transverse' or 'longitudinal'.")
+
+    def require_maps(self) -> CompactSegmentMaps:
+        if self.maps is None:
+            raise RuntimeError(
+                "Per-segment maps were not retained; request them during profile analysis."
+            )
+        return self.maps
+
+    @property
+    def frame_count(self) -> int:
+        return int(self.segment_signal.shape[-1])
+
+    @property
+    def segment_shape(self) -> tuple[int, int]:
+        return self.topology.segment_shape
 
 
-@dataclass
-class _SegmentProfileBuffers:
-    projected_signal: np.ndarray
-    full_profile_signal: np.ndarray
-    segment_maps: np.ndarray | None
-    segment_map_indexes: np.ndarray
-    segment_map_rows: np.ndarray
-    segment_masks: np.ndarray
-    transverse_profiles_unmasked: np.ndarray
-    transverse_profiles_masked: np.ndarray
-    longitudinal_profiles_unmasked: np.ndarray
-    longitudinal_profiles_masked: np.ndarray
-    profile_sample_count: np.ndarray
-    profile_rotation_degrees: np.ndarray
-    rotated_mean_images: np.ndarray
-    rotated_mean_images_masked: np.ndarray
-    profile_window_bounds_xyxy: np.ndarray
-    profile_integration_limits_pixels: np.ndarray
+class _SegmentProfileAccumulator:
+    """Allocate, populate, and finalize one vessel's profile measurements."""
 
-    @classmethod
-    def allocate(
-        cls,
+    def __init__(
+        self,
+        topology: PreparedTopology,
         *,
         frame_count: int,
-        ring_count: int,
-        branch_count: int,
-        canvas_side: int,
-        segment_indexes: np.ndarray,
         retain_segment_maps: bool,
-    ) -> _SegmentProfileBuffers:
-        indexes = np.asarray(segment_indexes, dtype=np.int32).reshape((-1, 2))
-        signal_shape = (ring_count, branch_count, frame_count)
-        segment_shape = (ring_count, branch_count)
+    ) -> None:
+        self.topology = topology
+        self.frame_count = int(frame_count)
+        segment_shape = topology.segment_shape
+        canvas_side = topology.profile_side_pixels
+        signal_shape = (*segment_shape, self.frame_count)
         profile_shape = (*signal_shape, canvas_side)
         image_shape = (*segment_shape, canvas_side, canvas_side)
-        map_rows = np.full(segment_shape, -1, dtype=np.int32)
-        if retain_segment_maps and indexes.size:
-            map_rows[indexes[:, 0], indexes[:, 1]] = np.arange(
-                indexes.shape[0], dtype=np.int32
-            )
 
         def filled(shape):
             return np.full(shape, np.nan, dtype=np.float32)
 
-        projected_signal = filled(signal_shape)
-        return cls(
-            projected_signal=projected_signal,
-            # The current integration limits cover the complete transverse
-            # profile, so the projected and full-profile signals are
-            # identical. Keep one shared array so downstream per-beat
-            # processing can safely reuse its result.
-            full_profile_signal=projected_signal,
-            segment_maps=(
-                filled((indexes.shape[0], frame_count, canvas_side, canvas_side))
-                if retain_segment_maps
-                else None
-            ),
-            segment_map_indexes=(
-                indexes if retain_segment_maps else np.empty((0, 2), dtype=np.int32)
-            ),
-            segment_map_rows=map_rows,
-            segment_masks=np.zeros(image_shape, dtype=bool),
-            transverse_profiles_unmasked=filled(profile_shape),
-            transverse_profiles_masked=filled(profile_shape),
-            longitudinal_profiles_unmasked=filled(profile_shape),
-            longitudinal_profiles_masked=filled(profile_shape),
-            profile_sample_count=np.zeros(segment_shape, dtype=np.int32),
-            profile_rotation_degrees=filled(segment_shape),
-            rotated_mean_images=filled(image_shape),
-            rotated_mean_images_masked=filled(image_shape),
-            profile_window_bounds_xyxy=np.full(
-                (*segment_shape, 4), -1, dtype=np.int32
-            ),
-            profile_integration_limits_pixels=np.full(
-                (*segment_shape, 2), -1, dtype=np.int32
-            ),
+        self.segment_signal = filled(signal_shape)
+        self.transverse = MaskedArrays(filled(profile_shape), filled(profile_shape))
+        self.longitudinal = MaskedArrays(filled(profile_shape), filled(profile_shape))
+        self.mean_images = MaskedArrays(filled(image_shape), filled(image_shape))
+        self._mean_sum = np.zeros(image_shape, dtype=np.float64)
+        self._mean_count = np.zeros(image_shape, dtype=np.int64)
+        self._masked_sum = np.zeros(image_shape, dtype=np.float64)
+        self._masked_count = np.zeros(image_shape, dtype=np.int64)
+
+        indexes = topology.valid_indexes().reshape((-1, 2))
+        self.maps = (
+            CompactSegmentMaps(
+                values=filled(
+                    (indexes.shape[0], self.frame_count, canvas_side, canvas_side)
+                ),
+                indexes=indexes,
+            )
+            if retain_segment_maps
+            else None
+        )
+        self._map_rows = np.full(segment_shape, -1, dtype=np.int32)
+        if self.maps is not None and indexes.size:
+            self._map_rows[indexes[:, 0], indexes[:, 1]] = np.arange(
+                indexes.shape[0], dtype=np.int32
+            )
+
+    def add_chunk(self, segment, profile_mask: np.ndarray) -> None:
+        index = (segment.ring_index, segment.branch_index)
+        rotated = segment.rotated
+        rotated_masked = segment.rotated_masked
+        if rotated_masked is None:
+            raise ValueError(
+                "segment profile measurement requires the masked segment companion."
+            )
+        rotated_mask = self.topology.rotated_masks[index]
+        _accumulate_means(
+            rotated,
+            rotated_masked,
+            rotated_mask,
+            self._mean_sum[index],
+            self._mean_count[index],
+            self._masked_sum[index],
+            self._masked_count[index],
+        )
+
+        transverse_unmasked = transverse_profiles(rotated)
+        transverse_masked = transverse_profiles(rotated_masked)
+        transverse_masked_for_output = (
+            transverse_profiles(rotated, profile_mask)
+            if not np.array_equal(profile_mask, rotated_mask)
+            else transverse_masked
+        )
+        frame_slice = segment.frame_slice
+        self.segment_signal[index][frame_slice] = _to_numpy(
+            _profile_mean(transverse_masked)
+        )
+        self.transverse.unmasked[index][frame_slice] = _to_numpy(
+            transverse_unmasked
+        )
+        self.transverse.masked[index][frame_slice] = _to_numpy(
+            transverse_masked_for_output
+        )
+        self.longitudinal.unmasked[index][frame_slice] = _to_numpy(
+            longitudinal_profiles(rotated)
+        )
+        self.longitudinal.masked[index][frame_slice] = _to_numpy(
+            longitudinal_profiles(rotated_masked)
+        )
+        if self.maps is not None:
+            map_row = int(self._map_rows[index])
+            if map_row < 0:
+                raise ValueError("Missing compact segment-map row for valid segment.")
+            self.maps.values[map_row, frame_slice] = _to_numpy(rotated)
+
+    def finish(self, *, sample_spacing_mm: float) -> SegmentProfileResult:
+        np.divide(
+            self._mean_sum,
+            self._mean_count,
+            out=self.mean_images.unmasked,
+            where=self._mean_count > 0,
+        )
+        np.divide(
+            self._masked_sum,
+            self._masked_count,
+            out=self.mean_images.masked,
+            where=self._masked_count > 0,
+        )
+        return SegmentProfileResult(
+            topology=self.topology,
+            segment_signal=self.segment_signal,
+            transverse=self.transverse,
+            longitudinal=self.longitudinal,
+            mean_images=self.mean_images,
+            sample_spacing_mm=sample_spacing_mm,
+            maps=self.maps,
         )
 
 
@@ -258,7 +395,7 @@ def analyze_segment_profiles(
 
     results: dict[str, SegmentProfileResult] = {}
     for name, topology in topologies.items():
-        geometry = topology.topology
+        geometry = topology.native
         Logger.log(
             f"Preparing {name} segments: radii={geometry.annulus_masks.shape[0]}, "
             f"branches={geometry.branch_ids.size}, "
@@ -294,7 +431,6 @@ def analyze_segment_profiles(
             signal_map,
             topology,
             segments,
-            ring_settings,
             settings,
             retain_segment_maps=retain_segment_maps,
             segment_observer=observer,
@@ -316,49 +452,24 @@ def _measure_segment_profiles_from_prepared(
     signal_map,
     prepared_topology: PreparedTopology,
     prepared_segments,
-    ring_settings: AnnulusGeometry,
     settings: SegmentProfileSettings,
     *,
     retain_segment_maps: bool,
     segment_observer: SegmentObserver | None,
     transverse_mask_dilation_pixels: int,
 ) -> SegmentProfileResult:
-    geometry = prepared_topology.topology
-    branches = geometry.branch_identity
-    if branches is None:
-        raise ValueError("prepared topology must retain its branch identity result.")
-
-    ring_count = int(geometry.annulus_masks.shape[0])
-    branch_count = int(branches.branch_ids.size)
+    geometry = prepared_topology.native
     frame_count = int(signal_map.shape[0])
-    canvas_side = int(prepared_topology.rotated_masks.shape[-1])
     interpolated_side = int(prepared_topology.interpolated_masks.shape[-1])
-    segment_indexes = np.argwhere(
-        geometry.valid_segments
-        & np.isfinite(prepared_topology.rotation_degrees)
-    )
-    buffers = _SegmentProfileBuffers.allocate(
+    accumulator = _SegmentProfileAccumulator(
+        prepared_topology,
         frame_count=frame_count,
-        ring_count=ring_count,
-        branch_count=branch_count,
-        canvas_side=canvas_side,
-        segment_indexes=segment_indexes,
         retain_segment_maps=retain_segment_maps,
     )
-    mean_sum = np.zeros(buffers.rotated_mean_images.shape, dtype=np.float64)
-    mean_count = np.zeros(buffers.rotated_mean_images.shape, dtype=np.int64)
-    masked_sum = np.zeros(buffers.rotated_mean_images.shape, dtype=np.float64)
-    masked_count = np.zeros(buffers.rotated_mean_images.shape, dtype=np.int64)
-    initialized: set[tuple[int, int]] = set()
 
     for segment in prepared_segments:
         index = (segment.ring_index, segment.branch_index)
         rotated = segment.rotated
-        rotated_masked = segment.rotated_masked
-        if rotated_masked is None:
-            raise ValueError(
-                "segment profile measurement requires the masked segment companion."
-            )
         rotated_mask = prepared_topology.rotated_masks[index]
         profile_mask = dilate_segment_masks(
             rotated_mask,
@@ -373,131 +484,15 @@ def _measure_segment_profiles_from_prepared(
                 rotated,
                 profile_mask,
             )
-        _accumulate_means(
-            rotated,
-            rotated_masked,
-            rotated_mask,
-            mean_sum[index],
-            mean_count[index],
-            masked_sum[index],
-            masked_count[index],
-        )
-        transverse_unmasked = transverse_profiles(rotated)
-        transverse_masked = transverse_profiles(rotated_masked)
-        if transverse_mask_dilation_pixels > 0:
-            transverse_masked_for_output = transverse_profiles(
-                rotated,
-                profile_mask,
-            )
-        else:
-            transverse_masked_for_output = transverse_masked
-        longitudinal_unmasked = longitudinal_profiles(rotated)
-        longitudinal_masked = longitudinal_profiles(rotated_masked)
-        frame_slice = segment.frame_slice
-        masked_signal = _to_numpy(_profile_mean(transverse_masked))
-        buffers.projected_signal[index][frame_slice] = masked_signal
-        buffers.transverse_profiles_unmasked[index][frame_slice] = _to_numpy(
-            transverse_unmasked
-        )
-        buffers.transverse_profiles_masked[index][frame_slice] = _to_numpy(
-            transverse_masked_for_output
-        )
-        buffers.longitudinal_profiles_unmasked[index][frame_slice] = _to_numpy(
-            longitudinal_unmasked
-        )
-        buffers.longitudinal_profiles_masked[index][frame_slice] = _to_numpy(
-            longitudinal_masked
-        )
-        if buffers.segment_maps is not None:
-            map_row = int(buffers.segment_map_rows[index])
-            if map_row < 0:
-                raise ValueError("Missing compact segment-map row for valid segment.")
-            buffers.segment_maps[map_row, frame_slice] = _to_numpy(rotated)
-        if index not in initialized:
-            buffers.segment_masks[index] = rotated_mask
-            buffers.profile_sample_count[index] = _rotated_profile_sample_count(
-                float(prepared_topology.rotation_degrees[index]),
-                interpolated_side,
-                canvas_side,
-            )
-            buffers.profile_rotation_degrees[index] = np.float32(
-                prepared_topology.rotation_degrees[index]
-            )
-            buffers.profile_window_bounds_xyxy[index] = geometry.window_bounds_xyxy[
-                index
-            ]
-            buffers.profile_integration_limits_pixels[index] = (0, canvas_side - 1)
-            initialized.add(index)
+        accumulator.add_chunk(segment, profile_mask)
 
-    np.divide(
-        mean_sum,
-        mean_count,
-        out=buffers.rotated_mean_images,
-        where=mean_count > 0,
-    )
-    np.divide(
-        masked_sum,
-        masked_count,
-        out=buffers.rotated_mean_images_masked,
-        where=masked_count > 0,
-    )
-    profile_pixel_size_mm = _interpolated_pixel_size_mm(
+    sample_spacing_mm = _interpolated_pixel_size_mm(
         settings.pixel_size_mm,
         geometry.window_side_pixels,
         interpolated_side,
     )
-    bounds = buffers.profile_window_bounds_xyxy
-    limits = buffers.profile_integration_limits_pixels
-    valid_segments = (
-        geometry.valid_segments
-        & np.isfinite(buffers.profile_rotation_degrees)
-        & np.all(bounds >= 0, axis=-1)
-        & (bounds[..., 0] < bounds[..., 1])
-        & (bounds[..., 2] < bounds[..., 3])
-        & (limits[..., 0] >= 0)
-        & (limits[..., 0] <= limits[..., 1])
-    )
-    topology = SegmentProfileTopology(
-        spatial_shape=geometry.spatial_shape,
-        optic_disc_center_xy=geometry.optic_disc_center_xy,
-        frame_count=frame_count,
-        labels=geometry.labels.copy(),
-        branch_ids=geometry.branch_ids.copy(),
-        segment_masks=buffers.segment_masks.copy(),
-        segment_centers_xy=geometry.segment_centers_xy.copy(),
-        profile_window_bounds_xyxy=bounds.copy(),
-        profile_window_side_pixels=int(geometry.window_side_pixels),
-        profile_pixel_size_mm=profile_pixel_size_mm,
-        profile_rotation_degrees=buffers.profile_rotation_degrees.copy(),
-        profile_integration_limits_pixels=limits.copy(),
-        valid_segments=valid_segments,
-        ring_settings=ring_settings,
-        branch_identity=branches,
-        prepared_topology=prepared_topology,
-    )
-    return SegmentProfileResult(
-        projected_signal=buffers.projected_signal,
-        full_profile_signal=buffers.full_profile_signal,
-        segment_maps=buffers.segment_maps,
-        segment_map_indexes=buffers.segment_map_indexes,
-        segment_masks=buffers.segment_masks,
-        labels=branches.labels,
-        branch_ids=branches.branch_ids,
-        segment_centers_xy=geometry.segment_centers_xy.copy(),
-        branch_identity=branches,
-        topology=topology,
-        transverse_profiles_unmasked=buffers.transverse_profiles_unmasked,
-        transverse_profiles_masked=buffers.transverse_profiles_masked,
-        longitudinal_profiles_unmasked=buffers.longitudinal_profiles_unmasked,
-        longitudinal_profiles_masked=buffers.longitudinal_profiles_masked,
-        profile_sample_count=buffers.profile_sample_count,
-        profile_rotation_degrees=buffers.profile_rotation_degrees,
-        rotated_mean_images=buffers.rotated_mean_images,
-        rotated_mean_images_masked=buffers.rotated_mean_images_masked,
-        profile_window_bounds_xyxy=buffers.profile_window_bounds_xyxy,
-        profile_window_side_pixels=int(geometry.window_side_pixels),
-        profile_pixel_size_mm=profile_pixel_size_mm,
-        profile_integration_limits_pixels=buffers.profile_integration_limits_pixels,
+    return accumulator.finish(
+        sample_spacing_mm=sample_spacing_mm,
     )
 
 
@@ -599,19 +594,6 @@ def _to_numpy(values) -> np.ndarray:
     return np.asarray(values)
 
 
-def _rotated_profile_sample_count(
-    angle_degrees: float,
-    interpolated_side: int,
-    canvas_side: int,
-) -> int:
-    if not np.isfinite(angle_degrees):
-        return 0
-    radians = np.deg2rad(float(angle_degrees))
-    scale = abs(float(np.cos(radians))) + abs(float(np.sin(radians)))
-    count = int(np.floor(interpolated_side * scale + 0.5))
-    return min(max(count, interpolated_side), canvas_side)
-
-
 def _interpolated_pixel_size_mm(
     native_pixel_size_mm: float,
     native_side_pixels: int,
@@ -645,8 +627,9 @@ def _dilation_pixels(value: int | Mapping[str, int], vessel_name: str) -> int:
 
 
 __all__ = [
+    "CompactSegmentMaps",
+    "MaskedArrays",
     "SegmentProfileResult",
     "SegmentProfileSettings",
-    "SegmentProfileTopology",
     "analyze_segment_profiles",
 ]

@@ -6,7 +6,12 @@ from types import SimpleNamespace
 import numpy as np
 
 import pipelines  # noqa: F401
-from calculations.topology import OpticDisc, SegmentTopology
+from calculations.topology import (
+    BranchIdentityResult,
+    OpticDisc,
+    PreparedTopology,
+    SegmentTopology,
+)
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines.waveform_shape_metrics.metrics.calculator import (
@@ -24,17 +29,23 @@ from utils.logger import Logger
 
 def _segment_topology(labels, branch_ids, centers, optic_disc_center):
     radius_count, branch_count = centers.shape[:2]
-    return SegmentTopology(
-        spatial_shape=labels.shape,
+    native = SegmentTopology(
         optic_disc_center_xy=optic_disc_center,
-        labels=labels,
-        centerline=np.zeros(labels.shape, dtype=bool),
-        branch_ids=branch_ids,
+        branches=BranchIdentityResult(
+            labels,
+            branch_ids,
+            np.zeros(labels.shape, dtype=bool),
+        ),
         annulus_masks=np.zeros((radius_count, *labels.shape), dtype=bool),
         segment_masks=np.zeros((radius_count, branch_count, 1, 1), dtype=bool),
         segment_centers_xy=centers,
         window_bounds_xyxy=np.zeros((radius_count, branch_count, 4), dtype=int),
-        window_side_pixels=1,
+    )
+    return PreparedTopology(
+        native=native,
+        rotation_degrees=np.zeros((radius_count, branch_count), dtype=np.float32),
+        interpolated_masks=native.segment_masks,
+        rotated_masks=native.segment_masks,
     )
 
 
@@ -188,17 +199,14 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         labels[1, 1] = 1
         labels[1, 6] = 2
         segments = SimpleNamespace(
-            branch_ids=np.asarray([1, 2], dtype=np.int32),
-            labels=labels,
-            segment_centers_xy=np.zeros((radius_count, branch_count, 2)),
-            projected_signal=np.zeros((radius_count, branch_count, 3)),
-            topology=SimpleNamespace(
-                prepared_topology=_segment_topology(
+            profile=SimpleNamespace(
+                segment_signal=np.zeros((radius_count, branch_count, 3)),
+                topology=_segment_topology(
                     labels,
                     np.asarray([1, 2], dtype=np.int32),
                     np.zeros((radius_count, branch_count, 2)),
                     (3.0, 2.0),
-                )
+                ),
             ),
         )
         regional = pack_quadrant_metrics(
@@ -254,17 +262,14 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         labels[1, 1] = 1
         labels[1, 6] = 2
         segments = SimpleNamespace(
-            branch_ids=np.asarray([1, 2], dtype=np.int32),
-            labels=labels,
-            segment_centers_xy=np.zeros((2, 2, 2)),
-            projected_signal=np.zeros((2, 2, waveform.shape[0])),
-            topology=SimpleNamespace(
-                prepared_topology=_segment_topology(
+            profile=SimpleNamespace(
+                segment_signal=np.zeros((2, 2, waveform.shape[0])),
+                topology=_segment_topology(
                     labels,
                     np.asarray([1, 2], dtype=np.int32),
                     np.zeros((2, 2, 2)),
                     (3.0, 2.0),
-                )
+                ),
             ),
         )
         source_data = SimpleNamespace(
@@ -362,17 +367,14 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             dtype=np.float32,
         )
         segments = SimpleNamespace(
-            branch_ids=np.asarray([1, 2], dtype=np.int32),
-            labels=labels,
-            segment_centers_xy=np.zeros((2, 2, 2)),
-            projected_signal=segment_velocity,
-            topology=SimpleNamespace(
-                prepared_topology=_segment_topology(
+            profile=SimpleNamespace(
+                segment_signal=segment_velocity,
+                topology=_segment_topology(
                     labels,
                     np.asarray([1, 2], dtype=np.int32),
                     np.zeros((2, 2, 2)),
                     (3.0, 2.0),
-                )
+                ),
             ),
         )
         source_data = SimpleNamespace(

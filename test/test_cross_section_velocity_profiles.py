@@ -196,14 +196,16 @@ def _segments(*, radius_count: int, branch_count: int):
     if branch_count:
         masked[..., 0] = np.nan
     return SimpleNamespace(
-        topology=SimpleNamespace(
-            valid_segments=np.ones((radius_count, branch_count), dtype=bool)
+        profile=SimpleNamespace(
+            topology=SimpleNamespace(
+                valid_segments=np.ones((radius_count, branch_count), dtype=bool)
+            ),
+            transverse=SimpleNamespace(unmasked=profiles, masked=masked),
+            longitudinal=SimpleNamespace(
+                unmasked=profiles + np.float32(50),
+                masked=masked + np.float32(100),
+            ),
         ),
-        branch_ids=np.arange(1, branch_count + 1, dtype=np.int32),
-        transverse_profiles_unmasked=profiles,
-        transverse_profiles_masked=masked,
-        longitudinal_profiles_unmasked=profiles + np.float32(50),
-        longitudinal_profiles_masked=masked + np.float32(100),
     )
 
 

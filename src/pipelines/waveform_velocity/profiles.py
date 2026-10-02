@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from calculations.math import nanmean_float32
-from calculations.topology import dilate_segment_masks, interpolate_profiles_per_beat
+from calculations.topology import dilate_segment_masks
 from input_output.profile_datasets import (
     _profile_dataset,
     _profile_h5_options,
@@ -60,14 +60,15 @@ def _pack_vessel_profiles(
     include_temporal_means: bool = False,
     velocity_unit: str = "mm/s",
 ) -> dict[str, object]:
-    valid_segments = np.asarray(segments.topology.valid_segments, dtype=bool)
+    profile = segments.profile
+    valid_segments = np.asarray(profile.topology.valid_segments, dtype=bool)
     transverse_masked = np.asarray(
-        segments.transverse_profiles_masked,
+        profile.transverse.masked,
         dtype=np.float32,
     )
     outputs = {
         paths.transverse_velocity_profile_unmasked: _profile_dataset(
-            np.asarray(segments.transverse_profiles_unmasked, dtype=np.float32),
+            np.asarray(profile.transverse.unmasked, dtype=np.float32),
             cycle_boundary_indexes,
             index_base=index_base,
             unit=velocity_unit,
@@ -83,7 +84,7 @@ def _pack_vessel_profiles(
         ),
         paths.longitudinal_velocity_profile_unmasked: _profile_dataset(
             np.asarray(
-                segments.longitudinal_profiles_unmasked,
+                profile.longitudinal.unmasked,
                 dtype=np.float32,
             ),
             cycle_boundary_indexes,
@@ -94,7 +95,7 @@ def _pack_vessel_profiles(
         ),
         paths.longitudinal_velocity_profile_masked: _profile_dataset(
             np.asarray(
-                segments.longitudinal_profiles_masked,
+                profile.longitudinal.masked,
                 dtype=np.float32,
             ),
             cycle_boundary_indexes,
@@ -232,23 +233,14 @@ def _pack_vessel_velocity_fft_profiles(
     masked_path = paths.transverse_velocity_profile_fft_masked
     if segments is None or unmasked_path is None or masked_path is None:
         return {}
-    unmasked_values = getattr(
-        segments,
-        "transverse_fft_profiles_unmasked",
-        None,
-    )
-    masked_values = getattr(
-        segments,
-        "transverse_fft_profiles_masked",
-        None,
-    )
-    if unmasked_values is None or masked_values is None:
+    fft = segments.transverse_fft
+    if fft is None:
         raise RuntimeError(
             "Velocity FFT profiles were not accumulated during streamed "
             "segment processing."
         )
-    unmasked = np.asarray(unmasked_values, dtype=np.float32)
-    masked = np.asarray(masked_values, dtype=np.float32)
+    unmasked = np.asarray(fft.unmasked, dtype=np.float32)
+    masked = np.asarray(fft.masked, dtype=np.float32)
     if unmasked.ndim != 5 or masked.shape != unmasked.shape:
         raise ValueError(
             "Streamed FFT profiles must have matching "

@@ -41,8 +41,7 @@ class LumenSizePngTests(unittest.TestCase):
         branch_ids = np.arange(11, 20)
         profiles = np.ones((3, 9, 5, 11), dtype=np.float32)
         segments = SimpleNamespace(
-            transverse_profiles_unmasked=profiles,
-            transverse_profiles_masked=profiles,
+            transverse=SimpleNamespace(unmasked=profiles, masked=profiles),
         )
         with patch(
             "pipelines.spatial_gradient_moment0.profiles._spatial_gradient_peak_metrics",

@@ -14,7 +14,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.segment_profiles import SegmentProfileSettings  # noqa: E402
+from calculations.segment_profiles import MaskedArrays, SegmentProfileSettings  # noqa: E402
 from calculations.topology import (  # noqa: E402
     OpticDisc,
     ring_masks,
@@ -117,20 +117,21 @@ class SegmentCenterTests(unittest.TestCase):
         )
 
         for result in results.values():
-            self.assertGreater(result.branch_ids.size, 0)
-            self.assertIsNone(result.segment_maps)
-            self.assertEqual((0, 2), result.segment_map_indexes.shape)
+            profile = result.profile
+            self.assertGreater(profile.topology.native.branch_ids.size, 0)
+            self.assertIsNone(profile.maps)
+            fft = result.require_fft()
             self.assertEqual(
-                (181, 2, 1, result.branch_ids.size, 2),
-                result.transverse_fft_profiles_unmasked.shape,
+                (181, 2, 1, profile.topology.native.branch_ids.size, 2),
+                fft.unmasked.shape,
             )
             self.assertEqual(
-                result.transverse_fft_profiles_unmasked.shape,
-                result.transverse_fft_profiles_masked.shape,
+                fft.unmasked.shape,
+                fft.masked.shape,
             )
-            valid = result.topology.valid_segments
+            valid = profile.topology.valid_segments
             self.assertTrue(np.any(valid))
-            np.testing.assert_allclose(result.projected_signal[valid], 1.0)
+            np.testing.assert_allclose(profile.segment_signal[valid], 1.0)
 
     def test_substack_debug_overlay_marks_shared_box_edges(self) -> None:
         labels = np.ones((20, 20), dtype=np.int32)
@@ -177,10 +178,13 @@ class SegmentCenterTests(unittest.TestCase):
             dtype=np.float32,
         ).reshape(2, 2, 181, 181)
         result = SimpleNamespace(
-            rotated_mean_images=rotated_means,
-            rotated_mean_images_masked=-rotated_means,
-            profile_sample_count=np.asarray([[128, 0], [128, 128]]),
-            branch_ids=np.asarray([4, 9]),
+            profile=SimpleNamespace(
+                mean_images=MaskedArrays(rotated_means, -rotated_means),
+                topology=SimpleNamespace(
+                    valid_segments=np.asarray([[True, False], [True, True]]),
+                    native=SimpleNamespace(branch_ids=np.asarray([4, 9])),
+                ),
+            ),
         )
         output = RecordingOutput()
 

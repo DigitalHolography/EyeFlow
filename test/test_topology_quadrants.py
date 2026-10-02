@@ -7,8 +7,9 @@ import unittest
 import numpy as np
 
 from calculations.topology import (
-    PreparedTopology,
     QUADRANT_NAMES,
+    BranchIdentityResult,
+    PreparedTopology,
     SegmentTopology,
     quadrant_membership,
 )
@@ -18,7 +19,7 @@ class TopologyQuadrantTests(unittest.TestCase):
     def test_segment_and_prepared_topology_share_quadrant_assignment(self) -> None:
         topology = _four_quadrant_topology(radius_count=3)
         prepared = PreparedTopology(
-            topology=topology,
+            native=topology,
             rotation_degrees=np.zeros((3, 4), dtype=np.float32),
             interpolated_masks=np.zeros((3, 4, 1, 1), dtype=bool),
             rotated_masks=np.zeros((3, 4, 1, 1), dtype=bool),
@@ -51,11 +52,12 @@ def _four_quadrant_topology(*, radius_count: int) -> SegmentTopology:
     labels[6, 6] = 4
     branch_count = 4
     return SegmentTopology(
-        spatial_shape=labels.shape,
         optic_disc_center_xy=(3.0, 3.0),
-        labels=labels,
-        centerline=labels > 0,
-        branch_ids=np.arange(1, branch_count + 1, dtype=np.int32),
+        branches=BranchIdentityResult(
+            labels,
+            np.arange(1, branch_count + 1, dtype=np.int32),
+            labels > 0,
+        ),
         annulus_masks=np.zeros((radius_count, *labels.shape), dtype=bool),
         segment_masks=np.zeros((radius_count, branch_count, 1, 1), dtype=bool),
         segment_centers_xy=np.zeros(
@@ -66,7 +68,6 @@ def _four_quadrant_topology(*, radius_count: int) -> SegmentTopology:
             (radius_count, branch_count, 4),
             dtype=np.int32,
         ),
-        window_side_pixels=1,
     )
 
 

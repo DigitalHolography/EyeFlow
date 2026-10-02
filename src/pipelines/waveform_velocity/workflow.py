@@ -274,7 +274,7 @@ def _build_per_beat_input(
         if velocity_map is None:
             raise ValueError("velocity_map is required for segment extraction.")
         shared_topologies = prepared_topologies(ctx)
-        ring_settings = shared_topologies["artery"].topology.ring_settings
+        ring_settings = shared_topologies["artery"].native.ring_settings
         if not isinstance(ring_settings, AnnulusGeometry):
             raise RuntimeError("Prepared topology has no annulus geometry.")
         artery_segments, vein_segments = _segment_velocity_inputs(
@@ -396,7 +396,7 @@ def _waveform_segment_input(
 ) -> np.ndarray | None:
     if not include_segments or result is None:
         return None
-    return result.projected_signal
+    return result.profile.segment_signal
 
 
 def _safe_waveform_segment_input(
@@ -406,7 +406,7 @@ def _safe_waveform_segment_input(
 ) -> np.ndarray | None:
     if not include_segments or result is None:
         return None
-    return result.full_profile_signal
+    return result.profile.segment_signal
 
 
 def _export_branch_identity_debug(
@@ -420,12 +420,12 @@ def _export_branch_identity_debug(
         return
     export_branch_identity_stage_pngs(
         ctx.output,
-        result.branch_identity.stages,
+        result.profile.topology.native.branches.require_stages(),
         prefix,
         optic_disc_center,
         ring_settings,
-        segment_centers_xy=result.segment_centers_xy,
-        profile_window_bounds_xyxy=result.profile_window_bounds_xyxy,
+        segment_centers_xy=result.profile.topology.native.segment_centers_xy,
+        profile_window_bounds_xyxy=result.profile.topology.native.window_bounds_xyxy,
     )
 
 

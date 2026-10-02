@@ -351,7 +351,7 @@ def analyze_velocity_segment_profiles(
     fft_profiles: dict[str, _VelocityProfileFftAccumulator] = {}
 
     def segment_observer_factory(name, topology):
-        geometry = topology.topology
+        geometry = topology.native
         if not velocity_profile_fft:
             return None
         accumulator = _VelocityProfileFftAccumulator(

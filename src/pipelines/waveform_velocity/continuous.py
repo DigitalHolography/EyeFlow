@@ -81,10 +81,11 @@ def _pack_segment_velocity_output(
 ) -> dict[str, object]:
     if segments is None or paths.velocity_signal is None:
         return {}
-    if np.asarray(segments.branch_ids).size == 0:
+    profile = segments.profile
+    if np.asarray(profile.topology.native.branch_ids).size == 0:
         return {}
 
-    values = np.asarray(segments.projected_signal, dtype=np.float32)
+    values = np.asarray(profile.segment_signal, dtype=np.float32)
     if values.ndim != 3:
         raise ValueError(
             "segment velocity must have shape (radius, branch, frame), "

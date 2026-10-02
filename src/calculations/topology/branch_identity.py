@@ -13,7 +13,6 @@ from skimage.segmentation import find_boundaries, watershed
 from .geometry import AnnulusGeometry, annulus_mask, image_half_diagonal
 from .optic_disc import OpticDisc
 
-
 LOW_RES_SMALL_BRANCH_PIXELS = 10
 BRANCH_POINT_CENTER_WEIGHT = 10
 BRANCH_POINT_MIN_NEIGHBORS = 3
@@ -51,11 +50,19 @@ class BranchIdentityStages:
 
 @dataclass(frozen=True)
 class BranchIdentityResult:
-    """Branch labels and diagnostic stages produced by the same run."""
+    """Authoritative branch identity with optional construction diagnostics."""
 
     labels: np.ndarray
     branch_ids: np.ndarray
-    stages: BranchIdentityStages
+    centerline: np.ndarray
+    stages: BranchIdentityStages | None = None
+
+    def require_stages(self) -> BranchIdentityStages:
+        """Return retained diagnostic stages or explain why they are unavailable."""
+
+        if self.stages is None:
+            raise RuntimeError("Branch-identity diagnostic stages were not retained.")
+        return self.stages
 
 
 def label_vessel_branches(
@@ -93,9 +100,10 @@ def label_vessel_branches(
     )
     labels = stages.per_circle_cleaned_labels
     return BranchIdentityResult(
-        labels.astype(np.int32, copy=False),
-        np.arange(1, int(labels.max()) + 1, dtype=np.int32),
-        stages,
+        labels=labels.astype(np.int32, copy=False),
+        branch_ids=np.arange(1, int(labels.max()) + 1, dtype=np.int32),
+        centerline=stages.skeleton,
+        stages=stages,
     )
 
 

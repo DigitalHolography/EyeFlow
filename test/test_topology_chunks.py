@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import numpy as np
 import pytest
-from unittest.mock import patch
 
 from calculations.math.spatial_gradient import (
     GAUSSIAN_BLUR_RADIUS,
     UNSHARP_MASK_RADIUS,
 )
 from calculations.topology import (
-    PreparedTopology,
     AnnulusGeometry,
+    BranchIdentityResult,
+    PreparedTopology,
     SegmentTopology,
     interpolate_segment_masks,
     interpolate_segments,
@@ -33,23 +35,23 @@ def _prepared(*, angle: float = 23.0, centerline_points: int = 9) -> PreparedTop
     centerline = np.zeros_like(mask)
     centerline[:centerline_points, 4] = True
     topology = SegmentTopology(
-        spatial_shape=(side, side),
         optic_disc_center_xy=(4.0, 8.0),
-        labels=mask.astype(np.int32),
-        centerline=centerline,
-        branch_ids=np.asarray([1], dtype=np.int32),
+        branches=BranchIdentityResult(
+            mask.astype(np.int32),
+            np.asarray([1], dtype=np.int32),
+            centerline,
+        ),
         annulus_masks=np.ones((1, side, side), dtype=bool),
         segment_masks=mask[None, None],
         segment_centers_xy=np.asarray([[[4.0, 4.0]]], dtype=np.float32),
         window_bounds_xyxy=np.asarray([[[0, side, 0, side]]], dtype=np.int32),
-        window_side_pixels=side,
         optic_disc_mask=np.zeros((side, side), dtype=bool),
         ring_settings=AnnulusGeometry(0.0, 1.0, 1.0, 1),
     )
     rotations = np.asarray([[angle]], dtype=np.float32)
     interpolated = interpolate_segment_masks(topology.segment_masks)
     return PreparedTopology(
-        topology=topology,
+        native=topology,
         rotation_degrees=rotations,
         interpolated_masks=interpolated,
         rotated_masks=rotate_segment_masks(interpolated, rotations),

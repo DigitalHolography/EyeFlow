@@ -52,8 +52,11 @@ def pack_quadrant_metrics(
         if segment_metrics is None:
             continue
 
-        branch_ids = np.asarray(segments.branch_ids, dtype=np.int32).reshape(-1)
-        membership = quadrant_membership(segments.topology.prepared_topology)
+        profile = segments.profile
+        branch_ids = np.asarray(
+            profile.topology.native.branch_ids, dtype=np.int32
+        ).reshape(-1)
+        membership = quadrant_membership(profile.topology)
         result.update(
             _pack_region_metrics(
                 schema,
@@ -75,13 +78,14 @@ def _read_segment_metrics(
     segments,
     metric_names: tuple[str, ...],
 ) -> dict[str, dict[str, np.ndarray]] | None:
-    branch_ids = np.asarray(segments.branch_ids).reshape(-1)
+    profile = segments.profile
+    branch_ids = np.asarray(profile.topology.native.branch_ids).reshape(-1)
     if branch_ids.size == 0:
         return None
 
     expected_tail = (
         int(branch_ids.size),
-        int(np.asarray(segments.projected_signal).shape[0]),
+        int(np.asarray(profile.segment_signal).shape[0]),
     )
     outputs: dict[str, dict[str, np.ndarray]] = {}
     for signal_type, group_name in (

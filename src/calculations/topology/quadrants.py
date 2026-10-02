@@ -36,7 +36,7 @@ def quadrant_membership(
     ``(quadrant, branch, annulus)``.
     """
     segment_topology = (
-        topology.topology if isinstance(topology, PreparedTopology) else topology
+        topology.native if isinstance(topology, PreparedTopology) else topology
     )
     if not isinstance(segment_topology, SegmentTopology):
         raise TypeError("topology must be SegmentTopology or PreparedTopology.")
