@@ -142,9 +142,8 @@ The optional `frequency_bands` method requires the exact HoloDoppler datasets
 `(frame, y, x)`. It estimates `HF / LF`, applies the existing vessel-mask
 background correction, and publishes a dimensionless relative velocity index
 with unit `1`. It does not fall back to moments when either band is missing.
-Pipelines that require calibrated physical velocity, including
-`blood_volume_rate` and `absolute_waveform_metrics`, are rejected for this
-method.
+All pipelines remain selectable with this method, including
+`blood_volume_rate` and `absolute_waveform_metrics`.
 
 ### Required Datasets
 

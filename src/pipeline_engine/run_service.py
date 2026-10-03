@@ -23,9 +23,6 @@ from .dag import PipelineDAG, PipelineExecutionPlan
 from .runtime import run_pipelines_to_output
 
 HOLO_SUFFIX = ".holo"
-PHYSICAL_VELOCITY_PIPELINES = frozenset(
-    {"absolute_waveform_metrics", "blood_volume_rate"}
-)
 
 
 @dataclass(frozen=True)
@@ -126,16 +123,6 @@ def resolve_run_spec(
     )
     if not plan.targets:
         raise ValueError("Select at least one pipeline target.")
-    if resolved_velocity_method == "frequency_bands":
-        incompatible = sorted(PHYSICAL_VELOCITY_PIPELINES.intersection(plan.names))
-        if incompatible:
-            raise ValueError(
-                "velocity_estimation_method='frequency_bands' produces a "
-                "dimensionless relative velocity index and is incompatible with "
-                "physical-velocity pipeline(s): "
-                + ", ".join(incompatible)
-                + "."
-            )
     unavailable = [pipeline for pipeline in plan.descriptors if not pipeline.available]
     if unavailable:
         details = []

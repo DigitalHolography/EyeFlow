@@ -240,15 +240,25 @@ class RunServiceTests(unittest.TestCase):
                     velocity_estimation_method="unknown",
                 )
 
-    def test_frequency_band_method_rejects_physical_velocity_pipelines(self) -> None:
-        for pipeline_name in ("absolute_waveform_metrics", "blood_volume_rate"):
-            with self.subTest(pipeline=pipeline_name):
-                with self.assertRaisesRegex(ValueError, pipeline_name):
-                    resolve_run_spec(
-                        input_paths=[Path("unused.holo")],
+    def test_frequency_band_method_allows_physical_velocity_pipelines(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            holo = _write_input(Path(temp_dir))
+            for pipeline_name in (
+                "absolute_waveform_metrics",
+                "blood_volume_rate",
+            ):
+                with self.subTest(pipeline=pipeline_name):
+                    spec = resolve_run_spec(
+                        input_paths=[holo],
                         target_names=[pipeline_name],
                         pipelines=[_named_descriptor(pipeline_name)],
                         velocity_estimation_method="frequency_bands",
+                    )
+
+                    self.assertEqual((pipeline_name,), spec.plan.targets)
+                    self.assertEqual(
+                        "frequency_bands",
+                        spec.velocity_estimation_method,
                     )
 
     def test_gui_reads_velocity_method_when_building_run_spec(self) -> None:
