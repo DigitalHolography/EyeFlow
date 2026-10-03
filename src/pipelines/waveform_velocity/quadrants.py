@@ -16,6 +16,9 @@ from pipelines.waveform_velocity_core.regions import (
 from pipelines.waveform_velocity_core.retinal_velocity.constants import (
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
+from pipelines.waveform_velocity_core.velocity_semantics import (
+    resolve_velocity_semantics,
+)
 
 
 def pack_quadrant_velocity_outputs(
@@ -24,9 +27,12 @@ def pack_quadrant_velocity_outputs(
     artery_segments,
     vein_segments,
     output_paths: EyeFlowOutputPaths | str | None = None,
+    *,
+    velocity_analysis: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Pack quadrant-level continuous and per-beat velocity signals."""
     schema = _resolve_output_paths(output_paths)
+    velocity_unit = resolve_velocity_semantics(velocity_analysis).unit
     result: dict[str, object] = {}
 
     for vessel_name, segments, per_beat_paths in (
@@ -54,6 +60,7 @@ def pack_quadrant_velocity_outputs(
                 segments,
                 membership,
                 metrics,
+                velocity_unit,
             )
         )
 
@@ -68,6 +75,7 @@ def _pack_region_velocity_outputs(
     segments,
     membership: np.ndarray,
     metrics: dict[str, object],
+    velocity_unit: str,
 ) -> dict[str, object]:
     segment_velocity = np.asarray(segments.projected_signal, dtype=np.float32)
     if segment_velocity.ndim != 3:
@@ -100,11 +108,21 @@ def _pack_region_velocity_outputs(
         root = f"{velocity_root}/{region_name}"
         output[f"{root}/{_path_variant(velocity_signal_path)}/value"] = with_attrs(
             raw,
-            _velocity_region_attrs(region_name, "raw", ("frame",)),
+            _velocity_region_attrs(
+                region_name,
+                "raw",
+                ("frame",),
+                velocity_unit,
+            ),
         )
         output[f"{root}/{_path_variant(velocity_band_limited_path)}/value"] = with_attrs(
             band_limited,
-            _velocity_region_attrs(region_name, "bandlimited", ("frame",)),
+            _velocity_region_attrs(
+                region_name,
+                "bandlimited",
+                ("frame",),
+                velocity_unit,
+            ),
         )
 
     output.update(
@@ -113,6 +131,7 @@ def _pack_region_velocity_outputs(
             metrics,
             membership,
             vessel_name,
+            velocity_unit,
         )
     )
     return output
@@ -123,6 +142,7 @@ def _pack_region_per_beat_velocity_outputs(
     metrics: dict[str, object],
     membership: np.ndarray,
     vessel_name: str,
+    velocity_unit: str,
 ) -> dict[str, object]:
     if paths.segment_velocity_signal is None:
         return {}
@@ -166,7 +186,12 @@ def _pack_region_per_beat_velocity_outputs(
             f"{region_root}/{_path_variant(paths.velocity_signal)}/value"
         ] = with_attrs(
             region_raw,
-            _velocity_region_attrs(region_name, "raw", ("beat", "sample")),
+            _velocity_region_attrs(
+                region_name,
+                "raw",
+                ("beat", "sample"),
+                velocity_unit,
+            ),
         )
         result[
             f"{region_root}/{_path_variant(paths.velocity_signal_band_limited)}/value"
@@ -176,6 +201,7 @@ def _pack_region_per_beat_velocity_outputs(
                 region_name,
                 "bandlimited",
                 ("beat", "sample"),
+                velocity_unit,
             ),
         )
     return result
@@ -235,13 +261,14 @@ def _velocity_region_attrs(
     region_name: str,
     signal_type: str,
     dim_desc: tuple[str, ...],
+    velocity_unit: str = "mm/s",
 ) -> dict[str, object]:
     return {
         "aggregation": "median over selected branch-radius segment velocities",
         "dimDesc": list(dim_desc),
         "region": region_name,
         "signal_type": signal_type,
-        "unit": "mm/s",
+        "unit": velocity_unit,
     }
 
 

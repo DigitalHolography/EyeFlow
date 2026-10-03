@@ -40,6 +40,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
         "velocity_analysis",
         getattr(context, "dopplerview_analysis", None),
     )
+    velocity_semantics_kwargs = _velocity_semantics_kwargs(velocity_analysis)
     metrics = pack_continuous_velocity_outputs(velocity_analysis)
     segments_selected = "segments" in selected
     maps_selected = "segment_velocity_maps" in selected
@@ -73,6 +74,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 context.artery_segment_result,
                 context.vein_segment_result,
                 source_data=context.source_data,
+                **velocity_semantics_kwargs,
             )
         )
     if maps_selected:
@@ -81,6 +83,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             context.vein_segment_result,
             artery_velocity_maps_per_beat,
             vein_velocity_maps_per_beat,
+            **velocity_semantics_kwargs,
         )
         metrics.update(segment_map_outputs)
         metrics.update(
@@ -166,6 +169,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             context.vein_segment_result,
             cycle_boundaries,
             index_base=index_base,
+            **velocity_semantics_kwargs,
         )
         metrics.update(velocity_profile_outputs)
         if profile_fft_selected:
@@ -191,6 +195,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 context.source_data,
                 context.artery_segment_result,
                 context.vein_segment_result,
+                **velocity_semantics_kwargs,
             )
         )
 
@@ -205,3 +210,13 @@ def _required_state(ctx, key: str):
             "check the pipeline DAG dependencies."
         )
     return value
+
+
+def _velocity_semantics_kwargs(velocity_analysis) -> dict[str, object]:
+    """Keep legacy call signatures unchanged for the default physical mode."""
+
+    if isinstance(velocity_analysis, dict) and (
+        velocity_analysis.get("velocity_estimation_method") == "frequency_bands"
+    ):
+        return {"velocity_analysis": velocity_analysis}
+    return {}

@@ -10,6 +10,9 @@ from pipelines.waveform_velocity_core.retinal_velocity.constants import (
     LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ,
 )
 from pipelines.waveform_velocity_core.retinal_velocity.outputs import metric_value
+from pipelines.waveform_velocity_core.velocity_semantics import (
+    resolve_velocity_semantics,
+)
 
 
 def pack_continuous_velocity_outputs(
@@ -19,22 +22,23 @@ def pack_continuous_velocity_outputs(
     """Pack raw and band-limited artery and vein velocity signals."""
     schema = _resolve_output_paths(output_paths)
     paths = schema.analysis
+    unit = resolve_velocity_semantics(velocity_analysis).unit
     return {
         paths.retinal_artery_velocity_signal: metric_value(
             velocity_analysis["retinal_artery_velocity_signal"],
-            unit="mm/s",
+            unit=unit,
         ),
         paths.retinal_vein_velocity_signal: metric_value(
             velocity_analysis["retinal_vein_velocity_signal"],
-            unit="mm/s",
+            unit=unit,
         ),
         paths.retinal_artery_velocity_signal_band_limited: metric_value(
             velocity_analysis["retinal_artery_velocity_signal_filtered"],
-            unit="mm/s",
+            unit=unit,
         ),
         paths.retinal_vein_velocity_signal_band_limited: metric_value(
             velocity_analysis["retinal_vein_velocity_signal_filtered"],
-            unit="mm/s",
+            unit=unit,
         ),
     }
 
@@ -45,25 +49,34 @@ def pack_segment_velocity_outputs(
     output_paths: EyeFlowOutputPaths | str | None = None,
     *,
     source_data=None,
+    velocity_analysis: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Pack continuous segment velocity signals without beat decomposition."""
 
     schema = _resolve_output_paths(output_paths)
+    unit = resolve_velocity_semantics(velocity_analysis).unit
     return {
         **_pack_segment_velocity_output(
             artery_segments,
             schema.artery_segments,
             source_data,
+            unit,
         ),
         **_pack_segment_velocity_output(
             vein_segments,
             schema.vein_segments,
             source_data,
+            unit,
         ),
     }
 
 
-def _pack_segment_velocity_output(segments, paths, source_data) -> dict[str, object]:
+def _pack_segment_velocity_output(
+    segments,
+    paths,
+    source_data,
+    unit: str,
+) -> dict[str, object]:
     if segments is None or paths.velocity_signal is None:
         return {}
     if np.asarray(segments.branch_ids).size == 0:
@@ -79,7 +92,7 @@ def _pack_segment_velocity_output(segments, paths, source_data) -> dict[str, obj
     outputs = {
         paths.velocity_signal: metric_value(
             values.transpose(2, 1, 0),
-            unit="mm/s",
+            unit=unit,
             dim_desc=("frame", "branch", "radius"),
         )
     }
@@ -87,7 +100,7 @@ def _pack_segment_velocity_output(segments, paths, source_data) -> dict[str, obj
         band_limited = _lowpass_segment_velocity(values, source_data)
         outputs[paths.velocity_signal_band_limited] = metric_value(
             band_limited.transpose(2, 1, 0),
-            unit="mm/s",
+            unit=unit,
             dim_desc=("frame", "branch", "radius"),
         )
     return outputs

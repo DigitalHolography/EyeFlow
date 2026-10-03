@@ -9,6 +9,10 @@ import numpy as np
 from calculations.math import nanmedian
 from input_output.writers.eps import EpsArtifactWriter
 from input_output.writers.png import PngArtifactWriter
+from pipelines.waveform_velocity_core.velocity_semantics import (
+    resolve_velocity_semantics,
+    velocity_unit_from_payload,
+)
 
 VELOCITY_FIGURE_DPI = 320
 VELOCITY_FIGURE_WIDTH_INCHES = 8.0 / 2.54
@@ -33,10 +37,13 @@ def export_velocity_signals(
         ("vein", vein_safe_segment_velocity),
     ):
         velocity = _metric_data(values)
+        semantics = resolve_velocity_semantics(
+            unit=velocity_unit_from_payload(values)
+        )
         stem = f"velocity/{vessel}"
         paths.append(
             PngArtifactWriter(output, stem).save_figure(
-                _velocity_figure(velocity),
+                _velocity_figure(velocity, semantics.axis_label),
                 "velocity.png",
                 dpi=VELOCITY_FIGURE_DPI,
                 bbox_inches=None,
@@ -44,7 +51,7 @@ def export_velocity_signals(
         )
         paths.append(
             EpsArtifactWriter(output, stem).save_figure(
-                _velocity_figure(velocity),
+                _velocity_figure(velocity, semantics.axis_label),
                 "velocity.eps",
                 dpi=VELOCITY_FIGURE_DPI,
             )
@@ -52,7 +59,10 @@ def export_velocity_signals(
     return paths
 
 
-def _velocity_figure(safe_segment_velocity: np.ndarray):
+def _velocity_figure(
+    safe_segment_velocity: np.ndarray,
+    velocity_label: str = r"$v(t)$ (mm/s)",
+):
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
     from matplotlib.text import Text
@@ -99,7 +109,7 @@ def _velocity_figure(safe_segment_velocity: np.ndarray):
 
     ax.set_xlim(0.0, 1.0)
     ax.set_xlabel(r"Cardiac Phase $t/T$", fontsize=VELOCITY_FONT_SIZE)
-    ax.set_ylabel(r"$v(t)$ (mm/s)", fontsize=VELOCITY_FONT_SIZE)
+    ax.set_ylabel(velocity_label, fontsize=VELOCITY_FONT_SIZE)
     ax.tick_params(axis="both", labelsize=VELOCITY_FONT_SIZE)
     for spine in ax.spines.values():
         spine.set_visible(True)

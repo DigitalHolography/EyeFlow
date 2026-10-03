@@ -105,6 +105,9 @@ class RunController:
                 pipeline_options=(
                     self.app.pipeline_library_controller.selected_pipeline_options()
                 ),
+                velocity_estimation_method=(
+                    self.app.settings_store.load_velocity_estimation_method()
+                ),
             )
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
             services_for(self.app).dialogs.showerror(

@@ -9,7 +9,7 @@ import sys
 from collections.abc import Iterable, Mapping
 from importlib import metadata as importlib_metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 APP_NAME = "EyeFlow"
 SETTINGS_FILENAME = "settings.json"
@@ -18,6 +18,23 @@ LAST_RUN_LOG_FILENAME = "last_EF_log.txt"
 PIPELINES_DIR_ENV = "EYEFLOW_PIPELINES_DIR"
 VERSION_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
 INVALID_PATH_CHARS_PATTERN = re.compile(r'[<>:"/\\|?*]+')
+VelocityEstimationMethod = Literal["doppler_moments", "frequency_bands"]
+DEFAULT_VELOCITY_ESTIMATION_METHOD: VelocityEstimationMethod = "doppler_moments"
+VELOCITY_ESTIMATION_METHODS: frozenset[VelocityEstimationMethod] = frozenset(
+    {DEFAULT_VELOCITY_ESTIMATION_METHOD, "frequency_bands"}
+)
+
+
+def validate_velocity_estimation_method(value: object) -> VelocityEstimationMethod:
+    """Return a supported velocity estimator name or raise a clear error."""
+
+    if isinstance(value, str) and value in VELOCITY_ESTIMATION_METHODS:
+        return cast(VelocityEstimationMethod, value)
+    allowed = ", ".join(sorted(VELOCITY_ESTIMATION_METHODS))
+    raise ValueError(
+        "Invalid velocity_estimation_method "
+        f"{value!r}. Expected one of: {allowed}."
+    )
 
 
 def _read_version_from_pyproject(pyproject_path: Path) -> str | None:
@@ -269,6 +286,12 @@ class AppSettingsStore:
             ) from exc
         if not isinstance(settings, dict):
             raise TypeError("The configuration must contain a JSON object.")
+        validate_velocity_estimation_method(
+            settings.get(
+                "velocity_estimation_method",
+                DEFAULT_VELOCITY_ESTIMATION_METHOD,
+            )
+        )
         self.save(settings)
 
     def load_named_visibility(self, key: str) -> dict[str, bool]:
@@ -333,4 +356,19 @@ class AppSettingsStore:
     def save_ui_mode(self, mode: str) -> None:
         settings = self.load()
         settings["ui_mode"] = "advanced" if mode == "advanced" else "minimal"
+        self.save(settings)
+
+    def load_velocity_estimation_method(self) -> VelocityEstimationMethod:
+        return validate_velocity_estimation_method(
+            self.load().get(
+                "velocity_estimation_method",
+                DEFAULT_VELOCITY_ESTIMATION_METHOD,
+            )
+        )
+
+    def save_velocity_estimation_method(self, method: str) -> None:
+        settings = self.load()
+        settings["velocity_estimation_method"] = (
+            validate_velocity_estimation_method(method)
+        )
         self.save(settings)

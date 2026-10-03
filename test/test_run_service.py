@@ -10,7 +10,8 @@ import zipfile
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import h5py
 
@@ -34,6 +35,7 @@ from pipeline_engine.run_service import (  # noqa: E402
     expand_run_inputs,
     resolve_run_spec,
 )
+from ui.controllers.run import RunController  # noqa: E402
 
 
 def _write_input(root: Path, stem: str = "scan") -> Path:
@@ -69,6 +71,16 @@ def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
         description="sample",
         available=True,
         visibility=visibility,
+        pipeline_factory=_NoopPipeline,
+    )
+
+
+def _named_descriptor(name: str) -> PipelineDescriptor:
+    return PipelineDescriptor(
+        name=name,
+        description=name,
+        available=True,
+        visibility="visible",
         pipeline_factory=_NoopPipeline,
     )
 
@@ -196,6 +208,85 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertEqual(("preparation", "sample"), spec.plan.names)
 
+    def test_velocity_estimation_method_is_validated_and_stored(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            holo = _write_input(Path(temp_dir))
+            default_spec = resolve_run_spec(
+                input_paths=[holo],
+                target_names=["sample"],
+                pipelines=[_descriptor()],
+            )
+            band_spec = resolve_run_spec(
+                input_paths=[holo],
+                target_names=["sample"],
+                pipelines=[_descriptor()],
+                velocity_estimation_method="frequency_bands",
+            )
+
+            self.assertEqual(
+                "doppler_moments",
+                default_spec.velocity_estimation_method,
+            )
+            self.assertEqual(
+                "frequency_bands",
+                band_spec.velocity_estimation_method,
+            )
+
+            with self.assertRaisesRegex(ValueError, "velocity_estimation_method"):
+                resolve_run_spec(
+                    input_paths=[holo],
+                    target_names=["sample"],
+                    pipelines=[_descriptor()],
+                    velocity_estimation_method="unknown",
+                )
+
+    def test_frequency_band_method_rejects_physical_velocity_pipelines(self) -> None:
+        for pipeline_name in ("absolute_waveform_metrics", "blood_volume_rate"):
+            with self.subTest(pipeline=pipeline_name):
+                with self.assertRaisesRegex(ValueError, pipeline_name):
+                    resolve_run_spec(
+                        input_paths=[Path("unused.holo")],
+                        target_names=[pipeline_name],
+                        pipelines=[_named_descriptor(pipeline_name)],
+                        velocity_estimation_method="frequency_bands",
+                    )
+
+    def test_gui_reads_velocity_method_when_building_run_spec(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            holo = _write_input(Path(temp_dir))
+            progress_controller = SimpleNamespace(reset_run_log=Mock())
+            settings_store = SimpleNamespace(
+                load_velocity_estimation_method=Mock(
+                    return_value="frequency_bands"
+                )
+            )
+            app = SimpleNamespace(
+                input_controller=SimpleNamespace(
+                    selected_holo_paths=Mock(return_value=[holo])
+                ),
+                pipeline_library_controller=SimpleNamespace(
+                    selected_target_pipeline_names=Mock(return_value=["sample"]),
+                    selected_pipeline_options=Mock(return_value={}),
+                ),
+                pipeline_catalog={"sample": _descriptor()},
+                settings_store=settings_store,
+                progress_controller=progress_controller,
+                ui_services=SimpleNamespace(dialogs=Mock()),
+            )
+            controller = RunController.__new__(RunController)
+            controller.app = app
+
+            spec = controller._build_run_spec()
+
+            self.assertIsNotNone(spec)
+            assert spec is not None
+            self.assertEqual(
+                "frequency_bands",
+                spec.velocity_estimation_method,
+            )
+            settings_store.load_velocity_estimation_method.assert_called_once_with()
+            progress_controller.reset_run_log.assert_called_once()
+
     def test_pipeline_options_default_validate_and_preserve_empty_selection(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             holo = _write_input(Path(temp_dir))
@@ -289,6 +380,47 @@ class RunServiceTests(unittest.TestCase):
                 self.assertNotIn("trim_h5source", output_h5.attrs)
                 self.assertEqual(["sample"], list(output_h5.attrs["pipeline_targets"]))
                 self.assertEqual({}, json.loads(output_h5.attrs["pipeline_options"]))
+                self.assertEqual(
+                    "doppler_moments",
+                    output_h5.attrs["velocity_estimation_method"],
+                )
+                self.assertEqual(
+                    "physical_velocity",
+                    output_h5.attrs["velocity_quantity"],
+                )
+                self.assertEqual("mm/s", output_h5.attrs["velocity_unit"])
+
+    def test_frequency_band_method_is_persisted_in_output_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            holo = _write_input(Path(temp_dir))
+            spec = resolve_run_spec(
+                input_paths=[holo],
+                target_names=["sample"],
+                pipelines=[_descriptor()],
+                velocity_estimation_method="frequency_bands",
+            )
+
+            result = execute_run(spec)
+
+            self.assertTrue(result.succeeded)
+            with h5py.File(result.outputs[0], "r") as output_h5:
+                self.assertEqual(
+                    "frequency_bands",
+                    output_h5.attrs["velocity_estimation_method"],
+                )
+                self.assertEqual(
+                    "relative_velocity_index",
+                    output_h5.attrs["velocity_quantity"],
+                )
+                self.assertEqual("1", output_h5.attrs["velocity_unit"])
+                self.assertEqual(
+                    "/band_0_3000_9000",
+                    output_h5.attrs["band_lf_source_path"],
+                )
+                self.assertEqual(
+                    "/band_1_9000_18000",
+                    output_h5.attrs["band_hf_source_path"],
+                )
 
     def test_cli_reports_zip_creation_failure_with_nonzero_status(self) -> None:
         import cli
@@ -326,7 +458,12 @@ class RunServiceTests(unittest.TestCase):
                 path=root / "settings.json",
                 default_template_path=None,
             )
-            store.save({"pipeline_visibility": {"sample": True}})
+            store.save(
+                {
+                    "pipeline_visibility": {"sample": True},
+                    "velocity_estimation_method": "frequency_bands",
+                }
+            )
 
             with (
                 patch(
@@ -342,6 +479,11 @@ class RunServiceTests(unittest.TestCase):
             expected = root / "input" / "scan" / "scan_EF" / "h5" / "scan_EF.h5"
             self.assertEqual(0, status)
             self.assertTrue(expected.is_file())
+            with h5py.File(expected, "r") as output_h5:
+                self.assertEqual(
+                    "frequency_bands",
+                    output_h5.attrs["velocity_estimation_method"],
+                )
 
     def test_cli_requires_argument_when_no_pipeline_is_enabled(self) -> None:
         import cli

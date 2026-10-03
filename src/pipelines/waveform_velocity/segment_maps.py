@@ -14,6 +14,9 @@ from calculations.math import next_power_of_two
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
 from pipelines.displacement_map.constants import registration_method_output_name
+from pipelines.waveform_velocity_core.velocity_semantics import (
+    resolve_velocity_semantics,
+)
 from runtime_limits import cap_parallel_jobs
 
 _MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
@@ -26,19 +29,24 @@ def pack_segment_map_outputs(
     artery_velocity_maps_per_beat: np.ndarray | None,
     vein_velocity_maps_per_beat: np.ndarray | None,
     output_paths: EyeFlowOutputPaths | str | None = None,
+    *,
+    velocity_analysis: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Pack prepared per-beat maps and masks for artery and vein segments."""
     schema = _resolve_output_paths(output_paths)
+    velocity_unit = resolve_velocity_semantics(velocity_analysis).unit
     outputs = _pack_vessel_segment_maps(
         artery_segments,
         artery_velocity_maps_per_beat,
         schema.artery_segments,
+        velocity_unit,
     )
     outputs.update(
         _pack_vessel_segment_maps(
             vein_segments,
             vein_velocity_maps_per_beat,
             schema.vein_segments,
+            velocity_unit,
         )
     )
     return outputs
@@ -307,6 +315,7 @@ def _pack_vessel_segment_maps(
     segments,
     velocity_maps_per_beat: np.ndarray | None,
     paths,
+    velocity_unit: str,
 ) -> dict[str, object]:
     if segments is None:
         if velocity_maps_per_beat is not None:
@@ -342,7 +351,7 @@ def _pack_vessel_segment_maps(
         outputs[paths.velocity_map_per_segment] = DatasetValue(
             data=maps_per_beat,
             attrs={
-                "unit": "mm/s",
+                "unit": velocity_unit,
                 "dimDesc": ["x", "y", "time", "beat", "branch", "radius"],
                 "coordinate_system": "rotated_segment_pixel",
                 "mask_output": paths.segments,

@@ -58,11 +58,11 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
         value is not None
         for value in (f_artery, f_artery_bkg, f_vein, f_vein_bkg, f_vessel_bkg)
     ):
-        f_artery = _display_frequency(f_artery)
-        f_artery_bkg = _display_frequency(f_artery_bkg)
-        f_vein = _display_frequency(f_vein)
-        f_vein_bkg = _display_frequency(f_vein_bkg)
-        f_vessel_bkg = _display_frequency(f_vessel_bkg)
+        f_artery = ctx.display_rms(f_artery)
+        f_artery_bkg = ctx.display_rms(f_artery_bkg)
+        f_vein = ctx.display_rms(f_vein)
+        f_vein_bkg = ctx.display_rms(f_vein_bkg)
+        f_vessel_bkg = ctx.display_rms(f_vessel_bkg)
         paths.append(
             _line_plot(
                 writer,
@@ -70,7 +70,7 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
                 ctx.time,
                 [(f_artery, "-", "tab:red", "arteries"), (f_artery_bkg, "--", "k", "background")],
                 xlabel="Time(s)",
-                ylabel="frequency (kHz)",
+                ylabel=ctx.rms_quantity_label,
             )
         )
         paths.append(
@@ -80,7 +80,7 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
                 ctx.time,
                 [(f_vein, "-", "tab:blue", "veins"), (f_vein_bkg, "--", "k", "background")],
                 xlabel="Time(s)",
-                ylabel="frequency (kHz)",
+                ylabel=ctx.rms_quantity_label,
             )
         )
         paths.append(
@@ -94,7 +94,7 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
                     (f_vessel_bkg, "--", "k", "background"),
                 ],
                 xlabel="Time(s)",
-                ylabel="frequency (kHz)",
+                ylabel=ctx.rms_quantity_label,
             )
         )
     else:
@@ -120,20 +120,20 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
                 ctx.time,
                 [
                     (
-                        _display_frequency(delta_artery),
+                        ctx.display_rms(delta_artery),
                         "-",
                         "tab:red",
                         "arteries",
                     ),
                     (
-                        _display_frequency(delta_vein),
+                        ctx.display_rms(delta_vein),
                         "-",
                         "tab:blue",
                         "veins",
                     ),
                 ],
                 xlabel="Time(s)",
-                ylabel="frequency (kHz)",
+                ylabel=ctx.delta_rms_quantity_label,
             )
         )
     else:
@@ -172,7 +172,7 @@ def _export_signal_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[
             ],
             title="average velocity in arteries and veins",
             xlabel="Time(s)",
-            ylabel="Velocity (mm/s)",
+            ylabel=ctx.velocity_axis_label,
         )
     )
     return paths

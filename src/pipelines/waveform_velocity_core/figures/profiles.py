@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from .common import _plt
+from ..velocity_semantics import resolve_velocity_semantics
 
 PROFILE_FOLDER = "velocityProfiles"
 
@@ -22,6 +23,12 @@ def export_cross_section_profile_artifacts(
 
     del max_gif_frames
     paths: list[Path] = []
+    source_data = context.source_data
+    source = getattr(source_data, "source", None)
+    timing = source.holodoppler.timing if source is not None else source_data.timing
+    velocity_label = resolve_velocity_semantics(
+        getattr(context, "velocity_analysis", None)
+    ).axis_label
     for vessel_name, segments in (
         ("artery", getattr(context, "artery_segment_result", None)),
         ("vein", getattr(context, "vein_segment_result", None)),
@@ -44,8 +51,9 @@ def export_cross_section_profile_artifacts(
                 writer,
                 raw_aggregate,
                 raw_x_pixels,
-                float(context.source_data.source.holodoppler.timing.dt_seconds),
+                float(timing.dt_seconds),
                 vessel_name,
+                velocity_label,
             )
         )
     return paths
@@ -57,6 +65,7 @@ def _save_profile_map(
     x_pixels: np.ndarray,
     dt_seconds: float,
     vessel_name: str,
+    velocity_label: str = "Velocity (mm/s)",
 ) -> Path:
     plt = _plt()
     fig, ax = plt.subplots(figsize=(7.4, 4.2))
@@ -77,7 +86,7 @@ def _save_profile_map(
         vmin=color_min,
         vmax=color_max,
     )
-    fig.colorbar(image, ax=ax, label="Velocity (mm/s)")
+    fig.colorbar(image, ax=ax, label=velocity_label)
     ax.set(
         xlabel="Transverse sample (pixels)",
         ylabel="Time (s)",

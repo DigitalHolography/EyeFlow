@@ -16,6 +16,9 @@ from input_output.profile_datasets import (
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 from pipelines.displacement_map.constants import registration_method_output_name
+from pipelines.waveform_velocity_core.velocity_semantics import (
+    resolve_velocity_semantics,
+)
 
 _PROFILE_MASK_DILATION_ITERATIONS = 10
 _DISPLACEMENT_PROFILE_ROOT = "Processing/Displacement/Profiles"
@@ -33,14 +36,17 @@ def pack_cross_section_profile_outputs(
     output_paths: EyeFlowOutputPaths | str | None = None,
     *,
     index_base: int = 0,
+    velocity_analysis: dict[str, object] | None = None,
 ) -> dict[str, object]:
     schema = _resolve_output_paths(output_paths)
+    velocity_unit = resolve_velocity_semantics(velocity_analysis).unit
     metrics = _pack_vessel_profiles(
         schema.artery_velocity_profiles,
         artery_segments,
         cycle_boundary_indexes,
         index_base=index_base,
         include_temporal_means=True,
+        velocity_unit=velocity_unit,
     )
     metrics.update(
         _pack_vessel_profiles(
@@ -48,6 +54,7 @@ def pack_cross_section_profile_outputs(
             vein_segments,
             cycle_boundary_indexes,
             index_base=index_base,
+            velocity_unit=velocity_unit,
         )
     )
     return metrics
@@ -379,6 +386,7 @@ def _pack_vessel_profiles(
     *,
     index_base: int,
     include_temporal_means: bool = False,
+    velocity_unit: str = "mm/s",
 ) -> dict[str, object]:
     valid_segments = np.asarray(segments.topology.valid_segments, dtype=bool)
     transverse_masked = np.asarray(
@@ -390,6 +398,7 @@ def _pack_vessel_profiles(
             np.asarray(segments.transverse_profiles_unmasked, dtype=np.float32),
             cycle_boundary_indexes,
             index_base=index_base,
+            unit=velocity_unit,
             valid_segments=valid_segments,
         ),
         paths.transverse_velocity_profile_masked: _profile_dataset(
@@ -397,6 +406,7 @@ def _pack_vessel_profiles(
             cycle_boundary_indexes,
             index_base=index_base,
             spatial_axis="x",
+            unit=velocity_unit,
             valid_segments=valid_segments,
         ),
         paths.longitudinal_velocity_profile_unmasked: _profile_dataset(
@@ -407,6 +417,7 @@ def _pack_vessel_profiles(
             cycle_boundary_indexes,
             index_base=index_base,
             spatial_axis="y",
+            unit=velocity_unit,
             valid_segments=valid_segments,
         ),
         paths.longitudinal_velocity_profile_masked: _profile_dataset(
@@ -417,6 +428,7 @@ def _pack_vessel_profiles(
             cycle_boundary_indexes,
             index_base=index_base,
             spatial_axis="y",
+            unit=velocity_unit,
             valid_segments=valid_segments,
         ),
     }

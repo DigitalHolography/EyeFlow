@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from app_settings import validate_velocity_estimation_method
+
 from input_output.schema import (
     DopplerViewMetadata,
     ImageMaps,
@@ -19,17 +21,41 @@ def load_vessel_topology_inputs(ctx) -> RetinalSourceData:
     ctx.require_inputs("hd", "dv")
     hd = ctx.inputs.hd.as_holodoppler()
     dv = ctx.inputs.dv.as_dopplerview()
-    return load_retinal_source_data(hd, dv)
+    method = validate_velocity_estimation_method(
+        getattr(ctx, "velocity_estimation_method", "doppler_moments")
+    )
+    return load_retinal_source_data(
+        hd,
+        dv,
+        velocity_estimation_method=method,
+    )
 
 
-def load_retinal_source_data(hd, dv) -> RetinalSourceData:
+def load_retinal_source_data(
+    hd,
+    dv,
+    *,
+    velocity_estimation_method: str = "doppler_moments",
+) -> RetinalSourceData:
     """Load one canonical source model from typed HD and DV adapters."""
 
-    image_maps = ImageMaps(
-        moment0=hd.moment0_dataset(),
-        moment2=hd.moment2_dataset(),
-    )
-    spatial_shape = tuple(int(size) for size in image_maps.moment0.shape[-2:])
+    method = validate_velocity_estimation_method(velocity_estimation_method)
+    if method == "frequency_bands":
+        band_lf, band_hf = hd.frequency_band_datasets()
+        image_maps = ImageMaps(
+            moment0=hd.optional_moment0_dataset(),
+            moment2=hd.optional_moment2_dataset(),
+            band_lf=band_lf,
+            band_hf=band_hf,
+        )
+        spatial_reference = band_lf
+    else:
+        image_maps = ImageMaps(
+            moment0=hd.moment0_dataset(),
+            moment2=hd.moment2_dataset(),
+        )
+        spatial_reference = image_maps.moment0
+    spatial_shape = tuple(int(size) for size in spatial_reference.shape[-2:])
     artery_mask, artery_swapped = align_mask(
         dv.retinal_artery_mask(),
         spatial_shape,
@@ -82,6 +108,7 @@ def load_retinal_source_data(hd, dv) -> RetinalSourceData:
             local_background_dist=dv.local_background_dist(),
             spatial_axes_swapped_to_match_hd=artery_swapped,
         ),
+        velocity_estimation_method=method,
     )
 
 

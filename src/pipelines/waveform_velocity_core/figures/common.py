@@ -19,6 +19,10 @@ from calculations.math.arrays import (
     finite_image as _finite_image,
 )
 from utils.logger import Logger
+from pipelines.waveform_velocity_core.velocity_semantics import (
+    VelocitySemantics,
+    resolve_velocity_semantics,
+)
 
 __all__ = [
     "PulseFigureContext",
@@ -86,6 +90,36 @@ class PulseFigureContext:
         if not np.isfinite(period) or period <= 0:
             raise ValueError("Pulse figures require a positive spectral heartbeat period.")
         return period
+
+    @property
+    def velocity_semantics(self) -> VelocitySemantics:
+        return resolve_velocity_semantics(self.velocity_analysis)
+
+    @property
+    def velocity_axis_label(self) -> str:
+        return self.velocity_semantics.axis_label
+
+    @property
+    def velocity_colorbar_label(self) -> str:
+        semantics = self.velocity_semantics
+        return semantics.label if semantics.unit == "1" else semantics.unit
+
+    @property
+    def rms_quantity_label(self) -> str:
+        if self.velocity_semantics.quantity == "relative_velocity_index":
+            return "HF/LF band ratio"
+        return "RMS frequency (kHz)"
+
+    @property
+    def delta_rms_quantity_label(self) -> str:
+        if self.velocity_semantics.quantity == "relative_velocity_index":
+            return "Relative velocity index"
+        return "Delta Doppler RMS frequency (kHz)"
+
+    def display_rms(self, values) -> np.ndarray:
+        if self.velocity_semantics.quantity == "relative_velocity_index":
+            return np.asarray(values, dtype=np.float32)
+        return display_frequency(values)
 
 
 def _output_stem(output) -> str:
