@@ -6,6 +6,11 @@ from typing import Any
 
 import h5py
 
+from app_settings import (
+    DEFAULT_VELOCITY_ESTIMATION_METHOD,
+    VelocityEstimationMethod,
+    validate_velocity_estimation_method,
+)
 from input_output.h5_access import PipelineH5Output, PipelineInputSource, RawH5SourceReader
 from input_output.inputs import MergedAttrs
 from input_output.output_manager import OutputManager
@@ -99,6 +104,7 @@ class PipelineContext:
         variables: dict[str, Any] | None = None,
         pipeline_options: Mapping[str, Sequence[str]] | None = None,
         pipeline_order: Sequence[str] = (),
+        velocity_estimation_method: str = DEFAULT_VELOCITY_ESTIMATION_METHOD,
         output_manager: OutputManager | None = None,
     ) -> None:
         hd_config = dict(holodoppler_config or {})
@@ -121,6 +127,9 @@ class PipelineContext:
             for name, options in (pipeline_options or {}).items()
         }
         self.pipeline_order = tuple(str(name) for name in pipeline_order)
+        self.velocity_estimation_method: VelocityEstimationMethod = (
+            validate_velocity_estimation_method(velocity_estimation_method)
+        )
         self.attrs = MergedAttrs(
             work_h5,
             self._preferred_raw_source(),

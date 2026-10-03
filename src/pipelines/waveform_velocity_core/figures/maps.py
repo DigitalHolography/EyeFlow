@@ -32,7 +32,7 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     delta = ctx.velocity_analysis.get("deltafRMS")
     delta_avg = _array_or_none(ctx.velocity_analysis.get("deltafRMS_avg"))
     if f_bkg_avg is not None:
-        f_bkg_avg = _display_frequency(f_bkg_avg)
+        f_bkg_avg = ctx.display_rms(f_bkg_avg)
         paths.extend(
             _heatmap_with_colorbar(
                 writer,
@@ -40,11 +40,15 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
                 "f_bkg_map.png",
                 "f_bkg_colorBar.png",
                 cmap="gray",
-                label="background RMS frequency (kHz)",
+                label=(
+                    "Background HF/LF band ratio"
+                    if ctx.velocity_semantics.unit == "1"
+                    else "background RMS frequency (kHz)"
+                ),
             )
         )
     if delta_avg is not None or delta is not None:
-        df_mean = _display_frequency(
+        df_mean = ctx.display_rms(
             delta_avg if delta_avg is not None else mean_video(delta)
         )
         paths.extend(
@@ -54,7 +58,7 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
                 "df_map_vessel.png",
                 "df_colorBar_vessel.png",
                 cmap="gray",
-                label="Delta Doppler RMS frequency (kHz)",
+                label=ctx.delta_rms_quantity_label,
             )
         )
         paths.extend(
@@ -64,7 +68,7 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
                 "df_map.png",
                 "df_colorBar.png",
                 cmap="gray",
-                label="Delta Doppler RMS frequency (kHz)",
+                label=ctx.delta_rms_quantity_label,
             )
         )
         paths.append(
@@ -74,11 +78,15 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
                 "map_df_vessel.png",
                 cmap="turbo",
                 colorbar=True,
-                label="kHz",
+                label=(
+                    ctx.velocity_colorbar_label
+                    if ctx.velocity_semantics.unit == "1"
+                    else "kHz"
+                ),
             )
         )
     if f_avg is not None:
-        f_avg = _display_frequency(f_avg)
+        f_avg = ctx.display_rms(f_avg)
         velocity_avg = _array_or_none(
             ctx.velocity_analysis.get("velocity_map_avg")
         )
@@ -96,7 +104,7 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
                 "f_map.png",
                 "f_colorBar.png",
                 cmap="gray",
-                label="RMS frequency (kHz)",
+                label=ctx.rms_quantity_label,
             )
         )
         paths.extend(

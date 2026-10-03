@@ -8,6 +8,8 @@ from .eyeflow_output import (
     VelocityProfileOutputPaths,
 )
 from .holodoppler import (
+    HD_BAND_HF_PATH,
+    HD_BAND_LF_PATH,
     HD_MOMENT0_PATH,
     HD_MOMENT2_PATH,
     HOLODOPPLER_LAYOUT,
@@ -24,6 +26,8 @@ from .source_data import (
 
 __all__ = [
     "DOPPLER_VIEW_LAYOUT",
+    "HD_BAND_HF_PATH",
+    "HD_BAND_LF_PATH",
     "HD_MOMENT0_PATH",
     "HD_MOMENT2_PATH",
     "HOLODOPPLER_LAYOUT",

@@ -13,6 +13,10 @@ import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.avi import AviArtifactWriter
+from pipelines.waveform_velocity_core.velocity_semantics import (
+    resolve_velocity_semantics,
+    velocity_unit_from_payload,
+)
 from utils.logger import Logger
 
 
@@ -56,6 +60,9 @@ class _MosaicSource:
     exported_beat_indexes: tuple[int, ...]
     velocity_minimum: float
     velocity_maximum: float
+    velocity_unit: str
+    velocity_quantity: str
+    velocity_label: str
     render_plan: _MosaicRenderPlan
 
     @property
@@ -129,11 +136,16 @@ def export_segment_velocity_map_avis(
         return []
 
     range_started = perf_counter()
+    velocity_units = {source.velocity_unit for source in available_sources}
+    if len(velocity_units) != 1:
+        raise ValueError("Segment velocity-map sources must use the same unit.")
     velocity_range = _global_velocity_range(available_sources)
+    velocity_label = available_sources[0].velocity_label
     Logger.log(
         "Resolved shared segment AVI velocity range in "
         f"{perf_counter() - range_started:.3f}s: "
-        f"[{velocity_range[0]:.3f}, {velocity_range[1]:.3f}] mm/s."
+        f"[{velocity_range[0]:.3f}, {velocity_range[1]:.3f}] "
+        f"{velocity_label}."
     )
     color_lut = _turbo_lut()
     writer = AviArtifactWriter(output)
@@ -235,6 +247,9 @@ def _prepare_mosaic_source(
         getattr(segments, "branch_ids", np.arange(maps.shape[4]) + 1),
         dtype=np.int32,
     ).reshape(-1)
+    semantics = resolve_velocity_semantics(
+        unit=velocity_unit_from_payload(packed_value)
+    )
     exported_beat_indexes = tuple(
         range(min(int(maps.shape[3]), SEGMENT_VELOCITY_MAP_EXPORTED_BEATS))
     )
@@ -294,6 +309,9 @@ def _prepare_mosaic_source(
         exported_beat_indexes=exported_beat_indexes,
         velocity_minimum=float(minimum),
         velocity_maximum=float(maximum),
+        velocity_unit=semantics.unit,
+        velocity_quantity=semantics.quantity,
+        velocity_label=semantics.label,
         render_plan=_render_plan(maps.shape[:2], tiles, tile_side),
     )
     values_per_reduction = (
@@ -507,12 +525,17 @@ def _video_metadata(
     fps: float,
 ) -> dict[str, object]:
     return {
-        "title": f"EyeFlow {source.vessel} segment velocity-map mosaic",
+        "title": (
+            f"EyeFlow {source.vessel} segment "
+            f"{source.velocity_label.lower()}-map mosaic"
+        ),
         "artifact": "segment_velocity_map",
         "vessel": source.vessel,
         "codec": "MJPEG",
         "fps": float(fps),
-        "velocity_unit": "mm/s",
+        "velocity_unit": source.velocity_unit,
+        "velocity_quantity": source.velocity_quantity,
+        "velocity_label": source.velocity_label,
         "velocity_range": [float(value) for value in velocity_range],
         "velocity_range_source": "temporal_median_image",
         "colormap": SEGMENT_VELOCITY_MAP_COLORMAP,

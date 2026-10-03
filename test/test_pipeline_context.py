@@ -110,6 +110,42 @@ class PipelineContextTests(unittest.TestCase):
             self.assertTrue(ctx.pipeline_scheduled("waveform_velocity_core"))
             self.assertFalse(ctx.pipeline_scheduled("pdf_report"))
 
+    def test_velocity_estimation_method_is_available_to_runners(self) -> None:
+        with h5py.File(
+            "context_velocity_method_test.h5",
+            "w",
+            driver="core",
+            backing_store=False,
+        ) as h5file:
+            default_ctx = PipelineContext(
+                work_h5=h5file,
+                holodoppler_h5=None,
+                doppler_vision_h5=None,
+            )
+            frequency_band_ctx = PipelineContext(
+                work_h5=h5file,
+                holodoppler_h5=None,
+                doppler_vision_h5=None,
+                velocity_estimation_method="frequency_bands",
+            )
+
+            self.assertEqual(
+                "doppler_moments",
+                default_ctx.velocity_estimation_method,
+            )
+            self.assertEqual(
+                "frequency_bands",
+                frequency_band_ctx.velocity_estimation_method,
+            )
+
+            with self.assertRaisesRegex(ValueError, "velocity_estimation_method"):
+                PipelineContext(
+                    work_h5=h5file,
+                    holodoppler_h5=None,
+                    doppler_vision_h5=None,
+                    velocity_estimation_method="unknown",
+                )
+
     def test_source_array_casts_during_numeric_hdf5_read(self) -> None:
         with h5py.File(
             "context_array_test.h5",

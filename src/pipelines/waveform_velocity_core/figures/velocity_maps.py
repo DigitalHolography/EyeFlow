@@ -45,7 +45,7 @@ def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) 
             "map_v_Artery.png",
             cmap=_matlab_vessel_colormap("artery"),
             colorbar=True,
-            label="mm/s",
+            label=ctx.velocity_colorbar_label,
         ),
         _image_map(
             writer,
@@ -53,7 +53,7 @@ def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) 
             "map_v_Vein.png",
             cmap=_matlab_vessel_colormap("vein"),
             colorbar=True,
-            label="mm/s",
+            label=ctx.velocity_colorbar_label,
         ),
         _image_map(
             writer,
@@ -61,7 +61,7 @@ def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) 
             "map_v_Vessel.png",
             cmap="turbo",
             colorbar=True,
-            label="mm/s",
+            label=ctx.velocity_colorbar_label,
         ),
         _colorbar(
             writer,
@@ -69,7 +69,7 @@ def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) 
             cmap=_matlab_vessel_colormap("artery"),
             vmin=0.0,
             vmax=vmax,
-            label="mm/s",
+            label=ctx.velocity_colorbar_label,
         ),
         _colorbar(
             writer,
@@ -77,7 +77,7 @@ def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) 
             cmap=_matlab_vessel_colormap("vein"),
             vmin=0.0,
             vmax=vmax,
-            label="mm/s",
+            label=ctx.velocity_colorbar_label,
         ),
     ]
     flow_rgb = _flow_rgb(ctx, velocity_avg_display, None)
@@ -133,7 +133,7 @@ def _histogram_plot(
     )
     ax.set_facecolor("black")
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Velocity (mm/s)")
+    ax.set_ylabel(ctx.velocity_axis_label)
     _style_axes(ax)
     return writer.savefig(fig, suffix)
 
@@ -200,7 +200,7 @@ def _combined_plot(
         ax.set_facecolor("black")
         ax.set_title(title, pad=3)
         ax.set_xlabel(xlabel, labelpad=2)
-        ax.set_ylabel("Velocity (mm/s)", labelpad=2)
+        ax.set_ylabel(ctx.velocity_axis_label, labelpad=2)
         _style_axes(ax)
     return writer.savefig(fig, "AVGflowVideoCombined.png", dpi=150)
 

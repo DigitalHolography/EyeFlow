@@ -131,6 +131,21 @@ The GUI may still provide mask visualization and overlay-based quality control, 
 
 The data contract must be strict and documented early. A clean Python implementation depends more on a stable input schema than on UI details.
 
+### Velocity estimation method
+
+The top-level persisted setting `velocity_estimation_method` selects the
+velocity source. Its default, `doppler_moments`, preserves the calibrated
+Doppler-moment calculation and physical `mm/s` outputs.
+
+The optional `frequency_bands` method requires the exact HoloDoppler datasets
+`/band_0_3000_9000` (LF) and `/band_1_9000_18000` (HF), both shaped
+`(frame, y, x)`. It estimates `HF / LF`, applies the existing vessel-mask
+background correction, and publishes a dimensionless relative velocity index
+with unit `1`. It does not fall back to moments when either band is missing.
+Pipelines that require calibrated physical velocity, including
+`blood_volume_rate` and `absolute_waveform_metrics`, are rejected for this
+method.
+
 ### Required Datasets
 
 - `/moment0`

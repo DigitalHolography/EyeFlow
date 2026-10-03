@@ -22,6 +22,9 @@ from calculations.blood_flow_velocity.signal_analysis.waveform.paired_cycles imp
     paired_vessel_cycles,
 )
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
+from pipelines.waveform_velocity_core.velocity_semantics import (
+    resolve_velocity_semantics,
+)
 
 from .common import (
     PulseFigureContext,
@@ -79,6 +82,7 @@ def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[P
                     signal_values,
                     metric,
                     metric_name,
+                    ctx.velocity_semantics,
                 )
             )
     return paths
@@ -117,12 +121,14 @@ def _ri_pi_plot(
     values: np.ndarray,
     metric,
     metric_name: str,
+    velocity_semantics=None,
 ) -> Path:
+    semantics = velocity_semantics or resolve_velocity_semantics()
     fig, ax = _plt().subplots(figsize=(7.0, 4.0))
     ax.plot(time[: values.size], values, color="k", linewidth=2)
     for y, label in (
-        (metric.maximum, f"{metric.maximum:.1f} mm/s"),
-        (metric.minimum, f"{metric.minimum:.1f} mm/s"),
+        (metric.maximum, f"{metric.maximum:.1f}{semantics.value_suffix}"),
+        (metric.minimum, f"{metric.minimum:.1f}{semantics.value_suffix}"),
     ):
         ax.axhline(y, color="0.45", linestyle="--", linewidth=1.5)
         ax.text(time[-1], y, label, ha="right", va="bottom", backgroundcolor="w")
@@ -136,7 +142,7 @@ def _ri_pi_plot(
         backgroundcolor="w",
     )
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Velocity (mm/s)")
+    ax.set_ylabel(semantics.axis_label)
     _style_axes(ax)
     return writer.savefig(fig, suffix)
 
@@ -155,14 +161,21 @@ def _arterial_waveform_plot(
             ).size,
         ),
     )
-    return _arterial_waveform_analysis_plot(writer, cycle, data)
+    return _arterial_waveform_analysis_plot(
+        writer,
+        cycle,
+        data,
+        ctx.velocity_semantics,
+    )
 
 
 def _arterial_waveform_analysis_plot(
     writer: FigureWriter,
     cycle: np.ndarray,
     data: ArterialWaveformAnalysis,
+    velocity_semantics=None,
 ) -> Path:
+    semantics = velocity_semantics or resolve_velocity_semantics()
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
     ax.plot(data.padded_time, data.padded_gradient, color="0.85", linewidth=2)
     ax.plot(data.padded_time, data.padded_signal, color="0.85", linewidth=2)
@@ -175,7 +188,11 @@ def _arterial_waveform_analysis_plot(
         f"{data.pulse_time[primary_peak]:.2f} s",
     )
     _annotated_vline(ax, data.period_seconds, f"{data.period_seconds:.2f} s")
-    _annotated_hline(ax, cycle[primary_peak], f"{cycle[primary_peak]:.1f} mm/s")
+    _annotated_hline(
+        ax,
+        cycle[primary_peak],
+        f"{cycle[primary_peak]:.1f}{semantics.value_suffix}",
+    )
     _annotated_vline(
         ax,
         data.pulse_time[data.end_min_index],
@@ -184,7 +201,7 @@ def _arterial_waveform_analysis_plot(
     _annotated_hline(
         ax,
         cycle[data.end_min_index],
-        f"{cycle[data.end_min_index]:.1f} mm/s",
+        f"{cycle[data.end_min_index]:.1f}{semantics.value_suffix}",
         color="tab:blue",
         vertical_alignment="bottom",
     )
@@ -194,7 +211,11 @@ def _arterial_waveform_analysis_plot(
             data.pulse_time[data.notch_index],
             f"{data.pulse_time[data.notch_index]:.2f} s",
         )
-        _annotated_hline(ax, cycle[data.notch_index], f"{cycle[data.notch_index]:.1f} mm/s")
+        _annotated_hline(
+            ax,
+            cycle[data.notch_index],
+            f"{cycle[data.notch_index]:.1f}{semantics.value_suffix}",
+        )
     if data.peak_indexes.size > 1:
         secondary_peak = int(data.peak_indexes[1])
         _annotated_vline(
@@ -205,7 +226,7 @@ def _arterial_waveform_analysis_plot(
         _annotated_hline(
             ax,
             cycle[secondary_peak],
-            f"{cycle[secondary_peak]:.1f} mm/s",
+            f"{cycle[secondary_peak]:.1f}{semantics.value_suffix}",
             vertical_alignment="top",
         )
     ax.scatter(
@@ -223,7 +244,7 @@ def _arterial_waveform_analysis_plot(
         edgecolor="k",
     )
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Velocity (mm/s)")
+    ax.set_ylabel(semantics.axis_label)
     ax.margins(y=0.18)
     _style_axes(ax)
     return writer.savefig(fig, "ArterialWaveformAnalysis_v_artery.png", dpi=180)
@@ -243,14 +264,21 @@ def _venous_waveform_plot(
             ).size,
         ),
     )
-    return _venous_waveform_analysis_plot(writer, cycle, data)
+    return _venous_waveform_analysis_plot(
+        writer,
+        cycle,
+        data,
+        ctx.velocity_semantics,
+    )
 
 
 def _venous_waveform_analysis_plot(
     writer: FigureWriter,
     cycle: np.ndarray,
     data: VenousWaveformAnalysis,
+    velocity_semantics=None,
 ) -> Path:
+    semantics = velocity_semantics or resolve_velocity_semantics()
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
     ax.plot(data.padded_time, data.padded_signal, color="0.85", linewidth=2)
     ax.plot(data.pulse_time, cycle, color="k", linewidth=2)
@@ -260,7 +288,11 @@ def _venous_waveform_analysis_plot(
         f"{data.pulse_time[data.peak_index]:.2f} s",
     )
     _annotated_vline(ax, data.period_seconds, f"{data.period_seconds:.2f} s")
-    _annotated_hline(ax, cycle[data.peak_index], f"{cycle[data.peak_index]:.1f} mm/s")
+    _annotated_hline(
+        ax,
+        cycle[data.peak_index],
+        f"{cycle[data.peak_index]:.1f}{semantics.value_suffix}",
+    )
     _annotated_vline(
         ax,
         data.pulse_time[data.trough_index],
@@ -269,7 +301,7 @@ def _venous_waveform_analysis_plot(
     _annotated_hline(
         ax,
         cycle[data.trough_index],
-        f"{cycle[data.trough_index]:.1f} mm/s",
+        f"{cycle[data.trough_index]:.1f}{semantics.value_suffix}",
         color="tab:blue",
         vertical_alignment="bottom",
     )
@@ -288,7 +320,7 @@ def _venous_waveform_analysis_plot(
         edgecolor="k",
     )
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Velocity (mm/s)")
+    ax.set_ylabel(semantics.axis_label)
     ax.margins(y=0.18)
     _style_axes(ax)
     return writer.savefig(fig, "VenousWaveformAnalysis_v_vein.png", dpi=180)

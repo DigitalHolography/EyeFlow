@@ -288,9 +288,10 @@ def _extract_velocity_metrics(f: h5py.File, params: dict[str, Any]) -> None:
         if dataset is not None:
             arr = np.asarray(dataset)
             if arr.size > 0:
-                params["Average_Arterial_Velocity"] = {"value": float(np.mean(arr)), "unit": "mm/s"}
-                params["Max_Arterial_Velocity"] = {"value": float(np.max(arr)), "unit": "mm/s"}
-                params["Min_Arterial_Velocity"] = {"value": float(np.min(arr)), "unit": "mm/s"}
+                unit = _velocity_dataset_unit(f, dataset)
+                params["Average_Arterial_Velocity"] = {"value": float(np.mean(arr)), "unit": unit}
+                params["Max_Arterial_Velocity"] = {"value": float(np.max(arr)), "unit": unit}
+                params["Min_Arterial_Velocity"] = {"value": float(np.min(arr)), "unit": unit}
                 break
     
     vein_paths = [
@@ -305,10 +306,20 @@ def _extract_velocity_metrics(f: h5py.File, params: dict[str, Any]) -> None:
         if dataset is not None:
             arr = np.asarray(dataset)
             if arr.size > 0:
-                params["Average_Venous_Velocity"] = {"value": float(np.mean(arr)), "unit": "mm/s"}
-                params["Max_Venous_Velocity"] = {"value": float(np.max(arr)), "unit": "mm/s"}
-                params["Min_Venous_Velocity"] = {"value": float(np.min(arr)), "unit": "mm/s"}
+                unit = _velocity_dataset_unit(f, dataset)
+                params["Average_Venous_Velocity"] = {"value": float(np.mean(arr)), "unit": unit}
+                params["Max_Venous_Velocity"] = {"value": float(np.max(arr)), "unit": unit}
+                params["Min_Venous_Velocity"] = {"value": float(np.min(arr)), "unit": unit}
                 break
+
+
+def _velocity_dataset_unit(f: h5py.File, dataset: h5py.Dataset) -> str:
+    """Prefer dataset provenance, with the output-root contract as fallback."""
+
+    value = dataset.attrs.get("unit", f.attrs.get("velocity_unit", "mm/s"))
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    return str(value)
 
 
 def _extract_heart_rate(f: h5py.File, params: dict[str, Any]) -> None:

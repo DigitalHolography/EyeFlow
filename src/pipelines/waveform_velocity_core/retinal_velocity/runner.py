@@ -20,18 +20,33 @@ def run_retinal_velocity_analysis(
     retain_velocity_video: bool = True,
     velocity_estimation: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    source = source_data.source
-    images = source.image_maps
-    segmentation = source.segmentation
-    vessels = segmentation.vessels
-    timing: HolodopplerTiming = source.holodoppler.timing
-    local_background_dist = source.doppler_view.local_background_dist
+    source = getattr(source_data, "source", None)
+    if source is None:
+        if velocity_estimation is None:
+            raise TypeError(
+                "source_data must expose the canonical 'source' model when "
+                "velocity estimation has not already been supplied."
+            )
+        timing: HolodopplerTiming = source_data.timing
+        local_background_dist = source_data.local_background_dist
+        velocity_estimation_method = "doppler_moments"
+        images = segmentation = vessels = None
+    else:
+        images = source.image_maps
+        segmentation = source.segmentation
+        vessels = segmentation.vessels
+        timing = source.holodoppler.timing
+        local_background_dist = source.doppler_view.local_background_dist
+        velocity_estimation_method = source.velocity_estimation_method
     cache = (
         dict(velocity_estimation)
         if velocity_estimation is not None
         else run_chunked_velocity_estimator(
             moment0=images.moment0,
             moment2=images.moment2,
+            band_lf=images.band_lf,
+            band_hf=images.band_hf,
+            velocity_estimation_method=velocity_estimation_method,
             artery_mask=vessels.artery,
             vein_mask=vessels.vein,
             background_mask=getattr(vessels, "velocity_background", None),

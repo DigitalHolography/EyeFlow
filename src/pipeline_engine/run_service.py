@@ -8,6 +8,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from app_settings import (
+    DEFAULT_VELOCITY_ESTIMATION_METHOD,
+    VelocityEstimationMethod,
+    validate_velocity_estimation_method,
+)
 from input_output import INPUT_LIST_SUFFIX, HoloRunLayout, resolve_selected_run_layouts
 from input_output.archives import extracted_zip_tree
 from input_output.output_manager import OutputManager, OutputType
@@ -18,6 +23,9 @@ from .dag import PipelineDAG, PipelineExecutionPlan
 from .runtime import run_pipelines_to_output
 
 HOLO_SUFFIX = ".holo"
+PHYSICAL_VELOCITY_PIPELINES = frozenset(
+    {"absolute_waveform_metrics", "blood_volume_rate"}
+)
 
 
 @dataclass(frozen=True)
@@ -43,6 +51,9 @@ class RunSpec:
     plan: PipelineExecutionPlan
     requests: tuple[RunRequest, ...]
     pipeline_options: Mapping[str, tuple[str, ...]]
+    velocity_estimation_method: VelocityEstimationMethod = (
+        DEFAULT_VELOCITY_ESTIMATION_METHOD
+    )
 
     @property
     def total_pipeline_units(self) -> int:
@@ -91,11 +102,15 @@ def resolve_run_spec(
     target_names: Sequence[str],
     pipelines: Iterable[PipelineDescriptor],
     pipeline_options: Mapping[str, Iterable[str]] | None = None,
+    velocity_estimation_method: str = DEFAULT_VELOCITY_ESTIMATION_METHOD,
     output_root: Path | None = None,
     batch_root: Path | None = None,
 ) -> RunSpec:
     """Resolve targets, inputs, and deterministic output destinations."""
 
+    resolved_velocity_method = validate_velocity_estimation_method(
+        velocity_estimation_method
+    )
     descriptors = tuple(pipelines)
     selectable = selectable_pipeline_registry(descriptors)
     hidden_targets = [name for name in target_names if name not in selectable]
@@ -111,6 +126,16 @@ def resolve_run_spec(
     )
     if not plan.targets:
         raise ValueError("Select at least one pipeline target.")
+    if resolved_velocity_method == "frequency_bands":
+        incompatible = sorted(PHYSICAL_VELOCITY_PIPELINES.intersection(plan.names))
+        if incompatible:
+            raise ValueError(
+                "velocity_estimation_method='frequency_bands' produces a "
+                "dimensionless relative velocity index and is incompatible with "
+                "physical-velocity pipeline(s): "
+                + ", ".join(incompatible)
+                + "."
+            )
     unavailable = [pipeline for pipeline in plan.descriptors if not pipeline.available]
     if unavailable:
         details = []
@@ -151,6 +176,7 @@ def resolve_run_spec(
         plan=plan,
         requests=requests,
         pipeline_options=resolved_options,
+        velocity_estimation_method=resolved_velocity_method,
     )
 
 
@@ -200,6 +226,7 @@ def execute_run(
                 pipelines=spec.plan.descriptors,
                 target_names=spec.plan.targets,
                 pipeline_options=spec.pipeline_options,
+                velocity_estimation_method=spec.velocity_estimation_method,
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
                 on_pipeline_start=on_pipeline_start,

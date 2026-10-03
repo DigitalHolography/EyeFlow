@@ -7,4 +7,7 @@ from .per_beat_outputs import pack_velocity_per_beat_outputs
 
 def run_velocity_per_beat_metrics(context):
     result = run_per_beat_analysis(context.per_beat_analysis)
-    return result, pack_velocity_per_beat_outputs(result)
+    return result, pack_velocity_per_beat_outputs(
+        result,
+        velocity_analysis=context.velocity_analysis,
+    )

@@ -61,6 +61,8 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
             peaks,
             maxima,
             minima,
+            ctx.velocity_axis_label,
+            ctx.velocity_semantics,
         ),
         _systole_plot(
             writer,
@@ -71,6 +73,8 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
             peaks,
             maxima,
             minima,
+            ctx.velocity_axis_label,
+            ctx.velocity_semantics,
         ),
     ]
 
@@ -83,6 +87,8 @@ def _systole_plot(
     peaks: np.ndarray,
     maxima: np.ndarray,
     minima: np.ndarray,
+    velocity_label: str = "Velocity (mm/s)",
+    velocity_semantics=None,
 ) -> Path:
     fig, ax = _plt().subplots(figsize=(7.5, 4.0))
     derivative_ax = ax.twinx()
@@ -100,8 +106,12 @@ def _systole_plot(
             for idx in valid:
                 ax.axvline(time[idx], color=color, linestyle="--", linewidth=1.0, alpha=0.75)
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Velocity (mm/s)")
-    derivative_ax.set_ylabel("Acceleration (mm/s²)")
+    ax.set_ylabel(velocity_label)
+    derivative_ax.set_ylabel(
+        "Relative velocity index rate (s⁻¹)"
+        if getattr(velocity_semantics, "unit", "mm/s") == "1"
+        else "Acceleration (mm/s²)"
+    )
     _style_axes(ax)
     _style_axes(derivative_ax)
     return writer.savefig(fig, suffix)

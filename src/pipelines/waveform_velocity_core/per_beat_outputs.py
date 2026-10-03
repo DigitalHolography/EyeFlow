@@ -9,13 +9,19 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.segments import (
     SEGMENT_PER_BEAT_DIM_DESC,
 )
 from input_output.schema import EyeFlowOutputPaths, VelocityPerBeatOutputPaths
+from pipelines.waveform_velocity_core.velocity_semantics import (
+    resolve_velocity_semantics,
+)
 
 
 def pack_velocity_per_beat_outputs(
     result: PerBeatAnalysisResult,
     output_paths: EyeFlowOutputPaths | str | None = None,
+    *,
+    velocity_analysis: dict[str, object] | None = None,
 ) -> dict[str, object]:
     schema = _resolve_output_paths(output_paths)
+    velocity_unit = resolve_velocity_semantics(velocity_analysis).unit
     metrics = {
         schema.beat_period_seconds: metric_value(
             _matlab_row_vector(result.beat_period_seconds),
@@ -23,18 +29,32 @@ def pack_velocity_per_beat_outputs(
             dim_desc=("row", "beat"),
         ),
     }
-    metrics.update(_pack_vessel_outputs(schema.artery_per_beat, result.artery))
-    metrics.update(_pack_vessel_outputs(schema.vein_per_beat, result.vein))
+    metrics.update(
+        _pack_vessel_outputs(
+            schema.artery_per_beat,
+            result.artery,
+            velocity_unit,
+        )
+    )
+    metrics.update(
+        _pack_vessel_outputs(
+            schema.vein_per_beat,
+            result.vein,
+            velocity_unit,
+        )
+    )
     metrics.update(
         _pack_safe_segment_outputs(
             schema.artery_per_beat_safe,
             result.artery.safe_segments,
+            velocity_unit,
         )
     )
     metrics.update(
         _pack_safe_segment_outputs(
             schema.vein_per_beat_safe,
             result.vein.safe_segments,
+            velocity_unit,
         )
     )
     return metrics
@@ -43,12 +63,13 @@ def pack_velocity_per_beat_outputs(
 def _pack_vessel_outputs(
     paths: VelocityPerBeatOutputPaths,
     vessel,
+    velocity_unit: str,
 ) -> dict[str, object]:
     signal = vessel.signal
     metrics = {
         paths.velocity_signal: metric_value(
             signal.velocity_signal_per_beat,
-            unit="mm/s",
+            unit=velocity_unit,
             dim_desc=("beat", "sample"),
         ),
         paths.velocity_signal_fft_abs: metric_value(
@@ -63,18 +84,21 @@ def _pack_vessel_outputs(
         ),
         paths.velocity_signal_band_limited: metric_value(
             signal.velocity_signal_per_beat_band_limited,
-            unit="mm/s",
+            unit=velocity_unit,
             dim_desc=("beat", "sample"),
         ),
     }
     if vessel.segments is not None:
-        metrics.update(_pack_vessel_segment_outputs(paths, vessel.segments))
+        metrics.update(
+            _pack_vessel_segment_outputs(paths, vessel.segments, velocity_unit)
+        )
     return metrics
 
 
 def _pack_vessel_segment_outputs(
     paths: VelocityPerBeatOutputPaths,
     segments,
+    velocity_unit: str,
 ) -> dict[str, object]:
     if paths.segment_velocity_signal is None:
         return {}
@@ -83,16 +107,20 @@ def _pack_vessel_segment_outputs(
     return {
         paths.segment_velocity_signal: _segment_metric_value(
             segments.velocity_signal_per_beat_per_segment,
-            unit="mm/s",
+            unit=velocity_unit,
         ),
         paths.segment_velocity_signal_band_limited: _segment_metric_value(
             segments.velocity_signal_per_beat_per_segment_band_limited,
-            unit="mm/s",
+            unit=velocity_unit,
         ),
     }
 
 
-def _pack_safe_segment_outputs(paths, segments) -> dict[str, object]:
+def _pack_safe_segment_outputs(
+    paths,
+    segments,
+    velocity_unit: str,
+) -> dict[str, object]:
     if segments is None or paths.velocity_signal is None:
         return {}
     if paths.velocity_signal_band_limited is None:
@@ -100,11 +128,11 @@ def _pack_safe_segment_outputs(paths, segments) -> dict[str, object]:
     return {
         paths.velocity_signal: _segment_metric_value(
             segments.velocity_signal_per_beat_per_segment,
-            unit="mm/s",
+            unit=velocity_unit,
         ),
         paths.velocity_signal_band_limited: _segment_metric_value(
             segments.velocity_signal_per_beat_per_segment_band_limited,
-            unit="mm/s",
+            unit=velocity_unit,
         ),
     }
 

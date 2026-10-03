@@ -42,6 +42,10 @@ class DefaultSettingsTests(unittest.TestCase):
             {"gradient_edges": True, "masked_edges": True},
             settings["pipeline_options"]["blood_volume_rate"],
         )
+        self.assertEqual(
+            "doppler_moments",
+            settings["velocity_estimation_method"],
+        )
 
     def test_new_default_selected_pipeline_is_enabled_in_existing_settings(self) -> None:
         visibility, changed = normalize_pipeline_visibility(

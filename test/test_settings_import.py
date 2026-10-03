@@ -74,6 +74,41 @@ class SettingsImportTests(unittest.TestCase):
 
             self.assertFalse(store.path.exists())
 
+    def test_existing_settings_without_velocity_method_use_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = AppSettingsStore(
+                path=Path(temp_dir) / "settings.json",
+                default_template_path=None,
+            )
+            store.save({"ui_mode": "minimal"})
+
+            self.assertEqual(
+                "doppler_moments",
+                store.load_velocity_estimation_method(),
+            )
+
+    def test_import_rejects_invalid_velocity_method_without_replacing_settings(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_path = root / "invalid_method.json"
+            source_path.write_text(
+                json.dumps({"velocity_estimation_method": "unknown"}),
+                encoding="utf-8",
+            )
+            store = AppSettingsStore(
+                path=root / "settings.json",
+                default_template_path=None,
+            )
+            original = {"velocity_estimation_method": "doppler_moments"}
+            store.save(original)
+
+            with self.assertRaisesRegex(ValueError, "velocity_estimation_method"):
+                store.import_file(source_path)
+
+            self.assertEqual(original, store.load())
+
     def test_choose_config_file_imports_and_refreshes_the_ui(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

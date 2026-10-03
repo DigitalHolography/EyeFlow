@@ -52,9 +52,15 @@ def run_heartbeat_core(ctx) -> HeartbeatResult:
     images = inputs.image_maps
     segmentation = inputs.segmentation
     vessels = segmentation.vessels
+    velocity_estimation_method = inputs.velocity_estimation_method
     retain_velocity_video = _pipeline_scheduled(ctx, "waveform_velocity_core")
+    velocity_source = (
+        images.band_lf
+        if velocity_estimation_method == "frequency_bands"
+        else images.moment0
+    )
     velocity_video = (
-        np.empty(tuple(int(size) for size in images.moment0.shape), dtype=np.float32)
+        np.empty(tuple(int(size) for size in velocity_source.shape), dtype=np.float32)
         if retain_velocity_video
         else None
     )
@@ -62,6 +68,9 @@ def run_heartbeat_core(ctx) -> HeartbeatResult:
         velocity = run_chunked_velocity_estimator(
             moment0=images.moment0,
             moment2=images.moment2,
+            band_lf=images.band_lf,
+            band_hf=images.band_hf,
+            velocity_estimation_method=velocity_estimation_method,
             artery_mask=vessels.artery,
             vein_mask=vessels.vein,
             background_mask=getattr(vessels, "velocity_background", None),
@@ -160,6 +169,9 @@ def _velocity_estimator_key(source) -> VelocityEstimatorCacheKey:
     return velocity_estimator_cache_key(
         moment0=images.moment0,
         moment2=images.moment2,
+        band_lf=images.band_lf,
+        band_hf=images.band_hf,
+        velocity_estimation_method=source.velocity_estimation_method,
         artery_mask=vessels.artery,
         vein_mask=vessels.vein,
         background_mask=getattr(vessels, "velocity_background", None),

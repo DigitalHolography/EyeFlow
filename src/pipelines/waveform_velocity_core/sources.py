@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 from calculations.segment_profiles import SegmentProfileSettings
 from input_output.schema import (
     DopplerViewSource,
+    HD_BAND_HF_PATH,
+    HD_BAND_LF_PATH,
     HolodopplerSource,
     PixelPitch,
     RetinalSourceData,
@@ -42,6 +44,7 @@ class WaveformVelocitySources:
 
     hd: HolodopplerSource
     dv: DopplerViewSource
+    velocity_estimation_method: str = "doppler_moments"
 
     @classmethod
     def from_context(cls, ctx: PipelineContext) -> WaveformVelocitySources:
@@ -49,10 +52,15 @@ class WaveformVelocitySources:
         return cls(
             hd=ctx.inputs.hd.as_holodoppler(),
             dv=ctx.inputs.dv.as_dopplerview(),
+            velocity_estimation_method=ctx.velocity_estimation_method,
         )
 
     def load(self) -> WaveformVelocitySourceData:
-        source = load_retinal_source_data(self.hd, self.dv)
+        source = load_retinal_source_data(
+            self.hd,
+            self.dv,
+            velocity_estimation_method=self.velocity_estimation_method,
+        )
         pixel_pitch = source.holodoppler.pixel_pitch
         return WaveformVelocitySourceData(
             source=source,
@@ -100,4 +108,26 @@ def _source_provenance(
         "beat_index_base": BEAT_INDEX_BASE,
         "moment_axes": list(MOMENT_AXES),
         "mask_axes": list(MASK_AXES),
+        "velocity_estimation_method": source.velocity_estimation_method,
+        "velocity_quantity": (
+            "relative_velocity_index"
+            if source.velocity_estimation_method == "frequency_bands"
+            else "physical_velocity"
+        ),
+        "velocity_unit": (
+            "1"
+            if source.velocity_estimation_method == "frequency_bands"
+            else "mm/s"
+        ),
+        "band_lf_source_path": (
+            f"/{HD_BAND_LF_PATH}"
+            if source.velocity_estimation_method == "frequency_bands"
+            else None
+        ),
+        "band_hf_source_path": (
+            f"/{HD_BAND_HF_PATH}"
+            if source.velocity_estimation_method == "frequency_bands"
+            else None
+        ),
+        "frequency_band_axes": list(MOMENT_AXES),
     }

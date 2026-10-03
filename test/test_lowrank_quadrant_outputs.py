@@ -101,6 +101,30 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
         self.assertTrue(outputs)
         self.assertFalse(any("/Quadrants/" in key for key in outputs))
 
+    def test_relative_velocity_source_propagates_unit_one(self) -> None:
+        schema = EyeFlowOutputPaths.active()
+        waveforms = np.ones((8, 1, 1, 3), dtype=np.float32)
+        velocity_outputs = {
+            schema.beat_period_seconds: np.asarray([[0.8]], dtype=np.float32),
+            schema.artery_per_beat.segment_velocity_signal: DatasetValue(
+                waveforms,
+                {"unit": "1"},
+            ),
+        }
+
+        outputs = pack_lowrank_waveform_decomposition_outputs(
+            velocity_outputs,
+            vein_flag=False,
+        )
+
+        root = schema.lowrank_waveform_decomposition_root
+        for path in (
+            f"{root}/artery/raw/endpoints/joint/R0",
+            f"{root}/artery/raw/baseline/mu_acq",
+            f"{root}/artery/raw/misc/acquisition_level_velocity/velocity_cross_column_mean",
+        ):
+            self.assertEqual("1", outputs[path].attrs["unit"])
+
     @staticmethod
     def _data(value) -> np.ndarray:
         return np.asarray(value.data if isinstance(value, DatasetValue) else value)

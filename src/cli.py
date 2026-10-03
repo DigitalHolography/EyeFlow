@@ -184,6 +184,7 @@ def run_cli(
         target_registry,
         settings_store=settings_store,
     )
+    velocity_estimation_method = settings_store.load_velocity_estimation_method()
     work_tempdir_path: Path | None = None
     clean_work_output = False
     with expand_run_inputs(data_path) as expanded_inputs:
@@ -207,6 +208,7 @@ def run_cli(
             target_names=target_names,
             pipelines=registry.values(),
             pipeline_options=pipeline_options,
+            velocity_estimation_method=velocity_estimation_method,
             output_root=work_root,
             batch_root=expanded_inputs.batch_root,
         )

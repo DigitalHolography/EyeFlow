@@ -17,7 +17,7 @@
       "segments": true
     },
     "blood_volume_rate": {
-      "gradient_edges": false,
+      "gradient_edges": true,
       "masked_edges": true
     },
     "lowrank_waveform_decomposition": {
@@ -37,5 +37,6 @@
       "segment_velocity_maps": false
     }
   },
-  "ui_mode": "minimal"
+  "ui_mode": "minimal",
+  "velocity_estimation_method": "doppler_moments"
 }

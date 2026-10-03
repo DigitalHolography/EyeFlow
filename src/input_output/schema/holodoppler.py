@@ -14,6 +14,8 @@ HD_CONFIG_DIR_NAME = "json"
 HD_CONFIG_FILENAME = "parameters.json"
 HD_MOMENT0_PATH = "moment0"
 HD_MOMENT2_PATH = "moment2"
+HD_BAND_LF_PATH = "band_0_3000_9000"
+HD_BAND_HF_PATH = "band_1_9000_18000"
 HD_MOMENT0_PATHS = (HD_MOMENT0_PATH, "M0")
 HD_MOMENT2_PATHS = (HD_MOMENT2_PATH, "M2")
 HD_MOMENT0_FLAT_FIELD_PATHS = ("moment0ff", "M0FF")
@@ -47,6 +49,45 @@ class HolodopplerSource(TypedSource):
 
     def moment2_dataset(self):
         return self._moment_dataset(HD_MOMENT2_PATHS)
+
+    def optional_moment0_dataset(self):
+        """Return the raw zeroth moment when it is present."""
+
+        return self._optional_moment_dataset(HD_MOMENT0_PATHS)
+
+    def optional_moment2_dataset(self):
+        """Return the raw second moment when it is present."""
+
+        return self._optional_moment_dataset(HD_MOMENT2_PATHS)
+
+    def frequency_band_datasets(self):
+        """Return the exact low/high PSD bands used by the ratio estimator.
+
+        Band discovery is deliberately not heuristic: changing the configured
+        frequency limits changes the meaning of the ratio, so this first
+        implementation accepts only HoloDoppler's standard two-band export.
+        """
+
+        paths = (HD_BAND_LF_PATH, HD_BAND_HF_PATH)
+        missing = [f"/{path}" for path in paths if path not in self._reader]
+        if missing:
+            source = str(self.filename or "<unknown HD source>")
+            raise KeyError(
+                "velocity_estimation_method='frequency_bands' requires "
+                "HoloDoppler datasets "
+                f"{', '.join(missing)}; missing from HD source file {source!r}."
+            )
+
+        low_frequency = self._frequency_band_dataset(HD_BAND_LF_PATH)
+        high_frequency = self._frequency_band_dataset(HD_BAND_HF_PATH)
+        if tuple(low_frequency.shape) != tuple(high_frequency.shape):
+            raise ValueError(
+                "HoloDoppler frequency-band datasets must have identical "
+                f"(frame, y, x) shapes; /{HD_BAND_LF_PATH} has shape "
+                f"{low_frequency.shape} and /{HD_BAND_HF_PATH} has shape "
+                f"{high_frequency.shape}."
+            )
+        return low_frequency, high_frequency
 
     def moment0_flat_field_dataset(self):
         """Return a precomputed flat-field moment, when exported by Holodoppler."""
@@ -125,6 +166,20 @@ class HolodopplerSource(TypedSource):
             raise ValueError(
                 "Holodoppler flat-field moment datasets must be 3-D for lazy "
                 f"processing, got shape {dataset.shape}."
+            )
+        return dataset
+
+    def _frequency_band_dataset(self, path: str):
+        dataset = self._dataset(path)
+        if dataset.ndim != 3:
+            raise ValueError(
+                f"HoloDoppler frequency-band dataset /{path} must be a "
+                f"3-D (frame, y, x) array, got shape {dataset.shape}."
+            )
+        if not np.issubdtype(dataset.dtype, np.number):
+            raise TypeError(
+                f"HoloDoppler frequency-band dataset /{path} must be "
+                f"numeric, got dtype {dataset.dtype}."
             )
         return dataset
 
