@@ -12,6 +12,7 @@ from pipelines.waveform_velocity_core.retinal_velocity.constants import (
 from pipelines.waveform_velocity_core.retinal_velocity.outputs import metric_value
 from pipelines.waveform_velocity_core.velocity_semantics import (
     resolve_velocity_semantics,
+    velocity_dataset_attrs,
 )
 
 
@@ -22,23 +23,23 @@ def pack_continuous_velocity_outputs(
     """Pack raw and band-limited artery and vein velocity signals."""
     schema = _resolve_output_paths(output_paths)
     paths = schema.analysis
-    unit = resolve_velocity_semantics(velocity_analysis).unit
+    attrs = velocity_dataset_attrs(velocity_analysis)
     return {
         paths.retinal_artery_velocity_signal: metric_value(
             velocity_analysis["retinal_artery_velocity_signal"],
-            unit=unit,
+            attrs=attrs,
         ),
         paths.retinal_vein_velocity_signal: metric_value(
             velocity_analysis["retinal_vein_velocity_signal"],
-            unit=unit,
+            attrs=attrs,
         ),
         paths.retinal_artery_velocity_signal_band_limited: metric_value(
             velocity_analysis["retinal_artery_velocity_signal_filtered"],
-            unit=unit,
+            attrs=attrs,
         ),
         paths.retinal_vein_velocity_signal_band_limited: metric_value(
             velocity_analysis["retinal_vein_velocity_signal_filtered"],
-            unit=unit,
+            attrs=attrs,
         ),
     }
 

@@ -15,9 +15,16 @@ def pack_retinal_velocity_outputs(
 
     schema = _resolve_output_paths(output_paths)
     paths = schema.analysis
+    frequency_attrs = _frequency_attrs(velocity_analysis)
     metrics = {
-        paths.fRMS_avg: metric_value(velocity_analysis["fRMS_avg"]),
-        paths.fRMS_bkg_avg: metric_value(velocity_analysis["fRMS_bkg_avg"]),
+        paths.fRMS_avg: metric_value(
+            velocity_analysis["fRMS_avg"],
+            attrs=frequency_attrs,
+        ),
+        paths.fRMS_bkg_avg: metric_value(
+            velocity_analysis["fRMS_bkg_avg"],
+            attrs=frequency_attrs,
+        ),
         paths.beat_indices: metric_value(velocity_analysis["beat_indices"]),
         paths.time_per_beat: metric_value(
             velocity_analysis["time_per_beat"],
@@ -64,14 +71,36 @@ def metric_value(
     *,
     unit: str | None = None,
     dim_desc: Iterable[str] | None = None,
+    attrs: Mapping[str, object] | None = None,
 ):
-    attrs: dict[str, object] = {}
+    output_attrs: dict[str, object] = dict(attrs or {})
     if unit:
-        attrs["unit"] = unit
+        output_attrs["unit"] = unit
     if dim_desc:
-        attrs["dimDesc"] = list(dim_desc)
+        output_attrs["dimDesc"] = list(dim_desc)
     data = metric_data(data)
-    return (data, attrs) if attrs else data
+    return (data, output_attrs) if output_attrs else data
+
+
+def _frequency_attrs(
+    velocity_analysis: Mapping[str, object],
+) -> dict[str, object]:
+    from velocity_calibration import calibration_attrs_from_metadata
+
+    attrs = calibration_attrs_from_metadata(velocity_analysis)
+    attrs.update(
+        {
+            "unit": "Hz",
+            "quantity": "rms_frequency",
+            "velocity_estimation_method": str(
+                velocity_analysis.get(
+                    "velocity_estimation_method",
+                    "doppler_moments",
+                )
+            ),
+        }
+    )
+    return attrs
 
 
 def metric_data(data):

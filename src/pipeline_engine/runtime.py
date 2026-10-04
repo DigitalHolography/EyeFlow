@@ -11,12 +11,16 @@ from app_settings import (
     VelocityEstimationMethod,
     validate_velocity_estimation_method,
 )
-from calculations.retinal_velocity import DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
 from input_output.inputs import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
 from input_output.schema import HD_BAND_HF_PATH, HD_BAND_LF_PATH
 from input_output.writers.h5 import initialize_output_h5, open_h5
 from utils.logger import Logger
+from velocity_calibration import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    physical_velocity_provenance,
+    validate_band_ratio_frequency_scale_hz,
+)
 
 from .base import PipelineDescriptor, ProcessResult
 from .context import PipelineContext, apply_pipeline_result, finish_pipeline
@@ -30,6 +34,9 @@ def run_pipelines_to_output(
     target_names: Sequence[str] = (),
     pipeline_options: Mapping[str, Sequence[str]] | None = None,
     velocity_estimation_method: str = DEFAULT_VELOCITY_ESTIMATION_METHOD,
+    band_ratio_frequency_scale_hz: float = (
+        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+    ),
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
     on_pipeline_start: Callable[[str, int, int], None] | None = None,
@@ -40,6 +47,9 @@ def run_pipelines_to_output(
 
     resolved_velocity_method = validate_velocity_estimation_method(
         velocity_estimation_method
+    )
+    resolved_band_ratio_scale_hz = validate_band_ratio_frequency_scale_hz(
+        band_ratio_frequency_scale_hz
     )
     output_manager.prepare()
     output_h5_path = output_manager.path_for(OutputType.H5)
@@ -54,6 +64,7 @@ def run_pipelines_to_output(
             target_names=target_names,
             pipeline_options=pipeline_options or {},
             velocity_estimation_method=resolved_velocity_method,
+            band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
             holodoppler_h5=holodoppler_h5,
             doppler_vision_h5=doppler_vision_h5,
             on_pipeline_start=on_pipeline_start,
@@ -72,6 +83,7 @@ def _run_pipelines_with_work_h5(
     target_names: Sequence[str],
     pipeline_options: Mapping[str, Sequence[str]],
     velocity_estimation_method: VelocityEstimationMethod,
+    band_ratio_frequency_scale_hz: float,
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
     on_pipeline_start: Callable[[str, int, int], None] | None,
@@ -85,6 +97,7 @@ def _run_pipelines_with_work_h5(
         target_names=target_names,
         pipeline_options=pipeline_options,
         velocity_estimation_method=velocity_estimation_method,
+        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
         holodoppler_h5=holodoppler_h5,
         doppler_vision_h5=doppler_vision_h5,
     )
@@ -113,6 +126,7 @@ def _run_pipelines_with_work_h5(
             pipeline_options=pipeline_options,
             pipeline_order=tuple(pipeline.name for pipeline in pipelines),
             velocity_estimation_method=velocity_estimation_method,
+            band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
             on_pipeline_success=on_pipeline_success,
             on_progress=on_progress,
         )
@@ -144,6 +158,7 @@ def _initialize_work_h5(
     target_names: Sequence[str],
     pipeline_options: Mapping[str, Sequence[str]],
     velocity_estimation_method: VelocityEstimationMethod,
+    band_ratio_frequency_scale_hz: float,
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
 ) -> None:
@@ -158,18 +173,14 @@ def _initialize_work_h5(
     )
     work_h5.attrs["pipeline_targets"] = list(target_names)
     work_h5.attrs["pipeline_order"] = [pipeline.name for pipeline in pipelines]
-    work_h5.attrs["velocity_estimation_method"] = velocity_estimation_method
+    for key, value in physical_velocity_provenance(
+        velocity_estimation_method=velocity_estimation_method,
+        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
+    ).items():
+        work_h5.attrs[key] = value
     if velocity_estimation_method == "frequency_bands":
-        work_h5.attrs["velocity_quantity"] = "physical_velocity"
-        work_h5.attrs["velocity_unit"] = "mm/s"
-        work_h5.attrs["band_ratio_frequency_scale_hz"] = (
-            DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
-        )
         work_h5.attrs["band_lf_source_path"] = f"/{HD_BAND_LF_PATH}"
         work_h5.attrs["band_hf_source_path"] = f"/{HD_BAND_HF_PATH}"
-    else:
-        work_h5.attrs["velocity_quantity"] = "physical_velocity"
-        work_h5.attrs["velocity_unit"] = "mm/s"
     work_h5.attrs["pipeline_options"] = json.dumps(
         {
             name: list(options)
@@ -193,6 +204,7 @@ def _run_pipeline_descriptor(
     pipeline_options: Mapping[str, Sequence[str]],
     pipeline_order: Sequence[str],
     velocity_estimation_method: VelocityEstimationMethod,
+    band_ratio_frequency_scale_hz: float,
     on_pipeline_success: Callable[[str], None] | None,
     on_progress: Callable[[], None] | None,
 ) -> None:
@@ -211,6 +223,7 @@ def _run_pipeline_descriptor(
         pipeline_options=pipeline_options,
         pipeline_order=pipeline_order,
         velocity_estimation_method=velocity_estimation_method,
+        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
     )
     try:
         result = pipeline.run(ctx)

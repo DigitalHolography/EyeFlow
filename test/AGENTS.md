@@ -14,7 +14,7 @@ boundary behavior—not only regression smoke tests.
 | Settings/default/import | `test_default_settings.py`, `test_settings_import.py` | persistence normalization and controller behavior |
 | Run logging | `test_logger.py` | level normalization, callbacks, and settings-adjacent snapshot paths |
 | Launch dispatch | `test_launcher.py` | CLI-versus-GUI routing |
-| HD/DV schema and velocity methods | `test_frequency_band_velocity.py`, `test_dopplerview_compat.py`, `test_heartbeat_core.py` | strict data contract, numerical behavior, cache/reuse |
+| HD/DV schema and velocity methods | `test_frequency_band_velocity.py`, `test_frequency_band_pipeline_integration.py`, `test_dopplerview_compat.py`, `test_heartbeat_core.py` | strict data contract, numerical behavior, cache/reuse, physical-output integration |
 | HDF5 and artifact writers | `test_h5_writer.py`, `test_avi_writer.py`, `test_eps_writer.py` | serialization, attributes, type handling, names |
 | Heartbeat/per-beat/math | `test_heartbeat_analysis.py`, `test_per_beat_runner.py`, `test_calculations_math.py`, `test_periodic_sliding_windows.py` | numerical unit/reference and boundary behavior |
 | Topology/optic disc | all `test_topology_*.py`, `test_optic_disc_*.py`, `test_segment_profile_models.py` | geometry, cache identity, transforms, chunks, profiles, memory planning |

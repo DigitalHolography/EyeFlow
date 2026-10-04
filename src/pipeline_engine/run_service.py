@@ -17,6 +17,10 @@ from input_output import INPUT_LIST_SUFFIX, HoloRunLayout, resolve_selected_run_
 from input_output.archives import extracted_zip_tree
 from input_output.output_manager import OutputManager, OutputType
 from utils.logger import Logger
+from velocity_calibration import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    validate_band_ratio_frequency_scale_hz,
+)
 
 from .base import PipelineDescriptor
 from .dag import PipelineDAG, PipelineExecutionPlan
@@ -50,6 +54,9 @@ class RunSpec:
     pipeline_options: Mapping[str, tuple[str, ...]]
     velocity_estimation_method: VelocityEstimationMethod = (
         DEFAULT_VELOCITY_ESTIMATION_METHOD
+    )
+    band_ratio_frequency_scale_hz: float = (
+        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
     )
 
     @property
@@ -100,6 +107,9 @@ def resolve_run_spec(
     pipelines: Iterable[PipelineDescriptor],
     pipeline_options: Mapping[str, Iterable[str]] | None = None,
     velocity_estimation_method: str = DEFAULT_VELOCITY_ESTIMATION_METHOD,
+    band_ratio_frequency_scale_hz: float = (
+        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+    ),
     output_root: Path | None = None,
     batch_root: Path | None = None,
 ) -> RunSpec:
@@ -107,6 +117,9 @@ def resolve_run_spec(
 
     resolved_velocity_method = validate_velocity_estimation_method(
         velocity_estimation_method
+    )
+    resolved_band_ratio_scale_hz = validate_band_ratio_frequency_scale_hz(
+        band_ratio_frequency_scale_hz
     )
     descriptors = tuple(pipelines)
     selectable = selectable_pipeline_registry(descriptors)
@@ -164,6 +177,7 @@ def resolve_run_spec(
         requests=requests,
         pipeline_options=resolved_options,
         velocity_estimation_method=resolved_velocity_method,
+        band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
     )
 
 
@@ -214,6 +228,9 @@ def execute_run(
                 target_names=spec.plan.targets,
                 pipeline_options=spec.pipeline_options,
                 velocity_estimation_method=spec.velocity_estimation_method,
+                band_ratio_frequency_scale_hz=(
+                    spec.band_ratio_frequency_scale_hz
+                ),
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
                 on_pipeline_start=on_pipeline_start,

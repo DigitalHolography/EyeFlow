@@ -70,7 +70,8 @@ second scheduling or execution path in a controller or CLI handler.
   frequency with the explicit `band_ratio_frequency_scale_hz` calibration,
   then uses the shared background-difference and mm/s conversion. It does not
   disable downstream pipelines. Preserve method, calibration, quantity, and
-  unit provenance throughout outputs and presentation.
+  unit provenance throughout outputs and presentation. Velocity is always
+  physical in `mm/s`; reject legacy dimensionless velocity metadata.
 - Preserve NaN, boundary, axis, unit, and sign behavior in scientific changes;
   these are tested contracts, not incidental implementation details.
 - Keep calculation code independent of Tkinter, settings persistence, and

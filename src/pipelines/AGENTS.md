@@ -80,6 +80,9 @@ centralizes display and dataset interpretation. New velocity-derived outputs or
 plots must resolve semantics from payload/provenance instead of hard-coding
 `mm/s`.
 
+Velocity is never dimensionless. Reject legacy unit-`1` or relative-index
+velocity metadata instead of adapting labels or output units for it.
+
 Historically physical downstream pipeline names are not scheduling guards.
 Retain clear method, calibration, and unit provenance for their results.
 

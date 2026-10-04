@@ -3,8 +3,9 @@
 from .arterial_waveform_analysis import (
     ArterialWaveformAnalysisStep,
 )
+from velocity_calibration import DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+
 from .vessel_velocity_estimator import (
-    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
     DOPPLER_MOMENTS_METHOD,
     FREQUENCY_BANDS_METHOD,
     VelocityEstimatorCacheKey,

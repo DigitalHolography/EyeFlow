@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from calculations.retinal_velocity import DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
 from calculations.segment_profiles import SegmentProfileSettings
 from input_output.schema import (
     DopplerViewSource,
@@ -16,6 +15,10 @@ from input_output.schema import (
     RetinalSourceData,
 )
 from pipelines.vessel_inputs import load_retinal_source_data
+from velocity_calibration import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    physical_velocity_provenance,
+)
 
 from .constants import (
     CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT,
@@ -46,6 +49,9 @@ class WaveformVelocitySources:
     hd: HolodopplerSource
     dv: DopplerViewSource
     velocity_estimation_method: str = "doppler_moments"
+    band_ratio_frequency_scale_hz: float = (
+        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+    )
 
     @classmethod
     def from_context(cls, ctx: PipelineContext) -> WaveformVelocitySources:
@@ -54,6 +60,7 @@ class WaveformVelocitySources:
             hd=ctx.inputs.hd.as_holodoppler(),
             dv=ctx.inputs.dv.as_dopplerview(),
             velocity_estimation_method=ctx.velocity_estimation_method,
+            band_ratio_frequency_scale_hz=ctx.band_ratio_frequency_scale_hz,
         )
 
     def load(self) -> WaveformVelocitySourceData:
@@ -61,6 +68,9 @@ class WaveformVelocitySources:
             self.hd,
             self.dv,
             velocity_estimation_method=self.velocity_estimation_method,
+            band_ratio_frequency_scale_hz=(
+                self.band_ratio_frequency_scale_hz
+            ),
         )
         pixel_pitch = source.holodoppler.pixel_pitch
         return WaveformVelocitySourceData(
@@ -109,13 +119,11 @@ def _source_provenance(
         "beat_index_base": BEAT_INDEX_BASE,
         "moment_axes": list(MOMENT_AXES),
         "mask_axes": list(MASK_AXES),
-        "velocity_estimation_method": source.velocity_estimation_method,
-        "velocity_quantity": "physical_velocity",
-        "velocity_unit": "mm/s",
-        "band_ratio_frequency_scale_hz": (
-            DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
-            if source.velocity_estimation_method == "frequency_bands"
-            else None
+        **physical_velocity_provenance(
+            velocity_estimation_method=source.velocity_estimation_method,
+            band_ratio_frequency_scale_hz=(
+                source.band_ratio_frequency_scale_hz
+            ),
         ),
         "band_lf_source_path": (
             f"/{HD_BAND_LF_PATH}"

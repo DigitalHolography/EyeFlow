@@ -240,6 +240,7 @@ def _build_waveform_velocity_core_context(
         velocity_analysis=velocity_analysis,
         attrs=_context_attrs(
             source_data,
+            velocity_analysis,
             timing,
             harmonic_count,
             "eyeflow_retinal_velocity_analysis",
@@ -489,6 +490,7 @@ def _logged_stage(label: str):
 
 def _context_attrs(
     source_data: WaveformVelocitySourceData,
+    velocity_analysis: Mapping[str, object],
     timing: HolodopplerTiming,
     harmonic_count: int,
     analysis_source: str,
@@ -512,7 +514,7 @@ def _context_attrs(
             "eyeflow.retinal_velocity.recomputed",
         ]
     )
-    return {
+    attrs = {
         "dependency_chain": dependency_chain + [
             "blood_flow_velocity.signal_analysis.heartbeat.spectral",
             "blood_flow_velocity.signal_analysis.per_beat.signal",
@@ -551,6 +553,13 @@ def _context_attrs(
         "velocity_signal_lowpass_hz": float(LEGACY_VELOCITY_SIGNAL_LOWPASS_HZ),
         "beat_detection_source": beat_detection_source,
     }
+    for key, value in source_data.provenance.items():
+        if value is not None:
+            attrs[key] = value
+    for key, value in velocity_analysis.items():
+        if key.startswith("band_lf_") and value is not None:
+            attrs[key] = value
+    return attrs
 
 
 def _pack_meta_outputs(context: WaveformVelocityCoreContext) -> dict[str, object]:

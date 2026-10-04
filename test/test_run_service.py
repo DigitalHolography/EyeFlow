@@ -221,6 +221,7 @@ class RunServiceTests(unittest.TestCase):
                 target_names=["sample"],
                 pipelines=[_descriptor()],
                 velocity_estimation_method="frequency_bands",
+                band_ratio_frequency_scale_hz=2.5,
             )
 
             self.assertEqual(
@@ -231,6 +232,7 @@ class RunServiceTests(unittest.TestCase):
                 "frequency_bands",
                 band_spec.velocity_estimation_method,
             )
+            self.assertEqual(2.5, band_spec.band_ratio_frequency_scale_hz)
 
             with self.assertRaisesRegex(ValueError, "velocity_estimation_method"):
                 resolve_run_spec(
@@ -238,6 +240,16 @@ class RunServiceTests(unittest.TestCase):
                     target_names=["sample"],
                     pipelines=[_descriptor()],
                     velocity_estimation_method="unknown",
+                )
+            with self.assertRaisesRegex(
+                ValueError,
+                "band_ratio_frequency_scale_hz",
+            ):
+                resolve_run_spec(
+                    input_paths=[holo],
+                    target_names=["sample"],
+                    pipelines=[_descriptor()],
+                    band_ratio_frequency_scale_hz=0.0,
                 )
 
     def test_frequency_band_method_allows_physical_velocity_pipelines(self) -> None:
@@ -268,7 +280,8 @@ class RunServiceTests(unittest.TestCase):
             settings_store = SimpleNamespace(
                 load_velocity_estimation_method=Mock(
                     return_value="frequency_bands"
-                )
+                ),
+                load_band_ratio_frequency_scale_hz=Mock(return_value=3.0),
             )
             app = SimpleNamespace(
                 input_controller=SimpleNamespace(
@@ -294,7 +307,9 @@ class RunServiceTests(unittest.TestCase):
                 "frequency_bands",
                 spec.velocity_estimation_method,
             )
+            self.assertEqual(3.0, spec.band_ratio_frequency_scale_hz)
             settings_store.load_velocity_estimation_method.assert_called_once_with()
+            settings_store.load_band_ratio_frequency_scale_hz.assert_called_once_with()
             progress_controller.reset_run_log.assert_called_once()
 
     def test_pipeline_options_default_validate_and_preserve_empty_selection(self) -> None:
@@ -408,6 +423,7 @@ class RunServiceTests(unittest.TestCase):
                 target_names=["sample"],
                 pipelines=[_descriptor()],
                 velocity_estimation_method="frequency_bands",
+                band_ratio_frequency_scale_hz=2.5,
             )
 
             result = execute_run(spec)
@@ -424,8 +440,28 @@ class RunServiceTests(unittest.TestCase):
                 )
                 self.assertEqual("mm/s", output_h5.attrs["velocity_unit"])
                 self.assertEqual(
-                    1.0,
+                    2.5,
                     output_h5.attrs["band_ratio_frequency_scale_hz"],
+                )
+                self.assertEqual(
+                    "linear_origin",
+                    output_h5.attrs["band_ratio_calibration_model"],
+                )
+                self.assertEqual(
+                    "eyeflow_setting",
+                    output_h5.attrs["band_ratio_calibration_source"],
+                )
+                self.assertEqual(
+                    "1",
+                    output_h5.attrs["band_ratio_calibration_version"],
+                )
+                self.assertAlmostEqual(
+                    8.52e-7,
+                    output_h5.attrs["laser_wavelength_m"],
+                )
+                self.assertAlmostEqual(
+                    0.124,
+                    output_h5.attrs["numerical_aperture"],
                 )
                 self.assertEqual(
                     "/band_0_3000_9000",
@@ -476,6 +512,7 @@ class RunServiceTests(unittest.TestCase):
                 {
                     "pipeline_visibility": {"sample": True},
                     "velocity_estimation_method": "frequency_bands",
+                    "band_ratio_frequency_scale_hz": 4.0,
                 }
             )
 
@@ -497,6 +534,10 @@ class RunServiceTests(unittest.TestCase):
                 self.assertEqual(
                     "frequency_bands",
                     output_h5.attrs["velocity_estimation_method"],
+                )
+                self.assertEqual(
+                    4.0,
+                    output_h5.attrs["band_ratio_frequency_scale_hz"],
                 )
 
     def test_cli_requires_argument_when_no_pipeline_is_enabled(self) -> None:

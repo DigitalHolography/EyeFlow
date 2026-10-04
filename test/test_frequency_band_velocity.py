@@ -29,6 +29,9 @@ from pipelines.waveform_velocity.continuous import (
 from pipelines.waveform_velocity_core.velocity_semantics import (
     resolve_velocity_semantics,
 )
+from pipelines.waveform_velocity_core.retinal_velocity.outputs import (
+    pack_retinal_velocity_outputs,
+)
 
 
 LF_PATH = "band_0_3000_9000"
@@ -159,6 +162,37 @@ def test_frequency_band_estimator_rejects_invalid_frequency_scale(
                 local_background_dist=1,
                 scratch_h5=scratch,
             )
+
+
+def test_frequency_band_estimator_reports_zero_and_near_zero_lf_counts() -> None:
+    low = np.ones((1, 8, 8), dtype=np.float32)
+    low[0, 0, 0] = 0.0
+    low[0, 0, 1] = 1e-8
+    high = np.ones_like(low)
+    mask = np.zeros((8, 8), dtype=bool)
+
+    with h5py.File(
+        "scratch.h5", "w", driver="core", backing_store=False
+    ) as scratch:
+        result = run_chunked_velocity_estimator(
+            band_lf=low,
+            band_hf=high,
+            velocity_estimation_method="frequency_bands",
+            artery_mask=mask,
+            vein_mask=mask,
+            optic_disc_center=(3.5, 3.5),
+            local_background_dist=1,
+            scratch_h5=scratch,
+            retain_velocity_video=False,
+        )
+
+    assert result["band_lf_zero_sample_count"] == 1
+    assert result["band_lf_near_zero_sample_count"] == 1
+    assert result["band_lf_vessel_zero_sample_count"] == 0
+    assert result["band_lf_vessel_near_zero_sample_count"] == 0
+    assert result["band_lf_neighborhood_zero_sample_count"] == 1
+    assert result["band_lf_neighborhood_near_zero_sample_count"] == 1
+    assert result["band_lf_low_relative_threshold"] == 1e-6
 
 
 @pytest.mark.parametrize(
@@ -427,6 +461,12 @@ def test_frequency_band_output_units_and_human_label_are_physical() -> None:
         "velocity_estimation_method": "frequency_bands",
         "velocity_quantity": "physical_velocity",
         "velocity_unit": "mm/s",
+        "band_ratio_frequency_scale_hz": 1.0,
+        "band_ratio_calibration_model": "linear_origin",
+        "band_ratio_calibration_source": "eyeflow_setting",
+        "band_ratio_calibration_version": "1",
+        "laser_wavelength_m": 8.52e-7,
+        "numerical_aperture": 0.124,
         "retinal_artery_velocity_signal": values,
         "retinal_vein_velocity_signal": values,
         "retinal_artery_velocity_signal_filtered": values,
@@ -438,4 +478,46 @@ def test_frequency_band_output_units_and_human_label_are_physical() -> None:
 
     assert outputs[schema.analysis.retinal_artery_velocity_signal][1]["unit"] == "mm/s"
     assert outputs[schema.analysis.retinal_vein_velocity_signal][1]["unit"] == "mm/s"
+    assert (
+        outputs[schema.analysis.retinal_artery_velocity_signal][1][
+            "band_ratio_frequency_scale_hz"
+        ]
+        == 1.0
+    )
     assert semantics.axis_label == "Velocity (mm/s)"
+
+
+def test_frequency_maps_are_persisted_in_hz_with_calibration_provenance() -> None:
+    schema = EyeFlowOutputPaths.active()
+    analysis = {
+        "velocity_estimation_method": "frequency_bands",
+        "band_ratio_frequency_scale_hz": 2.0,
+        "band_ratio_calibration_model": "linear_origin",
+        "band_ratio_calibration_source": "eyeflow_setting",
+        "band_ratio_calibration_version": "1",
+        "laser_wavelength_m": 8.52e-7,
+        "numerical_aperture": 0.124,
+        "fRMS_avg": np.ones((2, 2), dtype=np.float32),
+        "fRMS_bkg_avg": np.ones((2, 2), dtype=np.float32),
+        "beat_indices": np.asarray([0, 1], dtype=np.int32),
+        "time_per_beat": np.asarray([1.0], dtype=np.float32),
+    }
+
+    outputs = pack_retinal_velocity_outputs(analysis)
+    attrs = outputs[schema.analysis.fRMS_avg][1]
+
+    assert attrs["unit"] == "Hz"
+    assert attrs["quantity"] == "rms_frequency"
+    assert attrs["velocity_estimation_method"] == "frequency_bands"
+    assert attrs["band_ratio_frequency_scale_hz"] == 2.0
+
+
+def test_dimensionless_velocity_metadata_is_rejected() -> None:
+    with pytest.raises(ValueError, match="physical_velocity"):
+        resolve_velocity_semantics(
+            {
+                "velocity_estimation_method": "frequency_bands",
+                "velocity_quantity": "relative_velocity_index",
+                "velocity_unit": "1",
+            }
+        )

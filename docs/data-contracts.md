@@ -82,13 +82,19 @@ measurement in the canonical segmentation.
   with `fRMS_Hz = band_ratio_frequency_scale_hz * (HF / LF)`, then applies the
   same vessel-mask dilation, biharmonic background inpainting, signed
   background-difference, and frequency-to-velocity conversion. The provisional
-  scale is `1 Hz` per ratio unit; quantity is `physical_velocity`, unit `mm/s`.
+  persisted-setting default is `1 Hz` per ratio unit; quantity is always
+  `physical_velocity`, unit `mm/s`.
 
 For band mode, an exactly zero LF sample maps to ratio zero. No epsilon is
 added. A nonzero ratio beyond finite `float32` range raises a clear error rather
 than emitting infinity. Missing exact band paths, mismatched shapes, nonnumeric
 data, NaN/Inf, and negative power values also fail explicitly. There is no
 fallback to moments.
+
+Band outputs report the LF quality threshold (`1e-6` of each frame maximum) and
+exact-zero/near-zero sample counts for the full volume, vessel pixels, and the
+unmasked neighborhood used by inpainting. These counts are diagnostic only and
+do not change the zero rule or discard low samples.
 
 All pipeline targets remain schedulable in band mode, including
 `blood_volume_rate` and `absolute_waveform_metrics`. Consumers must inspect the
@@ -149,9 +155,11 @@ attach `nameID` unless supplied.
 
 The output root records source files, selected targets, actual pipeline order,
 selected options, and velocity semantics. Band mode additionally records the
-exact LF/HF source paths and `band_ratio_frequency_scale_hz`. Individual
-velocity-like datasets should carry at least unit plus method/quantity semantics
-when their interpretation can vary.
+exact LF/HF source paths, factor, linear-through-origin calibration model,
+calibration source/version, wavelength, numerical aperture, and LF quality
+counts. Persisted RMS-frequency maps use `Hz`; velocity datasets use `mm/s` and
+carry method/calibration provenance. Legacy dimensionless velocity metadata is
+not accepted.
 
 For the weighted profile-analysis schema, see
 [velocity-profile analysis](velocity_profile_analysis.md).

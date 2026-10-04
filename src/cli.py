@@ -185,6 +185,9 @@ def run_cli(
         settings_store=settings_store,
     )
     velocity_estimation_method = settings_store.load_velocity_estimation_method()
+    band_ratio_frequency_scale_hz = (
+        settings_store.load_band_ratio_frequency_scale_hz()
+    )
     work_tempdir_path: Path | None = None
     clean_work_output = False
     with expand_run_inputs(data_path) as expanded_inputs:
@@ -209,6 +212,7 @@ def run_cli(
             pipelines=registry.values(),
             pipeline_options=pipeline_options,
             velocity_estimation_method=velocity_estimation_method,
+            band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
             output_root=work_root,
             batch_root=expanded_inputs.batch_root,
         )
