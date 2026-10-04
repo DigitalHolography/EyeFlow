@@ -11,7 +11,16 @@ import numpy as np
 from scipy import ndimage as ndi
 
 from calculations.topology import annulus_mask
+from input_output.schema import HD_BAND_HF_PATH, HD_BAND_LF_PATH
 from utils.logger import Logger
+from velocity_calibration import (
+    BAND_LF_LOW_RELATIVE_THRESHOLD,
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    DEFAULT_LASER_WAVELENGTH_METERS,
+    DEFAULT_NUMERICAL_APERTURE,
+    physical_velocity_provenance,
+    validate_band_ratio_frequency_scale_hz,
+)
 
 SCRATCH_FRAME_CHUNK_SIZE = 32
 SECTION_INNER_RADIUS_FRAC = 0.10
@@ -21,8 +30,8 @@ DEFAULT_NUMERICAL_APERTURE = 0.76
 DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ = 1.0
 DOPPLER_MOMENTS_METHOD = "doppler_moments"
 FREQUENCY_BANDS_METHOD = "frequency_bands"
-FREQUENCY_BAND_LF_PATH = "/band_0_3000_9000"
-FREQUENCY_BAND_HF_PATH = "/band_1_9000_18000"
+FREQUENCY_BAND_LF_PATH = f"/{HD_BAND_LF_PATH}"
+FREQUENCY_BAND_HF_PATH = f"/{HD_BAND_HF_PATH}"
 
 
 @dataclass(frozen=True)
@@ -119,7 +128,7 @@ def velocity_estimator_cache_key(
         laser_wavelength=float(laser_wavelength),
         numerical_aperture=float(numerical_aperture),
         band_ratio_frequency_scale_hz=(
-            _validate_band_ratio_frequency_scale(
+            validate_band_ratio_frequency_scale_hz(
                 band_ratio_frequency_scale_hz
             )
             if method == FREQUENCY_BANDS_METHOD
@@ -175,7 +184,7 @@ def run_chunked_velocity_estimator(
     )
     _validate_matching_volumes(method, first_volume, second_volume)
     frequency_scale_hz = (
-        _validate_band_ratio_frequency_scale(
+        validate_band_ratio_frequency_scale_hz(
             band_ratio_frequency_scale_hz
         )
         if method == FREQUENCY_BANDS_METHOD
@@ -228,6 +237,7 @@ def run_chunked_velocity_estimator(
     )
     artery_section = section_mask & artery
     vein_section = section_mask & vein
+    band_qc = _empty_band_quality_counts()
 
     averages = {
         name: np.zeros((height, width), dtype=np.float64)
@@ -280,6 +290,12 @@ def run_chunked_velocity_estimator(
                 second_volume,
                 frame_slice,
                 FREQUENCY_BAND_HF_PATH,
+            )
+            _update_band_quality_counts(
+                band_qc,
+                background_image,
+                vessel_mask=(artery | vein),
+                neighborhood_mask=~inpaint_mask,
             )
             f_rms = _band_ratio_to_frequency(
                 _safe_band_ratio(
@@ -355,7 +371,7 @@ def run_chunked_velocity_estimator(
 
     divisor = np.float64(max(frame_count, 1))
     background_average = (averages["background"] / divisor).astype(np.float32)
-    return {
+    result = {
         "fRMS": None,
         "fRMS_bkg": None,
         "deltafRMS": None,
@@ -381,10 +397,6 @@ def run_chunked_velocity_estimator(
         "retinal_vessel_fRMS_bkg_signal": signals["vessel_fRMS_bkg"],
         "retinal_artery_deltafRMS_signal": signals["artery_deltafRMS"],
         "retinal_vein_deltafRMS_signal": signals["vein_deltafRMS"],
-        "velocity_estimation_method": method,
-        "velocity_quantity": "physical_velocity",
-        "velocity_unit": "mm/s",
-        "band_ratio_frequency_scale_hz": frequency_scale_hz,
         "band_lf_source_path": (
             FREQUENCY_BAND_LF_PATH if method == FREQUENCY_BANDS_METHOD else None
         ),
@@ -392,6 +404,22 @@ def run_chunked_velocity_estimator(
             FREQUENCY_BAND_HF_PATH if method == FREQUENCY_BANDS_METHOD else None
         ),
     }
+    result.update(
+        physical_velocity_provenance(
+            velocity_estimation_method=method,
+            band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
+            laser_wavelength_m=laser_wavelength,
+            numerical_aperture=numerical_aperture,
+        )
+    )
+    if method == FREQUENCY_BANDS_METHOD:
+        result.update(band_qc)
+        Logger.log(
+            "Frequency-band LF quality counts: "
+            f"zero={band_qc['band_lf_zero_sample_count']}, "
+            f"near_zero={band_qc['band_lf_near_zero_sample_count']}."
+        )
+    return result
 
 
 def _velocity_video_storage(
@@ -579,18 +607,6 @@ def _safe_band_ratio(
     return ratio64.astype(np.float32, copy=False)
 
 
-def _validate_band_ratio_frequency_scale(value: float) -> float:
-    """Return a finite, positive Hz-per-ratio calibration factor."""
-
-    scale_hz = float(value)
-    if not np.isfinite(scale_hz) or scale_hz <= 0.0:
-        raise ValueError(
-            "band_ratio_frequency_scale_hz must be a finite positive value "
-            "in Hz per ratio unit."
-        )
-    return scale_hz
-
-
 def _band_ratio_to_frequency(
     ratio: np.ndarray,
     *,
@@ -610,6 +626,52 @@ def _band_ratio_to_frequency(
             f"{frame_slice.start}:{frame_slice.stop}."
         )
     return frequency64.astype(np.float32, copy=False)
+
+
+def _empty_band_quality_counts() -> dict[str, int | float]:
+    return {
+        "band_lf_low_relative_threshold": BAND_LF_LOW_RELATIVE_THRESHOLD,
+        "band_lf_zero_sample_count": 0,
+        "band_lf_near_zero_sample_count": 0,
+        "band_lf_vessel_zero_sample_count": 0,
+        "band_lf_vessel_near_zero_sample_count": 0,
+        "band_lf_neighborhood_zero_sample_count": 0,
+        "band_lf_neighborhood_near_zero_sample_count": 0,
+    }
+
+
+def _update_band_quality_counts(
+    counts: dict[str, int | float],
+    low_frequency: np.ndarray,
+    *,
+    vessel_mask: np.ndarray,
+    neighborhood_mask: np.ndarray,
+) -> None:
+    """Accumulate zero and frame-relative near-zero LF quality counts."""
+
+    low = np.asarray(low_frequency, dtype=np.float32)
+    zero = low == 0.0
+    frame_max = np.max(low, axis=(-1, -2), keepdims=True)
+    near_zero = (
+        (low > 0.0)
+        & (low <= frame_max * np.float32(BAND_LF_LOW_RELATIVE_THRESHOLD))
+    )
+    vessel = np.asarray(vessel_mask, dtype=bool)[None, :, :]
+    neighborhood = np.asarray(neighborhood_mask, dtype=bool)[None, :, :]
+    counts["band_lf_zero_sample_count"] += int(np.count_nonzero(zero))
+    counts["band_lf_near_zero_sample_count"] += int(np.count_nonzero(near_zero))
+    counts["band_lf_vessel_zero_sample_count"] += int(
+        np.count_nonzero(zero & vessel)
+    )
+    counts["band_lf_vessel_near_zero_sample_count"] += int(
+        np.count_nonzero(near_zero & vessel)
+    )
+    counts["band_lf_neighborhood_zero_sample_count"] += int(
+        np.count_nonzero(zero & neighborhood)
+    )
+    counts["band_lf_neighborhood_near_zero_sample_count"] += int(
+        np.count_nonzero(near_zero & neighborhood)
+    )
 
 
 def _inpaint_frame_batch(

@@ -37,6 +37,7 @@
       "segment_velocity_maps": false
     }
   },
+  "band_ratio_frequency_scale_hz": 1.0,
   "ui_mode": "minimal",
   "velocity_estimation_method": "doppler_moments"
 }

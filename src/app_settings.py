@@ -11,6 +11,11 @@ from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from velocity_calibration import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    validate_band_ratio_frequency_scale_hz,
+)
+
 APP_NAME = "EyeFlow"
 SETTINGS_FILENAME = "settings.json"
 DEFAULT_SETTINGS_FILENAME = "default_settings.json"
@@ -292,6 +297,12 @@ class AppSettingsStore:
                 DEFAULT_VELOCITY_ESTIMATION_METHOD,
             )
         )
+        validate_band_ratio_frequency_scale_hz(
+            settings.get(
+                "band_ratio_frequency_scale_hz",
+                DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+            )
+        )
         self.save(settings)
 
     def load_named_visibility(self, key: str) -> dict[str, bool]:
@@ -370,5 +381,20 @@ class AppSettingsStore:
         settings = self.load()
         settings["velocity_estimation_method"] = (
             validate_velocity_estimation_method(method)
+        )
+        self.save(settings)
+
+    def load_band_ratio_frequency_scale_hz(self) -> float:
+        return validate_band_ratio_frequency_scale_hz(
+            self.load().get(
+                "band_ratio_frequency_scale_hz",
+                DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+            )
+        )
+
+    def save_band_ratio_frequency_scale_hz(self, value: object) -> None:
+        settings = self.load()
+        settings["band_ratio_frequency_scale_hz"] = (
+            validate_band_ratio_frequency_scale_hz(value)
         )
         self.save(settings)

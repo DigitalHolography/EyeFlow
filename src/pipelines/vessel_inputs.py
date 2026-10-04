@@ -5,6 +5,10 @@ from __future__ import annotations
 import numpy as np
 
 from app_settings import validate_velocity_estimation_method
+from velocity_calibration import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    validate_band_ratio_frequency_scale_hz,
+)
 
 from input_output.schema import (
     DopplerViewMetadata,
@@ -28,6 +32,11 @@ def load_vessel_topology_inputs(ctx) -> RetinalSourceData:
         hd,
         dv,
         velocity_estimation_method=method,
+        band_ratio_frequency_scale_hz=getattr(
+            ctx,
+            "band_ratio_frequency_scale_hz",
+            DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+        ),
     )
 
 
@@ -36,10 +45,16 @@ def load_retinal_source_data(
     dv,
     *,
     velocity_estimation_method: str = "doppler_moments",
+    band_ratio_frequency_scale_hz: float = (
+        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+    ),
 ) -> RetinalSourceData:
     """Load one canonical source model from typed HD and DV adapters."""
 
     method = validate_velocity_estimation_method(velocity_estimation_method)
+    frequency_scale_hz = validate_band_ratio_frequency_scale_hz(
+        band_ratio_frequency_scale_hz
+    )
     if method == "frequency_bands":
         band_lf, band_hf = hd.frequency_band_datasets()
         image_maps = ImageMaps(
@@ -109,6 +124,7 @@ def load_retinal_source_data(
             spatial_axes_swapped_to_match_hd=artery_swapped,
         ),
         velocity_estimation_method=method,
+        band_ratio_frequency_scale_hz=frequency_scale_hz,
     )
 
 

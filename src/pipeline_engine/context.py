@@ -15,6 +15,10 @@ from input_output.h5_access import PipelineH5Output, PipelineInputSource, RawH5S
 from input_output.inputs import MergedAttrs
 from input_output.output_manager import OutputManager
 from utils.logger import Logger
+from velocity_calibration import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    validate_band_ratio_frequency_scale_hz,
+)
 
 from .base import ProcessResult
 
@@ -105,6 +109,9 @@ class PipelineContext:
         pipeline_options: Mapping[str, Sequence[str]] | None = None,
         pipeline_order: Sequence[str] = (),
         velocity_estimation_method: str = DEFAULT_VELOCITY_ESTIMATION_METHOD,
+        band_ratio_frequency_scale_hz: float = (
+            DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+        ),
         output_manager: OutputManager | None = None,
     ) -> None:
         hd_config = dict(holodoppler_config or {})
@@ -129,6 +136,11 @@ class PipelineContext:
         self.pipeline_order = tuple(str(name) for name in pipeline_order)
         self.velocity_estimation_method: VelocityEstimationMethod = (
             validate_velocity_estimation_method(velocity_estimation_method)
+        )
+        self.band_ratio_frequency_scale_hz = (
+            validate_band_ratio_frequency_scale_hz(
+                band_ratio_frequency_scale_hz
+            )
         )
         self.attrs = MergedAttrs(
             work_h5,

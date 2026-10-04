@@ -158,10 +158,11 @@ files as a complete schema.
 
 The GUI exposes settings through `ui/controllers/settings.py` and pipeline
 selection through `ui/controllers/pipeline_library.py`. The CLI reads the same
-store; `--pipelines` changes target selection, but the velocity method currently
-comes from persisted settings rather than a dedicated CLI flag. Runtime
-consumption begins at `resolve_run_spec` and continues through
-`PipelineContext.velocity_estimation_method`.
+store; `--pipelines` changes target selection, but the velocity method and band
+ratio frequency scale currently come from persisted settings rather than
+dedicated CLI flags. Runtime consumption begins at `resolve_run_spec` and
+continues through `PipelineContext.velocity_estimation_method` and
+`PipelineContext.band_ratio_frequency_scale_hz`.
 
 For a new CLI option controlling an existing setting, inspect only
 `src/cli.py`, the relevant `AppSettingsStore` methods/default, the field passed

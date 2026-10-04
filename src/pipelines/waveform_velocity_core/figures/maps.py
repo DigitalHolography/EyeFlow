@@ -40,11 +40,7 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
                 "f_bkg_map.png",
                 "f_bkg_colorBar.png",
                 cmap="gray",
-                label=(
-                    "Background HF/LF band ratio"
-                    if ctx.velocity_semantics.unit == "1"
-                    else "background RMS frequency (kHz)"
-                ),
+                label="background RMS frequency (kHz)",
             )
         )
     if delta_avg is not None or delta is not None:
@@ -78,11 +74,7 @@ def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
                 "map_df_vessel.png",
                 cmap="turbo",
                 colorbar=True,
-                label=(
-                    ctx.velocity_colorbar_label
-                    if ctx.velocity_semantics.unit == "1"
-                    else "kHz"
-                ),
+                label="kHz",
             )
         )
     if f_avg is not None:

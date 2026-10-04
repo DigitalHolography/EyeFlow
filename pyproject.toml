@@ -49,7 +49,14 @@ eyeflow-cli = "launcher:cli_main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-py-modules = ["eye_flow", "cli", "app_settings", "dependency_utils", "launcher"]
+py-modules = [
+    "eye_flow",
+    "cli",
+    "app_settings",
+    "dependency_utils",
+    "launcher",
+    "velocity_calibration",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

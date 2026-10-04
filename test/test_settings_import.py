@@ -86,6 +86,7 @@ class SettingsImportTests(unittest.TestCase):
                 "doppler_moments",
                 store.load_velocity_estimation_method(),
             )
+            self.assertEqual(1.0, store.load_band_ratio_frequency_scale_hz())
 
     def test_import_rejects_invalid_velocity_method_without_replacing_settings(
         self,
@@ -105,6 +106,31 @@ class SettingsImportTests(unittest.TestCase):
             store.save(original)
 
             with self.assertRaisesRegex(ValueError, "velocity_estimation_method"):
+                store.import_file(source_path)
+
+            self.assertEqual(original, store.load())
+
+    def test_import_rejects_invalid_band_ratio_scale_without_replacing_settings(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_path = root / "invalid_band_scale.json"
+            source_path.write_text(
+                json.dumps({"band_ratio_frequency_scale_hz": 0.0}),
+                encoding="utf-8",
+            )
+            store = AppSettingsStore(
+                path=root / "settings.json",
+                default_template_path=None,
+            )
+            original = {"band_ratio_frequency_scale_hz": 1.0}
+            store.save(original)
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "band_ratio_frequency_scale_hz",
+            ):
                 store.import_file(source_path)
 
             self.assertEqual(original, store.load())

@@ -127,6 +127,7 @@ class PipelineContextTests(unittest.TestCase):
                 holodoppler_h5=None,
                 doppler_vision_h5=None,
                 velocity_estimation_method="frequency_bands",
+                band_ratio_frequency_scale_hz=2.0,
             )
 
             self.assertEqual(
@@ -137,6 +138,10 @@ class PipelineContextTests(unittest.TestCase):
                 "frequency_bands",
                 frequency_band_ctx.velocity_estimation_method,
             )
+            self.assertEqual(
+                2.0,
+                frequency_band_ctx.band_ratio_frequency_scale_hz,
+            )
 
             with self.assertRaisesRegex(ValueError, "velocity_estimation_method"):
                 PipelineContext(
@@ -144,6 +149,16 @@ class PipelineContextTests(unittest.TestCase):
                     holodoppler_h5=None,
                     doppler_vision_h5=None,
                     velocity_estimation_method="unknown",
+                )
+            with self.assertRaisesRegex(
+                ValueError,
+                "band_ratio_frequency_scale_hz",
+            ):
+                PipelineContext(
+                    work_h5=h5file,
+                    holodoppler_h5=None,
+                    doppler_vision_h5=None,
+                    band_ratio_frequency_scale_hz=np.nan,
                 )
 
     def test_source_array_casts_during_numeric_hdf5_read(self) -> None:

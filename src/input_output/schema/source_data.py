@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from calculations.topology import OpticDisc
+from velocity_calibration import DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
 
 
 @dataclass(frozen=True)
@@ -114,4 +115,7 @@ class RetinalSourceData:
     holodoppler: HolodopplerMetadata
     doppler_view: DopplerViewMetadata
     velocity_estimation_method: str = "doppler_moments"
+    band_ratio_frequency_scale_hz: float = (
+        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+    )
 

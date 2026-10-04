@@ -41,8 +41,13 @@ def run_topology_core(ctx) -> dict[str, object]:
     if number_of_radii < 1:
         raise ValueError("number_of_radii_in_FOV must be positive.")
 
+    topology_reference = (
+        images.band_lf
+        if inputs.velocity_estimation_method == "frequency_bands"
+        else images.moment0
+    )
     ring_settings = segmentation.optic_disc.annulus_geometry(
-        tuple(int(size) for size in images.moment0.shape[-2:]),
+        tuple(int(size) for size in topology_reference.shape[-2:]),
         number_of_radii_in_fov=number_of_radii,
     )
     prepared = prepare_topologies(
@@ -60,7 +65,7 @@ def run_topology_core(ctx) -> dict[str, object]:
         window_size_percentile_kept=(_TOPOLOGY_WINDOW_SIZE_PERCENTILE_KEPT),
     )
     prepared = {
-        name: resolve_segment_rotations(topology, images.moment0)
+        name: resolve_segment_rotations(topology, topology_reference)
         for name, topology in prepared.items()
     }
     ctx.state.set(TOPOLOGY_CORE_STATE, prepared)

@@ -71,6 +71,9 @@ def run_heartbeat_core(ctx) -> HeartbeatResult:
             band_lf=images.band_lf,
             band_hf=images.band_hf,
             velocity_estimation_method=velocity_estimation_method,
+            band_ratio_frequency_scale_hz=(
+                inputs.band_ratio_frequency_scale_hz
+            ),
             artery_mask=vessels.artery,
             vein_mask=vessels.vein,
             background_mask=getattr(vessels, "velocity_background", None),
@@ -172,6 +175,9 @@ def _velocity_estimator_key(source) -> VelocityEstimatorCacheKey:
         band_lf=images.band_lf,
         band_hf=images.band_hf,
         velocity_estimation_method=source.velocity_estimation_method,
+        band_ratio_frequency_scale_hz=(
+            source.band_ratio_frequency_scale_hz
+        ),
         artery_mask=vessels.artery,
         vein_mask=vessels.vein,
         background_mask=getattr(vessels, "velocity_background", None),

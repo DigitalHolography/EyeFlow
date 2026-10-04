@@ -42,6 +42,7 @@ Every pipeline receives a `PipelineContext` with:
 - `ctx.pipeline_options`: resolved selections;
 - `ctx.pipeline_order`: the full scheduled order;
 - `ctx.velocity_estimation_method`: validated velocity semantics;
+- `ctx.band_ratio_frequency_scale_hz`: validated Hz-per-ratio calibration;
 - `ctx.attrs`: merged output/input/config attributes.
 
 Use [the pipeline context](src/pipelines/AGENTS.md) for current shared-state and
@@ -173,7 +174,8 @@ When `frequency_bands` is active, `HF / LF` is converted to frequency using the
 recorded `band_ratio_frequency_scale_hz`, and velocity remains physical in
 `mm/s`. Use `waveform_velocity_core.velocity_semantics` when labeling, plotting,
 or packing method-dependent velocity. Do not gate otherwise valid pipelines on
-the method.
+the method. Do not add a dimensionless velocity fallback; incompatible legacy
+velocity quantity or unit metadata must fail clearly.
 
 ## Publish results
 

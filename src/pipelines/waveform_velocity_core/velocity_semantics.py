@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from velocity_calibration import calibration_attrs_from_metadata
+
 
 @dataclass(frozen=True)
 class VelocitySemantics:
@@ -17,13 +19,11 @@ class VelocitySemantics:
 
     @property
     def axis_label(self) -> str:
-        if self.quantity == "relative_velocity_index":
-            return self.label
         return f"Velocity ({self.unit})"
 
     @property
     def value_suffix(self) -> str:
-        return "" if self.unit == "1" else f" {self.unit}"
+        return f" {self.unit}"
 
     def dataset_attrs(self) -> dict[str, str]:
         return {
@@ -45,12 +45,6 @@ _FREQUENCY_BANDS_PHYSICAL = VelocitySemantics(
     unit="mm/s",
     label="Velocity",
 )
-_LEGACY_RELATIVE = VelocitySemantics(
-    method="frequency_bands",
-    quantity="relative_velocity_index",
-    unit="1",
-    label="Relative velocity index",
-)
 
 
 def resolve_velocity_semantics(
@@ -58,12 +52,11 @@ def resolve_velocity_semantics(
     *,
     unit: str | None = None,
 ) -> VelocitySemantics:
-    """Resolve velocity meaning, defaulting legacy callers to physical velocity.
+    """Resolve velocity meaning and reject non-physical velocity metadata.
 
     Estimator results expose the three top-level provenance keys used here.  A
     nested ``provenance`` mapping is also accepted for imported/external
-    analyses. Explicit legacy relative-index metadata remains dimensionless;
-    current frequency-band results are calibrated physical velocity.
+    analyses. EyeFlow velocity is always physical and expressed in ``mm/s``.
     """
 
     provenance = _metadata_mapping(metadata, "provenance")
@@ -71,13 +64,21 @@ def resolve_velocity_semantics(
     quantity = _metadata_value(metadata, provenance, "velocity_quantity")
     resolved_unit = unit or _metadata_value(metadata, provenance, "velocity_unit")
 
-    if quantity == "relative_velocity_index" or resolved_unit == "1":
-        return _LEGACY_RELATIVE
+    if quantity not in {None, "physical_velocity"}:
+        raise ValueError(
+            "EyeFlow velocity must have velocity_quantity='physical_velocity'; "
+            f"got {quantity!r}."
+        )
+    if resolved_unit not in {None, "mm/s"}:
+        raise ValueError(
+            "EyeFlow velocity must use unit 'mm/s'; "
+            f"got {resolved_unit!r}."
+        )
     if method == "frequency_bands":
         return _FREQUENCY_BANDS_PHYSICAL
-    if method == "doppler_moments" or quantity == "physical_velocity":
+    if method in {None, "doppler_moments"}:
         return _PHYSICAL
-    return _PHYSICAL
+    raise ValueError(f"Unsupported velocity_estimation_method {method!r}.")
 
 
 def velocity_unit_from_payload(value: object, *, default: str = "mm/s") -> str:
@@ -91,6 +92,19 @@ def velocity_unit_from_payload(value: object, *, default: str = "mm/s") -> str:
         if raw_unit is not None:
             return str(raw_unit)
     return default
+
+
+def velocity_dataset_attrs(
+    metadata: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Return physical velocity and calibration provenance for one dataset."""
+
+    semantics = resolve_velocity_semantics(metadata)
+    attrs: dict[str, object] = semantics.dataset_attrs()
+    provenance = _metadata_mapping(metadata, "provenance")
+    attrs.update(calibration_attrs_from_metadata(provenance))
+    attrs.update(calibration_attrs_from_metadata(metadata))
+    return attrs
 
 
 def _metadata_mapping(
@@ -119,5 +133,6 @@ def _metadata_value(
 __all__ = [
     "VelocitySemantics",
     "resolve_velocity_semantics",
+    "velocity_dataset_attrs",
     "velocity_unit_from_payload",
 ]

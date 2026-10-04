@@ -108,6 +108,9 @@ class RunController:
                 velocity_estimation_method=(
                     self.app.settings_store.load_velocity_estimation_method()
                 ),
+                band_ratio_frequency_scale_hz=(
+                    self.app.settings_store.load_band_ratio_frequency_scale_hz()
+                ),
             )
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
             services_for(self.app).dialogs.showerror(

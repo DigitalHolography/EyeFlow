@@ -101,24 +101,17 @@ class PulseFigureContext:
 
     @property
     def velocity_colorbar_label(self) -> str:
-        semantics = self.velocity_semantics
-        return semantics.label if semantics.unit == "1" else semantics.unit
+        return self.velocity_semantics.unit
 
     @property
     def rms_quantity_label(self) -> str:
-        if self.velocity_semantics.quantity == "relative_velocity_index":
-            return "HF/LF band ratio"
         return "RMS frequency (kHz)"
 
     @property
     def delta_rms_quantity_label(self) -> str:
-        if self.velocity_semantics.quantity == "relative_velocity_index":
-            return "Relative velocity index"
         return "Delta Doppler RMS frequency (kHz)"
 
     def display_rms(self, values) -> np.ndarray:
-        if self.velocity_semantics.quantity == "relative_velocity_index":
-            return np.asarray(values, dtype=np.float32)
         return display_frequency(values)
 
 
