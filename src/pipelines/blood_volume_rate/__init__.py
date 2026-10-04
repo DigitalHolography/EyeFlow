@@ -16,6 +16,7 @@ from .runner import run_blood_volume_rate
             "gradient_edges",
             "Spatial-gradient edges",
             "Dynamic- and static-edge blood-volume rate.",
+            default_enabled=False,
             dag_requires=("spatial_gradient_edges", "velocity_profiles"),
         ),
         PipelineOption(

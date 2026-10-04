@@ -42,6 +42,7 @@ def pack_gradient_edge_outputs(
     cycle_boundary_indexes,
     *,
     index_base: int,
+    gradient_sources_persisted: bool = True,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, DatasetValue]:
     """Calculate dynamic- and static-edge flow for both vessel classes."""
@@ -87,6 +88,7 @@ def pack_gradient_edge_outputs(
             profile_pixel_size_mm=pixel_size_mm,
             left_edge_path=left_path,
             right_edge_path=right_path,
+            gradient_sources_persisted=gradient_sources_persisted,
             static_edges=False,
         )
         outputs[paths.static_edges] = _gradient_edge_dataset(
@@ -96,6 +98,7 @@ def pack_gradient_edge_outputs(
             profile_pixel_size_mm=pixel_size_mm,
             left_edge_path=left_path,
             right_edge_path=right_path,
+            gradient_sources_persisted=gradient_sources_persisted,
             static_edges=True,
         )
     return outputs
@@ -109,6 +112,7 @@ def _gradient_edge_dataset(
     profile_pixel_size_mm: float,
     left_edge_path: str,
     right_edge_path: str,
+    gradient_sources_persisted: bool,
     static_edges: bool,
 ) -> DatasetValue:
     left = np.asarray(left_edge.data, dtype=np.float32)
@@ -125,6 +129,22 @@ def _gradient_edge_dataset(
         np.float32(np.nan),
     )
     rate = circular_lumen_flow(velocity, diameter_mm)
+    source_attrs: dict[str, object] = {
+        "source_edge_storage": (
+            "persisted_hdf5"
+            if gradient_sources_persisted
+            else "transient_run_state"
+        ),
+        "source_left_edge_calculation_key": left_edge_path,
+        "source_right_edge_calculation_key": right_edge_path,
+    }
+    if gradient_sources_persisted:
+        source_attrs.update(
+            {
+                "source_left_edge_index": f"/{left_edge_path.lstrip('/')}",
+                "source_right_edge_index": f"/{right_edge_path.lstrip('/')}",
+            }
+        )
     return DatasetValue(
         rate,
         {
@@ -135,8 +155,7 @@ def _gradient_edge_dataset(
                 "lumen area implied by the spatial-gradient edges"
             ),
             "source_velocity": "waveform_velocity_core.masked_transverse_profile",
-            "source_left_edge_index": f"/{left_edge_path.lstrip('/')}",
-            "source_right_edge_index": f"/{right_edge_path.lstrip('/')}",
+            **source_attrs,
             "diameter_model": "gradient_edge_separation_times_profile_pixel_size",
             "cross_section_model": "circular_pi_diameter_squared_over_4",
             "velocity_reduction": "mean_over_finite_transverse_profile_samples",

@@ -6,7 +6,7 @@
     "lowrank_waveform_decomposition": true,
     "pdf_report": true,
     "spatial_gradient_moment0": false,
-    "velocity_profile_analysis": true,
+    "velocity_profile_analysis": false,
     "waveform_shape_metrics": true,
     "waveform_velocity": true
   },
@@ -17,7 +17,7 @@
       "segments": true
     },
     "blood_volume_rate": {
-      "gradient_edges": true,
+      "gradient_edges": false,
       "masked_edges": true
     },
     "lowrank_waveform_decomposition": {
@@ -32,7 +32,7 @@
       "quadrants": true,
       "per_beat": true,
       "segments": true,
-      "velocity_profiles": true,
+      "velocity_profiles": false,
       "velocity_profile_fft": false,
       "segment_velocity_maps": false
     }

@@ -51,14 +51,13 @@ def test_spatial_gradient_alone_does_not_schedule_velocity_core() -> None:
     assert "waveform_velocity_core" not in names
 
 
-def test_bvr_is_visible_default_selected_with_default_enabled_families() -> None:
+def test_bvr_defaults_to_mask_derived_outputs_only() -> None:
     load_pipeline_catalog()
     descriptor = PIPELINE_REGISTRY["blood_volume_rate"]
 
     assert descriptor.visibility == "visible"
     assert descriptor.default_selected
     assert {option.name for option in descriptor.options if option.default_enabled} == {
-        "gradient_edges",
         "masked_edges",
     }
 

@@ -32,6 +32,7 @@ from .runner import run_waveform_velocity
             "velocity_profiles",
             "Velocity profiles",
             "Per-beat cross-section velocity profiles.",
+            default_enabled=False,
             requires=("per_beat", "segments"),
         ),
         PipelineOption(

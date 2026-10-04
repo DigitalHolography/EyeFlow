@@ -166,7 +166,18 @@ When spatial-gradient processing runs only to supply the `gradient_edges`
 blood-volume-rate option, its profiles and metrics remain transient run state:
 `/Processing/SpatialGradientProfiles` and
 `/Processing/SpatialGradientMetrics` are not written. Selecting
-`spatial_gradient_moment0` directly publishes both families.
+`spatial_gradient_moment0` directly publishes both families. Gradient-derived
+blood-volume-rate datasets identify these inputs as `transient_run_state` and
+do not expose dangling HDF5 source-path attributes.
+
+The release-default selection disables `gradient_edges`, velocity profiles,
+and `velocity_profile_analysis`. Its HDF5 therefore omits
+`/Processing/SpatialGradientProfiles`,
+`/Processing/SpatialGradientMetrics`,
+`/Processing/BloodVolumeRate/{Artery,Vein}/{dynamicEdges,staticEdges}`,
+`/Processing/VelocityProfiles`, and
+`/Processing/VelocityProfileAnalysis`. Mask-derived `maskedEdges` and
+`totalMaskedEdges` blood-volume-rate datasets remain selected.
 
 For the weighted profile-analysis schema, see
 [velocity-profile analysis](velocity_profile_analysis.md).

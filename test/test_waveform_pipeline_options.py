@@ -58,13 +58,15 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             mock.start()
             self.addCleanup(mock.stop)
 
-    def test_fft_option_is_disabled_by_default_and_requires_profiles(self) -> None:
+    def test_profile_options_are_disabled_by_default(self) -> None:
         load_pipeline_catalog()
         options = {
             option.name: option
             for option in PIPELINE_REGISTRY["waveform_velocity"].options
         }
+        profiles = options["velocity_profiles"]
         fft = options["velocity_profile_fft"]
+        self.assertFalse(profiles.default_enabled)
         self.assertFalse(fft.default_enabled)
         self.assertEqual(("velocity_profiles",), fft.requires)
 

@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from app_settings import normalize_pipeline_visibility
+from pipeline_engine import PipelineDAG
 from pipelines import load_pipeline_catalog
 
 
@@ -38,9 +39,17 @@ class DefaultSettingsTests(unittest.TestCase):
         }
         self.assertEqual(expected_options, configured_options)
         self.assertTrue(settings["pipeline_visibility"]["blood_volume_rate"])
+        self.assertFalse(
+            settings["pipeline_visibility"]["velocity_profile_analysis"]
+        )
         self.assertEqual(
-            {"gradient_edges": True, "masked_edges": True},
+            {"gradient_edges": False, "masked_edges": True},
             settings["pipeline_options"]["blood_volume_rate"],
+        )
+        self.assertFalse(
+            settings["pipeline_options"]["waveform_velocity"][
+                "velocity_profiles"
+            ]
         )
         self.assertEqual(
             "doppler_moments",
@@ -59,6 +68,43 @@ class DefaultSettingsTests(unittest.TestCase):
         self.assertEqual(
             {"waveform_velocity": False, "blood_volume_rate": True},
             visibility,
+        )
+
+    def test_release_defaults_exclude_gradient_and_velocity_profile_outputs(
+        self,
+    ) -> None:
+        settings = json.loads(
+            (ROOT / "default_settings.json").read_text(encoding="utf-8")
+        )
+        available, missing = load_pipeline_catalog()
+        targets = tuple(
+            name
+            for name, enabled in settings["pipeline_visibility"].items()
+            if enabled
+        )
+        options = {
+            name: tuple(
+                option
+                for option, enabled in values.items()
+                if enabled
+            )
+            for name, values in settings["pipeline_options"].items()
+        }
+
+        plan = PipelineDAG((*available, *missing)).resolve_targets(
+            targets,
+            pipeline_options=options,
+        )
+
+        self.assertNotIn("spatial_gradient_moment0", plan.names)
+        self.assertNotIn("velocity_profile_analysis", plan.names)
+        self.assertNotIn(
+            "gradient_edges",
+            options["blood_volume_rate"],
+        )
+        self.assertNotIn(
+            "velocity_profiles",
+            options["waveform_velocity"],
         )
 
 

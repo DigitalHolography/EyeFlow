@@ -153,6 +153,18 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         cycle_boundaries,
         index_base=0,
     )
+    transient_gradient_outputs = pack_gradient_edge_outputs(
+        velocity_segments,
+        velocity_segments,
+        SimpleNamespace(
+            artery_segments=gradient_segments,
+            vein_segments=gradient_segments,
+            outputs=edges,
+        ),
+        cycle_boundaries,
+        index_base=0,
+        gradient_sources_persisted=False,
+    )
 
     topology = SimpleNamespace(
         labels=np.ones((4, 4), dtype=np.int32),
@@ -192,6 +204,18 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         assert not gradient_outputs[vessel_paths.dynamic_edges].attrs[
             "source_velocity"
         ].startswith("/")
+        persisted_attrs = gradient_outputs[vessel_paths.dynamic_edges].attrs
+        assert persisted_attrs["source_edge_storage"] == "persisted_hdf5"
+        assert persisted_attrs["source_left_edge_index"].startswith("/")
+        transient_attrs = transient_gradient_outputs[
+            vessel_paths.dynamic_edges
+        ].attrs
+        assert transient_attrs["source_edge_storage"] == "transient_run_state"
+        assert "source_left_edge_index" not in transient_attrs
+        assert "source_right_edge_index" not in transient_attrs
+        assert transient_attrs["source_left_edge_calculation_key"].startswith(
+            "Processing/SpatialGradientMetrics/"
+        )
         np.testing.assert_allclose(
             gradient_outputs[vessel_paths.dynamic_edges].data,
             expected_gradient_rate,
