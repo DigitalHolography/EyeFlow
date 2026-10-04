@@ -44,6 +44,9 @@ def run_blood_volume_rate(ctx) -> dict[str, object]:
                 gradients,
                 context.per_beat_analysis.cycle_boundary_indexes,
                 index_base=int(context.source_data.provenance["beat_index_base"]),
+                gradient_sources_persisted=ctx.pipeline_targeted(
+                    "spatial_gradient_moment0"
+                ),
             )
         )
 
