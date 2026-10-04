@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from calculations.retinal_velocity import DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
 from calculations.segment_profiles import SegmentProfileSettings
 from input_output.schema import (
     DopplerViewSource,
@@ -109,15 +110,12 @@ def _source_provenance(
         "moment_axes": list(MOMENT_AXES),
         "mask_axes": list(MASK_AXES),
         "velocity_estimation_method": source.velocity_estimation_method,
-        "velocity_quantity": (
-            "relative_velocity_index"
+        "velocity_quantity": "physical_velocity",
+        "velocity_unit": "mm/s",
+        "band_ratio_frequency_scale_hz": (
+            DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
             if source.velocity_estimation_method == "frequency_bands"
-            else "physical_velocity"
-        ),
-        "velocity_unit": (
-            "1"
-            if source.velocity_estimation_method == "frequency_bands"
-            else "mm/s"
+            else None
         ),
         "band_lf_source_path": (
             f"/{HD_BAND_LF_PATH}"

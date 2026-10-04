@@ -201,7 +201,7 @@ def _build_waveform_velocity_core_context(
     timing = source_data.source.holodoppler.timing
     heartbeat_velocity = cached_velocity_estimation(ctx, source_data.source)
     heartbeat_source = cached_heartbeat_source(ctx)
-    with _logged_stage("retinal velocity analysis from HD moments"):
+    with _logged_stage("retinal velocity analysis from HoloDoppler data"):
         if heartbeat_velocity is not None:
             Logger.log("Reusing velocity estimation from heartbeat core.")
         velocity_analysis = run_retinal_velocity_analysis(
@@ -498,11 +498,16 @@ def _context_attrs(
 ) -> dict[str, object]:
     output_paths = EyeFlowOutputPaths.active()
     analysis_paths = output_paths.analysis
+    velocity_input_dependency = (
+        "holodoppler.h5.frequency_bands"
+        if source_data.source.velocity_estimation_method == "frequency_bands"
+        else "holodoppler.h5.moment0_moment2"
+    )
     dependency_chain = (
         ["external_velocity_analysis"]
         if analysis_source == "external_velocity_analysis"
         else [
-            "holodoppler.h5.moment0_moment2",
+            velocity_input_dependency,
             "retinal_segmentation_input",
             "eyeflow.retinal_velocity.recomputed",
         ]

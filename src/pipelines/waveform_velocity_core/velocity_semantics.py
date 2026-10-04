@@ -39,7 +39,13 @@ _PHYSICAL = VelocitySemantics(
     unit="mm/s",
     label="Velocity",
 )
-_RELATIVE = VelocitySemantics(
+_FREQUENCY_BANDS_PHYSICAL = VelocitySemantics(
+    method="frequency_bands",
+    quantity="physical_velocity",
+    unit="mm/s",
+    label="Velocity",
+)
+_LEGACY_RELATIVE = VelocitySemantics(
     method="frequency_bands",
     quantity="relative_velocity_index",
     unit="1",
@@ -56,8 +62,8 @@ def resolve_velocity_semantics(
 
     Estimator results expose the three top-level provenance keys used here.  A
     nested ``provenance`` mapping is also accepted for imported/external
-    analyses.  The method or quantity takes precedence over a stale unit so a
-    relative result can never be presented as calibrated ``mm/s``.
+    analyses. Explicit legacy relative-index metadata remains dimensionless;
+    current frequency-band results are calibrated physical velocity.
     """
 
     provenance = _metadata_mapping(metadata, "provenance")
@@ -65,12 +71,12 @@ def resolve_velocity_semantics(
     quantity = _metadata_value(metadata, provenance, "velocity_quantity")
     resolved_unit = unit or _metadata_value(metadata, provenance, "velocity_unit")
 
-    if method == "frequency_bands" or quantity == "relative_velocity_index":
-        return _RELATIVE
+    if quantity == "relative_velocity_index" or resolved_unit == "1":
+        return _LEGACY_RELATIVE
+    if method == "frequency_bands":
+        return _FREQUENCY_BANDS_PHYSICAL
     if method == "doppler_moments" or quantity == "physical_velocity":
         return _PHYSICAL
-    if resolved_unit == "1":
-        return _RELATIVE
     return _PHYSICAL
 
 

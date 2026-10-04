@@ -1,4 +1,4 @@
-"""Frequency-band relative velocity estimation contracts."""
+"""Frequency-band quantitative velocity estimation contracts."""
 
 from __future__ import annotations
 
@@ -12,6 +12,9 @@ import numpy as np
 import pytest
 
 from calculations.retinal_velocity.vessel_velocity_estimator import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    DEFAULT_LASER_WAVELENGTH_METERS,
+    DEFAULT_NUMERICAL_APERTURE,
     _safe_band_ratio,
     run_chunked_velocity_estimator,
     velocity_estimator_cache_key,
@@ -45,7 +48,7 @@ def test_safe_band_ratio_maps_exact_zero_lf_to_zero_without_epsilon() -> None:
     assert np.all(np.isfinite(ratio))
 
 
-def test_frequency_band_estimator_is_dimensionless_and_not_physically_scaled() -> None:
+def test_frequency_band_estimator_converts_ratio_frequency_to_mm_per_second() -> None:
     shape = (2, 16, 16)
     low = np.ones(shape, dtype=np.float32)
     high = np.ones(shape, dtype=np.float32)
@@ -69,17 +72,93 @@ def test_frequency_band_estimator_is_dimensionless_and_not_physically_scaled() -
             )
             velocity = np.asarray(result["velocity_map"])
 
-    # The inpainted neighbourhood is one, so the signed RMS difference is
-    # sqrt(4**2 - 1**2). A wavelength/NA conversion would make this tiny.
-    expected = np.float32(np.sqrt(15.0))
+    # At the default 1 Hz-per-ratio calibration, the vessel and inpainted
+    # neighbourhood are 4 Hz and 1 Hz. Their signed RMS difference is then
+    # converted to mm/s by the same wavelength/NA law as moment mode.
+    expected_delta_hz = np.float32(np.sqrt(4.0**2 - 1.0**2))
+    expected = np.float32(
+        1e3
+        * DEFAULT_LASER_WAVELENGTH_METERS
+        * expected_delta_hz
+        / DEFAULT_NUMERICAL_APERTURE
+    )
     np.testing.assert_allclose(velocity[:, artery], expected, rtol=1e-5)
     np.testing.assert_allclose(velocity[:, vein], expected, rtol=1e-5)
     np.testing.assert_array_equal(result["moment0_avg"], np.ones(shape[1:]))
+    np.testing.assert_allclose(result["fRMS_avg"][artery | vein], 4.0)
     assert result["velocity_estimation_method"] == "frequency_bands"
-    assert result["velocity_quantity"] == "relative_velocity_index"
-    assert result["velocity_unit"] == "1"
+    assert result["velocity_quantity"] == "physical_velocity"
+    assert result["velocity_unit"] == "mm/s"
+    assert (
+        result["band_ratio_frequency_scale_hz"]
+        == DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+    )
     assert result["band_lf_source_path"] == f"/{LF_PATH}"
     assert result["band_hf_source_path"] == f"/{HF_PATH}"
+
+
+def test_frequency_band_frequency_scale_is_explicit_and_changes_velocity() -> None:
+    shape = (1, 12, 12)
+    low = np.ones(shape, dtype=np.float32)
+    high = np.ones(shape, dtype=np.float32)
+    artery = np.zeros(shape[1:], dtype=bool)
+    vein = np.zeros_like(artery)
+    artery[6, 8] = True
+    high[:, artery] = 4.0
+
+    with h5py.File(
+        "scratch.h5", "w", driver="core", backing_store=False
+    ) as scratch:
+        result = run_chunked_velocity_estimator(
+            band_lf=low,
+            band_hf=high,
+            velocity_estimation_method="frequency_bands",
+            band_ratio_frequency_scale_hz=2.0,
+            artery_mask=artery,
+            vein_mask=vein,
+            optic_disc_center=(5.5, 5.5),
+            local_background_dist=1,
+            scratch_h5=scratch,
+        )
+        velocity = np.asarray(result["velocity_map"]).copy()
+
+    expected_delta_hz = np.float32(2.0 * np.sqrt(4.0**2 - 1.0**2))
+    expected_velocity = np.float32(
+        1e3
+        * DEFAULT_LASER_WAVELENGTH_METERS
+        * expected_delta_hz
+        / DEFAULT_NUMERICAL_APERTURE
+    )
+    np.testing.assert_allclose(
+        velocity[:, artery],
+        expected_velocity,
+        rtol=1e-5,
+    )
+    np.testing.assert_allclose(result["fRMS_avg"][artery], 8.0)
+    assert result["band_ratio_frequency_scale_hz"] == 2.0
+
+
+@pytest.mark.parametrize("scale", [0.0, -1.0, np.nan, np.inf])
+def test_frequency_band_estimator_rejects_invalid_frequency_scale(
+    scale: float,
+) -> None:
+    values = np.ones((1, 4, 4), dtype=np.float32)
+    mask = np.zeros((4, 4), dtype=bool)
+    with h5py.File(
+        "scratch.h5", "w", driver="core", backing_store=False
+    ) as scratch:
+        with pytest.raises(ValueError, match="band_ratio_frequency_scale_hz"):
+            run_chunked_velocity_estimator(
+                band_lf=values,
+                band_hf=values,
+                velocity_estimation_method="frequency_bands",
+                band_ratio_frequency_scale_hz=scale,
+                artery_mask=mask,
+                vein_mask=mask,
+                optic_disc_center=(1.5, 1.5),
+                local_background_dist=1,
+                scratch_h5=scratch,
+            )
 
 
 @pytest.mark.parametrize(
@@ -141,6 +220,13 @@ def test_estimator_cache_key_tracks_method_and_only_active_sources() -> None:
     assert moment_key.band_hf_source is None
     assert band_key.moment0_source is None
     assert band_key.moment2_source is None
+    assert band_key != velocity_estimator_cache_key(
+        band_lf=np.ones(shape, dtype=np.float32),
+        band_hf=np.full(shape, 2.0, dtype=np.float32),
+        velocity_estimation_method="frequency_bands",
+        band_ratio_frequency_scale_hz=2.0,
+        **common,
+    )
 
 
 def test_frequency_band_source_requires_exact_paths_and_does_not_require_moments() -> None:
@@ -334,13 +420,13 @@ def test_frequency_band_estimator_is_independent_of_frame_chunk_size() -> None:
             np.testing.assert_array_equal(actual[key], expected)
 
 
-def test_frequency_band_output_units_and_human_label_are_relative() -> None:
+def test_frequency_band_output_units_and_human_label_are_physical() -> None:
     schema = EyeFlowOutputPaths.active()
     values = np.asarray([1.0, 2.0], dtype=np.float32)
     analysis = {
         "velocity_estimation_method": "frequency_bands",
-        "velocity_quantity": "relative_velocity_index",
-        "velocity_unit": "1",
+        "velocity_quantity": "physical_velocity",
+        "velocity_unit": "mm/s",
         "retinal_artery_velocity_signal": values,
         "retinal_vein_velocity_signal": values,
         "retinal_artery_velocity_signal_filtered": values,
@@ -350,6 +436,6 @@ def test_frequency_band_output_units_and_human_label_are_relative() -> None:
     outputs = pack_continuous_velocity_outputs(analysis)
     semantics = resolve_velocity_semantics(analysis)
 
-    assert outputs[schema.analysis.retinal_artery_velocity_signal][1]["unit"] == "1"
-    assert outputs[schema.analysis.retinal_vein_velocity_signal][1]["unit"] == "1"
-    assert semantics.axis_label == "Relative velocity index"
+    assert outputs[schema.analysis.retinal_artery_velocity_signal][1]["unit"] == "mm/s"
+    assert outputs[schema.analysis.retinal_vein_velocity_signal][1]["unit"] == "mm/s"
+    assert semantics.axis_label == "Velocity (mm/s)"

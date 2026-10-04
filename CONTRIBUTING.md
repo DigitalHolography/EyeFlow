@@ -169,8 +169,9 @@ or an existing pipeline source loader. Do not transpose one mask or hard-code
 fallback paths downstream. Exact input contracts are in
 [data contracts](docs/data-contracts.md).
 
-When `frequency_bands` is active, velocity values are a dimensionless relative
-index. Use `waveform_velocity_core.velocity_semantics` when labeling, plotting,
+When `frequency_bands` is active, `HF / LF` is converted to frequency using the
+recorded `band_ratio_frequency_scale_hz`, and velocity remains physical in
+`mm/s`. Use `waveform_velocity_core.velocity_semantics` when labeling, plotting,
 or packing method-dependent velocity. Do not gate otherwise valid pipelines on
 the method.
 
