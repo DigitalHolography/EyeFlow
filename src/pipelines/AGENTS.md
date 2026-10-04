@@ -73,15 +73,15 @@ aligned.
 ## Velocity semantics
 
 All targets remain available for both configured methods. `doppler_moments`
-represents physical velocity (`mm/s`); `frequency_bands` represents a relative
-dimensionless index (`1`). `waveform_velocity_core/velocity_semantics.py`
+and `frequency_bands` represent physical velocity (`mm/s`); band mode first
+converts `HF / LF` to frequency using the recorded
+`band_ratio_frequency_scale_hz`. `waveform_velocity_core/velocity_semantics.py`
 centralizes display and dataset interpretation. New velocity-derived outputs or
 plots must resolve semantics from payload/provenance instead of hard-coding
 `mm/s`.
 
 Historically physical downstream pipeline names are not scheduling guards.
-When they run from relative velocity, retain clear method/unit provenance and do
-not describe the result as calibrated merely because the pipeline completed.
+Retain clear method, calibration, and unit provenance for their results.
 
 ## State and output rules
 

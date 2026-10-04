@@ -419,10 +419,14 @@ class RunServiceTests(unittest.TestCase):
                     output_h5.attrs["velocity_estimation_method"],
                 )
                 self.assertEqual(
-                    "relative_velocity_index",
+                    "physical_velocity",
                     output_h5.attrs["velocity_quantity"],
                 )
-                self.assertEqual("1", output_h5.attrs["velocity_unit"])
+                self.assertEqual("mm/s", output_h5.attrs["velocity_unit"])
+                self.assertEqual(
+                    1.0,
+                    output_h5.attrs["band_ratio_frequency_scale_hz"],
+                )
                 self.assertEqual(
                     "/band_0_3000_9000",
                     output_h5.attrs["band_lf_source_path"],

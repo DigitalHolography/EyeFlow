@@ -18,6 +18,7 @@ SECTION_INNER_RADIUS_FRAC = 0.10
 SECTION_OUTER_RADIUS_FRAC = 0.35
 DEFAULT_LASER_WAVELENGTH_METERS = 8.52e-7
 DEFAULT_NUMERICAL_APERTURE = 0.124
+DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ = 1.0
 DOPPLER_MOMENTS_METHOD = "doppler_moments"
 FREQUENCY_BANDS_METHOD = "frequency_bands"
 FREQUENCY_BAND_LF_PATH = "/band_0_3000_9000"
@@ -42,6 +43,7 @@ class VelocityEstimatorCacheKey:
     local_background_dist: int
     laser_wavelength: float
     numerical_aperture: float
+    band_ratio_frequency_scale_hz: float | None
     frame_chunk_size: int
 
 
@@ -61,6 +63,9 @@ def velocity_estimator_cache_key(
     local_background_dist: int,
     laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
     numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
+    band_ratio_frequency_scale_hz: float = (
+        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+    ),
 ) -> VelocityEstimatorCacheKey:
     """Build a conservative key for run-scoped estimator-result reuse."""
 
@@ -113,6 +118,13 @@ def velocity_estimator_cache_key(
         local_background_dist=int(local_background_dist),
         laser_wavelength=float(laser_wavelength),
         numerical_aperture=float(numerical_aperture),
+        band_ratio_frequency_scale_hz=(
+            _validate_band_ratio_frequency_scale(
+                band_ratio_frequency_scale_hz
+            )
+            if method == FREQUENCY_BANDS_METHOD
+            else None
+        ),
         frame_chunk_size=SCRATCH_FRAME_CHUNK_SIZE,
     )
 
@@ -146,6 +158,9 @@ def run_chunked_velocity_estimator(
     scratch_h5,
     laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
     numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
+    band_ratio_frequency_scale_hz: float = (
+        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+    ),
     retain_velocity_video: bool = True,
     velocity_video_output=None,
 ) -> dict[str, object]:
@@ -159,6 +174,13 @@ def run_chunked_velocity_estimator(
         band_hf=band_hf,
     )
     _validate_matching_volumes(method, first_volume, second_volume)
+    frequency_scale_hz = (
+        _validate_band_ratio_frequency_scale(
+            band_ratio_frequency_scale_hz
+        )
+        if method == FREQUENCY_BANDS_METHOD
+        else None
+    )
     frame_count, height, width = (int(size) for size in first_volume.shape)
     artery = np.asarray(artery_mask, dtype=bool)
     vein = np.asarray(vein_mask, dtype=bool)
@@ -181,8 +203,9 @@ def run_chunked_velocity_estimator(
         Logger.log("Velocity estimator uses raw HD moments.")
     else:
         Logger.log(
-            "Velocity estimator uses the dimensionless HoloDoppler band ratio "
-            f"{FREQUENCY_BAND_HF_PATH} / {FREQUENCY_BAND_LF_PATH}."
+            "Velocity estimator converts the HoloDoppler band ratio "
+            f"{FREQUENCY_BAND_HF_PATH} / {FREQUENCY_BAND_LF_PATH} to RMS "
+            f"frequency using {frequency_scale_hz:g} Hz per ratio unit."
         )
     Logger.log(
         f"Velocity estimator uses {SCRATCH_FRAME_CHUNK_SIZE}-frame batched "
@@ -258,9 +281,13 @@ def run_chunked_velocity_estimator(
                 frame_slice,
                 FREQUENCY_BAND_HF_PATH,
             )
-            f_rms = _safe_band_ratio(
-                high_frequency,
-                background_image,
+            f_rms = _band_ratio_to_frequency(
+                _safe_band_ratio(
+                    high_frequency,
+                    background_image,
+                    frame_slice=frame_slice,
+                ),
+                frequency_scale_hz=frequency_scale_hz,
                 frame_slice=frame_slice,
             )
         f_rms_background = _inpaint_frame_batch(
@@ -269,14 +296,10 @@ def run_chunked_velocity_estimator(
             inpaint,
         )
         delta = _signed_rms_difference(f_rms, f_rms_background)
-        velocity = (
-            _velocity_from_delta_frequency(
-                delta,
-                laser_wavelength=laser_wavelength,
-                numerical_aperture=numerical_aperture,
-            )
-            if method == DOPPLER_MOMENTS_METHOD
-            else delta
+        velocity = _velocity_from_delta_frequency(
+            delta,
+            laser_wavelength=laser_wavelength,
+            numerical_aperture=numerical_aperture,
         )
 
         if velocity_dataset is not None:
@@ -332,12 +355,6 @@ def run_chunked_velocity_estimator(
 
     divisor = np.float64(max(frame_count, 1))
     background_average = (averages["background"] / divisor).astype(np.float32)
-    quantity = (
-        "physical_velocity"
-        if method == DOPPLER_MOMENTS_METHOD
-        else "relative_velocity_index"
-    )
-    unit = "mm/s" if method == DOPPLER_MOMENTS_METHOD else "1"
     return {
         "fRMS": None,
         "fRMS_bkg": None,
@@ -365,8 +382,9 @@ def run_chunked_velocity_estimator(
         "retinal_artery_deltafRMS_signal": signals["artery_deltafRMS"],
         "retinal_vein_deltafRMS_signal": signals["vein_deltafRMS"],
         "velocity_estimation_method": method,
-        "velocity_quantity": quantity,
-        "velocity_unit": unit,
+        "velocity_quantity": "physical_velocity",
+        "velocity_unit": "mm/s",
+        "band_ratio_frequency_scale_hz": frequency_scale_hz,
         "band_lf_source_path": (
             FREQUENCY_BAND_LF_PATH if method == FREQUENCY_BANDS_METHOD else None
         ),
@@ -556,9 +574,42 @@ def _safe_band_ratio(
         raise ValueError(
             "The HoloDoppler HF/LF ratio is outside the finite float32 "
             f"range in frames {frame_slice.start}:{frame_slice.stop}; no "
-            "infinite relative velocity index was produced."
+            "infinite RMS-frequency estimate was produced."
         )
     return ratio64.astype(np.float32, copy=False)
+
+
+def _validate_band_ratio_frequency_scale(value: float) -> float:
+    """Return a finite, positive Hz-per-ratio calibration factor."""
+
+    scale_hz = float(value)
+    if not np.isfinite(scale_hz) or scale_hz <= 0.0:
+        raise ValueError(
+            "band_ratio_frequency_scale_hz must be a finite positive value "
+            "in Hz per ratio unit."
+        )
+    return scale_hz
+
+
+def _band_ratio_to_frequency(
+    ratio: np.ndarray,
+    *,
+    frequency_scale_hz: float,
+    frame_slice: slice,
+) -> np.ndarray:
+    """Convert the dimensionless HF/LF ratio to an RMS frequency in Hz."""
+
+    frequency64 = np.asarray(ratio, dtype=np.float64) * frequency_scale_hz
+    float32_limit = np.finfo(np.float32).max
+    if not np.all(np.isfinite(frequency64)) or np.any(
+        frequency64 > float32_limit
+    ):
+        raise ValueError(
+            "The calibrated HoloDoppler band-ratio frequency is outside the "
+            "finite float32 range in frames "
+            f"{frame_slice.start}:{frame_slice.stop}."
+        )
+    return frequency64.astype(np.float32, copy=False)
 
 
 def _inpaint_frame_batch(

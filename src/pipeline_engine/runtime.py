@@ -11,6 +11,7 @@ from app_settings import (
     VelocityEstimationMethod,
     validate_velocity_estimation_method,
 )
+from calculations.retinal_velocity import DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
 from input_output.inputs import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
 from input_output.schema import HD_BAND_HF_PATH, HD_BAND_LF_PATH
@@ -159,8 +160,11 @@ def _initialize_work_h5(
     work_h5.attrs["pipeline_order"] = [pipeline.name for pipeline in pipelines]
     work_h5.attrs["velocity_estimation_method"] = velocity_estimation_method
     if velocity_estimation_method == "frequency_bands":
-        work_h5.attrs["velocity_quantity"] = "relative_velocity_index"
-        work_h5.attrs["velocity_unit"] = "1"
+        work_h5.attrs["velocity_quantity"] = "physical_velocity"
+        work_h5.attrs["velocity_unit"] = "mm/s"
+        work_h5.attrs["band_ratio_frequency_scale_hz"] = (
+            DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+        )
         work_h5.attrs["band_lf_source_path"] = f"/{HD_BAND_LF_PATH}"
         work_h5.attrs["band_hf_source_path"] = f"/{HD_BAND_HF_PATH}"
     else:

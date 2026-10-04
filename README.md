@@ -62,15 +62,15 @@ The persisted `velocity_estimation_method` setting has two values:
   produces calibrated physical velocity in `mm/s`.
 - `frequency_bands` uses exact HD datasets `/band_0_3000_9000` (LF) and
   `/band_1_9000_18000` (HF), both `(frame, y, x)`. It begins with `HF / LF`,
-  applies the same mask-based local-background/inpainting path, and produces a
-  dimensionless relative velocity index with unit `1`.
+  converts the ratio to RMS frequency using a provisional `1 Hz` per ratio-unit
+  calibration, and then applies the same mask-based local-background,
+  background-difference, and physical velocity conversion to produce `mm/s`.
 
 Band mode never falls back to moments. Missing bands, invalid values, or
 mismatched shapes produce explicit errors. Exact-zero LF values map to ratio
 zero without an epsilon. All pipelines remain selectable in band mode,
 including `blood_volume_rate` and `absolute_waveform_metrics`; their outputs
-must be interpreted from the stored velocity method/quantity/unit provenance,
-not assumed to be physically calibrated.
+carry the stored velocity method, calibration, quantity, and unit provenance.
 
 The fresh-install default is in `default_settings.json`. Existing user settings
 are loaded and normalized by `AppSettingsStore`.

@@ -66,10 +66,11 @@ second scheduling or execution path in a controller or CLI handler.
   undeclared state producer.
 - `execute_run` replaces an existing `<stem>_EF` directory before each run.
   Treat that directory as entirely EyeFlow-owned.
-- `velocity_estimation_method="frequency_bands"` produces a dimensionless
-  relative index, not calibrated velocity. It does not disable downstream
-  pipelines. Preserve method/quantity/unit provenance throughout outputs and
-  presentation.
+- `velocity_estimation_method="frequency_bands"` converts `HF / LF` to an RMS
+  frequency with the explicit `band_ratio_frequency_scale_hz` calibration,
+  then uses the shared background-difference and mm/s conversion. It does not
+  disable downstream pipelines. Preserve method, calibration, quantity, and
+  unit provenance throughout outputs and presentation.
 - Preserve NaN, boundary, axis, unit, and sign behavior in scientific changes;
   these are tested contracts, not incidental implementation details.
 - Keep calculation code independent of Tkinter, settings persistence, and

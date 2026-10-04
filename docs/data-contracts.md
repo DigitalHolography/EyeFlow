@@ -78,10 +78,11 @@ measurement in the canonical segmentation.
 - `doppler_moments` (default): derives RMS frequency from moments, estimates
   local background, subtracts it with the established signed RMS rule, and
   converts frequency to calibrated velocity in `mm/s`.
-- `frequency_bands`: computes the dimensionless ratio `HF / LF`, then applies
-  the same vessel-mask dilation, biharmonic background inpainting, and signed
-  background-difference path. No physical frequency-to-velocity scale is
-  applied; quantity is `relative_velocity_index`, unit `1`.
+- `frequency_bands`: computes the ratio `HF / LF`, converts it to RMS frequency
+  with `fRMS_Hz = band_ratio_frequency_scale_hz * (HF / LF)`, then applies the
+  same vessel-mask dilation, biharmonic background inpainting, signed
+  background-difference, and frequency-to-velocity conversion. The provisional
+  scale is `1 Hz` per ratio unit; quantity is `physical_velocity`, unit `mm/s`.
 
 For band mode, an exactly zero LF sample maps to ratio zero. No epsilon is
 added. A nonzero ratio beyond finite `float32` range raises a clear error rather
@@ -89,11 +90,10 @@ than emitting infinity. Missing exact band paths, mismatched shapes, nonnumeric
 data, NaN/Inf, and negative power values also fail explicitly. There is no
 fallback to moments.
 
-All pipeline targets remain schedulable in band mode, including historically
-physical products such as `blood_volume_rate` and `absolute_waveform_metrics`.
-Their presence is not evidence of physical calibration: consumers must inspect
-root and dataset method/quantity/unit provenance before interpreting derived
-values.
+All pipeline targets remain schedulable in band mode, including
+`blood_volume_rate` and `absolute_waveform_metrics`. Consumers must inspect the
+root method, calibration, quantity, and unit provenance when interpreting
+derived values.
 
 ## Internal contracts
 
@@ -149,8 +149,9 @@ attach `nameID` unless supplied.
 
 The output root records source files, selected targets, actual pipeline order,
 selected options, and velocity semantics. Band mode additionally records the
-exact LF/HF source paths. Individual velocity-like datasets should carry at
-least unit plus method/quantity semantics when their interpretation can vary.
+exact LF/HF source paths and `band_ratio_frequency_scale_hz`. Individual
+velocity-like datasets should carry at least unit plus method/quantity semantics
+when their interpretation can vary.
 
 For the weighted profile-analysis schema, see
 [velocity-profile analysis](velocity_profile_analysis.md).
