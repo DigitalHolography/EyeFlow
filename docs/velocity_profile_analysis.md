@@ -1,10 +1,10 @@
-# Artery velocity-profile analysis
+# Velocity-profile analysis
 
-Selecting `velocity_profile_analysis` ensures the upstream waveform pipeline
-computes segments and per-beat products and publishes velocity profiles, even
-when those selectable outputs were disabled. Analysis reads the work HDF5 dataset:
+Selecting `velocity_profile_analysis` schedules the upstream waveform pipeline
+and its required profile products. Analysis reads both work-HDF5 datasets:
 
-`/Processing/VelocityProfiles/Artery/TransverseVelocityProfileMasked/value`
+- `/Processing/VelocityProfiles/Artery/Transversal/Masked/VelocityProfile/value`
+- `/Processing/VelocityProfiles/Vein/Transversal/Masked/VelocityProfile/value`
 
 Input axes are `(x, time, beat, branch, radius)`. Every profile is fit independently;
 there is no averaging across time, beats, branches or radii.
@@ -27,8 +27,8 @@ solve within each slab. The entire input dataset is not materialized.
 
 ## Output schema
 
-Each name below is written to
-`/Processing/VelocityProfileAnalysis/Artery/<name>/value` with axes
+Each name below is written for both vessel classes at
+`/Processing/VelocityProfileAnalysis/{Artery,Vein}/<name>/value` with axes
 `(time, beat, branch, radius)`. Float arrays are float32 and counts are int32.
 
 | Names | Definition |
@@ -54,7 +54,7 @@ sign. Coefficients and area sums use index coordinates, not physical distances.
 
 All datasets include axis, source path, zero-based-index, model, weighting, and
 integration metadata. The `weight_power` attribute records the production value
-`2.0`. Only artery analysis is produced.
+`2.0`.
 
 ## Invalid or degenerate profiles
 
