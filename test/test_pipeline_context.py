@@ -94,6 +94,7 @@ class PipelineContextTests(unittest.TestCase):
                     "waveform_velocity_core",
                     "waveform_velocity",
                 ),
+                pipeline_targets=("waveform_velocity",),
             )
 
             self.assertTrue(ctx.option_enabled("per_beat"))
@@ -109,6 +110,8 @@ class PipelineContextTests(unittest.TestCase):
             )
             self.assertTrue(ctx.pipeline_scheduled("waveform_velocity_core"))
             self.assertFalse(ctx.pipeline_scheduled("pdf_report"))
+            self.assertTrue(ctx.pipeline_targeted("waveform_velocity"))
+            self.assertFalse(ctx.pipeline_targeted("waveform_velocity_core"))
 
     def test_velocity_estimation_method_is_available_to_runners(self) -> None:
         with h5py.File(

@@ -142,7 +142,8 @@ families are:
 - `/Processing/Heartbeat` and `/Processing/FrequencyMaps`;
 - `/Processing/VelocityProfiles` and `/VelocityProfilesFFT`;
 - `/Processing/Metrics/{waveform_shape_metrics,absolute_waveform_metrics,lowrank_waveform_decomposition}`;
-- `/Processing/SpatialGradientMetrics` and `/Processing/BloodVolumeRate`;
+- `/Processing/SpatialGradientMetrics` for a directly selected spatial-gradient
+  target, and `/Processing/BloodVolumeRate` for blood-volume-rate products;
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
 - `/Meta` for provenance and selected pass-through data.
 
@@ -160,6 +161,12 @@ calibration source/version, wavelength, numerical aperture, and LF quality
 counts. Persisted RMS-frequency maps use `Hz`; velocity datasets use `mm/s` and
 carry method/calibration provenance. Legacy dimensionless velocity metadata is
 not accepted.
+
+When spatial-gradient processing runs only to supply the `gradient_edges`
+blood-volume-rate option, its profiles and metrics remain transient run state:
+`/Processing/SpatialGradientProfiles` and
+`/Processing/SpatialGradientMetrics` are not written. Selecting
+`spatial_gradient_moment0` directly publishes both families.
 
 For the weighted profile-analysis schema, see
 [velocity-profile analysis](velocity_profile_analysis.md).

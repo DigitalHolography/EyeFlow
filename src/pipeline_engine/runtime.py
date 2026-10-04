@@ -125,6 +125,7 @@ def _run_pipelines_with_work_h5(
             variables=context_vars,
             pipeline_options=pipeline_options,
             pipeline_order=tuple(pipeline.name for pipeline in pipelines),
+            pipeline_targets=target_names,
             velocity_estimation_method=velocity_estimation_method,
             band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
             on_pipeline_success=on_pipeline_success,
@@ -203,6 +204,7 @@ def _run_pipeline_descriptor(
     variables: dict[str, object],
     pipeline_options: Mapping[str, Sequence[str]],
     pipeline_order: Sequence[str],
+    pipeline_targets: Sequence[str],
     velocity_estimation_method: VelocityEstimationMethod,
     band_ratio_frequency_scale_hz: float,
     on_pipeline_success: Callable[[str], None] | None,
@@ -222,6 +224,7 @@ def _run_pipeline_descriptor(
         variables=variables,
         pipeline_options=pipeline_options,
         pipeline_order=pipeline_order,
+        pipeline_targets=pipeline_targets,
         velocity_estimation_method=velocity_estimation_method,
         band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
     )
