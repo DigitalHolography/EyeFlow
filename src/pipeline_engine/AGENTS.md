@@ -57,9 +57,9 @@ output or `RunFailure`, and checks cancellation only between files.
 The runtime opens HD/DV sources and the output HDF5 for the full per-file plan.
 It creates a new `PipelineContext` for every descriptor over the same output
 handle and shared-state dictionary. Pipeline options, execution order, and
-velocity method are immutable views for the run. A pipeline returning a mapping
-or `ProcessResult` is persisted; a pipeline returning `None` owns its direct
-writes.
+directly selected targets are immutable views for the run, along with the
+velocity method. A pipeline returning a mapping or `ProcessResult` is persisted;
+a pipeline returning `None` owns its direct writes.
 
 ## Invariants
 

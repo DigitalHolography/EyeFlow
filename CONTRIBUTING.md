@@ -41,6 +41,7 @@ Every pipeline receives a `PipelineContext` with:
 - `ctx.state`: in-memory state shared by this run's ordered pipelines;
 - `ctx.pipeline_options`: resolved selections;
 - `ctx.pipeline_order`: the full scheduled order;
+- `ctx.pipeline_targets`: pipelines selected directly by the user;
 - `ctx.velocity_estimation_method`: validated velocity semantics;
 - `ctx.band_ratio_frequency_scale_hz`: validated Hz-per-ratio calibration;
 - `ctx.attrs`: merged output/input/config attributes.

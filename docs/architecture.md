@@ -117,7 +117,8 @@ Every descriptor receives a fresh `PipelineContext`, but all contexts share:
 
 - the open output HDF5;
 - a single backing dictionary exposed as `ctx.state`;
-- resolved pipeline options and ordered pipeline names;
+- resolved pipeline options, directly selected targets, and ordered pipeline
+  names;
 - the validated velocity-estimation method.
 
 Pipeline results may be `None`, a metrics mapping, or `ProcessResult`. A metrics
@@ -139,7 +140,9 @@ scratch storage, not ad-hoc module globals.
   consume those declared products.
 - `spatial_gradient_moment0` is independent of waveform velocity computation;
   it reuses heartbeat and topology, applies its own ordered image-processing
-  chain, and owns gradient-derived lumen products.
+  chain, and owns gradient-derived lumen products. Dependency-only execution
+  keeps those products in run state; their HDF5 families are published only
+  when `spatial_gradient_moment0` is selected directly.
 - `blood_volume_rate` composes either gradient-derived edges or mask-derived
   geometry with velocity products according to its enabled option families.
 - `displacement_map` is a separate registration/cross-section analysis. Do not

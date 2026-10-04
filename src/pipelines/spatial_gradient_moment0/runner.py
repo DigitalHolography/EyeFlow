@@ -88,7 +88,9 @@ def run_spatial_gradient_moment0(ctx) -> dict[str, object]:
             outputs=outputs,
         ),
     )
-    return outputs
+    if ctx.pipeline_targeted("spatial_gradient_moment0"):
+        return outputs
+    return {}
 
 
 def _validate_profile_segment_alignment(

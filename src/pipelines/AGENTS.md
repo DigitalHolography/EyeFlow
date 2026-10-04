@@ -64,8 +64,11 @@ pipelines. This reuse is an optimization, not an alternate contract.
 profiles and lumen edges. Do not put gradient work back into waveform core.
 It requires the optional HD flat-field moment at `/moment0ff` or `/M0FF`, and
 publishes under `/Processing/SpatialGradientProfiles` and
-`/Processing/SpatialGradientMetrics`; its branch lumen plots come from the
-persisted `(time, branch)` metric, not a separate plot-only calculation.
+`/Processing/SpatialGradientMetrics` only when it is a direct target. When it
+runs solely as a blood-volume-rate dependency, keep the products in `ctx.state`
+without persisting those intermediate HDF5 families. Its branch lumen plots
+come from the computed `(time, branch)` metric, not a separate plot-only
+calculation.
 `blood_volume_rate` retrieves the products required by each enabled option and
 must keep segment labels, centers, branch/radius dimensions, and pixel scale
 aligned.

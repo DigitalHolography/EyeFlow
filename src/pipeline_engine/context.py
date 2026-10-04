@@ -108,6 +108,7 @@ class PipelineContext:
         variables: dict[str, Any] | None = None,
         pipeline_options: Mapping[str, Sequence[str]] | None = None,
         pipeline_order: Sequence[str] = (),
+        pipeline_targets: Sequence[str] = (),
         velocity_estimation_method: str = DEFAULT_VELOCITY_ESTIMATION_METHOD,
         band_ratio_frequency_scale_hz: float = (
             DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
@@ -134,6 +135,7 @@ class PipelineContext:
             for name, options in (pipeline_options or {}).items()
         }
         self.pipeline_order = tuple(str(name) for name in pipeline_order)
+        self.pipeline_targets = tuple(str(name) for name in pipeline_targets)
         self.velocity_estimation_method: VelocityEstimationMethod = (
             validate_velocity_estimation_method(velocity_estimation_method)
         )
@@ -184,6 +186,11 @@ class PipelineContext:
 
     def pipeline_scheduled(self, pipeline: str) -> bool:
         return str(pipeline) in self.pipeline_order
+
+    def pipeline_targeted(self, pipeline: str) -> bool:
+        """Return whether a pipeline was selected directly, not as a dependency."""
+
+        return str(pipeline) in self.pipeline_targets
 
     @property
     def filename(self) -> str:
