@@ -16,7 +16,7 @@ from calculations.blood_volume_rate import (
 )
 from calculations.math import nanmean_float32
 from calculations.topology import AnnulusGeometry
-from input_output.holo_run_layout import HoloRunLayout
+from input_output.inputs import HoloRunLayout
 from input_output.output_manager import OutputManager
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue

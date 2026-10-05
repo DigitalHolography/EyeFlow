@@ -239,16 +239,21 @@ def load_displacement_map_inputs(
     """Resolve the root HD moment and aligned DV vessel mask."""
 
     ctx.require_inputs("hd", "dv")
-    moment = resolve_moment_dataset(ctx.inputs.hd.h5.h5file, config.moment_path)
+    moment = resolve_moment_dataset(ctx.inputs.hd.h5file, config.moment_path)
     spatial_shape = tuple(int(size) for size in moment.shape[-2:])
     dv = ctx.inputs.dv.as_dopplerview()
     dv_shape = tuple(int(size) for size in dv.retinal_artery_mask().shape[-2:])
-    if dv.optic_disc(dv_shape).is_fallback:
+    from calculations.topology import OpticDisc
+
+    disc = dv.optic_disc_measurements()
+    if OpticDisc.from_measurements(
+        disc.mask, disc.center, disc.width, disc.height, dv_shape
+    ).is_fallback:
         if config.mask_mode == "vein":
             masks = ()
         else:
             artery_mask, artery_source = resolve_retina_mask(
-                ctx.inputs.dv.h5.h5file,
+                ctx.inputs.dv.h5file,
                 spatial_shape,
                 "artery",
             )
@@ -266,7 +271,7 @@ def load_displacement_map_inputs(
         )
     else:
         masks = resolve_retina_masks(
-            ctx.inputs.dv.h5.h5file,
+            ctx.inputs.dv.h5file,
             spatial_shape,
             config.mask_mode,
         )

@@ -10,7 +10,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from input_output.scratch_h5 import scratch_h5  # noqa: E402
+from input_output.writers.h5 import scratch_h5  # noqa: E402
 from pipelines.heartbeat_core.scratch import heartbeat_scratch_h5  # noqa: E402
 from pipelines.waveform_velocity_core.scratch import velocity_scratch_h5  # noqa: E402
 

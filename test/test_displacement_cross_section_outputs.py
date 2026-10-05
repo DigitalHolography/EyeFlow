@@ -16,7 +16,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
-from input_output.writers.avi import select_display_range  # noqa: E402
+from input_output.writers.magnitude_avi import select_display_range  # noqa: E402
 from pipelines.displacement_map.constants import (  # noqa: E402
     registration_method_output_name,
 )

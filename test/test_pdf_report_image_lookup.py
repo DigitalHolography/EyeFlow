@@ -35,7 +35,7 @@ class PdfReportImageLookupTests(unittest.TestCase):
 
             report = generate_a4_report(
                 output_h5_path=output_h5,
-                output_dir=root / "pdf",
+                output_path=root / "pdf" / "scan_report.pdf",
                 folder_name="scan",
                 report_images={("vessel_map", "artery"): vessel_map},
             )

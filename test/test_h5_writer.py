@@ -30,7 +30,7 @@ class H5WriterTests(unittest.TestCase):
     def test_output_version_uses_real_package_version_not_environment_override(self) -> None:
         with patch.dict("os.environ", {"EYEFLOW_VERSION": "9.9-test"}):
             with h5py.File("version_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
-                initialize_output_h5(h5file)
+                initialize_output_h5(h5file, eyeflow_version=app_version() or "unknown")
                 self.assertEqual(_pyproject_version(), app_version())
                 self.assertEqual(_pyproject_version(), h5file.attrs["eyeflow_version"])
                 self.assertEqual(
@@ -88,7 +88,7 @@ class H5WriterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             output_path = Path(tmp_dir) / "output.h5"
             with h5py.File(output_path, "w") as h5file:
-                initialize_output_h5(h5file)
+                initialize_output_h5(h5file, eyeflow_version=app_version() or "unknown")
 
             with h5py.File(output_path, "r") as h5file:
                 self.assertEqual(version, h5file.attrs["eyeflow_version"])
@@ -117,6 +117,7 @@ class H5WriterTests(unittest.TestCase):
             with h5py.File(output_path, "w") as output_h5:
                 initialize_output_h5(
                     output_h5,
+                    eyeflow_version=app_version() or "unknown",
                     doppler_vision_source_file=str(source_path),
                 )
 
@@ -153,6 +154,7 @@ class H5WriterTests(unittest.TestCase):
             with h5py.File(output_path, "w") as output_h5:
                 initialize_output_h5(
                     output_h5,
+                    eyeflow_version=app_version() or "unknown",
                     holodoppler_source_file=str(source_path),
                 )
 

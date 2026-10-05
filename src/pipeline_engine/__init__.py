@@ -18,7 +18,6 @@ from .context import (
     PipelineOutput,
     PipelineRuntime,
     PipelineState,
-    RawH5SourceReader,
 )
 from .dag import PipelineDAG, PipelineExecutionPlan
 from .errors import format_pipeline_exception
@@ -50,7 +49,6 @@ __all__ = [
     "PipelineOutput",
     "PipelineRuntime",
     "PipelineState",
-    "RawH5SourceReader",
     "ProcessPipeline",
     "ProcessResult",
     "MissingPipeline",

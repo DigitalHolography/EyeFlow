@@ -16,6 +16,7 @@ from .holodoppler import (
 from .source_data import (
     DopplerViewMetadata,
     ImageMaps,
+    OpticDiscMeasurements,
     PixelPitch,
     RetinalSegmentation,
     RetinalSourceData,
@@ -32,6 +33,7 @@ __all__ = [
     "EyeFlowOutputPaths",
     "HolodopplerSource",
     "ImageMaps",
+    "OpticDiscMeasurements",
     "PixelPitch",
     "RetinalSegmentation",
     "RetinalSourceData",

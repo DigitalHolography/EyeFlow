@@ -16,10 +16,10 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from input_output.holo_run_layout import HoloRunLayout  # noqa: E402
+from input_output.inputs import HoloRunLayout  # noqa: E402
 from input_output.output_manager import OutputManager, OutputType  # noqa: E402
-from input_output.report_images import REPORT_IMAGES_STATE  # noqa: E402
-from input_output.reports.pdf_report import _extract_parameters_from_h5  # noqa: E402
+from input_output.writers.png import REPORT_IMAGES_STATE  # noqa: E402
+from input_output.reports.pdf_data import extract_parameters_from_h5  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from pipelines.pdf_report.runner import run_pdf_report  # noqa: E402
 
@@ -48,7 +48,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             )
 
             def fake_generate_a4_report(**kwargs):
-                return kwargs["output_dir"] / f"{kwargs['folder_name']}_report.pdf"
+                return kwargs["output_path"]
 
             with patch(
                 "pipelines.pdf_report.runner.generate_a4_report",
@@ -59,12 +59,12 @@ class PdfReportRunnerPathTests(unittest.TestCase):
             kwargs = generate.call_args.kwargs
             self.assertEqual(output_h5_path, kwargs["output_h5_path"])
             self.assertEqual("scan", kwargs["folder_name"])
-            self.assertEqual(manager.layout.ef_dir / "pdf", kwargs["output_dir"])
+            self.assertEqual(manager.report_path(), kwargs["output_path"])
             self.assertEqual(
                 {("vessel_map", "artery"): report_image}, kwargs["report_images"]
             )
             self.assertEqual(hd_h5_path.parent.parent / "png", kwargs["hd_png_dir"])
-            self.assertNotIn("_HD_output_EF", str(kwargs["output_dir"]))
+            self.assertNotIn("_HD_output_EF", str(kwargs["output_path"]))
             self.assertIsNone(result)
 
     def test_extracts_active_waveform_output_schema(self) -> None:
@@ -89,7 +89,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                     data=np.asarray([0.2, 0.4]),
                 )
 
-            parameters = _extract_parameters_from_h5(path)
+            parameters = extract_parameters_from_h5(path)
 
         self.assertEqual(4.0, parameters["Average_Arterial_Velocity"]["value"])
         self.assertAlmostEqual(96.795, parameters["heart_beat"]["value"])

@@ -6,7 +6,9 @@ from contextlib import ExitStack
 from pathlib import Path
 from time import perf_counter
 
-from input_output.inputs import load_h5_sidecar_config
+from app_settings import app_version
+from input_output.schema.base import load_h5_sidecar_config
+from input_output.schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT
 from input_output.output_manager import OutputManager, OutputType
 from input_output.writers.h5 import initialize_output_h5, open_h5
 from utils.logger import Logger
@@ -74,8 +76,8 @@ def _run_pipelines_with_work_h5(
         holodoppler_h5=holodoppler_h5,
         doppler_vision_h5=doppler_vision_h5,
     )
-    hd_config = load_h5_sidecar_config(hd_h5, source="hd")
-    dv_config = load_h5_sidecar_config(dv_h5, source="dv")
+    hd_config = load_h5_sidecar_config(hd_h5, source=HOLODOPPLER_LAYOUT)
+    dv_config = load_h5_sidecar_config(dv_h5, source=DOPPLER_VIEW_LAYOUT)
     context_vars: dict[str, object] = {}
 
     pipeline_count = len(pipelines)
@@ -133,6 +135,7 @@ def _initialize_work_h5(
 ) -> None:
     initialize_output_h5(
         work_h5,
+        eyeflow_version=app_version() or "unknown",
         holodoppler_source_file=(
             str(holodoppler_h5) if holodoppler_h5 is not None else None
         ),

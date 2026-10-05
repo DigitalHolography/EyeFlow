@@ -38,10 +38,6 @@ HOLODOPPLER_LAYOUT = SourceFileLayout(
 class HolodopplerSource(TypedSource):
     """Typed access to the Holodoppler HDF5 file and sidecar config."""
 
-    @classmethod
-    def from_context(cls, ctx) -> HolodopplerSource:
-        return cls(ctx.inputs.hd.h5, ctx.inputs.hd.config)
-
     def moment0_dataset(self):
         return self._moment_dataset(HD_MOMENT0_PATHS)
 
@@ -50,7 +46,9 @@ class HolodopplerSource(TypedSource):
 
     def moment0_flat_field_dataset(self):
         """Return a precomputed flat-field moment, when exported by Holodoppler."""
-        return self._optional_moment_dataset(HD_MOMENT0_FLAT_FIELD_PATHS)
+        return self._optional_moment_dataset(
+            HD_MOMENT0_FLAT_FIELD_PATHS, description="flat-field moment"
+        )
 
     def timing(self) -> HolodopplerTiming:
         sampling_freq = self._scalar_h5_or_config(
@@ -102,29 +100,25 @@ class HolodopplerSource(TypedSource):
         )
 
     def _moment_dataset(self, paths: tuple[str, ...]):
-        path = self._first_path(paths)
-        if path is None:
-            raise KeyError(
-                "Missing Holodoppler moment dataset. Tried: "
-                + ", ".join(repr(candidate) for candidate in paths)
-            )
-        dataset = self._dataset(path)
-        if dataset.ndim != 3:
-            raise ValueError(
-                "Holodoppler moment datasets must be 3-D for lazy processing, "
-                f"got shape {dataset.shape}."
-            )
-        return dataset
+        dataset = self._optional_moment_dataset(paths)
+        if dataset is not None:
+            return dataset
+        raise KeyError(
+            "Missing Holodoppler moment dataset. Tried: "
+            + ", ".join(repr(candidate) for candidate in paths)
+        )
 
-    def _optional_moment_dataset(self, paths: tuple[str, ...]):
+    def _optional_moment_dataset(
+        self, paths: tuple[str, ...], *, description: str = "moment"
+    ):
         path = self._first_path(paths)
         if path is None:
             return None
         dataset = self._dataset(path)
         if dataset.ndim != 3:
             raise ValueError(
-                "Holodoppler flat-field moment datasets must be 3-D for lazy "
-                f"processing, got shape {dataset.shape}."
+                f"Holodoppler {description} datasets must be 3-D for lazy processing, "
+                f"got shape {dataset.shape}."
             )
         return dataset
 

@@ -4,7 +4,7 @@ import numpy as np
 
 from calculations.math import nanmean_float32
 from calculations.topology.profile_interpolation import interpolate_profiles_per_beat
-from input_output.profile_datasets import _profile_h5_options
+from input_output.writers.h5 import profile_h5_options
 from pipeline_engine.base import DatasetValue
 
 
@@ -34,7 +34,7 @@ def _profile_dataset(
             "unit": unit,
             "dimDesc": [spatial_axis, "time", "beat", "branch", "radius"],
         },
-        h5_options=_profile_h5_options(profiles_per_beat.shape),
+        h5_options=profile_h5_options(profiles_per_beat.shape),
     )
 
 
@@ -51,5 +51,5 @@ def _temporally_meaned_profile_dataset(profile: DatasetValue) -> DatasetValue:
     return DatasetValue(
         data=data,
         attrs=attrs,
-        h5_options=_profile_h5_options(data.shape),
+        h5_options=profile_h5_options(data.shape),
     )

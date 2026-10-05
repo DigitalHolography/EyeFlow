@@ -9,7 +9,7 @@ import h5py
 import numpy as np
 
 from calculations.math.temporal_median import CenteredMedianBuffer
-from input_output.writers.avi import write_magnitude_avi
+from input_output.writers.magnitude_avi import write_magnitude_avi
 from input_output.writers.png import write_png_file
 
 try:
@@ -215,7 +215,6 @@ def create_retinal_motion_map(
         "h5_display_range": (
             [sequence.h5_value_min, sequence.h5_value_max] if sequence.is_h5 else None
         ),
-        "recommended_video_input": "global_stabilized.mp4",
         "frames": int(caches.count),
         "width": int(sequence.width),
         "height": int(sequence.height),

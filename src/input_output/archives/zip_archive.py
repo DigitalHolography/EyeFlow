@@ -73,35 +73,7 @@ def create_zip_from_tree(
                 )
 
 
-def reset_output_dir(path: str | Path) -> None:
-    path_obj = Path(path)
-    try:
-        _remove_existing_output_path(path_obj)
-        path_obj.mkdir(parents=True, exist_ok=False)
-    except OSError as exc:
-        raise RuntimeError(_locked_output_dir_message(path_obj)) from exc
-
-
-def _remove_existing_output_path(path_obj: Path) -> None:
-    if not path_obj.exists():
-        return
-    if path_obj.is_dir():
-        shutil.rmtree(path_obj)
-    else:
-        path_obj.unlink()
-    if path_obj.exists():
-        raise OSError(f"Output path still exists after removal: {path_obj}")
-
-
-def _locked_output_dir_message(path_obj: Path) -> str:
-    return (
-        "Could not replace the existing output directory. Close any File Explorer "
-        f"window, terminal, or application using this folder, then retry:\n{path_obj}"
-    )
-
-
 __all__ = [
     "create_zip_from_tree",
     "extracted_zip_tree",
-    "reset_output_dir",
 ]

@@ -29,4 +29,4 @@ def run(ctx) -> None:
     )
 
     # Nothing is written to the output H5 because this tutorial only uses
-    # ctx.state. Use ctx.output.h5.write(...) for persistent output.
+    # ctx.state. Use ctx.output.h5.write_many(...) for persistent output.

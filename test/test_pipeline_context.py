@@ -8,7 +8,6 @@ import h5py
 import numpy as np
 
 from pipeline_engine import PipelineContext
-from pipeline_engine.context import RawH5SourceReader
 from input_output.h5_access import PipelineH5Output, PipelineInputSource
 from input_output.schema.base import TypedSource
 from utils.logger import Logger
@@ -17,10 +16,9 @@ from utils.logger import Logger
 class PipelineContextTests(unittest.TestCase):
     def test_missing_arrays_return_none_for_explicit_none_default(self) -> None:
         with h5py.File("context_missing_test.h5", "w", driver="core", backing_store=False) as h5file:
-            source = RawH5SourceReader(h5file=h5file, label="HD")
-            wrapped = PipelineInputSource(source, {})
+            source = PipelineInputSource(h5file=h5file, label="HD")
             output = PipelineH5Output(h5file)
-            for reader in (source, wrapped, output):
+            for reader in (source, output):
                 self.assertIsNone(reader.array("missing", dtype=np.float32, default=None))
                 with self.assertRaises(KeyError):
                     reader.array("missing")
@@ -29,14 +27,6 @@ class PipelineContextTests(unittest.TestCase):
             with self.assertRaises(KeyError):
                 typed._array("missing")
             self.assertIsNone(typed._array("missing", default=None))
-
-    def test_output_facade_writes_dataset_attributes(self) -> None:
-        with h5py.File("context_output_test.h5", "w", driver="core", backing_store=False) as h5file:
-            output = PipelineH5Output(h5file)
-            output.write("result", np.array([1, 2]), unit="pixel")
-
-            np.testing.assert_array_equal(h5file["result"][()], [1, 2])
-            self.assertEqual("pixel", h5file["result"].attrs["unit"])
 
     def test_log_emits_to_callback(self) -> None:
         messages: list[str] = []
@@ -121,7 +111,7 @@ class PipelineContextTests(unittest.TestCase):
                 "values",
                 data=np.arange(6, dtype=np.float64).reshape(2, 3),
             )
-            reader = RawH5SourceReader(h5file=h5file, label="HD")
+            reader = PipelineInputSource(h5file=h5file, label="HD")
 
             values = reader.array("values", dtype=np.float32)
 

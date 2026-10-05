@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from calculations.topology import OpticDisc
+
 from input_output.schema import (
     DopplerViewMetadata,
     ImageMaps,
@@ -42,7 +44,14 @@ def load_retinal_source_data(hd, dv) -> RetinalSourceData:
         swapped=artery_swapped,
     )
     dv_spatial_shape = spatial_shape[::-1] if artery_swapped else spatial_shape
-    optic_disc = dv.optic_disc(dv_spatial_shape)
+    measurements = dv.optic_disc_measurements()
+    optic_disc = OpticDisc.from_measurements(
+        measurements.mask,
+        measurements.center,
+        measurements.width,
+        measurements.height,
+        dv_spatial_shape,
+    )
     if artery_swapped:
         optic_disc = optic_disc.transposed()
     if optic_disc.mask is not None and optic_disc.mask.shape != spatial_shape:

@@ -6,8 +6,7 @@ from typing import Any
 
 import h5py
 
-from input_output.h5_access import PipelineH5Output, PipelineInputSource, RawH5SourceReader
-from input_output.inputs import MergedAttrs
+from input_output.h5_access import MergedAttrs, PipelineH5Output, PipelineInputSource
 from input_output.output_manager import OutputManager
 from utils.logger import Logger
 
@@ -105,14 +104,8 @@ class PipelineContext:
         dv_config = dict(doppler_vision_config or {})
         self.runtime = PipelineRuntime(work_h5, preferred_input, pipeline_name)
         self.inputs = PipelineInputs(
-            hd=PipelineInputSource(
-                RawH5SourceReader(h5file=holodoppler_h5, label="HD"),
-                hd_config,
-            ),
-            dv=PipelineInputSource(
-                RawH5SourceReader(h5file=doppler_vision_h5, label="DV"),
-                dv_config,
-            ),
+            hd=PipelineInputSource(h5file=holodoppler_h5, label="HD", config=hd_config),
+            dv=PipelineInputSource(h5file=doppler_vision_h5, label="DV", config=dv_config),
         )
         self.output = PipelineOutput(output_manager, PipelineH5Output(work_h5))
         self.state = PipelineState(variables)
@@ -174,15 +167,15 @@ class PipelineContext:
         return ""
 
     def _preferred_raw_source(self) -> h5py.File | None:
-        hd_h5 = self.inputs.hd.h5.h5file
-        dv_h5 = self.inputs.dv.h5.h5file
+        hd_h5 = self.inputs.hd.h5file
+        dv_h5 = self.inputs.dv.h5file
         if self.runtime.preferred_input == "dv":
             return dv_h5 or hd_h5
         return hd_h5 or dv_h5
 
     def _secondary_raw_source(self) -> h5py.File | None:
-        hd_h5 = self.inputs.hd.h5.h5file
-        dv_h5 = self.inputs.dv.h5.h5file
+        hd_h5 = self.inputs.hd.h5file
+        dv_h5 = self.inputs.dv.h5file
         preferred = self._preferred_raw_source()
         if preferred is hd_h5:
             return dv_h5

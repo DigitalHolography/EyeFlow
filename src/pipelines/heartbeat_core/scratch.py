@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from input_output.scratch_h5 import scratch_h5
+from input_output.writers.h5 import scratch_h5
 
 
 def heartbeat_scratch_h5(_ctx):

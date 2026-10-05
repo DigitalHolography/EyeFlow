@@ -1,13 +1,58 @@
 """Write EyeFlow runtime values into HDF5 files."""
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from uuid import uuid4
 
 import h5py
 import numpy as np
 
-from app_settings import app_version
 from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
+
+SCRATCH_CHUNK_CACHE_BYTES = 128 * 1024 * 1024
+SCRATCH_BLOCK_BYTES = 64 * 1024 * 1024
+
+
+@contextmanager
+def scratch_h5(*, purpose: str, filename_prefix: str) -> Iterator[h5py.File]:
+    """Yield a non-persistent HDF5 workspace with shared RAM cache settings."""
+    filename = f"{filename_prefix}-{uuid4().hex}.h5"
+    with h5py.File(
+        filename,
+        "w",
+        driver="core",
+        backing_store=False,
+        block_size=SCRATCH_BLOCK_BYTES,
+        rdcc_nbytes=SCRATCH_CHUNK_CACHE_BYTES,
+        rdcc_nslots=1_000_003,
+        rdcc_w0=0.75,
+    ) as scratch:
+        scratch.attrs["temporary"] = True
+        scratch.attrs["storage"] = "memory"
+        scratch.attrs["purpose"] = purpose
+        yield scratch
+
+
+def profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
+    """Use lossless compression with chunks aligned to one segment profile."""
+    options: dict[str, object] = {
+        "compression": "gzip",
+        "compression_opts": 4,
+        "shuffle": True,
+    }
+    if len(shape) not in (4, 5) or not all(shape):
+        return options
+
+    sample_count, time_count = shape[:2]
+    target_elements = (1024 * 1024) // np.dtype(np.float32).itemsize
+    if len(shape) == 4:
+        options["chunks"] = (sample_count, 1, 1, 1)
+        return options
+    time_chunk = min(time_count, max(target_elements // sample_count, 1))
+    options["chunks"] = (sample_count, time_chunk, 1, 1, 1)
+    return options
 
 
 def normalize_h5_path(path: object) -> str:
@@ -97,10 +142,11 @@ def write_value_dataset(group: h5py.Group, key: str, value) -> None:
 def initialize_output_h5(
     h5file: h5py.File,
     *,
+    eyeflow_version: str,
     holodoppler_source_file: str | None = None,
     doppler_vision_source_file: str | None = None,
 ) -> None:
-    set_attr_safe(h5file, "eyeflow_version", _project_version())
+    set_attr_safe(h5file, "eyeflow_version", eyeflow_version)
     if holodoppler_source_file:
         h5file.attrs["holodoppler_source_file"] = holodoppler_source_file
 
@@ -118,7 +164,7 @@ def initialize_output_h5(
                 source_h5.copy(source_path, output_group, name=output_name)
     if doppler_vision_source_file:
         h5file.attrs["doppler_vision_source_file"] = doppler_vision_source_file
-    _initialize_app_versions(h5file, doppler_vision_source_file)
+    _initialize_app_versions(h5file, doppler_vision_source_file, eyeflow_version)
     primary_source = holodoppler_source_file or doppler_vision_source_file
     if primary_source:
         h5file.attrs["source_file"] = primary_source
@@ -127,6 +173,7 @@ def initialize_output_h5(
 def _initialize_app_versions(
     h5file: h5py.File,
     doppler_vision_source_file: str | None,
+    eyeflow_version: str,
 ) -> None:
     """Write application versions as one scalar JSON dataset."""
 
@@ -136,7 +183,7 @@ def _initialize_app_versions(
             source_versions = source_h5.get("app_versions")
             versions = _read_app_versions(source_versions)
 
-    versions["EF_version"] = _project_version()
+    versions["EF_version"] = eyeflow_version
     if "app_versions" in h5file:
         del h5file["app_versions"]
     h5file.create_dataset(
@@ -181,10 +228,6 @@ def _scalar_text(value) -> str | None:
     if isinstance(value, bytes):
         return value.decode("utf-8")
     return str(value) if value is not None else None
-
-
-def _project_version() -> str:
-    return app_version() or "unknown"
 
 
 def _normalize_dataset_payload(data, ds_attrs):

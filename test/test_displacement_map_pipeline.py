@@ -12,7 +12,7 @@ from unittest.mock import patch
 import h5py
 import numpy as np
 
-from input_output.holo_run_layout import HoloRunLayout
+from input_output.inputs import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from pipeline_engine import PipelineContext
 from pipelines.displacement_map import registration

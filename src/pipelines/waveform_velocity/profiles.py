@@ -8,7 +8,7 @@ from scipy.signal import find_peaks
 
 from calculations.math import nanmean_float32
 from calculations.topology import dilate_segment_masks, interpolate_profiles_per_beat
-from input_output.profile_datasets import _profile_h5_options
+from input_output.writers.h5 import profile_h5_options
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 from pipelines.displacement_map.constants import registration_method_output_name
@@ -454,7 +454,7 @@ def _globally_meaned_profile_dataset(profile: DatasetValue) -> DatasetValue:
     return DatasetValue(
         data=data,
         attrs=attrs,
-        h5_options=_profile_h5_options(data.shape),
+        h5_options=profile_h5_options(data.shape),
     )
 
 
@@ -493,7 +493,7 @@ def _transverse_max_x_position_dataset(profile: DatasetValue) -> DatasetValue:
             "peak_selection": "first_two_local_maxima_left_to_right",
             "source_temporal_reduction": attrs.get("temporal_reduction", ""),
         },
-        h5_options=_profile_h5_options(positions.shape),
+        h5_options=profile_h5_options(positions.shape),
     )
 
 
@@ -534,7 +534,7 @@ def _mean_profile_values_at_peak_positions(
             "value_order": list(value_order),
             "source_temporal_reduction": attrs.get("temporal_reduction", ""),
         },
-        h5_options=_profile_h5_options(extracted.shape),
+        h5_options=profile_h5_options(extracted.shape),
     )
 
 
@@ -598,12 +598,12 @@ def _profile_peak_area_datasets(
         DatasetValue(
             data=left_area,
             attrs={**common_attrs, "side": "left"},
-            h5_options=_profile_h5_options(left_area.shape),
+            h5_options=profile_h5_options(left_area.shape),
         ),
         DatasetValue(
             data=right_area,
             attrs={**common_attrs, "side": "right"},
-            h5_options=_profile_h5_options(right_area.shape),
+            h5_options=profile_h5_options(right_area.shape),
         ),
     )
 
@@ -693,7 +693,7 @@ def _mean_peak_metric(metric: DatasetValue) -> DatasetValue:
     return DatasetValue(
         data=data,
         attrs=attrs,
-        h5_options=_profile_h5_options(data.shape),
+        h5_options=profile_h5_options(data.shape),
     )
 
 
@@ -740,7 +740,7 @@ def _temporally_centered_profile_power_dataset(
     return DatasetValue(
         data=data,
         attrs=attrs,
-        h5_options=_profile_h5_options(data.shape),
+        h5_options=profile_h5_options(data.shape),
     )
 
 
@@ -775,7 +775,7 @@ def _summed_displacement_profile_dataset(
             "spatial_reduction": "sum_over_valid_subimage_pixels",
             "displacement_reference": "temporal_mean_image",
         },
-        h5_options=_profile_h5_options(profiles_per_beat.shape[1:]),
+        h5_options=profile_h5_options(profiles_per_beat.shape[1:]),
     )
 
 
@@ -809,7 +809,7 @@ def _segment_displacement_metric_dataset(
             "displacement_reference": "temporal_mean_image",
             **metric_attrs,
         },
-        h5_options=_profile_h5_options(data.shape),
+        h5_options=profile_h5_options(data.shape),
     )
 
 
@@ -848,7 +848,7 @@ def _segment_displacement_magnitude_dataset(
             "spatial_reduction": "magnitude_of_summed_displacement_components",
             "displacement_reference": "temporal_mean_image",
         },
-        h5_options=_profile_h5_options(data.shape),
+        h5_options=profile_h5_options(data.shape),
     )
 
 
@@ -1013,7 +1013,7 @@ def _pack_vessel_velocity_fft_profiles(
                 "mask_applied": False,
                 "mask_dilation_iterations": 0,
             },
-            h5_options=_profile_h5_options(unmasked.shape),
+            h5_options=profile_h5_options(unmasked.shape),
         ),
         masked_path: DatasetValue(
             data=masked,
@@ -1023,6 +1023,6 @@ def _pack_vessel_velocity_fft_profiles(
                 "mask_dilation_iterations": int(mask_dilation_pixels),
                 "mask_dilation_axis": "transverse_x",
             },
-            h5_options=_profile_h5_options(masked.shape),
+            h5_options=profile_h5_options(masked.shape),
         ),
     }

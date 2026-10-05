@@ -5,13 +5,18 @@ from pathlib import Path
 import numpy as np
 from skimage.io import imsave
 
+from input_output.output_manager import OutputType, artifact_path, output_stem
+
+REPORT_IMAGES_STATE = "report_image_paths"
+ReportImagePaths = dict[tuple[str, str], Path]
+
 
 class FigureArtifactWriter:
     """Write stem-prefixed PNG figures for one output namespace."""
 
     def __init__(self, output, stem: str | None = None) -> None:
         self.output = output
-        self.stem = str(stem) if stem else _output_stem(output)
+        self.stem = str(stem) if stem else output_stem(output)
         self.artifacts: dict[tuple[str, str], Path] = {}
 
     def register_artifact(self, kind: str, vessel: str, path: Path) -> None:
@@ -19,12 +24,9 @@ class FigureArtifactWriter:
         self.artifacts[(kind, vessel)] = Path(path)
 
     def path(self, suffix: str, *, subfolder: str | None = None) -> Path:
-        filename = f"{self.stem}_{suffix}"
-        if subfolder:
-            filename = f"{subfolder}/{filename}"
-        path = self.output.path_for(_png_output_type(), filename)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return path
+        return artifact_path(
+            self.output, OutputType.PNG, suffix, stem=self.stem, subfolder=subfolder
+        )
 
     def save_array(self, image, suffix: str) -> Path:
         filename = f"{self.stem}_{suffix}"
@@ -124,20 +126,7 @@ def _normalize_float(array: np.ndarray) -> np.ndarray:
 PngArtifactWriter = FigureArtifactWriter
 
 
-def _output_stem(output) -> str:
-    manager = getattr(output, "manager", None)
-    layout = getattr(manager, "layout", None)
-    stem = getattr(layout, "stem", None)
-    return str(stem or "eyeflow")
-
-
 def _close_figure(fig) -> None:
     import matplotlib.pyplot as plt
 
     plt.close(fig)
-
-
-def _png_output_type():
-    from input_output.output_manager import OutputType
-
-    return OutputType.PNG

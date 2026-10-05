@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from input_output.inputs import sidecar_dir_for_h5
-from input_output.output_manager import OutputType
-from input_output.report_images import REPORT_IMAGES_STATE
+from input_output.schema.base import sidecar_dir_for_h5
 from input_output.reports import generate_a4_report
+from input_output.writers.png import REPORT_IMAGES_STATE
 
 
 def run_pdf_report(ctx) -> None:
@@ -26,7 +25,7 @@ def run_pdf_report(ctx) -> None:
 
     layout = output_manager.layout
     folder_name = layout.stem
-    report_dir = output_manager.dir_for(OutputType.PDF)
+    report_path = output_manager.report_path()
     report_images = ctx.state.get(REPORT_IMAGES_STATE, {})
 
     hd_png_dir = (
@@ -39,7 +38,7 @@ def run_pdf_report(ctx) -> None:
     try:
         pdf_path = generate_a4_report(
             output_h5_path=Path(output_h5_path),
-            output_dir=report_dir,
+            output_path=report_path,
             folder_name=folder_name,
             report_images=report_images,
             hd_png_dir=hd_png_dir if hd_png_dir and hd_png_dir.exists() else None,

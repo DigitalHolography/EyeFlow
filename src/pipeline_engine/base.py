@@ -88,7 +88,7 @@ def pipeline(
     """Register a function pipeline.
 
     The decorated function receives a PipelineContext. It can write outputs via
-    ctx.output.h5.write()/ctx.output.h5.write_many(), return a ProcessResult,
+    ctx.output.h5.write_many(), return a ProcessResult,
     return a metrics dict, or return None after writing directly to the context.
     """
 

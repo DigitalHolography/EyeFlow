@@ -15,9 +15,14 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from input_output.inputs import load_h5_sidecar_config
-from input_output.schema import DopplerViewSource, HolodopplerSource
-from pipeline_engine.context import RawH5SourceReader
+from input_output.schema.base import load_h5_sidecar_config
+from input_output.schema import (
+    DOPPLER_VIEW_LAYOUT,
+    HOLODOPPLER_LAYOUT,
+    DopplerViewSource,
+    HolodopplerSource,
+)
+from input_output.h5_access import PipelineInputSource
 from pipelines.waveform_velocity_core.sources import (
     WaveformVelocitySources,
     _load_moment_pair,
@@ -36,9 +41,32 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with h5py.File(h5_path, "w") as h5:
-                config = load_h5_sidecar_config(h5, source="dv")
+                config = load_h5_sidecar_config(h5, source=DOPPLER_VIEW_LAYOUT)
 
             self.assertEqual(5, config["VelocityEstimation"]["LocalBackgroundDist"])
+
+    def test_sidecar_lookup_keeps_named_hd_legacy_file_but_not_arbitrary_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            hd_path = root / "scan_HD" / "h5" / "scan_HD_output.h5"
+            dv_path = root / "scan_DV" / "h5" / "scan_DV.h5"
+            hd_path.parent.mkdir(parents=True)
+            dv_path.parent.mkdir(parents=True)
+            hd_config = hd_path.parent.parent / "json" / "parameters_holodoppler.json"
+            dv_config = dv_path.parent.parent / "json" / "unrelated.json"
+            hd_config.parent.mkdir()
+            dv_config.parent.mkdir()
+            hd_config.write_text('{"sampling_freq": 50}', encoding="utf-8")
+            dv_config.write_text(
+                '{"Velocity Estimation": {"Local Background Dist": 9}}',
+                encoding="utf-8",
+            )
+            with h5py.File(hd_path, "w") as hd, h5py.File(dv_path, "w") as dv:
+                self.assertEqual(
+                    {"sampling_freq": 50},
+                    load_h5_sidecar_config(hd, source=HOLODOPPLER_LAYOUT),
+                )
+                self.assertEqual({}, load_h5_sidecar_config(dv, source=DOPPLER_VIEW_LAYOUT))
 
     def test_missing_analysis_is_allowed_and_spatial_masks_align_to_hd(self) -> None:
         artery_raw = np.array(
@@ -139,7 +167,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
             with h5py.File(hd_source, "a") as hd:
                 del hd["HD_parameters"]
             with h5py.File(hd_source, "r") as hd:
-                source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
+                source = HolodopplerSource(PipelineInputSource(h5file=hd, label="HD"))
                 with self.assertRaisesRegex(KeyError, "HD_parameters"):
                     source.pixel_pitch()
 
@@ -152,7 +180,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                     data=json.dumps({"pixel_pitch": [20e-6, 21e-6]}),
                 )
             with h5py.File(hd_source, "r") as hd:
-                source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
+                source = HolodopplerSource(PipelineInputSource(h5file=hd, label="HD"))
                 pitch = source.pixel_pitch()
                 self.assertEqual((20e-6, 21e-6), pitch.xy_m)
                 with self.assertRaisesRegex(ValueError, "approximately equal"):
@@ -180,7 +208,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                 )
             with h5py.File(hd_source, "r") as hd:
                 source = HolodopplerSource(
-                    RawH5SourceReader(h5file=hd, label="HD"),
+                    PipelineInputSource(h5file=hd, label="HD"),
                 )
                 moment0, moment2 = _load_moment_pair(source)
                 selected_moment0 = np.asarray(moment0)
@@ -322,11 +350,11 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         try:
             sources = WaveformVelocitySources(
                 hd=HolodopplerSource(
-                    RawH5SourceReader(h5file=hd_file, label="HD"),
+                    PipelineInputSource(h5file=hd_file, label="HD"),
                     hd_config,
                 ),
                 dv=DopplerViewSource(
-                    RawH5SourceReader(h5file=dv_file, label="DV"),
+                    PipelineInputSource(h5file=dv_file, label="DV"),
                     dv_config,
                 ),
             )

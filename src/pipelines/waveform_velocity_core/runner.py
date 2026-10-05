@@ -12,7 +12,7 @@ from calculations.blood_flow_velocity import (
 )
 from calculations.topology import AnnulusGeometry
 from input_output import EyeFlowOutputPaths
-from input_output.report_images import REPORT_IMAGES_STATE, ReportImagePaths
+from input_output.writers.png import REPORT_IMAGES_STATE, ReportImagePaths
 from pipeline_engine.imports import (
     HolodopplerTiming,
     np,

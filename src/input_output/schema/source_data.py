@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from calculations.topology import OpticDisc
+if TYPE_CHECKING:
+    from calculations.topology import OpticDisc
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,16 @@ class VesselMasks:
     vein: np.ndarray
     labeled: np.ndarray | None = None
     velocity_background: np.ndarray | None = None
+
+
+@dataclass(frozen=True)
+class OpticDiscMeasurements:
+    """Uninterpreted optic-disc values read from DopplerView."""
+
+    mask: np.ndarray | None
+    center: np.ndarray | None
+    width: np.ndarray | None
+    height: np.ndarray | None
 
 
 @dataclass(frozen=True)

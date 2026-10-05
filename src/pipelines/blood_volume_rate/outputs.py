@@ -14,7 +14,7 @@ from calculations.blood_volume_rate import (
     total_masked_edges_flow,
 )
 from calculations.math import nanmean_float32, nanmedian
-from input_output.profile_datasets import _profile_h5_options
+from input_output.writers.h5 import profile_h5_options
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.eps import EpsArtifactWriter, write_eps_file
 from input_output.writers.png import PngArtifactWriter, write_png_figure
@@ -146,7 +146,7 @@ def _gradient_edge_dataset(
                 "mean_over_time_and_beats" if static_edges else "none"
             ),
         },
-        h5_options=_profile_h5_options(rate.shape),
+        h5_options=profile_h5_options(rate.shape),
     )
 
 
@@ -204,7 +204,7 @@ def pack_mask_derived_outputs(
                 "native_pixel_size_mm": np.float32(pixel_size_mm),
                 "radial_width_pixels": radial_widths,
             },
-            h5_options=_profile_h5_options(rate.shape),
+            h5_options=profile_h5_options(rate.shape),
         )
         outputs[paths.masked_edges] = masked
         total = total_masked_edges_flow(rate)
@@ -228,7 +228,7 @@ def pack_mask_derived_outputs(
                 "branch_reduction": "sum_over_finite_values",
                 "radius_reduction": "median_over_finite_values",
             },
-            h5_options=_profile_h5_options(total.shape),
+            h5_options=profile_h5_options(total.shape),
         )
     return outputs
 

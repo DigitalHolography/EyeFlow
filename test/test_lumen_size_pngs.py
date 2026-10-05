@@ -14,7 +14,7 @@ import numpy as np
 from matplotlib.figure import Figure
 from PIL import Image
 
-from input_output.holo_run_layout import HoloRunLayout
+from input_output.inputs import HoloRunLayout
 from input_output.output_manager import OutputManager
 from pipeline_engine import DatasetValue, PipelineContext
 from pipeline_engine.context import apply_pipeline_result

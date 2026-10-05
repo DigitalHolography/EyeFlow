@@ -19,7 +19,8 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from input_output.output_manager import OutputType  # noqa: E402
-from input_output.writers.avi import AviArtifactWriter, write_magnitude_avi  # noqa: E402
+from input_output.writers.avi import AviArtifactWriter  # noqa: E402
+from input_output.writers.magnitude_avi import write_magnitude_avi  # noqa: E402
 
 
 class AviWriterTests(unittest.TestCase):

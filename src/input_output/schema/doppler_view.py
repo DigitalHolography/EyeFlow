@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.topology import OpticDisc
-
 from .base import SourceFileLayout, TypedSource
+from .source_data import OpticDiscMeasurements
 
 DV_CONFIG_DIR_NAME = "json"
 DV_CONFIG_FILENAME = "DV_params.json"
@@ -37,10 +36,10 @@ class DopplerViewSource(TypedSource):
             default=None,
         )
 
-    def optic_disc(self, image_shape: tuple[int, int]) -> OpticDisc:
-        """Return DopplerView's optic-disc measurements in its native frame."""
+    def optic_disc_measurements(self) -> OpticDiscMeasurements:
+        """Read DopplerView's optic-disc measurements without interpreting geometry."""
 
-        return OpticDisc.from_measurements(
+        return OpticDiscMeasurements(
             mask=self._array(
                 "segmentation/OpticDisc/mask",
                 default=None,
@@ -60,7 +59,6 @@ class DopplerViewSource(TypedSource):
                 dtype=np.float32,
                 default=None,
             ),
-            image_shape=image_shape,
         )
 
     def local_background_dist(self) -> int:

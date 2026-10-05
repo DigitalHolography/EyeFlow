@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from input_output.holo_run_layout import HoloRunLayout
+from input_output.inputs import HoloRunLayout
 from input_output.output_manager import OutputManager
 from pipelines.waveform_velocity.outputs import (
     VELOCITY_ENVELOPE_GRAY,
