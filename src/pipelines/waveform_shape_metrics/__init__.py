@@ -14,21 +14,14 @@ from .runner import run_waveform_shape_metrics
     dag_requires=["waveform_velocity"],
     options=[
         PipelineOption(
-            "per_beat",
-            "Per beat",
-            "Global waveform-shape metrics per beat.",
-        ),
-        PipelineOption(
             "segments",
             "Segments",
             "By-segment waveform-shape metrics per beat.",
-            requires=("per_beat",),
         ),
         PipelineOption(
             "quadrants",
             "Quadrants",
             "Four-quadrant waveform-shape metric aggregates.",
-            requires=("per_beat",),
         ),
     ],
     dag_produces=["waveform_shape_metrics"],

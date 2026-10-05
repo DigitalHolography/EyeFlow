@@ -78,7 +78,7 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
         descriptor = PIPELINE_REGISTRY["absolute_waveform_metrics"]
         self.assertEqual(("waveform_velocity",), descriptor.dag_requires)
         self.assertEqual(
-            ("per_beat", "segments", "quadrants"),
+            ("segments", "quadrants"),
             tuple(option.name for option in descriptor.options),
         )
         self.assertEqual(
@@ -238,14 +238,10 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             schema.artery_per_beat.velocity_signal: waveform,
             schema.artery_per_beat.velocity_signal_band_limited: waveform,
         }
-        shared = SimpleNamespace(require_per_beat=lambda: "per-beat")
+        shared = SimpleNamespace(per_beat_result="per-beat", retinal_velocity={})
         ctx = SimpleNamespace(
             state=state,
-            options_for=lambda name: (
-                frozenset(("per_beat",))
-                if name == "absolute_waveform_metrics"
-                else frozenset()
-            ),
+            options_for=lambda _name: frozenset(),
         )
 
         with (

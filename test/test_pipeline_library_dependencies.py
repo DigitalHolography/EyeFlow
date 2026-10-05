@@ -268,28 +268,18 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             "waveform_velocity",
             options=(
                 PipelineOption("segments", "Segments"),
-                PipelineOption("per_beat", "Per beat"),
                 PipelineOption(
                     "quadrants",
                     "Quadrants",
-                    requires=("per_beat",),
+                    requires=("segments",),
                 ),
             ),
         )
         shape = _descriptor(
             "waveform_shape_metrics",
             options=(
-                PipelineOption("per_beat", "Per beat"),
-                PipelineOption(
-                    "segments",
-                    "Segments",
-                    requires=("per_beat",),
-                ),
-                PipelineOption(
-                    "quadrants",
-                    "Quadrants",
-                    requires=("per_beat",),
-                ),
+                PipelineOption("segments", "Segments"),
+                PipelineOption("quadrants", "Quadrants"),
             ),
         )
         app = SimpleNamespace(
@@ -300,12 +290,10 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             pipeline_option_visibility={
                 "waveform_velocity": {
                     "segments": True,
-                    "per_beat": True,
                     "quadrants": True,
                 },
                 "waveform_shape_metrics": {
                     "segments": True,
-                    "per_beat": True,
                     "quadrants": True,
                 },
             },
@@ -323,10 +311,10 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         self.assertFalse(
             app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
         )
-        self.assertTrue(
+        self.assertFalse(
             app.pipeline_option_visibility["waveform_velocity"]["quadrants"]
         )
-        self.assertTrue(
+        self.assertFalse(
             app.pipeline_option_visibility["waveform_shape_metrics"]["quadrants"]
         )
 
@@ -339,29 +327,14 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
         )
 
-        controller.set_option_visibility("waveform_velocity", "per_beat", False)
-
-        self.assertFalse(
-            app.pipeline_option_visibility["waveform_shape_metrics"]["per_beat"]
-        )
-        self.assertFalse(
-            app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
-        )
-
-        controller.set_option_visibility("waveform_shape_metrics", "per_beat", True)
-
-        self.assertTrue(
-            app.pipeline_option_visibility["waveform_velocity"]["per_beat"]
-        )
-
-    def test_pdf_report_keeps_upstream_per_beat_products_enabled(self) -> None:
+    def test_pdf_report_does_not_mutate_shape_options(self) -> None:
         velocity = _descriptor(
             "waveform_velocity",
-            options=(PipelineOption("per_beat", "Per beat"),),
+            options=(PipelineOption("segments", "Segments"),),
         )
         shape = _descriptor(
             "waveform_shape_metrics",
-            options=(PipelineOption("per_beat", "Per beat"),),
+            options=(PipelineOption("segments", "Segments"),),
         )
         report = _descriptor(
             "pdf_report",
@@ -380,8 +353,8 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             pipeline_visibility_vars={},
             pipeline_option_widgets={},
             pipeline_option_visibility={
-                "waveform_velocity": {"per_beat": False},
-                "waveform_shape_metrics": {"per_beat": False},
+                "waveform_velocity": {"segments": False},
+                "waveform_shape_metrics": {"segments": False},
             },
             pipeline_option_vars={
                 "waveform_velocity": {},
@@ -395,20 +368,9 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
 
         controller.set_visibility("pdf_report", True)
 
-        self.assertTrue(
-            app.pipeline_option_visibility["waveform_velocity"]["per_beat"]
-        )
-        self.assertTrue(
-            app.pipeline_option_visibility["waveform_shape_metrics"]["per_beat"]
-        )
-
-        controller.set_option_visibility("waveform_velocity", "per_beat", False)
-
-        self.assertTrue(
-            app.pipeline_option_visibility["waveform_velocity"]["per_beat"]
-        )
-        self.assertTrue(
-            app.pipeline_option_visibility["waveform_shape_metrics"]["per_beat"]
+        self.assertEqual(
+            {"segments": False},
+            app.pipeline_option_visibility["waveform_shape_metrics"],
         )
 
     def test_stored_waveform_segment_selection_is_normalized_downstream(self) -> None:
@@ -447,10 +409,13 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
 
         controller.sync_options([velocity, shape])
 
-        self.assertFalse(
+        self.assertTrue(
+            app.pipeline_option_visibility["waveform_velocity"]["segments"]
+        )
+        self.assertTrue(
             app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
         )
-        self.assertFalse(
+        self.assertTrue(
             app.pipeline_option_visibility["waveform_shape_metrics"]["quadrants"]
         )
 

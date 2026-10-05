@@ -19,7 +19,7 @@ from .runner import run_waveform_velocity
         PipelineOption(
             "segments",
             "Segments",
-            "Spatial vessel segments used by regional and profile products.",
+            "Continuous and per-beat velocity signals for spatial vessel segments.",
         ),
         PipelineOption(
             "segment_velocity_maps",
@@ -29,13 +29,14 @@ from .runner import run_waveform_velocity
                 "artery/vein mosaic movies."
             ),
             default_enabled=False,
+            requires=("segments",),
         ),
         PipelineOption(
             "velocity_profiles",
             "Velocity profiles",
             "Per-beat cross-section velocity profiles.",
             default_enabled=False,
-            requires=("per_beat", "segments"),
+            requires=("segments",),
         ),
         PipelineOption(
             "velocity_profile_fft",
@@ -45,15 +46,10 @@ from .runner import run_waveform_velocity
             requires=("velocity_profiles",),
         ),
         PipelineOption(
-            "per_beat",
-            "Per beat",
-            "Raw and band-limited vessel velocity for each beat.",
-        ),
-        PipelineOption(
             "quadrants",
             "Quadrants",
             "Four-quadrant velocity and per-beat velocity aggregates.",
-            requires=("per_beat",),
+            requires=("segments",),
         ),
     ],
     input_slot="both",

@@ -9,14 +9,12 @@ from .outputs import pack_absolute_waveform_outputs
 
 
 def run_absolute_waveform_metrics(ctx) -> dict[str, object]:
-    """Calculate absolute metrics from shared per-beat velocity outputs."""
+    """Calculate default global metrics and selected regional products."""
     selected = ctx.options_for("absolute_waveform_metrics")
-    if not selected:
-        return {}
-
     waveform = waveform_velocity(ctx)
     velocity_outputs = pack_velocity_per_beat_outputs(
-        waveform.require_per_beat()
+        waveform.per_beat_result,
+        velocity_analysis=waveform.retinal_velocity,
     )
     outputs = pack_absolute_waveform_outputs(
         velocity_outputs,
@@ -27,7 +25,7 @@ def run_absolute_waveform_metrics(ctx) -> dict[str, object]:
         vein_segments=(
             waveform.vein_segments if "quadrants" in selected else None
         ),
-        include_per_beat="per_beat" in selected,
+        include_per_beat=True,
         include_segments="segments" in selected,
         include_quadrants="quadrants" in selected,
     )

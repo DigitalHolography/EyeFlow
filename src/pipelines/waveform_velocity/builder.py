@@ -3,7 +3,11 @@
 from contextlib import contextmanager
 from time import perf_counter
 
-from calculations.blood_flow_velocity import PerBeatAnalysisInput, run_per_beat_analysis
+from calculations.blood_flow_velocity import (
+    PerBeatAnalysisInput,
+    PerBeatAnalysisResult,
+    run_per_beat_analysis,
+)
 from calculations.topology import AnnulusGeometry
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.imports import (
@@ -53,21 +57,21 @@ def build_waveform_velocity(ctx) -> WaveformVelocity:
         f"{'segment_velocity_maps' in velocity_options}."
     )
     retinal = retinal_velocity(ctx)
-    (
-        source_data,
-        per_beat_input,
-        artery_segments,
-        vein_segments,
-        attrs,
-    ) = _build_waveform_velocity_inputs(
+    harmonic_count = _band_limited_harmonic_count(ctx)
+    source_data, artery_segments, vein_segments, attrs = _build_waveform_velocity_state(
         ctx,
         retinal,
         segments_required=segments_required,
+        harmonic_count=harmonic_count,
     )
-    per_beat_result = None
-    if _per_beat_required(ctx):
-        with _logged_stage("shared per-beat velocity analysis"):
-            per_beat_result = run_per_beat_analysis(per_beat_input)
+    with _logged_stage("shared per-beat velocity analysis"):
+        per_beat_result = _run_waveform_per_beat_analysis(
+            retinal,
+            source_data,
+            artery_segments,
+            vein_segments,
+            harmonic_count=harmonic_count,
+        )
 
     waveform = WaveformVelocity(
         retinal_velocity=retinal,
@@ -78,7 +82,7 @@ def build_waveform_velocity(ctx) -> WaveformVelocity:
         attrs=attrs,
     )
     ctx.state.set(WAVEFORM_VELOCITY_STATE, waveform)
-    if per_beat_result is not None and _pulse_pngs_required(ctx):
+    if _pulse_pngs_required(ctx):
         _export_pulse_pngs(ctx, waveform, per_beat_result)
 
     Logger.log(f"Completed waveform velocity in {perf_counter() - core_started:.1f}s.")
@@ -96,44 +100,8 @@ def waveform_velocity(ctx) -> WaveformVelocity:
     return value
 
 
-def _per_beat_required(ctx) -> bool:
-    if (
-        ctx.pipeline_scheduled("blood_volume_rate")
-        and ctx.option_enabled("masked_edges", pipeline="blood_volume_rate")
-    ):
-        return True
-    if ctx.pipeline_scheduled("velocity_profile_analysis"):
-        return True
-    if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
-        return True
-    velocity_options = ctx.options_for("waveform_velocity")
-    metric_options = ctx.options_for("waveform_shape_metrics")
-    absolute_options = (
-        ctx.options_for("absolute_waveform_metrics")
-        if ctx.pipeline_scheduled("absolute_waveform_metrics")
-        else frozenset()
-    )
-    if ctx.pipeline_scheduled("pdf_report"):
-        return True
-    if ctx.pipeline_scheduled("waveform_velocity"):
-        return bool(
-            {"per_beat", "quadrants"} & velocity_options
-            or "quadrants" in metric_options
-            or absolute_options
-        )
-    return bool(
-        (
-            metric_options and ctx.pipeline_scheduled("waveform_shape_metrics")
-        )
-        or (
-            absolute_options
-            and ctx.pipeline_scheduled("absolute_waveform_metrics")
-        )
-    )
-
-
 def _segments_required(ctx) -> bool:
-    """Return whether any selected product needs spatial vessel segments."""
+    """Return whether the canonical segment analysis must run."""
     if ctx.pipeline_scheduled("blood_volume_rate") and ctx.options_for(
         "blood_volume_rate"
     ):
@@ -142,78 +110,58 @@ def _segments_required(ctx) -> bool:
         return True
     if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
         return True
-    velocity_options = ctx.options_for("waveform_velocity")
-    metric_options = ctx.options_for("waveform_shape_metrics")
-    absolute_options = (
-        ctx.options_for("absolute_waveform_metrics")
-        if ctx.pipeline_scheduled("absolute_waveform_metrics")
-        else frozenset()
-    )
-    if ctx.pipeline_scheduled("waveform_velocity"):
-        return bool(
-            {
-                "segments",
-                "segment_velocity_maps",
-                "velocity_profiles",
-                "velocity_profile_fft",
-                "quadrants",
-            }
-            & velocity_options
-            or "quadrants" in metric_options
-            or "segments" in absolute_options
-            or "quadrants" in absolute_options
-        )
+    if ctx.pipeline_scheduled("waveform_velocity") and {
+        "segments",
+        "segment_velocity_maps",
+        "velocity_profiles",
+        "velocity_profile_fft",
+        "quadrants",
+    } & ctx.options_for("waveform_velocity"):
+        return True
+    if ctx.pipeline_scheduled("waveform_shape_metrics") and {
+        "segments",
+        "quadrants",
+    } & ctx.options_for("waveform_shape_metrics"):
+        return True
     return bool(
-        {"segments", "quadrants"} & metric_options
-        or "segments" in absolute_options
+        ctx.pipeline_scheduled("absolute_waveform_metrics")
+        and {"segments", "quadrants"}
+        & ctx.options_for("absolute_waveform_metrics")
     )
 
 
 def _pulse_pngs_required(ctx) -> bool:
-    return bool(
-        ctx.pipeline_scheduled("pdf_report")
-        or (
-            ctx.pipeline_scheduled("waveform_velocity")
-            and ctx.option_enabled("per_beat", pipeline="waveform_velocity")
-        )
+    return ctx.pipeline_targeted("waveform_velocity") or ctx.pipeline_scheduled(
+        "pdf_report"
     )
 
 
-def _build_waveform_velocity_inputs(
+def _build_waveform_velocity_state(
     ctx,
     retinal: RetinalVelocity,
     *,
     segments_required: bool,
+    harmonic_count: int,
 ) -> tuple[
     WaveformVelocitySourceData,
-    PerBeatAnalysisInput,
     VelocitySegmentResult | None,
     VelocitySegmentResult | None,
     dict[str, object],
 ]:
+    """Build persistent source and segment state before per-beat analysis."""
+
     with _logged_stage("waveform source loading"):
         source_data = WaveformVelocitySources.from_context(ctx).load()
     timing = source_data.source.holodoppler.timing
-    cardiac_cycle_source = retinal.cardiac_cycle_source
-    velocity_map = retinal.maps.velocity if segments_required else None
-    harmonic_count = _band_limited_harmonic_count(ctx)
     number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
-    per_beat_analysis, artery_segments, vein_segments = (
-        _build_per_beat_input(
-            retinal,
-            source_data,
-            timing,
-            harmonic_count,
-            ctx,
-            velocity_map=velocity_map,
-            number_of_radii_in_fov=number_of_radii_in_fov,
-            segments_required=segments_required,
-        )
+    artery_segments, vein_segments = _build_segments(
+        ctx,
+        retinal,
+        source_data,
+        segments_required=segments_required,
     )
-
     return (
         source_data,
-        per_beat_analysis,
         artery_segments,
         vein_segments,
         _context_attrs(
@@ -222,9 +170,9 @@ def _build_waveform_velocity_inputs(
             timing,
             harmonic_count,
             "eyeflow_retinal_velocity_analysis",
-            per_beat_analysis.cardiac_cycle,
+            retinal.cardiac_cycle.spectral,
             number_of_radii_in_fov,
-            cardiac_cycle_source,
+            retinal.cardiac_cycle_source,
         ),
     )
 
@@ -256,73 +204,69 @@ def _number_of_radii_in_fov(ctx) -> int:
     return value
 
 
-def _build_per_beat_input(
+def _build_segments(
+    ctx,
     retinal: RetinalVelocity,
     source_data: WaveformVelocitySourceData,
-    timing: HolodopplerTiming,
-    harmonic_count: int,
-    ctx,
     *,
-    velocity_map=None,
-    number_of_radii_in_fov: int = NUMBER_OF_RADII_IN_FOV,
     segments_required: bool,
 ) -> tuple[
-    PerBeatAnalysisInput,
     VelocitySegmentResult | None,
     VelocitySegmentResult | None,
 ]:
-    if segments_required:
-        if velocity_map is None:
-            raise ValueError("velocity_map is required for segment extraction.")
-        shared_topologies = prepared_topologies(ctx)
-        ring_settings = shared_topologies["artery"].native.ring_settings
-        if not isinstance(ring_settings, AnnulusGeometry):
-            raise RuntimeError("Prepared topology has no annulus geometry.")
-        artery_segments, vein_segments = _segment_velocity_inputs(
-            velocity_map,
-            source_data,
-            ring_settings,
-            ctx,
-            cycle_boundary_indexes=retinal.cycle_boundary_indexes,
-            prepared_topologies=shared_topologies,
-        )
-    else:
+    if not segments_required:
         Logger.log("Skipping segment velocity extraction; no selected output requires it.")
-        artery_segments, vein_segments = None, None
+        return None, None
+
+    velocity_map = retinal.maps.velocity
+    if velocity_map is None:
+        raise ValueError("velocity_map is required for segment extraction.")
+    shared_topologies = prepared_topologies(ctx)
+    ring_settings = shared_topologies["artery"].native.ring_settings
+    if not isinstance(ring_settings, AnnulusGeometry):
+        raise RuntimeError("Prepared topology has no annulus geometry.")
+    return _segment_velocity_inputs(
+        velocity_map,
+        source_data,
+        ring_settings,
+        ctx,
+        cycle_boundary_indexes=retinal.cycle_boundary_indexes,
+        prepared_topologies=shared_topologies,
+    )
+
+
+def _run_waveform_per_beat_analysis(
+    retinal: RetinalVelocity,
+    source_data: WaveformVelocitySourceData,
+    artery_segments: VelocitySegmentResult | None,
+    vein_segments: VelocitySegmentResult | None,
+    *,
+    harmonic_count: int,
+) -> PerBeatAnalysisResult:
+    timing = source_data.source.holodoppler.timing
     arterial_velocity_signal, venous_velocity_signal = (
         _raw_velocity_signals_for_per_beat(retinal)
     )
-    beat_indexes = np.asarray(
-        retinal.cycle_boundary_indexes,
-        dtype=np.int32,
+    artery_segment_signal = _waveform_segment_input(artery_segments)
+    vein_segment_signal = _waveform_segment_input(vein_segments)
+    return run_per_beat_analysis(
+        PerBeatAnalysisInput(
+            arterial_velocity_signal=arterial_velocity_signal,
+            venous_velocity_signal=venous_velocity_signal,
+            cycle_boundary_indexes=np.asarray(
+                retinal.cycle_boundary_indexes,
+                dtype=np.int32,
+            ),
+            band_limited_signal_harmonic_count=harmonic_count,
+            cardiac_cycle=retinal.cardiac_cycle.spectral,
+            dt_seconds=timing.dt_seconds,
+            arterial_velocity_segments=artery_segment_signal,
+            venous_velocity_segments=vein_segment_signal,
+            arterial_safe_velocity_segments=artery_segment_signal,
+            venous_safe_velocity_segments=vein_segment_signal,
+            index_base=source_data.provenance["beat_index_base"],
+        )
     )
-    cardiac_cycle = retinal.cardiac_cycle.spectral
-    inputs = PerBeatAnalysisInput(
-        arterial_velocity_signal=arterial_velocity_signal,
-        venous_velocity_signal=venous_velocity_signal,
-        cycle_boundary_indexes=beat_indexes,
-        band_limited_signal_harmonic_count=harmonic_count,
-        cardiac_cycle=cardiac_cycle,
-        dt_seconds=timing.dt_seconds,
-        arterial_velocity_segments=_waveform_segment_input(
-            artery_segments,
-            include_segments=segments_required,
-        ),
-        venous_velocity_segments=_waveform_segment_input(
-            vein_segments,
-            include_segments=segments_required,
-        ),
-        arterial_safe_velocity_segments=_safe_waveform_segment_input(
-            artery_segments,
-            include_segments=segments_required,
-        ),
-        venous_safe_velocity_segments=_safe_waveform_segment_input(
-            vein_segments,
-            include_segments=segments_required,
-        ),
-        index_base=source_data.provenance["beat_index_base"],
-    )
-    return inputs, artery_segments, vein_segments
 
 
 def _raw_velocity_signals_for_per_beat(
@@ -392,20 +336,8 @@ def _segment_velocity_inputs(
 
 def _waveform_segment_input(
     result: VelocitySegmentResult | None,
-    *,
-    include_segments: bool,
 ) -> np.ndarray | None:
-    if not include_segments or result is None:
-        return None
-    return result.profile.segment_signal
-
-
-def _safe_waveform_segment_input(
-    result: VelocitySegmentResult | None,
-    *,
-    include_segments: bool,
-) -> np.ndarray | None:
-    if not include_segments or result is None:
+    if result is None:
         return None
     return result.profile.segment_signal
 

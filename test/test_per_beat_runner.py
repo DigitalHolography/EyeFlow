@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
@@ -37,20 +38,63 @@ from pipelines.waveform_velocity.outputs.per_beat import (  # noqa: E402
 )
 from pipelines.waveform_velocity.builder import (  # noqa: E402
     _raw_velocity_signals_for_per_beat,
-    _safe_waveform_segment_input,
+    _run_waveform_per_beat_analysis,
+    _waveform_segment_input,
 )
 
 
 class PerBeatRunnerTests(unittest.TestCase):
-    def test_safe_segment_input_uses_public_masked_safe_velocity(self) -> None:
-        safe_velocity = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
-        result = SimpleNamespace(
-            profile=SimpleNamespace(segment_signal=safe_velocity),
+    def test_waveform_analysis_reuses_canonical_segment_signals(self) -> None:
+        artery_signal = np.ones((2, 3, 8), dtype=np.float32)
+        vein_signal = np.full((2, 3, 8), 2.0, dtype=np.float32)
+        artery_segments = SimpleNamespace(
+            profile=SimpleNamespace(segment_signal=artery_signal)
+        )
+        vein_segments = SimpleNamespace(
+            profile=SimpleNamespace(segment_signal=vein_signal)
+        )
+        retinal = SimpleNamespace(
+            cycle_boundary_indexes=np.asarray([0, 4, 7], dtype=np.int32),
+            cardiac_cycle=SimpleNamespace(spectral="cardiac-cycle"),
+            continuous=lambda vessel, raw=False: np.arange(8, dtype=np.float32),
+        )
+        source_data = SimpleNamespace(
+            source=SimpleNamespace(
+                holodoppler=SimpleNamespace(
+                    timing=SimpleNamespace(dt_seconds=0.1)
+                )
+            ),
+            provenance={"beat_index_base": 0},
         )
 
-        actual = _safe_waveform_segment_input(result, include_segments=True)
+        with patch(
+            "pipelines.waveform_velocity.builder.run_per_beat_analysis",
+            return_value="result",
+        ) as run:
+            result = _run_waveform_per_beat_analysis(
+                retinal,
+                source_data,
+                artery_segments,
+                vein_segments,
+                harmonic_count=4,
+            )
 
-        self.assertIs(actual, safe_velocity)
+        self.assertEqual("result", result)
+        inputs = run.call_args.args[0]
+        self.assertIs(inputs.arterial_velocity_segments, artery_signal)
+        self.assertIs(inputs.arterial_safe_velocity_segments, artery_signal)
+        self.assertIs(inputs.venous_velocity_segments, vein_signal)
+        self.assertIs(inputs.venous_safe_velocity_segments, vein_signal)
+
+    def test_segment_input_uses_canonical_segment_signal(self) -> None:
+        segment_velocity = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
+        result = SimpleNamespace(
+            profile=SimpleNamespace(segment_signal=segment_velocity),
+        )
+
+        actual = _waveform_segment_input(result)
+
+        self.assertIs(actual, segment_velocity)
 
     def test_segment_aggregation_preserves_the_beat_axis(self) -> None:
         raw = np.arange(128 * 7 * 15 * 23, dtype=np.float32).reshape(

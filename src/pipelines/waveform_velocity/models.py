@@ -59,7 +59,7 @@ class WaveformVelocity:
     source_data: WaveformVelocitySourceData
     artery_segments: VelocitySegmentResult | None
     vein_segments: VelocitySegmentResult | None
-    per_beat_result: PerBeatAnalysisResult | None
+    per_beat_result: PerBeatAnalysisResult
     attrs: dict[str, object]
 
     def segments(self, vessel: VesselName) -> VelocitySegmentResult | None:
@@ -71,20 +71,9 @@ class WaveformVelocity:
             return self.vein_segments
         raise ValueError("vessel must be 'artery' or 'vein'.")
 
-    def require_per_beat(self) -> PerBeatAnalysisResult:
-        """Return per-beat waveforms or explain why they are unavailable."""
-
-        if self.per_beat_result is None:
-            raise RuntimeError(
-                "Per-beat waveform velocity was not requested for this run."
-            )
-        return self.per_beat_result
-
     @property
     def cycle_boundary_indexes(self) -> np.ndarray:
-        if self.per_beat_result is not None:
-            return self.per_beat_result.cycle_boundary_indexes
-        return self.retinal_velocity.cycle_boundary_indexes
+        return self.per_beat_result.cycle_boundary_indexes
 
 
 __all__ = ["VelocitySegmentResult", "WaveformVelocity"]

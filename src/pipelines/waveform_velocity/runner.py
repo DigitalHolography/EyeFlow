@@ -31,7 +31,9 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
     velocity_analysis = waveform.retinal_velocity
     velocity_semantics_kwargs = {"velocity_analysis": velocity_analysis}
     metrics = pack_continuous_velocity_outputs(velocity_analysis)
-    segments_selected = "segments" in selected
+    segments_available = (
+        waveform.artery_segments is not None or waveform.vein_segments is not None
+    )
     maps_selected = "segment_velocity_maps" in selected
     profiles_selected = bool(
         {"velocity_profiles", "velocity_profile_fft"} & selected
@@ -57,7 +59,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             "Completed shared per-beat segment velocity-map interpolation in "
             f"{perf_counter() - map_started:.1f}s."
         )
-    if segments_selected:
+    if segments_available:
         metrics.update(
             pack_segment_velocity_outputs(
                 waveform.artery_segments,
@@ -90,41 +92,11 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 f"{perf_counter() - avi_started:.1f}s."
             )
 
-    per_beat_result = waveform.per_beat_result
-    velocity_outputs = (
-        pack_velocity_per_beat_outputs(
-            per_beat_result,
-            **velocity_semantics_kwargs,
-        )
-        if per_beat_result is not None
-        else {}
+    velocity_outputs = pack_velocity_per_beat_outputs(
+        waveform.per_beat_result,
+        **velocity_semantics_kwargs,
     )
-    if "per_beat" in selected or ctx.pipeline_scheduled("pdf_report"):
-        if per_beat_result is None:
-            raise RuntimeError(
-                "Per-beat waveform products were selected but were not computed."
-            )
-        if segments_selected:
-            metrics.update(velocity_outputs)
-        else:
-            schema = EyeFlowOutputPaths.active()
-            segment_paths = {
-                schema.artery_per_beat.segment_velocity_signal,
-                schema.artery_per_beat.segment_velocity_signal_band_limited,
-                schema.vein_per_beat.segment_velocity_signal,
-                schema.vein_per_beat.segment_velocity_signal_band_limited,
-                schema.artery_per_beat_safe.velocity_signal,
-                schema.artery_per_beat_safe.velocity_signal_band_limited,
-                schema.vein_per_beat_safe.velocity_signal,
-                schema.vein_per_beat_safe.velocity_signal_band_limited,
-            }
-            metrics.update(
-                {
-                    key: value
-                    for key, value in velocity_outputs.items()
-                    if key not in segment_paths
-                }
-            )
+    metrics.update(velocity_outputs)
 
     output = getattr(ctx, "output", None)
     if getattr(output, "available", False):

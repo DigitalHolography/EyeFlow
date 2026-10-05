@@ -329,43 +329,19 @@ class PipelineLibraryController:
             "segments",
             False,
         )
-        shape_segments = selections.get("waveform_shape_metrics", {}).get(
-            "segments",
-            False,
-        )
         velocity_values = selections.get("waveform_velocity", {})
         shape_values = selections.get("waveform_shape_metrics", {})
         absolute_values = selections.get("absolute_waveform_metrics", {})
-        if not velocity_values.get("per_beat", False):
-            if any(
-                shape_values.get(name, False)
-                for name in ("per_beat", "segments", "quadrants")
-            ):
-                shape_values["per_beat"] = False
-                shape_values["segments"] = False
-                shape_values["quadrants"] = False
-                changed = True
-            if any(
-                absolute_values.get(name, False)
-                for name in ("per_beat", "segments", "quadrants")
-            ):
-                absolute_values["per_beat"] = False
-                absolute_values["segments"] = False
-                absolute_values["quadrants"] = False
-                changed = True
-        elif not velocity_segments and shape_segments:
-            shape_values["segments"] = False
+        downstream_segments = any(
+            shape_values.get(name, False)
+            for name in ("segments", "quadrants")
+        ) or any(
+            absolute_values.get(name, False)
+            for name in ("segments", "quadrants")
+        )
+        if downstream_segments and not velocity_segments:
+            velocity_values["segments"] = True
             changed = True
-        if not velocity_segments and absolute_values.get("segments", False):
-            absolute_values["segments"] = False
-            changed = True
-        if getattr(self.app, "pipeline_visibility", {}).get("pdf_report", False):
-            if not velocity_values.get("per_beat", False):
-                velocity_values["per_beat"] = True
-                changed = True
-            if not shape_values.get("per_beat", False):
-                shape_values["per_beat"] = True
-                changed = True
         self.app.pipeline_option_visibility = selections
         if changed:
             self.persist_options()
@@ -391,16 +367,6 @@ class PipelineLibraryController:
             self.app.pipeline_visibility[name] = target_value
         if changed:
             self.persist_visibility()
-        if visible and name == "pdf_report" and hasattr(
-            self.app,
-            "pipeline_option_visibility",
-        ):
-            self.set_option_visibility("waveform_velocity", "per_beat", True)
-            self.set_option_visibility(
-                "waveform_shape_metrics",
-                "per_beat",
-                True,
-            )
         self._refresh_required_pipelines()
         self._sync_pipeline_selection_widgets(set(self.app.pipeline_catalog))
         self.update_summary()
@@ -411,40 +377,18 @@ class PipelineLibraryController:
         option_name: str,
         enabled: bool,
     ) -> None:
-        if (
-            not enabled
-            and option_name == "per_beat"
-            and pipeline_name in {"waveform_velocity", "waveform_shape_metrics"}
-            and getattr(self.app, "pipeline_visibility", {}).get("pdf_report", False)
-        ):
-            enabled = True
         changes = [(pipeline_name, option_name, enabled)]
         if pipeline_name == "waveform_velocity":
-            if option_name in {"per_beat", "segments"} and not enabled:
-                changes.append(("waveform_shape_metrics", option_name, False))
-                changes.append(("absolute_waveform_metrics", option_name, False))
+            if option_name == "segments" and not enabled:
+                for dependent in ("segments", "quadrants"):
+                    changes.append(("waveform_shape_metrics", dependent, False))
+                    changes.append(("absolute_waveform_metrics", dependent, False))
         elif pipeline_name == "absolute_waveform_metrics" and enabled:
-            if option_name == "per_beat":
-                changes.append(("waveform_velocity", "per_beat", True))
-            elif option_name == "segments":
-                changes.extend(
-                    (
-                        ("waveform_velocity", "per_beat", True),
-                        ("waveform_velocity", "segments", True),
-                    )
-                )
+            if option_name in {"segments", "quadrants"}:
+                changes.append(("waveform_velocity", "segments", True))
         elif pipeline_name == "waveform_shape_metrics" and enabled:
-            if option_name == "per_beat":
-                changes.append(("waveform_velocity", "per_beat", True))
-            elif option_name == "segments":
-                changes.extend(
-                    (
-                        ("waveform_velocity", "per_beat", True),
-                        ("waveform_velocity", "segments", True),
-                    )
-                )
-            elif option_name == "quadrants":
-                changes.append(("waveform_velocity", "per_beat", True))
+            if option_name in {"segments", "quadrants"}:
+                changes.append(("waveform_velocity", "segments", True))
 
         changed = False
         for target_pipeline_name, target_option_name, target_enabled in changes:

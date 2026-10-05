@@ -190,6 +190,8 @@ class PipelineContext:
     def pipeline_targeted(self, pipeline: str) -> bool:
         """Return whether a pipeline was selected directly, not as a dependency."""
 
+        if not self.pipeline_targets:
+            return self.pipeline_scheduled(pipeline)
         return str(pipeline) in self.pipeline_targets
 
     @property

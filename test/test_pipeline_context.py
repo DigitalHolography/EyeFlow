@@ -87,7 +87,7 @@ class PipelineContextTests(unittest.TestCase):
                 doppler_vision_h5=None,
                 pipeline_name="waveform_velocity",
                 pipeline_options={
-                    "waveform_velocity": ("per_beat", "quadrants"),
+                    "waveform_velocity": ("segments", "quadrants"),
                     "waveform_shape_metrics": (),
                 },
                 pipeline_order=(
@@ -97,7 +97,7 @@ class PipelineContextTests(unittest.TestCase):
                 pipeline_targets=("waveform_velocity",),
             )
 
-            self.assertTrue(ctx.option_enabled("per_beat"))
+            self.assertTrue(ctx.option_enabled("segments"))
             self.assertTrue(
                 ctx.option_enabled("quadrants", pipeline="waveform_velocity")
             )
@@ -105,13 +105,13 @@ class PipelineContextTests(unittest.TestCase):
                 ctx.option_enabled("quadrants", pipeline="waveform_shape_metrics")
             )
             self.assertEqual(
-                frozenset({"per_beat", "quadrants"}),
+                frozenset({"segments", "quadrants"}),
                 ctx.options_for("waveform_velocity"),
             )
             self.assertTrue(ctx.pipeline_scheduled("retinal_velocity"))
             self.assertFalse(ctx.pipeline_scheduled("pdf_report"))
             self.assertTrue(ctx.pipeline_targeted("waveform_velocity"))
-            self.assertFalse(ctx.pipeline_targeted("waveform_velocity_core"))
+            self.assertFalse(ctx.pipeline_targeted("retinal_velocity"))
 
     def test_velocity_estimation_method_is_available_to_runners(self) -> None:
         with h5py.File(

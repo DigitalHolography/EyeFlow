@@ -14,7 +14,8 @@ def run_lowrank_waveform_decomposition(ctx) -> dict[str, object]:
     """Calculate joint and per-beat low-rank products from segment waveforms."""
     waveform = waveform_velocity(ctx)
     velocity_outputs = pack_velocity_per_beat_outputs(
-        waveform.require_per_beat()
+        waveform.per_beat_result,
+        velocity_analysis=waveform.retinal_velocity,
     )
     selected = ctx.options_for("lowrank_waveform_decomposition")
     include_quadrants = "quadrants" in selected

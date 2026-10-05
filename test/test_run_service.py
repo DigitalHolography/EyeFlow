@@ -353,21 +353,21 @@ class RunServiceTests(unittest.TestCase):
     def test_pipeline_option_settings_are_normalized_and_persisted(self) -> None:
         options = {
             "waveform_velocity": (
-                PipelineOption("per_beat", "Per beat"),
+                PipelineOption("segments", "Segments"),
                 PipelineOption("quadrants", "Quadrants"),
             )
         }
         normalized, changed = normalize_pipeline_options(
             options,
             {
-                "waveform_velocity": {"per_beat": False, "removed": True},
+                "waveform_velocity": {"segments": False, "removed": True},
                 "removed_pipeline": {"old": True},
             },
         )
 
         self.assertTrue(changed)
         self.assertEqual(
-            {"waveform_velocity": {"per_beat": False, "quadrants": True}},
+            {"waveform_velocity": {"segments": False, "quadrants": True}},
             normalized,
         )
 

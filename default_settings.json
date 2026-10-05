@@ -13,7 +13,6 @@
   "pipeline_options": {
     "absolute_waveform_metrics": {
       "quadrants": true,
-      "per_beat": true,
       "segments": true
     },
     "blood_volume_rate": {
@@ -25,12 +24,10 @@
     },
     "waveform_shape_metrics": {
       "quadrants": true,
-      "per_beat": true,
       "segments": true
     },
     "waveform_velocity": {
       "quadrants": true,
-      "per_beat": true,
       "segments": true,
       "velocity_profiles": false,
       "velocity_profile_fft": false,

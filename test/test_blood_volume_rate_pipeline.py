@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines import load_pipeline_catalog
-from pipelines.waveform_velocity.builder import _per_beat_required
+from pipelines.waveform_velocity.builder import _segments_required
 
 
 def _dag() -> PipelineDAG:
@@ -67,7 +67,7 @@ def test_bvr_defaults_to_mask_derived_outputs_only() -> None:
     }
 
 
-def test_only_mask_family_requests_per_beat_segment_velocity() -> None:
+def test_each_bvr_family_requests_canonical_segment_analysis() -> None:
     class Context:
         def __init__(self, bvr_options):
             self.bvr_options = frozenset(bvr_options)
@@ -75,12 +75,9 @@ def test_only_mask_family_requests_per_beat_segment_velocity() -> None:
         def pipeline_scheduled(self, name):
             return name in {"blood_volume_rate", "waveform_velocity"}
 
-        def option_enabled(self, name, *, pipeline):
-            return pipeline == "blood_volume_rate" and name in self.bvr_options
-
         def options_for(self, name):
             return self.bvr_options if name == "blood_volume_rate" else frozenset()
 
-    assert not _per_beat_required(Context(("gradient_edges",)))
-    assert _per_beat_required(Context(("masked_edges",)))
+    assert _segments_required(Context(("gradient_edges",)))
+    assert _segments_required(Context(("masked_edges",)))
 

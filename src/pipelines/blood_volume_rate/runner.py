@@ -50,7 +50,7 @@ def run_blood_volume_rate(ctx) -> dict[str, object]:
 
     if "masked_edges" in selected:
         velocity_outputs = pack_velocity_per_beat_outputs(
-            waveform.require_per_beat(),
+            waveform.per_beat_result,
             velocity_analysis=waveform.retinal_velocity,
         )
         mask_outputs = pack_mask_derived_outputs(
