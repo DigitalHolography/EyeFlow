@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines import load_pipeline_catalog
-from pipelines.waveform_velocity.workflow import _per_beat_required
+from pipelines.waveform_velocity.builder import _per_beat_required
 
 
 def _dag() -> PipelineDAG:

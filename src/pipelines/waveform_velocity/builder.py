@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 from time import perf_counter
 
-from calculations.blood_flow_velocity import PerBeatAnalysisInput
+from calculations.blood_flow_velocity import PerBeatAnalysisInput, run_per_beat_analysis
 from calculations.topology import AnnulusGeometry
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.imports import (
@@ -19,18 +19,19 @@ from pipelines.retinal_velocity.signal_processing import (
 from pipelines.topology_core.runner import prepared_topologies
 from utils.logger import Logger
 
-from .branch_identity_debug import export_branch_identity_stage_pngs
+from .analysis.segments import analyze_velocity_segment_profiles
+from .artifacts import (
+    export_branch_identity_stage_pngs,
+    export_pulse_pngs,
+    export_rotated_mean_pngs,
+)
 from .constants import (
     LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
     NUMBER_OF_RADII_IN_FOV,
     SEGMENT_INNER_RADIUS_FRAC,
     SEGMENT_OUTER_RADIUS_FRAC,
 )
-from .cross_section_images import export_rotated_mean_pngs
-from .figures import export_pulse_pngs
 from .models import VelocitySegmentResult, WaveformVelocity
-from .per_beat import analyze_velocity_per_beat
-from .segments import analyze_velocity_segment_profiles
 from .sources import WaveformVelocitySourceData, WaveformVelocitySources
 
 WAVEFORM_VELOCITY_STATE = "waveform_velocity"
@@ -66,7 +67,7 @@ def build_waveform_velocity(ctx) -> WaveformVelocity:
     per_beat_result = None
     if _per_beat_required(ctx):
         with _logged_stage("shared per-beat velocity analysis"):
-            per_beat_result = analyze_velocity_per_beat(per_beat_input)
+            per_beat_result = run_per_beat_analysis(per_beat_input)
 
     waveform = WaveformVelocity(
         retinal_velocity=retinal,

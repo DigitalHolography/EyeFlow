@@ -32,10 +32,10 @@ from pipelines.retinal_velocity.estimation import (  # noqa: E402
     _velocity_from_delta_frequency,
 )
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
-from pipelines.waveform_velocity.per_beat_outputs import (  # noqa: E402
+from pipelines.waveform_velocity.outputs.per_beat import (  # noqa: E402
     pack_velocity_per_beat_outputs,
 )
-from pipelines.waveform_velocity.workflow import (  # noqa: E402
+from pipelines.waveform_velocity.builder import (  # noqa: E402
     _raw_velocity_signals_for_per_beat,
     _safe_waveform_segment_input,
 )

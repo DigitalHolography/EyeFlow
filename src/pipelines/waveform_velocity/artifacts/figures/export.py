@@ -11,12 +11,12 @@ from input_output.writers.png import FigureArtifactWriter
 
 from .common import PulseFigureContext, _matplotlib, _output_stem
 from .correlation import _export_correlation_plots
-from .maps import _export_maps
+from .flow_maps import _export_flow_maps
+from .frequency_maps import _export_frequency_maps
 from .profiles import export_cross_section_profile_artifacts
 from .signals import _export_signal_plots
 from .spectral import _export_spectral_plots
 from .systole import _export_systole_plots
-from .velocity_maps import _export_final_visualizations
 from .waveforms import _export_ri_pi_plots, _export_waveform_plots
 
 if TYPE_CHECKING:
@@ -74,13 +74,13 @@ PULSE_PNG_SUFFIXES = (
 
 EXPORTERS = (
     _export_signal_plots,
-    _export_maps,
+    _export_frequency_maps,
     _export_systole_plots,
     _export_ri_pi_plots,
     _export_waveform_plots,
     _export_spectral_plots,
     _export_correlation_plots,
-    _export_final_visualizations,
+    _export_flow_maps,
 )
 
 

@@ -19,12 +19,12 @@ from calculations.math import interpft_real  # noqa: E402
 from calculations.segment_profiles import CompactSegmentMaps  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
-from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
+from pipelines.waveform_velocity.analysis.segment_maps import (  # noqa: E402
     _segment_map_worker_count,
     interpolate_velocity_maps_per_beat,
-    pack_segment_map_outputs,
     prepare_segment_velocity_maps_per_beat,
 )
+from pipelines.waveform_velocity.outputs.segment_maps import pack_segment_map_outputs  # noqa: E402
 
 
 class SegmentMapOutputTests(unittest.TestCase):
@@ -112,7 +112,7 @@ class SegmentMapOutputTests(unittest.TestCase):
 
     def test_segment_worker_count_honors_parallel_job_cap(self) -> None:
         with patch(
-            "pipelines.waveform_velocity.segment_maps.cap_parallel_jobs",
+            "pipelines.waveform_velocity.analysis.segment_maps.cap_parallel_jobs",
             return_value=4,
         ) as capped:
             self.assertEqual(1, _segment_map_worker_count(0))

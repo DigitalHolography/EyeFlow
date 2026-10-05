@@ -26,7 +26,7 @@ from .plotting import (
 )
 
 
-def _export_final_visualizations(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
+def _export_flow_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     velocity_map = ctx.retinal_velocity.maps.velocity
     velocity_avg = np.asarray(
         ctx.retinal_velocity.maps.velocity_average,

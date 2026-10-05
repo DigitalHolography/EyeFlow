@@ -2,17 +2,13 @@
 
 import numpy as np
 
-from calculations.math import butter_lowpass_filtfilt
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.retinal_velocity.models import RetinalVelocity
 from pipelines.retinal_velocity.outputs import metric_value
-from pipelines.retinal_velocity.semantics import (
-    resolve_velocity_semantics,
-    velocity_dataset_attrs,
-)
-from pipelines.retinal_velocity.signal_processing import (
-    DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ,
-)
+from pipelines.retinal_velocity.semantics import velocity_dataset_attrs
+
+from ..analysis.filtering import lowpass_velocity_signals
+from .paths import resolve_output_paths
 
 
 def pack_continuous_velocity_outputs(
@@ -20,7 +16,7 @@ def pack_continuous_velocity_outputs(
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
     """Pack raw and band-limited artery and vein velocity signals."""
-    schema = _resolve_output_paths(output_paths)
+    schema = resolve_output_paths(output_paths)
     paths = schema.analysis
     attrs = velocity_dataset_attrs(velocity)
     artery_raw = velocity.continuous("artery", raw=True)
@@ -55,20 +51,20 @@ def pack_segment_velocity_outputs(
 ) -> dict[str, object]:
     """Pack continuous segment velocity signals without beat decomposition."""
 
-    schema = _resolve_output_paths(output_paths)
-    unit = resolve_velocity_semantics(velocity_analysis).unit
+    schema = resolve_output_paths(output_paths)
+    attrs = velocity_dataset_attrs(velocity_analysis)
     return {
         **_pack_segment_velocity_output(
             artery_segments,
             schema.artery_segments,
             source_data,
-            unit,
+            attrs,
         ),
         **_pack_segment_velocity_output(
             vein_segments,
             schema.vein_segments,
             source_data,
-            unit,
+            attrs,
         ),
     }
 
@@ -77,7 +73,7 @@ def _pack_segment_velocity_output(
     segments,
     paths,
     source_data,
-    unit: str,
+    attrs: dict[str, object],
 ) -> dict[str, object]:
     if segments is None or paths.velocity_signal is None:
         return {}
@@ -95,7 +91,7 @@ def _pack_segment_velocity_output(
     outputs = {
         paths.velocity_signal: metric_value(
             values.transpose(2, 1, 0),
-            unit=unit,
+            attrs=attrs,
             dim_desc=("frame", "branch", "radius"),
         )
     }
@@ -103,7 +99,7 @@ def _pack_segment_velocity_output(
         band_limited = _lowpass_segment_velocity(values, source_data)
         outputs[paths.velocity_signal_band_limited] = metric_value(
             band_limited.transpose(2, 1, 0),
-            unit=unit,
+            attrs=attrs,
             dim_desc=("frame", "branch", "radius"),
         )
     return outputs
@@ -114,24 +110,7 @@ def _lowpass_segment_velocity(values: np.ndarray, source_data) -> np.ndarray:
     if timing is None:
         raise ValueError("Segment band-limited velocity requires source timing.")
 
-    filtered = np.full(values.shape, np.nan, dtype=np.float32)
-    for radius_index in range(values.shape[0]):
-        for branch_index in range(values.shape[1]):
-            signal = values[radius_index, branch_index]
-            if not np.any(np.isfinite(signal)):
-                continue
-            filtered[radius_index, branch_index] = butter_lowpass_filtfilt(
-                signal,
-                dt_seconds=np.float32(timing.dt_seconds),
-                lowpass_freq_hz=np.float32(DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ),
-                order=4,
-            )
-    return filtered
-
-
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)
+    return lowpass_velocity_signals(
+        values,
+        dt_seconds=float(timing.dt_seconds),
+    )

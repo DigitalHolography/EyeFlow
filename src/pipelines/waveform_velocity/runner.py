@@ -5,25 +5,20 @@ from time import perf_counter
 from input_output import EyeFlowOutputPaths
 from utils.logger import Logger
 
-from .continuous import (
-    pack_continuous_velocity_outputs,
-    pack_segment_velocity_outputs,
-)
-from .outputs import export_velocity_signals
-from .per_beat_outputs import pack_velocity_per_beat_outputs
-from .profiles import (
-    pack_cross_section_profile_outputs,
-    pack_velocity_profile_fft_outputs,
-)
-from .quadrants import pack_quadrant_velocity_outputs
-from .segment_maps import (
-    pack_segment_map_outputs,
-    prepare_segment_velocity_maps_per_beat,
-)
-from .segment_velocity_map_avi import export_segment_velocity_map_avis
-from .workflow import (
+from .analysis.segment_maps import prepare_segment_velocity_maps_per_beat
+from .artifacts import export_segment_velocity_map_avis, export_velocity_signals
+from .builder import (
     WAVEFORM_VELOCITY_STATE,
     build_waveform_velocity,
+)
+from .outputs import (
+    pack_continuous_velocity_outputs,
+    pack_cross_section_profile_outputs,
+    pack_quadrant_velocity_outputs,
+    pack_segment_map_outputs,
+    pack_segment_velocity_outputs,
+    pack_velocity_per_beat_outputs,
+    pack_velocity_profile_fft_outputs,
 )
 
 

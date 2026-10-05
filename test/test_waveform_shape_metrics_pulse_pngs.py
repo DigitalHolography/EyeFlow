@@ -14,12 +14,12 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from pipelines.waveform_velocity.figures.signal_inputs import (  # noqa: E402
+from pipelines.waveform_velocity.artifacts.figures.signal_inputs import (  # noqa: E402
     display_frequency,
     display_velocity,
     histogram_matrix,
 )
-from pipelines.waveform_velocity.figures.spectrum import (  # noqa: E402
+from calculations.blood_flow_velocity.signal_analysis.spectrum import (  # noqa: E402
     correlation_data,
     paired_spectrum_analysis,
     spectrum_signal_analysis,
@@ -43,14 +43,14 @@ from pipelines.retinal_velocity.models import (  # noqa: E402
     VesselVelocity,
     VesselVelocitySignals,
 )
-from pipelines.waveform_velocity.figures import (  # noqa: E402
+from pipelines.waveform_velocity.artifacts.figures import (  # noqa: E402
     PULSE_PNG_SUFFIXES,
     export_pulse_pngs,
 )
-from pipelines.waveform_velocity.figures.plotting import (  # noqa: E402
+from pipelines.waveform_velocity.artifacts.figures.plotting import (  # noqa: E402
     _velocity_gradient_values,
 )
-from pipelines.waveform_velocity.figures.velocity_maps import (  # noqa: E402
+from pipelines.waveform_velocity.artifacts.figures.flow_maps import (  # noqa: E402
     _velocity_colorbar_vmax,
     _vessel_histogram_colormap,
 )

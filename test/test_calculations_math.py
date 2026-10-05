@@ -7,6 +7,7 @@ import numpy as np
 
 from calculations.math import (
     harmonic_pack,
+    interpft_axis0,
     nanargmax,
     nanargmin,
     nanmax,
@@ -82,6 +83,21 @@ class HarmonicPackTests(unittest.TestCase):
             pack["Vfull"],
             rfft_normalized(signals, axis=0),
         )
+
+
+class InterpftAxisTests(unittest.TestCase):
+    def test_axis0_resampling_preserves_inactive_columns(self) -> None:
+        values = np.asarray(
+            [[0.0, np.nan], [1.0, np.nan], [0.0, np.nan]],
+            dtype=np.float32,
+        )
+
+        actual = interpft_axis0(values, 6)
+
+        self.assertEqual((6, 2), actual.shape)
+        self.assertEqual(np.float32, actual.dtype)
+        self.assertTrue(np.all(np.isnan(actual[:, 1])))
+        self.assertTrue(np.all(np.isfinite(actual[:, 0])))
 
 
 if __name__ == "__main__":

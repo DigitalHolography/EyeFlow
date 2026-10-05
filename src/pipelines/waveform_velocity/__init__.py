@@ -2,9 +2,9 @@
 
 from pipeline_engine.imports import PipelineOption, ProcessResult, pipeline
 
+from .builder import pack_waveform_meta_outputs, waveform_velocity
 from .models import WaveformVelocity
 from .runner import run_waveform_velocity
-from .workflow import pack_waveform_meta_outputs, waveform_velocity
 
 
 @pipeline(

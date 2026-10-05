@@ -6,13 +6,12 @@ from collections.abc import Mapping, MutableMapping
 from time import perf_counter
 
 import numpy as np
-from scipy.signal import resample
 
 from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils import (
     normalize_cycle_boundaries,
 )
 from calculations.compute_backend import optional_cupy_backend
-from calculations.math import nanmean_float32, next_power_of_two
+from calculations.math import interpft_axis0, nanmean_float32, next_power_of_two
 from calculations.segment_profiles import (
     SegmentProfileResult,
     SegmentProfileSettings,
@@ -25,7 +24,7 @@ from calculations.topology import (
 )
 from utils.logger import Logger
 
-from .models import VelocitySegmentResult
+from ..models import VelocitySegmentResult
 
 _FFT_PROFILE_X_BATCH = 32
 _ARTERY_TRANSVERSE_MASK_DILATION_PIXELS = 10
@@ -173,7 +172,7 @@ class _VelocityProfileFftAccumulator:
     ) -> None:
         for x_start in range(0, beat.shape[2], _FFT_PROFILE_X_BATCH):
             x_stop = min(x_start + _FFT_PROFILE_X_BATCH, beat.shape[2])
-            interpolated = _interpft_stack_axis0(
+            interpolated = interpft_axis0(
                 beat[:, :, x_start:x_stop],
                 self.time_count + 1,
             )[:-1]
@@ -243,35 +242,6 @@ class _VelocityProfileFftAccumulator:
         )
         self.unmasked[output_slice] = cupy.asnumpy(unmasked).T
         self.masked[output_slice] = cupy.asnumpy(masked).T
-
-def _interpft_stack_axis0(values: np.ndarray, target_length: int) -> np.ndarray:
-    """Vectorized Fourier interpolation of one segment stack's frame axis."""
-
-    source = np.asarray(values, dtype=np.float32)
-    source_length = int(source.shape[0])
-    if source_length == 0:
-        raise ValueError("interpft requires a non-empty frame axis.")
-    if target_length <= 0:
-        raise ValueError("interpft target_length must be positive.")
-    if target_length == source_length:
-        return source.copy()
-
-    spatial_shape = source.shape[1:]
-    flattened = source.reshape(source_length, -1)
-    active_pixels = np.any(np.isfinite(flattened), axis=0)
-    interpolated = np.full(
-        (int(target_length), flattened.shape[1]),
-        np.nan,
-        dtype=np.float32,
-    )
-    if np.any(active_pixels):
-        interpolated[:, active_pixels] = resample(
-            flattened[:, active_pixels],
-            int(target_length),
-            axis=0,
-        ).astype(np.float32, copy=False)
-    return interpolated.reshape(int(target_length), *spatial_shape)
-
 
 def _gpu_fourier_resample_axis0(values, target_length: int, cupy):
     """CuPy equivalent of SciPy's real Fourier resampling along axis zero."""

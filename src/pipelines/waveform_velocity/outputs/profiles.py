@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.math import nanmean_float32
-from calculations.topology import dilate_segment_masks
 from input_output.profile_datasets import (
     _profile_dataset,
     _profile_h5_options,
@@ -14,11 +12,10 @@ from input_output.profile_datasets import (
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 from pipelines.retinal_velocity.models import RetinalVelocity
-from pipelines.retinal_velocity.semantics import (
-    resolve_velocity_semantics,
-)
+from pipelines.retinal_velocity.semantics import velocity_dataset_attrs
 
-_PROFILE_MASK_DILATION_ITERATIONS = 10
+from ..analysis.profiles import DEFAULT_PROFILE_MASK_DILATION_ITERATIONS
+from .paths import resolve_output_paths
 
 def pack_cross_section_profile_outputs(
     artery_segments,
@@ -29,8 +26,8 @@ def pack_cross_section_profile_outputs(
     index_base: int = 0,
     velocity_analysis: RetinalVelocity | None = None,
 ) -> dict[str, object]:
-    schema = _resolve_output_paths(output_paths)
-    velocity_unit = resolve_velocity_semantics(velocity_analysis).unit
+    schema = resolve_output_paths(output_paths)
+    velocity_unit = velocity_dataset_attrs(velocity_analysis)["unit"]
     metrics = _pack_vessel_profiles(
         schema.artery_velocity_profiles,
         artery_segments,
@@ -118,13 +115,6 @@ def _pack_vessel_profiles(
     return outputs
 
 
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)
-
 def pack_velocity_profile_fft_outputs(
     artery_segments,
     vein_segments,
@@ -132,11 +122,11 @@ def pack_velocity_profile_fft_outputs(
 ) -> dict[str, object]:
     """Pack FFT profiles accumulated during streamed segment processing."""
 
-    schema = _resolve_output_paths(output_paths)
+    schema = resolve_output_paths(output_paths)
     outputs = _pack_vessel_velocity_fft_profiles(
         schema.artery_velocity_profiles,
         artery_segments,
-        mask_dilation_pixels=_PROFILE_MASK_DILATION_ITERATIONS,
+        mask_dilation_pixels=DEFAULT_PROFILE_MASK_DILATION_ITERATIONS,
     )
     outputs.update(
         _pack_vessel_velocity_fft_profiles(
@@ -146,80 +136,6 @@ def pack_velocity_profile_fft_outputs(
         )
     )
     return outputs
-
-
-
-def velocity_fft_transverse_profiles(
-    velocity_maps_per_beat: np.ndarray,
-    segment_masks: np.ndarray,
-    *,
-    mask_dilation_pixels: int = _PROFILE_MASK_DILATION_ITERATIONS,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return FFT profiles shaped ``(x, frequency, beat, branch, radius)``.
-
-    ``velocity_maps_per_beat`` must already have shape
-    ``(x, y, time, beat, branch, radius)``. The FFT is applied along its time
-    axis independently for every pixel, beat, branch, and radius.
-
-    The two returned arrays contain the unmasked and horizontally expanded
-    mask projections used by the historical artery profile workflow.
-    """
-
-    maps = np.asarray(velocity_maps_per_beat, dtype=np.float32)
-    masks = np.asarray(segment_masks, dtype=bool)
-    if maps.ndim != 6:
-        raise ValueError(
-            "velocity_maps_per_beat must have shape "
-            "(x, y, time, beat, branch, radius)."
-        )
-    expected_mask_shape = (
-        maps.shape[5],
-        maps.shape[4],
-        maps.shape[1],
-        maps.shape[0],
-    )
-    if masks.shape != expected_mask_shape:
-        raise ValueError(
-            "segment_masks must have shape (radius, branch, y, x) matching "
-            "velocity_maps_per_beat."
-        )
-
-    dilated_masks = dilate_segment_masks(
-        masks,
-        iterations=mask_dilation_pixels,
-        horizontal_only=True,
-    )
-    output_shape = (
-        maps.shape[0],
-        maps.shape[2],
-        maps.shape[3],
-        maps.shape[4],
-        maps.shape[5],
-    )
-    unmasked = np.full(output_shape, np.nan, dtype=np.float32)
-    masked = np.full(output_shape, np.nan, dtype=np.float32)
-    for radius_index in range(maps.shape[5]):
-        for branch_index in range(maps.shape[4]):
-            magnitude = np.abs(
-                np.fft.fft(
-                    maps[..., branch_index, radius_index],
-                    axis=2,
-                )
-            ).astype(np.float32, copy=False)
-            unmasked[..., branch_index, radius_index] = nanmean_float32(
-                magnitude,
-                axis=1,
-            )
-            xy_mask = dilated_masks[radius_index, branch_index].T
-            masked[..., branch_index, radius_index] = nanmean_float32(
-                np.where(
-                    xy_mask[:, :, None, None],
-                    magnitude,
-                    np.float32(np.nan),
-                ),
-                axis=1,
-            )
-    return unmasked, masked
 
 
 

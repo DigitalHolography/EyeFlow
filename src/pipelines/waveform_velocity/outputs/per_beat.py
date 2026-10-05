@@ -9,9 +9,9 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.segments import (
 from input_output.schema import EyeFlowOutputPaths, VelocityPerBeatOutputPaths
 from pipelines.retinal_velocity.models import RetinalVelocity
 from pipelines.retinal_velocity.outputs import metric_data, metric_value
-from pipelines.retinal_velocity.semantics import (
-    resolve_velocity_semantics,
-)
+from pipelines.retinal_velocity.semantics import velocity_dataset_attrs
+
+from .paths import resolve_output_paths
 
 
 def pack_velocity_per_beat_outputs(
@@ -20,8 +20,8 @@ def pack_velocity_per_beat_outputs(
     *,
     velocity_analysis: RetinalVelocity | None = None,
 ) -> dict[str, object]:
-    schema = _resolve_output_paths(output_paths)
-    velocity_unit = resolve_velocity_semantics(velocity_analysis).unit
+    schema = resolve_output_paths(output_paths)
+    velocity_unit = velocity_dataset_attrs(velocity_analysis)["unit"]
     metrics = {
         schema.beat_period_seconds: metric_value(
             _matlab_row_vector(result.beat_period_seconds),
@@ -153,14 +153,6 @@ def _segment_metric_value(data, *, unit: str):
 
 def _matlab_row_vector(data) -> np.ndarray:
     return np.asarray(data).reshape(1, -1)
-
-
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)
 
 
 __all__ = ["pack_velocity_per_beat_outputs"]

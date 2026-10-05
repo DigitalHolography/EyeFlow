@@ -15,7 +15,7 @@ from pipelines import load_pipeline_catalog
 from pipelines.lowrank_waveform_decomposition import runner as lowrank_runner
 from pipelines.waveform_shape_metrics import runner as metric_runner
 from pipelines.waveform_velocity import runner as velocity_runner
-from pipelines.waveform_velocity import workflow as core_runner
+from pipelines.waveform_velocity import builder as core_runner
 
 
 class _State:
@@ -113,6 +113,17 @@ class WaveformPipelineOptionTests(unittest.TestCase):
 
         self.assertFalse((metrics_root / "velocity").exists())
         self.assertFalse((pipeline_root / "waveform_velocity_core").exists())
+        self.assertTrue((velocity_root / "builder.py").is_file())
+        for package in ("analysis", "artifacts", "outputs"):
+            self.assertTrue((velocity_root / package / "__init__.py").is_file())
+        for obsolete in (
+            "workflow.py",
+            "per_beat.py",
+            "per_beat_outputs.py",
+            "segment_maps.py",
+            "segment_velocity_map_avi.py",
+        ):
+            self.assertFalse((velocity_root / obsolete).exists())
         velocity_source = "\n".join(
             path.read_text(encoding="utf-8") for path in velocity_root.rglob("*.py")
         )

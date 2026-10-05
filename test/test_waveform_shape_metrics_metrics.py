@@ -22,8 +22,8 @@ from pipelines.waveform_shape_metrics.metrics.runner import (
     run_waveform_shape_metric_calculations,
 )
 from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
-from pipelines.waveform_velocity.continuous import pack_segment_velocity_outputs
-from pipelines.waveform_velocity.quadrants import pack_quadrant_velocity_outputs
+from pipelines.waveform_velocity.outputs.continuous import pack_segment_velocity_outputs
+from pipelines.waveform_velocity.outputs.quadrants import pack_quadrant_velocity_outputs
 from utils.logger import Logger
 
 

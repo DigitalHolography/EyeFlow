@@ -26,7 +26,7 @@ def export_cross_section_profile_artifacts(
     source_data = context.source_data
     timing = source_data.source.holodoppler.timing
     velocity_label = resolve_velocity_semantics(
-        context.retinal_velocity
+        getattr(context, "retinal_velocity", None)
     ).axis_label
     for vessel_name, segments in (
         ("artery", getattr(context, "artery_segments", None)),

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .models import VelocitySegmentResult
+from ..models import VelocitySegmentResult
 
 
 def export_rotated_mean_pngs(

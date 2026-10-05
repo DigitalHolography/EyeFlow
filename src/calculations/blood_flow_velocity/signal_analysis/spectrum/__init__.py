@@ -1,4 +1,4 @@
-"""Spectrum helpers used by waveform velocity figures."""
+"""Reusable single- and paired-signal spectrum analysis."""
 
 from .pair import (
     CorrelationData,

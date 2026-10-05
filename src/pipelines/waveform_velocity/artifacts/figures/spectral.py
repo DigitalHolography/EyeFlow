@@ -9,7 +9,7 @@ import numpy as np
 from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
     mean_period_seconds,
 )
-from .spectrum import (
+from calculations.blood_flow_velocity.signal_analysis.spectrum import (
     SpectrumData,
     SyntheticSpectrumData,
     spectrum_signal_analysis,

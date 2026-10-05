@@ -1,7 +1,7 @@
 """Orchestrate low-rank waveform decomposition products."""
 
 from pipelines.waveform_velocity import waveform_velocity
-from pipelines.waveform_velocity.per_beat_outputs import (
+from pipelines.waveform_velocity.outputs import (
     pack_velocity_per_beat_outputs,
 )
 

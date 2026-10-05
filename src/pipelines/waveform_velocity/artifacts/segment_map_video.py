@@ -19,6 +19,8 @@ from pipelines.retinal_velocity.semantics import (
 )
 from utils.logger import Logger
 
+from ..outputs.paths import resolve_output_paths
+
 
 SEGMENT_VELOCITY_MAP_AVI_FOLDER = "segment_velocity_map"
 SEGMENT_VELOCITY_MAP_FPS = 60.0
@@ -101,7 +103,7 @@ def export_segment_velocity_map_avis(
         return []
     export_wall_started = perf_counter()
     export_cpu_started = process_time()
-    schema = _resolve_output_paths(output_paths)
+    schema = resolve_output_paths(output_paths)
     sources: list[_MosaicSource | None] = []
     for vessel, segments, path in (
         (
@@ -571,9 +573,3 @@ def _absolute_h5_path(path: str | None) -> str | None:
     return f"/{path.lstrip('/')}"
 
 
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)

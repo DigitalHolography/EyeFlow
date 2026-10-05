@@ -16,7 +16,7 @@ from pipelines.retinal_velocity.estimation import (
     estimate_retinal_velocity,
 )
 from input_output.schema import EyeFlowOutputPaths
-from pipelines.waveform_velocity.continuous import pack_continuous_velocity_outputs
+from pipelines.waveform_velocity.outputs.continuous import pack_continuous_velocity_outputs
 from pipelines.retinal_velocity.models import (
     RetinalVelocity,
     RetinalVelocityMaps,

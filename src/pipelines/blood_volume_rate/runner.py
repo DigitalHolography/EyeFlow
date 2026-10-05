@@ -9,7 +9,7 @@ from pipelines.spatial_gradient_moment0.runner import (
 )
 from pipelines.topology_core.runner import prepared_topologies
 from pipelines.waveform_velocity import waveform_velocity
-from pipelines.waveform_velocity.per_beat_outputs import (
+from pipelines.waveform_velocity.outputs import (
     pack_velocity_per_beat_outputs,
 )
 

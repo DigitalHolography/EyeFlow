@@ -22,7 +22,10 @@ from .plotting import (
 )
 
 
-def _export_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
+def _export_frequency_maps(
+    writer: FigureWriter,
+    ctx: PulseFigureContext,
+) -> list[Path]:
     paths: list[Path] = []
     maps = ctx.retinal_velocity.maps
     f_bkg_avg = _display_frequency(maps.frms_background_average)
