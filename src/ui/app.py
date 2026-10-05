@@ -59,6 +59,10 @@ class ProcessApp(BaseAppTk):
         self.pipeline_expanded: dict[str, bool] = {}
         self.pipeline_disclosure_widgets: dict[str, tk.Widget] = {}
         self.holo_input_var = tk.StringVar()
+        self.velocity_estimation_method_var = tk.StringVar(
+            value=self.settings_store.load_velocity_estimation_method()
+        )
+        self.velocity_estimation_widgets: list[tk.Widget] = []
         self.run_progress_var = tk.DoubleVar(value=0.0)
         self._selected_holo_input_paths: list[Path] = []
         self._synchronizing_holo_input_var = False

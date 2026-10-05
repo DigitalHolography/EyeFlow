@@ -23,6 +23,17 @@ class _FileDialogs:
         return self.selected_path
 
 
+class _Variable:
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+    def get(self) -> str:
+        return self.value
+
+    def set(self, value: str) -> None:
+        self.value = value
+
+
 class SettingsImportTests(unittest.TestCase):
     def test_import_file_replaces_active_settings(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -87,6 +98,31 @@ class SettingsImportTests(unittest.TestCase):
                 store.load_velocity_estimation_method(),
             )
             self.assertEqual(1.0, store.load_band_ratio_frequency_scale_hz())
+
+    def test_velocity_estimator_toggle_is_persisted_and_can_be_resynchronized(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = AppSettingsStore(
+                path=Path(temp_dir) / "settings.json",
+                default_template_path=None,
+            )
+            variable = _Variable("frequency_bands")
+            app = SimpleNamespace(
+                settings_store=store,
+                velocity_estimation_method_var=variable,
+            )
+            controller = SettingsController(app)
+
+            controller.persist_velocity_estimation_method()
+            self.assertEqual(
+                "frequency_bands",
+                store.load_velocity_estimation_method(),
+            )
+
+            store.save_velocity_estimation_method("doppler_moments")
+            controller.sync_velocity_estimation_method()
+            self.assertEqual("doppler_moments", variable.get())
 
     def test_import_rejects_invalid_velocity_method_without_replacing_settings(
         self,

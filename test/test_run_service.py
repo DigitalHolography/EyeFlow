@@ -65,6 +65,25 @@ class _NoopPipeline(ProcessPipeline):
         return None
 
 
+def test_run_controls_include_velocity_estimator_toggle() -> None:
+    minimal_run = Mock()
+    advanced_run = Mock()
+    estimator_buttons = [Mock(), Mock()]
+    controller = RunController.__new__(RunController)
+    controller.app = SimpleNamespace(
+        minimal_run_button=minimal_run,
+        advanced_run_button=advanced_run,
+        velocity_estimation_widgets=estimator_buttons,
+    )
+
+    controller._set_run_controls_enabled(False)
+
+    minimal_run.configure.assert_called_once_with(state="disabled")
+    advanced_run.configure.assert_called_once_with(state="disabled")
+    for button in estimator_buttons:
+        button.state.assert_called_once_with(["disabled"])
+
+
 def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
     return PipelineDescriptor(
         name="sample",

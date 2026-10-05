@@ -260,7 +260,11 @@ class PipelineLibraryController:
         self.app.pipeline_option_vars = {}
         self.app.pipeline_option_widgets = {}
         self.app.pipeline_disclosure_widgets = {}
-        row_count = 1 + sum(1 + len(pipeline.options) for pipeline in rows)
+        self.app.velocity_estimation_widgets = []
+        row_count = 1 + sum(
+            1 + len(pipeline.options) + _pipeline_setting_row_count(pipeline)
+            for pipeline in rows
+        )
         self.configure_library_columns(
             self.app.pipeline_library_inner,
             row_count=row_count,
@@ -466,7 +470,7 @@ class PipelineLibraryController:
                 )
             status = self._pipeline_status_labels.get(name)
             if status is not None and pipeline is not None:
-                description = pipeline_status_text(pipeline)
+                description = self._pipeline_status_text(pipeline)
                 status.configure(
                     text=(
                         f"Required — {description}"
@@ -695,10 +699,10 @@ class PipelineLibraryController:
         status = ttk.Label(
             self.app.pipeline_library_inner,
             text=(
-                f"Required — {pipeline_status_text(pipeline)}"
+                f"Required — {self._pipeline_status_text(pipeline)}"
                 if pipeline.name
                 in getattr(self.app, "pipeline_required_names", set())
-                else pipeline_status_text(pipeline)
+                else self._pipeline_status_text(pipeline)
             ),
             justify="left",
         )
@@ -723,7 +727,41 @@ class PipelineLibraryController:
         self.app.pipeline_option_vars[pipeline.name] = {}
         option_widgets: list[tk.Widget] = []
         expanded = self.app.pipeline_expanded.get(pipeline.name, False)
-        for offset, option in enumerate(pipeline.options, start=1):
+        option_offset = 1
+        if pipeline.name == "waveform_velocity":
+            estimator_toggle = self._build_velocity_estimator_toggle(
+                self.app.pipeline_library_inner,
+            )
+            estimator_toggle.grid(
+                row=idx + option_offset,
+                column=0,
+                sticky="w",
+                padx=(24, 0),
+                pady=(0, 3),
+            )
+            estimator_status = ttk.Label(
+                self.app.pipeline_library_inner,
+                text=(
+                    "Selects the physical velocity source used by this "
+                    "pipeline and its downstream products."
+                ),
+                justify="left",
+            )
+            self._status_labels.append(estimator_status)
+            estimator_status.grid(
+                row=idx + option_offset,
+                column=2,
+                sticky="w",
+                padx=self._STATUS_COLUMN_PADDING,
+                pady=(0, 3),
+            )
+            self._bind_row_widgets(estimator_toggle, estimator_status)
+            option_widgets.extend((estimator_toggle, estimator_status))
+            if not expanded:
+                estimator_toggle.grid_remove()
+                estimator_status.grid_remove()
+            option_offset += 1
+        for offset, option in enumerate(pipeline.options, start=option_offset):
             option_var = tk.BooleanVar(
                 value=self.app.pipeline_option_visibility
                 .get(pipeline.name, {})
@@ -776,7 +814,42 @@ class PipelineLibraryController:
                 option_status.grid_remove()
         self.app.pipeline_option_widgets[pipeline.name] = option_widgets
         self._update_option_widget_states(pipeline.name)
-        return 1 + len(pipeline.options)
+        return 1 + len(pipeline.options) + _pipeline_setting_row_count(pipeline)
+
+    def _build_velocity_estimator_toggle(self, parent) -> ttk.Frame:
+        frame = ttk.Frame(parent)
+        ttk.Label(
+            frame,
+            text="Velocity estimator",
+            style="EstimatorHeading.TLabel",
+        ).pack(
+            side="left",
+            padx=(0, 14),
+        )
+        toggle_frame = ttk.Frame(
+            frame,
+            padding=(3, 3),
+            style="EstimatorToggle.TFrame",
+        )
+        toggle_frame.pack(side="left")
+        for label, method in (
+            ("Moments (M0/M2)", "doppler_moments"),
+            ("Band ratio (HF/LF)", "frequency_bands"),
+        ):
+            button = ttk.Radiobutton(
+                toggle_frame,
+                text=label,
+                value=method,
+                variable=self.app.velocity_estimation_method_var,
+                command=(
+                    self.app.settings_controller
+                    .persist_velocity_estimation_method
+                ),
+                style="EstimatorToggle.Toolbutton",
+            )
+            button.pack(side="left", padx=1)
+            self.app.velocity_estimation_widgets.append(button)
+        return frame
 
     def _toggle_pipeline_options(self, pipeline_name: str) -> None:
         expanded = not self.app.pipeline_expanded.get(pipeline_name, False)
@@ -799,6 +872,34 @@ class PipelineLibraryController:
             else:
                 widget.grid_remove()
 
+    def update_velocity_estimator_display(self) -> None:
+        """Refresh the waveform row summary and estimator control state."""
+
+        pipeline = getattr(self.app, "pipeline_catalog", {}).get(
+            "waveform_velocity"
+        )
+        status = self._pipeline_status_labels.get("waveform_velocity")
+        if pipeline is not None and status is not None:
+            description = self._pipeline_status_text(pipeline)
+            status.configure(
+                text=(
+                    f"Required — {description}"
+                    if pipeline.name
+                    in getattr(self.app, "pipeline_required_names", set())
+                    else description
+                )
+            )
+        self._update_option_widget_states("waveform_velocity")
+
+    def _pipeline_status_text(self, pipeline: PipelineDescriptor) -> str:
+        description = pipeline_status_text(pipeline)
+        if pipeline.name != "waveform_velocity":
+            return description
+        variable = getattr(self.app, "velocity_estimation_method_var", None)
+        method = variable.get() if variable is not None else "doppler_moments"
+        estimator = "Band ratio" if method == "frequency_bands" else "Moments"
+        return f"{description} — estimator: {estimator}"
+
     def _update_option_widget_states(self, pipeline_name: str) -> None:
         pipeline = self.app.pipeline_catalog.get(pipeline_name)
         enabled = bool(
@@ -820,6 +921,17 @@ class PipelineLibraryController:
         ):
             if isinstance(widget, ttk.Checkbutton):
                 widget.configure(state=state)
+        if pipeline_name == "waveform_velocity":
+            if getattr(self.app, "_pipeline_run_active", False):
+                state = "disabled"
+            for widget in getattr(
+                self.app,
+                "velocity_estimation_widgets",
+                (),
+            ):
+                widget.state(
+                    ["disabled"] if state == "disabled" else ["!disabled"]
+                )
 
     def _bind_row_widgets(self, *widgets: tk.Misc) -> None:
         for widget in widgets:
@@ -890,6 +1002,10 @@ def pipeline_ui_sort_key(pipeline: PipelineDescriptor) -> tuple[int, str]:
         _PIPELINE_UI_ORDER.get(pipeline.name, len(_PIPELINE_UI_ORDER)),
         pipeline.name.lower(),
     )
+
+
+def _pipeline_setting_row_count(pipeline: PipelineDescriptor) -> int:
+    return 1 if pipeline.name == "waveform_velocity" else 0
 
 
 def descriptor_tooltip_text(descriptor: PipelineDescriptor) -> str:
