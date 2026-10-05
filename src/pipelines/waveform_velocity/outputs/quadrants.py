@@ -28,7 +28,7 @@ def pack_quadrant_velocity_outputs(
 ) -> dict[str, object]:
     """Pack quadrant-level continuous and per-beat velocity signals."""
     schema = resolve_output_paths(output_paths)
-    velocity_unit = velocity_dataset_attrs(velocity_analysis)["unit"]
+    velocity_attrs = velocity_dataset_attrs(velocity_analysis)
     result: dict[str, object] = {}
 
     for vessel_name, segments, per_beat_paths in (
@@ -51,7 +51,7 @@ def pack_quadrant_velocity_outputs(
                 segments,
                 membership,
                 metrics,
-                velocity_unit,
+                velocity_attrs,
             )
         )
 
@@ -66,7 +66,7 @@ def _pack_region_velocity_outputs(
     segments,
     membership: np.ndarray,
     metrics: dict[str, object],
-    velocity_unit: str,
+    velocity_attrs: dict[str, object],
 ) -> dict[str, object]:
     segment_velocity = np.asarray(segments.profile.segment_signal, dtype=np.float32)
     if segment_velocity.ndim != 3:
@@ -103,7 +103,7 @@ def _pack_region_velocity_outputs(
                 region_name,
                 "raw",
                 ("frame",),
-                velocity_unit,
+                velocity_attrs,
             ),
         )
         output[f"{root}/{_path_variant(velocity_band_limited_path)}/value"] = with_attrs(
@@ -112,7 +112,7 @@ def _pack_region_velocity_outputs(
                 region_name,
                 "bandlimited",
                 ("frame",),
-                velocity_unit,
+                velocity_attrs,
             ),
         )
 
@@ -122,7 +122,7 @@ def _pack_region_velocity_outputs(
             metrics,
             membership,
             vessel_name,
-            velocity_unit,
+            velocity_attrs,
         )
     )
     return output
@@ -133,7 +133,7 @@ def _pack_region_per_beat_velocity_outputs(
     metrics: dict[str, object],
     membership: np.ndarray,
     vessel_name: str,
-    velocity_unit: str,
+    velocity_attrs: dict[str, object],
 ) -> dict[str, object]:
     if paths.segment_velocity_signal is None:
         return {}
@@ -181,7 +181,7 @@ def _pack_region_per_beat_velocity_outputs(
                 region_name,
                 "raw",
                 ("beat", "sample"),
-                velocity_unit,
+                velocity_attrs,
             ),
         )
         result[
@@ -192,7 +192,7 @@ def _pack_region_per_beat_velocity_outputs(
                 region_name,
                 "bandlimited",
                 ("beat", "sample"),
-                velocity_unit,
+                velocity_attrs,
             ),
         )
     return result
@@ -250,14 +250,14 @@ def _velocity_region_attrs(
     region_name: str,
     signal_type: str,
     dim_desc: tuple[str, ...],
-    velocity_unit: str = "mm/s",
+    velocity_attrs: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
+        **(velocity_attrs or {"unit": "mm/s"}),
         "aggregation": "median over selected branch-radius segment velocities",
         "dimDesc": list(dim_desc),
         "region": region_name,
         "signal_type": signal_type,
-        "unit": velocity_unit,
     }
 
 

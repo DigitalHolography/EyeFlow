@@ -19,9 +19,8 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
         holo = _write_frequency_band_run(Path(temp_dir))
         available, missing = load_pipeline_catalog()
         assert not {
-            "heartbeat_core",
+            "retinal_velocity",
             "topology_core",
-            "waveform_velocity_core",
             "waveform_velocity",
             "absolute_waveform_metrics",
             "blood_volume_rate",
@@ -36,8 +35,8 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
             ],
             pipelines=available,
             pipeline_options={
-                "waveform_velocity": ("per_beat", "segments"),
-                "absolute_waveform_metrics": ("per_beat",),
+                "waveform_velocity": ("segments",),
+                "absolute_waveform_metrics": (),
                 "blood_volume_rate": ("masked_edges",),
             },
             velocity_estimation_method="frequency_bands",
@@ -66,6 +65,14 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
             )
             assert artery_velocity.attrs["band_ratio_frequency_scale_hz"] == 2.0
             assert np.any(np.isfinite(artery_velocity[:]))
+
+            artery_per_beat = output[schema.artery_per_beat.velocity_signal]
+            assert artery_per_beat.attrs["unit"] == "mm/s"
+            assert (
+                artery_per_beat.attrs["velocity_estimation_method"]
+                == "frequency_bands"
+            )
+            assert artery_per_beat.attrs["band_ratio_frequency_scale_hz"] == 2.0
 
             frequency_map = output[schema.analysis.fRMS_avg]
             assert frequency_map.attrs["unit"] == "Hz"

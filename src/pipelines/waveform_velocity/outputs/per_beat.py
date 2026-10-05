@@ -21,7 +21,7 @@ def pack_velocity_per_beat_outputs(
     velocity_analysis: RetinalVelocity | None = None,
 ) -> dict[str, object]:
     schema = resolve_output_paths(output_paths)
-    velocity_unit = velocity_dataset_attrs(velocity_analysis)["unit"]
+    velocity_attrs = velocity_dataset_attrs(velocity_analysis)
     metrics = {
         schema.beat_period_seconds: metric_value(
             _matlab_row_vector(result.beat_period_seconds),
@@ -33,28 +33,28 @@ def pack_velocity_per_beat_outputs(
         _pack_vessel_outputs(
             schema.artery_per_beat,
             result.artery,
-            velocity_unit,
+            velocity_attrs,
         )
     )
     metrics.update(
         _pack_vessel_outputs(
             schema.vein_per_beat,
             result.vein,
-            velocity_unit,
+            velocity_attrs,
         )
     )
     metrics.update(
         _pack_safe_segment_outputs(
             schema.artery_per_beat_safe,
             result.artery.safe_segments,
-            velocity_unit,
+            velocity_attrs,
         )
     )
     metrics.update(
         _pack_safe_segment_outputs(
             schema.vein_per_beat_safe,
             result.vein.safe_segments,
-            velocity_unit,
+            velocity_attrs,
         )
     )
     return metrics
@@ -63,13 +63,13 @@ def pack_velocity_per_beat_outputs(
 def _pack_vessel_outputs(
     paths: VelocityPerBeatOutputPaths,
     vessel,
-    velocity_unit: str,
+    velocity_attrs: dict[str, object],
 ) -> dict[str, object]:
     signal = vessel.signal
     metrics = {
         paths.velocity_signal: metric_value(
             signal.velocity_signal_per_beat,
-            unit=velocity_unit,
+            attrs=velocity_attrs,
             dim_desc=("beat", "sample"),
         ),
         paths.velocity_signal_fft_abs: metric_value(
@@ -84,13 +84,13 @@ def _pack_vessel_outputs(
         ),
         paths.velocity_signal_band_limited: metric_value(
             signal.velocity_signal_per_beat_band_limited,
-            unit=velocity_unit,
+            attrs=velocity_attrs,
             dim_desc=("beat", "sample"),
         ),
     }
     if vessel.segments is not None:
         metrics.update(
-            _pack_vessel_segment_outputs(paths, vessel.segments, velocity_unit)
+            _pack_vessel_segment_outputs(paths, vessel.segments, velocity_attrs)
         )
     return metrics
 
@@ -98,7 +98,7 @@ def _pack_vessel_outputs(
 def _pack_vessel_segment_outputs(
     paths: VelocityPerBeatOutputPaths,
     segments,
-    velocity_unit: str,
+    velocity_attrs: dict[str, object],
 ) -> dict[str, object]:
     if paths.segment_velocity_signal is None:
         return {}
@@ -107,11 +107,11 @@ def _pack_vessel_segment_outputs(
     return {
         paths.segment_velocity_signal: _segment_metric_value(
             segments.velocity_signal_per_beat_per_segment,
-            unit=velocity_unit,
+            attrs=velocity_attrs,
         ),
         paths.segment_velocity_signal_band_limited: _segment_metric_value(
             segments.velocity_signal_per_beat_per_segment_band_limited,
-            unit=velocity_unit,
+            attrs=velocity_attrs,
         ),
     }
 
@@ -119,7 +119,7 @@ def _pack_vessel_segment_outputs(
 def _pack_safe_segment_outputs(
     paths,
     segments,
-    velocity_unit: str,
+    velocity_attrs: dict[str, object],
 ) -> dict[str, object]:
     if segments is None or paths.velocity_signal is None:
         return {}
@@ -128,16 +128,16 @@ def _pack_safe_segment_outputs(
     return {
         paths.velocity_signal: _segment_metric_value(
             segments.velocity_signal_per_beat_per_segment,
-            unit=velocity_unit,
+            attrs=velocity_attrs,
         ),
         paths.velocity_signal_band_limited: _segment_metric_value(
             segments.velocity_signal_per_beat_per_segment_band_limited,
-            unit=velocity_unit,
+            attrs=velocity_attrs,
         ),
     }
 
 
-def _segment_metric_value(data, *, unit: str):
+def _segment_metric_value(data, *, attrs: dict[str, object]):
     value = metric_data(data)
     if value.ndim != 4:
         raise ValueError(
@@ -146,7 +146,7 @@ def _segment_metric_value(data, *, unit: str):
         )
     return metric_value(
         value,
-        unit=unit,
+        attrs=attrs,
         dim_desc=SEGMENT_PER_BEAT_DIM_DESC,
     )
 

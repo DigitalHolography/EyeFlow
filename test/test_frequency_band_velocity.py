@@ -5,32 +5,28 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import h5py
 import numpy as np
 import pytest
 
-from calculations.retinal_velocity.vessel_velocity_estimator import (
+from pipelines.retinal_velocity.estimation import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
     DEFAULT_LASER_WAVELENGTH_METERS,
     DEFAULT_NUMERICAL_APERTURE,
     _safe_band_ratio,
-    run_chunked_velocity_estimator,
-    velocity_estimator_cache_key,
+    estimate_retinal_velocity,
 )
 from input_output.schema import DopplerViewSource, HolodopplerSource
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.context import RawH5SourceReader
 from pipelines.vessel_inputs import load_retinal_source_data
-from pipelines.waveform_velocity.continuous import (
+from pipelines.retinal_velocity.outputs import pack_retinal_velocity_outputs
+from pipelines.retinal_velocity.semantics import resolve_velocity_semantics
+from pipelines.waveform_velocity.outputs.continuous import (
     pack_continuous_velocity_outputs,
-)
-from pipelines.waveform_velocity_core.velocity_semantics import (
-    resolve_velocity_semantics,
-)
-from pipelines.waveform_velocity_core.retinal_velocity.outputs import (
-    pack_retinal_velocity_outputs,
 )
 
 
@@ -63,7 +59,7 @@ def test_frequency_band_estimator_converts_ratio_frequency_to_mm_per_second() ->
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         with h5py.File(Path(tmp_dir) / "scratch.h5", "w") as scratch:
-            result = run_chunked_velocity_estimator(
+            result = estimate_retinal_velocity(
                 band_lf=low,
                 band_hf=high,
                 velocity_estimation_method="frequency_bands",
@@ -73,7 +69,7 @@ def test_frequency_band_estimator_converts_ratio_frequency_to_mm_per_second() ->
                 local_background_dist=1,
                 scratch_h5=scratch,
             )
-            velocity = np.asarray(result["velocity_map"])
+            velocity = np.asarray(result.maps.velocity)
 
     # At the default 1 Hz-per-ratio calibration, the vessel and inpainted
     # neighbourhood are 4 Hz and 1 Hz. Their signed RMS difference is then
@@ -87,17 +83,17 @@ def test_frequency_band_estimator_converts_ratio_frequency_to_mm_per_second() ->
     )
     np.testing.assert_allclose(velocity[:, artery], expected, rtol=1e-5)
     np.testing.assert_allclose(velocity[:, vein], expected, rtol=1e-5)
-    np.testing.assert_array_equal(result["moment0_avg"], np.ones(shape[1:]))
-    np.testing.assert_allclose(result["fRMS_avg"][artery | vein], 4.0)
-    assert result["velocity_estimation_method"] == "frequency_bands"
-    assert result["velocity_quantity"] == "physical_velocity"
-    assert result["velocity_unit"] == "mm/s"
+    np.testing.assert_array_equal(result.maps.moment0_average, np.ones(shape[1:]))
+    np.testing.assert_allclose(result.maps.frms_average[artery | vein], 4.0)
+    assert result.provenance["velocity_estimation_method"] == "frequency_bands"
+    assert result.provenance["velocity_quantity"] == "physical_velocity"
+    assert result.provenance["velocity_unit"] == "mm/s"
     assert (
-        result["band_ratio_frequency_scale_hz"]
+        result.provenance["band_ratio_frequency_scale_hz"]
         == DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
     )
-    assert result["band_lf_source_path"] == f"/{LF_PATH}"
-    assert result["band_hf_source_path"] == f"/{HF_PATH}"
+    assert result.provenance["band_lf_source_path"] == f"/{LF_PATH}"
+    assert result.provenance["band_hf_source_path"] == f"/{HF_PATH}"
 
 
 def test_frequency_band_frequency_scale_is_explicit_and_changes_velocity() -> None:
@@ -112,7 +108,7 @@ def test_frequency_band_frequency_scale_is_explicit_and_changes_velocity() -> No
     with h5py.File(
         "scratch.h5", "w", driver="core", backing_store=False
     ) as scratch:
-        result = run_chunked_velocity_estimator(
+        result = estimate_retinal_velocity(
             band_lf=low,
             band_hf=high,
             velocity_estimation_method="frequency_bands",
@@ -123,7 +119,7 @@ def test_frequency_band_frequency_scale_is_explicit_and_changes_velocity() -> No
             local_background_dist=1,
             scratch_h5=scratch,
         )
-        velocity = np.asarray(result["velocity_map"]).copy()
+        velocity = np.asarray(result.maps.velocity).copy()
 
     expected_delta_hz = np.float32(2.0 * np.sqrt(4.0**2 - 1.0**2))
     expected_velocity = np.float32(
@@ -137,8 +133,8 @@ def test_frequency_band_frequency_scale_is_explicit_and_changes_velocity() -> No
         expected_velocity,
         rtol=1e-5,
     )
-    np.testing.assert_allclose(result["fRMS_avg"][artery], 8.0)
-    assert result["band_ratio_frequency_scale_hz"] == 2.0
+    np.testing.assert_allclose(result.maps.frms_average[artery], 8.0)
+    assert result.provenance["band_ratio_frequency_scale_hz"] == 2.0
 
 
 @pytest.mark.parametrize("scale", [0.0, -1.0, np.nan, np.inf])
@@ -151,7 +147,7 @@ def test_frequency_band_estimator_rejects_invalid_frequency_scale(
         "scratch.h5", "w", driver="core", backing_store=False
     ) as scratch:
         with pytest.raises(ValueError, match="band_ratio_frequency_scale_hz"):
-            run_chunked_velocity_estimator(
+            estimate_retinal_velocity(
                 band_lf=values,
                 band_hf=values,
                 velocity_estimation_method="frequency_bands",
@@ -174,7 +170,7 @@ def test_frequency_band_estimator_reports_zero_and_near_zero_lf_counts() -> None
     with h5py.File(
         "scratch.h5", "w", driver="core", backing_store=False
     ) as scratch:
-        result = run_chunked_velocity_estimator(
+        result = estimate_retinal_velocity(
             band_lf=low,
             band_hf=high,
             velocity_estimation_method="frequency_bands",
@@ -186,13 +182,13 @@ def test_frequency_band_estimator_reports_zero_and_near_zero_lf_counts() -> None
             retain_velocity_video=False,
         )
 
-    assert result["band_lf_zero_sample_count"] == 1
-    assert result["band_lf_near_zero_sample_count"] == 1
-    assert result["band_lf_vessel_zero_sample_count"] == 0
-    assert result["band_lf_vessel_near_zero_sample_count"] == 0
-    assert result["band_lf_neighborhood_zero_sample_count"] == 1
-    assert result["band_lf_neighborhood_near_zero_sample_count"] == 1
-    assert result["band_lf_low_relative_threshold"] == 1e-6
+    assert result.provenance["band_lf_zero_sample_count"] == 1
+    assert result.provenance["band_lf_near_zero_sample_count"] == 1
+    assert result.provenance["band_lf_vessel_zero_sample_count"] == 0
+    assert result.provenance["band_lf_vessel_near_zero_sample_count"] == 0
+    assert result.provenance["band_lf_neighborhood_zero_sample_count"] == 1
+    assert result.provenance["band_lf_neighborhood_near_zero_sample_count"] == 1
+    assert result.provenance["band_lf_low_relative_threshold"] == 1e-6
 
 
 @pytest.mark.parametrize(
@@ -215,7 +211,7 @@ def test_frequency_band_estimator_rejects_invalid_psd_values(
     with tempfile.TemporaryDirectory() as tmp_dir:
         with h5py.File(Path(tmp_dir) / "scratch.h5", "w") as scratch:
             with pytest.raises(ValueError, match=message):
-                run_chunked_velocity_estimator(
+                estimate_retinal_velocity(
                     band_lf=low,
                     band_hf=high,
                     velocity_estimation_method="frequency_bands",
@@ -226,41 +222,6 @@ def test_frequency_band_estimator_rejects_invalid_psd_values(
                     scratch_h5=scratch,
                     retain_velocity_video=False,
                 )
-
-
-def test_estimator_cache_key_tracks_method_and_only_active_sources() -> None:
-    shape = (1, 4, 4)
-    mask = np.zeros(shape[1:], dtype=bool)
-    common = {
-        "artery_mask": mask,
-        "vein_mask": mask,
-        "optic_disc_center": (1.5, 1.5),
-        "local_background_dist": 1,
-    }
-    moment_key = velocity_estimator_cache_key(
-        moment0=np.ones(shape, dtype=np.float32),
-        moment2=np.full(shape, 2.0, dtype=np.float32),
-        **common,
-    )
-    band_key = velocity_estimator_cache_key(
-        band_lf=np.ones(shape, dtype=np.float32),
-        band_hf=np.full(shape, 2.0, dtype=np.float32),
-        velocity_estimation_method="frequency_bands",
-        **common,
-    )
-
-    assert moment_key != band_key
-    assert moment_key.band_lf_source is None
-    assert moment_key.band_hf_source is None
-    assert band_key.moment0_source is None
-    assert band_key.moment2_source is None
-    assert band_key != velocity_estimator_cache_key(
-        band_lf=np.ones(shape, dtype=np.float32),
-        band_hf=np.full(shape, 2.0, dtype=np.float32),
-        velocity_estimation_method="frequency_bands",
-        band_ratio_frequency_scale_hz=2.0,
-        **common,
-    )
 
 
 def test_frequency_band_source_requires_exact_paths_and_does_not_require_moments() -> None:
@@ -387,7 +348,7 @@ def test_frequency_band_estimator_rejects_spatial_mask_mismatch() -> None:
     wrong_mask = np.zeros((5, 4), dtype=bool)
     with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as scratch:
         with pytest.raises(ValueError, match="spatial shape"):
-            run_chunked_velocity_estimator(
+            estimate_retinal_velocity(
                 band_lf=low,
                 band_hf=high,
                 velocity_estimation_method="frequency_bands",
@@ -414,7 +375,7 @@ def test_frequency_band_estimator_is_independent_of_frame_chunk_size() -> None:
         video = np.empty(shape, dtype=np.float32)
         with (
             patch(
-                "calculations.retinal_velocity.vessel_velocity_estimator."
+                "pipelines.retinal_velocity.estimation."
                 "SCRATCH_FRAME_CHUNK_SIZE",
                 chunk_size,
             ),
@@ -422,7 +383,7 @@ def test_frequency_band_estimator_is_independent_of_frame_chunk_size() -> None:
                 "scratch.h5", "w", driver="core", backing_store=False
             ) as scratch,
         ):
-            result = run_chunked_velocity_estimator(
+            result = estimate_retinal_velocity(
                 band_lf=low,
                 band_hf=high,
                 velocity_estimation_method="frequency_bands",
@@ -435,17 +396,14 @@ def test_frequency_band_estimator_is_independent_of_frame_chunk_size() -> None:
             )
             results.append(
                 {
-                    key: np.asarray(result[key]).copy()
-                    for key in (
-                        "velocity_map",
-                        "moment0_avg",
-                        "velocity_map_avg",
-                        "fRMS_avg",
-                        "fRMS_bkg_avg",
-                        "deltafRMS_avg",
-                        "retinal_artery_velocity_signal",
-                        "retinal_vein_velocity_signal",
-                    )
+                    "velocity_map": np.asarray(result.maps.velocity).copy(),
+                    "moment0_avg": result.maps.moment0_average.copy(),
+                    "velocity_map_avg": result.maps.velocity_average.copy(),
+                    "fRMS_avg": result.maps.frms_average.copy(),
+                    "fRMS_bkg_avg": result.maps.frms_background_average.copy(),
+                    "deltafRMS_avg": result.maps.delta_frms_average.copy(),
+                    "retinal_artery_velocity_signal": result.artery.velocity.copy(),
+                    "retinal_vein_velocity_signal": result.vein.velocity.copy(),
                 }
             )
 
@@ -457,7 +415,7 @@ def test_frequency_band_estimator_is_independent_of_frame_chunk_size() -> None:
 def test_frequency_band_output_units_and_human_label_are_physical() -> None:
     schema = EyeFlowOutputPaths.active()
     values = np.asarray([1.0, 2.0], dtype=np.float32)
-    analysis = {
+    provenance = {
         "velocity_estimation_method": "frequency_bands",
         "velocity_quantity": "physical_velocity",
         "velocity_unit": "mm/s",
@@ -467,11 +425,11 @@ def test_frequency_band_output_units_and_human_label_are_physical() -> None:
         "band_ratio_calibration_version": "1",
         "laser_wavelength_m": 8.52e-7,
         "numerical_aperture": 0.124,
-        "retinal_artery_velocity_signal": values,
-        "retinal_vein_velocity_signal": values,
-        "retinal_artery_velocity_signal_filtered": values,
-        "retinal_vein_velocity_signal_filtered": values,
     }
+    analysis = SimpleNamespace(
+        provenance=provenance,
+        continuous=lambda _vessel, raw=False: values,
+    )
 
     outputs = pack_continuous_velocity_outputs(analysis)
     semantics = resolve_velocity_semantics(analysis)
@@ -489,19 +447,35 @@ def test_frequency_band_output_units_and_human_label_are_physical() -> None:
 
 def test_frequency_maps_are_persisted_in_hz_with_calibration_provenance() -> None:
     schema = EyeFlowOutputPaths.active()
-    analysis = {
+    provenance = {
         "velocity_estimation_method": "frequency_bands",
+        "velocity_quantity": "physical_velocity",
+        "velocity_unit": "mm/s",
         "band_ratio_frequency_scale_hz": 2.0,
         "band_ratio_calibration_model": "linear_origin",
         "band_ratio_calibration_source": "eyeflow_setting",
         "band_ratio_calibration_version": "1",
         "laser_wavelength_m": 8.52e-7,
         "numerical_aperture": 0.124,
-        "fRMS_avg": np.ones((2, 2), dtype=np.float32),
-        "fRMS_bkg_avg": np.ones((2, 2), dtype=np.float32),
-        "beat_indices": np.asarray([0, 1], dtype=np.int32),
-        "time_per_beat": np.asarray([1.0], dtype=np.float32),
     }
+    spectral = SimpleNamespace(
+        fundamental_hz=1.0,
+        heart_rate_bpm=60.0,
+        heart_rate_ste_bpm=0.0,
+        period_seconds=1.0,
+    )
+    analysis = SimpleNamespace(
+        provenance=provenance,
+        maps=SimpleNamespace(
+            velocity_average=np.ones((2, 2), dtype=np.float32),
+            frms_average=np.ones((2, 2), dtype=np.float32),
+            frms_background_average=np.ones((2, 2), dtype=np.float32),
+            delta_frms_average=np.zeros((2, 2), dtype=np.float32),
+        ),
+        cardiac_cycle=SimpleNamespace(spectral=spectral),
+        cycle_boundary_indexes=np.asarray([0, 1], dtype=np.int32),
+        cycle_durations_seconds=np.asarray([1.0], dtype=np.float32),
+    )
 
     outputs = pack_retinal_velocity_outputs(analysis)
     attrs = outputs[schema.analysis.fRMS_avg][1]

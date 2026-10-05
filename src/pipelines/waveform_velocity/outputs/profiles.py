@@ -27,14 +27,14 @@ def pack_cross_section_profile_outputs(
     velocity_analysis: RetinalVelocity | None = None,
 ) -> dict[str, object]:
     schema = resolve_output_paths(output_paths)
-    velocity_unit = velocity_dataset_attrs(velocity_analysis)["unit"]
+    velocity_attrs = velocity_dataset_attrs(velocity_analysis)
     metrics = _pack_vessel_profiles(
         schema.artery_velocity_profiles,
         artery_segments,
         cycle_boundary_indexes,
         index_base=index_base,
         include_temporal_means=True,
-        velocity_unit=velocity_unit,
+        velocity_attrs=velocity_attrs,
     )
     metrics.update(
         _pack_vessel_profiles(
@@ -42,7 +42,7 @@ def pack_cross_section_profile_outputs(
             vein_segments,
             cycle_boundary_indexes,
             index_base=index_base,
-            velocity_unit=velocity_unit,
+            velocity_attrs=velocity_attrs,
         )
     )
     return metrics
@@ -55,7 +55,7 @@ def _pack_vessel_profiles(
     *,
     index_base: int,
     include_temporal_means: bool = False,
-    velocity_unit: str = "mm/s",
+    velocity_attrs: dict[str, object] | None = None,
 ) -> dict[str, object]:
     profile = segments.profile
     valid_segments = np.asarray(profile.topology.valid_segments, dtype=bool)
@@ -68,7 +68,8 @@ def _pack_vessel_profiles(
             np.asarray(profile.transverse.unmasked, dtype=np.float32),
             cycle_boundary_indexes,
             index_base=index_base,
-            unit=velocity_unit,
+            unit=str((velocity_attrs or {}).get("unit", "mm/s")),
+            attrs=velocity_attrs,
             valid_segments=valid_segments,
         ),
         paths.transverse_velocity_profile_masked: _profile_dataset(
@@ -76,7 +77,8 @@ def _pack_vessel_profiles(
             cycle_boundary_indexes,
             index_base=index_base,
             spatial_axis="x",
-            unit=velocity_unit,
+            unit=str((velocity_attrs or {}).get("unit", "mm/s")),
+            attrs=velocity_attrs,
             valid_segments=valid_segments,
         ),
         paths.longitudinal_velocity_profile_unmasked: _profile_dataset(
@@ -87,7 +89,8 @@ def _pack_vessel_profiles(
             cycle_boundary_indexes,
             index_base=index_base,
             spatial_axis="y",
-            unit=velocity_unit,
+            unit=str((velocity_attrs or {}).get("unit", "mm/s")),
+            attrs=velocity_attrs,
             valid_segments=valid_segments,
         ),
         paths.longitudinal_velocity_profile_masked: _profile_dataset(
@@ -98,7 +101,8 @@ def _pack_vessel_profiles(
             cycle_boundary_indexes,
             index_base=index_base,
             spatial_axis="y",
-            unit=velocity_unit,
+            unit=str((velocity_attrs or {}).get("unit", "mm/s")),
+            attrs=velocity_attrs,
             valid_segments=valid_segments,
         ),
     }
