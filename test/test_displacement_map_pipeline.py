@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -196,8 +197,10 @@ class DisplacementMapRunnerTests(unittest.TestCase):
             )
             with h5py.File(hd_path, "w") as hd:
                 hd.create_dataset("moment0", data=moment)
-                hd.create_dataset("sampling_freq", data=np.float32(100.0))
-                hd.create_dataset("batch_stride", data=np.float32(10.0))
+                hd.create_dataset(
+                    "HD_parameters",
+                    data=json.dumps({"sampling_freq": 100.0, "batch_stride": 10.0}),
+                )
             with h5py.File(dv_path, "w") as dv:
                 dv.create_dataset(ARTERY_MASK_PATH, data=artery)
                 dv.create_dataset(VEIN_MASK_PATH, data=vein)
@@ -208,6 +211,7 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     output_root=root / "outputs",
                 )
             )
+
             def fake_motion_map(config, *, analysis_mask_array, magnitude_video_path):
                 self.assertEqual("moment0", config.h5_dataset)
                 self.assertEqual(10.0, config.h5_fps)

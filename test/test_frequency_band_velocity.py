@@ -76,10 +76,7 @@ def test_frequency_band_estimator_converts_ratio_frequency_to_mm_per_second() ->
     # converted to mm/s by the same wavelength/NA law as moment mode.
     expected_delta_hz = np.float32(np.sqrt(4.0**2 - 1.0**2))
     expected = np.float32(
-        1e3
-        * DEFAULT_LASER_WAVELENGTH_METERS
-        * expected_delta_hz
-        / DEFAULT_NUMERICAL_APERTURE
+        1e3 * DEFAULT_LASER_WAVELENGTH_METERS * expected_delta_hz / DEFAULT_NUMERICAL_APERTURE
     )
     np.testing.assert_allclose(velocity[:, artery], expected, rtol=1e-5)
     np.testing.assert_allclose(velocity[:, vein], expected, rtol=1e-5)
@@ -89,8 +86,7 @@ def test_frequency_band_estimator_converts_ratio_frequency_to_mm_per_second() ->
     assert result.provenance["velocity_quantity"] == "physical_velocity"
     assert result.provenance["velocity_unit"] == "mm/s"
     assert (
-        result.provenance["band_ratio_frequency_scale_hz"]
-        == DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+        result.provenance["band_ratio_frequency_scale_hz"] == DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
     )
     assert result.provenance["band_lf_source_path"] == f"/{LF_PATH}"
     assert result.provenance["band_hf_source_path"] == f"/{HF_PATH}"
@@ -105,9 +101,7 @@ def test_frequency_band_frequency_scale_is_explicit_and_changes_velocity() -> No
     artery[6, 8] = True
     high[:, artery] = 4.0
 
-    with h5py.File(
-        "scratch.h5", "w", driver="core", backing_store=False
-    ) as scratch:
+    with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as scratch:
         result = estimate_retinal_velocity(
             band_lf=low,
             band_hf=high,
@@ -123,10 +117,7 @@ def test_frequency_band_frequency_scale_is_explicit_and_changes_velocity() -> No
 
     expected_delta_hz = np.float32(2.0 * np.sqrt(4.0**2 - 1.0**2))
     expected_velocity = np.float32(
-        1e3
-        * DEFAULT_LASER_WAVELENGTH_METERS
-        * expected_delta_hz
-        / DEFAULT_NUMERICAL_APERTURE
+        1e3 * DEFAULT_LASER_WAVELENGTH_METERS * expected_delta_hz / DEFAULT_NUMERICAL_APERTURE
     )
     np.testing.assert_allclose(
         velocity[:, artery],
@@ -143,9 +134,7 @@ def test_frequency_band_estimator_rejects_invalid_frequency_scale(
 ) -> None:
     values = np.ones((1, 4, 4), dtype=np.float32)
     mask = np.zeros((4, 4), dtype=bool)
-    with h5py.File(
-        "scratch.h5", "w", driver="core", backing_store=False
-    ) as scratch:
+    with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as scratch:
         with pytest.raises(ValueError, match="band_ratio_frequency_scale_hz"):
             estimate_retinal_velocity(
                 band_lf=values,
@@ -167,9 +156,7 @@ def test_frequency_band_estimator_reports_zero_and_near_zero_lf_counts() -> None
     high = np.ones_like(low)
     mask = np.zeros((8, 8), dtype=bool)
 
-    with h5py.File(
-        "scratch.h5", "w", driver="core", backing_store=False
-    ) as scratch:
+    with h5py.File("scratch.h5", "w", driver="core", backing_store=False) as scratch:
         result = estimate_retinal_velocity(
             band_lf=low,
             band_hf=high,
@@ -232,11 +219,15 @@ def test_frequency_band_source_requires_exact_paths_and_does_not_require_moments
         with h5py.File(hd_path, "w") as hd:
             hd.create_dataset(LF_PATH, data=np.ones((2, 4, 6), dtype=np.float32))
             hd.create_dataset(HF_PATH, data=np.full((2, 4, 6), 2.0, dtype=np.float32))
-            hd.create_dataset("sampling_freq", data=np.float32(100.0))
-            hd.create_dataset("batch_stride", data=np.float32(10.0))
             hd.create_dataset(
                 "HD_parameters",
-                data=json.dumps({"pixel_pitch": [20e-6, 20e-6]}),
+                data=json.dumps(
+                    {
+                        "pixel_pitch": [20e-6, 20e-6],
+                        "sampling_freq": 100.0,
+                        "batch_stride": 10.0,
+                    }
+                ),
             )
         with h5py.File(dv_path, "w") as dv:
             retina = dv.create_group("segmentation/Retina")
@@ -262,9 +253,7 @@ def test_frequency_band_source_reports_missing_exact_dataset_path() -> None:
             hd.create_dataset(LF_PATH, data=np.ones((1, 2, 2), dtype=np.float32))
             hd.create_dataset("band_1_other", data=np.ones((1, 2, 2), dtype=np.float32))
         with h5py.File(hd_path, "r") as hd:
-            source = HolodopplerSource(
-                RawH5SourceReader(h5file=hd, label="HD")
-            )
+            source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
             with pytest.raises(KeyError, match=f"/{HF_PATH}"):
                 source.frequency_band_datasets()
 
@@ -287,9 +276,7 @@ def test_frequency_band_source_lists_every_missing_exact_path(
             for path in available_paths:
                 hd.create_dataset(path, data=np.ones((1, 2, 2), dtype=np.float32))
         with h5py.File(hd_path, "r") as hd:
-            source = HolodopplerSource(
-                RawH5SourceReader(h5file=hd, label="HD")
-            )
+            source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
             with pytest.raises(KeyError) as error:
                 source.frequency_band_datasets()
 
@@ -335,9 +322,7 @@ def test_frequency_band_source_validates_rank_dtype_and_shape(
             hd.create_dataset(LF_PATH, data=low)
             hd.create_dataset(HF_PATH, data=high)
         with h5py.File(hd_path, "r") as hd:
-            source = HolodopplerSource(
-                RawH5SourceReader(h5file=hd, label="HD")
-            )
+            source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
             with pytest.raises(error_type, match=message):
                 source.frequency_band_datasets()
 
@@ -375,13 +360,10 @@ def test_frequency_band_estimator_is_independent_of_frame_chunk_size() -> None:
         video = np.empty(shape, dtype=np.float32)
         with (
             patch(
-                "pipelines.retinal_velocity.estimation."
-                "SCRATCH_FRAME_CHUNK_SIZE",
+                "pipelines.retinal_velocity.estimation.SCRATCH_FRAME_CHUNK_SIZE",
                 chunk_size,
             ),
-            h5py.File(
-                "scratch.h5", "w", driver="core", backing_store=False
-            ) as scratch,
+            h5py.File("scratch.h5", "w", driver="core", backing_store=False) as scratch,
         ):
             result = estimate_retinal_velocity(
                 band_lf=low,
@@ -437,9 +419,7 @@ def test_frequency_band_output_units_and_human_label_are_physical() -> None:
     assert outputs[schema.analysis.retinal_artery_velocity_signal][1]["unit"] == "mm/s"
     assert outputs[schema.analysis.retinal_vein_velocity_signal][1]["unit"] == "mm/s"
     assert (
-        outputs[schema.analysis.retinal_artery_velocity_signal][1][
-            "band_ratio_frequency_scale_hz"
-        ]
+        outputs[schema.analysis.retinal_artery_velocity_signal][1]["band_ratio_frequency_scale_hz"]
         == 1.0
     )
     assert semantics.axis_label == "Velocity (mm/s)"

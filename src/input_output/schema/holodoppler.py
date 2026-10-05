@@ -7,7 +7,7 @@ from collections.abc import Mapping
 
 import numpy as np
 
-from .base import SourceFileLayout, TypedSource
+from .base import SourceFileLayout, TypedSource, scalar_from_value
 from .source_data import HolodopplerMetadata, HolodopplerTiming, PixelPitch
 
 HD_CONFIG_DIR_NAME = "json"
@@ -94,14 +94,13 @@ class HolodopplerSource(TypedSource):
         return self._optional_moment_dataset(HD_MOMENT0_FLAT_FIELD_PATHS)
 
     def timing(self) -> HolodopplerTiming:
-        sampling_freq = self._scalar_h5_or_config(
-            HD_SAMPLING_FREQ_KEY,
-            HD_SAMPLING_FREQ_KEY,
-        )
-        batch_stride = self._scalar_h5_or_config(
-            HD_BATCH_STRIDE_KEY,
-            HD_BATCH_STRIDE_KEY,
-        )
+        parameters = self._parameters() or {}
+        sampling_freq = scalar_from_value(parameters.get(HD_SAMPLING_FREQ_KEY))
+        batch_stride = scalar_from_value(parameters.get(HD_BATCH_STRIDE_KEY))
+        if sampling_freq is None:
+            sampling_freq = scalar_from_value(self._config.get(HD_SAMPLING_FREQ_KEY))
+        if batch_stride is None:
+            batch_stride = scalar_from_value(self._config.get(HD_BATCH_STRIDE_KEY))
         if sampling_freq is None or batch_stride is None:
             raise KeyError("Could not resolve Holodoppler timing from HD HDF5 or config.")
         return HolodopplerTiming(float(sampling_freq), float(batch_stride))
@@ -109,9 +108,21 @@ class HolodopplerSource(TypedSource):
     def pixel_pitch(self) -> PixelPitch:
         """Return the native ``(x, y)`` pixel pitch from ``HD_parameters``."""
 
+        parameters = self._parameters()
+        if parameters is None:
+            raise KeyError("Missing Holodoppler dataset 'HD_parameters'.")
+
+        if "pixel_pitch" not in parameters:
+            raise KeyError("HD_parameters does not contain 'pixel_pitch'.")
+        values = np.asarray(parameters["pixel_pitch"], dtype=np.float64).reshape(-1)
+        if values.size != 2:
+            raise ValueError("HD_parameters['pixel_pitch'] must contain exactly two (x, y) values.")
+        return PixelPitch(values[0], values[1])
+
+    def _parameters(self) -> Mapping[str, object] | None:
         raw = self._value(HD_PARAMETERS_KEY, default=None)
         if raw is None:
-            raise KeyError("Missing Holodoppler dataset 'HD_parameters'.")
+            return None
         if isinstance(raw, np.ndarray):
             if raw.size != 1:
                 raise ValueError("HD_parameters must be a scalar JSON value.")
@@ -127,12 +138,7 @@ class HolodopplerSource(TypedSource):
             parameters = raw
         if not isinstance(parameters, Mapping):
             raise TypeError("HD_parameters must decode to a dictionary.")
-        if "pixel_pitch" not in parameters:
-            raise KeyError("HD_parameters does not contain 'pixel_pitch'.")
-        values = np.asarray(parameters["pixel_pitch"], dtype=np.float64).reshape(-1)
-        if values.size != 2:
-            raise ValueError("HD_parameters['pixel_pitch'] must contain exactly two (x, y) values.")
-        return PixelPitch(values[0], values[1])
+        return parameters
 
     def metadata(self) -> HolodopplerMetadata:
         """Return all Holodoppler acquisition metadata used by EyeFlow."""

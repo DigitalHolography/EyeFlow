@@ -52,12 +52,6 @@ class TypedSource:
             return self._reader.value(path)
         return self._reader.value(path, default=default)
 
-    def _scalar_h5_or_config(self, h5_path: str, config_key: str):
-        value = scalar_from_value(self._value(h5_path, default=None))
-        if value is not None:
-            return value
-        return scalar_from_value(self._config.get(config_key))
-
     def _config_value(self, section: str, key: str, default):
         source = self._config.get(section, {})
         if not isinstance(source, dict):

@@ -55,32 +55,22 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
             assert output.attrs["band_lf_zero_sample_count"] == 1
             assert output.attrs["band_lf_near_zero_sample_count"] == 1
 
-            artery_velocity = output[
-                schema.analysis.retinal_artery_velocity_signal
-            ]
+            artery_velocity = output[schema.analysis.retinal_artery_velocity_signal]
             assert artery_velocity.attrs["unit"] == "mm/s"
-            assert (
-                artery_velocity.attrs["velocity_estimation_method"]
-                == "frequency_bands"
-            )
+            assert artery_velocity.attrs["velocity_estimation_method"] == "frequency_bands"
             assert artery_velocity.attrs["band_ratio_frequency_scale_hz"] == 2.0
             assert np.any(np.isfinite(artery_velocity[:]))
 
             artery_per_beat = output[schema.artery_per_beat.velocity_signal]
             assert artery_per_beat.attrs["unit"] == "mm/s"
-            assert (
-                artery_per_beat.attrs["velocity_estimation_method"]
-                == "frequency_bands"
-            )
+            assert artery_per_beat.attrs["velocity_estimation_method"] == "frequency_bands"
             assert artery_per_beat.attrs["band_ratio_frequency_scale_hz"] == 2.0
 
             frequency_map = output[schema.analysis.fRMS_avg]
             assert frequency_map.attrs["unit"] == "Hz"
             assert frequency_map.attrs["band_ratio_frequency_scale_hz"] == 2.0
 
-            artery_flow = output[
-                schema.blood_volume_rate.artery.masked_edges
-            ]
+            artery_flow = output[schema.blood_volume_rate.artery.masked_edges]
             assert artery_flow.attrs["unit"] == "mm^3/s"
 
             absolute_root = output[schema.absolute_waveform_metrics_root]
@@ -117,11 +107,15 @@ def _write_frequency_band_run(root: Path, stem: str = "band_scan") -> Path:
     with h5py.File(hd_path, "w") as hd:
         hd.create_dataset("band_0_3000_9000", data=low)
         hd.create_dataset("band_1_9000_18000", data=high)
-        hd.create_dataset("sampling_freq", data=np.float32(20.0))
-        hd.create_dataset("batch_stride", data=np.float32(1.0))
         hd.create_dataset(
             "HD_parameters",
-            data=json.dumps({"pixel_pitch": [20e-6, 20e-6]}),
+            data=json.dumps(
+                {
+                    "pixel_pitch": [20e-6, 20e-6],
+                    "sampling_freq": 20.0,
+                    "batch_stride": 1.0,
+                }
+            ),
         )
         hd.attrs["number_of_radii_in_FOV"] = 8
 
