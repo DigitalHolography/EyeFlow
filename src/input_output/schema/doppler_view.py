@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import h5py
 
 from .base import SourceFileLayout, TypedSource
 from .source_data import OpticDiscMeasurements
@@ -25,6 +26,17 @@ class DopplerViewSource(TypedSource):
 
     def retinal_artery_mask(self) -> np.ndarray:
         return self._array("segmentation/Retina/artery_mask", dtype=bool)
+
+    def retinal_mask(self, path: str, *, required: bool = False) -> np.ndarray | None:
+        """Read one selected retinal mask without choosing pipeline mask policy."""
+        found = self._reader.get(path)
+        if found is None:
+            if required:
+                raise KeyError(f"Missing DopplerView mask dataset at '{path}'.")
+            return None
+        if not isinstance(found, h5py.Dataset):
+            raise ValueError(f"DopplerView mask path '{path}' is not a dataset.")
+        return np.asarray(found[()])
 
     def retinal_vein_mask(self) -> np.ndarray:
         return self._array("segmentation/Retina/vein_mask", dtype=bool)

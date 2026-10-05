@@ -16,7 +16,7 @@ from input_output.inputs import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from pipeline_engine import PipelineContext
 from pipelines.displacement_map import registration
-from pipelines.displacement_map.sources import FrameSequence
+from input_output.frame_sequences import FrameSequence
 from pipelines.displacement_map.runner import (
     ARTERY_MASK_PATH,
     DISPLACEMENT_MAP_STATE,
@@ -80,7 +80,7 @@ class DisplacementMapInputTests(unittest.TestCase):
                 data=np.arange(24, dtype=np.float32).reshape(3, 2, 4),
             )
             with patch(
-                "pipelines.displacement_map.sources.h5py.File",
+                "input_output.frame_sequences.h5py.File",
                 side_effect=AssertionError("HDF5 input was reopened"),
             ):
                 sequence = FrameSequence(

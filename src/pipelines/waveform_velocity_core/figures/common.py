@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+from input_output.output_manager import output_stem as _output_stem
 
 from .signal_inputs import (
     array_or_none as _array_or_none,
@@ -88,11 +89,6 @@ class PulseFigureContext:
         return period
 
 
-def _output_stem(output) -> str:
-    manager = getattr(output, "manager", None)
-    layout = getattr(manager, "layout", None)
-    stem = getattr(layout, "stem", None)
-    return str(stem or "eyeflow")
 def _log(ctx: PulseFigureContext, message: str) -> None:
     Logger.log(message)
 def _matplotlib():

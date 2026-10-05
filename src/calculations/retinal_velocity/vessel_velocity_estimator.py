@@ -281,7 +281,6 @@ def _velocity_video_storage(
     retain_velocity_video: bool,
     velocity_video_output,
 ):
-    group = scratch_h5.require_group("waveform")
     if not retain_velocity_video:
         if velocity_video_output is not None:
             raise ValueError(
@@ -297,17 +296,9 @@ def _velocity_video_storage(
             raise ValueError("velocity_video_output must have dtype float32.")
         return velocity_video_output
 
-    return group.create_dataset(
-        "velocity",
-        shape=shape,
-        dtype=np.float32,
-        chunks=(
-            min(64, shape[0]),
-            min(32, shape[1]),
-            min(32, shape[2]),
-        ),
-        compression=None,
-    )
+    from input_output.writers.h5 import create_velocity_video_dataset
+
+    return create_velocity_video_dataset(scratch_h5, shape)
 
 
 def _volume_source_key(value) -> tuple[object, ...]:

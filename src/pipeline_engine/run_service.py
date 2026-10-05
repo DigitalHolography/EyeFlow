@@ -2,31 +2,24 @@
 
 from __future__ import annotations
 
-import os
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from input_output import INPUT_LIST_SUFFIX, HoloRunLayout, resolve_selected_run_layouts
-from input_output.archives import extracted_zip_tree
+from input_output import HoloRunLayout, resolve_selected_run_layouts
 from input_output.output_manager import OutputManager, OutputType
+from input_output.run_selection import (
+    ExpandedRunInputs,
+    batch_root as infer_batch_root,
+    expand_run_inputs,
+    output_manager_for_layout,
+    reject_duplicate_destinations,
+)
 from utils.logger import Logger
 
 from .base import PipelineDescriptor
 from .dag import PipelineDAG, PipelineExecutionPlan
 from .runtime import run_pipelines_to_output
-
-HOLO_SUFFIX = ".holo"
-
-
-@dataclass(frozen=True)
-class ExpandedRunInputs:
-    """Input paths produced from one CLI source selection."""
-
-    paths: tuple[Path, ...]
-    batch_root: Path | None = None
-
 
 @dataclass(frozen=True)
 class RunRequest:
@@ -133,12 +126,12 @@ def resolve_run_spec(
     effective_batch_root = (
         batch_root.expanduser().resolve()
         if batch_root is not None
-        else _batch_root([layout.holo_path for layout in layouts])
+        else infer_batch_root([layout.holo_path for layout in layouts])
     )
     requests = tuple(
         RunRequest(
             input_layout=layout,
-            output_manager=_output_manager_for_layout(
+            output_manager=output_manager_for_layout(
                 layout,
                 output_root=resolved_output_root,
                 batch_root=effective_batch_root,
@@ -146,7 +139,9 @@ def resolve_run_spec(
         )
         for layout in layouts
     )
-    _reject_duplicate_destinations(requests)
+    reject_duplicate_destinations(
+        tuple((request.input_layout, request.output_manager) for request in requests)
+    )
     return RunSpec(
         plan=plan,
         requests=requests,
@@ -266,92 +261,6 @@ def _resolve_pipeline_options(
     return resolved
 
 
-@contextmanager
-def expand_run_inputs(data_path: Path) -> Iterator[ExpandedRunInputs]:
-    """Expand a CLI file, recursive folder, or ZIP source safely."""
-
-    source = data_path.expanduser().resolve()
-    if source.is_file() and source.suffix.lower() == ".zip":
-        with extracted_zip_tree(source) as extracted_root:
-            paths = _find_holo_inputs(extracted_root)
-            if not paths:
-                raise ValueError(f"No {HOLO_SUFFIX} files found in {source}")
-            yield ExpandedRunInputs(tuple(paths), extracted_root)
-        return
-
-    paths = _find_holo_inputs(source)
-    if not paths:
-        raise ValueError(f"No {HOLO_SUFFIX} files found under {source}")
-    batch_root = source if source.is_dir() else None
-    yield ExpandedRunInputs(tuple(paths), batch_root)
-
-
-def _find_holo_inputs(path: Path) -> list[Path]:
-    if path.is_file():
-        if path.suffix.lower() in {HOLO_SUFFIX, INPUT_LIST_SUFFIX}:
-            return [path]
-        raise ValueError(
-            f"File is not a {HOLO_SUFFIX} or {INPUT_LIST_SUFFIX} file: {path}"
-        )
-    if path.is_dir():
-        return sorted(
-            candidate
-            for candidate in path.rglob("*")
-            if candidate.is_file() and candidate.suffix.lower() == HOLO_SUFFIX
-        )
-    raise FileNotFoundError(f"Input path does not exist: {path}")
-
-
-def _output_manager_for_layout(
-    layout: HoloRunLayout,
-    *,
-    output_root: Path | None,
-    batch_root: Path,
-) -> OutputManager:
-    if output_root is None:
-        return OutputManager(layout)
-    relative_path = _relative_to_batch(layout.holo_path, batch_root)
-    target_dir = output_root / relative_path.parent
-    output_layout = HoloRunLayout.from_holo(
-        layout.holo_path,
-        output_root=target_dir,
-    )
-    return OutputManager(output_layout)
-
-
-def _batch_root(holo_paths: Sequence[Path]) -> Path:
-    if not holo_paths:
-        return Path.cwd()
-    if len(holo_paths) == 1:
-        return holo_paths[0].parent
-    try:
-        return Path(os.path.commonpath([str(path.parent) for path in holo_paths]))
-    except ValueError:
-        return Path.cwd()
-
-
-def _relative_to_batch(holo_path: Path, batch_root: Path) -> Path:
-    try:
-        return holo_path.relative_to(batch_root)
-    except ValueError:
-        anchor = Path(holo_path.anchor)
-        drive_token = holo_path.drive.rstrip(":\\/") or "root"
-        tail = holo_path.relative_to(anchor) if anchor != holo_path else Path()
-        return Path(drive_token) / tail
-
-
-def _reject_duplicate_destinations(requests: Sequence[RunRequest]) -> None:
-    destinations: dict[str, Path] = {}
-    for request in requests:
-        destination = request.output_manager.layout.ef_dir.resolve(strict=False)
-        key = os.path.normcase(str(destination))
-        previous = destinations.get(key)
-        if previous is not None:
-            raise ValueError(
-                "Multiple inputs resolve to the same EyeFlow output directory: "
-                f"{previous} and {request.input_layout.holo_path} -> {destination}"
-            )
-        destinations[key] = request.input_layout.holo_path
 
 
 __all__ = [

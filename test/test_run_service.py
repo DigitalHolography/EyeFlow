@@ -399,7 +399,7 @@ class RunServiceTests(unittest.TestCase):
             archive = root / "outputs.zip"
             archive.write_text("previous", encoding="utf-8")
 
-            with patch("cli.create_zip_from_tree", side_effect=OSError("zip failed")):
+            with patch("input_output.archives.zip_archive.create_zip_from_tree", side_effect=OSError("zip failed")):
                 with self.assertRaisesRegex(OSError, "zip failed"):
                     cli._zip_output_dir(source, archive)
 

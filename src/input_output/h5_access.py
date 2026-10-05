@@ -156,8 +156,8 @@ def _optional_dataset_array(
     return _read_dataset_array(found, dtype=dtype)
 
 
-class PipelineH5Output:
-    """Read and write the EyeFlow work/output HDF5 file."""
+class H5Output:
+    """Read and write an EyeFlow work/output HDF5 file."""
 
     def __init__(self, work_h5: h5py.File) -> None:
         self.file = work_h5
@@ -194,8 +194,6 @@ class PipelineH5Output:
             write_value_dataset(self.file, path, value)
 
     def set_attr(self, key: str, value: Any) -> None:
-        if key == "pipeline":
-            return
         set_attr_safe(self.file, key, value)
 
     def set_attrs(self, attrs: Mapping[str, Any] | None) -> None:

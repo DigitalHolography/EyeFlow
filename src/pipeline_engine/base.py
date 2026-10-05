@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dependency_utils import find_missing_dependencies
+from input_output.payloads import DatasetValue
 
 # Metadata registry populated by coded pipeline modules when they are imported.
 PIPELINE_REGISTRY: dict[str, PipelineDescriptor] = {}
@@ -182,15 +183,6 @@ class ProcessResult:
     metrics: dict[str, Any]
     attrs: dict[str, Any] | None = None  # attributes stored on the pipeline group
     output_h5_path: str | None = None
-
-
-@dataclass
-class DatasetValue:
-    """Represent a dataset payload, attributes, and HDF5 creation options."""
-
-    data: Any
-    attrs: dict[str, Any] | None = None
-    h5_options: dict[str, Any] | None = None
 
 
 def with_attrs(data: Any, attrs: dict[str, Any]) -> DatasetValue:

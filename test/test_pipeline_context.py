@@ -7,8 +7,9 @@ import unittest
 import h5py
 import numpy as np
 
-from pipeline_engine import PipelineContext
-from input_output.h5_access import PipelineH5Output, PipelineInputSource
+from pipeline_engine import PipelineContext, ProcessResult
+from pipeline_engine.context import PipelineH5Output, apply_pipeline_result
+from input_output.h5_access import H5Output, PipelineInputSource
 from input_output.schema.base import TypedSource
 from utils.logger import Logger
 
@@ -17,7 +18,7 @@ class PipelineContextTests(unittest.TestCase):
     def test_missing_arrays_return_none_for_explicit_none_default(self) -> None:
         with h5py.File("context_missing_test.h5", "w", driver="core", backing_store=False) as h5file:
             source = PipelineInputSource(h5file=h5file, label="HD")
-            output = PipelineH5Output(h5file)
+            output = H5Output(h5file)
             for reader in (source, output):
                 self.assertIsNone(reader.array("missing", dtype=np.float32, default=None))
                 with self.assertRaises(KeyError):
@@ -27,6 +28,32 @@ class PipelineContextTests(unittest.TestCase):
             with self.assertRaises(KeyError):
                 typed._array("missing")
             self.assertIsNone(typed._array("missing", default=None))
+
+    def test_pipeline_attribute_policy_belongs_to_engine(self) -> None:
+        with h5py.File(
+            "context_attrs_test.h5", "w", driver="core", backing_store=False
+        ) as h5file:
+            generic_output = H5Output(h5file)
+            generic_output.set_attr("pipeline", "generic")
+            self.assertEqual("generic", h5file.attrs["pipeline"])
+            del h5file.attrs["pipeline"]
+
+            ctx = PipelineContext(
+                work_h5=h5file,
+                holodoppler_h5=None,
+                doppler_vision_h5=None,
+            )
+            self.assertIsInstance(ctx.output.h5, PipelineH5Output)
+            ctx.output.h5.set_attr("pipeline", "direct")
+            ctx.output.h5.set_attrs({"pipeline": "direct-batch", "source": "direct"})
+            apply_pipeline_result(
+                ctx,
+                ProcessResult(metrics={}, attrs={"pipeline": "result", "unit": "pixel"}),
+            )
+
+            self.assertNotIn("pipeline", h5file.attrs)
+            self.assertEqual("direct", h5file.attrs["source"])
+            self.assertEqual("pixel", h5file.attrs["unit"])
 
     def test_log_emits_to_callback(self) -> None:
         messages: list[str] = []

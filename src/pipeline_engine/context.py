@@ -6,7 +6,7 @@ from typing import Any
 
 import h5py
 
-from input_output.h5_access import MergedAttrs, PipelineH5Output, PipelineInputSource
+from input_output.h5_access import H5Output, MergedAttrs, PipelineInputSource
 from input_output.output_manager import OutputManager
 from utils.logger import Logger
 
@@ -42,6 +42,15 @@ class PipelineState:
     @property
     def raw(self) -> dict[str, Any]:
         return self._values
+
+
+class PipelineH5Output(H5Output):
+    """Apply pipeline-owned attribute policy to the HDF5 output facade."""
+
+    def set_attr(self, key: str, value: Any) -> None:
+        if key == "pipeline":
+            return
+        super().set_attr(key, value)
 
 
 @dataclass(frozen=True)

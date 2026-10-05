@@ -7,8 +7,9 @@ from collections.abc import Mapping
 
 import numpy as np
 
+from input_output.payloads import payload_array as _metric_data
 from input_output.schema import EyeFlowOutputPaths
-from pipeline_engine import DatasetValue, with_attrs
+from pipeline_engine import with_attrs
 from pipelines.waveform_velocity_core.regions import (
     QUADRANTS_GROUP_NAME,
     REGION_NAMES,
@@ -80,7 +81,7 @@ def pack_lowrank_waveform_decomposition_outputs(
     vein_segments=None,
 ) -> dict[str, object]:
     """Compute the requested low-rank endpoint and per-beat metric outputs."""
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     periods = _required_array(velocity_outputs, schema.beat_period_seconds)
     calculator = LowRankWaveformDecompositionCalculator()
     outputs: dict[str, object] = {}
@@ -548,22 +549,8 @@ def _required_array(metrics: Mapping[str, object], path: str) -> np.ndarray:
     return _metric_data(metrics[path])
 
 
-def _metric_data(value) -> np.ndarray:
-    if isinstance(value, DatasetValue):
-        value = value.data
-    elif isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
-        value = value[0]
-    elif hasattr(value, "data") and hasattr(value, "attrs"):
-        value = value.data
-    return np.asarray(value)
 
 
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)
 
 
 __all__ = ["pack_lowrank_waveform_decomposition_outputs"]

@@ -8,6 +8,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import shutil
 import zipfile
+from uuid import uuid4
 
 
 @contextmanager
@@ -73,7 +74,28 @@ def create_zip_from_tree(
                 )
 
 
+def replace_zip_from_tree(
+    tree_root: str | Path,
+    zip_path: str | Path,
+    *,
+    progress_callback: Callable[[int, int, Path], None] | None = None,
+) -> Path:
+    """Stage a complete archive, then replace the destination atomically."""
+    destination = Path(zip_path).expanduser().resolve()
+    staging = destination.with_name(
+        f".{destination.name}.eyeflow-staging-{uuid4().hex}"
+    )
+    try:
+        create_zip_from_tree(tree_root, staging, progress_callback=progress_callback)
+        staging.replace(destination)
+    finally:
+        if staging.exists():
+            staging.unlink()
+    return destination
+
+
 __all__ = [
     "create_zip_from_tree",
     "extracted_zip_tree",
+    "replace_zip_from_tree",
 ]

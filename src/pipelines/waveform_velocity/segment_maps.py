@@ -12,12 +12,17 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils imp
 )
 from calculations.math import next_power_of_two
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.eyeflow_output import DISPLACEMENT_MAP_ROOT as _DISPLACEMENT_MAP_ROOT
+from input_output.schema.serialization import serialize_segment_masks
+from input_output.writers.h5 import (
+    segment_mask_h5_options as _segment_mask_h5_options,
+    velocity_map_h5_options as _velocity_map_h5_options,
+)
 from pipeline_engine.base import DatasetValue
 from pipelines.displacement_map.constants import registration_method_output_name
 from runtime_limits import cap_parallel_jobs
 
 _MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
-_DISPLACEMENT_MAP_ROOT = "Processing/Displacement/Map"
 
 
 def pack_segment_map_outputs(
@@ -28,7 +33,7 @@ def pack_segment_map_outputs(
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
     """Pack prepared per-beat maps and masks for artery and vein segments."""
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     outputs = _pack_vessel_segment_maps(
         artery_segments,
         artery_velocity_maps_per_beat,
@@ -354,7 +359,7 @@ def _pack_vessel_segment_maps(
         masks = np.asarray(segments.segment_masks, dtype=bool)
         if masks.ndim != 4:
             raise ValueError("segment masks must have shape (radius, branch, y, x).")
-        serialized_masks = masks.transpose(3, 2, 1, 0)
+        serialized_masks = serialize_segment_masks(masks)
         outputs[paths.segments] = DatasetValue(
             data=serialized_masks,
             attrs={
@@ -392,37 +397,3 @@ def _interpft_maps_axis0(values: np.ndarray, target_length: int) -> np.ndarray:
             axis=0,
         ).astype(np.float32, copy=False)
     return interpolated.reshape(int(target_length), *spatial_shape)
-
-
-def _velocity_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
-    options: dict[str, object] = {
-        "compression": "lzf",
-        "shuffle": True,
-    }
-    if len(shape) in (6, 7) and all(shape):
-        options["chunks"] = (
-            (shape[0], shape[1], 1, 1, 1, 1)
-            if len(shape) == 6
-            else (shape[0], shape[1], 1, 1, 1, 1, shape[-1])
-        )
-    return options
-
-
-def _segment_mask_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
-    options: dict[str, object] = {
-        "dtype": np.bool_,
-        "compression": "gzip",
-        "compression_opts": 4,
-        "shuffle": True,
-    }
-    if len(shape) == 4 and all(shape):
-        options["chunks"] = (shape[0], shape[1], 1, 1)
-    return options
-
-
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)

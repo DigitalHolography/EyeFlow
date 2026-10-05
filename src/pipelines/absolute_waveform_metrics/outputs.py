@@ -6,8 +6,8 @@ from collections.abc import Mapping
 
 import numpy as np
 
+from input_output.payloads import payload_data as _payload_data
 from input_output.schema import EyeFlowOutputPaths, VelocityPerBeatOutputPaths
-from pipeline_engine import DatasetValue
 
 from .calculator import AbsoluteWaveformMetricsCalculator
 from .quadrants import pack_quadrant_metrics
@@ -70,7 +70,7 @@ def pack_absolute_waveform_outputs(
     if not include_per_beat and not include_quadrants:
         return {}
 
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     inputs = absolute_waveform_metric_inputs_from_outputs(metrics, schema)
     computed = pack_absolute_waveform_metric_calculations(
         inputs,
@@ -108,7 +108,7 @@ def absolute_waveform_metric_inputs_from_outputs(
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> AbsoluteWaveformMetricInputs:
     """Build calculator inputs from packed EyeFlow per-beat outputs."""
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     return AbsoluteWaveformMetricInputs(
         beat_period_seconds=_required_array(metrics, schema.beat_period_seconds),
         artery=_read_vessel(metrics, schema.artery_per_beat),
@@ -170,19 +170,3 @@ def _optional_pair(
     if (raw is None) != (bandlimited is None):
         raise ValueError(f"Incomplete {label} inputs.")
     return raw, bandlimited
-
-
-def _payload_data(value: object) -> object:
-    if isinstance(value, DatasetValue):
-        return value.data
-    if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
-        return value[0]
-    return value
-
-
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)

@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from calculations.math import nanmedian
+from input_output.payloads import payload_array as _metric_data
 from input_output.writers.eps import EpsArtifactWriter
 from input_output.writers.png import PngArtifactWriter
 
@@ -133,10 +134,6 @@ def _nanstd(values: np.ndarray, *, axis: int) -> np.ndarray:
     return np.sqrt(variance)
 
 
-def _metric_data(value) -> np.ndarray:
-    if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
-        value = value[0]
-    return np.asarray(value)
 
 
 __all__ = ["export_velocity_signals"]

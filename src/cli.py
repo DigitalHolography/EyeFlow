@@ -19,7 +19,6 @@ import tempfile
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from uuid import uuid4
 
 from app_settings import (
     AppSettingsStore,
@@ -30,16 +29,14 @@ from runtime_limits import configure_numeric_threads
 
 configure_numeric_threads()
 
-from input_output import (
-    create_zip_from_tree,
-)
+from input_output.archives.zip_archive import replace_zip_from_tree
+from input_output.run_selection import expand_run_inputs
 from pipelines import (
     PipelineDescriptor,
     load_pipeline_catalog,
 )
 from pipeline_engine import (
     execute_run,
-    expand_run_inputs,
     resolve_run_spec,
     selectable_pipeline_registry,
 )
@@ -145,20 +142,7 @@ def _zip_output_dir(
         zip_path = folder.parent / zip_name
     else:
         zip_path = target_path.expanduser().resolve()
-    staging_zip = zip_path.with_name(
-        f".{zip_path.name}.eyeflow-staging-{uuid4().hex}"
-    )
-    try:
-        create_zip_from_tree(
-            folder,
-            staging_zip,
-            progress_callback=progress_callback,
-        )
-        staging_zip.replace(zip_path)
-    finally:
-        if staging_zip.exists():
-            staging_zip.unlink()
-    return zip_path
+    return replace_zip_from_tree(folder, zip_path, progress_callback=progress_callback)
 
 
 def run_cli(

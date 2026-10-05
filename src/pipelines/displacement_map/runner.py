@@ -13,6 +13,10 @@ import h5py
 import numpy as np
 
 from input_output.output_manager import OutputType
+from input_output.h5_access import PipelineInputSource
+from input_output.spatial_alignment import align_mask
+from input_output.writers.h5 import normalize_h5_path
+from input_output.displacement_storage import load_displacement_maps, release_displacement_maps
 
 from .calculator import create_retinal_motion_map
 from .constants import DEFAULT_REGISTRATION_METHOD, RegistrationMethod
@@ -89,7 +93,10 @@ def attach_displacement_segment_profiles(
             "The scheduled displacement_map pipeline did not prepare its "
             "in-run displacement artifacts."
         )
-    displacement_maps = _load_displacement_maps(artifacts)
+    displacement_maps = load_displacement_maps(
+        artifacts.field_paths_by_vessel,
+        _displacement_method_name(artifacts.registration_method or DEFAULT_REGISTRATION_METHOD),
+    )
     try:
         for vessel_name, profiles in tuple(results.items()):
             topology = profiles.topology.prepared_topology
@@ -108,42 +115,9 @@ def attach_displacement_segment_profiles(
                 displacements=displacement_results,
             )
     finally:
-        _release_displacement_maps(displacement_maps)
+        release_displacement_maps(displacement_maps)
         artifacts.cleanup()
     return results
-
-
-def _load_displacement_maps(
-    artifacts: DisplacementMapArtifacts,
-) -> dict[str, dict[str, object]]:
-    method = _displacement_method_name(
-        artifacts.registration_method or DEFAULT_REGISTRATION_METHOD
-    )
-    loaded_by_path: dict[str, object] = {}
-    displacement_maps: dict[str, dict[str, object]] = {}
-    for vessel, field_path in artifacts.field_paths_by_vessel.items():
-        normalized_path = str(field_path.resolve())
-        displacement_map = loaded_by_path.get(normalized_path)
-        if displacement_map is None:
-            displacement_map = np.load(field_path, mmap_mode="r")
-            loaded_by_path[normalized_path] = displacement_map
-        displacement_maps[vessel] = {method: displacement_map}
-    return displacement_maps
-
-
-def _release_displacement_maps(
-    displacement_maps: Mapping[str, Mapping[str, object]],
-) -> None:
-    closed: set[int] = set()
-    for maps_for_vessel in displacement_maps.values():
-        for displacement_map in maps_for_vessel.values():
-            identity = id(displacement_map)
-            if identity in closed:
-                continue
-            closed.add(identity)
-            mmap = getattr(displacement_map, "_mmap", None)
-            if mmap is not None:
-                mmap.close()
 
 
 def _displacement_method_name(value) -> str:
@@ -191,7 +165,7 @@ def run_displacement_map(
             algorithm_config = MotionMapConfig(
                 input=Path(source_filename),
                 output_dir=output_dir,
-                h5_dataset=inputs.moment.name.lstrip("/"),
+                h5_dataset=normalize_h5_path(inputs.moment.name),
                 h5_fps=inputs.fps,
                 registration_method=selected.registration_method,
                 save_field=True,
@@ -239,7 +213,7 @@ def load_displacement_map_inputs(
     """Resolve the root HD moment and aligned DV vessel mask."""
 
     ctx.require_inputs("hd", "dv")
-    moment = resolve_moment_dataset(ctx.inputs.hd.h5file, config.moment_path)
+    moment = ctx.inputs.hd.as_holodoppler().named_root_moment_dataset(config.moment_path)
     spatial_shape = tuple(int(size) for size in moment.shape[-2:])
     dv = ctx.inputs.dv.as_dopplerview()
     dv_shape = tuple(int(size) for size in dv.retinal_artery_mask().shape[-2:])
@@ -329,25 +303,7 @@ def resolve_moment_dataset(
 
     if h5file is None:
         raise ValueError("The HoloDoppler HDF5 input is required.")
-    normalized = str(moment_path).replace("\\", "/").strip("/")
-    if not normalized or "/" in normalized:
-        raise ValueError("The HoloDoppler moment must be a root dataset name.")
-
-    candidates = (normalized, "M0") if normalized == "moment0" else (normalized,)
-    for candidate in candidates:
-        found = h5file.get(candidate)
-        if found is None:
-            continue
-        if not isinstance(found, h5py.Dataset) or found.ndim != 3:
-            raise ValueError(
-                f"HoloDoppler moment '{candidate}' must be a 3-D dataset, "
-                f"got {getattr(found, 'shape', None)}."
-            )
-        return found
-    raise KeyError(
-        "Missing HoloDoppler root moment dataset. Tried: "
-        + ", ".join(repr(candidate) for candidate in candidates)
-    )
+    return PipelineInputSource(h5file=h5file, label="HD").as_holodoppler().named_root_moment_dataset(moment_path)
 
 
 def resolve_retina_mask(
@@ -373,7 +329,12 @@ def resolve_retina_mask(
     else:
         raise ValueError(f"Unknown displacement-map mask mode: {mode!r}")
 
-    aligned = _align_mask(mask, spatial_shape, source)
+    value = np.squeeze(np.asarray(mask))
+    if value.ndim != 2:
+        raise ValueError(
+            f"DopplerView mask '{source}' must become 2-D after squeeze, got {value.shape}."
+        )
+    aligned, _ = align_mask(value != 0, spatial_shape, source)
     if not np.any(aligned):
         raise ValueError(f"DopplerView mask '{source}' contains no vessel pixels.")
     return aligned, source
@@ -418,32 +379,7 @@ def _required_mask(h5file: h5py.File, path: str) -> np.ndarray:
 
 
 def _optional_mask(h5file: h5py.File, path: str) -> np.ndarray | None:
-    found = h5file.get(path)
-    if found is None:
-        return None
-    if not isinstance(found, h5py.Dataset):
-        raise ValueError(f"DopplerView mask path '{path}' is not a dataset.")
-    return np.asarray(found[()])
-
-
-def _align_mask(
-    mask: np.ndarray,
-    spatial_shape: tuple[int, int],
-    source: str,
-) -> np.ndarray:
-    value = np.squeeze(np.asarray(mask))
-    if value.ndim != 2:
-        raise ValueError(
-            f"DopplerView mask '{source}' must become 2-D after squeeze, got {value.shape}."
-        )
-    if value.shape == spatial_shape:
-        return np.asarray(value != 0, dtype=bool)
-    if value.T.shape == spatial_shape:
-        return np.asarray(value.T != 0, dtype=bool)
-    raise ValueError(
-        f"DopplerView mask '{source}' shape {value.shape} does not match "
-        f"HoloDoppler spatial shape {spatial_shape} in either axis order."
-    )
+    return PipelineInputSource(h5file=h5file, label="DV").as_dopplerview().retinal_mask(path)
 
 
 def resolve_frame_rate(ctx, fallback: float = DEFAULT_FPS) -> float:

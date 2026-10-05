@@ -5,6 +5,7 @@ from time import perf_counter
 import h5py
 
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.eyeflow_output import VELOCITY_PROFILE_ANALYSIS_ROOT as OUTPUT_ROOT
 from pipeline_engine.base import DatasetValue
 from utils.logger import Logger
 
@@ -15,7 +16,6 @@ SOURCE_PATHS = {
     "Artery": _schema.artery_velocity_profiles.transverse_velocity_profile_masked,
     "Vein": _schema.vein_velocity_profiles.transverse_velocity_profile_masked,
 }
-OUTPUT_ROOT = "/Processing/VelocityProfileAnalysis"
 
 
 def run_velocity_profile_analysis(ctx) -> dict[str, object]:

@@ -9,6 +9,9 @@ import h5py
 import numpy as np
 
 from calculations.math.temporal_median import CenteredMedianBuffer
+from calculations.temporal_reference import compute_mean_reference
+from input_output.displacement_storage import OutputCaches
+from input_output.frame_sequences import FrameSequence, load_binary_mask
 from input_output.writers.magnitude_avi import write_magnitude_avi
 from input_output.writers.png import write_png_file
 
@@ -23,7 +26,6 @@ except ImportError:
     tqdm = None
 
 from .constants import PDE_REGISTRATION_METHODS
-from .outputs import OutputCaches
 from .parameters import MotionMapConfig, PhotometricConfig
 from .preprocessing import (
     photometric_confidence,
@@ -35,7 +37,6 @@ from .registration import (
     registration_method_class_name,
     require_registration_backend,
 )
-from .sources import FrameSequence, compute_mean_reference, load_binary_mask
 
 
 def create_retinal_motion_map(

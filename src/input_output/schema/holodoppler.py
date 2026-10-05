@@ -6,6 +6,8 @@ import json
 from collections.abc import Mapping
 
 import numpy as np
+import h5py
+
 
 from .base import SourceFileLayout, TypedSource
 from .source_data import HolodopplerMetadata, HolodopplerTiming, PixelPitch
@@ -40,6 +42,29 @@ class HolodopplerSource(TypedSource):
 
     def moment0_dataset(self):
         return self._moment_dataset(HD_MOMENT0_PATHS)
+
+    def named_root_moment_dataset(self, moment_path: str = HD_MOMENT0_PATH):
+        """Resolve a selected root moment, including the legacy M0 alias."""
+        from ..writers.h5 import normalize_h5_path
+
+        normalized = normalize_h5_path(moment_path)
+        if not normalized or "/" in normalized:
+            raise ValueError("The HoloDoppler moment must be a root dataset name.")
+        candidates = HD_MOMENT0_PATHS if normalized == HD_MOMENT0_PATH else (normalized,)
+        for candidate in candidates:
+            found = self._reader.get(candidate)
+            if found is None:
+                continue
+            if not isinstance(found, h5py.Dataset) or found.ndim != 3:
+                raise ValueError(
+                    f"HoloDoppler moment '{candidate}' must be a 3-D dataset, "
+                    f"got {getattr(found, 'shape', None)}."
+                )
+            return found
+        raise KeyError(
+            "Missing HoloDoppler root moment dataset. Tried: "
+            + ", ".join(repr(candidate) for candidate in candidates)
+        )
 
     def moment2_dataset(self):
         return self._moment_dataset(HD_MOMENT2_PATHS)

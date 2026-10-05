@@ -10,6 +10,7 @@ import h5py
 import numpy as np
 
 from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
+from ..payloads import dataset_parts
 
 SCRATCH_CHUNK_CACHE_BYTES = 128 * 1024 * 1024
 SCRATCH_BLOCK_BYTES = 64 * 1024 * 1024
@@ -55,8 +56,45 @@ def profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
     return options
 
 
+def velocity_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
+    options: dict[str, object] = {"compression": "lzf", "shuffle": True}
+    if len(shape) in (6, 7) and all(shape):
+        options["chunks"] = (
+            (shape[0], shape[1], 1, 1, 1, 1)
+            if len(shape) == 6
+            else (shape[0], shape[1], 1, 1, 1, 1, shape[-1])
+        )
+    return options
+
+
+def segment_mask_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
+    options: dict[str, object] = {
+        "dtype": np.bool_, "compression": "gzip", "compression_opts": 4,
+        "shuffle": True,
+    }
+    if len(shape) == 4 and all(shape):
+        options["chunks"] = (shape[0], shape[1], 1, 1)
+    return options
+
+
 def normalize_h5_path(path: object) -> str:
     return str(path).replace("\\", "/").strip("/")
+
+
+def absolute_h5_path(path: str | None) -> str | None:
+    return None if path is None else f"/{normalize_h5_path(path)}"
+
+
+def create_velocity_video_dataset(
+    scratch_h5: h5py.File, shape: tuple[int, int, int]
+) -> h5py.Dataset:
+    return scratch_h5.require_group("waveform").create_dataset(
+        "velocity",
+        shape=shape,
+        dtype=np.float32,
+        chunks=(min(64, shape[0]), min(32, shape[1]), min(32, shape[2])),
+        compression=None,
+    )
 
 
 def open_h5(path: Path | str, mode: str = "r") -> h5py.File:
@@ -108,16 +146,7 @@ def set_attr_safe(h5obj: h5py.File | h5py.Group | h5py.Dataset, key: str, value)
 
 
 def write_value_dataset(group: h5py.Group, key: str, value) -> None:
-    ds_attrs = None
-    h5_options = None
-    data = value
-
-    if hasattr(value, "data") and hasattr(value, "attrs"):
-        data = value.data
-        ds_attrs = value.attrs
-        h5_options = getattr(value, "h5_options", None)
-    elif isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
-        data, ds_attrs = value
+    data, ds_attrs, h5_options = dataset_parts(value)
 
     target_group, dataset_key = resolve_dataset_target(group, str(key))
     if dataset_key in target_group:
@@ -137,6 +166,28 @@ def write_value_dataset(group: h5py.Group, key: str, value) -> None:
 
     if "nameID" not in (ds_attrs or {}):
         set_attr_safe(dataset, "nameID", str(key))
+
+
+def metric_data(data):
+    """Prepare a metric without narrowing integers before HDF5 storage."""
+    if isinstance(data, (bool, np.bool_)):
+        return data
+    if isinstance(data, (int, float, complex)):
+        return _downcast_numeric_payload(data)
+    if isinstance(data, (list, tuple)):
+        return _downcast_numeric_payload(_array_from_sequence(data))
+    return _downcast_numeric_payload(np.asarray(data))
+
+
+def metric_value(data, *, unit: str | None = None, dim_desc=None):
+    """Attach standard metric metadata using the shared numeric policy."""
+    attrs: dict[str, object] = {}
+    if unit:
+        attrs["unit"] = unit
+    if dim_desc:
+        attrs["dimDesc"] = list(dim_desc)
+    value = metric_data(data)
+    return (value, attrs) if attrs else value
 
 
 def initialize_output_h5(

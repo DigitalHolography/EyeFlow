@@ -8,6 +8,10 @@ from scipy import ndimage as ndi
 from calculations.topology import segment_mask_areas_pixels
 from calculations.topology.geometry import AnnulusGeometry, image_half_diagonal
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.serialization import (
+    serialize_label_map as _serialize_label_map,
+    serialize_spatial_image as _serialize_spatial_image,
+)
 
 from .retinal_velocity.outputs import metric_data
 
@@ -52,7 +56,7 @@ def _pack_segmentation_outputs(
     pixel_pitch,
     output_paths: EyeFlowOutputPaths | str | None,
 ) -> dict[str, object]:
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     artery_mask = np.asarray(artery_mask, dtype=bool)
     vein_mask = np.asarray(vein_mask, dtype=bool)
     image_shape = tuple(int(size) for size in artery_mask.shape)
@@ -407,14 +411,6 @@ def _annulus_outlines(
     return outlines
 
 
-def _serialize_label_map(image: np.ndarray) -> np.ndarray:
-    return np.flip(np.asarray(image, dtype=np.int32), axis=0).T.copy()
-
-
-def _serialize_spatial_image(image: np.ndarray) -> np.ndarray:
-    return np.flip(np.asarray(image), axis=0).T.copy()
-
-
 def _mask_attrs(source: str) -> dict[str, object]:
     return {
         "dimDesc": ["x", "y"],
@@ -453,11 +449,3 @@ def _label_map_attrs(
 
 def _segmentation_value(data, attrs: dict[str, object]):
     return metric_data(data), attrs
-
-
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)

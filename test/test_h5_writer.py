@@ -19,6 +19,7 @@ if str(SRC_DIR) not in sys.path:
 
 from input_output.writers.h5 import (  # noqa: E402
     initialize_output_h5,
+    metric_value,
     set_attr_safe,
     write_value_dataset,
 )
@@ -55,6 +56,15 @@ class H5WriterTests(unittest.TestCase):
                 h5file["unsigned_list"][()], np.array([0, 2**63 + 1], dtype=np.uint64)
             )
             self.assertEqual(2**40, h5file.attrs["large_integer"])
+
+    def test_metric_value_uses_same_range_safe_integer_policy(self) -> None:
+        with h5py.File("metric_integer_test.h5", "w", driver="core", backing_store=False) as h5file:
+            write_value_dataset(h5file, "signed", metric_value(np.array([2**40], dtype=np.int64)))
+            write_value_dataset(h5file, "unsigned", metric_value([2**63 + 1]))
+            self.assertEqual(2**40, h5file["signed"][0])
+            self.assertEqual(2**63 + 1, h5file["unsigned"][0])
+            with self.assertRaises(OverflowError):
+                metric_value([-1, 2**63 + 1])
 
     def test_integer_outside_hdf5_range_raises(self) -> None:
         with h5py.File("integer_writer_test.h5", "w", driver="core", backing_store=False) as h5file:

@@ -10,6 +10,10 @@ from calculations.math import nanmean_float32
 from calculations.topology import dilate_segment_masks, interpolate_profiles_per_beat
 from input_output.writers.h5 import profile_h5_options
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
+from input_output.schema.eyeflow_output import (
+    DISPLACEMENT_METRICS_ROOT as _DISPLACEMENT_METRICS_ROOT,
+    DISPLACEMENT_PROFILE_ROOT as _DISPLACEMENT_PROFILE_ROOT,
+)
 from pipeline_engine.base import DatasetValue
 from pipelines.displacement_map.constants import registration_method_output_name
 from pipelines.shared.profile_datasets import (
@@ -18,8 +22,6 @@ from pipelines.shared.profile_datasets import (
 )
 
 _PROFILE_MASK_DILATION_ITERATIONS = 10
-_DISPLACEMENT_PROFILE_ROOT = "Processing/Displacement/Profiles"
-_DISPLACEMENT_METRICS_ROOT = "Processing/Displacement/Metrics"
 _DISPLACEMENT_PROFILE_FIELDS = (
     ("X", "x_sum_profile", "local_x"),
     ("Y", "y_sum_profile", "local_y"),
@@ -34,7 +36,7 @@ def pack_cross_section_profile_outputs(
     *,
     index_base: int = 0,
 ) -> dict[str, object]:
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     metrics = _pack_vessel_profiles(
         schema.artery_velocity_profiles,
         artery_segments,
@@ -852,12 +854,6 @@ def _segment_displacement_magnitude_dataset(
     )
 
 
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)
 
 def pack_velocity_profile_fft_outputs(
     artery_segments,
@@ -866,7 +862,7 @@ def pack_velocity_profile_fft_outputs(
 ) -> dict[str, object]:
     """Pack FFT profiles accumulated during streamed segment processing."""
 
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     outputs = _pack_vessel_velocity_fft_profiles(
         schema.artery_velocity_profiles,
         artery_segments,

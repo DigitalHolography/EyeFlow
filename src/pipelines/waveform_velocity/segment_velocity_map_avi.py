@@ -12,6 +12,7 @@ import warnings
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
+from input_output.writers.h5 import absolute_h5_path as _absolute_h5_path
 from input_output.writers.avi import AviArtifactWriter
 from utils.logger import Logger
 
@@ -94,7 +95,7 @@ def export_segment_velocity_map_avis(
         return []
     export_wall_started = perf_counter()
     export_cpu_started = process_time()
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     sources: list[_MosaicSource | None] = []
     for vessel, segments, path in (
         (
@@ -540,17 +541,3 @@ def _video_metadata(
             for tile in source.tiles
         ],
     }
-
-
-def _absolute_h5_path(path: str | None) -> str | None:
-    if path is None:
-        return None
-    return f"/{path.lstrip('/')}"
-
-
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)

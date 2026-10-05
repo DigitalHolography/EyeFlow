@@ -1,4 +1,4 @@
-"""Frame-sequence and analysis-mask input helpers."""
+"""Frame-sequence and image-mask readers for input files."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import numpy as np
+from .writers.h5 import normalize_h5_path
 
 try:
     import cv2
@@ -18,12 +19,6 @@ try:
     import h5py
 except ImportError:
     h5py = None
-
-try:
-    from tqdm import tqdm
-except ImportError:
-    tqdm = None
-
 
 class FrameSequence:
     def __init__(
@@ -42,8 +37,8 @@ class FrameSequence:
         self.is_h5 = h5_source is not None or path.suffix.lower() in {
             ".h5", ".hdf5", ".hdf"
         }
-        self.h5_dataset = h5_dataset.lstrip("/")
-        if h5_source is not None and h5_source.name.lstrip("/") != self.h5_dataset:
+        self.h5_dataset = normalize_h5_path(h5_dataset)
+        if h5_source is not None and normalize_h5_path(h5_source.name) != self.h5_dataset:
             raise ValueError(
                 f"Supplied HDF5 dataset {h5_source.name!r} does not match "
                 f"the requested path {self.h5_dataset!r}."
@@ -60,7 +55,7 @@ class FrameSequence:
             with self._open_h5_dataset() as dataset:
                 if not isinstance(dataset, h5py.Dataset) or dataset.ndim != 3:
                     raise RuntimeError(
-                        f"Le dataset {self.h5_dataset} doit être 3-D, forme trouvée : "
+                        f"Le dataset {self.h5_dataset} doit Ãªtre 3-D, forme trouvÃ©e : "
                         f"{getattr(dataset, 'shape', None)}"
                     )
                 shape = tuple(int(v) for v in dataset.shape)
@@ -80,7 +75,7 @@ class FrameSequence:
             self.fps = float(capture.get(cv2.CAP_PROP_FPS))
             capture.release()
             if self.width <= 0 or self.height <= 0:
-                raise RuntimeError("Dimensions vidéo invalides.")
+                raise RuntimeError("Dimensions vidÃ©o invalides.")
             if not math.isfinite(self.fps) or self.fps <= 0:
                 self.fps = 25.0
 
@@ -95,7 +90,7 @@ class FrameSequence:
                 available = ", ".join(sorted(handle.keys()))
                 raise RuntimeError(
                     f"Dataset HDF5 introuvable : {self.h5_dataset}. "
-                    f"Clés disponibles : {available}"
+                    f"ClÃ©s disponibles : {available}"
                 )
             yield handle[self.h5_dataset]
 
@@ -105,7 +100,7 @@ class FrameSequence:
         frame = np.asarray(dataset[tuple(selector)], dtype=np.float32)
         frame = np.squeeze(frame)
         if frame.ndim != 2:
-            raise RuntimeError(f"Une frame HDF5 doit être 2-D, forme trouvée : {frame.shape}")
+            raise RuntimeError(f"Une frame HDF5 doit Ãªtre 2-D, forme trouvÃ©e : {frame.shape}")
         return frame
 
     def _estimate_h5_range(self) -> tuple[float, float]:
@@ -178,23 +173,3 @@ def load_binary_mask(path: Path, shape: tuple[int, int], invert: bool) -> np.nda
         mask = cv2.resize(mask, (shape[1], shape[0]), interpolation=cv2.INTER_NEAREST)
     mask = (mask > 0).astype(np.uint8) * 255
     return cv2.bitwise_not(mask) if invert else mask
-
-
-def compute_mean_reference(
-    sequence: FrameSequence,
-    max_frames: int | None,
-) -> tuple[np.ndarray, int]:
-    accumulator: np.ndarray | None = None
-    count = 0
-    total = sequence.frame_count if max_frames is None else min(sequence.frame_count, max_frames)
-    for frame in tqdm(
-        sequence.iter_frames(max_frames), total=total, desc="Référence moyenne", unit="frame"
-    ):
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float64) / 255.0
-        if accumulator is None:
-            accumulator = np.zeros_like(gray, dtype=np.float64)
-        accumulator += gray
-        count += 1
-    if accumulator is None or count == 0:
-        raise RuntimeError("Aucune frame lisible.")
-    return (accumulator / count).astype(np.float32), count

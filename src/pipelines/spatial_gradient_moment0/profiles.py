@@ -16,14 +16,16 @@ from calculations.math.spatial_gradient import (
     unsharpen,
 )
 from calculations.segment_profiles import analyze_segment_profiles
+from input_output.schema.eyeflow_output import (
+    SPATIAL_GRADIENT_METRICS_ROOT,
+    SPATIAL_GRADIENT_PROFILE_ROOT,
+)
 from pipelines.shared.profile_datasets import (
     _profile_dataset,
     _temporally_meaned_profile_dataset,
 )
 from pipeline_engine.base import DatasetValue
 
-SPATIAL_GRADIENT_PROFILE_ROOT = "Processing/SpatialGradientProfiles"
-SPATIAL_GRADIENT_METRICS_ROOT = "Processing/SpatialGradientMetrics"
 SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES = 5
 TBKR_LUMEN_SIZE_QC_THRESHOLD = 0.5
 _SPATIAL_GRADIENT_MASK_DILATION_PIXELS = 5

@@ -20,7 +20,7 @@ from input_output.writers.magnitude_avi import select_display_range  # noqa: E40
 from pipelines.displacement_map.constants import (  # noqa: E402
     registration_method_output_name,
 )
-from pipelines.displacement_map.outputs import OutputCaches  # noqa: E402
+from input_output.displacement_storage import OutputCaches  # noqa: E402
 from pipelines.waveform_velocity.profiles import (  # noqa: E402
     pack_cross_section_displacement_profile_outputs,
     pack_displacement_magnitude_outputs,

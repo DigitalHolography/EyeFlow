@@ -14,8 +14,10 @@ from calculations.blood_volume_rate import (
     total_masked_edges_flow,
 )
 from calculations.math import nanmean_float32, nanmedian
+from input_output.payloads import payload_array as _metric_data
 from input_output.writers.h5 import profile_h5_options
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.eyeflow_output import gradient_edge_path
 from input_output.writers.eps import EpsArtifactWriter, write_eps_file
 from input_output.writers.png import PngArtifactWriter, write_png_figure
 from pipeline_engine.base import DatasetValue
@@ -47,7 +49,7 @@ def pack_gradient_edge_outputs(
 ) -> dict[str, DatasetValue]:
     """Calculate dynamic- and static-edge flow for both vessel classes."""
 
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     outputs: dict[str, DatasetValue] = {}
     vessels = (
         (
@@ -72,12 +74,8 @@ def pack_gradient_edge_outputs(
             spatial_axis="x",
             valid_segments=np.asarray(velocity.topology.valid_segments, dtype=bool),
         )
-        metrics_root = (
-            f"Processing/SpatialGradientMetrics/{vessel_name}/"
-            "Transverse/Masked/tbkr"
-        )
-        left_path = f"{metrics_root}/left_edge_index"
-        right_path = f"{metrics_root}/right_edge_index"
+        left_path = gradient_edge_path(vessel_name, "left_edge_index")
+        right_path = gradient_edge_path(vessel_name, "right_edge_index")
         left_value = gradient_products.outputs[left_path]
         right_value = gradient_products.outputs[right_path]
         pixel_size_mm = float(velocity.profile_pixel_size_mm)
@@ -159,7 +157,7 @@ def pack_mask_derived_outputs(
 ) -> dict[str, DatasetValue]:
     """Calculate masked-edge and total masked-edge flow for both vessels."""
 
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     diameters, _, radial_widths = mask_derived_lumen_geometry(
         (prepared_topologies["artery"], prepared_topologies["vein"]),
         pixel_size_mm=pixel_size_mm,
@@ -509,20 +507,8 @@ def _validate_profile_segment_alignment(vessel_name, velocity, gradient) -> None
         raise RuntimeError(f"{vessel_name} analyses did not share prepared topology.")
 
 
-def _metric_data(value) -> np.ndarray:
-    if isinstance(value, DatasetValue):
-        value = value.data
-    elif isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
-        value = value[0]
-    return np.asarray(value)
 
 
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)
 
 
 __all__ = [

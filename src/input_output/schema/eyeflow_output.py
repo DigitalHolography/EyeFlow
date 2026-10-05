@@ -5,6 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 EYEFLOW_V2_OUTPUT_SCHEMA = "eyeflow_v2"
+SPATIAL_GRADIENT_PROFILE_ROOT = "Processing/SpatialGradientProfiles"
+SPATIAL_GRADIENT_METRICS_ROOT = "Processing/SpatialGradientMetrics"
+DISPLACEMENT_PROFILE_ROOT = "Processing/Displacement/Profiles"
+DISPLACEMENT_METRICS_ROOT = "Processing/Displacement/Metrics"
+DISPLACEMENT_MAP_ROOT = "Processing/Displacement/Map"
+VELOCITY_PROFILE_ANALYSIS_ROOT = "/Processing/VelocityProfileAnalysis"
+
+
+def gradient_edge_path(vessel: str, edge: str) -> str:
+    return f"{SPATIAL_GRADIENT_METRICS_ROOT}/{vessel}/Transverse/Masked/tbkr/{edge}"
 
 
 @dataclass(frozen=True)
@@ -120,7 +130,9 @@ class EyeFlowOutputPaths:
     blood_volume_rate: BloodVolumeRateOutputPaths
 
     @staticmethod
-    def active(name: str | None = None) -> "EyeFlowOutputPaths":
+    def active(name: EyeFlowOutputPaths | str | None = None) -> "EyeFlowOutputPaths":
+        if isinstance(name, EyeFlowOutputPaths):
+            return name
         if name is not None and name != EYEFLOW_V2_OUTPUT_SCHEMA:
             raise ValueError(
                 f"Unknown EyeFlow output schema '{name}'. "
