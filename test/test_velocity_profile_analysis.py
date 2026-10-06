@@ -5,17 +5,18 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import h5py
 import numpy as np
 
+from pipeline_engine.base import PIPELINE_REGISTRY, DatasetValue
 from pipeline_engine.context import PipelineH5Output
-from pipeline_engine.base import PIPELINE_REGISTRY
 from pipelines import load_pipeline_catalog
-from pipelines.velocity_profile_analysis import fitting
-from pipelines.velocity_profile_analysis.runner import (
+from pipelines.waveform_velocity.analysis.profiles import (
+    velocity_profile_analysis as fitting,
+)
+from pipelines.waveform_velocity.analysis.profiles.velocity_profile_analysis import (
     OUTPUT_ROOT,
     SOURCE_PATHS,
     run_velocity_profile_analysis,
@@ -153,12 +154,17 @@ class VelocityProfileFittingTests(unittest.TestCase):
         self.assertEqual((7, 1, 1, 1), result["a"].shape)
 
 
-class VelocityProfileAnalysisPipelineTests(unittest.TestCase):
-    def test_pipeline_is_visible_and_depends_on_waveform_velocity(self) -> None:
+class VelocityProfileAnalysisOptionTests(unittest.TestCase):
+    def test_analysis_is_a_waveform_option_not_an_independent_pipeline(self) -> None:
         load_pipeline_catalog()
-        descriptor = PIPELINE_REGISTRY["velocity_profile_analysis"]
-        self.assertEqual(("waveform_velocity",), descriptor.dag_requires)
-        self.assertEqual("visible", descriptor.visibility)
+        self.assertNotIn("velocity_profile_analysis", PIPELINE_REGISTRY)
+        options = {
+            option.name: option
+            for option in PIPELINE_REGISTRY["waveform_velocity"].options
+        }
+        analysis = options["velocity_profile_analysis"]
+        self.assertFalse(analysis.default_enabled)
+        self.assertEqual(("velocity_profiles",), analysis.requires)
 
     def test_both_vessels_publish_the_complete_identical_output_set(self) -> None:
         values = np.broadcast_to(
@@ -168,11 +174,12 @@ class VelocityProfileAnalysisPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             filename = Path(directory) / "analysis.h5"
             with h5py.File(filename, "w") as h5:
-                for source_path in SOURCE_PATHS.values():
-                    h5.create_dataset(source_path, data=values)
                 output = PipelineH5Output(h5)
                 results = run_velocity_profile_analysis(
-                    SimpleNamespace(output=SimpleNamespace(h5=output))
+                    {
+                        source_path.lstrip("/"): DatasetValue(values)
+                        for source_path in SOURCE_PATHS.values()
+                    }
                 )
                 output.write_many(results)
                 expected = set(fitting.FLOAT_OUTPUTS + fitting.COUNT_OUTPUTS)
@@ -200,16 +207,16 @@ class VelocityProfileAnalysisPipelineTests(unittest.TestCase):
 
     def test_missing_source_names_the_missing_vessel_and_path(self) -> None:
         for missing in SOURCE_PATHS:
-            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
-                with h5py.File(Path(directory) / "missing.h5", "w") as h5:
-                    for vessel, path in SOURCE_PATHS.items():
-                        if vessel != missing:
-                            h5.create_dataset(path, data=np.ones((9, 1, 1, 1, 1)))
-                    ctx = SimpleNamespace(
-                        output=SimpleNamespace(h5=PipelineH5Output(h5))
+            with self.subTest(missing=missing):
+                profile_outputs = {
+                    path.lstrip("/"): DatasetValue(
+                        np.ones((9, 1, 1, 1, 1))
                     )
-                    with self.assertRaisesRegex(KeyError, f"{missing.lower()}.*{missing}"):
-                        run_velocity_profile_analysis(ctx)
+                    for vessel, path in SOURCE_PATHS.items()
+                    if vessel != missing
+                }
+                with self.assertRaisesRegex(KeyError, f"{missing.lower()}.*{missing}"):
+                    run_velocity_profile_analysis(profile_outputs)
 
 
 if __name__ == "__main__":

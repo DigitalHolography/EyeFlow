@@ -29,7 +29,7 @@ from .plotting import (
 def _export_flow_maps(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
     velocity_map = ctx.retinal_velocity.maps.velocity
     velocity_avg = np.asarray(
-        ctx.retinal_velocity.maps.velocity_average,
+        ctx.retinal_velocity.maps.velocity_average_masked,
         dtype=np.float32,
     )
     velocity_avg_display = _display_velocity(velocity_avg)
@@ -110,7 +110,7 @@ def _histogram_plot(
     if velocity_map is None:
         velocity_map = _display_velocity(
             np.asarray(
-                ctx.retinal_velocity.maps.velocity_average,
+                ctx.retinal_velocity.maps.velocity_average_masked,
                 dtype=np.float32,
             )
         )[None, :, :]
@@ -175,7 +175,7 @@ def _combined_plot(
             velocity_map
             if velocity_map is not None
             else _display_velocity(
-                np.asarray(ctx.retinal_velocity.maps.velocity_average)
+                np.asarray(ctx.retinal_velocity.maps.velocity_average_masked)
             )[None, :, :]
         )
         histo = _histogram_matrix(

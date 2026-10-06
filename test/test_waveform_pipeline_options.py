@@ -14,8 +14,8 @@ from pipeline_engine.base import PIPELINE_REGISTRY
 from pipelines import load_pipeline_catalog
 from pipelines.lowrank_waveform_decomposition import runner as lowrank_runner
 from pipelines.waveform_shape_metrics import runner as metric_runner
-from pipelines.waveform_velocity import runner as velocity_runner
 from pipelines.waveform_velocity import builder as core_runner
+from pipelines.waveform_velocity import runner as velocity_runner
 
 
 class _State:
@@ -62,9 +62,12 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertEqual(("segments",), options["segment_velocity_maps"].requires)
         self.assertEqual(("segments",), options["velocity_profiles"].requires)
         self.assertEqual(("segments",), options["quadrants"].requires)
+        analysis = options["velocity_profile_analysis"]
         fft = options["velocity_profile_fft"]
         self.assertFalse(profiles.default_enabled)
+        self.assertFalse(analysis.default_enabled)
         self.assertFalse(fft.default_enabled)
+        self.assertEqual(("velocity_profiles",), analysis.requires)
         self.assertEqual(("velocity_profiles",), fft.requires)
 
     def test_lowrank_pipeline_includes_veins_and_selected_quadrants(self) -> None:
@@ -766,7 +769,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
         self.assertTrue(analyze.call_args.kwargs["velocity_profile_fft"])
         self.assertFalse(analyze.call_args.kwargs["retain_velocity_maps"])
 
-    def test_analysis_schedule_generates_both_source_profiles_automatically(self) -> None:
+    def test_analysis_option_generates_and_analyzes_both_source_profiles(self) -> None:
         context = SimpleNamespace(
             retinal_velocity={},
             artery_segments="artery",
@@ -776,9 +779,14 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             source_data=SimpleNamespace(provenance={"beat_index_base": 0}),
         )
         ctx = _context(
-            {"waveform_velocity": ()},
+            {
+                "waveform_velocity": (
+                    "segments",
+                    "velocity_profiles",
+                    "velocity_profile_analysis",
+                )
+            },
             {core_runner.WAVEFORM_VELOCITY_STATE: context},
-            scheduled={"waveform_velocity", "velocity_profile_analysis"},
         )
         with (
             patch.object(
@@ -805,10 +813,21 @@ class WaveformPipelineOptionTests(unittest.TestCase):
                 velocity_runner,
                 "pack_velocity_profile_fft_outputs",
             ) as fft,
+            patch.object(
+                velocity_runner,
+                "run_velocity_profile_analysis",
+                return_value={"analysis": 5},
+            ) as analyze,
         ):
             outputs = velocity_runner.run_waveform_velocity(ctx)
         self.assertEqual(
-            {"base": 1, "signals": 3, "per_beat": 4, "both_profiles": 2},
+            {
+                "base": 1,
+                "signals": 3,
+                "per_beat": 4,
+                "both_profiles": 2,
+                "analysis": 5,
+            },
             outputs,
         )
         profiles.assert_called_once_with(
@@ -818,6 +837,7 @@ class WaveformPipelineOptionTests(unittest.TestCase):
             index_base=0,
             velocity_analysis={},
         )
+        analyze.assert_called_once_with({"both_profiles": 2})
         fft.assert_not_called()
         self.assertTrue(core_runner._segments_required(ctx))
 

@@ -37,6 +37,18 @@ FREQUENCY_BAND_LF_PATH = f"/{HD_BAND_LF_PATH}"
 FREQUENCY_BAND_HF_PATH = f"/{HD_BAND_HF_PATH}"
 
 
+def _velocity_from_frequency(
+    frequency,
+    laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
+    numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
+) -> np.ndarray:
+    """Convert a Doppler frequency in Hz to velocity in mm/s."""
+    frequency = np.asarray(frequency, dtype=np.float32)
+    return (
+        np.float32(1e3) * laser_wavelength * frequency / numerical_aperture
+    ).astype(np.float32, copy=False)
+
+
 def _velocity_from_delta_frequency(
     delta_frequency,
     laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
@@ -143,6 +155,7 @@ def estimate_retinal_velocity(
         for name in (
             "background",
             "velocity",
+            "velocity_unmasked",
             "frms",
             "frms_background",
             "delta_frms",
@@ -222,6 +235,11 @@ def estimate_retinal_velocity(
             laser_wavelength=laser_wavelength,
             numerical_aperture=numerical_aperture,
         )
+        velocity_unmasked = _velocity_from_frequency(
+            f_rms,
+            laser_wavelength=laser_wavelength,
+            numerical_aperture=numerical_aperture,
+        )
 
         if velocity_dataset is not None:
             velocity_dataset[frame_slice] = velocity
@@ -231,6 +249,11 @@ def estimate_retinal_velocity(
             dtype=np.float64,
         )
         averages["velocity"] += np.sum(velocity, axis=0, dtype=np.float64)
+        averages["velocity_unmasked"] += np.sum(
+            velocity_unmasked,
+            axis=0,
+            dtype=np.float64,
+        )
         averages["frms"] += np.sum(f_rms, axis=0, dtype=np.float64)
         averages["frms_background"] += np.sum(
             f_rms_background,
@@ -303,7 +326,12 @@ def estimate_retinal_velocity(
             velocity=velocity_dataset,
             # In band mode this is the LF mean used as the display background.
             moment0_average=(averages["background"] / divisor).astype(np.float32),
-            velocity_average=(averages["velocity"] / divisor).astype(np.float32),
+            velocity_average=(averages["velocity_unmasked"] / divisor).astype(
+                np.float32
+            ),
+            velocity_average_masked=(averages["velocity"] / divisor).astype(
+                np.float32
+            ),
             frms_average=(averages["frms"] / divisor).astype(np.float32),
             frms_background_average=(
                 averages["frms_background"] / divisor

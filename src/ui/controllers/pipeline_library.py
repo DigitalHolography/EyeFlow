@@ -20,9 +20,8 @@ _PIPELINE_UI_ORDER = {
     "waveform_velocity": 0,
     "spatial_gradient_moment0": 1,
     "blood_volume_rate": 2,
-    "velocity_profile_analysis": 3,
-    "waveform_shape_metrics": 4,
-    "pdf_report": 5,
+    "waveform_shape_metrics": 3,
+    "pdf_report": 4,
 }
 
 

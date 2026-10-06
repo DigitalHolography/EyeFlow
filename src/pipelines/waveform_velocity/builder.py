@@ -106,14 +106,13 @@ def _segments_required(ctx) -> bool:
         "blood_volume_rate"
     ):
         return True
-    if ctx.pipeline_scheduled("velocity_profile_analysis"):
-        return True
     if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
         return True
     if ctx.pipeline_scheduled("waveform_velocity") and {
         "segments",
         "segment_velocity_maps",
         "velocity_profiles",
+        "velocity_profile_analysis",
         "velocity_profile_fft",
         "quadrants",
     } & ctx.options_for("waveform_velocity"):

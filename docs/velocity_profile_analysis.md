@@ -1,7 +1,8 @@
 # Velocity-profile analysis
 
-Selecting `velocity_profile_analysis` schedules the upstream waveform pipeline
-and its required profile products. Analysis reads both work-HDF5 datasets:
+Selecting the `waveform_velocity.velocity_profile_analysis` option also selects
+its required `velocity_profiles` and `segments` options. During the waveform
+run, analysis consumes the payloads published at both output paths:
 
 - `/Processing/VelocityProfiles/Artery/Transversal/Masked/VelocityProfile/value`
 - `/Processing/VelocityProfiles/Vein/Transversal/Masked/VelocityProfile/value`
@@ -23,7 +24,8 @@ The solver scales design rows and observations by `sqrt(w)` and works in
 float64 on centered/scaled coordinates. Stored coefficients refer to the original
 zero-based index coordinate. Time slabs contain at most 256 profiles per
 beat/branch/radius, and profiles sharing finite masks reuse the least-squares
-solve within each slab. The entire input dataset is not materialized.
+solve within each slab. It does not create a second full-size float64 copy of
+the profile payload.
 
 ## Output schema
 

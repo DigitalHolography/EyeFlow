@@ -10,7 +10,6 @@ from app_settings import normalize_pipeline_visibility
 from pipeline_engine import PipelineDAG
 from pipelines import load_pipeline_catalog
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -39,9 +38,6 @@ class DefaultSettingsTests(unittest.TestCase):
         }
         self.assertEqual(expected_options, configured_options)
         self.assertTrue(settings["pipeline_visibility"]["blood_volume_rate"])
-        self.assertFalse(
-            settings["pipeline_visibility"]["velocity_profile_analysis"]
-        )
         self.assertEqual(
             {"gradient_edges": False, "masked_edges": True},
             settings["pipeline_options"]["blood_volume_rate"],
@@ -49,6 +45,11 @@ class DefaultSettingsTests(unittest.TestCase):
         self.assertFalse(
             settings["pipeline_options"]["waveform_velocity"][
                 "velocity_profiles"
+            ]
+        )
+        self.assertFalse(
+            settings["pipeline_options"]["waveform_velocity"][
+                "velocity_profile_analysis"
             ]
         )
         self.assertEqual(
@@ -97,13 +98,16 @@ class DefaultSettingsTests(unittest.TestCase):
         )
 
         self.assertNotIn("spatial_gradient_moment0", plan.names)
-        self.assertNotIn("velocity_profile_analysis", plan.names)
         self.assertNotIn(
             "gradient_edges",
             options["blood_volume_rate"],
         )
         self.assertNotIn(
             "velocity_profiles",
+            options["waveform_velocity"],
+        )
+        self.assertNotIn(
+            "velocity_profile_analysis",
             options["waveform_velocity"],
         )
 

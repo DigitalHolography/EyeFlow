@@ -39,6 +39,13 @@ from .runner import run_waveform_velocity
             requires=("segments",),
         ),
         PipelineOption(
+            "velocity_profile_analysis",
+            "Velocity profile analysis",
+            "Weighted quadratic fits of artery and vein transverse profiles.",
+            default_enabled=False,
+            requires=("velocity_profiles",),
+        ),
+        PipelineOption(
             "velocity_profile_fft",
             "Velocity profile FFT",
             "Per-beat temporal FFTs of cross-section velocity profiles.",

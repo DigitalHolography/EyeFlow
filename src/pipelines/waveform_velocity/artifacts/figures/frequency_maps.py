@@ -72,7 +72,7 @@ def _export_frequency_maps(
         )
     )
     velocity_values = _velocity_gradient_values(
-        _display_velocity(maps.velocity_average),
+        _display_velocity(maps.velocity_average_masked),
         ctx.section_mask,
         None,
     )

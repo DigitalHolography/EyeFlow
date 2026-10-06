@@ -188,6 +188,11 @@ class ScratchAndSchemaTests(unittest.TestCase):
                 buffered.maps.velocity_average,
                 retained.maps.velocity_average,
             ),
+            (
+                "velocity_average_masked",
+                buffered.maps.velocity_average_masked,
+                retained.maps.velocity_average_masked,
+            ),
             ("frms_average", buffered.maps.frms_average, retained.maps.frms_average),
             (
                 "frms_background_average",
@@ -356,6 +361,10 @@ class ScratchAndSchemaTests(unittest.TestCase):
             schema.analysis.velocity_map_avg,
         )
         self.assertEqual(
+            "Processing/Maps/VelocityAverageMasked/value",
+            schema.analysis.velocity_map_avg_masked,
+        )
+        self.assertEqual(
             "Processing/Maps/FRMSAverage/value",
             schema.analysis.fRMS_avg,
         )
@@ -363,10 +372,7 @@ class ScratchAndSchemaTests(unittest.TestCase):
             "Processing/Maps/FRMSBackgroundAverage/value",
             schema.analysis.fRMS_bkg_avg,
         )
-        self.assertEqual(
-            "Processing/Maps/DeltaFRMSAverage/value",
-            schema.analysis.delta_fRMS_avg,
-        )
+        self.assertFalse(hasattr(schema.analysis, "delta_fRMS_avg"))
         self.assertFalse(hasattr(schema, "topology"))
         self.assertTrue(
             schema.segmentation.artery.branch_label_map.startswith("Segmentation/")
@@ -413,6 +419,7 @@ def _typed_velocity() -> RetinalVelocity:
             velocity=np.ones((8, 4, 4), dtype=np.float32),
             moment0_average=np.ones((4, 4), dtype=np.float32),
             velocity_average=np.ones((4, 4), dtype=np.float32),
+            velocity_average_masked=np.zeros((4, 4), dtype=np.float32),
             frms_average=np.ones((4, 4), dtype=np.float32),
             frms_background_average=np.ones((4, 4), dtype=np.float32),
             delta_frms_average=np.ones((4, 4), dtype=np.float32),
@@ -438,6 +445,7 @@ def _retinal_velocity_data_arrays(result) -> dict[str, np.ndarray]:
         "velocity": result.maps.velocity,
         "moment0_average": result.maps.moment0_average,
         "velocity_average": result.maps.velocity_average,
+        "velocity_average_masked": result.maps.velocity_average_masked,
         "frms_average": result.maps.frms_average,
         "frms_background_average": result.maps.frms_background_average,
         "delta_frms_average": result.maps.delta_frms_average,

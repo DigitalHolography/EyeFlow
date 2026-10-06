@@ -23,6 +23,7 @@ class RetinalVelocityMaps:
     velocity: object | None
     moment0_average: np.ndarray
     velocity_average: np.ndarray
+    velocity_average_masked: np.ndarray
     frms_average: np.ndarray
     frms_background_average: np.ndarray
     delta_frms_average: np.ndarray

@@ -14,8 +14,9 @@ from pipeline_engine.base import DatasetValue
 from pipelines.retinal_velocity.models import RetinalVelocity
 from pipelines.retinal_velocity.semantics import velocity_dataset_attrs
 
-from ..analysis.profiles import DEFAULT_PROFILE_MASK_DILATION_ITERATIONS
+from ..analysis.profiles.profiles import DEFAULT_PROFILE_MASK_DILATION_ITERATIONS
 from .paths import resolve_output_paths
+
 
 def pack_cross_section_profile_outputs(
     artery_segments,

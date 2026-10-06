@@ -80,6 +80,24 @@ def test_frequency_band_estimator_converts_ratio_frequency_to_mm_per_second() ->
     )
     np.testing.assert_allclose(velocity[:, artery], expected, rtol=1e-5)
     np.testing.assert_allclose(velocity[:, vein], expected, rtol=1e-5)
+    np.testing.assert_allclose(
+        result.maps.velocity_average_masked,
+        np.mean(velocity, axis=0),
+        rtol=1e-5,
+    )
+    raw_velocity_scale = np.float32(
+        1e3 * DEFAULT_LASER_WAVELENGTH_METERS / DEFAULT_NUMERICAL_APERTURE
+    )
+    np.testing.assert_allclose(
+        result.maps.velocity_average[artery | vein],
+        raw_velocity_scale * np.float32(4.0),
+        rtol=1e-5,
+    )
+    np.testing.assert_allclose(
+        result.maps.velocity_average[~(artery | vein)],
+        raw_velocity_scale,
+        rtol=1e-5,
+    )
     np.testing.assert_array_equal(result.maps.moment0_average, np.ones(shape[1:]))
     np.testing.assert_allclose(result.maps.frms_average[artery | vein], 4.0)
     assert result.provenance["velocity_estimation_method"] == "frequency_bands"
@@ -381,6 +399,9 @@ def test_frequency_band_estimator_is_independent_of_frame_chunk_size() -> None:
                     "velocity_map": np.asarray(result.maps.velocity).copy(),
                     "moment0_avg": result.maps.moment0_average.copy(),
                     "velocity_map_avg": result.maps.velocity_average.copy(),
+                    "velocity_map_avg_masked": (
+                        result.maps.velocity_average_masked.copy()
+                    ),
                     "fRMS_avg": result.maps.frms_average.copy(),
                     "fRMS_bkg_avg": result.maps.frms_background_average.copy(),
                     "deltafRMS_avg": result.maps.delta_frms_average.copy(),
@@ -447,10 +468,23 @@ def test_frequency_maps_are_persisted_in_hz_with_calibration_provenance() -> Non
     analysis = SimpleNamespace(
         provenance=provenance,
         maps=SimpleNamespace(
-            velocity_average=np.ones((2, 2), dtype=np.float32),
-            frms_average=np.ones((2, 2), dtype=np.float32),
-            frms_background_average=np.ones((2, 2), dtype=np.float32),
-            delta_frms_average=np.zeros((2, 2), dtype=np.float32),
+            velocity_average=np.asarray(
+                [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+                dtype=np.float32,
+            ),
+            velocity_average_masked=np.asarray(
+                [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
+                dtype=np.float32,
+            ),
+            frms_average=np.asarray(
+                [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]],
+                dtype=np.float32,
+            ),
+            frms_background_average=np.asarray(
+                [[19.0, 20.0, 21.0], [22.0, 23.0, 24.0]],
+                dtype=np.float32,
+            ),
+            delta_frms_average=np.zeros((2, 3), dtype=np.float32),
         ),
         cardiac_cycle=SimpleNamespace(spectral=spectral),
         cycle_boundary_indexes=np.asarray([0, 1], dtype=np.int32),
@@ -460,10 +494,43 @@ def test_frequency_maps_are_persisted_in_hz_with_calibration_provenance() -> Non
     outputs = pack_retinal_velocity_outputs(analysis)
     attrs = outputs[schema.analysis.fRMS_avg][1]
 
+    np.testing.assert_array_equal(
+        outputs[schema.analysis.velocity_map_avg][0],
+        np.asarray(
+            [[4.0, 1.0], [5.0, 2.0], [6.0, 3.0]],
+            dtype=np.float32,
+        ),
+    )
+    np.testing.assert_array_equal(
+        outputs[schema.analysis.velocity_map_avg_masked][0],
+        np.asarray(
+            [[10.0, 7.0], [11.0, 8.0], [12.0, 9.0]],
+            dtype=np.float32,
+        ),
+    )
+    np.testing.assert_array_equal(
+        outputs[schema.analysis.fRMS_avg][0],
+        np.asarray(
+            [[16.0, 13.0], [17.0, 14.0], [18.0, 15.0]],
+            dtype=np.float32,
+        ),
+    )
+    np.testing.assert_array_equal(
+        outputs[schema.analysis.fRMS_bkg_avg][0],
+        np.asarray(
+            [[22.0, 19.0], [23.0, 20.0], [24.0, 21.0]],
+            dtype=np.float32,
+        ),
+    )
+    assert "Processing/Maps/DeltaFRMSAverage/value" not in outputs
     assert attrs["unit"] == "Hz"
     assert attrs["quantity"] == "rms_frequency"
     assert attrs["velocity_estimation_method"] == "frequency_bands"
     assert attrs["band_ratio_frequency_scale_hz"] == 2.0
+    assert attrs["dimDesc"] == ["x", "y"]
+    assert attrs["coordinate_system"] == "image_pixel"
+    assert attrs["image_origin"] == "lower_left"
+    assert attrs["y_axis_direction"] == "increasing_toward_north"
 
 
 def test_dimensionless_velocity_metadata_is_rejected() -> None:

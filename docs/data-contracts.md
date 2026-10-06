@@ -147,6 +147,16 @@ families are:
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
 - `/Meta` for provenance and selected pass-through data.
 
+`/Processing/Maps/VelocityAverage/value` is the temporal mean of the
+calibrated RMS-frequency velocity before vessel-mask-dependent background
+subtraction. `/Processing/Maps/VelocityAverageMasked/value` is the temporal
+mean of the background-subtracted velocity used by the vessel waveform
+analysis. The intermediate delta-frequency average is not persisted.
+All two-dimensional datasets under `/Processing/Maps` are serialized in the
+same lower-left `(x, y)` image frame as
+`/Segmentation/Artery/BranchLabelMap/value`: the internal `(y, x)` array is
+flipped vertically and transposed before persistence.
+
 Do not hand-copy path strings into new consumers. Obtain them from the schema or
 from a pipeline-owned constant when the path family has not yet been centralized.
 Writers normalize leading/trailing separators, replace an existing dataset at
@@ -171,7 +181,7 @@ blood-volume-rate datasets identify these inputs as `transient_run_state` and
 do not expose dangling HDF5 source-path attributes.
 
 The release-default selection disables `gradient_edges`, velocity profiles,
-and `velocity_profile_analysis`. Its HDF5 therefore omits
+and the waveform `velocity_profile_analysis` option. Its HDF5 therefore omits
 `/Processing/SpatialGradientProfiles`,
 `/Processing/SpatialGradientMetrics`,
 `/Processing/BloodVolumeRate/{Artery,Vein}/{dynamicEdges,staticEdges}`,

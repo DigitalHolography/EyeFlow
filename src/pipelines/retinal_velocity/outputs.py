@@ -30,24 +30,20 @@ def pack_retinal_velocity_outputs(
     }
     frequency_attrs.update({"unit": "Hz", "quantity": "rms_frequency"})
     outputs = {
-        analysis_paths.velocity_map_avg: metric_value(
+        analysis_paths.velocity_map_avg: _spatial_map_value(
             velocity.maps.velocity_average,
-            dim_desc=("y", "x"),
             attrs=velocity_attrs,
         ),
-        analysis_paths.fRMS_avg: metric_value(
+        analysis_paths.velocity_map_avg_masked: _spatial_map_value(
+            velocity.maps.velocity_average_masked,
+            attrs=velocity_attrs,
+        ),
+        analysis_paths.fRMS_avg: _spatial_map_value(
             velocity.maps.frms_average,
-            dim_desc=("y", "x"),
             attrs=frequency_attrs,
         ),
-        analysis_paths.fRMS_bkg_avg: metric_value(
+        analysis_paths.fRMS_bkg_avg: _spatial_map_value(
             velocity.maps.frms_background_average,
-            dim_desc=("y", "x"),
-            attrs=frequency_attrs,
-        ),
-        analysis_paths.delta_fRMS_avg: metric_value(
-            velocity.maps.delta_frms_average,
-            dim_desc=("y", "x"),
             attrs=frequency_attrs,
         ),
         cycle_paths.systolic_peak_frame_indices: metric_value(
@@ -75,6 +71,40 @@ def pack_retinal_velocity_outputs(
         ),
     }
     return outputs
+
+
+def _spatial_map_value(
+    data,
+    *,
+    attrs: dict[str, object] | None = None,
+):
+    """Pack a map in the published BranchLabelMap spatial frame.
+
+    Calculation arrays use ``(y, x)`` with an upper-left image origin. The
+    segmentation maps publish ``(x, y)`` with a lower-left origin, so apply
+    the same vertical flip followed by transpose at the output boundary.
+    """
+
+    image = np.asarray(data)
+    if image.ndim != 2:
+        raise ValueError(
+            "Processing/Maps values must be 2-D spatial images, "
+            f"got shape {image.shape}."
+        )
+    output_attrs: dict[str, object] = dict(attrs or {})
+    output_attrs.update(
+        {
+            "coordinate_system": "image_pixel",
+            "image_origin": "lower_left",
+            "y_axis_direction": "increasing_toward_north",
+        }
+    )
+    published = np.flip(image, axis=0).T.copy()
+    return metric_value(
+        published,
+        dim_desc=("x", "y"),
+        attrs=output_attrs,
+    )
 
 
 def metric_value(
@@ -122,4 +152,8 @@ def _resolve_output_paths(
     return EyeFlowOutputPaths.active(output_paths)
 
 
-__all__ = ["metric_data", "metric_value", "pack_retinal_velocity_outputs"]
+__all__ = [
+    "metric_data",
+    "metric_value",
+    "pack_retinal_velocity_outputs",
+]

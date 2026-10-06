@@ -22,7 +22,7 @@ boundary behavior—not only regression smoke tests.
 | Spatial-gradient/lumen | `test_spatial_gradient_pipeline.py`, `test_spatial_gradient_profiles.py`, `test_lumen_size_pngs.py`, `test_gaussian2d_blur.py`, `test_unsharpen.py`, relevant topology chunk tests | exact processing order and ImageJ-style references |
 | Blood-volume rate | `test_blood_volume_rate.py`, `test_blood_volume_rate_pipeline.py`, `test_topology_mask_area.py` | formula/reference, schema/artifacts, option dependencies |
 | Waveform metrics | `test_waveform_shape_metrics_*.py`, `test_absolute_waveform_metrics.py`, `test_lowrank_quadrant_outputs.py` | metric formulas, segment geometry, quadrants, plots |
-| Velocity-profile fitting | `test_velocity_profile_analysis.py` | weighted solver, degeneracy/NaN behavior, pipeline paths |
+| Velocity-profile fitting | `test_velocity_profile_analysis.py` | weighted solver, degeneracy/NaN behavior, waveform option/output paths |
 | Displacement | `test_displacement_map_pipeline.py`, `test_displacement_cross_section_outputs.py` | registration, source validation, output schema |
 | PDF report | `test_pdf_report_image_lookup.py`, `test_pdf_report_runner_paths.py` | artifact lookup and runner paths |
 | Installer/release support | `test_installer_script.py` | installer-script contract; release workflow remains separate |

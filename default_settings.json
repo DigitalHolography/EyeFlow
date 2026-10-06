@@ -6,7 +6,6 @@
     "lowrank_waveform_decomposition": true,
     "pdf_report": true,
     "spatial_gradient_moment0": false,
-    "velocity_profile_analysis": false,
     "waveform_shape_metrics": true,
     "waveform_velocity": true
   },
@@ -30,6 +29,7 @@
       "quadrants": true,
       "segments": true,
       "velocity_profiles": false,
+      "velocity_profile_analysis": false,
       "velocity_profile_fft": false,
       "segment_velocity_maps": false
     }

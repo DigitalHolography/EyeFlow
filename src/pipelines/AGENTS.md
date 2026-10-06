@@ -38,11 +38,10 @@ availability rather than unrelated import crashes.
 | `heartbeat_core` (hidden) | Velocity-derived cycle boundaries; caches compatible estimator work; produces `heartbeat` |
 | `topology_core` (hidden) | Canonical artery/vein prepared topology; produces `prepared_topology` |
 | `waveform_velocity_core` (hidden) | Shared velocity/per-beat/segment/profile state; requires both hidden cores |
-| `waveform_velocity` | Selectable persisted continuous, per-beat, segment, quadrant, profile, FFT, map, and movie products |
+| `waveform_velocity` | Selectable persisted continuous, per-beat, segment, quadrant, profile, profile-fit, FFT, map, and movie products |
 | `spatial_gradient_moment0` | Independently selected moment0 gradient/lumen profiles; requires heartbeat and topology, not waveform core |
 | `blood_volume_rate` | Two option families with different DAG dependencies: gradient edges and mask-derived geometry |
 | `waveform_shape_metrics`, `absolute_waveform_metrics`, `lowrank_waveform_decomposition` | Downstream waveform metrics requiring `waveform_velocity` |
-| `velocity_profile_analysis` | Weighted fits of persisted artery and vein transverse masked profiles |
 | `pdf_report` | Report assembly after waveform and shape outputs |
 | `displacement_map` | Separate image-registration/displacement and cross-section path |
 
@@ -114,4 +113,4 @@ Retain clear method, calibration, and unit provenance for their results.
 | Blood-volume-rate formula | option declaration, runner, outputs, `calculations/blood_volume_rate.py`, BVR tests | unrelated waveform metric calculators |
 | Metric family | that pipeline's runner/calculator/outputs plus waveform input contracts and matching test file | pipeline engine unless dependencies/options change |
 | Displacement | only `displacement_map/`, topology functions it imports, and displacement tests | heartbeat/waveform metrics |
-| Profile fit | `velocity_profile_analysis/`, profile schema producer, dedicated doc/test | GUI and settings |
+| Profile fit | `waveform_velocity/analysis/profiles/velocity_profile_analysis.py`, profile schema producer, dedicated doc/test | GUI and settings |

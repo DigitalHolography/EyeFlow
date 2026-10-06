@@ -5,6 +5,9 @@ from time import perf_counter
 from input_output import EyeFlowOutputPaths
 from utils.logger import Logger
 
+from .analysis.profiles.velocity_profile_analysis import (
+    run_velocity_profile_analysis,
+)
 from .analysis.segment_maps import prepare_segment_velocity_maps_per_beat
 from .artifacts import export_segment_velocity_map_avis, export_velocity_signals
 from .builder import (
@@ -36,12 +39,15 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
     )
     maps_selected = "segment_velocity_maps" in selected
     profiles_selected = bool(
-        {"velocity_profiles", "velocity_profile_fft"} & selected
+        {
+            "velocity_profiles",
+            "velocity_profile_analysis",
+            "velocity_profile_fft",
+        }
+        & selected
     )
+    profile_analysis_selected = "velocity_profile_analysis" in selected
     profile_fft_selected = "velocity_profile_fft" in selected
-    profile_analysis_scheduled = ctx.pipeline_scheduled(
-        "velocity_profile_analysis"
-    )
     artery_velocity_maps_per_beat = None
     vein_velocity_maps_per_beat = None
     if maps_selected:
@@ -110,8 +116,7 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
                 velocity_outputs[vein_path],
             )
 
-    profile_products_required = profiles_selected or profile_analysis_scheduled
-    if profile_products_required:
+    if profiles_selected:
         velocity_profile_outputs = pack_cross_section_profile_outputs(
             waveform.artery_segments,
             waveform.vein_segments,
@@ -120,6 +125,10 @@ def run_waveform_velocity(ctx) -> dict[str, object]:
             **velocity_semantics_kwargs,
         )
         metrics.update(velocity_profile_outputs)
+        if profile_analysis_selected:
+            metrics.update(
+                run_velocity_profile_analysis(velocity_profile_outputs)
+            )
         if profile_fft_selected:
             metrics.update(
                 pack_velocity_profile_fft_outputs(

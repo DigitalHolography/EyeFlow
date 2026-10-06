@@ -1,10 +1,16 @@
-"""Independent weighted quadratic fits to per-beat velocity profiles."""
+"""Weighted quadratic analysis of published waveform velocity profiles."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from numbers import Real
+from time import perf_counter
 
 import numpy as np
+
+from input_output import EyeFlowOutputPaths
+from pipeline_engine.base import DatasetValue
+from utils.logger import Logger
 
 FLOAT_OUTPUTS = (
     "a",
@@ -25,6 +31,81 @@ FLOAT_OUTPUTS = (
 COUNT_OUTPUTS = ("n_fit_samples", "n_area_samples")
 DEFAULT_TIME_BLOCK_SIZE = 256
 DEFAULT_WEIGHT_POWER = 2.0
+
+_OUTPUT_PATHS = EyeFlowOutputPaths.active()
+SOURCE_PATHS = {
+    "Artery": (
+        "/" + _OUTPUT_PATHS.artery_velocity_profiles.transverse_velocity_profile_masked
+    ),
+    "Vein": (
+        "/" + _OUTPUT_PATHS.vein_velocity_profiles.transverse_velocity_profile_masked
+    ),
+}
+OUTPUT_ROOT = "/Processing/VelocityProfileAnalysis"
+_MISSING = object()
+
+
+def run_velocity_profile_analysis(
+    profile_outputs: Mapping[str, object],
+) -> dict[str, object]:
+    """Fit both vessel classes from waveform profile output payloads."""
+
+    datasets = {
+        vessel: _source_values(profile_outputs, vessel, source_path)
+        for vessel, source_path in SOURCE_PATHS.items()
+    }
+
+    outputs: dict[str, object] = {}
+    for vessel, values in datasets.items():
+        started = perf_counter()
+        results = analyze_velocity_profiles(values)
+        Logger.log(
+            f"Completed {vessel.lower()} weighted velocity-profile analysis in "
+            f"{perf_counter() - started:.1f}s."
+        )
+        attrs = {
+            "dimDesc": ["time", "beat", "branch", "radius"],
+            "source_path": SOURCE_PATHS[vessel],
+            "index_base": 0,
+            "model": "a*x^2 + b*x + c",
+            "fit_method": "weighted_least_squares",
+            "weight_definition": "u=x/(Nx-1); d=abs(2*u-1); w=1-d^p",
+            "weight_power": DEFAULT_WEIGHT_POWER,
+            "integration_method": (
+                "unweighted_sum_of_finite_observed_integer_indexes_between_roots"
+            ),
+            "geometry_policy": "downward_opening_only; fractional_indexes",
+            "vessel": vessel.lower(),
+        }
+        for name, value in results.items():
+            outputs[f"{OUTPUT_ROOT}/{vessel}/{name}/value"] = DatasetValue(
+                data=value,
+                attrs=dict(attrs),
+            )
+    return outputs
+
+
+def _source_values(
+    profile_outputs: Mapping[str, object],
+    vessel: str,
+    source_path: str,
+):
+    payload = _MISSING
+    for candidate in (source_path, source_path.lstrip("/")):
+        if candidate in profile_outputs:
+            payload = profile_outputs[candidate]
+            break
+    if payload is _MISSING:
+        raise KeyError(
+            f"Required {vessel.lower()} velocity-profile output is missing: "
+            f"{source_path}. waveform_velocity must pack both vessel profiles "
+            "before this analysis."
+        )
+    if isinstance(payload, DatasetValue):
+        return payload.data
+    if isinstance(payload, tuple) and payload:
+        return payload[0]
+    return payload
 
 
 def border_weights(
@@ -254,6 +335,9 @@ __all__ = [
     "DEFAULT_TIME_BLOCK_SIZE",
     "DEFAULT_WEIGHT_POWER",
     "FLOAT_OUTPUTS",
+    "OUTPUT_ROOT",
+    "SOURCE_PATHS",
     "analyze_velocity_profiles",
     "border_weights",
+    "run_velocity_profile_analysis",
 ]
