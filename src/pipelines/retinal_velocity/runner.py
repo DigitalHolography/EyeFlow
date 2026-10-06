@@ -61,6 +61,11 @@ def run_retinal_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
         velocity_data,
         dt_seconds=float(timing.dt_seconds),
     )
+    _log_cardiac_cycle_warnings(
+        cycle_analysis,
+        cycle_source,
+        dt_seconds=float(timing.dt_seconds),
+    )
     velocity = build_retinal_velocity(
         velocity_data,
         cycle_analysis,
@@ -122,6 +127,32 @@ def cardiac_cycle_indexes(ctx) -> np.ndarray:
 def _pipeline_scheduled(ctx, name: str) -> bool:
     predicate = getattr(ctx, "pipeline_scheduled", None)
     return bool(callable(predicate) and predicate(name))
+
+
+def _log_cardiac_cycle_warnings(
+    analysis: CardiacCycleAnalysis,
+    source: str,
+    *,
+    dt_seconds: float,
+) -> None:
+    """Record retained gaps that look like two or three cardiac periods."""
+
+    if source == "none":
+        Logger.log_warning(
+            "No usable systole sequence was detected in the artery or vein; "
+            "the full recording is retained as one fallback cardiac cycle."
+        )
+        return
+
+    for gap in getattr(analysis.systole, "suspected_missed_beat_gaps", ()):
+        Logger.log_warning(
+            "Possible missed systole in the "
+            f"{source} signal: frames {gap.start_index} to {gap.stop_index} "
+            f"span {gap.estimated_multiple}x the estimated cardiac period "
+            f"({gap.interval_samples * dt_seconds:.3f}s versus "
+            f"{gap.estimated_period_samples * dt_seconds:.3f}s). "
+            "The interval was retained for per-beat analysis."
+        )
 
 
 __all__ = [

@@ -6,7 +6,11 @@ import numpy as np
 
 from .models import CardiacCycleAnalysis, SystoleDetectionResult
 from .spectral import spectral_cardiac_cycle_analysis
-from .systole import find_systole_index
+from .systole import (
+    DEFAULT_MIN_PERIOD_SECONDS,
+    SystoleDetectionError,
+    find_systole_index,
+)
 
 
 def analyze_cardiac_cycles(
@@ -53,9 +57,8 @@ def cardiac_cycles_from_available_vessel(
                 ),
                 source_name,
             )
-        except ValueError as exc:
-            if "No systole peaks detected" not in str(exc):
-                raise
+        except SystoleDetectionError:
+            continue
     return missing_vessel_cardiac_cycles(artery.size, dt_seconds), "none"
 
 
@@ -76,7 +79,10 @@ def missing_vessel_cardiac_cycles(
             systole_indexes=boundaries,
             signal_filtered=missing,
             derivative_signal=missing.copy(),
-            min_peak_distance=max(1, int(np.floor(0.5 / dt_seconds))),
+            min_peak_distance=max(
+                1,
+                int(np.floor(float(DEFAULT_MIN_PERIOD_SECONDS) / dt_seconds)),
+            ),
             min_peak_height=np.float32(np.nan),
         ),
         spectral=spectral_cardiac_cycle_analysis(

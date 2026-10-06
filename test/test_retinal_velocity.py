@@ -5,6 +5,9 @@ from unittest.mock import patch
 
 import numpy as np
 
+from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
+    SuspectedMissedBeatGap,
+)
 from calculations.topology import OpticDisc
 from input_output.schema import (
     DopplerViewMetadata,
@@ -25,6 +28,7 @@ from pipelines.retinal_velocity.models import (
     VesselVelocitySignals,
 )
 from pipelines.retinal_velocity.runner import (
+    _log_cardiac_cycle_warnings,
     cardiac_cycle_indexes,
     retinal_velocity,
     run_retinal_velocity,
@@ -100,6 +104,31 @@ class RetinalVelocityTests(unittest.TestCase):
         self.assertIn("Processing/Maps/VelocityAverage/value", outputs)
         self.assertIn("Processing/Maps/VelocityAverageMasked/value", outputs)
         self.assertNotIn("Processing/Maps/DeltaFRMSAverage/value", outputs)
+
+    def test_missed_beat_gap_is_recorded_as_a_warning(self):
+        gap = SuspectedMissedBeatGap(
+            start_index=100,
+            stop_index=180,
+            interval_samples=80,
+            estimated_period_samples=40.0,
+            estimated_multiple=2,
+        )
+        analysis = SimpleNamespace(
+            systole=SimpleNamespace(suspected_missed_beat_gaps=(gap,))
+        )
+
+        with patch("pipelines.retinal_velocity.runner.Logger.log_warning") as warning:
+            _log_cardiac_cycle_warnings(
+                analysis,
+                "artery",
+                dt_seconds=0.01,
+            )
+
+        warning.assert_called_once()
+        message = warning.call_args.args[0]
+        self.assertIn("frames 100 to 180", message)
+        self.assertIn("2x the estimated cardiac period", message)
+        self.assertIn("retained", message)
 
 
 def _retinal_velocity() -> RetinalVelocity:

@@ -14,8 +14,14 @@ if str(SRC_DIR) not in sys.path:
 
 from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (  # noqa: E402
     MATLAB_PADDING_FACTOR,
+    SystoleDetectionError,
     analyze_cardiac_cycles,
+    cardiac_cycles_from_available_vessel,
+    find_systole_index,
     spectral_cardiac_cycle_analysis,
+)
+from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  # noqa: E402
+    per_beat_signal_analysis,
 )
 
 
@@ -115,6 +121,138 @@ class SpectralCardiacCycleTests(unittest.TestCase):
 
         self.assertGreater(result.systole.systole_indexes.size, 2)
         self.assertAlmostEqual(result.spectral.heart_rate_hz, 1.2, places=6)
+
+    def test_exercise_rate_uses_median_adaptive_spacing_and_64_point_beats(
+        self,
+    ) -> None:
+        dt_seconds = 0.01
+        time = np.arange(1000, dtype=np.float32) * dt_seconds
+        waveform = (
+            10.0
+            + 2.0 * np.sin(2.0 * np.pi * 2.5 * time)
+            + 0.25 * np.sin(2.0 * np.pi * 5.0 * time)
+        ).astype(np.float32)
+
+        detection = find_systole_index(
+            waveform,
+            dt=np.float32(dt_seconds),
+        )
+        per_beat = per_beat_signal_analysis(
+            waveform,
+            detection.systole_indexes,
+            band_limited_signal_harmonic_count=4,
+        )
+
+        np.testing.assert_allclose(
+            np.diff(detection.systole_indexes),
+            40,
+            atol=1,
+        )
+        self.assertAlmostEqual(detection.estimated_period_samples, 40.0, delta=1.0)
+        self.assertGreaterEqual(detection.min_peak_distance, 35)
+        self.assertLess(detection.min_peak_distance, 40)
+        self.assertEqual(per_beat.velocity_signal_per_beat.shape[1], 64)
+
+    def test_stable_cadence_rejects_a_close_weaker_false_upstroke(self) -> None:
+        dt_seconds = 0.006912
+        frame_indexes = np.arange(512, dtype=np.float32)
+        waveform = np.full(frame_indexes.size, 20.0, dtype=np.float32)
+        for center, amplitude in (
+            (24, 20.0),
+            (103, 30.0),
+            (225, 30.0),
+            (348, 30.0),
+            (469, 30.0),
+        ):
+            waveform += amplitude * np.exp(
+                -0.5 * ((frame_indexes - center) / 12.0) ** 2
+            )
+
+        detection = find_systole_index(
+            waveform,
+            dt=np.float32(dt_seconds),
+        )
+
+        np.testing.assert_allclose(
+            detection.systole_indexes,
+            [91, 213, 336, 457],
+            atol=1,
+        )
+        np.testing.assert_allclose(
+            np.diff(detection.systole_indexes),
+            [122, 123, 121],
+            atol=1,
+        )
+
+    def test_variable_cadence_is_not_forced_to_the_median_period(self) -> None:
+        dt_seconds = 0.01
+        expected_intervals = np.asarray(
+            [32, 40, 48, 40, 32, 48, 40, 40],
+            dtype=np.int32,
+        )
+        centers = np.concatenate(
+            (np.asarray([30], dtype=np.int32), 30 + np.cumsum(expected_intervals))
+        )
+        frame_indexes = np.arange(int(centers[-1]) + 40, dtype=np.float32)
+        waveform = np.full(frame_indexes.size, 20.0, dtype=np.float32)
+        for center in centers:
+            waveform += 30.0 * np.exp(
+                -0.5 * ((frame_indexes - center) / 5.0) ** 2
+            )
+
+        detection = find_systole_index(
+            waveform,
+            dt=np.float32(dt_seconds),
+        )
+
+        np.testing.assert_array_equal(
+            np.diff(detection.systole_indexes),
+            expected_intervals,
+        )
+
+    def test_two_or_three_period_gaps_are_retained_and_reported(self) -> None:
+        dt_seconds = 0.01
+        time = np.arange(1000, dtype=np.float32) * dt_seconds
+
+        for omitted_beats, expected_multiple in (((8,), 2), ((8, 9), 3)):
+            with self.subTest(expected_multiple=expected_multiple):
+                waveform = np.zeros(time.size, dtype=np.float32)
+                for beat_index, center in enumerate(np.arange(0.3, 9.8, 0.4)):
+                    if beat_index in omitted_beats:
+                        continue
+                    waveform += np.exp(
+                        -0.5 * ((time - center) / 0.04) ** 2
+                    ).astype(np.float32)
+
+                detection = find_systole_index(
+                    waveform,
+                    dt=np.float32(dt_seconds),
+                )
+
+                self.assertEqual(len(detection.suspected_missed_beat_gaps), 1)
+                gap = detection.suspected_missed_beat_gaps[0]
+                self.assertEqual(gap.estimated_multiple, expected_multiple)
+                self.assertEqual(gap.interval_samples, expected_multiple * 40)
+
+    def test_one_detected_peak_uses_full_record_fallback(self) -> None:
+        dt_seconds = 0.01
+        time = np.arange(150, dtype=np.float32) * dt_seconds
+        waveform = np.sin(2.0 * np.pi * time).astype(np.float32)
+
+        with self.assertRaises(SystoleDetectionError):
+            find_systole_index(waveform, dt=np.float32(dt_seconds))
+
+        analysis, source = cardiac_cycles_from_available_vessel(
+            waveform,
+            waveform,
+            dt_seconds=dt_seconds,
+        )
+
+        self.assertEqual(source, "none")
+        np.testing.assert_array_equal(
+            analysis.systole.systole_indexes,
+            [0, waveform.size - 1],
+        )
 
 
 if __name__ == "__main__":

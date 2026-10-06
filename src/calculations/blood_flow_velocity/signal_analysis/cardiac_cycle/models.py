@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
+
+
+@dataclass(frozen=True)
+class SuspectedMissedBeatGap:
+    """A retained systole interval close to a multiple of the typical period."""
+
+    start_index: int
+    stop_index: int
+    interval_samples: int
+    estimated_period_samples: float
+    estimated_multiple: int
 
 
 @dataclass(frozen=True)
@@ -14,6 +25,9 @@ class SystoleDetectionResult:
     derivative_signal: np.ndarray
     min_peak_distance: int
     min_peak_height: np.float32
+    min_peak_prominence: np.float32 = field(default_factory=lambda: np.float32(np.nan))
+    estimated_period_samples: np.float32 = field(default_factory=lambda: np.float32(np.nan))
+    suspected_missed_beat_gaps: tuple[SuspectedMissedBeatGap, ...] = ()
 
 
 @dataclass(frozen=True)
