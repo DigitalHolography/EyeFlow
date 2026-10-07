@@ -10,8 +10,8 @@ from calculations.blood_flow_velocity.signal_analysis.waveform import (
     mean_period_seconds,
 )
 from calculations.segment_profiles import SegmentProfileSettings
-from pipelines.retinal_velocity.runner import cardiac_cycle_indexes
-from pipelines.retinal_velocity.sources import load_retinal_velocity_inputs
+from pipelines.velocity.runner import cardiac_cycle_indexes
+from pipelines.velocity.sources import load_velocity_inputs
 from pipelines.topology_core.runner import prepared_topologies
 
 from .lumen_size import export_lumen_size_pngs
@@ -36,7 +36,7 @@ class SpatialGradientProducts:
 def run_spatial_gradient_moment0(ctx) -> dict[str, object]:
     """Calculate staged gradient profiles only when this pipeline is selected."""
 
-    inputs = load_retinal_velocity_inputs(ctx)
+    inputs = load_velocity_inputs(ctx)
     cycle_boundaries = cardiac_cycle_indexes(ctx)
     index_base = 0
     artery_segments, vein_segments = extract_spatial_gradient_segments(

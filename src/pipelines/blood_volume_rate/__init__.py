@@ -11,7 +11,7 @@ from .runner import run_blood_volume_rate
         "Compute signed physical blood-volume rate from gradient- or mask-derived lumen geometry."
     ),
     requires=["numpy", "h5py", "scipy", "skimage", "matplotlib"],
-    dag_requires=["waveform_velocity"],
+    dag_requires=["velocity_analysis"],
     options=[
         PipelineOption(
             "gradient_edges",

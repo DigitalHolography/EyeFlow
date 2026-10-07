@@ -173,7 +173,7 @@ fallback paths downstream. Exact input contracts are in
 
 When `frequency_bands` is active, `HF / LF` is converted to frequency using the
 recorded `band_ratio_frequency_scale_hz`, and velocity remains physical in
-`mm/s`. Use `waveform_velocity_core.velocity_semantics` when labeling, plotting,
+`mm/s`. Use `pipelines.velocity.semantics` when labeling, plotting,
 or packing method-dependent velocity. Do not gate otherwise valid pipelines on
 the method. Do not add a dimensionless velocity fallback; incompatible legacy
 velocity quantity or unit metadata must fail clearly.

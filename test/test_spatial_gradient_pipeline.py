@@ -40,16 +40,16 @@ class SpatialGradientPipelineTests(unittest.TestCase):
         dag = PipelineDAG(PIPELINE_REGISTRY.values())
         gradient_plan = dag.resolve_targets(["spatial_gradient_moment0"])
         self.assertLess(
-            gradient_plan.names.index("retinal_velocity"),
+            gradient_plan.names.index("velocity"),
             gradient_plan.names.index("spatial_gradient_moment0"),
         )
         self.assertLess(
             gradient_plan.names.index("topology_core"),
             gradient_plan.names.index("spatial_gradient_moment0"),
         )
-        self.assertNotIn("waveform_velocity", gradient_plan.names)
+        self.assertNotIn("velocity_analysis", gradient_plan.names)
 
-        waveform_plan = dag.resolve_targets(["waveform_velocity"])
+        waveform_plan = dag.resolve_targets(["velocity_analysis"])
         self.assertNotIn("spatial_gradient_moment0", waveform_plan.names)
 
     def test_displacement_map_has_no_cardiac_cycle_or_waveform_dependency(self) -> None:
@@ -90,7 +90,7 @@ class SpatialGradientPipelineTests(unittest.TestCase):
                 with (
                     patch.object(
                         gradient_runner,
-                        "load_retinal_velocity_inputs",
+                        "load_velocity_inputs",
                         return_value=inputs,
                     ),
                     patch.object(

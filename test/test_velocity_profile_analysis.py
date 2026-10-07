@@ -13,10 +13,10 @@ import numpy as np
 from pipeline_engine.base import PIPELINE_REGISTRY, DatasetValue
 from pipeline_engine.context import PipelineH5Output
 from pipelines import load_pipeline_catalog
-from pipelines.waveform_velocity.analysis.profiles import (
+from pipelines.velocity_analysis.analysis.profiles import (
     velocity_profile_analysis as fitting,
 )
-from pipelines.waveform_velocity.analysis.profiles.velocity_profile_analysis import (
+from pipelines.velocity_analysis.analysis.profiles.velocity_profile_analysis import (
     OUTPUT_ROOT,
     SOURCE_PATHS,
     run_velocity_profile_analysis,
@@ -160,7 +160,7 @@ class VelocityProfileAnalysisOptionTests(unittest.TestCase):
         self.assertNotIn("velocity_profile_analysis", PIPELINE_REGISTRY)
         options = {
             option.name: option
-            for option in PIPELINE_REGISTRY["waveform_velocity"].options
+            for option in PIPELINE_REGISTRY["velocity_analysis"].options
         }
         analysis = options["velocity_profile_analysis"]
         self.assertFalse(analysis.default_enabled)

@@ -1,8 +1,8 @@
 # Velocity-profile analysis
 
-Selecting the `waveform_velocity.velocity_profile_analysis` option also selects
-its required `velocity_profiles` and `segments` options. During the waveform
-run, analysis consumes the payloads published at both output paths:
+Selecting the `velocity_analysis.velocity_profile_analysis` option also selects
+its required `velocity_profiles` and `segments` options. During velocity
+analysis, the fitter consumes the payloads published at both output paths:
 
 - `/Processing/VelocityProfiles/Artery/Transversal/Masked/VelocityProfile/value`
 - `/Processing/VelocityProfiles/Vein/Transversal/Masked/VelocityProfile/value`

@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
-from dataclasses import dataclass, field
-from functools import singledispatch
 from time import perf_counter
 
 import numpy as np
 from scipy import ndimage as ndi
 
 from calculations.topology import annulus_mask
-from input_output.schema import HD_BAND_HF_PATH, HD_BAND_LF_PATH, ImageMaps
+from input_output.schema import HD_BAND_HF_PATH, HD_BAND_LF_PATH
 from utils.logger import Logger
 from velocity_calibration import (
     BAND_LF_LOW_RELATIVE_THRESHOLD,
@@ -31,436 +28,45 @@ from .models import (
 SCRATCH_FRAME_CHUNK_SIZE = 32
 SECTION_INNER_RADIUS_FRAC = 0.10
 SECTION_OUTER_RADIUS_FRAC = 0.35
+DEFAULT_LASER_WAVELENGTH_METERS = 8.52e-7
+DEFAULT_NUMERICAL_APERTURE = 0.76
+DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ = 1.0
 DOPPLER_MOMENTS_METHOD = "doppler_moments"
 FREQUENCY_BANDS_METHOD = "frequency_bands"
 FREQUENCY_BAND_LF_PATH = f"/{HD_BAND_LF_PATH}"
 FREQUENCY_BAND_HF_PATH = f"/{HD_BAND_HF_PATH}"
 
 
-@dataclass(frozen=True, slots=True)
-class VelocityEstimatorInputs:
-    """Validated source volumes shared by every velocity estimator."""
-
-    method: str
-    first_volume: object
-    second_volume: object
-
-
-@dataclass(frozen=True, slots=True)
-class DopplerMomentsEstimatorInputs(VelocityEstimatorInputs):
-    """Moment volumes used by the Doppler-moments estimator."""
-
-
-@dataclass(frozen=True, slots=True)
-class FrequencyBandsEstimatorInputs(VelocityEstimatorInputs):
-    """Band volumes and calibration used by the frequency-band estimator."""
-
-    frequency_scale_hz: float
-
-
-@dataclass(frozen=True, slots=True)
-class VelocityEstimatorChunk:
-    """Standard method-independent calculation returned for one frame slice."""
-
-    chunk_index: int
-    chunk_count: int
-    frame_slice: slice
-    background_image: np.ndarray
-    rms_frequency: np.ndarray
-    diagnostic_counts: Mapping[str, int] = field(default_factory=dict)
-
-
-@dataclass(slots=True)
-class _VelocityResultAccumulator:
-    """Accumulate retained maps and vessel signals across estimator chunks."""
-
-    frame_count: int
-    section_mask: np.ndarray
-    artery_section: np.ndarray
-    vein_section: np.ndarray
-    velocity_video: np.ndarray | None
-    averages: dict[str, np.ndarray]
-    signals: dict[str, np.ndarray]
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        frame_count: int,
-        spatial_shape: tuple[int, int],
-        section_mask: np.ndarray,
-        artery_mask: np.ndarray,
-        vein_mask: np.ndarray,
-        retain_velocity_video: bool,
-    ) -> _VelocityResultAccumulator:
-        averages = {
-            name: np.zeros(spatial_shape, dtype=np.float64)
-            for name in (
-                "background",
-                "velocity",
-                "velocity_unmasked",
-                "frms",
-                "frms_background",
-                "delta_frms",
-            )
-        }
-        signals = {
-            name: np.full(frame_count, np.nan, dtype=np.float32)
-            for name in (
-                "artery_velocity",
-                "vein_velocity",
-                "artery_frms",
-                "vein_frms",
-                "artery_frms_background",
-                "vein_frms_background",
-                "vessel_frms_background",
-                "artery_delta_frms",
-                "vein_delta_frms",
-            )
-        }
-        return cls(
-            frame_count=frame_count,
-            section_mask=section_mask,
-            artery_section=section_mask & artery_mask,
-            vein_section=section_mask & vein_mask,
-            velocity_video=(
-                np.empty((frame_count, *spatial_shape), dtype=np.float32)
-                if retain_velocity_video
-                else None
-            ),
-            averages=averages,
-            signals=signals,
-        )
-
-    def update(
-        self,
-        estimator_chunk: VelocityEstimatorChunk,
-        *,
-        rms_frequency_background: np.ndarray,
-        delta_rms_frequency: np.ndarray,
-        velocity: np.ndarray,
-        velocity_unmasked: np.ndarray,
-    ) -> None:
-        frame_slice = estimator_chunk.frame_slice
-        if self.velocity_video is not None:
-            self.velocity_video[frame_slice] = velocity
-
-        for name, values in (
-            ("background", estimator_chunk.background_image),
-            ("velocity", velocity),
-            ("velocity_unmasked", velocity_unmasked),
-            ("frms", estimator_chunk.rms_frequency),
-            ("frms_background", rms_frequency_background),
-            ("delta_frms", delta_rms_frequency),
-        ):
-            self.averages[name] += np.sum(values, axis=0, dtype=np.float64)
-
-        for vessel, section in (
-            ("artery", self.artery_section),
-            ("vein", self.vein_section),
-        ):
-            self.signals[f"{vessel}_velocity"][frame_slice] = _masked_signal(
-                velocity,
-                section,
-            )
-            self.signals[f"{vessel}_frms"][frame_slice] = _masked_signal(
-                estimator_chunk.rms_frequency,
-                section,
-            )
-            self.signals[f"{vessel}_frms_background"][frame_slice] = _masked_signal(
-                rms_frequency_background,
-                section,
-            )
-            self.signals[f"{vessel}_delta_frms"][frame_slice] = _masked_signal(
-                delta_rms_frequency,
-                section,
-            )
-        self.signals["vessel_frms_background"][frame_slice] = _masked_signal(
-            rms_frequency_background,
-            self.artery_section | self.vein_section,
-        )
-
-    def build_result(
-        self,
-        *,
-        provenance: Mapping[str, object],
-    ) -> RetinalVelocityData:
-        return RetinalVelocityData(
-            maps=RetinalVelocityMaps(
-                velocity=self.velocity_video,
-                # In band mode this is the LF mean used as the display background.
-                moment0_average=self._average("background"),
-                velocity_average=self._average("velocity_unmasked"),
-                velocity_average_masked=self._average("velocity"),
-                frms_average=self._average("frms"),
-                frms_background_average=self._average("frms_background"),
-                delta_frms_average=self._average("delta_frms"),
-                section_mask=self.section_mask,
-            ),
-            artery=self._vessel_signals("artery"),
-            vein=self._vessel_signals("vein"),
-            vessel_frms_background=self.signals["vessel_frms_background"],
-            provenance=provenance,
-        )
-
-    def _average(self, name: str) -> np.ndarray:
-        divisor = np.float64(max(self.frame_count, 1))
-        return (self.averages[name] / divisor).astype(np.float32)
-
-    def _vessel_signals(self, vessel: str) -> VesselVelocitySignals:
-        return VesselVelocitySignals(
-            velocity=self.signals[f"{vessel}_velocity"],
-            frms=self.signals[f"{vessel}_frms"],
-            frms_background=self.signals[f"{vessel}_frms_background"],
-            delta_frms=self.signals[f"{vessel}_delta_frms"],
-        )
-
-
-def resolve_velocity_estimator_inputs(
-    image_maps: ImageMaps,
-    *,
-    velocity_estimation_method: str,
-    band_ratio_frequency_scale_hz: float = (
-        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
-    ),
-) -> VelocityEstimatorInputs:
-    """Resolve and validate the method-specific estimator input model."""
-
-    method = str(velocity_estimation_method)
-    match method:
-        case "doppler_moments":
-            first_name, first_volume = "moment0", image_maps.moment0
-            second_name, second_volume = "moment2", image_maps.moment2
-            missing_prefix = ""
-        case "frequency_bands":
-            first_name, first_volume = FREQUENCY_BAND_LF_PATH, image_maps.band_lf
-            second_name, second_volume = FREQUENCY_BAND_HF_PATH, image_maps.band_hf
-            missing_prefix = "HoloDoppler datasets "
-        case _:
-            raise ValueError(
-                "velocity_estimation_method must be 'doppler_moments' or "
-                f"'frequency_bands', got {velocity_estimation_method!r}."
-            )
-
-    missing = [
-        name
-        for name, volume in (
-            (first_name, first_volume),
-            (second_name, second_volume),
-        )
-        if volume is None
-    ]
-    if missing:
-        raise ValueError(
-            f"velocity_estimation_method={method!r} requires "
-            f"{missing_prefix}{', '.join(missing)}."
-        )
-    _validate_matching_volumes(method, first_volume, second_volume)
-    if method == FREQUENCY_BANDS_METHOD:
-        frequency_scale_hz = validate_band_ratio_frequency_scale_hz(
-            band_ratio_frequency_scale_hz
-        )
-        inputs: VelocityEstimatorInputs = FrequencyBandsEstimatorInputs(
-            method=method,
-            first_volume=first_volume,
-            second_volume=second_volume,
-            frequency_scale_hz=frequency_scale_hz,
-        )
-        Logger.log(
-            "Velocity estimator converts the HoloDoppler band ratio "
-            f"{FREQUENCY_BAND_HF_PATH} / {FREQUENCY_BAND_LF_PATH} to RMS "
-            f"frequency using {frequency_scale_hz:g} Hz per ratio unit."
-        )
-    else:
-        inputs = DopplerMomentsEstimatorInputs(
-            method=method,
-            first_volume=first_volume,
-            second_volume=second_volume,
-        )
-        Logger.log("Velocity estimator uses raw HD moments.")
-    return inputs
-
-
-@singledispatch
-def iter_velocity_estimator_chunks(
-    inputs: VelocityEstimatorInputs,
-    *,
-    vessel_mask: np.ndarray,
-    neighborhood_mask: np.ndarray,
-) -> Iterator[VelocityEstimatorChunk]:
-    """Yield normalized slice calculations for a resolved estimator type."""
-
-    raise TypeError(f"Unsupported velocity estimator inputs: {type(inputs).__name__}.")
-
-
-@singledispatch
-def _build_velocity_provenance(
-    inputs: VelocityEstimatorInputs,
-    *,
-    diagnostic_counts: Mapping[str, int],
-    laser_wavelength_m: float,
-    numerical_aperture: float,
-) -> dict[str, object]:
-    """Build complete provenance for a resolved estimator type."""
-
-    raise TypeError(f"Unsupported velocity estimator inputs: {type(inputs).__name__}.")
-
-
-@_build_velocity_provenance.register
-def _build_doppler_moments_provenance(
-    inputs: DopplerMomentsEstimatorInputs,
-    *,
-    diagnostic_counts: Mapping[str, int],
-    laser_wavelength_m: float,
-    numerical_aperture: float,
-) -> dict[str, object]:
-    del diagnostic_counts
-    return physical_velocity_provenance(
-        velocity_estimation_method=inputs.method,
-        laser_wavelength_m=laser_wavelength_m,
-        numerical_aperture=numerical_aperture,
-    )
-
-
-@_build_velocity_provenance.register
-def _build_frequency_bands_provenance(
-    inputs: FrequencyBandsEstimatorInputs,
-    *,
-    diagnostic_counts: Mapping[str, int],
-    laser_wavelength_m: float,
-    numerical_aperture: float,
-) -> dict[str, object]:
-    quality_counts = _empty_band_quality_counts()
-    quality_counts.update(diagnostic_counts)
-    Logger.log(
-        "Frequency-band LF quality counts: "
-        f"zero={quality_counts['band_lf_zero_sample_count']}, "
-        f"near_zero={quality_counts['band_lf_near_zero_sample_count']}."
-    )
-    return {
-        **physical_velocity_provenance(
-            velocity_estimation_method=inputs.method,
-            band_ratio_frequency_scale_hz=inputs.frequency_scale_hz,
-            laser_wavelength_m=laser_wavelength_m,
-            numerical_aperture=numerical_aperture,
-        ),
-        "band_lf_source_path": FREQUENCY_BAND_LF_PATH,
-        "band_hf_source_path": FREQUENCY_BAND_HF_PATH,
-        **quality_counts,
-    }
-
-
-@iter_velocity_estimator_chunks.register
-def _iter_doppler_moment_chunks(
-    inputs: DopplerMomentsEstimatorInputs,
-    *,
-    vessel_mask: np.ndarray,
-    neighborhood_mask: np.ndarray,
-) -> Iterator[VelocityEstimatorChunk]:
-    del vessel_mask, neighborhood_mask
-    for chunk_index, chunk_count, frame_slice in _estimator_chunk_slices(inputs):
-        background_image = _read_volume_chunk(inputs.first_volume, frame_slice)
-        moment2_chunk = _read_volume_chunk(inputs.second_volume, frame_slice)
-        mean_m0 = np.mean(
-            background_image,
-            axis=(-1, -2),
-            keepdims=True,
-            dtype=np.float32,
-        )
-        rms_frequency = np.sqrt(
-            np.divide(
-                moment2_chunk,
-                mean_m0,
-                out=np.zeros_like(moment2_chunk, dtype=np.float32),
-                where=mean_m0 != 0,
-            )
-        ).astype(np.float32, copy=False)
-        yield VelocityEstimatorChunk(
-            chunk_index=chunk_index,
-            chunk_count=chunk_count,
-            frame_slice=frame_slice,
-            background_image=background_image,
-            rms_frequency=rms_frequency,
-        )
-
-
-@iter_velocity_estimator_chunks.register
-def _iter_frequency_band_chunks(
-    inputs: FrequencyBandsEstimatorInputs,
-    *,
-    vessel_mask: np.ndarray,
-    neighborhood_mask: np.ndarray,
-) -> Iterator[VelocityEstimatorChunk]:
-    for chunk_index, chunk_count, frame_slice in _estimator_chunk_slices(inputs):
-        low_frequency = _read_validated_band_chunk(
-            inputs.first_volume,
-            frame_slice,
-            FREQUENCY_BAND_LF_PATH,
-        )
-        high_frequency = _read_validated_band_chunk(
-            inputs.second_volume,
-            frame_slice,
-            FREQUENCY_BAND_HF_PATH,
-        )
-        yield VelocityEstimatorChunk(
-            chunk_index=chunk_index,
-            chunk_count=chunk_count,
-            frame_slice=frame_slice,
-            background_image=low_frequency,
-            rms_frequency=_band_ratio_to_frequency(
-                _safe_band_ratio(
-                    high_frequency,
-                    low_frequency,
-                    frame_slice=frame_slice,
-                ),
-                frequency_scale_hz=inputs.frequency_scale_hz,
-                frame_slice=frame_slice,
-            ),
-            diagnostic_counts=_band_quality_counts_for_chunk(
-                low_frequency,
-                vessel_mask=vessel_mask,
-                neighborhood_mask=neighborhood_mask,
-            ),
-        )
-
-
-def _estimator_chunk_slices(
-    inputs: VelocityEstimatorInputs,
-) -> Iterator[tuple[int, int, slice]]:
-    frame_count = int(inputs.first_volume.shape[0])
-    chunk_count = max(
-        1,
-        (frame_count + SCRATCH_FRAME_CHUNK_SIZE - 1) // SCRATCH_FRAME_CHUNK_SIZE,
-    )
-    for chunk_index, start in enumerate(
-        range(0, frame_count, SCRATCH_FRAME_CHUNK_SIZE),
-        start=1,
-    ):
-        yield (
-            chunk_index,
-            chunk_count,
-            slice(start, min(start + SCRATCH_FRAME_CHUNK_SIZE, frame_count)),
-        )
-
-
-def _doppler_frequency_to_velocity_mm_s(
-    frequency_hz,
-    laser_wavelength_m: float = DEFAULT_LASER_WAVELENGTH_METERS,
+def _velocity_from_frequency(
+    frequency,
+    laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
     numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
 ) -> np.ndarray:
-    """Apply v = 2 * wavelength * Doppler frequency / NA and return mm/s."""
-    frequency_hz = np.asarray(frequency_hz, dtype=np.float32)
+    """Convert a Doppler frequency in Hz to velocity in mm/s."""
+    frequency = np.asarray(frequency, dtype=np.float32)
     return (
-        np.float32(2e3)
-        * laser_wavelength_m
-        * frequency_hz
-        / numerical_aperture
+        np.float32(1e3) * np.float32(2.0) * laser_wavelength * frequency / numerical_aperture
+    ).astype(np.float32, copy=False)
+
+
+def _velocity_from_delta_frequency(
+    delta_frequency,
+    laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
+    numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
+) -> np.ndarray:
+    """Convert a Doppler-frequency shift in Hz to velocity in mm/s."""
+    delta_frequency = np.asarray(delta_frequency, dtype=np.float32)
+    return (
+        np.float32(1e3) * np.float32(2.0) *laser_wavelength * delta_frequency / numerical_aperture
     ).astype(np.float32, copy=False)
 
 
 def estimate_retinal_velocity(
     *,
-    image_maps: ImageMaps,
+    moment0=None,
+    moment2=None,
+    band_lf=None,
+    band_hf=None,
     velocity_estimation_method: str = DOPPLER_MOMENTS_METHOD,
     artery_mask,
     vein_mask,
@@ -469,21 +75,32 @@ def estimate_retinal_velocity(
     section_inner_radius_frac: float = SECTION_INNER_RADIUS_FRAC,
     section_outer_radius_frac: float = SECTION_OUTER_RADIUS_FRAC,
     local_background_dist: int,
+    scratch_h5,
     laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
     numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
     band_ratio_frequency_scale_hz: float = (
         DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
     ),
     retain_velocity_video: bool = True,
+    velocity_video_output=None,
 ) -> RetinalVelocityData:
-    """Estimate velocity in chunks, retaining its video only when requested."""
+    """Estimate velocity into scratch datasets without materializing full videos."""
 
-    estimator_inputs = resolve_velocity_estimator_inputs(
-        image_maps,
+    method, first_volume, second_volume = _active_velocity_volumes(
         velocity_estimation_method=velocity_estimation_method,
-        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
+        moment0=moment0,
+        moment2=moment2,
+        band_lf=band_lf,
+        band_hf=band_hf,
     )
-    first_volume = estimator_inputs.first_volume
+    _validate_matching_volumes(method, first_volume, second_volume)
+    frequency_scale_hz = (
+        validate_band_ratio_frequency_scale_hz(
+            band_ratio_frequency_scale_hz
+        )
+        if method == FREQUENCY_BANDS_METHOD
+        else None
+    )
     frame_count, height, width = (int(size) for size in first_volume.shape)
     artery = np.asarray(artery_mask, dtype=bool)
     vein = np.asarray(vein_mask, dtype=bool)
@@ -502,11 +119,25 @@ def estimate_retinal_velocity(
             f"spatial shape {(height, width)}."
         )
 
+    if method == DOPPLER_MOMENTS_METHOD:
+        Logger.log("Velocity estimator uses raw HD moments.")
+    else:
+        Logger.log(
+            "Velocity estimator converts the HoloDoppler band ratio "
+            f"{FREQUENCY_BAND_HF_PATH} / {FREQUENCY_BAND_LF_PATH} to RMS "
+            f"frequency using {frequency_scale_hz:g} Hz per ratio unit."
+        )
     Logger.log(
         f"Velocity estimator uses {SCRATCH_FRAME_CHUNK_SIZE}-frame batched "
         "inpainting and summary-only frequency intermediates."
     )
 
+    velocity_dataset = _velocity_video_storage(
+        scratch_h5,
+        (frame_count, height, width),
+        retain_velocity_video=retain_velocity_video,
+        velocity_video_output=velocity_video_output,
+    )
     disk, inpaint = _skimage_dependencies()
     inpaint_mask = _dilated_mask(background, disk(int(local_background_dist)))
     section_mask = annulus_mask(
@@ -515,71 +146,294 @@ def estimate_retinal_velocity(
         section_inner_radius_frac,
         section_outer_radius_frac,
     )
-    accumulator = _VelocityResultAccumulator.create(
-        frame_count=frame_count,
-        spatial_shape=(height, width),
-        section_mask=section_mask,
-        artery_mask=artery,
-        vein_mask=vein,
-        retain_velocity_video=retain_velocity_video,
-    )
-    diagnostic_counts: dict[str, int] = {}
+    artery_section = section_mask & artery
+    vein_section = section_mask & vein
+    band_qc = _empty_band_quality_counts()
+
+    averages = {
+        name: np.zeros((height, width), dtype=np.float64)
+        for name in (
+            "background",
+            "velocity",
+            "velocity_unmasked",
+            "frms",
+            "frms_background",
+            "delta_frms",
+        )
+    }
+    signals = {
+        name: np.full(frame_count, np.nan, dtype=np.float32)
+        for name in (
+            "artery_velocity",
+            "vein_velocity",
+            "artery_frms",
+            "vein_frms",
+            "artery_frms_background",
+            "vein_frms_background",
+            "vessel_frms_background",
+            "artery_delta_frms",
+            "vein_delta_frms",
+        )
+    }
 
     estimation_started = perf_counter()
-    for estimator_chunk in iter_velocity_estimator_chunks(
-        estimator_inputs,
-        vessel_mask=(artery | vein),
-        neighborhood_mask=~inpaint_mask,
-    ):
-        frame_slice = estimator_chunk.frame_slice
-        f_rms = estimator_chunk.rms_frequency
-        for name, count in estimator_chunk.diagnostic_counts.items():
-            diagnostic_counts[name] = diagnostic_counts.get(name, 0) + count
+    chunk_count = max(1, (frame_count + SCRATCH_FRAME_CHUNK_SIZE - 1) // SCRATCH_FRAME_CHUNK_SIZE)
+    for chunk_index, start in enumerate(range(0, frame_count, SCRATCH_FRAME_CHUNK_SIZE), start=1):
+        stop = min(start + SCRATCH_FRAME_CHUNK_SIZE, frame_count)
+        frame_slice = slice(start, stop)
+        if method == DOPPLER_MOMENTS_METHOD:
+            background_image = _read_volume_chunk(first_volume, frame_slice)
+            moment2_chunk = _read_volume_chunk(second_volume, frame_slice)
+            mean_m0 = np.mean(
+                background_image,
+                axis=(-1, -2),
+                keepdims=True,
+                dtype=np.float32,
+            )
+            f_rms = np.sqrt(
+                np.divide(
+                    moment2_chunk,
+                    mean_m0,
+                    out=np.zeros_like(moment2_chunk, dtype=np.float32),
+                    where=mean_m0 != 0,
+                )
+            ).astype(np.float32, copy=False)
+        else:
+            background_image = _read_validated_band_chunk(
+                first_volume,
+                frame_slice,
+                FREQUENCY_BAND_LF_PATH,
+            )
+            high_frequency = _read_validated_band_chunk(
+                second_volume,
+                frame_slice,
+                FREQUENCY_BAND_HF_PATH,
+            )
+            _update_band_quality_counts(
+                band_qc,
+                background_image,
+                vessel_mask=(artery | vein),
+                neighborhood_mask=~inpaint_mask,
+            )
+            f_rms = _band_ratio_to_frequency(
+                _safe_band_ratio(
+                    high_frequency,
+                    background_image,
+                    frame_slice=frame_slice,
+                ),
+                frequency_scale_hz=frequency_scale_hz,
+                frame_slice=frame_slice,
+            )
         f_rms_background = _inpaint_frame_batch(
             f_rms,
             inpaint_mask,
             inpaint,
         )
         delta = _signed_rms_difference(f_rms, f_rms_background)
-        velocity = _doppler_frequency_to_velocity_mm_s(
+        velocity = _velocity_from_delta_frequency(
             delta,
-            laser_wavelength_m=laser_wavelength,
+            laser_wavelength=laser_wavelength,
             numerical_aperture=numerical_aperture,
         )
-        velocity_unmasked = _doppler_frequency_to_velocity_mm_s(
+        velocity_unmasked = _velocity_from_frequency(
             f_rms,
-            laser_wavelength_m=laser_wavelength,
+            laser_wavelength=laser_wavelength,
             numerical_aperture=numerical_aperture,
         )
 
-        accumulator.update(
-            estimator_chunk,
-            rms_frequency_background=f_rms_background,
-            delta_rms_frequency=delta,
-            velocity=velocity,
-            velocity_unmasked=velocity_unmasked,
+        if velocity_dataset is not None:
+            velocity_dataset[frame_slice] = velocity
+        averages["background"] += np.sum(
+            background_image,
+            axis=0,
+            dtype=np.float64,
         )
-        if (
-            estimator_chunk.chunk_index == estimator_chunk.chunk_count
-            or estimator_chunk.chunk_index % 10 == 0
-        ):
+        averages["velocity"] += np.sum(velocity, axis=0, dtype=np.float64)
+        averages["velocity_unmasked"] += np.sum(
+            velocity_unmasked,
+            axis=0,
+            dtype=np.float64,
+        )
+        averages["frms"] += np.sum(f_rms, axis=0, dtype=np.float64)
+        averages["frms_background"] += np.sum(
+            f_rms_background,
+            axis=0,
+            dtype=np.float64,
+        )
+        averages["delta_frms"] += np.sum(delta, axis=0, dtype=np.float64)
+        signals["artery_velocity"][frame_slice] = _masked_signal(
+            velocity,
+            artery_section,
+        )
+        signals["vein_velocity"][frame_slice] = _masked_signal(
+            velocity,
+            vein_section,
+        )
+        signals["artery_frms"][frame_slice] = _masked_signal(f_rms, artery_section)
+        signals["vein_frms"][frame_slice] = _masked_signal(f_rms, vein_section)
+        signals["artery_frms_background"][frame_slice] = _masked_signal(
+            f_rms_background,
+            artery_section,
+        )
+        signals["vein_frms_background"][frame_slice] = _masked_signal(
+            f_rms_background,
+            vein_section,
+        )
+        signals["vessel_frms_background"][frame_slice] = _masked_signal(
+            f_rms_background,
+            artery_section | vein_section,
+        )
+        signals["artery_delta_frms"][frame_slice] = _masked_signal(
+            delta,
+            artery_section,
+        )
+        signals["vein_delta_frms"][frame_slice] = _masked_signal(
+            delta,
+            vein_section,
+        )
+        if chunk_index == chunk_count or chunk_index % 10 == 0:
             Logger.log(
-                "Velocity estimation completed chunk "
-                f"{estimator_chunk.chunk_index}/{estimator_chunk.chunk_count} "
-                f"({frame_slice.stop}/{frame_count} frames)."
+                f"Velocity estimation completed chunk {chunk_index}/{chunk_count} "
+                f"({stop}/{frame_count} frames)."
             )
 
     Logger.log(
         f"Completed chunked velocity estimation in {perf_counter() - estimation_started:.1f}s."
     )
 
-    provenance = _build_velocity_provenance(
-        estimator_inputs,
-        diagnostic_counts=diagnostic_counts,
+    divisor = np.float64(max(frame_count, 1))
+    provenance = physical_velocity_provenance(
+        velocity_estimation_method=method,
+        band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
         laser_wavelength_m=laser_wavelength,
         numerical_aperture=numerical_aperture,
     )
-    return accumulator.build_result(provenance=provenance)
+    if method == FREQUENCY_BANDS_METHOD:
+        provenance.update(
+            {
+                "band_lf_source_path": FREQUENCY_BAND_LF_PATH,
+                "band_hf_source_path": FREQUENCY_BAND_HF_PATH,
+                **band_qc,
+            }
+        )
+        Logger.log(
+            "Frequency-band LF quality counts: "
+            f"zero={band_qc['band_lf_zero_sample_count']}, "
+            f"near_zero={band_qc['band_lf_near_zero_sample_count']}."
+        )
+    return RetinalVelocityData(
+        maps=RetinalVelocityMaps(
+            velocity=velocity_dataset,
+            # In band mode this is the LF mean used as the display background.
+            moment0_average=(averages["background"] / divisor).astype(np.float32),
+            velocity_average=(averages["velocity_unmasked"] / divisor).astype(
+                np.float32
+            ),
+            velocity_average_masked=(averages["velocity"] / divisor).astype(
+                np.float32
+            ),
+            frms_average=(averages["frms"] / divisor).astype(np.float32),
+            frms_background_average=(
+                averages["frms_background"] / divisor
+            ).astype(np.float32),
+            delta_frms_average=(averages["delta_frms"] / divisor).astype(
+                np.float32
+            ),
+            section_mask=section_mask,
+        ),
+        artery=VesselVelocitySignals(
+            velocity=signals["artery_velocity"],
+            frms=signals["artery_frms"],
+            frms_background=signals["artery_frms_background"],
+            delta_frms=signals["artery_delta_frms"],
+        ),
+        vein=VesselVelocitySignals(
+            velocity=signals["vein_velocity"],
+            frms=signals["vein_frms"],
+            frms_background=signals["vein_frms_background"],
+            delta_frms=signals["vein_delta_frms"],
+        ),
+        vessel_frms_background=signals["vessel_frms_background"],
+        provenance=provenance,
+    )
+
+
+def _velocity_video_storage(
+    scratch_h5,
+    shape: tuple[int, int, int],
+    *,
+    retain_velocity_video: bool,
+    velocity_video_output,
+):
+    group = scratch_h5.require_group("waveform")
+    if not retain_velocity_video:
+        if velocity_video_output is not None:
+            raise ValueError(
+                "velocity_video_output requires retain_velocity_video=True."
+            )
+        return None
+    if velocity_video_output is not None:
+        if tuple(velocity_video_output.shape) != shape:
+            raise ValueError(
+                "velocity_video_output must match the active estimator volume shape."
+            )
+        if np.dtype(velocity_video_output.dtype) != np.dtype(np.float32):
+            raise ValueError("velocity_video_output must have dtype float32.")
+        return velocity_video_output
+
+    return group.create_dataset(
+        "velocity",
+        shape=shape,
+        dtype=np.float32,
+        chunks=(
+            min(64, shape[0]),
+            min(32, shape[1]),
+            min(32, shape[2]),
+        ),
+        compression=None,
+    )
+
+
+def _active_velocity_volumes(
+    *,
+    velocity_estimation_method: str,
+    moment0,
+    moment2,
+    band_lf,
+    band_hf,
+) -> tuple[str, object, object]:
+    method = str(velocity_estimation_method)
+    if method == DOPPLER_MOMENTS_METHOD:
+        missing = [
+            name
+            for name, value in (("moment0", moment0), ("moment2", moment2))
+            if value is None
+        ]
+        if missing:
+            raise ValueError(
+                "velocity_estimation_method='doppler_moments' requires "
+                f"{', '.join(missing)}."
+            )
+        return method, moment0, moment2
+    if method == FREQUENCY_BANDS_METHOD:
+        missing = [
+            path
+            for path, value in (
+                (FREQUENCY_BAND_LF_PATH, band_lf),
+                (FREQUENCY_BAND_HF_PATH, band_hf),
+            )
+            if value is None
+        ]
+        if missing:
+            raise ValueError(
+                "velocity_estimation_method='frequency_bands' requires "
+                f"HoloDoppler datasets {', '.join(missing)}."
+            )
+        return method, band_lf, band_hf
+    raise ValueError(
+        "velocity_estimation_method must be 'doppler_moments' or "
+        f"'frequency_bands', got {velocity_estimation_method!r}."
+    )
 
 
 def _validate_matching_volumes(method: str, first_volume, second_volume) -> None:
@@ -721,26 +575,6 @@ def _update_band_quality_counts(
     counts["band_lf_neighborhood_near_zero_sample_count"] += int(
         np.count_nonzero(near_zero & neighborhood)
     )
-
-
-def _band_quality_counts_for_chunk(
-    low_frequency: np.ndarray,
-    *,
-    vessel_mask: np.ndarray,
-    neighborhood_mask: np.ndarray,
-) -> dict[str, int]:
-    counts = _empty_band_quality_counts()
-    _update_band_quality_counts(
-        counts,
-        low_frequency,
-        vessel_mask=vessel_mask,
-        neighborhood_mask=neighborhood_mask,
-    )
-    return {
-        name: int(value)
-        for name, value in counts.items()
-        if name.endswith("_count")
-    }
 
 
 def _inpaint_frame_batch(

@@ -10,7 +10,7 @@ import numpy as np
 from calculations.topology import QUADRANT_NAMES, quadrant_membership
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue, with_attrs
-from pipelines.retinal_velocity.semantics import (
+from pipelines.velocity.semantics import (
     velocity_unit_from_payload,
 )
 
@@ -574,7 +574,7 @@ def _required_array(metrics: Mapping[str, object], path: str) -> np.ndarray:
     if path not in metrics:
         raise RuntimeError(
             f"Required shared per-beat output '{path}' is unavailable; "
-            "check the waveform_velocity DAG dependency."
+            "check the velocity_analysis DAG dependency."
         )
     return _metric_data(metrics[path])
 

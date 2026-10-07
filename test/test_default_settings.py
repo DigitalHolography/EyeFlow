@@ -6,7 +6,7 @@ import json
 import unittest
 from pathlib import Path
 
-from app_settings import normalize_pipeline_visibility
+from app_settings import normalize_pipeline_options, normalize_pipeline_visibility
 from pipeline_engine import PipelineDAG
 from pipelines import load_pipeline_catalog
 
@@ -43,12 +43,12 @@ class DefaultSettingsTests(unittest.TestCase):
             settings["pipeline_options"]["blood_volume_rate"],
         )
         self.assertFalse(
-            settings["pipeline_options"]["waveform_velocity"][
+            settings["pipeline_options"]["velocity_analysis"][
                 "velocity_profiles"
             ]
         )
         self.assertFalse(
-            settings["pipeline_options"]["waveform_velocity"][
+            settings["pipeline_options"]["velocity_analysis"][
                 "velocity_profile_analysis"
             ]
         )
@@ -60,15 +60,44 @@ class DefaultSettingsTests(unittest.TestCase):
 
     def test_new_default_selected_pipeline_is_enabled_in_existing_settings(self) -> None:
         visibility, changed = normalize_pipeline_visibility(
-            ("waveform_velocity", "blood_volume_rate"),
-            {"waveform_velocity": False},
+            ("velocity_analysis", "blood_volume_rate"),
+            {"velocity_analysis": False},
             missing_defaults={"blood_volume_rate": True},
         )
 
         self.assertTrue(changed)
         self.assertEqual(
-            {"waveform_velocity": False, "blood_volume_rate": True},
+            {"velocity_analysis": False, "blood_volume_rate": True},
             visibility,
+        )
+
+    def test_renamed_pipeline_visibility_is_migrated(self) -> None:
+        visibility, changed = normalize_pipeline_visibility(
+            ("velocity_analysis", "blood_volume_rate"),
+            {"waveform_velocity": True, "blood_volume_rate": False},
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(
+            {"velocity_analysis": True, "blood_volume_rate": False},
+            visibility,
+        )
+
+    def test_renamed_pipeline_options_are_migrated(self) -> None:
+        options, changed = normalize_pipeline_options(
+            {"velocity_analysis": ("segments", "quadrants")},
+            {
+                "waveform_velocity": {
+                    "segments": False,
+                    "quadrants": True,
+                }
+            },
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(
+            {"velocity_analysis": {"segments": False, "quadrants": True}},
+            options,
         )
 
     def test_release_defaults_exclude_gradient_and_velocity_profile_outputs(
@@ -104,11 +133,11 @@ class DefaultSettingsTests(unittest.TestCase):
         )
         self.assertNotIn(
             "velocity_profiles",
-            options["waveform_velocity"],
+            options["velocity_analysis"],
         )
         self.assertNotIn(
             "velocity_profile_analysis",
-            options["waveform_velocity"],
+            options["velocity_analysis"],
         )
 
 

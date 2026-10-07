@@ -28,6 +28,10 @@ DEFAULT_VELOCITY_ESTIMATION_METHOD: VelocityEstimationMethod = "doppler_moments"
 VELOCITY_ESTIMATION_METHODS: frozenset[VelocityEstimationMethod] = frozenset(
     {DEFAULT_VELOCITY_ESTIMATION_METHOD, "frequency_bands"}
 )
+PIPELINE_NAME_MIGRATIONS: dict[str, str] = {
+    "retinal_velocity": "velocity",
+    "waveform_velocity": "velocity_analysis",
+}
 
 
 def validate_velocity_estimation_method(value: object) -> VelocityEstimationMethod:
@@ -188,10 +192,14 @@ def normalize_pipeline_visibility(
     missing_defaults: Mapping[str, bool] | None = None,
 ) -> tuple[dict[str, bool], bool]:
     names = list(dict.fromkeys(pipeline_names))
-    visibility, changed = normalize_named_visibility(names, stored_visibility)
+    migrated_visibility, names_migrated = _migrate_pipeline_names(
+        stored_visibility
+    )
+    visibility, changed = normalize_named_visibility(names, migrated_visibility)
+    changed = changed or names_migrated
     stored_names = {
         name
-        for name, value in (stored_visibility or {}).items()
+        for name, value in migrated_visibility.items()
         if isinstance(name, str) and isinstance(value, bool)
     }
     if stored_names:
@@ -211,8 +219,9 @@ def normalize_pipeline_options(
 ) -> tuple[dict[str, dict[str, bool]], bool]:
     """Normalize persisted option selections against the current catalog."""
 
+    migrated_options, names_migrated = _migrate_pipeline_names(stored_options)
     clean_stored: dict[str, dict[str, bool]] = {}
-    for pipeline_name, values in (stored_options or {}).items():
+    for pipeline_name, values in migrated_options.items():
         if not isinstance(pipeline_name, str) or not isinstance(values, Mapping):
             continue
         clean_stored[pipeline_name] = {
@@ -237,8 +246,25 @@ def normalize_pipeline_options(
         if pipeline_values:
             normalized[pipeline_name] = pipeline_values
 
-    changed = normalized != clean_stored
+    changed = names_migrated or normalized != clean_stored
     return normalized, changed
+
+
+def _migrate_pipeline_names(
+    values: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], bool]:
+    """Move persisted pipeline settings to their current identifiers."""
+
+    migrated = dict(values or {})
+    changed = False
+    for old_name, new_name in PIPELINE_NAME_MIGRATIONS.items():
+        if old_name not in migrated:
+            continue
+        if new_name not in migrated:
+            migrated[new_name] = migrated[old_name]
+        del migrated[old_name]
+        changed = True
+    return migrated, changed
 
 
 class AppSettingsStore:

@@ -86,23 +86,22 @@ plan preserves discovery order subject to topological constraints.
 The important shared scientific chain is:
 
 ```text
-heartbeat_core -> `heartbeat`
-topology_core  -> `prepared_topology`
+velocity      -> `velocity` + `cardiac_cycles`
+topology_core -> `prepared_topology`
         \          /
-         waveform_velocity_core
-          -> velocity_analysis
-          -> velocity_profiles
-          -> segment_velocity_per_beat
+         velocity_analysis
+          -> continuous, per-beat, segment, quadrant,
+             profile, FFT, map, and artifact products
                     |
-                    +-> waveform_velocity and metric pipelines
+                    +-> waveform metric and report pipelines
 
 spatial_gradient_moment0
-  requires heartbeat + prepared_topology
+  requires cardiac_cycles + prepared_topology
   -> spatial_gradient_edges
 
 blood_volume_rate options
-  gradient_edges -> spatial_gradient_edges + velocity_profiles
-  masked_edges   -> segment_velocity_per_beat + prepared_topology
+  gradient_edges -> velocity_analysis + spatial_gradient_edges
+  masked_edges   -> velocity_analysis + prepared_topology
 ```
 
 The hidden core pipelines are shared work, not UI targets. The declarations in
@@ -129,17 +128,17 @@ scratch storage, not ad-hoc module globals.
 
 ## Scientific processing boundaries
 
-- `heartbeat_core` estimates the active velocity signal, detects complete
-  cycles, and may cache the velocity video for `waveform_velocity_core`.
+- `velocity` estimates physical retinal velocity, prepares whole-vessel signals,
+  detects cardiac cycles, and retains the velocity video when downstream
+  analysis requires spatial products.
 - `topology_core` aligns masks, creates annular branch/segment topology, and
   publishes reusable prepared artery and vein topology.
-- `waveform_velocity_core` consumes both shared products and prepares the
-  common velocity, per-beat, segment, and profile state.
-- `waveform_velocity` chooses which user-facing velocity datasets and artifacts
-  to publish. Shape, absolute, low-rank, profile-analysis, and report pipelines
-  consume those declared products.
-- `spatial_gradient_moment0` is independent of waveform velocity computation;
-  it reuses heartbeat and topology, applies its own ordered image-processing
+- `velocity_analysis` consumes velocity and topology state, performs per-beat
+  and segment/profile analysis, and publishes the selected user-facing velocity
+  datasets and artifacts. Shape, absolute, low-rank, blood-volume-rate, and
+  report pipelines consume its declared state.
+- `spatial_gradient_moment0` is independent of velocity analysis computation;
+  it reuses cardiac-cycle timing and topology, applies its own ordered image-processing
   chain, and owns gradient-derived lumen products. Dependency-only execution
   keeps those products in run state; their HDF5 families are published only
   when `spatial_gradient_moment0` is selected directly.
@@ -190,7 +189,7 @@ contract or its presentation must also change.
 | Current EyeFlow HDF5 paths | `src/input_output/schema/eyeflow_output.py` |
 | HDF5 serialization behavior | `src/input_output/writers/h5.py`, `src/input_output/h5_access.py` |
 | Topology construction/transforms | `src/calculations/topology/` |
-| Velocity estimator semantics | `src/calculations/retinal_velocity/vessel_velocity_estimator.py` and `src/pipelines/waveform_velocity_core/velocity_semantics.py` |
+| Velocity estimator semantics | `src/pipelines/velocity/estimation.py` and `src/pipelines/velocity/semantics.py` |
 | Release behavior | `.github/workflows/release.yml`, `build_installer.ps1` |
 | Numerical/performance observation | `benchmarks/rtx4090_cross_section.json` (snapshot only) |
 

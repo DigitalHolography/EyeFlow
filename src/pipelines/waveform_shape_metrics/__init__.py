@@ -11,7 +11,7 @@ from .runner import run_waveform_shape_metrics
         "Compute global, by-segment, and quadrant waveform-shape metrics."
     ),
     requires=["numpy", "h5py", "scipy", "skimage"],
-    dag_requires=["waveform_velocity"],
+    dag_requires=["velocity_analysis"],
     options=[
         PipelineOption(
             "segments",

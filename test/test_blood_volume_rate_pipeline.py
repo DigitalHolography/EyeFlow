@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines import load_pipeline_catalog
-from pipelines.waveform_velocity.builder import _segments_required
+from pipelines.velocity_analysis.builder import _segments_required
 
 
 def _dag() -> PipelineDAG:
@@ -35,25 +35,25 @@ def test_bvr_option_dependencies_are_resolved_independently() -> None:
     ).names
 
     assert "spatial_gradient_moment0" in both
-    assert "waveform_velocity" in both
+    assert "velocity_analysis" in both
     assert "spatial_gradient_moment0" in gradient
-    assert "waveform_velocity" in gradient
+    assert "velocity_analysis" in gradient
     assert "spatial_gradient_moment0" not in masked
-    assert "waveform_velocity" in masked
+    assert "velocity_analysis" in masked
     assert neither == (
-        "retinal_velocity",
         "topology_core",
-        "waveform_velocity",
+        "velocity",
+        "velocity_analysis",
         "blood_volume_rate",
     )
 
 
-def test_spatial_gradient_alone_does_not_schedule_waveform_velocity() -> None:
+def test_spatial_gradient_alone_does_not_schedule_velocity_analysis() -> None:
     names = _dag().resolve_targets(["spatial_gradient_moment0"]).names
 
-    assert "retinal_velocity" in names
+    assert "velocity" in names
     assert "topology_core" in names
-    assert "waveform_velocity" not in names
+    assert "velocity_analysis" not in names
 
 
 def test_bvr_defaults_to_mask_derived_outputs_only() -> None:
@@ -73,7 +73,7 @@ def test_each_bvr_family_requests_canonical_segment_analysis() -> None:
             self.bvr_options = frozenset(bvr_options)
 
         def pipeline_scheduled(self, name):
-            return name in {"blood_volume_rate", "waveform_velocity"}
+            return name in {"blood_volume_rate", "velocity_analysis"}
 
         def options_for(self, name):
             return self.bvr_options if name == "blood_volume_rate" else frozenset()

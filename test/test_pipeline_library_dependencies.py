@@ -60,12 +60,12 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             _descriptor("pdf_report"),
             _descriptor("another_pipeline"),
             _descriptor("waveform_shape_metrics"),
-            _descriptor("waveform_velocity"),
+            _descriptor("velocity_analysis"),
         ]
 
         self.assertEqual(
             [
-                "waveform_velocity",
+                "velocity_analysis",
                 "waveform_shape_metrics",
                 "pdf_report",
                 "another_pipeline",
@@ -80,7 +80,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         )
 
         status = controller._pipeline_status_text(
-            _descriptor("waveform_velocity")
+            _descriptor("velocity_analysis")
         )
 
         self.assertEqual("Available — estimator: Band ratio", status)
@@ -152,9 +152,9 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             produces=("prepared_topology",),
             visibility="hidden",
         )
-        retinal_velocity = _descriptor(
-            "retinal_velocity",
-            produces=("retinal_velocity", "cardiac_cycles"),
+        base_velocity = _descriptor(
+            "velocity",
+            produces=("velocity", "cardiac_cycles"),
             visibility="hidden",
         )
         gradient = _descriptor(
@@ -162,15 +162,15 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             requires=("cardiac_cycles", "prepared_topology"),
             produces=("spatial_gradient_edges",),
         )
-        velocity = _descriptor(
-            "waveform_velocity",
-            requires=("retinal_velocity", "prepared_topology"),
-            produces=("waveform_velocity",),
+        velocity_analysis = _descriptor(
+            "velocity_analysis",
+            requires=("velocity", "prepared_topology"),
+            produces=("velocity_analysis",),
             visibility="hidden",
         )
         bvr = _descriptor(
             "blood_volume_rate",
-            requires=("waveform_velocity",),
+            requires=("velocity_analysis",),
             options=(
                 PipelineOption(
                     "gradient_edges",
@@ -185,7 +185,13 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         )
         catalog = {
             item.name: item
-            for item in (retinal_velocity, topology, gradient, velocity, bvr)
+            for item in (
+                base_velocity,
+                topology,
+                gradient,
+                velocity_analysis,
+                bvr,
+            )
         }
         app = SimpleNamespace(
             pipeline_catalog=catalog,
@@ -277,7 +283,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
 
     def test_waveform_segment_substeps_follow_upstream_selection(self) -> None:
         velocity = _descriptor(
-            "waveform_velocity",
+            "velocity_analysis",
             options=(
                 PipelineOption("segments", "Segments"),
                 PipelineOption(
@@ -300,7 +306,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                 shape.name: shape,
             },
             pipeline_option_visibility={
-                "waveform_velocity": {
+                "velocity_analysis": {
                     "segments": True,
                     "quadrants": True,
                 },
@@ -309,22 +315,22 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
                     "quadrants": True,
                 },
             },
-            pipeline_option_vars={"waveform_velocity": {}, "waveform_shape_metrics": {}},
+            pipeline_option_vars={"velocity_analysis": {}, "waveform_shape_metrics": {}},
         )
         controller = PipelineLibraryController(app)
         controller.persist_options = Mock()
         controller.update_summary = Mock()
 
-        controller.set_option_visibility("waveform_velocity", "segments", False)
+        controller.set_option_visibility("velocity_analysis", "segments", False)
 
         self.assertFalse(
-            app.pipeline_option_visibility["waveform_velocity"]["segments"]
+            app.pipeline_option_visibility["velocity_analysis"]["segments"]
         )
         self.assertFalse(
             app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
         )
         self.assertFalse(
-            app.pipeline_option_visibility["waveform_velocity"]["quadrants"]
+            app.pipeline_option_visibility["velocity_analysis"]["quadrants"]
         )
         self.assertFalse(
             app.pipeline_option_visibility["waveform_shape_metrics"]["quadrants"]
@@ -333,7 +339,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         controller.set_option_visibility("waveform_shape_metrics", "segments", True)
 
         self.assertTrue(
-            app.pipeline_option_visibility["waveform_velocity"]["segments"]
+            app.pipeline_option_visibility["velocity_analysis"]["segments"]
         )
         self.assertTrue(
             app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]
@@ -341,7 +347,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
 
     def test_pdf_report_does_not_mutate_shape_options(self) -> None:
         velocity = _descriptor(
-            "waveform_velocity",
+            "velocity_analysis",
             options=(PipelineOption("segments", "Segments"),),
         )
         shape = _descriptor(
@@ -350,7 +356,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         )
         report = _descriptor(
             "pdf_report",
-            requires=("waveform_velocity", "waveform_shape_metrics"),
+            requires=("velocity_analysis", "waveform_shape_metrics"),
         )
         app = SimpleNamespace(
             pipeline_catalog={
@@ -358,18 +364,18 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             },
             pipeline_dag=PipelineDAG((velocity, shape, report)),
             pipeline_visibility={
-                "waveform_velocity": False,
+                "velocity_analysis": False,
                 "waveform_shape_metrics": False,
                 "pdf_report": False,
             },
             pipeline_visibility_vars={},
             pipeline_option_widgets={},
             pipeline_option_visibility={
-                "waveform_velocity": {"segments": False},
+                "velocity_analysis": {"segments": False},
                 "waveform_shape_metrics": {"segments": False},
             },
             pipeline_option_vars={
-                "waveform_velocity": {},
+                "velocity_analysis": {},
                 "waveform_shape_metrics": {},
             },
         )
@@ -387,7 +393,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
 
     def test_stored_waveform_segment_selection_is_normalized_downstream(self) -> None:
         velocity = _descriptor(
-            "waveform_velocity",
+            "velocity_analysis",
             options=(PipelineOption("segments", "Segments"),),
         )
         shape = _descriptor(
@@ -408,7 +414,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             },
             settings_store=SimpleNamespace(
                 load_pipeline_options=lambda: {
-                    "waveform_velocity": {"segments": False},
+                    "velocity_analysis": {"segments": False},
                     "waveform_shape_metrics": {
                         "segments": True,
                         "quadrants": True,
@@ -422,7 +428,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
         controller.sync_options([velocity, shape])
 
         self.assertTrue(
-            app.pipeline_option_visibility["waveform_velocity"]["segments"]
+            app.pipeline_option_visibility["velocity_analysis"]["segments"]
         )
         self.assertTrue(
             app.pipeline_option_visibility["waveform_shape_metrics"]["segments"]

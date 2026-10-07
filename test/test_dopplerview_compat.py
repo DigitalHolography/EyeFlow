@@ -18,8 +18,8 @@ if str(SRC_DIR) not in sys.path:
 from input_output.inputs import load_h5_sidecar_config
 from input_output.schema import DopplerViewSource, HolodopplerSource
 from pipeline_engine.context import RawH5SourceReader
-from pipelines.waveform_velocity.sources import (
-    WaveformVelocitySources,
+from pipelines.velocity_analysis.sources import (
+    VelocityAnalysisSources,
     _load_moment_pair,
 )
 
@@ -166,7 +166,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
         self.assertEqual((100.0, 10.0), (timing.sampling_freq, timing.batch_stride))
 
-    def test_waveform_velocity_uses_one_coherent_raw_moment_mode(
+    def test_velocity_analysis_uses_one_coherent_raw_moment_mode(
         self,
     ) -> None:
         with self._source_pair() as (hd_source, dv_source):
@@ -330,7 +330,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         hd_file = h5py.File(hd_path, "r")
         dv_file = h5py.File(dv_path, "r")
         try:
-            sources = WaveformVelocitySources(
+            sources = VelocityAnalysisSources(
                 hd=HolodopplerSource(
                     RawH5SourceReader(h5file=hd_file, label="HD"),
                     hd_config,

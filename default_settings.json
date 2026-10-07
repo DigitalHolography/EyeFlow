@@ -7,7 +7,7 @@
     "pdf_report": true,
     "spatial_gradient_moment0": false,
     "waveform_shape_metrics": true,
-    "waveform_velocity": true
+    "velocity_analysis": true
   },
   "pipeline_options": {
     "absolute_waveform_metrics": {
@@ -25,7 +25,7 @@
       "quadrants": true,
       "segments": true
     },
-    "waveform_velocity": {
+    "velocity_analysis": {
       "quadrants": true,
       "segments": true,
       "velocity_profiles": false,

@@ -20,17 +20,17 @@ from calculations.segment_profiles import MaskedArrays  # noqa: E402
 from calculations.topology import dilate_segment_masks  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
-from pipelines.waveform_velocity.analysis.profiles import (  # noqa: E402
+from pipelines.velocity_analysis.analysis.profiles import (  # noqa: E402
     velocity_fft_transverse_profiles,
 )
-from pipelines.waveform_velocity.analysis.segment_maps import (  # noqa: E402
+from pipelines.velocity_analysis.analysis.segment_maps import (  # noqa: E402
     interpolate_velocity_maps_per_beat,
 )
-from pipelines.waveform_velocity.analysis.segments import (  # noqa: E402
+from pipelines.velocity_analysis.analysis.segments import (  # noqa: E402
     _gpu_nanmean_axis1,
     _VelocityProfileFftAccumulator,
 )
-from pipelines.waveform_velocity.outputs.profiles import (  # noqa: E402
+from pipelines.velocity_analysis.outputs.profiles import (  # noqa: E402
     pack_velocity_profile_fft_outputs,
 )
 

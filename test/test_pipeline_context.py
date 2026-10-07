@@ -85,33 +85,33 @@ class PipelineContextTests(unittest.TestCase):
                 work_h5=h5file,
                 holodoppler_h5=None,
                 doppler_vision_h5=None,
-                pipeline_name="waveform_velocity",
+                pipeline_name="velocity_analysis",
                 pipeline_options={
-                    "waveform_velocity": ("segments", "quadrants"),
+                    "velocity_analysis": ("segments", "quadrants"),
                     "waveform_shape_metrics": (),
                 },
                 pipeline_order=(
-                    "retinal_velocity",
-                    "waveform_velocity",
+                    "velocity",
+                    "velocity_analysis",
                 ),
-                pipeline_targets=("waveform_velocity",),
+                pipeline_targets=("velocity_analysis",),
             )
 
             self.assertTrue(ctx.option_enabled("segments"))
             self.assertTrue(
-                ctx.option_enabled("quadrants", pipeline="waveform_velocity")
+                ctx.option_enabled("quadrants", pipeline="velocity_analysis")
             )
             self.assertFalse(
                 ctx.option_enabled("quadrants", pipeline="waveform_shape_metrics")
             )
             self.assertEqual(
                 frozenset({"segments", "quadrants"}),
-                ctx.options_for("waveform_velocity"),
+                ctx.options_for("velocity_analysis"),
             )
-            self.assertTrue(ctx.pipeline_scheduled("retinal_velocity"))
+            self.assertTrue(ctx.pipeline_scheduled("velocity"))
             self.assertFalse(ctx.pipeline_scheduled("pdf_report"))
-            self.assertTrue(ctx.pipeline_targeted("waveform_velocity"))
-            self.assertFalse(ctx.pipeline_targeted("retinal_velocity"))
+            self.assertTrue(ctx.pipeline_targeted("velocity_analysis"))
+            self.assertFalse(ctx.pipeline_targeted("velocity"))
 
     def test_velocity_estimation_method_is_available_to_runners(self) -> None:
         with h5py.File(

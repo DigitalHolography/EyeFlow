@@ -14,7 +14,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from pipelines.waveform_velocity.artifacts.figures.signal_inputs import (  # noqa: E402
+from pipelines.velocity_analysis.artifacts.figures.signal_inputs import (  # noqa: E402
     display_frequency,
     display_velocity,
     histogram_matrix,
@@ -34,23 +34,23 @@ from calculations.blood_flow_velocity.signal_analysis.waveform import (  # noqa:
 )
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.writers.png import write_png_file  # noqa: E402
-from pipelines.retinal_velocity.estimation import (  # noqa: E402
+from pipelines.velocity.estimation import (  # noqa: E402
     _masked_signal as _velocity_masked_signal,
 )
-from pipelines.retinal_velocity.models import (  # noqa: E402
+from pipelines.velocity.models import (  # noqa: E402
     RetinalVelocity,
     RetinalVelocityMaps,
     VesselVelocity,
     VesselVelocitySignals,
 )
-from pipelines.waveform_velocity.artifacts.figures import (  # noqa: E402
+from pipelines.velocity_analysis.artifacts.figures import (  # noqa: E402
     PULSE_PNG_SUFFIXES,
     export_pulse_pngs,
 )
-from pipelines.waveform_velocity.artifacts.figures.plotting import (  # noqa: E402
+from pipelines.velocity_analysis.artifacts.figures.plotting import (  # noqa: E402
     _velocity_gradient_values,
 )
-from pipelines.waveform_velocity.artifacts.figures.flow_maps import (  # noqa: E402
+from pipelines.velocity_analysis.artifacts.figures.flow_maps import (  # noqa: E402
     _velocity_colorbar_vmax,
     _vessel_histogram_colormap,
 )
@@ -288,11 +288,11 @@ class PulsePngExporterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output = FakeOutput(Path(temp_dir))
             context = _synthetic_context()
-            artery = context.retinal_velocity.continuous("artery", raw=True)
+            artery = context.velocity.continuous("artery", raw=True)
             cardiac_cycle = spectrum_signal_analysis(artery, 0.1, systole_count=4)
             per_beat_result = SimpleNamespace(
                 cardiac_cycle=cardiac_cycle,
-                cycle_boundary_indexes=context.retinal_velocity.cycle_boundary_indexes,
+                cycle_boundary_indexes=context.velocity.cycle_boundary_indexes,
             )
             written = export_pulse_pngs(output, context, per_beat_result)
 
@@ -342,7 +342,7 @@ def _synthetic_context():
         ),
         spectral=spectrum_signal_analysis(artery_signal, 0.1, systole_count=4),
     )
-    retinal_velocity = RetinalVelocity(
+    velocity = RetinalVelocity(
         maps=RetinalVelocityMaps(
             velocity=velocity,
             moment0_average=base_map + 1.0,
@@ -399,7 +399,7 @@ def _synthetic_context():
     )
     return SimpleNamespace(
         source_data=source_data,
-        retinal_velocity=retinal_velocity,
+        velocity=velocity,
         artery_segments=None,
         vein_segments=None,
     )

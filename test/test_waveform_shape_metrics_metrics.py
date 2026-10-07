@@ -22,8 +22,8 @@ from pipelines.waveform_shape_metrics.metrics.runner import (
     run_waveform_shape_metric_calculations,
 )
 from pipelines.waveform_shape_metrics.outputs import pack_waveform_shape_outputs
-from pipelines.waveform_velocity.outputs.continuous import pack_segment_velocity_outputs
-from pipelines.waveform_velocity.outputs.quadrants import pack_quadrant_velocity_outputs
+from pipelines.velocity_analysis.outputs.continuous import pack_segment_velocity_outputs
+from pipelines.velocity_analysis.outputs.quadrants import pack_quadrant_velocity_outputs
 from utils.logger import Logger
 
 
@@ -53,14 +53,14 @@ class WaveformShapeMetricsTests(unittest.TestCase):
     def test_waveform_pipelines_have_separate_dag_responsibilities(self):
         pipelines.load_pipeline_catalog()
 
-        self.assertNotIn("waveform_velocity_core", PIPELINE_REGISTRY)
-        self.assertIn("waveform_velocity", PIPELINE_REGISTRY)
+        self.assertNotIn("velocity_analysis_core", PIPELINE_REGISTRY)
+        self.assertIn("velocity_analysis", PIPELINE_REGISTRY)
         self.assertIn("waveform_shape_metrics", PIPELINE_REGISTRY)
         self.assertIn("pdf_report", PIPELINE_REGISTRY)
         self.assertNotIn("waveform_shape_metrics_angioeye", PIPELINE_REGISTRY)
         self.assertNotIn("topological_metrics", PIPELINE_REGISTRY)
         for pipeline_name in (
-            "waveform_velocity",
+            "velocity_analysis",
             "waveform_shape_metrics",
             "absolute_waveform_metrics",
             "lowrank_waveform_decomposition",
@@ -82,16 +82,16 @@ class WaveformShapeMetricsTests(unittest.TestCase):
 
         self.assertEqual(
             (
-                "retinal_velocity",
                 "topology_core",
-                "waveform_velocity",
+                "velocity",
+                "velocity_analysis",
                 "waveform_shape_metrics",
             ),
             metrics_plan.names,
         )
         self.assertEqual("pdf_report", report_plan.names[-1])
         self.assertLess(
-            report_plan.names.index("waveform_velocity"),
+            report_plan.names.index("velocity_analysis"),
             report_plan.names.index("waveform_shape_metrics"),
         )
         self.assertNotIn("waveform_shape_metrics_angioeye", metrics_plan.names)

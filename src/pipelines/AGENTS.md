@@ -35,13 +35,12 @@ availability rather than unrelated import crashes.
 
 | Group | Responsibility and important upstream state |
 |---|---|
-| `heartbeat_core` (hidden) | Velocity-derived cycle boundaries; caches compatible estimator work; produces `heartbeat` |
+| `velocity` (hidden) | Physical retinal-velocity estimation, whole-vessel signals, average maps, and cardiac-cycle timing; produces `velocity` and `cardiac_cycles` |
 | `topology_core` (hidden) | Canonical artery/vein prepared topology; produces `prepared_topology` |
-| `waveform_velocity_core` (hidden) | Shared velocity/per-beat/segment/profile state; requires both hidden cores |
-| `waveform_velocity` | Selectable persisted continuous, per-beat, segment, quadrant, profile, profile-fit, FFT, map, and movie products |
-| `spatial_gradient_moment0` | Independently selected moment0 gradient/lumen profiles; requires heartbeat and topology, not waveform core |
+| `velocity_analysis` | Shared per-beat/segment/profile state plus selectable persisted continuous, quadrant, profile-fit, FFT, map, and movie products; requires velocity and topology |
+| `spatial_gradient_moment0` | Independently selected moment0 gradient/lumen profiles; requires cardiac cycles and topology, not velocity analysis |
 | `blood_volume_rate` | Two option families with different DAG dependencies: gradient edges and mask-derived geometry |
-| `waveform_shape_metrics`, `absolute_waveform_metrics`, `lowrank_waveform_decomposition` | Downstream waveform metrics requiring `waveform_velocity` |
+| `waveform_shape_metrics`, `absolute_waveform_metrics`, `lowrank_waveform_decomposition` | Downstream waveform metrics requiring `velocity_analysis` |
 | `pdf_report` | Report assembly after waveform and shape outputs |
 | `displacement_map` | Separate image-registration/displacement and cross-section path |
 
@@ -51,16 +50,17 @@ The declarations in each package are authoritative if this table drifts.
 
 `vessel_inputs.py` builds canonical `RetinalSourceData`: active HD volumes,
 aligned vessel masks, optic-disc geometry, timing/pitch, DV background settings,
-and velocity method. Both heartbeat and waveform core use compatible sources.
+and velocity method. The velocity and velocity-analysis pipelines use compatible
+sources.
 
-Heartbeat detection runs first because per-beat consumers need its zero-based
-cycle boundaries. Topology is prepared once and cached in run state. Waveform
-core may reuse heartbeat's velocity estimate when the conservative cache key
-matches; it then produces common context and per-beat outputs for visible
-pipelines. This reuse is an optimization, not an alternate contract.
+The velocity pipeline estimates the physical velocity field and detects
+zero-based cardiac-cycle boundaries. Topology is prepared once and cached in
+run state. Velocity analysis consumes both results and produces the common
+per-beat, segment, and profile state used by visible products.
 
-`spatial_gradient_moment0` shares heartbeat/topology but owns its gradient
-profiles and lumen edges. Do not put gradient work back into waveform core.
+`spatial_gradient_moment0` shares cardiac-cycle/topology state but owns its
+gradient profiles and lumen edges. Do not put gradient work into velocity
+analysis.
 It requires the optional HD flat-field moment at `/moment0ff` or `/M0FF`, and
 publishes under `/Processing/SpatialGradientProfiles` and
 `/Processing/SpatialGradientMetrics` only when it is a direct target. When it
@@ -77,7 +77,7 @@ aligned.
 All targets remain available for both configured methods. `doppler_moments`
 and `frequency_bands` represent physical velocity (`mm/s`); band mode first
 converts `HF / LF` to frequency using the recorded
-`band_ratio_frequency_scale_hz`. `waveform_velocity_core/velocity_semantics.py`
+`band_ratio_frequency_scale_hz`. `velocity/semantics.py`
 centralizes display and dataset interpretation. New velocity-derived outputs or
 plots must resolve semantics from payload/provenance instead of hard-coding
 `mm/s`.
@@ -107,10 +107,10 @@ Retain clear method, calibration, and unit provenance for their results.
 | Change | Read/inspect | Usually skip |
 |---|---|---|
 | New pipeline or option | `CONTRIBUTING.md`, package `__init__.py`, runner, DAG tests | GUI views; discovery is automatic |
-| Velocity source/semantics | `vessel_inputs.py`, heartbeat and waveform-core sources/runners, estimator, data contracts | displacement internals |
-| Per-beat/segment output | waveform core plus visible waveform packer, output schema, profile/segment tests | settings UI |
+| Velocity source/semantics | `vessel_inputs.py`, velocity sources/runner/estimator, data contracts | displacement internals |
+| Per-beat/segment output | velocity-analysis builder and packers, output schema, profile/segment tests | settings UI |
 | Spatial-gradient lumen metric | spatial-gradient package, topology preparation/chunks, image filters, spatial-gradient/topology tests | CLI and report code unless output is exposed there |
 | Blood-volume-rate formula | option declaration, runner, outputs, `calculations/blood_volume_rate.py`, BVR tests | unrelated waveform metric calculators |
 | Metric family | that pipeline's runner/calculator/outputs plus waveform input contracts and matching test file | pipeline engine unless dependencies/options change |
 | Displacement | only `displacement_map/`, topology functions it imports, and displacement tests | heartbeat/waveform metrics |
-| Profile fit | `waveform_velocity/analysis/profiles/velocity_profile_analysis.py`, profile schema producer, dedicated doc/test | GUI and settings |
+| Profile fit | `velocity_analysis/analysis/profiles/velocity_profile_analysis.py`, profile schema producer, dedicated doc/test | GUI and settings |

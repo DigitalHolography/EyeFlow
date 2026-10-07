@@ -30,15 +30,15 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  
 )
 from calculations.math import band_limited_ifft_abs  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
-from pipelines.retinal_velocity.estimation import (  # noqa: E402
+from pipelines.velocity.estimation import (  # noqa: E402
     _doppler_frequency_to_velocity_mm_s,
 )
-from pipelines.waveform_velocity.builder import (  # noqa: E402
+from pipelines.velocity_analysis.builder import (  # noqa: E402
     _raw_velocity_signals_for_per_beat,
-    _run_waveform_per_beat_analysis,
+    _run_velocity_per_beat_analysis,
     _waveform_segment_input,
 )
-from pipelines.waveform_velocity.outputs.per_beat import (  # noqa: E402
+from pipelines.velocity_analysis.outputs.per_beat import (  # noqa: E402
     pack_velocity_per_beat_outputs,
 )
 
@@ -68,10 +68,10 @@ class PerBeatRunnerTests(unittest.TestCase):
         )
 
         with patch(
-            "pipelines.waveform_velocity.builder.run_per_beat_analysis",
+            "pipelines.velocity_analysis.builder.run_per_beat_analysis",
             return_value="result",
         ) as run:
-            result = _run_waveform_per_beat_analysis(
+            result = _run_velocity_per_beat_analysis(
                 retinal,
                 source_data,
                 artery_segments,

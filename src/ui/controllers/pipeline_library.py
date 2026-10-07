@@ -10,14 +10,14 @@ from app_settings import (
     normalize_pipeline_visibility,
     runtime_pipelines_path,
 )
-from pipelines import PipelineDescriptor, load_pipeline_catalog
 from pipeline_engine import PipelineDAG, PipelineExecutionPlan
+from pipelines import PipelineDescriptor, load_pipeline_catalog
 
 from ..services import services_for
 from ..widgets import Tooltip
 
 _PIPELINE_UI_ORDER = {
-    "waveform_velocity": 0,
+    "velocity_analysis": 0,
     "spatial_gradient_moment0": 1,
     "blood_volume_rate": 2,
     "waveform_shape_metrics": 3,
@@ -328,11 +328,11 @@ class PipelineLibraryController:
                     if not values.get(required_name, False):
                         values[required_name] = True
                         changed = True
-        velocity_segments = selections.get("waveform_velocity", {}).get(
+        velocity_segments = selections.get("velocity_analysis", {}).get(
             "segments",
             False,
         )
-        velocity_values = selections.get("waveform_velocity", {})
+        velocity_values = selections.get("velocity_analysis", {})
         shape_values = selections.get("waveform_shape_metrics", {})
         absolute_values = selections.get("absolute_waveform_metrics", {})
         downstream_segments = any(
@@ -381,17 +381,17 @@ class PipelineLibraryController:
         enabled: bool,
     ) -> None:
         changes = [(pipeline_name, option_name, enabled)]
-        if pipeline_name == "waveform_velocity":
+        if pipeline_name == "velocity_analysis":
             if option_name == "segments" and not enabled:
                 for dependent in ("segments", "quadrants"):
                     changes.append(("waveform_shape_metrics", dependent, False))
                     changes.append(("absolute_waveform_metrics", dependent, False))
         elif pipeline_name == "absolute_waveform_metrics" and enabled:
             if option_name in {"segments", "quadrants"}:
-                changes.append(("waveform_velocity", "segments", True))
+                changes.append(("velocity_analysis", "segments", True))
         elif pipeline_name == "waveform_shape_metrics" and enabled:
             if option_name in {"segments", "quadrants"}:
-                changes.append(("waveform_velocity", "segments", True))
+                changes.append(("velocity_analysis", "segments", True))
 
         changed = False
         for target_pipeline_name, target_option_name, target_enabled in changes:
@@ -727,7 +727,7 @@ class PipelineLibraryController:
         option_widgets: list[tk.Widget] = []
         expanded = self.app.pipeline_expanded.get(pipeline.name, False)
         option_offset = 1
-        if pipeline.name == "waveform_velocity":
+        if pipeline.name == "velocity_analysis":
             estimator_toggle = self._build_velocity_estimator_toggle(
                 self.app.pipeline_library_inner,
             )
@@ -872,12 +872,12 @@ class PipelineLibraryController:
                 widget.grid_remove()
 
     def update_velocity_estimator_display(self) -> None:
-        """Refresh the waveform row summary and estimator control state."""
+        """Refresh the velocity-analysis row and estimator control state."""
 
         pipeline = getattr(self.app, "pipeline_catalog", {}).get(
-            "waveform_velocity"
+            "velocity_analysis"
         )
-        status = self._pipeline_status_labels.get("waveform_velocity")
+        status = self._pipeline_status_labels.get("velocity_analysis")
         if pipeline is not None and status is not None:
             description = self._pipeline_status_text(pipeline)
             status.configure(
@@ -888,11 +888,11 @@ class PipelineLibraryController:
                     else description
                 )
             )
-        self._update_option_widget_states("waveform_velocity")
+        self._update_option_widget_states("velocity_analysis")
 
     def _pipeline_status_text(self, pipeline: PipelineDescriptor) -> str:
         description = pipeline_status_text(pipeline)
-        if pipeline.name != "waveform_velocity":
+        if pipeline.name != "velocity_analysis":
             return description
         variable = getattr(self.app, "velocity_estimation_method_var", None)
         method = variable.get() if variable is not None else "doppler_moments"
@@ -920,7 +920,7 @@ class PipelineLibraryController:
         ):
             if isinstance(widget, ttk.Checkbutton):
                 widget.configure(state=state)
-        if pipeline_name == "waveform_velocity":
+        if pipeline_name == "velocity_analysis":
             if getattr(self.app, "_pipeline_run_active", False):
                 state = "disabled"
             for widget in getattr(
@@ -1004,7 +1004,7 @@ def pipeline_ui_sort_key(pipeline: PipelineDescriptor) -> tuple[int, str]:
 
 
 def _pipeline_setting_row_count(pipeline: PipelineDescriptor) -> int:
-    return 1 if pipeline.name == "waveform_velocity" else 0
+    return 1 if pipeline.name == "velocity_analysis" else 0
 
 
 def descriptor_tooltip_text(descriptor: PipelineDescriptor) -> str:

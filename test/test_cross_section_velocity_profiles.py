@@ -25,10 +25,10 @@ from input_output.output_manager import OutputType  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from input_output.writers.png import FigureArtifactWriter, write_png_file  # noqa: E402
-from pipelines.waveform_velocity.outputs.profiles import (  # noqa: E402
+from pipelines.velocity_analysis.outputs.profiles import (  # noqa: E402
     pack_cross_section_profile_outputs,
 )
-from pipelines.waveform_velocity.artifacts.figures.profiles import (  # noqa: E402
+from pipelines.velocity_analysis.artifacts.figures.profiles import (  # noqa: E402
     _finite_median,
     _hierarchical_profile_median,
     _nanmedian,
@@ -54,7 +54,7 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
         self.assertFalse(
             hasattr(topology_profiles, "fit_inverse_parabola_profiles_with_roots")
         )
-        self.assertFalse((SRC_DIR / "pipelines/waveform_velocity/flow_asymmetry.py").exists())
+        self.assertFalse((SRC_DIR / "pipelines/velocity_analysis/flow_asymmetry.py").exists())
 
     def test_h5_export_contains_only_four_standard_profiles_per_vessel(self) -> None:
         artery = _segments(radius_count=2, branch_count=1)
@@ -149,7 +149,7 @@ class ProfileArtifactTests(unittest.TestCase):
         values = np.arange(2 * 12 * 3, dtype=np.float32).reshape(2, 12, 3)
         expected = _finite_median(values, axis=1)
         with patch(
-            "pipelines.waveform_velocity.artifacts.figures.profiles.np.nanmedian",
+            "pipelines.velocity_analysis.artifacts.figures.profiles.np.nanmedian",
             side_effect=IndexError("sparse partition failure"),
         ):
             actual = _nanmedian(values, axis=1)

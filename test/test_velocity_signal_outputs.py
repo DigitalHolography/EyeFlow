@@ -10,7 +10,7 @@ from PIL import Image
 
 from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager
-from pipelines.waveform_velocity.artifacts.velocity_signals import (
+from pipelines.velocity_analysis.artifacts.velocity_signals import (
     VELOCITY_ENVELOPE_GRAY,
     VELOCITY_FIGURE_ASPECT_RATIO,
     _velocity_figure,

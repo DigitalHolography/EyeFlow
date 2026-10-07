@@ -11,7 +11,7 @@ from calculations.segment_profiles import (
     SegmentProfileResult,
     SegmentProfileSettings,
 )
-from pipelines.waveform_velocity.models import VelocitySegmentResult
+from pipelines.velocity_analysis.models import VelocitySegmentResult
 
 
 @pytest.mark.parametrize(

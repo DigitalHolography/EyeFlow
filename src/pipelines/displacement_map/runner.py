@@ -127,7 +127,7 @@ def run_displacement_map(
             temporary_directory=temporary_directory,
         ),
     )
-    ctx.log("Dense displacement maps prepared for waveform velocity processing.")
+    ctx.log("Dense displacement maps prepared for velocity analysis processing.")
     for output_video in output_videos:
         ctx.log(f"Displacement magnitude video written to {output_video}.")
 

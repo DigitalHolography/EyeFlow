@@ -8,8 +8,8 @@ from pipelines.spatial_gradient_moment0.runner import (
     SpatialGradientProducts,
 )
 from pipelines.topology_core.runner import prepared_topologies
-from pipelines.waveform_velocity import waveform_velocity
-from pipelines.waveform_velocity.outputs import (
+from pipelines.velocity_analysis import velocity_analysis
+from pipelines.velocity_analysis.outputs import (
     pack_velocity_per_beat_outputs,
 )
 
@@ -26,7 +26,7 @@ def run_blood_volume_rate(ctx) -> dict[str, object]:
     if not selected:
         return {}
 
-    waveform = waveform_velocity(ctx)
+    analysis = velocity_analysis(ctx)
 
     outputs: dict[str, object] = {}
     if "gradient_edges" in selected:
@@ -37,10 +37,10 @@ def run_blood_volume_rate(ctx) -> dict[str, object]:
             )
         outputs.update(
             pack_gradient_edge_outputs(
-                waveform.artery_segments,
-                waveform.vein_segments,
+                analysis.artery_segments,
+                analysis.vein_segments,
                 gradients,
-                waveform.cycle_boundary_indexes,
+                analysis.cycle_boundary_indexes,
                 index_base=0,
                 gradient_sources_persisted=ctx.pipeline_targeted(
                     "spatial_gradient_moment0"
@@ -50,14 +50,14 @@ def run_blood_volume_rate(ctx) -> dict[str, object]:
 
     if "masked_edges" in selected:
         velocity_outputs = pack_velocity_per_beat_outputs(
-            waveform.per_beat_result,
-            velocity_analysis=waveform.retinal_velocity,
+            analysis.per_beat_result,
+            velocity=analysis.velocity,
         )
         mask_outputs = pack_mask_derived_outputs(
             prepared_topologies(ctx),
             velocity_outputs,
             pixel_size_mm=float(
-                waveform.source_data.profile_settings.pixel_size_mm
+                analysis.source_data.profile_settings.pixel_size_mm
             ),
         )
         outputs.update(mask_outputs)

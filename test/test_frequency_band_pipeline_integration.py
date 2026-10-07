@@ -19,9 +19,9 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
         holo = _write_frequency_band_run(Path(temp_dir))
         available, missing = load_pipeline_catalog()
         assert not {
-            "retinal_velocity",
+            "velocity",
             "topology_core",
-            "waveform_velocity",
+            "velocity_analysis",
             "absolute_waveform_metrics",
             "blood_volume_rate",
         } & {descriptor.name for descriptor in missing}
@@ -29,13 +29,13 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
         spec = resolve_run_spec(
             input_paths=[holo],
             target_names=[
-                "waveform_velocity",
+                "velocity_analysis",
                 "absolute_waveform_metrics",
                 "blood_volume_rate",
             ],
             pipelines=available,
             pipeline_options={
-                "waveform_velocity": ("segments",),
+                "velocity_analysis": ("segments",),
                 "absolute_waveform_metrics": (),
                 "blood_volume_rate": ("masked_edges",),
             },

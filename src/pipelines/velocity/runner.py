@@ -1,0 +1,127 @@
+"""Orchestrate shared velocity estimation and cardiac-cycle processing."""
+
+from __future__ import annotations
+
+from time import perf_counter
+
+import numpy as np
+
+from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
+    CardiacCycleAnalysis,
+)
+from utils.logger import Logger
+
+from .cardiac_cycle import detect_cardiac_cycles
+from .estimation import estimate_retinal_velocity
+from .models import RetinalVelocity
+from .outputs import pack_velocity_outputs
+from .signal_processing import build_velocity
+from .sources import load_velocity_inputs
+
+VELOCITY_STATE = "velocity"
+
+
+def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
+    """Compute retinal velocity once and publish reusable typed state."""
+
+    started = perf_counter()
+    Logger.log("Starting velocity core processing...")
+    source = load_velocity_inputs(ctx)
+    images = source.image_maps
+    segmentation = source.segmentation
+    timing = source.holodoppler.timing
+    retain_velocity_map = _pipeline_scheduled(ctx, "velocity_analysis")
+    velocity_data = estimate_retinal_velocity(
+        image_maps=images,
+        velocity_estimation_method=source.velocity_estimation_method,
+        band_ratio_frequency_scale_hz=source.band_ratio_frequency_scale_hz,
+        artery_mask=segmentation.vessels.artery,
+        vein_mask=segmentation.vessels.vein,
+        background_mask=segmentation.vessels.velocity_background,
+        optic_disc_center=segmentation.optic_disc.center,
+        local_background_dist=source.doppler_view.local_background_dist,
+        retain_velocity_video=retain_velocity_map,
+    )
+    cycle_analysis, cycle_source = detect_cardiac_cycles(
+        velocity_data,
+        dt_seconds=float(timing.dt_seconds),
+    )
+    _log_cardiac_cycle_warnings(
+        cycle_analysis,
+        cycle_source,
+        dt_seconds=float(timing.dt_seconds),
+    )
+    velocity = build_velocity(
+        velocity_data,
+        cycle_analysis,
+        cycle_source,
+        dt_seconds=float(timing.dt_seconds),
+    )
+    ctx.state.set(VELOCITY_STATE, velocity)
+    Logger.log(
+        f"Completed velocity core processing in {perf_counter() - started:.1f}s."
+    )
+    return velocity, pack_velocity_outputs(velocity)
+
+
+def velocity(ctx) -> RetinalVelocity:
+    """Return the canonical result produced by the DAG dependency."""
+
+    value = ctx.state.get(VELOCITY_STATE)
+    if not isinstance(value, RetinalVelocity):
+        raise RuntimeError(
+            "Velocity state is unavailable; check the pipeline DAG dependency."
+        )
+    return value
+
+
+def cardiac_cycles(ctx) -> CardiacCycleAnalysis:
+    """Return reusable cardiac-cycle timing without exposing pipeline internals."""
+
+    return velocity(ctx).cardiac_cycle
+
+
+def cardiac_cycle_indexes(ctx) -> np.ndarray:
+    """Return canonical zero-based frame indexes delimiting cardiac cycles."""
+
+    return velocity(ctx).cycle_boundary_indexes
+
+
+def _pipeline_scheduled(ctx, name: str) -> bool:
+    predicate = getattr(ctx, "pipeline_scheduled", None)
+    return bool(callable(predicate) and predicate(name))
+
+
+def _log_cardiac_cycle_warnings(
+    analysis: CardiacCycleAnalysis,
+    source: str,
+    *,
+    dt_seconds: float,
+) -> None:
+    """Record retained gaps that look like two or three cardiac periods."""
+
+    if source == "none":
+        Logger.log_warning(
+            "No usable systole sequence was detected in the artery or vein; "
+            "the full recording is retained as one fallback cardiac cycle."
+        )
+        return
+
+    for gap in getattr(analysis.systole, "suspected_missed_beat_gaps", ()):
+        Logger.log_warning(
+            "Possible missed systole in the "
+            f"{source} signal: frames {gap.start_index} to {gap.stop_index} "
+            f"span {gap.estimated_multiple}x the estimated cardiac period "
+            f"({gap.interval_samples * dt_seconds:.3f}s versus "
+            f"{gap.estimated_period_samples * dt_seconds:.3f}s). "
+            "The interval was retained for per-beat analysis."
+        )
+
+
+__all__ = [
+    "VELOCITY_STATE",
+    "cardiac_cycle_indexes",
+    "cardiac_cycles",
+    "run_velocity",
+    "velocity",
+]

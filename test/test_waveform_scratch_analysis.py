@@ -7,22 +7,22 @@ from unittest.mock import patch
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths, ImageMaps
-from pipelines.retinal_velocity.estimation import (
+from pipelines.velocity.estimation import (
     _bounded_inpaint_result,
     _inpaint_frame_batch,
     _signed_rms_difference,
     estimate_retinal_velocity,
 )
-from pipelines.retinal_velocity.models import (
+from pipelines.velocity.models import (
     RetinalVelocity,
     RetinalVelocityMaps,
     VesselVelocity,
     VesselVelocitySignals,
 )
-from pipelines.retinal_velocity.outputs import (
-    pack_retinal_velocity_outputs,
+from pipelines.velocity.outputs import (
+    pack_velocity_outputs,
 )
-from pipelines.waveform_velocity.outputs.continuous import pack_continuous_velocity_outputs
+from pipelines.velocity_analysis.outputs.continuous import pack_continuous_velocity_outputs
 
 
 class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
@@ -215,7 +215,7 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
         results = []
         for chunk_size in (1, 2, 7, 32):
             with patch(
-                "pipelines.retinal_velocity.estimation.SCRATCH_FRAME_CHUNK_SIZE",
+                "pipelines.velocity.estimation.SCRATCH_FRAME_CHUNK_SIZE",
                 chunk_size,
             ):
                 result = estimate_retinal_velocity(
@@ -281,7 +281,7 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
             schema.segmentation.artery.branch_label_map.startswith("Segmentation/")
         )
         typed = _typed_velocity()
-        shared = pack_retinal_velocity_outputs(typed)
+        shared = pack_velocity_outputs(typed)
         velocity = pack_continuous_velocity_outputs(typed)
         metrics = {**shared, **velocity}
 

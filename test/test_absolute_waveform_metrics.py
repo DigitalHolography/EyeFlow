@@ -76,7 +76,7 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
 
         pipelines.load_pipeline_catalog()
         descriptor = PIPELINE_REGISTRY["absolute_waveform_metrics"]
-        self.assertEqual(("waveform_velocity",), descriptor.dag_requires)
+        self.assertEqual(("velocity_analysis",), descriptor.dag_requires)
         self.assertEqual(
             ("segments", "quadrants"),
             tuple(option.name for option in descriptor.options),
@@ -91,9 +91,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
         )
         self.assertEqual(
             (
-                "retinal_velocity",
                 "topology_core",
-                "waveform_velocity",
+                "velocity",
+                "velocity_analysis",
                 "absolute_waveform_metrics",
             ),
             plan.names,
@@ -238,7 +238,7 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             schema.artery_per_beat.velocity_signal: waveform,
             schema.artery_per_beat.velocity_signal_band_limited: waveform,
         }
-        shared = SimpleNamespace(per_beat_result="per-beat", retinal_velocity={})
+        shared = SimpleNamespace(per_beat_result="per-beat", velocity={})
         ctx = SimpleNamespace(
             state=state,
             options_for=lambda _name: frozenset(),
@@ -246,7 +246,7 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
 
         with (
             patch(
-                "pipelines.absolute_waveform_metrics.runner.waveform_velocity",
+                "pipelines.absolute_waveform_metrics.runner.velocity_analysis",
                 return_value=shared,
             ),
             patch(

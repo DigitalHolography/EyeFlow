@@ -19,7 +19,7 @@ if str(SRC_DIR) not in sys.path:
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from pipeline_engine.base import DatasetValue  # noqa: E402
-from pipelines.waveform_velocity.artifacts.segment_map_video import (  # noqa: E402
+from pipelines.velocity_analysis.artifacts.segment_map_video import (  # noqa: E402
     _frame_indexes,
     _global_velocity_range,
     _mosaic_frame,

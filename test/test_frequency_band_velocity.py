@@ -19,7 +19,7 @@ from input_output.schema import (
     ImageMaps,
 )
 from pipeline_engine.context import RawH5SourceReader
-from pipelines.retinal_velocity.estimation import (
+from pipelines.velocity.estimation import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
     DEFAULT_LASER_WAVELENGTH_METERS,
     DEFAULT_NUMERICAL_APERTURE,
@@ -32,10 +32,10 @@ from pipelines.retinal_velocity.estimation import (
     iter_velocity_estimator_chunks,
     resolve_velocity_estimator_inputs,
 )
-from pipelines.retinal_velocity.outputs import pack_retinal_velocity_outputs
-from pipelines.retinal_velocity.semantics import resolve_velocity_semantics
+from pipelines.velocity.outputs import pack_velocity_outputs
+from pipelines.velocity.semantics import resolve_velocity_semantics
 from pipelines.vessel_inputs import load_retinal_source_data
-from pipelines.waveform_velocity.outputs.continuous import (
+from pipelines.velocity_analysis.outputs.continuous import (
     pack_continuous_velocity_outputs,
 )
 
@@ -438,7 +438,7 @@ def test_frequency_band_estimator_is_independent_of_frame_chunk_size() -> None:
     results: list[dict[str, np.ndarray]] = []
     for chunk_size in (1, 4, 32):
         with patch(
-            "pipelines.retinal_velocity.estimation.SCRATCH_FRAME_CHUNK_SIZE",
+            "pipelines.velocity.estimation.SCRATCH_FRAME_CHUNK_SIZE",
             chunk_size,
         ):
             result = estimate_retinal_velocity(
@@ -551,7 +551,7 @@ def test_frequency_maps_are_persisted_in_hz_with_calibration_provenance() -> Non
         cycle_durations_seconds=np.asarray([1.0], dtype=np.float32),
     )
 
-    outputs = pack_retinal_velocity_outputs(analysis)
+    outputs = pack_velocity_outputs(analysis)
     attrs = outputs[schema.analysis.fRMS_avg][1]
 
     np.testing.assert_array_equal(
