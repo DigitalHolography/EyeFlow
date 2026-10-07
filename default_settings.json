@@ -11,7 +11,7 @@
   },
   "pipeline_options": {
     "absolute_waveform_metrics": {
-      "quadrants": true,
+      "quadrants": false,
       "segments": true
     },
     "blood_volume_rate": {
@@ -19,14 +19,14 @@
       "masked_edges": true
     },
     "lowrank_waveform_decomposition": {
-      "quadrants": true
+      "quadrants": false
     },
     "waveform_shape_metrics": {
-      "quadrants": true,
+      "quadrants": false,
       "segments": true
     },
     "velocity_analysis": {
-      "quadrants": true,
+      "quadrants": false,
       "segments": true,
       "velocity_profiles": false,
       "velocity_profile_analysis": false,
