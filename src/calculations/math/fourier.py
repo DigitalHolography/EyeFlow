@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.signal import resample
 
 
 def rfft_normalized(
@@ -98,6 +99,41 @@ def interpft_real(signal, target_length: int) -> np.ndarray:
     _copy_resized_spectrum(spectrum, resized, source_length)
     interpolated = np.fft.ifft(resized) * (float(target_length) / source_length)
     return interpolated.real.astype(np.float32, copy=False)
+
+
+def interpft_axis0(values, target_length: int) -> np.ndarray:
+    """Fourier-resample an array's first axis while preserving empty pixels.
+
+    Columns containing no finite samples remain NaN. This is the vectorized
+    counterpart of :func:`interpft_real` used for image and profile stacks.
+    """
+
+    source = np.asarray(values, dtype=np.float32)
+    if source.ndim == 0:
+        raise ValueError("interpft expects an array with a sample axis.")
+    source_length = int(source.shape[0])
+    if source_length == 0:
+        raise ValueError("interpft requires a non-empty sample axis.")
+    if target_length <= 0:
+        raise ValueError("interpft target_length must be positive.")
+    if target_length == source_length:
+        return source.copy()
+
+    trailing_shape = source.shape[1:]
+    flattened = source.reshape(source_length, -1)
+    active = np.any(np.isfinite(flattened), axis=0)
+    interpolated = np.full(
+        (int(target_length), flattened.shape[1]),
+        np.nan,
+        dtype=np.float32,
+    )
+    if np.any(active):
+        interpolated[:, active] = resample(
+            flattened[:, active],
+            int(target_length),
+            axis=0,
+        ).astype(np.float32, copy=False)
+    return interpolated.reshape(int(target_length), *trailing_shape)
 
 
 def band_limited_ifft_abs(

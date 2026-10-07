@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from app_settings import validate_velocity_estimation_method
 from input_output.schema import (
     DopplerViewMetadata,
     ImageMaps,
@@ -11,25 +12,83 @@ from input_output.schema import (
     RetinalSourceData,
     VesselMasks,
 )
+from velocity_calibration import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    validate_band_ratio_frequency_scale_hz,
+)
 
 
 def load_vessel_topology_inputs(ctx) -> RetinalSourceData:
     """Load one consistently oriented topology input set from HD and DV."""
 
     ctx.require_inputs("hd", "dv")
+    cached = ctx.state.get("velocity_source")
+    if isinstance(cached, RetinalSourceData) and (
+        getattr(ctx, "velocity_estimation_method", None) in {None, cached.velocity_estimation_method}
+    ):
+        return cached
     hd = ctx.inputs.hd.as_holodoppler()
     dv = ctx.inputs.dv.as_dopplerview()
-    return load_retinal_source_data(hd, dv)
+    method = getattr(ctx, "velocity_estimation_method", None)
+    if method is None:
+        # Shared topology must also tolerate invalid/incompatible moment inputs.
+        failures = {}
+        for candidate in ("doppler_moments", "frequency_bands"):
+            try:
+                return load_retinal_source_data(
+                    hd, dv, velocity_estimation_method=candidate,
+                    band_ratio_frequency_scale_hz=getattr(
+                        ctx, "band_ratio_frequency_scale_hz",
+                        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+                    ),
+                )
+            except (KeyError, ValueError, TypeError) as exc:
+                failures[candidate] = str(exc)
+        raise ValueError(f"No usable retinal source for shared topology: {failures}")
+    method = validate_velocity_estimation_method(method)
+    return load_retinal_source_data(
+        hd,
+        dv,
+        velocity_estimation_method=method,
+        band_ratio_frequency_scale_hz=getattr(
+            ctx,
+            "band_ratio_frequency_scale_hz",
+            DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+        ),
+    )
 
 
-def load_retinal_source_data(hd, dv) -> RetinalSourceData:
+def load_retinal_source_data(
+    hd,
+    dv,
+    *,
+    velocity_estimation_method: str = "doppler_moments",
+    band_ratio_frequency_scale_hz: float = (
+        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+    ),
+) -> RetinalSourceData:
     """Load one canonical source model from typed HD and DV adapters."""
 
-    image_maps = ImageMaps(
-        moment0=hd.moment0_dataset(),
-        moment2=hd.moment2_dataset(),
+    method = validate_velocity_estimation_method(velocity_estimation_method)
+    frequency_scale_hz = validate_band_ratio_frequency_scale_hz(
+        band_ratio_frequency_scale_hz
     )
-    spatial_shape = tuple(int(size) for size in image_maps.moment0.shape[-2:])
+    if method == "frequency_bands":
+        band_lf, band_hf = hd.frequency_band_datasets()
+        image_maps = ImageMaps(
+            moment0=_optional_moment(hd.optional_moment0_dataset),
+            moment2=_optional_moment(hd.optional_moment2_dataset),
+            band_lf=band_lf,
+            band_hf=band_hf,
+        )
+        spatial_reference = band_lf
+    else:
+        image_maps = ImageMaps(
+            moment0=hd.moment0_dataset(),
+            moment2=hd.moment2_dataset(),
+        )
+        spatial_reference = image_maps.moment0
+    spatial_shape = tuple(int(size) for size in spatial_reference.shape[-2:])
     artery_mask, artery_swapped = align_mask(
         dv.retinal_artery_mask(),
         spatial_shape,
@@ -82,7 +141,17 @@ def load_retinal_source_data(hd, dv) -> RetinalSourceData:
             local_background_dist=dv.local_background_dist(),
             spatial_axes_swapped_to_match_hd=artery_swapped,
         ),
+        velocity_estimation_method=method,
+        band_ratio_frequency_scale_hz=frequency_scale_hz,
     )
+
+
+def _optional_moment(loader):
+    """Malformed inactive moments must not disable the band workflow."""
+    try:
+        return loader()
+    except (KeyError, ValueError, TypeError):
+        return None
 
 
 def align_mask(

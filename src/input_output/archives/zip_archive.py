@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import shutil
+import zipfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import shutil
-import zipfile
+from uuid import uuid4
+
+from ..writers.artifact_names import prefixed_artifact_path
 
 
 @contextmanager
@@ -44,9 +47,10 @@ def create_zip_from_tree(
     zip_path: str | Path,
     *,
     progress_callback: Callable[[int, int, Path], None] | None = None,
-) -> None:
+    stem: str | None = None,
+) -> Path:
     tree_root_path = Path(tree_root).expanduser().resolve()
-    zip_path_obj = Path(zip_path)
+    zip_path_obj = prefixed_artifact_path(zip_path, stem) if stem is not None else Path(zip_path)
     zip_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
     files = sorted(
@@ -71,6 +75,26 @@ def create_zip_from_tree(
                     total_files,
                     file_path.relative_to(tree_root_path),
                 )
+    return zip_path_obj
+
+
+def write_zip_artifact(
+    tree_root: str | Path,
+    path: str | Path,
+    *,
+    stem: str | None = None,
+    progress_callback: Callable[[int, int, Path], None] | None = None,
+) -> Path:
+    """Name and publish an archive, retaining the previous file on failure."""
+    target = prefixed_artifact_path(path, stem) if stem is not None else Path(path)
+    staging = target.with_name(f".{target.name}.eyeflow-staging-{uuid4().hex}")
+    try:
+        create_zip_from_tree(tree_root, staging, progress_callback=progress_callback)
+        staging.replace(target)
+    finally:
+        if staging.exists():
+            staging.unlink()
+    return target
 
 
 def reset_output_dir(path: str | Path) -> None:
@@ -104,4 +128,5 @@ __all__ = [
     "create_zip_from_tree",
     "extracted_zip_tree",
     "reset_output_dir",
+    "write_zip_artifact",
 ]

@@ -49,11 +49,11 @@ class SpatialGradientProfileTests(unittest.TestCase):
         waveform_context = SimpleNamespace(
             source_data=source,
             attrs={"number_of_radii_in_FOV": 4},
-            artery_segment_result=SimpleNamespace(
-                topology=SimpleNamespace(prepared_topology="artery topology")
+            artery_segments=SimpleNamespace(
+                profile=SimpleNamespace(topology="artery topology")
             ),
-            vein_segment_result=SimpleNamespace(
-                topology=SimpleNamespace(prepared_topology="vein topology")
+            vein_segments=SimpleNamespace(
+                profile=SimpleNamespace(topology="vein topology")
             ),
         )
 
@@ -92,8 +92,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
         masked = unmasked.copy()
         masked[..., 0] = np.nan
         segments = SimpleNamespace(
-            transverse_profiles_unmasked=unmasked,
-            transverse_profiles_masked=masked,
+            transverse=SimpleNamespace(unmasked=unmasked, masked=masked),
         )
 
         outputs = pack_spatial_gradient_profile_outputs(
@@ -233,8 +232,10 @@ class SpatialGradientProfileTests(unittest.TestCase):
         masked_profiles = np.broadcast_to(masked_profile, (1, 1, 5, 11)).copy()
         unmasked_profiles = np.broadcast_to(unmasked_profile, (1, 1, 5, 11)).copy()
         segments = SimpleNamespace(
-            transverse_profiles_unmasked=unmasked_profiles,
-            transverse_profiles_masked=masked_profiles,
+            transverse=SimpleNamespace(
+                unmasked=unmasked_profiles,
+                masked=masked_profiles,
+            ),
         )
 
         outputs = pack_spatial_gradient_profile_outputs(

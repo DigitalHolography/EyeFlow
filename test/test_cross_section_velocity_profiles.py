@@ -25,8 +25,10 @@ from input_output.output_manager import OutputType  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from input_output.writers.png import FigureArtifactWriter, write_png_file  # noqa: E402
-from pipelines.waveform_velocity.profiles import pack_cross_section_profile_outputs  # noqa: E402
-from pipelines.waveform_velocity_core.figures.profiles import (  # noqa: E402
+from pipelines.velocity_analysis.outputs.profiles import (  # noqa: E402
+    pack_cross_section_profile_outputs,
+)
+from pipelines.velocity_analysis.artifacts.figures.profiles import (  # noqa: E402
     _finite_median,
     _hierarchical_profile_median,
     _nanmedian,
@@ -52,7 +54,7 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
         self.assertFalse(
             hasattr(topology_profiles, "fit_inverse_parabola_profiles_with_roots")
         )
-        self.assertFalse((SRC_DIR / "pipelines/waveform_velocity/flow_asymmetry.py").exists())
+        self.assertFalse((SRC_DIR / "pipelines/velocity_analysis/flow_asymmetry.py").exists())
 
     def test_h5_export_contains_only_four_standard_profiles_per_vessel(self) -> None:
         artery = _segments(radius_count=2, branch_count=1)
@@ -147,7 +149,7 @@ class ProfileArtifactTests(unittest.TestCase):
         values = np.arange(2 * 12 * 3, dtype=np.float32).reshape(2, 12, 3)
         expected = _finite_median(values, axis=1)
         with patch(
-            "pipelines.waveform_velocity_core.figures.profiles.np.nanmedian",
+            "pipelines.velocity_analysis.artifacts.figures.profiles.np.nanmedian",
             side_effect=IndexError("sparse partition failure"),
         ):
             actual = _nanmedian(values, axis=1)
@@ -169,9 +171,15 @@ class ProfileArtifactTests(unittest.TestCase):
             output = _FakeOutput(Path(temp_dir))
             writer = FigureArtifactWriter(output, "sample")
             context = SimpleNamespace(
-                source_data=SimpleNamespace(timing=SimpleNamespace(dt_seconds=0.05)),
-                artery_segment_result=_segments(radius_count=1, branch_count=1),
-                vein_segment_result=_segments(radius_count=1, branch_count=1),
+                source_data=SimpleNamespace(
+                    source=SimpleNamespace(
+                        holodoppler=SimpleNamespace(
+                            timing=SimpleNamespace(dt_seconds=0.05)
+                        )
+                    )
+                ),
+                artery_segments=_segments(radius_count=1, branch_count=1),
+                vein_segments=_segments(radius_count=1, branch_count=1),
             )
             paths = export_cross_section_profile_artifacts(writer, context)
             self.assertEqual(2, len(paths))
@@ -190,14 +198,16 @@ def _segments(*, radius_count: int, branch_count: int):
     if branch_count:
         masked[..., 0] = np.nan
     return SimpleNamespace(
-        topology=SimpleNamespace(
-            valid_segments=np.ones((radius_count, branch_count), dtype=bool)
+        profile=SimpleNamespace(
+            topology=SimpleNamespace(
+                valid_segments=np.ones((radius_count, branch_count), dtype=bool)
+            ),
+            transverse=SimpleNamespace(unmasked=profiles, masked=masked),
+            longitudinal=SimpleNamespace(
+                unmasked=profiles + np.float32(50),
+                masked=masked + np.float32(100),
+            ),
         ),
-        branch_ids=np.arange(1, branch_count + 1, dtype=np.int32),
-        transverse_profiles_unmasked=profiles,
-        transverse_profiles_masked=masked,
-        longitudinal_profiles_unmasked=profiles + np.float32(50),
-        longitudinal_profiles_masked=masked + np.float32(100),
     )
 
 

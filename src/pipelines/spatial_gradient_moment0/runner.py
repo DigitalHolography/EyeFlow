@@ -10,8 +10,8 @@ from calculations.blood_flow_velocity.signal_analysis.waveform import (
     mean_period_seconds,
 )
 from calculations.segment_profiles import SegmentProfileSettings
-from pipelines.heartbeat_core.runner import heartbeat_result
-from pipelines.heartbeat_core.sources import load_heartbeat_inputs
+from pipelines.velocity.runner import cardiac_cycle_indexes
+from pipelines.velocity.sources import load_velocity_inputs
 from pipelines.topology_core.runner import prepared_topologies
 
 from .lumen_size import export_lumen_size_pngs
@@ -36,10 +36,9 @@ class SpatialGradientProducts:
 def run_spatial_gradient_moment0(ctx) -> dict[str, object]:
     """Calculate staged gradient profiles only when this pipeline is selected."""
 
-    inputs = load_heartbeat_inputs(ctx)
-    heartbeat = heartbeat_result(ctx)
-    cycle_boundaries = heartbeat.cycle_boundary_indexes
-    index_base = int(heartbeat.index_base)
+    inputs = load_velocity_inputs(ctx)
+    cycle_boundaries = cardiac_cycle_indexes(ctx)
+    index_base = 0
     artery_segments, vein_segments = extract_spatial_gradient_segments(
         ctx,
         inputs,
@@ -75,7 +74,7 @@ def run_spatial_gradient_moment0(ctx) -> dict[str, object]:
                 export_lumen_size_pngs(
                     output,
                     lumen_size.data,
-                    segments.branch_ids,
+                    segments.topology.native.branch_ids,
                     vessel_name=vessel_name,
                     period_seconds=period_seconds,
                 )
@@ -88,7 +87,9 @@ def run_spatial_gradient_moment0(ctx) -> dict[str, object]:
             outputs=outputs,
         ),
     )
-    return outputs
+    if ctx.pipeline_targeted("spatial_gradient_moment0"):
+        return outputs
+    return {}
 
 
 def _validate_profile_segment_alignment(
@@ -126,11 +127,11 @@ def _validate_profile_segment_alignment(
 
 
 def _ring_branch_segment_centers(segments) -> np.ndarray:
-    return np.asarray(segments.segment_centers_xy)
+    return np.asarray(segments.topology.native.segment_centers_xy)
 
 
 def _unmasked_transverse_profiles(segments) -> np.ndarray:
-    return np.asarray(segments.transverse_profiles_unmasked)
+    return np.asarray(segments.transverse.unmasked)
 
 
 __all__ = [

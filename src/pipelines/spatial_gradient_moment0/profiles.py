@@ -51,8 +51,8 @@ def extract_spatial_gradient_segments(
         )
         if prepared_topologies is None:
             prepared_topologies = {
-                "artery": waveform_context.artery_segment_result.topology.prepared_topology,
-                "vein": waveform_context.vein_segment_result.topology.prepared_topology,
+                "artery": waveform_context.artery_segments.profile.topology,
+                "vein": waveform_context.vein_segments.profile.topology,
             }
         if profile_settings is None:
             profile_settings = waveform_source.profile_settings
@@ -155,14 +155,14 @@ def _pack_vessel_spatial_gradient_profiles(
         return {}
     root = f"{SPATIAL_GRADIENT_PROFILE_ROOT}/{vessel_name}/Transverse"
     unmasked = _gradient_profile_dataset(
-        np.asarray(segments.transverse_profiles_unmasked, dtype=np.float32),
+        np.asarray(segments.transverse.unmasked, dtype=np.float32),
         cycle_boundary_indexes,
         index_base=index_base,
         mask="unmasked",
     )
     masked = _gradient_profile_dataset(
         np.asarray(
-            segments.transverse_profiles_masked,
+            segments.transverse.masked,
             dtype=np.float32,
         ),
         cycle_boundary_indexes,

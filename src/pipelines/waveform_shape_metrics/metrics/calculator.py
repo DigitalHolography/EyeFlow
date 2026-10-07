@@ -112,6 +112,22 @@ class WaveformShapeMetricsCalculator:
         return v2
 
     @staticmethod
+    def _beat_period_values(periods: np.ndarray) -> np.ndarray:
+        """Return per-beat durations as a one-dimensional array."""
+
+        values = np.asarray(periods, dtype=float)
+        if values.ndim == 0:
+            return values.reshape(1)
+        if values.ndim == 1:
+            return values
+        if values.ndim == 2 and 1 in values.shape:
+            return values.reshape(-1)
+        raise ValueError(
+            "Beat periods must have shape (beat,), (1, beat), or (beat, 1); "
+            f"got {values.shape}."
+        )
+
+    @staticmethod
     def _wrap_pi(x: float) -> float:
         """Wrap angle to [-pi, pi]."""
         if not np.isfinite(x):
@@ -887,7 +903,8 @@ class WaveformShapeMetricsCalculator:
         v_global: np.ndarray,
         T: np.ndarray,
     ) -> dict:
-        n_beats = int(T.shape[1])
+        periods = self._beat_period_values(T)
+        n_beats = int(periods.size)
         v_global = self._ensure_time_by_beat(v_global, n_beats)
         v_global = self._rectify_keep_nan(v_global)
 
@@ -1001,7 +1018,7 @@ class WaveformShapeMetricsCalculator:
                 )
                 continue
 
-            Tbeat = float(T[0][beat_idx])
+            Tbeat = float(periods[beat_idx])
             v = v_global[:, beat_idx]
 
             try:
@@ -1300,6 +1317,13 @@ class WaveformShapeMetricsCalculator:
             )
 
         _, n_beats, n_branches, n_radii = v_block.shape
+        periods = self._beat_period_values(T)
+        if periods.size != n_beats:
+            raise ValueError(
+                "Beat-period length mismatch: "
+                f"periods has {periods.size} beats, waveform block has "
+                f"{n_beats} beats."
+            )
         metric_names = self._metric_names()
 
         seg = {
@@ -1315,7 +1339,7 @@ class WaveformShapeMetricsCalculator:
         }
 
         for beat_idx in range(n_beats):
-            Tbeat = float(T[0][beat_idx])
+            Tbeat = float(periods[beat_idx])
 
             for branch_idx in range(n_branches):
                 for radius_idx in range(n_radii):
@@ -1352,7 +1376,8 @@ class WaveformShapeMetricsCalculator:
         v_global: (n_t, n_beats) after _ensure_time_by_beat
         Returns dict of arrays each shaped (n_beats,)
         """
-        n_beats = int(T.shape[1])
+        periods = self._beat_period_values(T)
+        n_beats = int(periods.size)
         v_global = self._ensure_time_by_beat(v_global, n_beats)
         pulse_metric_cycles = np.asarray(v_global, dtype=float)
         v_global = self._rectify_keep_nan(v_global)
@@ -1363,7 +1388,7 @@ class WaveformShapeMetricsCalculator:
         }
 
         for beat_idx in range(n_beats):
-            Tbeat = float(T[0][beat_idx])
+            Tbeat = float(periods[beat_idx])
             v = v_global[:, beat_idx]
             m = self._compute_metrics_1d(v, Tbeat)
             for key in metric_names:

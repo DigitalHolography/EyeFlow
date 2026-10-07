@@ -18,8 +18,8 @@ if str(SRC_DIR) not in sys.path:
 from input_output.inputs import load_h5_sidecar_config
 from input_output.schema import DopplerViewSource, HolodopplerSource
 from pipeline_engine.context import RawH5SourceReader
-from pipelines.waveform_velocity_core.sources import (
-    WaveformVelocitySources,
+from pipelines.velocity_analysis.sources import (
+    VelocityAnalysisSources,
     _load_moment_pair,
 )
 
@@ -158,7 +158,15 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "approximately equal"):
                     _ = pitch.isotropic_m
 
-    def test_waveform_velocity_uses_one_coherent_raw_moment_mode(
+    def test_hd_timing_is_read_from_parameters_mapping(self) -> None:
+        with self._source_pair() as (hd_source, _):
+            self._write_hd(hd_source)
+            with h5py.File(hd_source, "r") as hd:
+                timing = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD")).timing()
+
+        self.assertEqual((100.0, 10.0), (timing.sampling_freq, timing.batch_stride))
+
+    def test_velocity_analysis_uses_one_coherent_raw_moment_mode(
         self,
     ) -> None:
         with self._source_pair() as (hd_source, dv_source):
@@ -232,9 +240,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                 },
             )
 
-        ring_settings = source_data.source.segmentation.optic_disc.annulus_geometry(
-            (200, 400)
-        )
+        ring_settings = source_data.source.segmentation.optic_disc.annulus_geometry((200, 400))
         cross_section = source_data.profile_settings
         radius_scale = np.hypot(99.5, 199.5)
         expected_width = 400 / 25 / radius_scale
@@ -255,11 +261,15 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         with h5py.File(path, "w") as hd:
             hd.create_dataset("moment0", data=np.ones((3, 2, 4), dtype=np.float32))
             hd.create_dataset("moment2", data=np.ones((3, 2, 4), dtype=np.float32))
-            hd.create_dataset("sampling_freq", data=np.float32(100.0))
-            hd.create_dataset("batch_stride", data=np.float32(10.0))
             hd.create_dataset(
                 "HD_parameters",
-                data=json.dumps({"pixel_pitch": [20e-6, 20e-6]}),
+                data=json.dumps(
+                    {
+                        "pixel_pitch": [20e-6, 20e-6],
+                        "sampling_freq": 100.0,
+                        "batch_stride": 10.0,
+                    }
+                ),
             )
 
     @staticmethod
@@ -320,7 +330,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
         hd_file = h5py.File(hd_path, "r")
         dv_file = h5py.File(dv_path, "r")
         try:
-            sources = WaveformVelocitySources(
+            sources = VelocityAnalysisSources(
                 hd=HolodopplerSource(
                     RawH5SourceReader(h5file=hd_file, label="HD"),
                     hd_config,

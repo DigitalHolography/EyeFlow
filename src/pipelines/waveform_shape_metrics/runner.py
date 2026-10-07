@@ -1,40 +1,29 @@
 """Orchestrate selectable waveform-shape metric products."""
 
-from pipelines.waveform_velocity_core.runner import (
-    VELOCITY_PER_BEAT_OUTPUTS_STATE,
-    WAVEFORM_CONTEXT_STATE,
+from pipelines.velocity_analysis import velocity_analysis
+from pipelines.velocity_analysis.outputs import (
+    pack_velocity_per_beat_inputs,
 )
 
 from .outputs import pack_waveform_shape_outputs
 
 
 def run_waveform_shape_metrics(ctx) -> dict[str, object]:
-    """Calculate only the selected waveform-shape metric products."""
+    """Calculate default global metrics and selected regional products."""
     selected = ctx.options_for("waveform_shape_metrics")
-    report_required = ctx.pipeline_scheduled("pdf_report")
-    if not selected and not report_required:
-        return {}
-
-    context = _required_state(ctx, WAVEFORM_CONTEXT_STATE)
-    velocity_outputs = _required_state(ctx, VELOCITY_PER_BEAT_OUTPUTS_STATE)
+    analysis = velocity_analysis(ctx)
+    velocity_outputs = pack_velocity_per_beat_inputs(
+        analysis.per_beat_result,
+        velocity=analysis.velocity,
+    )
     outputs = pack_waveform_shape_outputs(
         velocity_outputs,
-        context.source_data,
-        context.artery_segment_result,
-        context.vein_segment_result,
-        include_per_beat="per_beat" in selected or report_required,
+        analysis.source_data,
+        analysis.artery_segments,
+        analysis.vein_segments,
+        include_per_beat=True,
         include_segments="segments" in selected,
         include_quadrants="quadrants" in selected,
     )
     ctx.state.set("waveform_shape_metric_outputs", outputs)
     return outputs
-
-
-def _required_state(ctx, key: str):
-    value = ctx.state.get(key)
-    if value is None:
-        raise RuntimeError(
-            f"Required pipeline state '{key}' is unavailable; "
-            "check the pipeline DAG dependencies."
-        )
-    return value

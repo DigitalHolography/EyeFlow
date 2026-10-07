@@ -16,19 +16,22 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.compute_backend import optional_cupy_backend  # noqa: E402
+from calculations.segment_profiles import MaskedArrays  # noqa: E402
 from calculations.topology import dilate_segment_masks  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
-from pipelines.waveform_velocity.profiles import (  # noqa: E402
-    pack_velocity_profile_fft_outputs,
+from pipelines.velocity_analysis.analysis.profiles import (  # noqa: E402
     velocity_fft_transverse_profiles,
 )
-from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
+from pipelines.velocity_analysis.analysis.segment_maps import (  # noqa: E402
     interpolate_velocity_maps_per_beat,
 )
-from pipelines.waveform_velocity_core.segments import (  # noqa: E402
+from pipelines.velocity_analysis.analysis.segments import (  # noqa: E402
     _gpu_nanmean_axis1,
     _VelocityProfileFftAccumulator,
+)
+from pipelines.velocity_analysis.outputs.profiles import (  # noqa: E402
+    pack_velocity_profile_fft_outputs,
 )
 
 
@@ -92,8 +95,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
         self.segments = SimpleNamespace(
             segment_maps=maps,
             segment_masks=masks,
-            transverse_fft_profiles_unmasked=accumulator.unmasked,
-            transverse_fft_profiles_masked=accumulator.masked,
+            transverse_fft=MaskedArrays(accumulator.unmasked, accumulator.masked),
         )
 
     def test_fft_then_nanmean_uses_dilated_mask(self) -> None:
@@ -176,14 +178,14 @@ class VelocityFFTProfileTests(unittest.TestCase):
         )
 
         np.testing.assert_allclose(
-            self.segments.transverse_fft_profiles_unmasked,
+            self.segments.transverse_fft.unmasked,
             expected_unmasked,
             rtol=1e-6,
             atol=1e-6,
             equal_nan=True,
         )
         np.testing.assert_allclose(
-            self.segments.transverse_fft_profiles_masked,
+            self.segments.transverse_fft.masked,
             expected_masked,
             rtol=1e-6,
             atol=1e-6,

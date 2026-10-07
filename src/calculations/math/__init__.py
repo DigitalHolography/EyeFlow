@@ -12,6 +12,7 @@ from .filtering import butter_lowpass_filtfilt, normalized_lowpass_cutoff
 from .fourier import (
     band_limited_ifft_abs,
     harmonic_pack,
+    interpft_axis0,
     interpft_real,
     irfft_normalized,
     next_power_of_two,
@@ -40,6 +41,7 @@ __all__ = [
     "centered_sliding_window",
     "finite_image",
     "harmonic_pack",
+    "interpft_axis0",
     "interpft_real",
     "irfft_normalized",
     "nan_to_mean",

@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from calculations.blood_flow_velocity.signal_analysis.heartbeat import (
-    SpectralHeartbeatResult,
+from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
+    SpectralCardiacCycleAnalysis,
 )
 
 from .segments import (
@@ -34,7 +34,7 @@ class PerBeatAnalysisInput:
     venous_velocity_signal: np.ndarray
     cycle_boundary_indexes: np.ndarray
     band_limited_signal_harmonic_count: int
-    heartbeat: SpectralHeartbeatResult
+    cardiac_cycle: SpectralCardiacCycleAnalysis
     dt_seconds: float
     arterial_velocity_segments: np.ndarray | None = None
     venous_velocity_segments: np.ndarray | None = None
@@ -46,7 +46,7 @@ class PerBeatAnalysisInput:
 @dataclass(frozen=True)
 class PerBeatAnalysisResult:
     beat_period_seconds: np.ndarray
-    heartbeat: SpectralHeartbeatResult
+    cardiac_cycle: SpectralCardiacCycleAnalysis
     cycle_boundary_indexes: np.ndarray
     artery: VesselPerBeatAnalysisResult
     vein: VesselPerBeatAnalysisResult
@@ -63,7 +63,7 @@ def run_per_beat_analysis(inputs: PerBeatAnalysisInput) -> PerBeatAnalysisResult
             cycle_boundaries,
             inputs.dt_seconds,
         ),
-        heartbeat=inputs.heartbeat,
+        cardiac_cycle=inputs.cardiac_cycle,
         cycle_boundary_indexes=cycle_boundaries,
         vein=_run_vessel(
             inputs.venous_velocity_signal,

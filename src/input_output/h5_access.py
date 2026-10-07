@@ -56,9 +56,7 @@ class RawH5SourceReader:
     def dataset(self, path: str) -> h5py.Dataset:
         found = self.get(path)
         if not isinstance(found, h5py.Dataset):
-            raise KeyError(
-                f"Missing {self.label} dataset at path '{normalize_h5_path(path)}'."
-            )
+            raise KeyError(f"Missing {self.label} dataset at path '{normalize_h5_path(path)}'.")
         return found
 
     def value(self, path: str, default: Any = _MISSING):
@@ -157,15 +155,36 @@ class PipelineInputSource:
 class PipelineH5Output:
     """Read and write the EyeFlow work/output HDF5 file."""
 
-    def __init__(self, work_h5: h5py.File) -> None:
+    def __init__(
+        self,
+        work_h5: h5py.File,
+        *,
+        processing_root: str | None = None,
+        provenance: Mapping[str, Any] | None = None,
+    ) -> None:
         self.file = work_h5
+        self.processing_root = processing_root
+        self.provenance = dict(provenance or {})
+
+    def _path(self, path: str) -> str:
+        from .schema.eyeflow_output import processing_path
+
+        if self.processing_root is None:
+            return normalize_h5_path(path)
+        return processing_path(path, self.processing_root)
+
+    @property
+    def attrs(self):
+        if self.processing_root is None:
+            return self.file.attrs
+        return self.file[self.processing_root].attrs
 
     @property
     def filename(self) -> str | None:
         return self.file.filename
 
     def get(self, path: str, default=None):
-        found = self.file.get(normalize_h5_path(path))
+        found = self.file.get(self._path(path))
         return default if found is None else found
 
     def read(self, path: str, default: Any = _MISSING):
@@ -196,16 +215,30 @@ class PipelineH5Output:
 
     def write(self, path: str, value: Any, **attrs: Any) -> None:
         payload = (value, attrs) if attrs else value
-        write_value_dataset(self.file, path, payload)
+        self.write_many({path: payload})
 
     def write_many(self, metrics: Mapping[str, Any]) -> None:
         for path, value in metrics.items():
-            write_value_dataset(self.file, path, value)
+            target = self._path(path)
+            write_value_dataset(self.file, target, value)
+            if self.processing_root and target.startswith(self.processing_root + "/"):
+                dataset = self.file[target]
+                for key, attr in self.provenance.items():
+                    set_attr_safe(dataset, key, attr)
+                # References in dataset attributes use the same workflow namespace.
+                for key, attr in list(dataset.attrs.items()):
+                    if isinstance(attr, str) and attr.lstrip("/").startswith("Processing/"):
+                        set_attr_safe(dataset, key, self._path(attr))
 
     def set_attr(self, key: str, value: Any) -> None:
         if key == "pipeline":
             return
-        set_attr_safe(self.file, key, value)
+        target = (
+            self.file
+            if self.processing_root is None
+            else self.file.require_group(self.processing_root)
+        )
+        set_attr_safe(target, key, value)
 
     def set_attrs(self, attrs: Mapping[str, Any] | None) -> None:
         for key, value in (attrs or {}).items():

@@ -6,10 +6,19 @@ from typing import Any
 
 import h5py
 
+from app_settings import (
+    DEFAULT_VELOCITY_ESTIMATION_METHOD,
+    VelocityEstimationMethod,
+    validate_velocity_estimation_method,
+)
 from input_output.h5_access import PipelineH5Output, PipelineInputSource, RawH5SourceReader
 from input_output.inputs import MergedAttrs
 from input_output.output_manager import OutputManager
 from utils.logger import Logger
+from velocity_calibration import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    validate_band_ratio_frequency_scale_hz,
+)
 
 from .base import ProcessResult
 
@@ -99,7 +108,12 @@ class PipelineContext:
         variables: dict[str, Any] | None = None,
         pipeline_options: Mapping[str, Sequence[str]] | None = None,
         pipeline_order: Sequence[str] = (),
+        pipeline_targets: Sequence[str] = (),
+        velocity_estimation_method: str | None = DEFAULT_VELOCITY_ESTIMATION_METHOD,
+        band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
         output_manager: OutputManager | None = None,
+        processing_root: str | None = None,
+        velocity_provenance: Mapping[str, Any] | None = None,
     ) -> None:
         hd_config = dict(holodoppler_config or {})
         dv_config = dict(doppler_vision_config or {})
@@ -114,13 +128,29 @@ class PipelineContext:
                 dv_config,
             ),
         )
-        self.output = PipelineOutput(output_manager, PipelineH5Output(work_h5))
+        self.output = PipelineOutput(
+            output_manager,
+            PipelineH5Output(
+                work_h5,
+                processing_root=processing_root,
+                provenance=velocity_provenance,
+            ),
+        )
         self.state = PipelineState(variables)
         self.pipeline_options = {
             str(name): frozenset(str(option) for option in options)
             for name, options in (pipeline_options or {}).items()
         }
         self.pipeline_order = tuple(str(name) for name in pipeline_order)
+        self.pipeline_targets = tuple(str(name) for name in pipeline_targets)
+        self.velocity_estimation_method: VelocityEstimationMethod | None = (
+            validate_velocity_estimation_method(velocity_estimation_method)
+            if velocity_estimation_method is not None
+            else None
+        )
+        self.band_ratio_frequency_scale_hz = validate_band_ratio_frequency_scale_hz(
+            band_ratio_frequency_scale_hz
+        )
         self.attrs = MergedAttrs(
             work_h5,
             self._preferred_raw_source(),
@@ -163,6 +193,13 @@ class PipelineContext:
 
     def pipeline_scheduled(self, pipeline: str) -> bool:
         return str(pipeline) in self.pipeline_order
+
+    def pipeline_targeted(self, pipeline: str) -> bool:
+        """Return whether a pipeline was selected directly, not as a dependency."""
+
+        if not self.pipeline_targets:
+            return self.pipeline_scheduled(pipeline)
+        return str(pipeline) in self.pipeline_targets
 
     @property
     def filename(self) -> str:
@@ -207,8 +244,7 @@ def apply_pipeline_result(
         ctx.output.h5.write_many(result)
         return
     raise TypeError(
-        "Pipeline must return None, a metrics dict, or ProcessResult. "
-        f"Got: {type(result).__name__}"
+        f"Pipeline must return None, a metrics dict, or ProcessResult. Got: {type(result).__name__}"
     )
 
 

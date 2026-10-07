@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from calculations.topology import OpticDisc
+from velocity_calibration import DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
 
 
 @dataclass(frozen=True)
@@ -61,8 +62,10 @@ class PixelPitch:
 class ImageMaps:
     """Lazy Holodoppler image-map datasets in the aligned analysis frame."""
 
-    moment0: object
-    moment2: object
+    moment0: object | None
+    moment2: object | None
+    band_lf: object | None = None
+    band_hf: object | None = None
 
 
 @dataclass(frozen=True)
@@ -111,4 +114,8 @@ class RetinalSourceData:
     segmentation: RetinalSegmentation
     holodoppler: HolodopplerMetadata
     doppler_view: DopplerViewMetadata
+    velocity_estimation_method: str = "doppler_moments"
+    band_ratio_frequency_scale_hz: float = (
+        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
+    )
 

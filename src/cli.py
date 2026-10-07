@@ -19,7 +19,6 @@ import tempfile
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from uuid import uuid4
 
 from app_settings import (
     AppSettingsStore,
@@ -30,9 +29,7 @@ from runtime_limits import configure_numeric_threads
 
 configure_numeric_threads()
 
-from input_output import (
-    create_zip_from_tree,
-)
+from input_output.archives import write_zip_artifact
 from pipelines import (
     PipelineDescriptor,
     load_pipeline_catalog,
@@ -136,6 +133,8 @@ def _zip_output_dir(
     folder: Path,
     target_path: Path | None = None,
     progress_callback: Callable[[int, int, Path], None] | None = None,
+    *,
+    stem: str | None = None,
 ) -> Path:
     folder = folder.expanduser().resolve()
     if not folder.exists() or not folder.is_dir():
@@ -145,20 +144,7 @@ def _zip_output_dir(
         zip_path = folder.parent / zip_name
     else:
         zip_path = target_path.expanduser().resolve()
-    staging_zip = zip_path.with_name(
-        f".{zip_path.name}.eyeflow-staging-{uuid4().hex}"
-    )
-    try:
-        create_zip_from_tree(
-            folder,
-            staging_zip,
-            progress_callback=progress_callback,
-        )
-        staging_zip.replace(zip_path)
-    finally:
-        if staging_zip.exists():
-            staging_zip.unlink()
-    return zip_path
+    return write_zip_artifact(folder, zip_path, stem=stem, progress_callback=progress_callback)
 
 
 def run_cli(
@@ -184,6 +170,9 @@ def run_cli(
         target_registry,
         settings_store=settings_store,
     )
+    band_ratio_frequency_scale_hz = (
+        settings_store.load_band_ratio_frequency_scale_hz()
+    )
     work_tempdir_path: Path | None = None
     clean_work_output = False
     with expand_run_inputs(data_path) as expanded_inputs:
@@ -207,6 +196,7 @@ def run_cli(
             target_names=target_names,
             pipelines=registry.values(),
             pipeline_options=pipeline_options,
+            band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
             output_root=work_root,
             batch_root=expanded_inputs.batch_root,
         )
@@ -236,6 +226,7 @@ def run_cli(
                     work_root,
                     target_path=output_root / final_name,
                     progress_callback=_zip_progress,
+                    stem=expanded_inputs.paths[0].stem if len(expanded_inputs.paths) == 1 else None,
                 )
                 print(f"[ZIP] Archive created: {zip_path}")
                 summary_msg = f"ZIP archive: {zip_path}"

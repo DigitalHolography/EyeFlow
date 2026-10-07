@@ -1,29 +1,14 @@
-# EyeFlowPython
+# EyeFlow
 
-## Purpose
+EyeFlow is a Python analysis engine and desktop application for retinal Doppler
+holography. It consumes HoloDoppler image data plus DopplerView segmentation,
+runs dependency-aware scientific pipelines, and produces HDF5 results, plots,
+movies, and reports. Vessel segmentation and AI inference are intentionally
+outside its scope.
 
-EyeFlowPython is a clean Python rewrite of EyeFlow focused on downstream analysis.
+## Install and run
 
-Important scope change:
-
-- EyeFlowPython does not run AI segmentation.
-- Vessel masks are expected to already exist in the input H5 files.
-- The application consumes precomputed data and produces biomarkers, quality-control outputs, and exported analysis results.
-
-## Product Goals
-
-- Input one H5 file, a folder tree of H5 files, or a zip archive containing H5 files.
-- Output one analysis result per input file.
-- Preserve the input folder structure in batch and zip processing.
-- Provide a CLI and a GUI with the same analysis capabilities.
-- Keep the GUI user friendly and oriented around review, configuration, execution, and quality control.
-- Produce clean, structured, reproducible outputs.
-
-## Launching The App
-
-### Install
-
-Create and activate a virtual environment, then install the project.
+EyeFlow requires Python 3.10 or newer.
 
 ```powershell
 python -m venv .venv
@@ -31,282 +16,121 @@ python -m venv .venv
 pip install -e .
 ```
 
-### Launch The Desktop App
+Launch the desktop application:
 
 ```powershell
 eyeflow
-# or: uv run eyeflow
 ```
 
-### Launch The CLI
-
-Run selected pipelines over one HOLO file, a folder tree of HOLO files, or a zip archive:
+Run the CLI over a `.holo` file, a text list of `.holo` files, a folder tree,
+or a ZIP archive:
 
 ```powershell
 eyeflow --data path\to\input.holo
-# dedicated CLI entry point (never launches the GUI):
-eyeflow-cli --data path\to\input.holo
+eyeflow-cli --data path\to\folder --output path\to\results
 ```
 
-## Lumen-size plots
+`eyeflow` opens the GUI when invoked without arguments and uses the CLI when
+arguments are supplied. `eyeflow-cli` always uses the CLI. Run
+`eyeflow-cli --help` for pipeline-list and ZIP-output options.
 
-Spatial gradients are computed directly on interpolated vessel segments.
-The filter order is a centered 7-frame moving average, Sobel magnitude, an
-ImageJ Gaussian blur with radius (sigma) 6 pixels, an ImageJ unsharp mask with
-radius 8 pixels and mask weight 0.6, then a final 7-frame moving average.
-The averaging windows shrink at recording boundaries and propagate NaNs.
-Both spatial filters operate independently per frame, propagate NaNs, and set
-valid pixels on the outermost rows and columns to zero. The unsharp mask clips
-negative values to zero.
-These calculations run only when the independently selectable
-`spatial_gradient_moment0` pipeline is enabled. The pipeline reuses the
-topology prepared by the hidden waveform core; `waveform_velocity` does not
-execute or import spatial-gradient processing.
-The optional gradient pipeline also owns its dynamic-edge and static-edge
-blood-volume-rate calculations. Mask-detection blood-volume rate remains a
-waveform-profile product and applies mask-derived circular-area scaling by
-default.
+## Input runs
 
-When masked spatial-gradient lumen metrics are computed, PNGs are exported
-immediately to `png/lumen_size/`, with separate `_artery` and `_vein` files.
-`lumen_size_by_branch` plots the joint NaN-ignoring median over beat and radius
-for each branch against time in seconds, with lumen size in pixels. The time
-axis spans the mean cardiac-cycle duration derived from beat boundaries and
-the acquisition frame interval.
-`lumen_size_by_branch_top_quartile` plots the mean curve of branches whose
-temporal median is at or above the 75th percentile of branch medians, including
-ties. Both plots use only `Processing/SpatialGradientMetrics/{Vessel}/Transverse/Masked/tbkr/lumen/size`,
-without applying QC.
-The branch curves are also stored in HDF5 at
-`Processing/SpatialGradientMetrics/{Vessel}/Transverse/Masked/tk/lumen_size`,
-with axes `(time, branch)` and units of pixels. PNGs use these same arrays.
+A `.holo` file anchors separately generated HD and DV companions. For
+`sample.holo`, the standard input locations are:
 
-## Cross-section topology and memory
+```text
+sample/
+  sample_HD/h5/sample_HD_output.h5
+  sample_DV/h5/sample_DV.h5
+```
 
-Branch identity, annular geometry, segment masks, orientation, transforms, and
-run-scoped caching live in `calculations.topology`. An explicit optic-disc
-center controls annuli and radial direction; the published optic-disc mask is
-excluded from vessels, skeletons, labels, and measurement rings.
+Normal runs require both companions. HD volumes use `(frame, y, x)` axes. DV
+provides `(y, x)` artery and vein masks under
+`/segmentation/Retina/artery_mask` and
+`/segmentation/Retina/vein_mask`, plus optional labels and optic-disc geometry.
+Timing and pixel-pitch metadata are also required by calibrated products.
 
-Velocity and displacement segments use a fused resize-and-rotate affine
-transform. Spatial gradients are the deliberate exception: interpolation and
-the radius-6/radius-8 filter chain above must complete before rotation.
-Production segment processing is temporally chunked. Worker count and chunk
-length share the configured `working_memory_mb` scratch budget; retained
-result arrays are not charged to that budget. The staged gradient path carries
-a six-frame halo on both sides of each output chunk so chunk boundaries match
-whole-recording filtering.
+See [data contracts](docs/data-contracts.md) for exact paths, fallback names,
+sidecar configuration, validation, axes, and units.
 
-## Scope
+## Velocity estimation
 
-### In Scope
+Every velocity run attempts both methods:
 
-- Loading H5 files containing:
-  - statistical moments
-  - precomputed masks
-  - acquisition metadata
-  - optional spectral data
-- Preprocessing before analysis.
-- Velocity and waveform analysis.
-- Pulse-wave velocity analysis.
-- Cross-section signal generation.
-- Cross-section result export and derived hemodynamic metrics.
-- Spectral analysis when the required spectral data is present.
-- Batch processing from folders and zip archives.
-- Persistent user settings for GUI and CLI.
-- H5, JSON, and log outputs.
-- CPU-first implementation with optional GPU acceleration where useful.
+- `doppler_moments` uses HD `moment0` and `moment2`, producing calibrated
+  physical velocity in `mm/s` under `/Processing`.
+- `frequency_bands` (band ratio) uses exact HD datasets
+  `/band_0_3000_9000` (LF) and `/band_1_9000_18000` (HF), both `(frame, y, x)`.
+  It converts `HF / LF` to RMS frequency using the positive finite persisted
+  `band_ratio_frequency_scale_hz` setting, then applies the same local-background,
+  background-difference, and physical velocity conversion. Outputs use
+  `/ProcessingAlt`; the calibration default is `1 Hz` per ratio unit.
 
-### Out of Scope
+Cardiac cycles are detected once before either estimate, from raw moment-derived
+RMS frequency, falling back to calibrated HF/LF frequency when moments are
+unavailable or unusable. Both workflows use identical cycle timing and shared
+`/Segmentation` geometry. Selected downstream products are recalculated for
+each method, and PNGs, videos, EPS files, and PDFs use separate `moments/` and
+`bandratio/` folders beneath their artifact-type directories.
 
-- AI inference inside EyeFlowPython.
-- Training or shipping segmentation models.
-- Automatic generation of artery and vein masks from raw images.
-- Manual mask painting inside the application.
-- Full MATLAB visual/report parity for the first Python release.
+Missing inputs, invalid data, or a downstream failure skip only the affected
+workflow. A run fails if neither workflow completes. The HDF5 root records
+completed methods and failure reasons; method-specific provenance is attached
+to each processing group and its datasets. Exact-zero LF values map to ratio
+zero without an epsilon, and LF quality counts remain diagnostic.
 
-The GUI may still provide mask visualization and overlay-based quality control, but not mask creation.
+There is no method selector. Legacy `velocity_estimation_method` settings are
+ignored. Fresh-install defaults are in `default_settings.json`; velocity is
+always physical in `mm/s`, and legacy dimensionless velocity metadata is rejected.
 
-## Input Contract
 
-The data contract must be strict and documented early. A clean Python implementation depends more on a stable input schema than on UI details.
+## Pipelines and outputs
 
-### Required Datasets
+The GUI and CLI use the same catalog, dependency resolver, and execution
+service. Visible pipelines select products; hidden core pipelines automatically
+prepare shared heartbeat, topology, and velocity state. Options such as
+per-beat signals, segments, profiles, quadrants, and blood-volume-rate families
+add their own dependencies.
 
-- `/moment0`
-  - 3D array: `(height, width, frames)`
-- `/moment1`
-  - 3D array: `(height, width, frames)`
-- `/moment2`
-  - 3D array: `(height, width, frames)`
-- `/masks/artery`
-  - 2D binary mask: `(height, width)`
-- `/masks/vein`
-  - 2D binary mask: `(height, width)`
+For `sample.holo`, EyeFlow owns `sample/sample_EF/`. A new attempt replaces an
+existing directory before running. The primary result is
+`sample_EF/h5/sample_EF.h5`; artifact directories such as `png`, `avi`, `eps`,
+and `pdf` are created when needed. The output HDF5 records source files,
+selected targets, resolved execution order/options, version data, and velocity
+semantics.
 
-### Optional Datasets
+Artifact filenames use the acquisition prefix, for example
+`sample_lumen_size_by_branch_artery.png`. Writers preserve subfolders and
+avoid adding the prefix twice. To rename artifacts in existing result folders,
+run `python -m input_output.artifact_migration path\to\results --dry-run`
+to inspect the changes, then omit `--dry-run` to apply them.
 
-- `/SH`
-  - Required only if spectral analysis is enabled.
-- Additional masks if useful for QC or downstream analysis
-  - examples: vessel, background, diaphragm, optic-disc, cross-section exclusions
+Major result families include continuous and per-beat velocity, heartbeat,
+topology/segmentation, cross-section profiles, waveform metrics, spatial-gradient
+lumen metrics, blood-volume-rate products, displacement products, and reports.
+The executable output-path schema is centralized in
+`src/input_output/schema/eyeflow_output.py`.
 
-### Required Metadata
+## Development
 
-At least one valid way to recover the time axis and one valid way to recover the spatial scale must be present.
+Run the test suite with:
 
-- Frame timing metadata
-  - preferred: timestamps in microseconds
-  - fallback: frame rate and stride
-- Spatial calibration metadata
-  - preferred: `pixel_size_mm`
-  - fallback: another explicit upstream calibration value already resolved before EyeFlowPython
-- Frame range metadata if the source data has already been cropped upstream
-- Any metadata needed to interpret units correctly
+```powershell
+pip install pytest
+python -m pytest
+```
 
-### Strong Recommendation
+Repository navigation for contributors and coding agents starts at
+[AGENTS.md](AGENTS.md). Deeper references are:
 
-Do not make EyeFlowPython infer physical units from weak assumptions. If a biomarker depends on time or spatial scale, the needed metadata should be explicitly present in the input.
+- [architecture and source-of-truth map](docs/architecture.md)
+- [data contracts](docs/data-contracts.md)
+- [test-to-production map](test/AGENTS.md)
+- [pipeline contribution guide](CONTRIBUTING.md)
+- [weighted velocity-profile analysis](docs/velocity_profile_analysis.md)
 
-## Analysis Pipeline
-
-The application should be structured as a dependency-driven pipeline.
-
-### Stage 1: Load And Validate
-
-- Validate required datasets and metadata.
-- Validate shapes, dtypes, mask consistency, and units.
-- Reject malformed inputs early with clear errors.
-
-### Stage 2: Preprocess
-
-Preprocessing remains part of the Python app even if masks are already provided.
-
-- frame cropping
-- rigid registration
-- local normalization
-- resizing
-- interpolation
-- outlier handling
-- optional non-rigid registration if still needed
-
-### Stage 3: Core Analysis
-
-- blood-flow velocity analysis
-- arterial and venous waveform analysis
-- heartbeat-related metrics
-- per-beat and statistical metrics
-
-### Stage 4: Advanced Analysis
-
-- pulse-wave velocity
-- cross-section signal generation
-- cross-section exports
-- flow-rate and hemodynamic outputs
-- spectral analysis when `SH` is available
-
-## Dependency Rules
-
-Some metrics depend on earlier stages. This should be implemented explicitly as a dependency graph, not as scattered conditionals.
-
-Examples:
-
-- preprocessing -> velocity analysis
-- velocity analysis -> waveform biomarkers
-- velocity analysis -> pulse-wave velocity
-- velocity analysis + masks + spatial calibration -> cross-section analysis
-- cross-section analysis -> exported cross-section biomarkers
-- `SH` + masks + timing metadata -> spectral analysis
-
-The user must be able to select requested outputs, and the app should automatically execute the required upstream dependencies.
-
-## Outputs
-
-Each processed input should generate a clean result package.
-
-### Required Outputs
-
-- one result H5 file with structured biomarker datasets
-- one result JSON file for scalar and summary outputs
-- one execution log file
-- one saved copy of the effective analysis settings used for the run
-
-### Output Requirements
-
-- stable dataset naming
-- explicit units
-- quality-control fields
-- run metadata
-- clear failure reporting for partial or skipped modules
-
-Optional figures and visual exports can be added later, but they are not the core deliverable for v1.
-
-## CLI And GUI
-
-The CLI and GUI must expose the same analysis features.
-
-### CLI Requirements
-
-- single-file processing
-- folder-tree batch processing
-- zip processing
-- settings file support through `eyeflow-settings.json`
-- module selection
-- clear logging and non-zero exit codes on failure
-
-## Technical Requirements
-
-- Python project managed with a `pyproject.toml`
-- easy setup with a virtual environment
-- use standard scientific Python libraries such as `numpy`, `h5py`, and related tooling
-- modular codebase with small focused files
-- clear separation between:
-  - IO
-  - validation
-  - preprocessing
-  - analysis modules
-  - exports
-  - CLI
-  - GUI
-- optional GPU support designed in from the start, but not required for all modules
-
-## Architecture Principles
-
-- The data contract comes first.
-- The pipeline must be deterministic and testable.
-- Every module should have a clear input and output interface.
-- Failures should be local when possible: one failed optional module should not necessarily invalidate the whole run.
-- Re-running downstream modules should not require repeating expensive upstream work when cached intermediates are available.
-- The codebase should stay readable and easy to extend.
-
-## Suggested V1 Deliverable
-
-A good first Python release would include:
-
-- strict H5 input validation
-- preprocessing
-- velocity analysis
-- waveform metrics
-- cross-section analysis
-- H5 and JSON export
-- CLI and GUI parity
-- settings persistence
-- batch and zip support
-
-Then add, in later iterations:
-
-- pulse-wave velocity
-- spectral analysis
-- richer QC exports
-- more visual reports
-
-## Summary
-
-EyeFlowPython is an analysis application, not a segmentation application.
-
-Its success depends on:
-
-- a strict H5 input schema
-- explicit metadata for time and spatial calibration
-- a clean dependency-aware analysis pipeline
-- consistent outputs across CLI and GUI
+The tag-triggered GitHub workflow builds Windows releases from `dev`; it is not
+a continuous test workflow. `benchmarks/rtx4090_cross_section.json` is a
+hardware-specific cross-section parity/performance snapshot, not an automated
+benchmark harness.

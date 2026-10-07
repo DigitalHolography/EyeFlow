@@ -13,6 +13,7 @@ from PIL import Image
 
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.h5 import open_h5
+from input_output.writers.artifact_names import prefixed_artifact_path
 
 
 def generate_a4_report(
@@ -22,6 +23,7 @@ def generate_a4_report(
     png_dir: Path | None = None,
     hd_png_dir: Path | None = None,
     mask_dir: Path | None = None,
+    processing_root: str | None = None,
 ) -> Path:
     """
     Generate an A4 PDF report mimicking the MATLAB generateA4Report function.
@@ -38,6 +40,7 @@ def generate_a4_report(
         png_dir: Directory containing PNG outputs
         hd_png_dir: Directory containing HoloDoppler M0 PNGs
         mask_dir: Directory containing mask PNGs
+        processing_root: Optional workflow processing group to read
 
     Returns:
         Path to the generated PDF file
@@ -49,11 +52,11 @@ def generate_a4_report(
     mask_dir = Path(mask_dir) if mask_dir is not None else None
 
     # Create output path
-    pdf_path = output_dir / f"{folder_name}_report.pdf"
+    pdf_path = prefixed_artifact_path(output_dir / "report.pdf", folder_name)
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Extract parameters from the H5 file
-    parameters = _extract_parameters_from_h5(output_h5_path)
+    parameters = _extract_parameters_from_h5(output_h5_path, processing_root=processing_root)
     
     # Create the report
     with PdfPages(pdf_path) as pdf:
@@ -248,12 +251,16 @@ def _load_or_placeholder(paths: list[Path]) -> np.ndarray:
     return placeholder
 
 
-def _extract_parameters_from_h5(h5_path: Path) -> dict[str, Any]:
+def _extract_parameters_from_h5(h5_path: Path, *, processing_root: str | None = None) -> dict[str, Any]:
     """Extract parameters from an H5 output file."""
     params = {}
 
     try:
         with open_h5(h5_path, 'r') as f:
+            if processing_root is not None:
+                from input_output.h5_access import PipelineH5Output
+
+                f = PipelineH5Output(f, processing_root=processing_root)
             # Velocity metrics
             _extract_velocity_metrics(f, params)
             
@@ -288,9 +295,10 @@ def _extract_velocity_metrics(f: h5py.File, params: dict[str, Any]) -> None:
         if dataset is not None:
             arr = np.asarray(dataset)
             if arr.size > 0:
-                params["Average_Arterial_Velocity"] = {"value": float(np.mean(arr)), "unit": "mm/s"}
-                params["Max_Arterial_Velocity"] = {"value": float(np.max(arr)), "unit": "mm/s"}
-                params["Min_Arterial_Velocity"] = {"value": float(np.min(arr)), "unit": "mm/s"}
+                unit = _velocity_dataset_unit(f, dataset)
+                params["Average_Arterial_Velocity"] = {"value": float(np.mean(arr)), "unit": unit}
+                params["Max_Arterial_Velocity"] = {"value": float(np.max(arr)), "unit": unit}
+                params["Min_Arterial_Velocity"] = {"value": float(np.min(arr)), "unit": unit}
                 break
     
     vein_paths = [
@@ -305,16 +313,26 @@ def _extract_velocity_metrics(f: h5py.File, params: dict[str, Any]) -> None:
         if dataset is not None:
             arr = np.asarray(dataset)
             if arr.size > 0:
-                params["Average_Venous_Velocity"] = {"value": float(np.mean(arr)), "unit": "mm/s"}
-                params["Max_Venous_Velocity"] = {"value": float(np.max(arr)), "unit": "mm/s"}
-                params["Min_Venous_Velocity"] = {"value": float(np.min(arr)), "unit": "mm/s"}
+                unit = _velocity_dataset_unit(f, dataset)
+                params["Average_Venous_Velocity"] = {"value": float(np.mean(arr)), "unit": unit}
+                params["Max_Venous_Velocity"] = {"value": float(np.max(arr)), "unit": unit}
+                params["Min_Venous_Velocity"] = {"value": float(np.min(arr)), "unit": unit}
                 break
+
+
+def _velocity_dataset_unit(f: h5py.File, dataset: h5py.Dataset) -> str:
+    """Prefer dataset provenance, with the output-root contract as fallback."""
+
+    value = dataset.attrs.get("unit", f.attrs.get("velocity_unit", "mm/s"))
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    return str(value)
 
 
 def _extract_heart_rate(f: h5py.File, params: dict[str, Any]) -> None:
     """Extract heart rate from H5 file."""
     schema = EyeFlowOutputPaths.active()
-    dataset = f.get(schema.heartbeat.spectral_heart_rate_bpm)
+    dataset = f.get(schema.cardiac_cycle.spectral_heart_rate_bpm)
     if dataset is not None:
         arr = np.asarray(dataset)
         if arr.size > 0:
@@ -325,7 +343,7 @@ def _extract_heart_rate(f: h5py.File, params: dict[str, Any]) -> None:
             return
 
     beat_paths = [
-        schema.beat_period_seconds,
+        schema.cardiac_cycle.systolic_cycle_duration_seconds,
         "Artery/VelocityPerBeat/beatPeriodSeconds/value",
         "perbeat/beat_period_seconds/value",
     ]

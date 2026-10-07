@@ -10,19 +10,18 @@ from app_settings import (
     normalize_pipeline_visibility,
     runtime_pipelines_path,
 )
-from pipelines import PipelineDescriptor, load_pipeline_catalog
 from pipeline_engine import PipelineDAG, PipelineExecutionPlan
+from pipelines import PipelineDescriptor, load_pipeline_catalog
 
 from ..services import services_for
 from ..widgets import Tooltip
 
 _PIPELINE_UI_ORDER = {
-    "waveform_velocity": 0,
+    "velocity_analysis": 0,
     "spatial_gradient_moment0": 1,
     "blood_volume_rate": 2,
-    "velocity_profile_analysis": 3,
-    "waveform_shape_metrics": 4,
-    "pdf_report": 5,
+    "waveform_shape_metrics": 3,
+    "pdf_report": 4,
 }
 
 
@@ -260,7 +259,10 @@ class PipelineLibraryController:
         self.app.pipeline_option_vars = {}
         self.app.pipeline_option_widgets = {}
         self.app.pipeline_disclosure_widgets = {}
-        row_count = 1 + sum(1 + len(pipeline.options) for pipeline in rows)
+        row_count = 1 + sum(
+            1 + len(pipeline.options)
+            for pipeline in rows
+        )
         self.configure_library_columns(
             self.app.pipeline_library_inner,
             row_count=row_count,
@@ -325,47 +327,23 @@ class PipelineLibraryController:
                     if not values.get(required_name, False):
                         values[required_name] = True
                         changed = True
-        velocity_segments = selections.get("waveform_velocity", {}).get(
+        velocity_segments = selections.get("velocity_analysis", {}).get(
             "segments",
             False,
         )
-        shape_segments = selections.get("waveform_shape_metrics", {}).get(
-            "segments",
-            False,
-        )
-        velocity_values = selections.get("waveform_velocity", {})
+        velocity_values = selections.get("velocity_analysis", {})
         shape_values = selections.get("waveform_shape_metrics", {})
         absolute_values = selections.get("absolute_waveform_metrics", {})
-        if not velocity_values.get("per_beat", False):
-            if any(
-                shape_values.get(name, False)
-                for name in ("per_beat", "segments", "quadrants")
-            ):
-                shape_values["per_beat"] = False
-                shape_values["segments"] = False
-                shape_values["quadrants"] = False
-                changed = True
-            if any(
-                absolute_values.get(name, False)
-                for name in ("per_beat", "segments", "quadrants")
-            ):
-                absolute_values["per_beat"] = False
-                absolute_values["segments"] = False
-                absolute_values["quadrants"] = False
-                changed = True
-        elif not velocity_segments and shape_segments:
-            shape_values["segments"] = False
+        downstream_segments = any(
+            shape_values.get(name, False)
+            for name in ("segments", "quadrants")
+        ) or any(
+            absolute_values.get(name, False)
+            for name in ("segments", "quadrants")
+        )
+        if downstream_segments and not velocity_segments:
+            velocity_values["segments"] = True
             changed = True
-        if not velocity_segments and absolute_values.get("segments", False):
-            absolute_values["segments"] = False
-            changed = True
-        if getattr(self.app, "pipeline_visibility", {}).get("pdf_report", False):
-            if not velocity_values.get("per_beat", False):
-                velocity_values["per_beat"] = True
-                changed = True
-            if not shape_values.get("per_beat", False):
-                shape_values["per_beat"] = True
-                changed = True
         self.app.pipeline_option_visibility = selections
         if changed:
             self.persist_options()
@@ -391,16 +369,6 @@ class PipelineLibraryController:
             self.app.pipeline_visibility[name] = target_value
         if changed:
             self.persist_visibility()
-        if visible and name == "pdf_report" and hasattr(
-            self.app,
-            "pipeline_option_visibility",
-        ):
-            self.set_option_visibility("waveform_velocity", "per_beat", True)
-            self.set_option_visibility(
-                "waveform_shape_metrics",
-                "per_beat",
-                True,
-            )
         self._refresh_required_pipelines()
         self._sync_pipeline_selection_widgets(set(self.app.pipeline_catalog))
         self.update_summary()
@@ -411,40 +379,18 @@ class PipelineLibraryController:
         option_name: str,
         enabled: bool,
     ) -> None:
-        if (
-            not enabled
-            and option_name == "per_beat"
-            and pipeline_name in {"waveform_velocity", "waveform_shape_metrics"}
-            and getattr(self.app, "pipeline_visibility", {}).get("pdf_report", False)
-        ):
-            enabled = True
         changes = [(pipeline_name, option_name, enabled)]
-        if pipeline_name == "waveform_velocity":
-            if option_name in {"per_beat", "segments"} and not enabled:
-                changes.append(("waveform_shape_metrics", option_name, False))
-                changes.append(("absolute_waveform_metrics", option_name, False))
+        if pipeline_name == "velocity_analysis":
+            if option_name == "segments" and not enabled:
+                for dependent in ("segments", "quadrants"):
+                    changes.append(("waveform_shape_metrics", dependent, False))
+                    changes.append(("absolute_waveform_metrics", dependent, False))
         elif pipeline_name == "absolute_waveform_metrics" and enabled:
-            if option_name == "per_beat":
-                changes.append(("waveform_velocity", "per_beat", True))
-            elif option_name == "segments":
-                changes.extend(
-                    (
-                        ("waveform_velocity", "per_beat", True),
-                        ("waveform_velocity", "segments", True),
-                    )
-                )
+            if option_name in {"segments", "quadrants"}:
+                changes.append(("velocity_analysis", "segments", True))
         elif pipeline_name == "waveform_shape_metrics" and enabled:
-            if option_name == "per_beat":
-                changes.append(("waveform_velocity", "per_beat", True))
-            elif option_name == "segments":
-                changes.extend(
-                    (
-                        ("waveform_velocity", "per_beat", True),
-                        ("waveform_velocity", "segments", True),
-                    )
-                )
-            elif option_name == "quadrants":
-                changes.append(("waveform_velocity", "per_beat", True))
+            if option_name in {"segments", "quadrants"}:
+                changes.append(("velocity_analysis", "segments", True))
 
         changed = False
         for target_pipeline_name, target_option_name, target_enabled in changes:
@@ -522,7 +468,7 @@ class PipelineLibraryController:
                 )
             status = self._pipeline_status_labels.get(name)
             if status is not None and pipeline is not None:
-                description = pipeline_status_text(pipeline)
+                description = self._pipeline_status_text(pipeline)
                 status.configure(
                     text=(
                         f"Required — {description}"
@@ -751,10 +697,10 @@ class PipelineLibraryController:
         status = ttk.Label(
             self.app.pipeline_library_inner,
             text=(
-                f"Required — {pipeline_status_text(pipeline)}"
+                f"Required — {self._pipeline_status_text(pipeline)}"
                 if pipeline.name
                 in getattr(self.app, "pipeline_required_names", set())
-                else pipeline_status_text(pipeline)
+                else self._pipeline_status_text(pipeline)
             ),
             justify="left",
         )
@@ -779,7 +725,8 @@ class PipelineLibraryController:
         self.app.pipeline_option_vars[pipeline.name] = {}
         option_widgets: list[tk.Widget] = []
         expanded = self.app.pipeline_expanded.get(pipeline.name, False)
-        for offset, option in enumerate(pipeline.options, start=1):
+        option_offset = 1
+        for offset, option in enumerate(pipeline.options, start=option_offset):
             option_var = tk.BooleanVar(
                 value=self.app.pipeline_option_visibility
                 .get(pipeline.name, {})
@@ -855,6 +802,12 @@ class PipelineLibraryController:
             else:
                 widget.grid_remove()
 
+    def _pipeline_status_text(self, pipeline: PipelineDescriptor) -> str:
+        description = pipeline_status_text(pipeline)
+        if pipeline.name != "velocity_analysis":
+            return description
+        return f"{description} \u2014 estimators: Moments and Band ratio"
+
     def _update_option_widget_states(self, pipeline_name: str) -> None:
         pipeline = self.app.pipeline_catalog.get(pipeline_name)
         enabled = bool(
@@ -876,7 +829,6 @@ class PipelineLibraryController:
         ):
             if isinstance(widget, ttk.Checkbutton):
                 widget.configure(state=state)
-
     def _bind_row_widgets(self, *widgets: tk.Misc) -> None:
         for widget in widgets:
             self.bind_vertical_mousewheel(widget, self.app.pipeline_library_canvas)

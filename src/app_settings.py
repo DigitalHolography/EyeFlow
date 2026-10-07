@@ -9,7 +9,12 @@ import sys
 from collections.abc import Iterable, Mapping
 from importlib import metadata as importlib_metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
+
+from velocity_calibration import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    validate_band_ratio_frequency_scale_hz,
+)
 
 APP_NAME = "EyeFlow"
 SETTINGS_FILENAME = "settings.json"
@@ -18,6 +23,27 @@ LAST_RUN_LOG_FILENAME = "last_EF_log.txt"
 PIPELINES_DIR_ENV = "EYEFLOW_PIPELINES_DIR"
 VERSION_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
 INVALID_PATH_CHARS_PATTERN = re.compile(r'[<>:"/\\|?*]+')
+VelocityEstimationMethod = Literal["doppler_moments", "frequency_bands"]
+DEFAULT_VELOCITY_ESTIMATION_METHOD: VelocityEstimationMethod = "doppler_moments"
+VELOCITY_ESTIMATION_METHODS: frozenset[VelocityEstimationMethod] = frozenset(
+    {DEFAULT_VELOCITY_ESTIMATION_METHOD, "frequency_bands"}
+)
+PIPELINE_NAME_MIGRATIONS: dict[str, str] = {
+    "retinal_velocity": "velocity",
+    "waveform_velocity": "velocity_analysis",
+}
+
+
+def validate_velocity_estimation_method(value: object) -> VelocityEstimationMethod:
+    """Return a supported velocity estimator name or raise a clear error."""
+
+    if isinstance(value, str) and value in VELOCITY_ESTIMATION_METHODS:
+        return cast(VelocityEstimationMethod, value)
+    allowed = ", ".join(sorted(VELOCITY_ESTIMATION_METHODS))
+    raise ValueError(
+        "Invalid velocity_estimation_method "
+        f"{value!r}. Expected one of: {allowed}."
+    )
 
 
 def _read_version_from_pyproject(pyproject_path: Path) -> str | None:
@@ -166,10 +192,14 @@ def normalize_pipeline_visibility(
     missing_defaults: Mapping[str, bool] | None = None,
 ) -> tuple[dict[str, bool], bool]:
     names = list(dict.fromkeys(pipeline_names))
-    visibility, changed = normalize_named_visibility(names, stored_visibility)
+    migrated_visibility, names_migrated = _migrate_pipeline_names(
+        stored_visibility
+    )
+    visibility, changed = normalize_named_visibility(names, migrated_visibility)
+    changed = changed or names_migrated
     stored_names = {
         name
-        for name, value in (stored_visibility or {}).items()
+        for name, value in migrated_visibility.items()
         if isinstance(name, str) and isinstance(value, bool)
     }
     if stored_names:
@@ -189,8 +219,9 @@ def normalize_pipeline_options(
 ) -> tuple[dict[str, dict[str, bool]], bool]:
     """Normalize persisted option selections against the current catalog."""
 
+    migrated_options, names_migrated = _migrate_pipeline_names(stored_options)
     clean_stored: dict[str, dict[str, bool]] = {}
-    for pipeline_name, values in (stored_options or {}).items():
+    for pipeline_name, values in migrated_options.items():
         if not isinstance(pipeline_name, str) or not isinstance(values, Mapping):
             continue
         clean_stored[pipeline_name] = {
@@ -215,8 +246,25 @@ def normalize_pipeline_options(
         if pipeline_values:
             normalized[pipeline_name] = pipeline_values
 
-    changed = normalized != clean_stored
+    changed = names_migrated or normalized != clean_stored
     return normalized, changed
+
+
+def _migrate_pipeline_names(
+    values: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], bool]:
+    """Move persisted pipeline settings to their current identifiers."""
+
+    migrated = dict(values or {})
+    changed = False
+    for old_name, new_name in PIPELINE_NAME_MIGRATIONS.items():
+        if old_name not in migrated:
+            continue
+        if new_name not in migrated:
+            migrated[new_name] = migrated[old_name]
+        del migrated[old_name]
+        changed = True
+    return migrated, changed
 
 
 class AppSettingsStore:
@@ -235,7 +283,9 @@ class AppSettingsStore:
     def load_defaults(self) -> dict[str, Any]:
         if self.default_template_path is None:
             return {}
-        return _load_settings_file(self.default_template_path)
+        settings = _load_settings_file(self.default_template_path)
+        settings.pop("velocity_estimation_method", None)
+        return settings
 
     def initialize_from_defaults(self) -> bool:
         if self.path.exists():
@@ -249,13 +299,17 @@ class AppSettingsStore:
     def load(self) -> dict[str, Any]:
         if not self.path.exists():
             return self.load_defaults()
-        return _load_settings_file(self.path)
+        settings = _load_settings_file(self.path)
+        settings.pop("velocity_estimation_method", None)
+        return settings
 
     def save(self, settings: Mapping[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self.path.with_suffix(".tmp")
+        settings = dict(settings)
+        settings.pop("velocity_estimation_method", None)
         tmp_path.write_text(
-            json.dumps(dict(settings), indent=2, sort_keys=True),
+            json.dumps(settings, indent=2, sort_keys=True),
             encoding="utf-8",
         )
         tmp_path.replace(self.path)
@@ -269,6 +323,12 @@ class AppSettingsStore:
             ) from exc
         if not isinstance(settings, dict):
             raise TypeError("The configuration must contain a JSON object.")
+        validate_band_ratio_frequency_scale_hz(
+            settings.get(
+                "band_ratio_frequency_scale_hz",
+                DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+            )
+        )
         self.save(settings)
 
     def load_named_visibility(self, key: str) -> dict[str, bool]:
@@ -333,4 +393,19 @@ class AppSettingsStore:
     def save_ui_mode(self, mode: str) -> None:
         settings = self.load()
         settings["ui_mode"] = "advanced" if mode == "advanced" else "minimal"
+        self.save(settings)
+
+    def load_band_ratio_frequency_scale_hz(self) -> float:
+        return validate_band_ratio_frequency_scale_hz(
+            self.load().get(
+                "band_ratio_frequency_scale_hz",
+                DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+            )
+        )
+
+    def save_band_ratio_frequency_scale_hz(self, value: object) -> None:
+        settings = self.load()
+        settings["band_ratio_frequency_scale_hz"] = (
+            validate_band_ratio_frequency_scale_hz(value)
+        )
         self.save(settings)

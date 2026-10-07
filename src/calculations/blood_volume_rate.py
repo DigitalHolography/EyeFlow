@@ -14,6 +14,7 @@ from calculations.topology.geometry import AnnulusGeometry
 
 TOTAL_MASKED_EDGES_WINDOW_SIZE = 9
 TOTAL_MASKED_EDGES_WINDOW_STRIDE = 1
+R_SIGMA_REFERENCE_DIAMETER_MM = np.float32(0.08)  # d_0 = 80 micrometres
 
 
 def mask_derived_lumen_geometry(
@@ -77,7 +78,7 @@ def mask_derived_lumen_geometry(
 
 
 def circular_lumen_flow(velocity, diameter_mm) -> np.ndarray:
-    """Multiply per-beat velocity by circular lumen area."""
+    """Apply the diameter-width correction to circular-lumen flow."""
 
     velocity_tbkr = np.asarray(velocity, dtype=np.float32)
     diameter = np.asarray(diameter_mm, dtype=np.float32)
@@ -93,8 +94,9 @@ def circular_lumen_flow(velocity, diameter_mm) -> np.ndarray:
             "lumen diameter must have dimensions (branch, radius) or match "
             "per-beat velocity dimensions."
         )
-    area_mm2 = np.float32(np.pi / 4.0) * diameter**2
-    return (velocity_tbkr * area_mm2).astype(
+    lumen_area = np.float32(np.pi / 4.0) * diameter**2
+    R_sigma = np.sqrt(diameter / R_SIGMA_REFERENCE_DIAMETER_MM)
+    return (velocity_tbkr / R_sigma * lumen_area).astype(
         np.float32,
         copy=False,
     )

@@ -41,8 +41,7 @@ class LumenSizePngTests(unittest.TestCase):
         branch_ids = np.arange(11, 20)
         profiles = np.ones((3, 9, 5, 11), dtype=np.float32)
         segments = SimpleNamespace(
-            transverse_profiles_unmasked=profiles,
-            transverse_profiles_masked=profiles,
+            transverse=SimpleNamespace(unmasked=profiles, masked=profiles),
         )
         with patch(
             "pipelines.spatial_gradient_moment0.profiles._spatial_gradient_peak_metrics",
@@ -118,10 +117,10 @@ class LumenSizePngTests(unittest.TestCase):
 
             self.assertEqual(
                 {
-                    "lumen_size_by_branch_artery.png",
-                    "lumen_size_by_branch_top_quartile_artery.png",
-                    "lumen_size_by_branch_vein.png",
-                    "lumen_size_by_branch_top_quartile_vein.png",
+                    "sample_lumen_size_by_branch_artery.png",
+                    "sample_lumen_size_by_branch_top_quartile_artery.png",
+                    "sample_lumen_size_by_branch_vein.png",
+                    "sample_lumen_size_by_branch_top_quartile_vein.png",
                 },
                 {path.name for path in paths},
             )

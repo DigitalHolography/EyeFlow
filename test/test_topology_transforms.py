@@ -8,6 +8,7 @@ from unittest.mock import patch
 import numpy as np
 
 from calculations.compute_backend import optional_cupy_backend
+from calculations.topology.branch_identity import BranchIdentityResult
 from calculations.topology.geometry import annulus_mask
 from calculations.topology.segments import SegmentTopology
 from calculations.topology.transforms import (
@@ -36,16 +37,16 @@ class TestTopologyTransforms(unittest.TestCase):
         centerline[9:12, 13] = True
         annuli = annulus_mask(shape, center_xy, 0.1, 0.95)[None, ...]
         topology = SegmentTopology(
-            spatial_shape=shape,
             optic_disc_center_xy=center_xy,
-            labels=labels,
-            centerline=centerline,
-            branch_ids=np.asarray([1], dtype=np.int32),
+            branches=BranchIdentityResult(
+                labels,
+                np.asarray([1], dtype=np.int32),
+                centerline,
+            ),
             annulus_masks=annuli,
             segment_masks=np.ones((1, 1, 9, 9), dtype=bool),
             segment_centers_xy=np.asarray([[[12.0, 10.0]]], dtype=np.float32),
             window_bounds_xyxy=np.asarray([[[8, 17, 6, 15]]], dtype=np.int32),
-            window_side_pixels=9,
         )
 
         rotations = determine_segment_rotations(topology)

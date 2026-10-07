@@ -9,7 +9,7 @@ from .runner import run_pdf_report
     name="pdf_report",
     description="Generate A4 PDF report from EyeFlow analysis outputs.",
     requires=["numpy", "matplotlib", "PIL"],
-    dag_requires=["waveform_velocity", "waveform_shape_metrics"],
+    dag_requires=["velocity_analysis", "waveform_shape_metrics"],
     input_slot="both",
 )
 def run(ctx):

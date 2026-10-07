@@ -14,13 +14,12 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from pipelines.waveform_velocity_core.figures.signal_inputs import (  # noqa: E402
+from pipelines.velocity_analysis.artifacts.figures.signal_inputs import (  # noqa: E402
     display_frequency,
     display_velocity,
     histogram_matrix,
-    masked_video_signal,
 )
-from pipelines.waveform_velocity_core.figures.spectrum import (  # noqa: E402
+from calculations.blood_flow_velocity.signal_analysis.spectrum import (  # noqa: E402
     correlation_data,
     paired_spectrum_analysis,
     spectrum_signal_analysis,
@@ -35,17 +34,23 @@ from calculations.blood_flow_velocity.signal_analysis.waveform import (  # noqa:
 )
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.writers.png import write_png_file  # noqa: E402
-from calculations.retinal_velocity.vessel_velocity_estimator import (  # noqa: E402
+from pipelines.velocity.estimation import (  # noqa: E402
     _masked_signal as _velocity_masked_signal,
 )
-from pipelines.waveform_velocity_core.figures import (  # noqa: E402
+from pipelines.velocity.models import (  # noqa: E402
+    RetinalVelocity,
+    RetinalVelocityMaps,
+    VesselVelocity,
+    VesselVelocitySignals,
+)
+from pipelines.velocity_analysis.artifacts.figures import (  # noqa: E402
     PULSE_PNG_SUFFIXES,
     export_pulse_pngs,
 )
-from pipelines.waveform_velocity_core.figures.plotting import (  # noqa: E402
+from pipelines.velocity_analysis.artifacts.figures.plotting import (  # noqa: E402
     _velocity_gradient_values,
 )
-from pipelines.waveform_velocity_core.figures.velocity_maps import (  # noqa: E402
+from pipelines.velocity_analysis.artifacts.figures.flow_maps import (  # noqa: E402
     _velocity_colorbar_vmax,
     _vessel_histogram_colormap,
 )
@@ -203,15 +208,15 @@ class PulsePngExporterTests(unittest.TestCase):
         second = np.sin(2 * np.pi * 1.0 * time + 0.35).astype(np.float32)
         beat_indexes = np.asarray([0, 24, 48, 72], dtype=np.int32)
         cycle = average_cycle(first, beat_indexes, 32)
-        heartbeat = spectrum_signal_analysis(first, 0.05, beat_indexes.size)
+        cardiac_cycle = spectrum_signal_analysis(first, 0.05, beat_indexes.size)
 
-        synthetic = synthetic_spectrum_analysis(cycle, heartbeat.period_seconds)
+        synthetic = synthetic_spectrum_analysis(cycle, cardiac_cycle.period_seconds)
         paired = paired_spectrum_analysis(
             first,
             second,
             0.05,
             beat_indexes,
-            heartbeat=heartbeat,
+            cardiac_cycle=cardiac_cycle,
         )
 
         self.assertEqual(synthetic.frequencies.shape, synthetic.magnitude.shape)
@@ -219,14 +224,14 @@ class PulsePngExporterTests(unittest.TestCase):
         self.assertTrue(synthetic.peak_indexes.size > 0)
         self.assertEqual(0, synthetic.peak_indexes[0])
         self.assertAlmostEqual(
-            heartbeat.heart_rate_hz,
+            cardiac_cycle.heart_rate_hz,
             synthetic.frequencies[synthetic.peak_indexes[1]],
             places=5,
         )
         self.assertEqual(paired.transfer.frequencies.shape, paired.transfer.transfer.shape)
         self.assertIsNotNone(paired.delay)
-        self.assertAlmostEqual(heartbeat.period_seconds, paired.delay.time[-1], places=6)
-        self.assertAlmostEqual(heartbeat.heart_rate_hz, paired.correlation.heart_rate_hz)
+        self.assertAlmostEqual(cardiac_cycle.period_seconds, paired.delay.time[-1], places=6)
+        self.assertAlmostEqual(cardiac_cycle.heart_rate_hz, paired.correlation.heart_rate_hz)
         self.assertGreaterEqual(paired.correlation.gamma_0, 0.0)
         self.assertLessEqual(paired.correlation.gamma_0, 1.0)
 
@@ -248,18 +253,6 @@ class PulsePngExporterTests(unittest.TestCase):
         self.assertEqual(cycle.size, markers.gradient.size)
         self.assertGreaterEqual(markers.peak_indexes.size, 1)
         self.assertEqual(spectral_period_seconds, markers.period_seconds)
-
-    def test_masked_video_signal_averages_masked_pixels_per_frame(self) -> None:
-        video = np.asarray(
-            [
-                [[1.0, 3.0], [5.0, 7.0]],
-                [[2.0, 4.0], [6.0, 8.0]],
-            ],
-            dtype=np.float32,
-        )
-        mask = np.asarray([[True, False], [False, True]])
-
-        np.testing.assert_allclose(masked_video_signal(video, mask), [4.0, 5.0])
 
     def test_velocity_masked_signal_ignores_nans_outside_and_inside_mask(self) -> None:
         velocity = np.asarray(
@@ -295,11 +288,11 @@ class PulsePngExporterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output = FakeOutput(Path(temp_dir))
             context = _synthetic_context()
-            artery = context.velocity_analysis["retinal_artery_velocity_signal"]
-            heartbeat = spectrum_signal_analysis(artery, 0.1, systole_count=4)
+            artery = context.velocity.continuous("artery", raw=True)
+            cardiac_cycle = spectrum_signal_analysis(artery, 0.1, systole_count=4)
             per_beat_result = SimpleNamespace(
-                heartbeat=heartbeat,
-                cycle_boundary_indexes=context.velocity_analysis["beat_indices"],
+                cardiac_cycle=cardiac_cycle,
+                cycle_boundary_indexes=context.velocity.cycle_boundary_indexes,
             )
             written = export_pulse_pngs(output, context, per_beat_result)
 
@@ -340,30 +333,75 @@ def _synthetic_context():
         ]
     ).astype(np.float32)
     beat_indices = np.asarray([2, 10, 18, 26], dtype=np.int32)
-    analysis = {
-        "fRMS": f_video,
-        "fRMS_bkg": f_bkg,
-        "fRMS_avg": np.mean(f_video, axis=0),
-        "fRMS_bkg_avg": np.mean(f_bkg, axis=0),
-        "deltafRMS": delta,
-        "velocity_section_mask": section_mask,
-        "velocity_map": velocity,
-        "velocity_map_avg": np.mean(velocity, axis=0),
-        "retinal_artery_velocity_signal": artery_signal,
-        "retinal_vein_velocity_signal": vein_signal,
-        "retinal_artery_velocity_signal_filtered": artery_signal,
-        "retinal_vein_velocity_signal_filtered": vein_signal,
-        "retinal_artery_velocity_signal_derivative": np.gradient(artery_signal).astype(np.float32),
-        "retinal_vein_velocity_signal_derivative": np.gradient(vein_signal).astype(np.float32),
-        "beat_indices": beat_indices,
-    }
-    source_data = SimpleNamespace(
-        timing=SimpleNamespace(dt_seconds=0.1),
-        moment0=np.stack([base_map + 1.0 for _ in range(frames)]).astype(np.float32),
-        retinal_artery_mask=artery_mask,
-        retinal_vein_mask=vein_mask,
+    cardiac_cycle = SimpleNamespace(
+        systole=SimpleNamespace(
+            systole_indexes=beat_indices,
+            signal_filtered=artery_signal,
+            min_peak_distance=8,
+            min_peak_height=np.float32(18.0),
+        ),
+        spectral=spectrum_signal_analysis(artery_signal, 0.1, systole_count=4),
     )
-    return SimpleNamespace(source_data=source_data, velocity_analysis=analysis)
+    velocity = RetinalVelocity(
+        maps=RetinalVelocityMaps(
+            velocity=velocity,
+            moment0_average=base_map + 1.0,
+            velocity_average_masked=np.mean(velocity, axis=0),
+            frms_average=np.mean(f_video, axis=0),
+            frms_background_average=np.mean(f_bkg, axis=0),
+            delta_frms_average=np.mean(delta, axis=0),
+            section_mask=section_mask,
+        ),
+        artery=VesselVelocity(
+            signals=VesselVelocitySignals(
+                velocity=artery_signal,
+                frms=np.mean(f_video[:, artery_mask], axis=1),
+                frms_background=np.mean(f_bkg[:, artery_mask], axis=1),
+                delta_frms=np.mean(delta[:, artery_mask], axis=1),
+            ),
+            velocity_filtered=artery_signal,
+        ),
+        vein=VesselVelocity(
+            signals=VesselVelocitySignals(
+                velocity=vein_signal,
+                frms=np.mean(f_video[:, vein_mask], axis=1),
+                frms_background=np.mean(f_bkg[:, vein_mask], axis=1),
+                delta_frms=np.mean(delta[:, vein_mask], axis=1),
+            ),
+            velocity_filtered=vein_signal,
+        ),
+        vessel_frms_background=np.mean(
+            f_bkg[:, artery_mask | vein_mask],
+            axis=1,
+        ),
+        cardiac_cycle=cardiac_cycle,
+        cardiac_cycle_source="artery",
+        dt_seconds=0.1,
+    )
+    source_data = SimpleNamespace(
+        source=SimpleNamespace(
+            holodoppler=SimpleNamespace(
+                timing=SimpleNamespace(dt_seconds=0.1),
+            ),
+            image_maps=SimpleNamespace(
+                moment0=np.stack(
+                    [base_map + 1.0 for _ in range(frames)]
+                ).astype(np.float32),
+            ),
+            segmentation=SimpleNamespace(
+                vessels=SimpleNamespace(
+                    artery=artery_mask,
+                    vein=vein_mask,
+                ),
+            ),
+        ),
+    )
+    return SimpleNamespace(
+        source_data=source_data,
+        velocity=velocity,
+        artery_segments=None,
+        vein_segments=None,
+    )
 
 
 if __name__ == "__main__":
