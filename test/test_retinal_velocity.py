@@ -1,5 +1,4 @@
 import unittest
-from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -63,8 +62,9 @@ class RetinalVelocityTests(unittest.TestCase):
         estimated = {}
 
         def estimator(**kwargs):
-            video = kwargs["velocity_video_output"]
-            video.fill(np.float32(7.0))
+            estimated["image_maps"] = kwargs["image_maps"]
+            self.assertTrue(kwargs["retain_velocity_video"])
+            video = np.full(source.image_maps.moment0.shape, 7.0, dtype=np.float32)
             data = _retinal_velocity_data(video)
             estimated["data"] = data
             return data
@@ -73,10 +73,6 @@ class RetinalVelocityTests(unittest.TestCase):
             patch(
                 "pipelines.retinal_velocity.runner.load_retinal_velocity_inputs",
                 return_value=source,
-            ),
-            patch(
-                "pipelines.retinal_velocity.runner.retinal_velocity_scratch_h5",
-                return_value=nullcontext(object()),
             ),
             patch(
                 "pipelines.retinal_velocity.runner.estimate_retinal_velocity",
@@ -94,6 +90,7 @@ class RetinalVelocityTests(unittest.TestCase):
             result, outputs = run_retinal_velocity(ctx)
 
         self.assertIs(result, retinal_velocity(ctx))
+        self.assertIs(estimated["image_maps"], source.image_maps)
         np.testing.assert_array_equal(cardiac_cycle_indexes(ctx), [0, 3, 5])
         self.assertIsInstance(result, RetinalVelocity)
         self.assertIs(result.maps, estimated["data"].maps)

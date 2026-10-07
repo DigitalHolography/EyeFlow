@@ -20,7 +20,7 @@ VesselName = Literal["artery", "vein"]
 class RetinalVelocityMaps:
     """Spatial maps shared throughout retinal-velocity processing."""
 
-    velocity: object | None
+    velocity: np.ndarray | None
     moment0_average: np.ndarray
     velocity_average: np.ndarray
     velocity_average_masked: np.ndarray

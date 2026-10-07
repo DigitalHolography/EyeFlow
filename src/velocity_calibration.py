@@ -7,7 +7,7 @@ from collections.abc import Mapping
 import numpy as np
 
 DEFAULT_LASER_WAVELENGTH_METERS = 8.52e-7
-DEFAULT_NUMERICAL_APERTURE = 0.124
+DEFAULT_NUMERICAL_APERTURE = 0.76
 DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ = 1.0
 BAND_RATIO_CALIBRATION_MODEL = "linear_origin"
 BAND_RATIO_CALIBRATION_SOURCE = "eyeflow_setting"
@@ -36,7 +36,7 @@ def validate_band_ratio_frequency_scale_hz(value: object) -> float:
 def physical_velocity_provenance(
     *,
     velocity_estimation_method: str,
-    band_ratio_frequency_scale_hz: float,
+    band_ratio_frequency_scale_hz: float | None = None,
     laser_wavelength_m: float = DEFAULT_LASER_WAVELENGTH_METERS,
     numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
 ) -> dict[str, object]:

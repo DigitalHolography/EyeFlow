@@ -29,17 +29,17 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  
     per_beat_signal_analysis,
 )
 from calculations.math import band_limited_ifft_abs  # noqa: E402
-from pipelines.retinal_velocity.estimation import (  # noqa: E402
-    _velocity_from_delta_frequency,
-)
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
-from pipelines.waveform_velocity.outputs.per_beat import (  # noqa: E402
-    pack_velocity_per_beat_outputs,
+from pipelines.retinal_velocity.estimation import (  # noqa: E402
+    _doppler_frequency_to_velocity_mm_s,
 )
 from pipelines.waveform_velocity.builder import (  # noqa: E402
     _raw_velocity_signals_for_per_beat,
     _run_waveform_per_beat_analysis,
     _waveform_segment_input,
+)
+from pipelines.waveform_velocity.outputs.per_beat import (  # noqa: E402
+    pack_velocity_per_beat_outputs,
 )
 
 
@@ -120,7 +120,9 @@ class PerBeatRunnerTests(unittest.TestCase):
     def test_velocity_conversion_uses_twice_the_wavelength_over_aperture(
         self,
     ) -> None:
-        result = _velocity_from_delta_frequency(np.asarray([1.0], dtype=np.float32))
+        result = _doppler_frequency_to_velocity_mm_s(
+            np.asarray([1.0], dtype=np.float32)
+        )
 
         np.testing.assert_allclose(result, [2e3 * 8.52e-7 / 0.76])
 

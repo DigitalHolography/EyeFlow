@@ -479,7 +479,7 @@ class RunServiceTests(unittest.TestCase):
                     output_h5.attrs["laser_wavelength_m"],
                 )
                 self.assertAlmostEqual(
-                    0.124,
+                    0.76,
                     output_h5.attrs["numerical_aperture"],
                 )
                 self.assertEqual(

@@ -15,7 +15,6 @@ from .cardiac_cycle import detect_cardiac_cycles
 from .estimation import estimate_retinal_velocity
 from .models import RetinalVelocity
 from .outputs import pack_retinal_velocity_outputs
-from .scratch import retinal_velocity_scratch_h5
 from .signal_processing import build_retinal_velocity
 from .sources import load_retinal_velocity_inputs
 
@@ -26,37 +25,23 @@ def run_retinal_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
     """Compute retinal velocity once and publish reusable typed state."""
 
     started = perf_counter()
-    Logger.log("Starting retinal velocity core processing (scratch=RAM)...")
+    Logger.log("Starting retinal velocity core processing...")
     source = load_retinal_velocity_inputs(ctx)
     images = source.image_maps
     segmentation = source.segmentation
     timing = source.holodoppler.timing
     retain_velocity_map = _pipeline_scheduled(ctx, "waveform_velocity")
-    velocity_source = _velocity_source_volume(source)
-    velocity_map_output = (
-        np.empty(tuple(int(size) for size in velocity_source.shape), dtype=np.float32)
-        if retain_velocity_map
-        else None
+    velocity_data = estimate_retinal_velocity(
+        image_maps=images,
+        velocity_estimation_method=source.velocity_estimation_method,
+        band_ratio_frequency_scale_hz=source.band_ratio_frequency_scale_hz,
+        artery_mask=segmentation.vessels.artery,
+        vein_mask=segmentation.vessels.vein,
+        background_mask=segmentation.vessels.velocity_background,
+        optic_disc_center=segmentation.optic_disc.center,
+        local_background_dist=source.doppler_view.local_background_dist,
+        retain_velocity_video=retain_velocity_map,
     )
-    with retinal_velocity_scratch_h5(ctx) as scratch_h5:
-        velocity_data = estimate_retinal_velocity(
-            moment0=images.moment0,
-            moment2=images.moment2,
-            band_lf=images.band_lf,
-            band_hf=images.band_hf,
-            velocity_estimation_method=source.velocity_estimation_method,
-            band_ratio_frequency_scale_hz=(
-                source.band_ratio_frequency_scale_hz
-            ),
-            artery_mask=segmentation.vessels.artery,
-            vein_mask=segmentation.vessels.vein,
-            background_mask=segmentation.vessels.velocity_background,
-            optic_disc_center=segmentation.optic_disc.center,
-            local_background_dist=source.doppler_view.local_background_dist,
-            scratch_h5=scratch_h5,
-            retain_velocity_video=retain_velocity_map,
-            velocity_video_output=velocity_map_output,
-        )
     cycle_analysis, cycle_source = detect_cardiac_cycles(
         velocity_data,
         dt_seconds=float(timing.dt_seconds),
@@ -77,28 +62,6 @@ def run_retinal_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
         f"Completed retinal velocity core processing in {perf_counter() - started:.1f}s."
     )
     return velocity, pack_retinal_velocity_outputs(velocity)
-
-
-def _velocity_source_volume(source):
-    """Return the primary volume for the configured estimator."""
-
-    images = source.image_maps
-    sources = {
-        "doppler_moments": images.moment0,
-        "frequency_bands": images.band_lf,
-    }
-    try:
-        volume = sources[source.velocity_estimation_method]
-    except KeyError as exc:
-        raise ValueError(
-            "Unsupported velocity_estimation_method "
-            f"{source.velocity_estimation_method!r}."
-        ) from exc
-    if volume is None:
-        raise ValueError(
-            f"The {source.velocity_estimation_method!r} estimator has no primary input."
-        )
-    return volume
 
 
 def retinal_velocity(ctx) -> RetinalVelocity:
