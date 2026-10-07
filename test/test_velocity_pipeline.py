@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -19,6 +20,7 @@ from input_output.schema import (
     VesselMasks,
 )
 from pipeline_engine.context import PipelineState
+from pipelines.velocity.cardiac_cycle import detect_source_cardiac_cycles
 from pipelines.velocity.models import (
     RetinalVelocity,
     RetinalVelocityData,
@@ -32,9 +34,52 @@ from pipelines.velocity.runner import (
     run_velocity,
     velocity,
 )
+from pipelines.velocity.signal_processing import build_velocity
 
 
 class RetinalVelocityTests(unittest.TestCase):
+    def test_moments_detector_receives_raw_frequency(self):
+        with patch(
+            "pipelines.velocity.cardiac_cycle.cardiac_cycles_from_available_vessel",
+            return_value=(_cardiac_cycle(), "artery"),
+        ) as detector:
+            detect_source_cardiac_cycles(_source_data())
+        artery_frequency, vein_frequency = detector.call_args.args
+        np.testing.assert_allclose(artery_frequency, np.sqrt(2.0))
+        np.testing.assert_allclose(vein_frequency, np.sqrt(2.0))
+
+    def test_bands_detector_receives_raw_calibrated_ratio(self):
+        source = _source_data()
+        low = np.full(source.image_maps.moment0.shape, 2.0, dtype=np.float32)
+        high = np.full_like(low, 6.0)
+        low[0] = 0.0
+        source = replace(
+            source,
+            image_maps=ImageMaps(None, None, band_lf=low, band_hf=high),
+            velocity_estimation_method="frequency_bands",
+            band_ratio_frequency_scale_hz=7.0,
+        )
+        with patch(
+            "pipelines.velocity.cardiac_cycle.cardiac_cycles_from_available_vessel",
+            return_value=(_cardiac_cycle(), "artery"),
+        ) as detector:
+            detect_source_cardiac_cycles(source)
+        artery_frequency, vein_frequency = detector.call_args.args
+        np.testing.assert_array_equal(artery_frequency, [0.0, 21.0, 21.0, 21.0, 21.0, 21.0])
+        np.testing.assert_array_equal(vein_frequency, artery_frequency)
+
+    def test_velocity_filter_does_not_reuse_frequency_detector_signal(self):
+        cycle = _cardiac_cycle()
+        cycle.systole.signal_filtered = np.full(6, 999.0, dtype=np.float32)
+        data = _retinal_velocity_data(np.ones((6, 3, 3), dtype=np.float32))
+        with patch(
+            "pipelines.velocity.signal_processing._filter",
+            side_effect=lambda signal, *_: np.asarray(signal) + 10.0,
+        ):
+            result = build_velocity(data, cycle, "artery", dt_seconds=0.02)
+        np.testing.assert_array_equal(result.continuous("artery"), np.arange(6) + 10.0)
+        self.assertIs(result.cardiac_cycle, cycle)
+
     def test_typed_result_exposes_continuous_and_per_beat_signals(self):
         result = _retinal_velocity()
 
@@ -61,6 +106,11 @@ class RetinalVelocityTests(unittest.TestCase):
         )
         estimated = {}
 
+        def load_inputs(ctx):
+            if ctx.velocity_estimation_method == "doppler_moments":
+                return source
+            raise KeyError("missing bands")
+
         def estimator(**kwargs):
             estimated["image_maps"] = kwargs["image_maps"]
             self.assertTrue(kwargs["retain_velocity_video"])
@@ -72,14 +122,14 @@ class RetinalVelocityTests(unittest.TestCase):
         with (
             patch(
                 "pipelines.velocity.runner.load_velocity_inputs",
-                return_value=source,
+                side_effect=load_inputs,
             ),
             patch(
                 "pipelines.velocity.runner.estimate_retinal_velocity",
                 side_effect=estimator,
             ),
             patch(
-                "pipelines.velocity.runner.detect_cardiac_cycles",
+                "pipelines.velocity.runner.detect_source_cardiac_cycles",
                 return_value=(analysis, "artery"),
             ),
             patch(
@@ -110,9 +160,7 @@ class RetinalVelocityTests(unittest.TestCase):
             estimated_period_samples=40.0,
             estimated_multiple=2,
         )
-        analysis = SimpleNamespace(
-            systole=SimpleNamespace(suspected_missed_beat_gaps=(gap,))
-        )
+        analysis = SimpleNamespace(systole=SimpleNamespace(suspected_missed_beat_gaps=(gap,)))
 
         with patch("pipelines.velocity.runner.Logger.log_warning") as warning:
             _log_cardiac_cycle_warnings(

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .artifact_names import acquisition_stem, labeled_artifact_path, prefixed_artifact_path
+
 
 class FigureArtifactWriter:
     """Write stem-prefixed EPS figures for one output namespace."""
@@ -11,9 +13,10 @@ class FigureArtifactWriter:
     def __init__(self, output, stem: str | None = None) -> None:
         self.output = output
         self.stem = str(stem) if stem else _output_stem(output)
+        self.acquisition_stem = acquisition_stem(output, Path(self.stem).name)
 
     def path(self, suffix: str) -> Path:
-        filename = f"{self.stem}_{suffix}"
+        filename = str(labeled_artifact_path(suffix, self.acquisition_stem, self.stem))
         path = self.output.path_for(_eps_output_type(), filename)
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
@@ -24,10 +27,10 @@ class FigureArtifactWriter:
         return path
 
 
-def write_eps_file(path: str | Path, fig, *, dpi: int = 150) -> Path:
+def write_eps_file(path: str | Path, fig, *, dpi: int = 150, stem: str | None = None) -> Path:
     """Save a Matplotlib figure as EPS, creating parent directories."""
 
-    target = Path(path)
+    target = prefixed_artifact_path(path, stem) if stem is not None else Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(target, format="eps", dpi=dpi)
     return target
@@ -38,10 +41,7 @@ EpsArtifactWriter = FigureArtifactWriter
 
 
 def _output_stem(output) -> str:
-    manager = getattr(output, "manager", None)
-    layout = getattr(manager, "layout", None)
-    stem = getattr(layout, "stem", None)
-    return str(stem or "eyeflow")
+    return acquisition_stem(output)
 
 
 def _close_figure(fig) -> None:
@@ -57,4 +57,3 @@ def _eps_output_type():
 
 
 __all__ = ["EpsArtifactWriter", "write_eps_file"]
-

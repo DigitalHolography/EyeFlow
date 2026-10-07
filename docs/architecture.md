@@ -55,8 +55,8 @@ GUI flow:
   -> worker calls `execute_run`
 ```
 
-`resolve_run_spec` is the shared validation boundary: it validates the velocity
-method, selectable targets, option closure, pipeline availability, DAG order,
+`resolve_run_spec` is the shared validation boundary: it validates calibration,
+selectable targets, option closure, pipeline availability, DAG order,
 input layouts, and unique destinations. `execute_run` owns batch iteration,
 per-file cleanup, failure collection, and stop-between-files behavior.
 
@@ -118,25 +118,30 @@ Every descriptor receives a fresh `PipelineContext`, but all contexts share:
 - a single backing dictionary exposed as `ctx.state`;
 - resolved pipeline options, directly selected targets, and ordered pipeline
   names;
-- the validated velocity-estimation method.
+- the calibration and workflow-specific velocity method where applicable.
 
 Pipeline results may be `None`, a metrics mapping, or `ProcessResult`. A metrics
 mapping is persisted with `PipelineH5Output`; `ProcessResult` additionally
-writes root attributes. `finish_pipeline` records `last_pipeline` and flushes.
+writes attributes on the active output namespace (a workflow processing group
+or the shared root). `finish_pipeline` records `last_pipeline` and flushes.
 Large transient arrays and typed run products belong in `ctx.state` or managed
 scratch storage, not ad-hoc module globals.
 
 ## Scientific processing boundaries
 
 - `velocity` estimates physical retinal velocity, prepares whole-vessel signals,
-  detects cardiac cycles, and retains the velocity video when downstream
-  analysis requires spatial products.
+  detects each workflow's cardiac cycles from its raw frequency before estimation,
+  attempts moments and band-ratio estimation independently, and retains each
+  velocity video when downstream analysis requires spatial products.
 - `topology_core` aligns masks, creates annular branch/segment topology, and
   publishes reusable prepared artery and vein topology.
 - `velocity_analysis` consumes velocity and topology state, performs per-beat
   and segment/profile analysis, and publishes the selected user-facing velocity
   datasets and artifacts. Shape, absolute, low-rank, blood-volume-rate, and
-  report pipelines consume its declared state.
+  report pipelines consume its declared state. The existing DAG executes these
+  downstream descriptors for each successful method using isolated state,
+  `/Processing` or `/ProcessingAlt`, and separate artifact folders. Topology
+  and segmentation remain shared.
 - `spatial_gradient_moment0` is independent of velocity analysis computation;
   it reuses cardiac-cycle timing and topology, applies its own ordered image-processing
   chain, and owns gradient-derived lumen products. Dependency-only execution
@@ -160,11 +165,11 @@ files as a complete schema.
 
 The GUI exposes settings through `ui/controllers/settings.py` and pipeline
 selection through `ui/controllers/pipeline_library.py`. The CLI reads the same
-store; `--pipelines` changes target selection, but the velocity method and band
-ratio frequency scale currently come from persisted settings rather than
-dedicated CLI flags. Runtime consumption begins at `resolve_run_spec` and
-continues through `PipelineContext.velocity_estimation_method` and
-`PipelineContext.band_ratio_frequency_scale_hz`.
+store; `--pipelines` changes target selection. Both velocity methods run
+automatically. The calibration comes from persisted settings and passes through
+`resolve_run_spec` into `PipelineContext.band_ratio_frequency_scale_hz`.
+`PipelineContext.velocity_estimation_method` identifies a workflow internally;
+there is no GUI selector or method setting. Legacy settings are ignored.
 
 For a new CLI option controlling an existing setting, inspect only
 `src/cli.py`, the relevant `AppSettingsStore` methods/default, the field passed

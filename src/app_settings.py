@@ -283,7 +283,9 @@ class AppSettingsStore:
     def load_defaults(self) -> dict[str, Any]:
         if self.default_template_path is None:
             return {}
-        return _load_settings_file(self.default_template_path)
+        settings = _load_settings_file(self.default_template_path)
+        settings.pop("velocity_estimation_method", None)
+        return settings
 
     def initialize_from_defaults(self) -> bool:
         if self.path.exists():
@@ -297,13 +299,17 @@ class AppSettingsStore:
     def load(self) -> dict[str, Any]:
         if not self.path.exists():
             return self.load_defaults()
-        return _load_settings_file(self.path)
+        settings = _load_settings_file(self.path)
+        settings.pop("velocity_estimation_method", None)
+        return settings
 
     def save(self, settings: Mapping[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self.path.with_suffix(".tmp")
+        settings = dict(settings)
+        settings.pop("velocity_estimation_method", None)
         tmp_path.write_text(
-            json.dumps(dict(settings), indent=2, sort_keys=True),
+            json.dumps(settings, indent=2, sort_keys=True),
             encoding="utf-8",
         )
         tmp_path.replace(self.path)
@@ -317,12 +323,6 @@ class AppSettingsStore:
             ) from exc
         if not isinstance(settings, dict):
             raise TypeError("The configuration must contain a JSON object.")
-        validate_velocity_estimation_method(
-            settings.get(
-                "velocity_estimation_method",
-                DEFAULT_VELOCITY_ESTIMATION_METHOD,
-            )
-        )
         validate_band_ratio_frequency_scale_hz(
             settings.get(
                 "band_ratio_frequency_scale_hz",
@@ -393,21 +393,6 @@ class AppSettingsStore:
     def save_ui_mode(self, mode: str) -> None:
         settings = self.load()
         settings["ui_mode"] = "advanced" if mode == "advanced" else "minimal"
-        self.save(settings)
-
-    def load_velocity_estimation_method(self) -> VelocityEstimationMethod:
-        return validate_velocity_estimation_method(
-            self.load().get(
-                "velocity_estimation_method",
-                DEFAULT_VELOCITY_ESTIMATION_METHOD,
-            )
-        )
-
-    def save_velocity_estimation_method(self, method: str) -> None:
-        settings = self.load()
-        settings["velocity_estimation_method"] = (
-            validate_velocity_estimation_method(method)
-        )
         self.save(settings)
 
     def load_band_ratio_frequency_scale_hz(self) -> float:

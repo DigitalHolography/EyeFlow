@@ -18,7 +18,7 @@ shape, unit, layout, or writer behavior.
 | HD/DV datasets and sidecars | `schema/holodoppler.py`, `schema/doppler_view.py` | `schema/source_data.py`, pipeline source loader |
 | Current output paths | `schema/eyeflow_output.py` | producer and consumer pipelines |
 | HDF5 writes | `h5_access.py`, `writers/h5.py` | output-schema tests and producer tests |
-| Output folders/artifacts | `output_manager.py` | the specific writer or report module |
+| Output folders/artifacts | `output_manager.py`, `writers/artifact_names.py` | the specific writer or report module; `artifact_migration.py` for existing results |
 | ZIP inputs | `archives/zip_archive.py` | input-expansion tests in `test_run_service.py` |
 | Profile dataset access | `profile_datasets.py` | profile producer/consumer tests |
 
@@ -44,6 +44,11 @@ inside a pipeline.
 MP4, AVI, PDF, and EPS; there is no generic JSON output helper. A pipeline may
 reserve a path or open an auxiliary HDF5, but required machine-readable results
 belong in the primary file.
+
+Artifact writers prefix each basename with the acquisition `<stem>_` exactly
+once, preserving subfolders. `OutputManager.path_for()` applies the same rule
+to reserved paths and auxiliary outputs. The primary `<stem>_EF.h5` name is
+unchanged. Keep the naming policy in the shared writer helper.
 
 ## Invariants
 

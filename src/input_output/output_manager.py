@@ -7,6 +7,7 @@ from pathlib import Path
 from .archives import reset_output_dir
 from .holo_run_layout import HoloRunLayout
 from .writers import open_h5, write_png_file
+from .writers.artifact_names import prefixed_artifact_path
 
 
 class OutputType(Enum):
@@ -21,6 +22,12 @@ class OutputType(Enum):
 @dataclass(frozen=True)
 class OutputManager:
     layout: HoloRunLayout
+    artifact_folder: str | None = None
+
+    def for_workflow(self, method: str) -> "OutputManager":
+        from .schema.eyeflow_output import VELOCITY_WORKFLOW_FOLDERS
+
+        return OutputManager(self.layout, VELOCITY_WORKFLOW_FOLDERS[method])
 
     def prepare(self, *, replace: bool = False) -> None:
         output_dir = self.layout.ef_dir
@@ -30,7 +37,10 @@ class OutputManager:
             output_dir.mkdir(parents=True, exist_ok=True)
 
     def dir_for(self, output_type: OutputType) -> Path:
-        return self.layout.ef_dir / output_type.value
+        directory = self.layout.ef_dir / output_type.value
+        if self.artifact_folder is not None:
+            directory /= self.artifact_folder
+        return directory
 
     def path_for(
         self,
@@ -49,7 +59,7 @@ class OutputManager:
 
     def _filename_for(self, output_type: OutputType, filename: str | None) -> str:
         if filename:
-            return filename
+            return str(prefixed_artifact_path(filename, self.layout.stem))
         if output_type is OutputType.H5:
             return f"{self.layout.stem}_EF.h5"
-        return self.layout.stem
+        return f"{self.layout.stem}_output.{output_type.value}"

@@ -1,6 +1,6 @@
 """Hidden core pipeline for velocity estimation and cardiac-cycle timing."""
 
-from pipeline_engine.imports import ProcessResult, pipeline
+from pipeline_engine.imports import pipeline
 
 from .models import RetinalVelocity
 from .runner import (
@@ -21,15 +21,9 @@ from .runner import (
     input_slot="both",
     visibility="hidden",
 )
-def run(ctx) -> ProcessResult:
-    velocity, metrics = run_velocity(ctx)
-    return ProcessResult(
-        metrics=metrics,
-        attrs={
-            "analysis_source": "eyeflow_velocity",
-            "cardiac_cycle_detection_source": velocity.cardiac_cycle_source,
-        },
-    )
+def run(ctx) -> None:
+    run_velocity(ctx)
+    # Each workflow writes through its own output namespace.
 
 
 __all__ = [

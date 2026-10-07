@@ -5,11 +5,6 @@ from __future__ import annotations
 import numpy as np
 
 from app_settings import validate_velocity_estimation_method
-from velocity_calibration import (
-    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
-    validate_band_ratio_frequency_scale_hz,
-)
-
 from input_output.schema import (
     DopplerViewMetadata,
     ImageMaps,
@@ -17,17 +12,40 @@ from input_output.schema import (
     RetinalSourceData,
     VesselMasks,
 )
+from velocity_calibration import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    validate_band_ratio_frequency_scale_hz,
+)
 
 
 def load_vessel_topology_inputs(ctx) -> RetinalSourceData:
     """Load one consistently oriented topology input set from HD and DV."""
 
     ctx.require_inputs("hd", "dv")
+    cached = ctx.state.get("velocity_source")
+    if isinstance(cached, RetinalSourceData) and (
+        getattr(ctx, "velocity_estimation_method", None) in {None, cached.velocity_estimation_method}
+    ):
+        return cached
     hd = ctx.inputs.hd.as_holodoppler()
     dv = ctx.inputs.dv.as_dopplerview()
-    method = validate_velocity_estimation_method(
-        getattr(ctx, "velocity_estimation_method", "doppler_moments")
-    )
+    method = getattr(ctx, "velocity_estimation_method", None)
+    if method is None:
+        # Shared topology must also tolerate invalid/incompatible moment inputs.
+        failures = {}
+        for candidate in ("doppler_moments", "frequency_bands"):
+            try:
+                return load_retinal_source_data(
+                    hd, dv, velocity_estimation_method=candidate,
+                    band_ratio_frequency_scale_hz=getattr(
+                        ctx, "band_ratio_frequency_scale_hz",
+                        DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+                    ),
+                )
+            except (KeyError, ValueError, TypeError) as exc:
+                failures[candidate] = str(exc)
+        raise ValueError(f"No usable retinal source for shared topology: {failures}")
+    method = validate_velocity_estimation_method(method)
     return load_retinal_source_data(
         hd,
         dv,
@@ -58,8 +76,8 @@ def load_retinal_source_data(
     if method == "frequency_bands":
         band_lf, band_hf = hd.frequency_band_datasets()
         image_maps = ImageMaps(
-            moment0=hd.optional_moment0_dataset(),
-            moment2=hd.optional_moment2_dataset(),
+            moment0=_optional_moment(hd.optional_moment0_dataset),
+            moment2=_optional_moment(hd.optional_moment2_dataset),
             band_lf=band_lf,
             band_hf=band_hf,
         )
@@ -126,6 +144,14 @@ def load_retinal_source_data(
         velocity_estimation_method=method,
         band_ratio_frequency_scale_hz=frequency_scale_hz,
     )
+
+
+def _optional_moment(loader):
+    """Malformed inactive moments must not disable the band workflow."""
+    try:
+        return loader()
+    except (KeyError, ValueError, TypeError):
+        return None
 
 
 def align_mask(

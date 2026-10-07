@@ -25,6 +25,7 @@ CLI.
 
 ## Workflow contract
 
+Both velocity estimators run automatically; do not expose a method selector.
 The selected target names and option names are passed to
 `pipeline_engine.resolve_run_spec`; the controller must not duplicate its
 availability, dependency, or destination validation. Execution delegates to

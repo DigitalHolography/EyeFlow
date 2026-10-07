@@ -6,6 +6,23 @@ from dataclasses import dataclass
 
 EYEFLOW_V2_OUTPUT_SCHEMA = "eyeflow_v2"
 
+VELOCITY_WORKFLOW_ROOTS = {
+    "doppler_moments": "Processing",
+    "frequency_bands": "ProcessingAlt",
+}
+VELOCITY_WORKFLOW_FOLDERS = {
+    "doppler_moments": "moments",
+    "frequency_bands": "bandratio",
+}
+
+
+def processing_path(path: str, root: str) -> str:
+    """Resolve a canonical processing path for one velocity workflow."""
+    normalized = str(path).replace("\\", "/").strip("/")
+    if normalized == "Processing" or normalized.startswith("Processing/"):
+        return root + normalized[len("Processing"):]
+    return normalized
+
 
 @dataclass(frozen=True)
 class DopplerViewAnalysisOutputPaths:

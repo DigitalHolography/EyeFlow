@@ -30,10 +30,10 @@ All image volumes are lazy HDF5 datasets with axes `(frame, y, x)`.
 
 | Logical value | HDF5 path(s) | Requirement |
 |---|---|---|
-| Zeroth moment | `/moment0`, legacy `/M0` | Required by `doppler_moments` velocity and moment-based products |
-| Second moment | `/moment2`, legacy `/M2` | Required by `doppler_moments` velocity |
-| Low-frequency band | `/band_0_3000_9000` | Required exactly by `frequency_bands`; no heuristic aliases |
-| High-frequency band | `/band_1_9000_18000` | Required exactly by `frequency_bands`; no heuristic aliases |
+| Zeroth moment | `/moment0`, legacy `/M0` | Required by the moments workflow and moment-based products |
+| Second moment | `/moment2`, legacy `/M2` | Required by the moments workflow |
+| Low-frequency band | `/band_0_3000_9000` | Required by the band-ratio workflow; no heuristic aliases |
+| High-frequency band | `/band_1_9000_18000` | Required by the band-ratio workflow; no heuristic aliases |
 | Flat-field zeroth moment | `/moment0ff`, legacy `/M0FF` | Optional |
 | Registration | `/registration` | Optional; copied to output `/Meta/registration` |
 | Zernike coefficients | `/zernike_coefs_radians` | Optional; copied through unchanged |
@@ -73,23 +73,45 @@ measurement in the canonical segmentation.
 
 ## Velocity methods
 
-`velocity_estimation_method` accepts:
+Every run that schedules velocity attempts both workflows, independently:
 
-- `doppler_moments` (default): derives RMS frequency from moments, estimates
-  local background, subtracts it with the established signed RMS rule, and
-  converts frequency to calibrated velocity in `mm/s`.
-- `frequency_bands`: computes the ratio `HF / LF`, converts it to RMS frequency
-  with `fRMS_Hz = band_ratio_frequency_scale_hz * (HF / LF)`, then applies the
-  same vessel-mask dilation, biharmonic background inpainting, signed
-  background-difference, and frequency-to-velocity conversion. The provisional
-  persisted-setting default is `1 Hz` per ratio unit; quantity is always
-  `physical_velocity`, unit `mm/s`.
+- `doppler_moments`: derives RMS frequency from moments, estimates local
+  background, subtracts it with the established signed RMS rule, and converts
+  frequency to calibrated velocity in `mm/s`. Its outputs use `/Processing`.
+- `frequency_bands` (band ratio): computes `HF / LF` and converts it to RMS
+  frequency with `fRMS_Hz = band_ratio_frequency_scale_hz * (HF / LF)`, then
+  applies the same vessel-mask dilation, biharmonic background inpainting,
+  signed background-difference, and frequency-to-velocity conversion. Its
+  outputs use `/ProcessingAlt`. The persisted calibration default is `1 Hz`
+  per ratio unit; quantity is `physical_velocity`, unit `mm/s`.
+
+`velocity_estimation_method` is no longer a selectable or persisted setting.
+Legacy configuration values are ignored. Method identifiers remain in workflow
+provenance and in internal method-specific contexts.
+
+Cardiac cycles are detected independently for each workflow **before** velocity
+estimation, from raw RMS frequency averaged over artery/vein support: moment-derived
+frequency for moments, and calibrated HF/LF frequency for bands. Each workflow
+uses the existing artery, then vein, then full-record fallback. Its own cycle
+boundaries, durations, and spectral timing are persisted under its processing
+group's `CardiacCycle` family and used throughout its downstream analyses.
+Velocity filtering always filters each workflow's physical velocity signal
+independently of the detector's signal.
+The workflows must have identical `(frame, y, x)` dimensions.
+
+All selected downstream analyses are recalculated in isolated run state for
+each successful estimate, using shared segmentation/topology and workflow-specific
+cycle boundaries. A failed input, cycle detection, estimate, or downstream workflow is skipped; its
+processing group and method artifacts are removed, while the other workflow
+continues. If both fail, the run fails. Root `velocity_workflow_failures`
+records a JSON map of method to error; `velocity_workflows_completed` lists
+successful methods when the run finishes.
 
 For band mode, an exactly zero LF sample maps to ratio zero. No epsilon is
 added. A nonzero ratio beyond finite `float32` range raises a clear error rather
 than emitting infinity. Missing exact band paths, mismatched shapes, nonnumeric
-data, NaN/Inf, and negative power values also fail explicitly. There is no
-fallback to moments.
+data, NaN/Inf, and negative power values also fail explicitly. A failed band
+workflow is skipped independently of the moments workflow.
 
 Band outputs report the LF quality threshold (`1e-6` of each frame maximum) and
 exact-zero/near-zero sample counts for the full volume, vessel pixels, and the
@@ -98,8 +120,8 @@ do not change the zero rule or discard low samples.
 
 All pipeline targets remain schedulable in band mode, including
 `blood_volume_rate` and `absolute_waveform_metrics`. Consumers must inspect the
-root method, calibration, quantity, and unit provenance when interpreting
-derived values.
+processing-group method, calibration, quantity, and unit provenance when
+interpreting derived values.
 
 ## Internal contracts
 
@@ -133,7 +155,21 @@ in the output HDF5.
 The output root is `<stem>_EF`. `execute_run` removes an existing output root
 before a new attempt, so a failed run leaves only that attempt's partial files.
 Subdirectories are created lazily for `h5`, `png`, `mp4`, `avi`, `pdf`, and
-`eps`. The primary file is `h5/<stem>_EF.h5`.
+`eps`. Velocity-derived artifacts are separated beneath each type directory
+into `moments/` and `bandratio/`, including PDF reports. Each report reads its
+corresponding processing group. The primary file is `h5/<stem>_EF.h5`.
+
+All artifact basenames start with `<stem>_`, including PNG, EPS, AVI, MP4,
+PDF, auxiliary HDF5, and archive outputs. The shared artifact naming helper
+and `OutputManager.path_for()` enforce this at the writer boundary: existing
+prefixes are retained once and subdirectories are preserved. The primary
+`<stem>_EF.h5` filename is unchanged.
+
+Existing EyeFlow result folders can be migrated with
+`python -m input_output.artifact_migration RESULTS_PARENT --dry-run`, then
+the same command without `--dry-run`. The utility only renames files inside
+identified `<stem>_EF` folders, leaves directories and contents unchanged,
+and checks for collisions before renaming.
 
 `EyeFlowOutputPaths.active()` defines the current `eyeflow_v2` paths. Important
 families are:
@@ -147,7 +183,10 @@ families are:
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
 - `/Meta` for provenance and selected pass-through data.
 
-Per-beat durations are published once at
+The `/ProcessingAlt` tree mirrors the selected `/Processing` families for the
+band-ratio workflow. `/Segmentation` and acquisition `/Meta` remain shared.
+
+Per-beat durations are published once per workflow at
 `/Processing/CardiacCycle/Systole/CycleDurationSeconds/value` as a `(beat,)`
 vector. The
 `/Processing/VelocityPerBeat` family contains beat-aligned velocity waveforms,
@@ -170,7 +209,9 @@ arrays, serialize boolean payloads as `uint8` with `original_class="bool"`, and
 attach `nameID` unless supplied.
 
 The output root records source files, selected targets, actual pipeline order,
-selected options, and velocity semantics. Band mode additionally records the
+selected options, requested methods, and workflow status. Processing groups and
+their datasets record method-specific physical velocity provenance. The
+band-ratio group additionally records the
 exact LF/HF source paths, factor, linear-through-origin calibration model,
 calibration source/version, wavelength, numerical aperture, and LF quality
 counts. Persisted RMS-frequency maps use `Hz`; velocity datasets use `mm/s` and

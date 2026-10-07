@@ -65,23 +65,19 @@ class _NoopPipeline(ProcessPipeline):
         return None
 
 
-def test_run_controls_include_velocity_estimator_toggle() -> None:
+def test_run_controls_enable_run_buttons() -> None:
     minimal_run = Mock()
     advanced_run = Mock()
-    estimator_buttons = [Mock(), Mock()]
     controller = RunController.__new__(RunController)
     controller.app = SimpleNamespace(
         minimal_run_button=minimal_run,
         advanced_run_button=advanced_run,
-        velocity_estimation_widgets=estimator_buttons,
     )
 
     controller._set_run_controls_enabled(False)
 
     minimal_run.configure.assert_called_once_with(state="disabled")
     advanced_run.configure.assert_called_once_with(state="disabled")
-    for button in estimator_buttons:
-        button.state.assert_called_once_with(["disabled"])
 
 
 def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
@@ -227,49 +223,16 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertEqual(("preparation", "sample"), spec.plan.names)
 
-    def test_velocity_estimation_method_is_validated_and_stored(self) -> None:
+    def test_band_ratio_calibration_is_validated_and_stored(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             holo = _write_input(Path(temp_dir))
-            default_spec = resolve_run_spec(
-                input_paths=[holo],
-                target_names=["sample"],
-                pipelines=[_descriptor()],
-            )
-            band_spec = resolve_run_spec(
-                input_paths=[holo],
-                target_names=["sample"],
-                pipelines=[_descriptor()],
-                velocity_estimation_method="frequency_bands",
-                band_ratio_frequency_scale_hz=2.5,
-            )
-
-            self.assertEqual(
-                "doppler_moments",
-                default_spec.velocity_estimation_method,
-            )
-            self.assertEqual(
-                "frequency_bands",
-                band_spec.velocity_estimation_method,
-            )
-            self.assertEqual(2.5, band_spec.band_ratio_frequency_scale_hz)
-
-            with self.assertRaisesRegex(ValueError, "velocity_estimation_method"):
-                resolve_run_spec(
-                    input_paths=[holo],
-                    target_names=["sample"],
-                    pipelines=[_descriptor()],
-                    velocity_estimation_method="unknown",
-                )
-            with self.assertRaisesRegex(
-                ValueError,
-                "band_ratio_frequency_scale_hz",
-            ):
-                resolve_run_spec(
-                    input_paths=[holo],
-                    target_names=["sample"],
-                    pipelines=[_descriptor()],
-                    band_ratio_frequency_scale_hz=0.0,
-                )
+            spec = resolve_run_spec(input_paths=[holo], target_names=["sample"],
+                                    pipelines=[_descriptor()], band_ratio_frequency_scale_hz=2.5)
+            self.assertFalse(hasattr(spec, "velocity_estimation_method"))
+            self.assertEqual(2.5, spec.band_ratio_frequency_scale_hz)
+            with self.assertRaisesRegex(ValueError, "band_ratio_frequency_scale_hz"):
+                resolve_run_spec(input_paths=[holo], target_names=["sample"],
+                                 pipelines=[_descriptor()], band_ratio_frequency_scale_hz=0.0)
 
     def test_frequency_band_method_allows_physical_velocity_pipelines(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -283,16 +246,12 @@ class RunServiceTests(unittest.TestCase):
                         input_paths=[holo],
                         target_names=[pipeline_name],
                         pipelines=[_named_descriptor(pipeline_name)],
-                        velocity_estimation_method="frequency_bands",
-                    )
+                            )
 
                     self.assertEqual((pipeline_name,), spec.plan.targets)
-                    self.assertEqual(
-                        "frequency_bands",
-                        spec.velocity_estimation_method,
-                    )
+                    self.assertFalse(hasattr(spec, "velocity_estimation_method"))
 
-    def test_gui_reads_velocity_method_when_building_run_spec(self) -> None:
+    def test_gui_reads_calibration_without_reading_obsolete_method(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             holo = _write_input(Path(temp_dir))
             progress_controller = SimpleNamespace(reset_run_log=Mock())
@@ -322,12 +281,9 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertIsNotNone(spec)
             assert spec is not None
-            self.assertEqual(
-                "frequency_bands",
-                spec.velocity_estimation_method,
-            )
+            self.assertFalse(hasattr(spec, "velocity_estimation_method"))
             self.assertEqual(3.0, spec.band_ratio_frequency_scale_hz)
-            settings_store.load_velocity_estimation_method.assert_called_once_with()
+            settings_store.load_velocity_estimation_method.assert_not_called()
             settings_store.load_band_ratio_frequency_scale_hz.assert_called_once_with()
             progress_controller.reset_run_log.assert_called_once()
 
@@ -425,8 +381,8 @@ class RunServiceTests(unittest.TestCase):
                 self.assertEqual(["sample"], list(output_h5.attrs["pipeline_targets"]))
                 self.assertEqual({}, json.loads(output_h5.attrs["pipeline_options"]))
                 self.assertEqual(
-                    "doppler_moments",
-                    output_h5.attrs["velocity_estimation_method"],
+                    ["doppler_moments", "frequency_bands"],
+                    list(output_h5.attrs["velocity_estimation_methods"]),
                 )
                 self.assertEqual(
                     "physical_velocity",
@@ -434,62 +390,18 @@ class RunServiceTests(unittest.TestCase):
                 )
                 self.assertEqual("mm/s", output_h5.attrs["velocity_unit"])
 
-    def test_frequency_band_method_is_persisted_in_output_metadata(self) -> None:
+    def test_dual_workflow_request_is_recorded_in_output_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            holo = _write_input(Path(temp_dir))
-            spec = resolve_run_spec(
-                input_paths=[holo],
-                target_names=["sample"],
-                pipelines=[_descriptor()],
-                velocity_estimation_method="frequency_bands",
-                band_ratio_frequency_scale_hz=2.5,
-            )
-
+            spec = resolve_run_spec(input_paths=[_write_input(Path(temp_dir))],
+                                    target_names=["sample"], pipelines=[_descriptor()],
+                                    band_ratio_frequency_scale_hz=2.5)
             result = execute_run(spec)
-
             self.assertTrue(result.succeeded)
-            with h5py.File(result.outputs[0], "r") as output_h5:
-                self.assertEqual(
-                    "frequency_bands",
-                    output_h5.attrs["velocity_estimation_method"],
-                )
-                self.assertEqual(
-                    "physical_velocity",
-                    output_h5.attrs["velocity_quantity"],
-                )
-                self.assertEqual("mm/s", output_h5.attrs["velocity_unit"])
-                self.assertEqual(
-                    2.5,
-                    output_h5.attrs["band_ratio_frequency_scale_hz"],
-                )
-                self.assertEqual(
-                    "linear_origin",
-                    output_h5.attrs["band_ratio_calibration_model"],
-                )
-                self.assertEqual(
-                    "eyeflow_setting",
-                    output_h5.attrs["band_ratio_calibration_source"],
-                )
-                self.assertEqual(
-                    "1",
-                    output_h5.attrs["band_ratio_calibration_version"],
-                )
-                self.assertAlmostEqual(
-                    8.52e-7,
-                    output_h5.attrs["laser_wavelength_m"],
-                )
-                self.assertAlmostEqual(
-                    0.76,
-                    output_h5.attrs["numerical_aperture"],
-                )
-                self.assertEqual(
-                    "/band_0_3000_9000",
-                    output_h5.attrs["band_lf_source_path"],
-                )
-                self.assertEqual(
-                    "/band_1_9000_18000",
-                    output_h5.attrs["band_hf_source_path"],
-                )
+            with h5py.File(result.outputs[0], "r") as output:
+                self.assertNotIn("velocity_estimation_method", output.attrs)
+                self.assertEqual(["doppler_moments", "frequency_bands"],
+                                 list(output.attrs["velocity_estimation_methods"]))
+                self.assertEqual(2.5, output.attrs["band_ratio_frequency_scale_hz"])
 
     def test_cli_reports_zip_creation_failure_with_nonzero_status(self) -> None:
         import cli
@@ -551,8 +463,8 @@ class RunServiceTests(unittest.TestCase):
             self.assertTrue(expected.is_file())
             with h5py.File(expected, "r") as output_h5:
                 self.assertEqual(
-                    "frequency_bands",
-                    output_h5.attrs["velocity_estimation_method"],
+                    ["doppler_moments", "frequency_bands"],
+                    list(output_h5.attrs["velocity_estimation_methods"]),
                 )
                 self.assertEqual(
                     4.0,
@@ -615,12 +527,40 @@ class RunServiceTests(unittest.TestCase):
             archive = root / "outputs.zip"
             archive.write_text("previous", encoding="utf-8")
 
-            with patch("cli.create_zip_from_tree", side_effect=OSError("zip failed")):
+            with patch("input_output.archives.zip_archive.create_zip_from_tree", side_effect=OSError("zip failed")):
                 with self.assertRaisesRegex(OSError, "zip failed"):
                     cli._zip_output_dir(source, archive)
 
             self.assertEqual("previous", archive.read_text(encoding="utf-8"))
             self.assertFalse(list(root.glob(".*eyeflow-staging-*")))
+
+    def test_cli_single_acquisition_zip_prefixes_default_and_custom_names_once(self) -> None:
+        import cli
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            holo = _write_input(root / "input")
+            pipelines_file = root / "pipelines.txt"
+            pipelines_file.write_text("sample\n", encoding="utf-8")
+            store = AppSettingsStore(path=root / "settings.json", default_template_path=None)
+            for filename in ("outputs.zip", "scan_outputs.zip", "custom"):
+                with self.subTest(filename=filename):
+                    output_root = root / filename
+                    with (
+                        patch("cli._build_pipeline_registry", return_value={"sample": _descriptor()}),
+                        patch("cli.AppSettingsStore", return_value=store),
+                        redirect_stdout(StringIO()),
+                        redirect_stderr(StringIO()),
+                    ):
+                        status = cli.run_cli(holo, pipelines_file, output_root,
+                                             zip_outputs=True, zip_name=filename)
+                    self.assertEqual(0, status)
+                    expected_name = "scan_custom.zip" if filename == "custom" else "scan_outputs.zip"
+                    self.assertEqual([expected_name], [path.name for path in output_root.iterdir()])
+                    with zipfile.ZipFile(output_root / expected_name) as archive:
+                        self.assertTrue(archive.namelist())
+                        self.assertTrue(all(Path(name).name.startswith("scan_")
+                                            for name in archive.namelist()))
 
     def test_recursive_folder_expansion_is_sorted(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

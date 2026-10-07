@@ -42,15 +42,19 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
                 "absolute_waveform_metrics": (),
                 "blood_volume_rate": ("masked_edges",),
             },
-            velocity_estimation_method="frequency_bands",
             band_ratio_frequency_scale_hz=2.0,
         )
 
         result = execute_run(spec)
 
         assert result.succeeded, result.failures
+        from input_output.h5_access import PipelineH5Output
+
         schema = EyeFlowOutputPaths.active()
-        with h5py.File(result.outputs[0], "r") as output:
+        with h5py.File(result.outputs[0], "r") as file:
+            assert "Processing" not in file
+            assert "doppler_moments" in json.loads(file.attrs["velocity_workflow_failures"])
+            output = PipelineH5Output(file, processing_root="ProcessingAlt")
             assert output.attrs["velocity_estimation_method"] == "frequency_bands"
             assert output.attrs["velocity_quantity"] == "physical_velocity"
             assert output.attrs["velocity_unit"] == "mm/s"
@@ -58,40 +62,36 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
             assert output.attrs["band_lf_zero_sample_count"] == 1
             assert output.attrs["band_lf_near_zero_sample_count"] == 1
 
-            artery_velocity = output[schema.analysis.retinal_artery_velocity_signal]
+            artery_velocity = output.get(schema.analysis.retinal_artery_velocity_signal)
             assert artery_velocity.attrs["unit"] == "mm/s"
             assert artery_velocity.attrs["velocity_estimation_method"] == "frequency_bands"
             assert artery_velocity.attrs["band_ratio_frequency_scale_hz"] == 2.0
             assert np.any(np.isfinite(artery_velocity[:]))
 
-            artery_per_beat = output[schema.artery_per_beat.velocity_signal]
+            artery_per_beat = output.get(schema.artery_per_beat.velocity_signal)
             assert artery_per_beat.attrs["unit"] == "mm/s"
             assert artery_per_beat.attrs["velocity_estimation_method"] == "frequency_bands"
             assert artery_per_beat.attrs["band_ratio_frequency_scale_hz"] == 2.0
 
-            cycle_durations = output[
-                schema.cardiac_cycle.systolic_cycle_duration_seconds
-            ]
+            cycle_durations = output.get(schema.cardiac_cycle.systolic_cycle_duration_seconds)
             assert cycle_durations.attrs["unit"] == "s"
             assert cycle_durations.ndim == 1
             assert cycle_durations.size > 0
-            assert "Processing/VelocityPerBeat/BeatPeriodSeconds/value" not in output
+            assert "Processing/VelocityPerBeat/BeatPeriodSeconds/value" not in file
 
-            frequency_map = output[schema.analysis.fRMS_avg]
+            frequency_map = output.get(schema.analysis.fRMS_avg)
             assert frequency_map.attrs["unit"] == "Hz"
             assert frequency_map.attrs["band_ratio_frequency_scale_hz"] == 2.0
 
-            velocity_average_masked = output[
-                schema.analysis.velocity_map_avg_masked
-            ]
+            velocity_average_masked = output.get(schema.analysis.velocity_map_avg_masked)
             assert velocity_average_masked.attrs["unit"] == "mm/s"
-            assert "Processing/Maps/VelocityAverage/value" not in output
-            assert "Processing/Maps/DeltaFRMSAverage/value" not in output
+            assert "Processing/Maps/VelocityAverage/value" not in file
+            assert "Processing/Maps/DeltaFRMSAverage/value" not in file
 
-            artery_flow = output[schema.blood_volume_rate.artery.masked_edges]
+            artery_flow = output.get(schema.blood_volume_rate.artery.masked_edges)
             assert artery_flow.attrs["unit"] == "mm^3/s"
 
-            absolute_root = output[schema.absolute_waveform_metrics_root]
+            absolute_root = output.get(schema.absolute_waveform_metrics_root)
             assert _dataset_count(absolute_root) > 0
 
 

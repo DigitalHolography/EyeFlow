@@ -286,10 +286,10 @@ def test_lumen_diameter_distributions_export_png_and_eps_for_both_vessels() -> N
         )
 
         assert {path.relative_to(output.layout.ef_dir).as_posix() for path in paths} == {
-            "png/lumen_diameter/artery_lumen_diameter_distribution.png",
-            "eps/lumen_diameter/artery_lumen_diameter_distribution.eps",
-            "png/lumen_diameter/vein_lumen_diameter_distribution.png",
-            "eps/lumen_diameter/vein_lumen_diameter_distribution.eps",
+            "png/lumen_diameter/sample_artery_lumen_diameter_distribution.png",
+            "eps/lumen_diameter/sample_artery_lumen_diameter_distribution.eps",
+            "png/lumen_diameter/sample_vein_lumen_diameter_distribution.png",
+            "eps/lumen_diameter/sample_vein_lumen_diameter_distribution.eps",
         }
         for path in paths:
             assert path.is_file()
@@ -366,10 +366,10 @@ def test_blood_volume_rate_signals_export_png_and_eps_for_both_vessels() -> None
         paths = export_blood_volume_rate_signals(output, total, total)
 
         assert {path.relative_to(output.layout.ef_dir).as_posix() for path in paths} == {
-            "png/blood_volume_rate/artery_blood_volume_rate.png",
-            "eps/blood_volume_rate/artery_blood_volume_rate.eps",
-            "png/blood_volume_rate/vein_blood_volume_rate.png",
-            "eps/blood_volume_rate/vein_blood_volume_rate.eps",
+            "png/blood_volume_rate/sample_artery_blood_volume_rate.png",
+            "eps/blood_volume_rate/sample_artery_blood_volume_rate.eps",
+            "png/blood_volume_rate/sample_vein_blood_volume_rate.png",
+            "eps/blood_volume_rate/sample_vein_blood_volume_rate.eps",
         }
         for path in paths:
             assert path.is_file()

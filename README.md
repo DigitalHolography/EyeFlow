@@ -56,28 +56,34 @@ sidecar configuration, validation, axes, and units.
 
 ## Velocity estimation
 
-The persisted `velocity_estimation_method` setting has two values:
+Every velocity run attempts both methods:
 
-- `doppler_moments` is the default. It uses HD `moment0` and `moment2` and
-  produces calibrated physical velocity in `mm/s`.
-- `frequency_bands` uses exact HD datasets `/band_0_3000_9000` (LF) and
-  `/band_1_9000_18000` (HF), both `(frame, y, x)`. It begins with `HF / LF`,
-  converts the ratio to RMS frequency using the positive finite persisted
-  `band_ratio_frequency_scale_hz` setting, and then applies the same mask-based
-  local-background, background-difference, and physical velocity conversion to
-  produce `mm/s`. The provisional default is `1 Hz` per ratio unit.
+- `doppler_moments` uses HD `moment0` and `moment2`, producing calibrated
+  physical velocity in `mm/s` under `/Processing`.
+- `frequency_bands` (band ratio) uses exact HD datasets
+  `/band_0_3000_9000` (LF) and `/band_1_9000_18000` (HF), both `(frame, y, x)`.
+  It converts `HF / LF` to RMS frequency using the positive finite persisted
+  `band_ratio_frequency_scale_hz` setting, then applies the same local-background,
+  background-difference, and physical velocity conversion. Outputs use
+  `/ProcessingAlt`; the calibration default is `1 Hz` per ratio unit.
 
-Band mode never falls back to moments. Missing bands, invalid values, or
-mismatched shapes produce explicit errors. Exact-zero LF values map to ratio
-zero without an epsilon. Output provenance reports exact-zero and frame-relative
-near-zero LF counts for all, vessel, and inpainting-neighborhood samples. All
-pipelines remain selectable in band mode, including `blood_volume_rate` and
-`absolute_waveform_metrics`; their outputs carry the stored velocity method,
-calibration, quantity, and unit provenance.
+Cardiac cycles are detected once before either estimate, from raw moment-derived
+RMS frequency, falling back to calibrated HF/LF frequency when moments are
+unavailable or unusable. Both workflows use identical cycle timing and shared
+`/Segmentation` geometry. Selected downstream products are recalculated for
+each method, and PNGs, videos, EPS files, and PDFs use separate `moments/` and
+`bandratio/` folders beneath their artifact-type directories.
 
-The fresh-install defaults are in `default_settings.json`. Existing user
-settings are loaded and normalized by `AppSettingsStore`. Velocity is always
-physical in `mm/s`; legacy dimensionless velocity metadata is rejected.
+Missing inputs, invalid data, or a downstream failure skip only the affected
+workflow. A run fails if neither workflow completes. The HDF5 root records
+completed methods and failure reasons; method-specific provenance is attached
+to each processing group and its datasets. Exact-zero LF values map to ratio
+zero without an epsilon, and LF quality counts remain diagnostic.
+
+There is no method selector. Legacy `velocity_estimation_method` settings are
+ignored. Fresh-install defaults are in `default_settings.json`; velocity is
+always physical in `mm/s`, and legacy dimensionless velocity metadata is rejected.
+
 
 ## Pipelines and outputs
 
@@ -93,6 +99,12 @@ existing directory before running. The primary result is
 and `pdf` are created when needed. The output HDF5 records source files,
 selected targets, resolved execution order/options, version data, and velocity
 semantics.
+
+Artifact filenames use the acquisition prefix, for example
+`sample_lumen_size_by_branch_artery.png`. Writers preserve subfolders and
+avoid adding the prefix twice. To rename artifacts in existing result folders,
+run `python -m input_output.artifact_migration path\to\results --dry-run`
+to inspect the changes, then omit `--dry-run` to apply them.
 
 Major result families include continuous and per-beat velocity, heartbeat,
 topology/segmentation, cross-section profiles, waveform metrics, spatial-gradient

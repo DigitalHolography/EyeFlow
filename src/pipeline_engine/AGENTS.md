@@ -45,7 +45,7 @@ declarations, `test_pipeline_discovery.py`,
 
 ## Run lifecycle
 
-`resolve_run_spec` validates the velocity method, filters selectable targets,
+`resolve_run_spec` validates band-ratio calibration, filters selectable targets,
 resolves option closure and the DAG, rejects unavailable required descriptors,
 resolves every `.holo` companion layout, maps outputs, and rejects duplicate
 destinations. No files are executed at this stage.
@@ -57,8 +57,10 @@ output or `RunFailure`, and checks cancellation only between files.
 The runtime opens HD/DV sources and the output HDF5 for the full per-file plan.
 It creates a new `PipelineContext` for every descriptor over the same output
 handle and shared-state dictionary. Pipeline options, execution order, and
-directly selected targets are immutable views for the run, along with the
-velocity method. A pipeline returning a mapping or `ProcessResult` is persisted;
+directly selected targets and calibration are immutable views for the run.
+Velocity-dependent descriptors execute in isolated contexts for each successful
+method, reusing the resolved DAG and shared topology. A pipeline returning a
+mapping or `ProcessResult` is persisted;
 a pipeline returning `None` owns its direct writes.
 
 ## Invariants
@@ -71,7 +73,9 @@ a pipeline returning `None` owns its direct writes.
   does not validate arbitrary `ctx.state` keys.
 - `input_slot` controls preferred merged-attribute lookup. Normal `.holo` layout
   resolution still requires both HD and DV companions.
-- Do not catch scientific exceptions inside the engine. `_run_pipeline_descriptor`
+- Workflow isolation catches descriptor failures only at the method execution
+  boundary, removes that workflow's owned output, and preserves its successful
+  sibling. Shared-pipeline errors still fail the run. `_run_pipeline_descriptor`
   wraps them with pipeline identity and retains their cause.
 - Do not mutate the global catalog during a run. Reload/discovery belongs before
   plan construction.

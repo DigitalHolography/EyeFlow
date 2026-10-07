@@ -109,11 +109,11 @@ class PipelineContext:
         pipeline_options: Mapping[str, Sequence[str]] | None = None,
         pipeline_order: Sequence[str] = (),
         pipeline_targets: Sequence[str] = (),
-        velocity_estimation_method: str = DEFAULT_VELOCITY_ESTIMATION_METHOD,
-        band_ratio_frequency_scale_hz: float = (
-            DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
-        ),
+        velocity_estimation_method: str | None = DEFAULT_VELOCITY_ESTIMATION_METHOD,
+        band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
         output_manager: OutputManager | None = None,
+        processing_root: str | None = None,
+        velocity_provenance: Mapping[str, Any] | None = None,
     ) -> None:
         hd_config = dict(holodoppler_config or {})
         dv_config = dict(doppler_vision_config or {})
@@ -128,7 +128,14 @@ class PipelineContext:
                 dv_config,
             ),
         )
-        self.output = PipelineOutput(output_manager, PipelineH5Output(work_h5))
+        self.output = PipelineOutput(
+            output_manager,
+            PipelineH5Output(
+                work_h5,
+                processing_root=processing_root,
+                provenance=velocity_provenance,
+            ),
+        )
         self.state = PipelineState(variables)
         self.pipeline_options = {
             str(name): frozenset(str(option) for option in options)
@@ -136,13 +143,13 @@ class PipelineContext:
         }
         self.pipeline_order = tuple(str(name) for name in pipeline_order)
         self.pipeline_targets = tuple(str(name) for name in pipeline_targets)
-        self.velocity_estimation_method: VelocityEstimationMethod = (
+        self.velocity_estimation_method: VelocityEstimationMethod | None = (
             validate_velocity_estimation_method(velocity_estimation_method)
+            if velocity_estimation_method is not None
+            else None
         )
-        self.band_ratio_frequency_scale_hz = (
-            validate_band_ratio_frequency_scale_hz(
-                band_ratio_frequency_scale_hz
-            )
+        self.band_ratio_frequency_scale_hz = validate_band_ratio_frequency_scale_hz(
+            band_ratio_frequency_scale_hz
         )
         self.attrs = MergedAttrs(
             work_h5,
@@ -237,8 +244,7 @@ def apply_pipeline_result(
         ctx.output.h5.write_many(result)
         return
     raise TypeError(
-        "Pipeline must return None, a metrics dict, or ProcessResult. "
-        f"Got: {type(result).__name__}"
+        f"Pipeline must return None, a metrics dict, or ProcessResult. Got: {type(result).__name__}"
     )
 
 

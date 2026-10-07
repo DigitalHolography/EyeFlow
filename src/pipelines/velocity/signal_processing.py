@@ -27,22 +27,9 @@ def build_velocity(
 
     artery_raw = np.asarray(data.artery.velocity, dtype=np.float32)
     vein_raw = np.asarray(data.vein.velocity, dtype=np.float32)
-    artery_filtered = _filtered_vessel_signal(
-        artery_raw,
-        "artery",
-        cardiac_cycle,
-        cardiac_cycle_source,
-        dt_seconds,
-        lowpass_freq_hz,
-    )
-    vein_filtered = _filtered_vessel_signal(
-        vein_raw,
-        "vein",
-        cardiac_cycle,
-        cardiac_cycle_source,
-        dt_seconds,
-        lowpass_freq_hz,
-    )
+    # Workflow cycles are detected from frequency; filter physical velocity here.
+    artery_filtered = _filter(artery_raw, dt_seconds, lowpass_freq_hz)
+    vein_filtered = _filter(vein_raw, dt_seconds, lowpass_freq_hz)
     return RetinalVelocity(
         maps=data.maps,
         artery=VesselVelocity(
@@ -69,19 +56,6 @@ def _filter(signal, dt_seconds: float, lowpass_freq_hz: float) -> np.ndarray:
         lowpass_freq_hz=np.float32(lowpass_freq_hz),
         order=4,
     )
-
-
-def _filtered_vessel_signal(
-    signal: np.ndarray,
-    vessel: str,
-    cardiac_cycle: CardiacCycleAnalysis,
-    cardiac_cycle_source: str,
-    dt_seconds: float,
-    lowpass_freq_hz: float,
-) -> np.ndarray:
-    if cardiac_cycle_source == vessel:
-        return np.asarray(cardiac_cycle.systole.signal_filtered, dtype=np.float32)
-    return _filter(signal, dt_seconds, lowpass_freq_hz)
 
 
 __all__ = [

@@ -32,7 +32,7 @@ signals. The active source differs by method:
 - moments: `sqrt(moment2 / spatial_mean(moment0))`, guarded where the mean is
   zero, then physical scaling after background subtraction;
 - bands: `HF / LF`, with exact-zero LF mapped to zero, then the same background
-  path without physical scaling.
+  path after Hz-per-ratio calibration and with physical mm/s scaling.
 
 Inputs must be finite and non-negative in band mode. Do not introduce epsilon
 bias, infinity, or a silent fallback. The estimator cache key includes the

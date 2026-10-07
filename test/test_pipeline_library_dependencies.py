@@ -73,7 +73,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             [item.name for item in sorted(rows, key=pipeline_ui_sort_key)],
         )
 
-    def test_waveform_status_reports_the_selected_velocity_estimator(self) -> None:
+    def test_waveform_status_reports_both_velocity_estimators(self) -> None:
         estimator_var = SimpleNamespace(get=lambda: "frequency_bands")
         controller = PipelineLibraryController(
             SimpleNamespace(velocity_estimation_method_var=estimator_var)
@@ -83,7 +83,7 @@ class PipelineLibraryDependencyTests(unittest.TestCase):
             _descriptor("velocity_analysis")
         )
 
-        self.assertEqual("Available — estimator: Band ratio", status)
+        self.assertEqual("Available \u2014 estimators: Moments and Band ratio", status)
 
     def test_dag_exposes_transitive_upstream_and_downstream_relations(self) -> None:
         core = _descriptor(

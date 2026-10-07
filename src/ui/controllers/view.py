@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import tkinter as tk
-import tkinter.font as tkfont
 from tkinter import ttk
 
 from ..views import AppViewBuilder
@@ -74,7 +73,6 @@ class ViewController:
         self.app._success_color = "#3fb37f"
         self.app._error_color = "#ff6b6b"
         self.configure_progress_styles()
-        self.configure_velocity_estimator_styles()
 
     def configure_progress_styles(self) -> None:
         progress_colors = {
@@ -93,73 +91,6 @@ class ViewController:
                 )
             except tk.TclError:
                 self.app._style.configure(style_name, background=color)
-
-    def configure_velocity_estimator_styles(self) -> None:
-        heading_font = tkfont.nametofont("TkDefaultFont").copy()
-        heading_font.configure(weight="bold")
-        self.app._velocity_estimator_heading_font = heading_font
-        self.app._style.configure(
-            "EstimatorHeading.TLabel",
-            font=heading_font,
-            foreground=self.app._accent_color,
-        )
-        self.app._style.configure(
-            "EstimatorToggle.TFrame",
-            background=self.app._surface_color,
-            bordercolor=self.app._accent_color,
-            borderwidth=1,
-            relief="solid",
-        )
-        self.app._style.configure(
-            "EstimatorToggle.Toolbutton",
-            background=self.app._surface_color,
-            foreground=self.app._text_fg,
-            bordercolor=self.app._surface_color,
-            lightcolor=self.app._surface_color,
-            darkcolor=self.app._surface_color,
-            focuscolor=self.app._surface_color,
-            padding=(10, 5),
-            relief="flat",
-        )
-        self.app._style.map(
-            "EstimatorToggle.Toolbutton",
-            background=[
-                ("selected", self.app._accent_color),
-                ("pressed", self.app._accent_color),
-                ("active", self.app._accent_color),
-                ("!selected", self.app._surface_color),
-            ],
-            foreground=[
-                ("selected", self.app._bg_color),
-                ("pressed", self.app._bg_color),
-                ("active", self.app._bg_color),
-                ("!selected", self.app._text_fg),
-            ],
-            bordercolor=[
-                ("selected", self.app._accent_color),
-                ("pressed", self.app._accent_color),
-                ("!selected", self.app._surface_color),
-            ],
-            lightcolor=[
-                ("selected", self.app._accent_color),
-                ("pressed", self.app._accent_color),
-                ("!selected", self.app._surface_color),
-            ],
-            darkcolor=[
-                ("selected", self.app._accent_color),
-                ("pressed", self.app._accent_color),
-                ("!selected", self.app._surface_color),
-            ],
-            focuscolor=[
-                ("selected", self.app._accent_color),
-                ("pressed", self.app._accent_color),
-                ("!selected", self.app._surface_color),
-            ],
-            relief=[
-                ("selected", "flat"),
-                ("pressed", "flat"),
-            ],
-        )
 
     def build_ui(self) -> None:
         self.builder.build_ui()

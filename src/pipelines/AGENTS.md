@@ -74,11 +74,15 @@ aligned.
 
 ## Velocity semantics
 
-All targets remain available for both configured methods. `doppler_moments`
+All selected downstream targets run for both automatic velocity workflows. `doppler_moments`
 and `frequency_bands` represent physical velocity (`mm/s`); band mode first
 converts `HF / LF` to frequency using the recorded
 `band_ratio_frequency_scale_hz`. `velocity/semantics.py`
-centralizes display and dataset interpretation. New velocity-derived outputs or
+centralizes display and dataset interpretation. Moments publish under
+`/Processing`, bands under `/ProcessingAlt`, with isolated downstream state and
+`moments`/`bandratio` artifact folders. Each workflow detects its own cycles from
+raw RMS frequency before estimation and uses them for its downstream analyses;
+segmentation remains under `/Segmentation`. New velocity-derived outputs or
 plots must resolve semantics from payload/provenance instead of hard-coding
 `mm/s`.
 

@@ -52,10 +52,7 @@ class DefaultSettingsTests(unittest.TestCase):
                 "velocity_profile_analysis"
             ]
         )
-        self.assertEqual(
-            "doppler_moments",
-            settings["velocity_estimation_method"],
-        )
+        self.assertNotIn("velocity_estimation_method", settings)
         self.assertEqual(1.0, settings["band_ratio_frequency_scale_hz"])
 
     def test_new_default_selected_pipeline_is_enabled_in_existing_settings(self) -> None:

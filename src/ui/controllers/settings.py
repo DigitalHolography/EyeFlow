@@ -38,37 +38,6 @@ class SettingsController:
                 f"Could not save UI mode preference:\n{exc}",
             )
 
-    def persist_velocity_estimation_method(self) -> None:
-        """Persist the estimator selected in the pipeline library."""
-
-        method = self.app.velocity_estimation_method_var.get()
-        try:
-            self.app.settings_store.save_velocity_estimation_method(method)
-        except (OSError, ValueError) as exc:
-            self.show_settings_warning(
-                "Settings not saved",
-                f"Could not save velocity estimator preference:\n{exc}",
-            )
-            self.sync_velocity_estimation_method()
-            return
-        self._refresh_velocity_estimator_display()
-
-    def sync_velocity_estimation_method(self) -> None:
-        """Refresh the shared selector after settings are imported."""
-
-        variable = getattr(self.app, "velocity_estimation_method_var", None)
-        if variable is not None:
-            variable.set(
-                self.app.settings_store.load_velocity_estimation_method()
-            )
-            self._refresh_velocity_estimator_display()
-
-    def _refresh_velocity_estimator_display(self) -> None:
-        controller = getattr(self.app, "pipeline_library_controller", None)
-        refresh = getattr(controller, "update_velocity_estimator_display", None)
-        if callable(refresh):
-            refresh()
-
     def choose_config_file(self) -> None:
         if getattr(self.app, "_pipeline_run_active", False):
             services_for(self.app).dialogs.showwarning(
@@ -106,7 +75,6 @@ class SettingsController:
             return False
 
         self.app.pipeline_library_controller.register()
-        self.sync_velocity_estimation_method()
         self.apply_ui_mode(self.app.settings_store.load_ui_mode(), persist=False)
         services_for(self.app).dialogs.showinfo(
             "Configuration loaded",

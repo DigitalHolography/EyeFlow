@@ -5,6 +5,8 @@ from pathlib import Path
 import numpy as np
 from skimage.io import imsave
 
+from .artifact_names import acquisition_stem, labeled_artifact_path, prefixed_artifact_path
+
 
 class FigureArtifactWriter:
     """Write stem-prefixed PNG figures for one output namespace."""
@@ -12,15 +14,16 @@ class FigureArtifactWriter:
     def __init__(self, output, stem: str | None = None) -> None:
         self.output = output
         self.stem = str(stem) if stem else _output_stem(output)
+        self.acquisition_stem = acquisition_stem(output, Path(self.stem).name)
 
     def path(self, suffix: str) -> Path:
-        filename = f"{self.stem}_{suffix}"
+        filename = str(labeled_artifact_path(suffix, self.acquisition_stem, self.stem))
         path = self.output.path_for(_png_output_type(), filename)
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
     def save_array(self, image, suffix: str) -> Path:
-        filename = f"{self.stem}_{suffix}"
+        filename = str(labeled_artifact_path(suffix, self.acquisition_stem, self.stem))
         return self.output.write_png(image, filename)
 
     def save_figure(
@@ -55,8 +58,8 @@ class FigureArtifactWriter:
         )
 
 
-def write_png_file(path: str | Path, image) -> Path:
-    target = Path(path)
+def write_png_file(path: str | Path, image, *, stem: str | None = None) -> Path:
+    target = prefixed_artifact_path(path, stem) if stem is not None else Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     imsave(target, _uint8_image(image), check_contrast=False)
     return target
@@ -67,7 +70,7 @@ def _uint8_image(image) -> np.ndarray:
     if array.dtype == np.uint8:
         return array
     if array.dtype == bool:
-        return (array.astype(np.uint8) * 255)
+        return array.astype(np.uint8) * 255
     if np.issubdtype(array.dtype, np.floating):
         return _normalize_float(array)
     clipped = np.clip(array, 0, 255)
@@ -93,10 +96,7 @@ PngArtifactWriter = FigureArtifactWriter
 
 
 def _output_stem(output) -> str:
-    manager = getattr(output, "manager", None)
-    layout = getattr(manager, "layout", None)
-    stem = getattr(layout, "stem", None)
-    return str(stem or "eyeflow")
+    return acquisition_stem(output)
 
 
 def _close_figure(fig) -> None:

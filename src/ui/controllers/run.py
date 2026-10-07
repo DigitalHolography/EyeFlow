@@ -105,9 +105,6 @@ class RunController:
                 pipeline_options=(
                     self.app.pipeline_library_controller.selected_pipeline_options()
                 ),
-                velocity_estimation_method=(
-                    self.app.settings_store.load_velocity_estimation_method()
-                ),
                 band_ratio_frequency_scale_hz=(
                     self.app.settings_store.load_band_ratio_frequency_scale_hz()
                 ),
@@ -174,19 +171,6 @@ class RunController:
             button = getattr(self.app, attr, None)
             if button is not None:
                 button.configure(state=state)
-        for widget in getattr(self.app, "velocity_estimation_widgets", ()):
-            widget.state(
-                ["disabled"] if state == "disabled" else ["!disabled"]
-            )
-        if enabled:
-            controller = getattr(self.app, "pipeline_library_controller", None)
-            refresh = getattr(
-                controller,
-                "update_velocity_estimator_display",
-                None,
-            )
-            if callable(refresh):
-                refresh()
 
     def _set_stop_controls_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"

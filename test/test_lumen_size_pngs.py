@@ -117,10 +117,10 @@ class LumenSizePngTests(unittest.TestCase):
 
             self.assertEqual(
                 {
-                    "lumen_size_by_branch_artery.png",
-                    "lumen_size_by_branch_top_quartile_artery.png",
-                    "lumen_size_by_branch_vein.png",
-                    "lumen_size_by_branch_top_quartile_vein.png",
+                    "sample_lumen_size_by_branch_artery.png",
+                    "sample_lumen_size_by_branch_top_quartile_artery.png",
+                    "sample_lumen_size_by_branch_vein.png",
+                    "sample_lumen_size_by_branch_top_quartile_vein.png",
                 },
                 {path.name for path in paths},
             )
