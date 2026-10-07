@@ -13,7 +13,6 @@ class DopplerViewAnalysisOutputPaths:
     retinal_vein_velocity_signal: str
     retinal_artery_velocity_signal_band_limited: str
     retinal_vein_velocity_signal_band_limited: str
-    velocity_map_avg: str
     velocity_map_avg_masked: str
     fRMS_avg: str
     fRMS_bkg_avg: str
@@ -244,7 +243,6 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         retinal_vein_velocity_signal_band_limited=(
             "Processing/Velocity/global/Vein/BandLimited/value"
         ),
-        velocity_map_avg="Processing/Maps/VelocityAverage/value",
         velocity_map_avg_masked="Processing/Maps/VelocityAverageMasked/value",
         fRMS_avg="Processing/Maps/FRMSAverage/value",
         fRMS_bkg_avg="Processing/Maps/FRMSBackgroundAverage/value",

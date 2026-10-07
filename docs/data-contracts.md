@@ -147,11 +147,10 @@ families are:
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
 - `/Meta` for provenance and selected pass-through data.
 
-`/Processing/Maps/VelocityAverage/value` is the temporal mean of the
-calibrated RMS-frequency velocity before vessel-mask-dependent background
-subtraction. `/Processing/Maps/VelocityAverageMasked/value` is the temporal
-mean of the background-subtracted velocity used by the vessel waveform
-analysis. The intermediate delta-frequency average is not persisted.
+`/Processing/Maps/VelocityAverageMasked/value` is the temporal mean of the
+background-subtracted velocity used by the vessel waveform analysis. The
+unmasked velocity average and intermediate delta-frequency average are not
+persisted.
 All two-dimensional datasets under `/Processing/Maps` are serialized in the
 same lower-left `(x, y)` image frame as
 `/Segmentation/Artery/BranchLabelMap/value`: the internal `(y, x)` array is

@@ -346,7 +346,6 @@ def _synthetic_context():
         maps=RetinalVelocityMaps(
             velocity=velocity,
             moment0_average=base_map + 1.0,
-            velocity_average=np.mean(velocity, axis=0),
             velocity_average_masked=np.mean(velocity, axis=0),
             frms_average=np.mean(f_video, axis=0),
             frms_background_average=np.mean(f_bkg, axis=0),

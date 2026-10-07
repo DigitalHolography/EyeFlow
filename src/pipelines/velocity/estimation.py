@@ -98,7 +98,6 @@ class _VelocityResultAccumulator:
             for name in (
                 "background",
                 "velocity",
-                "velocity_unmasked",
                 "frms",
                 "frms_background",
                 "delta_frms",
@@ -139,7 +138,6 @@ class _VelocityResultAccumulator:
         rms_frequency_background: np.ndarray,
         delta_rms_frequency: np.ndarray,
         velocity: np.ndarray,
-        velocity_unmasked: np.ndarray,
     ) -> None:
         frame_slice = estimator_chunk.frame_slice
         if self.velocity_video is not None:
@@ -148,7 +146,6 @@ class _VelocityResultAccumulator:
         for name, values in (
             ("background", estimator_chunk.background_image),
             ("velocity", velocity),
-            ("velocity_unmasked", velocity_unmasked),
             ("frms", estimator_chunk.rms_frequency),
             ("frms_background", rms_frequency_background),
             ("delta_frms", delta_rms_frequency),
@@ -190,7 +187,6 @@ class _VelocityResultAccumulator:
                 velocity=self.velocity_video,
                 # In band mode this is the LF mean used as the display background.
                 moment0_average=self._average("background"),
-                velocity_average=self._average("velocity_unmasked"),
                 velocity_average_masked=self._average("velocity"),
                 frms_average=self._average("frms"),
                 frms_background_average=self._average("frms_background"),
@@ -546,18 +542,11 @@ def estimate_retinal_velocity(
             laser_wavelength_m=laser_wavelength,
             numerical_aperture=numerical_aperture,
         )
-        velocity_unmasked = _doppler_frequency_to_velocity_mm_s(
-            f_rms,
-            laser_wavelength_m=laser_wavelength,
-            numerical_aperture=numerical_aperture,
-        )
-
         accumulator.update(
             estimator_chunk,
             rms_frequency_background=f_rms_background,
             delta_rms_frequency=delta,
             velocity=velocity,
-            velocity_unmasked=velocity_unmasked,
         )
         if (
             estimator_chunk.chunk_index == estimator_chunk.chunk_count

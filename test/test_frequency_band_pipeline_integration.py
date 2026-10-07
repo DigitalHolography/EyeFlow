@@ -70,13 +70,11 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
             assert frequency_map.attrs["unit"] == "Hz"
             assert frequency_map.attrs["band_ratio_frequency_scale_hz"] == 2.0
 
-            velocity_average = output[schema.analysis.velocity_map_avg]
             velocity_average_masked = output[
                 schema.analysis.velocity_map_avg_masked
             ]
-            assert velocity_average.attrs["unit"] == "mm/s"
             assert velocity_average_masked.attrs["unit"] == "mm/s"
-            assert np.any(velocity_average[:] != velocity_average_masked[:])
+            assert "Processing/Maps/VelocityAverage/value" not in output
             assert "Processing/Maps/DeltaFRMSAverage/value" not in output
 
             artery_flow = output[schema.blood_volume_rate.artery.masked_edges]

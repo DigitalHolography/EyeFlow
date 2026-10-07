@@ -182,10 +182,6 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
             actual.artery.velocity,
             expected.artery.velocity,
         )
-        np.testing.assert_array_equal(
-            actual.maps.velocity_average,
-            expected.maps.velocity_average,
-        )
         for values in (
             actual.vein.velocity,
             actual.vein.frms,
@@ -259,10 +255,7 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
             "Processing/Velocity/segments/Vein/BandLimited/value",
             schema.vein_segments.velocity_signal_band_limited,
         )
-        self.assertEqual(
-            "Processing/Maps/VelocityAverage/value",
-            schema.analysis.velocity_map_avg,
-        )
+        self.assertFalse(hasattr(schema.analysis, "velocity_map_avg"))
         self.assertEqual(
             "Processing/Maps/VelocityAverageMasked/value",
             schema.analysis.velocity_map_avg_masked,
@@ -321,7 +314,6 @@ def _typed_velocity() -> RetinalVelocity:
         maps=RetinalVelocityMaps(
             velocity=np.ones((8, 4, 4), dtype=np.float32),
             moment0_average=np.ones((4, 4), dtype=np.float32),
-            velocity_average=np.ones((4, 4), dtype=np.float32),
             velocity_average_masked=np.zeros((4, 4), dtype=np.float32),
             frms_average=np.ones((4, 4), dtype=np.float32),
             frms_background_average=np.ones((4, 4), dtype=np.float32),
@@ -347,7 +339,6 @@ def _retinal_velocity_data_arrays(result) -> dict[str, np.ndarray]:
     values = {
         "velocity": result.maps.velocity,
         "moment0_average": result.maps.moment0_average,
-        "velocity_average": result.maps.velocity_average,
         "velocity_average_masked": result.maps.velocity_average_masked,
         "frms_average": result.maps.frms_average,
         "frms_background_average": result.maps.frms_background_average,

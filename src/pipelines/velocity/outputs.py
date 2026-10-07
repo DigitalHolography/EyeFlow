@@ -30,10 +30,6 @@ def pack_velocity_outputs(
     }
     frequency_attrs.update({"unit": "Hz", "quantity": "rms_frequency"})
     outputs = {
-        analysis_paths.velocity_map_avg: _spatial_map_value(
-            velocity.maps.velocity_average,
-            attrs=velocity_attrs,
-        ),
         analysis_paths.velocity_map_avg_masked: _spatial_map_value(
             velocity.maps.velocity_average_masked,
             attrs=velocity_attrs,

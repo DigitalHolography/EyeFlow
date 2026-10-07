@@ -138,19 +138,6 @@ def test_frequency_band_estimator_converts_ratio_frequency_to_mm_per_second() ->
         np.mean(velocity, axis=0),
         rtol=1e-5,
     )
-    raw_velocity_scale = np.float32(
-        2e3 * DEFAULT_LASER_WAVELENGTH_METERS / DEFAULT_NUMERICAL_APERTURE
-    )
-    np.testing.assert_allclose(
-        result.maps.velocity_average[artery | vein],
-        raw_velocity_scale * np.float32(4.0),
-        rtol=1e-5,
-    )
-    np.testing.assert_allclose(
-        result.maps.velocity_average[~(artery | vein)],
-        raw_velocity_scale,
-        rtol=1e-5,
-    )
     np.testing.assert_array_equal(result.maps.moment0_average, np.ones(shape[1:]))
     np.testing.assert_allclose(result.maps.frms_average[artery | vein], 4.0)
     assert result.provenance["velocity_estimation_method"] == "frequency_bands"
@@ -458,7 +445,6 @@ def test_frequency_band_estimator_is_independent_of_frame_chunk_size() -> None:
                 {
                     "velocity_map": np.asarray(result.maps.velocity).copy(),
                     "moment0_avg": result.maps.moment0_average.copy(),
-                    "velocity_map_avg": result.maps.velocity_average.copy(),
                     "velocity_map_avg_masked": (
                         result.maps.velocity_average_masked.copy()
                     ),
@@ -528,10 +514,6 @@ def test_frequency_maps_are_persisted_in_hz_with_calibration_provenance() -> Non
     analysis = SimpleNamespace(
         provenance=provenance,
         maps=SimpleNamespace(
-            velocity_average=np.asarray(
-                [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-                dtype=np.float32,
-            ),
             velocity_average_masked=np.asarray(
                 [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
                 dtype=np.float32,
@@ -554,13 +536,7 @@ def test_frequency_maps_are_persisted_in_hz_with_calibration_provenance() -> Non
     outputs = pack_velocity_outputs(analysis)
     attrs = outputs[schema.analysis.fRMS_avg][1]
 
-    np.testing.assert_array_equal(
-        outputs[schema.analysis.velocity_map_avg][0],
-        np.asarray(
-            [[4.0, 1.0], [5.0, 2.0], [6.0, 3.0]],
-            dtype=np.float32,
-        ),
-    )
+    assert "Processing/Maps/VelocityAverage/value" not in outputs
     np.testing.assert_array_equal(
         outputs[schema.analysis.velocity_map_avg_masked][0],
         np.asarray(
