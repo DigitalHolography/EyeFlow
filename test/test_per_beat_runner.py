@@ -74,12 +74,12 @@ class PerBeatRunnerTests(unittest.TestCase):
             np.nanmean(raw, axis=(2, 3)).T,
         )
 
-    def test_velocity_conversion_uses_the_configured_wavelength_and_aperture(
+    def test_velocity_conversion_uses_twice_the_wavelength_over_aperture(
         self,
     ) -> None:
         result = _velocity_from_delta_frequency(np.asarray([1.0], dtype=np.float32))
 
-        np.testing.assert_allclose(result, [1e3 * 8.52e-7 / 0.124])
+        np.testing.assert_allclose(result, [2e3 * 8.52e-7 / 0.76])
 
     def test_global_per_beat_signal_uses_global_signal_when_segments_exist(self) -> None:
         frame_count = 32

@@ -17,7 +17,7 @@ SCRATCH_FRAME_CHUNK_SIZE = 32
 SECTION_INNER_RADIUS_FRAC = 0.10
 SECTION_OUTER_RADIUS_FRAC = 0.35
 DEFAULT_LASER_WAVELENGTH_METERS = 8.52e-7
-DEFAULT_NUMERICAL_APERTURE = 0.124
+DEFAULT_NUMERICAL_APERTURE = 0.76
 
 
 @dataclass(frozen=True)
@@ -85,10 +85,10 @@ def _velocity_from_delta_frequency(
     laser_wavelength: float = DEFAULT_LASER_WAVELENGTH_METERS,
     numerical_aperture: float = DEFAULT_NUMERICAL_APERTURE,
 ) -> np.ndarray:
-    """Convert a Doppler-frequency shift in Hz to velocity in mm/s."""
+    """Convert a Doppler-frequency shift using v = 2 * wavelength * df / NA."""
     delta_frequency = np.asarray(delta_frequency, dtype=np.float32)
     return (
-        np.float32(1e3) * laser_wavelength * delta_frequency / numerical_aperture
+        np.float32(2e3) * laser_wavelength * delta_frequency / numerical_aperture
     ).astype(np.float32, copy=False)
 
 
