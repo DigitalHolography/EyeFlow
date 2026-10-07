@@ -12,6 +12,7 @@ if str(SRC_DIR) not in sys.path:
 
 from calculations.topology import (  # noqa: E402
     AnnulusGeometry,
+    BranchIdentityResult,
     OpticDisc,
     SegmentTopology,
     build_segment_topology,
@@ -31,16 +32,16 @@ class SegmentTopologyTests(unittest.TestCase):
         other_vessels[3, 1] = True
         other_vessels[3, 3] = True  # Overlap must not erase the selected branch.
         topology = SegmentTopology(
-            spatial_shape=(7, 7),
             optic_disc_center_xy=(3.0, 3.0),
-            labels=labels,
-            centerline=labels > 0,
-            branch_ids=np.asarray([1], dtype=np.int32),
+            branches=BranchIdentityResult(
+                labels,
+                np.asarray([1], dtype=np.int32),
+                labels > 0,
+            ),
             annulus_masks=np.ones((1, 7, 7), dtype=bool),
             segment_masks=(labels == 1)[None, None],
             segment_centers_xy=np.asarray([[[3.0, 3.0]]], dtype=np.float32),
             window_bounds_xyxy=np.asarray([[[0, 7, 0, 7]]], dtype=np.int32),
-            window_side_pixels=7,
         )
 
         competing = competing_segment_masks(
@@ -94,9 +95,11 @@ class SegmentTopologyTests(unittest.TestCase):
         self.assertIs(topology.ring_settings, settings)
         circle = topology.optic_disc_mask
         self.assertFalse(np.any(topology.labels[circle]))
-        self.assertFalse(np.any(topology.centerline[circle]))
         self.assertFalse(np.any(topology.annulus_masks[:, circle]))
-        self.assertFalse(np.any(topology.branch_identity.stages.vessel[circle]))
+        self.assertTrue(np.any(topology.branch_identity.stages.vessel[circle]))
+        self.assertFalse(
+            np.any(topology.branch_identity.stages.cleaned_skeleton[circle])
+        )
         self.assertTrue(np.any(topology.annulus_masks[:, disc]))
         self.assertTrue(np.any(topology.branch_identity.stages.vessel[disc]))
 
@@ -159,17 +162,18 @@ class SegmentTopologyTests(unittest.TestCase):
 
 
 def _edge_topology() -> SegmentTopology:
+    labels = np.ones((4, 5), dtype=np.int32)
     return SegmentTopology(
-        spatial_shape=(4, 5),
         optic_disc_center_xy=(2.0, 2.0),
-        labels=np.ones((4, 5), dtype=np.int32),
-        centerline=np.ones((4, 5), dtype=bool),
-        branch_ids=np.asarray([1], dtype=np.int32),
+        branches=BranchIdentityResult(
+            labels,
+            np.asarray([1], dtype=np.int32),
+            np.ones((4, 5), dtype=bool),
+        ),
         annulus_masks=np.ones((1, 4, 5), dtype=bool),
         segment_masks=np.ones((1, 1, 3, 3), dtype=bool),
         segment_centers_xy=np.asarray([[[0.0, 0.0]]], dtype=np.float32),
         window_bounds_xyxy=np.asarray([[[0, 2, 0, 2]]], dtype=np.int32),
-        window_side_pixels=3,
     )
 
 

@@ -24,20 +24,45 @@ class SegmentTopology:
     ``segment_masks`` are fixed-size local masks rather than full-frame masks.
     """
 
-    spatial_shape: tuple[int, int]
     optic_disc_center_xy: tuple[float, float]
-    labels: np.ndarray
-    centerline: np.ndarray
-    branch_ids: np.ndarray
+    branches: BranchIdentityResult
     annulus_masks: np.ndarray
     segment_masks: np.ndarray
     segment_centers_xy: np.ndarray
     window_bounds_xyxy: np.ndarray
-    window_side_pixels: int
     delta_radius: np.ndarray | None = None
     optic_disc_mask: np.ndarray | None = None
     ring_settings: AnnulusGeometry | None = None
-    branch_identity: BranchIdentityResult | None = None
+
+    @property
+    def spatial_shape(self) -> tuple[int, int]:
+        return tuple(int(size) for size in self.branches.labels.shape)
+
+    @property
+    def labels(self) -> np.ndarray:
+        return self.branches.labels
+
+    @property
+    def centerline(self) -> np.ndarray:
+        return self.branches.centerline
+
+    @property
+    def branch_ids(self) -> np.ndarray:
+        return self.branches.branch_ids
+
+    @property
+    def branch_identity(self) -> BranchIdentityResult:
+        """Compatibility name for the authoritative branch composition."""
+
+        return self.branches
+
+    @property
+    def window_side_pixels(self) -> int:
+        return int(self.segment_masks.shape[-1])
+
+    @property
+    def segment_shape(self) -> tuple[int, int]:
+        return tuple(int(size) for size in self.segment_centers_xy.shape[:2])
 
     @property
     def valid_segments(self) -> np.ndarray:
@@ -267,20 +292,15 @@ def resize_segment_topology_windows(
             ]
 
     return SegmentTopology(
-        spatial_shape=topology.spatial_shape,
         optic_disc_center_xy=topology.optic_disc_center_xy,
         optic_disc_mask=topology.optic_disc_mask,
         ring_settings=topology.ring_settings,
-        labels=topology.labels,
-        centerline=topology.centerline,
-        branch_ids=topology.branch_ids,
+        branches=topology.branches,
         annulus_masks=topology.annulus_masks,
         segment_masks=masks,
         segment_centers_xy=topology.segment_centers_xy,
         window_bounds_xyxy=bounds,
-        window_side_pixels=side,
         delta_radius=topology.delta_radius,
-        branch_identity=topology.branch_identity,
     )
 
 
@@ -306,7 +326,7 @@ def _build_segment_topology(
         fallback_radius_pixels=fallback_radius,
     )
     optic_disc_center_xy = optic_disc.center
-    centerline = branches.stages.skeleton
+    centerline = branches.centerline
     annuli = section_masks(vessel_mask.shape, optic_disc_center_xy, settings)
     annuli &= ~optic_disc_mask[None, ...]
     side = (
@@ -350,20 +370,15 @@ def _build_segment_topology(
             ]
 
     return SegmentTopology(
-        spatial_shape=tuple(vessel_mask.shape),
         optic_disc_center_xy=tuple(float(value) for value in optic_disc_center_xy),
         optic_disc_mask=optic_disc_mask.copy(),
         ring_settings=settings,
-        labels=branches.labels,
-        centerline=centerline,
-        branch_ids=branches.branch_ids,
+        branches=branches,
         annulus_masks=annuli,
         segment_masks=masks,
         segment_centers_xy=centers,
         window_bounds_xyxy=bounds,
-        window_side_pixels=side,
         delta_radius=delta_radius,
-        branch_identity=branches,
     )
 
 

@@ -40,31 +40,33 @@ class SpatialGradientPipelineTests(unittest.TestCase):
         dag = PipelineDAG(PIPELINE_REGISTRY.values())
         gradient_plan = dag.resolve_targets(["spatial_gradient_moment0"])
         self.assertLess(
-            gradient_plan.names.index("heartbeat_core"),
+            gradient_plan.names.index("velocity"),
             gradient_plan.names.index("spatial_gradient_moment0"),
         )
         self.assertLess(
             gradient_plan.names.index("topology_core"),
             gradient_plan.names.index("spatial_gradient_moment0"),
         )
-        self.assertNotIn("waveform_velocity_core", gradient_plan.names)
-        self.assertNotIn("waveform_velocity", gradient_plan.names)
+        self.assertNotIn("velocity_analysis", gradient_plan.names)
 
-        waveform_plan = dag.resolve_targets(["waveform_velocity"])
+        waveform_plan = dag.resolve_targets(["velocity_analysis"])
         self.assertNotIn("spatial_gradient_moment0", waveform_plan.names)
 
-    def test_displacement_map_has_no_heartbeat_or_waveform_dependency(self) -> None:
+    def test_displacement_map_has_no_cardiac_cycle_or_waveform_dependency(self) -> None:
         pipelines.load_pipeline_catalog()
 
         plan = PipelineDAG(PIPELINE_REGISTRY.values()).resolve_targets(["displacement_map"])
 
         self.assertEqual(("displacement_map",), plan.names)
 
-    def test_runner_owns_only_gradient_and_lumen_outputs(self) -> None:
+    def test_runner_publishes_outputs_only_when_directly_targeted(self) -> None:
         gradient_segments = SimpleNamespace(
-            labels=np.asarray([1]),
-            branch_ids=np.asarray([7]),
-            transverse_profiles_unmasked=np.ones((2, 1, 3), dtype=np.float32),
+            topology=SimpleNamespace(
+                native=SimpleNamespace(branch_ids=np.asarray([7]))
+            ),
+            transverse=SimpleNamespace(
+                unmasked=np.ones((2, 1, 3), dtype=np.float32)
+            ),
         )
         inputs = SimpleNamespace(
             holodoppler=SimpleNamespace(
@@ -73,48 +75,56 @@ class SpatialGradientPipelineTests(unittest.TestCase):
             ),
         )
         topology = {"artery": object(), "vein": object()}
-        state = _State()
-        ctx = SimpleNamespace(
-            state=state,
-            output=SimpleNamespace(available=False),
-        )
+        for directly_targeted in (True, False):
+            with self.subTest(directly_targeted=directly_targeted):
+                state = _State()
+                ctx = SimpleNamespace(
+                    state=state,
+                    output=SimpleNamespace(available=False),
+                    pipeline_targeted=lambda name: (
+                        directly_targeted
+                        and name == "spatial_gradient_moment0"
+                    ),
+                )
 
-        with (
-            patch.object(
-                gradient_runner,
-                "load_heartbeat_inputs",
-                return_value=inputs,
-            ),
-            patch.object(
-                gradient_runner,
-                "heartbeat_result",
-                return_value=SimpleNamespace(
-                    cycle_boundary_indexes=(0, 3),
-                    index_base=0,
-                ),
-            ),
-            patch.object(
-                gradient_runner,
-                "prepared_topologies",
-                return_value=topology,
-            ),
-            patch.object(
-                gradient_runner,
-                "extract_spatial_gradient_segments",
-                return_value=(gradient_segments, gradient_segments),
-            ) as extract,
-            patch.object(
-                gradient_runner,
-                "pack_spatial_gradient_profile_outputs",
-                return_value={"gradient": 1},
-            ),
-        ):
-            outputs = gradient_runner.run_spatial_gradient_moment0(ctx)
+                with (
+                    patch.object(
+                        gradient_runner,
+                        "load_velocity_inputs",
+                        return_value=inputs,
+                    ),
+                    patch.object(
+                        gradient_runner,
+                        "cardiac_cycle_indexes",
+                        return_value=np.asarray((0, 3), dtype=np.int32),
+                    ),
+                    patch.object(
+                        gradient_runner,
+                        "prepared_topologies",
+                        return_value=topology,
+                    ),
+                    patch.object(
+                        gradient_runner,
+                        "extract_spatial_gradient_segments",
+                        return_value=(gradient_segments, gradient_segments),
+                    ) as extract,
+                    patch.object(
+                        gradient_runner,
+                        "pack_spatial_gradient_profile_outputs",
+                        return_value={"gradient": 1},
+                    ),
+                ):
+                    outputs = gradient_runner.run_spatial_gradient_moment0(ctx)
 
-        self.assertEqual({"gradient": 1}, outputs)
-        self.assertIs(extract.call_args.args[2], topology)
-        products = state.get(gradient_runner.SPATIAL_GRADIENT_PRODUCTS_STATE)
-        self.assertEqual(outputs, products.outputs)
+                self.assertEqual(
+                    {"gradient": 1} if directly_targeted else {},
+                    outputs,
+                )
+                self.assertIs(extract.call_args.args[2], topology)
+                products = state.get(
+                    gradient_runner.SPATIAL_GRADIENT_PRODUCTS_STATE
+                )
+                self.assertEqual({"gradient": 1}, products.outputs)
 
 
 if __name__ == "__main__":

@@ -16,14 +16,15 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.math import interpft_real  # noqa: E402
+from calculations.segment_profiles import CompactSegmentMaps  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
-from pipelines.waveform_velocity.segment_maps import (  # noqa: E402
+from pipelines.velocity_analysis.analysis.segment_maps import (  # noqa: E402
     _segment_map_worker_count,
     interpolate_velocity_maps_per_beat,
-    pack_segment_map_outputs,
     prepare_segment_velocity_maps_per_beat,
 )
+from pipelines.velocity_analysis.outputs.segment_maps import pack_segment_map_outputs  # noqa: E402
 
 
 class SegmentMapOutputTests(unittest.TestCase):
@@ -111,7 +112,7 @@ class SegmentMapOutputTests(unittest.TestCase):
 
     def test_segment_worker_count_honors_parallel_job_cap(self) -> None:
         with patch(
-            "pipelines.waveform_velocity.segment_maps.cap_parallel_jobs",
+            "pipelines.velocity_analysis.analysis.segment_maps.cap_parallel_jobs",
             return_value=4,
         ) as capped:
             self.assertEqual(1, _segment_map_worker_count(0))
@@ -197,11 +198,14 @@ def _segments(*, radius_count: int, branch_count: int):
     maps = dense_maps.reshape((-1, 6, 3, 4))
     masks = np.zeros((radius_count, branch_count, 3, 4), dtype=bool)
     masks[..., 1:, 1:3] = True
-    return SimpleNamespace(
-        segment_maps=maps,
-        segment_map_indexes=indexes,
-        segment_masks=masks,
+    retained = CompactSegmentMaps(maps, indexes)
+    profile = SimpleNamespace(
+        maps=retained,
+        segment_shape=(radius_count, branch_count),
+        topology=SimpleNamespace(rotated_masks=masks),
+        require_maps=lambda: retained,
     )
+    return SimpleNamespace(profile=profile)
 
 
 if __name__ == "__main__":

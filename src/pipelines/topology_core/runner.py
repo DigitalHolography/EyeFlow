@@ -14,6 +14,8 @@ from calculations.topology import (
 from pipeline_engine.imports import read_int_setting
 from pipelines.vessel_inputs import load_vessel_topology_inputs
 
+from .outputs import pack_topology_outputs
+
 TOPOLOGY_CORE_STATE = "topology_core.prepared"
 _DEFAULT_NUMBER_OF_RADII_IN_FOV = 25
 _TOPOLOGY_WINDOW_SIZE_PERCENTILE_KEPT = 0.95
@@ -41,8 +43,13 @@ def run_topology_core(ctx) -> dict[str, object]:
     if number_of_radii < 1:
         raise ValueError("number_of_radii_in_FOV must be positive.")
 
+    topology_reference = (
+        images.band_lf
+        if inputs.velocity_estimation_method == "frequency_bands"
+        else images.moment0
+    )
     ring_settings = segmentation.optic_disc.annulus_geometry(
-        tuple(int(size) for size in images.moment0.shape[-2:]),
+        tuple(int(size) for size in topology_reference.shape[-2:]),
         number_of_radii_in_fov=number_of_radii,
     )
     prepared = prepare_topologies(
@@ -60,14 +67,10 @@ def run_topology_core(ctx) -> dict[str, object]:
         window_size_percentile_kept=(_TOPOLOGY_WINDOW_SIZE_PERCENTILE_KEPT),
     )
     prepared = {
-        name: resolve_segment_rotations(topology, images.moment0)
+        name: resolve_segment_rotations(topology, topology_reference)
         for name, topology in prepared.items()
     }
     ctx.state.set(TOPOLOGY_CORE_STATE, prepared)
-    # Import lazily to retain the legacy module as a compatibility surface
-    # without coupling topology registration to the waveform package import.
-    from pipelines.waveform_velocity_core.segmentation import pack_topology_outputs
-
     return pack_topology_outputs(
         vessels.artery,
         vessels.vein,

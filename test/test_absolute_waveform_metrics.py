@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
@@ -14,6 +15,11 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 import pipelines  # noqa: E402
+from calculations.topology import (  # noqa: E402
+    BranchIdentityResult,
+    PreparedTopology,
+    SegmentTopology,
+)
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG  # noqa: E402
 from pipelines.absolute_waveform_metrics.calculator import (  # noqa: E402
@@ -25,7 +31,28 @@ from pipelines.absolute_waveform_metrics.outputs import (  # noqa: E402
 from pipelines.absolute_waveform_metrics.runner import (  # noqa: E402
     run_absolute_waveform_metrics,
 )
-from pipelines.waveform_velocity_core import runner as core_runner  # noqa: E402
+
+
+def _segment_topology(labels, branch_ids, centers, optic_disc_center):
+    radius_count, branch_count = centers.shape[:2]
+    native = SegmentTopology(
+        optic_disc_center_xy=optic_disc_center,
+        branches=BranchIdentityResult(
+            labels,
+            branch_ids,
+            np.zeros(labels.shape, dtype=bool),
+        ),
+        annulus_masks=np.zeros((radius_count, *labels.shape), dtype=bool),
+        segment_masks=np.zeros((radius_count, branch_count, 1, 1), dtype=bool),
+        segment_centers_xy=centers,
+        window_bounds_xyxy=np.zeros((radius_count, branch_count, 4), dtype=int),
+    )
+    return PreparedTopology(
+        native=native,
+        rotation_degrees=np.zeros((radius_count, branch_count), dtype=np.float32),
+        interpolated_masks=native.segment_masks,
+        rotated_masks=native.segment_masks,
+    )
 
 
 class _State:
@@ -49,9 +76,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
 
         pipelines.load_pipeline_catalog()
         descriptor = PIPELINE_REGISTRY["absolute_waveform_metrics"]
-        self.assertEqual(("waveform_velocity",), descriptor.dag_requires)
+        self.assertEqual(("velocity_analysis",), descriptor.dag_requires)
         self.assertEqual(
-            ("per_beat", "segments", "quadrants"),
+            ("segments", "quadrants"),
             tuple(option.name for option in descriptor.options),
         )
         self.assertEqual(
@@ -64,10 +91,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
         )
         self.assertEqual(
             (
-                "heartbeat_core",
                 "topology_core",
-                "waveform_velocity_core",
-                "waveform_velocity",
+                "velocity",
+                "velocity_analysis",
                 "absolute_waveform_metrics",
             ),
             plan.names,
@@ -84,7 +110,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             axis=0,
         ).astype(np.float32)
         inputs = {
-            schema.beat_period_seconds: np.asarray([[0.8, 0.9]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8, 0.9], dtype=np.float32
+            ),
             schema.artery_per_beat.velocity_signal: waveform,
             schema.artery_per_beat.velocity_signal_band_limited: waveform,
         }
@@ -107,7 +135,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
         waveform = np.ones((2, 8), dtype=np.float32)
         segments = np.ones((8, 2, 3, 2), dtype=np.float32)
         inputs = {
-            schema.beat_period_seconds: np.asarray([[0.8, 0.9]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8, 0.9], dtype=np.float32
+            ),
             schema.artery_per_beat.velocity_signal: waveform,
             schema.artery_per_beat.velocity_signal_band_limited: waveform,
             schema.artery_per_beat.segment_velocity_signal: segments,
@@ -125,7 +155,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
     def test_incomplete_waveform_pair_is_rejected(self) -> None:
         schema = EyeFlowOutputPaths.active()
         inputs = {
-            schema.beat_period_seconds: np.asarray([[0.8]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8], dtype=np.float32
+            ),
             schema.artery_per_beat.velocity_signal: np.ones(
                 (1, 8),
                 dtype=np.float32,
@@ -145,15 +177,21 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
         labels[1, 1] = 1
         labels[1, 6] = 2
         segments = SimpleNamespace(
-            branch_ids=np.asarray([1, 2], dtype=np.int32),
-            labels=labels,
-            segment_centers_xy=np.zeros((2, 2, 2), dtype=float),
-            projected_signal=np.zeros((2, 2, 3), dtype=np.float32),
-            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 2.0)),
+            profile=SimpleNamespace(
+                segment_signal=np.zeros((2, 2, 3), dtype=np.float32),
+                topology=_segment_topology(
+                    labels,
+                    np.asarray([1, 2], dtype=np.int32),
+                    np.zeros((2, 2, 2), dtype=float),
+                    (3.0, 2.0),
+                ),
+            ),
         )
         source_data = SimpleNamespace(optic_disc_center=np.asarray([3.0, 2.0]))
         inputs = {
-            schema.beat_period_seconds: np.asarray([[0.8, 0.9]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8, 0.9], dtype=np.float32
+            ),
             schema.artery_per_beat.velocity_signal: waveform,
             schema.artery_per_beat.velocity_signal_band_limited: waveform,
             schema.artery_per_beat.segment_velocity_signal: segment_waveform,
@@ -202,28 +240,31 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
     def test_runner_consumes_shared_per_beat_state(self) -> None:
         schema = EyeFlowOutputPaths.active()
         waveform = np.ones((1, 8), dtype=np.float32)
-        state = _State(
-            {
-                core_runner.VELOCITY_PER_BEAT_OUTPUTS_STATE: {
-                    schema.beat_period_seconds: np.asarray(
-                        [[0.8]],
-                        dtype=np.float32,
-                    ),
-                    schema.artery_per_beat.velocity_signal: waveform,
-                    schema.artery_per_beat.velocity_signal_band_limited: waveform,
-                }
-            }
-        )
+        state = _State()
+        packed = {
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8], dtype=np.float32
+            ),
+            schema.artery_per_beat.velocity_signal: waveform,
+            schema.artery_per_beat.velocity_signal_band_limited: waveform,
+        }
+        shared = SimpleNamespace(per_beat_result="per-beat", velocity={})
         ctx = SimpleNamespace(
             state=state,
-            options_for=lambda name: (
-                frozenset(("per_beat",))
-                if name == "absolute_waveform_metrics"
-                else frozenset()
-            ),
+            options_for=lambda _name: frozenset(),
         )
 
-        outputs = run_absolute_waveform_metrics(ctx)
+        with (
+            patch(
+                "pipelines.absolute_waveform_metrics.runner.velocity_analysis",
+                return_value=shared,
+            ),
+            patch(
+                "pipelines.absolute_waveform_metrics.runner.pack_velocity_per_beat_inputs",
+                return_value=packed,
+            ),
+        ):
+            outputs = run_absolute_waveform_metrics(ctx)
 
         self.assertTrue(outputs)
         self.assertEqual(

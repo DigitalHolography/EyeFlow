@@ -1,5 +1,7 @@
 """Shared per-beat profile datasets and lossless HDF5 options."""
 
+from collections.abc import Mapping
+
 import numpy as np
 from calculations.math import nanmean_float32
 from calculations.topology.profile_interpolation import interpolate_profiles_per_beat
@@ -12,6 +14,7 @@ def _profile_dataset(
     index_base: int,
     spatial_axis: str = "x",
     unit: str = "mm/s",
+    attrs: Mapping[str, object] | None = None,
     valid_segments: np.ndarray | None = None,
 ) -> DatasetValue:
     if profiles.ndim != 4:
@@ -25,12 +28,16 @@ def _profile_dataset(
         index_base=index_base,
         valid_segments=valid_segments,
     )
-    return DatasetValue(
-        data=profiles_per_beat,
-        attrs={
+    output_attrs = dict(attrs or {})
+    output_attrs.update(
+        {
             "unit": unit,
             "dimDesc": [spatial_axis, "time", "beat", "branch", "radius"],
-        },
+        }
+    )
+    return DatasetValue(
+        data=profiles_per_beat,
+        attrs=output_attrs,
         h5_options=_profile_h5_options(profiles_per_beat.shape),
     )
 

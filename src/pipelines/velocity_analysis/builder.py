@@ -1,0 +1,476 @@
+"""Assemble the typed scientific state used by velocity-analysis products."""
+
+from contextlib import contextmanager
+from time import perf_counter
+
+from calculations.blood_flow_velocity import (
+    PerBeatAnalysisInput,
+    PerBeatAnalysisResult,
+    run_per_beat_analysis,
+)
+from calculations.topology import AnnulusGeometry
+from input_output import EyeFlowOutputPaths
+from pipeline_engine.imports import (
+    HolodopplerTiming,
+    np,
+    read_int_setting,
+)
+from pipelines.topology_core.runner import prepared_topologies
+from pipelines.velocity.models import RetinalVelocity
+from pipelines.velocity.runner import velocity
+from pipelines.velocity.signal_processing import (
+    DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ,
+)
+from utils.logger import Logger
+
+from .analysis.segments import analyze_velocity_segment_profiles
+from .artifacts import (
+    export_branch_identity_stage_pngs,
+    export_pulse_pngs,
+    export_rotated_mean_pngs,
+)
+from .constants import (
+    LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
+    NUMBER_OF_RADII_IN_FOV,
+    SEGMENT_INNER_RADIUS_FRAC,
+    SEGMENT_OUTER_RADIUS_FRAC,
+)
+from .models import VelocityAnalysis, VelocitySegmentResult
+from .sources import VelocityAnalysisSourceData, VelocityAnalysisSources
+
+VELOCITY_ANALYSIS_STATE = "velocity_analysis"
+
+
+def build_velocity_analysis(ctx) -> VelocityAnalysis:
+    """Build velocity-analysis state once for output and metric consumers."""
+    ctx.require_inputs("hd", "dv")
+
+    core_started = perf_counter()
+    Logger.log("Starting velocity analysis...")
+    segments_required = _segments_required(ctx)
+    velocity_options = ctx.options_for("velocity_analysis")
+    Logger.log(
+        "Velocity-analysis segment options: "
+        f"selected={tuple(sorted(velocity_options))}, "
+        f"segments_required={segments_required}, "
+        "segment_velocity_maps="
+        f"{'segment_velocity_maps' in velocity_options}."
+    )
+    retinal = velocity(ctx)
+    harmonic_count = _band_limited_harmonic_count(ctx)
+    source_data, artery_segments, vein_segments, attrs = _build_velocity_analysis_state(
+        ctx,
+        retinal,
+        segments_required=segments_required,
+        harmonic_count=harmonic_count,
+    )
+    with _logged_stage("shared per-beat velocity analysis"):
+        per_beat_result = _run_velocity_per_beat_analysis(
+            retinal,
+            source_data,
+            artery_segments,
+            vein_segments,
+            harmonic_count=harmonic_count,
+        )
+
+    analysis = VelocityAnalysis(
+        velocity=retinal,
+        source_data=source_data,
+        artery_segments=artery_segments,
+        vein_segments=vein_segments,
+        per_beat_result=per_beat_result,
+        attrs=attrs,
+    )
+    ctx.state.set(VELOCITY_ANALYSIS_STATE, analysis)
+    if _pulse_pngs_required(ctx):
+        _export_pulse_pngs(ctx, analysis, per_beat_result)
+
+    Logger.log(f"Completed velocity analysis in {perf_counter() - core_started:.1f}s.")
+    return analysis
+
+
+def velocity_analysis(ctx) -> VelocityAnalysis:
+    """Return the typed result produced by the velocity-analysis pipeline."""
+
+    value = ctx.state.get(VELOCITY_ANALYSIS_STATE)
+    if not isinstance(value, VelocityAnalysis):
+        raise RuntimeError(
+            "Velocity analysis state is unavailable; check the pipeline DAG dependency."
+        )
+    return value
+
+
+def _segments_required(ctx) -> bool:
+    """Return whether the canonical segment analysis must run."""
+    if ctx.pipeline_scheduled("blood_volume_rate") and ctx.options_for(
+        "blood_volume_rate"
+    ):
+        return True
+    if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
+        return True
+    if ctx.pipeline_scheduled("velocity_analysis") and {
+        "segments",
+        "segment_velocity_maps",
+        "velocity_profiles",
+        "velocity_profile_analysis",
+        "velocity_profile_fft",
+        "quadrants",
+    } & ctx.options_for("velocity_analysis"):
+        return True
+    if ctx.pipeline_scheduled("waveform_shape_metrics") and {
+        "segments",
+        "quadrants",
+    } & ctx.options_for("waveform_shape_metrics"):
+        return True
+    return bool(
+        ctx.pipeline_scheduled("absolute_waveform_metrics")
+        and {"segments", "quadrants"}
+        & ctx.options_for("absolute_waveform_metrics")
+    )
+
+
+def _pulse_pngs_required(ctx) -> bool:
+    return ctx.pipeline_targeted("velocity_analysis") or ctx.pipeline_scheduled(
+        "pdf_report"
+    )
+
+
+def _build_velocity_analysis_state(
+    ctx,
+    retinal: RetinalVelocity,
+    *,
+    segments_required: bool,
+    harmonic_count: int,
+) -> tuple[
+    VelocityAnalysisSourceData,
+    VelocitySegmentResult | None,
+    VelocitySegmentResult | None,
+    dict[str, object],
+]:
+    """Build persistent source and segment state before per-beat analysis."""
+
+    with _logged_stage("velocity-analysis source loading"):
+        source_data = VelocityAnalysisSources.from_context(ctx).load()
+    timing = source_data.source.holodoppler.timing
+    number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
+    artery_segments, vein_segments = _build_segments(
+        ctx,
+        retinal,
+        source_data,
+        segments_required=segments_required,
+    )
+    return (
+        source_data,
+        artery_segments,
+        vein_segments,
+        _context_attrs(
+            source_data,
+            retinal,
+            timing,
+            harmonic_count,
+            "eyeflow_velocity_analysis",
+            retinal.cardiac_cycle.spectral,
+            number_of_radii_in_fov,
+            retinal.cardiac_cycle_source,
+        ),
+    )
+
+
+def _band_limited_harmonic_count(ctx) -> int:
+    return read_int_setting(
+        ctx,
+        default=LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
+        keys=("BandLimitedSignalHarmonicCount", "band_limited_signal_harmonic_count"),
+    )
+
+
+def _number_of_radii_in_fov(ctx) -> int:
+    value = read_int_setting(
+        ctx,
+        default=NUMBER_OF_RADII_IN_FOV,
+        keys=(
+            "number_of_radii_in_FOV",
+            "number_of_radii_in_fov",
+            "NumberOfRadiiInFOV",
+            # Accept the earlier spelling for compatibility.
+            "number_of_radii_over_FOV",
+            "number_of_radii_over_fov",
+            "NumberOfRadiiOverFOV",
+        ),
+    )
+    if value < 1:
+        raise ValueError("number_of_radii_in_FOV must be positive.")
+    return value
+
+
+def _build_segments(
+    ctx,
+    retinal: RetinalVelocity,
+    source_data: VelocityAnalysisSourceData,
+    *,
+    segments_required: bool,
+) -> tuple[
+    VelocitySegmentResult | None,
+    VelocitySegmentResult | None,
+]:
+    if not segments_required:
+        Logger.log("Skipping segment velocity extraction; no selected output requires it.")
+        return None, None
+
+    velocity_map = retinal.maps.velocity
+    if velocity_map is None:
+        raise ValueError("velocity_map is required for segment extraction.")
+    shared_topologies = prepared_topologies(ctx)
+    ring_settings = shared_topologies["artery"].native.ring_settings
+    if not isinstance(ring_settings, AnnulusGeometry):
+        raise RuntimeError("Prepared topology has no annulus geometry.")
+    return _segment_velocity_inputs(
+        velocity_map,
+        source_data,
+        ring_settings,
+        ctx,
+        cycle_boundary_indexes=retinal.cycle_boundary_indexes,
+        prepared_topologies=shared_topologies,
+    )
+
+
+def _run_velocity_per_beat_analysis(
+    retinal: RetinalVelocity,
+    source_data: VelocityAnalysisSourceData,
+    artery_segments: VelocitySegmentResult | None,
+    vein_segments: VelocitySegmentResult | None,
+    *,
+    harmonic_count: int,
+) -> PerBeatAnalysisResult:
+    timing = source_data.source.holodoppler.timing
+    arterial_velocity_signal, venous_velocity_signal = (
+        _raw_velocity_signals_for_per_beat(retinal)
+    )
+    artery_segment_signal = _waveform_segment_input(artery_segments)
+    vein_segment_signal = _waveform_segment_input(vein_segments)
+    return run_per_beat_analysis(
+        PerBeatAnalysisInput(
+            arterial_velocity_signal=arterial_velocity_signal,
+            venous_velocity_signal=venous_velocity_signal,
+            cycle_boundary_indexes=np.asarray(
+                retinal.cycle_boundary_indexes,
+                dtype=np.int32,
+            ),
+            band_limited_signal_harmonic_count=harmonic_count,
+            cardiac_cycle=retinal.cardiac_cycle.spectral,
+            dt_seconds=timing.dt_seconds,
+            arterial_velocity_segments=artery_segment_signal,
+            venous_velocity_segments=vein_segment_signal,
+            arterial_safe_velocity_segments=artery_segment_signal,
+            venous_safe_velocity_segments=vein_segment_signal,
+            index_base=source_data.provenance["beat_index_base"],
+        )
+    )
+
+
+def _raw_velocity_signals_for_per_beat(
+    retinal: RetinalVelocity,
+) -> tuple[np.ndarray, np.ndarray]:
+    return (
+        retinal.continuous("artery", raw=True),
+        retinal.continuous("vein", raw=True),
+    )
+
+
+def _segment_velocity_inputs(
+    velocity_map,
+    source_data: VelocityAnalysisSourceData,
+    ring_settings: AnnulusGeometry,
+    ctx,
+    *,
+    cycle_boundary_indexes,
+    prepared_topologies=None,
+) -> tuple[VelocitySegmentResult, VelocitySegmentResult]:
+    velocity_analysis_scheduled = ctx.pipeline_scheduled("velocity_analysis")
+    retain_velocity_maps = bool(
+        velocity_analysis_scheduled
+        and ctx.option_enabled(
+            "segment_velocity_maps",
+            pipeline="velocity_analysis",
+        )
+    )
+    velocity_profile_fft = bool(
+        velocity_analysis_scheduled
+        and ctx.option_enabled(
+            "velocity_profile_fft",
+            pipeline="velocity_analysis",
+        )
+    )
+    with _logged_stage("segment velocity extraction"):
+        results = analyze_velocity_segment_profiles(
+            velocity_map,
+            {
+                "artery": source_data.source.segmentation.vessels.artery,
+                "vein": source_data.source.segmentation.vessels.vein,
+            },
+            source_data.source.segmentation.optic_disc,
+            ring_settings,
+            source_data.profile_settings,
+            prepared_topologies=prepared_topologies,
+            retain_velocity_maps=retain_velocity_maps,
+            cycle_boundary_indexes=cycle_boundary_indexes,
+            velocity_profile_fft=velocity_profile_fft,
+            index_base=int(source_data.provenance["beat_index_base"]),
+        )
+    if ctx.output.available:
+        with _logged_stage("rotated mean PNG export"):
+            for name, result in results.items():
+                output_name = "arteries" if name == "artery" else f"{name}s"
+                export_rotated_mean_pngs(ctx.output, result, output_name)
+    for name, result in results.items():
+        _export_branch_identity_debug(
+            ctx,
+            result,
+            source_data.source.segmentation.optic_disc.center,
+            ring_settings,
+            name,
+        )
+    return results["artery"], results["vein"]
+
+
+def _waveform_segment_input(
+    result: VelocitySegmentResult | None,
+) -> np.ndarray | None:
+    if result is None:
+        return None
+    return result.profile.segment_signal
+
+
+def _export_branch_identity_debug(
+    ctx,
+    result: VelocitySegmentResult,
+    optic_disc_center,
+    ring_settings: AnnulusGeometry,
+    prefix: str,
+) -> None:
+    if not ctx.output.available:
+        return
+    export_branch_identity_stage_pngs(
+        ctx.output,
+        result.profile.topology.native.branches.require_stages(),
+        prefix,
+        optic_disc_center,
+        ring_settings,
+        segment_centers_xy=result.profile.topology.native.segment_centers_xy,
+        profile_window_bounds_xyxy=result.profile.topology.native.window_bounds_xyxy,
+    )
+
+
+def _export_pulse_pngs(ctx, analysis: VelocityAnalysis, per_beat_result) -> None:
+    if not ctx.output.available:
+        return
+    with _logged_stage("pulse-analysis PNG export"):
+        export_pulse_pngs(ctx.output, analysis, per_beat_result)
+
+
+@contextmanager
+def _logged_stage(label: str):
+    started = perf_counter()
+    Logger.log(f"Starting {label}...")
+    yield
+    Logger.log(f"Completed {label} in {perf_counter() - started:.1f}s.")
+
+
+def _context_attrs(
+    source_data: VelocityAnalysisSourceData,
+    velocity: RetinalVelocity,
+    timing: HolodopplerTiming,
+    harmonic_count: int,
+    analysis_source: str,
+    cardiac_cycle,
+    number_of_radii_in_fov: int,
+    cardiac_cycle_detection_source: str,
+) -> dict[str, object]:
+    output_paths = EyeFlowOutputPaths.active()
+    analysis_paths = output_paths.analysis
+    velocity_input_dependency = (
+        "holodoppler.h5.frequency_bands"
+        if source_data.source.velocity_estimation_method == "frequency_bands"
+        else "holodoppler.h5.moment0_moment2"
+    )
+    dependency_chain = (
+        ["external_velocity_analysis"]
+        if analysis_source == "external_velocity_analysis"
+        else [
+            velocity_input_dependency,
+            "retinal_segmentation_input",
+            "eyeflow.velocity.recomputed",
+        ]
+    )
+    attrs = {
+        "dependency_chain": dependency_chain + [
+            "blood_flow_velocity.signal_analysis.cardiac_cycle.spectral",
+            "blood_flow_velocity.signal_analysis.per_beat.signal",
+            "blood_flow_velocity.signal_analysis.per_beat.runner",
+        ],
+        "analysis_source": analysis_source,
+        "output_schema": output_paths.name,
+        "velocity_section_geometry": "optic_disc_centered_frame_fraction",
+        "velocity_section_inner_radius_fraction": float(
+            SEGMENT_INNER_RADIUS_FRAC
+        ),
+        "velocity_section_outer_radius_fraction": float(
+            SEGMENT_OUTER_RADIUS_FRAC
+        ),
+        "velocity_section_outer_to_disc_radius": float(
+            SEGMENT_OUTER_RADIUS_FRAC / SEGMENT_INNER_RADIUS_FRAC
+        ),
+        "number_of_radii_in_FOV": int(number_of_radii_in_fov),
+        "arterial_velocity_signal_path": (
+            analysis_paths.retinal_artery_velocity_signal
+        ),
+        "venous_velocity_signal_path": (
+            analysis_paths.retinal_vein_velocity_signal
+        ),
+        "systolic_peak_indexes_path": analysis_paths.beat_indices,
+        "cycle_duration_seconds_path": (
+            output_paths.cardiac_cycle.systolic_cycle_duration_seconds
+        ),
+        "heart_rate_hz": float(cardiac_cycle.heart_rate_hz),
+        "heart_rate_bpm": float(cardiac_cycle.heart_rate_bpm),
+        "heart_rate_ste_hz": float(cardiac_cycle.heart_rate_ste_hz),
+        "heart_rate_ste_bpm": float(cardiac_cycle.heart_rate_ste_bpm),
+        "sampling_freq": float(timing.sampling_freq),
+        "batch_stride": float(timing.batch_stride),
+        "dt_seconds": float(timing.dt_seconds),
+        "band_limited_signal_harmonic_count": int(harmonic_count),
+        "filter_velocity_signals": True,
+        "velocity_signal_lowpass_hz": float(DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ),
+        "cardiac_cycle_detection_source": cardiac_cycle_detection_source,
+    }
+    for key, value in source_data.provenance.items():
+        if value is not None:
+            attrs[key] = value
+    for key, value in velocity.provenance.items():
+        if value is not None:
+            attrs[key] = value
+    return attrs
+
+
+def pack_velocity_analysis_meta_outputs(analysis: VelocityAnalysis) -> dict[str, object]:
+    schema = EyeFlowOutputPaths.active()
+    timing = analysis.source_data.source.holodoppler.timing
+    return {
+        f"{schema.meta_root}/SamplingFrequencyHz/value": (
+            np.float32(timing.sampling_freq),
+            {"unit": "Hz"},
+        ),
+        f"{schema.meta_root}/BatchStride/value": np.float32(timing.batch_stride),
+        f"{schema.meta_root}/FrameIntervalSeconds/value": (
+            np.float32(timing.dt_seconds),
+            {"unit": "s"},
+        ),
+    }
+
+
+__all__ = [
+    "VELOCITY_ANALYSIS_STATE",
+    "build_velocity_analysis",
+    "pack_velocity_analysis_meta_outputs",
+    "velocity_analysis",
+]

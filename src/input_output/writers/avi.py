@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from io import BytesIO
 import json
-from pathlib import Path
 import struct
+from io import BytesIO
+from pathlib import Path
 from time import perf_counter
 from typing import BinaryIO, Mapping
 
 import numpy as np
 from PIL import Image
 
+from .artifact_names import acquisition_stem, labeled_artifact_path, prefixed_artifact_path
 
 _AVI_HAS_INDEX = 0x10
 _AVI_KEY_FRAME = 0x10
@@ -24,9 +25,10 @@ class AviArtifactWriter:
     def __init__(self, output, stem: str | None = None) -> None:
         self.output = output
         self.stem = str(stem) if stem else _output_stem(output)
+        self.acquisition_stem = acquisition_stem(output, Path(self.stem).name)
 
     def path(self, suffix: str, *, subfolder: str | None = None) -> Path:
-        filename = f"{self.stem}_{suffix}"
+        filename = str(labeled_artifact_path(suffix, self.acquisition_stem, self.stem))
         if subfolder:
             filename = f"{subfolder}/{filename}"
         path = self.output.path_for(_avi_output_type(), filename)
@@ -67,6 +69,7 @@ class MjpegAviWriter:
         fps: float,
         metadata: Mapping[str, object] | None = None,
         jpeg_quality: int = 82,
+        stem: str | None = None,
     ) -> None:
         if width <= 0 or height <= 0:
             raise ValueError("AVI width and height must be positive.")
@@ -76,7 +79,7 @@ class MjpegAviWriter:
             raise ValueError("AVI frame rate must be positive.")
         if not 1 <= jpeg_quality <= 100:
             raise ValueError("JPEG quality must be between 1 and 100.")
-        self.path = Path(path)
+        self.path = prefixed_artifact_path(path, stem) if stem is not None else Path(path)
         self.width = int(width)
         self.height = int(height)
         self.fps = float(fps)
@@ -335,12 +338,7 @@ def _rgb_uint8(frame) -> np.ndarray:
 
 
 def _output_stem(output) -> str:
-    manager = getattr(output, "manager", None)
-    layout = getattr(manager, "layout", None)
-    stem = getattr(layout, "stem", None)
-    if stem is None:
-        stem = getattr(getattr(output, "layout", None), "stem", None)
-    return str(stem or "eyeflow")
+    return acquisition_stem(output)
 
 
 def _avi_output_type():

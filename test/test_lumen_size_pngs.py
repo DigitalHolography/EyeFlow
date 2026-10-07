@@ -14,6 +14,7 @@ import numpy as np
 from matplotlib.figure import Figure
 from PIL import Image
 
+from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager
 from pipeline_engine import DatasetValue, PipelineContext
 from pipeline_engine.context import apply_pipeline_result
@@ -40,8 +41,7 @@ class LumenSizePngTests(unittest.TestCase):
         branch_ids = np.arange(11, 20)
         profiles = np.ones((3, 9, 5, 11), dtype=np.float32)
         segments = SimpleNamespace(
-            transverse_profiles_unmasked=profiles,
-            transverse_profiles_masked=profiles,
+            transverse=SimpleNamespace(unmasked=profiles, masked=profiles),
         )
         with patch(
             "pipelines.spatial_gradient_moment0.profiles._spatial_gradient_peak_metrics",
@@ -67,8 +67,10 @@ class LumenSizePngTests(unittest.TestCase):
             return savefig(fig, *args, **kwargs)
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            output = OutputManager.from_holo(
-                Path(temp_dir) / "sample.holo", output_root=Path(temp_dir)
+            output = OutputManager(
+                HoloRunLayout.from_holo(
+                    Path(temp_dir) / "sample.holo", output_root=Path(temp_dir)
+                )
             )
             h5_path = Path(temp_dir) / "output.h5"
             with h5py.File(h5_path, "w") as work:
@@ -115,10 +117,10 @@ class LumenSizePngTests(unittest.TestCase):
 
             self.assertEqual(
                 {
-                    "lumen_size_by_branch_artery.png",
-                    "lumen_size_by_branch_top_quartile_artery.png",
-                    "lumen_size_by_branch_vein.png",
-                    "lumen_size_by_branch_top_quartile_vein.png",
+                    "sample_lumen_size_by_branch_artery.png",
+                    "sample_lumen_size_by_branch_top_quartile_artery.png",
+                    "sample_lumen_size_by_branch_vein.png",
+                    "sample_lumen_size_by_branch_top_quartile_vein.png",
                 },
                 {path.name for path in paths},
             )
@@ -163,8 +165,10 @@ class LumenSizePngTests(unittest.TestCase):
 
     def test_all_nan_and_empty_inputs_export_without_reduction_warnings(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            output = OutputManager.from_holo(
-                Path(temp_dir) / "sample.holo", output_root=Path(temp_dir)
+            output = OutputManager(
+                HoloRunLayout.from_holo(
+                    Path(temp_dir) / "sample.holo", output_root=Path(temp_dir)
+                )
             )
             for shape in ((4, 3), (4, 0), (0, 3)):
                 with self.subTest(shape=shape), warnings.catch_warnings():

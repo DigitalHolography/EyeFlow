@@ -7,13 +7,11 @@ from collections.abc import Mapping
 
 import numpy as np
 
+from calculations.topology import QUADRANT_NAMES, quadrant_membership
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue, with_attrs
-from pipelines.waveform_velocity_core.regions import (
-    QUADRANTS_GROUP_NAME,
-    REGION_NAMES,
-    normalize_spatial_frame,
-    region_membership,
+from pipelines.velocity.semantics import (
+    velocity_unit_from_payload,
 )
 
 from .calculator import (
@@ -21,6 +19,8 @@ from .calculator import (
     ensure_segment_shape,
     mean_subtract,
 )
+
+QUADRANTS_GROUP_NAME = "Quadrants"
 
 ENDPOINT_METRICS = (
     "A1",
@@ -81,7 +81,10 @@ def pack_lowrank_waveform_decomposition_outputs(
 ) -> dict[str, object]:
     """Compute the requested low-rank endpoint and per-beat metric outputs."""
     schema = _resolve_output_paths(output_paths)
-    periods = _required_array(velocity_outputs, schema.beat_period_seconds)
+    periods = _required_array(
+        velocity_outputs,
+        schema.cardiac_cycle.systolic_cycle_duration_seconds,
+    )
     calculator = LowRankWaveformDecompositionCalculator()
     outputs: dict[str, object] = {}
 
@@ -109,6 +112,9 @@ def pack_lowrank_waveform_decomposition_outputs(
             calculator,
             waveforms,
             periods,
+            velocity_unit=velocity_unit_from_payload(
+                velocity_outputs[dataset_path]
+            ),
         )
 
         if not include_quadrants:
@@ -121,7 +127,7 @@ def pack_lowrank_waveform_decomposition_outputs(
                 vessel_name,
             )
             quadrant_memberships[vessel_name] = membership
-        for region_index, region_name in enumerate(REGION_NAMES):
+        for region_index, region_name in enumerate(QUADRANT_NAMES):
             selected = membership[region_index]
             quadrant_waveforms = np.where(
                 selected[np.newaxis, np.newaxis, :, :],
@@ -138,6 +144,9 @@ def pack_lowrank_waveform_decomposition_outputs(
                 calculator,
                 quadrant_waveforms,
                 periods,
+                velocity_unit=velocity_unit_from_payload(
+                    velocity_outputs[dataset_path]
+                ),
             )
 
     return outputs
@@ -149,6 +158,8 @@ def _compute_and_append_outputs(
     calculator: LowRankWaveformDecompositionCalculator,
     waveforms: np.ndarray,
     periods: np.ndarray,
+    *,
+    velocity_unit: str,
 ) -> None:
     representation = calculator.compute(waveforms, periods)
     per_beat_panels = calculator.per_beat_svd_panels(waveforms, periods)
@@ -160,6 +171,7 @@ def _compute_and_append_outputs(
         per_beat,
         per_beat_panels,
         waveforms,
+        velocity_unit=velocity_unit,
     )
 
 
@@ -172,15 +184,7 @@ def _quadrant_membership(
         raise RuntimeError(
             f"Quadrant low-rank outputs require {vessel_name} segment geometry."
         )
-    branch_ids = np.asarray(segments.branch_ids, dtype=np.int32).reshape(-1)
-    labels = np.asarray(segments.labels, dtype=np.int32)
-    centers = np.asarray(segments.segment_centers_xy, dtype=float)
-    center_xy = np.asarray(
-        segments.topology.optic_disc_center_xy,
-        dtype=float,
-    ).copy()
-    labels, center_xy = normalize_spatial_frame(labels, center_xy)
-    membership = region_membership(branch_ids, labels, centers, center_xy)
+    membership = quadrant_membership(segments.profile.topology)
     if membership.shape[1:] != waveforms.shape[2:]:
         raise ValueError(
             f"{vessel_name.capitalize()} quadrant membership shape "
@@ -224,18 +228,20 @@ def _append_requested_outputs(
     per_beat: Mapping[str, np.ndarray],
     per_beat_panels: Mapping[str, np.ndarray],
     waveforms: np.ndarray,
+    *,
+    velocity_unit: str,
 ) -> None:
     acq = rep.get("acq", {})
     for output_name in ENDPOINT_METRICS:
         metrics[f"{prefix}/endpoints/joint/{output_name}"] = _metric(
             acq.get(_ENDPOINT_KEY_MAP[output_name], np.nan),
-            unit=_unit_for(output_name),
+            unit=_unit_for(output_name, velocity_unit),
         )
 
     for output_name in ENDPOINT_METRICS:
         metrics[f"{prefix}/endpoints/per_beat/{output_name}"] = _metric(
             per_beat.get(_PER_BEAT_KEY_MAP[output_name], np.nan),
-            unit=_unit_for(output_name),
+            unit=_unit_for(output_name, velocity_unit),
             dims=("beat",),
         )
 
@@ -246,16 +252,24 @@ def _append_requested_outputs(
         acq.get("beat_period_std", np.nan), unit="s"
     )
     metrics[f"{prefix}/baseline/mu_acq"] = _metric(
-        acq.get("mu_acq", np.nan), unit="mm/s"
+        acq.get("mu_acq", np.nan), unit=velocity_unit
     )
     metrics[f"{prefix}/baseline/sigma_mu_beat"] = _metric(
-        acq.get("sigma_mu_beat", np.nan), unit="mm/s"
+        acq.get("sigma_mu_beat", np.nan), unit=velocity_unit
     )
 
-    _append_acquisition_level_velocity(metrics, prefix, rep, waveforms)
-    _append_waveform_components_joint(metrics, prefix, rep, waveforms)
+    _append_acquisition_level_velocity(
+        metrics, prefix, rep, waveforms, velocity_unit=velocity_unit
+    )
+    _append_waveform_components_joint(
+        metrics, prefix, rep, waveforms, velocity_unit=velocity_unit
+    )
     _append_waveform_components_per_beat(
-        metrics, prefix, per_beat_panels, waveforms
+        metrics,
+        prefix,
+        per_beat_panels,
+        waveforms,
+        velocity_unit=velocity_unit,
     )
     _append_svd_spectrum(metrics, prefix, rep, per_beat)
 
@@ -265,6 +279,8 @@ def _append_acquisition_level_velocity(
     prefix: str,
     rep: Mapping[str, object],
     waveforms: np.ndarray,
+    *,
+    velocity_unit: str,
 ) -> None:
     group = f"{prefix}/misc/acquisition_level_velocity"
     metrics[f"{group}/cardiac_phase"] = _metric(
@@ -272,10 +288,10 @@ def _append_acquisition_level_velocity(
     )
     summary = _summarize_time_columns(waveforms, _valid_mask(rep, waveforms))
     metrics[f"{group}/velocity_cross_column_mean"] = _metric(
-        summary["mean"], unit="mm/s", dims=("sample",)
+        summary["mean"], unit=velocity_unit, dims=("sample",)
     )
     metrics[f"{group}/velocity_cross_column_std"] = _metric(
-        summary["std"], unit="mm/s", dims=("sample",)
+        summary["std"], unit=velocity_unit, dims=("sample",)
     )
 
 
@@ -284,6 +300,8 @@ def _append_waveform_components_joint(
     prefix: str,
     rep: Mapping[str, object],
     waveforms: np.ndarray,
+    *,
+    velocity_unit: str,
 ) -> None:
     group = f"{prefix}/misc/waveform_components_joint"
     valid_mask = _valid_mask(rep, waveforms)
@@ -291,7 +309,13 @@ def _append_waveform_components_joint(
         _time_axis(waveforms), dims=("sample",)
     )
     for name, panel in _joint_decomposition_components(rep, waveforms).items():
-        _append_component_summary(metrics, f"{group}/{name}", panel, valid_mask)
+        _append_component_summary(
+            metrics,
+            f"{group}/{name}",
+            panel,
+            valid_mask,
+            velocity_unit=velocity_unit,
+        )
 
 
 def _append_waveform_components_per_beat(
@@ -299,6 +323,8 @@ def _append_waveform_components_per_beat(
     prefix: str,
     per_beat_panels: Mapping[str, np.ndarray],
     waveforms: np.ndarray,
+    *,
+    velocity_unit: str,
 ) -> None:
     group = f"{prefix}/misc/waveform_components_per_beat"
     valid_mask = np.asarray(per_beat_panels.get("valid_mask", []), dtype=bool)
@@ -310,7 +336,13 @@ def _append_waveform_components_per_beat(
     for name, panel in _per_beat_decomposition_components(
         per_beat_panels, waveforms
     ).items():
-        _append_component_summary(metrics, f"{group}/{name}", panel, valid_mask)
+        _append_component_summary(
+            metrics,
+            f"{group}/{name}",
+            panel,
+            valid_mask,
+            velocity_unit=velocity_unit,
+        )
 
 
 def _append_svd_spectrum(
@@ -421,12 +453,14 @@ def _append_component_summary(
     group: str,
     panel: np.ndarray,
     valid_mask: np.ndarray,
+    *,
+    velocity_unit: str,
 ) -> None:
     summary = _summarize_time_columns(panel, valid_mask)
     for stat, output_name in _CROSS_COLUMN_STATS.items():
         metrics[f"{group}/{output_name}"] = _metric(
             summary[stat],
-            unit="mm/s",
+            unit=velocity_unit,
             dims=("sample",),
         )
 
@@ -521,8 +555,8 @@ def _nan_sample_std(values: np.ndarray, *, axis: int) -> np.ndarray:
     return np.where(n > 1, std, 0.0)
 
 
-def _unit_for(metric_name: str) -> str | None:
-    return "mm/s" if metric_name in _VELOCITY_METRICS else None
+def _unit_for(metric_name: str, velocity_unit: str) -> str | None:
+    return velocity_unit if metric_name in _VELOCITY_METRICS else None
 
 
 def _metric(
@@ -543,7 +577,7 @@ def _required_array(metrics: Mapping[str, object], path: str) -> np.ndarray:
     if path not in metrics:
         raise RuntimeError(
             f"Required shared per-beat output '{path}' is unavailable; "
-            "check the waveform_velocity DAG dependency."
+            "check the velocity_analysis DAG dependency."
         )
     return _metric_data(metrics[path])
 
@@ -566,4 +600,6 @@ def _resolve_output_paths(
     return EyeFlowOutputPaths.active(output_paths)
 
 
-__all__ = ["pack_lowrank_waveform_decomposition_outputs"]
+__all__ = [
+    "pack_lowrank_waveform_decomposition_outputs",
+]

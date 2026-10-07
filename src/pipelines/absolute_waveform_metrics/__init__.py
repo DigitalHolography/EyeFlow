@@ -12,25 +12,18 @@ from .runner import run_absolute_waveform_metrics
         "harmonic, raw-vs-band-limited QC, segment, and quadrant metrics."
     ),
     requires=["numpy", "h5py"],
-    dag_requires=["waveform_velocity"],
+    dag_requires=["velocity_analysis"],
     dag_produces=["absolute_waveform_metrics"],
     options=[
-        PipelineOption(
-            "per_beat",
-            "Per beat",
-            "Global absolute waveform metrics for each beat.",
-        ),
         PipelineOption(
             "segments",
             "Segments",
             "Per-segment and segment-aggregate absolute metrics.",
-            requires=("per_beat",),
         ),
         PipelineOption(
             "quadrants",
             "Quadrants",
             "Four-quadrant absolute metric aggregates.",
-            requires=("per_beat",),
         ),
     ],
     input_slot="both",

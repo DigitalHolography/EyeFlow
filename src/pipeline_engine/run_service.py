@@ -12,6 +12,10 @@ from input_output import INPUT_LIST_SUFFIX, HoloRunLayout, resolve_selected_run_
 from input_output.archives import extracted_zip_tree
 from input_output.output_manager import OutputManager, OutputType
 from utils.logger import Logger
+from velocity_calibration import (
+    DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
+    validate_band_ratio_frequency_scale_hz,
+)
 
 from .base import PipelineDescriptor
 from .dag import PipelineDAG, PipelineExecutionPlan
@@ -43,6 +47,7 @@ class RunSpec:
     plan: PipelineExecutionPlan
     requests: tuple[RunRequest, ...]
     pipeline_options: Mapping[str, tuple[str, ...]]
+    band_ratio_frequency_scale_hz: float = DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
 
     @property
     def total_pipeline_units(self) -> int:
@@ -78,11 +83,7 @@ def selectable_pipeline_registry(
 ) -> dict[str, PipelineDescriptor]:
     """Return descriptors that a user may select directly."""
 
-    return {
-        pipeline.name: pipeline
-        for pipeline in pipelines
-        if pipeline.visibility != "hidden"
-    }
+    return {pipeline.name: pipeline for pipeline in pipelines if pipeline.visibility != "hidden"}
 
 
 def resolve_run_spec(
@@ -91,18 +92,20 @@ def resolve_run_spec(
     target_names: Sequence[str],
     pipelines: Iterable[PipelineDescriptor],
     pipeline_options: Mapping[str, Iterable[str]] | None = None,
+    band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
     output_root: Path | None = None,
     batch_root: Path | None = None,
 ) -> RunSpec:
     """Resolve targets, inputs, and deterministic output destinations."""
 
+    resolved_band_ratio_scale_hz = validate_band_ratio_frequency_scale_hz(
+        band_ratio_frequency_scale_hz
+    )
     descriptors = tuple(pipelines)
     selectable = selectable_pipeline_registry(descriptors)
     hidden_targets = [name for name in target_names if name not in selectable]
     if hidden_targets:
-        raise ValueError(
-            "Unknown or hidden pipeline target(s): " + ", ".join(hidden_targets)
-        )
+        raise ValueError("Unknown or hidden pipeline target(s): " + ", ".join(hidden_targets))
 
     resolved_options = _resolve_pipeline_options(descriptors, pipeline_options)
     plan = PipelineDAG(descriptors).resolve_targets(
@@ -117,9 +120,7 @@ def resolve_run_spec(
         for pipeline in unavailable:
             reason = ", ".join(pipeline.missing_deps or pipeline.requires)
             details.append(f"{pipeline.name}" + (f" ({reason})" if reason else ""))
-        raise ValueError(
-            "The DAG requires unavailable pipeline(s): " + ", ".join(details)
-        )
+        raise ValueError("The DAG requires unavailable pipeline(s): " + ", ".join(details))
     resolved_options = {
         descriptor.name: resolved_options[descriptor.name]
         for descriptor in plan.descriptors
@@ -127,9 +128,7 @@ def resolve_run_spec(
     }
 
     layouts = resolve_selected_run_layouts(input_paths)
-    resolved_output_root = (
-        output_root.expanduser().resolve() if output_root is not None else None
-    )
+    resolved_output_root = output_root.expanduser().resolve() if output_root is not None else None
     effective_batch_root = (
         batch_root.expanduser().resolve()
         if batch_root is not None
@@ -151,6 +150,7 @@ def resolve_run_spec(
         plan=plan,
         requests=requests,
         pipeline_options=resolved_options,
+        band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
     )
 
 
@@ -200,6 +200,7 @@ def execute_run(
                 pipelines=spec.plan.descriptors,
                 target_names=spec.plan.targets,
                 pipeline_options=spec.pipeline_options,
+                band_ratio_frequency_scale_hz=(spec.band_ratio_frequency_scale_hz),
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
                 on_pipeline_start=on_pipeline_start,
@@ -237,22 +238,15 @@ def _resolve_pipeline_options(
         known = {option.name for option in descriptor.options}
         requested = requested_by_pipeline.get(descriptor.name)
         if requested is None:
-            selected = {
-                option.name
-                for option in descriptor.options
-                if option.default_enabled
-            }
+            selected = {option.name for option in descriptor.options if option.default_enabled}
         else:
             selected = {str(name).strip() for name in requested if str(name).strip()}
             unknown = sorted(selected - known)
             if unknown:
                 raise ValueError(
-                    f"Unknown option(s) for pipeline '{descriptor.name}': "
-                    + ", ".join(unknown)
+                    f"Unknown option(s) for pipeline '{descriptor.name}': " + ", ".join(unknown)
                 )
-        options_by_name = {
-            option.name: option for option in descriptor.options
-        }
+        options_by_name = {option.name: option for option in descriptor.options}
         pending = list(selected)
         while pending:
             option_name = pending.pop()
@@ -290,9 +284,7 @@ def _find_holo_inputs(path: Path) -> list[Path]:
     if path.is_file():
         if path.suffix.lower() in {HOLO_SUFFIX, INPUT_LIST_SUFFIX}:
             return [path]
-        raise ValueError(
-            f"File is not a {HOLO_SUFFIX} or {INPUT_LIST_SUFFIX} file: {path}"
-        )
+        raise ValueError(f"File is not a {HOLO_SUFFIX} or {INPUT_LIST_SUFFIX} file: {path}")
     if path.is_dir():
         return sorted(
             candidate

@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.math import nanmedian
+from calculations.math import (
+    SlidingWindowMethod,
+    centered_sliding_window,
+    nanmedian,
+)
 from calculations.topology import annulus_widths_pixels, segment_mask_areas_pixels
 from calculations.topology.geometry import AnnulusGeometry
 
 TOTAL_MASKED_EDGES_WINDOW_SIZE = 9
 TOTAL_MASKED_EDGES_WINDOW_STRIDE = 1
+R_SIGMA_REFERENCE_DIAMETER_MM = np.float32(0.08)  # d_0 = 80 micrometres
 
 
 def mask_derived_lumen_geometry(
@@ -73,7 +78,7 @@ def mask_derived_lumen_geometry(
 
 
 def circular_lumen_flow(velocity, diameter_mm) -> np.ndarray:
-    """Multiply per-beat velocity by circular lumen area."""
+    """Apply the diameter-width correction to circular-lumen flow."""
 
     velocity_tbkr = np.asarray(velocity, dtype=np.float32)
     diameter = np.asarray(diameter_mm, dtype=np.float32)
@@ -89,8 +94,9 @@ def circular_lumen_flow(velocity, diameter_mm) -> np.ndarray:
             "lumen diameter must have dimensions (branch, radius) or match "
             "per-beat velocity dimensions."
         )
-    area_mm2 = np.float32(np.pi / 4.0) * diameter**2
-    return (velocity_tbkr * area_mm2).astype(
+    lumen_area = np.float32(np.pi / 4.0) * diameter**2
+    R_sigma = np.sqrt(diameter / R_SIGMA_REFERENCE_DIAMETER_MM)
+    return (velocity_tbkr / R_sigma * lumen_area).astype(
         np.float32,
         copy=False,
     )
@@ -105,19 +111,13 @@ def total_masked_edges_flow(masked_edges) -> np.ndarray:
             "masked-edge blood-volume rate must have dimensions "
             "(time, beat, branch, radius)."
         )
-    if values.shape[0] > 0:
-        half_window = TOTAL_MASKED_EDGES_WINDOW_SIZE // 2
-        periodic = np.pad(
-            values,
-            ((half_window, half_window), (0, 0), (0, 0), (0, 0)),
-            mode="wrap",
-        )
-        windows = np.lib.stride_tricks.sliding_window_view(
-            periodic,
-            window_shape=TOTAL_MASKED_EDGES_WINDOW_SIZE,
-            axis=0,
-        )[::TOTAL_MASKED_EDGES_WINDOW_STRIDE]
-        values = np.mean(windows, axis=-1, dtype=np.float32)
+    values = centered_sliding_window(
+        values,
+        TOTAL_MASKED_EDGES_WINDOW_SIZE,
+        SlidingWindowMethod.AVERAGE,
+        window_stride=TOTAL_MASKED_EDGES_WINDOW_STRIDE,
+        axis=0,
+    )
 
     finite = np.isfinite(values)
     rate_tbr = np.sum(

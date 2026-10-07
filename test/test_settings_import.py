@@ -23,6 +23,17 @@ class _FileDialogs:
         return self.selected_path
 
 
+class _Variable:
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+    def get(self) -> str:
+        return self.value
+
+    def set(self, value: str) -> None:
+        self.value = value
+
+
 class SettingsImportTests(unittest.TestCase):
     def test_import_file_replaces_active_settings(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -73,6 +84,57 @@ class SettingsImportTests(unittest.TestCase):
                 store.import_file(source_path)
 
             self.assertFalse(store.path.exists())
+
+    def test_existing_settings_without_velocity_method_use_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = AppSettingsStore(
+                path=Path(temp_dir) / "settings.json",
+                default_template_path=None,
+            )
+            store.save({"ui_mode": "minimal"})
+
+            self.assertNotIn("velocity_estimation_method", store.load())
+            self.assertEqual(1.0, store.load_band_ratio_frequency_scale_hz())
+
+    def test_import_ignores_obsolete_velocity_method(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "legacy.json"
+            source.write_text(
+                json.dumps(
+                    {"velocity_estimation_method": "unknown", "band_ratio_frequency_scale_hz": 2.0}
+                )
+            )
+            store = AppSettingsStore(path=root / "settings.json", default_template_path=None)
+            store.import_file(source)
+            self.assertNotIn("velocity_estimation_method", store.load())
+            self.assertNotIn("velocity_estimation_method", json.loads(store.path.read_text()))
+            self.assertEqual(2.0, store.load_band_ratio_frequency_scale_hz())
+
+    def test_import_rejects_invalid_band_ratio_scale_without_replacing_settings(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_path = root / "invalid_band_scale.json"
+            source_path.write_text(
+                json.dumps({"band_ratio_frequency_scale_hz": 0.0}),
+                encoding="utf-8",
+            )
+            store = AppSettingsStore(
+                path=root / "settings.json",
+                default_template_path=None,
+            )
+            original = {"band_ratio_frequency_scale_hz": 1.0}
+            store.save(original)
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "band_ratio_frequency_scale_hz",
+            ):
+                store.import_file(source_path)
+
+            self.assertEqual(original, store.load())
 
     def test_choose_config_file_imports_and_refreshes_the_ui(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

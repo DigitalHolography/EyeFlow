@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping, MutableMapping
 from collections import deque
+from collections.abc import Callable, Iterator, Mapping, MutableMapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from time import perf_counter
@@ -30,7 +30,6 @@ from .transforms import (
     interpolate_segments,
     resample_rotate_segment,
     rotate_segment_masks,
-    rotate_segments,
 )
 
 
@@ -38,10 +37,73 @@ from .transforms import (
 class PreparedTopology:
     """Map-independent segment geometry ready for map transformations."""
 
-    topology: SegmentTopology
+    native: SegmentTopology
     rotation_degrees: np.ndarray
     interpolated_masks: np.ndarray
     rotated_masks: np.ndarray
+
+    @property
+    def topology(self) -> SegmentTopology:
+        """Compatibility alias for the source-coordinate topology."""
+
+        return self.native
+
+    @property
+    def segment_shape(self) -> tuple[int, int]:
+        return self.native.segment_shape
+
+    @property
+    def profile_side_pixels(self) -> int:
+        return int(self.rotated_masks.shape[-1])
+
+    @property
+    def valid_segments(self) -> np.ndarray:
+        """Segments with both native geometry and a resolved rotation."""
+
+        return self.native.valid_segments & np.isfinite(self.rotation_degrees)
+
+    def valid_indexes(self) -> np.ndarray:
+        """Return valid ``(ring, branch)`` indexes in stable row-major order."""
+
+        return np.argwhere(self.valid_segments).astype(np.int32, copy=False)
+
+    def is_aligned_with(self, other: PreparedTopology) -> bool:
+        """Return whether two prepared objects describe the same segment grid."""
+
+        if self is other:
+            return True
+        if not isinstance(other, PreparedTopology):
+            return False
+        if (
+            self.segment_shape != other.segment_shape
+            or self.profile_side_pixels != other.profile_side_pixels
+            or self.native.spatial_shape != other.native.spatial_shape
+            or self.native.window_side_pixels != other.native.window_side_pixels
+        ):
+            return False
+        if not np.array_equal(self.native.branch_ids, other.native.branch_ids):
+            return False
+        if not np.array_equal(self.native.labels, other.native.labels):
+            return False
+        if not np.array_equal(
+            self.native.window_bounds_xyxy,
+            other.native.window_bounds_xyxy,
+        ):
+            return False
+        if not np.array_equal(self.rotated_masks, other.rotated_masks):
+            return False
+        return bool(
+            np.allclose(
+                self.native.segment_centers_xy,
+                other.native.segment_centers_xy,
+                equal_nan=True,
+            )
+            and np.allclose(
+                self.rotation_degrees,
+                other.rotation_degrees,
+                equal_nan=True,
+            )
+        )
 
 
 class PreparedSegment(NamedTuple):
@@ -92,7 +154,7 @@ def prepare_topology(
         output_side_pixels,
     )
     return PreparedTopology(
-        topology=topology,
+        native=topology,
         rotation_degrees=rotation_degrees,
         interpolated_masks=interpolated_masks,
         rotated_masks=rotate_segment_masks(
@@ -160,7 +222,7 @@ def prepare_topologies(
     prepared_topologies = {
         name: (
             topology
-            if topology.topology.window_side_pixels == shared_side
+            if topology.native.window_side_pixels == shared_side
             else _resize_prepared_topology(
                 topology,
                 shared_side,
@@ -191,7 +253,7 @@ def _resize_prepared_topology(
     output_side_pixels: int,
 ) -> PreparedTopology:
     topology = resize_segment_topology_windows(
-        prepared.topology,
+        prepared.native,
         window_side_pixels,
     )
     interpolated_masks = interpolate_segment_masks(
@@ -199,7 +261,7 @@ def _resize_prepared_topology(
         output_side_pixels,
     )
     return PreparedTopology(
-        topology=topology,
+        native=topology,
         rotation_degrees=prepared.rotation_degrees,
         interpolated_masks=interpolated_masks,
         rotated_masks=rotate_segment_masks(
@@ -224,14 +286,14 @@ def resolve_segment_rotations(
 
     rotations = prepared.rotation_degrees.copy()
     unresolved = np.argwhere(
-        prepared.topology.valid_segments & ~np.isfinite(rotations)
+        prepared.native.valid_segments & ~np.isfinite(rotations)
     )
     if len(unresolved) == 0:
         return prepared
     frame_count = int(reference_map.shape[0])
     if frame_count < 1:
         return prepared
-    side = max(prepared.topology.window_side_pixels, 1)
+    side = max(prepared.native.window_side_pixels, 1)
     budget = int(float(working_memory_mb) * 1024**2)
     if budget <= 0:
         raise ValueError("working_memory_mb must be finite and positive.")
@@ -242,7 +304,7 @@ def resolve_segment_rotations(
         for start in range(0, frame_count, frames_per_block):
             extracted = extract_segment(
                 _frame_slice(reference_map, start, min(start + frames_per_block, frame_count)),
-                prepared.topology,
+                prepared.native,
                 int(ring),
                 int(branch),
             )
@@ -259,8 +321,8 @@ def resolve_segment_rotations(
         mean_image[~mask] = np.nan
         angle = _projection_rotation_angle(
             mean_image,
-            prepared.topology.segment_centers_xy[int(ring), int(branch)],
-            prepared.topology.optic_disc_center_xy,
+            prepared.native.segment_centers_xy[int(ring), int(branch)],
+            prepared.native.optic_disc_center_xy,
         )
         if np.isfinite(angle):
             rotations[int(ring), int(branch)] = np.float32(angle)
@@ -330,7 +392,7 @@ def prepare_segment_chunks(
     """Stream bounded temporal chunks of every valid prepared segment.
 
     Fused mode performs resize and rotation in one affine operation. Staged
-    mode interpolates first, filters the halo context, trims, then rotates.
+    mode interpolates first, filters periodic halo context, trims, then rotates.
     When ``include_masked_before_rotation`` is enabled, each chunk also carries
     a companion following the legacy scientific order ``interpolate/filter ->
     mask -> rotate``. Retained result arrays are outside this scratch budget.
@@ -349,7 +411,7 @@ def prepare_segment_chunks(
     if worker_count is not None and worker_count < 1:
         raise ValueError("worker_count must be positive.")
 
-    topology = prepared_topology.topology
+    topology = prepared_topology.native
     frame_count = int(data_map.shape[0])
     valid_indexes = np.argwhere(
         topology.valid_segments & np.isfinite(prepared_topology.rotation_degrees)
@@ -394,9 +456,18 @@ def prepare_segment_chunks(
     def prepare_job(job) -> PreparedSegmentChunk:
         ring, branch, output_start, output_stop = job
         halo = temporal_halo if transform_mode == "staged" else 0
-        context_start = max(0, output_start - halo)
-        context_stop = min(frame_count, output_stop + halo)
-        source = _frame_slice(data_map, context_start, context_stop)
+        if halo and output_stop - output_start + 2 * halo < frame_count:
+            context_start = output_start - halo
+            context_stop = output_stop + halo
+            source = _periodic_frame_slice(data_map, context_start, context_stop)
+        elif halo:
+            context_start = 0
+            context_stop = frame_count
+            source = _frame_slice(data_map, context_start, context_stop)
+        else:
+            context_start = output_start
+            context_stop = output_stop
+            source = _frame_slice(data_map, context_start, context_stop)
         extracted = extract_segment(
             source,
             topology,
@@ -428,10 +499,8 @@ def prepare_segment_chunks(
                     raise ValueError(
                         "post_interpolation must preserve all array dimensions."
                     )
-            trim = slice(
-                output_start - context_start,
-                output_stop - context_start,
-            )
+            trim_start = output_start - context_start
+            trim = slice(trim_start, trim_start + output_stop - output_start)
             interpolated = interpolated[trim]
             interpolated_for_mask = interpolated
             rotated = resample_rotate_segment(
@@ -612,6 +681,33 @@ def _frame_slice(data_map, start: int, stop: int):
     return data_map[tuple(slices)]
 
 
+def _periodic_frame_slice(data_map, start: int, stop: int):
+    """Read a possibly wrapped frame interval without fancy dataset indexing."""
+
+    frame_count = int(data_map.shape[0])
+    if frame_count < 1:
+        raise ValueError("periodic frame slicing requires at least one frame.")
+    parts = []
+    cursor = int(start)
+    stop = int(stop)
+    while cursor < stop:
+        wrapped_start = cursor % frame_count
+        part_length = min(stop - cursor, frame_count - wrapped_start)
+        parts.append(
+            np.asarray(
+                _frame_slice(
+                    data_map,
+                    wrapped_start,
+                    wrapped_start + part_length,
+                )
+            )
+        )
+        cursor += part_length
+    if len(parts) == 1:
+        return parts[0]
+    return np.concatenate(parts, axis=0)
+
+
 def _cached_topology(
     vessel_name: str,
     vessel_mask: np.ndarray,
@@ -691,7 +787,7 @@ def _shared_window_side(
     widths: list[int] = []
     heights: list[int] = []
     for prepared in topologies.values():
-        topology = prepared.topology
+        topology = prepared.native
         for annulus in topology.annulus_masks:
             for branch_id in topology.branch_ids:
                 y, x = np.nonzero(annulus & (topology.labels == int(branch_id)))

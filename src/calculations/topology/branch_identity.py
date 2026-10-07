@@ -13,7 +13,6 @@ from skimage.segmentation import find_boundaries, watershed
 from .geometry import AnnulusGeometry, annulus_mask, image_half_diagonal
 from .optic_disc import OpticDisc
 
-
 LOW_RES_SMALL_BRANCH_PIXELS = 10
 BRANCH_POINT_CENTER_WEIGHT = 10
 BRANCH_POINT_MIN_NEIGHBORS = 3
@@ -29,7 +28,12 @@ BRANCH_POINT_THRESHOLD = BRANCH_POINT_CENTER_WEIGHT + BRANCH_POINT_MIN_NEIGHBORS
 
 @dataclass(frozen=True)
 class BranchIdentityStages:
-    """Intermediate arrays retained for branch-label diagnostics."""
+    """Intermediate arrays retained for branch-label diagnostics.
+
+    ``vessel``, ``skeleton``, and ``branch_points`` retain the complete input
+    context, including the optic-disc region.  ``cleaned_skeleton`` and every
+    subsequent stage exclude the centered optic-disc circle.
+    """
 
     vessel: np.ndarray
     section: np.ndarray
@@ -46,11 +50,19 @@ class BranchIdentityStages:
 
 @dataclass(frozen=True)
 class BranchIdentityResult:
-    """Branch labels and diagnostic stages produced by the same run."""
+    """Authoritative branch identity with optional construction diagnostics."""
 
     labels: np.ndarray
     branch_ids: np.ndarray
-    stages: BranchIdentityStages
+    centerline: np.ndarray
+    stages: BranchIdentityStages | None = None
+
+    def require_stages(self) -> BranchIdentityStages:
+        """Return retained diagnostic stages or explain why they are unavailable."""
+
+        if self.stages is None:
+            raise RuntimeError("Branch-identity diagnostic stages were not retained.")
+        return self.stages
 
 
 def label_vessel_branches(
@@ -61,7 +73,11 @@ def label_vessel_branches(
     small_branch_pixels: int = LOW_RES_SMALL_BRANCH_PIXELS,
     strel_size: int = STREL_SIZE,
 ) -> BranchIdentityResult:
-    """Label branches outside the centered circular optic-disc cutoff."""
+    """Label branches outside the centered circular optic-disc cutoff.
+
+    Branch points are detected before applying the cutoff so junctions close
+    to its boundary retain their complete set of arms.
+    """
 
     vessel = np.asarray(vessel_mask, dtype=bool)
     if vessel.ndim != 2:
@@ -75,10 +91,7 @@ def label_vessel_branches(
         fallback_radius_pixels=fallback_radius,
     )
     stages = _branch_identity_stages(
-        optic_disc.subtract_centered_circle_from(
-            vessel,
-            fallback_radius_pixels=fallback_radius,
-        ),
+        vessel,
         optic_disc.center,
         settings,
         optic_disc_mask=disc,
@@ -87,9 +100,10 @@ def label_vessel_branches(
     )
     labels = stages.per_circle_cleaned_labels
     return BranchIdentityResult(
-        labels.astype(np.int32, copy=False),
-        np.arange(1, int(labels.max()) + 1, dtype=np.int32),
-        stages,
+        labels=labels.astype(np.int32, copy=False),
+        branch_ids=np.arange(1, int(labels.max()) + 1, dtype=np.int32),
+        centerline=stages.skeleton,
+        stages=stages,
     )
 
 
@@ -122,6 +136,7 @@ def _branch_identity_stages(
         branch_points,
         structure=branch_footprint,
     )
+    cleaned_skeleton &= ~disc
     cleaned_skeleton = _remove_small(cleaned_skeleton, max(0, int(small_branch_pixels)))
     marker_labels = label_components(cleaned_skeleton, connectivity=2).astype(
         np.int32,

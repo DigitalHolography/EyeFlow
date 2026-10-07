@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
-from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -16,6 +16,7 @@ from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from pipeline_engine import PipelineContext
 from pipelines.displacement_map import registration
+from pipelines.displacement_map.sources import FrameSequence
 from pipelines.displacement_map.runner import (
     ARTERY_MASK_PATH,
     DISPLACEMENT_MAP_STATE,
@@ -25,18 +26,11 @@ from pipelines.displacement_map.runner import (
     VESSEL_MASK_PATH,
     DisplacementMapArtifacts,
     DisplacementMapPipelineConfig,
-    attach_displacement_segment_profiles,
     resolve_moment_dataset,
     resolve_retina_mask,
     resolve_retina_masks,
     run_displacement_map,
 )
-
-
-@dataclass(frozen=True)
-class _SegmentProfiles:
-    topology: object
-    displacements: dict[str, object]
 
 
 class DisplacementRegistrationTests(unittest.TestCase):
@@ -70,51 +64,30 @@ class DisplacementRegistrationTests(unittest.TestCase):
 
 
 class DisplacementMapInputTests(unittest.TestCase):
-    def test_displacement_pipeline_attaches_segment_results(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            field_path = Path(temp_dir) / "field.npy"
-            np.save(field_path, np.zeros((2, 3, 4, 2), dtype=np.float32))
-            artifacts = DisplacementMapArtifacts(
-                registration_method="method",
-                field_paths_by_vessel={
-                    "artery": field_path,
-                    "vein": field_path,
-                },
-                temporary_directory=SimpleNamespace(cleanup=lambda: None),
+    def test_frame_sequence_reuses_open_h5_dataset(self) -> None:
+        with h5py.File("already_open.h5", "w", driver="core", backing_store=False) as hd:
+            dataset = hd.create_dataset(
+                "moment0",
+                data=np.arange(24, dtype=np.float32).reshape(3, 2, 4),
             )
-            ctx = SimpleNamespace(
-                pipeline_scheduled=lambda name: name == "displacement_map",
-                state=SimpleNamespace(get=lambda key: artifacts),
-            )
-            profiles = {
-                name: _SegmentProfiles(
-                    topology=SimpleNamespace(prepared_topology=f"{name} topology"),
-                    displacements={},
-                )
-                for name in ("artery", "vein")
-            }
-
             with patch(
-                "pipelines.displacement_map.runner.analyze_displacement_segments",
-                side_effect=lambda maps, topology, **kwargs: {
-                    "method": (next(iter(maps)), topology, kwargs["retain_maps"])
-                },
+                "pipelines.displacement_map.sources.h5py.File",
+                side_effect=AssertionError("HDF5 input was reopened"),
             ):
-                attached = attach_displacement_segment_profiles(
-                    ctx,
-                    profiles,
-                    retain_maps=True,
-                    profile_settings=SimpleNamespace(working_memory_mb=64.0),
+                sequence = FrameSequence(
+                    Path("not-on-disk.h5"),
+                    "moment0",
+                    0,
+                    10.0,
+                    1.0,
+                    99.5,
+                    h5_source=dataset,
                 )
+                frames = list(sequence.iter_frames())
 
-        self.assertEqual(
-            ("method", "artery topology", True),
-            attached["artery"].displacements["method"],
-        )
-        self.assertEqual(
-            ("method", "vein topology", True),
-            attached["vein"].displacements["method"],
-        )
+        self.assertEqual(3, sequence.frame_count)
+        self.assertEqual(3, len(frames))
+        self.assertEqual((2, 4, 3), frames[0].shape)
 
     def test_resolves_root_moment0_alias(self) -> None:
         with h5py.File("moment_alias.h5", "w", driver="core", backing_store=False) as hd:
@@ -224,8 +197,10 @@ class DisplacementMapRunnerTests(unittest.TestCase):
             )
             with h5py.File(hd_path, "w") as hd:
                 hd.create_dataset("moment0", data=moment)
-                hd.create_dataset("sampling_freq", data=np.float32(100.0))
-                hd.create_dataset("batch_stride", data=np.float32(10.0))
+                hd.create_dataset(
+                    "HD_parameters",
+                    data=json.dumps({"sampling_freq": 100.0, "batch_stride": 10.0}),
+                )
             with h5py.File(dv_path, "w") as dv:
                 dv.create_dataset(ARTERY_MASK_PATH, data=artery)
                 dv.create_dataset(VEIN_MASK_PATH, data=vein)
@@ -236,6 +211,7 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     output_root=root / "outputs",
                 )
             )
+
             def fake_motion_map(config, *, analysis_mask_array, magnitude_video_path):
                 self.assertEqual("moment0", config.h5_dataset)
                 self.assertEqual(10.0, config.h5_fps)

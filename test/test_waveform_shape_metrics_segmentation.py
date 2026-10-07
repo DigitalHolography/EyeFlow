@@ -7,7 +7,7 @@ import numpy as np
 
 from calculations.topology import AnnulusGeometry, OpticDisc
 from input_output.schema import EyeFlowOutputPaths, PixelPitch
-from pipelines.waveform_velocity_core.segmentation import (
+from pipelines.topology_core.outputs import (
     ANNULUS_OUTLINE_LABEL,
     BACKGROUND_LABEL,
     INNER_R0_VESSEL_LABEL,
@@ -19,6 +19,46 @@ from pipelines.waveform_velocity_core.segmentation import (
 
 
 class SegmentationOutputTests(unittest.TestCase):
+    def test_missing_dopplerview_optic_disc_publishes_nan_vein_maps(self):
+        image_shape = (8, 10)
+        artery = np.zeros(image_shape, dtype=bool)
+        artery[2, 3] = True
+        vein = np.zeros(image_shape, dtype=bool)
+        optic_disc = OpticDisc(
+            np.zeros(image_shape, dtype=bool),
+            (5.0, 4.0),
+            2.0,
+            2.0,
+            is_fallback=True,
+        )
+        source_data = SimpleNamespace(
+            source=SimpleNamespace(
+                segmentation=SimpleNamespace(
+                    vessels=SimpleNamespace(artery=artery, vein=vein),
+                    optic_disc=optic_disc,
+                ),
+                holodoppler=SimpleNamespace(
+                    pixel_pitch=PixelPitch(20e-6, 20e-6),
+                ),
+            ),
+        )
+
+        outputs = pack_segmentation_outputs(source_data, None, None)
+        schema = EyeFlowOutputPaths.active()
+
+        artery_output, _ = outputs[schema.segmentation.artery.mask]
+        vein_output, vein_attrs = outputs[schema.segmentation.vein.mask]
+        vein_branches, _ = outputs[schema.segmentation.vein.branch_label_map]
+        vein_segments, _ = outputs[schema.segmentation.vein.segment_map]
+        self.assertTrue(artery_output[3, 5])
+        self.assertTrue(np.all(np.isnan(vein_output)))
+        self.assertTrue(np.all(np.isnan(vein_branches)))
+        self.assertTrue(np.all(np.isnan(vein_segments)))
+        self.assertEqual(
+            "unavailable_without_dopplerview_optic_disc",
+            vein_attrs["source"],
+        )
+
     def test_outputs_use_lower_left_xy_frame_and_distinct_label_classes(self):
         image_shape = (16, 16)
         optic_disc_mask = np.zeros(image_shape, dtype=bool)

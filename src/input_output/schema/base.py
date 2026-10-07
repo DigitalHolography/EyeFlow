@@ -25,8 +25,6 @@ class SourceFileLayout:
 class TypedSource:
     """Thin typed facade over one raw HDF5 reader and its sidecar config."""
 
-    layout: SourceFileLayout
-
     def __init__(self, reader, config: dict[str, object] | None = None) -> None:
         self._reader = reader
         self._config = dict(config or {})
@@ -35,9 +33,6 @@ class TypedSource:
     def filename(self) -> str | None:
         return self._reader.filename
 
-    def require(self) -> None:
-        self._reader.require()
-
     def _array(
         self,
         path: str,
@@ -45,28 +40,23 @@ class TypedSource:
         dtype=None,
         default: Any = MISSING,
     ) -> Any:
+        if default is MISSING:
+            return self._reader.array(path, dtype=dtype)
         return self._reader.array(path, dtype=dtype, default=default)
 
     def _dataset(self, path: str):
         return self._reader.dataset(path)
 
     def _value(self, path: str, *, default: Any = MISSING):
+        if default is MISSING:
+            return self._reader.value(path)
         return self._reader.value(path, default=default)
-
-    def _scalar_h5_or_config(self, h5_path: str, config_key: str):
-        value = scalar_from_value(self._value(h5_path, default=None))
-        if value is not None:
-            return value
-        return scalar_from_value(self._config.get(config_key))
 
     def _config_value(self, section: str, key: str, default):
         source = self._config.get(section, {})
         if not isinstance(source, dict):
             return default
         return source.get(key, default)
-
-    def config_value(self, section: str, key: str, default=None):
-        return self._config_value(section, key, default)
 
 
 def scalar_from_value(value):

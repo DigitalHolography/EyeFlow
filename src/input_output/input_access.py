@@ -2,41 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import h5py
 import numpy as np
 
 from input_output.schema.source_data import HolodopplerTiming
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from pipeline_engine import PipelineContext
-
-
-@dataclass(frozen=True)
-class ResolvedArray:
-    path: str
-    value: np.ndarray
-
-
-def resolve_required_source_array(
-    source: h5py.File | None,
-    *,
-    source_name: str,
-    logical_name: str,
-    path: str,
-) -> ResolvedArray:
-    if source is None:
-        raise KeyError(f"{source_name} HDF5 input is required for '{logical_name}'.")
-    found = source.get(path)
-    if not isinstance(found, h5py.Dataset):
-        raise KeyError(
-            f"Missing {source_name} dataset for '{logical_name}'. Expected: {path}"
-        )
-    return ResolvedArray(path=path, value=np.asarray(found[()]))
 
 
 def resolve_holodoppler_timing(
@@ -45,10 +18,6 @@ def resolve_holodoppler_timing(
     from input_output.schema import HolodopplerSource
 
     return HolodopplerSource.from_context(pipeline_input).timing()
-
-
-def resolve_dt_seconds(pipeline_input: PipelineContext) -> float:
-    return resolve_holodoppler_timing(pipeline_input).dt_seconds
 
 
 def read_first_attr(pipeline_input: PipelineContext, *keys: str):
@@ -70,20 +39,6 @@ def read_int_setting(
     if value is None:
         return int(default)
     return int(value)
-
-
-def read_nested_int_setting(
-    config: Mapping[str, object],
-    section: str,
-    key: str,
-    *,
-    default: int,
-) -> int:
-    section_value = config.get(section, {})
-    if not isinstance(section_value, dict):
-        return int(default)
-    value = _scalar_from_value(section_value.get(key))
-    return int(default) if value is None else int(value)
 
 
 def _scalar_from_value(value):

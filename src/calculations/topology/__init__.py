@@ -28,6 +28,7 @@ from .profiles import (
     profile_deviation_power,
     transverse_profiles,
 )
+from .quadrants import QUADRANT_NAMES, quadrant_membership
 from .segments import (
     SegmentTopology,
     build_segment_topology,
@@ -69,6 +70,7 @@ __all__ = [
     "PreparedSegmentChunks",
     "PreparedSegments",
     "PreparedTopology",
+    "QUADRANT_NAMES",
     "SegmentTopology",
     "TopologyCacheKey",
     "annulus_mask",
@@ -91,6 +93,7 @@ __all__ = [
     "prepare_topologies",
     "prepare_topology",
     "profile_deviation_power",
+    "quadrant_membership",
     "resample_rotate_segment",
     "resize_segment_topology_windows",
     "resolve_segment_rotations",

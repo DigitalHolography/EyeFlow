@@ -7,11 +7,34 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from calculations.topology import BranchIdentityResult, PreparedTopology, SegmentTopology
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue
 from pipelines.lowrank_waveform_decomposition.outputs import (
     pack_lowrank_waveform_decomposition_outputs,
 )
+
+
+def _segment_topology(labels, branch_ids, centers, optic_disc_center):
+    radius_count, branch_count = centers.shape[:2]
+    native = SegmentTopology(
+        optic_disc_center_xy=optic_disc_center,
+        branches=BranchIdentityResult(
+            labels,
+            branch_ids,
+            np.zeros(labels.shape, dtype=bool),
+        ),
+        annulus_masks=np.zeros((radius_count, *labels.shape), dtype=bool),
+        segment_masks=np.zeros((radius_count, branch_count, 1, 1), dtype=bool),
+        segment_centers_xy=centers,
+        window_bounds_xyxy=np.zeros((radius_count, branch_count, 4), dtype=int),
+    )
+    return PreparedTopology(
+        native=native,
+        rotation_degrees=np.zeros((radius_count, branch_count), dtype=np.float32),
+        interpolated_masks=native.segment_masks,
+        rotated_masks=native.segment_masks,
+    )
 
 
 class LowRankQuadrantOutputTests(unittest.TestCase):
@@ -40,16 +63,22 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
         labels[6, 1] = 3
         labels[6, 6] = 4
         segments = SimpleNamespace(
-            branch_ids=np.arange(1, branch_count + 1, dtype=np.int32),
-            labels=labels,
-            segment_centers_xy=np.zeros(
-                (radius_count, branch_count, 2),
-                dtype=float,
+            profile=SimpleNamespace(
+                topology=_segment_topology(
+                    labels,
+                    np.arange(1, branch_count + 1, dtype=np.int32),
+                    np.zeros(
+                        (radius_count, branch_count, 2),
+                        dtype=float,
+                    ),
+                    (3.0, 3.0),
+                ),
             ),
-            topology=SimpleNamespace(optic_disc_center_xy=(3.0, 3.0)),
         )
         velocity_outputs = {
-            schema.beat_period_seconds: np.asarray([[0.8, 0.9]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8, 0.9], dtype=np.float32
+            ),
             schema.artery_per_beat.segment_velocity_signal: waveforms,
         }
 
@@ -88,7 +117,9 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
         sample_count = 8
         waveforms = np.ones((sample_count, 1, 1, 3), dtype=np.float32)
         velocity_outputs = {
-            schema.beat_period_seconds: np.asarray([[0.8]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8], dtype=np.float32
+            ),
             schema.artery_per_beat.segment_velocity_signal: waveforms,
         }
 
@@ -100,6 +131,32 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
 
         self.assertTrue(outputs)
         self.assertFalse(any("/Quadrants/" in key for key in outputs))
+
+    def test_relative_velocity_source_propagates_unit_one(self) -> None:
+        schema = EyeFlowOutputPaths.active()
+        waveforms = np.ones((8, 1, 1, 3), dtype=np.float32)
+        velocity_outputs = {
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8], dtype=np.float32
+            ),
+            schema.artery_per_beat.segment_velocity_signal: DatasetValue(
+                waveforms,
+                {"unit": "1"},
+            ),
+        }
+
+        outputs = pack_lowrank_waveform_decomposition_outputs(
+            velocity_outputs,
+            vein_flag=False,
+        )
+
+        root = schema.lowrank_waveform_decomposition_root
+        for path in (
+            f"{root}/artery/raw/endpoints/joint/R0",
+            f"{root}/artery/raw/baseline/mu_acq",
+            f"{root}/artery/raw/misc/acquisition_level_velocity/velocity_cross_column_mean",
+        ):
+            self.assertEqual("1", outputs[path].attrs["unit"])
 
     @staticmethod
     def _data(value) -> np.ndarray:

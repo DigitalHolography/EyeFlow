@@ -8,8 +8,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager
-from pipelines.waveform_velocity.outputs import (
+from pipelines.velocity_analysis.artifacts.velocity_signals import (
     VELOCITY_ENVELOPE_GRAY,
     VELOCITY_FIGURE_ASPECT_RATIO,
     _velocity_figure,
@@ -74,9 +75,11 @@ def test_velocity_figure_reduces_space_then_plots_beat_median_and_sd() -> None:
 
 def test_velocity_signals_export_png_and_eps_for_both_vessels() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
-        output = OutputManager.from_holo(
-            Path(temp_dir) / "sample.holo",
-            output_root=Path(temp_dir),
+        output = OutputManager(
+            HoloRunLayout.from_holo(
+                Path(temp_dir) / "sample.holo",
+                output_root=Path(temp_dir),
+            )
         )
         values = _segment_values(np.asarray([[1.0, 2.0], [3.0, 5.0]]))
         metric = (values, {"unit": "mm/s"})
@@ -84,10 +87,10 @@ def test_velocity_signals_export_png_and_eps_for_both_vessels() -> None:
         paths = export_velocity_signals(output, metric, metric)
 
         assert {path.relative_to(output.layout.ef_dir).as_posix() for path in paths} == {
-            "png/velocity/artery_velocity.png",
-            "eps/velocity/artery_velocity.eps",
-            "png/velocity/vein_velocity.png",
-            "eps/velocity/vein_velocity.eps",
+            "png/velocity/sample_artery_velocity.png",
+            "eps/velocity/sample_artery_velocity.eps",
+            "png/velocity/sample_vein_velocity.png",
+            "eps/velocity/sample_vein_velocity.eps",
         }
         for path in paths:
             assert path.is_file()

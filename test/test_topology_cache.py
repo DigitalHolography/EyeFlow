@@ -35,7 +35,7 @@ class TopologyCacheTests(unittest.TestCase):
         for prepared in initial:
             prepared.topology.window_side_pixels = 1
         final = [
-            replace(prepared, topology=SimpleNamespace(
+            replace(prepared, native=SimpleNamespace(
                 **{**vars(prepared.topology), "window_side_pixels": 3},
             ))
             for prepared in initial
@@ -198,7 +198,7 @@ def _prepared_topology(
         labels=labels,
     )
     return PreparedTopology(
-        topology=topology,
+        native=topology,
         rotation_degrees=np.asarray([[marker]], dtype=np.float32),
         interpolated_masks=np.ones((1, 1, 3, 3), dtype=bool),
         rotated_masks=np.ones((1, 1, 5, 5), dtype=bool),

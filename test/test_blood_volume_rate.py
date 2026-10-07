@@ -16,6 +16,7 @@ from calculations.blood_volume_rate import (
 )
 from calculations.math import nanmean_float32
 from calculations.topology import AnnulusGeometry
+from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager
 from input_output.profile_datasets import _profile_dataset
 from input_output.schema import EyeFlowOutputPaths
@@ -32,6 +33,13 @@ from pipelines.blood_volume_rate.outputs import (
 )
 
 
+def _expected_circular_lumen_flow(velocity, diameter_mm) -> np.ndarray:
+    diameter = np.asarray(diameter_mm, dtype=np.float32)
+    area = np.float32(np.pi / 4.0) * diameter**2
+    R_sigma = np.sqrt(diameter / np.float32(0.08))
+    return np.asarray(velocity, dtype=np.float32) / R_sigma * area
+
+
 def test_circular_lumen_flow_supports_dynamic_and_static_geometry() -> None:
     velocity = np.asarray(
         [[[[2.0]]], [[[3.0]]]],
@@ -45,11 +53,11 @@ def test_circular_lumen_flow_supports_dynamic_and_static_geometry() -> None:
 
     np.testing.assert_allclose(
         circular_lumen_flow(velocity, static_diameter),
-        velocity * np.pi * static_diameter**2 / 4.0,
+        _expected_circular_lumen_flow(velocity, static_diameter),
     )
     np.testing.assert_allclose(
         circular_lumen_flow(velocity, dynamic_diameter),
-        velocity * np.pi * dynamic_diameter**2 / 4.0,
+        _expected_circular_lumen_flow(velocity, dynamic_diameter),
     )
 
 
@@ -79,7 +87,7 @@ def test_mask_geometry_and_signed_flow_keep_established_model() -> None:
 
     velocity = np.full((8, 1, 1, 1), -2.0, dtype=np.float32)
     rate = circular_lumen_flow(velocity, diameters[0])
-    expected_rate = -2.0 * np.pi / 4.0 * expected_diameter**2
+    expected_rate = _expected_circular_lumen_flow(-2.0, expected_diameter)
     np.testing.assert_allclose(rate, expected_rate)
     np.testing.assert_allclose(total_masked_edges_flow(rate), expected_rate)
 
@@ -94,32 +102,22 @@ def test_total_masked_edges_flow_uses_centered_periodic_nine_point_window() -> N
 
 
 def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
-    prepared = object()
-    velocity_topology = SimpleNamespace(
+    topology = SimpleNamespace(
         valid_segments=np.ones((1, 1), dtype=bool),
-        segment_centers_xy=np.asarray([[[2.0, 3.0]]], dtype=np.float32),
-        profile_rotation_degrees=np.asarray([[17.0]], dtype=np.float32),
-        prepared_topology=prepared,
     )
     profiles = np.broadcast_to(
         np.asarray([0.0, 1.0, 4.0, 9.0, 16.0, 25.0], dtype=np.float32),
         (1, 1, 3, 6),
     ).copy()
     velocity_segments = SimpleNamespace(
-        labels=np.asarray([[1]], dtype=np.int32),
-        branch_ids=np.asarray([1], dtype=np.int32),
-        topology=velocity_topology,
-        transverse_profiles_masked=profiles,
-        profile_pixel_size_mm=0.02,
+        profile=SimpleNamespace(
+            topology=topology,
+            transverse=SimpleNamespace(masked=profiles),
+            sample_spacing_mm=0.02,
+        ),
     )
     gradient_segments = SimpleNamespace(
-        labels=velocity_segments.labels,
-        branch_ids=velocity_segments.branch_ids,
-        topology=SimpleNamespace(
-            segment_centers_xy=np.asarray([[[2.0, 3.0]]], dtype=np.float32),
-            profile_rotation_degrees=np.asarray([[17.0]], dtype=np.float32),
-            prepared_topology=prepared,
-        ),
+        topology=topology,
     )
     cycle_boundaries = np.asarray([0, 2], dtype=np.int32)
     profile_dataset = _profile_dataset(
@@ -151,6 +149,18 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         ),
         cycle_boundaries,
         index_base=0,
+    )
+    transient_gradient_outputs = pack_gradient_edge_outputs(
+        velocity_segments,
+        velocity_segments,
+        SimpleNamespace(
+            artery_segments=gradient_segments,
+            vein_segments=gradient_segments,
+            outputs=edges,
+        ),
+        cycle_boundaries,
+        index_base=0,
+        gradient_sources_persisted=False,
     )
 
     topology = SimpleNamespace(
@@ -191,6 +201,18 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         assert not gradient_outputs[vessel_paths.dynamic_edges].attrs[
             "source_velocity"
         ].startswith("/")
+        persisted_attrs = gradient_outputs[vessel_paths.dynamic_edges].attrs
+        assert persisted_attrs["source_edge_storage"] == "persisted_hdf5"
+        assert persisted_attrs["source_left_edge_index"].startswith("/")
+        transient_attrs = transient_gradient_outputs[
+            vessel_paths.dynamic_edges
+        ].attrs
+        assert transient_attrs["source_edge_storage"] == "transient_run_state"
+        assert "source_left_edge_index" not in transient_attrs
+        assert "source_right_edge_index" not in transient_attrs
+        assert transient_attrs["source_left_edge_calculation_key"].startswith(
+            "Processing/SpatialGradientMetrics/"
+        )
         np.testing.assert_allclose(
             gradient_outputs[vessel_paths.dynamic_edges].data,
             expected_gradient_rate,
@@ -250,9 +272,11 @@ def test_lumen_diameter_distribution_uses_five_micron_bins_and_scaled_gaussian()
 
 def test_lumen_diameter_distributions_export_png_and_eps_for_both_vessels() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
-        output = OutputManager.from_holo(
-            Path(temp_dir) / "sample.holo",
-            output_root=Path(temp_dir),
+        output = OutputManager(
+            HoloRunLayout.from_holo(
+                Path(temp_dir) / "sample.holo",
+                output_root=Path(temp_dir),
+            )
         )
         paths = export_lumen_diameter_distributions(
             output,
@@ -262,10 +286,10 @@ def test_lumen_diameter_distributions_export_png_and_eps_for_both_vessels() -> N
         )
 
         assert {path.relative_to(output.layout.ef_dir).as_posix() for path in paths} == {
-            "png/lumen_diameter/artery_lumen_diameter_distribution.png",
-            "eps/lumen_diameter/artery_lumen_diameter_distribution.eps",
-            "png/lumen_diameter/vein_lumen_diameter_distribution.png",
-            "eps/lumen_diameter/vein_lumen_diameter_distribution.eps",
+            "png/lumen_diameter/sample_artery_lumen_diameter_distribution.png",
+            "eps/lumen_diameter/sample_artery_lumen_diameter_distribution.eps",
+            "png/lumen_diameter/sample_vein_lumen_diameter_distribution.png",
+            "eps/lumen_diameter/sample_vein_lumen_diameter_distribution.eps",
         }
         for path in paths:
             assert path.is_file()
@@ -329,9 +353,11 @@ def test_blood_volume_rate_figure_plots_median_and_one_sd_over_beats() -> None:
 
 def test_blood_volume_rate_signals_export_png_and_eps_for_both_vessels() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
-        output = OutputManager.from_holo(
-            Path(temp_dir) / "sample.holo",
-            output_root=Path(temp_dir),
+        output = OutputManager(
+            HoloRunLayout.from_holo(
+                Path(temp_dir) / "sample.holo",
+                output_root=Path(temp_dir),
+            )
         )
         total = DatasetValue(
             np.asarray([[1.0, 2.0], [3.0, 5.0]], dtype=np.float32)
@@ -340,10 +366,10 @@ def test_blood_volume_rate_signals_export_png_and_eps_for_both_vessels() -> None
         paths = export_blood_volume_rate_signals(output, total, total)
 
         assert {path.relative_to(output.layout.ef_dir).as_posix() for path in paths} == {
-            "png/blood_volume_rate/artery_blood_volume_rate.png",
-            "eps/blood_volume_rate/artery_blood_volume_rate.eps",
-            "png/blood_volume_rate/vein_blood_volume_rate.png",
-            "eps/blood_volume_rate/vein_blood_volume_rate.eps",
+            "png/blood_volume_rate/sample_artery_blood_volume_rate.png",
+            "eps/blood_volume_rate/sample_artery_blood_volume_rate.eps",
+            "png/blood_volume_rate/sample_vein_blood_volume_rate.png",
+            "eps/blood_volume_rate/sample_vein_blood_volume_rate.eps",
         }
         for path in paths:
             assert path.is_file()

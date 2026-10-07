@@ -12,7 +12,7 @@ from .runner import run_lowrank_waveform_decomposition
         "arterial and venous segment waveforms."
     ),
     requires=["numpy", "h5py"],
-    dag_requires=["waveform_velocity"],
+    dag_requires=["velocity_analysis"],
     dag_produces=["lowrank_waveform_decomposition"],
     options=[
         PipelineOption(

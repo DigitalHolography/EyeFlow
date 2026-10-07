@@ -105,6 +105,9 @@ class RunController:
                 pipeline_options=(
                     self.app.pipeline_library_controller.selected_pipeline_options()
                 ),
+                band_ratio_frequency_scale_hz=(
+                    self.app.settings_store.load_band_ratio_frequency_scale_hz()
+                ),
             )
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
             services_for(self.app).dialogs.showerror(

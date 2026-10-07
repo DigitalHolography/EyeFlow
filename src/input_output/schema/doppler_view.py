@@ -24,12 +24,6 @@ DOPPLER_VIEW_LAYOUT = SourceFileLayout(
 class DopplerViewSource(TypedSource):
     """Typed access to the DopplerView HDF5 file and sidecar config."""
 
-    layout = DOPPLER_VIEW_LAYOUT
-
-    @classmethod
-    def from_context(cls, ctx) -> DopplerViewSource:
-        return cls(ctx.inputs.dv.h5, ctx.inputs.dv.config)
-
     def retinal_artery_mask(self) -> np.ndarray:
         return self._array("segmentation/Retina/artery_mask", dtype=bool)
 

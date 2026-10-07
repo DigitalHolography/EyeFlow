@@ -49,6 +49,7 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                 result = run_pdf_report(ctx)
 
             kwargs = generate.call_args.kwargs
+            self.assertEqual(output_h5_path, kwargs["output_h5_path"])
             self.assertEqual("scan", kwargs["folder_name"])
             self.assertEqual(manager.layout.ef_dir / "pdf", kwargs["output_dir"])
             self.assertEqual(manager.layout.ef_dir / "png", kwargs["png_dir"])
@@ -66,11 +67,11 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                     data=np.full((2, 3), 4.0),
                 )
                 output_h5.create_dataset(
-                    schema.beat_period_seconds,
-                    data=np.asarray([[0.5, 0.5]]),
+                    schema.cardiac_cycle.systolic_cycle_duration_seconds,
+                    data=np.asarray([0.5, 0.5]),
                 )
                 output_h5.create_dataset(
-                    schema.heartbeat.spectral_heart_rate_bpm,
+                    schema.cardiac_cycle.spectral_heart_rate_bpm,
                     data=np.asarray(96.795),
                 )
                 output_h5.create_dataset(
@@ -78,11 +79,26 @@ class PdfReportRunnerPathTests(unittest.TestCase):
                     data=np.asarray([0.2, 0.4]),
                 )
 
-            parameters = _extract_parameters_from_h5([path])
+            parameters = _extract_parameters_from_h5(path)
 
         self.assertEqual(4.0, parameters["Average_Arterial_Velocity"]["value"])
         self.assertAlmostEqual(96.795, parameters["heart_beat"]["value"])
         self.assertAlmostEqual(0.3, parameters["ARI"]["value"])
+
+    def test_uses_canonical_cycle_durations_as_heart_rate_fallback(self) -> None:
+        schema = EyeFlowOutputPaths.active()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "scan_EF.h5"
+            with h5py.File(path, "w") as output_h5:
+                output_h5.create_dataset(
+                    schema.cardiac_cycle.systolic_cycle_duration_seconds,
+                    data=np.asarray([0.5, 0.75]),
+                )
+
+            parameters = _extract_parameters_from_h5(path)
+
+        self.assertEqual("bpm", parameters["heart_beat"]["unit"])
+        self.assertAlmostEqual(96.0, parameters["heart_beat"]["value"])
 
 
 def _fake_context(manager: OutputManager, output_h5_path: Path, hd_h5_path: Path):

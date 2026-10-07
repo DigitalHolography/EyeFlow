@@ -84,7 +84,10 @@ def test_mask_derived_flow_keeps_equivalent_diameter_model() -> None:
     )
     artery = circular_lumen_flow(segments.projected_signal, diameters[0])
     diameter_mm = areas[0][0] * 0.1 / radial_widths
-    expected = 2.0 * np.pi / 4.0 * diameter_mm**2
+    area = np.float32(np.pi / 4.0) * diameter_mm**2
+    expected = np.float32(2.0) / np.sqrt(
+        diameter_mm / np.float32(0.08)
+    ) * area
     np.testing.assert_allclose(
         artery[:, 0, 0, :],
         np.broadcast_to(expected, (2, 2)),

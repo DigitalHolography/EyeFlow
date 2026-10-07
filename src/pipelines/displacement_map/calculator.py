@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import h5py
 import numpy as np
+
+from calculations.math.temporal_median import CenteredMedianBuffer
 
 try:
     import cv2
@@ -18,7 +21,6 @@ except ImportError:
     tqdm = None
 
 from .constants import PDE_REGISTRATION_METHODS
-from .filtering import CenteredMedianBuffer
 from .outputs import OutputCaches, select_display_range, write_magnitude_video
 from .parameters import MotionMapConfig, PhotometricConfig
 from .preprocessing import (
@@ -39,6 +41,7 @@ def create_retinal_motion_map(
     *,
     analysis_mask_array: np.ndarray | None = None,
     magnitude_video_path: Path | None = None,
+    h5_source: h5py.Dataset | None = None,
 ) -> dict[str, Path]:
     if cv2 is None:
         raise RuntimeError("OpenCV is required to create a displacement map.")
@@ -54,6 +57,7 @@ def create_retinal_motion_map(
         args.h5_fps,
         args.h5_low_percentile,
         args.h5_high_percentile,
+        h5_source=h5_source,
     )
     frame_capacity = sequence.frame_count
     if args.max_frames is not None:

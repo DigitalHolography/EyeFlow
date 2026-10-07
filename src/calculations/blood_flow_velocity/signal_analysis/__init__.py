@@ -1,12 +1,12 @@
 """Signal-analysis routines for blood-flow velocity calculations."""
 
-from .heartbeat import (
-    HeartbeatAnalysisResult,
-    SpectralHeartbeatResult,
+from .cardiac_cycle import (
+    CardiacCycleAnalysis,
+    SpectralCardiacCycleAnalysis,
     SystoleDetectionResult,
+    analyze_cardiac_cycles,
     find_systole_index,
-    run_heartbeat_analysis,
-    spectral_heartbeat_analysis,
+    spectral_cardiac_cycle_analysis,
 )
 from .waveform import (
     ArterialWaveformAnalysis,
@@ -23,20 +23,20 @@ from .waveform import (
 
 __all__ = [
     "ArterialWaveformAnalysis",
-    "HeartbeatAnalysisResult",
+    "CardiacCycleAnalysis",
     "PairedVesselCycles",
     "PulseMetricData",
-    "SpectralHeartbeatResult",
+    "SpectralCardiacCycleAnalysis",
     "SystoleDetectionResult",
     "VenousWaveformAnalysis",
     "arterial_waveform_analysis",
     "average_cycle",
     "cycle_extrema",
+    "analyze_cardiac_cycles",
     "find_systole_index",
     "paired_vessel_cycles",
     "pulse_metric",
-    "run_heartbeat_analysis",
-    "spectral_heartbeat_analysis",
+    "spectral_cardiac_cycle_analysis",
     "venous_waveform_analysis",
 ]
 

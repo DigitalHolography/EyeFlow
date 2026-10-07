@@ -28,9 +28,9 @@ LUMEN_DIAMETER_FONT_FAMILY = "Times New Roman"
 LUMEN_DIAMETER_FONT_SIZE = 8
 LUMEN_DIAMETER_LEGEND_FONT_SIZE = 8
 LUMEN_DIAMETER_HISTOGRAM_GRAY = "0.8"
-LUMEN_DIAMETER_HISTOGRAM_EDGE_GRAY = "0.4"
+LUMEN_DIAMETER_HISTOGRAM_EDGE_GRAY = "0.25"
 LUMEN_DIAMETER_BOX_LINE_WIDTH = 0.4
-LUMEN_DIAMETER_GAUSSIAN_LINE_WIDTH = 0.8
+LUMEN_DIAMETER_GAUSSIAN_LINE_WIDTH = 0.625
 BLOOD_VOLUME_RATE_ENVELOPE_GRAY = "0.80"
 BLOOD_VOLUME_RATE_LINE_WIDTH = 0.8  
 
@@ -42,6 +42,7 @@ def pack_gradient_edge_outputs(
     cycle_boundary_indexes,
     *,
     index_base: int,
+    gradient_sources_persisted: bool = True,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, DatasetValue]:
     """Calculate dynamic- and static-edge flow for both vessel classes."""
@@ -64,12 +65,15 @@ def pack_gradient_edge_outputs(
     )
     for vessel_name, velocity, gradient, paths in vessels:
         _validate_profile_segment_alignment(vessel_name, velocity, gradient)
+        velocity_profile = velocity.profile
         profile = _profile_dataset(
-            np.asarray(velocity.transverse_profiles_masked, dtype=np.float32),
+            np.asarray(velocity_profile.transverse.masked, dtype=np.float32),
             cycle_boundary_indexes,
             index_base=index_base,
             spatial_axis="x",
-            valid_segments=np.asarray(velocity.topology.valid_segments, dtype=bool),
+            valid_segments=np.asarray(
+                velocity_profile.topology.valid_segments, dtype=bool
+            ),
         )
         metrics_root = (
             f"Processing/SpatialGradientMetrics/{vessel_name}/"
@@ -79,7 +83,7 @@ def pack_gradient_edge_outputs(
         right_path = f"{metrics_root}/right_edge_index"
         left_value = gradient_products.outputs[left_path]
         right_value = gradient_products.outputs[right_path]
-        pixel_size_mm = float(velocity.profile_pixel_size_mm)
+        pixel_size_mm = float(velocity_profile.sample_spacing_mm)
         outputs[paths.dynamic_edges] = _gradient_edge_dataset(
             profile,
             left_value,
@@ -87,6 +91,7 @@ def pack_gradient_edge_outputs(
             profile_pixel_size_mm=pixel_size_mm,
             left_edge_path=left_path,
             right_edge_path=right_path,
+            gradient_sources_persisted=gradient_sources_persisted,
             static_edges=False,
         )
         outputs[paths.static_edges] = _gradient_edge_dataset(
@@ -96,6 +101,7 @@ def pack_gradient_edge_outputs(
             profile_pixel_size_mm=pixel_size_mm,
             left_edge_path=left_path,
             right_edge_path=right_path,
+            gradient_sources_persisted=gradient_sources_persisted,
             static_edges=True,
         )
     return outputs
@@ -109,6 +115,7 @@ def _gradient_edge_dataset(
     profile_pixel_size_mm: float,
     left_edge_path: str,
     right_edge_path: str,
+    gradient_sources_persisted: bool,
     static_edges: bool,
 ) -> DatasetValue:
     left = np.asarray(left_edge.data, dtype=np.float32)
@@ -125,6 +132,22 @@ def _gradient_edge_dataset(
         np.float32(np.nan),
     )
     rate = circular_lumen_flow(velocity, diameter_mm)
+    source_attrs: dict[str, object] = {
+        "source_edge_storage": (
+            "persisted_hdf5"
+            if gradient_sources_persisted
+            else "transient_run_state"
+        ),
+        "source_left_edge_calculation_key": left_edge_path,
+        "source_right_edge_calculation_key": right_edge_path,
+    }
+    if gradient_sources_persisted:
+        source_attrs.update(
+            {
+                "source_left_edge_index": f"/{left_edge_path.lstrip('/')}",
+                "source_right_edge_index": f"/{right_edge_path.lstrip('/')}",
+            }
+        )
     return DatasetValue(
         rate,
         {
@@ -134,9 +157,8 @@ def _gradient_edge_dataset(
                 "mean masked transverse velocity multiplied by the circular "
                 "lumen area implied by the spatial-gradient edges"
             ),
-            "source_velocity": "waveform_velocity_core.masked_transverse_profile",
-            "source_left_edge_index": f"/{left_edge_path.lstrip('/')}",
-            "source_right_edge_index": f"/{right_edge_path.lstrip('/')}",
+            "source_velocity": "velocity_analysis.masked_transverse_profile",
+            **source_attrs,
             "diameter_model": "gradient_edge_separation_times_profile_pixel_size",
             "cross_section_model": "circular_pi_diameter_squared_over_4",
             "velocity_reduction": "mean_over_finite_transverse_profile_samples",
@@ -194,7 +216,7 @@ def pack_mask_derived_outputs(
                     "safe per-beat segment velocity multiplied by an equivalent "
                     "circular lumen area derived from native vessel-mask pixels"
                 ),
-                "source_velocity": "waveform_velocity_core.safe_per_beat_segment_velocity",
+                "source_velocity": "velocity_analysis.safe_per_beat_segment_velocity",
                 "diameter_model": "masked_pixel_count_over_radial_width",
                 "diameter_model_assumption": "locally_radial_vessel",
                 "cross_section_model": "circular_pi_diameter_squared_over_4",
@@ -222,7 +244,7 @@ def pack_mask_derived_outputs(
                 "temporal_window_size": np.int32(TOTAL_MASKED_EDGES_WINDOW_SIZE),
                 "temporal_window_stride": np.int32(TOTAL_MASKED_EDGES_WINDOW_STRIDE),
                 "temporal_boundary_mode": "circular",
-                "temporal_window_alignment": "forward",
+                "temporal_window_alignment": "centered",
                 "temporal_nan_policy": "propagate",
                 "branch_reduction": "sum_over_finite_values",
                 "radius_reduction": "median_over_finite_values",
@@ -486,29 +508,13 @@ def _eps_output_type():
 
 
 def _validate_profile_segment_alignment(vessel_name, velocity, gradient) -> None:
-    for field in ("labels", "branch_ids"):
-        if not np.array_equal(
-            np.asarray(getattr(velocity, field)),
-            np.asarray(getattr(gradient, field)),
-        ):
-            raise RuntimeError(f"{vessel_name} segment {field} do not match.")
-    velocity_topology = velocity.topology
+    velocity_topology = velocity.profile.topology
     gradient_topology = gradient.topology
-    velocity_centers = np.asarray(velocity_topology.segment_centers_xy)
-    if not np.allclose(
-        velocity_centers,
-        np.asarray(gradient_topology.segment_centers_xy),
-        equal_nan=True,
+    if (
+        velocity_topology is not gradient_topology
+        and not velocity_topology.is_aligned_with(gradient_topology)
     ):
-        raise RuntimeError(f"{vessel_name} segment centers do not match.")
-    if not np.allclose(
-        np.asarray(velocity_topology.profile_rotation_degrees),
-        np.asarray(gradient_topology.profile_rotation_degrees),
-        equal_nan=True,
-    ):
-        raise RuntimeError(f"{vessel_name} segment rotations do not match.")
-    if velocity_topology.prepared_topology is not gradient_topology.prepared_topology:
-        raise RuntimeError(f"{vessel_name} analyses did not share prepared topology.")
+        raise RuntimeError(f"{vessel_name} profile segment topologies do not align.")
 
 
 def _metric_data(value) -> np.ndarray:
