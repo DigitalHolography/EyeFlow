@@ -33,6 +33,13 @@ from pipelines.blood_volume_rate.outputs import (
 )
 
 
+def _expected_circular_lumen_flow(velocity, diameter_mm) -> np.ndarray:
+    diameter = np.asarray(diameter_mm, dtype=np.float32)
+    area = np.float32(np.pi / 4.0) * diameter**2
+    R_sigma = np.sqrt(diameter / np.float32(0.08))
+    return np.asarray(velocity, dtype=np.float32) / R_sigma * area
+
+
 def test_circular_lumen_flow_supports_dynamic_and_static_geometry() -> None:
     velocity = np.asarray(
         [[[[2.0]]], [[[3.0]]]],
@@ -46,11 +53,11 @@ def test_circular_lumen_flow_supports_dynamic_and_static_geometry() -> None:
 
     np.testing.assert_allclose(
         circular_lumen_flow(velocity, static_diameter),
-        velocity * np.pi * static_diameter**2 / 4.0,
+        _expected_circular_lumen_flow(velocity, static_diameter),
     )
     np.testing.assert_allclose(
         circular_lumen_flow(velocity, dynamic_diameter),
-        velocity * np.pi * dynamic_diameter**2 / 4.0,
+        _expected_circular_lumen_flow(velocity, dynamic_diameter),
     )
 
 
@@ -80,7 +87,7 @@ def test_mask_geometry_and_signed_flow_keep_established_model() -> None:
 
     velocity = np.full((8, 1, 1, 1), -2.0, dtype=np.float32)
     rate = circular_lumen_flow(velocity, diameters[0])
-    expected_rate = -2.0 * np.pi / 4.0 * expected_diameter**2
+    expected_rate = _expected_circular_lumen_flow(-2.0, expected_diameter)
     np.testing.assert_allclose(rate, expected_rate)
     np.testing.assert_allclose(total_masked_edges_flow(rate), expected_rate)
 

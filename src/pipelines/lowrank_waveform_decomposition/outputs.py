@@ -81,7 +81,10 @@ def pack_lowrank_waveform_decomposition_outputs(
 ) -> dict[str, object]:
     """Compute the requested low-rank endpoint and per-beat metric outputs."""
     schema = _resolve_output_paths(output_paths)
-    periods = _required_array(velocity_outputs, schema.beat_period_seconds)
+    periods = _required_array(
+        velocity_outputs,
+        schema.cardiac_cycle.systolic_cycle_duration_seconds,
+    )
     calculator = LowRankWaveformDecompositionCalculator()
     outputs: dict[str, object] = {}
 

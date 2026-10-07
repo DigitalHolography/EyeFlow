@@ -114,8 +114,8 @@ class WaveformShapeMetricsTests(unittest.TestCase):
     def test_runner_rejects_an_incomplete_waveform_pair(self):
         schema = EyeFlowOutputPaths.active()
         packed_metrics = {
-            schema.beat_period_seconds: (
-                np.asarray([[0.8]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: (
+                np.asarray([0.8], dtype=np.float32),
                 {"unit": "s"},
             ),
             schema.artery_per_beat.velocity_signal: np.ones(
@@ -137,7 +137,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             ],
             dtype=np.float32,
         )
-        periods = np.asarray([[1.0, 1.0]], dtype=np.float32)
+        periods = np.asarray([1.0, 1.0], dtype=np.float32)
 
         result = WaveformShapeMetricsCalculator()._compute_block_global(
             cycles,
@@ -158,7 +158,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
                 np.full(8, np.nan),
             )
         )
-        periods = np.asarray([[1.0, 0.0, 1.0, 1.0, 1.0]], dtype=np.float32)
+        periods = np.asarray([1.0, 0.0, 1.0, 1.0, 1.0], dtype=np.float32)
         messages = []
         Logger.configure(on_log=messages.append)
 
@@ -470,8 +470,8 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             axis=1,
         ).astype(np.float32)
         return {
-            schema.beat_period_seconds: (
-                np.asarray([[0.8, 0.9]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: (
+                np.asarray([0.8, 0.9], dtype=np.float32),
                 {"unit": "s"},
             ),
             schema.artery_per_beat.velocity_signal: waveform,

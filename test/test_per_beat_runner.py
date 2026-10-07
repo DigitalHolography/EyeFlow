@@ -39,6 +39,7 @@ from pipelines.velocity_analysis.builder import (  # noqa: E402
     _waveform_segment_input,
 )
 from pipelines.velocity_analysis.outputs.per_beat import (  # noqa: E402
+    pack_velocity_per_beat_inputs,
     pack_velocity_per_beat_outputs,
 )
 
@@ -286,9 +287,30 @@ class PerBeatRunnerTests(unittest.TestCase):
             inputs.cycle_boundary_indexes,
         )
         outputs = pack_velocity_per_beat_outputs(result)
+        self.assertNotIn(
+            "Processing/VelocityPerBeat/BeatPeriodSeconds/value",
+            outputs,
+        )
         self.assertFalse(any("Vmax" in path for path in outputs))
         self.assertFalse(any("Vmin" in path for path in outputs))
         self.assertFalse(any("VTI" in path for path in outputs))
+
+        inputs = pack_velocity_per_beat_inputs(
+            result,
+            velocity=SimpleNamespace(
+                cycle_durations_seconds=np.asarray(
+                    [4.0, 3.0, 2.95],
+                    dtype=np.float32,
+                ),
+                provenance={},
+            ),
+        )
+        schema = EyeFlowOutputPaths.active()
+        cycle_durations, attrs = inputs[
+            schema.cardiac_cycle.systolic_cycle_duration_seconds
+        ]
+        np.testing.assert_allclose(cycle_durations, [4.0, 3.0, 2.95])
+        self.assertEqual("s", attrs["unit"])
 
 
 if __name__ == "__main__":

@@ -76,7 +76,9 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
             ),
         )
         velocity_outputs = {
-            schema.beat_period_seconds: np.asarray([[0.8, 0.9]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8, 0.9], dtype=np.float32
+            ),
             schema.artery_per_beat.segment_velocity_signal: waveforms,
         }
 
@@ -115,7 +117,9 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
         sample_count = 8
         waveforms = np.ones((sample_count, 1, 1, 3), dtype=np.float32)
         velocity_outputs = {
-            schema.beat_period_seconds: np.asarray([[0.8]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8], dtype=np.float32
+            ),
             schema.artery_per_beat.segment_velocity_signal: waveforms,
         }
 
@@ -132,7 +136,9 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
         schema = EyeFlowOutputPaths.active()
         waveforms = np.ones((8, 1, 1, 3), dtype=np.float32)
         velocity_outputs = {
-            schema.beat_period_seconds: np.asarray([[0.8]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8], dtype=np.float32
+            ),
             schema.artery_per_beat.segment_velocity_signal: DatasetValue(
                 waveforms,
                 {"unit": "1"},

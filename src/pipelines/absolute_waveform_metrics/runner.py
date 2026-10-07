@@ -2,7 +2,7 @@
 
 from pipelines.velocity_analysis import velocity_analysis
 from pipelines.velocity_analysis.outputs import (
-    pack_velocity_per_beat_outputs,
+    pack_velocity_per_beat_inputs,
 )
 
 from .outputs import pack_absolute_waveform_outputs
@@ -12,7 +12,7 @@ def run_absolute_waveform_metrics(ctx) -> dict[str, object]:
     """Calculate default global metrics and selected regional products."""
     selected = ctx.options_for("absolute_waveform_metrics")
     analysis = velocity_analysis(ctx)
-    velocity_outputs = pack_velocity_per_beat_outputs(
+    velocity_outputs = pack_velocity_per_beat_inputs(
         analysis.per_beat_result,
         velocity=analysis.velocity,
     )

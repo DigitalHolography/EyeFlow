@@ -336,7 +336,7 @@ def _extract_heart_rate(f: h5py.File, params: dict[str, Any]) -> None:
             return
 
     beat_paths = [
-        schema.beat_period_seconds,
+        schema.cardiac_cycle.systolic_cycle_duration_seconds,
         "Artery/VelocityPerBeat/beatPeriodSeconds/value",
         "perbeat/beat_period_seconds/value",
     ]

@@ -147,6 +147,12 @@ families are:
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
 - `/Meta` for provenance and selected pass-through data.
 
+Per-beat durations are published once at
+`/Processing/CardiacCycle/Systole/CycleDurationSeconds/value` as a `(beat,)`
+vector. The
+`/Processing/VelocityPerBeat` family contains beat-aligned velocity waveforms,
+not a duplicate duration dataset.
+
 `/Processing/Maps/VelocityAverageMasked/value` is the temporal mean of the
 background-subtracted velocity used by the vessel waveform analysis. The
 unmasked velocity average and intermediate delta-frequency average are not

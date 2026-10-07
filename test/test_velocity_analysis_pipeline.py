@@ -96,7 +96,7 @@ class VelocityAnalysisPipelineTests(unittest.TestCase):
             ),
             patch.object(
                 lowrank_runner,
-                "pack_velocity_per_beat_outputs",
+                "pack_velocity_per_beat_inputs",
                 return_value=velocity_outputs,
             ),
             patch.object(
@@ -545,7 +545,7 @@ class VelocityAnalysisPipelineTests(unittest.TestCase):
             ),
             patch.object(
                 metric_runner,
-                "pack_velocity_per_beat_outputs",
+                "pack_velocity_per_beat_inputs",
                 return_value={"global": 1},
             ),
             patch.object(
@@ -642,7 +642,7 @@ class VelocityAnalysisPipelineTests(unittest.TestCase):
             ),
             patch.object(
                 metric_runner,
-                "pack_velocity_per_beat_outputs",
+                "pack_velocity_per_beat_inputs",
                 return_value={"global": 1},
             ),
             patch.object(

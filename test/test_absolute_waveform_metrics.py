@@ -110,7 +110,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             axis=0,
         ).astype(np.float32)
         inputs = {
-            schema.beat_period_seconds: np.asarray([[0.8, 0.9]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8, 0.9], dtype=np.float32
+            ),
             schema.artery_per_beat.velocity_signal: waveform,
             schema.artery_per_beat.velocity_signal_band_limited: waveform,
         }
@@ -133,7 +135,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
         waveform = np.ones((2, 8), dtype=np.float32)
         segments = np.ones((8, 2, 3, 2), dtype=np.float32)
         inputs = {
-            schema.beat_period_seconds: np.asarray([[0.8, 0.9]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8, 0.9], dtype=np.float32
+            ),
             schema.artery_per_beat.velocity_signal: waveform,
             schema.artery_per_beat.velocity_signal_band_limited: waveform,
             schema.artery_per_beat.segment_velocity_signal: segments,
@@ -151,7 +155,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
     def test_incomplete_waveform_pair_is_rejected(self) -> None:
         schema = EyeFlowOutputPaths.active()
         inputs = {
-            schema.beat_period_seconds: np.asarray([[0.8]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8], dtype=np.float32
+            ),
             schema.artery_per_beat.velocity_signal: np.ones(
                 (1, 8),
                 dtype=np.float32,
@@ -183,7 +189,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
         )
         source_data = SimpleNamespace(optic_disc_center=np.asarray([3.0, 2.0]))
         inputs = {
-            schema.beat_period_seconds: np.asarray([[0.8, 0.9]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8, 0.9], dtype=np.float32
+            ),
             schema.artery_per_beat.velocity_signal: waveform,
             schema.artery_per_beat.velocity_signal_band_limited: waveform,
             schema.artery_per_beat.segment_velocity_signal: segment_waveform,
@@ -234,7 +242,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
         waveform = np.ones((1, 8), dtype=np.float32)
         state = _State()
         packed = {
-            schema.beat_period_seconds: np.asarray([[0.8]], dtype=np.float32),
+            schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
+                [0.8], dtype=np.float32
+            ),
             schema.artery_per_beat.velocity_signal: waveform,
             schema.artery_per_beat.velocity_signal_band_limited: waveform,
         }
@@ -250,7 +260,7 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
                 return_value=shared,
             ),
             patch(
-                "pipelines.absolute_waveform_metrics.runner.pack_velocity_per_beat_outputs",
+                "pipelines.absolute_waveform_metrics.runner.pack_velocity_per_beat_inputs",
                 return_value=packed,
             ),
         ):

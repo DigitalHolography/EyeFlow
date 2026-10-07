@@ -22,6 +22,7 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
             "velocity",
             "topology_core",
             "velocity_analysis",
+            "waveform_shape_metrics",
             "absolute_waveform_metrics",
             "blood_volume_rate",
         } & {descriptor.name for descriptor in missing}
@@ -30,12 +31,14 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
             input_paths=[holo],
             target_names=[
                 "velocity_analysis",
+                "waveform_shape_metrics",
                 "absolute_waveform_metrics",
                 "blood_volume_rate",
             ],
             pipelines=available,
             pipeline_options={
                 "velocity_analysis": ("segments",),
+                "waveform_shape_metrics": (),
                 "absolute_waveform_metrics": (),
                 "blood_volume_rate": ("masked_edges",),
             },
@@ -65,6 +68,14 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
             assert artery_per_beat.attrs["unit"] == "mm/s"
             assert artery_per_beat.attrs["velocity_estimation_method"] == "frequency_bands"
             assert artery_per_beat.attrs["band_ratio_frequency_scale_hz"] == 2.0
+
+            cycle_durations = output[
+                schema.cardiac_cycle.systolic_cycle_duration_seconds
+            ]
+            assert cycle_durations.attrs["unit"] == "s"
+            assert cycle_durations.ndim == 1
+            assert cycle_durations.size > 0
+            assert "Processing/VelocityPerBeat/BeatPeriodSeconds/value" not in output
 
             frequency_map = output[schema.analysis.fRMS_avg]
             assert frequency_map.attrs["unit"] == "Hz"

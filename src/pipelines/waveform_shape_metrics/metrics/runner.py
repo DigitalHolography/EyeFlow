@@ -41,7 +41,10 @@ def waveform_shape_metric_inputs_from_outputs(
 
     schema = _resolve_output_paths(output_paths)
     return WaveformShapeMetricInputs(
-        beat_period_seconds=_required_array(metrics, schema.beat_period_seconds),
+        beat_period_seconds=_required_array(
+            metrics,
+            schema.cardiac_cycle.systolic_cycle_duration_seconds,
+        ),
         artery=_read_vessel(metrics, schema.artery_per_beat),
         vein=_read_vessel(metrics, schema.vein_per_beat),
     )

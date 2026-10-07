@@ -428,7 +428,9 @@ def _context_attrs(
             analysis_paths.retinal_vein_velocity_signal
         ),
         "systolic_peak_indexes_path": analysis_paths.beat_indices,
-        "beat_period_seconds_path": output_paths.beat_period_seconds,
+        "cycle_duration_seconds_path": (
+            output_paths.cardiac_cycle.systolic_cycle_duration_seconds
+        ),
         "heart_rate_hz": float(cardiac_cycle.heart_rate_hz),
         "heart_rate_bpm": float(cardiac_cycle.heart_rate_bpm),
         "heart_rate_ste_hz": float(cardiac_cycle.heart_rate_ste_hz),

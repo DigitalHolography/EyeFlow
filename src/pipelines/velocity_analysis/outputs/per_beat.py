@@ -22,13 +22,7 @@ def pack_velocity_per_beat_outputs(
 ) -> dict[str, object]:
     schema = resolve_output_paths(output_paths)
     velocity_attrs = velocity_dataset_attrs(velocity)
-    metrics = {
-        schema.beat_period_seconds: metric_value(
-            _matlab_row_vector(result.beat_period_seconds),
-            unit="s",
-            dim_desc=("row", "beat"),
-        ),
-    }
+    metrics = {}
     metrics.update(
         _pack_vessel_outputs(
             schema.artery_per_beat,
@@ -58,6 +52,27 @@ def pack_velocity_per_beat_outputs(
         )
     )
     return metrics
+
+
+def pack_velocity_per_beat_inputs(
+    result: PerBeatAnalysisResult,
+    output_paths: EyeFlowOutputPaths | str | None = None,
+    *,
+    velocity: RetinalVelocity,
+) -> dict[str, object]:
+    """Pack per-beat waveforms plus canonical cardiac-cycle durations."""
+
+    schema = resolve_output_paths(output_paths)
+    inputs = pack_velocity_per_beat_outputs(
+        result,
+        schema,
+        velocity=velocity,
+    )
+    inputs[schema.cardiac_cycle.systolic_cycle_duration_seconds] = metric_value(
+        velocity.cycle_durations_seconds,
+        unit="s",
+    )
+    return inputs
 
 
 def _pack_vessel_outputs(
@@ -151,8 +166,7 @@ def _segment_metric_value(data, *, attrs: dict[str, object]):
     )
 
 
-def _matlab_row_vector(data) -> np.ndarray:
-    return np.asarray(data).reshape(1, -1)
-
-
-__all__ = ["pack_velocity_per_beat_outputs"]
+__all__ = [
+    "pack_velocity_per_beat_inputs",
+    "pack_velocity_per_beat_outputs",
+]
