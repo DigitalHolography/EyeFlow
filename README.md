@@ -67,10 +67,10 @@ Every velocity run attempts both methods:
   background-difference, and physical velocity conversion. Outputs use
   `/ProcessingAlt`; the calibration default is `1 Hz` per ratio unit.
 
-Cardiac cycles are detected once before either estimate, from raw moment-derived
-RMS frequency, falling back to calibrated HF/LF frequency when moments are
-unavailable or unusable. Both workflows use identical cycle timing and shared
-`/Segmentation` geometry. Selected downstream products are recalculated for
+Cardiac cycles are detected independently before each estimate, from raw
+moment-derived RMS frequency for moments and calibrated HF/LF frequency for
+bands. Each workflow uses its own cycle timing and shared `/Segmentation`
+geometry. Selected downstream products are recalculated for
 each method, and PNGs, videos, EPS files, and PDFs use separate `moments/` and
 `bandratio/` folders beneath their artifact-type directories.
 

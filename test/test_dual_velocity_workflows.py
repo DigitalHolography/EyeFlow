@@ -123,23 +123,29 @@ def test_both_workflows_use_independent_raw_frequency_cycles_and_downstream_beat
                 schema.cardiac_cycle.systolic_cycle_duration_seconds: (
                     np.diff(cycle.systole.systole_indexes) * 0.05
                 ),
-                schema.cardiac_cycle.spectral_fundamental_frequency_hz: cycle.spectral.fundamental_hz,
+                schema.cardiac_cycle.spectral_fundamental_frequency_hz: (
+                    cycle.spectral.fundamental_hz
+                ),
                 schema.cardiac_cycle.spectral_heart_rate_bpm: cycle.spectral.heart_rate_bpm,
-                schema.cardiac_cycle.spectral_heart_rate_standard_error_bpm: cycle.spectral.heart_rate_ste_bpm,
+                schema.cardiac_cycle.spectral_heart_rate_standard_error_bpm: (
+                    cycle.spectral.heart_rate_ste_bpm
+                ),
                 schema.cardiac_cycle.spectral_period_seconds: cycle.spectral.period_seconds,
             }
             for path, expected in expected_timing.items():
                 np.testing.assert_allclose(output[processing_path(path, root)][()], expected)
             beat_count = cycle.systole.systole_indexes.size - 1
-            assert output[processing_path(schema.artery_per_beat.velocity_signal, root)].shape[0] == beat_count
-            assert output[processing_path(schema.blood_volume_rate.artery.masked_edges, root)].shape[1] == beat_count
+            waveform = output[processing_path(schema.artery_per_beat.velocity_signal, root)]
+            flow = output[processing_path(schema.blood_volume_rate.artery.masked_edges, root)]
+            assert waveform.shape[0] == beat_count
+            assert flow.shape[1] == beat_count
 
-            def check_dataset(_name, value, expected_method=method):
+            def check_dataset(_name, value, expected_method=method, expected_beats=beat_count):
                 if isinstance(value, h5py.Dataset):
                     assert value.attrs["velocity_estimation_method"] == expected_method
                     dimensions = list(value.attrs.get("dimDesc", ()))
                     if "beat" in dimensions:
-                        assert value.shape[dimensions.index("beat")] == beat_count
+                        assert value.shape[dimensions.index("beat")] == expected_beats
 
             output[root].visititems(check_dataset)
         for path in (

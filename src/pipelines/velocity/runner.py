@@ -1,4 +1,4 @@
-"""Orchestrate shared velocity estimation and cardiac-cycle processing."""
+"""Orchestrate dual velocity estimation and workflow-specific cardiac cycles."""
 
 from __future__ import annotations
 
@@ -51,14 +51,14 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
     for method, source in tuple(sources.items()):
         try:
             cycle_analysis, cycle_source = detect_source_cardiac_cycles(source)
-            cycles[method] = (cycle_analysis, cycle_source)
-            if reference_shape is None:
-                reference_shape = _source_shape(source)
             _log_cardiac_cycle_warnings(
                 cycle_analysis,
                 cycle_source,
                 dt_seconds=float(source.holodoppler.timing.dt_seconds),
             )
+            if reference_shape is None:
+                reference_shape = _source_shape(source)
+            cycles[method] = (cycle_analysis, cycle_source)
         except Exception as exc:  # noqa: BLE001 - isolate a failed scientific workflow
             failures[method] = str(exc)
             del sources[method]
