@@ -284,7 +284,8 @@ class VelocityFFTProfileTests(unittest.TestCase):
         )
 
     def test_gpu_accumulator_does_not_silently_fall_back_to_cpu(self) -> None:
-        if optional_cupy_backend() is None:
+        backend = optional_cupy_backend()
+        if backend is None:
             self.skipTest("CuPy/CUDA is unavailable.")
 
         rng = np.random.default_rng(3402)
@@ -308,14 +309,14 @@ class VelocityFFTProfileTests(unittest.TestCase):
             cycle_boundary_indexes=np.asarray([0, 3, 6], dtype=np.int32),
             index_base=0,
         )
-        expected._observe_cpu(0, 0, stack, mask)
+        expected.observe(0, 0, stack, mask)
 
         with patch.object(
             _VelocityProfileFftAccumulator,
-            "_observe_cpu",
+            "_write_beat_cpu",
             side_effect=AssertionError("unexpected CPU fallback"),
         ):
-            accumulator.observe(0, 0, stack, mask)
+            accumulator.observe(0, 0, backend.cupy.asarray(stack), mask)
 
         np.testing.assert_allclose(
             accumulator.unmasked,

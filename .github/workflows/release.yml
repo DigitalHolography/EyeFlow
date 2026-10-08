@@ -227,11 +227,11 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Sync dependencies
+      - name: Refresh release lockfile
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
-          uv sync
+          uv lock
 
       - name: Create or reuse release commit
         id: commit
@@ -279,6 +279,17 @@ jobs:
 
           "installer_path=$($installer.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
 
+      - name: Retain installer verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-verification
+          path: |
+            build/installer/smoke-report.json
+            build/installer/size-report.json
+            build/installer/bundle-manifest.json
+          if-no-files-found: ignore
+
       - name: Atomically publish Git refs
         env:
           MAIN_SHA: ${{ steps.validate.outputs.main_sha }}
@@ -323,7 +334,7 @@ jobs:
                   throw "Release merge has unexpected conflicts: $conflictSummary"
               }
 
-              # uv sync updates the root package version for the release commit.
+              # uv lock updates the root package version for the release commit.
               # Keep that generated release lockfile when merging back into dev.
               git checkout --theirs -- uv.lock
               Assert-LastExit "Could not select the release version of uv.lock."

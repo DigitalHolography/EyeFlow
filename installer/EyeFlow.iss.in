@@ -1,0 +1,56 @@
+#define MyAppName "@APP_NAME@"
+#define MyAppVersion "@APP_VERSION@"
+#define MyAppDisplayName "@DISPLAY_NAME@"
+#define MyInstallRootName "eyeflow-python"
+#define MyVersionDirName "@VERSION_DIR@"
+#define MyAppPublisher "EyeFlow"
+#define MyAppExeName "@DISPLAY_NAME@.exe"
+#define MyBundleDir "@BUNDLE_DIR@"
+#define MyOutputDir "@OUTPUT_DIR@"
+#define MySetupBaseName "@SETUP_NAME@"
+#define MyLicensePath "@LICENSE@"
+#define MyReadmePath "@README@"
+#define MyThirdPartyNoticesPath "@NOTICES@"
+#define MyIconPath "@ICON@"
+
+[Setup]
+AppId={{72E10B9F-83C4-4F4C-89A5-F8BB598B0396}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+AppVerName={#MyAppDisplayName}
+DefaultDirName={localappdata}\Programs\{#MyInstallRootName}\{#MyVersionDirName}
+DefaultGroupName={#MyAppName}
+DisableProgramGroupPage=yes
+UsePreviousAppDir=no
+LicenseFile={#MyLicensePath}
+OutputDir={#MyOutputDir}
+OutputBaseFilename={#MySetupBaseName}
+SetupIconFile={#MyIconPath}
+UninstallDisplayIcon={app}\{#MyAppExeName}
+Compression=lzma2
+SolidCompression=yes
+WizardStyle=modern
+PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
+@VERSION_INFO@
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
+
+[Files]
+Source: "{#MyBundleDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyLicensePath}"; DestDir: "{app}"; DestName: "LICENSE"; Flags: ignoreversion
+Source: "{#MyReadmePath}"; DestDir: "{app}"; DestName: "README.md"; Flags: ignoreversion
+Source: "{#MyThirdPartyNoticesPath}"; DestDir: "{app}"; DestName: "THIRD_PARTY_NOTICES"; Flags: ignoreversion
+
+[Icons]
+Name: "{group}\{#MyAppDisplayName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\Uninstall {#MyAppDisplayName}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#MyAppDisplayName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppDisplayName}"; Flags: nowait postinstall skipifsilent

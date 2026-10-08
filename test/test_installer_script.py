@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 class InstallerScriptTests(unittest.TestCase):
     def test_desktop_shortcut_task_is_checked_by_default(self) -> None:
-        script = (REPO_ROOT / "build_installer.ps1").read_text(encoding="utf-8")
+        script = (REPO_ROOT / "installer/EyeFlow.iss.in").read_text(encoding="utf-8")
         task = re.search(
             r'^Name: "desktopicon";[^\r\n]+$',
             script,
@@ -24,11 +24,11 @@ class InstallerScriptTests(unittest.TestCase):
         self.assertNotIn("Flags: checked", script)
 
     def test_matplotlib_postscript_backend_is_bundled(self) -> None:
-        script = (REPO_ROOT / "build_installer.ps1").read_text(encoding="utf-8")
+        spec = (REPO_ROOT / "installer/eyeflow.spec").read_text(encoding="utf-8")
 
         self.assertIn(
-            '"--hidden-import", "matplotlib.backends.backend_ps"',
-            script,
+            '"matplotlib.backends.backend_ps"',
+            spec,
         )
 
 
