@@ -29,11 +29,6 @@ class OutputManager:
 
         return OutputManager(self.layout, str(namespace))
 
-    def for_workflow(self, method: str) -> "OutputManager":
-        from .schema.eyeflow_output import VELOCITY_WORKFLOW_FOLDERS
-
-        return self.for_artifact_namespace(VELOCITY_WORKFLOW_FOLDERS[method])
-
     def prepare(self, *, replace: bool = False) -> None:
         output_dir = self.layout.ef_dir
         if replace and output_dir.exists():

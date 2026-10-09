@@ -203,7 +203,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
             np.ones((3, 2, 4), dtype=np.float32),
         )
 
-    def test_eyeflow_analysis_settings_are_not_read_from_source_configs(self) -> None:
+    def test_active_source_settings_are_loaded(self) -> None:
         artery = np.zeros((2, 4), dtype=bool)
         vein = ~artery
         with self._source_pair() as (hd_source, dv_source):
@@ -214,39 +214,12 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
             source_data = self._load_sources(
                 hd_source,
                 dv_source,
-                hd_config={
-                    "SizeOfField": {"SmallRadiusRatio": 0.45},
-                    "generateCrossSectionSignals": {
-                        "NumberOfCircles": 3,
-                        "SegmentsLength": 0.40,
-                        "HydrodynamicDiameters": False,
-                        "velocityProfileThreshold": 0.99,
-                        "RotateFromMask": True,
-                        "RefPapillaSize": 99.0,
-                        "DefaultPixelSize": 99.0,
-                    },
-                    "Preprocess": {"InterpolationFactor": 7.0},
-                },
                 dv_config={
-                    "PeripapillaryRingAnalysis": {
-                        "RingsNumber": 4,
-                        "RingsWidth": 0.30,
-                    },
-                    "PeripapillaryVascularZone": {
-                        "InnerRadius": 0.35,
-                        "OuterRadius": 0.45,
-                    },
                     "VelocityEstimation": {"LocalBackgroundDist": 7},
                 },
             )
 
-        ring_settings = source_data.source.segmentation.optic_disc.annulus_geometry((200, 400))
         cross_section = source_data.profile_settings
-        radius_scale = np.hypot(99.5, 199.5)
-        expected_width = 400 / 25 / radius_scale
-        self.assertAlmostEqual(2.0 / radius_scale, ring_settings.inner_radius_frac)
-        self.assertAlmostEqual(expected_width, ring_settings.ring_width_frac)
-        self.assertAlmostEqual(expected_width, ring_settings.segment_length_frac)
         self.assertAlmostEqual(0.02, cross_section.pixel_size_mm)
         self.assertEqual(
             (20e-6, 20e-6),

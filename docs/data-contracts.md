@@ -104,11 +104,9 @@ each successful estimate, using shared segmentation/topology and workflow-specif
 cycle boundaries. A failed input, cycle detection, estimate, or downstream
 workflow is skipped; its
 processing group and method artifacts are removed, while the other workflow
-continues. If both fail, the run fails. Root `velocity_workflow_failures`
-records a JSON map of method to error; `velocity_workflows_completed` lists
-successful methods when the run finishes. These compatibility attributes mirror
-the generic engine attributes `execution_variant_failures` and
-`execution_variants_completed`.
+continues. If both fail, the run fails. Root `execution_variant_failures`
+records a JSON map of method to error; `execution_variants_completed` lists
+successful methods when the run finishes.
 
 For band mode, an exactly zero LF sample maps to ratio zero. No epsilon is
 added. A nonzero ratio beyond finite `float32` range raises a clear error rather

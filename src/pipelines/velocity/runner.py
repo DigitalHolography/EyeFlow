@@ -29,7 +29,6 @@ from .signal_processing import build_velocity
 from .sources import load_velocity_inputs
 
 VELOCITY_STATE = "velocity"
-VELOCITY_FAILURES_STATE = "velocity_workflow_failures"
 
 
 def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
@@ -39,7 +38,6 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
     Logger.log("Starting velocity core processing...")
     sources = {}
     failures = {}
-    ctx.state.set(VELOCITY_FAILURES_STATE, failures)
     for method in VELOCITY_WORKFLOW_ROOTS:
         method_ctx = copy(ctx)
         method_ctx.velocity_estimation_method = method
@@ -67,7 +65,6 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
             del sources[method]
             Logger.log_warning(f"Skipping {method}: {exc}")
     if not cycles:
-        _write_failures(ctx, failures)
         raise RuntimeError(f"Neither velocity workflow has usable inputs: {failures}")
 
     variants: list[ExecutionVariant] = []
@@ -142,8 +139,6 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
             if hasattr(ctx, "output") and root in ctx.runtime.work_h5:
                 del ctx.runtime.work_h5[root]
             Logger.log_warning(f"Skipping {method}: {exc}")
-    ctx.state.set(VELOCITY_FAILURES_STATE, failures)
-    _write_failures(ctx, failures)
     if not variants:
         raise RuntimeError(f"Neither velocity workflow completed: {failures}")
     publish_variants = getattr(ctx, "publish_execution_variants", None)
@@ -154,14 +149,6 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
         ctx.state.set(key, value)
     Logger.log(f"Completed velocity core processing in {perf_counter() - started:.1f}s.")
     return canonical.state[VELOCITY_STATE], outputs
-
-
-def _write_failures(ctx, failures):
-    import json
-
-    if hasattr(ctx, "output"):
-        ctx.output.h5.set_attr("velocity_workflow_failures", json.dumps(failures, sort_keys=True))
-
 
 def _source_shape(source):
     images = source.image_maps

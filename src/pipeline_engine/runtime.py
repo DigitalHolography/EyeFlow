@@ -96,7 +96,6 @@ def _run_pipelines_with_work_h5(
     execution_variants: list[ExecutionVariant] = []
     variant_dependents: set[str] = set()
     variant_failures: dict[str, str] = {}
-    variant_status_attrs: tuple[str, str] | None = None
 
     pipeline_count = len(pipelines)
     for pipeline_index, pipeline_desc in enumerate(pipelines, start=1):
@@ -158,7 +157,6 @@ def _run_pipelines_with_work_h5(
                     work_h5,
                     execution_variants,
                     variant_failures,
-                    variant_status_attrs,
                 )
                 raise RuntimeError(
                     "No execution variant completed downstream analysis."
@@ -180,7 +178,6 @@ def _run_pipelines_with_work_h5(
                     )
                 execution_variants = list(emitted_variants)
                 variant_failures = emitted_failures
-                variant_status_attrs = pipeline_desc.execution_variant_status_attrs
                 variant_dependents = set(
                     dag.dependents_of(
                         pipeline_desc.name,
@@ -192,7 +189,6 @@ def _run_pipelines_with_work_h5(
             work_h5,
             execution_variants,
             variant_failures,
-            variant_status_attrs,
         )
         if on_pipeline_success is not None:
             on_pipeline_success(pipeline_desc.name)
@@ -349,9 +345,8 @@ def _write_execution_variant_status(
     work_h5,
     variants: Sequence[ExecutionVariant],
     failures: Mapping[str, str],
-    status_attrs: tuple[str, str] | None,
 ) -> None:
-    """Persist generic status plus the current velocity compatibility aliases."""
+    """Persist generic execution-variant status."""
 
     work_h5.attrs["execution_variant_failures"] = json.dumps(
         dict(failures),
@@ -360,12 +355,3 @@ def _write_execution_variant_status(
     work_h5.attrs["execution_variants_completed"] = [
         variant.name for variant in variants
     ]
-    if status_attrs is not None:
-        failures_attr, completed_attr = status_attrs
-        work_h5.attrs[failures_attr] = json.dumps(
-            dict(failures),
-            sort_keys=True,
-        )
-        work_h5.attrs[completed_attr] = [
-            variant.name for variant in variants
-        ]

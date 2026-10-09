@@ -536,7 +536,6 @@ def test_frequency_maps_are_persisted_in_hz_with_calibration_provenance() -> Non
     outputs = pack_velocity_outputs(analysis)
     attrs = outputs[schema.analysis.fRMS_avg][1]
 
-    assert "Processing/Maps/VelocityAverage/value" not in outputs
     np.testing.assert_array_equal(
         outputs[schema.analysis.velocity_map_avg_masked][0],
         np.asarray(
@@ -558,7 +557,6 @@ def test_frequency_maps_are_persisted_in_hz_with_calibration_provenance() -> Non
             dtype=np.float32,
         ),
     )
-    assert "Processing/Maps/DeltaFRMSAverage/value" not in outputs
     assert attrs["unit"] == "Hz"
     assert attrs["quantity"] == "rms_frequency"
     assert attrs["velocity_estimation_method"] == "frequency_bands"

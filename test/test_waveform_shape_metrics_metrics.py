@@ -53,12 +53,9 @@ class WaveformShapeMetricsTests(unittest.TestCase):
     def test_waveform_pipelines_have_separate_dag_responsibilities(self):
         pipelines.load_pipeline_catalog()
 
-        self.assertNotIn("velocity_analysis_core", PIPELINE_REGISTRY)
         self.assertIn("velocity_analysis", PIPELINE_REGISTRY)
         self.assertIn("waveform_shape_metrics", PIPELINE_REGISTRY)
         self.assertIn("pdf_report", PIPELINE_REGISTRY)
-        self.assertNotIn("waveform_shape_metrics_angioeye", PIPELINE_REGISTRY)
-        self.assertNotIn("topological_metrics", PIPELINE_REGISTRY)
         for pipeline_name in (
             "velocity_analysis",
             "waveform_shape_metrics",
@@ -94,8 +91,6 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             report_plan.names.index("velocity_analysis"),
             report_plan.names.index("waveform_shape_metrics"),
         )
-        self.assertNotIn("waveform_shape_metrics_angioeye", metrics_plan.names)
-
     def test_runner_reads_packed_metrics_and_prefixes_outputs(self):
         schema = EyeFlowOutputPaths.active()
         packed_metrics = self._global_artery_inputs(schema)

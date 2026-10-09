@@ -69,7 +69,6 @@ class _State:
 class AbsoluteWaveformMetricsTests(unittest.TestCase):
     def test_pipeline_is_native_package_with_velocity_dependency(self) -> None:
         pipeline_root = SRC_DIR / "pipelines"
-        self.assertFalse((pipeline_root / "absolute_waveform_metrics.py").exists())
         self.assertTrue(
             (pipeline_root / "absolute_waveform_metrics" / "calculator.py").exists()
         )

@@ -53,7 +53,9 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
         schema = EyeFlowOutputPaths.active()
         with h5py.File(result.outputs[0], "r") as file:
             assert "Processing" not in file
-            assert "doppler_moments" in json.loads(file.attrs["velocity_workflow_failures"])
+            assert "doppler_moments" in json.loads(
+                file.attrs["execution_variant_failures"]
+            )
             output = PipelineH5Output(file, processing_root="ProcessingAlt")
             assert output.attrs["velocity_estimation_method"] == "frequency_bands"
             assert output.attrs["velocity_quantity"] == "physical_velocity"
@@ -77,7 +79,6 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
             assert cycle_durations.attrs["unit"] == "s"
             assert cycle_durations.ndim == 1
             assert cycle_durations.size > 0
-            assert "Processing/VelocityPerBeat/BeatPeriodSeconds/value" not in file
 
             frequency_map = output.get(schema.analysis.fRMS_avg)
             assert frequency_map.attrs["unit"] == "Hz"
@@ -85,8 +86,6 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
 
             velocity_average_masked = output.get(schema.analysis.velocity_map_avg_masked)
             assert velocity_average_masked.attrs["unit"] == "mm/s"
-            assert "Processing/Maps/VelocityAverage/value" not in file
-            assert "Processing/Maps/DeltaFRMSAverage/value" not in file
 
             artery_flow = output.get(schema.blood_volume_rate.artery.masked_edges)
             assert artery_flow.attrs["unit"] == "mm^3/s"

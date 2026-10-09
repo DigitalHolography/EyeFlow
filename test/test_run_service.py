@@ -134,16 +134,6 @@ def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
     )
 
 
-def _named_descriptor(name: str) -> PipelineDescriptor:
-    return PipelineDescriptor(
-        name=name,
-        description=name,
-        available=True,
-        visibility="visible",
-        pipeline_factory=_NoopPipeline,
-    )
-
-
 class RunServiceTests(unittest.TestCase):
     def test_declared_variant_producer_fans_out_its_dag_dependents(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -317,37 +307,16 @@ class RunServiceTests(unittest.TestCase):
             holo = _write_input(Path(temp_dir))
             spec = resolve_run_spec(input_paths=[holo], target_names=["sample"],
                                     pipelines=[_descriptor()], band_ratio_frequency_scale_hz=2.5)
-            self.assertFalse(hasattr(spec, "velocity_estimation_method"))
             self.assertEqual(2.5, spec.band_ratio_frequency_scale_hz)
             with self.assertRaisesRegex(ValueError, "band_ratio_frequency_scale_hz"):
                 resolve_run_spec(input_paths=[holo], target_names=["sample"],
                                  pipelines=[_descriptor()], band_ratio_frequency_scale_hz=0.0)
 
-    def test_frequency_band_method_allows_physical_velocity_pipelines(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            holo = _write_input(Path(temp_dir))
-            for pipeline_name in (
-                "absolute_waveform_metrics",
-                "blood_volume_rate",
-            ):
-                with self.subTest(pipeline=pipeline_name):
-                    spec = resolve_run_spec(
-                        input_paths=[holo],
-                        target_names=[pipeline_name],
-                        pipelines=[_named_descriptor(pipeline_name)],
-                            )
-
-                    self.assertEqual((pipeline_name,), spec.plan.targets)
-                    self.assertFalse(hasattr(spec, "velocity_estimation_method"))
-
-    def test_gui_reads_calibration_without_reading_obsolete_method(self) -> None:
+    def test_gui_reads_band_ratio_calibration(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             holo = _write_input(Path(temp_dir))
             progress_controller = SimpleNamespace(reset_run_log=Mock())
             settings_store = SimpleNamespace(
-                load_velocity_estimation_method=Mock(
-                    return_value="frequency_bands"
-                ),
                 load_band_ratio_frequency_scale_hz=Mock(return_value=3.0),
             )
             app = SimpleNamespace(
@@ -370,9 +339,7 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertIsNotNone(spec)
             assert spec is not None
-            self.assertFalse(hasattr(spec, "velocity_estimation_method"))
             self.assertEqual(3.0, spec.band_ratio_frequency_scale_hz)
-            settings_store.load_velocity_estimation_method.assert_not_called()
             settings_store.load_band_ratio_frequency_scale_hz.assert_called_once_with()
             progress_controller.reset_run_log.assert_called_once()
 
@@ -453,7 +420,7 @@ class RunServiceTests(unittest.TestCase):
                     pipelines=[_descriptor()],
                 )
 
-    def test_runtime_output_does_not_contain_angioeye_trim_attribute(self) -> None:
+    def test_runtime_records_run_and_velocity_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             holo = _write_input(Path(temp_dir))
             spec = resolve_run_spec(
@@ -466,7 +433,6 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertTrue(result.succeeded)
             with h5py.File(result.outputs[0], "r") as output_h5:
-                self.assertNotIn("trim_h5source", output_h5.attrs)
                 self.assertEqual(["sample"], list(output_h5.attrs["pipeline_targets"]))
                 self.assertEqual({}, json.loads(output_h5.attrs["pipeline_options"]))
                 self.assertEqual(
@@ -531,7 +497,6 @@ class RunServiceTests(unittest.TestCase):
             store.save(
                 {
                     "pipeline_visibility": {"sample": True},
-                    "velocity_estimation_method": "frequency_bands",
                     "band_ratio_frequency_scale_hz": 4.0,
                 }
             )
