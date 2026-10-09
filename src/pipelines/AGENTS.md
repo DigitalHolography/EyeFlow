@@ -54,8 +54,11 @@ and velocity method. The velocity and velocity-analysis pipelines use compatible
 sources.
 
 The velocity pipeline estimates the physical velocity field and detects
-zero-based cardiac-cycle boundaries. Topology is prepared once and cached in
-run state. Velocity analysis consumes both results and produces the common
+zero-based cardiac-cycle boundaries. Native geometry lives in
+`calculations/topology`; the spatial `SegmentSamplingPlan` is prepared by
+`calculations/vessel_segments/sampling` and cached by `topology_core` in run
+state. The existing `prepared_topology` DAG key is unchanged.
+Velocity analysis consumes both results and produces the common
 per-beat, segment, and profile state used by visible products.
 
 The velocity estimator is product-specific and therefore remains in
@@ -123,8 +126,8 @@ Retain clear method, calibration, and unit provenance for their results.
 | New pipeline or option | `CONTRIBUTING.md`, package `__init__.py`, runner, DAG tests | GUI views; discovery is automatic |
 | Velocity source/semantics | `vessel_inputs.py`, velocity sources/runner/estimator, data contracts | displacement internals |
 | Per-beat/segment output | velocity-analysis builder and packers, output schema, profile/segment tests | settings UI |
-| Spatial-gradient lumen metric | spatial-gradient package, topology preparation/chunks, image filters, spatial-gradient/topology tests | CLI and report code unless output is exposed there |
+| Spatial-gradient lumen metric | spatial-gradient package, vessel-segment sampling/measurement, image filters, spatial-gradient/topology tests | CLI and report code unless output is exposed there |
 | Blood-volume-rate formula | option declaration, runner, outputs, `calculations/blood_volume_rate.py`, BVR tests | unrelated waveform metric calculators |
 | Metric family | that pipeline's runner/calculator/outputs plus waveform input contracts and matching test file | pipeline engine unless dependencies/options change |
 | Displacement | `displacement_map/` and `test_displacement_map_pipeline.py` | topology and waveform metrics unless the dormant segment helper is activated |
-| Profile fit | `calculations/topology/segment_profiles/fits/parabolic.py`, then `velocity_analysis/outputs/profile_analysis.py`, dedicated doc/test | GUI and settings |
+| Profile fit | `calculations/vessel_segments/profiles/fits/quadratic.py`, then `velocity_analysis/outputs/profile_analysis.py`, dedicated doc/test | GUI and settings |

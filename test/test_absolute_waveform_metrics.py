@@ -15,11 +15,8 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 import pipelines  # noqa: E402
-from calculations.topology import (  # noqa: E402
-    BranchIdentityResult,
-    PreparedTopology,
-    SegmentTopology,
-)
+from calculations.topology import BranchIdentityResult, SegmentTopology  # noqa: E402
+from calculations.vessel_segments.sampling import SegmentSamplingPlan  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG  # noqa: E402
 from pipelines.absolute_waveform_metrics.calculator import (  # noqa: E402
@@ -47,7 +44,7 @@ def _segment_topology(labels, branch_ids, centers, optic_disc_center):
         segment_centers_xy=centers,
         window_bounds_xyxy=np.zeros((radius_count, branch_count, 4), dtype=int),
     )
-    return PreparedTopology(
+    return SegmentSamplingPlan(
         native=native,
         rotation_degrees=np.zeros((radius_count, branch_count), dtype=np.float32),
         interpolated_masks=native.segment_masks,

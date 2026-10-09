@@ -7,12 +7,12 @@ import numpy as np
 from calculations.compute_backend import optional_cupy_backend
 from calculations.math import nanmean_float32
 
-from ..profiles import longitudinal_profiles, transverse_profiles
-from ..workflow import PreparedTopology
+from ..profiles.reductions import longitudinal_profiles, transverse_profiles
+from ..sampling.models import SegmentSamplingPlan
 from .models import (
     CompactSegmentMaps,
     MaskedArrays,
-    SegmentProfileResult,
+    SegmentMeasurements,
 )
 
 
@@ -21,7 +21,7 @@ class SegmentProfileAccumulator:
 
     def __init__(
         self,
-        topology: PreparedTopology,
+        topology: SegmentSamplingPlan,
         *,
         frame_count: int,
         retain_segment_maps: bool,
@@ -111,7 +111,7 @@ class SegmentProfileAccumulator:
                 raise ValueError("Missing compact segment-map row for valid segment.")
             self.maps.values[map_row, frame_slice] = _to_numpy(rotated)
 
-    def finish(self, *, sample_spacing_mm: float) -> SegmentProfileResult:
+    def finish(self, *, sample_spacing_mm: float) -> SegmentMeasurements:
         np.divide(
             self._mean_sum,
             self._mean_count,
@@ -124,7 +124,7 @@ class SegmentProfileAccumulator:
             out=self.mean_images.masked,
             where=self._masked_count > 0,
         )
-        return SegmentProfileResult(
+        return SegmentMeasurements(
             topology=self.topology,
             segment_signal=self.segment_signal,
             transverse=self.transverse,

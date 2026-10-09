@@ -1,19 +1,22 @@
-"""Compatibility imports for generic vessel-segment measurements."""
+"""Measure signals, profiles, mean images, and optional maps from sampled segments."""
 
-from calculations.vessel_segments.measurement import (
+from .runner import analyze_segment_profiles
+from .models import (
     CompactSegmentMaps,
     MaskedArrays,
     SegmentMeasurements,
     SegmentMeasurementSettings,
-    analyze_segment_profiles,
 )
 
+# Transitional names for callers of the former segment-profile API.
 SegmentProfileResult = SegmentMeasurements
 SegmentProfileSettings = SegmentMeasurementSettings
 
 __all__ = [
     "CompactSegmentMaps",
     "MaskedArrays",
+    "SegmentMeasurements",
+    "SegmentMeasurementSettings",
     "SegmentProfileResult",
     "SegmentProfileSettings",
     "analyze_segment_profiles",

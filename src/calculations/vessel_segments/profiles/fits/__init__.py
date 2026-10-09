@@ -1,12 +1,12 @@
 """Model fits for generic vessel-aligned profiles."""
 
-from .parabolic import (
+from .quadratic import (
     COUNT_OUTPUTS,
     DEFAULT_TIME_BLOCK_SIZE,
     DEFAULT_WEIGHT_POWER,
     FLOAT_OUTPUTS,
     border_weights,
-    fit_parabolic_profiles,
+    fit_quadratic_profiles,
 )
 
 __all__ = [
@@ -15,5 +15,5 @@ __all__ = [
     "DEFAULT_WEIGHT_POWER",
     "FLOAT_OUTPUTS",
     "border_weights",
-    "fit_parabolic_profiles",
+    "fit_quadratic_profiles",
 ]

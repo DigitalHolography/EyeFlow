@@ -7,7 +7,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from calculations.topology import BranchIdentityResult, PreparedTopology, SegmentTopology
+from calculations.topology import BranchIdentityResult, SegmentTopology
+from calculations.vessel_segments.sampling import SegmentSamplingPlan
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue
 from pipelines.lowrank_waveform_decomposition.outputs import (
@@ -29,7 +30,7 @@ def _segment_topology(labels, branch_ids, centers, optic_disc_center):
         segment_centers_xy=centers,
         window_bounds_xyxy=np.zeros((radius_count, branch_count, 4), dtype=int),
     )
-    return PreparedTopology(
+    return SegmentSamplingPlan(
         native=native,
         rotation_degrees=np.zeros((radius_count, branch_count), dtype=np.float32),
         interpolated_masks=native.segment_masks,

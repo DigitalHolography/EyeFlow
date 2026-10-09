@@ -13,13 +13,13 @@ from calculations.compute_backend import optional_cupy_backend
 from calculations.math import interpft_axis0, nanmean_float32, next_power_of_two
 from utils.logger import Logger
 
-from ..transforms import dilate_segment_masks
+from ..sampling.transforms import dilate_segment_masks
 
 DEFAULT_PROFILE_MASK_DILATION_PIXELS = 10
 _FFT_PROFILE_X_BATCH = 32
 
 
-class SegmentProfileFftAccumulator:
+class SegmentFftAccumulator:
     """Accumulate FFT profiles while each rotated segment is resident."""
 
     def __init__(
@@ -282,7 +282,7 @@ def _gpu_nanmean_axis1(values, cupy, *, mask=None):
     return result.astype(cupy.float32, copy=False)
 
 
-def fft_transverse_profiles(
+def transverse_fft_magnitude_profiles(
     maps_per_beat: np.ndarray,
     segment_masks: np.ndarray,
     *,
@@ -354,6 +354,6 @@ def fft_transverse_profiles(
 
 __all__ = [
     "DEFAULT_PROFILE_MASK_DILATION_PIXELS",
-    "SegmentProfileFftAccumulator",
-    "fft_transverse_profiles",
+    "SegmentFftAccumulator",
+    "transverse_fft_magnitude_profiles",
 ]

@@ -9,13 +9,13 @@ import numpy as np
 
 from calculations.topology.geometry import AnnulusGeometry
 from calculations.topology.optic_disc import OpticDisc
-from calculations.topology.workflow import prepare_segments, prepare_topology
+from calculations.vessel_segments.sampling import prepare_segments, prepare_sampling_plan
 
 
 class TopologyWorkflowTests(unittest.TestCase):
     def test_both_transform_workflows_use_the_standard_topology(self) -> None:
-        from calculations.topology import (
-            extract_segment,
+        from calculations.vessel_segments.sampling.extraction import extract_segment
+        from calculations.vessel_segments.sampling.transforms import (
             interpolate_segments,
             resample_rotate_segment,
             rotate_segments,
@@ -24,7 +24,7 @@ class TopologyWorkflowTests(unittest.TestCase):
         vessel[18:23, 5:36] = True
         disc = np.zeros_like(vessel)
         disc[18:23, 18:23] = True
-        prepared = prepare_topology(
+        prepared = prepare_sampling_plan(
             vessel, OpticDisc(disc, (20.0, 20.0), None, None),
             AnnulusGeometry(.1, .6, .25, 2)
         )
@@ -47,7 +47,7 @@ class TopologyWorkflowTests(unittest.TestCase):
 
     def test_empty_topology_allows_parallel_preparation(self) -> None:
         vessel = np.zeros((21, 21), bool)
-        prepared = prepare_topology(
+        prepared = prepare_sampling_plan(
             vessel, OpticDisc(vessel, (10.0, 10.0), None, None),
             AnnulusGeometry(0., .5, .5, 1)
         )
@@ -60,7 +60,7 @@ class TopologyWorkflowTests(unittest.TestCase):
         vessel[18:23, 5:36] = True
         optic_disc = np.zeros_like(vessel)
         optic_disc[18:23, 18:23] = True
-        prepared = prepare_topology(
+        prepared = prepare_sampling_plan(
             vessel,
             OpticDisc(optic_disc, (20.0, 20.0), None, None),
             AnnulusGeometry(0.1, 0.6, 0.25, 2),
@@ -108,8 +108,8 @@ class TopologyWorkflowTests(unittest.TestCase):
         )
 
     def test_velocity_and_generic_profiles_share_authoritative_topology(self) -> None:
-        from calculations.topology.segment_profiles import (
-            SegmentProfileSettings,
+        from calculations.vessel_segments.measurement import (
+            SegmentMeasurementSettings,
             analyze_segment_profiles,
         )
         from pipelines.velocity_analysis.analysis.segments import (
@@ -120,7 +120,7 @@ class TopologyWorkflowTests(unittest.TestCase):
         vessel[13:18, 3:28] = True
         optic_disc = OpticDisc(None, (15.0, 15.0), 6.0, 6.0)
         rings = AnnulusGeometry(0.1, 0.6, 0.25, 2)
-        prepared = prepare_topology(
+        prepared = prepare_sampling_plan(
             vessel,
             optic_disc,
             rings,
@@ -130,14 +130,14 @@ class TopologyWorkflowTests(unittest.TestCase):
         signal = np.ones((3, 31, 31), dtype=np.float32)
 
         with patch(
-            "calculations.topology.segment_profiles.measurement.resolve_segment_rotations"
+            "calculations.vessel_segments.measurement.runner.resolve_segment_rotations"
         ) as resolve:
             generic = analyze_segment_profiles(
                 signal,
                 {"artery": vessel},
                 optic_disc,
                 rings,
-                SegmentProfileSettings(0.01),
+                SegmentMeasurementSettings(0.01),
                 prepared_topologies=topologies,
             )["artery"]
             velocity = analyze_velocity_segment_profiles(
@@ -145,7 +145,7 @@ class TopologyWorkflowTests(unittest.TestCase):
                 {"artery": vessel},
                 optic_disc,
                 rings,
-                SegmentProfileSettings(0.01),
+                SegmentMeasurementSettings(0.01),
                 prepared_topologies=topologies,
             )["artery"]
 

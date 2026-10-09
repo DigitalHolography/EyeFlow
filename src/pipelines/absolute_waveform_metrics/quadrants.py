@@ -56,7 +56,7 @@ def pack_quadrant_metrics(
         branch_ids = np.asarray(
             profile.topology.native.branch_ids, dtype=np.int32
         ).reshape(-1)
-        membership = quadrant_membership(profile.topology)
+        membership = quadrant_membership(profile.topology.native)
         result.update(
             _pack_region_metrics(
                 schema,

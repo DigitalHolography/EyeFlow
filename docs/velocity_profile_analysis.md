@@ -11,9 +11,15 @@ Input axes are `(x, time, beat, branch, radius)`. Every profile is fit independe
 there is no averaging across time, beats, branches or radii.
 
 The reusable numerical implementation lives in
-`src/calculations/topology/segment_profiles/fits/parabolic.py`. The
+`src/calculations/vessel_segments/profiles/fits/quadratic.py`, with the public
+entry point `fit_quadratic_profiles`. The
 velocity-analysis adapter selects the artery and vein source paths and adds the
 EyeFlow output schema and provenance.
+
+The name describes a polynomial model, not a constrained physical flow law.
+It does not assume Poiseuille flow; future physical models should have their
+own fit modules. This structural move retains the five-dimensional input
+contract and historical `Qv` output names; generalizing them is separate work.
 
 ## Fit definition
 

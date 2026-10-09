@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.topology.segment_profiles import (
-    DEFAULT_PROFILE_MASK_DILATION_PIXELS,
-)
+from calculations.vessel_segments.profiles.fft import DEFAULT_PROFILE_MASK_DILATION_PIXELS
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 from pipelines.profile_outputs import (

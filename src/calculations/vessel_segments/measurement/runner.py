@@ -11,21 +11,19 @@ from calculations.compute_backend import optional_cupy_backend
 from runtime_limits import cap_parallel_jobs
 from utils.logger import Logger
 
-from ..cache import TopologyCacheKey
-from ..geometry import AnnulusGeometry
-from ..optic_disc import OpticDisc
-from ..transforms import dilate_segment_masks
-from ..workflow import (
-    PreparedTopology,
-    prepare_segment_chunks,
-    prepare_topologies,
-    resolve_segment_rotations,
-)
+from calculations.topology.geometry import AnnulusGeometry
+from calculations.topology.optic_disc import OpticDisc
+
+from ..sampling.cache import TopologyCacheKey
+from ..sampling.transforms import dilate_segment_masks
+from ..sampling.models import SegmentSamplingPlan
+from ..sampling.preparation import prepare_sampling_plans, resolve_segment_rotations
+from ..sampling.streaming import prepare_segment_chunks
 from .accumulator import SegmentProfileAccumulator
-from .models import SegmentProfileResult, SegmentProfileSettings
+from .models import SegmentMeasurements, SegmentMeasurementSettings
 
 SegmentObserver = Callable[[int, int, slice, object, np.ndarray], None]
-SegmentObserverFactory = Callable[[str, PreparedTopology], SegmentObserver | None]
+SegmentObserverFactory = Callable[[str, SegmentSamplingPlan], SegmentObserver | None]
 
 
 def analyze_segment_profiles(
@@ -39,16 +37,16 @@ def analyze_segment_profiles(
     topology_cache: MutableMapping[TopologyCacheKey, object] | None = None,
     retain_segment_maps: bool = False,
     transverse_mask_dilation_pixels: int | Mapping[str, int] = 0,
-    prepared_topologies: Mapping[str, PreparedTopology] | None = None,
+    prepared_topologies: Mapping[str, SegmentSamplingPlan] | None = None,
     transform_mode: str = "fused",
     post_interpolation=None,
     temporal_halo: int = 0,
     scratch_array_count: int | None = None,
     segment_observer_factory: SegmentObserverFactory | None = None,
-) -> dict[str, SegmentProfileResult]:
+) -> dict[str, SegmentMeasurements]:
     """Measure profiles from a time-varying scalar map for each vessel mask."""
 
-    settings = SegmentProfileSettings.from_value(profile_settings)
+    settings = SegmentMeasurementSettings.from_value(profile_settings)
     masks = {
         str(name): np.asarray(mask, dtype=bool)
         for name, mask in vessel_masks.items()
@@ -71,7 +69,7 @@ def analyze_segment_profiles(
     )
     topology_started = perf_counter()
     if prepared_topologies is None:
-        topologies = prepare_topologies(
+        topologies = prepare_sampling_plans(
             masks,
             optic_disc,
             ring_settings,
@@ -95,7 +93,7 @@ def analyze_segment_profiles(
         f"Completed topology preparation in {perf_counter() - topology_started:.2f}s."
     )
 
-    results: dict[str, SegmentProfileResult] = {}
+    results: dict[str, SegmentMeasurements] = {}
     for name, topology in topologies.items():
         geometry = topology.native
         Logger.log(
@@ -152,14 +150,14 @@ def analyze_segment_profiles(
 
 def _measure_segment_profiles_from_prepared(
     signal_map,
-    prepared_topology: PreparedTopology,
+    prepared_topology: SegmentSamplingPlan,
     prepared_segments,
-    settings: SegmentProfileSettings,
+    settings: SegmentMeasurementSettings,
     *,
     retain_segment_maps: bool,
     segment_observer: SegmentObserver | None,
     transverse_mask_dilation_pixels: int,
-) -> SegmentProfileResult:
+) -> SegmentMeasurements:
     geometry = prepared_topology.native
     frame_count = int(signal_map.shape[0])
     interpolated_side = int(prepared_topology.interpolated_masks.shape[-1])

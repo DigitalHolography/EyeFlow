@@ -7,11 +7,11 @@ from typing import Literal
 
 import numpy as np
 
-from ..workflow import PreparedTopology
+from ..sampling.models import SegmentSamplingPlan
 
 
 @dataclass(frozen=True)
-class SegmentProfileSettings:
+class SegmentMeasurementSettings:
     """Resource and spatial-scale settings for generic profile measurement."""
 
     pixel_size_mm: float
@@ -27,7 +27,7 @@ class SegmentProfileSettings:
             raise ValueError("submask_size_percentile_kept must be in (0, 1].")
 
     @classmethod
-    def from_value(cls, value) -> SegmentProfileSettings:
+    def from_value(cls, value) -> SegmentMeasurementSettings:
         if isinstance(value, cls):
             return value
         return cls(
@@ -112,10 +112,14 @@ class CompactSegmentMaps:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class SegmentProfileResult:
-    """Measurements for every segment in one prepared vessel topology."""
+class SegmentMeasurements:
+    """Measurements for every segment in one spatial sampling plan.
 
-    topology: PreparedTopology
+    The existing ``topology`` field holds that plan, not native geometry;
+    its ``native`` member provides the source-coordinate SegmentTopology.
+    """
+
+    topology: SegmentSamplingPlan
     segment_signal: np.ndarray
     transverse: MaskedArrays
     longitudinal: MaskedArrays
@@ -190,6 +194,6 @@ class SegmentProfileResult:
 __all__ = [
     "CompactSegmentMaps",
     "MaskedArrays",
-    "SegmentProfileResult",
-    "SegmentProfileSettings",
+    "SegmentMeasurements",
+    "SegmentMeasurementSettings",
 ]

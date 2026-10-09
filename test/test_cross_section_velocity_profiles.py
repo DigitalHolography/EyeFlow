@@ -18,7 +18,9 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.math import rotate_image_with_nan  # noqa: E402
-from calculations.topology import interpolate_profiles_per_beat  # noqa: E402
+from calculations.vessel_segments.profiles.per_beat import (  # noqa: E402
+    interpolate_profiles_per_beat,
+)
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
@@ -89,7 +91,7 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
         from scipy.signal import resample as scipy_resample
 
         with patch(
-            "calculations.topology.profile_interpolation.resample",
+            "calculations.vessel_segments.profiles.per_beat.resample",
             wraps=scipy_resample,
         ) as resample:
             result = interpolate_profiles_per_beat(

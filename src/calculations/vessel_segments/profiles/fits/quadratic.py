@@ -1,4 +1,4 @@
-"""Weighted parabolic fits for sampled transverse profiles."""
+"""Weighted quadratic fits and downward-opening geometry for sampled profiles."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def border_weights(
     return weights
 
 
-def fit_parabolic_profiles(
+def fit_quadratic_profiles(
     values,
     *,
     time_block_size=DEFAULT_TIME_BLOCK_SIZE,
@@ -255,5 +255,5 @@ __all__ = [
     "DEFAULT_WEIGHT_POWER",
     "FLOAT_OUTPUTS",
     "border_weights",
-    "fit_parabolic_profiles",
+    "fit_quadratic_profiles",
 ]

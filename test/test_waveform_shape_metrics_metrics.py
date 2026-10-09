@@ -6,12 +6,8 @@ from types import SimpleNamespace
 import numpy as np
 
 import pipelines  # noqa: F401
-from calculations.topology import (
-    BranchIdentityResult,
-    OpticDisc,
-    PreparedTopology,
-    SegmentTopology,
-)
+from calculations.topology import BranchIdentityResult, OpticDisc, SegmentTopology
+from calculations.vessel_segments.sampling import SegmentSamplingPlan
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines.waveform_shape_metrics.metrics.calculator import (
@@ -41,7 +37,7 @@ def _segment_topology(labels, branch_ids, centers, optic_disc_center):
         segment_centers_xy=centers,
         window_bounds_xyxy=np.zeros((radius_count, branch_count, 4), dtype=int),
     )
-    return PreparedTopology(
+    return SegmentSamplingPlan(
         native=native,
         rotation_degrees=np.zeros((radius_count, branch_count), dtype=np.float32),
         interpolated_masks=native.segment_masks,

@@ -7,7 +7,7 @@ from collections.abc import Mapping
 import numpy as np
 
 from calculations.math import nanmean_float32
-from calculations.topology.profile_interpolation import interpolate_profiles_per_beat
+from calculations.vessel_segments.profiles.per_beat import interpolate_profiles_per_beat
 from pipeline_engine.base import DatasetValue
 
 

@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping
 
-from calculations.topology import AnnulusGeometry, OpticDisc, TopologyCacheKey
-from calculations.topology.segment_profiles import (
+from calculations.topology import AnnulusGeometry, OpticDisc
+from calculations.vessel_segments.sampling.cache import TopologyCacheKey
+from calculations.vessel_segments.sampling.models import SegmentSamplingPlan
+from calculations.vessel_segments.profiles.fft import (
     DEFAULT_PROFILE_MASK_DILATION_PIXELS,
-    SegmentProfileFftAccumulator,
-    SegmentProfileResult,
-    SegmentProfileSettings,
+    SegmentFftAccumulator,
+)
+from calculations.vessel_segments.measurement import (
+    SegmentMeasurements,
+    SegmentMeasurementSettings,
     analyze_segment_profiles,
 )
 from utils.logger import Logger
@@ -22,7 +26,7 @@ def analyze_velocity_segment_profiles(
     vessel_masks: Mapping[str, object],
     optic_disc: OpticDisc,
     ring_settings: AnnulusGeometry,
-    profile_settings: SegmentProfileSettings,
+    profile_settings: SegmentMeasurementSettings,
     *,
     source_id: str = "",
     topology_cache: MutableMapping[TopologyCacheKey, object] | None = None,
@@ -31,7 +35,7 @@ def analyze_velocity_segment_profiles(
     velocity_profile_fft: bool = False,
     index_base: int = 0,
     transverse_mask_dilation_pixels: int | None = None,
-    prepared_topologies: Mapping[str, object] | None = None,
+    prepared_topologies: Mapping[str, SegmentSamplingPlan] | None = None,
     transform_mode: str = "fused",
     post_interpolation=None,
     temporal_halo: int = 0,
@@ -45,13 +49,13 @@ def analyze_velocity_segment_profiles(
         raise ValueError(
             "cycle_boundary_indexes are required for velocity FFT profiles."
     )
-    fft_profiles: dict[str, SegmentProfileFftAccumulator] = {}
+    fft_profiles: dict[str, SegmentFftAccumulator] = {}
 
     def segment_observer_factory(name, topology):
         geometry = topology.native
         if not velocity_profile_fft:
             return None
-        accumulator = SegmentProfileFftAccumulator(
+        accumulator = SegmentFftAccumulator(
             frame_count=int(velocity_map.shape[0]),
             ring_count=int(geometry.annulus_masks.shape[0]),
             branch_count=int(geometry.branch_ids.size),
@@ -104,9 +108,9 @@ def analyze_velocity_segment_profiles(
 
 
 def _velocity_result(
-    profiles: SegmentProfileResult,
+    profiles: SegmentMeasurements,
     *,
-    fft_profiles: SegmentProfileFftAccumulator | None,
+    fft_profiles: SegmentFftAccumulator | None,
 ) -> VelocitySegmentResult:
     """Attach velocity-only optional products to neutral segment profiles."""
 

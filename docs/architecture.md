@@ -205,7 +205,8 @@ contract or its presentation must also change.
 | Canonical aligned source models | `src/input_output/schema/source_data.py`, `src/pipelines/vessel_inputs.py` |
 | Current EyeFlow HDF5 paths | `src/input_output/schema/eyeflow_output.py` |
 | HDF5 serialization behavior | `src/input_output/writers/h5.py`, `src/input_output/h5_access.py` |
-| Topology construction/transforms | `src/calculations/topology/` |
+| Native topology and centerline geometry | `src/calculations/topology/` |
+| Segment sampling, measurement, and profile calculations | `src/calculations/vessel_segments/` |
 | Velocity estimator semantics | `src/pipelines/velocity/estimation.py` and `src/pipelines/velocity/semantics.py` |
 | Release behavior | `.github/workflows/release.yml`, `build_installer.ps1` |
 | Numerical/performance observation | `benchmarks/rtx4090_cross_section.json` (snapshot only) |
@@ -213,7 +214,7 @@ contract or its presentation must also change.
 ## Resource and release notes
 
 Cross-section work is temporally chunked. CPU/GPU backend selection lives in
-`calculations/compute_backend.py`; topology chunk planning enforces a shared
+`calculations/compute_backend.py`; vessel-segment sampling enforces a shared
 scratch-memory budget, while retained outputs are outside that budget. Preserve
 the staged gradient path's temporal halo and operation order when optimizing.
 

@@ -7,11 +7,8 @@ from collections.abc import Mapping
 import numpy as np
 from scipy import ndimage as ndi
 
-from calculations.topology import (
-    OpticDisc,
-    PreparedTopology,
-    segment_mask_areas_pixels,
-)
+from calculations.topology import OpticDisc, segment_mask_areas_pixels
+from calculations.vessel_segments.sampling import SegmentSamplingPlan
 from calculations.topology.geometry import AnnulusGeometry, image_half_diagonal
 from input_output.schema import EyeFlowOutputPaths, PixelPitch
 
@@ -150,7 +147,7 @@ def pack_topology_outputs(
     artery_mask,
     vein_mask,
     optic_disc: OpticDisc,
-    prepared_topologies: Mapping[str, PreparedTopology],
+    prepared_topologies: Mapping[str, SegmentSamplingPlan],
     pixel_pitch: PixelPitch,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:

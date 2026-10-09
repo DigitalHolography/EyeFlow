@@ -14,18 +14,12 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.topology.segment_profiles import (  # noqa: E402
+from calculations.vessel_segments.measurement import (  # noqa: E402
     MaskedArrays,
-    SegmentProfileSettings,
+    SegmentMeasurementSettings,
 )
-from calculations.topology import (  # noqa: E402
-    OpticDisc,
-    ring_masks,
-    section_masks,
-)
-from calculations.topology.branch_identity import (  # noqa: E402
-    _branch_identity_stages,
-)
+from calculations.topology import OpticDisc, ring_masks, section_masks  # noqa: E402
+from calculations.topology.branch_identity import _branch_identity_stages  # noqa: E402
 from pipelines.velocity_analysis.artifacts.branch_identity import (  # noqa: E402
     _labels_with_substack_boxes,
 )
@@ -103,7 +97,7 @@ class SegmentCenterTests(unittest.TestCase):
             ring_count=2,
             segment_length_frac=None,
         )
-        settings = SegmentProfileSettings(0.01, 1.0)
+        settings = SegmentMeasurementSettings(0.01, 1.0)
 
         results = analyze_velocity_segment_profiles(
             velocity,

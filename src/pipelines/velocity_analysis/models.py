@@ -8,7 +8,7 @@ from typing import Literal
 import numpy as np
 
 from calculations.blood_flow_velocity import PerBeatAnalysisResult
-from calculations.topology.segment_profiles import MaskedArrays, SegmentProfileResult
+from calculations.vessel_segments.measurement import MaskedArrays, SegmentMeasurements
 from pipelines.velocity.models import RetinalVelocity
 
 from .sources import VelocityAnalysisSourceData
@@ -20,13 +20,13 @@ VesselName = Literal["artery", "vein"]
 class VelocitySegmentResult:
     """A generic segment-profile result plus velocity-only products."""
 
-    profile: SegmentProfileResult
+    profile: SegmentMeasurements
     transverse_fft: MaskedArrays | None = None
 
     @classmethod
     def from_profile_result(
         cls,
-        profiles: SegmentProfileResult,
+        profiles: SegmentMeasurements,
         *,
         transverse_fft_profiles_unmasked: np.ndarray | None = None,
         transverse_fft_profiles_masked: np.ndarray | None = None,

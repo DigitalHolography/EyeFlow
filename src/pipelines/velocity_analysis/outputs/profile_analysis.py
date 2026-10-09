@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from time import perf_counter
 
-from calculations.topology.segment_profiles.fits import (
+from calculations.vessel_segments.profiles.fits import (
     COUNT_OUTPUTS,
     DEFAULT_TIME_BLOCK_SIZE,
     DEFAULT_WEIGHT_POWER,
     FLOAT_OUTPUTS,
     border_weights,
-    fit_parabolic_profiles,
+    fit_quadratic_profiles,
 )
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
@@ -43,7 +43,7 @@ def pack_velocity_profile_analysis_outputs(
     outputs: dict[str, object] = {}
     for vessel, values in datasets.items():
         started = perf_counter()
-        results = fit_parabolic_profiles(values)
+        results = fit_quadratic_profiles(values)
         Logger.log(
             f"Completed {vessel.lower()} weighted velocity-profile analysis in "
             f"{perf_counter() - started:.1f}s."
@@ -94,7 +94,7 @@ def _source_values(
 
 
 # Preserve the former pipeline-local calculation name for downstream imports.
-analyze_velocity_profiles = fit_parabolic_profiles
+analyze_velocity_profiles = fit_quadratic_profiles
 
 
 __all__ = [

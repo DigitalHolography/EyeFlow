@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from calculations.topology.segment_profiles import SegmentProfileSettings
+from calculations.vessel_segments.measurement import SegmentMeasurementSettings
 from calculations.topology import OpticDisc
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.spatial_gradient_moment0 import profiles as profile_module
@@ -46,7 +46,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
         )
         source = SimpleNamespace(
             source=retinal_source,
-            profile_settings=SegmentProfileSettings(0.01),
+            profile_settings=SegmentMeasurementSettings(0.01),
         )
         moment0ff = np.full((3, 8, 8), 42.0, dtype=np.float32)
         ctx = SimpleNamespace(

@@ -5,11 +5,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage as ndi
 
-from calculations.topology import (
-    AnnulusGeometry,
-    BranchIdentityStages,
-    annulus_mask,
-)
+from calculations.topology import AnnulusGeometry, BranchIdentityStages, annulus_mask
 
 
 def export_branch_identity_stage_pngs(
