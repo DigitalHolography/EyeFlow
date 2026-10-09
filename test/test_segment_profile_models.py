@@ -5,7 +5,7 @@ from dataclasses import fields, replace
 import numpy as np
 import pytest
 
-from calculations.segment_profiles import (
+from calculations.topology.segment_profiles import (
     CompactSegmentMaps,
     MaskedArrays,
     SegmentProfileResult,

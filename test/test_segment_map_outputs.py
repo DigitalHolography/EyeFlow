@@ -16,7 +16,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.math import interpft_real  # noqa: E402
-from calculations.segment_profiles import CompactSegmentMaps  # noqa: E402
+from calculations.topology.segment_profiles import CompactSegmentMaps  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
 from pipelines.velocity_analysis.analysis.segment_maps import (  # noqa: E402

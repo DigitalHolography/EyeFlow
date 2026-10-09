@@ -108,7 +108,7 @@ class TopologyWorkflowTests(unittest.TestCase):
         )
 
     def test_velocity_and_generic_profiles_share_authoritative_topology(self) -> None:
-        from calculations.segment_profiles import (
+        from calculations.topology.segment_profiles import (
             SegmentProfileSettings,
             analyze_segment_profiles,
         )
@@ -130,7 +130,7 @@ class TopologyWorkflowTests(unittest.TestCase):
         signal = np.ones((3, 31, 31), dtype=np.float32)
 
         with patch(
-            "calculations.segment_profiles.resolve_segment_rotations"
+            "calculations.topology.segment_profiles.measurement.resolve_segment_rotations"
         ) as resolve:
             generic = analyze_segment_profiles(
                 signal,

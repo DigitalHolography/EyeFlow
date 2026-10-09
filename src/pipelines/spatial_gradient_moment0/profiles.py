@@ -18,7 +18,7 @@ from calculations.math.spatial_gradient import (
     sobel_spatial_gradient,
     unsharpen,
 )
-from calculations.segment_profiles import analyze_segment_profiles
+from calculations.topology.segment_profiles import analyze_segment_profiles
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
 from pipelines.profile_outputs import (

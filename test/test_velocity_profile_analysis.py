@@ -10,23 +10,21 @@ from unittest.mock import patch
 import h5py
 import numpy as np
 
+from calculations.topology.segment_profiles.fits import parabolic as fitting
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import PIPELINE_REGISTRY, DatasetValue
 from pipeline_engine.context import PipelineH5Output
 from pipelines import load_pipeline_catalog
-from pipelines.velocity_analysis.analysis.profiles import (
-    velocity_profile_analysis as fitting,
-)
-from pipelines.velocity_analysis.analysis.profiles.velocity_profile_analysis import (
+from pipelines.velocity_analysis.outputs.profile_analysis import (
     OUTPUT_ROOT,
     SOURCE_PATHS,
-    run_velocity_profile_analysis,
+    pack_velocity_profile_analysis_outputs,
 )
 
 
 def _analyze(y, **kwargs):
     values = np.asarray(y)[:, None, None, None, None]
-    return fitting.analyze_velocity_profiles(values, **kwargs)
+    return fitting.fit_parabolic_profiles(values, **kwargs)
 
 
 def _scalar(result, name):
@@ -128,14 +126,14 @@ class VelocityProfileFittingTests(unittest.TestCase):
         factors = np.arange(1, np.prod(shape) + 1).reshape(shape)
         x = np.arange(9.0)
         values = (-(x - 1.25) * (x - 6.75))[:, None, None, None, None] * factors[None]
-        result = fitting.analyze_velocity_profiles(values, time_block_size=1)
+        result = fitting.fit_parabolic_profiles(values, time_block_size=1)
         np.testing.assert_allclose(result["a"], -factors)
         self.assertTrue(all(value.shape == shape for value in result.values()))
 
         shared = np.repeat((-(x - 1) * (x - 7))[:, None, None, None, None], 4, axis=1)
         shared[2, :2] = np.nan
         with patch.object(np.linalg, "lstsq", wraps=np.linalg.lstsq) as solve:
-            fitting.analyze_velocity_profiles(shared)
+            fitting.fit_parabolic_profiles(shared)
         self.assertEqual(2, solve.call_count)
 
     def test_bounded_dataset_reads(self) -> None:
@@ -151,7 +149,7 @@ class VelocityProfileFittingTests(unittest.TestCase):
                 raise AssertionError("full dataset read")
 
         self_test = self
-        result = fitting.analyze_velocity_profiles(SlabOnly(), time_block_size=2)
+        result = fitting.fit_parabolic_profiles(SlabOnly(), time_block_size=2)
         self.assertEqual((7, 1, 1, 1), result["a"].shape)
 
 
@@ -182,7 +180,7 @@ class VelocityProfileAnalysisOptionTests(unittest.TestCase):
             filename = Path(directory) / "analysis.h5"
             with h5py.File(filename, "w") as h5:
                 output = PipelineH5Output(h5)
-                results = run_velocity_profile_analysis(
+                results = pack_velocity_profile_analysis_outputs(
                     {
                         source_path.lstrip("/"): DatasetValue(values)
                         for source_path in SOURCE_PATHS.values()
@@ -223,7 +221,7 @@ class VelocityProfileAnalysisOptionTests(unittest.TestCase):
                     if vessel != missing
                 }
                 with self.assertRaisesRegex(KeyError, f"{missing.lower()}.*{missing}"):
-                    run_velocity_profile_analysis(profile_outputs)
+                    pack_velocity_profile_analysis_outputs(profile_outputs)
 
 
 if __name__ == "__main__":

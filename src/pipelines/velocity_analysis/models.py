@@ -8,7 +8,7 @@ from typing import Literal
 import numpy as np
 
 from calculations.blood_flow_velocity import PerBeatAnalysisResult
-from calculations.segment_profiles import MaskedArrays, SegmentProfileResult
+from calculations.topology.segment_profiles import MaskedArrays, SegmentProfileResult
 from pipelines.velocity.models import RetinalVelocity
 
 from .sources import VelocityAnalysisSourceData

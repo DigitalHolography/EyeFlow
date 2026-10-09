@@ -14,7 +14,10 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.segment_profiles import MaskedArrays, SegmentProfileSettings  # noqa: E402
+from calculations.topology.segment_profiles import (  # noqa: E402
+    MaskedArrays,
+    SegmentProfileSettings,
+)
 from calculations.topology import (  # noqa: E402
     OpticDisc,
     ring_masks,

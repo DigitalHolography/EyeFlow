@@ -76,5 +76,6 @@ the source of truth for these constants and border/NaN behavior.
   intentionally rejects materially anisotropic sampling.
 
 For detailed weighted quadratic profile behavior, read
-[velocity-profile analysis](../../docs/velocity_profile_analysis.md); its solver
-lives with the pipeline because it is specific to that output product.
+[velocity-profile analysis](../../docs/velocity_profile_analysis.md). The generic
+solver lives in `topology/segment_profiles/fits/parabolic.py`; the velocity-analysis
+pipeline owns source-path selection, provenance, and output packing.

@@ -803,7 +803,7 @@ class VelocityAnalysisPipelineTests(unittest.TestCase):
             ) as fft,
             patch.object(
                 analysis_runner,
-                "run_velocity_profile_analysis",
+                "pack_velocity_profile_analysis_outputs",
                 return_value={"analysis": 5},
             ) as analyze,
         ):

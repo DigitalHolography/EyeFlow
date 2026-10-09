@@ -10,6 +10,11 @@ analysis, the fitter consumes the payloads published at both output paths:
 Input axes are `(x, time, beat, branch, radius)`. Every profile is fit independently;
 there is no averaging across time, beats, branches or radii.
 
+The reusable numerical implementation lives in
+`src/calculations/topology/segment_profiles/fits/parabolic.py`. The
+velocity-analysis adapter selects the artery and vein source paths and adds the
+EyeFlow output schema and provenance.
+
 ## Fit definition
 
 Use `x = 0, ..., Nx-1` and minimize `sum(w * (v - (a*x*x+b*x+c))**2)` over

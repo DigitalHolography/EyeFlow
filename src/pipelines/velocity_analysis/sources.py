@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from calculations.segment_profiles import SegmentProfileSettings
+from calculations.topology.segment_profiles import SegmentProfileSettings
 from input_output.schema import (
     HD_BAND_HF_PATH,
     HD_BAND_LF_PATH,

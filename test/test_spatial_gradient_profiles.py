@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from calculations.segment_profiles import SegmentProfileSettings
+from calculations.topology.segment_profiles import SegmentProfileSettings
 from calculations.topology import OpticDisc
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.spatial_gradient_moment0 import profiles as profile_module

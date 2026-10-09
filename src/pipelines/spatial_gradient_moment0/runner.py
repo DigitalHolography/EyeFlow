@@ -9,7 +9,7 @@ import numpy as np
 from calculations.blood_flow_velocity.signal_analysis.waveform import (
     mean_period_seconds,
 )
-from calculations.segment_profiles import SegmentProfileSettings
+from calculations.topology.segment_profiles import SegmentProfileSettings
 from pipelines.velocity.runner import cardiac_cycle_indexes
 from pipelines.velocity.sources import load_velocity_inputs
 from pipelines.topology_core.runner import prepared_topologies

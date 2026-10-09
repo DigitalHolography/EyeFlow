@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
+from calculations.topology.segment_profiles import (
+    DEFAULT_PROFILE_MASK_DILATION_PIXELS,
+)
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
 from pipelines.profile_outputs import (
@@ -14,7 +17,6 @@ from pipelines.profile_outputs import (
 from pipelines.velocity.models import RetinalVelocity
 from pipelines.velocity.semantics import velocity_dataset_attrs
 
-from ..analysis.profiles.profiles import DEFAULT_PROFILE_MASK_DILATION_ITERATIONS
 from .paths import resolve_output_paths
 
 
@@ -131,7 +133,7 @@ def pack_velocity_profile_fft_outputs(
     outputs = _pack_vessel_velocity_fft_profiles(
         schema.artery_velocity_profiles,
         artery_segments,
-        mask_dilation_pixels=DEFAULT_PROFILE_MASK_DILATION_ITERATIONS,
+        mask_dilation_pixels=DEFAULT_PROFILE_MASK_DILATION_PIXELS,
     )
     outputs.update(
         _pack_vessel_velocity_fft_profiles(

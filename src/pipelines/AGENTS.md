@@ -127,4 +127,4 @@ Retain clear method, calibration, and unit provenance for their results.
 | Blood-volume-rate formula | option declaration, runner, outputs, `calculations/blood_volume_rate.py`, BVR tests | unrelated waveform metric calculators |
 | Metric family | that pipeline's runner/calculator/outputs plus waveform input contracts and matching test file | pipeline engine unless dependencies/options change |
 | Displacement | `displacement_map/` and `test_displacement_map_pipeline.py` | topology and waveform metrics unless the dormant segment helper is activated |
-| Profile fit | `velocity_analysis/analysis/profiles/velocity_profile_analysis.py`, profile schema producer, dedicated doc/test | GUI and settings |
+| Profile fit | `calculations/topology/segment_profiles/fits/parabolic.py`, then `velocity_analysis/outputs/profile_analysis.py`, dedicated doc/test | GUI and settings |
