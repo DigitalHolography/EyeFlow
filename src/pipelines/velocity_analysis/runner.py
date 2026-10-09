@@ -5,9 +5,6 @@ from time import perf_counter
 from input_output import EyeFlowOutputPaths
 from utils.logger import Logger
 
-from .analysis.profiles.velocity_profile_analysis import (
-    run_velocity_profile_analysis,
-)
 from .analysis.segment_maps import prepare_segment_velocity_maps_per_beat
 from .artifacts import export_segment_velocity_map_avis, export_velocity_signals
 from .builder import (
@@ -21,6 +18,7 @@ from .outputs import (
     pack_segment_map_outputs,
     pack_segment_velocity_outputs,
     pack_velocity_per_beat_outputs,
+    pack_velocity_profile_analysis_outputs,
     pack_velocity_profile_fft_outputs,
 )
 
@@ -127,7 +125,7 @@ def run_velocity_analysis(ctx) -> dict[str, object]:
         metrics.update(velocity_profile_outputs)
         if profile_analysis_selected:
             metrics.update(
-                run_velocity_profile_analysis(velocity_profile_outputs)
+                pack_velocity_profile_analysis_outputs(velocity_profile_outputs)
             )
         if profile_fft_selected:
             metrics.update(

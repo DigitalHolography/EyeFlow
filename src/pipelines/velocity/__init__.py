@@ -20,6 +20,7 @@ from .runner import (
     dag_produces=["velocity", "cardiac_cycles"],
     input_slot="both",
     visibility="hidden",
+    produces_execution_variants=True,
 )
 def run(ctx) -> None:
     run_velocity(ctx)

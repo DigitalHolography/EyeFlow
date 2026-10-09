@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from calculations.segment_profiles import SegmentProfileSettings
+from calculations.vessel_segments.measurement import SegmentMeasurementSettings
 from input_output.schema import (
     HD_BAND_HF_PATH,
     HD_BAND_LF_PATH,
@@ -38,7 +38,7 @@ class VelocityAnalysisSourceData:
     """Resolved source data with explicit analysis-axis contracts."""
 
     source: RetinalSourceData
-    profile_settings: SegmentProfileSettings
+    profile_settings: SegmentMeasurementSettings
     provenance: dict[str, object]
 
 
@@ -79,8 +79,8 @@ class VelocityAnalysisSources:
             provenance=_source_provenance(self.hd, self.dv, source),
         )
 
-    def _profile_settings(self, pixel_pitch: PixelPitch) -> SegmentProfileSettings:
-        return SegmentProfileSettings(
+    def _profile_settings(self, pixel_pitch: PixelPitch) -> SegmentMeasurementSettings:
+        return SegmentMeasurementSettings(
             pixel_size_mm=self._pixel_size(pixel_pitch),
             submask_size_percentile_kept=(CROSS_SECTION_SUBMASK_SIZE_PERCENTILE_KEPT),
         )

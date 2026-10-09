@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import numpy as np
 
-from input_output.profile_datasets import (
-    _profile_dataset,
-    _profile_h5_options,
-    _temporally_meaned_profile_dataset,
-)
+from calculations.vessel_segments.profiles.fft import DEFAULT_PROFILE_MASK_DILATION_PIXELS
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
 from pipeline_engine.base import DatasetValue
+from pipelines.profile_outputs import (
+    profile_dataset,
+    profile_h5_options,
+    temporally_meaned_profile_dataset,
+)
 from pipelines.velocity.models import RetinalVelocity
 from pipelines.velocity.semantics import velocity_dataset_attrs
 
-from ..analysis.profiles.profiles import DEFAULT_PROFILE_MASK_DILATION_ITERATIONS
 from .paths import resolve_output_paths
 
 
@@ -65,7 +65,7 @@ def _pack_vessel_profiles(
         dtype=np.float32,
     )
     outputs = {
-        paths.transverse_velocity_profile_unmasked: _profile_dataset(
+        paths.transverse_velocity_profile_unmasked: profile_dataset(
             np.asarray(profile.transverse.unmasked, dtype=np.float32),
             cycle_boundary_indexes,
             index_base=index_base,
@@ -73,7 +73,7 @@ def _pack_vessel_profiles(
             attrs=velocity_attrs,
             valid_segments=valid_segments,
         ),
-        paths.transverse_velocity_profile_masked: _profile_dataset(
+        paths.transverse_velocity_profile_masked: profile_dataset(
             transverse_masked,
             cycle_boundary_indexes,
             index_base=index_base,
@@ -82,7 +82,7 @@ def _pack_vessel_profiles(
             attrs=velocity_attrs,
             valid_segments=valid_segments,
         ),
-        paths.longitudinal_velocity_profile_unmasked: _profile_dataset(
+        paths.longitudinal_velocity_profile_unmasked: profile_dataset(
             np.asarray(
                 profile.longitudinal.unmasked,
                 dtype=np.float32,
@@ -94,7 +94,7 @@ def _pack_vessel_profiles(
             attrs=velocity_attrs,
             valid_segments=valid_segments,
         ),
-        paths.longitudinal_velocity_profile_masked: _profile_dataset(
+        paths.longitudinal_velocity_profile_masked: profile_dataset(
             np.asarray(
                 profile.longitudinal.masked,
                 dtype=np.float32,
@@ -115,7 +115,7 @@ def _pack_vessel_profiles(
             "longitudinal_velocity_profile_masked",
         ):
             outputs[getattr(paths, field + "_meaned")] = (
-                _temporally_meaned_profile_dataset(outputs[getattr(paths, field)])
+                temporally_meaned_profile_dataset(outputs[getattr(paths, field)])
             )
     return outputs
 
@@ -131,7 +131,7 @@ def pack_velocity_profile_fft_outputs(
     outputs = _pack_vessel_velocity_fft_profiles(
         schema.artery_velocity_profiles,
         artery_segments,
-        mask_dilation_pixels=DEFAULT_PROFILE_MASK_DILATION_ITERATIONS,
+        mask_dilation_pixels=DEFAULT_PROFILE_MASK_DILATION_PIXELS,
     )
     outputs.update(
         _pack_vessel_velocity_fft_profiles(
@@ -191,7 +191,7 @@ def _pack_vessel_velocity_fft_profiles(
                 "mask_applied": False,
                 "mask_dilation_iterations": 0,
             },
-            h5_options=_profile_h5_options(unmasked.shape),
+            h5_options=profile_h5_options(unmasked.shape),
         ),
         masked_path: DatasetValue(
             data=masked,
@@ -201,6 +201,6 @@ def _pack_vessel_velocity_fft_profiles(
                 "mask_dilation_iterations": int(mask_dilation_pixels),
                 "mask_dilation_axis": "transverse_x",
             },
-            h5_options=_profile_h5_options(masked.shape),
+            h5_options=profile_h5_options(masked.shape),
         ),
     }

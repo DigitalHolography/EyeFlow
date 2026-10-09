@@ -13,7 +13,7 @@ task crosses front-end or I/O boundaries.
 
 | Module | Responsibility |
 |---|---|
-| `base.py` | `PipelineDescriptor`, `PipelineOption`, result payloads, decorators, and the process interface |
+| `base.py` | `PipelineDescriptor`, `PipelineOption`, `ExecutionVariant`, result payloads, decorators, and the process interface |
 | `dag.py` | Semantic-key producer graph, option-dependent requirements, topological order, and target closure |
 | `run_service.py` | Shared GUI/CLI run-spec validation, input expansion, destination mapping, and batch execution |
 | `runtime.py` | Opens inputs/output, initializes provenance, creates contexts, invokes descriptors, and records completion |
@@ -58,8 +58,11 @@ The runtime opens HD/DV sources and the output HDF5 for the full per-file plan.
 It creates a new `PipelineContext` for every descriptor over the same output
 handle and shared-state dictionary. Pipeline options, execution order, and
 directly selected targets and calibration are immutable views for the run.
-Velocity-dependent descriptors execute in isolated contexts for each successful
-method, reusing the resolved DAG and shared topology. A pipeline returning a
+Any descriptor declaring `produces_execution_variants=True` may publish typed
+`ExecutionVariant` objects through `ctx.publish_execution_variants()`. Its
+transitive DAG dependents execute once per surviving variant using that
+variant's isolated state, HDF5 namespace, artifact namespace, and provenance;
+unrelated descriptors remain shared. A pipeline returning a
 mapping or `ProcessResult` is persisted;
 a pipeline returning `None` owns its direct writes.
 
@@ -73,10 +76,14 @@ a pipeline returning `None` owns its direct writes.
   does not validate arbitrary `ctx.state` keys.
 - `input_slot` controls preferred merged-attribute lookup. Normal `.holo` layout
   resolution still requires both HD and DV companions.
-- Workflow isolation catches descriptor failures only at the method execution
-  boundary, removes that workflow's owned output, and preserves its successful
-  sibling. Shared-pipeline errors still fail the run. `_run_pipeline_descriptor`
-  wraps them with pipeline identity and retains their cause.
+- Variant isolation catches descriptor failures only at the per-variant
+  execution boundary, removes that variant's owned outputs, and preserves its
+  successful siblings. Shared-pipeline errors still fail the run.
+  `_run_pipeline_descriptor` wraps them with pipeline identity and retains
+  their cause.
+- Variant producers must declare `produces_execution_variants=True`; publishing
+  variants without the declaration, or declaring them without publishing any,
+  is an execution error. Nested variant producers are not supported.
 - Do not mutate the global catalog during a run. Reload/discovery belongs before
   plan construction.
 

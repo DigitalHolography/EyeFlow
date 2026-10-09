@@ -2,52 +2,81 @@
 
 ## Boundary
 
-`calculations` contains reusable numerical and domain code. It may depend on
-NumPy/SciPy/scikit-image and the optional compute backend, but it must not know
-about Tkinter, pipeline selection, persisted settings, `.holo` layout, or
-output-directory policy. Pipeline packages translate typed source data into
-calculation inputs and pack results into the EyeFlow schema.
+`calculations` contains numerical and transform logic reusable by more than one
+pipeline. It may depend on NumPy/SciPy/scikit-image and the optional compute
+backend, but it must not know about Tkinter, pipeline selection, persisted
+settings, `.holo` layout, or output-directory policy. Logic whose purpose is
+one product belongs in that pipeline package; pipelines translate typed source
+data into reusable calculation inputs and pack results into the EyeFlow schema.
 
 ## Context scopes
 
 | Scientific task | Start with | Important consumers/tests |
 |---|---|---|
-| Local retinal velocity | `retinal_velocity/vessel_velocity_estimator.py`, `_masks.py` | `heartbeat_core`, `waveform_velocity_core`; `test_frequency_band_velocity.py`, `test_heartbeat_core.py` |
-| Heartbeat and waveform boundaries | `blood_flow_velocity/signal_analysis/heartbeat/` | heartbeat core and all per-beat products; `test_heartbeat_analysis.py`, `test_per_beat_runner.py` |
-| Per-beat resampling | `blood_flow_velocity/signal_analysis/per_beat/` | waveform core/metrics; `test_per_beat_runner.py` |
+| Cardiac-cycle detection | `blood_flow_velocity/signal_analysis/cardiac_cycle/` | `pipelines/velocity/cardiac_cycle.py`; `test_cardiac_cycle_analysis.py`, `test_velocity_pipeline.py` |
+| Per-beat resampling | `blood_flow_velocity/signal_analysis/per_beat/` | velocity analysis and waveform metrics; `test_per_beat_runner.py` |
 | Waveform morphology/metrics | `blood_flow_velocity/signal_analysis/waveform/` | shape/absolute/low-rank pipelines; their focused tests |
-| Branch, annulus, segment, or cross-section behavior | `topology/` | topology core, velocity/spatial-gradient/displacement profiles; all `test_topology_*`, profile, and segment-output tests |
+| Native branch, annulus, segment geometry | `topology/` | topology core; segment, orientation, mask-area, quadrant, and optic-disc tests |
+| Segment sampling, measurement, or cross-section behavior | `vessel_segments/` | topology core and velocity/spatial-gradient profiles; cache, workflow, transform, chunk, profile, and segment-output tests |
 | Spatial gradient/filter behavior | `math/spatial_gradient.py`, `math/image.py`, periodic windows | spatial-gradient pipeline; `test_spatial_gradient_*`, `test_gaussian2d_blur.py`, `test_unsharpen.py`, `test_periodic_sliding_windows.py` |
 | Blood-volume-rate formulas | `blood_volume_rate.py` | `pipelines/blood_volume_rate/`; `test_blood_volume_rate.py`, pipeline dependency test |
 | Shared statistics/Fourier utilities | `math/` | search call sites; `test_calculations_math.py` and affected pipeline tests |
-| CPU/GPU behavior | `compute_backend.py`, topology transforms/workflow | topology transform/chunk tests and benchmark snapshot |
+| CPU/GPU behavior | `compute_backend.py`, `vessel_segments/sampling/transforms.py` and `streaming.py` | topology transform/chunk tests and benchmark snapshot |
 
-## Velocity calculation contract
+## Velocity calculation ownership
 
-The estimator processes `(frame, y, x)` volumes in fixed-size temporal chunks.
-It builds one dilated vessel-background mask, inpaints each chunk, computes a
-signed difference from local background, and returns maps plus artery/vein
-signals. The active source differs by method:
+Retinal velocity estimation is the literal purpose of the `velocity` pipeline,
+so its product-specific estimator lives in
+`pipelines/velocity/estimation.py`, with mask preparation in
+`pipelines/velocity/masks.py`. Read the pipeline context and data contracts for
+its method, calibration, and output invariants. Reusable cardiac-cycle,
+per-beat, waveform, topology, and math transforms remain in `calculations`.
 
-- moments: `sqrt(moment2 / spatial_mean(moment0))`, guarded where the mean is
-  zero, then physical scaling after background subtraction;
-- bands: `HF / LF`, with exact-zero LF mapped to zero, then the same background
-  path after Hz-per-ratio calibration and with physical mm/s scaling.
+## Native topology and sampled vessel segments
 
-Inputs must be finite and non-negative in band mode. Do not introduce epsilon
-bias, infinity, or a silent fallback. The estimator cache key includes the
-method and only the active source identities so heartbeat and waveform cores can
-reuse exactly matching work.
-
-## Topology and cross-sections
-
-`topology` owns optic-disc geometry, annulus construction, branch identity,
-segment masks/centers, orientation, transforms, profiles, native mask areas,
-cache keys, and bounded chunk preparation. The optic-disc center defines radial
+`topology` owns only source-coordinate geometry: optic-disc geometry, annuli,
+branch identity, segment masks/centers/windows, centerline orientation, native
+mask areas, and anatomical quadrants. The optic-disc center defines radial
 direction. Its mask is removed from vessel support before topology products.
+It must not import `vessel_segments`, measurement execution, or the compute backend.
 
-Velocity/displacement segments normally use fused resize-and-rotate sampling.
-Spatial gradients deliberately use staged processing:
+`vessel_segments` owns analysis of maps sampled using that geometry:
+
+| Package/module | Responsibility |
+|---|---|
+| `sampling/models.py` | `SegmentSamplingPlan`, sampled scalar/vector segments, and chunks |
+| `sampling/preparation.py` | Spatial plans, shared window sizes, reference-based orientation fallback |
+| `sampling/extraction.py` | Padded scalar or component-valued map patches |
+| `sampling/transforms.py` | CPU/GPU interpolation, rotation, and mask transforms |
+| `sampling/streaming.py` | Ordered temporal chunks, halos, and scratch-memory planning |
+| `sampling/cache.py` | Pure plan-cache identity; run-state ownership stays in `pipelines/topology_core/cache.py` |
+| `measurement/` | Scalar-map measurement settings, streaming accumulation, and `SegmentMeasurements` |
+| `profiles/reductions.py`, `per_beat.py` | Array-based spatial reductions and temporal resampling |
+| `profiles/fft.py` | Transverse FFT magnitude profiles and `SegmentFftAccumulator` |
+| `profiles/fits/quadratic.py` | Weighted quadratic fits and downward-opening geometry |
+
+Dependency direction is measurement -> sampling + profile reductions, and
+sampling -> native topology. Profile reductions and fits do not consume
+topology objects; streamed FFT support may use sampling mask transforms.
+Keep package initializers narrow, particularly so importing the quadratic
+fitter does not load spatial execution or optional GPU machinery.
+
+A sampling plan may use a reference map to resolve indeterminate orientation,
+but contains spatial data only, not temporal execution settings. Cache identity
+describes the segmentation-derived plan before that refinement; changing cache
+semantics is a separate task. Sampling preserves scalar/vector axes, whereas
+the measurement runner currently accepts scalar maps only.
+
+Canonical callers use `SegmentSamplingPlan`, `SegmentMeasurements`,
+`SegmentMeasurementSettings`, and `fit_quadratic_profiles`. Transitional aliases
+live in their new owning packages, never in `topology`. The existing result
+field `SegmentMeasurements.topology` holds a sampling plan; `.topology.native`
+provides native geometry. Runtime state keys and output schema remain unchanged.
+
+Velocity segments use fused resize-and-rotate sampling. The dormant
+`pipelines/displacement_map/segments.py` helper can use the same segment sampling
+transforms, but the current displacement runner does not call it. Spatial
+gradients deliberately use staged processing:
 
 ```text
 interpolate -> centered temporal mean -> Sobel magnitude
@@ -59,7 +88,8 @@ match whole-recording filtering. The chunk planner applies one scratch-memory
 budget across workers; retained result arrays are not counted. Changes to
 orientation, interpolation, mask order, halos, or branch identity affect
 multiple consumers and require topology, velocity-profile, spatial-gradient,
-displacement, and segment-output tests as appropriate.
+and segment-output tests as appropriate. Add displacement coverage if its
+segment helper becomes part of the production runner.
 
 The current production chain uses two centered 7-frame means, ImageJ Gaussian
 radius 6, and ImageJ unsharp radius 8 with weight 0.6; the staged chunk halo is
@@ -81,5 +111,6 @@ the source of truth for these constants and border/NaN behavior.
   intentionally rejects materially anisotropic sampling.
 
 For detailed weighted quadratic profile behavior, read
-[velocity-profile analysis](../../docs/velocity_profile_analysis.md); its solver
-lives with the pipeline because it is specific to that output product.
+[velocity-profile analysis](../../docs/velocity_profile_analysis.md). The generic
+solver lives in `vessel_segments/profiles/fits/quadratic.py`; the velocity-analysis
+pipeline owns source-path selection, provenance, and output packing.

@@ -61,6 +61,7 @@ py-modules = [
     "app_settings",
     "dependency_utils",
     "launcher",
+    "runtime_limits",
     "velocity_calibration",
 ]
 

@@ -41,7 +41,7 @@ def pack_quadrant_velocity_outputs(
         ):
             continue
 
-        membership = quadrant_membership(segments.profile.topology)
+        membership = quadrant_membership(segments.profile.topology.native)
         result.update(
             _pack_region_velocity_outputs(
                 schema,

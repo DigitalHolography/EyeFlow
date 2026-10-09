@@ -133,6 +133,9 @@ class EyeFlowOutputPaths:
     vein_velocity_profiles: VelocityProfileOutputPaths
     cardiac_cycle: CardiacCycleOutputPaths
     displacement_map: str
+    spatial_gradient_profiles_root: str
+    spatial_gradient_metrics_root: str
+    velocity_profile_analysis_root: str
     waveform_shape_metrics_root: str
     absolute_waveform_metrics_root: str
     lowrank_waveform_decomposition_root: str
@@ -336,6 +339,9 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     ),
     cardiac_cycle=CARDIAC_CYCLE_OUTPUT,
     displacement_map="Processing/DisplacementMap",
+    spatial_gradient_profiles_root="Processing/SpatialGradientProfiles",
+    spatial_gradient_metrics_root="Processing/SpatialGradientMetrics",
+    velocity_profile_analysis_root="Processing/VelocityProfileAnalysis",
     waveform_shape_metrics_root="Processing/Metrics/waveform_shape_metrics",
     absolute_waveform_metrics_root="Processing/Metrics/absolute_waveform_metrics",
     lowrank_waveform_decomposition_root=(

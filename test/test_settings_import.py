@@ -85,7 +85,7 @@ class SettingsImportTests(unittest.TestCase):
 
             self.assertFalse(store.path.exists())
 
-    def test_existing_settings_without_velocity_method_use_default(self) -> None:
+    def test_existing_settings_use_default_band_ratio_scale(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store = AppSettingsStore(
                 path=Path(temp_dir) / "settings.json",
@@ -93,23 +93,7 @@ class SettingsImportTests(unittest.TestCase):
             )
             store.save({"ui_mode": "minimal"})
 
-            self.assertNotIn("velocity_estimation_method", store.load())
             self.assertEqual(1.0, store.load_band_ratio_frequency_scale_hz())
-
-    def test_import_ignores_obsolete_velocity_method(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            source = root / "legacy.json"
-            source.write_text(
-                json.dumps(
-                    {"velocity_estimation_method": "unknown", "band_ratio_frequency_scale_hz": 2.0}
-                )
-            )
-            store = AppSettingsStore(path=root / "settings.json", default_template_path=None)
-            store.import_file(source)
-            self.assertNotIn("velocity_estimation_method", store.load())
-            self.assertNotIn("velocity_estimation_method", json.loads(store.path.read_text()))
-            self.assertEqual(2.0, store.load_band_ratio_frequency_scale_hz())
 
     def test_import_rejects_invalid_band_ratio_scale_without_replacing_settings(
         self,

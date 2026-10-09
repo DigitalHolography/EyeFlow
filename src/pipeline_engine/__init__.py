@@ -1,6 +1,7 @@
 from .base import (
     PIPELINE_REGISTRY,
     DatasetValue,
+    ExecutionVariant,
     MissingPipeline,
     PipelineDescriptor,
     PipelineOption,
@@ -39,6 +40,7 @@ from .run_service import (
 __all__ = [
     "PIPELINE_REGISTRY",
     "DatasetValue",
+    "ExecutionVariant",
     "PipelineDAG",
     "PipelineDescriptor",
     "PipelineOption",

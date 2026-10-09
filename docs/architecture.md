@@ -76,7 +76,9 @@ Each descriptor distinguishes:
   option-to-DAG dependencies;
 - `visibility`: visible target versus hidden shared implementation;
 - `input_slot`: preferred source for merged attributes, not permission to omit
-  companion data from a normal `.holo` run.
+  companion data from a normal `.holo` run;
+- `produces_execution_variants`: whether the pipeline publishes isolated
+  downstream executions.
 
 Every pipeline implicitly produces its own name. A required DAG key with no
 producer is treated as external, so a misspelled key does not fail DAG
@@ -120,6 +122,14 @@ Every descriptor receives a fresh `PipelineContext`, but all contexts share:
   names;
 - the calibration and workflow-specific velocity method where applicable.
 
+A declared variant producer publishes `ExecutionVariant` values through its
+context. Each value owns its run state, HDF5 output namespace, artifact
+namespace, and provenance. The engine derives the fan-out set from the
+producer's transitive DAG dependents, so this behavior does not depend on a
+literal pipeline name or velocity-specific state keys. Unrelated pipelines run
+once and their state is merged into every surviving variant before a dependent
+runs.
+
 Pipeline results may be `None`, a metrics mapping, or `ProcessResult`. A metrics
 mapping is persisted with `PipelineH5Output`; `ProcessResult` additionally
 writes attributes on the active output namespace (a workflow processing group
@@ -139,9 +149,9 @@ scratch storage, not ad-hoc module globals.
   and segment/profile analysis, and publishes the selected user-facing velocity
   datasets and artifacts. Shape, absolute, low-rank, blood-volume-rate, and
   report pipelines consume its declared state. The existing DAG executes these
-  downstream descriptors for each successful method using isolated state,
-  `/Processing` or `/ProcessingAlt`, and separate artifact folders. Topology
-  and segmentation remain shared.
+  downstream descriptors for each successful `ExecutionVariant` using isolated
+  state, `/Processing` or `/ProcessingAlt`, and separate artifact folders.
+  Topology and segmentation remain shared.
 - `spatial_gradient_moment0` is independent of velocity analysis computation;
   it reuses cardiac-cycle timing and topology, applies its own ordered image-processing
   chain, and owns gradient-derived lumen products. Dependency-only execution
@@ -149,8 +159,10 @@ scratch storage, not ad-hoc module globals.
   when `spatial_gradient_moment0` is selected directly.
 - `blood_volume_rate` composes either gradient-derived edges or mask-derived
   geometry with velocity products according to its enabled option families.
-- `displacement_map` is a separate registration/cross-section analysis. Do not
-  assume a waveform-core dependency merely because it uses the same inputs.
+- `displacement_map` is a separate registration analysis. It currently emits
+  per-vessel magnitude videos and retains temporary dense-field paths in run
+  state; the topology-based segment helper is not part of its runner. Do not
+  assume a waveform dependency merely because it uses the same inputs.
 
 See [pipeline context](../src/pipelines/AGENTS.md) and
 [calculation context](../src/calculations/AGENTS.md) before scientific changes.
@@ -193,7 +205,8 @@ contract or its presentation must also change.
 | Canonical aligned source models | `src/input_output/schema/source_data.py`, `src/pipelines/vessel_inputs.py` |
 | Current EyeFlow HDF5 paths | `src/input_output/schema/eyeflow_output.py` |
 | HDF5 serialization behavior | `src/input_output/writers/h5.py`, `src/input_output/h5_access.py` |
-| Topology construction/transforms | `src/calculations/topology/` |
+| Native topology and centerline geometry | `src/calculations/topology/` |
+| Segment sampling, measurement, and profile calculations | `src/calculations/vessel_segments/` |
 | Velocity estimator semantics | `src/pipelines/velocity/estimation.py` and `src/pipelines/velocity/semantics.py` |
 | Release behavior | `.github/workflows/release.yml`, `build_installer.ps1` |
 | Numerical/performance observation | `benchmarks/rtx4090_cross_section.json` (snapshot only) |
@@ -201,7 +214,7 @@ contract or its presentation must also change.
 ## Resource and release notes
 
 Cross-section work is temporally chunked. CPU/GPU backend selection lives in
-`calculations/compute_backend.py`; topology chunk planning enforces a shared
+`calculations/compute_backend.py`; vessel-segment sampling enforces a shared
 scratch-memory budget, while retained outputs are outside that budget. Preserve
 the staged gradient path's temporal halo and operation order when optimizing.
 

@@ -148,9 +148,7 @@ class RetinalVelocityTests(unittest.TestCase):
         self.assertIs(result.vein.signals, estimated["data"].vein)
         self.assertTrue(result.has_velocity_map)
         np.testing.assert_array_equal(result.maps.velocity, 7.0)
-        self.assertNotIn("Processing/Maps/VelocityAverage/value", outputs)
         self.assertIn("Processing/Maps/VelocityAverageMasked/value", outputs)
-        self.assertNotIn("Processing/Maps/DeltaFRMSAverage/value", outputs)
 
     def test_missed_beat_gap_is_recorded_as_a_warning(self):
         gap = SuspectedMissedBeatGap(

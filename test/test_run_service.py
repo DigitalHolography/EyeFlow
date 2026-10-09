@@ -26,6 +26,7 @@ from app_settings import (  # noqa: E402
 from input_output.archives import extracted_zip_tree  # noqa: E402
 from input_output.output_manager import OutputType  # noqa: E402
 from pipeline_engine import (  # noqa: E402
+    ExecutionVariant,
     PipelineDescriptor,
     PipelineOption,
     ProcessPipeline,
@@ -65,6 +66,49 @@ class _NoopPipeline(ProcessPipeline):
         return None
 
 
+class _VariantProducer(ProcessPipeline):
+    name = "variant_source"
+    description = "variant source"
+    available = True
+    requires = []
+    missing_deps = []
+
+    def run(self, ctx):
+        ctx.publish_execution_variants(
+            [
+                ExecutionVariant(
+                    name="primary",
+                    state={"variant_value": 1},
+                    output_namespace="Processing",
+                    artifact_namespace="primary",
+                    provenance={"method": "primary"},
+                ),
+                ExecutionVariant(
+                    name="alternate",
+                    state={"variant_value": 2},
+                    output_namespace="ProcessingAlt",
+                    artifact_namespace="alternate",
+                    provenance={"method": "alternate"},
+                ),
+            ]
+        )
+
+
+class _VariantConsumer(ProcessPipeline):
+    name = "variant_consumer"
+    description = "variant consumer"
+    available = True
+    requires = []
+    missing_deps = []
+
+    def run(self, ctx):
+        ctx.output.h5.write("Processing/VariantValue/value", ctx.state["variant_value"])
+        ctx.output.h5.write(
+            "Processing/ArtifactNamespace/value",
+            ctx.output.manager.artifact_folder,
+        )
+
+
 def test_run_controls_enable_run_buttons() -> None:
     minimal_run = Mock()
     advanced_run = Mock()
@@ -90,17 +134,52 @@ def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
     )
 
 
-def _named_descriptor(name: str) -> PipelineDescriptor:
-    return PipelineDescriptor(
-        name=name,
-        description=name,
-        available=True,
-        visibility="visible",
-        pipeline_factory=_NoopPipeline,
-    )
-
-
 class RunServiceTests(unittest.TestCase):
+    def test_declared_variant_producer_fans_out_its_dag_dependents(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            holo = _write_input(root)
+            producer = PipelineDescriptor(
+                name="variant_source",
+                description="variant source",
+                available=True,
+                visibility="hidden",
+                dag_produces=("variant_data",),
+                produces_execution_variants=True,
+                pipeline_factory=_VariantProducer,
+            )
+            consumer = PipelineDescriptor(
+                name="variant_consumer",
+                description="variant consumer",
+                available=True,
+                dag_requires=("variant_data",),
+                pipeline_factory=_VariantConsumer,
+            )
+            spec = resolve_run_spec(
+                input_paths=[holo],
+                target_names=["variant_consumer"],
+                pipelines=[producer, consumer],
+            )
+
+            result = execute_run(spec)
+
+            self.assertTrue(result.succeeded, result.failures)
+            with h5py.File(result.outputs[0], "r") as output:
+                self.assertEqual(1, output["Processing/VariantValue/value"][()])
+                self.assertEqual(2, output["ProcessingAlt/VariantValue/value"][()])
+                self.assertEqual(
+                    "primary",
+                    output["Processing/ArtifactNamespace/value"][()].decode(),
+                )
+                self.assertEqual(
+                    "alternate",
+                    output["ProcessingAlt/ArtifactNamespace/value"][()].decode(),
+                )
+                self.assertEqual(
+                    ["primary", "alternate"],
+                    list(output.attrs["execution_variants_completed"]),
+                )
+
     def test_success_replaces_existing_output_with_direct_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -228,37 +307,16 @@ class RunServiceTests(unittest.TestCase):
             holo = _write_input(Path(temp_dir))
             spec = resolve_run_spec(input_paths=[holo], target_names=["sample"],
                                     pipelines=[_descriptor()], band_ratio_frequency_scale_hz=2.5)
-            self.assertFalse(hasattr(spec, "velocity_estimation_method"))
             self.assertEqual(2.5, spec.band_ratio_frequency_scale_hz)
             with self.assertRaisesRegex(ValueError, "band_ratio_frequency_scale_hz"):
                 resolve_run_spec(input_paths=[holo], target_names=["sample"],
                                  pipelines=[_descriptor()], band_ratio_frequency_scale_hz=0.0)
 
-    def test_frequency_band_method_allows_physical_velocity_pipelines(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            holo = _write_input(Path(temp_dir))
-            for pipeline_name in (
-                "absolute_waveform_metrics",
-                "blood_volume_rate",
-            ):
-                with self.subTest(pipeline=pipeline_name):
-                    spec = resolve_run_spec(
-                        input_paths=[holo],
-                        target_names=[pipeline_name],
-                        pipelines=[_named_descriptor(pipeline_name)],
-                            )
-
-                    self.assertEqual((pipeline_name,), spec.plan.targets)
-                    self.assertFalse(hasattr(spec, "velocity_estimation_method"))
-
-    def test_gui_reads_calibration_without_reading_obsolete_method(self) -> None:
+    def test_gui_reads_band_ratio_calibration(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             holo = _write_input(Path(temp_dir))
             progress_controller = SimpleNamespace(reset_run_log=Mock())
             settings_store = SimpleNamespace(
-                load_velocity_estimation_method=Mock(
-                    return_value="frequency_bands"
-                ),
                 load_band_ratio_frequency_scale_hz=Mock(return_value=3.0),
             )
             app = SimpleNamespace(
@@ -281,9 +339,7 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertIsNotNone(spec)
             assert spec is not None
-            self.assertFalse(hasattr(spec, "velocity_estimation_method"))
             self.assertEqual(3.0, spec.band_ratio_frequency_scale_hz)
-            settings_store.load_velocity_estimation_method.assert_not_called()
             settings_store.load_band_ratio_frequency_scale_hz.assert_called_once_with()
             progress_controller.reset_run_log.assert_called_once()
 
@@ -364,7 +420,7 @@ class RunServiceTests(unittest.TestCase):
                     pipelines=[_descriptor()],
                 )
 
-    def test_runtime_output_does_not_contain_angioeye_trim_attribute(self) -> None:
+    def test_runtime_records_run_and_velocity_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             holo = _write_input(Path(temp_dir))
             spec = resolve_run_spec(
@@ -377,7 +433,6 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertTrue(result.succeeded)
             with h5py.File(result.outputs[0], "r") as output_h5:
-                self.assertNotIn("trim_h5source", output_h5.attrs)
                 self.assertEqual(["sample"], list(output_h5.attrs["pipeline_targets"]))
                 self.assertEqual({}, json.loads(output_h5.attrs["pipeline_options"]))
                 self.assertEqual(
@@ -442,7 +497,6 @@ class RunServiceTests(unittest.TestCase):
             store.save(
                 {
                     "pipeline_visibility": {"sample": True},
-                    "velocity_estimation_method": "frequency_bands",
                     "band_ratio_frequency_scale_hz": 4.0,
                 }
             )

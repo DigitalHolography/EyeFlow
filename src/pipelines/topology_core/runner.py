@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from calculations.topology import (
-    PreparedTopology,
-    prepare_topologies,
+from calculations.vessel_segments.sampling import (
+    SegmentSamplingPlan,
+    prepare_sampling_plans,
     resolve_segment_rotations,
-    run_topology_cache,
-    topology_source_id,
 )
+from calculations.vessel_segments.sampling.cache import topology_source_id
 from pipeline_engine.imports import read_int_setting
 from pipelines.vessel_inputs import load_vessel_topology_inputs
 
+from .cache import run_topology_cache
 from .outputs import pack_topology_outputs
 
 TOPOLOGY_CORE_STATE = "topology_core.prepared"
@@ -52,7 +52,7 @@ def run_topology_core(ctx) -> dict[str, object]:
         tuple(int(size) for size in topology_reference.shape[-2:]),
         number_of_radii_in_fov=number_of_radii,
     )
-    prepared = prepare_topologies(
+    prepared = prepare_sampling_plans(
         {
             "artery": vessels.artery,
             "vein": vessels.vein,
@@ -80,13 +80,13 @@ def run_topology_core(ctx) -> dict[str, object]:
     )
 
 
-def prepared_topologies(ctx) -> Mapping[str, PreparedTopology]:
+def prepared_topologies(ctx) -> Mapping[str, SegmentSamplingPlan]:
     """Return the canonical topology produced by the declared DAG dependency."""
 
     value = ctx.state.get(TOPOLOGY_CORE_STATE)
     if not isinstance(value, Mapping) or set(value) != {"artery", "vein"}:
         raise RuntimeError("Prepared topology state is unavailable; check the pipeline DAG.")
-    if not all(isinstance(item, PreparedTopology) for item in value.values()):
+    if not all(isinstance(item, SegmentSamplingPlan) for item in value.values()):
         raise TypeError("Prepared topology state contains an invalid value.")
     return value
 

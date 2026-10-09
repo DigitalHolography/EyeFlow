@@ -8,6 +8,21 @@ from installer.build_installer import clean_directory, project_metadata, write_i
 REPO = Path(__file__).resolve().parents[1]
 
 
+def test_every_top_level_source_module_is_in_the_setuptools_manifest():
+    pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    setuptools_section = pyproject.split("[tool.setuptools]", 1)[1].split(
+        "[tool.setuptools.packages.find]", 1
+    )[0]
+    source_modules = {
+        path.stem
+        for path in (REPO / "src").glob("*.py")
+        if path.name != "__init__.py"
+    }
+
+    for module in source_modules:
+        assert f'"{module}"' in setuptools_section
+
+
 def test_metadata_uses_project_section_and_accepts_windows_bom(tmp_path):
     (tmp_path / "pyproject.toml").write_text(
         '[unrelated]\nname = "wrong"\nversion = "0"\n'

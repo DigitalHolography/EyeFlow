@@ -96,8 +96,8 @@ def test_both_workflows_use_independent_raw_frequency_cycles_and_downstream_beat
     with h5py.File(result.outputs[0], "r") as output:
         assert "Segmentation" in output
         assert "velocity_estimation_method" not in output.attrs
-        assert json.loads(output.attrs["velocity_workflow_failures"]) == {}
-        assert list(output.attrs["velocity_workflows_completed"]) == [
+        assert json.loads(output.attrs["execution_variant_failures"]) == {}
+        assert list(output.attrs["execution_variants_completed"]) == [
             "doppler_moments",
             "frequency_bands",
         ]
@@ -220,7 +220,7 @@ def test_one_failed_workflow_preserves_other_outputs(tmp_path, failed_method, st
         assert failed_root not in output
         assert successful_root in output
         assert output[successful_root].attrs["cardiac_cycle_detection_method"] != failed_method
-        assert failed_method in json.loads(output.attrs["velocity_workflow_failures"])
+        assert failed_method in json.loads(output.attrs["execution_variant_failures"])
         assert (
             processing_path(
                 EyeFlowOutputPaths.active().blood_volume_rate.artery.masked_edges, successful_root

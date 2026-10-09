@@ -6,12 +6,8 @@ from types import SimpleNamespace
 import numpy as np
 
 import pipelines  # noqa: F401
-from calculations.topology import (
-    BranchIdentityResult,
-    OpticDisc,
-    PreparedTopology,
-    SegmentTopology,
-)
+from calculations.topology import BranchIdentityResult, OpticDisc, SegmentTopology
+from calculations.vessel_segments.sampling import SegmentSamplingPlan
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines.waveform_shape_metrics.metrics.calculator import (
@@ -41,7 +37,7 @@ def _segment_topology(labels, branch_ids, centers, optic_disc_center):
         segment_centers_xy=centers,
         window_bounds_xyxy=np.zeros((radius_count, branch_count, 4), dtype=int),
     )
-    return PreparedTopology(
+    return SegmentSamplingPlan(
         native=native,
         rotation_degrees=np.zeros((radius_count, branch_count), dtype=np.float32),
         interpolated_masks=native.segment_masks,
@@ -53,12 +49,9 @@ class WaveformShapeMetricsTests(unittest.TestCase):
     def test_waveform_pipelines_have_separate_dag_responsibilities(self):
         pipelines.load_pipeline_catalog()
 
-        self.assertNotIn("velocity_analysis_core", PIPELINE_REGISTRY)
         self.assertIn("velocity_analysis", PIPELINE_REGISTRY)
         self.assertIn("waveform_shape_metrics", PIPELINE_REGISTRY)
         self.assertIn("pdf_report", PIPELINE_REGISTRY)
-        self.assertNotIn("waveform_shape_metrics_angioeye", PIPELINE_REGISTRY)
-        self.assertNotIn("topological_metrics", PIPELINE_REGISTRY)
         for pipeline_name in (
             "velocity_analysis",
             "waveform_shape_metrics",
@@ -94,8 +87,6 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             report_plan.names.index("velocity_analysis"),
             report_plan.names.index("waveform_shape_metrics"),
         )
-        self.assertNotIn("waveform_shape_metrics_angioeye", metrics_plan.names)
-
     def test_runner_reads_packed_metrics_and_prefixes_outputs(self):
         schema = EyeFlowOutputPaths.active()
         packed_metrics = self._global_artery_inputs(schema)

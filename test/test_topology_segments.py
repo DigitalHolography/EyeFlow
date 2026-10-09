@@ -17,6 +17,8 @@ from calculations.topology import (  # noqa: E402
     SegmentTopology,
     build_segment_topology,
     competing_segment_masks,
+)
+from calculations.vessel_segments.sampling.extraction import (  # noqa: E402
     extract_segment,
     extract_segments,
 )

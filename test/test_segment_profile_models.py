@@ -5,11 +5,11 @@ from dataclasses import fields, replace
 import numpy as np
 import pytest
 
-from calculations.segment_profiles import (
+from calculations.vessel_segments.measurement import (
     CompactSegmentMaps,
     MaskedArrays,
-    SegmentProfileResult,
-    SegmentProfileSettings,
+    SegmentMeasurements,
+    SegmentMeasurementSettings,
 )
 from pipelines.velocity_analysis.models import VelocitySegmentResult
 
@@ -25,14 +25,14 @@ from pipelines.velocity_analysis.models import VelocitySegmentResult
 )
 def test_invalid_settings_are_rejected(field, value):
     with pytest.raises(ValueError):
-        replace(SegmentProfileSettings(0.01), **{field: value})
+        replace(SegmentMeasurementSettings(0.01), **{field: value})
 
 
 def test_velocity_result_composes_generic_profiles_with_pipeline_products():
-    base_fields = {item.name for item in fields(SegmentProfileResult)}
+    base_fields = {item.name for item in fields(SegmentMeasurements)}
     velocity_fields = {item.name for item in fields(VelocitySegmentResult)}
 
-    assert not issubclass(VelocitySegmentResult, SegmentProfileResult)
+    assert not issubclass(VelocitySegmentResult, SegmentMeasurements)
     assert base_fields == {
         "topology",
         "segment_signal",

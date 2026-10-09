@@ -1,22 +1,18 @@
-"""Run-scoped cache identity for prepared retinal topology."""
+"""Cache identity for spatial sampling plans before reference-based refinement."""
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
 from dataclasses import dataclass
 from hashlib import blake2b
 
 import numpy as np
 
-from .geometry import AnnulusGeometry
-
-
-TOPOLOGY_CACHE_STATE = "topology.prepared"
+from calculations.topology.geometry import AnnulusGeometry
 
 
 @dataclass(frozen=True, slots=True)
 class TopologyCacheKey:
-    """Inputs that completely identify one prepared vessel topology."""
+    """Inputs identifying a plan built from segmentation and spatial settings."""
 
     source_id: str
     vessel_name: str
@@ -56,23 +52,6 @@ def topology_cache_key(
             None if window_side_pixels is None else int(window_side_pixels)
         ),
     )
-
-
-def run_topology_cache(
-    run_state: MutableMapping[str, object],
-) -> dict[TopologyCacheKey, object]:
-    """Return the prepared-topology dictionary owned by one pipeline run."""
-
-    found = run_state.get(TOPOLOGY_CACHE_STATE)
-    if found is None:
-        cache: dict[TopologyCacheKey, object] = {}
-        run_state[TOPOLOGY_CACHE_STATE] = cache
-        return cache
-    if not isinstance(found, dict):
-        raise TypeError(
-            f"Run state '{TOPOLOGY_CACHE_STATE}' must contain a dictionary."
-        )
-    return found
 
 
 def topology_source_id(*source_names: str | None) -> str:
