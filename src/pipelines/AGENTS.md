@@ -42,7 +42,7 @@ availability rather than unrelated import crashes.
 | `blood_volume_rate` | Two option families with different DAG dependencies: gradient edges and mask-derived geometry |
 | `waveform_shape_metrics`, `absolute_waveform_metrics`, `lowrank_waveform_decomposition` | Downstream waveform metrics requiring `velocity_analysis` |
 | `pdf_report` | Report assembly after waveform and shape outputs |
-| `displacement_map` | Separate image-registration/displacement and cross-section path |
+| `displacement_map` | Separate image-registration path producing magnitude videos and run-local dense-field artifacts |
 
 The declarations in each package are authoritative if this table drifts.
 
@@ -57,6 +57,14 @@ The velocity pipeline estimates the physical velocity field and detects
 zero-based cardiac-cycle boundaries. Topology is prepared once and cached in
 run state. Velocity analysis consumes both results and produces the common
 per-beat, segment, and profile state used by visible products.
+
+The velocity estimator is product-specific and therefore remains in
+`velocity/estimation.py` rather than `calculations`. It processes `(frame, y,
+x)` volumes in bounded temporal chunks, uses moments or calibrated frequency
+bands as its active source, applies the shared local-background difference, and
+returns physical velocity in `mm/s`. Exact-zero LF samples map to zero in band
+mode; finite/non-negative validation and calibration provenance are part of the
+pipeline contract.
 
 `spatial_gradient_moment0` shares cardiac-cycle/topology state but owns its
 gradient profiles and lumen edges. Do not put gradient work into velocity
@@ -80,11 +88,13 @@ converts `HF / LF` to frequency using the recorded
 `band_ratio_frequency_scale_hz`. `velocity/semantics.py`
 centralizes display and dataset interpretation. Moments publish under
 `/Processing`, bands under `/ProcessingAlt`, with isolated downstream state and
-`moments`/`bandratio` artifact folders. Each workflow detects its own cycles from
-raw RMS frequency before estimation and uses them for its downstream analyses;
-segmentation remains under `/Segmentation`. New velocity-derived outputs or
-plots must resolve semantics from payload/provenance instead of hard-coding
-`mm/s`.
+`moments`/`bandratio` artifact folders. The single velocity pipeline declares
+itself as an execution-variant producer and publishes one typed
+`ExecutionVariant` per successful method; the engine fans out its declared DAG
+dependents. Each workflow detects its own cycles from raw RMS frequency before
+estimation and uses them for its downstream analyses; segmentation remains
+under `/Segmentation`. New velocity-derived outputs or plots must resolve
+semantics from payload/provenance instead of hard-coding `mm/s`.
 
 Velocity is never dimensionless. Reject legacy unit-`1` or relative-index
 velocity metadata instead of adapting labels or output units for it.
@@ -116,5 +126,5 @@ Retain clear method, calibration, and unit provenance for their results.
 | Spatial-gradient lumen metric | spatial-gradient package, topology preparation/chunks, image filters, spatial-gradient/topology tests | CLI and report code unless output is exposed there |
 | Blood-volume-rate formula | option declaration, runner, outputs, `calculations/blood_volume_rate.py`, BVR tests | unrelated waveform metric calculators |
 | Metric family | that pipeline's runner/calculator/outputs plus waveform input contracts and matching test file | pipeline engine unless dependencies/options change |
-| Displacement | only `displacement_map/`, topology functions it imports, and displacement tests | heartbeat/waveform metrics |
+| Displacement | `displacement_map/` and `test_displacement_map_pipeline.py` | topology and waveform metrics unless the dormant segment helper is activated |
 | Profile fit | `velocity_analysis/analysis/profiles/velocity_profile_analysis.py`, profile schema producer, dedicated doc/test | GUI and settings |

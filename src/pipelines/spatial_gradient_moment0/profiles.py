@@ -19,14 +19,16 @@ from calculations.math.spatial_gradient import (
     unsharpen,
 )
 from calculations.segment_profiles import analyze_segment_profiles
-from input_output.profile_datasets import (
-    _profile_dataset,
-    _temporally_meaned_profile_dataset,
-)
+from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
+from pipelines.profile_outputs import (
+    profile_dataset,
+    temporally_meaned_profile_dataset,
+)
 
-SPATIAL_GRADIENT_PROFILE_ROOT = "Processing/SpatialGradientProfiles"
-SPATIAL_GRADIENT_METRICS_ROOT = "Processing/SpatialGradientMetrics"
+_OUTPUT_PATHS = EyeFlowOutputPaths.active()
+SPATIAL_GRADIENT_PROFILE_ROOT = _OUTPUT_PATHS.spatial_gradient_profiles_root
+SPATIAL_GRADIENT_METRICS_ROOT = _OUTPUT_PATHS.spatial_gradient_metrics_root
 SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES = 5
 TBKR_LUMEN_SIZE_QC_THRESHOLD = 0.5
 _SPATIAL_GRADIENT_MASK_DILATION_PIXELS = 5
@@ -169,7 +171,7 @@ def _pack_vessel_spatial_gradient_profiles(
         index_base=index_base,
         mask="vessel_segment",
     )
-    meaned = _temporally_meaned_profile_dataset(masked)
+    meaned = temporally_meaned_profile_dataset(masked)
     peak_metrics = _spatial_gradient_peak_metrics(
         masked,
         meaned,
@@ -641,7 +643,7 @@ def _gradient_profile_dataset(
     index_base: int,
     mask: str,
 ) -> DatasetValue:
-    value = _profile_dataset(
+    value = profile_dataset(
         profiles,
         cycle_boundary_indexes,
         index_base=index_base,

@@ -10,6 +10,7 @@ import numpy as np
 
 from calculations.segment_profiles import SegmentProfileSettings
 from calculations.topology import OpticDisc
+from input_output.schema import EyeFlowOutputPaths
 from pipelines.spatial_gradient_moment0 import profiles as profile_module
 from pipelines.spatial_gradient_moment0.profiles import (
     SPATIAL_GRADIENT_METRICS_ROOT,
@@ -21,6 +22,17 @@ from pipelines.spatial_gradient_moment0.profiles import (
 
 
 class SpatialGradientProfileTests(unittest.TestCase):
+    def test_output_roots_come_from_the_active_schema(self) -> None:
+        schema = EyeFlowOutputPaths.active()
+        self.assertEqual(
+            schema.spatial_gradient_profiles_root,
+            SPATIAL_GRADIENT_PROFILE_ROOT,
+        )
+        self.assertEqual(
+            schema.spatial_gradient_metrics_root,
+            SPATIAL_GRADIENT_METRICS_ROOT,
+        )
+
     def test_extracts_both_vessels_using_annular_cross_section_engine(self) -> None:
         vessels = SimpleNamespace(
             artery=np.ones((8, 8), dtype=bool),

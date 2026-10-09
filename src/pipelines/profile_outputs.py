@@ -1,13 +1,17 @@
-"""Shared per-beat profile datasets and lossless HDF5 options."""
+"""Shared pipeline-layer packing for per-beat profile datasets."""
+
+from __future__ import annotations
 
 from collections.abc import Mapping
 
 import numpy as np
+
 from calculations.math import nanmean_float32
 from calculations.topology.profile_interpolation import interpolate_profiles_per_beat
 from pipeline_engine.base import DatasetValue
 
-def _profile_dataset(
+
+def profile_dataset(
     profiles: np.ndarray,
     cycle_boundary_indexes,
     *,
@@ -17,6 +21,8 @@ def _profile_dataset(
     attrs: Mapping[str, object] | None = None,
     valid_segments: np.ndarray | None = None,
 ) -> DatasetValue:
+    """Interpolate profiles per beat and attach their persisted data contract."""
+
     if profiles.ndim != 4:
         raise ValueError(
             "profile arrays must have shape "
@@ -38,13 +44,13 @@ def _profile_dataset(
     return DatasetValue(
         data=profiles_per_beat,
         attrs=output_attrs,
-        h5_options=_profile_h5_options(profiles_per_beat.shape),
+        h5_options=profile_h5_options(profiles_per_beat.shape),
     )
 
 
-
-def _temporally_meaned_profile_dataset(profile: DatasetValue) -> DatasetValue:
+def temporally_meaned_profile_dataset(profile: DatasetValue) -> DatasetValue:
     """Average an interpolated profile over time within each beat."""
+
     data = nanmean_float32(np.asarray(profile.data), axis=1)
     attrs = dict(profile.attrs or {})
     dim_desc = list(attrs.get("dimDesc", ()))
@@ -56,13 +62,13 @@ def _temporally_meaned_profile_dataset(profile: DatasetValue) -> DatasetValue:
     return DatasetValue(
         data=data,
         attrs=attrs,
-        h5_options=_profile_h5_options(data.shape),
+        h5_options=profile_h5_options(data.shape),
     )
 
 
-
-def _profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
+def profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
     """Use lossless compression with chunks aligned to one segment profile."""
+
     options: dict[str, object] = {
         "compression": "gzip",
         "compression_opts": 4,
@@ -79,3 +85,10 @@ def _profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
     time_chunk = min(time_count, max(target_elements // sample_count, 1))
     options["chunks"] = (sample_count, time_chunk, 1, 1, 1)
     return options
+
+
+__all__ = [
+    "profile_dataset",
+    "profile_h5_options",
+    "temporally_meaned_profile_dataset",
+]

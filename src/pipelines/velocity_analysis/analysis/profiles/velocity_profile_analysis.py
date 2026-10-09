@@ -41,7 +41,7 @@ SOURCE_PATHS = {
         "/" + _OUTPUT_PATHS.vein_velocity_profiles.transverse_velocity_profile_masked
     ),
 }
-OUTPUT_ROOT = "/Processing/VelocityProfileAnalysis"
+OUTPUT_ROOT = "/" + _OUTPUT_PATHS.velocity_profile_analysis_root
 _MISSING = object()
 
 

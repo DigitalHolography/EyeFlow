@@ -12,7 +12,12 @@ from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
     CardiacCycleAnalysis,
 )
 from input_output.h5_access import PipelineH5Output
-from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS, processing_path
+from input_output.schema.eyeflow_output import (
+    VELOCITY_WORKFLOW_FOLDERS,
+    VELOCITY_WORKFLOW_ROOTS,
+    processing_path,
+)
+from pipeline_engine.imports import ExecutionVariant
 from utils.logger import Logger
 from velocity_calibration import physical_velocity_provenance
 
@@ -24,7 +29,6 @@ from .signal_processing import build_velocity
 from .sources import load_velocity_inputs
 
 VELOCITY_STATE = "velocity"
-VELOCITY_WORKFLOWS_STATE = "velocity_workflows"
 VELOCITY_FAILURES_STATE = "velocity_workflow_failures"
 
 
@@ -36,7 +40,6 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
     sources = {}
     failures = {}
     ctx.state.set(VELOCITY_FAILURES_STATE, failures)
-    ctx.state.set(VELOCITY_WORKFLOWS_STATE, {})
     for method in VELOCITY_WORKFLOW_ROOTS:
         method_ctx = copy(ctx)
         method_ctx.velocity_estimation_method = method
@@ -67,7 +70,7 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
         _write_failures(ctx, failures)
         raise RuntimeError(f"Neither velocity workflow has usable inputs: {failures}")
 
-    workflows = {}
+    variants: list[ExecutionVariant] = []
     outputs = {}
     velocity_data_moments = _estimate_available(
         ctx,
@@ -106,8 +109,16 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
                 cycle_source,
                 dt_seconds=float(source.holodoppler.timing.dt_seconds),
             )
-            workflows[method] = {VELOCITY_STATE: result, "velocity_source": source}
             root = VELOCITY_WORKFLOW_ROOTS[method]
+            variants.append(
+                ExecutionVariant(
+                    name=method,
+                    state={VELOCITY_STATE: result, "velocity_source": source},
+                    output_namespace=root,
+                    artifact_namespace=VELOCITY_WORKFLOW_FOLDERS[method],
+                    provenance=provenance,
+                )
+            )
             packed = pack_velocity_outputs(result)
             outputs.update(
                 {
@@ -123,7 +134,7 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
                 output.write_many(packed)
         except Exception as exc:  # noqa: BLE001 - isolate a failed scientific workflow
             failures[method] = str(exc)
-            workflows.pop(method, None)
+            variants = [variant for variant in variants if variant.name != method]
             root = VELOCITY_WORKFLOW_ROOTS[method]
             outputs = {
                 path: value for path, value in outputs.items() if not path.startswith(root + "/")
@@ -131,16 +142,18 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
             if hasattr(ctx, "output") and root in ctx.runtime.work_h5:
                 del ctx.runtime.work_h5[root]
             Logger.log_warning(f"Skipping {method}: {exc}")
-    ctx.state.set(VELOCITY_WORKFLOWS_STATE, workflows)
     ctx.state.set(VELOCITY_FAILURES_STATE, failures)
     _write_failures(ctx, failures)
-    if not workflows:
+    if not variants:
         raise RuntimeError(f"Neither velocity workflow completed: {failures}")
-    canonical = next(iter(workflows.values()))
-    for key, value in canonical.items():
+    publish_variants = getattr(ctx, "publish_execution_variants", None)
+    if callable(publish_variants):
+        publish_variants(variants, failures=failures)
+    canonical = variants[0]
+    for key, value in canonical.state.items():
         ctx.state.set(key, value)
     Logger.log(f"Completed velocity core processing in {perf_counter() - started:.1f}s.")
-    return canonical[VELOCITY_STATE], outputs
+    return canonical.state[VELOCITY_STATE], outputs
 
 
 def _write_failures(ctx, failures):

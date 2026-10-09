@@ -26,6 +26,7 @@ from app_settings import (  # noqa: E402
 from input_output.archives import extracted_zip_tree  # noqa: E402
 from input_output.output_manager import OutputType  # noqa: E402
 from pipeline_engine import (  # noqa: E402
+    ExecutionVariant,
     PipelineDescriptor,
     PipelineOption,
     ProcessPipeline,
@@ -65,6 +66,49 @@ class _NoopPipeline(ProcessPipeline):
         return None
 
 
+class _VariantProducer(ProcessPipeline):
+    name = "variant_source"
+    description = "variant source"
+    available = True
+    requires = []
+    missing_deps = []
+
+    def run(self, ctx):
+        ctx.publish_execution_variants(
+            [
+                ExecutionVariant(
+                    name="primary",
+                    state={"variant_value": 1},
+                    output_namespace="Processing",
+                    artifact_namespace="primary",
+                    provenance={"method": "primary"},
+                ),
+                ExecutionVariant(
+                    name="alternate",
+                    state={"variant_value": 2},
+                    output_namespace="ProcessingAlt",
+                    artifact_namespace="alternate",
+                    provenance={"method": "alternate"},
+                ),
+            ]
+        )
+
+
+class _VariantConsumer(ProcessPipeline):
+    name = "variant_consumer"
+    description = "variant consumer"
+    available = True
+    requires = []
+    missing_deps = []
+
+    def run(self, ctx):
+        ctx.output.h5.write("Processing/VariantValue/value", ctx.state["variant_value"])
+        ctx.output.h5.write(
+            "Processing/ArtifactNamespace/value",
+            ctx.output.manager.artifact_folder,
+        )
+
+
 def test_run_controls_enable_run_buttons() -> None:
     minimal_run = Mock()
     advanced_run = Mock()
@@ -101,6 +145,51 @@ def _named_descriptor(name: str) -> PipelineDescriptor:
 
 
 class RunServiceTests(unittest.TestCase):
+    def test_declared_variant_producer_fans_out_its_dag_dependents(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            holo = _write_input(root)
+            producer = PipelineDescriptor(
+                name="variant_source",
+                description="variant source",
+                available=True,
+                visibility="hidden",
+                dag_produces=("variant_data",),
+                produces_execution_variants=True,
+                pipeline_factory=_VariantProducer,
+            )
+            consumer = PipelineDescriptor(
+                name="variant_consumer",
+                description="variant consumer",
+                available=True,
+                dag_requires=("variant_data",),
+                pipeline_factory=_VariantConsumer,
+            )
+            spec = resolve_run_spec(
+                input_paths=[holo],
+                target_names=["variant_consumer"],
+                pipelines=[producer, consumer],
+            )
+
+            result = execute_run(spec)
+
+            self.assertTrue(result.succeeded, result.failures)
+            with h5py.File(result.outputs[0], "r") as output:
+                self.assertEqual(1, output["Processing/VariantValue/value"][()])
+                self.assertEqual(2, output["ProcessingAlt/VariantValue/value"][()])
+                self.assertEqual(
+                    "primary",
+                    output["Processing/ArtifactNamespace/value"][()].decode(),
+                )
+                self.assertEqual(
+                    "alternate",
+                    output["ProcessingAlt/ArtifactNamespace/value"][()].decode(),
+                )
+                self.assertEqual(
+                    ["primary", "alternate"],
+                    list(output.attrs["execution_variants_completed"]),
+                )
+
     def test_success_replaces_existing_output_with_direct_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

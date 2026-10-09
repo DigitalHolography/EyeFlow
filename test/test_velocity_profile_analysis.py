@@ -10,6 +10,7 @@ from unittest.mock import patch
 import h5py
 import numpy as np
 
+from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import PIPELINE_REGISTRY, DatasetValue
 from pipeline_engine.context import PipelineH5Output
 from pipelines import load_pipeline_catalog
@@ -155,6 +156,12 @@ class VelocityProfileFittingTests(unittest.TestCase):
 
 
 class VelocityProfileAnalysisOptionTests(unittest.TestCase):
+    def test_output_root_comes_from_the_active_schema(self) -> None:
+        self.assertEqual(
+            "/" + EyeFlowOutputPaths.active().velocity_profile_analysis_root,
+            OUTPUT_ROOT,
+        )
+
     def test_analysis_is_a_waveform_option_not_an_independent_pipeline(self) -> None:
         load_pipeline_catalog()
         self.assertNotIn("velocity_profile_analysis", PIPELINE_REGISTRY)

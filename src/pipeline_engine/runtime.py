@@ -17,7 +17,7 @@ from velocity_calibration import (
     validate_band_ratio_frequency_scale_hz,
 )
 
-from .base import PipelineDescriptor, ProcessResult
+from .base import ExecutionVariant, PipelineDescriptor, ProcessResult
 from .context import PipelineContext, apply_pipeline_result, finish_pipeline
 from .dag import PipelineDAG
 from .errors import format_pipeline_exception
@@ -93,11 +93,10 @@ def _run_pipelines_with_work_h5(
     context_vars: dict[str, object] = {}
 
     dag = PipelineDAG(pipelines)
-    branched = (
-        set(dag.dependents_of("velocity", transitive=True, pipeline_options=pipeline_options))
-        if any(item.name == "velocity" for item in pipelines)
-        else set()
-    )
+    execution_variants: list[ExecutionVariant] = []
+    variant_dependents: set[str] = set()
+    variant_failures: dict[str, str] = {}
+    variant_status_attrs: tuple[str, str] | None = None
 
     pipeline_count = len(pipelines)
     for pipeline_index, pipeline_desc in enumerate(pipelines, start=1):
@@ -116,58 +115,84 @@ def _run_pipelines_with_work_h5(
             "pipeline_order": tuple(pipeline.name for pipeline in pipelines),
             "pipeline_targets": target_names,
             "velocity_estimation_method": None,
+            "execution_variant": None,
             "band_ratio_frequency_scale_hz": band_ratio_frequency_scale_hz,
             "on_pipeline_success": None,
             "on_progress": None,
         }
-        workflows = context_vars.get("velocity_workflows", {})
-        if pipeline_desc.name in branched:
-            for method, state in tuple(workflows.items()):
-                # Method state persists across descriptors; shared producers
-                # are added without replacing previously computed method data.
+        if pipeline_desc.name in variant_dependents:
+            if pipeline_desc.produces_execution_variants:
+                raise RuntimeError(
+                    "Nested execution-variant producers are not supported."
+                )
+            variant_state_keys = {
+                key for variant in execution_variants for key in variant.state
+            }
+            for variant in tuple(execution_variants):
+                # Variant state persists across descriptors; shared producers
+                # are added without replacing variant-owned data.
                 for key, value in context_vars.items():
-                    if key not in {"velocity", "velocity_source", "velocity_workflows"}:
-                        state.setdefault(key, value)
+                    if key not in variant_state_keys:
+                        variant.state.setdefault(key, value)
                 branch_arguments = {
                     **arguments,
-                    "variables": state,
-                    "velocity_estimation_method": method,
-                    "processing_root": VELOCITY_WORKFLOW_ROOTS[method],
-                    "velocity_provenance": state["velocity"].provenance,
-                    "output_manager": output_manager.for_workflow(method),
+                    "variables": variant.state,
+                    "execution_variant": variant,
+                    "processing_root": variant.output_namespace,
+                    "output_provenance": variant.provenance,
+                    "output_manager": output_manager.for_artifact_namespace(
+                        variant.artifact_namespace
+                    ),
                 }
                 try:
                     _run_pipeline_descriptor(pipeline_desc, **branch_arguments)
                 except RuntimeError as exc:
-                    Logger.log_warning(f"Skipping {method} workflow: {exc}")
-                    context_vars.setdefault("velocity_workflow_failures", {})[method] = str(exc)
-                    del workflows[method]
-                    _discard_workflow(work_h5, output_manager, method)
-            if not workflows:
-                work_h5.attrs["velocity_workflow_failures"] = json.dumps(
-                    context_vars.get("velocity_workflow_failures", {}),
-                    sort_keys=True,
+                    Logger.log_warning(
+                        f"Skipping {variant.name} execution variant: {exc}"
+                    )
+                    variant_failures[variant.name] = str(exc)
+                    execution_variants.remove(variant)
+                    _discard_execution_variant(work_h5, output_manager, variant)
+            if not execution_variants:
+                _write_execution_variant_status(
+                    work_h5,
+                    execution_variants,
+                    variant_failures,
+                    variant_status_attrs,
                 )
-                work_h5.attrs["velocity_workflows_completed"] = []
-                raise RuntimeError("Neither velocity workflow completed downstream analysis.")
+                raise RuntimeError(
+                    "No execution variant completed downstream analysis."
+                )
         else:
-            # Shared consumers use the canonical surviving workflow's cycles
-            # and geometry.
-            if workflows:
-                canonical = next(iter(workflows.values()))
-                arguments["velocity_estimation_method"] = canonical["velocity"].provenance[
-                    "velocity_estimation_method"
-                ]
-                context_vars.update(
-                    {key: canonical[key] for key in ("velocity", "velocity_source")}
+            # Shared consumers use the first surviving variant as canonical.
+            if execution_variants:
+                canonical = execution_variants[0]
+                arguments["execution_variant"] = canonical
+                context_vars.update(canonical.state)
+            emitted_variants, emitted_failures = _run_pipeline_descriptor(
+                pipeline_desc,
+                **arguments,
+            )
+            if emitted_variants:
+                if execution_variants:
+                    raise RuntimeError(
+                        "Multiple active execution-variant producers are not supported."
+                    )
+                execution_variants = list(emitted_variants)
+                variant_failures = emitted_failures
+                variant_status_attrs = pipeline_desc.execution_variant_status_attrs
+                variant_dependents = set(
+                    dag.dependents_of(
+                        pipeline_desc.name,
+                        transitive=True,
+                        pipeline_options=pipeline_options,
+                    )
                 )
-            _run_pipeline_descriptor(pipeline_desc, **arguments)
-        work_h5.attrs["velocity_workflow_failures"] = json.dumps(
-            context_vars.get("velocity_workflow_failures", {}),
-            sort_keys=True,
-        )
-        work_h5.attrs["velocity_workflows_completed"] = list(
-            context_vars.get("velocity_workflows", {})
+        _write_execution_variant_status(
+            work_h5,
+            execution_variants,
+            variant_failures,
+            variant_status_attrs,
         )
         if on_pipeline_success is not None:
             on_pipeline_success(pipeline_desc.name)
@@ -236,14 +261,19 @@ def _run_pipeline_descriptor(
     pipeline_order: Sequence[str],
     pipeline_targets: Sequence[str],
     velocity_estimation_method: VelocityEstimationMethod | None,
+    execution_variant: ExecutionVariant | None,
     band_ratio_frequency_scale_hz: float,
     on_pipeline_success: Callable[[str], None] | None,
     on_progress: Callable[[], None] | None,
     processing_root: str | None = None,
-    velocity_provenance: Mapping[str, object] | None = None,
-) -> None:
+    output_provenance: Mapping[str, object] | None = None,
+) -> tuple[tuple[ExecutionVariant, ...], dict[str, str]]:
     pipeline = pipeline_desc.instantiate()
-    label = f"{pipeline.name} [{velocity_estimation_method}]" if processing_root else pipeline.name
+    label = (
+        f"{pipeline.name} [{execution_variant.name}]"
+        if execution_variant is not None and processing_root
+        else pipeline.name
+    )
     Logger.log(f"[START] {label}")
     ctx = PipelineContext(
         work_h5=work_h5,
@@ -255,7 +285,8 @@ def _run_pipeline_descriptor(
         output_manager=output_manager,
         pipeline_name=pipeline.name,
         processing_root=processing_root,
-        velocity_provenance=velocity_provenance,
+        output_provenance=output_provenance,
+        execution_variant=execution_variant,
         variables=variables,
         pipeline_options=pipeline_options,
         pipeline_order=pipeline_order,
@@ -265,6 +296,16 @@ def _run_pipeline_descriptor(
     )
     try:
         result = pipeline.run(ctx)
+        if ctx.execution_variants and not pipeline_desc.produces_execution_variants:
+            raise ValueError(
+                f"Pipeline '{pipeline.name}' published execution variants without "
+                "declaring produces_execution_variants=True."
+            )
+        if pipeline_desc.produces_execution_variants and not ctx.execution_variants:
+            raise ValueError(
+                f"Pipeline '{pipeline.name}' declared execution variants but "
+                "published none."
+            )
         if result is not None:
             write_started = perf_counter()
             Logger.log(f"Starting {pipeline.name} HDF5 output write...")
@@ -284,16 +325,17 @@ def _run_pipeline_descriptor(
         on_pipeline_success(pipeline.name)
     if on_progress is not None:
         on_progress()
+    return ctx.execution_variants, ctx.execution_variant_failures
 
 
-def _discard_workflow(work_h5, output_manager, method):
-    """Remove only the failed workflow's owned processing group and artifacts."""
+def _discard_execution_variant(work_h5, output_manager, variant: ExecutionVariant):
+    """Remove only one failed variant's output namespace and artifacts."""
     import shutil
 
-    root = VELOCITY_WORKFLOW_ROOTS[method]
+    root = variant.output_namespace
     if root in work_h5:
         del work_h5[root]
-    manager = output_manager.for_workflow(method)
+    manager = output_manager.for_artifact_namespace(variant.artifact_namespace)
     workspace = output_manager.layout.ef_dir.resolve()
     for kind in OutputType:
         directory = manager.dir_for(kind).resolve()
@@ -301,3 +343,29 @@ def _discard_workflow(work_h5, output_manager, method):
             raise ValueError(f"Workflow directory is outside output root: {directory}")
         if directory.exists():
             shutil.rmtree(directory)
+
+
+def _write_execution_variant_status(
+    work_h5,
+    variants: Sequence[ExecutionVariant],
+    failures: Mapping[str, str],
+    status_attrs: tuple[str, str] | None,
+) -> None:
+    """Persist generic status plus the current velocity compatibility aliases."""
+
+    work_h5.attrs["execution_variant_failures"] = json.dumps(
+        dict(failures),
+        sort_keys=True,
+    )
+    work_h5.attrs["execution_variants_completed"] = [
+        variant.name for variant in variants
+    ]
+    if status_attrs is not None:
+        failures_attr, completed_attr = status_attrs
+        work_h5.attrs[failures_attr] = json.dumps(
+            dict(failures),
+            sort_keys=True,
+        )
+        work_h5.attrs[completed_attr] = [
+            variant.name for variant in variants
+        ]

@@ -20,7 +20,7 @@ shape, unit, layout, or writer behavior.
 | HDF5 writes | `h5_access.py`, `writers/h5.py` | output-schema tests and producer tests |
 | Output folders/artifacts | `output_manager.py`, `writers/artifact_names.py` | the specific writer or report module; `artifact_migration.py` for existing results |
 | ZIP inputs | `archives/zip_archive.py` | input-expansion tests in `test_run_service.py` |
-| Profile dataset access | `profile_datasets.py` | profile producer/consumer tests |
+| Profile dataset serialization | `writers/h5.py` | profile producer/consumer tests |
 
 ## Contracts and ownership
 
@@ -39,6 +39,10 @@ consumers, tests, and documentation synchronized.
 serialization, downcasting, bool representation, attributes, initialization,
 and selected HD pass-through data. Avoid opening the primary HDF5 independently
 inside a pipeline.
+
+Per-beat profile interpolation and dataset packing live in
+`pipelines/profile_outputs.py`; they are pipeline adaptation rather than I/O
+serialization policy.
 
 `OutputManager` creates type directories lazily. Supported types are H5, PNG,
 MP4, AVI, PDF, and EPS; there is no generic JSON output helper. A pipeline may
