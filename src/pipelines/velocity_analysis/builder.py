@@ -82,9 +82,6 @@ def build_velocity_analysis(ctx) -> VelocityAnalysis:
         attrs=attrs,
     )
     ctx.state.set(VELOCITY_ANALYSIS_STATE, analysis)
-    if _pulse_pngs_required(ctx):
-        _export_pulse_pngs(ctx, analysis, per_beat_result)
-
     Logger.log(f"Completed velocity analysis in {perf_counter() - core_started:.1f}s.")
     return analysis
 

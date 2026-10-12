@@ -1,5 +1,6 @@
 """Orchestrate selectable velocity output products."""
 
+from contextlib import contextmanager
 from time import perf_counter
 
 from input_output import EyeFlowOutputPaths
@@ -9,7 +10,10 @@ from .analysis.segment_maps import prepare_segment_velocity_maps_per_beat
 from .artifacts import export_segment_velocity_map_avis, export_velocity_signals
 from .builder import (
     VELOCITY_ANALYSIS_STATE,
+    _export_pulse_pngs,
+    _pulse_pngs_required,
     build_velocity_analysis,
+    pack_velocity_analysis_meta_outputs,
 )
 from .outputs import (
     pack_continuous_velocity_outputs,
@@ -81,38 +85,12 @@ def run_velocity_analysis(ctx) -> dict[str, object]:
             **velocity_semantics_kwargs,
         )
         metrics.update(segment_map_outputs)
-        output = getattr(ctx, "output", None)
-        if getattr(output, "available", False):
-            avi_started = perf_counter()
-            Logger.log("Starting segment velocity-map AVI export...")
-            export_segment_velocity_map_avis(
-                output,
-                analysis.artery_segments,
-                analysis.vein_segments,
-                segment_map_outputs,
-            )
-            Logger.log(
-                "Completed segment velocity-map AVI export in "
-                f"{perf_counter() - avi_started:.1f}s."
-            )
 
     velocity_outputs = pack_velocity_per_beat_outputs(
         analysis.per_beat_result,
         **velocity_semantics_kwargs,
     )
     metrics.update(velocity_outputs)
-
-    output = getattr(ctx, "output", None)
-    if getattr(output, "available", False):
-        schema = EyeFlowOutputPaths.active()
-        artery_path = schema.artery_per_beat_safe.velocity_signal
-        vein_path = schema.vein_per_beat_safe.velocity_signal
-        if artery_path in velocity_outputs and vein_path in velocity_outputs:
-            export_velocity_signals(
-                output,
-                velocity_outputs[artery_path],
-                velocity_outputs[vein_path],
-            )
 
     if profiles_selected:
         velocity_profile_outputs = pack_cross_section_profile_outputs(
@@ -145,4 +123,36 @@ def run_velocity_analysis(ctx) -> dict[str, object]:
             )
         )
 
+    output = getattr(ctx, "output", None)
+    if getattr(output, "available", False):
+        h5 = getattr(output, "h5", None)
+        if h5 is not None:
+            h5.set_attrs(analysis.attrs)
+            h5.write_many({**metrics, **pack_velocity_analysis_meta_outputs(analysis)})
+            h5.flush()
+        if _pulse_pngs_required(ctx):
+            with _optional_artifact_export("pulse-analysis PNG"):
+                _export_pulse_pngs(ctx, analysis, analysis.per_beat_result)
+        if maps_selected:
+            with _optional_artifact_export("segment velocity-map AVI"):
+                export_segment_velocity_map_avis(
+                    output, analysis.artery_segments, analysis.vein_segments,
+                    segment_map_outputs,
+                )
+        schema = EyeFlowOutputPaths.active()
+        artery_path = schema.artery_per_beat_safe.velocity_signal
+        vein_path = schema.vein_per_beat_safe.velocity_signal
+        if artery_path in velocity_outputs and vein_path in velocity_outputs:
+            with _optional_artifact_export("velocity-signal figure"):
+                export_velocity_signals(
+                    output, velocity_outputs[artery_path], velocity_outputs[vein_path],
+                )
     return metrics
+
+
+@contextmanager
+def _optional_artifact_export(label):
+    try:
+        yield
+    except Exception as exc:
+        Logger.log_warning(f"Failed {label} export; calculated HDF5 results retained: {exc}")

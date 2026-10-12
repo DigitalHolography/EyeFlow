@@ -217,7 +217,17 @@ def test_one_failed_workflow_preserves_other_outputs(tmp_path, failed_method, st
     failed_root = "Processing" if failed_method == "doppler_moments" else "ProcessingAlt"
     successful_root = "ProcessingAlt" if failed_method == "doppler_moments" else "Processing"
     with h5py.File(result.outputs[0], "r") as output:
-        assert failed_root not in output
+        if stage == "downstream":
+            schema = EyeFlowOutputPaths.active()
+            assert processing_path(schema.analysis.retinal_artery_velocity_signal, failed_root) in output
+            assert processing_path(schema.blood_volume_rate.artery.masked_edges, failed_root) in output
+            assert processing_path(schema.absolute_waveform_metrics_root, failed_root) not in output
+            assert f"{failed_root}/Partial" not in output
+            statuses = json.loads(output.attrs["pipeline_status"])["variants"][failed_method]
+            assert statuses["absolute_waveform_metrics"] == "failed"
+            assert statuses["blood_volume_rate"] == "succeeded"
+        else:
+            assert failed_root not in output
         assert successful_root in output
         assert output[successful_root].attrs["cardiac_cycle_detection_method"] != failed_method
         assert failed_method in json.loads(output.attrs["execution_variant_failures"])
@@ -234,7 +244,10 @@ def test_one_failed_workflow_preserves_other_outputs(tmp_path, failed_method, st
     ef_dir = result.outputs[0].parent.parent
     failed_folder = "moments" if failed_method == "doppler_moments" else "bandratio"
     for kind in ("png", "avi", "pdf", "eps"):
-        assert not (ef_dir / kind / failed_folder).exists()
+        if stage != "downstream":
+            assert not (ef_dir / kind / failed_folder).exists()
+    if stage == "downstream":
+        assert list((ef_dir / "png" / failed_folder).glob("*.png"))
 
 
 def test_both_workflows_fail_the_run(tmp_path):
@@ -246,6 +259,28 @@ def test_both_workflows_fail_the_run(tmp_path):
         result = execute_run(_spec(holo))
     assert not result.succeeded
     assert "Neither velocity workflow completed" in result.failures[0].message
+
+
+def test_pulse_export_failure_keeps_persisted_analysis_and_downstream_outputs(tmp_path):
+    holo, _ = _dual_input(tmp_path)
+    schema = EyeFlowOutputPaths.active()
+    observed = []
+
+    def fail_after_persistence(ctx, analysis, per_beat):
+        assert ctx.output.h5.get(schema.artery_per_beat.velocity_signal) is not None
+        assert ctx.output.h5.get(schema.analysis.retinal_artery_velocity_signal) is not None
+        observed.append(ctx.velocity_estimation_method)
+        raise ValueError("injected PNG failure")
+
+    with patch("pipelines.velocity_analysis.runner._export_pulse_pngs", side_effect=fail_after_persistence):
+        result = execute_run(_spec(holo))
+    assert result.succeeded, result.failures
+    assert observed == ["doppler_moments", "frequency_bands"]
+    with h5py.File(result.outputs[0], "r") as output:
+        assert not json.loads(output.attrs["pipeline_failures"])
+        for root in ("Processing", "ProcessingAlt"):
+            assert processing_path(schema.artery_per_beat.velocity_signal, root) in output
+            assert processing_path(schema.blood_volume_rate.artery.masked_edges, root) in output
 
 
 @pytest.mark.parametrize("corruption", ["moment_rank", "band_values", "band_shape"])
