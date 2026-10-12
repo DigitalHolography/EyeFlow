@@ -16,6 +16,7 @@ HD_MOMENT0_PATH = "moment0"
 HD_MOMENT2_PATH = "moment2"
 HD_BAND_LF_PATH = "band_0_3000_9000"
 HD_BAND_HF_PATH = "band_1_9000_18000"
+HD_SPECTOGRAMS_PATH = "spectograms"
 HD_MOMENT0_PATHS = (HD_MOMENT0_PATH, "M0")
 HD_MOMENT2_PATHS = (HD_MOMENT2_PATH, "M2")
 HD_MOMENT0_FLAT_FIELD_PATHS = ("moment0ff", "M0FF")
@@ -59,6 +60,31 @@ class HolodopplerSource(TypedSource):
         """Return the raw second moment when it is present."""
 
         return self._optional_moment_dataset(HD_MOMENT2_PATHS)
+
+    def spectograms_dataset(self):
+        """Return lazy quantitative spectra in exported (time, freq, height, width) order.
+
+        Spatial orientation is pending verification. Do not transpose or
+        materialize this volume when assembling the input maps.
+        """
+        dataset = self._dataset(HD_SPECTOGRAMS_PATH)
+        if dataset.ndim != 4:
+            raise ValueError(
+                f"HoloDoppler /{HD_SPECTOGRAMS_PATH} must be a 4-D "
+                f"(time, freq, height, width) array, got shape {dataset.shape}."
+            )
+        if dataset.dtype.kind not in "iuf":
+            raise TypeError(
+                f"HoloDoppler /{HD_SPECTOGRAMS_PATH} must contain real numeric "
+                f"band-power values, got dtype {dataset.dtype}."
+            )
+        return dataset
+
+    def optional_spectograms_dataset(self):
+        """Return exported spectra when present; older HD files remain supported."""
+        if HD_SPECTOGRAMS_PATH not in self._reader:
+            return None
+        return self.spectograms_dataset()
 
     def frequency_band_datasets(self):
         """Return the exact low/high PSD bands used by the ratio estimator.

@@ -60,12 +60,18 @@ class PixelPitch:
 
 @dataclass(frozen=True)
 class ImageMaps:
-    """Lazy Holodoppler image-map datasets in the aligned analysis frame."""
+    """Lazy HD inputs shared by velocity workflows.
+
+    Moments and LF/HF bands use ``(frame, y, x)``. ``spectograms`` retains
+    exported ``(time, freq, height, width)`` axes; its spatial orientation has
+    not yet been verified against the aligned analysis frame.
+    """
 
     moment0: object | None
     moment2: object | None
     band_lf: object | None = None
     band_hf: object | None = None
+    spectograms: object | None = None
 
 
 @dataclass(frozen=True)

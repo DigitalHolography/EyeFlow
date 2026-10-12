@@ -26,7 +26,9 @@ resolution.
 
 ## HD input
 
-All image volumes are lazy HDF5 datasets with axes `(frame, y, x)`.
+All image volumes are lazy HDF5 datasets. Moments and LF/HF bands have axes
+`(frame, y, x)`; the frequency-resolved capillary source has the separate layout
+described below.
 
 | Logical value | HDF5 path(s) | Requirement |
 |---|---|---|
@@ -34,12 +36,22 @@ All image volumes are lazy HDF5 datasets with axes `(frame, y, x)`.
 | Second moment | `/moment2`, legacy `/M2` | Required by the moments workflow |
 | Low-frequency band | `/band_0_3000_9000` | Required by the band-ratio workflow; no heuristic aliases |
 | High-frequency band | `/band_1_9000_18000` | Required by the band-ratio workflow; no heuristic aliases |
+| Frequency-resolved capillary source | `/spectograms` | Optional while capillary velocity calculation is deferred; exact HD root dataset name |
 | Flat-field zeroth moment | `/moment0ff`, legacy `/M0FF` | Optional |
 | Registration | `/registration` | Optional; copied to output `/Meta/registration` |
 | Zernike coefficients | `/zernike_coefs_radians` | Optional; copied through unchanged |
 
 Moment and band datasets must be 3-D. The two bands must be numeric and have
 identical shapes; their chunk values must be finite and non-negative.
+
+`/spectograms` contains quantitative band-power values and must be a real
+numeric 4-D dataset with exported axes `(time, freq, height, width)`. The spelling
+`spectograms` is intentional and follows the HD export. It replaces the previous
+stand-in `band_2_0_6000` source. `ImageMaps.spectograms` holds the lazy HDF5
+dataset for both velocity workflows, or `None` if it is absent. Source assembly
+checks rank and dtype without reading the full volume. Height/width orientation
+is pending verification: preserve the exported ordering, and do not infer a
+transpose from shape or apply the DV mask-alignment swap to this volume yet.
 
 Timing uses scalar `sampling_freq` and `batch_stride`, resolved from HDF5 or HD
 sidecar configuration. The frame interval is
@@ -56,7 +68,7 @@ DV spatial arrays are native `(y, x)` values:
 |---|---|---|
 | Artery mask | `/segmentation/Retina/artery_mask` | Required |
 | Vein mask | `/segmentation/Retina/vein_mask` | Required |
-| All retinal vessels | `/segmentation/Retina/vessel_segmentation_logits` | Optional for existing analyses; required for capillary analysis zones, binarized with `logits > 0` |
+| All retinal vessels | `/segmentation/Retina/vessel_segmentation_logits` | Optional for existing analyses; required for capillary analysis zones, binarized with `logits > 0.1` |
 | Choroid vessels | `/segmentation/Choroid/vessel_mask` | Optional for existing analyses; required for capillary analysis zones, binarized with `value != 0` |
 | Labeled vessels | `/segmentation/Retina/labeled_vessels` | Optional |
 | Optic-disc mask | `/segmentation/OpticDisc/mask` | Optional if fallback/other measurements suffice |
@@ -85,8 +97,16 @@ retinal logits include vessel support beyond the artery/vein masks; never
 substitute the artery/vein union for this input.
 
 `topology_core` calls `calculations.topology.capillary_analysis_zones` to form
-`NOT (retinal_vessels OR optic_disc OR choroid_vessels)` in native `(y, x)`
-coordinates. For this exclusion, a usable DV optic-disc mask takes precedence;
+`cutoff_disc AND NOT (dilate(retinal_vessels OR choroid_vessels) OR optic_disc)`
+in native `(y, x)` coordinates. The cutoff disc is centered at `(nx / 2, ny / 2)`
+and has diameter `0.8 * nx` pixels (production mask images are square). Vessel
+support is dilated three pixels in every direction using one pass of a 7x7
+square footprint, including diagonal expansion (Chebyshev distance three).
+Dilation is clipped at image borders;
+the exterior is treated as background. Dilate the original vessel support
+before applying the cutoff, so vessels just outside the circle still exclude
+their nearby interior pixels. Neither the optic-disc mask nor the cutoff disc
+is dilated. For optic-disc exclusion, a usable DV mask takes precedence;
 if absent, the physical centered fallback is used even when DV exported only
 center/width/height. True pixels are included in capillary analysis. If either
 retinal logits or the choroid mask is absent, omit the capillary output and
@@ -163,7 +183,7 @@ interpreting derived values.
 
 `RetinalSourceData` in `schema/source_data.py` is the shared typed input:
 
-- lazy `ImageMaps` for moments or bands;
+- lazy `ImageMaps` for moments, LF/HF bands, and optional exported spectograms;
 - aligned boolean artery/vein/background masks and optional labels;
 - resolved optic-disc geometry;
 - optional aligned retinal-logit and choroid exclusion masks;
@@ -218,8 +238,8 @@ families are:
 - `/Processing/SpatialGradientMetrics` for a directly selected spatial-gradient
   target, and `/Processing/BloodVolumeRate` for blood-volume-rate products;
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
-- `/Segmentation/Capillary/analysis_zones` for inverse combined vessel/disc
-  support, when its inputs are available (the dataset has no `/value` suffix);
+- `/Segmentation/Gaps/value` for central support outside dilated vessels and
+  the optic disc, when its inputs are available;
 - `/Meta` for provenance and selected pass-through data.
 
 The `/ProcessingAlt` tree mirrors the selected `/Processing` families for the
@@ -240,15 +260,16 @@ same lower-left `(x, y)` image frame as
 `/Segmentation/Artery/BranchLabelMap/value`: the internal `(y, x)` array is
 flipped vertically and transposed before persistence.
 
-Capillary analysis zones use that same lower-left `(x, y)` frame and carry
-source/binarization/fallback provenance, `unit="1"`, and `dimDesc=["x", "y"]`.
+The gaps mask used for capillary analysis uses the same lower-left `(x, y)`
+frame and carries source/binarization/fallback, cutoff, and dilation provenance,
+`unit="1"`, and `dimDesc=["x", "y"]`.
 The HDF5 writer stores this boolean mask as `uint8` values 0/1 with
 `original_class="bool"`. Native read-only support is available from
 `topology_core` under its declared `capillary_analysis_zones` DAG product;
 it remains shared across moments and bandratio workflows. Capillary velocity
-conversion and waveform analysis are not implemented yet. The planned HD band
-source is a regular `(frame, y, x)` quantitative band-power volume, with
-stand-in name `band_2_0_6000`; it has no additional frequency axis.
+conversion and waveform analysis are not implemented yet. Their source is
+`/spectograms`, with exported `(time, freq, height, width)` axes; its spatial
+orientation remains to be confirmed.
 
 Do not hand-copy path strings into new consumers. Obtain them from the schema or
 from a pipeline-owned constant when the path family has not yet been centralized.

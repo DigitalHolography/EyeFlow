@@ -80,12 +80,14 @@ def load_retinal_source_data(
             moment2=_optional_moment(hd.optional_moment2_dataset),
             band_lf=band_lf,
             band_hf=band_hf,
+            spectograms=hd.optional_spectograms_dataset(),
         )
         spatial_reference = band_lf
     else:
         image_maps = ImageMaps(
             moment0=hd.moment0_dataset(),
             moment2=hd.moment2_dataset(),
+            spectograms=hd.optional_spectograms_dataset(),
         )
         spatial_reference = image_maps.moment0
     spatial_shape = tuple(int(size) for size in spatial_reference.shape[-2:])

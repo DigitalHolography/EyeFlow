@@ -11,6 +11,7 @@ from .base import SourceFileLayout, TypedSource
 DV_CONFIG_DIR_NAME = "json"
 DV_CONFIG_FILENAME = "DV_params.json"
 DV_RETINAL_VESSEL_LOGITS_PATH = "segmentation/Retina/vessel_segmentation_logits"
+DV_RETINAL_VESSEL_LOGITS_THRESHOLD = 0.1
 DV_CHOROID_VESSEL_MASK_PATH = "segmentation/Choroid/vessel_mask"
 
 DOPPLER_VIEW_LAYOUT = SourceFileLayout(
@@ -40,7 +41,7 @@ class DopplerViewSource(TypedSource):
         )
 
     def retinal_vessel_mask(self) -> np.ndarray | None:
-        """Return all detected retinal vessels, binarizing raw logits at > 0."""
+        """Return all detected retinal vessels, binarizing raw logits at > 0.1."""
         return self._optional_binary_mask(DV_RETINAL_VESSEL_LOGITS_PATH, logits=True)
 
     def choroid_vessel_mask(self) -> np.ndarray | None:
@@ -58,7 +59,7 @@ class DopplerViewSource(TypedSource):
             raise TypeError(f"DopplerView /{path} must contain real numeric or boolean values.")
         if not np.all(np.isfinite(value)):
             raise ValueError(f"DopplerView /{path} must contain finite values.")
-        return value > 0 if logits else value != 0
+        return value > DV_RETINAL_VESSEL_LOGITS_THRESHOLD if logits else value != 0
 
     def optic_disc(
         self,
