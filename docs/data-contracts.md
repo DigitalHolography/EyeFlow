@@ -56,6 +56,8 @@ DV spatial arrays are native `(y, x)` values:
 |---|---|---|
 | Artery mask | `/segmentation/Retina/artery_mask` | Required |
 | Vein mask | `/segmentation/Retina/vein_mask` | Required |
+| All retinal vessels | `/segmentation/Retina/vessel_segmentation_logits` | Optional for existing analyses; required for capillary analysis zones, binarized with `logits > 0` |
+| Choroid vessels | `/segmentation/Choroid/vessel_mask` | Optional for existing analyses; required for capillary analysis zones, binarized with `value != 0` |
 | Labeled vessels | `/segmentation/Retina/labeled_vessels` | Optional |
 | Optic-disc mask | `/segmentation/OpticDisc/mask` | Optional if fallback/other measurements suffice |
 | Optic-disc center | `/segmentation/OpticDisc/center` | Optional input; canonical source always resolves a center |
@@ -67,9 +69,29 @@ only canonical alignment boundary: it validates masks against the active HD
 spatial shape and may transpose all DV geometry together when axes are swapped.
 Do not add isolated transposes in downstream algorithms.
 
-Missing optic-disc geometry falls back to a centered circle. That fallback
+Missing or invalid optic-disc geometry falls back to an image-centered circle
+of assumed physical diameter **1.91 mm**. Its center is `(nx / 2, ny / 2)`;
+its diameter in pixels is `1.91 / pixel_pitch_mm`, using HD's native isotropic
+pitch in mm/pixel. Rasterization uses the physical radius and clips the circle
+at image boundaries without resizing it. The fallback requires valid physical
+calibration; it no longer scales with the image half-diagonal. That fallback
 retains the original vein mask as velocity-background support but disables vein
 measurement in the canonical segmentation.
+
+The two additional vessel arrays must be finite, numeric, two-dimensional and
+aligned with the other DV geometry. `pipelines.vessel_inputs` applies the same
+axis swap to these masks as to the artery, vein and optic disc. The combined
+retinal logits include vessel support beyond the artery/vein masks; never
+substitute the artery/vein union for this input.
+
+`topology_core` calls `calculations.topology.capillary_analysis_zones` to form
+`NOT (retinal_vessels OR optic_disc OR choroid_vessels)` in native `(y, x)`
+coordinates. For this exclusion, a usable DV optic-disc mask takes precedence;
+if absent, the physical centered fallback is used even when DV exported only
+center/width/height. True pixels are included in capillary analysis. If either
+retinal logits or the choroid mask is absent, omit the capillary output and
+warn; continue the existing vessel analyses. Malformed masks fail validation
+rather than being silently replaced with empty masks.
 
 ## Velocity methods
 
@@ -131,6 +153,7 @@ interpreting derived values.
 - lazy `ImageMaps` for moments or bands;
 - aligned boolean artery/vein/background masks and optional labels;
 - resolved optic-disc geometry;
+- optional aligned retinal-logit and choroid exclusion masks;
 - timing, pixel pitch, background distance, alignment flag, and velocity method.
 
 Common axes used by pipeline products include:
@@ -182,6 +205,8 @@ families are:
 - `/Processing/SpatialGradientMetrics` for a directly selected spatial-gradient
   target, and `/Processing/BloodVolumeRate` for blood-volume-rate products;
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
+- `/Segmentation/Capillary/analysis_zones` for inverse combined vessel/disc
+  support, when its inputs are available (the dataset has no `/value` suffix);
 - `/Meta` for provenance and selected pass-through data.
 
 The `/ProcessingAlt` tree mirrors the selected `/Processing` families for the
@@ -201,6 +226,16 @@ All two-dimensional datasets under `/Processing/Maps` are serialized in the
 same lower-left `(x, y)` image frame as
 `/Segmentation/Artery/BranchLabelMap/value`: the internal `(y, x)` array is
 flipped vertically and transposed before persistence.
+
+Capillary analysis zones use that same lower-left `(x, y)` frame and carry
+source/binarization/fallback provenance, `unit="1"`, and `dimDesc=["x", "y"]`.
+The HDF5 writer stores this boolean mask as `uint8` values 0/1 with
+`original_class="bool"`. Native read-only support is available from
+`topology_core` under its declared `capillary_analysis_zones` DAG product;
+it remains shared across moments and bandratio workflows. Capillary velocity
+conversion and waveform analysis are not implemented yet. The planned HD band
+source is a regular `(frame, y, x)` quantitative band-power volume, with
+stand-in name `band_2_0_6000`; it has no additional frequency axis.
 
 Do not hand-copy path strings into new consumers. Obtain them from the schema or
 from a pipeline-owned constant when the path family has not yet been centralized.

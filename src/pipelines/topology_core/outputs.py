@@ -8,9 +8,14 @@ import numpy as np
 from scipy import ndimage as ndi
 
 from calculations.topology import OpticDisc, segment_mask_areas_pixels
+from calculations.topology.optic_disc import DEFAULT_OPTIC_DISC_DIAMETER_MM
 from calculations.vessel_segments.sampling import SegmentSamplingPlan
 from calculations.topology.geometry import AnnulusGeometry, image_half_diagonal
 from input_output.schema import EyeFlowOutputPaths, PixelPitch
+from input_output.schema.doppler_view import (
+    DV_CHOROID_VESSEL_MASK_PATH,
+    DV_RETINAL_VESSEL_LOGITS_PATH,
+)
 
 BACKGROUND_LABEL = -1
 ANNULUS_OUTLINE_LABEL = -2
@@ -65,7 +70,7 @@ def _pack_segmentation_outputs(
         vein_segments,
     )
     if optic_disc.is_fallback:
-        mask_source = "frame_center_10_percent_half_diagonal_fallback"
+        mask_source = "frame_center_1.91_mm_diameter_fallback"
     elif optic_disc.mask is not None:
         mask_source = "dopplerview_segmentation"
     else:
@@ -162,6 +167,39 @@ def pack_topology_outputs(
         pixel_pitch,
         output_paths,
     )
+
+
+def pack_capillary_analysis_zones(
+    analysis_zones: np.ndarray,
+    optic_disc: OpticDisc,
+    output_paths: EyeFlowOutputPaths | str | None = None,
+) -> dict[str, object]:
+    """Publish capillary support in the shared lower-left segmentation frame."""
+    schema = _resolve_output_paths(output_paths)
+    attrs = _mask_attrs("complement_of_dopplerview_vessels_and_optic_disc")
+    attrs.update(
+        {
+            "unit": "1",
+            "definition": "NOT (retinal_vessels OR optic_disc OR choroid_vessels)",
+            "true_means": "included_in_capillary_analysis",
+            "retinal_vessel_source_path": f"/{DV_RETINAL_VESSEL_LOGITS_PATH}",
+            "retinal_vessel_binarization": "logits > 0",
+            "choroid_vessel_source_path": f"/{DV_CHOROID_VESSEL_MASK_PATH}",
+            "choroid_vessel_binarization": "nonzero",
+            "optic_disc_mask_source": (
+                "frame_center_1.91_mm_diameter_fallback"
+                if optic_disc.is_fallback
+                else "dopplerview_segmentation"
+            ),
+        }
+    )
+    if optic_disc.is_fallback:
+        attrs["optic_disc_fallback_diameter_mm"] = DEFAULT_OPTIC_DISC_DIAMETER_MM
+    return {
+        schema.segmentation.capillary.analysis_zones: _segmentation_value(
+            _serialize_spatial_image(analysis_zones), attrs
+        )
+    }
 
 
 def _pack_vessel_segmentation(

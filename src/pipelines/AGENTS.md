@@ -36,7 +36,7 @@ availability rather than unrelated import crashes.
 | Group | Responsibility and important upstream state |
 |---|---|
 | `velocity` (hidden) | Physical retinal-velocity estimation, whole-vessel signals, average maps, and cardiac-cycle timing; produces `velocity` and `cardiac_cycles` |
-| `topology_core` (hidden) | Canonical artery/vein prepared topology; produces `prepared_topology` |
+| `topology_core` (hidden) | Canonical artery/vein prepared topology and optional inverse retinal/disc/choroid mask; produces `prepared_topology` and `capillary_analysis_zones` |
 | `velocity_analysis` | Shared per-beat/segment/profile state plus selectable persisted continuous, quadrant, profile-fit, FFT, map, and movie products; requires velocity and topology |
 | `spatial_gradient_moment0` | Independently selected moment0 gradient/lumen profiles; requires cardiac cycles and topology, not velocity analysis |
 | `blood_volume_rate` | Two option families with different DAG dependencies: gradient edges and mask-derived geometry |

@@ -89,7 +89,7 @@ The important shared scientific chain is:
 
 ```text
 velocity      -> `velocity` + `cardiac_cycles`
-topology_core -> `prepared_topology`
+topology_core -> `prepared_topology` + shared `capillary_analysis_zones`
         \          /
          velocity_analysis
           -> continuous, per-beat, segment, quadrant,
