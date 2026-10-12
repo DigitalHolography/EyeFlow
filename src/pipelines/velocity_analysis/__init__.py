@@ -1,8 +1,8 @@
 """Selectable velocity analysis products."""
 
-from pipeline_engine.imports import PipelineOption, ProcessResult, pipeline
+from pipeline_engine.imports import PipelineOption, pipeline
 
-from .builder import pack_velocity_analysis_meta_outputs, velocity_analysis
+from .builder import velocity_analysis
 from .models import VelocityAnalysis
 from .runner import run_velocity_analysis
 
@@ -61,11 +61,9 @@ from .runner import run_velocity_analysis
     ],
     input_slot="both",
 )
-def run(ctx) -> ProcessResult:
-    metrics = run_velocity_analysis(ctx)
-    analysis = velocity_analysis(ctx)
-    metrics.update(pack_velocity_analysis_meta_outputs(analysis))
-    return ProcessResult(metrics=metrics, attrs=analysis.attrs)
+def run(ctx) -> None:
+    # The runner persists scientific products before attempting optional exports.
+    run_velocity_analysis(ctx)
 
 
 __all__ = ["VelocityAnalysis", "run", "velocity_analysis"]

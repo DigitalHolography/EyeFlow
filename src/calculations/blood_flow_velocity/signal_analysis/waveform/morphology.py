@@ -36,21 +36,29 @@ class VenousWaveformAnalysis:
 def arterial_waveform_analysis(
     cycle: np.ndarray,
     period_seconds: float,
-) -> ArterialWaveformAnalysis:
+) -> ArterialWaveformAnalysis | None:
+    """Return no morphology when required extrema have no finite support."""
+    cycle = np.asarray(cycle)
+    finite = np.isfinite(cycle)
+    end_start = int(0.75 * cycle.size)
+    end_finite = np.flatnonzero(finite[end_start:])
+    if cycle.size < 2 or not np.any(finite) or not end_finite.size:
+        return None
+    extrema_cycle = np.where(finite, cycle, np.nan)
     period = float(period_seconds)
     pulse_time = cycle_time(cycle, period)
     gradient = np.gradient(cycle)
     peak_indexes, properties = signal.find_peaks(
-        cycle,
-        height=float(np.nanmax(cycle)) * 0.3,
+        extrema_cycle,
+        height=float(np.max(cycle[finite])) * 0.3,
         distance=max(1, cycle.size // 4),
     )
     if peak_indexes.size == 0:
-        peak_indexes = np.asarray([int(np.nanargmax(cycle))])
+        peak_indexes = np.asarray([int(np.nanargmax(extrema_cycle))])
     else:
         order = np.argsort(properties["peak_heights"])[::-1][:2]
         peak_indexes = peak_indexes[order]
-    end_min = int(np.nanargmin(cycle[int(0.75 * cycle.size):]) + int(0.75 * cycle.size))
+    end_min = end_start + int(end_finite[np.argmin(cycle[end_start:][end_finite])])
     padded_time, padded_signal = padded_cycle(pulse_time, cycle, period)
     _, padded_gradient = padded_cycle(pulse_time, gradient, period)
     return ArterialWaveformAnalysis(
@@ -69,7 +77,12 @@ def arterial_waveform_analysis(
 def venous_waveform_analysis(
     cycle: np.ndarray,
     period_seconds: float,
-) -> VenousWaveformAnalysis:
+) -> VenousWaveformAnalysis | None:
+    cycle = np.asarray(cycle)
+    finite = np.isfinite(cycle)
+    if not np.any(finite):
+        return None
+    extrema_cycle = np.where(finite, cycle, np.nan)
     period = float(period_seconds)
     pulse_time = cycle_time(cycle, period)
     padded_time, padded_signal = padded_cycle(pulse_time, cycle, period)
@@ -78,8 +91,8 @@ def venous_waveform_analysis(
         period_seconds=period,
         padded_time=padded_time,
         padded_signal=padded_signal,
-        peak_index=int(np.nanargmax(cycle)),
-        trough_index=int(np.nanargmin(cycle)),
+        peak_index=int(np.nanargmax(extrema_cycle)),
+        trough_index=int(np.nanargmin(extrema_cycle)),
     )
 
 
@@ -89,5 +102,9 @@ def dicrotic_notch_index(cycle: np.ndarray, peak_indexes: np.ndarray) -> int | N
     first, second = sorted(int(index) for index in peak_indexes[:2])
     if second <= first:
         return None
-    notch = first + int(np.nanargmin(cycle[first : second + 1]))
+    section = cycle[first : second + 1]
+    finite = np.flatnonzero(np.isfinite(section))
+    if not finite.size:
+        return None
+    notch = first + int(finite[np.argmin(section[finite])])
     return notch if second - notch > cycle.size * 0.05 else None

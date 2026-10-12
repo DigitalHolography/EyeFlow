@@ -51,18 +51,27 @@ def average_cycle(values: np.ndarray, peaks: np.ndarray, samples: int) -> np.nda
 def cycle_extrema(values: np.ndarray, peaks: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     maxima: list[int] = []
     minima: list[int] = []
+
+    def append_extremum(indexes, start, stop, operation):
+        section = values[start:stop]
+        finite = np.flatnonzero(np.isfinite(section))
+        if finite.size:
+            indexes.append(start + int(finite[operation(section[finite])]))
+
     if peaks.size == 0:
         return np.asarray(maxima, dtype=np.int32), np.asarray(minima, dtype=np.int32)
     for first, second in zip(peaks[:-1], peaks[1:]):
         if second <= first + 2:
             continue
         midpoint = first + int(np.floor((second - first) / 2.0 + 0.5))
-        maxima.append(first + int(np.nanargmax(values[first : midpoint + 1])))
-        minima.append(midpoint + int(np.nanargmin(values[midpoint:second])))
+        append_extremum(maxima, first, midpoint + 1, np.argmax)
+        append_extremum(minima, midpoint, second, np.argmin)
     if peaks[0] > 0:
-        minima.insert(0, int(np.nanargmin(values[: peaks[0] + 1])))
+        leading = []
+        append_extremum(leading, 0, peaks[0] + 1, np.argmin)
+        minima[:0] = leading
     if peaks[-1] < values.size:
-        maxima.append(peaks[-1] + int(np.nanargmax(values[peaks[-1]:])))
+        append_extremum(maxima, peaks[-1], values.size, np.argmax)
     return np.asarray(maxima, dtype=np.int32), np.asarray(minima, dtype=np.int32)
 
 

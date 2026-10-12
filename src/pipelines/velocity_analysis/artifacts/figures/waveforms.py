@@ -108,11 +108,15 @@ def _export_waveform_plots(writer: FigureWriter, ctx: PulseFigureContext) -> lis
     )
     paths: list[Path] = []
     if cycles.artery is not None:
-        paths.append(_arterial_waveform_plot(writer, ctx, cycles.artery))
+        path = _arterial_waveform_plot(writer, ctx, cycles.artery)
+        if path is not None:
+            paths.append(path)
     else:
         _log(ctx, "Skipping arterial waveform PNG; insufficient beats.")
     if cycles.vein is not None:
-        paths.append(_venous_waveform_plot(writer, ctx, cycles.vein))
+        path = _venous_waveform_plot(writer, ctx, cycles.vein)
+        if path is not None:
+            paths.append(path)
     else:
         _log(ctx, "Skipping venous waveform PNG; insufficient beats.")
     return paths
@@ -153,7 +157,7 @@ def _arterial_waveform_plot(
     writer: FigureWriter,
     ctx: PulseFigureContext,
     cycle: np.ndarray,
-) -> Path:
+) -> Path | None:
     data = arterial_waveform_analysis(
         cycle,
         mean_period_seconds(
@@ -164,6 +168,9 @@ def _arterial_waveform_plot(
             ).size,
         ),
     )
+    if data is None:
+        _log(ctx, "Skipping arterial waveform PNG; required extrema have no finite samples.")
+        return None
     return _arterial_waveform_analysis_plot(
         writer,
         cycle,
@@ -256,7 +263,7 @@ def _venous_waveform_plot(
     writer: FigureWriter,
     ctx: PulseFigureContext,
     cycle: np.ndarray,
-) -> Path:
+) -> Path | None:
     data = venous_waveform_analysis(
         cycle,
         mean_period_seconds(
@@ -265,6 +272,9 @@ def _venous_waveform_plot(
             default_samples=_vector(ctx.velocity.continuous("vein")).size,
         ),
     )
+    if data is None:
+        _log(ctx, "Skipping venous waveform PNG; no finite samples.")
+        return None
     return _venous_waveform_analysis_plot(
         writer,
         cycle,

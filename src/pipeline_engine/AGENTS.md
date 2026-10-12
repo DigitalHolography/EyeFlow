@@ -76,9 +76,15 @@ a pipeline returning `None` owns its direct writes.
   does not validate arbitrary `ctx.state` keys.
 - `input_slot` controls preferred merged-attribute lookup. Normal `.holo` layout
   resolution still requires both HD and DV companions.
-- Variant isolation catches descriptor failures only at the per-variant
-  execution boundary, removes that variant's owned outputs, and preserves its
-  successful siblings. Shared-pipeline errors still fail the run.
+- Descriptor failures roll back that invocation's dataset replacements,
+  attributes, state bindings, and newly created artifacts. Earlier pipeline
+  outputs remain available. Skip consumers of failed/skipped active dependencies
+  while continuing independent pipelines, including within a failed variant.
+  Shared errors or failure of every variant report an incomplete run only after
+  safe pipelines finish; its partial HDF5 path remains in `RunResult.outputs`.
+  Root `pipeline_status`, `pipeline_failures`, and `pipeline_skips` record outcomes.
+  Writers replace datasets; checkpoint rollback does not cover in-place array or
+  mutable state-object edits, or overwrites of existing sidecar files.
   `_run_pipeline_descriptor` wraps them with pipeline identity and retains
   their cause.
 - Variant producers must declare `produces_execution_variants=True`; publishing

@@ -10,7 +10,7 @@ boundary behavior—not only regression smoke tests.
 | Production area | Primary tests | Coverage character |
 |---|---|---|
 | Pipeline metadata, discovery, DAG, UI selection | `test_pipeline_discovery.py`, `test_pipeline_library_dependencies.py`, `test_blood_volume_rate_pipeline.py`, `test_velocity_analysis_pipeline.py` | unit + integration of declared dependency closure |
-| Run specs, input expansion, destinations, execution | `test_run_service.py`, `test_stem_list_inputs.py`, `test_pipeline_context.py` | orchestration and filesystem/HDF5 integration |
+| Run specs, input expansion, destinations, execution | `test_run_service.py`, `test_pipeline_failure_isolation.py`, `test_stem_list_inputs.py`, `test_pipeline_context.py` | orchestration and filesystem/HDF5 integration |
 | Settings/default/import | `test_default_settings.py`, `test_settings_import.py` | persistence normalization and controller behavior |
 | Run logging | `test_logger.py` | level normalization, callbacks, and settings-adjacent snapshot paths |
 | Launch dispatch | `test_launcher.py` | CLI-versus-GUI routing |
