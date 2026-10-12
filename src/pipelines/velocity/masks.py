@@ -4,6 +4,30 @@ from __future__ import annotations
 
 import numpy as np
 
+from calculations.topology import downsample_gap_zones
+
+
+def gap_velocity_mask(
+    analysis_zones: np.ndarray,
+    spatial_shape: tuple[int, int],
+) -> np.ndarray:
+    """Prepare native gap support for a video without changing the persisted mask.
+
+    A 512x512 mask becomes 256x256 using conservative 2x2 reduction. If its
+    dimensions already match the video's spatial shape, return a copy.
+    """
+    zones = np.asarray(analysis_zones)
+    if zones.ndim != 2 or zones.dtype != np.bool_:
+        raise TypeError("analysis_zones must be a 2-D boolean array.")
+    if zones.shape == tuple(spatial_shape):
+        return zones.copy()
+    if zones.shape != tuple(2 * size for size in spatial_shape):
+        raise ValueError(
+            "Gap-mask dimensions must match the video or be exactly twice its "
+            f"spatial dimensions; got mask {zones.shape} and video {spatial_shape}."
+        )
+    return downsample_gap_zones(zones)
+
 
 def elliptical_mask(ny: int, nx: int, radius_frac: float, center=None) -> np.ndarray:
     radius = max(0.0, min(1.0, float(radius_frac)))

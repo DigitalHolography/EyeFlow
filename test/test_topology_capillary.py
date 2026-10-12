@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from calculations.topology import capillary_analysis_zones
+from calculations.topology import capillary_analysis_zones, downsample_gap_zones
 
 
 def test_complements_every_combination_without_mutating_inputs():
@@ -120,3 +120,59 @@ def test_rejects_empty_spatial_dimensions():
     empty = np.zeros((0, 5), dtype=bool)
     with pytest.raises(ValueError, match="positive image dimensions"):
         capillary_analysis_zones(empty, empty, empty)
+
+
+def test_downsampling_retains_only_all_gap_blocks_for_every_2x2_combination():
+    source = np.zeros((8, 8), dtype=bool)
+    for combination in range(16):
+        row, column = divmod(combination, 4)
+        block = [(combination & (1 << bit)) != 0 for bit in range(4)]
+        source[2 * row:2 * row + 2, 2 * column:2 * column + 2] = np.reshape(block, (2, 2))
+    original = source.copy()
+
+    reduced = downsample_gap_zones(source)
+
+    expected = np.zeros((4, 4), dtype=bool)
+    expected[3, 3] = True
+    np.testing.assert_array_equal(reduced, expected)
+    np.testing.assert_array_equal(source, original)
+    assert not np.shares_memory(reduced, source)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.uint8])
+def test_downsampling_requires_boolean_support(dtype):
+    with pytest.raises(TypeError, match="2-D boolean"):
+        downsample_gap_zones(np.ones((4, 4), dtype=dtype))
+
+
+@pytest.mark.parametrize("shape", [(3, 4), (4, 3), (0, 4), (4, 0)])
+def test_downsampling_rejects_incomplete_or_empty_blocks(shape):
+    with pytest.raises(ValueError, match="positive, even"):
+        downsample_gap_zones(np.zeros(shape, dtype=bool))
+
+
+def test_velocity_application_reduces_512_support_without_changing_the_export():
+    from pipelines.velocity.masks import gap_velocity_mask
+
+    original = np.ones((512, 512), dtype=bool)
+    original[100, 100] = False
+    original[101, 103] = False
+    preserved = original.copy()
+    reduced = gap_velocity_mask(original, (256, 256))
+    expected = np.ones((256, 256), dtype=bool)
+    expected[50, 50:52] = False
+    np.testing.assert_array_equal(reduced, expected)
+    np.testing.assert_array_equal(original, preserved)
+    assert original.shape == (512, 512)
+    assert not np.shares_memory(reduced, original)
+
+
+def test_velocity_application_preserves_matching_grid_and_rejects_other_scaling():
+    from pipelines.velocity.masks import gap_velocity_mask
+
+    source = np.ones((256, 256), dtype=bool)
+    same_grid = gap_velocity_mask(source, (256, 256))
+    np.testing.assert_array_equal(same_grid, source)
+    assert not np.shares_memory(same_grid, source)
+    with pytest.raises(ValueError, match="exactly twice"):
+        gap_velocity_mask(np.ones((512, 512), dtype=bool), (128, 128))

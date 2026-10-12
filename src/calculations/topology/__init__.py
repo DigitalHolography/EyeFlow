@@ -5,7 +5,7 @@ from .branch_identity import (
     BranchIdentityStages,
     label_vessel_branches,
 )
-from .capillary import capillary_analysis_zones
+from .capillary import capillary_analysis_zones, downsample_gap_zones
 from .geometry import (
     AnnulusGeometry,
     annulus_mask,
@@ -37,6 +37,7 @@ __all__ = [
     "capillary_analysis_zones",
     "competing_segment_masks",
     "determine_segment_rotations",
+    "downsample_gap_zones",
     "image_half_diagonal",
     "label_vessel_branches",
     "quadrant_membership",

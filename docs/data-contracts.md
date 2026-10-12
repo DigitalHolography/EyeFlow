@@ -36,7 +36,7 @@ described below.
 | Second moment | `/moment2`, legacy `/M2` | Required by the moments workflow |
 | Low-frequency band | `/band_0_3000_9000` | Required by the band-ratio workflow; no heuristic aliases |
 | High-frequency band | `/band_1_9000_18000` | Required by the band-ratio workflow; no heuristic aliases |
-| Frequency-resolved capillary source | `/spectograms` | Optional while capillary velocity calculation is deferred; exact HD root dataset name |
+| Frequency-resolved capillary source | `/spectrograms` | Optional while capillary velocity calculation is deferred; exact HD root dataset name |
 | Flat-field zeroth moment | `/moment0ff`, legacy `/M0FF` | Optional |
 | Registration | `/registration` | Optional; copied to output `/Meta/registration` |
 | Zernike coefficients | `/zernike_coefs_radians` | Optional; copied through unchanged |
@@ -44,14 +44,43 @@ described below.
 Moment and band datasets must be 3-D. The two bands must be numeric and have
 identical shapes; their chunk values must be finite and non-negative.
 
-`/spectograms` contains quantitative band-power values and must be a real
+`/spectrograms` contains quantitative band-power values and must be a real
 numeric 4-D dataset with exported axes `(time, freq, height, width)`. The spelling
-`spectograms` is intentional and follows the HD export. It replaces the previous
-stand-in `band_2_0_6000` source. `ImageMaps.spectograms` holds the lazy HDF5
-dataset for both velocity workflows, or `None` if it is absent. Source assembly
+`spectrograms` follows the actual HD export; the earlier supplied spelling
+`spectograms` was incorrect. It replaces the previous stand-in `band_2_0_6000`
+source. `ImageMaps.spectograms` retains its existing internal field name and
+holds the lazy HDF5 dataset for both velocity workflows, or `None` if it is
+absent. Source assembly
 checks rank and dtype without reading the full volume. Height/width orientation
 is pending verification: preserve the exported ordering, and do not infer a
 transpose from shape or apply the DV mask-alignment swap to this volume yet.
+
+The checked `260907_DEY_6` export (HD commit `340b1b3`) contains
+`(640, 32, 256, 256)` float32 spectra while its moment/band volumes and DV masks
+use `(640, 512, 512)` and `(512, 512)` respectively. HD preserves the spatial
+axis order when resizing spectra; comparison with resized LF maps confirms
+the same orientation for this example. `/Segmentation/Gaps/value` and shared
+topology state retain the original 512x512 grid. Only the velocity application
+mask is reduced to 256x256: each non-overlapping 2x2 block is a gap only if all
+four source pixels are gaps. Any vessel, disc, or outside-cutoff exclusion in
+the block excludes its reduced pixel. There is no averaging or interpolation
+of mask values. `calculations.topology.downsample_gap_zones` owns the reduction;
+`pipelines.velocity.masks.gap_velocity_mask` adapts it to the video's spatial
+shape. Capillary velocity calculation is still deferred, so this application
+helper is prepared for that future calculation and is not yet invoked by a
+capillary estimator.
+
+This HD exporter uses `sampling_freq=37037` Hz and `batch_size=256`, retains
+FFT indexes `0:64` followed by `192:256`, and averages each consecutive group
+of four bins. The 32 frequency planes are signed and remain in FFT order,
+with center spacing 578.703125 Hz within each sign block. Centers run from
+217.013671875 to 8897.560546875 Hz, then from -9042.236328125 to -361.689453125 Hz.
+No frequency-coordinate dataset is stored. These centers are reconstructed
+from the matching exporter and parameters, not universally assumed from the
+plane count. They represent averages over four frequency samples, not single
+unbinned FFT frequencies. Sampled registered spectra include negative values;
+the input adapter permits them and does not clamp or apply the LF/HF bands'
+non-negative validation to this source.
 
 Timing uses scalar `sampling_freq` and `batch_stride`, resolved from HDF5 or HD
 sidecar configuration. The frame interval is
@@ -268,7 +297,7 @@ The HDF5 writer stores this boolean mask as `uint8` values 0/1 with
 `topology_core` under its declared `capillary_analysis_zones` DAG product;
 it remains shared across moments and bandratio workflows. Capillary velocity
 conversion and waveform analysis are not implemented yet. Their source is
-`/spectograms`, with exported `(time, freq, height, width)` axes; its spatial
+`/spectrograms`, with exported `(time, freq, height, width)` axes; its spatial
 orientation remains to be confirmed.
 
 Do not hand-copy path strings into new consumers. Obtain them from the schema or

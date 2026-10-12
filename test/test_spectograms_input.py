@@ -23,10 +23,11 @@ def _hd_source(hd):
 def test_reads_exact_root_dataset_lazily_and_preserves_exported_axes(tmp_path):
     values = np.arange(3 * 4 * 5 * 7, dtype=np.float32).reshape(3, 4, 5, 7)
     with h5py.File(tmp_path / "hd.h5", "w") as hd:
-        exported = hd.create_dataset(HD_SPECTOGRAMS_PATH, data=values)
+        exported = hd.create_dataset("spectrograms", data=values)
         with patch.object(RawH5SourceReader, "array", side_effect=AssertionError("eager read")):
             dataset = _hd_source(hd).spectograms_dataset()
         assert isinstance(dataset, h5py.Dataset)
+        assert dataset.name == "/spectrograms"
         assert dataset.id == exported.id
         assert dataset.shape == (3, 4, 5, 7)
         np.testing.assert_array_equal(dataset[1:2, 1:3], values[1:2, 1:3])
@@ -36,7 +37,7 @@ def test_optional_source_is_none_without_the_exact_dataset(tmp_path):
     with h5py.File(tmp_path / "hd.h5", "w") as hd:
         hd.create_dataset("band_2_0_6000", shape=(3, 5, 7), dtype=np.float32)
         assert _hd_source(hd).optional_spectograms_dataset() is None
-        with pytest.raises(KeyError, match="spectograms"):
+        with pytest.raises(KeyError, match="spectrograms"):
             _hd_source(hd).spectograms_dataset()
 
 
@@ -44,7 +45,7 @@ def test_optional_source_is_none_without_the_exact_dataset(tmp_path):
 def test_rejects_incorrect_rank_with_the_external_path(tmp_path, shape):
     with h5py.File(tmp_path / "hd.h5", "w") as hd:
         hd.create_dataset(HD_SPECTOGRAMS_PATH, shape=shape, dtype=np.float32)
-        with pytest.raises(ValueError, match="/spectograms.*4-D"):
+        with pytest.raises(ValueError, match="/spectrograms.*4-D"):
             _hd_source(hd).optional_spectograms_dataset()
 
 
@@ -52,7 +53,7 @@ def test_rejects_incorrect_rank_with_the_external_path(tmp_path, shape):
 def test_requires_real_numeric_band_power(tmp_path, dtype):
     with h5py.File(tmp_path / "hd.h5", "w") as hd:
         hd.create_dataset(HD_SPECTOGRAMS_PATH, shape=(3, 4, 5, 7), dtype=dtype)
-        with pytest.raises(TypeError, match="/spectograms.*real numeric"):
+        with pytest.raises(TypeError, match="/spectrograms.*real numeric"):
             _hd_source(hd).spectograms_dataset()
 
 
