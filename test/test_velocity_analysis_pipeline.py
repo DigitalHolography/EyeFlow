@@ -58,7 +58,6 @@ class VelocityAnalysisPipelineTests(unittest.TestCase):
             for option in PIPELINE_REGISTRY["velocity_analysis"].options
         }
         profiles = options["velocity_profiles"]
-        self.assertNotIn("per_beat", options)
         self.assertEqual(("segments",), options["segment_velocity_maps"].requires)
         self.assertEqual(("segments",), options["velocity_profiles"].requires)
         self.assertEqual(("segments",), options["quadrants"].requires)
@@ -118,23 +117,12 @@ class VelocityAnalysisPipelineTests(unittest.TestCase):
 
     def test_pipeline_implementation_ownership_is_cleanly_split(self) -> None:
         pipeline_root = Path(__file__).resolve().parents[1] / "src" / "pipelines"
-        metrics_root = pipeline_root / "waveform_shape_metrics"
         velocity_root = pipeline_root / "velocity_analysis"
         gradient_root = pipeline_root / "spatial_gradient_moment0"
 
-        self.assertFalse((metrics_root / "velocity").exists())
-        self.assertFalse((pipeline_root / "velocity_analysis_core").exists())
         self.assertTrue((velocity_root / "builder.py").is_file())
         for package in ("analysis", "artifacts", "outputs"):
             self.assertTrue((velocity_root / package / "__init__.py").is_file())
-        for obsolete in (
-            "workflow.py",
-            "per_beat.py",
-            "per_beat_outputs.py",
-            "segment_maps.py",
-            "segment_velocity_map_avi.py",
-        ):
-            self.assertFalse((velocity_root / obsolete).exists())
         velocity_source = "\n".join(
             path.read_text(encoding="utf-8") for path in velocity_root.rglob("*.py")
         )
@@ -815,7 +803,7 @@ class VelocityAnalysisPipelineTests(unittest.TestCase):
             ) as fft,
             patch.object(
                 analysis_runner,
-                "run_velocity_profile_analysis",
+                "pack_velocity_profile_analysis_outputs",
                 return_value={"analysis": 5},
             ) as analyze,
         ):

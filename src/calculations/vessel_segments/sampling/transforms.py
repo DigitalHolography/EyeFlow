@@ -1,4 +1,4 @@
-"""Map-independent interpolation and orientation of retinal segments."""
+"""CPU/GPU spatial resampling and mask transforms for sampled segments."""
 
 from __future__ import annotations
 
@@ -15,55 +15,42 @@ except ImportError:
 from calculations.compute_backend import optional_cupy_backend
 from utils.logger import Logger
 
-from .geometry import image_half_diagonal
-from .segments import SegmentTopology
-
 INTERPOLATED_SEGMENT_SIDE = 128
-
-
-def determine_segment_rotations(topology: SegmentTopology) -> np.ndarray:
-    """Return the rotation that makes every valid vessel segment upright.
-
-    The returned array has ``(annulus, branch)`` shape. Directions are measured
-    along the existing centerline and point away from the optic disc. This
-    preserves a consistent sign for later vector-basis correction.
-    """
-
-    rotations = np.full(topology.valid_segments.shape, np.nan, dtype=np.float32)
-    for annulus_index, branch_index in np.argwhere(topology.valid_segments):
-        segment = topology.annulus_masks[annulus_index] & (
-            topology.labels == int(topology.branch_ids[branch_index])
-        )
-        segment_centerline = topology.centerline & segment
-        tilt = _segment_tilt(
-            segment_centerline,
-            topology.optic_disc_center_xy,
-        )
-        if np.isfinite(tilt):
-            rotations[annulus_index, branch_index] = np.float32(tilt + 90.0)
-    return rotations
 
 
 def interpolate_segments(
     segment_maps: np.ndarray,
     output_side_pixels: int = INTERPOLATED_SEGMENT_SIDE,
-) -> np.ndarray:
+    *,
+    return_device: bool = False,
+):
     """Interpolate segment values to one square size while preserving NaNs.
 
     Only the final two axes are resized; every preceding axis is retained.
+    ``return_device`` retains CuPy results for subsequent filtering/rotation.
     """
 
-    values = np.asarray(segment_maps, dtype=np.float32)
+    backend = optional_cupy_backend()
+    xp = (
+        backend.cupy
+        if backend is not None and isinstance(segment_maps, backend.cupy.ndarray)
+        else np
+    )
+    values = xp.asarray(segment_maps, dtype=xp.float32)
     _assert_spatial_array(values, output_side_pixels)
+    if return_device and backend is not None:
+        return _interpolate_values(values, output_side_pixels, return_device=True)
     if values.shape[-2:] == (output_side_pixels, output_side_pixels):
-        return values.copy()
+        result = values.copy()
+        return backend.cupy.asnumpy(result) if xp is not np and not return_device else result
     if values.shape[-2] == 0 or values.shape[-1] == 0:
-        return np.full(
+        result = xp.full(
             (*values.shape[:-2], output_side_pixels, output_side_pixels),
-            np.nan,
-            dtype=np.float32,
+            xp.nan,
+            dtype=xp.float32,
         )
-    return _interpolate_values(values, output_side_pixels)
+        return backend.cupy.asnumpy(result) if xp is not np and not return_device else result
+    return _interpolate_values(values, output_side_pixels, return_device=return_device)
 
 
 def resample_rotate_segment(
@@ -75,7 +62,13 @@ def resample_rotate_segment(
 ):
     """Resize and rotate one segment stack with a single affine resampling."""
 
-    values = np.asarray(segment_maps, dtype=np.float32)
+    backend = optional_cupy_backend()
+    xp = (
+        backend.cupy
+        if backend is not None and isinstance(segment_maps, backend.cupy.ndarray)
+        else np
+    )
+    values = xp.asarray(segment_maps, dtype=xp.float32)
     _assert_spatial_array(values, output_side_pixels)
     if values.shape[-2] != values.shape[-1]:
         raise ValueError("native segment arrays must be square.")
@@ -239,69 +232,6 @@ def rotate_segment_masks(
     return rotated
 
 
-def _segment_tilt(
-    segment_centerline: np.ndarray,
-    optic_disc_center_xy: tuple[float, float],
-) -> float:
-    point_y, point_x = np.nonzero(segment_centerline)
-    if point_x.size < 2:
-        return float("nan")
-
-    points = np.column_stack((point_x, point_y)).astype(np.float64)
-    center = np.median(points, axis=0)
-    centered = points - center
-    moment = centered.T @ centered
-    eigenvalues, eigenvectors = np.linalg.eigh(moment)
-    if eigenvalues[-1] <= eigenvalues[0]:
-        return float("nan")
-
-    axis = eigenvectors[:, -1]
-    projections = centered @ axis
-    if np.ptp(projections) < 1.0:
-        return float("nan")
-
-    radii = _radius_grid(segment_centerline.shape, optic_disc_center_xy)[
-        point_y,
-        point_x,
-    ]
-    lower_projection, upper_projection = np.quantile(
-        projections,
-        (0.25, 0.75),
-    )
-    lower_radius = float(
-        np.median(radii[projections <= lower_projection])
-    )
-    upper_radius = float(
-        np.median(radii[projections >= upper_projection])
-    )
-    if upper_radius < lower_radius:
-        axis = -axis
-    elif np.isclose(upper_radius, lower_radius):
-        optic_center_x, optic_center_y = optic_disc_center_xy
-        radial_direction = np.asarray(
-            (center[0] - optic_center_x, center[1] - optic_center_y),
-            dtype=np.float64,
-        )
-        radial_alignment = float(np.dot(axis, radial_direction))
-        if np.isclose(radial_alignment, 0.0):
-            return float("nan")
-        if radial_alignment < 0.0:
-            axis = -axis
-    return float(np.degrees(np.arctan2(axis[1], axis[0])))
-
-
-def _radius_grid(
-    image_shape: tuple[int, int],
-    optic_disc_center_xy: tuple[float, float],
-) -> np.ndarray:
-    ny, nx = image_shape
-    center_x, center_y = optic_disc_center_xy
-    scale = np.float32(1.0 / max(image_half_diagonal(ny, nx), 1.0))
-    y = (np.arange(ny, dtype=np.float32)[:, None] - np.float32(center_y)) * scale
-    x = (np.arange(nx, dtype=np.float32)[None, :] - np.float32(center_x)) * scale
-    return np.sqrt(x**2 + y**2)
-
-
 def _resample_rotate_values(
     values: np.ndarray,
     angle_degrees: float,
@@ -318,15 +248,13 @@ def _resample_rotate_values(
         angle_degrees,
     )
     output_shape = (*values.shape[:-2], canvas_side, canvas_side)
-    valid = np.isfinite(values)
-    shared_validity = _shared_spatial_validity(valid)
     backend = optional_cupy_backend()
     if backend is not None:
         try:
             gpu_values = backend.cupy.asarray(values)
-            gpu_valid = backend.cupy.asarray(
-                shared_validity if shared_validity is not None else valid
-            )
+            valid = backend.cupy.isfinite(gpu_values)
+            shared_validity = _shared_spatial_validity(valid, array_module=backend.cupy)
+            gpu_valid = shared_validity if shared_validity is not None else valid
             resampled_values = backend.ndimage.affine_transform(
                 backend.cupy.where(
                     gpu_valid,
@@ -374,7 +302,11 @@ def _resample_rotate_values(
             return backend.cupy.asnumpy(resampled_values)
         except Exception as exc:
             _log_gpu_fallback("fused segment transform", exc)
+            if isinstance(values, backend.cupy.ndarray):
+                values = backend.cupy.asnumpy(values)
 
+    valid = np.isfinite(values)
+    shared_validity = _shared_spatial_validity(valid)
     filled = np.where(valid, values, np.float32(0.0))
     resampled_values = ndi.affine_transform(
         filled,
@@ -442,20 +374,30 @@ def _fused_affine_mapping(
     return matrix, offset
 
 
-def _shared_spatial_validity(valid: np.ndarray) -> np.ndarray | None:
+def _shared_spatial_validity(valid, *, array_module=np):
     if valid.ndim == 2:
         return valid
     flattened = valid.reshape((-1, *valid.shape[-2:]))
     first = flattened[0]
-    return first if np.all(flattened == first) else None
+    return first if bool(array_module.all(flattened == first)) else None
 
 
-def _interpolate_values(values: np.ndarray, output_side_pixels: int) -> np.ndarray:
-    zoom = _spatial_zoom(values, output_side_pixels)
+def _interpolate_values(values, output_side_pixels: int, *, return_device: bool = False):
     backend = optional_cupy_backend()
     if backend is not None:
         try:
             gpu_values = backend.cupy.asarray(values)
+            if values.shape[-2:] == (output_side_pixels, output_side_pixels):
+                result = gpu_values.copy()
+                return result if return_device else backend.cupy.asnumpy(result)
+            if values.shape[-2] == 0 or values.shape[-1] == 0:
+                result = backend.cupy.full(
+                    (*values.shape[:-2], output_side_pixels, output_side_pixels),
+                    backend.cupy.nan,
+                    dtype=backend.cupy.float32,
+                )
+                return result if return_device else backend.cupy.asnumpy(result)
+            zoom = _spatial_zoom(values, output_side_pixels)
             valid = backend.cupy.isfinite(gpu_values)
             resized_values = backend.ndimage.zoom(
                 backend.cupy.where(valid, gpu_values, backend.cupy.float32(0.0)),
@@ -491,10 +433,20 @@ def _interpolate_values(values: np.ndarray, output_side_pixels: int) -> np.ndarr
                 out=resized,
             )
             resized[~valid_output] = backend.cupy.nan
-            return backend.cupy.asnumpy(resized)
-        except Exception:
-            pass
+            return resized if return_device else backend.cupy.asnumpy(resized)
+        except Exception as exc:  # noqa: BLE001 - preserve optional CUDA fallback
+            _log_gpu_fallback("segment interpolation", exc)
+            if isinstance(values, backend.cupy.ndarray):
+                values = backend.cupy.asnumpy(values)
 
+    if values.shape[-2:] == (output_side_pixels, output_side_pixels):
+        return values.copy()
+    if values.shape[-2] == 0 or values.shape[-1] == 0:
+        return np.full(
+            (*values.shape[:-2], output_side_pixels, output_side_pixels),
+            np.nan, dtype=np.float32,
+        )
+    zoom = _spatial_zoom(values, output_side_pixels)
     valid = np.isfinite(values)
     resized_values = ndi.zoom(
         np.where(valid, values, np.float32(0.0)),

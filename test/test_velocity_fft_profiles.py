@@ -16,19 +16,17 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.compute_backend import optional_cupy_backend  # noqa: E402
-from calculations.segment_profiles import MaskedArrays  # noqa: E402
-from calculations.topology import dilate_segment_masks  # noqa: E402
+from calculations.vessel_segments.measurement import MaskedArrays  # noqa: E402
+from calculations.vessel_segments.profiles.fft import (  # noqa: E402
+    SegmentFftAccumulator,
+    transverse_fft_magnitude_profiles,
+)
+from calculations.vessel_segments.profiles.fft import _gpu_nanmean_axis1  # noqa: E402
+from calculations.vessel_segments.sampling.transforms import dilate_segment_masks  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
-from pipelines.velocity_analysis.analysis.profiles import (  # noqa: E402
-    velocity_fft_transverse_profiles,
-)
 from pipelines.velocity_analysis.analysis.segment_maps import (  # noqa: E402
     interpolate_velocity_maps_per_beat,
-)
-from pipelines.velocity_analysis.analysis.segments import (  # noqa: E402
-    _gpu_nanmean_axis1,
-    _VelocityProfileFftAccumulator,
 )
 from pipelines.velocity_analysis.outputs.profiles import (  # noqa: E402
     pack_velocity_profile_fft_outputs,
@@ -76,7 +74,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
             maps,
             self.boundaries,
         )
-        accumulator = _VelocityProfileFftAccumulator(
+        accumulator = SegmentFftAccumulator(
             frame_count=maps.shape[2],
             ring_count=1,
             branch_count=1,
@@ -99,7 +97,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
         )
 
     def test_fft_then_nanmean_uses_dilated_mask(self) -> None:
-        unmasked, masked = velocity_fft_transverse_profiles(
+        unmasked, masked = transverse_fft_magnitude_profiles(
             self.maps_per_beat,
             self.segments.segment_masks,
         )
@@ -172,7 +170,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
             self.assertEqual("gzip", masked.compression)
 
     def test_streamed_accumulator_matches_legacy_retained_map_path(self) -> None:
-        expected_unmasked, expected_masked = velocity_fft_transverse_profiles(
+        expected_unmasked, expected_masked = transverse_fft_magnitude_profiles(
             self.maps_per_beat,
             self.segments.segment_masks,
         )
@@ -200,11 +198,11 @@ class VelocityFFTProfileTests(unittest.TestCase):
         masks[0, 0, 25, 1:4] = True
         boundaries = np.asarray([0, 3, 6], dtype=np.int32)
         maps_per_beat = interpolate_velocity_maps_per_beat(maps, boundaries)
-        expected_unmasked, expected_masked = velocity_fft_transverse_profiles(
+        expected_unmasked, expected_masked = transverse_fft_magnitude_profiles(
             maps_per_beat,
             masks,
         )
-        accumulator = _VelocityProfileFftAccumulator(
+        accumulator = SegmentFftAccumulator(
             frame_count=maps.shape[2],
             ring_count=1,
             branch_count=1,
@@ -244,11 +242,11 @@ class VelocityFFTProfileTests(unittest.TestCase):
         masks = np.zeros((1, 1, 51, 5), dtype=bool)
         masks[0, 0, 22:29, 1:4] = True
         boundaries = np.asarray([0, 3, 5, 8], dtype=np.int32)
-        expected_unmasked, expected_masked = velocity_fft_transverse_profiles(
+        expected_unmasked, expected_masked = transverse_fft_magnitude_profiles(
             interpolate_velocity_maps_per_beat(maps, boundaries),
             masks,
         )
-        accumulator = _VelocityProfileFftAccumulator(
+        accumulator = SegmentFftAccumulator(
             frame_count=maps.shape[2],
             ring_count=1,
             branch_count=1,
@@ -293,7 +291,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
         stack[:, :4, 0] = np.nan
         mask = np.zeros((51, 5), dtype=bool)
         mask[20:31, 1:4] = True
-        accumulator = _VelocityProfileFftAccumulator(
+        accumulator = SegmentFftAccumulator(
             frame_count=stack.shape[0],
             ring_count=1,
             branch_count=1,
@@ -301,7 +299,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
             cycle_boundary_indexes=np.asarray([0, 3, 6], dtype=np.int32),
             index_base=0,
         )
-        expected = _VelocityProfileFftAccumulator(
+        expected = SegmentFftAccumulator(
             frame_count=stack.shape[0],
             ring_count=1,
             branch_count=1,
@@ -312,7 +310,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
         expected.observe(0, 0, stack, mask)
 
         with patch.object(
-            _VelocityProfileFftAccumulator,
+            SegmentFftAccumulator,
             "_write_beat_cpu",
             side_effect=AssertionError("unexpected CPU fallback"),
         ):

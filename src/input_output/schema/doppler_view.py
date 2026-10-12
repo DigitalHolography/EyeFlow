@@ -10,6 +10,9 @@ from .base import SourceFileLayout, TypedSource
 
 DV_CONFIG_DIR_NAME = "json"
 DV_CONFIG_FILENAME = "DV_params.json"
+DV_RETINAL_VESSEL_LOGITS_PATH = "segmentation/Retina/vessel_segmentation_logits"
+DV_RETINAL_VESSEL_LOGITS_THRESHOLD = 0.1
+DV_CHOROID_VESSEL_MASK_PATH = "segmentation/Choroid/vessel_mask"
 
 DOPPLER_VIEW_LAYOUT = SourceFileLayout(
     label="DV",
@@ -37,7 +40,33 @@ class DopplerViewSource(TypedSource):
             default=None,
         )
 
-    def optic_disc(self, image_shape: tuple[int, int]) -> OpticDisc:
+    def retinal_vessel_mask(self) -> np.ndarray | None:
+        """Return all detected retinal vessels, binarizing raw logits at > 0.1."""
+        return self._optional_binary_mask(DV_RETINAL_VESSEL_LOGITS_PATH, logits=True)
+
+    def choroid_vessel_mask(self) -> np.ndarray | None:
+        """Return binarized choroid support when exported by DopplerView."""
+        return self._optional_binary_mask(DV_CHOROID_VESSEL_MASK_PATH)
+
+    def _optional_binary_mask(self, path: str, *, logits: bool = False):
+        value = self._array(path, default=None)
+        if value is None:
+            return None
+        value = np.asarray(value)
+        if value.ndim != 2:
+            raise ValueError(f"DopplerView /{path} must be 2-D, got shape {value.shape}.")
+        if value.dtype.kind not in "biuf":
+            raise TypeError(f"DopplerView /{path} must contain real numeric or boolean values.")
+        if not np.all(np.isfinite(value)):
+            raise ValueError(f"DopplerView /{path} must contain finite values.")
+        return value > DV_RETINAL_VESSEL_LOGITS_THRESHOLD if logits else value != 0
+
+    def optic_disc(
+        self,
+        image_shape: tuple[int, int],
+        *,
+        pixel_pitch_mm: float | None = None,
+    ) -> OpticDisc:
         """Return DopplerView's optic-disc measurements in its native frame."""
 
         return OpticDisc.from_measurements(
@@ -61,6 +90,7 @@ class DopplerViewSource(TypedSource):
                 default=None,
             ),
             image_shape=image_shape,
+            pixel_pitch_mm=pixel_pitch_mm,
         )
 
     def local_background_dist(self) -> int:

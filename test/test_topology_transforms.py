@@ -11,8 +11,8 @@ from calculations.compute_backend import optional_cupy_backend
 from calculations.topology.branch_identity import BranchIdentityResult
 from calculations.topology.geometry import annulus_mask
 from calculations.topology.segments import SegmentTopology
-from calculations.topology.transforms import (
-    determine_segment_rotations,
+from calculations.topology.orientation import determine_segment_rotations
+from calculations.vessel_segments.sampling.transforms import (
     dilate_segment_masks,
     interpolate_segment_masks,
     interpolate_segments,
@@ -215,12 +215,12 @@ class TestTopologyTransforms(unittest.TestCase):
         values[:, 20:, 25:] = np.nan
 
         with patch(
-            "calculations.topology.transforms.ndi.affine_transform",
+            "calculations.vessel_segments.sampling.transforms.ndi.affine_transform",
             side_effect=AssertionError("unexpected CPU fallback"),
         ):
             gpu = resample_rotate_segment(values, 31.7)
         with patch(
-            "calculations.topology.transforms.optional_cupy_backend",
+            "calculations.vessel_segments.sampling.transforms.optional_cupy_backend",
             return_value=None,
         ):
             cpu = resample_rotate_segment(values, 31.7)

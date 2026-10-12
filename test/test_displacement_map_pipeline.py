@@ -1,4 +1,4 @@
-"""Tests for displacement-map pipeline inputs and persisted outputs."""
+"""Tests for displacement-map inputs, runtime field state, and video artifacts."""
 
 from __future__ import annotations
 

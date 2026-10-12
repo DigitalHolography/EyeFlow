@@ -1,4 +1,4 @@
-"""Per-beat interpolation for generic topology profiles."""
+"""Per-beat interpolation for sampled vessel profiles."""
 
 from __future__ import annotations
 

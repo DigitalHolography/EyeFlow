@@ -14,11 +14,11 @@ from calculations.blood_volume_rate import (
     total_masked_edges_flow,
 )
 from calculations.math import nanmean_float32, nanmedian
-from input_output.profile_datasets import _profile_dataset, _profile_h5_options
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.eps import EpsArtifactWriter, write_eps_file
 from input_output.writers.png import PngArtifactWriter
 from pipeline_engine.base import DatasetValue
+from pipelines.profile_outputs import profile_dataset, profile_h5_options
 
 LUMEN_DIAMETER_BIN_WIDTH_MICRONS = 5.0
 LUMEN_DIAMETER_FIGURE_DPI = 320
@@ -66,7 +66,7 @@ def pack_gradient_edge_outputs(
     for vessel_name, velocity, gradient, paths in vessels:
         _validate_profile_segment_alignment(vessel_name, velocity, gradient)
         velocity_profile = velocity.profile
-        profile = _profile_dataset(
+        profile = profile_dataset(
             np.asarray(velocity_profile.transverse.masked, dtype=np.float32),
             cycle_boundary_indexes,
             index_base=index_base,
@@ -76,7 +76,7 @@ def pack_gradient_edge_outputs(
             ),
         )
         metrics_root = (
-            f"Processing/SpatialGradientMetrics/{vessel_name}/"
+            f"{schema.spatial_gradient_metrics_root}/{vessel_name}/"
             "Transverse/Masked/tbkr"
         )
         left_path = f"{metrics_root}/left_edge_index"
@@ -167,7 +167,7 @@ def _gradient_edge_dataset(
                 "mean_over_time_and_beats" if static_edges else "none"
             ),
         },
-        h5_options=_profile_h5_options(rate.shape),
+        h5_options=profile_h5_options(rate.shape),
     )
 
 
@@ -225,7 +225,7 @@ def pack_mask_derived_outputs(
                 "native_pixel_size_mm": np.float32(pixel_size_mm),
                 "radial_width_pixels": radial_widths,
             },
-            h5_options=_profile_h5_options(rate.shape),
+            h5_options=profile_h5_options(rate.shape),
         )
         outputs[paths.masked_edges] = masked
         total = total_masked_edges_flow(rate)
@@ -249,7 +249,7 @@ def pack_mask_derived_outputs(
                 "branch_reduction": "sum_over_finite_values",
                 "radius_reduction": "median_over_finite_values",
             },
-            h5_options=_profile_h5_options(total.shape),
+            h5_options=profile_h5_options(total.shape),
         )
     return outputs
 

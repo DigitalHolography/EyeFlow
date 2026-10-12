@@ -19,7 +19,7 @@ Read only the context needed for the task:
 | Input layout, HDF5 schema, writers, or output folders | [Data contracts](docs/data-contracts.md), then [I/O context](src/input_output/AGENTS.md) | The relevant schema or writer module |
 | GUI workflow or presentation | [UI context](src/ui/AGENTS.md) | One controller plus its view; do not load scientific implementations unless the backend contract changes |
 | Test failure or regression coverage | [Test map](test/AGENTS.md) | The mapped production module and focused test file |
-| Velocity-profile quadratic fitting | [Velocity-profile analysis](docs/velocity_profile_analysis.md) | `src/pipelines/velocity_profile_analysis/` |
+| Velocity-profile quadratic fitting | [Velocity-profile analysis](docs/velocity_profile_analysis.md) | `src/calculations/vessel_segments/profiles/fits/quadratic.py`, then `src/pipelines/velocity_analysis/outputs/profile_analysis.py` |
 
 ## Repository map
 
@@ -33,7 +33,6 @@ Read only the context needed for the task:
 | `src/utils/` | Process-wide logging; keep domain and orchestration behavior out of this small shared layer |
 | `src/app_settings.py` / `default_settings.json` | Persisted settings behavior / fresh-install defaults |
 | `test/` | Unit, numerical-reference, pipeline-integration, schema, UI-controller, and launcher tests |
-| `benchmarks/` | Checked-in performance/parity observations, not an automated test suite |
 | `.github/workflows/release.yml` | Tag-triggered Windows release and installer publication; it is not the test workflow |
 
 ## Execution in one view

@@ -8,8 +8,9 @@ from unittest.mock import patch
 
 import numpy as np
 
-from calculations.segment_profiles import SegmentProfileSettings
+from calculations.vessel_segments.measurement import SegmentMeasurementSettings
 from calculations.topology import OpticDisc
+from input_output.schema import EyeFlowOutputPaths
 from pipelines.spatial_gradient_moment0 import profiles as profile_module
 from pipelines.spatial_gradient_moment0.profiles import (
     SPATIAL_GRADIENT_METRICS_ROOT,
@@ -21,6 +22,17 @@ from pipelines.spatial_gradient_moment0.profiles import (
 
 
 class SpatialGradientProfileTests(unittest.TestCase):
+    def test_output_roots_come_from_the_active_schema(self) -> None:
+        schema = EyeFlowOutputPaths.active()
+        self.assertEqual(
+            schema.spatial_gradient_profiles_root,
+            SPATIAL_GRADIENT_PROFILE_ROOT,
+        )
+        self.assertEqual(
+            schema.spatial_gradient_metrics_root,
+            SPATIAL_GRADIENT_METRICS_ROOT,
+        )
+
     def test_extracts_both_vessels_using_annular_cross_section_engine(self) -> None:
         vessels = SimpleNamespace(
             artery=np.ones((8, 8), dtype=bool),
@@ -34,7 +46,7 @@ class SpatialGradientProfileTests(unittest.TestCase):
         )
         source = SimpleNamespace(
             source=retinal_source,
-            profile_settings=SegmentProfileSettings(0.01),
+            profile_settings=SegmentMeasurementSettings(0.01),
         )
         moment0ff = np.full((3, 8, 8), 42.0, dtype=np.float32)
         ctx = SimpleNamespace(

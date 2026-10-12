@@ -80,12 +80,14 @@ def load_retinal_source_data(
             moment2=_optional_moment(hd.optional_moment2_dataset),
             band_lf=band_lf,
             band_hf=band_hf,
+            spectograms=hd.optional_spectograms_dataset(),
         )
         spatial_reference = band_lf
     else:
         image_maps = ImageMaps(
             moment0=hd.moment0_dataset(),
             moment2=hd.moment2_dataset(),
+            spectograms=hd.optional_spectograms_dataset(),
         )
         spatial_reference = image_maps.moment0
     spatial_shape = tuple(int(size) for size in spatial_reference.shape[-2:])
@@ -101,7 +103,11 @@ def load_retinal_source_data(
         swapped=artery_swapped,
     )
     dv_spatial_shape = spatial_shape[::-1] if artery_swapped else spatial_shape
-    optic_disc = dv.optic_disc(dv_spatial_shape)
+    metadata = hd.metadata()
+    optic_disc = dv.optic_disc(
+        dv_spatial_shape,
+        pixel_pitch_mm=metadata.pixel_pitch.isotropic_mm,
+    )
     if artery_swapped:
         optic_disc = optic_disc.transposed()
     if optic_disc.mask is not None and optic_disc.mask.shape != spatial_shape:
@@ -113,6 +119,18 @@ def load_retinal_source_data(
         dv.retinal_labeled_vessels(),
         spatial_shape,
         "retinal_labeled_vessels",
+        swapped=artery_swapped,
+    )
+    retinal_vessel_mask = apply_optional_mask_alignment(
+        dv.retinal_vessel_mask(),
+        spatial_shape,
+        "retinal_vessel_segmentation_logits",
+        swapped=artery_swapped,
+    )
+    choroid_vessel_mask = apply_optional_mask_alignment(
+        dv.choroid_vessel_mask(),
+        spatial_shape,
+        "choroid_vessel_mask",
         swapped=artery_swapped,
     )
     # A fallback disc means DopplerView did not provide usable optic-disc
@@ -133,10 +151,12 @@ def load_retinal_source_data(
                 vein=vein_mask,
                 labeled=labeled_vessels,
                 velocity_background=(artery_mask | source_vein_mask),
+                retinal_vessel_mask=retinal_vessel_mask,
+                choroid_vessel_mask=choroid_vessel_mask,
             ),
             optic_disc=optic_disc,
         ),
-        holodoppler=hd.metadata(),
+        holodoppler=metadata,
         doppler_view=DopplerViewMetadata(
             local_background_dist=dv.local_background_dist(),
             spatial_axes_swapped_to_match_hd=artery_swapped,

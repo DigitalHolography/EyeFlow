@@ -49,10 +49,18 @@ def sobel_spatial_gradient(stack, *, array_module=np, ndimage=ndi):
     """Apply Sobel independently to each frame, preserving missing pixels."""
     xp = array_module
     values = xp.asarray(stack, dtype=xp.float32)
-    gradients = xp.empty_like(values)
-    for index, frame in enumerate(values):
-        gradients[index] = spatial_gradient(frame, array_module=xp, ndimage=ndimage)
-        gradients[index][~xp.isfinite(frame)] = xp.nan
+    finite = xp.isfinite(values)
+    filled = xp.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
+    derivative = xp.asarray([-1, 0, 1], dtype=xp.float32)
+    smoothing = xp.asarray([1, 2, 1], dtype=xp.float32)
+    # A 3-D ndimage.sobel would smooth along time as well as space. Apply only
+    # the two spatial passes, batching all frames into each kernel launch.
+    horizontal = ndimage.correlate1d(filled, derivative, axis=-1, mode="nearest")
+    horizontal = ndimage.correlate1d(horizontal, smoothing, axis=-2, mode="nearest")
+    vertical = ndimage.correlate1d(filled, derivative, axis=-2, mode="nearest")
+    vertical = ndimage.correlate1d(vertical, smoothing, axis=-1, mode="nearest")
+    gradients = xp.hypot(horizontal, vertical)
+    gradients[~finite] = xp.nan
     return gradients
 
 
@@ -85,7 +93,7 @@ def _imagej_gaussian_kernel(sigma, accuracy):
 def _zero_valid_border(frame, array_module):
     """Zero the outermost rows and columns without replacing propagated NaNs."""
     xp = array_module
-    for edge in (frame[0], frame[-1], frame[:, 0], frame[:, -1]):
+    for edge in (frame[..., 0, :], frame[..., -1, :], frame[..., :, 0], frame[..., :, -1]):
         edge[...] = xp.where(xp.isnan(edge), xp.nan, xp.float32(0.0))
 
 
@@ -102,13 +110,10 @@ def gaussian2d_blur(stack, *, array_module=np, ndimage=ndi):
         _imagej_gaussian_kernel(GAUSSIAN_BLUR_RADIUS, _IMAGEJ_GAUSSIAN_ACCURACY),
         dtype=xp.float32,
     )
-    filtered = xp.empty_like(values)
-    for index, frame in enumerate(values):
-        blurred = ndimage.correlate1d(frame, kernel, axis=1, mode="nearest")
-        blurred = ndimage.correlate1d(blurred, kernel, axis=0, mode="nearest")
-        _zero_valid_border(blurred, xp)
-        filtered[index] = blurred
-    return filtered
+    blurred = ndimage.correlate1d(values, kernel, axis=-1, mode="nearest")
+    blurred = ndimage.correlate1d(blurred, kernel, axis=-2, mode="nearest")
+    _zero_valid_border(blurred, xp)
+    return blurred
 
 
 def unsharpen(stack, *, array_module=np, ndimage=ndi):
@@ -125,13 +130,10 @@ def unsharpen(stack, *, array_module=np, ndimage=ndi):
         _imagej_gaussian_kernel(UNSHARP_MASK_RADIUS, _IMAGEJ_UNSHARP_ACCURACY),
         dtype=xp.float32,
     )
-    filtered = xp.empty_like(values)
     weight = xp.float32(UNSHARP_MASK_WEIGHT)
-    for index, frame in enumerate(values):
-        blurred = ndimage.correlate1d(frame, kernel, axis=1, mode="nearest")
-        blurred = ndimage.correlate1d(blurred, kernel, axis=0, mode="nearest")
-        sharpened = (frame - weight * blurred) / (xp.float32(1.0) - weight)
-        xp.maximum(sharpened, xp.float32(0.0), out=sharpened)
-        _zero_valid_border(sharpened, xp)
-        filtered[index] = sharpened
-    return filtered
+    blurred = ndimage.correlate1d(values, kernel, axis=-1, mode="nearest")
+    blurred = ndimage.correlate1d(blurred, kernel, axis=-2, mode="nearest")
+    sharpened = (values - weight * blurred) / (xp.float32(1.0) - weight)
+    xp.maximum(sharpened, xp.float32(0.0), out=sharpened)
+    _zero_valid_border(sharpened, xp)
+    return sharpened

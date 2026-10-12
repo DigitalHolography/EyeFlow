@@ -8,6 +8,7 @@ from .per_beat import (
     pack_velocity_per_beat_inputs,
     pack_velocity_per_beat_outputs,
 )
+from .profile_analysis import pack_velocity_profile_analysis_outputs
 from .profiles import (
     pack_cross_section_profile_outputs,
     pack_velocity_profile_fft_outputs,
@@ -24,4 +25,5 @@ __all__ = [
     "pack_velocity_per_beat_inputs",
     "pack_velocity_per_beat_outputs",
     "pack_velocity_profile_fft_outputs",
+    "pack_velocity_profile_analysis_outputs",
 ]

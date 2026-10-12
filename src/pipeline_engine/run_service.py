@@ -19,7 +19,7 @@ from velocity_calibration import (
 
 from .base import PipelineDescriptor
 from .dag import PipelineDAG, PipelineExecutionPlan
-from .runtime import run_pipelines_to_output
+from .runtime import PipelineRunError, run_pipelines_to_output
 
 HOLO_SUFFIX = ".holo"
 
@@ -207,6 +207,8 @@ def execute_run(
                 on_progress=on_progress,
             )
         except Exception as exc:  # noqa: BLE001
+            if isinstance(exc, PipelineRunError):
+                outputs.append(exc.output_h5_path)
             failure = RunFailure(input_layout.holo_path, str(exc))
             failures.append(failure)
             Logger.log_error(str(failure))

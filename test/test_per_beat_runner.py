@@ -286,15 +286,6 @@ class PerBeatRunnerTests(unittest.TestCase):
             result.cycle_boundary_indexes,
             inputs.cycle_boundary_indexes,
         )
-        outputs = pack_velocity_per_beat_outputs(result)
-        self.assertNotIn(
-            "Processing/VelocityPerBeat/BeatPeriodSeconds/value",
-            outputs,
-        )
-        self.assertFalse(any("Vmax" in path for path in outputs))
-        self.assertFalse(any("Vmin" in path for path in outputs))
-        self.assertFalse(any("VTI" in path for path in outputs))
-
         inputs = pack_velocity_per_beat_inputs(
             result,
             velocity=SimpleNamespace(

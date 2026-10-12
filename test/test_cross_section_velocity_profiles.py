@@ -18,9 +18,9 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calculations.math import rotate_image_with_nan  # noqa: E402
-from calculations.segment_profiles import SegmentProfileResult  # noqa: E402
-from calculations.topology import interpolate_profiles_per_beat  # noqa: E402
-from calculations.topology import profiles as topology_profiles  # noqa: E402
+from calculations.vessel_segments.profiles.per_beat import (  # noqa: E402
+    interpolate_profiles_per_beat,
+)
 from input_output.output_manager import OutputType  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from input_output.writers.h5 import write_value_dataset  # noqa: E402
@@ -38,24 +38,6 @@ from pipelines.velocity_analysis.artifacts.figures.profiles import (  # noqa: E4
 
 
 class CrossSectionProfilePackingTests(unittest.TestCase):
-    def test_obsolete_centering_poiseuille_and_inverse_fit_interfaces_are_gone(self) -> None:
-        removed = {
-            "centered_velocity_profiles",
-            "centered_profile_x_micrometers",
-            "profile_center_micrometers",
-            "profile_lumen_edges_micrometers",
-            "profile_centering_fit_r_squared",
-            "poiseuille_coefficients",
-            "poiseuille_origin_micrometers",
-            "poiseuille_roots_micrometers",
-            "poiseuille_r_squared",
-        }
-        self.assertTrue(removed.isdisjoint(SegmentProfileResult.__dataclass_fields__))
-        self.assertFalse(
-            hasattr(topology_profiles, "fit_inverse_parabola_profiles_with_roots")
-        )
-        self.assertFalse((SRC_DIR / "pipelines/velocity_analysis/flow_asymmetry.py").exists())
-
     def test_h5_export_contains_only_four_standard_profiles_per_vessel(self) -> None:
         artery = _segments(radius_count=2, branch_count=1)
         vein = _segments(radius_count=2, branch_count=0)
@@ -102,8 +84,6 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
                 ["y", "time", "beat", "branch", "radius"],
                 list(longitudinal.attrs["dimDesc"]),
             )
-            self.assertNotIn("Processing/CrossSections", h5)
-
     def test_interpolation_vectorizes_spatial_samples_and_skips_invalid_slots(self) -> None:
         profiles = np.empty((1, 2, 6, 3), dtype=np.float32)
         profiles[0, 0] = np.arange(18, dtype=np.float32).reshape(6, 3)
@@ -111,7 +91,7 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
         from scipy.signal import resample as scipy_resample
 
         with patch(
-            "calculations.topology.profile_interpolation.resample",
+            "calculations.vessel_segments.profiles.per_beat.resample",
             wraps=scipy_resample,
         ) as resample:
             result = interpolate_profiles_per_beat(

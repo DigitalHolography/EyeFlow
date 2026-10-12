@@ -14,14 +14,13 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.topology import (  # noqa: E402
-    PreparedTopology,
-    AnnulusGeometry,
-    OpticDisc,
-    prepare_topologies,
-    run_topology_cache,
-    topology_source_id,
+from calculations.vessel_segments.sampling import (  # noqa: E402
+    SegmentSamplingPlan,
+    prepare_sampling_plans,
 )
+from calculations.vessel_segments.sampling.cache import topology_source_id  # noqa: E402
+from pipelines.topology_core.cache import run_topology_cache  # noqa: E402
+from calculations.topology import AnnulusGeometry, OpticDisc  # noqa: E402
 
 
 class TopologyCacheTests(unittest.TestCase):
@@ -41,13 +40,13 @@ class TopologyCacheTests(unittest.TestCase):
             for prepared in initial
         ]
         cache = {}
-        with patch("calculations.topology.workflow.prepare_topology", side_effect=initial) as prepare, patch(
-            "calculations.topology.workflow._resize_prepared_topology", side_effect=final,
+        with patch("calculations.vessel_segments.sampling.preparation.prepare_sampling_plan", side_effect=initial) as prepare, patch(
+            "calculations.vessel_segments.sampling.preparation._resize_prepared_topology", side_effect=final,
         ) as resize, patch.object(Logger, "log") as log:
-            first = prepare_topologies(
+            first = prepare_sampling_plans(
                 {"artery": vessel, "vein": vessel}, _disc(disc), settings, source_id="scan", cache=cache,
             )
-            second = prepare_topologies(
+            second = prepare_sampling_plans(
                 {"artery": vessel, "vein": vessel}, _disc(disc), settings, source_id="scan", cache=cache,
             )
         self.assertEqual(2, prepare.call_count)
@@ -82,24 +81,24 @@ class TopologyCacheTests(unittest.TestCase):
         cache = {}
 
         with patch(
-            "calculations.topology.workflow.prepare_topology",
+            "calculations.vessel_segments.sampling.preparation.prepare_sampling_plan",
             side_effect=(first_prepared, changed_prepared),
         ) as prepare:
-            first = prepare_topologies(
+            first = prepare_sampling_plans(
                 {"artery": vessel_mask},
                 _disc(optic_disc_mask),
                 settings,
                 source_id="scan-a",
                 cache=cache,
             )
-            reused = prepare_topologies(
+            reused = prepare_sampling_plans(
                 {"artery": vessel_mask.copy()},
                 _disc(optic_disc_mask.copy()),
                 settings,
                 source_id="scan-a",
                 cache=cache,
             )
-            changed = prepare_topologies(
+            changed = prepare_sampling_plans(
                 {"artery": changed_mask},
                 _disc(optic_disc_mask),
                 settings,
@@ -134,10 +133,10 @@ class TopologyCacheTests(unittest.TestCase):
         cache = {}
 
         with patch(
-            "calculations.topology.workflow.prepare_topology",
+            "calculations.vessel_segments.sampling.preparation.prepare_sampling_plan",
             side_effect=prepared,
         ) as prepare:
-            first = prepare_topologies(
+            first = prepare_sampling_plans(
                 {"artery": artery, "vein": vein},
                 _disc(disc),
                 settings,
@@ -145,7 +144,7 @@ class TopologyCacheTests(unittest.TestCase):
                 cache=cache,
                 window_side_pixels=3,
             )
-            changed = prepare_topologies(
+            changed = prepare_sampling_plans(
                 {"artery": artery, "vein": changed_vein},
                 _disc(disc),
                 settings,
@@ -169,14 +168,14 @@ class TopologyCacheTests(unittest.TestCase):
         ]
         cache = {}
         with patch(
-            "calculations.topology.workflow.prepare_topology",
+            "calculations.vessel_segments.sampling.preparation.prepare_sampling_plan",
             side_effect=prepared,
         ) as prepare:
-            first = prepare_topologies(
+            first = prepare_sampling_plans(
                 {"artery": vessel}, _disc(disc, (3.0, 4.0)), settings,
                 source_id="scan", cache=cache,
             )
-            second = prepare_topologies(
+            second = prepare_sampling_plans(
                 {"artery": vessel}, _disc(disc, (4.0, 4.0)), settings,
                 source_id="scan", cache=cache,
             )
@@ -188,7 +187,7 @@ def _prepared_topology(
     shape: tuple[int, int],
     *,
     marker: float,
-) -> PreparedTopology:
+) -> SegmentSamplingPlan:
     labels = np.zeros(shape, dtype=np.int32)
     labels[3:6, 3:6] = 1
     topology = SimpleNamespace(
@@ -197,7 +196,7 @@ def _prepared_topology(
         branch_ids=np.asarray([1], dtype=np.int32),
         labels=labels,
     )
-    return PreparedTopology(
+    return SegmentSamplingPlan(
         native=topology,
         rotation_degrees=np.asarray([[marker]], dtype=np.float32),
         interpolated_masks=np.ones((1, 1, 3, 3), dtype=bool),

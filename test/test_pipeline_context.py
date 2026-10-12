@@ -7,7 +7,7 @@ import unittest
 import h5py
 import numpy as np
 
-from pipeline_engine import PipelineContext
+from pipeline_engine import ExecutionVariant, PipelineContext
 from pipeline_engine.context import RawH5SourceReader
 from input_output.h5_access import PipelineH5Output, PipelineInputSource
 from input_output.schema.base import TypedSource
@@ -162,6 +162,51 @@ class PipelineContextTests(unittest.TestCase):
                     holodoppler_h5=None,
                     doppler_vision_h5=None,
                     band_ratio_frequency_scale_hz=np.nan,
+                )
+
+    def test_execution_variants_are_validated_and_published(self) -> None:
+        with h5py.File(
+            "context_variants_test.h5",
+            "w",
+            driver="core",
+            backing_store=False,
+        ) as h5file:
+            ctx = PipelineContext(
+                work_h5=h5file,
+                holodoppler_h5=None,
+                doppler_vision_h5=None,
+            )
+            variant = ExecutionVariant(
+                name="alternate",
+                state={"result": object()},
+                output_namespace="ProcessingAlt",
+                artifact_namespace="alternate",
+                provenance={"method": "alternate"},
+            )
+
+            ctx.publish_execution_variants(
+                [variant],
+                failures={"unavailable": "missing input"},
+            )
+
+            self.assertEqual((variant,), ctx.execution_variants)
+            self.assertEqual(
+                {"unavailable": "missing input"},
+                ctx.execution_variant_failures,
+            )
+            with self.assertRaisesRegex(ValueError, "Duplicate execution variant"):
+                ctx.publish_execution_variants([variant, variant])
+            with self.assertRaisesRegex(ValueError, "invalid artifact namespace"):
+                ctx.publish_execution_variants(
+                    [
+                        ExecutionVariant(
+                            name="unsafe",
+                            state={},
+                            output_namespace="Processing",
+                            artifact_namespace="../outside",
+                            provenance={},
+                        )
+                    ]
                 )
 
     def test_source_array_casts_during_numeric_hdf5_read(self) -> None:

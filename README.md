@@ -131,6 +131,4 @@ Repository navigation for contributors and coding agents starts at
 - [weighted velocity-profile analysis](docs/velocity_profile_analysis.md)
 
 The tag-triggered GitHub workflow builds Windows releases from `dev`; it is not
-a continuous test workflow. `benchmarks/rtx4090_cross_section.json` is a
-hardware-specific cross-section parity/performance snapshot, not an automated
-benchmark harness.
+a continuous test workflow.

@@ -7,11 +7,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from calculations.topology import (
-    PreparedTopology,
-    dilate_segment_masks,
+from calculations.vessel_segments.sampling import SegmentSamplingPlan, prepare_segment_chunks
+from calculations.vessel_segments.sampling.transforms import dilate_segment_masks
+from calculations.vessel_segments.profiles.reductions import (
     longitudinal_profiles,
-    prepare_segment_chunks,
     transverse_profiles,
 )
 
@@ -35,7 +34,7 @@ class DisplacementSegmentResult:
 
 def analyze_displacement_segments(
     displacement_maps: Mapping[str, object],
-    topology: PreparedTopology,
+    topology: SegmentSamplingPlan,
     *,
     retain_maps: bool,
     working_memory_mb: float,

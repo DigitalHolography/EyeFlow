@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 
 from .segments import SegmentTopology
-from .workflow import PreparedTopology
 
 QUADRANT_NAMES = (
     "north_west",
@@ -27,7 +26,7 @@ _EYEFLOW_SPATIAL_Y_INVERTED = True
 
 
 def quadrant_membership(
-    topology: SegmentTopology | PreparedTopology,
+    topology: SegmentTopology,
 ) -> np.ndarray:
     """Assign every branch/radius in ``topology`` to one anatomical quadrant.
 
@@ -35,11 +34,9 @@ def quadrant_membership(
     The returned array is ordered as :data:`QUADRANT_NAMES` and has shape
     ``(quadrant, branch, annulus)``.
     """
-    segment_topology = (
-        topology.native if isinstance(topology, PreparedTopology) else topology
-    )
+    segment_topology = topology
     if not isinstance(segment_topology, SegmentTopology):
-        raise TypeError("topology must be SegmentTopology or PreparedTopology.")
+        raise TypeError("topology must be SegmentTopology.")
 
     branch_ids = np.asarray(segment_topology.branch_ids, dtype=np.int32).reshape(-1)
     branch_label_map = np.asarray(segment_topology.labels, dtype=np.int32)

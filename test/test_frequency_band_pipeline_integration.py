@@ -8,15 +8,24 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import pytest
 
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
 
 
-def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
+@pytest.mark.parametrize("legacy_spectrograms_group", [False, True])
+def test_frequency_band_run_produces_physical_downstream_outputs(legacy_spectrograms_group) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         holo = _write_frequency_band_run(Path(temp_dir))
+        if legacy_spectrograms_group:
+            hd_path = Path(temp_dir) / holo.stem / f"{holo.stem}_HD/h5/{holo.stem}_HD_output.h5"
+            with h5py.File(hd_path, "a") as hd:
+                group = hd.create_group("spectrograms")
+                group.create_group("longtimes")
+                group.create_group("singlebeat")
+                group.create_dataset("spectral_cube_parameters", data="{}")
         available, missing = load_pipeline_catalog()
         assert not {
             "velocity",
@@ -53,7 +62,9 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
         schema = EyeFlowOutputPaths.active()
         with h5py.File(result.outputs[0], "r") as file:
             assert "Processing" not in file
-            assert "doppler_moments" in json.loads(file.attrs["velocity_workflow_failures"])
+            assert "doppler_moments" in json.loads(
+                file.attrs["execution_variant_failures"]
+            )
             output = PipelineH5Output(file, processing_root="ProcessingAlt")
             assert output.attrs["velocity_estimation_method"] == "frequency_bands"
             assert output.attrs["velocity_quantity"] == "physical_velocity"
@@ -77,7 +88,6 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
             assert cycle_durations.attrs["unit"] == "s"
             assert cycle_durations.ndim == 1
             assert cycle_durations.size > 0
-            assert "Processing/VelocityPerBeat/BeatPeriodSeconds/value" not in file
 
             frequency_map = output.get(schema.analysis.fRMS_avg)
             assert frequency_map.attrs["unit"] == "Hz"
@@ -85,8 +95,6 @@ def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
 
             velocity_average_masked = output.get(schema.analysis.velocity_map_avg_masked)
             assert velocity_average_masked.attrs["unit"] == "mm/s"
-            assert "Processing/Maps/VelocityAverage/value" not in file
-            assert "Processing/Maps/DeltaFRMSAverage/value" not in file
 
             artery_flow = output.get(schema.blood_volume_rate.artery.masked_edges)
             assert artery_flow.attrs["unit"] == "mm^3/s"

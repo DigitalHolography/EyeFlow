@@ -1,18 +1,16 @@
-"""Find vessel segments and extract the corresponding regions from any map."""
+"""Construct native branch/annulus geometry and local vessel masks."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from time import perf_counter
 
 import numpy as np
-
-from utils.logger import Logger
 
 from .branch_identity import BranchIdentityResult, label_vessel_branches
 from .geometry import AnnulusGeometry, image_half_diagonal, section_masks
 from .mask_area import annulus_widths_pixels
 from .optic_disc import OpticDisc
+from .windows import centered_window_bounds, window_target_slices
 
 
 @dataclass(frozen=True)
@@ -102,111 +100,6 @@ def build_segment_topology(
     )
 
 
-def extract_segments(
-    data_map,
-    topology: SegmentTopology,
-    *,
-    spatial_axes: tuple[int, int] = (-2, -1),
-) -> np.ndarray:
-    """Extract one padded square per annulus and branch.
-
-    Spatial axes are moved to the last two output axes. Other axes retain their
-    relative order, so a ``(frame, y, x, component)`` vector map produces
-    ``(annulus, branch, frame, component, local_y, local_x)`` when called with
-    ``spatial_axes=(1, 2)``.
-    """
-
-    shape = tuple(int(size) for size in data_map.shape)
-    y_axis, x_axis = _normalized_spatial_axes(len(shape), spatial_axes)
-    assert (shape[y_axis], shape[x_axis]) == topology.spatial_shape
-    nonspatial_shape = tuple(
-        size for axis, size in enumerate(shape) if axis not in (y_axis, x_axis)
-    )
-    ring_count, branch_count = topology.segment_centers_xy.shape[:2]
-    side = topology.window_side_pixels
-    output_shape = (ring_count, branch_count, *nonspatial_shape, side, side)
-    output_gib = np.prod(output_shape, dtype=np.int64) * 4 / (1024 ** 3)
-    Logger.log(
-        f"Allocating extracted segment array: shape={output_shape}, "
-        f"allocated={output_gib:.2f} GiB."
-    )
-    extracted = np.full(
-        output_shape,
-        np.nan,
-        dtype=np.float32,
-    )
-    if side == 0:
-        return extracted
-
-    target_prefix = (slice(None),) * len(nonspatial_shape)
-    valid_indexes = np.argwhere(topology.valid_segments)
-    progress_step = max(1, len(valid_indexes) // 10)
-    read_seconds = 0.0
-    extraction_started = perf_counter()
-    for work_index, (ring_index, branch_index) in enumerate(valid_indexes, start=1):
-        bounds = topology.window_bounds_xyxy[ring_index, branch_index]
-        center = topology.segment_centers_xy[ring_index, branch_index]
-        source_slices = [slice(None)] * len(shape)
-        source_slices[x_axis] = slice(int(bounds[0]), int(bounds[1]))
-        source_slices[y_axis] = slice(int(bounds[2]), int(bounds[3]))
-        read_started = perf_counter()
-        source = np.asarray(data_map[tuple(source_slices)], dtype=np.float32)
-        read_seconds += perf_counter() - read_started
-        source = np.moveaxis(source, (y_axis, x_axis), (-2, -1))
-        target_y, target_x = _window_target_slices(bounds, center, side)
-        extracted[(
-            int(ring_index),
-            int(branch_index),
-            *target_prefix,
-            target_y,
-            target_x,
-        )] = source
-        if work_index % progress_step == 0 or work_index == len(valid_indexes):
-            Logger.log(
-                f"Segment extraction progress: {work_index}/{len(valid_indexes)} "
-                f"in {perf_counter() - extraction_started:.2f}s."
-            )
-    Logger.log(
-        f"Segment source slicing accounted for {read_seconds:.2f}s across "
-        f"{len(valid_indexes)} segment reads."
-    )
-    return extracted
-
-
-def extract_segment(
-    data_map,
-    topology: SegmentTopology,
-    ring_index: int,
-    branch_index: int,
-    *,
-    spatial_axes: tuple[int, int] = (-2, -1),
-) -> np.ndarray:
-    """Extract one padded segment while retaining all non-spatial axes."""
-
-    shape = tuple(int(size) for size in data_map.shape)
-    y_axis, x_axis = _normalized_spatial_axes(len(shape), spatial_axes)
-    assert (shape[y_axis], shape[x_axis]) == topology.spatial_shape
-    nonspatial_shape = tuple(
-        size for axis, size in enumerate(shape) if axis not in (y_axis, x_axis)
-    )
-    side = topology.window_side_pixels
-    extracted = np.full((*nonspatial_shape, side, side), np.nan, dtype=np.float32)
-    index = (int(ring_index), int(branch_index))
-    if side == 0 or not topology.valid_segments[index]:
-        return extracted
-
-    bounds = topology.window_bounds_xyxy[index]
-    center = topology.segment_centers_xy[index]
-    source_slices = [slice(None)] * len(shape)
-    source_slices[x_axis] = slice(int(bounds[0]), int(bounds[1]))
-    source_slices[y_axis] = slice(int(bounds[2]), int(bounds[3]))
-    source = np.asarray(data_map[tuple(source_slices)], dtype=np.float32)
-    source = np.moveaxis(source, (y_axis, x_axis), (-2, -1))
-    target_y, target_x = _window_target_slices(bounds, center, side)
-    extracted[..., target_y, target_x] = source
-    return extracted
-
-
 def competing_segment_masks(
     topology: SegmentTopology,
     vessel_mask,
@@ -240,7 +133,7 @@ def competing_segment_masks(
         index = (int(ring_index), int(branch_index))
         bounds = topology.window_bounds_xyxy[index]
         center = topology.segment_centers_xy[index]
-        target_y, target_x = _window_target_slices(bounds, center, side)
+        target_y, target_x = window_target_slices(bounds, center, side)
         x_start, x_stop, y_start, y_stop = bounds
         branch_id = int(topology.branch_ids[index[1]])
         source_y = slice(int(y_start), int(y_stop))
@@ -274,13 +167,13 @@ def resize_segment_topology_windows(
                 int(value)
                 for value in topology.segment_centers_xy[ring_index, branch_index]
             )
-            segment_bounds = _centered_window_bounds(
+            segment_bounds = centered_window_bounds(
                 topology.spatial_shape,
                 center,
                 side,
             )
             bounds[ring_index, branch_index] = segment_bounds
-            target_y, target_x = _window_target_slices(segment_bounds, center, side)
+            target_y, target_x = window_target_slices(segment_bounds, center, side)
             x_start, x_stop, y_start, y_stop = segment_bounds
             branch_id = int(topology.branch_ids[branch_index])
             full_mask = topology.annulus_masks[ring_index] & (
@@ -359,10 +252,10 @@ def _build_segment_topology(
             center = _segment_center_xy(mask, segment_centerline)
             if center is None:
                 continue
-            segment_bounds = _centered_window_bounds(vessel_mask.shape, center, side)
+            segment_bounds = centered_window_bounds(vessel_mask.shape, center, side)
             centers[ring_index, branch_index] = center
             bounds[ring_index, branch_index] = segment_bounds
-            target_y, target_x = _window_target_slices(segment_bounds, center, side)
+            target_y, target_x = window_target_slices(segment_bounds, center, side)
             x_start, x_stop, y_start, y_stop = segment_bounds
             masks[ring_index, branch_index, target_y, target_x] = mask[
                 y_start:y_stop,
@@ -421,48 +314,3 @@ def _segment_window_side(
     height = int(np.quantile(heights, percentile, method="higher"))
     side = max(width, height)
     return side if side % 2 == 1 else side + 1
-
-
-def _centered_window_bounds(
-    image_shape: tuple[int, int],
-    center_xy: tuple[int, int],
-    side_pixels: int,
-) -> tuple[int, int, int, int]:
-    assert side_pixels > 0 and side_pixels % 2 == 1
-    half_width = side_pixels // 2
-    center_x, center_y = center_xy
-    return (
-        max(center_x - half_width, 0),
-        min(center_x + half_width + 1, int(image_shape[1])),
-        max(center_y - half_width, 0),
-        min(center_y + half_width + 1, int(image_shape[0])),
-    )
-
-
-def _window_target_slices(
-    bounds_xyxy,
-    center_xy,
-    side_pixels: int,
-) -> tuple[slice, slice]:
-    x_start, x_stop, y_start, y_stop = (int(value) for value in bounds_xyxy)
-    center_x, center_y = (int(value) for value in center_xy)
-    conceptual_x_start = center_x - side_pixels // 2
-    conceptual_y_start = center_y - side_pixels // 2
-    target_x_start = x_start - conceptual_x_start
-    target_y_start = y_start - conceptual_y_start
-    return (
-        slice(target_y_start, target_y_start + y_stop - y_start),
-        slice(target_x_start, target_x_start + x_stop - x_start),
-    )
-
-
-def _normalized_spatial_axes(
-    dimension_count: int,
-    spatial_axes: tuple[int, int],
-) -> tuple[int, int]:
-    if dimension_count < 2:
-        raise ValueError("data_map must contain two spatial axes.")
-    y_axis, x_axis = (int(axis) % dimension_count for axis in spatial_axes)
-    if y_axis == x_axis:
-        raise ValueError("spatial_axes must identify two different axes.")
-    return y_axis, x_axis

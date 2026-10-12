@@ -34,6 +34,7 @@ def registerPipeline(
     options: Iterable[PipelineOption | str] | None = None,
     visibility: str = "visible",
     default_selected: bool = False,
+    produces_execution_variants: bool = False,
 ):
     def decorator(cls):
         cls.name = name
@@ -48,6 +49,7 @@ def registerPipeline(
         cls.options = _pipeline_options(
             options if options is not None else getattr(cls, "options", ())
         )
+        cls.produces_execution_variants = bool(produces_execution_variants)
 
         missing = find_missing_dependencies(cls.requires)
         cls.missing_deps = missing
@@ -65,6 +67,7 @@ def registerPipeline(
             options=tuple(cls.options),
             visibility=visibility,
             default_selected=bool(default_selected),
+            produces_execution_variants=cls.produces_execution_variants,
             pipeline_factory=cls,
             source_path=_source_path(cls),
         )
@@ -84,6 +87,7 @@ def pipeline(
     input_slot: str = "both",
     visibility: str = "visible",
     default_selected: bool = False,
+    produces_execution_variants: bool = False,
 ):
     """Register a function pipeline.
 
@@ -109,6 +113,7 @@ def pipeline(
             options=declared_options,
             visibility=visibility,
             default_selected=bool(default_selected),
+            produces_execution_variants=bool(produces_execution_variants),
             pipeline_factory=lambda: FunctionPipeline(
                 name=name,
                 description=description or (inspect.getdoc(func) or ""),
@@ -122,6 +127,7 @@ def pipeline(
                 options=declared_options,
                 visibility=visibility,
                 default_selected=bool(default_selected),
+                produces_execution_variants=bool(produces_execution_variants),
             ),
             source_path=_source_path(func),
         )
@@ -185,6 +191,17 @@ class ProcessResult:
 
 
 @dataclass
+class ExecutionVariant:
+    """One isolated downstream execution emitted by a pipeline."""
+
+    name: str
+    state: dict[str, object]
+    output_namespace: str
+    artifact_namespace: str
+    provenance: Mapping[str, object]
+
+
+@dataclass
 class DatasetValue:
     """Represent a dataset payload, attributes, and HDF5 creation options."""
 
@@ -210,6 +227,7 @@ class ProcessPipeline:
     input_slot: str = "both"
     visibility: str = "visible"
     default_selected: bool = False
+    produces_execution_variants: bool = False
     source_path: str | None = None
 
     def __init__(self) -> None:
@@ -238,6 +256,7 @@ class FunctionPipeline(ProcessPipeline):
         options: tuple[PipelineOption, ...],
         visibility: str,
         default_selected: bool,
+        produces_execution_variants: bool,
     ) -> None:
         self.name = name
         self.description = description
@@ -251,6 +270,7 @@ class FunctionPipeline(ProcessPipeline):
         self.options = options
         self.visibility = visibility
         self.default_selected = default_selected
+        self.produces_execution_variants = produces_execution_variants
         self.source_path = _source_path(func)
 
     def run(self, ctx: Any) -> ProcessResult | Mapping[str, Any] | None:
@@ -271,6 +291,7 @@ class PipelineDescriptor:
     options: tuple[PipelineOption, ...] = ()
     visibility: str = "visible"
     default_selected: bool = False
+    produces_execution_variants: bool = False
     pipeline_factory: Callable[[], ProcessPipeline] | None = None
     error_msg: str = ""
     source_path: str | None = None

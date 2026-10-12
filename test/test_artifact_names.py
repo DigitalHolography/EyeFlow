@@ -17,11 +17,11 @@ from input_output.writers.png import PngArtifactWriter, write_png_file
 
 
 @pytest.mark.parametrize("kind", list(OutputType))
-@pytest.mark.parametrize("method", [None, "doppler_moments", "frequency_bands"])
-def test_manager_prefixes_leaf_filename_once_for_every_format(tmp_path, kind, method):
+@pytest.mark.parametrize("namespace", [None, "moments", "bandratio"])
+def test_manager_prefixes_leaf_filename_once_for_every_format(tmp_path, kind, namespace):
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.v2.holo"))
-    if method is not None:
-        manager = manager.for_workflow(method)
+    if namespace is not None:
+        manager = manager.for_artifact_namespace(namespace)
     expected = manager.dir_for(kind) / "nested" / f"scan.v2_plot.{kind.value}"
     assert manager.path_for(kind, f"nested/plot.{kind.value}") == expected
     assert manager.path_for(kind, f"nested/scan.v2_plot.{kind.value}") == expected

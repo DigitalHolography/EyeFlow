@@ -26,7 +26,9 @@ resolution.
 
 ## HD input
 
-All image volumes are lazy HDF5 datasets with axes `(frame, y, x)`.
+All image volumes are lazy HDF5 datasets. Moments and LF/HF bands have axes
+`(frame, y, x)`; the frequency-resolved capillary source has the separate layout
+described below.
 
 | Logical value | HDF5 path(s) | Requirement |
 |---|---|---|
@@ -34,12 +36,55 @@ All image volumes are lazy HDF5 datasets with axes `(frame, y, x)`.
 | Second moment | `/moment2`, legacy `/M2` | Required by the moments workflow |
 | Low-frequency band | `/band_0_3000_9000` | Required by the band-ratio workflow; no heuristic aliases |
 | High-frequency band | `/band_1_9000_18000` | Required by the band-ratio workflow; no heuristic aliases |
+| Frequency-resolved capillary source | `/spectrograms` | Optional while capillary velocity calculation is deferred; exact HD root dataset name |
 | Flat-field zeroth moment | `/moment0ff`, legacy `/M0FF` | Optional |
 | Registration | `/registration` | Optional; copied to output `/Meta/registration` |
 | Zernike coefficients | `/zernike_coefs_radians` | Optional; copied through unchanged |
 
 Moment and band datasets must be 3-D. The two bands must be numeric and have
 identical shapes; their chunk values must be finite and non-negative.
+
+`/spectrograms` contains quantitative band-power values and must be a real
+numeric 4-D dataset with exported axes `(time, freq, height, width)`. The spelling
+`spectrograms` follows the actual HD export; the earlier supplied spelling
+`spectograms` was incorrect. It replaces the previous stand-in `band_2_0_6000`
+source. `ImageMaps.spectograms` retains its existing internal field name and
+holds the lazy HDF5 dataset for both velocity workflows, or `None` if it is
+absent. Legacy HD exports may instead have a `/spectrograms` group containing
+`longtimes`, `singlebeat`, and `spectral_cube_parameters`; that group is not the
+4-D video and is treated as an unavailable optional source. Existing moments
+and band-ratio workflows continue in both cases. Present datasets with invalid
+rank or dtype still fail validation. Source assembly
+checks rank and dtype without reading the full volume. Height/width orientation
+is pending verification: preserve the exported ordering, and do not infer a
+transpose from shape or apply the DV mask-alignment swap to this volume yet.
+
+The checked `260907_DEY_6` export (HD commit `340b1b3`) contains
+`(640, 32, 256, 256)` float32 spectra while its moment/band volumes and DV masks
+use `(640, 512, 512)` and `(512, 512)` respectively. HD preserves the spatial
+axis order when resizing spectra; comparison with resized LF maps confirms
+the same orientation for this example. `/Segmentation/Gaps/value` and shared
+topology state retain the original 512x512 grid. Only the velocity application
+mask is reduced to 256x256: each non-overlapping 2x2 block is a gap only if all
+four source pixels are gaps. Any vessel, disc, or outside-cutoff exclusion in
+the block excludes its reduced pixel. There is no averaging or interpolation
+of mask values. `calculations.topology.downsample_gap_zones` owns the reduction;
+`pipelines.velocity.masks.gap_velocity_mask` adapts it to the video's spatial
+shape. Capillary velocity calculation is still deferred, so this application
+helper is prepared for that future calculation and is not yet invoked by a
+capillary estimator.
+
+This HD exporter uses `sampling_freq=37037` Hz and `batch_size=256`, retains
+FFT indexes `0:64` followed by `192:256`, and averages each consecutive group
+of four bins. The 32 frequency planes are signed and remain in FFT order,
+with center spacing 578.703125 Hz within each sign block. Centers run from
+217.013671875 to 8897.560546875 Hz, then from -9042.236328125 to -361.689453125 Hz.
+No frequency-coordinate dataset is stored. These centers are reconstructed
+from the matching exporter and parameters, not universally assumed from the
+plane count. They represent averages over four frequency samples, not single
+unbinned FFT frequencies. Sampled registered spectra include negative values;
+the input adapter permits them and does not clamp or apply the LF/HF bands'
+non-negative validation to this source.
 
 Timing uses scalar `sampling_freq` and `batch_stride`, resolved from HDF5 or HD
 sidecar configuration. The frame interval is
@@ -56,6 +101,8 @@ DV spatial arrays are native `(y, x)` values:
 |---|---|---|
 | Artery mask | `/segmentation/Retina/artery_mask` | Required |
 | Vein mask | `/segmentation/Retina/vein_mask` | Required |
+| All retinal vessels | `/segmentation/Retina/vessel_segmentation_logits` | Optional for existing analyses; required for capillary analysis zones, binarized with `logits > 0.1` |
+| Choroid vessels | `/segmentation/Choroid/vessel_mask` | Optional for existing analyses; required for capillary analysis zones, binarized with `value != 0` |
 | Labeled vessels | `/segmentation/Retina/labeled_vessels` | Optional |
 | Optic-disc mask | `/segmentation/OpticDisc/mask` | Optional if fallback/other measurements suffice |
 | Optic-disc center | `/segmentation/OpticDisc/center` | Optional input; canonical source always resolves a center |
@@ -67,9 +114,37 @@ only canonical alignment boundary: it validates masks against the active HD
 spatial shape and may transpose all DV geometry together when axes are swapped.
 Do not add isolated transposes in downstream algorithms.
 
-Missing optic-disc geometry falls back to a centered circle. That fallback
+Missing or invalid optic-disc geometry falls back to an image-centered circle
+of assumed physical diameter **1.91 mm**. Its center is `(nx / 2, ny / 2)`;
+its diameter in pixels is `1.91 / pixel_pitch_mm`, using HD's native isotropic
+pitch in mm/pixel. Rasterization uses the physical radius and clips the circle
+at image boundaries without resizing it. The fallback requires valid physical
+calibration; it no longer scales with the image half-diagonal. That fallback
 retains the original vein mask as velocity-background support but disables vein
 measurement in the canonical segmentation.
+
+The two additional vessel arrays must be finite, numeric, two-dimensional and
+aligned with the other DV geometry. `pipelines.vessel_inputs` applies the same
+axis swap to these masks as to the artery, vein and optic disc. The combined
+retinal logits include vessel support beyond the artery/vein masks; never
+substitute the artery/vein union for this input.
+
+`topology_core` calls `calculations.topology.capillary_analysis_zones` to form
+`cutoff_disc AND NOT (dilate(retinal_vessels OR choroid_vessels) OR optic_disc)`
+in native `(y, x)` coordinates. The cutoff disc is centered at `(nx / 2, ny / 2)`
+and has diameter `0.8 * nx` pixels (production mask images are square). Vessel
+support is dilated three pixels in every direction using one pass of a 7x7
+square footprint, including diagonal expansion (Chebyshev distance three).
+Dilation is clipped at image borders;
+the exterior is treated as background. Dilate the original vessel support
+before applying the cutoff, so vessels just outside the circle still exclude
+their nearby interior pixels. Neither the optic-disc mask nor the cutoff disc
+is dilated. For optic-disc exclusion, a usable DV mask takes precedence;
+if absent, the physical centered fallback is used even when DV exported only
+center/width/height. True pixels are included in capillary analysis. If either
+retinal logits or the choroid mask is absent, omit the capillary output and
+warn; continue the existing vessel analyses. Malformed masks fail validation
+rather than being silently replaced with empty masks.
 
 ## Velocity methods
 
@@ -89,24 +164,37 @@ Every run that schedules velocity attempts both workflows, independently:
 Legacy configuration values are ignored. Method identifiers remain in workflow
 provenance and in internal method-specific contexts.
 
-Cardiac cycles are detected independently for each workflow **before** velocity
-estimation, from raw RMS frequency averaged over artery/vein support: moment-derived
-frequency for moments, and calibrated HF/LF frequency for bands. Each workflow
-uses the existing artery, then vein, then full-record fallback. Its own cycle
-boundaries, durations, and spectral timing are persisted under its processing
+Cardiac cycles are detected independently for each workflow **after** velocity
+estimation, from its signed, background-corrected whole-vessel velocity in `mm/s`.
+The detector filters the raw physical signal at 15 Hz, then detects derivative
+upstrokes using both a 95th-percentile height gate and MAD-based prominence.
+Both gates apply before cadence estimation and to final peak selection; adaptive
+spacing preserves genuine interval variation. The strict global height gate may
+miss lower-amplitude beats; resulting long intervals are retained, and suspected
+two- or three-period gaps are reported rather than filled with synthesized beats.
+Each workflow uses the existing artery, then vein, then full-record fallback.
+Its own cycle boundaries, durations, and spectral timing are persisted under its processing
 group's `CardiacCycle` family and used throughout its downstream analyses.
-Velocity filtering always filters each workflow's physical velocity signal
-independently of the detector's signal.
+Timing provenance records `cardiac_cycle_detection_quantity="physical_velocity"`
+and `cardiac_cycle_detection_unit="mm/s"`, plus the workflow and vessel source.
+Continuous velocity outputs filter the raw physical signal separately, without
+passing the already filtered detector signal through a second filter.
 The workflows must have identical `(frame, y, x)` dimensions.
 
 All selected downstream analyses are recalculated in isolated run state for
 each successful estimate, using shared segmentation/topology and workflow-specific
-cycle boundaries. A failed input, cycle detection, estimate, or downstream
-workflow is skipped; its
-processing group and method artifacts are removed, while the other workflow
-continues. If both fail, the run fails. Root `velocity_workflow_failures`
-records a JSON map of method to error; `velocity_workflows_completed` lists
-successful methods when the run finishes.
+cycle boundaries. Failed inputs, cycle detection, or estimates prevent that
+method from producing a workflow. A downstream failure rolls back only the
+failed pipeline's writes and skips its dependent consumers. Earlier results,
+including velocities, remain in the HDF5; independent pipelines continue in
+both workflows. If both workflows fail, the run reports failure after safe
+pipelines finish and exposes its partial HDF5 path in `RunResult.outputs`.
+Root `execution_variant_failures` records a JSON map of method to error;
+`execution_variants_completed` lists methods without failures. Root
+`pipeline_status`, `pipeline_failures`, and `pipeline_skips` record shared and
+per-workflow outcomes. Velocity-analysis data is flushed before optional pulse
+PNG, segment-map AVI, and velocity-signal figure exports; export failures are
+warnings and do not invalidate the scientific products.
 
 For band mode, an exactly zero LF sample maps to ratio zero. No epsilon is
 added. A nonzero ratio beyond finite `float32` range raises a clear error rather
@@ -128,9 +216,10 @@ interpreting derived values.
 
 `RetinalSourceData` in `schema/source_data.py` is the shared typed input:
 
-- lazy `ImageMaps` for moments or bands;
+- lazy `ImageMaps` for moments, LF/HF bands, and optional exported spectograms;
 - aligned boolean artery/vein/background masks and optional labels;
 - resolved optic-disc geometry;
+- optional aligned retinal-logit and choroid exclusion masks;
 - timing, pixel pitch, background distance, alignment flag, and velocity method.
 
 Common axes used by pipeline products include:
@@ -182,6 +271,8 @@ families are:
 - `/Processing/SpatialGradientMetrics` for a directly selected spatial-gradient
   target, and `/Processing/BloodVolumeRate` for blood-volume-rate products;
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
+- `/Segmentation/Gaps/value` for central support outside dilated vessels and
+  the optic disc, when its inputs are available;
 - `/Meta` for provenance and selected pass-through data.
 
 The `/ProcessingAlt` tree mirrors the selected `/Processing` families for the
@@ -201,6 +292,17 @@ All two-dimensional datasets under `/Processing/Maps` are serialized in the
 same lower-left `(x, y)` image frame as
 `/Segmentation/Artery/BranchLabelMap/value`: the internal `(y, x)` array is
 flipped vertically and transposed before persistence.
+
+The gaps mask used for capillary analysis uses the same lower-left `(x, y)`
+frame and carries source/binarization/fallback, cutoff, and dilation provenance,
+`unit="1"`, and `dimDesc=["x", "y"]`.
+The HDF5 writer stores this boolean mask as `uint8` values 0/1 with
+`original_class="bool"`. Native read-only support is available from
+`topology_core` under its declared `capillary_analysis_zones` DAG product;
+it remains shared across moments and bandratio workflows. Capillary velocity
+conversion and waveform analysis are not implemented yet. Their source is
+`/spectrograms`, with exported `(time, freq, height, width)` axes; its spatial
+orientation remains to be confirmed.
 
 Do not hand-copy path strings into new consumers. Obtain them from the schema or
 from a pipeline-owned constant when the path family has not yet been centralized.

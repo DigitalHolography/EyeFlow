@@ -255,7 +255,6 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
             "Processing/Velocity/segments/Vein/BandLimited/value",
             schema.vein_segments.velocity_signal_band_limited,
         )
-        self.assertFalse(hasattr(schema.analysis, "velocity_map_avg"))
         self.assertEqual(
             "Processing/Maps/VelocityAverageMasked/value",
             schema.analysis.velocity_map_avg_masked,
@@ -268,8 +267,6 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
             "Processing/Maps/FRMSBackgroundAverage/value",
             schema.analysis.fRMS_bkg_avg,
         )
-        self.assertFalse(hasattr(schema.analysis, "delta_fRMS_avg"))
-        self.assertFalse(hasattr(schema, "topology"))
         self.assertTrue(
             schema.segmentation.artery.branch_label_map.startswith("Segmentation/")
         )

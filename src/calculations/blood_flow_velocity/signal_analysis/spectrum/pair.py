@@ -68,7 +68,12 @@ def paired_spectrum_analysis(
         systole_count = int(peaks.size)
         first_cycle = average_cycle(first, peaks, 128)
         second_cycle = average_cycle(second, peaks, 128)
-        if first_cycle is not None and second_cycle is not None and cardiac_cycle is not None:
+        if (
+            first_cycle is not None and second_cycle is not None
+            and cardiac_cycle is not None
+            and np.any(np.isfinite(first_cycle))
+            and np.any(np.isfinite(second_cycle))
+        ):
             delay = delay_fit_analysis(
                 first_cycle,
                 second_cycle,

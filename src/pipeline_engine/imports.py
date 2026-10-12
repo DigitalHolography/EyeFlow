@@ -12,11 +12,12 @@ from input_output.input_access import (
     resolve_holodoppler_timing,
 )
 
-from .base import PipelineOption, ProcessResult, pipeline, with_attrs
+from .base import ExecutionVariant, PipelineOption, ProcessResult, pipeline, with_attrs
 from .context import PipelineContext
 
 __all__ = [
     "HolodopplerTiming",
+    "ExecutionVariant",
     "PipelineContext",
     "PipelineOption",
     "ProcessResult",

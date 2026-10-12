@@ -24,10 +24,10 @@ class OutputManager:
     layout: HoloRunLayout
     artifact_folder: str | None = None
 
-    def for_workflow(self, method: str) -> "OutputManager":
-        from .schema.eyeflow_output import VELOCITY_WORKFLOW_FOLDERS
+    def for_artifact_namespace(self, namespace: str) -> "OutputManager":
+        """Return a manager whose sidecars live below one variant namespace."""
 
-        return OutputManager(self.layout, VELOCITY_WORKFLOW_FOLDERS[method])
+        return OutputManager(self.layout, str(namespace))
 
     def prepare(self, *, replace: bool = False) -> None:
         output_dir = self.layout.ef_dir

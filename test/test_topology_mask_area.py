@@ -10,11 +10,9 @@ from calculations.blood_volume_rate import (
     circular_lumen_flow,
     mask_derived_lumen_geometry,
 )
-from calculations.topology import AnnulusGeometry, OpticDisc, prepare_topology
-from calculations.topology.mask_area import (
-    annulus_widths_pixels,
-    segment_mask_areas_pixels,
-)
+from calculations.topology import AnnulusGeometry, OpticDisc
+from calculations.vessel_segments.sampling import prepare_sampling_plan
+from calculations.topology.mask_area import annulus_widths_pixels, segment_mask_areas_pixels
 
 
 def _segments():
@@ -54,7 +52,7 @@ def test_annulus_width_uses_clipped_last_ring() -> None:
 def test_canonical_prepared_topology_provides_native_mask_areas() -> None:
     vessel = np.zeros((41, 41), dtype=bool)
     vessel[18:23, 4:37] = True
-    prepared = prepare_topology(
+    prepared = prepare_sampling_plan(
         vessel,
         OpticDisc(None, (20.0, 20.0), 6.0, 6.0),
         AnnulusGeometry(0.1, 0.7, 0.2, 3, 0.2),

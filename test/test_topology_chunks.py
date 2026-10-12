@@ -11,16 +11,16 @@ from calculations.math.spatial_gradient import (
     GAUSSIAN_BLUR_RADIUS,
     UNSHARP_MASK_RADIUS,
 )
-from calculations.topology import (
-    AnnulusGeometry,
-    BranchIdentityResult,
-    PreparedTopology,
-    SegmentTopology,
+from calculations.topology import AnnulusGeometry, BranchIdentityResult, SegmentTopology
+from calculations.vessel_segments.sampling import (
+    SegmentSamplingPlan,
+    prepare_segment_chunks,
+    resolve_segment_rotations,
+)
+from calculations.vessel_segments.sampling.transforms import (
     interpolate_segment_masks,
     interpolate_segments,
-    prepare_segment_chunks,
     resample_rotate_segment,
-    resolve_segment_rotations,
     rotate_segment_masks,
 )
 from pipelines.spatial_gradient_moment0.profiles import (
@@ -28,7 +28,7 @@ from pipelines.spatial_gradient_moment0.profiles import (
 )
 
 
-def _prepared(*, angle: float = 23.0, centerline_points: int = 9) -> PreparedTopology:
+def _prepared(*, angle: float = 23.0, centerline_points: int = 9) -> SegmentSamplingPlan:
     side = 9
     mask = np.zeros((side, side), dtype=bool)
     mask[:, 3:6] = True
@@ -50,7 +50,7 @@ def _prepared(*, angle: float = 23.0, centerline_points: int = 9) -> PreparedTop
     )
     rotations = np.asarray([[angle]], dtype=np.float32)
     interpolated = interpolate_segment_masks(topology.segment_masks)
-    return PreparedTopology(
+    return SegmentSamplingPlan(
         native=topology,
         rotation_degrees=rotations,
         interpolated_masks=interpolated,

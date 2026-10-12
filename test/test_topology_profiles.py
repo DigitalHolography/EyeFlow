@@ -6,7 +6,7 @@ import unittest
 
 import numpy as np
 
-from calculations.topology.profiles import (
+from calculations.vessel_segments.profiles.reductions import (
     longitudinal_profiles,
     mean_profiles,
     profile_deviation_power,

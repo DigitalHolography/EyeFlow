@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy import ndimage as ndi
 
+from calculations.compute_backend import optional_cupy_backend
 from calculations.math import (
     SlidingWindowMethod,
     centered_sliding_window,
@@ -18,15 +20,17 @@ from calculations.math.spatial_gradient import (
     sobel_spatial_gradient,
     unsharpen,
 )
-from calculations.segment_profiles import analyze_segment_profiles
-from input_output.profile_datasets import (
-    _profile_dataset,
-    _temporally_meaned_profile_dataset,
-)
+from calculations.vessel_segments.measurement import analyze_segment_profiles
+from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import DatasetValue
+from pipelines.profile_outputs import (
+    profile_dataset,
+    temporally_meaned_profile_dataset,
+)
 
-SPATIAL_GRADIENT_PROFILE_ROOT = "Processing/SpatialGradientProfiles"
-SPATIAL_GRADIENT_METRICS_ROOT = "Processing/SpatialGradientMetrics"
+_OUTPUT_PATHS = EyeFlowOutputPaths.active()
+SPATIAL_GRADIENT_PROFILE_ROOT = _OUTPUT_PATHS.spatial_gradient_profiles_root
+SPATIAL_GRADIENT_METRICS_ROOT = _OUTPUT_PATHS.spatial_gradient_metrics_root
 SPATIAL_GRADIENT_PEAK_MIN_GAP_SAMPLES = 5
 TBKR_LUMEN_SIZE_QC_THRESHOLD = 0.5
 _SPATIAL_GRADIENT_MASK_DILATION_PIXELS = 5
@@ -100,21 +104,27 @@ def extract_spatial_gradient_segments(
     return results["artery"], results["vein"]
 
 
-def _spatial_gradient_chain(interpolated: np.ndarray) -> np.ndarray:
+def _spatial_gradient_chain(interpolated):
     """Apply the scientifically ordered filter chain before rotation."""
 
+    backend = optional_cupy_backend()
+    on_device = backend is not None and isinstance(interpolated, backend.cupy.ndarray)
+    xp = backend.cupy if on_device else np
+    ndimage = backend.ndimage if on_device else ndi
     filtered = centered_sliding_window(
         interpolated,
         TEMPORAL_MOVING_AVERAGE_WINDOW,
         SlidingWindowMethod.AVERAGE,
+        array_module=xp,
     )
-    filtered = sobel_spatial_gradient(filtered)
-    filtered = gaussian2d_blur(filtered)
-    filtered = unsharpen(filtered)
+    filtered = sobel_spatial_gradient(filtered, array_module=xp, ndimage=ndimage)
+    filtered = gaussian2d_blur(filtered, array_module=xp, ndimage=ndimage)
+    filtered = unsharpen(filtered, array_module=xp, ndimage=ndimage)
     return centered_sliding_window(
         filtered,
         TEMPORAL_MOVING_AVERAGE_WINDOW,
         SlidingWindowMethod.AVERAGE,
+        array_module=xp,
     )
 
 
@@ -169,7 +179,7 @@ def _pack_vessel_spatial_gradient_profiles(
         index_base=index_base,
         mask="vessel_segment",
     )
-    meaned = _temporally_meaned_profile_dataset(masked)
+    meaned = temporally_meaned_profile_dataset(masked)
     peak_metrics = _spatial_gradient_peak_metrics(
         masked,
         meaned,
@@ -641,7 +651,7 @@ def _gradient_profile_dataset(
     index_base: int,
     mask: str,
 ) -> DatasetValue:
-    value = _profile_dataset(
+    value = profile_dataset(
         profiles,
         cycle_boundary_indexes,
         index_base=index_base,

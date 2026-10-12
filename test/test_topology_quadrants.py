@@ -9,16 +9,16 @@ import numpy as np
 from calculations.topology import (
     QUADRANT_NAMES,
     BranchIdentityResult,
-    PreparedTopology,
     SegmentTopology,
     quadrant_membership,
 )
+from calculations.vessel_segments.sampling import SegmentSamplingPlan
 
 
 class TopologyQuadrantTests(unittest.TestCase):
-    def test_segment_and_prepared_topology_share_quadrant_assignment(self) -> None:
+    def test_sampling_plan_uses_native_quadrant_assignment(self) -> None:
         topology = _four_quadrant_topology(radius_count=3)
-        prepared = PreparedTopology(
+        prepared = SegmentSamplingPlan(
             native=topology,
             rotation_degrees=np.zeros((3, 4), dtype=np.float32),
             interpolated_masks=np.zeros((3, 4, 1, 1), dtype=bool),
@@ -26,7 +26,7 @@ class TopologyQuadrantTests(unittest.TestCase):
         )
 
         direct = quadrant_membership(topology)
-        through_prepared = quadrant_membership(prepared)
+        through_prepared = quadrant_membership(prepared.native)
 
         self.assertEqual(
             ("north_west", "north_east", "south_west", "south_east"),
@@ -34,6 +34,8 @@ class TopologyQuadrantTests(unittest.TestCase):
         )
         self.assertEqual((4, 4, 3), direct.shape)
         np.testing.assert_array_equal(direct, through_prepared)
+        with self.assertRaisesRegex(TypeError, "SegmentTopology"):
+            quadrant_membership(prepared)
         np.testing.assert_array_equal(direct[:, :, 0], np.eye(4, dtype=bool))
 
     def test_every_branch_must_exist_in_the_label_map(self) -> None:

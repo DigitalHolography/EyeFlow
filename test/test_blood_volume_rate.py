@@ -18,7 +18,6 @@ from calculations.math import nanmean_float32
 from calculations.topology import AnnulusGeometry
 from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager
-from input_output.profile_datasets import _profile_dataset
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import DatasetValue
 from pipelines.blood_volume_rate.outputs import (
@@ -31,6 +30,7 @@ from pipelines.blood_volume_rate.outputs import (
     pack_gradient_edge_outputs,
     pack_mask_derived_outputs,
 )
+from pipelines.profile_outputs import profile_dataset
 
 
 def _expected_circular_lumen_flow(velocity, diameter_mm) -> np.ndarray:
@@ -120,17 +120,18 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         topology=topology,
     )
     cycle_boundaries = np.asarray([0, 2], dtype=np.int32)
-    profile_dataset = _profile_dataset(
+    profile_dataset_value = profile_dataset(
         profiles,
         cycle_boundaries,
         index_base=0,
         valid_segments=np.ones((1, 1), dtype=bool),
     )
-    edge_shape = profile_dataset.data.shape[1:]
+    edge_shape = profile_dataset_value.data.shape[1:]
     edges = {}
+    schema = EyeFlowOutputPaths.active()
     for vessel in ("Artery", "Vein"):
         root = (
-            f"Processing/SpatialGradientMetrics/{vessel}/"
+            f"{schema.spatial_gradient_metrics_root}/{vessel}/"
             "Transverse/Masked/tbkr"
         )
         edges[f"{root}/left_edge_index"] = DatasetValue(
@@ -169,7 +170,6 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         annulus_masks=np.ones((1, 4, 4), dtype=bool),
         ring_settings=AnnulusGeometry(0.0, 0.5, 0.5, 1, 0.5),
     )
-    schema = EyeFlowOutputPaths.active()
     safe_velocity = np.full((8, 1, 1, 1), -2.0, dtype=np.float32)
     mask_outputs = pack_mask_derived_outputs(
         {"artery": topology, "vein": topology},
@@ -182,7 +182,7 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
     outputs = {**gradient_outputs, **mask_outputs}
 
     expected_gradient_rate = circular_lumen_flow(
-        nanmean_float32(profile_dataset.data, axis=0),
+        nanmean_float32(profile_dataset_value.data, axis=0),
         np.full(edge_shape, (4.5 - 0.5) * 0.02, dtype=np.float32),
     )
 
@@ -211,7 +211,7 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
         assert "source_left_edge_index" not in transient_attrs
         assert "source_right_edge_index" not in transient_attrs
         assert transient_attrs["source_left_edge_calculation_key"].startswith(
-            "Processing/SpatialGradientMetrics/"
+            schema.spatial_gradient_metrics_root + "/"
         )
         np.testing.assert_allclose(
             gradient_outputs[vessel_paths.dynamic_edges].data,

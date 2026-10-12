@@ -13,6 +13,8 @@ from .geometry import (
     image_half_diagonal,
 )
 
+DEFAULT_OPTIC_DISC_DIAMETER_MM = 1.91
+
 
 @dataclass(frozen=True, eq=False)
 class OpticDisc:
@@ -52,13 +54,15 @@ class OpticDisc:
         width,
         height,
         image_shape: tuple[int, int],
+        *,
+        pixel_pitch_mm: float | None = None,
     ) -> OpticDisc:
         """Resolve incomplete DopplerView measurements for one image frame.
 
         A finite, nonempty mask supplies any missing center or dimensions.  If
         the mask is invalid, or neither a usable mask nor complete geometry is
-        available, a centered circular R0 with radius ten percent of the image
-        half-diagonal is used.
+        available, a centered circular disc of diameter 1.91 mm is used.
+        The fallback requires the native isotropic pixel pitch in mm/pixel.
         """
 
         ny, nx = _validated_image_shape(image_shape)
@@ -95,12 +99,27 @@ class OpticDisc:
                 resolved_height,
             )
 
-        radius = 0.10 * image_half_diagonal(ny, nx)
-        diameter = max(2.0 * radius, float(np.finfo(np.float32).eps))
-        integer_radius = int(np.ceil(radius))
+        return cls.centered_fallback((ny, nx), pixel_pitch_mm=pixel_pitch_mm)
+
+    @classmethod
+    def centered_fallback(
+        cls,
+        image_shape: tuple[int, int],
+        *,
+        pixel_pitch_mm: float | None,
+    ) -> OpticDisc:
+        """Return a clipped, image-centered circle with a 1.91 mm diameter."""
+        ny, nx = _validated_image_shape(image_shape)
+        pitch = _optional_positive_scalar(pixel_pitch_mm, "pixel pitch in mm")
+        if pitch is None:
+            raise ValueError("Optic-disc fallback requires pixel_pitch_mm in mm/pixel.")
+        diameter = _optional_positive_scalar(
+            DEFAULT_OPTIC_DISC_DIAMETER_MM / pitch, "fallback diameter in pixels"
+        )
+        radius = diameter / 2.0
         center_x, center_y = nx / 2.0, ny / 2.0
         y, x = np.ogrid[:ny, :nx]
-        fallback_mask = (y - center_y) ** 2 + (x - center_x) ** 2 <= float(integer_radius**2)
+        fallback_mask = (y - center_y) ** 2 + (x - center_x) ** 2 <= radius**2
         return cls(
             fallback_mask,
             (center_x, center_y),

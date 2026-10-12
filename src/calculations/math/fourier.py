@@ -101,14 +101,17 @@ def interpft_real(signal, target_length: int) -> np.ndarray:
     return interpolated.real.astype(np.float32, copy=False)
 
 
-def interpft_axis0(values, target_length: int) -> np.ndarray:
+def interpft_axis0(values, target_length: int, *, array_module=np):
     """Fourier-resample an array's first axis while preserving empty pixels.
 
     Columns containing no finite samples remain NaN. This is the vectorized
     counterpart of :func:`interpft_real` used for image and profile stacks.
+    Passing CuPy as ``array_module`` keeps both computation and results on the
+    device, with the same real-spectrum Nyquist and missing-pixel behavior.
     """
 
-    source = np.asarray(values, dtype=np.float32)
+    xp = array_module
+    source = xp.asarray(values, dtype=xp.float32)
     if source.ndim == 0:
         raise ValueError("interpft expects an array with a sample axis.")
     source_length = int(source.shape[0])
@@ -121,19 +124,57 @@ def interpft_axis0(values, target_length: int) -> np.ndarray:
 
     trailing_shape = source.shape[1:]
     flattened = source.reshape(source_length, -1)
-    active = np.any(np.isfinite(flattened), axis=0)
-    interpolated = np.full(
+    active = xp.any(xp.isfinite(flattened), axis=0)
+    if xp is not np:
+        # Resample all columns in one batch. Gathering active columns on CUDA
+        # forces synchronization and adds expensive gather/scatter operations.
+        if flattened.shape[1] == 0:
+            return xp.empty((int(target_length), *trailing_shape), dtype=xp.float32)
+        finite_columns = xp.all(xp.isfinite(flattened), axis=0)
+        # cuFFT can pair real transforms internally: a NaN spectrum may poison
+        # an adjacent column during irfft. Transform finite columns alongside
+        # zero-filled placeholders, then restore each missing column's NaNs.
+        safe_values = xp.where(finite_columns[None, :], flattened, xp.float32(0.0))
+        result = _fourier_resample_real_axis0(safe_values, int(target_length), xp)
+        xp.copyto(result, xp.nan, where=~finite_columns[None, :])
+        # Preserve SciPy's special infinity behavior (notably a length-one
+        # result), without passing non-finite spectra into batched cuFFT.
+        infinite_columns = (
+            xp.any(xp.isinf(flattened), axis=0)
+            & active
+            & ~xp.any(xp.isnan(flattened), axis=0)
+        )
+        if bool(xp.any(infinite_columns)):
+            result[:, infinite_columns] = xp.asarray(
+                interpft_axis0(xp.asnumpy(flattened[:, infinite_columns]), int(target_length)),
+                dtype=xp.float32,
+            )
+        return result.astype(xp.float32, copy=False).reshape(int(target_length), *trailing_shape)
+    interpolated = xp.full(
         (int(target_length), flattened.shape[1]),
-        np.nan,
-        dtype=np.float32,
+        xp.nan,
+        dtype=xp.float32,
     )
-    if np.any(active):
-        interpolated[:, active] = resample(
-            flattened[:, active],
-            int(target_length),
-            axis=0,
-        ).astype(np.float32, copy=False)
+    if bool(xp.any(active)):
+        result = resample(flattened[:, active], int(target_length), axis=0)
+        interpolated[:, active] = result.astype(xp.float32, copy=False)
     return interpolated.reshape(int(target_length), *trailing_shape)
+
+
+def _fourier_resample_real_axis0(values, target_length: int, xp):
+    """Real Fourier resampling with SciPy's even-length Nyquist handling."""
+
+    source_length = int(values.shape[0])
+    spectrum = xp.fft.rfft(values, axis=0)
+    resized = xp.zeros((target_length // 2 + 1, *spectrum.shape[1:]), dtype=spectrum.dtype)
+    common_length = min(source_length, target_length)
+    nyquist_stop = common_length // 2 + 1
+    resized[:nyquist_stop] = spectrum[:nyquist_stop]
+    if common_length % 2 == 0:
+        resized[common_length // 2] *= xp.float32(2.0 if target_length < source_length else 0.5)
+    result = xp.fft.irfft(resized, n=target_length, axis=0)
+    result *= xp.float32(target_length / source_length)
+    return result
 
 
 def band_limited_ifft_abs(

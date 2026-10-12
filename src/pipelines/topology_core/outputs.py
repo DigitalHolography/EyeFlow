@@ -7,13 +7,20 @@ from collections.abc import Mapping
 import numpy as np
 from scipy import ndimage as ndi
 
-from calculations.topology import (
-    OpticDisc,
-    PreparedTopology,
-    segment_mask_areas_pixels,
+from calculations.topology import OpticDisc, segment_mask_areas_pixels
+from calculations.topology.capillary import (
+    GAPS_CUTOFF_DIAMETER_WIDTH_FRACTION,
+    GAPS_VESSEL_DILATION_RADIUS_PIXELS,
 )
+from calculations.topology.optic_disc import DEFAULT_OPTIC_DISC_DIAMETER_MM
+from calculations.vessel_segments.sampling import SegmentSamplingPlan
 from calculations.topology.geometry import AnnulusGeometry, image_half_diagonal
 from input_output.schema import EyeFlowOutputPaths, PixelPitch
+from input_output.schema.doppler_view import (
+    DV_CHOROID_VESSEL_MASK_PATH,
+    DV_RETINAL_VESSEL_LOGITS_PATH,
+    DV_RETINAL_VESSEL_LOGITS_THRESHOLD,
+)
 
 BACKGROUND_LABEL = -1
 ANNULUS_OUTLINE_LABEL = -2
@@ -68,7 +75,7 @@ def _pack_segmentation_outputs(
         vein_segments,
     )
     if optic_disc.is_fallback:
-        mask_source = "frame_center_10_percent_half_diagonal_fallback"
+        mask_source = "frame_center_1.91_mm_diameter_fallback"
     elif optic_disc.mask is not None:
         mask_source = "dopplerview_segmentation"
     else:
@@ -150,7 +157,7 @@ def pack_topology_outputs(
     artery_mask,
     vein_mask,
     optic_disc: OpticDisc,
-    prepared_topologies: Mapping[str, PreparedTopology],
+    prepared_topologies: Mapping[str, SegmentSamplingPlan],
     pixel_pitch: PixelPitch,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
@@ -165,6 +172,53 @@ def pack_topology_outputs(
         pixel_pitch,
         output_paths,
     )
+
+
+def pack_capillary_analysis_zones(
+    analysis_zones: np.ndarray,
+    optic_disc: OpticDisc,
+    output_paths: EyeFlowOutputPaths | str | None = None,
+) -> dict[str, object]:
+    """Publish the gaps mask in the shared lower-left segmentation frame."""
+    schema = _resolve_output_paths(output_paths)
+    attrs = _mask_attrs("gaps_from_dopplerview_vessels_optic_disc_and_cutoff")
+    attrs.update(
+        {
+            "unit": "1",
+            "definition": (
+                "cutoff_disc AND NOT (dilate(retinal_vessels OR choroid_vessels) "
+                "OR optic_disc)"
+            ),
+            "cutoff_disc_center": "image_center",
+            "cutoff_disc_diameter_width_fraction": GAPS_CUTOFF_DIAMETER_WIDTH_FRACTION,
+            "cutoff_disc_diameter_pixels": (
+                GAPS_CUTOFF_DIAMETER_WIDTH_FRACTION * analysis_zones.shape[1]
+            ),
+            "vessel_dilation_radius_pixels": GAPS_VESSEL_DILATION_RADIUS_PIXELS,
+            "vessel_dilation_iterations": 1,
+            "vessel_dilation_footprint": "7x7_square",
+            "vessel_dilation_distance_metric": "chebyshev",
+            "vessel_dilation_applies_to": "retinal_and_choroid_vessels_only",
+            "vessel_dilation_border_value": 0,
+            "true_means": "included_in_capillary_analysis",
+            "retinal_vessel_source_path": f"/{DV_RETINAL_VESSEL_LOGITS_PATH}",
+            "retinal_vessel_binarization": f"logits > {DV_RETINAL_VESSEL_LOGITS_THRESHOLD:g}",
+            "choroid_vessel_source_path": f"/{DV_CHOROID_VESSEL_MASK_PATH}",
+            "choroid_vessel_binarization": "nonzero",
+            "optic_disc_mask_source": (
+                "frame_center_1.91_mm_diameter_fallback"
+                if optic_disc.is_fallback
+                else "dopplerview_segmentation"
+            ),
+        }
+    )
+    if optic_disc.is_fallback:
+        attrs["optic_disc_fallback_diameter_mm"] = DEFAULT_OPTIC_DISC_DIAMETER_MM
+    return {
+        schema.segmentation.gaps: _segmentation_value(
+            _serialize_spatial_image(analysis_zones), attrs
+        )
+    }
 
 
 def _pack_vessel_segmentation(

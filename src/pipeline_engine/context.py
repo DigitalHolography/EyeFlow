@@ -20,7 +20,7 @@ from velocity_calibration import (
     validate_band_ratio_frequency_scale_hz,
 )
 
-from .base import ProcessResult
+from .base import ExecutionVariant, ProcessResult
 
 
 @dataclass(frozen=True)
@@ -113,7 +113,8 @@ class PipelineContext:
         band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
         output_manager: OutputManager | None = None,
         processing_root: str | None = None,
-        velocity_provenance: Mapping[str, Any] | None = None,
+        output_provenance: Mapping[str, Any] | None = None,
+        execution_variant: ExecutionVariant | None = None,
     ) -> None:
         hd_config = dict(holodoppler_config or {})
         dv_config = dict(doppler_vision_config or {})
@@ -133,7 +134,7 @@ class PipelineContext:
             PipelineH5Output(
                 work_h5,
                 processing_root=processing_root,
-                provenance=velocity_provenance,
+                provenance=output_provenance,
             ),
         )
         self.state = PipelineState(variables)
@@ -143,9 +144,17 @@ class PipelineContext:
         }
         self.pipeline_order = tuple(str(name) for name in pipeline_order)
         self.pipeline_targets = tuple(str(name) for name in pipeline_targets)
+        self.execution_variant = execution_variant
+        self._execution_variants: tuple[ExecutionVariant, ...] = ()
+        self._execution_variant_failures: dict[str, str] = {}
+        resolved_velocity_method = velocity_estimation_method
+        if resolved_velocity_method is None and execution_variant is not None:
+            resolved_velocity_method = execution_variant.provenance.get(
+                "velocity_estimation_method"
+            )
         self.velocity_estimation_method: VelocityEstimationMethod | None = (
-            validate_velocity_estimation_method(velocity_estimation_method)
-            if velocity_estimation_method is not None
+            validate_velocity_estimation_method(str(resolved_velocity_method))
+            if resolved_velocity_method is not None
             else None
         )
         self.band_ratio_frequency_scale_hz = validate_band_ratio_frequency_scale_hz(
@@ -158,6 +167,62 @@ class PipelineContext:
             hd_config,
             dv_config,
         )
+
+    @property
+    def execution_variants(self) -> tuple[ExecutionVariant, ...]:
+        """Variants published by the pipeline currently using this context."""
+
+        return self._execution_variants
+
+    @property
+    def execution_variant_failures(self) -> dict[str, str]:
+        """Mutable failure registry shared with the runtime after publication."""
+
+        return self._execution_variant_failures
+
+    def publish_execution_variants(
+        self,
+        variants: Sequence[ExecutionVariant],
+        *,
+        failures: Mapping[str, object] | None = None,
+    ) -> None:
+        """Publish isolated downstream executions from the current pipeline."""
+
+        items = tuple(variants)
+        if not items:
+            raise ValueError("At least one execution variant must be published.")
+        names: set[str] = set()
+        for variant in items:
+            if not isinstance(variant, ExecutionVariant):
+                raise TypeError(
+                    "Execution variants must be ExecutionVariant instances."
+                )
+            name = str(variant.name).strip()
+            if not name:
+                raise ValueError("Execution variant names cannot be empty.")
+            if name in names:
+                raise ValueError(f"Duplicate execution variant name: '{name}'")
+            names.add(name)
+            if not isinstance(variant.state, dict):
+                raise TypeError(f"Execution variant '{name}' state must be a dict.")
+            if not isinstance(variant.provenance, Mapping):
+                raise TypeError(
+                    f"Execution variant '{name}' provenance must be a mapping."
+                )
+            _validate_variant_namespace(
+                variant.output_namespace,
+                variant_name=name,
+                label="output",
+            )
+            _validate_variant_namespace(
+                variant.artifact_namespace,
+                variant_name=name,
+                label="artifact",
+            )
+        self._execution_variants = items
+        self._execution_variant_failures = {
+            str(name): str(message) for name, message in (failures or {}).items()
+        }
 
     def require_inputs(self, *inputs: str) -> None:
         requested = {name.lower() for name in inputs} or {"hd", "dv"}
@@ -226,6 +291,26 @@ class PipelineContext:
         if preferred is dv_h5:
             return hd_h5
         return None
+
+
+def _validate_variant_namespace(
+    namespace: str,
+    *,
+    variant_name: str,
+    label: str,
+) -> None:
+    raw = str(namespace)
+    value = raw.replace("\\", "/").strip("/")
+    if (
+        not value
+        or raw != value
+        or ":" in value
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+    ):
+        raise ValueError(
+            f"Execution variant '{variant_name}' has an invalid {label} namespace: "
+            f"{namespace!r}."
+        )
 
 
 def apply_pipeline_result(
