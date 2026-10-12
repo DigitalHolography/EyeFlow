@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from input_output.writers.png import FigureArtifactWriter
+from utils.logger import Logger
 
-from .common import PulseFigureContext, _matplotlib, _output_stem
+from .common import PulseFigureContext, _matplotlib, _output_stem, _plt
 from .correlation import _export_correlation_plots
 from .flow_maps import _export_flow_maps
 from .frequency_maps import _export_frequency_maps
@@ -121,6 +122,12 @@ def export_pulse_pngs(
     writer = FigureArtifactWriter(output, pulse_context.stem)
     paths: list[Path] = []
     for exporter in EXPORTERS:
-        paths.extend(exporter(writer, pulse_context))
+        figures_before = set(_plt().get_fignums())
+        try:
+            paths.extend(exporter(writer, pulse_context))
+        except Exception as exc:
+            for number in set(_plt().get_fignums()) - figures_before:
+                _plt().close(number)
+            Logger.log_warning(f"Failed pulse PNG exporter {exporter.__name__}: {exc}")
     paths.extend(export_cross_section_profile_artifacts(writer, context))
     return [str(path) for path in paths]

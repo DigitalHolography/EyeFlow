@@ -21,7 +21,7 @@ from pipeline_engine.imports import ExecutionVariant
 from utils.logger import Logger
 from velocity_calibration import physical_velocity_provenance
 
-from .cardiac_cycle import detect_source_cardiac_cycles
+from .cardiac_cycle import detect_velocity_cardiac_cycles
 from .estimation import estimate_retinal_velocity
 from .models import RetinalVelocity
 from .outputs import pack_velocity_outputs
@@ -47,25 +47,9 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
             failures[method] = str(exc)
             Logger.log_warning(f"Skipping {method}: {exc}")
 
-    cycles = {}
-    reference_shape = None
-    for method, source in tuple(sources.items()):
-        try:
-            cycle_analysis, cycle_source = detect_source_cardiac_cycles(source)
-            _log_cardiac_cycle_warnings(
-                cycle_analysis,
-                cycle_source,
-                dt_seconds=float(source.holodoppler.timing.dt_seconds),
-            )
-            if reference_shape is None:
-                reference_shape = _source_shape(source)
-            cycles[method] = (cycle_analysis, cycle_source)
-        except Exception as exc:  # noqa: BLE001 - isolate a failed scientific workflow
-            failures[method] = str(exc)
-            del sources[method]
-            Logger.log_warning(f"Skipping {method}: {exc}")
-    if not cycles:
+    if not sources:
         raise RuntimeError(f"Neither velocity workflow has usable inputs: {failures}")
+    reference_shape = _source_shape(next(iter(sources.values())))
 
     variants: list[ExecutionVariant] = []
     outputs = {}
@@ -89,7 +73,15 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
             continue
         source = sources[method]
         try:
-            cycle_analysis, cycle_source = cycles[method]
+            cycle_analysis, cycle_source = detect_velocity_cardiac_cycles(
+                velocity_data,
+                dt_seconds=float(source.holodoppler.timing.dt_seconds),
+            )
+            _log_cardiac_cycle_warnings(
+                cycle_analysis,
+                cycle_source,
+                dt_seconds=float(source.holodoppler.timing.dt_seconds),
+            )
             provenance = {
                 **physical_velocity_provenance(
                     velocity_estimation_method=method,
@@ -97,7 +89,8 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
                 ),
                 **velocity_data.provenance,
                 "cardiac_cycle_detection_method": method,
-                "cardiac_cycle_detection_quantity": "raw_rms_frequency",
+                "cardiac_cycle_detection_quantity": "physical_velocity",
+                "cardiac_cycle_detection_unit": "mm/s",
                 "cardiac_cycle_detection_source": cycle_source,
             }
             result = build_velocity(

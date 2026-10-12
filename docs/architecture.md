@@ -134,13 +134,18 @@ Pipeline results may be `None`, a metrics mapping, or `ProcessResult`. A metrics
 mapping is persisted with `PipelineH5Output`; `ProcessResult` additionally
 writes attributes on the active output namespace (a workflow processing group
 or the shared root). `finish_pipeline` records `last_pipeline` and flushes.
+Each invocation has a checkpoint for dataset replacements, attributes, state
+bindings, and new artifacts. Failure restores the checkpoint, preserves earlier
+products, and blocks only consumers of the failed active DAG dependency. Other
+pipelines still execute in each workflow. Failure status is persisted, and an
+incomplete run retains its output path after all safe pipelines finish.
 Large transient arrays and typed run products belong in `ctx.state` or managed
 scratch storage, not ad-hoc module globals.
 
 ## Scientific processing boundaries
 
 - `velocity` estimates physical retinal velocity, prepares whole-vessel signals,
-  detects each workflow's cardiac cycles from its raw frequency before estimation,
+  detects each workflow's cardiac cycles from its physical velocity after estimation,
   attempts moments and band-ratio estimation independently, and retains each
   velocity video when downstream analysis requires spatial products.
 - `topology_core` aligns masks, creates annular branch/segment topology, and

@@ -27,7 +27,7 @@ def build_velocity(
 
     artery_raw = np.asarray(data.artery.velocity, dtype=np.float32)
     vein_raw = np.asarray(data.vein.velocity, dtype=np.float32)
-    # Workflow cycles are detected from frequency; filter physical velocity here.
+    # Filter the estimator's raw velocity once for the continuous output.
     artery_filtered = _filter(artery_raw, dt_seconds, lowpass_freq_hz)
     vein_filtered = _filter(vein_raw, dt_seconds, lowpass_freq_hz)
     return RetinalVelocity(

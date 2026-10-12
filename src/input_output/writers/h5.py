@@ -2,6 +2,7 @@
 
 import json
 import re
+from contextlib import contextmanager
 from pathlib import Path
 
 import h5py
@@ -21,6 +22,46 @@ def open_h5(path: Path | str, mode: str = "r") -> h5py.File:
         return h5py.File(h5_path, mode)
     except OSError as exc:
         raise OSError(f"Could not open HDF5 file '{h5_path}': {exc}") from exc
+
+
+@contextmanager
+def h5_write_checkpoint(h5file: h5py.File):
+    """Undo a failed pipeline's writes without copying scientific arrays.
+
+    Open object handles retain replaced datasets until the checkpoint ends.
+    Pipeline writers replace datasets; in-place array edits are not supported.
+    """
+    objects = {"": h5file}
+
+    def retain(name, obj):
+        objects[name] = obj
+
+    h5file.visititems(retain)
+    attributes = {
+        name: {key: (obj.attrs[key], obj.attrs.get_id(key).dtype) for key in obj.attrs}
+        for name, obj in objects.items()
+    }
+    try:
+        yield
+    except Exception:
+        current_paths = []
+        h5file.visit(current_paths.append)
+        for name in sorted(current_paths, key=lambda path: path.count("/"), reverse=True):
+            if name not in objects:
+                del h5file[name]
+        for name, obj in objects.items():
+            if name:
+                current = h5file.get(name)
+                if current is None or current.id != obj.id:
+                    if current is not None:
+                        del h5file[name]
+                    h5file[name] = obj
+            for key in list(obj.attrs):
+                del obj.attrs[key]
+            for key, (value, dtype) in attributes[name].items():
+                obj.attrs.create(key, value, dtype=dtype)
+        h5file.flush()
+        raise
 
 
 def resolve_dataset_target(root_group: h5py.Group, key: str) -> tuple[h5py.Group, str]:

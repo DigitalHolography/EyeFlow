@@ -111,24 +111,37 @@ Every run that schedules velocity attempts both workflows, independently:
 Legacy configuration values are ignored. Method identifiers remain in workflow
 provenance and in internal method-specific contexts.
 
-Cardiac cycles are detected independently for each workflow **before** velocity
-estimation, from raw RMS frequency averaged over artery/vein support: moment-derived
-frequency for moments, and calibrated HF/LF frequency for bands. Each workflow
-uses the existing artery, then vein, then full-record fallback. Its own cycle
-boundaries, durations, and spectral timing are persisted under its processing
+Cardiac cycles are detected independently for each workflow **after** velocity
+estimation, from its signed, background-corrected whole-vessel velocity in `mm/s`.
+The detector filters the raw physical signal at 15 Hz, then detects derivative
+upstrokes using both a 95th-percentile height gate and MAD-based prominence.
+Both gates apply before cadence estimation and to final peak selection; adaptive
+spacing preserves genuine interval variation. The strict global height gate may
+miss lower-amplitude beats; resulting long intervals are retained, and suspected
+two- or three-period gaps are reported rather than filled with synthesized beats.
+Each workflow uses the existing artery, then vein, then full-record fallback.
+Its own cycle boundaries, durations, and spectral timing are persisted under its processing
 group's `CardiacCycle` family and used throughout its downstream analyses.
-Velocity filtering always filters each workflow's physical velocity signal
-independently of the detector's signal.
+Timing provenance records `cardiac_cycle_detection_quantity="physical_velocity"`
+and `cardiac_cycle_detection_unit="mm/s"`, plus the workflow and vessel source.
+Continuous velocity outputs filter the raw physical signal separately, without
+passing the already filtered detector signal through a second filter.
 The workflows must have identical `(frame, y, x)` dimensions.
 
 All selected downstream analyses are recalculated in isolated run state for
 each successful estimate, using shared segmentation/topology and workflow-specific
-cycle boundaries. A failed input, cycle detection, estimate, or downstream
-workflow is skipped; its
-processing group and method artifacts are removed, while the other workflow
-continues. If both fail, the run fails. Root `execution_variant_failures`
-records a JSON map of method to error; `execution_variants_completed` lists
-successful methods when the run finishes.
+cycle boundaries. Failed inputs, cycle detection, or estimates prevent that
+method from producing a workflow. A downstream failure rolls back only the
+failed pipeline's writes and skips its dependent consumers. Earlier results,
+including velocities, remain in the HDF5; independent pipelines continue in
+both workflows. If both workflows fail, the run reports failure after safe
+pipelines finish and exposes its partial HDF5 path in `RunResult.outputs`.
+Root `execution_variant_failures` records a JSON map of method to error;
+`execution_variants_completed` lists methods without failures. Root
+`pipeline_status`, `pipeline_failures`, and `pipeline_skips` record shared and
+per-workflow outcomes. Velocity-analysis data is flushed before optional pulse
+PNG, segment-map AVI, and velocity-signal figure exports; export failures are
+warnings and do not invalidate the scientific products.
 
 For band mode, an exactly zero LF sample maps to ratio zero. No epsilon is
 added. A nonzero ratio beyond finite `float32` range raises a clear error rather

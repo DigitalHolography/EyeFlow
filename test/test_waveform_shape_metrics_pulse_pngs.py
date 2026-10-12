@@ -5,8 +5,10 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
@@ -27,6 +29,7 @@ from calculations.blood_flow_velocity.signal_analysis.spectrum import (  # noqa:
 )
 from calculations.blood_flow_velocity.signal_analysis.waveform import (  # noqa: E402
     arterial_waveform_analysis,
+    venous_waveform_analysis,
     average_cycle,
     cycle_extrema,
     pulse_metric,
@@ -80,6 +83,50 @@ def _has_matplotlib() -> bool:
 
 
 class PulsePngExporterTests(unittest.TestCase):
+    def test_extrema_skip_nonfinite_slices_and_keep_original_indexes(self) -> None:
+        values = np.asarray([np.nan, np.nan, 3, np.nan, -2, np.nan, np.inf, np.nan])
+        maxima, minima = cycle_extrema(values, np.asarray([0, 4, 7]))
+        np.testing.assert_array_equal(maxima, [2, 4])
+        np.testing.assert_array_equal(minima, [2])
+        maxima, minima = cycle_extrema(np.full(8, np.nan), np.asarray([0, 4, 7]))
+        self.assertEqual(0, maxima.size)
+        self.assertEqual(0, minima.size)
+
+    def test_missing_waveform_extrema_return_no_morphology_without_warnings(self) -> None:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            for values in (np.full(128, np.nan), np.full(128, np.inf), np.asarray([])):
+                self.assertIsNone(arterial_waveform_analysis(values, 1.0))
+                self.assertIsNone(venous_waveform_analysis(values, 1.0))
+            cycle = np.r_[np.sin(np.linspace(0, np.pi, 96)), np.full(32, np.nan)]
+            self.assertIsNone(arterial_waveform_analysis(cycle, 1.0))
+            self.assertIsNotNone(venous_waveform_analysis(cycle, 1.0))
+
+    def test_png_export_continues_after_an_exporter_fails(self) -> None:
+        from pipelines.velocity_analysis.artifacts.figures import export as module
+        context = _synthetic_context()
+        per_beat = SimpleNamespace(
+            cardiac_cycle=context.velocity.cardiac_cycle.spectral,
+            cycle_boundary_indexes=context.velocity.cycle_boundary_indexes,
+        )
+        calls = []
+
+        def fail(writer, ctx):
+            calls.append("failed")
+            raise ValueError("injected PNG failure")
+
+        def next_exporter(writer, ctx):
+            calls.append("next")
+            return []
+
+        with (
+            tempfile.TemporaryDirectory() as root,
+            patch.object(module, "EXPORTERS", (fail, next_exporter)),
+            patch.object(module, "export_cross_section_profile_artifacts", return_value=[]),
+        ):
+            export_pulse_pngs(FakeOutput(Path(root)), context, per_beat)
+        self.assertEqual(["failed", "next"], calls)
+
     def test_expected_suffixes_include_core_pulse_outputs(self) -> None:
         self.assertIn("f_artery_graph.png", PULSE_PNG_SUFFIXES)
         self.assertIn("find_systoles_indices_artery.png", PULSE_PNG_SUFFIXES)

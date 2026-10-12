@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from time import perf_counter
 
@@ -10,7 +10,7 @@ from app_settings import VelocityEstimationMethod
 from input_output.inputs import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
 from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS
-from input_output.writers.h5 import initialize_output_h5, open_h5
+from input_output.writers.h5 import h5_write_checkpoint, initialize_output_h5, open_h5
 from utils.logger import Logger
 from velocity_calibration import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
@@ -21,6 +21,14 @@ from .base import ExecutionVariant, PipelineDescriptor, ProcessResult
 from .context import PipelineContext, apply_pipeline_result, finish_pipeline
 from .dag import PipelineDAG
 from .errors import format_pipeline_exception
+
+
+class PipelineRunError(RuntimeError):
+    """An incomplete run whose successful products remain available."""
+
+    def __init__(self, message: str, output_h5_path: Path):
+        super().__init__(message)
+        self.output_h5_path = output_h5_path
 
 
 def run_pipelines_to_output(
@@ -94,8 +102,18 @@ def _run_pipelines_with_work_h5(
 
     dag = PipelineDAG(pipelines)
     execution_variants: list[ExecutionVariant] = []
-    variant_dependents: set[str] = set()
+    variant_dependents = {
+        name
+        for producer in pipelines if producer.produces_execution_variants
+        for name in dag.dependents_of(
+            producer.name, transitive=True, pipeline_options=pipeline_options
+        )
+    }
     variant_failures: dict[str, str] = {}
+    shared_status: dict[str, str] = {}
+    branch_status: dict[str, dict[str, str]] = {}
+    pipeline_failures: dict[str, str] = {}
+    pipeline_skips: dict[str, str] = {}
 
     pipeline_count = len(pipelines)
     for pipeline_index, pipeline_desc in enumerate(pipelines, start=1):
@@ -119,7 +137,10 @@ def _run_pipelines_with_work_h5(
             "on_pipeline_success": None,
             "on_progress": None,
         }
-        if pipeline_desc.name in variant_dependents:
+        name = pipeline_desc.name
+        dependencies = dag.dependencies_of(name, pipeline_options=pipeline_options)
+        succeeded = False
+        if name in variant_dependents and execution_variants:
             if pipeline_desc.produces_execution_variants:
                 raise RuntimeError(
                     "Nested execution-variant producers are not supported."
@@ -128,6 +149,18 @@ def _run_pipelines_with_work_h5(
                 key for variant in execution_variants for key in variant.state
             }
             for variant in tuple(execution_variants):
+                statuses = branch_status.setdefault(variant.name, {})
+                label = f"{name} [{variant.name}]"
+                blocked = [
+                    dependency for dependency in dependencies
+                    if statuses.get(dependency, shared_status.get(dependency)) != "succeeded"
+                ]
+                if blocked:
+                    statuses[name] = "skipped"
+                    pipeline_skips[label] = "Unavailable dependencies: " + ", ".join(blocked)
+                    variant_failures.setdefault(variant.name, pipeline_skips[label])
+                    Logger.log_warning(f"Skipping {label}: {pipeline_skips[label]}")
+                    continue
                 # Variant state persists across descriptors; shared producers
                 # are added without replacing variant-owned data.
                 for key, value in context_vars.items():
@@ -145,55 +178,72 @@ def _run_pipelines_with_work_h5(
                 }
                 try:
                     _run_pipeline_descriptor(pipeline_desc, **branch_arguments)
-                except RuntimeError as exc:
-                    Logger.log_warning(
-                        f"Skipping {variant.name} execution variant: {exc}"
-                    )
-                    variant_failures[variant.name] = str(exc)
-                    execution_variants.remove(variant)
-                    _discard_execution_variant(work_h5, output_manager, variant)
-            if not execution_variants:
-                _write_execution_variant_status(
-                    work_h5,
-                    execution_variants,
-                    variant_failures,
-                )
-                raise RuntimeError(
-                    "No execution variant completed downstream analysis."
-                )
+                except Exception as exc:
+                    Logger.log_warning(f"Failed {label}; continuing safe pipelines: {exc}")
+                    statuses[name] = "failed"
+                    pipeline_failures[label] = str(exc)
+                    variant_failures.setdefault(variant.name, str(exc))
+                else:
+                    statuses[name] = "succeeded"
+                    succeeded = True
         else:
-            # Shared consumers use the first surviving variant as canonical.
+            # Prefer a complete workflow for unrelated shared pipelines.
             if execution_variants:
-                canonical = execution_variants[0]
+                canonical = next(
+                    (variant for variant in execution_variants
+                     if variant.name not in variant_failures), execution_variants[0],
+                )
                 arguments["execution_variant"] = canonical
                 context_vars.update(canonical.state)
-            emitted_variants, emitted_failures = _run_pipeline_descriptor(
-                pipeline_desc,
-                **arguments,
-            )
+            blocked = [
+                dependency for dependency in dependencies
+                if shared_status.get(dependency) != "succeeded"
+            ]
+            emitted_variants = ()
+            if blocked:
+                shared_status[name] = "skipped"
+                pipeline_skips[name] = "Unavailable dependencies: " + ", ".join(blocked)
+                Logger.log_warning(f"Skipping {name}: {pipeline_skips[name]}")
+            else:
+                try:
+                    emitted_variants, emitted_failures = _run_pipeline_descriptor(
+                        pipeline_desc, **arguments,
+                    )
+                except Exception as exc:
+                    shared_status[name] = "failed"
+                    pipeline_failures[name] = str(exc)
+                    Logger.log_warning(f"Failed {name}; continuing safe pipelines: {exc}")
+                else:
+                    shared_status[name] = "succeeded"
+                    succeeded = True
             if emitted_variants:
                 if execution_variants:
                     raise RuntimeError(
                         "Multiple active execution-variant producers are not supported."
                     )
                 execution_variants = list(emitted_variants)
-                variant_failures = emitted_failures
-                variant_dependents = set(
-                    dag.dependents_of(
-                        pipeline_desc.name,
-                        transitive=True,
-                        pipeline_options=pipeline_options,
-                    )
-                )
+                variant_failures.update(emitted_failures)
         _write_execution_variant_status(
             work_h5,
-            execution_variants,
+            [variant for variant in execution_variants if variant.name not in variant_failures],
             variant_failures,
         )
-        if on_pipeline_success is not None:
+        work_h5.attrs["pipeline_status"] = json.dumps(
+            {"shared": shared_status, "variants": branch_status}, sort_keys=True,
+        )
+        work_h5.attrs["pipeline_failures"] = json.dumps(pipeline_failures, sort_keys=True)
+        work_h5.attrs["pipeline_skips"] = json.dumps(pipeline_skips, sort_keys=True)
+        work_h5.flush()
+        if succeeded and on_pipeline_success is not None:
             on_pipeline_success(pipeline_desc.name)
         if on_progress is not None:
             on_progress()
+    # Report failure only after every safe pipeline has had a chance to run.
+    if "failed" in shared_status.values() or (
+        execution_variants
+        and all(variant.name in variant_failures for variant in execution_variants)
+    ):
+        raise PipelineRunError("; ".join(pipeline_failures.values()), output_h5_path)
     return output_h5_path
 
 
@@ -291,54 +341,62 @@ def _run_pipeline_descriptor(
         band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
     )
     try:
-        result = pipeline.run(ctx)
-        if ctx.execution_variants and not pipeline_desc.produces_execution_variants:
-            raise ValueError(
-                f"Pipeline '{pipeline.name}' published execution variants without "
-                "declaring produces_execution_variants=True."
-            )
-        if pipeline_desc.produces_execution_variants and not ctx.execution_variants:
-            raise ValueError(
-                f"Pipeline '{pipeline.name}' declared execution variants but "
-                "published none."
-            )
-        if result is not None:
-            write_started = perf_counter()
-            Logger.log(f"Starting {pipeline.name} HDF5 output write...")
-            apply_pipeline_result(ctx, result)
-            Logger.log(
-                f"Completed {pipeline.name} HDF5 output write in "
-                f"{perf_counter() - write_started:.1f}s."
-            )
+        with _pipeline_checkpoint(work_h5, variables, output_manager):
+            return _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path)
     except Exception as exc:
         Logger.log_error(f"{pipeline.name}: {exc}")
         raise RuntimeError(format_pipeline_exception(exc, pipeline)) from exc
+
+
+def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path):
+    """Calculate and persist a descriptor within its output checkpoint."""
+    label = (
+        f"{pipeline.name} [{ctx.execution_variant.name}]"
+        if ctx.execution_variant is not None and ctx.output.h5.processing_root
+        else pipeline.name
+    )
+    result = pipeline.run(ctx)
+    if ctx.execution_variants and not pipeline_desc.produces_execution_variants:
+        raise ValueError(
+            f"Pipeline '{pipeline.name}' published execution variants without "
+            "declaring produces_execution_variants=True."
+        )
+    if pipeline_desc.produces_execution_variants and not ctx.execution_variants:
+        raise ValueError(
+            f"Pipeline '{pipeline.name}' declared execution variants but "
+            "published none."
+        )
+    if result is not None:
+        write_started = perf_counter()
+        Logger.log(f"Starting {pipeline.name} HDF5 output write...")
+        apply_pipeline_result(ctx, result)
+        Logger.log(
+            f"Completed {pipeline.name} HDF5 output write in "
+            f"{perf_counter() - write_started:.1f}s."
+        )
     if isinstance(result, ProcessResult):
         result.output_h5_path = str(output_h5_path)
     finish_pipeline(ctx, pipeline.name)
     Logger.log(f"[OK] {label}")
-    if on_pipeline_success is not None:
-        on_pipeline_success(pipeline.name)
-    if on_progress is not None:
-        on_progress()
     return ctx.execution_variants, ctx.execution_variant_failures
 
 
-def _discard_execution_variant(work_h5, output_manager, variant: ExecutionVariant):
-    """Remove only one failed variant's output namespace and artifacts."""
-    import shutil
-
-    root = variant.output_namespace
-    if root in work_h5:
-        del work_h5[root]
-    manager = output_manager.for_artifact_namespace(variant.artifact_namespace)
-    workspace = output_manager.layout.ef_dir.resolve()
-    for kind in OutputType:
-        directory = manager.dir_for(kind).resolve()
-        if not directory.is_relative_to(workspace):
-            raise ValueError(f"Workflow directory is outside output root: {directory}")
-        if directory.exists():
-            shutil.rmtree(directory)
+@contextmanager
+def _pipeline_checkpoint(work_h5, variables, output_manager):
+    """Restore state and remove only newly created artifacts on failure."""
+    state = dict(variables)
+    root = output_manager.layout.ef_dir
+    artifacts = {path for path in root.rglob("*") if path.is_file()}
+    try:
+        with h5_write_checkpoint(work_h5):
+            yield
+    except Exception:
+        variables.clear()
+        variables.update(state)
+        for path in root.rglob("*"):
+            if path.is_file() and path not in artifacts:
+                path.unlink()
+        raise
 
 
 def _write_execution_variant_status(
