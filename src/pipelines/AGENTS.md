@@ -94,8 +94,9 @@ centralizes display and dataset interpretation. Moments publish under
 `moments`/`bandratio` artifact folders. The single velocity pipeline declares
 itself as an execution-variant producer and publishes one typed
 `ExecutionVariant` per successful method; the engine fans out its declared DAG
-dependents. Each workflow detects its own cycles from raw RMS frequency before
-estimation and uses them for its downstream analyses; segmentation remains
+dependents. Each workflow detects its own cycles from signed whole-vessel
+physical velocity after estimation and uses them for its downstream analyses;
+timing provenance records physical velocity in `mm/s`. Segmentation remains
 under `/Segmentation`. New velocity-derived outputs or plots must resolve
 semantics from payload/provenance instead of hard-coding `mm/s`.
 

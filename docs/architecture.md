@@ -145,7 +145,7 @@ scratch storage, not ad-hoc module globals.
 ## Scientific processing boundaries
 
 - `velocity` estimates physical retinal velocity, prepares whole-vessel signals,
-  detects each workflow's cardiac cycles from its raw frequency before estimation,
+  detects each workflow's cardiac cycles from its physical velocity after estimation,
   attempts moments and band-ratio estimation independently, and retains each
   velocity video when downstream analysis requires spatial products.
 - `topology_core` aligns masks, creates annular branch/segment topology, and

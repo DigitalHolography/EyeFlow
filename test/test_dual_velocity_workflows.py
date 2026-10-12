@@ -13,7 +13,7 @@ from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import processing_path
 from pipeline_engine.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
-from pipelines.velocity.runner import detect_source_cardiac_cycles, estimate_retinal_velocity
+from pipelines.velocity.runner import detect_velocity_cardiac_cycles, estimate_retinal_velocity
 
 
 def _dual_input(root):
@@ -65,15 +65,16 @@ def _spec(holo, *, artifacts=False):
     )
 
 
-def test_both_workflows_use_independent_raw_frequency_cycles_and_downstream_beats(tmp_path):
+def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_beats(tmp_path):
     holo, _ = _dual_input(tmp_path)
     events = []
     detected = {}
 
-    def cycles(source):
-        events.append(("cycles", source.velocity_estimation_method))
-        result = detect_source_cardiac_cycles(source)
-        detected[source.velocity_estimation_method] = result[0]
+    def cycles(data, *, dt_seconds):
+        method = data.provenance["velocity_estimation_method"]
+        events.append(("cycles", method))
+        result = detect_velocity_cardiac_cycles(data, dt_seconds=dt_seconds)
+        detected[method] = result[0]
         return result
 
     def estimate(**kwargs):
@@ -81,16 +82,16 @@ def test_both_workflows_use_independent_raw_frequency_cycles_and_downstream_beat
         return estimate_retinal_velocity(**kwargs)
 
     with (
-        patch("pipelines.velocity.runner.detect_source_cardiac_cycles", side_effect=cycles),
+        patch("pipelines.velocity.runner.detect_velocity_cardiac_cycles", side_effect=cycles),
         patch("pipelines.velocity.runner.estimate_retinal_velocity", side_effect=estimate),
     ):
         result = execute_run(_spec(holo, artifacts=True))
     assert result.succeeded, result.failures
     assert events == [
-        ("cycles", "doppler_moments"),
-        ("cycles", "frequency_bands"),
         ("estimate", "doppler_moments"),
         ("estimate", "frequency_bands"),
+        ("cycles", "doppler_moments"),
+        ("cycles", "frequency_bands"),
     ]
     schema = EyeFlowOutputPaths.active()
     with h5py.File(result.outputs[0], "r") as output:
@@ -107,7 +108,8 @@ def test_both_workflows_use_independent_raw_frequency_cycles_and_downstream_beat
         ):
             assert output[root].attrs["velocity_estimation_method"] == method
             assert output[root].attrs["cardiac_cycle_detection_method"] == method
-            assert output[root].attrs["cardiac_cycle_detection_quantity"] == "raw_rms_frequency"
+            assert output[root].attrs["cardiac_cycle_detection_quantity"] == "physical_velocity"
+            assert output[root].attrs["cardiac_cycle_detection_unit"] == "mm/s"
             assert "Segmentation" not in output[root]
             for family in (
                 schema.absolute_waveform_metrics_root,
@@ -143,6 +145,8 @@ def test_both_workflows_use_independent_raw_frequency_cycles_and_downstream_beat
             def check_dataset(_name, value, expected_method=method, expected_beats=beat_count):
                 if isinstance(value, h5py.Dataset):
                     assert value.attrs["velocity_estimation_method"] == expected_method
+                    assert value.attrs["cardiac_cycle_detection_quantity"] == "physical_velocity"
+                    assert value.attrs["cardiac_cycle_detection_unit"] == "mm/s"
                     dimensions = list(value.attrs.get("dimDesc", ()))
                     if "beat" in dimensions:
                         assert value.shape[dimensions.index("beat")] == expected_beats
@@ -189,10 +193,10 @@ def test_one_failed_workflow_preserves_other_outputs(tmp_path, failed_method, st
             raise ValueError("injected estimator failure")
         return estimate_retinal_velocity(**kwargs)
 
-    def cycles(source):
-        if stage == "cycles" and source.velocity_estimation_method == failed_method:
+    def cycles(data, *, dt_seconds):
+        if stage == "cycles" and data.provenance["velocity_estimation_method"] == failed_method:
             raise ValueError("injected cycle detection failure")
-        return detect_source_cardiac_cycles(source)
+        return detect_velocity_cardiac_cycles(data, dt_seconds=dt_seconds)
 
     from pipelines.absolute_waveform_metrics.runner import run_absolute_waveform_metrics
 
@@ -205,7 +209,7 @@ def test_one_failed_workflow_preserves_other_outputs(tmp_path, failed_method, st
 
     spec = _spec(holo)
     with (
-        patch("pipelines.velocity.runner.detect_source_cardiac_cycles", side_effect=cycles),
+        patch("pipelines.velocity.runner.detect_velocity_cardiac_cycles", side_effect=cycles),
         patch("pipelines.velocity.runner.estimate_retinal_velocity", side_effect=estimate),
         patch(
             "pipelines.absolute_waveform_metrics.run_absolute_waveform_metrics",

@@ -39,8 +39,10 @@ def find_systole_index(
 ) -> SystoleDetectionResult:
     """Detect systolic upstrokes without assuming a fixed heart-rate ceiling.
 
-    A permissive physiological spacing produces provisional peaks. Their median
-    interval is cross-checked against the signal autocorrelation. The final
+    Peaks must clear the derivative's 95th-percentile height and MAD-based
+    prominence thresholds. A permissive physiological spacing produces
+    provisional peaks. Their median interval is cross-checked against the
+    signal autocorrelation. The final
     refractory distance is the estimated period minus a robust allowance for
     observed period variability. Missing boundaries are retained as long cycles
     and reported on the result rather than synthesized or discarded.
@@ -68,10 +70,15 @@ def find_systole_index(
         derivative,
         prominence_mad_multiplier,
     )
+    finite_derivative = derivative[np.isfinite(derivative)]
+    min_peak_height = np.float32(
+        np.percentile(finite_derivative, 95) if finite_derivative.size else np.inf
+    )
     candidate_distance = _min_peak_distance(dt, min_duration_seconds)
 
     provisional_peaks, _ = find_peaks(
         derivative,
+        height=float(min_peak_height),
         prominence=float(min_peak_prominence),
         distance=candidate_distance,
     )
@@ -97,6 +104,7 @@ def find_systole_index(
 
     peaks, _ = find_peaks(
         derivative,
+        height=float(min_peak_height),
         prominence=float(min_peak_prominence),
         distance=min_peak_distance,
     )
@@ -117,7 +125,7 @@ def find_systole_index(
         signal_filtered=filtered_pulse,
         derivative_signal=derivative,
         min_peak_distance=min_peak_distance,
-        min_peak_height=np.float32(np.nan),
+        min_peak_height=min_peak_height,
         min_peak_prominence=min_peak_prominence,
         estimated_period_samples=np.float32(estimated_period),
         suspected_missed_beat_gaps=missed_beat_gaps,
