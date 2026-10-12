@@ -32,7 +32,7 @@ def prepare_segment_chunks(
     worker_count: int | None = None,
     keep_on_device: bool = False,
     transform_mode: str = "fused",
-    post_interpolation: Callable[[np.ndarray], np.ndarray] | None = None,
+    post_interpolation: Callable[[object], object] | None = None,
     temporal_halo: int = 0,
     scratch_array_count: int | None = None,
     include_masked_before_rotation: bool = False,
@@ -44,6 +44,8 @@ def prepare_segment_chunks(
     When ``include_masked_before_rotation`` is enabled, each chunk also carries
     a companion following the legacy scientific order ``interpolate/filter ->
     mask -> rotate``. Retained result arrays are outside this scratch budget.
+    Device-resident callbacks should preserve their input backend. If a callback
+    fails on a device array, it is retried on the CPU before rotation.
     """
 
     if transform_mode not in {"fused", "sequential", "staged"}:
@@ -102,6 +104,7 @@ def prepare_segment_chunks(
     )
 
     def prepare_job(job) -> SampledSegmentChunk:
+        backend = optional_cupy_backend() if keep_on_device else None
         ring, branch, output_start, output_stop = job
         halo = temporal_halo if transform_mode == "staged" else 0
         if halo and output_stop - output_start + 2 * halo < frame_count:
@@ -134,14 +137,28 @@ def prepare_segment_chunks(
                 return_device=keep_on_device,
             )
             if include_masked_before_rotation:
-                interpolated_for_mask = interpolate_segments(extracted, side)
-        else:
-            interpolated = interpolate_segments(extracted, side)
-            if post_interpolation is not None:
-                interpolated = np.asarray(
-                    post_interpolation(interpolated),
-                    dtype=np.float32,
+                interpolated_for_mask = interpolate_segments(
+                    extracted, side, return_device=keep_on_device
                 )
+        else:
+            interpolated = interpolate_segments(extracted, side, return_device=keep_on_device)
+            if post_interpolation is not None:
+                try:
+                    filtered = post_interpolation(interpolated)
+                except Exception as exc:
+                    if backend is None or not isinstance(interpolated, backend.cupy.ndarray):
+                        raise
+                    Logger.log_debug(
+                        "CuPy segment filtering failed; using CPU fallback: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    filtered = post_interpolation(backend.cupy.asnumpy(interpolated))
+                xp = (
+                    backend.cupy
+                    if backend is not None and isinstance(filtered, backend.cupy.ndarray)
+                    else np
+                )
+                interpolated = xp.asarray(filtered, dtype=xp.float32)
                 expected_shape = (*extracted.shape[:-2], side, side)
                 if interpolated.shape != expected_shape:
                     raise ValueError(
@@ -161,8 +178,14 @@ def prepare_segment_chunks(
         if include_masked_before_rotation:
             if interpolated_for_mask is None:
                 raise RuntimeError("masked transforms require interpolated data.")
-            masked = np.asarray(interpolated_for_mask, dtype=np.float32).copy()
-            masked[..., ~prepared_topology.interpolated_masks[ring, branch]] = np.nan
+            xp = (
+                backend.cupy
+                if backend is not None and isinstance(interpolated_for_mask, backend.cupy.ndarray)
+                else np
+            )
+            masked = xp.asarray(interpolated_for_mask, dtype=xp.float32).copy()
+            mask = xp.asarray(prepared_topology.interpolated_masks[ring, branch])
+            masked[..., ~mask] = xp.nan
             rotated_masked = resample_rotate_segment(
                 masked,
                 angle,

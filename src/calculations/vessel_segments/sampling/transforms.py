@@ -21,23 +21,36 @@ INTERPOLATED_SEGMENT_SIDE = 128
 def interpolate_segments(
     segment_maps: np.ndarray,
     output_side_pixels: int = INTERPOLATED_SEGMENT_SIDE,
-) -> np.ndarray:
+    *,
+    return_device: bool = False,
+):
     """Interpolate segment values to one square size while preserving NaNs.
 
     Only the final two axes are resized; every preceding axis is retained.
+    ``return_device`` retains CuPy results for subsequent filtering/rotation.
     """
 
-    values = np.asarray(segment_maps, dtype=np.float32)
+    backend = optional_cupy_backend()
+    xp = (
+        backend.cupy
+        if backend is not None and isinstance(segment_maps, backend.cupy.ndarray)
+        else np
+    )
+    values = xp.asarray(segment_maps, dtype=xp.float32)
     _assert_spatial_array(values, output_side_pixels)
+    if return_device and backend is not None:
+        return _interpolate_values(values, output_side_pixels, return_device=True)
     if values.shape[-2:] == (output_side_pixels, output_side_pixels):
-        return values.copy()
+        result = values.copy()
+        return backend.cupy.asnumpy(result) if xp is not np and not return_device else result
     if values.shape[-2] == 0 or values.shape[-1] == 0:
-        return np.full(
+        result = xp.full(
             (*values.shape[:-2], output_side_pixels, output_side_pixels),
-            np.nan,
-            dtype=np.float32,
+            xp.nan,
+            dtype=xp.float32,
         )
-    return _interpolate_values(values, output_side_pixels)
+        return backend.cupy.asnumpy(result) if xp is not np and not return_device else result
+    return _interpolate_values(values, output_side_pixels, return_device=return_device)
 
 
 def resample_rotate_segment(
@@ -49,7 +62,13 @@ def resample_rotate_segment(
 ):
     """Resize and rotate one segment stack with a single affine resampling."""
 
-    values = np.asarray(segment_maps, dtype=np.float32)
+    backend = optional_cupy_backend()
+    xp = (
+        backend.cupy
+        if backend is not None and isinstance(segment_maps, backend.cupy.ndarray)
+        else np
+    )
+    values = xp.asarray(segment_maps, dtype=xp.float32)
     _assert_spatial_array(values, output_side_pixels)
     if values.shape[-2] != values.shape[-1]:
         raise ValueError("native segment arrays must be square.")
@@ -229,15 +248,13 @@ def _resample_rotate_values(
         angle_degrees,
     )
     output_shape = (*values.shape[:-2], canvas_side, canvas_side)
-    valid = np.isfinite(values)
-    shared_validity = _shared_spatial_validity(valid)
     backend = optional_cupy_backend()
     if backend is not None:
         try:
             gpu_values = backend.cupy.asarray(values)
-            gpu_valid = backend.cupy.asarray(
-                shared_validity if shared_validity is not None else valid
-            )
+            valid = backend.cupy.isfinite(gpu_values)
+            shared_validity = _shared_spatial_validity(valid, array_module=backend.cupy)
+            gpu_valid = shared_validity if shared_validity is not None else valid
             resampled_values = backend.ndimage.affine_transform(
                 backend.cupy.where(
                     gpu_valid,
@@ -285,7 +302,11 @@ def _resample_rotate_values(
             return backend.cupy.asnumpy(resampled_values)
         except Exception as exc:
             _log_gpu_fallback("fused segment transform", exc)
+            if isinstance(values, backend.cupy.ndarray):
+                values = backend.cupy.asnumpy(values)
 
+    valid = np.isfinite(values)
+    shared_validity = _shared_spatial_validity(valid)
     filled = np.where(valid, values, np.float32(0.0))
     resampled_values = ndi.affine_transform(
         filled,
@@ -353,20 +374,30 @@ def _fused_affine_mapping(
     return matrix, offset
 
 
-def _shared_spatial_validity(valid: np.ndarray) -> np.ndarray | None:
+def _shared_spatial_validity(valid, *, array_module=np):
     if valid.ndim == 2:
         return valid
     flattened = valid.reshape((-1, *valid.shape[-2:]))
     first = flattened[0]
-    return first if np.all(flattened == first) else None
+    return first if bool(array_module.all(flattened == first)) else None
 
 
-def _interpolate_values(values: np.ndarray, output_side_pixels: int) -> np.ndarray:
-    zoom = _spatial_zoom(values, output_side_pixels)
+def _interpolate_values(values, output_side_pixels: int, *, return_device: bool = False):
     backend = optional_cupy_backend()
     if backend is not None:
         try:
             gpu_values = backend.cupy.asarray(values)
+            if values.shape[-2:] == (output_side_pixels, output_side_pixels):
+                result = gpu_values.copy()
+                return result if return_device else backend.cupy.asnumpy(result)
+            if values.shape[-2] == 0 or values.shape[-1] == 0:
+                result = backend.cupy.full(
+                    (*values.shape[:-2], output_side_pixels, output_side_pixels),
+                    backend.cupy.nan,
+                    dtype=backend.cupy.float32,
+                )
+                return result if return_device else backend.cupy.asnumpy(result)
+            zoom = _spatial_zoom(values, output_side_pixels)
             valid = backend.cupy.isfinite(gpu_values)
             resized_values = backend.ndimage.zoom(
                 backend.cupy.where(valid, gpu_values, backend.cupy.float32(0.0)),
@@ -402,10 +433,20 @@ def _interpolate_values(values: np.ndarray, output_side_pixels: int) -> np.ndarr
                 out=resized,
             )
             resized[~valid_output] = backend.cupy.nan
-            return backend.cupy.asnumpy(resized)
-        except Exception:
-            pass
+            return resized if return_device else backend.cupy.asnumpy(resized)
+        except Exception as exc:  # noqa: BLE001 - preserve optional CUDA fallback
+            _log_gpu_fallback("segment interpolation", exc)
+            if isinstance(values, backend.cupy.ndarray):
+                values = backend.cupy.asnumpy(values)
 
+    if values.shape[-2:] == (output_side_pixels, output_side_pixels):
+        return values.copy()
+    if values.shape[-2] == 0 or values.shape[-1] == 0:
+        return np.full(
+            (*values.shape[:-2], output_side_pixels, output_side_pixels),
+            np.nan, dtype=np.float32,
+        )
+    zoom = _spatial_zoom(values, output_side_pixels)
     valid = np.isfinite(values)
     resized_values = ndi.zoom(
         np.where(valid, values, np.float32(0.0)),

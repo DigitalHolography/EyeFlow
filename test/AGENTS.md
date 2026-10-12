@@ -57,6 +57,3 @@ python -m pytest
 
 If the package is not installed editable, set `PYTHONPATH` to `src`. Some
 artifact tests skip when their optional rendering dependency is unavailable.
-`benchmarks/rtx4090_cross_section.json` is a hardware-specific observation with
-parity errors and timings; it is useful when optimizing cross-section code but
-is not executed by pytest.

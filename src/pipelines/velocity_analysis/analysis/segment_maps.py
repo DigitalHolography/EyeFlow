@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from itertools import pairwise
 
 import numpy as np
 
 from calculations.blood_flow_velocity.signal_analysis.per_beat._signal_utils import (
     normalize_cycle_boundaries,
 )
+from calculations.compute_backend import optional_cupy_backend
 from calculations.math import interpft_axis0, next_power_of_two
 from runtime_limits import cap_parallel_jobs
+from utils.logger import Logger
 
 _MAX_PARALLEL_SEGMENT_INTERPOLATIONS = 8
+_GPU_INTERPOLATION_SCRATCH_BYTES = 64 * 1024**2
+# Short temporal FFTs are faster on the threaded CPU once host transfers and
+# serialization are included.
+_MIN_GPU_MAP_TIME_COUNT = 64
+
 
 def prepare_segment_velocity_maps_per_beat(
     artery_segments,
@@ -149,6 +157,11 @@ def interpolate_velocity_maps_per_beat(
         np.nan,
         dtype=np.float32,
     )
+    backend = optional_cupy_backend()
+    if time_count < _MIN_GPU_MAP_TIME_COUNT:
+        backend = None
+    if backend is not None:
+        Logger.log("Per-beat segment velocity-map interpolation backend: CuPy/CUDA.")
 
     def interpolate_segment(indexed_row) -> None:
         radius_index, branch_index, segment_maps = indexed_row
@@ -163,6 +176,29 @@ def interpolate_velocity_maps_per_beat(
                 2, 1, 0
             )
 
+    if backend is not None:
+        # One GPU job at a time bounds scratch across segments. Batch pixels
+        # across beats instead of allocating a dense six-dimensional device
+        # output; serialized arrays stay float32 NumPy for HDF5 and movie writers.
+        for radius_index, branch_index, segment_maps in indexed_rows:
+            try:
+                _interpolate_segment_gpu(
+                    segment_maps,
+                    boundaries,
+                    time_count,
+                    output,
+                    radius_index,
+                    branch_index,
+                    backend.cupy,
+                )
+            except Exception as exc:  # noqa: BLE001 - optional CUDA kernels can fail in many ways
+                Logger.log_debug(
+                    "CuPy segment-map interpolation failed; using CPU fallback: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                interpolate_segment((radius_index, branch_index, segment_maps))
+        return output
+
     worker_count = _segment_map_worker_count(len(indexed_rows))
     if worker_count == 1:
         for indexed_row in indexed_rows:
@@ -175,6 +211,48 @@ def interpolate_velocity_maps_per_beat(
             for _ in executor.map(interpolate_segment, indexed_rows):
                 pass
     return output
+
+
+def _interpolate_segment_gpu(
+    maps, boundaries, time_count, output, radius_index, branch_index, cupy,
+) -> None:
+    """Fourier-resample bounded pixel batches, including shared beat endpoints."""
+
+    y_count, x_count = maps.shape[-2:]
+    lengths = np.diff(boundaries) + 1
+    if np.all(lengths == time_count + 1):
+        # Avoid device transfers when every beat requires only a copy.
+        for beat_index, start in enumerate(boundaries[:-1]):
+            output[:, :, :, beat_index, branch_index, radius_index] = maps[
+                int(start):int(start) + time_count
+            ].transpose(2, 1, 0)
+        return
+
+    beat_count = lengths.size
+    # Upload each spatial batch once, retaining all of its resampled beats until
+    # one download. Budget the resident source/results plus Fourier temporaries;
+    # the persistent six-dimensional host output is outside this scratch budget.
+    bytes_per_pixel = (
+        4 * (maps.shape[0] + time_count * beat_count)
+        + 32 * (int(lengths.max()) + time_count + 1)
+    )
+    batch_width = _GPU_INTERPOLATION_SCRATCH_BYTES // (bytes_per_pixel * max(y_count, 1))
+    if batch_width < 1:
+        raise MemoryError("One segment-map column exceeds the GPU interpolation scratch budget.")
+    for x_start in range(0, x_count, batch_width):
+        x_stop = min(x_count, x_start + batch_width)
+        source = cupy.asarray(maps[:, :, x_start:x_stop], dtype=cupy.float32)
+        results = cupy.empty((time_count, beat_count, y_count, x_stop - x_start), dtype=cupy.float32)
+        for beat_index, (start, stop) in enumerate(pairwise(boundaries)):
+            results[:, beat_index] = interpft_axis0(
+                source[int(start):int(stop) + 1],
+                time_count + 1,
+                array_module=cupy,
+            )[:-1]
+        output[x_start:x_stop, :, :, :, branch_index, radius_index] = (
+            cupy.asnumpy(results).transpose(3, 2, 0, 1)
+        )
+        del source, results
 
 
 def _segment_map_worker_count(segment_count: int) -> int:
