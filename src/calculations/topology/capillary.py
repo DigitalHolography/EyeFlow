@@ -51,3 +51,19 @@ def capillary_analysis_zones(
     radius = GAPS_CUTOFF_DIAMETER_WIDTH_FRACTION * nx / 2.0
     cutoff_disc = (x - nx / 2.0) ** 2 + (y - ny / 2.0) ** 2 <= radius**2
     return cutoff_disc & ~(vessels | masks[1])
+
+
+def downsample_gap_zones(analysis_zones: np.ndarray) -> np.ndarray:
+    """Reduce native gap support by two, retaining only wholly included 2x2 blocks.
+
+    One excluded pixel excludes the entire reduced pixel. The input is never
+    mutated; this reduction is for velocity-mask application, not persistence.
+    Axes stay in native ``(y, x)`` order.
+    """
+    zones = np.asarray(analysis_zones)
+    if zones.ndim != 2 or zones.dtype != np.bool_:
+        raise TypeError("analysis_zones must be a 2-D boolean array.")
+    ny, nx = zones.shape
+    if ny < 1 or nx < 1 or ny % 2 or nx % 2:
+        raise ValueError("Gap-mask downsampling requires positive, even spatial dimensions.")
+    return zones.reshape(ny // 2, 2, nx // 2, 2).all(axis=(1, 3))
