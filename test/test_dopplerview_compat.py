@@ -86,7 +86,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
         self.assertFalse(hasattr(source_data, "velocity_analysis"))
 
-    def test_missing_optic_disc_uses_centered_frame_relative_fallback(self) -> None:
+    def test_missing_optic_disc_uses_centered_physical_fallback(self) -> None:
         artery_raw = np.zeros((4, 2), dtype=bool)
         vein_raw = ~artery_raw
         with self._source_pair() as (hd_source, dv_source):
@@ -100,12 +100,12 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
 
         disc = source_data.source.segmentation.optic_disc
         vessels = source_data.source.segmentation.vessels
-        radius_scale = np.hypot(0.5, 1.5)
         self.assertTrue(disc.is_fallback)
         self.assertEqual((2.0, 1.0), disc.center)
-        self.assertAlmostEqual(0.20 * radius_scale, disc.width)
-        self.assertAlmostEqual(0.20 * radius_scale, disc.height)
+        self.assertAlmostEqual(1.91 / 0.02, disc.width)
+        self.assertAlmostEqual(1.91 / 0.02, disc.height)
         self.assertEqual((2, 4), disc.mask.shape)
+        self.assertTrue(np.all(disc.mask))
         self.assertFalse(np.any(vessels.vein))
         np.testing.assert_array_equal(
             vessels.velocity_background,

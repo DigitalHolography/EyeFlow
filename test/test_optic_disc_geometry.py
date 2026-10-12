@@ -112,26 +112,47 @@ def test_annulus_geometry_preserves_established_calculation() -> None:
     assert OpticDisc(None, (0.0, 0.0), 1.0, 1.0).annulus_geometry((1, 1)).inner_radius_frac == 1.0
 
 
-def test_missing_measurements_fall_back_to_centered_ten_percent_circle() -> None:
+@pytest.mark.parametrize("pixel_pitch_mm", [0.02, 0.1, 0.2])
+def test_missing_measurements_fall_back_to_centered_physical_circle(pixel_pitch_mm) -> None:
     shape = (101, 201)
-    disc = OpticDisc.from_measurements(None, None, None, None, shape)
+    disc = OpticDisc.from_measurements(
+        None, None, None, None, shape, pixel_pitch_mm=pixel_pitch_mm
+    )
     radius_scale = image_half_diagonal(*shape)
+    diameter = 1.91 / pixel_pitch_mm
 
     assert disc.is_fallback
     assert disc.center == (shape[1] / 2.0, shape[0] / 2.0)
-    assert disc.width == pytest.approx(0.20 * radius_scale)
-    assert disc.height == pytest.approx(0.20 * radius_scale)
+    assert disc.width == pytest.approx(diameter)
+    assert disc.height == pytest.approx(diameter)
     assert disc.annulus_geometry(shape).inner_radius_frac == pytest.approx(
-        np.ceil(0.10 * radius_scale) / radius_scale
+        np.ceil(diameter / 2.0) / radius_scale
     )
-    expected = disc.centered_circle_mask_for(shape)
+    y, x = np.ogrid[: shape[0], : shape[1]]
+    expected = (x - shape[1] / 2.0) ** 2 + (y - shape[0] / 2.0) ** 2 <= (diameter / 2.0) ** 2
     np.testing.assert_array_equal(disc.mask_for(shape), expected)
+
+
+@pytest.mark.parametrize("pixel_pitch_mm", [None, 0, -0.02, np.nan, np.inf])
+def test_physical_fallback_requires_valid_pixel_pitch(pixel_pitch_mm) -> None:
+    with pytest.raises(ValueError, match="pixel.pitch"):
+        OpticDisc.from_measurements(
+            None, None, None, None, (20, 30), pixel_pitch_mm=pixel_pitch_mm
+        )
+
+
+def test_physical_fallback_is_clipped_without_rescaling_the_diameter() -> None:
+    disc = OpticDisc.centered_fallback((3, 4), pixel_pitch_mm=0.02)
+    assert disc.width == pytest.approx(95.5)
+    assert disc.mask_for((3, 4)).all()
 
 
 def test_nonfinite_mask_uses_full_fallback() -> None:
     shape = (21, 31)
     mask = np.full(shape, np.nan, dtype=np.float32)
-    disc = OpticDisc.from_measurements(mask, (2.0, 3.0), 8.0, 10.0, shape)
+    disc = OpticDisc.from_measurements(
+        mask, (2.0, 3.0), 8.0, 10.0, shape, pixel_pitch_mm=0.02
+    )
 
     assert disc.is_fallback
     assert disc.center == (15.5, 10.5)

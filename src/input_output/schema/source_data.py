@@ -80,6 +80,8 @@ class VesselMasks:
     vein: np.ndarray
     labeled: np.ndarray | None = None
     velocity_background: np.ndarray | None = None
+    retinal_vessel_mask: np.ndarray | None = None
+    choroid_vessel_mask: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
