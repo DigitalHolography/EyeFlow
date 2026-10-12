@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy import ndimage as ndi
 
+from calculations.compute_backend import optional_cupy_backend
 from calculations.math import (
     SlidingWindowMethod,
     centered_sliding_window,
@@ -102,21 +104,27 @@ def extract_spatial_gradient_segments(
     return results["artery"], results["vein"]
 
 
-def _spatial_gradient_chain(interpolated: np.ndarray) -> np.ndarray:
+def _spatial_gradient_chain(interpolated):
     """Apply the scientifically ordered filter chain before rotation."""
 
+    backend = optional_cupy_backend()
+    on_device = backend is not None and isinstance(interpolated, backend.cupy.ndarray)
+    xp = backend.cupy if on_device else np
+    ndimage = backend.ndimage if on_device else ndi
     filtered = centered_sliding_window(
         interpolated,
         TEMPORAL_MOVING_AVERAGE_WINDOW,
         SlidingWindowMethod.AVERAGE,
+        array_module=xp,
     )
-    filtered = sobel_spatial_gradient(filtered)
-    filtered = gaussian2d_blur(filtered)
-    filtered = unsharpen(filtered)
+    filtered = sobel_spatial_gradient(filtered, array_module=xp, ndimage=ndimage)
+    filtered = gaussian2d_blur(filtered, array_module=xp, ndimage=ndimage)
+    filtered = unsharpen(filtered, array_module=xp, ndimage=ndimage)
     return centered_sliding_window(
         filtered,
         TEMPORAL_MOVING_AVERAGE_WINDOW,
         SlidingWindowMethod.AVERAGE,
+        array_module=xp,
     )
 
 

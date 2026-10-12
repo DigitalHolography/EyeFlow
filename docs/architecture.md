@@ -209,7 +209,6 @@ contract or its presentation must also change.
 | Segment sampling, measurement, and profile calculations | `src/calculations/vessel_segments/` |
 | Velocity estimator semantics | `src/pipelines/velocity/estimation.py` and `src/pipelines/velocity/semantics.py` |
 | Release behavior | `.github/workflows/release.yml`, `build_installer.ps1` |
-| Numerical/performance observation | `benchmarks/rtx4090_cross_section.json` (snapshot only) |
 
 ## Resource and release notes
 
