@@ -21,7 +21,7 @@ data into reusable calculation inputs and pack results into the EyeFlow schema.
 | Spatial gradient/filter behavior | `math/spatial_gradient.py`, `math/image.py`, periodic windows | spatial-gradient pipeline; `test_spatial_gradient_*`, `test_gaussian2d_blur.py`, `test_unsharpen.py`, `test_periodic_sliding_windows.py` |
 | Blood-volume-rate formulas | `blood_volume_rate.py` | `pipelines/blood_volume_rate/`; `test_blood_volume_rate.py`, pipeline dependency test |
 | Shared statistics/Fourier utilities | `math/` | search call sites; `test_calculations_math.py` and affected pipeline tests |
-| CPU/GPU behavior | `compute_backend.py`, `vessel_segments/sampling/transforms.py` and `streaming.py` | topology transform/chunk tests and benchmark snapshot |
+| CPU/GPU behavior | `compute_backend.py`, `vessel_segments/sampling/transforms.py` and `streaming.py` | topology transform/chunk tests |
 
 ## Velocity calculation ownership
 

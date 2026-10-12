@@ -202,10 +202,10 @@ class SegmentFftAccumulator:
         active_pixels = cupy.any(cupy.isfinite(flattened), axis=0)
         if int(cupy.count_nonzero(active_pixels)) == 0:
             return
-        interpolated = _gpu_fourier_resample_axis0(
+        interpolated = interpft_axis0(
             flattened[:, active_pixels],
             self.time_count + 1,
-            cupy,
+            array_module=cupy,
         )[:-1]
         magnitude_active = cupy.abs(
             cupy.fft.fft(interpolated, axis=0)
@@ -231,36 +231,6 @@ class SegmentFftAccumulator:
         )
         self.unmasked[output_slice] = cupy.asnumpy(unmasked).T
         self.masked[output_slice] = cupy.asnumpy(masked).T
-
-
-def _gpu_fourier_resample_axis0(values, target_length: int, cupy):
-    """CuPy equivalent of SciPy's real Fourier resampling along axis zero."""
-
-    source_length = int(values.shape[0])
-    if source_length == 0:
-        raise ValueError("interpft requires a non-empty frame axis.")
-    if target_length <= 0:
-        raise ValueError("interpft target_length must be positive.")
-    if target_length == source_length:
-        return values.copy()
-
-    spectrum = cupy.fft.rfft(values, axis=0)
-    output_spectrum = cupy.zeros(
-        (target_length // 2 + 1, *spectrum.shape[1:]),
-        dtype=spectrum.dtype,
-    )
-    common_length = min(source_length, int(target_length))
-    nyquist_stop = common_length // 2 + 1
-    output_spectrum[:nyquist_stop] = spectrum[:nyquist_stop]
-    if common_length % 2 == 0:
-        nyquist_index = common_length // 2
-        if target_length < source_length:
-            output_spectrum[nyquist_index] *= cupy.float32(2.0)
-        else:
-            output_spectrum[nyquist_index] *= cupy.float32(0.5)
-    result = cupy.fft.irfft(output_spectrum, n=target_length, axis=0)
-    result *= cupy.float32(target_length / source_length)
-    return result
 
 
 def _gpu_nanmean_axis1(values, cupy, *, mask=None):

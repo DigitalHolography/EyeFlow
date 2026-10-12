@@ -33,7 +33,6 @@ Read only the context needed for the task:
 | `src/utils/` | Process-wide logging; keep domain and orchestration behavior out of this small shared layer |
 | `src/app_settings.py` / `default_settings.json` | Persisted settings behavior / fresh-install defaults |
 | `test/` | Unit, numerical-reference, pipeline-integration, schema, UI-controller, and launcher tests |
-| `benchmarks/` | Checked-in performance/parity observations, not an automated test suite |
 | `.github/workflows/release.yml` | Tag-triggered Windows release and installer publication; it is not the test workflow |
 
 ## Execution in one view
