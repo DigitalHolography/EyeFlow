@@ -20,7 +20,7 @@ from input_output.schema import (
     VesselMasks,
 )
 from pipeline_engine.context import PipelineState
-from pipelines.velocity.cardiac_cycle import detect_source_cardiac_cycles
+from pipelines.velocity.cardiac_cycle import detect_velocity_cardiac_cycles
 from pipelines.velocity.models import (
     RetinalVelocity,
     RetinalVelocityData,
@@ -38,37 +38,26 @@ from pipelines.velocity.signal_processing import build_velocity
 
 
 class RetinalVelocityTests(unittest.TestCase):
-    def test_moments_detector_receives_raw_frequency(self):
-        with patch(
-            "pipelines.velocity.cardiac_cycle.cardiac_cycles_from_available_vessel",
-            return_value=(_cardiac_cycle(), "artery"),
-        ) as detector:
-            detect_source_cardiac_cycles(_source_data())
-        artery_frequency, vein_frequency = detector.call_args.args
-        np.testing.assert_allclose(artery_frequency, np.sqrt(2.0))
-        np.testing.assert_allclose(vein_frequency, np.sqrt(2.0))
+    def test_detector_receives_each_workflows_unfiltered_signed_physical_velocity(self):
+        for method, scale in (("doppler_moments", 1.0), ("frequency_bands", 1e-4)):
+            with self.subTest(method=method):
+                data = replace(
+                    _retinal_velocity_data(np.ones((6, 3, 3), dtype=np.float32)),
+                    artery=_vessel_signals((np.arange(6, dtype=np.float32) - 2) * scale),
+                    vein=_vessel_signals((3 - np.arange(6, dtype=np.float32)) * scale),
+                    provenance={"velocity_estimation_method": method},
+                )
+                with patch(
+                    "pipelines.velocity.cardiac_cycle.cardiac_cycles_from_available_vessel",
+                    return_value=(_cardiac_cycle(), "artery"),
+                ) as detector:
+                    detect_velocity_cardiac_cycles(data, dt_seconds=0.02)
+                artery, vein = detector.call_args.args
+                self.assertIs(artery, data.artery.velocity)
+                self.assertIs(vein, data.vein.velocity)
+                self.assertEqual(detector.call_args.kwargs["dt_seconds"], 0.02)
 
-    def test_bands_detector_receives_raw_calibrated_ratio(self):
-        source = _source_data()
-        low = np.full(source.image_maps.moment0.shape, 2.0, dtype=np.float32)
-        high = np.full_like(low, 6.0)
-        low[0] = 0.0
-        source = replace(
-            source,
-            image_maps=ImageMaps(None, None, band_lf=low, band_hf=high),
-            velocity_estimation_method="frequency_bands",
-            band_ratio_frequency_scale_hz=7.0,
-        )
-        with patch(
-            "pipelines.velocity.cardiac_cycle.cardiac_cycles_from_available_vessel",
-            return_value=(_cardiac_cycle(), "artery"),
-        ) as detector:
-            detect_source_cardiac_cycles(source)
-        artery_frequency, vein_frequency = detector.call_args.args
-        np.testing.assert_array_equal(artery_frequency, [0.0, 21.0, 21.0, 21.0, 21.0, 21.0])
-        np.testing.assert_array_equal(vein_frequency, artery_frequency)
-
-    def test_velocity_filter_does_not_reuse_frequency_detector_signal(self):
+    def test_continuous_velocity_filters_raw_signal_without_double_filtering(self):
         cycle = _cardiac_cycle()
         cycle.systole.signal_filtered = np.full(6, 999.0, dtype=np.float32)
         data = _retinal_velocity_data(np.ones((6, 3, 3), dtype=np.float32))
@@ -129,7 +118,7 @@ class RetinalVelocityTests(unittest.TestCase):
                 side_effect=estimator,
             ),
             patch(
-                "pipelines.velocity.runner.detect_source_cardiac_cycles",
+                "pipelines.velocity.runner.detect_velocity_cardiac_cycles",
                 return_value=(analysis, "artery"),
             ),
             patch(
