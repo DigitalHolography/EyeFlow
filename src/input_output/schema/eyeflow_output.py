@@ -74,17 +74,12 @@ class VesselSegmentationOutputPaths:
 
 
 @dataclass(frozen=True)
-class CapillarySegmentationOutputPaths:
-    analysis_zones: str
-
-
-@dataclass(frozen=True)
 class SegmentationOutputPaths:
     optic_disc: OpticDiscSegmentationOutputPaths
     artery: VesselSegmentationOutputPaths
     vein: VesselSegmentationOutputPaths
     pixel_pitch_m: str
-    capillary: CapillarySegmentationOutputPaths
+    gaps: str
 
 
 @dataclass(frozen=True)
@@ -183,9 +178,7 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
             delta_radius=f"{root}/Vein/DeltaRadius/value",
         ),
         pixel_pitch_m=f"{root}/PixelPitch_m/value",
-        capillary=CapillarySegmentationOutputPaths(
-            analysis_zones=f"{root}/Capillary/analysis_zones",
-        ),
+        gaps=f"{root}/Gaps/value",
     )
 
 

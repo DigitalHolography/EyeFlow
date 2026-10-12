@@ -13,6 +13,7 @@ from .holodoppler import (
     HD_BAND_LF_PATH,
     HD_MOMENT0_PATH,
     HD_MOMENT2_PATH,
+    HD_SPECTOGRAMS_PATH,
     HOLODOPPLER_LAYOUT,
     HolodopplerSource,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "HD_BAND_LF_PATH",
     "HD_MOMENT0_PATH",
     "HD_MOMENT2_PATH",
+    "HD_SPECTOGRAMS_PATH",
     "HOLODOPPLER_LAYOUT",
     "DopplerViewMetadata",
     "DopplerViewSource",

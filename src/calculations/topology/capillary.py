@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy import ndimage as ndi
+
+GAPS_CUTOFF_DIAMETER_WIDTH_FRACTION = 0.8
+GAPS_VESSEL_DILATION_RADIUS_PIXELS = 3
 
 
 def capillary_analysis_zones(
@@ -10,10 +14,13 @@ def capillary_analysis_zones(
     optic_disc_mask: np.ndarray,
     choroid_vessel_mask: np.ndarray,
 ) -> np.ndarray:
-    """Return the complement of three aligned, binarized exclusion masks.
+    """Return central gaps outside dilated vessels and the optic disc.
 
     Inputs and output use native ``(y, x)`` coordinates. A true output pixel
-    belongs to the capillary analysis support. Inputs are never mutated.
+    belongs to the capillary analysis support. Retinal and choroid vessels
+    are dilated by three pixels using one pass of a 7x7 square footprint.
+    The optic disc is excluded without dilation. Support is restricted to an image-centered
+    circle with diameter 80% of the image width. Inputs are never mutated.
     """
     masks = []
     for name, mask in (
@@ -30,4 +37,17 @@ def capillary_analysis_zones(
                 f"got {value.shape}."
             )
         masks.append(value)
-    return ~(masks[0] | masks[1] | masks[2])
+    ny, nx = masks[0].shape
+    if ny < 1 or nx < 1:
+        raise ValueError("Gap masks must have positive image dimensions.")
+    footprint_width = 2 * GAPS_VESSEL_DILATION_RADIUS_PIXELS + 1
+    vessels = ndi.binary_dilation(
+        masks[0] | masks[2],
+        structure=np.ones((footprint_width, footprint_width), dtype=bool),
+        iterations=1,
+        border_value=0,
+    )
+    y, x = np.ogrid[:ny, :nx]
+    radius = GAPS_CUTOFF_DIAMETER_WIDTH_FRACTION * nx / 2.0
+    cutoff_disc = (x - nx / 2.0) ** 2 + (y - ny / 2.0) ** 2 <= radius**2
+    return cutoff_disc & ~(vessels | masks[1])
