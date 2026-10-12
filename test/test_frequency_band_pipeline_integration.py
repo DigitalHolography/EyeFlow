@@ -8,15 +8,24 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import pytest
 
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
 
 
-def test_frequency_band_run_produces_physical_downstream_outputs() -> None:
+@pytest.mark.parametrize("legacy_spectrograms_group", [False, True])
+def test_frequency_band_run_produces_physical_downstream_outputs(legacy_spectrograms_group) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         holo = _write_frequency_band_run(Path(temp_dir))
+        if legacy_spectrograms_group:
+            hd_path = Path(temp_dir) / holo.stem / f"{holo.stem}_HD/h5/{holo.stem}_HD_output.h5"
+            with h5py.File(hd_path, "a") as hd:
+                group = hd.create_group("spectrograms")
+                group.create_group("longtimes")
+                group.create_group("singlebeat")
+                group.create_dataset("spectral_cube_parameters", data="{}")
         available, missing = load_pipeline_catalog()
         assert not {
             "velocity",

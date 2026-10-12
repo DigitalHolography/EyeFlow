@@ -50,7 +50,11 @@ numeric 4-D dataset with exported axes `(time, freq, height, width)`. The spelli
 `spectograms` was incorrect. It replaces the previous stand-in `band_2_0_6000`
 source. `ImageMaps.spectograms` retains its existing internal field name and
 holds the lazy HDF5 dataset for both velocity workflows, or `None` if it is
-absent. Source assembly
+absent. Legacy HD exports may instead have a `/spectrograms` group containing
+`longtimes`, `singlebeat`, and `spectral_cube_parameters`; that group is not the
+4-D video and is treated as an unavailable optional source. Existing moments
+and band-ratio workflows continue in both cases. Present datasets with invalid
+rank or dtype still fail validation. Source assembly
 checks rank and dtype without reading the full volume. Height/width orientation
 is pending verification: preserve the exported ordering, and do not infer a
 transpose from shape or apply the DV mask-alignment swap to this volume yet.

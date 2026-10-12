@@ -81,10 +81,13 @@ class HolodopplerSource(TypedSource):
         return dataset
 
     def optional_spectograms_dataset(self):
-        """Return exported spectra when present; older HD files remain supported."""
-        if HD_SPECTOGRAMS_PATH not in self._reader:
+        """Return the optional 4-D dataset, ignoring absent or legacy group exports."""
+        try:
+            return self.spectograms_dataset()
+        except KeyError:
+            # Older HD exports use /spectrograms as a group (longtimes,
+            # singlebeat, parameters), not the new frequency-resolved video.
             return None
-        return self.spectograms_dataset()
 
     def frequency_band_datasets(self):
         """Return the exact low/high PSD bands used by the ratio estimator.
