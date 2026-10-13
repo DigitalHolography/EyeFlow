@@ -177,7 +177,14 @@ class SegmentMapOutputTests(unittest.TestCase):
                 list(artery_masks.attrs["dimDesc"]),
             )
             self.assertEqual(np.bool_, artery_masks.dtype)
-            self.assertEqual("lzf", artery_maps.compression)
+            self.assertEqual("gzip", artery_maps.compression)
+            self.assertEqual(4, artery_maps.compression_opts)
+            self.assertTrue(artery_maps.shuffle)
+            self.assertEqual("gzip", artery_masks.compression)
+            self.assertEqual(4, artery_masks.compression_opts)
+            self.assertTrue(artery_masks.shuffle)
+            self.assertEqual("gzip", vein_maps.compression)
+            self.assertEqual("gzip", vein_masks.compression)
             self.assertEqual((4, 3, 1, 1, 1, 1), artery_maps.chunks)
 
 

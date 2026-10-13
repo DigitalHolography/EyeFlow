@@ -21,13 +21,48 @@ from input_output.writers.h5 import (  # noqa: E402
     initialize_output_h5,
     metric_value,
     set_attr_safe,
+    spatial_map_h5_options,
     write_value_dataset,
 )
+from input_output.schema import EyeFlowOutputPaths  # noqa: E402
+from input_output.schema.eyeflow_output import spatial_map_output_paths  # noqa: E402
 from app_settings import app_version  # noqa: E402
 from pipeline_engine.base import DatasetValue  # noqa: E402
 
 
 class H5WriterTests(unittest.TestCase):
+    def test_spatial_maps_use_gzip_without_changing_other_datasets(self) -> None:
+        schema = EyeFlowOutputPaths.active()
+        map_paths = spatial_map_output_paths(schema)
+        self.assertEqual(9, len(map_paths))
+        self.assertEqual((256, 256), spatial_map_h5_options((1024, 768))["chunks"])
+        values = np.full((4, 5), np.nan, dtype=np.float32)
+        with h5py.File("spatial_maps.h5", "w", driver="core", backing_store=False) as h5file:
+            for path in map_paths:
+                if path == schema.segmentation.optic_disc.mask:
+                    data = np.zeros((4, 5), dtype=bool)
+                elif path == schema.segmentation.artery.branch_label_map:
+                    data = np.arange(20, dtype=np.int32).reshape(4, 5)
+                else:
+                    data = values
+                write_value_dataset(h5file, path, (data, {"unit": "test"}))
+                dataset = h5file[path]
+                self.assertEqual("gzip", dataset.compression)
+                self.assertEqual(4, dataset.compression_opts)
+                self.assertTrue(dataset.shuffle)
+                self.assertEqual((4, 5), dataset.chunks)
+                self.assertEqual("test", dataset.attrs["unit"])
+                np.testing.assert_array_equal(dataset[()], data)
+
+            write_value_dataset(h5file, "other/map", values)
+            self.assertIsNone(h5file["other/map"].compression)
+            write_value_dataset(
+                h5file,
+                schema.analysis.fRMS_avg,
+                DatasetValue(values, h5_options={"compression": "lzf"}),
+            )
+            self.assertEqual("lzf", h5file[schema.analysis.fRMS_avg].compression)
+
     def test_output_version_uses_real_package_version_not_environment_override(self) -> None:
         with patch.dict("os.environ", {"EYEFLOW_VERSION": "9.9-test"}):
             with h5py.File("version_writer_test.h5", "w", driver="core", backing_store=False) as h5file:

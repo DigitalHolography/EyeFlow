@@ -10,10 +10,18 @@ import h5py
 import numpy as np
 
 from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
+from ..schema.eyeflow_output import EyeFlowOutputPaths, spatial_map_output_paths
 from ..payloads import dataset_parts
 
 SCRATCH_CHUNK_CACHE_BYTES = 128 * 1024 * 1024
 SCRATCH_BLOCK_BYTES = 64 * 1024 * 1024
+_SPATIAL_MAP_PATHS = frozenset(
+    path.strip("/") for path in spatial_map_output_paths(EyeFlowOutputPaths.active())
+)
+
+
+def _gzip_h5_options() -> dict[str, object]:
+    return {"compression": "gzip", "compression_opts": 4, "shuffle": True}
 
 
 @contextmanager
@@ -38,11 +46,7 @@ def scratch_h5(*, purpose: str, filename_prefix: str) -> Iterator[h5py.File]:
 
 def profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
     """Use lossless compression with chunks aligned to one segment profile."""
-    options: dict[str, object] = {
-        "compression": "gzip",
-        "compression_opts": 4,
-        "shuffle": True,
-    }
+    options = _gzip_h5_options()
     if len(shape) not in (4, 5) or not all(shape):
         return options
 
@@ -57,7 +61,8 @@ def profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
 
 
 def velocity_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
-    options: dict[str, object] = {"compression": "lzf", "shuffle": True}
+    """Compress each spatial/temporal segment-map chunk without losing NaNs."""
+    options = _gzip_h5_options()
     if len(shape) in (6, 7) and all(shape):
         options["chunks"] = (
             (shape[0], shape[1], 1, 1, 1, 1)
@@ -68,12 +73,19 @@ def velocity_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
 
 
 def segment_mask_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
-    options: dict[str, object] = {
-        "dtype": np.bool_, "compression": "gzip", "compression_opts": 4,
-        "shuffle": True,
-    }
+    options = {"dtype": np.bool_, **_gzip_h5_options()}
     if len(shape) == 4 and all(shape):
         options["chunks"] = (shape[0], shape[1], 1, 1)
+    return options
+
+
+def spatial_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
+    """Compress a 2-D image in bounded spatial tiles for partial reads."""
+    if len(shape) != 2:
+        raise ValueError("Spatial map datasets must be two-dimensional.")
+    options = _gzip_h5_options()
+    if all(shape):
+        options["chunks"] = (min(shape[0], 256), min(shape[1], 256))
     return options
 
 
@@ -153,6 +165,13 @@ def write_value_dataset(group: h5py.Group, key: str, value) -> None:
         del target_group[dataset_key]
 
     payload, ds_attrs = _normalize_dataset_payload(data, ds_attrs)
+    if (
+        h5_options is None
+        and isinstance(payload, np.ndarray)
+        and payload.ndim == 2
+        and normalize_h5_path(key) in _SPATIAL_MAP_PATHS
+    ):
+        h5_options = spatial_map_h5_options(payload.shape)
     dataset = _create_dataset(
         target_group,
         dataset_key,

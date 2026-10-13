@@ -197,6 +197,9 @@ class DisplacementOutputTests(unittest.TestCase):
             x_sum_profile = h5[x_sum_profile_path]
             y_sum_profile = h5[y_sum_profile_path]
             displacement_map = h5[displacement_map_path]
+            self.assertEqual("gzip", displacement_map.compression)
+            self.assertEqual(4, displacement_map.compression_opts)
+            self.assertTrue(displacement_map.shuffle)
             amplitude_profile = h5[amplitude_profile_path]
             asymmetry_profile = h5[asymmetry_profile_path]
 

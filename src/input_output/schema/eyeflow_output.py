@@ -331,3 +331,16 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     meta_root="Meta",
     blood_volume_rate=_blood_volume_rate_paths("Processing/BloodVolumeRate"),
 )
+
+
+def spatial_map_output_paths(schema: EyeFlowOutputPaths) -> frozenset[str]:
+    """HDF5 datasets containing published two-dimensional image maps."""
+    segmentation = schema.segmentation
+    paths = {
+        schema.analysis.fRMS_avg,
+        schema.analysis.fRMS_bkg_avg,
+        segmentation.optic_disc.mask,
+    }
+    for vessel in (segmentation.artery, segmentation.vein):
+        paths.update((vessel.mask, vessel.branch_label_map, vessel.segment_map))
+    return frozenset(paths)
