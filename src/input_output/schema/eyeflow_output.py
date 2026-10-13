@@ -142,6 +142,12 @@ class EyeFlowOutputPaths:
     lowrank_waveform_decomposition_root: str
     meta_root: str
     blood_volume_rate: BloodVolumeRateOutputPaths
+    spectrograms_spatial_average: str
+    spectrograms_spatial_median: str
+    spectrograms_masked: str
+    spectrograms_masked_per_beat: str
+    spectrograms_masked_per_beat_band_limited: str
+    spectrograms_masked_per_beat_svd_continuous: str
 
     @staticmethod
     def active(name: str | None = None) -> "EyeFlowOutputPaths":
@@ -351,4 +357,10 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     ),
     meta_root="Meta",
     blood_volume_rate=_blood_volume_rate_paths("Processing/BloodVolumeRate"),
+    spectrograms_spatial_average="Processing/Spectrograms/SpatialAverage",
+    spectrograms_spatial_median="Processing/Spectrograms/SpatialMedian",
+    spectrograms_masked="Processing/Spectrograms/Gaps/Raw",
+    spectrograms_masked_per_beat="Processing/Spectrograms/Gaps/PerBeat/Raw",
+    spectrograms_masked_per_beat_band_limited="Processing/Spectrograms/Gaps/PerBeat/BandLimited",
+    spectrograms_masked_per_beat_svd_continuous="Processing/Spectrograms/Gaps/PerBeat/SVDContinuous",
 )

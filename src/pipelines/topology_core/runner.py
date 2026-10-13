@@ -130,6 +130,13 @@ def _prepare_capillary_zones(inputs) -> tuple[np.ndarray | None, OpticDisc]:
     ), optic_disc
 
 
+def optional_capillary_zones(ctx) -> np.ndarray | None:
+    """Return validated native support, or None when its DV inputs are unavailable."""
+    if ctx.state.get(CAPILLARY_ANALYSIS_ZONES_STATE) is None:
+        return None
+    return capillary_zones(ctx)
+
+
 def capillary_zones(ctx) -> np.ndarray:
     """Return native, read-only support produced by ``capillary_analysis_zones``."""
     value = ctx.state.get(CAPILLARY_ANALYSIS_ZONES_STATE)
@@ -158,6 +165,7 @@ __all__ = [
     "CAPILLARY_ANALYSIS_ZONES_STATE",
     "TOPOLOGY_CORE_STATE",
     "capillary_zones",
+    "optional_capillary_zones",
     "prepared_topologies",
     "run_topology_core",
 ]

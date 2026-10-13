@@ -64,8 +64,9 @@ class HolodopplerSource(TypedSource):
     def spectograms_dataset(self):
         """Return lazy quantitative spectra in exported (time, freq, height, width) order.
 
-        Spatial orientation is pending verification. Do not transpose or
-        materialize this volume when assembling the input maps.
+        Keep the dataset lazy and in raw export order during source assembly.
+        Gap preprocessing aligns each frame with the EF lower-left (x, y)
+        frame by flipping spatial Y then swapping the two spatial axes.
         """
         dataset = self._dataset(HD_SPECTOGRAMS_PATH)
         if dataset.ndim != 4:

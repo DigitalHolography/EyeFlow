@@ -21,8 +21,8 @@ from pipelines.topology_core.runner import capillary_zones, run_topology_core
 
 
 @pytest.fixture
-def source_pair(tmp_path):
-    shape = (41, 61)
+def source_pair(tmp_path, request):
+    shape = getattr(request, "param", (41, 61))
     with (
         h5py.File(tmp_path / "hd.h5", "w") as hd,
         h5py.File(tmp_path / "dv.h5", "w") as dv,
@@ -81,6 +81,36 @@ def _reference_zones(retinal, choroid, optic_disc):
     y, x = np.ogrid[:ny, :nx]
     cutoff = (x - nx / 2.0) ** 2 + (y - ny / 2.0) ** 2 <= (0.4 * nx) ** 2
     return cutoff & ~excluded
+
+
+@pytest.mark.parametrize("source_pair", [(41, 61), (61, 61)], indirect=True)
+def test_dv_logits_read_yx_and_publish_gap_exclusion_with_one_y_flip(source_pair, tmp_path):
+    hd, dv = source_pair
+    height, width = hd["moment0"].shape[-2:]
+    # This asymmetric vessel position distinguishes transpose and Y inversion,
+    # including the square case where dimensions cannot reveal axis mistakes.
+    vessel_y, vessel_x = 15, 35
+    logits = np.full((height, width), -2, dtype=np.float32)
+    logits[vessel_y, vessel_x] = 0.25
+    dv.create_dataset(DV_RETINAL_VESSEL_LOGITS_PATH, data=logits)
+    dv.create_dataset(DV_CHOROID_VESSEL_MASK_PATH, data=np.zeros_like(logits))
+    ctx = _ctx(hd, dv)
+    native = ctx.inputs.dv.as_dopplerview().retinal_vessel_mask()
+    np.testing.assert_array_equal(native, logits > 0.1)
+    assert native[vessel_y, vessel_x]
+    assert not native[vessel_x, vessel_y]
+    assert not native[height - 1 - vessel_y, vessel_x]
+
+    metrics = run_topology_core(ctx)
+    schema = EyeFlowOutputPaths.active()
+    with h5py.File(tmp_path / "out.h5", "w") as output:
+        PipelineH5Output(output).write_many(metrics)
+        gaps = output[schema.segmentation.gaps]
+        assert gaps.shape == (width, height)
+        # Native (y=15, x=35) becomes EF (x=35, y=height-1-15).
+        assert not gaps[vessel_x, height - 1 - vessel_y]
+        assert gaps[vessel_x, vessel_y]  # A second/missing flip would exclude here.
+        assert gaps[vessel_y, height - 1 - vessel_x]  # A transpose would exclude here.
 
 
 @pytest.mark.parametrize("swapped", [False, True])
@@ -199,3 +229,27 @@ def test_capillary_zones_are_owned_by_existing_hidden_topology_pipeline():
     assert "capillary_analysis_zones" in descriptors["topology_core"].dag_produces
     assert not any(item.name.startswith("capillary") for item in [*available, *missing])
     assert "topology_core" in PipelineDAG(available).dependencies_of("velocity_analysis")
+
+
+@pytest.mark.parametrize("empty", [False, True])
+def test_shared_topology_publishes_gap_support_without_running_spectral_analysis(
+    source_pair, tmp_path, empty,
+):
+    hd, dv = source_pair
+    shape = hd["moment0"].shape[-2:]
+    logits = np.ones(shape) if empty else np.zeros(shape)
+    dv.create_dataset(DV_RETINAL_VESSEL_LOGITS_PATH, data=logits)
+    dv.create_dataset(DV_CHOROID_VESSEL_MASK_PATH, data=np.zeros(shape))
+    yy, xx = np.indices(shape)
+    frame = (100 * yy + xx).astype(np.float32)
+    hd.create_dataset("spectrograms", data=np.stack([
+        np.stack([frame, frame + 5]), np.stack([frame + 10, frame + 15]),
+    ]))
+    metrics = run_topology_core(_ctx(hd, dv))
+    schema = EyeFlowOutputPaths.active()
+    with h5py.File(tmp_path / "out.h5", "w") as output:
+        PipelineH5Output(output).write_many(metrics)
+        assert schema.segmentation.artery.mask in output
+        assert schema.segmentation.gaps in output
+        assert schema.spectrograms_masked not in output
+        assert bool(np.any(output[schema.segmentation.gaps][:])) is not empty
