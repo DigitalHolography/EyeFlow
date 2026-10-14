@@ -177,23 +177,6 @@ def _fourier_resample_real_axis0(values, target_length: int, xp):
     return result
 
 
-def band_limited_ifft_abs(
-    spectrum,
-    output_length: int,
-    harmonic_count: int,
-) -> np.ndarray:
-    fft_values = np.asarray(spectrum, dtype=np.complex64).reshape(-1)
-    if output_length <= 0:
-        raise ValueError("output_length must be positive.")
-    if harmonic_count < 1:
-        raise ValueError("harmonic_count must be positive.")
-    count = min(int(harmonic_count), int(output_length), fft_values.size)
-    band_limited = fft_values[:count].copy() * 2.0
-    band_limited[0] = fft_values[0]
-    result = np.abs(np.fft.ifft(band_limited, n=int(output_length)))
-    return result.astype(np.float32, copy=False)
-
-
 def _copy_resized_spectrum(
     spectrum: np.ndarray,
     resized: np.ndarray,

@@ -140,8 +140,8 @@ def run_velocity_analysis(ctx) -> dict[str, object]:
                     segment_map_outputs,
                 )
         schema = EyeFlowOutputPaths.active()
-        artery_path = schema.artery_per_beat_safe.velocity_signal
-        vein_path = schema.vein_per_beat_safe.velocity_signal
+        artery_path = schema.artery_per_beat_filtered.segment_velocity_signal_band_limited
+        vein_path = schema.vein_per_beat_filtered.segment_velocity_signal_band_limited
         if artery_path in velocity_outputs and vein_path in velocity_outputs:
             with _optional_artifact_export("velocity-signal figure"):
                 export_velocity_signals(

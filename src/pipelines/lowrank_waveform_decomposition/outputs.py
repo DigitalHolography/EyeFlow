@@ -200,21 +200,21 @@ def _source_paths(
     vein_flag: bool,
 ) -> tuple[tuple[str, str, str | None], ...]:
     sources: list[tuple[str, str, str | None]] = [
-        ("artery", "raw", schema.artery_per_beat.segment_velocity_signal),
+        ("artery", "raw", schema.artery_per_beat_filtered.segment_velocity_signal),
         (
             "artery",
             "bandlimited",
-            schema.artery_per_beat.segment_velocity_signal_band_limited,
+            schema.artery_per_beat_filtered.segment_velocity_signal_band_limited,
         ),
     ]
     if vein_flag:
         sources.extend(
             (
-                ("vein", "raw", schema.vein_per_beat.segment_velocity_signal),
+                ("vein", "raw", schema.vein_per_beat_filtered.segment_velocity_signal),
                 (
                     "vein",
                     "bandlimited",
-                    schema.vein_per_beat.segment_velocity_signal_band_limited,
+                    schema.vein_per_beat_filtered.segment_velocity_signal_band_limited,
                 ),
             )
         )

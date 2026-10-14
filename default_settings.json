@@ -35,5 +35,6 @@
     }
   },
   "band_ratio_frequency_scale_hz": 1.0,
+  "band_limited_harmonics": 12,
   "ui_mode": "minimal"
 }

@@ -57,7 +57,7 @@ def _aggregate_segment_values(values) -> np.ndarray:
 def per_beat_segment_analysis(
     segment_velocity_signals,
     cycle_boundary_indexes,
-    band_limited_signal_harmonic_count: int,
+    band_limited_harmonics: int,
     *,
     index_base: int | None = None,
 ) -> PerBeatSegmentAnalysisResult:
@@ -66,7 +66,7 @@ def per_beat_segment_analysis(
         sample = per_beat_signal_analysis(
             np.full(segments.shape[2], np.nan, dtype=np.float32),
             cycle_boundary_indexes,
-            band_limited_signal_harmonic_count,
+            band_limited_harmonics,
             index_base=index_base,
         )
         return PerBeatSegmentAnalysisResult(
@@ -75,7 +75,7 @@ def per_beat_segment_analysis(
     first = per_beat_signal_analysis(
         segments[0, 0, :],
         cycle_boundary_indexes,
-        band_limited_signal_harmonic_count,
+        band_limited_harmonics,
         index_base=index_base,
     )
     outputs = _empty_segment_outputs(segments.shape, first)
@@ -84,7 +84,7 @@ def per_beat_segment_analysis(
         outputs,
         segments,
         cycle_boundary_indexes,
-        band_limited_signal_harmonic_count,
+        band_limited_harmonics,
         index_base,
     )
     return PerBeatSegmentAnalysisResult(*outputs)

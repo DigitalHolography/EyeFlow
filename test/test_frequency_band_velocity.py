@@ -477,6 +477,7 @@ def test_frequency_band_output_units_and_human_label_are_physical() -> None:
     }
     analysis = SimpleNamespace(
         provenance=provenance,
+        dt_seconds=0.01,
         continuous=lambda _vessel, raw=False: values,
     )
 

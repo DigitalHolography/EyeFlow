@@ -25,7 +25,7 @@ VELOCITY_SCALE_MM_S = np.float32(1000 * 1000 * 2 * 8.52e-7 / 0.25)
 LOWPASS_FREQ_HZ = np.float32(15.0)
 ANNULUS_INNER_RADIUS = np.float32(0.10)
 ANNULUS_OUTER_RADIUS = np.float32(0.35)
-BAND_LIMITED_SIGNAL_HARMONIC_COUNT = 13
+BAND_LIMITED_HARMONICS = 12
 DV_ARTERY_MASK_PATH = "segmentation/Retina/artery_mask"
 DV_VEIN_MASK_PATH = "segmentation/Retina/vein_mask"
 
@@ -233,8 +233,8 @@ def run(ctx) -> ProcessResult:
         "poc_annulus_inner_radius": float(ANNULUS_INNER_RADIUS),
         "poc_annulus_outer_radius": float(ANNULUS_OUTER_RADIUS),
         "poc_lowpass_freq_hz": float(LOWPASS_FREQ_HZ),
-        "poc_band_limited_signal_harmonic_count": int(
-            BAND_LIMITED_SIGNAL_HARMONIC_COUNT
+        "poc_band_limited_harmonics": int(
+            BAND_LIMITED_HARMONICS
         ),
         "poc_hd_moment0_path": HD_MOMENT0_PATH,
         "poc_hd_moment2_path": HD_MOMENT2_PATH,
@@ -345,7 +345,7 @@ def _per_beat_waveforms(signal: np.ndarray, systole_indexes: np.ndarray):
     return per_beat_signal_analysis(
         signal,
         systole_indexes,
-        BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
+        BAND_LIMITED_HARMONICS,
         index_base=0,
     )
 

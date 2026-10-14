@@ -284,6 +284,7 @@ def _extract_velocity_metrics(f: h5py.File, params: dict[str, Any]) -> None:
     schema = EyeFlowOutputPaths.active()
     # Try different possible paths
     artery_paths = [
+        schema.artery_per_beat_filtered.velocity_signal_band_limited,
         schema.artery_per_beat.velocity_signal,
         "Artery/VelocityPerBeat/VelocitySignalPerBeat/value",
         "Artery/velocity/signal/value",
@@ -302,6 +303,7 @@ def _extract_velocity_metrics(f: h5py.File, params: dict[str, Any]) -> None:
                 break
     
     vein_paths = [
+        schema.vein_per_beat_filtered.velocity_signal_band_limited,
         schema.vein_per_beat.velocity_signal,
         "Vein/VelocityPerBeat/VelocitySignalPerBeat/value",
         "Vein/velocity/signal/value",

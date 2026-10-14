@@ -318,6 +318,7 @@ class RunServiceTests(unittest.TestCase):
             progress_controller = SimpleNamespace(reset_run_log=Mock())
             settings_store = SimpleNamespace(
                 load_band_ratio_frequency_scale_hz=Mock(return_value=3.0),
+                load_band_limited_harmonics=Mock(return_value=7),
             )
             app = SimpleNamespace(
                 input_controller=SimpleNamespace(
@@ -340,8 +341,22 @@ class RunServiceTests(unittest.TestCase):
             self.assertIsNotNone(spec)
             assert spec is not None
             self.assertEqual(3.0, spec.band_ratio_frequency_scale_hz)
+            self.assertEqual(7, spec.band_limited_harmonics)
+            settings_store.load_band_limited_harmonics.assert_called_once_with()
             settings_store.load_band_ratio_frequency_scale_hz.assert_called_once_with()
             progress_controller.reset_run_log.assert_called_once()
+
+    def test_shared_harmonic_setting_reaches_runtime_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            holo = _write_input(Path(temp_dir))
+            spec = resolve_run_spec(
+                input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
+                band_limited_harmonics=5,
+            )
+            result = execute_run(spec)
+            self.assertTrue(result.succeeded, result.failures)
+            with h5py.File(result.outputs[0], "r") as output:
+                self.assertEqual(5, output.attrs["band_limited_harmonics"])
 
     def test_pipeline_options_default_validate_and_preserve_empty_selection(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

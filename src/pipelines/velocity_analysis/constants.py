@@ -1,6 +1,5 @@
 """Velocity-analysis defaults."""
 
-LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT = 13
 # Number of uniformly spaced radii across the longest lateral FOV dimension.
 NUMBER_OF_RADII_IN_FOV = 25
 SEGMENT_INNER_RADIUS_FRAC = 0.10

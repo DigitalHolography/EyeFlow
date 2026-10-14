@@ -83,9 +83,10 @@ pipeline, the runner passes its explicit moments result to gap analysis once,
 producing `/Processing/Spectrograms/Gaps/PerBeat/Raw` with `(phase, freq, beat)` axes.
 It uses 128 linear phase samples without bridging NaNs. Missing real moments
 timing warns and skips per-beat analysis while other products remain available.
-Independent `PerBeat/BandLimited` keeps DC and temporal frequencies <=15 Hz
-via shared normalized FFT helpers, using each original beat duration and
-periodic phase boundaries. Incomplete beat/bin series remain unchanged with
+Independent `PerBeat/BandLimited` keeps DC plus the configured non-DC harmonics
+(default 12) via the shared bandlimiting API in signed mode, using
+periodic phase boundaries. Original durations define each effective Hz cutoff.
+Incomplete beat/bin series remain unchanged with
 a warning. `PerBeat/SVDContinuous` concatenates the raw beats as `(beat * phase, freq)`,
 subtracts the temporal mean per bin, removes the first two modes, restores the
 mean, and retains the 2-D `(time, freq)` continuous output. Sample spacing is

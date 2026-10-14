@@ -134,7 +134,19 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
         assert np.max(raw[:]) > 7
         assert "velocity_quantity" not in raw.attrs
         assert raw.name == "/Processing/Spectrograms/Gaps/PerBeat/Raw"
-        assert output[schema.spectrograms_masked_per_beat_band_limited].attrs["filter_cutoff_hz"] == 15
+        assert output[schema.spectrograms_masked_per_beat_band_limited].attrs["band_limit_harmonics"] == 12
+        assert output[schema.spectrograms_masked_per_beat_band_limited].attrs["band_limit_reconstruction"] == "signed"
+        for root in ("Processing", "ProcessingAlt"):
+            assert f"{root}/VelocityPerBeat" not in output
+            assert f"{root}/VelocityPerBeatSafe" not in output
+            assert f"{root}/Velocity/Continuous/Global/BandLimited" not in output
+            for paths in (schema.artery_per_beat, schema.artery_per_beat_filtered):
+                signal = output[processing_path(paths.velocity_signal, root)]
+                limited = output[processing_path(paths.velocity_signal_band_limited, root)]
+                assert signal.shape == limited.shape
+                assert limited.attrs["band_limit_harmonics"] == 12
+                assert limited.attrs["band_limit_reconstruction"] == "matlab_magnitude"
+                assert limited.attrs["source_path"].lstrip("/") == signal.name.lstrip("/")
         svd = output[schema.spectrograms_masked_per_beat_svd_continuous]
         assert svd.name == "/Processing/Spectrograms/Gaps/PerBeat/SVDContinuous"
         assert "Processing/Spectrograms/Gaps/PerBeat/SVD" not in output

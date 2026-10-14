@@ -232,28 +232,28 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
         schema = EyeFlowOutputPaths.active()
         self.assertEqual("eyeflow_v2", schema.name)
         self.assertEqual(
-            "Processing/Velocity/global/Artery/BandLimited/value",
-            schema.analysis.retinal_artery_velocity_signal_band_limited,
+            "Processing/Velocity/Continuous/Global/Filtered/ArterySignal",
+            schema.analysis.retinal_artery_velocity_signal_filtered,
         )
         self.assertEqual(
-            "Processing/Velocity/global/Vein/BandLimited/value",
-            schema.analysis.retinal_vein_velocity_signal_band_limited,
+            "Processing/Velocity/Continuous/Global/Filtered/VeinSignal",
+            schema.analysis.retinal_vein_velocity_signal_filtered,
         )
         self.assertEqual(
-            "Processing/Velocity/segments/Artery/Raw/value",
+            "Processing/Velocity/Continuous/Segments/Raw/ArterySignal",
             schema.artery_segments.velocity_signal,
         )
         self.assertEqual(
-            "Processing/Velocity/segments/Artery/BandLimited/value",
-            schema.artery_segments.velocity_signal_band_limited,
+            "Processing/Velocity/Continuous/Segments/Filtered/ArterySignal",
+            schema.artery_segments.velocity_signal_filtered,
         )
         self.assertEqual(
-            "Processing/Velocity/segments/Vein/Raw/value",
+            "Processing/Velocity/Continuous/Segments/Raw/VeinSignal",
             schema.vein_segments.velocity_signal,
         )
         self.assertEqual(
-            "Processing/Velocity/segments/Vein/BandLimited/value",
-            schema.vein_segments.velocity_signal_band_limited,
+            "Processing/Velocity/Continuous/Segments/Filtered/VeinSignal",
+            schema.vein_segments.velocity_signal_filtered,
         )
         self.assertEqual(
             "Processing/Maps/VelocityAverageMasked/value",
@@ -285,8 +285,8 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
             {
                 schema.analysis.retinal_artery_velocity_signal,
                 schema.analysis.retinal_vein_velocity_signal,
-                schema.analysis.retinal_artery_velocity_signal_band_limited,
-                schema.analysis.retinal_vein_velocity_signal_band_limited,
+                schema.analysis.retinal_artery_velocity_signal_filtered,
+                schema.analysis.retinal_vein_velocity_signal_filtered,
             },
             set(velocity),
         )

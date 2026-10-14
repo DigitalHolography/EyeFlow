@@ -28,8 +28,8 @@ def processing_path(path: str, root: str) -> str:
 class DopplerViewAnalysisOutputPaths:
     retinal_artery_velocity_signal: str
     retinal_vein_velocity_signal: str
-    retinal_artery_velocity_signal_band_limited: str
-    retinal_vein_velocity_signal_band_limited: str
+    retinal_artery_velocity_signal_filtered: str
+    retinal_vein_velocity_signal_filtered: str
     velocity_map_avg_masked: str
     fRMS_avg: str
     fRMS_bkg_avg: str
@@ -40,7 +40,7 @@ class DopplerViewAnalysisOutputPaths:
 @dataclass(frozen=True)
 class SegmentVelocityOutputPaths:
     velocity_signal: str | None
-    velocity_signal_band_limited: str | None = None
+    velocity_signal_filtered: str | None = None
     velocity_map_per_segment: str | None = None
     segments: str | None = None
 
@@ -127,8 +127,8 @@ class EyeFlowOutputPaths:
     vein_segments: SegmentVelocityOutputPaths
     artery_per_beat: VelocityPerBeatOutputPaths
     vein_per_beat: VelocityPerBeatOutputPaths
-    artery_per_beat_safe: SegmentVelocityOutputPaths
-    vein_per_beat_safe: SegmentVelocityOutputPaths
+    artery_per_beat_filtered: VelocityPerBeatOutputPaths
+    vein_per_beat_filtered: VelocityPerBeatOutputPaths
     segmentation: SegmentationOutputPaths
     artery_velocity_profiles: VelocityProfileOutputPaths
     vein_velocity_profiles: VelocityProfileOutputPaths
@@ -262,13 +262,13 @@ CARDIAC_CYCLE_OUTPUT = CardiacCycleOutputPaths(
 EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     name=EYEFLOW_V2_OUTPUT_SCHEMA,
     analysis=DopplerViewAnalysisOutputPaths(
-        retinal_artery_velocity_signal="Processing/Velocity/global/Artery/Raw/value",
-        retinal_vein_velocity_signal="Processing/Velocity/global/Vein/Raw/value",
-        retinal_artery_velocity_signal_band_limited=(
-            "Processing/Velocity/global/Artery/BandLimited/value"
+        retinal_artery_velocity_signal="Processing/Velocity/Continuous/Global/Raw/ArterySignal",
+        retinal_vein_velocity_signal="Processing/Velocity/Continuous/Global/Raw/VeinSignal",
+        retinal_artery_velocity_signal_filtered=(
+            "Processing/Velocity/Continuous/Global/Filtered/ArterySignal"
         ),
-        retinal_vein_velocity_signal_band_limited=(
-            "Processing/Velocity/global/Vein/BandLimited/value"
+        retinal_vein_velocity_signal_filtered=(
+            "Processing/Velocity/Continuous/Global/Filtered/VeinSignal"
         ),
         velocity_map_avg_masked="Processing/Maps/VelocityAverageMasked/value",
         fRMS_avg="Processing/Maps/FRMSAverage/value",
@@ -277,64 +277,52 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         time_per_beat="Processing/CardiacCycle/Systole/CycleDurationSeconds/value",
     ),
     artery_segments=SegmentVelocityOutputPaths(
-        velocity_signal="Processing/Velocity/segments/Artery/Raw/value",
-        velocity_signal_band_limited=(
-            "Processing/Velocity/segments/Artery/BandLimited/value"
+        velocity_signal="Processing/Velocity/Continuous/Segments/Raw/ArterySignal",
+        velocity_signal_filtered=(
+            "Processing/Velocity/Continuous/Segments/Filtered/ArterySignal"
         ),
         velocity_map_per_segment="Processing/VelocityMapPerSegment/Artery",
         segments="Segmentation/Artery/Segments",
     ),
     vein_segments=SegmentVelocityOutputPaths(
-        velocity_signal="Processing/Velocity/segments/Vein/Raw/value",
-        velocity_signal_band_limited=(
-            "Processing/Velocity/segments/Vein/BandLimited/value"
+        velocity_signal="Processing/Velocity/Continuous/Segments/Raw/VeinSignal",
+        velocity_signal_filtered=(
+            "Processing/Velocity/Continuous/Segments/Filtered/VeinSignal"
         ),
         velocity_map_per_segment="Processing/VelocityMapPerSegment/Vein",
         segments="Segmentation/Vein/Segments",
     ),
     artery_per_beat=VelocityPerBeatOutputPaths(
-        velocity_signal="Processing/VelocityPerBeat/Artery/Raw/value",
-        velocity_signal_fft_abs="Processing/VelocityPerBeat/Artery/FFTAbs/value",
-        velocity_signal_fft_arg="Processing/VelocityPerBeat/Artery/FFTPhase/value",
-        velocity_signal_band_limited=(
-            "Processing/VelocityPerBeat/Artery/BandLimited/value"
-        ),
-        segment_velocity_signal=(
-            "Processing/VelocityPerBeat/Artery/Segments/Raw/value"
-        ),
-        segment_velocity_signal_band_limited=(
-            "Processing/VelocityPerBeat/Artery/Segments/BandLimited/value"
-        ),
+        velocity_signal="Processing/Velocity/PerBeat/Global/Raw/ArterySignal",
+        velocity_signal_fft_abs="Processing/Velocity/PerBeat/Global/Raw/FFTAbs/ArterySignal",
+        velocity_signal_fft_arg="Processing/Velocity/PerBeat/Global/Raw/FFTPhase/ArterySignal",
+        velocity_signal_band_limited="Processing/Velocity/PerBeat/Global/Raw/BandLimited/ArterySignal",
+        segment_velocity_signal="Processing/Velocity/PerBeat/Segments/Raw/ArterySignal",
+        segment_velocity_signal_band_limited="Processing/Velocity/PerBeat/Segments/Raw/BandLimited/ArterySignal",
     ),
     vein_per_beat=VelocityPerBeatOutputPaths(
-        velocity_signal="Processing/VelocityPerBeat/Vein/Raw/value",
-        velocity_signal_fft_abs="Processing/VelocityPerBeat/Vein/FFTAbs/value",
-        velocity_signal_fft_arg="Processing/VelocityPerBeat/Vein/FFTPhase/value",
-        velocity_signal_band_limited=(
-            "Processing/VelocityPerBeat/Vein/BandLimited/value"
-        ),
-        segment_velocity_signal=(
-            "Processing/VelocityPerBeat/Vein/Segments/Raw/value"
-        ),
-        segment_velocity_signal_band_limited=(
-            "Processing/VelocityPerBeat/Vein/Segments/BandLimited/value"
-        ),
+        velocity_signal="Processing/Velocity/PerBeat/Global/Raw/VeinSignal",
+        velocity_signal_fft_abs="Processing/Velocity/PerBeat/Global/Raw/FFTAbs/VeinSignal",
+        velocity_signal_fft_arg="Processing/Velocity/PerBeat/Global/Raw/FFTPhase/VeinSignal",
+        velocity_signal_band_limited="Processing/Velocity/PerBeat/Global/Raw/BandLimited/VeinSignal",
+        segment_velocity_signal="Processing/Velocity/PerBeat/Segments/Raw/VeinSignal",
+        segment_velocity_signal_band_limited="Processing/Velocity/PerBeat/Segments/Raw/BandLimited/VeinSignal",
     ),
-    artery_per_beat_safe=SegmentVelocityOutputPaths(
-        velocity_signal=(
-            "Processing/VelocityPerBeatSafe/Artery/Segments/Raw/value"
-        ),
-        velocity_signal_band_limited=(
-            "Processing/VelocityPerBeatSafe/Artery/Segments/BandLimited/value"
-        ),
+    artery_per_beat_filtered=VelocityPerBeatOutputPaths(
+        velocity_signal="Processing/Velocity/PerBeat/Global/Filtered/ArterySignal",
+        velocity_signal_fft_abs="Processing/Velocity/PerBeat/Global/Filtered/FFTAbs/ArterySignal",
+        velocity_signal_fft_arg="Processing/Velocity/PerBeat/Global/Filtered/FFTPhase/ArterySignal",
+        velocity_signal_band_limited="Processing/Velocity/PerBeat/Global/Filtered/BandLimited/ArterySignal",
+        segment_velocity_signal="Processing/Velocity/PerBeat/Segments/Filtered/ArterySignal",
+        segment_velocity_signal_band_limited="Processing/Velocity/PerBeat/Segments/Filtered/BandLimited/ArterySignal",
     ),
-    vein_per_beat_safe=SegmentVelocityOutputPaths(
-        velocity_signal=(
-            "Processing/VelocityPerBeatSafe/Vein/Segments/Raw/value"
-        ),
-        velocity_signal_band_limited=(
-            "Processing/VelocityPerBeatSafe/Vein/Segments/BandLimited/value"
-        ),
+    vein_per_beat_filtered=VelocityPerBeatOutputPaths(
+        velocity_signal="Processing/Velocity/PerBeat/Global/Filtered/VeinSignal",
+        velocity_signal_fft_abs="Processing/Velocity/PerBeat/Global/Filtered/FFTAbs/VeinSignal",
+        velocity_signal_fft_arg="Processing/Velocity/PerBeat/Global/Filtered/FFTPhase/VeinSignal",
+        velocity_signal_band_limited="Processing/Velocity/PerBeat/Global/Filtered/BandLimited/VeinSignal",
+        segment_velocity_signal="Processing/Velocity/PerBeat/Segments/Filtered/VeinSignal",
+        segment_velocity_signal_band_limited="Processing/Velocity/PerBeat/Segments/Filtered/BandLimited/VeinSignal",
     ),
     segmentation=_segmentation_paths("Segmentation"),
     artery_velocity_profiles=_velocity_profile_paths(

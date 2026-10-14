@@ -5,9 +5,10 @@ from __future__ import annotations
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
-from ..models import RetinalVelocity
+from pipelines.signal_settings import band_limited_harmonics
 from utils.logger import Logger
 
+from ..models import RetinalVelocity
 from .per_beat import DEFAULT_PHASE_SAMPLE_COUNT, gap_spectrograms_per_beat
 from .signal_processing import (
     DEFAULT_GAP_SVD_REMOVED_MODES,
@@ -61,7 +62,9 @@ def run_gap_analysis(ctx, moments: RetinalVelocity | None) -> dict[str, object]:
     }
     attrs.pop("nameID", None)
     metrics = {schema.spectrograms_masked_per_beat: (per_beat, attrs)}
-    band_limited = band_limit_gap_spectrograms(per_beat, moments.cycle_durations_seconds)
+    band_limited = band_limit_gap_spectrograms(
+        per_beat, moments.cycle_durations_seconds, harmonics=band_limited_harmonics(ctx),
+    )
     filtered_attrs = {
         **attrs,
         "source_path": "/" + schema.spectrograms_masked_per_beat,
@@ -69,10 +72,14 @@ def run_gap_analysis(ctx, moments: RetinalVelocity | None) -> dict[str, object]:
     }
     metrics[schema.spectrograms_masked_per_beat_band_limited] = (band_limited.filtered, {
         **filtered_attrs,
-        "definition": "periodic per-beat temporal FFT low-pass retaining DC through 15 Hz",
-        "filter_method": "normalized_rfft_harmonic_truncation_irfft",
+        "definition": "periodic per-beat Fourier reconstruction retaining DC and configured harmonics",
+        "filter_method": "fourier_harmonic_truncation",
+        "band_limit_harmonics": band_limited.harmonics,
+        "band_limit_method": "fourier_harmonic_truncation",
+        "band_limit_includes_DC": True,
+        "band_limit_reconstruction": "signed",
         "filter_axis": "phase_independently_per_frequency_and_beat",
-        "filter_cutoff_hz": band_limited.cutoff_hz,
+        "filter_effective_cutoff_hz_per_beat": band_limited.highest_harmonic / moments.cycle_durations_seconds,
         "filter_preserve_DC": True,
         "filter_boundary": "periodic_within_each_beat",
         "filter_highest_retained_harmonic_per_beat": band_limited.highest_harmonic,

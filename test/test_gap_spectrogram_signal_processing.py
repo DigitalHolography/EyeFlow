@@ -1,4 +1,4 @@
-"""Physical temporal FFT cutoffs and centered SVD across concatenated beats."""
+"""Shared harmonic-count bandlimiting and centered SVD across concatenated beats."""
 
 import numpy as np
 import pytest
@@ -10,26 +10,26 @@ from pipelines.velocity.gaps.signal_processing import (
 )
 
 
-def test_fft_cutoff_uses_original_beat_duration_and_preserves_dc():
+def test_fft_harmonic_count_is_independent_of_beat_duration_and_preserves_dc():
     phase = np.arange(128) / 128
-    # Harmonic 10 is 20 Hz for a half-second beat, 10 Hz for a one-second beat.
+    # Identical phase harmonics are retained for beats of different durations.
     slow = np.sin(2 * np.pi * 3 * phase)
     tenth = np.cos(2 * np.pi * 10 * phase)
     values = np.broadcast_to((20 + slow + tenth)[:, None, None], (128, 2, 2)).copy()
     result = band_limit_gap_spectrograms(values, np.array([0.5, 1.0]))
-    np.testing.assert_allclose(result.filtered[:, 0, 0], 20 + slow, atol=3e-6)
+    np.testing.assert_allclose(result.filtered[:, 0, 0], values[:, 0, 0], atol=3e-6)
     np.testing.assert_allclose(result.filtered[:, 0, 1], values[:, 0, 1], atol=3e-6)
     np.testing.assert_allclose(result.filtered.mean(axis=0), 20, atol=3e-6)
-    np.testing.assert_array_equal(result.highest_harmonic, [7, 15])
+    np.testing.assert_array_equal(result.highest_harmonic, [12, 12])
     assert result.filtered.dtype == np.float32
 
 
-def test_fft_keeps_inclusive_15_hz_boundary_and_dc_only_when_cutoff_is_zero():
+def test_fft_keeps_twelfth_harmonic_and_dc_only_when_count_is_zero():
     phase = np.arange(128) / 128
-    values = (5 + np.cos(2 * np.pi * 15 * phase) + np.cos(2 * np.pi * 16 * phase))[:, None, None]
+    values = (5 + np.cos(2 * np.pi * 12 * phase) + np.cos(2 * np.pi * 13 * phase))[:, None, None]
     result = band_limit_gap_spectrograms(values, np.array([1.0]))
-    np.testing.assert_allclose(result.filtered[:, 0, 0], 5 + np.cos(2 * np.pi * 15 * phase), atol=1e-6)
-    np.testing.assert_allclose(band_limit_gap_spectrograms(values, np.array([1.0]), cutoff_hz=0).filtered, 5, atol=1e-6)
+    np.testing.assert_allclose(result.filtered[:, 0, 0], 5 + np.cos(2 * np.pi * 12 * phase), atol=1e-6)
+    np.testing.assert_allclose(band_limit_gap_spectrograms(values, np.array([1.0]), harmonics=0).filtered, 5, atol=1e-6)
 
 
 def test_fft_incomplete_series_stays_unchanged_without_affecting_other_bins_or_beats():

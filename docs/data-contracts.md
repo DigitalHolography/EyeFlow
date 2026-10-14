@@ -145,16 +145,18 @@ timing or the detector's full-record fallback (`cardiac_cycle_source="none"`)
 skips per-beat gap analysis with a warning, preserving shared preprocessing.
 
 `/Processing/Spectrograms/Gaps/PerBeat/BandLimited` independently filters the
-interpolated raw beats with the shared normalized real FFT utilities. Retain
-DC and temporal frequencies up to and including 15 Hz. For a beat of duration
-`T`, phase sample spacing is `T / 128` seconds and the highest retained harmonic
-is `min(floor(15 * T), 64)`, with a numerical tolerance at exact cutoffs. Each
+interpolated raw beats with the shared `calculations.math.bandlimiting.band_limit`
+API in `signed` reconstruction mode. Retain DC plus the configured number of
+non-DC harmonics, default 12, capped at Nyquist. For a beat of duration
+`T`, phase sample spacing is `T / 128` seconds; retaining harmonic `H` gives
+an effective cutoff of `H / T` Hz. The count does not depend on duration. Each
 frequency bin is filtered separately within each periodic beat. Incomplete
 phase series remain unchanged with a warning; do not fill NaNs or let them
 poison unrelated series. Signed inverse-FFT results are retained without abs
 or post-filter clipping, preserving DC. This differs from continuous velocity's
 fourth-order 15 Hz Butterworth filter and the existing velocity per-beat
-configurable harmonic-count representation.
+MATLAB magnitude reconstruction. The persisted `band_limited_harmonics`
+setting controls both velocity and gaps and excludes DC.
 
 `/Processing/Spectrograms/Gaps/PerBeat/SVDContinuous` independently appends the raw
 interpolated beats in chronological order to form `(beat * phase, freq)`,
@@ -361,7 +363,7 @@ and checks for collisions before renaming.
 `EyeFlowOutputPaths.active()` defines the current `eyeflow_v2` paths. Important
 families are:
 
-- `/Processing/Velocity/global`, `/segments`, and `/VelocityPerBeat`;
+- `/Processing/Velocity/{Continuous,PerBeat}/{Global,Segments}/{Raw,Filtered}`;
 - `/Processing/Heartbeat` and `/Processing/FrequencyMaps`;
 - `/Processing/VelocityProfiles` and `/VelocityProfilesFFT`;
 - `/Processing/Metrics/{waveform_shape_metrics,absolute_waveform_metrics,lowrank_waveform_decomposition}`;
@@ -386,8 +388,59 @@ band-ratio workflow. `/Segmentation` and acquisition `/Meta` remain shared.
 Per-beat durations are published once per workflow at
 `/Processing/CardiacCycle/Systole/CycleDurationSeconds/value` as a `(beat,)`
 vector. The
-`/Processing/VelocityPerBeat` family contains beat-aligned velocity waveforms,
+`/Processing/Velocity/PerBeat` family contains beat-aligned velocity waveforms,
 not a duplicate duration dataset.
+
+Velocity signal datasets are named `ArterySignal` and `VeinSignal` directly,
+without a `/value` suffix. Both `/Processing` and `/ProcessingAlt` use the same
+structure. Continuous global signals have `(frame,)` axes and continuous
+segment signals `(frame, branch, radius)`. `Filtered` is the fourth-order
+15 Hz Butterworth forward/backward filter applied once to each continuous
+recording, using MATLAB-style 12-sample odd reflection padding. Recordings
+with at most 12 samples retain the established unchanged-signal fallback.
+Both raw and filtered recordings are subdivided using the same zero-based
+cardiac boundaries. Global per-beat axes remain `(beat, sample)` and segment
+per-beat axes `(sample, beat, branch, radius)`.
+
+Each per-beat `Raw` and `Filtered` group additionally has
+`BandLimited/{ArterySignal,VeinSignal}`. Its reconstruction retains DC plus
+12 harmonics by default, doubles retained non-DC coefficients, and takes
+`abs(ifft(...))` to match EyeFlowMatlab. Magnitude reconstruction can change
+the temporal mean and removes signs; it differs from the signed mode used
+for gap power. Continuous velocity has no `BandLimited` output. Per-beat
+global FFT magnitude and phase remain available at
+`{Raw,Filtered}/{FFTAbs,FFTPhase}/{ArterySignal,VeinSignal}`.
+Quadrants use `Quadrants/<region>/<signal>` below the corresponding signal
+representation group. `VelocityPerBeat` and `VelocityPerBeatSafe` are no
+longer emitted; no duplicate safe calculation remains. Waveform metric
+consumers use the filtered per-beat branch, including its bandlimited
+representation. Blood-volume rate uses raw per-beat segments.
+
+The explicit calculation API is:
+
+```python
+from calculations.math.bandlimiting import band_limit
+
+velocity = band_limit(beat, harmonics=12, reconstruction="matlab_magnitude")
+power = band_limit(beat_power, harmonics=12, reconstruction="signed", axis=0)
+```
+
+`harmonics=0` retains only DC; counts above Nyquist clamp to Nyquist. Signed
+reconstruction retains Nyquist once, while the MATLAB magnitude recipe doubles
+every retained non-DC coefficient, including Nyquist. The app setting
+`band_limited_harmonics` is validated before execution and shared by GUI/CLI,
+both velocity workflows, and gap processing. API callers can also specify the
+count directly. Filtering/reconstruction mode, count, timing, units, and axes
+are recorded in output attributes.
+
+The numerical API default and integer-scalar validation belong to
+`calculations/math/bandlimiting.py`. Application defaults and JSON setting
+validation belong to `app_settings.py`; the run service validates settings
+before replacing an output directory and pipelines pass the count explicitly
+to calculations. Neither layer imports the other to resolve its default.
+Tests keep the scientific API, application fallback, and shipped JSON defaults
+aligned, while cold-import tests enforce that settings do not load calculations
+or SciPy and bandlimiting does not load application modules.
 
 `/Processing/Maps/VelocityAverageMasked/value` is the temporal mean of the
 background-subtracted velocity used by the vessel waveform analysis. The
