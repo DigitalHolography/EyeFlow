@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import numpy as np
 
+from calculations.math import nanmedian
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.signal_settings import band_limited_harmonics
 from utils.logger import Logger
 
 from ..models import RetinalVelocity
+from .metrics import pack_spectrum_metrics
 from .per_beat import DEFAULT_PHASE_SAMPLE_COUNT, gap_spectrograms_per_beat
 from .signal_processing import (
     DEFAULT_GAP_SVD_REMOVED_MODES,
@@ -62,6 +64,24 @@ def run_gap_analysis(ctx, moments: RetinalVelocity | None) -> dict[str, object]:
     }
     attrs.pop("nameID", None)
     metrics = {schema.spectrograms_masked_per_beat: (per_beat, attrs)}
+    median_attrs = {
+        key: value for key, value in attrs.items() if key not in {"phase_samples", "phase_endpoint"}
+    }
+    median_attrs.update({
+        "dimDesc": ["freq"],
+        "source_path": "/" + schema.spectrograms_masked_per_beat,
+        "definition": "pooled median of raw per-beat gap power over phase and beats",
+        "aggregation_method": "nanmedian",
+        "aggregation_axes": ["phase", "beat"],
+        "aggregation_weighting": "equal_weight_per_valid_phase_beat_sample",
+        "nonfinite_value_policy": "ignore_NaN_all_NaN_frequency_returns_NaN",
+        "source_phase_sample_count": per_beat.shape[0],
+        "source_beat_count": per_beat.shape[2],
+        "valid_sample_count_per_frequency": np.count_nonzero(~np.isnan(per_beat), axis=(0, 2)),
+    })
+    spectrum = nanmedian(per_beat, axis=(0, 2))
+    metrics[schema.spectrograms_masked_time_aggregated_median] = (spectrum, median_attrs)
+    metrics.update(pack_spectrum_metrics(spectrum, source_attrs=median_attrs))
     band_limited = band_limit_gap_spectrograms(
         per_beat, moments.cycle_durations_seconds, harmonics=band_limited_harmonics(ctx),
     )

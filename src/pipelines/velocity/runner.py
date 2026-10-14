@@ -144,8 +144,7 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
     if not variants:
         raise RuntimeError(f"Neither velocity workflow completed: {failures}")
     if spectrum_outputs:
-        # Write after workflow cleanup, which can remove /Processing on failure.
-        # These spectra are shared products even though their parent is /Processing.
+        # Shared spectra live outside both workflow roots in /ProcessingSpectrograms.
         ctx.output.h5.write_many(spectrum_outputs)
         outputs.update(spectrum_outputs)
         moments = next(

@@ -107,16 +107,25 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
         np.testing.assert_array_equal(spectrum[:], expected)
         np.testing.assert_array_equal(output[schema.spectrograms_spatial_average][:], expected)
         np.testing.assert_array_equal(output[schema.spectrograms_spatial_median][:], expected)
-        assert spectrum.name == "/Processing/Spectrograms/Gaps/Raw"
+        assert spectrum.name == "/ProcessingSpectrograms/Gaps/Raw"
         assert "velocity_estimation_method" not in spectrum.attrs
-        assert "Processing/Velocity" in output
-        assert "ProcessingAlt/Velocity" in output
+        assert "ProcessingMoments/Velocity" in output
+        assert "ProcessingBandRatio/Velocity" in output
         assert "spectrogramsMasked" not in output
         assert "spectrogramsMaskedPerBeat" not in output
-        assert "ProcessingAlt/Spectrograms" not in output
+        assert "ProcessingBandRatio/Spectrograms" not in output
         raw = output[schema.spectrograms_masked_per_beat]
         boundaries = output[schema.cardiac_cycle.systolic_peak_frame_indices][:]
         assert raw.shape == (128, 3, len(boundaries) - 1)
+        median = output[schema.spectrograms_masked_time_aggregated_median]
+        assert median.shape == (3,)
+        np.testing.assert_array_equal(median[:], [7, 7, 7])
+        assert median.attrs["source_path"] == raw.name
+        assert "ProcessingBandRatio/Spectrograms/Gaps/TimeAggregated/Median" not in output
+        spectrum_metrics = output[schema.spectrograms_masked_time_aggregated_metrics_root]
+        assert len(spectrum_metrics) == 14
+        assert all(np.isnan(dataset[()]) for dataset in spectrum_metrics.values())  # Three bins.
+        assert "ProcessingBandRatio/Spectrograms/Gaps/TimeAggregated/Metrics" not in output
         for path, shape in (
             (schema.spectrograms_masked_per_beat_band_limited, raw.shape),
             (schema.spectrograms_masked_per_beat_svd_continuous, (128 * raw.shape[2], raw.shape[1])),
@@ -126,17 +135,17 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
             assert output[path].attrs["cycle_boundary_workflow"] == "doppler_moments"
         np.testing.assert_array_equal(raw.attrs["cycle_boundary_indices"], boundaries)
         band_boundary_path = processing_path(
-            schema.cardiac_cycle.systolic_peak_frame_indices, "ProcessingAlt",
+            schema.cardiac_cycle.systolic_peak_frame_indices, "ProcessingBandRatio",
         )
         assert not np.array_equal(
             boundaries, output[band_boundary_path][:],
         )
         assert np.max(raw[:]) > 7
         assert "velocity_quantity" not in raw.attrs
-        assert raw.name == "/Processing/Spectrograms/Gaps/PerBeat/Raw"
+        assert raw.name == "/ProcessingSpectrograms/Gaps/PerBeat/Raw"
         assert output[schema.spectrograms_masked_per_beat_band_limited].attrs["band_limit_harmonics"] == 12
         assert output[schema.spectrograms_masked_per_beat_band_limited].attrs["band_limit_reconstruction"] == "signed"
-        for root in ("Processing", "ProcessingAlt"):
+        for root in ("ProcessingMoments", "ProcessingBandRatio"):
             assert f"{root}/VelocityPerBeat" not in output
             assert f"{root}/VelocityPerBeatSafe" not in output
             assert f"{root}/Velocity/Continuous/Global/BandLimited" not in output
@@ -148,8 +157,8 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
                 assert limited.attrs["band_limit_reconstruction"] == "matlab_magnitude"
                 assert limited.attrs["source_path"].lstrip("/") == signal.name.lstrip("/")
         svd = output[schema.spectrograms_masked_per_beat_svd_continuous]
-        assert svd.name == "/Processing/Spectrograms/Gaps/PerBeat/SVDContinuous"
-        assert "Processing/Spectrograms/Gaps/PerBeat/SVD" not in output
+        assert svd.name == "/ProcessingSpectrograms/Gaps/PerBeat/SVDContinuous"
+        assert "ProcessingSpectrograms/Gaps/PerBeat/SVD" not in output
         assert list(svd.attrs["dimDesc"]) == ["time", "freq"]
         assert svd.attrs["source_beat_count"] == raw.shape[2]
         assert svd.attrs["phase_samples_per_beat"] == 128
@@ -189,13 +198,13 @@ def test_gap_skips_keep_velocity_without_moments_or_with_empty_support(tmp_path,
     with h5py.File(result.outputs[0], "r") as output:
         if empty_gaps:
             assert schema.spectrograms_masked not in output
-            assert "Processing/Velocity" in output
+            assert "ProcessingMoments/Velocity" in output
         else:
             assert schema.spectrograms_masked in output
         assert schema.spectrograms_spatial_average in output
         assert schema.spectrograms_spatial_median in output
         assert schema.spectrograms_masked_per_beat not in output
-        assert "ProcessingAlt/Velocity" in output
+        assert "ProcessingBandRatio/Velocity" in output
 
 
 def test_shared_spectra_survive_moments_workflow_failure_under_processing(tmp_path):
@@ -220,11 +229,11 @@ def test_shared_spectra_survive_moments_workflow_failure_under_processing(tmp_pa
     assert result.succeeded, result.failures
     schema = EyeFlowOutputPaths.active()
     with h5py.File(result.outputs[0], "r") as output:
-        assert "Processing/Velocity" not in output
-        assert "ProcessingAlt/Velocity" in output
+        assert "ProcessingMoments/Velocity" not in output
+        assert "ProcessingBandRatio/Velocity" in output
         np.testing.assert_array_equal(output[schema.spectrograms_spatial_average][:], 7)
         np.testing.assert_array_equal(output[schema.spectrograms_spatial_median][:], 7)
-        assert "ProcessingAlt/Spectrograms" not in output
+        assert "ProcessingBandRatio/Spectrograms" not in output
 
 
 def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_beats(tmp_path):
@@ -265,8 +274,8 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
             "frequency_bands",
         ]
         for method, root in (
-            ("doppler_moments", "Processing"),
-            ("frequency_bands", "ProcessingAlt"),
+            ("doppler_moments", "ProcessingMoments"),
+            ("frequency_bands", "ProcessingBandRatio"),
         ):
             assert output[root].attrs["velocity_estimation_method"] == method
             assert output[root].attrs["cardiac_cycle_detection_method"] == method
@@ -319,7 +328,7 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
             schema.cardiac_cycle.systolic_cycle_duration_seconds,
         ):
             assert not np.array_equal(
-                output[path][:], output[processing_path(path, "ProcessingAlt")][:]
+                output[path][:], output[processing_path(path, "ProcessingBandRatio")][:]
             )
         for path in (
             schema.analysis.retinal_artery_velocity_signal,
@@ -327,7 +336,7 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
             schema.blood_volume_rate.artery.masked_edges,
         ):
             moments = output[path][:]
-            bands = output[processing_path(path, "ProcessingAlt")][:]
+            bands = output[processing_path(path, "ProcessingBandRatio")][:]
             assert moments.shape != bands.shape or not np.allclose(moments, bands, equal_nan=True)
     ef_dir = result.outputs[0].parent.parent
     assert all(path.name.startswith(f"{holo.stem}_") for path in ef_dir.rglob("*") if path.is_file())
@@ -335,8 +344,8 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
         assert list((ef_dir / "png" / folder).rglob("*.png"))
         assert list((ef_dir / "avi" / folder).rglob("*.avi"))
         assert list((ef_dir / "pdf" / folder).glob("*.pdf"))
-    moments = _extract_parameters_from_h5(result.outputs[0], processing_root="Processing")
-    bands = _extract_parameters_from_h5(result.outputs[0], processing_root="ProcessingAlt")
+    moments = _extract_parameters_from_h5(result.outputs[0], processing_root="ProcessingMoments")
+    bands = _extract_parameters_from_h5(result.outputs[0], processing_root="ProcessingBandRatio")
     assert (
         moments["Average_Arterial_Velocity"]["value"] != bands["Average_Arterial_Velocity"]["value"]
     )
@@ -365,7 +374,7 @@ def test_one_failed_workflow_preserves_other_outputs(tmp_path, failed_method, st
     def downstream(ctx):
         if stage == "downstream" and ctx.velocity_estimation_method == failed_method:
             # Exercise cleanup of a partial write and an already exported artifact.
-            ctx.output.h5.write("Processing/Partial/value", np.arange(3))
+            ctx.output.h5.write("ProcessingMoments/Partial/value", np.arange(3))
             raise ValueError("injected downstream failure")
         return run_absolute_waveform_metrics(ctx)
 
@@ -380,8 +389,8 @@ def test_one_failed_workflow_preserves_other_outputs(tmp_path, failed_method, st
     ):
         result = execute_run(spec)
     assert result.succeeded, result.failures
-    failed_root = "Processing" if failed_method == "doppler_moments" else "ProcessingAlt"
-    successful_root = "ProcessingAlt" if failed_method == "doppler_moments" else "Processing"
+    failed_root = "ProcessingMoments" if failed_method == "doppler_moments" else "ProcessingBandRatio"
+    successful_root = "ProcessingBandRatio" if failed_method == "doppler_moments" else "ProcessingMoments"
     with h5py.File(result.outputs[0], "r") as output:
         if stage == "downstream":
             schema = EyeFlowOutputPaths.active()
@@ -444,7 +453,7 @@ def test_pulse_export_failure_keeps_persisted_analysis_and_downstream_outputs(tm
     assert observed == ["doppler_moments", "frequency_bands"]
     with h5py.File(result.outputs[0], "r") as output:
         assert not json.loads(output.attrs["pipeline_failures"])
-        for root in ("Processing", "ProcessingAlt"):
+        for root in ("ProcessingMoments", "ProcessingBandRatio"):
             assert processing_path(schema.artery_per_beat.velocity_signal, root) in output
             assert processing_path(schema.blood_volume_rate.artery.masked_edges, root) in output
 
@@ -463,8 +472,8 @@ def test_malformed_input_skips_only_its_workflow(tmp_path, corruption):
             hd.create_dataset("band_1_9000_18000", data=np.ones((10, 64, 64)))
     result = execute_run(_spec(holo))
     assert result.succeeded, result.failures
-    failed_root = "Processing" if corruption == "moment_rank" else "ProcessingAlt"
-    successful_root = "ProcessingAlt" if corruption == "moment_rank" else "Processing"
+    failed_root = "ProcessingMoments" if corruption == "moment_rank" else "ProcessingBandRatio"
+    successful_root = "ProcessingBandRatio" if corruption == "moment_rank" else "ProcessingMoments"
     with h5py.File(result.outputs[0], "r") as output:
         assert failed_root not in output
         assert successful_root in output

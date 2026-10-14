@@ -28,9 +28,9 @@ def test_full_frame_mean_median_and_aligned_gap_mean_read_each_frame_once(tmp_pa
         np.testing.assert_allclose(mean[:], [[412 / 6], [824 / 6]])
         np.testing.assert_array_equal(median[:], [[100], [200]])
         np.testing.assert_array_equal(gap[:], [[6], [12]])
-        assert mean.name == "/Processing/Spectrograms/SpatialAverage"
-        assert median.name == "/Processing/Spectrograms/SpatialMedian"
-        assert gap.name == "/Processing/Spectrograms/Gaps/Raw"
+        assert mean.name == "/ProcessingSpectrograms/SpatialAverage"
+        assert median.name == "/ProcessingSpectrograms/SpatialMedian"
+        assert gap.name == "/ProcessingSpectrograms/Gaps/Raw"
         assert "spectrogramsMasked" not in output
         assert mean.dtype == median.dtype == gap.dtype == np.float32
         assert list(median.attrs["dimDesc"]) == ["time", "freq"]

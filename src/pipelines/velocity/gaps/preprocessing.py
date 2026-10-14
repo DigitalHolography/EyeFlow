@@ -96,8 +96,13 @@ def prepare_gap_spectrograms(spectrograms, analysis_zones: np.ndarray):
         "mask_application_dimDesc": ["x", "y"],
         "spectrogram_spatial_transform": "flip_D2_then_swap_D2_D3",
         "mask_reduction": (
-            "identity" if analysis_zones.shape == native_mask.shape else "all_true_in_2x2_block"
+            "identity"
+            if analysis_zones.shape == native_mask.shape
+            else "nearest_neighbor_interpolation"
         ),
+        "mask_interpolation_order": 0,
+        "mask_interpolation_grid": "pixel_centers",
+        "mask_target_shape_source": f"/{HD_SPECTOGRAMS_PATH} last two dimensions (height, width)",
         "gap_pixel_count": pixel_count,
         "frequency_bin_order": "HD_export_order",
         "negative_value_policy": "clamp_spatial_mean_to_zero",

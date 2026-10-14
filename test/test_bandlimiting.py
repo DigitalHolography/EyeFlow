@@ -136,7 +136,7 @@ def test_filtered_beats_subdivide_continuous_signal_then_follow_matlab_fft_recip
     assert schema.artery_per_beat_filtered.velocity_signal_band_limited in outputs
     assert not any("Safe" in path or path.endswith("/value") for path in outputs)
     for path in outputs:
-        assert processing_path(path, "ProcessingAlt").startswith("ProcessingAlt/Velocity/PerBeat/")
+        assert processing_path(path, "ProcessingBandRatio").startswith("ProcessingBandRatio/Velocity/PerBeat/")
     attrs = outputs[schema.artery_per_beat_filtered.velocity_signal_band_limited][1]
     assert attrs["band_limit_harmonics"] == 12
     assert attrs["band_limit_reconstruction"] == "matlab_magnitude"

@@ -78,7 +78,7 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             tuple(option.name for option in descriptor.options),
         )
         self.assertEqual(
-            "Processing/Metrics/absolute_waveform_metrics",
+            "ProcessingMoments/Metrics/absolute_waveform_metrics",
             EyeFlowOutputPaths.active().absolute_waveform_metrics_root,
         )
 

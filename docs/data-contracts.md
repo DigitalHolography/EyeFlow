@@ -68,11 +68,13 @@ The checked `260907_DEY_6` export (HD commit `340b1b3`) contains
 use `(640, 512, 512)` and `(512, 512)` respectively. HD preserves the spatial
 axis order when resizing spectra; comparison with resized LF maps confirms
 the same orientation for this example. `/Segmentation/Gaps/value` and shared
-topology state retain the original 512x512 grid. Only the velocity application
-mask is reduced to 256x256: each non-overlapping 2x2 block is a gap only if all
-four source pixels are gaps. Any vessel, disc, or outside-cutoff exclusion in
-the block excludes its reduced pixel. There is no averaging or interpolation
-of mask values. `calculations.topology.downsample_gap_zones` owns the reduction;
+topology state retain the original 512x512 grid. Gap support is interpolated
+to the actual last two `/spectrograms` dimensions `(height, width)`, using
+nearest-neighbor sampling of pixel centers (`order=0`, `grid_mode=True`).
+Arbitrary positive target dimensions and noninteger scale ratios are supported;
+matching grids use a copy. The mask stays Boolean and is not averaged or reduced
+using all-true blocks. `calculations.topology.downsample_gap_zones` owns this
+array transform and receives the target shape explicitly; it does not read HDF5.
 `pipelines.velocity.masks.gap_velocity_mask` adapts it to the video's spatial
 shape. Gap preprocessing now uses this application helper, then flips and
 transposes the reduced native mask into the same published `(x, y)` frame as
@@ -94,22 +96,22 @@ can ring and introduce negative undershoots. Linear resizing and frequency-bin
 averaging occur afterward and do not enforce nonnegativity.
 
 `pipelines/velocity/spectrograms.py` reads each HD spectral frame once and
-publishes `/Processing/Spectrograms/SpatialAverage` and
-`/Processing/Spectrograms/SpatialMedian` as `(time, freq)` arrays. These are
+publishes `/ProcessingSpectrograms/SpatialAverage` and
+`/ProcessingSpectrograms/SpatialMedian` as `(time, freq)` arrays. These are
 the arithmetic mean and median over every exported spatial pixel, independent
 of gap support. Any nonfinite pixel produces NaN for that reduction's
 time/frequency pair. Finite negative reductions are clamped to zero after
 aggregation. Frequency order and source power units are retained. Outputs are
 written after velocity-workflow failure cleanup, so shared spectra survive a
 failed moments workflow when the band workflow succeeds. They are produced
-once, with no `/ProcessingAlt/Spectrograms` duplicate.
+once, with no `/ProcessingBandRatio/Spectrograms` duplicate.
 
 `pipelines/velocity/gaps/preprocessing.py` prepares optional gap support for
 the same streaming reduction pass, which computes the arithmetic spatial mean
 of the exported band-power samples included by the application mask, for every
 time/frequency pair. Only included pixels enter the denominator; excluded
 pixels are not zero-filled. The velocity runner invokes this once using native
-gap support from `topology_core`, and publishes `/Processing/Spectrograms/Gaps/Raw`, with
+gap support from `topology_core`, and publishes `/ProcessingSpectrograms/Gaps/Raw`, with
 `dimDesc=["time", "freq"]`, preserving HD frequency-bin order. Finite negative
 spatial means are replaced with zero after averaging, before beat subdivision;
 individual pixel samples are not clipped before averaging.
@@ -117,9 +119,9 @@ Units are copied from the source dataset when supplied,
 otherwise `a.u.` with uncalibrated-power provenance. Float64 accumulation is
 serialized as float32 by the standard writer. Any nonfinite included sample
 produces NaN for its time/frequency pair; nonfinite excluded pixels have no
-effect. If native or conservatively reduced gap support is empty, log a
+effect. If native or interpolated gap support is empty, log a
 warning and skip the entire gap-analysis stage without reading spectral
-gap samples or writing `/Processing/Spectrograms/Gaps/Raw`. Full-frame spatial
+gap samples or writing `/ProcessingSpectrograms/Gaps/Raw`. Full-frame spatial
 outputs, segmentation, and other pipeline
 work remain available. An unavailable/legacy spectra source omits this
 product with a warning. Physical capillary velocity remains deferred.
@@ -132,7 +134,7 @@ is no separately registered gap pipeline. Velocity owns the declared
 `gap_spectrograms` and `gap_per_beat_spectrograms` products. Band-ratio timing
 never supplies substitute boundaries.
 
-`/Processing/Spectrograms/Gaps/PerBeat/Raw` contains `(phase, freq, beat)` spatial mean band
+`/ProcessingSpectrograms/Gaps/PerBeat/Raw` contains `(phase, freq, beat)` spatial mean band
 power using consecutive zero-based moments cycle boundaries. Each beat is
 linearly resampled to 128 phases in `[0, 1)`. The next boundary is included as
 an interpolation anchor, but its duplicated phase endpoint is not stored.
@@ -144,7 +146,38 @@ Spectra and moments signals must have identical frame counts. Missing moments
 timing or the detector's full-record fallback (`cardiac_cycle_source="none"`)
 skips per-beat gap analysis with a warning, preserving shared preprocessing.
 
-`/Processing/Spectrograms/Gaps/PerBeat/BandLimited` independently filters the
+`/ProcessingSpectrograms/Gaps/TimeAggregated/Median` contains a float32 `(freq,)`
+pooled median of `/ProcessingSpectrograms/Gaps/PerBeat/Raw` over its phase and
+beat axes. Ignore NaNs; a frequency with no valid samples remains NaN without
+an all-NaN warning. Every valid phase/beat sample has equal weight, with no beat
+duration weighting and no median-of-beat-medians reduction. Preserve frequency
+order and power units. Attributes record the source path, aggregation axes,
+weighting, source dimensions, and valid sample counts per frequency. Produce
+this shared dataset whenever raw per-beat gaps are available, with no
+`ProcessingBandRatio` duplicate or fallback to continuous/filtered gap spectra.
+
+`/ProcessingSpectrograms/Gaps/TimeAggregated/Metrics` analyzes that median
+spectrum in stored bin order and writes fourteen scalar datasets directly,
+without `/value` suffixes: `index_max1`, `max1`, `index_max2`, `max2`,
+`index_min1`, `min1`, `index_min2`, `min2`, `h0`, `h1`, `rho_h`, `A0`, `A1`, and `rho_A`.
+Peak 1 is the maximum over zero-based bins 0–15; peak 2 is the maximum over
+16–31. Include endpoints, ignore NaNs for peak selection, and choose the
+lowest index on ties. An all-NaN half has a NaN peak index and value. Valley
+indexes are fixed at 15 and 16; valley values are read directly from those bins.
+`h0=(max1+max2)/2`, `h1=(min1+min2)/2`, and `rho_h=h1/h0`, with NaN for a zero
+denominator. Means propagate missing inputs. `A0=h0*(index_max2-index_max1+1)`;
+`A1=sum(spectrum[index_max1:index_max2+1])`, propagating any NaN in that inclusive
+interval. `rho_A=A1/A0`, with NaN for a zero or missing denominator; a missing
+`A1` also propagates NaN. These are unweighted bin sums without wraparound or Hz-spacing
+weights. All values are float32; valid index values are integer-valued floats
+so missing indexes can be represented by NaN. Indexes, `rho_h`, and `rho_A` have unit `1`;
+other values retain the spectrum's power unit. Attributes record definitions,
+source, zero-based indexes, selection rules, and interval inclusion. A spectrum
+whose shape is not exactly `(32,)` produces all fourteen NaN metrics and logs a
+warning; the median and other gap products remain available. No alternative
+workflow copy is generated.
+
+`/ProcessingSpectrograms/Gaps/PerBeat/BandLimited` independently filters the
 interpolated raw beats with the shared `calculations.math.bandlimiting.band_limit`
 API in `signed` reconstruction mode. Retain DC plus the configured number of
 non-DC harmonics, default 12, capped at Nyquist. For a beat of duration
@@ -158,7 +191,7 @@ fourth-order 15 Hz Butterworth filter and the existing velocity per-beat
 MATLAB magnitude reconstruction. The persisted `band_limited_harmonics`
 setting controls both velocity and gaps and excludes DC.
 
-`/Processing/Spectrograms/Gaps/PerBeat/SVDContinuous` independently appends the raw
+`/ProcessingSpectrograms/Gaps/PerBeat/SVDContinuous` independently appends the raw
 interpolated beats in chronological order to form `(beat * phase, freq)`,
 subtracts each bin's temporal mean, removes the first two modes in descending
 singular-value order, and restores the mean. Persist the concatenated 2-D
@@ -251,12 +284,12 @@ Every run that schedules velocity attempts both workflows, independently:
 
 - `doppler_moments`: derives RMS frequency from moments, estimates local
   background, subtracts it with the established signed RMS rule, and converts
-  frequency to calibrated velocity in `mm/s`. Its outputs use `/Processing`.
+  frequency to calibrated velocity in `mm/s`. Its outputs use `/ProcessingMoments`.
 - `frequency_bands` (band ratio): computes `HF / LF` and converts it to RMS
   frequency with `fRMS_Hz = band_ratio_frequency_scale_hz * (HF / LF)`, then
   applies the same vessel-mask dilation, biharmonic background inpainting,
   signed background-difference, and frequency-to-velocity conversion. Its
-  outputs use `/ProcessingAlt`. The persisted calibration default is `1 Hz`
+  outputs use `/ProcessingBandRatio`. The persisted calibration default is `1 Hz`
   per ratio unit; quantity is `physical_velocity`, unit `mm/s`.
 
 `velocity_estimation_method` is no longer a selectable or persisted setting.
@@ -363,36 +396,41 @@ and checks for collisions before renaming.
 `EyeFlowOutputPaths.active()` defines the current `eyeflow_v2` paths. Important
 families are:
 
-- `/Processing/Velocity/{Continuous,PerBeat}/{Global,Segments}/{Raw,Filtered}`;
-- `/Processing/Heartbeat` and `/Processing/FrequencyMaps`;
-- `/Processing/VelocityProfiles` and `/VelocityProfilesFFT`;
-- `/Processing/Metrics/{waveform_shape_metrics,absolute_waveform_metrics,lowrank_waveform_decomposition}`;
-- `/Processing/SpatialGradientMetrics` for a directly selected spatial-gradient
-  target, and `/Processing/BloodVolumeRate` for blood-volume-rate products;
+- `/ProcessingMoments/Velocity/{Continuous,PerBeat}/{Global,Segments}/{Raw,Filtered}`;
+- `/ProcessingMoments/Heartbeat` and `/ProcessingMoments/FrequencyMaps`;
+- `/ProcessingMoments/VelocityProfiles` and `/VelocityProfilesFFT`;
+- `/ProcessingMoments/Metrics/{waveform_shape_metrics,absolute_waveform_metrics,lowrank_waveform_decomposition}`;
+- `/ProcessingMoments/SpatialGradientMetrics` for a directly selected spatial-gradient
+  target, and `/ProcessingMoments/BloodVolumeRate` for blood-volume-rate products;
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
 - `/Segmentation/Gaps/value` for central support outside dilated vessels and
   the optic disc, when its inputs are available;
-- `/Processing/Spectrograms/SpatialAverage` and `SpatialMedian` for full-frame
+- `/ProcessingSpectrograms/SpatialAverage` and `SpatialMedian` for full-frame
   spatial power reductions, shaped `(time, freq)`;
-- `/Processing/Spectrograms/Gaps/Raw` for shared spatial mean gap band power, shaped
+- `/ProcessingSpectrograms/Gaps/Raw` for shared spatial mean gap band power, shaped
   `(time, freq)`, when spectra and nonempty application support are available;
-- `/Processing/Spectrograms/Gaps/PerBeat/Raw` and `BandLimited` for moments-timed
+- `/ProcessingSpectrograms/Gaps/PerBeat/Raw` and `BandLimited` for moments-timed
   beat spectra and independent FFT filtering, shaped `(phase, freq, beat)`;
-- `/Processing/Spectrograms/Gaps/PerBeat/SVDContinuous` for SVD-filtered
+- `/ProcessingSpectrograms/Gaps/TimeAggregated/Median` for the NaN-aware median
+  pooled over raw phase/beat samples, shaped `(freq,)`;
+- `/ProcessingSpectrograms/Gaps/PerBeat/SVDContinuous` for SVD-filtered
   concatenated beats, shaped `(beat * phase, freq)` with `(time, freq)` axes;
 - `/Meta` for provenance and selected pass-through data.
 
-The `/ProcessingAlt` tree mirrors the selected `/Processing` families for the
-band-ratio workflow. `/Segmentation` and acquisition `/Meta` remain shared.
+The `/ProcessingBandRatio` tree mirrors the selected `/ProcessingMoments` families for the
+band-ratio workflow. Shared spectra have their own `/ProcessingSpectrograms` root
+and are not duplicated inside either workflow. `/Segmentation` and acquisition
+`/Meta` remain shared. These roots replace `/Processing` and `/ProcessingAlt`;
+new outputs do not emit aliases at the former paths.
 
 Per-beat durations are published once per workflow at
-`/Processing/CardiacCycle/Systole/CycleDurationSeconds/value` as a `(beat,)`
+`/ProcessingMoments/CardiacCycle/Systole/CycleDurationSeconds/value` as a `(beat,)`
 vector. The
-`/Processing/Velocity/PerBeat` family contains beat-aligned velocity waveforms,
+`/ProcessingMoments/Velocity/PerBeat` family contains beat-aligned velocity waveforms,
 not a duplicate duration dataset.
 
 Velocity signal datasets are named `ArterySignal` and `VeinSignal` directly,
-without a `/value` suffix. Both `/Processing` and `/ProcessingAlt` use the same
+without a `/value` suffix. Both `/ProcessingMoments` and `/ProcessingBandRatio` use the same
 structure. Continuous global signals have `(frame,)` axes and continuous
 segment signals `(frame, branch, radius)`. `Filtered` is the fourth-order
 15 Hz Butterworth forward/backward filter applied once to each continuous
@@ -442,11 +480,11 @@ Tests keep the scientific API, application fallback, and shipped JSON defaults
 aligned, while cold-import tests enforce that settings do not load calculations
 or SciPy and bandlimiting does not load application modules.
 
-`/Processing/Maps/VelocityAverageMasked/value` is the temporal mean of the
+`/ProcessingMoments/Maps/VelocityAverageMasked/value` is the temporal mean of the
 background-subtracted velocity used by the vessel waveform analysis. The
 unmasked velocity average and intermediate delta-frequency average are not
 persisted.
-All two-dimensional datasets under `/Processing/Maps` are serialized in the
+All two-dimensional datasets under `/ProcessingMoments/Maps` are serialized in the
 same lower-left `(x, y)` image frame as
 `/Segmentation/Artery/BranchLabelMap/value`: the internal `(y, x)` array is
 flipped vertically and transposed before persistence.
@@ -460,7 +498,7 @@ The HDF5 writer stores this boolean mask as `uint8` values 0/1 with
 it remains shared across moments and bandratio workflows. Gap-spectrum
 preprocessing runs once in the velocity runner alongside full-frame spatial
 mean/median reductions, followed there by moments-timed per-beat spectra and
-independent Fourier/SVD filtering under `/Processing/Spectrograms`.
+independent Fourier/SVD filtering under `/ProcessingSpectrograms`.
 Physical capillary velocity conversion is not implemented yet. Its source is
 `/spectrograms`, with exported `(time, freq, y, x)` axes and explicit spatial
 alignment as described above.
@@ -484,19 +522,19 @@ not accepted.
 
 When spatial-gradient processing runs only to supply the `gradient_edges`
 blood-volume-rate option, its profiles and metrics remain transient run state:
-`/Processing/SpatialGradientProfiles` and
-`/Processing/SpatialGradientMetrics` are not written. Selecting
+`/ProcessingMoments/SpatialGradientProfiles` and
+`/ProcessingMoments/SpatialGradientMetrics` are not written. Selecting
 `spatial_gradient_moment0` directly publishes both families. Gradient-derived
 blood-volume-rate datasets identify these inputs as `transient_run_state` and
 do not expose dangling HDF5 source-path attributes.
 
 The release-default selection disables `gradient_edges`, velocity profiles,
 and the waveform `velocity_profile_analysis` option. Its HDF5 therefore omits
-`/Processing/SpatialGradientProfiles`,
-`/Processing/SpatialGradientMetrics`,
-`/Processing/BloodVolumeRate/{Artery,Vein}/{dynamicEdges,staticEdges}`,
-`/Processing/VelocityProfiles`, and
-`/Processing/VelocityProfileAnalysis`. Mask-derived `maskedEdges` and
+`/ProcessingMoments/SpatialGradientProfiles`,
+`/ProcessingMoments/SpatialGradientMetrics`,
+`/ProcessingMoments/BloodVolumeRate/{Artery,Vein}/{dynamicEdges,staticEdges}`,
+`/ProcessingMoments/VelocityProfiles`, and
+`/ProcessingMoments/VelocityProfileAnalysis`. Mask-derived `maskedEdges` and
 `totalMaskedEdges` blood-volume-rate datasets remain selected.
 
 For the weighted profile-analysis schema, see

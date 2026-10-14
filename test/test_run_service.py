@@ -79,14 +79,14 @@ class _VariantProducer(ProcessPipeline):
                 ExecutionVariant(
                     name="primary",
                     state={"variant_value": 1},
-                    output_namespace="Processing",
+                    output_namespace="ProcessingMoments",
                     artifact_namespace="primary",
                     provenance={"method": "primary"},
                 ),
                 ExecutionVariant(
                     name="alternate",
                     state={"variant_value": 2},
-                    output_namespace="ProcessingAlt",
+                    output_namespace="ProcessingBandRatio",
                     artifact_namespace="alternate",
                     provenance={"method": "alternate"},
                 ),
@@ -102,9 +102,9 @@ class _VariantConsumer(ProcessPipeline):
     missing_deps = []
 
     def run(self, ctx):
-        ctx.output.h5.write("Processing/VariantValue/value", ctx.state["variant_value"])
+        ctx.output.h5.write("ProcessingMoments/VariantValue/value", ctx.state["variant_value"])
         ctx.output.h5.write(
-            "Processing/ArtifactNamespace/value",
+            "ProcessingMoments/ArtifactNamespace/value",
             ctx.output.manager.artifact_folder,
         )
 
@@ -165,15 +165,15 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertTrue(result.succeeded, result.failures)
             with h5py.File(result.outputs[0], "r") as output:
-                self.assertEqual(1, output["Processing/VariantValue/value"][()])
-                self.assertEqual(2, output["ProcessingAlt/VariantValue/value"][()])
+                self.assertEqual(1, output["ProcessingMoments/VariantValue/value"][()])
+                self.assertEqual(2, output["ProcessingBandRatio/VariantValue/value"][()])
                 self.assertEqual(
                     "primary",
-                    output["Processing/ArtifactNamespace/value"][()].decode(),
+                    output["ProcessingMoments/ArtifactNamespace/value"][()].decode(),
                 )
                 self.assertEqual(
                     "alternate",
-                    output["ProcessingAlt/ArtifactNamespace/value"][()].decode(),
+                    output["ProcessingBandRatio/ArtifactNamespace/value"][()].decode(),
                 )
                 self.assertEqual(
                     ["primary", "alternate"],

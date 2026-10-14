@@ -65,7 +65,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             )
             self.assertEqual("Quadrants", quadrant_option.label)
         self.assertEqual(
-            "Processing/Metrics/waveform_shape_metrics",
+            "ProcessingMoments/Metrics/waveform_shape_metrics",
             EyeFlowOutputPaths.active().waveform_shape_metrics_root,
         )
 
@@ -299,9 +299,9 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             outputs,
         )
 
-        self.assertFalse(any(key.startswith("Processing/Velocity/") for key in outputs))
+        self.assertFalse(any(key.startswith("ProcessingMoments/Velocity/") for key in outputs))
         self.assertFalse(
-            any(key.startswith("Processing/VelocityPerBeat/") for key in outputs)
+            any(key.startswith("ProcessingMoments/VelocityPerBeat/") for key in outputs)
         )
 
         no_quadrants = pack_waveform_shape_outputs(
@@ -416,13 +416,13 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         )
 
         north_west_raw = (
-            "Processing/Velocity/Continuous/Global/Raw/Quadrants/north_west/ArterySignal"
+            "ProcessingMoments/Velocity/Continuous/Global/Raw/Quadrants/north_west/ArterySignal"
         )
         north_east_raw = (
-            "Processing/Velocity/Continuous/Global/Raw/Quadrants/north_east/ArterySignal"
+            "ProcessingMoments/Velocity/Continuous/Global/Raw/Quadrants/north_east/ArterySignal"
         )
         north_west_per_beat = (
-            "Processing/Velocity/PerBeat/Global/Filtered/Quadrants/"
+            "ProcessingMoments/Velocity/PerBeat/Global/Filtered/Quadrants/"
             "north_west/ArterySignal"
         )
         self.assertIn(north_west_raw, outputs)
@@ -436,7 +436,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             outputs[north_west_per_beat].data,
             [[2.0, 6.0], [3.0, 7.0]],
         )
-        continuous_quadrant_root = "Processing/Velocity/Continuous/Global/Raw/Quadrants/"
+        continuous_quadrant_root = "ProcessingMoments/Velocity/Continuous/Global/Raw/Quadrants/"
         self.assertEqual(
             {"north_east", "south_east", "north_west", "south_west"},
             {

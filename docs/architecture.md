@@ -155,7 +155,7 @@ scratch storage, not ad-hoc module globals.
   datasets and artifacts. Shape, absolute, low-rank, blood-volume-rate, and
   report pipelines consume its declared state. The existing DAG executes these
   downstream descriptors for each successful `ExecutionVariant` using isolated
-  state, `/Processing` or `/ProcessingAlt`, and separate artifact folders.
+  state, `/ProcessingMoments` or `/ProcessingBandRatio`, and separate artifact folders.
   Topology and segmentation remain shared.
 - `spatial_gradient_moment0` is independent of velocity analysis computation;
   it reuses cardiac-cycle timing and topology, applies its own ordered image-processing

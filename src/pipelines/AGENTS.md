@@ -71,16 +71,17 @@ pipeline contract.
 
 `velocity/spectrograms.py` reads HD frequency-bin spectra once per frame for
 full-frame `SpatialAverage`/`SpatialMedian` reductions and optional gap mean
-power. `velocity/gaps/preprocessing.py` prepares conservatively reduced gap
-support. The velocity runner publishes `/Processing/Spectrograms/Gaps/Raw` with `(time, freq)`
+power. `velocity/gaps/preprocessing.py` interpolates Boolean gap support with
+nearest neighbors to the spectrogram video's last two dimensions. The velocity
+runner publishes `/ProcessingSpectrograms/Gaps/Raw` with `(time, freq)`
 axes. HD frames are flipped in spatial Y then transposed into EF's published
 lower-left `(x, y)` mask frame at the canonical input boundary. Empty native or
-reduced support skips gap analysis with a warning; segmentation and other
+interpolated support skips gap analysis with a warning; segmentation and other
 pipeline work continue. Nonfinite included samples produce NaN per pair;
 finite negative spatial means are clamped to zero after averaging and before
 beat subdivision. Individual raw pixels are not clipped. Within the velocity
 pipeline, the runner passes its explicit moments result to gap analysis once,
-producing `/Processing/Spectrograms/Gaps/PerBeat/Raw` with `(phase, freq, beat)` axes.
+producing `/ProcessingSpectrograms/Gaps/PerBeat/Raw` with `(phase, freq, beat)` axes.
 It uses 128 linear phase samples without bridging NaNs. Missing real moments
 timing warns and skips per-beat analysis while other products remain available.
 Independent `PerBeat/BandLimited` keeps DC plus the configured non-DC harmonics
@@ -95,7 +96,7 @@ and within-beat phase coordinates. All-invalid bins/incomplete rows
 are excluded from the SVD fit and retained unchanged; insufficient dimensions
 warn and leave the output unchanged. Preserve filtered undershoots to retain
 DC power. Shared spectra are written after workflow cleanup and have no
-`ProcessingAlt` duplicate. Full-frame spatial products remain available when
+`ProcessingBandRatio` duplicate. Full-frame spatial products remain available when
 gap support is empty or missing. Settings/support/order travel in attributes.
 `topology_core` only owns native gap support and its segmentation output;
 velocity declares that upstream dependency. There is no separate gap pipeline.
@@ -105,8 +106,8 @@ Physical capillary velocity remains deferred.
 gradient profiles and lumen edges. Do not put gradient work into velocity
 analysis.
 It requires the optional HD flat-field moment at `/moment0ff` or `/M0FF`, and
-publishes under `/Processing/SpatialGradientProfiles` and
-`/Processing/SpatialGradientMetrics` only when it is a direct target. When it
+publishes under `/ProcessingMoments/SpatialGradientProfiles` and
+`/ProcessingMoments/SpatialGradientMetrics` only when it is a direct target. When it
 runs solely as a blood-volume-rate dependency, keep the products in `ctx.state`
 without persisting those intermediate HDF5 families. Its branch lumen plots
 come from the computed `(time, branch)` metric, not a separate plot-only
@@ -122,7 +123,7 @@ and `frequency_bands` represent physical velocity (`mm/s`); band mode first
 converts `HF / LF` to frequency using the recorded
 `band_ratio_frequency_scale_hz`. `velocity/semantics.py`
 centralizes display and dataset interpretation. Moments publish under
-`/Processing`, bands under `/ProcessingAlt`, with isolated downstream state and
+`/ProcessingMoments`, bands under `/ProcessingBandRatio`, with isolated downstream state and
 `moments`/`bandratio` artifact folders. The single velocity pipeline declares
 itself as an execution-variant producer and publishes one typed
 `ExecutionVariant` per successful method; the engine fans out its declared DAG

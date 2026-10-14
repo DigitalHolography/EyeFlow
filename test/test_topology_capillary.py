@@ -122,57 +122,81 @@ def test_rejects_empty_spatial_dimensions():
         capillary_analysis_zones(empty, empty, empty)
 
 
-def test_downsampling_retains_only_all_gap_blocks_for_every_2x2_combination():
-    source = np.zeros((8, 8), dtype=bool)
-    for combination in range(16):
-        row, column = divmod(combination, 4)
-        block = [(combination & (1 << bit)) != 0 for bit in range(4)]
-        source[2 * row:2 * row + 2, 2 * column:2 * column + 2] = np.reshape(block, (2, 2))
+def test_interpolation_samples_pixel_centers_without_all_true_block_exclusion():
+    source = np.zeros((6, 8), dtype=bool)
+    expected = np.array([
+        [True, False, False, True],
+        [False, True, False, False],
+        [True, False, True, False],
+    ])
+    source[1::2, 1::2] = expected
     original = source.copy()
-
-    reduced = downsample_gap_zones(source)
-
-    expected = np.zeros((4, 4), dtype=bool)
-    expected[3, 3] = True
+    # The other three pixels of each 2x2 block are false; selected pixels survive.
+    reduced = downsample_gap_zones(source, target_shape=(3, 4))
     np.testing.assert_array_equal(reduced, expected)
     np.testing.assert_array_equal(source, original)
     assert not np.shares_memory(reduced, source)
+    assert reduced.dtype == np.bool_
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.uint8])
 def test_downsampling_requires_boolean_support(dtype):
     with pytest.raises(TypeError, match="2-D boolean"):
-        downsample_gap_zones(np.ones((4, 4), dtype=dtype))
+        downsample_gap_zones(np.ones((4, 4), dtype=dtype), target_shape=(2, 2))
 
 
-@pytest.mark.parametrize("shape", [(3, 4), (4, 3), (0, 4), (4, 0)])
-def test_downsampling_rejects_incomplete_or_empty_blocks(shape):
-    with pytest.raises(ValueError, match="positive, even"):
-        downsample_gap_zones(np.zeros(shape, dtype=bool))
+@pytest.mark.parametrize("shape", [(0, 4), (4, 0)])
+def test_interpolation_rejects_empty_source_dimensions(shape):
+    with pytest.raises(ValueError, match="positive source spatial dimensions"):
+        downsample_gap_zones(np.zeros(shape, dtype=bool), target_shape=(2, 3))
 
 
-def test_velocity_application_reduces_512_support_without_changing_the_export():
+@pytest.mark.parametrize("target_shape", [(128, 128), (256, 256), (170, 129), (64, 64), (700, 300)])
+def test_velocity_application_interpolates_to_video_dimensions_without_changing_export(target_shape):
     from pipelines.velocity.masks import gap_velocity_mask
 
     original = np.ones((512, 512), dtype=bool)
     original[100, 100] = False
     original[101, 103] = False
+    original[102, 102] = False
     preserved = original.copy()
-    reduced = gap_velocity_mask(original, (256, 256))
-    expected = np.ones((256, 256), dtype=bool)
-    expected[50, 50:52] = False
+    reduced = gap_velocity_mask(original, target_shape)
+    # Center coordinates select floor((output_index + 0.5) * input_size / output_size).
+    rows = np.floor((np.arange(target_shape[0]) + .5) * 512 / target_shape[0]).astype(int)
+    columns = np.floor((np.arange(target_shape[1]) + .5) * 512 / target_shape[1]).astype(int)
+    expected = original[np.ix_(rows, columns)]
+    assert reduced.shape == target_shape
     np.testing.assert_array_equal(reduced, expected)
     np.testing.assert_array_equal(original, preserved)
     assert original.shape == (512, 512)
     assert not np.shares_memory(reduced, original)
 
 
-def test_velocity_application_preserves_matching_grid_and_rejects_other_scaling():
+def test_velocity_application_preserves_matching_grid():
     from pipelines.velocity.masks import gap_velocity_mask
 
     source = np.ones((256, 256), dtype=bool)
     same_grid = gap_velocity_mask(source, (256, 256))
     np.testing.assert_array_equal(same_grid, source)
     assert not np.shares_memory(same_grid, source)
-    with pytest.raises(ValueError, match="exactly twice"):
-        gap_velocity_mask(np.ones((512, 512), dtype=bool), (128, 128))
+
+
+def test_noninteger_resize_preserves_native_yx_axes_and_boolean_values():
+    source = np.zeros((5, 7), dtype=bool)
+    source[0, 6] = source[2, 2] = source[4, 0] = True
+    original = source.copy()
+    expected = np.array([
+        [False, False, False, True],
+        [False, True, False, False],
+        [True, False, False, False],
+    ])
+    reduced = downsample_gap_zones(source, target_shape=(3, 4))
+    np.testing.assert_array_equal(reduced, expected)
+    np.testing.assert_array_equal(source, original)
+    assert not np.shares_memory(reduced, source)
+
+
+@pytest.mark.parametrize("target_shape", [(0, 2), (-1, 2), (2, 0), (1.5, 2), (True, 2), (np.bool_(True), 2), (2,), (2, 3, 4)])
+def test_interpolation_rejects_invalid_target_dimensions(target_shape):
+    with pytest.raises(ValueError, match="target_shape"):
+        downsample_gap_zones(np.ones((8, 8), dtype=bool), target_shape=target_shape)

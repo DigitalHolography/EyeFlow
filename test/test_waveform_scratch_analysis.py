@@ -232,39 +232,39 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
         schema = EyeFlowOutputPaths.active()
         self.assertEqual("eyeflow_v2", schema.name)
         self.assertEqual(
-            "Processing/Velocity/Continuous/Global/Filtered/ArterySignal",
+            "ProcessingMoments/Velocity/Continuous/Global/Filtered/ArterySignal",
             schema.analysis.retinal_artery_velocity_signal_filtered,
         )
         self.assertEqual(
-            "Processing/Velocity/Continuous/Global/Filtered/VeinSignal",
+            "ProcessingMoments/Velocity/Continuous/Global/Filtered/VeinSignal",
             schema.analysis.retinal_vein_velocity_signal_filtered,
         )
         self.assertEqual(
-            "Processing/Velocity/Continuous/Segments/Raw/ArterySignal",
+            "ProcessingMoments/Velocity/Continuous/Segments/Raw/ArterySignal",
             schema.artery_segments.velocity_signal,
         )
         self.assertEqual(
-            "Processing/Velocity/Continuous/Segments/Filtered/ArterySignal",
+            "ProcessingMoments/Velocity/Continuous/Segments/Filtered/ArterySignal",
             schema.artery_segments.velocity_signal_filtered,
         )
         self.assertEqual(
-            "Processing/Velocity/Continuous/Segments/Raw/VeinSignal",
+            "ProcessingMoments/Velocity/Continuous/Segments/Raw/VeinSignal",
             schema.vein_segments.velocity_signal,
         )
         self.assertEqual(
-            "Processing/Velocity/Continuous/Segments/Filtered/VeinSignal",
+            "ProcessingMoments/Velocity/Continuous/Segments/Filtered/VeinSignal",
             schema.vein_segments.velocity_signal_filtered,
         )
         self.assertEqual(
-            "Processing/Maps/VelocityAverageMasked/value",
+            "ProcessingMoments/Maps/VelocityAverageMasked/value",
             schema.analysis.velocity_map_avg_masked,
         )
         self.assertEqual(
-            "Processing/Maps/FRMSAverage/value",
+            "ProcessingMoments/Maps/FRMSAverage/value",
             schema.analysis.fRMS_avg,
         )
         self.assertEqual(
-            "Processing/Maps/FRMSBackgroundAverage/value",
+            "ProcessingMoments/Maps/FRMSBackgroundAverage/value",
             schema.analysis.fRMS_bkg_avg,
         )
         self.assertTrue(

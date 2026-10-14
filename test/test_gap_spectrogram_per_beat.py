@@ -1,5 +1,6 @@
 """Moments beat alignment and NaN-preserving gap spectra."""
 
+import warnings
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -11,6 +12,7 @@ from input_output.h5_access import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PipelineDAG
 from pipelines import load_pipeline_catalog
+from pipelines.velocity.gaps.metrics import SPECTRUM_METRIC_DEFINITIONS
 from pipelines.velocity.gaps.per_beat import gap_spectrograms_per_beat
 from pipelines.velocity.gaps.runner import run_gap_analysis
 
@@ -73,7 +75,7 @@ def test_runner_publishes_per_beat_output_with_moments_timing(tmp_path):
             "/" + schema.cardiac_cycle.systolic_peak_frame_indices
         )
         svd = output[schema.spectrograms_masked_per_beat_svd_continuous]
-        assert svd.name == "/Processing/Spectrograms/Gaps/PerBeat/SVDContinuous"
+        assert svd.name == "/ProcessingSpectrograms/Gaps/PerBeat/SVDContinuous"
         assert svd.shape == (512, 2)
         assert list(svd.attrs["dimDesc"]) == ["time", "freq"]
         assert svd.attrs["time_sampling"] == "uniform_within_each_beat_variable_between_beats"
@@ -83,6 +85,47 @@ def test_runner_publishes_per_beat_output_with_moments_timing(tmp_path):
         np.testing.assert_array_equal(svd[:128], raw[:, :, 0])
         np.testing.assert_array_equal(svd[128:256], raw[:, :, 1])
         assert svd[64, 0] == 50
+        median = output[schema.spectrograms_masked_time_aggregated_median]
+        assert median.name == "/ProcessingSpectrograms/Gaps/TimeAggregated/Median"
+        assert median.shape == (2,)
+        assert median.dtype == np.float32
+        np.testing.assert_array_equal(median[()], [5, 5])
+        assert median.attrs["unit"] == "power_unit"
+        assert list(median.attrs["dimDesc"]) == ["freq"]
+        assert median.attrs["source_path"] == raw.name
+        assert "phase_samples" not in median.attrs
+
+
+def test_time_aggregated_median_pools_samples_ignores_nan_and_preserves_frequency_order(tmp_path):
+    schema = EyeFlowOutputPaths.active()
+    per_beat = np.array([
+        [[0, 10], [1, np.nan], [np.nan, np.nan]],
+        [[0, 10], [np.nan, 5], [np.nan, np.nan]],
+        [[0, 10], [7, np.nan], [np.nan, np.nan]],
+        [[100, 100], [np.nan, 9], [np.nan, np.nan]],
+    ], dtype=np.float32)
+    original = per_beat.copy()
+    with h5py.File(tmp_path / "out.h5", "w") as output:
+        source = output.create_dataset(schema.spectrograms_masked, data=np.ones((9, 3)))
+        source.attrs["unit"] = "power_unit"
+        source.attrs["frequency_bin_centers_hz"] = [30, -10, 20]
+        with (
+            patch("pipelines.velocity.gaps.runner.gap_spectrograms_per_beat", return_value=per_beat),
+            warnings.catch_warnings(),
+        ):
+            warnings.simplefilter("error", RuntimeWarning)
+            metrics = run_gap_analysis(_ctx(output), _moments([0, 2, 8], 9))
+        PipelineH5Output(output).write_many(metrics)
+        median = output[schema.spectrograms_masked_time_aggregated_median]
+        # Pooled median is 10; median of the two beat medians would be 5.
+        np.testing.assert_array_equal(median[()], [10, 6, np.nan])
+        np.testing.assert_array_equal(median.attrs["frequency_bin_centers_hz"], [30, -10, 20])
+        np.testing.assert_array_equal(median.attrs["valid_sample_count_per_frequency"], [8, 4, 0])
+        assert median.attrs["aggregation_method"] == "nanmedian"
+        assert list(median.attrs["aggregation_axes"]) == ["phase", "beat"]
+        assert median.attrs["source_beat_count"] == 2
+        assert median.attrs["source_phase_sample_count"] == 4
+        np.testing.assert_array_equal(per_beat, original)
 
 
 @pytest.mark.parametrize("case", [
@@ -109,7 +152,15 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
                 schema.spectrograms_masked_per_beat,
                 schema.spectrograms_masked_per_beat_band_limited,
                 schema.spectrograms_masked_per_beat_svd_continuous,
+                schema.spectrograms_masked_time_aggregated_median,
+            } | {
+                f"{schema.spectrograms_masked_time_aggregated_metrics_root}/{name}"
+                for name in SPECTRUM_METRIC_DEFINITIONS
             }
+            for name in SPECTRUM_METRIC_DEFINITIONS:
+                path = f"{schema.spectrograms_masked_time_aggregated_metrics_root}/{name}"
+                assert np.isnan(metrics[path][0])  # Non-32-bin inputs retain all metric paths.
+            assert any("32 bins" in call.args[0] for call in warning.call_args_list)
             assert any("SVD" in call.args[0] for call in warning.call_args_list)
         else:
             assert metrics == {}

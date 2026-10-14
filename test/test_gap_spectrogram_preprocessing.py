@@ -71,12 +71,15 @@ def test_negative_means_are_zeroed_after_averaging_while_nonfinite_means_stay_na
     np.testing.assert_array_equal(values, original)
 
 
-def test_conservative_reduction_and_hdf5_schema(tmp_path):
+@pytest.mark.parametrize("factor", [4, 2])
+def test_nearest_neighbor_interpolation_and_hdf5_schema(tmp_path, factor):
     native_zones = np.zeros((4, 6), dtype=bool)
     native_zones[:2, :2] = True
     native_zones[2:, 4:] = True
     native_zones[:2, 2:4] = True
-    native_zones[0, 2] = False  # Three true pixels do not qualify this block.
+    native_zones[1, 3] = False  # The sampled center is excluded; other block pixels are irrelevant.
+    if factor == 4:
+        native_zones = native_zones.repeat(2, axis=0).repeat(2, axis=1)
     values = np.array([[[[2, 100, 100], [100, 100, 10]]]], dtype=np.float32)
     schema = EyeFlowOutputPaths.active()
     with h5py.File(tmp_path / "source.h5", "w") as source, h5py.File(tmp_path / "out.h5", "w") as out:
@@ -84,14 +87,17 @@ def test_conservative_reduction_and_hdf5_schema(tmp_path):
         spectra.attrs["unit"] = "power_unit"
         PipelineH5Output(out).write_many(preprocess_gap_spectrograms(spectra, native_zones))
         dataset = out[schema.spectrograms_masked]
-        assert dataset.name == "/Processing/Spectrograms/Gaps/Raw"
+        assert dataset.name == "/ProcessingSpectrograms/Gaps/Raw"
         assert dataset.shape == (1, 1)
         assert dataset.dtype == np.float32
         assert dataset[0, 0] == 6
         assert list(dataset.attrs["dimDesc"]) == ["time", "freq"]
         assert dataset.attrs["unit"] == "power_unit"
         assert dataset.attrs["gap_pixel_count"] == 2
-        assert dataset.attrs["mask_reduction"] == "all_true_in_2x2_block"
+        assert dataset.attrs["mask_reduction"] == "nearest_neighbor_interpolation"
+        assert dataset.attrs["mask_interpolation_order"] == 0
+        assert dataset.attrs["mask_interpolation_grid"] == "pixel_centers"
+        assert "/spectrograms" in dataset.attrs["mask_target_shape_source"]
         assert list(dataset.attrs["mask_application_shape"]) == [3, 2]
         assert dataset.attrs["spectrogram_spatial_transform"] == "flip_D2_then_swap_D2_D3"
 
@@ -100,7 +106,7 @@ def test_conservative_reduction_and_hdf5_schema(tmp_path):
 def test_empty_native_or_reduced_support_skips_analysis_without_reading_source(reduced_only):
     zones = np.zeros((4, 6), dtype=bool)
     if reduced_only:
-        zones[0, 0] = True
+        zones[0, 0] = True  # This pixel is not selected by center-based interpolation.
     source = FrameSource(np.ones((2, 3, 2, 3), dtype=np.float32))
     with patch("pipelines.velocity.gaps.preprocessing.Logger.log_warning") as warning:
         assert preprocess_gap_spectrograms(source, zones) == {}
@@ -115,3 +121,23 @@ def test_missing_spectra_omit_output_with_warning():
         assert preprocess_gap_spectrograms(None, np.ones((2, 3), bool)) == {}
     warning.assert_called_once()
     assert "absent" in warning.call_args.args[0]
+
+
+def test_target_shape_comes_from_hdf5_spectrograms_for_noninteger_nonsquare_resize(tmp_path):
+    native_zones = np.zeros((5, 7), dtype=bool)
+    native_zones[0, 6] = native_zones[2, 2] = native_zones[4, 0] = True
+    original = native_zones.copy()
+    image = np.arange(12, dtype=np.float32).reshape(3, 4)
+    schema = EyeFlowOutputPaths.active()
+    with h5py.File(tmp_path / "HD.h5", "w") as source, h5py.File(tmp_path / "EF.h5", "w") as output:
+        spectra = source.create_dataset("spectrograms", data=np.stack([image, image * 3])[None])
+        metrics = preprocess_gap_spectrograms(spectra, native_zones)
+        PipelineH5Output(output).write_many(metrics)
+        result = output[schema.spectrograms_masked]
+        # Nearest-neighbor centers select native spectral pixels (0,3), (1,1), (2,0).
+        np.testing.assert_allclose(result[()], [[16 / 3, 16]], rtol=1e-6)
+        np.testing.assert_array_equal(result.attrs["mask_native_shape"], [5, 7])
+        np.testing.assert_array_equal(result.attrs["mask_application_shape"], [4, 3])
+        assert result.attrs["gap_pixel_count"] == 3
+        assert result.attrs["mask_reduction"] == "nearest_neighbor_interpolation"
+    np.testing.assert_array_equal(native_zones, original)

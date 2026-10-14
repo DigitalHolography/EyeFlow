@@ -84,7 +84,7 @@ def _spatial_map_value(
     image = np.asarray(data)
     if image.ndim != 2:
         raise ValueError(
-            "Processing/Maps values must be 2-D spatial images, "
+            "ProcessingMoments/Maps values must be 2-D spatial images, "
             f"got shape {image.shape}."
         )
     output_attrs: dict[str, object] = dict(attrs or {})
