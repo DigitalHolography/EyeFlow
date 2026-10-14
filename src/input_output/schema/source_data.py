@@ -63,8 +63,9 @@ class ImageMaps:
     """Lazy HD inputs shared by velocity workflows.
 
     Moments and LF/HF bands use ``(frame, y, x)``. ``spectograms`` retains
-    exported ``(time, freq, height, width)`` axes; its spatial orientation has
-    not yet been verified against the aligned analysis frame.
+    exported ``(time, freq, y, x)`` axes. Gap preprocessing flips spatial Y
+    and swaps the spatial axes when reading frames into the EF lower-left
+    ``(x, y)`` frame; source assembly keeps the dataset lazy and unchanged.
     """
 
     moment0: object | None

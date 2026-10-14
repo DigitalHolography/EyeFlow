@@ -14,6 +14,14 @@ import pytest
     ("module", "forbidden"),
     [
         (
+            "calculations.math.bandlimiting",
+            ("app_settings", "pipeline_engine", "pipelines", "ui", "signal_parameters"),
+        ),
+        (
+            "app_settings",
+            ("calculations", "scipy", "signal_parameters"),
+        ),
+        (
             "calculations.topology",
             ("calculations.vessel_segments", "calculations.compute_backend", "pipelines"),
         ),
@@ -40,17 +48,20 @@ def test_cold_import_does_not_load_downstream_layers(module, forbidden):
         [
             sys.executable,
             "-c",
-            "import importlib, sys; "
-            f"importlib.import_module({module!r}); "
-            f"forbidden = {forbidden!r}; "
-            "loaded = [name for name in sys.modules "
-            "if any(name == prefix or name.startswith(prefix + '.') "
-            "for prefix in forbidden)]; "
-            "assert not loaded, loaded",
+            (
+                "import importlib, sys; "
+                f"importlib.import_module({module!r}); "
+                f"forbidden = {forbidden!r}; "
+                "loaded = [name for name in sys.modules "
+                "if any(name == prefix or name.startswith(prefix + '.') "
+                "for prefix in forbidden)]; "
+                "assert not loaded, loaded"
+            ),
         ],
         env=environment,
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr

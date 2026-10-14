@@ -65,7 +65,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             )
             self.assertEqual("Quadrants", quadrant_option.label)
         self.assertEqual(
-            "Processing/Metrics/waveform_shape_metrics",
+            "ProcessingMoments/Metrics/waveform_shape_metrics",
             EyeFlowOutputPaths.active().waveform_shape_metrics_root,
         )
 
@@ -109,7 +109,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
                 np.asarray([0.8], dtype=np.float32),
                 {"unit": "s"},
             ),
-            schema.artery_per_beat.velocity_signal: np.ones(
+            schema.artery_per_beat_filtered.velocity_signal: np.ones(
                 (16, 1),
                 dtype=np.float32,
             ),
@@ -237,15 +237,15 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         schema = EyeFlowOutputPaths.active()
         metrics = self._global_artery_inputs(schema)
         waveform = np.asarray(
-            metrics[schema.artery_per_beat.velocity_signal],
+            metrics[schema.artery_per_beat_filtered.velocity_signal],
             dtype=np.float32,
         )
         segment_waveform = np.broadcast_to(
             waveform[:, :, np.newaxis, np.newaxis],
             (waveform.shape[0], waveform.shape[1], 2, 2),
         ).copy()
-        metrics[schema.artery_per_beat.segment_velocity_signal] = segment_waveform
-        metrics[schema.artery_per_beat.segment_velocity_signal_band_limited] = (
+        metrics[schema.artery_per_beat_filtered.segment_velocity_signal] = segment_waveform
+        metrics[schema.artery_per_beat_filtered.segment_velocity_signal_band_limited] = (
             segment_waveform
         )
 
@@ -299,9 +299,9 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             outputs,
         )
 
-        self.assertFalse(any(key.startswith("Processing/Velocity/") for key in outputs))
+        self.assertFalse(any(key.startswith("ProcessingMoments/Velocity/") for key in outputs))
         self.assertFalse(
-            any(key.startswith("Processing/VelocityPerBeat/") for key in outputs)
+            any(key.startswith("ProcessingMoments/VelocityPerBeat/") for key in outputs)
         )
 
         no_quadrants = pack_waveform_shape_outputs(
@@ -381,8 +381,8 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             ),
         )
         metrics = {
-            schema.artery_per_beat.segment_velocity_signal: segment_per_beat,
-            schema.artery_per_beat.segment_velocity_signal_band_limited: (
+            schema.artery_per_beat_filtered.segment_velocity_signal: segment_per_beat,
+            schema.artery_per_beat_filtered.segment_velocity_signal_band_limited: (
                 segment_per_beat + 100.0
             ),
         }
@@ -406,7 +406,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             segment_velocity.transpose(2, 1, 0),
         )
         continuous_band_limited_path = (
-            schema.artery_segments.velocity_signal_band_limited
+            schema.artery_segments.velocity_signal_filtered
         )
         self.assertIsNotNone(continuous_band_limited_path)
         self.assertIn(continuous_band_limited_path, segment_outputs)
@@ -416,14 +416,14 @@ class WaveformShapeMetricsTests(unittest.TestCase):
         )
 
         north_west_raw = (
-            "Processing/Velocity/Quadrants/Artery/north_west/Raw/value"
+            "ProcessingMoments/Velocity/Continuous/Global/Raw/Quadrants/north_west/ArterySignal"
         )
         north_east_raw = (
-            "Processing/Velocity/Quadrants/Artery/north_east/Raw/value"
+            "ProcessingMoments/Velocity/Continuous/Global/Raw/Quadrants/north_east/ArterySignal"
         )
         north_west_per_beat = (
-            "Processing/VelocityPerBeat/Artery/Quadrants/"
-            "north_west/Raw/value"
+            "ProcessingMoments/Velocity/PerBeat/Global/Filtered/Quadrants/"
+            "north_west/ArterySignal"
         )
         self.assertIn(north_west_raw, outputs)
         self.assertIn(north_east_raw, outputs)
@@ -436,7 +436,7 @@ class WaveformShapeMetricsTests(unittest.TestCase):
             outputs[north_west_per_beat].data,
             [[2.0, 6.0], [3.0, 7.0]],
         )
-        continuous_quadrant_root = "Processing/Velocity/Quadrants/Artery/"
+        continuous_quadrant_root = "ProcessingMoments/Velocity/Continuous/Global/Raw/Quadrants/"
         self.assertEqual(
             {"north_east", "south_east", "north_west", "south_west"},
             {
@@ -465,8 +465,8 @@ class WaveformShapeMetricsTests(unittest.TestCase):
                 np.asarray([0.8, 0.9], dtype=np.float32),
                 {"unit": "s"},
             ),
-            schema.artery_per_beat.velocity_signal: waveform,
-            schema.artery_per_beat.velocity_signal_band_limited: (
+            schema.artery_per_beat_filtered.velocity_signal: waveform,
+            schema.artery_per_beat_filtered.velocity_signal_band_limited: (
                 waveform,
                 {"unit": "mm/s"},
             ),

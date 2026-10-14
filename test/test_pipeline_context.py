@@ -179,7 +179,7 @@ class PipelineContextTests(unittest.TestCase):
             variant = ExecutionVariant(
                 name="alternate",
                 state={"result": object()},
-                output_namespace="ProcessingAlt",
+                output_namespace="ProcessingBandRatio",
                 artifact_namespace="alternate",
                 provenance={"method": "alternate"},
             )
@@ -202,7 +202,7 @@ class PipelineContextTests(unittest.TestCase):
                         ExecutionVariant(
                             name="unsafe",
                             state={},
-                            output_namespace="Processing",
+                            output_namespace="ProcessingMoments",
                             artifact_namespace="../outside",
                             provenance={},
                         )

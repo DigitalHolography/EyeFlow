@@ -83,11 +83,11 @@ class LumenSizePngTests(unittest.TestCase):
             with h5py.File(h5_path, "r") as work:
                 for vessel in ("Artery", "Vein"):
                     source_path = (
-                        f"/Processing/SpatialGradientMetrics/{vessel}/Transverse/"
+                        f"/ProcessingMoments/SpatialGradientMetrics/{vessel}/Transverse/"
                         "Masked/tbkr/lumen/size"
                     )
                     path = (
-                        f"/Processing/SpatialGradientMetrics/{vessel}/Transverse/"
+                        f"/ProcessingMoments/SpatialGradientMetrics/{vessel}/Transverse/"
                         "Masked/tk/lumen_size"
                     )
                     dataset = work[path]
@@ -102,7 +102,7 @@ class LumenSizePngTests(unittest.TestCase):
                 paths = []
                 for vessel in ("Artery", "Vein"):
                     path = (
-                        f"Processing/SpatialGradientMetrics/{vessel}/Transverse/"
+                        f"ProcessingMoments/SpatialGradientMetrics/{vessel}/Transverse/"
                         "Masked/tk/lumen_size"
                     )
                     paths.extend(

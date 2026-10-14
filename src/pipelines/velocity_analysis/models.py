@@ -22,6 +22,7 @@ class VelocitySegmentResult:
 
     profile: SegmentMeasurements
     transverse_fft: MaskedArrays | None = None
+    filtered_signal: np.ndarray | None = None
 
     @classmethod
     def from_profile_result(

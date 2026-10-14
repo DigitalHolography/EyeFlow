@@ -42,7 +42,7 @@ def test_velocity_result_composes_generic_profiles_with_pipeline_products():
         "sample_spacing_mm",
         "maps",
     }
-    assert velocity_fields == {"profile", "transverse_fft"}
+    assert velocity_fields == {"profile", "transverse_fft", "filtered_signal"}
 
 
 def test_masked_arrays_selects_the_requested_representation():

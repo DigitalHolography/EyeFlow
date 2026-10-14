@@ -31,36 +31,36 @@ def test_failure_rolls_back_only_current_pipeline_and_continues_safe_nodes(
     def source(ctx):
         ctx.state.set("stable", 7)
         ctx.output.h5.set_attr("stable_attribute", "original")
-        ctx.output.h5.write("Processing/Upstream/value", 7)
+        ctx.output.h5.write("ProcessingMoments/Upstream/value", 7)
         ctx.output.h5.set_attr("stable_attribute", "original")
         artifact = ctx.output.path_for(OutputType.PNG, "earlier.png")
         artifact.parent.mkdir(parents=True, exist_ok=True)
         artifact.write_bytes(b"earlier artifact")
         if variants:
-            ctx.output.h5.write("ProcessingAlt/Upstream/value", 9)
+            ctx.output.h5.write("ProcessingBandRatio/Upstream/value", 9)
             ctx.publish_execution_variants([
                 ExecutionVariant(
                     name=name, state={"stable": value}, output_namespace=root,
                     artifact_namespace=name, provenance={},
                 )
                 for name, value, root in (
-                    ("primary", 7, "Processing"), ("alternate", 9, "ProcessingAlt"),
+                    ("primary", 7, "ProcessingMoments"), ("alternate", 9, "ProcessingBandRatio"),
                 )
             ])
 
     def failing(ctx):
         if variants and ctx.execution_variant.name == "alternate" and not fail_both:
-            return {"Processing/Product/value": 10}
+            return {"ProcessingMoments/Product/value": 10}
         ctx.state.set("stable", -1)
         ctx.state.set("incomplete", True)
-        ctx.output.h5.write("Processing/Upstream/value", -1)
-        ctx.output.h5.write("Processing/Partial/value", -1)
+        ctx.output.h5.write("ProcessingMoments/Upstream/value", -1)
+        ctx.output.h5.write("ProcessingMoments/Partial/value", -1)
         ctx.output.h5.set_attr("stable_attribute", "changed")
         artifact = ctx.output.path_for(OutputType.PNG, "partial.png")
         artifact.parent.mkdir(parents=True, exist_ok=True)
         artifact.write_bytes(b"incomplete artifact")
         if failure_stage == "write":
-            return {"Processing/Product/value": 1, "Processing/Invalid/value": object()}
+            return {"ProcessingMoments/Product/value": 1, "ProcessingMoments/Invalid/value": object()}
         raise ValueError("injected failure")
 
     def independent(ctx):
@@ -68,12 +68,12 @@ def test_failure_rolls_back_only_current_pipeline_and_continues_safe_nodes(
         calls.append(branch)
         assert "incomplete" not in ctx.state
         assert ctx.state["stable"] == (9 if branch == "alternate" else 7)
-        assert ctx.output.h5.read("Processing/Upstream/value") == ctx.state["stable"]
-        return {"Processing/Sibling/value": ctx.state["stable"]}
+        assert ctx.output.h5.read("ProcessingMoments/Upstream/value") == ctx.state["stable"]
+        return {"ProcessingMoments/Sibling/value": ctx.state["stable"]}
 
     def dependent(ctx):
         assert variants and not fail_both and ctx.execution_variant.name == "alternate"
-        return {"Processing/Dependent/value": 1}
+        return {"ProcessingMoments/Dependent/value": 1}
 
     descriptors = [
         _descriptor("source", source, variants=variants),
@@ -94,11 +94,11 @@ def test_failure_rolls_back_only_current_pipeline_and_continues_safe_nodes(
     assert calls == (["primary", "alternate"] if variants else ["shared"])
     assert len(result.outputs) == 1
     with h5py.File(result.outputs[0], "r") as output:
-        assert output["Processing/Upstream/value"][()] == 7
-        assert output["Processing/Sibling/value"][()] == 7
-        assert "Processing/Partial" not in output
-        assert "Processing/Product" not in output
-        assert "Processing/Dependent" not in output
+        assert output["ProcessingMoments/Upstream/value"][()] == 7
+        assert output["ProcessingMoments/Sibling/value"][()] == 7
+        assert "ProcessingMoments/Partial" not in output
+        assert "ProcessingMoments/Product" not in output
+        assert "ProcessingMoments/Dependent" not in output
         assert output.attrs["stable_attribute"] == "original"
         statuses = json.loads(output.attrs["pipeline_status"])
         status = statuses["variants"]["primary"] if variants else statuses["shared"]
@@ -108,7 +108,7 @@ def test_failure_rolls_back_only_current_pipeline_and_continues_safe_nodes(
         assert json.loads(output.attrs["pipeline_failures"])
         assert json.loads(output.attrs["pipeline_skips"])
         if variants and not fail_both:
-            assert output["ProcessingAlt/Dependent/value"][()] == 1
+            assert output["ProcessingBandRatio/Dependent/value"][()] == 1
             assert list(output.attrs["execution_variants_completed"]) == ["alternate"]
     root = spec.requests[0].output_manager.layout.ef_dir
     assert list(root.rglob("*earlier.png"))

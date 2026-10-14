@@ -246,7 +246,7 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     pipeline_name="displacement_map",
                 )
                 run_displacement_map(ctx)
-                self.assertNotIn("Processing/DisplacementMap", output_h5)
+                self.assertNotIn("ProcessingMoments/DisplacementMap", output_h5)
                 artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
                 self.assertIsInstance(artifacts, DisplacementMapArtifacts)
                 try:

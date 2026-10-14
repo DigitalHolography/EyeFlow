@@ -53,17 +53,33 @@ def capillary_analysis_zones(
     return cutoff_disc & ~(vessels | masks[1])
 
 
-def downsample_gap_zones(analysis_zones: np.ndarray) -> np.ndarray:
-    """Reduce native gap support by two, retaining only wholly included 2x2 blocks.
+def downsample_gap_zones(
+    analysis_zones: np.ndarray, target_shape: tuple[int, int],
+) -> np.ndarray:
+    """Interpolate Boolean gap support to an explicit native ``(height, width)``.
 
-    One excluded pixel excludes the entire reduced pixel. The input is never
-    mutated; this reduction is for velocity-mask application, not persistence.
-    Axes stay in native ``(y, x)`` order.
+    The pipeline supplies the HD spectrogram's last two dimensions; calculation
+    code does not read HDF5. Nearest-neighbor interpolation samples pixel centers
+    using the same grid convention as segment-mask interpolation. Arbitrary
+    positive target sizes, including noninteger scale ratios, are supported.
+    No block exclusion or averaging is applied. Return a Boolean array without
+    mutating or sharing memory with the input; matching shapes return a copy.
     """
     zones = np.asarray(analysis_zones)
     if zones.ndim != 2 or zones.dtype != np.bool_:
         raise TypeError("analysis_zones must be a 2-D boolean array.")
     ny, nx = zones.shape
-    if ny < 1 or nx < 1 or ny % 2 or nx % 2:
-        raise ValueError("Gap-mask downsampling requires positive, even spatial dimensions.")
-    return zones.reshape(ny // 2, 2, nx // 2, 2).all(axis=(1, 3))
+    if ny < 1 or nx < 1:
+        raise ValueError("Gap-mask interpolation requires positive source spatial dimensions.")
+    target_shape = tuple(target_shape)
+    if len(target_shape) != 2 or any(
+        isinstance(size, (bool, np.bool_)) or not isinstance(size, (int, np.integer)) or size < 1
+        for size in target_shape
+    ):
+        raise ValueError("target_shape must contain two positive integer spatial dimensions.")
+    if zones.shape == target_shape:
+        return zones.copy()
+    return ndi.zoom(
+        zones, (target_shape[0] / ny, target_shape[1] / nx),
+        order=0, mode="grid-constant", cval=0, prefilter=False, grid_mode=True,
+    )

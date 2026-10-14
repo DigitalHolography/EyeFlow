@@ -170,15 +170,15 @@ class VelocityAnalysisPipelineTests(unittest.TestCase):
         profiles.assert_not_called()
         quadrants.assert_not_called()
 
-    def test_velocity_figures_export_whenever_safe_per_beat_data_is_available(
+    def test_velocity_figures_export_filtered_bandlimited_per_beat_segments(
         self,
     ) -> None:
         schema = EyeFlowOutputPaths.active()
         artery = (np.ones((3, 2, 1, 1), dtype=np.float32), {"unit": "mm/s"})
         vein = (np.full((3, 2, 1, 1), 2.0, dtype=np.float32), {"unit": "mm/s"})
         velocity_outputs = {
-            schema.artery_per_beat_safe.velocity_signal: artery,
-            schema.vein_per_beat_safe.velocity_signal: vein,
+            schema.artery_per_beat_filtered.segment_velocity_signal_band_limited: artery,
+            schema.vein_per_beat_filtered.segment_velocity_signal_band_limited: vein,
         }
         context = SimpleNamespace(
             velocity={},

@@ -188,13 +188,13 @@ def pack_mask_derived_outputs(
     vessel_sources = (
         (
             "Artery",
-            schema.artery_per_beat_safe.velocity_signal,
+            schema.artery_per_beat.segment_velocity_signal,
             schema.blood_volume_rate.artery,
             diameters[0],
         ),
         (
             "Vein",
-            schema.vein_per_beat_safe.velocity_signal,
+            schema.vein_per_beat.segment_velocity_signal,
             schema.blood_volume_rate.vein,
             diameters[1],
         ),
@@ -203,7 +203,7 @@ def pack_mask_derived_outputs(
     for vessel_name, velocity_path, paths, diameter_mm in vessel_sources:
         if velocity_path is None or velocity_path not in velocity_per_beat_outputs:
             raise KeyError(
-                f"Required safe per-beat velocity is unavailable for {vessel_name}."
+                f"Required raw per-beat segment velocity is unavailable for {vessel_name}."
             )
         velocity = _metric_data(velocity_per_beat_outputs[velocity_path])
         rate = circular_lumen_flow(velocity, diameter_mm)

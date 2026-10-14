@@ -61,11 +61,11 @@ def test_frequency_band_run_produces_physical_downstream_outputs(legacy_spectrog
 
         schema = EyeFlowOutputPaths.active()
         with h5py.File(result.outputs[0], "r") as file:
-            assert "Processing" not in file
+            assert "ProcessingMoments" not in file
             assert "doppler_moments" in json.loads(
                 file.attrs["execution_variant_failures"]
             )
-            output = PipelineH5Output(file, processing_root="ProcessingAlt")
+            output = PipelineH5Output(file, processing_root="ProcessingBandRatio")
             assert output.attrs["velocity_estimation_method"] == "frequency_bands"
             assert output.attrs["velocity_quantity"] == "physical_velocity"
             assert output.attrs["velocity_unit"] == "mm/s"

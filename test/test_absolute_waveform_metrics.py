@@ -78,7 +78,7 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             tuple(option.name for option in descriptor.options),
         )
         self.assertEqual(
-            "Processing/Metrics/absolute_waveform_metrics",
+            "ProcessingMoments/Metrics/absolute_waveform_metrics",
             EyeFlowOutputPaths.active().absolute_waveform_metrics_root,
         )
 
@@ -109,8 +109,8 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
                 [0.8, 0.9], dtype=np.float32
             ),
-            schema.artery_per_beat.velocity_signal: waveform,
-            schema.artery_per_beat.velocity_signal_band_limited: waveform,
+            schema.artery_per_beat_filtered.velocity_signal: waveform,
+            schema.artery_per_beat_filtered.velocity_signal_band_limited: waveform,
         }
 
         outputs = pack_absolute_waveform_outputs(inputs)
@@ -134,10 +134,10 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
                 [0.8, 0.9], dtype=np.float32
             ),
-            schema.artery_per_beat.velocity_signal: waveform,
-            schema.artery_per_beat.velocity_signal_band_limited: waveform,
-            schema.artery_per_beat.segment_velocity_signal: segments,
-            schema.artery_per_beat.segment_velocity_signal_band_limited: segments,
+            schema.artery_per_beat_filtered.velocity_signal: waveform,
+            schema.artery_per_beat_filtered.velocity_signal_band_limited: waveform,
+            schema.artery_per_beat_filtered.segment_velocity_signal: segments,
+            schema.artery_per_beat_filtered.segment_velocity_signal_band_limited: segments,
         }
 
         outputs = pack_absolute_waveform_outputs(inputs, include_segments=True)
@@ -154,7 +154,7 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
                 [0.8], dtype=np.float32
             ),
-            schema.artery_per_beat.velocity_signal: np.ones(
+            schema.artery_per_beat_filtered.velocity_signal: np.ones(
                 (1, 8),
                 dtype=np.float32,
             ),
@@ -188,10 +188,10 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
                 [0.8, 0.9], dtype=np.float32
             ),
-            schema.artery_per_beat.velocity_signal: waveform,
-            schema.artery_per_beat.velocity_signal_band_limited: waveform,
-            schema.artery_per_beat.segment_velocity_signal: segment_waveform,
-            schema.artery_per_beat.segment_velocity_signal_band_limited: (
+            schema.artery_per_beat_filtered.velocity_signal: waveform,
+            schema.artery_per_beat_filtered.velocity_signal_band_limited: waveform,
+            schema.artery_per_beat_filtered.segment_velocity_signal: segment_waveform,
+            schema.artery_per_beat_filtered.segment_velocity_signal_band_limited: (
                 segment_waveform
             ),
         }
@@ -241,8 +241,8 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
             schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
                 [0.8], dtype=np.float32
             ),
-            schema.artery_per_beat.velocity_signal: waveform,
-            schema.artery_per_beat.velocity_signal_band_limited: waveform,
+            schema.artery_per_beat_filtered.velocity_signal: waveform,
+            schema.artery_per_beat_filtered.velocity_signal_band_limited: waveform,
         }
         shared = SimpleNamespace(per_beat_result="per-beat", velocity={})
         ctx = SimpleNamespace(

@@ -80,7 +80,7 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
             schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
                 [0.8, 0.9], dtype=np.float32
             ),
-            schema.artery_per_beat.segment_velocity_signal: waveforms,
+            schema.artery_per_beat_filtered.segment_velocity_signal: waveforms,
         }
 
         outputs = pack_lowrank_waveform_decomposition_outputs(
@@ -121,7 +121,7 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
             schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
                 [0.8], dtype=np.float32
             ),
-            schema.artery_per_beat.segment_velocity_signal: waveforms,
+            schema.artery_per_beat_filtered.segment_velocity_signal: waveforms,
         }
 
         outputs = pack_lowrank_waveform_decomposition_outputs(
@@ -140,7 +140,7 @@ class LowRankQuadrantOutputTests(unittest.TestCase):
             schema.cardiac_cycle.systolic_cycle_duration_seconds: np.asarray(
                 [0.8], dtype=np.float32
             ),
-            schema.artery_per_beat.segment_velocity_signal: DatasetValue(
+            schema.artery_per_beat_filtered.segment_velocity_signal: DatasetValue(
                 waveforms,
                 {"unit": "1"},
             ),
