@@ -140,11 +140,11 @@ class SegmentMapOutputTests(unittest.TestCase):
 
         self.assertEqual(4, len(metrics))
         self.assertEqual(
-            "Processing/VelocityMapPerSegment/Artery",
+            "ProcessingMoments/VelocityMapPerSegment/Artery",
             schema.artery_segments.velocity_map_per_segment,
         )
         self.assertEqual(
-            "Processing/VelocityMapPerSegment/Vein",
+            "ProcessingMoments/VelocityMapPerSegment/Vein",
             schema.vein_segments.velocity_map_per_segment,
         )
         self.assertEqual(

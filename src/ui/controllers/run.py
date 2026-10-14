@@ -108,6 +108,7 @@ class RunController:
                 band_ratio_frequency_scale_hz=(
                     self.app.settings_store.load_band_ratio_frequency_scale_hz()
                 ),
+                band_limited_harmonics=self.app.settings_store.load_band_limited_harmonics(),
             )
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
             services_for(self.app).dialogs.showerror(

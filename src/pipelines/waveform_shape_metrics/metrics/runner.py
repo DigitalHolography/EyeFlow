@@ -45,8 +45,8 @@ def waveform_shape_metric_inputs_from_outputs(
             metrics,
             schema.cardiac_cycle.systolic_cycle_duration_seconds,
         ),
-        artery=_read_vessel(metrics, schema.artery_per_beat),
-        vein=_read_vessel(metrics, schema.vein_per_beat),
+        artery=_read_vessel(metrics, schema.artery_per_beat_filtered),
+        vein=_read_vessel(metrics, schema.vein_per_beat_filtered),
     )
 
 

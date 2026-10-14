@@ -6,7 +6,11 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from time import perf_counter
 
-from app_settings import VelocityEstimationMethod
+from app_settings import (
+    DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
+    VelocityEstimationMethod,
+    validate_band_limited_harmonics_setting,
+)
 from input_output.inputs import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
 from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS
@@ -38,6 +42,7 @@ def run_pipelines_to_output(
     target_names: Sequence[str] = (),
     pipeline_options: Mapping[str, Sequence[str]] | None = None,
     band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
+    band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
     on_pipeline_start: Callable[[str, int, int], None] | None = None,
@@ -45,6 +50,7 @@ def run_pipelines_to_output(
     on_progress: Callable[[], None] | None = None,
 ) -> Path:
     """Run resolved pipelines and write outputs through an OutputManager."""
+    resolved_harmonics = validate_band_limited_harmonics_setting(band_limited_harmonics)
 
     resolved_band_ratio_scale_hz = validate_band_ratio_frequency_scale_hz(
         band_ratio_frequency_scale_hz
@@ -62,6 +68,7 @@ def run_pipelines_to_output(
             target_names=target_names,
             pipeline_options=pipeline_options or {},
             band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
+            band_limited_harmonics=resolved_harmonics,
             holodoppler_h5=holodoppler_h5,
             doppler_vision_h5=doppler_vision_h5,
             on_pipeline_start=on_pipeline_start,
@@ -80,6 +87,7 @@ def _run_pipelines_with_work_h5(
     target_names: Sequence[str],
     pipeline_options: Mapping[str, Sequence[str]],
     band_ratio_frequency_scale_hz: float,
+    band_limited_harmonics: int,
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
     on_pipeline_start: Callable[[str, int, int], None] | None,
@@ -97,6 +105,7 @@ def _run_pipelines_with_work_h5(
         doppler_vision_h5=doppler_vision_h5,
     )
     hd_config = load_h5_sidecar_config(hd_h5, source="hd")
+    work_h5.attrs["band_limited_harmonics"] = band_limited_harmonics
     dv_config = load_h5_sidecar_config(dv_h5, source="dv")
     context_vars: dict[str, object] = {}
 

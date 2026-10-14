@@ -15,10 +15,11 @@ def pack_continuous_velocity_outputs(
     velocity: RetinalVelocity,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
-    """Pack raw and band-limited artery and vein velocity signals."""
+    """Pack raw and filtered artery and vein velocity signals."""
     schema = resolve_output_paths(output_paths)
     paths = schema.analysis
     attrs = velocity_dataset_attrs(velocity)
+    filtered_attrs = {**attrs, **continuous_filter_attrs(velocity.dt_seconds)}
     artery_raw = velocity.continuous("artery", raw=True)
     vein_raw = velocity.continuous("vein", raw=True)
     artery_filtered = velocity.continuous("artery")
@@ -32,15 +33,17 @@ def pack_continuous_velocity_outputs(
             vein_raw,
             attrs=attrs,
         ),
-        paths.retinal_artery_velocity_signal_band_limited: metric_value(
+        paths.retinal_artery_velocity_signal_filtered: metric_value(
             artery_filtered,
-            attrs=attrs,
+            attrs=filtered_attrs,
         ),
-        paths.retinal_vein_velocity_signal_band_limited: metric_value(
+        paths.retinal_vein_velocity_signal_filtered: metric_value(
             vein_filtered,
-            attrs=attrs,
+            attrs=filtered_attrs,
         ),
     }
+
+
 def pack_segment_velocity_outputs(
     artery_segments,
     vein_segments,
@@ -84,8 +87,7 @@ def _pack_segment_velocity_output(
     values = np.asarray(profile.segment_signal, dtype=np.float32)
     if values.ndim != 3:
         raise ValueError(
-            "segment velocity must have shape (radius, branch, frame), "
-            f"got {values.shape}."
+            f"segment velocity must have shape (radius, branch, frame), got {values.shape}."
         )
 
     outputs = {
@@ -95,11 +97,16 @@ def _pack_segment_velocity_output(
             dim_desc=("frame", "branch", "radius"),
         )
     }
-    if paths.velocity_signal_band_limited is not None:
-        band_limited = _lowpass_segment_velocity(values, source_data)
-        outputs[paths.velocity_signal_band_limited] = metric_value(
-            band_limited.transpose(2, 1, 0),
-            attrs=attrs,
+    if paths.velocity_signal_filtered is not None:
+        filtered = getattr(segments, "filtered_signal", None)
+        if filtered is None:
+            filtered = _lowpass_segment_velocity(values, source_data)
+        outputs[paths.velocity_signal_filtered] = metric_value(
+            filtered.transpose(2, 1, 0),
+            attrs={
+                **attrs,
+                **continuous_filter_attrs(float(source_data.source.holodoppler.timing.dt_seconds)),
+            },
             dim_desc=("frame", "branch", "radius"),
         )
     return outputs
@@ -108,9 +115,24 @@ def _pack_segment_velocity_output(
 def _lowpass_segment_velocity(values: np.ndarray, source_data) -> np.ndarray:
     timing = source_data.source.holodoppler.timing
     if timing is None:
-        raise ValueError("Segment band-limited velocity requires source timing.")
+        raise ValueError("Segment filtered velocity requires source timing.")
 
     return lowpass_velocity_signals(
         values,
         dt_seconds=float(timing.dt_seconds),
     )
+
+
+def continuous_filter_attrs(dt_seconds: float) -> dict[str, object]:
+    """Describe the continuous Butterworth stage independently of bandlimiting."""
+    return {
+        "signal_source": "filtered",
+        "filter_method": "butterworth_filtfilt",
+        "filter_order": 4,
+        "filter_cutoff_hz": 15.0,
+        "filter_padding": "odd_reflection",
+        "filter_padding_samples": 12,
+        "filter_application": "continuous_before_beat_subdivision",
+        "filter_short_series_policy": "leave_unchanged_when_samples_le_12",
+        "dt_seconds": float(dt_seconds),
+    }

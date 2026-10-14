@@ -17,7 +17,8 @@ from .runner import (
         "Compute base retinal velocity, average maps, and cardiac-cycle timing."
     ),
     requires=["numpy", "h5py", "scipy", "skimage"],
-    dag_produces=["velocity", "cardiac_cycles"],
+    dag_requires=["capillary_analysis_zones"],
+    dag_produces=["velocity", "cardiac_cycles", "gap_spectrograms", "gap_per_beat_spectrograms"],
     input_slot="both",
     visibility="hidden",
     produces_execution_variants=True,

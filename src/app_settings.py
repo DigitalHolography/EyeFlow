@@ -8,6 +8,7 @@ import re
 import sys
 from collections.abc import Iterable, Mapping
 from importlib import metadata as importlib_metadata
+from numbers import Integral
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -19,6 +20,8 @@ from velocity_calibration import (
 APP_NAME = "EyeFlow"
 SETTINGS_FILENAME = "settings.json"
 DEFAULT_SETTINGS_FILENAME = "default_settings.json"
+# Application fallback; calculations own their independent API default.
+DEFAULT_BAND_LIMITED_HARMONICS_SETTING = 12
 LAST_RUN_LOG_FILENAME = "last_EF_log.txt"
 PIPELINES_DIR_ENV = "EYEFLOW_PIPELINES_DIR"
 VERSION_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
@@ -32,6 +35,17 @@ PIPELINE_NAME_MIGRATIONS: dict[str, str] = {
     "retinal_velocity": "velocity",
     "waveform_velocity": "velocity_analysis",
 }
+
+
+def validate_band_limited_harmonics_setting(value: object) -> int:
+    """Validate a JSON/run setting before output-directory replacement.
+
+    Normalize integer settings to native integers for JSON serialization.
+    Calculation argument validation belongs to calculations.math.bandlimiting.
+    """
+    if isinstance(value, bool) or not isinstance(value, Integral) or value < 0:
+        raise ValueError("band_limited_harmonics must be a non-negative integer, excluding DC.")
+    return int(value)
 
 
 def validate_velocity_estimation_method(value: object) -> VelocityEstimationMethod:
@@ -323,6 +337,9 @@ class AppSettingsStore:
             ) from exc
         if not isinstance(settings, dict):
             raise TypeError("The configuration must contain a JSON object.")
+        validate_band_limited_harmonics_setting(
+            settings.get("band_limited_harmonics", DEFAULT_BAND_LIMITED_HARMONICS_SETTING)
+        )
         validate_band_ratio_frequency_scale_hz(
             settings.get(
                 "band_ratio_frequency_scale_hz",
@@ -389,6 +406,16 @@ class AppSettingsStore:
     def load_ui_mode(self) -> str:
         mode = self.load().get("ui_mode")
         return mode if mode in {"minimal", "advanced"} else "minimal"
+
+    def load_band_limited_harmonics(self) -> int:
+        return validate_band_limited_harmonics_setting(
+            self.load().get("band_limited_harmonics", DEFAULT_BAND_LIMITED_HARMONICS_SETTING)
+        )
+
+    def save_band_limited_harmonics(self, value: object) -> None:
+        settings = self.load()
+        settings["band_limited_harmonics"] = validate_band_limited_harmonics_setting(value)
+        self.save(settings)
 
     def save_ui_mode(self, mode: str) -> None:
         settings = self.load()

@@ -41,7 +41,12 @@ class DopplerViewSource(TypedSource):
         )
 
     def retinal_vessel_mask(self) -> np.ndarray | None:
-        """Return all detected retinal vessels, binarizing raw logits at > 0.1."""
+        """Return native (D0=y, D1=x) vessel support using raw logits > 0.1.
+
+        Preserve row order: native Y is inverted relative to EF's published
+        lower-left image frame. Shared input alignment handles legacy axis
+        swaps; output serialization handles the Y flip and (x, y) ordering.
+        """
         return self._optional_binary_mask(DV_RETINAL_VESSEL_LOGITS_PATH, logits=True)
 
     def choroid_vessel_mask(self) -> np.ndarray | None:

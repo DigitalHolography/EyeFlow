@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+from scipy.signal import butter, filtfilt
 
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
@@ -32,7 +33,11 @@ class SpectralCardiacCycleTests(unittest.TestCase):
             velocity = fixture["arterial_velocity_mm_s"]
             dt_seconds = float(fixture["dt_seconds"])
             expected = fixture["expected_boundaries"]
-            expected_filtered = fixture["filtered_velocity_mm_s"]
+        # The fixture's filtered array used SciPy's default 15-sample padding.
+        # Keep its boundary reference, but verify MATLAB's 12-sample reflection.
+        cutoff = np.float32(15) / (np.float32(.5) / np.float32(dt_seconds))
+        b, a = butter(4, cutoff)
+        expected_filtered = filtfilt(b, a, velocity, padlen=12).astype(np.float32)
         original = velocity.copy()
         analysis = analyze_cardiac_cycles(velocity, dt_seconds=dt_seconds)
         detection = analysis.systole
@@ -47,7 +52,7 @@ class SpectralCardiacCycleTests(unittest.TestCase):
             [0.7188487, 0.7188487, 0.7672328, 0.7810568], atol=1e-6,
         )
         per_beat = per_beat_signal_analysis(
-            velocity, detection.systole_indexes, 13, index_base=0,
+            velocity, detection.systole_indexes, 12, index_base=0,
         )
         self.assertEqual((4, 128), per_beat.velocity_signal_per_beat.shape)
         for index, (start, stop) in enumerate(zip(expected[:-1], expected[1:])):
@@ -214,7 +219,7 @@ class SpectralCardiacCycleTests(unittest.TestCase):
         per_beat = per_beat_signal_analysis(
             waveform,
             detection.systole_indexes,
-            band_limited_signal_harmonic_count=4,
+            band_limited_harmonics=4,
         )
 
         np.testing.assert_allclose(

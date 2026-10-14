@@ -1,6 +1,7 @@
 """Assemble the typed scientific state used by velocity-analysis products."""
 
 from contextlib import contextmanager
+from dataclasses import replace
 from time import perf_counter
 
 from calculations.blood_flow_velocity import (
@@ -15,6 +16,7 @@ from pipeline_engine.imports import (
     np,
     read_int_setting,
 )
+from pipelines.signal_settings import band_limited_harmonics
 from pipelines.topology_core.runner import prepared_topologies
 from pipelines.velocity.models import RetinalVelocity
 from pipelines.velocity.runner import velocity
@@ -23,6 +25,7 @@ from pipelines.velocity.signal_processing import (
 )
 from utils.logger import Logger
 
+from .analysis.filtering import lowpass_velocity_signals
 from .analysis.segments import analyze_velocity_segment_profiles
 from .artifacts import (
     export_branch_identity_stage_pngs,
@@ -30,7 +33,6 @@ from .artifacts import (
     export_rotated_mean_pngs,
 )
 from .constants import (
-    LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
     NUMBER_OF_RADII_IN_FOV,
     SEGMENT_INNER_RADIUS_FRAC,
     SEGMENT_OUTER_RADIUS_FRAC,
@@ -99,9 +101,7 @@ def velocity_analysis(ctx) -> VelocityAnalysis:
 
 def _segments_required(ctx) -> bool:
     """Return whether the canonical segment analysis must run."""
-    if ctx.pipeline_scheduled("blood_volume_rate") and ctx.options_for(
-        "blood_volume_rate"
-    ):
+    if ctx.pipeline_scheduled("blood_volume_rate") and ctx.options_for("blood_volume_rate"):
         return True
     if ctx.pipeline_scheduled("lowrank_waveform_decomposition"):
         return True
@@ -121,15 +121,12 @@ def _segments_required(ctx) -> bool:
         return True
     return bool(
         ctx.pipeline_scheduled("absolute_waveform_metrics")
-        and {"segments", "quadrants"}
-        & ctx.options_for("absolute_waveform_metrics")
+        and {"segments", "quadrants"} & ctx.options_for("absolute_waveform_metrics")
     )
 
 
 def _pulse_pngs_required(ctx) -> bool:
-    return ctx.pipeline_targeted("velocity_analysis") or ctx.pipeline_scheduled(
-        "pdf_report"
-    )
+    return ctx.pipeline_targeted("velocity_analysis") or ctx.pipeline_scheduled("pdf_report")
 
 
 def _build_velocity_analysis_state(
@@ -156,6 +153,18 @@ def _build_velocity_analysis_state(
         source_data,
         segments_required=segments_required,
     )
+    artery_segments, vein_segments = (
+        replace(
+            segments,
+            filtered_signal=lowpass_velocity_signals(
+                segments.profile.segment_signal,
+                dt_seconds=float(timing.dt_seconds),
+            ),
+        )
+        if segments is not None
+        else None
+        for segments in (artery_segments, vein_segments)
+    )
     return (
         source_data,
         artery_segments,
@@ -174,11 +183,7 @@ def _build_velocity_analysis_state(
 
 
 def _band_limited_harmonic_count(ctx) -> int:
-    return read_int_setting(
-        ctx,
-        default=LEGACY_BAND_LIMITED_SIGNAL_HARMONIC_COUNT,
-        keys=("BandLimitedSignalHarmonicCount", "band_limited_signal_harmonic_count"),
-    )
+    return band_limited_harmonics(ctx)
 
 
 def _number_of_radii_in_fov(ctx) -> int:
@@ -240,9 +245,7 @@ def _run_velocity_per_beat_analysis(
     harmonic_count: int,
 ) -> PerBeatAnalysisResult:
     timing = source_data.source.holodoppler.timing
-    arterial_velocity_signal, venous_velocity_signal = (
-        _raw_velocity_signals_for_per_beat(retinal)
-    )
+    arterial_velocity_signal, venous_velocity_signal = _raw_velocity_signals_for_per_beat(retinal)
     artery_segment_signal = _waveform_segment_input(artery_segments)
     vein_segment_signal = _waveform_segment_input(vein_segments)
     return run_per_beat_analysis(
@@ -253,16 +256,33 @@ def _run_velocity_per_beat_analysis(
                 retinal.cycle_boundary_indexes,
                 dtype=np.int32,
             ),
-            band_limited_signal_harmonic_count=harmonic_count,
+            band_limited_harmonics=harmonic_count,
             cardiac_cycle=retinal.cardiac_cycle.spectral,
             dt_seconds=timing.dt_seconds,
             arterial_velocity_segments=artery_segment_signal,
             venous_velocity_segments=vein_segment_signal,
-            arterial_safe_velocity_segments=artery_segment_signal,
-            venous_safe_velocity_segments=vein_segment_signal,
+            arterial_filtered_velocity_signal=retinal.continuous("artery"),
+            arterial_filtered_velocity_segments=_filtered_segment_input(
+                artery_segments, timing.dt_seconds
+            ),
+            venous_filtered_velocity_signal=retinal.continuous("vein"),
+            venous_filtered_velocity_segments=_filtered_segment_input(
+                vein_segments, timing.dt_seconds
+            ),
             index_base=source_data.provenance["beat_index_base"],
         )
     )
+
+
+def _filtered_segment_input(segments, dt_seconds):
+    if segments is None:
+        return None
+    cached = getattr(segments, "filtered_signal", None)
+    if cached is None:
+        cached = lowpass_velocity_signals(
+            segments.profile.segment_signal, dt_seconds=float(dt_seconds)
+        )
+    return cached
 
 
 def _raw_velocity_signals_for_per_beat(
@@ -400,7 +420,8 @@ def _context_attrs(
         ]
     )
     attrs = {
-        "dependency_chain": dependency_chain + [
+        "dependency_chain": dependency_chain
+        + [
             "blood_flow_velocity.signal_analysis.cardiac_cycle.spectral",
             "blood_flow_velocity.signal_analysis.per_beat.signal",
             "blood_flow_velocity.signal_analysis.per_beat.runner",
@@ -408,26 +429,16 @@ def _context_attrs(
         "analysis_source": analysis_source,
         "output_schema": output_paths.name,
         "velocity_section_geometry": "optic_disc_centered_frame_fraction",
-        "velocity_section_inner_radius_fraction": float(
-            SEGMENT_INNER_RADIUS_FRAC
-        ),
-        "velocity_section_outer_radius_fraction": float(
-            SEGMENT_OUTER_RADIUS_FRAC
-        ),
+        "velocity_section_inner_radius_fraction": float(SEGMENT_INNER_RADIUS_FRAC),
+        "velocity_section_outer_radius_fraction": float(SEGMENT_OUTER_RADIUS_FRAC),
         "velocity_section_outer_to_disc_radius": float(
             SEGMENT_OUTER_RADIUS_FRAC / SEGMENT_INNER_RADIUS_FRAC
         ),
         "number_of_radii_in_FOV": int(number_of_radii_in_fov),
-        "arterial_velocity_signal_path": (
-            analysis_paths.retinal_artery_velocity_signal
-        ),
-        "venous_velocity_signal_path": (
-            analysis_paths.retinal_vein_velocity_signal
-        ),
+        "arterial_velocity_signal_path": (analysis_paths.retinal_artery_velocity_signal),
+        "venous_velocity_signal_path": (analysis_paths.retinal_vein_velocity_signal),
         "systolic_peak_indexes_path": analysis_paths.beat_indices,
-        "cycle_duration_seconds_path": (
-            output_paths.cardiac_cycle.systolic_cycle_duration_seconds
-        ),
+        "cycle_duration_seconds_path": (output_paths.cardiac_cycle.systolic_cycle_duration_seconds),
         "heart_rate_hz": float(cardiac_cycle.heart_rate_hz),
         "heart_rate_bpm": float(cardiac_cycle.heart_rate_bpm),
         "heart_rate_ste_hz": float(cardiac_cycle.heart_rate_ste_hz),
@@ -435,7 +446,7 @@ def _context_attrs(
         "sampling_freq": float(timing.sampling_freq),
         "batch_stride": float(timing.batch_stride),
         "dt_seconds": float(timing.dt_seconds),
-        "band_limited_signal_harmonic_count": int(harmonic_count),
+        "band_limited_harmonics": int(harmonic_count),
         "filter_velocity_signals": True,
         "velocity_signal_lowpass_hz": float(DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ),
         "cardiac_cycle_detection_source": cardiac_cycle_detection_source,

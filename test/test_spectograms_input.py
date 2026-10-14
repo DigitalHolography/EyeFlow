@@ -1,4 +1,4 @@
-"""Lazy HD spectograms input and preservation of the unverified spatial axes."""
+"""Lazy HD spectograms input and preservation of the raw exported axes."""
 
 import json
 from unittest.mock import patch

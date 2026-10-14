@@ -166,6 +166,19 @@ def load_retinal_source_data(
     )
 
 
+def align_spectrogram_frame(frame: np.ndarray) -> np.ndarray:
+    """Map exported HD (freq, y, x) slices to EF lower-left (freq, x, y).
+
+    HD's spatial Y direction is inverted relative to persisted EF gaps.
+    Apply that explicit flip before the axis swap; never infer orientation
+    from dimensions or reuse the DV alignment flag for this volume.
+    """
+    frame = np.asarray(frame)
+    if frame.ndim != 3:
+        raise ValueError("An HD spectrogram frame must have (freq, y, x) axes.")
+    return np.swapaxes(np.flip(frame, axis=-2), -2, -1)
+
+
 def _optional_moment(loader):
     """Malformed inactive moments must not disable the band workflow."""
     try:
@@ -231,6 +244,7 @@ def apply_optional_mask_alignment(
 
 __all__ = [
     "align_mask",
+    "align_spectrogram_frame",
     "apply_mask_alignment",
     "apply_optional_mask_alignment",
     "apply_spatial_alignment",

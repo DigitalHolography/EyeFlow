@@ -6,7 +6,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from calculations.math import band_limited_ifft_abs, interpft_real, next_power_of_two
+from calculations.math import interpft_real, next_power_of_two, reconstruct_band_limited
+from calculations.math.bandlimiting import validate_harmonics
 
 from ._signal_utils import normalize_cycle_boundaries
 
@@ -21,15 +22,14 @@ class PerBeatSignalAnalysisResult:
 def per_beat_signal_analysis(
     signal,
     cycle_boundary_indexes,
-    band_limited_signal_harmonic_count: int,
+    band_limited_harmonics: int,
     *,
     index_base: int | None = None,
 ) -> PerBeatSignalAnalysisResult:
     signal_array = np.asarray(signal, dtype=np.float32).reshape(-1)
     if signal_array.size == 0:
         raise ValueError("signal must contain at least one sample.")
-    if band_limited_signal_harmonic_count < 1:
-        raise ValueError("band_limited_signal_harmonic_count must be positive.")
+    band_limited_harmonics = validate_harmonics(band_limited_harmonics)
 
     cycle_boundaries = normalize_cycle_boundaries(
         cycle_boundary_indexes,
@@ -39,7 +39,7 @@ def per_beat_signal_analysis(
     return _analyze_cycles(
         signal_array,
         cycle_boundaries,
-        int(band_limited_signal_harmonic_count),
+        int(band_limited_harmonics),
     )
 
 
@@ -83,4 +83,4 @@ def _band_limited_signal(
     n_fft: int,
     harmonic_count: int,
 ) -> np.ndarray:
-    return band_limited_ifft_abs(beat_fft, n_fft, harmonic_count)
+    return reconstruct_band_limited(beat_fft, harmonics=harmonic_count, reconstruction="matlab_magnitude")

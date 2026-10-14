@@ -162,7 +162,7 @@ class SegmentVelocityMapAviTests(unittest.TestCase):
             self.assertEqual([[0], [0]], [m["exported_beat_indexes"] for m in metadata])
             self.assertEqual([2, 2], [_avi_frame_count(Path(path)) for path in paths])
             self.assertEqual(
-                "/Processing/VelocityMapPerSegment/Artery",
+                "/ProcessingMoments/VelocityMapPerSegment/Artery",
                 metadata[0]["velocity_map_dataset"],
             )
             self.assertEqual(

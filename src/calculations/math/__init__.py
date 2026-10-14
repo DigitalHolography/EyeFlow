@@ -8,9 +8,9 @@ from .arrays import (
     rescale,
     standardize,
 )
+from .bandlimiting import DEFAULT_BAND_LIMITED_HARMONICS, band_limit, reconstruct_band_limited
 from .filtering import butter_lowpass_filtfilt, normalized_lowpass_cutoff
 from .fourier import (
-    band_limited_ifft_abs,
     harmonic_pack,
     interpft_axis0,
     interpft_real,
@@ -36,7 +36,9 @@ __all__ = [
     "SlidingWindowMethod",
     "as_float32_vector",
     "as_nonnegative_int_indexes",
-    "band_limited_ifft_abs",
+    "band_limit",
+    "reconstruct_band_limited",
+    "DEFAULT_BAND_LIMITED_HARMONICS",
     "butter_lowpass_filtfilt",
     "centered_sliding_window",
     "finite_image",

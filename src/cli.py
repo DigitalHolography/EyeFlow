@@ -197,6 +197,7 @@ def run_cli(
             pipelines=registry.values(),
             pipeline_options=pipeline_options,
             band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
+            band_limited_harmonics=settings_store.load_band_limited_harmonics(),
             output_root=work_root,
             batch_root=expanded_inputs.batch_root,
         )

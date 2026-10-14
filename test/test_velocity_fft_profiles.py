@@ -117,34 +117,34 @@ class VelocityFFTProfileTests(unittest.TestCase):
         schema = EyeFlowOutputPaths.active()
         paths = schema.artery_velocity_profiles
         expected_paths = {
-            "Processing/VelocityProfilesFFT/Artery/"
+            "ProcessingMoments/VelocityProfilesFFT/Artery/"
             "TransverseVelocityProfileUnmasked",
-            "Processing/VelocityProfilesFFT/Artery/"
+            "ProcessingMoments/VelocityProfilesFFT/Artery/"
             "TransverseVelocityProfileMasked",
-            "Processing/VelocityProfilesFFT/Vein/"
+            "ProcessingMoments/VelocityProfilesFFT/Vein/"
             "TransverseVelocityProfileUnmasked",
-            "Processing/VelocityProfilesFFT/Vein/"
+            "ProcessingMoments/VelocityProfilesFFT/Vein/"
             "TransverseVelocityProfileMasked",
         }
 
         self.assertEqual(expected_paths, set(outputs))
         self.assertEqual(
-            "Processing/VelocityProfilesFFT/Artery/"
+            "ProcessingMoments/VelocityProfilesFFT/Artery/"
             "TransverseVelocityProfileUnmasked",
             paths.transverse_velocity_profile_fft_unmasked,
         )
         self.assertEqual(
-            "Processing/VelocityProfilesFFT/Artery/"
+            "ProcessingMoments/VelocityProfilesFFT/Artery/"
             "TransverseVelocityProfileMasked",
             paths.transverse_velocity_profile_fft_masked,
         )
         self.assertEqual(
-            "Processing/VelocityProfilesFFT/Vein/"
+            "ProcessingMoments/VelocityProfilesFFT/Vein/"
             "TransverseVelocityProfileUnmasked",
             schema.vein_velocity_profiles.transverse_velocity_profile_fft_unmasked,
         )
         self.assertEqual(
-            "Processing/VelocityProfilesFFT/Vein/TransverseVelocityProfileMasked",
+            "ProcessingMoments/VelocityProfilesFFT/Vein/TransverseVelocityProfileMasked",
             schema.vein_velocity_profiles.transverse_velocity_profile_fft_masked,
         )
 

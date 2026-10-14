@@ -11,14 +11,16 @@ def butter_lowpass_filtfilt(
     dt_seconds: np.float32,
     lowpass_freq_hz: np.float32,
     order: int = 4,
+    axis: int = -1,
 ) -> np.ndarray:
     butter, filtfilt = _scipy_signal_dependencies()
-    values = np.asarray(signal, dtype=np.float32).reshape(-1)
+    values = np.asarray(signal, dtype=np.float32)
     cutoff = normalized_lowpass_cutoff(dt_seconds, lowpass_freq_hz)
     b, a = butter(int(order), cutoff, btype="low")
-    if values.size <= filtfilt_pad_length(b, a):
+    if values.shape[axis] <= filtfilt_pad_length(b, a):
         return values.copy()
-    return filtfilt(b, a, values).astype(np.float32)
+    # MATLAB uses 3 * (max(len(a), len(b)) - 1) reflected endpoint samples.
+    return filtfilt(b, a, values, axis=axis, padlen=filtfilt_pad_length(b, a)).astype(np.float32)
 
 
 def normalized_lowpass_cutoff(dt_seconds: np.float32, lowpass_freq_hz: np.float32) -> np.float32:
@@ -31,7 +33,7 @@ def normalized_lowpass_cutoff(dt_seconds: np.float32, lowpass_freq_hz: np.float3
 
 
 def filtfilt_pad_length(b, a) -> int:
-    return 3 * max(len(a), len(b))
+    return 3 * (max(len(a), len(b)) - 1)
 
 
 def _scipy_signal_dependencies():

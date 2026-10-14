@@ -174,8 +174,8 @@ def test_output_packers_keep_paths_units_and_valid_provenance() -> None:
     mask_outputs = pack_mask_derived_outputs(
         {"artery": topology, "vein": topology},
         {
-            schema.artery_per_beat_safe.velocity_signal: safe_velocity,
-            schema.vein_per_beat_safe.velocity_signal: safe_velocity,
+            schema.artery_per_beat.segment_velocity_signal: safe_velocity,
+            schema.vein_per_beat.segment_velocity_signal: safe_velocity,
         },
         pixel_size_mm=0.1,
     )

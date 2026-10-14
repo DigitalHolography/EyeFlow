@@ -227,7 +227,7 @@ class PipelineH5Output:
                     set_attr_safe(dataset, key, attr)
                 # References in dataset attributes use the same workflow namespace.
                 for key, attr in list(dataset.attrs.items()):
-                    if isinstance(attr, str) and attr.lstrip("/").startswith("Processing/"):
+                    if isinstance(attr, str) and attr.lstrip("/").startswith("ProcessingMoments/"):
                         set_attr_safe(dataset, key, self._path(attr))
 
     def set_attr(self, key: str, value: Any) -> None:

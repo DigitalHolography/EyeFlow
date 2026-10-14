@@ -13,20 +13,10 @@ def gap_velocity_mask(
 ) -> np.ndarray:
     """Prepare native gap support for a video without changing the persisted mask.
 
-    A 512x512 mask becomes 256x256 using conservative 2x2 reduction. If its
-    dimensions already match the video's spatial shape, return a copy.
+    Interpolate to the HD spectrogram's actual (height, width) using nearest
+    neighbors. No fixed downsampling factor or divisibility rule is imposed.
     """
-    zones = np.asarray(analysis_zones)
-    if zones.ndim != 2 or zones.dtype != np.bool_:
-        raise TypeError("analysis_zones must be a 2-D boolean array.")
-    if zones.shape == tuple(spatial_shape):
-        return zones.copy()
-    if zones.shape != tuple(2 * size for size in spatial_shape):
-        raise ValueError(
-            "Gap-mask dimensions must match the video or be exactly twice its "
-            f"spatial dimensions; got mask {zones.shape} and video {spatial_shape}."
-        )
-    return downsample_gap_zones(zones)
+    return downsample_gap_zones(analysis_zones, target_shape=spatial_shape)
 
 
 def elliptical_mask(ny: int, nx: int, radius_frac: float, center=None) -> np.ndarray:

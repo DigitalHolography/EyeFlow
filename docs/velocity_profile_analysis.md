@@ -4,8 +4,8 @@ Selecting the `velocity_analysis.velocity_profile_analysis` option also selects
 its required `velocity_profiles` and `segments` options. During velocity
 analysis, the fitter consumes the payloads published at both output paths:
 
-- `/Processing/VelocityProfiles/Artery/Transversal/Masked/VelocityProfile/value`
-- `/Processing/VelocityProfiles/Vein/Transversal/Masked/VelocityProfile/value`
+- `/ProcessingMoments/VelocityProfiles/Artery/Transversal/Masked/VelocityProfile/value`
+- `/ProcessingMoments/VelocityProfiles/Vein/Transversal/Masked/VelocityProfile/value`
 
 Input axes are `(x, time, beat, branch, radius)`. Every profile is fit independently;
 there is no averaging across time, beats, branches or radii.
@@ -41,7 +41,7 @@ the profile payload.
 ## Output schema
 
 Each name below is written for both vessel classes at
-`/Processing/VelocityProfileAnalysis/{Artery,Vein}/<name>/value` with axes
+`/ProcessingMoments/VelocityProfileAnalysis/{Artery,Vein}/<name>/value` with axes
 `(time, beat, branch, radius)`. Float arrays are float32 and counts are int32.
 
 | Names | Definition |
