@@ -118,6 +118,9 @@ def _run_pipelines_with_work_h5(
             producer.name, transitive=True, pipeline_options=pipeline_options
         )
     }
+    variant_dependents.difference_update(
+        pipeline.name for pipeline in pipelines if pipeline.run_once
+    )
     variant_failures: dict[str, str] = {}
     shared_status: dict[str, str] = {}
     branch_status: dict[str, dict[str, str]] = {}
@@ -197,7 +200,7 @@ def _run_pipelines_with_work_h5(
                     succeeded = True
         else:
             # Prefer a complete workflow for unrelated shared pipelines.
-            if execution_variants:
+            if execution_variants and not pipeline_desc.run_once:
                 canonical = next(
                     (variant for variant in execution_variants
                      if variant.name not in variant_failures), execution_variants[0],

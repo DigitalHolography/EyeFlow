@@ -10,8 +10,8 @@ import pytest
 
 from input_output.h5_access import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
-from pipelines.velocity.gaps.metrics import SPECTRUM_METRIC_DEFINITIONS, analyze_spectrum
-from pipelines.velocity.gaps.runner import run_gap_analysis
+from pipelines.low_freq_spectra.metrics import SPECTRUM_METRIC_DEFINITIONS, analyze_spectrum
+from pipelines.low_freq_spectra.gap_analysis import run_gap_analysis
 
 
 def _spectrum():
@@ -113,7 +113,7 @@ def test_zero_baseline_returns_nan_ratio_without_division_warning():
 
 @pytest.mark.parametrize("shape", [(0,), (2,), (31,), (33,), (2, 16)])
 def test_unsupported_shape_returns_all_fourteen_nan_metrics_with_one_warning(shape):
-    with patch("pipelines.velocity.gaps.metrics.Logger.log_warning") as warning:
+    with patch("pipelines.low_freq_spectra.metrics.Logger.log_warning") as warning:
         result = analyze_spectrum(np.ones(shape))
     assert set(result) == set(SPECTRUM_METRIC_DEFINITIONS)
     assert len(result) == 14
@@ -139,7 +139,7 @@ def test_runner_persists_scalar_metrics_from_the_raw_aggregate_spectrum(tmp_path
             cardiac_cycle_source="artery",
             continuous=lambda vessel, raw: np.zeros(9),
         )
-        with patch("pipelines.velocity.gaps.metrics.Logger.log_warning") as warning:
+        with patch("pipelines.low_freq_spectra.metrics.Logger.log_warning") as warning:
             metrics = run_gap_analysis(ctx, moments)
         ctx.output.h5.write_many(metrics)
         median = output[schema.spectrograms_masked_time_aggregated_median]

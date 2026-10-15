@@ -35,6 +35,8 @@ def registerPipeline(
     visibility: str = "visible",
     default_selected: bool = False,
     produces_execution_variants: bool = False,
+    auto_run_after: str | None = None,
+    run_once: bool = False,
 ):
     def decorator(cls):
         cls.name = name
@@ -50,6 +52,8 @@ def registerPipeline(
             options if options is not None else getattr(cls, "options", ())
         )
         cls.produces_execution_variants = bool(produces_execution_variants)
+        cls.auto_run_after = auto_run_after
+        cls.run_once = bool(run_once)
 
         missing = find_missing_dependencies(cls.requires)
         cls.missing_deps = missing
@@ -68,6 +72,8 @@ def registerPipeline(
             visibility=visibility,
             default_selected=bool(default_selected),
             produces_execution_variants=cls.produces_execution_variants,
+            auto_run_after=auto_run_after,
+            run_once=bool(run_once),
             pipeline_factory=cls,
             source_path=_source_path(cls),
         )
@@ -88,12 +94,17 @@ def pipeline(
     visibility: str = "visible",
     default_selected: bool = False,
     produces_execution_variants: bool = False,
+    auto_run_after: str | None = None,
+    run_once: bool = False,
 ):
     """Register a function pipeline.
 
     The decorated function receives a PipelineContext. It can write outputs via
     ctx.output.h5.write()/ctx.output.h5.write_many(), return a ProcessResult,
     return a metrics dict, or return None after writing directly to the context.
+
+    auto_run_after schedules this companion whenever the named pipeline enters
+    the plan. run_once keeps its execution shared even after a variant producer.
     """
 
     def decorator(func: Callable[[Any], ProcessResult | Mapping[str, Any] | None]):
@@ -114,6 +125,8 @@ def pipeline(
             visibility=visibility,
             default_selected=bool(default_selected),
             produces_execution_variants=bool(produces_execution_variants),
+            auto_run_after=auto_run_after,
+            run_once=bool(run_once),
             pipeline_factory=lambda: FunctionPipeline(
                 name=name,
                 description=description or (inspect.getdoc(func) or ""),
@@ -128,6 +141,8 @@ def pipeline(
                 visibility=visibility,
                 default_selected=bool(default_selected),
                 produces_execution_variants=bool(produces_execution_variants),
+                auto_run_after=auto_run_after,
+                run_once=bool(run_once),
             ),
             source_path=_source_path(func),
         )
@@ -228,6 +243,8 @@ class ProcessPipeline:
     visibility: str = "visible"
     default_selected: bool = False
     produces_execution_variants: bool = False
+    auto_run_after: str | None = None
+    run_once: bool = False
     source_path: str | None = None
 
     def __init__(self) -> None:
@@ -257,6 +274,8 @@ class FunctionPipeline(ProcessPipeline):
         visibility: str,
         default_selected: bool,
         produces_execution_variants: bool,
+        auto_run_after: str | None,
+        run_once: bool,
     ) -> None:
         self.name = name
         self.description = description
@@ -271,6 +290,8 @@ class FunctionPipeline(ProcessPipeline):
         self.visibility = visibility
         self.default_selected = default_selected
         self.produces_execution_variants = produces_execution_variants
+        self.auto_run_after = auto_run_after
+        self.run_once = run_once
         self.source_path = _source_path(func)
 
     def run(self, ctx: Any) -> ProcessResult | Mapping[str, Any] | None:
@@ -292,6 +313,10 @@ class PipelineDescriptor:
     visibility: str = "visible"
     default_selected: bool = False
     produces_execution_variants: bool = False
+    # Automatically include this pipeline when its predecessor is scheduled.
+    auto_run_after: str | None = None
+    # Keep shared products outside execution-variant fan-out and namespaces.
+    run_once: bool = False
     pipeline_factory: Callable[[], ProcessPipeline] | None = None
     error_msg: str = ""
     source_path: str | None = None

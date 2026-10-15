@@ -68,6 +68,7 @@ class VelocityAnalysisSources:
             self.hd,
             self.dv,
             velocity_estimation_method=self.velocity_estimation_method,
+            include_spectrograms=False,
             band_ratio_frequency_scale_hz=(
                 self.band_ratio_frequency_scale_hz
             ),

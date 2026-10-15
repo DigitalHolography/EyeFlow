@@ -148,7 +148,11 @@ def run(ctx):
 ```
 
 Use `visibility="hidden"` for shared implementation pipelines that should run
-only as dependencies. Test dependency closure and independent option families
+as dependencies or automatic companions. A declaration with
+`auto_run_after="upstream_name"` enters any plan already scheduling that pipeline
+and adds a dependency edge. It does not change the selected targets. Use
+`run_once=True` for shared outputs that must execute outside variant fan-out;
+such a consumer needs an explicitly declared shared data producer. Test dependency closure and independent option families
 in `test_pipeline_library_dependencies.py` or a focused pipeline test.
 
 ## Read data safely

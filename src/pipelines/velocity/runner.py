@@ -18,20 +18,18 @@ from input_output.schema.eyeflow_output import (
     processing_path,
 )
 from pipeline_engine.imports import ExecutionVariant
-from pipelines.topology_core.runner import optional_capillary_zones
 from utils.logger import Logger
 from velocity_calibration import physical_velocity_provenance
 
 from .cardiac_cycle import detect_velocity_cardiac_cycles
 from .estimation import estimate_retinal_velocity
-from .gaps.runner import run_gap_analysis
-from .spectrograms import preprocess_spectrograms
-from .models import RetinalVelocity
+from .models import RetinalVelocity, VelocityWorkflows
 from .outputs import pack_velocity_outputs
 from .signal_processing import build_velocity
 from .sources import load_velocity_inputs
 
 VELOCITY_STATE = "velocity"
+VELOCITY_WORKFLOWS_STATE = "velocity_workflows"
 
 
 def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
@@ -56,12 +54,6 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
 
     variants: list[ExecutionVariant] = []
     outputs = {}
-    spectrum_outputs = {}
-    if hasattr(ctx, "output"):
-        zones = optional_capillary_zones(ctx)
-        spectrum_outputs = preprocess_spectrograms(
-            next(iter(sources.values())).image_maps.spectograms, zones,
-        )
     velocity_data_moments = _estimate_available(
         ctx,
         sources.get("doppler_moments"),
@@ -143,18 +135,11 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
             Logger.log_warning(f"Skipping {method}: {exc}")
     if not variants:
         raise RuntimeError(f"Neither velocity workflow completed: {failures}")
-    if spectrum_outputs:
-        # Shared spectra live outside both workflow roots in /ProcessingSpectrograms.
-        ctx.output.h5.write_many(spectrum_outputs)
-        outputs.update(spectrum_outputs)
-        moments = next(
-            (variant.state[VELOCITY_STATE] for variant in variants
-             if variant.name == "doppler_moments"),
-            None,
-        )
-        gap_outputs = run_gap_analysis(ctx, moments)
-        ctx.output.h5.write_many(gap_outputs)
-        outputs.update(gap_outputs)
+    results = {variant.name: variant.state[VELOCITY_STATE] for variant in variants}
+    ctx.state.set(VELOCITY_WORKFLOWS_STATE, VelocityWorkflows(
+        moments=results.get("doppler_moments"),
+        bandratio=results.get("frequency_bands"),
+    ))
     publish_variants = getattr(ctx, "publish_execution_variants", None)
     if callable(publish_variants):
         publish_variants(variants, failures=failures)
@@ -208,6 +193,16 @@ def velocity(ctx) -> RetinalVelocity:
     value = ctx.state.get(VELOCITY_STATE)
     if not isinstance(value, RetinalVelocity):
         raise RuntimeError("Velocity state is unavailable; check the pipeline DAG dependency.")
+    return value
+
+
+def velocity_workflows(ctx) -> VelocityWorkflows:
+    """Return successful workflow results without selecting a canonical method."""
+    value = ctx.state.get(VELOCITY_WORKFLOWS_STATE)
+    if value is None:
+        raise RuntimeError("Velocity workflow state is unavailable; check the pipeline DAG dependency.")
+    if not isinstance(value, VelocityWorkflows):
+        raise TypeError("Velocity workflow state must be a VelocityWorkflows result.")
     return value
 
 

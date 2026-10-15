@@ -7,7 +7,7 @@ import numpy as np
 
 from input_output.h5_access import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
-from pipelines.velocity.spectrograms import preprocess_spectrograms
+from pipelines.low_freq_spectra.spectrograms import preprocess_spectrograms
 from test_gap_spectrogram_preprocessing import FrameSource
 
 
@@ -51,7 +51,7 @@ def test_empty_or_missing_gap_support_keeps_full_frame_outputs():
     schema = EyeFlowOutputPaths.active()
     for zones in (None, np.zeros((4, 6), bool)):
         source = FrameSource(np.ones((2, 3, 2, 3), dtype=np.float32))
-        with patch("pipelines.velocity.gaps.preprocessing.Logger.log_warning"):
+        with patch("pipelines.low_freq_spectra.preprocessing.Logger.log_warning"):
             metrics = preprocess_spectrograms(source, zones)
         assert set(metrics) == {schema.spectrograms_spatial_average, schema.spectrograms_spatial_median}
         assert source.reads == [0, 1]
@@ -66,6 +66,6 @@ def test_finite_negative_reductions_are_clamped_after_aggregation():
 
 
 def test_missing_spectra_skip_all_reductions_with_warning():
-    with patch("pipelines.velocity.spectrograms.Logger.log_warning") as warning:
+    with patch("pipelines.low_freq_spectra.spectrograms.Logger.log_warning") as warning:
         assert preprocess_spectrograms(None, None) == {}
     warning.assert_called_once()

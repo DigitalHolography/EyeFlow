@@ -153,7 +153,7 @@ def test_interpolation_rejects_empty_source_dimensions(shape):
 
 @pytest.mark.parametrize("target_shape", [(128, 128), (256, 256), (170, 129), (64, 64), (700, 300)])
 def test_velocity_application_interpolates_to_video_dimensions_without_changing_export(target_shape):
-    from pipelines.velocity.masks import gap_velocity_mask
+    from pipelines.low_freq_spectra.masks import gap_velocity_mask
 
     original = np.ones((512, 512), dtype=bool)
     original[100, 100] = False
@@ -173,7 +173,7 @@ def test_velocity_application_interpolates_to_video_dimensions_without_changing_
 
 
 def test_velocity_application_preserves_matching_grid():
-    from pipelines.velocity.masks import gap_velocity_mask
+    from pipelines.low_freq_spectra.masks import gap_velocity_mask
 
     source = np.ones((256, 256), dtype=bool)
     same_grid = gap_velocity_mask(source, (256, 256))

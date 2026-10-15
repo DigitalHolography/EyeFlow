@@ -34,8 +34,10 @@ normalization is in `src/app_settings.py`.
 - A key with no producer is considered external and creates no edge.
 - Selected option `requires` are closed transitively within one pipeline before
   the DAG is resolved. Selected option `dag_requires` add producer edges.
-- Hidden pipelines may enter a plan through dependencies; only visible
-  available pipelines are valid user targets.
+- `auto_run_after` adds a companion when its named predecessor is scheduled,
+  adds an ordering/dependency edge, and preserves directly selected targets.
+- Hidden pipelines may enter a plan through dependencies or automatic
+  companions; only visible available pipelines are valid user targets.
 - Descriptor discovery order breaks ties between otherwise independent nodes.
 
 When modifying scheduling, inspect `base.py`, `dag.py`, the affected pipeline
@@ -62,7 +64,10 @@ Any descriptor declaring `produces_execution_variants=True` may publish typed
 `ExecutionVariant` objects through `ctx.publish_execution_variants()`. Its
 transitive DAG dependents execute once per surviving variant using that
 variant's isolated state, HDF5 namespace, artifact namespace, and provenance;
-unrelated descriptors remain shared. A pipeline returning a
+unrelated descriptors remain shared. `run_once=True` explicitly exempts a
+dependent from fan-out and canonical-variant selection; it uses shared state,
+root output, and no execution variant. Its state producers must be declared,
+just like other dependencies. A pipeline returning a
 mapping or `ProcessResult` is persisted;
 a pipeline returning `None` owns its direct writes.
 

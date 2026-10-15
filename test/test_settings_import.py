@@ -35,6 +35,30 @@ class _Variable:
 
 
 class SettingsImportTests(unittest.TestCase):
+    def test_last_input_directory_is_persisted_without_changing_other_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            directory = Path(temp_dir)
+            settings_path = directory / "settings.json"
+            store = AppSettingsStore(path=settings_path)
+            original = {"ui_mode": "advanced", "pipeline_visibility": {"pdf_report": False}}
+            store.save(original)
+            store.save_last_input_directory(directory)
+
+            reopened = AppSettingsStore(path=settings_path)
+            self.assertEqual(directory, reopened.load_last_input_directory())
+            self.assertEqual({**original, "last_input_directory": str(directory)}, reopened.load())
+
+    def test_invalid_last_input_directories_are_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            store = AppSettingsStore(path=root / "settings.json")
+            file_path = root / "input.holo"
+            file_path.touch()
+            for value in (None, 123, [], "", ".", str(root / "missing"), str(file_path), "\0"):
+                with self.subTest(value=value):
+                    store.save({"last_input_directory": value})
+                    self.assertIsNone(store.load_last_input_directory())
+
     def test_import_file_replaces_active_settings(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -37,27 +37,69 @@ class RunController:
         self._stop_after_current_file = Event()
         self._current_file: _FileStarted | None = None
         self._current_pipeline: _PipelineStarted | None = None
+        self._last_input_directory: Path | None = None
         Logger.configure(on_log=self._queue_log)
 
     def _queue_log(self, message: str) -> None:
         self._queue_pipeline_ui_event("log", message)
 
     def choose_holo_file(self) -> None:
-        selected_holo = self.app.input_controller.selected_holo_path()
-        initial_dir = (
-            str(selected_holo.parent)
-            if selected_holo is not None
-            else os.path.abspath("example_file")
-        )
         paths = services_for(self.app).file_dialogs.askopenfilenames(
             filetypes=[("HOLO or path list", "*.holo *.txt"), ("All files", "*.*")],
-            initialdir=initial_dir,
+            initialdir=self._input_dialog_directory(),
             title="Select .holo file(s) or one .txt path list",
         )
         if paths:
-            self.app.input_controller.assign_holo_input_paths(
-                [Path(path) for path in paths]
+            self._remember_input_directory(Path(paths[0]).parent)
+            self._add_input_paths([Path(path) for path in paths])
+
+    def choose_holo_folder(self) -> None:
+        try:
+            folders = services_for(self.app).file_dialogs.askdirectories(
+                parent=self.app,
+                initialdir=self._input_dialog_directory(),
+                title="Select folders containing .holo files or HD/DV runs (including subfolders)",
+                mustexist=True,
             )
+        except OSError as exc:
+            services_for(self.app).dialogs.showerror("Folder selection failed", str(exc))
+            return
+        if folders:
+            paths = [Path(folder) for folder in folders]
+            self._remember_input_directory(paths[0].parent if len(paths) > 1 else paths[0])
+            self._add_input_paths(paths)
+
+    def _input_dialog_directory(self) -> str:
+        directory = getattr(self, "_last_input_directory", None)
+        if directory is None:
+            directory = self.app.settings_store.load_last_input_directory()
+        if directory is not None and directory.is_dir():
+            return str(directory)
+        selected = self.app.input_controller.selected_holo_path()
+        if selected is not None:
+            directory = selected if selected.is_dir() else selected.parent
+            if directory.is_dir():
+                return str(directory)
+        return os.getcwd()
+
+    def _remember_input_directory(self, directory: Path) -> None:
+        self._last_input_directory = directory.expanduser().resolve()
+        try:
+            self.app.settings_store.save_last_input_directory(self._last_input_directory)
+        except OSError as exc:
+            self.app.settings_controller.show_settings_warning(
+                "Settings not saved",
+                f"Could not save the last input folder:\n{exc}",
+            )
+
+    def _add_input_paths(self, paths: list[Path]) -> None:
+        try:
+            self.app.input_controller.add_holo_input_paths(paths)
+        except (OSError, ValueError) as exc:
+            services_for(self.app).dialogs.showwarning("Input selection", str(exc))
+
+    def clear_holo_inputs(self) -> None:
+        self.app.input_controller.assign_holo_input_paths([])
 
     def run_process(self) -> None:
         if getattr(self.app, "_pipeline_run_active", False):
@@ -84,7 +126,7 @@ class RunController:
         if not input_paths:
             services_for(self.app).dialogs.showwarning(
                 "Missing input",
-                "Select one or more .holo files or one .txt path list.",
+                "Add .holo files, HD/DV run folders, or one .txt path list.",
             )
             return None
         target_names = (

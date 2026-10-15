@@ -5,14 +5,20 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from app_settings import (
     DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
     validate_band_limited_harmonics_setting,
 )
-from input_output import INPUT_LIST_SUFFIX, HoloRunLayout, resolve_selected_run_layouts
+from input_output import (
+    INPUT_LIST_SUFFIX,
+    HoloRunLayout,
+    discover_run_inputs,
+    is_run_directory,
+    resolve_selected_run_layouts,
+)
 from input_output.archives import extracted_zip_tree
 from input_output.output_manager import OutputManager, OutputType
 from utils.logger import Logger
@@ -184,11 +190,11 @@ def execute_run(
         final_path = final_manager.path_for(OutputType.H5)
         if on_file_start is not None:
             on_file_start(
-                input_layout.holo_path,
+                input_layout.input_path,
                 request_index + 1,
                 len(spec.requests),
             )
-        Logger.log(f"[INPUT] HOLO -> {input_layout.holo_path}")
+        Logger.log(f"[INPUT] SOURCE -> {input_layout.input_path}")
         Logger.log(f"[INPUT] DATA DIR -> {input_layout.root_dir}")
         Logger.log(f"[RESOLVED] HD -> {input_layout.hd_h5}")
         Logger.log(f"[RESOLVED] DV -> {input_layout.dv_h5}")
@@ -218,18 +224,18 @@ def execute_run(
         except Exception as exc:  # noqa: BLE001
             if isinstance(exc, PipelineRunError):
                 outputs.append(exc.output_h5_path)
-            failure = RunFailure(input_layout.holo_path, str(exc))
+            failure = RunFailure(input_layout.input_path, str(exc))
             failures.append(failure)
             Logger.log_error(str(failure))
         else:
             outputs.append(final_path)
-            Logger.log(f"Completed run for {input_layout.holo_path.name}: {final_path}")
+            Logger.log(f"Completed run for {input_layout.input_path.name}: {final_path}")
 
         remaining_count = len(spec.requests) - request_index - 1
         if remaining_count and should_stop is not None and should_stop():
             stopped = True
             Logger.log(
-                f"[STOP] Batch stopped after {input_layout.holo_path.name}; "
+                f"[STOP] Batch stopped after {input_layout.input_path.name}; "
                 f"{remaining_count} input file(s) not started."
             )
             break
@@ -280,14 +286,15 @@ def expand_run_inputs(data_path: Path) -> Iterator[ExpandedRunInputs]:
         with extracted_zip_tree(source) as extracted_root:
             paths = _find_holo_inputs(extracted_root)
             if not paths:
-                raise ValueError(f"No {HOLO_SUFFIX} files found in {source}")
-            yield ExpandedRunInputs(tuple(paths), extracted_root)
+                raise ValueError(f"No {HOLO_SUFFIX} files or HD/DV run folders found in {source}")
+            batch_root = extracted_root.parent if is_run_directory(extracted_root) else extracted_root
+            yield ExpandedRunInputs(tuple(paths), batch_root)
         return
 
     paths = _find_holo_inputs(source)
     if not paths:
-        raise ValueError(f"No {HOLO_SUFFIX} files found under {source}")
-    batch_root = source if source.is_dir() else None
+        raise ValueError(f"No {HOLO_SUFFIX} files or HD/DV run folders found under {source}")
+    batch_root = (source.parent if is_run_directory(source) else source) if source.is_dir() else None
     yield ExpandedRunInputs(tuple(paths), batch_root)
 
 
@@ -297,11 +304,7 @@ def _find_holo_inputs(path: Path) -> list[Path]:
             return [path]
         raise ValueError(f"File is not a {HOLO_SUFFIX} or {INPUT_LIST_SUFFIX} file: {path}")
     if path.is_dir():
-        return sorted(
-            candidate
-            for candidate in path.rglob("*")
-            if candidate.is_file() and candidate.suffix.lower() == HOLO_SUFFIX
-        )
+        return discover_run_inputs(path)
     raise FileNotFoundError(f"Input path does not exist: {path}")
 
 
@@ -315,10 +318,7 @@ def _output_manager_for_layout(
         return OutputManager(layout)
     relative_path = _relative_to_batch(layout.holo_path, batch_root)
     target_dir = output_root / relative_path.parent
-    output_layout = HoloRunLayout.from_holo(
-        layout.holo_path,
-        output_root=target_dir,
-    )
+    output_layout = replace(layout, _root_dir=target_dir / layout.stem)
     return OutputManager(output_layout)
 
 
@@ -352,9 +352,9 @@ def _reject_duplicate_destinations(requests: Sequence[RunRequest]) -> None:
         if previous is not None:
             raise ValueError(
                 "Multiple inputs resolve to the same EyeFlow output directory: "
-                f"{previous} and {request.input_layout.holo_path} -> {destination}"
+                f"{previous} and {request.input_layout.input_path} -> {destination}"
             )
-        destinations[key] = request.input_layout.holo_path
+        destinations[key] = request.input_layout.input_path
 
 
 __all__ = [

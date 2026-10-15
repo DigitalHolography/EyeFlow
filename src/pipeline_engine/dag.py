@@ -26,6 +26,8 @@ class PipelineDAG:
     Each pipeline implicitly produces its own pipeline name. Developers can add
     business-level keys with `dag_produces` and consume them with `dag_requires`.
     Required keys with no producer are treated as external inputs.
+    auto_run_after adds a companion and an ordering edge whenever its named
+    predecessor is scheduled, without changing the directly selected targets.
     """
 
     def __init__(self, pipelines: Iterable[PipelineDescriptor]) -> None:
@@ -77,6 +79,14 @@ class PipelineDAG:
 
         for target in target_names:
             collect(target)
+
+        # Companion pipelines belong to the plan, never to the user targets.
+        while companions := [
+            pipeline for pipeline in self._pipelines
+            if pipeline.auto_run_after in required and pipeline.name not in required
+        ]:
+            for pipeline in companions:
+                collect(pipeline.name)
 
         descriptors = tuple(
             self._pipelines_by_name[name]
@@ -135,6 +145,8 @@ class PipelineDAG:
     ) -> set[str]:
         pipeline = self._pipelines_by_name[pipeline_name]
         required_keys = list(pipeline.dag_requires)
+        if pipeline.auto_run_after is not None:
+            required_keys.append(pipeline.auto_run_after)
         selected_options = self._selected_option_names(
             pipeline,
             pipeline_options,
@@ -215,6 +227,7 @@ class PipelineDAG:
         for pipeline in self._pipelines:
             required_keys = [
                 *pipeline.dag_requires,
+                *([pipeline.auto_run_after] if pipeline.auto_run_after is not None else []),
                 *(
                     key
                     for option in pipeline.options

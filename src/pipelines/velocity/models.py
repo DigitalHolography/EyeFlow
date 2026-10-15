@@ -17,6 +17,14 @@ VesselName = Literal["artery", "vein"]
 
 
 @dataclass(frozen=True)
+class VelocityWorkflows:
+    """Successful velocity results available to shared downstream analyses."""
+
+    moments: RetinalVelocity | None
+    bandratio: RetinalVelocity | None
+
+
+@dataclass(frozen=True)
 class RetinalVelocityMaps:
     """Spatial maps shared throughout retinal-velocity processing."""
 

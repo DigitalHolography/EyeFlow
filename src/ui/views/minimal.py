@@ -45,12 +45,18 @@ def _build_input_controls(
     content: ttk.Frame,
     minimal_wraplength: int,
 ) -> None:
+    input_controls = ttk.Frame(content)
+    input_controls.grid(row=2, column=0, pady=(0, 10))
     app.minimal_holo_browse_button = ttk.Button(
-        content,
-        text="Select .holo or .txt",
+        input_controls,
+        text="Add files / list",
         command=app.run_controller.choose_holo_file,
     )
-    app.minimal_holo_browse_button.grid(row=2, column=0, pady=(0, 10))
+    app.minimal_holo_browse_button.pack(side="left")
+    ttk.Button(input_controls, text="Add folders",
+               command=app.run_controller.choose_holo_folder).pack(side="left", padx=6)
+    ttk.Button(input_controls, text="Clear",
+               command=app.run_controller.clear_holo_inputs).pack(side="left")
     app.minimal_holo_input_path_label = tk.Label(
         content,
         textvariable=app.minimal_holo_input_path_var,
