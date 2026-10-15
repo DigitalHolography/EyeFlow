@@ -84,6 +84,7 @@ class InputController:
     def reference_holo_tooltip_text(self) -> str:
         return (
             "Add .holo files or folders using the native Windows dialogs. "
+            "Use Ctrl/Shift to select multiple folders. "
             "Folders include .holo files and matching HD/DV run folders recursively. "
             "Clear starts a new selection. "
             "A .txt list replaces the current selection."

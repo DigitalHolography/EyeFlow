@@ -53,7 +53,7 @@ def _build_input_controls(
         command=app.run_controller.choose_holo_file,
     )
     app.minimal_holo_browse_button.pack(side="left")
-    ttk.Button(input_controls, text="Add folder",
+    ttk.Button(input_controls, text="Add folders",
                command=app.run_controller.choose_holo_folder).pack(side="left", padx=6)
     ttk.Button(input_controls, text="Clear",
                command=app.run_controller.clear_holo_inputs).pack(side="left")

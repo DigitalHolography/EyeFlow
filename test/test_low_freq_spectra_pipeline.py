@@ -62,6 +62,7 @@ def _spec(tmp_path, *, moments=True, bands=True, spectra="valid"):
             moments=results.get("doppler_moments"), bandratio=results.get("frequency_bands"),
         ))
         ctx.state.set(CAPILLARY_ANALYSIS_ZONES_STATE, np.ones((2, 2), dtype=bool))
+        ctx.output.h5.write(schema.segmentation.gaps, np.ones((2, 2), dtype=bool))
         for method, result in results.items():
             ctx.output.h5.write(
                 processing_path(schema.cardiac_cycle.systolic_peak_frame_indices,
@@ -132,6 +133,17 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
                                               output[boundary_path][:])
         assert "ProcessingBandRatio/Spectrograms" not in output
 
+    names = {"spectrograms_gaps", "gaps_mask"}
+    if expected is not None:
+        names.add("spectrogram_gaps_median")
+    ef_dir = result.outputs[0].parent.parent
+    for extension in ("png", "eps"):
+        assert {path.name for path in (ef_dir / extension / "spectrograms").iterdir()} == {
+            f"scan_{name}.{extension}" for name in names
+        }
+        assert not list((ef_dir / extension / "moments").glob("*spectrogram*"))
+        assert not list((ef_dir / extension / "bandratio").glob("*spectrogram*"))
+
 
 @pytest.mark.parametrize("spectra", ["missing", "legacy_group"])
 def test_optional_source_skips_all_spectral_processing(tmp_path, spectra):
@@ -140,6 +152,9 @@ def test_optional_source_skips_all_spectral_processing(tmp_path, spectra):
         result = execute_run(spec)
     assert result.succeeded, result.failures
     preprocess.assert_not_called()
+    ef_dir = result.outputs[0].parent.parent
+    assert not (ef_dir / "png/spectrograms").exists()
+    assert not (ef_dir / "eps/spectrograms").exists()
     with h5py.File(result.outputs[0], "r") as output:
         assert "ProcessingSpectrograms" not in output
         assert output["ProcessingMoments/Consumer/value"][()] == 42

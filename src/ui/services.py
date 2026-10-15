@@ -27,6 +27,8 @@ class FileDialogService(Protocol):
 
     def askdirectory(self, **options) -> str: ...
 
+    def askdirectories(self, **options) -> Sequence[str]: ...
+
 
 class PathOpener(Protocol):
     def open_path(self, path: Path) -> None: ...
@@ -52,6 +54,14 @@ class TkFileDialogService:
 
     def askdirectory(self, **options) -> str:
         return filedialog.askdirectory(**options)
+
+    def askdirectories(self, **options) -> Sequence[str]:
+        if sys.platform == "win32":
+            from .windows_folder_dialog import askdirectories
+
+            return askdirectories(**options)
+        folder = self.askdirectory(**options)
+        return (folder,) if folder else ()
 
 
 class SystemPathOpener:

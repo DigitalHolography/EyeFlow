@@ -72,7 +72,7 @@ def test_folder_inputs_reach_gui_status_and_execution_without_creating_markers(t
     ae.write_text("unrelated output", encoding="utf-8")
     app = _app()
     if entry == "native":
-        app.ui_services.file_dialogs.askdirectory.return_value = str(folder.parent)
+        app.ui_services.file_dialogs.askdirectories.return_value = (str(folder.parent),)
         controller = RunController.__new__(RunController)
         controller.app = app
         controller.choose_holo_folder()

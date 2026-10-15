@@ -407,6 +407,21 @@ class AppSettingsStore:
         mode = self.load().get("ui_mode")
         return mode if mode in {"minimal", "advanced"} else "minimal"
 
+    def load_last_input_directory(self) -> Path | None:
+        value = self.load().get("last_input_directory")
+        if not isinstance(value, str) or not value.strip():
+            return None
+        directory = Path(value)
+        try:
+            return directory if directory.is_absolute() and directory.is_dir() else None
+        except (OSError, ValueError):
+            return None
+
+    def save_last_input_directory(self, directory: Path) -> None:
+        settings = self.load()
+        settings["last_input_directory"] = str(directory.expanduser().resolve())
+        self.save(settings)
+
     def load_band_limited_harmonics(self) -> int:
         return validate_band_limited_harmonics_setting(
             self.load().get("band_limited_harmonics", DEFAULT_BAND_LIMITED_HARMONICS_SETTING)

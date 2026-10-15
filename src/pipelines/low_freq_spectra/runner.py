@@ -6,6 +6,7 @@ from pipelines.topology_core.runner import optional_capillary_zones
 from pipelines.velocity import velocity_workflows
 from utils.logger import Logger
 
+from .artifacts import export_spectrogram_figures
 from .gap_analysis import run_gap_analysis
 from .spectrograms import preprocess_spectrograms
 
@@ -38,3 +39,5 @@ def run_low_freq_spectra(ctx) -> None:
             "detected Doppler moments timing is unavailable."
         )
     ctx.output.h5.write_many(run_gap_analysis(ctx, timing, timing_method=method))
+    if ctx.output.available:
+        export_spectrogram_figures(ctx.output)

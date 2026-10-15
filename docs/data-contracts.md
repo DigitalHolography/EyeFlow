@@ -193,6 +193,23 @@ weighting, source dimensions, and valid sample counts per frequency. Produce
 this shared dataset whenever raw per-beat gaps are available, with no
 `ProcessingBandRatio` duplicate or fallback to continuous/filtered gap spectra.
 
+When the HD spectral video is available, `low_freq_spectra` also exports each
+available gap product to both `png/spectrograms/` and `eps/spectrograms/`:
+`<stem>_spectrograms_gaps` displays `/ProcessingSpectrograms/Gaps/Raw` as a
+linear viridis heatmap with horizontal frame tick labels every 50 samples, every
+fourth frequency-bin label, and a vertical power colorbar;
+`<stem>_spectrogram_gaps_median` plots
+`/ProcessingSpectrograms/Gaps/TimeAggregated/Median` against integer bins in
+the original HD positive-then-negative order, labeling every second bin vertically. Both use
+an 8 cm wide, 1.618:1 canvas, 8 pt Times New Roman axis captions, 5 pt tick labels
+with horizontal Y-axis tick labels, 0.4 pt black borders, and 320 DPI.
+`<stem>_gaps_mask` displays the native `/Segmentation/Gaps/value` mask as white
+gaps on black in its published lower-left spatial frame, on an 8 cm square
+canvas without ticks, labels, borders, or surrounding white margins.
+Missing products omit only their own figures;
+the median figure requires detected cardiac timing, while the mask does not
+require nonempty gap support. Figures do not change any persisted data.
+
 `/ProcessingSpectrograms/Gaps/TimeAggregated/Metrics` analyzes that median
 spectrum in stored bin order and writes fourteen scalar datasets directly,
 without `/value` suffixes: `index_max1`, `max1`, `index_max2`, `max2`,

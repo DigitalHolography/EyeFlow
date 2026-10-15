@@ -10,6 +10,7 @@ import pytest
 from test_run_service import _descriptor, _write_input
 from test_stem_list_inputs import _Var
 
+from app_settings import AppSettingsStore
 from pipeline_engine.run_service import (
     _batch_root,
     _relative_to_batch,
@@ -34,6 +35,8 @@ def _app():
         _muted_fg="muted", _error_color="error", _success_color="success",
         progress_controller=Mock(),
         ui_services=SimpleNamespace(dialogs=Mock(), file_dialogs=Mock()),
+        settings_store=Mock(load_last_input_directory=Mock(return_value=None)),
+        settings_controller=Mock(),
     )
     app.input_controller = InputController(app)
     return app
@@ -88,6 +91,54 @@ def test_folder_dialog_service_delegates_to_the_native_tk_dialog():
     native.assert_called_once_with(title="Select folder", mustexist=True)
 
 
+def test_multi_folder_service_uses_the_windows_picker():
+    with (
+        patch("ui.services.sys.platform", "win32"),
+        patch("ui.windows_folder_dialog.askdirectories", return_value=("one", "two")) as native,
+    ):
+        options = {"title": "Select folders", "initialdir": "start", "parent": object()}
+        assert TkFileDialogService().askdirectories(**options) == ("one", "two")
+    native.assert_called_once_with(**options)
+
+
+@pytest.mark.parametrize("selected,expected", [("folder", ("folder",)), ("", ())])
+def test_multi_folder_service_keeps_the_tk_fallback_on_other_platforms(selected, expected):
+    with (
+        patch("ui.services.sys.platform", "linux"),
+        patch("ui.services.filedialog.askdirectory", return_value=selected) as native,
+    ):
+        assert TkFileDialogService().askdirectories(title="Folders") == expected
+    native.assert_called_once_with(title="Folders")
+
+
+def test_multiple_folder_selection_expands_and_deduplicates_all_inputs(tmp_path):
+    first, second = _inputs(tmp_path)
+    app = _app()
+    app.input_controller.assign_holo_input_paths([first])
+    app.ui_services.file_dialogs.askdirectories.return_value = (
+        str(first.parent), str(second.parent.parent), str(second.parent),
+    )
+    controller = RunController.__new__(RunController)
+    controller.app = app
+    controller.choose_holo_folder()
+    _check_run_selection(app, [first, second])
+    app.settings_store.save_last_input_directory.assert_called_once_with(first.parent.parent)
+    app.ui_services.dialogs.showwarning.assert_not_called()
+
+
+def test_failed_native_folder_picker_preserves_selection_and_location(tmp_path):
+    first, _ = _inputs(tmp_path)
+    app = _app()
+    app.input_controller.assign_holo_input_paths([first])
+    app.ui_services.file_dialogs.askdirectories.side_effect = OSError("native dialog failed")
+    controller = RunController.__new__(RunController)
+    controller.app = app
+    controller.choose_holo_folder()
+    assert app.input_controller.selected_holo_paths() == [first]
+    app.settings_store.save_last_input_directory.assert_not_called()
+    app.ui_services.dialogs.showerror.assert_called_once()
+
+
 @pytest.mark.parametrize("folder_first", [False, True])
 def test_native_file_and_recursive_folder_selections_coexist(tmp_path, folder_first):
     first, second = _inputs(tmp_path)
@@ -96,7 +147,7 @@ def test_native_file_and_recursive_folder_selections_coexist(tmp_path, folder_fi
     controller.app = app
     app.ui_services.file_dialogs.askopenfilenames.return_value = (str(first),)
     # The selected folder contains the second run one directory below it.
-    app.ui_services.file_dialogs.askdirectory.return_value = str(second.parent.parent)
+    app.ui_services.file_dialogs.askdirectories.return_value = (str(second.parent.parent),)
     if folder_first:
         controller.choose_holo_folder()
         controller.choose_holo_file()
@@ -107,9 +158,10 @@ def test_native_file_and_recursive_folder_selections_coexist(tmp_path, folder_fi
     _check_run_selection(app, expected)
     controller.choose_holo_folder()  # Overlapping selections must not duplicate runs.
     _check_run_selection(app, expected)
-    app.ui_services.file_dialogs.askdirectory.assert_called_with(
-        initialdir=str(expected[0].parent),
-        title="Select folder containing .holo files or HD/DV runs (including subfolders)",
+    app.ui_services.file_dialogs.askdirectories.assert_called_with(
+        parent=app,
+        initialdir=str(first.parent if folder_first else second.parent.parent),
+        title="Select folders containing .holo files or HD/DV runs (including subfolders)",
         mustexist=True,
     )
     app.ui_services.dialogs.showwarning.assert_not_called()
@@ -122,7 +174,9 @@ def test_cancelled_or_empty_folder_choice_preserves_selected_files(tmp_path, emp
     app.input_controller.assign_holo_input_paths(holos)
     folder = tmp_path / "empty"
     folder.mkdir()
-    app.ui_services.file_dialogs.askdirectory.return_value = str(folder) if empty_folder else ""
+    app.ui_services.file_dialogs.askdirectories.return_value = (
+        (str(folder),) if empty_folder else ()
+    )
     controller = RunController.__new__(RunController)
     controller.app = app
     controller.choose_holo_folder()
@@ -166,6 +220,84 @@ def test_popup_cancel_keeps_previous_selection(tmp_path):
     controller.choose_holo_file()
     assert app.input_controller.selected_holo_paths() == list(holos)
 
+
+@pytest.mark.parametrize("last_picker", ["file", "folder"])
+def test_last_picker_directory_survives_appending_clear_and_restart(tmp_path, last_picker):
+    first, second = _inputs(tmp_path)
+    settings_path = tmp_path / "settings.json"
+    app = _app()
+    app.settings_store = AppSettingsStore(path=settings_path)
+    controller = RunController.__new__(RunController)
+    controller.app = app
+    app.ui_services.file_dialogs.askopenfilenames.return_value = (str(first),)
+    controller.choose_holo_file()
+    if last_picker == "file":
+        app.ui_services.file_dialogs.askopenfilenames.return_value = (str(second),)
+        controller.choose_holo_file()
+        expected = second.parent
+    else:
+        expected = second.parent.parent
+        app.ui_services.file_dialogs.askdirectories.return_value = (str(expected),)
+        controller.choose_holo_folder()
+    assert app.input_controller.selected_holo_paths() == [first, second]
+    app.ui_services.file_dialogs.askopenfilenames.return_value = ()
+    controller.choose_holo_file()
+    assert app.ui_services.file_dialogs.askopenfilenames.call_args.kwargs["initialdir"] == (
+        str(expected)
+    )
+    controller.clear_holo_inputs()
+    controller.choose_holo_file()
+    assert app.ui_services.file_dialogs.askopenfilenames.call_args.kwargs["initialdir"] == (
+        str(expected)
+    )
+
+    restarted = _app()
+    restarted.settings_store = AppSettingsStore(path=settings_path)
+    controller = RunController.__new__(RunController)
+    controller.app = restarted
+    restarted.ui_services.file_dialogs.askdirectories.return_value = ()
+    controller.choose_holo_folder()
+    assert restarted.ui_services.file_dialogs.askdirectories.call_args.kwargs["initialdir"] == (
+        str(expected)
+    )
+    assert restarted.settings_store.load_last_input_directory() == expected
+
+
+@pytest.mark.parametrize("has_selection", [False, True])
+def test_unavailable_remembered_directory_falls_back(tmp_path, has_selection):
+    app = _app()
+    app.settings_store = AppSettingsStore(path=tmp_path / "settings.json")
+    app.settings_store.save({"last_input_directory": str(tmp_path / "unavailable")})
+    expected = Path.cwd()
+    if has_selection:
+        first, _ = _inputs(tmp_path)
+        app.input_controller.assign_holo_input_paths([first])
+        expected = first.parent
+    app.ui_services.file_dialogs.askopenfilenames.return_value = ()
+    controller = RunController.__new__(RunController)
+    controller.app = app
+    controller.choose_holo_file()
+    assert app.ui_services.file_dialogs.askopenfilenames.call_args.kwargs["initialdir"] == (
+        str(expected)
+    )
+
+
+def test_input_selection_still_works_when_saving_the_directory_fails(tmp_path):
+    first, _ = _inputs(tmp_path)
+    app = _app()
+    app.settings_store.save_last_input_directory.side_effect = OSError("read only")
+    app.ui_services.file_dialogs.askopenfilenames.return_value = (str(first),)
+    controller = RunController.__new__(RunController)
+    controller.app = app
+    controller.choose_holo_file()
+    assert app.input_controller.selected_holo_paths() == [first]
+    app.settings_controller.show_settings_warning.assert_called_once()
+    controller.clear_holo_inputs()
+    app.ui_services.file_dialogs.askopenfilenames.return_value = ()
+    controller.choose_holo_file()
+    assert app.ui_services.file_dialogs.askopenfilenames.call_args.kwargs["initialdir"] == (
+        str(first.parent)
+    )
 
 
 @pytest.mark.parametrize("kind", ["files", "folders", "mixed"])
