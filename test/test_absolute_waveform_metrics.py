@@ -92,8 +92,9 @@ class AbsoluteWaveformMetricsTests(unittest.TestCase):
                 "velocity_analysis",
                 "absolute_waveform_metrics",
             ),
-            plan.names,
+            tuple(name for name in plan.names if name != "low_freq_spectra"),
         )
+        self.assertGreater(plan.names.index("low_freq_spectra"), plan.names.index("velocity"))
 
     def test_global_outputs_preserve_amplitude_and_prefix_schema_root(self) -> None:
         schema = EyeFlowOutputPaths.active()

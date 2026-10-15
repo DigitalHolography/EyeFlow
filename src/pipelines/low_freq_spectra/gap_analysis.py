@@ -1,4 +1,4 @@
-"""Adapt moments-workflow timing to durable beat-resolved gap spectra."""
+"""Adapt selected velocity-workflow timing to durable beat-resolved gap spectra."""
 
 from __future__ import annotations
 
@@ -6,10 +6,11 @@ import numpy as np
 
 from calculations.math import nanmedian
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS, processing_path
 from pipelines.signal_settings import band_limited_harmonics
+from pipelines.velocity.models import RetinalVelocity
 from utils.logger import Logger
 
-from ..models import RetinalVelocity
 from .metrics import pack_spectrum_metrics
 from .per_beat import DEFAULT_PHASE_SAMPLE_COUNT, gap_spectrograms_per_beat
 from .signal_processing import (
@@ -19,41 +20,48 @@ from .signal_processing import (
 )
 
 
-def run_gap_analysis(ctx, moments: RetinalVelocity | None) -> dict[str, object]:
-    """Process gaps once within velocity using its explicit moments result."""
+def run_gap_analysis(
+    ctx, timing: RetinalVelocity | None, *, timing_method: str = "doppler_moments",
+) -> dict[str, object]:
+    """Use explicitly selected moments or fallback band-ratio cardiac timing."""
     schema = EyeFlowOutputPaths.active()
     source = ctx.output.h5.get(schema.spectrograms_masked)
     if source is None:
         # The shared preprocessing stage already warned about empty/missing support.
         return {}
-    if moments is None:
+    if timing is None:
         Logger.log_warning(
-            "Skipping per-beat gap analysis: Doppler moments timing is unavailable."
+            "Skipping per-beat gap analysis: detected cardiac timing is unavailable "
+            "in both velocity workflows."
         )
         return {}
-    boundaries = moments.cycle_boundary_indexes
-    if moments.cardiac_cycle_source == "none" or boundaries.size < 2:
+    boundaries = timing.cycle_boundary_indexes
+    if timing.cardiac_cycle_source == "none" or boundaries.size < 2:
         Logger.log_warning(
-            "Skipping per-beat gap analysis: no detected Doppler moments beat intervals."
+            "Skipping per-beat gap analysis: no detected cardiac beat intervals "
+            "in the selected velocity workflow."
         )
         return {}
-    if source.shape[0] != moments.continuous("artery", raw=True).size:
-        raise ValueError("Gap spectra and Doppler moments timing must share the same frame count.")
+    if source.shape[0] != timing.continuous("artery", raw=True).size:
+        raise ValueError("Gap spectra and selected cardiac timing must share the same frame count.")
 
     per_beat = gap_spectrograms_per_beat(source[()], boundaries)
+    timing_label = "moments" if timing_method == "doppler_moments" else "band-ratio"
     attrs = {
         **dict(source.attrs),
         "dimDesc": ["phase", "freq", "beat"],
         "source_path": "/" + schema.spectrograms_masked,
         "definition": (
-            "spatial mean gap band power linearly resampled between moments beat boundaries"
+            f"spatial mean gap band power linearly resampled between {timing_label} beat boundaries"
         ),
-        "cycle_boundary_source_path": "/" + schema.cardiac_cycle.systolic_peak_frame_indices,
-        "cycle_boundary_workflow": "doppler_moments",
-        "cycle_boundary_vessel_source": moments.cardiac_cycle_source,
+        "cycle_boundary_source_path": "/" + processing_path(
+            schema.cardiac_cycle.systolic_peak_frame_indices, VELOCITY_WORKFLOW_ROOTS[timing_method],
+        ),
+        "cycle_boundary_workflow": timing_method,
+        "cycle_boundary_vessel_source": timing.cardiac_cycle_source,
         "cycle_boundary_indices": boundaries,
         "cycle_boundary_index_base": 0,
-        "beat_duration_seconds": moments.cycle_durations_seconds,
+        "beat_duration_seconds": timing.cycle_durations_seconds,
         "phase_samples": (
             np.arange(DEFAULT_PHASE_SAMPLE_COUNT, dtype=np.float32) / DEFAULT_PHASE_SAMPLE_COUNT
         ),
@@ -83,7 +91,7 @@ def run_gap_analysis(ctx, moments: RetinalVelocity | None) -> dict[str, object]:
     metrics[schema.spectrograms_masked_time_aggregated_median] = (spectrum, median_attrs)
     metrics.update(pack_spectrum_metrics(spectrum, source_attrs=median_attrs))
     band_limited = band_limit_gap_spectrograms(
-        per_beat, moments.cycle_durations_seconds, harmonics=band_limited_harmonics(ctx),
+        per_beat, timing.cycle_durations_seconds, harmonics=band_limited_harmonics(ctx),
     )
     filtered_attrs = {
         **attrs,
@@ -99,12 +107,12 @@ def run_gap_analysis(ctx, moments: RetinalVelocity | None) -> dict[str, object]:
         "band_limit_includes_DC": True,
         "band_limit_reconstruction": "signed",
         "filter_axis": "phase_independently_per_frequency_and_beat",
-        "filter_effective_cutoff_hz_per_beat": band_limited.highest_harmonic / moments.cycle_durations_seconds,
+        "filter_effective_cutoff_hz_per_beat": band_limited.highest_harmonic / timing.cycle_durations_seconds,
         "filter_preserve_DC": True,
         "filter_boundary": "periodic_within_each_beat",
         "filter_highest_retained_harmonic_per_beat": band_limited.highest_harmonic,
         "filter_phase_sample_interval_seconds_per_beat": (
-            np.asarray(moments.cycle_durations_seconds) / per_beat.shape[0]
+            np.asarray(timing.cycle_durations_seconds) / per_beat.shape[0]
         ),
         "filter_incomplete_series_policy": "leave_unchanged_without_gap_filling",
         "filter_series_count": int(np.count_nonzero(band_limited.filtered_series)),

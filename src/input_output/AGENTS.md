@@ -14,6 +14,7 @@ shape, unit, layout, or writer behavior.
 | Area | Start with | Follow only if needed |
 |---|---|---|
 | `.holo` companion resolution | `holo_run_layout.py` | `schema/base.py`, `run_service.py` |
+| Recursive run-folder discovery | `run_discovery.py` | `inputs.py`, GUI input controller, and `run_service.py` |
 | Raw access and merged attributes | `h5_access.py`, `input_access.py`, `inputs.py` | the typed source adapter |
 | HD/DV datasets and sidecars | `schema/holodoppler.py`, `schema/doppler_view.py` | `schema/source_data.py`, pipeline source loader |
 | Current output paths | `schema/eyeflow_output.py` | producer and consumer pipelines |
@@ -29,6 +30,12 @@ paths. Pipeline code should use these adapters instead of repeating path
 fallbacks. Canonical DV-to-HD alignment happens in
 `pipelines/vessel_inputs.py`, because it must move masks and optic-disc geometry
 atomically.
+
+`run_discovery.py` shares marker and marker-free run discovery between GUI and
+CLI. A run folder must contain its own matching HD and DV directories; EF/AE
+are optional. Discovery checks structure, while normal layout resolution checks
+the HDF5 files. Keep actual `HoloRunLayout.input_path` distinct from its canonical
+`holo_path` naming anchor; never create marker files during discovery.
 
 `EyeFlowOutputPaths.active()` owns reusable output path families. Before
 changing a path, search all source and tests for both the field name and current

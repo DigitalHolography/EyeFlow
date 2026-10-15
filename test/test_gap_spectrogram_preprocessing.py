@@ -8,7 +8,7 @@ import pytest
 
 from input_output.h5_access import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
-from pipelines.velocity.gaps.preprocessing import (
+from pipelines.low_freq_spectra.preprocessing import (
     preprocess_gap_spectrograms,
     spatial_mean_band_power,
 )
@@ -108,7 +108,7 @@ def test_empty_native_or_reduced_support_skips_analysis_without_reading_source(r
     if reduced_only:
         zones[0, 0] = True  # This pixel is not selected by center-based interpolation.
     source = FrameSource(np.ones((2, 3, 2, 3), dtype=np.float32))
-    with patch("pipelines.velocity.gaps.preprocessing.Logger.log_warning") as warning:
+    with patch("pipelines.low_freq_spectra.preprocessing.Logger.log_warning") as warning:
         assert preprocess_gap_spectrograms(source, zones) == {}
     assert source.reads == []
     warning.assert_called_once()
@@ -117,7 +117,7 @@ def test_empty_native_or_reduced_support_skips_analysis_without_reading_source(r
 
 
 def test_missing_spectra_omit_output_with_warning():
-    with patch("pipelines.velocity.gaps.preprocessing.Logger.log_warning") as warning:
+    with patch("pipelines.low_freq_spectra.preprocessing.Logger.log_warning") as warning:
         assert preprocess_gap_spectrograms(None, np.ones((2, 3), bool)) == {}
     warning.assert_called_once()
     assert "absent" in warning.call_args.args[0]

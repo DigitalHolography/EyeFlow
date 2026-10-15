@@ -9,7 +9,7 @@ from input_output.schema.holodoppler import HD_SPECTOGRAMS_PATH
 from pipelines.vessel_inputs import align_spectrogram_frame
 from utils.logger import Logger
 
-from .gaps.preprocessing import prepare_gap_spectrograms
+from .preprocessing import prepare_gap_spectrograms
 
 
 def preprocess_spectrograms(spectrograms, analysis_zones: np.ndarray | None) -> dict[str, object]:

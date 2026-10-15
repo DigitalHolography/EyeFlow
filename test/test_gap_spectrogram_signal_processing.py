@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from calculations.math.low_rank import remove_leading_svd_modes
-from pipelines.velocity.gaps.signal_processing import (
+from pipelines.low_freq_spectra.signal_processing import (
     band_limit_gap_spectrograms,
     svd_filter_gap_spectrograms,
 )

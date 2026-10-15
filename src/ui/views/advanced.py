@@ -32,7 +32,7 @@ def _build_run_tab(app, parent: ttk.Frame) -> None:
 
 
 def _build_input_row(app, parent: ttk.Frame) -> None:
-    input_label = ttk.Label(parent, text="Input (.holo or .txt)")
+    input_label = ttk.Label(parent, text="Input (.holo, folder or .txt)")
     input_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
     Tooltip(
         input_label,
@@ -42,12 +42,18 @@ def _build_input_row(app, parent: ttk.Frame) -> None:
     )
     app.holo_input_entry = ttk.Entry(parent, textvariable=app.holo_input_var)
     app.holo_input_entry.grid(row=0, column=1, sticky="ew", padx=(0, 4))
+    input_controls = ttk.Frame(parent)
+    input_controls.grid(row=0, column=2, sticky="w")
     app.holo_browse_button = ttk.Button(
-        parent,
-        text="Select files",
+        input_controls,
+        text="Add files / list",
         command=app.run_controller.choose_holo_file,
     )
-    app.holo_browse_button.grid(row=0, column=2, sticky="w")
+    app.holo_browse_button.pack(side="left")
+    ttk.Button(input_controls, text="Add folder",
+               command=app.run_controller.choose_holo_folder).pack(side="left", padx=6)
+    ttk.Button(input_controls, text="Clear",
+               command=app.run_controller.clear_holo_inputs).pack(side="left")
     _build_status_row(app, parent)
 
 

@@ -25,6 +25,8 @@ class FileDialogService(Protocol):
 
     def askopenfilenames(self, **options) -> Sequence[str]: ...
 
+    def askdirectory(self, **options) -> str: ...
+
 
 class PathOpener(Protocol):
     def open_path(self, path: Path) -> None: ...
@@ -47,6 +49,9 @@ class TkFileDialogService:
 
     def askopenfilenames(self, **options) -> Sequence[str]:
         return filedialog.askopenfilenames(**options)
+
+    def askdirectory(self, **options) -> str:
+        return filedialog.askdirectory(**options)
 
 
 class SystemPathOpener:

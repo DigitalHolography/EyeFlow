@@ -60,6 +60,12 @@ selectable targets, option closure, pipeline availability, DAG order,
 input layouts, and unique destinations. `execute_run` owns batch iteration,
 per-file cleanup, failure collection, and stop-between-files behavior.
 
+GUI folder selection/drop and CLI folder expansion share
+`input_output.run_discovery`. It finds `.holo` markers and directories containing
+matching `<stem>_HD` and `<stem>_DV` companions, including the selected directory
+itself. Marker-free inputs retain their actual folder identity for progress and
+errors; HDF5 validation and execution use the same run-service path.
+
 ## Pipeline model
 
 `pipelines.load_pipeline_catalog()` discovers top-level modules from the
@@ -78,7 +84,9 @@ Each descriptor distinguishes:
 - `input_slot`: preferred source for merged attributes, not permission to omit
   companion data from a normal `.holo` run;
 - `produces_execution_variants`: whether the pipeline publishes isolated
-  downstream executions.
+  downstream executions;
+- `auto_run_after`: automatically include a companion after a scheduled pipeline;
+- `run_once`: execute once with shared state/output despite variant ancestry.
 
 Every pipeline implicitly produces its own name. A required DAG key with no
 producer is treated as external, so a misspelled key does not fail DAG
@@ -88,7 +96,8 @@ plan preserves discovery order subject to topological constraints.
 The important shared scientific chain is:
 
 ```text
-velocity      -> `velocity` + `cardiac_cycles`
+velocity      -> `velocity` + `cardiac_cycles` + `velocity_workflows`
+  -> low_freq_spectra (hidden, automatic, once per run; optional HD spectra)
 topology_core -> `prepared_topology` + shared `capillary_analysis_zones`
         \          /
          velocity_analysis
@@ -125,7 +134,8 @@ Every descriptor receives a fresh `PipelineContext`, but all contexts share:
 A declared variant producer publishes `ExecutionVariant` values through its
 context. Each value owns its run state, HDF5 output namespace, artifact
 namespace, and provenance. The engine derives the fan-out set from the
-producer's transitive DAG dependents, so this behavior does not depend on a
+producer's transitive DAG dependents, excluding descriptors declaring
+`run_once=True`, so this behavior does not depend on a
 literal pipeline name or velocity-specific state keys. Unrelated pipelines run
 once and their state is merged into every surviving variant before a dependent
 runs.
@@ -148,6 +158,13 @@ scratch storage, not ad-hoc module globals.
   detects each workflow's cardiac cycles from its physical velocity after estimation,
   attempts moments and band-ratio estimation independently, and retains each
   velocity video when downstream analysis requires spatial products.
+- `low_freq_spectra` runs once after velocity when HD `/spectrograms` is an
+  available frequency-bin video. It owns shared spatial/gap reductions, per-beat
+  spectra and filters, and spectral metrics under `/ProcessingSpectrograms`.
+  Detected moments cardiac timing takes priority, with band-ratio timing as a
+  fallback; metadata identifies the selected workflow. Missing timing preserves
+  raw/spatial spectra. Spectral failures do not disable independent velocity
+  products.
 - `topology_core` aligns masks, creates annular branch/segment topology, and
   publishes reusable prepared artery and vein topology.
 - `velocity_analysis` consumes velocity and topology state, performs per-beat

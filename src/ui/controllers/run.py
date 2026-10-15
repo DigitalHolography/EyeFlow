@@ -47,7 +47,7 @@ class RunController:
         initial_dir = (
             str(selected_holo.parent)
             if selected_holo is not None
-            else os.path.abspath("example_file")
+            else os.getcwd()
         )
         paths = services_for(self.app).file_dialogs.askopenfilenames(
             filetypes=[("HOLO or path list", "*.holo *.txt"), ("All files", "*.*")],
@@ -55,9 +55,26 @@ class RunController:
             title="Select .holo file(s) or one .txt path list",
         )
         if paths:
-            self.app.input_controller.assign_holo_input_paths(
-                [Path(path) for path in paths]
-            )
+            self._add_input_paths([Path(path) for path in paths])
+
+    def choose_holo_folder(self) -> None:
+        selected_holo = self.app.input_controller.selected_holo_path()
+        folder = services_for(self.app).file_dialogs.askdirectory(
+            initialdir=str(selected_holo.parent) if selected_holo is not None else os.getcwd(),
+            title="Select folder containing .holo files or HD/DV runs (including subfolders)",
+            mustexist=True,
+        )
+        if folder:
+            self._add_input_paths([Path(folder)])
+
+    def _add_input_paths(self, paths: list[Path]) -> None:
+        try:
+            self.app.input_controller.add_holo_input_paths(paths)
+        except (OSError, ValueError) as exc:
+            services_for(self.app).dialogs.showwarning("Input selection", str(exc))
+
+    def clear_holo_inputs(self) -> None:
+        self.app.input_controller.assign_holo_input_paths([])
 
     def run_process(self) -> None:
         if getattr(self.app, "_pipeline_run_active", False):
@@ -84,7 +101,7 @@ class RunController:
         if not input_paths:
             services_for(self.app).dialogs.showwarning(
                 "Missing input",
-                "Select one or more .holo files or one .txt path list.",
+                "Add .holo files, HD/DV run folders, or one .txt path list.",
             )
             return None
         target_names = (

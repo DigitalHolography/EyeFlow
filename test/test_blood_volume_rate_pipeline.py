@@ -40,12 +40,13 @@ def test_bvr_option_dependencies_are_resolved_independently() -> None:
     assert "velocity_analysis" in gradient
     assert "spatial_gradient_moment0" not in masked
     assert "velocity_analysis" in masked
-    assert neither == (
+    assert tuple(name for name in neither if name != "low_freq_spectra") == (
         "topology_core",
         "velocity",
         "velocity_analysis",
         "blood_volume_rate",
     )
+    assert neither.index("low_freq_spectra") > neither.index("velocity")
 
 
 def test_spatial_gradient_alone_does_not_schedule_velocity_analysis() -> None:

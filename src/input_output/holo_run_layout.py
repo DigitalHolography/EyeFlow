@@ -1,4 +1,4 @@
-"""Path layout for one selected HOLO run."""
+"""Path layout for a HOLO marker or a directly selected companion-data folder."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +16,7 @@ class HoloRunLayout:
     _holo_path: Path
     _stem: str
     _root_dir: Path
+    _input_path: Path | None = None
 
     @classmethod
     def from_holo(
@@ -27,6 +28,21 @@ class HoloRunLayout:
         path = _absolute(Path(holo_path).expanduser())
         root = _absolute(Path(output_root).expanduser()) if output_root else path.parent
         return cls(_holo_path=path, _stem=path.stem, _root_dir=root / path.stem)
+
+    @classmethod
+    def from_run_directory(cls, directory: str | Path) -> "HoloRunLayout":
+        root = Path(directory).expanduser().resolve()
+        return cls(
+            _holo_path=root.parent / f"{root.name}.holo",
+            _stem=root.name,
+            _root_dir=root,
+            _input_path=root,
+        )
+
+    @property
+    def input_path(self) -> Path:
+        """Actual selected source; holo_path remains the canonical naming anchor."""
+        return self._input_path if self._input_path is not None else self._holo_path
 
     @property
     def holo_path(self) -> Path:
@@ -71,7 +87,7 @@ class HoloRunLayout:
                 errors.append(str(exc))
         if errors:
             raise FileNotFoundError(
-                "Missing required input data for the selected .holo file:\n\n"
+                "Missing required input data for the selected run:\n\n"
                 + "\n\n".join(errors)
             )
 

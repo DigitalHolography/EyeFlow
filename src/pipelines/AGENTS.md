@@ -35,7 +35,8 @@ availability rather than unrelated import crashes.
 
 | Group | Responsibility and important upstream state |
 |---|---|
-| `velocity` (hidden) | Physical retinal velocity, cardiac timing, and shared gap spectra/per-beat alignment; requires `capillary_analysis_zones`, produces `velocity`, `cardiac_cycles`, `gap_spectrograms`, and `gap_per_beat_spectrograms` |
+| `velocity` (hidden) | Physical retinal velocity and cardiac timing; produces `velocity`, `cardiac_cycles`, and typed `velocity_workflows` |
+| `low_freq_spectra` (hidden) | Automatically follows velocity once per run when HD spectral video is available; owns shared spatial/gap spectra, beat alignment, filters, and spectral metrics |
 | `topology_core` (hidden) | Canonical artery/vein prepared topology and optional inverse retinal/disc/choroid mask; produces `prepared_topology` and `capillary_analysis_zones` |
 | `velocity_analysis` | Shared per-beat/segment/profile state plus selectable persisted continuous, quadrant, profile-fit, FFT, map, and movie products; requires velocity and topology |
 | `spatial_gradient_moment0` | Independently selected moment0 gradient/lumen profiles; requires cardiac cycles and topology, not velocity analysis |
@@ -69,21 +70,23 @@ returns physical velocity in `mm/s`. Exact-zero LF samples map to zero in band
 mode; finite/non-negative validation and calibration provenance are part of the
 pipeline contract.
 
-`velocity/spectrograms.py` reads HD frequency-bin spectra once per frame for
+`low_freq_spectra/spectrograms.py` reads HD frequency-bin spectra once per frame for
 full-frame `SpatialAverage`/`SpatialMedian` reductions and optional gap mean
-power. `velocity/gaps/preprocessing.py` interpolates Boolean gap support with
-nearest neighbors to the spectrogram video's last two dimensions. The velocity
+power. `low_freq_spectra/preprocessing.py` interpolates Boolean gap support with
+nearest neighbors to the spectrogram video's last two dimensions. The low-frequency spectral
 runner publishes `/ProcessingSpectrograms/Gaps/Raw` with `(time, freq)`
 axes. HD frames are flipped in spatial Y then transposed into EF's published
 lower-left `(x, y)` mask frame at the canonical input boundary. Empty native or
 interpolated support skips gap analysis with a warning; segmentation and other
 pipeline work continue. Nonfinite included samples produce NaN per pair;
 finite negative spatial means are clamped to zero after averaging and before
-beat subdivision. Individual raw pixels are not clipped. Within the velocity
-pipeline, the runner passes its explicit moments result to gap analysis once,
+beat subdivision. Individual raw pixels are not clipped. The hidden `low_freq_spectra`
+pipeline runs once after velocity and passes detected moments timing to gap analysis,
+falling back to detected band-ratio timing when moments timing is unavailable,
 producing `/ProcessingSpectrograms/Gaps/PerBeat/Raw` with `(phase, freq, beat)` axes.
-It uses 128 linear phase samples without bridging NaNs. Missing real moments
-timing warns and skips per-beat analysis while other products remain available.
+It uses 128 linear phase samples without bridging NaNs. Missing detected timing in both workflows
+warns and skips per-beat analysis while other products remain available. Timing
+workflow and HDF5 source paths are recorded in per-beat/filter/aggregate metadata.
 Independent `PerBeat/BandLimited` keeps DC plus the configured non-DC harmonics
 (default 12) via the shared bandlimiting API in signed mode, using
 periodic phase boundaries. Original durations define each effective Hz cutoff.
@@ -99,7 +102,11 @@ DC power. Shared spectra are written after workflow cleanup and have no
 `ProcessingBandRatio` duplicate. Full-frame spatial products remain available when
 gap support is empty or missing. Settings/support/order travel in attributes.
 `topology_core` only owns native gap support and its segmentation output;
-velocity declares that upstream dependency. There is no separate gap pipeline.
+`low_freq_spectra` declares that dependency alongside `velocity_workflows`.
+The pipeline automatically enters plans that schedule velocity, stays hidden from
+selection, and skips absent/legacy-group spectra. Runtime source assembly keeps
+spectra validation independent of velocity/topology; malformed spectra fail only
+the spectral descriptor and preserve safe velocity analyses.
 Physical capillary velocity remains deferred.
 
 `spatial_gradient_moment0` shares cardiac-cycle/topology state but owns its

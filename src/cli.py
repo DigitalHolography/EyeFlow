@@ -179,7 +179,7 @@ def run_cli(
         output_root = (
             output_dir.expanduser().resolve() if output_dir is not None else None
         )
-        input_is_zip = data_path.suffix.lower() == ".zip"
+        input_is_zip = data_path.is_file() and data_path.suffix.lower() == ".zip"
         if output_root is None and (input_is_zip or zip_outputs):
             output_root = _default_cli_output_root(data_path)
         if output_root is not None:
@@ -227,7 +227,7 @@ def run_cli(
                     work_root,
                     target_path=output_root / final_name,
                     progress_callback=_zip_progress,
-                    stem=expanded_inputs.paths[0].stem if len(expanded_inputs.paths) == 1 else None,
+                    stem=spec.requests[0].input_layout.stem if len(spec.requests) == 1 else None,
                 )
                 print(f"[ZIP] Archive created: {zip_path}")
                 summary_msg = f"ZIP archive: {zip_path}"
@@ -270,7 +270,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         required=True,
         type=Path,
         help=(
-            "Directory containing .holo files, a single .holo file, "
+            "Directory containing .holo files or matching HD/DV run folders, a single .holo file, "
             "a .txt path list, or a .zip archive."
         ),
     )

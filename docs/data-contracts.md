@@ -21,8 +21,35 @@ A selected `sample.holo` anchors this default tree:
 For each HD/DV `h5` directory, the preferred filename wins. If it is absent,
 exactly one valid `.h5`/`.hdf5` file is accepted; zero or multiple ambiguous
 files fail. Normal production runs require both HD and DV companions. Folder,
-text-list, and ZIP inputs are expanded into `.holo` selections before layout
-resolution.
+text-list, and ZIP inputs are expanded into run selections before layout resolution.
+
+Folder discovery accepts the selected directory itself or any descendant whose
+name is `<stem>` and which contains matching `<stem>_HD/` and `<stem>_DV/`
+directories. `<stem>_EF/` and `<stem>_AE/` are optional; EF/AE alone, a missing
+HD/DV directory, or mismatched prefixes do not qualify. This permits marker-free
+input via Add folder, drag-and-drop, and CLI folder inputs. Discovery checks the
+directory structure; run validation still rejects missing or ambiguous HD/DV
+HDF5 files before output cleanup. No `.holo` file is created. Existing real
+markers take precedence when discovered alongside their data folders.
+
+`HoloRunLayout.input_path` identifies the actual input (marker or run folder)
+for progress and errors. `holo_path` remains a canonical sibling naming anchor
+for output mapping even when that marker does not exist. Default outputs stay
+inside the discovered root at `<stem>/<stem>_EF/`; a selected run directory
+does not introduce an extra `<stem>` nesting level. Folder and marker references
+to the same run share a discovery/deduplication key. TXT-list syntax is unchanged.
+
+Text-list entries are independent: absolute `.holo` paths may come from different
+directories, drives, or UNC shares. Matching surrounding double or single quotes
+are removed; blank lines and a UTF-8 BOM are accepted. Relative paths resolve
+against the text list's parent directory. Legacy bare stems still resolve there.
+Each entry retains its own companion and default output directory. A text list
+must be selected by itself. The GUI uses separate native multi-file and folder
+dialogs. Both add to the current file selection, allowing files and recursively
+expanded folders from different locations to coexist; Clear resets it. Selecting
+a text list replaces the current selection, and adding files/folders replaces
+a selected list. Drag-and-drop can combine files and folders too. Overlapping
+paths are deduplicated before shared run validation.
 
 ## HD input
 
@@ -49,8 +76,9 @@ numeric 4-D dataset with exported axes `(time, freq, height, width)`. The spelli
 `spectrograms` follows the actual HD export; the earlier supplied spelling
 `spectograms` was incorrect. It replaces the previous stand-in `band_2_0_6000`
 source. `ImageMaps.spectograms` retains its existing internal field name and
-holds the lazy HDF5 dataset for both velocity workflows, or `None` if it is
-absent. Legacy HD exports may instead have a `/spectrograms` group containing
+can hold the lazy HDF5 dataset for direct source-adapter callers. Runtime
+velocity/topology source assembly omits it; `low_freq_spectra` loads it
+independently. Legacy HD exports may instead have a `/spectrograms` group containing
 `longtimes`, `singlebeat`, and `spectral_cube_parameters`; that group is not the
 4-D video and is treated as an unavailable optional source. Existing moments
 and band-ratio workflows continue in both cases. Present datasets with invalid
@@ -75,7 +103,7 @@ Arbitrary positive target dimensions and noninteger scale ratios are supported;
 matching grids use a copy. The mask stays Boolean and is not averaged or reduced
 using all-true blocks. `calculations.topology.downsample_gap_zones` owns this
 array transform and receives the target shape explicitly; it does not read HDF5.
-`pipelines.velocity.masks.gap_velocity_mask` adapts it to the video's spatial
+`pipelines.low_freq_spectra.masks.gap_velocity_mask` adapts it to the video's spatial
 shape. Gap preprocessing now uses this application helper, then flips and
 transposes the reduced native mask into the same published `(x, y)` frame as
 the aligned spectra. The persisted mask is unchanged.
@@ -95,7 +123,7 @@ but its subsequent subpixel Fourier registration of these spatial power maps
 can ring and introduce negative undershoots. Linear resizing and frequency-bin
 averaging occur afterward and do not enforce nonnegativity.
 
-`pipelines/velocity/spectrograms.py` reads each HD spectral frame once and
+`pipelines/low_freq_spectra/spectrograms.py` reads each HD spectral frame once and
 publishes `/ProcessingSpectrograms/SpatialAverage` and
 `/ProcessingSpectrograms/SpatialMedian` as `(time, freq)` arrays. These are
 the arithmetic mean and median over every exported spatial pixel, independent
@@ -106,12 +134,12 @@ written after velocity-workflow failure cleanup, so shared spectra survive a
 failed moments workflow when the band workflow succeeds. They are produced
 once, with no `/ProcessingBandRatio/Spectrograms` duplicate.
 
-`pipelines/velocity/gaps/preprocessing.py` prepares optional gap support for
+`pipelines/low_freq_spectra/preprocessing.py` prepares optional gap support for
 the same streaming reduction pass, which computes the arithmetic spatial mean
 of the exported band-power samples included by the application mask, for every
 time/frequency pair. Only included pixels enter the denominator; excluded
-pixels are not zero-filled. The velocity runner invokes this once using native
-gap support from `topology_core`, and publishes `/ProcessingSpectrograms/Gaps/Raw`, with
+pixels are not zero-filled. The `low_freq_spectra` runner invokes this once using
+native gap support from `topology_core`, and publishes `/ProcessingSpectrograms/Gaps/Raw`, with
 `dimDesc=["time", "freq"]`, preserving HD frequency-bin order. Finite negative
 spatial means are replaced with zero after averaging, before beat subdivision;
 individual pixel samples are not clipped before averaging.
@@ -126,25 +154,34 @@ outputs, segmentation, and other pipeline
 work remain available. An unavailable/legacy spectra source omits this
 product with a warning. Physical capillary velocity remains deferred.
 
-The existing `velocity` pipeline owns all gap-spectrum stages. It declares
-`capillary_analysis_zones` as an upstream dependency, computes shared
-`gap_spectrograms` once before estimation, then invokes beat subdivision once
-with its explicitly selected successful moments result. There
-is no separately registered gap pipeline. Velocity owns the declared
-`gap_spectrograms` and `gap_per_beat_spectrograms` products. Band-ratio timing
-never supplies substitute boundaries.
+The hidden `low_freq_spectra` pipeline owns all spectral stages. Its
+`auto_run_after="velocity"` declaration automatically adds it to any plan that
+already schedules velocity, without making it a selectable target or pulling
+velocity into unrelated runs. It declares `velocity_workflows` and
+`capillary_analysis_zones` dependencies, owns the `gap_spectrograms` and
+`gap_per_beat_spectrograms` products, and executes once in the shared output
+namespace (`run_once=True`). Missing or legacy-group `/spectrograms` skips all
+spectral processing. Invalid datasets fail this pipeline without disabling
+velocity/topology source assembly or independent downstream velocity analyses.
+Velocity publishes typed successful workflow results for shared consumers.
+Detected moments cycles take priority; unavailable moments results, fallback-only
+moments timing, or fewer than two moments boundaries cause a retry with detected
+band-ratio cycles. If neither workflow has detected intervals, spatial/raw gap
+spectra remain available and per-beat products are omitted with a warning.
 
 `/ProcessingSpectrograms/Gaps/PerBeat/Raw` contains `(phase, freq, beat)` spatial mean band
-power using consecutive zero-based moments cycle boundaries. Each beat is
-linearly resampled to 128 phases in `[0, 1)`. The next boundary is included as
+power using consecutive zero-based cycle boundaries from the selected workflow.
+Each beat is linearly resampled to 128 phases in `[0, 1)`. The next boundary is included as
 an interpolation anchor, but its duplicated phase endpoint is not stored.
 Intervals outside the detected boundary sequence are omitted. Invalid samples
 remain NaN, with no interpolation across NaN gaps. Frequency-bin order and
-power units are preserved. Attributes identify the moments timing source,
-boundary indexes, original beat durations, interpolation, and phase samples.
-Spectra and moments signals must have identical frame counts. Missing moments
-timing or the detector's full-record fallback (`cardiac_cycle_source="none"`)
-skips per-beat gap analysis with a warning, preserving shared preprocessing.
+power units are preserved. Attributes identify the selected timing workflow and
+its HDF5 source path, boundary indexes, original beat durations, interpolation,
+and phase samples.
+Spectra and the selected timing signal must have identical frame counts. The
+detector's full-record fallback (`cardiac_cycle_source="none"`) is never used as
+detected timing. Missing detected timing in both workflows skips per-beat gap
+analysis with a warning, preserving shared preprocessing.
 
 `/ProcessingSpectrograms/Gaps/TimeAggregated/Median` contains a float32 `(freq,)`
 pooled median of `/ProcessingSpectrograms/Gaps/PerBeat/Raw` over its phase and

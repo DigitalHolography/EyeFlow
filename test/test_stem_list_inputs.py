@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
@@ -66,6 +67,48 @@ class _InputStateHarness:
 
 
 class HoloInputListTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Windows drive-letter semantics")
+    def test_reads_quoted_holo_paths_on_different_windows_drives(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            input_list = Path(tmp_dir) / "inputs.txt"
+            input_list.write_text(
+                r'"Z:\260618\260618_PES1462281_R.holo"' + "\n"
+                r'"Y:\260129\260129_DUJ_R_2.holo"' + "\n",
+                encoding="utf-8-sig",
+            )
+            self.assertEqual(
+                ((Path("Z:/260618"), "260618_PES1462281_R"),
+                 (Path("Y:/260129"), "260129_DUJ_R_2")),
+                read_holo_input_list(input_list).path_stem_pairs,
+            )
+
+    def test_quoted_list_resolves_each_companion_under_its_own_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            first_dir, second_dir = root / "first drive", root / "second drive"
+            first_dir.mkdir()
+            second_dir.mkdir()
+            holos = [_write_holo_file(parent, "same_stem") for parent in (first_dir, second_dir)]
+            companions = [_write_companion_h5_files(parent, "same_stem")
+                          for parent in (first_dir, second_dir)]
+            input_list = root / "inputs.txt"
+            input_list.write_text(f'  "{holos[0]}"  \n\n\'{holos[1]}\'\n', encoding="utf-8")
+            resolved = resolve_selected_run_layouts([input_list])
+            self.assertEqual(holos, [item.holo_path for item in resolved])
+            self.assertEqual([pair[0] for pair in companions], [item.hd_h5 for item in resolved])
+            self.assertEqual([pair[1] for pair in companions], [item.dv_h5 for item in resolved])
+
+    def test_relative_quoted_entries_use_the_list_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            input_list = root / "inputs.txt"
+            input_list.write_text('"first folder/subject_a.holo"\n"second/subject_b.holo"\n',
+                                  encoding="utf-8")
+            self.assertEqual(
+                ((root / "first folder", "subject_a"), (root / "second", "subject_b")),
+                read_holo_input_list(input_list).path_stem_pairs,
+            )
+
     def test_status_requires_an_unambiguous_h5_selection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

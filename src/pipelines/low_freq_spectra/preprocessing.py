@@ -9,7 +9,7 @@ from input_output.schema.holodoppler import HD_SPECTOGRAMS_PATH
 from pipelines.vessel_inputs import align_spectrogram_frame
 from utils.logger import Logger
 
-from ..masks import gap_velocity_mask
+from .masks import gap_velocity_mask
 
 
 def spatial_mean_band_power(spectrograms, mask: np.ndarray) -> np.ndarray:
