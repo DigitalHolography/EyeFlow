@@ -53,3 +53,26 @@ settings import/mode behavior, inspect the settings controller,
 Most GUI behavior is tested at controller/helper boundaries without creating a
 real window. Keep new logic separable from widget construction so it remains
 testable in the same style.
+
+Input interactions are covered by `test_input_selection.py` (popup/drop
+controllers, mixed directories, native dialog delegation, and output routing)
+and `test_stem_list_inputs.py` (quoted lists and HD/DV resolution).
+
+The input row exposes separate native file and folder dialogs. On Windows,
+`TkFileDialogService.askdirectories` uses `windows_folder_dialog.py` and the
+system `IFileOpenDialog` with `FOS_PICKFOLDERS | FOS_ALLOWMULTISELECT` to support
+Shift/Ctrl folder selection. Other platforms retain Tk's single-folder fallback.
+Both dialogs append via
+`InputController.add_holo_input_paths`; folders use the same recursive expansion
+and deduplication as drops. Clear resets the selection. A text list stays a sole
+input: selecting one replaces files, while adding files/folders replaces the list.
+Directory expansion delegates to `input_output.run_discovery`, which accepts
+matching HD/DV run directories without `.holo` markers, including the selected
+directory itself. Keep folder recognition and path identities out of the UI.
+The file and folder pickers share `last_input_directory`, persisted through
+`AppSettingsStore`. Remember the chosen folder before expanding it into runs;
+appending inputs and Clear must not reset the picker's location. Cancel leaves
+it unchanged, and an unavailable saved folder falls back to the selected input
+directory, then the working directory.
+For multiple folders, remember their containing directory so sibling selections
+reopen at the same browsing level.

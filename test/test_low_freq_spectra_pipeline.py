@@ -1,0 +1,216 @@
+"""Shared spectral scheduling, timing fallback, and failure isolation."""
+
+import json
+from dataclasses import replace
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import h5py
+import numpy as np
+import pytest
+from test_run_service import _write_input
+from test_velocity_pipeline import _retinal_velocity
+
+from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS, processing_path
+from pipeline_engine import ExecutionVariant, PipelineDAG, PipelineDescriptor
+from pipeline_engine.run_service import execute_run, resolve_run_spec
+from pipelines import load_pipeline_catalog
+from pipelines.low_freq_spectra.runner import run_low_freq_spectra
+from pipelines.topology_core.runner import CAPILLARY_ANALYSIS_ZONES_STATE
+from pipelines.velocity.models import VelocityWorkflows
+from pipelines.velocity.runner import VELOCITY_WORKFLOWS_STATE
+
+
+def _descriptor(name, run, **metadata):
+    return PipelineDescriptor(
+        name=name, description=name, available=True,
+        pipeline_factory=lambda: SimpleNamespace(name=name, run=run, source_path=__file__),
+        **metadata,
+    )
+
+
+def _spec(tmp_path, *, moments=True, bands=True, spectra="valid"):
+    holo = _write_input(tmp_path)
+    hd_path = tmp_path / "scan/scan_HD/h5/scan_HD_output.h5"
+    with h5py.File(hd_path, "a") as hd:
+        if spectra == "legacy_group":
+            hd.create_group("spectrograms")
+        elif spectra != "missing":
+            shape = {"rank": (6, 3), "empty": (0, 3, 2, 2), "frames": (7, 3, 2, 2)}.get(
+                spectra, (6, 3, 2, 2),
+            )
+            hd.create_dataset("spectrograms", data=np.ones(
+                shape, dtype=np.complex64 if spectra == "dtype" else np.float32,
+            ))
+    schema = EyeFlowOutputPaths.active()
+    results = {}
+    for method, available in (("doppler_moments", moments), ("frequency_bands", bands)):
+        if not available:
+            continue
+        result = _retinal_velocity()
+        if method == "frequency_bands":
+            result.cardiac_cycle.systole.systole_indexes = np.array([0, 2, 5])
+        if available == "undetected":
+            result = replace(result, cardiac_cycle_source="none")
+        elif available == "one_boundary":
+            result.cardiac_cycle.systole.systole_indexes = np.array([0])
+        results[method] = result
+
+    def source(ctx):
+        ctx.state.set(VELOCITY_WORKFLOWS_STATE, VelocityWorkflows(
+            moments=results.get("doppler_moments"), bandratio=results.get("frequency_bands"),
+        ))
+        ctx.state.set(CAPILLARY_ANALYSIS_ZONES_STATE, np.ones((2, 2), dtype=bool))
+        ctx.output.h5.write(schema.segmentation.gaps, np.ones((2, 2), dtype=bool))
+        for method, result in results.items():
+            ctx.output.h5.write(
+                processing_path(schema.cardiac_cycle.systolic_peak_frame_indices,
+                                VELOCITY_WORKFLOW_ROOTS[method]),
+                result.cycle_boundary_indexes,
+            )
+        ctx.publish_execution_variants([
+            ExecutionVariant(
+                name=method, state={"velocity": result},
+                output_namespace=VELOCITY_WORKFLOW_ROOTS[method],
+                artifact_namespace=method, provenance={"velocity_estimation_method": method},
+            ) for method, result in results.items()
+        ])
+
+    available, _ = load_pipeline_catalog()
+    low_freq = next(item for item in available if item.name == "low_freq_spectra")
+    return resolve_run_spec(
+        input_paths=[holo], target_names=["consumer"], pipelines=[
+            _descriptor("velocity", source, produces_execution_variants=True,
+                        dag_produces=("velocity_workflows", "capillary_analysis_zones")),
+            low_freq,
+            _descriptor("consumer", lambda ctx: {"ProcessingMoments/Consumer/value": 42},
+                        dag_requires=("velocity",)),
+        ],
+    )
+
+
+@pytest.mark.parametrize("moments,bands,expected", [
+    (True, True, "doppler_moments"),
+    (True, False, "doppler_moments"),
+    (False, True, "frequency_bands"),
+    ("undetected", True, "frequency_bands"),
+    ("one_boundary", True, "frequency_bands"),
+    ("undetected", "undetected", None),
+])
+def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, moments, bands, expected):
+    spec = _spec(tmp_path, moments=moments, bands=bands)
+    with patch("pipelines.low_freq_spectra.runner.run_low_freq_spectra",
+               wraps=run_low_freq_spectra) as run:
+        result = execute_run(spec)
+    assert result.succeeded, result.failures
+    run.assert_called_once()
+    ctx = run.call_args.args[0]
+    assert ctx.execution_variant is None
+    assert ctx.output.h5.processing_root is None
+    assert spec.plan.targets == ("consumer",)
+    assert spec.plan.names.index("velocity") < spec.plan.names.index("low_freq_spectra")
+    schema = EyeFlowOutputPaths.active()
+    with h5py.File(result.outputs[0], "r") as output:
+        status = json.loads(output.attrs["pipeline_status"])
+        assert status["shared"]["low_freq_spectra"] == "succeeded"
+        assert all("low_freq_spectra" not in branch for branch in status["variants"].values())
+        assert schema.spectrograms_masked in output
+        assert "velocity_estimation_method" not in output[schema.spectrograms_masked].attrs
+        if expected is None:
+            assert schema.spectrograms_masked_per_beat not in output
+        else:
+            root = VELOCITY_WORKFLOW_ROOTS[expected]
+            boundary_path = processing_path(schema.cardiac_cycle.systolic_peak_frame_indices, root)
+            for path in (schema.spectrograms_masked_per_beat,
+                         schema.spectrograms_masked_per_beat_band_limited,
+                         schema.spectrograms_masked_per_beat_svd_continuous,
+                         schema.spectrograms_masked_time_aggregated_median):
+                product = output[path]
+                assert product.attrs["cycle_boundary_workflow"] == expected
+                assert product.attrs["cycle_boundary_source_path"] == "/" + boundary_path
+                np.testing.assert_array_equal(product.attrs["cycle_boundary_indices"],
+                                              output[boundary_path][:])
+        assert "ProcessingBandRatio/Spectrograms" not in output
+
+    names = {"spectrograms_gaps", "gaps_mask"}
+    if expected is not None:
+        names.add("spectrogram_gaps_median")
+    ef_dir = result.outputs[0].parent.parent
+    for extension in ("png", "eps"):
+        assert {path.name for path in (ef_dir / extension / "spectrograms").iterdir()} == {
+            f"scan_{name}.{extension}" for name in names
+        }
+        assert not list((ef_dir / extension / "moments").glob("*spectrogram*"))
+        assert not list((ef_dir / extension / "bandratio").glob("*spectrogram*"))
+
+
+@pytest.mark.parametrize("spectra", ["missing", "legacy_group"])
+def test_optional_source_skips_all_spectral_processing(tmp_path, spectra):
+    spec = _spec(tmp_path, spectra=spectra)
+    with patch("pipelines.low_freq_spectra.runner.preprocess_spectrograms") as preprocess:
+        result = execute_run(spec)
+    assert result.succeeded, result.failures
+    preprocess.assert_not_called()
+    ef_dir = result.outputs[0].parent.parent
+    assert not (ef_dir / "png/spectrograms").exists()
+    assert not (ef_dir / "eps/spectrograms").exists()
+    with h5py.File(result.outputs[0], "r") as output:
+        assert "ProcessingSpectrograms" not in output
+        assert output["ProcessingMoments/Consumer/value"][()] == 42
+        assert output["ProcessingBandRatio/Consumer/value"][()] == 42
+
+
+@pytest.mark.parametrize("spectra", ["rank", "dtype", "empty", "frames"])
+def test_bad_spectra_fail_only_the_shared_pipeline(tmp_path, spectra):
+    result = execute_run(_spec(tmp_path, spectra=spectra))
+    assert not result.succeeded
+    with h5py.File(result.outputs[0], "r") as output:
+        status = json.loads(output.attrs["pipeline_status"])
+        assert status["shared"]["low_freq_spectra"] == "failed"
+        assert status["shared"]["velocity"] == "succeeded"
+        assert all(branch["consumer"] == "succeeded" for branch in status["variants"].values())
+        assert "ProcessingSpectrograms" not in output  # Rolled back, including raw reductions.
+
+
+def test_automatic_companions_close_dependencies_and_do_not_become_targets():
+    descriptors = [
+        _descriptor("second", lambda ctx: None, auto_run_after="first"),
+        _descriptor("first", lambda ctx: None, auto_run_after="source", dag_requires=("extra",)),
+        _descriptor("extra", lambda ctx: None),
+        _descriptor("source", lambda ctx: None),
+        _descriptor("unrelated", lambda ctx: None),
+    ]
+    dag = PipelineDAG(descriptors)
+    plan = dag.resolve_targets(["source"])
+    assert plan.targets == ("source",)
+    assert set(plan.names) == {"source", "extra", "first", "second"}
+    assert plan.names.index("source") < plan.names.index("first") < plan.names.index("second")
+    assert dag.resolve_targets(["unrelated"]).names == ("unrelated",)
+    assert dag.resolve_targets([]).names == ()
+
+
+def test_low_frequency_pipeline_cannot_be_selected_directly():
+    available, _ = load_pipeline_catalog()
+    with pytest.raises(ValueError, match="hidden.*low_freq_spectra"):
+        resolve_run_spec(input_paths=[], target_names=["low_freq_spectra"], pipelines=available)
+
+
+@pytest.mark.parametrize("class_pipeline", [False, True])
+def test_decorators_preserve_companion_and_shared_execution_metadata(monkeypatch, class_pipeline):
+    from pipeline_engine import base
+
+    monkeypatch.setattr(base, "PIPELINE_REGISTRY", {})
+    if class_pipeline:
+        @base.registerPipeline(name="companion", auto_run_after="source", run_once=True)
+        class Companion(base.ProcessPipeline):
+            def run(self, ctx):
+                return None
+    else:
+        @base.pipeline(name="companion", auto_run_after="source", run_once=True)
+        def companion(ctx):
+            return None
+    descriptor = base.PIPELINE_REGISTRY["companion"]
+    instance = descriptor.instantiate()
+    assert descriptor.auto_run_after == instance.auto_run_after == "source"
+    assert descriptor.run_once and instance.run_once

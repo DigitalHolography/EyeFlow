@@ -8,6 +8,7 @@ from pathlib import Path
 import h5py
 
 from .holo_run_layout import HoloRunLayout
+from .run_discovery import is_run_directory
 from .schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
 
 HOLO_SUFFIX = ".holo"
@@ -52,34 +53,46 @@ def resolve_selected_run_layouts(
     normalized = [_absolute(path) for path in input_paths]
     if not normalized:
         raise ValueError(
-            f"Select one or more {HOLO_SUFFIX} files "
+            f"Select {HOLO_SUFFIX} files, matching HD/DV run folders, "
             f"or one {INPUT_LIST_SUFFIX} list."
         )
-    if len(normalized) == 1 and normalized[0].suffix.lower() == INPUT_LIST_SUFFIX:
+    if len(normalized) == 1 and normalized[0].suffix.lower() == INPUT_LIST_SUFFIX and (
+        not normalized[0].is_dir()
+    ):
         input_list_path = normalized[0]
         input_list = read_holo_input_list(input_list_path)
         return [
             resolve_stem_run_layout(stem, root_dir)
             for root_dir, stem in input_list.path_stem_pairs
         ]
-    if any(path.suffix.lower() == INPUT_LIST_SUFFIX for path in normalized):
+    if any(path.suffix.lower() == INPUT_LIST_SUFFIX and not path.is_dir() for path in normalized):
         raise ValueError(
-            f"Select either one {INPUT_LIST_SUFFIX} list or one or more "
-            f"{HOLO_SUFFIX} files."
+            f"Select either one {INPUT_LIST_SUFFIX} list or "
+            f"{HOLO_SUFFIX} files and HD/DV run folders."
         )
 
     resolved: list[HoloRunLayout] = []
     errors: list[str] = []
     for holo_path in normalized:
         try:
-            resolved.append(resolve_holo_run_layout(holo_path))
+            if holo_path.is_dir():
+                if not is_run_directory(holo_path):
+                    raise ValueError(
+                        f"Run folder must contain {holo_path.name}_HD and "
+                        f"{holo_path.name}_DV directories:\n{holo_path}"
+                    )
+                layout = HoloRunLayout.from_run_directory(holo_path)
+                layout.require_inputs()
+                resolved.append(layout)
+            else:
+                resolved.append(resolve_holo_run_layout(holo_path))
         except (FileNotFoundError, ValueError) as exc:
             errors.append(f"{holo_path}:\n{exc}")
 
     if errors:
         raise FileNotFoundError(
             "Missing required input data for one or more selected "
-            f"{HOLO_SUFFIX} files:\n\n"
+            "runs:\n\n"
             + "\n\n".join(errors)
         )
     return resolved
@@ -87,11 +100,13 @@ def resolve_selected_run_layouts(
 
 def read_holo_input_list(input_list_path: Path) -> HoloInputList:
     input_list_path = _absolute(input_list_path)
-    entries = [
-        line.strip()
-        for line in input_list_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    entries: list[str] = []
+    for line in input_list_path.read_text(encoding="utf-8-sig").splitlines():
+        entry = line.strip()
+        if entry[:1] in {"\"", "'"} and entry[-1:] == entry[:1]:
+            entry = entry[1:-1]
+        if entry:
+            entries.append(entry)
     if not entries:
         raise ValueError(f"Input list is empty:\n{input_list_path}")
     return HoloInputList(
@@ -110,6 +125,9 @@ def holo_input_status(
     holo_path: Path,
 ) -> HoloInputStatus:
     holo_path = _absolute(holo_path)
+    if holo_path.is_dir():
+        layout = HoloRunLayout.from_run_directory(holo_path)
+        return HoloInputStatus(hd=layout.has_hd_h5, dv=layout.has_dv_h5)
     try:
         _validate_holo_file(holo_path)
     except (FileNotFoundError, ValueError):

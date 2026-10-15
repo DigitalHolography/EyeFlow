@@ -18,8 +18,8 @@ from pipelines.velocity.runner import (
     estimate_retinal_velocity,
     pack_velocity_outputs,
 )
-from pipelines.velocity.spectrograms import preprocess_spectrograms
-from pipelines.velocity.gaps.per_beat import gap_spectrograms_per_beat
+from pipelines.low_freq_spectra.spectrograms import preprocess_spectrograms
+from pipelines.low_freq_spectra.per_beat import gap_spectrograms_per_beat
 
 
 def _dual_input(root):
@@ -86,11 +86,11 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
         dv.create_dataset("segmentation/Choroid/vessel_mask", data=np.zeros(shape))
     with (
         patch(
-            "pipelines.velocity.runner.preprocess_spectrograms",
+            "pipelines.low_freq_spectra.runner.preprocess_spectrograms",
             wraps=preprocess_spectrograms,
         ) as preprocess,
         patch(
-            "pipelines.velocity.gaps.runner.gap_spectrograms_per_beat",
+            "pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat",
             wraps=gap_spectrograms_per_beat,
         ) as subdivide,
     ):
@@ -166,7 +166,7 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
 
 
 @pytest.mark.parametrize("empty_gaps", [False, True])
-def test_gap_skips_keep_velocity_without_moments_or_with_empty_support(tmp_path, empty_gaps):
+def test_gap_uses_bandratio_without_moments_and_skips_empty_support(tmp_path, empty_gaps):
     holo, hd_path = _dual_input(tmp_path)
     with h5py.File(hd_path, "a") as hd:
         if not empty_gaps:
@@ -184,15 +184,19 @@ def test_gap_skips_keep_velocity_without_moments_or_with_empty_support(tmp_path,
         )
         dv.create_dataset("segmentation/Choroid/vessel_mask", data=np.zeros(shape))
     with (
-        patch("pipelines.velocity.gaps.runner.gap_spectrograms_per_beat") as subdivide,
+        patch("pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat",
+              wraps=gap_spectrograms_per_beat) as subdivide,
         patch(
-            "pipelines.velocity.runner.preprocess_spectrograms",
+            "pipelines.low_freq_spectra.runner.preprocess_spectrograms",
             wraps=preprocess_spectrograms,
         ) as preprocess,
     ):
         result = execute_run(_spec(holo))
     assert result.succeeded, result.failures
-    subdivide.assert_not_called()
+    if empty_gaps:
+        subdivide.assert_not_called()
+    else:
+        subdivide.assert_called_once()
     preprocess.assert_called_once()
     schema = EyeFlowOutputPaths.active()
     with h5py.File(result.outputs[0], "r") as output:
@@ -203,8 +207,39 @@ def test_gap_skips_keep_velocity_without_moments_or_with_empty_support(tmp_path,
             assert schema.spectrograms_masked in output
         assert schema.spectrograms_spatial_average in output
         assert schema.spectrograms_spatial_median in output
-        assert schema.spectrograms_masked_per_beat not in output
+        if empty_gaps:
+            assert schema.spectrograms_masked_per_beat not in output
+        else:
+            raw = output[schema.spectrograms_masked_per_beat]
+            boundary_path = processing_path(
+                schema.cardiac_cycle.systolic_peak_frame_indices, "ProcessingBandRatio",
+            )
+            assert raw.attrs["cycle_boundary_workflow"] == "frequency_bands"
+            assert raw.attrs["cycle_boundary_source_path"] == "/" + boundary_path
+            np.testing.assert_array_equal(raw.attrs["cycle_boundary_indices"], output[boundary_path][:])
         assert "ProcessingBandRatio/Velocity" in output
+
+
+def test_malformed_spectra_do_not_disable_velocity_or_its_downstream_analysis(tmp_path):
+    holo, hd_path = _dual_input(tmp_path)
+    with h5py.File(hd_path, "a") as hd:
+        hd.create_dataset("spectrograms", data=np.ones((4, 4), dtype=np.float32))
+    available, _ = load_pipeline_catalog()
+    spec = resolve_run_spec(
+        input_paths=[holo], target_names=["velocity_analysis"], pipelines=available,
+        pipeline_options={"velocity_analysis": ()}, band_ratio_frequency_scale_hz=2,
+    )
+    result = execute_run(spec)
+    assert not result.succeeded
+    with h5py.File(result.outputs[0], "r") as output:
+        statuses = json.loads(output.attrs["pipeline_status"])
+        assert statuses["shared"]["velocity"] == "succeeded"
+        assert statuses["shared"]["low_freq_spectra"] == "failed"
+        for method, root in (("doppler_moments", "ProcessingMoments"),
+                             ("frequency_bands", "ProcessingBandRatio")):
+            assert statuses["variants"][method]["velocity_analysis"] == "succeeded"
+            assert f"{root}/Velocity" in output
+        assert "ProcessingSpectrograms" not in output
 
 
 def test_shared_spectra_survive_moments_workflow_failure_under_processing(tmp_path):

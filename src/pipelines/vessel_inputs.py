@@ -36,7 +36,7 @@ def load_vessel_topology_inputs(ctx) -> RetinalSourceData:
         for candidate in ("doppler_moments", "frequency_bands"):
             try:
                 return load_retinal_source_data(
-                    hd, dv, velocity_estimation_method=candidate,
+                    hd, dv, velocity_estimation_method=candidate, include_spectrograms=False,
                     band_ratio_frequency_scale_hz=getattr(
                         ctx, "band_ratio_frequency_scale_hz",
                         DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
@@ -50,6 +50,7 @@ def load_vessel_topology_inputs(ctx) -> RetinalSourceData:
         hd,
         dv,
         velocity_estimation_method=method,
+        include_spectrograms=False,
         band_ratio_frequency_scale_hz=getattr(
             ctx,
             "band_ratio_frequency_scale_hz",
@@ -63,11 +64,16 @@ def load_retinal_source_data(
     dv,
     *,
     velocity_estimation_method: str = "doppler_moments",
+    include_spectrograms: bool = True,
     band_ratio_frequency_scale_hz: float = (
         DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
     ),
 ) -> RetinalSourceData:
-    """Load one canonical source model from typed HD and DV adapters."""
+    """Load canonical sources, optionally including spectra for direct callers.
+
+    Runtime velocity/topology consumers omit spectra; the low-frequency
+    spectral pipeline validates that optional input independently.
+    """
 
     method = validate_velocity_estimation_method(velocity_estimation_method)
     frequency_scale_hz = validate_band_ratio_frequency_scale_hz(
@@ -80,14 +86,14 @@ def load_retinal_source_data(
             moment2=_optional_moment(hd.optional_moment2_dataset),
             band_lf=band_lf,
             band_hf=band_hf,
-            spectograms=hd.optional_spectograms_dataset(),
+            spectograms=hd.optional_spectograms_dataset() if include_spectrograms else None,
         )
         spatial_reference = band_lf
     else:
         image_maps = ImageMaps(
             moment0=hd.moment0_dataset(),
             moment2=hd.moment2_dataset(),
-            spectograms=hd.optional_spectograms_dataset(),
+            spectograms=hd.optional_spectograms_dataset() if include_spectrograms else None,
         )
         spatial_reference = image_maps.moment0
     spatial_shape = tuple(int(size) for size in spatial_reference.shape[-2:])

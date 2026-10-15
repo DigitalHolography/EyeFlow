@@ -12,9 +12,9 @@ from input_output.h5_access import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PipelineDAG
 from pipelines import load_pipeline_catalog
-from pipelines.velocity.gaps.metrics import SPECTRUM_METRIC_DEFINITIONS
-from pipelines.velocity.gaps.per_beat import gap_spectrograms_per_beat
-from pipelines.velocity.gaps.runner import run_gap_analysis
+from pipelines.low_freq_spectra.metrics import SPECTRUM_METRIC_DEFINITIONS
+from pipelines.low_freq_spectra.per_beat import gap_spectrograms_per_beat
+from pipelines.low_freq_spectra.gap_analysis import run_gap_analysis
 
 
 def test_unequal_beats_align_phase_without_reordering_frequency_or_duplicate_endpoint():
@@ -110,7 +110,7 @@ def test_time_aggregated_median_pools_samples_ignores_nan_and_preserves_frequenc
         source.attrs["unit"] = "power_unit"
         source.attrs["frequency_bin_centers_hz"] = [30, -10, 20]
         with (
-            patch("pipelines.velocity.gaps.runner.gap_spectrograms_per_beat", return_value=per_beat),
+            patch("pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat", return_value=per_beat),
             warnings.catch_warnings(),
         ):
             warnings.simplefilter("error", RuntimeWarning)
@@ -142,7 +142,7 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
             [0, 2, 4, 6, 8] if case == "no_finite_cells" else [0, 4, 8], 9,
             source="none" if case == "no_detected_cycles" else "artery",
         )
-        with patch("pipelines.velocity.gaps.runner.Logger.log_warning") as warning:
+        with patch("pipelines.low_freq_spectra.gap_analysis.Logger.log_warning") as warning:
             metrics = run_gap_analysis(
                 _ctx(output), None if case == "missing_moments" else moments,
             )
@@ -168,15 +168,24 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
                 warning.assert_called_once()
 
 
-def test_gap_analysis_belongs_to_velocity_and_waits_for_native_gap_support():
+def test_low_frequency_spectra_are_hidden_and_automatically_follow_velocity():
     available, missing = load_pipeline_catalog()
     assert "gap_analysis" not in {item.name for item in [*available, *missing]}
     descriptors = {item.name: item for item in available}
-    assert "gap_per_beat_spectrograms" in descriptors["velocity"].dag_produces
-    assert descriptors["velocity"].dag_requires == ("capillary_analysis_zones",)
+    assert "gap_per_beat_spectrograms" not in descriptors["velocity"].dag_produces
+    spectra = descriptors["low_freq_spectra"]
+    assert spectra.visibility == "hidden"
+    assert spectra.run_once
+    assert spectra.auto_run_after == "velocity"
+    assert "gap_per_beat_spectrograms" in spectra.dag_produces
+    assert descriptors["velocity"].dag_requires == ()
     dag = PipelineDAG(available)
-    assert dag.dependencies_of("velocity") == ("topology_core",)
+    assert dag.dependencies_of("velocity") == ()
+    assert set(dag.dependencies_of("low_freq_spectra")) == {"velocity", "topology_core"}
     for target in ("velocity_analysis", "spatial_gradient_moment0"):
         names = dag.resolve_targets([target]).names
-        assert names.index("topology_core") < names.index("velocity") < names.index(target)
+        assert names.index("velocity") < names.index(target)
+        assert names.index("topology_core") < names.index("low_freq_spectra")
+        assert names.index("velocity") < names.index("low_freq_spectra")
         assert "gap_analysis" not in names
+    assert "low_freq_spectra" not in dag.resolve_targets(["displacement_map"]).names

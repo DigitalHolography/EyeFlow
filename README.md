@@ -34,6 +34,35 @@ eyeflow-cli --data path\to\folder --output path\to\results
 arguments are supplied. `eyeflow-cli` always uses the CLI. Run
 `eyeflow-cli --help` for pipeline-list and ZIP-output options.
 
+Text lists accept one `.holo` path per line, with optional surrounding quotes.
+Entries can point to unrelated directories or different drives:
+
+```text
+"Z:\260618\260618_PES1462281_R.holo"
+"Y:\260129\260129_DUJ_R_2.holo"
+```
+
+Relative paths are resolved from the text file's directory. Each run uses its
+own HD/DV companions and writes its results beside that run by default.
+
+In the GUI, drag and drop multiple `.holo` files and/or folders. Folders are
+searched recursively, and overlapping selections are deduplicated. **Add files /
+list** opens the standard Windows multi-file dialog. **Add folder** opens the
+native folder dialog: double-click folders to browse, or select a folder and
+confirm it to include all `.holo` files below it. Both actions add to the current
+selection, so files and folders from different directories/drives can coexist.
+Repeat either action to add more inputs; **Clear** starts over. Selecting a
+`.txt` list replaces the current selection, and adding files/folders replaces
+a previously selected text list.
+
+Folder discovery also works without `.holo` files. Select a run directory such
+as `sample/`, or a parent containing several runs, provided each run directory
+contains matching `sample_HD/` and `sample_DV/` subdirectories. Existing
+`sample_EF/` and `sample_AE/` folders are optional. This works with **Add folder**,
+drag-and-drop, and CLI folder inputs. HD/DV HDF5 files are validated as usual;
+no placeholder `.holo` file is created. Mixed marker and folder selections are
+deduplicated, and results remain under `sample/sample_EF/` by default.
+
 ## Input runs
 
 A `.holo` file anchors separately generated HD and DV companions. For

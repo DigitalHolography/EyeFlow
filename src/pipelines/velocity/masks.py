@@ -4,20 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from calculations.topology import downsample_gap_zones
-
-
-def gap_velocity_mask(
-    analysis_zones: np.ndarray,
-    spatial_shape: tuple[int, int],
-) -> np.ndarray:
-    """Prepare native gap support for a video without changing the persisted mask.
-
-    Interpolate to the HD spectrogram's actual (height, width) using nearest
-    neighbors. No fixed downsampling factor or divisibility rule is imposed.
-    """
-    return downsample_gap_zones(analysis_zones, target_shape=spatial_shape)
-
 
 def elliptical_mask(ny: int, nx: int, radius_frac: float, center=None) -> np.ndarray:
     radius = max(0.0, min(1.0, float(radius_frac)))

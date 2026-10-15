@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import os
 import tkinter as tk
 from collections.abc import Sequence
 from pathlib import Path
 
 from input_output import (
     INPUT_LIST_SUFFIX,
+    discover_run_inputs,
     holo_input_status,
     read_holo_input_list,
+    run_input_key,
     stem_input_status,
 )
 
@@ -81,7 +82,29 @@ class InputController:
         self.apply_input_defaults(normalized_paths[0])
 
     def reference_holo_tooltip_text(self) -> str:
-        return "Pick one or more reference .holo files, or a .txt path list."
+        return (
+            "Add .holo files or folders using the native Windows dialogs. "
+            "Use Ctrl/Shift to select multiple folders. "
+            "Folders include .holo files and matching HD/DV run folders recursively. "
+            "Clear starts a new selection. "
+            "A .txt list replaces the current selection."
+        )
+
+    def add_holo_input_paths(self, input_paths: Sequence[Path]) -> None:
+        """Combine file/folder selections, keeping a text list as a sole input."""
+        added = self._clean_dropped_paths(input_paths)
+        if not added:
+            raise ValueError("No .holo files or matching HD/DV run folders were found.")
+        lists = [path for path in added
+                 if path.suffix.lower() == INPUT_LIST_SUFFIX and not path.is_dir()]
+        if lists:
+            if len(added) != 1:
+                raise ValueError("Select one .txt path list by itself, or select .holo files.")
+            self.assign_holo_input_paths(added)
+            return
+        previous = [path for path in self.selected_holo_paths()
+                    if path.suffix.lower() != INPUT_LIST_SUFFIX or path.is_dir()]
+        self.assign_holo_input_paths(self._clean_dropped_paths([*previous, *added]))
 
     def install_drop_targets(self) -> None:
         if DND_FILES is None:
@@ -177,7 +200,7 @@ class InputController:
 
         services_for(self.app).dialogs.showwarning(
             "Unsupported drop",
-            "Drop one or more .holo files, a folder containing .holo files, "
+            "Drop .holo files and/or folders containing .holo files, "
             "one .txt path list, or one .json configuration file.",
         )
 
@@ -202,7 +225,9 @@ class InputController:
                 dv_color=self.app._muted_fg,
             )
             return
-        if len(holo_paths) == 1 and holo_paths[0].suffix.lower() == INPUT_LIST_SUFFIX:
+        if len(holo_paths) == 1 and holo_paths[0].suffix.lower() == INPUT_LIST_SUFFIX and (
+            not holo_paths[0].is_dir()
+        ):
             self.update_input_list_found_statuses(holo_paths[0])
             return
 
@@ -302,17 +327,7 @@ class InputController:
         for dropped_path in dropped_paths:
             if dropped_path.is_dir():
                 try:
-                    valid_paths.extend(
-                        sorted(
-                            (
-                                path
-                                for path in dropped_path.rglob("*")
-                                if path.is_file()
-                                and path.suffix.lower() == HOLO_SUFFIX
-                            ),
-                            key=lambda path: str(path).casefold(),
-                        )
-                    )
+                    valid_paths.extend(discover_run_inputs(dropped_path))
                 except OSError:
                     continue
             elif dropped_path.is_file() and dropped_path.suffix.lower() in {
@@ -325,7 +340,7 @@ class InputController:
         seen_paths: set[str] = set()
         for path in valid_paths:
             normalized_path = self._normalize_path(path)
-            path_key = os.path.normcase(str(normalized_path))
+            path_key = run_input_key(normalized_path)
             if path_key not in seen_paths:
                 seen_paths.add(path_key)
                 unique_paths.append(normalized_path)
@@ -341,15 +356,16 @@ class InputController:
         missing_dv: list[str] = []
         for holo_path in holo_paths:
             normalized_holo = self._normalize_path(holo_path)
+            name = normalized_holo.name if normalized_holo.is_dir() else normalized_holo.stem
             status = holo_input_status(normalized_holo)
             if status.hd:
                 hd_found_count += 1
             else:
-                missing_hd.append(normalized_holo.stem)
+                missing_hd.append(name)
             if status.dv:
                 dv_found_count += 1
             else:
-                missing_dv.append(normalized_holo.stem)
+                missing_dv.append(name)
         return hd_found_count, dv_found_count, missing_hd, missing_dv
 
 
