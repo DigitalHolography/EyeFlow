@@ -13,7 +13,7 @@ from .preprocessing import prepare_gap_spectrograms
 
 
 def preprocess_spectrograms(spectrograms, analysis_zones: np.ndarray | None) -> dict[str, object]:
-    """Pack full-frame spatial mean/median and optional gap mean band power.
+    """Pack full-frame spatial mean/median and optional gap median band power.
 
     Read each HD frame once. Any nonfinite included pixel makes its reduction
     NaN; finite negative reductions are clamped only after aggregation.
@@ -35,7 +35,7 @@ def preprocess_spectrograms(spectrograms, analysis_zones: np.ndarray | None) -> 
     )
     average = np.full(spectrograms.shape[:2], np.nan, dtype=np.float64)
     median = np.full_like(average, np.nan)
-    gap_average = np.full_like(average, np.nan) if prepared is not None else None
+    gap_median = np.full_like(average, np.nan) if prepared is not None else None
     for frame_index in range(spectrograms.shape[0]):
         frame = np.asarray(align_spectrogram_frame(spectrograms[frame_index]), dtype=np.float64)
         full = frame.reshape(frame.shape[0], -1)
@@ -45,7 +45,7 @@ def preprocess_spectrograms(spectrograms, analysis_zones: np.ndarray | None) -> 
         if prepared is not None:
             samples = frame[:, prepared[0]]
             gap_valid = np.all(np.isfinite(samples), axis=1)
-            gap_average[frame_index, gap_valid] = np.mean(samples[gap_valid], axis=1)
+            gap_median[frame_index, gap_valid] = np.median(samples[gap_valid], axis=1)
     np.maximum(average, 0.0, out=average)
     np.maximum(median, 0.0, out=median)
     schema = EyeFlowOutputPaths.active()
@@ -73,6 +73,6 @@ def preprocess_spectrograms(spectrograms, analysis_zones: np.ndarray | None) -> 
         }),
     }
     if prepared is not None:
-        np.maximum(gap_average, 0.0, out=gap_average)
-        metrics[schema.spectrograms_masked] = (gap_average, prepared[1])
+        np.maximum(gap_median, 0.0, out=gap_median)
+        metrics[schema.spectrograms_masked] = (gap_median, prepared[1])
     return metrics

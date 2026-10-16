@@ -80,6 +80,8 @@ class SegmentationOutputPaths:
     vein: VesselSegmentationOutputPaths
     pixel_pitch_m: str
     gaps: str
+    gaps_legacy: str
+    gaps_from_m0ff: str
 
 
 @dataclass(frozen=True)
@@ -141,13 +143,20 @@ class EyeFlowOutputPaths:
     absolute_waveform_metrics_root: str
     lowrank_waveform_decomposition_root: str
     meta_root: str
+    sampling_frequency_hz: str
     blood_volume_rate: BloodVolumeRateOutputPaths
     spectrograms_spatial_average: str
     spectrograms_spatial_median: str
     spectrograms_masked: str
     spectrograms_masked_per_beat: str
     spectrograms_masked_time_aggregated_median: str
-    spectrograms_masked_time_aggregated_metrics_root: str
+    spectrograms_masked_time_aggregated_median_beat: str
+    spectrograms_masked_time_aggregated_median_early: str
+    spectrograms_masked_time_aggregated_median_late: str
+    spectrograms_masked_time_aggregated_std: str
+    spectrograms_masked_time_aggregated_std_early: str
+    spectrograms_masked_time_aggregated_std_late: str
+    spectrograms_masked_metrics_root: str
     spectrograms_masked_per_beat_band_limited: str
     spectrograms_masked_per_beat_svd_continuous: str
 
@@ -186,7 +195,9 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
             delta_radius=f"{root}/Vein/DeltaRadius/value",
         ),
         pixel_pitch_m=f"{root}/PixelPitch_m/value",
-        gaps=f"{root}/Gaps/value",
+        gaps=f"{root}/Gaps/Mask",
+        gaps_legacy=f"{root}/Gaps/Legacy",
+        gaps_from_m0ff=f"{root}/Gaps/GapsFromM0ff",
     )
 
 
@@ -346,13 +357,28 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
         "ProcessingMoments/Metrics/lowrank_waveform_decomposition"
     ),
     meta_root="Meta",
+    sampling_frequency_hz="Meta/SamplingFrequencyHz/value",
     blood_volume_rate=_blood_volume_rate_paths("ProcessingMoments/BloodVolumeRate"),
     spectrograms_spatial_average="ProcessingSpectrograms/SpatialAverage",
     spectrograms_spatial_median="ProcessingSpectrograms/SpatialMedian",
-    spectrograms_masked="ProcessingSpectrograms/Gaps/Raw",
+    spectrograms_masked="ProcessingSpectrograms/Gaps/SpatialMedian",
     spectrograms_masked_per_beat="ProcessingSpectrograms/Gaps/PerBeat/Raw",
-    spectrograms_masked_time_aggregated_median="ProcessingSpectrograms/Gaps/TimeAggregated/Median",
-    spectrograms_masked_time_aggregated_metrics_root="ProcessingSpectrograms/Gaps/TimeAggregated/Metrics",
+    spectrograms_masked_time_aggregated_median=(
+        "ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat"
+    ),
+    spectrograms_masked_time_aggregated_median_beat=(
+        "ProcessingSpectrograms/Gaps/TimeAggregated/MedianBeat"
+    ),
+    spectrograms_masked_time_aggregated_median_early=(
+        "ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeatEarly"
+    ),
+    spectrograms_masked_time_aggregated_median_late=(
+        "ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeatLate"
+    ),
+    spectrograms_masked_time_aggregated_std="ProcessingSpectrograms/Gaps/TimeAggregated/StdBeat",
+    spectrograms_masked_time_aggregated_std_early="ProcessingSpectrograms/Gaps/TimeAggregated/StdBeatEarly",
+    spectrograms_masked_time_aggregated_std_late="ProcessingSpectrograms/Gaps/TimeAggregated/StdBeatLate",
+    spectrograms_masked_metrics_root="ProcessingSpectrograms/Gaps/Metrics",
     spectrograms_masked_per_beat_band_limited="ProcessingSpectrograms/Gaps/PerBeat/BandLimited",
     spectrograms_masked_per_beat_svd_continuous="ProcessingSpectrograms/Gaps/PerBeat/SVDContinuous",
 )

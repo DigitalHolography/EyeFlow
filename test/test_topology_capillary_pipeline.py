@@ -18,6 +18,7 @@ from pipeline_engine import PipelineDAG
 from pipeline_engine.context import PipelineInputs, PipelineState
 from pipelines import load_pipeline_catalog
 from pipelines.topology_core.runner import capillary_zones, run_topology_core
+from pipelines.low_freq_spectra.preprocessing import preprocess_gap_spectrograms
 
 
 @pytest.fixture
@@ -138,7 +139,7 @@ def test_publishes_cutoff_gaps_with_dilated_vessels_and_aligns_all_sources(sourc
     np.testing.assert_array_equal(capillary_zones(ctx), expected)
     assert not capillary_zones(ctx).flags.writeable
     path = EyeFlowOutputPaths.active().segmentation.gaps
-    assert path == "Segmentation/Gaps/value"
+    assert path == "Segmentation/Gaps/Mask"
     with h5py.File(tmp_path / "out.h5", "w") as output:
         PipelineH5Output(output).write_many(metrics)
         assert "Segmentation/Capillary" not in output
@@ -149,6 +150,13 @@ def test_publishes_cutoff_gaps_with_dilated_vessels_and_aligns_all_sources(sourc
         assert dataset.attrs["original_class"] == "bool"
         assert list(dataset.attrs["dimDesc"]) == ["x", "y"]
         assert dataset.attrs["image_origin"] == "lower_left"
+        assert dataset.attrs["legacy_fallback"]
+        np.testing.assert_array_equal(
+            dataset[:], output[EyeFlowOutputPaths.active().segmentation.gaps_legacy][:],
+        )
+        assert "Segmentation/Gaps/value" not in output
+        assert EyeFlowOutputPaths.active().segmentation.gaps_from_m0ff not in output
+        dataset = output[EyeFlowOutputPaths.active().segmentation.gaps_legacy]
         assert dataset.attrs["retinal_vessel_binarization"] == "logits > 0.1"
         assert dataset.attrs["cutoff_disc_diameter_width_fraction"] == 0.8
         assert dataset.attrs["cutoff_disc_diameter_pixels"] == pytest.approx(0.8 * native_shape[1])
@@ -179,7 +187,7 @@ def test_missing_disc_mask_excludes_centered_physical_circle(source_pair, geomet
     metrics = run_topology_core(ctx)
 
     np.testing.assert_array_equal(capillary_zones(ctx), expected)
-    path = EyeFlowOutputPaths.active().segmentation.gaps
+    path = EyeFlowOutputPaths.active().segmentation.gaps_legacy
     assert metrics[path][1]["optic_disc_fallback_diameter_mm"] == 1.91
     if not geometry_only:
         disc_mask = metrics[EyeFlowOutputPaths.active().segmentation.optic_disc.mask][0]
@@ -200,8 +208,8 @@ def test_missing_vessel_sources_omit_mask_and_warn_without_losing_topology(sourc
     path = EyeFlowOutputPaths.active().segmentation.gaps
     assert path not in metrics
     assert EyeFlowOutputPaths.active().segmentation.artery.mask in metrics
-    warning.assert_called_once()
-    assert "Omitting capillary analysis zones" in warning.call_args.args[0]
+    assert any("Omitting legacy capillary analysis zones" in call.args[0] for call in warning.call_args_list)
+    assert any("moment0ff/M0FF is missing" in call.args[0] for call in warning.call_args_list)
     with pytest.raises(RuntimeError, match="unavailable"):
         capillary_zones(ctx)
 
@@ -229,6 +237,84 @@ def test_capillary_zones_are_owned_by_existing_hidden_topology_pipeline():
     assert "capillary_analysis_zones" in descriptors["topology_core"].dag_produces
     assert not any(item.name.startswith("capillary") for item in [*available, *missing])
     assert "topology_core" in PipelineDAG(available).dependencies_of("velocity_analysis")
+
+
+@pytest.mark.parametrize("source_name", ["moment0ff", "M0FF"])
+@pytest.mark.parametrize("with_legacy", [False, True])
+def test_m0ff_vessel_union_gap_intersection_persistence_and_spectral_consumer(
+    source_pair, tmp_path, source_name, with_legacy,
+):
+    hd, dv = source_pair
+    shape = hd["moment0"].shape[-2:]
+    if with_legacy:
+        _write_capillary_sources(dv, shape)
+    image = np.full(shape, 2, dtype=np.float32)
+    image[-12:, -15:] = 100
+    hd.create_dataset(source_name, data=np.stack([image, image, image]))
+    ctx = _ctx(hd, dv)
+    metrics = run_topology_core(ctx)
+    paths = EyeFlowOutputPaths.active()
+    segmentation = paths.segmentation
+    combined = capillary_zones(ctx)
+    assert not combined.flags.writeable
+    assert not combined[0, 0]  # The OR must not reintroduce outer-disc pixels.
+    y, x = np.indices(shape)
+    if with_legacy:
+        disc = np.zeros(shape, dtype=bool)
+        disc[12, 34] = True
+        disc_y, disc_x = 12, 34
+    else:
+        disc = ((x - shape[1] / 2) ** 2 + (y - shape[0] / 2) ** 2) <= (1.91 / 0.2 / 2) ** 2
+        disc_y, disc_x = shape[0] // 2, shape[1] // 2
+    assert not combined[disc_y, disc_x]
+    allowed = _reference_zones(np.zeros(shape, bool), np.zeros(shape, bool), disc)
+    saved_allowed = np.flip(allowed, axis=0).T
+    with h5py.File(tmp_path / "out.h5", "w") as output:
+        PipelineH5Output(output).write_many(metrics)
+        new = output[segmentation.gaps_from_m0ff][:].astype(bool)
+        saved = output[segmentation.gaps][:].astype(bool)
+        assert new[0, shape[0] - 1]  # The intensity mask itself has no disc constraints.
+        assert new[disc_x, shape[0] - 1 - disc_y]
+        if with_legacy:
+            legacy = output[segmentation.gaps_legacy][:].astype(bool)
+            assert np.any(new & ~legacy)
+            assert np.any(legacy & ~new)
+            np.testing.assert_array_equal(saved, (legacy & new) & saved_allowed)
+            assert np.any(saved_allowed & new & ~legacy)
+            assert np.any(saved_allowed & legacy & ~new)
+            assert saved.sum() < legacy.sum()
+            assert saved.sum() < (new & saved_allowed).sum()
+            assert not np.any(saved & ~legacy)
+            assert not np.any(saved & ~new)
+        else:
+            assert segmentation.gaps_legacy not in output
+            np.testing.assert_array_equal(saved, new & saved_allowed)
+        np.testing.assert_array_equal(saved, np.flip(combined, axis=0).T)
+        assert "Segmentation/Gaps/value" not in output
+        attrs = output[segmentation.gaps_from_m0ff].attrs
+        assert attrs["source_path"] == f"/{source_name}"
+        assert attrs["image_origin"] == "lower_left"
+        assert attrs["dilation_radius_pixels"] == 3
+        assert attrs["dilation_applies_to"] == "bright_vessels"
+        assert attrs["dilation_footprint"] == "7x7_square"
+        assert not output[segmentation.gaps].attrs["legacy_fallback"]
+        assert output[segmentation.gaps].attrs["combination_operation"] == "OR"
+        assert output[segmentation.gaps].attrs["equivalent_gap_operation"] == "AND"
+        assert output[segmentation.gaps].attrs["cutoff_disc_diameter_width_fraction"] == 0.8
+
+    frame = np.arange(np.prod(shape), dtype=np.float32).reshape(shape)
+    spectra = frame[None, None]
+    power, attrs = preprocess_gap_spectrograms(spectra, combined)[paths.spectrograms_masked]
+    assert power[0, 0] == np.median(frame[combined])
+    assert attrs["mask_source_path"] == "/Segmentation/Gaps/Mask"
+
+
+def test_m0ff_shape_must_match_native_hd_axes(source_pair):
+    hd, dv = source_pair
+    shape = hd["moment0"].shape[-2:]
+    hd.create_dataset("moment0ff", data=np.ones((2, *shape[::-1])))
+    with pytest.raises(ValueError, match="moment0ff spatial shape"):
+        run_topology_core(_ctx(hd, dv))
 
 
 @pytest.mark.parametrize("empty", [False, True])

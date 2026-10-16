@@ -12,7 +12,7 @@ from pipelines.velocity.models import RetinalVelocity
 from utils.logger import Logger
 
 from .metrics import pack_spectrum_metrics
-from .per_beat import DEFAULT_PHASE_SAMPLE_COUNT, gap_spectrograms_per_beat
+from .per_beat import beat_spectrum_std, early_late_phase_windows, gap_spectrograms_per_beat
 from .signal_processing import (
     DEFAULT_GAP_SVD_REMOVED_MODES,
     band_limit_gap_spectrograms,
@@ -22,6 +22,7 @@ from .signal_processing import (
 
 def run_gap_analysis(
     ctx, timing: RetinalVelocity | None, *, timing_method: str = "doppler_moments",
+    valley_neighborhood_length: int | None = None,
 ) -> dict[str, object]:
     """Use explicitly selected moments or fallback band-ratio cardiac timing."""
     schema = EyeFlowOutputPaths.active()
@@ -52,7 +53,8 @@ def run_gap_analysis(
         "dimDesc": ["phase", "freq", "beat"],
         "source_path": "/" + schema.spectrograms_masked,
         "definition": (
-            f"spatial mean gap band power linearly resampled between {timing_label} beat boundaries"
+            "spatial median gap band power linearly resampled "
+            f"between {timing_label} beat boundaries"
         ),
         "cycle_boundary_source_path": "/" + processing_path(
             schema.cardiac_cycle.systolic_peak_frame_indices, VELOCITY_WORKFLOW_ROOTS[timing_method],
@@ -63,7 +65,7 @@ def run_gap_analysis(
         "cycle_boundary_index_base": 0,
         "beat_duration_seconds": timing.cycle_durations_seconds,
         "phase_samples": (
-            np.arange(DEFAULT_PHASE_SAMPLE_COUNT, dtype=np.float32) / DEFAULT_PHASE_SAMPLE_COUNT
+            np.arange(per_beat.shape[0], dtype=np.float32) / per_beat.shape[0]
         ),
         "phase_endpoint": "excluded",
         "interpolation": "linear_without_bridging_NaN",
@@ -72,24 +74,95 @@ def run_gap_analysis(
     }
     attrs.pop("nameID", None)
     metrics = {schema.spectrograms_masked_per_beat: (per_beat, attrs)}
+    aggregate_attrs = {
+        **attrs,
+        "source_path": "/" + schema.spectrograms_masked_per_beat,
+        "aggregation_method": "nanmedian",
+        "source_phase_sample_count": per_beat.shape[0],
+        "source_beat_count": per_beat.shape[2],
+    }
     median_attrs = {
-        key: value for key, value in attrs.items() if key not in {"phase_samples", "phase_endpoint"}
+        key: value for key, value in aggregate_attrs.items()
+        if key not in {"phase_samples", "phase_endpoint"}
     }
     median_attrs.update({
         "dimDesc": ["freq"],
-        "source_path": "/" + schema.spectrograms_masked_per_beat,
         "definition": "pooled median of raw per-beat gap power over phase and beats",
-        "aggregation_method": "nanmedian",
         "aggregation_axes": ["phase", "beat"],
         "aggregation_weighting": "equal_weight_per_valid_phase_beat_sample",
         "nonfinite_value_policy": "ignore_NaN_all_NaN_frequency_returns_NaN",
-        "source_phase_sample_count": per_beat.shape[0],
-        "source_beat_count": per_beat.shape[2],
         "valid_sample_count_per_frequency": np.count_nonzero(~np.isnan(per_beat), axis=(0, 2)),
     })
     spectrum = nanmedian(per_beat, axis=(0, 2))
     metrics[schema.spectrograms_masked_time_aggregated_median] = (spectrum, median_attrs)
-    metrics.update(pack_spectrum_metrics(spectrum, source_attrs=median_attrs))
+    beat_spectrum = nanmedian(per_beat, axis=2)
+    beat_median_attrs = {
+        **aggregate_attrs,
+        "dimDesc": ["phase", "freq"],
+        "definition": "median of raw per-beat gap power over beats at each phase and frequency",
+        "aggregation_axes": ["beat"],
+        "aggregation_weighting": "equal_weight_per_valid_beat_sample",
+        "nonfinite_value_policy": "ignore_NaN_all_NaN_phase_frequency_returns_NaN",
+    }
+    metrics[schema.spectrograms_masked_time_aggregated_median_beat] = (beat_spectrum, beat_median_attrs)
+    window_source_attrs = {
+        key: value for key, value in beat_median_attrs.items()
+        if key not in {"phase_samples", "phase_endpoint"}
+    }
+    window_paths = {
+        "early": schema.spectrograms_masked_time_aggregated_median_early,
+        "late": schema.spectrograms_masked_time_aggregated_median_late,
+    }
+    for window, (mask, interval) in early_late_phase_windows(attrs["phase_samples"]).items():
+        selected = beat_spectrum[mask]
+        metrics[window_paths[window]] = (nanmedian(selected, axis=0), {
+            **window_source_attrs,
+            "source_path": "/" + schema.spectrograms_masked_time_aggregated_median_beat,
+            "dimDesc": ["freq"],
+            "definition": f"median of MedianBeat gap power over the {window} phase interval",
+            "aggregation_axes": ["phase"],
+            "aggregation_weighting": "equal_weight_per_valid_phase_sample",
+            "phase_interval": interval,
+            "phase_interval_endpoints": "both_included",
+            "source_phase_sample_count": int(np.count_nonzero(mask)),
+            "source_total_phase_sample_count": beat_spectrum.shape[0],
+            "valid_sample_count_per_frequency": np.count_nonzero(~np.isnan(selected), axis=0),
+            "nonfinite_value_policy": "ignore_NaN_all_NaN_window_frequency_returns_NaN",
+        })
+    std_windows = {
+        "whole": (np.ones(per_beat.shape[0], dtype=bool), [0.0, 1.0]),
+        **early_late_phase_windows(attrs["phase_samples"]),
+    }
+    std_paths = {
+        "whole": schema.spectrograms_masked_time_aggregated_std,
+        "early": schema.spectrograms_masked_time_aggregated_std_early,
+        "late": schema.spectrograms_masked_time_aggregated_std_late,
+    }
+    for window, (mask, interval) in std_windows.items():
+        std, valid_counts = beat_spectrum_std(per_beat, mask)
+        metrics[std_paths[window]] = (std, {
+            **window_source_attrs,
+            "source_path": "/" + schema.spectrograms_masked_per_beat,
+            "dimDesc": ["freq"],
+            "definition": f"population beat STD of per-beat phase-median gap spectra over the {window} interval",
+            "phase_reduction_method": "nanmedian",
+            "phase_reduction_axes": ["phase"],
+            "aggregation_method": "nanstd",
+            "aggregation_axes": ["beat"],
+            "aggregation_weighting": "equal_weight_per_valid_beat_spectrum",
+            "standard_deviation_ddof": 0,
+            "phase_interval": interval,
+            "phase_interval_endpoints": "both_included",
+            "source_phase_sample_count": int(np.count_nonzero(mask)),
+            "source_total_phase_sample_count": per_beat.shape[0],
+            "valid_beat_count_per_frequency": valid_counts,
+            "nonfinite_value_policy": "ignore_NaN_no_valid_beats_returns_NaN_one_valid_beat_returns_zero",
+        })
+    metrics.update(pack_spectrum_metrics(
+        spectrum, source_attrs=median_attrs,
+        valley_neighborhood_length=valley_neighborhood_length,
+        phase_spectrum=beat_spectrum, phase_attrs=beat_median_attrs,
+    ))
     band_limited = band_limit_gap_spectrograms(
         per_beat, timing.cycle_durations_seconds, harmonics=band_limited_harmonics(ctx),
     )
