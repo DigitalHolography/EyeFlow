@@ -95,7 +95,7 @@ The checked `260907_DEY_6` export (HD commit `340b1b3`) contains
 `(640, 32, 256, 256)` float32 spectra while its moment/band volumes and DV masks
 use `(640, 512, 512)` and `(512, 512)` respectively. HD preserves the spatial
 axis order when resizing spectra; comparison with resized LF maps confirms
-the same orientation for this example. `/Segmentation/Gaps/value` and shared
+the same orientation for this example. `/Segmentation/Gaps/Mask` and shared
 topology state retain the original 512x512 grid. Gap support is interpolated
 to the actual last two `/spectrograms` dimensions `(height, width)`, using
 nearest-neighbor sampling of pixel centers (`order=0`, `grid_mode=True`).
@@ -186,7 +186,7 @@ detector's full-record fallback (`cardiac_cycle_source="none"`) is never used as
 detected timing. Missing detected timing in both workflows skips per-beat gap
 analysis with a warning, preserving shared preprocessing.
 
-`/ProcessingSpectrograms/Gaps/TimeAggregated/Median` contains a float32 `(freq,)`
+`/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat` contains a float32 `(freq,)`
 pooled median of `/ProcessingSpectrograms/Gaps/PerBeat/Raw` over its phase and
 beat axes. Ignore NaNs; a frequency with no valid samples remains NaN without
 an all-NaN warning. Every valid phase/beat sample has equal weight, with no beat
@@ -196,43 +196,182 @@ weighting, source dimensions, and valid sample counts per frequency. Produce
 this shared dataset whenever raw per-beat gaps are available, with no
 `ProcessingBandRatio` duplicate or fallback to continuous/filtered gap spectra.
 
+`/ProcessingSpectrograms/Gaps/TimeAggregated/MedianBeat` contains float32
+`(phase, freq)` power from the median of `/ProcessingSpectrograms/Gaps/PerBeat/Raw`
+over its beat axis only. Each valid beat has equal weight at a given phase and
+frequency, with no duration weighting. Ignore NaNs; a phase/frequency pair with
+no valid beat samples stays NaN without an all-NaN warning. Preserve phase
+coordinates, the excluded endpoint, frequency-bin order, power units, and timing
+provenance. Attributes identify the raw source, `aggregation_axes=["beat"]`,
+weighting, and source phase/beat counts. Both median products are emitted
+whenever raw per-beat spectra are available.
+
+`/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeatEarly` and
+`MedianPhaseBeatLate` are float32 `(freq,)` spectra calculated from `MedianBeat`.
+First take its beat median, then take a NaN-aware median across the early
+phase interval `[0,1/3]` or late interval `[1/3,1]`, independently per frequency.
+Use the same phase-window helper as the early/late metric summaries. A sample
+at exactly one third belongs to both intervals; retain the source grid's
+excluded endpoint without adding a sample at phase one. The normal 128-phase
+grid selects 43 early and 85 late samples. Each valid phase sample has equal
+weight regardless of how many valid beats contributed to that `MedianBeat`
+cell. A frequency with no valid samples in a window remains NaN without a
+RuntimeWarning. Preserve frequency order, power units, and cardiac timing
+provenance. Attributes identify `MedianBeat` as the source, `dimDesc=["freq"]`,
+`aggregation_axes=["phase"]`, closed interval endpoints, selected and total
+source phase counts, and valid sample counts per frequency. These products
+do not pool the raw phase/beat samples and do not retain phase-axis coordinates.
+
+`/ProcessingSpectrograms/Gaps/TimeAggregated/StdBeat`, `StdBeatEarly`, and
+`StdBeatLate` store float32 `(freq,)` population standard deviations across
+beats for the whole cycle and the same closed early/late phase intervals.
+Use the existing `/Gaps/PerBeat/Raw` array: first take a NaN-aware phase median
+within each beat and frequency, then `nanstd` across those beat spectra with
+`ddof=0`. Do not take STD over pooled phase/beat samples or over `MedianBeat`.
+One valid beat gives zero STD; no valid beats gives NaN. Retain full frequency
+order and raw power units, without plot normalization or peak cropping.
+Attributes record the raw per-beat source, phase-median reduction followed by
+beat STD, `ddof`, window endpoints, source phase/beat counts, and valid beat
+counts per frequency. Reuse the existing beat division without repeating it.
+
 When the HD spectral video is available, `low_freq_spectra` also exports each
 available gap product to both `png/spectrograms/` and `eps/spectrograms/`:
 `<stem>_spectrograms_gaps` displays `/ProcessingSpectrograms/Gaps/SpatialMedian` as a
-linear viridis heatmap with horizontal frame tick labels every 50 samples, every
-fourth frequency-bin label, and a vertical power colorbar;
+linear viridis heatmap with horizontal frame tick labels every 50 samples,
+signed frequency ticks in kHz, and a vertical power colorbar;
 `<stem>_spectrogram_gaps_median` plots
-`/ProcessingSpectrograms/Gaps/TimeAggregated/Median` against integer bins in
-the original HD positive-then-negative order, labeling every second bin vertically. Both use
+`/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat` in the original HD
+positive-then-negative order, labeling frequency in signed kHz with vertical
+tick labels. Tick selection keeps the sign boundary visible and avoids crowded
+labels. Both use
 an 8 cm wide, 1.618:1 canvas, 8 pt Times New Roman axis captions, 5 pt tick labels
 with horizontal Y-axis tick labels, 0.4 pt black borders, and 320 DPI.
-`<stem>_gaps_mask` displays the native `/Segmentation/Gaps/value` mask as white
+`<stem>_gaps_mask` displays the combined `/Segmentation/Gaps/Mask` mask as white
 gaps on black in its published lower-left spatial frame, on an 8 cm square
 canvas without ticks, labels, borders, or surrounding white margins.
 Missing products omit only their own figures;
 the median figure requires detected cardiac timing, while the mask does not
 require nonempty gap support. Figures do not change any persisted data.
 
-`/ProcessingSpectrograms/Gaps/TimeAggregated/Metrics` analyzes that median
-spectrum in stored bin order and writes fourteen scalar datasets directly,
-without `/value` suffixes: `index_max1`, `max1`, `index_max2`, `max2`,
-`index_min1`, `min1`, `index_min2`, `min2`, `h0`, `h1`, `rho_h`, `A0`, `A1`, and `rho_A`.
-Peak 1 is the maximum over zero-based bins 0–15; peak 2 is the maximum over
-16–31. Include endpoints, ignore NaNs for peak selection, and choose the
+The full-domain heatmap and median-spectrum axes use the DC-zero display calibration with bin spacing
+`fs/(2*N)` Hz and the actual exported bin count `N`. For the first `floor(N/2)`
+bins, `f(k)=k*fs/(2*N)`; the remaining bins use `(k-N)*fs/(2*N)`. A single-bin
+domain is DC. For 64 bins, plot the positive/DC bins 0 through 31, with positive
+edge `fs/4` just beyond bin 31 and negative bin 32 at `-fs/4`.
+Read `fs` in Hz from `/Meta/SamplingFrequencyHz/value`, divide coordinates by
+1000 for kHz, and preserve source order in the full-domain figures. The spectral
+runner ensures this metadata is available from HD `sampling_freq` (HDF5 parameters
+preferred, HD config fallback) before figure export; frequency calibration does
+not require `batch_stride`. Velocity analysis uses the same schema-owned metadata
+path. If no positive finite sampling frequency is available, omit frequency
+figures with a warning while retaining scientific outputs, mask, and phase plots.
+
+Three additional monochrome PNG/EPS figures use these persisted spectra:
+`<stem>_gaps_positive_freq_median_phase_early_late` overlays `MedianPhaseBeatEarly`
+and `MedianPhaseBeatLate`; `<stem>_gaps_positive_freq_median_phase_beat` plots
+`MedianPhaseBeat`; and `<stem>_gaps_positive_freq_median_phase_all` overlays all
+three. These three figures use a fixed positive-frequency display grid:
+`linspace(0, fs/4, 33)` in Hz, so bin 0 is zero and bin 32 always maps to
+`fs/4`, independent of the stored spectrum length. Convert this grid to kHz
+and plot only bins from the stored `/ProcessingSpectrograms/Gaps/Metrics/index_max1`
+through bin 31 inclusive, using that same cutoff for every curve. Bin 32 is
+the calibration endpoint and is not plotted. Require at least 32 source bins;
+do not infer a replacement peak if the stored index is missing, NaN, or outside
+0 through 31. Normalize each curve by its own finite maximum over bins 0 through
+31 and divide its matching STD by the same factor. Normalization precedes the
+shared crop, including when a curve's own maximum lies before the cutoff.
+Bins after 31 do not affect these figures. Frequency coordinates are not saved
+to HDF5. Power remains linear, with the existing dotted power-zero reference.
+The central curves remain the existing HDF5 medians; dispersion comes from the
+corresponding `StdBeat`/`StdBeatEarly`/`StdBeatLate` datasets.
+Use solid, dashed, and dotted lines for median, early, and late respectively.
+Draw matching thin envelope boundaries at normalized power plus/minus STD,
+with light-gray solid fill or clipped dashed/dotted interior patterns. Keep
+lower envelopes below zero without clipping and draw a thin dotted zero line.
+Include horizontal and vertical data margins, frequency in kHz, `Power (a.u.)`,
+and a legend for overlays. Retain the existing canvas, DPI, fonts, and border
+style. Fill patterns are vector graphics in EPS. Missing required spectra/STD
+omit the corresponding figure; an all-NaN or nonpositive maximum over bins 0 through 31
+cannot be normalized and is omitted with a warning.
+
+`/ProcessingSpectrograms/Gaps/Metrics` groups all gap-spectrum metrics directly,
+without `/value` suffixes or workflow copies. The former `TimeAggregated/Metrics`
+group is no longer emitted. Thirteen pooled scalar datasets analyze the
+`MedianPhaseBeat` spectrum in stored bin order: `index_max1`, `max1`,
+`index_max2`, `max2`, `index_min1`, `min1`, `index_min2`, `min2`, `A0`, `A1`,
+`A2`, `R1`, and `R2`. Heights are internal calculations; `h0`, `h1`, `hv`,
+and `rho_h` are not output datasets.
+For a domain of `N` bins, peak 1 is the maximum over zero-based bins 0 through
+`floor(N/2)-1`; peak 2 is the maximum over `floor(N/2)` through `N-1`.
+Include endpoints, ignore NaNs for peak selection, and choose the
 lowest index on ties. An all-NaN half has a NaN peak index and value. Valley
-indexes are fixed at 15 and 16; valley values are read directly from those bins.
-`h0=(max1+max2)/2`, `h1=(min1+min2)/2`, and `rho_h=h1/h0`, with NaN for a zero
-denominator. Means propagate missing inputs. `A0=h0*(index_max2-index_max1+1)`;
+indexes are the two central bins, `floor(N/2)-1` and `floor(N/2)`; valley values are read directly from those bins.
+Internally, `h0=(max1+max2)/2`, propagating missing inputs.
+`A0=h0*(index_max2-index_max1+1)`;
 `A1=sum(spectrum[index_max1:index_max2+1])`, propagating any NaN in that inclusive
-interval. `rho_A=A1/A0`, with NaN for a zero or missing denominator; a missing
-`A1` also propagates NaN. These are unweighted bin sums without wraparound or Hz-spacing
+interval. The valley neighborhood is centered between the two central bins.
+With `valley_neighborhood_length=None`, its length is computed as one quarter
+of the actual bin domain, rounded to the nearest even length (ties upward), with
+a minimum of two samples: 32 bins selects 8 samples (bins 12 through 19), and
+64 bins selects 16 samples (bins 24 through 39). Any domain with at least two bins
+is supported, including odd lengths; domains split at `floor(N/2)`.
+Explicit neighborhood lengths
+accept even integers from 2 through `N` in `run_gap_analysis`,
+`pack_spectrum_metrics`, and `analyze_spectrum`. `hv` is the NaN-aware median of
+that neighborhood; an all-NaN neighborhood returns NaN. With the same inclusive
+width `w=index_max2-index_max1+1` used by `A0`, `A2=w*hv`. `R1=A1/A0` replaces
+`rho_A`, and `R2=A2/A0`; both return NaN for a zero or missing denominator,
+and a missing numerator propagates NaN. These are unweighted bin sums without wraparound or Hz-spacing
 weights. All values are float32; valid index values are integer-valued floats
-so missing indexes can be represented by NaN. Indexes, `rho_h`, and `rho_A` have unit `1`;
+so missing indexes can be represented by NaN. Indexes, `R1`, and `R2` have unit `1`;
 other values retain the spectrum's power unit. Attributes record definitions,
-source, zero-based indexes, selection rules, and interval inclusion. A spectrum
-whose shape is not exactly `(32,)` produces all fourteen NaN metrics and logs a
+source, zero-based indexes, selection rules, interval inclusion, neighborhood
+length and exact bins, automatic versus explicit selection and rounding,
+per-half valid (non-NaN) bin counts, and valley aggregation/NaN policy.
+An all-NaN half leaves its peak index and value as NaN and logs an explanatory warning.
+A spectrum that is not one-dimensional with at least two bins
+produces all thirteen NaN pooled metrics and logs a
 warning; the median and other gap products remain available. No alternative
 workflow copy is generated.
+
+Five phase curves are written in that same group as `A0_t`, `A1_t`, `A2_t`,
+`R1_t`, and `R2_t`, with `(phase,)` axes and phase coordinates from `MedianBeat`.
+Calculate these curves from `MedianBeat` after its beat median, keeping the
+peak indices selected from `MedianPhaseBeat` fixed at every phase. With fixed
+inclusive width `w=index_max2-index_max1+1`, calculate
+`A0(t)=w*(S(t,index_max1)+S(t,index_max2))/2`,
+`A1(t)=sum(S(t,index_max1:index_max2+1))`, and
+`A2(t)=w*nanmedian(S(t,Nv))` using the same valley neighborhood as the pooled
+metrics. Ratios are `R1(t)=A1(t)/A0(t)` and `R2(t)=A2(t)/A0(t)`.
+Missing fixed peak indices make every curve NaN. Missing peak heights invalidate
+`A0(t)`, interval NaNs propagate through `A1(t)`, and an all-NaN valley
+neighborhood makes `A2(t)` NaN. Zero or missing `A0(t)` produces NaN ratios.
+Curve attributes identify their `MedianBeat` source, fixed peak values and
+index-dataset paths, pooled peak source, timing, neighborhood, and units.
+
+For each of the five metrics `M`, the same group also contains scalars
+`M_early`, `M_late`, and `delta_M`. Early is the NaN-aware median of `M_t`
+over sampled phases `[0,1/3]`; late uses `[1/3,1]`. A sample exactly at one
+third belongs to both intervals. Preserve the source grid's excluded endpoint;
+do not interpolate or add a sample at phase one. The standard 128-phase grid
+therefore has 43 early and 85 late samples. Medians weight valid phase samples
+equally; all-missing windows remain NaN. Aggregate the ratios themselves,
+rather than dividing aggregated areas. `delta_M=M_early-M_late`, preserving
+its sign and propagating a missing early or late median. Window metadata records
+phase intervals, included endpoints, source and valid sample counts, source
+curve paths, and aggregation policy; deltas identify both scalar sources.
+These twenty new datasets plus the thirteen pooled scalars give 33 datasets
+under `/ProcessingSpectrograms/Gaps/Metrics`. All persisted values are float32;
+ratio curves and their summaries/deltas have unit `1`, while area products
+retain the spectrum's power unit.
+
+Each phase curve also produces `<stem>_gaps_{A0,A1,A2,R1,R2}.{png,eps}` under
+the shared `png/spectrograms/` and `eps/spectrograms/` folders. Use the same
+8 cm wide golden-ratio canvas, thin black border, fonts, and resolution as the
+spectral figures. Plot normalized cardiac phase `t/T` horizontally with labels
+at zero, one third, two thirds, and one. Preserve NaN gaps and the excluded
+endpoint; area-axis labels include power units and ratio axes are dimensionless.
+Each available curve exports independently.
 
 `/ProcessingSpectrograms/Gaps/PerBeat/BandLimited` independently filters the
 interpolated raw beats with the shared `calculations.math.bandlimiting.band_limit`
@@ -330,10 +469,44 @@ before applying the cutoff, so vessels just outside the circle still exclude
 their nearby interior pixels. Neither the optic-disc mask nor the cutoff disc
 is dilated. For optic-disc exclusion, a usable DV mask takes precedence;
 if absent, the physical centered fallback is used even when DV exported only
-center/width/height. True pixels are included in capillary analysis. If either
-retinal logits or the choroid mask is absent, omit the capillary output and
-warn; continue the existing vessel analyses. Malformed masks fail validation
-rather than being silently replaced with empty masks.
+center/width/height. This original mask is preserved at
+`/Segmentation/Gaps/Legacy`. If either retinal logits or the choroid mask is
+absent, omit Legacy and warn; continue existing vessel analyses. Malformed
+masks fail validation rather than being silently replaced with empty masks.
+
+`topology_core` also produces `/Segmentation/Gaps/GapsFromM0ff` from the temporal
+median of HD `/moment0ff` (legacy alias `/M0FF`). Read spatial tiles over all
+frames to compute the exact median without loading the complete volume.
+Ignore nonfinite temporal samples; pixels with none remain excluded. The
+native `(y, x)` shape must match the HD reference, without inferred transposes.
+Stretch the finite image's 1st–99th percentiles to `[0,1]` and clip; if these
+percentiles coincide, use the finite minimum/maximum. Apply CLAHE with clip
+limit 0.01, 256 bins, and kernel dimensions `max(1, dimension // 8)`, followed
+by a sigma-1-pixel Gaussian with reflect borders and finite-support weight
+normalization. Invalid pixels are median-filled only for CLAHE. Global Otsu
+thresholding selects **bright vessels** (`intensity >= threshold`). Dilate
+the vessel support once using the legacy 7x7 square footprint (Chebyshev
+radius 3), clipping at image borders with exterior background, then invert
+to obtain white gaps and exclude invalid pixels. Apply no anatomical or
+field-of-view exclusions. Uniform/all-invalid images yield an empty mask.
+Persist source, contrast, smoothing, threshold, and dilation parameters as
+attributes.
+
+`/Segmentation/Gaps/Mask` is
+`NOT ((NOT Legacy) OR (NOT GapsFromM0ff)) AND cutoff_disc AND NOT optic_disc`
+and is the sole
+downstream gap support, including the `gaps_mask` figure. Reapply the same
+image-centered 80%-width cutoff and DV optic-disc mask (or the centered
+1.91 mm physical fallback) after combining. OR is applied to the vessel/exclusion
+masks before inversion, equivalent to AND of the two saved white-gap masks.
+A pixel remains a gap only if both sources include it. These constraints apply only to
+Mask; GapsFromM0ff retains its full-field intensity-derived support. When
+`moment0ff`/`M0FF` is absent, warn, omit GapsFromM0ff, and use Legacy unchanged.
+If Legacy is unavailable but the HD flat-field moment exists, use
+GapsFromM0ff with the same disc constraints. Omit Mask only when neither
+source is available. Record the contributing paths, disc geometry, optic-disc
+source, and legacy fallback status. The old
+`/Segmentation/Gaps/value` dataset is no longer produced.
 
 ## Velocity methods
 
@@ -460,16 +633,27 @@ families are:
 - `/ProcessingMoments/SpatialGradientMetrics` for a directly selected spatial-gradient
   target, and `/ProcessingMoments/BloodVolumeRate` for blood-volume-rate products;
 - `/Segmentation` for aligned masks, topology, areas, and lumen geometry;
-- `/Segmentation/Gaps/value` for central support outside dilated vessels and
-  the optic disc, when its inputs are available;
+- `/Segmentation/Gaps/Legacy` for the original vessel/disc/cutoff support,
+  `/Segmentation/Gaps/GapsFromM0ff` for dark regions of the enhanced HD temporal
+  median after vessel dilation, and `/Segmentation/Gaps/Mask` for the intersection
+  of their gap support (OR of vessels before inversion), restricted to the
+  outer disc and excluding the optic disc, used downstream;
 - `/ProcessingSpectrograms/SpatialAverage` and `SpatialMedian` for full-frame
   spatial power reductions, shaped `(time, freq)`;
 - `/ProcessingSpectrograms/Gaps/SpatialMedian` for shared spatial median gap band power, shaped
   `(time, freq)`, when spectra and nonempty application support are available;
 - `/ProcessingSpectrograms/Gaps/PerBeat/Raw` and `BandLimited` for moments-timed
   beat spectra and independent FFT filtering, shaped `(phase, freq, beat)`;
-- `/ProcessingSpectrograms/Gaps/TimeAggregated/Median` for the NaN-aware median
+- `/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat` for the NaN-aware median
   pooled over raw phase/beat samples, shaped `(freq,)`;
+- `/ProcessingSpectrograms/Gaps/TimeAggregated/MedianBeat` for the NaN-aware median
+  over raw beat samples at each phase/frequency, shaped `(phase, freq)`;
+- `/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeatEarly` and
+  `MedianPhaseBeatLate` for phase-window medians of `MedianBeat`, shaped `(freq,)`;
+- `/ProcessingSpectrograms/Gaps/TimeAggregated/StdBeat`, `StdBeatEarly`, and
+  `StdBeatLate` for population beat STD of whole/early/late per-beat phase medians;
+- `/ProcessingSpectrograms/Gaps/Metrics` for pooled scalars, fixed-peak phase
+  curves, early/late medians, and signed early-minus-late differences;
 - `/ProcessingSpectrograms/Gaps/PerBeat/SVDContinuous` for SVD-filtered
   concatenated beats, shaped `(beat * phase, freq)` with `(time, freq)` axes;
 - `/Meta` for provenance and selected pass-through data.
@@ -546,14 +730,14 @@ same lower-left `(x, y)` image frame as
 `/Segmentation/Artery/BranchLabelMap/value`: the internal `(y, x)` array is
 flipped vertically and transposed before persistence.
 
-The gaps mask used for capillary analysis uses the same lower-left `(x, y)`
-frame and carries source/binarization/fallback, cutoff, and dilation provenance,
+All three gaps masks use the same lower-left `(x, y)`
+frame and carry their source/binarization/fallback and processing provenance,
 `unit="1"`, and `dimDesc=["x", "y"]`.
 The HDF5 writer stores this boolean mask as `uint8` values 0/1 with
 `original_class="bool"`. Native read-only support is available from
 `topology_core` under its declared `capillary_analysis_zones` DAG product;
 it remains shared across moments and bandratio workflows. Gap-spectrum
-preprocessing runs once in the velocity runner alongside full-frame spatial
+preprocessing runs once in `low_freq_spectra` alongside full-frame spatial
 mean/median reductions, followed there by moments-timed per-beat spectra and
 independent Fourier/SVD filtering under `/ProcessingSpectrograms`.
 Physical capillary velocity conversion is not implemented yet. Its source is

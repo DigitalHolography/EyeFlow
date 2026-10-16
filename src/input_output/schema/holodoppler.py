@@ -123,6 +123,16 @@ class HolodopplerSource(TypedSource):
         """Return a precomputed flat-field moment, when exported by Holodoppler."""
         return self._optional_moment_dataset(HD_MOMENT0_FLAT_FIELD_PATHS)
 
+    def sampling_frequency_hz(self) -> float:
+        """Resolve positive acquisition sampling frequency without requiring a frame stride."""
+        parameters = self._parameters() or {}
+        frequency = scalar_from_value(parameters.get(HD_SAMPLING_FREQ_KEY))
+        if frequency is None:
+            frequency = scalar_from_value(self._config.get(HD_SAMPLING_FREQ_KEY))
+        if frequency is None or not np.isfinite(frequency) or frequency <= 0:
+            raise ValueError("HoloDoppler sampling_freq must be a positive finite frequency in Hz.")
+        return float(frequency)
+
     def timing(self) -> HolodopplerTiming:
         parameters = self._parameters() or {}
         sampling_freq = scalar_from_value(parameters.get(HD_SAMPLING_FREQ_KEY))

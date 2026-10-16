@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from input_output.schema import EyeFlowOutputPaths
 from pipelines.topology_core.runner import optional_capillary_zones
 from pipelines.velocity import velocity_workflows
 from utils.logger import Logger
@@ -13,11 +14,20 @@ from .spectrograms import preprocess_spectrograms
 
 def run_low_freq_spectra(ctx) -> None:
     ctx.require_inputs("hd")
-    spectra = ctx.inputs.hd.as_holodoppler().optional_spectograms_dataset()
+    hd = ctx.inputs.hd.as_holodoppler()
+    spectra = hd.optional_spectograms_dataset()
     if spectra is None:
         Logger.log("Skipping low_freq_spectra: HD /spectrograms video is unavailable.")
         return
 
+    schema = EyeFlowOutputPaths.active()
+    if ctx.output.h5.get(schema.sampling_frequency_hz) is None:
+        try:
+            sampling_frequency = hd.sampling_frequency_hz()
+        except (KeyError, TypeError, ValueError) as exc:
+            Logger.log_warning(f"Cannot calibrate spectral figure frequencies: {exc}")
+        else:
+            ctx.output.h5.write(schema.sampling_frequency_hz, sampling_frequency, unit="Hz")
     outputs = preprocess_spectrograms(spectra, optional_capillary_zones(ctx))
     ctx.output.h5.write_many(outputs)
     workflows = velocity_workflows(ctx)

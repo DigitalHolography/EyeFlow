@@ -12,7 +12,7 @@ from input_output.h5_access import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PipelineDAG
 from pipelines import load_pipeline_catalog
-from pipelines.low_freq_spectra.metrics import SPECTRUM_METRIC_DEFINITIONS
+from pipelines.low_freq_spectra.metrics import PHASE_METRIC_NAMES, SPECTRUM_METRIC_DEFINITIONS
 from pipelines.low_freq_spectra.per_beat import gap_spectrograms_per_beat
 from pipelines.low_freq_spectra.gap_analysis import run_gap_analysis
 
@@ -87,7 +87,8 @@ def test_runner_publishes_per_beat_output_with_moments_timing(tmp_path):
         np.testing.assert_array_equal(svd[128:256], raw[:, :, 1])
         assert svd[64, 0] == 50
         median = output[schema.spectrograms_masked_time_aggregated_median]
-        assert median.name == "/ProcessingSpectrograms/Gaps/TimeAggregated/Median"
+        assert median.name == "/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat"
+        assert "ProcessingSpectrograms/Gaps/TimeAggregated/Median" not in output
         assert median.shape == (2,)
         assert median.dtype == np.float32
         np.testing.assert_array_equal(median[()], [5, 5])
@@ -95,6 +96,31 @@ def test_runner_publishes_per_beat_output_with_moments_timing(tmp_path):
         assert list(median.attrs["dimDesc"]) == ["freq"]
         assert median.attrs["source_path"] == raw.name
         assert "phase_samples" not in median.attrs
+        beat_median = output[schema.spectrograms_masked_time_aggregated_median_beat]
+        assert beat_median.name == "/ProcessingSpectrograms/Gaps/TimeAggregated/MedianBeat"
+        assert beat_median.shape == (128, 2)
+        assert beat_median.dtype == np.float32
+        np.testing.assert_array_equal(beat_median[:], np.full((128, 2), 5))
+        assert list(beat_median.attrs["dimDesc"]) == ["phase", "freq"]
+        assert list(beat_median.attrs["aggregation_axes"]) == ["beat"]
+        assert beat_median.attrs["source_path"] == raw.name
+        assert beat_median.attrs["unit"] == "power_unit"
+        np.testing.assert_array_equal(
+            beat_median.attrs["phase_samples"], raw.attrs["phase_samples"],
+        )
+        assert beat_median.attrs["phase_endpoint"] == "excluded"
+        for path, count in (
+            (schema.spectrograms_masked_time_aggregated_median_early, 43),
+            (schema.spectrograms_masked_time_aggregated_median_late, 85),
+        ):
+            window = output[path]
+            np.testing.assert_array_equal(window[:], [5, 5])
+            assert window.dtype == np.float32
+            assert window.attrs["source_path"] == beat_median.name
+            assert window.attrs["source_phase_sample_count"] == count
+            assert window.attrs["source_total_phase_sample_count"] == 128
+            assert "phase_samples" not in window.attrs
+            assert "phase_endpoint" not in window.attrs
 
 
 def test_time_aggregated_median_pools_samples_ignores_nan_and_preserves_frequency_order(tmp_path):
@@ -126,7 +152,88 @@ def test_time_aggregated_median_pools_samples_ignores_nan_and_preserves_frequenc
         assert list(median.attrs["aggregation_axes"]) == ["phase", "beat"]
         assert median.attrs["source_beat_count"] == 2
         assert median.attrs["source_phase_sample_count"] == 4
+        beat_median = output[schema.spectrograms_masked_time_aggregated_median_beat]
+        np.testing.assert_array_equal(beat_median[:], [
+            [5, 1, np.nan], [5, 5, np.nan], [5, 7, np.nan], [100, 9, np.nan],
+        ])
+        assert beat_median.shape == (4, 3)
+        assert list(beat_median.attrs["dimDesc"]) == ["phase", "freq"]
+        assert beat_median.attrs["aggregation_method"] == "nanmedian"
+        assert list(beat_median.attrs["aggregation_axes"]) == ["beat"]
+        assert beat_median.attrs["aggregation_weighting"] == "equal_weight_per_valid_beat_sample"
+        assert beat_median.attrs["source_beat_count"] == 2
+        assert beat_median.attrs["source_phase_sample_count"] == 4
+        np.testing.assert_array_equal(beat_median.attrs["phase_samples"], [0, .25, .5, .75])
+        np.testing.assert_array_equal(beat_median.attrs["frequency_bin_centers_hz"], [30, -10, 20])
+        assert "valid_sample_count_per_frequency" not in beat_median.attrs
+        early = output[schema.spectrograms_masked_time_aggregated_median_early]
+        late = output[schema.spectrograms_masked_time_aggregated_median_late]
+        np.testing.assert_array_equal(early[:], [5, 3, np.nan])
+        # Taking a pooled raw-sample median over the late window would give 55,
+        # whereas the requested median of MedianBeat is 52.5.
+        np.testing.assert_array_equal(late[:], [52.5, 8, np.nan])
+        for window in (early, late):
+            np.testing.assert_array_equal(window.attrs["frequency_bin_centers_hz"], [30, -10, 20])
+            assert list(window.attrs["dimDesc"]) == ["freq"]
+            assert list(window.attrs["aggregation_axes"]) == ["phase"]
+            assert window.attrs["aggregation_method"] == "nanmedian"
+            assert window.attrs["aggregation_weighting"] == "equal_weight_per_valid_phase_sample"
+            assert window.attrs["source_path"] == beat_median.name
+            assert window.attrs["unit"] == "power_unit"
+            np.testing.assert_array_equal(window.attrs["valid_sample_count_per_frequency"], [2, 2, 0])
         np.testing.assert_array_equal(per_beat, original)
+
+
+def test_early_late_spectra_include_one_third_boundary_and_ignore_nan_per_frequency(tmp_path):
+    schema = EyeFlowOutputPaths.active()
+    beat_spectrum = np.array([
+        [0, 1, np.nan], [2, np.nan, np.nan], [10, 5, np.nan],
+        [20, 7, np.nan], [30, 9, np.nan], [40, 11, np.nan],
+    ], dtype=np.float32)
+    raw = np.repeat(beat_spectrum[:, :, None], 2, axis=2)
+    original = raw.copy()
+    with h5py.File(tmp_path / "out.h5", "w") as output:
+        output.create_dataset(schema.spectrograms_masked, data=np.ones((9, 3)))
+        with (
+            patch("pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat", return_value=raw),
+            warnings.catch_warnings(),
+        ):
+            warnings.simplefilter("error", RuntimeWarning)
+            metrics = run_gap_analysis(_ctx(output), _moments([0, 4, 8], 9))
+        PipelineH5Output(output).write_many(metrics)
+        early = output[schema.spectrograms_masked_time_aggregated_median_early]
+        late = output[schema.spectrograms_masked_time_aggregated_median_late]
+        assert early.name == "/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeatEarly"
+        assert late.name == "/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeatLate"
+        np.testing.assert_array_equal(early[:], [2, 3, np.nan])
+        np.testing.assert_array_equal(late[:], [25, 8, np.nan])
+        assert early.attrs["source_phase_sample_count"] == 3
+        assert late.attrs["source_phase_sample_count"] == 4
+        np.testing.assert_array_equal(early.attrs["valid_sample_count_per_frequency"], [3, 2, 0])
+        np.testing.assert_array_equal(late.attrs["valid_sample_count_per_frequency"], [4, 4, 0])
+        np.testing.assert_allclose(early.attrs["phase_interval"], [0, 1 / 3])
+        np.testing.assert_allclose(late.attrs["phase_interval"], [1 / 3, 1])
+        assert early.attrs["phase_interval_endpoints"] == late.attrs["phase_interval_endpoints"] == "both_included"
+        np.testing.assert_array_equal(raw, original)
+
+
+@pytest.mark.parametrize("frequency_count", [1, 3])
+def test_median_over_a_single_beat_preserves_phase_and_frequency_axes(tmp_path, frequency_count):
+    schema = EyeFlowOutputPaths.active()
+    with h5py.File(tmp_path / "out.h5", "w") as output:
+        values = np.arange(9)[:, None] + 10 * np.arange(frequency_count)[None, :]
+        output.create_dataset(schema.spectrograms_masked, data=values)
+        metrics = run_gap_analysis(_ctx(output), _moments([0, 8], 9))
+        PipelineH5Output(output).write_many(metrics)
+        raw = output[schema.spectrograms_masked_per_beat][:]
+        beat_median = output[schema.spectrograms_masked_time_aggregated_median_beat]
+        assert beat_median.shape == (128, frequency_count)
+        np.testing.assert_array_equal(beat_median[:], raw[:, :, 0])
+        for path in (
+            schema.spectrograms_masked_time_aggregated_median_early,
+            schema.spectrograms_masked_time_aggregated_median_late,
+        ):
+            assert output[path].shape == (frequency_count,)
 
 
 @pytest.mark.parametrize("case", [
@@ -154,14 +261,29 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
                 schema.spectrograms_masked_per_beat_band_limited,
                 schema.spectrograms_masked_per_beat_svd_continuous,
                 schema.spectrograms_masked_time_aggregated_median,
+                schema.spectrograms_masked_time_aggregated_median_beat,
+                schema.spectrograms_masked_time_aggregated_median_early,
+                schema.spectrograms_masked_time_aggregated_median_late,
+                schema.spectrograms_masked_time_aggregated_std,
+                schema.spectrograms_masked_time_aggregated_std_early,
+                schema.spectrograms_masked_time_aggregated_std_late,
             } | {
-                f"{schema.spectrograms_masked_time_aggregated_metrics_root}/{name}"
+                f"{schema.spectrograms_masked_metrics_root}/{name}"
                 for name in SPECTRUM_METRIC_DEFINITIONS
+            } | {
+                f"{schema.spectrograms_masked_metrics_root}/{key}"
+                for name in PHASE_METRIC_NAMES
+                for key in (f"{name}_t", f"{name}_early", f"{name}_late", f"delta_{name}")
             }
-            for name in SPECTRUM_METRIC_DEFINITIONS:
-                path = f"{schema.spectrograms_masked_time_aggregated_metrics_root}/{name}"
-                assert np.isnan(metrics[path][0])  # Non-32-bin inputs retain all metric paths.
-            assert any("32 bins" in call.args[0] for call in warning.call_args_list)
+            root = schema.spectrograms_masked_metrics_root
+            if case == "no_finite_cells":
+                for name in ("index_max1", "index_max2", "A0", "A1", "A2", "R1", "R2", "delta_A0"):
+                    assert np.isnan(metrics[f"{root}/{name}"][0])
+                assert any("only NaN" in call.args[0] for call in warning.call_args_list)
+            else:
+                assert metrics[f"{root}/index_max1"][0] == 0
+                assert metrics[f"{root}/index_max2"][0] == 1
+                assert metrics[f"{root}/R1"][0] == 1
             assert any("SVD" in call.args[0] for call in warning.call_args_list)
         else:
             assert metrics == {}

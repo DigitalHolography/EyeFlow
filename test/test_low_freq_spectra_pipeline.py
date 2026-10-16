@@ -34,6 +34,7 @@ def _spec(tmp_path, *, moments=True, bands=True, spectra="valid"):
     holo = _write_input(tmp_path)
     hd_path = tmp_path / "scan/scan_HD/h5/scan_HD_output.h5"
     with h5py.File(hd_path, "a") as hd:
+        hd.create_dataset("HD_parameters", data=json.dumps({"sampling_freq": 37037.0}))
         if spectra == "legacy_group":
             hd.create_group("spectrograms")
         elif spectra != "missing":
@@ -112,6 +113,8 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
     assert spec.plan.names.index("velocity") < spec.plan.names.index("low_freq_spectra")
     schema = EyeFlowOutputPaths.active()
     with h5py.File(result.outputs[0], "r") as output:
+        assert output[schema.sampling_frequency_hz][()] == 37037
+        assert output[schema.sampling_frequency_hz].attrs["unit"] == "Hz"
         status = json.loads(output.attrs["pipeline_status"])
         assert status["shared"]["low_freq_spectra"] == "succeeded"
         assert all("low_freq_spectra" not in branch for branch in status["variants"].values())
@@ -125,13 +128,20 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
         assert "velocity_estimation_method" not in output[schema.spectrograms_masked].attrs
         if expected is None:
             assert schema.spectrograms_masked_per_beat not in output
+            assert schema.spectrograms_masked_time_aggregated_median not in output
+            assert schema.spectrograms_masked_time_aggregated_median_beat not in output
+            assert schema.spectrograms_masked_time_aggregated_median_early not in output
+            assert schema.spectrograms_masked_time_aggregated_median_late not in output
         else:
             root = VELOCITY_WORKFLOW_ROOTS[expected]
             boundary_path = processing_path(schema.cardiac_cycle.systolic_peak_frame_indices, root)
             for path in (schema.spectrograms_masked_per_beat,
                          schema.spectrograms_masked_per_beat_band_limited,
                          schema.spectrograms_masked_per_beat_svd_continuous,
-                         schema.spectrograms_masked_time_aggregated_median):
+                         schema.spectrograms_masked_time_aggregated_median,
+                         schema.spectrograms_masked_time_aggregated_median_beat,
+                         schema.spectrograms_masked_time_aggregated_median_early,
+                         schema.spectrograms_masked_time_aggregated_median_late):
                 product = output[path]
                 assert product.attrs["quantity"] == "spatial_median_band_power"
                 assert product.attrs["spatial_aggregation_method"] == "median"
@@ -140,10 +150,12 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
                 np.testing.assert_array_equal(product.attrs["cycle_boundary_indices"],
                                               output[boundary_path][:])
         assert "ProcessingBandRatio/Spectrograms" not in output
+        assert "ProcessingSpectrograms/Gaps/TimeAggregated/Median" not in output
 
     names = {"spectrograms_gaps", "gaps_mask"}
     if expected is not None:
         names.add("spectrogram_gaps_median")
+        names.update(f"gaps_{name}" for name in ("A0", "A1", "A2", "R1", "R2"))
     ef_dir = result.outputs[0].parent.parent
     for extension in ("png", "eps"):
         assert {path.name for path in (ef_dir / extension / "spectrograms").iterdir()} == {
@@ -151,6 +163,24 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
         }
         assert not list((ef_dir / extension / "moments").glob("*spectrogram*"))
         assert not list((ef_dir / extension / "bandratio").glob("*spectrogram*"))
+
+
+def test_positive_figures_export_for_32_bin_input_with_the_stored_peak(tmp_path):
+    spec = _spec(tmp_path)
+    with h5py.File(tmp_path / "scan/scan_HD/h5/scan_HD_output.h5", "a") as hd:
+        del hd["spectrograms"]
+        values = np.ones((6, 32, 2, 2))
+        values[:, 5] = 10
+        hd.create_dataset("spectrograms", data=values)
+    result = execute_run(spec)
+    assert result.succeeded, result.failures
+    schema = EyeFlowOutputPaths.active()
+    with h5py.File(result.outputs[0], "r") as output:
+        assert output[f"{schema.spectrograms_masked_metrics_root}/index_max1"][()] == 5
+    ef_dir = result.outputs[0].parent.parent
+    for extension in ("png", "eps"):
+        for suffix in ("early_late", "beat", "all"):
+            assert (ef_dir / extension / "spectrograms" / f"scan_gaps_positive_freq_median_phase_{suffix}.{extension}").is_file()
 
 
 def test_masked_spatial_median_feeds_persisted_downstream_spectra(tmp_path):
@@ -177,6 +207,10 @@ def test_masked_spatial_median_feeds_persisted_downstream_spectra(tmp_path):
         )
         np.testing.assert_array_equal(
             output[schema.spectrograms_masked_time_aggregated_median][:], expected,
+        )
+        np.testing.assert_array_equal(
+            output[schema.spectrograms_masked_time_aggregated_median_beat][:],
+            np.broadcast_to(expected, (128, 3)),
         )
         for path in (schema.spectrograms_masked_per_beat,
                      schema.spectrograms_masked_per_beat_band_limited):

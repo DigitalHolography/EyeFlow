@@ -37,7 +37,7 @@ availability rather than unrelated import crashes.
 |---|---|
 | `velocity` (hidden) | Physical retinal velocity and cardiac timing; produces `velocity`, `cardiac_cycles`, and typed `velocity_workflows` |
 | `low_freq_spectra` (hidden) | Automatically follows velocity once per run when HD spectral video is available; owns shared spatial/gap spectra, beat alignment, filters, and spectral metrics |
-| `topology_core` (hidden) | Canonical artery/vein prepared topology and optional inverse retinal/disc/choroid mask; produces `prepared_topology` and `capillary_analysis_zones` |
+| `topology_core` (hidden) | Canonical artery/vein prepared topology and combined legacy/intensity gap mask; produces `prepared_topology` and `capillary_analysis_zones` |
 | `velocity_analysis` | Shared per-beat/segment/profile state plus selectable persisted continuous, quadrant, profile-fit, FFT, map, and movie products; requires velocity and topology |
 | `spatial_gradient_moment0` | Independently selected moment0 gradient/lumen profiles; requires cardiac cycles and topology, not velocity analysis |
 | `blood_volume_rate` | Two option families with different DAG dependencies: gradient edges and mask-derived geometry |
@@ -88,6 +88,52 @@ producing `/ProcessingSpectrograms/Gaps/PerBeat/Raw` with `(phase, freq, beat)` 
 It uses 128 linear phase samples without bridging NaNs. Missing detected timing in both workflows
 warns and skips per-beat analysis while other products remain available. Timing
 workflow and HDF5 source paths are recorded in per-beat/filter/aggregate metadata.
+`TimeAggregated/MedianPhaseBeat` pools phase and beats into a `(freq,)` spectrum;
+`TimeAggregated/MedianBeat` reduces beats only, preserving `(phase, freq)` and
+phase coordinates. Both ignore NaNs and keep all-missing output cells as NaN.
+`TimeAggregated/MedianPhaseBeatEarly` and `MedianPhaseBeatLate` take phase
+medians of `MedianBeat` over closed intervals `[0,1/3]` and `[1/3,1]`, yielding
+`(freq,)` spectra. They share the phase-window helper with metric summaries,
+include a one-third boundary sample in both windows, and retain NaN where a
+frequency has no valid samples in that window. Preserve source timing, units,
+frequency order, window endpoints, and selected/valid sample counts.
+`TimeAggregated/StdBeat`, `StdBeatEarly`, and `StdBeatLate` take population STD
+over beats after each beat's whole/early/late phase median, reusing `PerBeat/Raw`.
+Ignore NaNs; one valid beat gives zero, none gives NaN. Persist raw power units,
+`ddof=0`, reduction order, windows, and valid beat counts per frequency.
+Positive-frequency PNG/EPS overlays use these STD envelopes and normalize each
+curve by its own maximum over bins 0 through 31. Their frequency grid is fixed
+at `linspace(0, fs/4, 33)` in Hz, independent of source length. All three figures
+report the same stored `Metrics/index_max1` through bin 31 inclusive. Keep power
+linear, scale STD by the same per-curve maximum, and do not save the grid to HDF5.
+Missing/invalid stored peaks or fewer than 32 bins omit these figures.
+Median/early/late use solid/dashed/dotted signals and envelope patterns.
+The full-domain heatmap/median frequency axes use spacing `fs/(2*N)` with DC zero,
+positive-then-negative order, and kHz labels. Resolve `fs` from shared
+`Meta/SamplingFrequencyHz/value`; publish it from HD timing parameters/config
+before export if absent, since velocity analysis may run later. Missing/invalid
+sampling metadata skips frequency figures while keeping other products.
+The spectrum figure and pooled scalar metrics consume `MedianPhaseBeat`.
+All gap metrics live directly under `/ProcessingSpectrograms/Gaps/Metrics`.
+Phase curves `A0_t`, `A1_t`, `A2_t`, `R1_t`, and `R2_t` use `MedianBeat` with
+the pooled peak indices fixed at every phase. Retain the original pooled scalar
+names `A0`/`A1`/`A2`/`R1`/`R2`; remove output heights `h0`/`h1`/`hv` and `rho_h`.
+Each curve also has `_early` and `_late` scalar medians over closed phase
+intervals `[0,1/3]` and `[1/3,1]`, and a signed `delta_<metric>` early-minus-late
+scalar. Ignore NaNs within each window; missing windows/differences remain NaN.
+Keep the source's excluded endpoint and include a one-third boundary sample in
+both windows when present. Curves retain phase/timing/peak provenance and also
+produce shared `gaps_<metric>` PNG/EPS plots.
+The valley height `hv` uses a NaN-aware median over a neighborhood centered on
+the two central bins. Its default length is one quarter of the actual domain
+(32 bins -> 8 samples, 64 bins -> 16 samples), rounded to the nearest even
+length with ties upward and at least two samples. Any one-dimensional domain
+with at least two bins is supported; an explicit even `valley_neighborhood_length`
+overrides the default. Peak halves and central valley bins scale with the domain,
+splitting at `floor(bin_count/2)` for odd lengths. All-NaN peak halves retain NaN
+indexes, log a warning, and are identified by per-half valid-bin counts in metadata.
+`A2` uses the same inclusive peak-to-peak width as `A0`.
+`R1=A1/A0` replaces `rho_A`; `R2=A2/A0`. Metric metadata records the neighborhood.
 Independent `PerBeat/BandLimited` keeps DC plus the configured non-DC harmonics
 (default 12) via the shared bandlimiting API in signed mode, using
 periodic phase boundaries. Original durations define each effective Hz cutoff.
@@ -102,7 +148,18 @@ warn and leave the output unchanged. Preserve filtered undershoots to retain
 DC power. Shared spectra are written after workflow cleanup and have no
 `ProcessingBandRatio` duplicate. Full-frame spatial products remain available when
 gap support is empty or missing. Settings/support/order travel in attributes.
-`topology_core` only owns native gap support and its segmentation output;
+`topology_core` owns native gap support and its segmentation outputs:
+`Segmentation/Gaps/Legacy` preserves the vessel/disc/cutoff mask,
+`GapsFromM0ff` thresholds bright vessels in the temporally median HD flat-field
+moment after percentile stretch, CLAHE, and Gaussian smoothing, dilates the
+vessels with the legacy 7x7 square, then inverts to white gaps. It has no
+anatomical exclusions. `Mask` ORs their vessel/exclusion complements before
+inverting, equivalent to AND of the saved white-gap masks, restricted to the image-centered
+80%-width disc and excluding the optic disc (DV mask or centered 1.91 mm
+fallback), used in shared state, spectral reductions, and the mask figure.
+Missing moment0ff falls back to Legacy; missing Legacy permits the intensity
+mask with the same disc constraints. Preserve native HD
+axes, finite-sample temporal medians, and lower-left output serialization.
 `low_freq_spectra` declares that dependency alongside `velocity_workflows`.
 The pipeline automatically enters plans that schedule velocity, stays hidden from
 selection, and skips absent/legacy-group spectra. Runtime source assembly keeps

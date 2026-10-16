@@ -119,14 +119,32 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
         boundaries = output[schema.cardiac_cycle.systolic_peak_frame_indices][:]
         assert raw.shape == (128, 3, len(boundaries) - 1)
         median = output[schema.spectrograms_masked_time_aggregated_median]
+        assert median.name == "/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat"
         assert median.shape == (3,)
         np.testing.assert_array_equal(median[:], [7, 7, 7])
         assert median.attrs["source_path"] == raw.name
-        assert "ProcessingBandRatio/Spectrograms/Gaps/TimeAggregated/Median" not in output
-        spectrum_metrics = output[schema.spectrograms_masked_time_aggregated_metrics_root]
-        assert len(spectrum_metrics) == 14
-        assert all(np.isnan(dataset[()]) for dataset in spectrum_metrics.values())  # Three bins.
-        assert "ProcessingBandRatio/Spectrograms/Gaps/TimeAggregated/Metrics" not in output
+        assert "ProcessingSpectrograms/Gaps/TimeAggregated/Median" not in output
+        assert "ProcessingBandRatio/Spectrograms/Gaps/TimeAggregated/MedianPhaseBeat" not in output
+        beat_median = output[schema.spectrograms_masked_time_aggregated_median_beat]
+        assert beat_median.name == "/ProcessingSpectrograms/Gaps/TimeAggregated/MedianBeat"
+        assert beat_median.shape == (128, 3)
+        assert beat_median.attrs["source_path"] == raw.name
+        assert "ProcessingBandRatio/Spectrograms/Gaps/TimeAggregated/MedianBeat" not in output
+        for path in (
+            schema.spectrograms_masked_time_aggregated_median_early,
+            schema.spectrograms_masked_time_aggregated_median_late,
+        ):
+            window = output[path]
+            assert window.shape == (3,)
+            np.testing.assert_array_equal(window[:], [7, 7, 7])
+            assert window.attrs["source_path"] == beat_median.name
+        spectrum_metrics = output[schema.spectrograms_masked_metrics_root]
+        assert len(spectrum_metrics) == 33
+        assert spectrum_metrics["index_max1"][()] == 0
+        assert spectrum_metrics["index_max2"][()] == 1
+        assert spectrum_metrics["R1"][()] == 1
+        assert spectrum_metrics["R2"][()] == 1
+        assert "ProcessingBandRatio/Spectrograms/Gaps/Metrics" not in output
         for path, shape in (
             (schema.spectrograms_masked_per_beat_band_limited, raw.shape),
             (schema.spectrograms_masked_per_beat_svd_continuous, (128 * raw.shape[2], raw.shape[1])),

@@ -81,7 +81,7 @@ def prepare_gap_spectrograms(spectrograms, analysis_zones: np.ndarray):
     if pixel_count == 0:
         Logger.log_warning("Skipping gap analysis: the reduced application gap mask is empty.")
         return None
-    # Match /Segmentation/Gaps/value's published coordinates at the reduced resolution.
+    # Match the combined gap mask's published coordinates at reduced resolution.
     mask = np.flip(native_mask, axis=0).T
     source_attrs = getattr(spectrograms, "attrs", {})
     attrs = {
