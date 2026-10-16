@@ -135,21 +135,24 @@ failed moments workflow when the band workflow succeeds. They are produced
 once, with no `/ProcessingBandRatio/Spectrograms` duplicate.
 
 `pipelines/low_freq_spectra/preprocessing.py` prepares optional gap support for
-the same streaming reduction pass, which computes the arithmetic spatial mean
+the same streaming reduction pass, which computes the spatial median
 of the exported band-power samples included by the application mask, for every
-time/frequency pair. Only included pixels enter the denominator; excluded
+time/frequency pair. Only included pixels enter the median; excluded
 pixels are not zero-filled. The `low_freq_spectra` runner invokes this once using
-native gap support from `topology_core`, and publishes `/ProcessingSpectrograms/Gaps/Raw`, with
-`dimDesc=["time", "freq"]`, preserving HD frequency-bin order. Finite negative
-spatial means are replaced with zero after averaging, before beat subdivision;
-individual pixel samples are not clipped before averaging.
+native gap support from `topology_core`, and publishes
+`/ProcessingSpectrograms/Gaps/SpatialMedian` with `dimDesc=["time", "freq"]`,
+preserving HD frequency-bin order. Finite negative
+spatial medians are replaced with zero after reduction, before beat subdivision;
+individual pixel samples are not clipped before taking the median. For an even
+number of included pixels, use the mean of the two middle values. Gap products
+record `quantity="spatial_median_band_power"` and `spatial_aggregation_method="median"`.
 Units are copied from the source dataset when supplied,
-otherwise `a.u.` with uncalibrated-power provenance. Float64 accumulation is
+otherwise `a.u.` with uncalibrated-power provenance. Float64 reduction is
 serialized as float32 by the standard writer. Any nonfinite included sample
 produces NaN for its time/frequency pair; nonfinite excluded pixels have no
 effect. If native or interpolated gap support is empty, log a
 warning and skip the entire gap-analysis stage without reading spectral
-gap samples or writing `/ProcessingSpectrograms/Gaps/Raw`. Full-frame spatial
+gap samples or writing `/ProcessingSpectrograms/Gaps/SpatialMedian`. Full-frame spatial
 outputs, segmentation, and other pipeline
 work remain available. An unavailable/legacy spectra source omits this
 product with a warning. Physical capillary velocity remains deferred.
@@ -166,10 +169,10 @@ velocity/topology source assembly or independent downstream velocity analyses.
 Velocity publishes typed successful workflow results for shared consumers.
 Detected moments cycles take priority; unavailable moments results, fallback-only
 moments timing, or fewer than two moments boundaries cause a retry with detected
-band-ratio cycles. If neither workflow has detected intervals, spatial/raw gap
+band-ratio cycles. If neither workflow has detected intervals, spatial/gap
 spectra remain available and per-beat products are omitted with a warning.
 
-`/ProcessingSpectrograms/Gaps/PerBeat/Raw` contains `(phase, freq, beat)` spatial mean band
+`/ProcessingSpectrograms/Gaps/PerBeat/Raw` contains `(phase, freq, beat)` spatial median band
 power using consecutive zero-based cycle boundaries from the selected workflow.
 Each beat is linearly resampled to 128 phases in `[0, 1)`. The next boundary is included as
 an interpolation anchor, but its duplicated phase endpoint is not stored.
@@ -195,7 +198,7 @@ this shared dataset whenever raw per-beat gaps are available, with no
 
 When the HD spectral video is available, `low_freq_spectra` also exports each
 available gap product to both `png/spectrograms/` and `eps/spectrograms/`:
-`<stem>_spectrograms_gaps` displays `/ProcessingSpectrograms/Gaps/Raw` as a
+`<stem>_spectrograms_gaps` displays `/ProcessingSpectrograms/Gaps/SpatialMedian` as a
 linear viridis heatmap with horizontal frame tick labels every 50 samples, every
 fourth frequency-bin label, and a vertical power colorbar;
 `<stem>_spectrogram_gaps_median` plots
@@ -461,7 +464,7 @@ families are:
   the optic disc, when its inputs are available;
 - `/ProcessingSpectrograms/SpatialAverage` and `SpatialMedian` for full-frame
   spatial power reductions, shaped `(time, freq)`;
-- `/ProcessingSpectrograms/Gaps/Raw` for shared spatial mean gap band power, shaped
+- `/ProcessingSpectrograms/Gaps/SpatialMedian` for shared spatial median gap band power, shaped
   `(time, freq)`, when spectra and nonempty application support are available;
 - `/ProcessingSpectrograms/Gaps/PerBeat/Raw` and `BandLimited` for moments-timed
   beat spectra and independent FFT filtering, shaped `(phase, freq, beat)`;

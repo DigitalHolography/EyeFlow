@@ -116,6 +116,12 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
         assert status["shared"]["low_freq_spectra"] == "succeeded"
         assert all("low_freq_spectra" not in branch for branch in status["variants"].values())
         assert schema.spectrograms_masked in output
+        assert output[schema.spectrograms_masked].name == (
+            "/ProcessingSpectrograms/Gaps/SpatialMedian"
+        )
+        assert "ProcessingSpectrograms/Gaps/Raw" not in output
+        assert output[schema.spectrograms_masked].attrs["quantity"] == "spatial_median_band_power"
+        assert output[schema.spectrograms_masked].attrs["spatial_aggregation_method"] == "median"
         assert "velocity_estimation_method" not in output[schema.spectrograms_masked].attrs
         if expected is None:
             assert schema.spectrograms_masked_per_beat not in output
@@ -127,6 +133,8 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
                          schema.spectrograms_masked_per_beat_svd_continuous,
                          schema.spectrograms_masked_time_aggregated_median):
                 product = output[path]
+                assert product.attrs["quantity"] == "spatial_median_band_power"
+                assert product.attrs["spatial_aggregation_method"] == "median"
                 assert product.attrs["cycle_boundary_workflow"] == expected
                 assert product.attrs["cycle_boundary_source_path"] == "/" + boundary_path
                 np.testing.assert_array_equal(product.attrs["cycle_boundary_indices"],
@@ -143,6 +151,42 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
         }
         assert not list((ef_dir / extension / "moments").glob("*spectrogram*"))
         assert not list((ef_dir / extension / "bandratio").glob("*spectrogram*"))
+
+
+def test_masked_spatial_median_feeds_persisted_downstream_spectra(tmp_path):
+    spec = _spec(tmp_path)
+    with h5py.File(tmp_path / "scan/scan_HD/h5/scan_HD_output.h5", "a") as hd:
+        # The median is 4 despite the included 1000-power outlier; mean is 252.25.
+        hd["spectrograms"][:] = (
+            np.array([[1, 3], [5, 1000]])[None, None]
+            + 10 * np.arange(3)[None, :, None, None]
+        )
+    result = execute_run(spec)
+    assert result.succeeded, result.failures
+    schema = EyeFlowOutputPaths.active()
+    expected = np.array([4, 14, 24])
+    with h5py.File(result.outputs[0], "r") as output:
+        assert "ProcessingSpectrograms/Gaps/SpatialMedian" in output
+        assert "ProcessingSpectrograms/Gaps/Raw" not in output
+        np.testing.assert_array_equal(
+            output[schema.spectrograms_masked][:], np.broadcast_to(expected, (6, 3)),
+        )
+        np.testing.assert_array_equal(
+            output[schema.spectrograms_spatial_average][:],
+            np.broadcast_to(expected + 248.25, (6, 3)),
+        )
+        np.testing.assert_array_equal(
+            output[schema.spectrograms_masked_time_aggregated_median][:], expected,
+        )
+        for path in (schema.spectrograms_masked_per_beat,
+                     schema.spectrograms_masked_per_beat_band_limited):
+            data = output[path][:]
+            np.testing.assert_allclose(data, np.broadcast_to(expected[None, :, None], data.shape))
+        assert output[schema.spectrograms_masked_per_beat].attrs["source_path"] == (
+            "/ProcessingSpectrograms/Gaps/SpatialMedian"
+        )
+        data = output[schema.spectrograms_masked_per_beat_svd_continuous][:]
+        np.testing.assert_allclose(data, np.broadcast_to(expected, data.shape))
 
 
 @pytest.mark.parametrize("spectra", ["missing", "legacy_group"])

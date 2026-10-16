@@ -52,7 +52,8 @@ def run_gap_analysis(
         "dimDesc": ["phase", "freq", "beat"],
         "source_path": "/" + schema.spectrograms_masked,
         "definition": (
-            f"spatial mean gap band power linearly resampled between {timing_label} beat boundaries"
+            "spatial median gap band power linearly resampled "
+            f"between {timing_label} beat boundaries"
         ),
         "cycle_boundary_source_path": "/" + processing_path(
             schema.cardiac_cycle.systolic_peak_frame_indices, VELOCITY_WORKFLOW_ROOTS[timing_method],

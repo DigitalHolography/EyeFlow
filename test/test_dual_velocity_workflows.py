@@ -107,7 +107,8 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
         np.testing.assert_array_equal(spectrum[:], expected)
         np.testing.assert_array_equal(output[schema.spectrograms_spatial_average][:], expected)
         np.testing.assert_array_equal(output[schema.spectrograms_spatial_median][:], expected)
-        assert spectrum.name == "/ProcessingSpectrograms/Gaps/Raw"
+        assert spectrum.name == "/ProcessingSpectrograms/Gaps/SpatialMedian"
+        assert "ProcessingSpectrograms/Gaps/Raw" not in output
         assert "velocity_estimation_method" not in spectrum.attrs
         assert "ProcessingMoments/Velocity" in output
         assert "ProcessingBandRatio/Velocity" in output

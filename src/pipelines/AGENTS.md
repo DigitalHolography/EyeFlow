@@ -71,16 +71,17 @@ mode; finite/non-negative validation and calibration provenance are part of the
 pipeline contract.
 
 `low_freq_spectra/spectrograms.py` reads HD frequency-bin spectra once per frame for
-full-frame `SpatialAverage`/`SpatialMedian` reductions and optional gap mean
+full-frame `SpatialAverage`/`SpatialMedian` reductions and optional gap median
 power. `low_freq_spectra/preprocessing.py` interpolates Boolean gap support with
 nearest neighbors to the spectrogram video's last two dimensions. The low-frequency spectral
-runner publishes `/ProcessingSpectrograms/Gaps/Raw` with `(time, freq)`
+runner publishes `/ProcessingSpectrograms/Gaps/SpatialMedian` with `(time, freq)`
 axes. HD frames are flipped in spatial Y then transposed into EF's published
 lower-left `(x, y)` mask frame at the canonical input boundary. Empty native or
 interpolated support skips gap analysis with a warning; segmentation and other
 pipeline work continue. Nonfinite included samples produce NaN per pair;
-finite negative spatial means are clamped to zero after averaging and before
-beat subdivision. Individual raw pixels are not clipped. The hidden `low_freq_spectra`
+finite negative gap spatial medians are clamped to zero after reduction and before
+beat subdivision. Gap provenance records `spatial_aggregation_method="median"`.
+Individual raw pixels are not clipped. The hidden `low_freq_spectra`
 pipeline runs once after velocity and passes detected moments timing to gap analysis,
 falling back to detected band-ratio timing when moments timing is unavailable,
 producing `/ProcessingSpectrograms/Gaps/PerBeat/Raw` with `(phase, freq, beat)` axes.

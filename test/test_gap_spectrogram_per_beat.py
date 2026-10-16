@@ -68,6 +68,7 @@ def test_runner_publishes_per_beat_output_with_moments_timing(tmp_path):
         assert raw.shape == (128, 2, 4)
         assert raw[64, 0, 0] == 50
         assert raw.attrs["unit"] == "power_unit"
+        assert raw.attrs["source_path"] == "/ProcessingSpectrograms/Gaps/SpatialMedian"
         assert list(raw.attrs["dimDesc"]) == ["phase", "freq", "beat"]
         np.testing.assert_array_equal(raw.attrs["cycle_boundary_indices"], [0, 2, 4, 6, 8])
         assert raw.attrs["cycle_boundary_workflow"] == "doppler_moments"
