@@ -237,14 +237,16 @@ counts per frequency. Reuse the existing beat division without repeating it.
 When the HD spectral video is available, `low_freq_spectra` also exports each
 available gap product to both `png/spectrograms/` and `eps/spectrograms/`:
 `<stem>_spectrograms_gaps` displays `/ProcessingSpectrograms/Gaps/SpatialMedian` as a
-linear viridis heatmap with horizontal frame tick labels every 50 samples,
+linear viridis heatmap with horizontal frame tick labels at multiples of 50
+samples, thinning longer recordings to at most seven labels,
 signed frequency ticks in kHz, and a vertical power colorbar;
 `<stem>_spectrogram_gaps_median` plots
 `/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat` in the original HD
 positive-then-negative order, labeling frequency in signed kHz with vertical
 tick labels. Tick selection keeps the sign boundary visible and avoids crowded
 labels. Both use
-an 8 cm wide, 1.618:1 canvas, 8 pt Times New Roman axis captions, 5 pt tick labels
+an 8 cm wide, 1.618:1 canvas, 10 pt Times New Roman axis captions and legends,
+8 pt tick labels for readability at article column width,
 with horizontal Y-axis tick labels, 0.4 pt black borders, and 320 DPI.
 `<stem>_gaps_mask` displays the combined `/Segmentation/Gaps/Mask` mask as white
 gaps on black in its published lower-left spatial frame, on an 8 cm square

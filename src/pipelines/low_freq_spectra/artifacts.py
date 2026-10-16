@@ -20,8 +20,9 @@ FIGURE_DPI = 320
 FIGURE_WIDTH_INCHES = 8.0 / 2.54
 FIGURE_ASPECT_RATIO = 1.618
 FONT_FAMILY = "Times New Roman"
-FONT_SIZE = 8
-TICK_FONT_SIZE = 5
+# Point sizes at the exported 8 cm width, suitable for an article column.
+FONT_SIZE = 10
+TICK_FONT_SIZE = 8
 BOX_LINE_WIDTH = 0.4
 SIGNAL_LINE_WIDTH = 0.8
 
@@ -178,7 +179,8 @@ def _gap_spectrogram_figure(values: np.ndarray, *, sampling_frequency_hz: float)
     )
     ax.set_xlabel("Time (frames)")
     ax.set_ylabel("Frequency (kHz)")
-    ax.set_xticks(np.arange(0, values.shape[0], 50))
+    frame_tick_step = 50 * max(1, int(np.ceil(values.shape[0] / (50 * 7))))
+    ax.set_xticks(np.arange(0, values.shape[0], frame_tick_step))
     positions, labels = frequency_ticks(values.shape[1], sampling_frequency_hz)
     ax.set_yticks(positions, labels=labels)
     fig.colorbar(image, ax=ax, orientation="vertical", label="Power (a.u.)")
