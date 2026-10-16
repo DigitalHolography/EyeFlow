@@ -20,6 +20,23 @@ def _hd_source(hd):
     return HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
 
 
+def test_sampling_frequency_for_spectral_axes_does_not_require_batch_stride(tmp_path):
+    with h5py.File(tmp_path / "hd.h5", "w") as hd:
+        hd.create_dataset("HD_parameters", data=json.dumps({"sampling_freq": 64000}))
+        source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"), {"sampling_freq": 32000})
+        assert source.sampling_frequency_hz() == 64000
+        del hd["HD_parameters"]
+        assert source.sampling_frequency_hz() == 32000
+
+
+@pytest.mark.parametrize("frequency", [None, 0, -1, float("nan"), float("inf")])
+def test_spectral_frequency_calibration_rejects_missing_or_invalid_sampling_rate(tmp_path, frequency):
+    with h5py.File(tmp_path / "hd.h5", "w") as hd:
+        hd.create_dataset("HD_parameters", data=json.dumps({"sampling_freq": frequency}))
+        with pytest.raises(ValueError, match="positive finite frequency"):
+            _hd_source(hd).sampling_frequency_hz()
+
+
 def test_reads_exact_root_dataset_lazily_and_preserves_exported_axes(tmp_path):
     values = np.arange(3 * 4 * 5 * 7, dtype=np.float32).reshape(3, 4, 5, 7)
     with h5py.File(tmp_path / "hd.h5", "w") as hd:

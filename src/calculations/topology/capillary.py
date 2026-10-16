@@ -9,6 +9,20 @@ GAPS_CUTOFF_DIAMETER_WIDTH_FRACTION = 0.8
 GAPS_VESSEL_DILATION_RADIUS_PIXELS = 3
 
 
+def capillary_disc_support(optic_disc_mask: np.ndarray) -> np.ndarray:
+    """Restrict native support to the central 80%-width disc, outside the optic disc."""
+    mask = np.asarray(optic_disc_mask)
+    if mask.ndim != 2 or mask.dtype != np.bool_:
+        raise TypeError("optic_disc_mask must be a 2-D boolean array.")
+    ny, nx = mask.shape
+    if ny < 1 or nx < 1:
+        raise ValueError("Gap masks must have positive image dimensions.")
+    y, x = np.ogrid[:ny, :nx]
+    radius = GAPS_CUTOFF_DIAMETER_WIDTH_FRACTION * nx / 2.0
+    cutoff_disc = (x - nx / 2.0) ** 2 + (y - ny / 2.0) ** 2 <= radius**2
+    return cutoff_disc & ~mask
+
+
 def capillary_analysis_zones(
     retinal_vessel_mask: np.ndarray,
     optic_disc_mask: np.ndarray,
@@ -47,10 +61,7 @@ def capillary_analysis_zones(
         iterations=1,
         border_value=0,
     )
-    y, x = np.ogrid[:ny, :nx]
-    radius = GAPS_CUTOFF_DIAMETER_WIDTH_FRACTION * nx / 2.0
-    cutoff_disc = (x - nx / 2.0) ** 2 + (y - ny / 2.0) ** 2 <= radius**2
-    return cutoff_disc & ~(vessels | masks[1])
+    return capillary_disc_support(masks[1]) & ~vessels
 
 
 def downsample_gap_zones(

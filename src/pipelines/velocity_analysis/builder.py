@@ -464,7 +464,7 @@ def pack_velocity_analysis_meta_outputs(analysis: VelocityAnalysis) -> dict[str,
     schema = EyeFlowOutputPaths.active()
     timing = analysis.source_data.source.holodoppler.timing
     return {
-        f"{schema.meta_root}/SamplingFrequencyHz/value": (
+        schema.sampling_frequency_hz: (
             np.float32(timing.sampling_freq),
             {"unit": "Hz"},
         ),

@@ -179,7 +179,7 @@ def pack_capillary_analysis_zones(
     optic_disc: OpticDisc,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
-    """Publish the gaps mask in the shared lower-left segmentation frame."""
+    """Preserve legacy vessel-exclusion support in the lower-left frame."""
     schema = _resolve_output_paths(output_paths)
     attrs = _mask_attrs("gaps_from_dopplerview_vessels_optic_disc_and_cutoff")
     attrs.update(
@@ -215,10 +215,18 @@ def pack_capillary_analysis_zones(
     if optic_disc.is_fallback:
         attrs["optic_disc_fallback_diameter_mm"] = DEFAULT_OPTIC_DISC_DIAMETER_MM
     return {
-        schema.segmentation.gaps: _segmentation_value(
+        schema.segmentation.gaps_legacy: _segmentation_value(
             _serialize_spatial_image(analysis_zones), attrs
         )
     }
+
+
+def pack_gap_mask(mask: np.ndarray, path: str, attrs: dict[str, object]):
+    """Serialize new and combined gap support with the common mask convention."""
+    metadata = _mask_attrs("gap_analysis_support")
+    metadata.update(unit="1", true_means="included_in_capillary_analysis")
+    metadata.update(attrs)
+    return {path: _segmentation_value(_serialize_spatial_image(mask), metadata)}
 
 
 def _pack_vessel_segmentation(
