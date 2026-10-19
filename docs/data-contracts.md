@@ -69,7 +69,9 @@ described below.
 | Zernike coefficients | `/zernike_coefs_radians` | Optional; copied through unchanged |
 
 Moment and band datasets must be 3-D. The two bands must be numeric and have
-identical shapes; their chunk values must be finite and non-negative.
+identical shapes; their chunk values must be finite. LF values must be
+non-negative. During velocity estimation, finite negative HF numerator values
+are clamped to zero before calculating the band ratio; source videos are unchanged.
 
 `/spectrograms` contains quantitative band-power values and must be a real
 numeric 4-D dataset with exported axes `(time, freq, height, width)`. The spelling
@@ -242,7 +244,8 @@ samples, thinning longer recordings to at most seven labels,
 signed frequency ticks in kHz, and a vertical power colorbar;
 `<stem>_spectrogram_gaps_median` plots
 `/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat` in the original HD
-positive-then-negative order, labeling frequency in signed kHz with vertical
+positive-then-negative order, with a thin black dotted horizontal line at zero
+power, labeling frequency in signed kHz with vertical
 tick labels. Tick selection keeps the sign boundary visible and avoids crowded
 labels. Both use
 an 8 cm wide, 1.618:1 canvas, 10 pt Times New Roman axis captions and legends,
@@ -268,6 +271,20 @@ not require `batch_stride`. Velocity analysis uses the same schema-owned metadat
 path. If no positive finite sampling frequency is available, omit frequency
 figures with a warning while retaining scientific outputs, mask, and phase plots.
 
+The shared spectral runner also writes `/ProcessingSpectrograms/FrequencyBinTable`
+as a float32 `(N, 2)` table with columns `bin_index` and `frequency_khz`.
+Rows retain the source bin order and zero-based indices. `unit=["1", "kHz"]`
+describes the two columns; `dimDesc=["freq", "column"]` identifies the axes.
+Frequency values use the same signed full-spectrum conversion as the artifacts,
+including DC, positive frequencies, and the negative half. Attributes record
+column names, source bin count, HD source path, sampling frequency and its
+shared metadata path, and the bin-order convention. The table is written once
+when valid HD spectra and calibration are available, independently of gap
+support, detected cardiac timing, and figure export. Missing/invalid calibration
+omits the table with a warning while preserving available power products.
+The conversion functions live in `calculations/math/frequency.py`, shared by
+table publication, spectral metrics, and artifact axes.
+
 Three additional monochrome PNG/EPS figures use these persisted spectra:
 `<stem>_gaps_positive_freq_median_phase_early_late` overlays `MedianPhaseBeatEarly`
 and `MedianPhaseBeatLate`; `<stem>_gaps_positive_freq_median_phase_beat` plots
@@ -279,12 +296,14 @@ and plot only bins from the stored `/ProcessingSpectrograms/Gaps/Metrics/index_m
 through bin `P-1` inclusive, using that same cutoff for every curve.
 Require at least two source bins;
 do not infer a replacement peak if the stored index is missing, NaN, or outside
-the positive half. Normalize each curve by the NaN-aware median over the final
-`L=max(1,floor(0.1*P))` positive bins, `P-L` through `P-1`, and divide its matching
-STD by the same factor. For 64 source bins this is bins 29 through 31. Compute
-this neighborhood before the shared crop without expanding it around NaNs.
-Negative-frequency bins do not affect normalization. Frequency coordinates are not saved
-to HDF5. Power remains linear, with the existing dotted power-zero reference.
+the positive half. Normalize each curve by its own `Hv`, using the same
+NaN-aware median over the central 25% of the full spectrum as A0. For 64 source
+bins this is bins 24 through 39; the shared valley-window rounding and minimum
+length apply to other sizes. Divide the matching STD by that same Hv. Compute
+Hv before positive-bin cropping, including both halves of the central window,
+without expanding the neighborhood around NaNs. Frequency coordinates are
+published in the shared `FrequencyBinTable`; figure export remains read-only.
+Power remains linear, with the existing dotted power-zero reference.
 The central curves remain the existing HDF5 medians; dispersion comes from the
 corresponding `StdBeat`/`StdBeatEarly`/`StdBeatLate` datasets.
 Use solid, dashed, and dotted lines for median, early, and late respectively.
@@ -377,8 +396,10 @@ third belongs to both intervals. Preserve the source grid's excluded endpoint;
 do not interpolate or add a sample at phase one. The standard 128-phase grid
 therefore has 43 early and 85 late samples. Medians weight valid phase samples
 equally; all-missing windows remain NaN. Aggregate the ratios themselves,
-rather than dividing aggregated areas. `delta_M=M_early-M_late`, preserving
-its sign and propagating a missing early or late median. Window metadata records
+rather than dividing aggregated areas. For `Z1` and `Z2`,
+`delta_Z1=Z1_late-Z1_early` and `delta_Z2=Z2_late-Z2_early`.
+The area and ratio metrics retain `delta_M=M_early-M_late`. Preserve the signed
+difference and propagate a missing early or late median. Window metadata records
 phase intervals, included endpoints, source and valid sample counts, source
 curve paths, and aggregation policy; deltas identify both scalar sources.
 These twenty-eight phase/summary datasets plus the fifteen pooled scalars give 43 datasets
@@ -389,7 +410,9 @@ have the source power unit times kHz.
 Each phase curve also produces `<stem>_gaps_{A0,A1,A2,R1,R2,Z1,Z2}.{png,eps}` under
 the shared `png/spectrograms/` and `eps/spectrograms/` folders. Use the same
 8 cm wide golden-ratio canvas, thin black border, fonts, and resolution as the
-spectral figures. Plot normalized cardiac phase `t/T` horizontally with labels
+spectral figures. Abbreviate `a.u.*kHz` to `a.u.` in artifact axis labels;
+stored area units remain source power times kHz.
+Plot normalized cardiac phase `t/T` horizontally with labels
 at zero, one third, two thirds, and one. Preserve NaN gaps and the excluded
 endpoint; area-axis labels include power units and ratio axes are dimensionless.
 Each available curve exports independently.
@@ -579,10 +602,11 @@ per-workflow outcomes. Velocity-analysis data is flushed before optional pulse
 PNG, segment-map AVI, and velocity-signal figure exports; export failures are
 warnings and do not invalidate the scientific products.
 
-For band mode, an exactly zero LF sample maps to ratio zero. No epsilon is
+For band mode, clamp the HF numerator to zero when negative. An exactly zero
+LF denominator maps to ratio zero without performing division. No epsilon is
 added. A nonzero ratio beyond finite `float32` range raises a clear error rather
 than emitting infinity. Missing exact band paths, mismatched shapes, nonnumeric
-data, NaN/Inf, and negative power values also fail explicitly. A failed band
+data, NaN/Inf, and negative LF values also fail explicitly. A failed band
 workflow is skipped independently of the moments workflow.
 
 Band outputs report the LF quality threshold (`1e-6` of each frame maximum) and
@@ -659,6 +683,8 @@ families are:
   median after vessel dilation, and `/Segmentation/Gaps/Mask` for the intersection
   of their gap support (OR of vessels before inversion), restricted to the
   outer disc and excluding the optic disc, used downstream;
+- `/ProcessingSpectrograms/FrequencyBinTable` for zero-based bin indices and
+  their signed frequencies in kHz, shaped `(freq, 2)`;
 - `/ProcessingSpectrograms/Global/SpatialAverage` and `SpatialMedian` for full-frame
   spatial power reductions, shaped `(time, freq)`;
 - `/ProcessingSpectrograms/Gaps/SpatialMedian` for shared spatial median gap band power, shaped
@@ -674,7 +700,8 @@ families are:
 - `/ProcessingSpectrograms/Gaps/TimeAggregated/StdBeat`, `StdBeatEarly`, and
   `StdBeatLate` for population beat STD of whole/early/late per-beat phase medians;
 - `/ProcessingSpectrograms/Gaps/Metrics` for pooled scalars, fixed-peak phase
-  curves, early/late medians, and signed early-minus-late differences;
+  curves, early/late medians, and signed differences (late-minus-early for
+  Z1/Z2, early-minus-late for areas and ratios);
 - `/ProcessingSpectrograms/Gaps/PerBeat/SVDContinuous` for SVD-filtered
   concatenated beats, shaped `(beat * phase, freq)` with `(time, freq)` axes;
 - `/Meta` for provenance and selected pass-through data.

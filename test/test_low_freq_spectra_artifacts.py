@@ -25,7 +25,7 @@ from pipelines.low_freq_spectra.artifacts import (
     _positive_spectra_figure,
     export_spectrogram_figures,
 )
-from pipelines.low_freq_spectra.frequency import frequency_coordinates_khz, positive_frequency_coordinates_khz
+from calculations.math.frequency import frequency_coordinates_khz, positive_frequency_coordinates_khz
 
 
 @pytest.mark.parametrize("frames, frame_ticks", [(103, [0, 50, 100]), (640, list(range(0, 640, 100)))])
@@ -70,6 +70,11 @@ def test_median_labels_signed_khz_without_reordering_or_filling_nan():
     ax = _gap_median_figure(values, sampling_frequency_hz=8000).axes[0]
     np.testing.assert_array_equal(ax.lines[0].get_xdata(), [0, 1, 2, 3])
     np.testing.assert_array_equal(ax.lines[0].get_ydata(), values)
+    zero_line = ax.lines[1]
+    np.testing.assert_array_equal(zero_line.get_ydata(), [0, 0])
+    assert zero_line.get_linestyle() == ":"
+    assert zero_line.get_color() == "black"
+    assert zero_line.get_linewidth() == 0.4
     np.testing.assert_array_equal(ax.get_xticks(), [0, 1, 2, 3])
     assert [label.get_text() for label in ax.get_xticklabels()] == ["0", "2", "-4", "-2"]
     assert all(label.get_fontsize() == 8 for label in ax.get_xticklabels())
@@ -100,6 +105,10 @@ def test_mask_preserves_published_xy_orientation_and_square_pixels():
 @pytest.mark.parametrize("metric, unit, label", [
     ("A0", "power_unit", "A0 (power_unit)"), ("R1", "1", "R1"),
     ("Z1", "1", "Z1"), ("Z2", "1", "Z2"),
+    ("A0", "a.u.*kHz", "A0 (a.u.)"),
+    ("A1", "a.u.*kHz", "A1 (a.u.)"),
+    ("A2", "a.u.*kHz", "A2 (a.u.)"),
+    ("A1", "a.u. * kHZ", "A1 (a.u.)"),
 ])
 def test_metric_curves_preserve_phase_coordinates_nan_gaps_and_units(metric, unit, label):
     phase = np.array([0, 0.1, 0.5, 0.9])
@@ -134,6 +143,8 @@ def test_positive_spectra_share_the_stored_peak_cutoff_and_normalize_their_own_s
     first[5], second[7] = 10, 20
     first[40], second[50] = 10000, 20000  # Negative peaks cannot affect positive normalization.
     first[12] = np.nan
+    first[24:40] = 4
+    second[24:40] = 6
     first[29:32] = [2, 4, 100]
     second[29:32] = [3, 6, 100]
     original = first.copy()
@@ -165,7 +176,7 @@ def test_positive_frequency_calibration_uses_actual_positive_half(bin_count):
     )
     np.testing.assert_array_equal(curve.frequencies_khz, coordinates[5:])
     assert curve.power.size == stop - 5
-    # The peak does not affect normalization by the final positive bins.
+    # The peak does not affect normalization by the central-quarter Hv.
     np.testing.assert_array_equal(curve.power, np.ones(stop - 5))
 
 
@@ -201,20 +212,21 @@ def test_unusable_normalization_does_not_fabricate_a_positive_spectrum(values):
     assert _positive_spectrum_curve(values, np.zeros(64), sampling_frequency_hz=64000, label="Median", linestyle="-", index_max1=0) is None
 
 
-@pytest.mark.parametrize("bin_count", [2, 16, 31, 32, 64, 128])
-def test_normalization_neighborhood_is_final_tenth_of_actual_positive_half(bin_count):
+@pytest.mark.parametrize("bin_count, start, stop", [
+    (2, 0, 2), (16, 6, 10), (31, 11, 19), (32, 12, 20), (64, 24, 40), (128, 48, 80),
+])
+def test_normalization_uses_central_quarter_hv_of_the_full_spectrum(bin_count, start, stop):
     values = np.full(bin_count, 10000.0)
-    stop = bin_count // 2
-    values[:stop] = np.arange(1, stop + 1)
-    length = max(1, stop // 10)
-    assert _positive_spectrum_baseline(values) == np.median(np.arange(stop - length + 1, stop + 1))
+    values[start:stop] = np.arange(1, stop - start + 1)
+    assert _positive_spectrum_baseline(values) == (stop - start + 1) / 2
 
 
 def test_normalization_median_ignores_nan_without_expanding_the_neighborhood():
     values = np.full(64, 10000.0)
+    values[24:40] = np.nan
     values[29:32] = [4, np.nan, 12]
     assert _positive_spectrum_baseline(values) == 8
-    values[29:32] = np.nan
+    values[24:40] = np.nan
     assert _positive_spectrum_baseline(values) is None
 
 
@@ -296,7 +308,7 @@ def test_missing_calibration_preserves_mask_exports_without_mislabeled_spectral_
         assert schema.spectrograms_masked in h5
 
 
-def test_export_reads_shared_peak_from_h5_and_does_not_save_frequency_coordinates(tmp_path):
+def test_export_reads_shared_peak_without_mutating_hdf5(tmp_path):
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
     schema = EyeFlowOutputPaths.active()
     with h5py.File(tmp_path / "out.h5", "w") as h5:
@@ -311,7 +323,8 @@ def test_export_reads_shared_peak_from_h5_and_does_not_save_frequency_coordinate
             values = np.ones(64)
             values[peak] = maximum
             values[12] = np.nan
-            values[40] = 10000  # Negative-frequency bins cannot affect the normalization median.
+            values[40] = 10000  # Outside the central-quarter Hv neighborhood.
+            values[24:40] = baseline
             values[29:32] = [baseline, np.nan, baseline]
             std = np.full(64, deviation)
             spectra[label] = (values, std, baseline)

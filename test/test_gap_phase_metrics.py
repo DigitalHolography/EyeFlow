@@ -80,7 +80,7 @@ def test_early_late_medians_include_shared_third_boundary_and_deltas_have_signed
     expected = {
         "A2": (45, 20, 25), "A1": (17, 16.5, 0.5), "A0": (15, 22.5, -7.5),
         "R1": (17 / 15, 33 / 40, 37 / 120), "R2": (3, 23 / 24, 49 / 24),
-        "Z1": (2 / 15, -7 / 40, 37 / 120), "Z2": (2, -1 / 24, 49 / 24),
+        "Z1": (2 / 15, -7 / 40, -37 / 120), "Z2": (2, -1 / 24, -49 / 24),
     }
     for name, (early, late, delta) in expected.items():
         value, attrs = metrics[f"{root}/{name}_t"]
@@ -101,9 +101,13 @@ def test_early_late_medians_include_shared_third_boundary_and_deltas_have_signed
             assert aggregate_attrs["dimDesc"] == []
             assert "phase_samples" not in aggregate_attrs
         assert metrics[f"{root}/delta_{name}"][0] == pytest.approx(delta)
-        assert metrics[f"{root}/delta_{name}"][1]["source_paths"] == [
-            f"/{root}/{name}_early", f"/{root}/{name}_late",
+        minuend, subtrahend = ("late", "early") if name in {"Z1", "Z2"} else ("early", "late")
+        delta_attrs = metrics[f"{root}/delta_{name}"][1]
+        assert delta_attrs["source_paths"] == [
+            f"/{root}/{name}_{minuend}", f"/{root}/{name}_{subtrahend}",
         ]
+        assert delta_attrs["definition"] == f"{name}_{minuend} minus {name}_{subtrahend}"
+        assert delta_attrs["calculation_method"] == f"{minuend}_median_minus_{subtrahend}_median"
     # Aggregate the ratios themselves, rather than dividing aggregated areas.
     assert metrics[f"{root}/R1_late"][0] != pytest.approx(16.5 / 22.5)
 

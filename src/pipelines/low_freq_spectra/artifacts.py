@@ -8,13 +8,14 @@ from pathlib import Path
 
 import numpy as np
 
+from calculations.math.frequency import positive_frequency_coordinates_khz
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.eps import EpsArtifactWriter
 from input_output.writers.png import PngArtifactWriter
 from utils.logger import Logger
 
-from .frequency import frequency_ticks, positive_frequency_coordinates_khz, read_sampling_frequency_hz
-from .metrics import PHASE_METRIC_NAMES
+from .frequency import frequency_ticks, read_sampling_frequency_hz
+from .metrics import PHASE_METRIC_NAMES, spectrum_valley_height
 
 FIGURE_DPI = 320
 FIGURE_WIDTH_INCHES = 8.0 / 2.54
@@ -101,7 +102,7 @@ def _export_positive_spectra(output, manager, sampling_frequency: float) -> list
         if curve is None:
             Logger.log_warning(
                 f"Skipping normalized {label.lower()} spectrum: need a valid positive-bin cutoff "
-                "and a positive finite median in the final 10% of positive bins."
+                "and a positive finite Hv from the central 25% of all bins."
             )
         else:
             curves[label] = curve
@@ -183,6 +184,7 @@ def _gap_median_figure(values: np.ndarray, *, sampling_frequency_hz: float):
     fig, ax = _figure()
     bins = np.arange(values.size)
     ax.plot(bins, values, color="black", linewidth=SIGNAL_LINE_WIDTH)
+    ax.axhline(0, color="black", linestyle=":", linewidth=BOX_LINE_WIDTH, zorder=1)
     positions, labels = frequency_ticks(values.size, sampling_frequency_hz)
     ax.set_xticks(positions, labels=labels)
     ax.set_xlabel("Frequency (kHz)")
@@ -227,17 +229,15 @@ def _positive_spectrum_curve(
 
 
 def _positive_spectrum_baseline(values) -> float | None:
-    """Median of the final max(1, floor(10%)) positive bins, ignoring NaNs."""
+    """Use the same central-quarter Hv as A0, computed before positive-bin cropping."""
     values = np.asarray(values, dtype=np.float64)
     if values.ndim != 1 or values.size < 2:
         return None
     positive = values[:values.size // 2]
     if np.any(np.isinf(positive)):
         return None
-    length = max(1, positive.size // 10)
-    neighborhood = positive[-length:]
-    valid = neighborhood[~np.isnan(neighborhood)]
-    return float(np.median(valid)) if valid.size else None
+    hv = float(spectrum_valley_height(values))
+    return hv if np.isfinite(hv) else None
 
 
 def _positive_spectra_figure(curves: list[_PositiveSpectrum]):
@@ -300,7 +300,8 @@ def _gap_metric_figure(values: np.ndarray, phase: np.ndarray, *, metric: str, un
     ax.set_xlim(0, 1)
     ax.set_xticks([0, 1 / 3, 2 / 3, 1], labels=["0", "1/3", "2/3", "1"])
     ax.set_xlabel("Cardiac phase (t/T)")
-    ax.set_ylabel(metric if unit == "1" else f"{metric} ({unit})")
+    display_unit = "a.u." if unit.replace(" ", "").lower() == "a.u.*khz" else unit
+    ax.set_ylabel(metric if display_unit == "1" else f"{metric} ({display_unit})")
     _style_figure(fig)
     ax.tick_params(axis="x", labelrotation=0)
     return fig

@@ -17,6 +17,8 @@ from pipeline_engine import ExecutionVariant, PipelineDAG, PipelineDescriptor
 from pipeline_engine.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
 from pipelines.low_freq_spectra.runner import run_low_freq_spectra
+from pipelines.low_freq_spectra.frequency import write_frequency_bin_table
+from input_output.h5_access import PipelineH5Output
 from pipelines.topology_core.runner import CAPILLARY_ANALYSIS_ZONES_STATE
 from pipelines.velocity.models import VelocityWorkflows
 from pipelines.velocity.runner import VELOCITY_WORKFLOWS_STATE
@@ -184,6 +186,50 @@ def test_positive_figures_export_for_32_bin_input_with_the_stored_peak(tmp_path)
     for extension in ("png", "eps"):
         for suffix in ("early_late", "beat", "all"):
             assert (ef_dir / extension / "spectrograms" / f"scan_gaps_positive_freq_median_phase_{suffix}.{extension}").is_file()
+
+
+@pytest.mark.parametrize("bin_count", [1, 32, 64])
+def test_frequency_bin_table_is_written_without_detected_timing_or_figure_export(tmp_path, bin_count):
+    spec = _spec(tmp_path, moments="undetected", bands="undetected")
+    with h5py.File(tmp_path / "scan/scan_HD/h5/scan_HD_output.h5", "a") as hd:
+        del hd["spectrograms"]
+        hd.create_dataset("spectrograms", data=np.ones((6, bin_count, 2, 2)))
+        hd["HD_parameters"][()] = json.dumps({"sampling_freq": 64000})
+    with patch("pipelines.low_freq_spectra.runner.export_spectrogram_figures", return_value=[]):
+        result = execute_run(spec)
+    assert result.succeeded, result.failures
+    schema = EyeFlowOutputPaths.active()
+    with h5py.File(result.outputs[0], "r") as output:
+        table = output[schema.spectrograms_frequency_bin_table]
+        assert table.name == "/ProcessingSpectrograms/FrequencyBinTable"
+        assert table.shape == (bin_count, 2)
+        assert table.dtype == np.float32
+        np.testing.assert_array_equal(table[:, 0], np.arange(bin_count))
+        frequencies = np.arange(bin_count, dtype=float)
+        if bin_count > 1:
+            frequencies[bin_count // 2:] -= bin_count
+        np.testing.assert_allclose(table[:, 1], frequencies * (64 / bin_count))
+        assert list(table.attrs["column_names"]) == ["bin_index", "frequency_khz"]
+        assert list(table.attrs["unit"]) == ["1", "kHz"]
+        assert list(table.attrs["dimDesc"]) == ["freq", "column"]
+        assert table.attrs["index_base"] == 0
+        assert table.attrs["sampling_frequency_hz"] == 64000
+        assert table.attrs["sampling_frequency_source_path"] == "/" + schema.sampling_frequency_hz
+        assert table.attrs["source_path"] == "/spectrograms"
+        assert schema.spectrograms_spatial_average in output
+        assert schema.spectrograms_masked_per_beat not in output
+
+
+@pytest.mark.parametrize("sampling_frequency", [None, 0, np.nan])
+def test_frequency_bin_table_requires_valid_calibration(tmp_path, sampling_frequency):
+    schema = EyeFlowOutputPaths.active()
+    with h5py.File(tmp_path / "out.h5", "w") as h5:
+        if sampling_frequency is not None:
+            h5.create_dataset(schema.sampling_frequency_hz, data=sampling_frequency)
+        with patch("pipelines.low_freq_spectra.frequency.Logger.log_warning") as warning:
+            write_frequency_bin_table(SimpleNamespace(h5=PipelineH5Output(h5)), 64)
+        assert schema.spectrograms_frequency_bin_table not in h5
+        warning.assert_called_once()
 
 
 def test_masked_spatial_median_feeds_persisted_downstream_spectra(tmp_path):

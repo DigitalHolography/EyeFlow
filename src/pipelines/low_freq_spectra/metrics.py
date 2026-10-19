@@ -8,11 +8,11 @@ import numpy as np
 from scipy.integrate import trapezoid
 
 from calculations.math import nanmedian
+from calculations.math.frequency import frequency_bin_spacing_khz
 from input_output.schema import EyeFlowOutputPaths
 from utils.logger import Logger
 
 from .per_beat import early_late_phase_windows
-from .frequency import frequency_bin_spacing_khz
 
 DEFAULT_VALLEY_NEIGHBORHOOD_FRACTION = 1 / 4
 PHASE_METRIC_NAMES = ("A0", "A1", "A2", "R1", "R2", "Z1", "Z2")
@@ -78,7 +78,6 @@ def analyze_spectrum(
     values = np.asarray(values, dtype=np.float64)
     spacing = frequency_bin_spacing_khz(values.size, sampling_frequency_hz)
     middle = values.size // 2
-    valley_bins = _valley_neighborhood_indices(valley_neighborhood_length, values.size)
     result["index_max1"], result["max1"] = _peak(values, 0, middle)
     result["index_max2"], result["max2"] = _peak(values, middle, values.size)
     for name, start, stop in (("1", 0, middle), ("2", middle, values.size)):
@@ -92,7 +91,7 @@ def analyze_spectrum(
         index_min2=float(middle), min2=float(values[middle]),
     )
     h0 = (result["max1"] + result["max2"]) / 2
-    hv = float(nanmedian(values[valley_bins], dtype=np.float64))
+    hv = float(spectrum_valley_height(values, valley_neighborhood_length=valley_neighborhood_length))
     if np.isfinite(result["index_max1"]) and np.isfinite(result["index_max2"]):
         start = int(result["index_max1"])
         stop = int(result["index_max2"]) + 1
@@ -124,6 +123,15 @@ def _valley_neighborhood_indices(length: int | None, bin_count: int) -> np.ndarr
         )
     middle = bin_count // 2
     return np.arange(middle - length // 2, middle + length // 2)
+
+
+def spectrum_valley_height(spectrum, *, valley_neighborhood_length: int | None = None):
+    """Return Hv over the central quarter of the last (frequency) axis, ignoring NaNs."""
+    values = np.asarray(spectrum, dtype=np.float64)
+    if values.ndim < 1 or values.shape[-1] < 2:
+        raise ValueError("Valley height requires a frequency axis with at least two bins.")
+    bins = _valley_neighborhood_indices(valley_neighborhood_length, values.shape[-1])
+    return nanmedian(values[..., bins], axis=-1, dtype=np.float64)
 
 
 def _peak(values: np.ndarray, start: int, stop: int) -> tuple[float, float]:
@@ -246,8 +254,7 @@ def analyze_phase_spectrum(
     start, stop = int(index_max1), int(index_max2) + 1
     spacing = frequency_bin_spacing_khz(values.shape[1], sampling_frequency_hz)
     width = (stop - start - 1) * spacing
-    valley_bins = _valley_neighborhood_indices(valley_neighborhood_length, values.shape[1])
-    result["A0"] = width * nanmedian(values[:, valley_bins], axis=1, dtype=np.float64)
+    result["A0"] = width * spectrum_valley_height(values, valley_neighborhood_length=valley_neighborhood_length)
     result["A1"] = trapezoid(values[:, start:stop], dx=spacing, axis=1)
     result["A2"] = width * (values[:, start] + values[:, stop - 1]) / 2
     for name, numerator in (
@@ -325,11 +332,12 @@ def _pack_phase_metrics(
                 "valid_sample_count": int(np.count_nonzero(~np.isnan(curve[mask]))),
                 "nonfinite_value_policy": "ignore_NaN_all_NaN_window_returns_NaN",
             })
-        output[f"{root}/delta_{name}"] = (np.float32(aggregates["early"] - aggregates["late"]), {
+        minuend, subtrahend = ("late", "early") if name in {"Z1", "Z2"} else ("early", "late")
+        output[f"{root}/delta_{name}"] = (np.float32(aggregates[minuend] - aggregates[subtrahend]), {
             **scalar_attrs,
-            "definition": f"{name}_early minus {name}_late",
-            "source_paths": [f"/{root}/{name}_early", f"/{root}/{name}_late"],
-            "calculation_method": "early_median_minus_late_median",
+            "definition": f"{name}_{minuend} minus {name}_{subtrahend}",
+            "source_paths": [f"/{root}/{name}_{minuend}", f"/{root}/{name}_{subtrahend}"],
+            "calculation_method": f"{minuend}_median_minus_{subtrahend}_median",
             "nonfinite_value_policy": "missing_early_or_late_median_propagates_NaN",
         })
     return output

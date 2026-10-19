@@ -1,10 +1,13 @@
-"""DC-zero frequency calibration for full-spectrum HD exports."""
+"""Adapt shared frequency calibration to spectral metadata, output, and plot ticks."""
 
 from __future__ import annotations
 
 import numpy as np
 
+from calculations.math.frequency import frequency_coordinates_khz
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.holodoppler import HD_SPECTOGRAMS_PATH
+from utils.logger import Logger
 
 
 def read_sampling_frequency_hz(output) -> float | None:
@@ -19,29 +22,29 @@ def read_sampling_frequency_hz(output) -> float | None:
     return value if np.isfinite(value) and value > 0 else None
 
 
-def frequency_bin_spacing_khz(bin_count: int, sampling_frequency_hz: float) -> float:
-    """Return the positive full-spectrum bin spacing in kHz."""
-    if bin_count < 1 or not np.isfinite(sampling_frequency_hz) or sampling_frequency_hz <= 0:
-        raise ValueError("Frequency calibration requires bins and a positive finite sampling frequency.")
-    return float(sampling_frequency_hz / (bin_count * 1000))
-
-
-def positive_frequency_coordinates_khz(bin_count: int, sampling_frequency_hz: float) -> np.ndarray:
-    """Return the actual positive/DC half of the full-spectrum frequency grid."""
-    return frequency_coordinates_khz(bin_count, sampling_frequency_hz)[:bin_count // 2]
-
-
-def frequency_coordinates_khz(bin_count: int, sampling_frequency_hz: float) -> np.ndarray:
-    """Map HD full-spectrum positive-then-negative bins with spacing fs / N.
-
-    For 64 bins, indices 0..31 are positive/DC and index 32 is -fs/2.
-    The corresponding positive Nyquist edge +fs/2 is just beyond bin 31.
-    """
-    spacing = frequency_bin_spacing_khz(bin_count, sampling_frequency_hz)
-    bins = np.arange(bin_count, dtype=np.float64)
-    if bin_count > 1:
-        bins[bin_count // 2:] -= bin_count
-    return bins * spacing
+def write_frequency_bin_table(output, bin_count: int) -> None:
+    """Persist every source bin and its signed kHz frequency once per run."""
+    sampling_frequency = read_sampling_frequency_hz(output)
+    if sampling_frequency is None:
+        Logger.log_warning("Skipping FrequencyBinTable: a positive HD sampling frequency is required.")
+        return
+    schema = EyeFlowOutputPaths.active()
+    frequencies = frequency_coordinates_khz(bin_count, sampling_frequency)
+    output.h5.write(
+        schema.spectrograms_frequency_bin_table,
+        np.column_stack((np.arange(bin_count), frequencies)),
+        dimDesc=["freq", "column"],
+        column_names=["bin_index", "frequency_khz"],
+        unit=["1", "kHz"],
+        index_base=0,
+        source_path=f"/{HD_SPECTOGRAMS_PATH}",
+        source_bin_count=bin_count,
+        sampling_frequency_hz=sampling_frequency,
+        sampling_frequency_source_path="/" + schema.sampling_frequency_hz,
+        frequency_bin_order="positive_then_negative_DC_zero",
+        bin_domain_split_index=bin_count // 2,
+        definition="zero-based HD bin index and signed frequency in kHz with full-spectrum fs/N spacing",
+    )
 
 
 def frequency_ticks(bin_count: int, sampling_frequency_hz: float) -> tuple[np.ndarray, list[str]]:

@@ -342,6 +342,8 @@ def _build_frequency_bands_provenance(
         ),
         "band_lf_source_path": FREQUENCY_BAND_LF_PATH,
         "band_hf_source_path": FREQUENCY_BAND_HF_PATH,
+        "band_hf_negative_value_policy": "clamp_to_zero_before_ratio",
+        "band_lf_zero_value_policy": "zero_ratio_without_division",
         **quality_counts,
     }
 
@@ -397,6 +399,7 @@ def _iter_frequency_band_chunks(
             inputs.second_volume,
             frame_slice,
             FREQUENCY_BAND_HF_PATH,
+            allow_negative=True,
         )
         yield VelocityEstimatorChunk(
             chunk_index=chunk_index,
@@ -604,6 +607,8 @@ def _read_validated_band_chunk(
     volume,
     frame_slice: slice,
     dataset_path: str,
+    *,
+    allow_negative: bool = False,
 ) -> np.ndarray:
     values = _read_volume_chunk(volume, frame_slice)
     if not np.all(np.isfinite(values)):
@@ -611,7 +616,7 @@ def _read_validated_band_chunk(
             f"HoloDoppler frequency-band dataset {dataset_path} contains "
             f"non-finite values in frames {frame_slice.start}:{frame_slice.stop}."
         )
-    if np.any(values < 0.0):
+    if not allow_negative and np.any(values < 0.0):
         raise ValueError(
             f"HoloDoppler frequency-band dataset {dataset_path} contains "
             f"negative values in frames {frame_slice.start}:{frame_slice.stop}."
@@ -625,9 +630,9 @@ def _safe_band_ratio(
     *,
     frame_slice: slice,
 ) -> np.ndarray:
-    """Return HF/LF with exact-zero LF mapped to zero and no epsilon bias."""
+    """Return max(HF, 0)/LF, mapping exact-zero LF to zero without division."""
 
-    high64 = np.asarray(high_frequency, dtype=np.float64)
+    high64 = np.maximum(np.asarray(high_frequency, dtype=np.float64), 0.0)
     low64 = np.asarray(low_frequency, dtype=np.float64)
     ratio64 = np.divide(
         high64,
