@@ -318,6 +318,17 @@ def _create_dataset(
             dtype=h5py.string_dtype(encoding="utf-8"),
         )
     options = dict(h5_options or {})
+    # HDF5 filters require chunked arrays; scalars and strings stay unfiltered.
+    if (
+        isinstance(payload, np.ndarray)
+        and payload.ndim > 0
+        and payload.dtype.kind in {"b", "i", "u", "f", "c"}
+    ):
+        options.setdefault("compression", "gzip")
+        if options["compression"] == "gzip":
+            options.setdefault("compression_opts", 6)
+        if options["compression"] is not None:
+            options.setdefault("shuffle", True)
     if isinstance(payload, np.ndarray) and payload.dtype.kind in {"U", "O"}:
         if all(isinstance(item, (str, bytes)) for item in payload.flat):
             payload = np.asarray(payload, dtype=object)

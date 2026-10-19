@@ -1,35 +1,47 @@
-"""Requested DC-zero frequency calibration for exported spectral bins."""
+"""DC-zero frequency calibration for full-spectrum HD exports."""
 
 from __future__ import annotations
 
 import numpy as np
 
-POSITIVE_FREQUENCY_BIN_COUNT = 32
+from input_output.schema import EyeFlowOutputPaths
 
 
-def positive_frequency_coordinates_khz(sampling_frequency_hz: float) -> np.ndarray:
-    """Return display bins 0..32 with bin 32 fixed at fs/4, independent of array size.
+def read_sampling_frequency_hz(output) -> float | None:
+    """Read shared HD calibration, returning None when it is absent or invalid."""
+    source = output.h5.get(EyeFlowOutputPaths.active().sampling_frequency_hz)
+    if source is None:
+        return None
+    try:
+        value = float(np.asarray(source[()]).reshape(()))
+    except (TypeError, ValueError):
+        return None
+    return value if np.isfinite(value) and value > 0 else None
 
-    Bin 32 is the calibration endpoint; the positive-spectrum figures report
-    only bins through 31. These coordinates are used only for plotting.
-    """
-    if not np.isfinite(sampling_frequency_hz) or sampling_frequency_hz <= 0:
-        raise ValueError("Frequency calibration requires a positive finite sampling frequency.")
-    return np.linspace(0.0, sampling_frequency_hz / 4000, POSITIVE_FREQUENCY_BIN_COUNT + 1)
+
+def frequency_bin_spacing_khz(bin_count: int, sampling_frequency_hz: float) -> float:
+    """Return the positive full-spectrum bin spacing in kHz."""
+    if bin_count < 1 or not np.isfinite(sampling_frequency_hz) or sampling_frequency_hz <= 0:
+        raise ValueError("Frequency calibration requires bins and a positive finite sampling frequency.")
+    return float(sampling_frequency_hz / (bin_count * 1000))
+
+
+def positive_frequency_coordinates_khz(bin_count: int, sampling_frequency_hz: float) -> np.ndarray:
+    """Return the actual positive/DC half of the full-spectrum frequency grid."""
+    return frequency_coordinates_khz(bin_count, sampling_frequency_hz)[:bin_count // 2]
 
 
 def frequency_coordinates_khz(bin_count: int, sampling_frequency_hz: float) -> np.ndarray:
-    """Map HD positive-then-negative bin order with spacing fs / (2 * N).
+    """Map HD full-spectrum positive-then-negative bins with spacing fs / N.
 
-    For 64 bins, indices 0..31 are positive/DC and index 32 is -fs/4.
-    The corresponding positive edge +fs/4 is just beyond the positive half.
+    For 64 bins, indices 0..31 are positive/DC and index 32 is -fs/2.
+    The corresponding positive Nyquist edge +fs/2 is just beyond bin 31.
     """
-    if bin_count < 1 or not np.isfinite(sampling_frequency_hz) or sampling_frequency_hz <= 0:
-        raise ValueError("Frequency calibration requires bins and a positive finite sampling frequency.")
+    spacing = frequency_bin_spacing_khz(bin_count, sampling_frequency_hz)
     bins = np.arange(bin_count, dtype=np.float64)
     if bin_count > 1:
         bins[bin_count // 2:] -= bin_count
-    return bins * (sampling_frequency_hz / (2 * bin_count * 1000))
+    return bins * spacing
 
 
 def frequency_ticks(bin_count: int, sampling_frequency_hz: float) -> tuple[np.ndarray, list[str]]:

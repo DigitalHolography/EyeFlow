@@ -99,6 +99,14 @@ The source layout requires `src` on `sys.path`; an editable install provides
 that. If using an existing interpreter without an editable install, set
 `PYTHONPATH` to the repository's `src` directory for the command.
 
-Before changing a contract, search both its producer and consumers. Before
-finishing, run the focused tests from [the test map](test/AGENTS.md), then the
-full suite when the change crosses subsystem boundaries.
+Before changing a contract, search both its producer and consumers. Keep
+verification proportional to the change, using [the test map](test/AGENTS.md)
+to find the smallest relevant test cases rather than running every mapped file.
+For simple output-path/name changes, run only a focused contract test; for
+documentation-only changes, do not run tests. Avoid expensive end-to-end
+workflow tests for path, naming, or presentation changes when focused coverage
+verifies the behavior. Crossing a directory or subsystem boundary alone does
+not require the full suite. Run broad integration tests or the full suite only
+when requested or when a concrete behavior risk cannot be covered by smaller
+checks. Do not repeat passing checks unless a relevant change, failure, or
+unresolved concern justifies it.

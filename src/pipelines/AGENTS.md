@@ -71,7 +71,7 @@ mode; finite/non-negative validation and calibration provenance are part of the
 pipeline contract.
 
 `low_freq_spectra/spectrograms.py` reads HD frequency-bin spectra once per frame for
-full-frame `SpatialAverage`/`SpatialMedian` reductions and optional gap median
+full-frame `Global/SpatialAverage`/`Global/SpatialMedian` reductions and optional gap median
 power. `low_freq_spectra/preprocessing.py` interpolates Boolean gap support with
 nearest neighbors to the spectrogram video's last two dimensions. The low-frequency spectral
 runner publishes `/ProcessingSpectrograms/Gaps/SpatialMedian` with `(time, freq)`
@@ -101,23 +101,33 @@ frequency order, window endpoints, and selected/valid sample counts.
 over beats after each beat's whole/early/late phase median, reusing `PerBeat/Raw`.
 Ignore NaNs; one valid beat gives zero, none gives NaN. Persist raw power units,
 `ddof=0`, reduction order, windows, and valid beat counts per frequency.
-Positive-frequency PNG/EPS overlays use these STD envelopes and normalize each
-curve by its own maximum over bins 0 through 31. Their frequency grid is fixed
-at `linspace(0, fs/4, 33)` in Hz, independent of source length. All three figures
-report the same stored `Metrics/index_max1` through bin 31 inclusive. Keep power
-linear, scale STD by the same per-curve maximum, and do not save the grid to HDF5.
-Missing/invalid stored peaks or fewer than 32 bins omit these figures.
+Positive-frequency PNG/EPS overlays use the actual positive/DC half of the
+source: `P=floor(N/2)` bins at spacing `fs/N`. Normalize each curve by the
+NaN-aware median of the final `max(1,floor(0.1*P))` positive bins (64 source bins
+use bins 29 through 31), before cropping from stored `Metrics/index_max1`
+through bin `P-1` inclusive. Scale STD by the same per-curve divisor, retain
+linear power, and do not save the grid to HDF5. Missing/invalid stored peaks,
+all-NaN neighborhoods, or nonpositive divisors omit the affected figures.
 Median/early/late use solid/dashed/dotted signals and envelope patterns.
-The full-domain heatmap/median frequency axes use spacing `fs/(2*N)` with DC zero,
+An additional `gaps_positive_freq_median_phase_all_common_norm` PNG/EPS overlay
+divides all three curves and their STD envelopes by the minimum of their
+three separately computed normalization medians. Require all three spectra/STD
+pairs, valid bin support, and positive medians. Keep the individually normalized
+outputs alongside it.
+The `gaps_positive_freq_median_phase_early_late_common_norm` variant uses the
+minimum of the Early and Late normalization medians, including their STD envelopes, and does
+not require the Median spectrum/STD pair.
+The full-domain heatmap/median frequency axes use full-spectrum spacing `fs/N` with DC zero,
 positive-then-negative order, and kHz labels. Resolve `fs` from shared
 `Meta/SamplingFrequencyHz/value`; publish it from HD timing parameters/config
 before export if absent, since velocity analysis may run later. Missing/invalid
 sampling metadata skips frequency figures while keeping other products.
 The spectrum figure and pooled scalar metrics consume `MedianPhaseBeat`.
 All gap metrics live directly under `/ProcessingSpectrograms/Gaps/Metrics`.
-Phase curves `A0_t`, `A1_t`, `A2_t`, `R1_t`, and `R2_t` use `MedianBeat` with
-the pooled peak indices fixed at every phase. Retain the original pooled scalar
-names `A0`/`A1`/`A2`/`R1`/`R2`; remove output heights `h0`/`h1`/`hv` and `rho_h`.
+Phase curves `A0_t`, `A1_t`, `A2_t`, `R1_t`, `R2_t`, `Z1_t`, and `Z2_t` use
+`MedianBeat` with the pooled peak indices fixed at every phase. Pooled scalar
+metrics use the same seven names without `_t`; output heights `h0`/`h1`/`hv`
+and `rho_h` are absent.
 Each curve also has `_early` and `_late` scalar medians over closed phase
 intervals `[0,1/3]` and `[1/3,1]`, and a signed `delta_<metric>` early-minus-late
 scalar. Ignore NaNs within each window; missing windows/differences remain NaN.
@@ -132,8 +142,21 @@ with at least two bins is supported; an explicit even `valley_neighborhood_lengt
 overrides the default. Peak halves and central valley bins scale with the domain,
 splitting at `floor(bin_count/2)` for odd lengths. All-NaN peak halves retain NaN
 indexes, log a warning, and are identified by per-half valid-bin counts in metadata.
-`A2` uses the same inclusive peak-to-peak width as `A0`.
-`R1=A1/A0` replaces `rho_A`; `R2=A2/A0`. Metric metadata records the neighborhood.
+`A0` is valley-median height times peak-to-peak width in kHz; `A2` is the
+peak-height mean times the same width. These swap the former A0/A2 meanings.
+Use `df_khz=fs/(N*1000)` and width `(index_max2-index_max1)*df_khz`, with no
+extra bin. `A1` is the trapezoidal integral between those peak bins with positive
+`df_khz` spacing in stored HD order (unwrapped kHz, no signed-axis sorting).
+Areas and their phase summaries/deltas have source-power-times-kHz units;
+peak/valley heights retain power units. Preserve calibration, spacing, integration
+method, and units in metadata and plots. Resolve calibration from shared
+`Meta/SamplingFrequencyHz/value`; missing/invalid calibration warns and skips
+the Metrics family while retaining raw/aggregate spectra and filters.
+`R1=A1/A0`, `R2=A2/A0`,
+`Z1=(A1-A0)/A0`, and `Z2=(A2-A0)/A0` are dimensionless; zero/missing A0 gives
+NaN. All seven metrics have pooled scalars, phase curves, early/late medians,
+signed early-minus-late deltas, and matching PNG/EPS phase plots.
+Metric metadata records the neighborhood.
 Independent `PerBeat/BandLimited` keeps DC plus the configured non-DC harmonics
 (default 12) via the shared bandlimiting API in signed mode, using
 periodic phase boundaries. Original durations define each effective Hz cutoff.

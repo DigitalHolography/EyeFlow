@@ -12,6 +12,7 @@ from pipelines.velocity.models import RetinalVelocity
 from utils.logger import Logger
 
 from .metrics import pack_spectrum_metrics
+from .frequency import read_sampling_frequency_hz
 from .per_beat import beat_spectrum_std, early_late_phase_windows, gap_spectrograms_per_beat
 from .signal_processing import (
     DEFAULT_GAP_SVD_REMOVED_MODES,
@@ -158,11 +159,18 @@ def run_gap_analysis(
             "valid_beat_count_per_frequency": valid_counts,
             "nonfinite_value_policy": "ignore_NaN_no_valid_beats_returns_NaN_one_valid_beat_returns_zero",
         })
-    metrics.update(pack_spectrum_metrics(
-        spectrum, source_attrs=median_attrs,
-        valley_neighborhood_length=valley_neighborhood_length,
-        phase_spectrum=beat_spectrum, phase_attrs=beat_median_attrs,
-    ))
+    sampling_frequency = read_sampling_frequency_hz(ctx.output)
+    if sampling_frequency is None:
+        Logger.log_warning(
+            "Skipping gap spectrum metrics: a positive HD sampling frequency "
+            "is required for peak-to-peak areas in kHz."
+        )
+    else:
+        metrics.update(pack_spectrum_metrics(
+            spectrum, source_attrs=median_attrs, sampling_frequency_hz=sampling_frequency,
+            valley_neighborhood_length=valley_neighborhood_length,
+            phase_spectrum=beat_spectrum, phase_attrs=beat_median_attrs,
+        ))
     band_limited = band_limit_gap_spectrograms(
         per_beat, timing.cycle_durations_seconds, harmonics=band_limited_harmonics(ctx),
     )

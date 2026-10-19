@@ -13,7 +13,7 @@ from input_output.writers.eps import EpsArtifactWriter
 from input_output.writers.png import PngArtifactWriter
 from utils.logger import Logger
 
-from .frequency import POSITIVE_FREQUENCY_BIN_COUNT, frequency_ticks, positive_frequency_coordinates_khz
+from .frequency import frequency_ticks, positive_frequency_coordinates_khz, read_sampling_frequency_hz
 from .metrics import PHASE_METRIC_NAMES
 
 FIGURE_DPI = 320
@@ -32,7 +32,7 @@ def export_spectrogram_figures(output) -> list[Path]:
     schema = EyeFlowOutputPaths.active()
     manager = output.manager.for_artifact_namespace("spectrograms")
     paths: list[Path] = []
-    sampling_frequency = _sampling_frequency_hz(output)
+    sampling_frequency = read_sampling_frequency_hz(output)
     for source_path, name, make_figure in (
         (schema.spectrograms_masked, "spectrograms_gaps", _gap_spectrogram_figure),
         (
@@ -67,17 +67,6 @@ def export_spectrogram_figures(output) -> list[Path]:
     return paths
 
 
-def _sampling_frequency_hz(output) -> float | None:
-    source = output.h5.get(EyeFlowOutputPaths.active().sampling_frequency_hz)
-    if source is None:
-        return None
-    try:
-        value = float(np.asarray(source[()]).reshape(()))
-    except (TypeError, ValueError):
-        return None
-    return value if np.isfinite(value) and value > 0 else None
-
-
 def _export_positive_spectra(output, manager, sampling_frequency: float) -> list[Path]:
     schema = EyeFlowOutputPaths.active()
     sources = (
@@ -89,7 +78,7 @@ def _export_positive_spectra(output, manager, sampling_frequency: float) -> list
          schema.spectrograms_masked_time_aggregated_std_late, ":"),
     )
     available = [
-        (label, output.h5.get(center_path), output.h5.get(std_path), style)
+        (label, output.h5.get(center_path)[()], output.h5.get(std_path)[()], style)
         for label, center_path, std_path, style in sources
         if output.h5.get(center_path) is not None and output.h5.get(std_path) is not None
     ]
@@ -100,18 +89,19 @@ def _export_positive_spectra(output, manager, sampling_frequency: float) -> list
         peak = float(np.asarray(peak_source[()]).reshape(())) if peak_source is not None else np.nan
     except (TypeError, ValueError):
         peak = np.nan
-    if not np.isfinite(peak) or peak != int(peak) or not 0 <= peak < POSITIVE_FREQUENCY_BIN_COUNT:
-        Logger.log_warning("Skipping positive spectra: stored index_max1 must be an integer from 0 through 31.")
+    if not np.isfinite(peak) or peak != int(peak) or peak < 0:
+        Logger.log_warning("Skipping positive spectra: stored index_max1 must be a nonnegative integer.")
         return []
     curves = {}
     for label, center, std, style in available:
         curve = _positive_spectrum_curve(
-            center[()], std[()], sampling_frequency_hz=sampling_frequency,
+            center, std, sampling_frequency_hz=sampling_frequency,
             label=label, linestyle=style, index_max1=peak,
         )
         if curve is None:
             Logger.log_warning(
-                f"Skipping normalized {label.lower()} spectrum: need bins 0 through 31 and a positive finite maximum."
+                f"Skipping normalized {label.lower()} spectrum: need a valid positive-bin cutoff "
+                "and a positive finite median in the final 10% of positive bins."
             )
         else:
             curves[label] = curve
@@ -126,6 +116,28 @@ def _export_positive_spectra(output, manager, sampling_frequency: float) -> list
                 manager, f"gaps_positive_freq_median_phase_{suffix}",
                 partial(_positive_spectra_figure, [curves[label] for label in labels]),
             ))
+    for suffix, labels in (
+        ("all", ("Median", "Early", "Late")),
+        ("early_late", ("Early", "Late")),
+    ):
+        selected = [source for source in available if source[0] in labels]
+        if len(selected) != len(labels):
+            continue
+        medians = [_positive_spectrum_baseline(center) for _, center, _, _ in selected]
+        if all(median is not None for median in medians) and min(medians) > 0:
+            common_curves = [
+                _positive_spectrum_curve(
+                    center, std, sampling_frequency_hz=sampling_frequency,
+                    label=label, linestyle=style, index_max1=peak,
+                    normalization_divisor=min(medians),
+                )
+                for label, center, std, style in selected
+            ]
+            if all(curve is not None for curve in common_curves):
+                paths.extend(_save_figure_pair(
+                    manager, f"gaps_positive_freq_median_phase_{suffix}_common_norm",
+                    partial(_positive_spectra_figure, common_curves),
+                ))
     return paths
 
 
@@ -212,30 +224,44 @@ class _PositiveSpectrum:
 
 def _positive_spectrum_curve(
     values, std, *, sampling_frequency_hz: float, label: str, linestyle: str,
-    index_max1: float,
+    index_max1: float, normalization_divisor: float | None = None,
 ) -> _PositiveSpectrum | None:
     values = np.asarray(values, dtype=np.float64)
     std = np.asarray(std, dtype=np.float64)
     if values.ndim != 1 or std.shape != values.shape:
         raise ValueError("Spectrum and beat STD must share one frequency axis.")
-    stop = POSITIVE_FREQUENCY_BIN_COUNT
+    stop = values.size // 2
     if (
-        values.size < stop or not np.isfinite(index_max1) or index_max1 != int(index_max1)
+        stop < 1 or not np.isfinite(index_max1) or index_max1 != int(index_max1)
         or not 0 <= index_max1 < stop
     ):
         return None
-    positive = values[:stop]
-    valid = np.flatnonzero(np.isfinite(positive))
-    if valid.size == 0 or np.any(np.isinf(positive)):
+    divisor = _positive_spectrum_baseline(values)
+    if divisor is None:
         return None
-    maximum = np.max(positive[valid])
-    if maximum <= 0:
+    if normalization_divisor is not None:
+        divisor = normalization_divisor
+    if not np.isfinite(divisor) or divisor <= 0:
         return None
     start = int(index_max1)
     return _PositiveSpectrum(
-        positive_frequency_coordinates_khz(sampling_frequency_hz)[start:stop],
-        values[start:stop] / maximum, std[start:stop] / maximum, label, linestyle,
+        positive_frequency_coordinates_khz(values.size, sampling_frequency_hz)[start:stop],
+        values[start:stop] / divisor, std[start:stop] / divisor, label, linestyle,
     )
+
+
+def _positive_spectrum_baseline(values) -> float | None:
+    """Median of the final max(1, floor(10%)) positive bins, ignoring NaNs."""
+    values = np.asarray(values, dtype=np.float64)
+    if values.ndim != 1 or values.size < 2:
+        return None
+    positive = values[:values.size // 2]
+    if np.any(np.isinf(positive)):
+        return None
+    length = max(1, positive.size // 10)
+    neighborhood = positive[-length:]
+    valid = neighborhood[~np.isnan(neighborhood)]
+    return float(np.median(valid)) if valid.size else None
 
 
 def _positive_spectra_figure(curves: list[_PositiveSpectrum]):

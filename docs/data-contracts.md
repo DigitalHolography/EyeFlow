@@ -124,8 +124,8 @@ can ring and introduce negative undershoots. Linear resizing and frequency-bin
 averaging occur afterward and do not enforce nonnegativity.
 
 `pipelines/low_freq_spectra/spectrograms.py` reads each HD spectral frame once and
-publishes `/ProcessingSpectrograms/SpatialAverage` and
-`/ProcessingSpectrograms/SpatialMedian` as `(time, freq)` arrays. These are
+publishes `/ProcessingSpectrograms/Global/SpatialAverage` and
+`/ProcessingSpectrograms/Global/SpatialMedian` as `(time, freq)` arrays. These are
 the arithmetic mean and median over every exported spatial pixel, independent
 of gap support. Any nonfinite pixel produces NaN for that reduction's
 time/frequency pair. Finite negative reductions are clamped to zero after
@@ -255,11 +255,11 @@ Missing products omit only their own figures;
 the median figure requires detected cardiac timing, while the mask does not
 require nonempty gap support. Figures do not change any persisted data.
 
-The full-domain heatmap and median-spectrum axes use the DC-zero display calibration with bin spacing
-`fs/(2*N)` Hz and the actual exported bin count `N`. For the first `floor(N/2)`
-bins, `f(k)=k*fs/(2*N)`; the remaining bins use `(k-N)*fs/(2*N)`. A single-bin
+The full-domain heatmap and median-spectrum axes use the DC-zero full-spectrum calibration with bin spacing
+`fs/N` Hz and the actual exported bin count `N`. For the first `floor(N/2)`
+bins, `f(k)=k*fs/N`; the remaining bins use `(k-N)*fs/N`. A single-bin
 domain is DC. For 64 bins, plot the positive/DC bins 0 through 31, with positive
-edge `fs/4` just beyond bin 31 and negative bin 32 at `-fs/4`.
+Nyquist edge `fs/2` just beyond bin 31 and negative bin 32 at `-fs/2`.
 Read `fs` in Hz from `/Meta/SamplingFrequencyHz/value`, divide coordinates by
 1000 for kHz, and preserve source order in the full-domain figures. The spectral
 runner ensures this metadata is available from HD `sampling_freq` (HDF5 parameters
@@ -272,17 +272,18 @@ Three additional monochrome PNG/EPS figures use these persisted spectra:
 `<stem>_gaps_positive_freq_median_phase_early_late` overlays `MedianPhaseBeatEarly`
 and `MedianPhaseBeatLate`; `<stem>_gaps_positive_freq_median_phase_beat` plots
 `MedianPhaseBeat`; and `<stem>_gaps_positive_freq_median_phase_all` overlays all
-three. These three figures use a fixed positive-frequency display grid:
-`linspace(0, fs/4, 33)` in Hz, so bin 0 is zero and bin 32 always maps to
-`fs/4`, independent of the stored spectrum length. Convert this grid to kHz
+three. These figures use the actual positive/DC half of each stored spectrum:
+`P=floor(N/2)` bins, with coordinates `k*fs/N` Hz for `k=0,...,P-1`.
+Convert this grid to kHz
 and plot only bins from the stored `/ProcessingSpectrograms/Gaps/Metrics/index_max1`
-through bin 31 inclusive, using that same cutoff for every curve. Bin 32 is
-the calibration endpoint and is not plotted. Require at least 32 source bins;
+through bin `P-1` inclusive, using that same cutoff for every curve.
+Require at least two source bins;
 do not infer a replacement peak if the stored index is missing, NaN, or outside
-0 through 31. Normalize each curve by its own finite maximum over bins 0 through
-31 and divide its matching STD by the same factor. Normalization precedes the
-shared crop, including when a curve's own maximum lies before the cutoff.
-Bins after 31 do not affect these figures. Frequency coordinates are not saved
+the positive half. Normalize each curve by the NaN-aware median over the final
+`L=max(1,floor(0.1*P))` positive bins, `P-L` through `P-1`, and divide its matching
+STD by the same factor. For 64 source bins this is bins 29 through 31. Compute
+this neighborhood before the shared crop without expanding it around NaNs.
+Negative-frequency bins do not affect normalization. Frequency coordinates are not saved
 to HDF5. Power remains linear, with the existing dotted power-zero reference.
 The central curves remain the existing HDF5 medians; dispersion comes from the
 corresponding `StdBeat`/`StdBeatEarly`/`StdBeatLate` datasets.
@@ -293,25 +294,49 @@ lower envelopes below zero without clipping and draw a thin dotted zero line.
 Include horizontal and vertical data margins, frequency in kHz, `Power (a.u.)`,
 and a legend for overlays. Retain the existing canvas, DPI, fonts, and border
 style. Fill patterns are vector graphics in EPS. Missing required spectra/STD
-omit the corresponding figure; an all-NaN or nonpositive maximum over bins 0 through 31
+omit the corresponding figure; an all-NaN neighborhood or nonpositive normalization median
 cannot be normalized and is omitted with a warning.
+
+`<stem>_gaps_positive_freq_median_phase_all_common_norm` adds a PNG/EPS overlay
+of all three spectra using one common normalization factor: the minimum of the
+three final-positive-bin medians computed separately for Median, Early, and Late.
+Divide every signal and its STD by that factor, preserving relative amplitudes.
+Use the same cutoff, frequency grid, styles, and output folders as the original
+all-curves overlay. Require all three spectra and their STD datasets, valid
+frequency-bin support for each spectrum, and a positive normalization median
+for every included spectrum. Ignore NaNs within each fixed neighborhood; an
+all-NaN neighborhood or zero/negative divisor omits the affected overlay.
+Export both per-signal and common-normalized variants. Normalization changes
+figure coordinates only; the source power and STD datasets remain unnormalized.
+
+`<stem>_gaps_positive_freq_median_phase_early_late_common_norm` applies the same
+shared-normalization rules to the early/late overlay, taking the minimum of
+only the Early and Late neighborhood medians. Scale both signals and STD envelopes
+by that factor. This PNG/EPS pair requires only the Early and Late spectra/STD
+pairs and remains available when Median is missing or invalid.
 
 `/ProcessingSpectrograms/Gaps/Metrics` groups all gap-spectrum metrics directly,
 without `/value` suffixes or workflow copies. The former `TimeAggregated/Metrics`
-group is no longer emitted. Thirteen pooled scalar datasets analyze the
+group is no longer emitted. Fifteen pooled scalar datasets analyze the
 `MedianPhaseBeat` spectrum in stored bin order: `index_max1`, `max1`,
 `index_max2`, `max2`, `index_min1`, `min1`, `index_min2`, `min2`, `A0`, `A1`,
-`A2`, `R1`, and `R2`. Heights are internal calculations; `h0`, `h1`, `hv`,
+`A2`, `R1`, `R2`, `Z1`, and `Z2`. Heights are internal calculations; `h0`, `h1`, `hv`,
 and `rho_h` are not output datasets.
 For a domain of `N` bins, peak 1 is the maximum over zero-based bins 0 through
 `floor(N/2)-1`; peak 2 is the maximum over `floor(N/2)` through `N-1`.
 Include endpoints, ignore NaNs for peak selection, and choose the
 lowest index on ties. An all-NaN half has a NaN peak index and value. Valley
 indexes are the two central bins, `floor(N/2)-1` and `floor(N/2)`; valley values are read directly from those bins.
-Internally, `h0=(max1+max2)/2`, propagating missing inputs.
-`A0=h0*(index_max2-index_max1+1)`;
-`A1=sum(spectrum[index_max1:index_max2+1])`, propagating any NaN in that inclusive
-interval. The valley neighborhood is centered between the two central bins.
+Internally, `h0=(max1+max2)/2`, propagating missing inputs. All three areas use
+the full-spectrum spacing `df_khz=fs/(N*1000)` and the common peak-to-peak width
+`w_khz=(index_max2-index_max1)*df_khz`.
+`A2=h0*w_khz`;
+`A1=trapezoid(spectrum[index_max1:index_max2+1], dx=df_khz)`, propagating any NaN
+in that interval. Both peak samples are included with trapezoidal half weights
+at the endpoints; the interval width counts the spaces between bins, without
+an extra bin. Integrate with positive spacing in the stored HD bin order,
+equivalent to an unwrapped kHz axis, without sorting the signed display axis
+or wrapping around the array. The valley neighborhood is centered between the two central bins.
 With `valley_neighborhood_length=None`, its length is computed as one quarter
 of the actual bin domain, rounded to the nearest even length (ties upward), with
 a minimum of two samples: 32 bins selects 8 samples (bins 12 through 19), and
@@ -320,38 +345,47 @@ is supported, including odd lengths; domains split at `floor(N/2)`.
 Explicit neighborhood lengths
 accept even integers from 2 through `N` in `run_gap_analysis`,
 `pack_spectrum_metrics`, and `analyze_spectrum`. `hv` is the NaN-aware median of
-that neighborhood; an all-NaN neighborhood returns NaN. With the same inclusive
-width `w=index_max2-index_max1+1` used by `A0`, `A2=w*hv`. `R1=A1/A0` replaces
-`rho_A`, and `R2=A2/A0`; both return NaN for a zero or missing denominator,
-and a missing numerator propagates NaN. These are unweighted bin sums without wraparound or Hz-spacing
-weights. All values are float32; valid index values are integer-valued floats
-so missing indexes can be represented by NaN. Indexes, `R1`, and `R2` have unit `1`;
-other values retain the spectrum's power unit. Attributes record definitions,
+that neighborhood; an all-NaN neighborhood returns NaN. With the same kHz
+width used by `A2`, `A0=w_khz*hv`. The area names `A0`
+and `A2` replace each other's former meanings. Ratios are `R1=A1/A0` and
+`R2=A2/A0`; offsets are `Z1=(A1-A0)/A0` and `Z2=(A2-A0)/A0`.
+All four return NaN for a zero or missing denominator,
+and a missing numerator propagates NaN. All values are float32; valid index values are integer-valued floats
+so missing indexes can be represented by NaN. Indexes, `R1`, `R2`, `Z1`, and `Z2` have unit `1`;
+`A0`, `A1`, and `A2` have the source power unit times kHz (for example
+`a.u.*kHz`), while peak/valley heights retain the spectrum's power unit.
+Attributes record definitions,
 source, zero-based indexes, selection rules, interval inclusion, neighborhood
 length and exact bins, automatic versus explicit selection and rounding,
-per-half valid (non-NaN) bin counts, and valley aggregation/NaN policy.
+per-half valid (non-NaN) bin counts, valley aggregation/NaN policy, sampling
+frequency and its shared source path, kHz bin spacing, integration method,
+and the unwrapped area coordinate. Read calibration from
+`/Meta/SamplingFrequencyHz/value`. Missing/invalid calibration skips the Metrics
+family with a warning while preserving raw/aggregate spectra and filters;
+never substitute a unit bin width for a physical kHz area.
 An all-NaN half leaves its peak index and value as NaN and logs an explanatory warning.
 A spectrum that is not one-dimensional with at least two bins
-produces all thirteen NaN pooled metrics and logs a
+produces all fifteen NaN pooled metrics and logs a
 warning; the median and other gap products remain available. No alternative
 workflow copy is generated.
 
-Five phase curves are written in that same group as `A0_t`, `A1_t`, `A2_t`,
-`R1_t`, and `R2_t`, with `(phase,)` axes and phase coordinates from `MedianBeat`.
+Seven phase curves are written in that same group as `A0_t`, `A1_t`, `A2_t`,
+`R1_t`, `R2_t`, `Z1_t`, and `Z2_t`, with `(phase,)` axes and phase coordinates from `MedianBeat`.
 Calculate these curves from `MedianBeat` after its beat median, keeping the
 peak indices selected from `MedianPhaseBeat` fixed at every phase. With fixed
-inclusive width `w=index_max2-index_max1+1`, calculate
-`A0(t)=w*(S(t,index_max1)+S(t,index_max2))/2`,
-`A1(t)=sum(S(t,index_max1:index_max2+1))`, and
-`A2(t)=w*nanmedian(S(t,Nv))` using the same valley neighborhood as the pooled
-metrics. Ratios are `R1(t)=A1(t)/A0(t)` and `R2(t)=A2(t)/A0(t)`.
+width `w_khz=(index_max2-index_max1)*df_khz`, calculate
+`A2(t)=w_khz*(S(t,index_max1)+S(t,index_max2))/2`,
+`A1(t)=trapezoid(S(t,index_max1:index_max2+1), dx=df_khz)`, and
+`A0(t)=w_khz*nanmedian(S(t,Nv))` using the same valley neighborhood as the pooled
+metrics. Ratios are `R1(t)=A1(t)/A0(t)` and `R2(t)=A2(t)/A0(t)`;
+offsets are `Z1(t)=(A1(t)-A0(t))/A0(t)` and `Z2(t)=(A2(t)-A0(t))/A0(t)`.
 Missing fixed peak indices make every curve NaN. Missing peak heights invalidate
-`A0(t)`, interval NaNs propagate through `A1(t)`, and an all-NaN valley
-neighborhood makes `A2(t)` NaN. Zero or missing `A0(t)` produces NaN ratios.
+`A2(t)`, interval NaNs propagate through `A1(t)`, and an all-NaN valley
+neighborhood makes `A0(t)` NaN. Zero or missing `A0(t)` produces NaN ratios and offsets.
 Curve attributes identify their `MedianBeat` source, fixed peak values and
 index-dataset paths, pooled peak source, timing, neighborhood, and units.
 
-For each of the five metrics `M`, the same group also contains scalars
+For each of the seven metrics `M`, the same group also contains scalars
 `M_early`, `M_late`, and `delta_M`. Early is the NaN-aware median of `M_t`
 over sampled phases `[0,1/3]`; late uses `[1/3,1]`. A sample exactly at one
 third belongs to both intervals. Preserve the source grid's excluded endpoint;
@@ -362,12 +396,12 @@ rather than dividing aggregated areas. `delta_M=M_early-M_late`, preserving
 its sign and propagating a missing early or late median. Window metadata records
 phase intervals, included endpoints, source and valid sample counts, source
 curve paths, and aggregation policy; deltas identify both scalar sources.
-These twenty new datasets plus the thirteen pooled scalars give 33 datasets
+These twenty-eight phase/summary datasets plus the fifteen pooled scalars give 43 datasets
 under `/ProcessingSpectrograms/Gaps/Metrics`. All persisted values are float32;
-ratio curves and their summaries/deltas have unit `1`, while area products
-retain the spectrum's power unit.
+ratio and offset curves and their summaries/deltas have unit `1`, while area products
+have the source power unit times kHz.
 
-Each phase curve also produces `<stem>_gaps_{A0,A1,A2,R1,R2}.{png,eps}` under
+Each phase curve also produces `<stem>_gaps_{A0,A1,A2,R1,R2,Z1,Z2}.{png,eps}` under
 the shared `png/spectrograms/` and `eps/spectrograms/` folders. Use the same
 8 cm wide golden-ratio canvas, thin black border, fonts, and resolution as the
 spectral figures. Plot normalized cardiac phase `t/T` horizontally with labels
@@ -640,7 +674,7 @@ families are:
   median after vessel dilation, and `/Segmentation/Gaps/Mask` for the intersection
   of their gap support (OR of vessels before inversion), restricted to the
   outer disc and excluding the optic disc, used downstream;
-- `/ProcessingSpectrograms/SpatialAverage` and `SpatialMedian` for full-frame
+- `/ProcessingSpectrograms/Global/SpatialAverage` and `SpatialMedian` for full-frame
   spatial power reductions, shaped `(time, freq)`;
 - `/ProcessingSpectrograms/Gaps/SpatialMedian` for shared spatial median gap band power, shaped
   `(time, freq)`, when spectra and nonempty application support are available;
@@ -752,6 +786,10 @@ Writers normalize leading/trailing separators, replace an existing dataset at
 the target path, downcast float/complex payloads to 32-bit, preserve integer
 arrays, serialize boolean payloads as `uint8` with `original_class="bool"`, and
 attach `nameID` unless supplied.
+Numeric arrays use lossless gzip compression at level 6 with the shuffle filter
+by default. Explicit dataset storage options override these defaults. Scalars
+and strings remain unfiltered; these writes preserve their existing shapes
+and dtypes.
 
 The output root records source files, selected targets, actual pipeline order,
 selected options, requested methods, and workflow status. Processing groups and
