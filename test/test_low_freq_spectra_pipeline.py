@@ -157,7 +157,7 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
         names.add("spectrogram_gaps_median")
         names.update(f"gaps_{name}" for name in ("A0", "A1", "A2", "R1", "R2", "Z1", "Z2"))
         names.update(f"gaps_positive_freq_median_phase_{suffix}" for suffix in (
-            "early_late", "beat", "all", "all_common_norm", "early_late_common_norm",
+            "early_late", "beat", "all",
         ))
     ef_dir = result.outputs[0].parent.parent
     for extension in ("png", "eps"):
@@ -182,7 +182,7 @@ def test_positive_figures_export_for_32_bin_input_with_the_stored_peak(tmp_path)
         assert output[f"{schema.spectrograms_masked_metrics_root}/index_max1"][()] == 5
     ef_dir = result.outputs[0].parent.parent
     for extension in ("png", "eps"):
-        for suffix in ("early_late", "beat", "all", "all_common_norm", "early_late_common_norm"):
+        for suffix in ("early_late", "beat", "all"):
             assert (ef_dir / extension / "spectrograms" / f"scan_gaps_positive_freq_median_phase_{suffix}.{extension}").is_file()
 
 

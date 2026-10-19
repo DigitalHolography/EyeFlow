@@ -297,23 +297,8 @@ style. Fill patterns are vector graphics in EPS. Missing required spectra/STD
 omit the corresponding figure; an all-NaN neighborhood or nonpositive normalization median
 cannot be normalized and is omitted with a warning.
 
-`<stem>_gaps_positive_freq_median_phase_all_common_norm` adds a PNG/EPS overlay
-of all three spectra using one common normalization factor: the minimum of the
-three final-positive-bin medians computed separately for Median, Early, and Late.
-Divide every signal and its STD by that factor, preserving relative amplitudes.
-Use the same cutoff, frequency grid, styles, and output folders as the original
-all-curves overlay. Require all three spectra and their STD datasets, valid
-frequency-bin support for each spectrum, and a positive normalization median
-for every included spectrum. Ignore NaNs within each fixed neighborhood; an
-all-NaN neighborhood or zero/negative divisor omits the affected overlay.
-Export both per-signal and common-normalized variants. Normalization changes
-figure coordinates only; the source power and STD datasets remain unnormalized.
-
-`<stem>_gaps_positive_freq_median_phase_early_late_common_norm` applies the same
-shared-normalization rules to the early/late overlay, taking the minimum of
-only the Early and Late neighborhood medians. Scale both signals and STD envelopes
-by that factor. This PNG/EPS pair requires only the Early and Late spectra/STD
-pairs and remains available when Median is missing or invalid.
+Normalization changes figure coordinates only; the source power and STD
+datasets remain unnormalized.
 
 `/ProcessingSpectrograms/Gaps/Metrics` groups all gap-spectrum metrics directly,
 without `/value` suffixes or workflow copies. The former `TimeAggregated/Metrics`

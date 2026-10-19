@@ -116,28 +116,6 @@ def _export_positive_spectra(output, manager, sampling_frequency: float) -> list
                 manager, f"gaps_positive_freq_median_phase_{suffix}",
                 partial(_positive_spectra_figure, [curves[label] for label in labels]),
             ))
-    for suffix, labels in (
-        ("all", ("Median", "Early", "Late")),
-        ("early_late", ("Early", "Late")),
-    ):
-        selected = [source for source in available if source[0] in labels]
-        if len(selected) != len(labels):
-            continue
-        medians = [_positive_spectrum_baseline(center) for _, center, _, _ in selected]
-        if all(median is not None for median in medians) and min(medians) > 0:
-            common_curves = [
-                _positive_spectrum_curve(
-                    center, std, sampling_frequency_hz=sampling_frequency,
-                    label=label, linestyle=style, index_max1=peak,
-                    normalization_divisor=min(medians),
-                )
-                for label, center, std, style in selected
-            ]
-            if all(curve is not None for curve in common_curves):
-                paths.extend(_save_figure_pair(
-                    manager, f"gaps_positive_freq_median_phase_{suffix}_common_norm",
-                    partial(_positive_spectra_figure, common_curves),
-                ))
     return paths
 
 
@@ -224,7 +202,7 @@ class _PositiveSpectrum:
 
 def _positive_spectrum_curve(
     values, std, *, sampling_frequency_hz: float, label: str, linestyle: str,
-    index_max1: float, normalization_divisor: float | None = None,
+    index_max1: float,
 ) -> _PositiveSpectrum | None:
     values = np.asarray(values, dtype=np.float64)
     std = np.asarray(std, dtype=np.float64)
@@ -239,8 +217,6 @@ def _positive_spectrum_curve(
     divisor = _positive_spectrum_baseline(values)
     if divisor is None:
         return None
-    if normalization_divisor is not None:
-        divisor = normalization_divisor
     if not np.isfinite(divisor) or divisor <= 0:
         return None
     start = int(index_max1)

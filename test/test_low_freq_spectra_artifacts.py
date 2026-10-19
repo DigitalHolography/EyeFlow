@@ -218,37 +218,6 @@ def test_normalization_median_ignores_nan_without_expanding_the_neighborhood():
     assert _positive_spectrum_baseline(values) is None
 
 
-@pytest.mark.parametrize("median", [None, np.full(64, np.nan), np.full(64, 1000)])
-@pytest.mark.parametrize("early, expected", [
-    (np.zeros(64), False),
-    (np.full(64, np.nan), False),
-    (np.full(64, np.inf), False),
-    (np.ones(31), True),
-    (None, False),
-])
-def test_common_overlays_require_usable_spectra_for_their_own_curves(tmp_path, early, expected, median):
-    manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
-    schema = EyeFlowOutputPaths.active()
-    with h5py.File(tmp_path / "out.h5", "w") as h5:
-        h5.create_dataset(schema.sampling_frequency_hz, data=64000)
-        h5.create_dataset(f"{schema.spectrograms_masked_metrics_root}/index_max1", data=5)
-        for center_path, std_path, values in (
-            (schema.spectrograms_masked_time_aggregated_median, schema.spectrograms_masked_time_aggregated_std, median),
-            (schema.spectrograms_masked_time_aggregated_median_early, schema.spectrograms_masked_time_aggregated_std_early, early),
-            (schema.spectrograms_masked_time_aggregated_median_late, schema.spectrograms_masked_time_aggregated_std_late, np.ones(64)),
-        ):
-            if values is not None:
-                h5.create_dataset(center_path, data=values)
-                h5.create_dataset(std_path, data=np.ones_like(values))
-        with patch("pipelines.low_freq_spectra.artifacts._save_figure_pair", return_value=[]) as save:
-            export_spectrogram_figures(SimpleNamespace(manager=manager, h5=PipelineH5Output(h5)))
-        names = [call.args[1] for call in save.call_args_list]
-        assert ("gaps_positive_freq_median_phase_all_common_norm" in names) == (
-            expected and median is not None and np.isfinite(median).any()
-        )
-        assert ("gaps_positive_freq_median_phase_early_late_common_norm" in names) == expected
-
-
 @pytest.mark.parametrize("products", ["all", "raw", "mask", "empty_mask", "metrics", "one_metric", "one_spectrum", "none"])
 def test_exports_only_available_products_in_shared_namespace(tmp_path, products):
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
@@ -279,8 +248,6 @@ def test_exports_only_available_products_in_shared_namespace(tmp_path, products)
             h5.create_dataset(schema.spectrograms_masked_time_aggregated_std_late, data=np.ones(32))
             expected.update({
                 "gaps_positive_freq_median_phase_early_late", "gaps_positive_freq_median_phase_all",
-                "gaps_positive_freq_median_phase_all_common_norm",
-                "gaps_positive_freq_median_phase_early_late_common_norm",
             })
         if products in {"all", "mask", "empty_mask"}:
             mask = np.eye(4, dtype=bool) if products != "empty_mask" else np.zeros((4, 4), bool)
@@ -354,20 +321,19 @@ def test_export_reads_shared_peak_from_h5_and_does_not_save_frequency_coordinate
         h5.visititems(lambda name, obj: original.update({name: obj[()]}) if isinstance(obj, h5py.Dataset) else None)
         with patch("pipelines.low_freq_spectra.artifacts._positive_spectra_figure", wraps=_positive_spectra_figure) as draw:
             paths = export_spectrogram_figures(SimpleNamespace(manager=manager, h5=PipelineH5Output(h5)))
-        assert draw.call_count == 10  # Five figures, PNG and EPS.
-        for index, call in enumerate(draw.call_args_list):
+        assert draw.call_count == 6  # Three figures, PNG and EPS.
+        for call in draw.call_args_list:
             for curve in call.args[0]:
                 np.testing.assert_array_equal(curve.frequencies_khz, np.arange(5, 32))
                 values, std, own_median = spectra[curve.label]
-                divisor = own_median if index < 6 else (2 if index < 8 else 4)
-                np.testing.assert_allclose(curve.power, values[5:32] / divisor)
-                np.testing.assert_allclose(curve.std, std[5:32] / divisor)
+                np.testing.assert_allclose(curve.power, values[5:32] / own_median)
+                np.testing.assert_allclose(curve.std, std[5:32] / own_median)
         current = {}
         h5.visititems(lambda name, obj: current.update({name: obj[()]}) if isinstance(obj, h5py.Dataset) else None)
         assert original.keys() == current.keys()
         for name in original:
             np.testing.assert_array_equal(original[name], current[name])
-        assert len([path for path in paths if "positive_freq" in path.name]) == 10
+        assert len([path for path in paths if "positive_freq" in path.name]) == 6
 
 
 @pytest.mark.parametrize("peak", [None, np.nan, -1, 16, 32, 5.5])

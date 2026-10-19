@@ -109,14 +109,6 @@ through bin `P-1` inclusive. Scale STD by the same per-curve divisor, retain
 linear power, and do not save the grid to HDF5. Missing/invalid stored peaks,
 all-NaN neighborhoods, or nonpositive divisors omit the affected figures.
 Median/early/late use solid/dashed/dotted signals and envelope patterns.
-An additional `gaps_positive_freq_median_phase_all_common_norm` PNG/EPS overlay
-divides all three curves and their STD envelopes by the minimum of their
-three separately computed normalization medians. Require all three spectra/STD
-pairs, valid bin support, and positive medians. Keep the individually normalized
-outputs alongside it.
-The `gaps_positive_freq_median_phase_early_late_common_norm` variant uses the
-minimum of the Early and Late normalization medians, including their STD envelopes, and does
-not require the Median spectrum/STD pair.
 The full-domain heatmap/median frequency axes use full-spectrum spacing `fs/N` with DC zero,
 positive-then-negative order, and kHz labels. Resolve `fs` from shared
 `Meta/SamplingFrequencyHz/value`; publish it from HD timing parameters/config
