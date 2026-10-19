@@ -9,6 +9,7 @@ from utils.logger import Logger
 
 from .artifacts import export_spectrogram_figures
 from .gap_analysis import run_gap_analysis
+from .frequency import write_frequency_bin_table
 from .spectrograms import preprocess_spectrograms
 
 
@@ -30,6 +31,7 @@ def run_low_freq_spectra(ctx) -> None:
             ctx.output.h5.write(schema.sampling_frequency_hz, sampling_frequency, unit="Hz")
     outputs = preprocess_spectrograms(spectra, optional_capillary_zones(ctx))
     ctx.output.h5.write_many(outputs)
+    write_frequency_bin_table(ctx.output, spectra.shape[1])
     workflows = velocity_workflows(ctx)
     timing = None
     method = "doppler_moments"

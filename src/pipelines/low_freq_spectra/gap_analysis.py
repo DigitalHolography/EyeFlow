@@ -5,6 +5,10 @@ from __future__ import annotations
 import numpy as np
 
 from calculations.math import nanmedian
+from calculations.math.phase_windows import (
+    DEFAULT_EARLY_PHASE_INTERVAL, DEFAULT_LATE_PHASE_INTERVAL,
+    early_late_phase_windows, phase_window_medians,
+)
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS, processing_path
 from pipelines.signal_settings import band_limited_harmonics
@@ -12,7 +16,8 @@ from pipelines.velocity.models import RetinalVelocity
 from utils.logger import Logger
 
 from .metrics import pack_spectrum_metrics
-from .per_beat import beat_spectrum_std, early_late_phase_windows, gap_spectrograms_per_beat
+from .frequency import read_sampling_frequency_hz
+from .per_beat import beat_spectrum_std, gap_spectrograms_per_beat
 from .signal_processing import (
     DEFAULT_GAP_SVD_REMOVED_MODES,
     band_limit_gap_spectrograms,
@@ -23,6 +28,7 @@ from .signal_processing import (
 def run_gap_analysis(
     ctx, timing: RetinalVelocity | None, *, timing_method: str = "doppler_moments",
     valley_neighborhood_length: int | None = None,
+    early_interval=DEFAULT_EARLY_PHASE_INTERVAL, late_interval=DEFAULT_LATE_PHASE_INTERVAL,
 ) -> dict[str, object]:
     """Use explicitly selected moments or fallback band-ratio cardiac timing."""
     schema = EyeFlowOutputPaths.active()
@@ -113,9 +119,13 @@ def run_gap_analysis(
         "early": schema.spectrograms_masked_time_aggregated_median_early,
         "late": schema.spectrograms_masked_time_aggregated_median_late,
     }
-    for window, (mask, interval) in early_late_phase_windows(attrs["phase_samples"]).items():
+    windows = early_late_phase_windows(
+        attrs["phase_samples"], early_interval=early_interval, late_interval=late_interval,
+    )
+    window_medians = phase_window_medians(beat_spectrum, windows)
+    for window, (mask, interval) in windows.items():
         selected = beat_spectrum[mask]
-        metrics[window_paths[window]] = (nanmedian(selected, axis=0), {
+        metrics[window_paths[window]] = (window_medians[window].astype(np.float32), {
             **window_source_attrs,
             "source_path": "/" + schema.spectrograms_masked_time_aggregated_median_beat,
             "dimDesc": ["freq"],
@@ -131,7 +141,7 @@ def run_gap_analysis(
         })
     std_windows = {
         "whole": (np.ones(per_beat.shape[0], dtype=bool), [0.0, 1.0]),
-        **early_late_phase_windows(attrs["phase_samples"]),
+        **windows,
     }
     std_paths = {
         "whole": schema.spectrograms_masked_time_aggregated_std,
@@ -158,11 +168,19 @@ def run_gap_analysis(
             "valid_beat_count_per_frequency": valid_counts,
             "nonfinite_value_policy": "ignore_NaN_no_valid_beats_returns_NaN_one_valid_beat_returns_zero",
         })
-    metrics.update(pack_spectrum_metrics(
-        spectrum, source_attrs=median_attrs,
-        valley_neighborhood_length=valley_neighborhood_length,
-        phase_spectrum=beat_spectrum, phase_attrs=beat_median_attrs,
-    ))
+    sampling_frequency = read_sampling_frequency_hz(ctx.output)
+    if sampling_frequency is None:
+        Logger.log_warning(
+            "Skipping gap spectrum metrics: a positive HD sampling frequency "
+            "is required for peak-to-peak areas in kHz."
+        )
+    else:
+        metrics.update(pack_spectrum_metrics(
+            spectrum, source_attrs=median_attrs, sampling_frequency_hz=sampling_frequency,
+            valley_neighborhood_length=valley_neighborhood_length,
+            phase_spectrum=beat_spectrum, phase_attrs=beat_median_attrs,
+            early_interval=early_interval, late_interval=late_interval,
+        ))
     band_limited = band_limit_gap_spectrograms(
         per_beat, timing.cycle_durations_seconds, harmonics=band_limited_harmonics(ctx),
     )

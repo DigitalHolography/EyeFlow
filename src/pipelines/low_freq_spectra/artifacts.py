@@ -8,13 +8,14 @@ from pathlib import Path
 
 import numpy as np
 
+from calculations.math.frequency import positive_frequency_coordinates_khz
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.eps import EpsArtifactWriter
 from input_output.writers.png import PngArtifactWriter
 from utils.logger import Logger
 
-from .frequency import POSITIVE_FREQUENCY_BIN_COUNT, frequency_ticks, positive_frequency_coordinates_khz
-from .metrics import PHASE_METRIC_NAMES
+from .frequency import frequency_ticks, read_sampling_frequency_hz
+from .metrics import PHASE_METRIC_NAMES, spectrum_valley_height
 
 FIGURE_DPI = 320
 FIGURE_WIDTH_INCHES = 8.0 / 2.54
@@ -32,7 +33,7 @@ def export_spectrogram_figures(output) -> list[Path]:
     schema = EyeFlowOutputPaths.active()
     manager = output.manager.for_artifact_namespace("spectrograms")
     paths: list[Path] = []
-    sampling_frequency = _sampling_frequency_hz(output)
+    sampling_frequency = read_sampling_frequency_hz(output)
     for source_path, name, make_figure in (
         (schema.spectrograms_masked, "spectrograms_gaps", _gap_spectrogram_figure),
         (
@@ -67,17 +68,6 @@ def export_spectrogram_figures(output) -> list[Path]:
     return paths
 
 
-def _sampling_frequency_hz(output) -> float | None:
-    source = output.h5.get(EyeFlowOutputPaths.active().sampling_frequency_hz)
-    if source is None:
-        return None
-    try:
-        value = float(np.asarray(source[()]).reshape(()))
-    except (TypeError, ValueError):
-        return None
-    return value if np.isfinite(value) and value > 0 else None
-
-
 def _export_positive_spectra(output, manager, sampling_frequency: float) -> list[Path]:
     schema = EyeFlowOutputPaths.active()
     sources = (
@@ -89,7 +79,7 @@ def _export_positive_spectra(output, manager, sampling_frequency: float) -> list
          schema.spectrograms_masked_time_aggregated_std_late, ":"),
     )
     available = [
-        (label, output.h5.get(center_path), output.h5.get(std_path), style)
+        (label, output.h5.get(center_path)[()], output.h5.get(std_path)[()], style)
         for label, center_path, std_path, style in sources
         if output.h5.get(center_path) is not None and output.h5.get(std_path) is not None
     ]
@@ -100,18 +90,19 @@ def _export_positive_spectra(output, manager, sampling_frequency: float) -> list
         peak = float(np.asarray(peak_source[()]).reshape(())) if peak_source is not None else np.nan
     except (TypeError, ValueError):
         peak = np.nan
-    if not np.isfinite(peak) or peak != int(peak) or not 0 <= peak < POSITIVE_FREQUENCY_BIN_COUNT:
-        Logger.log_warning("Skipping positive spectra: stored index_max1 must be an integer from 0 through 31.")
+    if not np.isfinite(peak) or peak != int(peak) or peak < 0:
+        Logger.log_warning("Skipping positive spectra: stored index_max1 must be a nonnegative integer.")
         return []
     curves = {}
     for label, center, std, style in available:
         curve = _positive_spectrum_curve(
-            center[()], std[()], sampling_frequency_hz=sampling_frequency,
+            center, std, sampling_frequency_hz=sampling_frequency,
             label=label, linestyle=style, index_max1=peak,
         )
         if curve is None:
             Logger.log_warning(
-                f"Skipping normalized {label.lower()} spectrum: need bins 0 through 31 and a positive finite maximum."
+                f"Skipping normalized {label.lower()} spectrum: need a valid positive-bin cutoff "
+                "and a positive finite Hv from the central 25% of all bins."
             )
         else:
             curves[label] = curve
@@ -193,6 +184,7 @@ def _gap_median_figure(values: np.ndarray, *, sampling_frequency_hz: float):
     fig, ax = _figure()
     bins = np.arange(values.size)
     ax.plot(bins, values, color="black", linewidth=SIGNAL_LINE_WIDTH)
+    ax.axhline(0, color="black", linestyle=":", linewidth=BOX_LINE_WIDTH, zorder=1)
     positions, labels = frequency_ticks(values.size, sampling_frequency_hz)
     ax.set_xticks(positions, labels=labels)
     ax.set_xlabel("Frequency (kHz)")
@@ -218,24 +210,34 @@ def _positive_spectrum_curve(
     std = np.asarray(std, dtype=np.float64)
     if values.ndim != 1 or std.shape != values.shape:
         raise ValueError("Spectrum and beat STD must share one frequency axis.")
-    stop = POSITIVE_FREQUENCY_BIN_COUNT
+    stop = values.size // 2
     if (
-        values.size < stop or not np.isfinite(index_max1) or index_max1 != int(index_max1)
+        stop < 1 or not np.isfinite(index_max1) or index_max1 != int(index_max1)
         or not 0 <= index_max1 < stop
     ):
         return None
-    positive = values[:stop]
-    valid = np.flatnonzero(np.isfinite(positive))
-    if valid.size == 0 or np.any(np.isinf(positive)):
+    divisor = _positive_spectrum_baseline(values)
+    if divisor is None:
         return None
-    maximum = np.max(positive[valid])
-    if maximum <= 0:
+    if not np.isfinite(divisor) or divisor <= 0:
         return None
     start = int(index_max1)
     return _PositiveSpectrum(
-        positive_frequency_coordinates_khz(sampling_frequency_hz)[start:stop],
-        values[start:stop] / maximum, std[start:stop] / maximum, label, linestyle,
+        positive_frequency_coordinates_khz(values.size, sampling_frequency_hz)[start:stop],
+        values[start:stop] / divisor, std[start:stop] / divisor, label, linestyle,
     )
+
+
+def _positive_spectrum_baseline(values) -> float | None:
+    """Use the same central-quarter Hv as A0, computed before positive-bin cropping."""
+    values = np.asarray(values, dtype=np.float64)
+    if values.ndim != 1 or values.size < 2:
+        return None
+    positive = values[:values.size // 2]
+    if np.any(np.isinf(positive)):
+        return None
+    hv = float(spectrum_valley_height(values))
+    return hv if np.isfinite(hv) else None
 
 
 def _positive_spectra_figure(curves: list[_PositiveSpectrum]):
@@ -298,7 +300,8 @@ def _gap_metric_figure(values: np.ndarray, phase: np.ndarray, *, metric: str, un
     ax.set_xlim(0, 1)
     ax.set_xticks([0, 1 / 3, 2 / 3, 1], labels=["0", "1/3", "2/3", "1"])
     ax.set_xlabel("Cardiac phase (t/T)")
-    ax.set_ylabel(metric if unit == "1" else f"{metric} ({unit})")
+    display_unit = "a.u." if unit.replace(" ", "").lower() == "a.u.*khz" else unit
+    ax.set_ylabel(metric if display_unit == "1" else f"{metric} ({display_unit})")
     _style_figure(fig)
     ax.tick_params(axis="x", labelrotation=0)
     return fig

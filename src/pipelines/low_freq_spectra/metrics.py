@@ -1,19 +1,23 @@
-"""Peak, valley, and inclusive-area metrics for gap spectra."""
+"""Peak, valley, and peak-to-peak area metrics for gap spectra."""
 
 from __future__ import annotations
 
 from numbers import Integral
 
 import numpy as np
+from scipy.integrate import trapezoid
 
 from calculations.math import nanmedian
+from calculations.math.frequency import frequency_bin_spacing_khz
+from calculations.math.phase_windows import (
+    DEFAULT_EARLY_PHASE_INTERVAL, DEFAULT_LATE_PHASE_INTERVAL,
+    early_late_phase_windows, phase_window_medians, late_minus_early,
+)
 from input_output.schema import EyeFlowOutputPaths
 from utils.logger import Logger
 
-from .per_beat import early_late_phase_windows
-
 DEFAULT_VALLEY_NEIGHBORHOOD_FRACTION = 1 / 4
-PHASE_METRIC_NAMES = ("A0", "A1", "A2", "R1", "R2")
+PHASE_METRIC_NAMES = ("A0", "A1", "A2", "R1", "R2", "Z1", "Z2")
 
 SPECTRUM_METRIC_DEFINITIONS = {
     "index_max1": "zero-based index of the maximum in the first half of the bin domain",
@@ -24,36 +28,43 @@ SPECTRUM_METRIC_DEFINITIONS = {
     "min1": "spectrum value at zero-based index floor(bin_count/2) - 1",
     "index_min2": "zero-based central valley index floor(bin_count/2)",
     "min2": "spectrum value at zero-based index floor(bin_count/2)",
-    "A0": "arithmetic mean of max1 and max2 times the inclusive peak-to-peak bin count",
-    "A1": "unweighted spectrum sum from index_max1 through index_max2, inclusive; NaNs propagate",
-    "A2": "NaN-aware central-neighborhood median height times the inclusive peak-to-peak bin count",
+    "A0": "NaN-aware central-neighborhood median height times peak-to-peak width in kHz",
+    "A1": "trapezoidal spectrum integral from index_max1 to index_max2 with full-spectrum kHz spacing; NaNs propagate",
+    "A2": "arithmetic mean of max1 and max2 times peak-to-peak width in kHz",
     "R1": "A1 divided by A0; zero or missing A0 produces NaN",
     "R2": "A2 divided by A0; zero or missing A0 produces NaN",
+    "Z1": "(A1 - A0) divided by A0; zero or missing A0 produces NaN",
+    "Z2": "(A2 - A0) divided by A0; zero or missing A0 produces NaN",
 }
 
 PHASE_METRIC_DEFINITIONS = {
-    "A0": "inclusive fixed peak-to-peak bin count times mean spectrum height at those two bins per phase",
-    "A1": "inclusive spectrum sum between the fixed peak bins per phase; interval NaNs propagate",
-    "A2": "inclusive fixed peak-to-peak bin count times NaN-aware central-neighborhood median per phase",
+    "A0": "fixed peak-to-peak width in kHz times NaN-aware central-neighborhood median per phase",
+    "A1": "trapezoidal spectrum integral between fixed peak bins per phase with full-spectrum kHz spacing; interval NaNs propagate",
+    "A2": "fixed peak-to-peak width in kHz times mean spectrum height at those two bins per phase",
     "R1": "A1_t divided by A0_t per phase; zero or missing A0_t produces NaN",
     "R2": "A2_t divided by A0_t per phase; zero or missing A0_t produces NaN",
+    "Z1": "(A1_t - A0_t) divided by A0_t per phase; zero or missing A0_t produces NaN",
+    "Z2": "(A2_t - A0_t) divided by A0_t per phase; zero or missing A0_t produces NaN",
 }
 
 
 def analyze_spectrum(
-    spectrum, *, valley_neighborhood_length: int | None = None,
+    spectrum, *, sampling_frequency_hz: float, valley_neighborhood_length: int | None = None,
 ) -> dict[str, float]:
     """Analyze a spectrum in its stored frequency order.
 
     Select one maximum in each half, including endpoints and ignoring NaNs.
     Ties select the lowest index. An all-NaN half has a NaN index and value.
     Valley indexes are the two central bins, even if their values are NaN.
-    The peak-height mean requires both inputs. Areas include both peak bins without wrapping,
-    interpolation, or frequency-spacing weights. A1 propagates interval NaNs.
+    The peak-height mean requires both inputs. Areas span the peak-index distance
+    times fs/(N*1000) kHz without wrapping or reordering. A1 integrates samples
+    including both peak bins using that positive spacing and the trapezoidal
+    rule; interval NaNs propagate.
     The even-length valley neighborhood is centered between the central bins;
     its default length is one quarter of the bin count, rounded to the nearest
     even number (ties upward), with at least two bins. Its median ignores NaNs, returning
-    NaN if all samples are missing. A2 uses the same inclusive width as A0.
+    NaN if all samples are missing. A0 uses the valley median and A2 uses the
+    peak-height mean, both with the same peak-to-peak width in kHz.
     Any one-dimensional domain with at least two bins is supported. Odd domains
     split at floor(bin_count/2). Unsupported shapes return NaN metrics with a warning.
     """
@@ -67,8 +78,8 @@ def analyze_spectrum(
         )
         return result
     values = np.asarray(values, dtype=np.float64)
+    spacing = frequency_bin_spacing_khz(values.size, sampling_frequency_hz)
     middle = values.size // 2
-    valley_bins = _valley_neighborhood_indices(valley_neighborhood_length, values.size)
     result["index_max1"], result["max1"] = _peak(values, 0, middle)
     result["index_max2"], result["max2"] = _peak(values, middle, values.size)
     for name, start, stop in (("1", 0, middle), ("2", middle, values.size)):
@@ -82,16 +93,19 @@ def analyze_spectrum(
         index_min2=float(middle), min2=float(values[middle]),
     )
     h0 = (result["max1"] + result["max2"]) / 2
-    hv = float(nanmedian(values[valley_bins], dtype=np.float64))
+    hv = float(spectrum_valley_height(values, valley_neighborhood_length=valley_neighborhood_length))
     if np.isfinite(result["index_max1"]) and np.isfinite(result["index_max2"]):
         start = int(result["index_max1"])
         stop = int(result["index_max2"]) + 1
-        result["A0"] = h0 * (stop - start)
-        result["A1"] = float(np.sum(values[start:stop]))
-        result["A2"] = hv * (stop - start)
+        width = (stop - start - 1) * spacing
+        result["A0"] = hv * width
+        result["A1"] = float(trapezoid(values[start:stop], dx=spacing))
+        result["A2"] = h0 * width
         if result["A0"] != 0:
             result["R1"] = result["A1"] / result["A0"]
             result["R2"] = result["A2"] / result["A0"]
+            result["Z1"] = (result["A1"] - result["A0"]) / result["A0"]
+            result["Z2"] = (result["A2"] - result["A0"]) / result["A0"]
     return result
 
 
@@ -113,6 +127,15 @@ def _valley_neighborhood_indices(length: int | None, bin_count: int) -> np.ndarr
     return np.arange(middle - length // 2, middle + length // 2)
 
 
+def spectrum_valley_height(spectrum, *, valley_neighborhood_length: int | None = None):
+    """Return Hv over the central quarter of the last (frequency) axis, ignoring NaNs."""
+    values = np.asarray(spectrum, dtype=np.float64)
+    if values.ndim < 1 or values.shape[-1] < 2:
+        raise ValueError("Valley height requires a frequency axis with at least two bins.")
+    bins = _valley_neighborhood_indices(valley_neighborhood_length, values.shape[-1])
+    return nanmedian(values[..., bins], axis=-1, dtype=np.float64)
+
+
 def _peak(values: np.ndarray, start: int, stop: int) -> tuple[float, float]:
     half = values[start:stop]
     valid = np.flatnonzero(~np.isnan(half))
@@ -123,13 +146,17 @@ def _peak(values: np.ndarray, start: int, stop: int) -> tuple[float, float]:
 
 
 def pack_spectrum_metrics(
-    spectrum, *, source_attrs: dict[str, object],
+    spectrum, *, source_attrs: dict[str, object], sampling_frequency_hz: float,
     valley_neighborhood_length: int | None = None,
     phase_spectrum=None, phase_attrs: dict[str, object] | None = None,
+    early_interval=DEFAULT_EARLY_PHASE_INTERVAL, late_interval=DEFAULT_LATE_PHASE_INTERVAL,
 ) -> dict[str, object]:
     """Pack scalar metrics with units and references to the aggregate spectrum."""
     schema = EyeFlowOutputPaths.active()
-    result = analyze_spectrum(spectrum, valley_neighborhood_length=valley_neighborhood_length)
+    result = analyze_spectrum(
+        spectrum, sampling_frequency_hz=sampling_frequency_hz,
+        valley_neighborhood_length=valley_neighborhood_length,
+    )
     values = np.asarray(spectrum)
     valley_bins = (
         _valley_neighborhood_indices(valley_neighborhood_length, values.size)
@@ -150,6 +177,15 @@ def pack_spectrum_metrics(
         "dimDesc": [],
         "peak_selection": "maximum_per_bin_domain_half_ignore_NaN_lowest_index_on_ties",
         "interval_endpoints": "both_included",
+        "area_interval_width": "(index_max2 - index_max1) * frequency_bin_spacing_khz",
+        "area_coordinate": "unwrapped_frequency_khz_in_HD_bin_order",
+        "A1_integration_method": "trapezoidal_khz_spacing",
+        "sampling_frequency_hz": sampling_frequency_hz,
+        "sampling_frequency_source_path": "/" + schema.sampling_frequency_hz,
+        "frequency_bin_spacing_khz": (
+            frequency_bin_spacing_khz(values.size, sampling_frequency_hz)
+            if _supported_bin_domain(values) else np.nan
+        ),
         "frequency_bin_order": source_attrs.get("frequency_bin_order", "HD_export_order"),
         "nonfinite_value_policy": "missing_required_values_and_interval_NaNs_propagate",
         "valley_neighborhood_length": len(valley_bins),
@@ -165,10 +201,12 @@ def pack_spectrum_metrics(
     for name, value in result.items():
         unit = (
             "1"
-            if name.startswith("index_") or name in {"R1", "R2"}
+            if name.startswith("index_") or name in {"R1", "R2", "Z1", "Z2"}
             else source_attrs.get("unit", "a.u.")
         )
         metric_attrs = {**attrs, "unit": unit, "definition": SPECTRUM_METRIC_DEFINITIONS[name]}
+        if name in {"A0", "A1", "A2"}:
+            metric_attrs["unit"] = f"{unit}*kHz"
         if name.startswith("index_"):
             metric_attrs["index_base"] = 0
             metric_attrs["index_storage"] = "integer_valued_float32_with_NaN_for_missing_index"
@@ -184,21 +222,26 @@ def pack_spectrum_metrics(
         output.update(_pack_phase_metrics(
             phase_spectrum, fixed_metrics=result, source_attrs=phase_attrs,
             metric_attrs=attrs, valley_neighborhood_length=valley_neighborhood_length,
+            sampling_frequency_hz=sampling_frequency_hz,
+            early_interval=early_interval, late_interval=late_interval,
         ))
     return output
 
 
 def analyze_phase_spectrum(
-    spectrum, *, index_max1: float, index_max2: float,
+    spectrum, *, index_max1: float, index_max2: float, sampling_frequency_hz: float,
     valley_neighborhood_length: int | None = None,
 ) -> dict[str, np.ndarray]:
     """Calculate phase curves with peak bins fixed from the pooled spectrum.
 
-    Input axes are (phase, freq). A0 uses the mean height at those fixed bins;
-    A1 is their inclusive interval sum; A2 uses the central neighborhood median.
+    Input axes are (phase, freq). A0 uses the central neighborhood median;
+    A1 is the trapezoidal integral between fixed peaks with full-spectrum kHz
+    spacing; A2 uses the mean height at those peaks. All areas span their index
+    distance times fs/(N*1000) kHz, without sorting the signed display axis.
     Missing peak indexes leave all curves NaN. At each phase, missing peak
-    heights invalidate A0, interval NaNs invalidate A1, and A2 ignores valley
-    NaNs unless the whole neighborhood is missing. Zero A0 yields NaN ratios.
+    heights invalidate A2, interval NaNs invalidate A1, and A0 ignores valley
+    NaNs unless the whole neighborhood is missing. Zero A0 yields NaN ratios
+    and offsets.
     """
     values = np.asarray(spectrum, dtype=np.float64)
     if values.ndim != 2 or any(size == 0 for size in values.shape):
@@ -213,14 +256,17 @@ def analyze_phase_spectrum(
     ):
         raise ValueError("Fixed peak indices must be ordered integer bin indices within the spectrum.")
     start, stop = int(index_max1), int(index_max2) + 1
-    width = stop - start
-    valley_bins = _valley_neighborhood_indices(valley_neighborhood_length, values.shape[1])
-    result["A0"] = width * (values[:, start] + values[:, stop - 1]) / 2
-    result["A1"] = np.sum(values[:, start:stop], axis=1)
-    result["A2"] = width * nanmedian(values[:, valley_bins], axis=1, dtype=np.float64)
-    for name, numerator in (("R1", "A1"), ("R2", "A2")):
+    spacing = frequency_bin_spacing_khz(values.shape[1], sampling_frequency_hz)
+    width = (stop - start - 1) * spacing
+    result["A0"] = width * spectrum_valley_height(values, valley_neighborhood_length=valley_neighborhood_length)
+    result["A1"] = trapezoid(values[:, start:stop], dx=spacing, axis=1)
+    result["A2"] = width * (values[:, start] + values[:, stop - 1]) / 2
+    for name, numerator in (
+        ("R1", result["A1"]), ("R2", result["A2"]),
+        ("Z1", result["A1"] - result["A0"]), ("Z2", result["A2"] - result["A0"]),
+    ):
         np.divide(
-            result[numerator], result["A0"], out=result[name],
+            numerator, result["A0"], out=result[name],
             where=(result["A0"] != 0) & ~np.isnan(result["A0"]),
         )
     return result
@@ -229,6 +275,8 @@ def analyze_phase_spectrum(
 def _pack_phase_metrics(
     spectrum, *, fixed_metrics: dict[str, float], source_attrs: dict[str, object],
     metric_attrs: dict[str, object], valley_neighborhood_length: int | None,
+    sampling_frequency_hz: float,
+    early_interval, late_interval,
 ) -> dict[str, object]:
     schema = EyeFlowOutputPaths.active()
     root = schema.spectrograms_masked_metrics_root
@@ -237,10 +285,11 @@ def _pack_phase_metrics(
         phase = phase.astype(np.float64)
     if phase.shape != (np.shape(spectrum)[0],):
         raise ValueError("Phase samples must be strictly increasing coordinates in [0, 1).")
-    windows = early_late_phase_windows(phase)
+    windows = early_late_phase_windows(phase, early_interval=early_interval, late_interval=late_interval)
     curves = analyze_phase_spectrum(
         spectrum, index_max1=fixed_metrics["index_max1"], index_max2=fixed_metrics["index_max2"],
         valley_neighborhood_length=valley_neighborhood_length,
+        sampling_frequency_hz=sampling_frequency_hz,
     )
     attrs = {
         **{key: value for key, value in source_attrs.items() if not key.startswith("aggregation_")},
@@ -258,7 +307,9 @@ def _pack_phase_metrics(
     }
     output = {}
     for name, curve in curves.items():
-        unit = "1" if name in {"R1", "R2"} else source_attrs.get("unit", "a.u.")
+        unit = "1" if name in {"R1", "R2", "Z1", "Z2"} else source_attrs.get("unit", "a.u.")
+        if name in {"A0", "A1", "A2"}:
+            unit = f"{unit}*kHz"
         curve_path = f"{root}/{name}_t"
         curve_attrs = {
             **attrs, "unit": unit,
@@ -270,10 +321,9 @@ def _pack_phase_metrics(
             if key not in {"phase_samples", "phase_endpoint"}
         }
         scalar_attrs.update(source_path="/" + curve_path, dimDesc=[])
-        aggregates = {}
+        aggregates = phase_window_medians(curve, windows)
         for window, (mask, interval) in windows.items():
-            aggregate = float(nanmedian(curve[mask], dtype=np.float64))
-            aggregates[window] = aggregate
+            aggregate = float(aggregates[window])
             output[f"{root}/{name}_{window}"] = (np.float32(aggregate), {
                 **scalar_attrs,
                 "definition": f"NaN-aware median of {name}_t over the {window} phase interval",
@@ -286,11 +336,13 @@ def _pack_phase_metrics(
                 "valid_sample_count": int(np.count_nonzero(~np.isnan(curve[mask]))),
                 "nonfinite_value_policy": "ignore_NaN_all_NaN_window_returns_NaN",
             })
-        output[f"{root}/delta_{name}"] = (np.float32(aggregates["early"] - aggregates["late"]), {
+        output[f"{root}/delta_{name}"] = (np.float32(late_minus_early(aggregates["early"], aggregates["late"])), {
             **scalar_attrs,
-            "definition": f"{name}_early minus {name}_late",
-            "source_paths": [f"/{root}/{name}_early", f"/{root}/{name}_late"],
-            "calculation_method": "early_median_minus_late_median",
+            "definition": f"{name}_late minus {name}_early",
+            "source_paths": [f"/{root}/{name}_late", f"/{root}/{name}_early"],
+            "calculation_method": "late_median_minus_early_median",
+            "early_phase_interval": windows["early"][1],
+            "late_phase_interval": windows["late"][1],
             "nonfinite_value_policy": "missing_early_or_late_median_propagates_NaN",
         })
     return output
