@@ -66,10 +66,10 @@ The velocity estimator is product-specific and therefore remains in
 `velocity/estimation.py` rather than `calculations`. It processes `(frame, y,
 x)` volumes in bounded temporal chunks, uses moments or calibrated frequency
 bands as its active source, applies the shared local-background difference, and
-returns physical velocity in `mm/s`. In band mode, finite negative HF numerators
-are clamped to zero during ratio calculation, and exact-zero LF denominators
-map to zero without division. LF remains non-negative and both bands must be
-finite; validation and calibration provenance are part of the
+returns physical velocity in `mm/s`. In band mode, finite negative samples in
+both HF and LF are replaced with zero during chunk validation, with a warning
+naming the dataset and frame interval. Zero LF denominators map to ratio zero
+without division. Both bands must remain finite; validation and calibration provenance are part of the
 pipeline contract.
 
 `low_freq_spectra/spectrograms.py` reads HD frequency-bin spectra once per frame for
@@ -109,8 +109,8 @@ Hv, the same NaN-aware central-quarter median of the full spectrum used by A0
 (64 source bins use bins 24 through 39), before cropping from stored `Metrics/index_max1`
 through bin `P-1` inclusive. Scale STD by the same per-curve divisor, retain
 linear power. The runner publishes the full signed frequency mapping once at
-`/ProcessingSpectrograms/FrequencyBinTable`, as `(freq, 2)` columns `bin_index`
-and `frequency_khz` with zero-based indices and column units `1`/`kHz`. Use the
+`/ProcessingSpectrograms/FrequencyBinTable`, as a `(freq,)` array in `kHz` where
+each zero-based array index identifies the source bin. Use the
 shared conversions in `calculations/math/frequency.py` for tables, metrics, and
 plots. Table publication requires valid sampling calibration, independently of
 gap support, cardiac timing, and figure export. Missing/invalid stored peaks,
@@ -128,12 +128,16 @@ Phase curves `A0_t`, `A1_t`, `A2_t`, `R1_t`, `R2_t`, `Z1_t`, and `Z2_t` use
 metrics use the same seven names without `_t`; output heights `h0`/`h1`/`hv`
 and `rho_h` are absent.
 Each curve also has `_early` and `_late` scalar medians over closed phase
-intervals `[0,1/3]` and `[1/3,1]`, and a signed `delta_<metric>` scalar.
-Z1/Z2 deltas are late-minus-early; area and ratio deltas remain early-minus-late.
+intervals (default `[0,1/3]` and `[1/3,1]`), and a signed `delta_<metric>` scalar.
+All seven deltas are late-minus-early. Generic helpers in
+`calculations/math/phase_windows.py` own closed interval masks, NaN-aware medians,
+and subtraction. `run_gap_analysis` and `pack_spectrum_metrics` accept
+`early_interval`/`late_interval` cycle-fraction bounds in `[0,1]`; use the same
+windows for early/late spectra, STD envelopes, and metric summaries/deltas.
 Keep subtraction order explicit in definitions, source paths, and calculation
 metadata. Ignore NaNs within each window; missing windows/differences remain NaN.
 Keep the source's excluded endpoint and include a one-third boundary sample in
-both windows when present. Curves retain phase/timing/peak provenance and also
+both default windows when present. Curves retain phase/timing/peak provenance and also
 produce shared `gaps_<metric>` PNG/EPS plots.
 The valley height `hv` uses a NaN-aware median over a neighborhood centered on
 the two central bins. Its default length is one quarter of the actual domain
@@ -157,7 +161,7 @@ the Metrics family while retaining raw/aggregate spectra and filters.
 `R1=A1/A0`, `R2=A2/A0`,
 `Z1=(A1-A0)/A0`, and `Z2=(A2-A0)/A0` are dimensionless; zero/missing A0 gives
 NaN. All seven metrics have pooled scalars, phase curves, early/late medians,
-signed deltas using the metric-specific subtraction order, and matching PNG/EPS phase plots.
+signed late-minus-early deltas, and matching PNG/EPS phase plots.
 Metric metadata records the neighborhood.
 Independent `PerBeat/BandLimited` keeps DC plus the configured non-DC harmonics
 (default 12) via the shared bandlimiting API in signed mode, using

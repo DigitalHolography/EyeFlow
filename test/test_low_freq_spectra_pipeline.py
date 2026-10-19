@@ -202,16 +202,15 @@ def test_frequency_bin_table_is_written_without_detected_timing_or_figure_export
     with h5py.File(result.outputs[0], "r") as output:
         table = output[schema.spectrograms_frequency_bin_table]
         assert table.name == "/ProcessingSpectrograms/FrequencyBinTable"
-        assert table.shape == (bin_count, 2)
+        assert table.shape == (bin_count,)
         assert table.dtype == np.float32
-        np.testing.assert_array_equal(table[:, 0], np.arange(bin_count))
         frequencies = np.arange(bin_count, dtype=float)
         if bin_count > 1:
             frequencies[bin_count // 2:] -= bin_count
-        np.testing.assert_allclose(table[:, 1], frequencies * (64 / bin_count))
-        assert list(table.attrs["column_names"]) == ["bin_index", "frequency_khz"]
-        assert list(table.attrs["unit"]) == ["1", "kHz"]
-        assert list(table.attrs["dimDesc"]) == ["freq", "column"]
+        np.testing.assert_allclose(table[:], frequencies * (64 / bin_count))
+        assert "column_names" not in table.attrs
+        assert table.attrs["unit"] == "kHz"
+        assert list(table.attrs["dimDesc"]) == ["freq"]
         assert table.attrs["index_base"] == 0
         assert table.attrs["sampling_frequency_hz"] == 64000
         assert table.attrs["sampling_frequency_source_path"] == "/" + schema.sampling_frequency_hz

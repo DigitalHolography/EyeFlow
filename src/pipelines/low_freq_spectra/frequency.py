@@ -23,7 +23,7 @@ def read_sampling_frequency_hz(output) -> float | None:
 
 
 def write_frequency_bin_table(output, bin_count: int) -> None:
-    """Persist every source bin and its signed kHz frequency once per run."""
+    """Persist signed kHz frequencies, indexed by zero-based source bin."""
     sampling_frequency = read_sampling_frequency_hz(output)
     if sampling_frequency is None:
         Logger.log_warning("Skipping FrequencyBinTable: a positive HD sampling frequency is required.")
@@ -32,10 +32,9 @@ def write_frequency_bin_table(output, bin_count: int) -> None:
     frequencies = frequency_coordinates_khz(bin_count, sampling_frequency)
     output.h5.write(
         schema.spectrograms_frequency_bin_table,
-        np.column_stack((np.arange(bin_count), frequencies)),
-        dimDesc=["freq", "column"],
-        column_names=["bin_index", "frequency_khz"],
-        unit=["1", "kHz"],
+        frequencies,
+        dimDesc=["freq"],
+        unit="kHz",
         index_base=0,
         source_path=f"/{HD_SPECTOGRAMS_PATH}",
         source_bin_count=bin_count,
@@ -43,7 +42,7 @@ def write_frequency_bin_table(output, bin_count: int) -> None:
         sampling_frequency_source_path="/" + schema.sampling_frequency_hz,
         frequency_bin_order="positive_then_negative_DC_zero",
         bin_domain_split_index=bin_count // 2,
-        definition="zero-based HD bin index and signed frequency in kHz with full-spectrum fs/N spacing",
+        definition="signed frequency in kHz at each zero-based HD bin index with full-spectrum fs/N spacing",
     )
 
 

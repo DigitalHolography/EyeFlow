@@ -30,24 +30,6 @@ def beat_spectrum_std(per_beat, phase_mask) -> tuple[np.ndarray, np.ndarray]:
     return std.astype(np.float32), valid_counts
 
 
-def early_late_phase_windows(phase_samples) -> dict[str, tuple[np.ndarray, list[float]]]:
-    """Return closed early/late windows on normalized cardiac phase coordinates.
-
-    A sample at one third belongs to both windows. Compare in the source dtype
-    so a float32 coordinate representing one third keeps that boundary behavior.
-    """
-    phase = np.asarray(phase_samples)
-    if phase.dtype.kind != "f":
-        phase = phase.astype(np.float64)
-    if (
-        phase.ndim != 1 or phase.size == 0 or not np.all(np.isfinite(phase))
-        or np.any(phase < 0) or np.any(phase >= 1) or np.any(np.diff(phase) <= 0)
-    ):
-        raise ValueError("Phase samples must be strictly increasing coordinates in [0, 1).")
-    split = phase.dtype.type(1 / 3)
-    return {"early": (phase <= split, [0.0, 1 / 3]), "late": (phase >= split, [1 / 3, 1.0])}
-
-
 def gap_spectrograms_per_beat(
     values: np.ndarray,
     cycle_boundaries: np.ndarray,

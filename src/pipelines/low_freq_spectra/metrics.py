@@ -9,10 +9,12 @@ from scipy.integrate import trapezoid
 
 from calculations.math import nanmedian
 from calculations.math.frequency import frequency_bin_spacing_khz
+from calculations.math.phase_windows import (
+    DEFAULT_EARLY_PHASE_INTERVAL, DEFAULT_LATE_PHASE_INTERVAL,
+    early_late_phase_windows, phase_window_medians, late_minus_early,
+)
 from input_output.schema import EyeFlowOutputPaths
 from utils.logger import Logger
-
-from .per_beat import early_late_phase_windows
 
 DEFAULT_VALLEY_NEIGHBORHOOD_FRACTION = 1 / 4
 PHASE_METRIC_NAMES = ("A0", "A1", "A2", "R1", "R2", "Z1", "Z2")
@@ -147,6 +149,7 @@ def pack_spectrum_metrics(
     spectrum, *, source_attrs: dict[str, object], sampling_frequency_hz: float,
     valley_neighborhood_length: int | None = None,
     phase_spectrum=None, phase_attrs: dict[str, object] | None = None,
+    early_interval=DEFAULT_EARLY_PHASE_INTERVAL, late_interval=DEFAULT_LATE_PHASE_INTERVAL,
 ) -> dict[str, object]:
     """Pack scalar metrics with units and references to the aggregate spectrum."""
     schema = EyeFlowOutputPaths.active()
@@ -220,6 +223,7 @@ def pack_spectrum_metrics(
             phase_spectrum, fixed_metrics=result, source_attrs=phase_attrs,
             metric_attrs=attrs, valley_neighborhood_length=valley_neighborhood_length,
             sampling_frequency_hz=sampling_frequency_hz,
+            early_interval=early_interval, late_interval=late_interval,
         ))
     return output
 
@@ -272,6 +276,7 @@ def _pack_phase_metrics(
     spectrum, *, fixed_metrics: dict[str, float], source_attrs: dict[str, object],
     metric_attrs: dict[str, object], valley_neighborhood_length: int | None,
     sampling_frequency_hz: float,
+    early_interval, late_interval,
 ) -> dict[str, object]:
     schema = EyeFlowOutputPaths.active()
     root = schema.spectrograms_masked_metrics_root
@@ -280,7 +285,7 @@ def _pack_phase_metrics(
         phase = phase.astype(np.float64)
     if phase.shape != (np.shape(spectrum)[0],):
         raise ValueError("Phase samples must be strictly increasing coordinates in [0, 1).")
-    windows = early_late_phase_windows(phase)
+    windows = early_late_phase_windows(phase, early_interval=early_interval, late_interval=late_interval)
     curves = analyze_phase_spectrum(
         spectrum, index_max1=fixed_metrics["index_max1"], index_max2=fixed_metrics["index_max2"],
         valley_neighborhood_length=valley_neighborhood_length,
@@ -316,10 +321,9 @@ def _pack_phase_metrics(
             if key not in {"phase_samples", "phase_endpoint"}
         }
         scalar_attrs.update(source_path="/" + curve_path, dimDesc=[])
-        aggregates = {}
+        aggregates = phase_window_medians(curve, windows)
         for window, (mask, interval) in windows.items():
-            aggregate = float(nanmedian(curve[mask], dtype=np.float64))
-            aggregates[window] = aggregate
+            aggregate = float(aggregates[window])
             output[f"{root}/{name}_{window}"] = (np.float32(aggregate), {
                 **scalar_attrs,
                 "definition": f"NaN-aware median of {name}_t over the {window} phase interval",
@@ -332,12 +336,13 @@ def _pack_phase_metrics(
                 "valid_sample_count": int(np.count_nonzero(~np.isnan(curve[mask]))),
                 "nonfinite_value_policy": "ignore_NaN_all_NaN_window_returns_NaN",
             })
-        minuend, subtrahend = ("late", "early") if name in {"Z1", "Z2"} else ("early", "late")
-        output[f"{root}/delta_{name}"] = (np.float32(aggregates[minuend] - aggregates[subtrahend]), {
+        output[f"{root}/delta_{name}"] = (np.float32(late_minus_early(aggregates["early"], aggregates["late"])), {
             **scalar_attrs,
-            "definition": f"{name}_{minuend} minus {name}_{subtrahend}",
-            "source_paths": [f"/{root}/{name}_{minuend}", f"/{root}/{name}_{subtrahend}"],
-            "calculation_method": f"{minuend}_median_minus_{subtrahend}_median",
+            "definition": f"{name}_late minus {name}_early",
+            "source_paths": [f"/{root}/{name}_late", f"/{root}/{name}_early"],
+            "calculation_method": "late_median_minus_early_median",
+            "early_phase_interval": windows["early"][1],
+            "late_phase_interval": windows["late"][1],
             "nonfinite_value_policy": "missing_early_or_late_median_propagates_NaN",
         })
     return output

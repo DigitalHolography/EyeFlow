@@ -27,7 +27,7 @@ def _phase_spectrum():
     ], dtype=np.float32)
 
 
-def _pack(values=None, phase=None):
+def _pack(values=None, phase=None, **window_options):
     if values is None:
         values = _phase_spectrum()
     if phase is None:
@@ -36,6 +36,7 @@ def _pack(values=None, phase=None):
         _phase_spectrum()[0], sampling_frequency_hz=8000, source_attrs={"unit": "power_unit"},
         phase_spectrum=values,
         phase_attrs={"unit": "power_unit", "phase_samples": phase, "cycle_boundary_workflow": "doppler_moments"},
+        **window_options,
     )
 
 
@@ -78,8 +79,8 @@ def test_early_late_medians_include_shared_third_boundary_and_deltas_have_signed
     metrics = _pack(phase=phase)
     root = EyeFlowOutputPaths.active().spectrograms_masked_metrics_root
     expected = {
-        "A2": (45, 20, 25), "A1": (17, 16.5, 0.5), "A0": (15, 22.5, -7.5),
-        "R1": (17 / 15, 33 / 40, 37 / 120), "R2": (3, 23 / 24, 49 / 24),
+        "A2": (45, 20, -25), "A1": (17, 16.5, -0.5), "A0": (15, 22.5, 7.5),
+        "R1": (17 / 15, 33 / 40, -37 / 120), "R2": (3, 23 / 24, -49 / 24),
         "Z1": (2 / 15, -7 / 40, -37 / 120), "Z2": (2, -1 / 24, -49 / 24),
     }
     for name, (early, late, delta) in expected.items():
@@ -101,13 +102,12 @@ def test_early_late_medians_include_shared_third_boundary_and_deltas_have_signed
             assert aggregate_attrs["dimDesc"] == []
             assert "phase_samples" not in aggregate_attrs
         assert metrics[f"{root}/delta_{name}"][0] == pytest.approx(delta)
-        minuend, subtrahend = ("late", "early") if name in {"Z1", "Z2"} else ("early", "late")
         delta_attrs = metrics[f"{root}/delta_{name}"][1]
         assert delta_attrs["source_paths"] == [
-            f"/{root}/{name}_{minuend}", f"/{root}/{name}_{subtrahend}",
+            f"/{root}/{name}_late", f"/{root}/{name}_early",
         ]
-        assert delta_attrs["definition"] == f"{name}_{minuend} minus {name}_{subtrahend}"
-        assert delta_attrs["calculation_method"] == f"{minuend}_median_minus_{subtrahend}_median"
+        assert delta_attrs["definition"] == f"{name}_late minus {name}_early"
+        assert delta_attrs["calculation_method"] == "late_median_minus_early_median"
     # Aggregate the ratios themselves, rather than dividing aggregated areas.
     assert metrics[f"{root}/R1_late"][0] != pytest.approx(16.5 / 22.5)
 
@@ -118,6 +118,59 @@ def test_default_128_phase_grid_uses_43_early_and_85_late_samples():
     for name in PHASE_METRIC_NAMES:
         assert metrics[f"{root}/{name}_early"][1]["source_phase_sample_count"] == 43
         assert metrics[f"{root}/{name}_late"][1]["source_phase_sample_count"] == 85
+
+
+def test_custom_intervals_apply_to_every_metric_and_delta_metadata():
+    metrics = _pack(early_interval=(0, 0.25), late_interval=(0.5, 1))
+    root = EyeFlowOutputPaths.active().spectrograms_masked_metrics_root
+    assert metrics[f"{root}/A0_early"][0] == 22.5
+    assert metrics[f"{root}/A0_late"][0] == 25
+    assert metrics[f"{root}/delta_A0"][0] == 2.5
+    assert metrics[f"{root}/A1_early"][0] == 25.5
+    assert metrics[f"{root}/A1_late"][0] == 18
+    assert metrics[f"{root}/delta_A1"][0] == -7.5
+    for name in PHASE_METRIC_NAMES:
+        early, early_attrs = metrics[f"{root}/{name}_early"]
+        late, late_attrs = metrics[f"{root}/{name}_late"]
+        delta, delta_attrs = metrics[f"{root}/delta_{name}"]
+        assert early_attrs["phase_interval"] == delta_attrs["early_phase_interval"] == [0, 0.25]
+        assert late_attrs["phase_interval"] == delta_attrs["late_phase_interval"] == [0.5, 1]
+        assert early_attrs["source_phase_sample_count"] == 2
+        assert late_attrs["source_phase_sample_count"] == 3
+        assert delta == pytest.approx(float(late) - float(early), abs=1e-6)
+
+
+def test_runner_shares_custom_intervals_across_spectra_std_and_metric_summaries(tmp_path):
+    schema = EyeFlowOutputPaths.active()
+    values = _phase_spectrum()
+    values[:, 6] *= 2  # Keep the pooled second-half peak at bin 6 rather than bin 4.
+    raw = np.stack((values, 2 * values), axis=2)
+    timing = SimpleNamespace(
+        cycle_boundary_indexes=np.array([0, 4, 8]),
+        cycle_durations_seconds=np.array([0.4, 0.4]),
+        cardiac_cycle_source="artery", continuous=lambda vessel, raw: np.zeros(9),
+    )
+    with h5py.File(tmp_path / "out.h5", "w") as h5:
+        h5.create_dataset(schema.spectrograms_masked, data=np.ones((9, 8)))
+        h5.create_dataset(schema.sampling_frequency_hz, data=8000)
+        ctx = SimpleNamespace(output=SimpleNamespace(h5=PipelineH5Output(h5)))
+        with patch("pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat", return_value=raw):
+            metrics = run_gap_analysis(ctx, timing, early_interval=(0, 0.25), late_interval=(0.5, 1))
+        for path, interval, count in (
+            (schema.spectrograms_masked_time_aggregated_median_early, [0, 0.25], 2),
+            (schema.spectrograms_masked_time_aggregated_median_late, [0.5, 1], 3),
+            (schema.spectrograms_masked_time_aggregated_std_early, [0, 0.25], 2),
+            (schema.spectrograms_masked_time_aggregated_std_late, [0.5, 1], 3),
+        ):
+            assert metrics[path][1]["phase_interval"] == interval
+            assert metrics[path][1]["source_phase_sample_count"] == count
+        assert metrics[schema.spectrograms_masked_time_aggregated_median_early][0][3] == 4.5
+        assert metrics[schema.spectrograms_masked_time_aggregated_median_late][0][3] == 6
+        assert metrics[schema.spectrograms_masked_time_aggregated_std_early][0][3] == 1.5
+        assert metrics[schema.spectrograms_masked_time_aggregated_std_late][0][3] == 2
+        assert metrics[f"{schema.spectrograms_masked_metrics_root}/index_max1"][0] == 1
+        assert metrics[f"{schema.spectrograms_masked_metrics_root}/index_max2"][0] == 6
+        assert metrics[f"{schema.spectrograms_masked_metrics_root}/delta_A0"][0] == 3.75
 
 
 def test_phase_nan_and_zero_policies_preserve_independent_area_information():
