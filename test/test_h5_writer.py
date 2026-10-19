@@ -25,6 +25,51 @@ from pipeline_engine.base import DatasetValue  # noqa: E402
 
 
 class H5WriterTests(unittest.TestCase):
+    def test_default_compression_preserves_float32_bits(self) -> None:
+        values = np.array([0.0, -0.0, np.nan, np.inf, -np.inf, 1.234567], dtype=np.float32)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "compressed.h5"
+            with h5py.File(path, "w") as h5file:
+                write_value_dataset(h5file, "values", values)
+
+            with h5py.File(path, "r") as h5file:
+                dataset = h5file["values"]
+                self.assertEqual("gzip", dataset.compression)
+                self.assertEqual(6, dataset.compression_opts)
+                self.assertTrue(dataset.shuffle)
+                self.assertEqual(values.dtype, dataset.dtype)
+                self.assertEqual(values.shape, dataset.shape)
+                self.assertEqual(values.tobytes(), dataset[()].tobytes())
+
+    def test_compression_defaults_preserve_explicit_options(self) -> None:
+        values = np.arange(8, dtype=np.float32)
+        cases = [
+            ({"compression": "gzip", "compression_opts": 4, "chunks": (4,)}, "gzip", 4),
+            ({"compression": "lzf"}, "lzf", None),
+            ({"compression": None}, None, None),
+            ({"compression": None, "chunks": None}, None, None),
+        ]
+        with h5py.File("options_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
+            for index, (options, compression, level) in enumerate(cases):
+                with self.subTest(options=options):
+                    key = str(index)
+                    write_value_dataset(h5file, key, DatasetValue(values, h5_options=options))
+                    dataset = h5file[key]
+                    self.assertEqual(compression, dataset.compression)
+                    self.assertEqual(level, dataset.compression_opts)
+                    if "chunks" in options:
+                        self.assertEqual(options["chunks"] or None, dataset.chunks)
+                    np.testing.assert_array_equal(values, dataset[()])
+
+    def test_scalars_remain_scalar_and_uncompressed(self) -> None:
+        with h5py.File("scalar_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
+            for index, value in enumerate([1.5, np.array(1.5), 42, True, "version"]):
+                with self.subTest(value=value):
+                    key = str(index)
+                    write_value_dataset(h5file, key, value)
+                    self.assertEqual((), h5file[key].shape)
+                    self.assertIsNone(h5file[key].compression)
+
     def test_integer_values_are_not_narrowed_out_of_range(self) -> None:
         with h5py.File("integer_writer_test.h5", "w", driver="core", backing_store=False) as h5file:
             signed = np.array([2**40, -(2**40)], dtype=np.int64)

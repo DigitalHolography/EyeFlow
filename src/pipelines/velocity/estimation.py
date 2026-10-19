@@ -342,6 +342,9 @@ def _build_frequency_bands_provenance(
         ),
         "band_lf_source_path": FREQUENCY_BAND_LF_PATH,
         "band_hf_source_path": FREQUENCY_BAND_HF_PATH,
+        "band_hf_negative_value_policy": "clamp_to_zero_before_ratio",
+        "band_lf_negative_value_policy": "clamp_to_zero_before_ratio",
+        "band_lf_zero_value_policy": "zero_ratio_without_division",
         **quality_counts,
     }
 
@@ -612,10 +615,12 @@ def _read_validated_band_chunk(
             f"non-finite values in frames {frame_slice.start}:{frame_slice.stop}."
         )
     if np.any(values < 0.0):
-        raise ValueError(
+        Logger.log_warning(
             f"HoloDoppler frequency-band dataset {dataset_path} contains "
-            f"negative values in frames {frame_slice.start}:{frame_slice.stop}."
+            f"negative values in frames {frame_slice.start}:{frame_slice.stop}; "
+            "replacing negative samples with 0."
         )
+        values = np.maximum(values, np.float32(0.0))
     return values
 
 
@@ -625,15 +630,15 @@ def _safe_band_ratio(
     *,
     frame_slice: slice,
 ) -> np.ndarray:
-    """Return HF/LF with exact-zero LF mapped to zero and no epsilon bias."""
+    """Return max(HF, 0)/LF, mapping nonpositive LF to zero without division."""
 
-    high64 = np.asarray(high_frequency, dtype=np.float64)
+    high64 = np.maximum(np.asarray(high_frequency, dtype=np.float64), 0.0)
     low64 = np.asarray(low_frequency, dtype=np.float64)
     ratio64 = np.divide(
         high64,
         low64,
         out=np.zeros_like(high64),
-        where=low64 != 0.0,
+        where=low64 > 0.0,
     )
     float32_limit = np.finfo(np.float32).max
     if not np.all(np.isfinite(ratio64)) or np.any(ratio64 > float32_limit):

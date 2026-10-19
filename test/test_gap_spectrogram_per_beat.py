@@ -40,6 +40,9 @@ def test_invalid_boundaries_fail_explicitly(boundaries):
 
 
 def _ctx(output):
+    schema = EyeFlowOutputPaths.active()
+    if schema.sampling_frequency_hz not in output:
+        output.create_dataset(schema.sampling_frequency_hz, data=32000)
     return SimpleNamespace(
         output=SimpleNamespace(h5=PipelineH5Output(output)),
     )
@@ -277,7 +280,7 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
             }
             root = schema.spectrograms_masked_metrics_root
             if case == "no_finite_cells":
-                for name in ("index_max1", "index_max2", "A0", "A1", "A2", "R1", "R2", "delta_A0"):
+                for name in ("index_max1", "index_max2", "A0", "A1", "A2", "R1", "R2", "Z1", "Z2", "delta_A0"):
                     assert np.isnan(metrics[f"{root}/{name}"][0])
                 assert any("only NaN" in call.args[0] for call in warning.call_args_list)
             else:

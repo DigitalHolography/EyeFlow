@@ -21,10 +21,11 @@ from pipelines.low_freq_spectra.artifacts import (
     _gap_spectrogram_figure,
     _gaps_mask_figure,
     _positive_spectrum_curve,
+    _positive_spectrum_baseline,
     _positive_spectra_figure,
     export_spectrogram_figures,
 )
-from pipelines.low_freq_spectra.frequency import frequency_coordinates_khz, positive_frequency_coordinates_khz
+from calculations.math.frequency import frequency_coordinates_khz, positive_frequency_coordinates_khz
 
 
 @pytest.mark.parametrize("frames, frame_ticks", [(103, [0, 50, 100]), (640, list(range(0, 640, 100)))])
@@ -40,7 +41,7 @@ def test_heatmap_preserves_frame_bin_values_and_nan_gaps(frames, frame_ticks):
     np.testing.assert_array_equal(values, original)
     np.testing.assert_array_equal(ax.get_xticks(), frame_ticks)
     np.testing.assert_array_equal(ax.get_yticks(), [0, 4, 8, 12, 16, 20, 24, 28, 31])
-    assert [label.get_text() for label in ax.get_yticklabels()] == ["0", "4", "8", "12", "-16", "-12", "-8", "-4", "-1"]
+    assert [label.get_text() for label in ax.get_yticklabels()] == ["0", "8", "16", "24", "-32", "-24", "-16", "-8", "-2"]
     assert ax.get_xlabel() == "Time (frames)"
     assert ax.get_ylabel() == "Frequency (kHz)"
     assert image.origin == "lower"
@@ -69,8 +70,13 @@ def test_median_labels_signed_khz_without_reordering_or_filling_nan():
     ax = _gap_median_figure(values, sampling_frequency_hz=8000).axes[0]
     np.testing.assert_array_equal(ax.lines[0].get_xdata(), [0, 1, 2, 3])
     np.testing.assert_array_equal(ax.lines[0].get_ydata(), values)
+    zero_line = ax.lines[1]
+    np.testing.assert_array_equal(zero_line.get_ydata(), [0, 0])
+    assert zero_line.get_linestyle() == ":"
+    assert zero_line.get_color() == "black"
+    assert zero_line.get_linewidth() == 0.4
     np.testing.assert_array_equal(ax.get_xticks(), [0, 1, 2, 3])
-    assert [label.get_text() for label in ax.get_xticklabels()] == ["0", "1", "-2", "-1"]
+    assert [label.get_text() for label in ax.get_xticklabels()] == ["0", "2", "-4", "-2"]
     assert all(label.get_fontsize() == 8 for label in ax.get_xticklabels())
     assert all(label.get_rotation() == 90 for label in ax.get_xticklabels())
     assert all(label.get_fontsize() == 8 for label in ax.get_yticklabels())
@@ -96,7 +102,14 @@ def test_mask_preserves_published_xy_orientation_and_square_pixels():
     np.testing.assert_allclose(fig.get_size_inches(), [FIGURE_WIDTH_INCHES] * 2)
 
 
-@pytest.mark.parametrize("metric, unit, label", [("A0", "power_unit", "A0 (power_unit)"), ("R1", "1", "R1")])
+@pytest.mark.parametrize("metric, unit, label", [
+    ("A0", "power_unit", "A0 (power_unit)"), ("R1", "1", "R1"),
+    ("Z1", "1", "Z1"), ("Z2", "1", "Z2"),
+    ("A0", "a.u.*kHz", "A0 (a.u.)"),
+    ("A1", "a.u.*kHz", "A1 (a.u.)"),
+    ("A2", "a.u.*kHz", "A2 (a.u.)"),
+    ("A1", "a.u. * kHZ", "A1 (a.u.)"),
+])
 def test_metric_curves_preserve_phase_coordinates_nan_gaps_and_units(metric, unit, label):
     phase = np.array([0, 0.1, 0.5, 0.9])
     values = np.array([4, np.nan, 2, 3])
@@ -119,9 +132,10 @@ def test_frequency_calibration_uses_hd_sampling_rate_and_actual_bin_domain():
     for count in (32, 64, 128):
         frequencies = frequency_coordinates_khz(count, 64000)
         assert frequencies[0] == 0
-        assert frequencies[count // 2] == -16
-        assert frequencies[count // 2 - 1] == 16 - 32 / count
-        assert frequencies[-1] == -32 / count
+        assert frequencies[count // 2] == -32
+        assert frequencies[count // 2 - 1] == 32 - 64 / count
+        assert frequencies[-1] == -64 / count
+        np.testing.assert_allclose(frequencies, np.fft.fftfreq(count, d=1 / 64000) / 1000)
 
 
 def test_positive_spectra_share_the_stored_peak_cutoff_and_normalize_their_own_std():
@@ -129,36 +143,41 @@ def test_positive_spectra_share_the_stored_peak_cutoff_and_normalize_their_own_s
     first[5], second[7] = 10, 20
     first[40], second[50] = 10000, 20000  # Negative peaks cannot affect positive normalization.
     first[12] = np.nan
+    first[24:40] = 4
+    second[24:40] = 6
+    first[29:32] = [2, 4, 100]
+    second[29:32] = [3, 6, 100]
     original = first.copy()
     a = _positive_spectrum_curve(first, np.full(64, 2), sampling_frequency_hz=64000, label="Early", linestyle="--", index_max1=5)
     b = _positive_spectrum_curve(second, np.full(64, 5), sampling_frequency_hz=64000, label="Late", linestyle=":", index_max1=5)
-    np.testing.assert_array_equal(a.frequencies_khz, np.arange(5, 32) / 2)
-    np.testing.assert_array_equal(b.frequencies_khz, np.arange(5, 32) / 2)
-    assert a.power[0] == b.power[2] == 1
-    assert b.power[0] == 1 / 20
-    np.testing.assert_array_equal(a.std, [0.2] * 27)
-    np.testing.assert_array_equal(b.std, [0.25] * 27)
+    np.testing.assert_array_equal(a.frequencies_khz, np.arange(5, 32))
+    np.testing.assert_array_equal(b.frequencies_khz, np.arange(5, 32))
+    assert a.power[0] == 10 / 4
+    assert b.power[2] == 20 / 6
+    assert b.power[0] == 1 / 6
+    np.testing.assert_array_equal(a.std, [2 / 4] * 27)
+    np.testing.assert_array_equal(b.std, [5 / 6] * 27)
     assert np.isnan(a.power[7])
     np.testing.assert_array_equal(first, original)
 
 
-@pytest.mark.parametrize("bin_count", [32, 64, 128])
-def test_positive_frequency_calibration_always_anchors_bin_32_at_quarter_sampling_rate(bin_count):
-    coordinates = positive_frequency_coordinates_khz(64000)
-    np.testing.assert_array_equal(coordinates, np.linspace(0, 16, 33))
+@pytest.mark.parametrize("bin_count", [31, 32, 64, 128])
+def test_positive_frequency_calibration_uses_actual_positive_half(bin_count):
+    stop = bin_count // 2
+    coordinates = positive_frequency_coordinates_khz(bin_count, 64000)
+    np.testing.assert_allclose(coordinates, np.arange(stop) * 64 / bin_count)
     assert coordinates[0] == 0
-    assert coordinates[32] == 16
+    np.testing.assert_array_equal(coordinates, frequency_coordinates_khz(bin_count, 64000)[:stop])
     values = np.ones(bin_count)
     values[3] = 10
     curve = _positive_spectrum_curve(
         values, np.ones(bin_count), sampling_frequency_hz=64000,
         label="Median", linestyle="-", index_max1=5,
     )
-    np.testing.assert_array_equal(curve.frequencies_khz, np.arange(5, 32) / 2)
-    assert curve.frequencies_khz[-1] == 15.5
-    assert curve.power.size == 27
-    # Normalize by the curve's own maximum even when it precedes the shared cutoff.
-    np.testing.assert_array_equal(curve.power, np.full(27, 0.1))
+    np.testing.assert_array_equal(curve.frequencies_khz, coordinates[5:])
+    assert curve.power.size == stop - 5
+    # The peak does not affect normalization by the central-quarter Hv.
+    np.testing.assert_array_equal(curve.power, np.ones(stop - 5))
 
 
 def test_positive_plot_styles_envelopes_zero_reference_and_data_margins():
@@ -180,7 +199,7 @@ def test_positive_plot_styles_envelopes_zero_reference_and_data_margins():
     assert any(line.get_linestyle() == ":" and np.all(np.asarray(line.get_ydata()) == 0) for line in ax.lines)
     assert ax.get_xlabel() == "Frequency (kHz)" and ax.get_ylabel() == "Power (a.u.)"
     assert ax.get_yscale() == "linear"
-    assert ax.get_xlim()[0] < 2 and ax.get_xlim()[1] > 15.5
+    assert ax.get_xlim()[0] < 4 and ax.get_xlim()[1] > 31
     assert ax.get_ylim()[0] < min(np.nanmin(curve.power - curve.std) for curve in curves)
     assert ax.get_ylim()[1] > max(np.nanmax(curve.power + curve.std) for curve in curves)
     # Three filled bands plus dashed and dotted clipped interior patterns.
@@ -191,6 +210,24 @@ def test_positive_plot_styles_envelopes_zero_reference_and_data_margins():
 @pytest.mark.parametrize("values", [np.zeros(64), np.full(64, np.nan)])
 def test_unusable_normalization_does_not_fabricate_a_positive_spectrum(values):
     assert _positive_spectrum_curve(values, np.zeros(64), sampling_frequency_hz=64000, label="Median", linestyle="-", index_max1=0) is None
+
+
+@pytest.mark.parametrize("bin_count, start, stop", [
+    (2, 0, 2), (16, 6, 10), (31, 11, 19), (32, 12, 20), (64, 24, 40), (128, 48, 80),
+])
+def test_normalization_uses_central_quarter_hv_of_the_full_spectrum(bin_count, start, stop):
+    values = np.full(bin_count, 10000.0)
+    values[start:stop] = np.arange(1, stop - start + 1)
+    assert _positive_spectrum_baseline(values) == (stop - start + 1) / 2
+
+
+def test_normalization_median_ignores_nan_without_expanding_the_neighborhood():
+    values = np.full(64, 10000.0)
+    values[24:40] = np.nan
+    values[29:32] = [4, np.nan, 12]
+    assert _positive_spectrum_baseline(values) == 8
+    values[24:40] = np.nan
+    assert _positive_spectrum_baseline(values) is None
 
 
 @pytest.mark.parametrize("products", ["all", "raw", "mask", "empty_mask", "metrics", "one_metric", "one_spectrum", "none"])
@@ -221,17 +258,19 @@ def test_exports_only_available_products_in_shared_namespace(tmp_path, products)
             h5.create_dataset(schema.spectrograms_masked_time_aggregated_median_late, data=late)
             h5.create_dataset(schema.spectrograms_masked_time_aggregated_std_early, data=np.ones(32))
             h5.create_dataset(schema.spectrograms_masked_time_aggregated_std_late, data=np.ones(32))
-            expected.update({"gaps_positive_freq_median_phase_early_late", "gaps_positive_freq_median_phase_all"})
+            expected.update({
+                "gaps_positive_freq_median_phase_early_late", "gaps_positive_freq_median_phase_all",
+            })
         if products in {"all", "mask", "empty_mask"}:
             mask = np.eye(4, dtype=bool) if products != "empty_mask" else np.zeros((4, 4), bool)
             h5.create_dataset(schema.segmentation.gaps, data=mask.astype(np.uint8))
             expected.add("gaps_mask")
         if products in {"all", "metrics", "one_metric"}:
-            names = ("A0",) if products == "one_metric" else ("A0", "A1", "A2", "R1", "R2")
+            names = ("A0",) if products == "one_metric" else ("A0", "A1", "A2", "R1", "R2", "Z1", "Z2")
             for name in names:
                 metric = h5.create_dataset(f"{schema.spectrograms_masked_metrics_root}/{name}_t", data=[2, np.nan, 1, 3])
                 metric.attrs["phase_samples"] = [0, 0.25, 0.5, 0.75]
-                metric.attrs["unit"] = "1" if name.startswith("R") else "a.u."
+                metric.attrs["unit"] = "1" if name.startswith(("R", "Z")) else "a.u."
                 expected.add(f"gaps_{name}")
         paths = export_spectrogram_figures(SimpleNamespace(
             manager=manager, h5=PipelineH5Output(h5),
@@ -269,21 +308,28 @@ def test_missing_calibration_preserves_mask_exports_without_mislabeled_spectral_
         assert schema.spectrograms_masked in h5
 
 
-def test_export_reads_shared_peak_from_h5_and_does_not_save_frequency_coordinates(tmp_path):
+def test_export_reads_shared_peak_without_mutating_hdf5(tmp_path):
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
     schema = EyeFlowOutputPaths.active()
     with h5py.File(tmp_path / "out.h5", "w") as h5:
         h5.create_dataset(schema.sampling_frequency_hz, data=64000)
         h5.create_dataset(f"{schema.spectrograms_masked_metrics_root}/index_max1", data=5)
-        for center_path, std_path, peak in (
-            (schema.spectrograms_masked_time_aggregated_median, schema.spectrograms_masked_time_aggregated_std, 5),
-            (schema.spectrograms_masked_time_aggregated_median_early, schema.spectrograms_masked_time_aggregated_std_early, 7),
-            (schema.spectrograms_masked_time_aggregated_median_late, schema.spectrograms_masked_time_aggregated_std_late, 2),
+        spectra = {}
+        for label, center_path, std_path, peak, maximum, deviation, baseline in (
+            ("Median", schema.spectrograms_masked_time_aggregated_median, schema.spectrograms_masked_time_aggregated_std, 5, 1000, 1, 2),
+            ("Early", schema.spectrograms_masked_time_aggregated_median_early, schema.spectrograms_masked_time_aggregated_std_early, 7, 20, 2, 4),
+            ("Late", schema.spectrograms_masked_time_aggregated_median_late, schema.spectrograms_masked_time_aggregated_std_late, 2, 40, 4, 8),
         ):
-            values = np.ones(32)
-            values[peak] = 10
+            values = np.ones(64)
+            values[peak] = maximum
+            values[12] = np.nan
+            values[40] = 10000  # Outside the central-quarter Hv neighborhood.
+            values[24:40] = baseline
+            values[29:32] = [baseline, np.nan, baseline]
+            std = np.full(64, deviation)
+            spectra[label] = (values, std, baseline)
             h5.create_dataset(center_path, data=values)
-            h5.create_dataset(std_path, data=np.ones(32))
+            h5.create_dataset(std_path, data=std)
         original = {}
         h5.visititems(lambda name, obj: original.update({name: obj[()]}) if isinstance(obj, h5py.Dataset) else None)
         with patch("pipelines.low_freq_spectra.artifacts._positive_spectra_figure", wraps=_positive_spectra_figure) as draw:
@@ -291,7 +337,10 @@ def test_export_reads_shared_peak_from_h5_and_does_not_save_frequency_coordinate
         assert draw.call_count == 6  # Three figures, PNG and EPS.
         for call in draw.call_args_list:
             for curve in call.args[0]:
-                np.testing.assert_array_equal(curve.frequencies_khz, np.arange(5, 32) / 2)
+                np.testing.assert_array_equal(curve.frequencies_khz, np.arange(5, 32))
+                values, std, own_median = spectra[curve.label]
+                np.testing.assert_allclose(curve.power, values[5:32] / own_median)
+                np.testing.assert_allclose(curve.std, std[5:32] / own_median)
         current = {}
         h5.visititems(lambda name, obj: current.update({name: obj[()]}) if isinstance(obj, h5py.Dataset) else None)
         assert original.keys() == current.keys()
@@ -300,7 +349,7 @@ def test_export_reads_shared_peak_from_h5_and_does_not_save_frequency_coordinate
         assert len([path for path in paths if "positive_freq" in path.name]) == 6
 
 
-@pytest.mark.parametrize("peak", [None, np.nan, -1, 32, 5.5])
+@pytest.mark.parametrize("peak", [None, np.nan, -1, 16, 32, 5.5])
 def test_positive_export_does_not_infer_a_peak_if_the_stored_index_is_missing_or_invalid(tmp_path, peak):
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
     schema = EyeFlowOutputPaths.active()

@@ -32,8 +32,10 @@ def test_full_frame_mean_median_and_aligned_gap_median_read_each_frame_once(tmp_
         np.testing.assert_array_equal(gap[:], [[10], [20]])
         assert gap.attrs["quantity"] == "spatial_median_band_power"
         assert gap.attrs["spatial_aggregation_method"] == "median"
-        assert mean.name == "/ProcessingSpectrograms/SpatialAverage"
-        assert median.name == "/ProcessingSpectrograms/SpatialMedian"
+        assert mean.name == "/ProcessingSpectrograms/Global/SpatialAverage"
+        assert median.name == "/ProcessingSpectrograms/Global/SpatialMedian"
+        assert "ProcessingSpectrograms/SpatialAverage" not in output
+        assert "ProcessingSpectrograms/SpatialMedian" not in output
         assert gap.name == "/ProcessingSpectrograms/Gaps/SpatialMedian"
         assert "ProcessingSpectrograms/Gaps/Raw" not in output
         assert "spectrogramsMasked" not in output

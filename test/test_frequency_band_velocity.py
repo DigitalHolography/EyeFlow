@@ -56,6 +56,55 @@ def test_safe_band_ratio_maps_exact_zero_lf_to_zero_without_epsilon() -> None:
     assert np.all(np.isfinite(ratio))
 
 
+def test_safe_band_ratio_clamps_negative_hf_and_skips_zero_lf_without_mutating_inputs() -> None:
+    high = np.array([[[-3, -3, 5, 0, 8, 6, -3]]], dtype=np.float32)
+    low = np.array([[[2, 0, 0, 0, 2, -1, -2]]], dtype=np.float32)
+    original_high, original_low = high.copy(), low.copy()
+    with np.errstate(divide="raise", invalid="raise"):
+        ratio = _safe_band_ratio(high, low, frame_slice=slice(0, 1))
+    np.testing.assert_array_equal(ratio, [[[0, 0, 0, 0, 4, 0, 0]]])
+    np.testing.assert_array_equal(high, original_high)
+    np.testing.assert_array_equal(low, original_low)
+    assert ratio.dtype == np.float32
+
+
+@pytest.mark.parametrize("negative_frame", [0, 550])
+def test_frequency_band_chunks_handle_negative_hf_and_zero_lf_during_estimation(negative_frame) -> None:
+    high = np.tile(np.array([[[-4, -2, 6], [2, 0, 4]]], dtype=np.float32), (576, 1, 1))
+    low = np.tile(np.array([[[2, 0, 0], [1, 0, 2]]], dtype=np.float32), (576, 1, 1))
+    low[negative_frame, 1, 2] = -2
+    with h5py.File("band_values.h5", "w", driver="core", backing_store=False) as h5:
+        lf = h5.create_dataset(LF_PATH, data=low)
+        hf = h5.create_dataset(HF_PATH, data=high)
+        inputs = resolve_velocity_estimator_inputs(
+            ImageMaps(moment0=None, moment2=None, band_lf=lf, band_hf=hf),
+            velocity_estimation_method="frequency_bands", band_ratio_frequency_scale_hz=3,
+        )
+        with (
+            np.errstate(divide="raise", invalid="raise"),
+            patch("pipelines.velocity.estimation.Logger.log_warning") as warning,
+        ):
+            chunks = list(iter_velocity_estimator_chunks(
+                inputs, vessel_mask=np.zeros((2, 3), dtype=bool),
+                neighborhood_mask=np.ones((2, 3), dtype=bool),
+            ))
+        expected = np.tile(np.array([[[0, 0, 0], [6, 0, 6]]], dtype=np.float32), (576, 1, 1))
+        expected[negative_frame, 1, 2] = 0
+        np.testing.assert_array_equal(np.concatenate([chunk.rms_frequency for chunk in chunks]), expected)
+        np.testing.assert_array_equal(
+            np.concatenate([chunk.background_image for chunk in chunks]), np.maximum(low, 0),
+        )
+        frame_start = negative_frame // 32 * 32
+        assert any(
+            f"/{LF_PATH}" in call.args[0]
+            and f"frames {frame_start}:{frame_start + 32}" in call.args[0]
+            and "replacing negative samples with 0" in call.args[0]
+            for call in warning.call_args_list
+        )
+        np.testing.assert_array_equal(hf[()], high)
+        np.testing.assert_array_equal(lf[()], low)
+
+
 @pytest.mark.parametrize(
     ("method", "expected_type", "expected_frequency"),
     [
@@ -148,6 +197,9 @@ def test_frequency_band_estimator_converts_ratio_frequency_to_mm_per_second() ->
     )
     assert result.provenance["band_lf_source_path"] == f"/{LF_PATH}"
     assert result.provenance["band_hf_source_path"] == f"/{HF_PATH}"
+    assert result.provenance["band_hf_negative_value_policy"] == "clamp_to_zero_before_ratio"
+    assert result.provenance["band_lf_negative_value_policy"] == "clamp_to_zero_before_ratio"
+    assert result.provenance["band_lf_zero_value_policy"] == "zero_ratio_without_division"
 
 
 def test_frequency_band_frequency_scale_is_explicit_and_changes_velocity() -> None:
@@ -245,8 +297,9 @@ def test_frequency_band_estimator_reports_zero_and_near_zero_lf_counts() -> None
 @pytest.mark.parametrize(
     ("path", "value", "message"),
     [
-        (LF_PATH, -1.0, "negative values"),
+        (LF_PATH, np.nan, "non-finite values"),
         (HF_PATH, np.nan, "non-finite values"),
+        (HF_PATH, -np.inf, "non-finite values"),
     ],
 )
 def test_frequency_band_estimator_rejects_invalid_psd_values(
