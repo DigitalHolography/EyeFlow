@@ -74,6 +74,9 @@ def _spec(holo, *, artifacts=False):
 def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp_path):
     holo, hd_path = _dual_input(tmp_path)
     with h5py.File(hd_path, "a") as hd:
+        parameters = json.loads(hd["HD_parameters"][()].decode())
+        parameters["batch_size"] = 12  # Three synthetic planes averaging four FFT samples each.
+        hd["HD_parameters"][()] = json.dumps(parameters)
         frames, height, width = hd["moment0"].shape
         spectra = hd.create_dataset("spectrograms", data=np.full(
             (frames, 3, height // 2, width // 2), 7, dtype=np.float32,

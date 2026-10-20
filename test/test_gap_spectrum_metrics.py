@@ -14,6 +14,7 @@ from pipelines.low_freq_spectra.metrics import (
     PHASE_METRIC_NAMES, SPECTRUM_METRIC_DEFINITIONS, analyze_spectrum, pack_spectrum_metrics,
 )
 from pipelines.low_freq_spectra.gap_analysis import run_gap_analysis
+from test_spectrogram_frequency import _write_frequency_table
 
 
 def _spectrum():
@@ -261,6 +262,7 @@ def test_runner_persists_scalar_metrics_from_the_raw_aggregate_spectrum(
     spectrum = _spectrum() if bin_count == 32 else np.ones(bin_count)
     with h5py.File(tmp_path / "output.h5", "w") as output:
         output.create_dataset(schema.sampling_frequency_hz, data=32000)
+        _write_frequency_table(output, bin_count, 32000)
         source = output.create_dataset(
             schema.spectrograms_masked,
             data=np.broadcast_to(spectrum, (9, bin_count)),
@@ -310,7 +312,10 @@ def test_runner_persists_scalar_metrics_from_the_raw_aggregate_spectrum(
             assert dataset.attrs["valley_aggregation_method"] == "nanmedian"
             if name.startswith("index_"):
                 assert dataset.attrs["index_base"] == 0
-            expected = analyze_spectrum(spectrum, sampling_frequency_hz=32000, valley_neighborhood_length=valley_length)
+            expected = analyze_spectrum(
+                spectrum, sampling_frequency_hz=32000, valley_neighborhood_length=valley_length,
+                fft_bin_count=4 * bin_count, binning_factor=4,
+            )
             if name in expected:
                 assert dataset.attrs["source_path"] == median.name
                 assert dataset[()] == np.float32(expected[name])

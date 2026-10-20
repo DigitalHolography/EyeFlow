@@ -104,7 +104,8 @@ over beats after each beat's whole/early/late phase median, reusing `PerBeat/Raw
 Ignore NaNs; one valid beat gives zero, none gives NaN. Persist raw power units,
 `ddof=0`, reduction order, windows, and valid beat counts per frequency.
 Positive-frequency PNG/EPS overlays use the actual positive/DC half of the
-source: `P=floor(N/2)` bins at spacing `fs/N`. Normalize each curve by the
+source, ending before the first negative center in `FrequencyBinTable`.
+Normalize each curve by the
 Hv, the same NaN-aware central-quarter median of the full spectrum used by A0
 (64 source bins use bins 24 through 39), before cropping from stored `Metrics/index_max1`
 through bin `P-1` inclusive. Scale STD by the same per-curve divisor, retain
@@ -112,12 +113,21 @@ linear power. The runner publishes the full signed frequency mapping once at
 `/ProcessingSpectrograms/FrequencyBinTable`, as a `(freq,)` array in `kHz` where
 each zero-based array index identifies the source bin. Use the
 shared conversions in `calculations/math/frequency.py` for tables, metrics, and
-plots. Table publication requires valid sampling calibration, independently of
+plots. The original FFT length is HD `batch_size`; selection bounds come from
+HD_parameters `spectrogram_frequency_start` and `spectrogram_frequency_end`.
+Unresolved bounds fall back together to `(0, 0.5)`, meaning the full FFT.
+Mirror HD selection `[:int(B*end)]` followed by `[int(B*start)+B//2:]`, then
+average the contributing signed FFT frequencies. Derive the averaging factor
+from selected samples and exported bins, validating recorded
+`spectrogram_frequency_binning` when available. Table publication requires
+valid sampling and FFT calibration, independently of
 gap support, cardiac timing, and figure export. Missing/invalid stored peaks,
 all-NaN neighborhoods, or nonpositive divisors omit the affected figures.
 Median/early/late use solid/dashed/dotted signals and envelope patterns.
-The full-domain heatmap/median frequency axes use full-spectrum spacing `fs/N` with DC zero,
-positive-then-negative order, and kHz labels. Resolve `fs` from shared
+The full-domain heatmap/median frequency axes use the persisted averaged centers,
+positive-then-negative order, and kHz labels. DC is included in the first average;
+it is not the center of that average. A 256-to-64 full export averages four samples,
+starting at `1.5*fs/256` Hz with spacing `4*fs/256` Hz. Resolve `fs` from shared
 `Meta/SamplingFrequencyHz/value`; publish it from HD timing parameters/config
 before export if absent, since velocity analysis may run later. Missing/invalid
 sampling metadata skips frequency figures while keeping other products.
@@ -149,7 +159,7 @@ splitting at `floor(bin_count/2)` for odd lengths. All-NaN peak halves retain Na
 indexes, log a warning, and are identified by per-half valid-bin counts in metadata.
 `A0` is valley-median height times peak-to-peak width in kHz; `A2` is the
 peak-height mean times the same width. These swap the former A0/A2 meanings.
-Use `df_khz=fs/(N*1000)` and width `(index_max2-index_max1)*df_khz`, with no
+Use `df_khz=q*fs/(B*1000)` for averaging factor `q` and original FFT size `B` and width `(index_max2-index_max1)*df_khz`, with no
 extra bin. `A1` is the trapezoidal integral between those peak bins with positive
 `df_khz` spacing in stored HD order (unwrapped kHz, no signed-axis sorting).
 Areas and their phase summaries/deltas have source-power-times-kHz units;

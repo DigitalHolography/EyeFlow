@@ -31,7 +31,7 @@ def run_low_freq_spectra(ctx) -> None:
             ctx.output.h5.write(schema.sampling_frequency_hz, sampling_frequency, unit="Hz")
     outputs = preprocess_spectrograms(spectra, optional_capillary_zones(ctx))
     ctx.output.h5.write_many(outputs)
-    write_frequency_bin_table(ctx.output, spectra.shape[1])
+    write_frequency_bin_table(ctx.output, spectra.shape[1], hd=hd)
     workflows = velocity_workflows(ctx)
     timing = None
     method = "doppler_moments"

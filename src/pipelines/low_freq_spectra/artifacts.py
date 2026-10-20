@@ -8,13 +8,12 @@ from pathlib import Path
 
 import numpy as np
 
-from calculations.math.frequency import positive_frequency_coordinates_khz
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.eps import EpsArtifactWriter
 from input_output.writers.png import PngArtifactWriter
 from utils.logger import Logger
 
-from .frequency import frequency_ticks, read_sampling_frequency_hz
+from .frequency import frequency_ticks, read_frequency_bin_table
 from .metrics import PHASE_METRIC_NAMES, spectrum_valley_height
 
 FIGURE_DPI = 320
@@ -33,7 +32,7 @@ def export_spectrogram_figures(output) -> list[Path]:
     schema = EyeFlowOutputPaths.active()
     manager = output.manager.for_artifact_namespace("spectrograms")
     paths: list[Path] = []
-    sampling_frequency = read_sampling_frequency_hz(output)
+    frequency_table = read_frequency_bin_table(output)
     for source_path, name, make_figure in (
         (schema.spectrograms_masked, "spectrograms_gaps", _gap_spectrogram_figure),
         (
@@ -45,12 +44,12 @@ def export_spectrogram_figures(output) -> list[Path]:
         source = output.h5.get(source_path)
         if source is None:
             continue
-        if sampling_frequency is None:
-            Logger.log_warning(f"Skipping {name}: a positive HD sampling frequency is required for kHz axes.")
+        if frequency_table is None or source.shape[-1] != frequency_table.size:
+            Logger.log_warning(f"Skipping {name}: a matching calibrated FrequencyBinTable is required for kHz axes.")
             continue
         values = source[()]
         paths.extend(_save_figure_pair(manager, name, partial(
-            make_figure, values, sampling_frequency_hz=sampling_frequency,
+            make_figure, values, frequencies_khz=frequency_table[()],
         )))
     mask = output.h5.get(schema.segmentation.gaps)
     if mask is not None:
@@ -63,12 +62,12 @@ def export_spectrogram_figures(output) -> list[Path]:
             _gap_metric_figure, source[()], np.asarray(source.attrs["phase_samples"]),
             metric=name, unit=source.attrs["unit"],
         )))
-    if sampling_frequency is not None:
-        paths.extend(_export_positive_spectra(output, manager, sampling_frequency))
+    if frequency_table is not None:
+        paths.extend(_export_positive_spectra(output, manager, frequency_table[()]))
     return paths
 
 
-def _export_positive_spectra(output, manager, sampling_frequency: float) -> list[Path]:
+def _export_positive_spectra(output, manager, frequencies_khz: np.ndarray) -> list[Path]:
     schema = EyeFlowOutputPaths.active()
     sources = (
         ("Median", schema.spectrograms_masked_time_aggregated_median,
@@ -95,8 +94,11 @@ def _export_positive_spectra(output, manager, sampling_frequency: float) -> list
         return []
     curves = {}
     for label, center, std, style in available:
+        if center.shape != frequencies_khz.shape:
+            Logger.log_warning(f"Skipping {label.lower()} spectrum: FrequencyBinTable shape does not match.")
+            continue
         curve = _positive_spectrum_curve(
-            center, std, sampling_frequency_hz=sampling_frequency,
+            center, std, frequencies_khz=frequencies_khz,
             label=label, linestyle=style, index_max1=peak,
         )
         if curve is None:
@@ -161,7 +163,7 @@ def _style_figure(fig) -> None:
             spine.set_linewidth(BOX_LINE_WIDTH)
 
 
-def _gap_spectrogram_figure(values: np.ndarray, *, sampling_frequency_hz: float):
+def _gap_spectrogram_figure(values: np.ndarray, *, frequencies_khz: np.ndarray):
     fig, ax = _figure()
     # HDF5 is (time, freq); display frequency vertically without changing bin order.
     image = ax.imshow(
@@ -172,7 +174,7 @@ def _gap_spectrogram_figure(values: np.ndarray, *, sampling_frequency_hz: float)
     ax.set_ylabel("Frequency (kHz)")
     frame_tick_step = 50 * max(1, int(np.ceil(values.shape[0] / (50 * 7))))
     ax.set_xticks(np.arange(0, values.shape[0], frame_tick_step))
-    positions, labels = frequency_ticks(values.shape[1], sampling_frequency_hz)
+    positions, labels = frequency_ticks(frequencies_khz)
     ax.set_yticks(positions, labels=labels)
     fig.colorbar(image, ax=ax, orientation="vertical", label="Power (a.u.)")
     _style_figure(fig)
@@ -180,12 +182,12 @@ def _gap_spectrogram_figure(values: np.ndarray, *, sampling_frequency_hz: float)
     return fig
 
 
-def _gap_median_figure(values: np.ndarray, *, sampling_frequency_hz: float):
+def _gap_median_figure(values: np.ndarray, *, frequencies_khz: np.ndarray):
     fig, ax = _figure()
     bins = np.arange(values.size)
     ax.plot(bins, values, color="black", linewidth=SIGNAL_LINE_WIDTH)
     ax.axhline(0, color="black", linestyle=":", linewidth=BOX_LINE_WIDTH, zorder=1)
-    positions, labels = frequency_ticks(values.size, sampling_frequency_hz)
+    positions, labels = frequency_ticks(frequencies_khz)
     ax.set_xticks(positions, labels=labels)
     ax.set_xlabel("Frequency (kHz)")
     ax.set_ylabel("Power (a.u.)")
@@ -203,14 +205,16 @@ class _PositiveSpectrum:
 
 
 def _positive_spectrum_curve(
-    values, std, *, sampling_frequency_hz: float, label: str, linestyle: str,
+    values, std, *, frequencies_khz: np.ndarray, label: str, linestyle: str,
     index_max1: float,
 ) -> _PositiveSpectrum | None:
     values = np.asarray(values, dtype=np.float64)
     std = np.asarray(std, dtype=np.float64)
-    if values.ndim != 1 or std.shape != values.shape:
-        raise ValueError("Spectrum and beat STD must share one frequency axis.")
-    stop = values.size // 2
+    frequencies_khz = np.asarray(frequencies_khz)
+    if values.ndim != 1 or std.shape != values.shape or frequencies_khz.shape != values.shape:
+        raise ValueError("Spectrum, beat STD, and frequency centers must share one frequency axis.")
+    negative_bins = np.flatnonzero(frequencies_khz < 0)
+    stop = int(negative_bins[0]) if negative_bins.size else values.size
     if (
         stop < 1 or not np.isfinite(index_max1) or index_max1 != int(index_max1)
         or not 0 <= index_max1 < stop
@@ -223,7 +227,7 @@ def _positive_spectrum_curve(
         return None
     start = int(index_max1)
     return _PositiveSpectrum(
-        positive_frequency_coordinates_khz(values.size, sampling_frequency_hz)[start:stop],
+        frequencies_khz[start:stop],
         values[start:stop] / divisor, std[start:stop] / divisor, label, linestyle,
     )
 

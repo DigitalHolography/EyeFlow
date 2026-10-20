@@ -11,6 +11,7 @@ import pytest
 from input_output.h5_access import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.gap_analysis import run_gap_analysis
+from test_spectrogram_frequency import _write_frequency_table
 from pipelines.low_freq_spectra.metrics import (
     PHASE_METRIC_NAMES, analyze_phase_spectrum, pack_spectrum_metrics,
 )
@@ -153,6 +154,7 @@ def test_runner_shares_custom_intervals_across_spectra_std_and_metric_summaries(
     with h5py.File(tmp_path / "out.h5", "w") as h5:
         h5.create_dataset(schema.spectrograms_masked, data=np.ones((9, 8)))
         h5.create_dataset(schema.sampling_frequency_hz, data=8000)
+        _write_frequency_table(h5, 8, 8000)
         ctx = SimpleNamespace(output=SimpleNamespace(h5=PipelineH5Output(h5)))
         with patch("pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat", return_value=raw):
             metrics = run_gap_analysis(ctx, timing, early_interval=(0, 0.25), late_interval=(0.5, 1))
@@ -246,6 +248,7 @@ def test_runner_calculates_curves_after_the_beat_median(tmp_path):
     )
     with h5py.File(tmp_path / "output.h5", "w") as h5:
         h5.create_dataset(schema.sampling_frequency_hz, data=8000)
+        _write_frequency_table(h5, 8, 8000)
         h5.create_dataset(schema.spectrograms_masked, data=np.ones((9, 8)))
         ctx = SimpleNamespace(output=SimpleNamespace(h5=PipelineH5Output(h5)))
         with patch("pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat", return_value=raw):

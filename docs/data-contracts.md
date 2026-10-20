@@ -110,15 +110,20 @@ shape. Gap preprocessing now uses this application helper, then flips and
 transposes the reduced native mask into the same published `(x, y)` frame as
 the aligned spectra. The persisted mask is unchanged.
 
-This HD exporter uses `sampling_freq=37037` Hz and `batch_size=256`, retains
-FFT indexes `0:64` followed by `192:256`, and averages each consecutive group
-of four bins. The 32 frequency planes are signed and remain in FFT order,
-with center spacing 578.703125 Hz within each sign block. Centers run from
-217.013671875 to 8897.560546875 Hz, then from -9042.236328125 to -361.689453125 Hz.
-No frequency-coordinate dataset is stored. These centers are reconstructed
-from the matching exporter and parameters, not universally assumed from the
-plane count. They represent averages over four frequency samples, not single
-unbinned FFT frequencies. Sampled registered spectra include negative values;
+Spectral frequency calibration uses the original FFT length `B=batch_size`.
+HD selects FFT indexes `[:int(B*spectrogram_frequency_end)]` followed by
+`[int(B*spectrogram_frequency_start)+B//2:]`, then averages consecutive groups
+of `spectrogram_frequency_binning` samples. Read the selection bounds from
+`HD_parameters`; if either bound is missing or cannot be determined, use
+`start=0`, `end=0.5`, meaning the complete signed FFT spectrum. Do not infer a
+quarter-spectrum crop from the exported plane count. Resolve `batch_size`
+from HD parameters with config fallback. Derive the averaging factor from the
+selected sample count and exported plane count, checking any recorded binning.
+For the default 256-to-64, four-sample full-spectrum export at 37037 Hz,
+centers start at 217.013671875 Hz, with spacing 578.703125 Hz within each sign
+block. DC belongs to the first average but is not its center; the negative
+Nyquist sample likewise belongs to an average centered above `-fs/2`.
+The frequency planes remain in exported FFT order. Sampled registered spectra include negative values;
 the input adapter permits them and does not clamp or apply the LF/HF bands'
 non-negative validation to this source. HD starts from `abs(spectrum_f)**2`,
 but its subsequent subpixel Fourier registration of these spatial power maps
@@ -258,27 +263,28 @@ Missing products omit only their own figures;
 the median figure requires detected cardiac timing, while the mask does not
 require nonempty gap support. Figures do not change any persisted data.
 
-The full-domain heatmap and median-spectrum axes use the DC-zero full-spectrum calibration with bin spacing
-`fs/N` Hz and the actual exported bin count `N`. For the first `floor(N/2)`
-bins, `f(k)=k*fs/N`; the remaining bins use `(k-N)*fs/N`. A single-bin
-domain is DC. For 64 bins, plot the positive/DC bins 0 through 31, with positive
-Nyquist edge `fs/2` just beyond bin 31 and negative bin 32 at `-fs/2`.
-Read `fs` in Hz from `/Meta/SamplingFrequencyHz/value`, divide coordinates by
-1000 for kHz, and preserve source order in the full-domain figures. The spectral
+The full-domain heatmap and median-spectrum axes read averaged signed centers
+from `/ProcessingSpectrograms/FrequencyBinTable`, preserving source order.
+The table averages the original signed FFT coordinates using exactly the HD
+selection and binning above. For a full export with averaging factor `q`, centers
+have spacing `q*fs/B` Hz and offset `(q-1)*fs/(2*B)` from the former DC-zero grid.
+Read `fs` in Hz from `/Meta/SamplingFrequencyHz/value` and divide averaged
+coordinates by 1000 for kHz. The spectral
 runner ensures this metadata is available from HD `sampling_freq` (HDF5 parameters
 preferred, HD config fallback) before figure export; frequency calibration does
 not require `batch_stride`. Velocity analysis uses the same schema-owned metadata
-path. If no positive finite sampling frequency is available, omit frequency
-figures with a warning while retaining scientific outputs, mask, and phase plots.
+path. Missing/invalid sampling or FFT calibration omits frequency figures and
+metrics with a warning while retaining available power products, masks, and filters.
 
 The shared spectral runner also writes `/ProcessingSpectrograms/FrequencyBinTable`
 as a float32 `(N,)` array of frequencies. Array index `k` identifies source bin
 `k`; no separate bin-index column is stored. `unit="kHz"` describes the values
 and `dimDesc=["freq"]` identifies the axis.
-Frequency values use the same signed full-spectrum conversion as the artifacts,
-including DC, positive frequencies, and the negative half. Attributes record
-zero-based indexing, source bin count, HD source path, sampling frequency and its
-shared metadata path, and the bin-order convention. The table is written once
+Frequency values represent means of signed original FFT frequencies, including
+the average containing DC and the negative-frequency averages. Attributes record
+zero-based indexing, source bin count, HD source path, original FFT count and its
+parameter source, averaging factor, selection bounds and fallback provenance,
+sampling frequency and its shared metadata path, and bin order. The table is written once
 when valid HD spectra and calibration are available, independently of gap
 support, detected cardiac timing, and figure export. Missing/invalid calibration
 omits the table with a warning while preserving available power products.
@@ -289,9 +295,9 @@ Three additional monochrome PNG/EPS figures use these persisted spectra:
 `<stem>_gaps_positive_freq_median_phase_early_late` overlays `MedianPhaseBeatEarly`
 and `MedianPhaseBeatLate`; `<stem>_gaps_positive_freq_median_phase_beat` plots
 `MedianPhaseBeat`; and `<stem>_gaps_positive_freq_median_phase_all` overlays all
-three. These figures use the actual positive/DC half of each stored spectrum:
-`P=floor(N/2)` bins, with coordinates `k*fs/N` Hz for `k=0,...,P-1`.
-Convert this grid to kHz
+three. These figures use the initial positive/DC-containing averages of each spectrum:
+`P` bins before the first negative center (`P=N/2` for the default full export).
+Read their kHz centers directly from `FrequencyBinTable`
 and plot only bins from the stored `/ProcessingSpectrograms/Gaps/Metrics/index_max1`
 through bin `P-1` inclusive, using that same cutoff for every curve.
 Require at least two source bins;
@@ -332,7 +338,7 @@ Include endpoints, ignore NaNs for peak selection, and choose the
 lowest index on ties. An all-NaN half has a NaN peak index and value. Valley
 indexes are the two central bins, `floor(N/2)-1` and `floor(N/2)`; valley values are read directly from those bins.
 Internally, `h0=(max1+max2)/2`, propagating missing inputs. All three areas use
-the full-spectrum spacing `df_khz=fs/(N*1000)` and the common peak-to-peak width
+the calibrated spacing `df_khz=q*fs/(B*1000)` and the common peak-to-peak width
 `w_khz=(index_max2-index_max1)*df_khz`.
 `A2=h0*w_khz`;
 `A1=trapezoid(spectrum[index_max1:index_max2+1], dx=df_khz)`, propagating any NaN

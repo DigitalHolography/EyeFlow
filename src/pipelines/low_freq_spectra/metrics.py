@@ -14,6 +14,7 @@ from calculations.math.phase_windows import (
     early_late_phase_windows, phase_window_medians, late_minus_early,
 )
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.holodoppler import HD_SPECTROGRAM_FREQUENCY_START_KEY, HD_SPECTROGRAM_FREQUENCY_END_KEY
 from utils.logger import Logger
 
 DEFAULT_VALLEY_NEIGHBORHOOD_FRACTION = 1 / 4
@@ -29,7 +30,7 @@ SPECTRUM_METRIC_DEFINITIONS = {
     "index_min2": "zero-based central valley index floor(bin_count/2)",
     "min2": "spectrum value at zero-based index floor(bin_count/2)",
     "A0": "NaN-aware central-neighborhood median height times peak-to-peak width in kHz",
-    "A1": "trapezoidal spectrum integral from index_max1 to index_max2 with full-spectrum kHz spacing; NaNs propagate",
+    "A1": "trapezoidal spectrum integral from index_max1 to index_max2 with calibrated kHz center spacing; NaNs propagate",
     "A2": "arithmetic mean of max1 and max2 times peak-to-peak width in kHz",
     "R1": "A1 divided by A0; zero or missing A0 produces NaN",
     "R2": "A2 divided by A0; zero or missing A0 produces NaN",
@@ -39,7 +40,7 @@ SPECTRUM_METRIC_DEFINITIONS = {
 
 PHASE_METRIC_DEFINITIONS = {
     "A0": "fixed peak-to-peak width in kHz times NaN-aware central-neighborhood median per phase",
-    "A1": "trapezoidal spectrum integral between fixed peak bins per phase with full-spectrum kHz spacing; interval NaNs propagate",
+    "A1": "trapezoidal spectrum integral between fixed peak bins per phase with calibrated kHz center spacing; interval NaNs propagate",
     "A2": "fixed peak-to-peak width in kHz times mean spectrum height at those two bins per phase",
     "R1": "A1_t divided by A0_t per phase; zero or missing A0_t produces NaN",
     "R2": "A2_t divided by A0_t per phase; zero or missing A0_t produces NaN",
@@ -50,6 +51,8 @@ PHASE_METRIC_DEFINITIONS = {
 
 def analyze_spectrum(
     spectrum, *, sampling_frequency_hz: float, valley_neighborhood_length: int | None = None,
+    fft_bin_count: int | None = None, binning_factor: int = 1,
+    frequency_start: float = 0.0, frequency_end: float = 0.5,
 ) -> dict[str, float]:
     """Analyze a spectrum in its stored frequency order.
 
@@ -57,7 +60,7 @@ def analyze_spectrum(
     Ties select the lowest index. An all-NaN half has a NaN index and value.
     Valley indexes are the two central bins, even if their values are NaN.
     The peak-height mean requires both inputs. Areas span the peak-index distance
-    times fs/(N*1000) kHz without wrapping or reordering. A1 integrates samples
+    times the calibrated FFT-average spacing in kHz without wrapping or reordering. A1 integrates samples
     including both peak bins using that positive spacing and the trapezoidal
     rule; interval NaNs propagate.
     The even-length valley neighborhood is centered between the central bins;
@@ -78,7 +81,10 @@ def analyze_spectrum(
         )
         return result
     values = np.asarray(values, dtype=np.float64)
-    spacing = frequency_bin_spacing_khz(values.size, sampling_frequency_hz)
+    spacing = frequency_bin_spacing_khz(
+        values.size, sampling_frequency_hz, fft_bin_count=fft_bin_count, binning_factor=binning_factor,
+        frequency_start=frequency_start, frequency_end=frequency_end,
+    )
     middle = values.size // 2
     result["index_max1"], result["max1"] = _peak(values, 0, middle)
     result["index_max2"], result["max2"] = _peak(values, middle, values.size)
@@ -150,12 +156,21 @@ def pack_spectrum_metrics(
     valley_neighborhood_length: int | None = None,
     phase_spectrum=None, phase_attrs: dict[str, object] | None = None,
     early_interval=DEFAULT_EARLY_PHASE_INTERVAL, late_interval=DEFAULT_LATE_PHASE_INTERVAL,
+    frequency_calibration_attrs: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Pack scalar metrics with units and references to the aggregate spectrum."""
     schema = EyeFlowOutputPaths.active()
+    calibration_attrs = dict(frequency_calibration_attrs or {})
+    calibration = dict(
+        fft_bin_count=calibration_attrs.get("fft_bin_count"),
+        binning_factor=calibration_attrs.get("frequency_binning_factor", 1),
+        frequency_start=calibration_attrs.get(HD_SPECTROGRAM_FREQUENCY_START_KEY, 0.0),
+        frequency_end=calibration_attrs.get(HD_SPECTROGRAM_FREQUENCY_END_KEY, 0.5),
+    )
     result = analyze_spectrum(
         spectrum, sampling_frequency_hz=sampling_frequency_hz,
         valley_neighborhood_length=valley_neighborhood_length,
+        **calibration,
     )
     values = np.asarray(spectrum)
     valley_bins = (
@@ -163,6 +178,7 @@ def pack_spectrum_metrics(
         if _supported_bin_domain(values) else np.array([], dtype=int)
     )
     attrs = {
+        **calibration_attrs,
         "source_path": "/" + schema.spectrograms_masked_time_aggregated_median,
         "source_bin_count": int(np.size(spectrum)),
         "minimum_bin_count": 2,
@@ -183,10 +199,12 @@ def pack_spectrum_metrics(
         "sampling_frequency_hz": sampling_frequency_hz,
         "sampling_frequency_source_path": "/" + schema.sampling_frequency_hz,
         "frequency_bin_spacing_khz": (
-            frequency_bin_spacing_khz(values.size, sampling_frequency_hz)
+            frequency_bin_spacing_khz(values.size, sampling_frequency_hz, **calibration)
             if _supported_bin_domain(values) else np.nan
         ),
-        "frequency_bin_order": source_attrs.get("frequency_bin_order", "HD_export_order"),
+        "frequency_bin_order": calibration_attrs.get(
+            "frequency_bin_order", source_attrs.get("frequency_bin_order", "HD_export_order"),
+        ),
         "nonfinite_value_policy": "missing_required_values_and_interval_NaNs_propagate",
         "valley_neighborhood_length": len(valley_bins),
         "valley_neighborhood_indices": valley_bins,
@@ -223,6 +241,7 @@ def pack_spectrum_metrics(
             phase_spectrum, fixed_metrics=result, source_attrs=phase_attrs,
             metric_attrs=attrs, valley_neighborhood_length=valley_neighborhood_length,
             sampling_frequency_hz=sampling_frequency_hz,
+            calibration=calibration,
             early_interval=early_interval, late_interval=late_interval,
         ))
     return output
@@ -231,13 +250,15 @@ def pack_spectrum_metrics(
 def analyze_phase_spectrum(
     spectrum, *, index_max1: float, index_max2: float, sampling_frequency_hz: float,
     valley_neighborhood_length: int | None = None,
+    fft_bin_count: int | None = None, binning_factor: int = 1,
+    frequency_start: float = 0.0, frequency_end: float = 0.5,
 ) -> dict[str, np.ndarray]:
     """Calculate phase curves with peak bins fixed from the pooled spectrum.
 
     Input axes are (phase, freq). A0 uses the central neighborhood median;
-    A1 is the trapezoidal integral between fixed peaks with full-spectrum kHz
+    A1 is the trapezoidal integral between fixed peaks with calibrated kHz
     spacing; A2 uses the mean height at those peaks. All areas span their index
-    distance times fs/(N*1000) kHz, without sorting the signed display axis.
+    distance times FFT-average center spacing in kHz, without sorting the signed display axis.
     Missing peak indexes leave all curves NaN. At each phase, missing peak
     heights invalidate A2, interval NaNs invalidate A1, and A0 ignores valley
     NaNs unless the whole neighborhood is missing. Zero A0 yields NaN ratios
@@ -256,7 +277,10 @@ def analyze_phase_spectrum(
     ):
         raise ValueError("Fixed peak indices must be ordered integer bin indices within the spectrum.")
     start, stop = int(index_max1), int(index_max2) + 1
-    spacing = frequency_bin_spacing_khz(values.shape[1], sampling_frequency_hz)
+    spacing = frequency_bin_spacing_khz(
+        values.shape[1], sampling_frequency_hz, fft_bin_count=fft_bin_count, binning_factor=binning_factor,
+        frequency_start=frequency_start, frequency_end=frequency_end,
+    )
     width = (stop - start - 1) * spacing
     result["A0"] = width * spectrum_valley_height(values, valley_neighborhood_length=valley_neighborhood_length)
     result["A1"] = trapezoid(values[:, start:stop], dx=spacing, axis=1)
@@ -276,6 +300,7 @@ def _pack_phase_metrics(
     spectrum, *, fixed_metrics: dict[str, float], source_attrs: dict[str, object],
     metric_attrs: dict[str, object], valley_neighborhood_length: int | None,
     sampling_frequency_hz: float,
+    calibration: dict[str, object],
     early_interval, late_interval,
 ) -> dict[str, object]:
     schema = EyeFlowOutputPaths.active()
@@ -290,6 +315,7 @@ def _pack_phase_metrics(
         spectrum, index_max1=fixed_metrics["index_max1"], index_max2=fixed_metrics["index_max2"],
         valley_neighborhood_length=valley_neighborhood_length,
         sampling_frequency_hz=sampling_frequency_hz,
+        **calibration,
     )
     attrs = {
         **{key: value for key, value in source_attrs.items() if not key.startswith("aggregation_")},
