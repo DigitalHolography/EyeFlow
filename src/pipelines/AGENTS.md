@@ -66,11 +66,17 @@ The velocity estimator is product-specific and therefore remains in
 `velocity/estimation.py` rather than `calculations`. It processes `(frame, y,
 x)` volumes in bounded temporal chunks, uses moments or calibrated frequency
 bands as its active source, applies the shared local-background difference, and
-returns physical velocity in `mm/s`. In band mode, finite negative samples in
+returns physical velocity in `mm/s`. Moment normalization uses each frame's
+spatial M0 mean, floored at float32 epsilon (`eps('single')`); NaNs propagate.
+In band mode, finite negative samples in
 both HF and LF are replaced with zero during chunk validation, with a warning
 naming the dataset and frame interval. Zero LF denominators map to ratio zero
 without division. Both bands must remain finite; validation and calibration provenance are part of the
 pipeline contract.
+
+Both velocity workflows use OpenCV Telea background inpainting with a fixed
+5-pixel radius on independent float32 frames within the estimator's bounded
+chunks. Method and radius remain recorded in velocity provenance.
 
 `low_freq_spectra/spectrograms.py` reads HD frequency-bin spectra once per frame for
 full-frame `Global/SpatialAverage`/`Global/SpatialMedian` reductions and optional gap median

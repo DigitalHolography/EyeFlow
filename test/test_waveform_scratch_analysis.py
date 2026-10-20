@@ -66,7 +66,7 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
         )
 
     def test_batched_inpainting_matches_independent_frames(self) -> None:
-        from skimage.restoration import inpaint
+        import cv2
 
         rng = np.random.default_rng(8)
         frames = rng.random((4, 12, 10), dtype=np.float32)
@@ -74,10 +74,10 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
         mask[4:8, 3:7] = True
 
         expected = np.stack(
-            [inpaint.inpaint_biharmonic(frame, mask) for frame in frames],
+            [cv2.inpaint(frame, mask.astype(np.uint8), 5, cv2.INPAINT_TELEA) for frame in frames],
             axis=0,
         )
-        actual = _inpaint_frame_batch(frames, mask, inpaint)
+        actual = _inpaint_frame_batch(frames, mask)
 
         np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
@@ -97,15 +97,8 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
             ],
             dtype=np.float32,
         )
-        fake_inpaint = SimpleNamespace(
-            inpaint_biharmonic=lambda *args, **kwargs: np.moveaxis(
-                inpainted,
-                0,
-                -1,
-            )
-        )
-
-        actual = _inpaint_frame_batch(frames, mask, fake_inpaint)
+        with patch("cv2.inpaint", side_effect=list(inpainted)):
+            actual = _inpaint_frame_batch(frames, mask)
 
         np.testing.assert_array_equal(actual[0], inpainted[0])
         self.assertTrue(np.all(np.isfinite(actual[1])))

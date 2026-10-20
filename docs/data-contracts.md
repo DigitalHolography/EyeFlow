@@ -563,12 +563,15 @@ source, and legacy fallback status. The old
 
 Every run that schedules velocity attempts both workflows, independently:
 
-- `doppler_moments`: derives RMS frequency from moments, estimates local
-  background, subtracts it with the established signed RMS rule, and converts
+- `doppler_moments`: derives RMS frequency as
+  `sqrt(M2 / max(spatial_mean(M0), eps('single')))` per frame, using float32
+  epsilon (`1.1920929e-7`) as the denominator floor and preserving NaNs; estimates
+  local background, subtracts it with the established signed RMS rule, and converts
   frequency to calibrated velocity in `mm/s`. Its outputs use `/ProcessingMoments`.
 - `frequency_bands` (band ratio): computes `HF / LF` and converts it to RMS
   frequency with `fRMS_Hz = band_ratio_frequency_scale_hz * (HF / LF)`, then
-  applies the same vessel-mask dilation, biharmonic background inpainting,
+  applies the same vessel-mask dilation, OpenCV Telea background inpainting
+  with a 5-pixel radius on float32 frames,
   signed background-difference, and frequency-to-velocity conversion. Its
   outputs use `/ProcessingBandRatio`. The persisted calibration default is `1 Hz`
   per ratio unit; quantity is `physical_velocity`, unit `mm/s`.

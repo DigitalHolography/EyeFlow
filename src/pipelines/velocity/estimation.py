@@ -35,6 +35,7 @@ DOPPLER_MOMENTS_METHOD = "doppler_moments"
 FREQUENCY_BANDS_METHOD = "frequency_bands"
 FREQUENCY_BAND_LF_PATH = f"/{HD_BAND_LF_PATH}"
 FREQUENCY_BAND_HF_PATH = f"/{HD_BAND_HF_PATH}"
+INPAINTING_RADIUS = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -366,14 +367,9 @@ def _iter_doppler_moment_chunks(
             keepdims=True,
             dtype=np.float32,
         )
-        rms_frequency = np.sqrt(
-            np.divide(
-                moment2_chunk,
-                mean_m0,
-                out=np.zeros_like(moment2_chunk, dtype=np.float32),
-                where=mean_m0 != 0,
-            )
-        ).astype(np.float32, copy=False)
+        # Match MATLAB's max(spatial_mean(M0), eps('single')).
+        mean_m0 = np.maximum(mean_m0, np.finfo(np.float32).eps)
+        rms_frequency = np.sqrt(moment2_chunk / mean_m0).astype(np.float32, copy=False)
         yield VelocityEstimatorChunk(
             chunk_index=chunk_index,
             chunk_count=chunk_count,
@@ -506,8 +502,8 @@ def estimate_retinal_velocity(
         "inpainting and summary-only frequency intermediates."
     )
 
-    disk, inpaint = _skimage_dependencies()
-    inpaint_mask = _dilated_mask(background, disk(int(local_background_dist)))
+    Logger.log("Velocity background inpainting uses OpenCV Telea.")
+    inpaint_mask = _dilated_mask(background, _disk_footprint(int(local_background_dist)))
     section_mask = annulus_mask(
         (height, width),
         optic_disc_center,
@@ -537,7 +533,6 @@ def estimate_retinal_velocity(
         f_rms_background = _inpaint_frame_batch(
             f_rms,
             inpaint_mask,
-            inpaint,
         )
         delta = _signed_rms_difference(f_rms, f_rms_background)
         velocity = _doppler_frequency_to_velocity_mm_s(
@@ -571,6 +566,8 @@ def estimate_retinal_velocity(
         laser_wavelength_m=laser_wavelength,
         numerical_aperture=numerical_aperture,
     )
+    provenance["velocity_inpainting_method"] = "telea"
+    provenance["velocity_inpainting_radius"] = INPAINTING_RADIUS
     return accumulator.build_result(provenance=provenance)
 
 
@@ -740,17 +737,32 @@ def _band_quality_counts_for_chunk(
 def _inpaint_frame_batch(
     frames: np.ndarray,
     mask: np.ndarray,
-    inpaint,
 ) -> np.ndarray:
-    """Inpaint all frames as channels so the sparse system is built once."""
+    """Reconstruct each float32 background with OpenCV Telea, independently."""
     source = np.asarray(frames, dtype=np.float32)
-    channels_last = np.moveaxis(source, 0, -1)
-    result = inpaint.inpaint_biharmonic(
-        channels_last,
-        np.asarray(mask, dtype=bool),
-        channel_axis=-1,
+    mask = np.asarray(mask, dtype=bool)
+    if source.ndim != 3 or mask.shape != source.shape[1:]:
+        raise ValueError("Inpainting requires (frame, y, x) data and a matching 2-D mask.")
+    if not np.any(mask) or source.shape[0] == 0:
+        return source.copy()
+    if np.all(mask):
+        raise ValueError("Background inpainting requires a finite unmasked pixel per frame.")
+    try:
+        import cv2
+    except ModuleNotFoundError as exc:
+        raise ImportError("Velocity background inpainting requires OpenCV (opencv-python).") from exc
+    cv_mask = np.ascontiguousarray(mask, dtype=np.uint8)
+    inpainted = np.stack(
+        [
+            cv2.inpaint(
+                np.ascontiguousarray(np.where(mask, 0.0, frame), dtype=np.float32),
+                cv_mask,
+                INPAINTING_RADIUS,
+                cv2.INPAINT_TELEA,
+            )
+            for frame in source
+        ]
     )
-    inpainted = np.moveaxis(result, -1, 0).astype(np.float32, copy=False)
     square_safe_limit = np.float32(np.sqrt(np.finfo(np.float32).max))
     valid_frames = np.all(np.isfinite(inpainted), axis=(-1, -2)) & np.all(
         np.abs(inpainted) <= square_safe_limit,
@@ -810,15 +822,14 @@ def _signed_rms_difference(
     return delta64.astype(np.float32, copy=False)
 
 
-def _skimage_dependencies():
+def _disk_footprint(radius: int) -> np.ndarray:
     try:
         from skimage.morphology import disk
-        from skimage.restoration import inpaint
     except ModuleNotFoundError as exc:
         raise ImportError(
             "Retinal velocity estimation requires scikit-image."
         ) from exc
-    return disk, inpaint
+    return disk(radius)
 
 
 def _dilated_mask(vessel_mask: np.ndarray, footprint: np.ndarray) -> np.ndarray:
