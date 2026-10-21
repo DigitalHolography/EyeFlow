@@ -36,7 +36,9 @@ def _spec(tmp_path, *, moments=True, bands=True, spectra="valid"):
     holo = _write_input(tmp_path)
     hd_path = tmp_path / "scan/scan_HD/h5/scan_HD_output.h5"
     with h5py.File(hd_path, "a") as hd:
-        hd.create_dataset("HD_parameters", data=json.dumps({"sampling_freq": 37037.0, "batch_size": 32}))
+        hd.create_dataset("HD_parameters", data=json.dumps({
+            "sampling_freq": 37037.0, "batch_size": 32, "batch_stride": 256,
+        }))
         if spectra == "legacy_group":
             hd.create_group("spectrograms")
         elif spectra != "missing":
@@ -154,7 +156,7 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
         assert "ProcessingBandRatio/Spectrograms" not in output
         assert "ProcessingSpectrograms/Gaps/TimeAggregated/Median" not in output
 
-    names = {"spectrograms_gaps", "gaps_mask"}
+    names = {"spectrograms_gaps", "spectrograms_gaps_monochrome", "gaps_mask"}
     if expected is not None:
         names.add("spectrogram_gaps_median")
         names.update(f"gaps_{name}" for name in ("A0", "A1", "A2", "R1", "R2", "Z1", "Z2"))
@@ -195,9 +197,12 @@ def test_frequency_bin_table_is_written_without_detected_timing_or_figure_export
     with h5py.File(tmp_path / "scan/scan_HD/h5/scan_HD_output.h5", "a") as hd:
         del hd["spectrograms"]
         hd.create_dataset("spectrograms", data=np.ones((6, bin_count, 2, 2)))
-        hd["HD_parameters"][()] = json.dumps({"sampling_freq": 64000, "batch_size": 4 * bin_count})
-    with patch("pipelines.low_freq_spectra.runner.export_spectrogram_figures", return_value=[]):
+        hd["HD_parameters"][()] = json.dumps({
+            "sampling_freq": 64000, "batch_size": 4 * bin_count, "batch_stride": 256,
+        })
+    with patch("pipelines.low_freq_spectra.runner.export_spectrogram_figures", return_value=[]) as export:
         result = execute_run(spec)
+    assert export.call_args.kwargs["dt_seconds"] == 256 / 64000
     assert result.succeeded, result.failures
     schema = EyeFlowOutputPaths.active()
     with h5py.File(result.outputs[0], "r") as output:

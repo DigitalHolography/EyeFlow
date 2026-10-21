@@ -19,22 +19,29 @@ from .metrics import PHASE_METRIC_NAMES, spectrum_valley_height
 FIGURE_DPI = 320
 FIGURE_WIDTH_INCHES = 8.0 / 2.54
 FIGURE_ASPECT_RATIO = 1.618
+SPECTROGRAM_WIDTH_INCHES = 12.0 / 2.54
+SPECTROGRAM_ASPECT_RATIO = 2.65
 FONT_FAMILY = "Times New Roman"
-# Point sizes at the exported 8 cm width, suitable for an article column.
+# Shared point sizes across exported figures, suitable for an article column.
 FONT_SIZE = 10
 TICK_FONT_SIZE = 8
 BOX_LINE_WIDTH = 0.4
 SIGNAL_LINE_WIDTH = 0.8
 
 
-def export_spectrogram_figures(output) -> list[Path]:
-    """Write each available product once under the shared spectrograms namespace."""
+def export_spectrogram_figures(output, *, dt_seconds: float | None = None) -> list[Path]:
+    """Export shared figures, calibrating heatmap time with the HD frame interval."""
     schema = EyeFlowOutputPaths.active()
     manager = output.manager.for_artifact_namespace("spectrograms")
     paths: list[Path] = []
     frequency_table = read_frequency_bin_table(output)
     for source_path, name, make_figure in (
         (schema.spectrograms_masked, "spectrograms_gaps", _gap_spectrogram_figure),
+        (
+            schema.spectrograms_masked,
+            "spectrograms_gaps_monochrome",
+            partial(_gap_spectrogram_figure, monochrome=True),
+        ),
         (
             schema.spectrograms_masked_time_aggregated_median,
             "spectrogram_gaps_median",
@@ -47,6 +54,11 @@ def export_spectrogram_figures(output) -> list[Path]:
         if frequency_table is None or source.shape[-1] != frequency_table.size:
             Logger.log_warning(f"Skipping {name}: a matching calibrated FrequencyBinTable is required for kHz axes.")
             continue
+        if source_path == schema.spectrograms_masked:
+            if dt_seconds is None or not np.isfinite(dt_seconds) or dt_seconds <= 0:
+                Logger.log_warning(f"Skipping {name}: a positive finite HD frame interval is required for seconds.")
+                continue
+            make_figure = partial(make_figure, dt_seconds=dt_seconds)
         values = source[()]
         paths.extend(_save_figure_pair(manager, name, partial(
             make_figure, values, frequencies_khz=frequency_table[()],
@@ -133,12 +145,15 @@ def _save_figure_pair(manager, name: str, make_figure) -> list[Path]:
     ]
 
 
-def _figure(*, square: bool = False):
+def _figure(
+    *, square: bool = False, width: float = FIGURE_WIDTH_INCHES,
+    aspect_ratio: float = FIGURE_ASPECT_RATIO,
+):
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
 
-    height = FIGURE_WIDTH_INCHES / (1.0 if square else FIGURE_ASPECT_RATIO)
-    fig = Figure(figsize=(FIGURE_WIDTH_INCHES, height), constrained_layout=not square)
+    height = width / (1.0 if square else aspect_ratio)
+    fig = Figure(figsize=(width, height), constrained_layout=not square)
     FigureCanvasAgg(fig)
     ax = fig.add_axes((0, 0, 1, 1)) if square else fig.subplots()
     return fig, ax
@@ -163,20 +178,44 @@ def _style_figure(fig) -> None:
             spine.set_linewidth(BOX_LINE_WIDTH)
 
 
-def _gap_spectrogram_figure(values: np.ndarray, *, frequencies_khz: np.ndarray):
-    fig, ax = _figure()
+def _gap_spectrogram_figure(
+    values: np.ndarray, *, frequencies_khz: np.ndarray, dt_seconds: float,
+    monochrome: bool = False,
+):
+    from matplotlib.colors import PowerNorm
+    from matplotlib.ticker import MaxNLocator
+
+    if not np.isfinite(dt_seconds) or dt_seconds <= 0:
+        raise ValueError("The HD frame interval must be positive and finite.")
+    fig, ax = _figure(width=SPECTROGRAM_WIDTH_INCHES, aspect_ratio=SPECTROGRAM_ASPECT_RATIO)
     # HDF5 is (time, freq); display frequency vertically without changing bin order.
+    # Keep frame zero at t=0 and frequency-bin centers at their original indexes.
     image = ax.imshow(
         np.asarray(values).T, origin="lower", aspect="auto",
-        interpolation="nearest", cmap="viridis",
+        interpolation="nearest", cmap="gray_r" if monochrome else "viridis",
+        # Slightly darken monochrome midtones without clipping the power range.
+        norm=PowerNorm(gamma=0.9) if monochrome else None,
+        extent=(-0.5 * dt_seconds, (values.shape[0] - 0.5) * dt_seconds,
+                -0.5, values.shape[1] - 0.5),
     )
-    ax.set_xlabel("Time (frames)")
-    ax.set_ylabel("Frequency (kHz)")
-    frame_tick_step = 50 * max(1, int(np.ceil(values.shape[0] / (50 * 7))))
-    ax.set_xticks(np.arange(0, values.shape[0], frame_tick_step))
-    positions, labels = frequency_ticks(frequencies_khz)
-    ax.set_yticks(positions, labels=labels)
-    fig.colorbar(image, ax=ax, orientation="vertical", label="Power (a.u.)")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Frequency (kHz)", labelpad=6)
+    last_time = (values.shape[0] - 1) * dt_seconds
+    time_ticks = MaxNLocator(nbins=7, steps=[1, 2, 5, 10]).tick_values(0, last_time)
+    ax.set_xticks(time_ticks[(time_ticks >= 0) & (time_ticks <= last_time)])
+    # Space ticks within each signed block without crowding the upper edge or
+    # the FFT wraparound with an extra endpoint tick.
+    blocks = np.split(np.arange(frequencies_khz.size), np.flatnonzero(frequencies_khz < 0)[:1])
+    tick_step = max(1, int(np.ceil(frequencies_khz.size / 8)))
+    positions = []
+    for block in blocks:
+        if not block.size:
+            continue
+        if positions and block[0] - positions[-1] < tick_step:
+            positions.pop()
+        positions.extend(block[::tick_step])
+    ax.set_yticks(positions, labels=[f"{value:.3g}" for value in frequencies_khz[positions]])
+    fig.colorbar(image, ax=ax, orientation="vertical", label="Power (a.u.)", pad=0.02)
     _style_figure(fig)
     ax.tick_params(axis="x", labelrotation=0)
     return fig

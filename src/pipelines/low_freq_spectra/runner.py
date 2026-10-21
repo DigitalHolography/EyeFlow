@@ -52,4 +52,9 @@ def run_low_freq_spectra(ctx) -> None:
         )
     ctx.output.h5.write_many(run_gap_analysis(ctx, timing, timing_method=method))
     if ctx.output.available:
-        export_spectrogram_figures(ctx.output)
+        try:
+            dt_seconds = hd.timing().dt_seconds
+        except (KeyError, TypeError, ValueError, ZeroDivisionError) as exc:
+            Logger.log_warning(f"Cannot calibrate spectrogram time in seconds: {exc}")
+            dt_seconds = None
+        export_spectrogram_figures(ctx.output, dt_seconds=dt_seconds)

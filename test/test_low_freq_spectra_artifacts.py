@@ -6,7 +6,7 @@ from unittest.mock import patch
 import h5py
 import numpy as np
 import pytest
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, PowerNorm
 from PIL import Image
 
 from input_output.h5_access import PipelineH5Output
@@ -16,6 +16,8 @@ from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.artifacts import (
     FIGURE_ASPECT_RATIO,
     FIGURE_WIDTH_INCHES,
+    SPECTROGRAM_ASPECT_RATIO,
+    SPECTROGRAM_WIDTH_INCHES,
     _gap_median_figure,
     _gap_metric_figure,
     _gap_spectrogram_figure,
@@ -29,30 +31,53 @@ from calculations.math.frequency import frequency_coordinates_khz, positive_freq
 from test_spectrogram_frequency import _write_frequency_table
 
 
-@pytest.mark.parametrize("frames, frame_ticks", [(103, [0, 50, 100]), (640, list(range(0, 640, 100)))])
-def test_heatmap_preserves_frame_bin_values_and_nan_gaps(frames, frame_ticks):
+@pytest.mark.parametrize("frames, dt_seconds, time_ticks", [
+    (103, 0.01, np.arange(0, 1.01, 0.2)),
+    (640, 0.025, np.arange(0, 16, 5)),
+])
+@pytest.mark.parametrize("monochrome", [False, True])
+def test_heatmap_preserves_frame_bin_values_and_nan_gaps(frames, dt_seconds, time_ticks, monochrome):
     values = np.arange(frames * 32, dtype=float).reshape(frames, 32)
     values[51, 2] = np.nan
     original = values.copy()
-    fig = _gap_spectrogram_figure(values, frequencies_khz=frequency_coordinates_khz(32, 64000))
+    fig = _gap_spectrogram_figure(
+        values, frequencies_khz=frequency_coordinates_khz(32, 64000),
+        dt_seconds=dt_seconds, monochrome=monochrome,
+    )
     ax, colorbar = fig.axes
     image = ax.images[0]
 
     np.testing.assert_array_equal(image.get_array().filled(np.nan), values.T)
     np.testing.assert_array_equal(values, original)
-    np.testing.assert_array_equal(ax.get_xticks(), frame_ticks)
-    np.testing.assert_array_equal(ax.get_yticks(), [0, 4, 8, 12, 16, 20, 24, 28, 31])
-    assert [label.get_text() for label in ax.get_yticklabels()] == ["0", "8", "16", "24", "-32", "-24", "-16", "-8", "-2"]
-    assert ax.get_xlabel() == "Time (frames)"
+    np.testing.assert_allclose(ax.get_xticks(), time_ticks)
+    np.testing.assert_allclose(image.get_extent(), [
+        -0.5 * dt_seconds, (frames - 0.5) * dt_seconds, -0.5, 31.5,
+    ])
+    # Every pixel's center is its zero-based frame index times the HD interval.
+    left, right = image.get_extent()[:2]
+    np.testing.assert_allclose(
+        left + (np.arange(frames) + 0.5) * (right - left) / frames,
+        np.arange(frames) * dt_seconds, atol=1e-14,
+    )
+    np.testing.assert_array_equal(ax.get_yticks(), [0, 4, 8, 12, 16, 20, 24, 28])
+    assert [label.get_text() for label in ax.get_yticklabels()] == ["0", "8", "16", "24", "-32", "-24", "-16", "-8"]
+    assert ax.get_xlabel() == "Time (s)"
     assert ax.get_ylabel() == "Frequency (kHz)"
     assert image.origin == "lower"
-    assert image.get_cmap().name == "viridis"
-    assert type(image.norm) is Normalize
+    assert image.get_cmap().name == ("gray_r" if monochrome else "viridis")
+    if monochrome:
+        np.testing.assert_array_equal(image.cmap([0, 1.0])[:, :3], [[1, 1, 1], [0, 0, 0]])
+        quarter_power = np.nanmin(values) + 0.25 * np.ptp(values[np.isfinite(values)])
+        assert 0.25 < image.norm(quarter_power) < 0.3
+        np.testing.assert_allclose(image.norm.inverse(image.norm(quarter_power)), quarter_power)
+    assert type(image.norm) is (PowerNorm if monochrome else Normalize)
+    assert (image.norm.vmin, image.norm.vmax) == (np.nanmin(values), np.nanmax(values))
     assert colorbar.get_ylabel() == "Power (a.u.)"
     assert image.colorbar.orientation == "vertical"
     np.testing.assert_allclose(fig.get_size_inches(), [
-        FIGURE_WIDTH_INCHES, FIGURE_WIDTH_INCHES / FIGURE_ASPECT_RATIO,
+        SPECTROGRAM_WIDTH_INCHES, SPECTROGRAM_WIDTH_INCHES / SPECTROGRAM_ASPECT_RATIO,
     ])
+    assert fig.get_figheight() < FIGURE_WIDTH_INCHES / FIGURE_ASPECT_RATIO
     for axis in fig.axes:
         assert all(spine.get_linewidth() == 0.4 for spine in axis.spines.values())
         assert axis.yaxis.label.get_fontsize() == 10
@@ -61,9 +86,18 @@ def test_heatmap_preserves_frame_bin_values_and_nan_gaps(frames, frame_ticks):
         assert all(label.get_rotation() == 0 for label in axis.get_xticklabels())
         assert all(label.get_fontsize() == 8 for label in axis.get_yticklabels())
         assert all(label.get_rotation() == 0 for label in axis.get_yticklabels())
+    fig.set_dpi(320)
     fig.canvas.draw()
     bounds = [label.get_window_extent(fig.canvas.get_renderer()) for label in ax.get_xticklabels()]
     assert all(left.x1 < right.x0 for left, right in zip(bounds, bounds[1:]))
+    bounds = [label.get_window_extent(fig.canvas.get_renderer()) for label in ax.get_yticklabels()]
+    assert all(bottom.y1 < top.y0 for bottom, top in zip(bounds, bounds[1:]))
+    for axis in fig.axes:
+        for label in (axis.xaxis.label, axis.yaxis.label):
+            if label.get_text():
+                box = label.get_window_extent(fig.canvas.get_renderer())
+                assert 0 <= box.x0 < box.x1 <= fig.bbox.width
+                assert 0 <= box.y0 < box.y1 <= fig.bbox.height
 
 
 def test_median_labels_signed_khz_without_reordering_or_filling_nan():
@@ -188,7 +222,9 @@ def test_frequency_figures_label_averaged_centers_and_use_the_actual_positive_bl
     )
     spectrum = np.ones(bin_count)
     median = _gap_median_figure(spectrum, frequencies_khz=frequencies).axes[0]
-    heatmap = _gap_spectrogram_figure(spectrum[None, :], frequencies_khz=frequencies).axes[0]
+    heatmap = _gap_spectrogram_figure(
+        spectrum[None, :], frequencies_khz=frequencies, dt_seconds=0.01,
+    ).axes[0]
     for positions, labels in (
         (median.get_xticks(), median.get_xticklabels()),
         (heatmap.get_yticks(), heatmap.get_yticklabels()),
@@ -196,7 +232,10 @@ def test_frequency_figures_label_averaged_centers_and_use_the_actual_positive_bl
         ticks = dict(zip(positions, (label.get_text() for label in labels)))
         assert ticks[0] == "0.217"
         assert ticks[positive_count] == "-18.3"
-        assert ticks[bin_count - 1] == "-0.362"
+        for position, label in ticks.items():
+            assert label == f"{frequencies[int(position)]:.3g}"
+    assert median.get_xticklabels()[-1].get_text() == "-0.362"
+    assert heatmap.get_yticks()[-1] < bin_count - 1
     curve = _positive_spectrum_curve(
         spectrum, np.ones(bin_count), frequencies_khz=frequencies,
         label="Median", linestyle="-", index_max1=5,
@@ -265,7 +304,7 @@ def test_exports_only_available_products_in_shared_namespace(tmp_path, products)
         _write_frequency_table(h5, 32 if products in {"all", "one_spectrum"} else 4, 8000)
         if products in {"all", "raw"}:
             h5.create_dataset(schema.spectrograms_masked, data=np.arange(192).reshape(6, 32) if products == "all" else np.arange(24).reshape(6, 4))
-            expected.add("spectrograms_gaps")
+            expected.update({"spectrograms_gaps", "spectrograms_gaps_monochrome"})
         if products in {"all", "one_spectrum"}:
             values = np.ones(32)
             values[2] = 8
@@ -300,7 +339,7 @@ def test_exports_only_available_products_in_shared_namespace(tmp_path, products)
                 expected.add(f"gaps_{name}")
         paths = export_spectrogram_figures(SimpleNamespace(
             manager=manager, h5=PipelineH5Output(h5),
-        ))
+        ), dt_seconds=0.01)
 
     assert {path.relative_to(manager.layout.ef_dir).as_posix() for path in paths} == {
         f"{extension}/spectrograms/scan_{name}.{extension}"
@@ -313,11 +352,36 @@ def test_exports_only_available_products_in_shared_namespace(tmp_path, products)
             with Image.open(path) as image:
                 assert image.format == "PNG"
                 ratio = 1 if "gaps_mask" in path.name else FIGURE_ASPECT_RATIO
+                if "spectrograms_gaps" in path.name:
+                    ratio = SPECTROGRAM_ASPECT_RATIO
                 assert np.isclose(image.width / image.height, ratio, rtol=0.01)
                 image.verify()
+            if "monochrome" in path.name:
+                with Image.open(path) as image:
+                    rgb = np.asarray(image.convert("RGB"))
+                    np.testing.assert_array_equal(rgb[..., 0], rgb[..., 1])
+                    np.testing.assert_array_equal(rgb[..., 1], rgb[..., 2])
             if products == "empty_mask" and "gaps_mask" in path.name:
                 with Image.open(path) as image:
                     assert not np.any(np.asarray(image.convert("RGB")))
+
+
+@pytest.mark.parametrize("dt_seconds", [None, 0, -0.01, np.nan, np.inf])
+def test_invalid_frame_interval_skips_heatmaps_but_preserves_other_figures(tmp_path, dt_seconds):
+    schema = EyeFlowOutputPaths.active()
+    with h5py.File(tmp_path / "out.h5", "w") as h5:
+        _write_frequency_table(h5, 4, 8000)
+        h5.create_dataset(schema.spectrograms_masked, data=np.ones((6, 4)))
+        h5.create_dataset(schema.spectrograms_masked_time_aggregated_median, data=np.ones(4))
+        h5.create_dataset(schema.segmentation.gaps, data=np.eye(4))
+        output = SimpleNamespace(
+            manager=OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo")),
+            h5=PipelineH5Output(h5),
+        )
+        with patch("pipelines.low_freq_spectra.artifacts._save_figure_pair", return_value=[]) as save:
+            export_spectrogram_figures(output, dt_seconds=dt_seconds)
+        assert {call.args[1] for call in save.call_args_list} == {"spectrogram_gaps_median", "gaps_mask"}
+        assert schema.spectrograms_masked in h5
 
 
 @pytest.mark.parametrize("frequency", [None, 0, np.nan])
