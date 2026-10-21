@@ -510,7 +510,7 @@ def test_export_reads_shared_peak_without_mutating_hdf5(tmp_path):
         h5.visititems(lambda name, obj: original.update({name: obj[()]}) if isinstance(obj, h5py.Dataset) else None)
         with patch("pipelines.low_freq_spectra.artifacts._spectra_figure", wraps=_spectra_figure) as draw:
             paths = export_spectrogram_figures(SimpleNamespace(manager=manager, h5=PipelineH5Output(h5)))
-        assert draw.call_count == 6  # Three figures, PNG and EPS.
+        assert draw.call_count == 3  # Build each figure once for its PNG/EPS pair.
         for call in draw.call_args_list:
             for curve in call.args[0]:
                 np.testing.assert_array_equal(curve.frequencies_khz, frequency_coordinates_khz(

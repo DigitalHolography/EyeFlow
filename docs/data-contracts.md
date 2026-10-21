@@ -4,6 +4,63 @@ This is the authoritative documentation layer for data moving into, through,
 and out of EyeFlow. Executable path constants in `src/input_output/schema/`
 remain the final source of truth.
 
+## Article figure formatting
+
+`src/input_output/article_formatting.py` owns shared, opt-in article styling.
+`ArticleStyle` configures Times New Roman text, Times-compatible STIX math,
+separate axis-label/tick/legend/title/annotation sizes, borders, tick rotation,
+label/tick padding in points, and optional X/Y data margins. `scaled_fonts()`
+keeps text visually consistent across different canvas widths. The standard
+style uses 10 pt labels/legends, 8 pt ticks, and 0.4 pt borders; the compact
+style retains the 8 pt labels/legends used by velocity and flow signal plots.
+Line widths for signals, secondary curves, references, event markers, and fits
+also come from the style. Envelope color/opacity, analysis-region shading,
+and histogram fill/edge appearance are shared settings. `envelope_kwargs()`,
+`region_kwargs()`, and `histogram_kwargs()` supply Matplotlib artist options.
+Callers assign these roles explicitly, preserving dashed/dotted signal styles,
+scientific colors, map overlays, and dispersion values.
+
+The spectrum preset retains darker translucent envelopes (gray 0.35, alpha 0.45)
+and softer analysis-region shading (gray 0.5, alpha 0.1); compact velocity/flow
+plots retain opaque gray 0.8 envelopes. Diagnostic presets retain their larger
+line widths. Font scaling does not alter widths or opacity. The existing
+spectrum fill raster layer continues to composite overlapping transparency
+for EPS export. `prepare_article_fill_layer()` shares this behavior with
+velocity/flow curves if a translucent envelope style is selected. Only the
+fill layer is rasterized; signals and text remain vector in EPS. Opaque
+velocity/flow envelopes do not require this layer.
+
+`create_article_figure()` supplies fixed canvas dimensions, constrained layout,
+and configurable outer padding in inches, or full-bleed square axes for masks.
+Its `signal_padding=(horizontal, vertical)` tuple independently enables automatic
+data margins on each axis. The default `(True, True)` retains Matplotlib's
+defaults; `(False, True)` removes horizontal padding, and `(False, False)`
+removes both. This is independent of outer `padding_inches`. Later explicit
+axis limits or `ArticleStyle.x_margin`/`y_margin` settings take precedence.
+`apply_article_style()` also accepts existing multi-panel figures or selected
+axes. Apply it after adding labels, legends, annotations, and colorbars.
+Neither helper changes global Matplotlib settings. Writers serialize the
+already formatted figure without imposing scientific presentation choices.
+
+Article PNG/EPS pairs explicitly use
+`input_output.writers.article.save_article_figure_pair(output, fig, name)`.
+The caller builds and styles one figure; the exporter draws its layout once
+at the requested DPI (320 by default), freezes axes positions, and writes both
+formats with the same complete canvas bounds and background. Outer padding is
+preserved even if global savefig settings request tight cropping or transparency.
+Acquisition prefixes, namespaces, and legacy vessel labels still come from
+the existing format writers. The exporter closes the figure after both saves,
+including on failure. Gap/spectrum/metric pairs, velocity signals, flow signals,
+and lumen-diameter histograms use this helper. General PNG writers and diagnostic
+PNG-only outputs keep their own export/cropping policy; no EPS is added implicitly.
+
+Consumers include gap spectrograms/spectra and phase metrics, velocity signal
+plots, blood-volume-rate signals and lumen-diameter histograms, velocity
+waveform/spectral/correlation diagnostics, map colorbars and transverse profile
+maps, and spatial-gradient lumen-size curves. Pipeline code retains canvas
+geometry for diagnostic panels, data limits, units, grids, scientific colors,
+and overlays; styling preserves hidden map axes and borders.
+
 ## External run layout
 
 A selected `sample.holo` anchors this default tree:

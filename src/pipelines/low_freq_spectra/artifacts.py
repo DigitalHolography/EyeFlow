@@ -2,34 +2,41 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 
 import numpy as np
 
+from input_output.article_formatting import (
+    ARTICLE_ASPECT_RATIO as FIGURE_ASPECT_RATIO,
+    ARTICLE_DPI as FIGURE_DPI,
+    ARTICLE_STYLE,
+    ARTICLE_WIDTH_INCHES as FIGURE_WIDTH_INCHES,
+    SPECTROGRAM_ARTICLE_STYLE,
+    SPECTRUM_ARTICLE_STYLE,
+    apply_article_style,
+    create_article_figure as _figure,
+    prepare_article_fill_layer,
+)
+from input_output.figure_formatting import TickFormat, add_colorbar, add_legend, apply_tick_format
 from input_output.schema import EyeFlowOutputPaths
-from input_output.writers.eps import EpsArtifactWriter
-from input_output.writers.png import PngArtifactWriter
+from input_output.writers.article import save_article_figure_pair
 from utils.logger import Logger
 
 from .frequency import frequency_ticks, read_frequency_bin_table
 from .metrics import PHASE_METRIC_NAMES, _valley_neighborhood_indices, spectrum_valley_height
 
-FIGURE_DPI = 320
-FIGURE_WIDTH_INCHES = 8.0 / 2.54
-FIGURE_ASPECT_RATIO = 1.618
 SPECTRUM_HEIGHT_SCALE = 1.30
 SPECTROGRAM_WIDTH_INCHES = 12.0 / 2.54
 SPECTROGRAM_ASPECT_RATIO = 2.65
-FONT_FAMILY = "Times New Roman"
-# Scale text with canvas width to match at the same displayed width.
-FONT_SIZE = 10
-TICK_FONT_SIZE = 8
-SPECTRUM_FONT_SIZE = FONT_SIZE * (2 * FIGURE_WIDTH_INCHES / SPECTROGRAM_WIDTH_INCHES)
-SPECTRUM_TICK_FONT_SIZE = TICK_FONT_SIZE * (2 * FIGURE_WIDTH_INCHES / SPECTROGRAM_WIDTH_INCHES)
-BOX_LINE_WIDTH = 0.4
-SIGNAL_LINE_WIDTH = 0.8
+SPECTRUM_STYLE = SPECTRUM_ARTICLE_STYLE.scaled_fonts(
+    2 * FIGURE_WIDTH_INCHES / SPECTROGRAM_WIDTH_INCHES,
+)
+SPECTRUM_FONT_SIZE = SPECTRUM_STYLE.label_size
+SPECTRUM_TICK_FONT_SIZE = SPECTRUM_STYLE.tick_size
+BOX_LINE_WIDTH = ARTICLE_STYLE.reference_line_width
+SIGNAL_LINE_WIDTH = ARTICLE_STYLE.signal_line_width
 
 
 def export_spectrogram_figures(output, *, dt_seconds: float | None = None) -> list[Path]:
@@ -151,47 +158,7 @@ def _export_spectra(output, manager, frequencies_khz: np.ndarray) -> list[Path]:
 
 
 def _save_figure_pair(manager, name: str, make_figure) -> list[Path]:
-    return [
-        PngArtifactWriter(manager).save_figure(
-            make_figure(), f"{name}.png", dpi=FIGURE_DPI, bbox_inches=None,
-        ),
-        EpsArtifactWriter(manager).save_figure(
-            make_figure(), f"{name}.eps", dpi=FIGURE_DPI,
-        ),
-    ]
-
-
-def _figure(
-    *, square: bool = False, width: float = FIGURE_WIDTH_INCHES,
-    aspect_ratio: float = FIGURE_ASPECT_RATIO,
-):
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
-    from matplotlib.figure import Figure
-
-    height = width / (1.0 if square else aspect_ratio)
-    fig = Figure(figsize=(width, height), constrained_layout=not square)
-    FigureCanvasAgg(fig)
-    ax = fig.add_axes((0, 0, 1, 1)) if square else fig.subplots()
-    return fig, ax
-
-
-def _style_figure(fig, *, font_size: float = FONT_SIZE, tick_font_size: float = TICK_FONT_SIZE) -> None:
-    from matplotlib.text import Text
-
-    for text in fig.findobj(match=Text):
-        text.set_fontfamily(FONT_FAMILY)
-        text.set_fontsize(font_size)
-    for ax in fig.axes:
-        ax.tick_params(axis="both", labelsize=tick_font_size, width=BOX_LINE_WIDTH)
-        ax.tick_params(axis="x", labelrotation=90)
-        ax.tick_params(axis="y", labelrotation=0)
-        ax.xaxis.get_offset_text().set_fontsize(tick_font_size)
-        ax.yaxis.get_offset_text().set_fontsize(tick_font_size)
-        ax.xaxis.label.set_fontsize(font_size)
-        ax.yaxis.label.set_fontsize(font_size)
-        for spine in ax.spines.values():
-            spine.set_color("black")
-            spine.set_linewidth(BOX_LINE_WIDTH)
+    return save_article_figure_pair(manager, make_figure(), name, dpi=FIGURE_DPI)
 
 
 def _gap_spectrogram_figure(
@@ -236,9 +203,11 @@ def _gap_spectrogram_figure(
             positions[-1] = last_bin
         else:
             positions.append(last_bin)
-    ax.set_yticks(positions, labels=[str(round(float(value))) for value in frequencies_khz[positions]])
-    fig.colorbar(image, ax=ax, orientation="vertical", label="Power (a.u.)", pad=0.02)
-    _style_figure(fig)
+    apply_tick_format(ax.yaxis, TickFormat(decimals=0),
+                      positions=positions, values=frequencies_khz[positions])
+    add_colorbar(fig, image, ax=ax, label="Power (a.u.)",
+                 layout=SPECTROGRAM_ARTICLE_STYLE.colorbar_layout)
+    apply_article_style(fig, SPECTROGRAM_ARTICLE_STYLE)
     ax.tick_params(axis="x", labelrotation=0)
     return fig
 
@@ -252,7 +221,7 @@ def _gap_median_figure(values: np.ndarray, *, frequencies_khz: np.ndarray):
     ax.set_xticks(positions, labels=labels)
     ax.set_xlabel("Frequency (kHz)")
     ax.set_ylabel("Power (a.u.)")
-    _style_figure(fig)
+    apply_article_style(fig, replace(ARTICLE_STYLE, x_tick_rotation=90))
     return fig
 
 
@@ -308,51 +277,38 @@ def _spectrum_baseline(values, *, valley_neighborhood_length: int | None = None)
 
 
 def _spectra_figure(curves: list[_Spectrum]):
-    from matplotlib.patches import Rectangle
-    from matplotlib.ticker import FormatStrFormatter, MaxNLocator
-
     fig, ax = _figure(
         width=2 * FIGURE_WIDTH_INCHES,
         aspect_ratio=2 * FIGURE_ASPECT_RATIO / SPECTRUM_HEIGHT_SCALE,
+        signal_padding=(False, True),
     )
     # Composite translucent fills on white in one raster layer for identical
     # overlap shading in PNG/EPS; signals, axes, and text remain vector in EPS.
-    ax.add_patch(Rectangle(
-        (0, 0), 1, 1, transform=ax.transAxes, facecolor="white",
-        edgecolor="none", zorder=-2,
-    ))
-    ax.set_rasterization_zorder(1)
+    prepare_article_fill_layer(ax)
     bins = np.arange(curves[0].power.size)
     valley = curves[0].valley_bins
     ax.axvspan(
-        valley[0] - 0.5, valley[-1] + 0.5, facecolor="0.5", alpha=0.1,
-        edgecolor="none", zorder=-1,
+        valley[0] - 0.5, valley[-1] + 0.5, **SPECTRUM_STYLE.region_kwargs(), zorder=-1,
     )
     for curve in curves:
         lower, upper = curve.power - curve.std, curve.power + curve.std
         _std_envelope(ax, bins, lower, upper)
         ax.plot(
             bins, curve.power, color="black", linestyle=curve.linestyle,
-            linewidth=SIGNAL_LINE_WIDTH, label=curve.label.lower(), zorder=3,
+            linewidth=SPECTRUM_STYLE.signal_line_width, label=curve.label.lower(), zorder=3,
             marker="." if curve.power.size == 1 else None,
         )
-    ax.axhline(0, color="0.5", linestyle=":", linewidth=BOX_LINE_WIDTH, zorder=2)
+    ax.axhline(0, color="0.5", linestyle=":", linewidth=SPECTRUM_STYLE.reference_line_width, zorder=2)
     ax.set_xlabel("Frequency (kHz)")
     ax.set_ylabel("Power (a.u.)")
-    ax.margins(x=0, y=0.08)
+    ax.margins(y=0.08)
     ax.set_xlim(0, bins[-1])
     positions, _ = frequency_ticks(curves[0].frequencies_khz)
     positions = np.union1d(positions, curves[0].peak_bins)
-    ax.set_xticks(positions, labels=[
-        str(round(float(curves[0].frequencies_khz[position]))) for position in positions
-    ])
-    ax.yaxis.set_major_locator(MaxNLocator(nbins=5, integer=True))
-    ax.yaxis.set_major_formatter(FormatStrFormatter("%.0f"))
-    ax.legend(
-        loc="upper center", ncols=len(curves), frameon=False,
-        labelspacing=0.25, borderpad=0.1, fontsize=SPECTRUM_FONT_SIZE,
-    )
-    _style_figure(fig, font_size=SPECTRUM_FONT_SIZE, tick_font_size=SPECTRUM_TICK_FONT_SIZE)
+    apply_tick_format(ax.xaxis, TickFormat(decimals=0),
+                      positions=positions, values=curves[0].frequencies_khz[positions])
+    add_legend(ax, SPECTRUM_STYLE.legend_layout, ncols=len(curves))
+    apply_article_style(fig, SPECTRUM_STYLE)
     ax.tick_params(axis="x", labelrotation=0)
     _prune_spectrum_tick_labels(fig, ax, curves[0].peak_bins)
     return fig
@@ -387,8 +343,7 @@ def _prune_spectrum_tick_labels(fig, ax, peak_bins: tuple[int, int]) -> None:
 def _std_envelope(ax, x, lower, upper) -> None:
     """Keep signals prominent over soft solid bands whose overlaps blend."""
     ax.fill_between(
-        x, lower, upper, facecolor="0.35", alpha=0.45,
-        edgecolor="none", zorder=0,
+        x, lower, upper, **SPECTRUM_STYLE.envelope_kwargs(), zorder=0,
     )
 
 
@@ -397,14 +352,13 @@ def _gap_metric_figure(values: np.ndarray, phase: np.ndarray, *, metric: str, un
     ax.plot(phase, values, color="black", linewidth=SIGNAL_LINE_WIDTH)
     ax.set_xlim(0, 1)
     ax.set_xticks([0, 1 / 3, 2 / 3, 1], labels=["0", "1/3", "2/3", "1"])
-    ax.set_xlabel(r"Cardiac phase ($t/T$)", math_fontfamily="stix")
+    ax.set_xlabel(r"Cardiac phase ($t/T$)")
     display_unit = "a.u." if unit.replace(" ", "").lower() == "a.u.*khz" else unit
     metric_label = f"${metric[0]}_{{{metric[1:]}}}$"
     ax.set_ylabel(
         metric_label if display_unit == "1" else f"{metric_label} ({display_unit})",
-        math_fontfamily="stix",
     )
-    _style_figure(fig)
+    apply_article_style(fig)
     ax.tick_params(axis="x", labelrotation=0)
     return fig
 
@@ -418,7 +372,7 @@ def _gaps_mask_figure(values: np.ndarray):
     )
     ax.set_xticks([])
     ax.set_yticks([])
-    _style_figure(fig)
+    apply_article_style(fig)
     fig.set_facecolor("black")
     ax.set_axis_off()
     return fig

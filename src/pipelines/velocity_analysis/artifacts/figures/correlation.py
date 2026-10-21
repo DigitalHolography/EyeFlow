@@ -12,6 +12,8 @@ from calculations.blood_flow_velocity.signal_analysis.spectrum import (
     TransferData,
     paired_spectrum_analysis,
 )
+from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE as STYLE
+from input_output.figure_formatting import add_legend
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
@@ -59,9 +61,9 @@ def _export_correlation_plots(writer: FigureWriter, ctx: PulseFigureContext) -> 
 
 def _msc_plot(writer: FigureWriter, corr: CorrelationData) -> Path:
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
-    ax.plot(corr.coherence_freq, corr.coherence, color="k", linewidth=2)
+    ax.plot(corr.coherence_freq, corr.coherence, color="k", linewidth=STYLE.signal_line_width)
     if np.isfinite(corr.heart_rate_hz):
-        ax.axvline(corr.heart_rate_hz, color="k", linestyle="--", linewidth=1.5)
+        ax.axvline(corr.heart_rate_hz, color="k", linestyle="--", linewidth=STYLE.reference_line_width)
         ax.text(
             corr.heart_rate_hz,
             0.04,
@@ -89,12 +91,13 @@ def _msc_plot(writer: FigureWriter, corr: CorrelationData) -> Path:
 
 def _correlation_panel_plot(writer: FigureWriter, time: np.ndarray, corr: CorrelationData) -> Path:
     fig, axes = _plt().subplots(2, 1, figsize=(7.0, 5.2))
-    axes[0].plot(time[: corr.first.size], corr.first, color="tab:red", linewidth=2)
-    axes[0].plot(time[: corr.second.size], -corr.second, color="tab:blue", linewidth=2)
+    axes[0].plot(time[: corr.first.size], corr.first, color="tab:red", linewidth=STYLE.signal_line_width)
+    axes[0].plot(time[: corr.second.size], -corr.second, color="tab:blue", linewidth=STYLE.signal_line_width)
     axes[0].set_ylabel("Amplitude")
-    axes[1].plot(corr.lags_seconds, corr.cross_corr, color="k", linewidth=1.5)
+    axes[1].plot(corr.lags_seconds, corr.cross_corr, color="k", linewidth=STYLE.secondary_line_width)
     axes[1].scatter([corr.time_lag], [corr.max_corr], color="tab:red", s=55)
-    axes[1].legend([f"Peak Lag: {corr.time_lag:.3f} s", f"Peak Corr: {corr.max_corr:.2f}"])
+    add_legend(axes[1], STYLE.legend_layout,
+               labels=[f"Peak Lag: {corr.time_lag:.3f} s", f"Peak Corr: {corr.max_corr:.2f}"])
     axes[1].set_xlabel("Lag (s)")
     axes[1].set_ylabel("Cross-Correlation")
     for ax in axes:
@@ -113,9 +116,10 @@ def _detrended_plot(writer: FigureWriter, time: np.ndarray, corr: CorrelationDat
 
 def _lags_plot(writer: FigureWriter, corr: CorrelationData) -> Path:
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
-    ax.plot(corr.lags_seconds, corr.cross_corr, color="k", linewidth=1.5)
+    ax.plot(corr.lags_seconds, corr.cross_corr, color="k", linewidth=STYLE.secondary_line_width)
     ax.scatter([corr.time_lag], [corr.max_corr], color="tab:red", s=55)
-    ax.legend([f"Peak Corr: {corr.max_corr:.2f}", f"Peak Lag: {corr.time_lag:.3f} s"])
+    add_legend(ax, STYLE.legend_layout,
+               labels=[f"Peak Corr: {corr.max_corr:.2f}", f"Peak Lag: {corr.time_lag:.3f} s"])
     ax.set_xlabel("Lag (s)")
     ax.set_ylabel("Cross-Correlation")
     _style_axes(ax, grid=True)
@@ -128,11 +132,11 @@ def _transfer_plot(writer: FigureWriter, suffix: str, data: TransferData, *, pha
     if phase:
         y = np.angle(data.transfer[positive])
         ylabel = "transfer function angle"
-        ax.plot(x, y, color="k", linewidth=2)
+        ax.plot(x, y, color="k", linewidth=STYLE.signal_line_width)
     else:
         y = np.abs(data.transfer[positive])
         ylabel = "transfer function"
-        ax.semilogy(x, y, color="k", linewidth=2)
+        ax.semilogy(x, y, color="k", linewidth=STYLE.signal_line_width)
     ax.set_xlim(0, 10)
     ax.set_xlabel("Freq (Hz)")
     ax.set_ylabel(ylabel)
@@ -144,16 +148,15 @@ def _delay_plot(
     data: DelayFitData,
 ) -> Path:
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
-    ax.plot(data.time, data.first, color="tab:red", linewidth=2)
-    ax.plot(data.time, data.model, color="tab:blue", linestyle="--", linewidth=2)
-    ax.plot(data.time, data.second_scaled, color="tab:blue", linewidth=2)
-    ax.legend(
-        [
+    ax.plot(data.time, data.first, color="tab:red", linewidth=STYLE.signal_line_width)
+    ax.plot(data.time, data.model, color="tab:blue", linestyle="--", linewidth=STYLE.signal_line_width)
+    ax.plot(data.time, data.second_scaled, color="tab:blue", linewidth=STYLE.signal_line_width)
+    add_legend(
+        ax, STYLE.legend_layout, labels=[
             "Artery (normalized)",
             f"Vein model fit (tau_RC = {data.tau_milliseconds:.2f} ms)",
             f"Vein shifted ({data.shift_milliseconds:.2f} ms)",
         ],
-        loc="best",
     )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Arterio-venous decay fit")
