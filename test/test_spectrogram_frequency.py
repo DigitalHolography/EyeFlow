@@ -27,6 +27,18 @@ def _write_frequency_table(h5, bin_count, sampling_frequency_hz):
     write_frequency_bin_table(output, bin_count, hd=hd)
 
 
+@pytest.mark.parametrize("bin_count, sampling_frequency, expected_hz", [
+    (1, 10, [0]),
+    (5, 10, [0, 2, 4, -4, -2]),
+    (6, 12, [0, 2, 4, -6, -4, -2]),
+])
+def test_unbinned_coordinates_follow_standard_even_and_odd_fft_order(bin_count, sampling_frequency, expected_hz):
+    np.testing.assert_allclose(
+        frequency_coordinates_khz(bin_count, sampling_frequency),
+        np.asarray(expected_hz) / 1000,
+    )
+
+
 @pytest.mark.parametrize("fft_size", [128, 256, 512])
 def test_coordinates_match_full_fft_four_sample_averages(fft_size):
     raw = np.fft.fftfreq(fft_size, d=1 / 37037)

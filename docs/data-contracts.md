@@ -111,6 +111,8 @@ transposes the reduced native mask into the same published `(x, y)` frame as
 the aligned spectra. The persisted mask is unchanged.
 
 Spectral frequency calibration uses the original FFT length `B=batch_size`.
+NumPy's `np.fft.fftfreq(B, d=1/fs)` supplies the signed FFT frequency grid;
+HD metadata is still required to map that grid to the exported planes.
 HD selects FFT indexes `[:int(B*spectrogram_frequency_end)]` followed by
 `[int(B*spectrogram_frequency_start)+B//2:]`, then averages consecutive groups
 of `spectrogram_frequency_binning` samples. Read the selection bounds from
@@ -244,18 +246,24 @@ counts per frequency. Reuse the existing beat division without repeating it.
 When the HD spectral video is available, `low_freq_spectra` also exports each
 available gap product to both `png/spectrograms/` and `eps/spectrograms/`:
 `<stem>_spectrograms_gaps` displays `/ProcessingSpectrograms/Gaps/SpatialMedian` as a
-linear viridis heatmap with horizontal frame tick labels at multiples of 50
-samples, thinning longer recordings to at most seven labels,
-signed frequency ticks in kHz, and a vertical power colorbar;
+linear viridis heatmap with horizontal elapsed-time ticks labeled `Time (s)`,
+using the HD frame interval `batch_stride / sampling_freq`, signed frequency
+ticks rounded to whole kHz values, and a vertical power colorbar. A matching
+`<stem>_spectrograms_gaps_monochrome` uses white-to-black grayscale with a mild
+gamma contrast adjustment. The final negative-frequency bin is labeled to make
+the upper bound explicit; replace a neighboring tick when needed to avoid crowding.
 `<stem>_spectrogram_gaps_median` plots
 `/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat` in the original HD
 positive-then-negative order, with a thin black dotted horizontal line at zero
 power, labeling frequency in signed kHz with vertical
 tick labels. Tick selection keeps the sign boundary visible and avoids crowded
-labels. Both use
-an 8 cm wide, 1.618:1 canvas, 10 pt Times New Roman axis captions and legends,
+labels. Heatmaps use a 12 cm wide, 2.65:1 canvas; the median spectrum uses an
+8 cm wide, 1.618:1 canvas. All use 10 pt Times New Roman axis captions and legends,
 8 pt tick labels for readability at article column width,
 with horizontal Y-axis tick labels, 0.4 pt black borders, and 320 DPI.
+Metric phase plots also use Times New Roman text, with Times-compatible STIX
+math lettering for subscripted metric symbols (`A_0`, `A_1`, `A_2`, `R_1`,
+`R_2`, `Z_1`, `Z_2`) and the italic `t/T` in the cardiac-phase axis label.
 `<stem>_gaps_mask` displays the combined `/Segmentation/Gaps/Mask` mask as white
 gaps on black in its published lower-left spatial frame, on an 8 cm square
 canvas without ticks, labels, borders, or surrounding white margins.
@@ -295,30 +303,42 @@ Three additional monochrome PNG/EPS figures use these persisted spectra:
 `<stem>_gaps_positive_freq_median_phase_early_late` overlays `MedianPhaseBeatEarly`
 and `MedianPhaseBeatLate`; `<stem>_gaps_positive_freq_median_phase_beat` plots
 `MedianPhaseBeat`; and `<stem>_gaps_positive_freq_median_phase_all` overlays all
-three. These figures use the initial positive/DC-containing averages of each spectrum:
-`P` bins before the first negative center (`P=N/2` for the default full export).
-Read their kHz centers directly from `FrequencyBinTable`
-and plot only bins from the stored `/ProcessingSpectrograms/Gaps/Metrics/index_max1`
-through bin `P-1` inclusive, using that same cutoff for every curve.
-Require at least two source bins;
-do not infer a replacement peak if the stored index is missing, NaN, or outside
-the positive half. Normalize each curve by its own `Hv`, using the same
-NaN-aware median over the central 25% of the full spectrum as A0. For 64 source
-bins this is bins 24 through 39; the shared valley-window rounding and minimum
-length apply to other sizes. Divide the matching STD by that same Hv. Compute
-Hv before positive-bin cropping, including both halves of the central window,
-without expanding the neighborhood around NaNs. Frequency coordinates are
-published in the shared `FrequencyBinTable`; figure export remains read-only.
+three. These legacy `positive_freq` filenames now display the full signed
+spectrum in the stored positive-then-negative HD bin order, with calibrated
+kHz tick labels from `FrequencyBinTable`. Include ticks at both stored peak
+frequencies, prioritizing these labels over overlapping regular or boundary
+ticks. Use whole-number tick labels on both axes. The labeled axis ticks at
+`/ProcessingSpectrograms/Gaps/Metrics/index_max1` and `index_max2` identify the
+peaks without additional reference lines or border notches. Do not shade
+the outer, low-interest regions. Require valid peak indexes in their respective
+bin-domain halves; do not infer replacements for missing or invalid indexes.
+Normalize each curve by its own `Hv`, using the same NaN-aware central-neighborhood
+median as A0. Read `valley_neighborhood_length` from the stored metric metadata;
+when absent, use the shared default central-quarter window (bins 24 through 39
+for 64 source bins). Divide the matching STD by that same Hv. Shade exactly
+those bins, from the first bin's lower edge to the last bin's upper edge, with
+a faint gray background to identify the Hv estimation region. Reuse the metric
+window selection and rounding; do not expand around NaNs. Figure export remains read-only.
 Power remains linear, with the existing dotted power-zero reference.
 The central curves remain the existing HDF5 medians; dispersion comes from the
 corresponding `StdBeat`/`StdBeatEarly`/`StdBeatLate` datasets.
 Use solid, dashed, and dotted lines for median, early, and late respectively.
-Draw matching thin envelope boundaries at normalized power plus/minus STD,
-with light-gray solid fill or clipped dashed/dotted interior patterns. Keep
+Draw solid, translucent gray envelopes at normalized power plus/minus STD,
+clearly darker than the Hv-region background;
+overlaps darken gently, while the black signal curves retain their line styles.
+Omit envelope outlines and interior patterns. Keep
 lower envelopes below zero without clipping and draw a thin dotted zero line.
-Include horizontal and vertical data margins, frequency in kHz, `Power (a.u.)`,
-and a legend for overlays. Retain the existing canvas, DPI, fonts, and border
-style. Fill patterns are vector graphics in EPS. Missing required spectra/STD
+Remove left/right data padding while keeping vertical room for the zero reference,
+frequency in kHz, and `Power (a.u.)`. Use lowercase signal names in each figure's
+legend, with the same font size as the axis labels. Use a 16 cm wide canvas,
+about 6.4 cm high (30% taller than the original full-spectrum plots), with
+about 13.3 pt axis captions and legends and 10.7 pt ticks. Scale these sizes
+with canvas width to match the `spectrograms_gaps` font sizes when both are
+displayed at the same width. Retain the DPI, typeface, and border style.
+Place the legend centrally above the valley to leave both peaks visible.
+Composite background and envelope fills on white
+in a single raster layer for matching PNG/EPS appearance; signal curves, axes,
+and text remain vector graphics in EPS. Missing required spectra/STD
 omit the corresponding figure; an all-NaN neighborhood or nonpositive normalization median
 cannot be normalized and is omitted with a warning.
 

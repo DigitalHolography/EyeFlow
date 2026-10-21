@@ -28,26 +28,22 @@ def frequency_coordinates_khz(
     fft_bin_count: int | None = None, binning_factor: int = 1,
     frequency_start: float = 0.0, frequency_end: float = 0.5,
 ) -> np.ndarray:
-    """Average contiguous FFT samples in positive-then-negative source order.
+    """Use NumPy's FFT frequencies, then apply source selection and averaging.
 
     Select samples [:int(FFT_size*end)] and [int(FFT_size*start)+FFT_size//2:].
     Bounds (0, 0.5) retain the full FFT. Average signed frequencies exactly as
     their associated powers are averaged, including groups crossing a sign edge.
     With factor one this also describes an ordinary unbinned signed spectrum.
     """
-    spacing = frequency_bin_spacing_khz(
+    frequency_bin_spacing_khz(
         bin_count, sampling_frequency_hz,
         fft_bin_count=fft_bin_count, binning_factor=binning_factor,
         frequency_start=frequency_start, frequency_end=frequency_end,
     )
-    if fft_bin_count is not None:
-        raw = np.fft.fftfreq(fft_bin_count, d=1 / sampling_frequency_hz) / 1000
-        indices = _selected_fft_indices(fft_bin_count, frequency_start, frequency_end)
-        return raw[indices].reshape(bin_count, binning_factor).mean(axis=1)
-    bins = np.arange(bin_count, dtype=np.float64)
-    if bin_count > 1:
-        bins[bin_count // 2:] -= bin_count
-    return bins * spacing + (binning_factor - 1) * spacing / (2 * binning_factor)
+    fft_bin_count = bin_count if fft_bin_count is None else fft_bin_count
+    raw = np.fft.fftfreq(fft_bin_count, d=1 / sampling_frequency_hz) / 1000
+    indices = _selected_fft_indices(fft_bin_count, frequency_start, frequency_end)
+    return raw[indices].reshape(bin_count, binning_factor).mean(axis=1)
 
 
 def positive_frequency_coordinates_khz(
