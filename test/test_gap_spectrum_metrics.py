@@ -11,7 +11,9 @@ import pytest
 from input_output.h5_access import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.metrics import (
-    PHASE_METRIC_NAMES, SPECTRUM_METRIC_DEFINITIONS, analyze_spectrum, pack_spectrum_metrics,
+    PHASE_METRIC_NAMES, PHASE_METRIC_OUTPUT_NAMES, PHASE_SUMMARY_OUTPUT_NAMES,
+    SPECTRUM_METRIC_DEFINITIONS, SPECTRUM_METRIC_OUTPUT_NAMES,
+    analyze_spectrum, pack_spectrum_metrics,
 )
 from pipelines.low_freq_spectra.gap_analysis import run_gap_analysis
 from test_spectrogram_frequency import _write_frequency_table
@@ -282,27 +284,29 @@ def test_runner_persists_scalar_metrics_from_the_raw_aggregate_spectrum(
         assert median.name == "/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat"
         np.testing.assert_array_equal(median[()], spectrum)
         group = output[schema.spectrograms_masked_metrics_root]
-        expected_keys = set(SPECTRUM_METRIC_DEFINITIONS) | {
-            key for name in PHASE_METRIC_NAMES
-            for key in (f"{name}_t", f"{name}_early", f"{name}_late", f"delta_{name}")
+        expected_keys = set(SPECTRUM_METRIC_OUTPUT_NAMES.values()) | set(PHASE_METRIC_OUTPUT_NAMES.values()) | {
+            key for name in PHASE_SUMMARY_OUTPUT_NAMES.values()
+            for key in (f"{name}_early", f"{name}_late", f"delta_{name}")
         }
         assert group.name == "/ProcessingSpectrograms/Gaps/Metrics"
         assert set(group) == expected_keys
         assert not {"h0", "h1", "hv", "rho_h", "rho_v"} & set(group)
         assert "ProcessingSpectrograms/Gaps/TimeAggregated/Metrics" not in output
         for name, dataset in group.items():
-            assert dataset.shape == ((128,) if name.endswith("_t") else ())
+            assert dataset.shape == ((128,) if name in PHASE_METRIC_OUTPUT_NAMES.values() else ())
             assert dataset.dtype == np.float32
             assert not dataset.name.endswith("/value")
-            assert list(dataset.attrs["dimDesc"]) == (["phase"] if name.endswith("_t") else [])
+            assert list(dataset.attrs["dimDesc"]) == (["phase"] if name in PHASE_METRIC_OUTPUT_NAMES.values() else [])
             metric_name = name.removeprefix("delta_").split("_")[0]
             assert dataset.attrs["unit"] == (
-                "1" if name.startswith("index_") or metric_name in {"R1", "R2", "Z1", "Z2"}
-                else "power_unit*kHz" if metric_name in {"A0", "A1", "A2"} else "power_unit"
+                "1" if name.startswith("index_") or metric_name in {"R1", "SE", "SEI"}
+                else "power_unit*kHz" if metric_name in {"A0", "A", "A2"} else "power_unit"
             )
             assert dataset.attrs["sampling_frequency_hz"] == 32000
             assert dataset.attrs["frequency_bin_spacing_khz"] == pytest.approx(32 / bin_count)
-            assert dataset.attrs["A1_integration_method"] == "trapezoidal_khz_spacing"
+            assert dataset.attrs["A_integration_method"] == "trapezoidal_khz_spacing"
+            if metric_name in {"R1", "SE", "SEI"}:
+                assert not any(legacy in dataset.attrs["definition"] for legacy in ("A1", "Z1"))
             assert dataset.attrs["valley_neighborhood_length"] == expected_length
             middle = bin_count // 2
             np.testing.assert_array_equal(
@@ -316,12 +320,23 @@ def test_runner_persists_scalar_metrics_from_the_raw_aggregate_spectrum(
                 spectrum, sampling_frequency_hz=32000, valley_neighborhood_length=valley_length,
                 fft_bin_count=4 * bin_count, binning_factor=4,
             )
-            if name in expected:
+            calculation_name = next(
+                (internal for internal, external in SPECTRUM_METRIC_OUTPUT_NAMES.items() if external == name),
+                None,
+            )
+            if calculation_name is not None:
                 assert dataset.attrs["source_path"] == median.name
-                assert dataset[()] == np.float32(expected[name])
+                assert dataset[()] == np.float32(expected[calculation_name])
             elif name.startswith("delta_"):
                 assert dataset[()] == 0  # A constant source has identical early/late medians.
             else:
-                np.testing.assert_allclose(dataset[()], expected[metric_name])
+                phase_calculation_name = next(
+                    internal for internal in PHASE_METRIC_OUTPUT_NAMES
+                    if (
+                        PHASE_METRIC_OUTPUT_NAMES[internal] == name
+                        or PHASE_SUMMARY_OUTPUT_NAMES[internal] == metric_name
+                    )
+                )
+                np.testing.assert_allclose(dataset[()], expected[phase_calculation_name])
         assert "ProcessingBandRatio/Spectrograms" not in output
         warning.assert_not_called()

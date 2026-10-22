@@ -133,13 +133,16 @@ before export if absent, since velocity analysis may run later. Missing/invalid
 sampling metadata skips frequency figures while keeping other products.
 The spectrum figure and pooled scalar metrics consume `MedianPhaseBeat`.
 All gap metrics live directly under `/ProcessingSpectrograms/Gaps/Metrics`.
-Phase curves `A0_t`, `A1_t`, `A2_t`, `R1_t`, `R2_t`, `Z1_t`, and `Z2_t` use
-`MedianBeat` with the pooled peak indices fixed at every phase. Pooled scalar
-metrics use the same seven names without `_t`; output heights `h0`/`h1`/`hv`
-and `rho_h` are absent.
-Each curve also has `_early` and `_late` scalar medians over closed phase
-intervals (default `[0,1/3]` and `[1/3,1]`), and a signed `delta_<metric>` scalar.
-All seven deltas are late-minus-early. Generic helpers in
+Phase curves `A0_t`, `A_t`, `A2_t`, `R1_t`, and `SE` use `MedianBeat` with the
+pooled peak indices fixed at every phase. Pooled scalar metrics use `A0`, `A`,
+`A2`, `R1`, and `SEI`; output heights `h0`/`h1`/`hv`, `rho_h`, and the former
+`R2`/`Z2` products are absent. `A` is the former `A1`, `SE` is the former
+`Z1(t)` curve, and `SEI` is its pooled scalar counterpart.
+Each curve also has scalar medians over closed phase intervals (default
+`[0,1/3]` and `[1/3,1]`) and a signed late-minus-early delta. Area and ratio
+summaries use their curve base name with `_early`, `_late`, and `delta_`
+forms; the `SE` summaries are
+`SEI_early`, `SEI_late`, and `delta_SEI`. All deltas are late-minus-early. Generic helpers in
 `calculations/math/phase_windows.py` own closed interval masks, NaN-aware medians,
 and subtraction. `run_gap_analysis` and `pack_spectrum_metrics` accept
 `early_interval`/`late_interval` cycle-fraction bounds in `[0,1]`; use the same
@@ -160,7 +163,7 @@ indexes, log a warning, and are identified by per-half valid-bin counts in metad
 `A0` is valley-median height times peak-to-peak width in kHz; `A2` is the
 peak-height mean times the same width. These swap the former A0/A2 meanings.
 Use `df_khz=q*fs/(B*1000)` for averaging factor `q` and original FFT size `B` and width `(index_max2-index_max1)*df_khz`, with no
-extra bin. `A1` is the trapezoidal integral between those peak bins with positive
+extra bin. `A` is the trapezoidal integral between those peak bins with positive
 `df_khz` spacing in stored HD order (unwrapped kHz, no signed-axis sorting).
 Areas and their phase summaries/deltas have source-power-times-kHz units;
 peak/valley heights retain power units. Preserve calibration, spacing, integration
@@ -168,10 +171,10 @@ method, and units in metadata. Artifact axis labels abbreviate `a.u.*kHz` to
 `a.u.`. Resolve calibration from shared
 `Meta/SamplingFrequencyHz/value`; missing/invalid calibration warns and skips
 the Metrics family while retaining raw/aggregate spectra and filters.
-`R1=A1/A0`, `R2=A2/A0`,
-`Z1=(A1-A0)/A0`, and `Z2=(A2-A0)/A0` are dimensionless; zero/missing A0 gives
-NaN. All seven metrics have pooled scalars, phase curves, early/late medians,
-signed late-minus-early deltas, and matching PNG/EPS phase plots.
+`R1=A/A0` and `SEI=(A-A0)/A0` are dimensionless; the phase curve is
+`SE=(A_t-A0_t)/A0_t`, and zero/missing A0 gives NaN. All five output metrics
+have pooled scalars, phase curves, early/late medians, signed late-minus-early
+deltas, and matching PNG/EPS phase plots.
 Metric metadata records the neighborhood.
 Independent `PerBeat/BandLimited` keeps DC plus the configured non-DC harmonics
 (default 12) via the shared bandlimiting API in signed mode, using

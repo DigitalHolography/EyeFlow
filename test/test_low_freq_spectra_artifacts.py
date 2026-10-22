@@ -143,12 +143,11 @@ def test_mask_preserves_published_xy_orientation_and_square_pixels():
 
 @pytest.mark.parametrize("metric, unit, label", [
     ("A0", "power_unit", "$A_{0}$ (power_unit)"), ("R1", "1", "$R_{1}$"),
-    ("R2", "1", "$R_{2}$"),
-    ("Z1", "1", "$Z_{1}$"), ("Z2", "1", "$Z_{2}$"),
+    ("SE", "1", "$SE$"),
     ("A0", "a.u.*kHz", "$A_{0}$ (a.u.)"),
-    ("A1", "a.u.*kHz", "$A_{1}$ (a.u.)"),
+    ("A", "a.u.*kHz", "$A$ (a.u.)"),
     ("A2", "a.u.*kHz", "$A_{2}$ (a.u.)"),
-    ("A1", "a.u. * kHZ", "$A_{1}$ (a.u.)"),
+    ("A", "a.u. * kHZ", "$A$ (a.u.)"),
 ])
 def test_metric_curves_preserve_phase_coordinates_nan_gaps_and_units(metric, unit, label):
     phase = np.array([0, 0.1, 0.5, 0.9])
@@ -411,12 +410,12 @@ def test_exports_only_available_products_in_shared_namespace(tmp_path, products)
             h5.create_dataset(schema.segmentation.gaps, data=mask.astype(np.uint8))
             expected.add("gaps_mask")
         if products in {"all", "metrics", "one_metric"}:
-            names = ("A0",) if products == "one_metric" else ("A0", "A1", "A2", "R1", "R2", "Z1", "Z2")
+            names = ("A0_t",) if products == "one_metric" else ("A0_t", "A_t", "A2_t", "R1_t", "SE")
             for name in names:
-                metric = h5.create_dataset(f"{schema.spectrograms_masked_metrics_root}/{name}_t", data=[2, np.nan, 1, 3])
+                metric = h5.create_dataset(f"{schema.spectrograms_masked_metrics_root}/{name}", data=[2, np.nan, 1, 3])
                 metric.attrs["phase_samples"] = [0, 0.25, 0.5, 0.75]
-                metric.attrs["unit"] = "1" if name.startswith(("R", "Z")) else "a.u."
-                expected.add(f"gaps_{name}")
+                metric.attrs["unit"] = "1" if name.startswith(("R", "SE")) else "a.u."
+                expected.add(f"gaps_{name.removesuffix('_t')}")
         paths = export_spectrogram_figures(SimpleNamespace(
             manager=manager, h5=PipelineH5Output(h5),
         ), dt_seconds=0.01)

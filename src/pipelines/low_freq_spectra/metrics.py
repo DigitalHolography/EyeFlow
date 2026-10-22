@@ -20,6 +20,41 @@ from utils.logger import Logger
 DEFAULT_VALLEY_NEIGHBORHOOD_FRACTION = 1 / 4
 PHASE_METRIC_NAMES = ("A0", "A1", "A2", "R1", "R2", "Z1", "Z2")
 
+# The calculation helpers retain the established symbols so their numerical
+# contract stays independent from the persisted naming convention. Only the
+# public output family is renamed here.
+SPECTRUM_METRIC_OUTPUT_NAMES = {
+    "index_max1": "index_max1",
+    "max1": "max1",
+    "index_max2": "index_max2",
+    "max2": "max2",
+    "index_min1": "index_min1",
+    "min1": "min1",
+    "index_min2": "index_min2",
+    "min2": "min2",
+    "A0": "A0",
+    "A1": "A",
+    "A2": "A2",
+    "R1": "R1",
+    "Z1": "SEI",
+}
+
+PHASE_METRIC_OUTPUT_NAMES = {
+    "A0": "A0_t",
+    "A1": "A_t",
+    "A2": "A2_t",
+    "R1": "R1_t",
+    "Z1": "SE",
+}
+
+PHASE_SUMMARY_OUTPUT_NAMES = {
+    "A0": "A0",
+    "A1": "A",
+    "A2": "A2",
+    "R1": "R1",
+    "Z1": "SEI",
+}
+
 SPECTRUM_METRIC_DEFINITIONS = {
     "index_max1": "zero-based index of the maximum in the first half of the bin domain",
     "max1": "maximum spectrum value in the first half of the bin domain, ignoring NaNs",
@@ -46,6 +81,16 @@ PHASE_METRIC_DEFINITIONS = {
     "R2": "A2_t divided by A0_t per phase; zero or missing A0_t produces NaN",
     "Z1": "(A1_t - A0_t) divided by A0_t per phase; zero or missing A0_t produces NaN",
     "Z2": "(A2_t - A0_t) divided by A0_t per phase; zero or missing A0_t produces NaN",
+}
+
+SPECTRUM_OUTPUT_DEFINITION_OVERRIDES = {
+    "R1": "A divided by A0; zero or missing A0 produces NaN",
+    "Z1": "(A - A0) divided by A0; zero or missing A0 produces NaN",
+}
+
+PHASE_OUTPUT_DEFINITION_OVERRIDES = {
+    "R1": "A_t divided by A0_t per phase; zero or missing A0_t produces NaN",
+    "Z1": "(A_t - A0_t) divided by A0_t per phase; zero or missing A0_t produces NaN",
 }
 
 
@@ -195,7 +240,7 @@ def pack_spectrum_metrics(
         "interval_endpoints": "both_included",
         "area_interval_width": "(index_max2 - index_max1) * frequency_bin_spacing_khz",
         "area_coordinate": "unwrapped_frequency_khz_in_HD_bin_order",
-        "A1_integration_method": "trapezoidal_khz_spacing",
+        "A_integration_method": "trapezoidal_khz_spacing",
         "sampling_frequency_hz": sampling_frequency_hz,
         "sampling_frequency_source_path": "/" + schema.sampling_frequency_hz,
         "frequency_bin_spacing_khz": (
@@ -216,19 +261,26 @@ def pack_spectrum_metrics(
         "valley_nonfinite_value_policy": "ignore_NaN_all_NaN_neighborhood_returns_NaN",
     }
     output = {}
-    for name, value in result.items():
+    for name, output_name in SPECTRUM_METRIC_OUTPUT_NAMES.items():
+        value = result[name]
         unit = (
             "1"
             if name.startswith("index_") or name in {"R1", "R2", "Z1", "Z2"}
             else source_attrs.get("unit", "a.u.")
         )
-        metric_attrs = {**attrs, "unit": unit, "definition": SPECTRUM_METRIC_DEFINITIONS[name]}
+        metric_attrs = {
+            **attrs,
+            "unit": unit,
+            "definition": SPECTRUM_OUTPUT_DEFINITION_OVERRIDES.get(
+                name, SPECTRUM_METRIC_DEFINITIONS[name],
+            ),
+        }
         if name in {"A0", "A1", "A2"}:
             metric_attrs["unit"] = f"{unit}*kHz"
         if name.startswith("index_"):
             metric_attrs["index_base"] = 0
             metric_attrs["index_storage"] = "integer_valued_float32_with_NaN_for_missing_index"
-        output[f"{schema.spectrograms_masked_metrics_root}/{name}"] = (
+        output[f"{schema.spectrograms_masked_metrics_root}/{output_name}"] = (
             np.float32(value),
             metric_attrs,
         )
@@ -332,14 +384,17 @@ def _pack_phase_metrics(
         "dimDesc": ["phase"],
     }
     output = {}
-    for name, curve in curves.items():
+    for name, curve_path_name in PHASE_METRIC_OUTPUT_NAMES.items():
+        curve = curves[name]
         unit = "1" if name in {"R1", "R2", "Z1", "Z2"} else source_attrs.get("unit", "a.u.")
         if name in {"A0", "A1", "A2"}:
             unit = f"{unit}*kHz"
-        curve_path = f"{root}/{name}_t"
+        curve_path = f"{root}/{curve_path_name}"
         curve_attrs = {
             **attrs, "unit": unit,
-            "definition": PHASE_METRIC_DEFINITIONS[name],
+            "definition": PHASE_OUTPUT_DEFINITION_OVERRIDES.get(
+                name, PHASE_METRIC_DEFINITIONS[name],
+            ),
         }
         output[curve_path] = (curve.astype(np.float32), curve_attrs)
         scalar_attrs = {
@@ -348,11 +403,12 @@ def _pack_phase_metrics(
         }
         scalar_attrs.update(source_path="/" + curve_path, dimDesc=[])
         aggregates = phase_window_medians(curve, windows)
+        summary_name = PHASE_SUMMARY_OUTPUT_NAMES[name]
         for window, (mask, interval) in windows.items():
             aggregate = float(aggregates[window])
-            output[f"{root}/{name}_{window}"] = (np.float32(aggregate), {
+            output[f"{root}/{summary_name}_{window}"] = (np.float32(aggregate), {
                 **scalar_attrs,
-                "definition": f"NaN-aware median of {name}_t over the {window} phase interval",
+                "definition": f"NaN-aware median of {curve_path_name} over the {window} phase interval",
                 "aggregation_method": "nanmedian",
                 "aggregation_axes": ["phase"],
                 "aggregation_weighting": "equal_weight_per_valid_phase_sample",
@@ -362,10 +418,10 @@ def _pack_phase_metrics(
                 "valid_sample_count": int(np.count_nonzero(~np.isnan(curve[mask]))),
                 "nonfinite_value_policy": "ignore_NaN_all_NaN_window_returns_NaN",
             })
-        output[f"{root}/delta_{name}"] = (np.float32(late_minus_early(aggregates["early"], aggregates["late"])), {
+        output[f"{root}/delta_{summary_name}"] = (np.float32(late_minus_early(aggregates["early"], aggregates["late"])), {
             **scalar_attrs,
-            "definition": f"{name}_late minus {name}_early",
-            "source_paths": [f"/{root}/{name}_late", f"/{root}/{name}_early"],
+            "definition": f"{summary_name}_late minus {summary_name}_early",
+            "source_paths": [f"/{root}/{summary_name}_late", f"/{root}/{summary_name}_early"],
             "calculation_method": "late_median_minus_early_median",
             "early_phase_interval": windows["early"][1],
             "late_phase_interval": windows["late"][1],

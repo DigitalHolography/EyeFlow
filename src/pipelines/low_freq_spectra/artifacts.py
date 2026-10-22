@@ -25,7 +25,7 @@ from input_output.writers.article import save_article_figure_pair
 from utils.logger import Logger
 
 from .frequency import frequency_ticks, read_frequency_bin_table
-from .metrics import PHASE_METRIC_NAMES, _valley_neighborhood_indices, spectrum_valley_height
+from .metrics import PHASE_METRIC_OUTPUT_NAMES, _valley_neighborhood_indices, spectrum_valley_height
 
 SPECTRUM_HEIGHT_SCALE = 1.30
 SPECTROGRAM_WIDTH_INCHES = 12.0 / 2.54
@@ -76,13 +76,14 @@ def export_spectrogram_figures(output, *, dt_seconds: float | None = None) -> li
     mask = output.h5.get(schema.segmentation.gaps)
     if mask is not None:
         paths.extend(_save_figure_pair(manager, "gaps_mask", partial(_gaps_mask_figure, mask[()])))
-    for name in PHASE_METRIC_NAMES:
-        source = output.h5.get(f"{schema.spectrograms_masked_metrics_root}/{name}_t")
+    for curve_name in PHASE_METRIC_OUTPUT_NAMES.values():
+        source = output.h5.get(f"{schema.spectrograms_masked_metrics_root}/{curve_name}")
         if source is None:
             continue
-        paths.extend(_save_figure_pair(manager, f"gaps_{name}", partial(
+        artifact_name = curve_name.removesuffix("_t")
+        paths.extend(_save_figure_pair(manager, f"gaps_{artifact_name}", partial(
             _gap_metric_figure, source[()], np.asarray(source.attrs["phase_samples"]),
-            metric=name, unit=source.attrs["unit"],
+            metric=artifact_name, unit=source.attrs["unit"],
         )))
     if frequency_table is not None:
         paths.extend(_export_spectra(output, manager, frequency_table[()]))
@@ -354,7 +355,7 @@ def _gap_metric_figure(values: np.ndarray, phase: np.ndarray, *, metric: str, un
     ax.set_xticks([0, 1 / 3, 2 / 3, 1], labels=["0", "1/3", "2/3", "1"])
     ax.set_xlabel(r"Cardiac phase ($t/T$)")
     display_unit = "a.u." if unit.replace(" ", "").lower() == "a.u.*khz" else unit
-    metric_label = f"${metric[0]}_{{{metric[1:]}}}$"
+    metric_label = f"${metric}$" if metric in {"A", "SE"} else f"${metric[0]}_{{{metric[1:]}}}$"
     ax.set_ylabel(
         metric_label if display_unit == "1" else f"{metric_label} ({display_unit})",
     )
