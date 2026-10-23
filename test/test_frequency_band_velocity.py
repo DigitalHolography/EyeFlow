@@ -34,10 +34,10 @@ from pipelines.velocity.estimation import (
 )
 from pipelines.velocity.outputs import pack_velocity_outputs
 from pipelines.velocity.semantics import resolve_velocity_semantics
-from pipelines.vessel_inputs import load_retinal_source_data
 from pipelines.velocity_analysis.outputs.continuous import (
     pack_continuous_velocity_outputs,
 )
+from pipelines.vessel_inputs import load_retinal_source_data
 
 LF_PATH = "band_0_3000_9000"
 HF_PATH = "band_1_9000_18000"
@@ -146,6 +146,41 @@ def test_velocity_estimator_dispatcher_returns_standard_chunks(
     assert isinstance(chunks[0], VelocityEstimatorChunk)
     np.testing.assert_array_equal(chunks[0].background_image, 1.0)
     np.testing.assert_array_equal(chunks[0].rms_frequency, expected_frequency)
+
+
+def test_moment_chunks_floor_each_spatial_mean_at_single_precision_epsilon() -> None:
+    epsilon = np.finfo(np.float32).eps
+    means = np.array([-epsilon, 0, epsilon / 2, epsilon, 2 * epsilon, 1, np.nan], dtype=np.float32)
+    # Spatially nonuniform M0 checks normalization by the frame mean, rather
+    # than by individual pixels. A NaN mean must still propagate to its frame.
+    moment0 = means[:, None, None] * np.array([[0, 0, 0], [2, 2, 2]], dtype=np.float32)
+    moment2 = np.broadcast_to(
+        epsilon * np.array([[0, 1, 4], [9, 16, 25]], dtype=np.float32), moment0.shape,
+    ).copy()
+    original_m0, original_m2 = moment0.copy(), moment2.copy()
+    inputs = resolve_velocity_estimator_inputs(
+        ImageMaps(moment0=moment0, moment2=moment2), velocity_estimation_method="doppler_moments",
+    )
+    with (
+        patch("pipelines.velocity.estimation.SCRATCH_FRAME_CHUNK_SIZE", 2),
+        np.errstate(divide="raise", invalid="raise"),
+    ):
+        chunks = list(iter_velocity_estimator_chunks(
+            inputs, vessel_mask=np.zeros((2, 3), dtype=bool),
+            neighborhood_mask=np.ones((2, 3), dtype=bool),
+        ))
+    denominators = np.array(
+        [epsilon, epsilon, epsilon, epsilon, 2 * epsilon, 1, np.nan], dtype=np.float32,
+    )
+    expected = np.sqrt(moment2 / denominators[:, None, None])
+    actual = np.concatenate([chunk.rms_frequency for chunk in chunks])
+    np.testing.assert_allclose(actual, expected, rtol=1e-6, equal_nan=True)
+    assert actual.dtype == np.float32
+    np.testing.assert_array_equal(
+        np.concatenate([chunk.background_image for chunk in chunks]), original_m0,
+    )
+    np.testing.assert_array_equal(moment0, original_m0)
+    np.testing.assert_array_equal(moment2, original_m2)
 
 
 def test_frequency_band_estimator_converts_ratio_frequency_to_mm_per_second() -> None:
