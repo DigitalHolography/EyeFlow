@@ -437,10 +437,10 @@ datasets remain unnormalized.
 
 `/ProcessingSpectrograms/Gaps/Metrics` groups all gap-spectrum metrics directly,
 without `/value` suffixes or workflow copies. The former `TimeAggregated/Metrics`
-group is no longer emitted. Thirteen pooled scalar datasets analyze the
+group is no longer emitted. Twelve pooled scalar datasets analyze the
 `MedianPhaseBeat` spectrum in stored bin order: `index_max1`, `max1`,
 `index_max2`, `max2`, `index_min1`, `min1`, `index_min2`, `min2`, `A0`, `A`,
-`A2`, `R1`, and `SEI`. Heights are internal calculations; `h0`, `h1`, `hv`,
+`A2`, and `R1`. Heights are internal calculations; `h0`, `h1`, `hv`,
 and `rho_h` are not output datasets.
 For a domain of `N` bins, peak 1 is the maximum over zero-based bins 0 through
 `floor(N/2)-1`; peak 2 is the maximum over `floor(N/2)` through `N-1`.
@@ -468,10 +468,11 @@ accept even integers from 2 through `N` in `run_gap_analysis`,
 that neighborhood; an all-NaN neighborhood returns NaN. With the same kHz
 width used by `A2`, `A0=w_khz*hv`. The area names `A0`
 and `A2` replace each other's former meanings. `A` is the former `A1` output.
-The dimensionless outputs are `R1=A/A0` and `SEI=(A-A0)/A0`.
-Both return NaN for a zero or missing denominator,
-and a missing numerator propagates NaN. All values are float32; valid index values are integer-valued floats
-so missing indexes can be represented by NaN. Indexes, `R1`, and `SEI` have unit `1`;
+The pooled dimensionless output is `R1=A/A0`. Ratios require a finite, strictly
+positive reference area and finite numerator/result; otherwise they return NaN.
+`SEI` is calculated from the phasewise `SE` curve below, not from pooled areas.
+There is no pooled-spectrum SEI output. All values are float32; valid index values are integer-valued floats
+so missing indexes can be represented by NaN. Indexes and `R1` have unit `1`;
 `A0`, `A`, and `A2` have the source power unit times kHz (for example
 `a.u.*kHz`), while peak/valley heights retain the spectrum's power unit.
 Attributes record definitions,
@@ -485,7 +486,7 @@ family with a warning while preserving raw/aggregate spectra and filters;
 never substitute a unit bin width for a physical kHz area.
 An all-NaN half leaves its peak index and value as NaN and logs an explanatory warning.
 A spectrum that is not one-dimensional with at least two bins
-produces all thirteen NaN pooled metrics and logs a
+produces all twelve NaN pooled metrics and logs a
 warning; the median and other gap products remain available. No alternative
 workflow copy is generated.
 
@@ -500,9 +501,19 @@ width `w_khz=(index_max2-index_max1)*df_khz`, calculate
 metrics. `R1(t)=A(t)/A0(t)` and `SE(t)=(A(t)-A0(t))/A0(t)`.
 Missing fixed peak indices make every curve NaN. Missing peak heights invalidate
 `A2(t)`, interval NaNs propagate through `A(t)`, and an all-NaN valley
-neighborhood makes `A0(t)` NaN. Zero or missing `A0(t)` produces NaN ratios and offsets.
+neighborhood makes `A0(t)` NaN. Ratios and offsets require finite, strictly
+positive `A0(t)` and finite numerator/result; invalid phases remain NaN.
 Curve attributes identify their `MedianBeat` source, fixed peak values and
 index-dataset paths, pooled peak source, timing, neighborhood, and units.
+
+The dimensionless scalar `SEI=median(SE(t))` follows the temporal definition:
+take the NaN-aware median over all valid phase samples of the registered cycle,
+with equal weight per source phase sample and no added endpoint. This differs
+from a ratio of pooled areas or a ratio of median phase areas. It is emitted
+only when phase spectra are available, with source path `/ProcessingSpectrograms/Gaps/Metrics/SE`,
+aggregation method, and source/valid/invalid phase counts. All-invalid cycles
+produce NaN. There is no fallback to the pooled-spectrum ratio. These validity
+checks do not impose an unconfigured low-signal or valley-stability threshold.
 
 For the `A0_t`, `A_t`, `A2_t`, and `R1_t` curves, the same group also contains
 scalars `<base>_early`, `<base>_late`, and `delta_<base>`. The `SE` curve uses
@@ -514,8 +525,8 @@ boundary belongs to both intervals. Preserve the source grid's excluded endpoint
 do not interpolate or add a sample at phase one. The standard 128-phase grid
 therefore has 43 early and 85 late samples. Medians weight valid phase samples
 equally; all-missing windows remain NaN. Aggregate the ratios themselves,
-rather than dividing aggregated areas. The pooled scalar corresponding to `SE`
-is also `SEI`. Every spectrogram metric uses late minus early, including
+rather than dividing aggregated areas. The whole-cycle scalar corresponding
+to `SE` is `SEI`. Every spectrogram metric uses late minus early, including
 A0/A/A2, R1, and SEI. Preserve the signed
 difference and propagate a missing early or late median. Window metadata records
 phase intervals, included endpoints, source and valid sample counts, source
@@ -526,7 +537,7 @@ NaN-aware window medians, and late-minus-early subtraction. `run_gap_analysis`
 and `pack_spectrum_metrics` accept `early_interval` and `late_interval` keyword
 arguments. The runner applies the same configuration to early/late spectra,
 STD envelopes, metric summaries, and deltas. Empty/all-missing windows retain NaN.
-These twenty phase/summary datasets plus the thirteen pooled scalars give 33 datasets
+These twenty phase/window datasets, the whole-cycle `SEI`, and twelve pooled scalars give 33 datasets
 under `/ProcessingSpectrograms/Gaps/Metrics`. All persisted values are float32;
 ratio and offset curves and their summaries/deltas have unit `1`, while area products
 have the source power unit times kHz.

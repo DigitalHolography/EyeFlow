@@ -55,7 +55,7 @@ def test_phase_areas_use_fixed_peak_bins_and_leave_input_unchanged():
         np.testing.assert_array_equal(curves[name], result)
     np.testing.assert_allclose(curves["R1"], np.array(expected["A1"]) / expected["A0"])
     np.testing.assert_allclose(curves["R2"], np.array(expected["A2"]) / expected["A0"])
-    np.testing.assert_allclose(curves["Z1"], (np.array(expected["A1"]) - expected["A0"]) / expected["A0"])
+    np.testing.assert_allclose(curves["SE"], (np.array(expected["A1"]) - expected["A0"]) / expected["A0"])
     np.testing.assert_allclose(curves["Z2"], (np.array(expected["A2"]) - expected["A0"]) / expected["A0"])
     np.testing.assert_array_equal(values, original)
     # Huge maxima outside the fixed interval at phase 1 do not move its bounds.
@@ -83,7 +83,7 @@ def test_early_late_medians_include_shared_third_boundary_and_deltas_have_signed
     expected = {
         "A2": (45, 20, -25), "A1": (17, 16.5, -0.5), "A0": (15, 22.5, 7.5),
         "R1": (17 / 15, 33 / 40, -37 / 120),
-        "Z1": (2 / 15, -7 / 40, -37 / 120),
+        "SE": (2 / 15, -7 / 40, -37 / 120),
     }
     for name, (early, late, delta) in expected.items():
         curve_name = PHASE_METRIC_OUTPUT_NAMES[name]
@@ -195,7 +195,7 @@ def test_phase_nan_and_zero_policies_preserve_independent_area_information():
     assert np.isnan(curves["A0"][3]) and curves["A2"][3] == 15
     assert curves["A2"][4] == 0 and curves["A0"][4] == 25
     assert curves["R1"][4] == 16 / 25 and curves["R2"][4] == 0
-    for name in ("R1", "R2", "Z1", "Z2"):
+    for name in ("R1", "R2", "SE", "Z2"):
         assert np.isnan(curves[name][3])  # The new A0 denominator is missing.
     assert curves["A1"][5] == 27
 
@@ -224,7 +224,7 @@ def test_zero_valley_denominator_keeps_areas_but_makes_ratios_and_offsets_nan():
     assert curves["A0"][0] == 0
     assert curves["A1"][0] == 11
     assert curves["A2"][0] == 45
-    assert all(np.isnan(curves[name][0]) for name in ("R1", "R2", "Z1", "Z2"))
+    assert all(np.isnan(curves[name][0]) for name in ("R1", "R2", "SE", "Z2"))
 
 
 def test_missing_fixed_peak_indices_do_not_trigger_a_phasewise_peak_search():
@@ -268,5 +268,5 @@ def test_runner_calculates_curves_after_the_beat_median(tmp_path):
         assert group["A2_late"][()] == 50
         assert group["delta_A2"][()] == 0
         assert group["A2_t"].attrs["source_path"] == h5[schema.spectrograms_masked_time_aggregated_median_beat].name
-        assert not {"A1", "A1_t", "R2", "R2_t", "Z1", "Z1_t", "Z2", "Z2_t"} & set(group)
+        assert not {"A1", "A1_t", "R2", "R2_t", "Z2", "Z2_t"} & set(group)
         assert not {"h0", "h1", "hv", "rho_h", "rho_v"} & set(group)

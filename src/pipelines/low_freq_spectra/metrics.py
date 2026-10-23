@@ -18,11 +18,11 @@ from input_output.schema.holodoppler import HD_SPECTROGRAM_FREQUENCY_START_KEY, 
 from utils.logger import Logger
 
 DEFAULT_VALLEY_NEIGHBORHOOD_FRACTION = 1 / 4
-PHASE_METRIC_NAMES = ("A0", "A1", "A2", "R1", "R2", "Z1", "Z2")
+PHASE_METRIC_NAMES = ("A0", "A1", "A2", "R1", "R2", "SE", "Z2")
 
-# The calculation helpers retain the established symbols so their numerical
-# contract stays independent from the persisted naming convention. Only the
-# public output family is renamed here.
+# A1 remains the internal name for the integral published as A. Phasewise
+# spectral excess is SE throughout; its whole-cycle median is SEI. Pooled
+# area analysis does not publish a spectral-excess index.
 SPECTRUM_METRIC_OUTPUT_NAMES = {
     "index_max1": "index_max1",
     "max1": "max1",
@@ -36,7 +36,6 @@ SPECTRUM_METRIC_OUTPUT_NAMES = {
     "A1": "A",
     "A2": "A2",
     "R1": "R1",
-    "Z1": "SEI",
 }
 
 PHASE_METRIC_OUTPUT_NAMES = {
@@ -44,7 +43,7 @@ PHASE_METRIC_OUTPUT_NAMES = {
     "A1": "A_t",
     "A2": "A2_t",
     "R1": "R1_t",
-    "Z1": "SE",
+    "SE": "SE",
 }
 
 PHASE_SUMMARY_OUTPUT_NAMES = {
@@ -52,7 +51,7 @@ PHASE_SUMMARY_OUTPUT_NAMES = {
     "A1": "A",
     "A2": "A2",
     "R1": "R1",
-    "Z1": "SEI",
+    "SE": "SEI",
 }
 
 SPECTRUM_METRIC_DEFINITIONS = {
@@ -67,31 +66,48 @@ SPECTRUM_METRIC_DEFINITIONS = {
     "A0": "NaN-aware central-neighborhood median height times peak-to-peak width in kHz",
     "A1": "trapezoidal spectrum integral from index_max1 to index_max2 with calibrated kHz center spacing; NaNs propagate",
     "A2": "arithmetic mean of max1 and max2 times peak-to-peak width in kHz",
-    "R1": "A1 divided by A0; zero or missing A0 produces NaN",
-    "R2": "A2 divided by A0; zero or missing A0 produces NaN",
-    "Z1": "(A1 - A0) divided by A0; zero or missing A0 produces NaN",
-    "Z2": "(A2 - A0) divided by A0; zero or missing A0 produces NaN",
+    "R1": "A1 divided by A0; invalid reference area or nonfinite result produces NaN",
+    "R2": "A2 divided by A0; invalid reference area or nonfinite result produces NaN",
+    "Z2": "(A2 - A0) divided by A0; invalid reference area or nonfinite result produces NaN",
 }
 
 PHASE_METRIC_DEFINITIONS = {
     "A0": "fixed peak-to-peak width in kHz times NaN-aware central-neighborhood median per phase",
     "A1": "trapezoidal spectrum integral between fixed peak bins per phase with calibrated kHz center spacing; interval NaNs propagate",
     "A2": "fixed peak-to-peak width in kHz times mean spectrum height at those two bins per phase",
-    "R1": "A1_t divided by A0_t per phase; zero or missing A0_t produces NaN",
-    "R2": "A2_t divided by A0_t per phase; zero or missing A0_t produces NaN",
-    "Z1": "(A1_t - A0_t) divided by A0_t per phase; zero or missing A0_t produces NaN",
-    "Z2": "(A2_t - A0_t) divided by A0_t per phase; zero or missing A0_t produces NaN",
+    "R1": "A1_t divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
+    "R2": "A2_t divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
+    "SE": "(A_t - A0_t) divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
+    "Z2": "(A2_t - A0_t) divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
 }
 
 SPECTRUM_OUTPUT_DEFINITION_OVERRIDES = {
-    "R1": "A divided by A0; zero or missing A0 produces NaN",
-    "Z1": "(A - A0) divided by A0; zero or missing A0 produces NaN",
+    "R1": "A divided by A0; invalid reference area or nonfinite result produces NaN",
 }
 
 PHASE_OUTPUT_DEFINITION_OVERRIDES = {
-    "R1": "A_t divided by A0_t per phase; zero or missing A0_t produces NaN",
-    "Z1": "(A_t - A0_t) divided by A0_t per phase; zero or missing A0_t produces NaN",
+    "R1": "A_t divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
+    "SE": "(A_t - A0_t) divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
 }
+
+SPECTRAL_RATIO_VALIDITY = {
+    "denominator_validity_rule": "finite_and_strictly_positive_A0",
+    "ratio_nonfinite_value_policy": "nonfinite_numerator_or_result_returns_NaN",
+}
+
+
+def _area_ratio(area, reference, *, excess: bool = False):
+    """Divide by a physical reference area; flag invalid ratios with NaN."""
+    area, reference = np.broadcast_arrays(
+        np.asarray(area, dtype=np.float64), np.asarray(reference, dtype=np.float64),
+    )
+    result = np.full(area.shape, np.nan)
+    valid = np.isfinite(area) & np.isfinite(reference) & (reference > 0)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        numerator = area - reference if excess else area
+        np.divide(numerator, reference, out=result, where=valid)
+    result[~np.isfinite(result)] = np.nan
+    return result.item() if result.ndim == 0 else result
 
 
 def analyze_spectrum(
@@ -152,11 +168,11 @@ def analyze_spectrum(
         result["A0"] = hv * width
         result["A1"] = float(trapezoid(values[start:stop], dx=spacing))
         result["A2"] = h0 * width
-        if result["A0"] != 0:
-            result["R1"] = result["A1"] / result["A0"]
-            result["R2"] = result["A2"] / result["A0"]
-            result["Z1"] = (result["A1"] - result["A0"]) / result["A0"]
-            result["Z2"] = (result["A2"] - result["A0"]) / result["A0"]
+        for name, area, excess in (
+            ("R1", result["A1"], False), ("R2", result["A2"], False),
+            ("Z2", result["A2"], True),
+        ):
+            result[name] = _area_ratio(area, result["A0"], excess=excess)
     return result
 
 
@@ -265,7 +281,7 @@ def pack_spectrum_metrics(
         value = result[name]
         unit = (
             "1"
-            if name.startswith("index_") or name in {"R1", "R2", "Z1", "Z2"}
+            if name.startswith("index_") or name in {"R1", "R2", "Z2"}
             else source_attrs.get("unit", "a.u.")
         )
         metric_attrs = {
@@ -277,6 +293,8 @@ def pack_spectrum_metrics(
         }
         if name in {"A0", "A1", "A2"}:
             metric_attrs["unit"] = f"{unit}*kHz"
+        if name == "R1":
+            metric_attrs.update(SPECTRAL_RATIO_VALIDITY)
         if name.startswith("index_"):
             metric_attrs["index_base"] = 0
             metric_attrs["index_storage"] = "integer_valued_float32_with_NaN_for_missing_index"
@@ -313,8 +331,8 @@ def analyze_phase_spectrum(
     distance times FFT-average center spacing in kHz, without sorting the signed display axis.
     Missing peak indexes leave all curves NaN. At each phase, missing peak
     heights invalidate A2, interval NaNs invalidate A1, and A0 ignores valley
-    NaNs unless the whole neighborhood is missing. Zero A0 yields NaN ratios
-    and offsets.
+    NaNs unless the whole neighborhood is missing. Ratios require a finite,
+    strictly positive A0 and finite numerator/result; invalid phases remain NaN.
     """
     values = np.asarray(spectrum, dtype=np.float64)
     if values.ndim != 2 or any(size == 0 for size in values.shape):
@@ -337,14 +355,11 @@ def analyze_phase_spectrum(
     result["A0"] = width * spectrum_valley_height(values, valley_neighborhood_length=valley_neighborhood_length)
     result["A1"] = trapezoid(values[:, start:stop], dx=spacing, axis=1)
     result["A2"] = width * (values[:, start] + values[:, stop - 1]) / 2
-    for name, numerator in (
-        ("R1", result["A1"]), ("R2", result["A2"]),
-        ("Z1", result["A1"] - result["A0"]), ("Z2", result["A2"] - result["A0"]),
+    for name, area, excess in (
+        ("R1", result["A1"], False), ("R2", result["A2"], False),
+        ("SE", result["A1"], True), ("Z2", result["A2"], True),
     ):
-        np.divide(
-            numerator, result["A0"], out=result[name],
-            where=(result["A0"] != 0) & ~np.isnan(result["A0"]),
-        )
+        result[name] = _area_ratio(area, result["A0"], excess=excess)
     return result
 
 
@@ -386,7 +401,7 @@ def _pack_phase_metrics(
     output = {}
     for name, curve_path_name in PHASE_METRIC_OUTPUT_NAMES.items():
         curve = curves[name]
-        unit = "1" if name in {"R1", "R2", "Z1", "Z2"} else source_attrs.get("unit", "a.u.")
+        unit = "1" if name in {"R1", "R2", "SE", "Z2"} else source_attrs.get("unit", "a.u.")
         if name in {"A0", "A1", "A2"}:
             unit = f"{unit}*kHz"
         curve_path = f"{root}/{curve_path_name}"
@@ -396,12 +411,30 @@ def _pack_phase_metrics(
                 name, PHASE_METRIC_DEFINITIONS[name],
             ),
         }
+        if name in {"R1", "SE"}:
+            curve_attrs.update(SPECTRAL_RATIO_VALIDITY)
         output[curve_path] = (curve.astype(np.float32), curve_attrs)
         scalar_attrs = {
             key: value for key, value in curve_attrs.items()
             if key not in {"phase_samples", "phase_endpoint"}
         }
         scalar_attrs.update(source_path="/" + curve_path, dimDesc=[])
+        if name == "SE":
+            output[f"{root}/SEI"] = (np.float32(nanmedian(curve, dtype=np.float64)), {
+                **scalar_attrs,
+                "definition": "median of valid phasewise SE values over the full registered cardiac cycle",
+                "SEI_evaluation": "temporal_median_of_phasewise_SE",
+                "calculation_method": "nanmedian_of_valid_SE_phase_samples",
+                "aggregation_method": "nanmedian",
+                "aggregation_axes": ["phase"],
+                "aggregation_weighting": "equal_weight_per_valid_phase_sample",
+                "phase_interval": [0.0, 1.0],
+                "phase_interval_endpoints": "source_endpoint_excluded",
+                "source_phase_sample_count": int(curve.size),
+                "valid_sample_count": int(np.count_nonzero(np.isfinite(curve))),
+                "invalid_sample_count": int(np.count_nonzero(~np.isfinite(curve))),
+                "nonfinite_value_policy": "ignore_invalid_SE_phases_all_invalid_returns_NaN",
+            })
         aggregates = phase_window_medians(curve, windows)
         summary_name = PHASE_SUMMARY_OUTPUT_NAMES[name]
         for window, (mask, interval) in windows.items():

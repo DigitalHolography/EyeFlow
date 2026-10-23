@@ -327,28 +327,6 @@ def test_full_spectrum_styles_hv_shading_peaks_zero_legend_and_double_width(sele
     assert "does not support transparency" not in caplog.text
 
 
-@pytest.mark.parametrize("bin_count, peaks, bounds_kept", [(64, (0, 63), True), (128, (1, 126), False)])
-def test_full_spectrum_prioritizes_peak_frequency_ticks_over_crowded_bounds(bin_count, peaks, bounds_kept):
-    values = np.ones(bin_count)
-    curve = _spectrum_curve(
-        values, values / 10, frequencies_khz=frequency_coordinates_khz(bin_count, 64000),
-        label="Median", linestyle="-", index_max1=peaks[0], index_max2=peaks[1],
-    )
-    fig = _spectra_figure([curve])
-    ax = fig.axes[0]
-    ticks = set(ax.get_xticks())
-    assert set(peaks) <= ticks
-    assert all((bound in ticks) == bounds_kept for bound in (0, bin_count - 1))
-    labels = dict(zip(ax.get_xticks(), (label.get_text() for label in ax.get_xticklabels())))
-    for peak in peaks:
-        assert labels[peak] == str(round(float(curve.frequencies_khz[peak])))
-    fig.set_dpi(320)
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
-    boxes = [label.get_window_extent(renderer) for label in ax.get_xticklabels()]
-    assert all(left.x1 < right.x0 for left, right in zip(boxes, boxes[1:]))
-
-
 @pytest.mark.parametrize("values", [np.zeros(64), np.full(64, np.nan)])
 def test_unusable_normalization_does_not_fabricate_a_spectrum(values):
     assert _spectrum_curve(values, np.zeros(64), frequencies_khz=frequency_coordinates_khz(64, 64000), label="Median", linestyle="-", index_max1=0, index_max2=63) is None

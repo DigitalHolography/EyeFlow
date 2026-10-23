@@ -148,7 +148,7 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
         assert spectrum_metrics["R1"][()] == 1
         assert spectrum_metrics["A"][()] == spectrum_metrics["A0"][()]
         assert spectrum_metrics["SEI"][()] == 0
-        assert not {"A1", "R2", "Z1", "Z2"} & set(spectrum_metrics)
+        assert not {"A1", "R2", "Z2"} & set(spectrum_metrics)
         assert "ProcessingBandRatio/Spectrograms/Gaps/Metrics" not in output
         for path, shape in (
             (schema.spectrograms_masked_per_beat_band_limited, raw.shape),

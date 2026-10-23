@@ -11,7 +11,7 @@ import pytest
 from input_output.h5_access import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.metrics import (
-    PHASE_METRIC_NAMES, PHASE_METRIC_OUTPUT_NAMES, PHASE_SUMMARY_OUTPUT_NAMES,
+    PHASE_METRIC_OUTPUT_NAMES, PHASE_SUMMARY_OUTPUT_NAMES,
     SPECTRUM_METRIC_DEFINITIONS, SPECTRUM_METRIC_OUTPUT_NAMES,
     analyze_spectrum, pack_spectrum_metrics,
 )
@@ -43,7 +43,6 @@ def test_metrics_match_hand_calculated_khz_areas_and_leave_input_unchanged():
         "A0": 26,
         "R1": 37 / 26,
         "R2": 208 / 26,
-        "Z1": (37 - 26) / 26,
         "Z2": (208 - 26) / 26,
     }
     np.testing.assert_array_equal(spectrum, original)
@@ -150,7 +149,7 @@ def test_all_missing_valley_returns_nan_without_warning_and_preserves_baseline()
         warnings.simplefilter("error", RuntimeWarning)
         result = analyze_spectrum(spectrum, sampling_frequency_hz=32000)
     assert result["A2"] == 208
-    for name in ("A0", "R1", "R2", "Z1", "Z2"):
+    for name in ("A0", "R1", "R2", "Z2"):
         assert np.isnan(result[name])
 
 
@@ -170,7 +169,7 @@ def test_empty_peak_half_propagates_missing_peak_without_warnings(half):
     missing_peak = "1" if half.start == 0 else "2"
     assert np.isnan(result[f"index_max{missing_peak}"])
     assert np.isnan(result[f"max{missing_peak}"])
-    for name in PHASE_METRIC_NAMES:
+    for name in ("A0", "A1", "A2", "R1", "R2", "Z2"):
         assert np.isnan(result[name])
     assert result["index_min1"] == 15
     assert result["index_min2"] == 16
@@ -182,17 +181,16 @@ def test_zero_baseline_returns_nan_ratio_without_division_warning():
         result = analyze_spectrum(np.zeros(32), sampling_frequency_hz=32000)
     assert np.isnan(result["R1"])
     assert np.isnan(result["R2"])
-    assert np.isnan(result["Z1"])
     assert np.isnan(result["Z2"])
     assert result["A2"] == result["A1"] == result["A0"] == 0
 
 
 @pytest.mark.parametrize("shape", [(), (0,), (1,), (2, 16), (3, 1)])
-def test_unsupported_shape_returns_all_fifteen_nan_metrics_with_one_warning(shape):
+def test_unsupported_shape_returns_all_fourteen_nan_metrics_with_one_warning(shape):
     with patch("pipelines.low_freq_spectra.metrics.Logger.log_warning") as warning:
         result = analyze_spectrum(np.ones(shape), sampling_frequency_hz=32000)
     assert set(result) == set(SPECTRUM_METRIC_DEFINITIONS)
-    assert len(result) == 15
+    assert len(result) == 14
     assert all(np.isnan(value) for value in result.values())
     warning.assert_called_once()
     assert "at least 2 bins" in warning.call_args.args[0]
@@ -284,7 +282,7 @@ def test_runner_persists_scalar_metrics_from_the_raw_aggregate_spectrum(
         assert median.name == "/ProcessingSpectrograms/Gaps/TimeAggregated/MedianPhaseBeat"
         np.testing.assert_array_equal(median[()], spectrum)
         group = output[schema.spectrograms_masked_metrics_root]
-        expected_keys = set(SPECTRUM_METRIC_OUTPUT_NAMES.values()) | set(PHASE_METRIC_OUTPUT_NAMES.values()) | {
+        expected_keys = {"SEI"} | set(SPECTRUM_METRIC_OUTPUT_NAMES.values()) | set(PHASE_METRIC_OUTPUT_NAMES.values()) | {
             key for name in PHASE_SUMMARY_OUTPUT_NAMES.values()
             for key in (f"{name}_early", f"{name}_late", f"delta_{name}")
         }
@@ -306,7 +304,7 @@ def test_runner_persists_scalar_metrics_from_the_raw_aggregate_spectrum(
             assert dataset.attrs["frequency_bin_spacing_khz"] == pytest.approx(32 / bin_count)
             assert dataset.attrs["A_integration_method"] == "trapezoidal_khz_spacing"
             if metric_name in {"R1", "SE", "SEI"}:
-                assert not any(legacy in dataset.attrs["definition"] for legacy in ("A1", "Z1"))
+                assert "A1" not in dataset.attrs["definition"]
             assert dataset.attrs["valley_neighborhood_length"] == expected_length
             middle = bin_count // 2
             np.testing.assert_array_equal(
@@ -337,6 +335,10 @@ def test_runner_persists_scalar_metrics_from_the_raw_aggregate_spectrum(
                         or PHASE_SUMMARY_OUTPUT_NAMES[internal] == metric_name
                     )
                 )
-                np.testing.assert_allclose(dataset[()], expected[phase_calculation_name])
+                expected_value = (
+                    (expected["A1"] - expected["A0"]) / expected["A0"]
+                    if phase_calculation_name == "SE" else expected[phase_calculation_name]
+                )
+                np.testing.assert_allclose(dataset[()], expected_value)
         assert "ProcessingBandRatio/Spectrograms" not in output
         warning.assert_not_called()

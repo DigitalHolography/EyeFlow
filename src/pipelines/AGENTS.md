@@ -135,9 +135,10 @@ The spectrum figure and pooled scalar metrics consume `MedianPhaseBeat`.
 All gap metrics live directly under `/ProcessingSpectrograms/Gaps/Metrics`.
 Phase curves `A0_t`, `A_t`, `A2_t`, `R1_t`, and `SE` use `MedianBeat` with the
 pooled peak indices fixed at every phase. Pooled scalar metrics use `A0`, `A`,
-`A2`, `R1`, and `SEI`; output heights `h0`/`h1`/`hv`, `rho_h`, and the former
-`R2`/`Z2` products are absent. `A` is the former `A1`, `SE` is the former
-`Z1(t)` curve, and `SEI` is its pooled scalar counterpart.
+`A2`, and `R1`; output heights `h0`/`h1`/`hv`, `rho_h`, and the former
+`R2`/`Z2` products are absent. `A` is the former `A1` integral.
+`SE` is the phasewise spectral excess. `SEI` is the whole-cycle median of valid phasewise `SE`,
+not a ratio calculated from the pooled spectrum; no pooled-SEI output is emitted.
 Each curve also has scalar medians over closed phase intervals (default
 `[0,1/3]` and `[1/3,1]`) and a signed late-minus-early delta. Area and ratio
 summaries use their curve base name with `_early`, `_late`, and `delta_`
@@ -171,10 +172,13 @@ method, and units in metadata. Artifact axis labels abbreviate `a.u.*kHz` to
 `a.u.`. Resolve calibration from shared
 `Meta/SamplingFrequencyHz/value`; missing/invalid calibration warns and skips
 the Metrics family while retaining raw/aggregate spectra and filters.
-`R1=A/A0` and `SEI=(A-A0)/A0` are dimensionless; the phase curve is
-`SE=(A_t-A0_t)/A0_t`, and zero/missing A0 gives NaN. All five output metrics
-have pooled scalars, phase curves, early/late medians, signed late-minus-early
-deltas, and matching PNG/EPS phase plots.
+`R1=A/A0` and `SE=(A_t-A0_t)/A0_t` are dimensionless. Ratios require finite,
+strictly positive A0 and finite numerator/result; invalid phases remain NaN.
+`SEI=nanmedian(SE)` summarizes valid source phase samples equally and is emitted
+only with phase spectra; all-invalid cycles yield NaN. Its metadata identifies
+the SE source and source/valid/invalid phase counts. No unconfigured signal or
+stability cutoff is inferred. All five output metrics have phase curves,
+early/late medians, signed late-minus-early deltas, and matching PNG/EPS phase plots.
 Metric metadata records the neighborhood.
 Independent `PerBeat/BandLimited` keeps DC plus the configured non-DC harmonics
 (default 12) via the shared bandlimiting API in signed mode, using

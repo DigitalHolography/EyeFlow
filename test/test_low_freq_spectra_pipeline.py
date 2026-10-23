@@ -159,7 +159,7 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
     names = {"spectrograms_gaps", "spectrograms_gaps_monochrome", "gaps_mask"}
     if expected is not None:
         names.add("spectrogram_gaps_median")
-        names.update(f"gaps_{name}" for name in ("A0", "A1", "A2", "R1", "R2", "Z1", "Z2"))
+        names.update(f"gaps_{name}" for name in ("A0", "A", "A2", "R1", "SE"))
         names.update(f"gaps_positive_freq_median_phase_{suffix}" for suffix in (
             "early_late", "beat", "all",
         ))

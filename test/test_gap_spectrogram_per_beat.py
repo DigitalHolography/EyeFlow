@@ -281,6 +281,7 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
             } | {
                 f"{schema.spectrograms_masked_metrics_root}/{key}"
                 for key in [
+                    "SEI",
                     *PHASE_METRIC_OUTPUT_NAMES.values(),
                     *(f"{name}_{suffix}" for name in PHASE_SUMMARY_OUTPUT_NAMES.values() for suffix in ("early", "late")),
                     *(f"delta_{name}" for name in PHASE_SUMMARY_OUTPUT_NAMES.values()),
