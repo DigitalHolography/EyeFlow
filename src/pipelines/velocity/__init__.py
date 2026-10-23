@@ -17,7 +17,7 @@ from .runner import (
     description=(
         "Compute base retinal velocity, average maps, and cardiac-cycle timing."
     ),
-    requires=["numpy", "h5py", "scipy", "skimage"],
+    requires=["numpy", "h5py", "scipy", "skimage", "cv2"],
     dag_produces=["velocity", "cardiac_cycles", "velocity_workflows"],
     input_slot="both",
     visibility="hidden",

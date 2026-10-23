@@ -2,40 +2,58 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 
 import numpy as np
 
-from calculations.math.frequency import positive_frequency_coordinates_khz
+from input_output.article_formatting import (
+    ARTICLE_ASPECT_RATIO as FIGURE_ASPECT_RATIO,
+    ARTICLE_DPI as FIGURE_DPI,
+    ARTICLE_STYLE,
+    ARTICLE_WIDTH_INCHES as FIGURE_WIDTH_INCHES,
+    SPECTROGRAM_ARTICLE_STYLE,
+    SPECTRUM_ARTICLE_STYLE,
+    apply_article_style,
+    create_article_figure as _figure,
+    prepare_article_fill_layer,
+)
+from input_output.figure_formatting import TickFormat, add_colorbar, add_legend, apply_tick_format
 from input_output.schema import EyeFlowOutputPaths
-from input_output.writers.eps import EpsArtifactWriter
-from input_output.writers.png import PngArtifactWriter
+from input_output.writers.article import save_article_figure_pair
+from input_output.writers.png import FigureArtifactWriter
 from utils.logger import Logger
 
-from .frequency import frequency_ticks, read_sampling_frequency_hz
-from .metrics import PHASE_METRIC_NAMES, spectrum_valley_height
+from .frequency import frequency_ticks, read_frequency_bin_table
+from .metrics import PHASE_METRIC_OUTPUT_NAMES, _valley_neighborhood_indices, spectrum_valley_height
+from .qc import valley_repeatability
 
-FIGURE_DPI = 320
-FIGURE_WIDTH_INCHES = 8.0 / 2.54
-FIGURE_ASPECT_RATIO = 1.618
-FONT_FAMILY = "Times New Roman"
-# Point sizes at the exported 8 cm width, suitable for an article column.
-FONT_SIZE = 10
-TICK_FONT_SIZE = 8
-BOX_LINE_WIDTH = 0.4
-SIGNAL_LINE_WIDTH = 0.8
+SPECTRUM_HEIGHT_SCALE = 1.30
+SPECTROGRAM_WIDTH_INCHES = 12.0 / 2.54
+SPECTROGRAM_ASPECT_RATIO = 2.65
+SPECTRUM_STYLE = SPECTRUM_ARTICLE_STYLE.scaled_fonts(
+    2 * FIGURE_WIDTH_INCHES / SPECTROGRAM_WIDTH_INCHES,
+)
+SPECTRUM_FONT_SIZE = SPECTRUM_STYLE.label_size
+SPECTRUM_TICK_FONT_SIZE = SPECTRUM_STYLE.tick_size
+BOX_LINE_WIDTH = ARTICLE_STYLE.reference_line_width
+SIGNAL_LINE_WIDTH = ARTICLE_STYLE.signal_line_width
 
 
-def export_spectrogram_figures(output) -> list[Path]:
-    """Write each available product once under the shared spectrograms namespace."""
+def export_spectrogram_figures(output, *, dt_seconds: float | None = None) -> list[Path]:
+    """Export shared figures, calibrating heatmap time with the HD frame interval."""
     schema = EyeFlowOutputPaths.active()
     manager = output.manager.for_artifact_namespace("spectrograms")
     paths: list[Path] = []
-    sampling_frequency = read_sampling_frequency_hz(output)
+    frequency_table = read_frequency_bin_table(output)
     for source_path, name, make_figure in (
         (schema.spectrograms_masked, "spectrograms_gaps", _gap_spectrogram_figure),
+        (
+            schema.spectrograms_masked,
+            "spectrograms_gaps_monochrome",
+            partial(_gap_spectrogram_figure, monochrome=True),
+        ),
         (
             schema.spectrograms_masked_time_aggregated_median,
             "spectrogram_gaps_median",
@@ -45,30 +63,135 @@ def export_spectrogram_figures(output) -> list[Path]:
         source = output.h5.get(source_path)
         if source is None:
             continue
-        if sampling_frequency is None:
-            Logger.log_warning(f"Skipping {name}: a positive HD sampling frequency is required for kHz axes.")
+        if frequency_table is None or source.shape[-1] != frequency_table.size:
+            Logger.log_warning(f"Skipping {name}: a matching calibrated FrequencyBinTable is required for kHz axes.")
             continue
+        if source_path == schema.spectrograms_masked:
+            if dt_seconds is None or not np.isfinite(dt_seconds) or dt_seconds <= 0:
+                Logger.log_warning(f"Skipping {name}: a positive finite HD frame interval is required for seconds.")
+                continue
+            make_figure = partial(make_figure, dt_seconds=dt_seconds)
         values = source[()]
         paths.extend(_save_figure_pair(manager, name, partial(
-            make_figure, values, sampling_frequency_hz=sampling_frequency,
+            make_figure, values, frequencies_khz=frequency_table[()],
         )))
     mask = output.h5.get(schema.segmentation.gaps)
     if mask is not None:
         paths.extend(_save_figure_pair(manager, "gaps_mask", partial(_gaps_mask_figure, mask[()])))
-    for name in PHASE_METRIC_NAMES:
-        source = output.h5.get(f"{schema.spectrograms_masked_metrics_root}/{name}_t")
+    for curve_name in PHASE_METRIC_OUTPUT_NAMES.values():
+        source = output.h5.get(f"{schema.spectrograms_masked_metrics_root}/{curve_name}")
         if source is None:
             continue
-        paths.extend(_save_figure_pair(manager, f"gaps_{name}", partial(
+        artifact_name = curve_name.removesuffix("_t")
+        paths.extend(_save_figure_pair(manager, f"gaps_{artifact_name}", partial(
             _gap_metric_figure, source[()], np.asarray(source.attrs["phase_samples"]),
-            metric=name, unit=source.attrs["unit"],
+            metric=artifact_name, unit=source.attrs["unit"],
         )))
-    if sampling_frequency is not None:
-        paths.extend(_export_positive_spectra(output, manager, sampling_frequency))
+    if frequency_table is not None:
+        paths.extend(_export_spectra(output, manager, frequency_table[()]))
+    if output.h5.get(schema.spectrograms_masked_qc.root) is not None:
+        paths.append(FigureArtifactWriter(manager).save_figure(
+            _gap_qc_figure(output, dt_seconds=dt_seconds), "gaps_qc.png", dpi=150,
+        ))
     return paths
 
 
-def _export_positive_spectra(output, manager, sampling_frequency: float) -> list[Path]:
+def _gap_qc_figure(output, *, dt_seconds=None):
+    """Build a diagnostic panel from persisted QC; export as PNG only."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    schema = EyeFlowOutputPaths.active()
+    paths = schema.spectrograms_masked_qc
+
+    def read(family, name):
+        source = output.h5.get(f"{family}/{name}")
+        return None if source is None else np.asarray(source[()])
+
+    def number(value, suffix=""):
+        return "unavailable" if value is None or not np.isfinite(value) else f"{float(value):.3g}{suffix}"
+
+    # Pipeline exports run in a worker thread; never create a GUI figure manager.
+    fig = Figure(figsize=(12, 10), layout="constrained")
+    FigureCanvasAgg(fig)
+    axes = fig.subplots(3, 2)
+    fig.suptitle("Gap-spectrum quality indicators", fontsize=16)
+    support, motion, valley, repeatability, influence, mask_axis = axes.flat
+    spatial = output.h5.get(schema.spectrograms_masked)
+    counts = np.isfinite(spatial[()]).sum(axis=1)
+    calibrated = dt_seconds is not None and np.isfinite(dt_seconds) and dt_seconds > 0
+    times = np.arange(counts.size) * (dt_seconds if calibrated else 1)
+    time_label = "Time (s)" if calibrated else "Acquisition frame"
+    support.step(times, counts, where="mid", color="black")
+    support.set(xlabel=time_label, ylabel="Finite frequency bins", title="Data completeness")
+    support.set_ylim(bottom=0)
+    raw_source = output.h5.get(schema.spectrograms_masked_per_beat)
+    beats = raw_source.shape[2] if raw_source is not None else 0
+    fraction = read(paths.data_completeness, "ValidSEPhaseFraction")
+    support.text(.02, .03,
+                 f"Complete beats: {number(beats)}\nValid SE phases: {number(None if fraction is None else 100 * fraction, '%')}",
+                 transform=support.transAxes, va="bottom", fontsize=9,
+                 bbox={"facecolor": "white", "edgecolor": "none", "alpha": .85})
+    score = read(paths.potential_motion_contamination, "RelativeBroadbandChange")
+    motion.plot(times, score, color="black", linewidth=1)
+    motion.set(xlabel=time_label, ylabel="Relative broadband change", title="Potential motion contamination")
+    motion.set_ylim(bottom=0)
+    motion.text(.02, .97, "Transient indicator; not specific to saccades", transform=motion.transAxes,
+                va="top", fontsize=9)
+
+    relative_source = output.h5.get(f"{paths.valley_repeatability}/RelativeMAD")
+    if relative_source is not None and raw_source is not None:
+        bins = np.asarray(relative_source.attrs["valley_neighborhood_indices"], dtype=int)
+        phase = np.asarray(relative_source.attrs["phase_samples"])
+        heights, median, mad, _ = valley_repeatability(raw_source[()], bins)
+        valley.plot(phase, heights, color="0.65", linewidth=.8, alpha=.7)
+        valley.plot(phase, median, color="black", label="beat median", linewidth=1.5)
+        valley.fill_between(phase, median - mad, median + mad, color="0.4", alpha=.25, label="± MAD")
+        add_legend(valley, fontsize=9)
+        valley.set_ylabel(f"Valley height ({raw_source.attrs.get('unit', 'a.u.')})")
+        relative = relative_source[()]
+        repeatability.plot(phase, relative, color="black")
+        if not np.any(np.isfinite(relative)):
+            repeatability.text(.5, .5, "Needs ≥2 valid beats and nonzero median height",
+                               transform=repeatability.transAxes, ha="center", fontsize=9)
+    else:
+        for ax in (valley, repeatability):
+            ax.text(.5, .5, "Registered valley spectra unavailable", transform=ax.transAxes, ha="center")
+    valley.set(title="Valley heights across beats", xlabel=r"Cardiac phase $t/T$")
+    repeatability.set(title="Valley repeatability", xlabel=r"Cardiac phase $t/T$", ylabel="MAD / |median height|")
+    repeatability.set_ylim(bottom=0)
+    for ax in (valley, repeatability):
+        ax.set_xlim(0, 1)
+
+    delta = read(paths.sei_beat_sensitivity, "DeltaSEI")
+    influence.axhline(0, color="0.5", linewidth=.8)
+    if delta is not None and np.any(np.isfinite(delta)):
+        indexes = np.arange(1, delta.size + 1)
+        influence.bar(indexes, delta, color="0.4")
+        influence.set_xticks(indexes)
+        reference = read(schema.spectrograms_masked_metrics_root, "SEI")
+        influence.text(.02, .97, f"Full SEI: {number(reference)}", transform=influence.transAxes,
+                       va="top", fontsize=9)
+    else:
+        influence.text(.5, .5, "Needs ≥2 beats and evaluable SEI", transform=influence.transAxes, ha="center")
+    influence.set(title="SEI beat sensitivity", xlabel="Omitted beat (chronological)",
+                  ylabel="SEI without beat − full SEI")
+    mask = output.h5.get(schema.segmentation.gaps)
+    if mask is not None:
+        mask_axis.imshow(np.asarray(mask[()], dtype=bool).T, origin="lower", cmap="gray",
+                         interpolation="nearest", vmin=0, vmax=1)
+    else:
+        mask_axis.text(.5, .5, "Mask unavailable", transform=mask_axis.transAxes, ha="center")
+    coverage = read(paths.spatial_support_quality, "RetainedFieldFraction")
+    mask_axis.set_title("Spatial support quality")
+    mask_axis.set_xlabel(f"Retained field: {number(None if coverage is None else 100 * coverage, '%')}\n"
+                         "White: retained mask; anatomical review required", fontsize=9)
+    mask_axis.set_xticks([])
+    mask_axis.set_yticks([])
+    return fig
+
+
+def _export_spectra(output, manager, frequencies_khz: np.ndarray) -> list[Path]:
     schema = EyeFlowOutputPaths.active()
     sources = (
         ("Median", schema.spectrograms_masked_time_aggregated_median,
@@ -85,24 +208,40 @@ def _export_positive_spectra(output, manager, sampling_frequency: float) -> list
     ]
     if not available:
         return []
-    peak_source = output.h5.get(f"{schema.spectrograms_masked_metrics_root}/index_max1")
+    peak_sources = [
+        output.h5.get(f"{schema.spectrograms_masked_metrics_root}/index_max{half}")
+        for half in (1, 2)
+    ]
     try:
-        peak = float(np.asarray(peak_source[()]).reshape(())) if peak_source is not None else np.nan
+        peaks = [
+            float(np.asarray(source[()]).reshape(())) if source is not None else np.nan
+            for source in peak_sources
+        ]
     except (TypeError, ValueError):
-        peak = np.nan
-    if not np.isfinite(peak) or peak != int(peak) or peak < 0:
-        Logger.log_warning("Skipping positive spectra: stored index_max1 must be a nonnegative integer.")
+        peaks = [np.nan, np.nan]
+    if any(not np.isfinite(peak) or peak != int(peak) or peak < 0 for peak in peaks):
+        Logger.log_warning("Skipping spectra: stored peak indexes must be nonnegative integers.")
+        return []
+    valley_length = peak_sources[0].attrs.get("valley_neighborhood_length")
+    try:
+        _valley_neighborhood_indices(valley_length, frequencies_khz.size)
+    except ValueError as exc:
+        Logger.log_warning(f"Skipping spectra: invalid Hv neighborhood: {exc}")
         return []
     curves = {}
     for label, center, std, style in available:
-        curve = _positive_spectrum_curve(
-            center, std, sampling_frequency_hz=sampling_frequency,
-            label=label, linestyle=style, index_max1=peak,
+        if center.shape != frequencies_khz.shape:
+            Logger.log_warning(f"Skipping {label.lower()} spectrum: FrequencyBinTable shape does not match.")
+            continue
+        curve = _spectrum_curve(
+            center, std, frequencies_khz=frequencies_khz,
+            label=label, linestyle=style, index_max1=peaks[0], index_max2=peaks[1],
+            valley_neighborhood_length=valley_length,
         )
         if curve is None:
             Logger.log_warning(
-                f"Skipping normalized {label.lower()} spectrum: need a valid positive-bin cutoff "
-                "and a positive finite Hv from the central 25% of all bins."
+                f"Skipping normalized {label.lower()} spectrum: need valid peak indexes "
+                "and a positive finite Hv from the recorded central neighborhood."
             )
         else:
             curves[label] = curve
@@ -115,183 +254,199 @@ def _export_positive_spectra(output, manager, sampling_frequency: float) -> list
         if all(label in curves for label in labels):
             paths.extend(_save_figure_pair(
                 manager, f"gaps_positive_freq_median_phase_{suffix}",
-                partial(_positive_spectra_figure, [curves[label] for label in labels]),
+                partial(_spectra_figure, [curves[label] for label in labels]),
             ))
     return paths
 
 
 def _save_figure_pair(manager, name: str, make_figure) -> list[Path]:
-    return [
-        PngArtifactWriter(manager).save_figure(
-            make_figure(), f"{name}.png", dpi=FIGURE_DPI, bbox_inches=None,
-        ),
-        EpsArtifactWriter(manager).save_figure(
-            make_figure(), f"{name}.eps", dpi=FIGURE_DPI,
-        ),
-    ]
+    return save_article_figure_pair(manager, make_figure(), name, dpi=FIGURE_DPI)
 
 
-def _figure(*, square: bool = False):
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
-    from matplotlib.figure import Figure
+def _gap_spectrogram_figure(
+    values: np.ndarray, *, frequencies_khz: np.ndarray, dt_seconds: float,
+    monochrome: bool = False,
+):
+    from matplotlib.colors import PowerNorm
+    from matplotlib.ticker import MaxNLocator
 
-    height = FIGURE_WIDTH_INCHES / (1.0 if square else FIGURE_ASPECT_RATIO)
-    fig = Figure(figsize=(FIGURE_WIDTH_INCHES, height), constrained_layout=not square)
-    FigureCanvasAgg(fig)
-    ax = fig.add_axes((0, 0, 1, 1)) if square else fig.subplots()
-    return fig, ax
-
-
-def _style_figure(fig) -> None:
-    from matplotlib.text import Text
-
-    for text in fig.findobj(match=Text):
-        text.set_fontfamily(FONT_FAMILY)
-        text.set_fontsize(FONT_SIZE)
-    for ax in fig.axes:
-        ax.tick_params(axis="both", labelsize=TICK_FONT_SIZE, width=BOX_LINE_WIDTH)
-        ax.tick_params(axis="x", labelrotation=90)
-        ax.tick_params(axis="y", labelrotation=0)
-        ax.xaxis.get_offset_text().set_fontsize(TICK_FONT_SIZE)
-        ax.yaxis.get_offset_text().set_fontsize(TICK_FONT_SIZE)
-        ax.xaxis.label.set_fontsize(FONT_SIZE)
-        ax.yaxis.label.set_fontsize(FONT_SIZE)
-        for spine in ax.spines.values():
-            spine.set_color("black")
-            spine.set_linewidth(BOX_LINE_WIDTH)
-
-
-def _gap_spectrogram_figure(values: np.ndarray, *, sampling_frequency_hz: float):
-    fig, ax = _figure()
+    if not np.isfinite(dt_seconds) or dt_seconds <= 0:
+        raise ValueError("The HD frame interval must be positive and finite.")
+    fig, ax = _figure(width=SPECTROGRAM_WIDTH_INCHES, aspect_ratio=SPECTROGRAM_ASPECT_RATIO)
     # HDF5 is (time, freq); display frequency vertically without changing bin order.
+    # Keep frame zero at t=0 and frequency-bin centers at their original indexes.
     image = ax.imshow(
         np.asarray(values).T, origin="lower", aspect="auto",
-        interpolation="nearest", cmap="viridis",
+        interpolation="nearest", cmap="gray_r" if monochrome else "viridis",
+        # Slightly darken monochrome midtones without clipping the power range.
+        norm=PowerNorm(gamma=0.9) if monochrome else None,
+        extent=(-0.5 * dt_seconds, (values.shape[0] - 0.5) * dt_seconds,
+                -0.5, values.shape[1] - 0.5),
     )
-    ax.set_xlabel("Time (frames)")
-    ax.set_ylabel("Frequency (kHz)")
-    frame_tick_step = 50 * max(1, int(np.ceil(values.shape[0] / (50 * 7))))
-    ax.set_xticks(np.arange(0, values.shape[0], frame_tick_step))
-    positions, labels = frequency_ticks(values.shape[1], sampling_frequency_hz)
-    ax.set_yticks(positions, labels=labels)
-    fig.colorbar(image, ax=ax, orientation="vertical", label="Power (a.u.)")
-    _style_figure(fig)
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Frequency (kHz)", labelpad=6)
+    last_time = (values.shape[0] - 1) * dt_seconds
+    time_ticks = MaxNLocator(nbins=7, steps=[1, 2, 5, 10]).tick_values(0, last_time)
+    ax.set_xticks(time_ticks[(time_ticks >= 0) & (time_ticks <= last_time)])
+    # Space ticks within each signed block while retaining the final bin as an
+    # upper-bound label. Replace its neighbor if there is too little room.
+    blocks = np.split(np.arange(frequencies_khz.size), np.flatnonzero(frequencies_khz < 0)[:1])
+    tick_step = max(1, int(np.ceil(frequencies_khz.size / 8)))
+    positions = []
+    for block in blocks:
+        if not block.size:
+            continue
+        if positions and block[0] - positions[-1] < tick_step:
+            positions.pop()
+        positions.extend(block[::tick_step])
+    last_bin = frequencies_khz.size - 1
+    if positions[-1] != last_bin:
+        if last_bin - positions[-1] < 0.75 * tick_step:
+            positions[-1] = last_bin
+        else:
+            positions.append(last_bin)
+    apply_tick_format(ax.yaxis, TickFormat(decimals=0),
+                      positions=positions, values=frequencies_khz[positions])
+    add_colorbar(fig, image, ax=ax, label="Power (a.u.)",
+                 layout=SPECTROGRAM_ARTICLE_STYLE.colorbar_layout)
+    apply_article_style(fig, SPECTROGRAM_ARTICLE_STYLE)
     ax.tick_params(axis="x", labelrotation=0)
     return fig
 
 
-def _gap_median_figure(values: np.ndarray, *, sampling_frequency_hz: float):
+def _gap_median_figure(values: np.ndarray, *, frequencies_khz: np.ndarray):
     fig, ax = _figure()
     bins = np.arange(values.size)
     ax.plot(bins, values, color="black", linewidth=SIGNAL_LINE_WIDTH)
     ax.axhline(0, color="black", linestyle=":", linewidth=BOX_LINE_WIDTH, zorder=1)
-    positions, labels = frequency_ticks(values.size, sampling_frequency_hz)
+    positions, labels = frequency_ticks(frequencies_khz)
     ax.set_xticks(positions, labels=labels)
     ax.set_xlabel("Frequency (kHz)")
     ax.set_ylabel("Power (a.u.)")
-    _style_figure(fig)
+    apply_article_style(fig, replace(ARTICLE_STYLE, x_tick_rotation=90))
     return fig
 
 
 @dataclass(frozen=True)
-class _PositiveSpectrum:
+class _Spectrum:
     frequencies_khz: np.ndarray
     power: np.ndarray
     std: np.ndarray
     label: str
     linestyle: str
+    peak_bins: tuple[int, int]
+    valley_bins: np.ndarray
 
 
-def _positive_spectrum_curve(
-    values, std, *, sampling_frequency_hz: float, label: str, linestyle: str,
-    index_max1: float,
-) -> _PositiveSpectrum | None:
+def _spectrum_curve(
+    values, std, *, frequencies_khz: np.ndarray, label: str, linestyle: str,
+    index_max1: float, index_max2: float, valley_neighborhood_length: int | None = None,
+) -> _Spectrum | None:
     values = np.asarray(values, dtype=np.float64)
     std = np.asarray(std, dtype=np.float64)
-    if values.ndim != 1 or std.shape != values.shape:
-        raise ValueError("Spectrum and beat STD must share one frequency axis.")
-    stop = values.size // 2
+    frequencies_khz = np.asarray(frequencies_khz)
+    if values.ndim != 1 or std.shape != values.shape or frequencies_khz.shape != values.shape:
+        raise ValueError("Spectrum, beat STD, and frequency centers must share one frequency axis.")
+    middle = values.size // 2
     if (
-        stop < 1 or not np.isfinite(index_max1) or index_max1 != int(index_max1)
-        or not 0 <= index_max1 < stop
+        values.size < 2
+        or any(not np.isfinite(peak) or peak != int(peak) for peak in (index_max1, index_max2))
+        or not 0 <= index_max1 < middle <= index_max2 < values.size
     ):
         return None
-    divisor = _positive_spectrum_baseline(values)
+    divisor = _spectrum_baseline(values, valley_neighborhood_length=valley_neighborhood_length)
     if divisor is None:
         return None
     if not np.isfinite(divisor) or divisor <= 0:
         return None
-    start = int(index_max1)
-    return _PositiveSpectrum(
-        positive_frequency_coordinates_khz(values.size, sampling_frequency_hz)[start:stop],
-        values[start:stop] / divisor, std[start:stop] / divisor, label, linestyle,
+    return _Spectrum(
+        frequencies_khz,
+        values / divisor, std / divisor, label, linestyle,
+        (int(index_max1), int(index_max2)),
+        _valley_neighborhood_indices(valley_neighborhood_length, values.size),
     )
 
 
-def _positive_spectrum_baseline(values) -> float | None:
-    """Use the same central-quarter Hv as A0, computed before positive-bin cropping."""
+def _spectrum_baseline(values, *, valley_neighborhood_length: int | None = None) -> float | None:
+    """Use the same recorded central-neighborhood Hv as A0 over the full spectrum."""
     values = np.asarray(values, dtype=np.float64)
     if values.ndim != 1 or values.size < 2:
         return None
-    positive = values[:values.size // 2]
-    if np.any(np.isinf(positive)):
+    if np.any(np.isinf(values)):
         return None
-    hv = float(spectrum_valley_height(values))
+    hv = float(spectrum_valley_height(values, valley_neighborhood_length=valley_neighborhood_length))
     return hv if np.isfinite(hv) else None
 
 
-def _positive_spectra_figure(curves: list[_PositiveSpectrum]):
-    fig, ax = _figure()
-    limits = np.concatenate([np.array([0.0])] + [
-        np.r_[curve.power, curve.power - curve.std, curve.power + curve.std] for curve in curves
-    ])
-    finite = limits[np.isfinite(limits)]
-    spacing = max(float(np.ptp(finite)), 1e-6) / 24
+def _spectra_figure(curves: list[_Spectrum]):
+    fig, ax = _figure(
+        width=2 * FIGURE_WIDTH_INCHES,
+        aspect_ratio=2 * FIGURE_ASPECT_RATIO / SPECTRUM_HEIGHT_SCALE,
+        signal_padding=(False, True),
+    )
+    # Composite translucent fills on white in one raster layer for identical
+    # overlap shading in PNG/EPS; signals, axes, and text remain vector in EPS.
+    prepare_article_fill_layer(ax)
+    bins = np.arange(curves[0].power.size)
+    valley = curves[0].valley_bins
+    ax.axvspan(
+        valley[0] - 0.5, valley[-1] + 0.5, **SPECTRUM_STYLE.region_kwargs(), zorder=-1,
+    )
     for curve in curves:
         lower, upper = curve.power - curve.std, curve.power + curve.std
-        _std_envelope(ax, curve.frequencies_khz, lower, upper, curve.linestyle, spacing)
+        _std_envelope(ax, bins, lower, upper)
         ax.plot(
-            curve.frequencies_khz, curve.power, color="black", linestyle=curve.linestyle,
-            linewidth=SIGNAL_LINE_WIDTH, label=curve.label, zorder=3,
+            bins, curve.power, color="black", linestyle=curve.linestyle,
+            linewidth=SPECTRUM_STYLE.signal_line_width, label=curve.label.lower(), zorder=3,
             marker="." if curve.power.size == 1 else None,
         )
-    ax.axhline(0, color="black", linestyle=":", linewidth=BOX_LINE_WIDTH, zorder=2)
+    ax.axhline(0, color="0.5", linestyle=":", linewidth=SPECTRUM_STYLE.reference_line_width, zorder=2)
     ax.set_xlabel("Frequency (kHz)")
     ax.set_ylabel("Power (a.u.)")
-    ax.margins(x=0.05, y=0.08)
-    first = min(curve.frequencies_khz[0] for curve in curves)
-    last = max(curve.frequencies_khz[-1] for curve in curves)
-    if last > first:
-        padding = (last - first) * 0.05
-        ax.set_xlim(first - padding, last + padding)
-    if len(curves) > 1:
-        ax.legend(loc="upper right", frameon=False, labelspacing=0.25, borderpad=0.1)
-    _style_figure(fig)
+    ax.margins(y=0.08)
+    ax.set_xlim(0, bins[-1])
+    positions, _ = frequency_ticks(curves[0].frequencies_khz)
+    positions = np.union1d(positions, curves[0].peak_bins)
+    apply_tick_format(ax.xaxis, TickFormat(decimals=0),
+                      positions=positions, values=curves[0].frequencies_khz[positions])
+    add_legend(ax, SPECTRUM_STYLE.legend_layout, ncols=len(curves))
+    apply_article_style(fig, SPECTRUM_STYLE)
     ax.tick_params(axis="x", labelrotation=0)
+    _prune_spectrum_tick_labels(fig, ax, curves[0].peak_bins)
     return fig
 
 
-def _std_envelope(ax, x, lower, upper, style: str, spacing: float) -> None:
-    """Use vector light-gray/dashed/dotted fills consistently in PNG and EPS."""
-    from matplotlib.collections import LineCollection
-    from matplotlib.path import Path as MplPath
+def _prune_spectrum_tick_labels(fig, ax, peak_bins: tuple[int, int]) -> None:
+    """Keep peak labels first, dropping other ticks that crowd them or each other."""
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    ticks = {
+        int(position): (label.get_text(), label.get_window_extent(renderer))
+        for position, label in zip(ax.get_xticks(), ax.get_xticklabels())
+    }
+    bounds = {min(ticks), max(ticks)}
+    priority = list(peak_bins) + [
+        position for position in ticks if position not in peak_bins and position not in bounds
+    ] + [position for position in ticks if position in bounds and position not in peak_bins]
+    keep = []
+    gap = 2 * fig.dpi / 72  # Two points of space between rendered labels.
+    for position in priority:
+        box = ticks[position][1]
+        if position not in peak_bins and any(
+            box.x0 < ticks[other][1].x1 + gap and box.x1 > ticks[other][1].x0 - gap
+            for other in keep
+        ):
+            continue
+        keep.append(position)
+    keep.sort()
+    ax.set_xticks(keep, labels=[ticks[position][0] for position in keep])
 
-    band = ax.fill_between(
-        x, lower, upper, facecolor="0.93" if style == "-" else "none",
-        edgecolor="none", zorder=0,
+
+def _std_envelope(ax, x, lower, upper) -> None:
+    """Keep signals prominent over soft solid bands whose overlaps blend."""
+    ax.fill_between(
+        x, lower, upper, **SPECTRUM_STYLE.envelope_kwargs(), zorder=0,
     )
-    valid = np.isfinite(lower) & np.isfinite(upper)
-    if style != "-" and np.any(valid) and band.get_paths():
-        levels = np.arange(
-            np.ceil(np.min(lower[valid]) / spacing) * spacing,
-            np.max(upper[valid]) + spacing / 2, spacing,
-        )
-        segments = [[(x[0], level), (x[-1], level)] for level in levels]
-        pattern = LineCollection(segments, colors="0.65", linewidths=0.3, linestyles=style, zorder=1)
-        pattern.set_clip_path(MplPath.make_compound_path(*band.get_paths()), ax.transData)
-        ax.add_collection(pattern, autolim=False)
-    for bound in (lower, upper):
-        ax.plot(x, bound, color="0.5", linestyle=style, linewidth=BOX_LINE_WIDTH, zorder=2)
 
 
 def _gap_metric_figure(values: np.ndarray, phase: np.ndarray, *, metric: str, unit: str):
@@ -299,10 +454,13 @@ def _gap_metric_figure(values: np.ndarray, phase: np.ndarray, *, metric: str, un
     ax.plot(phase, values, color="black", linewidth=SIGNAL_LINE_WIDTH)
     ax.set_xlim(0, 1)
     ax.set_xticks([0, 1 / 3, 2 / 3, 1], labels=["0", "1/3", "2/3", "1"])
-    ax.set_xlabel("Cardiac phase (t/T)")
+    ax.set_xlabel(r"Cardiac phase ($t/T$)")
     display_unit = "a.u." if unit.replace(" ", "").lower() == "a.u.*khz" else unit
-    ax.set_ylabel(metric if display_unit == "1" else f"{metric} ({display_unit})")
-    _style_figure(fig)
+    metric_label = f"${metric}$" if metric in {"A", "SE"} else f"${metric[0]}_{{{metric[1:]}}}$"
+    ax.set_ylabel(
+        metric_label if display_unit == "1" else f"{metric_label} ({display_unit})",
+    )
+    apply_article_style(fig)
     ax.tick_params(axis="x", labelrotation=0)
     return fig
 
@@ -316,7 +474,7 @@ def _gaps_mask_figure(values: np.ndarray):
     )
     ax.set_xticks([])
     ax.set_yticks([])
-    _style_figure(fig)
+    apply_article_style(fig)
     fig.set_facecolor("black")
     ax.set_axis_off()
     return fig

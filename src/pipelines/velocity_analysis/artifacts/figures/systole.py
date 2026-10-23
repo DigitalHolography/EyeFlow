@@ -9,6 +9,7 @@ import numpy as np
 from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
     cycle_extrema as _cycle_extrema,
 )
+from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE as STYLE
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
@@ -76,15 +77,15 @@ def _systole_plot(
         time[: derivative.size],
         derivative,
         color="0.55",
-        linewidth=1.5,
+        linewidth=STYLE.secondary_line_width,
     )
-    ax.plot(time[: filtered.size], filtered, color="k", linewidth=1.5)
+    ax.plot(time[: filtered.size], filtered, color="k", linewidth=STYLE.secondary_line_width)
     for indexes, color in ((peaks, "k"), (maxima, "tab:red"), (minima, "tab:blue")):
         valid = indexes[(indexes >= 0) & (indexes < filtered.size)]
         if valid.size:
             ax.scatter(time[valid], filtered[valid], color=color, s=28, zorder=3)
             for idx in valid:
-                ax.axvline(time[idx], color=color, linestyle="--", linewidth=1.0, alpha=0.75)
+                ax.axvline(time[idx], color=color, linestyle="--", linewidth=STYLE.event_line_width, alpha=0.75)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(velocity_label)
     derivative_ax.set_ylabel(

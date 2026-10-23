@@ -16,7 +16,7 @@ from pipelines.velocity.models import RetinalVelocity
 from utils.logger import Logger
 
 from .metrics import pack_spectrum_metrics
-from .frequency import read_sampling_frequency_hz
+from .frequency import read_frequency_bin_table, read_sampling_frequency_hz
 from .per_beat import beat_spectrum_std, gap_spectrograms_per_beat
 from .signal_processing import (
     DEFAULT_GAP_SVD_REMOVED_MODES,
@@ -169,9 +169,10 @@ def run_gap_analysis(
             "nonfinite_value_policy": "ignore_NaN_no_valid_beats_returns_NaN_one_valid_beat_returns_zero",
         })
     sampling_frequency = read_sampling_frequency_hz(ctx.output)
-    if sampling_frequency is None:
+    frequency_table = read_frequency_bin_table(ctx.output, spectrum.size)
+    if sampling_frequency is None or frequency_table is None:
         Logger.log_warning(
-            "Skipping gap spectrum metrics: a positive HD sampling frequency "
+            "Skipping gap spectrum metrics: a positive HD sampling frequency and calibrated FrequencyBinTable "
             "is required for peak-to-peak areas in kHz."
         )
     else:
@@ -180,6 +181,11 @@ def run_gap_analysis(
             valley_neighborhood_length=valley_neighborhood_length,
             phase_spectrum=beat_spectrum, phase_attrs=beat_median_attrs,
             early_interval=early_interval, late_interval=late_interval,
+            frequency_calibration_attrs={
+                **{key: value for key, value in frequency_table.attrs.items()
+                   if key not in {"unit", "dimDesc", "definition", "nameID", "index_base", "source_path"}},
+                "frequency_bin_table_source_path": "/" + schema.spectrograms_frequency_bin_table,
+            },
         ))
     band_limited = band_limit_gap_spectrograms(
         per_beat, timing.cycle_durations_seconds, harmonics=band_limited_harmonics(ctx),

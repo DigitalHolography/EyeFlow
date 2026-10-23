@@ -210,6 +210,10 @@ For a new CLI option controlling an existing setting, inspect only
 to `resolve_run_spec`, and its tests. The GUI matters only if the shared setting
 contract or its presentation must also change.
 
+Both velocity workflows reconstruct their local background with OpenCV Telea
+on float32 frequency images, using a fixed 5-pixel radius. The velocity pipeline
+records the method and radius in output provenance.
+
 ## Source-of-truth map
 
 | Concept | Source of truth |

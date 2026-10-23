@@ -20,10 +20,24 @@ from input_output.holo_run_layout import HoloRunLayout  # noqa: E402
 from input_output.output_manager import OutputManager, OutputType  # noqa: E402
 from input_output.reports.pdf_report import _extract_parameters_from_h5  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
+from input_output.h5_access import PipelineH5Output  # noqa: E402
 from pipelines.pdf_report.runner import run_pdf_report  # noqa: E402
 
 
 class PdfReportRunnerPathTests(unittest.TestCase):
+    def test_report_inherits_velocity_unit_with_dataset_override(self) -> None:
+        from input_output.reports.pdf_report import _velocity_dataset_unit
+
+        with h5py.File("report_units.h5", "w", driver="core", backing_store=False) as f:
+            f.attrs["velocity_unit"] = "wrong root fallback"
+            output = PipelineH5Output(f, processing_root="ProcessingBandRatio",
+                                      provenance={"velocity_unit": "mm/s"})
+            output.write("ProcessingMoments/signal", [1])
+            dataset = output.get("ProcessingMoments/signal")
+            self.assertEqual("mm/s", _velocity_dataset_unit(f, dataset))
+            dataset.attrs["unit"] = "local override"
+            self.assertEqual("local override", _velocity_dataset_unit(f, dataset))
+
     def test_uses_layout_stem_and_pdf_report_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

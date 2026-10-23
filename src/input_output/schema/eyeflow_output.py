@@ -122,6 +122,16 @@ class CardiacCycleOutputPaths:
 
 
 @dataclass(frozen=True)
+class GapQcOutputPaths:
+    root: str
+    data_completeness: str
+    valley_repeatability: str
+    sei_beat_sensitivity: str
+    potential_motion_contamination: str
+    spatial_support_quality: str
+
+
+@dataclass(frozen=True)
 class EyeFlowOutputPaths:
     name: str
     analysis: DopplerViewAnalysisOutputPaths
@@ -158,6 +168,7 @@ class EyeFlowOutputPaths:
     spectrograms_masked_time_aggregated_std_early: str
     spectrograms_masked_time_aggregated_std_late: str
     spectrograms_masked_metrics_root: str
+    spectrograms_masked_qc: GapQcOutputPaths
     spectrograms_masked_per_beat_band_limited: str
     spectrograms_masked_per_beat_svd_continuous: str
 
@@ -381,6 +392,14 @@ EYEFLOW_V2_OUTPUT = EyeFlowOutputPaths(
     spectrograms_masked_time_aggregated_std_early="ProcessingSpectrograms/Gaps/TimeAggregated/StdBeatEarly",
     spectrograms_masked_time_aggregated_std_late="ProcessingSpectrograms/Gaps/TimeAggregated/StdBeatLate",
     spectrograms_masked_metrics_root="ProcessingSpectrograms/Gaps/Metrics",
+    spectrograms_masked_qc=GapQcOutputPaths(
+        root="ProcessingSpectrograms/Gaps/QC",
+        data_completeness="ProcessingSpectrograms/Gaps/QC/DataCompleteness",
+        valley_repeatability="ProcessingSpectrograms/Gaps/QC/ValleyRepeatability",
+        sei_beat_sensitivity="ProcessingSpectrograms/Gaps/QC/SEIBeatSensitivity",
+        potential_motion_contamination="ProcessingSpectrograms/Gaps/QC/PotentialMotionContamination",
+        spatial_support_quality="ProcessingSpectrograms/Gaps/QC/SpatialSupportQuality",
+    ),
     spectrograms_masked_per_beat_band_limited="ProcessingSpectrograms/Gaps/PerBeat/BandLimited",
     spectrograms_masked_per_beat_svd_continuous="ProcessingSpectrograms/Gaps/PerBeat/SVDContinuous",
 )

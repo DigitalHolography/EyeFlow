@@ -109,9 +109,14 @@ completed methods and failure reasons; method-specific provenance is attached
 to each processing group and its datasets. Exact-zero LF values map to ratio
 zero without an epsilon, and LF quality counts remain diagnostic.
 
-There is no method selector. Legacy `velocity_estimation_method` settings are
+Both velocity estimators run automatically. Legacy `velocity_estimation_method` settings are
 ignored. Fresh-install defaults are in `default_settings.json`; velocity is
 always physical in `mm/s`, and legacy dimensionless velocity metadata is rejected.
+
+Both velocity workflows reconstruct their local background with OpenCV Telea,
+using a fixed 5-pixel radius. Frames are processed independently within bounded
+32-frame chunks, directly as float32 frequency images without 8-bit scaling or
+quantization. HDF5 provenance records the method and radius.
 
 
 ## Pipelines and outputs

@@ -36,12 +36,14 @@ def _spec(tmp_path, *, moments=True, bands=True, spectra="valid"):
     holo = _write_input(tmp_path)
     hd_path = tmp_path / "scan/scan_HD/h5/scan_HD_output.h5"
     with h5py.File(hd_path, "a") as hd:
-        hd.create_dataset("HD_parameters", data=json.dumps({"sampling_freq": 37037.0}))
+        hd.create_dataset("HD_parameters", data=json.dumps({
+            "sampling_freq": 37037.0, "batch_size": 32, "batch_stride": 256,
+        }))
         if spectra == "legacy_group":
             hd.create_group("spectrograms")
         elif spectra != "missing":
             shape = {"rank": (6, 3), "empty": (0, 3, 2, 2), "frames": (7, 3, 2, 2)}.get(
-                spectra, (6, 3, 2, 2),
+                spectra, (6, 8, 2, 2),
             )
             hd.create_dataset("spectrograms", data=np.ones(
                 shape, dtype=np.complex64 if spectra == "dtype" else np.float32,
@@ -154,17 +156,18 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
         assert "ProcessingBandRatio/Spectrograms" not in output
         assert "ProcessingSpectrograms/Gaps/TimeAggregated/Median" not in output
 
-    names = {"spectrograms_gaps", "gaps_mask"}
+    names = {"spectrograms_gaps", "spectrograms_gaps_monochrome", "gaps_mask"}
     if expected is not None:
         names.add("spectrogram_gaps_median")
-        names.update(f"gaps_{name}" for name in ("A0", "A1", "A2", "R1", "R2", "Z1", "Z2"))
+        names.update(f"gaps_{name}" for name in ("A0", "A", "A2", "R1", "SE"))
         names.update(f"gaps_positive_freq_median_phase_{suffix}" for suffix in (
             "early_late", "beat", "all",
         ))
     ef_dir = result.outputs[0].parent.parent
     for extension in ("png", "eps"):
+        expected_names = names | ({"gaps_qc"} if extension == "png" else set())
         assert {path.name for path in (ef_dir / extension / "spectrograms").iterdir()} == {
-            f"scan_{name}.{extension}" for name in names
+            f"scan_{name}.{extension}" for name in expected_names
         }
         assert not list((ef_dir / extension / "moments").glob("*spectrogram*"))
         assert not list((ef_dir / extension / "bandratio").glob("*spectrogram*"))
@@ -177,6 +180,7 @@ def test_positive_figures_export_for_32_bin_input_with_the_stored_peak(tmp_path)
         values = np.ones((6, 32, 2, 2))
         values[:, 5] = 10
         hd.create_dataset("spectrograms", data=values)
+        hd["HD_parameters"][()] = json.dumps({"sampling_freq": 37037, "batch_size": 128})
     result = execute_run(spec)
     assert result.succeeded, result.failures
     schema = EyeFlowOutputPaths.active()
@@ -188,15 +192,18 @@ def test_positive_figures_export_for_32_bin_input_with_the_stored_peak(tmp_path)
             assert (ef_dir / extension / "spectrograms" / f"scan_gaps_positive_freq_median_phase_{suffix}.{extension}").is_file()
 
 
-@pytest.mark.parametrize("bin_count", [1, 32, 64])
+@pytest.mark.parametrize("bin_count", [2, 32, 64])
 def test_frequency_bin_table_is_written_without_detected_timing_or_figure_export(tmp_path, bin_count):
     spec = _spec(tmp_path, moments="undetected", bands="undetected")
     with h5py.File(tmp_path / "scan/scan_HD/h5/scan_HD_output.h5", "a") as hd:
         del hd["spectrograms"]
         hd.create_dataset("spectrograms", data=np.ones((6, bin_count, 2, 2)))
-        hd["HD_parameters"][()] = json.dumps({"sampling_freq": 64000})
-    with patch("pipelines.low_freq_spectra.runner.export_spectrogram_figures", return_value=[]):
+        hd["HD_parameters"][()] = json.dumps({
+            "sampling_freq": 64000, "batch_size": 4 * bin_count, "batch_stride": 256,
+        })
+    with patch("pipelines.low_freq_spectra.runner.export_spectrogram_figures", return_value=[]) as export:
         result = execute_run(spec)
+    assert export.call_args.kwargs["dt_seconds"] == 256 / 64000
     assert result.succeeded, result.failures
     schema = EyeFlowOutputPaths.active()
     with h5py.File(result.outputs[0], "r") as output:
@@ -204,10 +211,8 @@ def test_frequency_bin_table_is_written_without_detected_timing_or_figure_export
         assert table.name == "/ProcessingSpectrograms/FrequencyBinTable"
         assert table.shape == (bin_count,)
         assert table.dtype == np.float32
-        frequencies = np.arange(bin_count, dtype=float)
-        if bin_count > 1:
-            frequencies[bin_count // 2:] -= bin_count
-        np.testing.assert_allclose(table[:], frequencies * (64 / bin_count))
+        raw = np.fft.fftfreq(4 * bin_count, d=1 / 64000)
+        np.testing.assert_allclose(table[:], raw.reshape(bin_count, 4).mean(axis=1) / 1000)
         assert "column_names" not in table.attrs
         assert table.attrs["unit"] == "kHz"
         assert list(table.attrs["dimDesc"]) == ["freq"]
@@ -215,6 +220,8 @@ def test_frequency_bin_table_is_written_without_detected_timing_or_figure_export
         assert table.attrs["sampling_frequency_hz"] == 64000
         assert table.attrs["sampling_frequency_source_path"] == "/" + schema.sampling_frequency_hz
         assert table.attrs["source_path"] == "/spectrograms"
+        assert table.attrs["fft_bin_count"] == 4 * bin_count
+        assert table.attrs["frequency_binning_factor"] == 4
         assert schema.spectrograms_spatial_average in output
         assert schema.spectrograms_masked_per_beat not in output
 
@@ -237,28 +244,28 @@ def test_masked_spatial_median_feeds_persisted_downstream_spectra(tmp_path):
         # The median is 4 despite the included 1000-power outlier; mean is 252.25.
         hd["spectrograms"][:] = (
             np.array([[1, 3], [5, 1000]])[None, None]
-            + 10 * np.arange(3)[None, :, None, None]
+            + 10 * np.arange(8)[None, :, None, None]
         )
     result = execute_run(spec)
     assert result.succeeded, result.failures
     schema = EyeFlowOutputPaths.active()
-    expected = np.array([4, 14, 24])
+    expected = 4 + 10 * np.arange(8)
     with h5py.File(result.outputs[0], "r") as output:
         assert "ProcessingSpectrograms/Gaps/SpatialMedian" in output
         assert "ProcessingSpectrograms/Gaps/Raw" not in output
         np.testing.assert_array_equal(
-            output[schema.spectrograms_masked][:], np.broadcast_to(expected, (6, 3)),
+            output[schema.spectrograms_masked][:], np.broadcast_to(expected, (6, 8)),
         )
         np.testing.assert_array_equal(
             output[schema.spectrograms_spatial_average][:],
-            np.broadcast_to(expected + 248.25, (6, 3)),
+            np.broadcast_to(expected + 248.25, (6, 8)),
         )
         np.testing.assert_array_equal(
             output[schema.spectrograms_masked_time_aggregated_median][:], expected,
         )
         np.testing.assert_array_equal(
             output[schema.spectrograms_masked_time_aggregated_median_beat][:],
-            np.broadcast_to(expected, (128, 3)),
+            np.broadcast_to(expected, (128, 8)),
         )
         for path in (schema.spectrograms_masked_per_beat,
                      schema.spectrograms_masked_per_beat_band_limited):

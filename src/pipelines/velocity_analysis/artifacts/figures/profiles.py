@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
+from input_output.article_formatting import apply_article_style
+from input_output.figure_formatting import add_colorbar
 from .common import _plt
 from pipelines.velocity.semantics import resolve_velocity_semantics
 
@@ -85,7 +87,7 @@ def _save_profile_map(
         vmin=color_min,
         vmax=color_max,
     )
-    fig.colorbar(image, ax=ax, label=velocity_label)
+    add_colorbar(fig, image, ax=ax, label=velocity_label)
     ax.set(
         xlabel="Transverse sample (pixels)",
         ylabel="Time (s)",
@@ -132,6 +134,7 @@ def _artifact_path(writer, suffix: str) -> Path:
 
 def _save_figure(writer, fig, suffix: str) -> Path:
     path = _artifact_path(writer, suffix)
+    apply_article_style(fig)
     fig.savefig(path, dpi=120, bbox_inches="tight")
     _plt().close(fig)
     return path

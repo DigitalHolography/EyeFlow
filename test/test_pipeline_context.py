@@ -11,6 +11,11 @@ from pipeline_engine import ExecutionVariant, PipelineContext
 from pipeline_engine.context import RawH5SourceReader
 from input_output.h5_access import PipelineH5Output, PipelineInputSource
 from input_output.schema.base import TypedSource
+from input_output.schema.provenance import (
+    INHERITED_PROVENANCE_KEYS_ATTR,
+    read_dataset_attrs,
+)
+from input_output.writers.h5 import h5_write_checkpoint, set_attr_safe
 from utils.logger import Logger
 
 
@@ -37,6 +42,110 @@ class PipelineContextTests(unittest.TestCase):
 
             np.testing.assert_array_equal(h5file["result"][()], [1, 2])
             self.assertEqual("pixel", h5file["result"].attrs["unit"])
+
+    def test_workflow_provenance_is_shared_with_local_overrides(self) -> None:
+        with h5py.File("provenance.h5", "w", driver="core", backing_store=False) as h5file:
+            h5file.attrs["band_ratio_frequency_scale_hz"] = 999.0
+            for root, method, scale in [
+                ("ProcessingMoments", "doppler_moments", 1.0),
+                ("ProcessingBandRatio", "frequency_bands", 3.0),
+            ]:
+                output = PipelineH5Output(h5file, processing_root=root, provenance={
+                    "velocity_estimation_method": method,
+                    "velocity_unit": "mm/s",
+                    "band_ratio_frequency_scale_hz": scale,
+                })
+                output.write("ProcessingMoments/signal", np.arange(4),
+                             velocity_estimation_method=method,
+                             band_ratio_frequency_scale_hz=scale,
+                             unit="Hz", dimDesc=["time"], definition="Keep this definition",
+                             source_path="ProcessingMoments/source")
+                dataset = h5file[f"{root}/signal"]
+                self.assertNotIn("velocity_estimation_method", dataset.attrs)
+                self.assertNotIn("band_ratio_frequency_scale_hz", dataset.attrs)
+                effective = output.read_attrs("ProcessingMoments/signal")
+                self.assertEqual(method, effective["velocity_estimation_method"])
+                self.assertEqual(scale, effective["band_ratio_frequency_scale_hz"])
+                self.assertEqual("mm/s", effective["velocity_unit"])
+                self.assertEqual("Hz", dataset.attrs["unit"])
+                self.assertEqual(["time"], list(dataset.attrs["dimDesc"]))
+                self.assertEqual("Keep this definition", dataset.attrs["definition"])
+                self.assertEqual(f"{root}/source", dataset.attrs["source_path"])
+
+                # Explicit dataset overrides remain local, including dtype changes.
+                output.write("ProcessingMoments/override", [1],
+                             band_ratio_frequency_scale_hz=scale + 1)
+                self.assertEqual(scale + 1, output.read_attrs("ProcessingMoments/override")[
+                    "band_ratio_frequency_scale_hz"])
+                output.write("ProcessingMoments/typed", [1],
+                             band_ratio_frequency_scale_hz=np.int32(scale))
+                self.assertEqual(np.dtype("int32"),
+                                 h5file[f"{root}/typed"].attrs.get_id(
+                                     "band_ratio_frequency_scale_hz").dtype)
+
+                # Another facade can resolve and reuse the persisted declaration.
+                reopened = PipelineH5Output(h5file, processing_root=root)
+                reopened.write("ProcessingMoments/later", [1],
+                               velocity_estimation_method=method)
+                self.assertNotIn("velocity_estimation_method", h5file[f"{root}/later"].attrs)
+                self.assertEqual(method, reopened.read_attrs("ProcessingMoments/later")[
+                    "velocity_estimation_method"])
+
+                output.write("Segmentation/shared", [1], unit="pixel")
+                self.assertNotIn("velocity_estimation_method",
+                                 read_dataset_attrs(h5file["Segmentation/shared"]))
+            self.assertEqual("doppler_moments", read_dataset_attrs(
+                h5file["ProcessingMoments/signal"])["velocity_estimation_method"])
+            self.assertEqual("frequency_bands", read_dataset_attrs(
+                h5file["ProcessingBandRatio/signal"])["velocity_estimation_method"])
+
+    def test_inherited_attributes_preserve_legacy_and_nearest_group_values(self) -> None:
+        with h5py.File("legacy_provenance.h5", "w", driver="core", backing_store=False) as f:
+            root = f.create_group("ProcessingMoments")
+            root.attrs["velocity_estimation_method"] = "doppler_moments"
+            legacy = root.create_dataset("legacy", data=[1])
+            legacy.attrs["velocity_estimation_method"] = "frequency_bands"
+            self.assertEqual(dict(legacy.attrs), read_dataset_attrs(legacy))
+            missing = root.create_dataset("missing", data=[1])
+            self.assertEqual({}, read_dataset_attrs(missing))
+            set_attr_safe(root, INHERITED_PROVENANCE_KEYS_ATTR, ["velocity_estimation_method"])
+            child = root.create_group("child")
+            child.attrs["velocity_estimation_method"] = "frequency_bands"
+            child.attrs["unit"] = "do not inherit"
+            set_attr_safe(child, INHERITED_PROVENANCE_KEYS_ATTR, ["velocity_estimation_method"])
+            dataset = child.create_dataset("value", data=[1])
+            self.assertEqual({"velocity_estimation_method": "frequency_bands"},
+                             read_dataset_attrs(dataset))
+            dataset.attrs["velocity_estimation_method"] = "doppler_moments"
+            self.assertEqual("doppler_moments",
+                             read_dataset_attrs(dataset)["velocity_estimation_method"])
+            output = PipelineH5Output(f, processing_root="ProcessingMoments")
+            output.write("ProcessingMoments/child/written", [1],
+                         velocity_estimation_method="doppler_moments")
+            self.assertEqual("doppler_moments", output.read_attrs(
+                "ProcessingMoments/child/written")["velocity_estimation_method"])
+            self.assertIn("velocity_estimation_method", f[
+                "ProcessingMoments/child/written"].attrs)
+            with self.assertRaises(KeyError):
+                PipelineH5Output(f).read_attrs("absent")
+
+    def test_checkpoint_restores_shared_provenance_and_dataset_overrides(self) -> None:
+        with h5py.File("checkpoint_provenance.h5", "w", driver="core", backing_store=False) as f:
+            output = PipelineH5Output(f, processing_root="ProcessingMoments",
+                                      provenance={"velocity_unit": "mm/s"})
+            output.write("ProcessingMoments/signal", [1], velocity_unit="local")
+            with self.assertRaisesRegex(ValueError, "injected"):
+                with h5_write_checkpoint(f):
+                    PipelineH5Output(f, processing_root="ProcessingMoments", provenance={
+                        "velocity_unit": "invalid", "new_provenance": "remove on rollback",
+                    }).write("ProcessingMoments/signal", [2])
+                    raise ValueError("injected")
+            self.assertEqual("mm/s", f["ProcessingMoments"].attrs["velocity_unit"])
+            self.assertEqual(["velocity_unit"], list(
+                f["ProcessingMoments"].attrs[INHERITED_PROVENANCE_KEYS_ATTR]))
+            self.assertNotIn("new_provenance", output.read_attrs("ProcessingMoments/signal"))
+            self.assertEqual("local", output.read_attrs("ProcessingMoments/signal")["velocity_unit"])
+            np.testing.assert_array_equal([1], output.read("ProcessingMoments/signal"))
 
     def test_log_emits_to_callback(self) -> None:
         messages: list[str] = []

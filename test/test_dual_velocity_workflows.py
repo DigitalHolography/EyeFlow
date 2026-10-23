@@ -11,6 +11,7 @@ from test_frequency_band_pipeline_integration import _write_frequency_band_run
 from input_output.reports.pdf_report import _extract_parameters_from_h5
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import processing_path
+from input_output.schema.provenance import read_dataset_attrs
 from pipeline_engine.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
 from pipelines.velocity.runner import (
@@ -74,6 +75,9 @@ def _spec(holo, *, artifacts=False):
 def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp_path):
     holo, hd_path = _dual_input(tmp_path)
     with h5py.File(hd_path, "a") as hd:
+        parameters = json.loads(hd["HD_parameters"][()].decode())
+        parameters["batch_size"] = 12  # Three synthetic planes averaging four FFT samples each.
+        hd["HD_parameters"][()] = json.dumps(parameters)
         frames, height, width = hd["moment0"].shape
         spectra = hd.create_dataset("spectrograms", data=np.full(
             (frames, 3, height // 2, width // 2), 7, dtype=np.float32,
@@ -139,11 +143,13 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
             np.testing.assert_array_equal(window[:], [7, 7, 7])
             assert window.attrs["source_path"] == beat_median.name
         spectrum_metrics = output[schema.spectrograms_masked_metrics_root]
-        assert len(spectrum_metrics) == 43
+        assert len(spectrum_metrics) == 33
         assert spectrum_metrics["index_max1"][()] == 0
         assert spectrum_metrics["index_max2"][()] == 1
         assert spectrum_metrics["R1"][()] == 1
-        assert spectrum_metrics["R2"][()] == 1
+        assert spectrum_metrics["A"][()] == spectrum_metrics["A0"][()]
+        assert spectrum_metrics["SEI"][()] == 0
+        assert not {"A1", "R2", "Z2"} & set(spectrum_metrics)
         assert "ProcessingBandRatio/Spectrograms/Gaps/Metrics" not in output
         for path, shape in (
             (schema.spectrograms_masked_per_beat_band_limited, raw.shape),
@@ -369,9 +375,13 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
 
             def check_dataset(_name, value, expected_method=method, expected_beats=beat_count):
                 if isinstance(value, h5py.Dataset):
-                    assert value.attrs["velocity_estimation_method"] == expected_method
-                    assert value.attrs["cardiac_cycle_detection_quantity"] == "physical_velocity"
-                    assert value.attrs["cardiac_cycle_detection_unit"] == "mm/s"
+                    attrs = read_dataset_attrs(value)
+                    assert attrs["velocity_estimation_method"] == expected_method
+                    assert attrs["cardiac_cycle_detection_quantity"] == "physical_velocity"
+                    assert attrs["cardiac_cycle_detection_unit"] == "mm/s"
+                    assert "velocity_estimation_method" not in value.attrs
+                    assert "cardiac_cycle_detection_quantity" not in value.attrs
+                    assert "nameID" not in value.attrs
                     dimensions = list(value.attrs.get("dimDesc", ()))
                     if "beat" in dimensions:
                         assert value.shape[dimensions.index("beat")] == expected_beats

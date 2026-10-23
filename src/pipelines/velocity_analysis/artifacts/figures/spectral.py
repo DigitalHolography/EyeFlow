@@ -15,6 +15,7 @@ from calculations.blood_flow_velocity.signal_analysis.spectrum import (
     spectrum_signal_analysis,
     synthetic_spectrum_from_signals,
 )
+from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE as STYLE
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
@@ -89,7 +90,7 @@ def _spectrum_plot(
     color: str,
 ) -> Path:
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
-    ax.plot(spectrum.frequencies, spectrum.magnitude, color="k", linewidth=2)
+    ax.plot(spectrum.frequencies, spectrum.magnitude, color="k", linewidth=STYLE.signal_line_width)
     peaks = _visible_peak_indexes(spectrum, SPECTRAL_XLIM_HZ)[:8]
     if peaks.size:
         ax.scatter(
@@ -128,7 +129,7 @@ def _phase_spectrum_plot(
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
     peaks = _visible_peak_indexes(spectrum, SPECTRAL_XLIM_HZ)[:8]
     if peaks.size:
-        markerline, stemlines, _ = ax.stem(
+        markerline, stemlines, baseline = ax.stem(
             spectrum.frequencies[peaks],
             spectrum.phase[peaks],
             markerfmt="o",
@@ -137,6 +138,8 @@ def _phase_spectrum_plot(
         markerline.set_color(color)
         markerline.set_markeredgecolor("k")
         stemlines.set_color(color)
+        stemlines.set_linewidth(STYLE.signal_line_width)
+        baseline.set_linewidth(STYLE.secondary_line_width)
         _annotate_spectral_peaks(ax, spectrum, peaks, phase=True)
     ax.set_xlim(*SPECTRAL_XLIM_HZ)
     ax.set_ylim(-np.pi, np.pi)
@@ -170,7 +173,7 @@ def _annotate_spectral_peaks(
     for index in peak_indexes:
         freq = float(spectrum.frequencies[index])
         if not phase:
-            ax.axvline(freq, color="0.5", linestyle="--", linewidth=1.0, zorder=1)
+            ax.axvline(freq, color="0.5", linestyle="--", linewidth=STYLE.event_line_width, zorder=1)
         ax.text(
             freq,
             float(y_values[index]) + y_offset,
@@ -186,20 +189,22 @@ def _synthetic_spectral_plot(
     spectrum: SyntheticSpectrumData,
 ) -> Path:
     fig, axes = _plt().subplots(2, 1, figsize=(7.0, 5.0), sharex=True)
-    axes[0].plot(spectrum.frequencies, spectrum.magnitude, color="k", linewidth=2)
+    axes[0].plot(spectrum.frequencies, spectrum.magnitude, color="k", linewidth=STYLE.signal_line_width)
     axes[0].scatter(
         spectrum.frequencies[spectrum.peak_indexes],
         spectrum.magnitude[spectrum.peak_indexes],
         s=25,
     )
     axes[0].set_ylabel("Magnitude |Y|")
-    axes[1].stem(
+    _, stemlines, baseline = axes[1].stem(
         spectrum.frequencies[spectrum.peak_indexes],
         spectrum.phase[spectrum.peak_indexes] / np.pi,
         linefmt="k-",
         markerfmt="ko",
         basefmt="0.6",
     )
+    stemlines.set_linewidth(STYLE.signal_line_width)
+    baseline.set_linewidth(STYLE.secondary_line_width)
     axes[1].set_ylabel("Phase / pi")
     axes[1].set_xlabel("Frequency (Hz)")
     for ax in axes:

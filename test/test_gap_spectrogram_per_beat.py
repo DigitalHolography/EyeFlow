@@ -12,9 +12,12 @@ from input_output.h5_access import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PipelineDAG
 from pipelines import load_pipeline_catalog
-from pipelines.low_freq_spectra.metrics import PHASE_METRIC_NAMES, SPECTRUM_METRIC_DEFINITIONS
+from pipelines.low_freq_spectra.metrics import (
+    PHASE_METRIC_OUTPUT_NAMES, PHASE_SUMMARY_OUTPUT_NAMES, SPECTRUM_METRIC_OUTPUT_NAMES,
+)
 from pipelines.low_freq_spectra.per_beat import gap_spectrograms_per_beat
 from pipelines.low_freq_spectra.gap_analysis import run_gap_analysis
+from test_spectrogram_frequency import _write_frequency_table
 
 
 def test_unequal_beats_align_phase_without_reordering_frequency_or_duplicate_endpoint():
@@ -43,6 +46,8 @@ def _ctx(output):
     schema = EyeFlowOutputPaths.active()
     if schema.sampling_frequency_hz not in output:
         output.create_dataset(schema.sampling_frequency_hz, data=32000)
+    if schema.spectrograms_masked in output:
+        _write_frequency_table(output, output[schema.spectrograms_masked].shape[1], 32000)
     return SimpleNamespace(
         output=SimpleNamespace(h5=PipelineH5Output(output)),
     )
@@ -272,15 +277,19 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
                 schema.spectrograms_masked_time_aggregated_std_late,
             } | {
                 f"{schema.spectrograms_masked_metrics_root}/{name}"
-                for name in SPECTRUM_METRIC_DEFINITIONS
+                for name in SPECTRUM_METRIC_OUTPUT_NAMES.values()
             } | {
                 f"{schema.spectrograms_masked_metrics_root}/{key}"
-                for name in PHASE_METRIC_NAMES
-                for key in (f"{name}_t", f"{name}_early", f"{name}_late", f"delta_{name}")
+                for key in [
+                    "SEI",
+                    *PHASE_METRIC_OUTPUT_NAMES.values(),
+                    *(f"{name}_{suffix}" for name in PHASE_SUMMARY_OUTPUT_NAMES.values() for suffix in ("early", "late")),
+                    *(f"delta_{name}" for name in PHASE_SUMMARY_OUTPUT_NAMES.values()),
+                ]
             }
             root = schema.spectrograms_masked_metrics_root
             if case == "no_finite_cells":
-                for name in ("index_max1", "index_max2", "A0", "A1", "A2", "R1", "R2", "Z1", "Z2", "delta_A0"):
+                for name in ("index_max1", "index_max2", "A0", "A", "A2", "R1", "SEI", "delta_A0"):
                     assert np.isnan(metrics[f"{root}/{name}"][0])
                 assert any("only NaN" in call.args[0] for call in warning.call_args_list)
             else:

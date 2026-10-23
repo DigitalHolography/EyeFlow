@@ -28,8 +28,8 @@ def gpu_check(report, require_gpu=False):
         return
     import numpy as np
     from calculations.compute_backend import optional_cupy_backend
-    from calculations.topology import transforms
-    from pipelines.velocity_analysis.analysis.segments import _VelocityProfileFftAccumulator
+    from calculations.vessel_segments.sampling import transforms
+    from calculations.vessel_segments.profiles.fft import SegmentFftAccumulator
 
     backend = optional_cupy_backend()
     if backend is None:
@@ -63,9 +63,9 @@ def gpu_check(report, require_gpu=False):
     mask[20:31, 1:4] = True
     options = dict(frame_count=7, ring_count=1, branch_count=1, canvas_side=5,
                    cycle_boundary_indexes=np.asarray([0, 3, 6], dtype=np.int32), index_base=0)
-    expected = _VelocityProfileFftAccumulator(**options)
+    expected = SegmentFftAccumulator(**options)
     expected.observe(0, 0, stack, mask)
-    actual = _VelocityProfileFftAccumulator(**options)
+    actual = SegmentFftAccumulator(**options)
     actual._write_beat_cpu = reject_cpu
     actual.observe(0, 0, cupy.asarray(stack), mask)
     np.testing.assert_allclose(actual.unmasked, expected.unmasked, rtol=1e-6, atol=1e-6, equal_nan=True)

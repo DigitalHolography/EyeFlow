@@ -8,6 +8,10 @@ import h5py
 import numpy as np
 
 from .writers.h5 import normalize_h5_path, set_attr_safe, write_value_dataset
+from .schema.provenance import (
+    INHERITED_PROVENANCE_KEYS_ATTR,
+    read_dataset_attrs,
+)
 
 _MISSING = object()
 
@@ -195,6 +199,13 @@ class PipelineH5Output:
             raise KeyError(path)
         return found[()]
 
+    def read_attrs(self, path: str) -> dict[str, object]:
+        """Read dataset attributes including its workflow's shared provenance."""
+        found = self.get(path)
+        if not isinstance(found, h5py.Dataset):
+            raise KeyError(path)
+        return read_dataset_attrs(found)
+
     def array(
         self,
         path: str,
@@ -218,13 +229,21 @@ class PipelineH5Output:
         self.write_many({path: payload})
 
     def write_many(self, metrics: Mapping[str, Any]) -> None:
+        if self.processing_root and self.provenance:
+            root = self.file.require_group(self.processing_root)
+            keys = set(root.attrs.get(INHERITED_PROVENANCE_KEYS_ATTR, ()))
+            for key, attr in self.provenance.items():
+                set_attr_safe(root, key, attr)
+                keys.add(key)
+            set_attr_safe(root, INHERITED_PROVENANCE_KEYS_ATTR, sorted(keys))
         for path, value in metrics.items():
             target = self._path(path)
+            in_workflow = bool(
+                self.processing_root and target.startswith(self.processing_root + "/")
+            )
             write_value_dataset(self.file, target, value)
-            if self.processing_root and target.startswith(self.processing_root + "/"):
+            if in_workflow:
                 dataset = self.file[target]
-                for key, attr in self.provenance.items():
-                    set_attr_safe(dataset, key, attr)
                 # References in dataset attributes use the same workflow namespace.
                 for key, attr in list(dataset.attrs.items()):
                     if isinstance(attr, str) and attr.lstrip("/").startswith("ProcessingMoments/"):
