@@ -552,6 +552,53 @@ at zero, one third, two thirds, and one. Preserve NaN gaps and the excluded
 endpoint; area-axis labels include power units and ratio axes are dimensionless.
 Each available curve exports independently.
 
+`/ProcessingSpectrograms/Gaps/QC` contains descriptive diagnostics, separate
+from `Metrics`. QC never filters samples, rejects beats, or changes SE/SEI.
+There are no implicit pass/fail thresholds. A fully evaluated run writes only
+six QC datasets:
+
+- `DataCompleteness/{AcquisitionValidFraction,ValidSEPhaseFraction}`: overall
+  finite fraction of reduced acquisition-time spectra and fraction of finite SE
+  phases. Counts and complete-beat numbers can be read from the existing sources.
+- `ValleyRepeatability/RelativeMAD`: unscaled across-beat valley-height MAD
+  divided by absolute median height. Comparisons are at the same cardiac phase. Use the metrics'
+  recorded valley neighborhood. Dispersion needs at least two finite beat
+  heights; relative dispersion additionally needs a nonzero median. Undefined
+  values stay NaN. This is dispersion, not an uncertainty interval.
+- `SEIBeatSensitivity/DeltaSEI`: signed omission-minus-full SEI change for
+  each complete beat in chronological order. For each omission,
+  repeat the production raw-spectrum pooling, reselect pooled peaks, and
+  recompute phasewise SE and temporal-median SEI. Match production float32
+  reductions/scalar storage. At least two original beats and calibrated SEI
+  metrics are required; otherwise estimates are NaN. Array beat indices are
+  zero-based, figure beat labels one-based. This measures influence, not a
+  confidence interval or proof of motion. Valid phase counts per omission are
+  recorded as supporting metadata. Full SEI remains in `Metrics/SEI`; omitted-
+  beat estimates and maximum changes are derived from that value and `DeltaSEI`.
+- `PotentialMotionContamination/RelativeBroadbandChange` is the median
+  across bins of `abs(S[t,j]-S[t-1,j])/median_time(S[:,j])`, using only finite
+  differences and positive finite per-bin temporal medians. The score belongs
+  to the later frame; the first frame and unsupported scores are NaN.
+  It is invariant to positive
+  per-bin multiplicative scaling and is a candidate transient indicator, not
+  a validated saccade detector; physiological changes can contribute.
+- `SpatialSupportQuality/RetainedFieldFraction`: reduced application-mask
+  coverage relative to the entire rectangular spectrogram field. Retained pixel
+  count is already recorded on the source spectra.
+  Missing mask metadata yields NaN. Anatomical suitability requires visual review.
+
+Acquisition and spatial QC remain available without cardiac registration;
+phase-dependent outputs require registered beats and valley-dependent outputs
+require at least two frequency bins. Missing SE calibration is explicitly
+identified in SE-support and influence metadata. Dataset attributes record
+definitions, units, axes, source paths, and the descriptive-only policy.
+`png/spectrograms/<stem>_gaps_qc.png` shows data support, broadband changes,
+per-beat valley heights, relative valley MAD, SEI beat influence, and the retained
+mask. Plotting reconstructs frequency-bin counts and valley heights/dispersion
+from existing spectra instead of persisting duplicate QC arrays.
+It uses acquisition seconds when timing is available, otherwise frame
+indices. This diagnostic has no automatic EPS export or article-format styling.
+
 `/ProcessingSpectrograms/Gaps/PerBeat/BandLimited` independently filters the
 interpolated raw beats with the shared `calculations.math.bandlimiting.band_limit`
 API in `signed` reconstruction mode. Retain DC plus the configured number of

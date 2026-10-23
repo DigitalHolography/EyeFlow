@@ -22,10 +22,12 @@ from input_output.article_formatting import (
 from input_output.figure_formatting import TickFormat, add_colorbar, add_legend, apply_tick_format
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.article import save_article_figure_pair
+from input_output.writers.png import FigureArtifactWriter
 from utils.logger import Logger
 
 from .frequency import frequency_ticks, read_frequency_bin_table
 from .metrics import PHASE_METRIC_OUTPUT_NAMES, _valley_neighborhood_indices, spectrum_valley_height
+from .qc import valley_repeatability
 
 SPECTRUM_HEIGHT_SCALE = 1.30
 SPECTROGRAM_WIDTH_INCHES = 12.0 / 2.54
@@ -87,7 +89,106 @@ def export_spectrogram_figures(output, *, dt_seconds: float | None = None) -> li
         )))
     if frequency_table is not None:
         paths.extend(_export_spectra(output, manager, frequency_table[()]))
+    if output.h5.get(schema.spectrograms_masked_qc.root) is not None:
+        paths.append(FigureArtifactWriter(manager).save_figure(
+            _gap_qc_figure(output, dt_seconds=dt_seconds), "gaps_qc.png", dpi=150,
+        ))
     return paths
+
+
+def _gap_qc_figure(output, *, dt_seconds=None):
+    """Build a diagnostic panel from persisted QC; export as PNG only."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    schema = EyeFlowOutputPaths.active()
+    paths = schema.spectrograms_masked_qc
+
+    def read(family, name):
+        source = output.h5.get(f"{family}/{name}")
+        return None if source is None else np.asarray(source[()])
+
+    def number(value, suffix=""):
+        return "unavailable" if value is None or not np.isfinite(value) else f"{float(value):.3g}{suffix}"
+
+    # Pipeline exports run in a worker thread; never create a GUI figure manager.
+    fig = Figure(figsize=(12, 10), layout="constrained")
+    FigureCanvasAgg(fig)
+    axes = fig.subplots(3, 2)
+    fig.suptitle("Gap-spectrum quality indicators", fontsize=16)
+    support, motion, valley, repeatability, influence, mask_axis = axes.flat
+    spatial = output.h5.get(schema.spectrograms_masked)
+    counts = np.isfinite(spatial[()]).sum(axis=1)
+    calibrated = dt_seconds is not None and np.isfinite(dt_seconds) and dt_seconds > 0
+    times = np.arange(counts.size) * (dt_seconds if calibrated else 1)
+    time_label = "Time (s)" if calibrated else "Acquisition frame"
+    support.step(times, counts, where="mid", color="black")
+    support.set(xlabel=time_label, ylabel="Finite frequency bins", title="Data completeness")
+    support.set_ylim(bottom=0)
+    raw_source = output.h5.get(schema.spectrograms_masked_per_beat)
+    beats = raw_source.shape[2] if raw_source is not None else 0
+    fraction = read(paths.data_completeness, "ValidSEPhaseFraction")
+    support.text(.02, .03,
+                 f"Complete beats: {number(beats)}\nValid SE phases: {number(None if fraction is None else 100 * fraction, '%')}",
+                 transform=support.transAxes, va="bottom", fontsize=9,
+                 bbox={"facecolor": "white", "edgecolor": "none", "alpha": .85})
+    score = read(paths.potential_motion_contamination, "RelativeBroadbandChange")
+    motion.plot(times, score, color="black", linewidth=1)
+    motion.set(xlabel=time_label, ylabel="Relative broadband change", title="Potential motion contamination")
+    motion.set_ylim(bottom=0)
+    motion.text(.02, .97, "Transient indicator; not specific to saccades", transform=motion.transAxes,
+                va="top", fontsize=9)
+
+    relative_source = output.h5.get(f"{paths.valley_repeatability}/RelativeMAD")
+    if relative_source is not None and raw_source is not None:
+        bins = np.asarray(relative_source.attrs["valley_neighborhood_indices"], dtype=int)
+        phase = np.asarray(relative_source.attrs["phase_samples"])
+        heights, median, mad, _ = valley_repeatability(raw_source[()], bins)
+        valley.plot(phase, heights, color="0.65", linewidth=.8, alpha=.7)
+        valley.plot(phase, median, color="black", label="beat median", linewidth=1.5)
+        valley.fill_between(phase, median - mad, median + mad, color="0.4", alpha=.25, label="± MAD")
+        add_legend(valley, fontsize=9)
+        valley.set_ylabel(f"Valley height ({raw_source.attrs.get('unit', 'a.u.')})")
+        relative = relative_source[()]
+        repeatability.plot(phase, relative, color="black")
+        if not np.any(np.isfinite(relative)):
+            repeatability.text(.5, .5, "Needs ≥2 valid beats and nonzero median height",
+                               transform=repeatability.transAxes, ha="center", fontsize=9)
+    else:
+        for ax in (valley, repeatability):
+            ax.text(.5, .5, "Registered valley spectra unavailable", transform=ax.transAxes, ha="center")
+    valley.set(title="Valley heights across beats", xlabel=r"Cardiac phase $t/T$")
+    repeatability.set(title="Valley repeatability", xlabel=r"Cardiac phase $t/T$", ylabel="MAD / |median height|")
+    repeatability.set_ylim(bottom=0)
+    for ax in (valley, repeatability):
+        ax.set_xlim(0, 1)
+
+    delta = read(paths.sei_beat_sensitivity, "DeltaSEI")
+    influence.axhline(0, color="0.5", linewidth=.8)
+    if delta is not None and np.any(np.isfinite(delta)):
+        indexes = np.arange(1, delta.size + 1)
+        influence.bar(indexes, delta, color="0.4")
+        influence.set_xticks(indexes)
+        reference = read(schema.spectrograms_masked_metrics_root, "SEI")
+        influence.text(.02, .97, f"Full SEI: {number(reference)}", transform=influence.transAxes,
+                       va="top", fontsize=9)
+    else:
+        influence.text(.5, .5, "Needs ≥2 beats and evaluable SEI", transform=influence.transAxes, ha="center")
+    influence.set(title="SEI beat sensitivity", xlabel="Omitted beat (chronological)",
+                  ylabel="SEI without beat − full SEI")
+    mask = output.h5.get(schema.segmentation.gaps)
+    if mask is not None:
+        mask_axis.imshow(np.asarray(mask[()], dtype=bool).T, origin="lower", cmap="gray",
+                         interpolation="nearest", vmin=0, vmax=1)
+    else:
+        mask_axis.text(.5, .5, "Mask unavailable", transform=mask_axis.transAxes, ha="center")
+    coverage = read(paths.spatial_support_quality, "RetainedFieldFraction")
+    mask_axis.set_title("Spatial support quality")
+    mask_axis.set_xlabel(f"Retained field: {number(None if coverage is None else 100 * coverage, '%')}\n"
+                         "White: retained mask; anatomical review required", fontsize=9)
+    mask_axis.set_xticks([])
+    mask_axis.set_yticks([])
+    return fig
 
 
 def _export_spectra(output, manager, frequencies_khz: np.ndarray) -> list[Path]:

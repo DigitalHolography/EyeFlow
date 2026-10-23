@@ -165,8 +165,9 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
         ))
     ef_dir = result.outputs[0].parent.parent
     for extension in ("png", "eps"):
+        expected_names = names | ({"gaps_qc"} if extension == "png" else set())
         assert {path.name for path in (ef_dir / extension / "spectrograms").iterdir()} == {
-            f"scan_{name}.{extension}" for name in names
+            f"scan_{name}.{extension}" for name in expected_names
         }
         assert not list((ef_dir / extension / "moments").glob("*spectrogram*"))
         assert not list((ef_dir / extension / "bandratio").glob("*spectrogram*"))

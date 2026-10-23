@@ -180,6 +180,23 @@ the SE source and source/valid/invalid phase counts. No unconfigured signal or
 stability cutoff is inferred. All five output metrics have phase curves,
 early/late medians, signed late-minus-early deltas, and matching PNG/EPS phase plots.
 Metric metadata records the neighborhood.
+`low_freq_spectra/qc.py` packs descriptive diagnostics under the schema-owned
+`ProcessingSpectrograms/Gaps/QC` families: DataCompleteness,
+ValleyRepeatability, SEIBeatSensitivity, PotentialMotionContamination, and
+SpatialSupportQuality. The runner writes these after scientific gap products.
+QC persists only six datasets: AcquisitionValidFraction, ValidSEPhaseFraction,
+RelativeMAD, DeltaSEI, RelativeBroadbandChange, and RetainedFieldFraction in
+their owning families. Reconstruct counts, valley heights/dispersion, and the
+reference SEI from existing source datasets for plotting; do not duplicate them
+under QC. QC never changes SE/SEI or rejects samples. Compare valley heights across beats
+at the same phase; unscaled MAD needs two valid beats. Leave-one-beat-out SEI
+repeats raw production reductions, reselects pooled peaks, and records phase
+support as metadata alongside signed omission-minus-full changes. Broadband relative consecutive-
+frame changes are descriptive and not a validated saccade detector. Mask coverage
+uses the whole reduced rectangular field; anatomy needs visual review. Reuse
+reduced spectra, never rescan the HD spatial video. Missing timing still permits
+acquisition/mask QC. `artifacts.py` exports a diagnostic `gaps_qc.png` only,
+without article formatting or automatic EPS. See data contracts for definitions.
 Independent `PerBeat/BandLimited` keeps DC plus the configured non-DC harmonics
 (default 12) via the shared bandlimiting API in signed mode, using
 periodic phase boundaries. Original durations define each effective Hz cutoff.

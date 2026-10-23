@@ -10,6 +10,7 @@ from utils.logger import Logger
 from .artifacts import export_spectrogram_figures
 from .gap_analysis import run_gap_analysis
 from .frequency import write_frequency_bin_table
+from .qc import pack_gap_qc
 from .spectrograms import preprocess_spectrograms
 
 
@@ -50,7 +51,13 @@ def run_low_freq_spectra(ctx) -> None:
             "Low-frequency spectra use band-ratio cardiac cycles: "
             "detected Doppler moments timing is unavailable."
         )
-    ctx.output.h5.write_many(run_gap_analysis(ctx, timing, timing_method=method))
+    gap_outputs = run_gap_analysis(ctx, timing, timing_method=method)
+    ctx.output.h5.write_many(gap_outputs)
+    gap_source = ctx.output.h5.get(schema.spectrograms_masked)
+    if gap_source is not None:
+        ctx.output.h5.write_many(pack_gap_qc(
+            gap_source[()], source_attrs=dict(gap_source.attrs), gap_outputs=gap_outputs,
+        ))
     if ctx.output.available:
         try:
             dt_seconds = hd.timing().dt_seconds
