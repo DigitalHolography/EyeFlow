@@ -27,6 +27,10 @@ HD_OUTPUT_PASSTHROUGH_PATHS = (
 HD_SAMPLING_FREQ_KEY = "sampling_freq"
 HD_BATCH_STRIDE_KEY = "batch_stride"
 HD_PARAMETERS_KEY = "HD_parameters"
+HD_BATCH_SIZE_KEY = "batch_size"
+HD_SPECTROGRAM_FREQUENCY_START_KEY = "spectrogram_frequency_start"
+HD_SPECTROGRAM_FREQUENCY_END_KEY = "spectrogram_frequency_end"
+HD_SPECTROGRAM_FREQUENCY_BINNING_KEY = "spectrogram_frequency_binning"
 
 HOLODOPPLER_LAYOUT = SourceFileLayout(
     label="HD",
@@ -144,6 +148,69 @@ class HolodopplerSource(TypedSource):
         if sampling_freq is None or batch_stride is None:
             raise KeyError("Could not resolve Holodoppler timing from HD HDF5 or config.")
         return HolodopplerTiming(float(sampling_freq), float(batch_stride))
+
+    def spectrogram_frequency_parameters(self, bin_count: int) -> dict[str, object]:
+        """Resolve the original FFT size and validate the 4-D HD export layout.
+
+        The FFT processes one full batch, independently of registration batches
+        and Shack-Hartmann reference windows. Mirror main_default's frequency
+        selection before averaging; unresolved HD bounds mean the full spectrum.
+        """
+        parameters = self._parameters() or {}
+        batch_size = scalar_from_value(parameters.get(HD_BATCH_SIZE_KEY))
+        if batch_size is None:
+            batch_size = scalar_from_value(self._config.get(HD_BATCH_SIZE_KEY))
+        if (
+            isinstance(batch_size, (bool, np.bool_))
+            or not isinstance(batch_size, (int, float, np.integer, np.floating))
+            or not np.isfinite(batch_size) or batch_size < 2 or batch_size != int(batch_size)
+        ):
+            raise ValueError("HoloDoppler spectrogram batch_size must be an integer of at least two.")
+        fft_bin_count = int(batch_size)
+        start = scalar_from_value(parameters.get(HD_SPECTROGRAM_FREQUENCY_START_KEY))
+        end = scalar_from_value(parameters.get(HD_SPECTROGRAM_FREQUENCY_END_KEY))
+        bounds_available = all(
+            isinstance(value, (int, float, np.integer, np.floating))
+            and not isinstance(value, (bool, np.bool_))
+            and np.isfinite(value) and 0 <= value <= 1
+            for value in (start, end)
+        )
+        if not bounds_available:
+            start, end = 0.0, 0.5
+        start, end = float(start), float(end)
+        start_index, end_index = int(fft_bin_count * start), int(fft_bin_count * end)
+        selected_count = end_index + max(0, fft_bin_count - (start_index + fft_bin_count // 2))
+        if bin_count < 1 or selected_count == 0 or selected_count % bin_count:
+            raise ValueError(
+                f"HD /spectrograms has {bin_count} bins, but batch_size={fft_bin_count} "
+                f"and frequency bounds ({start}, {end}) select {selected_count} FFT samples, "
+                "which must divide into whole averaged bins."
+            )
+        binning_factor = selected_count // bin_count
+        configured_binning = scalar_from_value(parameters.get(HD_SPECTROGRAM_FREQUENCY_BINNING_KEY))
+        if configured_binning is not None and (
+            isinstance(configured_binning, (bool, np.bool_)) or configured_binning != binning_factor
+        ):
+            raise ValueError(
+                f"HD /spectrograms requires averaging {binning_factor} samples per bin, "
+                f"inconsistent with spectrogram_frequency_binning={configured_binning}."
+            )
+        return {
+            "fft_bin_count": fft_bin_count,
+            "frequency_binning_factor": binning_factor,
+            "fft_bin_count_parameter": HD_BATCH_SIZE_KEY,
+            "fft_bin_count_source_path": (
+                f"/{HD_PARAMETERS_KEY}" if parameters.get(HD_BATCH_SIZE_KEY) is not None
+                else HD_CONFIG_FILENAME
+            ),
+            "frequency_selection": "HD_spectrogram_frequency_bounds",
+            HD_SPECTROGRAM_FREQUENCY_START_KEY: start,
+            HD_SPECTROGRAM_FREQUENCY_END_KEY: end,
+            "frequency_selection_source": (
+                f"/{HD_PARAMETERS_KEY}" if bounds_available else "full_spectrum_fallback"
+            ),
+            "selected_fft_sample_count": selected_count,
+        }
 
     def pixel_pitch(self) -> PixelPitch:
         """Return the native ``(x, y)`` pixel pitch from ``HD_parameters``."""

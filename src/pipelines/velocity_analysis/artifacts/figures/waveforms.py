@@ -21,6 +21,7 @@ from calculations.blood_flow_velocity.signal_analysis.waveform.morphology import
 from calculations.blood_flow_velocity.signal_analysis.waveform.paired_cycles import (
     paired_vessel_cycles,
 )
+from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE as STYLE
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 from pipelines.velocity.semantics import (
     resolve_velocity_semantics,
@@ -132,15 +133,15 @@ def _ri_pi_plot(
 ) -> Path:
     semantics = velocity_semantics or resolve_velocity_semantics()
     fig, ax = _plt().subplots(figsize=(7.0, 4.0))
-    ax.plot(time[: values.size], values, color="k", linewidth=2)
+    ax.plot(time[: values.size], values, color="k", linewidth=STYLE.signal_line_width)
     for y, label in (
         (metric.maximum, f"{metric.maximum:.1f}{semantics.value_suffix}"),
         (metric.minimum, f"{metric.minimum:.1f}{semantics.value_suffix}"),
     ):
-        ax.axhline(y, color="0.45", linestyle="--", linewidth=1.5)
+        ax.axhline(y, color="0.45", linestyle="--", linewidth=STYLE.reference_line_width)
         ax.text(time[-1], y, label, ha="right", va="bottom", backgroundcolor="w")
     if metric_name == "PI":
-        ax.axhline(metric.mean, color="0.45", linestyle="--", linewidth=1.5)
+        ax.axhline(metric.mean, color="0.45", linestyle="--", linewidth=STYLE.reference_line_width)
     ax.text(
         0.40,
         0.84,
@@ -187,10 +188,10 @@ def _arterial_waveform_analysis_plot(
 ) -> Path:
     semantics = velocity_semantics or resolve_velocity_semantics()
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
-    ax.plot(data.padded_time, data.padded_gradient, color="0.85", linewidth=2)
-    ax.plot(data.padded_time, data.padded_signal, color="0.85", linewidth=2)
-    ax.plot(data.pulse_time, data.gradient, color="0.70", linewidth=2)
-    ax.plot(data.pulse_time, cycle, color="k", linewidth=2)
+    ax.plot(data.padded_time, data.padded_gradient, color="0.85", linewidth=STYLE.signal_line_width)
+    ax.plot(data.padded_time, data.padded_signal, color="0.85", linewidth=STYLE.signal_line_width)
+    ax.plot(data.pulse_time, data.gradient, color="0.70", linewidth=STYLE.signal_line_width)
+    ax.plot(data.pulse_time, cycle, color="k", linewidth=STYLE.signal_line_width)
     primary_peak = int(data.peak_indexes[0])
     _annotated_vline(
         ax,
@@ -291,8 +292,8 @@ def _venous_waveform_analysis_plot(
 ) -> Path:
     semantics = velocity_semantics or resolve_velocity_semantics()
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
-    ax.plot(data.padded_time, data.padded_signal, color="0.85", linewidth=2)
-    ax.plot(data.pulse_time, cycle, color="k", linewidth=2)
+    ax.plot(data.padded_time, data.padded_signal, color="0.85", linewidth=STYLE.signal_line_width)
+    ax.plot(data.pulse_time, cycle, color="k", linewidth=STYLE.signal_line_width)
     _annotated_vline(
         ax,
         data.pulse_time[data.peak_index],

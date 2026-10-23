@@ -20,6 +20,9 @@ shape, unit, layout, or writer behavior.
 | Current output paths | `schema/eyeflow_output.py` | producer and consumer pipelines |
 | HDF5 writes | `h5_access.py`, `writers/h5.py` | output-schema tests and producer tests |
 | Output folders/artifacts | `output_manager.py`, `writers/artifact_names.py` | the specific writer or report module; `artifact_migration.py` for existing results |
+| Article figure styling | `article_formatting.py` | the producer's figure builder; writers save already formatted figures |
+| General ticks/legend/colorbar layout | `figure_formatting.py` | article styles or non-article producer; no font/export policy is imposed |
+| Article PNG/EPS pairs | `writers/article.py` | `article_formatting.py` and producer artifact tests; general PNG exports stay opt-in |
 | ZIP inputs | `archives/zip_archive.py` | input-expansion tests in `test_run_service.py` |
 | Profile dataset serialization | `writers/h5.py` | profile producer/consumer tests |
 

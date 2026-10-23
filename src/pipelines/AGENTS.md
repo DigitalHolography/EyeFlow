@@ -104,7 +104,8 @@ over beats after each beat's whole/early/late phase median, reusing `PerBeat/Raw
 Ignore NaNs; one valid beat gives zero, none gives NaN. Persist raw power units,
 `ddof=0`, reduction order, windows, and valid beat counts per frequency.
 Positive-frequency PNG/EPS overlays use the actual positive/DC half of the
-source: `P=floor(N/2)` bins at spacing `fs/N`. Normalize each curve by the
+source, ending before the first negative center in `FrequencyBinTable`.
+Normalize each curve by the
 Hv, the same NaN-aware central-quarter median of the full spectrum used by A0
 (64 source bins use bins 24 through 39), before cropping from stored `Metrics/index_max1`
 through bin `P-1` inclusive. Scale STD by the same per-curve divisor, retain
@@ -112,24 +113,37 @@ linear power. The runner publishes the full signed frequency mapping once at
 `/ProcessingSpectrograms/FrequencyBinTable`, as a `(freq,)` array in `kHz` where
 each zero-based array index identifies the source bin. Use the
 shared conversions in `calculations/math/frequency.py` for tables, metrics, and
-plots. Table publication requires valid sampling calibration, independently of
+plots. The original FFT length is HD `batch_size`; selection bounds come from
+HD_parameters `spectrogram_frequency_start` and `spectrogram_frequency_end`.
+Unresolved bounds fall back together to `(0, 0.5)`, meaning the full FFT.
+Mirror HD selection `[:int(B*end)]` followed by `[int(B*start)+B//2:]`, then
+average the contributing signed FFT frequencies. Derive the averaging factor
+from selected samples and exported bins, validating recorded
+`spectrogram_frequency_binning` when available. Table publication requires
+valid sampling and FFT calibration, independently of
 gap support, cardiac timing, and figure export. Missing/invalid stored peaks,
 all-NaN neighborhoods, or nonpositive divisors omit the affected figures.
 Median/early/late use solid/dashed/dotted signals and envelope patterns.
-The full-domain heatmap/median frequency axes use full-spectrum spacing `fs/N` with DC zero,
-positive-then-negative order, and kHz labels. Resolve `fs` from shared
+The full-domain heatmap/median frequency axes use the persisted averaged centers,
+positive-then-negative order, and kHz labels. DC is included in the first average;
+it is not the center of that average. A 256-to-64 full export averages four samples,
+starting at `1.5*fs/256` Hz with spacing `4*fs/256` Hz. Resolve `fs` from shared
 `Meta/SamplingFrequencyHz/value`; publish it from HD timing parameters/config
 before export if absent, since velocity analysis may run later. Missing/invalid
 sampling metadata skips frequency figures while keeping other products.
 The spectrum figure and pooled scalar metrics consume `MedianPhaseBeat`.
 All gap metrics live directly under `/ProcessingSpectrograms/Gaps/Metrics`.
-Phase curves `A0_t`, `A1_t`, `A2_t`, `R1_t`, `R2_t`, `Z1_t`, and `Z2_t` use
-`MedianBeat` with the pooled peak indices fixed at every phase. Pooled scalar
-metrics use the same seven names without `_t`; output heights `h0`/`h1`/`hv`
-and `rho_h` are absent.
-Each curve also has `_early` and `_late` scalar medians over closed phase
-intervals (default `[0,1/3]` and `[1/3,1]`), and a signed `delta_<metric>` scalar.
-All seven deltas are late-minus-early. Generic helpers in
+Phase curves `A0_t`, `A_t`, `A2_t`, `R1_t`, and `SE` use `MedianBeat` with the
+pooled peak indices fixed at every phase. Pooled scalar metrics use `A0`, `A`,
+`A2`, and `R1`; output heights `h0`/`h1`/`hv`, `rho_h`, and the former
+`R2`/`Z2` products are absent. `A` is the former `A1` integral.
+`SE` is the phasewise spectral excess. `SEI` is the whole-cycle median of valid phasewise `SE`,
+not a ratio calculated from the pooled spectrum; no pooled-SEI output is emitted.
+Each curve also has scalar medians over closed phase intervals (default
+`[0,1/3]` and `[1/3,1]`) and a signed late-minus-early delta. Area and ratio
+summaries use their curve base name with `_early`, `_late`, and `delta_`
+forms; the `SE` summaries are
+`SEI_early`, `SEI_late`, and `delta_SEI`. All deltas are late-minus-early. Generic helpers in
 `calculations/math/phase_windows.py` own closed interval masks, NaN-aware medians,
 and subtraction. `run_gap_analysis` and `pack_spectrum_metrics` accept
 `early_interval`/`late_interval` cycle-fraction bounds in `[0,1]`; use the same
@@ -149,8 +163,8 @@ splitting at `floor(bin_count/2)` for odd lengths. All-NaN peak halves retain Na
 indexes, log a warning, and are identified by per-half valid-bin counts in metadata.
 `A0` is valley-median height times peak-to-peak width in kHz; `A2` is the
 peak-height mean times the same width. These swap the former A0/A2 meanings.
-Use `df_khz=fs/(N*1000)` and width `(index_max2-index_max1)*df_khz`, with no
-extra bin. `A1` is the trapezoidal integral between those peak bins with positive
+Use `df_khz=q*fs/(B*1000)` for averaging factor `q` and original FFT size `B` and width `(index_max2-index_max1)*df_khz`, with no
+extra bin. `A` is the trapezoidal integral between those peak bins with positive
 `df_khz` spacing in stored HD order (unwrapped kHz, no signed-axis sorting).
 Areas and their phase summaries/deltas have source-power-times-kHz units;
 peak/valley heights retain power units. Preserve calibration, spacing, integration
@@ -158,11 +172,31 @@ method, and units in metadata. Artifact axis labels abbreviate `a.u.*kHz` to
 `a.u.`. Resolve calibration from shared
 `Meta/SamplingFrequencyHz/value`; missing/invalid calibration warns and skips
 the Metrics family while retaining raw/aggregate spectra and filters.
-`R1=A1/A0`, `R2=A2/A0`,
-`Z1=(A1-A0)/A0`, and `Z2=(A2-A0)/A0` are dimensionless; zero/missing A0 gives
-NaN. All seven metrics have pooled scalars, phase curves, early/late medians,
-signed late-minus-early deltas, and matching PNG/EPS phase plots.
+`R1=A/A0` and `SE=(A_t-A0_t)/A0_t` are dimensionless. Ratios require finite,
+strictly positive A0 and finite numerator/result; invalid phases remain NaN.
+`SEI=nanmedian(SE)` summarizes valid source phase samples equally and is emitted
+only with phase spectra; all-invalid cycles yield NaN. Its metadata identifies
+the SE source and source/valid/invalid phase counts. No unconfigured signal or
+stability cutoff is inferred. All five output metrics have phase curves,
+early/late medians, signed late-minus-early deltas, and matching PNG/EPS phase plots.
 Metric metadata records the neighborhood.
+`low_freq_spectra/qc.py` packs descriptive diagnostics under the schema-owned
+`ProcessingSpectrograms/Gaps/QC` families: DataCompleteness,
+ValleyRepeatability, SEIBeatSensitivity, PotentialMotionContamination, and
+SpatialSupportQuality. The runner writes these after scientific gap products.
+QC persists only six datasets: AcquisitionValidFraction, ValidSEPhaseFraction,
+RelativeMAD, DeltaSEI, RelativeBroadbandChange, and RetainedFieldFraction in
+their owning families. Reconstruct counts, valley heights/dispersion, and the
+reference SEI from existing source datasets for plotting; do not duplicate them
+under QC. QC never changes SE/SEI or rejects samples. Compare valley heights across beats
+at the same phase; unscaled MAD needs two valid beats. Leave-one-beat-out SEI
+repeats raw production reductions, reselects pooled peaks, and records phase
+support as metadata alongside signed omission-minus-full changes. Broadband relative consecutive-
+frame changes are descriptive and not a validated saccade detector. Mask coverage
+uses the whole reduced rectangular field; anatomy needs visual review. Reuse
+reduced spectra, never rescan the HD spatial video. Missing timing still permits
+acquisition/mask QC. `artifacts.py` exports a diagnostic `gaps_qc.png` only,
+without article formatting or automatic EPS. See data contracts for definitions.
 Independent `PerBeat/BandLimited` keeps DC plus the configured non-DC harmonics
 (default 12) via the shared bandlimiting API in signed mode, using
 periodic phase boundaries. Original durations define each effective Hz cutoff.

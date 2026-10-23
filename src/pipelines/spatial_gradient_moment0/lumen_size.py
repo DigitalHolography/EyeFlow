@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 
 from calculations.math import nanmean, nanmedian
+from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE, apply_article_style
+from input_output.figure_formatting import LegendLayout, add_legend
 from input_output.output_manager import OutputType
 
 
@@ -83,12 +85,13 @@ def _save_lumen_size_plot(
     time_seconds = np.linspace(0.0, period_seconds, signals.shape[0], endpoint=False)
     for signal, label in zip(signals.T, labels):
         if np.any(np.isfinite(signal)):
-            ax.plot(time_seconds, signal, label=label)
+            ax.plot(time_seconds, signal, label=label,
+                    linewidth=DIAGNOSTIC_ARTICLE_STYLE.secondary_line_width)
     if ax.lines:
         if len(ax.lines) > 1:
-            ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), fontsize="small")
+            add_legend(ax, LegendLayout(loc="upper left", bbox_to_anchor=(1.02, 1.0)))
         else:
-            ax.legend(loc="best", fontsize="small")
+            add_legend(ax, DIAGNOSTIC_ARTICLE_STYLE.legend_layout)
     else:
         ax.text(
             0.5,
@@ -105,6 +108,7 @@ def _save_lumen_size_plot(
         xlim=(0.0, period_seconds),
     )
     ax.grid(True, alpha=0.25)
+    apply_article_style(fig)
     path = output.path_for(OutputType.PNG, f"lumen_size/{filename}")
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=150, bbox_inches="tight")

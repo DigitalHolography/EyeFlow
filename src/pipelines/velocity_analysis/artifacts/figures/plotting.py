@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
+from input_output.article_formatting import (
+    ARTICLE_ASPECT_RATIO,
+    DIAGNOSTIC_ARTICLE_STYLE,
+    apply_article_style,
+)
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
+from input_output.figure_formatting import add_colorbar, add_legend
 
 from .common import _finite_image, _matplotlib, _plt
 
@@ -64,13 +71,14 @@ def _line_plot(
 ) -> Path:
     fig, ax = _plt().subplots(figsize=(7.5, 3.0))
     for values, style, color, label in series:
-        ax.plot(time[: values.size], values, style, color=color, linewidth=2, label=label)
+        ax.plot(time[: values.size], values, style, color=color,
+                linewidth=DIAGNOSTIC_ARTICLE_STYLE.signal_line_width, label=label)
     if title:
         ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     if any(label for _, _, _, label in series):
-        ax.legend(loc="best")
+        add_legend(ax, DIAGNOSTIC_ARTICLE_STYLE.legend_layout)
     _style_axes(ax)
     return writer.savefig(fig, suffix)
 
@@ -111,8 +119,9 @@ def _image_map(
     ax.axis("off")
     ax.set_aspect("equal")
     if colorbar:
-        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label(label)
+        add_colorbar(fig, im, ax=ax, label=label,
+                     layout=DIAGNOSTIC_ARTICLE_STYLE.colorbar_layout)
+    apply_article_style(fig)
     return writer.savefig(fig, suffix, dpi=180)
 
 def _mask_background_map(
@@ -138,6 +147,7 @@ def _mask_background_map(
         ax.imshow(overlay, cmap=_matplotlib().colors.ListedColormap([color or "red"]), alpha=0.45)
     ax.axis("off")
     ax.set_aspect("equal")
+    apply_article_style(fig)
     return writer.savefig(fig, suffix, dpi=180)
 
 def _velocity_gradient_values(
@@ -171,16 +181,18 @@ def _colorbar(
         vmin=vmin,
         vmax=vmax if vmax > vmin else vmin + 1.0,
     )
-    cbar = fig.colorbar(
+    add_colorbar(
+        fig,
         _matplotlib().cm.ScalarMappable(norm=norm, cmap=cmap),
-        cax=ax,
-        orientation="horizontal",
+        cax=ax, label=label,
+        layout=replace(DIAGNOSTIC_ARTICLE_STYLE.colorbar_layout, orientation="horizontal"),
     )
-    cbar.set_label(label)
+    apply_article_style(fig)
     return writer.savefig(fig, suffix, dpi=150)
 
 def _annotated_vline(ax, x: float, label: str) -> None:
-    ax.axvline(x, color="0.25", linestyle="--", linewidth=1.5, zorder=1)
+    ax.axvline(x, color="0.25", linestyle="--",
+               linewidth=DIAGNOSTIC_ARTICLE_STYLE.reference_line_width, zorder=1)
     ax.text(
         x,
         0.04,
@@ -200,7 +212,8 @@ def _annotated_hline(
     color: str = "0.25",
     vertical_alignment: str = "top",
 ) -> None:
-    ax.axhline(y, color=color, linestyle="--", linewidth=1.5, zorder=1)
+    ax.axhline(y, color=color, linestyle="--",
+               linewidth=DIAGNOSTIC_ARTICLE_STYLE.reference_line_width, zorder=1)
     ax.text(
         0.98,
         y,
@@ -213,7 +226,6 @@ def _annotated_hline(
         backgroundcolor="w",
     )
 def _style_axes(ax, *, grid: bool = False) -> None:
-    ax.set_box_aspect(1 / 1.618)
+    ax.set_box_aspect(1 / ARTICLE_ASPECT_RATIO)
     ax.grid(grid)
-    for spine in ax.spines.values():
-        spine.set_linewidth(1.5)
+    apply_article_style(ax.figure, DIAGNOSTIC_ARTICLE_STYLE, axes=[ax])

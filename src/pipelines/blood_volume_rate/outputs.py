@@ -14,25 +14,23 @@ from calculations.blood_volume_rate import (
     total_masked_edges_flow,
 )
 from calculations.math import nanmean_float32, nanmedian
+from input_output.article_formatting import (
+    ARTICLE_ASPECT_RATIO as LUMEN_DIAMETER_FIGURE_ASPECT_RATIO,
+    ARTICLE_DPI as LUMEN_DIAMETER_FIGURE_DPI,
+    ARTICLE_WIDTH_INCHES as LUMEN_DIAMETER_FIGURE_WIDTH_INCHES,
+    COMPACT_ARTICLE_STYLE,
+    apply_article_style,
+    create_article_figure,
+    prepare_article_fill_layer,
+)
 from input_output.schema import EyeFlowOutputPaths
-from input_output.writers.eps import EpsArtifactWriter, write_eps_file
-from input_output.writers.png import PngArtifactWriter
+from input_output.figure_formatting import add_legend
+from input_output.writers.article import save_article_figure_pair
 from pipeline_engine.base import DatasetValue
 from pipelines.profile_outputs import profile_dataset, profile_h5_options
 
 LUMEN_DIAMETER_BIN_WIDTH_MICRONS = 5.0
-LUMEN_DIAMETER_FIGURE_DPI = 320
-LUMEN_DIAMETER_FIGURE_WIDTH_INCHES = 8.0 / 2.54
-LUMEN_DIAMETER_FIGURE_ASPECT_RATIO = 1.618
-LUMEN_DIAMETER_FONT_FAMILY = "Times New Roman"
-LUMEN_DIAMETER_FONT_SIZE = 8
-LUMEN_DIAMETER_LEGEND_FONT_SIZE = 8
-LUMEN_DIAMETER_HISTOGRAM_GRAY = "0.8"
-LUMEN_DIAMETER_HISTOGRAM_EDGE_GRAY = "0.25"
-LUMEN_DIAMETER_BOX_LINE_WIDTH = 0.4
-LUMEN_DIAMETER_GAUSSIAN_LINE_WIDTH = 0.625
-BLOOD_VOLUME_RATE_ENVELOPE_GRAY = "0.80"
-BLOOD_VOLUME_RATE_LINE_WIDTH = 0.8  
+BLOOD_VOLUME_RATE_ENVELOPE_GRAY = COMPACT_ARTICLE_STYLE.envelope_color
 
 
 def pack_gradient_edge_outputs(
@@ -283,13 +281,7 @@ def export_lumen_diameter_distributions(
         diameter_microns = diameter_microns[np.isfinite(diameter_microns)]
         fig = _lumen_diameter_distribution_figure(diameter_microns)
         filename = f"lumen_diameter/{vessel}_lumen_diameter_distribution"
-        png_path = output.path_for(_png_output_type(), f"{filename}.png")
-        eps_path = output.path_for(_eps_output_type(), f"{filename}.eps")
-        png_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(png_path, dpi=LUMEN_DIAMETER_FIGURE_DPI)
-        write_eps_file(eps_path, fig, dpi=LUMEN_DIAMETER_FIGURE_DPI)
-        _close_figure(fig)
-        paths.extend((png_path, eps_path))
+        paths.extend(save_article_figure_pair(output, fig, filename, dpi=LUMEN_DIAMETER_FIGURE_DPI))
     return paths
 
 
@@ -306,45 +298,24 @@ def export_blood_volume_rate_signals(
         ("vein", vein_total_masked_edges),
     ):
         stem = f"blood_volume_rate/{vessel}"
-        paths.append(
-            PngArtifactWriter(output, stem).save_figure(
-                _blood_volume_rate_figure(_metric_data(values)),
-                "blood_volume_rate.png",
-                dpi=LUMEN_DIAMETER_FIGURE_DPI,
-                bbox_inches=None,
-            )
-        )
-        paths.append(
-            EpsArtifactWriter(output, stem).save_figure(
-                _blood_volume_rate_figure(_metric_data(values)),
-                "blood_volume_rate.eps",
-                dpi=LUMEN_DIAMETER_FIGURE_DPI,
-            )
-        )
+        paths.extend(save_article_figure_pair(
+            output, _blood_volume_rate_figure(_metric_data(values)), "blood_volume_rate",
+            stem=stem, dpi=LUMEN_DIAMETER_FIGURE_DPI,
+        ))
     return paths
 
 
 def _blood_volume_rate_figure(total_masked_edges: np.ndarray):
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
-    from matplotlib.figure import Figure
-    from matplotlib.text import Text
-
     values = np.asarray(total_masked_edges, dtype=np.float64)
     if values.ndim != 2:
         raise ValueError(
             "total_masked_edges must have exactly two dimensions (time, beat)."
         )
 
-    figure_height = (
-        LUMEN_DIAMETER_FIGURE_WIDTH_INCHES
-        / LUMEN_DIAMETER_FIGURE_ASPECT_RATIO
+    fig, ax = create_article_figure(
+        width=LUMEN_DIAMETER_FIGURE_WIDTH_INCHES,
+        aspect_ratio=LUMEN_DIAMETER_FIGURE_ASPECT_RATIO,
     )
-    fig = Figure(
-        figsize=(LUMEN_DIAMETER_FIGURE_WIDTH_INCHES, figure_height),
-        constrained_layout=True,
-    )
-    FigureCanvasAgg(fig)
-    ax = fig.subplots()
 
     median = nanmedian(values, axis=1, dtype=np.float64)
     finite = np.isfinite(values)
@@ -364,56 +335,43 @@ def _blood_volume_rate_figure(total_masked_edges: np.ndarray):
     )
     standard_deviation = np.sqrt(variance)
     cardiac_cycle = np.linspace(0.0, 1.0, values.shape[0])
+    if COMPACT_ARTICLE_STYLE.envelope_alpha < 1:
+        prepare_article_fill_layer(ax)
     ax.fill_between(
         cardiac_cycle,
         median - standard_deviation,
         median + standard_deviation,
-        color=BLOOD_VOLUME_RATE_ENVELOPE_GRAY,
-        linewidth=0.0,
+        **COMPACT_ARTICLE_STYLE.envelope_kwargs(),
+        zorder=0,
     )
     ax.axhline(
         0.0,
         color="black",
         linestyle=":",
-        linewidth=LUMEN_DIAMETER_BOX_LINE_WIDTH,
+        linewidth=COMPACT_ARTICLE_STYLE.reference_line_width,
     )
     ax.plot(
         cardiac_cycle,
         median,
         color="black",
         linestyle="-",
-        linewidth=BLOOD_VOLUME_RATE_LINE_WIDTH,
+        linewidth=COMPACT_ARTICLE_STYLE.signal_line_width,
     )
 
     ax.set_xlim(0.0, 1.0)
-    ax.set_xlabel(r"Cardiac Phase $t/T$", fontsize=LUMEN_DIAMETER_FONT_SIZE)
-    ax.set_ylabel(r"$Q(t)$ (mm³/s)", fontsize=LUMEN_DIAMETER_FONT_SIZE)
-    ax.tick_params(axis="both", labelsize=LUMEN_DIAMETER_FONT_SIZE)
-    for spine in ax.spines.values():
-        spine.set_visible(True)
-        spine.set_color("black")
-        spine.set_linewidth(LUMEN_DIAMETER_BOX_LINE_WIDTH)
-    for text in fig.findobj(match=Text):
-        text.set_fontfamily(LUMEN_DIAMETER_FONT_FAMILY)
+    ax.set_xlabel(r"Cardiac Phase $t/T$")
+    ax.set_ylabel(r"$Q(t)$ (mm³/s)")
+    apply_article_style(fig, COMPACT_ARTICLE_STYLE)
     return fig
 
 
 def _lumen_diameter_distribution_figure(diameter_microns: np.ndarray):
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
-    from matplotlib.figure import Figure
     from matplotlib.lines import Line2D
-    from matplotlib.text import Text
 
-    figure_height = (
-        LUMEN_DIAMETER_FIGURE_WIDTH_INCHES
-        / LUMEN_DIAMETER_FIGURE_ASPECT_RATIO
+    fig, ax = create_article_figure(
+        width=LUMEN_DIAMETER_FIGURE_WIDTH_INCHES,
+        aspect_ratio=LUMEN_DIAMETER_FIGURE_ASPECT_RATIO,
     )
-    fig = Figure(
-        figsize=(LUMEN_DIAMETER_FIGURE_WIDTH_INCHES, figure_height),
-        constrained_layout=True,
-    )
-    FigureCanvasAgg(fig)
-    ax = fig.subplots()
     values = np.asarray(diameter_microns, dtype=np.float64).reshape(-1)
     values = values[np.isfinite(values)]
 
@@ -423,9 +381,7 @@ def _lumen_diameter_distribution_figure(diameter_microns: np.ndarray):
     ax.hist(
         values,
         bins=edges,
-        color=LUMEN_DIAMETER_HISTOGRAM_GRAY,
-        edgecolor=LUMEN_DIAMETER_HISTOGRAM_EDGE_GRAY,
-        linewidth=0.25,
+        **COMPACT_ARTICLE_STYLE.histogram_kwargs(),
     )
 
     if values.size and standard_deviation > 0.0:
@@ -440,7 +396,7 @@ def _lumen_diameter_distribution_figure(diameter_microns: np.ndarray):
             * LUMEN_DIAMETER_BIN_WIDTH_MICRONS,
             color="black",
             linestyle="--",
-            linewidth=LUMEN_DIAMETER_GAUSSIAN_LINE_WIDTH,
+            linewidth=COMPACT_ARTICLE_STYLE.fit_line_width,
         )
 
     statistic_handles = [
@@ -452,22 +408,10 @@ def _lumen_diameter_distribution_figure(diameter_microns: np.ndarray):
             label=_statistic_label("SD", standard_deviation),
         ),
     ]
-    ax.legend(
-        handles=statistic_handles,
-        loc="upper right",
-        fontsize=LUMEN_DIAMETER_LEGEND_FONT_SIZE,
-        handlelength=2.0,
-        frameon=False,
-    )
-    ax.set_xlabel("Lumen diameter (µm)", fontsize=LUMEN_DIAMETER_FONT_SIZE)
-    ax.set_ylabel("Count", fontsize=LUMEN_DIAMETER_FONT_SIZE)
-    ax.tick_params(axis="both", labelsize=LUMEN_DIAMETER_FONT_SIZE)
-    for spine in ax.spines.values():
-        spine.set_visible(True)
-        spine.set_color("black")
-        spine.set_linewidth(LUMEN_DIAMETER_BOX_LINE_WIDTH)
-    for text in fig.findobj(match=Text):
-        text.set_fontfamily(LUMEN_DIAMETER_FONT_FAMILY)
+    add_legend(ax, COMPACT_ARTICLE_STYLE.legend_layout, handles=statistic_handles)
+    ax.set_xlabel("Lumen diameter (µm)")
+    ax.set_ylabel("Count")
+    apply_article_style(fig, COMPACT_ARTICLE_STYLE)
     return fig
 
 
@@ -487,24 +431,6 @@ def _statistic_label(name: str, value: float) -> str:
     if not np.isfinite(value):
         return f"{name}: n/a"
     return f"{name}: {value:.1f} µm"
-
-
-def _close_figure(fig) -> None:
-    import matplotlib.pyplot as plt
-
-    plt.close(fig)
-
-
-def _png_output_type():
-    from input_output.output_manager import OutputType
-
-    return OutputType.PNG
-
-
-def _eps_output_type():
-    from input_output.output_manager import OutputType
-
-    return OutputType.EPS
 
 
 def _validate_profile_segment_alignment(vessel_name, velocity, gradient) -> None:
