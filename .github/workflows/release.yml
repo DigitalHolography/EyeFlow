@@ -300,7 +300,7 @@ jobs:
           RELEASE_COMMIT: ${{ steps.commit.outputs.release_commit }}
         run: |
           $ErrorActionPreference = "Stop"
-          # The merge below may return 1 for the one generated-file conflict
+          # The merge below may return 1 for release-version file conflicts
           # handled explicitly in this step.
           $PSNativeCommandUseErrorActionPreference = $false
 
@@ -326,7 +326,8 @@ jobs:
           if ($mergeExitCode -ne 0) {
               $conflictedPaths = @(git diff --name-only --diff-filter=U)
               Assert-LastExit "Could not inspect release merge conflicts."
-              $unexpectedConflicts = @($conflictedPaths | Where-Object { $_ -ne "uv.lock" })
+              $releaseVersionFiles = @("pyproject.toml", "uv.lock")
+              $unexpectedConflicts = @($conflictedPaths | Where-Object { $_ -notin $releaseVersionFiles })
 
               if ($conflictedPaths.Count -eq 0 -or $unexpectedConflicts.Count -gt 0) {
                   $conflictSummary = $conflictedPaths -join ", "
@@ -334,12 +335,15 @@ jobs:
                   throw "Release merge has unexpected conflicts: $conflictSummary"
               }
 
-              # uv lock updates the root package version for the release commit.
-              # Keep that generated release lockfile when merging back into dev.
-              git checkout --theirs -- uv.lock
-              Assert-LastExit "Could not select the release version of uv.lock."
-              git add -- uv.lock
-              Assert-LastExit "Could not stage the resolved uv.lock."
+              # The release tree comes from tagged dev, with its project version
+              # and lockfile updated. Nearby metadata edits can make Git report
+              # a pyproject.toml conflict even though both sides share that code.
+              foreach ($path in $conflictedPaths) {
+                  git checkout --theirs -- $path
+                  Assert-LastExit "Could not select the release version of $path."
+                  git add -- $path
+                  Assert-LastExit "Could not stage the resolved $path."
+              }
 
               $remainingConflicts = @(git diff --name-only --diff-filter=U)
               Assert-LastExit "Could not verify the resolved release merge."
@@ -352,6 +356,11 @@ jobs:
 
           $releaseVersion = $env:TAG_NAME.Substring(1)
           $escapedReleaseVersion = [regex]::Escape($releaseVersion)
+          $pyproject = Get-Content -LiteralPath "pyproject.toml" -Raw -Encoding UTF8
+          if ($pyproject -notmatch "(?m)^version\s*=\s*`"$escapedReleaseVersion`"\s*$") {
+              git merge --abort
+              throw "Merged pyproject.toml does not contain EyeFlow version $releaseVersion."
+          }
           $lockfile = Get-Content -LiteralPath "uv.lock" -Raw -Encoding UTF8
           if ($lockfile -notmatch "(?m)^name = `"eyeflow`"\r?\nversion = `"$escapedReleaseVersion`"\r?$") {
               git merge --abort
