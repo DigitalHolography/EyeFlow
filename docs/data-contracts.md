@@ -6,6 +6,32 @@ remain the final source of truth.
 
 ## Article figure formatting
 
+`src/input_output/figure_formatting.py` provides general-purpose, opt-in
+Matplotlib helpers for article and non-article figures. It imposes no font,
+backend, export format, or global settings:
+
+- `TickFormat` and `apply_tick_format(axis, ...)` configure decimal or
+  significant-digit precision, major interval density, integer ticks,
+  scientific notation/offsets, and tick direction, length, width, and padding.
+  Defaults retain existing locators and formatters, including logarithmic ticks
+  and cardiac-phase fractions. For calibrated bin axes, pass `positions` and
+  physical `values`; labels use the values without changing bin order or limits.
+  `format_tick_labels()` provides the same precision rules without touching axes,
+  including suppression of negative zero.
+- `LegendLayout` and `add_legend()` share placement, columns, frame visibility,
+  anchor, handle lengths, and spacing. Existing handles, labels, and theme fonts
+  are preserved unless overridden. Axes-level and figure-level legends are supported.
+- `ColorbarLayout` and `add_colorbar()` share orientation/location, relative
+  padding/fraction/shrink/aspect/anchors, label padding, optional text sizes,
+  outline appearance, and tick formatting. Both attached bars and explicit
+  standalone `cax` are supported; explicit axes retain their geometry. Colormaps,
+  normalization, physical units, and data limits remain owned by the caller.
+
+Article and diagnostic producers use these helpers for their existing legends
+and colorbars. Layout fields left as `None` delegate to Matplotlib; explicit
+keyword overrides take precedence over reusable layouts. No additional EPS
+exports or article styling are introduced by the general helpers.
+
 `src/input_output/article_formatting.py` owns shared, opt-in article styling.
 `ArticleStyle` configures Times New Roman text, Times-compatible STIX math,
 separate axis-label/tick/legend/title/annotation sizes, borders, tick rotation,
@@ -41,6 +67,13 @@ axis limits or `ArticleStyle.x_margin`/`y_margin` settings take precedence.
 axes. Apply it after adding labels, legends, annotations, and colorbars.
 Neither helper changes global Matplotlib settings. Writers serialize the
 already formatted figure without imposing scientific presentation choices.
+`ArticleStyle` composes `x_ticks`, `y_ticks`, `legend_layout`, and
+`colorbar_layout` from the general helpers. Build legends/colorbars with the
+chosen layout before applying article typography. Article font sizes applied
+last take precedence over general layout font sizes. Spectrum frequency labels
+remain explicitly mapped, while its automatic power ticks use the shared
+integer/precision policy. Scientific frequency mapping and peak-label collision
+selection remain in the spectrum producer.
 
 Article PNG/EPS pairs explicitly use
 `input_output.writers.article.save_article_figure_pair(output, fig, name)`.
