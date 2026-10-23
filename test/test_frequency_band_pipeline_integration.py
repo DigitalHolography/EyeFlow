@@ -75,14 +75,16 @@ def test_frequency_band_run_produces_physical_downstream_outputs(legacy_spectrog
 
             artery_velocity = output.get(schema.analysis.retinal_artery_velocity_signal)
             assert artery_velocity.attrs["unit"] == "mm/s"
-            assert artery_velocity.attrs["velocity_estimation_method"] == "frequency_bands"
-            assert artery_velocity.attrs["band_ratio_frequency_scale_hz"] == 2.0
+            attrs = output.read_attrs(schema.analysis.retinal_artery_velocity_signal)
+            assert attrs["velocity_estimation_method"] == "frequency_bands"
+            assert attrs["band_ratio_frequency_scale_hz"] == 2.0
             assert np.any(np.isfinite(artery_velocity[:]))
 
             artery_per_beat = output.get(schema.artery_per_beat.velocity_signal)
             assert artery_per_beat.attrs["unit"] == "mm/s"
-            assert artery_per_beat.attrs["velocity_estimation_method"] == "frequency_bands"
-            assert artery_per_beat.attrs["band_ratio_frequency_scale_hz"] == 2.0
+            attrs = output.read_attrs(schema.artery_per_beat.velocity_signal)
+            assert attrs["velocity_estimation_method"] == "frequency_bands"
+            assert attrs["band_ratio_frequency_scale_hz"] == 2.0
 
             cycle_durations = output.get(schema.cardiac_cycle.systolic_cycle_duration_seconds)
             assert cycle_durations.attrs["unit"] == "s"
@@ -91,7 +93,7 @@ def test_frequency_band_run_produces_physical_downstream_outputs(legacy_spectrog
 
             frequency_map = output.get(schema.analysis.fRMS_avg)
             assert frequency_map.attrs["unit"] == "Hz"
-            assert frequency_map.attrs["band_ratio_frequency_scale_hz"] == 2.0
+            assert output.read_attrs(schema.analysis.fRMS_avg)["band_ratio_frequency_scale_hz"] == 2.0
 
             velocity_average_masked = output.get(schema.analysis.velocity_map_avg_masked)
             assert velocity_average_masked.attrs["unit"] == "mm/s"

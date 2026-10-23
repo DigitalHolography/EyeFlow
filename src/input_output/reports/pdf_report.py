@@ -12,6 +12,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from PIL import Image
 
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.provenance import read_dataset_attrs
 from input_output.writers.h5 import open_h5
 from input_output.writers.artifact_names import prefixed_artifact_path
 
@@ -325,7 +326,8 @@ def _extract_velocity_metrics(f: h5py.File, params: dict[str, Any]) -> None:
 def _velocity_dataset_unit(f: h5py.File, dataset: h5py.Dataset) -> str:
     """Prefer dataset provenance, with the output-root contract as fallback."""
 
-    value = dataset.attrs.get("unit", f.attrs.get("velocity_unit", "mm/s"))
+    attrs = read_dataset_attrs(dataset)
+    value = attrs.get("unit", attrs.get("velocity_unit", f.attrs.get("velocity_unit", "mm/s")))
     if isinstance(value, bytes):
         value = value.decode("utf-8")
     return str(value)

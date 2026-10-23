@@ -71,6 +71,10 @@ unchanged. Keep the naming policy in the shared writer helper.
   and name the missing external path in its error.
 - HDF5 logical paths use `/` regardless of host path separators.
 - Dataset axes and units travel in attributes such as `dimDesc` and `unit`.
+- Shared workflow provenance is declared by `inherited_provenance_keys` on each
+  workflow group; use `schema.provenance.read_dataset_attrs()` or
+  `PipelineH5Output.read_attrs()` to read effective metadata. Dataset-local
+  overrides win. Keep the two workflow namespaces separate.
 - Existing target datasets are replaced atomically at the dataset level; parent
   groups are reused only if they are groups.
 - An output-directory replacement is owned by `execute_run`, not by individual

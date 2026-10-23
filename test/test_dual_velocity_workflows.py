@@ -11,6 +11,7 @@ from test_frequency_band_pipeline_integration import _write_frequency_band_run
 from input_output.reports.pdf_report import _extract_parameters_from_h5
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import processing_path
+from input_output.schema.provenance import read_dataset_attrs
 from pipeline_engine.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
 from pipelines.velocity.runner import (
@@ -374,9 +375,13 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
 
             def check_dataset(_name, value, expected_method=method, expected_beats=beat_count):
                 if isinstance(value, h5py.Dataset):
-                    assert value.attrs["velocity_estimation_method"] == expected_method
-                    assert value.attrs["cardiac_cycle_detection_quantity"] == "physical_velocity"
-                    assert value.attrs["cardiac_cycle_detection_unit"] == "mm/s"
+                    attrs = read_dataset_attrs(value)
+                    assert attrs["velocity_estimation_method"] == expected_method
+                    assert attrs["cardiac_cycle_detection_quantity"] == "physical_velocity"
+                    assert attrs["cardiac_cycle_detection_unit"] == "mm/s"
+                    assert "velocity_estimation_method" not in value.attrs
+                    assert "cardiac_cycle_detection_quantity" not in value.attrs
+                    assert "nameID" not in value.attrs
                     dimensions = list(value.attrs.get("dimDesc", ()))
                     if "beat" in dimensions:
                         assert value.shape[dimensions.index("beat")] == expected_beats

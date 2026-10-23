@@ -983,21 +983,35 @@ Do not hand-copy path strings into new consumers. Obtain them from the schema or
 from a pipeline-owned constant when the path family has not yet been centralized.
 Writers normalize leading/trailing separators, replace an existing dataset at
 the target path, downcast float/complex payloads to 32-bit, preserve integer
-arrays, serialize boolean payloads as `uint8` with `original_class="bool"`, and
-attach `nameID` unless supplied.
-Numeric arrays use lossless gzip compression at level 6 with the shuffle filter
-by default. Explicit dataset storage options override these defaults. Scalars
-and strings remain unfiltered; these writes preserve their existing shapes
-and dtypes.
+arrays, and serialize boolean payloads as `uint8` with `original_class="bool"`.
+Writers no longer generate the redundant `nameID` attribute; HDF5 exposes the
+absolute dataset path as `dataset.name`. Existing explicitly supplied attributes
+remain supported for compatibility with older payloads.
+Numeric arrays of at least 4 KiB (after dtype normalization) use lossless gzip
+compression at level 6 with the shuffle filter by default. Smaller arrays stay
+unfiltered to avoid chunk-index overhead exceeding compression savings. Explicit
+dataset storage options override these defaults, including compression for small
+arrays. Scalars and strings remain unfiltered; these writes preserve their
+existing shapes and dtypes.
 
 The output root records source files, selected targets, actual pipeline order,
-selected options, requested methods, and workflow status. Processing groups and
-their datasets record method-specific physical velocity provenance. The
+selected options, requested methods, and workflow status. Each separate workflow
+group (`/ProcessingMoments` and `/ProcessingBandRatio`) stores its shared physical
+velocity provenance once. Its `inherited_provenance_keys` attribute lists exactly
+which group attributes apply to descendants. Dataset-local overrides take
+precedence and are retained whenever their normalized value or dtype differs;
+equal duplicates are omitted at write time. Dataset-specific units, dimensions,
+metric definitions, and other attributes remain local. No implicit inheritance
+occurs from the file root or between workflows. The
 band-ratio group additionally records the
 exact LF/HF source paths, factor, linear-through-origin calibration model,
 calibration source/version, wavelength, numerical aperture, and LF quality
 counts. Persisted RMS-frequency maps use `Hz`; velocity datasets use `mm/s` and
-carry method/calibration provenance. Legacy dimensionless velocity metadata is
+inherit method/calibration provenance. Read effective attributes with
+`input_output.schema.provenance.read_dataset_attrs(dataset)` or
+`PipelineH5Output.read_attrs(path)`; raw `dataset.attrs` only contains local
+attributes. The reader also accepts older files that store provenance locally
+and have no inheritance declaration. Legacy dimensionless velocity metadata is
 not accepted.
 
 When spatial-gradient processing runs only to supply the `gradient_edges`

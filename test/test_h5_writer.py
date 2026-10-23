@@ -25,8 +25,17 @@ from pipeline_engine.base import DatasetValue  # noqa: E402
 
 
 class H5WriterTests(unittest.TestCase):
+    def test_dataset_path_is_available_without_generated_name_id(self) -> None:
+        with h5py.File("names.h5", "w", driver="core", backing_store=False) as h5file:
+            write_value_dataset(h5file, "nested/value", np.arange(4))
+            self.assertNotIn("nameID", h5file["nested/value"].attrs)
+            self.assertEqual("/nested/value", h5file["nested/value"].name)
+
     def test_default_compression_preserves_float32_bits(self) -> None:
-        values = np.array([0.0, -0.0, np.nan, np.inf, -np.inf, 1.234567], dtype=np.float32)
+        values = np.tile(
+            np.array([0.0, -0.0, np.nan, np.inf, -np.inf, 1.234567], dtype=np.float32),
+            256,
+        )
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir) / "compressed.h5"
             with h5py.File(path, "w") as h5file:
@@ -40,6 +49,37 @@ class H5WriterTests(unittest.TestCase):
                 self.assertEqual(values.dtype, dataset.dtype)
                 self.assertEqual(values.shape, dataset.shape)
                 self.assertEqual(values.tobytes(), dataset[()].tobytes())
+
+    def test_small_arrays_avoid_chunk_overhead(self) -> None:
+        values = np.array([0.0, -0.0, np.nan, np.inf, -np.inf, 1.234567], dtype=np.float32)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paths = [Path(tmp_dir) / name for name in ("default.h5", "gzip.h5")]
+            for path, options in zip(paths, [None, {"compression": "gzip"}]):
+                with h5py.File(path, "w") as h5file:
+                    for index in range(100):
+                        write_value_dataset(
+                            h5file, str(index), DatasetValue(values, h5_options=options),
+                        )
+                with h5py.File(path, "r") as h5file:
+                    for dataset in h5file.values():
+                        self.assertEqual(values.tobytes(), dataset[()].tobytes())
+                        if options is None:
+                            self.assertIsNone(dataset.chunks)
+                            self.assertIsNone(dataset.compression)
+                        else:
+                            self.assertEqual("gzip", dataset.compression)
+                            self.assertEqual(6, dataset.compression_opts)
+                            self.assertTrue(dataset.shuffle)
+            self.assertLess(paths[0].stat().st_size, paths[1].stat().st_size / 2)
+
+    def test_default_compression_size_boundary(self) -> None:
+        with h5py.File("boundary.h5", "w", driver="core", backing_store=False) as h5file:
+            for size, compression in [(1023, None), (1024, "gzip")]:
+                values = np.arange(size, dtype=np.float32)
+                write_value_dataset(h5file, str(size), values)
+                dataset = h5file[str(size)]
+                self.assertEqual(compression, dataset.compression)
+                np.testing.assert_array_equal(values, dataset[()])
 
     def test_compression_defaults_preserve_explicit_options(self) -> None:
         values = np.arange(8, dtype=np.float32)

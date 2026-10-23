@@ -10,6 +10,11 @@ import numpy as np
 
 from app_settings import app_version
 from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
+from ..schema.provenance import inherited_provenance
+
+
+# Small arrays save less payload than the per-dataset chunk index costs.
+_MIN_COMPRESSION_BYTES = 4096
 
 
 def normalize_h5_path(path: object) -> str:
@@ -91,17 +96,31 @@ def set_attr_safe(h5obj: h5py.File | h5py.Group | h5py.Dataset, key: str, value)
     if isinstance(value, str):
         h5obj.attrs.create(key, value, dtype=h5py.string_dtype(encoding="utf-8"))
         return
+    data = _normalize_attribute_payload(value)
+    try:
+        h5obj.attrs[key] = data
+    except (TypeError, ValueError) as exc:
+        raise type(exc)(f"Could not write HDF5 attribute '{key}': {exc}") from exc
+
+
+def _normalize_attribute_payload(value):
     data = value
     if isinstance(value, (list, tuple)):
         if all(isinstance(item, str) for item in value):
             data = np.asarray(value, dtype=h5py.string_dtype(encoding="utf-8"))
         else:
             data = _array_from_sequence(value)
-    data = _downcast_numeric_payload(data)
-    try:
-        h5obj.attrs[key] = data
-    except (TypeError, ValueError) as exc:
-        raise type(exc)(f"Could not write HDF5 attribute '{key}': {exc}") from exc
+    return _downcast_numeric_payload(data)
+
+
+def _matches_inherited_attribute(value, inherited) -> bool:
+    actual = np.asarray(_normalize_attribute_payload(value))
+    expected = np.asarray(inherited)
+    if actual.shape != expected.shape or actual.dtype != expected.dtype:
+        return False
+    if actual.dtype.kind in {"b", "i", "u", "f", "c"}:
+        return actual.tobytes() == expected.tobytes()
+    return np.array_equal(actual, expected)
 
 
 def write_value_dataset(group: h5py.Group, key: str, value) -> None:
@@ -129,11 +148,12 @@ def write_value_dataset(group: h5py.Group, key: str, value) -> None:
     )
 
     if ds_attrs:
+        inherited_attrs = inherited_provenance(target_group)
         for attr_key, attr_val in ds_attrs.items():
+            if attr_key in inherited_attrs:
+                if _matches_inherited_attribute(attr_val, inherited_attrs[attr_key]):
+                    continue
             set_attr_safe(dataset, attr_key, attr_val)
-
-    if "nameID" not in (ds_attrs or {}):
-        set_attr_safe(dataset, "nameID", str(key))
 
 
 def initialize_output_h5(
@@ -324,7 +344,10 @@ def _create_dataset(
         and payload.ndim > 0
         and payload.dtype.kind in {"b", "i", "u", "f", "c"}
     ):
-        options.setdefault("compression", "gzip")
+        options.setdefault(
+            "compression",
+            "gzip" if payload.nbytes >= _MIN_COMPRESSION_BYTES else None,
+        )
         if options["compression"] == "gzip":
             options.setdefault("compression_opts", 6)
         if options["compression"] is not None:
