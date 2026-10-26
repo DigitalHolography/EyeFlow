@@ -121,6 +121,8 @@ class SegmentationOutputTests(unittest.TestCase):
         height, height_attrs = outputs[schema.segmentation.optic_disc.height]
         width, width_attrs = outputs[schema.segmentation.optic_disc.width]
         center, center_attrs = outputs[schema.segmentation.optic_disc.center]
+        self.assertEqual("Meta/PixelPitch_m", schema.segmentation.pixel_pitch_m)
+        self.assertNotIn("Segmentation/PixelPitch_m/value", outputs)
         pixel_pitch_m, pixel_pitch_attrs = outputs[schema.segmentation.pixel_pitch_m]
         self.assertEqual(np.float32, height.dtype)
         self.assertEqual(np.float32, width.dtype)

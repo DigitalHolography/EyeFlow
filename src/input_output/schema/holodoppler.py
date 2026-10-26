@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 
 import numpy as np
@@ -16,6 +17,7 @@ HD_MOMENT0_PATH = "moment0"
 HD_MOMENT2_PATH = "moment2"
 HD_BAND_LF_PATH = "band_0_3000_9000"
 HD_BAND_HF_PATH = "band_1_9000_18000"
+HD_BAND_NAME_PATTERN = re.compile(r"band_[0-9]+_([0-9]+)_([0-9]+)")
 HD_SPECTOGRAMS_PATH = "spectrograms"
 HD_MOMENT0_PATHS = (HD_MOMENT0_PATH, "M0")
 HD_MOMENT2_PATHS = (HD_MOMENT2_PATH, "M2")
@@ -95,30 +97,36 @@ class HolodopplerSource(TypedSource):
             return None
 
     def frequency_band_datasets(self):
-        """Return the exact low/high PSD bands used by the ratio estimator.
+        """Return the first/last PSD videos sorted by numeric frequency bounds."""
 
-        Band discovery is deliberately not heuristic: changing the configured
-        frequency limits changes the meaning of the ratio, so this first
-        implementation accepts only HoloDoppler's standard two-band export.
-        """
-
-        paths = (HD_BAND_LF_PATH, HD_BAND_HF_PATH)
-        missing = [f"/{path}" for path in paths if path not in self._reader]
-        if missing:
+        bands = []
+        for path in self._reader.keys():
+            match = HD_BAND_NAME_PATTERN.fullmatch(path)
+            if match is None:
+                continue
+            try:
+                self._dataset(path)
+            except KeyError:
+                # A group with a matching name is not a band video.
+                continue
+            bands.append((int(match[1]), int(match[2]), path))
+        bands.sort()
+        if len(bands) < 2:
             source = str(self.filename or "<unknown HD source>")
             raise KeyError(
-                "velocity_estimation_method='frequency_bands' requires "
-                "HoloDoppler datasets "
-                f"{', '.join(missing)}; missing from HD source file {source!r}."
+                "velocity_estimation_method='frequency_bands' requires at least "
+                "two HoloDoppler datasets named band_<i>_<n>_<m>; "
+                f"found {len(bands)} in HD source file {source!r}."
             )
 
-        low_frequency = self._frequency_band_dataset(HD_BAND_LF_PATH)
-        high_frequency = self._frequency_band_dataset(HD_BAND_HF_PATH)
+        low_path, high_path = bands[0][2], bands[-1][2]
+        low_frequency = self._frequency_band_dataset(low_path)
+        high_frequency = self._frequency_band_dataset(high_path)
         if tuple(low_frequency.shape) != tuple(high_frequency.shape):
             raise ValueError(
                 "HoloDoppler frequency-band datasets must have identical "
-                f"(frame, y, x) shapes; /{HD_BAND_LF_PATH} has shape "
-                f"{low_frequency.shape} and /{HD_BAND_HF_PATH} has shape "
+                f"(frame, y, x) shapes; /{low_path} has shape "
+                f"{low_frequency.shape} and /{high_path} has shape "
                 f"{high_frequency.shape}."
             )
         return low_frequency, high_frequency

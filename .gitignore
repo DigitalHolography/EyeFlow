@@ -58,3 +58,6 @@ __pycache__/
 *.egg-info/
 EyeFlow-main/
 build/
+
+
+dev_scripts/

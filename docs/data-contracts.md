@@ -151,8 +151,8 @@ described below.
 |---|---|---|
 | Zeroth moment | `/moment0`, legacy `/M0` | Required by the moments workflow and moment-based products |
 | Second moment | `/moment2`, legacy `/M2` | Required by the moments workflow |
-| Low-frequency band | `/band_0_3000_9000` | Required by the band-ratio workflow; no heuristic aliases |
-| High-frequency band | `/band_1_9000_18000` | Required by the band-ratio workflow; no heuristic aliases |
+| Low-frequency band | `/band_<i>_<n>_<m>` | First video after sorting numeric `(n, m)` ranges; index `i` is ignored |
+| High-frequency band | `/band_<i>_<n>_<m>` | Last video in the same ordering; at least two matching datasets are required |
 | Frequency-resolved capillary source | `/spectrograms` | Optional gap-spectrum preprocessing source; exact HD root dataset name |
 | Flat-field zeroth moment | `/moment0ff`, legacy `/M0FF` | Optional |
 | Registration | `/registration` | Optional; copied to output `/Meta/registration` |
@@ -896,7 +896,9 @@ families are:
 The `/ProcessingBandRatio` tree mirrors the selected `/ProcessingMoments` families for the
 band-ratio workflow. Shared spectra have their own `/ProcessingSpectrograms` root
 and are not duplicated inside either workflow. `/Segmentation` and acquisition
-`/Meta` remain shared. These roots replace `/Processing` and `/ProcessingAlt`;
+`/Meta` remain shared. Pixel pitch is stored directly as the scalar dataset
+`/Meta/PixelPitch_m` (unit `m`); `/Segmentation/PixelPitch_m/value` is no longer
+written. These roots replace `/Processing` and `/ProcessingAlt`;
 new outputs do not emit aliases at the former paths.
 
 Per-beat durations are published once per workflow at
@@ -996,17 +998,23 @@ existing shapes and dtypes.
 
 The output root records source files, selected targets, actual pipeline order,
 selected options, requested methods, and workflow status. Each separate workflow
-group (`/ProcessingMoments` and `/ProcessingBandRatio`) stores its shared physical
-velocity provenance once. Its `inherited_provenance_keys` attribute lists exactly
-which group attributes apply to descendants. Dataset-local overrides take
-precedence and are retained whenever their normalized value or dtype differs;
-equal duplicates are omitted at write time. Dataset-specific units, dimensions,
-metric definitions, and other attributes remain local. No implicit inheritance
-occurs from the file root or between workflows. The
-band-ratio group additionally records the
-exact LF/HF source paths, factor, linear-through-origin calibration model,
-calibration source/version, wavelength, numerical aperture, and LF quality
-counts. Persisted RMS-frequency maps use `Hz`; velocity datasets use `mm/s` and
+group (`/ProcessingMoments` and `/ProcessingBandRatio`) keeps only these summary
+attributes: `velocity_estimation_method`, `velocity_inpainting_radius`, and
+`velocity_unit`, plus workflow-specific sources. `/ProcessingMoments` records
+`moment0_source_path` and `moment2_source_path` (including actual legacy aliases
+such as `/M0` and `/M2`). `/ProcessingBandRatio` records `band_lf_source_path` and
+`band_hf_source_path`. Source attributes from the other workflow are excluded.
+Other processing-parent attributes are discarded, without relocating them to
+new metadata groups. Duplicate heart-rate attributes are omitted in favor of
+the cardiac-cycle datasets; sampling frequency, batch stride, and frame interval
+remain in their existing acquisition `/Meta` datasets.
+Only the fixed summary keys apply to workflow descendants. Dataset-specific
+units, dimensions, calibration, metric definitions, and other existing payload
+attributes remain local. Equal summary duplicates are omitted at write time;
+dataset-local overrides take precedence. No implicit inheritance occurs from
+the file root or between workflows. Older explicit inheritance declarations
+remain readable. References to processing datasets use the owning namespace.
+Persisted RMS-frequency maps use `Hz`; velocity datasets use `mm/s` and
 inherit method/calibration provenance. Read effective attributes with
 `input_output.schema.provenance.read_dataset_attrs(dataset)` or
 `PipelineH5Output.read_attrs(path)`; raw `dataset.attrs` only contains local
