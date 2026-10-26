@@ -436,121 +436,111 @@ Normalization changes figure coordinates only; the source power and STD
 datasets remain unnormalized.
 
 `/ProcessingSpectrograms/Gaps/Metrics` groups all gap-spectrum metrics directly,
-without `/value` suffixes or workflow copies. The former `TimeAggregated/Metrics`
-group is no longer emitted. Twelve pooled scalar datasets analyze the
-`MedianPhaseBeat` spectrum in stored bin order: `index_max1`, `max1`,
-`index_max2`, `max2`, `index_min1`, `min1`, `index_min2`, `min2`, `A0`, `A`,
-`A2`, and `R1`. Heights are internal calculations; `h0`, `h1`, `hv`,
-and `rho_h` are not output datasets.
-For a domain of `N` bins, peak 1 is the maximum over zero-based bins 0 through
-`floor(N/2)-1`; peak 2 is the maximum over `floor(N/2)` through `N-1`.
-Include endpoints, ignore NaNs for peak selection, and choose the
-lowest index on ties. An all-NaN half has a NaN peak index and value. Valley
-indexes are the two central bins, `floor(N/2)-1` and `floor(N/2)`; valley values are read directly from those bins.
-Internally, `h0=(max1+max2)/2`, propagating missing inputs. All three areas use
-the calibrated spacing `df_khz=q*fs/(B*1000)` and the common peak-to-peak width
-`w_khz=(index_max2-index_max1)*df_khz`.
-`A2=h0*w_khz`;
-`A=trapezoid(spectrum[index_max1:index_max2+1], dx=df_khz)`, propagating any NaN
-in that interval. Both peak samples are included with trapezoidal half weights
-at the endpoints; the interval width counts the spaces between bins, without
-an extra bin. Integrate with positive spacing in the stored HD bin order,
-equivalent to an unwrapped kHz axis, without sorting the signed display axis
-or wrapping around the array. The valley neighborhood is centered between the two central bins.
-With `valley_neighborhood_length=None`, its length is computed as one quarter
-of the actual bin domain, rounded to the nearest even length (ties upward), with
-a minimum of two samples: 32 bins selects 8 samples (bins 12 through 19), and
-64 bins selects 16 samples (bins 24 through 39). Any domain with at least two bins
-is supported, including odd lengths; domains split at `floor(N/2)`.
-Explicit neighborhood lengths
-accept even integers from 2 through `N` in `run_gap_analysis`,
-`pack_spectrum_metrics`, and `analyze_spectrum`. `hv` is the NaN-aware median of
-that neighborhood; an all-NaN neighborhood returns NaN. With the same kHz
-width used by `A2`, `A0=w_khz*hv`. The area names `A0`
-and `A2` replace each other's former meanings. `A` is the former `A1` output.
-The pooled dimensionless output is `R1=A/A0`. Ratios require a finite, strictly
-positive reference area and finite numerator/result; otherwise they return NaN.
-`SEI` is calculated from the phasewise `SE` curve below, not from pooled areas.
-There is no pooled-spectrum SEI output. All values are float32; valid index values are integer-valued floats
-so missing indexes can be represented by NaN. Indexes and `R1` have unit `1`;
-`A0`, `A`, and `A2` have the source power unit times kHz (for example
-`a.u.*kHz`), while peak/valley heights retain the spectrum's power unit.
-Attributes record definitions,
-source, zero-based indexes, selection rules, interval inclusion, neighborhood
-length and exact bins, automatic versus explicit selection and rounding,
-per-half valid (non-NaN) bin counts, valley aggregation/NaN policy, sampling
-frequency and its shared source path, kHz bin spacing, integration method,
-and the unwrapped area coordinate. Read calibration from
-`/Meta/SamplingFrequencyHz/value`. Missing/invalid calibration skips the Metrics
-family with a warning while preserving raw/aggregate spectra and filters;
-never substitute a unit bin width for a physical kHz area.
-An all-NaN half leaves its peak index and value as NaN and logs an explanatory warning.
-A spectrum that is not one-dimensional with at least two bins
-produces all twelve NaN pooled metrics and logs a
-warning; the median and other gap products remain available. No alternative
-workflow copy is generated.
+without `/value` suffixes or workflow copies. Nine pooled scalar datasets analyze
+`MedianPhaseBeat` in stored bin order: `index_max1`, `max1`, `index_max2`,
+`max2`, `A0`, `A`, `A_25`, `A_50`, and `A_75`. The central-bin datasets
+`index_min1`, `index_min2`, `min1`, and `min2` are absent. The former `A2`
+and `R1` families (including curves, windows, deltas, and plots) are removed;
+no `R2`, `Z2`, `h0`, `h1`, `hv`, or `rho_h` datasets are emitted.
 
-Five phase curves are written in that same group as `A0_t`, `A_t`, `A2_t`,
-`R1_t`, and `SE`, with `(phase,)` axes and phase coordinates from `MedianBeat`.
-Calculate these curves from `MedianBeat` after its beat median, keeping the
-peak indices selected from `MedianPhaseBeat` fixed at every phase. With fixed
-width `w_khz=(index_max2-index_max1)*df_khz`, calculate
-`A2(t)=w_khz*(S(t,index_max1)+S(t,index_max2))/2`,
-`A(t)=trapezoid(S(t,index_max1:index_max2+1), dx=df_khz)`, and
-`A0(t)=w_khz*nanmedian(S(t,Nv))` using the same valley neighborhood as the pooled
-metrics. `R1(t)=A(t)/A0(t)` and `SE(t)=(A(t)-A0(t))/A0(t)`.
-Missing fixed peak indices make every curve NaN. Missing peak heights invalidate
-`A2(t)`, interval NaNs propagate through `A(t)`, and an all-NaN valley
-neighborhood makes `A0(t)` NaN. Ratios and offsets require finite, strictly
-positive `A0(t)` and finite numerator/result; invalid phases remain NaN.
-Curve attributes identify their `MedianBeat` source, fixed peak values and
-index-dataset paths, pooled peak source, timing, neighborhood, and units.
+For a domain of `N` bins, select peak 1 in zero-based bins `[0,floor(N/2))`
+and peak 2 in `[floor(N/2),N)`. Include endpoints, ignore NaNs, and choose the
+lowest index on ties. An all-NaN half leaves its index and height NaN and logs
+a warning. Valid indices are integer-valued float32, permitting missing NaNs.
+Unsupported domains (not one-dimensional with at least two bins) return nine
+NaN pooled metrics with a warning. No alternative workflow copy is generated.
 
-The dimensionless scalar `SEI=median(SE(t))` follows the temporal definition:
-take the NaN-aware median over all valid phase samples of the registered cycle,
-with equal weight per source phase sample and no added endpoint. This differs
-from a ratio of pooled areas or a ratio of median phase areas. It is emitted
-only when phase spectra are available, with source path `/ProcessingSpectrograms/Gaps/Metrics/SE`,
-aggregation method, and source/valid/invalid phase counts. All-invalid cycles
-produce NaN. There is no fallback to the pooled-spectrum ratio. These validity
-checks do not impose an unconfigured low-signal or valley-stability threshold.
+Use calibrated spacing `df_khz=q*fs/(B*1000)` and width
+`w_khz=(index_max2-index_max1)*df_khz`, without an extra bin.
+`A=trapezoid(S[index_max1:index_max2+1], dx=df_khz)` includes both peaks,
+with trapezoidal half weights at the endpoints. Integrate along positive,
+unwrapped kHz in stored HD bin order, without sorting or wrapping the signed
+frequency axis. Interval NaNs propagate through `A`.
 
-For the `A0_t`, `A_t`, `A2_t`, and `R1_t` curves, the same group also contains
-scalars `<base>_early`, `<base>_late`, and `delta_<base>`. The `SE` curve uses
-`SEI_early`, `SEI_late`, and `delta_SEI`. Early is the NaN-aware median of the
-corresponding curve over a configurable closed `early_interval` (default `[0,1/3]`); late uses
-`late_interval` (default `[1/3,1]`). Bounds are fractions of a cycle in `[0,1]`,
-equivalent to 0–33⅓% and 33⅓–100% by default. A sample exactly at a shared
-boundary belongs to both intervals. Preserve the source grid's excluded endpoint;
-do not interpolate or add a sample at phase one. The standard 128-phase grid
-therefore has 43 early and 85 late samples. Medians weight valid phase samples
-equally; all-missing windows remain NaN. Aggregate the ratios themselves,
-rather than dividing aggregated areas. The whole-cycle scalar corresponding
-to `SE` is `SEI`. Every spectrogram metric uses late minus early, including
-A0/A/A2, R1, and SEI. Preserve the signed
-difference and propagate a missing early or late median. Window metadata records
-phase intervals, included endpoints, source and valid sample counts, source
-curve paths, and aggregation policy; deltas identify their late then early
-scalar sources and both configured intervals.
-Shared helpers in `calculations/math/phase_windows.py` provide interval masks,
-NaN-aware window medians, and late-minus-early subtraction. `run_gap_analysis`
-and `pack_spectrum_metrics` accept `early_interval` and `late_interval` keyword
-arguments. The runner applies the same configuration to early/late spectra,
-STD envelopes, metric summaries, and deltas. Empty/all-missing windows retain NaN.
-These twenty phase/window datasets, the whole-cycle `SEI`, and twelve pooled scalars give 33 datasets
-under `/ProcessingSpectrograms/Gaps/Metrics`. All persisted values are float32;
-ratio and offset curves and their summaries/deltas have unit `1`, while area products
-have the source power unit times kHz.
+`A0=w_khz*hv`, where `hv` is the NaN-aware central-neighborhood median.
+Its default length is one quarter of `N`, rounded to the nearest even length
+(ties upward), at least two samples. For 32 bins, use indices 12 through 19;
+for 64 bins, use 24 through 39. An explicit `valley_neighborhood_length`
+accepts an even integer from 2 through `N`. Ignore NaNs within the neighborhood;
+an all-NaN neighborhood yields NaN. `A` is the former `A1` output name.
 
-Each phase curve also produces `<stem>_gaps_{A0,A,A2,R1,SE}.{png,eps}` under
-the shared `png/spectrograms/` and `eps/spectrograms/` folders. Use the same
-8 cm wide golden-ratio canvas, thin black border, fonts, and resolution as the
-spectral figures. Abbreviate `a.u.*kHz` to `a.u.` in artifact axis labels;
-stored area units remain source power times kHz.
-Plot normalized cardiac phase `t/T` horizontally with labels
-at zero, one third, two thirds, and one. Preserve NaN gaps and the excluded
-endpoint; area-axis labels include power units and ratio axes are dimensionless.
-Each available curve exports independently.
+The flooded references use height fractions, not target fractions of total
+spectral area. For `p` in `{25,50,75}`, set
+`h_p=(p/100)*(S[index_max1]+S[index_max2])/2` and calculate
+`A_p=integral(min(S(f),h_p), df)` between the peaks, from power zero.
+Use the arithmetic mean of the two peak heights, not the lower peak or integer
+floor division. Treat the spectrum as piecewise linear and include exact
+threshold crossings inside bin intervals; simply clipping the bin samples and
+applying trapezoids underestimates the reference when a crossing lies inside
+an interval. This is height-based flooding of the spectrum from zero, not water
+volume above a valley floor or marker-based basin segmentation. Nonfinite or
+negative power anywhere inside the peak interval makes the flooded references
+NaN. A zero spectrum produces zero reference areas.
+
+Twelve phase curves use `MedianBeat`, after its beat median: `A0_t`, `A_t`, `SE`,
+`A_25_t`, `A_50_t`, `A_75_t`, `SE_25`, `SE_50`, `SE_75`,
+`SEII_25_t`, `SEII_50_t`, and `SEII_75_t`.
+Keep pooled peak indices fixed as integration bounds at every phase. Evaluate
+the valley median on each phase spectrum, and determine flood heights from the
+actual maximum in each frequency half at that phase, ignoring NaNs. The maxima
+can move independently of the integration bounds. Thus `A0_t` and the flooded references vary
+with phase. `A_t` uses the same trapezoidal integral, `A0_t` the same central
+median rectangle, and `A_p_t` the same clipped integral as their pooled
+counterparts, except that `A_p_t` uses phasewise half-domain maxima rather than
+heights sampled at the fixed integration endpoints. Missing pooled peak indices
+leave all curves NaN. Missing/nonfinite phase maxima or interval NaNs invalidate
+flooded references and `A_t`; `A0_t` still ignores neighborhood NaNs.
+
+`SE=(A_t-A0_t)/A0_t`, `SE_p=(A_t-A_p_t)/A_p_t`, and
+`SEII_p_t=(A_p_t-A0_t)/A0_t`. SEII compares each flooded area against the
+original valley reference. Preserve signed values, including negative excess.
+Require a finite,
+strictly positive corresponding reference and finite numerator/result;
+otherwise the ratio is NaN. Preserve original `SE` independently of the new
+references. Area units are source power times kHz, while all SE/SEI/SEII outputs
+and indices have unit `1`; peak heights retain source power units.
+
+Whole-cycle `SEI`, `SEI_25`, `SEI_50`, and `SEI_75` are the NaN-aware temporal
+medians of their respective SE curves, weighting valid phase samples equally.
+They are emitted only with phase spectra, with no pooled-ratio fallback.
+All-invalid cycles return NaN. In contrast, `A0`, `A`, and `A_p` are calculated
+from the pooled spectrum, not temporal medians of their curves.
+`SEII_25`, `SEII_50`, and `SEII_75` likewise summarize their respective `_t`
+curves with NaN-aware temporal medians, not ratios of pooled areas.
+
+Each phase curve has early/late median summaries and a signed late-minus-early
+delta. Area bases are `A0`, `A`, `A_25`, `A_50`, and `A_75`; SE summary bases
+are `SEI`, `SEI_25`, `SEI_50`, `SEI_75`, `SEII_25`, `SEII_50`, and `SEII_75`.
+SEII includes `SEII_25_early`, `SEII_25_late`, and `delta_SEII_25`, with
+equivalent 50/75 keys. For example, `A_50_early`,
+`A_50_late`, `delta_A_50`, `SEI_50_early`, `SEI_50_late`, and `delta_SEI_50`.
+Default closed windows are `[0,1/3]` and `[1/3,1]`. A shared boundary sample
+belongs to both; preserve the source's excluded endpoint. The 128-phase grid
+has 43 early and 85 late samples. Ignore NaNs within windows; missing windows
+or differences remain NaN. Aggregate ratios themselves, not ratios of areas.
+Shared helpers in `calculations/math/phase_windows.py` own these operations.
+`run_gap_analysis` and `pack_spectrum_metrics` accept `early_interval` and
+`late_interval`; the runner shares them with early/late spectra and STD envelopes.
+
+The 9 pooled scalars, 12 phase curves, 36 window/delta summaries, and 7 whole-cycle
+SEI/SEII scalars give 64 datasets. Persist all values as float32. Metadata records
+source paths, timing, fixed peak indices and their pooled source, neighborhood,
+units, FFT calibration, spacing, integration method, and validity policies.
+Flood metadata identifies the height fraction, mean-peak reference, pooled or
+per-phase evaluation, and exact clipped integration. SE/SEII metadata identifies the
+corresponding signal area and reference curves. Window and delta metadata records intervals,
+counts, and source paths; SEI records valid/invalid phase counts.
+Read calibration from `/Meta/SamplingFrequencyHz/value`; missing/invalid
+calibration skips Metrics with a warning, keeping raw/aggregate spectra and
+filters. Never substitute unit bin widths or infer a stability cutoff.
+
+Each phase curve exports matching `<stem>_gaps_<base>.{png,eps}` figures, with
+`_t` removed from curve names, under the shared `png/spectrograms/` and
+`eps/spectrograms/` folders. Use the spectral figures' 8 cm golden-ratio canvas,
+thin black border, fonts, and resolution. Labels render the full `SE` or `A`
+base with the percentage subscript. Abbreviate `a.u.*kHz` to `a.u.` in figures
+only. Plot cardiac phase `t/T`, ticks at zero, one third, two thirds, and one;
+preserve NaN gaps and the excluded endpoint. Each curve exports independently.
 
 `/ProcessingSpectrograms/Gaps/QC` contains descriptive diagnostics, separate
 from `Metrics`. QC never filters samples, rejects beats, or changes SE/SEI.

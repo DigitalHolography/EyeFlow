@@ -175,7 +175,7 @@ def test_calibration_propagates_to_pooled_phase_and_window_areas(fft_size, start
     })
     for path, (actual, attrs) in corrected.items():
         name = path.rsplit("/", 1)[-1].removeprefix("delta_")
-        area = name.split("_")[0] in {"A0", "A", "A2"}
+        area = name.split("_")[0] in {"A0", "A"}
         np.testing.assert_allclose(actual, old[path][0] * (area_scale if area else 1))
         assert attrs["frequency_bin_spacing_khz"] == pytest.approx(4 * 37037 / (fft_size * 1000))
         assert attrs["unit"] == ("power_unit*kHz" if area else old[path][1]["unit"])

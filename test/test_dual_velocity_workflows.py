@@ -143,10 +143,10 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
             np.testing.assert_array_equal(window[:], [7, 7, 7])
             assert window.attrs["source_path"] == beat_median.name
         spectrum_metrics = output[schema.spectrograms_masked_metrics_root]
-        assert len(spectrum_metrics) == 33
+        assert len(spectrum_metrics) == 64
         assert spectrum_metrics["index_max1"][()] == 0
         assert spectrum_metrics["index_max2"][()] == 1
-        assert spectrum_metrics["R1"][()] == 1
+        assert spectrum_metrics["SEI_50"][()] == 1
         assert spectrum_metrics["A"][()] == spectrum_metrics["A0"][()]
         assert spectrum_metrics["SEI"][()] == 0
         assert not {"A1", "R2", "Z2"} & set(spectrum_metrics)

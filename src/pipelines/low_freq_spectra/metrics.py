@@ -18,7 +18,10 @@ from input_output.schema.holodoppler import HD_SPECTROGRAM_FREQUENCY_START_KEY, 
 from utils.logger import Logger
 
 DEFAULT_VALLEY_NEIGHBORHOOD_FRACTION = 1 / 4
-PHASE_METRIC_NAMES = ("A0", "A1", "A2", "R1", "R2", "SE", "Z2")
+FLOOD_PERCENTAGES = (25, 50, 75)
+PHASE_METRIC_NAMES = ("A0", "A1", "SE") + tuple(
+    name for percent in FLOOD_PERCENTAGES for name in (f"A_{percent}", f"SE_{percent}", f"SEII_{percent}")
+)
 
 # A1 remains the internal name for the integral published as A. Phasewise
 # spectral excess is SE throughout; its whole-cycle median is SEI. Pooled
@@ -28,30 +31,27 @@ SPECTRUM_METRIC_OUTPUT_NAMES = {
     "max1": "max1",
     "index_max2": "index_max2",
     "max2": "max2",
-    "index_min1": "index_min1",
-    "min1": "min1",
-    "index_min2": "index_min2",
-    "min2": "min2",
     "A0": "A0",
     "A1": "A",
-    "A2": "A2",
-    "R1": "R1",
+    **{f"A_{p}": f"A_{p}" for p in FLOOD_PERCENTAGES},
 }
 
 PHASE_METRIC_OUTPUT_NAMES = {
     "A0": "A0_t",
     "A1": "A_t",
-    "A2": "A2_t",
-    "R1": "R1_t",
     "SE": "SE",
+    **{f"A_{p}": f"A_{p}_t" for p in FLOOD_PERCENTAGES},
+    **{f"SE_{p}": f"SE_{p}" for p in FLOOD_PERCENTAGES},
+    **{f"SEII_{p}": f"SEII_{p}_t" for p in FLOOD_PERCENTAGES},
 }
 
 PHASE_SUMMARY_OUTPUT_NAMES = {
     "A0": "A0",
     "A1": "A",
-    "A2": "A2",
-    "R1": "R1",
     "SE": "SEI",
+    **{f"A_{p}": f"A_{p}" for p in FLOOD_PERCENTAGES},
+    **{f"SE_{p}": f"SEI_{p}" for p in FLOOD_PERCENTAGES},
+    **{f"SEII_{p}": f"SEII_{p}" for p in FLOOD_PERCENTAGES},
 }
 
 SPECTRUM_METRIC_DEFINITIONS = {
@@ -59,35 +59,22 @@ SPECTRUM_METRIC_DEFINITIONS = {
     "max1": "maximum spectrum value in the first half of the bin domain, ignoring NaNs",
     "index_max2": "zero-based index of the maximum in the second half of the bin domain",
     "max2": "maximum spectrum value in the second half of the bin domain, ignoring NaNs",
-    "index_min1": "zero-based central valley index floor(bin_count/2) - 1",
-    "min1": "spectrum value at zero-based index floor(bin_count/2) - 1",
-    "index_min2": "zero-based central valley index floor(bin_count/2)",
-    "min2": "spectrum value at zero-based index floor(bin_count/2)",
     "A0": "NaN-aware central-neighborhood median height times peak-to-peak width in kHz",
     "A1": "trapezoidal spectrum integral from index_max1 to index_max2 with calibrated kHz center spacing; NaNs propagate",
-    "A2": "arithmetic mean of max1 and max2 times peak-to-peak width in kHz",
-    "R1": "A1 divided by A0; invalid reference area or nonfinite result produces NaN",
-    "R2": "A2 divided by A0; invalid reference area or nonfinite result produces NaN",
-    "Z2": "(A2 - A0) divided by A0; invalid reference area or nonfinite result produces NaN",
+    **{f"A_{p}": f"integral of min(spectrum, {p}/100 times mean peak height) between peak bins in kHz; linear threshold crossings included"
+       for p in FLOOD_PERCENTAGES},
 }
 
 PHASE_METRIC_DEFINITIONS = {
     "A0": "fixed peak-to-peak width in kHz times NaN-aware central-neighborhood median per phase",
     "A1": "trapezoidal spectrum integral between fixed peak bins per phase with calibrated kHz center spacing; interval NaNs propagate",
-    "A2": "fixed peak-to-peak width in kHz times mean spectrum height at those two bins per phase",
-    "R1": "A1_t divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
-    "R2": "A2_t divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
     "SE": "(A_t - A0_t) divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
-    "Z2": "(A2_t - A0_t) divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
-}
-
-SPECTRUM_OUTPUT_DEFINITION_OVERRIDES = {
-    "R1": "A divided by A0; invalid reference area or nonfinite result produces NaN",
-}
-
-PHASE_OUTPUT_DEFINITION_OVERRIDES = {
-    "R1": "A_t divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
-    "SE": "(A_t - A0_t) divided by A0_t per phase; invalid reference area or nonfinite result produces NaN",
+    **{f"A_{p}": f"integral between fixed pooled peak bins of min(phase spectrum, {p}/100 times mean phasewise maximum per frequency half) in kHz; linear threshold crossings included"
+       for p in FLOOD_PERCENTAGES},
+    **{f"SE_{p}": f"(A_t - A_{p}_t) divided by A_{p}_t per phase; invalid reference area or nonfinite result produces NaN"
+       for p in FLOOD_PERCENTAGES},
+    **{f"SEII_{p}": f"(A_{p}_t - A0_t) divided by A0_t per phase; invalid reference area or nonfinite result produces NaN"
+       for p in FLOOD_PERCENTAGES},
 }
 
 SPECTRAL_RATIO_VALIDITY = {
@@ -110,6 +97,59 @@ def _area_ratio(area, reference, *, excess: bool = False):
     return result.item() if result.ndim == 0 else result
 
 
+def _flooded_areas(interval, spacing: float, *, mean_peak=None):
+    """Integrate power below fractional mean-peak heights, from zero.
+
+    The spectrum is piecewise linear, so include threshold crossings inside
+    segments rather than applying the trapezoidal rule to clipped bin samples.
+    The last axis spans both fixed peak bins. An explicit mean_peak supplies
+    phasewise maxima independently of those integration endpoints; otherwise
+    use the endpoint heights for the pooled spectrum. Missing/nonfinite or negative
+    power invalidates a flooded reference; zero power gives zero area.
+    """
+    values = np.asarray(interval, dtype=np.float64)
+    if mean_peak is None:
+        mean_peak = values[..., 0] / 2 + values[..., -1] / 2
+    mean_peak = np.asarray(mean_peak, dtype=np.float64)
+    valid = np.all(np.isfinite(values) & (values >= 0), axis=-1)
+    valid = valid & np.isfinite(mean_peak) & (mean_peak >= 0)
+    values = np.where(valid[..., None], values, 0)
+    mean_peak = np.where(valid, mean_peak, 0)
+    low = np.minimum(values[..., :-1], values[..., 1:])
+    high = np.maximum(values[..., :-1], values[..., 1:])
+    result = {}
+    for percent in FLOOD_PERCENTAGES:
+        height = mean_peak[..., None] * (percent / 100)
+        segments = (np.minimum(low, height) + np.minimum(high, height)) / 2
+        crossing = (low < height) & (height < high)
+        correction = np.zeros_like(segments)
+        # Normalized factors avoid multiplying two power-valued differences.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            np.divide(height - low, high - low, out=correction, where=crossing)
+        correction *= np.where(crossing, (high - height) / 2, 0)
+        area = np.sum(segments + correction, axis=-1) * spacing
+        result[f"A_{percent}"] = np.where(valid, area, np.nan)
+    return result
+
+
+def _flood_metadata(name: str, *, phase: bool):
+    if name not in {f"{prefix}_{p}" for prefix in ("A", "SE", "SEII") for p in FLOOD_PERCENTAGES}:
+        return {}
+    return {
+        "flood_height_fraction": int(name.rsplit("_", 1)[1]) / 100,
+        "flood_height_reference": (
+            "arithmetic_mean_of_phasewise_maxima_per_frequency_half" if phase
+            else "arithmetic_mean_of_spectrum_heights_at_peak_indices"
+        ),
+        "flood_peak_selection": "maximum_per_bin_domain_half_ignore_NaN",
+        "flood_integration_bounds": "fixed_pooled_peak_indices",
+        "flood_height_evaluation": "per_phase" if phase else "pooled_spectrum",
+        "flood_area_definition": "integral_from_zero_to_min_spectrum_and_flood_height",
+        "flood_integration_method": "piecewise_linear_with_exact_threshold_crossings",
+        "flood_nonfinite_value_policy": "nonfinite_or_negative_interval_power_returns_NaN",
+    }
+
+
 def analyze_spectrum(
     spectrum, *, sampling_frequency_hz: float, valley_neighborhood_length: int | None = None,
     fft_bin_count: int | None = None, binning_factor: int = 1,
@@ -119,16 +159,16 @@ def analyze_spectrum(
 
     Select one maximum in each half, including endpoints and ignoring NaNs.
     Ties select the lowest index. An all-NaN half has a NaN index and value.
-    Valley indexes are the two central bins, even if their values are NaN.
-    The peak-height mean requires both inputs. Areas span the peak-index distance
+    Flood heights use fractions of the mean of both peak heights. Areas span the peak-index distance
     times the calibrated FFT-average spacing in kHz without wrapping or reordering. A1 integrates samples
     including both peak bins using that positive spacing and the trapezoidal
     rule; interval NaNs propagate.
     The even-length valley neighborhood is centered between the central bins;
     its default length is one quarter of the bin count, rounded to the nearest
     even number (ties upward), with at least two bins. Its median ignores NaNs, returning
-    NaN if all samples are missing. A0 uses the valley median and A2 uses the
-    peak-height mean, both with the same peak-to-peak width in kHz.
+    NaN if all samples are missing. A0 uses the valley median times the
+    peak-to-peak width. Flooded references integrate the spectrum capped at
+    25%, 50%, or 75% of the mean peak height, including linear crossings.
     Any one-dimensional domain with at least two bins is supported. Odd domains
     split at floor(bin_count/2). Unsupported shapes return NaN metrics with a warning.
     """
@@ -155,11 +195,6 @@ def analyze_spectrum(
                 f"Gap spectrum bins [{start}, {stop}) contain only NaN samples; "
                 f"index_max{name} and max{name} remain NaN."
             )
-    result.update(
-        index_min1=float(middle - 1), min1=float(values[middle - 1]),
-        index_min2=float(middle), min2=float(values[middle]),
-    )
-    h0 = (result["max1"] + result["max2"]) / 2
     hv = float(spectrum_valley_height(values, valley_neighborhood_length=valley_neighborhood_length))
     if np.isfinite(result["index_max1"]) and np.isfinite(result["index_max2"]):
         start = int(result["index_max1"])
@@ -167,12 +202,7 @@ def analyze_spectrum(
         width = (stop - start - 1) * spacing
         result["A0"] = hv * width
         result["A1"] = float(trapezoid(values[start:stop], dx=spacing))
-        result["A2"] = h0 * width
-        for name, area, excess in (
-            ("R1", result["A1"], False), ("R2", result["A2"], False),
-            ("Z2", result["A2"], True),
-        ):
-            result[name] = _area_ratio(area, result["A0"], excess=excess)
+        result.update({name: float(area) for name, area in _flooded_areas(values[start:stop], spacing).items()})
     return result
 
 
@@ -281,20 +311,17 @@ def pack_spectrum_metrics(
         value = result[name]
         unit = (
             "1"
-            if name.startswith("index_") or name in {"R1", "R2", "Z2"}
+            if name.startswith("index_")
             else source_attrs.get("unit", "a.u.")
         )
         metric_attrs = {
             **attrs,
             "unit": unit,
-            "definition": SPECTRUM_OUTPUT_DEFINITION_OVERRIDES.get(
-                name, SPECTRUM_METRIC_DEFINITIONS[name],
-            ),
+            "definition": SPECTRUM_METRIC_DEFINITIONS[name],
+            **_flood_metadata(name, phase=False),
         }
-        if name in {"A0", "A1", "A2"}:
+        if name.startswith("A"):
             metric_attrs["unit"] = f"{unit}*kHz"
-        if name == "R1":
-            metric_attrs.update(SPECTRAL_RATIO_VALIDITY)
         if name.startswith("index_"):
             metric_attrs["index_base"] = 0
             metric_attrs["index_storage"] = "integer_valued_float32_with_NaN_for_missing_index"
@@ -323,16 +350,19 @@ def analyze_phase_spectrum(
     fft_bin_count: int | None = None, binning_factor: int = 1,
     frequency_start: float = 0.0, frequency_end: float = 0.5,
 ) -> dict[str, np.ndarray]:
-    """Calculate phase curves with peak bins fixed from the pooled spectrum.
+    """Calculate phase curves with integration bounds fixed from the pooled spectrum.
 
     Input axes are (phase, freq). A0 uses the central neighborhood median;
     A1 is the trapezoidal integral between fixed peaks with calibrated kHz
-    spacing; A2 uses the mean height at those peaks. All areas span their index
+    spacing. Flood references cap each phase's spectrum at a fraction of its
+    mean of the actual maxima in the two frequency halves, ignoring NaNs.
+    Only the flood heights follow these phasewise peaks; integration bounds
+    stay fixed. All areas span the pooled peak index
     distance times FFT-average center spacing in kHz, without sorting the signed display axis.
     Missing peak indexes leave all curves NaN. At each phase, missing peak
-    heights invalidate A2, interval NaNs invalidate A1, and A0 ignores valley
+    heights or interval NaNs invalidate flood references; interval NaNs invalidate A1. A0 ignores valley
     NaNs unless the whole neighborhood is missing. Ratios require a finite,
-    strictly positive A0 and finite numerator/result; invalid phases remain NaN.
+    strictly positive corresponding reference and finite numerator/result; invalid phases remain NaN.
     """
     values = np.asarray(spectrum, dtype=np.float64)
     if values.ndim != 2 or any(size == 0 for size in values.shape):
@@ -354,12 +384,18 @@ def analyze_phase_spectrum(
     width = (stop - start - 1) * spacing
     result["A0"] = width * spectrum_valley_height(values, valley_neighborhood_length=valley_neighborhood_length)
     result["A1"] = trapezoid(values[:, start:stop], dx=spacing, axis=1)
-    result["A2"] = width * (values[:, start] + values[:, stop - 1]) / 2
-    for name, area, excess in (
-        ("R1", result["A1"], False), ("R2", result["A2"], False),
-        ("SE", result["A1"], True), ("Z2", result["A2"], True),
-    ):
-        result[name] = _area_ratio(area, result["A0"], excess=excess)
+    result["SE"] = _area_ratio(result["A1"], result["A0"], excess=True)
+    middle = values.shape[1] // 2
+    heights = np.stack([
+        np.max(half, axis=1, where=~np.isnan(half), initial=-np.inf)
+        for half in (values[:, :middle], values[:, middle:])
+    ], axis=1)
+    valid_heights = np.all(np.isfinite(heights), axis=1)
+    mean_peak = np.where(valid_heights, np.sum(np.where(valid_heights[:, None], heights, 0) / 2, axis=1), np.nan)
+    result.update(_flooded_areas(values[:, start:stop], spacing, mean_peak=mean_peak))
+    for percent in FLOOD_PERCENTAGES:
+        result[f"SE_{percent}"] = _area_ratio(result["A1"], result[f"A_{percent}"], excess=True)
+        result[f"SEII_{percent}"] = _area_ratio(result[f"A_{percent}"], result["A0"], excess=True)
     return result
 
 
@@ -393,7 +429,7 @@ def _pack_phase_metrics(
         "fixed_peak_indices": [fixed_metrics["index_max1"], fixed_metrics["index_max2"]],
         "peak_selection": "fixed_pooled_spectrum_indices_at_all_phases",
         "calculation_method": "fixed_peak_bin_geometry_on_beat_median_spectrum",
-        "nonfinite_value_policy": "missing_peak_heights_and_interval_NaNs_propagate_valley_ignores_NaN",
+        "nonfinite_value_policy": "interval_NaNs_propagate_valley_ignores_NaN",
         "phase_samples": phase,
         "phase_endpoint": "excluded",
         "dimDesc": ["phase"],
@@ -401,30 +437,35 @@ def _pack_phase_metrics(
     output = {}
     for name, curve_path_name in PHASE_METRIC_OUTPUT_NAMES.items():
         curve = curves[name]
-        unit = "1" if name in {"R1", "R2", "SE", "Z2"} else source_attrs.get("unit", "a.u.")
-        if name in {"A0", "A1", "A2"}:
+        unit = "1" if name.startswith("SE") else source_attrs.get("unit", "a.u.")
+        if name.startswith("A"):
             unit = f"{unit}*kHz"
         curve_path = f"{root}/{curve_path_name}"
         curve_attrs = {
             **attrs, "unit": unit,
-            "definition": PHASE_OUTPUT_DEFINITION_OVERRIDES.get(
-                name, PHASE_METRIC_DEFINITIONS[name],
-            ),
+            "definition": PHASE_METRIC_DEFINITIONS[name],
+            **_flood_metadata(name, phase=True),
         }
-        if name in {"R1", "SE"}:
+        if name.startswith("SE"):
             curve_attrs.update(SPECTRAL_RATIO_VALIDITY)
+            reference = "A0" if name == "SE" or name.startswith("SEII_") else name.replace("SE", "A", 1)
+            curve_attrs["denominator_validity_rule"] = f"finite_and_strictly_positive_{reference}"
+            curve_attrs["reference_area_source_path"] = f"/{root}/{PHASE_METRIC_OUTPUT_NAMES[reference]}"
+            numerator = name.replace("SEII", "A", 1) if name.startswith("SEII_") else "A1"
+            curve_attrs["signal_area_source_path"] = f"/{root}/{PHASE_METRIC_OUTPUT_NAMES[numerator]}"
         output[curve_path] = (curve.astype(np.float32), curve_attrs)
         scalar_attrs = {
             key: value for key, value in curve_attrs.items()
             if key not in {"phase_samples", "phase_endpoint"}
         }
         scalar_attrs.update(source_path="/" + curve_path, dimDesc=[])
-        if name == "SE":
-            output[f"{root}/SEI"] = (np.float32(nanmedian(curve, dtype=np.float64)), {
+        if name.startswith("SE"):
+            summary = PHASE_SUMMARY_OUTPUT_NAMES[name]
+            output[f"{root}/{summary}"] = (np.float32(nanmedian(curve, dtype=np.float64)), {
                 **scalar_attrs,
-                "definition": "median of valid phasewise SE values over the full registered cardiac cycle",
-                "SEI_evaluation": "temporal_median_of_phasewise_SE",
-                "calculation_method": "nanmedian_of_valid_SE_phase_samples",
+                "definition": f"median of valid phasewise {name} values over the full registered cardiac cycle",
+                "SEI_evaluation": f"temporal_median_of_phasewise_{name}",
+                "calculation_method": f"nanmedian_of_valid_{name}_phase_samples",
                 "aggregation_method": "nanmedian",
                 "aggregation_axes": ["phase"],
                 "aggregation_weighting": "equal_weight_per_valid_phase_sample",

@@ -141,10 +141,14 @@ def test_mask_preserves_published_xy_orientation_and_square_pixels():
 
 
 @pytest.mark.parametrize("metric, unit, label", [
-    ("A0", "power_unit", "$A_{0}$ (power_unit)"),
-    ("R1", "1", "$R_{1}$"),
+    ("A0", "power_unit", "$A_{0}$ (power_unit)"), ("SE_50", "1", "$SE_{50}$"),
     ("SE", "1", "$SE$"),
-    ("A2", "a.u.*kHz", "$A_{2}$ (a.u.)"),
+    ("A0", "a.u.*kHz", "$A_{0}$ (a.u.)"),
+    ("A", "a.u.*kHz", "$A$ (a.u.)"),
+    ("A_25", "a.u.*kHz", "$A_{25}$ (a.u.)"),
+    ("A_50", "a.u.*kHz", "$A_{50}$ (a.u.)"),
+    ("A_75", "a.u.*kHz", "$A_{75}$ (a.u.)"),
+    ("SEII_25", "1", "$SEII_{25}$"),
     ("A", "a.u. * kHZ", "$A$ (a.u.)"),
 ])
 def test_metric_curves_preserve_phase_coordinates_nan_gaps_and_units(metric, unit, label):
@@ -387,7 +391,10 @@ def test_exports_only_available_products_in_shared_namespace(tmp_path, products)
             h5.create_dataset(schema.segmentation.gaps, data=mask.astype(np.uint8))
             expected.add("gaps_mask")
         if products in {"all", "metrics", "one_metric"}:
-            names = ("A0_t",) if products == "one_metric" else ("A0_t", "A_t", "A2_t", "R1_t", "SE")
+            names = ("A0_t",) if products == "one_metric" else (
+                "A0_t", "A_t", "SE", "A_25_t", "A_50_t", "A_75_t", "SE_25", "SE_50", "SE_75",
+                "SEII_25_t", "SEII_50_t", "SEII_75_t",
+            )
             for name in names:
                 metric = h5.create_dataset(f"{schema.spectrograms_masked_metrics_root}/{name}", data=[2, np.nan, 1, 3])
                 metric.attrs["phase_samples"] = [0, 0.25, 0.5, 0.75]

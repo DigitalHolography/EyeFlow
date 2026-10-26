@@ -456,7 +456,11 @@ def _gap_metric_figure(values: np.ndarray, phase: np.ndarray, *, metric: str, un
     ax.set_xticks([0, 1 / 3, 2 / 3, 1], labels=["0", "1/3", "2/3", "1"])
     ax.set_xlabel(r"Cardiac phase ($t/T$)")
     display_unit = "a.u." if unit.replace(" ", "").lower() == "a.u.*khz" else unit
-    metric_label = f"${metric}$" if metric in {"A", "SE"} else f"${metric[0]}_{{{metric[1:]}}}$"
+    if "_" in metric:
+        base, subscript = metric.split("_", 1)
+        metric_label = f"${base}_{{{subscript}}}$"
+    else:
+        metric_label = f"${metric}$" if metric in {"A", "SE"} else f"${metric[0]}_{{{metric[1:]}}}$"
     ax.set_ylabel(
         metric_label if display_unit == "1" else f"{metric_label} ({display_unit})",
     )
