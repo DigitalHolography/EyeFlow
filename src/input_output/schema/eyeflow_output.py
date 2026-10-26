@@ -206,7 +206,7 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
             lumen_diameter=f"{root}/Vein/LumenDiameter/value",
             delta_radius=f"{root}/Vein/DeltaRadius/value",
         ),
-        pixel_pitch_m=f"{root}/PixelPitch_m/value",
+        pixel_pitch_m="Meta/PixelPitch_m",
         gaps=f"{root}/Gaps/Mask",
         gaps_legacy=f"{root}/Gaps/Legacy",
         gaps_from_m0ff=f"{root}/Gaps/GapsFromM0ff",

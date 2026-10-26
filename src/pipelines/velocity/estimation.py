@@ -58,6 +58,14 @@ class FrequencyBandsEstimatorInputs(VelocityEstimatorInputs):
 
     frequency_scale_hz: float
 
+    @property
+    def low_source_path(self) -> str:
+        return getattr(self.first_volume, "name", FREQUENCY_BAND_LF_PATH)
+
+    @property
+    def high_source_path(self) -> str:
+        return getattr(self.second_volume, "name", FREQUENCY_BAND_HF_PATH)
+
 
 @dataclass(frozen=True, slots=True)
 class VelocityEstimatorChunk:
@@ -230,8 +238,9 @@ def resolve_velocity_estimator_inputs(
             second_name, second_volume = "moment2", image_maps.moment2
             missing_prefix = ""
         case "frequency_bands":
-            first_name, first_volume = FREQUENCY_BAND_LF_PATH, image_maps.band_lf
-            second_name, second_volume = FREQUENCY_BAND_HF_PATH, image_maps.band_hf
+            first_volume, second_volume = image_maps.band_lf, image_maps.band_hf
+            first_name = getattr(first_volume, "name", FREQUENCY_BAND_LF_PATH)
+            second_name = getattr(second_volume, "name", FREQUENCY_BAND_HF_PATH)
             missing_prefix = "HoloDoppler datasets "
         case _:
             raise ValueError(
@@ -265,7 +274,7 @@ def resolve_velocity_estimator_inputs(
         )
         Logger.log(
             "Velocity estimator converts the HoloDoppler band ratio "
-            f"{FREQUENCY_BAND_HF_PATH} / {FREQUENCY_BAND_LF_PATH} to RMS "
+            f"{inputs.high_source_path} / {inputs.low_source_path} to RMS "
             f"frequency using {frequency_scale_hz:g} Hz per ratio unit."
         )
     else:
@@ -312,11 +321,15 @@ def _build_doppler_moments_provenance(
     numerical_aperture: float,
 ) -> dict[str, object]:
     del diagnostic_counts
-    return physical_velocity_provenance(
-        velocity_estimation_method=inputs.method,
-        laser_wavelength_m=laser_wavelength_m,
-        numerical_aperture=numerical_aperture,
-    )
+    return {
+        **physical_velocity_provenance(
+            velocity_estimation_method=inputs.method,
+            laser_wavelength_m=laser_wavelength_m,
+            numerical_aperture=numerical_aperture,
+        ),
+        "moment0_source_path": getattr(inputs.first_volume, "name", "/moment0"),
+        "moment2_source_path": getattr(inputs.second_volume, "name", "/moment2"),
+    }
 
 
 @_build_velocity_provenance.register
@@ -341,8 +354,8 @@ def _build_frequency_bands_provenance(
             laser_wavelength_m=laser_wavelength_m,
             numerical_aperture=numerical_aperture,
         ),
-        "band_lf_source_path": FREQUENCY_BAND_LF_PATH,
-        "band_hf_source_path": FREQUENCY_BAND_HF_PATH,
+        "band_lf_source_path": inputs.low_source_path,
+        "band_hf_source_path": inputs.high_source_path,
         "band_hf_negative_value_policy": "clamp_to_zero_before_ratio",
         "band_lf_negative_value_policy": "clamp_to_zero_before_ratio",
         "band_lf_zero_value_policy": "zero_ratio_without_division",
@@ -390,12 +403,12 @@ def _iter_frequency_band_chunks(
         low_frequency = _read_validated_band_chunk(
             inputs.first_volume,
             frame_slice,
-            FREQUENCY_BAND_LF_PATH,
+            inputs.low_source_path,
         )
         high_frequency = _read_validated_band_chunk(
             inputs.second_volume,
             frame_slice,
-            FREQUENCY_BAND_HF_PATH,
+            inputs.high_source_path,
         )
         yield VelocityEstimatorChunk(
             chunk_index=chunk_index,
@@ -575,7 +588,8 @@ def _validate_matching_volumes(method: str, first_volume, second_volume) -> None
     if method == DOPPLER_MOMENTS_METHOD:
         first_name, second_name = "moment0", "moment2"
     else:
-        first_name, second_name = FREQUENCY_BAND_LF_PATH, FREQUENCY_BAND_HF_PATH
+        first_name = getattr(first_volume, "name", FREQUENCY_BAND_LF_PATH)
+        second_name = getattr(second_volume, "name", FREQUENCY_BAND_HF_PATH)
     for name, volume in (
         (first_name, first_volume),
         (second_name, second_volume),

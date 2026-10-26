@@ -338,9 +338,16 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
             ("frequency_bands", "ProcessingBandRatio"),
         ):
             assert output[root].attrs["velocity_estimation_method"] == method
-            assert output[root].attrs["cardiac_cycle_detection_method"] == method
-            assert output[root].attrs["cardiac_cycle_detection_quantity"] == "physical_velocity"
-            assert output[root].attrs["cardiac_cycle_detection_unit"] == "mm/s"
+            if method == "doppler_moments":
+                assert output[root].attrs["moment0_source_path"] == "/moment0"
+                assert output[root].attrs["moment2_source_path"] == "/moment2"
+                assert "band_lf_source_path" not in output[root].attrs
+                assert "band_hf_source_path" not in output[root].attrs
+            else:
+                assert output[root].attrs["band_lf_source_path"] == "/band_0_3000_9000"
+                assert output[root].attrs["band_hf_source_path"] == "/band_1_9000_18000"
+                assert "moment0_source_path" not in output[root].attrs
+                assert "moment2_source_path" not in output[root].attrs
             assert "Segmentation" not in output[root]
             for family in (
                 schema.absolute_waveform_metrics_root,
@@ -377,10 +384,7 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
                 if isinstance(value, h5py.Dataset):
                     attrs = read_dataset_attrs(value)
                     assert attrs["velocity_estimation_method"] == expected_method
-                    assert attrs["cardiac_cycle_detection_quantity"] == "physical_velocity"
-                    assert attrs["cardiac_cycle_detection_unit"] == "mm/s"
                     assert "velocity_estimation_method" not in value.attrs
-                    assert "cardiac_cycle_detection_quantity" not in value.attrs
                     assert "nameID" not in value.attrs
                     dimensions = list(value.attrs.get("dimDesc", ()))
                     if "beat" in dimensions:
@@ -468,7 +472,7 @@ def test_one_failed_workflow_preserves_other_outputs(tmp_path, failed_method, st
         else:
             assert failed_root not in output
         assert successful_root in output
-        assert output[successful_root].attrs["cardiac_cycle_detection_method"] != failed_method
+        assert output[successful_root].attrs["velocity_estimation_method"] != failed_method
         assert failed_method in json.loads(output.attrs["execution_variant_failures"])
         assert (
             processing_path(
@@ -478,7 +482,7 @@ def test_one_failed_workflow_preserves_other_outputs(tmp_path, failed_method, st
         )
         if stage == "input" and failed_method == "doppler_moments":
             assert (
-                output[successful_root].attrs["cardiac_cycle_detection_method"] == "frequency_bands"
+                output[successful_root].attrs["velocity_estimation_method"] == "frequency_bands"
             )
     ef_dir = result.outputs[0].parent.parent
     failed_folder = "moments" if failed_method == "doppler_moments" else "bandratio"

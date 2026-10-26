@@ -12,7 +12,6 @@ from calculations.blood_flow_velocity import (
 from calculations.topology import AnnulusGeometry
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.imports import (
-    HolodopplerTiming,
     np,
     read_int_setting,
 )
@@ -172,10 +171,8 @@ def _build_velocity_analysis_state(
         _context_attrs(
             source_data,
             retinal,
-            timing,
             harmonic_count,
             "eyeflow_velocity_analysis",
-            retinal.cardiac_cycle.spectral,
             number_of_radii_in_fov,
             retinal.cardiac_cycle_source,
         ),
@@ -396,10 +393,8 @@ def _logged_stage(label: str):
 def _context_attrs(
     source_data: VelocityAnalysisSourceData,
     velocity: RetinalVelocity,
-    timing: HolodopplerTiming,
     harmonic_count: int,
     analysis_source: str,
-    cardiac_cycle,
     number_of_radii_in_fov: int,
     cardiac_cycle_detection_source: str,
 ) -> dict[str, object]:
@@ -439,13 +434,6 @@ def _context_attrs(
         "venous_velocity_signal_path": (analysis_paths.retinal_vein_velocity_signal),
         "systolic_peak_indexes_path": analysis_paths.beat_indices,
         "cycle_duration_seconds_path": (output_paths.cardiac_cycle.systolic_cycle_duration_seconds),
-        "heart_rate_hz": float(cardiac_cycle.heart_rate_hz),
-        "heart_rate_bpm": float(cardiac_cycle.heart_rate_bpm),
-        "heart_rate_ste_hz": float(cardiac_cycle.heart_rate_ste_hz),
-        "heart_rate_ste_bpm": float(cardiac_cycle.heart_rate_ste_bpm),
-        "sampling_freq": float(timing.sampling_freq),
-        "batch_stride": float(timing.batch_stride),
-        "dt_seconds": float(timing.dt_seconds),
         "band_limited_harmonics": int(harmonic_count),
         "filter_velocity_signals": True,
         "velocity_signal_lowpass_hz": float(DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ),

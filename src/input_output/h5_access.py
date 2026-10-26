@@ -9,7 +9,7 @@ import numpy as np
 
 from .writers.h5 import normalize_h5_path, set_attr_safe, write_value_dataset
 from .schema.provenance import (
-    INHERITED_PROVENANCE_KEYS_ATTR,
+    processing_summary_keys,
     read_dataset_attrs,
 )
 
@@ -229,13 +229,8 @@ class PipelineH5Output:
         self.write_many({path: payload})
 
     def write_many(self, metrics: Mapping[str, Any]) -> None:
-        if self.processing_root and self.provenance:
-            root = self.file.require_group(self.processing_root)
-            keys = set(root.attrs.get(INHERITED_PROVENANCE_KEYS_ATTR, ()))
-            for key, attr in self.provenance.items():
-                set_attr_safe(root, key, attr)
-                keys.add(key)
-            set_attr_safe(root, INHERITED_PROVENANCE_KEYS_ATTR, sorted(keys))
+        if self.processing_root:
+            self.set_attrs(self.provenance)
         for path, value in metrics.items():
             target = self._path(path)
             in_workflow = bool(
@@ -250,13 +245,11 @@ class PipelineH5Output:
                         set_attr_safe(dataset, key, self._path(attr))
 
     def set_attr(self, key: str, value: Any) -> None:
-        if key == "pipeline":
+        if key == "pipeline" or (
+            self.processing_root and key not in processing_summary_keys(self.processing_root)
+        ):
             return
-        target = (
-            self.file
-            if self.processing_root is None
-            else self.file.require_group(self.processing_root)
-        )
+        target = self.file.require_group(self.processing_root) if self.processing_root else self.file
         set_attr_safe(target, key, value)
 
     def set_attrs(self, attrs: Mapping[str, Any] | None) -> None:
