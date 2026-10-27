@@ -20,11 +20,9 @@ from input_output.output_manager import OutputType  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
 from pipeline_engine.base import DatasetValue  # noqa: E402
 from pipelines.velocity_analysis.artifacts.segment_map_video import (  # noqa: E402
-    _frame_indexes,
     _global_velocity_range,
-    _mosaic_frame,
     _mosaic_frame_chunk,
-    _mosaic_source,
+    _prepare_mosaic_source,
     _turbo_lut,
     export_segment_velocity_map_avis,
 )
@@ -44,7 +42,7 @@ class SegmentVelocityMapAviTests(unittest.TestCase):
         maps[:, :, :, 1, 1, 0] = 500.0
         segments = SimpleNamespace(branch_ids=np.asarray([4, 9], dtype=np.int32))
 
-        source = _mosaic_source("artery", segments, DatasetValue(maps))
+        source, _ = _prepare_mosaic_source("artery", segments, DatasetValue(maps))
 
         self.assertIsNotNone(source)
         self.assertEqual((0,), source.exported_beat_indexes)
@@ -65,7 +63,7 @@ class SegmentVelocityMapAviTests(unittest.TestCase):
         )
         segments = SimpleNamespace(branch_ids=np.asarray([4], dtype=np.int32))
 
-        source = _mosaic_source("artery", segments, DatasetValue(maps))
+        source, _ = _prepare_mosaic_source("artery", segments, DatasetValue(maps))
 
         self.assertIsNotNone(source)
         self.assertEqual((1.0, 10.0), _global_velocity_range((source,)))
@@ -80,7 +78,7 @@ class SegmentVelocityMapAviTests(unittest.TestCase):
             segment_masks=masks,
         )
 
-        source = _mosaic_source("artery", segments, DatasetValue(maps))
+        source, _ = _prepare_mosaic_source("artery", segments, DatasetValue(maps))
 
         self.assertIsNotNone(source)
         self.assertEqual(
@@ -95,20 +93,17 @@ class SegmentVelocityMapAviTests(unittest.TestCase):
         maps[:, :, :, :, 0, 1] = 5.0
         maps[:, :, :, :, 1, 1] = 10.0
         segments = SimpleNamespace(branch_ids=np.asarray([4, 9], dtype=np.int32))
-        source = _mosaic_source("artery", segments, DatasetValue(maps))
+        source, _ = _prepare_mosaic_source("artery", segments, DatasetValue(maps))
 
         self.assertIsNotNone(source)
         self.assertEqual(3, len(source.tiles))
         self.assertEqual(2, source.grid_side)
         self.assertEqual(6, source.video_side)
         self.assertEqual(["A4/R1", "A4/R2", "A9/R2"], [t.label for t in source.tiles])
-        self.assertEqual(
-            [(0, 0), (1, 0), (0, 1), (1, 1)],
-            list(_frame_indexes(2, 2)),
-        )
-
         velocity_range = _global_velocity_range((source,))
-        frame = _mosaic_frame(source, 0, 0, velocity_range, _turbo_lut())
+        frame = _mosaic_frame_chunk(
+            source, np.asarray([0], dtype=np.intp), 0, velocity_range, _turbo_lut()
+        )[0]
         self.assertEqual((6, 6, 3), frame.shape)
         self.assertTrue(np.any(frame[0:3, 0:3]))
         self.assertTrue(np.any(frame[0:3, 3:6]))

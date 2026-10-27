@@ -173,7 +173,9 @@ class EyeFlowOutputPaths:
     spectrograms_masked_per_beat_svd_continuous: str
 
     @staticmethod
-    def active(name: str | None = None) -> "EyeFlowOutputPaths":
+    def active(name: EyeFlowOutputPaths | str | None = None) -> "EyeFlowOutputPaths":
+        if isinstance(name, EyeFlowOutputPaths):
+            return name
         if name is not None and name != EYEFLOW_V2_OUTPUT_SCHEMA:
             raise ValueError(
                 f"Unknown EyeFlow output schema '{name}'. "

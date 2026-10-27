@@ -18,17 +18,17 @@ data into reusable calculation inputs and pack results into the EyeFlow schema.
 | Waveform morphology/metrics | `blood_flow_velocity/signal_analysis/waveform/` | shape/absolute/low-rank pipelines; their focused tests |
 | Native branch, annulus, segment geometry | `topology/` | topology core; segment, orientation, mask-area, quadrant, and optic-disc tests |
 | Segment sampling, measurement, or cross-section behavior | `vessel_segments/` | topology core and velocity/spatial-gradient profiles; cache, workflow, transform, chunk, profile, and segment-output tests |
-| Spatial gradient/filter behavior | `math/spatial_gradient.py`, `math/image.py`, periodic windows | spatial-gradient pipeline; `test_spatial_gradient_*`, `test_gaussian2d_blur.py`, `test_unsharpen.py`, `test_periodic_sliding_windows.py` |
+| Spatial gradient/filter behavior | `math/spatial_gradient.py`, periodic windows | spatial-gradient pipeline; `test_spatial_gradient_*`, `test_gaussian2d_blur.py`, `test_unsharpen.py`, `test_periodic_sliding_windows.py` |
 | Blood-volume-rate formulas | `blood_volume_rate.py` | `pipelines/blood_volume_rate/`; `test_blood_volume_rate.py`, pipeline dependency test |
 | Shared statistics/Fourier utilities | `math/` | search call sites; `test_calculations_math.py` and affected pipeline tests |
+| Displacement mean reference | `temporal_reference.py` | `pipelines/displacement_map/calculator.py`, `test_displacement_map_pipeline.py` |
 | CPU/GPU behavior | `compute_backend.py`, `vessel_segments/sampling/transforms.py` and `streaming.py` | topology transform/chunk tests |
 
 ## Velocity calculation ownership
 
 Retinal velocity estimation is the literal purpose of the `velocity` pipeline,
 so its product-specific estimator lives in
-`pipelines/velocity/estimation.py`, with mask preparation in
-`pipelines/velocity/masks.py`. Read the pipeline context and data contracts for
+`pipelines/velocity/estimation.py`, including mask preparation. Read the pipeline context and data contracts for
 its method, calibration, and output invariants. Reusable cardiac-cycle,
 per-beat, waveform, topology, and math transforms remain in `calculations`.
 
@@ -68,15 +68,12 @@ semantics is a separate task. Sampling preserves scalar/vector axes, whereas
 the measurement runner currently accepts scalar maps only.
 
 Canonical callers use `SegmentSamplingPlan`, `SegmentMeasurements`,
-`SegmentMeasurementSettings`, and `fit_quadratic_profiles`. Transitional aliases
-live in their new owning packages, never in `topology`. The existing result
+`SegmentMeasurementSettings`, and `fit_quadratic_profiles`. The existing result
 field `SegmentMeasurements.topology` holds a sampling plan; `.topology.native`
 provides native geometry. Runtime state keys and output schema remain unchanged.
 
-Velocity segments use fused resize-and-rotate sampling. The dormant
-`pipelines/displacement_map/segments.py` helper can use the same segment sampling
-transforms, but the current displacement runner does not call it. Spatial
-gradients deliberately use staged processing:
+Velocity segments use fused resize-and-rotate sampling. Spatial gradients
+deliberately use staged processing:
 
 ```text
 interpolate -> centered temporal mean -> Sobel magnitude
@@ -88,8 +85,7 @@ match whole-recording filtering. The chunk planner applies one scratch-memory
 budget across workers; retained result arrays are not counted. Changes to
 orientation, interpolation, mask order, halos, or branch identity affect
 multiple consumers and require topology, velocity-profile, spatial-gradient,
-and segment-output tests as appropriate. Add displacement coverage if its
-segment helper becomes part of the production runner.
+and segment-output tests as appropriate.
 
 The current production chain uses two centered 7-frame means, ImageJ Gaussian
 radius 6, and ImageJ unsharp radius 8 with weight 0.6; the staged chunk halo is

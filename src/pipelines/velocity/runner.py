@@ -12,6 +12,7 @@ from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
     CardiacCycleAnalysis,
 )
 from input_output.h5_access import PipelineH5Output
+from input_output.writers.h5 import delete_output_path
 from input_output.schema.eyeflow_output import (
     VELOCITY_WORKFLOW_FOLDERS,
     VELOCITY_WORKFLOW_ROOTS,
@@ -130,8 +131,8 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
             outputs = {
                 path: value for path, value in outputs.items() if not path.startswith(root + "/")
             }
-            if hasattr(ctx, "output") and root in ctx.runtime.work_h5:
-                del ctx.runtime.work_h5[root]
+            if hasattr(ctx, "output"):
+                delete_output_path(ctx.runtime.work_h5, root)
             Logger.log_warning(f"Skipping {method}: {exc}")
     if not variants:
         raise RuntimeError(f"Neither velocity workflow completed: {failures}")
@@ -174,6 +175,7 @@ def _estimate(ctx, source):
     images = source.image_maps
     segmentation = source.segmentation
     retain_velocity_map = _pipeline_scheduled(ctx, "velocity_analysis")
+    scratch = getattr(getattr(ctx, "runtime", None), "scratch", None)
     return estimate_retinal_velocity(
         image_maps=images,
         velocity_estimation_method=source.velocity_estimation_method,
@@ -184,6 +186,9 @@ def _estimate(ctx, source):
         optic_disc_center=segmentation.optic_disc.center,
         local_background_dist=source.doppler_view.local_background_dist,
         retain_velocity_video=retain_velocity_map,
+        velocity_video_allocator=(
+            scratch.empty_float32 if retain_velocity_map and scratch is not None else None
+        ),
     )
 
 
@@ -204,12 +209,6 @@ def velocity_workflows(ctx) -> VelocityWorkflows:
     if not isinstance(value, VelocityWorkflows):
         raise TypeError("Velocity workflow state must be a VelocityWorkflows result.")
     return value
-
-
-def cardiac_cycles(ctx) -> CardiacCycleAnalysis:
-    """Return reusable cardiac-cycle timing without exposing pipeline internals."""
-
-    return velocity(ctx).cardiac_cycle
 
 
 def cardiac_cycle_indexes(ctx) -> np.ndarray:

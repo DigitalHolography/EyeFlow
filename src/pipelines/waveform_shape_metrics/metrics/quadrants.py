@@ -6,8 +6,9 @@ import numpy as np
 
 from calculations.math import nanmedian
 from calculations.topology import QUADRANT_NAMES, quadrant_membership
+from input_output.payloads import payload_data as _payload_data
 from input_output.schema import EyeFlowOutputPaths
-from pipeline_engine import DatasetValue, with_attrs
+from pipeline_engine import with_attrs
 
 from .calculator import WaveformShapeMetricsCalculator
 
@@ -21,7 +22,7 @@ def pack_quadrant_metrics(
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
     """Pack regional waveform metrics below the metric output root."""
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     calculator = WaveformShapeMetricsCalculator()
     metric_specs = {item[0]: item for item in calculator._metric_keys()}
     result: dict[str, object] = {}
@@ -178,19 +179,3 @@ def _region_attrs(
         "signal_type": signal_type,
         "unit": [unit],
     }
-
-
-def _payload_data(value: object) -> object:
-    if isinstance(value, DatasetValue):
-        return value.data
-    if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
-        return value[0]
-    return value
-
-
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)

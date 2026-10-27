@@ -6,7 +6,7 @@ import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.holodoppler import HD_SPECTOGRAMS_PATH
-from pipelines.vessel_inputs import align_spectrogram_frame
+from input_output.canonical_sources import iter_aligned_spectrogram_frames
 from utils.logger import Logger
 
 from .preprocessing import prepare_gap_spectrograms
@@ -36,8 +36,8 @@ def preprocess_spectrograms(spectrograms, analysis_zones: np.ndarray | None) -> 
     average = np.full(spectrograms.shape[:2], np.nan, dtype=np.float64)
     median = np.full_like(average, np.nan)
     gap_median = np.full_like(average, np.nan) if prepared is not None else None
-    for frame_index in range(spectrograms.shape[0]):
-        frame = np.asarray(align_spectrogram_frame(spectrograms[frame_index]), dtype=np.float64)
+    for frame_index, aligned in enumerate(iter_aligned_spectrogram_frames(spectrograms)):
+        frame = np.asarray(aligned, dtype=np.float64)
         full = frame.reshape(frame.shape[0], -1)
         valid = np.all(np.isfinite(full), axis=1)
         average[frame_index, valid] = np.mean(full[valid], axis=1)

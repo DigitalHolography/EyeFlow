@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable, ClassVar
 
 from app_settings import LAST_RUN_LOG_FILENAME
+from input_output.writers.text_file import write_text_file
 
 
 class LogLevel(str, Enum):
@@ -143,9 +144,7 @@ class Logger:
         return cls.log(message, LogLevel.ERROR)
 
     def write_snapshot(self, text: str) -> Path:
-        log_path = self.path
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_path.write_text(text, encoding="utf-8")
+        log_path = write_text_file(self.path, text)
         self.last_saved_path = log_path
         return log_path
 

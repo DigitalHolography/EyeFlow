@@ -14,10 +14,8 @@ from utils.logger import Logger
 
 from .extraction import extract_segment
 from .models import (
-    SampledSegment,
     SampledSegmentChunk,
     SampledSegmentChunks,
-    SampledSegments,
     SegmentSamplingPlan,
 )
 from .transforms import interpolate_segments, resample_rotate_segment
@@ -227,46 +225,6 @@ def prepare_segment_chunks(
         "Completed bounded topology segment preparation in "
         f"{perf_counter() - started:.2f}s."
     )
-
-
-def prepare_segments(
-    data_map,
-    prepared_topology: SegmentSamplingPlan,
-    *,
-    spatial_axes: tuple[int, int] = (-2, -1),
-    worker_count: int = 1,
-    keep_on_device: bool = False,
-    transform_mode: str = "fused",
-) -> SampledSegments:
-    """Compatibility helper returning whole segments assembled from chunks."""
-
-    current_index: tuple[int, int] | None = None
-    parts: list[object] = []
-    backend = optional_cupy_backend() if keep_on_device else None
-
-    def joined():
-        if backend is not None and parts and isinstance(parts[0], backend.cupy.ndarray):
-            return backend.cupy.concatenate(parts, axis=0)
-        return np.concatenate(parts, axis=0)
-
-    for chunk in prepare_segment_chunks(
-        data_map,
-        prepared_topology,
-        spatial_axes=spatial_axes,
-        working_memory_mb=float("inf"),
-        worker_count=worker_count,
-        keep_on_device=keep_on_device,
-        transform_mode=transform_mode,
-    ):
-        index = (chunk.ring_index, chunk.branch_index)
-        if current_index is not None and index != current_index:
-            raise RuntimeError("segment chunks must be grouped by segment index.")
-        current_index = index
-        parts.append(chunk.rotated)
-        if int(chunk.frame_slice.stop) == int(data_map.shape[0]):
-            yield SampledSegment(*current_index, joined())
-            current_index = None
-            parts = []
 
 
 def _bounded_chunk_plan(

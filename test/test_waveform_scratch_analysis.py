@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths, ImageMaps
+from input_output.run_scratch import RunArrayStorage
 from pipelines.velocity.estimation import (
     _bounded_inpaint_result,
     _inpaint_frame_batch,
@@ -69,15 +72,18 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
         import cv2
 
         rng = np.random.default_rng(8)
-        frames = rng.random((4, 12, 10), dtype=np.float32)
-        mask = np.zeros((12, 10), dtype=bool)
-        mask[4:8, 3:7] = True
+        frames = rng.random((8, 256, 256), dtype=np.float32)
+        mask = np.zeros((256, 256), dtype=bool)
+        mask[80:160, 100:180] = True
 
         expected = np.stack(
             [cv2.inpaint(frame, mask.astype(np.uint8), 5, cv2.INPAINT_TELEA) for frame in frames],
             axis=0,
         )
-        actual = _inpaint_frame_batch(frames, mask)
+        with patch("pipelines.velocity.estimation.cpu_count", return_value=4), patch(
+            "pipelines.velocity.estimation.cap_parallel_jobs", return_value=4,
+        ):
+            actual = _inpaint_frame_batch(frames, mask)
 
         np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
@@ -140,6 +146,31 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
         self.assertIsInstance(retained.maps.velocity, np.ndarray)
         self.assertEqual(moment0.shape, retained.maps.velocity.shape)
         self.assertEqual(np.dtype(np.float32), retained.maps.velocity.dtype)
+
+        with TemporaryDirectory() as directory:
+            with RunArrayStorage(Path(directory), memory_budget_bytes=moment0.nbytes) as storage:
+                first_video = storage.empty_float32(moment0.shape)
+                self.assertNotIsInstance(first_video, np.memmap)
+                backed = estimate_retinal_velocity(
+                    image_maps=ImageMaps(moment0=moment0, moment2=moment2),
+                    artery_mask=artery,
+                    vein_mask=vein,
+                    optic_disc_center=optic_disc_center,
+                    local_background_dist=1,
+                    velocity_video_allocator=storage.empty_float32,
+                )
+                self.assertIsInstance(backed.maps.velocity, np.memmap)
+                np.testing.assert_array_equal(backed.maps.velocity, retained.maps.velocity)
+                self.assertEqual(1, len(list(Path(directory).glob(".ef_scratch_*"))))
+            self.assertEqual([], list(Path(directory).glob(".ef_scratch_*")))
+            with patch(
+                "input_output.run_scratch.shutil.disk_usage",
+                return_value=SimpleNamespace(free=0),
+            ):
+                with RunArrayStorage(Path(directory), memory_budget_bytes=0) as storage:
+                    self.assertNotIsInstance(
+                        storage.empty_float32(moment0.shape), np.memmap,
+                    )
 
     def test_disabled_vein_keeps_artery_background_and_returns_nan_signals(
         self,

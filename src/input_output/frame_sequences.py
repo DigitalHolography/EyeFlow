@@ -1,8 +1,9 @@
-"""Frame-sequence and analysis-mask input helpers."""
+"""Read video and HDF5 frame sequences for displacement analysis."""
 
 from __future__ import annotations
 
 import math
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -19,12 +20,6 @@ try:
 except ImportError:
     h5py = None
 
-try:
-    from tqdm import tqdm
-except ImportError:
-    tqdm = None
-
-
 class FrameSequence:
     def __init__(
         self,
@@ -36,6 +31,7 @@ class FrameSequence:
         h5_high_percentile: float,
         *,
         h5_source: h5py.Dataset | None = None,
+        defer_h5_range: bool = False,
     ) -> None:
         self.path = path
         self.h5_source = h5_source
@@ -69,7 +65,8 @@ class FrameSequence:
             self.height = shape[spatial_axes[0]]
             self.width = shape[spatial_axes[1]]
             self.fps = float(h5_fps)
-            self.h5_value_min, self.h5_value_max = self._estimate_h5_range()
+            if not defer_h5_range:
+                self.h5_value_min, self.h5_value_max = self._estimate_h5_range()
         else:
             capture = cv2.VideoCapture(str(self.path))
             if not capture.isOpened():
@@ -120,6 +117,9 @@ class FrameSequence:
                     continue
                 step = max(1, int(math.ceil(math.sqrt(values.size / 4096.0))))
                 samples.append(values[::step].astype(np.float32, copy=False))
+        return self._range_from_samples(samples)
+
+    def _range_from_samples(self, samples: list[np.ndarray]) -> tuple[float, float]:
         if not samples:
             raise RuntimeError("Le dataset HDF5 ne contient aucune valeur finie.")
         values = np.concatenate(samples)
@@ -131,6 +131,52 @@ class FrameSequence:
         if high <= low + 1e-12:
             high = low + 1.0
         return low, high
+
+    @contextmanager
+    def cached_for_replay(self, max_frames: int | None, scratch_dir: Path):
+        """Read source frames once, then replay a bounded disk cache twice.
+
+        For HDF5, the display range still samples the complete source volume;
+        only frames needed by the calculation occupy scratch storage.
+        """
+        limit = self.frame_count if max_frames is None else min(self.frame_count, max_frames)
+        if limit < 1:
+            raise RuntimeError("Aucune frame lisible.")
+        with tempfile.TemporaryDirectory(prefix="ef_frames_", dir=scratch_dir) as directory:
+            path = Path(directory) / "frames.npy"
+            dtype = np.float32 if self.is_h5 else np.uint8
+            shape = (limit, self.height, self.width) if self.is_h5 else (
+                limit, self.height, self.width, 3
+            )
+            frames = np.lib.format.open_memmap(path, mode="w+", dtype=dtype, shape=shape)
+            count = 0
+            if self.is_h5:
+                sample_count = min(max(self.frame_count, 1), 32)
+                sample_indices = set(np.linspace(
+                    0, max(0, self.frame_count - 1), sample_count
+                ).astype(int))
+                samples = []
+                with self._open_h5_dataset() as dataset:
+                    for index in range(self.frame_count):
+                        frame = self._slice_h5_frame(dataset, index)
+                        if index in sample_indices:
+                            values = frame[np.isfinite(frame)]
+                            if values.size:
+                                step = max(1, int(math.ceil(math.sqrt(values.size / 4096.0))))
+                                samples.append(values[::step].astype(np.float32, copy=False))
+                        if index < limit:
+                            frames[index] = frame
+                            count += 1
+                self.h5_value_min, self.h5_value_max = self._range_from_samples(samples)
+            else:
+                for frame in self.iter_frames(limit):
+                    frames[count] = frame
+                    count += 1
+            frames.flush()
+            try:
+                yield FrameReplay(self, frames, count)
+            finally:
+                del frames
 
     def _h5_to_bgr_u8(self, frame: np.ndarray) -> np.ndarray:
         clean = np.nan_to_num(
@@ -180,21 +226,14 @@ def load_binary_mask(path: Path, shape: tuple[int, int], invert: bool) -> np.nda
     return cv2.bitwise_not(mask) if invert else mask
 
 
-def compute_mean_reference(
-    sequence: FrameSequence,
-    max_frames: int | None,
-) -> tuple[np.ndarray, int]:
-    accumulator: np.ndarray | None = None
-    count = 0
-    total = sequence.frame_count if max_frames is None else min(sequence.frame_count, max_frames)
-    for frame in tqdm(
-        sequence.iter_frames(max_frames), total=total, desc="Référence moyenne", unit="frame"
-    ):
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float64) / 255.0
-        if accumulator is None:
-            accumulator = np.zeros_like(gray, dtype=np.float64)
-        accumulator += gray
-        count += 1
-    if accumulator is None or count == 0:
-        raise RuntimeError("Aucune frame lisible.")
-    return (accumulator / count).astype(np.float32), count
+class FrameReplay:
+    def __init__(self, source: FrameSequence, frames: np.memmap, count: int) -> None:
+        self.source = source
+        self.frames = frames
+        self.frame_count = count
+
+    def iter_frames(self, max_frames: int | None = None) -> Iterator[np.ndarray]:
+        limit = self.frame_count if max_frames is None else min(self.frame_count, max_frames)
+        for index in range(limit):
+            frame = self.frames[index]
+            yield self.source._h5_to_bgr_u8(frame) if self.source.is_h5 else np.asarray(frame)

@@ -32,7 +32,7 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
     vein = _display_velocity(_vector(ctx.velocity.continuous("vein")))
     vein_deriv = _display_velocity(_vector(ctx.velocity.derivative("vein")))
     maxima, minima = _cycle_extrema(artery, peaks)
-    return [
+    paths = [
         _systole_plot(
             writer,
             "find_systoles_indices_artery.png",
@@ -58,6 +58,9 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
             ctx.velocity_semantics,
         ),
     ]
+    writer.register_artifact("systole", "artery", paths[0])
+    writer.register_artifact("systole", "vein", paths[1])
+    return paths
 
 def _systole_plot(
     writer: FigureWriter,

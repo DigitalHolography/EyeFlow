@@ -7,6 +7,7 @@ import numpy as np
 from calculations.math import nanmedian
 from calculations.topology import QUADRANT_NAMES, quadrant_membership
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.serialization import serialize_segment_velocity
 from pipeline_engine import DatasetValue, with_attrs
 from pipelines.velocity.models import RetinalVelocity
 from pipelines.velocity.semantics import velocity_dataset_attrs
@@ -141,7 +142,7 @@ def _reduce_segment_velocity(
     values: np.ndarray,
     selected: np.ndarray,
 ) -> np.ndarray:
-    frame_by_segment = np.asarray(values, dtype=np.float32).transpose(2, 1, 0)
+    frame_by_segment = serialize_segment_velocity(np.asarray(values, dtype=np.float32))
     if not np.any(selected):
         return np.full(frame_by_segment.shape[0], np.nan, dtype=np.float32)
     return np.asarray(

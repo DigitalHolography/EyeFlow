@@ -227,11 +227,6 @@ def export_segment_velocity_map_avis(
     return paths
 
 
-def _mosaic_source(vessel: str, segments, packed_value) -> _MosaicSource | None:
-    source, _ = _prepare_mosaic_source(vessel, segments, packed_value)
-    return source
-
-
 def _prepare_mosaic_source(
     vessel: str,
     segments,
@@ -397,29 +392,6 @@ def _global_velocity_range(
     return minimum, maximum
 
 
-def _frame_indexes(time_count: int, beat_count: int):
-    """Yield time as the fastest-changing movie dimension."""
-    for beat_index in range(beat_count):
-        for time_index in range(time_count):
-            yield time_index, beat_index
-
-
-def _mosaic_frame(
-    source: _MosaicSource,
-    time_index: int,
-    beat_index: int,
-    velocity_range: tuple[float, float],
-    color_lut: np.ndarray,
-) -> np.ndarray:
-    return _mosaic_frame_chunk(
-        source,
-        np.asarray([time_index], dtype=np.intp),
-        beat_index,
-        velocity_range,
-        color_lut,
-    )[0]
-
-
 def _mosaic_frame_chunk(
     source: _MosaicSource,
     time_indexes: np.ndarray,
@@ -571,5 +543,3 @@ def _absolute_h5_path(path: str | None) -> str | None:
     if path is None:
         return None
     return f"/{path.lstrip('/')}"
-
-

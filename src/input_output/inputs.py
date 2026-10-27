@@ -1,7 +1,6 @@
-"""Resolve HOLO selections and expose HD/DV/work HDF5 inputs to pipelines."""
+"""Resolve selected HOLO markers, run folders, and input lists."""
 
-import json
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +9,8 @@ import h5py
 from .holo_run_layout import HoloRunLayout
 from .run_discovery import is_run_directory
 from .schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
+from .schema.base import load_h5_sidecar_config as _load_h5_sidecar_config
+from .schema.base import sidecar_dir_for_h5
 
 HOLO_SUFFIX = ".holo"
 INPUT_LIST_SUFFIX = ".txt"
@@ -116,11 +117,6 @@ def read_holo_input_list(input_list_path: Path) -> HoloInputList:
     )
 
 
-def sidecar_dir_for_h5(h5_path: str | Path, folder_name: str) -> Path:
-    """Return a sibling sidecar folder next to an exported HDF5 folder."""
-    return Path(h5_path).parent.parent / folder_name
-
-
 def holo_input_status(
     holo_path: Path,
 ) -> HoloInputStatus:
@@ -183,117 +179,16 @@ def _validate_holo_file(holo_path: Path) -> None:
         raise ValueError(f"HOLO input must be a file:\n{holo_path}")
 
 
-class MergedAttrs(Mapping[str, object]):
-    def __init__(self, *sources: h5py.File | Mapping[str, object] | None) -> None:
-        self._sources = [
-            _attr_source(source) for source in sources if source is not None
-        ]
-
-    def __getitem__(self, key: str) -> object:
-        sentinel = object()
-        value = self.get(key, sentinel)
-        if value is sentinel:
-            raise KeyError(key)
-        return value
-
-    def __iter__(self) -> Iterator[str]:
-        seen: set[str] = set()
-        for source in self._sources:
-            for key in source.keys():
-                if key not in seen:
-                    seen.add(key)
-                    yield str(key)
-
-    def __len__(self) -> int:
-        return sum(1 for _ in self.__iter__())
-
-    def get(self, key: str, default=None):
-        for source in self._sources:
-            if key in source:
-                return source[key]
-        return default
-
-
-def _attr_source(source: h5py.File | Mapping[str, object]) -> Mapping[str, object]:
-    return source.attrs if isinstance(source, h5py.File) else source
-
-
-def _load_sidecar_config(
-    h5file: h5py.File | None,
-    *,
-    source_schema: SourceFileLayout,
-) -> dict[str, object]:
-    if h5file is None or h5file.filename is None:
-        return {}
-    if not source_schema.config_dir_name or not source_schema.config_filename:
-        return {}
-    config_path = _sidecar_config_path(
-        Path(h5file.filename),
-        folder_name=source_schema.config_dir_name,
-        preferred_name=source_schema.config_filename,
-    )
-    if config_path is None:
-        return {}
-    try:
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return _normalize_config_keys(payload)
-
-
 def load_h5_sidecar_config(
-    h5file: h5py.File | None,
-    *,
-    source: str | SourceFileLayout,
+    h5file: h5py.File | None, *, source: str | SourceFileLayout
 ) -> dict[str, object]:
+    """Resolve a named source and load its optional sidecar JSON."""
     if isinstance(source, SourceFileLayout):
-        source_schema = source
+        layout = source
     elif source == "hd":
-        source_schema = HOLODOPPLER_LAYOUT
+        layout = HOLODOPPLER_LAYOUT
     elif source == "dv":
-        source_schema = DOPPLER_VIEW_LAYOUT
+        layout = DOPPLER_VIEW_LAYOUT
     else:
         raise ValueError(f"Unknown sidecar config source: {source}")
-    return _load_sidecar_config(h5file, source_schema=source_schema)
-
-
-def _sidecar_config_path(
-    h5_path: Path,
-    *,
-    folder_name: str,
-    preferred_name: str,
-) -> Path | None:
-    for candidate_folder in _sidecar_config_folder_names(folder_name):
-        config_dir = sidecar_dir_for_h5(h5_path, candidate_folder)
-        if not config_dir.is_dir():
-            continue
-        preferred = config_dir / preferred_name
-        if preferred.is_file():
-            return preferred
-        for hd_name in ("parameters_holodoppler.json", "parameters_holodoppler"):
-            hd_exported = config_dir / hd_name
-            if hd_exported.is_file():
-                return hd_exported
-        json_files = sorted(config_dir.glob("*.json"))
-        if json_files:
-            return json_files[0]
-    return None
-
-
-def _sidecar_config_folder_names(folder_name: str) -> tuple[str, ...]:
-    names = [folder_name]
-    for fallback in ("json", "config"):
-        if fallback not in names:
-            names.append(fallback)
-    return tuple(names)
-
-
-def _normalize_config_keys(value):
-    if isinstance(value, dict):
-        return {
-            str(key).replace(" ", ""): _normalize_config_keys(val)
-            for key, val in value.items()
-        }
-    if isinstance(value, list):
-        return [_normalize_config_keys(item) for item in value]
-    return value
+    return _load_h5_sidecar_config(h5file, source=layout)

@@ -178,8 +178,9 @@ class SegmentMapOutputTests(unittest.TestCase):
                 list(artery_masks.attrs["dimDesc"]),
             )
             self.assertEqual(np.bool_, artery_masks.dtype)
-            self.assertEqual("lzf", artery_maps.compression)
-            self.assertEqual((4, 3, 1, 1, 1, 1), artery_maps.chunks)
+            self.assertEqual("gzip", artery_maps.compression)
+            self.assertEqual(9, artery_maps.compression_opts)
+            self.assertEqual((4, 3, 4, 1, 1, 1), artery_maps.chunks)
 
 
 def _segments(*, radius_count: int, branch_count: int):

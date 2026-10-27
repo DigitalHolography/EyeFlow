@@ -11,9 +11,10 @@ from app_settings import (
     VelocityEstimationMethod,
     validate_velocity_estimation_method,
 )
-from input_output.h5_access import PipelineH5Output, PipelineInputSource, RawH5SourceReader
-from input_output.inputs import MergedAttrs
+from input_output.h5_access import MergedAttrs, PipelineH5Output, PipelineInputSource, RawH5SourceReader
 from input_output.output_manager import OutputManager
+from input_output.run_scratch import RunArrayStorage
+from input_output.writers.h5 import write_root_attributes
 from utils.logger import Logger
 from velocity_calibration import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
@@ -90,6 +91,7 @@ class PipelineRuntime:
     work_h5: h5py.File
     preferred_input: str
     pipeline_name: str
+    scratch: RunArrayStorage | None = None
 
 
 class PipelineContext:
@@ -103,6 +105,7 @@ class PipelineContext:
         doppler_vision_h5: h5py.File | None,
         holodoppler_config: Mapping[str, object] | None = None,
         doppler_vision_config: Mapping[str, object] | None = None,
+        shared_inputs: PipelineInputs | None = None,
         preferred_input: str = "both",
         pipeline_name: str = "",
         variables: dict[str, Any] | None = None,
@@ -115,11 +118,12 @@ class PipelineContext:
         processing_root: str | None = None,
         output_provenance: Mapping[str, Any] | None = None,
         execution_variant: ExecutionVariant | None = None,
+        scratch: RunArrayStorage | None = None,
     ) -> None:
         hd_config = dict(holodoppler_config or {})
         dv_config = dict(doppler_vision_config or {})
-        self.runtime = PipelineRuntime(work_h5, preferred_input, pipeline_name)
-        self.inputs = PipelineInputs(
+        self.runtime = PipelineRuntime(work_h5, preferred_input, pipeline_name, scratch)
+        self.inputs = shared_inputs or PipelineInputs(
             hd=PipelineInputSource(
                 RawH5SourceReader(h5file=holodoppler_h5, label="HD"),
                 hd_config,
@@ -337,5 +341,5 @@ def finish_pipeline(ctx: PipelineContext, pipeline_name: str) -> None:
     """Record completion metadata after a pipeline succeeds."""
 
     ctx.runtime.pipeline_name = pipeline_name
-    ctx.runtime.work_h5.attrs["last_pipeline"] = pipeline_name
+    write_root_attributes(ctx.runtime.work_h5, {"last_pipeline": pipeline_name})
     ctx.output.h5.flush()

@@ -6,57 +6,9 @@ import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.holodoppler import HD_SPECTOGRAMS_PATH
-from pipelines.vessel_inputs import align_spectrogram_frame
 from utils.logger import Logger
 
 from .masks import gap_velocity_mask
-
-
-def spatial_median_band_power(spectrograms, mask: np.ndarray) -> np.ndarray:
-    """Take the median of included pixels for every exported time/frequency pair.
-
-    The mask uses the persisted EF lower-left (x, y) frame. Read only one
-    time frame at a time from the lazy (time, freq, y, x) source, aligning
-    its spatial coordinates at the canonical input boundary. Excluded pixels,
-    including excluded NaN/Inf values, never enter the median.
-    Finite negative spatial medians from HD's resampling are clamped to zero
-    after reduction; individual pixel values are not clamped. Any nonfinite
-    included sample yields NaN for the affected time/frequency pair. Callers must
-    skip empty gap support.
-    """
-    if spectrograms.ndim != 4:
-        raise ValueError("Spectrograms must have (time, freq, height, width) axes.")
-    if np.dtype(spectrograms.dtype).kind not in "iuf":
-        raise TypeError("Spectrograms must contain real numeric band-power values.")
-    mask = np.asarray(mask)
-    if mask.ndim != 2 or mask.dtype != np.bool_:
-        raise TypeError("The application mask must be a 2-D boolean array.")
-    if mask.shape != tuple(spectrograms.shape[-2:][::-1]):
-        raise ValueError("The (x, y) application mask must match the aligned spectrogram shape.")
-
-    result = np.full(spectrograms.shape[:2], np.nan, dtype=np.float64)
-    if not np.any(mask):
-        raise ValueError("An empty gap mask must be skipped before reducing spectra.")
-
-    for time_index in range(spectrograms.shape[0]):
-        samples = align_spectrogram_frame(spectrograms[time_index])[:, mask]
-        valid = np.all(np.isfinite(samples), axis=-1)
-        # Use float64 for the midpoint of an even number of included samples.
-        result[time_index, valid] = np.median(
-            np.asarray(samples[valid], dtype=np.float64), axis=-1,
-        )
-    np.maximum(result, 0.0, out=result)
-    return result
-
-
-def preprocess_gap_spectrograms(spectrograms, analysis_zones: np.ndarray) -> dict[str, object]:
-    """Pack gap median power when valid spatial support is available."""
-    prepared = prepare_gap_spectrograms(spectrograms, analysis_zones)
-    if prepared is None:
-        return {}
-    mask, attrs = prepared
-    schema = EyeFlowOutputPaths.active()
-    return {schema.spectrograms_masked: (spatial_median_band_power(spectrograms, mask), attrs)}
 
 
 def prepare_gap_spectrograms(spectrograms, analysis_zones: np.ndarray):

@@ -9,7 +9,7 @@ import numpy as np
 
 from calculations.topology.geometry import AnnulusGeometry
 from calculations.topology.optic_disc import OpticDisc
-from calculations.vessel_segments.sampling import prepare_segments, prepare_sampling_plan
+from calculations.vessel_segments.sampling import prepare_segment_chunks, prepare_sampling_plan
 
 
 class TopologyWorkflowTests(unittest.TestCase):
@@ -18,7 +18,6 @@ class TopologyWorkflowTests(unittest.TestCase):
         from calculations.vessel_segments.sampling.transforms import (
             interpolate_segments,
             resample_rotate_segment,
-            rotate_segments,
         )
         vessel = np.zeros((41, 41), dtype=bool)
         vessel[18:23, 5:36] = True
@@ -30,19 +29,18 @@ class TopologyWorkflowTests(unittest.TestCase):
         )
         cube = np.arange(2 * 41 * 41, dtype=np.float32).reshape(2, 41, 41)
         for mode in ("fused", "sequential"):
-            items = list(prepare_segments(cube, prepared, transform_mode=mode))
+            items = list(prepare_segment_chunks(cube, prepared, transform_mode=mode))
             self.assertTrue(items)
             for item in items:
                 index = (item.ring_index, item.branch_index)
-                extracted = extract_segment(cube, prepared.topology, *index)
+                extracted = extract_segment(cube, prepared.native, *index)
                 angle = float(prepared.rotation_degrees[index])
                 if mode == "fused":
                     expected = resample_rotate_segment(extracted, angle, 128)
                 else:
-                    expected = rotate_segments(
-                        interpolate_segments(extracted, 128)[None, None],
-                        np.array([[angle]], np.float32),
-                    )[0, 0]
+                    expected = resample_rotate_segment(
+                        interpolate_segments(extracted, 128), angle, 128,
+                    )
                 np.testing.assert_allclose(item.rotated, expected, equal_nan=True)
 
     def test_empty_topology_allows_parallel_preparation(self) -> None:
@@ -51,7 +49,7 @@ class TopologyWorkflowTests(unittest.TestCase):
             vessel, OpticDisc(vessel, (10.0, 10.0), None, None),
             AnnulusGeometry(0., .5, .5, 1)
         )
-        self.assertEqual([], list(prepare_segments(
+        self.assertEqual([], list(prepare_segment_chunks(
             np.zeros((2, 21, 21), np.float32), prepared, worker_count=2,
         )))
 
@@ -68,18 +66,18 @@ class TopologyWorkflowTests(unittest.TestCase):
         )
 
         first = list(
-            prepare_segments(np.ones((2, 41, 41), dtype=np.float32), prepared)
+            prepare_segment_chunks(np.ones((2, 41, 41), dtype=np.float32), prepared)
         )
         second = list(
-            prepare_segments(
+            prepare_segment_chunks(
                 np.full((2, 41, 41), 2.0, dtype=np.float32),
                 prepared,
             )
         )
 
-        ring_count, branch_count = prepared.topology.valid_segments.shape
+        ring_count, branch_count = prepared.native.valid_segments.shape
         expected_count = np.count_nonzero(
-            prepared.topology.valid_segments
+            prepared.native.valid_segments
             & np.isfinite(prepared.rotation_degrees)
         )
         self.assertEqual(expected_count, len(first))

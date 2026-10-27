@@ -8,6 +8,7 @@ import numpy as np
 
 from calculations.math import nanmean_float32
 from calculations.vessel_segments.profiles.per_beat import interpolate_profiles_per_beat
+from input_output.writers.h5 import profile_h5_options
 from pipeline_engine.base import DatasetValue
 
 
@@ -44,7 +45,10 @@ def profile_dataset(
     return DatasetValue(
         data=profiles_per_beat,
         attrs=output_attrs,
-        h5_options=profile_h5_options(profiles_per_beat.shape),
+        h5_options={
+            **profile_h5_options(profiles_per_beat.shape),
+            "sparse_nan_chunks": True,
+        },
     )
 
 
@@ -62,29 +66,8 @@ def temporally_meaned_profile_dataset(profile: DatasetValue) -> DatasetValue:
     return DatasetValue(
         data=data,
         attrs=attrs,
-        h5_options=profile_h5_options(data.shape),
+        h5_options={**profile_h5_options(data.shape), "sparse_nan_chunks": True},
     )
-
-
-def profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
-    """Use lossless compression with chunks aligned to one segment profile."""
-
-    options: dict[str, object] = {
-        "compression": "gzip",
-        "compression_opts": 4,
-        "shuffle": True,
-    }
-    if len(shape) not in (4, 5) or not all(shape):
-        return options
-
-    sample_count, time_count = shape[:2]
-    target_elements = (1024 * 1024) // np.dtype(np.float32).itemsize
-    if len(shape) == 4:
-        options["chunks"] = (sample_count, 1, 1, 1)
-        return options
-    time_chunk = min(time_count, max(target_elements // sample_count, 1))
-    options["chunks"] = (sample_count, time_chunk, 1, 1, 1)
-    return options
 
 
 __all__ = [

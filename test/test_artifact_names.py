@@ -16,8 +16,11 @@ from input_output.writers.eps import EpsArtifactWriter, write_eps_file
 from input_output.writers.png import PngArtifactWriter, write_png_file
 
 
-@pytest.mark.parametrize("kind", list(OutputType))
-@pytest.mark.parametrize("namespace", [None, "moments", "bandratio"])
+@pytest.mark.parametrize("kind, namespace", [
+    *((kind, None) for kind in OutputType),
+    (OutputType.PNG, "moments"),
+    (OutputType.PNG, "bandratio"),
+])
 def test_manager_prefixes_leaf_filename_once_for_every_format(tmp_path, kind, namespace):
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.v2.holo"))
     if namespace is not None:

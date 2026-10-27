@@ -20,7 +20,6 @@ from input_output.schema import DopplerViewSource, HolodopplerSource
 from pipeline_engine.context import RawH5SourceReader
 from pipelines.velocity_analysis.sources import (
     VelocityAnalysisSources,
-    _load_moment_pair,
 )
 
 
@@ -190,7 +189,7 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
                 source = HolodopplerSource(
                     RawH5SourceReader(h5file=hd, label="HD"),
                 )
-                moment0, moment2 = _load_moment_pair(source)
+                moment0, moment2 = source.moment0_dataset(), source.moment2_dataset()
                 selected_moment0 = np.asarray(moment0)
                 selected_moment2 = np.asarray(moment2)
 

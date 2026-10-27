@@ -12,7 +12,7 @@ from input_output.schema import (
     PixelPitch,
     RetinalSourceData,
 )
-from pipelines.vessel_inputs import load_retinal_source_data
+from input_output.canonical_sources import load_retinal_source_data
 from velocity_calibration import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
     physical_velocity_provenance,
@@ -61,16 +61,17 @@ class VelocityAnalysisSources:
             band_ratio_frequency_scale_hz=ctx.band_ratio_frequency_scale_hz,
         )
 
-    def load(self) -> VelocityAnalysisSourceData:
-        source = load_retinal_source_data(
-            self.hd,
-            self.dv,
-            velocity_estimation_method=self.velocity_estimation_method,
-            include_spectrograms=False,
-            band_ratio_frequency_scale_hz=(
-                self.band_ratio_frequency_scale_hz
-            ),
-        )
+    def load(self, source: RetinalSourceData | None = None) -> VelocityAnalysisSourceData:
+        if source is None:
+            source = load_retinal_source_data(
+                self.hd,
+                self.dv,
+                velocity_estimation_method=self.velocity_estimation_method,
+                include_spectrograms=False,
+                band_ratio_frequency_scale_hz=self.band_ratio_frequency_scale_hz,
+            )
+        elif source.velocity_estimation_method != self.velocity_estimation_method:
+            raise ValueError("Cached retinal source uses a different velocity method.")
         pixel_pitch = source.holodoppler.pixel_pitch
         return VelocityAnalysisSourceData(
             source=source,
@@ -89,11 +90,10 @@ class VelocityAnalysisSources:
 
 
 def load_velocity_analysis_source_data(ctx: PipelineContext) -> VelocityAnalysisSourceData:
-    return VelocityAnalysisSources.from_context(ctx).load()
-
-
-def _load_moment_pair(hd: HolodopplerSource):
-    return hd.moment0_dataset(), hd.moment2_dataset()
+    cached = ctx.state.get("velocity_source")
+    return VelocityAnalysisSources.from_context(ctx).load(
+        cached if isinstance(cached, RetinalSourceData) else None
+    )
 
 
 def _source_provenance(

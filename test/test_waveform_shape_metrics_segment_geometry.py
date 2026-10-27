@@ -18,7 +18,7 @@ from calculations.vessel_segments.measurement import (  # noqa: E402
     MaskedArrays,
     SegmentMeasurementSettings,
 )
-from calculations.topology import OpticDisc, ring_masks, section_masks  # noqa: E402
+from calculations.topology import OpticDisc, section_masks  # noqa: E402
 from calculations.topology.branch_identity import _branch_identity_stages  # noqa: E402
 from pipelines.velocity_analysis.artifacts.branch_identity import (  # noqa: E402
     _labels_with_substack_boxes,
@@ -265,10 +265,6 @@ class SegmentCenterTests(unittest.TestCase):
         self.assertTrue(mask[230, 315])
         self.assertFalse(mask[230, 316])
         self.assertFalse(mask[279, 267])
-
-        rings = ring_masks((512, 512), center, settings)
-        self.assertTrue(np.any(rings[:, 0, 0]))
-        self.assertFalse(rings[-1, 511, 511])
 
     def test_annulus_pixel_radius_is_independent_of_optic_disc_position(self) -> None:
         settings = SimpleNamespace(

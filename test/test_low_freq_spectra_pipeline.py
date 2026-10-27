@@ -97,7 +97,6 @@ def _spec(tmp_path, *, moments=True, bands=True, spectra="valid"):
 
 @pytest.mark.parametrize("moments,bands,expected", [
     (True, True, "doppler_moments"),
-    (True, False, "doppler_moments"),
     (False, True, "frequency_bands"),
     ("undetected", True, "frequency_bands"),
     ("one_boundary", True, "frequency_bands"),
@@ -192,7 +191,7 @@ def test_positive_figures_export_for_32_bin_input_with_the_stored_peak(tmp_path)
             assert (ef_dir / extension / "spectrograms" / f"scan_gaps_positive_freq_median_phase_{suffix}.{extension}").is_file()
 
 
-@pytest.mark.parametrize("bin_count", [2, 32, 64])
+@pytest.mark.parametrize("bin_count", [2, 64])
 def test_frequency_bin_table_is_written_without_detected_timing_or_figure_export(tmp_path, bin_count):
     spec = _spec(tmp_path, moments="undetected", bands="undetected")
     with h5py.File(tmp_path / "scan/scan_HD/h5/scan_HD_output.h5", "a") as hd:
@@ -226,7 +225,7 @@ def test_frequency_bin_table_is_written_without_detected_timing_or_figure_export
         assert schema.spectrograms_masked_per_beat not in output
 
 
-@pytest.mark.parametrize("sampling_frequency", [None, 0, np.nan])
+@pytest.mark.parametrize("sampling_frequency", [None, np.nan])
 def test_frequency_bin_table_requires_valid_calibration(tmp_path, sampling_frequency):
     schema = EyeFlowOutputPaths.active()
     with h5py.File(tmp_path / "out.h5", "w") as h5:

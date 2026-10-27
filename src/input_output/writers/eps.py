@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .artifact_names import acquisition_stem, labeled_artifact_path, prefixed_artifact_path
+from .artifact_names import acquisition_stem, prefixed_artifact_path, writer_artifact_path
+from .png import _close_figure
 
 
 class FigureArtifactWriter:
@@ -12,42 +13,33 @@ class FigureArtifactWriter:
 
     def __init__(self, output, stem: str | None = None) -> None:
         self.output = output
-        self.stem = str(stem) if stem else _output_stem(output)
-        self.acquisition_stem = acquisition_stem(output, Path(self.stem).name)
+        self.stem = str(stem) if stem else acquisition_stem(output)
 
     def path(self, suffix: str) -> Path:
-        filename = str(labeled_artifact_path(suffix, self.acquisition_stem, self.stem))
-        path = self.output.path_for(_eps_output_type(), filename)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return path
+        return writer_artifact_path(self.output, _eps_output_type(), suffix, label=self.stem)
 
     def save_figure(self, fig, suffix: str, *, dpi: int = 150) -> Path:
-        path = write_eps_file(self.path(suffix), fig, dpi=dpi)
-        _close_figure(fig)
-        return path
+        return write_eps_file(self.path(suffix), fig, dpi=dpi, close=True)
 
 
-def write_eps_file(path: str | Path, fig, *, dpi: int = 150, stem: str | None = None) -> Path:
+def write_eps_file(
+    path: str | Path, fig, *, dpi: int = 150, stem: str | None = None,
+    close: bool = False,
+) -> Path:
     """Save a Matplotlib figure as EPS, creating parent directories."""
 
     target = prefixed_artifact_path(path, stem) if stem is not None else Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(target, format="eps", dpi=dpi)
+    try:
+        fig.savefig(target, format="eps", dpi=dpi)
+    finally:
+        if close:
+            _close_figure(fig)
     return target
 
 
 # Format-specific name for callers that do not use the shared writer name.
 EpsArtifactWriter = FigureArtifactWriter
-
-
-def _output_stem(output) -> str:
-    return acquisition_stem(output)
-
-
-def _close_figure(fig) -> None:
-    import matplotlib.pyplot as plt
-
-    plt.close(fig)
 
 
 def _eps_output_type():

@@ -1,10 +1,10 @@
 """App-scoped output manager for one EyeFlow run."""
 
+import shutil
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from .archives import reset_output_dir
 from .holo_run_layout import HoloRunLayout
 from .writers import open_h5, write_png_file
 from .writers.artifact_names import prefixed_artifact_path
@@ -17,6 +17,22 @@ class OutputType(Enum):
     AVI = "avi"
     PDF = "pdf"
     EPS = "eps"
+
+
+def reset_output_dir(path: str | Path) -> None:
+    """Replace the EyeFlow-owned output directory for a fresh run."""
+    output = Path(path)
+    try:
+        if output.is_dir():
+            shutil.rmtree(output)
+        elif output.exists():
+            output.unlink()
+        output.mkdir(parents=True, exist_ok=False)
+    except OSError as exc:
+        raise RuntimeError(
+            "Could not replace the existing output directory. Close any File Explorer "
+            f"window, terminal, or application using this folder, then retry:\n{output}"
+        ) from exc
 
 
 @dataclass(frozen=True)

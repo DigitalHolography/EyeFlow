@@ -25,6 +25,7 @@ from app_settings import (  # noqa: E402
 )
 from input_output.archives import extracted_zip_tree  # noqa: E402
 from input_output.output_manager import OutputType  # noqa: E402
+from input_output.writers.h5 import open_h5 as real_open_h5  # noqa: E402
 from pipeline_engine import (  # noqa: E402
     ExecutionVariant,
     PipelineDescriptor,
@@ -135,6 +136,30 @@ def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
 
 
 class RunServiceTests(unittest.TestCase):
+    def test_runtime_opens_each_input_once_during_initialization(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            holo = _write_input(root)
+            hd_path = root / "scan" / "scan_HD" / "h5" / "scan_HD_output.h5"
+            dv_path = root / "scan" / "scan_DV" / "h5" / "scan_DV.h5"
+            with h5py.File(hd_path, "a") as hd:
+                hd.create_dataset("registration", data=[1, 2, 3])
+            with h5py.File(dv_path, "a") as dv:
+                dv.create_dataset("app_versions", data=json.dumps({"DV_version": "test"}))
+            spec = resolve_run_spec(
+                input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
+            )
+            with (
+                patch("pipeline_engine.runtime.open_h5", wraps=real_open_h5) as open_input,
+                patch(
+                    "input_output.writers.h5.open_h5",
+                    side_effect=AssertionError("Initialization reopened an input"),
+                ),
+            ):
+                result = execute_run(spec)
+            self.assertTrue(result.succeeded, result.failures)
+            self.assertEqual(2, open_input.call_count)
+
     def test_declared_variant_producer_fans_out_its_dag_dependents(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

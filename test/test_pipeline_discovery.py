@@ -12,7 +12,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from app_settings import PIPELINES_DIR_ENV, app_version_dir_name  # noqa: E402
+from app_settings import PIPELINES_DIR_ENV  # noqa: E402
 import pipelines as pipeline_package  # noqa: E402
 
 
@@ -20,10 +20,6 @@ class PipelineDiscoveryTests(unittest.TestCase):
     def tearDown(self) -> None:
         sys.modules.pop("pipelines.runtime_sample", None)
         pipeline_package.load_pipeline_catalog()
-
-    def test_version_dir_name_prefixes_plain_versions(self) -> None:
-        self.assertEqual("v0.11.0", app_version_dir_name("0.11.0"))
-        self.assertEqual("v0.11.0", app_version_dir_name("v0.11.0"))
 
     def test_load_catalog_includes_runtime_pipeline_folder(self) -> None:
         original_env = os.environ.get(PIPELINES_DIR_ENV)

@@ -19,7 +19,6 @@ from .fourier import (
     rfft_normalized,
     truncate_harmonics,
 )
-from .image import rotate_array_threshold, rotate_image_with_nan
 from .periodic import SlidingWindowMethod, centered_sliding_window
 from .statistics import (
     nanargmax,
@@ -59,8 +58,6 @@ __all__ = [
     "normalized_lowpass_cutoff",
     "rescale",
     "rfft_normalized",
-    "rotate_array_threshold",
-    "rotate_image_with_nan",
     "standardize",
     "truncate_harmonics",
 ]

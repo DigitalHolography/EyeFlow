@@ -120,6 +120,7 @@ def _fake_context(manager: OutputManager, output_h5_path: Path, hd_h5_path: Path
     return SimpleNamespace(
         require_inputs=lambda *names: None,
         log=logs.append,
+        state=SimpleNamespace(get=lambda _key, default=None: default),
         output=SimpleNamespace(
             manager=manager,
             h5=SimpleNamespace(filename=str(output_h5_path)),

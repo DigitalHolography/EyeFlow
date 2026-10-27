@@ -1,7 +1,8 @@
 """HDF5 source readers and output access for pipeline runs."""
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Any
 
 import h5py
@@ -14,6 +15,41 @@ from .schema.provenance import (
 )
 
 _MISSING = object()
+
+
+class MergedAttrs(Mapping[str, object]):
+    """Read source attributes in precedence order without copying them."""
+
+    def __init__(self, *sources: h5py.File | Mapping[str, object] | None) -> None:
+        self._sources = [
+            source.attrs if isinstance(source, h5py.File) else source
+            for source in sources
+            if source is not None
+        ]
+
+    def __getitem__(self, key: str) -> object:
+        sentinel = object()
+        value = self.get(key, sentinel)
+        if value is sentinel:
+            raise KeyError(key)
+        return value
+
+    def __iter__(self) -> Iterator[str]:
+        seen: set[str] = set()
+        for source in self._sources:
+            for key in source.keys():
+                if key not in seen:
+                    seen.add(key)
+                    yield str(key)
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self)
+
+    def get(self, key: str, default=None):
+        for source in self._sources:
+            if key in source:
+                return source[key]
+        return default
 
 
 class RawH5SourceReader:
@@ -146,14 +182,22 @@ class PipelineInputSource:
         return self.h5.array(path, dtype=dtype, flatten=flatten, default=default)
 
     def as_holodoppler(self):
-        from .schema import HolodopplerSource
-
-        return HolodopplerSource(self.h5, self.config)
+        return self._holodoppler
 
     def as_dopplerview(self):
+        return self._dopplerview
+
+    @cached_property
+    def _holodoppler(self):
+        from .schema import HolodopplerSource
+
+        return HolodopplerSource(self.h5, self.config, cache_parameters=True)
+
+    @cached_property
+    def _dopplerview(self):
         from .schema import DopplerViewSource
 
-        return DopplerViewSource(self.h5, self.config)
+        return DopplerViewSource(self.h5, self.config, cache_small_arrays=True)
 
 
 class PipelineH5Output:

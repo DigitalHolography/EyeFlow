@@ -18,8 +18,10 @@ def _run_folder(parent, stem="scan"):
     return parent / stem
 
 
-@pytest.mark.parametrize("stem", ["scan", "scan.with.dots", "scan.txt", "scan.holo"])
-@pytest.mark.parametrize("select_parent", [False, True])
+@pytest.mark.parametrize("stem, select_parent", [
+    ("scan", False), ("scan", True), ("scan.with.dots", True),
+    ("scan.txt", False), ("scan.holo", False),
+])
 def test_discovery_includes_the_selected_folder_itself_or_nested_runs(tmp_path, stem, select_parent):
     folder = _run_folder(tmp_path / "nested", stem)
     assert is_run_directory(folder)

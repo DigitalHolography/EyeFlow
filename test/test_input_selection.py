@@ -11,9 +11,8 @@ from test_run_service import _descriptor, _write_input
 from test_stem_list_inputs import _Var
 
 from app_settings import AppSettingsStore
+from input_output.run_selection import batch_root as _batch_root, _relative_to_batch
 from pipeline_engine.run_service import (
-    _batch_root,
-    _relative_to_batch,
     execute_run,
     resolve_run_spec,
 )

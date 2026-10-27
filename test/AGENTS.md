@@ -33,7 +33,7 @@ boundary behavior—not only regression smoke tests.
 | Blood-volume rate | `test_blood_volume_rate.py`, `test_blood_volume_rate_pipeline.py`, `test_topology_mask_area.py` | formula/reference, schema/artifacts, option dependencies |
 | Waveform metrics | `test_waveform_shape_metrics_*.py`, `test_absolute_waveform_metrics.py`, `test_lowrank_quadrant_outputs.py` | metric formulas, segment geometry, quadrants, plots |
 | Velocity-profile fitting | `test_velocity_profile_analysis.py` | weighted solver, degeneracy/NaN behavior, waveform option/output paths |
-| Displacement | `test_displacement_map_pipeline.py` | registration, source validation, temporary field state, and MP4 artifact routing |
+| Displacement | `test_displacement_map_pipeline.py` | registration, source validation, temporary field state, and AVI artifact routing |
 | PDF report | `test_pdf_report_image_lookup.py`, `test_pdf_report_runner_paths.py` | artifact lookup and runner paths |
 | Installer/release support | `test_installer_script.py` | installer-script contract; release workflow remains separate |
 

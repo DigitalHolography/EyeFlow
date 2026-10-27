@@ -92,6 +92,7 @@ class RetinalVelocityTests(unittest.TestCase):
         ctx = SimpleNamespace(
             state=PipelineState(),
             pipeline_scheduled=lambda name: name == "velocity_analysis",
+            runtime=SimpleNamespace(scratch=SimpleNamespace(empty_float32=np.empty)),
         )
         estimated = {}
 
@@ -103,6 +104,7 @@ class RetinalVelocityTests(unittest.TestCase):
         def estimator(**kwargs):
             estimated["image_maps"] = kwargs["image_maps"]
             self.assertTrue(kwargs["retain_velocity_video"])
+            self.assertIs(kwargs["velocity_video_allocator"], np.empty)
             video = np.full(source.image_maps.moment0.shape, 7.0, dtype=np.float32)
             data = _retinal_velocity_data(video)
             estimated["data"] = data

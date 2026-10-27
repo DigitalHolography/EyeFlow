@@ -297,5 +297,5 @@ Retain clear method, calibration, and unit provenance for their results.
 | Spatial-gradient lumen metric | spatial-gradient package, vessel-segment sampling/measurement, image filters, spatial-gradient/topology tests | CLI and report code unless output is exposed there |
 | Blood-volume-rate formula | option declaration, runner, outputs, `calculations/blood_volume_rate.py`, BVR tests | unrelated waveform metric calculators |
 | Metric family | that pipeline's runner/calculator/outputs plus waveform input contracts and matching test file | pipeline engine unless dependencies/options change |
-| Displacement | `displacement_map/` and `test_displacement_map_pipeline.py` | topology and waveform metrics unless the dormant segment helper is activated |
+| Displacement | `displacement_map/` and `test_displacement_map_pipeline.py` | topology and waveform metrics |
 | Profile fit | `calculations/vessel_segments/profiles/fits/quadratic.py`, then `velocity_analysis/outputs/profile_analysis.py`, dedicated doc/test | GUI and settings |

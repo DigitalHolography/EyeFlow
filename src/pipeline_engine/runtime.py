@@ -11,10 +11,14 @@ from app_settings import (
     VelocityEstimationMethod,
     validate_band_limited_harmonics_setting,
 )
+from input_output.h5_access import PipelineInputSource, RawH5SourceReader
 from input_output.inputs import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
+from input_output.run_scratch import RunArrayStorage
 from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS
-from input_output.writers.h5 import h5_write_checkpoint, initialize_output_h5, open_h5
+from input_output.writers.h5 import (
+    h5_write_checkpoint, initialize_output_h5, open_h5, write_root_attributes,
+)
 from utils.logger import Logger
 from velocity_calibration import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
@@ -22,7 +26,7 @@ from velocity_calibration import (
 )
 
 from .base import ExecutionVariant, PipelineDescriptor, ProcessResult
-from .context import PipelineContext, apply_pipeline_result, finish_pipeline
+from .context import PipelineContext, PipelineInputs, apply_pipeline_result, finish_pipeline
 from .dag import PipelineDAG
 from .errors import format_pipeline_exception
 
@@ -59,11 +63,13 @@ def run_pipelines_to_output(
     output_h5_path = output_manager.path_for(OutputType.H5)
     with ExitStack() as stack:
         work_h5 = stack.enter_context(output_manager.open_h5())
+        scratch = stack.enter_context(RunArrayStorage(output_manager.layout.ef_dir))
         return _run_pipelines_with_work_h5(
             work_h5=work_h5,
             output_h5_path=output_h5_path,
             output_manager=output_manager,
             stack=stack,
+            scratch=scratch,
             pipelines=pipelines,
             target_names=target_names,
             pipeline_options=pipeline_options or {},
@@ -83,6 +89,7 @@ def _run_pipelines_with_work_h5(
     output_h5_path,
     output_manager: OutputManager,
     stack: ExitStack,
+    scratch: RunArrayStorage,
     pipelines: Sequence[PipelineDescriptor],
     target_names: Sequence[str],
     pipeline_options: Mapping[str, Sequence[str]],
@@ -103,10 +110,16 @@ def _run_pipelines_with_work_h5(
         band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
         holodoppler_h5=holodoppler_h5,
         doppler_vision_h5=doppler_vision_h5,
+        hd_source_h5=hd_h5,
+        dv_source_h5=dv_h5,
     )
     hd_config = load_h5_sidecar_config(hd_h5, source="hd")
-    work_h5.attrs["band_limited_harmonics"] = band_limited_harmonics
+    write_root_attributes(work_h5, {"band_limited_harmonics": band_limited_harmonics})
     dv_config = load_h5_sidecar_config(dv_h5, source="dv")
+    shared_inputs = PipelineInputs(
+        hd=PipelineInputSource(RawH5SourceReader(h5file=hd_h5, label="HD"), hd_config),
+        dv=PipelineInputSource(RawH5SourceReader(h5file=dv_h5, label="DV"), dv_config),
+    )
     context_vars: dict[str, object] = {}
 
     dag = PipelineDAG(pipelines)
@@ -139,6 +152,8 @@ def _run_pipelines_with_work_h5(
             "doppler_vision_h5": dv_h5,
             "holodoppler_config": hd_config,
             "doppler_vision_config": dv_config,
+            "shared_inputs": shared_inputs,
+            "scratch": scratch,
             "variables": context_vars,
             "pipeline_options": pipeline_options,
             "pipeline_order": tuple(pipeline.name for pipeline in pipelines),
@@ -240,11 +255,13 @@ def _run_pipelines_with_work_h5(
             [variant for variant in execution_variants if variant.name not in variant_failures],
             variant_failures,
         )
-        work_h5.attrs["pipeline_status"] = json.dumps(
-            {"shared": shared_status, "variants": branch_status}, sort_keys=True,
-        )
-        work_h5.attrs["pipeline_failures"] = json.dumps(pipeline_failures, sort_keys=True)
-        work_h5.attrs["pipeline_skips"] = json.dumps(pipeline_skips, sort_keys=True)
+        write_root_attributes(work_h5, {
+            "pipeline_status": json.dumps(
+                {"shared": shared_status, "variants": branch_status}, sort_keys=True,
+            ),
+            "pipeline_failures": json.dumps(pipeline_failures, sort_keys=True),
+            "pipeline_skips": json.dumps(pipeline_skips, sort_keys=True),
+        })
         work_h5.flush()
         if succeeded and on_pipeline_success is not None:
             on_pipeline_success(pipeline_desc.name)
@@ -284,6 +301,8 @@ def _initialize_work_h5(
     band_ratio_frequency_scale_hz: float,
     holodoppler_h5: Path | None,
     doppler_vision_h5: Path | None,
+    hd_source_h5=None,
+    dv_source_h5=None,
 ) -> None:
     initialize_output_h5(
         work_h5,
@@ -291,17 +310,21 @@ def _initialize_work_h5(
         doppler_vision_source_file=(
             str(doppler_vision_h5) if doppler_vision_h5 is not None else None
         ),
+        holodoppler_source_h5=hd_source_h5,
+        doppler_vision_source_h5=dv_source_h5,
     )
-    work_h5.attrs["pipeline_targets"] = list(target_names)
-    work_h5.attrs["pipeline_order"] = [pipeline.name for pipeline in pipelines]
-    work_h5.attrs["velocity_estimation_methods"] = list(VELOCITY_WORKFLOW_ROOTS)
-    work_h5.attrs["velocity_quantity"] = "physical_velocity"
-    work_h5.attrs["velocity_unit"] = "mm/s"
-    work_h5.attrs["band_ratio_frequency_scale_hz"] = band_ratio_frequency_scale_hz
-    work_h5.attrs["pipeline_options"] = json.dumps(
-        {name: list(options) for name, options in pipeline_options.items()},
-        sort_keys=True,
-    )
+    write_root_attributes(work_h5, {
+        "pipeline_targets": list(target_names),
+        "pipeline_order": [pipeline.name for pipeline in pipelines],
+        "velocity_estimation_methods": list(VELOCITY_WORKFLOW_ROOTS),
+        "velocity_quantity": "physical_velocity",
+        "velocity_unit": "mm/s",
+        "band_ratio_frequency_scale_hz": band_ratio_frequency_scale_hz,
+        "pipeline_options": json.dumps(
+            {name: list(options) for name, options in pipeline_options.items()},
+            sort_keys=True,
+        ),
+    })
 
 
 def _run_pipeline_descriptor(
@@ -314,6 +337,8 @@ def _run_pipeline_descriptor(
     doppler_vision_h5,
     holodoppler_config,
     doppler_vision_config,
+    shared_inputs: PipelineInputs | None = None,
+    scratch: RunArrayStorage | None = None,
     variables: dict[str, object],
     pipeline_options: Mapping[str, Sequence[str]],
     pipeline_order: Sequence[str],
@@ -339,6 +364,8 @@ def _run_pipeline_descriptor(
         doppler_vision_h5=doppler_vision_h5,
         holodoppler_config=holodoppler_config,
         doppler_vision_config=doppler_vision_config,
+        shared_inputs=shared_inputs,
+        scratch=scratch,
         preferred_input=pipeline_desc.input_slot,
         output_manager=output_manager,
         pipeline_name=pipeline.name,
@@ -353,7 +380,7 @@ def _run_pipeline_descriptor(
         band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
     )
     try:
-        with _pipeline_checkpoint(work_h5, variables, output_manager):
+        with _pipeline_checkpoint(work_h5, variables, output_manager, scratch):
             return _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path)
     except Exception as exc:
         Logger.log_error(f"{pipeline.name}: {exc}")
@@ -394,7 +421,7 @@ def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path):
 
 
 @contextmanager
-def _pipeline_checkpoint(work_h5, variables, output_manager):
+def _pipeline_checkpoint(work_h5, variables, output_manager, scratch):
     """Restore state and remove only newly created artifacts on failure."""
     state = dict(variables)
     root = output_manager.layout.ef_dir
@@ -405,8 +432,12 @@ def _pipeline_checkpoint(work_h5, variables, output_manager):
     except Exception:
         variables.clear()
         variables.update(state)
+        scratch_dir = scratch.scratch_directory if scratch is not None else None
         for path in root.rglob("*"):
-            if path.is_file() and path not in artifacts:
+            if (
+                path.is_file() and path not in artifacts
+                and (scratch_dir is None or scratch_dir not in path.parents)
+            ):
                 path.unlink()
         raise
 
@@ -418,10 +449,7 @@ def _write_execution_variant_status(
 ) -> None:
     """Persist generic execution-variant status."""
 
-    work_h5.attrs["execution_variant_failures"] = json.dumps(
-        dict(failures),
-        sort_keys=True,
-    )
-    work_h5.attrs["execution_variants_completed"] = [
-        variant.name for variant in variants
-    ]
+    write_root_attributes(work_h5, {
+        "execution_variant_failures": json.dumps(dict(failures), sort_keys=True),
+        "execution_variants_completed": [variant.name for variant in variants],
+    })

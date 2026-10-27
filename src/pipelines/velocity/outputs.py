@@ -7,6 +7,7 @@ from collections.abc import Iterable
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.serialization import serialize_spatial_image
 
 from .models import RetinalVelocity
 from .semantics import velocity_dataset_attrs
@@ -95,7 +96,7 @@ def _spatial_map_value(
             "y_axis_direction": "increasing_toward_north",
         }
     )
-    published = np.flip(image, axis=0).T.copy()
+    published = serialize_spatial_image(image)
     return metric_value(
         published,
         dim_desc=("x", "y"),

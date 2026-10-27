@@ -15,7 +15,8 @@ task crosses front-end or I/O boundaries.
 |---|---|
 | `base.py` | `PipelineDescriptor`, `PipelineOption`, `ExecutionVariant`, result payloads, decorators, and the process interface |
 | `dag.py` | Semantic-key producer graph, option-dependent requirements, topological order, and target closure |
-| `run_service.py` | Shared GUI/CLI run-spec validation, input expansion, destination mapping, and batch execution |
+| `run_service.py` | Shared GUI/CLI run-spec validation and batch execution; delegates input expansion and destination mapping to `input_output/run_selection.py` |
+| `input_access.py` | Context-aware timing and attribute conveniences for pipeline runners |
 | `runtime.py` | Opens inputs/output, initializes provenance, creates contexts, invokes descriptors, and records completion |
 | `context.py` | Namespaced inputs/output, shared state, selected options/order/method, result persistence |
 | `errors.py` | User-facing pipeline exception formatting |

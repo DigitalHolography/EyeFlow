@@ -9,12 +9,62 @@ import h5py
 import numpy as np
 
 from app_settings import app_version
+from ..payloads import dataset_parts
 from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
 from ..schema.provenance import inherited_provenance
 
 
 # Small arrays save less payload than the per-dataset chunk index costs.
 _MIN_COMPRESSION_BYTES = 4096
+
+
+def profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
+    """Compress profiles in chunks aligned to one segment."""
+    options: dict[str, object] = {
+        "compression": "gzip", "compression_opts": 9, "shuffle": True,
+    }
+    if len(shape) not in (4, 5) or not all(shape):
+        return options
+    sample_count, time_count = shape[:2]
+    target_elements = (1024 * 1024) // np.dtype(np.float32).itemsize
+    if len(shape) == 4:
+        time_chunk = min(time_count, 16, max(target_elements // sample_count, 1))
+        options["chunks"] = (sample_count, time_chunk, 1, 1)
+    else:
+        time_chunk = min(time_count, max(target_elements // sample_count, 1))
+        options["chunks"] = (sample_count, time_chunk, 1, 1, 1)
+    return options
+
+
+def velocity_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
+    """Compress per-beat maps while retaining segment-oriented chunks."""
+    options: dict[str, object] = {
+        "compression": "gzip", "compression_opts": 9, "shuffle": True,
+    }
+    if len(shape) in (6, 7) and all(shape):
+        target_elements = (1024 * 1024) // np.dtype(np.float32).itemsize
+        tail_count = shape[-1] if len(shape) == 7 else 1
+        x_chunk = min(shape[0], 512)
+        y_chunk = min(shape[1], max(target_elements // (x_chunk * tail_count), 1))
+        time_chunk = min(
+            shape[2], 4, max(target_elements // (x_chunk * y_chunk * tail_count), 1)
+        )
+        options["chunks"] = (
+            (x_chunk, y_chunk, time_chunk, 1, 1, 1)
+            if len(shape) == 6
+            else (x_chunk, y_chunk, time_chunk, 1, 1, 1, shape[-1])
+        )
+    return options
+
+
+def segment_mask_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
+    options: dict[str, object] = {
+        "dtype": np.bool_, "compression": "gzip", "compression_opts": 9,
+        "shuffle": True,
+    }
+    if len(shape) == 4 and all(shape):
+        options["chunks"] = (shape[0], shape[1], 1, 1)
+    return options
 
 
 def normalize_h5_path(path: object) -> str:
@@ -103,6 +153,18 @@ def set_attr_safe(h5obj: h5py.File | h5py.Group | h5py.Dataset, key: str, value)
         raise type(exc)(f"Could not write HDF5 attribute '{key}': {exc}") from exc
 
 
+def write_root_attributes(h5file: h5py.File, values: dict[str, object]) -> None:
+    """Apply engine bookkeeping to the root output object."""
+    for key, value in values.items():
+        h5file.attrs[key] = value
+
+
+def delete_output_path(h5file: h5py.File, path: str) -> None:
+    normalized = normalize_h5_path(path)
+    if normalized in h5file:
+        del h5file[normalized]
+
+
 def _normalize_attribute_payload(value):
     data = value
     if isinstance(value, (list, tuple)):
@@ -124,16 +186,7 @@ def _matches_inherited_attribute(value, inherited) -> bool:
 
 
 def write_value_dataset(group: h5py.Group, key: str, value) -> None:
-    ds_attrs = None
-    h5_options = None
-    data = value
-
-    if hasattr(value, "data") and hasattr(value, "attrs"):
-        data = value.data
-        ds_attrs = value.attrs
-        h5_options = getattr(value, "h5_options", None)
-    elif isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
-        data, ds_attrs = value
+    data, ds_attrs, h5_options = dataset_parts(value)
 
     target_group, dataset_key = resolve_dataset_target(group, str(key))
     if dataset_key in target_group:
@@ -161,13 +214,15 @@ def initialize_output_h5(
     *,
     holodoppler_source_file: str | None = None,
     doppler_vision_source_file: str | None = None,
+    holodoppler_source_h5: h5py.File | None = None,
+    doppler_vision_source_h5: h5py.File | None = None,
 ) -> None:
     set_attr_safe(h5file, "eyeflow_version", _project_version())
     if holodoppler_source_file:
         h5file.attrs["holodoppler_source_file"] = holodoppler_source_file
 
         # Pass registration and zernike data through to their output schema paths.
-        with open_h5(holodoppler_source_file, "r") as source_h5:
+        with _source_handle(holodoppler_source_h5, holodoppler_source_file) as source_h5:
             for source_path, output_path in HD_OUTPUT_PASSTHROUGH_PATHS:
                 if source_h5.get(source_path) is None:
                     continue
@@ -177,10 +232,10 @@ def initialize_output_h5(
                 )
                 if output_name in output_group:
                     del output_group[output_name]
-                source_h5.copy(source_path, output_group, name=output_name)
+                _copy_source_object(source_h5[source_path], output_group, output_name)
     if doppler_vision_source_file:
         h5file.attrs["doppler_vision_source_file"] = doppler_vision_source_file
-    _initialize_app_versions(h5file, doppler_vision_source_file)
+    _initialize_app_versions(h5file, doppler_vision_source_file, doppler_vision_source_h5)
     primary_source = holodoppler_source_file or doppler_vision_source_file
     if primary_source:
         h5file.attrs["source_file"] = primary_source
@@ -189,12 +244,13 @@ def initialize_output_h5(
 def _initialize_app_versions(
     h5file: h5py.File,
     doppler_vision_source_file: str | None,
+    doppler_vision_source_h5: h5py.File | None = None,
 ) -> None:
     """Write application versions as one scalar JSON dataset."""
 
     versions: dict[str, object] = {}
     if doppler_vision_source_file:
-        with open_h5(doppler_vision_source_file, "r") as source_h5:
+        with _source_handle(doppler_vision_source_h5, doppler_vision_source_file) as source_h5:
             source_versions = source_h5.get("app_versions")
             versions = _read_app_versions(source_versions)
 
@@ -206,6 +262,60 @@ def _initialize_app_versions(
         data=json.dumps(versions),
         dtype=h5py.string_dtype(encoding="utf-8"),
     )
+
+
+@contextmanager
+def _source_handle(existing: h5py.File | None, path: str):
+    if existing is not None:
+        yield existing
+    else:
+        with open_h5(path, "r") as source_h5:
+            yield source_h5
+
+
+def _copy_source_object(source, parent: h5py.Group, name: str) -> None:
+    """Copy external metadata with lossless compression where HDF5 permits it."""
+    if isinstance(source, h5py.Group):
+        # Retain link semantics for exports that use aliases or external links.
+        links = [source.get(key, getlink=True) for key in source.keys()]
+        if any(not isinstance(link, h5py.HardLink) for link in links):
+            source.file.copy(source, parent, name=name)
+            return
+        target = parent.create_group(name)
+        for key, value in source.attrs.items():
+            target.attrs[key] = value
+        for child_name, child in source.items():
+            _copy_source_object(child, target, child_name)
+        return
+    if not isinstance(source, h5py.Dataset):
+        source.file.copy(source, parent, name=name)
+        return
+    if (
+        source.ndim == 0 or source.dtype.kind not in "biufc"
+        or source.size * source.dtype.itemsize < _MIN_COMPRESSION_BYTES
+        or source.is_virtual
+        or any(
+            h5py.check_dtype(ref=source.attrs.get_id(key).dtype) is not None
+            for key in source.attrs
+        )
+    ):
+        source.file.copy(source, parent, name=name)
+        return
+    target = parent.create_dataset(
+        name,
+        shape=source.shape,
+        dtype=source.dtype,
+        maxshape=source.maxshape,
+        chunks=source.chunks or True,
+        compression="gzip",
+        compression_opts=9,
+        shuffle=True,
+        fillvalue=source.fillvalue,
+    )
+    for selection in target.iter_chunks():
+        target[selection] = source[selection]
+    for key, value in source.attrs.items():
+        target.attrs[key] = value
 
 
 def _read_app_versions(source_versions) -> dict[str, object]:
@@ -338,6 +448,8 @@ def _create_dataset(
             dtype=h5py.string_dtype(encoding="utf-8"),
         )
     options = dict(h5_options or {})
+    sparse_nan_chunks = bool(options.pop("sparse_nan_chunks", False))
+    mirror_fft_axis = options.pop("mirror_fft_axis", None)
     # HDF5 filters require chunked arrays; scalars and strings stay unfiltered.
     if (
         isinstance(payload, np.ndarray)
@@ -349,7 +461,7 @@ def _create_dataset(
             "gzip" if payload.nbytes >= _MIN_COMPRESSION_BYTES else None,
         )
         if options["compression"] == "gzip":
-            options.setdefault("compression_opts", 6)
+            options.setdefault("compression_opts", 9)
         if options["compression"] is not None:
             options.setdefault("shuffle", True)
     if isinstance(payload, np.ndarray) and payload.dtype.kind in {"U", "O"}:
@@ -357,6 +469,88 @@ def _create_dataset(
             payload = np.asarray(payload, dtype=object)
             options.setdefault("dtype", h5py.string_dtype(encoding="utf-8"))
     try:
+        if mirror_fft_axis is not None:
+            return _create_mirrored_fft_dataset(
+                group, dataset_key, payload, int(mirror_fft_axis), options,
+                sparse_nan_chunks=sparse_nan_chunks,
+            )
+        if sparse_nan_chunks:
+            return _create_sparse_nan_dataset(group, dataset_key, payload, options)
         return group.create_dataset(dataset_key, data=payload, **options)
     except (TypeError, ValueError) as exc:
         raise type(exc)(f"Could not write HDF5 dataset '{dataset_key}': {exc}") from exc
+
+
+def _create_sparse_nan_dataset(group, name, payload, options):
+    """Leave exact fill-value chunks unallocated while preserving dense reads."""
+    if not isinstance(payload, np.ndarray) or payload.dtype != np.dtype(np.float32):
+        raise TypeError("Sparse NaN storage requires a float32 array.")
+    if not payload.size:
+        return group.create_dataset(name, data=payload, **options)
+    options = dict(options)
+    options.setdefault("chunks", True)
+    options["fillvalue"] = np.float32(np.nan)
+    dataset = group.create_dataset(name, shape=payload.shape, dtype=payload.dtype, **options)
+    fill_bits = np.asarray(dataset.fillvalue, dtype=np.float32).view(np.uint32).item()
+    for selection in dataset.iter_chunks():
+        chunk = payload[selection]
+        if np.any(chunk.view(np.uint32) != fill_bits):
+            dataset[selection] = chunk
+    return dataset
+
+
+def _create_mirrored_fft_dataset(
+    group, name, payload, axis, options, *, sparse_nan_chunks,
+):
+    """Store unique real-signal FFT magnitudes behind the full public shape."""
+    if not isinstance(payload, np.ndarray) or payload.dtype != np.dtype(np.float32):
+        raise TypeError("Mirrored FFT storage requires a float32 array.")
+    if axis < 0 or axis >= payload.ndim:
+        raise ValueError("Mirrored FFT axis is out of range.")
+    backing_name = f"__{name}_unique_frequency_storage"
+    if backing_name in group:
+        del group[backing_name]
+    count = payload.shape[axis]
+    if count < 2 or not payload.size or not _is_exactly_mirrored(payload, axis):
+        if sparse_nan_chunks:
+            return _create_sparse_nan_dataset(group, name, payload, options)
+        return group.create_dataset(name, data=payload, **options)
+
+    unique_count = count // 2 + 1
+    selection = [slice(None)] * payload.ndim
+    selection[axis] = slice(0, unique_count)
+    unique = payload[tuple(selection)]
+    backing_options = dict(options)
+    if backing_options.get("chunks") not in (None, True):
+        chunks = list(backing_options["chunks"])
+        chunks[axis] = min(chunks[axis], unique_count)
+        backing_options["chunks"] = tuple(chunks)
+    backing = (
+        _create_sparse_nan_dataset(group, backing_name, unique, backing_options)
+        if sparse_nan_chunks else group.create_dataset(backing_name, data=unique, **backing_options)
+    )
+    layout = h5py.VirtualLayout(shape=payload.shape, dtype=payload.dtype)
+    source = h5py.VirtualSource(".", backing.name, shape=backing.shape)
+    layout[tuple(selection)] = source
+    for frequency in range(unique_count, count):
+        destination = [slice(None)] * payload.ndim
+        origin = [slice(None)] * payload.ndim
+        destination[axis] = frequency
+        origin[axis] = count - frequency
+        layout[tuple(destination)] = source[tuple(origin)]
+    return group.create_virtual_dataset(name, layout, fillvalue=np.float32(np.nan))
+
+
+def _is_exactly_mirrored(values: np.ndarray, axis: int) -> bool:
+    count = values.shape[axis]
+    for frequency in range(count // 2 + 1, count):
+        first = [slice(None)] * values.ndim
+        second = [slice(None)] * values.ndim
+        first[axis] = frequency
+        second[axis] = count - frequency
+        if not np.array_equal(
+            values[tuple(first)].view(np.uint32),
+            values[tuple(second)].view(np.uint32),
+        ):
+            return False
+    return True

@@ -26,8 +26,10 @@ from input_output.article_formatting import (
 from input_output.schema import EyeFlowOutputPaths
 from input_output.figure_formatting import add_legend
 from input_output.writers.article import save_article_figure_pair
+from input_output.writers.h5 import profile_h5_options
+from input_output.payloads import payload_array as _metric_data
 from pipeline_engine.base import DatasetValue
-from pipelines.profile_outputs import profile_dataset, profile_h5_options
+from pipelines.profile_outputs import profile_dataset
 
 LUMEN_DIAMETER_BIN_WIDTH_MICRONS = 5.0
 BLOOD_VOLUME_RATE_ENVELOPE_GRAY = COMPACT_ARTICLE_STYLE.envelope_color
@@ -45,7 +47,7 @@ def pack_gradient_edge_outputs(
 ) -> dict[str, DatasetValue]:
     """Calculate dynamic- and static-edge flow for both vessel classes."""
 
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     outputs: dict[str, DatasetValue] = {}
     vessels = (
         (
@@ -178,7 +180,7 @@ def pack_mask_derived_outputs(
 ) -> dict[str, DatasetValue]:
     """Calculate masked-edge and total masked-edge flow for both vessels."""
 
-    schema = _resolve_output_paths(output_paths)
+    schema = EyeFlowOutputPaths.active(output_paths)
     diameters, _, radial_widths = mask_derived_lumen_geometry(
         (prepared_topologies["artery"], prepared_topologies["vein"]),
         pixel_size_mm=pixel_size_mm,
@@ -441,22 +443,6 @@ def _validate_profile_segment_alignment(vessel_name, velocity, gradient) -> None
         and not velocity_topology.is_aligned_with(gradient_topology)
     ):
         raise RuntimeError(f"{vessel_name} profile segment topologies do not align.")
-
-
-def _metric_data(value) -> np.ndarray:
-    if isinstance(value, DatasetValue):
-        value = value.data
-    elif isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
-        value = value[0]
-    return np.asarray(value)
-
-
-def _resolve_output_paths(
-    output_paths: EyeFlowOutputPaths | str | None,
-) -> EyeFlowOutputPaths:
-    if isinstance(output_paths, EyeFlowOutputPaths):
-        return output_paths
-    return EyeFlowOutputPaths.active(output_paths)
 
 
 __all__ = [

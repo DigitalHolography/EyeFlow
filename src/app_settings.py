@@ -95,19 +95,6 @@ def app_display_name() -> str:
     return f"{APP_NAME} {version}" if version else APP_NAME
 
 
-def app_version_dir_name(version: str | None = None) -> str:
-    raw_version = version if version is not None else app_version()
-    if not raw_version:
-        return APP_NAME
-
-    safe_version = INVALID_PATH_CHARS_PATTERN.sub("-", raw_version).rstrip(" .")
-    if not safe_version:
-        return APP_NAME
-    if safe_version.lower().startswith("v"):
-        return safe_version
-    return f"v{safe_version}"
-
-
 def _settings_subdir_name() -> str:
     version = app_version()
     if not version:

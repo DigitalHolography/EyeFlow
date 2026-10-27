@@ -310,14 +310,17 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
 
     def estimate(**kwargs):
         events.append(("estimate", kwargs["velocity_estimation_method"]))
+        assert kwargs["velocity_video_allocator"] is not None
         return estimate_retinal_velocity(**kwargs)
 
     with (
         patch("pipelines.velocity.runner.detect_velocity_cardiac_cycles", side_effect=cycles),
         patch("pipelines.velocity.runner.estimate_retinal_velocity", side_effect=estimate),
+        patch("input_output.run_scratch._available_memory_bytes", return_value=0),
     ):
         result = execute_run(_spec(holo, artifacts=True))
     assert result.succeeded, result.failures
+    assert not list(result.outputs[0].parent.parent.glob(".ef_scratch_*"))
     assert events == [
         ("estimate", "doppler_moments"),
         ("estimate", "frequency_bands"),

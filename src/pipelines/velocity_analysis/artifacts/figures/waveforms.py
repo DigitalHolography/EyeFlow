@@ -78,8 +78,7 @@ def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[P
             )
             if metric is None:
                 continue
-            paths.append(
-                _ri_pi_plot(
+            path = _ri_pi_plot(
                     writer,
                     f"{metric_name}_{suffix_prefix}.png",
                     ctx.time,
@@ -88,7 +87,9 @@ def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[P
                     metric_name,
                     ctx.velocity_semantics,
                 )
-            )
+            paths.append(path)
+            if metric_name == "RI":
+                writer.register_artifact("ri", suffix_prefix.removeprefix("v_"), path)
     return paths
 
 def _export_waveform_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:

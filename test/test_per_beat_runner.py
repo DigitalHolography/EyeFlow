@@ -21,10 +21,6 @@ from calculations.blood_flow_velocity.signal_analysis.per_beat.runner import (  
     PerBeatAnalysisInput,
     run_per_beat_analysis,
 )
-from calculations.blood_flow_velocity.signal_analysis.per_beat.segments import (  # noqa: E402
-    PerBeatSegmentAnalysisResult,
-    aggregate_per_beat_segment_analysis,
-)
 from calculations.blood_flow_velocity.signal_analysis.per_beat.signal import (  # noqa: E402
     per_beat_signal_analysis,
 )
@@ -96,27 +92,6 @@ class PerBeatRunnerTests(unittest.TestCase):
         actual = _waveform_segment_input(result)
 
         self.assertIs(actual, segment_velocity)
-
-    def test_segment_aggregation_preserves_the_beat_axis(self) -> None:
-        raw = np.arange(128 * 7 * 15 * 23, dtype=np.float32).reshape(
-            128,
-            7,
-            15,
-            23,
-        )
-        segments = PerBeatSegmentAnalysisResult(
-            velocity_signal_per_beat_per_segment=raw,
-            velocity_signal_per_beat_per_segment_fft=raw.astype(np.complex64),
-            velocity_signal_per_beat_per_segment_band_limited=raw * 2.0,
-        )
-
-        result = aggregate_per_beat_segment_analysis(segments)
-
-        self.assertEqual((7, 128), result.velocity_signal_per_beat.shape)
-        np.testing.assert_allclose(
-            result.velocity_signal_per_beat,
-            np.nanmean(raw, axis=(2, 3)).T,
-        )
 
     def test_velocity_conversion_uses_twice_the_wavelength_over_aperture(
         self,

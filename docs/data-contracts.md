@@ -156,7 +156,7 @@ described below.
 | Frequency-resolved capillary source | `/spectrograms` | Optional gap-spectrum preprocessing source; exact HD root dataset name |
 | Flat-field zeroth moment | `/moment0ff`, legacy `/M0FF` | Optional |
 | Registration | `/registration` | Optional; copied to output `/Meta/registration` |
-| Zernike coefficients | `/zernike_coefs_radians` | Optional; copied through unchanged |
+| Zernike coefficients | `/zernike_coefs_radians` | Optional; values copied unchanged, eligible arrays recompressed |
 
 Moment and band datasets must be 3-D. The two bands must be numeric and have
 identical shapes; their chunk values must be finite. During velocity estimation,
@@ -841,7 +841,11 @@ before a new attempt, so a failed run leaves only that attempt's partial files.
 Subdirectories are created lazily for `h5`, `png`, `mp4`, `avi`, `pdf`, and
 `eps`. Velocity-derived artifacts are separated beneath each type directory
 into `moments/` and `bandratio/`, including PDF reports. Each report reads its
-corresponding processing group. The primary file is `h5/<stem>_EF.h5`.
+corresponding processing group and the actual PNG paths registered by its
+velocity-analysis variant. Existing filename lookup remains a fallback. The
+primary file is `h5/<stem>_EF.h5`.
+Displacement magnitude videos use MJPEG AVI files under
+`avi/displacement_maps/`, with one file for each selected vessel mask.
 
 All artifact basenames start with `<stem>_`, including PNG, EPS, AVI, MP4,
 PDF, auxiliary HDF5, and archive outputs. The shared artifact naming helper
@@ -962,6 +966,12 @@ or SciPy and bandlimiting does not load application modules.
 background-subtracted velocity used by the vessel waveform analysis. The
 unmasked velocity average and intermediate delta-frequency average are not
 persisted.
+When velocity analysis needs the full `(frame, y, x)` float32 velocity videos,
+the run shares a RAM budget of one quarter of available memory across both
+workflows (1 GiB if availability cannot be measured). Arrays exceeding that
+budget use temporary `.npy` scratch storage beside the EyeFlow output and are
+removed when the run finishes, including after a failed pipeline. Scratch
+videos are never published as HDF5 datasets or artifacts.
 All two-dimensional datasets under `/ProcessingMoments/Maps` are serialized in the
 same lower-left `(x, y)` image frame as
 `/Segmentation/Artery/BranchLabelMap/value`: the internal `(y, x)` array is
@@ -990,11 +1000,16 @@ Writers no longer generate the redundant `nameID` attribute; HDF5 exposes the
 absolute dataset path as `dataset.name`. Existing explicitly supplied attributes
 remain supported for compatibility with older payloads.
 Numeric arrays of at least 4 KiB (after dtype normalization) use lossless gzip
-compression at level 6 with the shuffle filter by default. Smaller arrays stay
+compression at level 9 with the shuffle filter by default. Smaller arrays stay
 unfiltered to avoid chunk-index overhead exceeding compression savings. Explicit
 dataset storage options override these defaults, including compression for small
 arrays. Scalars and strings remain unfiltered; these writes preserve their
 existing shapes and dtypes.
+Per-beat velocity maps, profiles, and segment masks use gzip level 9. Large
+numeric HD pass-through datasets are copied in chunks and
+recompressed with gzip level 9; their values, shapes, dtypes, and attributes
+remain intact. Unsupported or small pass-through objects retain their source
+storage layout.
 
 The output root records source files, selected targets, actual pipeline order,
 selected options, requested methods, and workflow status. Each separate workflow

@@ -3,20 +3,26 @@
 from __future__ import annotations
 
 import json
+import struct
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import h5py
 import numpy as np
+from PIL import Image
 
+from input_output.frame_sequences import FrameSequence
 from input_output.holo_run_layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
+from input_output.h5_access import RawH5SourceReader
+from input_output.schema import HolodopplerSource
+from input_output.writers.magnitude_avi import write_magnitude_avi
 from pipeline_engine import PipelineContext
 from pipelines.displacement_map import registration
-from pipelines.displacement_map.sources import FrameSequence
 from pipelines.displacement_map.runner import (
     ARTERY_MASK_PATH,
     DISPLACEMENT_MAP_STATE,
@@ -26,7 +32,6 @@ from pipelines.displacement_map.runner import (
     VESSEL_MASK_PATH,
     DisplacementMapArtifacts,
     DisplacementMapPipelineConfig,
-    resolve_moment_dataset,
     resolve_retina_mask,
     resolve_retina_masks,
     run_displacement_map,
@@ -71,7 +76,7 @@ class DisplacementMapInputTests(unittest.TestCase):
                 data=np.arange(24, dtype=np.float32).reshape(3, 2, 4),
             )
             with patch(
-                "pipelines.displacement_map.sources.h5py.File",
+                "input_output.frame_sequences.h5py.File",
                 side_effect=AssertionError("HDF5 input was reopened"),
             ):
                 sequence = FrameSequence(
@@ -89,11 +94,44 @@ class DisplacementMapInputTests(unittest.TestCase):
         self.assertEqual(3, len(frames))
         self.assertEqual((2, 4, 3), frames[0].shape)
 
+    def test_h5_replay_reads_each_source_frame_once(self) -> None:
+        values = np.arange(5 * 3 * 4, dtype=np.float32).reshape(5, 3, 4)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with h5py.File("replay.h5", "w", driver="core", backing_store=False) as hd:
+                dataset = hd.create_dataset("moment0", data=values)
+                sequence = FrameSequence(
+                    Path("not-on-disk.h5"), "moment0", 0, 10.0, 1.0, 99.5,
+                    h5_source=dataset, defer_h5_range=True,
+                )
+                with patch.object(
+                    sequence, "_slice_h5_frame", wraps=sequence._slice_h5_frame
+                ) as read_frame:
+                    with sequence.cached_for_replay(3, Path(tmp_dir)) as replay:
+                        first = list(replay.iter_frames())
+                        second = list(replay.iter_frames())
+                    self.assertEqual(5, read_frame.call_count)
+                self.assertEqual(3, len(first))
+                for left, right in zip(first, second):
+                    np.testing.assert_array_equal(left, right)
+                original = FrameSequence(
+                    Path("not-on-disk.h5"), "moment0", 0, 10.0, 1.0, 99.5,
+                    h5_source=dataset,
+                )
+                self.assertEqual(
+                    (original.h5_value_min, original.h5_value_max),
+                    (sequence.h5_value_min, sequence.h5_value_max),
+                )
+                for cached, direct in zip(first, original.iter_frames(3)):
+                    np.testing.assert_array_equal(cached, direct)
+            self.assertEqual([], list(Path(tmp_dir).iterdir()))
+
     def test_resolves_root_moment0_alias(self) -> None:
         with h5py.File("moment_alias.h5", "w", driver="core", backing_store=False) as hd:
             expected = hd.create_dataset("M0", data=np.ones((3, 2, 4), np.float32))
 
-            resolved = resolve_moment_dataset(hd)
+            resolved = HolodopplerSource(
+                RawH5SourceReader(h5file=hd, label="HD"), {}
+            ).named_root_moment_dataset("moment0")
 
             self.assertEqual(expected.name, resolved.name)
 
@@ -104,7 +142,9 @@ class DisplacementMapInputTests(unittest.TestCase):
                 data=np.ones((3, 2, 4), np.float32),
             )
 
-            resolved = resolve_moment_dataset(hd, "moment2")
+            resolved = HolodopplerSource(
+                RawH5SourceReader(h5file=hd, label="HD"), {}
+            ).named_root_moment_dataset("moment2")
 
             self.assertEqual(expected.name, resolved.name)
 
@@ -212,16 +252,22 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                 )
             )
 
-            def fake_motion_map(config, *, analysis_mask_array, magnitude_video_path):
+            replay_ids = []
+
+            def fake_motion_map(
+                config, *, analysis_mask_array, magnitude_video_path, h5_source, frame_replay,
+            ):
                 self.assertEqual("moment0", config.h5_dataset)
                 self.assertEqual(10.0, config.h5_fps)
+                self.assertEqual("/moment0", h5_source.name)
+                replay_ids.append(id(frame_replay))
                 if np.array_equal(analysis_mask_array, artery.astype(bool)):
                     field_value = 1.0
                 elif np.array_equal(analysis_mask_array, vein.astype(bool)):
                     field_value = 2.0
                 else:
                     self.fail("Unexpected displacement analysis mask.")
-                magnitude_video_path.write_bytes(b"fake mp4")
+                magnitude_video_path.write_bytes(b"fake avi")
                 field_path = config.output_dir / "displacement_field.npy"
                 np.save(
                     field_path,
@@ -246,6 +292,7 @@ class DisplacementMapRunnerTests(unittest.TestCase):
                     pipeline_name="displacement_map",
                 )
                 run_displacement_map(ctx)
+                self.assertEqual(1, len(set(replay_ids)))
                 self.assertNotIn("ProcessingMoments/DisplacementMap", output_h5)
                 artifacts = ctx.state.get(DISPLACEMENT_MAP_STATE)
                 self.assertIsInstance(artifacts, DisplacementMapArtifacts)
@@ -263,11 +310,50 @@ class DisplacementMapRunnerTests(unittest.TestCase):
 
             for vessel in ("artery", "vein"):
                 video_path = manager.path_for(
-                    OutputType.MP4,
-                    f"{vessel}_{MAGNITUDE_VIDEO_FILENAME}",
+                    OutputType.AVI,
+                    f"displacement_maps/{vessel}_{MAGNITUDE_VIDEO_FILENAME}",
                 )
-                self.assertEqual(manager.layout.ef_dir / "mp4", video_path.parent)
-                self.assertEqual(b"fake mp4", video_path.read_bytes())
+                self.assertEqual(
+                    manager.layout.ef_dir / "avi" / "displacement_maps",
+                    video_path.parent,
+                )
+                self.assertEqual(b"fake avi", video_path.read_bytes())
+
+
+def test_magnitude_avi_renders_masked_frames(tmp_path: Path) -> None:
+    magnitudes = np.zeros((2, 16, 16), dtype=np.float32)
+    magnitudes[:, :, 8:] = 2.0
+    mask = np.ones((16, 16), dtype=bool)
+    mask[:8, :] = False
+    target = tmp_path / "displacement_magnitude.avi"
+
+    display_range = write_magnitude_avi(
+        target,
+        magnitudes,
+        frame_count=2,
+        valid_mask=mask,
+        fps=25.0,
+        normalization="global-minmax",
+        low_percentile=1.0,
+        high_percentile=99.5,
+        fixed_maximum=3.0,
+        gamma=1.0,
+        visualization_sigma=0.0,
+    )
+
+    assert display_range == (0.0, 2.0)
+    contents = target.read_bytes()
+    assert contents[:4] == b"RIFF"
+    assert contents[8:12] == b"AVI "
+    assert b"MJPG" in contents
+    assert b"idx1" in contents
+    first_frame = contents.index(b"00dc", contents.index(b"movi") + 4)
+    frame_size = struct.unpack_from("<I", contents, first_frame + 4)[0]
+    with Image.open(BytesIO(contents[first_frame + 8 : first_frame + 8 + frame_size])) as image:
+        decoded = np.asarray(image.convert("RGB"))
+    assert np.max(decoded[2, 12]) < 10  # Masked high-magnitude pixel.
+    assert np.max(decoded[12, 2]) < 10
+    assert np.min(decoded[12, 12]) > 245
 
 
 if __name__ == "__main__":

@@ -92,6 +92,16 @@ class VesselMasks:
 
 
 @dataclass(frozen=True)
+class OpticDiscMeasurements:
+    """Uninterpreted optic-disc values exported by DopplerView."""
+
+    mask: np.ndarray | None
+    center: np.ndarray | None
+    width: np.ndarray | None
+    height: np.ndarray | None
+
+
+@dataclass(frozen=True)
 class RetinalSegmentation:
     """Aligned vessel and optic-disc segmentation."""
 
@@ -127,4 +137,3 @@ class RetinalSourceData:
     band_ratio_frequency_scale_hz: float = (
         DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
     )
-

@@ -3,6 +3,7 @@
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.serialization import serialize_segment_velocity
 from pipelines.velocity.models import RetinalVelocity
 from pipelines.velocity.outputs import metric_value
 from pipelines.velocity.semantics import velocity_dataset_attrs
@@ -92,7 +93,7 @@ def _pack_segment_velocity_output(
 
     outputs = {
         paths.velocity_signal: metric_value(
-            values.transpose(2, 1, 0),
+            serialize_segment_velocity(values),
             attrs=attrs,
             dim_desc=("frame", "branch", "radius"),
         )
@@ -102,7 +103,7 @@ def _pack_segment_velocity_output(
         if filtered is None:
             filtered = _lowpass_segment_velocity(values, source_data)
         outputs[paths.velocity_signal_filtered] = metric_value(
-            filtered.transpose(2, 1, 0),
+            serialize_segment_velocity(filtered),
             attrs={
                 **attrs,
                 **continuous_filter_attrs(float(source_data.source.holodoppler.timing.dt_seconds)),

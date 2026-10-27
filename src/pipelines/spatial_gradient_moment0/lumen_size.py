@@ -10,6 +10,7 @@ from calculations.math import nanmean, nanmedian
 from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE, apply_article_style
 from input_output.figure_formatting import LegendLayout, add_legend
 from input_output.output_manager import OutputType
+from input_output.writers.png import write_png_figure
 
 
 def export_lumen_size_pngs(
@@ -110,6 +111,4 @@ def _save_lumen_size_plot(
     ax.grid(True, alpha=0.25)
     apply_article_style(fig)
     path = output.path_for(OutputType.PNG, f"lumen_size/{filename}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=150, bbox_inches="tight")
-    return path
+    return write_png_figure(path, fig, dpi=150, bbox_inches="tight", close=True)

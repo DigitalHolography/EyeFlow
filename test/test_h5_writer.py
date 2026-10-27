@@ -7,6 +7,7 @@ import re
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import h5py
@@ -21,10 +22,30 @@ from input_output.writers.h5 import (  # noqa: E402
     set_attr_safe,
     write_value_dataset,
 )
+from input_output.h5_access import PipelineInputSource, RawH5SourceReader  # noqa: E402
 from pipeline_engine.base import DatasetValue  # noqa: E402
 
 
 class H5WriterTests(unittest.TestCase):
+    def test_runtime_typed_sources_read_small_fields_once(self) -> None:
+        with h5py.File("cached_inputs.h5", "w", driver="core", backing_store=False) as h5file:
+            h5file.create_dataset("HD_parameters", data=json.dumps({"sampling_freq": 1000}))
+            h5file.create_dataset("segmentation/Retina/artery_mask", data=np.ones((2, 3)))
+            reader = RawH5SourceReader(h5file=h5file, label="source")
+            inputs = PipelineInputSource(reader, {})
+            with patch.object(reader, "value", wraps=reader.value) as read_value:
+                hd = inputs.as_holodoppler()
+                self.assertIs(hd, inputs.as_holodoppler())
+                self.assertEqual(1000, hd.sampling_frequency_hz())
+                self.assertEqual(1000, hd.sampling_frequency_hz())
+                self.assertEqual(1, read_value.call_count)
+            with patch.object(reader, "array", wraps=reader.array) as read_array:
+                dv = inputs.as_dopplerview()
+                self.assertIs(dv, inputs.as_dopplerview())
+                dv.retinal_mask("segmentation/Retina/artery_mask")
+                dv.retinal_artery_mask()
+                self.assertEqual(1, read_array.call_count)
+
     def test_dataset_path_is_available_without_generated_name_id(self) -> None:
         with h5py.File("names.h5", "w", driver="core", backing_store=False) as h5file:
             write_value_dataset(h5file, "nested/value", np.arange(4))
@@ -44,7 +65,7 @@ class H5WriterTests(unittest.TestCase):
             with h5py.File(path, "r") as h5file:
                 dataset = h5file["values"]
                 self.assertEqual("gzip", dataset.compression)
-                self.assertEqual(6, dataset.compression_opts)
+                self.assertEqual(9, dataset.compression_opts)
                 self.assertTrue(dataset.shuffle)
                 self.assertEqual(values.dtype, dataset.dtype)
                 self.assertEqual(values.shape, dataset.shape)
@@ -68,7 +89,7 @@ class H5WriterTests(unittest.TestCase):
                             self.assertIsNone(dataset.compression)
                         else:
                             self.assertEqual("gzip", dataset.compression)
-                            self.assertEqual(6, dataset.compression_opts)
+                            self.assertEqual(9, dataset.compression_opts)
                             self.assertTrue(dataset.shuffle)
             self.assertLess(paths[0].stat().st_size, paths[1].stat().st_size / 2)
 
@@ -239,6 +260,39 @@ class H5WriterTests(unittest.TestCase):
                     output_h5["Meta/registration"].attrs["unit"],
                 )
                 self.assertIn("zernike_coefs_radians", output_h5)
+
+    def test_initialize_uses_existing_handles_and_compresses_large_passthrough(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            hd_path = Path(tmp_dir) / "input_HD.h5"
+            dv_path = Path(tmp_dir) / "input_DV.h5"
+            output_path = Path(tmp_dir) / "output.h5"
+            values = np.zeros((64, 64), dtype=np.float32)
+            with h5py.File(hd_path, "w") as hd:
+                hd.create_dataset("registration", data=values).attrs["unit"] = "pixel"
+            with h5py.File(dv_path, "w") as dv:
+                dv.create_dataset("app_versions", data=json.dumps({"DV_version": "test"}))
+            with h5py.File(hd_path, "r") as hd, h5py.File(dv_path, "r") as dv:
+                with h5py.File(output_path, "w") as output_h5:
+                    with patch(
+                        "input_output.writers.h5.open_h5",
+                        side_effect=AssertionError("input was reopened"),
+                    ):
+                        initialize_output_h5(
+                            output_h5,
+                            holodoppler_source_file=str(hd_path),
+                            doppler_vision_source_file=str(dv_path),
+                            holodoppler_source_h5=hd,
+                            doppler_vision_source_h5=dv,
+                        )
+            with h5py.File(output_path, "r") as output_h5:
+                registration = output_h5["Meta/registration"]
+                self.assertEqual("gzip", registration.compression)
+                self.assertEqual(9, registration.compression_opts)
+                self.assertEqual("pixel", registration.attrs["unit"])
+                np.testing.assert_array_equal(values, registration[()])
+                self.assertEqual(
+                    "test", json.loads(_read_scalar_string(output_h5["app_versions"]))["DV_version"],
+                )
 
 
 def _pyproject_version() -> str:

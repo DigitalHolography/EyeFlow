@@ -37,7 +37,7 @@ from .constants import (
     SEGMENT_OUTER_RADIUS_FRAC,
 )
 from .models import VelocityAnalysis, VelocitySegmentResult
-from .sources import VelocityAnalysisSourceData, VelocityAnalysisSources
+from .sources import VelocityAnalysisSourceData, load_velocity_analysis_source_data
 
 VELOCITY_ANALYSIS_STATE = "velocity_analysis"
 
@@ -143,7 +143,7 @@ def _build_velocity_analysis_state(
     """Build persistent source and segment state before per-beat analysis."""
 
     with _logged_stage("velocity-analysis source loading"):
-        source_data = VelocityAnalysisSources.from_context(ctx).load()
+        source_data = load_velocity_analysis_source_data(ctx)
     timing = source_data.source.holodoppler.timing
     number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
     artery_segments, vein_segments = _build_segments(
@@ -379,7 +379,13 @@ def _export_pulse_pngs(ctx, analysis: VelocityAnalysis, per_beat_result) -> None
     if not ctx.output.available:
         return
     with _logged_stage("pulse-analysis PNG export"):
-        export_pulse_pngs(ctx.output, analysis, per_beat_result)
+        from input_output.writers.png import REPORT_IMAGES_STATE
+
+        report_images = {}
+        export_pulse_pngs(
+            ctx.output, analysis, per_beat_result, report_images=report_images
+        )
+        ctx.state.set(REPORT_IMAGES_STATE, report_images)
 
 
 @contextmanager

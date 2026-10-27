@@ -8,8 +8,10 @@ import pytest
 from test_run_service import _write_input
 
 from input_output.output_manager import OutputType
+from input_output.run_scratch import RunArrayStorage
 from pipeline_engine.base import ExecutionVariant, PipelineDescriptor, PipelineOption
 from pipeline_engine.run_service import execute_run, resolve_run_spec
+from pipeline_engine.runtime import _pipeline_checkpoint
 
 
 def _descriptor(name, run, dependencies=(), *, variants=False, options=()):
@@ -18,6 +20,24 @@ def _descriptor(name, run, dependencies=(), *, variants=False, options=()):
         produces_execution_variants=variants, options=options,
         pipeline_factory=lambda: SimpleNamespace(name=name, run=run, source_path=__file__),
     )
+
+
+def test_failed_pipeline_keeps_scratch_alive_until_run_cleanup(tmp_path):
+    manager = SimpleNamespace(layout=SimpleNamespace(ef_dir=tmp_path))
+    with h5py.File(tmp_path / "result.h5", "w") as output:
+        with RunArrayStorage(tmp_path, memory_budget_bytes=0) as scratch:
+            with pytest.raises(RuntimeError, match="injected failure"):
+                with _pipeline_checkpoint(output, {}, manager, scratch):
+                    video = scratch.empty_float32((2, 3, 4))
+                    video[:] = 7
+                    scratch_path = scratch.scratch_directory / "array_0.npy"
+                    partial_artifact = tmp_path / "partial.png"
+                    partial_artifact.write_bytes(b"partial")
+                    raise RuntimeError("injected failure")
+            assert scratch_path.exists()
+            assert video[0, 0, 0] == 7
+            assert not partial_artifact.exists()
+        assert not scratch_path.exists()
 
 
 @pytest.mark.parametrize("variants,fail_both", [(False, False), (True, False), (True, True)])

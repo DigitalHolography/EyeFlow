@@ -73,7 +73,7 @@ def extract_spatial_gradient_segments(
         raise KeyError("Missing flat-field HoloDoppler moment0 dataset: moment0ff/M0FF.")
     artery_topology = prepared_topologies["artery"]
     ring_settings = getattr(
-        getattr(artery_topology, "topology", None),
+        getattr(artery_topology, "native", artery_topology),
         "ring_settings",
         None,
     )

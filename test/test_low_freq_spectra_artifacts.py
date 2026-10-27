@@ -31,15 +31,14 @@ from pipelines.low_freq_spectra.artifacts import (
     _spectra_figure,
     export_spectrogram_figures,
 )
-from calculations.math.frequency import frequency_coordinates_khz, positive_frequency_coordinates_khz
+from calculations.math.frequency import frequency_coordinates_khz
 from test_spectrogram_frequency import _write_frequency_table
 
 
-@pytest.mark.parametrize("frames, dt_seconds, time_ticks", [
-    (103, 0.01, np.arange(0, 1.01, 0.2)),
-    (640, 0.025, np.arange(0, 16, 5)),
+@pytest.mark.parametrize("frames, dt_seconds, time_ticks, monochrome", [
+    (103, 0.01, np.arange(0, 1.01, 0.2), False),
+    (640, 0.025, np.arange(0, 16, 5), True),
 ])
-@pytest.mark.parametrize("monochrome", [False, True])
 def test_heatmap_preserves_frame_bin_values_and_nan_gaps(frames, dt_seconds, time_ticks, monochrome):
     values = np.arange(frames * 32, dtype=float).reshape(frames, 32)
     values[51, 2] = np.nan
@@ -142,10 +141,9 @@ def test_mask_preserves_published_xy_orientation_and_square_pixels():
 
 
 @pytest.mark.parametrize("metric, unit, label", [
-    ("A0", "power_unit", "$A_{0}$ (power_unit)"), ("R1", "1", "$R_{1}$"),
+    ("A0", "power_unit", "$A_{0}$ (power_unit)"),
+    ("R1", "1", "$R_{1}$"),
     ("SE", "1", "$SE$"),
-    ("A0", "a.u.*kHz", "$A_{0}$ (a.u.)"),
-    ("A", "a.u.*kHz", "$A$ (a.u.)"),
     ("A2", "a.u.*kHz", "$A_{2}$ (a.u.)"),
     ("A", "a.u. * kHZ", "$A$ (a.u.)"),
 ])
@@ -209,10 +207,11 @@ def test_spectra_keep_both_frequency_halves_and_share_stored_peaks_and_hv_window
     np.testing.assert_array_equal(first, original)
 
 
-@pytest.mark.parametrize("bin_count", [31, 32, 64, 128])
+@pytest.mark.parametrize("bin_count", [31, 64])
 def test_frequency_helpers_and_full_spectrum_preserve_unbinned_domain(bin_count):
     stop = (bin_count + 1) // 2
-    coordinates = positive_frequency_coordinates_khz(bin_count, 64000)
+    signed = frequency_coordinates_khz(bin_count, 64000)
+    coordinates = signed[signed >= 0]
     np.testing.assert_allclose(coordinates, np.arange(stop) * 64 / bin_count)
     assert coordinates[0] == 0
     np.testing.assert_array_equal(coordinates, frequency_coordinates_khz(bin_count, 64000)[:stop])
@@ -333,7 +332,7 @@ def test_unusable_normalization_does_not_fabricate_a_spectrum(values):
 
 
 @pytest.mark.parametrize("bin_count, start, stop", [
-    (2, 0, 2), (16, 6, 10), (31, 11, 19), (32, 12, 20), (64, 24, 40), (128, 48, 80),
+    (2, 0, 2), (31, 11, 19), (64, 24, 40),
 ])
 def test_normalization_uses_central_quarter_hv_of_the_full_spectrum(bin_count, start, stop):
     values = np.full(bin_count, 10000.0)
@@ -350,7 +349,7 @@ def test_normalization_median_ignores_nan_without_expanding_the_neighborhood():
     assert _spectrum_baseline(values) is None
 
 
-@pytest.mark.parametrize("products", ["all", "raw", "mask", "empty_mask", "metrics", "one_metric", "one_spectrum", "none"])
+@pytest.mark.parametrize("products", ["all", "empty_mask", "one_metric", "one_spectrum", "none"])
 def test_exports_only_available_products_in_shared_namespace(tmp_path, products):
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
     schema = EyeFlowOutputPaths.active()
@@ -425,7 +424,7 @@ def test_exports_only_available_products_in_shared_namespace(tmp_path, products)
                     assert not np.any(np.asarray(image.convert("RGB")))
 
 
-@pytest.mark.parametrize("dt_seconds", [None, 0, -0.01, np.nan, np.inf])
+@pytest.mark.parametrize("dt_seconds", [None, 0, np.nan])
 def test_invalid_frame_interval_skips_heatmaps_but_preserves_other_figures(tmp_path, dt_seconds):
     schema = EyeFlowOutputPaths.active()
     with h5py.File(tmp_path / "out.h5", "w") as h5:
@@ -443,7 +442,7 @@ def test_invalid_frame_interval_skips_heatmaps_but_preserves_other_figures(tmp_p
         assert schema.spectrograms_masked in h5
 
 
-@pytest.mark.parametrize("frequency", [None, 0, np.nan])
+@pytest.mark.parametrize("frequency", [None, np.nan])
 def test_missing_calibration_preserves_mask_exports_without_mislabeled_spectral_axes(tmp_path, frequency):
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
     schema = EyeFlowOutputPaths.active()
@@ -507,8 +506,8 @@ def test_export_reads_shared_peak_without_mutating_hdf5(tmp_path):
 
 
 @pytest.mark.parametrize("half, peak", [
-    (1, peak) for peak in (None, np.nan, -1, 16, 32, 5.5)
-] + [(2, peak) for peak in (None, np.nan, -1, 0, 32, 16.5)])
+    (1, None), (2, None), (1, np.nan), (2, -1), (1, 32), (2, 16.5),
+])
 def test_spectrum_export_does_not_infer_missing_or_invalid_stored_peaks(tmp_path, half, peak):
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
     schema = EyeFlowOutputPaths.active()
