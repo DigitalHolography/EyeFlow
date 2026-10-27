@@ -16,6 +16,9 @@ from ..schema.provenance import inherited_provenance
 
 # Small arrays save less payload than the per-dataset chunk index costs.
 _MIN_COMPRESSION_BYTES = 4096
+# The virtual mapping itself costs several KiB; use it only when the unique
+# frequencies can repay that metadata overhead.
+_MIN_MIRRORED_FFT_SAVINGS_BYTES = 32 * 1024
 
 
 def profile_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
@@ -191,6 +194,9 @@ def write_value_dataset(group: h5py.Group, key: str, value) -> None:
     target_group, dataset_key = resolve_dataset_target(group, str(key))
     if dataset_key in target_group:
         del target_group[dataset_key]
+    backing_name = f"__{dataset_key}_unique_frequency_storage"
+    if backing_name in target_group:
+        del target_group[backing_name]
 
     payload, ds_attrs = _normalize_dataset_payload(data, ds_attrs)
     dataset = _create_dataset(
@@ -216,23 +222,25 @@ def initialize_output_h5(
     doppler_vision_source_file: str | None = None,
     holodoppler_source_h5: h5py.File | None = None,
     doppler_vision_source_h5: h5py.File | None = None,
+    copy_hd_passthrough: bool = True,
 ) -> None:
     set_attr_safe(h5file, "eyeflow_version", _project_version())
     if holodoppler_source_file:
         h5file.attrs["holodoppler_source_file"] = holodoppler_source_file
 
         # Pass registration and zernike data through to their output schema paths.
-        with _source_handle(holodoppler_source_h5, holodoppler_source_file) as source_h5:
-            for source_path, output_path in HD_OUTPUT_PASSTHROUGH_PATHS:
-                if source_h5.get(source_path) is None:
-                    continue
-                output_group, output_name = resolve_dataset_target(
-                    h5file,
-                    output_path,
-                )
-                if output_name in output_group:
-                    del output_group[output_name]
-                _copy_source_object(source_h5[source_path], output_group, output_name)
+        if copy_hd_passthrough:
+            with _source_handle(holodoppler_source_h5, holodoppler_source_file) as source_h5:
+                for source_path, output_path in HD_OUTPUT_PASSTHROUGH_PATHS:
+                    if source_h5.get(source_path) is None:
+                        continue
+                    output_group, output_name = resolve_dataset_target(
+                        h5file,
+                        output_path,
+                    )
+                    if output_name in output_group:
+                        del output_group[output_name]
+                    _copy_source_object(source_h5[source_path], output_group, output_name)
     if doppler_vision_source_file:
         h5file.attrs["doppler_vision_source_file"] = doppler_vision_source_file
     _initialize_app_versions(h5file, doppler_vision_source_file, doppler_vision_source_h5)
@@ -508,15 +516,17 @@ def _create_mirrored_fft_dataset(
     if axis < 0 or axis >= payload.ndim:
         raise ValueError("Mirrored FFT axis is out of range.")
     backing_name = f"__{name}_unique_frequency_storage"
-    if backing_name in group:
-        del group[backing_name]
     count = payload.shape[axis]
-    if count < 2 or not payload.size or not _is_exactly_mirrored(payload, axis):
+    unique_count = count // 2 + 1
+    savings_bytes = payload.nbytes * (count - unique_count) // max(count, 1)
+    if (
+        count < 2 or savings_bytes < _MIN_MIRRORED_FFT_SAVINGS_BYTES
+        or not _is_exactly_mirrored(payload, axis)
+    ):
         if sparse_nan_chunks:
             return _create_sparse_nan_dataset(group, name, payload, options)
         return group.create_dataset(name, data=payload, **options)
 
-    unique_count = count // 2 + 1
     selection = [slice(None)] * payload.ndim
     selection[axis] = slice(0, unique_count)
     unique = payload[tuple(selection)]

@@ -10,6 +10,7 @@ Inputs:
     --output / -o      Optional output root; source-adjacent GUI defaults are used otherwise.
     --zip / -z         When set, compress the outputs into a .zip archive after completion.
     --zip-name         Optional filename for the archive (default: outputs.zip).
+    --copy-hd-passthrough  Include HD registration and Zernike data in the result H5.
 """
 
 import argparse
@@ -153,6 +154,7 @@ def run_cli(
     output_dir: Path | None = None,
     zip_outputs: bool = False,
     zip_name: str | None = None,
+    copy_hd_passthrough: bool | None = None,
 ) -> int:
     registry = _build_pipeline_registry()
     target_registry = selectable_pipeline_registry(registry.values())
@@ -198,6 +200,10 @@ def run_cli(
             pipeline_options=pipeline_options,
             band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
             band_limited_harmonics=settings_store.load_band_limited_harmonics(),
+            copy_hd_passthrough=(
+                settings_store.load_copy_hd_passthrough()
+                if copy_hd_passthrough is None else copy_hd_passthrough
+            ),
             output_root=work_root,
             batch_root=expanded_inputs.batch_root,
         )
@@ -304,6 +310,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="outputs.zip",
         help="Archive filename to place inside the output directory (default: outputs.zip).",
     )
+    parser.add_argument(
+        "--copy-hd-passthrough",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Include HD registration and Zernike data in the result H5.",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -313,6 +325,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.output,
             zip_outputs=args.zip,
             zip_name=args.zip_name,
+            copy_hd_passthrough=args.copy_hd_passthrough,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"Error: {exc}", file=sys.stderr)

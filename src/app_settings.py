@@ -22,6 +22,7 @@ SETTINGS_FILENAME = "settings.json"
 DEFAULT_SETTINGS_FILENAME = "default_settings.json"
 # Application fallback; calculations own their independent API default.
 DEFAULT_BAND_LIMITED_HARMONICS_SETTING = 12
+DEFAULT_COPY_HD_PASSTHROUGH = False
 LAST_RUN_LOG_FILENAME = "last_EF_log.txt"
 PIPELINES_DIR_ENV = "EYEFLOW_PIPELINES_DIR"
 VERSION_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
@@ -46,6 +47,12 @@ def validate_band_limited_harmonics_setting(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, Integral) or value < 0:
         raise ValueError("band_limited_harmonics must be a non-negative integer, excluding DC.")
     return int(value)
+
+
+def validate_copy_hd_passthrough(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError("copy_hd_passthrough must be true or false.")
+    return value
 
 
 def validate_velocity_estimation_method(value: object) -> VelocityEstimationMethod:
@@ -333,6 +340,9 @@ class AppSettingsStore:
                 DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
             )
         )
+        validate_copy_hd_passthrough(
+            settings.get("copy_hd_passthrough", DEFAULT_COPY_HD_PASSTHROUGH)
+        )
         self.save(settings)
 
     def load_named_visibility(self, key: str) -> dict[str, bool]:
@@ -413,6 +423,16 @@ class AppSettingsStore:
         return validate_band_limited_harmonics_setting(
             self.load().get("band_limited_harmonics", DEFAULT_BAND_LIMITED_HARMONICS_SETTING)
         )
+
+    def load_copy_hd_passthrough(self) -> bool:
+        return validate_copy_hd_passthrough(
+            self.load().get("copy_hd_passthrough", DEFAULT_COPY_HD_PASSTHROUGH)
+        )
+
+    def save_copy_hd_passthrough(self, value: object) -> None:
+        settings = self.load()
+        settings["copy_hd_passthrough"] = validate_copy_hd_passthrough(value)
+        self.save(settings)
 
     def save_band_limited_harmonics(self, value: object) -> None:
         settings = self.load()

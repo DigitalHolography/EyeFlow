@@ -193,6 +193,8 @@ class VelocityFFTProfileTests(unittest.TestCase):
             self.assertEqual("full", masked.attrs["fft_spectrum"])
             self.assertEqual(10, masked.attrs["mask_dilation_iterations"])
             self.assertEqual(0, unmasked.attrs["mask_dilation_iterations"])
+            self.assertFalse(masked.is_virtual)
+            np.testing.assert_array_equal(masked[()], self.segments.transverse_fft.masked)
             self.assertEqual("gzip", masked.compression)
 
     def test_streamed_accumulator_matches_legacy_retained_map_path(self) -> None:

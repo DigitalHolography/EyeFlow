@@ -54,6 +54,7 @@ class DefaultSettingsTests(unittest.TestCase):
         )
         self.assertEqual(1.0, settings["band_ratio_frequency_scale_hz"])
         self.assertEqual(12, settings["band_limited_harmonics"])
+        self.assertFalse(settings["copy_hd_passthrough"])
 
     def test_new_default_selected_pipeline_is_enabled_in_existing_settings(self) -> None:
         visibility, changed = normalize_pipeline_visibility(

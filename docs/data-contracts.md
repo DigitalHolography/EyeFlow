@@ -155,8 +155,8 @@ described below.
 | High-frequency band | `/band_<i>_<n>_<m>` | Last video in the same ordering; at least two matching datasets are required |
 | Frequency-resolved capillary source | `/spectrograms` | Optional gap-spectrum preprocessing source; exact HD root dataset name |
 | Flat-field zeroth moment | `/moment0ff`, legacy `/M0FF` | Optional |
-| Registration | `/registration` | Optional; copied to output `/Meta/registration` |
-| Zernike coefficients | `/zernike_coefs_radians` | Optional; values copied unchanged, eligible arrays recompressed |
+| Registration | `/registration` | Optional HD metadata; copied to output `/Meta/registration` when `copy_hd_passthrough` is enabled |
+| Zernike coefficients | `/zernike_coefs_radians` | Optional HD metadata; copied unchanged when `copy_hd_passthrough` is enabled |
 
 Moment and band datasets must be 3-D. The two bands must be numeric and have
 identical shapes; their chunk values must be finite. During velocity estimation,
@@ -1005,11 +1005,28 @@ unfiltered to avoid chunk-index overhead exceeding compression savings. Explicit
 dataset storage options override these defaults, including compression for small
 arrays. Scalars and strings remain unfiltered; these writes preserve their
 existing shapes and dtypes.
-Per-beat velocity maps, profiles, and segment masks use gzip level 9. Large
-numeric HD pass-through datasets are copied in chunks and
-recompressed with gzip level 9; their values, shapes, dtypes, and attributes
-remain intact. Unsupported or small pass-through objects retain their source
-storage layout.
+Per-beat velocity maps, profiles, and segment masks use gzip level 9. The
+float32 map and profile writers leave chunks containing only the exact NaN fill
+value unallocated; reading the published datasets returns the same dense shapes
+and values. When the redundant bins represent at least 32 KiB of raw data,
+the optional velocity-profile FFT stores the unique half of an exactly mirrored
+magnitude spectrum in a gzip-compressed
+backing dataset and exposes the original full shape through an HDF5 virtual
+dataset at the published path. Smaller arrays or arrays whose two halves differ
+at the bit level keep ordinary full-array storage.
+The backing dataset is named `__<published-name>_unique_frequency_storage` in
+the same group. A virtual dataset has no compression filter of its own; its
+backing data has the gzip filter.
+
+Fresh runs omit HD `/registration` and `/zernike_coefs_radians` pass-through
+copies by default. Set `copy_hd_passthrough` to `true` in the imported settings
+JSON, pass `--copy-hd-passthrough` to the CLI, or pass
+`copy_hd_passthrough=True` to `resolve_run_spec` to retain them.
+The root output attribute records this choice, and the HD source-file path
+remains available when copies are omitted. When enabled, large numeric HD
+pass-through datasets are copied in chunks and recompressed with gzip level 9;
+their values, shapes, dtypes, and attributes remain intact. Unsupported or
+small pass-through objects retain their source storage layout.
 
 The output root records source files, selected targets, actual pipeline order,
 selected options, requested methods, and workflow status. Each separate workflow

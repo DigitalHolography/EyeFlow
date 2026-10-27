@@ -53,6 +53,12 @@ consumers, tests, and documentation synchronized.
 serialization, downcasting, bool representation, attributes, initialization,
 and selected HD pass-through data. Avoid opening the primary HDF5 independently
 inside a pipeline.
+Large float32 map/profile payloads may request sparse NaN chunk storage; the
+published shape and values remain dense on read. Symmetric velocity-profile
+FFT magnitudes may use a same-file virtual dataset over compressed unique
+frequency bins. The writer falls back to ordinary storage when exact symmetry
+or a useful size reduction is absent. HD registration and Zernike pass-through
+copies are selected by the run-level `copy_hd_passthrough` setting.
 
 Per-beat profile interpolation and dataset packing live in
 `pipelines/profile_outputs.py`; they are pipeline adaptation rather than I/O

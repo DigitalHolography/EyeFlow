@@ -18,6 +18,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from input_output.writers.h5 import (  # noqa: E402
+    h5_write_checkpoint,
     initialize_output_h5,
     set_attr_safe,
     write_value_dataset,
@@ -70,6 +71,77 @@ class H5WriterTests(unittest.TestCase):
                 self.assertEqual(values.dtype, dataset.dtype)
                 self.assertEqual(values.shape, dataset.shape)
                 self.assertEqual(values.tobytes(), dataset[()].tobytes())
+
+    def test_sparse_nan_chunks_preserve_dense_values_without_allocating_empty_chunks(self) -> None:
+        values = np.full((16, 16, 4, 2), np.nan, dtype=np.float32)
+        values[:, :, :2, 0] = np.arange(16 * 16 * 2, dtype=np.float32).reshape(16, 16, 2)
+        with h5py.File("sparse_nan.h5", "w", driver="core", backing_store=False) as h5file:
+            write_value_dataset(h5file, "values", DatasetValue(
+                values,
+                h5_options={
+                    "compression": "gzip", "shuffle": True,
+                    "chunks": (16, 16, 2, 1), "sparse_nan_chunks": True,
+                },
+            ))
+            dataset = h5file["values"]
+            self.assertEqual(1, dataset.id.get_num_chunks())
+            self.assertEqual(values.tobytes(), dataset[()].tobytes())
+
+    def test_mirrored_fft_virtual_dataset_reads_full_exact_spectrum(self) -> None:
+        values = np.abs(np.fft.fft(
+            np.arange(181 * 128, dtype=np.float32).reshape(181, 128), axis=1,
+        )).astype(np.float32)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "mirrored_fft.h5"
+            with h5py.File(path, "w") as h5file:
+                write_value_dataset(h5file, "profiles/fft", DatasetValue(
+                    values,
+                    attrs={"unit": "a.u."},
+                    h5_options={
+                        "compression": "gzip", "shuffle": True,
+                        "chunks": (181, 128), "mirror_fft_axis": 1,
+                        "sparse_nan_chunks": True,
+                    },
+                ))
+            relocated = path.with_name("relocated.h5")
+            path.rename(relocated)
+            with h5py.File(relocated, "r") as h5file:
+                public = h5file["profiles/fft"]
+                backing = h5file["profiles/__fft_unique_frequency_storage"]
+                self.assertTrue(public.is_virtual)
+                self.assertEqual(values.shape, public.shape)
+                self.assertEqual(values.tobytes(), public[()].tobytes())
+                self.assertEqual(values.shape[:1] + (65,), backing.shape)
+                self.assertEqual("gzip", backing.compression)
+                self.assertEqual("a.u.", public.attrs["unit"])
+
+    def test_non_symmetric_fft_keeps_exact_full_dataset(self) -> None:
+        values = np.arange(3 * 8, dtype=np.float32).reshape(3, 8)
+        with h5py.File("non_symmetric_fft.h5", "w", driver="core", backing_store=False) as h5file:
+            symmetric = np.abs(np.fft.fft(
+                np.arange(181 * 128, dtype=np.float32).reshape(181, 128), axis=1,
+            )).astype(np.float32)
+            write_value_dataset(h5file, "profiles/fft", DatasetValue(
+                symmetric,
+                h5_options={"mirror_fft_axis": 1, "sparse_nan_chunks": True},
+            ))
+            self.assertTrue(h5file["profiles/fft"].is_virtual)
+            with self.assertRaisesRegex(RuntimeError, "rollback"):
+                with h5_write_checkpoint(h5file):
+                    write_value_dataset(h5file, "profiles/fft", DatasetValue(
+                        values,
+                        h5_options={"mirror_fft_axis": 1, "sparse_nan_chunks": True},
+                    ))
+                    raise RuntimeError("rollback")
+            self.assertTrue(h5file["profiles/fft"].is_virtual)
+            self.assertEqual(symmetric.tobytes(), h5file["profiles/fft"][()].tobytes())
+            write_value_dataset(h5file, "profiles/fft", DatasetValue(
+                values,
+                h5_options={"mirror_fft_axis": 1, "sparse_nan_chunks": True},
+            ))
+            self.assertFalse(h5file["profiles/fft"].is_virtual)
+            self.assertEqual(values.tobytes(), h5file["profiles/fft"][()].tobytes())
+            self.assertNotIn("__fft_unique_frequency_storage", h5file["profiles"])
 
     def test_small_arrays_avoid_chunk_overhead(self) -> None:
         values = np.array([0.0, -0.0, np.nan, np.inf, -np.inf, 1.234567], dtype=np.float32)
@@ -260,6 +332,23 @@ class H5WriterTests(unittest.TestCase):
                     output_h5["Meta/registration"].attrs["unit"],
                 )
                 self.assertIn("zernike_coefs_radians", output_h5)
+
+    def test_initialize_output_h5_can_omit_hd_passthrough(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source_path = Path(tmp_dir) / "input_HD.h5"
+            output_path = Path(tmp_dir) / "output.h5"
+            with h5py.File(source_path, "w") as source:
+                source.create_dataset("registration", data=np.ones((32, 32), dtype=np.float32))
+                source.create_dataset("zernike_coefs_radians", data=[0.1, 0.2])
+            with h5py.File(output_path, "w") as output:
+                initialize_output_h5(
+                    output,
+                    holodoppler_source_file=str(source_path),
+                    copy_hd_passthrough=False,
+                )
+                self.assertNotIn("Meta/registration", output)
+                self.assertNotIn("zernike_coefs_radians", output)
+                self.assertEqual(str(source_path), output.attrs["holodoppler_source_file"])
 
     def test_initialize_uses_existing_handles_and_compresses_large_passthrough(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

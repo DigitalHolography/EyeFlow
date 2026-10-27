@@ -8,7 +8,9 @@ from pathlib import Path
 
 from app_settings import (
     DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
+    DEFAULT_COPY_HD_PASSTHROUGH,
     validate_band_limited_harmonics_setting,
+    validate_copy_hd_passthrough,
 )
 from input_output import HoloRunLayout, resolve_selected_run_layouts
 from input_output.output_manager import OutputManager, OutputType
@@ -46,6 +48,7 @@ class RunSpec:
     pipeline_options: Mapping[str, tuple[str, ...]]
     band_ratio_frequency_scale_hz: float = DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
     band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING
+    copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH
 
     @property
     def total_pipeline_units(self) -> int:
@@ -92,11 +95,13 @@ def resolve_run_spec(
     pipeline_options: Mapping[str, Iterable[str]] | None = None,
     band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
     band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
+    copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH,
     output_root: Path | None = None,
     batch_root: Path | None = None,
 ) -> RunSpec:
     """Resolve targets, inputs, and deterministic output destinations."""
     resolved_harmonics = validate_band_limited_harmonics_setting(band_limited_harmonics)
+    resolved_copy_hd_passthrough = validate_copy_hd_passthrough(copy_hd_passthrough)
 
     resolved_band_ratio_scale_hz = validate_band_ratio_frequency_scale_hz(
         band_ratio_frequency_scale_hz
@@ -154,6 +159,7 @@ def resolve_run_spec(
         pipeline_options=resolved_options,
         band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
         band_limited_harmonics=resolved_harmonics,
+        copy_hd_passthrough=resolved_copy_hd_passthrough,
     )
 
 
@@ -205,6 +211,7 @@ def execute_run(
                 pipeline_options=spec.pipeline_options,
                 band_ratio_frequency_scale_hz=(spec.band_ratio_frequency_scale_hz),
                 band_limited_harmonics=spec.band_limited_harmonics,
+                copy_hd_passthrough=spec.copy_hd_passthrough,
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
                 on_pipeline_start=on_pipeline_start,
