@@ -205,7 +205,3 @@ def _format_value(value: dict | Any, fmt: str) -> str:
     except (TypeError, ValueError):
         formatted = f"{val}"
     return f"{formatted} {unit}".strip()
-
-
-_extract_parameters_from_h5 = extract_parameters_from_h5
-_format_parameters_for_display = format_parameters_for_display

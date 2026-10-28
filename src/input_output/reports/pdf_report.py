@@ -14,9 +14,8 @@ from input_output.writers.artifact_names import prefixed_artifact_path
 from input_output.writers.png import ReportImagePaths
 
 from .pdf_data import (
-    _extract_parameters_from_h5,
-    _format_parameters_for_display,
-    _velocity_dataset_unit,
+    extract_parameters_from_h5,
+    format_parameters_for_display,
 )
 
 
@@ -63,7 +62,7 @@ def generate_a4_report(
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Extract parameters from the H5 file
-    parameters = _extract_parameters_from_h5(output_h5_path, processing_root=processing_root)
+    parameters = extract_parameters_from_h5(output_h5_path, processing_root=processing_root)
     
     # Create the report
     with PdfPages(pdf_path) as pdf:
@@ -165,7 +164,7 @@ def _show_report_image(
 
 def _add_parameters_section(ax, parameters: dict[str, Any]) -> None:
     """Add parameters section to the report."""
-    param_texts = _format_parameters_for_display(parameters)
+    param_texts = format_parameters_for_display(parameters)
     
     num_params = len(param_texts)
     if num_params == 0:

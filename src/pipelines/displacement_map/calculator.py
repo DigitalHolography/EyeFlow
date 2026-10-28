@@ -136,7 +136,6 @@ def create_retinal_motion_map(
             sequence.height,
             sequence.width,
             args.save_field,
-            analysis_mask > 0,
         )
 
         previous_registration_field = np.zeros((sequence.height, sequence.width, 2), dtype=np.float32)

@@ -229,8 +229,10 @@ records the method and radius in output provenance.
 | Companion input layout | `src/input_output/runs/layout.py` and source layouts in `src/input_output/schema/` |
 | HD/DV logical fields | `src/input_output/schema/holodoppler.py`, `src/input_output/schema/doppler_view.py` |
 | Canonical aligned source models | `src/retinal_source_data.py`, `src/pipelines/vessel_inputs.py` |
+| Reusable figure styling and layout | `src/plotting/article.py`, `src/plotting/formatting.py` |
 | Current EyeFlow HDF5 paths | `src/input_output/schema/eyeflow_output.py` |
 | HDF5 source access and output serialization | `src/input_output/readers/h5.py`, `src/input_output/writers/h5_output.py`, `src/input_output/writers/h5.py`, `src/input_output/writers/h5_storage.py`, `src/input_output/writers/h5_initialization.py` |
+| Existing artifact migration | `scripts/migrate_artifacts.py` |
 | Native topology and centerline geometry | `src/calculations/topology/` |
 | Segment sampling, measurement, and profile calculations | `src/calculations/vessel_segments/` |
 | Velocity estimator semantics | `src/pipelines/velocity/estimation.py` and `src/pipelines/velocity/semantics.py` |

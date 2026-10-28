@@ -98,4 +98,4 @@ def _systole_plot(
     )
     _style_axes(ax)
     _style_axes(derivative_ax)
-    return writer.savefig(fig, suffix)
+    return writer.save_figure(fig, suffix)

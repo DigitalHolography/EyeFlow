@@ -6,14 +6,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-import h5py
-
 from .layout import HoloRunLayout
 from .discovery import discover_run_inputs, is_run_directory
 from ..archives import extracted_zip_tree
-from ..schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
-from ..schema.base import load_h5_sidecar_config as _load_h5_sidecar_config
-from ..schema.base import sidecar_dir_for_h5
 
 HOLO_SUFFIX = ".holo"
 INPUT_LIST_SUFFIX = ".txt"
@@ -232,18 +227,3 @@ def _validate_holo_file(holo_path: Path) -> None:
         raise FileNotFoundError(f"HOLO input does not exist:\n{holo_path}")
     if not holo_path.is_file():
         raise ValueError(f"HOLO input must be a file:\n{holo_path}")
-
-
-def load_h5_sidecar_config(
-    h5file: h5py.File | None, *, source: str | SourceFileLayout
-) -> dict[str, object]:
-    """Resolve a named source and load its optional sidecar JSON."""
-    if isinstance(source, SourceFileLayout):
-        layout = source
-    elif source == "hd":
-        layout = HOLODOPPLER_LAYOUT
-    elif source == "dv":
-        layout = DOPPLER_VIEW_LAYOUT
-    else:
-        raise ValueError(f"Unknown sidecar config source: {source}")
-    return _load_h5_sidecar_config(h5file, source=layout)

@@ -14,7 +14,6 @@ class OutputCaches:
         height: int,
         width: int,
         save_field: bool,
-        valid_mask: np.ndarray,
     ) -> None:
         self.magnitude_path = output_dir / "displacement_magnitude.npy"
         self.magnitude = np.lib.format.open_memmap(
@@ -34,7 +33,6 @@ class OutputCaches:
                 shape=(frame_count, height, width, 2),
             )
 
-        self.valid_mask = valid_mask.astype(bool, copy=True)
         self.count = 0
 
     def append(

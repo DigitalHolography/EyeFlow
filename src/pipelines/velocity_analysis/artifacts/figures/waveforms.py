@@ -153,7 +153,7 @@ def _ri_pi_plot(
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(semantics.axis_label)
     _style_axes(ax)
-    return writer.savefig(fig, suffix)
+    return writer.save_figure(fig, suffix)
 
 def _arterial_waveform_plot(
     writer: FigureWriter,
@@ -259,7 +259,7 @@ def _arterial_waveform_analysis_plot(
     ax.set_ylabel(semantics.axis_label)
     ax.margins(y=0.18)
     _style_axes(ax)
-    return writer.savefig(fig, "ArterialWaveformAnalysis_v_artery.png", dpi=180)
+    return writer.save_figure(fig, "ArterialWaveformAnalysis_v_artery.png", dpi=180)
 
 def _venous_waveform_plot(
     writer: FigureWriter,
@@ -336,4 +336,4 @@ def _venous_waveform_analysis_plot(
     ax.set_ylabel(semantics.axis_label)
     ax.margins(y=0.18)
     _style_axes(ax)
-    return writer.savefig(fig, "VenousWaveformAnalysis_v_vein.png", dpi=180)
+    return writer.save_figure(fig, "VenousWaveformAnalysis_v_vein.png", dpi=180)

@@ -12,7 +12,7 @@ boundary behavior—not only regression smoke tests.
 | Pipeline metadata, discovery, DAG, UI selection | `test_pipeline_discovery.py`, `test_pipeline_library_dependencies.py`, `test_blood_volume_rate_pipeline.py`, `test_velocity_analysis_pipeline.py` | unit + integration of declared dependency closure |
 | Run specs, input expansion, destinations, execution | `test_run_service.py`, `test_pipeline_failure_isolation.py`, `test_stem_list_inputs.py`, `test_pipeline_context.py` | orchestration and filesystem/HDF5 integration |
 | GUI and text-list input selection | `test_input_selection.py`, `test_windows_folder_dialog.py`, `test_stem_list_inputs.py` | quoted cross-drive lists, independent companion/output roots, mixed-file/folder drops, native Windows multi-folder selection, COM cleanup, and shared last-folder persistence across selection changes and restarts |
-| Marker-free run-folder inputs | `test_run_folder_inputs.py` | self/nested discovery, matching HD/DV names, optional EF/AE, GUI/CLI execution, marker deduplication, HDF5 validation, output routing, and real-source diagnostics |
+| Marker-free run-folder inputs | `test_run_folder_inputs.py` | selected-folder and parent expansion, matching HD/DV names, optional EF/AE, HDF5 validation, and output routing |
 | Settings/default/import | `test_default_settings.py`, `test_settings_import.py` | persistence normalization and controller behavior |
 | Run logging | `test_logger.py` | level normalization, callbacks, and settings-adjacent snapshot paths |
 | Launch dispatch | `test_launcher.py` | CLI-versus-GUI routing |
@@ -23,7 +23,7 @@ boundary behavior—not only regression smoke tests.
 | Gap-spectrum and phase metrics | `test_gap_spectrum_metrics.py`, `test_gap_phase_metrics.py`, `test_gap_spectrogram_per_beat.py`, `test_dual_velocity_workflows.py` | pooled and beat-only medians, fixed-peak kHz areas, phasewise SE and temporal-median SEI (no pooled-SEI output), positive finite references, gain/spacing invariance, closed phase windows and signed deltas, shared Metrics schema/units/provenance, domain-relative peaks/valleys, NaN and invalid-phase policies |
 | Low-frequency spectral pipeline | `test_spectrogram_frequency.py`, `test_low_freq_spectra_pipeline.py`, `test_low_freq_spectra_artifacts.py`, `test_gap_spectrum_std.py`, `test_dual_velocity_workflows.py` | hidden scheduling and shared execution, timing preference/fallback, per-beat phase medians followed by population STD, valid beat counts, HD sampling-frequency publication, averaged signed FFT centers, configurable selection/binning and full-spectrum fallback, calibrated areas, actual positive-block coordinates and shared stored-peak crop, per-curve normalization by the same central-quarter Hv used by A0, styled envelopes, SE phase plots, PNG/EPS routing, read-only figure export, missing calibration/source handling, and failure isolation |
 | Spatial and filtered spectra | `test_velocity_spectrograms.py`, `test_gap_spectrogram_signal_processing.py`, `test_dual_velocity_workflows.py` | single-pass full-frame mean/median and gap reduction, shared ProcessingSpectrograms hierarchy, physical FFT cutoff/DC, chronological centered SVD mode removal, NaN support, and moments-failure isolation |
-| HDF5 and artifact writers | `test_h5_writer.py`, `test_avi_writer.py`, `test_eps_writer.py`, `test_artifact_names.py` | serialization, attributes, type handling, names, collision-safe migration |
+| HDF5 and artifact writers | `test_h5_writer.py`, `test_avi_writer.py`, `test_artifact_names.py` | serialization, compression, key type handling, media output, names, and collision-safe migration |
 | Cardiac-cycle/per-beat/math | `test_cardiac_cycle_analysis.py`, `test_per_beat_runner.py`, `test_calculations_math.py`, `test_periodic_sliding_windows.py` | numerical unit/reference and boundary behavior |
 | Shared phase windows | `test_phase_windows.py`, `test_gap_phase_metrics.py` | configurable cycle-fraction intervals, closed/shared boundaries in float32/64, NaN-aware medians along arbitrary axes, empty windows, interval validation, and uniform late-minus-early deltas |
 | Native topology/optic disc and vessel-segment analysis | all `test_topology_*.py`, `test_optic_disc_*.py`, `test_segment_profile_models.py`, `test_calculation_package_boundaries.py` | native geometry; sampling cache identity, transforms, chunks; profile measurement and memory planning; import boundaries |
@@ -34,7 +34,7 @@ boundary behavior—not only regression smoke tests.
 | Waveform metrics | `test_waveform_shape_metrics_*.py`, `test_absolute_waveform_metrics.py`, `test_lowrank_quadrant_outputs.py` | metric formulas, segment geometry, quadrants, plots |
 | Velocity-profile fitting | `test_velocity_profile_analysis.py` | weighted solver, degeneracy/NaN behavior, waveform option/output paths |
 | Displacement | `test_displacement_map_pipeline.py` | registration, source validation, temporary field state, and AVI artifact routing |
-| PDF report | `test_pdf_report_image_lookup.py`, `test_pdf_report_runner_paths.py` | artifact lookup and runner paths |
+| PDF report | `test_pdf_report_runner_paths.py` | output paths, velocity units, and active waveform schema |
 | Installer/release support | `test_installer_script.py` | installer-script contract; release workflow remains separate |
 
 ## Selection guidance

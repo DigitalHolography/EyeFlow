@@ -6,7 +6,7 @@ from pathlib import Path
 
 from input_output.output_manager import OutputType
 from input_output.reports import generate_a4_report
-from input_output.schema.base import sidecar_dir_for_h5
+from input_output.readers.h5 import sidecar_dir_for_h5
 from input_output.writers.png import REPORT_IMAGES_STATE
 
 

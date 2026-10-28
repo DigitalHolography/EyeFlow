@@ -52,10 +52,6 @@ class HolodopplerSource(TypedSource):
         super().__init__(reader, config)
         self._cache_parameters = cache_parameters
 
-    @classmethod
-    def from_context(cls, ctx) -> HolodopplerSource:
-        return cls(ctx.inputs.hd.h5, ctx.inputs.hd.config)
-
     def moment0_dataset(self):
         return self._moment_dataset(HD_MOMENT0_PATHS)
 

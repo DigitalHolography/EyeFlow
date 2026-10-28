@@ -17,7 +17,7 @@ shape, unit, layout, or writer behavior.
 | Recursive run-folder discovery and batch expansion | `runs/discovery.py`, `runs/inputs.py` | GUI input controller and `run_service.py` |
 | External frame and mask readers | `readers/frame_sequences.py`, `readers/canonical.py` | `pipelines/displacement_map/`, `pipelines/vessel_inputs.py`, and focused tests |
 | Raw access and merged attributes | `readers/h5.py` | the typed source adapter; context conveniences live in `pipeline_engine/input_access.py` |
-| HD/DV datasets and sidecars | `schema/holodoppler.py`, `schema/doppler_view.py`, `schema/base.py` | `src/retinal_source_data.py`, `readers/canonical.py` |
+| HD/DV datasets and sidecars | `schema/holodoppler.py`, `schema/doppler_view.py`, `readers/h5.py` | `schema/base.py`, `src/retinal_source_data.py`, `readers/canonical.py` |
 | Current output paths | `schema/eyeflow_output.py` | producer and consumer pipelines |
 | HDF5 writes | `writers/h5_output.py`, `writers/h5.py`, `writers/h5_storage.py`, `writers/h5_initialization.py`, `schema/output_payload.py` | output-schema tests and producer tests |
 | Output folders/artifacts | `output_manager.py`, `writers/artifact_names.py` | the specific writer or report module; `scripts/migrate_artifacts.py` at the repository root for existing results |
@@ -28,7 +28,7 @@ shape, unit, layout, or writer behavior.
 | Profile dataset serialization | `writers/h5_storage.py` | profile producer/consumer tests |
 | Displacement frame and artifact I/O | `readers/frame_sequences.py`, `writers/displacement_arrays.py`, `writers/magnitude_avi.py` | `pipelines/displacement_map/` and its focused test |
 | JSON and text sidecars | `writers/sidecars.py` | displacement metadata and run logging |
-| PDF measurements and page layout | `reports/pdf_data.py`, `reports/pdf_report.py` | report image lookup and runner tests |
+| PDF measurements and page layout | `reports/pdf_data.py`, `reports/pdf_report.py` | `test_pdf_report_runner_paths.py` and producer tests |
 
 ## Contracts and ownership
 
@@ -47,6 +47,8 @@ the HDF5 files. Keep actual `HoloRunLayout.input_path` distinct from its canonic
 `runs/inputs.py` validates selected markers, folders, and text lists, expands
 ZIP/folder selections, and computes batch roots. `output_manager.py` maps
 validated runs to output destinations and rejects destination collisions.
+`readers/h5.py` loads optional HD/DV JSON sidecars; `schema/base.py` defines
+source layouts and typed adapter helpers without filesystem reads.
 
 `EyeFlowOutputPaths.active()` owns reusable output path families. Before
 changing a path, search all source and tests for both the field name and current
@@ -103,7 +105,8 @@ unchanged. Keep the naming policy in the shared writer helper.
 Use `test_dopplerview_compat.py` for DV/source compatibility,
 `test_frequency_band_velocity.py` for exact HD band contracts,
 `test_h5_writer.py` for serialization, `test_avi_writer.py` and
-`test_eps_writer.py` for artifacts, `test_stem_list_inputs.py` and
-`test_run_service.py` for input/layout behavior, and the PDF tests for report
-path lookup. Producer-specific output schemas are generally asserted in that
+`test_artifact_names.py` for artifacts, `test_stem_list_inputs.py` and
+`test_run_folder_inputs.py` for input/layout behavior, and
+`test_pdf_report_runner_paths.py` for report paths. Producer-specific output
+schemas are generally asserted in that
 pipeline's test file rather than one global schema test.

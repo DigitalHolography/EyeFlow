@@ -105,18 +105,27 @@ class FrameSequence:
             raise RuntimeError(f"Une frame HDF5 doit être 2-D, forme trouvée : {frame.shape}")
         return frame
 
-    def _estimate_h5_range(self) -> tuple[float, float]:
+    def _h5_sample_indices(self) -> set[int]:
         sample_count = min(max(self.frame_count, 1), 32)
-        indices = np.linspace(0, max(0, self.frame_count - 1), sample_count).astype(int)
+        return {
+            int(index) for index in np.linspace(
+                0, max(0, self.frame_count - 1), sample_count
+            ).astype(int)
+        }
+
+    @staticmethod
+    def _append_h5_range_sample(samples: list[np.ndarray], frame: np.ndarray) -> None:
+        values = frame[np.isfinite(frame)]
+        if not values.size:
+            return
+        step = max(1, int(math.ceil(math.sqrt(values.size / 4096.0))))
+        samples.append(values[::step].astype(np.float32, copy=False))
+
+    def _estimate_h5_range(self) -> tuple[float, float]:
         samples: list[np.ndarray] = []
         with self._open_h5_dataset() as dataset:
-            for index in np.unique(indices):
-                frame = self._slice_h5_frame(dataset, int(index))
-                values = frame[np.isfinite(frame)]
-                if not values.size:
-                    continue
-                step = max(1, int(math.ceil(math.sqrt(values.size / 4096.0))))
-                samples.append(values[::step].astype(np.float32, copy=False))
+            for index in sorted(self._h5_sample_indices()):
+                self._append_h5_range_sample(samples, self._slice_h5_frame(dataset, index))
         return self._range_from_samples(samples)
 
     def _range_from_samples(self, samples: list[np.ndarray]) -> tuple[float, float]:
@@ -151,19 +160,13 @@ class FrameSequence:
             frames = np.lib.format.open_memmap(path, mode="w+", dtype=dtype, shape=shape)
             count = 0
             if self.is_h5:
-                sample_count = min(max(self.frame_count, 1), 32)
-                sample_indices = set(np.linspace(
-                    0, max(0, self.frame_count - 1), sample_count
-                ).astype(int))
+                sample_indices = self._h5_sample_indices()
                 samples = []
                 with self._open_h5_dataset() as dataset:
                     for index in range(self.frame_count):
                         frame = self._slice_h5_frame(dataset, index)
                         if index in sample_indices:
-                            values = frame[np.isfinite(frame)]
-                            if values.size:
-                                step = max(1, int(math.ceil(math.sqrt(values.size / 4096.0))))
-                                samples.append(values[::step].astype(np.float32, copy=False))
+                            self._append_h5_range_sample(samples, frame)
                         if index < limit:
                             frames[index] = frame
                             count += 1

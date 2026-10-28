@@ -15,7 +15,7 @@ ReportImagePaths = dict[tuple[str, str], Path]
 
 
 class FigureArtifactWriter:
-    """Write stem-prefixed PNG figures for one output namespace."""
+    """Write stem-prefixed PNG figures and images for one output namespace."""
 
     def __init__(self, output, stem: str | None = None) -> None:
         self.output = output
@@ -32,7 +32,7 @@ class FigureArtifactWriter:
             self.output, _png_output_type(), suffix, label=self.stem, subfolder=subfolder
         )
 
-    def save_array(self, image, suffix: str) -> Path:
+    def save_image(self, image, suffix: str) -> Path:
         filename = str(labeled_artifact_path(suffix, self.acquisition_stem, self.stem))
         return self.output.write_png(image, filename)
 
@@ -48,26 +48,6 @@ class FigureArtifactWriter:
         return write_png_figure(
             self.path(suffix, subfolder=subfolder), fig,
             dpi=dpi, bbox_inches=bbox_inches, close=True,
-        )
-
-    def save_image(self, image, suffix: str) -> Path:
-        return self.save_array(image, suffix)
-
-    def savefig(
-        self,
-        fig,
-        suffix: str,
-        *,
-        dpi: int = 150,
-        bbox_inches="tight",
-        subfolder: str | None = None,
-    ) -> Path:
-        return self.save_figure(
-            fig,
-            suffix,
-            dpi=dpi,
-            bbox_inches=bbox_inches,
-            subfolder=subfolder,
         )
 
 

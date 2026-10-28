@@ -626,7 +626,8 @@ three usable matrix dimensions to remove two modes while retaining one;
 otherwise publish unchanged raw data with a warning. Filtered undershoots
 remain signed to preserve the baseline. Settings, singular values, fitted mean,
 support counts, matrix ordering, and filtering availability are recorded in
-attributes. The mode count is configurable in `gaps/signal_processing.py`.
+attributes. The mode count is configurable in
+`src/pipelines/low_freq_spectra/signal_processing.py`.
 Relative sample time is `sum(previous beat durations) + phase * current beat
 duration`; spacing is uniform within each beat but may differ between beats.
 Source beat count, samples per beat, and within-beat phase coordinates are

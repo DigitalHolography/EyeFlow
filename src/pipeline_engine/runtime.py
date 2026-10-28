@@ -14,7 +14,7 @@ from app_settings import (
     validate_copy_hd_passthrough,
 )
 from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
-from input_output.runs.inputs import load_h5_sidecar_config
+from input_output.readers.h5 import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
 from pipeline_engine.scratch import RunArrayStorage
 from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS

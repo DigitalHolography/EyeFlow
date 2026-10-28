@@ -94,7 +94,7 @@ def _save_profile_map(
         title=f"{vessel_name.capitalize()} transverse velocity profiles (raw)",
     )
     apply_article_style(fig)
-    return writer.savefig(
+    return writer.save_figure(
         fig,
         f"{vessel_name}_velocity_profile_map.png",
         dpi=120,

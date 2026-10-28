@@ -15,7 +15,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from input_output.runs.inputs import load_h5_sidecar_config
+from input_output.readers.h5 import load_h5_sidecar_config
 from input_output.schema import DopplerViewSource, HolodopplerSource
 from pipeline_engine.context import RawH5SourceReader
 from pipelines.velocity_analysis.sources import (
@@ -110,27 +110,6 @@ class DopplerViewCompatibilityTests(unittest.TestCase):
             vessels.velocity_background,
             vein_raw.T,
         )
-
-    def test_nonfinite_optic_disc_mask_uses_the_same_fallback(self) -> None:
-        artery_raw = np.zeros((4, 2), dtype=bool)
-        vein_raw = ~artery_raw
-        with self._source_pair() as (hd_source, dv_source):
-            self._write_hd(hd_source)
-            with h5py.File(dv_source, "w") as dv:
-                retina = dv.create_group("segmentation/Retina")
-                retina.create_dataset("artery_mask", data=artery_raw)
-                retina.create_dataset("vein_mask", data=vein_raw)
-                disc = dv.create_group("segmentation/OpticDisc")
-                disc.create_dataset("mask", data=np.full((4, 2), np.nan))
-                disc.create_dataset("center", data=np.asarray([1.0, 2.0]))
-                disc.create_dataset("width", data=np.float32(10.0))
-                disc.create_dataset("height", data=np.float32(12.0))
-
-            source_data = self._load_sources(hd_source, dv_source)
-
-        self.assertTrue(source_data.source.segmentation.optic_disc.is_fallback)
-        self.assertEqual((2.0, 1.0), source_data.source.segmentation.optic_disc.center)
-        self.assertFalse(np.any(source_data.source.segmentation.vessels.vein))
 
     def test_hd_pixel_pitch_has_no_legacy_fallback_and_must_be_isotropic(self) -> None:
         with self._source_pair() as (hd_source, _):

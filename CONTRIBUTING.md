@@ -23,7 +23,8 @@ pip install -e .[pipelines]
 pip install -e .[gpu]
 ```
 
-Run focused tests before the full suite. The
+Run focused tests first. Run the full suite when requested or when a concrete
+behavior risk cannot be covered by smaller checks. The
 [production-to-test map](test/AGENTS.md) identifies the right files.
 
 ## Pipeline responsibilities
@@ -224,7 +225,8 @@ Before finishing a pipeline change:
 - update producers, direct consumers, schema documentation, and tests together
   when changing an HDF5 path;
 - ensure required results are in the primary HDF5, not only plots or state;
-- run the focused tests and then the full suite for cross-cutting changes.
+- run focused tests; use broad integration tests when focused checks cannot
+  cover a concrete cross-cutting risk.
 
 Common mistakes are confusing `requires` with `dag_requires`, registering a
 helper as a top-level pipeline, reading whole image volumes when bounded slicing

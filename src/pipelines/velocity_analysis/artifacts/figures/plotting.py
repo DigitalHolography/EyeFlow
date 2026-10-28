@@ -80,7 +80,7 @@ def _line_plot(
     if any(label for _, _, _, label in series):
         add_legend(ax, DIAGNOSTIC_ARTICLE_STYLE.legend_layout)
     _style_axes(ax)
-    return writer.savefig(fig, suffix)
+    return writer.save_figure(fig, suffix)
 
 def _heatmap_with_colorbar(
     writer: FigureWriter,
@@ -122,7 +122,7 @@ def _image_map(
         add_colorbar(fig, im, ax=ax, label=label,
                      layout=DIAGNOSTIC_ARTICLE_STYLE.colorbar_layout)
     apply_article_style(fig)
-    return writer.savefig(fig, suffix, dpi=180)
+    return writer.save_figure(fig, suffix, dpi=180)
 
 def _mask_background_map(
     writer: FigureWriter,
@@ -148,7 +148,7 @@ def _mask_background_map(
     ax.axis("off")
     ax.set_aspect("equal")
     apply_article_style(fig)
-    return writer.savefig(fig, suffix, dpi=180)
+    return writer.save_figure(fig, suffix, dpi=180)
 
 def _velocity_gradient_values(
     velocity_avg: np.ndarray,
@@ -188,7 +188,7 @@ def _colorbar(
         layout=replace(DIAGNOSTIC_ARTICLE_STYLE.colorbar_layout, orientation="horizontal"),
     )
     apply_article_style(fig)
-    return writer.savefig(fig, suffix, dpi=150)
+    return writer.save_figure(fig, suffix, dpi=150)
 
 def _annotated_vline(ax, x: float, label: str) -> None:
     ax.axvline(x, color="0.25", linestyle="--",

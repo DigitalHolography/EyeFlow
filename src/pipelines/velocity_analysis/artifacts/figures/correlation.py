@@ -87,7 +87,7 @@ def _msc_plot(writer: FigureWriter, corr: CorrelationData) -> Path:
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("Magnitude-squared coherence")
     _style_axes(ax)
-    return writer.savefig(fig, "arterial_venous_msc.png")
+    return writer.save_figure(fig, "arterial_venous_msc.png")
 
 def _correlation_panel_plot(writer: FigureWriter, time: np.ndarray, corr: CorrelationData) -> Path:
     fig, axes = _plt().subplots(2, 1, figsize=(7.0, 5.2))
@@ -102,7 +102,7 @@ def _correlation_panel_plot(writer: FigureWriter, time: np.ndarray, corr: Correl
     axes[1].set_ylabel("Cross-Correlation")
     for ax in axes:
         _style_axes(ax, grid=True)
-    return writer.savefig(fig, "arterial_venous_correlation.png")
+    return writer.save_figure(fig, "arterial_venous_correlation.png")
 
 def _detrended_plot(writer: FigureWriter, time: np.ndarray, corr: CorrelationData) -> Path:
     return _line_plot(
@@ -123,7 +123,7 @@ def _lags_plot(writer: FigureWriter, corr: CorrelationData) -> Path:
     ax.set_xlabel("Lag (s)")
     ax.set_ylabel("Cross-Correlation")
     _style_axes(ax, grid=True)
-    return writer.savefig(fig, "lags.png")
+    return writer.save_figure(fig, "lags.png")
 
 def _transfer_plot(writer: FigureWriter, suffix: str, data: TransferData, *, phase: bool) -> Path:
     fig, ax = _plt().subplots(figsize=(6.5, 4.0))
@@ -141,7 +141,7 @@ def _transfer_plot(writer: FigureWriter, suffix: str, data: TransferData, *, pha
     ax.set_xlabel("Freq (Hz)")
     ax.set_ylabel(ylabel)
     _style_axes(ax, grid=True)
-    return writer.savefig(fig, suffix)
+    return writer.save_figure(fig, suffix)
 
 def _delay_plot(
     writer: FigureWriter,
@@ -161,4 +161,4 @@ def _delay_plot(
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Arterio-venous decay fit")
     _style_axes(ax)
-    return writer.savefig(fig, "ArterialVenous_Delay.png", dpi=180)
+    return writer.save_figure(fig, "ArterialVenous_Delay.png", dpi=180)

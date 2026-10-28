@@ -29,11 +29,14 @@ Read only the context needed for the task:
 | `src/pipelines/` | Pipeline declarations and orchestration; hidden core pipelines publish shared state for visible products |
 | `src/calculations/` | Reusable scientific and numerical code, independent of UI and output-folder policy |
 | `src/input_output/` | `.holo` companion discovery, typed HDF5 adapters, output schema, writers, reports, and archives |
+| `src/retinal_source_data.py` | Shared typed, aligned HD/DV retinal input model |
+| `src/plotting/` | Reusable figure styling and layout; I/O writers save the finished figures |
 | `src/ui/` | Tkinter views and controllers; delegates runs to `pipeline_engine.run_service` |
 | `src/utils/` | Process-wide logging; keep domain and orchestration behavior out of this small shared layer |
 | `src/app_settings.py` / `default_settings.json` | Persisted settings behavior / fresh-install defaults |
 | `test/` | Unit, numerical-reference, pipeline-integration, schema, UI-controller, and launcher tests |
 | `.github/workflows/release.yml` | Tag-triggered Windows release and installer publication; it is not the test workflow |
+| `scripts/migrate_artifacts.py` | Local utility for renaming artifacts in existing EyeFlow results |
 
 ## Execution in one view
 

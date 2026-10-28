@@ -88,13 +88,13 @@ sidecar configuration, validation, axes, and units.
 Every velocity run attempts both methods:
 
 - `doppler_moments` uses HD `moment0` and `moment2`, producing calibrated
-  physical velocity in `mm/s` under `/Processing`.
+  physical velocity in `mm/s` under `/ProcessingMoments`.
 - `frequency_bands` (band ratio) uses exact HD datasets
   `/band_0_3000_9000` (LF) and `/band_1_9000_18000` (HF), both `(frame, y, x)`.
   It converts `HF / LF` to RMS frequency using the positive finite persisted
   `band_ratio_frequency_scale_hz` setting, then applies the same local-background,
   background-difference, and physical velocity conversion. Outputs use
-  `/ProcessingAlt`; the calibration default is `1 Hz` per ratio unit.
+  `/ProcessingBandRatio`; the calibration default is `1 Hz` per ratio unit.
 
 Cardiac cycles are detected independently before each estimate, from raw
 moment-derived RMS frequency for moments and calibrated HF/LF frequency for
