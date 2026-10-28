@@ -334,12 +334,14 @@ def test_runner_persists_scalar_metrics_from_the_raw_aggregate_spectrum(
             for key in (f"{name}_early", f"{name}_late", f"delta_{name}")
         }
         assert group.name == "/ProcessingSpectrograms/Gaps/Metrics"
-        assert set(group) == expected_keys
+        # The selected shape descriptors have a separate schema/reference test.
+        assert expected_keys <= set(group)
         assert not {"index_min1", "index_min2", "min1", "min2", "A2", "R1", "A2_t", "R1_t",
                     "A2_early", "A2_late", "delta_A2", "R1_early", "R1_late", "delta_R1"} & set(group)
         assert not {"h0", "h1", "hv", "rho_h", "rho_v"} & set(group)
         assert "ProcessingSpectrograms/Gaps/TimeAggregated/Metrics" not in output
-        for name, dataset in group.items():
+        for name in sorted(expected_keys):
+            dataset = group[name]
             assert dataset.shape == ((128,) if name in PHASE_METRIC_OUTPUT_NAMES.values() else ())
             assert dataset.dtype == np.float32
             assert not dataset.name.endswith("/value")

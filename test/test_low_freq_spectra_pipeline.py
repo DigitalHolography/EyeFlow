@@ -161,6 +161,8 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
         names.update(f"gaps_{name}" for name in (
             "A0", "A", "SE", "A_25", "A_50", "A_75", "SE_25", "SE_50", "SE_75",
             "SEII_25", "SEII_50", "SEII_75",
+            "Av_5", "SEv_5", "Av_25", "SEv_25", "Av_50", "SEv_50",
+            "SpectralEntropy", "F50", "F90", "power_quantiles", "wasserstein_early_late",
         ))
         names.update(f"gaps_positive_freq_median_phase_{suffix}" for suffix in (
             "early_late", "beat", "all",

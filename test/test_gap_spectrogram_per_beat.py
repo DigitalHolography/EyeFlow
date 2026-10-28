@@ -264,7 +264,9 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
             )
         assert output["unrelated"][()] == 42
         if case in {"two_beats", "no_finite_cells"}:
-            assert set(metrics) == {
+            # Legacy products survive optional skips; shape outputs are covered
+            # by test_gap_shape_metrics, including their all-invalid schema.
+            assert set(metrics) >= {
                 schema.spectrograms_masked_per_beat,
                 schema.spectrograms_masked_per_beat_band_limited,
                 schema.spectrograms_masked_per_beat_svd_continuous,

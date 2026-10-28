@@ -523,7 +523,14 @@ Shared helpers in `calculations/math/phase_windows.py` own these operations.
 `late_interval`; the runner shares them with early/late spectra and STD envelopes.
 
 The 9 pooled scalars, 12 phase curves, 36 window/delta summaries, and 7 whole-cycle
-SEI/SEII scalars give 64 datasets. Persist all values as float32. Metadata records
+SEI/SEII scalars give 64 legacy datasets. Regular calibrated runs additionally
+write 63 selected spectral-shape datasets: SEIv at 5/25/50%, entropy,
+absolute-frequency power quantiles (including F50/F90), early/late Wasserstein
+distance, and their supporting arrays and phase summaries. Thus the full
+Metrics group contains 127 datasets. See [spectral metric selection and
+definitions](spectral_metric_selection.md) for evidence, formulas, naming,
+axes, units, invalid-value policies, and added PNG/EPS artifacts.
+Persist all values as float32. Metadata records
 source paths, timing, fixed peak indices and their pooled source, neighborhood,
 units, FFT calibration, spacing, integration method, and validity policies.
 Flood metadata identifies the height fraction, mean-peak reference, pooled or

@@ -28,6 +28,7 @@ from utils.logger import Logger
 from .frequency import frequency_ticks, read_frequency_bin_table
 from .metrics import PHASE_METRIC_OUTPUT_NAMES, _valley_neighborhood_indices, spectrum_valley_height
 from .qc import valley_repeatability
+from .shape_metrics import SHAPE_PHASE_METRIC_NAMES
 
 SPECTRUM_HEIGHT_SCALE = 1.30
 SPECTROGRAM_WIDTH_INCHES = 12.0 / 2.54
@@ -78,7 +79,7 @@ def export_spectrogram_figures(output, *, dt_seconds: float | None = None) -> li
     mask = output.h5.get(schema.segmentation.gaps)
     if mask is not None:
         paths.extend(_save_figure_pair(manager, "gaps_mask", partial(_gaps_mask_figure, mask[()])))
-    for curve_name in PHASE_METRIC_OUTPUT_NAMES.values():
+    for curve_name in (*PHASE_METRIC_OUTPUT_NAMES.values(), *SHAPE_PHASE_METRIC_NAMES):
         source = output.h5.get(f"{schema.spectrograms_masked_metrics_root}/{curve_name}")
         if source is None:
             continue
@@ -89,6 +90,7 @@ def export_spectrogram_figures(output, *, dt_seconds: float | None = None) -> li
         )))
     if frequency_table is not None:
         paths.extend(_export_spectra(output, manager, frequency_table[()]))
+    paths.extend(_export_distribution_figures(output, manager))
     if output.h5.get(schema.spectrograms_masked_qc.root) is not None:
         paths.append(FigureArtifactWriter(manager).save_figure(
             _gap_qc_figure(output, dt_seconds=dt_seconds), "gaps_qc.png", dpi=150,
@@ -456,7 +458,9 @@ def _gap_metric_figure(values: np.ndarray, phase: np.ndarray, *, metric: str, un
     ax.set_xticks([0, 1 / 3, 2 / 3, 1], labels=["0", "1/3", "2/3", "1"])
     ax.set_xlabel(r"Cardiac phase ($t/T$)")
     display_unit = "a.u." if unit.replace(" ", "").lower() == "a.u.*khz" else unit
-    if "_" in metric:
+    if metric == "SpectralEntropy":
+        metric_label = "$H$"
+    elif "_" in metric:
         base, subscript = metric.split("_", 1)
         metric_label = f"${base}_{{{subscript}}}$"
     else:
@@ -466,6 +470,60 @@ def _gap_metric_figure(values: np.ndarray, phase: np.ndarray, *, metric: str, un
     )
     apply_article_style(fig)
     ax.tick_params(axis="x", labelrotation=0)
+    return fig
+
+
+def _export_distribution_figures(output, manager) -> list[Path]:
+    root = EyeFlowOutputPaths.active().spectrograms_masked_metrics_root
+    paths = []
+    percent = output.h5.get(f"{root}/PowerQuantilePercent")
+    quantiles = [(label, output.h5.get(f"{root}/{name}"), style) for label, name, style in (
+        ("Whole cycle", "PowerQuantileFrequency", "-"),
+        ("Early", "PowerQuantileFrequency_early", "--"),
+        ("Late", "PowerQuantileFrequency_late", ":"),
+    )]
+    if percent is not None and percent.ndim == 1 and any(ds is not None for _, ds, _ in quantiles):
+        curves = [(label, ds[()], style) for label, ds, style in quantiles
+                  if ds is not None and ds.shape == percent.shape and ds.attrs.get("unit") == "kHz"]
+        if curves:
+            paths.extend(_save_figure_pair(manager, "gaps_power_quantiles", partial(
+                _power_quantile_figure, percent[()], curves,
+            )))
+    sources = [output.h5.get(f"{root}/{name}") for name in (
+        "WassersteinFrequencyMagnitude", "WassersteinEarlyCDF", "WassersteinLateCDF", "WassersteinEarlyLate",
+    )]
+    if all(ds is not None for ds in sources):
+        frequency, early, late, distance = sources
+        if frequency.ndim == 1 and early.shape == late.shape == frequency.shape and frequency.attrs.get("unit") == "kHz":
+            paths.extend(_save_figure_pair(manager, "gaps_wasserstein_early_late", partial(
+                _spectral_cdf_figure, frequency[()], early[()], late[()], float(distance[()]),
+            )))
+    return paths
+
+
+def _power_quantile_figure(percent, curves):
+    fig, ax = _figure(width=2 * FIGURE_WIDTH_INCHES, aspect_ratio=2)
+    for label, values, style in curves:
+        ax.step(percent, values, where="post", color="black", linestyle=style,
+                linewidth=SIGNAL_LINE_WIDTH, label=label)
+    ax.set(xlim=(0, 100), xlabel="Cumulative spectral power (%)", ylabel=r"$F_q$ (kHz)")
+    add_legend(ax, SPECTRUM_STYLE.legend_layout, ncols=len(curves))
+    apply_article_style(fig)
+    return fig
+
+
+def _spectral_cdf_figure(frequency, early, late, distance):
+    fig, ax = _figure(width=2 * FIGURE_WIDTH_INCHES, aspect_ratio=2)
+    if frequency[0] > 0:
+        frequency, early, late = np.r_[0., frequency], np.r_[0., early], np.r_[0., late]
+    ax.fill_between(frequency, early, late, step="post", color="0.9", linewidth=0)
+    for values, style, label in ((early, "-", "Early"), (late, "--", "Late")):
+        ax.step(frequency, values, where="post", color="black", linestyle=style,
+                linewidth=SIGNAL_LINE_WIDTH, label=label)
+    ax.set(xlim=(0, frequency[-1]), ylim=(0, 1), xlabel=r"$|f|$ (kHz)", ylabel="Cumulative power fraction")
+    ax.text(.98, .08, f"$W_1$ = {distance:.3g} kHz", transform=ax.transAxes, ha="right", fontsize=9)
+    add_legend(ax, SPECTRUM_STYLE.legend_layout, loc="lower right", bbox_to_anchor=(1, .15))
+    apply_article_style(fig)
     return fig
 
 

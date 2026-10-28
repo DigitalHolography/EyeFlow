@@ -29,6 +29,8 @@ from pipelines.low_freq_spectra.artifacts import (
     _spectrum_curve,
     _spectrum_baseline,
     _spectra_figure,
+    _power_quantile_figure,
+    _spectral_cdf_figure,
     export_spectrogram_figures,
 )
 from calculations.math.frequency import frequency_coordinates_khz
@@ -143,6 +145,10 @@ def test_mask_preserves_published_xy_orientation_and_square_pixels():
 @pytest.mark.parametrize("metric, unit, label", [
     ("A0", "power_unit", "$A_{0}$ (power_unit)"), ("SE_50", "1", "$SE_{50}$"),
     ("SE", "1", "$SE$"),
+    ("SEv_50", "1", "$SEv_{50}$"),
+    ("Av_5", "power*kHz", "$Av_{5}$ (power*kHz)"),
+    ("SpectralEntropy", "bits", "$H$ (bits)"),
+    ("F50", "kHz", "$F_{50}$ (kHz)"),
     ("A0", "a.u.*kHz", "$A_{0}$ (a.u.)"),
     ("A", "a.u.*kHz", "$A$ (a.u.)"),
     ("A_25", "a.u.*kHz", "$A_{25}$ (a.u.)"),
@@ -171,6 +177,43 @@ def test_metric_curves_preserve_phase_coordinates_nan_gaps_and_units(metric, uni
     np.testing.assert_allclose(fig.get_size_inches(), [
         FIGURE_WIDTH_INCHES, FIGURE_WIDTH_INCHES / FIGURE_ASPECT_RATIO,
     ])
+
+
+def test_distribution_figures_show_discrete_quantiles_and_wasserstein_cdf_area():
+    quantile = _power_quantile_figure([0, 50, 100], [("Early", [1, 1, 2], "--")]).axes[0]
+    assert quantile.get_xlim() == (0, 100)
+    assert quantile.get_xlabel() == "Cumulative spectral power (%)"
+    assert quantile.get_ylabel() == r"$F_q$ (kHz)"
+    assert quantile.lines[0].get_drawstyle() == "steps-post"
+    cdf = _spectral_cdf_figure(np.array([1., 2.]), [.75, 1.], [.25, 1.], .5).axes[0]
+    np.testing.assert_array_equal(cdf.lines[0].get_xdata(), [0, 1, 2])
+    np.testing.assert_array_equal(cdf.lines[0].get_ydata(), [0, .75, 1])
+    assert cdf.get_xlabel() == r"$|f|$ (kHz)"
+    assert cdf.get_ylim() == (0, 1)
+    assert len(cdf.collections) == 1
+    assert "0.5 kHz" in cdf.texts[0].get_text()
+
+
+def test_selected_shape_outputs_export_png_eps_from_persisted_arrays(tmp_path):
+    from pipelines.low_freq_spectra.shape_metrics import pack_distribution_metrics
+
+    manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
+    schema = EyeFlowOutputPaths.active()
+    with h5py.File(tmp_path / "shape.h5", "w") as h5:
+        output = SimpleNamespace(h5=PipelineH5Output(h5), manager=manager)
+        output.h5.write_many(pack_distribution_metrics(
+            [[3., 1., 1., 3.], [1., 3., 3., 1.]], pooled_spectrum=[4., 2., 2., 4.],
+            phase_attrs={"unit": "power", "phase_samples": [0., .5]},
+            frequencies_khz=[1., 2., -2., -1.], peak_indices=[0, 3],
+        ))
+        original = h5[f"{schema.spectrograms_masked_metrics_root}/PowerQuantileFrequency_t"][()]
+        paths = export_spectrogram_figures(output)
+        assert len(paths) == 10  # Entropy/F50/F90 phase plots plus quantiles and CDF, PNG + EPS.
+        assert {p.suffix for p in paths} == {".png", ".eps"}
+        assert all(p.is_file() for p in paths)
+        assert any(p.name.endswith("gaps_power_quantiles.png") for p in paths)
+        assert any(p.name.endswith("gaps_wasserstein_early_late.eps") for p in paths)
+        np.testing.assert_array_equal(h5[f"{schema.spectrograms_masked_metrics_root}/PowerQuantileFrequency_t"][()], original)
 
 
 def test_unbinned_frequency_helper_uses_sampling_rate_and_actual_bin_domain():
