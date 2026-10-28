@@ -26,6 +26,7 @@ class PipelineH5Output:
         self.file = work_h5
         self.processing_root = processing_root
         self.provenance = dict(provenance or {})
+        self._write_guard = None
 
     def _path(self, path: str) -> str:
         from ..schema.eyeflow_output import processing_path
@@ -86,6 +87,8 @@ class PipelineH5Output:
         self.write_many({path: payload})
 
     def write_many(self, metrics: Mapping[str, Any]) -> None:
+        if self._write_guard is not None:
+            self._write_guard()
         if self.processing_root:
             self.set_attrs(self.provenance)
         for path, value in metrics.items():
@@ -102,6 +105,8 @@ class PipelineH5Output:
                         set_attr_safe(dataset, key, self._path(attr))
 
     def set_attr(self, key: str, value: Any) -> None:
+        if self._write_guard is not None:
+            self._write_guard()
         if key == "pipeline" or (
             self.processing_root and key not in processing_summary_keys(self.processing_root)
         ):

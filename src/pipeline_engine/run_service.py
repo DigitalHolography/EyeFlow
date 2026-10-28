@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+import os
+import json
+from collections import deque
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from app_settings import (
@@ -28,6 +33,7 @@ from velocity_calibration import (
 )
 
 from .base import PipelineDescriptor
+from .background_artifacts import ArtifactWorkers, BackgroundArtifacts
 from .dag import PipelineDAG, PipelineExecutionPlan
 from .runtime import PipelineRunError, run_pipelines_to_output
 
@@ -175,11 +181,39 @@ def execute_run(
 
     Logger.log(f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
     Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
-    outputs: list[Path] = []
-    failures: list[RunFailure] = []
+    with ArtifactWorkers() as workers, ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
+    ) as completions:
+        return _execute_batch(
+            spec, workers, completions, on_file_start=on_file_start,
+            on_pipeline_start=on_pipeline_start, on_progress=on_progress,
+            should_stop=should_stop,
+        )
+
+
+def _execute_batch(
+    spec, workers, completions, *, on_file_start, on_pipeline_start, on_progress, should_stop,
+):
+    outputs = []
+    failures = []
+    pending = deque()
     stopped = False
 
+    def finish_oldest():
+        failure = pending.popleft().result()
+        if failure is not None:
+            failures.append(failure)
+
     for request_index, request in enumerate(spec.requests):
+        # Permit the next input's analysis to overlap the preceding exports,
+        # while bounding private snapshots to at most two unfinished inputs.
+        if len(pending) >= 2:
+            finish_oldest()
+        if request_index and should_stop is not None and should_stop():
+            stopped = True
+            remaining = len(spec.requests) - request_index
+            Logger.log(f"[STOP] Batch stopped; {remaining} input file(s) not started.")
+            break
         input_layout = request.input_layout
         final_manager = request.output_manager
         final_path = final_manager.path_for(OutputType.H5)
@@ -195,6 +229,8 @@ def execute_run(
         Logger.log(f"[RESOLVED] DV -> {input_layout.dv_h5}")
         Logger.log(f"[OUTPUT] {final_path}")
 
+        artifacts = BackgroundArtifacts(workers)
+        numerical_error = None
         try:
             final_dir = final_manager.layout.ef_dir
             if final_dir.exists() and not final_dir.is_dir():
@@ -216,27 +252,55 @@ def execute_run(
                 doppler_vision_h5=input_layout.dv_h5,
                 on_pipeline_start=on_pipeline_start,
                 on_progress=on_progress,
+                background_artifacts=artifacts,
             )
         except Exception as exc:  # noqa: BLE001
             if isinstance(exc, PipelineRunError):
                 outputs.append(exc.output_h5_path)
-            failure = RunFailure(input_layout.input_path, str(exc))
-            failures.append(failure)
-            Logger.log_error(str(failure))
+            numerical_error = str(exc)
         else:
             outputs.append(final_path)
-            Logger.log(f"Completed run for {input_layout.input_path.name}: {final_path}")
-
-        remaining_count = len(spec.requests) - request_index - 1
-        if remaining_count and should_stop is not None and should_stop():
-            stopped = True
+        if artifacts.pending:
+            phase = "ended with errors" if numerical_error else "completed"
             Logger.log(
-                f"[STOP] Batch stopped after {input_layout.input_path.name}; "
-                f"{remaining_count} input file(s) not started."
+                f"[ANALYSIS COMPLETE] {input_layout.input_path.name}: "
+                f"pipeline execution {phase}; artifact exports are still in progress."
             )
-            break
+        pending.append(completions.submit(
+            _finish_file, input_layout.input_path, final_path, artifacts, numerical_error,
+        ))
 
+    while pending:
+        finish_oldest()
     return RunResult(tuple(outputs), tuple(failures), stopped=stopped)
+
+
+def _finish_file(input_path, output_path, artifacts, numerical_error):
+    """Finalize a closed result HDF5 only after every sidecar is published."""
+    import h5py
+
+    try:
+        with artifacts:
+            artifacts.collect(wait=True)
+            if artifacts.statuses and output_path.is_file():
+                with h5py.File(output_path, "r+") as h5:
+                    h5.attrs["artifact_status"] = json.dumps(artifacts.statuses, sort_keys=True)
+                    h5.attrs["artifact_failures"] = json.dumps(artifacts.failures, sort_keys=True)
+            errors = [numerical_error] if numerical_error else []
+            for name, error in artifacts.failures.items():
+                message = f"{name}: {error}"
+                if not numerical_error or message not in numerical_error:
+                    errors.append(message)
+            if errors:
+                failure = RunFailure(input_path, "; ".join(errors))
+                Logger.log_error(str(failure))
+                return failure
+    except Exception as exc:
+        failure = RunFailure(input_path, str(exc))
+        Logger.log_error(str(failure))
+        return failure
+    Logger.log(f"Completed run for {input_path.name}: {output_path}")
+    return None
 
 
 def _resolve_pipeline_options(

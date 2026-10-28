@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 
+from .artifact_ownership import register_artifact_path
 from .runs.layout import HoloRunLayout
 from .writers import open_h5, write_png_file
 from .writers.artifact_names import prefixed_artifact_path
@@ -65,7 +66,9 @@ class OutputManager:
         output_type: OutputType,
         filename: str | None = None,
     ) -> Path:
-        return self.dir_for(output_type) / self._filename_for(output_type, filename)
+        path = self.dir_for(output_type) / self._filename_for(output_type, filename)
+        register_artifact_path(path)
+        return path
 
     def open_h5(self, filename: str | None = None, mode: str = "w"):
         path = self.path_for(OutputType.H5, filename)

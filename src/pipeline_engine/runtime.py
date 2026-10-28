@@ -15,6 +15,7 @@ from app_settings import (
 )
 from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
 from input_output.readers.h5 import load_h5_sidecar_config
+from input_output.artifact_ownership import ArtifactOwnership, ArtifactScope, artifact_transaction
 from input_output.output_manager import OutputManager, OutputType
 from pipeline_engine.scratch import RunArrayStorage
 from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS
@@ -22,6 +23,7 @@ from input_output.writers.h5 import (
     h5_write_checkpoint, open_h5, write_root_attributes,
 )
 from input_output.writers.h5_initialization import initialize_output_h5
+from input_output.writers.deferred import capture_artifact_writes
 from utils.logger import Logger
 from velocity_calibration import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
@@ -29,6 +31,7 @@ from velocity_calibration import (
 )
 
 from .base import ExecutionVariant, PipelineDescriptor, ProcessResult
+from .background_artifacts import BackgroundArtifacts
 from .context import PipelineContext, PipelineInputs, apply_pipeline_result, finish_pipeline
 from .dag import PipelineDAG
 from .errors import format_pipeline_exception
@@ -56,6 +59,7 @@ def run_pipelines_to_output(
     on_pipeline_start: Callable[[str, int, int], None] | None = None,
     on_pipeline_success: Callable[[str], None] | None = None,
     on_progress: Callable[[], None] | None = None,
+    background_artifacts: BackgroundArtifacts | None = None,
 ) -> Path:
     """Run resolved pipelines and write outputs through an OutputManager."""
     resolved_harmonics = validate_band_limited_harmonics_setting(band_limited_harmonics)
@@ -69,6 +73,9 @@ def run_pipelines_to_output(
     with ExitStack() as stack:
         work_h5 = stack.enter_context(output_manager.open_h5())
         scratch = stack.enter_context(RunArrayStorage(output_manager.layout.ef_dir))
+        wait_for_exports = background_artifacts is None
+        if background_artifacts is None:
+            background_artifacts = stack.enter_context(BackgroundArtifacts())
         return _run_pipelines_with_work_h5(
             work_h5=work_h5,
             output_h5_path=output_h5_path,
@@ -86,6 +93,8 @@ def run_pipelines_to_output(
             on_pipeline_start=on_pipeline_start,
             on_pipeline_success=on_pipeline_success,
             on_progress=on_progress,
+            background_artifacts=background_artifacts,
+            wait_for_exports=wait_for_exports,
         )
 
 
@@ -107,6 +116,8 @@ def _run_pipelines_with_work_h5(
     on_pipeline_start: Callable[[str, int, int], None] | None,
     on_pipeline_success: Callable[[str], None] | None,
     on_progress: Callable[[], None] | None,
+    background_artifacts: BackgroundArtifacts,
+    wait_for_exports: bool,
 ) -> Path:
     hd_h5, dv_h5 = _open_input_h5_sources(stack, holodoppler_h5, doppler_vision_h5)
     _initialize_work_h5(
@@ -150,6 +161,11 @@ def _run_pipelines_with_work_h5(
 
     pipeline_count = len(pipelines)
     for pipeline_index, pipeline_desc in enumerate(pipelines, start=1):
+        # Only consumers of artifacts wait; ordinary calculations keep running.
+        background_artifacts.collect(wait=pipeline_desc.wait_for_artifacts)
+        _write_artifact_status(work_h5, background_artifacts)
+        if pipeline_desc.wait_for_artifacts:
+            work_h5.flush()
         if on_pipeline_start is not None:
             on_pipeline_start(pipeline_desc.name, pipeline_index, pipeline_count)
         arguments = {
@@ -171,6 +187,7 @@ def _run_pipelines_with_work_h5(
             "band_ratio_frequency_scale_hz": band_ratio_frequency_scale_hz,
             "on_pipeline_success": None,
             "on_progress": None,
+            "background_artifacts": background_artifacts,
         }
         name = pipeline_desc.name
         dependencies = dag.dependencies_of(name, pipeline_options=pipeline_options)
@@ -190,6 +207,8 @@ def _run_pipelines_with_work_h5(
                     dependency for dependency in dependencies
                     if statuses.get(dependency, shared_status.get(dependency)) != "succeeded"
                 ]
+                if pipeline_desc.wait_for_artifacts:
+                    blocked.extend(background_artifacts.failures)
                 if blocked:
                     statuses[name] = "skipped"
                     pipeline_skips[label] = "Unavailable dependencies: " + ", ".join(blocked)
@@ -234,6 +253,8 @@ def _run_pipelines_with_work_h5(
                 dependency for dependency in dependencies
                 if shared_status.get(dependency) != "succeeded"
             ]
+            if pipeline_desc.wait_for_artifacts:
+                blocked.extend(background_artifacts.failures)
             emitted_variants = ()
             if blocked:
                 shared_status[name] = "skipped"
@@ -258,6 +279,8 @@ def _run_pipelines_with_work_h5(
                     )
                 execution_variants = list(emitted_variants)
                 variant_failures.update(emitted_failures)
+        background_artifacts.collect()
+        _write_artifact_status(work_h5, background_artifacts)
         _write_execution_variant_status(
             work_h5,
             [variant for variant in execution_variants if variant.name not in variant_failures],
@@ -275,12 +298,21 @@ def _run_pipelines_with_work_h5(
             on_pipeline_success(pipeline_desc.name)
         if on_progress is not None:
             on_progress()
+    # Reports, archives and run completion must see every completed sidecar.
+    if wait_for_exports and background_artifacts.pending:
+        Logger.log("Waiting for background figure exports before completing this run...")
+    background_artifacts.collect(wait=wait_for_exports)
+    _write_artifact_status(work_h5, background_artifacts)
+    work_h5.flush()
     # Report failure only after every safe pipeline has had a chance to run.
-    if "failed" in shared_status.values() or (
+    if (wait_for_exports and background_artifacts.failures) or "failed" in shared_status.values() or (
         execution_variants
         and all(variant.name in variant_failures for variant in execution_variants)
     ):
-        raise PipelineRunError("; ".join(pipeline_failures.values()), output_h5_path)
+        errors = list(pipeline_failures.values()) + [
+            f"{name}: {error}" for name, error in background_artifacts.failures.items()
+        ]
+        raise PipelineRunError("; ".join(errors), output_h5_path)
     return output_h5_path
 
 
@@ -361,6 +393,7 @@ def _run_pipeline_descriptor(
     on_progress: Callable[[], None] | None,
     processing_root: str | None = None,
     output_provenance: Mapping[str, object] | None = None,
+    background_artifacts: BackgroundArtifacts | None = None,
 ) -> tuple[tuple[ExecutionVariant, ...], dict[str, str]]:
     pipeline = pipeline_desc.instantiate()
     label = (
@@ -389,23 +422,49 @@ def _run_pipeline_descriptor(
         pipeline_targets=pipeline_targets,
         velocity_estimation_method=velocity_estimation_method,
         band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
+        background_artifacts=background_artifacts,
     )
+    ctx._graph_runtime_available = True
     try:
-        with _pipeline_checkpoint(work_h5, variables, output_manager, scratch):
-            return _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path)
+        with _pipeline_checkpoint(work_h5, variables, output_manager, background_artifacts) as checkpoint:
+            # Consumers may create intermediate images they use immediately.
+            # Their upstream artifacts have already been joined by the runtime.
+            capture = None if pipeline_desc.wait_for_artifacts else ctx._capture_artifact_write
+            with capture_artifact_writes(capture):
+                result = _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint)
     except Exception as exc:
+        ctx._cancel_artifacts()
         Logger.log_error(f"{pipeline.name}: {exc}")
         raise RuntimeError(format_pipeline_exception(exc, pipeline)) from exc
+    except BaseException:
+        ctx._cancel_artifacts()
+        raise
+    ctx._start_artifacts()
+    if ctx.artifacts_pending:
+        Logger.log(f"[OK] {label}: calculations complete; artifact exports continue in background.")
+    else:
+        Logger.log(f"[OK] {label}")
+    return result
 
 
-def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path):
+def _write_artifact_status(work_h5, background_artifacts):
+    if background_artifacts.statuses:
+        work_h5.attrs["artifact_status"] = json.dumps(
+            background_artifacts.statuses, sort_keys=True,
+        )
+        work_h5.attrs["artifact_failures"] = json.dumps(
+            background_artifacts.failures, sort_keys=True,
+        )
+
+
+def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path, checkpoint):
     """Calculate and persist a descriptor within its output checkpoint."""
-    label = (
-        f"{pipeline.name} [{ctx.execution_variant.name}]"
-        if ctx.execution_variant is not None and ctx.output.h5.processing_root
-        else pipeline.name
-    )
     result = pipeline.run(ctx)
+    from .graphs import PipelineGraph, GraphExecution
+
+    if isinstance(result, PipelineGraph):
+        GraphExecution(result, ctx, checkpoint, _pipeline_checkpoint).run()
+        result = None
     if ctx.execution_variants and not pipeline_desc.produces_execution_variants:
         raise ValueError(
             f"Pipeline '{pipeline.name}' published execution variants without "
@@ -427,29 +486,29 @@ def _execute_pipeline(pipeline_desc, pipeline, ctx, output_h5_path):
     if isinstance(result, ProcessResult):
         result.output_h5_path = str(output_h5_path)
     finish_pipeline(ctx, pipeline.name)
-    Logger.log(f"[OK] {label}")
     return ctx.execution_variants, ctx.execution_variant_failures
 
 
 @contextmanager
-def _pipeline_checkpoint(work_h5, variables, output_manager, scratch):
-    """Restore state and remove only newly created artifacts on failure."""
+def _pipeline_checkpoint(work_h5, variables, output_manager, background_artifacts=None):
+    """Restore one invocation and remove only artifacts explicitly owned by it."""
     state = dict(variables)
-    root = output_manager.layout.ef_dir
-    artifacts = {path for path in root.rglob("*") if path.is_file()}
+    registry = background_artifacts.ownership if background_artifacts else ArtifactOwnership()
+    transaction = ArtifactScope(registry, output_manager.layout.ef_dir)
     try:
-        with h5_write_checkpoint(work_h5):
-            yield
+        with artifact_transaction(transaction), h5_write_checkpoint(work_h5) as h5_checkpoint:
+            class Checkpoint:
+                def commit(self, paths=()):
+                    h5_checkpoint.commit(paths)
+                    state.clear()
+                    state.update(variables)
+                    transaction.commit()
+
+            yield Checkpoint()
     except Exception:
         variables.clear()
         variables.update(state)
-        scratch_dir = scratch.scratch_directory if scratch is not None else None
-        for path in root.rglob("*"):
-            if (
-                path.is_file() and path not in artifacts
-                and (scratch_dir is None or scratch_dir not in path.parents)
-            ):
-                path.unlink()
+        transaction.rollback()
         raise
 
 

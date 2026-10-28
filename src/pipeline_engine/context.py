@@ -23,6 +23,7 @@ from velocity_calibration import (
 )
 
 from .base import ExecutionVariant, ProcessResult
+from .background_artifacts import BackgroundArtifacts
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,7 @@ class PipelineContext:
         output_provenance: Mapping[str, Any] | None = None,
         execution_variant: ExecutionVariant | None = None,
         scratch: RunArrayStorage | None = None,
+        background_artifacts: BackgroundArtifacts | None = None,
     ) -> None:
         hd_config = dict(holodoppler_config or {})
         dv_config = dict(doppler_vision_config or {})
@@ -150,6 +152,13 @@ class PipelineContext:
         self.pipeline_order = tuple(str(name) for name in pipeline_order)
         self.pipeline_targets = tuple(str(name) for name in pipeline_targets)
         self.execution_variant = execution_variant
+        self._background_artifacts = background_artifacts
+        self._pending_artifacts = []
+        self._artifact_jobs = []
+        self._figure_job = None
+        self._figure_count = 0
+        self._dag_execution = None
+        self._graph_runtime_available = False
         self._execution_variants: tuple[ExecutionVariant, ...] = ()
         self._execution_variant_failures: dict[str, str] = {}
         resolved_velocity_method = velocity_estimation_method
@@ -172,6 +181,88 @@ class PipelineContext:
             hd_config,
             dv_config,
         )
+
+    @property
+    def dag(self):
+        """The graph for this invocation; copies/workflows never borrow another's."""
+        if self._dag_execution is None or self._dag_execution.context is not self:
+            raise RuntimeError("No active pipeline DAG belongs to this execution context.")
+        return self._dag_execution
+
+    def __copy__(self):
+        clone = object.__new__(type(self))
+        clone.__dict__ = self.__dict__.copy()
+        clone._dag_execution = None
+        clone._pending_artifacts = []
+        clone._artifact_jobs = []
+        clone._figure_job = None
+        clone._figure_count = 0
+        return clone
+
+    @property
+    def can_defer_artifacts(self) -> bool:
+        return self._background_artifacts is not None and self.output.available
+
+    def defer_artifacts(self, name, exporter, snapshotter, **kwargs) -> None:
+        """Snapshot now; render in a separate process after this pipeline commits.
+
+        The exporter must be an importable function accepting a snapshot path,
+        a staging OutputManager, and picklable keyword arguments. It returns
+        the paths it created. The snapshotter runs here on the owning thread.
+        """
+        if not self.can_defer_artifacts:
+            raise RuntimeError("This context has no background artifact lifecycle.")
+        label = f"{self.runtime.pipeline_name}:{name}"
+        if self._dag_execution is not None and self._dag_execution.active_node:
+            label = f"{self.runtime.pipeline_name}/{self._dag_execution.active_node}:{name}"
+        if self.execution_variant is not None and self.output.h5.processing_root:
+            label += f" [{self.execution_variant.name}]"
+        job = self._background_artifacts.prepare(
+            label, self.output.manager, exporter, snapshotter, **kwargs,
+        )
+        self._pending_artifacts.append(job)
+        self._artifact_jobs.append(job)
+
+    def _capture_artifact_write(self, kind, payload, paths, kwargs) -> bool:
+        """Shared writers use this automatically while a descriptor executes."""
+        if not self.can_defer_artifacts:
+            return False
+        root = self.output.manager.layout.ef_dir.resolve()
+        if any(not path.resolve().is_relative_to(root) for path in paths):
+            return False
+        from input_output.writers.deferred import export_figure_writes, snapshot_figure_write
+
+        if self._figure_job is None:
+            self.defer_artifacts("figures", export_figure_writes, lambda path: path.mkdir())
+            self._figure_job = self._pending_artifacts[-1]
+        snapshot = self._figure_job.snapshot / f"{self._figure_count:06d}.pickle"
+        try:
+            snapshot_figure_write(
+                snapshot, kind, payload, [path.resolve().relative_to(root) for path in paths], kwargs,
+            )
+        except Exception as exc:
+            # Serialization is export work: retain numerical results even if a
+            # custom artist/formatter cannot be transferred to the renderer.
+            snapshot.unlink(missing_ok=True)
+            self._figure_job.kwargs.setdefault("errors", []).append(
+                f"Cannot snapshot {paths[0].name}: {type(exc).__name__}: {exc}"
+            )
+        self._figure_count += 1
+        return True
+
+    @property
+    def artifacts_pending(self) -> bool:
+        return any(job.status in {"prepared", "running"} for job in self._artifact_jobs)
+
+    def _start_artifacts(self) -> None:
+        for job in self._pending_artifacts:
+            self._background_artifacts.start(job)
+        self._pending_artifacts.clear()
+
+    def _cancel_artifacts(self) -> None:
+        for job in self._pending_artifacts:
+            self._background_artifacts.cancel(job)
+        self._pending_artifacts.clear()
 
     @property
     def execution_variants(self) -> tuple[ExecutionVariant, ...]:

@@ -7,6 +7,7 @@ import h5py
 import pytest
 from test_run_service import _write_input
 
+from input_output.artifact_ownership import register_artifact_path
 from input_output.output_manager import OutputType
 from pipeline_engine.scratch import RunArrayStorage
 from pipeline_engine.base import ExecutionVariant, PipelineDescriptor, PipelineOption
@@ -27,11 +28,12 @@ def test_failed_pipeline_keeps_scratch_alive_until_run_cleanup(tmp_path):
     with h5py.File(tmp_path / "result.h5", "w") as output:
         with RunArrayStorage(tmp_path, memory_budget_bytes=0) as scratch:
             with pytest.raises(RuntimeError, match="injected failure"):
-                with _pipeline_checkpoint(output, {}, manager, scratch):
+                with _pipeline_checkpoint(output, {}, manager):
                     video = scratch.empty_float32((2, 3, 4))
                     video[:] = 7
                     scratch_path = scratch.scratch_directory / "array_0.npy"
                     partial_artifact = tmp_path / "partial.png"
+                    register_artifact_path(partial_artifact, writing=True)
                     partial_artifact.write_bytes(b"partial")
                     raise RuntimeError("injected failure")
             assert scratch_path.exists()

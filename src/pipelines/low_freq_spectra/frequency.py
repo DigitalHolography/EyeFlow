@@ -26,17 +26,22 @@ def read_sampling_frequency_hz(output) -> float | None:
 
 def write_frequency_bin_table(output, bin_count: int, *, hd=None) -> None:
     """Persist signed kHz frequencies, indexed by zero-based source bin."""
+    output.h5.write_many(pack_frequency_bin_table(output, bin_count, hd=hd))
+
+
+def pack_frequency_bin_table(output, bin_count: int, *, hd=None) -> dict:
+    """Pack calibration for the standard graph handoff/writer contract."""
     sampling_frequency = read_sampling_frequency_hz(output)
     if sampling_frequency is None:
         Logger.log_warning("Skipping FrequencyBinTable: a positive HD sampling frequency is required.")
-        return
+        return {}
     try:
         if hd is None:
             raise ValueError("HD batch_size and spectrogram export metadata are required.")
         parameters = hd.spectrogram_frequency_parameters(bin_count)
     except (KeyError, TypeError, ValueError) as exc:
         Logger.log_warning(f"Skipping FrequencyBinTable: {exc}")
-        return
+        return {}
     schema = EyeFlowOutputPaths.active()
     calibration = dict(
         fft_bin_count=parameters["fft_bin_count"],
@@ -45,9 +50,7 @@ def write_frequency_bin_table(output, bin_count: int, *, hd=None) -> None:
         frequency_end=parameters.get(HD_SPECTROGRAM_FREQUENCY_END_KEY, 0.5),
     )
     frequencies = frequency_coordinates_khz(bin_count, sampling_frequency, **calibration)
-    output.h5.write(
-        schema.spectrograms_frequency_bin_table,
-        frequencies,
+    attrs = dict(
         dimDesc=["freq"],
         unit="kHz",
         index_base=0,
@@ -62,6 +65,7 @@ def write_frequency_bin_table(output, bin_count: int, *, hd=None) -> None:
         bin_domain_split_index=int(np.count_nonzero(frequencies >= 0)),
         definition="mean signed FFT frequency in kHz of the original samples contributing to each HD plane",
     )
+    return {schema.spectrograms_frequency_bin_table: (frequencies, attrs)}
 
 
 def read_frequency_bin_table(output, bin_count: int | None = None):

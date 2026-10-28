@@ -15,7 +15,7 @@ from pipelines.low_freq_spectra.spectrograms import preprocess_spectrograms
 
 
 class FrameSource:
-    """A lazy source that rejects attempts to read the complete video."""
+    """A lazy source recording bounded slab requests and delivered frames."""
 
     def __init__(self, values):
         self.values = values
@@ -23,10 +23,12 @@ class FrameSource:
         self.ndim = values.ndim
         self.dtype = values.dtype
         self.reads = []
+        self.requests = []
 
     def __getitem__(self, index):
-        assert isinstance(index, int), "Read only one time frame at a time."
-        self.reads.append(index)
+        assert isinstance(index, (int, slice)), "Read frames or bounded time slabs."
+        self.requests.append(index)
+        self.reads.extend(range(*index.indices(self.shape[0])) if isinstance(index, slice) else [index])
         return self.values[index]
 
 
@@ -139,8 +141,10 @@ def test_nearest_neighbor_interpolation_and_hdf5_schema(tmp_path, factor):
         assert dataset.attrs["mask_interpolation_order"] == 0
         assert dataset.attrs["mask_interpolation_grid"] == "pixel_centers"
         assert "/spectrograms" in dataset.attrs["mask_target_shape_source"]
-        assert list(dataset.attrs["mask_application_shape"]) == [3, 2]
-        assert dataset.attrs["spectrogram_spatial_transform"] == "flip_D2_then_swap_D2_D3"
+        assert list(dataset.attrs["mask_application_shape"]) == [2, 3]
+        assert dataset.attrs["mask_application_coordinates"] == "HD_export_yx"
+        assert list(dataset.attrs["mask_application_dimDesc"]) == ["y", "x"]
+        assert dataset.attrs["spectrogram_spatial_transform"] == "none_HD_export_order"
 
 
 @pytest.mark.parametrize("reduced_only", [False, True])
@@ -178,7 +182,7 @@ def test_target_shape_comes_from_hdf5_spectrograms_for_noninteger_nonsquare_resi
         # Nearest-neighbor centers select native spectral pixels (0,3), (1,1), (2,0).
         np.testing.assert_array_equal(result[()], [[5, 15]])
         np.testing.assert_array_equal(result.attrs["mask_native_shape"], [5, 7])
-        np.testing.assert_array_equal(result.attrs["mask_application_shape"], [4, 3])
+        np.testing.assert_array_equal(result.attrs["mask_application_shape"], [3, 4])
         assert result.attrs["gap_pixel_count"] == 3
         assert result.attrs["mask_reduction"] == "nearest_neighbor_interpolation"
     np.testing.assert_array_equal(native_zones, original)

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -22,6 +24,7 @@ class LogLevel(str, Enum):
 
 
 _LEVEL_MARKER = re.compile(r"^\[(DEBUG|INFO|WARNING|ERROR|FAIL)\]\s*", re.IGNORECASE)
+_LOCAL_LOG_SINK = ContextVar("eyeflow_log_sink", default=None)
 
 
 def _coerce_level(level: LogLevel | str) -> LogLevel:
@@ -123,9 +126,24 @@ class Logger:
         message: str,
         level: LogLevel | str | None = None,
     ) -> str:
+        sink = _LOCAL_LOG_SINK.get()
+        if sink is not None:
+            formatted = format_log_message(message, level)
+            sink(formatted)
+            return formatted
         if cls._current is None:
             return format_log_message(message, level)
         return cls._current._emit(message, level)
+
+    @classmethod
+    @contextmanager
+    def capture_messages(cls, sink):
+        """Route logs locally without replacing another thread's run logger."""
+        token = _LOCAL_LOG_SINK.set(sink)
+        try:
+            yield
+        finally:
+            _LOCAL_LOG_SINK.reset(token)
 
     @classmethod
     def log_debug(cls, message: str) -> str:

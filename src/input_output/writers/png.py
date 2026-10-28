@@ -9,6 +9,7 @@ from .artifact_names import (
     acquisition_stem, labeled_artifact_path, prefixed_artifact_path,
     writer_artifact_path,
 )
+from .deferred import defer_write, save_figure_file
 
 REPORT_IMAGES_STATE = "report_image_paths"
 ReportImagePaths = dict[tuple[str, str], Path]
@@ -59,7 +60,7 @@ def write_png_figure(
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
-        fig.savefig(target, dpi=dpi, bbox_inches=bbox_inches)
+        save_figure_file(target, fig, dpi=dpi, bbox_inches=bbox_inches)
     finally:
         if close:
             _close_figure(fig)
@@ -69,7 +70,8 @@ def write_png_figure(
 def write_png_file(path: str | Path, image, *, stem: str | None = None) -> Path:
     target = prefixed_artifact_path(path, stem) if stem is not None else Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    imsave(target, _uint8_image(image), check_contrast=False)
+    if not defer_write("array", np.asarray(image), [target]):
+        imsave(target, _uint8_image(image), check_contrast=False)
     return target
 
 
@@ -79,6 +81,9 @@ def write_cv_png_file(path: str | Path, image) -> Path:
 
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    from input_output.artifact_ownership import register_artifact_path
+
+    register_artifact_path(target, writing=True)
     if not cv2.imwrite(str(target), image):
         raise OSError(f"Could not write PNG image: {target}")
     return target

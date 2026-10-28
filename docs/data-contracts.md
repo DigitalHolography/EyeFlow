@@ -196,9 +196,13 @@ matching grids use a copy. The mask stays Boolean and is not averaged or reduced
 using all-true blocks. `calculations.topology.downsample_gap_zones` owns this
 array transform and receives the target shape explicitly; it does not read HDF5.
 `pipelines.low_freq_spectra.masks.gap_velocity_mask` adapts it to the video's spatial
-shape. Gap preprocessing now uses this application helper, then flips and
-transposes the reduced native mask into the same published `(x, y)` frame as
-the aligned spectra. The persisted mask is unchanged.
+shape. Gap preprocessing prepares this reduced mask in native HD `(y, x)`
+coordinates once. Spectral frames stay in exported coordinates; their spatial
+axes are not flipped or transposed for scalar reductions. This selects exactly
+the same pixels as the former jointly aligned mask/frame calculation. The
+persisted EF `(x, y)` segmentation mask is unchanged. Application metadata uses
+`mask_application_coordinates="HD_export_yx"`, `mask_application_dimDesc=["y","x"]`
+and `spectrogram_spatial_transform="none_HD_export_order"`.
 
 Spectral frequency calibration uses the original FFT length `B=batch_size`.
 NumPy's `np.fft.fftfreq(B, d=1/fs)` supplies the signed FFT frequency grid;
@@ -232,6 +236,30 @@ aggregation. Frequency order and source power units are retained. Outputs are
 written after velocity-workflow failure cleanup, so shared spectra survive a
 failed moments workflow when the band workflow succeeds. They are produced
 once, with no `/ProcessingBandRatio/Spectrograms` duplicate.
+
+Read sequential time slabs directly into a reusable C-contiguous buffer, with
+a default 64 MiB source-buffer budget (at least one complete frame). Align slabs
+to time chunks when a whole time chunk fits that budget. For the usual
+`(640,64,128,128)` float32 source, this means 40 reads of 16 frames instead of
+640 individual frame reads. This bounds application memory while reducing HDF5
+call overhead on local or remote files; it does not guarantee a particular NAS
+request count, cache residency or network transfer rate. Large sample arrays
+retain the source dtype, normally float32. Flattening native spatial axes is
+a view. Compute means with float64 accumulation; median selection partitions
+owned work arrays in place and promotes only the central values before their
+midpoint. Source arrays are never modified. Global and gap products share
+source reads and finite checks; full gap coverage reuses the global median.
+
+For blocks of at least 8 MiB, automatic CPU reduction uses at most eight
+available logical CPUs. Smaller blocks stay serial. A reusable thread pool
+assigns complete spatial vectors for disjoint `(time,freq)` rows to workers;
+it does not split pixels and combine partial medians. HDF5 reads and result
+writes remain on the caller thread. All tasks finish before the next source
+slab overwrites the reusable buffer. `spatial_reduction_max_workers` records
+the worker cap, not a claim that every small block used that many threads.
+The `workers` keyword on the spatial reducer supports an explicit count for
+benchmarking; `workers=1` forces serial reduction. No scientific definition,
+missing-value policy or output ordering depends on the worker count.
 
 `pipelines/low_freq_spectra/preprocessing.py` prepares optional gap support for
 the same streaming reduction pass, which computes the spatial median
@@ -784,7 +812,40 @@ Root `execution_variant_failures` records a JSON map of method to error;
 `pipeline_status`, `pipeline_failures`, and `pipeline_skips` record shared and
 per-workflow outcomes. Velocity-analysis data is flushed before optional pulse
 PNG, segment-map AVI, and velocity-signal figure exports; export failures are
-warnings and do not invalidate the scientific products.
+warnings and do not invalidate the scientific products when figure building
+fails before submission. Background export failures retain those products and
+are reported separately as incomplete artifact output.
+
+Shared figure writers defer rendering/encoding automatically during managed
+execution, using at most two isolated rendering processes reused across files.
+Low-frequency spectral exports snapshot the reduced
+`ProcessingSpectrograms` subtree and published gap mask into a private local
+HDF5 file; neither the HD video nor live HDF5 handles are sent to the worker.
+Submission follows the producing invocation or stage handoff commit. The worker
+writes to private staging; an asynchronous publisher installs finished PNG/EPS
+files under their explicit producing owner. Rollback removes only an invocation's
+uncommitted owned files, never files inferred from directory creation time.
+Figure names, formats, resolution, styling, and numerical products are unchanged.
+Direct calls without an engine-managed lifecycle export synchronously.
+
+Artifact consumers declare `wait_for_artifacts=True`; `pdf_report` uses this
+barrier. File completion joins pending exports before its final completion log;
+analysis of the next input may proceed meanwhile. At most two unfinished files
+are retained, and the batch returns only after their exports finish. Root JSON attributes `artifact_status` and
+`artifact_failures` track background job outcomes, separately from numerical
+pipeline success. A background export failure keeps computed datasets and
+allows independent analyses to finish, skips artifact consumers, and reports
+an incomplete run with its partial HDF5 path. Failed jobs publish no partial
+figure set. These attributes are present only when a background job was started.
+
+Pipeline-owned stage graphs publish logical products through `ctx.dag.handoff`.
+Each product declares schema paths/attributes or a packer returning standard
+HDF5 payloads. Handoffs are atomic and advance the checkpoint only for declared
+datasets; later failures retain them. Root JSON `stage_status`, `stage_failures`
+and `stage_skips` keep separate records for each pipeline/workflow.
+`stage_products` records committed product names, producers and resolved dataset paths. See
+[stage graph contracts](pipeline_stage_graphs.md) for scope, dependencies,
+artifact readiness and legacy compatibility.
 
 For band mode, replace negative HF and LF samples with zero and log a warning.
 A zero LF denominator, including a clamped negative sample, maps to ratio zero

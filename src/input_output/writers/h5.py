@@ -32,19 +32,45 @@ def h5_write_checkpoint(h5file: h5py.File):
     Open object handles retain replaced datasets until the checkpoint ends.
     Pipeline writers replace datasets; in-place array edits are not supported.
     """
-    objects = {"": h5file}
-
-    def retain(name, obj):
-        objects[name] = obj
-
-    h5file.visititems(retain)
-    attributes = {
-        name: {key: (obj.attrs[key], obj.attrs.get_id(key).dtype) for key in obj.attrs}
-        for name, obj in objects.items()
-    }
+    checkpoint = H5WriteCheckpoint(h5file)
     try:
-        yield
+        yield checkpoint
     except Exception:
+        checkpoint.rollback()
+        raise
+
+
+class H5WriteCheckpoint:
+    """Retain dataset handles and attributes; accept explicit partial commits."""
+
+    def __init__(self, h5file):
+        self.file = h5file
+        self.objects = {"": h5file}
+        h5file.visititems(lambda name, obj: self.objects.__setitem__(name, obj))
+        self.attributes = {name: self._attrs(obj) for name, obj in self.objects.items()}
+
+    @staticmethod
+    def _attrs(obj):
+        return {key: (obj.attrs[key], obj.attrs.get_id(key).dtype) for key in obj.attrs}
+
+    def commit(self, paths):
+        """Advance only declared products and their parent-group attributes.
+
+        Unlike another full-file checkpoint, this does not revisit unrelated
+        datasets for each handoff. Array contents are never copied.
+        """
+        committed = {""}
+        for path in paths:
+            parts = normalize_h5_path(path).split("/")
+            committed.update("/".join(parts[:i]) for i in range(1, len(parts) + 1))
+        for name in committed:
+            obj = self.file if not name else self.file[name]
+            self.objects[name] = obj
+            self.attributes[name] = self._attrs(obj)
+
+    def rollback(self):
+        h5file = self.file
+        objects, attributes = self.objects, self.attributes
         current_paths = []
         h5file.visit(current_paths.append)
         for name in sorted(current_paths, key=lambda path: path.count("/"), reverse=True):
@@ -62,7 +88,6 @@ def h5_write_checkpoint(h5file: h5py.File):
             for key, (value, dtype) in attributes[name].items():
                 obj.attrs.create(key, value, dtype=dtype)
         h5file.flush()
-        raise
 
 
 def resolve_dataset_target(root_group: h5py.Group, key: str) -> tuple[h5py.Group, str]:

@@ -1,8 +1,10 @@
 # Spectral pipeline performance audit
 
 Audit date: 2026-10-28. The registered pipeline is `low_freq_spectra`.
-This audit adds a profiling tool; it does not change production calculations,
-output selection, or scientific definitions.
+The original audit below records the baseline implementation. The optimization
+follow-up at the end records the implemented native-coordinate reductions and
+bounded reads. Scientific outputs and figure selection retain their definitions;
+metadata now identifies native HD mask application.
 
 ## Measurements and scope
 
@@ -46,7 +48,7 @@ the 1.70 seconds of source access. Do not add this inclusive stage time to
 its two components above. HDF5 source timings include h5py allocation/copy
 overhead; they are not measurements of physical device service time.
 
-## Main bottleneck: spatial medians and array copies
+## Baseline bottleneck: spatial medians and array copies
 
 [`spectrograms.py`](../src/pipelines/low_freq_spectra/spectrograms.py) reads
 each HD frame once, then performs all three spatial reductions. For every frame:
@@ -167,5 +169,193 @@ image export. `--synthetic-shape` benchmarks generated in-memory frames only.
 
 The measured full-size run and generated source are under
 `.tmp/spectral_performance/representative_640/`. The actual pressure-0 skip
-inspection is under `.tmp/spectral_performance/justine0/`. No production
-optimization has been applied by this audit.
+inspection is under `.tmp/spectral_performance/justine0/`.
+
+## Optimization follow-up
+
+The production reducer now uses native HD spatial order. It prepares native
+gap support once, keeps the large float32 sample buffers at float32, flattens
+spatial axes as a view, and partitions owned buffers in place for medians.
+Float64 is used for mean accumulation and central-value midpoint arithmetic,
+preventing overflow without converting all pixels. Global and gap products
+share reads and validity checks; when the gap covers the entire field the
+median is evaluated once and reused. An arbitrary subset median cannot replace
+the whole-field median, so partial coverage still needs two exact selections.
+
+A reusable 64 MiB input buffer receives sequential HDF5 time slabs via
+`read_direct`. The standard shape fits 16 frames per slab. Arrays passed by a
+caller are copied into this owned buffer before partitioning; source data is
+never changed. Metadata records the native HD mask axes, sample dtype, read
+budget and median method. Published segmentation remains in EF coordinates.
+
+Replaying the same 2.5 GiB generated fixture on local storage gave:
+
+| Measurement | Baseline | Optimized |
+|---|---:|---:|
+| Spatial preprocessing, including reads | 34.33 s | 14.91 s |
+| Source-access time | 1.70 s | 1.07 s |
+| HDF5 source calls | 640 | 40 |
+| Total spectral stages, including figures | 48.47 s | 27.87 s |
+
+This is approximately 2.3x faster preprocessing and a 42% shorter total on
+these single local measurements. Figure export was not changed and remains
+about 11–12 seconds. All **149 persisted datasets**, including all 127 metrics,
+were exactly equal between the baseline and optimized fixture runs.
+
+These figures do not establish NAS performance. A dataset slice invokes HDF5
+and can cause remote reads; an open file is not a fully resident dataset.
+HDF5/OS/SMB caching can combine or satisfy reads, so h5py call counts are not
+one-to-one counts of NAS operations. All 2.5 GiB still need to be scanned for
+the global outputs. The slab reader reduces API overhead and exposes larger
+sequential reads without relying on the entire dataset being cached. Actual
+NAS throughput and latency should be measured on the generated HD export.
+
+Optimized results are under `.tmp/spectral_performance/native_optimized_640/`.
+The current profiler meters direct slab reads and reports the new block
+operations separately. Reuse the generated source with:
+
+```powershell
+.\.venv\Scripts\python.exe benchmarks/profile_low_freq_spectra.py `
+  --hd .tmp/spectral_performance/representative_640/synthetic_HD.h5 `
+  --synthetic-hd-input --output .tmp/spectral_profile_optimized_new
+```
+
+## CPU parallelization
+
+Threaded NumPy reductions give a substantial additional improvement. Each
+worker owns disjoint, contiguous `(time,frequency)` rows of the existing slab;
+it computes the exact median over each entire spatial vector. Threads never
+partition overlapping input regions. Global/gap calculations and the validity
+rules within a row are unchanged. All futures complete before the next HDF5
+read can reuse the buffer, and worker exceptions propagate after pool cleanup.
+
+NumPy documents that many numerical operations release the GIL, permitting
+CPU work in threads; this benchmark used ordinary Python with the GIL enabled.
+See [NumPy thread safety](https://numpy.org/doc/stable/reference/thread_safety.html).
+HDF5 reads stay sequential: h5py's global lock serializes its API calls, so the
+workers only receive arrays already in RAM. See
+[h5py threading](https://docs.h5py.org/en/stable/threads.html).
+
+The same `(640,64,128,128)` generated HDF5 and 75%-coverage mask were scanned
+twice per worker count, reversing the order on the second pass. The times
+below are the median of two runs and include source reading and pool startup:
+
+| CPU workers | Spatial pass | Speedup versus one worker |
+|---:|---:|---:|
+| 1 | 14.74 s | 1.0x |
+| 2 | 8.16 s | 1.8x |
+| 4 | 4.92 s | 3.0x |
+| 8 | 3.33 s | 4.4x |
+| 16 | 2.70 s | 5.5x |
+
+The 16-worker result is from a separate two-pass comparison of 8 and 16
+workers; the repeated 8-worker result was 3.35 seconds. Mean and both median
+arrays were exactly equal across all worker counts. Reading remained roughly
+1.05–1.09 seconds, with 40 slab reads and the same 2.5 GiB transfer volume.
+These are local cached-storage measurements, not NAS measurements.
+
+Regular execution now defaults to at most eight available logical CPUs, keeps
+blocks below 8 MiB serial, and reuses one pool for the whole pass. Eight workers
+capture most of the measured gain; sixteen saved another approximately
+0.6 seconds while doubling the worker count. The explicit `workers` keyword
+and profiler's `--spatial-workers` option allow further machine-specific tuning.
+Median reduction introduces no new dependencies or child processes. The 64 MiB
+input budget remains unchanged; workers use row views rather than copies of
+the whole block. Their gap scratch arrays cover separate row subsets.
+
+A production-path run with automatic eight-worker selection took **3.38 s**
+for preprocessing and **16.50 s** including calculations, writes and the same
+61 figure files, versus **27.87 s** for the preceding serial implementation.
+All **149 persisted datasets** were exactly equal. Figure export now dominates
+this local workload at **11.32 s**. Detailed `spatial_operation_timings` in the
+profiler remain separate serial kernel measurements, not per-thread accounting.
+
+Reproduce worker scaling with:
+
+```powershell
+.\.venv\Scripts\python.exe benchmarks/benchmark_spectral_median_threads.py `
+  --hd .tmp/spectral_performance/representative_640/synthetic_HD.h5 `
+  --workers 1 2 4 8 --repeats 2 --output .tmp/spectral_threads_new
+```
+
+Use `--workers 8 16` for the higher-count comparison. The profiler can compare
+complete stages with `--spatial-workers 1` or `--spatial-workers 8`.
+Measurements are saved under `.tmp/spectral_performance/thread_scaling/`,
+`.tmp/spectral_performance/thread_scaling_16/`, and
+`.tmp/spectral_performance/cpu_parallel_640/`.
+
+## Background figure exports
+
+Regular execution now snapshots the small, reduced spectral outputs and gap
+mask, then submits figure export to the shared isolated rendering pool. Subsequent
+numerical pipelines continue immediately. The snapshot does not include the
+HD video or share open HDF5 handles. All original PNG/EPS outputs and article
+formatting are retained.
+
+A process isolates Matplotlib from the main pipeline's plotting operations.
+Matplotlib documents that it is not thread-safe; using a background thread
+would require serializing its access with every other plotting pipeline.
+See [Matplotlib threading guidance](https://matplotlib.org/stable/users/faq.html#work-with-threads).
+The worker uses Agg and conservative native numeric thread limits. The frozen
+launcher calls `multiprocessing.freeze_support()` before importing launch code,
+as required by [PyInstaller multiprocessing support](https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html#multi-processing).
+The Windows Python spawn path was tested; an installer rebuild was not run.
+
+Background jobs start after the producing descriptor or graph handoff commits. Rendering
+uses a private local staging directory outside the EyeFlow result directory.
+Completed files are copied to the output filesystem and published with atomic
+per-file replacement under explicit artifact ownership. Partial publication is
+removed if a job fails. This keeps unrelated descriptor rollback from deleting
+concurrently completed exports and supports output directories on another
+drive or NAS.
+
+`pdf_report` declares `wait_for_artifacts=True`. The engine waits and publishes
+before artifact consumers and before run completion, so reports and archives
+cannot race an unfinished renderer. A failed export retains numerical results,
+lets independent calculations finish, skips artifact consumers and reports the
+run as incomplete. Root `artifact_status`/`artifact_failures` JSON attributes
+record those outcomes separately from numerical pipeline status. Worker log
+messages and completion are replayed asynchronously through the main run logger.
+Direct callers without the managed runtime retain synchronous export.
+
+Shared writers now apply this behavior across pipelines, with at most two
+rendering processes reused across files. Analysis of the next file can overlap
+unfinished exports, bounded to two unfinished inputs. Final file completion and
+the batch return still wait for exports. The spectral pipeline now declares its
+source, calibration, spatial, beat, QC and figure stages in its own package;
+handoffs commit the reduced products without copying the HD source. See
+[pipeline stage graphs](pipeline_stage_graphs.md). The measurements below are
+from the earlier spectral-only implementation, not a timing claim for the new
+graph/checkpoint and batch execution paths.
+
+An isolated export-only comparison reused the reduced HDF5 result from the
+`(640,64,128,128)` fixture, without rescanning its HD input:
+
+| Measurement | Local wall time |
+|---|---:|
+| Synchronous export, all 61 files | 13.13 s |
+| Snapshot reduced products, 1.81 MiB | 0.087 s |
+| Snapshot plus process submission, blocking caller time | 0.101 s |
+| Simulated later pipeline work, idle interval | 5.00 s |
+| Final wait and publication after that interval | 11.69 s |
+| Background submission through publication, including the interval | 16.79 s |
+
+All **31 PNG files were pixel-identical**. All **30 EPS files matched** after
+excluding creation date/title metadata. This change overlaps rendering with
+later work; it does not reduce the work needed to render each figure. The
+separate process adds startup/renderer initialization overhead. With no later
+work to overlap, that overhead can make completion slower. The five-second
+interval above is a synthetic scheduling example, not an actual downstream CPU
+workload or an end-to-end EyeFlow measurement. NAS throughput, simultaneous
+CPU contention and frozen-installer startup remain unmeasured.
+
+Reproduce with a new isolated output directory:
+
+```powershell
+.\.venv\Scripts\python.exe benchmarks/benchmark_spectral_exports.py `
+  --h5 .tmp/spectral_performance/cpu_parallel_640/profile.h5 `
+  --output .tmp/spectral_exports_new --overlap-seconds 5
+```
+
+The clean comparison is saved under
+`.tmp/spectral_performance/background_exports_640_quiet/`.

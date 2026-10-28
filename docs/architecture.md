@@ -87,6 +87,7 @@ Each descriptor distinguishes:
   downstream executions;
 - `auto_run_after`: automatically include a companion after a scheduled pipeline;
 - `run_once`: execute once with shared state/output despite variant ancestry.
+- `wait_for_artifacts`: join completed sidecars before an artifact consumer runs.
 
 Every pipeline implicitly produces its own name. A required DAG key with no
 producer is treated as external, so a misspelled key does not fail DAG
@@ -151,6 +152,21 @@ pipelines still execute in each workflow. Failure status is persisted, and an
 incomplete run retains its output path after all safe pipelines finish.
 Large transient arrays and typed run products belong in `ctx.state` or managed
 scratch storage, not ad-hoc module globals.
+
+Pipelines may instead return a pipeline-owned `PipelineGraph`. Its nodes declare
+products, packers and dependencies, using the same DAG planner. Stage functions
+publish reduced results through `ctx.dag.handoff(name, value)`, which commits
+their declared HDF5 datasets independently. Later failures preserve handed-off
+products and permit their consumers and ready exports to continue. Graph state
+is local to the file, invocation and execution variant. The initial production
+adoption is `low_freq_spectra`; legacy pipelines retain their existing contract.
+See [stage graphs and handoff](pipeline_stage_graphs.md) for the API and semantics.
+
+Shared figure writers queue snapshots automatically under managed execution.
+A bounded batch-wide process pool renders them while analysis continues, and
+explicit artifact ownership keeps rollback local to the producing invocation.
+Reports wait for required exports. File finalization may overlap analysis of the
+next input, but final completion and batch results wait for pending exports.
 
 ## Scientific processing boundaries
 

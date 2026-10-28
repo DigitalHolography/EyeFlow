@@ -9,6 +9,7 @@ from input_output.schema.holodoppler import HD_SPECTOGRAMS_PATH
 from utils.logger import Logger
 
 from .masks import gap_velocity_mask
+from .spatial_reduction import DEFAULT_READ_BUFFER_BYTES, SpatialReducer, spectral_batches
 
 
 def prepare_gap_spectrograms(spectrograms, analysis_zones: np.ndarray):
@@ -33,8 +34,9 @@ def prepare_gap_spectrograms(spectrograms, analysis_zones: np.ndarray):
     if pixel_count == 0:
         Logger.log_warning("Skipping gap analysis: the reduced application gap mask is empty.")
         return None
-    # Match the combined gap mask's published coordinates at reduced resolution.
-    mask = np.flip(native_mask, axis=0).T
+    # Published masks remain in EF coordinates. Apply the equivalent native
+    # support here, without flipping/transposing each spectral frame.
+    mask = native_mask
     source_attrs = getattr(spectrograms, "attrs", {})
     attrs = {
         "unit": source_attrs.get("unit", "a.u."),
@@ -45,11 +47,15 @@ def prepare_gap_spectrograms(spectrograms, analysis_zones: np.ndarray):
         "spatial_aggregation_method": "median",
         "source_path": f"/{HD_SPECTOGRAMS_PATH}",
         "mask_source_path": f"/{schema.segmentation.gaps}",
-        "mask_application_coordinates": "EF_lower_left_xy",
+        "mask_application_coordinates": "HD_export_yx",
         "mask_native_shape": analysis_zones.shape,
         "mask_application_shape": mask.shape,
-        "mask_application_dimDesc": ["x", "y"],
-        "spectrogram_spatial_transform": "flip_D2_then_swap_D2_D3",
+        "mask_application_dimDesc": ["y", "x"],
+        "mask_coordinate_strategy": "prepare_native_support_once_keep_published_EF_mask_unchanged",
+        "spectrogram_spatial_transform": "none_HD_export_order",
+        "spectrogram_read_buffer_bytes": DEFAULT_READ_BUFFER_BYTES,
+        "spatial_sample_dtype": str(np.dtype(spectrograms.dtype)),
+        "median_method": "inplace_partition_promote_only_central_values_to_float64",
         "mask_reduction": (
             "identity"
             if analysis_zones.shape == native_mask.shape

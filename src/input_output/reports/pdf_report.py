@@ -10,6 +10,7 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from PIL import Image
 
+from input_output.artifact_ownership import register_artifact_path
 from input_output.writers.artifact_names import prefixed_artifact_path
 from input_output.writers.png import ReportImagePaths
 
@@ -59,6 +60,7 @@ def generate_a4_report(
 
     # Create output path
     pdf_path = prefixed_artifact_path(output_dir / "report.pdf", folder_name)
+    register_artifact_path(pdf_path, writing=True)
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Extract parameters from the H5 file

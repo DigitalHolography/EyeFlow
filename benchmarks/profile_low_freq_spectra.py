@@ -32,14 +32,16 @@ from unittest.mock import patch
 import h5py
 import numpy as np
 
-from input_output.h5_access import PipelineH5Output, RawH5SourceReader
-from input_output.holo_run_layout import HoloRunLayout
+from input_output.readers.h5 import RawH5SourceReader
+from input_output.writers.h5_output import PipelineH5Output
+from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager
 from input_output.schema import EyeFlowOutputPaths, HolodopplerSource
 from pipelines.low_freq_spectra import artifacts, gap_analysis, qc, runner, spectrograms
 from pipelines.low_freq_spectra.frequency import write_frequency_bin_table
 from pipelines.low_freq_spectra.preprocessing import prepare_gap_spectrograms
-from pipelines.vessel_inputs import align_spectrogram_frame
+from pipelines.low_freq_spectra.spatial_reduction import spectral_batches
+from calculations.math.statistics import partition_median_inplace
 
 
 class Timings:
@@ -75,6 +77,7 @@ class Source:
             self.shape = (min(frame_limit, self.shape[0]), *self.shape[1:])
         self.ndim, self.dtype = 4, np.dtype(np.float32) if dataset is None else dataset.dtype
         self.attrs = {"unit": "a.u."} if dataset is None else dict(dataset.attrs)
+        self.chunks = None if dataset is None else dataset.chunks
         self.seconds, self.reads, self.logical_bytes = 0., 0, 0
         if dataset is None:
             generator = np.random.default_rng(42)
@@ -94,6 +97,19 @@ class Source:
         self.logical_bytes += data.nbytes
         return data
 
+    def read_direct(self, destination, *, source_sel, dest_sel):
+        """Meter the same bounded direct-read API used by real HD datasets."""
+        start = perf_counter()
+        target = destination[dest_sel]
+        if self.dataset is not None:
+            self.dataset.read_direct(destination, source_sel=source_sel, dest_sel=dest_sel)
+        else:
+            for target_index, source_index in enumerate(range(*source_sel.indices(self.shape[0]))):
+                np.multiply(self.frame, np.float32(1+.1*np.sin(source_index)), out=target[target_index])
+        self.seconds += perf_counter()-start
+        self.reads += 1
+        self.logical_bytes += target.nbytes
+
 
 def save_profile(profile, output, name):
     profile.dump_stats(str(output / f"{name}.prof"))
@@ -103,23 +119,26 @@ def save_profile(profile, output, name):
 
 
 def spatial_breakdown(source, zones, count):
-    """Time the same per-frame operations separately; outside the main run."""
+    """Time native block operations separately; outside the main run."""
     timer = Timings()
     prepared = prepare_gap_spectrograms(source, zones)
-    for index in range(min(count, source.shape[0])):
-        raw = timer.run("source_access", source.__getitem__, index)
-        frame = timer.run("align_and_cast_float64", lambda: np.asarray(align_spectrogram_frame(raw), dtype=np.float64))
-        full = timer.run("reshape_spatial_axes", frame.reshape, frame.shape[0], -1)
-        valid = timer.run("full_finite_mask", lambda: np.all(np.isfinite(full), axis=1))
-        mean_samples = timer.run("full_mean_boolean_copy", lambda: full[valid])
-        timer.run("full_mean", np.mean, mean_samples, axis=1)
-        median_samples = timer.run("full_median_boolean_copy", lambda: full[valid])
-        timer.run("full_median", np.median, median_samples, axis=1)
-        if prepared is not None:
-            samples = timer.run("gap_boolean_gather", lambda: frame[:, prepared[0]])
-            gap_valid = timer.run("gap_finite_mask", lambda: np.all(np.isfinite(samples), axis=1))
-            median_samples = timer.run("gap_median_boolean_copy", lambda: samples[gap_valid])
-            timer.run("gap_median", np.median, median_samples, axis=1)
+    count = min(count, source.shape[0])
+    if count <= 0:
+        return []
+    frame_bytes = int(np.prod(source.shape[1:]))*np.dtype(source.dtype).itemsize
+    batches = spectral_batches(source, read_buffer_bytes=count*frame_bytes)
+    _, block = timer.run("source_direct_read", next, batches)
+    full = timer.run("reshape_spatial_axes_view", block.reshape, *block.shape[:2], -1)
+    valid = timer.run("shared_finite_mask", lambda: np.all(np.isfinite(full), axis=-1))
+    timer.run("full_mean_float64_accumulation", np.mean, full, axis=-1, dtype=np.float64)
+    if prepared is not None:
+        indices = np.flatnonzero(prepared[0])
+        if len(indices) != full.shape[-1]:
+            samples = timer.run("native_gap_gather", np.take, full, indices, axis=-1)
+            if not np.all(valid):
+                timer.run("gap_finite_mask", lambda: np.all(np.isfinite(samples), axis=-1))
+            timer.run("gap_median_inplace", partition_median_inplace, samples)
+    timer.run("full_median_inplace", partition_median_inplace, full)
     return timer.rows()
 
 
@@ -148,16 +167,17 @@ def compare_gap_gather(source, zones):
     two indexing expressions select identical values in identical order.
     """
     mask = prepare_gap_spectrograms(source, zones)[0]
-    frame = np.asarray(align_spectrogram_frame(source[0]), dtype=np.float64)
+    frame = np.asarray(source[0])
     full = frame.reshape(frame.shape[0], -1)
     flat_mask = mask.ravel()
-    np.testing.assert_array_equal(frame[:, mask], full[:, flat_mask])
-    samples = {"current_3d_boolean_gather": [], "candidate_existing_flat_frame_gather": []}
+    indices = np.flatnonzero(flat_mask)
+    np.testing.assert_array_equal(frame[:, mask], np.take(full, indices, axis=-1))
+    samples = {"native_boolean_gather": [], "contiguous_take_used_by_production": []}
     for repetition in range(6):
         order = list(samples) if repetition % 2 == 0 else list(reversed(samples))
         for name in order:
             start = perf_counter()
-            selected = frame[:, mask] if name.startswith("current") else full[:, flat_mask]
+            selected = frame[:, mask] if name.startswith("native_boolean") else np.take(full, indices, axis=-1)
             samples[name].append(perf_counter()-start)
             del selected
     return {"measurement": "alternating_order_warm_memory_microbenchmark_not_end_to_end_speedup",
@@ -198,12 +218,18 @@ def main():
     parser.add_argument("--output", type=Path, default=Path(".tmp/spectral_performance"))
     parser.add_argument("--spatial-detail-frames", type=int, default=4)
     parser.add_argument("--no-figures", action="store_true")
+    parser.add_argument("--spatial-workers", type=int, default=None,
+                        help="Override automatic spatial CPU workers; 1 forces serial reduction")
+    parser.add_argument("--synthetic-hd-input", action="store_true",
+                        help="Label an existing --hd file as a generated benchmark fixture")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     summary = {"mode": "real_HD_isolated_pipeline" if args.hd else "synthetic_CPU_only",
                "python": platform.python_version(), "numpy": np.__version__, "h5py": h5py.__version__,
                "timing_note": "Single wall-time run. Nested detailed timers are inclusive and must not be summed with top-level stages.",
                "upstream_note": "All-pixel mask with 25% regularly excluded; synthetic evenly spaced beat boundaries. Not upstream velocity/topology execution."}
+    if args.synthetic_hd_input:
+        summary["mode"] = "synthetic_hdf5_isolated_pipeline"
     if args.generate_synthetic_hd:
         args.hd = args.output / "synthetic_HD.h5"
         summary["mode"] = "synthetic_hdf5_isolated_pipeline"
@@ -216,6 +242,7 @@ def main():
             print(json.dumps(summary, indent=2), flush=True)
             return
     timer = Timings()
+    summary["requested_spatial_workers"] = args.spatial_workers
     with ExitStack() as stack:
         dataset, hd = None, None
         if args.hd:
@@ -253,7 +280,11 @@ def main():
                      "svd_filter_gap_spectrograms"):
             stack.enter_context(patch.object(gap_analysis, name, timer.wrap("detail/"+name, getattr(gap_analysis, name))))
         start = perf_counter()
-        outputs = timer.run("spatial_preprocessing", spectrograms.preprocess_spectrograms, source, zones)
+        outputs = timer.run("spatial_preprocessing", spectrograms.preprocess_spectrograms,
+                            source, zones, workers=args.spatial_workers)
+        summary["spatial_reduction_max_workers"] = outputs[
+            schema.spectrograms_spatial_average
+        ][1]["spatial_reduction_max_workers"]
         print(f"Spatial preprocessing: {timer.seconds['spatial_preprocessing']:.3f}s; source access: {source.seconds:.3f}s", flush=True)
         timer.run("write_spatial_outputs", output.h5.write_many, outputs)
         products = timer.run("gap_analysis", gap_analysis.run_gap_analysis, ctx, timing)

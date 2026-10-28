@@ -11,6 +11,7 @@ from .runner import run_pdf_report
     requires=["numpy", "matplotlib", "PIL"],
     dag_requires=["velocity_analysis", "waveform_shape_metrics"],
     input_slot="both",
+    wait_for_artifacts=True,
 )
 def run(ctx):
     """Entrypoint called by the pipeline runtime."""

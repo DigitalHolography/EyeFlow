@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .artifact_names import acquisition_stem, prefixed_artifact_path, writer_artifact_path
+from .deferred import save_figure_file
 from .png import _close_figure
 
 
@@ -31,7 +32,7 @@ def write_eps_file(
     target = prefixed_artifact_path(path, stem) if stem is not None else Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
-        fig.savefig(target, format="eps", dpi=dpi)
+        save_figure_file(target, fig, format="eps", dpi=dpi)
     finally:
         if close:
             _close_figure(fig)

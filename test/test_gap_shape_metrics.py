@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from calculations.math.spectra import describe_spectra, interval_area, inverse_cdf
-from input_output.h5_access import PipelineH5Output
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.gap_analysis import run_gap_analysis
 from pipelines.low_freq_spectra.metrics import pack_spectrum_metrics
