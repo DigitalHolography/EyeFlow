@@ -19,11 +19,11 @@ if str(SRC_DIR) not in sys.path:
 
 from input_output.writers.h5 import (  # noqa: E402
     h5_write_checkpoint,
-    initialize_output_h5,
     set_attr_safe,
     write_value_dataset,
 )
-from input_output.h5_access import PipelineInputSource, RawH5SourceReader  # noqa: E402
+from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader  # noqa: E402
+from input_output.writers.h5_initialization import initialize_output_h5  # noqa: E402
 from pipeline_engine.base import DatasetValue  # noqa: E402
 
 
@@ -363,7 +363,7 @@ class H5WriterTests(unittest.TestCase):
             with h5py.File(hd_path, "r") as hd, h5py.File(dv_path, "r") as dv:
                 with h5py.File(output_path, "w") as output_h5:
                     with patch(
-                        "input_output.writers.h5.open_h5",
+                        "input_output.writers.h5_initialization.open_h5",
                         side_effect=AssertionError("input was reopened"),
                     ):
                         initialize_output_h5(

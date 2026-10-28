@@ -18,7 +18,7 @@ from pipeline_engine.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
 from pipelines.low_freq_spectra.runner import run_low_freq_spectra
 from pipelines.low_freq_spectra.frequency import write_frequency_bin_table
-from input_output.h5_access import PipelineH5Output
+from input_output.writers.h5_output import PipelineH5Output
 from pipelines.topology_core.runner import CAPILLARY_ANALYSIS_ZONES_STATE
 from pipelines.velocity.models import VelocityWorkflows
 from pipelines.velocity.runner import VELOCITY_WORKFLOWS_STATE

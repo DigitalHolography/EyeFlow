@@ -21,7 +21,7 @@ from calculations.blood_flow_velocity.signal_analysis.waveform.morphology import
 from calculations.blood_flow_velocity.signal_analysis.waveform.paired_cycles import (
     paired_vessel_cycles,
 )
-from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE as STYLE
+from plotting.article import DIAGNOSTIC_ARTICLE_STYLE as STYLE
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 from pipelines.velocity.semantics import (
     resolve_velocity_semantics,

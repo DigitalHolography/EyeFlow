@@ -9,7 +9,7 @@ import numpy as np
 from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
     cycle_extrema as _cycle_extrema,
 )
-from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE as STYLE
+from plotting.article import DIAGNOSTIC_ARTICLE_STYLE as STYLE
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (

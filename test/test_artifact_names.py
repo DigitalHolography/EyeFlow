@@ -7,8 +7,8 @@ import pytest
 from matplotlib.figure import Figure
 
 from input_output.archives.zip_archive import create_zip_from_tree, write_zip_artifact
-from input_output.artifact_migration import find_output_dirs, migrate_artifacts
-from input_output.holo_run_layout import HoloRunLayout
+from scripts.migrate_artifacts import find_output_dirs, migrate_artifacts
+from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from input_output.writers.artifact_names import prefixed_artifact_path
 from input_output.writers.avi import AviArtifactWriter, MjpegAviWriter

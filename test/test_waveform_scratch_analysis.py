@@ -9,7 +9,7 @@ from unittest.mock import patch
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths, ImageMaps
-from input_output.run_scratch import RunArrayStorage
+from pipeline_engine.scratch import RunArrayStorage
 from pipelines.velocity.estimation import (
     _bounded_inpaint_result,
     _inpaint_frame_batch,
@@ -164,7 +164,7 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
                 self.assertEqual(1, len(list(Path(directory).glob(".ef_scratch_*"))))
             self.assertEqual([], list(Path(directory).glob(".ef_scratch_*")))
             with patch(
-                "input_output.run_scratch.shutil.disk_usage",
+                "pipeline_engine.scratch.shutil.disk_usage",
                 return_value=SimpleNamespace(free=0),
             ):
                 with RunArrayStorage(Path(directory), memory_budget_bytes=0) as storage:

@@ -137,7 +137,7 @@ semantics.
 Artifact filenames use the acquisition prefix, for example
 `sample_lumen_size_by_branch_artery.png`. Writers preserve subfolders and
 avoid adding the prefix twice. To rename artifacts in existing result folders,
-run `python -m input_output.artifact_migration path\to\results --dry-run`
+run `python scripts/migrate_artifacts.py path\to\results --dry-run`
 to inspect the changes, then omit `--dry-run` to apply them.
 
 Major result families include continuous and per-beat velocity, heartbeat,

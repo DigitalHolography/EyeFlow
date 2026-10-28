@@ -61,7 +61,7 @@ input layouts, and unique destinations. `execute_run` owns batch iteration,
 per-file cleanup, failure collection, and stop-between-files behavior.
 
 GUI folder selection/drop and CLI folder expansion share
-`input_output.run_discovery`. It finds `.holo` markers and directories containing
+`input_output.runs.discovery`. It finds `.holo` markers and directories containing
 matching `<stem>_HD` and `<stem>_DV` companions, including the selected directory
 itself. Marker-free inputs retain their actual folder identity for progress and
 errors; HDF5 validation and execution use the same run-service path.
@@ -226,11 +226,11 @@ records the method and radius in output provenance.
 | Run validation and batch policy | `src/pipeline_engine/run_service.py` |
 | Per-pipeline runtime/context | `src/pipeline_engine/runtime.py`, `src/pipeline_engine/context.py` |
 | Default and persisted settings | `default_settings.json`, `src/app_settings.py` |
-| Companion input layout | `src/input_output/holo_run_layout.py` and source layouts in `src/input_output/schema/` |
+| Companion input layout | `src/input_output/runs/layout.py` and source layouts in `src/input_output/schema/` |
 | HD/DV logical fields | `src/input_output/schema/holodoppler.py`, `src/input_output/schema/doppler_view.py` |
-| Canonical aligned source models | `src/input_output/schema/source_data.py`, `src/pipelines/vessel_inputs.py` |
+| Canonical aligned source models | `src/retinal_source_data.py`, `src/pipelines/vessel_inputs.py` |
 | Current EyeFlow HDF5 paths | `src/input_output/schema/eyeflow_output.py` |
-| HDF5 serialization behavior | `src/input_output/writers/h5.py`, `src/input_output/h5_access.py` |
+| HDF5 source access and output serialization | `src/input_output/readers/h5.py`, `src/input_output/writers/h5_output.py`, `src/input_output/writers/h5.py`, `src/input_output/writers/h5_storage.py`, `src/input_output/writers/h5_initialization.py` |
 | Native topology and centerline geometry | `src/calculations/topology/` |
 | Segment sampling, measurement, and profile calculations | `src/calculations/vessel_segments/` |
 | Velocity estimator semantics | `src/pipelines/velocity/estimation.py` and `src/pipelines/velocity/semantics.py` |

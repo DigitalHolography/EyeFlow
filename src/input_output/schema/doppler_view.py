@@ -6,7 +6,7 @@ import numpy as np
 import h5py
 
 from .base import MISSING, SourceFileLayout, TypedSource
-from .source_data import OpticDiscMeasurements
+from retinal_source_data import OpticDiscMeasurements
 
 DV_CONFIG_DIR_NAME = "json"
 DV_CONFIG_FILENAME = "DV_params.json"

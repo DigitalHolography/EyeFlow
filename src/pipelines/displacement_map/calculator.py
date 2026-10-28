@@ -10,10 +10,10 @@ import numpy as np
 
 from calculations.math.temporal_median import CenteredMedianBuffer
 from calculations.temporal_reference import compute_mean_reference
-from input_output.displacement_storage import OutputCaches
-from input_output.frame_sequences import FrameReplay, FrameSequence, load_binary_mask
+from input_output.writers.displacement_arrays import OutputCaches
+from input_output.readers.frame_sequences import FrameReplay, FrameSequence, load_binary_mask
 from input_output.writers.magnitude_avi import write_magnitude_avi
-from input_output.writers.json_file import write_json_file
+from input_output.writers.sidecars import write_json_file
 from input_output.writers.png import write_cv_png_file
 
 try:

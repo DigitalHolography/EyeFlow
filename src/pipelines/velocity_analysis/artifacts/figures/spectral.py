@@ -15,7 +15,7 @@ from calculations.blood_flow_velocity.signal_analysis.spectrum import (
     spectrum_signal_analysis,
     synthetic_spectrum_from_signals,
 )
-from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE as STYLE
+from plotting.article import DIAGNOSTIC_ARTICLE_STYLE as STYLE
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (

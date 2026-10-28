@@ -57,7 +57,7 @@ def test_frequency_band_run_produces_physical_downstream_outputs(legacy_spectrog
         result = execute_run(spec)
 
         assert result.succeeded, result.failures
-        from input_output.h5_access import PipelineH5Output
+        from input_output.writers.h5_output import PipelineH5Output
 
         schema = EyeFlowOutputPaths.active()
         with h5py.File(result.outputs[0], "r") as file:

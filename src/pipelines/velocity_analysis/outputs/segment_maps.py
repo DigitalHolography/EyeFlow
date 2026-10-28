@@ -6,7 +6,7 @@ import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.serialization import serialize_segment_masks
-from input_output.writers.h5 import segment_mask_h5_options, velocity_map_h5_options
+from input_output.writers.h5_storage import segment_mask_h5_options, velocity_map_h5_options
 from pipeline_engine.base import DatasetValue
 from pipelines.velocity.models import RetinalVelocity
 from pipelines.velocity.semantics import velocity_dataset_attrs

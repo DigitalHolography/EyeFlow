@@ -6,13 +6,7 @@ import numpy as np
 
 from app_settings import validate_velocity_estimation_method
 from calculations.topology import OpticDisc
-from input_output.spatial_alignment import (
-    align_mask,
-    apply_mask_alignment,
-    apply_optional_mask_alignment,
-    apply_spatial_alignment,
-)
-from input_output.schema import (
+from retinal_source_data import (
     DopplerViewMetadata,
     ImageMaps,
     RetinalSegmentation,
@@ -110,22 +104,12 @@ def load_retinal_source_data(
         "choroid_vessel_mask",
         swapped=artery_swapped,
     )
-    # A fallback disc means DopplerView did not provide usable optic-disc
-    # detection. Venous analysis is not meaningful without that reference,
-    # so expose an empty processing mask. Keep the original vein mask only in
-    # the shared velocity-background support so arterial inpainting remains
-    # exactly as it was before this guard was introduced.
-    vein_mask = (
-        np.zeros_like(source_vein_mask, dtype=bool)
-        if optic_disc.is_fallback
-        else source_vein_mask
-    )
     return RetinalSourceData(
         image_maps=image_maps,
         segmentation=RetinalSegmentation(
             vessels=VesselMasks(
                 artery=artery_mask,
-                vein=vein_mask,
+                vein=source_vein_mask,
                 labeled=labeled_vessels,
                 velocity_background=(artery_mask | source_vein_mask),
                 retinal_vessel_mask=retinal_vessel_mask,
@@ -168,6 +152,61 @@ def _optional_moment(loader):
         return loader()
     except (KeyError, ValueError, TypeError):
         return None
+
+
+def align_mask(
+    array,
+    shape: tuple[int, int],
+    name: str,
+) -> tuple[np.ndarray, bool]:
+    value = np.asarray(array)
+    if value.shape[-2:] == shape:
+        return np.asarray(value, dtype=bool), False
+    if value.shape[-2:] == shape[::-1]:
+        return np.asarray(np.swapaxes(value, -1, -2), dtype=bool), True
+    raise ValueError(f"{name} spatial shape {value.shape[-2:]} does not match {shape}.")
+
+
+def apply_mask_alignment(
+    array,
+    shape: tuple[int, int],
+    name: str,
+    *,
+    swapped: bool,
+) -> np.ndarray:
+    return np.asarray(
+        apply_spatial_alignment(array, shape, name, swapped=swapped),
+        dtype=bool,
+    )
+
+
+def apply_spatial_alignment(
+    array,
+    shape: tuple[int, int],
+    name: str,
+    *,
+    swapped: bool,
+) -> np.ndarray:
+    value = np.asarray(array)
+    aligned = np.swapaxes(value, -1, -2) if swapped else value
+    if aligned.shape[-2:] != shape:
+        raise ValueError(
+            f"{name} does not share the selected DopplerView spatial orientation; "
+            f"aligned shape {aligned.shape[-2:]} does not match {shape}."
+        )
+    return aligned
+
+
+def apply_optional_mask_alignment(
+    array,
+    shape: tuple[int, int],
+    name: str,
+    *,
+    swapped: bool,
+) -> np.ndarray | None:
+    if array is None:
+        return None
+    return apply_spatial_alignment(array, shape, name, swapped=swapped)
 
 
 __all__ = [

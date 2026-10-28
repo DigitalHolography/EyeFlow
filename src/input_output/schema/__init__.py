@@ -17,7 +17,7 @@ from .holodoppler import (
     HOLODOPPLER_LAYOUT,
     HolodopplerSource,
 )
-from .source_data import (
+from retinal_source_data import (
     DopplerViewMetadata,
     HolodopplerMetadata,
     HolodopplerTiming,

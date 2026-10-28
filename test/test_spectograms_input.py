@@ -7,7 +7,7 @@ import h5py
 import numpy as np
 import pytest
 
-from input_output.h5_access import RawH5SourceReader
+from input_output.readers.h5 import RawH5SourceReader
 from input_output.schema import (
     HD_SPECTOGRAMS_PATH,
     DopplerViewSource,

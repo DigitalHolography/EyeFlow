@@ -8,7 +8,8 @@ import h5py
 import numpy as np
 import pytest
 
-from input_output.h5_access import PipelineH5Output, PipelineInputSource, RawH5SourceReader
+from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.doppler_view import (
     DV_CHOROID_VESSEL_MASK_PATH,

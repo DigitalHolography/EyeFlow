@@ -12,7 +12,7 @@ from input_output.schema import (
     PixelPitch,
     RetinalSourceData,
 )
-from input_output.canonical_sources import load_retinal_source_data
+from pipelines.vessel_inputs import load_retinal_source_data
 from velocity_calibration import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
     physical_velocity_provenance,

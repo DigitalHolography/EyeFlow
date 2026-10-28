@@ -11,9 +11,10 @@ from app_settings import (
     VelocityEstimationMethod,
     validate_velocity_estimation_method,
 )
-from input_output.h5_access import MergedAttrs, PipelineH5Output, PipelineInputSource, RawH5SourceReader
+from input_output.readers.h5 import MergedAttrs, PipelineInputSource, RawH5SourceReader
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.output_manager import OutputManager
-from input_output.run_scratch import RunArrayStorage
+from pipeline_engine.scratch import RunArrayStorage
 from input_output.writers.h5 import write_root_attributes
 from utils.logger import Logger
 from velocity_calibration import (

@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 from calculations.math.frequency import frequency_bin_spacing_khz, frequency_coordinates_khz
-from input_output.h5_access import PipelineH5Output, RawH5SourceReader
+from input_output.readers.h5 import RawH5SourceReader
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths, HolodopplerSource
 from pipelines.low_freq_spectra.frequency import write_frequency_bin_table
 from pipelines.low_freq_spectra.metrics import pack_spectrum_metrics

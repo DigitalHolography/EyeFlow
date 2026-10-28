@@ -6,7 +6,7 @@ import numpy as np
 
 from calculations.math import nanmedian
 from calculations.topology import QUADRANT_NAMES, quadrant_membership
-from input_output.payloads import payload_data as _payload_data
+from input_output.schema.output_payload import payload_data as _payload_data
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import with_attrs
 

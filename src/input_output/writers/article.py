@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from input_output.article_formatting import ARTICLE_DPI
+from plotting.article import ARTICLE_DPI
 
 from .eps import EpsArtifactWriter
 from .png import PngArtifactWriter

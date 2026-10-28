@@ -13,46 +13,51 @@ shape, unit, layout, or writer behavior.
 
 | Area | Start with | Follow only if needed |
 |---|---|---|
-| `.holo` companion resolution | `holo_run_layout.py` | `schema/base.py`, `run_service.py` |
-| Recursive run-folder discovery and batch expansion | `run_discovery.py`, `run_selection.py` | `inputs.py`, GUI input controller, and `run_service.py` |
-| Raw access and merged attributes | `h5_access.py` | the typed source adapter; context conveniences live in `pipeline_engine/input_access.py` |
-| HD/DV datasets and sidecars | `schema/holodoppler.py`, `schema/doppler_view.py`, `schema/base.py` | `schema/source_data.py`, `canonical_sources.py` |
+| `.holo` companion resolution | `runs/layout.py` | `schema/base.py`, `run_service.py` |
+| Recursive run-folder discovery and batch expansion | `runs/discovery.py`, `runs/inputs.py` | GUI input controller and `run_service.py` |
+| External frame and mask readers | `readers/frame_sequences.py`, `readers/canonical.py` | `pipelines/displacement_map/`, `pipelines/vessel_inputs.py`, and focused tests |
+| Raw access and merged attributes | `readers/h5.py` | the typed source adapter; context conveniences live in `pipeline_engine/input_access.py` |
+| HD/DV datasets and sidecars | `schema/holodoppler.py`, `schema/doppler_view.py`, `schema/base.py` | `src/retinal_source_data.py`, `readers/canonical.py` |
 | Current output paths | `schema/eyeflow_output.py` | producer and consumer pipelines |
-| HDF5 writes | `h5_access.py`, `writers/h5.py`, `payloads.py` | output-schema tests and producer tests |
-| Output folders/artifacts | `output_manager.py`, `writers/artifact_names.py` | the specific writer or report module; `artifact_migration.py` for existing results |
-| Article figure styling | `article_formatting.py` | the producer's figure builder; writers save already formatted figures |
-| General ticks/legend/colorbar layout | `figure_formatting.py` | article styles or non-article producer; no font/export policy is imposed |
-| Article PNG/EPS pairs | `writers/article.py` | `article_formatting.py` and producer artifact tests; general PNG exports stay opt-in |
+| HDF5 writes | `writers/h5_output.py`, `writers/h5.py`, `writers/h5_storage.py`, `writers/h5_initialization.py`, `schema/output_payload.py` | output-schema tests and producer tests |
+| Output folders/artifacts | `output_manager.py`, `writers/artifact_names.py` | the specific writer or report module; `scripts/migrate_artifacts.py` at the repository root for existing results |
+| Article figure styling | `src/plotting/article.py` | the producer's figure builder; writers save already formatted figures |
+| General ticks/legend/colorbar layout | `src/plotting/formatting.py` | article styles or non-article producer; no font/export policy is imposed |
+| Article PNG/EPS pairs | `writers/article.py` | `src/plotting/article.py` and producer artifact tests; general PNG exports stay opt-in |
 | ZIP inputs | `archives/zip_archive.py` | input-expansion tests in `test_run_service.py` |
-| Profile dataset serialization | `writers/h5.py` | profile producer/consumer tests |
-| Displacement frame and artifact I/O | `frame_sequences.py`, `displacement_storage.py`, `writers/magnitude_avi.py` | `pipelines/displacement_map/` and its focused test |
+| Profile dataset serialization | `writers/h5_storage.py` | profile producer/consumer tests |
+| Displacement frame and artifact I/O | `readers/frame_sequences.py`, `writers/displacement_arrays.py`, `writers/magnitude_avi.py` | `pipelines/displacement_map/` and its focused test |
+| JSON and text sidecars | `writers/sidecars.py` | displacement metadata and run logging |
 | PDF measurements and page layout | `reports/pdf_data.py`, `reports/pdf_report.py` | report image lookup and runner tests |
 
 ## Contracts and ownership
 
 Typed source adapters translate stable logical operations into external HDF5
 paths. Pipeline code should use these adapters instead of repeating path
-fallbacks. `spatial_alignment.py` owns the array operations; canonical DV-to-HD
-alignment happens in `canonical_sources.py`, because it must move masks and
-optic-disc geometry atomically. `schema/serialization.py` owns published output
-axis order.
+fallbacks. `readers/canonical.py` owns canonical DV-to-HD alignment, moving
+masks and optic-disc geometry atomically. Pipeline-specific fallback policy
+belongs to `pipelines/vessel_inputs.py`. `schema/serialization.py` owns
+published output axis order.
 
-`run_discovery.py` shares marker and marker-free run discovery between GUI and
+`runs/discovery.py` shares marker and marker-free run discovery between GUI and
 CLI. A run folder must contain its own matching HD and DV directories; EF/AE
 are optional. Discovery checks structure, while normal layout resolution checks
 the HDF5 files. Keep actual `HoloRunLayout.input_path` distinct from its canonical
 `holo_path` naming anchor; never create marker files during discovery.
-`run_selection.py` owns ZIP/folder expansion, batch roots, and output mapping.
+`runs/inputs.py` validates selected markers, folders, and text lists, expands
+ZIP/folder selections, and computes batch roots. `output_manager.py` maps
+validated runs to output destinations and rejects destination collisions.
 
 `EyeFlowOutputPaths.active()` owns reusable output path families. Before
 changing a path, search all source and tests for both the field name and current
 literal. If a pipeline owns a specialized path constant, keep its producer,
 consumers, tests, and documentation synchronized.
 
-`PipelineH5Output` is the pipeline-facing API. `writers/h5.py` owns actual
-serialization, downcasting, bool representation, attributes, initialization,
-and selected HD pass-through data. Avoid opening the primary HDF5 independently
-inside a pipeline.
+`PipelineH5Output` in `writers/h5_output.py` is the pipeline-facing API.
+`writers/h5.py` owns generic file and dataset writes; `writers/h5_storage.py`
+owns payload conversion, compression, and bool representation;
+`writers/h5_initialization.py` owns root initialization and selected HD
+pass-through data. Avoid opening the primary HDF5 independently inside a pipeline.
 Large float32 map/profile payloads may request sparse NaN chunk storage; the
 published shape and values remain dense on read. Symmetric velocity-profile
 FFT magnitudes may use a same-file virtual dataset over compressed unique

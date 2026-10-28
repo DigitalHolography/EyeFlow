@@ -16,11 +16,11 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from input_output.holo_run_layout import HoloRunLayout  # noqa: E402
+from input_output.runs.layout import HoloRunLayout  # noqa: E402
 from input_output.output_manager import OutputManager, OutputType  # noqa: E402
 from input_output.reports.pdf_report import _extract_parameters_from_h5  # noqa: E402
 from input_output.schema import EyeFlowOutputPaths  # noqa: E402
-from input_output.h5_access import PipelineH5Output  # noqa: E402
+from input_output.writers.h5_output import PipelineH5Output  # noqa: E402
 from pipelines.pdf_report.runner import run_pdf_report  # noqa: E402
 
 

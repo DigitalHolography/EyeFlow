@@ -6,7 +6,7 @@ remain the final source of truth.
 
 ## Article figure formatting
 
-`src/input_output/figure_formatting.py` provides general-purpose, opt-in
+`src/plotting/formatting.py` provides general-purpose, opt-in
 Matplotlib helpers for article and non-article figures. It imposes no font,
 backend, export format, or global settings:
 
@@ -32,7 +32,7 @@ and colorbars. Layout fields left as `None` delegate to Matplotlib; explicit
 keyword overrides take precedence over reusable layouts. No additional EPS
 exports or article styling are introduced by the general helpers.
 
-`src/input_output/article_formatting.py` owns shared, opt-in article styling.
+`src/plotting/article.py` owns shared, opt-in article styling.
 `ArticleStyle` configures Times New Roman text, Times-compatible STIX math,
 separate axis-label/tick/legend/title/annotation sizes, borders, tick rotation,
 label/tick padding in points, and optional X/Y data margins. `scaled_fonts()`
@@ -663,10 +663,11 @@ transposes to published `(x, y)`; do not add a separate input-side Y flip.
 | Optic-disc width/height | `/segmentation/OpticDisc/width`, `/segmentation/OpticDisc/height` | Used to reconstruct an ellipse when no mask is available |
 
 `VelocityEstimation/LocalBackgroundDist` comes from the DV sidecar configuration
-and defaults to `2`. `pipelines.vessel_inputs.load_retinal_source_data` is the
-only canonical alignment boundary: it validates masks against the active HD
+and defaults to `2`. `input_output.readers.canonical.load_retinal_source_data`
+is the canonical alignment boundary: it validates masks against the active HD
 spatial shape and may transpose all DV geometry together when axes are swapped.
-Do not add isolated transposes in downstream algorithms.
+`pipelines.vessel_inputs.load_retinal_source_data` then applies the venous
+fallback policy. Do not add isolated transposes in downstream algorithms.
 
 Missing or invalid optic-disc geometry falls back to an image-centered circle
 of assumed physical diameter **1.91 mm**. Its center is `(nx / 2, ny / 2)`;
@@ -808,7 +809,7 @@ interpreting derived values.
 
 ## Internal contracts
 
-`RetinalSourceData` in `schema/source_data.py` is the shared typed input:
+`RetinalSourceData` in `src/retinal_source_data.py` is the shared typed input:
 
 - lazy `ImageMaps` for moments, LF/HF bands, and optional exported spectograms;
 - aligned boolean artery/vein/background masks and optional labels;
@@ -854,7 +855,7 @@ prefixes are retained once and subdirectories are preserved. The primary
 `<stem>_EF.h5` filename is unchanged.
 
 Existing EyeFlow result folders can be migrated with
-`python -m input_output.artifact_migration RESULTS_PARENT --dry-run`, then
+`python scripts/migrate_artifacts.py RESULTS_PARENT --dry-run`, then
 the same command without `--dry-run`. The utility only renames files inside
 identified `<stem>_EF` folders, leaves directories and contents unchanged,
 and checks for collisions before renaming.

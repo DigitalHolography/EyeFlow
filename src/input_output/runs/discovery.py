@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .holo_run_layout import INPUT_LAYOUTS, HoloRunLayout
+from .layout import INPUT_LAYOUTS, HoloRunLayout
 
 
 def is_run_directory(directory: Path) -> bool:

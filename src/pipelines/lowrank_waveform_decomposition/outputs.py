@@ -9,7 +9,7 @@ import numpy as np
 
 from calculations.topology import QUADRANT_NAMES, quadrant_membership
 from input_output.schema import EyeFlowOutputPaths
-from input_output.payloads import payload_array as _metric_data
+from input_output.schema.output_payload import payload_array as _metric_data
 from pipeline_engine import with_attrs
 from pipelines.velocity.semantics import (
     velocity_unit_from_payload,

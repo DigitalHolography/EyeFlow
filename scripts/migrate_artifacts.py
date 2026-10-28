@@ -1,6 +1,6 @@
 """Rename existing EyeFlow artifacts using the shared writer naming contract.
 
-Usage: python -m input_output.artifact_migration RESULTS_PARENT [--dry-run]
+Usage: python scripts/migrate_artifacts.py RESULTS_PARENT [--dry-run]
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ import argparse
 import os
 from pathlib import Path
 
-from .writers.artifact_names import prefixed_artifact_path
+from input_output.writers.artifact_names import prefixed_artifact_path
 
 
 def plan_artifact_renames(output_dir: str | Path) -> tuple[tuple[Path, Path], ...]:

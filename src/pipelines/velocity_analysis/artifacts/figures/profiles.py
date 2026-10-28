@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from input_output.article_formatting import apply_article_style
-from input_output.figure_formatting import add_colorbar
+from plotting.article import apply_article_style
+from plotting.formatting import add_colorbar
 from .common import _plt
 from pipelines.velocity.semantics import resolve_velocity_semantics
 

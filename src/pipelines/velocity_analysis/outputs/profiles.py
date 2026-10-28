@@ -6,7 +6,7 @@ import numpy as np
 
 from calculations.vessel_segments.profiles.fft import DEFAULT_PROFILE_MASK_DILATION_PIXELS
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
-from input_output.writers.h5 import profile_h5_options
+from input_output.writers.h5_storage import profile_h5_options
 from pipeline_engine.base import DatasetValue
 from pipelines.profile_outputs import (
     profile_dataset,

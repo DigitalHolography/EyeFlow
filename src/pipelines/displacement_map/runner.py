@@ -12,8 +12,8 @@ import h5py
 import numpy as np
 
 from input_output.output_manager import OutputType
-from input_output.frame_sequences import FrameSequence
-from input_output.h5_access import RawH5SourceReader
+from input_output.readers.frame_sequences import FrameSequence
+from input_output.readers.h5 import RawH5SourceReader
 from input_output.schema import DopplerViewSource
 from input_output.schema.doppler_view import (
     DV_ARTERY_MASK_PATH as ARTERY_MASK_PATH,

@@ -1,16 +1,19 @@
-"""Resolve selected HOLO markers, run folders, and input lists."""
+"""Resolve and expand selected HOLO markers, run folders, lists, and ZIP inputs."""
 
-from collections.abc import Sequence
+import os
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
 
-from .holo_run_layout import HoloRunLayout
-from .run_discovery import is_run_directory
-from .schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
-from .schema.base import load_h5_sidecar_config as _load_h5_sidecar_config
-from .schema.base import sidecar_dir_for_h5
+from .layout import HoloRunLayout
+from .discovery import discover_run_inputs, is_run_directory
+from ..archives import extracted_zip_tree
+from ..schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
+from ..schema.base import load_h5_sidecar_config as _load_h5_sidecar_config
+from ..schema.base import sidecar_dir_for_h5
 
 HOLO_SUFFIX = ".holo"
 INPUT_LIST_SUFFIX = ".txt"
@@ -25,6 +28,58 @@ class HoloInputStatus:
 @dataclass(frozen=True)
 class HoloInputList:
     path_stem_pairs: tuple[tuple[Path, str], ...]
+
+
+@dataclass(frozen=True)
+class ExpandedRunInputs:
+    """Input paths produced from one CLI source selection."""
+
+    paths: tuple[Path, ...]
+    batch_root: Path | None = None
+
+
+@contextmanager
+def expand_run_inputs(data_path: Path) -> Iterator[ExpandedRunInputs]:
+    """Expand a CLI file, recursive folder, or ZIP source safely."""
+
+    source = data_path.expanduser().resolve()
+    if source.is_file() and source.suffix.lower() == ".zip":
+        with extracted_zip_tree(source) as extracted_root:
+            paths = _find_holo_inputs(extracted_root)
+            if not paths:
+                raise ValueError(f"No {HOLO_SUFFIX} files or HD/DV run folders found in {source}")
+            batch_root = extracted_root.parent if is_run_directory(extracted_root) else extracted_root
+            yield ExpandedRunInputs(tuple(paths), batch_root)
+        return
+
+    paths = _find_holo_inputs(source)
+    if not paths:
+        raise ValueError(f"No {HOLO_SUFFIX} files or HD/DV run folders found under {source}")
+    batch_root = (source.parent if is_run_directory(source) else source) if source.is_dir() else None
+    yield ExpandedRunInputs(tuple(paths), batch_root)
+
+
+def _find_holo_inputs(path: Path) -> list[Path]:
+    if path.is_file():
+        if path.suffix.lower() in {HOLO_SUFFIX, INPUT_LIST_SUFFIX}:
+            return [path]
+        raise ValueError(
+            f"File is not a {HOLO_SUFFIX} or {INPUT_LIST_SUFFIX} file: {path}"
+        )
+    if path.is_dir():
+        return discover_run_inputs(path)
+    raise FileNotFoundError(f"Input path does not exist: {path}")
+
+
+def batch_root(holo_paths: Sequence[Path]) -> Path:
+    if not holo_paths:
+        return Path.cwd()
+    if len(holo_paths) == 1:
+        return holo_paths[0].parent
+    try:
+        return Path(os.path.commonpath([str(path.parent) for path in holo_paths]))
+    except ValueError:
+        return Path.cwd()
 
 
 def resolve_holo_run_layout(

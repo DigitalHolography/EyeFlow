@@ -15,7 +15,7 @@ task crosses front-end or I/O boundaries.
 |---|---|
 | `base.py` | `PipelineDescriptor`, `PipelineOption`, `ExecutionVariant`, result payloads, decorators, and the process interface |
 | `dag.py` | Semantic-key producer graph, option-dependent requirements, topological order, and target closure |
-| `run_service.py` | Shared GUI/CLI run-spec validation and batch execution; delegates input expansion and destination mapping to `input_output/run_selection.py` |
+| `run_service.py` | Shared GUI/CLI run-spec validation and batch execution; delegates input expansion to `input_output/runs/inputs.py` and destination mapping to `input_output/output_manager.py` |
 | `input_access.py` | Context-aware timing and attribute conveniences for pipeline runners |
 | `runtime.py` | Opens inputs/output, initializes provenance, creates contexts, invokes descriptors, and records completion |
 | `context.py` | Namespaced inputs/output, shared state, selected options/order/method, result persistence |
@@ -105,6 +105,6 @@ a pipeline returning `None` owns its direct writes.
 |---|---|---|
 | Decorator metadata | `base.py`, affected declarations, discovery tests | calculations, UI views |
 | DAG behavior | `dag.py`, option declarations, dependency tests | HDF5 writers, figures |
-| Run input/output routing | `run_service.py`, `holo_run_layout.py`, run-service tests | scientific formulas |
+| Run input/output routing | `run_service.py`, `input_output/runs/layout.py`, run-service tests | scientific formulas |
 | Context API/result handling | `context.py`, `runtime.py`, context and writer tests | GUI layout |
 | Progress/cancellation | `run_service.py`, `ui/controllers/run.py`, run-service tests | pipeline algorithms unless callback frequency changes |

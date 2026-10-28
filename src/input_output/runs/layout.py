@@ -5,7 +5,7 @@ from pathlib import Path
 
 import h5py
 
-from .schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
+from ..schema import DOPPLER_VIEW_LAYOUT, HOLODOPPLER_LAYOUT, SourceFileLayout
 
 HDF5_SUFFIXES = (".h5", ".hdf5")
 INPUT_LAYOUTS = (HOLODOPPLER_LAYOUT, DOPPLER_VIEW_LAYOUT)

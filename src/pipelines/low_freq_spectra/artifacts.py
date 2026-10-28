@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from input_output.article_formatting import (
+from plotting.article import (
     ARTICLE_ASPECT_RATIO as FIGURE_ASPECT_RATIO,
     ARTICLE_DPI as FIGURE_DPI,
     ARTICLE_STYLE,
@@ -19,7 +19,7 @@ from input_output.article_formatting import (
     create_article_figure as _figure,
     prepare_article_fill_layer,
 )
-from input_output.figure_formatting import TickFormat, add_colorbar, add_legend, apply_tick_format
+from plotting.formatting import TickFormat, add_colorbar, add_legend, apply_tick_format
 from input_output.schema import EyeFlowOutputPaths
 from input_output.writers.article import save_article_figure_pair
 from input_output.writers.png import FigureArtifactWriter

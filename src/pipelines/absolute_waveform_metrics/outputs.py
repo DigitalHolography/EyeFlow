@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 import numpy as np
 
-from input_output.payloads import payload_data as _payload_data
+from input_output.schema.output_payload import payload_data as _payload_data
 from input_output.schema import EyeFlowOutputPaths, VelocityPerBeatOutputPaths
 
 from .calculator import AbsoluteWaveformMetricsCalculator

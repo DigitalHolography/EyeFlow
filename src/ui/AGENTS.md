@@ -66,7 +66,7 @@ Both dialogs append via
 `InputController.add_holo_input_paths`; folders use the same recursive expansion
 and deduplication as drops. Clear resets the selection. A text list stays a sole
 input: selecting one replaces files, while adding files/folders replaces the list.
-Directory expansion delegates to `input_output.run_discovery`, which accepts
+Directory expansion delegates to `input_output.runs.discovery`, which accepts
 matching HD/DV run directories without `.holo` markers, including the selected
 directory itself. Keep folder recognition and path identities out of the UI.
 The file and folder pickers share `last_input_directory`, persisted through

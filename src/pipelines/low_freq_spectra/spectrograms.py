@@ -6,7 +6,7 @@ import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.holodoppler import HD_SPECTOGRAMS_PATH
-from input_output.canonical_sources import iter_aligned_spectrogram_frames
+from input_output.readers.canonical import iter_aligned_spectrogram_frames
 from utils.logger import Logger
 
 from .preprocessing import prepare_gap_spectrograms

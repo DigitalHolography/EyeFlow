@@ -316,7 +316,7 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
     with (
         patch("pipelines.velocity.runner.detect_velocity_cardiac_cycles", side_effect=cycles),
         patch("pipelines.velocity.runner.estimate_retinal_velocity", side_effect=estimate),
-        patch("input_output.run_scratch._available_memory_bytes", return_value=0),
+        patch("pipeline_engine.scratch._available_memory_bytes", return_value=0),
     ):
         result = execute_run(_spec(holo, artifacts=True))
     assert result.succeeded, result.failures

@@ -15,10 +15,10 @@ import h5py
 import numpy as np
 from PIL import Image
 
-from input_output.frame_sequences import FrameSequence
-from input_output.holo_run_layout import HoloRunLayout
+from input_output.readers.frame_sequences import FrameSequence
+from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
-from input_output.h5_access import RawH5SourceReader
+from input_output.readers.h5 import RawH5SourceReader
 from input_output.schema import HolodopplerSource
 from input_output.writers.magnitude_avi import write_magnitude_avi
 from pipeline_engine import PipelineContext
@@ -76,7 +76,7 @@ class DisplacementMapInputTests(unittest.TestCase):
                 data=np.arange(24, dtype=np.float32).reshape(3, 2, 4),
             )
             with patch(
-                "input_output.frame_sequences.h5py.File",
+                "input_output.readers.frame_sequences.h5py.File",
                 side_effect=AssertionError("HDF5 input was reopened"),
             ):
                 sequence = FrameSequence(

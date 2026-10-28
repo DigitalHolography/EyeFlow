@@ -11,7 +11,7 @@ import numpy as np
 from calculations.blood_flow_velocity.signal_analysis.cardiac_cycle import (
     CardiacCycleAnalysis,
 )
-from input_output.h5_access import PipelineH5Output
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.writers.h5 import delete_output_path
 from input_output.schema.eyeflow_output import (
     VELOCITY_WORKFLOW_FOLDERS,

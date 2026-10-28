@@ -8,7 +8,7 @@ import pytest
 from test_run_service import _write_input
 
 from input_output.output_manager import OutputType
-from input_output.run_scratch import RunArrayStorage
+from pipeline_engine.scratch import RunArrayStorage
 from pipeline_engine.base import ExecutionVariant, PipelineDescriptor, PipelineOption
 from pipeline_engine.run_service import execute_run, resolve_run_spec
 from pipeline_engine.runtime import _pipeline_checkpoint

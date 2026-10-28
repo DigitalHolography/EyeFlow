@@ -153,7 +153,7 @@ class RunServiceTests(unittest.TestCase):
             with (
                 patch("pipeline_engine.runtime.open_h5", wraps=real_open_h5) as open_input,
                 patch(
-                    "input_output.writers.h5.open_h5",
+                    "input_output.writers.h5_initialization.open_h5",
                     side_effect=AssertionError("Initialization reopened an input"),
                 ),
             ):

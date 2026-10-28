@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from math import isfinite
 
-from .figure_formatting import ColorbarLayout, LegendLayout, TickFormat, apply_tick_format
+from .formatting import ColorbarLayout, LegendLayout, TickFormat, apply_tick_format
 
 ARTICLE_DPI = 320
 ARTICLE_WIDTH_INCHES = 8.0 / 2.54

@@ -8,7 +8,7 @@ import numpy as np
 
 from calculations.math import nanmean_float32
 from calculations.vessel_segments.profiles.per_beat import interpolate_profiles_per_beat
-from input_output.writers.h5 import profile_h5_options
+from input_output.writers.h5_storage import profile_h5_options
 from pipeline_engine.base import DatasetValue
 
 

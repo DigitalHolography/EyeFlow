@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dependency_utils import find_missing_dependencies
-from input_output.payloads import DatasetValue
+from input_output.schema.output_payload import DatasetValue
 
 # Metadata registry populated by coded pipeline modules when they are imported.
 PIPELINE_REGISTRY: dict[str, PipelineDescriptor] = {}

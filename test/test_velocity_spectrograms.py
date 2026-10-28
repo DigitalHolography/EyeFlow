@@ -5,7 +5,7 @@ from unittest.mock import patch
 import h5py
 import numpy as np
 
-from input_output.h5_access import PipelineH5Output
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.spectrograms import preprocess_spectrograms
 from test_gap_spectrogram_preprocessing import FrameSource

@@ -13,6 +13,11 @@ import numpy as np
 MISSING = object()
 
 
+def normalize_h5_path(path: object) -> str:
+    """Use logical HDF5 separators independent of the host filesystem."""
+    return str(path).replace("\\", "/").strip("/")
+
+
 @dataclass(frozen=True)
 class SourceFileLayout:
     """Companion application file layout metadata used for run discovery."""

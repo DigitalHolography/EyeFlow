@@ -10,8 +10,8 @@ import pytest
 from matplotlib.colors import Normalize, PowerNorm
 from PIL import Image
 
-from input_output.h5_access import PipelineH5Output
-from input_output.holo_run_layout import HoloRunLayout
+from input_output.writers.h5_output import PipelineH5Output
+from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.artifacts import (

@@ -82,7 +82,7 @@ def extract_parameters_from_h5(
     try:
         with open_h5(h5_path, "r") as h5file:
             if processing_root is not None:
-                from input_output.h5_access import PipelineH5Output
+                from input_output.writers.h5_output import PipelineH5Output
 
                 h5file = PipelineH5Output(h5file, processing_root=processing_root)
             schema = EyeFlowOutputPaths.active()

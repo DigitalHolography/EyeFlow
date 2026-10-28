@@ -10,7 +10,7 @@ import h5py
 import numpy as np
 
 from .base import SourceFileLayout, TypedSource, scalar_from_value
-from .source_data import HolodopplerMetadata, HolodopplerTiming, PixelPitch
+from retinal_source_data import HolodopplerMetadata, HolodopplerTiming, PixelPitch
 
 HD_CONFIG_DIR_NAME = "json"
 HD_CONFIG_FILENAME = "parameters.json"

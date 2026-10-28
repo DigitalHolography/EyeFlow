@@ -62,6 +62,7 @@ py-modules = [
     "dependency_utils",
     "launcher",
     "runtime_limits",
+    "retinal_source_data",
     "velocity_calibration",
 ]
 

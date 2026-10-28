@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from input_output.schema.base import scalar_from_value
-from input_output.schema.source_data import HolodopplerTiming
+from retinal_source_data import HolodopplerTiming
 
 if TYPE_CHECKING:
     from .context import PipelineContext

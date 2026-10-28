@@ -7,13 +7,13 @@ from pathlib import Path
 
 import numpy as np
 
-from input_output.article_formatting import (
+from plotting.article import (
     ARTICLE_ASPECT_RATIO,
     DIAGNOSTIC_ARTICLE_STYLE,
     apply_article_style,
 )
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
-from input_output.figure_formatting import add_colorbar, add_legend
+from plotting.formatting import add_colorbar, add_legend
 
 from .common import _finite_image, _matplotlib, _plt
 

@@ -15,7 +15,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from input_output import read_holo_input_list, resolve_selected_run_layouts  # noqa: E402
-from input_output.inputs import holo_input_status, stem_input_status  # noqa: E402
+from input_output.runs.inputs import holo_input_status, stem_input_status  # noqa: E402
 from ui.controllers.input import InputController  # noqa: E402
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from calculations.math import nanmedian
-from input_output.article_formatting import (
+from plotting.article import (
     ARTICLE_ASPECT_RATIO as VELOCITY_FIGURE_ASPECT_RATIO,
     ARTICLE_DPI as VELOCITY_FIGURE_DPI,
     ARTICLE_WIDTH_INCHES as VELOCITY_FIGURE_WIDTH_INCHES,

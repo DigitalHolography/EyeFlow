@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from calculations.math import nanmedian
-from input_output.h5_access import PipelineH5Output
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.metrics import (
     PHASE_METRIC_OUTPUT_NAMES, PHASE_SUMMARY_OUTPUT_NAMES,

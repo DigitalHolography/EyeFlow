@@ -13,14 +13,15 @@ from app_settings import (
     validate_band_limited_harmonics_setting,
     validate_copy_hd_passthrough,
 )
-from input_output.h5_access import PipelineInputSource, RawH5SourceReader
-from input_output.inputs import load_h5_sidecar_config
+from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
+from input_output.runs.inputs import load_h5_sidecar_config
 from input_output.output_manager import OutputManager, OutputType
-from input_output.run_scratch import RunArrayStorage
+from pipeline_engine.scratch import RunArrayStorage
 from input_output.schema.eyeflow_output import VELOCITY_WORKFLOW_ROOTS
 from input_output.writers.h5 import (
-    h5_write_checkpoint, initialize_output_h5, open_h5, write_root_attributes,
+    h5_write_checkpoint, open_h5, write_root_attributes,
 )
+from input_output.writers.h5_initialization import initialize_output_h5
 from utils.logger import Logger
 from velocity_calibration import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,

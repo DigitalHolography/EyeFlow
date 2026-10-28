@@ -7,8 +7,8 @@ from pathlib import Path
 import numpy as np
 
 from calculations.math import nanmean, nanmedian
-from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE, apply_article_style
-from input_output.figure_formatting import LegendLayout, add_legend
+from plotting.article import DIAGNOSTIC_ARTICLE_STYLE, apply_article_style
+from plotting.formatting import LegendLayout, add_legend
 from input_output.output_manager import OutputType
 from input_output.writers.png import write_png_figure
 

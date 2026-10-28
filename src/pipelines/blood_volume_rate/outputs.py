@@ -14,7 +14,7 @@ from calculations.blood_volume_rate import (
     total_masked_edges_flow,
 )
 from calculations.math import nanmean_float32, nanmedian
-from input_output.article_formatting import (
+from plotting.article import (
     ARTICLE_ASPECT_RATIO as LUMEN_DIAMETER_FIGURE_ASPECT_RATIO,
     ARTICLE_DPI as LUMEN_DIAMETER_FIGURE_DPI,
     ARTICLE_WIDTH_INCHES as LUMEN_DIAMETER_FIGURE_WIDTH_INCHES,
@@ -24,10 +24,10 @@ from input_output.article_formatting import (
     prepare_article_fill_layer,
 )
 from input_output.schema import EyeFlowOutputPaths
-from input_output.figure_formatting import add_legend
+from plotting.formatting import add_legend
 from input_output.writers.article import save_article_figure_pair
-from input_output.writers.h5 import profile_h5_options
-from input_output.payloads import payload_array as _metric_data
+from input_output.writers.h5_storage import profile_h5_options
+from input_output.schema.output_payload import payload_array as _metric_data
 from pipeline_engine.base import DatasetValue
 from pipelines.profile_outputs import profile_dataset
 

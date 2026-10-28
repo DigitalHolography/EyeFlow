@@ -6,7 +6,7 @@ the same boilerplate imports in every module.
 
 import numpy as np
 
-from input_output.schema.source_data import HolodopplerTiming
+from retinal_source_data import HolodopplerTiming
 
 from .input_access import read_int_setting, resolve_holodoppler_timing
 

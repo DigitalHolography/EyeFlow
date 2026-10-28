@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable, ClassVar
 
 from app_settings import LAST_RUN_LOG_FILENAME
-from input_output.writers.text_file import write_text_file
+from input_output.writers.sidecars import write_text_file
 
 
 class LogLevel(str, Enum):
