@@ -40,7 +40,10 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, [], exclude_binaries=True,
     name=app_name, debug=False, bootloader_ignore_signals=False,
-    strip=False, upx=False, console=os.environ.get("EYEFLOW_BUILD_CONSOLE") == "1",
+    # Keep inherited terminal streams and shell exit-code/wait behavior. When
+    # launched from Explorer, hide only the console owned by this application.
+    strip=False, upx=False, console=True,
+    hide_console=None if os.environ.get("EYEFLOW_BUILD_CONSOLE") == "1" else "hide-early",
     disable_windowed_traceback=False, icon=[str(repo / "EyeFlow.ico")],
 )
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name=app_name)

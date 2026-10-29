@@ -34,6 +34,17 @@ eyeflow-cli --data path\to\folder --output path\to\results
 arguments are supplied. `eyeflow-cli` always uses the CLI. Run
 `eyeflow-cli --help` for pipeline-list and ZIP-output options.
 
+For the Windows installer, invoke the installed executable directly (use your
+installed version):
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\eyeflow-python\v1.24.0\EyeFlow 1.24.0.exe" `
+  --data "D:\Data\sample.holo" --output "D:\Results"
+```
+
+See [installed CLI usage](docs/installer-packaging.md#running-the-installed-cli)
+for help, exit codes, and console behavior.
+
 Text lists accept one `.holo` path per line, with optional surrounding quotes.
 Entries can point to unrelated directories or different drives:
 

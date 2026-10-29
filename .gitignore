@@ -61,3 +61,6 @@ __pycache__/
 *.egg-info/
 EyeFlow-main/
 build/
+
+# AI tooling
+.mcp*

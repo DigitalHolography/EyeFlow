@@ -1,9 +1,11 @@
 """Installer configuration and safe cleanup contracts."""
 from pathlib import Path
+from subprocess import CompletedProcess
+from unittest.mock import patch
 
 import pytest
 
-from installer.build_installer import clean_directory, project_metadata, write_inno_script
+from installer.build_installer import clean_directory, project_metadata, verify_cli, write_inno_script
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -65,3 +67,43 @@ def test_inno_configuration_preserves_install_location_and_artifact_name(tmp_pat
     assert 'PrivilegesRequired=lowest' in text
     assert '@BUNDLE_DIR@' not in text
     assert 'venv' not in text
+
+
+def _cli_probe_result(command, **kwargs):
+    if command[1:] == ["--help"]:
+        return CompletedProcess(command, 0, "usage: EyeFlow --data DATA", "")
+    if command[1:] == ["--data"]:
+        return CompletedProcess(command, 2, "", "--data: expected one argument")
+    assert not Path(command[-1]).exists()
+    return CompletedProcess(command, 1, "", "Error: missing-pipelines.txt")
+
+
+def test_cli_build_checks_capture_streams_and_validate_all_exit_codes(tmp_path):
+    executable = tmp_path / "EyeFlow.exe"
+    environment = {"PATH": "system-path"}
+    with patch("installer.build_installer.subprocess.run", side_effect=_cli_probe_result) as run:
+        verify_cli(executable, cwd=tmp_path, env=environment)
+    assert run.call_count == 3
+    for call in run.call_args_list:
+        assert call.args[0][0] == str(executable)
+        assert call.kwargs["cwd"] == tmp_path
+        assert call.kwargs["env"] == environment
+        assert call.kwargs["capture_output"] and call.kwargs["text"]
+        assert call.kwargs["timeout"] == 120
+
+
+@pytest.mark.parametrize("regression", ["missing_stdout", "missing_stderr", "discarded_exit_status"])
+def test_cli_build_checks_reject_installer_regressions(tmp_path, regression):
+    def run_probe(command, **kwargs):
+        result = _cli_probe_result(command, **kwargs)
+        if regression == "missing_stdout":
+            result.stdout = ""
+        elif regression == "missing_stderr":
+            result.stderr = ""
+        elif result.returncode == 1:
+            result.returncode = 0
+        return result
+
+    with patch("installer.build_installer.subprocess.run", side_effect=run_probe):
+        with pytest.raises(RuntimeError, match="Frozen CLI check failed"):
+            verify_cli(tmp_path / "EyeFlow.exe", cwd=tmp_path, env={})

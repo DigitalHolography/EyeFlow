@@ -26,6 +26,29 @@ artifact path. It retains the runtime and size reports as workflow artifacts,
 including when a build fails. GPU execution is checked when a CUDA device
 is available; hosted runners without one record that check as skipped.
 
+## Running the installed CLI
+
+The installed executable launches the GUI without arguments and the CLI with
+arguments. In PowerShell, use the executable's full path and actual version:
+
+```powershell
+$eyeFlow = "$env:LOCALAPPDATA\Programs\eyeflow-python\v1.24.0\EyeFlow 1.24.0.exe"
+& $eyeFlow --help
+& $eyeFlow --data "D:\Data\sample.holo" --output "D:\Results"
+$LASTEXITCODE
+```
+
+The installer does not add an `eyeflow-cli` command to PATH. The executable
+preserves terminal output, redirection, and exit status: `0` for success, `1`
+for a runtime failure, and `2` for invalid arguments. Pipeline selection and
+options use the same saved settings as the GUI unless `--pipelines` supplies
+a text file of target names.
+
+The executable is console-enabled. PyInstaller's `hide-early` policy hides
+only a console created for the application, preserving an existing terminal
+when launched from PowerShell or Command Prompt. Desktop launches keep the
+console hidden; `-Console` disables hiding for diagnostic builds.
+
 ## Collection policy
 
 `installer/eyeflow.spec` defines the application bundle. Its hooks preserve
@@ -86,6 +109,11 @@ GPU kernels first compile on a worker thread, matching GUI analysis.
 A machine without an
 NVIDIA driver/device records the GPU check as skipped; import and CPU checks
 still must pass.
+
+The builder also runs the frozen CLI in subprocesses and verifies captured
+help output, argument errors, and runtime-failure messages with their exit
+codes. These checks run against the same sanitized environment before the
+runtime smoke check.
 
 To explicitly require GPU verification on a target machine:
 
