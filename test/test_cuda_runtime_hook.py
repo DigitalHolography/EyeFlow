@@ -15,7 +15,7 @@ def test_native_nvrtc_lookup_uses_bundled_builtins_with_clean_path(tmp_path):
     try:
         distribution = importlib.metadata.distribution("nvidia-cuda-nvrtc")
     except importlib.metadata.PackageNotFoundError:
-        pytest.skip("Install the gpu extra to exercise real NVRTC DLL loading")
+        pytest.skip("Run uv sync to install the NVIDIA runtime for real NVRTC DLL loading")
     internal = tmp_path / "_internal"
     cuda_bin = internal / "nvidia/cu13/bin/x86_64"
     cuda_bin.mkdir(parents=True)

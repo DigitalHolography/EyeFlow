@@ -1,24 +1,21 @@
-"""Write EyeFlow runtime values into HDF5 files."""
+"""Generic HDF5 file, dataset, and attribute write operations."""
 
-import json
-import re
 from contextlib import contextmanager
 from pathlib import Path
 
 import h5py
+from input_output.readers.nodes import is_group
 import numpy as np
 
-from app_settings import app_version
-from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
+from ..schema.base import normalize_h5_path
+from ..schema.output_payload import dataset_parts
 from ..schema.provenance import inherited_provenance
-
-
-# Small arrays save less payload than the per-dataset chunk index costs.
-_MIN_COMPRESSION_BYTES = 4096
-
-
-def normalize_h5_path(path: object) -> str:
-    return str(path).replace("\\", "/").strip("/")
+from .h5_storage import (
+    _array_from_sequence,
+    _create_dataset,
+    _downcast_numeric_payload,
+    _normalize_dataset_payload,
+)
 
 
 def open_h5(path: Path | str, mode: str = "r") -> h5py.File:
@@ -36,19 +33,49 @@ def h5_write_checkpoint(h5file: h5py.File):
     Open object handles retain replaced datasets until the checkpoint ends.
     Pipeline writers replace datasets; in-place array edits are not supported.
     """
-    objects = {"": h5file}
-
-    def retain(name, obj):
-        objects[name] = obj
-
-    h5file.visititems(retain)
-    attributes = {
-        name: {key: (obj.attrs[key], obj.attrs.get_id(key).dtype) for key in obj.attrs}
-        for name, obj in objects.items()
-    }
+    if hasattr(h5file, "checkpoint"):
+        with h5file.checkpoint() as checkpoint:
+            yield checkpoint
+        return
+    checkpoint = H5WriteCheckpoint(h5file)
     try:
-        yield
+        yield checkpoint
     except Exception:
+        checkpoint.rollback()
+        raise
+
+
+class H5WriteCheckpoint:
+    """Retain dataset handles and attributes; accept explicit partial commits."""
+
+    def __init__(self, h5file):
+        self.file = h5file
+        self.objects = {"": h5file}
+        h5file.visititems(lambda name, obj: self.objects.__setitem__(name, obj))
+        self.attributes = {name: self._attrs(obj) for name, obj in self.objects.items()}
+
+    @staticmethod
+    def _attrs(obj):
+        return {key: (obj.attrs[key], obj.attrs.get_id(key).dtype) for key in obj.attrs}
+
+    def commit(self, paths):
+        """Advance only declared products and their parent-group attributes.
+
+        Unlike another full-file checkpoint, this does not revisit unrelated
+        datasets for each handoff. Array contents are never copied.
+        """
+        committed = {""}
+        for path in paths:
+            parts = normalize_h5_path(path).split("/")
+            committed.update("/".join(parts[:i]) for i in range(1, len(parts) + 1))
+        for name in committed:
+            obj = self.file if not name else self.file[name]
+            self.objects[name] = obj
+            self.attributes[name] = self._attrs(obj)
+
+    def rollback(self):
+        h5file = self.file
+        objects, attributes = self.objects, self.attributes
         current_paths = []
         h5file.visit(current_paths.append)
         for name in sorted(current_paths, key=lambda path: path.count("/"), reverse=True):
@@ -66,7 +93,6 @@ def h5_write_checkpoint(h5file: h5py.File):
             for key, (value, dtype) in attributes[name].items():
                 obj.attrs.create(key, value, dtype=dtype)
         h5file.flush()
-        raise
 
 
 def resolve_dataset_target(root_group: h5py.Group, key: str) -> tuple[h5py.Group, str]:
@@ -81,7 +107,7 @@ def resolve_dataset_target(root_group: h5py.Group, key: str) -> tuple[h5py.Group
         if existing is None:
             parent = parent.create_group(part)
             continue
-        if isinstance(existing, h5py.Group):
+        if is_group(existing):
             parent = existing
             continue
         raise ValueError(
@@ -101,6 +127,18 @@ def set_attr_safe(h5obj: h5py.File | h5py.Group | h5py.Dataset, key: str, value)
         h5obj.attrs[key] = data
     except (TypeError, ValueError) as exc:
         raise type(exc)(f"Could not write HDF5 attribute '{key}': {exc}") from exc
+
+
+def write_root_attributes(h5file: h5py.File, values: dict[str, object]) -> None:
+    """Apply engine bookkeeping to the root output object."""
+    for key, value in values.items():
+        h5file.attrs[key] = value
+
+
+def delete_output_path(h5file: h5py.File, path: str) -> None:
+    normalized = normalize_h5_path(path)
+    if normalized in h5file:
+        del h5file[normalized]
 
 
 def _normalize_attribute_payload(value):
@@ -124,20 +162,14 @@ def _matches_inherited_attribute(value, inherited) -> bool:
 
 
 def write_value_dataset(group: h5py.Group, key: str, value) -> None:
-    ds_attrs = None
-    h5_options = None
-    data = value
-
-    if hasattr(value, "data") and hasattr(value, "attrs"):
-        data = value.data
-        ds_attrs = value.attrs
-        h5_options = getattr(value, "h5_options", None)
-    elif isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
-        data, ds_attrs = value
+    data, ds_attrs, h5_options = dataset_parts(value)
 
     target_group, dataset_key = resolve_dataset_target(group, str(key))
     if dataset_key in target_group:
         del target_group[dataset_key]
+    backing_name = f"__{dataset_key}_unique_frequency_storage"
+    if backing_name in target_group:
+        del target_group[backing_name]
 
     payload, ds_attrs = _normalize_dataset_payload(data, ds_attrs)
     dataset = _create_dataset(
@@ -154,209 +186,3 @@ def write_value_dataset(group: h5py.Group, key: str, value) -> None:
                 if _matches_inherited_attribute(attr_val, inherited_attrs[attr_key]):
                     continue
             set_attr_safe(dataset, attr_key, attr_val)
-
-
-def initialize_output_h5(
-    h5file: h5py.File,
-    *,
-    holodoppler_source_file: str | None = None,
-    doppler_vision_source_file: str | None = None,
-) -> None:
-    set_attr_safe(h5file, "eyeflow_version", _project_version())
-    if holodoppler_source_file:
-        h5file.attrs["holodoppler_source_file"] = holodoppler_source_file
-
-        # Pass registration and zernike data through to their output schema paths.
-        with open_h5(holodoppler_source_file, "r") as source_h5:
-            for source_path, output_path in HD_OUTPUT_PASSTHROUGH_PATHS:
-                if source_h5.get(source_path) is None:
-                    continue
-                output_group, output_name = resolve_dataset_target(
-                    h5file,
-                    output_path,
-                )
-                if output_name in output_group:
-                    del output_group[output_name]
-                source_h5.copy(source_path, output_group, name=output_name)
-    if doppler_vision_source_file:
-        h5file.attrs["doppler_vision_source_file"] = doppler_vision_source_file
-    _initialize_app_versions(h5file, doppler_vision_source_file)
-    primary_source = holodoppler_source_file or doppler_vision_source_file
-    if primary_source:
-        h5file.attrs["source_file"] = primary_source
-
-
-def _initialize_app_versions(
-    h5file: h5py.File,
-    doppler_vision_source_file: str | None,
-) -> None:
-    """Write application versions as one scalar JSON dataset."""
-
-    versions: dict[str, object] = {}
-    if doppler_vision_source_file:
-        with open_h5(doppler_vision_source_file, "r") as source_h5:
-            source_versions = source_h5.get("app_versions")
-            versions = _read_app_versions(source_versions)
-
-    versions["EF_version"] = _project_version()
-    if "app_versions" in h5file:
-        del h5file["app_versions"]
-    h5file.create_dataset(
-        "app_versions",
-        data=json.dumps(versions),
-        dtype=h5py.string_dtype(encoding="utf-8"),
-    )
-
-
-def _read_app_versions(source_versions) -> dict[str, object]:
-    if isinstance(source_versions, h5py.Dataset):
-        value = _scalar_text(source_versions[()])
-        if value is None:
-            return {}
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-
-    # Accept the group representation emitted by older EyeFlow builds.
-    if isinstance(source_versions, h5py.Group):
-        versions: dict[str, object] = {}
-        for key, value in source_versions.items():
-            if isinstance(value, h5py.Dataset):
-                scalar = _scalar_text(value[()])
-                if scalar is not None:
-                    versions[str(key)] = scalar
-        return versions
-    return {}
-
-
-def _scalar_text(value) -> str | None:
-    if isinstance(value, np.ndarray):
-        if value.size != 1:
-            return None
-        value = value.reshape(-1)[0]
-    if isinstance(value, bytes):
-        return value.decode("utf-8")
-    if isinstance(value, np.generic):
-        value = value.item()
-    if isinstance(value, bytes):
-        return value.decode("utf-8")
-    return str(value) if value is not None else None
-
-
-def _project_version() -> str:
-    pyproject_path = Path(__file__).resolve().parents[3] / "pyproject.toml"
-    try:
-        pyproject_text = pyproject_path.read_text(encoding="utf-8")
-    except OSError:
-        pyproject_text = ""
-
-    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', pyproject_text)
-    return match.group(1) if match else (app_version() or "unknown")
-
-
-def _normalize_dataset_payload(data, ds_attrs):
-    original_class = None
-    payload = data
-
-    if isinstance(payload, bool) or (
-        isinstance(payload, np.ndarray) and payload.dtype == np.bool_
-    ):
-        payload = np.asarray(payload, dtype=np.uint8)
-        original_class = "bool"
-    elif isinstance(payload, (list, tuple)):
-        payload = _array_from_sequence(payload)
-
-    payload = _downcast_numeric_payload(payload)
-
-    if original_class is not None:
-        ds_attrs = {} if ds_attrs is None else dict(ds_attrs)
-        ds_attrs.setdefault("original_class", original_class)
-
-    return payload, ds_attrs
-
-
-def _array_from_sequence(values: list | tuple) -> np.ndarray:
-    # NumPy can silently coerce mixed signed/large-unsigned integers to float.
-    objects = np.asarray(values, dtype=object)
-    if objects.size and all(
-        isinstance(item, (int, np.integer)) and not isinstance(item, (bool, np.bool_))
-        for item in objects.flat
-    ):
-        minimum = min(int(item) for item in objects.flat)
-        maximum = max(int(item) for item in objects.flat)
-        if minimum < np.iinfo(np.int64).min or maximum > np.iinfo(np.uint64).max:
-            raise OverflowError("Integer sequence is outside the HDF5 64-bit range.")
-        if minimum < 0:
-            if maximum > np.iinfo(np.int64).max:
-                raise OverflowError(
-                    "Integer sequence cannot fit in a single signed HDF5 64-bit dtype."
-                )
-            return np.asarray(values, dtype=np.int64)
-        dtype = np.uint64 if maximum > np.iinfo(np.int64).max else np.int64
-        return np.asarray(values, dtype=dtype)
-    return np.asarray(values)
-
-
-def _downcast_numeric_payload(payload):
-    if isinstance(payload, bool):
-        return payload
-    if isinstance(payload, float):
-        return np.float32(payload)
-    if isinstance(payload, int):
-        if np.iinfo(np.int64).min <= payload <= np.iinfo(np.int64).max:
-            return np.int64(payload)
-        if 0 <= payload <= np.iinfo(np.uint64).max:
-            return np.uint64(payload)
-        raise OverflowError(f"Integer value is outside the HDF5 64-bit range: {payload}")
-    if isinstance(payload, complex):
-        return np.complex64(payload)
-    if not isinstance(payload, np.ndarray):
-        return payload
-    if payload.dtype.kind == "f":
-        return payload.astype(np.float32, copy=False)
-    if payload.dtype.kind == "c":
-        return payload.astype(np.complex64, copy=False)
-    if payload.dtype.kind in {"i", "u"}:
-        # Preserve integer arrays rather than narrowing them without a range check.
-        return payload
-    return payload
-
-
-def _create_dataset(
-    group: h5py.Group,
-    dataset_key: str,
-    payload,
-    *,
-    h5_options: dict[str, object] | None = None,
-):
-    if isinstance(payload, str):
-        return group.create_dataset(
-            dataset_key,
-            data=payload,
-            dtype=h5py.string_dtype(encoding="utf-8"),
-        )
-    options = dict(h5_options or {})
-    # HDF5 filters require chunked arrays; scalars and strings stay unfiltered.
-    if (
-        isinstance(payload, np.ndarray)
-        and payload.ndim > 0
-        and payload.dtype.kind in {"b", "i", "u", "f", "c"}
-    ):
-        options.setdefault(
-            "compression",
-            "gzip" if payload.nbytes >= _MIN_COMPRESSION_BYTES else None,
-        )
-        if options["compression"] == "gzip":
-            options.setdefault("compression_opts", 6)
-        if options["compression"] is not None:
-            options.setdefault("shuffle", True)
-    if isinstance(payload, np.ndarray) and payload.dtype.kind in {"U", "O"}:
-        if all(isinstance(item, (str, bytes)) for item in payload.flat):
-            payload = np.asarray(payload, dtype=object)
-            options.setdefault("dtype", h5py.string_dtype(encoding="utf-8"))
-    try:
-        return group.create_dataset(dataset_key, data=payload, **options)
-    except (TypeError, ValueError) as exc:
-        raise type(exc)(f"Could not write HDF5 dataset '{dataset_key}': {exc}") from exc

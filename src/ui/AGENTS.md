@@ -25,7 +25,9 @@ CLI.
 
 ## Workflow contract
 
-Both velocity estimators run automatically; do not expose a method selector.
+The JSON `velocity_estimation_method` setting selects `doppler_moments`,
+`bandratio`, or `both` (default). Pass the persisted selection to the run service;
+do not expose a GUI method selector.
 The selected target names and option names are passed to
 `pipeline_engine.resolve_run_spec`; the controller must not duplicate its
 availability, dependency, or destination validation. Execution delegates to
@@ -66,7 +68,7 @@ Both dialogs append via
 `InputController.add_holo_input_paths`; folders use the same recursive expansion
 and deduplication as drops. Clear resets the selection. A text list stays a sole
 input: selecting one replaces files, while adding files/folders replaces the list.
-Directory expansion delegates to `input_output.run_discovery`, which accepts
+Directory expansion delegates to `input_output.runs.discovery`, which accepts
 matching HD/DV run directories without `.holo` markers, including the selected
 directory itself. Keep folder recognition and path identities out of the UI.
 The file and folder pickers share `last_input_directory`, persisted through

@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 if __package__:
@@ -85,10 +86,36 @@ def write_inno_script(repo: Path, build: Path, bundle: Path, output: Path, name:
     return path
 
 
+def verify_cli(executable: Path, *, cwd: Path, env: dict[str, str]):
+    """Check actual frozen CLI streams and exit codes before packaging."""
+    # An absent pipeline list fails before input execution or settings writes.
+    with tempfile.TemporaryDirectory(prefix="eyeflow-cli-check-") as directory:
+        missing = Path(directory) / "missing-pipelines.txt"
+        probes = (
+            (["--help"], 0, "stdout", "--data"),
+            (["--data"], 2, "stderr", "expected one argument"),
+            (["--data", str(Path(directory) / "missing.holo"),
+              "--pipelines", str(missing)], 1, "stderr", missing.name),
+        )
+        for arguments, expected_status, stream, expected_text in probes:
+            result = subprocess.run(
+                [str(executable), *arguments], cwd=cwd, env=env,
+                capture_output=True, text=True, timeout=120, check=False,
+            )
+            if (result.returncode != expected_status
+                    or expected_text not in getattr(result, stream)):
+                raise RuntimeError(
+                    f"Frozen CLI check failed for {arguments!r}: expected exit "
+                    f"{expected_status} and {expected_text!r} on {stream}; got exit "
+                    f"{result.returncode}, stdout={result.stdout!r}, stderr={result.stderr!r}"
+                )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inno-setup-compiler")
-    parser.add_argument("--console", action="store_true")
+    parser.add_argument("--console", action="store_true",
+                        help="Keep the application's own console visible on desktop launches.")
     parser.add_argument("--skip-clean", action="store_true")
     parser.add_argument("--include-pipeline-extras", action="store_true")
     args = parser.parse_args(argv)
@@ -151,6 +178,8 @@ def main(argv=None):
     clean_directory(REPO, cache)
     smoke_environment["CUPY_CACHE_DIR"] = str(cache)
     smoke_environment["EYEFLOW_PIPELINES_DIR"] = str(bundle / "pipelines")
+    verify_cli(executable, cwd=bundle, env=smoke_environment)
+    print("Frozen CLI checks passed (help, argument errors, runtime failures).", flush=True)
     smoke = build / "smoke-report.json"
     smoke.unlink(missing_ok=True)
     result = subprocess.run([str(executable), "--packaging-check", str(smoke)],

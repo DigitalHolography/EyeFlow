@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from input_output.article_formatting import ARTICLE_DPI
+from plotting.article import ARTICLE_DPI
 
 from .eps import EpsArtifactWriter
 from .png import PngArtifactWriter
+from .deferred import defer_write
 
 
 def save_article_figure_pair(
@@ -25,7 +26,6 @@ def save_article_figure_pair(
     apply article styling before export. Generic PNG/EPS writers are unchanged.
     """
     from matplotlib import pyplot as plt
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
 
     try:
         basename = Path(str(name).replace("\\", "/"))
@@ -35,17 +35,25 @@ def save_article_figure_pair(
             PngArtifactWriter(output, stem).path(f"{basename}.png"),
             EpsArtifactWriter(output, stem).path(f"{basename}.eps"),
         ]
-        FigureCanvasAgg(fig)
-        fig.set_dpi(dpi)
-        fig.canvas.draw()
-        fig.set_layout_engine("none")
-        canvas_bounds = fig.bbox_inches.frozen()
-        for path, format_name in zip(paths, ("png", "eps")):
-            fig.savefig(
-                path, format=format_name, dpi=dpi, bbox_inches=canvas_bounds,
-                pad_inches=0, transparent=False,
-                facecolor=fig.get_facecolor(), edgecolor=fig.get_edgecolor(),
-            )
+        if not defer_write("article_pair", fig, paths, dpi=dpi):
+            render_article_figure_pair(fig, paths, dpi=dpi)
         return paths
     finally:
         plt.close(fig)
+
+
+def render_article_figure_pair(fig, paths, *, dpi):
+    """Apply the identical frozen layout policy in immediate and background saves."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    FigureCanvasAgg(fig)
+    fig.set_dpi(dpi)
+    fig.canvas.draw()
+    fig.set_layout_engine("none")
+    canvas_bounds = fig.bbox_inches.frozen()
+    for path, format_name in zip(paths, ("png", "eps")):
+        fig.savefig(
+            path, format=format_name, dpi=dpi, bbox_inches=canvas_bounds,
+            pad_inches=0, transparent=False,
+            facecolor=fig.get_facecolor(), edgecolor=fig.get_edgecolor(),
+        )

@@ -200,3 +200,59 @@ def test_spatial_gradient_chain_has_the_exact_scientific_order() -> None:
         "unsharp_8_weight_0.6",
         "moving_average",
     ]
+
+
+def test_skipping_longitudinal_velocity_preserves_other_measurements() -> None:
+    from calculations.topology import OpticDisc
+    from calculations.vessel_segments.measurement import (
+        SegmentMeasurementSettings,
+        analyze_segment_profiles,
+    )
+    from pipelines.velocity_analysis.analysis.segments import (
+        analyze_velocity_segment_profiles,
+    )
+
+    prepared = _prepared()
+    vessel = prepared.native.branches.labels > 0
+    optic_disc = OpticDisc(None, (4.0, 8.0), 2.0, 2.0)
+    rings = prepared.native.ring_settings
+    signal = np.arange(3 * 9 * 9, dtype=np.float32).reshape(3, 9, 9)
+    signal[1, 2:4, 3:5] = np.nan
+    args = (
+        signal, {"artery": vessel}, optic_disc, rings,
+        SegmentMeasurementSettings(0.01),
+    )
+    kwargs = {"prepared_topologies": {"artery": prepared}}
+    full = analyze_velocity_segment_profiles(
+        *args, **kwargs, retain_velocity_maps=True,
+    )["artery"].profile
+    assert np.count_nonzero(prepared.valid_segments) > 0
+    assert full.longitudinal is not None
+    with patch(
+        "calculations.vessel_segments.measurement.accumulator.longitudinal_profiles",
+        side_effect=AssertionError("Unused longitudinal reduction was executed"),
+    ) as reduce:
+        skipped = analyze_velocity_segment_profiles(
+            *args, **kwargs, retain_velocity_maps=True,
+            compute_longitudinal_profiles=False,
+        )["artery"].profile
+    reduce.assert_not_called()
+    assert skipped.longitudinal is None
+    with pytest.raises(RuntimeError, match="not requested"):
+        skipped.profile("longitudinal", masked=True)
+    np.testing.assert_array_equal(skipped.segment_signal, full.segment_signal)
+    for name in ("transverse", "mean_images"):
+        for masked in (False, True):
+            np.testing.assert_array_equal(
+                getattr(skipped, name).select(masked=masked),
+                getattr(full, name).select(masked=masked),
+            )
+    np.testing.assert_array_equal(skipped.maps.values, full.maps.values)
+
+    # Gradient callers retain the shared engine's longitudinal default.
+    generic = analyze_segment_profiles(*args, **kwargs)["artery"]
+    for masked in (False, True):
+        np.testing.assert_array_equal(
+            generic.profile("longitudinal", masked=masked),
+            full.profile("longitudinal", masked=masked),
+        )

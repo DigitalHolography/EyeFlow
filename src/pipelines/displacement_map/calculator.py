@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-import json
+from contextlib import nullcontext
 from pathlib import Path
 
 import h5py
 import numpy as np
 
 from calculations.math.temporal_median import CenteredMedianBuffer
+from calculations.temporal_reference import compute_mean_reference
+from input_output.writers.displacement_arrays import OutputCaches
+from input_output.readers.frame_sequences import FrameReplay, FrameSequence, load_binary_mask
+from input_output.writers.magnitude_avi import write_magnitude_avi
+from input_output.writers.sidecars import write_json_file
+from input_output.writers.png import write_cv_png_file
 
 try:
     import cv2
@@ -21,7 +27,6 @@ except ImportError:
     tqdm = None
 
 from .constants import PDE_REGISTRATION_METHODS
-from .outputs import OutputCaches, select_display_range, write_magnitude_video
 from .parameters import MotionMapConfig, PhotometricConfig
 from .preprocessing import (
     photometric_confidence,
@@ -33,7 +38,6 @@ from .registration import (
     registration_method_class_name,
     require_registration_backend,
 )
-from .sources import FrameSequence, compute_mean_reference, load_binary_mask
 
 
 def create_retinal_motion_map(
@@ -42,6 +46,7 @@ def create_retinal_motion_map(
     analysis_mask_array: np.ndarray | None = None,
     magnitude_video_path: Path | None = None,
     h5_source: h5py.Dataset | None = None,
+    frame_replay: FrameReplay | None = None,
 ) -> dict[str, Path]:
     if cv2 is None:
         raise RuntimeError("OpenCV is required to create a displacement map.")
@@ -50,7 +55,7 @@ def create_retinal_motion_map(
     require_registration_backend(args.registration_method)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    sequence = FrameSequence(
+    sequence = frame_replay.source if frame_replay is not None else FrameSequence(
         args.input,
         args.h5_dataset,
         args.h5_frame_axis,
@@ -58,6 +63,7 @@ def create_retinal_motion_map(
         args.h5_low_percentile,
         args.h5_high_percentile,
         h5_source=h5_source,
+        defer_h5_range=True,
     )
     frame_capacity = sequence.frame_count
     if args.max_frames is not None:
@@ -95,121 +101,117 @@ def create_retinal_motion_map(
         confidence_floor=float(args.photometric_confidence_floor),
         dark_percentile=float(args.photometric_dark_percentile),
     )
-    cv2.imwrite(str(args.output_dir / "analysis_mask.png"), analysis_mask)
+    write_cv_png_file(args.output_dir / "analysis_mask.png", analysis_mask)
 
-    print("Calcul de la référence moyenne...")
-    reference_raw, actual_reference_count = compute_mean_reference(sequence, args.max_frames)
-    frame_capacity = min(frame_capacity, actual_reference_count)
-    confidence = photometric_confidence(reference_raw, valid_analysis, photometric_config)
-    registration_weight = analysis_soft * confidence
-    reference = structural_registration_signal(
-        reference_raw, photometric_config, valid_analysis, args.structure_edge_weight
+    frame_context = (
+        nullcontext(frame_replay) if frame_replay is not None
+        else sequence.cached_for_replay(args.max_frames, args.output_dir)
     )
+    with frame_context as replay:
+        print("Calcul de la référence moyenne...")
+        reference_raw, actual_reference_count = compute_mean_reference(replay, args.max_frames)
+        frame_capacity = min(frame_capacity, actual_reference_count)
+        confidence = photometric_confidence(reference_raw, valid_analysis, photometric_config)
+        registration_weight = analysis_soft * confidence
+        reference = structural_registration_signal(
+            reference_raw, photometric_config, valid_analysis, args.structure_edge_weight
+        )
 
-    cv2.imwrite(
-        str(args.output_dir / "reference_mean.png"),
-        np.round(np.clip(reference_raw, 0.0, 1.0) * 255.0).astype(np.uint8),
-    )
-    cv2.imwrite(
-        str(args.output_dir / "reference_registration.png"),
-        np.round(np.clip(reference, 0.0, 1.0) * 255.0).astype(np.uint8),
-    )
-    cv2.imwrite(
-        str(args.output_dir / "registration_confidence.png"),
-        np.round(np.clip(confidence, 0.0, 1.0) * 255.0).astype(np.uint8),
-    )
+        write_cv_png_file(
+            args.output_dir / "reference_mean.png",
+            np.round(np.clip(reference_raw, 0.0, 1.0) * 255.0).astype(np.uint8),
+        )
+        write_cv_png_file(
+            args.output_dir / "reference_registration.png",
+            np.round(np.clip(reference, 0.0, 1.0) * 255.0).astype(np.uint8),
+        )
+        write_cv_png_file(
+            args.output_dir / "registration_confidence.png",
+            np.round(np.clip(confidence, 0.0, 1.0) * 255.0).astype(np.uint8),
+        )
 
-    caches = OutputCaches(
-        args.output_dir,
-        frame_capacity,
-        sequence.height,
-        sequence.width,
-        args.save_field,
-        analysis_mask > 0,
-    )
+        caches = OutputCaches(
+            args.output_dir,
+            frame_capacity,
+            sequence.height,
+            sequence.width,
+            args.save_field,
+        )
 
-    previous_registration_field = np.zeros((sequence.height, sequence.width, 2), dtype=np.float32)
-    previous_smoothed_field: np.ndarray | None = None
-    median_buffer = CenteredMedianBuffer(args.temporal_median_window)
-    raw_frame_count = 0
+        previous_registration_field = np.zeros((sequence.height, sequence.width, 2), dtype=np.float32)
+        previous_smoothed_field: np.ndarray | None = None
+        median_buffer = CenteredMedianBuffer(args.temporal_median_window)
 
-    def append_temporally_filtered(raw_field: np.ndarray) -> None:
+        def append_temporally_filtered(raw_field: np.ndarray) -> None:
 
-        nonlocal previous_smoothed_field
-        field = raw_field.astype(np.float32, copy=True)
+            nonlocal previous_smoothed_field
+            field = raw_field.astype(np.float32, copy=True)
 
-        if previous_smoothed_field is not None and args.temporal_alpha < 1.0:
-            alpha = np.float32(args.temporal_alpha)
-            field = (alpha * field + (np.float32(1.0) - alpha) * previous_smoothed_field).astype(
-                np.float32
-            )
+            if previous_smoothed_field is not None and args.temporal_alpha < 1.0:
+                alpha = np.float32(args.temporal_alpha)
+                field = (alpha * field + (np.float32(1.0) - alpha) * previous_smoothed_field).astype(
+                    np.float32
+                )
 
-        field[analysis_mask == 0] = 0.0
-        previous_smoothed_field = field.copy()
-        magnitude = np.hypot(field[..., 0], field[..., 1]).astype(np.float32)
-        magnitude[analysis_mask == 0] = 0.0
-        caches.append(field, magnitude)
+            field[analysis_mask == 0] = 0.0
+            previous_smoothed_field = field.copy()
+            magnitude = np.hypot(field[..., 0], field[..., 1]).astype(np.float32)
+            magnitude[analysis_mask == 0] = 0.0
+            caches.append(field, magnitude)
 
-    progress = tqdm(total=frame_capacity, desc="Registration magnitude", unit="frame")
-    try:
-        for frame in sequence.iter_frames(frame_capacity):
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
-            moving = structural_registration_signal(
-                gray, photometric_config, valid_analysis, args.structure_edge_weight
-            )
-            initial_field = (
-                previous_registration_field
-                if args.registration_initialization == "previous"
-                else None
-            )
-            raw_field, _registration_metric = estimate_registration_field(
-                fixed_full=reference,
-                moving_full=moving,
-                mask_soft_full=registration_weight,
-                initial_full=initial_field,
-                method=args.registration_method,
-                scale=args.scale,
-                iterations=args.iterations,
-                field_sigma=args.field_sigma,
-                update_sigma=args.update_sigma,
-                metric_radius=args.registration_metric_radius,
-                learning_rate=args.registration_learning_rate,
-            )
-            raw_field[analysis_mask == 0] = 0.0
-            previous_registration_field = raw_field.copy()
-            raw_frame_count += 1
+        progress = tqdm(total=frame_capacity, desc="Registration magnitude", unit="frame")
+        try:
+            for frame in replay.iter_frames(frame_capacity):
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+                moving = structural_registration_signal(
+                    gray, photometric_config, valid_analysis, args.structure_edge_weight
+                )
+                initial_field = (
+                    previous_registration_field
+                    if args.registration_initialization == "previous"
+                    else None
+                )
+                raw_field, _registration_metric = estimate_registration_field(
+                    fixed_full=reference,
+                    moving_full=moving,
+                    mask_soft_full=registration_weight,
+                    initial_full=initial_field,
+                    method=args.registration_method,
+                    scale=args.scale,
+                    iterations=args.iterations,
+                    field_sigma=args.field_sigma,
+                    update_sigma=args.update_sigma,
+                    metric_radius=args.registration_metric_radius,
+                    learning_rate=args.registration_learning_rate,
+                )
+                raw_field[analysis_mask == 0] = 0.0
+                previous_registration_field = raw_field.copy()
 
-            for median_field in median_buffer.push(raw_field):
+                for median_field in median_buffer.push(raw_field):
+                    append_temporally_filtered(median_field)
+
+                progress.update(1)
+
+            for median_field in median_buffer.finish():
                 append_temporally_filtered(median_field)
+        finally:
+            progress.close()
+            caches.flush()
 
-            progress.update(1)
-
-        for median_field in median_buffer.finish():
-            append_temporally_filtered(median_field)
-    finally:
-        progress.close()
-        caches.flush()
-
-    display_minimum, display_maximum = select_display_range(
-        caches,
-        args.normalization,
-        args.low_percentile,
-        args.high_percentile,
-        args.fixed_max_px,
-    )
-    output_video = magnitude_video_path or (args.output_dir / "displacement_magnitude.mp4")
+    output_video = magnitude_video_path or (args.output_dir / "displacement_magnitude.avi")
     output_video.parent.mkdir(parents=True, exist_ok=True)
-    write_magnitude_video(
-        caches,
+    display_minimum, display_maximum = write_magnitude_avi(
         output_video,
-        args.codec,
-        sequence.fps,
-        (sequence.width, sequence.height),
-        display_minimum,
-        display_maximum,
-        args.gamma,
-        args.visualization_sigma,
-        analysis_mask > 0,
+        caches.magnitude,
+        frame_count=caches.count,
+        valid_mask=analysis_mask > 0,
+        fps=sequence.fps,
+        normalization=args.normalization,
+        low_percentile=args.low_percentile,
+        high_percentile=args.high_percentile,
+        fixed_maximum=args.fixed_max_px,
+        gamma=args.gamma,
+        visualization_sigma=args.visualization_sigma,
     )
 
     metadata = {
@@ -284,9 +286,7 @@ def create_retinal_motion_map(
         "saved_dense_field": bool(args.save_field),
         "stabilization_modified": False,
     }
-    (args.output_dir / "metadata.json").write_text(
-        json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    write_json_file(args.output_dir / "metadata.json", metadata)
     caches.close()
 
     print(f"Vidéo créée : {output_video}")

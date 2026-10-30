@@ -6,7 +6,7 @@ remain the final source of truth.
 
 ## Article figure formatting
 
-`src/input_output/figure_formatting.py` provides general-purpose, opt-in
+`src/plotting/formatting.py` provides general-purpose, opt-in
 Matplotlib helpers for article and non-article figures. It imposes no font,
 backend, export format, or global settings:
 
@@ -32,7 +32,7 @@ and colorbars. Layout fields left as `None` delegate to Matplotlib; explicit
 keyword overrides take precedence over reusable layouts. No additional EPS
 exports or article styling are introduced by the general helpers.
 
-`src/input_output/article_formatting.py` owns shared, opt-in article styling.
+`src/plotting/article.py` owns shared, opt-in article styling.
 `ArticleStyle` configures Times New Roman text, Times-compatible STIX math,
 separate axis-label/tick/legend/title/annotation sizes, borders, tick rotation,
 label/tick padding in points, and optional X/Y data margins. `scaled_fonts()`
@@ -155,8 +155,8 @@ described below.
 | High-frequency band | `/band_<i>_<n>_<m>` | Last video in the same ordering; at least two matching datasets are required |
 | Frequency-resolved capillary source | `/spectrograms` | Optional gap-spectrum preprocessing source; exact HD root dataset name |
 | Flat-field zeroth moment | `/moment0ff`, legacy `/M0FF` | Optional |
-| Registration | `/registration` | Optional; copied to output `/Meta/registration` |
-| Zernike coefficients | `/zernike_coefs_radians` | Optional; copied through unchanged |
+| Registration | `/registration` | Optional HD metadata; copied to output `/Meta/registration` when `copy_hd_passthrough` is enabled |
+| Zernike coefficients | `/zernike_coefs_radians` | Optional HD metadata; copied unchanged when `copy_hd_passthrough` is enabled |
 
 Moment and band datasets must be 3-D. The two bands must be numeric and have
 identical shapes; their chunk values must be finite. During velocity estimation,
@@ -196,9 +196,13 @@ matching grids use a copy. The mask stays Boolean and is not averaged or reduced
 using all-true blocks. `calculations.topology.downsample_gap_zones` owns this
 array transform and receives the target shape explicitly; it does not read HDF5.
 `pipelines.low_freq_spectra.masks.gap_velocity_mask` adapts it to the video's spatial
-shape. Gap preprocessing now uses this application helper, then flips and
-transposes the reduced native mask into the same published `(x, y)` frame as
-the aligned spectra. The persisted mask is unchanged.
+shape. Gap preprocessing prepares this reduced mask in native HD `(y, x)`
+coordinates once. Spectral frames stay in exported coordinates; their spatial
+axes are not flipped or transposed for scalar reductions. This selects exactly
+the same pixels as the former jointly aligned mask/frame calculation. The
+persisted EF `(x, y)` segmentation mask is unchanged. Application metadata uses
+`mask_application_coordinates="HD_export_yx"`, `mask_application_dimDesc=["y","x"]`
+and `spectrogram_spatial_transform="none_HD_export_order"`.
 
 Spectral frequency calibration uses the original FFT length `B=batch_size`.
 NumPy's `np.fft.fftfreq(B, d=1/fs)` supplies the signed FFT frequency grid;
@@ -232,6 +236,30 @@ aggregation. Frequency order and source power units are retained. Outputs are
 written after velocity-workflow failure cleanup, so shared spectra survive a
 failed moments workflow when the band workflow succeeds. They are produced
 once, with no `/ProcessingBandRatio/Spectrograms` duplicate.
+
+Read sequential time slabs directly into a reusable C-contiguous buffer, with
+a default 64 MiB source-buffer budget (at least one complete frame). Align slabs
+to time chunks when a whole time chunk fits that budget. For the usual
+`(640,64,128,128)` float32 source, this means 40 reads of 16 frames instead of
+640 individual frame reads. This bounds application memory while reducing HDF5
+call overhead on local or remote files; it does not guarantee a particular NAS
+request count, cache residency or network transfer rate. Large sample arrays
+retain the source dtype, normally float32. Flattening native spatial axes is
+a view. Compute means with float64 accumulation; median selection partitions
+owned work arrays in place and promotes only the central values before their
+midpoint. Source arrays are never modified. Global and gap products share
+source reads and finite checks; full gap coverage reuses the global median.
+
+For blocks of at least 8 MiB, automatic CPU reduction uses at most eight
+available logical CPUs. Smaller blocks stay serial. A reusable thread pool
+assigns complete spatial vectors for disjoint `(time,freq)` rows to workers;
+it does not split pixels and combine partial medians. HDF5 reads and result
+writes remain on the caller thread. All tasks finish before the next source
+slab overwrites the reusable buffer. `spatial_reduction_max_workers` records
+the worker cap, not a claim that every small block used that many threads.
+The `workers` keyword on the spatial reducer supports an explicit count for
+benchmarking; `workers=1` forces serial reduction. No scientific definition,
+missing-value policy or output ordering depends on the worker count.
 
 `pipelines/low_freq_spectra/preprocessing.py` prepares optional gap support for
 the same streaming reduction pass, which computes the spatial median
@@ -436,121 +464,118 @@ Normalization changes figure coordinates only; the source power and STD
 datasets remain unnormalized.
 
 `/ProcessingSpectrograms/Gaps/Metrics` groups all gap-spectrum metrics directly,
-without `/value` suffixes or workflow copies. The former `TimeAggregated/Metrics`
-group is no longer emitted. Twelve pooled scalar datasets analyze the
-`MedianPhaseBeat` spectrum in stored bin order: `index_max1`, `max1`,
-`index_max2`, `max2`, `index_min1`, `min1`, `index_min2`, `min2`, `A0`, `A`,
-`A2`, and `R1`. Heights are internal calculations; `h0`, `h1`, `hv`,
-and `rho_h` are not output datasets.
-For a domain of `N` bins, peak 1 is the maximum over zero-based bins 0 through
-`floor(N/2)-1`; peak 2 is the maximum over `floor(N/2)` through `N-1`.
-Include endpoints, ignore NaNs for peak selection, and choose the
-lowest index on ties. An all-NaN half has a NaN peak index and value. Valley
-indexes are the two central bins, `floor(N/2)-1` and `floor(N/2)`; valley values are read directly from those bins.
-Internally, `h0=(max1+max2)/2`, propagating missing inputs. All three areas use
-the calibrated spacing `df_khz=q*fs/(B*1000)` and the common peak-to-peak width
-`w_khz=(index_max2-index_max1)*df_khz`.
-`A2=h0*w_khz`;
-`A=trapezoid(spectrum[index_max1:index_max2+1], dx=df_khz)`, propagating any NaN
-in that interval. Both peak samples are included with trapezoidal half weights
-at the endpoints; the interval width counts the spaces between bins, without
-an extra bin. Integrate with positive spacing in the stored HD bin order,
-equivalent to an unwrapped kHz axis, without sorting the signed display axis
-or wrapping around the array. The valley neighborhood is centered between the two central bins.
-With `valley_neighborhood_length=None`, its length is computed as one quarter
-of the actual bin domain, rounded to the nearest even length (ties upward), with
-a minimum of two samples: 32 bins selects 8 samples (bins 12 through 19), and
-64 bins selects 16 samples (bins 24 through 39). Any domain with at least two bins
-is supported, including odd lengths; domains split at `floor(N/2)`.
-Explicit neighborhood lengths
-accept even integers from 2 through `N` in `run_gap_analysis`,
-`pack_spectrum_metrics`, and `analyze_spectrum`. `hv` is the NaN-aware median of
-that neighborhood; an all-NaN neighborhood returns NaN. With the same kHz
-width used by `A2`, `A0=w_khz*hv`. The area names `A0`
-and `A2` replace each other's former meanings. `A` is the former `A1` output.
-The pooled dimensionless output is `R1=A/A0`. Ratios require a finite, strictly
-positive reference area and finite numerator/result; otherwise they return NaN.
-`SEI` is calculated from the phasewise `SE` curve below, not from pooled areas.
-There is no pooled-spectrum SEI output. All values are float32; valid index values are integer-valued floats
-so missing indexes can be represented by NaN. Indexes and `R1` have unit `1`;
-`A0`, `A`, and `A2` have the source power unit times kHz (for example
-`a.u.*kHz`), while peak/valley heights retain the spectrum's power unit.
-Attributes record definitions,
-source, zero-based indexes, selection rules, interval inclusion, neighborhood
-length and exact bins, automatic versus explicit selection and rounding,
-per-half valid (non-NaN) bin counts, valley aggregation/NaN policy, sampling
-frequency and its shared source path, kHz bin spacing, integration method,
-and the unwrapped area coordinate. Read calibration from
-`/Meta/SamplingFrequencyHz/value`. Missing/invalid calibration skips the Metrics
-family with a warning while preserving raw/aggregate spectra and filters;
-never substitute a unit bin width for a physical kHz area.
-An all-NaN half leaves its peak index and value as NaN and logs an explanatory warning.
-A spectrum that is not one-dimensional with at least two bins
-produces all twelve NaN pooled metrics and logs a
-warning; the median and other gap products remain available. No alternative
-workflow copy is generated.
+without `/value` suffixes or workflow copies. Nine pooled scalar datasets analyze
+`MedianPhaseBeat` in stored bin order: `index_max1`, `max1`, `index_max2`,
+`max2`, `A0`, `A`, `A_25`, `A_50`, and `A_75`. The central-bin datasets
+`index_min1`, `index_min2`, `min1`, and `min2` are absent. The former `A2`
+and `R1` families (including curves, windows, deltas, and plots) are removed;
+no `R2`, `Z2`, `h0`, `h1`, `hv`, or `rho_h` datasets are emitted.
 
-Five phase curves are written in that same group as `A0_t`, `A_t`, `A2_t`,
-`R1_t`, and `SE`, with `(phase,)` axes and phase coordinates from `MedianBeat`.
-Calculate these curves from `MedianBeat` after its beat median, keeping the
-peak indices selected from `MedianPhaseBeat` fixed at every phase. With fixed
-width `w_khz=(index_max2-index_max1)*df_khz`, calculate
-`A2(t)=w_khz*(S(t,index_max1)+S(t,index_max2))/2`,
-`A(t)=trapezoid(S(t,index_max1:index_max2+1), dx=df_khz)`, and
-`A0(t)=w_khz*nanmedian(S(t,Nv))` using the same valley neighborhood as the pooled
-metrics. `R1(t)=A(t)/A0(t)` and `SE(t)=(A(t)-A0(t))/A0(t)`.
-Missing fixed peak indices make every curve NaN. Missing peak heights invalidate
-`A2(t)`, interval NaNs propagate through `A(t)`, and an all-NaN valley
-neighborhood makes `A0(t)` NaN. Ratios and offsets require finite, strictly
-positive `A0(t)` and finite numerator/result; invalid phases remain NaN.
-Curve attributes identify their `MedianBeat` source, fixed peak values and
-index-dataset paths, pooled peak source, timing, neighborhood, and units.
+For a domain of `N` bins, select peak 1 in zero-based bins `[0,floor(N/2))`
+and peak 2 in `[floor(N/2),N)`. Include endpoints, ignore NaNs, and choose the
+lowest index on ties. An all-NaN half leaves its index and height NaN and logs
+a warning. Valid indices are integer-valued float32, permitting missing NaNs.
+Unsupported domains (not one-dimensional with at least two bins) return nine
+NaN pooled metrics with a warning. No alternative workflow copy is generated.
 
-The dimensionless scalar `SEI=median(SE(t))` follows the temporal definition:
-take the NaN-aware median over all valid phase samples of the registered cycle,
-with equal weight per source phase sample and no added endpoint. This differs
-from a ratio of pooled areas or a ratio of median phase areas. It is emitted
-only when phase spectra are available, with source path `/ProcessingSpectrograms/Gaps/Metrics/SE`,
-aggregation method, and source/valid/invalid phase counts. All-invalid cycles
-produce NaN. There is no fallback to the pooled-spectrum ratio. These validity
-checks do not impose an unconfigured low-signal or valley-stability threshold.
+Use calibrated spacing `df_khz=q*fs/(B*1000)` and width
+`w_khz=(index_max2-index_max1)*df_khz`, without an extra bin.
+`A=trapezoid(S[index_max1:index_max2+1], dx=df_khz)` includes both peaks,
+with trapezoidal half weights at the endpoints. Integrate along positive,
+unwrapped kHz in stored HD bin order, without sorting or wrapping the signed
+frequency axis. Interval NaNs propagate through `A`.
 
-For the `A0_t`, `A_t`, `A2_t`, and `R1_t` curves, the same group also contains
-scalars `<base>_early`, `<base>_late`, and `delta_<base>`. The `SE` curve uses
-`SEI_early`, `SEI_late`, and `delta_SEI`. Early is the NaN-aware median of the
-corresponding curve over a configurable closed `early_interval` (default `[0,1/3]`); late uses
-`late_interval` (default `[1/3,1]`). Bounds are fractions of a cycle in `[0,1]`,
-equivalent to 0–33⅓% and 33⅓–100% by default. A sample exactly at a shared
-boundary belongs to both intervals. Preserve the source grid's excluded endpoint;
-do not interpolate or add a sample at phase one. The standard 128-phase grid
-therefore has 43 early and 85 late samples. Medians weight valid phase samples
-equally; all-missing windows remain NaN. Aggregate the ratios themselves,
-rather than dividing aggregated areas. The whole-cycle scalar corresponding
-to `SE` is `SEI`. Every spectrogram metric uses late minus early, including
-A0/A/A2, R1, and SEI. Preserve the signed
-difference and propagate a missing early or late median. Window metadata records
-phase intervals, included endpoints, source and valid sample counts, source
-curve paths, and aggregation policy; deltas identify their late then early
-scalar sources and both configured intervals.
-Shared helpers in `calculations/math/phase_windows.py` provide interval masks,
-NaN-aware window medians, and late-minus-early subtraction. `run_gap_analysis`
-and `pack_spectrum_metrics` accept `early_interval` and `late_interval` keyword
-arguments. The runner applies the same configuration to early/late spectra,
-STD envelopes, metric summaries, and deltas. Empty/all-missing windows retain NaN.
-These twenty phase/window datasets, the whole-cycle `SEI`, and twelve pooled scalars give 33 datasets
-under `/ProcessingSpectrograms/Gaps/Metrics`. All persisted values are float32;
-ratio and offset curves and their summaries/deltas have unit `1`, while area products
-have the source power unit times kHz.
+`A0=w_khz*hv`, where `hv` is the NaN-aware central-neighborhood median.
+Its default length is one quarter of `N`, rounded to the nearest even length
+(ties upward), at least two samples. For 32 bins, use indices 12 through 19;
+for 64 bins, use 24 through 39. An explicit `valley_neighborhood_length`
+accepts an even integer from 2 through `N`. Ignore NaNs within the neighborhood;
+an all-NaN neighborhood yields NaN. `A` is the former `A1` output name.
 
-Each phase curve also produces `<stem>_gaps_{A0,A,A2,R1,SE}.{png,eps}` under
-the shared `png/spectrograms/` and `eps/spectrograms/` folders. Use the same
-8 cm wide golden-ratio canvas, thin black border, fonts, and resolution as the
-spectral figures. Abbreviate `a.u.*kHz` to `a.u.` in artifact axis labels;
-stored area units remain source power times kHz.
-Plot normalized cardiac phase `t/T` horizontally with labels
-at zero, one third, two thirds, and one. Preserve NaN gaps and the excluded
-endpoint; area-axis labels include power units and ratio axes are dimensionless.
-Each available curve exports independently.
+The flooded references use height fractions, not target fractions of total
+spectral area. For `p` in `{25,50,75}`, set
+`h_p=(p/100)*(S[index_max1]+S[index_max2])/2` and calculate
+`A_p=integral(min(S(f),h_p), df)` between the peaks, from power zero.
+Use the arithmetic mean of the two peak heights, not the lower peak or integer
+floor division. Treat the spectrum as piecewise linear and include exact
+threshold crossings inside bin intervals; simply clipping the bin samples and
+applying trapezoids underestimates the reference when a crossing lies inside
+an interval. This is height-based flooding of the spectrum from zero, not water
+volume above a valley floor or marker-based basin segmentation. Nonfinite or
+negative power anywhere inside the peak interval makes the flooded references
+NaN. A zero spectrum produces zero reference areas.
+
+Twelve phase curves use `MedianBeat`, after its beat median: `A0_t`, `A_t`, `SE`,
+`A_25_t`, `A_50_t`, `A_75_t`, `SE_25`, `SE_50`, `SE_75`,
+`SEII_25_t`, `SEII_50_t`, and `SEII_75_t`.
+Keep pooled peak indices fixed as integration bounds at every phase. Evaluate
+the valley median on each phase spectrum, and determine flood heights from the
+actual maximum in each frequency half at that phase, ignoring NaNs. The maxima
+can move independently of the integration bounds. Thus `A0_t` and the flooded references vary
+with phase. `A_t` uses the same trapezoidal integral, `A0_t` the same central
+median rectangle, and `A_p_t` the same clipped integral as their pooled
+counterparts, except that `A_p_t` uses phasewise half-domain maxima rather than
+heights sampled at the fixed integration endpoints. Missing pooled peak indices
+leave all curves NaN. Missing/nonfinite phase maxima or interval NaNs invalidate
+flooded references and `A_t`; `A0_t` still ignores neighborhood NaNs.
+
+`SE=(A_t-A0_t)/A0_t`, `SE_p=(A_t-A_p_t)/A_p_t`, and
+`SEII_p_t=(A_p_t-A0_t)/A0_t`. SEII compares each flooded area against the
+original valley reference. Preserve signed values, including negative excess.
+Require a finite,
+strictly positive corresponding reference and finite numerator/result;
+otherwise the ratio is NaN. Preserve original `SE` independently of the new
+references. Area units are source power times kHz, while all SE/SEI/SEII outputs
+and indices have unit `1`; peak heights retain source power units.
+
+Whole-cycle `SEI`, `SEI_25`, `SEI_50`, and `SEI_75` are the NaN-aware temporal
+medians of their respective SE curves, weighting valid phase samples equally.
+They are emitted only with phase spectra, with no pooled-ratio fallback.
+All-invalid cycles return NaN. In contrast, `A0`, `A`, and `A_p` are calculated
+from the pooled spectrum, not temporal medians of their curves.
+`SEII_25`, `SEII_50`, and `SEII_75` likewise summarize their respective `_t`
+curves with NaN-aware temporal medians, not ratios of pooled areas.
+
+Each phase curve has early/late median summaries and a signed late-minus-early
+delta. Area bases are `A0`, `A`, `A_25`, `A_50`, and `A_75`; SE summary bases
+are `SEI`, `SEI_25`, `SEI_50`, `SEI_75`, `SEII_25`, `SEII_50`, and `SEII_75`.
+SEII includes `SEII_25_early`, `SEII_25_late`, and `delta_SEII_25`, with
+equivalent 50/75 keys. For example, `A_50_early`,
+`A_50_late`, `delta_A_50`, `SEI_50_early`, `SEI_50_late`, and `delta_SEI_50`.
+Default closed windows are `[0,1/3]` and `[1/3,1]`. A shared boundary sample
+belongs to both; preserve the source's excluded endpoint. The 128-phase grid
+has 43 early and 85 late samples. Ignore NaNs within windows; missing windows
+or differences remain NaN. Aggregate ratios themselves, not ratios of areas.
+Shared helpers in `calculations/math/phase_windows.py` own these operations.
+`run_gap_analysis` and `pack_spectrum_metrics` accept `early_interval` and
+`late_interval`; the runner shares them with early/late spectra and STD envelopes.
+
+The 9 pooled scalars, 12 phase curves, 36 window/delta summaries, and 7 whole-cycle
+SEI/SEII scalars give 64 legacy datasets. Regular calibrated runs additionally
+write 63 selected spectral-shape datasets: SEIv at 5/25/50%, entropy,
+absolute-frequency power quantiles (including F50/F90), early/late Wasserstein
+distance, and their supporting arrays and phase summaries. Thus the full
+Metrics group contains 127 datasets. See [spectral metric selection and
+definitions](spectral_metric_selection.md) for evidence, formulas, naming,
+axes, units, invalid-value policies, and added PNG/EPS artifacts.
+Persist all values as float32. Metadata records
+source paths, timing, fixed peak indices and their pooled source, neighborhood,
+units, FFT calibration, spacing, integration method, and validity policies.
+Flood metadata identifies the height fraction, mean-peak reference, pooled or
+per-phase evaluation, and exact clipped integration. SE/SEII metadata identifies the
+corresponding signal area and reference curves. Window and delta metadata records intervals,
+counts, and source paths; SEI records valid/invalid phase counts.
+Read calibration from `/Meta/SamplingFrequencyHz/value`; missing/invalid
+calibration skips Metrics with a warning, keeping raw/aggregate spectra and
+filters. Never substitute unit bin widths or infer a stability cutoff.
+
+Each phase curve exports matching `<stem>_gaps_<base>.{png,eps}` figures, with
+`_t` removed from curve names, under the shared `png/spectrograms/` and
+`eps/spectrograms/` folders. Use the spectral figures' 8 cm golden-ratio canvas,
+thin black border, fonts, and resolution. Labels render the full `SE` or `A`
+base with the percentage subscript. Abbreviate `a.u.*kHz` to `a.u.` in figures
+only. Plot cardiac phase `t/T`, ticks at zero, one third, two thirds, and one;
+preserve NaN gaps and the excluded endpoint. Each curve exports independently.
 
 `/ProcessingSpectrograms/Gaps/QC` contains descriptive diagnostics, separate
 from `Metrics`. QC never filters samples, rejects beats, or changes SE/SEI.
@@ -626,7 +651,8 @@ three usable matrix dimensions to remove two modes while retaining one;
 otherwise publish unchanged raw data with a warning. Filtered undershoots
 remain signed to preserve the baseline. Settings, singular values, fitted mean,
 support counts, matrix ordering, and filtering availability are recorded in
-attributes. The mode count is configurable in `gaps/signal_processing.py`.
+attributes. The mode count is configurable in
+`src/pipelines/low_freq_spectra/signal_processing.py`.
 Relative sample time is `sum(previous beat durations) + phase * current beat
 duration`; spacing is uniform within each beat but may differ between beats.
 Source beat count, samples per beat, and within-beat phase coordinates are
@@ -663,10 +689,11 @@ transposes to published `(x, y)`; do not add a separate input-side Y flip.
 | Optic-disc width/height | `/segmentation/OpticDisc/width`, `/segmentation/OpticDisc/height` | Used to reconstruct an ellipse when no mask is available |
 
 `VelocityEstimation/LocalBackgroundDist` comes from the DV sidecar configuration
-and defaults to `2`. `pipelines.vessel_inputs.load_retinal_source_data` is the
-only canonical alignment boundary: it validates masks against the active HD
+and defaults to `2`. `input_output.readers.canonical.load_retinal_source_data`
+is the canonical alignment boundary: it validates masks against the active HD
 spatial shape and may transpose all DV geometry together when axes are swapped.
-Do not add isolated transposes in downstream algorithms.
+`pipelines.vessel_inputs.load_retinal_source_data` then applies the venous
+fallback policy. Do not add isolated transposes in downstream algorithms.
 
 Missing or invalid optic-disc geometry falls back to an image-centered circle
 of assumed physical diameter **1.91 mm**. Its center is `(nx / 2, ny / 2)`;
@@ -736,7 +763,8 @@ source, and legacy fallback status. The old
 
 ## Velocity methods
 
-Every run that schedules velocity attempts both workflows, independently:
+Every run that schedules velocity attempts the selected workflows independently
+(default: both):
 
 - `doppler_moments`: derives RMS frequency as
   `sqrt(M2 / max(spatial_mean(M0), eps('single')))` per frame, using float32
@@ -751,9 +779,13 @@ Every run that schedules velocity attempts both workflows, independently:
   outputs use `/ProcessingBandRatio`. The persisted calibration default is `1 Hz`
   per ratio unit; quantity is `physical_velocity`, unit `mm/s`.
 
-`velocity_estimation_method` is no longer a selectable or persisted setting.
-Legacy configuration values are ignored. Method identifiers remain in workflow
-provenance and in internal method-specific contexts.
+The JSON `velocity_estimation_method` setting accepts `doppler_moments`,
+`bandratio`, or `both` (default when absent). `frequency_bands` is accepted as a
+legacy alias for `bandratio`. Invalid selections are rejected before execution
+and before replacing settings on import. Only selected workflows load their
+velocity inputs and execute downstream analyses; unselected workflows are not
+recorded as failures. Internal contexts and workflow provenance retain the
+estimator identifiers `doppler_moments` and `frequency_bands`.
 
 Cardiac cycles are detected independently for each workflow **after** velocity
 estimation, from its signed, background-corrected whole-vessel velocity in `mm/s`.
@@ -785,7 +817,40 @@ Root `execution_variant_failures` records a JSON map of method to error;
 `pipeline_status`, `pipeline_failures`, and `pipeline_skips` record shared and
 per-workflow outcomes. Velocity-analysis data is flushed before optional pulse
 PNG, segment-map AVI, and velocity-signal figure exports; export failures are
-warnings and do not invalidate the scientific products.
+warnings and do not invalidate the scientific products when figure building
+fails before submission. Background export failures retain those products and
+are reported separately as incomplete artifact output.
+
+Shared figure writers defer rendering/encoding automatically during managed
+execution, using at most two isolated rendering processes reused across files.
+Low-frequency spectral exports snapshot the reduced
+`ProcessingSpectrograms` subtree and published gap mask into a private local
+HDF5 file; neither the HD video nor live HDF5 handles are sent to the worker.
+Submission follows the producing invocation or stage handoff commit. The worker
+writes to private staging; an asynchronous publisher installs finished PNG/EPS
+files under their explicit producing owner. Rollback removes only an invocation's
+uncommitted owned files, never files inferred from directory creation time.
+Figure names, formats, resolution, styling, and numerical products are unchanged.
+Direct calls without an engine-managed lifecycle export synchronously.
+
+Artifact consumers declare `wait_for_artifacts=True`; `pdf_report` uses this
+barrier. File completion joins pending exports before its final completion log;
+analysis of the next input may proceed meanwhile. At most two unfinished files
+are retained, and the batch returns only after their exports finish. Root JSON attributes `artifact_status` and
+`artifact_failures` track background job outcomes, separately from numerical
+pipeline success. A background export failure keeps computed datasets and
+allows independent analyses to finish, skips artifact consumers, and reports
+an incomplete run with its partial HDF5 path. Failed jobs publish no partial
+figure set. These attributes are present only when a background job was started.
+
+Pipeline-owned stage graphs publish logical products through `ctx.dag.handoff`.
+Each product declares schema paths/attributes or a packer returning standard
+HDF5 payloads. Handoffs are atomic and advance the checkpoint only for declared
+datasets; later failures retain them. Root JSON `stage_status`, `stage_failures`
+and `stage_skips` keep separate records for each pipeline/workflow.
+`stage_products` records committed product names, producers and resolved dataset paths. See
+[stage graph contracts](pipeline_stage_graphs.md) for scope, dependencies,
+artifact readiness and legacy compatibility.
 
 For band mode, replace negative HF and LF samples with zero and log a warning.
 A zero LF denominator, including a clamped negative sample, maps to ratio zero
@@ -808,7 +873,7 @@ interpreting derived values.
 
 ## Internal contracts
 
-`RetinalSourceData` in `schema/source_data.py` is the shared typed input:
+`RetinalSourceData` in `src/retinal_source_data.py` is the shared typed input:
 
 - lazy `ImageMaps` for moments, LF/HF bands, and optional exported spectograms;
 - aligned boolean artery/vein/background masks and optional labels;
@@ -841,7 +906,11 @@ before a new attempt, so a failed run leaves only that attempt's partial files.
 Subdirectories are created lazily for `h5`, `png`, `mp4`, `avi`, `pdf`, and
 `eps`. Velocity-derived artifacts are separated beneath each type directory
 into `moments/` and `bandratio/`, including PDF reports. Each report reads its
-corresponding processing group. The primary file is `h5/<stem>_EF.h5`.
+corresponding processing group and the actual PNG paths registered by its
+velocity-analysis variant. Existing filename lookup remains a fallback. The
+primary file is `h5/<stem>_EF.h5`.
+Displacement magnitude videos use MJPEG AVI files under
+`avi/displacement_maps/`, with one file for each selected vessel mask.
 
 All artifact basenames start with `<stem>_`, including PNG, EPS, AVI, MP4,
 PDF, auxiliary HDF5, and archive outputs. The shared artifact naming helper
@@ -850,7 +919,7 @@ prefixes are retained once and subdirectories are preserved. The primary
 `<stem>_EF.h5` filename is unchanged.
 
 Existing EyeFlow result folders can be migrated with
-`python -m input_output.artifact_migration RESULTS_PARENT --dry-run`, then
+`python scripts/migrate_artifacts.py RESULTS_PARENT --dry-run`, then
 the same command without `--dry-run`. The utility only renames files inside
 identified `<stem>_EF` folders, leaves directories and contents unchanged,
 and checks for collisions before renaming.
@@ -962,6 +1031,12 @@ or SciPy and bandlimiting does not load application modules.
 background-subtracted velocity used by the vessel waveform analysis. The
 unmasked velocity average and intermediate delta-frequency average are not
 persisted.
+When velocity analysis needs the full `(frame, y, x)` float32 velocity videos,
+the run shares a RAM budget of one quarter of available memory across both
+workflows (1 GiB if availability cannot be measured). Arrays exceeding that
+budget use temporary `.npy` scratch storage beside the EyeFlow output and are
+removed when the run finishes, including after a failed pipeline. Scratch
+videos are never published as HDF5 datasets or artifacts.
 All two-dimensional datasets under `/ProcessingMoments/Maps` are serialized in the
 same lower-left `(x, y)` image frame as
 `/Segmentation/Artery/BranchLabelMap/value`: the internal `(y, x)` array is
@@ -990,11 +1065,33 @@ Writers no longer generate the redundant `nameID` attribute; HDF5 exposes the
 absolute dataset path as `dataset.name`. Existing explicitly supplied attributes
 remain supported for compatibility with older payloads.
 Numeric arrays of at least 4 KiB (after dtype normalization) use lossless gzip
-compression at level 6 with the shuffle filter by default. Smaller arrays stay
+compression at level 9 with the shuffle filter by default. Smaller arrays stay
 unfiltered to avoid chunk-index overhead exceeding compression savings. Explicit
 dataset storage options override these defaults, including compression for small
 arrays. Scalars and strings remain unfiltered; these writes preserve their
 existing shapes and dtypes.
+Per-beat velocity maps, profiles, and segment masks use gzip level 9. The
+float32 map and profile writers leave chunks containing only the exact NaN fill
+value unallocated; reading the published datasets returns the same dense shapes
+and values. When the redundant bins represent at least 32 KiB of raw data,
+the optional velocity-profile FFT stores the unique half of an exactly mirrored
+magnitude spectrum in a gzip-compressed
+backing dataset and exposes the original full shape through an HDF5 virtual
+dataset at the published path. Smaller arrays or arrays whose two halves differ
+at the bit level keep ordinary full-array storage.
+The backing dataset is named `__<published-name>_unique_frequency_storage` in
+the same group. A virtual dataset has no compression filter of its own; its
+backing data has the gzip filter.
+
+Fresh runs omit HD `/registration` and `/zernike_coefs_radians` pass-through
+copies by default. Set `copy_hd_passthrough` to `true` in the imported settings
+JSON, pass `--copy-hd-passthrough` to the CLI, or pass
+`copy_hd_passthrough=True` to `resolve_run_spec` to retain them.
+The root output attribute records this choice, and the HD source-file path
+remains available when copies are omitted. When enabled, large numeric HD
+pass-through datasets are copied in chunks and recompressed with gzip level 9;
+their values, shapes, dtypes, and attributes remain intact. Unsupported or
+small pass-through objects retain their source storage layout.
 
 The output root records source files, selected targets, actual pipeline order,
 selected options, requested methods, and workflow status. Each separate workflow

@@ -13,51 +13,77 @@ shape, unit, layout, or writer behavior.
 
 | Area | Start with | Follow only if needed |
 |---|---|---|
-| `.holo` companion resolution | `holo_run_layout.py` | `schema/base.py`, `run_service.py` |
-| Recursive run-folder discovery | `run_discovery.py` | `inputs.py`, GUI input controller, and `run_service.py` |
-| Raw access and merged attributes | `h5_access.py`, `input_access.py`, `inputs.py` | the typed source adapter |
-| HD/DV datasets and sidecars | `schema/holodoppler.py`, `schema/doppler_view.py` | `schema/source_data.py`, pipeline source loader |
+| `.holo` companion resolution | `runs/layout.py` | `schema/base.py`, `run_service.py` |
+| Recursive run-folder discovery and batch expansion | `runs/discovery.py`, `runs/inputs.py` | GUI input controller and `run_service.py` |
+| External frame and mask readers | `readers/frame_sequences.py`, `readers/canonical.py` | `pipelines/displacement_map/`, `pipelines/vessel_inputs.py`, and focused tests |
+| Raw access and merged attributes | `readers/h5.py` | the typed source adapter; context conveniences live in `pipeline_engine/input_access.py` |
+| HD/DV datasets and sidecars | `schema/holodoppler.py`, `schema/doppler_view.py`, `readers/h5.py` | `schema/base.py`, `src/retinal_source_data.py`, `readers/canonical.py` |
 | Current output paths | `schema/eyeflow_output.py` | producer and consumer pipelines |
-| HDF5 writes | `h5_access.py`, `writers/h5.py` | output-schema tests and producer tests |
-| Output folders/artifacts | `output_manager.py`, `writers/artifact_names.py` | the specific writer or report module; `artifact_migration.py` for existing results |
-| Article figure styling | `article_formatting.py` | the producer's figure builder; writers save already formatted figures |
-| General ticks/legend/colorbar layout | `figure_formatting.py` | article styles or non-article producer; no font/export policy is imposed |
-| Article PNG/EPS pairs | `writers/article.py` | `article_formatting.py` and producer artifact tests; general PNG exports stay opt-in |
+| HDF5 writes | `writers/h5_output.py`, `writers/h5.py`, `writers/h5_storage.py`, `writers/h5_initialization.py`, `schema/output_payload.py` | output-schema tests and producer tests |
+| Output folders/artifacts | `output_manager.py`, `writers/artifact_names.py` | the specific writer or report module; `scripts/migrate_artifacts.py` at the repository root for existing results |
+| Article figure styling | `src/plotting/article.py` | the producer's figure builder; writers save already formatted figures |
+| General ticks/legend/colorbar layout | `src/plotting/formatting.py` | article styles or non-article producer; no font/export policy is imposed |
+| Article PNG/EPS pairs | `writers/article.py` | `src/plotting/article.py` and producer artifact tests; general PNG exports stay opt-in |
 | ZIP inputs | `archives/zip_archive.py` | input-expansion tests in `test_run_service.py` |
-| Profile dataset serialization | `writers/h5.py` | profile producer/consumer tests |
+| Profile dataset serialization | `writers/h5_storage.py` | profile producer/consumer tests |
+| Displacement frame and artifact I/O | `readers/frame_sequences.py`, `writers/displacement_arrays.py`, `writers/magnitude_avi.py` | `pipelines/displacement_map/` and its focused test |
+| JSON and text sidecars | `writers/sidecars.py` | displacement metadata and run logging |
+| PDF measurements and page layout | `reports/pdf_data.py`, `reports/pdf_report.py` | `test_pdf_report_runner_paths.py` and producer tests |
 
 ## Contracts and ownership
 
 Typed source adapters translate stable logical operations into external HDF5
 paths. Pipeline code should use these adapters instead of repeating path
-fallbacks. Canonical DV-to-HD alignment happens in
-`pipelines/vessel_inputs.py`, because it must move masks and optic-disc geometry
-atomically.
+fallbacks. `readers/canonical.py` owns canonical DV-to-HD alignment, moving
+masks and optic-disc geometry atomically. Pipeline-specific fallback policy
+belongs to `pipelines/vessel_inputs.py`. `schema/serialization.py` owns
+published output axis order.
 
-`run_discovery.py` shares marker and marker-free run discovery between GUI and
+`runs/discovery.py` shares marker and marker-free run discovery between GUI and
 CLI. A run folder must contain its own matching HD and DV directories; EF/AE
 are optional. Discovery checks structure, while normal layout resolution checks
 the HDF5 files. Keep actual `HoloRunLayout.input_path` distinct from its canonical
 `holo_path` naming anchor; never create marker files during discovery.
+`runs/inputs.py` validates selected markers, folders, and text lists, expands
+ZIP/folder selections, and computes batch roots. `output_manager.py` maps
+validated runs to output destinations and rejects destination collisions.
+`readers/h5.py` loads optional HD/DV JSON sidecars; `schema/base.py` defines
+source layouts and typed adapter helpers without filesystem reads.
 
 `EyeFlowOutputPaths.active()` owns reusable output path families. Before
 changing a path, search all source and tests for both the field name and current
 literal. If a pipeline owns a specialized path constant, keep its producer,
 consumers, tests, and documentation synchronized.
 
-`PipelineH5Output` is the pipeline-facing API. `writers/h5.py` owns actual
-serialization, downcasting, bool representation, attributes, initialization,
-and selected HD pass-through data. Avoid opening the primary HDF5 independently
-inside a pipeline.
+`PipelineH5Output` in `writers/h5_output.py` is the pipeline-facing API.
+`writers/h5.py` owns generic file and dataset writes; `writers/h5_storage.py`
+owns payload conversion, compression, and bool representation;
+`writers/h5_initialization.py` owns root initialization and selected HD
+pass-through data. Avoid opening the primary HDF5 independently inside a pipeline.
+Managed runs use coordinator-owned dataset adapters for central source reads
+and an in-memory output structure. Use `readers/nodes.py` predicates when an API
+accepts both HDF5 and managed nodes. Source alignment and output path ownership
+remain in this package. Final serialization reuses the same storage policies;
+reports accept the assembled output view before the final HDF5 exists.
+See [parallel execution](../../docs/parallel_pipeline_execution.md).
+
+Large float32 map/profile payloads may request sparse NaN chunk storage; the
+published shape and values remain dense on read. Symmetric velocity-profile
+FFT magnitudes may use a same-file virtual dataset over compressed unique
+frequency bins. The writer falls back to ordinary storage when exact symmetry
+or a useful size reduction is absent. HD registration and Zernike pass-through
+copies are selected by the run-level `copy_hd_passthrough` setting.
 
 Per-beat profile interpolation and dataset packing live in
 `pipelines/profile_outputs.py`; they are pipeline adaptation rather than I/O
 serialization policy.
 
 `OutputManager` creates type directories lazily. Supported types are H5, PNG,
-MP4, AVI, PDF, and EPS; there is no generic JSON output helper. A pipeline may
+MP4, AVI, PDF, and EPS; JSON and text sidecars use dedicated writer helpers. A pipeline may
 reserve a path or open an auxiliary HDF5, but required machine-readable results
 belong in the primary file.
+PNG figure writers record report image paths in run state so PDF assembly can
+use the actual variant artifacts; legacy filename lookup remains available.
 
 Artifact writers prefix each basename with the acquisition `<stem>_` exactly
 once, preserving subfolders. `OutputManager.path_for()` applies the same rule
@@ -86,7 +112,8 @@ unchanged. Keep the naming policy in the shared writer helper.
 Use `test_dopplerview_compat.py` for DV/source compatibility,
 `test_frequency_band_velocity.py` for exact HD band contracts,
 `test_h5_writer.py` for serialization, `test_avi_writer.py` and
-`test_eps_writer.py` for artifacts, `test_stem_list_inputs.py` and
-`test_run_service.py` for input/layout behavior, and the PDF tests for report
-path lookup. Producer-specific output schemas are generally asserted in that
+`test_artifact_names.py` for artifacts, `test_stem_list_inputs.py` and
+`test_run_folder_inputs.py` for input/layout behavior, and
+`test_pdf_report_runner_paths.py` for report paths. Producer-specific output
+schemas are generally asserted in that
 pipeline's test file rather than one global schema test.

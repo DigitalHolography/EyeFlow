@@ -1,0 +1,256 @@
+"""Read video and HDF5 frame sequences for displacement analysis."""
+
+from __future__ import annotations
+
+import math
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Iterator
+
+import numpy as np
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
+try:
+    import h5py
+    from input_output.readers.nodes import is_dataset
+except ImportError:
+    h5py = None
+
+class FrameSequence:
+    def __init__(
+        self,
+        path: Path,
+        h5_dataset: str,
+        h5_frame_axis: int,
+        h5_fps: float,
+        h5_low_percentile: float,
+        h5_high_percentile: float,
+        *,
+        h5_source: h5py.Dataset | None = None,
+        defer_h5_range: bool = False,
+    ) -> None:
+        self.path = path
+        self.h5_source = h5_source
+        self.is_h5 = h5_source is not None or path.suffix.lower() in {
+            ".h5", ".hdf5", ".hdf"
+        }
+        self.h5_dataset = h5_dataset.lstrip("/")
+        if h5_source is not None and h5_source.name.lstrip("/") != self.h5_dataset:
+            raise ValueError(
+                f"Supplied HDF5 dataset {h5_source.name!r} does not match "
+                f"the requested path {self.h5_dataset!r}."
+            )
+        self.h5_frame_axis = int(h5_frame_axis)
+        self.h5_low_percentile = float(h5_low_percentile)
+        self.h5_high_percentile = float(h5_high_percentile)
+        self.h5_value_min = 0.0
+        self.h5_value_max = 1.0
+
+        if self.is_h5:
+            if h5py is None:
+                raise RuntimeError("h5py est requis pour lire un fichier HDF5.")
+            with self._open_h5_dataset() as dataset:
+                if not is_dataset(dataset) or dataset.ndim != 3:
+                    raise RuntimeError(
+                        f"Le dataset {self.h5_dataset} doit être 3-D, forme trouvée : "
+                        f"{getattr(dataset, 'shape', None)}"
+                    )
+                shape = tuple(int(v) for v in dataset.shape)
+            spatial_axes = [axis for axis in range(3) if axis != self.h5_frame_axis]
+            self.frame_count = shape[self.h5_frame_axis]
+            self.height = shape[spatial_axes[0]]
+            self.width = shape[spatial_axes[1]]
+            self.fps = float(h5_fps)
+            if not defer_h5_range:
+                self.h5_value_min, self.h5_value_max = self._estimate_h5_range()
+        else:
+            capture = cv2.VideoCapture(str(self.path))
+            if not capture.isOpened():
+                raise RuntimeError(f"Impossible d'ouvrir : {self.path}")
+            self.frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            self.fps = float(capture.get(cv2.CAP_PROP_FPS))
+            capture.release()
+            if self.width <= 0 or self.height <= 0:
+                raise RuntimeError("Dimensions vidéo invalides.")
+            if not math.isfinite(self.fps) or self.fps <= 0:
+                self.fps = 25.0
+
+    @contextmanager
+    def _open_h5_dataset(self) -> Iterator[h5py.Dataset]:
+        if self.h5_source is not None:
+            yield self.h5_source
+            return
+        assert h5py is not None
+        with h5py.File(self.path, "r") as handle:
+            if self.h5_dataset not in handle:
+                available = ", ".join(sorted(handle.keys()))
+                raise RuntimeError(
+                    f"Dataset HDF5 introuvable : {self.h5_dataset}. "
+                    f"Clés disponibles : {available}"
+                )
+            yield handle[self.h5_dataset]
+
+    def _slice_h5_frame(self, dataset: Any, index: int) -> np.ndarray:
+        selector: list[Any] = [slice(None), slice(None), slice(None)]
+        selector[self.h5_frame_axis] = int(index)
+        frame = np.asarray(dataset[tuple(selector)], dtype=np.float32)
+        frame = np.squeeze(frame)
+        if frame.ndim != 2:
+            raise RuntimeError(f"Une frame HDF5 doit être 2-D, forme trouvée : {frame.shape}")
+        return frame
+
+    def _h5_sample_indices(self) -> set[int]:
+        sample_count = min(max(self.frame_count, 1), 32)
+        return {
+            int(index) for index in np.linspace(
+                0, max(0, self.frame_count - 1), sample_count
+            ).astype(int)
+        }
+
+    @staticmethod
+    def _append_h5_range_sample(samples: list[np.ndarray], frame: np.ndarray) -> None:
+        values = frame[np.isfinite(frame)]
+        if not values.size:
+            return
+        step = max(1, int(math.ceil(math.sqrt(values.size / 4096.0))))
+        samples.append(values[::step].astype(np.float32, copy=False))
+
+    def _estimate_h5_range(self) -> tuple[float, float]:
+        samples: list[np.ndarray] = []
+        with self._open_h5_dataset() as dataset:
+            for index in sorted(self._h5_sample_indices()):
+                self._append_h5_range_sample(samples, self._slice_h5_frame(dataset, index))
+        return self._range_from_samples(samples)
+
+    def _range_from_samples(self, samples: list[np.ndarray]) -> tuple[float, float]:
+        if not samples:
+            raise RuntimeError("Le dataset HDF5 ne contient aucune valeur finie.")
+        values = np.concatenate(samples)
+        low = float(np.percentile(values, self.h5_low_percentile))
+        high = float(np.percentile(values, self.h5_high_percentile))
+        if high <= low + 1e-12:
+            low = float(values.min())
+            high = float(values.max())
+        if high <= low + 1e-12:
+            high = low + 1.0
+        return low, high
+
+    @contextmanager
+    def cached_for_replay(self, max_frames: int | None, scratch_dir: Path):
+        """Read source frames once, then replay a bounded disk cache twice.
+
+        For HDF5, the display range still samples the complete source volume;
+        only frames needed by the calculation occupy scratch storage. The
+        replay is valid only inside this context; yielded frames are independent
+        of the cache and remain usable after it closes.
+        """
+        limit = self.frame_count if max_frames is None else min(self.frame_count, max_frames)
+        if limit < 1:
+            raise RuntimeError("Aucune frame lisible.")
+        with tempfile.TemporaryDirectory(prefix="ef_frames_", dir=scratch_dir) as directory:
+            path = Path(directory) / "frames.npy"
+            dtype = np.float32 if self.is_h5 else np.uint8
+            shape = (limit, self.height, self.width) if self.is_h5 else (
+                limit, self.height, self.width, 3
+            )
+            frames = np.lib.format.open_memmap(path, mode="w+", dtype=dtype, shape=shape)
+            replay = None
+            try:
+                count = 0
+                if self.is_h5:
+                    sample_indices = self._h5_sample_indices()
+                    samples = []
+                    with self._open_h5_dataset() as dataset:
+                        for index in range(self.frame_count):
+                            frame = self._slice_h5_frame(dataset, index)
+                            if index in sample_indices:
+                                self._append_h5_range_sample(samples, frame)
+                            if index < limit:
+                                frames[index] = frame
+                                count += 1
+                    self.h5_value_min, self.h5_value_max = self._range_from_samples(samples)
+                else:
+                    for frame in self.iter_frames(limit):
+                        frames[count] = frame
+                        count += 1
+                frames.flush()
+                replay = FrameReplay(self, frames, count)
+                yield replay
+            finally:
+                if replay is not None:
+                    replay.frames = None
+                # Windows cannot remove frames.npy until its mapping is closed.
+                frames._mmap.close()
+                del frames
+
+    def _h5_to_bgr_u8(self, frame: np.ndarray) -> np.ndarray:
+        clean = np.nan_to_num(
+            frame,
+            nan=self.h5_value_min,
+            posinf=self.h5_value_max,
+            neginf=self.h5_value_min,
+        )
+        normalized = np.clip(
+            (clean - self.h5_value_min) / (self.h5_value_max - self.h5_value_min),
+            0.0,
+            1.0,
+        )
+        gray = np.round(normalized * 255.0).astype(np.uint8)
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+    def iter_frames(self, max_frames: int | None = None) -> Iterator[np.ndarray]:
+        limit = self.frame_count if max_frames is None else min(self.frame_count, max_frames)
+        if self.is_h5:
+            with self._open_h5_dataset() as dataset:
+                for index in range(limit):
+                    yield self._h5_to_bgr_u8(self._slice_h5_frame(dataset, index))
+            return
+
+        capture = cv2.VideoCapture(str(self.path))
+        if not capture.isOpened():
+            raise RuntimeError(f"Impossible d'ouvrir : {self.path}")
+        try:
+            count = 0
+            while count < limit:
+                ok, frame = capture.read()
+                if not ok or frame is None:
+                    break
+                yield frame
+                count += 1
+        finally:
+            capture.release()
+
+
+def load_binary_mask(path: Path, shape: tuple[int, int], invert: bool) -> np.ndarray:
+    mask = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+    if mask is None:
+        raise RuntimeError(f"Impossible de lire le masque : {path}")
+    if mask.shape != shape:
+        mask = cv2.resize(mask, (shape[1], shape[0]), interpolation=cv2.INTER_NEAREST)
+    mask = (mask > 0).astype(np.uint8) * 255
+    return cv2.bitwise_not(mask) if invert else mask
+
+
+class FrameReplay:
+    def __init__(self, source: FrameSequence, frames: np.memmap, count: int) -> None:
+        self.source = source
+        self.frames: np.memmap | None = frames
+        self.frame_count = count
+
+    def iter_frames(self, max_frames: int | None = None) -> Iterator[np.ndarray]:
+        limit = self.frame_count if max_frames is None else min(self.frame_count, max_frames)
+        for index in range(limit):
+            if self.frames is None:
+                raise RuntimeError("Frame replay cache is closed.")
+            # Never retain or yield a cache view across a generator suspension.
+            if self.source.is_h5:
+                yield self.source._h5_to_bgr_u8(self.frames[index])
+            else:
+                yield np.array(self.frames[index], copy=True)

@@ -8,8 +8,8 @@ import h5py
 import numpy as np
 
 from pipeline_engine import ExecutionVariant, PipelineContext
-from pipeline_engine.context import RawH5SourceReader
-from input_output.h5_access import PipelineH5Output, PipelineInputSource
+from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema.base import TypedSource
 from input_output.schema.provenance import (
     INHERITED_PROVENANCE_KEYS_ATTR,

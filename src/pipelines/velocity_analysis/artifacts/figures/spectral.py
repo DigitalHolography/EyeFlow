@@ -15,7 +15,7 @@ from calculations.blood_flow_velocity.signal_analysis.spectrum import (
     spectrum_signal_analysis,
     synthetic_spectrum_from_signals,
 )
-from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE as STYLE
+from plotting.article import DIAGNOSTIC_ARTICLE_STYLE as STYLE
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
@@ -118,7 +118,7 @@ def _spectrum_plot(
             backgroundcolor="w",
         )
     _style_axes(ax, grid=True)
-    return writer.savefig(fig, suffix, dpi=180)
+    return writer.save_figure(fig, suffix, dpi=180)
 
 def _phase_spectrum_plot(
     writer: FigureWriter,
@@ -146,7 +146,7 @@ def _phase_spectrum_plot(
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("Phase (rad)")
     _style_axes(ax, grid=True)
-    return writer.savefig(fig, suffix, dpi=180)
+    return writer.save_figure(fig, suffix, dpi=180)
 
 def _visible_peak_indexes(
     spectrum: SpectrumData,
@@ -211,4 +211,4 @@ def _synthetic_spectral_plot(
         ax.set_xlim(*SPECTRAL_XLIM_HZ)
         _style_axes(ax)
     axes[1].set_ylim(-1, 1)
-    return writer.savefig(fig, "syntheticSpectralAnalysis.png", dpi=180)
+    return writer.save_figure(fig, "syntheticSpectralAnalysis.png", dpi=180)

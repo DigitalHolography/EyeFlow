@@ -6,17 +6,16 @@ import h5py
 import numpy as np
 import pytest
 
-from input_output.h5_access import PipelineH5Output
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.preprocessing import (
-    preprocess_gap_spectrograms,
-    spatial_median_band_power,
+    prepare_gap_spectrograms,
 )
 from pipelines.low_freq_spectra.spectrograms import preprocess_spectrograms
 
 
 class FrameSource:
-    """A lazy source that rejects attempts to read the complete video."""
+    """A lazy source recording bounded slab requests and delivered frames."""
 
     def __init__(self, values):
         self.values = values
@@ -24,10 +23,12 @@ class FrameSource:
         self.ndim = values.ndim
         self.dtype = values.dtype
         self.reads = []
+        self.requests = []
 
     def __getitem__(self, index):
-        assert isinstance(index, int), "Read only one time frame at a time."
-        self.reads.append(index)
+        assert isinstance(index, (int, slice)), "Read frames or bounded time slabs."
+        self.requests.append(index)
+        self.reads.extend(range(*index.indices(self.shape[0])) if isinstance(index, slice) else [index])
         return self.values[index]
 
 
@@ -39,7 +40,10 @@ def test_nonsquare_xy_mask_uses_inverted_hd_y_and_preserves_time_bin_order():
     mask[0, 1] = mask[2, 0] = True
     source = FrameSource(values)
 
-    result = spatial_median_band_power(source, mask)
+    zones = np.flip(mask.T, axis=0)
+    result = preprocess_spectrograms(source, zones)[
+        EyeFlowOutputPaths.active().spectrograms_masked
+    ][0]
 
     np.testing.assert_array_equal(result, [[6, 18], [30, 42]])
     assert source.reads == [0, 1]
@@ -55,9 +59,11 @@ def test_nonfinite_included_samples_become_nan_excluded_samples_do_not_contribut
     mask = np.zeros((3, 2), dtype=bool)
     mask[0, 1] = mask[2, 0] = True
 
-    np.testing.assert_array_equal(
-        spatial_median_band_power(values, mask), [[4, np.nan, np.nan, np.nan]],
-    )
+    zones = np.flip(mask.T, axis=0)
+    result = preprocess_spectrograms(values, zones)[
+        EyeFlowOutputPaths.active().spectrograms_masked
+    ][0]
+    np.testing.assert_array_equal(result, [[4, np.nan, np.nan, np.nan]])
 
 
 def test_negative_medians_are_zeroed_after_reduction_while_nonfinite_medians_stay_nan():
@@ -66,7 +72,7 @@ def test_negative_medians_are_zeroed_after_reduction_while_nonfinite_medians_sta
     ]], dtype=np.float32)
     original = values.copy()
     zones = np.ones((1, 2), dtype=bool)
-    metrics = preprocess_gap_spectrograms(values, zones)
+    metrics = preprocess_spectrograms(values, zones)
     power, attrs = metrics[EyeFlowOutputPaths.active().spectrograms_masked]
     # Clipping individual pixels before the even-sample median would give 1 and 5.
     np.testing.assert_array_equal(power, [[0, 4, 0, np.nan, np.nan]])
@@ -74,8 +80,7 @@ def test_negative_medians_are_zeroed_after_reduction_while_nonfinite_medians_sta
     np.testing.assert_array_equal(values, original)
 
 
-@pytest.mark.parametrize("preprocess", [preprocess_gap_spectrograms, preprocess_spectrograms])
-def test_masked_median_rejects_spatial_outliers_and_preserves_invalid_pairs(preprocess):
+def test_masked_median_rejects_spatial_outliers_and_preserves_invalid_pairs():
     values = np.array([
         [[[1, 3, 1000, np.nan]], [[2, 8, 2000, np.inf]]],
         [[[-100, 2, 4, 99999]], [[-10, -2, -1, 99999]]],
@@ -85,7 +90,7 @@ def test_masked_median_rejects_spatial_outliers_and_preserves_invalid_pairs(prep
     zones = np.array([[True, True, True, False]])
     source = FrameSource(values)
 
-    power, attrs = preprocess(source, zones)[EyeFlowOutputPaths.active().spectrograms_masked]
+    power, attrs = preprocess_spectrograms(source, zones)[EyeFlowOutputPaths.active().spectrograms_masked]
 
     np.testing.assert_array_equal(power, [[3, 8], [2, 0], [np.nan, np.nan]])
     assert power.dtype == np.float64
@@ -97,11 +102,10 @@ def test_masked_median_rejects_spatial_outliers_and_preserves_invalid_pairs(prep
     np.testing.assert_array_equal(values, original)
 
 
-@pytest.mark.parametrize("preprocess", [preprocess_gap_spectrograms, preprocess_spectrograms])
-def test_even_sample_median_uses_float64_to_preserve_large_finite_power(preprocess):
+def test_even_sample_median_uses_float64_to_preserve_large_finite_power():
     values = np.full((1, 1, 1, 2), 3e38, dtype=np.float32)
     with np.errstate(over="raise", invalid="raise"):
-        power, _ = preprocess(values, np.ones((1, 2), bool))[
+        power, _ = preprocess_spectrograms(values, np.ones((1, 2), bool))[
             EyeFlowOutputPaths.active().spectrograms_masked
         ]
     np.testing.assert_array_equal(power, [[float(values[0, 0, 0, 0])]])
@@ -121,7 +125,7 @@ def test_nearest_neighbor_interpolation_and_hdf5_schema(tmp_path, factor):
     with h5py.File(tmp_path / "source.h5", "w") as source, h5py.File(tmp_path / "out.h5", "w") as out:
         spectra = source.create_dataset("spectrograms", data=values)
         spectra.attrs["unit"] = "power_unit"
-        PipelineH5Output(out).write_many(preprocess_gap_spectrograms(spectra, native_zones))
+        PipelineH5Output(out).write_many(preprocess_spectrograms(spectra, native_zones))
         dataset = out[schema.spectrograms_masked]
         assert dataset.name == "/ProcessingSpectrograms/Gaps/SpatialMedian"
         assert "ProcessingSpectrograms/Gaps/Raw" not in out
@@ -137,8 +141,10 @@ def test_nearest_neighbor_interpolation_and_hdf5_schema(tmp_path, factor):
         assert dataset.attrs["mask_interpolation_order"] == 0
         assert dataset.attrs["mask_interpolation_grid"] == "pixel_centers"
         assert "/spectrograms" in dataset.attrs["mask_target_shape_source"]
-        assert list(dataset.attrs["mask_application_shape"]) == [3, 2]
-        assert dataset.attrs["spectrogram_spatial_transform"] == "flip_D2_then_swap_D2_D3"
+        assert list(dataset.attrs["mask_application_shape"]) == [2, 3]
+        assert dataset.attrs["mask_application_coordinates"] == "HD_export_yx"
+        assert list(dataset.attrs["mask_application_dimDesc"]) == ["y", "x"]
+        assert dataset.attrs["spectrogram_spatial_transform"] == "none_HD_export_order"
 
 
 @pytest.mark.parametrize("reduced_only", [False, True])
@@ -148,7 +154,7 @@ def test_empty_native_or_reduced_support_skips_analysis_without_reading_source(r
         zones[0, 0] = True  # This pixel is not selected by center-based interpolation.
     source = FrameSource(np.ones((2, 3, 2, 3), dtype=np.float32))
     with patch("pipelines.low_freq_spectra.preprocessing.Logger.log_warning") as warning:
-        assert preprocess_gap_spectrograms(source, zones) == {}
+        assert prepare_gap_spectrograms(source, zones) is None
     assert source.reads == []
     warning.assert_called_once()
     assert "Skipping gap analysis" in warning.call_args.args[0]
@@ -156,8 +162,8 @@ def test_empty_native_or_reduced_support_skips_analysis_without_reading_source(r
 
 
 def test_missing_spectra_omit_output_with_warning():
-    with patch("pipelines.low_freq_spectra.preprocessing.Logger.log_warning") as warning:
-        assert preprocess_gap_spectrograms(None, np.ones((2, 3), bool)) == {}
+    with patch("pipelines.low_freq_spectra.spectrograms.Logger.log_warning") as warning:
+        assert preprocess_spectrograms(None, np.ones((2, 3), bool)) == {}
     warning.assert_called_once()
     assert "absent" in warning.call_args.args[0]
 
@@ -170,13 +176,13 @@ def test_target_shape_comes_from_hdf5_spectrograms_for_noninteger_nonsquare_resi
     schema = EyeFlowOutputPaths.active()
     with h5py.File(tmp_path / "HD.h5", "w") as source, h5py.File(tmp_path / "EF.h5", "w") as output:
         spectra = source.create_dataset("spectrograms", data=np.stack([image, image * 3])[None])
-        metrics = preprocess_gap_spectrograms(spectra, native_zones)
+        metrics = preprocess_spectrograms(spectra, native_zones)
         PipelineH5Output(output).write_many(metrics)
         result = output[schema.spectrograms_masked]
         # Nearest-neighbor centers select native spectral pixels (0,3), (1,1), (2,0).
         np.testing.assert_array_equal(result[()], [[5, 15]])
         np.testing.assert_array_equal(result.attrs["mask_native_shape"], [5, 7])
-        np.testing.assert_array_equal(result.attrs["mask_application_shape"], [4, 3])
+        np.testing.assert_array_equal(result.attrs["mask_application_shape"], [3, 4])
         assert result.attrs["gap_pixel_count"] == 3
         assert result.attrs["mask_reduction"] == "nearest_neighbor_interpolation"
     np.testing.assert_array_equal(native_zones, original)

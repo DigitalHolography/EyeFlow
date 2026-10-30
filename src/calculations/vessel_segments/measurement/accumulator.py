@@ -25,6 +25,7 @@ class SegmentProfileAccumulator:
         *,
         frame_count: int,
         retain_segment_maps: bool,
+        compute_longitudinal_profiles: bool = True,
     ) -> None:
         self.topology = topology
         self.frame_count = int(frame_count)
@@ -39,7 +40,11 @@ class SegmentProfileAccumulator:
 
         self.segment_signal = filled(signal_shape)
         self.transverse = MaskedArrays(filled(profile_shape), filled(profile_shape))
-        self.longitudinal = MaskedArrays(filled(profile_shape), filled(profile_shape))
+        self.longitudinal = (
+            MaskedArrays(filled(profile_shape), filled(profile_shape))
+            if compute_longitudinal_profiles
+            else None
+        )
         self.mean_images = MaskedArrays(filled(image_shape), filled(image_shape))
         self._mean_sum = np.zeros(image_shape, dtype=np.float64)
         self._mean_count = np.zeros(image_shape, dtype=np.int64)
@@ -99,12 +104,13 @@ class SegmentProfileAccumulator:
         self.transverse.masked[index][frame_slice] = _to_numpy(
             transverse_masked_for_output
         )
-        self.longitudinal.unmasked[index][frame_slice] = _to_numpy(
-            longitudinal_profiles(rotated)
-        )
-        self.longitudinal.masked[index][frame_slice] = _to_numpy(
-            longitudinal_profiles(rotated_masked)
-        )
+        if self.longitudinal is not None:
+            self.longitudinal.unmasked[index][frame_slice] = _to_numpy(
+                longitudinal_profiles(rotated)
+            )
+            self.longitudinal.masked[index][frame_slice] = _to_numpy(
+                longitudinal_profiles(rotated_masked)
+            )
         if self.maps is not None:
             map_row = int(self._map_rows[index])
             if map_row < 0:

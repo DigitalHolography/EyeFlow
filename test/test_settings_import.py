@@ -118,6 +118,17 @@ class SettingsImportTests(unittest.TestCase):
             store.save({"ui_mode": "minimal"})
 
             self.assertEqual(1.0, store.load_band_ratio_frequency_scale_hz())
+            self.assertFalse(store.load_copy_hd_passthrough())
+
+    def test_import_rejects_invalid_hd_passthrough_setting(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "invalid.json"
+            source.write_text(json.dumps({"copy_hd_passthrough": "false"}), encoding="utf-8")
+            store = AppSettingsStore(path=root / "settings.json", default_template_path=None)
+            with self.assertRaisesRegex(ValueError, "copy_hd_passthrough"):
+                store.import_file(source)
+            self.assertFalse(store.path.exists())
 
     def test_import_rejects_invalid_band_ratio_scale_without_replacing_settings(
         self,

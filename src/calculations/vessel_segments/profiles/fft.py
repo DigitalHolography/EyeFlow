@@ -13,8 +13,6 @@ from calculations.compute_backend import optional_cupy_backend
 from calculations.math import interpft_axis0, nanmean_float32, next_power_of_two
 from utils.logger import Logger
 
-from ..sampling.transforms import dilate_segment_masks
-
 DEFAULT_PROFILE_MASK_DILATION_PIXELS = 10
 _FFT_PROFILE_X_BATCH = 32
 
@@ -252,78 +250,7 @@ def _gpu_nanmean_axis1(values, cupy, *, mask=None):
     return result.astype(cupy.float32, copy=False)
 
 
-def transverse_fft_magnitude_profiles(
-    maps_per_beat: np.ndarray,
-    segment_masks: np.ndarray,
-    *,
-    mask_dilation_pixels: int = DEFAULT_PROFILE_MASK_DILATION_PIXELS,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return FFT profiles shaped ``(x, frequency, beat, branch, radius)``.
-
-    ``maps_per_beat`` must have shape ``(x, y, time, beat, branch, radius)``.
-    The FFT is applied along its time axis independently for every pixel,
-    beat, branch, and radius.
-    """
-
-    maps = np.asarray(maps_per_beat, dtype=np.float32)
-    masks = np.asarray(segment_masks, dtype=bool)
-    if maps.ndim != 6:
-        raise ValueError(
-            "maps_per_beat must have shape "
-            "(x, y, time, beat, branch, radius)."
-        )
-    expected_mask_shape = (
-        maps.shape[5],
-        maps.shape[4],
-        maps.shape[1],
-        maps.shape[0],
-    )
-    if masks.shape != expected_mask_shape:
-        raise ValueError(
-            "segment_masks must have shape (radius, branch, y, x) matching "
-            "maps_per_beat."
-        )
-
-    dilated_masks = dilate_segment_masks(
-        masks,
-        iterations=mask_dilation_pixels,
-        horizontal_only=True,
-    )
-    output_shape = (
-        maps.shape[0],
-        maps.shape[2],
-        maps.shape[3],
-        maps.shape[4],
-        maps.shape[5],
-    )
-    unmasked = np.full(output_shape, np.nan, dtype=np.float32)
-    masked = np.full(output_shape, np.nan, dtype=np.float32)
-    for radius_index in range(maps.shape[5]):
-        for branch_index in range(maps.shape[4]):
-            magnitude = np.abs(
-                np.fft.fft(
-                    maps[..., branch_index, radius_index],
-                    axis=2,
-                )
-            ).astype(np.float32, copy=False)
-            unmasked[..., branch_index, radius_index] = nanmean_float32(
-                magnitude,
-                axis=1,
-            )
-            xy_mask = dilated_masks[radius_index, branch_index].T
-            masked[..., branch_index, radius_index] = nanmean_float32(
-                np.where(
-                    xy_mask[:, :, None, None],
-                    magnitude,
-                    np.float32(np.nan),
-                ),
-                axis=1,
-            )
-    return unmasked, masked
-
-
 __all__ = [
     "DEFAULT_PROFILE_MASK_DILATION_PIXELS",
     "SegmentFftAccumulator",
-    "transverse_fft_magnitude_profiles",
 ]

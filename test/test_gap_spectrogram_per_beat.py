@@ -8,7 +8,7 @@ import h5py
 import numpy as np
 import pytest
 
-from input_output.h5_access import PipelineH5Output
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine import PipelineDAG
 from pipelines import load_pipeline_catalog
@@ -264,7 +264,9 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
             )
         assert output["unrelated"][()] == 42
         if case in {"two_beats", "no_finite_cells"}:
-            assert set(metrics) == {
+            # Legacy products survive optional skips; shape outputs are covered
+            # by test_gap_shape_metrics, including their all-invalid schema.
+            assert set(metrics) >= {
                 schema.spectrograms_masked_per_beat,
                 schema.spectrograms_masked_per_beat_band_limited,
                 schema.spectrograms_masked_per_beat_svd_continuous,
@@ -281,7 +283,7 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
             } | {
                 f"{schema.spectrograms_masked_metrics_root}/{key}"
                 for key in [
-                    "SEI",
+                    "SEI", "SEI_25", "SEI_50", "SEI_75", "SEII_25", "SEII_50", "SEII_75",
                     *PHASE_METRIC_OUTPUT_NAMES.values(),
                     *(f"{name}_{suffix}" for name in PHASE_SUMMARY_OUTPUT_NAMES.values() for suffix in ("early", "late")),
                     *(f"delta_{name}" for name in PHASE_SUMMARY_OUTPUT_NAMES.values()),
@@ -289,13 +291,13 @@ def test_optional_skips_do_not_discard_existing_spectrum_or_other_products(tmp_p
             }
             root = schema.spectrograms_masked_metrics_root
             if case == "no_finite_cells":
-                for name in ("index_max1", "index_max2", "A0", "A", "A2", "R1", "SEI", "delta_A0"):
+                for name in ("index_max1", "index_max2", "A0", "A", "A_50", "SEI_50", "SEI", "delta_A0"):
                     assert np.isnan(metrics[f"{root}/{name}"][0])
                 assert any("only NaN" in call.args[0] for call in warning.call_args_list)
             else:
                 assert metrics[f"{root}/index_max1"][0] == 0
                 assert metrics[f"{root}/index_max2"][0] == 1
-                assert metrics[f"{root}/R1"][0] == 1
+                assert metrics[f"{root}/SEI_50"][0] == 1
             assert any("SVD" in call.args[0] for call in warning.call_args_list)
         else:
             assert metrics == {}

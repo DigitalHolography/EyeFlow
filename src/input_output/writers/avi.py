@@ -12,7 +12,7 @@ from typing import BinaryIO, Mapping
 import numpy as np
 from PIL import Image
 
-from .artifact_names import acquisition_stem, labeled_artifact_path, prefixed_artifact_path
+from .artifact_names import acquisition_stem, prefixed_artifact_path, writer_artifact_path
 
 _AVI_HAS_INDEX = 0x10
 _AVI_KEY_FRAME = 0x10
@@ -24,16 +24,12 @@ class AviArtifactWriter:
 
     def __init__(self, output, stem: str | None = None) -> None:
         self.output = output
-        self.stem = str(stem) if stem else _output_stem(output)
-        self.acquisition_stem = acquisition_stem(output, Path(self.stem).name)
+        self.stem = str(stem) if stem else acquisition_stem(output)
 
     def path(self, suffix: str, *, subfolder: str | None = None) -> Path:
-        filename = str(labeled_artifact_path(suffix, self.acquisition_stem, self.stem))
-        if subfolder:
-            filename = f"{subfolder}/{filename}"
-        path = self.output.path_for(_avi_output_type(), filename)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return path
+        return writer_artifact_path(
+            self.output, _avi_output_type(), suffix, label=self.stem, subfolder=subfolder
+        )
 
     def open_mjpeg(
         self,
@@ -335,10 +331,6 @@ def _rgb_uint8(frame) -> np.ndarray:
     if image.dtype != np.uint8:
         image = np.clip(image, 0, 255).astype(np.uint8)
     return np.ascontiguousarray(image)
-
-
-def _output_stem(output) -> str:
-    return acquisition_stem(output)
 
 
 def _avi_output_type():

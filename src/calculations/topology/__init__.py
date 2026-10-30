@@ -10,7 +10,6 @@ from .geometry import (
     AnnulusGeometry,
     annulus_mask,
     image_half_diagonal,
-    ring_masks,
     section_masks,
 )
 from .mask_area import annulus_widths_pixels, segment_mask_areas_pixels
@@ -20,7 +19,6 @@ from .quadrants import QUADRANT_NAMES, quadrant_membership
 from .segments import (
     SegmentTopology,
     build_segment_topology,
-    competing_segment_masks,
     resize_segment_topology_windows,
 )
 
@@ -35,14 +33,12 @@ __all__ = [
     "annulus_widths_pixels",
     "build_segment_topology",
     "capillary_analysis_zones",
-    "competing_segment_masks",
     "determine_segment_rotations",
     "downsample_gap_zones",
     "image_half_diagonal",
     "label_vessel_branches",
     "quadrant_membership",
     "resize_segment_topology_windows",
-    "ring_masks",
     "section_masks",
     "segment_mask_areas_pixels",
 ]

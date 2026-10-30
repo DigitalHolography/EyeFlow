@@ -17,7 +17,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from calculations.math import rotate_image_with_nan  # noqa: E402
+from calculations.vessel_segments.sampling.transforms import resample_rotate_segment  # noqa: E402
 from calculations.vessel_segments.profiles.per_beat import (  # noqa: E402
     interpolate_profiles_per_beat,
 )
@@ -108,9 +108,9 @@ class CrossSectionProfilePackingTests(unittest.TestCase):
     def test_nan_rotation_interpolates_only_finite_values(self) -> None:
         image = np.full((5, 5), np.nan, dtype=np.float32)
         image[1:4, 1:4] = np.arange(1, 10, dtype=np.float32).reshape(3, 3, order="F")
-        rotated = rotate_image_with_nan(image, 30.0)
+        rotated = resample_rotate_segment(image[None], 30.0, output_side_pixels=5)[0]
         self.assertTrue(np.all(np.isnan(rotated[[0, -1]])))
-        self.assertAlmostEqual(5.0, float(rotated[2, 2]), places=5)
+        self.assertAlmostEqual(5.0, float(rotated[3, 3]), places=5)
 
 
 class ProfileArtifactTests(unittest.TestCase):

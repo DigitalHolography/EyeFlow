@@ -14,11 +14,14 @@ from .runner import run_displacement_map
     requires=["numpy", "h5py", "cv2", "SimpleITK", "tqdm"],
     dag_produces=["displacement_map"],
     input_slot="both",
+    execution_mode="process",
+    native_parallelism=True,
+    run_once=True,
 )
-def run(ctx) -> None:
+def run(ctx):
     """Entrypoint called by the pipeline runtime."""
 
-    run_displacement_map(ctx)
+    return run_displacement_map(ctx)
 
 
 __all__ = ["run"]

@@ -26,12 +26,6 @@ class SegmentSamplingPlan:
     rotated_masks: np.ndarray
 
     @property
-    def topology(self) -> SegmentTopology:
-        """Compatibility alias for the source-coordinate topology."""
-
-        return self.native
-
-    @property
     def segment_shape(self) -> tuple[int, int]:
         return self.native.segment_shape
 
@@ -87,17 +81,6 @@ class SegmentSamplingPlan:
                 equal_nan=True,
             )
         )
-
-
-class SampledSegment(NamedTuple):
-    """One uniformly resized and upright segment from a retinal map."""
-
-    ring_index: int
-    branch_index: int
-    rotated: object
-
-
-SampledSegments = Iterator[SampledSegment]
 
 
 class SampledSegmentChunk(NamedTuple):

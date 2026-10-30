@@ -6,10 +6,12 @@ import json
 import re
 from collections.abc import Mapping
 
+import h5py
+from input_output.readers.nodes import is_dataset
 import numpy as np
 
 from .base import SourceFileLayout, TypedSource, scalar_from_value
-from .source_data import HolodopplerMetadata, HolodopplerTiming, PixelPitch
+from retinal_source_data import HolodopplerMetadata, HolodopplerTiming, PixelPitch
 
 HD_CONFIG_DIR_NAME = "json"
 HD_CONFIG_FILENAME = "parameters.json"
@@ -47,12 +49,33 @@ HOLODOPPLER_LAYOUT = SourceFileLayout(
 class HolodopplerSource(TypedSource):
     """Typed access to the Holodoppler HDF5 file and sidecar config."""
 
-    @classmethod
-    def from_context(cls, ctx) -> HolodopplerSource:
-        return cls(ctx.inputs.hd.h5, ctx.inputs.hd.config)
+    def __init__(self, reader, config=None, *, cache_parameters: bool = False) -> None:
+        super().__init__(reader, config)
+        self._cache_parameters = cache_parameters
 
     def moment0_dataset(self):
         return self._moment_dataset(HD_MOMENT0_PATHS)
+
+    def named_root_moment_dataset(self, moment_path: str = HD_MOMENT0_PATH) -> h5py.Dataset:
+        """Resolve a selected root moment, including the legacy M0 alias."""
+        normalized = str(moment_path).replace("\\", "/").strip("/")
+        if not normalized or "/" in normalized:
+            raise ValueError("The HoloDoppler moment must be a root dataset name.")
+        candidates = HD_MOMENT0_PATHS if normalized == HD_MOMENT0_PATH else (normalized,)
+        for candidate in candidates:
+            found = self._reader.get(candidate)
+            if found is None:
+                continue
+            if not is_dataset(found) or found.ndim != 3:
+                raise ValueError(
+                    f"HoloDoppler moment '{candidate}' must be a 3-D dataset, "
+                    f"got {getattr(found, 'shape', None)}."
+                )
+            return found
+        raise KeyError(
+            "Missing HoloDoppler root moment dataset. Tried: "
+            + ", ".join(repr(candidate) for candidate in candidates)
+        )
 
     def moment2_dataset(self):
         return self._moment_dataset(HD_MOMENT2_PATHS)
@@ -235,8 +258,12 @@ class HolodopplerSource(TypedSource):
         return PixelPitch(values[0], values[1])
 
     def _parameters(self) -> Mapping[str, object] | None:
+        if self._cache_parameters and hasattr(self, "_cached_parameters"):
+            return self._cached_parameters
         raw = self._value(HD_PARAMETERS_KEY, default=None)
         if raw is None:
+            if self._cache_parameters:
+                self._cached_parameters = None
             return None
         if isinstance(raw, np.ndarray):
             if raw.size != 1:
@@ -253,6 +280,8 @@ class HolodopplerSource(TypedSource):
             parameters = raw
         if not isinstance(parameters, Mapping):
             raise TypeError("HD_parameters must decode to a dictionary.")
+        if self._cache_parameters:
+            self._cached_parameters = parameters
         return parameters
 
     def metadata(self) -> HolodopplerMetadata:

@@ -21,7 +21,7 @@ from calculations.blood_flow_velocity.signal_analysis.waveform.morphology import
 from calculations.blood_flow_velocity.signal_analysis.waveform.paired_cycles import (
     paired_vessel_cycles,
 )
-from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE as STYLE
+from plotting.article import DIAGNOSTIC_ARTICLE_STYLE as STYLE
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 from pipelines.velocity.semantics import (
     resolve_velocity_semantics,
@@ -78,8 +78,7 @@ def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[P
             )
             if metric is None:
                 continue
-            paths.append(
-                _ri_pi_plot(
+            path = _ri_pi_plot(
                     writer,
                     f"{metric_name}_{suffix_prefix}.png",
                     ctx.time,
@@ -88,7 +87,9 @@ def _export_ri_pi_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[P
                     metric_name,
                     ctx.velocity_semantics,
                 )
-            )
+            paths.append(path)
+            if metric_name == "RI":
+                writer.register_artifact("ri", suffix_prefix.removeprefix("v_"), path)
     return paths
 
 def _export_waveform_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list[Path]:
@@ -152,7 +153,7 @@ def _ri_pi_plot(
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(semantics.axis_label)
     _style_axes(ax)
-    return writer.savefig(fig, suffix)
+    return writer.save_figure(fig, suffix)
 
 def _arterial_waveform_plot(
     writer: FigureWriter,
@@ -258,7 +259,7 @@ def _arterial_waveform_analysis_plot(
     ax.set_ylabel(semantics.axis_label)
     ax.margins(y=0.18)
     _style_axes(ax)
-    return writer.savefig(fig, "ArterialWaveformAnalysis_v_artery.png", dpi=180)
+    return writer.save_figure(fig, "ArterialWaveformAnalysis_v_artery.png", dpi=180)
 
 def _venous_waveform_plot(
     writer: FigureWriter,
@@ -335,4 +336,4 @@ def _venous_waveform_analysis_plot(
     ax.set_ylabel(semantics.axis_label)
     ax.margins(y=0.18)
     _style_axes(ax)
-    return writer.savefig(fig, "VenousWaveformAnalysis_v_vein.png", dpi=180)
+    return writer.save_figure(fig, "VenousWaveformAnalysis_v_vein.png", dpi=180)

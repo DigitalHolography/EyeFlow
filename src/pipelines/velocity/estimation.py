@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import singledispatch
+from os import cpu_count
 from time import perf_counter
 
 import numpy as np
@@ -12,6 +14,7 @@ from scipy import ndimage as ndi
 
 from calculations.topology import annulus_mask
 from input_output.schema import HD_BAND_HF_PATH, HD_BAND_LF_PATH, ImageMaps
+from runtime_limits import cap_parallel_jobs
 from utils.logger import Logger
 from velocity_calibration import (
     BAND_LF_LOW_RELATIVE_THRESHOLD,
@@ -36,6 +39,8 @@ FREQUENCY_BANDS_METHOD = "frequency_bands"
 FREQUENCY_BAND_LF_PATH = f"/{HD_BAND_LF_PATH}"
 FREQUENCY_BAND_HF_PATH = f"/{HD_BAND_HF_PATH}"
 INPAINTING_RADIUS = 5
+_MIN_PARALLEL_INPAINT_PIXELS = 512_000
+_MAX_INPAINT_WORKERS = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +106,7 @@ class _VelocityResultAccumulator:
         artery_mask: np.ndarray,
         vein_mask: np.ndarray,
         retain_velocity_video: bool,
+        velocity_video_allocator: Callable[[tuple[int, int, int]], np.ndarray] | None,
     ) -> _VelocityResultAccumulator:
         averages = {
             name: np.zeros(spatial_shape, dtype=np.float64)
@@ -126,16 +132,22 @@ class _VelocityResultAccumulator:
                 "vein_delta_frms",
             )
         }
+        video_shape = (frame_count, *spatial_shape)
+        video = None
+        if retain_velocity_video:
+            video = (
+                velocity_video_allocator(video_shape)
+                if velocity_video_allocator is not None
+                else np.empty(video_shape, dtype=np.float32)
+            )
+            if video.shape != video_shape or video.dtype != np.float32 or not video.flags.writeable:
+                raise ValueError("Velocity video storage must be a writable float32 (frame, y, x) array.")
         return cls(
             frame_count=frame_count,
             section_mask=section_mask,
             artery_section=section_mask & artery_mask,
             vein_section=section_mask & vein_mask,
-            velocity_video=(
-                np.empty((frame_count, *spatial_shape), dtype=np.float32)
-                if retain_velocity_video
-                else None
-            ),
+            velocity_video=video,
             averages=averages,
             signals=signals,
         )
@@ -483,6 +495,7 @@ def estimate_retinal_velocity(
         DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
     ),
     retain_velocity_video: bool = True,
+    velocity_video_allocator: Callable[[tuple[int, int, int]], np.ndarray] | None = None,
 ) -> RetinalVelocityData:
     """Estimate velocity in chunks, retaining its video only when requested."""
 
@@ -530,6 +543,7 @@ def estimate_retinal_velocity(
         artery_mask=artery,
         vein_mask=vein,
         retain_velocity_video=retain_velocity_video,
+        velocity_video_allocator=velocity_video_allocator,
     )
     diagnostic_counts: dict[str, int] = {}
 
@@ -766,17 +780,23 @@ def _inpaint_frame_batch(
     except ModuleNotFoundError as exc:
         raise ImportError("Velocity background inpainting requires OpenCV (opencv-python).") from exc
     cv_mask = np.ascontiguousarray(mask, dtype=np.uint8)
-    inpainted = np.stack(
-        [
-            cv2.inpaint(
-                np.ascontiguousarray(np.where(mask, 0.0, frame), dtype=np.float32),
-                cv_mask,
-                INPAINTING_RADIUS,
-                cv2.INPAINT_TELEA,
-            )
-            for frame in source
-        ]
-    )
+
+    def inpaint_frame(frame):
+        return cv2.inpaint(
+            np.ascontiguousarray(np.where(mask, 0.0, frame), dtype=np.float32),
+            cv_mask,
+            INPAINTING_RADIUS,
+            cv2.INPAINT_TELEA,
+        )
+
+    workers = cap_parallel_jobs(min(_MAX_INPAINT_WORKERS, cpu_count() or 1, source.shape[0]))
+    if workers > 1 and source.size >= _MIN_PARALLEL_INPAINT_PIXELS:
+        # The input HDF5 slice has already been read. Only independent OpenCV
+        # frame work runs in threads, and map() preserves frame order.
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            inpainted = np.stack(list(executor.map(inpaint_frame, source)))
+    else:
+        inpainted = np.stack([inpaint_frame(frame) for frame in source])
     square_safe_limit = np.float32(np.sqrt(np.finfo(np.float32).max))
     valid_frames = np.all(np.isfinite(inpainted), axis=(-1, -2)) & np.all(
         np.abs(inpainted) <= square_safe_limit,

@@ -17,11 +17,12 @@ from .holodoppler import (
     HOLODOPPLER_LAYOUT,
     HolodopplerSource,
 )
-from .source_data import (
+from retinal_source_data import (
     DopplerViewMetadata,
     HolodopplerMetadata,
     HolodopplerTiming,
     ImageMaps,
+    OpticDiscMeasurements,
     PixelPitch,
     RetinalSegmentation,
     RetinalSourceData,
@@ -44,6 +45,7 @@ __all__ = [
     "HolodopplerSource",
     "HolodopplerTiming",
     "ImageMaps",
+    "OpticDiscMeasurements",
     "PixelPitch",
     "RetinalSegmentation",
     "RetinalSourceData",

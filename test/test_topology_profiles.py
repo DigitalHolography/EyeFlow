@@ -8,8 +8,6 @@ import numpy as np
 
 from calculations.vessel_segments.profiles.reductions import (
     longitudinal_profiles,
-    mean_profiles,
-    profile_deviation_power,
     transverse_profiles,
 )
 
@@ -65,22 +63,6 @@ class TopologyProfileTests(unittest.TestCase):
             [[[[2.0, np.nan]]]],
             equal_nan=True,
         )
-
-    def test_profile_mean_and_deviation_power_use_the_requested_axis(self) -> None:
-        profiles = np.asarray(
-            [[[[1.0, 2.0, 3.0], [3.0, 4.0, 5.0]]]],
-            dtype=np.float32,
-        )
-
-        mean = mean_profiles(profiles, axis=2)
-        power = profile_deviation_power(profiles, axis=2)
-        reused_mean_power = profile_deviation_power(profiles, mean, axis=2)
-
-        np.testing.assert_allclose(mean, [[[2.0, 3.0, 4.0]]])
-        np.testing.assert_allclose(power, np.ones_like(profiles))
-        np.testing.assert_array_equal(reused_mean_power, power)
-        self.assertEqual(np.float32, power.dtype)
-
 
 if __name__ == "__main__":
     unittest.main()

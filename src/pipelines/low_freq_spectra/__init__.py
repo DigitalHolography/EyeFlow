@@ -14,7 +14,7 @@ from pipeline_engine.imports import pipeline
     auto_run_after="velocity",
     run_once=True,
 )
-def run(ctx) -> None:
+def run(ctx):
     from .runner import run_low_freq_spectra
 
-    run_low_freq_spectra(ctx)
+    return run_low_freq_spectra(ctx)

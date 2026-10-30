@@ -57,7 +57,7 @@ def test_frequency_band_run_produces_physical_downstream_outputs(legacy_spectrog
         result = execute_run(spec)
 
         assert result.succeeded, result.failures
-        from input_output.h5_access import PipelineH5Output
+        from input_output.writers.h5_output import PipelineH5Output
 
         schema = EyeFlowOutputPaths.active()
         with h5py.File(result.outputs[0], "r") as file:
@@ -67,11 +67,13 @@ def test_frequency_band_run_produces_physical_downstream_outputs(legacy_spectrog
             )
             output = PipelineH5Output(file, processing_root="ProcessingBandRatio")
             assert output.attrs["velocity_estimation_method"] == "frequency_bands"
-            assert output.attrs["velocity_quantity"] == "physical_velocity"
             assert output.attrs["velocity_unit"] == "mm/s"
-            assert output.attrs["band_ratio_frequency_scale_hz"] == 2.0
-            assert output.attrs["band_lf_zero_sample_count"] == 1
-            assert output.attrs["band_lf_near_zero_sample_count"] == 1
+            provenance = output.read_attrs(schema.analysis.retinal_artery_velocity_signal)
+            assert provenance["velocity_quantity"] == "physical_velocity"
+            assert provenance["band_ratio_frequency_scale_hz"] == 2.0
+            diagnostics = output.read_attrs(schema.analysis.velocity_map_avg_masked)
+            assert diagnostics["band_lf_zero_sample_count"] == 1
+            assert diagnostics["band_lf_near_zero_sample_count"] == 1
 
             artery_velocity = output.get(schema.analysis.retinal_artery_velocity_signal)
             assert artery_velocity.attrs["unit"] == "mm/s"

@@ -61,7 +61,7 @@ input layouts, and unique destinations. `execute_run` owns batch iteration,
 per-file cleanup, failure collection, and stop-between-files behavior.
 
 GUI folder selection/drop and CLI folder expansion share
-`input_output.run_discovery`. It finds `.holo` markers and directories containing
+`input_output.runs.discovery`. It finds `.holo` markers and directories containing
 matching `<stem>_HD` and `<stem>_DV` companions, including the selected directory
 itself. Marker-free inputs retain their actual folder identity for progress and
 errors; HDF5 validation and execution use the same run-service path.
@@ -87,6 +87,7 @@ Each descriptor distinguishes:
   downstream executions;
 - `auto_run_after`: automatically include a companion after a scheduled pipeline;
 - `run_once`: execute once with shared state/output despite variant ancestry.
+- `wait_for_artifacts`: join completed sidecars before an artifact consumer runs.
 
 Every pipeline implicitly produces its own name. A required DAG key with no
 producer is treated as external, so a misspelled key does not fail DAG
@@ -121,36 +122,28 @@ navigation aid.
 
 ## Runtime ownership
 
-For each input, `run_pipelines_to_output` opens HD, DV, and one output HDF5,
-loads sidecar configuration, and runs the resolved descriptors in order.
-Every descriptor receives a fresh `PipelineContext`, but all contexts share:
+For each input, `run_pipelines_to_output` creates a coordinator-owned input
+service and in-memory output structure. HD/DV datasets are loaded centrally and
+staged once into local read-only storage when requested. Pipeline contexts use
+these dataset adapters; worker processes do not reopen the NAS source files.
 
-- the open output HDF5;
-- a single backing dictionary exposed as `ctx.state`;
-- resolved pipeline options, directly selected targets, and ordered pipeline
-  names;
-- the calibration and workflow-specific velocity method where applicable.
+The scheduler starts dependency-ready process pipelines alongside coordinator
+work. `displacement_map` is the first process pipeline; small waveform metrics
+remain sequential. Existing workflow variants keep isolated state and output
+namespaces. Process results arrive through a bounded queue as stable local-file
+references. Private stage journals preserve completed products after unrelated
+failures, without restoring snapshots of the shared output file.
 
-A declared variant producer publishes `ExecutionVariant` values through its
-context. Each value owns its run state, HDF5 output namespace, artifact
-namespace, and provenance. The engine derives the fan-out set from the
-producer's transitive DAG dependents, excluding descriptors declaring
-`run_once=True`, so this behavior does not depend on a
-literal pipeline name or velocity-specific state keys. Unrelated pipelines run
-once and their state is merged into every surviving variant before a dependent
-runs.
+Shared figure writers retain their bounded renderer pool and explicit artifact
+ownership. Renderers and calculations share CPU/RAM admission accounting. Reports
+run last and read the assembled output view and published images. The final HDF5
+is serialized locally and published after required exports complete; batch
+analysis can overlap the preceding input's finalization.
 
-Pipeline results may be `None`, a metrics mapping, or `ProcessResult`. A metrics
-mapping is persisted with `PipelineH5Output`; `ProcessResult` additionally
-writes attributes on the active output namespace (a workflow processing group
-or the shared root). `finish_pipeline` records `last_pipeline` and flushes.
-Each invocation has a checkpoint for dataset replacements, attributes, state
-bindings, and new artifacts. Failure restores the checkpoint, preserves earlier
-products, and blocks only consumers of the failed active DAG dependency. Other
-pipelines still execute in each workflow. Failure status is persisted, and an
-incomplete run retains its output path after all safe pipelines finish.
-Large transient arrays and typed run products belong in `ctx.state` or managed
-scratch storage, not ad-hoc module globals.
+See [parallel pipeline execution](parallel_pipeline_execution.md) for input
+caching, queue events, stage commits, resource policy, local scratch selection
+and the initial process rollout. See [stage graphs and handoff](pipeline_stage_graphs.md)
+for pipeline-owned product/dependency declarations.
 
 ## Scientific processing boundaries
 
@@ -199,11 +192,13 @@ files as a complete schema.
 
 The GUI exposes settings through `ui/controllers/settings.py` and pipeline
 selection through `ui/controllers/pipeline_library.py`. The CLI reads the same
-store; `--pipelines` changes target selection. Both velocity methods run
-automatically. The calibration comes from persisted settings and passes through
+store; `--pipelines` changes target selection. The JSON `velocity_estimation_method` setting selects `doppler_moments`,
+`bandratio`, or `both` (the default when absent). The legacy `frequency_bands`
+value is accepted as an alias for `bandratio`. Only selected workflows load
+inputs, estimate velocity, and execute their downstream pipelines. The calibration comes from persisted settings and passes through
 `resolve_run_spec` into `PipelineContext.band_ratio_frequency_scale_hz`.
 `PipelineContext.velocity_estimation_method` identifies a workflow internally;
-there is no GUI selector or method setting. Legacy settings are ignored.
+there is no GUI selector. Workflow selection is configured in JSON.
 
 For a new CLI option controlling an existing setting, inspect only
 `src/cli.py`, the relevant `AppSettingsStore` methods/default, the field passed
@@ -226,11 +221,13 @@ records the method and radius in output provenance.
 | Run validation and batch policy | `src/pipeline_engine/run_service.py` |
 | Per-pipeline runtime/context | `src/pipeline_engine/runtime.py`, `src/pipeline_engine/context.py` |
 | Default and persisted settings | `default_settings.json`, `src/app_settings.py` |
-| Companion input layout | `src/input_output/holo_run_layout.py` and source layouts in `src/input_output/schema/` |
+| Companion input layout | `src/input_output/runs/layout.py` and source layouts in `src/input_output/schema/` |
 | HD/DV logical fields | `src/input_output/schema/holodoppler.py`, `src/input_output/schema/doppler_view.py` |
-| Canonical aligned source models | `src/input_output/schema/source_data.py`, `src/pipelines/vessel_inputs.py` |
+| Canonical aligned source models | `src/retinal_source_data.py`, `src/pipelines/vessel_inputs.py` |
+| Reusable figure styling and layout | `src/plotting/article.py`, `src/plotting/formatting.py` |
 | Current EyeFlow HDF5 paths | `src/input_output/schema/eyeflow_output.py` |
-| HDF5 serialization behavior | `src/input_output/writers/h5.py`, `src/input_output/h5_access.py` |
+| HDF5 source access and output serialization | `src/input_output/readers/h5.py`, `src/input_output/writers/h5_output.py`, `src/input_output/writers/h5.py`, `src/input_output/writers/h5_storage.py`, `src/input_output/writers/h5_initialization.py` |
+| Existing artifact migration | `scripts/migrate_artifacts.py` |
 | Native topology and centerline geometry | `src/calculations/topology/` |
 | Segment sampling, measurement, and profile calculations | `src/calculations/vessel_segments/` |
 | Velocity estimator semantics | `src/pipelines/velocity/estimation.py` and `src/pipelines/velocity/semantics.py` |

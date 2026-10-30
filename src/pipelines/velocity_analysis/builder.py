@@ -37,7 +37,7 @@ from .constants import (
     SEGMENT_OUTER_RADIUS_FRAC,
 )
 from .models import VelocityAnalysis, VelocitySegmentResult
-from .sources import VelocityAnalysisSourceData, VelocityAnalysisSources
+from .sources import VelocityAnalysisSourceData, load_velocity_analysis_source_data
 
 VELOCITY_ANALYSIS_STATE = "velocity_analysis"
 
@@ -143,7 +143,7 @@ def _build_velocity_analysis_state(
     """Build persistent source and segment state before per-beat analysis."""
 
     with _logged_stage("velocity-analysis source loading"):
-        source_data = VelocityAnalysisSources.from_context(ctx).load()
+        source_data = load_velocity_analysis_source_data(ctx)
     timing = source_data.source.holodoppler.timing
     number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
     artery_segments, vein_segments = _build_segments(
@@ -315,6 +315,19 @@ def _segment_velocity_inputs(
             pipeline="velocity_analysis",
         )
     )
+    # All three options export cross-section profiles, including longitudinal
+    # profiles. Other segment consumers only need signals, means, or maps.
+    compute_longitudinal_profiles = bool(
+        velocity_analysis_scheduled
+        and any(
+            ctx.option_enabled(option, pipeline="velocity_analysis")
+            for option in (
+                "velocity_profiles",
+                "velocity_profile_analysis",
+                "velocity_profile_fft",
+            )
+        )
+    )
     with _logged_stage("segment velocity extraction"):
         results = analyze_velocity_segment_profiles(
             velocity_map,
@@ -327,6 +340,7 @@ def _segment_velocity_inputs(
             source_data.profile_settings,
             prepared_topologies=prepared_topologies,
             retain_velocity_maps=retain_velocity_maps,
+            compute_longitudinal_profiles=compute_longitudinal_profiles,
             cycle_boundary_indexes=cycle_boundary_indexes,
             velocity_profile_fft=velocity_profile_fft,
             index_base=int(source_data.provenance["beat_index_base"]),
@@ -379,7 +393,13 @@ def _export_pulse_pngs(ctx, analysis: VelocityAnalysis, per_beat_result) -> None
     if not ctx.output.available:
         return
     with _logged_stage("pulse-analysis PNG export"):
-        export_pulse_pngs(ctx.output, analysis, per_beat_result)
+        from input_output.writers.png import REPORT_IMAGES_STATE
+
+        report_images = {}
+        export_pulse_pngs(
+            ctx.output, analysis, per_beat_result, report_images=report_images
+        )
+        ctx.state.set(REPORT_IMAGES_STATE, report_images)
 
 
 @contextmanager

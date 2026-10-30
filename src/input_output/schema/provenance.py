@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import h5py
+from input_output.readers.nodes import is_group
 
 
 INHERITED_PROVENANCE_KEYS_ATTR = "inherited_provenance_keys"
@@ -29,7 +30,7 @@ def inherited_provenance(h5obj: h5py.Group | h5py.Dataset) -> dict[str, object]:
     fixed summary keys; older explicit declarations remain readable.
     """
     groups = []
-    group = h5obj if isinstance(h5obj, h5py.Group) else h5obj.parent
+    group = h5obj if is_group(h5obj) else h5obj.parent
     while group.name != "/":
         groups.append(group)
         group = group.parent

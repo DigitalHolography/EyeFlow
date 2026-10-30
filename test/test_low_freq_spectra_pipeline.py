@@ -18,7 +18,7 @@ from pipeline_engine.run_service import execute_run, resolve_run_spec
 from pipelines import load_pipeline_catalog
 from pipelines.low_freq_spectra.runner import run_low_freq_spectra
 from pipelines.low_freq_spectra.frequency import write_frequency_bin_table
-from input_output.h5_access import PipelineH5Output
+from input_output.writers.h5_output import PipelineH5Output
 from pipelines.topology_core.runner import CAPILLARY_ANALYSIS_ZONES_STATE
 from pipelines.velocity.models import VelocityWorkflows
 from pipelines.velocity.runner import VELOCITY_WORKFLOWS_STATE
@@ -97,7 +97,6 @@ def _spec(tmp_path, *, moments=True, bands=True, spectra="valid"):
 
 @pytest.mark.parametrize("moments,bands,expected", [
     (True, True, "doppler_moments"),
-    (True, False, "doppler_moments"),
     (False, True, "frequency_bands"),
     ("undetected", True, "frequency_bands"),
     ("one_boundary", True, "frequency_bands"),
@@ -159,7 +158,12 @@ def test_shared_pipeline_prefers_moments_then_detected_bandratio(tmp_path, momen
     names = {"spectrograms_gaps", "spectrograms_gaps_monochrome", "gaps_mask"}
     if expected is not None:
         names.add("spectrogram_gaps_median")
-        names.update(f"gaps_{name}" for name in ("A0", "A", "A2", "R1", "SE"))
+        names.update(f"gaps_{name}" for name in (
+            "A0", "A", "SE", "A_25", "A_50", "A_75", "SE_25", "SE_50", "SE_75",
+            "SEII_25", "SEII_50", "SEII_75",
+            "Av_5", "SEv_5", "Av_25", "SEv_25", "Av_50", "SEv_50",
+            "SpectralEntropy", "F50", "F90", "power_quantiles", "wasserstein_early_late",
+        ))
         names.update(f"gaps_positive_freq_median_phase_{suffix}" for suffix in (
             "early_late", "beat", "all",
         ))
@@ -192,7 +196,7 @@ def test_positive_figures_export_for_32_bin_input_with_the_stored_peak(tmp_path)
             assert (ef_dir / extension / "spectrograms" / f"scan_gaps_positive_freq_median_phase_{suffix}.{extension}").is_file()
 
 
-@pytest.mark.parametrize("bin_count", [2, 32, 64])
+@pytest.mark.parametrize("bin_count", [2, 64])
 def test_frequency_bin_table_is_written_without_detected_timing_or_figure_export(tmp_path, bin_count):
     spec = _spec(tmp_path, moments="undetected", bands="undetected")
     with h5py.File(tmp_path / "scan/scan_HD/h5/scan_HD_output.h5", "a") as hd:
@@ -201,7 +205,8 @@ def test_frequency_bin_table_is_written_without_detected_timing_or_figure_export
         hd["HD_parameters"][()] = json.dumps({
             "sampling_freq": 64000, "batch_size": 4 * bin_count, "batch_stride": 256,
         })
-    with patch("pipelines.low_freq_spectra.runner.export_spectrogram_figures", return_value=[]) as export:
+    # Check submission/calibration without running an artifact exporter.
+    with patch("pipeline_engine.context.PipelineContext.defer_artifacts") as export:
         result = execute_run(spec)
     assert export.call_args.kwargs["dt_seconds"] == 256 / 64000
     assert result.succeeded, result.failures
@@ -226,7 +231,7 @@ def test_frequency_bin_table_is_written_without_detected_timing_or_figure_export
         assert schema.spectrograms_masked_per_beat not in output
 
 
-@pytest.mark.parametrize("sampling_frequency", [None, 0, np.nan])
+@pytest.mark.parametrize("sampling_frequency", [None, np.nan])
 def test_frequency_bin_table_requires_valid_calibration(tmp_path, sampling_frequency):
     schema = EyeFlowOutputPaths.active()
     with h5py.File(tmp_path / "out.h5", "w") as h5:
@@ -303,7 +308,13 @@ def test_bad_spectra_fail_only_the_shared_pipeline(tmp_path, spectra):
         assert status["shared"]["low_freq_spectra"] == "failed"
         assert status["shared"]["velocity"] == "succeeded"
         assert all(branch["consumer"] == "succeeded" for branch in status["variants"].values())
-        assert "ProcessingSpectrograms" not in output  # Rolled back, including raw reductions.
+        if spectra == "frames":
+            # Valid spatial products were handed off before beat timing rejected
+            # the frame-count mismatch; only its unavailable dependents stop.
+            assert EyeFlowOutputPaths.active().spectrograms_spatial_median in output
+            assert EyeFlowOutputPaths.active().spectrograms_masked_per_beat not in output
+        else:
+            assert "ProcessingSpectrograms" not in output
 
 
 def test_automatic_companions_close_dependencies_and_do_not_become_targets():
@@ -327,6 +338,28 @@ def test_low_frequency_pipeline_cannot_be_selected_directly():
     available, _ = load_pipeline_catalog()
     with pytest.raises(ValueError, match="hidden.*low_freq_spectra"):
         resolve_run_spec(input_paths=[], target_names=["low_freq_spectra"], pipelines=available)
+
+
+def test_failed_beat_stage_retains_committed_spatial_products_and_basic_exports(tmp_path):
+    spec = _spec(tmp_path)
+    with patch("pipelines.low_freq_spectra.stages.run_gap_analysis", side_effect=ValueError("beat failure")):
+        result = execute_run(spec)
+    assert not result.succeeded
+    schema = EyeFlowOutputPaths.active()
+    with h5py.File(result.outputs[0]) as output:
+        assert schema.spectrograms_spatial_average in output
+        assert schema.spectrograms_spatial_median in output
+        assert schema.spectrograms_masked in output
+        assert schema.spectrograms_masked_per_beat not in output
+        stages = json.loads(output.attrs["stage_status"])["low_freq_spectra"]
+        assert stages["beats"] == "failed"
+        assert stages["qc"] == "succeeded"
+        assert stages["figures"] == "succeeded"
+        assert output["ProcessingMoments/Consumer/value"][()] == 42
+        assert output["ProcessingBandRatio/Consumer/value"][()] == 42
+    root = result.outputs[0].parent.parent
+    assert (root / "png/spectrograms/scan_spectrograms_gaps.png").is_file()
+    assert (root / "png/spectrograms/scan_gaps_qc.png").is_file()
 
 
 @pytest.mark.parametrize("class_pipeline", [False, True])

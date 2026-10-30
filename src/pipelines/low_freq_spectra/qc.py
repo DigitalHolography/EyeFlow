@@ -9,6 +9,8 @@ from input_output.schema import EyeFlowOutputPaths
 
 from .metrics import _valley_neighborhood_indices, analyze_phase_spectrum, analyze_spectrum
 
+_QC_SORT_CHUNK_VALUES = 500_000
+
 
 def pack_gap_qc(spatial_spectrum, *, source_attrs, gap_outputs):
     """Pack QC from reduced acquisition-time spectra and this run's gap products.
@@ -124,11 +126,7 @@ def _pack_beat_sensitivity(raw, gap_outputs, metric_attrs, valley_length, put, s
             frequency_end=metric_attrs.get("spectrogram_frequency_end", 0.5),
             valley_neighborhood_length=valley_length,
         )
-        for beat in range(beat_count):
-            remaining = raw[:, :, np.arange(beat_count) != beat]
-            # Match the production reductions, including their float32 outputs.
-            pooled = nanmedian(remaining, axis=(0, 2))
-            phase_spectrum = nanmedian(remaining, axis=2)
+        for beat, (pooled, phase_spectrum) in enumerate(_leave_one_beat_medians(raw)):
             fixed = analyze_spectrum(pooled, **calibration)
             curve = analyze_phase_spectrum(
                 phase_spectrum, index_max1=fixed["index_max1"], index_max2=fixed["index_max2"],
@@ -149,3 +147,81 @@ def _pack_beat_sensitivity(raw, gap_outputs, metric_attrs, valley_length, put, s
     }
     put(family, "DeltaSEI", delta, "SEI without the indexed beat minus full-recording SEI",
         dims=("omitted_beat",), **attrs)
+
+
+def _leave_one_beat_medians(raw):
+    """Reuse sorted spectra for the pooled and phase medians of each omission.
+
+    The production reductions use float32 medians. Sorting once avoids a
+    separate NaN-aware sort of the same samples for every omitted beat. The
+    caller has already normalized nonfinite input samples to NaN.
+    """
+    values = np.asarray(raw, dtype=np.float32)
+    phase_count, frequency_count, beat_count = values.shape
+    if np.any(np.isfinite(raw) & ~np.isfinite(values)):
+        # Preserve nanmedian's treatment of finite float64 inputs that
+        # overflow to infinity when it applies its float32 policy.
+        for beat in range(beat_count):
+            remaining = raw[:, :, np.arange(beat_count) != beat]
+            yield nanmedian(remaining, axis=(0, 2)), nanmedian(remaining, axis=2)
+        return
+    pooled_by_beat = np.empty((beat_count, frequency_count), dtype=np.float32)
+    phase_by_beat = np.empty((beat_count, phase_count, frequency_count), dtype=np.float32)
+    chunk_width = max(1, _QC_SORT_CHUNK_VALUES // (phase_count * beat_count))
+
+    for first in range(0, frequency_count, chunk_width):
+        stop = min(first + chunk_width, frequency_count)
+        chunk = values[:, first:stop, :]
+        finite = np.isfinite(chunk)
+        width = stop - first
+
+        # The beat-axis order gives the location of the omitted sample, so
+        # either middle rank can be read without sorting the other beats again.
+        phase_order = np.argsort(np.where(finite, chunk, np.inf), axis=2, kind="stable")
+        sorted_phase = np.take_along_axis(chunk, phase_order, axis=2)
+        phase_ranks = np.argsort(phase_order, axis=2)
+        phase_counts = finite.sum(axis=2)
+
+        flattened = np.where(finite, chunk, np.inf).transpose(1, 0, 2).reshape(width, -1)
+        pooled_order = np.argsort(flattened, axis=1, kind="stable")
+        sorted_pooled = np.take_along_axis(flattened, pooled_order, axis=1)
+        beat_ids = np.broadcast_to(
+            np.arange(beat_count), (width, phase_count, beat_count)
+        ).reshape(width, -1)
+        sorted_beat_ids = np.take_along_axis(beat_ids, pooled_order, axis=1)
+        pooled_valid = np.isfinite(sorted_pooled)
+        pooled_counts = pooled_valid.sum(axis=1)
+        frequency_rows = np.arange(width)
+
+        for beat in range(beat_count):
+            omitted_finite = finite[:, :, beat]
+            remaining_phase_counts = phase_counts - omitted_finite
+            omitted_rank = phase_ranks[:, :, beat]
+            lower_rank = (remaining_phase_counts - 1) // 2
+            upper_rank = remaining_phase_counts // 2
+            lower_index = lower_rank + (omitted_finite & (omitted_rank <= lower_rank))
+            upper_index = upper_rank + (omitted_finite & (omitted_rank <= upper_rank))
+            lower = np.take_along_axis(sorted_phase, lower_index[:, :, None], axis=2)[:, :, 0]
+            upper = np.take_along_axis(sorted_phase, upper_index[:, :, None], axis=2)[:, :, 0]
+            phase_spectrum = np.median(np.stack((lower, upper), axis=-1), axis=-1)
+            phase_spectrum[remaining_phase_counts == 0] = np.nan
+            phase_by_beat[beat, :, first:stop] = phase_spectrum
+
+            # A cumulative count selects the pooled middle ranks after the
+            # omitted beat's phase samples have been removed.
+            keep = pooled_valid & (sorted_beat_ids != beat)
+            cumulative = np.cumsum(keep, axis=1)
+            remaining_pooled_counts = pooled_counts - omitted_finite.sum(axis=0)
+            lower_rank = (remaining_pooled_counts - 1) // 2 + 1
+            upper_rank = remaining_pooled_counts // 2 + 1
+            lower_index = np.count_nonzero(cumulative < lower_rank[:, None], axis=1)
+            upper_index = np.count_nonzero(cumulative < upper_rank[:, None], axis=1)
+            upper_index = np.minimum(upper_index, sorted_pooled.shape[1] - 1)
+            lower = sorted_pooled[frequency_rows, lower_index]
+            upper = sorted_pooled[frequency_rows, upper_index]
+            pooled = np.median(np.stack((lower, upper), axis=-1), axis=-1)
+            pooled[remaining_pooled_counts == 0] = np.nan
+            pooled_by_beat[beat, first:stop] = pooled
+
+    for beat in range(beat_count):
+        yield pooled_by_beat[beat], phase_by_beat[beat]

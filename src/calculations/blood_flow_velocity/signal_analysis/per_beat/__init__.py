@@ -7,7 +7,6 @@ from .runner import (
 )
 from .segments import (
     PerBeatSegmentAnalysisResult,
-    aggregate_per_beat_segment_analysis,
     per_beat_segment_analysis,
 )
 from .signal import PerBeatSignalAnalysisResult, per_beat_signal_analysis
@@ -17,7 +16,6 @@ __all__ = [
     "PerBeatAnalysisResult",
     "PerBeatSegmentAnalysisResult",
     "PerBeatSignalAnalysisResult",
-    "aggregate_per_beat_segment_analysis",
     "per_beat_segment_analysis",
     "per_beat_signal_analysis",
     "run_per_beat_analysis",

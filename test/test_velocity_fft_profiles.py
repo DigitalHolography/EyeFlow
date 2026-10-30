@@ -19,7 +19,6 @@ from calculations.compute_backend import optional_cupy_backend  # noqa: E402
 from calculations.vessel_segments.measurement import MaskedArrays  # noqa: E402
 from calculations.vessel_segments.profiles.fft import (  # noqa: E402
     SegmentFftAccumulator,
-    transverse_fft_magnitude_profiles,
 )
 from calculations.vessel_segments.profiles.fft import _gpu_nanmean_axis1  # noqa: E402
 from calculations.vessel_segments.sampling.transforms import dilate_segment_masks  # noqa: E402
@@ -31,6 +30,33 @@ from pipelines.velocity_analysis.analysis.segment_maps import (  # noqa: E402
 from pipelines.velocity_analysis.outputs.profiles import (  # noqa: E402
     pack_velocity_profile_fft_outputs,
 )
+
+
+def _retained_fft_reference(maps_per_beat, segment_masks):
+    """Small full-array reference for the streamed FFT accumulator."""
+    maps = np.asarray(maps_per_beat, dtype=np.float32)
+    masks = dilate_segment_masks(
+        segment_masks, iterations=10, horizontal_only=True,
+    )
+    shape = (maps.shape[0], maps.shape[2], maps.shape[3], maps.shape[4], maps.shape[5])
+    unmasked = np.full(shape, np.nan, dtype=np.float32)
+    masked = np.full_like(unmasked, np.nan)
+    for radius in range(maps.shape[5]):
+        for branch in range(maps.shape[4]):
+            magnitude = np.abs(np.fft.fft(maps[..., branch, radius], axis=2)).astype(np.float32)
+            mask = masks[radius, branch].T[:, :, None, None]
+            for output, values in (
+                (unmasked, magnitude),
+                (masked, np.where(mask, magnitude, np.nan)),
+            ):
+                finite = np.isfinite(values)
+                count = finite.sum(axis=1)
+                total = np.where(finite, values, 0).sum(axis=1, dtype=np.float32)
+                np.divide(
+                    total, count,
+                    out=output[..., branch, radius], where=count > 0,
+                )
+    return unmasked, masked
 
 
 class VelocityFFTProfileTests(unittest.TestCase):
@@ -97,7 +123,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
         )
 
     def test_fft_then_nanmean_uses_dilated_mask(self) -> None:
-        unmasked, masked = transverse_fft_magnitude_profiles(
+        unmasked, masked = _retained_fft_reference(
             self.maps_per_beat,
             self.segments.segment_masks,
         )
@@ -167,10 +193,12 @@ class VelocityFFTProfileTests(unittest.TestCase):
             self.assertEqual("full", masked.attrs["fft_spectrum"])
             self.assertEqual(10, masked.attrs["mask_dilation_iterations"])
             self.assertEqual(0, unmasked.attrs["mask_dilation_iterations"])
+            self.assertFalse(masked.is_virtual)
+            np.testing.assert_array_equal(masked[()], self.segments.transverse_fft.masked)
             self.assertEqual("gzip", masked.compression)
 
     def test_streamed_accumulator_matches_legacy_retained_map_path(self) -> None:
-        expected_unmasked, expected_masked = transverse_fft_magnitude_profiles(
+        expected_unmasked, expected_masked = _retained_fft_reference(
             self.maps_per_beat,
             self.segments.segment_masks,
         )
@@ -198,7 +226,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
         masks[0, 0, 25, 1:4] = True
         boundaries = np.asarray([0, 3, 6], dtype=np.int32)
         maps_per_beat = interpolate_velocity_maps_per_beat(maps, boundaries)
-        expected_unmasked, expected_masked = transverse_fft_magnitude_profiles(
+        expected_unmasked, expected_masked = _retained_fft_reference(
             maps_per_beat,
             masks,
         )
@@ -242,7 +270,7 @@ class VelocityFFTProfileTests(unittest.TestCase):
         masks = np.zeros((1, 1, 51, 5), dtype=bool)
         masks[0, 0, 22:29, 1:4] = True
         boundaries = np.asarray([0, 3, 5, 8], dtype=np.int32)
-        expected_unmasked, expected_masked = transverse_fft_magnitude_profiles(
+        expected_unmasked, expected_masked = _retained_fft_reference(
             interpolate_velocity_maps_per_beat(maps, boundaries),
             masks,
         )

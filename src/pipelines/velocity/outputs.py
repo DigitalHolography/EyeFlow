@@ -7,6 +7,7 @@ from collections.abc import Iterable
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.serialization import serialize_spatial_image
 
 from .models import RetinalVelocity
 from .semantics import velocity_dataset_attrs
@@ -23,6 +24,11 @@ def pack_velocity_outputs(
     cycle_paths = schema.cardiac_cycle
     spectral = velocity.cardiac_cycle.spectral
     velocity_attrs = velocity_dataset_attrs(velocity)
+    # Diagnostics belong to the base maps, rather than processing-group attrs
+    # (which intentionally retain only the small workflow summary).
+    velocity_attrs.update({key: value for key, value in velocity.provenance.items()
+                           if key.startswith("band_lf_") and
+                           (key.endswith("_count") or key.endswith("_threshold"))})
     frequency_attrs = {
         key: value
         for key, value in velocity_attrs.items()
@@ -95,7 +101,7 @@ def _spatial_map_value(
             "y_axis_direction": "increasing_toward_north",
         }
     )
-    published = np.flip(image, axis=0).T.copy()
+    published = serialize_spatial_image(image)
     return metric_value(
         published,
         dim_desc=("x", "y"),

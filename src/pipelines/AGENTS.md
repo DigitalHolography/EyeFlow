@@ -139,53 +139,54 @@ before export if absent, since velocity analysis may run later. Missing/invalid
 sampling metadata skips frequency figures while keeping other products.
 The spectrum figure and pooled scalar metrics consume `MedianPhaseBeat`.
 All gap metrics live directly under `/ProcessingSpectrograms/Gaps/Metrics`.
-Phase curves `A0_t`, `A_t`, `A2_t`, `R1_t`, and `SE` use `MedianBeat` with the
-pooled peak indices fixed at every phase. Pooled scalar metrics use `A0`, `A`,
-`A2`, and `R1`; output heights `h0`/`h1`/`hv`, `rho_h`, and the former
-`R2`/`Z2` products are absent. `A` is the former `A1` integral.
-`SE` is the phasewise spectral excess. `SEI` is the whole-cycle median of valid phasewise `SE`,
-not a ratio calculated from the pooled spectrum; no pooled-SEI output is emitted.
-Each curve also has scalar medians over closed phase intervals (default
-`[0,1/3]` and `[1/3,1]`) and a signed late-minus-early delta. Area and ratio
-summaries use their curve base name with `_early`, `_late`, and `delta_`
-forms; the `SE` summaries are
-`SEI_early`, `SEI_late`, and `delta_SEI`. All deltas are late-minus-early. Generic helpers in
-`calculations/math/phase_windows.py` own closed interval masks, NaN-aware medians,
-and subtraction. `run_gap_analysis` and `pack_spectrum_metrics` accept
-`early_interval`/`late_interval` cycle-fraction bounds in `[0,1]`; use the same
-windows for early/late spectra, STD envelopes, and metric summaries/deltas.
-Keep subtraction order explicit in definitions, source paths, and calculation
-metadata. Ignore NaNs within each window; missing windows/differences remain NaN.
-Keep the source's excluded endpoint and include a one-third boundary sample in
-both default windows when present. Curves retain phase/timing/peak provenance and also
-produce shared `gaps_<metric>` PNG/EPS plots.
-The valley height `hv` uses a NaN-aware median over a neighborhood centered on
-the two central bins. Its default length is one quarter of the actual domain
-(32 bins -> 8 samples, 64 bins -> 16 samples), rounded to the nearest even
-length with ties upward and at least two samples. Any one-dimensional domain
-with at least two bins is supported; an explicit even `valley_neighborhood_length`
-overrides the default. Peak halves and central valley bins scale with the domain,
-splitting at `floor(bin_count/2)` for odd lengths. All-NaN peak halves retain NaN
-indexes, log a warning, and are identified by per-half valid-bin counts in metadata.
-`A0` is valley-median height times peak-to-peak width in kHz; `A2` is the
-peak-height mean times the same width. These swap the former A0/A2 meanings.
-Use `df_khz=q*fs/(B*1000)` for averaging factor `q` and original FFT size `B` and width `(index_max2-index_max1)*df_khz`, with no
-extra bin. `A` is the trapezoidal integral between those peak bins with positive
-`df_khz` spacing in stored HD order (unwrapped kHz, no signed-axis sorting).
-Areas and their phase summaries/deltas have source-power-times-kHz units;
-peak/valley heights retain power units. Preserve calibration, spacing, integration
-method, and units in metadata. Artifact axis labels abbreviate `a.u.*kHz` to
-`a.u.`. Resolve calibration from shared
-`Meta/SamplingFrequencyHz/value`; missing/invalid calibration warns and skips
-the Metrics family while retaining raw/aggregate spectra and filters.
-`R1=A/A0` and `SE=(A_t-A0_t)/A0_t` are dimensionless. Ratios require finite,
-strictly positive A0 and finite numerator/result; invalid phases remain NaN.
-`SEI=nanmedian(SE)` summarizes valid source phase samples equally and is emitted
-only with phase spectra; all-invalid cycles yield NaN. Its metadata identifies
-the SE source and source/valid/invalid phase counts. No unconfigured signal or
-stability cutoff is inferred. All five output metrics have phase curves,
-early/late medians, signed late-minus-early deltas, and matching PNG/EPS phase plots.
-Metric metadata records the neighborhood.
+Pooled `MedianPhaseBeat` selects one maximum in each half, ignoring NaNs with
+lowest-index tie breaking. Missing halves retain NaN indices and log warnings.
+Phase curves use `MedianBeat` with these peak indices fixed as integration
+bounds. Flood heights use the actual maximum per frequency half at each phase,
+ignoring NaNs, independently of those bounds. `A`/`A_t` integrate between peaks with calibrated
+positive kHz spacing, including both endpoints, without signed-axis sorting.
+`A0`/`A0_t` multiply the peak-to-peak width by the central-neighborhood median.
+Default neighborhood length is one quarter of the actual domain, rounded to
+the nearest even length (ties up), at least two bins; 32 bins uses 12 through 19,
+64 uses 24 through 39. An explicit even length overrides this. Ignore valley
+NaNs; all-missing neighborhoods remain NaN.
+
+`A_25`, `A_50`, and `A_75` integrate `min(S,h_p)` from zero between peaks,
+where `h_p=(p/100)*mean(two peak heights)`. Fractions describe height, not
+fractions of total spectral area. Include exact piecewise-linear crossings
+inside bin intervals, not just trapezoids of clipped bin samples. Phase curves
+`A_25_t`, `A_50_t`, and `A_75_t` use current half-domain maxima for height,
+while retaining the pooled peak indices for integration bounds.
+Nonfinite/negative interval power invalidates new references; zero gives zero.
+No marker-based watershed segmentation or valley water-volume calculation is
+used. Pooled areas come from the pooled spectrum, not temporal curve medians.
+
+Original `SE=(A_t-A0_t)/A0_t` is preserved. New `SE_p=(A_t-A_p_t)/A_p_t` uses
+the corresponding reference. Ratios require finite positive references and
+finite numerator/results; invalid phases remain NaN. New `SEII_p_t` curves
+calculate `(A_p_t-A0_t)/A0_t` for p=25/50/75, preserving negative values.
+Their whole-cycle medians are `SEII_p`, with `SEII_p_early`, `SEII_p_late`, and
+`delta_SEII_p` window summaries. SEII requires positive finite A0 and finite
+flooded area/result; it has unit `1`. `SEI`, `SEI_p`, and `SEII_p` are
+NaN-aware whole-cycle medians of their respective phase curves, emitted only
+with phase spectra, without pooled-ratio fallback. Each curve also has closed
+early/late window medians (defaults `[0,1/3]` and `[1/3,1]`) and a signed
+late-minus-early delta. Summary bases are `A0`, `A`, `A_p`, `SEI`, `SEI_p`, and `SEII_p`,
+with `_early`, `_late`, and `delta_` forms. Shared phase-window helpers preserve
+boundary inclusion and NaNs. `run_gap_analysis`/`pack_spectrum_metrics` accept
+custom windows; apply them to spectra, STD, and metrics consistently.
+
+`A2`/`R1` families and central-bin `index_min1`, `index_min2`, `min1`, `min2`
+outputs and calculations are removed. There are no `R2`, `Z2`, `h0`, `h1`, `hv`,
+or `rho_h` datasets. Metrics has 64 datasets when phase spectra are available:
+9 pooled scalars, 12 curves, 36 window/delta summaries, and 7 SEI/SEII scalars.
+Areas use power-times-kHz; ratios use `1`; heights use power. Record calibration,
+spacing, integration, source/timing/peak provenance, flood fractions and height
+evaluation, corresponding ratio references, and valid counts. Resolve calibration
+from shared `Meta/SamplingFrequencyHz/value`; missing/invalid calibration skips
+Metrics while retaining spectra/filters. All twelve curves export shared
+`gaps_<metric>` PNG/EPS plots. Figure labels abbreviate `a.u.*kHz` to `a.u.`.
+See data contracts for full definitions and metadata.
 `low_freq_spectra/qc.py` packs descriptive diagnostics under the schema-owned
 `ProcessingSpectrograms/Gaps/QC` families: DataCompleteness,
 ValleyRepeatability, SEIBeatSensitivity, PotentialMotionContamination, and
@@ -239,6 +240,12 @@ Physical capillary velocity remains deferred.
 `spatial_gradient_moment0` shares cardiac-cycle/topology state but owns its
 gradient profiles and lumen edges. Do not put gradient work into velocity
 analysis.
+Its continuous moment0ff segment measurements are reused between velocity
+workflows through `ctx.computation_cache` when the open HD dataset, masks,
+prepared geometry/rotations, measurement settings, and filter settings match.
+Cached measurement arrays are read-only; only successful continuous extraction
+is shared. Each workflow still packs its own beats, lumen metrics, and outputs
+with its own cardiac timing. Extraction failures are not cached.
 It requires the optional HD flat-field moment at `/moment0ff` or `/M0FF`, and
 publishes under `/ProcessingMoments/SpatialGradientProfiles` and
 `/ProcessingMoments/SpatialGradientMetrics` only when it is a direct target. When it
@@ -297,5 +304,5 @@ Retain clear method, calibration, and unit provenance for their results.
 | Spatial-gradient lumen metric | spatial-gradient package, vessel-segment sampling/measurement, image filters, spatial-gradient/topology tests | CLI and report code unless output is exposed there |
 | Blood-volume-rate formula | option declaration, runner, outputs, `calculations/blood_volume_rate.py`, BVR tests | unrelated waveform metric calculators |
 | Metric family | that pipeline's runner/calculator/outputs plus waveform input contracts and matching test file | pipeline engine unless dependencies/options change |
-| Displacement | `displacement_map/` and `test_displacement_map_pipeline.py` | topology and waveform metrics unless the dormant segment helper is activated |
+| Displacement | `displacement_map/` and `test_displacement_map_pipeline.py` | topology and waveform metrics |
 | Profile fit | `calculations/vessel_segments/profiles/fits/quadratic.py`, then `velocity_analysis/outputs/profile_analysis.py`, dedicated doc/test | GUI and settings |

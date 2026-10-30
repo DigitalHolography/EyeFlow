@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from time import perf_counter
-
 import numpy as np
 from scipy import ndimage as ndi
 
@@ -165,45 +163,6 @@ def dilate_segment_masks(
     if exclusions is not None:
         result = masks | (result & ~exclusions)
     return result
-
-
-def rotate_segments(
-    interpolated_maps: np.ndarray,
-    rotation_degrees: np.ndarray,
-) -> np.ndarray:
-    """Rotate uniformly sized segment maps on a diagonal-sized canvas.
-
-    ``interpolated_maps`` must use ``(annulus, branch, ..., y, x)`` ordering.
-    The rotation array must have matching ``(annulus, branch)`` dimensions.
-    """
-
-    values = np.asarray(interpolated_maps, dtype=np.float32)
-    _assert_segment_array(values, rotation_degrees)
-    canvas_side = _rotation_canvas_side(values.shape[-1])
-    rotated = np.full(
-        (*values.shape[:-2], canvas_side, canvas_side),
-        np.nan,
-        dtype=np.float32,
-    )
-    valid_indexes = np.argwhere(np.isfinite(rotation_degrees))
-    progress_step = max(1, len(valid_indexes) // 10)
-    started = perf_counter()
-    Logger.log(
-        f"Starting rotation of {len(valid_indexes)} segment stacks onto "
-        f"{canvas_side}x{canvas_side} canvases."
-    )
-    for work_index, (annulus_index, branch_index) in enumerate(valid_indexes, start=1):
-        segment = _pad_for_rotation(values[annulus_index, branch_index], np.nan)
-        rotated[annulus_index, branch_index] = _rotate_values(
-            segment,
-            float(rotation_degrees[annulus_index, branch_index]),
-        )
-        if work_index % progress_step == 0 or work_index == len(valid_indexes):
-            Logger.log(
-                f"Segment rotation progress: {work_index}/{len(valid_indexes)} "
-                f"in {perf_counter() - started:.2f}s."
-            )
-    return rotated
 
 
 def rotate_segment_masks(
@@ -474,83 +433,6 @@ def _interpolate_values(values, output_side_pixels: int, *, return_device: bool 
         where=resized_weights > np.float32(1e-6),
     )
     return resized
-
-
-def _rotate_values(values: np.ndarray, angle_degrees: float) -> np.ndarray:
-    backend = optional_cupy_backend()
-    if backend is not None:
-        try:
-            gpu_values = backend.cupy.asarray(values, dtype=backend.cupy.float32)
-            valid = backend.cupy.isfinite(gpu_values)
-            rotated_values = backend.ndimage.rotate(
-                backend.cupy.where(valid, gpu_values, backend.cupy.float32(0.0)),
-                angle_degrees,
-                axes=(-2, -1),
-                reshape=False,
-                order=1,
-                mode="constant",
-                cval=0.0,
-                prefilter=False,
-            )
-            rotated_weights = backend.ndimage.rotate(
-                valid.astype(backend.cupy.float32),
-                angle_degrees,
-                axes=(-2, -1),
-                reshape=False,
-                order=1,
-                mode="constant",
-                cval=0.0,
-                prefilter=False,
-            )
-            valid_output = rotated_weights >= backend.cupy.float32(0.5)
-            safe_weights = backend.cupy.where(
-                valid_output,
-                rotated_weights,
-                backend.cupy.float32(1.0),
-            )
-            rotated = backend.cupy.empty(
-                rotated_values.shape,
-                dtype=backend.cupy.float32,
-            )
-            backend.cupy.divide(
-                rotated_values,
-                safe_weights,
-                out=rotated,
-            )
-            rotated[~valid_output] = backend.cupy.nan
-            return backend.cupy.asnumpy(rotated)
-        except Exception:
-            pass
-
-    valid = np.isfinite(values)
-    rotated_values = ndi.rotate(
-        np.where(valid, values, np.float32(0.0)),
-        angle_degrees,
-        axes=(-2, -1),
-        reshape=False,
-        order=1,
-        mode="constant",
-        cval=0.0,
-        prefilter=False,
-    )
-    rotated_weights = ndi.rotate(
-        valid.astype(np.float32),
-        angle_degrees,
-        axes=(-2, -1),
-        reshape=False,
-        order=1,
-        mode="constant",
-        cval=0.0,
-        prefilter=False,
-    )
-    rotated = np.full(rotated_values.shape, np.nan, dtype=np.float32)
-    np.divide(
-        rotated_values,
-        rotated_weights,
-        out=rotated,
-        where=rotated_weights >= np.float32(0.5),
-    )
-    return rotated.astype(np.float32, copy=False)
 
 
 def _spatial_zoom(values: np.ndarray, output_side_pixels: int) -> tuple[float, ...]:

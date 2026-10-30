@@ -27,6 +27,9 @@ from pipelines.profile_outputs import (
     profile_dataset,
     temporally_meaned_profile_dataset,
 )
+from utils.logger import Logger
+
+from .cache import continuous_gradient_key, freeze_continuous_gradients
 
 _OUTPUT_PATHS = EyeFlowOutputPaths.active()
 SPATIAL_GRADIENT_PROFILE_ROOT = _OUTPUT_PATHS.spatial_gradient_profiles_root
@@ -73,7 +76,7 @@ def extract_spatial_gradient_segments(
         raise KeyError("Missing flat-field HoloDoppler moment0 dataset: moment0ff/M0FF.")
     artery_topology = prepared_topologies["artery"]
     ring_settings = getattr(
-        getattr(artery_topology, "topology", None),
+        getattr(artery_topology, "native", artery_topology),
         "ring_settings",
         None,
     )
@@ -84,12 +87,22 @@ def extract_spatial_gradient_segments(
         )
     if ring_settings is None:
         raise RuntimeError("Prepared topology has no annulus geometry.")
+    masks = {"artery": artery_mask, "vein": vein_mask}
+    cache = getattr(ctx, "computation_cache", None)
+    key = None if cache is None else continuous_gradient_key(
+        moment0ff, masks, prepared_topologies, profile_settings,
+        (
+            TEMPORAL_MOVING_AVERAGE_WINDOW, GAUSSIAN_BLUR_RADIUS,
+            UNSHARP_MASK_RADIUS, UNSHARP_MASK_WEIGHT,
+            _SPATIAL_GRADIENT_MASK_DILATION_PIXELS,
+        ),
+    )
+    if key is not None and key in cache:
+        Logger.log("Reusing shared continuous moment0ff spatial-gradient measurements.")
+        return cache[key]
     results = analyze_segment_profiles(
         moment0ff,
-        {
-            "artery": artery_mask,
-            "vein": vein_mask,
-        },
+        masks,
         source.segmentation.optic_disc,
         ring_settings,
         profile_settings,
@@ -101,7 +114,13 @@ def extract_spatial_gradient_segments(
         transverse_mask_dilation_pixels=_SPATIAL_GRADIENT_MASK_DILATION_PIXELS,
         retain_segment_maps=False,
     )
-    return results["artery"], results["vein"]
+    segments = results["artery"], results["vein"]
+    if key is not None:
+        # Publish only after both vessels succeed. Beat packing/output failures
+        # cannot corrupt this immutable continuous result or poison another retry.
+        cache[key] = freeze_continuous_gradients(segments)
+        Logger.log("Stored shared continuous moment0ff spatial-gradient measurements.")
+    return segments
 
 
 def _spatial_gradient_chain(interpolated):

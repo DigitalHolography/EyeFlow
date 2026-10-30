@@ -7,7 +7,7 @@ from unittest.mock import patch
 import numpy as np
 
 import pipelines
-from calculations.math.spatial_gradient import spatial_gradient
+from calculations.math.spatial_gradient import sobel_spatial_gradient
 from input_output.schema import PixelPitch
 from pipeline_engine import PIPELINE_REGISTRY, PipelineDAG
 from pipelines.spatial_gradient_moment0 import runner as gradient_runner
@@ -28,7 +28,7 @@ class SpatialGradientPipelineTests(unittest.TestCase):
     def test_spatial_gradient_uses_sobel_magnitude(self) -> None:
         ramp = np.tile(np.arange(5, dtype=np.float32), (4, 1))
 
-        gradient = spatial_gradient(ramp)
+        gradient = sobel_spatial_gradient(ramp[None])[0]
 
         np.testing.assert_allclose(gradient[:, 1:-1], 8.0)
         np.testing.assert_allclose(gradient[:, (0, -1)], 4.0)

@@ -59,19 +59,19 @@ def test_canonical_prepared_topology_provides_native_mask_areas() -> None:
         window_size_percentile_kept=1.0,
     )
 
-    areas = segment_mask_areas_pixels(prepared.topology)
+    areas = segment_mask_areas_pixels(prepared.native)
     diameters, geometry_areas, widths = mask_derived_lumen_geometry(
         (prepared,),
         pixel_size_mm=0.01,
     )
 
     assert areas.shape == (
-        prepared.topology.branch_ids.size,
-        prepared.topology.annulus_masks.shape[0],
+        prepared.native.branch_ids.size,
+        prepared.native.annulus_masks.shape[0],
     )
     np.testing.assert_array_equal(geometry_areas[0], areas)
     assert diameters[0].shape == areas.shape
-    assert widths.shape == (prepared.topology.annulus_masks.shape[0],)
+    assert widths.shape == (prepared.native.annulus_masks.shape[0],)
 
 
 def test_mask_derived_flow_keeps_equivalent_diameter_model() -> None:

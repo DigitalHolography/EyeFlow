@@ -7,7 +7,6 @@ import zipfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from ..writers.artifact_names import prefixed_artifact_path
@@ -15,7 +14,9 @@ from ..writers.artifact_names import prefixed_artifact_path
 
 @contextmanager
 def extracted_zip_tree(zip_path: str | Path) -> Iterator[Path]:
-    with TemporaryDirectory() as tmp_dir:
+    from pipeline_engine.storage import temporary_directory
+
+    with temporary_directory() as tmp_dir:
         target_root = Path(tmp_dir).resolve()
         with zipfile.ZipFile(zip_path, "r") as archive:
             _safe_extract_all(archive, target_root)
@@ -97,36 +98,8 @@ def write_zip_artifact(
     return target
 
 
-def reset_output_dir(path: str | Path) -> None:
-    path_obj = Path(path)
-    try:
-        _remove_existing_output_path(path_obj)
-        path_obj.mkdir(parents=True, exist_ok=False)
-    except OSError as exc:
-        raise RuntimeError(_locked_output_dir_message(path_obj)) from exc
-
-
-def _remove_existing_output_path(path_obj: Path) -> None:
-    if not path_obj.exists():
-        return
-    if path_obj.is_dir():
-        shutil.rmtree(path_obj)
-    else:
-        path_obj.unlink()
-    if path_obj.exists():
-        raise OSError(f"Output path still exists after removal: {path_obj}")
-
-
-def _locked_output_dir_message(path_obj: Path) -> str:
-    return (
-        "Could not replace the existing output directory. Close any File Explorer "
-        f"window, terminal, or application using this folder, then retry:\n{path_obj}"
-    )
-
-
 __all__ = [
     "create_zip_from_tree",
     "extracted_zip_tree",
-    "reset_output_dir",
     "write_zip_artifact",
 ]

@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import numpy as np
+import h5py
+from input_output.readers.nodes import is_dataset
 
-from calculations.topology import OpticDisc
-
-from .base import SourceFileLayout, TypedSource
+from .base import MISSING, SourceFileLayout, TypedSource
+from retinal_source_data import OpticDiscMeasurements
 
 DV_CONFIG_DIR_NAME = "json"
 DV_CONFIG_FILENAME = "DV_params.json"
 DV_RETINAL_VESSEL_LOGITS_PATH = "segmentation/Retina/vessel_segmentation_logits"
 DV_RETINAL_VESSEL_LOGITS_THRESHOLD = 0.1
 DV_CHOROID_VESSEL_MASK_PATH = "segmentation/Choroid/vessel_mask"
+DV_ARTERY_MASK_PATH = "segmentation/Retina/artery_mask"
+DV_VEIN_MASK_PATH = "segmentation/Retina/vein_mask"
+DV_VESSEL_MASK_PATH = "segmentation/Retina/vessel_mask"
+DV_LABELED_VESSELS_PATH = "segmentation/Retina/labeled_vessels"
 
 DOPPLER_VIEW_LAYOUT = SourceFileLayout(
     label="DV",
@@ -27,15 +32,47 @@ DOPPLER_VIEW_LAYOUT = SourceFileLayout(
 class DopplerViewSource(TypedSource):
     """Typed access to the DopplerView HDF5 file and sidecar config."""
 
+    def __init__(self, reader, config=None, *, cache_small_arrays: bool = False) -> None:
+        super().__init__(reader, config)
+        self._cache_small_arrays = cache_small_arrays
+        self._small_array_cache: dict[str, np.ndarray | None] = {}
+
+    def _array(self, path: str, *, dtype=None, default=MISSING):
+        # DV fields used here are small masks or scalar measurements. Share the
+        # source read across velocity methods while isolating callers' edits.
+        if not self._cache_small_arrays:
+            return super()._array(path, dtype=dtype, default=default)
+        if path not in self._small_array_cache:
+            self._small_array_cache[path] = super()._array(path, default=None)
+        value = self._small_array_cache[path]
+        if value is None:
+            if default is MISSING:
+                return super()._array(path, dtype=dtype)
+            if default is None:
+                return None
+            return np.asarray(default, dtype=dtype)
+        return np.array(value, dtype=dtype, copy=True)
+
+    def retinal_mask(self, path: str, *, required: bool = False) -> np.ndarray | None:
+        """Read one native retinal mask without choosing pipeline mask policy."""
+        found = self._reader.get(path)
+        if found is None:
+            if required:
+                raise KeyError(f"Missing DopplerView mask dataset at '{path}'.")
+            return None
+        if not is_dataset(found):
+            raise ValueError(f"DopplerView mask path '{path}' is not a dataset.")
+        return self._array(path)
+
     def retinal_artery_mask(self) -> np.ndarray:
-        return self._array("segmentation/Retina/artery_mask", dtype=bool)
+        return self._array(DV_ARTERY_MASK_PATH, dtype=bool)
 
     def retinal_vein_mask(self) -> np.ndarray:
-        return self._array("segmentation/Retina/vein_mask", dtype=bool)
+        return self._array(DV_VEIN_MASK_PATH, dtype=bool)
 
     def retinal_labeled_vessels(self) -> np.ndarray | None:
         return self._array(
-            "segmentation/Retina/labeled_vessels",
+            DV_LABELED_VESSELS_PATH,
             dtype=np.int32,
             default=None,
         )
@@ -66,15 +103,10 @@ class DopplerViewSource(TypedSource):
             raise ValueError(f"DopplerView /{path} must contain finite values.")
         return value > DV_RETINAL_VESSEL_LOGITS_THRESHOLD if logits else value != 0
 
-    def optic_disc(
-        self,
-        image_shape: tuple[int, int],
-        *,
-        pixel_pitch_mm: float | None = None,
-    ) -> OpticDisc:
-        """Return DopplerView's optic-disc measurements in its native frame."""
+    def optic_disc_measurements(self) -> OpticDiscMeasurements:
+        """Read DopplerView's optic-disc measurements in its native frame."""
 
-        return OpticDisc.from_measurements(
+        return OpticDiscMeasurements(
             mask=self._array(
                 "segmentation/OpticDisc/mask",
                 default=None,
@@ -94,8 +126,6 @@ class DopplerViewSource(TypedSource):
                 dtype=np.float32,
                 default=None,
             ),
-            image_shape=image_shape,
-            pixel_pitch_mm=pixel_pitch_mm,
         )
 
     def local_background_dist(self) -> int:

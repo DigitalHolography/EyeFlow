@@ -8,41 +8,12 @@ from math import ceil, exp, log, sqrt
 import numpy as np
 from scipy import ndimage as ndi
 
-from .periodic import SlidingWindowMethod, centered_sliding_window
-
 TEMPORAL_MOVING_AVERAGE_WINDOW = 7
 GAUSSIAN_BLUR_RADIUS = 6.0
 UNSHARP_MASK_RADIUS = 8.0
 UNSHARP_MASK_WEIGHT = 0.6
 _IMAGEJ_GAUSSIAN_ACCURACY = 0.0002
 _IMAGEJ_UNSHARP_ACCURACY = 0.01
-
-
-def moving_avg_window(stack, *, window=TEMPORAL_MOVING_AVERAGE_WINDOW, array_module=np):
-    """Compatibility wrapper for a periodic temporal moving average."""
-
-    xp = array_module
-    return centered_sliding_window(
-        xp.asarray(stack, dtype=xp.float32),
-        window,
-        SlidingWindowMethod.AVERAGE,
-        axis=0,
-        array_module=xp,
-    )
-
-
-def spatial_gradient(frame, *, array_module=np, ndimage=ndi):
-    """Return the magnitude of the horizontal and vertical 3x3 Sobel filters."""
-    xp = array_module
-    image = xp.asarray(frame, dtype=xp.float32)
-    if image.ndim != 2:
-        raise ValueError(f"A moment0 frame must be 2-D, got shape {image.shape}.")
-    # ImageJ's Find Edges command combines the Sobel responses as hypot(Gx, Gy).
-    # Nearest-edge extension matches its border handling.
-    finite_image = xp.nan_to_num(image, nan=0.0, posinf=0.0, neginf=0.0)
-    horizontal = ndimage.sobel(finite_image, axis=1, mode="nearest")
-    vertical = ndimage.sobel(finite_image, axis=0, mode="nearest")
-    return xp.hypot(horizontal, vertical)
 
 
 def sobel_spatial_gradient(stack, *, array_module=np, ndimage=ndi):

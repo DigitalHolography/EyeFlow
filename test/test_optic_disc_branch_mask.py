@@ -22,7 +22,7 @@ from input_output.schema import EyeFlowOutputPaths, PixelPitch
 from pipelines.velocity_analysis import builder as runner
 from pipelines.topology_core.outputs import (
     INNER_R0_VESSEL_LABEL,
-    pack_segmentation_outputs,
+    pack_topology_outputs,
 )
 
 
@@ -93,7 +93,7 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         np.testing.assert_array_equal(vessel, original_vessel)
         np.testing.assert_array_equal(disc, original_disc)
 
-        outputs = pack_segmentation_outputs(source, branches, branches)
+        outputs = self._pack_source(source, branches, branches)
         schema = EyeFlowOutputPaths.active()
         mask, _ = outputs[schema.segmentation.optic_disc.mask]
         for paths in (schema.segmentation.artery, schema.segmentation.vein):
@@ -145,7 +145,7 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
                     20.0,
                     50.0,
                 )
-                published, _ = pack_segmentation_outputs(source, None, None)[
+                published, _ = self._pack_source(source, None, None)[
                     schema.segmentation.optic_disc.mask
                 ]
                 expected_disc = np.flip(published.T, axis=0)
@@ -184,7 +184,18 @@ class OpticDiscBranchMaskTests(unittest.TestCase):
         self.assertGreater(branches.branch_ids.size, 0)
         source.source.segmentation.optic_disc = bad_disc
         with self.assertRaisesRegex(ValueError, "same orientation and shape"):
-            pack_segmentation_outputs(source, branches, branches)
+            self._pack_source(source, branches, branches)
+
+    @staticmethod
+    def _pack_source(source_data, artery_segments, vein_segments):
+        source = source_data.source
+        return pack_topology_outputs(
+            source.segmentation.vessels.artery,
+            source.segmentation.vessels.vein,
+            source.segmentation.optic_disc,
+            {"artery": artery_segments, "vein": vein_segments},
+            source.holodoppler.pixel_pitch,
+        )
 
     @staticmethod
     def _inputs():

@@ -2,6 +2,9 @@
 system_design/
 AGENTS.md
 
+benchmarks/
+dev_scripts/
+
 # Byte-compiled / cache
 __pycache__/
 *.py[cod]
@@ -59,5 +62,5 @@ __pycache__/
 EyeFlow-main/
 build/
 
-
-dev_scripts/
+# AI tooling
+.mcp*
