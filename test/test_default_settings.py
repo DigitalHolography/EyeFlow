@@ -52,6 +52,7 @@ class DefaultSettingsTests(unittest.TestCase):
                 "velocity_profile_analysis"
             ]
         )
+        self.assertEqual("both", settings["velocity_estimation_method"])
         self.assertEqual(1.0, settings["band_ratio_frequency_scale_hz"])
         self.assertEqual(12, settings["band_limited_harmonics"])
         self.assertFalse(settings["copy_hd_passthrough"])

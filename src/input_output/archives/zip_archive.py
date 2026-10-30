@@ -7,7 +7,6 @@ import zipfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from ..writers.artifact_names import prefixed_artifact_path
@@ -15,7 +14,9 @@ from ..writers.artifact_names import prefixed_artifact_path
 
 @contextmanager
 def extracted_zip_tree(zip_path: str | Path) -> Iterator[Path]:
-    with TemporaryDirectory() as tmp_dir:
+    from pipeline_engine.storage import temporary_directory
+
+    with temporary_directory() as tmp_dir:
         target_root = Path(tmp_dir).resolve()
         with zipfile.ZipFile(zip_path, "r") as archive:
             _safe_extract_all(archive, target_root)

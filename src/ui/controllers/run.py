@@ -150,6 +150,7 @@ class RunController:
                 band_ratio_frequency_scale_hz=(
                     self.app.settings_store.load_band_ratio_frequency_scale_hz()
                 ),
+                velocity_estimation_method=self.app.settings_store.load_velocity_estimation_method(),
                 band_limited_harmonics=self.app.settings_store.load_band_limited_harmonics(),
                 copy_hd_passthrough=self.app.settings_store.load_copy_hd_passthrough(),
             )

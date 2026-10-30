@@ -60,6 +60,13 @@ consumers, tests, and documentation synchronized.
 owns payload conversion, compression, and bool representation;
 `writers/h5_initialization.py` owns root initialization and selected HD
 pass-through data. Avoid opening the primary HDF5 independently inside a pipeline.
+Managed runs use coordinator-owned dataset adapters for central source reads
+and an in-memory output structure. Use `readers/nodes.py` predicates when an API
+accepts both HDF5 and managed nodes. Source alignment and output path ownership
+remain in this package. Final serialization reuses the same storage policies;
+reports accept the assembled output view before the final HDF5 exists.
+See [parallel execution](../../docs/parallel_pipeline_execution.md).
+
 Large float32 map/profile payloads may request sparse NaN chunk storage; the
 published shape and values remain dense on read. Symmetric velocity-profile
 FFT magnitudes may use a same-file virtual dataset over compressed unique

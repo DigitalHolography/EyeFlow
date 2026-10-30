@@ -10,6 +10,7 @@ from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from pipeline_engine.storage import temporary_directory
 from threading import RLock
 from uuid import uuid4
 
@@ -53,12 +54,15 @@ class ArtifactWorkers:
     def __init__(self):
         self._renderer = None
         self._publisher = None
+        self._admission = None
         self._lock = RLock()
 
     def __enter__(self):
         return self
 
     def __exit__(self, *exc):
+        if self._admission is not None:
+            self._admission.shutdown(wait=True)
         if self._renderer is not None:
             self._renderer.shutdown(wait=True, cancel_futures=True)
         if self._publisher is not None:
@@ -77,12 +81,41 @@ class ArtifactWorkers:
                 self._publisher = ThreadPoolExecutor(
                     max_workers=1, thread_name_prefix="EyeFlowArtifactPublisher",
                 )
+                self._admission = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="EyeFlowExportAdmission",
+                )
+            from .resources import current_resources
+            budget = current_resources()
+            self._admission.submit(self._submit_admitted, job, complete, budget)
+
+    def _submit_admitted(self, job, complete, budget):
+        from time import monotonic
+        memory = min(64 * 2**20, budget.memory_limit // 4) if budget else 0
+        started = monotonic()
+        if budget:
+            while not budget.try_acquire(1, memory):
+                with budget._condition:
+                    budget._condition.wait(.1)
+            if monotonic() - started > .1:
+                Logger.log(f"[RESOURCES] Export {job.label} delayed {monotonic() - started:.2f}s.")
+        try:
             rendered = self._renderer.submit(
                 _run_exporter, job.exporter, job.snapshot, job.manager, job.kwargs,
             )
-            rendered.add_done_callback(
-                lambda future: self._publisher.submit(complete, job, future),
-            )
+        except Exception as exc:
+            if budget:
+                budget.release(1, memory)
+            rendered = Future()
+            rendered.set_exception(exc)
+            self._publisher.submit(complete, job, rendered)
+            return
+
+        def finished(future):
+            # Publication only copies files; return compute slots before it.
+            if budget:
+                budget.release(1, memory)
+            self._publisher.submit(complete, job, future)
+        rendered.add_done_callback(finished)
 
 
 @dataclass
@@ -142,7 +175,7 @@ class BackgroundArtifacts:
     def prepare(self, label, manager, exporter, snapshotter, **kwargs) -> ArtifactJob:
         if label in self.statuses:
             raise ValueError(f"Duplicate background artifact job: {label}")
-        temporary = TemporaryDirectory(prefix="eyeflow-figures-")
+        temporary = temporary_directory(prefix="eyeflow-figures-")
         root = Path(temporary.name)
         staged = replace(manager, layout=replace(manager.layout, _root_dir=root / "render"))
         snapshot = root / "snapshot"

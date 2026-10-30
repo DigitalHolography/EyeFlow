@@ -14,6 +14,8 @@ from pathlib import Path
 from app_settings import (
     DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
     DEFAULT_COPY_HD_PASSTHROUGH,
+    DEFAULT_VELOCITY_WORKFLOW_SELECTION,
+    validate_velocity_workflow_selection,
     validate_band_limited_harmonics_setting,
     validate_copy_hd_passthrough,
 )
@@ -55,6 +57,7 @@ class RunSpec:
     band_ratio_frequency_scale_hz: float = DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
     band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING
     copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH
+    velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION
 
     @property
     def total_pipeline_units(self) -> int:
@@ -102,10 +105,12 @@ def resolve_run_spec(
     band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
     band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
     copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH,
+    velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
     output_root: Path | None = None,
     batch_root: Path | None = None,
 ) -> RunSpec:
     """Resolve targets, inputs, and deterministic output destinations."""
+    resolved_velocity_selection = validate_velocity_workflow_selection(velocity_estimation_method)
     resolved_harmonics = validate_band_limited_harmonics_setting(band_limited_harmonics)
     resolved_copy_hd_passthrough = validate_copy_hd_passthrough(copy_hd_passthrough)
 
@@ -166,6 +171,7 @@ def resolve_run_spec(
         band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
         band_limited_harmonics=resolved_harmonics,
         copy_hd_passthrough=resolved_copy_hd_passthrough,
+        velocity_estimation_method=resolved_velocity_selection,
     )
 
 
@@ -181,7 +187,10 @@ def execute_run(
 
     Logger.log(f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
     Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
-    with ArtifactWorkers() as workers, ThreadPoolExecutor(
+    from .resources import ResourceBudget
+
+    budget = ResourceBudget()
+    with budget.activate(), ArtifactWorkers() as workers, ThreadPoolExecutor(
         max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
     ) as completions:
         return _execute_batch(
@@ -203,6 +212,11 @@ def _execute_batch(
         failure = pending.popleft().result()
         if failure is not None:
             failures.append(failure)
+            for request in spec.requests:
+                if request.input_layout.input_path == failure.input_path:
+                    path = request.output_manager.path_for(OutputType.H5)
+                    if path in outputs and not path.is_file():
+                        outputs.remove(path)
 
     for request_index, request in enumerate(spec.requests):
         # Permit the next input's analysis to overlap the preceding exports,
@@ -231,6 +245,7 @@ def _execute_batch(
 
         artifacts = BackgroundArtifacts(workers)
         numerical_error = None
+        finalizers = []
         try:
             final_dir = final_manager.layout.ef_dir
             if final_dir.exists() and not final_dir.is_dir():
@@ -248,11 +263,13 @@ def _execute_batch(
                 band_ratio_frequency_scale_hz=(spec.band_ratio_frequency_scale_hz),
                 band_limited_harmonics=spec.band_limited_harmonics,
                 copy_hd_passthrough=spec.copy_hd_passthrough,
+                velocity_estimation_method=spec.velocity_estimation_method,
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
                 on_pipeline_start=on_pipeline_start,
                 on_progress=on_progress,
                 background_artifacts=artifacts,
+                on_finalization_ready=finalizers.append,
             )
         except Exception as exc:  # noqa: BLE001
             if isinstance(exc, PipelineRunError):
@@ -267,7 +284,7 @@ def _execute_batch(
                 f"pipeline execution {phase}; artifact exports are still in progress."
             )
         pending.append(completions.submit(
-            _finish_file, input_layout.input_path, final_path, artifacts, numerical_error,
+            _finish_file, input_layout.input_path, final_path, artifacts, numerical_error, finalizers,
         ))
 
     while pending:
@@ -275,14 +292,16 @@ def _execute_batch(
     return RunResult(tuple(outputs), tuple(failures), stopped=stopped)
 
 
-def _finish_file(input_path, output_path, artifacts, numerical_error):
-    """Finalize a closed result HDF5 only after every sidecar is published."""
+def _finish_file(input_path, output_path, artifacts, numerical_error, finalizers=()):
+    """Serialize the retained output model only after sidecars are published."""
     import h5py
 
     try:
         with artifacts:
             artifacts.collect(wait=True)
-            if artifacts.statuses and output_path.is_file():
+            for finalize in finalizers:
+                finalize()
+            if not finalizers and artifacts.statuses and output_path.is_file():
                 with h5py.File(output_path, "r+") as h5:
                     h5.attrs["artifact_status"] = json.dumps(artifacts.statuses, sort_keys=True)
                     h5.attrs["artifact_failures"] = json.dumps(artifacts.failures, sort_keys=True)

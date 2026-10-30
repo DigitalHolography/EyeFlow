@@ -262,13 +262,17 @@ jobs:
 
           choco install innosetup --no-progress -y
 
-      - name: Build installer
+      - name: Build GPU-enabled installer
         id: build
+        env:
+          UV_PROJECT_ENVIRONMENT: build/installer-env
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
 
-          .\build_installer.ps1
+          # GPU dependencies are part of the base package; only build tools are extra.
+          uv sync --locked --no-default-groups --extra installer
+          .\build_installer.ps1 -Python "$env:UV_PROJECT_ENVIRONMENT\Scripts\python.exe"
 
           $installer = Get-ChildItem -LiteralPath "dist\installer" -Filter "*-Setup-*.exe" |
               Sort-Object LastWriteTime -Descending |

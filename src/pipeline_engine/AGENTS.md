@@ -17,7 +17,10 @@ task crosses front-end or I/O boundaries.
 | `dag.py` | Semantic-key producer graph, option-dependent requirements, topological order, and target closure |
 | `run_service.py` | Shared GUI/CLI run-spec validation and batch execution; delegates input expansion to `input_output/runs/inputs.py` and destination mapping to `input_output/output_manager.py` |
 | `input_access.py` | Context-aware timing and attribute conveniences for pipeline runners |
-| `runtime.py` | Opens inputs/output, initializes provenance, creates contexts, invokes descriptors, and records completion |
+| `runtime.py` | Coordinates inputs, output model, invocation contexts, statuses and finalization |
+| `scheduler.py`, `worker.py`, `protocol.py` | Dependency-ready process execution and acknowledged queue events |
+| `input_service.py`, `storage.py` | Central source loading, immutable transfers, and verified local scratch |
+| `output_model.py`, `resources.py` | Stage journals, final HDF5 assembly, and shared CPU/RAM accounting |
 | `context.py` | Namespaced inputs/output, shared state, selected options/order/method, result persistence |
 | `errors.py` | User-facing pipeline exception formatting |
 | `imports.py` | Convenience import surface used by pipeline declarations |
@@ -57,20 +60,32 @@ destinations. No files are executed at this stage.
 EyeFlow output directory, delegates to `run_pipelines_to_output`, records an
 output or `RunFailure`, and checks cancellation only between files.
 
-The runtime opens HD/DV sources and the output HDF5 for the full per-file plan.
-It creates a new `PipelineContext` for every descriptor over the same output
-handle and shared-state dictionary. Pipeline options, execution order, and
-directly selected targets and calibration are immutable views for the run.
-Any descriptor declaring `produces_execution_variants=True` may publish typed
-`ExecutionVariant` objects through `ctx.publish_execution_variants()`. Its
-transitive DAG dependents execute once per surviving variant using that
-variant's isolated state, HDF5 namespace, artifact namespace, and provenance;
-unrelated descriptors remain shared. `run_once=True` explicitly exempts a
-dependent from fan-out and canonical-variant selection; it uses shared state,
-root output, and no execution variant. Its state producers must be declared,
-just like other dependencies. A pipeline returning a
-mapping or `ProcessResult` is persisted;
-a pipeline returning `None` owns its direct writes.
+The runtime centrally opens HD/DV sources and stages requested datasets once
+into local read-only `.npy` storage through `input_service.py`. It assembles an
+in-memory `OutputModel`, retaining large immutable payloads in local scratch.
+`scheduler.py` dispatches dependency-ready opt-in process pipelines; displacement
+is the first production process pipeline. Small metrics and variant descendants
+retain coordinator execution. `worker.py` sends acknowledged stage snapshots
+and final results over the bounded queue defined in `protocol.py`.
+
+Every invocation uses private process state or coordinator-local checkpoints.
+Managed output checkpoints journal only changed records; handoffs preserve
+completed products across later failures. Reports consume the in-memory output
+view after exports complete. Final serialization/publication may overlap the
+next file's analysis; storage remains alive until finalization completes.
+See [execution design](../../docs/parallel_pipeline_execution.md).
+
+Declared execution variants preserve their isolated state, HDF5/artifact
+namespaces and provenance. `run_once=True` keeps a pipeline outside fan-out.
+Dependencies on pipeline names remain whole-invocation dependencies; only
+explicit stage product dependencies permit consumption after partial failure.
+
+`ctx.computation_cache` is a per-input memo shared across execution variants,
+separate from transactional `ctx.state`. Use it only for immutable successful
+pure calculations with explicit source/settings compatibility keys. Never cache
+failures, beat-specific products, or output side effects. A later packing/write
+failure does not discard a valid cached calculation; a failed calculation must
+remain independently retryable. Each input execution starts with an empty memo.
 
 ## Invariants
 
@@ -89,7 +104,7 @@ a pipeline returning `None` owns its direct writes.
   Shared errors or failure of every variant report an incomplete run only after
   safe pipelines finish; its partial HDF5 path remains in `RunResult.outputs`.
   Root `pipeline_status`, `pipeline_failures`, and `pipeline_skips` record outcomes.
-  Writers replace datasets; checkpoint rollback does not cover in-place array or
+  Writers replace datasets; journals do not cover in-place array or
   mutable state-object edits, or overwrites of existing sidecar files.
   `_run_pipeline_descriptor` wraps them with pipeline identity and retains
   their cause.

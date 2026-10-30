@@ -7,6 +7,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+from input_output.readers.nodes import is_group
 
 from app_settings import app_version
 from ..schema.holodoppler import HD_OUTPUT_PASSTHROUGH_PATHS
@@ -82,6 +83,20 @@ def _source_handle(existing: h5py.File | None, path: str):
 
 def _copy_source_object(source, parent: h5py.Group, name: str) -> None:
     """Copy external metadata with lossless compression where HDF5 permits it."""
+    if hasattr(parent, "store_dataset"):
+        if is_group(source):
+            target = parent.create_group(name)
+            for child_name, child in source.items():
+                _copy_source_object(child, target, child_name)
+        else:
+            storage = parent.file.storage
+            value = (storage.store_array(source) if source.dtype.kind in "biufc"
+                     and source.size * source.dtype.itemsize >= 65536 else source[()])
+            options = {"compression": "gzip", "compression_opts": 9, "shuffle": True} if source.ndim else {}
+            target = parent.store_dataset(name, value, options)
+        for key, value in source.attrs.items():
+            target.attrs[key] = value
+        return
     if isinstance(source, h5py.Group):
         # Retain link semantics for exports that use aliases or external links.
         links = [source.get(key, getlink=True) for key in source.keys()]

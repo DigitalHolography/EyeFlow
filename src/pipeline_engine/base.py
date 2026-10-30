@@ -39,6 +39,8 @@ def registerPipeline(
     auto_run_after: str | None = None,
     run_once: bool = False,
     wait_for_artifacts: bool = False,
+    execution_mode: str = "coordinator",
+    native_parallelism: bool = False,
 ):
     def decorator(cls):
         cls.name = name
@@ -78,6 +80,8 @@ def registerPipeline(
             auto_run_after=auto_run_after,
             run_once=bool(run_once),
             wait_for_artifacts=bool(wait_for_artifacts),
+            execution_mode=execution_mode,
+            native_parallelism=bool(native_parallelism),
             pipeline_factory=cls,
             source_path=_source_path(cls),
         )
@@ -101,6 +105,8 @@ def pipeline(
     auto_run_after: str | None = None,
     run_once: bool = False,
     wait_for_artifacts: bool = False,
+    execution_mode: str = "coordinator",
+    native_parallelism: bool = False,
 ):
     """Register a function pipeline.
 
@@ -134,6 +140,8 @@ def pipeline(
             auto_run_after=auto_run_after,
             run_once=bool(run_once),
             wait_for_artifacts=bool(wait_for_artifacts),
+            execution_mode=execution_mode,
+            native_parallelism=bool(native_parallelism),
             pipeline_factory=lambda: FunctionPipeline(
                 name=name,
                 description=description or (inspect.getdoc(func) or ""),
@@ -324,6 +332,12 @@ class PipelineDescriptor:
     source_path: str | None = None
     # Reports and other sidecar consumers need completed background exports.
     wait_for_artifacts: bool = False
+    execution_mode: str = "coordinator"
+    native_parallelism: bool = False
+
+    def __post_init__(self):
+        if self.execution_mode not in {"coordinator", "process"}:
+            raise ValueError(f"Unsupported pipeline execution mode: {self.execution_mode}")
 
     def instantiate(self) -> ProcessPipeline:
         """Factory method to create the actual pipeline instance."""

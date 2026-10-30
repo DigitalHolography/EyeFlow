@@ -4,7 +4,7 @@ A pipeline can return a `PipelineGraph` instead of a result mapping. Its own
 package defines the graph, calculations, products, packers and export callbacks.
 The engine supplies execution and uses the existing `PipelineDAG` planner;
 scientific definitions do not belong in the engine or the global catalog.
-Legacy function pipelines remain supported with their whole-invocation checkpoint.
+Legacy function pipelines remain supported with one invocation transaction.
 
 `pipelines/low_freq_spectra/stages.py` is the first production example. Its
 source, sampling, frequency calibration, spatial reduction, beat products, QC
@@ -47,8 +47,10 @@ An optional `validate(value)` callback owns product-specific numerical checks;
 the engine does not change NaN, sign or boundary policies.
 
 On handoff the engine validates the declared producer, snapshots the value,
-packs and atomically writes its datasets, advances the checkpoint for those
-paths, flushes the HDF5, and makes the logical product available. Duplicate
+packs and atomically commits its datasets to the managed output model, advances
+the stage journal for those paths, and makes the logical product available.
+Large payloads use local array references; the final HDF5 is written at run
+finalization. Direct callers using a real HDF5 retain immediate writes. Duplicate
 handoffs and overlapping dataset paths within a graph are rejected. Failed
 packing leaves no partial product, including when the caller catches its error.
 Managed direct HDF5 writes from graph stages are rejected; use handoff.

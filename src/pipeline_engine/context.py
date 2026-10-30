@@ -8,6 +8,8 @@ import h5py
 
 from app_settings import (
     DEFAULT_VELOCITY_ESTIMATION_METHOD,
+    DEFAULT_VELOCITY_WORKFLOW_SELECTION,
+    selected_velocity_methods,
     VelocityEstimationMethod,
     validate_velocity_estimation_method,
 )
@@ -115,6 +117,7 @@ class PipelineContext:
         pipeline_order: Sequence[str] = (),
         pipeline_targets: Sequence[str] = (),
         velocity_estimation_method: str | None = DEFAULT_VELOCITY_ESTIMATION_METHOD,
+        velocity_workflow_selection: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
         band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
         output_manager: OutputManager | None = None,
         processing_root: str | None = None,
@@ -122,6 +125,7 @@ class PipelineContext:
         execution_variant: ExecutionVariant | None = None,
         scratch: RunArrayStorage | None = None,
         background_artifacts: BackgroundArtifacts | None = None,
+        computation_cache: dict[object, object] | None = None,
     ) -> None:
         hd_config = dict(holodoppler_config or {})
         dv_config = dict(doppler_vision_config or {})
@@ -145,6 +149,10 @@ class PipelineContext:
             ),
         )
         self.state = PipelineState(variables)
+        # Pure, completed computations may be reused across execution variants.
+        # This per-input memo is separate from transactional pipeline products:
+        # callers own compatibility keys and must store only immutable successes.
+        self.computation_cache = computation_cache if computation_cache is not None else {}
         self.pipeline_options = {
             str(name): frozenset(str(option) for option in options)
             for name, options in (pipeline_options or {}).items()
@@ -161,6 +169,7 @@ class PipelineContext:
         self._graph_runtime_available = False
         self._execution_variants: tuple[ExecutionVariant, ...] = ()
         self._execution_variant_failures: dict[str, str] = {}
+        self.velocity_workflows = selected_velocity_methods(velocity_workflow_selection)
         resolved_velocity_method = velocity_estimation_method
         if resolved_velocity_method is None and execution_variant is not None:
             resolved_velocity_method = execution_variant.provenance.get(

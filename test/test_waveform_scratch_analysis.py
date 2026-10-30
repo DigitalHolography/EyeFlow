@@ -161,16 +161,17 @@ class ChunkedAnalysisAndSchemaTests(unittest.TestCase):
                 )
                 self.assertIsInstance(backed.maps.velocity, np.memmap)
                 np.testing.assert_array_equal(backed.maps.velocity, retained.maps.velocity)
-                self.assertEqual(1, len(list(Path(directory).glob(".ef_scratch_*"))))
-            self.assertEqual([], list(Path(directory).glob(".ef_scratch_*")))
+                scratch_directory = storage.scratch_directory
+                self.assertTrue(scratch_directory.is_dir())
+                self.assertNotEqual(Path(directory), scratch_directory.parent)
+            self.assertFalse(scratch_directory.exists())
             with patch(
                 "pipeline_engine.scratch.shutil.disk_usage",
                 return_value=SimpleNamespace(free=0),
             ):
                 with RunArrayStorage(Path(directory), memory_budget_bytes=0) as storage:
-                    self.assertNotIsInstance(
-                        storage.empty_float32(moment0.shape), np.memmap,
-                    )
+                    with self.assertRaisesRegex(OSError, "Insufficient local scratch"):
+                        storage.empty_float32(moment0.shape)
 
     def test_disabled_vein_keeps_artery_background_and_returns_nan_signals(
         self,

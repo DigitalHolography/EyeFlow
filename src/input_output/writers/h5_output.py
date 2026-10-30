@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 import h5py
+from input_output.readers.nodes import is_dataset
 import numpy as np
 
 from ..schema.base import normalize_h5_path
@@ -51,7 +52,7 @@ class PipelineH5Output:
 
     def read(self, path: str, default: Any = _MISSING):
         found = self.get(path)
-        if not isinstance(found, h5py.Dataset):
+        if not is_dataset(found):
             if default is not _MISSING:
                 return default
             raise KeyError(path)
@@ -60,7 +61,7 @@ class PipelineH5Output:
     def read_attrs(self, path: str) -> dict[str, object]:
         """Read dataset attributes including its workflow's shared provenance."""
         found = self.get(path)
-        if not isinstance(found, h5py.Dataset):
+        if not is_dataset(found):
             raise KeyError(path)
         return read_dataset_attrs(found)
 

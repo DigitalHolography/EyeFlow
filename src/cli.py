@@ -199,6 +199,7 @@ def run_cli(
             pipelines=registry.values(),
             pipeline_options=pipeline_options,
             band_ratio_frequency_scale_hz=band_ratio_frequency_scale_hz,
+            velocity_estimation_method=settings_store.load_velocity_estimation_method(),
             band_limited_harmonics=settings_store.load_band_limited_harmonics(),
             copy_hd_passthrough=(
                 settings_store.load_copy_hd_passthrough()

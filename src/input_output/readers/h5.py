@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import h5py
+from input_output.readers.nodes import is_dataset
 import numpy as np
 
 from ..schema.base import SourceFileLayout, normalize_h5_path
@@ -22,7 +23,7 @@ class MergedAttrs(Mapping[str, object]):
 
     def __init__(self, *sources: h5py.File | Mapping[str, object] | None) -> None:
         self._sources = [
-            source.attrs if isinstance(source, h5py.File) else source
+            source.attrs if hasattr(source, "attrs") else source
             for source in sources
             if source is not None
         ]
@@ -95,7 +96,7 @@ class RawH5SourceReader:
 
     def dataset(self, path: str) -> h5py.Dataset:
         found = self.get(path)
-        if not isinstance(found, h5py.Dataset):
+        if not is_dataset(found):
             raise KeyError(f"Missing {self.label} dataset at path '{normalize_h5_path(path)}'.")
         return found
 

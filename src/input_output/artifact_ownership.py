@@ -39,6 +39,11 @@ class ArtifactOwnership:
     def transaction(self, root):
         return ArtifactTransaction(self, Path(root).resolve())
 
+    @property
+    def paths(self):
+        with self._lock:
+            return [path for path in self._owners if path.is_file()]
+
 
 class ArtifactTransaction:
     def __init__(self, registry, root):

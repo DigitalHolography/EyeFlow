@@ -16,6 +16,8 @@ python -m venv .venv
 pip install -e .
 ```
 
+With uv, run `uv sync`. GPU dependencies are included in the default install.
+
 Launch the desktop application:
 
 ```powershell
@@ -120,8 +122,18 @@ completed methods and failure reasons; method-specific provenance is attached
 to each processing group and its datasets. Exact-zero LF values map to ratio
 zero without an epsilon, and LF quality counts remain diagnostic.
 
-Both velocity estimators run automatically. Legacy `velocity_estimation_method` settings are
-ignored. Fresh-install defaults are in `default_settings.json`; velocity is
+Choose velocity workflows in your JSON configuration:
+
+```json
+{
+  "velocity_estimation_method": "both"
+}
+```
+
+Allowed values are `doppler_moments`, `bandratio`, and `both` (the default,
+including when the key is absent). The former `frequency_bands` value remains
+an alias for `bandratio`. Only selected workflows and their downstream analyses
+run. Fresh-install defaults are in `default_settings.json`; velocity is
 always physical in `mm/s`, and legacy dimensionless velocity metadata is rejected.
 
 Both velocity workflows reconstruct their local background with OpenCV Telea,

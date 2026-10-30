@@ -12,6 +12,9 @@ from threading import get_ident
 from input_output.writers.h5 import h5_write_checkpoint
 from input_output.writers.deferred import capture_artifact_writes
 from utils.logger import Logger
+from .protocol import emit
+from .resources import current_resources, suspend_compute
+from contextlib import nullcontext
 
 from .base import DatasetValue, PipelineDescriptor
 from .dag import PipelineDAG
@@ -57,6 +60,7 @@ class PipelineNode:
 @dataclass(frozen=True)
 class PipelineGraph:
     nodes: tuple[PipelineNode, ...]
+    cleanup: Callable | None = None
 
     def plan(self):
         """Use the existing planner; local names never enter the global catalog."""
@@ -185,6 +189,7 @@ class GraphExecution:
         self._paths.update({path: name for path in paths})
         self.products[name] = {"producer": node.name, "datasets": paths}
         self._record(paths)
+        emit("ProductCommit", stage=node.name, product=name)
         Logger.log(f"[HANDOFF] {self.context.runtime.pipeline_name}/{node.name}: {name} committed.")
         self.context._start_artifacts()
         self._dispatch_artifacts()
@@ -210,6 +215,7 @@ class GraphExecution:
                     self.statuses[node.name] = "skipped"
                     self.skips[node.name] = "Unavailable dependencies: " + ", ".join(missing)
                     self._record()
+                    emit("StageSkipped", stage=node.name, error=self.skips[node.name])
                     continue
                 self._run_node(node)
             if self.failures:
@@ -218,6 +224,8 @@ class GraphExecution:
             ctx.output.h5._write_guard = old_guard
             ctx._dag_execution = None
             _CURRENT.reset(token)
+            if self.definition.cleanup is not None:
+                self.definition.cleanup()
 
     def _dispatch_artifacts(self):
         if self._dispatching:
@@ -245,8 +253,9 @@ class GraphExecution:
             parents = self._planner.dependencies_of(f"node/{node.name}", transitive=True)
             jobs = [job for name in parents for job in self._jobs.get(name.removeprefix("node/"), ())
                     if job.future is not None]
-            for job in jobs:
-                job.future.result()
+            with suspend_compute():
+                for job in jobs:
+                    job.future.result()
             if any(job.status == "failed" for job in jobs):
                 self.statuses[node.name] = "skipped"
                 self.skips[node.name] = "Required artifact export failed."
@@ -256,6 +265,7 @@ class GraphExecution:
         ctx._figure_job, ctx._figure_count = None, 0
         jobs_before = len(ctx._artifact_jobs)
         self.statuses[node.name] = "running"
+        emit("StageStarted", stage=node.name)
         try:
             with self._checkpoint_factory(
                 ctx.runtime.work_h5, ctx.state.raw, ctx.output.manager, ctx._background_artifacts,
@@ -264,7 +274,11 @@ class GraphExecution:
                 try:
                     capture = None if node.wait_for_artifacts else ctx._capture_artifact_write
                     with capture_artifact_writes(capture):
-                        result = node.run(ctx)
+                        budget = current_resources()
+                        allowance = min(4, max(1, budget.cpu_limit - budget.cpu_used)) if budget else 1
+                        memory = min(64 * 2**20, budget.memory_limit // 4) if budget else 0
+                        with budget.compute(allowance, memory) if budget else nullcontext():
+                            result = node.run(ctx)
                     if result is not None:
                         raise TypeError("Graph stages hand off products and return None.")
                     missing = [spec.name for spec in node.outputs if not spec.optional and spec.name not in self._values]
@@ -289,6 +303,9 @@ class GraphExecution:
             self._jobs[node.name] = ctx._artifact_jobs[jobs_before:]
             ctx._figure_job, ctx._figure_count = previous_figure
         self._record()
+        emit({"failed": "StageFailed", "skipped": "StageSkipped",
+              "succeeded": "StageFinished"}[self.statuses[node.name]], stage=node.name,
+             error=self.failures.get(node.name) or self.skips.get(node.name))
         self._dispatch_artifacts()
 
     def _record(self, paths=()):

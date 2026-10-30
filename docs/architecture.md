@@ -122,51 +122,28 @@ navigation aid.
 
 ## Runtime ownership
 
-For each input, `run_pipelines_to_output` opens HD, DV, and one output HDF5,
-loads sidecar configuration, and runs the resolved descriptors in order.
-Every descriptor receives a fresh `PipelineContext`, but all contexts share:
+For each input, `run_pipelines_to_output` creates a coordinator-owned input
+service and in-memory output structure. HD/DV datasets are loaded centrally and
+staged once into local read-only storage when requested. Pipeline contexts use
+these dataset adapters; worker processes do not reopen the NAS source files.
 
-- the open output HDF5;
-- a single backing dictionary exposed as `ctx.state`;
-- resolved pipeline options, directly selected targets, and ordered pipeline
-  names;
-- the calibration and workflow-specific velocity method where applicable.
+The scheduler starts dependency-ready process pipelines alongside coordinator
+work. `displacement_map` is the first process pipeline; small waveform metrics
+remain sequential. Existing workflow variants keep isolated state and output
+namespaces. Process results arrive through a bounded queue as stable local-file
+references. Private stage journals preserve completed products after unrelated
+failures, without restoring snapshots of the shared output file.
 
-A declared variant producer publishes `ExecutionVariant` values through its
-context. Each value owns its run state, HDF5 output namespace, artifact
-namespace, and provenance. The engine derives the fan-out set from the
-producer's transitive DAG dependents, excluding descriptors declaring
-`run_once=True`, so this behavior does not depend on a
-literal pipeline name or velocity-specific state keys. Unrelated pipelines run
-once and their state is merged into every surviving variant before a dependent
-runs.
+Shared figure writers retain their bounded renderer pool and explicit artifact
+ownership. Renderers and calculations share CPU/RAM admission accounting. Reports
+run last and read the assembled output view and published images. The final HDF5
+is serialized locally and published after required exports complete; batch
+analysis can overlap the preceding input's finalization.
 
-Pipeline results may be `None`, a metrics mapping, or `ProcessResult`. A metrics
-mapping is persisted with `PipelineH5Output`; `ProcessResult` additionally
-writes attributes on the active output namespace (a workflow processing group
-or the shared root). `finish_pipeline` records `last_pipeline` and flushes.
-Each invocation has a checkpoint for dataset replacements, attributes, state
-bindings, and new artifacts. Failure restores the checkpoint, preserves earlier
-products, and blocks only consumers of the failed active DAG dependency. Other
-pipelines still execute in each workflow. Failure status is persisted, and an
-incomplete run retains its output path after all safe pipelines finish.
-Large transient arrays and typed run products belong in `ctx.state` or managed
-scratch storage, not ad-hoc module globals.
-
-Pipelines may instead return a pipeline-owned `PipelineGraph`. Its nodes declare
-products, packers and dependencies, using the same DAG planner. Stage functions
-publish reduced results through `ctx.dag.handoff(name, value)`, which commits
-their declared HDF5 datasets independently. Later failures preserve handed-off
-products and permit their consumers and ready exports to continue. Graph state
-is local to the file, invocation and execution variant. The initial production
-adoption is `low_freq_spectra`; legacy pipelines retain their existing contract.
-See [stage graphs and handoff](pipeline_stage_graphs.md) for the API and semantics.
-
-Shared figure writers queue snapshots automatically under managed execution.
-A bounded batch-wide process pool renders them while analysis continues, and
-explicit artifact ownership keeps rollback local to the producing invocation.
-Reports wait for required exports. File finalization may overlap analysis of the
-next input, but final completion and batch results wait for pending exports.
+See [parallel pipeline execution](parallel_pipeline_execution.md) for input
+caching, queue events, stage commits, resource policy, local scratch selection
+and the initial process rollout. See [stage graphs and handoff](pipeline_stage_graphs.md)
+for pipeline-owned product/dependency declarations.
 
 ## Scientific processing boundaries
 
@@ -215,11 +192,13 @@ files as a complete schema.
 
 The GUI exposes settings through `ui/controllers/settings.py` and pipeline
 selection through `ui/controllers/pipeline_library.py`. The CLI reads the same
-store; `--pipelines` changes target selection. Both velocity methods run
-automatically. The calibration comes from persisted settings and passes through
+store; `--pipelines` changes target selection. The JSON `velocity_estimation_method` setting selects `doppler_moments`,
+`bandratio`, or `both` (the default when absent). The legacy `frequency_bands`
+value is accepted as an alias for `bandratio`. Only selected workflows load
+inputs, estimate velocity, and execute their downstream pipelines. The calibration comes from persisted settings and passes through
 `resolve_run_spec` into `PipelineContext.band_ratio_frequency_scale_hz`.
 `PipelineContext.velocity_estimation_method` identifies a workflow internally;
-there is no GUI selector or method setting. Legacy settings are ignored.
+there is no GUI selector. Workflow selection is configured in JSON.
 
 For a new CLI option controlling an existing setting, inspect only
 `src/cli.py`, the relevant `AppSettingsStore` methods/default, the field passed

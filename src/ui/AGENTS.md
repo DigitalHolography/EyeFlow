@@ -25,7 +25,9 @@ CLI.
 
 ## Workflow contract
 
-Both velocity estimators run automatically; do not expose a method selector.
+The JSON `velocity_estimation_method` setting selects `doppler_moments`,
+`bandratio`, or `both` (default). Pass the persisted selection to the run service;
+do not expose a GUI method selector.
 The selected target names and option names are passed to
 `pipeline_engine.resolve_run_spec`; the controller must not duplicate its
 availability, dependency, or destination validation. Execution delegates to

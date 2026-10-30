@@ -7,6 +7,7 @@ from numbers import Integral
 import os
 
 import numpy as np
+from runtime_limits import cap_parallel_jobs
 
 from calculations.math.statistics import partition_median_inplace
 
@@ -30,7 +31,8 @@ class SpatialReducer:
         ):
             raise ValueError("workers must be a positive integer or None.")
         available = getattr(os, "process_cpu_count", os.cpu_count)() or 1
-        self.workers = min(MAX_AUTO_SPATIAL_WORKERS, available) if workers is None else int(workers)
+        self.workers = cap_parallel_jobs(
+            min(MAX_AUTO_SPATIAL_WORKERS, available) if workers is None else int(workers))
         self._automatic = workers is None
         self._executor = None
 

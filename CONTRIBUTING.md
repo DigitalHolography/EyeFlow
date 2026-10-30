@@ -15,12 +15,11 @@ pip install pytest
 python -m pytest
 ```
 
-Install optional pipeline or GPU dependencies only when the affected code needs
-them:
+GPU dependencies are included by default with `uv sync` or `pip install -e .`.
+Install optional pipeline dependencies when the affected code needs them:
 
 ```powershell
 pip install -e .[pipelines]
-pip install -e .[gpu]
 ```
 
 Run focused tests first. Run the full suite when requested or when a concrete

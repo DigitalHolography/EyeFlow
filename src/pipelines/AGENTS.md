@@ -240,6 +240,12 @@ Physical capillary velocity remains deferred.
 `spatial_gradient_moment0` shares cardiac-cycle/topology state but owns its
 gradient profiles and lumen edges. Do not put gradient work into velocity
 analysis.
+Its continuous moment0ff segment measurements are reused between velocity
+workflows through `ctx.computation_cache` when the open HD dataset, masks,
+prepared geometry/rotations, measurement settings, and filter settings match.
+Cached measurement arrays are read-only; only successful continuous extraction
+is shared. Each workflow still packs its own beats, lumen metrics, and outputs
+with its own cardiac timing. Extraction failures are not cached.
 It requires the optional HD flat-field moment at `/moment0ff` or `/M0FF`, and
 publishes under `/ProcessingMoments/SpatialGradientProfiles` and
 `/ProcessingMoments/SpatialGradientMetrics` only when it is a direct target. When it

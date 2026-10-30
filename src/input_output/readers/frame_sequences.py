@@ -17,6 +17,7 @@ except ImportError:
 
 try:
     import h5py
+    from input_output.readers.nodes import is_dataset
 except ImportError:
     h5py = None
 
@@ -54,7 +55,7 @@ class FrameSequence:
             if h5py is None:
                 raise RuntimeError("h5py est requis pour lire un fichier HDF5.")
             with self._open_h5_dataset() as dataset:
-                if not isinstance(dataset, h5py.Dataset) or dataset.ndim != 3:
+                if not is_dataset(dataset) or dataset.ndim != 3:
                     raise RuntimeError(
                         f"Le dataset {self.h5_dataset} doit être 3-D, forme trouvée : "
                         f"{getattr(dataset, 'shape', None)}"

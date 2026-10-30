@@ -29,6 +29,7 @@ def generate_a4_report(
     mask_dir: Path | None = None,
     processing_root: str | None = None,
     report_images: ReportImagePaths | None = None,
+    output_source=None,
 ) -> Path:
     """
     Generate an A4 PDF report mimicking the MATLAB generateA4Report function.
@@ -64,7 +65,9 @@ def generate_a4_report(
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Extract parameters from the H5 file
-    parameters = extract_parameters_from_h5(output_h5_path, processing_root=processing_root)
+    parameters = extract_parameters_from_h5(
+        output_h5_path, processing_root=processing_root, output_source=output_source,
+    )
     
     # Create the report
     with PdfPages(pdf_path) as pdf:

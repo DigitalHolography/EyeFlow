@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import h5py
+from input_output.readers.nodes import is_dataset
 
 from .base import MISSING, SourceFileLayout, TypedSource
 from retinal_source_data import OpticDiscMeasurements
@@ -59,7 +60,7 @@ class DopplerViewSource(TypedSource):
             if required:
                 raise KeyError(f"Missing DopplerView mask dataset at '{path}'.")
             return None
-        if not isinstance(found, h5py.Dataset):
+        if not is_dataset(found):
             raise ValueError(f"DopplerView mask path '{path}' is not a dataset.")
         return self._array(path)
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-import tempfile
+from pipeline_engine.storage import temporary_directory as create_temporary_directory
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
@@ -77,13 +77,17 @@ def run_displacement_map(
 ) -> None:
     """Estimate vessel-specific fields for downstream use without HDF5 persistence."""
 
+    if getattr(ctx, "_graph_runtime_available", False):
+        from .stages import displacement_graph
+        return displacement_graph(config or DisplacementMapPipelineConfig())
+
     selected = config or DisplacementMapPipelineConfig()
     inputs = load_displacement_map_inputs(ctx, selected)
     source_filename = inputs.moment.file.filename
     if not source_filename:
         raise ValueError("The HoloDoppler input does not have a filesystem path.")
 
-    temporary_directory = tempfile.TemporaryDirectory(
+    temporary_directory = create_temporary_directory(
         prefix="eyeflow-displacement-map-"
     )
     field_paths_by_vessel: dict[str, Path] = {}
@@ -133,13 +137,13 @@ def run_displacement_map(
 
 def _run_displacement_mask(
     ctx, mask_input, inputs, base_config, replay, temporary_path,
-    field_paths_by_vessel, output_videos,
+    field_paths_by_vessel, output_videos, *, multiple_masks=False,
 ) -> None:
     output_dir = temporary_path / mask_input.name
     output_dir.mkdir(parents=True, exist_ok=True)
     video_filename = (
         MAGNITUDE_VIDEO_FILENAME
-        if len(inputs.masks) == 1
+        if len(inputs.masks) == 1 and not multiple_masks
         else f"{mask_input.name}_{MAGNITUDE_VIDEO_FILENAME}"
     )
     output_video = ctx.output.path_for(

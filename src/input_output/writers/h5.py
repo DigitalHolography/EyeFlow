@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import h5py
+from input_output.readers.nodes import is_group
 import numpy as np
 
 from ..schema.base import normalize_h5_path
@@ -32,6 +33,10 @@ def h5_write_checkpoint(h5file: h5py.File):
     Open object handles retain replaced datasets until the checkpoint ends.
     Pipeline writers replace datasets; in-place array edits are not supported.
     """
+    if hasattr(h5file, "checkpoint"):
+        with h5file.checkpoint() as checkpoint:
+            yield checkpoint
+        return
     checkpoint = H5WriteCheckpoint(h5file)
     try:
         yield checkpoint
@@ -102,7 +107,7 @@ def resolve_dataset_target(root_group: h5py.Group, key: str) -> tuple[h5py.Group
         if existing is None:
             parent = parent.create_group(part)
             continue
-        if isinstance(existing, h5py.Group):
+        if is_group(existing):
             parent = existing
             continue
         raise ValueError(

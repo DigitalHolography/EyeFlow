@@ -39,6 +39,8 @@ def run_pdf_report(ctx) -> None:
 
     try:
         report_options = {}
+        if hasattr(getattr(ctx.output.h5, "file", None), "checkpoint"):
+            report_options["output_source"] = ctx.output.h5.file
         processing_root = getattr(ctx.output.h5, "processing_root", None)
         if processing_root is not None:
             report_options["processing_root"] = processing_root

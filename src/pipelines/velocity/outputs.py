@@ -24,6 +24,11 @@ def pack_velocity_outputs(
     cycle_paths = schema.cardiac_cycle
     spectral = velocity.cardiac_cycle.spectral
     velocity_attrs = velocity_dataset_attrs(velocity)
+    # Diagnostics belong to the base maps, rather than processing-group attrs
+    # (which intentionally retain only the small workflow summary).
+    velocity_attrs.update({key: value for key, value in velocity.provenance.items()
+                           if key.startswith("band_lf_") and
+                           (key.endswith("_count") or key.endswith("_threshold"))})
     frequency_attrs = {
         key: value
         for key, value in velocity_attrs.items()

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from contextlib import nullcontext
 from typing import Any
 
 import h5py
+from input_output.readers.nodes import is_dataset, is_group
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
@@ -75,12 +77,12 @@ _DISPLAY_ORDER = (
 
 
 def extract_parameters_from_h5(
-    h5_path: Path, *, processing_root: str | None = None
+    h5_path: Path, *, processing_root: str | None = None, output_source=None
 ) -> dict[str, Any]:
     """Read current and recognized legacy paths without changing report values."""
     params: dict[str, Any] = {}
     try:
-        with open_h5(h5_path, "r") as h5file:
+        with (nullcontext(output_source) if output_source is not None else open_h5(h5_path, "r")) as h5file:
             if processing_root is not None:
                 from input_output.writers.h5_output import PipelineH5Output
 
@@ -98,7 +100,7 @@ def extract_parameters_from_h5(
 def _first_nonempty_dataset(h5file, paths) -> h5py.Dataset | None:
     for path in paths:
         dataset = h5file.get(path)
-        if isinstance(dataset, h5py.Dataset):
+        if is_dataset(dataset):
             if dataset.size:
                 return dataset
     return None
@@ -157,7 +159,7 @@ def _extract_waveform_metrics(h5file, schema, params) -> None:
         root = f"{schema.waveform_shape_metrics_root}/{vessel}/global/raw"
         for metric in ("RI", "PI"):
             dataset = h5file.get(f"{root}/{metric}")
-            if not isinstance(dataset, h5py.Dataset):
+            if not is_dataset(dataset):
                 continue
             values = np.asarray(dataset, dtype=float)
             finite = values[np.isfinite(values)]
@@ -165,11 +167,11 @@ def _extract_waveform_metrics(h5file, schema, params) -> None:
                 params[f"{prefix}{metric}"] = {"value": float(np.mean(finite)), "unit": ""}
 
     legacy = h5file.get("Metrics")
-    if not isinstance(legacy, h5py.Group):
+    if not is_group(legacy):
         return
     for name, dataset in legacy.items():
         target = _LEGACY_METRIC_NAMES.get(name)
-        if target and isinstance(dataset, h5py.Dataset):
+        if target and is_dataset(dataset):
             values = np.asarray(dataset)
             if values.size:
                 params[target] = {"value": float(np.nanmean(values)), "unit": ""}

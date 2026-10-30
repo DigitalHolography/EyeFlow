@@ -32,6 +32,32 @@ DEFAULT_VELOCITY_ESTIMATION_METHOD: VelocityEstimationMethod = "doppler_moments"
 VELOCITY_ESTIMATION_METHODS: frozenset[VelocityEstimationMethod] = frozenset(
     {DEFAULT_VELOCITY_ESTIMATION_METHOD, "frequency_bands"}
 )
+# Public workflow names map to estimator/provenance identifiers. Extend this map
+# when adding a workflow; "both" selects every registered workflow.
+VELOCITY_WORKFLOW_METHODS = {
+    "doppler_moments": "doppler_moments",
+    "bandratio": "frequency_bands",
+}
+DEFAULT_VELOCITY_WORKFLOW_SELECTION = "both"
+
+
+def validate_velocity_workflow_selection(value: object) -> str:
+    # Retain compatibility with configurations using the former estimator name.
+    if value == "frequency_bands":
+        return "bandratio"
+    if isinstance(value, str) and (value == "both" or value in VELOCITY_WORKFLOW_METHODS):
+        return value
+    allowed = ", ".join((*VELOCITY_WORKFLOW_METHODS, "both"))
+    raise ValueError(f"Invalid velocity_estimation_method {value!r}. Expected one of: {allowed}.")
+
+
+def selected_velocity_methods(value: object = DEFAULT_VELOCITY_WORKFLOW_SELECTION) -> tuple[str, ...]:
+    selection = validate_velocity_workflow_selection(value)
+    if selection == "both":
+        return tuple(VELOCITY_WORKFLOW_METHODS.values())
+    return (VELOCITY_WORKFLOW_METHODS[selection],)
+
+
 PIPELINE_NAME_MIGRATIONS: dict[str, str] = {
     "retinal_velocity": "velocity",
     "waveform_velocity": "velocity_analysis",
@@ -292,7 +318,6 @@ class AppSettingsStore:
         if self.default_template_path is None:
             return {}
         settings = _load_settings_file(self.default_template_path)
-        settings.pop("velocity_estimation_method", None)
         return settings
 
     def initialize_from_defaults(self) -> bool:
@@ -308,14 +333,12 @@ class AppSettingsStore:
         if not self.path.exists():
             return self.load_defaults()
         settings = _load_settings_file(self.path)
-        settings.pop("velocity_estimation_method", None)
         return settings
 
     def save(self, settings: Mapping[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self.path.with_suffix(".tmp")
         settings = dict(settings)
-        settings.pop("velocity_estimation_method", None)
         tmp_path.write_text(
             json.dumps(settings, indent=2, sort_keys=True),
             encoding="utf-8",
@@ -343,7 +366,15 @@ class AppSettingsStore:
         validate_copy_hd_passthrough(
             settings.get("copy_hd_passthrough", DEFAULT_COPY_HD_PASSTHROUGH)
         )
+        validate_velocity_workflow_selection(
+            settings.get("velocity_estimation_method", DEFAULT_VELOCITY_WORKFLOW_SELECTION)
+        )
         self.save(settings)
+
+    def load_velocity_estimation_method(self) -> str:
+        return validate_velocity_workflow_selection(
+            self.load().get("velocity_estimation_method", DEFAULT_VELOCITY_WORKFLOW_SELECTION)
+        )
 
     def load_named_visibility(self, key: str) -> dict[str, bool]:
         raw_visibility = self.load().get(key, {})

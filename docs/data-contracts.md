@@ -763,7 +763,8 @@ source, and legacy fallback status. The old
 
 ## Velocity methods
 
-Every run that schedules velocity attempts both workflows, independently:
+Every run that schedules velocity attempts the selected workflows independently
+(default: both):
 
 - `doppler_moments`: derives RMS frequency as
   `sqrt(M2 / max(spatial_mean(M0), eps('single')))` per frame, using float32
@@ -778,9 +779,13 @@ Every run that schedules velocity attempts both workflows, independently:
   outputs use `/ProcessingBandRatio`. The persisted calibration default is `1 Hz`
   per ratio unit; quantity is `physical_velocity`, unit `mm/s`.
 
-`velocity_estimation_method` is no longer a selectable or persisted setting.
-Legacy configuration values are ignored. Method identifiers remain in workflow
-provenance and in internal method-specific contexts.
+The JSON `velocity_estimation_method` setting accepts `doppler_moments`,
+`bandratio`, or `both` (default when absent). `frequency_bands` is accepted as a
+legacy alias for `bandratio`. Invalid selections are rejected before execution
+and before replacing settings on import. Only selected workflows load their
+velocity inputs and execute downstream analyses; unselected workflows are not
+recorded as failures. Internal contexts and workflow provenance retain the
+estimator identifiers `doppler_moments` and `frequency_bands`.
 
 Cardiac cycles are detected independently for each workflow **after** velocity
 estimation, from its signed, background-corrected whole-vessel velocity in `mm/s`.

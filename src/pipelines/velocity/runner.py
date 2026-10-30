@@ -34,13 +34,13 @@ VELOCITY_WORKFLOWS_STATE = "velocity_workflows"
 
 
 def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
-    """Compute both methods with independent cycles and isolated workflow state."""
+    """Compute selected methods with independent cycles and isolated workflow state."""
 
     started = perf_counter()
     Logger.log("Starting velocity core processing...")
     sources = {}
     failures = {}
-    for method in VELOCITY_WORKFLOW_ROOTS:
+    for method in getattr(ctx, "velocity_workflows", VELOCITY_WORKFLOW_ROOTS):
         method_ctx = copy(ctx)
         method_ctx.velocity_estimation_method = method
         try:
@@ -50,27 +50,16 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
             Logger.log_warning(f"Skipping {method}: {exc}")
 
     if not sources:
-        raise RuntimeError(f"Neither velocity workflow has usable inputs: {failures}")
+        raise RuntimeError(f"No selected velocity workflow has usable inputs: {failures}")
     reference_shape = _source_shape(next(iter(sources.values())))
 
     variants: list[ExecutionVariant] = []
     outputs = {}
-    velocity_data_moments = _estimate_available(
-        ctx,
-        sources.get("doppler_moments"),
-        reference_shape,
-        failures,
-    )
-    velocity_data_bandratio = _estimate_available(
-        ctx,
-        sources.get("frequency_bands"),
-        reference_shape,
-        failures,
-    )
-    for method, velocity_data in (
-        ("doppler_moments", velocity_data_moments),
-        ("frequency_bands", velocity_data_bandratio),
-    ):
+    estimates = {
+        method: _estimate_available(ctx, source, reference_shape, failures)
+        for method, source in sources.items()
+    }
+    for method, velocity_data in estimates.items():
         if velocity_data is None:
             continue
         source = sources[method]
@@ -135,7 +124,7 @@ def run_velocity(ctx) -> tuple[RetinalVelocity, dict[str, object]]:
                 delete_output_path(ctx.runtime.work_h5, root)
             Logger.log_warning(f"Skipping {method}: {exc}")
     if not variants:
-        raise RuntimeError(f"Neither velocity workflow completed: {failures}")
+        raise RuntimeError(f"No selected velocity workflow completed: {failures}")
     results = {variant.name: variant.state[VELOCITY_STATE] for variant in variants}
     ctx.state.set(VELOCITY_WORKFLOWS_STATE, VelocityWorkflows(
         moments=results.get("doppler_moments"),

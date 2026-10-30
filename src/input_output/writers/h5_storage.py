@@ -135,6 +135,8 @@ def _create_dataset(
     *,
     h5_options: dict[str, object] | None = None,
 ):
+    if hasattr(group, "store_dataset"):
+        return group.store_dataset(dataset_key, payload, h5_options)
     if isinstance(payload, str):
         return group.create_dataset(
             dataset_key,

@@ -10,6 +10,7 @@ from time import perf_counter
 import numpy as np
 
 from calculations.compute_backend import optional_cupy_backend
+from runtime_limits import cap_parallel_jobs
 from utils.logger import Logger
 
 from .extraction import extract_segment
@@ -245,7 +246,7 @@ def _bounded_chunk_plan(
     """Choose worker count and output frames under one hard scratch bound."""
 
     if not np.isfinite(working_memory_mb):
-        workers = 1 if keep_on_device else max(1, requested_workers or 1)
+        workers = 1 if keep_on_device else cap_parallel_jobs(max(1, requested_workers or 1))
         return min(max(work_count, 1), workers), max(frame_count, 1)
     if working_memory_mb <= 0:
         raise ValueError("working_memory_mb must be finite and positive.")
@@ -273,7 +274,7 @@ def _bounded_chunk_plan(
     maximum_workers = 1 if keep_on_device else min(
         max(work_count, 1),
         max(1, requested_workers or work_count),
-        8,
+        cap_parallel_jobs(8),
     )
     workers = min(maximum_workers, max(1, budget // minimum_worker_bytes))
     per_worker_budget = budget // workers

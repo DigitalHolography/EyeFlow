@@ -364,6 +364,7 @@ class RunServiceTests(unittest.TestCase):
             progress_controller = SimpleNamespace(reset_run_log=Mock())
             settings_store = SimpleNamespace(
                 load_band_ratio_frequency_scale_hz=Mock(return_value=3.0),
+                load_velocity_estimation_method=Mock(return_value="bandratio"),
                 load_band_limited_harmonics=Mock(return_value=7),
                 load_copy_hd_passthrough=Mock(return_value=True),
             )
@@ -387,6 +388,7 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertIsNotNone(spec)
             assert spec is not None
+            self.assertEqual("bandratio", spec.velocity_estimation_method)
             self.assertEqual(3.0, spec.band_ratio_frequency_scale_hz)
             self.assertEqual(7, spec.band_limited_harmonics)
             self.assertTrue(spec.copy_hd_passthrough)
@@ -562,6 +564,7 @@ class RunServiceTests(unittest.TestCase):
                 {
                     "pipeline_visibility": {"sample": True},
                     "band_ratio_frequency_scale_hz": 4.0,
+                    "velocity_estimation_method": "bandratio",
                 }
             )
 
@@ -581,7 +584,7 @@ class RunServiceTests(unittest.TestCase):
             self.assertTrue(expected.is_file())
             with h5py.File(expected, "r") as output_h5:
                 self.assertEqual(
-                    ["doppler_moments", "frequency_bands"],
+                    ["frequency_bands"],
                     list(output_h5.attrs["velocity_estimation_methods"]),
                 )
                 self.assertEqual(

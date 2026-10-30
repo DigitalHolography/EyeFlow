@@ -180,8 +180,7 @@ def test_next_file_starts_before_exports_finish_and_completion_logs_are_asynchro
             assert render_started.wait(10)
             assert not first_complete.is_set()
             first_path = spec.requests[0].output_manager.path_for(OutputType.H5)
-            with h5py.File(first_path) as output:
-                assert output["Numerical/value"][()] == 42
+            assert not first_path.exists(), "HDF5 publication waits for required exports"
             release.set()
             # The first file's final completion log must arrive while this
             # second descriptor is still executing, not at a later boundary.

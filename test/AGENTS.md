@@ -10,6 +10,7 @@ boundary behavior—not only regression smoke tests.
 | Production area | Primary tests | Coverage character |
 |---|---|---|
 | Pipeline metadata, discovery, DAG, UI selection | `test_pipeline_discovery.py`, `test_pipeline_library_dependencies.py`, `test_blood_volume_rate_pipeline.py`, `test_velocity_analysis_pipeline.py` | unit + integration of declared dependency closure |
+| Parallel coordinator, source replay, resource budgets | `test_parallel_coordinator.py`, `runtime_process_fixtures.py` | real spawn, acknowledged crash recovery, partial vessel results, local scratch, deferred publication and memory-backed reports |
 | Run specs, input expansion, destinations, execution | `test_run_service.py`, `test_pipeline_failure_isolation.py`, `test_stem_list_inputs.py`, `test_pipeline_context.py` | orchestration and filesystem/HDF5 integration |
 | GUI and text-list input selection | `test_input_selection.py`, `test_windows_folder_dialog.py`, `test_stem_list_inputs.py` | quoted cross-drive lists, independent companion/output roots, mixed-file/folder drops, native Windows multi-folder selection, COM cleanup, and shared last-folder persistence across selection changes and restarts |
 | Marker-free run-folder inputs | `test_run_folder_inputs.py` | selected-folder and parent expansion, matching HD/DV names, optional EF/AE, HDF5 validation, and output routing |

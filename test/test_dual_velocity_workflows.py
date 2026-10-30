@@ -90,7 +90,7 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
         dv.create_dataset("segmentation/Choroid/vessel_mask", data=np.zeros(shape))
     with (
         patch(
-            "pipelines.low_freq_spectra.runner.preprocess_spectrograms",
+            "pipelines.low_freq_spectra.stages.preprocess_spectrograms",
             wraps=preprocess_spectrograms,
         ) as preprocess,
         patch(
@@ -215,7 +215,7 @@ def test_gap_uses_bandratio_without_moments_and_skips_empty_support(tmp_path, em
         patch("pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat",
               wraps=gap_spectrograms_per_beat) as subdivide,
         patch(
-            "pipelines.low_freq_spectra.runner.preprocess_spectrograms",
+            "pipelines.low_freq_spectra.stages.preprocess_spectrograms",
             wraps=preprocess_spectrograms,
         ) as preprocess,
     ):
@@ -507,7 +507,7 @@ def test_both_workflows_fail_the_run(tmp_path):
     ):
         result = execute_run(_spec(holo))
     assert not result.succeeded
-    assert "Neither velocity workflow completed" in result.failures[0].message
+    assert "No selected velocity workflow completed" in result.failures[0].message
 
 
 def test_pulse_export_failure_keeps_persisted_analysis_and_downstream_outputs(tmp_path):

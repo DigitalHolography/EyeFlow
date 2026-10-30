@@ -7,6 +7,7 @@ import re
 from collections.abc import Mapping
 
 import h5py
+from input_output.readers.nodes import is_dataset
 import numpy as np
 
 from .base import SourceFileLayout, TypedSource, scalar_from_value
@@ -65,7 +66,7 @@ class HolodopplerSource(TypedSource):
             found = self._reader.get(candidate)
             if found is None:
                 continue
-            if not isinstance(found, h5py.Dataset) or found.ndim != 3:
+            if not is_dataset(found) or found.ndim != 3:
                 raise ValueError(
                     f"HoloDoppler moment '{candidate}' must be a 3-D dataset, "
                     f"got {getattr(found, 'shape', None)}."

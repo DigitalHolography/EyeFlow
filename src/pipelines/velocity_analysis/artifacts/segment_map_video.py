@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from runtime_limits import cap_parallel_jobs
 from dataclasses import dataclass
 import math
 from pathlib import Path
@@ -213,7 +214,7 @@ def export_segment_velocity_map_avis(
         paths = [export_source(available_sources[0])]
     else:
         with ThreadPoolExecutor(
-            max_workers=min(2, len(available_sources)),
+            max_workers=cap_parallel_jobs(min(2, len(available_sources))),
             thread_name_prefix="segment-avi",
         ) as executor:
             paths = list(executor.map(export_source, available_sources))

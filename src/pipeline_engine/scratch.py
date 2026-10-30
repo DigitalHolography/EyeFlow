@@ -8,13 +8,15 @@ import shutil
 from math import prod
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from pipeline_engine.storage import temporary_directory
+from pipeline_engine.resources import current_resources
 
 import numpy as np
 
 from utils.logger import Logger
 
 _FALLBACK_RAM_BUDGET_BYTES = 1024**3
-_RAM_BUDGET_FRACTION = 0.25
+_RAM_BUDGET_FRACTION = 0.5
 
 
 class RunArrayStorage:
@@ -22,6 +24,7 @@ class RunArrayStorage:
 
     def __init__(self, output_dir: Path, *, memory_budget_bytes: int | None = None) -> None:
         self.output_dir = Path(output_dir)
+        self.budget = current_resources()
         if memory_budget_bytes is None:
             available = _available_memory_bytes()
             memory_budget_bytes = (
@@ -51,28 +54,24 @@ class RunArrayStorage:
         if self._closed:
             raise RuntimeError("Run scratch storage is closed.")
         size_bytes = prod(shape) * np.dtype(np.float32).itemsize
-        if self._resident_bytes + size_bytes <= self.memory_budget_bytes:
+        if (self._resident_bytes + size_bytes <= self.memory_budget_bytes
+                and (self.budget is None or self.budget.reserve_memory(size_bytes))):
             self._resident_bytes += size_bytes
             return np.empty(shape, dtype=np.float32)
 
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        if self._directory is None:
+            self._directory = temporary_directory("eyeflow-arrays-")
         try:
-            free_bytes = shutil.disk_usage(self.output_dir).free
+            free_bytes = shutil.disk_usage(self._directory.name).free
         except OSError:
             free_bytes = None
         if free_bytes is not None and free_bytes < size_bytes:
-            Logger.log_warning("Run scratch disk space is insufficient; using RAM.")
-            self._resident_bytes += size_bytes
-            return np.empty(shape, dtype=np.float32)
-        if self._directory is None:
-            self._directory = TemporaryDirectory(prefix=".ef_scratch_", dir=self.output_dir)
+            raise OSError("Insufficient local scratch disk space for retained results.")
         path = Path(self._directory.name) / f"array_{len(self._maps)}.npy"
         try:
             array = np.lib.format.open_memmap(path, mode="w+", dtype=np.float32, shape=shape)
         except OSError as exc:
-            Logger.log_warning(f"Could not create run scratch storage: {exc}; using RAM.")
-            self._resident_bytes += size_bytes
-            return np.empty(shape, dtype=np.float32)
+            raise OSError(f"Could not create local run scratch storage: {exc}") from exc
         self._maps.append(array)
         Logger.log(f"Retaining {size_bytes / 1024**2:.1f} MiB array in run scratch storage.")
         return array
@@ -81,6 +80,8 @@ class RunArrayStorage:
         if self._closed:
             return
         self._closed = True
+        if self.budget:
+            self.budget.release_memory(self._resident_bytes)
         try:
             for array in self._maps:
                 mapping = getattr(array, "_mmap", None)
