@@ -36,6 +36,7 @@ def analyze_segment_profiles(
     source_id: str = "",
     topology_cache: MutableMapping[TopologyCacheKey, object] | None = None,
     retain_segment_maps: bool = False,
+    compute_longitudinal_profiles: bool = True,
     transverse_mask_dilation_pixels: int | Mapping[str, int] = 0,
     prepared_topologies: Mapping[str, SegmentSamplingPlan] | None = None,
     transform_mode: str = "fused",
@@ -44,7 +45,11 @@ def analyze_segment_profiles(
     scratch_array_count: int | None = None,
     segment_observer_factory: SegmentObserverFactory | None = None,
 ) -> dict[str, SegmentMeasurements]:
-    """Measure profiles from a time-varying scalar map for each vessel mask."""
+    """Measure profiles from a time-varying scalar map for each vessel mask.
+
+    Disable longitudinal profiles when consumers need only transverse profiles
+    and segment signals; omitted arrays are represented by ``None``.
+    """
 
     settings = SegmentMeasurementSettings.from_value(profile_settings)
     masks = {
@@ -133,6 +138,7 @@ def analyze_segment_profiles(
             segments,
             settings,
             retain_segment_maps=retain_segment_maps,
+            compute_longitudinal_profiles=compute_longitudinal_profiles,
             segment_observer=observer,
             transverse_mask_dilation_pixels=_dilation_pixels(
                 transverse_mask_dilation_pixels,
@@ -155,6 +161,7 @@ def _measure_segment_profiles_from_prepared(
     settings: SegmentMeasurementSettings,
     *,
     retain_segment_maps: bool,
+    compute_longitudinal_profiles: bool,
     segment_observer: SegmentObserver | None,
     transverse_mask_dilation_pixels: int,
 ) -> SegmentMeasurements:
@@ -165,6 +172,7 @@ def _measure_segment_profiles_from_prepared(
         prepared_topology,
         frame_count=frame_count,
         retain_segment_maps=retain_segment_maps,
+        compute_longitudinal_profiles=compute_longitudinal_profiles,
     )
 
     for segment in prepared_segments:

@@ -6,10 +6,10 @@ import numpy as np
 
 from calculations.vessel_segments.profiles.fft import DEFAULT_PROFILE_MASK_DILATION_PIXELS
 from input_output.schema import EyeFlowOutputPaths, VelocityProfileOutputPaths
+from input_output.writers.h5_storage import profile_h5_options
 from pipeline_engine.base import DatasetValue
 from pipelines.profile_outputs import (
     profile_dataset,
-    profile_h5_options,
     temporally_meaned_profile_dataset,
 )
 from pipelines.velocity.models import RetinalVelocity
@@ -59,6 +59,10 @@ def _pack_vessel_profiles(
     velocity_attrs: dict[str, object] | None = None,
 ) -> dict[str, object]:
     profile = segments.profile
+    if profile.longitudinal is None:
+        raise RuntimeError(
+            "Longitudinal profiles were not requested for velocity profile export."
+        )
     valid_segments = np.asarray(profile.topology.valid_segments, dtype=bool)
     transverse_masked = np.asarray(
         profile.transverse.masked,
@@ -191,7 +195,11 @@ def _pack_vessel_velocity_fft_profiles(
                 "mask_applied": False,
                 "mask_dilation_iterations": 0,
             },
-            h5_options=profile_h5_options(unmasked.shape),
+            h5_options={
+                **profile_h5_options(unmasked.shape),
+                "sparse_nan_chunks": True,
+                "mirror_fft_axis": 1,
+            },
         ),
         masked_path: DatasetValue(
             data=masked,
@@ -201,6 +209,10 @@ def _pack_vessel_velocity_fft_profiles(
                 "mask_dilation_iterations": int(mask_dilation_pixels),
                 "mask_dilation_axis": "transverse_x",
             },
-            h5_options=profile_h5_options(masked.shape),
+            h5_options={
+                **profile_h5_options(masked.shape),
+                "sparse_nan_chunks": True,
+                "mirror_fft_axis": 1,
+            },
         ),
     }

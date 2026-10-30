@@ -16,6 +16,7 @@ from pipelines.velocity.models import RetinalVelocity
 from utils.logger import Logger
 
 from .metrics import pack_spectrum_metrics
+from .shape_metrics import pack_distribution_metrics, pack_vertical_metrics
 from .frequency import read_frequency_bin_table, read_sampling_frequency_hz
 from .per_beat import beat_spectrum_std, gap_spectrograms_per_beat
 from .signal_processing import (
@@ -187,6 +188,23 @@ def run_gap_analysis(
                 "frequency_bin_table_source_path": "/" + schema.spectrograms_frequency_bin_table,
             },
         ))
+        if spectrum.size >= 2:
+            root = schema.spectrograms_masked_metrics_root
+            shape_attrs = {
+                **beat_median_attrs,
+                **{key: value for key, value in frequency_table.attrs.items()
+                   if key not in {"unit", "dimDesc", "definition", "nameID", "index_base", "source_path"}},
+            }
+            metrics.update(pack_vertical_metrics(
+                spectrum, beat_spectrum, phase_attrs=shape_attrs, base_metrics=metrics,
+                early_interval=early_interval, late_interval=late_interval,
+            ))
+            metrics.update(pack_distribution_metrics(
+                beat_spectrum, pooled_spectrum=spectrum, phase_attrs=shape_attrs,
+                frequencies_khz=frequency_table[()],
+                peak_indices=[metrics[f"{root}/index_max{n}"][0] for n in (1, 2)],
+                early_interval=early_interval, late_interval=late_interval,
+            ))
     band_limited = band_limit_gap_spectrograms(
         per_beat, timing.cycle_durations_seconds, harmonics=band_limited_harmonics(ctx),
     )

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dependency_utils import find_missing_dependencies
+from input_output.schema.output_payload import DatasetValue
 
 # Metadata registry populated by coded pipeline modules when they are imported.
 PIPELINE_REGISTRY: dict[str, PipelineDescriptor] = {}
@@ -37,6 +38,9 @@ def registerPipeline(
     produces_execution_variants: bool = False,
     auto_run_after: str | None = None,
     run_once: bool = False,
+    wait_for_artifacts: bool = False,
+    execution_mode: str = "coordinator",
+    native_parallelism: bool = False,
 ):
     def decorator(cls):
         cls.name = name
@@ -54,6 +58,7 @@ def registerPipeline(
         cls.produces_execution_variants = bool(produces_execution_variants)
         cls.auto_run_after = auto_run_after
         cls.run_once = bool(run_once)
+        cls.wait_for_artifacts = bool(wait_for_artifacts)
 
         missing = find_missing_dependencies(cls.requires)
         cls.missing_deps = missing
@@ -74,6 +79,9 @@ def registerPipeline(
             produces_execution_variants=cls.produces_execution_variants,
             auto_run_after=auto_run_after,
             run_once=bool(run_once),
+            wait_for_artifacts=bool(wait_for_artifacts),
+            execution_mode=execution_mode,
+            native_parallelism=bool(native_parallelism),
             pipeline_factory=cls,
             source_path=_source_path(cls),
         )
@@ -96,6 +104,9 @@ def pipeline(
     produces_execution_variants: bool = False,
     auto_run_after: str | None = None,
     run_once: bool = False,
+    wait_for_artifacts: bool = False,
+    execution_mode: str = "coordinator",
+    native_parallelism: bool = False,
 ):
     """Register a function pipeline.
 
@@ -105,6 +116,7 @@ def pipeline(
 
     auto_run_after schedules this companion whenever the named pipeline enters
     the plan. run_once keeps its execution shared even after a variant producer.
+    wait_for_artifacts joins background exports before an artifact consumer runs.
     """
 
     def decorator(func: Callable[[Any], ProcessResult | Mapping[str, Any] | None]):
@@ -127,6 +139,9 @@ def pipeline(
             produces_execution_variants=bool(produces_execution_variants),
             auto_run_after=auto_run_after,
             run_once=bool(run_once),
+            wait_for_artifacts=bool(wait_for_artifacts),
+            execution_mode=execution_mode,
+            native_parallelism=bool(native_parallelism),
             pipeline_factory=lambda: FunctionPipeline(
                 name=name,
                 description=description or (inspect.getdoc(func) or ""),
@@ -143,6 +158,7 @@ def pipeline(
                 produces_execution_variants=bool(produces_execution_variants),
                 auto_run_after=auto_run_after,
                 run_once=bool(run_once),
+                wait_for_artifacts=bool(wait_for_artifacts),
             ),
             source_path=_source_path(func),
         )
@@ -216,15 +232,6 @@ class ExecutionVariant:
     provenance: Mapping[str, object]
 
 
-@dataclass
-class DatasetValue:
-    """Represent a dataset payload, attributes, and HDF5 creation options."""
-
-    data: Any
-    attrs: dict[str, Any] | None = None
-    h5_options: dict[str, Any] | None = None
-
-
 def with_attrs(data: Any, attrs: dict[str, Any]) -> DatasetValue:
     """Convenience helper to attach attributes to a dataset value."""
     return DatasetValue(data=data, attrs=attrs)
@@ -245,6 +252,7 @@ class ProcessPipeline:
     produces_execution_variants: bool = False
     auto_run_after: str | None = None
     run_once: bool = False
+    wait_for_artifacts: bool = False
     source_path: str | None = None
 
     def __init__(self) -> None:
@@ -276,6 +284,7 @@ class FunctionPipeline(ProcessPipeline):
         produces_execution_variants: bool,
         auto_run_after: str | None,
         run_once: bool,
+        wait_for_artifacts: bool = False,
     ) -> None:
         self.name = name
         self.description = description
@@ -292,6 +301,7 @@ class FunctionPipeline(ProcessPipeline):
         self.produces_execution_variants = produces_execution_variants
         self.auto_run_after = auto_run_after
         self.run_once = run_once
+        self.wait_for_artifacts = wait_for_artifacts
         self.source_path = _source_path(func)
 
     def run(self, ctx: Any) -> ProcessResult | Mapping[str, Any] | None:
@@ -320,6 +330,14 @@ class PipelineDescriptor:
     pipeline_factory: Callable[[], ProcessPipeline] | None = None
     error_msg: str = ""
     source_path: str | None = None
+    # Reports and other sidecar consumers need completed background exports.
+    wait_for_artifacts: bool = False
+    execution_mode: str = "coordinator"
+    native_parallelism: bool = False
+
+    def __post_init__(self):
+        if self.execution_mode not in {"coordinator", "process"}:
+            raise ValueError(f"Unsupported pipeline execution mode: {self.execution_mode}")
 
     def instantiate(self) -> ProcessPipeline:
         """Factory method to create the actual pipeline instance."""

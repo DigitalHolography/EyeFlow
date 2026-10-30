@@ -6,8 +6,9 @@ Build from the repository root with no options:
 powershell ./build_installer.ps1
 ```
 
-The PowerShell entry point uses `uv sync --locked` to prepare the `gpu` and
-pinned `installer` dependencies in `build/installer-env`, without development
+The PowerShell entry point uses `uv sync --locked --no-default-groups --extra installer`
+to prepare EyeFlow's default GPU dependencies and pinned installer tools in
+`build/installer-env`, without development
 tools. It then invokes that environment's Python directly; uv is not involved
 in freezing, staging or running the installed application. The environment
 is reused between builds and stays outside the cleaned staging directory.
@@ -17,14 +18,38 @@ invoke PyInstaller, stage pipeline sources, verify the frozen runtime, generate
 Inno Setup configuration from `installer/EyeFlow.iss.in`, compile the installer,
 and report its size. No virtual environment is included in the installer.
 An explicit `-Python` uses an already prepared interpreter instead of uv;
-that interpreter must have the `gpu` and `installer` extras installed.
+that interpreter must have EyeFlow and its `installer` extra installed.
 Inno Setup 6 must be installed or provided through `-InnoSetupCompiler`.
 
 The release workflow refreshes `uv.lock` after setting the release version,
-then uses the same option-free PowerShell entry point and `dist/installer`
-artifact path. It retains the runtime and size reports as workflow artifacts,
+then syncs the default GPU dependencies and `installer` extra into
+`build/installer-env` and passes that Python to the same PowerShell entry point.
+It uses the `dist/installer` artifact path and retains runtime and size reports as workflow artifacts,
 including when a build fails. GPU execution is checked when a CUDA device
 is available; hosted runners without one record that check as skipped.
+
+## Running the installed CLI
+
+The installed executable launches the GUI without arguments and the CLI with
+arguments. In PowerShell, use the executable's full path and actual version:
+
+```powershell
+$eyeFlow = "$env:LOCALAPPDATA\Programs\eyeflow-python\v1.24.0\EyeFlow 1.24.0.exe"
+& $eyeFlow --help
+& $eyeFlow --data "D:\Data\sample.holo" --output "D:\Results"
+$LASTEXITCODE
+```
+
+The installer does not add an `eyeflow-cli` command to PATH. The executable
+preserves terminal output, redirection, and exit status: `0` for success, `1`
+for a runtime failure, and `2` for invalid arguments. Pipeline selection and
+options use the same saved settings as the GUI unless `--pipelines` supplies
+a text file of target names.
+
+The executable is console-enabled. PyInstaller's `hide-early` policy hides
+only a console created for the application, preserving an existing terminal
+when launched from PowerShell or Command Prompt. Desktop launches keep the
+console hidden; `-Console` disables hiding for diagnostic builds.
 
 ## Collection policy
 
@@ -86,6 +111,11 @@ GPU kernels first compile on a worker thread, matching GUI analysis.
 A machine without an
 NVIDIA driver/device records the GPU check as skipped; import and CPU checks
 still must pass.
+
+The builder also runs the frozen CLI in subprocesses and verifies captured
+help output, argument errors, and runtime-failure messages with their exit
+codes. These checks run against the same sanitized environment before the
+runtime smoke check.
 
 To explicitly require GPU verification on a target machine:
 

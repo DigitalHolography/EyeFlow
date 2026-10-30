@@ -3,24 +3,31 @@
 from __future__ import annotations
 
 import os
+import json
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from app_settings import (
     DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
+    DEFAULT_COPY_HD_PASSTHROUGH,
+    DEFAULT_VELOCITY_WORKFLOW_SELECTION,
+    validate_velocity_workflow_selection,
     validate_band_limited_harmonics_setting,
+    validate_copy_hd_passthrough,
 )
-from input_output import (
-    INPUT_LIST_SUFFIX,
-    HoloRunLayout,
-    discover_run_inputs,
-    is_run_directory,
-    resolve_selected_run_layouts,
+from input_output import HoloRunLayout, resolve_selected_run_layouts
+from input_output.output_manager import (
+    OutputManager, OutputType, output_manager_for_layout, reject_duplicate_destinations,
 )
-from input_output.archives import extracted_zip_tree
-from input_output.output_manager import OutputManager, OutputType
+from input_output.runs.inputs import (
+    ExpandedRunInputs,
+    batch_root as infer_batch_root,
+    expand_run_inputs,
+)
 from utils.logger import Logger
 from velocity_calibration import (
     DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
@@ -28,19 +35,9 @@ from velocity_calibration import (
 )
 
 from .base import PipelineDescriptor
+from .background_artifacts import ArtifactWorkers, BackgroundArtifacts
 from .dag import PipelineDAG, PipelineExecutionPlan
 from .runtime import PipelineRunError, run_pipelines_to_output
-
-HOLO_SUFFIX = ".holo"
-
-
-@dataclass(frozen=True)
-class ExpandedRunInputs:
-    """Input paths produced from one CLI source selection."""
-
-    paths: tuple[Path, ...]
-    batch_root: Path | None = None
-
 
 @dataclass(frozen=True)
 class RunRequest:
@@ -59,6 +56,8 @@ class RunSpec:
     pipeline_options: Mapping[str, tuple[str, ...]]
     band_ratio_frequency_scale_hz: float = DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
     band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING
+    copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH
+    velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION
 
     @property
     def total_pipeline_units(self) -> int:
@@ -105,11 +104,15 @@ def resolve_run_spec(
     pipeline_options: Mapping[str, Iterable[str]] | None = None,
     band_ratio_frequency_scale_hz: float = (DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ),
     band_limited_harmonics: int = DEFAULT_BAND_LIMITED_HARMONICS_SETTING,
+    copy_hd_passthrough: bool = DEFAULT_COPY_HD_PASSTHROUGH,
+    velocity_estimation_method: str = DEFAULT_VELOCITY_WORKFLOW_SELECTION,
     output_root: Path | None = None,
     batch_root: Path | None = None,
 ) -> RunSpec:
     """Resolve targets, inputs, and deterministic output destinations."""
+    resolved_velocity_selection = validate_velocity_workflow_selection(velocity_estimation_method)
     resolved_harmonics = validate_band_limited_harmonics_setting(band_limited_harmonics)
+    resolved_copy_hd_passthrough = validate_copy_hd_passthrough(copy_hd_passthrough)
 
     resolved_band_ratio_scale_hz = validate_band_ratio_frequency_scale_hz(
         band_ratio_frequency_scale_hz
@@ -145,12 +148,12 @@ def resolve_run_spec(
     effective_batch_root = (
         batch_root.expanduser().resolve()
         if batch_root is not None
-        else _batch_root([layout.holo_path for layout in layouts])
+        else infer_batch_root([layout.holo_path for layout in layouts])
     )
     requests = tuple(
         RunRequest(
             input_layout=layout,
-            output_manager=_output_manager_for_layout(
+            output_manager=output_manager_for_layout(
                 layout,
                 output_root=resolved_output_root,
                 batch_root=effective_batch_root,
@@ -158,13 +161,17 @@ def resolve_run_spec(
         )
         for layout in layouts
     )
-    _reject_duplicate_destinations(requests)
+    reject_duplicate_destinations(
+        tuple((request.input_layout, request.output_manager) for request in requests)
+    )
     return RunSpec(
         plan=plan,
         requests=requests,
         pipeline_options=resolved_options,
         band_ratio_frequency_scale_hz=resolved_band_ratio_scale_hz,
         band_limited_harmonics=resolved_harmonics,
+        copy_hd_passthrough=resolved_copy_hd_passthrough,
+        velocity_estimation_method=resolved_velocity_selection,
     )
 
 
@@ -180,11 +187,47 @@ def execute_run(
 
     Logger.log(f"[DAG] Targets -> {', '.join(spec.plan.targets)}")
     Logger.log(f"[DAG] Execution order -> {', '.join(spec.plan.names)}")
-    outputs: list[Path] = []
-    failures: list[RunFailure] = []
+    from .resources import ResourceBudget
+
+    budget = ResourceBudget()
+    with budget.activate(), ArtifactWorkers() as workers, ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="EyeFlowFileCompletion",
+    ) as completions:
+        return _execute_batch(
+            spec, workers, completions, on_file_start=on_file_start,
+            on_pipeline_start=on_pipeline_start, on_progress=on_progress,
+            should_stop=should_stop,
+        )
+
+
+def _execute_batch(
+    spec, workers, completions, *, on_file_start, on_pipeline_start, on_progress, should_stop,
+):
+    outputs = []
+    failures = []
+    pending = deque()
     stopped = False
 
+    def finish_oldest():
+        failure = pending.popleft().result()
+        if failure is not None:
+            failures.append(failure)
+            for request in spec.requests:
+                if request.input_layout.input_path == failure.input_path:
+                    path = request.output_manager.path_for(OutputType.H5)
+                    if path in outputs and not path.is_file():
+                        outputs.remove(path)
+
     for request_index, request in enumerate(spec.requests):
+        # Permit the next input's analysis to overlap the preceding exports,
+        # while bounding private snapshots to at most two unfinished inputs.
+        if len(pending) >= 2:
+            finish_oldest()
+        if request_index and should_stop is not None and should_stop():
+            stopped = True
+            remaining = len(spec.requests) - request_index
+            Logger.log(f"[STOP] Batch stopped; {remaining} input file(s) not started.")
+            break
         input_layout = request.input_layout
         final_manager = request.output_manager
         final_path = final_manager.path_for(OutputType.H5)
@@ -200,6 +243,9 @@ def execute_run(
         Logger.log(f"[RESOLVED] DV -> {input_layout.dv_h5}")
         Logger.log(f"[OUTPUT] {final_path}")
 
+        artifacts = BackgroundArtifacts(workers)
+        numerical_error = None
+        finalizers = []
         try:
             final_dir = final_manager.layout.ef_dir
             if final_dir.exists() and not final_dir.is_dir():
@@ -216,31 +262,64 @@ def execute_run(
                 pipeline_options=spec.pipeline_options,
                 band_ratio_frequency_scale_hz=(spec.band_ratio_frequency_scale_hz),
                 band_limited_harmonics=spec.band_limited_harmonics,
+                copy_hd_passthrough=spec.copy_hd_passthrough,
+                velocity_estimation_method=spec.velocity_estimation_method,
                 holodoppler_h5=input_layout.hd_h5,
                 doppler_vision_h5=input_layout.dv_h5,
                 on_pipeline_start=on_pipeline_start,
                 on_progress=on_progress,
+                background_artifacts=artifacts,
+                on_finalization_ready=finalizers.append,
             )
         except Exception as exc:  # noqa: BLE001
             if isinstance(exc, PipelineRunError):
                 outputs.append(exc.output_h5_path)
-            failure = RunFailure(input_layout.input_path, str(exc))
-            failures.append(failure)
-            Logger.log_error(str(failure))
+            numerical_error = str(exc)
         else:
             outputs.append(final_path)
-            Logger.log(f"Completed run for {input_layout.input_path.name}: {final_path}")
-
-        remaining_count = len(spec.requests) - request_index - 1
-        if remaining_count and should_stop is not None and should_stop():
-            stopped = True
+        if artifacts.pending:
+            phase = "ended with errors" if numerical_error else "completed"
             Logger.log(
-                f"[STOP] Batch stopped after {input_layout.input_path.name}; "
-                f"{remaining_count} input file(s) not started."
+                f"[ANALYSIS COMPLETE] {input_layout.input_path.name}: "
+                f"pipeline execution {phase}; artifact exports are still in progress."
             )
-            break
+        pending.append(completions.submit(
+            _finish_file, input_layout.input_path, final_path, artifacts, numerical_error, finalizers,
+        ))
 
+    while pending:
+        finish_oldest()
     return RunResult(tuple(outputs), tuple(failures), stopped=stopped)
+
+
+def _finish_file(input_path, output_path, artifacts, numerical_error, finalizers=()):
+    """Serialize the retained output model only after sidecars are published."""
+    import h5py
+
+    try:
+        with artifacts:
+            artifacts.collect(wait=True)
+            for finalize in finalizers:
+                finalize()
+            if not finalizers and artifacts.statuses and output_path.is_file():
+                with h5py.File(output_path, "r+") as h5:
+                    h5.attrs["artifact_status"] = json.dumps(artifacts.statuses, sort_keys=True)
+                    h5.attrs["artifact_failures"] = json.dumps(artifacts.failures, sort_keys=True)
+            errors = [numerical_error] if numerical_error else []
+            for name, error in artifacts.failures.items():
+                message = f"{name}: {error}"
+                if not numerical_error or message not in numerical_error:
+                    errors.append(message)
+            if errors:
+                failure = RunFailure(input_path, "; ".join(errors))
+                Logger.log_error(str(failure))
+                return failure
+    except Exception as exc:
+        failure = RunFailure(input_path, str(exc))
+        Logger.log_error(str(failure))
+        return failure
+    Logger.log(f"Completed run for {input_path.name}: {output_path}")
+    return None
 
 
 def _resolve_pipeline_options(
@@ -275,86 +354,6 @@ def _resolve_pipeline_options(
             option.name for option in descriptor.options if option.name in selected
         )
     return resolved
-
-
-@contextmanager
-def expand_run_inputs(data_path: Path) -> Iterator[ExpandedRunInputs]:
-    """Expand a CLI file, recursive folder, or ZIP source safely."""
-
-    source = data_path.expanduser().resolve()
-    if source.is_file() and source.suffix.lower() == ".zip":
-        with extracted_zip_tree(source) as extracted_root:
-            paths = _find_holo_inputs(extracted_root)
-            if not paths:
-                raise ValueError(f"No {HOLO_SUFFIX} files or HD/DV run folders found in {source}")
-            batch_root = extracted_root.parent if is_run_directory(extracted_root) else extracted_root
-            yield ExpandedRunInputs(tuple(paths), batch_root)
-        return
-
-    paths = _find_holo_inputs(source)
-    if not paths:
-        raise ValueError(f"No {HOLO_SUFFIX} files or HD/DV run folders found under {source}")
-    batch_root = (source.parent if is_run_directory(source) else source) if source.is_dir() else None
-    yield ExpandedRunInputs(tuple(paths), batch_root)
-
-
-def _find_holo_inputs(path: Path) -> list[Path]:
-    if path.is_file():
-        if path.suffix.lower() in {HOLO_SUFFIX, INPUT_LIST_SUFFIX}:
-            return [path]
-        raise ValueError(f"File is not a {HOLO_SUFFIX} or {INPUT_LIST_SUFFIX} file: {path}")
-    if path.is_dir():
-        return discover_run_inputs(path)
-    raise FileNotFoundError(f"Input path does not exist: {path}")
-
-
-def _output_manager_for_layout(
-    layout: HoloRunLayout,
-    *,
-    output_root: Path | None,
-    batch_root: Path,
-) -> OutputManager:
-    if output_root is None:
-        return OutputManager(layout)
-    relative_path = _relative_to_batch(layout.holo_path, batch_root)
-    target_dir = output_root / relative_path.parent
-    output_layout = replace(layout, _root_dir=target_dir / layout.stem)
-    return OutputManager(output_layout)
-
-
-def _batch_root(holo_paths: Sequence[Path]) -> Path:
-    if not holo_paths:
-        return Path.cwd()
-    if len(holo_paths) == 1:
-        return holo_paths[0].parent
-    try:
-        return Path(os.path.commonpath([str(path.parent) for path in holo_paths]))
-    except ValueError:
-        return Path.cwd()
-
-
-def _relative_to_batch(holo_path: Path, batch_root: Path) -> Path:
-    try:
-        return holo_path.relative_to(batch_root)
-    except ValueError:
-        anchor = Path(holo_path.anchor)
-        drive_token = holo_path.drive.rstrip(":\\/") or "root"
-        tail = holo_path.relative_to(anchor) if anchor != holo_path else Path()
-        return Path(drive_token) / tail
-
-
-def _reject_duplicate_destinations(requests: Sequence[RunRequest]) -> None:
-    destinations: dict[str, Path] = {}
-    for request in requests:
-        destination = request.output_manager.layout.ef_dir.resolve(strict=False)
-        key = os.path.normcase(str(destination))
-        previous = destinations.get(key)
-        if previous is not None:
-            raise ValueError(
-                "Multiple inputs resolve to the same EyeFlow output directory: "
-                f"{previous} and {request.input_layout.input_path} -> {destination}"
-            )
-        destinations[key] = request.input_layout.input_path
 
 
 __all__ = [

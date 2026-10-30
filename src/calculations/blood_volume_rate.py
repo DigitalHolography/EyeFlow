@@ -35,7 +35,9 @@ def mask_derived_lumen_geometry(
     mask_areas: list[np.ndarray] = []
     for value in topologies:
         topology = getattr(value, "topology", value)
-        nested = getattr(topology, "topology", None)
+        nested = getattr(topology, "native", None)
+        if nested is None:
+            nested = getattr(topology, "topology", None)
         topology = nested if nested is not None else topology
         settings = topology.ring_settings
         if not isinstance(settings, AnnulusGeometry):

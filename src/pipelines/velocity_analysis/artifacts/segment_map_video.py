@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from runtime_limits import cap_parallel_jobs
 from dataclasses import dataclass
 import math
 from pathlib import Path
@@ -213,7 +214,7 @@ def export_segment_velocity_map_avis(
         paths = [export_source(available_sources[0])]
     else:
         with ThreadPoolExecutor(
-            max_workers=min(2, len(available_sources)),
+            max_workers=cap_parallel_jobs(min(2, len(available_sources))),
             thread_name_prefix="segment-avi",
         ) as executor:
             paths = list(executor.map(export_source, available_sources))
@@ -225,11 +226,6 @@ def export_segment_velocity_map_avis(
         f"output={output_bytes / (1024**2):.1f} MiB."
     )
     return paths
-
-
-def _mosaic_source(vessel: str, segments, packed_value) -> _MosaicSource | None:
-    source, _ = _prepare_mosaic_source(vessel, segments, packed_value)
-    return source
 
 
 def _prepare_mosaic_source(
@@ -397,29 +393,6 @@ def _global_velocity_range(
     return minimum, maximum
 
 
-def _frame_indexes(time_count: int, beat_count: int):
-    """Yield time as the fastest-changing movie dimension."""
-    for beat_index in range(beat_count):
-        for time_index in range(time_count):
-            yield time_index, beat_index
-
-
-def _mosaic_frame(
-    source: _MosaicSource,
-    time_index: int,
-    beat_index: int,
-    velocity_range: tuple[float, float],
-    color_lut: np.ndarray,
-) -> np.ndarray:
-    return _mosaic_frame_chunk(
-        source,
-        np.asarray([time_index], dtype=np.intp),
-        beat_index,
-        velocity_range,
-        color_lut,
-    )[0]
-
-
 def _mosaic_frame_chunk(
     source: _MosaicSource,
     time_indexes: np.ndarray,
@@ -571,5 +544,3 @@ def _absolute_h5_path(path: str | None) -> str | None:
     if path is None:
         return None
     return f"/{path.lstrip('/')}"
-
-

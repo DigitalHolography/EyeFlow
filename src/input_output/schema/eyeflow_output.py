@@ -173,7 +173,9 @@ class EyeFlowOutputPaths:
     spectrograms_masked_per_beat_svd_continuous: str
 
     @staticmethod
-    def active(name: str | None = None) -> "EyeFlowOutputPaths":
+    def active(name: EyeFlowOutputPaths | str | None = None) -> "EyeFlowOutputPaths":
+        if isinstance(name, EyeFlowOutputPaths):
+            return name
         if name is not None and name != EYEFLOW_V2_OUTPUT_SCHEMA:
             raise ValueError(
                 f"Unknown EyeFlow output schema '{name}'. "
@@ -206,7 +208,7 @@ def _segmentation_paths(root: str) -> SegmentationOutputPaths:
             lumen_diameter=f"{root}/Vein/LumenDiameter/value",
             delta_radius=f"{root}/Vein/DeltaRadius/value",
         ),
-        pixel_pitch_m=f"{root}/PixelPitch_m/value",
+        pixel_pitch_m="Meta/PixelPitch_m",
         gaps=f"{root}/Gaps/Mask",
         gaps_legacy=f"{root}/Gaps/Legacy",
         gaps_from_m0ff=f"{root}/Gaps/GapsFromM0ff",

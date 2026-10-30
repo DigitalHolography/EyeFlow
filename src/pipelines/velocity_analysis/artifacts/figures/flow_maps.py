@@ -131,7 +131,7 @@ def _histogram_plot(
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(ctx.velocity_axis_label)
     _style_axes(ax)
-    return writer.savefig(fig, suffix)
+    return writer.save_figure(fig, suffix)
 
 def _vessel_histogram_colormap(vessel: str):
     return _matlab_vessel_colormap(vessel)
@@ -198,7 +198,7 @@ def _combined_plot(
         ax.set_xlabel(xlabel, labelpad=2)
         ax.set_ylabel(ctx.velocity_axis_label, labelpad=2)
         _style_axes(ax)
-    return writer.savefig(fig, "AVGflowVideoCombined.png", dpi=150)
+    return writer.save_figure(fig, "AVGflowVideoCombined.png", dpi=150)
 
 def _flow_rgb(
     ctx: PulseFigureContext,

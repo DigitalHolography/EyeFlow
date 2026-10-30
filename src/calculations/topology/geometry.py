@@ -18,26 +18,6 @@ class AnnulusGeometry:
     segment_length_frac: float | None = None
 
 
-def ring_masks(
-    image_shape: tuple[int, int],
-    optic_disc_center,
-    settings: AnnulusGeometry,
-) -> np.ndarray:
-    """Return the configured non-overlapping annuli."""
-
-    return np.asarray(
-        [
-            annulus_mask(
-                image_shape,
-                optic_disc_center,
-                *_ring_bounds(settings, ring_index),
-            )
-            for ring_index in range(settings.ring_count)
-        ],
-        dtype=bool,
-    )
-
-
 def section_masks(
     image_shape: tuple[int, int],
     optic_disc_center,

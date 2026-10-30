@@ -22,6 +22,7 @@ SETTINGS_FILENAME = "settings.json"
 DEFAULT_SETTINGS_FILENAME = "default_settings.json"
 # Application fallback; calculations own their independent API default.
 DEFAULT_BAND_LIMITED_HARMONICS_SETTING = 12
+DEFAULT_COPY_HD_PASSTHROUGH = False
 LAST_RUN_LOG_FILENAME = "last_EF_log.txt"
 PIPELINES_DIR_ENV = "EYEFLOW_PIPELINES_DIR"
 VERSION_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
@@ -31,6 +32,32 @@ DEFAULT_VELOCITY_ESTIMATION_METHOD: VelocityEstimationMethod = "doppler_moments"
 VELOCITY_ESTIMATION_METHODS: frozenset[VelocityEstimationMethod] = frozenset(
     {DEFAULT_VELOCITY_ESTIMATION_METHOD, "frequency_bands"}
 )
+# Public workflow names map to estimator/provenance identifiers. Extend this map
+# when adding a workflow; "both" selects every registered workflow.
+VELOCITY_WORKFLOW_METHODS = {
+    "doppler_moments": "doppler_moments",
+    "bandratio": "frequency_bands",
+}
+DEFAULT_VELOCITY_WORKFLOW_SELECTION = "both"
+
+
+def validate_velocity_workflow_selection(value: object) -> str:
+    # Retain compatibility with configurations using the former estimator name.
+    if value == "frequency_bands":
+        return "bandratio"
+    if isinstance(value, str) and (value == "both" or value in VELOCITY_WORKFLOW_METHODS):
+        return value
+    allowed = ", ".join((*VELOCITY_WORKFLOW_METHODS, "both"))
+    raise ValueError(f"Invalid velocity_estimation_method {value!r}. Expected one of: {allowed}.")
+
+
+def selected_velocity_methods(value: object = DEFAULT_VELOCITY_WORKFLOW_SELECTION) -> tuple[str, ...]:
+    selection = validate_velocity_workflow_selection(value)
+    if selection == "both":
+        return tuple(VELOCITY_WORKFLOW_METHODS.values())
+    return (VELOCITY_WORKFLOW_METHODS[selection],)
+
+
 PIPELINE_NAME_MIGRATIONS: dict[str, str] = {
     "retinal_velocity": "velocity",
     "waveform_velocity": "velocity_analysis",
@@ -46,6 +73,12 @@ def validate_band_limited_harmonics_setting(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, Integral) or value < 0:
         raise ValueError("band_limited_harmonics must be a non-negative integer, excluding DC.")
     return int(value)
+
+
+def validate_copy_hd_passthrough(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError("copy_hd_passthrough must be true or false.")
+    return value
 
 
 def validate_velocity_estimation_method(value: object) -> VelocityEstimationMethod:
@@ -93,19 +126,6 @@ def app_version() -> str | None:
 def app_display_name() -> str:
     version = app_version()
     return f"{APP_NAME} {version}" if version else APP_NAME
-
-
-def app_version_dir_name(version: str | None = None) -> str:
-    raw_version = version if version is not None else app_version()
-    if not raw_version:
-        return APP_NAME
-
-    safe_version = INVALID_PATH_CHARS_PATTERN.sub("-", raw_version).rstrip(" .")
-    if not safe_version:
-        return APP_NAME
-    if safe_version.lower().startswith("v"):
-        return safe_version
-    return f"v{safe_version}"
 
 
 def _settings_subdir_name() -> str:
@@ -298,7 +318,6 @@ class AppSettingsStore:
         if self.default_template_path is None:
             return {}
         settings = _load_settings_file(self.default_template_path)
-        settings.pop("velocity_estimation_method", None)
         return settings
 
     def initialize_from_defaults(self) -> bool:
@@ -314,14 +333,12 @@ class AppSettingsStore:
         if not self.path.exists():
             return self.load_defaults()
         settings = _load_settings_file(self.path)
-        settings.pop("velocity_estimation_method", None)
         return settings
 
     def save(self, settings: Mapping[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self.path.with_suffix(".tmp")
         settings = dict(settings)
-        settings.pop("velocity_estimation_method", None)
         tmp_path.write_text(
             json.dumps(settings, indent=2, sort_keys=True),
             encoding="utf-8",
@@ -346,7 +363,18 @@ class AppSettingsStore:
                 DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ,
             )
         )
+        validate_copy_hd_passthrough(
+            settings.get("copy_hd_passthrough", DEFAULT_COPY_HD_PASSTHROUGH)
+        )
+        validate_velocity_workflow_selection(
+            settings.get("velocity_estimation_method", DEFAULT_VELOCITY_WORKFLOW_SELECTION)
+        )
         self.save(settings)
+
+    def load_velocity_estimation_method(self) -> str:
+        return validate_velocity_workflow_selection(
+            self.load().get("velocity_estimation_method", DEFAULT_VELOCITY_WORKFLOW_SELECTION)
+        )
 
     def load_named_visibility(self, key: str) -> dict[str, bool]:
         raw_visibility = self.load().get(key, {})
@@ -426,6 +454,16 @@ class AppSettingsStore:
         return validate_band_limited_harmonics_setting(
             self.load().get("band_limited_harmonics", DEFAULT_BAND_LIMITED_HARMONICS_SETTING)
         )
+
+    def load_copy_hd_passthrough(self) -> bool:
+        return validate_copy_hd_passthrough(
+            self.load().get("copy_hd_passthrough", DEFAULT_COPY_HD_PASSTHROUGH)
+        )
+
+    def save_copy_hd_passthrough(self, value: object) -> None:
+        settings = self.load()
+        settings["copy_hd_passthrough"] = validate_copy_hd_passthrough(value)
+        self.save(settings)
 
     def save_band_limited_harmonics(self, value: object) -> None:
         settings = self.load()

@@ -8,7 +8,7 @@ import h5py
 import numpy as np
 import pytest
 
-from input_output.h5_access import PipelineH5Output
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.gap_analysis import run_gap_analysis
 from test_spectrogram_frequency import _write_frequency_table
@@ -47,19 +47,15 @@ def test_phase_areas_use_fixed_peak_bins_and_leave_input_unchanged():
     original = values.copy()
     curves = analyze_phase_spectrum(values, sampling_frequency_hz=8000, index_max1=1, index_max2=6)
     expected = {
-        "A2": [45, 90, 25, 15, 10, 35],
         "A1": [17, 34, 11, 15, 18, 27],
         "A0": [15, 30, 10, 20, 25, 30],
     }
     for name, result in expected.items():
         np.testing.assert_array_equal(curves[name], result)
-    np.testing.assert_allclose(curves["R1"], np.array(expected["A1"]) / expected["A0"])
-    np.testing.assert_allclose(curves["R2"], np.array(expected["A2"]) / expected["A0"])
     np.testing.assert_allclose(curves["SE"], (np.array(expected["A1"]) - expected["A0"]) / expected["A0"])
-    np.testing.assert_allclose(curves["Z2"], (np.array(expected["A2"]) - expected["A0"]) / expected["A0"])
     np.testing.assert_array_equal(values, original)
     # Huge maxima outside the fixed interval at phase 1 do not move its bounds.
-    assert curves["A2"][1] == 90
+    assert curves["A1"][1] == 34
     override = analyze_phase_spectrum(values, sampling_frequency_hz=8000, index_max1=1, index_max2=6, valley_neighborhood_length=4)
     assert override["A0"][0] == 7.5
 
@@ -70,9 +66,7 @@ def test_phase_areas_integrate_in_khz_and_keep_ratio_units_dimensionless():
     )
     assert curves["A0"][0] == 7.5
     assert curves["A1"][0] == 8.5
-    assert curves["A2"][0] == 22.5
-    assert curves["R1"][0] == 17 / 15
-    assert curves["R2"][0] == 3
+    assert curves["SE"][0] == 2 / 15
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
@@ -81,8 +75,7 @@ def test_early_late_medians_include_shared_third_boundary_and_deltas_have_signed
     metrics = _pack(phase=phase)
     root = EyeFlowOutputPaths.active().spectrograms_masked_metrics_root
     expected = {
-        "A2": (45, 20, -25), "A1": (17, 16.5, -0.5), "A0": (15, 22.5, 7.5),
-        "R1": (17 / 15, 33 / 40, -37 / 120),
+        "A1": (17, 16.5, -0.5), "A0": (15, 22.5, 7.5),
         "SE": (2 / 15, -7 / 40, -37 / 120),
     }
     for name, (early, late, delta) in expected.items():
@@ -113,7 +106,7 @@ def test_early_late_medians_include_shared_third_boundary_and_deltas_have_signed
         assert delta_attrs["definition"] == f"{summary_name}_late minus {summary_name}_early"
         assert delta_attrs["calculation_method"] == "late_median_minus_early_median"
     # Aggregate the ratios themselves, rather than dividing aggregated areas.
-    assert metrics[f"{root}/R1_late"][0] != pytest.approx(16.5 / 22.5)
+    assert metrics[f"{root}/SEI_late"][0] != pytest.approx(16.5 / 22.5 - 1)
 
 
 def test_default_128_phase_grid_uses_43_early_and_85_late_samples():
@@ -189,13 +182,14 @@ def test_phase_nan_and_zero_policies_preserve_independent_area_information():
     with warnings.catch_warnings():
         warnings.simplefilter("error", RuntimeWarning)
         curves = analyze_phase_spectrum(values, sampling_frequency_hz=8000, index_max1=1, index_max2=6)
-    assert np.isnan(curves["A2"][0]) and curves["A0"][0] == 15
-    assert curves["A2"][1] == 90 and np.isnan(curves["A1"][1])
+    assert np.isnan(curves["A_50"][0]) and curves["A0"][0] == 15
+    assert np.isnan(curves["A_50"][1]) and np.isnan(curves["A1"][1])
     assert curves["A0"][2] == 15  # One remaining valley sample.
-    assert np.isnan(curves["A0"][3]) and curves["A2"][3] == 15
-    assert curves["A2"][4] == 0 and curves["A0"][4] == 25
-    assert curves["R1"][4] == 16 / 25 and curves["R2"][4] == 0
-    for name in ("R1", "R2", "SE", "Z2"):
+    assert np.isnan(curves["A0"][3]) and np.isnan(curves["A_50"][3])
+    # Zero heights at the fixed bounds do not erase the actual interior peaks.
+    assert curves["A_50"][4] == pytest.approx(125 / 12) and curves["A0"][4] == 25
+    assert curves["SE"][4] == -9 / 25 and curves["SE_50"][4] == pytest.approx(67 / 125)
+    for name in ("SE", "SE_25", "SE_50", "SE_75"):
         assert np.isnan(curves[name][3])  # The new A0 denominator is missing.
     assert curves["A1"][5] == 27
 
@@ -212,7 +206,7 @@ def test_nan_windows_ignore_missing_phases_and_leave_missing_deltas_nan():
         assert np.isfinite(metrics[f"{root}/{name}_late"][0])
         assert np.isnan(metrics[f"{root}/delta_{name}"][0])
         assert metrics[f"{root}/{name}_early"][1]["valid_sample_count"] == 0
-    assert metrics[f"{root}/A2_late"][0] == 15
+    assert metrics[f"{root}/A0_late"][0] == 25
 
 
 def test_zero_valley_denominator_keeps_areas_but_makes_ratios_and_offsets_nan():
@@ -223,8 +217,9 @@ def test_zero_valley_denominator_keeps_areas_but_makes_ratios_and_offsets_nan():
         curves = analyze_phase_spectrum(values, sampling_frequency_hz=8000, index_max1=1, index_max2=6)
     assert curves["A0"][0] == 0
     assert curves["A1"][0] == 11
-    assert curves["A2"][0] == 45
-    assert all(np.isnan(curves[name][0]) for name in ("R1", "R2", "SE", "Z2"))
+    assert np.isfinite(curves["A_50"][0])
+    assert np.isnan(curves["SE"][0])
+    assert np.isfinite(curves["SE_50"][0])
 
 
 def test_missing_fixed_peak_indices_do_not_trigger_a_phasewise_peak_search():
@@ -259,14 +254,15 @@ def test_runner_calculates_curves_after_the_beat_median(tmp_path):
         group = h5[schema.spectrograms_masked_metrics_root]
         assert group["index_max1"][()] == 1
         assert group["index_max2"][()] == 6
-        # Median of per-beat A2 at the first phase would instead be 252.5.
-        np.testing.assert_array_equal(group["A2_t"][:], [50] * 6)
+        # Flood the beat-median spectrum, rather than taking medians of flooded beats.
+        # The two ramps 10 -> 1 and 1 -> 10 each have clipped area 37/9 at h=5.
+        flooded = 3 + 2 * 37 / 9
+        np.testing.assert_allclose(group["A_50_t"][:], [flooded] * 6)
         np.testing.assert_array_equal(group["A0_t"][:], [5] * 6)
-        np.testing.assert_allclose(group["R1_t"][:], [2.8] * 6)
         np.testing.assert_allclose(group["SE"][:], [1.8] * 6)
-        assert group["A2_early"][()] == 50
-        assert group["A2_late"][()] == 50
-        assert group["delta_A2"][()] == 0
-        assert group["A2_t"].attrs["source_path"] == h5[schema.spectrograms_masked_time_aggregated_median_beat].name
+        assert group["A_50_early"][()] == pytest.approx(flooded)
+        assert group["A_50_late"][()] == pytest.approx(flooded)
+        assert group["delta_A_50"][()] == 0
+        assert group["A_50_t"].attrs["source_path"] == h5[schema.spectrograms_masked_time_aggregated_median_beat].name
         assert not {"A1", "A1_t", "R2", "R2_t", "Z2", "Z2_t"} & set(group)
         assert not {"h0", "h1", "hv", "rho_h", "rho_v"} & set(group)

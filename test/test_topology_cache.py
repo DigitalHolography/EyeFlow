@@ -32,10 +32,10 @@ class TopologyCacheTests(unittest.TestCase):
         settings = AnnulusGeometry(0., 1., 1., 1)
         initial = [_prepared_topology(vessel.shape, marker=float(i)) for i in (1, 2)]
         for prepared in initial:
-            prepared.topology.window_side_pixels = 1
+            prepared.native.window_side_pixels = 1
         final = [
             replace(prepared, native=SimpleNamespace(
-                **{**vars(prepared.topology), "window_side_pixels": 3},
+                **{**vars(prepared.native), "window_side_pixels": 3},
             ))
             for prepared in initial
         ]

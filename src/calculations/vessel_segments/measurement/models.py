@@ -117,12 +117,13 @@ class SegmentMeasurements:
 
     The existing ``topology`` field holds that plan, not native geometry;
     its ``native`` member provides the source-coordinate SegmentTopology.
+    ``longitudinal`` is ``None`` when its calculation was disabled.
     """
 
     topology: SegmentSamplingPlan
     segment_signal: np.ndarray
     transverse: MaskedArrays
-    longitudinal: MaskedArrays
+    longitudinal: MaskedArrays | None
     mean_images: MaskedArrays
     sample_spacing_mm: float
     maps: CompactSegmentMaps | None = None
@@ -139,6 +140,8 @@ class SegmentMeasurements:
             ("transverse", self.transverse),
             ("longitudinal", self.longitudinal),
         ):
+            if name == "longitudinal" and pair is None:
+                continue
             if pair.unmasked.ndim != 4 or pair.unmasked.shape[:3] != expected_prefix:
                 raise ValueError(
                     f"{name} profiles must have shape (ring, branch, frame, sample)."
@@ -172,6 +175,10 @@ class SegmentMeasurements:
         if direction == "transverse":
             return self.transverse.select(masked=masked)
         if direction == "longitudinal":
+            if self.longitudinal is None:
+                raise RuntimeError(
+                    "Longitudinal profiles were not requested for this measurement."
+                )
             return self.longitudinal.select(masked=masked)
         raise ValueError("direction must be 'transverse' or 'longitudinal'.")
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import singledispatch
+from os import cpu_count
 from time import perf_counter
 
 import numpy as np
@@ -12,6 +14,7 @@ from scipy import ndimage as ndi
 
 from calculations.topology import annulus_mask
 from input_output.schema import HD_BAND_HF_PATH, HD_BAND_LF_PATH, ImageMaps
+from runtime_limits import cap_parallel_jobs
 from utils.logger import Logger
 from velocity_calibration import (
     BAND_LF_LOW_RELATIVE_THRESHOLD,
@@ -36,6 +39,8 @@ FREQUENCY_BANDS_METHOD = "frequency_bands"
 FREQUENCY_BAND_LF_PATH = f"/{HD_BAND_LF_PATH}"
 FREQUENCY_BAND_HF_PATH = f"/{HD_BAND_HF_PATH}"
 INPAINTING_RADIUS = 5
+_MIN_PARALLEL_INPAINT_PIXELS = 512_000
+_MAX_INPAINT_WORKERS = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +62,14 @@ class FrequencyBandsEstimatorInputs(VelocityEstimatorInputs):
     """Band volumes and calibration used by the frequency-band estimator."""
 
     frequency_scale_hz: float
+
+    @property
+    def low_source_path(self) -> str:
+        return getattr(self.first_volume, "name", FREQUENCY_BAND_LF_PATH)
+
+    @property
+    def high_source_path(self) -> str:
+        return getattr(self.second_volume, "name", FREQUENCY_BAND_HF_PATH)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +106,7 @@ class _VelocityResultAccumulator:
         artery_mask: np.ndarray,
         vein_mask: np.ndarray,
         retain_velocity_video: bool,
+        velocity_video_allocator: Callable[[tuple[int, int, int]], np.ndarray] | None,
     ) -> _VelocityResultAccumulator:
         averages = {
             name: np.zeros(spatial_shape, dtype=np.float64)
@@ -118,16 +132,22 @@ class _VelocityResultAccumulator:
                 "vein_delta_frms",
             )
         }
+        video_shape = (frame_count, *spatial_shape)
+        video = None
+        if retain_velocity_video:
+            video = (
+                velocity_video_allocator(video_shape)
+                if velocity_video_allocator is not None
+                else np.empty(video_shape, dtype=np.float32)
+            )
+            if video.shape != video_shape or video.dtype != np.float32 or not video.flags.writeable:
+                raise ValueError("Velocity video storage must be a writable float32 (frame, y, x) array.")
         return cls(
             frame_count=frame_count,
             section_mask=section_mask,
             artery_section=section_mask & artery_mask,
             vein_section=section_mask & vein_mask,
-            velocity_video=(
-                np.empty((frame_count, *spatial_shape), dtype=np.float32)
-                if retain_velocity_video
-                else None
-            ),
+            velocity_video=video,
             averages=averages,
             signals=signals,
         )
@@ -230,8 +250,9 @@ def resolve_velocity_estimator_inputs(
             second_name, second_volume = "moment2", image_maps.moment2
             missing_prefix = ""
         case "frequency_bands":
-            first_name, first_volume = FREQUENCY_BAND_LF_PATH, image_maps.band_lf
-            second_name, second_volume = FREQUENCY_BAND_HF_PATH, image_maps.band_hf
+            first_volume, second_volume = image_maps.band_lf, image_maps.band_hf
+            first_name = getattr(first_volume, "name", FREQUENCY_BAND_LF_PATH)
+            second_name = getattr(second_volume, "name", FREQUENCY_BAND_HF_PATH)
             missing_prefix = "HoloDoppler datasets "
         case _:
             raise ValueError(
@@ -265,7 +286,7 @@ def resolve_velocity_estimator_inputs(
         )
         Logger.log(
             "Velocity estimator converts the HoloDoppler band ratio "
-            f"{FREQUENCY_BAND_HF_PATH} / {FREQUENCY_BAND_LF_PATH} to RMS "
+            f"{inputs.high_source_path} / {inputs.low_source_path} to RMS "
             f"frequency using {frequency_scale_hz:g} Hz per ratio unit."
         )
     else:
@@ -312,11 +333,15 @@ def _build_doppler_moments_provenance(
     numerical_aperture: float,
 ) -> dict[str, object]:
     del diagnostic_counts
-    return physical_velocity_provenance(
-        velocity_estimation_method=inputs.method,
-        laser_wavelength_m=laser_wavelength_m,
-        numerical_aperture=numerical_aperture,
-    )
+    return {
+        **physical_velocity_provenance(
+            velocity_estimation_method=inputs.method,
+            laser_wavelength_m=laser_wavelength_m,
+            numerical_aperture=numerical_aperture,
+        ),
+        "moment0_source_path": getattr(inputs.first_volume, "name", "/moment0"),
+        "moment2_source_path": getattr(inputs.second_volume, "name", "/moment2"),
+    }
 
 
 @_build_velocity_provenance.register
@@ -341,8 +366,8 @@ def _build_frequency_bands_provenance(
             laser_wavelength_m=laser_wavelength_m,
             numerical_aperture=numerical_aperture,
         ),
-        "band_lf_source_path": FREQUENCY_BAND_LF_PATH,
-        "band_hf_source_path": FREQUENCY_BAND_HF_PATH,
+        "band_lf_source_path": inputs.low_source_path,
+        "band_hf_source_path": inputs.high_source_path,
         "band_hf_negative_value_policy": "clamp_to_zero_before_ratio",
         "band_lf_negative_value_policy": "clamp_to_zero_before_ratio",
         "band_lf_zero_value_policy": "zero_ratio_without_division",
@@ -390,12 +415,12 @@ def _iter_frequency_band_chunks(
         low_frequency = _read_validated_band_chunk(
             inputs.first_volume,
             frame_slice,
-            FREQUENCY_BAND_LF_PATH,
+            inputs.low_source_path,
         )
         high_frequency = _read_validated_band_chunk(
             inputs.second_volume,
             frame_slice,
-            FREQUENCY_BAND_HF_PATH,
+            inputs.high_source_path,
         )
         yield VelocityEstimatorChunk(
             chunk_index=chunk_index,
@@ -470,6 +495,7 @@ def estimate_retinal_velocity(
         DEFAULT_BAND_RATIO_FREQUENCY_SCALE_HZ
     ),
     retain_velocity_video: bool = True,
+    velocity_video_allocator: Callable[[tuple[int, int, int]], np.ndarray] | None = None,
 ) -> RetinalVelocityData:
     """Estimate velocity in chunks, retaining its video only when requested."""
 
@@ -517,6 +543,7 @@ def estimate_retinal_velocity(
         artery_mask=artery,
         vein_mask=vein,
         retain_velocity_video=retain_velocity_video,
+        velocity_video_allocator=velocity_video_allocator,
     )
     diagnostic_counts: dict[str, int] = {}
 
@@ -575,7 +602,8 @@ def _validate_matching_volumes(method: str, first_volume, second_volume) -> None
     if method == DOPPLER_MOMENTS_METHOD:
         first_name, second_name = "moment0", "moment2"
     else:
-        first_name, second_name = FREQUENCY_BAND_LF_PATH, FREQUENCY_BAND_HF_PATH
+        first_name = getattr(first_volume, "name", FREQUENCY_BAND_LF_PATH)
+        second_name = getattr(second_volume, "name", FREQUENCY_BAND_HF_PATH)
     for name, volume in (
         (first_name, first_volume),
         (second_name, second_volume),
@@ -752,17 +780,23 @@ def _inpaint_frame_batch(
     except ModuleNotFoundError as exc:
         raise ImportError("Velocity background inpainting requires OpenCV (opencv-python).") from exc
     cv_mask = np.ascontiguousarray(mask, dtype=np.uint8)
-    inpainted = np.stack(
-        [
-            cv2.inpaint(
-                np.ascontiguousarray(np.where(mask, 0.0, frame), dtype=np.float32),
-                cv_mask,
-                INPAINTING_RADIUS,
-                cv2.INPAINT_TELEA,
-            )
-            for frame in source
-        ]
-    )
+
+    def inpaint_frame(frame):
+        return cv2.inpaint(
+            np.ascontiguousarray(np.where(mask, 0.0, frame), dtype=np.float32),
+            cv_mask,
+            INPAINTING_RADIUS,
+            cv2.INPAINT_TELEA,
+        )
+
+    workers = cap_parallel_jobs(min(_MAX_INPAINT_WORKERS, cpu_count() or 1, source.shape[0]))
+    if workers > 1 and source.size >= _MIN_PARALLEL_INPAINT_PIXELS:
+        # The input HDF5 slice has already been read. Only independent OpenCV
+        # frame work runs in threads, and map() preserves frame order.
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            inpainted = np.stack(list(executor.map(inpaint_frame, source)))
+    else:
+        inpainted = np.stack([inpaint_frame(frame) for frame in source])
     square_safe_limit = np.float32(np.sqrt(np.finfo(np.float32).max))
     valid_frames = np.all(np.isfinite(inpainted), axis=(-1, -2)) & np.all(
         np.abs(inpainted) <= square_safe_limit,

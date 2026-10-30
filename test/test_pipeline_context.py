@@ -8,8 +8,8 @@ import h5py
 import numpy as np
 
 from pipeline_engine import ExecutionVariant, PipelineContext
-from pipeline_engine.context import RawH5SourceReader
-from input_output.h5_access import PipelineH5Output, PipelineInputSource
+from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema.base import TypedSource
 from input_output.schema.provenance import (
     INHERITED_PROVENANCE_KEYS_ATTR,
@@ -62,7 +62,7 @@ class PipelineContextTests(unittest.TestCase):
                              source_path="ProcessingMoments/source")
                 dataset = h5file[f"{root}/signal"]
                 self.assertNotIn("velocity_estimation_method", dataset.attrs)
-                self.assertNotIn("band_ratio_frequency_scale_hz", dataset.attrs)
+                self.assertIn("band_ratio_frequency_scale_hz", dataset.attrs)
                 effective = output.read_attrs("ProcessingMoments/signal")
                 self.assertEqual(method, effective["velocity_estimation_method"])
                 self.assertEqual(scale, effective["band_ratio_frequency_scale_hz"])
@@ -99,6 +99,41 @@ class PipelineContextTests(unittest.TestCase):
             self.assertEqual("frequency_bands", read_dataset_attrs(
                 h5file["ProcessingBandRatio/signal"])["velocity_estimation_method"])
 
+    def test_processing_parents_only_store_summary_attributes(self) -> None:
+        with h5py.File("summary.h5", "w", driver="core", backing_store=False) as f:
+            for root in ("ProcessingMoments", "ProcessingBandRatio"):
+                summary = {
+                    "velocity_estimation_method": (
+                        "doppler_moments" if root == "ProcessingMoments" else "frequency_bands"
+                    ),
+                    "velocity_inpainting_radius": 5,
+                    "velocity_unit": "mm/s",
+                }
+                moment_paths = {"moment0_source_path": "/M0", "moment2_source_path": "/M2"}
+                band_paths = {
+                    "band_lf_source_path": "/band_8_2000_6000",
+                    "band_hf_source_path": "/band_0_6000_16000",
+                }
+                summary.update(moment_paths if root == "ProcessingMoments" else band_paths)
+                provenance = {
+                    **moment_paths, **band_paths, **summary,
+                    "laser_wavelength_m": 852e-9,
+                    "band_ratio_frequency_scale_hz": 2.5,
+                }
+                output = PipelineH5Output(f, processing_root=root, provenance=provenance)
+                output.set_attrs({**provenance, "analysis_source": "velocity_analysis",
+                                  "arterial_velocity_signal_path": "ProcessingMoments/signal"})
+                output.write("ProcessingMoments/signal", [1], band_ratio_frequency_scale_hz=2.5)
+                self.assertEqual(set(summary), set(f[root].attrs))
+                effective = output.read_attrs("ProcessingMoments/signal")
+                for key in (band_paths if root == "ProcessingMoments" else moment_paths):
+                    self.assertNotIn(key, effective)
+                self.assertNotIn("nameID", f[root].attrs)
+                self.assertNotIn("name", f[root].attrs)
+                self.assertNotIn("Meta", f)
+                self.assertEqual(2.5, effective["band_ratio_frequency_scale_hz"])
+                self.assertNotIn("analysis_source", effective)
+
     def test_inherited_attributes_preserve_legacy_and_nearest_group_values(self) -> None:
         with h5py.File("legacy_provenance.h5", "w", driver="core", backing_store=False) as f:
             root = f.create_group("ProcessingMoments")
@@ -107,7 +142,8 @@ class PipelineContextTests(unittest.TestCase):
             legacy.attrs["velocity_estimation_method"] = "frequency_bands"
             self.assertEqual(dict(legacy.attrs), read_dataset_attrs(legacy))
             missing = root.create_dataset("missing", data=[1])
-            self.assertEqual({}, read_dataset_attrs(missing))
+            self.assertEqual({"velocity_estimation_method": "doppler_moments"},
+                             read_dataset_attrs(missing))
             set_attr_safe(root, INHERITED_PROVENANCE_KEYS_ATTR, ["velocity_estimation_method"])
             child = root.create_group("child")
             child.attrs["velocity_estimation_method"] = "frequency_bands"
@@ -141,8 +177,8 @@ class PipelineContextTests(unittest.TestCase):
                     }).write("ProcessingMoments/signal", [2])
                     raise ValueError("injected")
             self.assertEqual("mm/s", f["ProcessingMoments"].attrs["velocity_unit"])
-            self.assertEqual(["velocity_unit"], list(
-                f["ProcessingMoments"].attrs[INHERITED_PROVENANCE_KEYS_ATTR]))
+            self.assertEqual({"velocity_unit"}, set(f["ProcessingMoments"].attrs))
+            self.assertNotIn("Meta", f)
             self.assertNotIn("new_provenance", output.read_attrs("ProcessingMoments/signal"))
             self.assertEqual("local", output.read_attrs("ProcessingMoments/signal")["velocity_unit"])
             np.testing.assert_array_equal([1], output.read("ProcessingMoments/signal"))

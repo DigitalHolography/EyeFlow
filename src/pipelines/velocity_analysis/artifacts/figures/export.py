@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from input_output.writers.png import FigureArtifactWriter
+from input_output.writers.png import FigureArtifactWriter, ReportImagePaths
 from utils.logger import Logger
 
 from .common import PulseFigureContext, _matplotlib, _output_stem, _plt
@@ -89,6 +89,8 @@ def export_pulse_pngs(
     output,
     context: VelocityAnalysis,
     per_beat_result: PerBeatAnalysisResult,
+    *,
+    report_images: ReportImagePaths | None = None,
 ) -> list[str]:
     """Export pulse-analysis PNGs for a velocity analysis run."""
 
@@ -130,4 +132,6 @@ def export_pulse_pngs(
                 _plt().close(number)
             Logger.log_warning(f"Failed pulse PNG exporter {exporter.__name__}: {exc}")
     paths.extend(export_cross_section_profile_artifacts(writer, context))
+    if report_images is not None:
+        report_images.update(writer.artifacts)
     return [str(path) for path in paths]

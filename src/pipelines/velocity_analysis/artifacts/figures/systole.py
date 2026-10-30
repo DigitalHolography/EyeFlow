@@ -9,7 +9,7 @@ import numpy as np
 from calculations.blood_flow_velocity.signal_analysis.waveform.cycles import (
     cycle_extrema as _cycle_extrema,
 )
-from input_output.article_formatting import DIAGNOSTIC_ARTICLE_STYLE as STYLE
+from plotting.article import DIAGNOSTIC_ARTICLE_STYLE as STYLE
 from input_output.writers.png import FigureArtifactWriter as FigureWriter
 
 from .common import (
@@ -32,7 +32,7 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
     vein = _display_velocity(_vector(ctx.velocity.continuous("vein")))
     vein_deriv = _display_velocity(_vector(ctx.velocity.derivative("vein")))
     maxima, minima = _cycle_extrema(artery, peaks)
-    return [
+    paths = [
         _systole_plot(
             writer,
             "find_systoles_indices_artery.png",
@@ -58,6 +58,9 @@ def _export_systole_plots(writer: FigureWriter, ctx: PulseFigureContext) -> list
             ctx.velocity_semantics,
         ),
     ]
+    writer.register_artifact("systole", "artery", paths[0])
+    writer.register_artifact("systole", "vein", paths[1])
+    return paths
 
 def _systole_plot(
     writer: FigureWriter,
@@ -95,4 +98,4 @@ def _systole_plot(
     )
     _style_axes(ax)
     _style_axes(derivative_ax)
-    return writer.savefig(fig, suffix)
+    return writer.save_figure(fig, suffix)

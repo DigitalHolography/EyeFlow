@@ -5,6 +5,8 @@ from __future__ import annotations
 import numpy as np
 
 from input_output.schema import EyeFlowOutputPaths
+from input_output.schema.serialization import serialize_segment_masks
+from input_output.writers.h5_storage import segment_mask_h5_options, velocity_map_h5_options
 from pipeline_engine.base import DatasetValue
 from pipelines.velocity.models import RetinalVelocity
 from pipelines.velocity.semantics import velocity_dataset_attrs
@@ -87,46 +89,26 @@ def _pack_vessel_segment_maps(
                 "coordinate_system": "rotated_segment_pixel",
                 "mask_output": paths.segments,
             },
-            h5_options=_velocity_map_h5_options(maps_per_beat.shape),
+            h5_options={
+                **velocity_map_h5_options(maps_per_beat.shape),
+                "sparse_nan_chunks": True,
+            },
         )
 
     if paths.segments is not None:
         masks = np.asarray(segments.profile.topology.rotated_masks, dtype=bool)
         if masks.ndim != 4:
             raise ValueError("segment masks must have shape (radius, branch, y, x).")
-        serialized_masks = masks.transpose(3, 2, 1, 0)
+        serialized_masks = serialize_segment_masks(masks)
         outputs[paths.segments] = DatasetValue(
             data=serialized_masks,
             attrs={
                 "dimDesc": ["x", "y", "branch", "radius"],
                 "coordinate_system": "rotated_segment_pixel",
             },
-            h5_options=_segment_mask_h5_options(serialized_masks.shape),
+            h5_options=segment_mask_h5_options(serialized_masks.shape),
         )
     return outputs
-
-
-def _velocity_map_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
-    options: dict[str, object] = {"compression": "lzf", "shuffle": True}
-    if len(shape) in (6, 7) and all(shape):
-        options["chunks"] = (
-            (shape[0], shape[1], 1, 1, 1, 1)
-            if len(shape) == 6
-            else (shape[0], shape[1], 1, 1, 1, 1, shape[-1])
-        )
-    return options
-
-
-def _segment_mask_h5_options(shape: tuple[int, ...]) -> dict[str, object]:
-    options: dict[str, object] = {
-        "dtype": np.bool_,
-        "compression": "gzip",
-        "compression_opts": 4,
-        "shuffle": True,
-    }
-    if len(shape) == 4 and all(shape):
-        options["chunks"] = (shape[0], shape[1], 1, 1)
-    return options
 
 
 __all__ = ["pack_segment_map_outputs"]

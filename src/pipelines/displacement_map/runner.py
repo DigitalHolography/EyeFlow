@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import math
-import tempfile
-from dataclasses import dataclass
+from pipeline_engine.storage import temporary_directory as create_temporary_directory
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
@@ -12,23 +12,27 @@ import h5py
 import numpy as np
 
 from input_output.output_manager import OutputType
+from input_output.readers.frame_sequences import FrameSequence
+from input_output.readers.h5 import RawH5SourceReader
+from input_output.schema import DopplerViewSource
+from input_output.schema.doppler_view import (
+    DV_ARTERY_MASK_PATH as ARTERY_MASK_PATH,
+    DV_LABELED_VESSELS_PATH as LABELED_VESSELS_PATH,
+    DV_VEIN_MASK_PATH as VEIN_MASK_PATH,
+    DV_VESSEL_MASK_PATH as VESSEL_MASK_PATH,
+)
 
 from .calculator import create_retinal_motion_map
 from .constants import DEFAULT_REGISTRATION_METHOD, RegistrationMethod
 from .parameters import MotionMapConfig
 
 DISPLACEMENT_MAP_STATE = "displacement_map_artifacts"
-MAGNITUDE_VIDEO_FILENAME = "displacement_magnitude.mp4"
+MAGNITUDE_VIDEO_FILENAME = "displacement_magnitude.avi"
+DISPLACEMENT_AVI_SUBFOLDER = "displacement_maps"
 DEFAULT_MOMENT_PATH = "moment0"
 DEFAULT_FPS = 25.0
 
 MaskMode = Literal["both", "combined", "artery", "vein", "labeled"]
-
-ARTERY_MASK_PATH = "segmentation/Retina/artery_mask"
-VEIN_MASK_PATH = "segmentation/Retina/vein_mask"
-VESSEL_MASK_PATH = "segmentation/Retina/vessel_mask"
-LABELED_VESSELS_PATH = "segmentation/Retina/labeled_vessels"
-
 
 @dataclass(frozen=True, slots=True)
 class DisplacementMapPipelineConfig:
@@ -73,45 +77,44 @@ def run_displacement_map(
 ) -> None:
     """Estimate vessel-specific fields for downstream use without HDF5 persistence."""
 
+    if getattr(ctx, "_graph_runtime_available", False):
+        from .stages import displacement_graph
+        return displacement_graph(config or DisplacementMapPipelineConfig())
+
     selected = config or DisplacementMapPipelineConfig()
     inputs = load_displacement_map_inputs(ctx, selected)
     source_filename = inputs.moment.file.filename
     if not source_filename:
         raise ValueError("The HoloDoppler input does not have a filesystem path.")
 
-    temporary_directory = tempfile.TemporaryDirectory(
+    temporary_directory = create_temporary_directory(
         prefix="eyeflow-displacement-map-"
     )
     field_paths_by_vessel: dict[str, Path] = {}
     output_videos: list[Path] = []
     try:
-        for mask_input in inputs.masks:
-            output_dir = Path(temporary_directory.name) / mask_input.name
-            output_dir.mkdir(parents=True, exist_ok=True)
-            video_filename = (
-                MAGNITUDE_VIDEO_FILENAME
-                if len(inputs.masks) == 1
-                else f"{mask_input.name}_{MAGNITUDE_VIDEO_FILENAME}"
-            )
-            output_video = ctx.output.path_for(OutputType.MP4, video_filename)
-            output_video.parent.mkdir(parents=True, exist_ok=True)
-            algorithm_config = MotionMapConfig(
-                input=Path(source_filename),
-                output_dir=output_dir,
-                h5_dataset=inputs.moment.name.lstrip("/"),
-                h5_fps=inputs.fps,
-                registration_method=selected.registration_method,
-                save_field=True,
-            )
-            outputs = create_retinal_motion_map(
-                algorithm_config,
-                analysis_mask_array=mask_input.mask,
-                magnitude_video_path=output_video,
-            )
-            field_path = Path(outputs["displacement_field"])
-            for vessel in mask_input.vessels:
-                field_paths_by_vessel[vessel] = field_path
-            output_videos.append(output_video)
+        base_config = MotionMapConfig(
+            input=Path(source_filename),
+            output_dir=Path(temporary_directory.name),
+            h5_dataset=inputs.moment.name.lstrip("/"),
+            h5_fps=inputs.fps,
+            registration_method=selected.registration_method,
+            save_field=True,
+        )
+        sequence = FrameSequence(
+            base_config.input, base_config.h5_dataset, base_config.h5_frame_axis,
+            base_config.h5_fps, base_config.h5_low_percentile,
+            base_config.h5_high_percentile, h5_source=inputs.moment,
+            defer_h5_range=True,
+        )
+        with sequence.cached_for_replay(
+            base_config.max_frames, Path(temporary_directory.name)
+        ) as replay:
+            for mask_input in inputs.masks:
+                _run_displacement_mask(
+                    ctx, mask_input, inputs, base_config, replay,
+                    Path(temporary_directory.name), field_paths_by_vessel, output_videos,
+                )
     except Exception:
         temporary_directory.cleanup()
         raise
@@ -132,6 +135,34 @@ def run_displacement_map(
         ctx.log(f"Displacement magnitude video written to {output_video}.")
 
 
+def _run_displacement_mask(
+    ctx, mask_input, inputs, base_config, replay, temporary_path,
+    field_paths_by_vessel, output_videos, *, multiple_masks=False,
+) -> None:
+    output_dir = temporary_path / mask_input.name
+    output_dir.mkdir(parents=True, exist_ok=True)
+    video_filename = (
+        MAGNITUDE_VIDEO_FILENAME
+        if len(inputs.masks) == 1 and not multiple_masks
+        else f"{mask_input.name}_{MAGNITUDE_VIDEO_FILENAME}"
+    )
+    output_video = ctx.output.path_for(
+        OutputType.AVI, f"{DISPLACEMENT_AVI_SUBFOLDER}/{video_filename}",
+    )
+    output_video.parent.mkdir(parents=True, exist_ok=True)
+    outputs = create_retinal_motion_map(
+        replace(base_config, output_dir=output_dir),
+        analysis_mask_array=mask_input.mask,
+        magnitude_video_path=output_video,
+        h5_source=inputs.moment,
+        frame_replay=replay,
+    )
+    field_path = Path(outputs["displacement_field"])
+    for vessel in mask_input.vessels:
+        field_paths_by_vessel[vessel] = field_path
+    output_videos.append(output_video)
+
+
 def load_displacement_map_inputs(
     ctx,
     config: DisplacementMapPipelineConfig,
@@ -139,12 +170,13 @@ def load_displacement_map_inputs(
     """Resolve the root HD moment and aligned DV vessel mask."""
 
     ctx.require_inputs("hd", "dv")
-    moment = resolve_moment_dataset(ctx.inputs.hd.h5.h5file, config.moment_path)
+    moment = ctx.inputs.hd.as_holodoppler().named_root_moment_dataset(config.moment_path)
     spatial_shape = tuple(int(size) for size in moment.shape[-2:])
     masks = resolve_retina_masks(
         ctx.inputs.dv.h5.h5file,
         spatial_shape,
         config.mask_mode,
+        source=ctx.inputs.dv.as_dopplerview(),
     )
     fps = resolve_frame_rate(ctx, config.fallback_fps)
     return DisplacementMapInputs(moment, masks, fps)
@@ -154,9 +186,14 @@ def resolve_retina_masks(
     h5file: h5py.File | None,
     spatial_shape: tuple[int, int],
     mode: MaskMode,
+    *,
+    source: DopplerViewSource | None = None,
 ) -> tuple[DisplacementMaskInput, ...]:
     """Resolve one shared mask or separate artery and vein masks."""
 
+    if h5file is None:
+        raise ValueError("The DopplerView HDF5 input is required.")
+    source = source or DopplerViewSource(RawH5SourceReader(h5file=h5file, label="DV"), {})
     if mode == "both":
         masks: list[DisplacementMaskInput] = []
         for vessel in ("artery", "vein"):
@@ -164,6 +201,7 @@ def resolve_retina_masks(
                 h5file,
                 spatial_shape,
                 vessel,
+                source=source,
             )
             masks.append(
                 DisplacementMaskInput(
@@ -175,7 +213,7 @@ def resolve_retina_masks(
             )
         return tuple(masks)
 
-    mask, source = resolve_retina_mask(h5file, spatial_shape, mode)
+    mask, resolved_source = resolve_retina_mask(h5file, spatial_shape, mode, source=source)
     if mode == "artery":
         vessels = ("artery",)
     elif mode == "vein":
@@ -187,37 +225,8 @@ def resolve_retina_masks(
             name=mode,
             vessels=vessels,
             mask=mask,
-            source=source,
+            source=resolved_source,
         ),
-    )
-
-
-def resolve_moment_dataset(
-    h5file: h5py.File | None,
-    moment_path: str = DEFAULT_MOMENT_PATH,
-) -> h5py.Dataset:
-    """Return one 3-D moment dataset stored at the HoloDoppler root."""
-
-    if h5file is None:
-        raise ValueError("The HoloDoppler HDF5 input is required.")
-    normalized = str(moment_path).replace("\\", "/").strip("/")
-    if not normalized or "/" in normalized:
-        raise ValueError("The HoloDoppler moment must be a root dataset name.")
-
-    candidates = (normalized, "M0") if normalized == "moment0" else (normalized,)
-    for candidate in candidates:
-        found = h5file.get(candidate)
-        if found is None:
-            continue
-        if not isinstance(found, h5py.Dataset) or found.ndim != 3:
-            raise ValueError(
-                f"HoloDoppler moment '{candidate}' must be a 3-D dataset, "
-                f"got {getattr(found, 'shape', None)}."
-            )
-        return found
-    raise KeyError(
-        "Missing HoloDoppler root moment dataset. Tried: "
-        + ", ".join(repr(candidate) for candidate in candidates)
     )
 
 
@@ -225,42 +234,45 @@ def resolve_retina_mask(
     h5file: h5py.File | None,
     spatial_shape: tuple[int, int],
     mode: MaskMode = "combined",
+    *,
+    source: DopplerViewSource | None = None,
 ) -> tuple[np.ndarray, str]:
     """Resolve and align one DopplerView retina mask."""
 
     if h5file is None:
         raise ValueError("The DopplerView HDF5 input is required.")
+    source = source or DopplerViewSource(RawH5SourceReader(h5file=h5file, label="DV"), {})
     if mode == "artery":
-        mask = _required_mask(h5file, ARTERY_MASK_PATH)
-        source = ARTERY_MASK_PATH
+        mask = _required_mask(source, ARTERY_MASK_PATH)
+        source_path = ARTERY_MASK_PATH
     elif mode == "vein":
-        mask = _required_mask(h5file, VEIN_MASK_PATH)
-        source = VEIN_MASK_PATH
+        mask = _required_mask(source, VEIN_MASK_PATH)
+        source_path = VEIN_MASK_PATH
     elif mode == "labeled":
-        mask = _required_mask(h5file, LABELED_VESSELS_PATH)
-        source = LABELED_VESSELS_PATH
+        mask = _required_mask(source, LABELED_VESSELS_PATH)
+        source_path = LABELED_VESSELS_PATH
     elif mode == "combined":
-        mask, source = _combined_mask(h5file)
+        mask, source_path = _combined_mask(source)
     else:
         raise ValueError(f"Unknown displacement-map mask mode: {mode!r}")
 
-    aligned = _align_mask(mask, spatial_shape, source)
+    aligned = _align_mask(mask, spatial_shape, source_path)
     if not np.any(aligned):
-        raise ValueError(f"DopplerView mask '{source}' contains no vessel pixels.")
-    return aligned, source
+        raise ValueError(f"DopplerView mask '{source_path}' contains no vessel pixels.")
+    return aligned, source_path
 
 
-def _combined_mask(h5file: h5py.File) -> tuple[np.ndarray, str]:
-    vessel = _optional_mask(h5file, VESSEL_MASK_PATH)
+def _combined_mask(source: DopplerViewSource) -> tuple[np.ndarray, str]:
+    vessel = _optional_mask(source, VESSEL_MASK_PATH)
     if vessel is not None:
         return vessel, VESSEL_MASK_PATH
 
-    labeled = _optional_mask(h5file, LABELED_VESSELS_PATH)
+    labeled = _optional_mask(source, LABELED_VESSELS_PATH)
     if labeled is not None:
         return labeled, LABELED_VESSELS_PATH
 
-    artery = _optional_mask(h5file, ARTERY_MASK_PATH)
-    vein = _optional_mask(h5file, VEIN_MASK_PATH)
+    artery = _optional_mask(source, ARTERY_MASK_PATH)
+    vein = _optional_mask(source, VEIN_MASK_PATH)
     available = [mask for mask in (artery, vein) if mask is not None]
     if not available:
         raise KeyError(
@@ -281,20 +293,15 @@ def _combined_mask(h5file: h5py.File) -> tuple[np.ndarray, str]:
     return combined, "+".join(sources)
 
 
-def _required_mask(h5file: h5py.File, path: str) -> np.ndarray:
-    mask = _optional_mask(h5file, path)
+def _required_mask(source: DopplerViewSource, path: str) -> np.ndarray:
+    mask = _optional_mask(source, path)
     if mask is None:
         raise KeyError(f"Missing DopplerView mask dataset at '{path}'.")
     return mask
 
 
-def _optional_mask(h5file: h5py.File, path: str) -> np.ndarray | None:
-    found = h5file.get(path)
-    if found is None:
-        return None
-    if not isinstance(found, h5py.Dataset):
-        raise ValueError(f"DopplerView mask path '{path}' is not a dataset.")
-    return np.asarray(found[()])
+def _optional_mask(source: DopplerViewSource, path: str) -> np.ndarray | None:
+    return source.retinal_mask(path)
 
 
 def _align_mask(
@@ -339,7 +346,6 @@ __all__ = [
     "DisplacementMapArtifacts",
     "DisplacementMapPipelineConfig",
     "load_displacement_map_inputs",
-    "resolve_moment_dataset",
     "resolve_retina_mask",
     "resolve_retina_masks",
     "run_displacement_map",

@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import h5py
+import numpy as np
 
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
@@ -25,6 +26,7 @@ from app_settings import (  # noqa: E402
 )
 from input_output.archives import extracted_zip_tree  # noqa: E402
 from input_output.output_manager import OutputType  # noqa: E402
+from input_output.writers.h5 import open_h5 as real_open_h5  # noqa: E402
 from pipeline_engine import (  # noqa: E402
     ExecutionVariant,
     PipelineDescriptor,
@@ -135,6 +137,50 @@ def _descriptor(*, visibility: str = "visible") -> PipelineDescriptor:
 
 
 class RunServiceTests(unittest.TestCase):
+    def test_runtime_opens_each_input_once_during_initialization(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            holo = _write_input(root)
+            hd_path = root / "scan" / "scan_HD" / "h5" / "scan_HD_output.h5"
+            dv_path = root / "scan" / "scan_DV" / "h5" / "scan_DV.h5"
+            with h5py.File(hd_path, "a") as hd:
+                hd.create_dataset("registration", data=[1, 2, 3])
+            with h5py.File(dv_path, "a") as dv:
+                dv.create_dataset("app_versions", data=json.dumps({"DV_version": "test"}))
+            spec = resolve_run_spec(
+                input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
+            )
+            with (
+                patch("pipeline_engine.runtime.open_h5", wraps=real_open_h5) as open_input,
+                patch(
+                    "input_output.writers.h5_initialization.open_h5",
+                    side_effect=AssertionError("Initialization reopened an input"),
+                ),
+            ):
+                result = execute_run(spec)
+            self.assertTrue(result.succeeded, result.failures)
+            self.assertEqual(2, open_input.call_count)
+            with h5py.File(result.outputs[0], "r") as output:
+                self.assertFalse(output.attrs["copy_hd_passthrough"])
+                self.assertNotIn("Meta/registration", output)
+
+    def test_hd_passthrough_can_be_enabled_for_a_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            holo = _write_input(root)
+            hd_path = root / "scan" / "scan_HD" / "h5" / "scan_HD_output.h5"
+            with h5py.File(hd_path, "a") as hd:
+                hd.create_dataset("registration", data=[1, 2, 3])
+            spec = resolve_run_spec(
+                input_paths=[holo], target_names=["sample"], pipelines=[_descriptor()],
+                copy_hd_passthrough=True,
+            )
+            result = execute_run(spec)
+            self.assertTrue(result.succeeded, result.failures)
+            with h5py.File(result.outputs[0], "r") as output:
+                self.assertTrue(output.attrs["copy_hd_passthrough"])
+                np.testing.assert_array_equal(output["Meta/registration"][()], [1, 2, 3])
+
     def test_declared_variant_producer_fans_out_its_dag_dependents(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -318,7 +364,9 @@ class RunServiceTests(unittest.TestCase):
             progress_controller = SimpleNamespace(reset_run_log=Mock())
             settings_store = SimpleNamespace(
                 load_band_ratio_frequency_scale_hz=Mock(return_value=3.0),
+                load_velocity_estimation_method=Mock(return_value="bandratio"),
                 load_band_limited_harmonics=Mock(return_value=7),
+                load_copy_hd_passthrough=Mock(return_value=True),
             )
             app = SimpleNamespace(
                 input_controller=SimpleNamespace(
@@ -340,9 +388,12 @@ class RunServiceTests(unittest.TestCase):
 
             self.assertIsNotNone(spec)
             assert spec is not None
+            self.assertEqual("bandratio", spec.velocity_estimation_method)
             self.assertEqual(3.0, spec.band_ratio_frequency_scale_hz)
             self.assertEqual(7, spec.band_limited_harmonics)
+            self.assertTrue(spec.copy_hd_passthrough)
             settings_store.load_band_limited_harmonics.assert_called_once_with()
+            settings_store.load_copy_hd_passthrough.assert_called_once_with()
             settings_store.load_band_ratio_frequency_scale_hz.assert_called_once_with()
             progress_controller.reset_run_log.assert_called_once()
 
@@ -513,6 +564,7 @@ class RunServiceTests(unittest.TestCase):
                 {
                     "pipeline_visibility": {"sample": True},
                     "band_ratio_frequency_scale_hz": 4.0,
+                    "velocity_estimation_method": "bandratio",
                 }
             )
 
@@ -532,7 +584,7 @@ class RunServiceTests(unittest.TestCase):
             self.assertTrue(expected.is_file())
             with h5py.File(expected, "r") as output_h5:
                 self.assertEqual(
-                    ["doppler_moments", "frequency_bands"],
+                    ["frequency_bands"],
                     list(output_h5.attrs["velocity_estimation_methods"]),
                 )
                 self.assertEqual(

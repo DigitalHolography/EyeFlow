@@ -32,3 +32,16 @@ def labeled_artifact_path(path: str | Path, stem: str, label: str) -> Path:
             candidate = candidate.with_name(candidate.name[len(prefix) :])
         candidate = f"{label}_{candidate}"
     return prefixed_artifact_path(candidate, stem)
+
+
+def writer_artifact_path(
+    output, output_type, suffix: str, *, label: str, subfolder: str | None = None
+) -> Path:
+    """Reserve a named writer artifact using the current acquisition policy."""
+    stem = acquisition_stem(output, Path(label).name)
+    name = labeled_artifact_path(suffix, stem, label)
+    if subfolder:
+        name = Path(subfolder) / name
+    path = output.path_for(output_type, str(name))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path

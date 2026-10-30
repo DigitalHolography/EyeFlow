@@ -366,9 +366,11 @@ wheels = [
 
 [[package]]
 name = "eyeflow"
-version = "1.24.0"
+version = "1.25.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cupy", marker = "sys_platform != 'win32'" },
+    { name = "cupy-cuda13x", extra = ["ctk"], marker = "sys_platform == 'win32'" },
     { name = "h5py" },
     { name = "joblib" },
     { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -377,6 +379,7 @@ dependencies = [
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "opencv-python" },
     { name = "pillow" },
+    { name = "psutil" },
     { name = "pydantic" },
     { name = "scikit-image", version = "0.25.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-image", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -384,15 +387,12 @@ dependencies = [
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "simpleitk" },
     { name = "sv-ttk" },
+    { name = "threadpoolctl" },
     { name = "tkinterdnd2" },
     { name = "tqdm" },
 ]
 
 [package.optional-dependencies]
-gpu = [
-    { name = "cupy", marker = "sys_platform != 'win32'" },
-    { name = "cupy-cuda13x", extra = ["ctk"], marker = "sys_platform == 'win32'" },
-]
 installer = [
     { name = "pyinstaller" },
     { name = "pyinstaller-hooks-contrib" },
@@ -414,8 +414,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cupy", marker = "sys_platform != 'win32' and extra == 'gpu'", specifier = ">=14.1.1" },
-    { name = "cupy-cuda13x", extras = ["ctk"], marker = "sys_platform == 'win32' and extra == 'gpu'", specifier = ">=14.1.1" },
+    { name = "cupy", marker = "sys_platform != 'win32'", specifier = ">=14.1.1" },
+    { name = "cupy-cuda13x", extras = ["ctk"], marker = "sys_platform == 'win32'", specifier = ">=14.1.1" },
     { name = "h5py", specifier = ">=3.9" },
     { name = "joblib", specifier = ">=1.3" },
     { name = "matplotlib", specifier = ">=3.7" },
@@ -424,6 +424,7 @@ requires-dist = [
     { name = "opencv-python", marker = "extra == 'pipelines'", specifier = ">=4.8" },
     { name = "pandas", marker = "extra == 'pipelines'", specifier = ">=2.1" },
     { name = "pillow", specifier = ">=9.0.0" },
+    { name = "psutil", specifier = ">=5.9" },
     { name = "pydantic", specifier = ">=2.6" },
     { name = "pyinstaller", marker = "extra == 'installer'", specifier = "==6.22.3" },
     { name = "pyinstaller-hooks-contrib", marker = "extra == 'installer'", specifier = "==2026.8" },
@@ -432,12 +433,13 @@ requires-dist = [
     { name = "simpleitk", specifier = ">=2.5.6" },
     { name = "simpleitk", marker = "extra == 'pipelines'", specifier = ">=2.3" },
     { name = "sv-ttk", specifier = ">=2.6" },
+    { name = "threadpoolctl", specifier = ">=3.1" },
     { name = "tkinterdnd2" },
     { name = "torch", marker = "extra == 'pipelines'", specifier = ">=2.2" },
     { name = "tqdm", specifier = ">=4.70.0" },
     { name = "tqdm", marker = "extra == 'pipelines'", specifier = ">=4.66" },
 ]
-provides-extras = ["pipelines", "gpu", "installer"]
+provides-extras = ["pipelines", "installer"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2399,6 +2401,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl", hash = "sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5", size = 6299353, upload-time = "2025-04-27T18:04:59.103Z" },
+]
+
+[[package]]
+name = "threadpoolctl"
+version = "3.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/00/dc/6c58154c1c65f758ea979e7139cb76993a9cfc662d14e9be3c4a667cfb77/threadpoolctl-3.7.0.tar.gz", hash = "sha256:61348cfb77d53b9242e0017029244b559b810c142ced65b4e21eeca1843959a7", size = 31961, upload-time = "2026-09-15T15:46:20.263Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/43/3f/f88a53f60a472b46f4023f56d204dd7de33d34c5d2acbfa0d70a674e639e/threadpoolctl-3.7.0-py3-none-any.whl", hash = "sha256:cd8b60b5641b45c67bbf73c64c843235fc2d8a480c87389f52f5dbee893b86be", size = 26362, upload-time = "2026-09-15T15:46:19.168Z" },
 ]
 
 [[package]]

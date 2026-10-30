@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from input_output.article_formatting import apply_article_style
-from input_output.figure_formatting import add_colorbar
+from plotting.article import apply_article_style
+from plotting.formatting import add_colorbar
 from .common import _plt
 from pipelines.velocity.semantics import resolve_velocity_semantics
 
@@ -93,7 +93,13 @@ def _save_profile_map(
         ylabel="Time (s)",
         title=f"{vessel_name.capitalize()} transverse velocity profiles (raw)",
     )
-    return _save_figure(writer, fig, f"{vessel_name}_velocity_profile_map.png")
+    apply_article_style(fig)
+    return writer.save_figure(
+        fig,
+        f"{vessel_name}_velocity_profile_map.png",
+        dpi=120,
+        subfolder=PROFILE_FOLDER,
+    )
 
 
 def _hierarchical_profile_median(profiles: np.ndarray) -> np.ndarray:
@@ -121,23 +127,6 @@ def _positive_focused_limits(values: np.ndarray) -> tuple[float, float]:
         return -limit, limit
     upper = max(np.max(positive) * 1.12, np.finfo(float).eps)
     return min(0.0, max(np.min(finite), -0.25 * upper)), upper
-
-
-def _artifact_path(writer, suffix: str) -> Path:
-    from input_output.output_manager import OutputType
-
-    filename = f"{PROFILE_FOLDER}/{writer.stem}_{suffix}"
-    path = writer.output.path_for(OutputType.PNG, filename)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def _save_figure(writer, fig, suffix: str) -> Path:
-    path = _artifact_path(writer, suffix)
-    apply_article_style(fig)
-    fig.savefig(path, dpi=120, bbox_inches="tight")
-    _plt().close(fig)
-    return path
 
 
 def _nanmedian(values: np.ndarray, *, axis):

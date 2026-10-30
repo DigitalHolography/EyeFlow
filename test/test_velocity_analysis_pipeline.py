@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 from input_output.schema import EyeFlowOutputPaths
 from pipeline_engine.base import PIPELINE_REGISTRY
@@ -47,6 +48,49 @@ def _context(options, state_values=None, scheduled=None, targeted=None):
         ),
         option_enabled=lambda name, pipeline=None: name
         in options.get(pipeline or "velocity_analysis", ()),
+    )
+
+
+@pytest.mark.parametrize("scheduled", [False, True])
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [
+        ((), False),
+        (("segments", "quadrants"), False),
+        (("segment_velocity_maps",), False),
+        (("velocity_profiles",), True),
+        (("velocity_profile_analysis",), True),
+        (("velocity_profile_fft",), True),
+    ],
+)
+def test_longitudinal_velocity_profiles_require_a_profile_consumer(
+    options, expected, scheduled,
+):
+    source = SimpleNamespace(
+        source=SimpleNamespace(
+            segmentation=SimpleNamespace(
+                vessels=SimpleNamespace(artery="artery_mask", vein="vein_mask"),
+                optic_disc="optic_disc",
+            ),
+        ),
+        profile_settings="settings",
+        provenance={"beat_index_base": 0},
+    )
+    ctx = _context(
+        {"velocity_analysis": options},
+        scheduled={"velocity_analysis"} if scheduled else {"waveform_shape_metrics"},
+    )
+    ctx.output = SimpleNamespace(available=False)
+    with patch.object(
+        analysis_builder,
+        "analyze_velocity_segment_profiles",
+        return_value={"artery": "artery", "vein": "vein"},
+    ) as analyze:
+        analysis_builder._segment_velocity_inputs(
+            "velocity_map", source, "rings", ctx, cycle_boundary_indexes=(0, 5, 10),
+        )
+    assert analyze.call_args.kwargs["compute_longitudinal_profiles"] is (
+        expected and scheduled
     )
 
 

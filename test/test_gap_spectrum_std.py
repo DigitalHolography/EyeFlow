@@ -8,7 +8,7 @@ import h5py
 import numpy as np
 import pytest
 
-from input_output.h5_access import PipelineH5Output
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.low_freq_spectra.gap_analysis import run_gap_analysis
 from pipelines.low_freq_spectra.per_beat import beat_spectrum_std

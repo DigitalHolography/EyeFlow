@@ -86,26 +86,14 @@ def _export_frequency_maps(
             label="RMS frequency (kHz)",
         )
     )
-    paths.extend(
-        [
-            _mask_background_map(
-                writer,
-                f_avg,
-                ctx.artery_mask,
-                "artery_seg_map_bkg.png",
-                color="red",
-                cmap=_matlab_vessel_colormap("artery"),
-                values=velocity_values,
-            ),
-            _mask_background_map(
-                writer,
-                f_avg,
-                ctx.vein_mask,
-                "vein_seg_map_bkg.png",
-                color="blue",
-                cmap=_matlab_vessel_colormap("vein"),
-                values=velocity_values,
-            ),
-        ]
-    )
+    for vessel, mask, color in (
+        ("artery", ctx.artery_mask, "red"),
+        ("vein", ctx.vein_mask, "blue"),
+    ):
+        path = _mask_background_map(
+            writer, f_avg, mask, f"{vessel}_seg_map_bkg.png",
+            color=color, cmap=_matlab_vessel_colormap(vessel), values=velocity_values,
+        )
+        paths.append(path)
+        writer.register_artifact("vessel_map", vessel, path)
     return paths

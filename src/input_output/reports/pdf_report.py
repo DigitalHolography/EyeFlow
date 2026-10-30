@@ -5,16 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from PIL import Image
 
-from input_output.schema import EyeFlowOutputPaths
-from input_output.schema.provenance import read_dataset_attrs
-from input_output.writers.h5 import open_h5
+from input_output.artifact_ownership import register_artifact_path
 from input_output.writers.artifact_names import prefixed_artifact_path
+from input_output.writers.png import ReportImagePaths
+
+from .pdf_data import (
+    extract_parameters_from_h5,
+    format_parameters_for_display,
+)
 
 
 def generate_a4_report(
@@ -25,6 +28,8 @@ def generate_a4_report(
     hd_png_dir: Path | None = None,
     mask_dir: Path | None = None,
     processing_root: str | None = None,
+    report_images: ReportImagePaths | None = None,
+    output_source=None,
 ) -> Path:
     """
     Generate an A4 PDF report mimicking the MATLAB generateA4Report function.
@@ -42,6 +47,7 @@ def generate_a4_report(
         hd_png_dir: Directory containing HoloDoppler M0 PNGs
         mask_dir: Directory containing mask PNGs
         processing_root: Optional workflow processing group to read
+        report_images: Actual PNG paths registered by this workflow's writers
 
     Returns:
         Path to the generated PDF file
@@ -51,13 +57,17 @@ def generate_a4_report(
     png_dir = Path(png_dir) if png_dir is not None else None
     hd_png_dir = Path(hd_png_dir) if hd_png_dir is not None else None
     mask_dir = Path(mask_dir) if mask_dir is not None else None
+    images = report_images or {}
 
     # Create output path
     pdf_path = prefixed_artifact_path(output_dir / "report.pdf", folder_name)
+    register_artifact_path(pdf_path, writing=True)
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Extract parameters from the H5 file
-    parameters = _extract_parameters_from_h5(output_h5_path, processing_root=processing_root)
+    parameters = extract_parameters_from_h5(
+        output_h5_path, processing_root=processing_root, output_source=output_source,
+    )
     
     # Create the report
     with PdfPages(pdf_path) as pdf:
@@ -86,20 +96,25 @@ def generate_a4_report(
             # Top row: vessel map (4 rows high)
             ax1 = fig.add_subplot(gs[1:5, col])
             ax1.axis('off')
-            im1 = _try_load_vessel_image(png_dir, mask_dir, hd_png_dir, folder_name, vessel_type)
+            im1 = _try_load_vessel_image(
+                png_dir, mask_dir, hd_png_dir, folder_name, vessel_type,
+                report_images=images,
+            )
             _show_report_image(ax1, im1)
             
             # Middle row: RI plot (3 rows high)
             ax2 = fig.add_subplot(gs[5:8, col])
             ax2.axis('off')
-            im2 = _try_load_ri_image(png_dir, folder_name, vessel_type)
+            im2 = _try_load_ri_image(png_dir, folder_name, vessel_type, report_images=images)
             if im2 is not None:
                 _show_report_image(ax2, im2, zoom=1.02, right_pad_fraction=0.04)
             
             # Bottom row: systole indices (3 rows high)
             ax3 = fig.add_subplot(gs[8:11, col])
             ax3.axis('off')
-            im3 = _try_load_systole_image(png_dir, folder_name, vessel_type)
+            im3 = _try_load_systole_image(
+                png_dir, folder_name, vessel_type, report_images=images
+            )
             if im3 is not None:
                 _show_report_image(ax3, im3, zoom=1.02, right_pad_fraction=0.04)
         
@@ -154,7 +169,7 @@ def _show_report_image(
 
 def _add_parameters_section(ax, parameters: dict[str, Any]) -> None:
     """Add parameters section to the report."""
-    param_texts = _format_parameters_for_display(parameters)
+    param_texts = format_parameters_for_display(parameters)
     
     num_params = len(param_texts)
     if num_params == 0:
@@ -195,9 +210,15 @@ def _add_parameters_section(ax, parameters: dict[str, Any]) -> None:
                         fontsize=9, va='top')
 
 
-def _try_load_vessel_image(png_dir, mask_dir, hd_png_dir, folder_name, vessel_type):
+def _try_load_vessel_image(
+    png_dir, mask_dir, hd_png_dir, folder_name, vessel_type, *,
+    report_images: ReportImagePaths | None = None,
+):
     """Try multiple patterns for vessel image."""
     possible_paths = []
+    registered = (report_images or {}).get(("vessel_map", vessel_type))
+    if registered is not None:
+        possible_paths.append(Path(registered))
     
     if png_dir:
         possible_paths.append(
@@ -215,24 +236,30 @@ def _try_load_vessel_image(png_dir, mask_dir, hd_png_dir, folder_name, vessel_ty
     return _load_or_placeholder(possible_paths)
 
 
-def _try_load_ri_image(png_dir, folder_name, vessel_type):
+def _try_load_ri_image(
+    png_dir, folder_name, vessel_type, *, report_images: ReportImagePaths | None = None
+):
     """Load the RI image when the PNG output directory is available."""
-    if not png_dir:
+    registered = (report_images or {}).get(("ri", vessel_type))
+    paths = [Path(registered)] if registered is not None else []
+    if png_dir:
+        paths.append(png_dir / f"{folder_name}_RI_v_{vessel_type}.png")
+    if not paths:
         return None
-    
-    return _load_or_placeholder(
-        [png_dir / f"{folder_name}_RI_v_{vessel_type}.png"]
-    )
+    return _load_or_placeholder(paths)
 
 
-def _try_load_systole_image(png_dir, folder_name, vessel_type):
+def _try_load_systole_image(
+    png_dir, folder_name, vessel_type, *, report_images: ReportImagePaths | None = None
+):
     """Load the systole image when the PNG output directory is available."""
-    if not png_dir:
+    registered = (report_images or {}).get(("systole", vessel_type))
+    paths = [Path(registered)] if registered is not None else []
+    if png_dir:
+        paths.append(png_dir / f"{folder_name}_find_systoles_indices_{vessel_type}.png")
+    if not paths:
         return None
-    
-    return _load_or_placeholder(
-        [png_dir / f"{folder_name}_find_systoles_indices_{vessel_type}.png"]
-    )
+    return _load_or_placeholder(paths)
 
 
 def _load_or_placeholder(paths: list[Path]) -> np.ndarray:
@@ -240,265 +267,11 @@ def _load_or_placeholder(paths: list[Path]) -> np.ndarray:
     for path in paths:
         if path.exists():
             try:
-                img = Image.open(path)
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                return np.array(img)
+                with Image.open(path) as image:
+                    return np.asarray(image.convert("RGB"))
             except Exception:
                 continue
     
     # Create white placeholder
     placeholder = np.ones((200, 200, 3), dtype=np.uint8) * 255
     return placeholder
-
-
-def _extract_parameters_from_h5(h5_path: Path, *, processing_root: str | None = None) -> dict[str, Any]:
-    """Extract parameters from an H5 output file."""
-    params = {}
-
-    try:
-        with open_h5(h5_path, 'r') as f:
-            if processing_root is not None:
-                from input_output.h5_access import PipelineH5Output
-
-                f = PipelineH5Output(f, processing_root=processing_root)
-            # Velocity metrics
-            _extract_velocity_metrics(f, params)
-            
-            # Heart rate
-            _extract_heart_rate(f, params)
-            
-            # Metrics from waveform_shape_metrics
-            _extract_waveform_metrics(f, params)
-            
-            # Attributes
-            _extract_attributes(f, params)
-    
-    except Exception as e:
-        print(f"Warning: Could not extract parameters from H5: {e}")
-    
-    return params
-
-
-def _extract_velocity_metrics(f: h5py.File, params: dict[str, Any]) -> None:
-    """Extract velocity metrics from H5 file."""
-    schema = EyeFlowOutputPaths.active()
-    # Try different possible paths
-    artery_paths = [
-        schema.artery_per_beat_filtered.velocity_signal_band_limited,
-        schema.artery_per_beat.velocity_signal,
-        "Artery/VelocityPerBeat/VelocitySignalPerBeat/value",
-        "Artery/velocity/signal/value",
-        "artery/velocity/perbeat/signal/value",
-    ]
-    
-    for path in artery_paths:
-        dataset = f.get(path)
-        if dataset is not None:
-            arr = np.asarray(dataset)
-            if arr.size > 0:
-                unit = _velocity_dataset_unit(f, dataset)
-                params["Average_Arterial_Velocity"] = {"value": float(np.mean(arr)), "unit": unit}
-                params["Max_Arterial_Velocity"] = {"value": float(np.max(arr)), "unit": unit}
-                params["Min_Arterial_Velocity"] = {"value": float(np.min(arr)), "unit": unit}
-                break
-    
-    vein_paths = [
-        schema.vein_per_beat_filtered.velocity_signal_band_limited,
-        schema.vein_per_beat.velocity_signal,
-        "Vein/VelocityPerBeat/VelocitySignalPerBeat/value",
-        "Vein/velocity/signal/value",
-        "vein/velocity/perbeat/signal/value",
-    ]
-    
-    for path in vein_paths:
-        dataset = f.get(path)
-        if dataset is not None:
-            arr = np.asarray(dataset)
-            if arr.size > 0:
-                unit = _velocity_dataset_unit(f, dataset)
-                params["Average_Venous_Velocity"] = {"value": float(np.mean(arr)), "unit": unit}
-                params["Max_Venous_Velocity"] = {"value": float(np.max(arr)), "unit": unit}
-                params["Min_Venous_Velocity"] = {"value": float(np.min(arr)), "unit": unit}
-                break
-
-
-def _velocity_dataset_unit(f: h5py.File, dataset: h5py.Dataset) -> str:
-    """Prefer dataset provenance, with the output-root contract as fallback."""
-
-    attrs = read_dataset_attrs(dataset)
-    value = attrs.get("unit", attrs.get("velocity_unit", f.attrs.get("velocity_unit", "mm/s")))
-    if isinstance(value, bytes):
-        value = value.decode("utf-8")
-    return str(value)
-
-
-def _extract_heart_rate(f: h5py.File, params: dict[str, Any]) -> None:
-    """Extract heart rate from H5 file."""
-    schema = EyeFlowOutputPaths.active()
-    dataset = f.get(schema.cardiac_cycle.spectral_heart_rate_bpm)
-    if dataset is not None:
-        arr = np.asarray(dataset)
-        if arr.size > 0:
-            params["heart_beat"] = {
-                "value": float(np.nanmean(arr)),
-                "unit": "bpm",
-            }
-            return
-
-    beat_paths = [
-        schema.cardiac_cycle.systolic_cycle_duration_seconds,
-        "Artery/VelocityPerBeat/beatPeriodSeconds/value",
-        "perbeat/beat_period_seconds/value",
-    ]
-    
-    for path in beat_paths:
-        dataset = f.get(path)
-        if dataset is not None:
-            arr = np.asarray(dataset)
-            if arr.size > 0:
-                params["heart_beat"] = {"value": 60.0 / float(np.mean(arr)), "unit": "bpm"}
-                break
-
-
-def _extract_waveform_metrics(f: h5py.File, params: dict[str, Any]) -> None:
-    """Extract metrics from waveform_shape_metrics output."""
-    schema = EyeFlowOutputPaths.active()
-    metric_mapping = {
-        "artery": {"RI": "ARI", "PI": "API"},
-        "vein": {"RI": "VRI", "PI": "VPI"},
-    }
-    for vessel_name, mapping in metric_mapping.items():
-        root = f"{schema.waveform_shape_metrics_root}/{vessel_name}/global/raw"
-        for metric_name, parameter_name in mapping.items():
-            dataset = f.get(f"{root}/{metric_name}")
-            if dataset is None:
-                continue
-            arr = np.asarray(dataset, dtype=float)
-            finite = arr[np.isfinite(arr)]
-            if finite.size:
-                params[parameter_name] = {
-                    "value": float(np.mean(finite)),
-                    "unit": "",
-                }
-
-    # Look for Metrics group
-    metrics = f.get("Metrics")
-    if not metrics:
-        return
-    
-    # Map to MATLAB parameter names
-    mapping = {
-        "artery_resistivity_index": "ARI",
-        "vein_resistivity_index": "VRI",
-        "artery_pulsatility_index": "API",
-        "vein_pulsatility_index": "VPI",
-        "dicrotic_notch_visibility": "DicroticNotchVisibility",
-        "artery_flow_rate_mean": "Average_Arterial_Volume_Rate",
-        "vein_flow_rate_mean": "Average_Venous_Volume_Rate",
-        "systole_duration": "SystoleDuration",
-        "diastole_duration": "DiastoleDuration",
-        "artery_time_peak_to_descent": "TimePeakToDescent",
-        "vein_time_to_peak_from_min": "VeinTimeToPeakFromMin",
-    }
-    
-    # Iterate through metrics
-    for metric_name, dataset in metrics.items():
-        if isinstance(dataset, h5py.Dataset):
-            arr = np.asarray(dataset)
-            if arr.size > 0:
-                matlab_name = mapping.get(metric_name)
-                if matlab_name:
-                    value = float(np.nanmean(arr))
-                    params[matlab_name] = {
-                        "value": value,
-                        "unit": ""
-                    }
-
-
-def _extract_attributes(f: h5py.File, params: dict[str, Any]) -> None:
-    """Extract parameters from H5 attributes."""
-    attr_mapping = {
-        "UnixTimestampFirst": "UnixTimestampFirst",
-        "UnixTimestampLast": "UnixTimestampLast",
-        "SystoleDuration": "SystoleDuration",
-        "DiastoleDuration": "DiastoleDuration",
-    }
-    
-    for attr_name, param_name in attr_mapping.items():
-        if attr_name in f.attrs:
-            value = f.attrs[attr_name]
-            if isinstance(value, (int, float, str)):
-                params[param_name] = {"value": value, "unit": ""}
-
-
-def _format_parameters_for_display(parameters: dict[str, Any]) -> list[str]:
-    """Format parameters for display in the report."""
-    formats = {
-        "UnixTimestampFirst": "First Unix Timestamp = %d",
-        "UnixTimestampLast": "Last Unix Timestamp = %d",
-        "heart_beat": "HR = %.1f",
-        "Average_Arterial_Velocity": "Avg Arterial Velocity = %.2f",
-        "Max_Arterial_Velocity": "Max Arterial Velocity = %.2f",
-        "Min_Arterial_Velocity": "Min Arterial Velocity = %.2f",
-        "Average_Venous_Velocity": "Avg Venous Velocity = %.2f",
-        "Max_Venous_Velocity": "Max Venous Velocity = %.2f",
-        "Min_Venous_Velocity": "Min Venous Velocity = %.2f",
-        "TimePeakToDescent": "Time Peak to Descent = %.2f",
-        "VeinTimeToPeakFromMin": "Time to Peak from Min Vein = %.2f",
-        "DicroticNotchVisibility": "Dicrotic Notch Visibility = %.0f",
-        "Average_Arterial_Volume_Rate": "Avg Arterial Volume Rate = %.2f",
-        "Average_Venous_Volume_Rate": "Avg Venous Volume Rate = %.2f",
-        "SystoleDuration": "Systole Duration = %.2f",
-        "DiastoleDuration": "Diastole Duration = %.2f",
-        "ARI": "Arterial Resistivity Index = %.2f",
-        "VRI": "Venous Resistivity Index = %.2f",
-        "API": "Arterial Pulsatility Index = %.2f",
-        "VPI": "Venous Pulsatility Index = %.2f",
-    }
-    
-    formatted = []
-    
-    # Order parameters following MATLAB convention
-    order = [
-        "UnixTimestampFirst", "UnixTimestampLast",
-        "heart_beat",
-        "Average_Arterial_Velocity", "Max_Arterial_Velocity", "Min_Arterial_Velocity",
-        "Average_Venous_Velocity", "Max_Venous_Velocity", "Min_Venous_Velocity",
-        "ARI", "VRI", "API", "VPI",
-        "TimePeakToDescent", "VeinTimeToPeakFromMin",
-        "DicroticNotchVisibility",
-        "Average_Arterial_Volume_Rate", "Average_Venous_Volume_Rate",
-        "SystoleDuration", "DiastoleDuration",
-    ]
-    
-    # Add parameters in order
-    for key in order:
-        if key in parameters:
-            value = parameters[key]
-            fmt = formats.get(key, "%s = %g")
-            formatted.append(_format_value(value, fmt))
-    
-    # Add any remaining parameters
-    for key, value in parameters.items():
-        if key not in order:
-            fmt = formats.get(key, "%s = %g")
-            formatted.append(_format_value(value, fmt))
-    
-    return formatted
-
-
-def _format_value(value: dict | Any, fmt: str) -> str:
-    """Format a parameter value using the specified format."""
-    if isinstance(value, dict):
-        val = value.get("value", 0)
-        unit = value.get("unit", "")
-        try:
-            if isinstance(val, (int, float)):
-                formatted = fmt % val
-            else:
-                formatted = fmt.replace("%s", str(val)).replace("%g", str(val))
-        except (TypeError, ValueError):
-            formatted = f"{val}"
-        return f"{formatted} {unit}".strip()
-    return str(value)

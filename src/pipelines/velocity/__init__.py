@@ -5,7 +5,6 @@ from pipeline_engine.imports import pipeline
 from .models import RetinalVelocity, VelocityWorkflows
 from .runner import (
     cardiac_cycle_indexes,
-    cardiac_cycles,
     run_velocity,
     velocity,
     velocity_workflows,
@@ -32,7 +31,6 @@ __all__ = [
     "RetinalVelocity",
     "VelocityWorkflows",
     "cardiac_cycle_indexes",
-    "cardiac_cycles",
     "run",
     "velocity",
     "velocity_workflows",

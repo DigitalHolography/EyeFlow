@@ -18,7 +18,6 @@ from calculations.vessel_segments.sampling.transforms import (
     interpolate_segments,
     resample_rotate_segment,
     rotate_segment_masks,
-    rotate_segments,
 )
 
 
@@ -112,7 +111,7 @@ class TestTopologyTransforms(unittest.TestCase):
 
         interpolated_values = interpolate_segments(values)
         interpolated_masks = interpolate_segment_masks(masks)
-        rotated_values = rotate_segments(interpolated_values, rotations)
+        rotated_values = resample_rotate_segment(interpolated_values[0, 0], float(rotations[0, 0]))[None, None]
         rotated_masks = rotate_segment_masks(interpolated_masks, rotations)
 
         self.assertEqual((1, 1, 2, 128, 128), interpolated_values.shape)
@@ -139,37 +138,34 @@ class TestTopologyTransforms(unittest.TestCase):
         ).astype(np.float32)
         angle = np.float32(27.0)
 
-        legacy = rotate_segments(
-            interpolate_segments(values[None, None], 128),
-            np.asarray([[angle]], dtype=np.float32),
-        )[0, 0]
+        staged = resample_rotate_segment(interpolate_segments(values, 128), float(angle), 128)
         fused = resample_rotate_segment(values, float(angle), 128)
 
-        self.assertEqual(legacy.shape, fused.shape)
-        legacy_y, legacy_x = np.nonzero(np.isfinite(legacy[0]))
+        self.assertEqual(staged.shape, fused.shape)
+        staged_y, staged_x = np.nonzero(np.isfinite(staged[0]))
         fused_y, fused_x = np.nonzero(np.isfinite(fused[0]))
         np.testing.assert_allclose(
             (np.mean(fused_y), np.mean(fused_x)),
-            (np.mean(legacy_y), np.mean(legacy_x)),
+            (np.mean(staged_y), np.mean(staged_x)),
             atol=0.1,
         )
         self.assertLessEqual(
-            abs(int(np.isfinite(fused[0]).sum()) - int(np.isfinite(legacy[0]).sum())),
+            abs(int(np.isfinite(fused[0]).sum()) - int(np.isfinite(staged[0]).sum())),
             16,
         )
 
-        overlap = np.isfinite(legacy) & np.isfinite(fused)
-        pixel_rmse = np.sqrt(np.mean((legacy[overlap] - fused[overlap]) ** 2))
-        pixel_scale = np.sqrt(np.mean(legacy[overlap] ** 2))
+        overlap = np.isfinite(staged) & np.isfinite(fused)
+        pixel_rmse = np.sqrt(np.mean((staged[overlap] - fused[overlap]) ** 2))
+        pixel_scale = np.sqrt(np.mean(staged[overlap] ** 2))
         pixel_nrmse = float(pixel_rmse / pixel_scale)
         self.assertGreater(pixel_nrmse, 1e-5)
         self.assertLess(pixel_nrmse, 0.002)
 
-        legacy_signal = np.nanmean(legacy, axis=(-2, -1))
+        staged_signal = np.nanmean(staged, axis=(-2, -1))
         fused_signal = np.nanmean(fused, axis=(-2, -1))
         signal_relative_error = np.max(
-            np.abs(legacy_signal - fused_signal)
-            / np.maximum(np.abs(legacy_signal), 1e-6)
+            np.abs(staged_signal - fused_signal)
+            / np.maximum(np.abs(staged_signal), 1e-6)
         )
         self.assertLess(float(signal_relative_error), 0.002)
 
@@ -184,15 +180,15 @@ class TestTopologyTransforms(unittest.TestCase):
                 where=count > 0,
             )
 
-        legacy_profile = transverse_profile(legacy)
+        staged_profile = transverse_profile(staged)
         fused_profile = transverse_profile(fused)
-        profile_overlap = np.isfinite(legacy_profile) & np.isfinite(fused_profile)
+        profile_overlap = np.isfinite(staged_profile) & np.isfinite(fused_profile)
         profile_rmse = np.sqrt(
             np.mean(
-                (legacy_profile[profile_overlap] - fused_profile[profile_overlap]) ** 2
+                (staged_profile[profile_overlap] - fused_profile[profile_overlap]) ** 2
             )
         )
-        profile_scale = np.sqrt(np.mean(legacy_profile[profile_overlap] ** 2))
+        profile_scale = np.sqrt(np.mean(staged_profile[profile_overlap] ** 2))
         self.assertLess(float(profile_rmse / profile_scale), 0.003)
 
     def test_invalid_rotation_keeps_segment_outputs_empty(self) -> None:
@@ -200,7 +196,7 @@ class TestTopologyTransforms(unittest.TestCase):
         masks = np.ones((1, 1, 4, 4), dtype=bool)
         rotations = np.asarray([[np.nan]], dtype=np.float32)
 
-        rotated_values = rotate_segments(values, rotations)
+        rotated_values = resample_rotate_segment(values[0, 0], float(rotations[0, 0]))
         rotated_masks = rotate_segment_masks(masks, rotations)
 
         self.assertTrue(np.all(np.isnan(rotated_values)))

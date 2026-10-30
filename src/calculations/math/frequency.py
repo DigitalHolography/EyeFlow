@@ -46,20 +46,6 @@ def frequency_coordinates_khz(
     return raw[indices].reshape(bin_count, binning_factor).mean(axis=1)
 
 
-def positive_frequency_coordinates_khz(
-    bin_count: int, sampling_frequency_hz: float, *,
-    fft_bin_count: int | None = None, binning_factor: int = 1,
-    frequency_start: float = 0.0, frequency_end: float = 0.5,
-) -> np.ndarray:
-    """Return centers in the positive half, including the average containing DC."""
-    frequencies = frequency_coordinates_khz(
-        bin_count, sampling_frequency_hz,
-        fft_bin_count=fft_bin_count, binning_factor=binning_factor,
-        frequency_start=frequency_start, frequency_end=frequency_end,
-    )
-    return frequencies[frequencies >= 0]
-
-
 def _selected_fft_indices(fft_bin_count: int, start: float, end: float) -> np.ndarray:
     if not np.all(np.isfinite([start, end])) or not (0 <= start <= 1 and 0 <= end <= 1):
         raise ValueError("Frequency selection fractions must be finite and within [0, 1].")

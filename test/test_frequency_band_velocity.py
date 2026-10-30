@@ -27,6 +27,7 @@ from pipelines.velocity.estimation import (
     FrequencyBandsEstimatorInputs,
     VelocityEstimatorChunk,
     VelocityEstimatorInputs,
+    _build_velocity_provenance,
     _safe_band_ratio,
     estimate_retinal_velocity,
     iter_velocity_estimator_chunks,
@@ -37,6 +38,7 @@ from pipelines.velocity.semantics import resolve_velocity_semantics
 from pipelines.velocity_analysis.outputs.continuous import (
     pack_continuous_velocity_outputs,
 )
+from pipelines.velocity_analysis.sources import _source_provenance
 from pipelines.vessel_inputs import load_retinal_source_data
 
 LF_PATH = "band_0_3000_9000"
@@ -364,14 +366,18 @@ def test_frequency_band_estimator_rejects_invalid_psd_values(
         )
 
 
-def test_frequency_band_source_requires_exact_paths_and_does_not_require_moments() -> None:
+@pytest.mark.parametrize(
+    ("low_path", "high_path"),
+    [(LF_PATH, HF_PATH), ("band_8_2000_6000", "band_0_6000_16000")],
+)
+def test_frequency_band_source_does_not_require_moments(low_path, high_path) -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         root = Path(tmp_dir)
         hd_path = root / "sample_HD.h5"
         dv_path = root / "sample_DV.h5"
         with h5py.File(hd_path, "w") as hd:
-            hd.create_dataset(LF_PATH, data=np.ones((2, 4, 6), dtype=np.float32))
-            hd.create_dataset(HF_PATH, data=np.full((2, 4, 6), 2.0, dtype=np.float32))
+            hd.create_dataset(low_path, data=np.ones((2, 4, 6), dtype=np.float32))
+            hd.create_dataset(high_path, data=np.full((2, 4, 6), 2.0, dtype=np.float32))
             hd.create_dataset(
                 "HD_parameters",
                 data=json.dumps(
@@ -395,49 +401,74 @@ def test_frequency_band_source_requires_exact_paths_and_does_not_require_moments
             )
             assert source.image_maps.moment0 is None
             assert source.image_maps.moment2 is None
-            assert source.image_maps.band_lf.name == f"/{LF_PATH}"
-            assert source.image_maps.band_hf.name == f"/{HF_PATH}"
+            assert source.image_maps.band_lf.name == f"/{low_path}"
+            assert source.image_maps.band_hf.name == f"/{high_path}"
+
+            provenance = _source_provenance(
+                HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD")),
+                DopplerViewSource(RawH5SourceReader(h5file=dv, label="DV")),
+                source,
+            )
+            assert provenance["band_lf_source_path"] == f"/{low_path}"
+            assert provenance["band_hf_source_path"] == f"/{high_path}"
 
 
-def test_frequency_band_source_reports_missing_exact_dataset_path() -> None:
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        hd_path = Path(tmp_dir) / "sample_HD.h5"
-        with h5py.File(hd_path, "w") as hd:
-            hd.create_dataset(LF_PATH, data=np.ones((1, 2, 2), dtype=np.float32))
-            hd.create_dataset("band_1_other", data=np.ones((1, 2, 2), dtype=np.float32))
-        with h5py.File(hd_path, "r") as hd:
-            source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
-            with pytest.raises(KeyError, match=f"/{HF_PATH}"):
-                source.frequency_band_datasets()
-
-
-@pytest.mark.parametrize(
-    ("available_paths", "missing_paths"),
-    [
-        ((), (f"/{LF_PATH}", f"/{HF_PATH}")),
-        ((LF_PATH,), (f"/{HF_PATH}",)),
-        ((HF_PATH,), (f"/{LF_PATH}",)),
-    ],
-)
-def test_frequency_band_source_lists_every_missing_exact_path(
-    available_paths: tuple[str, ...],
-    missing_paths: tuple[str, ...],
-) -> None:
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        hd_path = Path(tmp_dir) / "missing_bands_HD.h5"
-        with h5py.File(hd_path, "w") as hd:
-            for path in available_paths:
-                hd.create_dataset(path, data=np.ones((1, 2, 2), dtype=np.float32))
-        with h5py.File(hd_path, "r") as hd:
-            source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
-            with pytest.raises(KeyError) as error:
-                source.frequency_band_datasets()
+@pytest.mark.parametrize("available_paths", [(), (LF_PATH,), (HF_PATH,)])
+def test_frequency_band_source_requires_two_matching_videos(available_paths, tmp_path) -> None:
+    hd_path = tmp_path / "missing_bands_HD.h5"
+    with h5py.File(hd_path, "w") as hd:
+        for path in available_paths:
+            hd.create_dataset(path, data=np.ones((1, 2, 2), dtype=np.float32))
+        hd.create_dataset("band_1_other", data=np.ones((1, 2, 2)))
+        hd.create_group("band_9_1_2")
+        source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
+        with pytest.raises(KeyError) as error:
+            source.frequency_band_datasets()
 
     message = str(error.value)
     assert "frequency_bands" in message
+    assert "at least two" in message
+    assert "band_<i>_<n>_<m>" in message
+    assert f"found {len(available_paths)}" in message
     assert "missing_bands_HD.h5" in message
-    for path in missing_paths:
-        assert path in message
+
+
+@pytest.mark.parametrize(
+    ("paths", "expected_low", "expected_high"),
+    [
+        (("band_0_100_200", "band_8_20_80", "band_4_9_15"),
+         "band_4_9_15", "band_0_100_200"),
+        (("band_0_10_100", "band_7_10_20", "band_3_10_90"),
+         "band_7_10_20", "band_0_10_100"),
+        ((HF_PATH, LF_PATH), LF_PATH, HF_PATH),
+    ],
+)
+def test_frequency_band_source_sorts_numeric_ranges_and_preserves_provenance(
+    paths, expected_low, expected_high, tmp_path,
+) -> None:
+    with h5py.File(tmp_path / "bands.h5", "w") as hd:
+        for path in paths:
+            hd.create_dataset(path, data=np.ones((1, 2, 2), dtype=np.float32))
+        for path in ("band_2_0_999_extra", "prefix_band_2_0_999", "band_0_999", "band_x_0_999"):
+            hd.create_dataset(path, data=np.zeros((1, 2, 2)))
+        hd.create_group("band_99_0_999")
+        source = HolodopplerSource(RawH5SourceReader(h5file=hd, label="HD"))
+        low, high = source.frequency_band_datasets()
+        assert isinstance(low, h5py.Dataset)
+        assert isinstance(high, h5py.Dataset)
+        assert low.name == f"/{expected_low}"
+        assert high.name == f"/{expected_high}"
+        inputs = resolve_velocity_estimator_inputs(
+            ImageMaps(moment0=None, moment2=None, band_lf=low, band_hf=high),
+            velocity_estimation_method="frequency_bands",
+        )
+        provenance = _build_velocity_provenance(
+            inputs, diagnostic_counts={},
+            laser_wavelength_m=DEFAULT_LASER_WAVELENGTH_METERS,
+            numerical_aperture=DEFAULT_NUMERICAL_APERTURE,
+        )
+        assert provenance["band_lf_source_path"] == low.name
+        assert provenance["band_hf_source_path"] == high.name
 
 
 @pytest.mark.parametrize(
@@ -665,3 +696,22 @@ def test_dimensionless_velocity_metadata_is_rejected() -> None:
                 "velocity_unit": "1",
             }
         )
+
+
+@pytest.mark.parametrize("paths", [("moment0", "moment2"), ("M0", "M2")])
+def test_moment_provenance_records_actual_moment_sources_only(paths, tmp_path):
+    with h5py.File(tmp_path / "moments.h5", "w") as hd:
+        moments = [hd.create_dataset(path, data=np.ones((1, 2, 2), dtype=np.float32))
+                   for path in paths]
+        inputs = resolve_velocity_estimator_inputs(
+            ImageMaps(moment0=moments[0], moment2=moments[1]),
+            velocity_estimation_method="doppler_moments",
+        )
+        provenance = _build_velocity_provenance(
+            inputs, diagnostic_counts={},
+            laser_wavelength_m=DEFAULT_LASER_WAVELENGTH_METERS,
+            numerical_aperture=DEFAULT_NUMERICAL_APERTURE,
+        )
+        assert provenance["moment0_source_path"] == f"/{paths[0]}"
+        assert provenance["moment2_source_path"] == f"/{paths[1]}"
+        assert not any(key.startswith("band_") for key in provenance)

@@ -16,47 +16,13 @@ from calculations.topology import (  # noqa: E402
     OpticDisc,
     SegmentTopology,
     build_segment_topology,
-    competing_segment_masks,
 )
 from calculations.vessel_segments.sampling.extraction import (  # noqa: E402
     extract_segment,
-    extract_segments,
 )
 
 
 class SegmentTopologyTests(unittest.TestCase):
-    def test_competing_masks_include_other_branches_and_vessel_classes(self) -> None:
-        labels = np.zeros((7, 7), dtype=np.int32)
-        labels[2:5, 3] = 1
-        labels[2:5, 5] = 2
-        own_vessels = labels > 0
-        other_vessels = np.zeros_like(own_vessels)
-        other_vessels[3, 1] = True
-        other_vessels[3, 3] = True  # Overlap must not erase the selected branch.
-        topology = SegmentTopology(
-            optic_disc_center_xy=(3.0, 3.0),
-            branches=BranchIdentityResult(
-                labels,
-                np.asarray([1], dtype=np.int32),
-                labels > 0,
-            ),
-            annulus_masks=np.ones((1, 7, 7), dtype=bool),
-            segment_masks=(labels == 1)[None, None],
-            segment_centers_xy=np.asarray([[[3.0, 3.0]]], dtype=np.float32),
-            window_bounds_xyxy=np.asarray([[[0, 7, 0, 7]]], dtype=np.int32),
-        )
-
-        competing = competing_segment_masks(
-            topology,
-            own_vessels,
-            other_vessels,
-        )[0, 0]
-
-        self.assertFalse(competing[2, 3])
-        self.assertFalse(competing[3, 3])
-        self.assertTrue(np.all(competing[2:5, 5]))
-        self.assertTrue(competing[3, 1])
-
     def test_builds_map_independent_segment_windows(self) -> None:
         vessel = np.zeros((41, 41), dtype=bool)
         vessel[18:23, 5:36] = True
@@ -124,39 +90,24 @@ class SegmentTopologyTests(unittest.TestCase):
         topology = _edge_topology()
         vector_map = np.arange(2 * 4 * 5 * 2, dtype=np.float32).reshape(2, 4, 5, 2)
 
-        segments = extract_segments(vector_map, topology, spatial_axes=(1, 2))
+        segment = extract_segment(vector_map, topology, 0, 0, spatial_axes=(1, 2))
 
-        self.assertEqual((1, 1, 2, 2, 3, 3), segments.shape)
-        self.assertTrue(np.all(np.isnan(segments[0, 0, :, :, 0, :])))
-        self.assertTrue(np.all(np.isnan(segments[0, 0, :, :, :, 0])))
+        self.assertEqual((2, 2, 3, 3), segment.shape)
+        self.assertTrue(np.all(np.isnan(segment[:, :, 0, :])))
+        self.assertTrue(np.all(np.isnan(segment[:, :, :, 0])))
         np.testing.assert_array_equal(
-            segments[0, 0, :, :, 1:, 1:],
+            segment[:, :, 1:, 1:],
             np.moveaxis(vector_map[:, :2, :2, :], (1, 2), (-2, -1)),
         )
-
-    def test_single_segment_extraction_matches_dense_extraction(self) -> None:
-        topology = _edge_topology()
-        vector_map = np.arange(2 * 4 * 5 * 2, dtype=np.float32).reshape(2, 4, 5, 2)
-
-        dense = extract_segments(vector_map, topology, spatial_axes=(1, 2))
-        streamed = extract_segment(
-            vector_map,
-            topology,
-            0,
-            0,
-            spatial_axes=(1, 2),
-        )
-
-        np.testing.assert_array_equal(streamed, dense[0, 0])
 
     def test_extracts_scalar_stacks_without_topology_recalculation(self) -> None:
         topology = _edge_topology()
         scalar_stack = np.arange(2 * 4 * 5, dtype=np.float32).reshape(2, 4, 5)
 
-        first = extract_segments(scalar_stack, topology)
-        second = extract_segments(scalar_stack + 100.0, topology)
+        first = extract_segment(scalar_stack, topology, 0, 0)
+        second = extract_segment(scalar_stack + 100.0, topology, 0, 0)
 
-        self.assertEqual((1, 1, 2, 3, 3), first.shape)
+        self.assertEqual((2, 3, 3), first.shape)
         np.testing.assert_array_equal(
             second[..., 1:, 1:],
             first[..., 1:, 1:] + 100.0,

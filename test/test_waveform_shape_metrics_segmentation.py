@@ -13,7 +13,6 @@ from pipelines.topology_core.outputs import (
     INNER_R0_VESSEL_LABEL,
     _annulus_outlines,
     _topology_delta_radius,
-    pack_segmentation_outputs,
     pack_topology_outputs,
 )
 
@@ -43,7 +42,9 @@ class SegmentationOutputTests(unittest.TestCase):
             ),
         )
 
-        outputs = pack_segmentation_outputs(source_data, None, None)
+        outputs = pack_topology_outputs(
+            artery, vein, optic_disc, {}, source_data.source.holodoppler.pixel_pitch,
+        )
         schema = EyeFlowOutputPaths.active()
 
         artery_output, _ = outputs[schema.segmentation.artery.mask]
@@ -94,7 +95,11 @@ class SegmentationOutputTests(unittest.TestCase):
             ),
         )
 
-        outputs = pack_segmentation_outputs(source_data, segments, segments)
+        outputs = pack_topology_outputs(
+            artery_mask, vein_mask, source_data.source.segmentation.optic_disc,
+            {"artery": segments, "vein": segments},
+            source_data.source.holodoppler.pixel_pitch,
+        )
         schema = EyeFlowOutputPaths.active()
 
         self.assertEqual(
@@ -121,6 +126,8 @@ class SegmentationOutputTests(unittest.TestCase):
         height, height_attrs = outputs[schema.segmentation.optic_disc.height]
         width, width_attrs = outputs[schema.segmentation.optic_disc.width]
         center, center_attrs = outputs[schema.segmentation.optic_disc.center]
+        self.assertEqual("Meta/PixelPitch_m", schema.segmentation.pixel_pitch_m)
+        self.assertNotIn("Segmentation/PixelPitch_m/value", outputs)
         pixel_pitch_m, pixel_pitch_attrs = outputs[schema.segmentation.pixel_pitch_m]
         self.assertEqual(np.float32, height.dtype)
         self.assertEqual(np.float32, width.dtype)

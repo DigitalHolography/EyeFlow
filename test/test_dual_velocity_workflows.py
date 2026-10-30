@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from test_frequency_band_pipeline_integration import _write_frequency_band_run
 
-from input_output.reports.pdf_report import _extract_parameters_from_h5
+from input_output.reports.pdf_data import extract_parameters_from_h5
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.eyeflow_output import processing_path
 from input_output.schema.provenance import read_dataset_attrs
@@ -90,7 +90,7 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
         dv.create_dataset("segmentation/Choroid/vessel_mask", data=np.zeros(shape))
     with (
         patch(
-            "pipelines.low_freq_spectra.runner.preprocess_spectrograms",
+            "pipelines.low_freq_spectra.stages.preprocess_spectrograms",
             wraps=preprocess_spectrograms,
         ) as preprocess,
         patch(
@@ -143,10 +143,13 @@ def test_gap_spectrum_is_computed_once_and_shared_by_both_velocity_workflows(tmp
             np.testing.assert_array_equal(window[:], [7, 7, 7])
             assert window.attrs["source_path"] == beat_median.name
         spectrum_metrics = output[schema.spectrograms_masked_metrics_root]
-        assert len(spectrum_metrics) == 33
+        assert len(spectrum_metrics) == 127
+        assert spectrum_metrics["PowerQuantileFrequency_t"].shape == (128, 101)
+        assert spectrum_metrics["WassersteinEarlyLate"].attrs["unit"] == "kHz"
+        assert spectrum_metrics["SEv_50"].shape == (128,)
         assert spectrum_metrics["index_max1"][()] == 0
         assert spectrum_metrics["index_max2"][()] == 1
-        assert spectrum_metrics["R1"][()] == 1
+        assert spectrum_metrics["SEI_50"][()] == 1
         assert spectrum_metrics["A"][()] == spectrum_metrics["A0"][()]
         assert spectrum_metrics["SEI"][()] == 0
         assert not {"A1", "R2", "Z2"} & set(spectrum_metrics)
@@ -212,7 +215,7 @@ def test_gap_uses_bandratio_without_moments_and_skips_empty_support(tmp_path, em
         patch("pipelines.low_freq_spectra.gap_analysis.gap_spectrograms_per_beat",
               wraps=gap_spectrograms_per_beat) as subdivide,
         patch(
-            "pipelines.low_freq_spectra.runner.preprocess_spectrograms",
+            "pipelines.low_freq_spectra.stages.preprocess_spectrograms",
             wraps=preprocess_spectrograms,
         ) as preprocess,
     ):
@@ -310,14 +313,17 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
 
     def estimate(**kwargs):
         events.append(("estimate", kwargs["velocity_estimation_method"]))
+        assert kwargs["velocity_video_allocator"] is not None
         return estimate_retinal_velocity(**kwargs)
 
     with (
         patch("pipelines.velocity.runner.detect_velocity_cardiac_cycles", side_effect=cycles),
         patch("pipelines.velocity.runner.estimate_retinal_velocity", side_effect=estimate),
+        patch("pipeline_engine.scratch._available_memory_bytes", return_value=0),
     ):
         result = execute_run(_spec(holo, artifacts=True))
     assert result.succeeded, result.failures
+    assert not list(result.outputs[0].parent.parent.glob(".ef_scratch_*"))
     assert events == [
         ("estimate", "doppler_moments"),
         ("estimate", "frequency_bands"),
@@ -338,9 +344,16 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
             ("frequency_bands", "ProcessingBandRatio"),
         ):
             assert output[root].attrs["velocity_estimation_method"] == method
-            assert output[root].attrs["cardiac_cycle_detection_method"] == method
-            assert output[root].attrs["cardiac_cycle_detection_quantity"] == "physical_velocity"
-            assert output[root].attrs["cardiac_cycle_detection_unit"] == "mm/s"
+            if method == "doppler_moments":
+                assert output[root].attrs["moment0_source_path"] == "/moment0"
+                assert output[root].attrs["moment2_source_path"] == "/moment2"
+                assert "band_lf_source_path" not in output[root].attrs
+                assert "band_hf_source_path" not in output[root].attrs
+            else:
+                assert output[root].attrs["band_lf_source_path"] == "/band_0_3000_9000"
+                assert output[root].attrs["band_hf_source_path"] == "/band_1_9000_18000"
+                assert "moment0_source_path" not in output[root].attrs
+                assert "moment2_source_path" not in output[root].attrs
             assert "Segmentation" not in output[root]
             for family in (
                 schema.absolute_waveform_metrics_root,
@@ -377,10 +390,7 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
                 if isinstance(value, h5py.Dataset):
                     attrs = read_dataset_attrs(value)
                     assert attrs["velocity_estimation_method"] == expected_method
-                    assert attrs["cardiac_cycle_detection_quantity"] == "physical_velocity"
-                    assert attrs["cardiac_cycle_detection_unit"] == "mm/s"
                     assert "velocity_estimation_method" not in value.attrs
-                    assert "cardiac_cycle_detection_quantity" not in value.attrs
                     assert "nameID" not in value.attrs
                     dimensions = list(value.attrs.get("dimDesc", ()))
                     if "beat" in dimensions:
@@ -408,8 +418,8 @@ def test_both_workflows_use_independent_physical_velocity_cycles_and_downstream_
         assert list((ef_dir / "png" / folder).rglob("*.png"))
         assert list((ef_dir / "avi" / folder).rglob("*.avi"))
         assert list((ef_dir / "pdf" / folder).glob("*.pdf"))
-    moments = _extract_parameters_from_h5(result.outputs[0], processing_root="ProcessingMoments")
-    bands = _extract_parameters_from_h5(result.outputs[0], processing_root="ProcessingBandRatio")
+    moments = extract_parameters_from_h5(result.outputs[0], processing_root="ProcessingMoments")
+    bands = extract_parameters_from_h5(result.outputs[0], processing_root="ProcessingBandRatio")
     assert (
         moments["Average_Arterial_Velocity"]["value"] != bands["Average_Arterial_Velocity"]["value"]
     )
@@ -468,7 +478,7 @@ def test_one_failed_workflow_preserves_other_outputs(tmp_path, failed_method, st
         else:
             assert failed_root not in output
         assert successful_root in output
-        assert output[successful_root].attrs["cardiac_cycle_detection_method"] != failed_method
+        assert output[successful_root].attrs["velocity_estimation_method"] != failed_method
         assert failed_method in json.loads(output.attrs["execution_variant_failures"])
         assert (
             processing_path(
@@ -478,7 +488,7 @@ def test_one_failed_workflow_preserves_other_outputs(tmp_path, failed_method, st
         )
         if stage == "input" and failed_method == "doppler_moments":
             assert (
-                output[successful_root].attrs["cardiac_cycle_detection_method"] == "frequency_bands"
+                output[successful_root].attrs["velocity_estimation_method"] == "frequency_bands"
             )
     ef_dir = result.outputs[0].parent.parent
     failed_folder = "moments" if failed_method == "doppler_moments" else "bandratio"
@@ -497,7 +507,7 @@ def test_both_workflows_fail_the_run(tmp_path):
     ):
         result = execute_run(_spec(holo))
     assert not result.succeeded
-    assert "Neither velocity workflow completed" in result.failures[0].message
+    assert "No selected velocity workflow completed" in result.failures[0].message
 
 
 def test_pulse_export_failure_keeps_persisted_analysis_and_downstream_outputs(tmp_path):

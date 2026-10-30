@@ -8,7 +8,8 @@ import h5py
 import numpy as np
 import pytest
 
-from input_output.h5_access import PipelineH5Output, PipelineInputSource, RawH5SourceReader
+from input_output.readers.h5 import PipelineInputSource, RawH5SourceReader
+from input_output.writers.h5_output import PipelineH5Output
 from input_output.schema import EyeFlowOutputPaths
 from input_output.schema.doppler_view import (
     DV_CHOROID_VESSEL_MASK_PATH,
@@ -18,7 +19,7 @@ from pipeline_engine import PipelineDAG
 from pipeline_engine.context import PipelineInputs, PipelineState
 from pipelines import load_pipeline_catalog
 from pipelines.topology_core.runner import capillary_zones, run_topology_core
-from pipelines.low_freq_spectra.preprocessing import preprocess_gap_spectrograms
+from pipelines.low_freq_spectra.spectrograms import preprocess_spectrograms
 
 
 @pytest.fixture
@@ -304,7 +305,7 @@ def test_m0ff_vessel_union_gap_intersection_persistence_and_spectral_consumer(
 
     frame = np.arange(np.prod(shape), dtype=np.float32).reshape(shape)
     spectra = frame[None, None]
-    power, attrs = preprocess_gap_spectrograms(spectra, combined)[paths.spectrograms_masked]
+    power, attrs = preprocess_spectrograms(spectra, combined)[paths.spectrograms_masked]
     assert power[0, 0] == np.median(frame[combined])
     assert attrs["mask_source_path"] == "/Segmentation/Gaps/Mask"
 

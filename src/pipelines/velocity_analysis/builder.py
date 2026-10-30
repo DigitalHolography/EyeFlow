@@ -12,7 +12,6 @@ from calculations.blood_flow_velocity import (
 from calculations.topology import AnnulusGeometry
 from input_output import EyeFlowOutputPaths
 from pipeline_engine.imports import (
-    HolodopplerTiming,
     np,
     read_int_setting,
 )
@@ -38,7 +37,7 @@ from .constants import (
     SEGMENT_OUTER_RADIUS_FRAC,
 )
 from .models import VelocityAnalysis, VelocitySegmentResult
-from .sources import VelocityAnalysisSourceData, VelocityAnalysisSources
+from .sources import VelocityAnalysisSourceData, load_velocity_analysis_source_data
 
 VELOCITY_ANALYSIS_STATE = "velocity_analysis"
 
@@ -144,7 +143,7 @@ def _build_velocity_analysis_state(
     """Build persistent source and segment state before per-beat analysis."""
 
     with _logged_stage("velocity-analysis source loading"):
-        source_data = VelocityAnalysisSources.from_context(ctx).load()
+        source_data = load_velocity_analysis_source_data(ctx)
     timing = source_data.source.holodoppler.timing
     number_of_radii_in_fov = _number_of_radii_in_fov(ctx)
     artery_segments, vein_segments = _build_segments(
@@ -172,10 +171,8 @@ def _build_velocity_analysis_state(
         _context_attrs(
             source_data,
             retinal,
-            timing,
             harmonic_count,
             "eyeflow_velocity_analysis",
-            retinal.cardiac_cycle.spectral,
             number_of_radii_in_fov,
             retinal.cardiac_cycle_source,
         ),
@@ -318,6 +315,19 @@ def _segment_velocity_inputs(
             pipeline="velocity_analysis",
         )
     )
+    # All three options export cross-section profiles, including longitudinal
+    # profiles. Other segment consumers only need signals, means, or maps.
+    compute_longitudinal_profiles = bool(
+        velocity_analysis_scheduled
+        and any(
+            ctx.option_enabled(option, pipeline="velocity_analysis")
+            for option in (
+                "velocity_profiles",
+                "velocity_profile_analysis",
+                "velocity_profile_fft",
+            )
+        )
+    )
     with _logged_stage("segment velocity extraction"):
         results = analyze_velocity_segment_profiles(
             velocity_map,
@@ -330,6 +340,7 @@ def _segment_velocity_inputs(
             source_data.profile_settings,
             prepared_topologies=prepared_topologies,
             retain_velocity_maps=retain_velocity_maps,
+            compute_longitudinal_profiles=compute_longitudinal_profiles,
             cycle_boundary_indexes=cycle_boundary_indexes,
             velocity_profile_fft=velocity_profile_fft,
             index_base=int(source_data.provenance["beat_index_base"]),
@@ -382,7 +393,13 @@ def _export_pulse_pngs(ctx, analysis: VelocityAnalysis, per_beat_result) -> None
     if not ctx.output.available:
         return
     with _logged_stage("pulse-analysis PNG export"):
-        export_pulse_pngs(ctx.output, analysis, per_beat_result)
+        from input_output.writers.png import REPORT_IMAGES_STATE
+
+        report_images = {}
+        export_pulse_pngs(
+            ctx.output, analysis, per_beat_result, report_images=report_images
+        )
+        ctx.state.set(REPORT_IMAGES_STATE, report_images)
 
 
 @contextmanager
@@ -396,10 +413,8 @@ def _logged_stage(label: str):
 def _context_attrs(
     source_data: VelocityAnalysisSourceData,
     velocity: RetinalVelocity,
-    timing: HolodopplerTiming,
     harmonic_count: int,
     analysis_source: str,
-    cardiac_cycle,
     number_of_radii_in_fov: int,
     cardiac_cycle_detection_source: str,
 ) -> dict[str, object]:
@@ -439,13 +454,6 @@ def _context_attrs(
         "venous_velocity_signal_path": (analysis_paths.retinal_vein_velocity_signal),
         "systolic_peak_indexes_path": analysis_paths.beat_indices,
         "cycle_duration_seconds_path": (output_paths.cardiac_cycle.systolic_cycle_duration_seconds),
-        "heart_rate_hz": float(cardiac_cycle.heart_rate_hz),
-        "heart_rate_bpm": float(cardiac_cycle.heart_rate_bpm),
-        "heart_rate_ste_hz": float(cardiac_cycle.heart_rate_ste_hz),
-        "heart_rate_ste_bpm": float(cardiac_cycle.heart_rate_ste_bpm),
-        "sampling_freq": float(timing.sampling_freq),
-        "batch_stride": float(timing.batch_stride),
-        "dt_seconds": float(timing.dt_seconds),
         "band_limited_harmonics": int(harmonic_count),
         "filter_velocity_signals": True,
         "velocity_signal_lowpass_hz": float(DEFAULT_VELOCITY_SIGNAL_LOWPASS_HZ),

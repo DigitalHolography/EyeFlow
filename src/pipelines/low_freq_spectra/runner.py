@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from functools import partial
+
 from input_output.schema import EyeFlowOutputPaths
 from pipelines.topology_core.runner import optional_capillary_zones
 from pipelines.velocity import velocity_workflows
@@ -10,11 +12,16 @@ from utils.logger import Logger
 from .artifacts import export_spectrogram_figures
 from .gap_analysis import run_gap_analysis
 from .frequency import write_frequency_bin_table
+from .figure_export import export_spectral_snapshot, snapshot_spectral_figures
 from .qc import pack_gap_qc
 from .spectrograms import preprocess_spectrograms
 
 
-def run_low_freq_spectra(ctx) -> None:
+def run_low_freq_spectra(ctx):
+    if getattr(ctx, "_graph_runtime_available", False):
+        from .stages import spectral_graph
+
+        return spectral_graph()
     ctx.require_inputs("hd")
     hd = ctx.inputs.hd.as_holodoppler()
     spectra = hd.optional_spectograms_dataset()
@@ -64,4 +71,13 @@ def run_low_freq_spectra(ctx) -> None:
         except (KeyError, TypeError, ValueError, ZeroDivisionError) as exc:
             Logger.log_warning(f"Cannot calibrate spectrogram time in seconds: {exc}")
             dt_seconds = None
-        export_spectrogram_figures(ctx.output, dt_seconds=dt_seconds)
+        if getattr(ctx, "can_defer_artifacts", False):
+            ctx.defer_artifacts(
+                "spectral_figures", export_spectral_snapshot,
+                partial(snapshot_spectral_figures, ctx.output),
+                dt_seconds=dt_seconds,
+            )
+        else:
+            # Direct scientific calls and profiling contexts have no run
+            # lifecycle to join a background task at completion.
+            export_spectrogram_figures(ctx.output, dt_seconds=dt_seconds)

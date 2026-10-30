@@ -21,37 +21,15 @@ from input_output.schema.doppler_view import (
     DV_RETINAL_VESSEL_LOGITS_PATH,
     DV_RETINAL_VESSEL_LOGITS_THRESHOLD,
 )
+from input_output.schema.serialization import (
+    serialize_label_map as _serialize_label_map,
+    serialize_spatial_image as _serialize_spatial_image,
+)
 
 BACKGROUND_LABEL = -1
 ANNULUS_OUTLINE_LABEL = -2
 INNER_R0_VESSEL_LABEL = -3
 _FOUR_CONNECTED = ndi.generate_binary_structure(2, 1)
-
-
-def pack_segmentation_outputs(
-    source_data,
-    artery_segments,
-    vein_segments,
-    output_paths: EyeFlowOutputPaths | str | None = None,
-) -> dict[str, object]:
-    """Pack masks and branch/segment label maps below ``Segmentation``.
-
-    The source arrays use EyeFlow's image frame, whose Y direction is inverted
-    relative to the lower-left image frame used by the published maps.  All
-    maps are flipped vertically and transposed to ``(x, y)`` before writing.
-    Published branch IDs are contiguous and zero-based; negative values are
-    reserved for the background, annulus outlines, and vessel pixels in R0.
-    """
-    source = source_data.source
-    return _pack_segmentation_outputs(
-        source.segmentation.vessels.artery,
-        source.segmentation.vessels.vein,
-        source.segmentation.optic_disc,
-        artery_segments,
-        vein_segments,
-        source.holodoppler.pixel_pitch,
-        output_paths,
-    )
 
 
 def _pack_segmentation_outputs(
@@ -161,7 +139,12 @@ def pack_topology_outputs(
     pixel_pitch: PixelPitch,
     output_paths: EyeFlowOutputPaths | str | None = None,
 ) -> dict[str, object]:
-    """Pack segmentation products directly from shared prepared topology."""
+    """Pack segmentation products from shared prepared topology.
+
+    Publish image-frame maps as lower-left ``(x, y)`` arrays. Branch IDs are
+    contiguous and zero-based; negative labels describe background, annulus
+    outlines, and vessel pixels in the innermost region.
+    """
 
     return _pack_segmentation_outputs(
         artery_mask,
@@ -420,7 +403,9 @@ def _segment_topology(value):
     if value is None:
         return None
     topology = getattr(value, "topology", value)
-    nested = getattr(topology, "topology", None)
+    nested = getattr(topology, "native", None)
+    if nested is None:
+        nested = getattr(topology, "topology", None)
     return nested if nested is not None else topology
 
 
@@ -471,14 +456,6 @@ def _annulus_outlines(
     for radius in dict.fromkeys(radii):
         outlines |= _circle_outline(image_shape, center_xy, radius)
     return outlines
-
-
-def _serialize_label_map(image: np.ndarray) -> np.ndarray:
-    return np.flip(np.asarray(image, dtype=np.int32), axis=0).T.copy()
-
-
-def _serialize_spatial_image(image: np.ndarray) -> np.ndarray:
-    return np.flip(np.asarray(image), axis=0).T.copy()
 
 
 def _mask_attrs(source: str) -> dict[str, object]:

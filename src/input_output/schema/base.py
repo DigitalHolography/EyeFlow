@@ -1,4 +1,4 @@
-"""Small source metadata and reader helpers for EyeFlow HDF5 adapters."""
+"""Source metadata and typed access helpers for EyeFlow HDF5 adapters."""
 
 from __future__ import annotations
 
@@ -8,6 +8,11 @@ from typing import Any
 import numpy as np
 
 MISSING = object()
+
+
+def normalize_h5_path(path: object) -> str:
+    """Use logical HDF5 separators independent of the host filesystem."""
+    return str(path).replace("\\", "/").strip("/")
 
 
 @dataclass(frozen=True)

@@ -16,6 +16,8 @@ python -m venv .venv
 pip install -e .
 ```
 
+With uv, run `uv sync`. GPU dependencies are included in the default install.
+
 Launch the desktop application:
 
 ```powershell
@@ -33,6 +35,17 @@ eyeflow-cli --data path\to\folder --output path\to\results
 `eyeflow` opens the GUI when invoked without arguments and uses the CLI when
 arguments are supplied. `eyeflow-cli` always uses the CLI. Run
 `eyeflow-cli --help` for pipeline-list and ZIP-output options.
+
+For the Windows installer, invoke the installed executable directly (use your
+installed version):
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\eyeflow-python\v1.24.0\EyeFlow 1.24.0.exe" `
+  --data "D:\Data\sample.holo" --output "D:\Results"
+```
+
+See [installed CLI usage](docs/installer-packaging.md#running-the-installed-cli)
+for help, exit codes, and console behavior.
 
 Text lists accept one `.holo` path per line, with optional surrounding quotes.
 Entries can point to unrelated directories or different drives:
@@ -88,13 +101,13 @@ sidecar configuration, validation, axes, and units.
 Every velocity run attempts both methods:
 
 - `doppler_moments` uses HD `moment0` and `moment2`, producing calibrated
-  physical velocity in `mm/s` under `/Processing`.
+  physical velocity in `mm/s` under `/ProcessingMoments`.
 - `frequency_bands` (band ratio) uses exact HD datasets
   `/band_0_3000_9000` (LF) and `/band_1_9000_18000` (HF), both `(frame, y, x)`.
   It converts `HF / LF` to RMS frequency using the positive finite persisted
   `band_ratio_frequency_scale_hz` setting, then applies the same local-background,
   background-difference, and physical velocity conversion. Outputs use
-  `/ProcessingAlt`; the calibration default is `1 Hz` per ratio unit.
+  `/ProcessingBandRatio`; the calibration default is `1 Hz` per ratio unit.
 
 Cardiac cycles are detected independently before each estimate, from raw
 moment-derived RMS frequency for moments and calibrated HF/LF frequency for
@@ -109,8 +122,18 @@ completed methods and failure reasons; method-specific provenance is attached
 to each processing group and its datasets. Exact-zero LF values map to ratio
 zero without an epsilon, and LF quality counts remain diagnostic.
 
-Both velocity estimators run automatically. Legacy `velocity_estimation_method` settings are
-ignored. Fresh-install defaults are in `default_settings.json`; velocity is
+Choose velocity workflows in your JSON configuration:
+
+```json
+{
+  "velocity_estimation_method": "both"
+}
+```
+
+Allowed values are `doppler_moments`, `bandratio`, and `both` (the default,
+including when the key is absent). The former `frequency_bands` value remains
+an alias for `bandratio`. Only selected workflows and their downstream analyses
+run. Fresh-install defaults are in `default_settings.json`; velocity is
 always physical in `mm/s`, and legacy dimensionless velocity metadata is rejected.
 
 Both velocity workflows reconstruct their local background with OpenCV Telea,
@@ -137,7 +160,7 @@ semantics.
 Artifact filenames use the acquisition prefix, for example
 `sample_lumen_size_by_branch_artery.png`. Writers preserve subfolders and
 avoid adding the prefix twice. To rename artifacts in existing result folders,
-run `python -m input_output.artifact_migration path\to\results --dry-run`
+run `python scripts/migrate_artifacts.py path\to\results --dry-run`
 to inspect the changes, then omit `--dry-run` to apply them.
 
 Major result families include continuous and per-beat velocity, heartbeat,

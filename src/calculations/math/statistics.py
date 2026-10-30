@@ -66,6 +66,31 @@ def nanmedian(
         return np.nanmedian(array, axis=axis, keepdims=keepdims)
 
 
+def partition_median_inplace(values: np.ndarray) -> np.ndarray:
+    """Median over the last axis, using a caller-owned real working array.
+
+    Partition the input in place instead of copying all samples to float64.
+    Promote only the central value(s), so even float32 medians cannot overflow
+    when averaging large finite powers. Callers own invalid-sample policy.
+    """
+    if values.ndim < 1 or values.shape[-1] == 0 or values.dtype.kind not in "iuf":
+        raise ValueError("Median work arrays require a nonempty real last axis.")
+    middle = values.shape[-1] // 2
+    if values.shape[-1] % 2:
+        values.partition(middle, axis=-1)
+        return values[..., middle].astype(np.float64)
+    values.partition((middle - 1, middle), axis=-1)
+    lower = values[..., middle - 1].astype(np.float64)
+    upper = values[..., middle].astype(np.float64)
+    with np.errstate(over="ignore", invalid="ignore"):
+        total = lower + upper
+        overflow = np.isinf(total) & np.isfinite(lower) & np.isfinite(upper)
+        midpoint = total * 0.5
+        if np.any(overflow):
+            midpoint = np.where(overflow, lower * 0.5 + upper * 0.5, midpoint)
+    return midpoint
+
+
 def nansum(
     values,
     axis: int | tuple[int, ...] | None = None,

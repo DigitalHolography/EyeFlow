@@ -5,24 +5,35 @@ from pathlib import Path
 import numpy as np
 from skimage.io import imsave
 
-from .artifact_names import acquisition_stem, labeled_artifact_path, prefixed_artifact_path
+from .artifact_names import (
+    acquisition_stem, labeled_artifact_path, prefixed_artifact_path,
+    writer_artifact_path,
+)
+from .deferred import defer_write, save_figure_file
+
+REPORT_IMAGES_STATE = "report_image_paths"
+ReportImagePaths = dict[tuple[str, str], Path]
 
 
 class FigureArtifactWriter:
-    """Write stem-prefixed PNG figures for one output namespace."""
+    """Write stem-prefixed PNG figures and images for one output namespace."""
 
     def __init__(self, output, stem: str | None = None) -> None:
         self.output = output
-        self.stem = str(stem) if stem else _output_stem(output)
+        self.stem = str(stem) if stem else acquisition_stem(output)
         self.acquisition_stem = acquisition_stem(output, Path(self.stem).name)
+        self.artifacts: ReportImagePaths = {}
 
-    def path(self, suffix: str) -> Path:
-        filename = str(labeled_artifact_path(suffix, self.acquisition_stem, self.stem))
-        path = self.output.path_for(_png_output_type(), filename)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return path
+    def register_artifact(self, kind: str, vessel: str, path: Path) -> None:
+        """Record the actual PNG path for downstream report assembly."""
+        self.artifacts[(kind, vessel)] = Path(path)
 
-    def save_array(self, image, suffix: str) -> Path:
+    def path(self, suffix: str, *, subfolder: str | None = None) -> Path:
+        return writer_artifact_path(
+            self.output, _png_output_type(), suffix, label=self.stem, subfolder=subfolder
+        )
+
+    def save_image(self, image, suffix: str) -> Path:
         filename = str(labeled_artifact_path(suffix, self.acquisition_stem, self.stem))
         return self.output.write_png(image, filename)
 
@@ -33,35 +44,48 @@ class FigureArtifactWriter:
         *,
         dpi: int = 150,
         bbox_inches="tight",
+        subfolder: str | None = None,
     ) -> Path:
-        path = self.path(suffix)
-        fig.savefig(path, dpi=dpi, bbox_inches=bbox_inches)
-        _close_figure(fig)
-        return path
-
-    def save_image(self, image, suffix: str) -> Path:
-        return self.save_array(image, suffix)
-
-    def savefig(
-        self,
-        fig,
-        suffix: str,
-        *,
-        dpi: int = 150,
-        bbox_inches="tight",
-    ) -> Path:
-        return self.save_figure(
-            fig,
-            suffix,
-            dpi=dpi,
-            bbox_inches=bbox_inches,
+        return write_png_figure(
+            self.path(suffix, subfolder=subfolder), fig,
+            dpi=dpi, bbox_inches=bbox_inches, close=True,
         )
+
+
+def write_png_figure(
+    path: str | Path, fig, *, dpi: int = 150,
+    bbox_inches="tight", close: bool = False,
+) -> Path:
+    """Save a figure to an explicit PNG path and optionally close it."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        save_figure_file(target, fig, dpi=dpi, bbox_inches=bbox_inches)
+    finally:
+        if close:
+            _close_figure(fig)
+    return target
 
 
 def write_png_file(path: str | Path, image, *, stem: str | None = None) -> Path:
     target = prefixed_artifact_path(path, stem) if stem is not None else Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    imsave(target, _uint8_image(image), check_contrast=False)
+    if not defer_write("array", np.asarray(image), [target]):
+        imsave(target, _uint8_image(image), check_contrast=False)
+    return target
+
+
+def write_cv_png_file(path: str | Path, image) -> Path:
+    """Write OpenCV diagnostic images with their existing channel and byte policy."""
+    import cv2
+
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    from input_output.artifact_ownership import register_artifact_path
+
+    register_artifact_path(target, writing=True)
+    if not cv2.imwrite(str(target), image):
+        raise OSError(f"Could not write PNG image: {target}")
     return target
 
 
@@ -93,10 +117,6 @@ def _normalize_float(array: np.ndarray) -> np.ndarray:
 
 # Backward-compatible name for callers that only use the PNG methods.
 PngArtifactWriter = FigureArtifactWriter
-
-
-def _output_stem(output) -> str:
-    return acquisition_stem(output)
 
 
 def _close_figure(fig) -> None:

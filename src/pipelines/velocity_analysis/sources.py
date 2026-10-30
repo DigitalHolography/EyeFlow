@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 
 from calculations.vessel_segments.measurement import SegmentMeasurementSettings
 from input_output.schema import (
-    HD_BAND_HF_PATH,
-    HD_BAND_LF_PATH,
     DopplerViewSource,
     HolodopplerSource,
     PixelPitch,
@@ -63,16 +61,17 @@ class VelocityAnalysisSources:
             band_ratio_frequency_scale_hz=ctx.band_ratio_frequency_scale_hz,
         )
 
-    def load(self) -> VelocityAnalysisSourceData:
-        source = load_retinal_source_data(
-            self.hd,
-            self.dv,
-            velocity_estimation_method=self.velocity_estimation_method,
-            include_spectrograms=False,
-            band_ratio_frequency_scale_hz=(
-                self.band_ratio_frequency_scale_hz
-            ),
-        )
+    def load(self, source: RetinalSourceData | None = None) -> VelocityAnalysisSourceData:
+        if source is None:
+            source = load_retinal_source_data(
+                self.hd,
+                self.dv,
+                velocity_estimation_method=self.velocity_estimation_method,
+                include_spectrograms=False,
+                band_ratio_frequency_scale_hz=self.band_ratio_frequency_scale_hz,
+            )
+        elif source.velocity_estimation_method != self.velocity_estimation_method:
+            raise ValueError("Cached retinal source uses a different velocity method.")
         pixel_pitch = source.holodoppler.pixel_pitch
         return VelocityAnalysisSourceData(
             source=source,
@@ -91,11 +90,10 @@ class VelocityAnalysisSources:
 
 
 def load_velocity_analysis_source_data(ctx: PipelineContext) -> VelocityAnalysisSourceData:
-    return VelocityAnalysisSources.from_context(ctx).load()
-
-
-def _load_moment_pair(hd: HolodopplerSource):
-    return hd.moment0_dataset(), hd.moment2_dataset()
+    cached = ctx.state.get("velocity_source")
+    return VelocityAnalysisSources.from_context(ctx).load(
+        cached if isinstance(cached, RetinalSourceData) else None
+    )
 
 
 def _source_provenance(
@@ -105,6 +103,18 @@ def _source_provenance(
 ) -> dict[str, object]:
     segmentation = source.segmentation
     optic_disc = segmentation.optic_disc
+    image_maps = source.image_maps
+    if source.velocity_estimation_method == "frequency_bands":
+        source_attrs = {
+            "band_lf_source_path": image_maps.band_lf.name,
+            "band_hf_source_path": image_maps.band_hf.name,
+            "frequency_band_axes": list(MOMENT_AXES),
+        }
+    else:
+        source_attrs = {
+            "moment0_source_path": image_maps.moment0.name,
+            "moment2_source_path": image_maps.moment2.name,
+        }
     return {
         "hd_source_file": str(hd.filename or ""),
         "dv_source_file": str(dv.filename or ""),
@@ -126,15 +136,5 @@ def _source_provenance(
                 source.band_ratio_frequency_scale_hz
             ),
         ),
-        "band_lf_source_path": (
-            f"/{HD_BAND_LF_PATH}"
-            if source.velocity_estimation_method == "frequency_bands"
-            else None
-        ),
-        "band_hf_source_path": (
-            f"/{HD_BAND_HF_PATH}"
-            if source.velocity_estimation_method == "frequency_bands"
-            else None
-        ),
-        "frequency_band_axes": list(MOMENT_AXES),
+        **source_attrs,
     }

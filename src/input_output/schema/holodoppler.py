@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 
+import h5py
+from input_output.readers.nodes import is_dataset
 import numpy as np
 
 from .base import SourceFileLayout, TypedSource, scalar_from_value
-from .source_data import HolodopplerMetadata, HolodopplerTiming, PixelPitch
+from retinal_source_data import HolodopplerMetadata, HolodopplerTiming, PixelPitch
 
 HD_CONFIG_DIR_NAME = "json"
 HD_CONFIG_FILENAME = "parameters.json"
@@ -16,6 +19,7 @@ HD_MOMENT0_PATH = "moment0"
 HD_MOMENT2_PATH = "moment2"
 HD_BAND_LF_PATH = "band_0_3000_9000"
 HD_BAND_HF_PATH = "band_1_9000_18000"
+HD_BAND_NAME_PATTERN = re.compile(r"band_[0-9]+_([0-9]+)_([0-9]+)")
 HD_SPECTOGRAMS_PATH = "spectrograms"
 HD_MOMENT0_PATHS = (HD_MOMENT0_PATH, "M0")
 HD_MOMENT2_PATHS = (HD_MOMENT2_PATH, "M2")
@@ -45,12 +49,33 @@ HOLODOPPLER_LAYOUT = SourceFileLayout(
 class HolodopplerSource(TypedSource):
     """Typed access to the Holodoppler HDF5 file and sidecar config."""
 
-    @classmethod
-    def from_context(cls, ctx) -> HolodopplerSource:
-        return cls(ctx.inputs.hd.h5, ctx.inputs.hd.config)
+    def __init__(self, reader, config=None, *, cache_parameters: bool = False) -> None:
+        super().__init__(reader, config)
+        self._cache_parameters = cache_parameters
 
     def moment0_dataset(self):
         return self._moment_dataset(HD_MOMENT0_PATHS)
+
+    def named_root_moment_dataset(self, moment_path: str = HD_MOMENT0_PATH) -> h5py.Dataset:
+        """Resolve a selected root moment, including the legacy M0 alias."""
+        normalized = str(moment_path).replace("\\", "/").strip("/")
+        if not normalized or "/" in normalized:
+            raise ValueError("The HoloDoppler moment must be a root dataset name.")
+        candidates = HD_MOMENT0_PATHS if normalized == HD_MOMENT0_PATH else (normalized,)
+        for candidate in candidates:
+            found = self._reader.get(candidate)
+            if found is None:
+                continue
+            if not is_dataset(found) or found.ndim != 3:
+                raise ValueError(
+                    f"HoloDoppler moment '{candidate}' must be a 3-D dataset, "
+                    f"got {getattr(found, 'shape', None)}."
+                )
+            return found
+        raise KeyError(
+            "Missing HoloDoppler root moment dataset. Tried: "
+            + ", ".join(repr(candidate) for candidate in candidates)
+        )
 
     def moment2_dataset(self):
         return self._moment_dataset(HD_MOMENT2_PATHS)
@@ -95,30 +120,36 @@ class HolodopplerSource(TypedSource):
             return None
 
     def frequency_band_datasets(self):
-        """Return the exact low/high PSD bands used by the ratio estimator.
+        """Return the first/last PSD videos sorted by numeric frequency bounds."""
 
-        Band discovery is deliberately not heuristic: changing the configured
-        frequency limits changes the meaning of the ratio, so this first
-        implementation accepts only HoloDoppler's standard two-band export.
-        """
-
-        paths = (HD_BAND_LF_PATH, HD_BAND_HF_PATH)
-        missing = [f"/{path}" for path in paths if path not in self._reader]
-        if missing:
+        bands = []
+        for path in self._reader.keys():
+            match = HD_BAND_NAME_PATTERN.fullmatch(path)
+            if match is None:
+                continue
+            try:
+                self._dataset(path)
+            except KeyError:
+                # A group with a matching name is not a band video.
+                continue
+            bands.append((int(match[1]), int(match[2]), path))
+        bands.sort()
+        if len(bands) < 2:
             source = str(self.filename or "<unknown HD source>")
             raise KeyError(
-                "velocity_estimation_method='frequency_bands' requires "
-                "HoloDoppler datasets "
-                f"{', '.join(missing)}; missing from HD source file {source!r}."
+                "velocity_estimation_method='frequency_bands' requires at least "
+                "two HoloDoppler datasets named band_<i>_<n>_<m>; "
+                f"found {len(bands)} in HD source file {source!r}."
             )
 
-        low_frequency = self._frequency_band_dataset(HD_BAND_LF_PATH)
-        high_frequency = self._frequency_band_dataset(HD_BAND_HF_PATH)
+        low_path, high_path = bands[0][2], bands[-1][2]
+        low_frequency = self._frequency_band_dataset(low_path)
+        high_frequency = self._frequency_band_dataset(high_path)
         if tuple(low_frequency.shape) != tuple(high_frequency.shape):
             raise ValueError(
                 "HoloDoppler frequency-band datasets must have identical "
-                f"(frame, y, x) shapes; /{HD_BAND_LF_PATH} has shape "
-                f"{low_frequency.shape} and /{HD_BAND_HF_PATH} has shape "
+                f"(frame, y, x) shapes; /{low_path} has shape "
+                f"{low_frequency.shape} and /{high_path} has shape "
                 f"{high_frequency.shape}."
             )
         return low_frequency, high_frequency
@@ -227,8 +258,12 @@ class HolodopplerSource(TypedSource):
         return PixelPitch(values[0], values[1])
 
     def _parameters(self) -> Mapping[str, object] | None:
+        if self._cache_parameters and hasattr(self, "_cached_parameters"):
+            return self._cached_parameters
         raw = self._value(HD_PARAMETERS_KEY, default=None)
         if raw is None:
+            if self._cache_parameters:
+                self._cached_parameters = None
             return None
         if isinstance(raw, np.ndarray):
             if raw.size != 1:
@@ -245,6 +280,8 @@ class HolodopplerSource(TypedSource):
             parameters = raw
         if not isinstance(parameters, Mapping):
             raise TypeError("HD_parameters must decode to a dictionary.")
+        if self._cache_parameters:
+            self._cached_parameters = parameters
         return parameters
 
     def metadata(self) -> HolodopplerMetadata:
