@@ -146,7 +146,9 @@ class FrameSequence:
         """Read source frames once, then replay a bounded disk cache twice.
 
         For HDF5, the display range still samples the complete source volume;
-        only frames needed by the calculation occupy scratch storage.
+        only frames needed by the calculation occupy scratch storage. The
+        replay is valid only inside this context; yielded frames are independent
+        of the cache and remain usable after it closes.
         """
         limit = self.frame_count if max_frames is None else min(self.frame_count, max_frames)
         if limit < 1:
@@ -158,27 +160,33 @@ class FrameSequence:
                 limit, self.height, self.width, 3
             )
             frames = np.lib.format.open_memmap(path, mode="w+", dtype=dtype, shape=shape)
-            count = 0
-            if self.is_h5:
-                sample_indices = self._h5_sample_indices()
-                samples = []
-                with self._open_h5_dataset() as dataset:
-                    for index in range(self.frame_count):
-                        frame = self._slice_h5_frame(dataset, index)
-                        if index in sample_indices:
-                            self._append_h5_range_sample(samples, frame)
-                        if index < limit:
-                            frames[index] = frame
-                            count += 1
-                self.h5_value_min, self.h5_value_max = self._range_from_samples(samples)
-            else:
-                for frame in self.iter_frames(limit):
-                    frames[count] = frame
-                    count += 1
-            frames.flush()
+            replay = None
             try:
-                yield FrameReplay(self, frames, count)
+                count = 0
+                if self.is_h5:
+                    sample_indices = self._h5_sample_indices()
+                    samples = []
+                    with self._open_h5_dataset() as dataset:
+                        for index in range(self.frame_count):
+                            frame = self._slice_h5_frame(dataset, index)
+                            if index in sample_indices:
+                                self._append_h5_range_sample(samples, frame)
+                            if index < limit:
+                                frames[index] = frame
+                                count += 1
+                    self.h5_value_min, self.h5_value_max = self._range_from_samples(samples)
+                else:
+                    for frame in self.iter_frames(limit):
+                        frames[count] = frame
+                        count += 1
+                frames.flush()
+                replay = FrameReplay(self, frames, count)
+                yield replay
             finally:
+                if replay is not None:
+                    replay.frames = None
+                # Windows cannot remove frames.npy until its mapping is closed.
+                frames._mmap.close()
                 del frames
 
     def _h5_to_bgr_u8(self, frame: np.ndarray) -> np.ndarray:
@@ -232,11 +240,16 @@ def load_binary_mask(path: Path, shape: tuple[int, int], invert: bool) -> np.nda
 class FrameReplay:
     def __init__(self, source: FrameSequence, frames: np.memmap, count: int) -> None:
         self.source = source
-        self.frames = frames
+        self.frames: np.memmap | None = frames
         self.frame_count = count
 
     def iter_frames(self, max_frames: int | None = None) -> Iterator[np.ndarray]:
         limit = self.frame_count if max_frames is None else min(self.frame_count, max_frames)
         for index in range(limit):
-            frame = self.frames[index]
-            yield self.source._h5_to_bgr_u8(frame) if self.source.is_h5 else np.asarray(frame)
+            if self.frames is None:
+                raise RuntimeError("Frame replay cache is closed.")
+            # Never retain or yield a cache view across a generator suspension.
+            if self.source.is_h5:
+                yield self.source._h5_to_bgr_u8(self.frames[index])
+            else:
+                yield np.array(self.frames[index], copy=True)
