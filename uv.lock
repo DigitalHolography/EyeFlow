@@ -366,7 +366,7 @@ wheels = [
 
 [[package]]
 name = "eyeflow"
-version = "1.24.0"
+version = "1.25.0"
 source = { editable = "." }
 dependencies = [
     { name = "cupy", marker = "sys_platform != 'win32'" },
