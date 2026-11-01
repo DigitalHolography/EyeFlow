@@ -55,3 +55,25 @@ def process_fixture(ctx):
 
 
 PROCESS_DESCRIPTOR = PIPELINE_REGISTRY["process_fixture"]
+
+
+@pipeline("stage_completion_fixture", execution_mode="process", run_once=True)
+def stage_completion_fixture(ctx):
+    def publish(ctx):
+        ctx.dag.handoff("value", 3)
+        ctx.state.set("completed_stage", True)
+        artifact = ctx.output.path_for(OutputType.PNG, "completed.png")
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_bytes(b"completed stage")
+
+    def crash(ctx):
+        os._exit(23)
+
+    return PipelineGraph((
+        PipelineNode("stage_completion_fixture", publish,
+                     outputs=(PipelineProduct("value", path="Stage/value"),)),
+        PipelineNode("crash", crash, after=("stage_completion_fixture",)),
+    ))
+
+
+STAGE_COMPLETION_DESCRIPTOR = PIPELINE_REGISTRY["stage_completion_fixture"]

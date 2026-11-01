@@ -122,28 +122,16 @@ navigation aid.
 
 ## Runtime ownership
 
-For each input, `run_pipelines_to_output` creates a coordinator-owned input
-service and in-memory output structure. HD/DV datasets are loaded centrally and
-staged once into local read-only storage when requested. Pipeline contexts use
-these dataset adapters; worker processes do not reopen the NAS source files.
+`runtime` owns each input's sources, workflow state and accepted output model.
+`scheduler` chooses ready work; `process_executor` owns opt-in workers and accepts
+their results. Both execution modes use the same invocation/checkpoint code.
+Inputs replay from read-only local storage. `PendingOutput` retains result
+payloads until exports and final HDF5 publication finish, including when completion
+overlaps the next input. Reports read the accepted model before publication.
 
-The scheduler starts dependency-ready process pipelines alongside coordinator
-work. `displacement_map` is the first process pipeline; small waveform metrics
-remain sequential. Existing workflow variants keep isolated state and output
-namespaces. Process results arrive through a bounded queue as stable local-file
-references. Private stage journals preserve completed products after unrelated
-failures, without restoring snapshots of the shared output file.
-
-Shared figure writers retain their bounded renderer pool and explicit artifact
-ownership. Renderers and calculations share CPU/RAM admission accounting. Reports
-run last and read the assembled output view and published images. The final HDF5
-is serialized locally and published after required exports complete; batch
-analysis can overlap the preceding input's finalization.
-
-See [parallel pipeline execution](parallel_pipeline_execution.md) for input
-caching, queue events, stage commits, resource policy, local scratch selection
-and the initial process rollout. See [stage graphs and handoff](pipeline_stage_graphs.md)
-for pipeline-owned product/dependency declarations.
+The [execution design](parallel_pipeline_execution.md) defines ownership,
+failure recovery, resources and storage lifetime. The [stage graph API](pipeline_stage_graphs.md)
+defines pipeline-owned products and dependencies.
 
 ## Scientific processing boundaries
 

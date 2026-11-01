@@ -19,7 +19,8 @@ from pipeline_engine.input_service import InputService
 from pipeline_engine.output_model import OutputModel
 from pipeline_engine.resources import ResourceBudget, pipeline_memory_bytes
 from pipeline_engine.runtime import PipelineRunError, run_pipelines_to_output
-from pipeline_engine.storage import ArrayReference, ProductStorage, is_local_path
+from pipeline_engine.storage import ArrayReference, ProductStorage
+from scratch_location import is_local_path
 from utils.logger import Logger
 
 
@@ -40,6 +41,8 @@ def test_source_is_staged_once_and_replayed_read_only(tmp_path):
     with h5py.File(source_path, "w") as source:
         source["video"] = original
         source["video_alias"] = source["video"]
+        source["z_group/video"] = source["video"]
+        source["unrequested"] = original
     with h5py.File(source_path) as source, ProductStorage() as storage:
         service = InputService({"hd": source}, storage, multiprocessing.get_context("spawn"))
         first, second = service.client(), service.client()
@@ -48,6 +51,7 @@ def test_source_is_staged_once_and_replayed_read_only(tmp_path):
             np.testing.assert_array_equal(a["video"][1:3], original[1:3])
             np.testing.assert_array_equal(b["video"][:], original)
             np.testing.assert_array_equal(b["video_alias"][:], original)
+            np.testing.assert_array_equal(b["z_group"]["/video"][:], original)
             assert b["video"].id == b["video_alias"].id
             assert service.source_reads == {("hd", "video"): 1}
             assert isinstance(service.cache[("hd", "video")], ArrayReference)
@@ -244,7 +248,7 @@ def test_pipeline_memory_reservation_keeps_headroom_at_exact_limit():
 
 
 def test_coordinator_uses_remaining_cpu_slots_instead_of_waiting_for_all():
-    from pipeline_engine.resources import thread_allowance
+    from runtime_limits import thread_allowance
 
     budget = ResourceBudget(cpu_threads=4, memory_bytes=1024)
     assert budget.try_acquire(3)
@@ -284,19 +288,19 @@ def test_native_initialization_failure_releases_compute_reservations(monkeypatch
         raise RuntimeError("native initialization failed")
 
     monkeypatch.setattr("pipeline_engine.resources.configure_native_threads", fail_native)
-    with pytest.raises(RuntimeError, match="native initialization failed"), budget.compute(1, 256):
+    with pytest.raises(RuntimeError, match="native initialization failed"), budget.activate():
         pass
     assert budget.cpu_used == 0
     assert sum(budget.used.values()) == 0
 
 
 def test_spawn_preparation_failure_keeps_independent_products(tmp_path, monkeypatch):
-    from pipeline_engine.scheduler import CoordinatorScheduler
+    from pipeline_engine.process_executor import ProcessExecutor
 
     def fail_launch(self, pipeline, threads, memory):
         raise OSError("cannot prepare worker")
 
-    monkeypatch.setattr(CoordinatorScheduler, "_launch", fail_launch)
+    monkeypatch.setattr(ProcessExecutor, "_launch", fail_launch)
     manager = OutputManager(HoloRunLayout.from_holo(tmp_path / "scan.holo"))
     budget = ResourceBudget(cpu_threads=4, memory_bytes=512 * 2**20)
     with budget.activate(), pytest.raises(PipelineRunError, match="cannot prepare worker"):

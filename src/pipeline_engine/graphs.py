@@ -275,9 +275,7 @@ class GraphExecution:
                     capture = None if node.wait_for_artifacts else ctx._capture_artifact_write
                     with capture_artifact_writes(capture):
                         budget = current_resources()
-                        allowance = min(4, max(1, budget.cpu_limit - budget.cpu_used)) if budget else 1
-                        memory = min(64 * 2**20, budget.memory_limit // 4) if budget else 0
-                        with budget.compute(allowance, memory) if budget else nullcontext():
+                        with budget.compute() if budget else nullcontext():
                             result = node.run(ctx)
                     if result is not None:
                         raise TypeError("Graph stages hand off products and return None.")

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from input_output.readers.frame_sequences import FrameSequence
 from pipeline_engine.graphs import PipelineGraph, PipelineNode, PipelineProduct
-from pipeline_engine.storage import temporary_directory
+from scratch_location import temporary_directory
 
 from .parameters import MotionMapConfig
 from .runner import (

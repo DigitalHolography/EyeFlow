@@ -7,7 +7,7 @@ import json
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -37,6 +37,7 @@ from velocity_calibration import (
 from .base import PipelineDescriptor
 from .background_artifacts import ArtifactWorkers, BackgroundArtifacts
 from .dag import PipelineDAG, PipelineExecutionPlan
+from .finalization import PendingOutput
 from .runtime import PipelineRunError, run_pipelines_to_output
 
 @dataclass(frozen=True)
@@ -245,7 +246,7 @@ def _execute_batch(
 
         artifacts = BackgroundArtifacts(workers)
         numerical_error = None
-        finalizers = []
+        finalizers: list[PendingOutput] = []
         try:
             final_dir = final_manager.layout.ef_dir
             if final_dir.exists() and not final_dir.is_dir():
@@ -275,6 +276,11 @@ def _execute_batch(
             if isinstance(exc, PipelineRunError):
                 outputs.append(exc.output_h5_path)
             numerical_error = str(exc)
+        except BaseException:
+            # Runtime may already have transferred its payload store during
+            # interruption. It must have an owner even without a completion job.
+            _discard_file_output(artifacts, finalizers)
+            raise
         else:
             outputs.append(final_path)
         if artifacts.pending:
@@ -283,13 +289,23 @@ def _execute_batch(
                 f"[ANALYSIS COMPLETE] {input_layout.input_path.name}: "
                 f"pipeline execution {phase}; artifact exports are still in progress."
             )
-        pending.append(completions.submit(
-            _finish_file, input_layout.input_path, final_path, artifacts, numerical_error, finalizers,
-        ))
+        try:
+            pending.append(completions.submit(
+                _finish_file, input_layout.input_path, final_path, artifacts, numerical_error, finalizers,
+            ))
+        except BaseException:
+            _discard_file_output(artifacts, finalizers)
+            raise
 
     while pending:
         finish_oldest()
     return RunResult(tuple(outputs), tuple(failures), stopped=stopped)
+
+
+def _discard_file_output(artifacts, outputs):
+    with ExitStack() as retained, artifacts:
+        for output in outputs:
+            retained.callback(output.close)
 
 
 def _finish_file(input_path, output_path, artifacts, numerical_error, finalizers=()):
@@ -297,10 +313,12 @@ def _finish_file(input_path, output_path, artifacts, numerical_error, finalizers
     import h5py
 
     try:
-        with artifacts:
+        with ExitStack() as retained, artifacts:
+            for output in finalizers:
+                retained.callback(output.close)
             artifacts.collect(wait=True)
-            for finalize in finalizers:
-                finalize()
+            for output in finalizers:
+                output.finish()
             if not finalizers and artifacts.statuses and output_path.is_file():
                 with h5py.File(output_path, "r+") as h5:
                     h5.attrs["artifact_status"] = json.dumps(artifacts.statuses, sort_keys=True)

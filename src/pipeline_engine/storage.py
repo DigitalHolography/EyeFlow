@@ -1,158 +1,16 @@
-"""Local scratch storage and immutable large-array references (never .tmp)."""
+"""Immutable payload storage with explicit mapping lifetime."""
 
 from __future__ import annotations
 
-import os
 import shutil
-import tempfile
 import weakref
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
 import numpy as np
-
-
-def is_local_path(path):
-    path = Path(path).resolve()
-    if os.name != "nt":
-        # Linux network mounts, when present, must not host scratch storage.
-        try:
-            import psutil
-
-            mounts = sorted(
-                psutil.disk_partitions(all=True), key=lambda p: len(p.mountpoint), reverse=True
-            )
-            for mount in mounts:
-                if path.is_relative_to(Path(mount.mountpoint)):
-                    return mount.fstype.lower() not in {"nfs", "nfs4", "cifs", "smbfs", "sshfs"}
-        except OSError:
-            pass
-        return True
-    import ctypes
-
-    # DRIVE_FIXED excludes UNC/mapped network drives and removable media.
-    return ctypes.windll.kernel32.GetDriveTypeW(str(Path(path.anchor))) == 3
-
-
-@lru_cache(maxsize=32)
-def _is_ssd(anchor):
-    """Query seek penalty on Windows; unknown media keep the default location."""
-    if os.name != "nt":
-        return None
-    import ctypes
-    from ctypes import wintypes
-
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel.CreateFileW.argtypes = [
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.LPVOID,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.HANDLE,
-    ]
-    kernel.CreateFileW.restype = wintypes.HANDLE
-    kernel.DeviceIoControl.argtypes = [
-        wintypes.HANDLE,
-        wintypes.DWORD,
-        wintypes.LPVOID,
-        wintypes.DWORD,
-        wintypes.LPVOID,
-        wintypes.DWORD,
-        ctypes.POINTER(wintypes.DWORD),
-        wintypes.LPVOID,
-    ]
-    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
-    handle = kernel.CreateFileW("\\\\.\\" + anchor.rstrip("\\/"), 0, 3, None, 3, 0, None)
-    if handle == ctypes.c_void_p(-1).value:
-        return None
-    try:
-        # STORAGE_PROPERTY_QUERY(StorageDeviceSeekPenaltyProperty, PropertyStandardQuery)
-        query = (wintypes.DWORD * 3)(7, 0, 0)
-        output = ctypes.create_string_buffer(32)
-        returned = wintypes.DWORD()
-        if (
-            kernel.DeviceIoControl(
-                handle,
-                0x2D1400,
-                query,
-                ctypes.sizeof(query),
-                output,
-                len(output),
-                ctypes.byref(returned),
-                None,
-            )
-            and returned.value >= 9
-        ):
-            return output.raw[8] == 0
-    finally:
-        kernel.CloseHandle(handle)
-    return None
-
-
-@lru_cache(maxsize=8)
-def _choose_scratch_root(configured):
-    candidates = (
-        [Path(configured)]
-        if configured
-        else [
-            Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "EyeFlow" / "scratch",
-            Path(tempfile.gettempdir()) / "eyeflow-scratch",
-        ]
-    )
-    if not configured and os.name == "nt":
-        import psutil
-
-        for partition in psutil.disk_partitions():
-            root = Path(partition.mountpoint)
-            if is_local_path(root):
-                candidates.append(root / "eyeflow-scratch" / Path.home().name)
-        candidates.sort(key=lambda path: not (is_local_path(path) and _is_ssd(path.anchor) is True))
-    for path in candidates:
-        if is_local_path(path):
-            try:
-                path.mkdir(parents=True, exist_ok=True)
-                return path
-            except OSError:
-                continue
-    raise OSError("EyeFlow needs a local scratch directory; set EYEFLOW_SCRATCH_DIR.")
-
-
-def local_scratch_root():
-    return _choose_scratch_root(os.environ.get("EYEFLOW_SCRATCH_DIR"))
-
-
-def temporary_directory(prefix="eyeflow-", **kwargs):
-    worker = os.environ.get("EYEFLOW_WORKER_DIRECTORY")
-    if worker:
-        return RetainedDirectory(
-            tempfile.mkdtemp(prefix=prefix, dir=worker), str(Path(worker).resolve())
-        )
-    return tempfile.TemporaryDirectory(prefix=prefix, dir=local_scratch_root(), **kwargs)
-
-
-@dataclass
-class RetainedDirectory:
-    """Worker scratch is released by its coordinator, never by process exit."""
-
-    name: str
-    root: str
-
-    def cleanup(self):
-        target, root = Path(self.name).resolve(), Path(self.root).resolve()
-        if target == root or not target.is_relative_to(root):
-            raise ValueError("Worker scratch cleanup escaped its owning directory.")
-        shutil.rmtree(target)
-
-    def __enter__(self):
-        return self.name
-
-    def __exit__(self, *exc):
-        self.cleanup()
+from scratch_location import temporary_directory
 
 
 @dataclass(frozen=True)
@@ -179,6 +37,12 @@ class ValueReference:
 
 
 class ProductStorage:
+    """Own persisted payloads and their mappings until final publication.
+
+    Read-only arrays are immutable published products and may reuse bytes.
+    Writable arrays always receive a fresh snapshot.
+    """
+
     def __init__(self, *, directory=None, budget=None):
         self.temporary = temporary_directory("eyeflow-products-") if directory is None else None
         self.directory = Path(self.temporary.name if self.temporary else directory)
@@ -188,6 +52,8 @@ class ProductStorage:
         self._resident_lock = RLock()
         self._closed = False
         self._maps = []
+        self._immutable_arrays = {}
+        self._array_lock = RLock()
 
     def __enter__(self):
         return self
@@ -196,6 +62,8 @@ class ProductStorage:
         self.close()
 
     def path(self, suffix):
+        if self._closed:
+            raise RuntimeError("Product storage is closed.")
         return self.directory / f"{uuid4().hex}{suffix}"
 
     def store(self, value, *, category="retained"):
@@ -233,11 +101,35 @@ class ProductStorage:
                     self.budget.release_memory(size, category)
 
     def store_array(self, array):
+        immutable = _is_immutable_array(array)
+        if immutable:
+            with self._array_lock:
+                cached = self._immutable_arrays.get(id(array))
+                if cached is not None and cached[0]() is array:
+                    return cached[1]
+                reference = self._write_array(array)
+                self._remember_array(array, reference)
+                return reference
+        return self._write_array(array)
+
+    def _remember_array(self, array, reference):
+        identity = id(array)
+
+        def forget(expired):
+            with self._array_lock:
+                cached = self._immutable_arrays.get(identity)
+                if cached is not None and cached[0] is expired:
+                    del self._immutable_arrays[identity]
+
+        self._immutable_arrays[identity] = weakref.ref(array, forget), reference
+
+    def _write_array(self, array):
         if shutil.disk_usage(self.directory).free < array.nbytes:
             raise OSError("Insufficient local scratch disk space for an array.")
         path = self.path(".npy")
-        output = np.lib.format.open_memmap(path, mode="w+", dtype=array.dtype, shape=array.shape)
+        output = None
         try:
+            output = np.lib.format.open_memmap(path, mode="w+", dtype=array.dtype, shape=array.shape)
             if array.ndim and array.shape[0]:
                 stride = max(
                     1, 16 * 2**20 // max(1, (array.dtype.itemsize * int(np.prod(array.shape[1:]))))
@@ -247,8 +139,14 @@ class ProductStorage:
             else:
                 output[...] = array
             output.flush()
+        except BaseException:
+            if output is not None:
+                output._mmap.close()
+            path.unlink(missing_ok=True)
+            raise
         finally:
-            output._mmap.close()
+            if output is not None and not output._mmap.closed:
+                output._mmap.close()
         return ArrayReference(str(path), tuple(array.shape), array.dtype)
 
     def read(self, value):
@@ -256,15 +154,20 @@ class ProductStorage:
             array = value.open()
             if isinstance(array, np.memmap):
                 self._maps.append(weakref.ref(array))
+                with self._array_lock:
+                    self._remember_array(array, value)
             return array
         return value
 
     def close(self):
+        if self._closed:
+            return
         for ref in self._maps:
             array = ref()
             if array is not None and not array._mmap.closed:
                 array._mmap.close()
         self._maps.clear()
+        self._immutable_arrays.clear()
         with self._resident_lock:
             self._closed = True
             if self.budget:
@@ -274,3 +177,20 @@ class ProductStorage:
         if self.temporary:
             self.temporary.cleanup()
             self.temporary = None
+
+
+def _is_immutable_array(array):
+    """A read-only view of a writable base is still mutable through that base."""
+    if not isinstance(array, np.ndarray):
+        return False
+    current = array
+    while isinstance(current, np.ndarray):
+        if current.flags.writeable:
+            return False
+        current = current.base
+    if current is None:
+        return True
+    try:
+        return memoryview(current).readonly
+    except TypeError:
+        return False

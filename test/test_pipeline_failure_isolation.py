@@ -12,7 +12,7 @@ from input_output.output_manager import OutputType
 from pipeline_engine.scratch import RunArrayStorage
 from pipeline_engine.base import ExecutionVariant, PipelineDescriptor, PipelineOption
 from pipeline_engine.run_service import execute_run, resolve_run_spec
-from pipeline_engine.runtime import _pipeline_checkpoint
+from pipeline_engine.invocation import _pipeline_checkpoint
 
 
 def _descriptor(name, run, dependencies=(), *, variants=False, options=()):

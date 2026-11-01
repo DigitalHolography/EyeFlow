@@ -10,7 +10,7 @@ from input_output.artifact_ownership import ArtifactOwnership, artifact_transact
 from input_output.runs.layout import HoloRunLayout
 from input_output.output_manager import OutputManager, OutputType
 from input_output.writers.png import write_png_file
-from pipeline_engine.runtime import _pipeline_checkpoint
+from pipeline_engine.invocation import _pipeline_checkpoint
 
 
 def test_checkpoint_never_deletes_unregistered_files_created_during_a_failed_pipeline(tmp_path):

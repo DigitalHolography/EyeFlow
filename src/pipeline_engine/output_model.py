@@ -1,22 +1,15 @@
 """In-memory output structure with local immutable payloads and stage journals.
 
-Only this structure is versioned. Dataset bytes are never copied by a
-checkpoint, and a failed stage only restores paths that stage actually edited.
-The final serializer continues to use the established HDF5 storage policies.
+Checkpoints track edited metadata without copying dataset bytes. A failed stage
+restores only its touched paths; the I/O writers own final serialization.
 """
 
 from __future__ import annotations
 
-import os
-import shutil
 from collections.abc import MutableMapping
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
-from pathlib import Path
-from uuid import uuid4
-
-import h5py
 import numpy as np
 
 from .storage import ArrayReference, ValueReference
@@ -59,6 +52,7 @@ class Attributes(MutableMapping):
     def __setitem__(self, key, value):
         self.node.file._touch(self.node.path)
         self.record.attrs[key] = deepcopy(value)
+        self.record.attr_dtypes.pop(key, None)
 
     def __delitem__(self, key):
         self.node.file._touch(self.node.path)
@@ -252,82 +246,61 @@ class OutputModel(OutputGroup):
 
     def copy(self, source, target, name=None):
         """Materialize a private export snapshot without opening the final file."""
-        from input_output.writers.h5_storage import _create_dataset
+        from input_output.writers.h5_publication import copy_output_node
 
-        name = name or source.name.rsplit("/", 1)[-1]
-        record = self.records[source.path]
-        if record.kind == "group":
-            node = target.create_group(name)
-            for child_name, child in source.items():
-                self.copy(child, node, child_name)
-        else:
-            node = _create_dataset(
-                target, name, self.storage.read(record.value), h5_options=record.options
-            )
-        for key, value in record.attrs.items():
-            dtype = record.attr_dtypes.get(key)
-            if dtype is not None:
-                node.attrs.create(key, value, dtype=dtype)
-            else:
-                node.attrs[key] = value
+        copy_output_node(self, source, target, name)
 
-    def merge(self, records):
-        """Merge one known invocation; only group attributes can be shared."""
+    def validate_merge(self, records):
+        """Reject conflicts before accepting any invocation records."""
         for path, record in records.items():
+            if path != path.strip("/") or "\\" in path:
+                raise ValueError(f"Invalid output path: {path!r}")
+            if record.kind not in {"group", "dataset"}:
+                raise ValueError(f"Invalid output record kind: {record.kind!r}")
             current = self.records.get(path)
             if current and (record.kind == "dataset" or current.kind != record.kind):
                 raise ValueError(f"Duplicate pipeline output: {path}")
-        for path, record in records.items():
-            current = self.records.get(path)
-            if current and record.kind == "dataset":
-                raise ValueError(f"Duplicate pipeline output: {path}")
-            if current:
+            parent = path.rpartition("/")[0]
+            while path and parent:
+                ancestor = records.get(parent, self.records.get(parent))
+                if ancestor is None or ancestor.kind != "group":
+                    raise ValueError(f"Output parent must be a group: {parent}")
+                parent = parent.rpartition("/")[0]
+
+    def merge(self, records):
+        """Accept one invocation atomically; only group attributes can be shared."""
+        self.validate_merge(records)
+        with self.checkpoint():
+            for path, record in records.items():
+                current = self.records.get(path)
                 self._touch(path)
-                current.attrs.update(record.attrs)
-                current.attr_dtypes.update(record.attr_dtypes)
-            else:
-                self._touch(path)
-                adopted = record.snapshot()
-                if adopted.kind == "dataset":
-                    adopted.value = self.storage.store(adopted.value)
-                self.records[path] = adopted
+                if current:
+                    current.attrs.update(deepcopy(record.attrs))
+                    for key in record.attrs:
+                        current.attr_dtypes.pop(key, None)
+                    current.attr_dtypes.update(record.attr_dtypes)
+                else:
+                    adopted = record.snapshot()
+                    if adopted.kind == "dataset":
+                        adopted.value = self.storage.store(adopted.value)
+                    self.records[path] = adopted
+
+    def committed_records(self):
+        """Snapshot accepted records without exposing unfinished checkpoint edits."""
+        records = {path: record.snapshot() for path, record in self.records.items()}
+        for checkpoint in reversed(self._checkpoints):
+            for path, old in checkpoint.before.items():
+                if old is None:
+                    records.pop(path, None)
+                else:
+                    records[path] = old.snapshot()
+        return records
 
     def publish(self):
-        from input_output.writers.h5_storage import _create_dataset
+        """Publish through the shared I/O policy (also used by standalone callers)."""
+        from input_output.writers.h5_publication import publish_output_model
 
-        final = Path(self.filename)
-        local = self.storage.path(".h5")
-        budget = self.storage.budget
-        admission = (
-            budget.compute(1, min(16 * 2**20, budget.memory_limit // 8))
-            if budget is not None and hasattr(budget, "compute")
-            else nullcontext()
-        )
-        with admission, h5py.File(local, "w") as output:
-            for path, record in sorted(
-                self.records.items(), key=lambda pair: (pair[0].count("/"), pair[0])
-            ):
-                if record.kind == "group":
-                    node = output.require_group(path) if path else output
-                else:
-                    parent, _, name = path.rpartition("/")
-                    group = output.require_group(parent) if parent else output
-                    node = _create_dataset(
-                        group, name, self.storage.read(record.value), h5_options=record.options
-                    )
-                for key, value in record.attrs.items():
-                    dtype = record.attr_dtypes.get(key)
-                    if dtype is not None:
-                        node.attrs.create(key, value, dtype=dtype)
-                    else:
-                        node.attrs[key] = value
-        final.parent.mkdir(parents=True, exist_ok=True)
-        incoming = final.with_name(f".ef-{uuid4().hex[:16]}.h5")
-        try:
-            shutil.copyfile(local, incoming)
-            os.replace(incoming, final)
-        finally:
-            incoming.unlink(missing_ok=True)
+        publish_output_model(self)
 
 
 class ProductCheckpoint:

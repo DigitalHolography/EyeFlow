@@ -10,7 +10,7 @@ from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from pipeline_engine.storage import temporary_directory
+from scratch_location import temporary_directory
 from threading import RLock
 from uuid import uuid4
 
@@ -20,9 +20,10 @@ from utils.logger import Logger
 
 
 def _initialize_renderer() -> None:
-    from runtime_limits import configure_numeric_threads
+    from runtime_limits import configure_native_threads, set_thread_allowance
 
-    configure_numeric_threads()
+    configure_native_threads(1)
+    set_thread_allowance(1)
     import matplotlib
 
     matplotlib.use("Agg", force=True)
@@ -90,32 +91,51 @@ class ArtifactWorkers:
 
     def _submit_admitted(self, job, complete, budget):
         from time import monotonic
-        memory = min(64 * 2**20, budget.memory_limit // 4) if budget else 0
+
+        admitted = False
         started = monotonic()
-        if budget:
-            while not budget.try_acquire(1, memory):
-                with budget._condition:
-                    budget._condition.wait(.1)
-            if monotonic() - started > .1:
-                Logger.log(f"[RESOURCES] Export {job.label} delayed {monotonic() - started:.2f}s.")
         try:
+            request = budget.default_request(threads=1) if budget else None
+            if budget:
+                budget.acquire(request.threads, request.memory)
+                admitted = True
+                if monotonic() - started > .1:
+                    Logger.log(
+                        f"[RESOURCES] Export {job.label} delayed {monotonic() - started:.2f}s."
+                    )
             rendered = self._renderer.submit(
                 _run_exporter, job.exporter, job.snapshot, job.manager, job.kwargs,
             )
         except Exception as exc:
-            if budget:
-                budget.release(1, memory)
+            if admitted:
+                budget.release(request.threads, request.memory)
             rendered = Future()
             rendered.set_exception(exc)
-            self._publisher.submit(complete, job, rendered)
+            self._schedule_completion(job, complete, rendered)
             return
 
         def finished(future):
             # Publication only copies files; return compute slots before it.
-            if budget:
-                budget.release(1, memory)
-            self._publisher.submit(complete, job, future)
+            try:
+                if admitted:
+                    budget.release(request.threads, request.memory)
+            finally:
+                self._schedule_completion(job, complete, future)
         rendered.add_done_callback(finished)
+
+    def _schedule_completion(self, job, complete, rendered):
+        def finish():
+            try:
+                complete(job, rendered)
+            except BaseException as exc:
+                if job.future is not None and not job.future.done():
+                    job.future.set_exception(exc)
+
+        try:
+            self._publisher.submit(finish)
+        except Exception:
+            # Pool shutdown/submission failure must still settle the job.
+            finish()
 
 
 @dataclass
@@ -209,8 +229,10 @@ class BackgroundArtifacts:
         try:
             self._workers.submit(job, self._complete)
         except Exception as exc:
-            self._fail(job, exc)
-            job.future.set_result(None)
+            try:
+                self._fail(job, exc)
+            finally:
+                job.future.set_result(None)
 
     def collect(self, *, wait: bool = False) -> None:
         if wait:
@@ -241,8 +263,10 @@ class BackgroundArtifacts:
         except Exception as exc:
             self._fail(job, exc)
         finally:
-            job.temporary.cleanup()
-            job.future.set_result(None)
+            try:
+                job.temporary.cleanup()
+            finally:
+                job.future.set_result(None)
 
     def _fail(self, job: ArtifactJob, exc: Exception) -> None:
         message = str(exc)

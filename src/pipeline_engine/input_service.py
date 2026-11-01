@@ -92,7 +92,8 @@ class InputDataset(InputNode):
 
     @property
     def _value(self):
-        return self.file.client.read(self.file.slot, self.path)
+        identity = self.file.entries[self.path].identity
+        return self.file.client.read(self.file.slot, identity)
 
     def __getitem__(self, selection):
         return self._value[selection]
@@ -139,7 +140,10 @@ class InputGroup(InputNode):
     _eyeflow_group = True
 
     def get(self, path, default=None):
-        return self.file.get("/".join((self.path, str(path).strip("/"))), default)
+        path = str(path)
+        if path.startswith("/"):
+            return self.file.get(path, default)
+        return self.file.get("/".join((self.path, path.strip("/"))), default)
 
     def __getitem__(self, path):
         value = self.get(path)
@@ -233,25 +237,21 @@ class InputService:
             try:
                 key = self.aliases[slot, path]
                 if key not in self.cache:
-                    dataset = self.sources[slot][path]
-                    if dataset.dtype.kind in "biufc" and dataset.nbytes >= 64 * 1024:
-                        # store_array slices the source rather than materializing it.
-                        value = self.storage.store_array(dataset)
-                    else:
-                        value = self.storage.store(dataset[()], category="input")
-                    if isinstance(value, np.ndarray) and (
-                        value.nbytes >= 4096 or value.dtype.kind == "O"
-                    ):
-                        if value.dtype.kind != "O":
-                            value = self.storage.store_array(value)
-                        else:
-                            value = self.storage.store_value(value)
-                    self.cache[key] = value
+                    self.cache[key] = self._stage(self.sources[slot][path])
                     self.source_reads[key] = self.source_reads.get(key, 0) + 1
                 response = self.cache[key], None
             except Exception as exc:  # noqa: BLE001 - return source failures to the requesting invocation
                 response = None, f"Could not stage {slot}:{path}: {exc}"
             self.responses[identity].put(response)
+
+    def _stage(self, dataset):
+        # Array persistence slices the source; only small metadata crosses IPC.
+        if dataset.dtype.kind in "biufcSU" and dataset.nbytes >= 4096:
+            return self.storage.store_array(dataset)
+        value = np.asarray(dataset[()])
+        if value.dtype.kind == "O":
+            return self.storage.store_value(value)
+        return self.storage.store(value, category="input")
 
     def close(self):
         self.requests.put(None)

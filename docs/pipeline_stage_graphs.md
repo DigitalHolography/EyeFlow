@@ -110,12 +110,8 @@ There is no directory scan inferring ownership from creation time. Direct file
 writes that bypass managed writers/reservations cannot be automatically owned;
 custom writers must call `register_artifact_path(path, writing=True)`.
 
-The batch reuses at most two rendering processes and permits analysis of the
-next file while exports of the preceding file finish. At most two unfinished
-inputs are retained to bound snapshot accumulation. The asynchronous completion
-log identifies the input and producer. A file's final completion log and the
-batch return wait for its exports and final metadata. Stop-between-files stops
-new analysis and drains exports for inputs already started.
+Batch scheduling, resource admission and final publication follow the
+[execution design](parallel_pipeline_execution.md).
 
 ## Velocity and execution scope
 
@@ -134,28 +130,7 @@ other workflow succeeds with the same product names.
 
 ## Verification
 
-Focused tests cover atomic and duplicate handoffs, invalid dependency graphs,
-committed data surviving later failures, early export dispatch, report barriers,
-artifact ownership, mutation isolation and velocity-variant separation. The
-full dual-workflow run with PNG/EPS exports and PDF reports also passes.
-
-The representative synthetic `(640,64,128,128)` HD fixture was replayed through
-the graph. All **149 scientific datasets**, including 127 metrics, were exactly
-equal in dtype and values to the prior reduced reference. The engine additionally
-writes its ordinary `app_versions` provenance dataset. One local run took
-11.34 seconds without figures, including engine initialization and checkpoints;
-that is not directly comparable to earlier isolated calculation-stage timings.
-The result and summary are under
-`.tmp/spectral_performance/stage_graph_640_final/`.
-
-```powershell
-.\.venv\Scripts\python.exe benchmarks/benchmark_spectral_stage_graph.py `
-  --hd .tmp/spectral_performance/representative_640/synthetic_HD.h5 `
-  --reference .tmp/spectral_performance/cpu_parallel_640/profile.h5 `
-  --output .tmp/spectral_graph_new
-```
-
-The benchmark uses a synthetic mask/cardiac timing and suppresses figure export;
-it does not measure a patient's full workflow or NAS performance. The frozen
-launcher supports multiprocessing dispatch, but an installer rebuild was not
-part of this verification.
+`test_pipeline_graphs.py`, `test_artifact_ownership.py` and
+`test_background_artifacts.py` cover handoffs, dependencies, rollback, exports and
+workflow isolation. Performance measurements belong with benchmark results,
+not in this API contract.

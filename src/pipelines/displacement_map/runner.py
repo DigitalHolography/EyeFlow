@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from pipeline_engine.storage import temporary_directory as create_temporary_directory
+from scratch_location import temporary_directory as create_temporary_directory
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal

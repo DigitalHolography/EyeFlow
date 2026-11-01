@@ -8,7 +8,7 @@ import shutil
 from math import prod
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from pipeline_engine.storage import temporary_directory
+from scratch_location import temporary_directory
 from pipeline_engine.resources import current_resources
 
 import numpy as np
@@ -20,7 +20,7 @@ _RAM_BUDGET_FRACTION = 0.5
 
 
 class RunArrayStorage:
-    """Keep modest arrays in RAM and spill larger arrays beside the run output."""
+    """Keep modest arrays in RAM and spill larger arrays to local scratch."""
 
     def __init__(self, output_dir: Path, *, memory_budget_bytes: int | None = None) -> None:
         self.output_dir = Path(output_dir)

@@ -1,25 +1,31 @@
-"""Application-wide admission accounting and native compute allowances."""
+"""Batch-wide CPU admission, shared memory reservations and RSS observation."""
 
 from __future__ import annotations
 
-import math
 import multiprocessing
-import os
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from threading import Condition, Event, Thread
 from time import monotonic
 
 import psutil
 
+from runtime_limits import (
+    configure_native_threads,
+    default_thread_allowance,
+    set_thread_allowance,
+    use_thread_allowance,
+)
 from utils.logger import Logger
 
 _CURRENT = ContextVar("eyeflow_resources", default=None)
-_THREADS = ContextVar("eyeflow_compute_threads", default=None)
 _RESERVATION = ContextVar("eyeflow_compute_reservation", default=None)
 
 
 class MemoryAccount:
+    """Shared byte counters, optionally tracking one worker's owned bytes."""
+
     categories = ("transient", "retained", "input", "transfer")
 
     def __init__(
@@ -49,6 +55,7 @@ class MemoryAccount:
         return max(0, self.memory_limit - other_categories)
 
     def reserve_memory(self, size, category="retained"):
+        index = self.categories.index(category)
         if size == 0:
             return True
         with self.counters.get_lock():
@@ -60,11 +67,9 @@ class MemoryAccount:
             observed = self._observed_increment()
             if size < 0 or max(accounted, observed) + size > limit:
                 return False
-            if size > psutil.virtual_memory().available * 0.5:
-                return False
-            self.counters[self.categories.index(category)] += size
+            self.counters[index] += size
             if self.owned is not None:
-                self.owned[self.categories.index(category)] += size
+                self.owned[index] += size
             return True
 
     def _observed_increment(self):
@@ -75,15 +80,17 @@ class MemoryAccount:
         return max(0, rss - self._baseline_rss)
 
     def release_memory(self, size, category="retained"):
+        if size < 0:
+            raise ValueError("Cannot release a negative memory reservation.")
+        index = self.categories.index(category)
         with self.counters.get_lock():
-            index = self.categories.index(category)
             if self.owned is not None:
                 size = min(size, self.owned[index])
                 self.owned[index] -= size
             self.counters[index] = max(0, self.counters[index] - size)
 
     def reclaim(self):
-        """Reclaim a dead worker's reservations after its process has joined."""
+        """Reclaim a worker's remaining reservations after its process exits."""
         if self.owned is not None:
             with self.counters.get_lock():
                 for index, amount in enumerate(self.owned):
@@ -109,94 +116,79 @@ def pipeline_memory_bytes(pipeline, budget) -> int:
     return max(0, capacity - headroom)
 
 
-def usable_cpus():
-    try:
-        return max(1, len(psutil.Process().cpu_affinity()))
-    except (AttributeError, psutil.Error):
-        return max(1, os.cpu_count() or 1)
+@dataclass(frozen=True)
+class ResourceRequest:
+    threads: int
+    memory: int
 
 
-def thread_allowance():
-    return _THREADS.get() or max(1, math.floor(0.75 * usable_cpus()))
+@dataclass
+class _ComputeReservation:
+    budget: ResourceBudget
+    threads: int
+    memory: int
 
 
 def current_resources():
     return _CURRENT.get()
 
 
-def configure_native_threads(count=1):
-    """Set defaults before imports, and resize already loaded native pools."""
-    count = max(1, int(count))
-    for name in (
-        "OPENBLAS_NUM_THREADS",
-        "OMP_NUM_THREADS",
-        "MKL_NUM_THREADS",
-        "NUMEXPR_NUM_THREADS",
-        "ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS",
-    ):
-        os.environ[name] = str(count)
-    from threadpoolctl import threadpool_limits
-
-    limiter = threadpool_limits(limits=count)
-    import sys
-
-    if "cv2" in sys.modules:
-        sys.modules["cv2"].setNumThreads(count)
-    if "SimpleITK" in sys.modules:
-        sys.modules["SimpleITK"].ProcessObject.SetGlobalDefaultNumberOfThreads(count)
-    return limiter
-
-
 class ResourceBudget(MemoryAccount):
-    """One budget for retained memory, transient calculations and renderers.
+    """Deterministic admission estimates, shared across an entire batch.
 
-    Reservations are admission estimates, not an OS memory hard limit. Mapped
-    arrays live on local disk; their resident pages are observed in tree RSS.
+    CPU slots bound concurrent work; memory counters account for managed
+    allocations. Neither is an OS hard limit on native code or mapped pages.
     """
 
     def __init__(self, *, cpu_threads=None, memory_bytes=None):
-        self.cpus = usable_cpus()
-        # Sample before starting compute, avoiding subtraction of our own load.
-        load = psutil.cpu_percent(interval=0.1) / 100
         self.cpu_limit = max(
-            1, int(cpu_threads if cpu_threads is not None else math.floor(0.75 * self.cpus))
+            1, int(cpu_threads if cpu_threads is not None else default_thread_allowance()),
         )
-        self._dynamic_cpu = max(1, min(self.cpu_limit, math.floor(0.75 * self.cpus * (1 - load))))
-        self.memory_limit = int(
-            memory_bytes if memory_bytes is not None else psutil.virtual_memory().available * 0.5
-        )
+        limit = int(memory_bytes if memory_bytes is not None
+                    else psutil.virtual_memory().available * 0.5)
+        if limit < 1:
+            raise ValueError("The RAM budget must be positive.")
+        context = multiprocessing.get_context("spawn")
         self._process = psutil.Process()
         baseline_rss = self._process.memory_info().rss
-        mp_context = multiprocessing.get_context("spawn")
-        observed_rss = mp_context.Value("q", baseline_rss)
-        MemoryAccount.__init__(
-            self,
-            self.memory_limit,
-            mp_context.Array("q", len(self.categories)),
-            observed_rss=observed_rss,
-            baseline_rss=baseline_rss,
+        super().__init__(
+            limit, context.Array("q", len(self.categories)),
+            observed_rss=context.Value("q", baseline_rss), baseline_rss=baseline_rss,
         )
         self.cpu_used = 0
         self.peak_rss = 0
+        self.observed_rss = 0
         self._condition = Condition()
-        self._sample_time = 0.0
-        self._process.cpu_percent()
-        self._processes = {self._process.pid: self._process}
-        self._external_load = load
         self._activations = 0
         self._monitor_stop = Event()
         self._monitor = None
 
+    @property
+    def available_threads(self):
+        with self._condition:
+            return self.cpu_limit - self.cpu_used
+
+    def default_request(self, *, threads=None, memory=None):
+        """Working estimate used by calculations, processes and renderers."""
+        return ResourceRequest(
+            min(4, self.cpu_limit) if threads is None else threads,
+            min(64 * 2**20, self.memory_limit // 4) if memory is None else memory,
+        )
+
     @contextmanager
     def activate(self):
         with self._condition:
-            self._activations += 1
-            if self._activations == 1:
+            if self._activations == 0:
+                # Native limits are process policy, never temporarily restored
+                # by overlapping calculation/finalization threads.
+                configure_native_threads(1)
+                self.refresh()
                 self._monitor_stop.clear()
                 self._monitor = Thread(
-                    target=self._monitor_loop, name="EyeFlowResourceMonitor", daemon=True
+                    target=self._monitor_loop, name="EyeFlowResourceMonitor", daemon=True,
                 )
                 self._monitor.start()
+            self._activations += 1
         token = _CURRENT.set(self)
         try:
             yield self
@@ -209,6 +201,7 @@ class ResourceBudget(MemoryAccount):
                     self._monitor_stop.set()
             if last:
                 self._monitor.join()
+                self.refresh()
                 Logger.log(f"[RESOURCES] Observed peak RAM: {self.peak_rss / 2**30:.2f} GiB.")
 
     def _monitor_loop(self):
@@ -216,57 +209,60 @@ class ResourceBudget(MemoryAccount):
             self.refresh()
 
     def refresh(self):
-        with self._condition:
-            self._refresh()
-
-    def _refresh(self):
-        now = monotonic()
-        if now - self._sample_time < 1:
-            return
-        self._sample_time = now
-        processes = [self._process, *self._process.children(recursive=True)]
-        rss, own_cpu = 0, 0.0
+        """Observe process-tree memory for admission and peak reporting."""
+        try:
+            processes = [self._process, *self._process.children(recursive=True)]
+        except psutil.Error:
+            processes = [self._process]
+        rss = 0
         for process in processes:
             try:
-                previous = self._processes.get(process.pid)
-                if previous is None:
-                    process.cpu_percent()
-                    self._processes[process.pid] = process
-                else:
-                    process = previous
                 rss += process.memory_info().rss
-                own_cpu += process.cpu_percent() / 100
             except psutil.Error:
                 pass
-        self.peak_rss = max(self.peak_rss, rss)
-        self.observed_rss = rss
-        with self._observed_rss.get_lock():
-            self._observed_rss.value = rss
-        external = max(0.0, psutil.cpu_percent() / 100 - own_cpu / self.cpus)
-        self._external_load = 0.8 * self._external_load + 0.2 * external
-        self._dynamic_cpu = max(
-            1, min(self.cpu_limit, math.floor(0.75 * self.cpus * (1 - self._external_load)))
-        )
+        with self._condition:
+            self.observed_rss = rss
+            self.peak_rss = max(self.peak_rss, rss)
+            with self._observed_rss.get_lock():
+                self._observed_rss.value = rss
 
     def memory_account(self):
         return MemoryAccount(
-            self.memory_limit,
-            self.counters,
+            self.memory_limit, self.counters,
             multiprocessing.get_context("spawn").Array("q", len(self.categories), lock=False),
             observed_rss=self._observed_rss,
             baseline_rss=self._baseline_rss,
         )
 
+    def _validate_request(self, threads, memory):
+        if threads < 1 or threads > self.cpu_limit:
+            raise ValueError("CPU reservation must be within the batch CPU limit.")
+        if memory < 0 or memory > self.memory_limit:
+            raise MemoryError("Calculation reservation exceeds the run RAM budget.")
+
     def try_acquire(self, threads, memory=0):
-        self.refresh()
+        self._validate_request(threads, memory)
         with self._condition:
-            limit = getattr(self, "_dynamic_cpu", self.cpu_limit)
-            if self.cpu_used + threads > limit:
+            if self.cpu_used + threads > self.cpu_limit:
                 return False
             if not self.reserve_memory(memory, "transient"):
                 return False
             self.cpu_used += threads
             return True
+
+    def acquire(self, threads=1, memory=0, *, flexible=False):
+        """Wait for admission and return the admitted number of CPU slots.
+
+        Flexible calculations use the currently free slots up to their request.
+        The timeout also observes memory released by cross-process accounts.
+        """
+        self._validate_request(threads, memory)
+        with self._condition:
+            while True:
+                admitted = min(threads, self.cpu_limit - self.cpu_used) if flexible else threads
+                if admitted > 0 and self.try_acquire(admitted, memory):
+                    return admitted
+                self._condition.wait(0.1)
 
     def release(self, threads, memory=0):
         with self._condition:
@@ -275,64 +271,41 @@ class ResourceBudget(MemoryAccount):
             self._condition.notify_all()
 
     @contextmanager
-    def compute(self, threads=1, memory=0):
+    def compute(self, threads=None, memory=None):
         if _RESERVATION.get() is not None:
             yield
             return
-        if memory > self.memory_limit:
-            raise MemoryError("Calculation reservation exceeds the run RAM budget.")
+        request = self.default_request(threads=threads, memory=memory)
         started = monotonic()
-        requested = threads
-        while True:
-            self.refresh()
-            free = getattr(self, "_dynamic_cpu", self.cpu_limit) - self.cpu_used
-            threads = max(1, min(requested, free))
-            if self.try_acquire(threads, memory):
-                break
-            with self._condition:
-                self._condition.wait(0.1)
-        delay = monotonic() - started
-        token = _THREADS.set(threads)
-        allocation = [self, threads, memory]
-        reservation = _RESERVATION.set(allocation)
-        limiter = None
+        admitted = self.acquire(request.threads, request.memory, flexible=True)
+        allocation = _ComputeReservation(self, admitted, request.memory)
+        token = _RESERVATION.set(allocation)
         try:
-            if delay > 0.1:
-                Logger.log(f"[RESOURCES] Compute admission delayed {delay:.2f}s.")
-            # Python frame pools use the allowance; native pools stay serial.
-            limiter = configure_native_threads(1)
-            yield
+            with use_thread_allowance(admitted):
+                delay = monotonic() - started
+                if delay > 0.1:
+                    Logger.log(f"[RESOURCES] Compute admission delayed {delay:.2f}s.")
+                yield
         finally:
-            try:
-                if limiter is not None:
-                    limiter.restore_original_limits()
-            finally:
-                _RESERVATION.reset(reservation)
-                _THREADS.reset(token)
-                self.release(allocation[1], memory)
+            _RESERVATION.reset(token)
+            self.release(allocation.threads, allocation.memory)
 
 
 @contextmanager
 def suspend_compute():
-    """Artifact barriers cannot hold the CPU slots their exporters need."""
+    """Release an invocation's slots while waiting for its artifact exporters."""
     reservation = _RESERVATION.get()
     if reservation is None:
         yield
         return
-    budget, threads, memory = reservation
-    budget.release(threads, memory)
+    budget = reservation.budget
+    budget.release(reservation.threads, reservation.memory)
     token = _RESERVATION.set(None)
     try:
         yield
     finally:
-        while True:
-            budget.refresh()
-            free = getattr(budget, "_dynamic_cpu", budget.cpu_limit) - budget.cpu_used
-            threads = max(1, min(threads, free))
-            if budget.try_acquire(threads, memory):
-                break
-            with budget._condition:
-                budget._condition.wait(0.1)
-        reservation[1] = threads
-        _THREADS.set(threads)
+        reservation.threads = budget.acquire(
+            reservation.threads, reservation.memory, flexible=True,
+        )
+        set_thread_allowance(reservation.threads)
         _RESERVATION.reset(token)

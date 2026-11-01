@@ -117,7 +117,14 @@ def _copy_source_object(source, parent: h5py.Group, name: str) -> None:
             storage = parent.file.storage
             value = (storage.store_array(source) if source.dtype.kind in "biufc"
                      and source.size * source.dtype.itemsize >= 65536 else source[()])
-            options = {"compression": "gzip", "compression_opts": 9, "shuffle": True} if source.ndim else {}
+            compressible = (
+                source.ndim and source.dtype.kind in "biufc"
+                and source.size * source.dtype.itemsize >= _MIN_COMPRESSION_BYTES
+            )
+            options = (
+                {"compression": "gzip", "compression_opts": 9, "shuffle": True}
+                if compressible else {}
+            )
             target = parent.store_dataset(name, value, options)
         for key, value in source.attrs.items():
             target.attrs[key] = value

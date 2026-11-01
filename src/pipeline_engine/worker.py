@@ -2,37 +2,22 @@
 
 import os
 import traceback
-from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
 
-from .protocol import _SINK, WorkerEvent
-
-
-@dataclass
-class InvocationSpec:
-    name: str
-    module: str
-    directory: str
-    output_manager: object
-    input_metadata: dict
-    input_client: object
-    settings: dict
-    initial_result: str
-    threads: int
-    memory_bytes: int = 64 * 2**20
-    memory_account: object = None
-    acknowledgements: object = None
-    native_parallelism: bool = False
+from .protocol import _SINK, InvocationResult, WorkerEvent
 
 
 def run_worker(spec, events):
     # Environment defaults precede scientific imports in the spawned process.
-    from .resources import _THREADS, configure_native_threads
+    from runtime_limits import (
+        configure_native_threads, configure_numeric_threads, set_thread_allowance,
+    )
 
-    configure_native_threads(spec.threads if spec.native_parallelism else 1)
-    _THREADS.set(1 if spec.native_parallelism else spec.threads)
-    os.environ["EYEFLOW_WORKER_DIRECTORY"] = spec.directory
+    native_threads = spec.threads if spec.native_parallelism else 1
+    configure_numeric_threads(native_threads)
+    set_thread_allowance(1 if spec.native_parallelism else spec.threads)
+    os.environ["EYEFLOW_WORKER_DIRECTORY"] = str(spec.directory)
     from dataclasses import replace
 
     from input_output.artifact_ownership import (
@@ -47,7 +32,7 @@ def run_worker(spec, events):
     from .context import PipelineInputs
     from .input_service import InputFile
     from .output_model import OutputModel
-    from .runtime import _run_pipeline_descriptor
+    from .invocation import _run_pipeline_descriptor
     from .scratch import RunArrayStorage
     from .storage import ProductStorage
     from .transfer import dump_result, load_result
@@ -56,7 +41,7 @@ def run_worker(spec, events):
         directory=Path(spec.directory) / "products", budget=spec.memory_account
     )
     scratch = RunArrayStorage(
-        Path(spec.directory), memory_budget_bytes=spec.memory_bytes
+        Path(spec.directory), memory_budget_bytes=min(spec.memory_bytes, spec.memory_account.memory_limit)
     )
     scratch.budget = spec.memory_account
     files = {
@@ -71,53 +56,41 @@ def run_worker(spec, events):
         layout=replace(spec.output_manager.layout, _root_dir=Path(spec.directory) / "artifacts"),
     )
     ownership = ArtifactOwnership()
-    published_artifact_root = spec.output_manager.layout.ef_dir.resolve()
 
     def snapshot():
         return dump_result(
-            {
-                "records": output.records,
-                "state": {
+            InvocationResult(
+                records=output.committed_records(),
+                state={
                     key: value
                     for key, value in variables.items()
                     if key not in initial_state or value is not initial_state[key]
                 },
-                "artifacts": ownership.paths,
-                "manager": manager,
-            },
+                artifacts=tuple(ownership.paths),
+                artifact_root=manager.layout.ef_dir,
+            ),
             storage,
         )
 
     def send(kind, stage=None, detail=None):
         detail = dict(detail or {})
-        if kind == "ProductCommit":
-            detail["result"] = snapshot()
-        events.put(WorkerEvent(kind, spec.name, stage, detail))
+        if kind in {"ProductCommit", "StageFinished", "StageFailed", "StageSkipped"}:
+            detail["result_path"] = snapshot()
+        events.put(WorkerEvent(kind, spec.name, stage, **detail))
         # Queue.put only feeds a process-local buffer. Do not enter native
         # calculation (which can crash) until this event is fully received.
         spec.acknowledgements.get()
-
-    def forward_log(message):
-        staged_artifact_root = manager.layout.ef_dir.resolve()
-        send(
-            "LogMessage",
-            detail={
-                "message": str(message).replace(
-                    str(staged_artifact_root), str(published_artifact_root)
-                )
-            },
-        )
 
     token = _SINK.set(send)
     error = None
     try:
         send("WorkerStarted")
         import_module(spec.module)
+        configure_native_threads(native_threads)
         descriptor = PIPELINE_REGISTRY[spec.name]
         initial_state.update(load_result(spec.initial_result, storage, files))
         variables.update(initial_state)
-        settings = dict(spec.settings)
-        configs = settings.pop("configs")
+        configs = spec.settings.configs
         inputs = PipelineInputs(
             **{
                 slot: PipelineInputSource(
@@ -127,7 +100,7 @@ def run_worker(spec, events):
             }
         )
         with (
-            Logger.capture_messages(forward_log),
+            Logger.capture_messages(lambda message: send("LogMessage", detail={"message": message})),
             artifact_transaction(ArtifactScope(ownership, manager.layout.ef_dir)),
         ):
             _run_pipeline_descriptor(
@@ -144,13 +117,13 @@ def run_worker(spec, events):
                 scratch=scratch,
                 on_pipeline_success=None,
                 on_progress=None,
-                **settings,
+                **spec.settings.context_arguments(),
             )
     except BaseException:  # noqa: BLE001 - report partial work at the process boundary
         error = traceback.format_exc()
     finally:
         try:
-            send("InvocationFinished", detail={"error": error, "result": snapshot()})
+            send("InvocationFinished", detail={"error": error, "result_path": snapshot()})
         finally:
             _SINK.reset(token)
             spec.input_client.close()
